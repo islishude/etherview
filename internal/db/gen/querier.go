@@ -89,6 +89,7 @@ type Querier interface {
 	DerivedVerifyClaimForwardBlock(ctx context.Context, leasedBy *string, leaseToken *string, column3 interface{}) ([]DerivedVerifyClaimForwardBlockRow, error)
 	DerivedVerifyClaimScan(ctx context.Context, leasedBy *string, leaseToken *string, column3 interface{}) ([]DerivedVerifyClaimScanRow, error)
 	DerivedVerifyCreatedContracts(ctx context.Context, column1 pgtype.Numeric, creatorAddress []byte) ([]DerivedVerifyCreatedContractsRow, error)
+	DerivedVerifyCreatorCodeEpochStart(ctx context.Context, arg DerivedVerifyCreatorCodeEpochStartParams) ([]string, error)
 	DerivedVerifyDispatchForwardBlock(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) (int64, error)
 	DerivedVerifyEnqueueHistoricalScan(ctx context.Context, arg DerivedVerifyEnqueueHistoricalScanParams) error
 	DerivedVerifyExistingPublication(ctx context.Context, arg DerivedVerifyExistingPublicationParams) ([]string, error)

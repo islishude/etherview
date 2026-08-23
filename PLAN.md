@@ -378,6 +378,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   evidence in [P71 evidence](docs/plans/P71-factory-derived-verification.md#evidence).
   P71-T07 enables the already shipped feature only in the local Preview
   Compose configuration, while retaining production/default-off behavior.
+  P71-T08 corrects late-verification scans to begin at the authenticated
+  creator code epoch and adds real Hardhat/Foundry constructor-child gates,
+  including the reproduced Preview ProxyAdmin recovery.
 
 ## Global Release Gates
 

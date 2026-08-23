@@ -46,6 +46,9 @@ func (repository *PostgresRepository) loadDerivedArtifactDetails(
 			&creator, &created, &transaction, &tracePath, &callType,
 			&blockNumber, &blockHash, &parentFile, &parentContract,
 		)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrDerivedEvidenceStale
+		}
 		if err != nil {
 			return fmt.Errorf("load derived verification provenance: %w", err)
 		}
@@ -252,6 +255,18 @@ func (repository *PostgresRepository) CompleteDerived(
 	requestDigest := sha256.Sum256(append(
 		[]byte("etherview:verification-request:v2\x00"), requestPayload...,
 	))
+	target := common.BytesToAddress(evidence.CreatedAddress)
+	var authenticatedArtifact *recognizedProxyArtifact
+	if artifact, recognized := recognizeOpenZeppelin561Artifact(
+		outcome, target, evidence.RuntimeCode,
+	); recognized {
+		if err := validateRecognizedProxyArtifact(artifact); err != nil {
+			return "", err
+		}
+		authenticatedArtifact = &artifact
+	}
+	artifactKind, artifactVersion, artifactImmutable, artifactManifest :=
+		proxyArtifactAttestationValues(authenticatedArtifact)
 	if _, err := tx.ExecContext(ctx, dbgen.DerivedVerifyInsertJob,
 		jobID, evidence.CompilerVersion, evidence.CompilerPlatform,
 		evidence.CatalogGenerationID, evidence.CompilerDigest,
@@ -269,7 +284,7 @@ func (repository *PostgresRepository) CompleteDerived(
 		fields.Sources, fields.Settings, fields.CompilationArtifacts,
 		fields.CreationArtifacts, fields.RuntimeArtifacts,
 		fields.ConstructorArguments, fields.Libraries, fields.Blueprint,
-		nil, nil, nil, nil,
+		artifactKind, artifactVersion, artifactImmutable, artifactManifest,
 	); err != nil {
 		return "", fmt.Errorf("insert derived verification result: %w", err)
 	}
@@ -284,14 +299,6 @@ func (repository *PostgresRepository) CompleteDerived(
 	}
 	copy(job.Compiler.Digest[:], evidence.CompilerDigest)
 	copy(job.Compiler.ExecutorDigest[:], evidence.ExecutorDigest)
-	target := common.BytesToAddress(evidence.CreatedAddress)
-	var authenticatedArtifact *recognizedProxyArtifact
-	if artifact, recognized := recognizeOpenZeppelin561Artifact(outcome, target, evidence.RuntimeCode); recognized {
-		if err := validateRecognizedProxyArtifact(artifact); err != nil {
-			return "", err
-		}
-		authenticatedArtifact = &artifact
-	}
 	if err := repository.publishVerifiedContractTx(ctx, tx, verifiedPublication{
 		Job: job, Fields: fields, BlockNumber: evidence.BlockNumber,
 		Address: evidence.CreatedAddress, CodeHash: evidence.RuntimeCodeHash,

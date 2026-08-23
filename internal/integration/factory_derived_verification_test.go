@@ -52,13 +52,14 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 			chain_id, address, block_number, block_hash, code_hash, code, canonical
 		) VALUES
 			(1, $1, 1, $2, $3, $4, TRUE),
-			(1, $5, 2, $6, $7, $8, TRUE),
-			(1, $9, 3, $10, $11, $12, TRUE),
-			(1, $13, 3, $10, $7, $8, TRUE)`,
+			(1, $1, 2, $5, $3, $4, TRUE),
+			(1, $6, 1, $2, $7, $8, TRUE),
+			(1, $1, 3, $9, $10, $11, TRUE),
+			(1, $12, 3, $9, $7, $8, TRUE)`,
 		factoryAddress, factoryBlock.Block.Hash().Bytes(), factoryCodeHash, factoryRuntime,
-		childAddress, childBlock.Block.Hash().Bytes(), childCodeHash, childRuntime,
-		factoryAddress, replacementBlock.Block.Hash().Bytes(), replacementFactoryCodeHash, replacementFactoryRuntime,
-		wrongEpochChildAddress,
+		childBlock.Block.Hash().Bytes(), childAddress, childCodeHash, childRuntime,
+		replacementBlock.Block.Hash().Bytes(), replacementFactoryCodeHash,
+		replacementFactoryRuntime, wrongEpochChildAddress,
 	)
 	execFixture(t, ctx, db, `
 		INSERT INTO normalized_traces (
@@ -67,10 +68,10 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 			from_address, created_address, value, gas, gas_used, input, output,
 			error, reverted, canonical
 		) VALUES (
-			1, 2, $1, $2, 0, '0', '', 1, 'CREATE2', $3, $4,
+			1, 1, $1, $2, 0, '1', '', 1, 'CREATE', $3, $4,
 			0, 50000, 21000, $5, $6, NULL, FALSE, TRUE
 		)`,
-		childBlock.Block.Hash().Bytes(), childBlock.Block.Transactions()[0].Hash().Bytes(),
+		factoryBlock.Block.Hash().Bytes(), factoryBlock.Block.Transactions()[0].Hash().Bytes(),
 		factoryAddress, childAddress, childCreation, childRuntime,
 	)
 	execFixture(t, ctx, db, `
@@ -95,7 +96,7 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		t.Fatal(err)
 	}
 	submission := verifierV2AddressSubmission(
-		factoryAddress, factoryCodeHash, factoryBlock.Block.Hash().Bytes(), factoryRuntime,
+		factoryAddress, factoryCodeHash, childBlock.Block.Hash().Bytes(), factoryRuntime,
 	)
 	submission.StandardJSON = json.RawMessage(`{"language":"Solidity","sources":{"A.sol":{"content":"contract A {} contract Child {}"}},"settings":{}}`)
 	submission.StandardJSONVariants = []json.RawMessage{submission.StandardJSON}
@@ -127,7 +128,8 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 	}
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM derived_verification_scans
-		WHERE chain_id = 1 AND creator_address = $1 AND status = 'queued'`, 1,
+		WHERE chain_id = 1 AND creator_address = $1 AND valid_from_block = 1
+		  AND cursor_block_number = 1 AND status = 'queued'`, 1,
 		factoryAddress,
 	)
 	worker, err := derivedverify.NewWorker(db, repository, derivedverify.Options{
@@ -146,14 +148,14 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		FROM verified_contracts AS verified
 		JOIN verification_jobs AS job ON job.id = verified.verification_job_id
 		WHERE verified.chain_id = 1 AND verified.address = $1
-		  AND verified.code_hash = $2 AND verified.valid_from_block = 2
+		  AND verified.code_hash = $2 AND verified.valid_from_block = 1
 		  AND verified.file_name = 'A.sol' AND verified.contract_name = 'Child'
 		  AND job.kind = 'derived' AND job.status = 'succeeded'`, 1,
 		childAddress, childCodeHash,
 	)
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM derived_verification_attempts
-		WHERE chain_id = 1 AND created_address = $1 AND call_type = 'CREATE2'
+		WHERE chain_id = 1 AND created_address = $1 AND call_type = 'CREATE'
 		  AND status = 'matched' AND file_name = 'A.sol'
 		  AND contract_name = 'Child' AND verification_job_id IS NOT NULL`, 1,
 		childAddress,
@@ -178,9 +180,18 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 	execFixture(t, ctx, db, `
 		INSERT INTO contract_code_observations (
 			chain_id, address, block_number, block_hash, code_hash, code, canonical
-		) VALUES (1, $1, 4, $2, $3, $4, TRUE)`,
+		) VALUES
+			(1, $1, 4, $2, $3, $4, TRUE),
+			(1, $5, 4, $2, $6, $7, TRUE)`,
 		grandchildAddress, forwardBlock.Block.Hash().Bytes(), grandchildCodeHash, grandchildRuntime,
+		factoryAddress, factoryCodeHash, factoryRuntime,
 	)
+	var reattachedEpoch string
+	if err := db.QueryRowContext(ctx, dbgen.DerivedVerifyCreatorCodeEpochStart,
+		"1", factoryAddress, factoryCodeHash, "4", forwardBlock.Block.Hash().Bytes(),
+	).Scan(&reattachedEpoch); err != nil || reattachedEpoch != "4" {
+		t.Fatalf("A-to-B-to-A creator epoch = %q, error = %v", reattachedEpoch, err)
+	}
 	execFixture(t, ctx, db, `
 		INSERT INTO normalized_traces (
 			chain_id, block_number, block_hash, transaction_hash,
@@ -257,9 +268,9 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		t.Fatal(err)
 	}
 	identity := verify.DerivedTraceIdentity{
-		CompilationID: compilationID, BlockNumber: 2,
-		BlockHash:   childBlock.Block.Hash().Bytes(),
-		Transaction: childBlock.Block.Transactions()[0].Hash().Bytes(), TracePath: "0",
+		CompilationID: compilationID, BlockNumber: 1,
+		BlockHash:   factoryBlock.Block.Hash().Bytes(),
+		Transaction: factoryBlock.Block.Transactions()[0].Hash().Bytes(), TracePath: "1",
 	}
 	firstJobID, err := repository.CompleteDerived(ctx, identity)
 	if err != nil {
@@ -293,13 +304,13 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 
 	execFixture(t, ctx, db, `
 		UPDATE normalized_traces SET canonical = FALSE
-		WHERE chain_id = 1 AND block_hash = $1 AND transaction_hash = $2 AND trace_path = '0'`,
-		childBlock.Block.Hash().Bytes(), childBlock.Block.Transactions()[0].Hash().Bytes(),
+		WHERE chain_id = 1 AND block_hash = $1 AND transaction_hash = $2 AND trace_path = '1'`,
+		factoryBlock.Block.Hash().Bytes(), factoryBlock.Block.Transactions()[0].Hash().Bytes(),
 	)
 	execFixture(t, ctx, db, `
 		UPDATE contract_code_observations SET canonical = FALSE
 		WHERE chain_id = 1 AND address = $1 AND block_hash = $2`,
-		childAddress, childBlock.Block.Hash().Bytes(),
+		childAddress, factoryBlock.Block.Hash().Bytes(),
 	)
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM derived_verification_attempts
@@ -310,13 +321,13 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 	}
 	execFixture(t, ctx, db, `
 		UPDATE normalized_traces SET canonical = TRUE
-		WHERE chain_id = 1 AND block_hash = $1 AND transaction_hash = $2 AND trace_path = '0'`,
-		childBlock.Block.Hash().Bytes(), childBlock.Block.Transactions()[0].Hash().Bytes(),
+		WHERE chain_id = 1 AND block_hash = $1 AND transaction_hash = $2 AND trace_path = '1'`,
+		factoryBlock.Block.Hash().Bytes(), factoryBlock.Block.Transactions()[0].Hash().Bytes(),
 	)
 	execFixture(t, ctx, db, `
 		UPDATE contract_code_observations SET canonical = TRUE
 		WHERE chain_id = 1 AND address = $1 AND block_hash = $2`,
-		childAddress, childBlock.Block.Hash().Bytes(),
+		childAddress, factoryBlock.Block.Hash().Bytes(),
 	)
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM derived_verification_attempts
@@ -325,11 +336,18 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 	if _, found, err := repository.VerifiedContract(ctx, 1, "0x"+hex.EncodeToString(childAddress)); err != nil || !found {
 		t.Fatalf("reattached derived publication did not recover: found=%t error=%v", found, err)
 	}
+	execFixture(t, ctx, db, `
+		INSERT INTO derived_verification_scans (
+			compilation_id, chain_id, creator_address, creator_code_hash,
+			valid_from_block, cursor_block_number, status
+		) VALUES ($1::uuid, 1, $2, $3, 2, 2, 'succeeded')`,
+		compilationID, factoryAddress, factoryCodeHash,
+	)
 	var requestID int64
 	var scanCount int
 	var requestedAt time.Time
 	if err := db.QueryRowContext(ctx, dbgen.DerivedVerifyRequestBackfill,
-		"1", childAddress, "reviewed integration backfill",
+		"1", factoryAddress, "reviewed integration backfill",
 	).Scan(&requestID, &scanCount, &requestedAt); err != nil {
 		t.Fatalf("request derived backfill: %v", err)
 	}
@@ -340,7 +358,21 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		SELECT count(*) FROM derived_verification_backfill_requests
 		WHERE id = $1 AND chain_id = 1 AND creator_address = $2
 		  AND reason = 'reviewed integration backfill' AND scan_count = 1`, 1,
-		requestID, childAddress,
+		requestID, factoryAddress,
+	)
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM derived_verification_scans
+		WHERE compilation_id = $1::uuid AND creator_address = $2
+		  AND valid_from_block = 1 AND cursor_block_number = 1
+		  AND status = 'queued' AND last_error IS NULL`, 1,
+		compilationID, factoryAddress,
+	)
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM derived_verification_scans
+		WHERE compilation_id = $1::uuid AND creator_address = $2
+		  AND valid_from_block = 2 AND status = 'failed'
+		  AND last_error = 'superseded_epoch_start'`, 1,
+		compilationID, factoryAddress,
 	)
 }
 

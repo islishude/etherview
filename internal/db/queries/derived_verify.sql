@@ -7,6 +7,51 @@ ON CONFLICT (
     compilation_id, creator_address, creator_code_hash, valid_from_block
 ) DO NOTHING;
 
+-- name: DerivedVerifyCreatorCodeEpochStart :many
+WITH context_observation AS (
+    SELECT observation.block_number
+    FROM contract_code_observations AS observation
+    JOIN canonical_blocks AS canonical
+      ON canonical.chain_id = observation.chain_id
+     AND canonical.number = observation.block_number
+     AND canonical.block_hash = observation.block_hash
+    WHERE observation.chain_id = $1::numeric
+      AND observation.address = $2
+      AND observation.code_hash = $3
+      AND observation.block_number = $4::numeric
+      AND observation.block_hash = $5
+      AND observation.canonical
+), last_different AS (
+    SELECT max(observation.block_number) AS block_number
+    FROM contract_code_observations AS observation
+    JOIN canonical_blocks AS canonical
+      ON canonical.chain_id = observation.chain_id
+     AND canonical.number = observation.block_number
+     AND canonical.block_hash = observation.block_hash
+    CROSS JOIN context_observation AS context
+    WHERE observation.chain_id = $1::numeric
+      AND observation.address = $2
+      AND observation.code_hash <> $3
+      AND observation.block_number <= context.block_number
+      AND observation.canonical
+)
+SELECT observation.block_number::text
+FROM contract_code_observations AS observation
+JOIN canonical_blocks AS canonical
+  ON canonical.chain_id = observation.chain_id
+ AND canonical.number = observation.block_number
+ AND canonical.block_hash = observation.block_hash
+CROSS JOIN context_observation AS context
+CROSS JOIN last_different AS boundary
+WHERE observation.chain_id = $1::numeric
+  AND observation.address = $2
+  AND observation.code_hash = $3
+  AND observation.block_number > COALESCE(boundary.block_number, -1::numeric)
+  AND observation.block_number <= context.block_number
+  AND observation.canonical
+ORDER BY observation.block_number, observation.observed_at, observation.block_hash
+LIMIT 1;
+
 -- name: DerivedVerifyClaimScan :many
 WITH exhausted AS (
     UPDATE derived_verification_scans
@@ -209,8 +254,8 @@ WHERE unit.id = $1::uuid
   AND trace.call_type IN ('CREATE', 'CREATE2')
   AND trace.created_address IS NOT NULL
   AND octet_length(trace.input) > 0
-  AND trace.block_number >= parent.valid_from_block
-  AND (parent.valid_to_block IS NULL OR trace.block_number <= parent.valid_to_block)
+  AND trace.block_number >= scan.valid_from_block
+  AND (scan.valid_to_block IS NULL OR trace.block_number <= scan.valid_to_block)
 FOR SHARE OF unit, scan, parent, trace, canonical, runtime;
 
 -- name: DerivedVerifyLockTarget :many
@@ -382,8 +427,6 @@ JOIN verified_contracts AS parent
   ON parent.chain_id = scan.chain_id
  AND parent.address = scan.creator_address
  AND parent.code_hash = scan.creator_code_hash
- AND parent.valid_from_block <= attempt.block_number
- AND (parent.valid_to_block IS NULL OR parent.valid_to_block >= attempt.block_number)
 WHERE attempt.verification_job_id = $1::uuid
   AND attempt.status = 'matched'
   AND scan.creator_code_hash = (
@@ -435,22 +478,101 @@ ORDER BY attempt.block_number DESC, attempt.transaction_hash DESC,
 LIMIT 100;
 
 -- name: DerivedVerifyRequestBackfill :many
-WITH reset AS (
-    UPDATE derived_verification_scans AS scan
-    SET status = 'queued', redispatch_requested = FALSE,
-        cursor_block_number = scan.valid_from_block,
+WITH selected AS (
+    SELECT scan.*,
+           epoch.block_number AS epoch_start
+    FROM derived_verification_scans AS scan
+    JOIN LATERAL (
+        SELECT observation.block_number
+        FROM contract_code_observations AS observation
+        JOIN canonical_blocks AS canonical
+          ON canonical.chain_id = observation.chain_id
+         AND canonical.number = observation.block_number
+         AND canonical.block_hash = observation.block_hash
+        WHERE observation.chain_id = scan.chain_id
+          AND observation.address = scan.creator_address
+          AND observation.code_hash = scan.creator_code_hash
+          AND observation.block_number > COALESCE((
+              SELECT max(different.block_number)
+              FROM contract_code_observations AS different
+              JOIN canonical_blocks AS different_canonical
+                ON different_canonical.chain_id = different.chain_id
+               AND different_canonical.number = different.block_number
+               AND different_canonical.block_hash = different.block_hash
+              WHERE different.chain_id = scan.chain_id
+                AND different.address = scan.creator_address
+                AND different.code_hash <> scan.creator_code_hash
+                AND different.block_number <= scan.valid_from_block
+                AND different.canonical
+          ), -1::numeric)
+          AND observation.block_number <= scan.valid_from_block
+          AND observation.canonical
+          AND EXISTS (
+              SELECT 1
+              FROM contract_code_observations AS context
+              JOIN canonical_blocks AS context_canonical
+                ON context_canonical.chain_id = context.chain_id
+               AND context_canonical.number = context.block_number
+               AND context_canonical.block_hash = context.block_hash
+              WHERE context.chain_id = scan.chain_id
+                AND context.address = scan.creator_address
+                AND context.code_hash = scan.creator_code_hash
+                AND context.block_number = scan.valid_from_block
+                AND context.canonical
+          )
+        ORDER BY observation.block_number, observation.observed_at,
+                 observation.block_hash
+        LIMIT 1
+    ) AS epoch ON TRUE
+    WHERE scan.chain_id = $1::numeric
+      AND ($2::bytea IS NULL OR scan.creator_address = $2)
+      AND scan.status <> 'running'
+      AND scan.last_error IS DISTINCT FROM 'superseded_epoch_start'
+    FOR UPDATE OF scan
+), targets AS (
+    SELECT DISTINCT ON (
+        compilation_id, creator_address, creator_code_hash, epoch_start
+    ) compilation_id, chain_id, creator_address, creator_code_hash,
+      epoch_start, valid_to_block, max_attempts
+    FROM selected
+    ORDER BY compilation_id, creator_address, creator_code_hash, epoch_start,
+             (valid_from_block = epoch_start) DESC, id
+), corrected AS (
+    INSERT INTO derived_verification_scans (
+        compilation_id, chain_id, creator_address, creator_code_hash,
+        valid_from_block, valid_to_block, cursor_block_number,
+        cursor_transaction_hash, cursor_trace_path, status,
+        redispatch_requested, attempt_count, max_attempts, last_error
+    )
+    SELECT compilation_id, chain_id, creator_address, creator_code_hash,
+           epoch_start, valid_to_block, epoch_start,
+           decode(repeat('00', 32), 'hex'), '', 'queued', FALSE, 0,
+           max_attempts, NULL
+    FROM targets
+    ON CONFLICT (
+        compilation_id, creator_address, creator_code_hash, valid_from_block
+    ) DO UPDATE SET
+        status = 'queued', redispatch_requested = FALSE,
+        cursor_block_number = EXCLUDED.valid_from_block,
         cursor_transaction_hash = decode(repeat('00', 32), 'hex'),
         cursor_trace_path = '', attempt_count = 0, last_error = NULL,
         leased_by = NULL, lease_token = NULL, lease_expires_at = NULL,
         updated_at = clock_timestamp()
-    WHERE scan.chain_id = $1::numeric
-      AND ($2::bytea IS NULL OR scan.creator_address = $2)
-      AND scan.status <> 'running'
+    WHERE derived_verification_scans.status <> 'running'
+    RETURNING id
+), superseded AS (
+    UPDATE derived_verification_scans AS scan
+    SET status = 'failed', redispatch_requested = FALSE,
+        leased_by = NULL, lease_token = NULL, lease_expires_at = NULL,
+        last_error = 'superseded_epoch_start', updated_at = clock_timestamp()
+    FROM selected
+    WHERE scan.id = selected.id
+      AND scan.valid_from_block <> selected.epoch_start
     RETURNING scan.id
 )
 INSERT INTO derived_verification_backfill_requests (
     chain_id, creator_address, reason, scan_count
 )
 SELECT $1::numeric, $2, $3, count(*)::integer
-FROM reset
+FROM corrected
 RETURNING id, scan_count, requested_at;

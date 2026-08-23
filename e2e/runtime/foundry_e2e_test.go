@@ -20,21 +20,24 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/testcompose"
 )
 
 const (
-	foundryE2ETimeout       = 30 * time.Minute
-	foundryContract         = "src/FoundryVerification.sol:FoundryVerification"
-	foundryCompilerVersion  = "0.8.30+commit.73712a01"
-	foundryCatalogSource    = "https://binaries.soliditylang.org/emscripten-wasm32/list.json"
-	foundryCompilerArtifact = "https://binaries.soliditylang.org/emscripten-wasm32/solc-emscripten-wasm32-v0.8.30+commit.73712a01.js"
-	foundryCompilerDigest   = "81475c98b6d2094a821fd9d7b6278556d8095ccc23e0b8a1029b1c08a89cd4b2"
-	foundryConstructorWord  = "000000000000000000000000000000000000000000000000000000000000002a"
-	foundryVersion          = "1.7.1"
-	foundryRevision         = "4072e48705af9d93e3c0f6e29e93b5e9a40caed8"
+	foundryE2ETimeout             = 30 * time.Minute
+	foundryContract               = "src/FoundryVerification.sol:FoundryVerification"
+	foundryCompilerVersion        = "0.8.30+commit.73712a01"
+	foundryCatalogSource          = "https://binaries.soliditylang.org/emscripten-wasm32/list.json"
+	foundryCompilerArtifact       = "https://binaries.soliditylang.org/emscripten-wasm32/solc-emscripten-wasm32-v0.8.30+commit.73712a01.js"
+	foundryCompilerDigest         = "81475c98b6d2094a821fd9d7b6278556d8095ccc23e0b8a1029b1c08a89cd4b2"
+	foundryConstructorWord        = "000000000000000000000000000000000000000000000000000000000000002a"
+	foundryDerivedConstructorWord = "000000000000000000000000000000000000000000000000000000000000002b"
+	foundryVersion                = "1.7.1"
+	foundryRevision               = "4072e48705af9d93e3c0f6e29e93b5e9a40caed8"
 )
 
 type foundryRuntime struct {
@@ -76,7 +79,26 @@ type foundryVerificationSnapshot struct {
 	PublicContractName       string
 	PublicCompilerVersion    string
 	PublicMatchType          string
+	Derived                  foundryDerivedVerificationSnapshot
 	Geas                     foundryGeasVerificationSnapshot
+}
+
+type foundryDerivedVerificationSnapshot struct {
+	Address                string
+	AddressJobs            int64
+	DerivedJobs            int64
+	Results                int64
+	Publications           int64
+	Attempts               int64
+	ContractName           string
+	ConstructorArguments   string
+	RuntimeImmutableGroups int64
+	Origin                 string
+	CreatorAddress         string
+	TransactionHash        string
+	CallType               string
+	ParentContractName     string
+	ParentIncludesChild    bool
 }
 
 type foundryGeasVerificationSnapshot struct {
@@ -294,7 +316,24 @@ func runFoundryMode(
 		!common.IsHexHash(deployment.TransactionHash) {
 		t.Fatalf("invalid Forge deployment: %#v", deployment)
 	}
+	receipt := h.waitReceipt(ctx, deployment.TransactionHash)
+	if receipt.Status != "0x1" || !strings.EqualFold(receipt.ContractAddress, deployment.DeployedTo) {
+		t.Fatalf("Forge deployment receipt = %#v", receipt)
+	}
+	derivedChild := foundryDerivedChildAddress(t, ctx, h, deployment.DeployedTo)
+	var latest struct {
+		Timestamp string `json:"timestamp"`
+	}
+	h.rpcCall(ctx, &latest, "eth_getBlockByNumber", "latest", false)
+	latestTimestamp, err := hexutil.DecodeUint64(latest.Timestamp)
+	if err != nil {
+		t.Fatalf("decode latest Foundry block timestamp %q: %v", latest.Timestamp, err)
+	}
+	h.mine(ctx, latestTimestamp+1)
 	waitFoundryCanonicalTip(t, ctx, h)
+	waitFoundryConstructorCreationEvidence(
+		t, ctx, h, deployment.DeployedTo, derivedChild, deployment.TransactionHash,
+	)
 
 	h.enterPhase("unverified ABI probe and production API key")
 	apiKey := createFoundryAPIKey(t, ctx, h)
@@ -303,6 +342,7 @@ func runFoundryMode(
 	if jobs := foundryAddressJobCount(t, ctx, h, deployment.DeployedTo); jobs != 0 {
 		t.Fatalf("unverified ABI probe created %d verification jobs", jobs)
 	}
+	assertFoundryDerivedChildUnverified(t, ctx, h, derivedChild)
 
 	h.enterPhase("real Forge Standard JSON verification and POST watch")
 	verifierURL := fmt.Sprintf("http://%s:8080/v2/api?chainid=1", h.apiService)
@@ -325,6 +365,9 @@ func runFoundryMode(
 	}
 	assertFoundryPOSTWatch(t, ctx, h)
 	waitFoundryVerifiedABI(t, ctx, h, apiKey, deployment.DeployedTo)
+	derived := waitFoundryDerivedChildVerification(
+		t, ctx, h, deployment, derivedChild,
+	)
 	beforeRepeat := foundryAddressJobCount(t, ctx, h, deployment.DeployedTo)
 	if beforeRepeat != 1 {
 		t.Fatalf("successful Forge verification jobs = %d, want 1", beforeRepeat)
@@ -350,6 +393,7 @@ func runFoundryMode(
 
 	h.enterPhase("durable and public verification provenance")
 	snapshot := captureFoundryVerificationSnapshot(t, ctx, h, apiKey, deployment.DeployedTo)
+	snapshot.Derived = derived
 	snapshot.Geas = geas
 	h.writeJSONArtifact(mode+"-foundry-summary.json", snapshot)
 	return snapshot
@@ -362,6 +406,168 @@ func foundryJSONObject(output []byte) []byte {
 		return bytes.TrimSpace(output)
 	}
 	return output[start : end+1]
+}
+
+func foundryDerivedChildAddress(
+	t *testing.T,
+	ctx context.Context,
+	h *harness,
+	factory string,
+) string {
+	t.Helper()
+	selector := fmt.Sprintf("0x%x", crypto.Keccak256([]byte("child()"))[:4])
+	var output string
+	h.rpcCall(ctx, &output, "eth_call", map[string]any{
+		"to": factory, "data": selector,
+	}, "latest")
+	decoded := common.FromHex(output)
+	if len(decoded) != 32 {
+		t.Fatalf("Foundry derived child output = %q", output)
+	}
+	child := common.BytesToAddress(decoded[12:]).Hex()
+	if child == (common.Address{}).Hex() {
+		t.Fatal("Foundry derived child is zero")
+	}
+	return child
+}
+
+func waitFoundryConstructorCreationEvidence(
+	t *testing.T,
+	ctx context.Context,
+	h *harness,
+	factory, child, transactionHash string,
+) {
+	t.Helper()
+	waitFor(t, ctx, "Foundry constructor-created child evidence", func() (bool, string, error) {
+		var traces int64
+		err := h.db.QueryRow(ctx, `
+			SELECT count(*)
+			FROM normalized_traces AS trace
+			JOIN canonical_blocks AS canonical
+			  ON canonical.chain_id = trace.chain_id
+			 AND canonical.number = trace.block_number
+			 AND canonical.block_hash = trace.block_hash
+			JOIN contract_code_observations AS runtime
+			  ON runtime.chain_id = trace.chain_id
+			 AND runtime.address = trace.created_address
+			 AND runtime.block_number = trace.block_number
+			 AND runtime.block_hash = trace.block_hash
+			 AND runtime.canonical
+			WHERE trace.chain_id = 1 AND trace.transaction_hash = $1
+			  AND trace.from_address = $2 AND trace.created_address = $3
+			  AND trace.call_type = 'CREATE' AND trace.canonical AND NOT trace.reverted`,
+			common.HexToHash(transactionHash).Bytes(), common.HexToAddress(factory).Bytes(),
+			common.HexToAddress(child).Bytes(),
+		).Scan(&traces)
+		return err == nil && traces == 1, fmt.Sprintf("traces=%d", traces), err
+	})
+}
+
+func assertFoundryDerivedChildUnverified(
+	t *testing.T,
+	ctx context.Context,
+	h *harness,
+	child string,
+) {
+	t.Helper()
+	address := common.HexToAddress(child).Bytes()
+	var jobs, publications int64
+	if err := h.db.QueryRow(ctx, `
+		SELECT
+		  (SELECT count(*) FROM verification_jobs WHERE chain_id = 1 AND address = $1),
+		  (SELECT count(*) FROM verified_contracts WHERE chain_id = 1 AND address = $1)`,
+		address,
+	).Scan(&jobs, &publications); err != nil {
+		t.Fatal(err)
+	}
+	if jobs != 0 || publications != 0 {
+		t.Fatalf("unverified Foundry child jobs=%d publications=%d", jobs, publications)
+	}
+}
+
+func waitFoundryDerivedChildVerification(
+	t *testing.T,
+	ctx context.Context,
+	h *harness,
+	deployment foundryDeployment,
+	child string,
+) foundryDerivedVerificationSnapshot {
+	t.Helper()
+	childBytes := common.HexToAddress(child).Bytes()
+	factoryBytes := common.HexToAddress(deployment.DeployedTo).Bytes()
+	transaction := common.HexToHash(deployment.TransactionHash).Bytes()
+	var snapshot foundryDerivedVerificationSnapshot
+	waitFor(t, ctx, "Foundry factory-derived child verification", func() (bool, string, error) {
+		err := h.db.QueryRow(ctx, `
+			SELECT
+			  (SELECT count(*) FROM verification_jobs
+			   WHERE kind = 'address' AND chain_id = 1 AND address = $1),
+			  (SELECT count(*) FROM verification_jobs
+			   WHERE kind = 'derived' AND status = 'succeeded'
+			     AND chain_id = 1 AND address = $1),
+			  (SELECT count(*) FROM verification_results AS result
+			   JOIN verification_jobs AS job ON job.id = result.job_id
+			   WHERE job.kind = 'derived' AND job.address = $1
+			     AND result.outcome_kind = 'verification_success'),
+			  (SELECT count(*) FROM verified_contracts AS publication
+			   JOIN verification_jobs AS job ON job.id = publication.verification_job_id
+			   WHERE job.kind = 'derived' AND publication.address = $1),
+			  (SELECT count(*) FROM derived_verification_attempts
+			   WHERE status = 'matched' AND creator_address = $2
+			     AND created_address = $1 AND transaction_hash = $3
+			     AND call_type = 'CREATE')`, childBytes, factoryBytes, transaction).Scan(
+			&snapshot.AddressJobs, &snapshot.DerivedJobs, &snapshot.Results,
+			&snapshot.Publications, &snapshot.Attempts,
+		)
+		state, _ := json.Marshal(snapshot)
+		return err == nil && snapshot.AddressJobs == 0 && snapshot.DerivedJobs == 1 &&
+				snapshot.Results == 1 && snapshot.Publications == 1 && snapshot.Attempts == 1,
+			string(state), err
+	})
+	if err := h.db.QueryRow(ctx, `
+		SELECT result.contract_name, encode(result.constructor_arguments, 'hex'),
+		       (SELECT count(*) FROM jsonb_object_keys(
+		          result.runtime_code_artifacts->'immutableReferences'))
+		FROM verification_results AS result
+		JOIN verification_jobs AS job ON job.id = result.job_id
+		WHERE job.kind = 'derived' AND job.chain_id = 1 AND job.address = $1`,
+		childBytes,
+	).Scan(
+		&snapshot.ContractName, &snapshot.ConstructorArguments,
+		&snapshot.RuntimeImmutableGroups,
+	); err != nil {
+		t.Fatal(err)
+	}
+	var childArtifact gen.VerifiedContractResponse
+	h.mustGetJSON(ctx, "/api/v1/contracts/"+child+"/verification", &childArtifact)
+	snapshot.Address = child
+	snapshot.Origin = string(childArtifact.Data.VerificationOrigin)
+	if childArtifact.Data.DerivedFrom != nil {
+		snapshot.CreatorAddress = string(childArtifact.Data.DerivedFrom.CreatorAddress)
+		snapshot.TransactionHash = string(childArtifact.Data.DerivedFrom.TransactionHash)
+		snapshot.CallType = string(childArtifact.Data.DerivedFrom.CallType)
+		snapshot.ParentContractName = childArtifact.Data.DerivedFrom.ParentContractName
+	}
+	var parentArtifact gen.VerifiedContractResponse
+	h.mustGetJSON(ctx, "/api/v1/contracts/"+deployment.DeployedTo+"/verification", &parentArtifact)
+	for _, item := range parentArtifact.Data.DerivedChildren {
+		if strings.EqualFold(item.Address, child) && item.AutoVerified &&
+			item.Status == gen.DerivedContractStatusMatched {
+			snapshot.ParentIncludesChild = true
+		}
+	}
+	if snapshot.ContractName != "FoundryDerivedChild" ||
+		snapshot.ConstructorArguments != foundryDerivedConstructorWord ||
+		snapshot.RuntimeImmutableGroups == 0 ||
+		snapshot.Origin != string(gen.VerificationOriginFactoryDerived) ||
+		!strings.EqualFold(snapshot.CreatorAddress, deployment.DeployedTo) ||
+		!strings.EqualFold(snapshot.TransactionHash, deployment.TransactionHash) ||
+		snapshot.CallType != string(gen.DerivedVerificationProvenanceCallTypeCREATE) ||
+		snapshot.ParentContractName != "FoundryVerification" ||
+		!snapshot.ParentIncludesChild {
+		t.Fatalf("incomplete Foundry derived verification: %#v", snapshot)
+	}
+	return snapshot
 }
 
 func runFoundryCommand(
@@ -846,7 +1052,8 @@ func captureFoundryPublicContract(
 			functions[entry.Name] = true
 		}
 	}
-	snapshot.PublicExpectedFunctions = functions["owner"] && functions["seed"] && functions["score"]
+	snapshot.PublicExpectedFunctions = functions["owner"] && functions["seed"] &&
+		functions["child"] && functions["score"]
 
 	sourceEnvelope := foundryEtherscanRequest(t, ctx, h, apiKey, url.Values{
 		"action": {"getsourcecode"}, "address": {address},

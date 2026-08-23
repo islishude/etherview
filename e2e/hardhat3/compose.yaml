@@ -8,6 +8,9 @@ x-hardhat-verification-environment: &hardhat-verification-environment
   # CI/local Docker DNS may route reviewed public hosts through a synthetic
   # private address. Origin, TLS, size, and checksum validation remain active.
   ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS: "true"
+  ETHERVIEW_DERIVED_VERIFY_ENABLED: "true"
+  ETHERVIEW_DERIVED_VERIFY_BACKFILL_ENABLED: "true"
+  ETHERVIEW_DERIVED_VERIFY_FORWARD_ENABLED: "true"
 
 services:
   etherview:

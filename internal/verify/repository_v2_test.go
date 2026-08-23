@@ -243,6 +243,37 @@ func TestVerificationProxyReplayPersistsOnlyDirectTarget(t *testing.T) {
 	}
 }
 
+func TestDerivedCreatorEpochAndHistoricalPublicationStayCodeBound(t *testing.T) {
+	t.Parallel()
+	epoch := strings.Join(strings.Fields(dbgen.DerivedVerifyCreatorCodeEpochStart), " ")
+	for _, required := range []string{
+		"observation.code_hash = $3",
+		"observation.block_number = $4::numeric",
+		"observation.block_hash = $5",
+		"observation.code_hash <> $3",
+		"max(observation.block_number)",
+		"observation.block_number > COALESCE(boundary.block_number, -1::numeric)",
+		"ORDER BY observation.block_number, observation.observed_at, observation.block_hash",
+	} {
+		if !strings.Contains(epoch, strings.Join(strings.Fields(required), " ")) {
+			t.Fatalf("creator epoch query lacks %q: %s", required, epoch)
+		}
+	}
+	publication := strings.Join(strings.Fields(dbgen.DerivedVerifyPublicationEvidence), " ")
+	for _, required := range []string{
+		"trace.block_number >= scan.valid_from_block",
+		"scan.valid_to_block IS NULL OR trace.block_number <= scan.valid_to_block",
+		"scan.creator_code_hash = ( SELECT observation.code_hash",
+	} {
+		if !strings.Contains(publication, strings.Join(strings.Fields(required), " ")) {
+			t.Fatalf("derived publication query lacks %q: %s", required, publication)
+		}
+	}
+	if strings.Contains(publication, "trace.block_number >= parent.valid_from_block") {
+		t.Fatalf("derived publication still starts at verification publication: %s", publication)
+	}
+}
+
 func TestVerificationRequestDigestV2SeparatesKinds(t *testing.T) {
 	t.Parallel()
 	first, _ := json.Marshal(SubmissionV2{

@@ -914,11 +914,20 @@ etherview admin derived-verification backfill \
   --reason "retry factory after runtime observations arrived"
 ```
 
-The command never deletes attempts or verified artifacts. It resets only
-unleased scan cursors; existing terminal attempts keep publication idempotent,
-while pending-runtime attempts can be reconsidered. A reorg marks attempt
-provenance stale and current readers stop resolving the orphaned child until
-the exact block hash is reattached.
+The command never deletes attempts or verified artifacts. For each unleased
+scan it first resolves the exact canonical creator-code epoch, queues one scan
+at that epoch start, and retains an incorrect later-start duplicate as failed
+with `superseded_epoch_start` so it cannot be forward-dispatched again.
+Existing terminal attempts keep publication idempotent, while pending-runtime
+attempts can be reconsidered. A reorg marks attempt provenance stale and
+current readers stop resolving the orphaned child until the exact block hash
+is reattached.
+
+For an existing Preview deployment, rebuild and recreate only the application
+services with `make recreate-preview`; do not remove the PostgreSQL or Geth
+volumes. Then run the address-scoped command inside the API container. This
+repairs scans created by an older binary whose cursor began at verification
+publication rather than at the creator code epoch.
 
 ### Runtime smoke verification fixture (development only)
 

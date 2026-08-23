@@ -31,6 +31,7 @@ human-readable provenance without extending Sourcify consent.
 | P71-T05 | done | P71-T04 | Trace-stage-completion forward enqueue and transitive asynchronous propagation without ingestion-path matching | future-child, nested-factory, retry, and monolith/split tests |
 | P71-T06 | done | P71-T05 | Generated provenance/children API, bilingual Web presentation, bounded configuration, metrics, admin backfill, and operations guidance | generated API, Web, observability, browser, deployment, and common gates |
 | P71-T07 | done | P71-T06 | Enable dry-run, backfill publication, and forward propagation in the local Preview Compose configuration only | Preview Compose/config regression and common configuration gates |
+| P71-T08 | done | P71-T07 | Start late-verification scans at the exact canonical creator-code epoch and prove constructor-created children through Hardhat and Foundry production topologies | epoch/backfill PostgreSQL regressions, Hardhat/Foundry monolith/split E2E, Preview transaction acceptance, and common gates |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
@@ -129,3 +130,37 @@ None.
   .github/scripts/preview-compose-check.mjs`, `make plan-check`, `make
   compose-check`, `make deployment-check`, and `git diff --check` pass on
   2026-08-23.
+- P71-T08 is claimed on 2026-08-23 after Preview transaction
+  `0xaf12f7fe8fbf4b375032d337872d7ab985bd2af6b5554bd8bdb79be173ef4640`
+  proved that a Factory verified one block after construction incorrectly
+  started its derived scan after the constructor-created child trace.
+- P71-T08 resolves the exact canonical creator-code epoch inside address
+  completion, starts historical scans at that epoch without extending public
+  address-verification validity, and uses the scan epoch for publication and
+  parent provenance. Address-scoped admin backfill now upserts one corrected
+  epoch scan and retains a later duplicate as failed
+  `superseded_epoch_start`. Migration `0056` authenticates recognized
+  OpenZeppelin proxy artifacts for derived jobs through the same immutable
+  result/publication guard and proxy replay path as direct verification.
+- P71-T08 PostgreSQL coverage verifies a constructor CREATE one block before
+  Factory verification, exact A-to-B-to-A epoch separation, corrected backfill,
+  runtime mismatch/ambiguity, idempotency, forward propagation, and
+  detach/reattach. `make test-integration` and `make test-integration-race`
+  pass against owned PostgreSQL 18 databases on 2026-08-23.
+- P71-T08 production E2E passes in both topologies: `make
+  test-hardhat3-e2e` verifies OpenZeppelin 5.6.1
+  `TransparentUpgradeableProxy` and automatically publishes its constructor-
+  created `ProxyAdmin` with no direct address job (monolith 122.39s,
+  distributed 113.81s); `make test-foundry-e2e` verifies only a Forge
+  Factory and automatically publishes its constructor-created child with exact
+  constructor/immutable/API provenance (monolith 46.12s, distributed 48.73s).
+- P71-T08 Preview acceptance rebuilt only application services and retained
+  Geth/PostgreSQL volumes. Audited backfill request `1` corrected Factory
+  `0xa513E6E4b8f2a923D98304ec87F64353C4D5C853` from scan block 75 to epoch block
+  74, retained the old scan as `superseded_epoch_start`, and published
+  `0x9bd03768a7DCc129555dE410FF8E85528A4F88b5` from transaction
+  `0xaf12f7fe8fbf4b375032d337872d7ab985bd2af6b5554bd8bdb79be173ef4640`
+  as full-match `ProxyAdmin` with `verification_origin=factory_derived`, CREATE
+  trace path `1`, and exact parent FQN. `make generate-check`, `make
+  source-check`, `make deployment-check`, aggregate `make check`, and `git
+  diff --check` also pass on 2026-08-23.

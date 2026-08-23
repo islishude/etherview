@@ -287,10 +287,24 @@ func (repository *PostgresRepository) CompleteV2(
 			if err != nil {
 				return err
 			}
+			blockHash, _ := decodeFixedHex(job.RequestV2.Target.AtBlockHash, 32)
+			var epochStartText string
+			if err := tx.QueryRowContext(
+				ctx, dbgen.DerivedVerifyCreatorCodeEpochStart,
+				strconv.FormatUint(job.RequestV2.Target.ChainID, 10),
+				publicationAddress, publicationCodeHash,
+				strconv.FormatUint(publicationBlockNumber, 10), blockHash,
+			).Scan(&epochStartText); err != nil {
+				return fmt.Errorf("resolve derived verification creator code epoch: %w", err)
+			}
+			epochStart, err := strconv.ParseUint(epochStartText, 10, 64)
+			if err != nil || epochStart > publicationBlockNumber {
+				return errors.New("derived verification creator code epoch is invalid")
+			}
 			if _, err := tx.ExecContext(ctx, dbgen.DerivedVerifyEnqueueHistoricalScan,
 				compilationID, strconv.FormatUint(job.RequestV2.Target.ChainID, 10),
 				publicationAddress, publicationCodeHash,
-				strconv.FormatUint(publicationBlockNumber, 10), nil,
+				strconv.FormatUint(epochStart, 10), nil,
 			); err != nil {
 				return fmt.Errorf("enqueue historical derived verification: %w", err)
 			}
@@ -601,6 +615,9 @@ func (repository *PostgresRepository) VerifiedContract(
 		contract.ConstructorArguments = "0x" + hex.EncodeToString(resolved.Source.ConstructorArguments)
 	}
 	if err := repository.loadDerivedArtifactDetails(ctx, resolved, &contract); err != nil {
+		if errors.Is(err, ErrDerivedEvidenceStale) {
+			return VerifiedContract{}, false, nil
+		}
 		return VerifiedContract{}, false, err
 	}
 	return contract, true, nil
