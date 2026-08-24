@@ -751,6 +751,17 @@ type Erc1155BalanceReconciliation struct {
 	ObservedAt   pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
 }
 
+type Erc20BalanceReconciliation struct {
+	ChainID      pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	TokenAddress []byte             `db:"token_address" json:"token_address"`
+	OwnerAddress []byte             `db:"owner_address" json:"owner_address"`
+	BlockNumber  pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash    []byte             `db:"block_hash" json:"block_hash"`
+	Balance      pgtype.Numeric     `db:"balance" json:"balance"`
+	Confidence   string             `db:"confidence" json:"confidence"`
+	ObservedAt   pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
+}
+
 type Erc721OwnerReconciliation struct {
 	ChainID      pgtype.Numeric     `db:"chain_id" json:"chain_id"`
 	TokenAddress []byte             `db:"token_address" json:"token_address"`

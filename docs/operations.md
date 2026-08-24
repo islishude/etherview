@@ -421,6 +421,15 @@ RPC pressure; it does not change lease ownership or publication fencing.
 Start with the reference values and use queue age, sync lag, RPC latency, pool
 saturation, CPU, and memory together rather than tuning from CPU alone.
 
+Address ERC-20 holdings retain every first-seen exact `(chain, owner, token,
+block hash)` balance in `erc20_balance_reconciliations`, including zero and
+orphaned observations. Repeated requests for the same snapshot do not add rows,
+but a newer queried block hash does even when the numeric balance is unchanged.
+There is no backfill or retention sweep. Capacity reviews must monitor the
+table and owner-snapshot index with `pg_total_relation_size`, PostgreSQL write
+rate, and state-RPC call reduction; do not delete rows as routine cache cleanup
+because they are immutable reorg/audit facts.
+
 The `ETHERVIEW_RPC_URLS` Secret accepts either the original comma-separated
 all-purpose shorthand or a JSON endpoint array. Use the structured form for
 capacity work so head latency, historical throughput, exact-state traffic, and

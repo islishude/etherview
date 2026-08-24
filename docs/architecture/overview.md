@@ -735,9 +735,14 @@ size alone is not sufficient justification to weaken those invariants.
   owner, name, scopes, and quota policy. See ADR-0035.
 - Native balances and ERC-20 `balanceOf`/`totalSupply` observations use an
   EIP-1898 canonical block-hash selector and recheck that hash after the RPC
-  response. Token classifications are retained per observed block hash, so a
-  reorg can fall back to an older canonical observation even when the runtime
-  code hash did not change. Event-derived NFT deltas only discover candidates;
+  response. Address ERC-20 holdings bulk-read permanent exact observations by
+  owner, token, and block hash, batch only cache misses, persist zero as well
+  as positive balances, and reject conflicting concurrent observations;
+  Etherscan-compatible single-token balance and supply reads remain uncached.
+  Orphan cache rows are retained but cannot satisfy a canonical lookup. Token
+  classifications are retained per observed block hash, so a reorg can fall
+  back to an older canonical observation even when the runtime code hash did
+  not change. Event-derived NFT deltas only discover candidates;
   ERC-721 owners and ERC-1155 balances require exact `ownerOf`/`balanceOf`
   observations at the same fixed canonical block, carry `rpc_exact`
   confidence, and may be reused only while that block hash remains canonical.

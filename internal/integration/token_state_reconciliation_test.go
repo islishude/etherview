@@ -184,6 +184,207 @@ func TestExactNFTObservationsRejectConcurrentConflictsAndPreserveIdenticalWrites
 	}
 }
 
+func TestExactERC20BalanceObservationsRejectConcurrentConflictsAndPreserveIdenticalWrites(t *testing.T) {
+	db := newMigratedPostgres(t)
+	repository, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
+	defer cancel()
+
+	genesis := testBundle(0, testHash(120_000), testHash(0), testHash(121_000), "immutable-erc20-genesis")
+	tip := testBundle(1, testHash(120_001), testHash(120_000), testHash(121_001), "immutable-erc20-tip")
+	commitCanonical(t, ctx, repository, genesis)
+	commitCanonical(t, ctx, repository, tip)
+	reference := mustBlockRef(t, tip)
+	snapshot := catalog.Snapshot{
+		ChainID: "1", BlockNumber: fmt.Sprint(reference.Number), BlockHash: reference.Hash.String(),
+	}
+	canonical := state.PostgresCanonicalSource{DB: db, ChainID: "1"}
+	newReconciler := func(service any) *state.NFTReconciler {
+		reconciler, reconcileErr := state.NewNFTReconciler(db, newERC20StatePool(t, service), canonical)
+		if reconcileErr != nil {
+			t.Fatal(reconcileErr)
+		}
+		return reconciler
+	}
+
+	contract, owner := testAddress(20_001), testAddress(20_002)
+	candidates := []catalog.ERC20BalanceCandidate{{TokenAddress: contract.String()}}
+	blocked := newGatedExactERC20Caller(&exactERC20Caller{balance: "9"})
+	type balanceResult struct {
+		observations []catalog.ERC20BalanceObservation
+		err          error
+	}
+	conflicting := make(chan balanceResult, 1)
+	go func() {
+		observations, balanceErr := newReconciler(blocked).ERC20Balances(ctx, snapshot, owner.String(), candidates)
+		conflicting <- balanceResult{observations: observations, err: balanceErr}
+	}()
+	blocked.waitUntilStarted(t, ctx)
+	first, err := newReconciler(&exactERC20Caller{balance: "7"}).ERC20Balances(ctx, snapshot, owner.String(), candidates)
+	if err != nil || len(first) != 1 || first[0].Balance != "7" {
+		t.Fatalf("persist first exact ERC-20 balance=%+v error=%v", first, err)
+	}
+	blocked.releaseCall()
+	second := <-conflicting
+	if !errors.Is(second.err, state.ErrExactERC20BalanceObservationConflict) {
+		t.Fatalf("conflicting ERC-20 balance=%+v error=%v", second.observations, second.err)
+	}
+	var storedBalance string
+	if err := db.QueryRowContext(ctx, `
+		SELECT balance::text FROM erc20_balance_reconciliations
+		WHERE chain_id = 1 AND token_address = $1 AND owner_address = $2 AND block_hash = $3`,
+		mustBytes(t, contract), mustBytes(t, owner), mustBytes(t, reference.Hash),
+	).Scan(&storedBalance); err != nil {
+		t.Fatal(err)
+	}
+	if storedBalance != "7" {
+		t.Fatalf("stored ERC-20 balance=%s, want first immutable balance", storedBalance)
+	}
+	if _, err := db.ExecContext(ctx, `
+		UPDATE erc20_balance_reconciliations SET balance = 9
+		WHERE chain_id = 1 AND token_address = $1 AND owner_address = $2 AND block_hash = $3`,
+		mustBytes(t, contract), mustBytes(t, owner), mustBytes(t, reference.Hash),
+	); err == nil {
+		t.Fatal("direct mutation of an exact ERC-20 balance observation succeeded")
+	}
+
+	identicalContract := testAddress(20_003)
+	identicalCandidates := []catalog.ERC20BalanceCandidate{{TokenAddress: identicalContract.String()}}
+	blockedIdentical := newGatedExactERC20Caller(&exactERC20Caller{balance: "11"})
+	identicalResult := make(chan balanceResult, 1)
+	go func() {
+		observations, balanceErr := newReconciler(blockedIdentical).ERC20Balances(
+			ctx, snapshot, owner.String(), identicalCandidates,
+		)
+		identicalResult <- balanceResult{observations: observations, err: balanceErr}
+	}()
+	blockedIdentical.waitUntilStarted(t, ctx)
+	if _, err := newReconciler(&exactERC20Caller{balance: "11"}).ERC20Balances(
+		ctx, snapshot, owner.String(), identicalCandidates,
+	); err != nil {
+		t.Fatalf("persist first identical ERC-20 balance: %v", err)
+	}
+	var firstObservedAt time.Time
+	if err := db.QueryRowContext(ctx, `
+		SELECT observed_at FROM erc20_balance_reconciliations
+		WHERE chain_id = 1 AND token_address = $1 AND owner_address = $2 AND block_hash = $3`,
+		mustBytes(t, identicalContract), mustBytes(t, owner), mustBytes(t, reference.Hash),
+	).Scan(&firstObservedAt); err != nil {
+		t.Fatal(err)
+	}
+	blockedIdentical.releaseCall()
+	identical := <-identicalResult
+	if identical.err != nil || len(identical.observations) != 1 || identical.observations[0].Balance != "11" {
+		t.Fatalf("second identical ERC-20 balance=%+v error=%v", identical.observations, identical.err)
+	}
+	var secondObservedAt time.Time
+	if err := db.QueryRowContext(ctx, `
+		SELECT observed_at FROM erc20_balance_reconciliations
+		WHERE chain_id = 1 AND token_address = $1 AND owner_address = $2 AND block_hash = $3`,
+		mustBytes(t, identicalContract), mustBytes(t, owner), mustBytes(t, reference.Hash),
+	).Scan(&secondObservedAt); err != nil {
+		t.Fatal(err)
+	}
+	if !secondObservedAt.Equal(firstObservedAt) {
+		t.Fatalf("identical ERC-20 observation changed observed_at from %s to %s", firstObservedAt, secondObservedAt)
+	}
+}
+
+func TestExactERC20BalanceCacheSurvivesRestartAndRejectsOrphanedSnapshots(t *testing.T) {
+	db := newMigratedPostgres(t)
+	repository, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
+	defer cancel()
+
+	genesis := testBundle(0, testHash(130_000), testHash(0), testHash(131_000), "erc20-cache-genesis")
+	oldTip := testBundle(1, testHash(130_001), testHash(130_000), testHash(131_001), "erc20-cache-old")
+	replacement := testBundle(1, testHash(140_001), testHash(130_000), testHash(141_001), "erc20-cache-new")
+	commitCanonical(t, ctx, repository, genesis)
+	commitCanonical(t, ctx, repository, oldTip)
+	canonical := state.PostgresCanonicalSource{DB: db, ChainID: "1"}
+	owner := testAddress(30_001)
+	contracts := []common.Address{testAddress(30_002), testAddress(30_003)}
+	candidates := []catalog.ERC20BalanceCandidate{
+		{TokenAddress: contracts[0].String()}, {TokenAddress: contracts[1].String()},
+	}
+	oldReference := mustBlockRef(t, oldTip)
+	oldSnapshot := catalog.Snapshot{
+		ChainID: "1", BlockNumber: fmt.Sprint(oldReference.Number), BlockHash: oldReference.Hash.String(),
+	}
+	firstCaller := &exactERC20Caller{balances: map[common.Address]string{
+		contracts[0]: "7", contracts[1]: "0",
+	}}
+	observer := &exactNFTObserver{}
+	first, err := state.NewNFTReconciler(db, newERC20StatePool(t, firstCaller, observer), canonical)
+	if err != nil {
+		t.Fatal(err)
+	}
+	balances, err := first.ERC20Balances(ctx, oldSnapshot, owner.String(), candidates)
+	if err != nil || len(balances) != 2 || balances[0].Balance != "7" || balances[1].Balance != "0" {
+		t.Fatalf("first exact ERC-20 balances=%+v error=%v", balances, err)
+	}
+	if len(observer.observations) != 1 || observer.observations[0].BatchSize != 2 || firstCaller.calls != 2 {
+		t.Fatalf("first exact ERC-20 RPC observations=%+v calls=%d", observer.observations, firstCaller.calls)
+	}
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM erc20_balance_reconciliations WHERE block_hash = $1`, 2, mustBytes(t, oldReference.Hash))
+
+	compatibilityCaller := &exactERC20Caller{balance: "9"}
+	compatibilityReader := &state.Reader{
+		Pool: newERC20StatePool(t, compatibilityCaller), Canonical: canonical,
+	}
+	compatibilityBalance, err := compatibilityReader.ERC20Balance(ctx, contracts[0].String(), owner.String())
+	if err != nil || compatibilityBalance != "9" || compatibilityCaller.calls != 1 {
+		t.Fatalf("compatibility ERC-20 balance=%q calls=%d error=%v", compatibilityBalance, compatibilityCaller.calls, err)
+	}
+
+	failing := &exactERC20Caller{err: errors.New("RPC must not be called for cached exact ERC-20 state")}
+	cached, err := state.NewNFTReconciler(db, newERC20StatePool(t, failing), canonical)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cachedBalances, err := cached.ERC20Balances(ctx, oldSnapshot, owner.String(), candidates)
+	if err != nil || len(cachedBalances) != 2 || cachedBalances[0].Balance != "7" || cachedBalances[1].Balance != "0" {
+		t.Fatalf("cached exact ERC-20 balances=%+v error=%v", cachedBalances, err)
+	}
+	if failing.calls != 0 {
+		t.Fatalf("cached ERC-20 reconciliation made %d RPC calls", failing.calls)
+	}
+
+	applyDerivedReorg(t, ctx, repository, genesis, []chainbundle.Bundle{oldTip}, []chainbundle.Bundle{replacement}, "orphan ERC-20 balance cache")
+	newReference := mustBlockRef(t, replacement)
+	newSnapshot := catalog.Snapshot{
+		ChainID: "1", BlockNumber: fmt.Sprint(newReference.Number), BlockHash: newReference.Hash.String(),
+	}
+	if _, err := cached.ERC20Balances(ctx, newSnapshot, owner.String(), candidates); !errors.Is(err, httpapi.ErrUnavailable) {
+		t.Fatalf("replacement exact ERC-20 balance error=%v, want unavailable", err)
+	}
+	if failing.calls != 2 {
+		t.Fatalf("orphan ERC-20 observations were reused; RPC calls=%d", failing.calls)
+	}
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM erc20_balance_reconciliations WHERE block_hash = $1`, 2, mustBytes(t, oldReference.Hash))
+
+	replacementCaller := &exactERC20Caller{balances: map[common.Address]string{
+		contracts[0]: "8", contracts[1]: "1",
+	}}
+	replacementReconciler, err := state.NewNFTReconciler(
+		db, newERC20StatePool(t, replacementCaller), canonical,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacementBalances, err := replacementReconciler.ERC20Balances(ctx, newSnapshot, owner.String(), candidates)
+	if err != nil || len(replacementBalances) != 2 || replacementBalances[0].Balance != "8" || replacementBalances[1].Balance != "1" {
+		t.Fatalf("replacement exact ERC-20 balances=%+v error=%v", replacementBalances, err)
+	}
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM erc20_balance_reconciliations`, 4)
+}
+
 func TestTokenObservationsAndExactNFTStateSurviveRealPostgresReorg(t *testing.T) {
 	db := newMigratedPostgres(t)
 	repository, err := store.NewPostgresRepository(db)
@@ -372,6 +573,97 @@ type exactNFTCaller struct {
 	selectors      []map[string]any
 }
 
+type exactERC20Caller struct {
+	balance  string
+	balances map[common.Address]string
+	err      error
+	calls    int
+}
+
+type gatedExactERC20Caller struct {
+	delegate *exactERC20Caller
+	started  chan struct{}
+	release  chan struct{}
+	once     sync.Once
+}
+
+func newGatedExactERC20Caller(delegate *exactERC20Caller) *gatedExactERC20Caller {
+	return &gatedExactERC20Caller{
+		delegate: delegate,
+		started:  make(chan struct{}),
+		release:  make(chan struct{}),
+	}
+}
+
+func (caller *gatedExactERC20Caller) Call(
+	ctx context.Context,
+	request map[string]any,
+	selector rpc.BlockNumberOrHash,
+) (hexutil.Bytes, error) {
+	caller.once.Do(func() { close(caller.started) })
+	select {
+	case <-caller.release:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	return caller.delegate.Call(ctx, request, selector)
+}
+
+func (caller *gatedExactERC20Caller) waitUntilStarted(t *testing.T, ctx context.Context) {
+	t.Helper()
+	select {
+	case <-caller.started:
+	case <-ctx.Done():
+		t.Fatalf("wait for gated exact ERC-20 call: %v", ctx.Err())
+	}
+}
+
+func (caller *gatedExactERC20Caller) releaseCall() { close(caller.release) }
+
+func (caller *exactERC20Caller) Call(
+	_ context.Context,
+	request map[string]any,
+	selector rpc.BlockNumberOrHash,
+) (hexutil.Bytes, error) {
+	caller.calls++
+	if caller.err != nil {
+		return nil, caller.err
+	}
+	if selector.BlockHash == nil || !selector.RequireCanonical {
+		return nil, fmt.Errorf("unexpected exact ERC-20 selector %#v", selector)
+	}
+	inputText, ok := request["data"].(string)
+	if !ok {
+		return nil, errors.New("exact ERC-20 calldata is not a hex string")
+	}
+	input, err := hexutil.Decode(inputText)
+	if err != nil {
+		return nil, err
+	}
+	if len(input) != 36 || fmt.Sprintf("%x", input[:4]) != "70a08231" {
+		return nil, errors.New("exact ERC-20 calldata is not balanceOf(address)")
+	}
+	tokenText, ok := request["to"].(string)
+	if !ok || !common.IsHexAddress(tokenText) {
+		return nil, errors.New("exact ERC-20 call target is invalid")
+	}
+	balance := caller.balance
+	if caller.balances != nil {
+		var found bool
+		balance, found = caller.balances[common.HexToAddress(tokenText)]
+		if !found {
+			return nil, errors.New("exact ERC-20 fixture has no token balance")
+		}
+	}
+	value, ok := new(big.Int).SetString(balance, 10)
+	if !ok || value.Sign() < 0 {
+		return nil, errors.New("invalid fixture ERC-20 balance")
+	}
+	output := make([]byte, 32)
+	value.FillBytes(output)
+	return hexutil.Bytes(output), nil
+}
+
 type exactNFTObserver struct {
 	observations []ethrpc.Observation
 }
@@ -471,6 +763,22 @@ func newNFTStatePool(t *testing.T, service any, observers ...ethrpc.Observer) *e
 	}
 	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
 		Name: "exact-nft-state", Client: newIntegrationRPCClient(t, "eth", service),
+		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeState: true},
+	}}, ethrpc.PoolOptions{Observer: observer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pool
+}
+
+func newERC20StatePool(t *testing.T, service any, observers ...ethrpc.Observer) *ethrpc.Pool {
+	t.Helper()
+	var observer ethrpc.Observer
+	if len(observers) > 0 {
+		observer = observers[0]
+	}
+	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
+		Name: "exact-erc20-state", Client: newIntegrationRPCClient(t, "eth", service),
 		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeState: true},
 	}}, ethrpc.PoolOptions{Observer: observer})
 	if err != nil {

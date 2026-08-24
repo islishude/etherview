@@ -12,7 +12,9 @@ hash destroys the older canonical value needed after a reorganization.
 Transfer logs are evidence, not authoritative current state. Fake events,
 rebasing behavior, constructor-time mints, and non-standard contracts make a
 sum of event deltas unsafe to publish as an owner or balance without stating
-and improving its confidence.
+and improving its confidence. Repeating exact ERC-20 address-holdings reads at
+the same immutable snapshot also wastes state-RPC capacity when the result can
+be retained under the same write-once trust boundary as NFT state.
 
 ## Decision
 
@@ -44,7 +46,13 @@ and improving its confidence.
   still-canonical snapshot. A missing RPC capability or missing exact
   reconciliation returns a typed unavailable state rather than an event-derived
   value.
-- The full exact-state key is write-once. Concurrent identical observations
+- Address-holdings ERC-20 balances, including zero, are persisted by chain,
+  owner, token, and block hash after an exact `balanceOf` call. A bounded page
+  bulk-reads its canonical cache entries and batches only the misses on one
+  endpoint; all hits avoid RPC entirely. Rows remain permanent without
+  cross-block value deduplication, proactive backfill, or retention cleanup.
+- The full exact-state key for ERC-20, ERC-721, and ERC-1155 is write-once.
+  Concurrent identical observations
   take a conditional no-op path and retain the first `observed_at`; a different
   owner, balance, block number, state, or confidence returns a stable integrity
   error. PostgreSQL triggers also reject direct mutation so another writer
@@ -75,22 +83,26 @@ and improving its confidence.
   terminal `unavailable` capability facts for that block. Transport failures
   retain their cause for retry policy while exposing only a stable message;
   malformed successful wire values are permanent failures.
-- ERC-20 balance and supply compatibility queries continue to use exact
-  block-hash `balanceOf` and `totalSupply` calls with a post-call canonicality
-  check. Stored token `total_supply` is an observation at its explicitly
-  reported block, not an implicit current value.
+- ERC-20 balance and supply compatibility queries continue to use request-time
+  exact block-hash `balanceOf` and `totalSupply` calls with a post-call
+  canonicality check; they do not consume the address-holdings cache. Stored
+  token `total_supply` is an observation at its explicitly reported block, not
+  an implicit current value.
 
 ## Consequences
 
 - Reorganizations retain all token classification history and canonical
   readers recover without reconstructing overwritten rows.
-- A disagreeing RPC replica cannot rewrite an already persisted exact NFT fact;
-  operators receive a distinct integrity signal instead.
+- A disagreeing RPC replica cannot rewrite an already persisted exact token
+  state fact; operators receive a distinct integrity signal instead.
 - NFT state reads may be unavailable when an exact state RPC observation cannot
   be obtained; they never silently fall back to delta sums.
 - First reads can incur RPC work, while exact persisted observations make
   repeated reads deterministic and usable by replicas after transient RPC
   loss.
+- ERC-20 cache growth is proportional to distinct queried owner, token, and
+  block-hash combinations, not request count. Permanent zero and orphan rows
+  trade PostgreSQL capacity for restart-safe, reorg-safe same-snapshot reuse.
 - Adding enumerable ownership indexes or proactive full-snapshot reconciliation
   remains a separate scaling concern and must preserve this exact-block trust
   boundary.

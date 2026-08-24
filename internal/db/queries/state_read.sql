@@ -11,6 +11,20 @@ SELECT EXISTS (
     WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3
 );
 
+-- name: StateERC20BalanceObservations :many
+SELECT observation.token_address, observation.balance::text, observation.confidence
+FROM erc20_balance_reconciliations AS observation
+JOIN canonical_blocks AS canonical
+  ON canonical.chain_id = observation.chain_id
+ AND canonical.number = observation.block_number
+ AND canonical.block_hash = observation.block_hash
+WHERE observation.chain_id = $1::numeric
+  AND observation.owner_address = $2
+  AND observation.block_number = $3::numeric
+  AND observation.block_hash = $4
+  AND observation.token_address = ANY($5::bytea[])
+ORDER BY observation.token_address;
+
 -- name: StateERC721OwnerObservation :many
 SELECT observation.state, observation.owner_address, observation.confidence
 FROM erc721_owner_reconciliations AS observation

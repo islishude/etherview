@@ -100,6 +100,61 @@ func (q *Queries) StateERC1155BalanceObservation(ctx context.Context, arg StateE
 	return items, nil
 }
 
+const StateERC20BalanceObservations = `-- name: StateERC20BalanceObservations :many
+SELECT observation.token_address, observation.balance::text, observation.confidence
+FROM erc20_balance_reconciliations AS observation
+JOIN canonical_blocks AS canonical
+  ON canonical.chain_id = observation.chain_id
+ AND canonical.number = observation.block_number
+ AND canonical.block_hash = observation.block_hash
+WHERE observation.chain_id = $1::numeric
+  AND observation.owner_address = $2
+  AND observation.block_number = $3::numeric
+  AND observation.block_hash = $4
+  AND observation.token_address = ANY($5::bytea[])
+ORDER BY observation.token_address
+`
+
+type StateERC20BalanceObservationsParams struct {
+	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
+	OwnerAddress []byte         `db:"owner_address" json:"owner_address"`
+	Column3      pgtype.Numeric `db:"column_3" json:"column_3"`
+	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
+	Column5      [][]byte       `db:"column_5" json:"column_5"`
+}
+
+type StateERC20BalanceObservationsRow struct {
+	TokenAddress       []byte `db:"token_address" json:"token_address"`
+	ObservationBalance string `db:"observation_balance" json:"observation_balance"`
+	Confidence         string `db:"confidence" json:"confidence"`
+}
+
+func (q *Queries) StateERC20BalanceObservations(ctx context.Context, arg StateERC20BalanceObservationsParams) ([]StateERC20BalanceObservationsRow, error) {
+	rows, err := q.db.Query(ctx, StateERC20BalanceObservations,
+		arg.Column1,
+		arg.OwnerAddress,
+		arg.Column3,
+		arg.BlockHash,
+		arg.Column5,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []StateERC20BalanceObservationsRow{}
+	for rows.Next() {
+		var i StateERC20BalanceObservationsRow
+		if err := rows.Scan(&i.TokenAddress, &i.ObservationBalance, &i.Confidence); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const StateERC721OwnerObservation = `-- name: StateERC721OwnerObservation :many
 SELECT observation.state, observation.owner_address, observation.confidence
 FROM erc721_owner_reconciliations AS observation

@@ -1,3 +1,32 @@
+-- name: StateWriteClassifyERC20BalancePersistenceMiss :one
+SELECT
+            EXISTS (
+                SELECT 1 FROM canonical_blocks
+                    WHERE chain_id = $1::numeric AND number = $4::numeric AND block_hash = $5::bytea
+            ) AS canonical,
+            EXISTS (
+                SELECT 1 FROM erc20_balance_reconciliations
+                    WHERE chain_id = $1::numeric AND token_address = $2::bytea
+                      AND owner_address = $3::bytea AND block_hash = $5::bytea
+            ) AS stored;
+
+-- name: StateWriteInsertERC20Balance :exec
+INSERT INTO erc20_balance_reconciliations AS current (
+            chain_id, token_address, owner_address,
+            block_number, block_hash, balance, confidence
+        )
+        SELECT $1::numeric, $2, $3,
+               $4::numeric, $5, $6::numeric, 'rpc_exact'
+        FROM canonical_blocks AS canonical
+        WHERE canonical.chain_id = $1::numeric
+          AND canonical.number = $4::numeric
+          AND canonical.block_hash = $5
+            ON CONFLICT (chain_id, token_address, owner_address, block_hash) DO UPDATE SET
+                observed_at = current.observed_at
+            WHERE current.block_number = EXCLUDED.block_number
+              AND current.balance = EXCLUDED.balance
+              AND current.confidence = EXCLUDED.confidence;
+
 -- name: StateWriteClassifyBalancePersistenceMissStatement1 :many
 SELECT
 			EXISTS (

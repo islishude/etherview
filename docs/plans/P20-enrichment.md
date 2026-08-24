@@ -39,6 +39,7 @@ search documents, and rollup statistics without delaying core readiness.
 | P20-T13 | done | P20-T03, P20-T07, P20-T10, P20-T11 | OpenZeppelin 5.6.1-aware `proxy@2`, dependent `abi@2`, shared Beacon observations, canonical upgrade/initialization facts, and replay-safe coverage evidence | proxy/ABI unit, PostgreSQL integration/race, reorg, replay, and immutable binding-source tests |
 | P20-T14 | done | P20-T05, P20-T11 | Block-hash-batched Geth call and state-difference tracing without per-transaction debug fallback | block envelope, fallback, budget, PostgreSQL, runtime, and common-gate tests |
 | P20-T15 | done | P20-T09 | Batch uncached exact ERC-721/ERC-1155 balance calls without changing snapshot or persistence semantics | mixed-batch, failure, cache, and reorg tests |
+| P20-T16 | done | P20-T15 | Persist immutable exact-block ERC-20 address-holdings observations and batch only cache misses | migration, cache, conflict, and reorg tests |
 
 ## Acceptance
 
@@ -85,6 +86,24 @@ search documents, and rollup statistics without delaying core readiness.
 None.
 
 ## Evidence
+
+- P20-T16: migration `0059_erc20_balance_reconciliations` adds permanent,
+  write-once positive and zero ERC-20 address-holdings observations keyed by
+  owner, token, and block hash. A page bulk-reads exact still-canonical cache
+  rows, preserves candidate order, batches only misses on one endpoint, and
+  persists those misses in a short post-RPC transaction. Identical concurrent
+  writes preserve the first audit timestamp; disagreement returns
+  `ErrExactERC20BalanceObservationConflict`, direct mutation is rejected, and
+  orphan rows remain retained but cannot satisfy a canonical lookup. Etherscan
+  balance/supply compatibility reads remain request-time RPC calls.
+- P20-T16 verification: focused Go unit, race, and vet checks passed for State
+  and Catalog; `make source-check`, `make generate-check`, `make
+  test-schema-e2e`, `make test-integration-race`, and `make check` passed.
+  PostgreSQL 18 evidence covers the `bytea[]` bulk lookup, zero-balance restart
+  reuse without RPC, missing-only batches, immutable identical/conflicting
+  races, direct-update rejection, uncached Etherscan reads, and replacement-hash
+  reconciliation without orphan-cache reuse. `make plan-check` and `git diff
+  --check` passed.
 
 - P20-T15: address NFT balance reconciliation retains exact block-hash cache
   lookup and persistence, but sends every uncached mixed ERC-721 `ownerOf` and

@@ -432,11 +432,14 @@ type Querier interface {
 	StartBillingPaymentHandler(ctx context.Context, transitionedAt pgtype.Timestamptz, iD pgtype.UUID, reservationOwner pgtype.UUID) (pgtype.UUID, error)
 	StateCanonicalTip(ctx context.Context, dollar_1 pgtype.Numeric) ([]StateCanonicalTipRow, error)
 	StateERC1155BalanceObservation(ctx context.Context, arg StateERC1155BalanceObservationParams) ([]StateERC1155BalanceObservationRow, error)
+	StateERC20BalanceObservations(ctx context.Context, arg StateERC20BalanceObservationsParams) ([]StateERC20BalanceObservationsRow, error)
 	StateERC721OwnerObservation(ctx context.Context, arg StateERC721OwnerObservationParams) ([]StateERC721OwnerObservationRow, error)
 	StateIsCanonical(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]bool, error)
 	StateWriteClassifyBalancePersistenceMissStatement1(ctx context.Context, arg StateWriteClassifyBalancePersistenceMissStatement1Params) ([]StateWriteClassifyBalancePersistenceMissStatement1Row, error)
+	StateWriteClassifyERC20BalancePersistenceMiss(ctx context.Context, arg StateWriteClassifyERC20BalancePersistenceMissParams) (StateWriteClassifyERC20BalancePersistenceMissRow, error)
 	StateWriteClassifyOwnerPersistenceMissStatement1(ctx context.Context, arg StateWriteClassifyOwnerPersistenceMissStatement1Params) ([]StateWriteClassifyOwnerPersistenceMissStatement1Row, error)
 	StateWriteInsertERC1155BalanceStatement1(ctx context.Context, arg StateWriteInsertERC1155BalanceStatement1Params) error
+	StateWriteInsertERC20Balance(ctx context.Context, arg StateWriteInsertERC20BalanceParams) error
 	StateWriteInsertOwnerObservationStatement1(ctx context.Context, arg StateWriteInsertOwnerObservationStatement1Params) error
 	StoreCanonicalBlock(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) ([]StoreCanonicalBlockRow, error)
 	StoreCanonicalTip(ctx context.Context, dollar_1 pgtype.Numeric) ([]StoreCanonicalTipRow, error)
