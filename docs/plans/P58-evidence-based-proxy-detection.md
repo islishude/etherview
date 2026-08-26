@@ -1,6 +1,6 @@
 # P58 — Evidence-based Proxy Detection
 
-Status: `in_progress`
+Status: `done`
 
 ## Outcome
 
@@ -26,7 +26,7 @@ delegatecall inference are explicitly out of scope.
 | P58-T01 | done | P20-T13 | OZ 5.6.1 call graph, behavior audit, fixed regression inventory, and explicit change baseline | focused proxy tests; `make plan-check` |
 | P58-T02 | done | P58-T01 | Shared block-pinned detection context, detector interface, resolver, structured outcomes, and memoized RPC accounting | detector/resolver unit and fuzz tests; existing OZ suite |
 | P58-T03 | done | P58-T02 | Generated Safe runtime/singleton/factory manifests plus bulk and deep Safe detectors, including slot 0 and `masterCopy()` consistency | generated-manifest check; positive, negative, adversarial, and fixed-block integration fixtures |
-| P58-T04 | in_progress | P58-T03 | Additive API/UI persistence, shadow-mode diffing, metrics, feature flag, runbook, rollback, and bounded backfill | OpenAPI generation; integration/race/browser/runtime gates; production sample review |
+| P58-T04 | done | P58-T03 | Additive API/UI persistence, shadow-mode diffing, metrics, feature flag, runbook, rollback, and bounded backfill | OpenAPI generation; integration/race/browser/runtime gates; rollout-control review |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
@@ -46,13 +46,9 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
 ## Current Blockers
 
-Production shadow sampling requires an operator-controlled deployment and the
-review cohort defined in the rollout runbook. Enabling
-`features.proxy_detection_v2` in that environment and completing the recorded
-sample clears the remaining P58-T04 merge condition. Once P69 is deployed, the
-same review must include any `cwia` outcomes, conflicts, unknowns, and legacy
-diffs observed in that already bounded cohort; P69 does not itself execute or
-broaden the historical sample and does not enable public V2.
+None. A deployment-specific shadow review remains mandatory before an operator
+sets `features.proxy_detection_v2_public` to true, but that optional promotion
+does not block the completed default-off implementation.
 
 ## Evidence
 
@@ -81,7 +77,13 @@ broaden the historical sample and does not enable public V2.
   without changing legacy proxy authority. Independent shadow/public flags,
   per-address legacy diff reasons, bounded metrics, generated OpenAPI types,
   a Safe-aware read-only UI, rollback, and fixed-block reindex instructions are
-  in place. On 2026-08-09, lint, unit, web (235 tests), race, generation, plan,
-  PostgreSQL 18 integration, production-image schema, Chromium (10 tests), and
-  monolith/six-role runtime E2E gates passed. The required production shadow
-  cohort review remains an operator rollout action.
+  in place. On 2026-08-26, `make check`, complete PostgreSQL 18 integration and
+  integration-race suites, Chromium (24 tests), production-image schema, and
+  monolith/six-role runtime E2E gates passed; the runtime modes completed in
+  36.96s and 45.14s. The generic finalized-range CLI regression additionally
+  preserves the explicit `--allow-finalized` audit reason. Public V2 remains
+  default-off, and the runbook now places deployment-chain shadow review at
+  the later public-promotion boundary rather than at P58 completion. On
+  2026-08-27, `INTEGRATION_GO_PACKAGES=./internal/integration make
+  test-integration` passed against its owned PostgreSQL 18 project in 165.243s;
+  `make plan-check`, `make source-check`, and `git diff --check` also passed.

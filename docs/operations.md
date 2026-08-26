@@ -596,11 +596,15 @@ the last delegation observed for an address in the block.
 
 Proxy detection V2 is additive and defaults off. It never replaces the legacy
 OpenZeppelin observation, verified binding, ABI dependency, or browser write
-authority.
+authority. This shadow review is a deployment-specific prerequisite for
+setting `proxy_detection_v2_public: true`; it is not a source-code or P58 plan
+completion gate.
 
-1. Apply migrations `0038_proxy_detection_v2.sql` and
-   `0043_erc2535_diamonds.sql`, then enable only shadow collection on every
-   `enrich`/`all` process:
+1. Require `etherview migrate status` to report the current schema compatible,
+   including migrations `0038_proxy_detection_v2.sql`,
+   `0043_erc2535_diamonds.sql`, and, for CWIA-capable builds,
+   `0050_solady_legacy_cwia_proxy.sql`. Then enable only shadow collection on
+   every `enrich`/`all` process:
 
    ```yaml
    features:
@@ -615,15 +619,27 @@ authority.
    `ETHERVIEW_FEATURE_SAFE_PROXY_DETECTION=true`,
    `ETHERVIEW_FEATURE_DIAMOND_PROXY_DETECTION=true`, and
    `ETHERVIEW_FEATURE_PROXY_DETECTION_V2_PUBLIC=false`.
-2. Reindex a bounded canonical range. The maintenance command resolves each
-   number to its current exact block hash, and the normal durable generation
-   fence makes retries idempotent:
+2. Select an inclusive finalized range of at most 10,001 blocks from the chain
+   served by this deployment. Prefer a range containing a known positive for
+   every detector family intended for public exposure on that chain. Record
+   the exact chain, range, canonical boundary hashes, deployed revision/image,
+   and operator reason. The maintenance command resolves every number to its
+   current exact block hash and the durable generation fence makes retries
+   idempotent:
 
    ```sh
    etherview reindex --config /etc/etherview/config.yaml \
-     --from 21000000 --to 21010000 --stage proxy \
-     --reason "Safe and Diamond proxy detector shadow sample"
+     --from "$FROM_BLOCK" --to "$TO_BLOCK" --stage proxy \
+     --reason "proxy detection V2 shadow sample for the configured chain" \
+     --allow-finalized
    ```
+
+   `--allow-finalized` is mandatory when the range begins at or below the
+   recorded finalized height and retains the audit reason; it does not relax
+   exact block identity or fork choice. On Ethereum Mainnet, validate an
+   official-Safe provenance claim against the maintained fixed identities
+   (currently block `25711126`) rather than assuming an arbitrary range
+   contains a Safe positive.
 
    Reindex `proxy` before `abi` for the same bounded range. Diamond selector
    history and Loupe snapshots are block-hash keyed and reorg-safe; historical
@@ -632,10 +648,13 @@ authority.
 3. Compare `proxy_detection_evidence` rows whose `candidate_kind` is
    `proxy_v2` with the published legacy proxy observation from the same durable
    job generation. Review all `inconsistent` and `unknown` results, all V2/OZ
-   disagreements, confirmed and compatible Safe samples, confirmed Diamond
-   snapshots, partial/truncated Diamonds, and a random negative sample. For
-   Diamonds also compare `diamond_cut_events` replay with the latest published
-   `diamond_loupe_snapshots` map. `unknown` may be reindexed after the
+   disagreements, confirmed Safe bulk samples, confirmed Diamond snapshots,
+   partial/truncated Diamonds, every CWIA outcome, and exactly 100
+   deterministic negative samples (or the complete smaller negative
+   population). For Diamonds also compare `diamond_cut_events` replay with the
+   latest published `diamond_loupe_snapshots` map. Deep-only
+   `safe-compatible-proxy` remains covered by fixed-block tests and is not
+   claimed by this bulk rollout. `unknown` may be reindexed after the
    historical RPC is healthy; `not-detected` is terminal evidence and is not
    automatically retried.
 4. Monitor `etherview_proxy_detection_duration_ms`,
@@ -646,11 +665,14 @@ authority.
    miss must add no Safe-specific storage or call request. Alert on sustained
    Diamond `inconsistent`, `unknown`, or truncated results and on exact-state
    RPC errors; do not reinterpret them as negative detection.
-5. After sample approval, enable `proxy_detection_v2_public` on API processes.
-   The contract page then shows the V2 family, evidence status, Safe singleton
-   role, and selector-filtered Diamond facet/current-cut surfaces. This still
-   does not enable implementation-as-proxy writes for Safe, and Diamond calls
-   remain addressed to the Diamond rather than to a facet.
+5. Record the review using the
+   [public-promotion template](reviews/proxy-detection-v2-shadow-rollout-template.md).
+   Only a complete `pass` authorizes enabling `proxy_detection_v2_public` on
+   API processes. The contract page then shows the V2 family, evidence status,
+   Safe singleton role, and selector-filtered Diamond facet/current-cut
+   surfaces. This still does not enable implementation-as-proxy writes for
+   Safe, and Diamond calls remain addressed to the Diamond rather than to a
+   facet.
 
 Rollback is a configuration restart: disable `proxy_detection_v2_public`
 first. Disable only `safe_proxy_detection` to stop the Safe detector while
@@ -667,10 +689,11 @@ exposure; validation rejects the inverse configuration.
 Solady legacy CWIA authority is not controlled by the V2 public flag. Migration
 `0050` only extends the existing `proxy@2` contracts and never enqueues or
 replays history. New blocks first processed after deployment can publish
-`mechanism=cwia`; no historical CWIA coverage is claimed. If an existing P58
-bounded shadow sample is later run on this build, review any `cwia` outcomes
-and legacy diffs in that same cohort without treating them as a separately
-approved CWIA backfill.
+`mechanism=cwia`; no historical CWIA coverage is claimed. Use a shadow sample
+range already processed by a P69-capable revision. Reindexing older history
+can create authoritative CWIA coverage and therefore requires separate
+operator approval as a bounded CWIA backfill before it can serve as a V2
+public-promotion sample.
 
 The list command is newest-first and bounded to 1–1000 rows. Its default JSON
 output and optional `--format table` both report `failure_present` without

@@ -25,7 +25,7 @@ batch semantics are not core v1 scope.
 | P55 | [OpenZeppelin Proxy Interaction](docs/plans/P55-openzeppelin-proxy-interaction.md) | superseded | P20, P30, P40, P50 | Superseded coordination record for the cross-phase OpenZeppelin proxy chain |
 | P56 | [Contract Artifact Reuse and ABI UX](docs/plans/P56-contract-artifact-reuse-and-abi-ux.md) | done | P20, P30, P40, P50 | Same-code artifacts, standard proxy interaction, and decoded transaction logs |
 | P57 | [Web Contract Artifact Nullability](docs/plans/P57-web-contract-artifact-nullability.md) | done | P56 | Preview contract pages tolerate nullable verification artifact fields |
-| P58 | [Evidence-based Proxy Detection](docs/plans/P58-evidence-based-proxy-detection.md) | in_progress | P20, P30, P40, P50, P60 | Stable OZ 5.x detection, composable detectors, and block-pinned Safe Proxy recognition |
+| P58 | [Evidence-based Proxy Detection](docs/plans/P58-evidence-based-proxy-detection.md) | done | P20, P30, P40, P50, P60 | Stable OZ 5.x detection, composable detectors, and block-pinned Safe Proxy recognition |
 | P59 | [Trace-bound ABI Decoding](docs/plans/P59-trace-bound-abi-decoding.md) | done | P20, P40, P50, P56 | Exact trace-frame log attribution and decoded calls, returns, and reverts |
 | P60 | [Runtime & Operations](docs/plans/P60-runtime-operations.md) | done | P00; spans P10–P50 | Monolith/split runtime, Compose, Helm, observability, optional adapters |
 | P61 | [EIP-7702 Delegated Accounts](docs/plans/P61-eip7702-delegated-accounts.md) | done | P20, P30, P40, P50, P59, P60 | Exact authorization, execution-code, constructor, API, and delegated-account interaction semantics |
@@ -177,6 +177,14 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   finality presentation for Address Transactions. P50-T63 moves Finality into
   an independent final column, aligns the transaction amount heading with the
   global table, and leaves other address activity tables unchanged.
+- P58 is complete: the exact-block evidence framework and Safe recognition
+  retain legacy proxy authority while generation-fenced shadow persistence,
+  bounded metrics, independent flags, rollback, and Web/API presentation pass
+  the current common, PostgreSQL, browser, schema, and monolith/split runtime
+  gates. Public V2 remains default-off; a
+  deployment-chain shadow review is required only before an operator promotes
+  that optional public surface. Reviewable commands and results remain in
+  [P58 evidence](docs/plans/P58-evidence-based-proxy-detection.md#evidence).
 - P59 is complete. P59-T05 keeps Solidity builtin failures concise while
   preserving structured custom-error arguments. P59-T04 exposes the canonical
   root failure as a dedicated
