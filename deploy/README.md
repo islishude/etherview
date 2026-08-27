@@ -74,22 +74,25 @@ sets `api_key_rate`, `api_key_burst`, and `max_active_api_keys`; users cannot
 raise those values. The safe public configuration exposes only whether the
 capability is enabled, never either pepper.
 
-x402 billing is also disabled by default. Configure its non-secret facilitator
-origin/CIDRs, network, asset, recipient, and per-operation prices under
-`billing`, then set `features.x402_billing: true` and provide
+x402 top-ups and prepaid API billing are disabled independently by default.
+Configure the network, asset, and `etherscan.<module>.<action>` prices, then
+enable `features.api_billing`. Enable `features.x402_topups` only with SIWE,
+user-owned keys, top-up bounds, ordered `[eip3009, permit2]`, recipient, and
+the reviewed Facilitator origin/CIDRs. Provide
 `ETHERVIEW_X402_FINGERPRINT_PEPPER` with at least 32 independent random bytes.
 Optional facilitator credentials are a bounded JSON object in
 `ETHERVIEW_X402_FACILITATOR_HEADERS`. Compose passes both values only to the
 monolith `all` or split `api` service; feature-off deployments with the
 variables unset do not pass either Secret. Run `etherview doctor` against the
-final API-role configuration before adding a paid route.
+final API-role configuration before exposing the Account top-up endpoint.
+Existing credit consumption has no Facilitator dependency.
 
 ## Full-stack Preview
 
 `compose.preview.yaml` runs the local Geth development chain and all six
 application roles. It enables public
-verification and NFT metadata while leaving Sourcify, pricing, and x402 billing
-disabled. Optional NATS, Redis, and object storage accelerators are not part of
+verification and NFT metadata while leaving Sourcify, pricing, prepaid billing,
+and x402 top-ups disabled. Optional NATS, Redis, and object storage accelerators are not part of
 this deployment.
 
 The Preview Geth container mounts `deploy/geth-entrypoint.sh` and initializes

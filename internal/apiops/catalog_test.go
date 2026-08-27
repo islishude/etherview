@@ -201,12 +201,13 @@ func TestCatalogBindsOpenAPIParameterAndPaymentContracts(t *testing.T) {
 				paymentResponse = true
 			}
 		}
-		if hasPaymentSignature != spec.BillingEligible ||
-			paymentRequired != spec.BillingEligible ||
-			paymentResponse != spec.BillingEligible {
+		topupPayment := spec.ID == "payBillingTopupIntent"
+		if hasPaymentSignature != topupPayment ||
+			paymentRequired != topupPayment ||
+			paymentResponse != topupPayment {
 			t.Errorf(
-				"%s payment contract signature=%v required=%v response=%v eligible=%v",
-				spec.ID, hasPaymentSignature, paymentRequired, paymentResponse, spec.BillingEligible,
+				"%s payment contract signature=%v required=%v response=%v topup=%v",
+				spec.ID, hasPaymentSignature, paymentRequired, paymentResponse, topupPayment,
 			)
 		}
 	}

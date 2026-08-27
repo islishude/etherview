@@ -72,11 +72,11 @@ only from the optional Secret key and must never be written to chart values or
 logs. `config.user_auth` accepts only the public lifetimes and size bounds; it
 has no pepper field, and schema validation rejects attempts to add one.
 
-When `config.features.x402_billing=true`,
+When `config.features.x402_topups=true`,
 `externalSecret.x402FingerprintPepperRemoteKey` is required. The optional
 facilitator-header entry is emitted only when
 `externalSecret.x402FacilitatorHeadersRemoteKey` is non-empty; neither entry is
-fetched or injected when billing is disabled. `config.billing` contains only
+fetched or injected when top-ups are disabled. `config.billing` contains only
 public policy and limits. Inline fingerprint peppers or facilitator headers
 are rejected by the chart schema.
 
@@ -88,13 +88,15 @@ bytes in the configured Secret key. The chart injects
 Migration Jobs, schema-compatibility init containers, and non-API roles never
 receive it.
 
-x402 billing is disabled by default. Enabling it also requires a root public
-origin, fixed HTTPS facilitator origin on port 443, canonical non-empty facilitator CIDRs,
+x402 top-ups are disabled by default. Enabling them requires `api_billing`,
+`user_auth`, and `user_api_keys`, plus a root public origin, fixed HTTPS
+facilitator origin on port 443, canonical non-empty facilitator CIDRs,
 network/asset/EIP-712/recipient fields, and an independent 32-byte-or-longer
 fingerprint pepper. The chart injects billing Secrets only into the selected
 `all`/`api` main container. Run
 `etherview doctor --config /etc/etherview/config.yaml` before exposing a
-configured paid operation.
+configured Account top-up endpoint. Priced `/v2/api` consumption continues
+during a Facilitator outage.
 
 `config.database.read_max_connections` and
 `config.database.read_min_connections` size the optional reader pool. A zero

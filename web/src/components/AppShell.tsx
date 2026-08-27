@@ -128,7 +128,7 @@ export function AppShell() {
                 <Link activeProps={{ className: "active" }} to="/admin/users">
                   {t("nav.adminUsers")}
                 </Link>
-                {publicConfig.data?.features.x402_billing === true && (
+                {publicConfig.data?.features.api_billing === true && (
                   <Link
                     activeProps={{ className: "active" }}
                     to="/admin/billing"

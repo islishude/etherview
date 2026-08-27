@@ -5,6 +5,12 @@ export type BillingPayment = components["schemas"]["BillingPayment"];
 export type BillingPaymentState =
   components["schemas"]["BillingPaymentState"];
 export type BillingSummary = components["schemas"]["BillingSummary"];
+export type BillingAccount = components["schemas"]["BillingAccount"];
+export type BillingConfig = components["schemas"]["BillingConfig"];
+export type BillingTopupIntent = components["schemas"]["BillingTopupIntent"];
+export type BillingTopupReceipt = components["schemas"]["BillingTopupReceipt"];
+export type BillingTransferMethod =
+  components["schemas"]["BillingAssetTransferMethod"];
 
 type AdminPaymentQuery =
   NonNullable<
@@ -24,6 +30,48 @@ export async function listCurrentUserBillingPayments(
     await apiClient.GET("/billing/payments", {
       params: { query: { cursor, limit } },
     }),
+  );
+}
+
+export async function getBillingConfig(): Promise<BillingConfig> {
+  return requireEnvelope(await apiClient.GET("/billing/config")).data;
+}
+
+export async function getCurrentBillingAccount(): Promise<BillingAccount> {
+  return requireEnvelope(await apiClient.GET("/billing/account")).data;
+}
+
+export async function createBillingTopupIntent(
+  amountAtomic: string,
+  csrfToken: string,
+): Promise<BillingTopupIntent> {
+  return requireEnvelope(
+    await apiClient.POST("/billing/topup-intents", {
+      body: { amount_atomic: amountAtomic },
+      params: { header: { "X-CSRF-Token": csrfToken } },
+    }),
+  ).data;
+}
+
+export async function getBillingTopupIntent(id: string): Promise<BillingTopupIntent> {
+  return requireEnvelope(
+    await apiClient.GET("/billing/topup-intents/{id}", {
+      params: { path: { id } },
+    }),
+  ).data;
+}
+
+export async function listCurrentBillingTopupIntents(limit = 10, cursor?: string) {
+  return requireEnvelope(
+    await apiClient.GET("/billing/topup-intents", {
+      params: { query: { cursor, limit } },
+    }),
+  );
+}
+
+export async function listCurrentUserBillingUsage(limit = 25) {
+  return requireEnvelope(
+    await apiClient.GET("/billing/usage", { params: { query: { limit } } }),
   );
 }
 

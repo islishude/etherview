@@ -8,13 +8,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/islishude/etherview/internal/apiops"
+	"github.com/islishude/etherview/internal/etherscanops"
 )
 
 func TestAuthAndBillingDefaultsAreDisabledAndBounded(t *testing.T) {
 	t.Parallel()
 	cfg := Default()
-	if cfg.Features.UserAuth || cfg.Features.UserAPIKeys || cfg.Features.X402Billing {
+	if cfg.Features.UserAuth || cfg.Features.UserAPIKeys || cfg.Features.X402Billing ||
+		cfg.Features.APIBilling || cfg.Features.X402Topups {
 		t.Fatalf("auth and billing must default off: %#v", cfg.Features)
 	}
 	if cfg.UserAuth.ChallengeTTL.String() != "5m0s" ||
@@ -23,7 +24,9 @@ func TestAuthAndBillingDefaultsAreDisabledAndBounded(t *testing.T) {
 		cfg.Billing.RequirementMaxTimeout.String() != "1m0s" ||
 		cfg.Billing.ReservationTTL.String() != "2m0s" ||
 		cfg.UserAuth.APIKeyRate != 20 || cfg.UserAuth.APIKeyBurst != 40 ||
-		cfg.UserAuth.MaxActiveAPIKeys != 5 || len(cfg.Billing.Routes) != 0 {
+		cfg.UserAuth.MaxActiveAPIKeys != 5 || len(cfg.Billing.Routes) != 0 ||
+		len(cfg.Billing.Operations) != 0 || cfg.Billing.TopupIntentTTL.String() != "10m0s" ||
+		cfg.Billing.UsageReservationTTL.String() != "2m0s" {
 		t.Fatalf("unexpected auth or billing defaults: auth=%#v billing=%#v", cfg.UserAuth, cfg.Billing)
 	}
 	if err := cfg.Validate(); err != nil {
@@ -31,20 +34,30 @@ func TestAuthAndBillingDefaultsAreDisabledAndBounded(t *testing.T) {
 	}
 }
 
-func TestUserAPIKeysRequireAuthAndAPIKeyPepper(t *testing.T) {
+func TestUserAPIKeysRequireAuthAndAPIRolePepper(t *testing.T) {
 	t.Parallel()
 	cfg := Default()
 	cfg.Features.UserAPIKeys = true
 	if err := cfg.Validate(); err == nil ||
-		!strings.Contains(err.Error(), "requires features.user_auth") ||
-		!strings.Contains(err.Error(), "requires API key authentication") {
+		!strings.Contains(err.Error(), "requires features.user_auth") {
 		t.Fatalf("missing dependencies error = %v", err)
 	}
 	cfg.Features.UserAuth = true
 	cfg.Server.PublicURL = "https://explorer.example"
+	if err := cfg.ValidateForRoles([]string{"all"}); err == nil ||
+		!strings.Contains(err.Error(), "API role user API keys require API key authentication") {
+		t.Fatalf("missing API-role pepper error = %v", err)
+	}
 	cfg.Security.APIKeyPepper = strings.Repeat("k", 32)
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
+	}
+	cfg.Security.APIKeyPepper = ""
+	cfg.Runtime.Roles = []string{"sync"}
+	cfg.Database.URL = "postgres://localhost/etherview"
+	cfg.RPC.Endpoints = []RPCEndpoint{{Name: "primary", URL: "http://localhost:8545", Purposes: []string{"all"}}}
+	if err := cfg.ValidateForRoles(cfg.Runtime.Roles); err != nil {
+		t.Fatalf("non-API role required API-key secret: %v", err)
 	}
 }
 
@@ -142,6 +155,10 @@ server:
 func TestBillingSecretFilesAreReadOnlyForTheFinalAPIRole(t *testing.T) {
 	unsetHostEnvironment(t, "ETHERVIEW_X402_FINGERPRINT_PEPPER")
 	unsetHostEnvironment(t, "ETHERVIEW_X402_FACILITATOR_HEADERS")
+	unsetHostEnvironment(t, "ETHERVIEW_API_KEY_PEPPER")
+	unsetHostEnvironment(t, "ETHERVIEW_SESSION_PEPPER")
+	t.Setenv("ETHERVIEW_API_KEY_PEPPER", strings.Repeat("k", 32))
+	t.Setenv("ETHERVIEW_SESSION_PEPPER", strings.Repeat("s", 32))
 	t.Setenv(
 		"ETHERVIEW_X402_FINGERPRINT_PEPPER_FILE",
 		"/does/not/exist/fingerprint",
@@ -155,7 +172,10 @@ func TestBillingSecretFilesAreReadOnlyForTheFinalAPIRole(t *testing.T) {
 runtime:
   roles: [all]
 features:
-  x402_billing: true
+  user_auth: true
+  user_api_keys: true
+  api_billing: true
+  x402_topups: true
 server:
   public_url: https://explorer.example
 billing:
@@ -167,7 +187,10 @@ billing:
   asset_eip712_name: USDC
   asset_eip712_version: "2"
   recipient: "0x2222222222222222222222222222222222222222"
-  routes: {}
+  minimum_topup_amount_atomic: "1"
+  maximum_topup_amount_atomic: "1000000"
+  asset_transfer_methods: [eip3009, permit2]
+  operations: {}
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -313,7 +336,7 @@ func TestUserAuthRequiresCanonicalOriginAndAPIRoleSecret(t *testing.T) {
 	}
 }
 
-func TestX402ConfigurationUsesClosedEligibleCatalog(t *testing.T) {
+func TestPrepaidConfigurationUsesClosedEligibleCatalog(t *testing.T) {
 	t.Parallel()
 	cfg := validX402Config()
 	if err := cfg.Validate(); err != nil {
@@ -322,35 +345,27 @@ func TestX402ConfigurationUsesClosedEligibleCatalog(t *testing.T) {
 	if err := cfg.ValidateForRoles([]string{"api"}); err != nil {
 		t.Fatal(err)
 	}
-	cfg.Billing.Routes["getStatus"] = BillingRouteConfig{
-		Access: "x402", AmountAtomic: "1",
-	}
+	cfg.Billing.Operations["getStatus"] = BillingOperationConfig{AmountAtomic: "1"}
 	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "not eligible") {
 		t.Fatalf("ineligible billing route passed: %v", err)
 	}
-	delete(cfg.Billing.Routes, "getStatus")
-	cfg.Billing.Routes["getVerifiedContract"] = BillingRouteConfig{
-		Access: "x402", AmountAtomic: "1",
-	}
+	delete(cfg.Billing.Operations, "getStatus")
+	cfg.Billing.Operations["etherscan.contract.verifysourcecode"] = BillingOperationConfig{AmountAtomic: "1"}
 	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "not eligible") {
 		t.Fatalf("free verified-artifact read remained billable: %v", err)
 	}
-	delete(cfg.Billing.Routes, "getVerifiedContract")
-	cfg.Billing.Routes["listBlocks"] = BillingRouteConfig{
-		Access: "api_key_or_x402", AmountAtomic: "01",
-	}
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "canonical positive integer") {
+	delete(cfg.Billing.Operations, "etherscan.contract.verifysourcecode")
+	cfg.Billing.Operations["etherscan.account.balance"] = BillingOperationConfig{AmountAtomic: "01"}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "fit in uint256") {
 		t.Fatalf("non-canonical amount passed: %v", err)
 	}
-	cfg.Billing.Routes["listBlocks"] = BillingRouteConfig{
-		Access:       "x402",
+	cfg.Billing.Operations["etherscan.account.balance"] = BillingOperationConfig{
 		AmountAtomic: "115792089237316195423570985008687907853269984665640564039457584007913129639935",
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("maximum uint256 amount rejected: %v", err)
 	}
-	cfg.Billing.Routes["listBlocks"] = BillingRouteConfig{
-		Access:       "x402",
+	cfg.Billing.Operations["etherscan.account.balance"] = BillingOperationConfig{
 		AmountAtomic: "115792089237316195423570985008687907853269984665640564039457584007913129639936",
 	}
 	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "fit in uint256") {
@@ -394,9 +409,14 @@ func TestX402FacilitatorHeadersAreStrictAndRedacted(t *testing.T) {
 
 func validX402Config() Config {
 	cfg := Default()
-	cfg.Features.X402Billing = true
+	cfg.Features.UserAuth = true
+	cfg.Features.UserAPIKeys = true
+	cfg.Features.APIBilling = true
+	cfg.Features.X402Topups = true
 	cfg.Server.PublicURL = "https://explorer.example"
 	cfg.Database.URL = "postgres://database.example/etherview"
+	cfg.Security.APIKeyPepper = strings.Repeat("k", 32)
+	cfg.UserAuth.SessionPepper = strings.Repeat("s", 32)
 	cfg.Billing.FacilitatorURL = "https://facilitator.example"
 	cfg.Billing.FacilitatorAllowedCIDRs = []string{"203.0.113.0/24"}
 	cfg.Billing.Network = "eip155:84532"
@@ -405,10 +425,13 @@ func validX402Config() Config {
 	cfg.Billing.AssetEIP712Name = "USDC"
 	cfg.Billing.AssetEIP712Version = "2"
 	cfg.Billing.Recipient = "0x2222222222222222222222222222222222222222"
+	cfg.Billing.MinimumTopupAmountAtomic = "1"
+	cfg.Billing.MaximumTopupAmountAtomic = "1000000"
+	cfg.Billing.AssetTransferMethods = []string{"eip3009", "permit2"}
 	cfg.Billing.FingerprintPepper = strings.Repeat("f", 32)
 	cfg.Billing.FacilitatorHeaders = map[string]string{"Authorization": "Bearer opaque"}
-	cfg.Billing.Routes = map[string]BillingRouteConfig{
-		"listBlocks": {Access: "x402", AmountAtomic: "1000"},
+	cfg.Billing.Operations = map[string]BillingOperationConfig{
+		"etherscan.account.balance": {AmountAtomic: "1000"},
 	}
 	return cfg
 }
@@ -425,7 +448,7 @@ func TestHelmBillingRouteEnumMatchesEligibleCatalog(t *testing.T) {
 	}
 	value := any(document)
 	for _, key := range []string{
-		"properties", "config", "properties", "billing", "properties", "routes", "propertyNames", "enum",
+		"properties", "config", "properties", "billing", "properties", "operations", "propertyNames", "enum",
 	} {
 		object, ok := value.(map[string]any)
 		if !ok {
@@ -447,7 +470,7 @@ func TestHelmBillingRouteEnumMatchesEligibleCatalog(t *testing.T) {
 			t.Fatalf("Helm billing route operation %d is not a string", index)
 		}
 	}
-	expected := apiops.EligibleIDs()
+	expected := etherscanops.EligibleIDs()
 	slices.Sort(actual)
 	slices.Sort(expected)
 	if !slices.Equal(actual, expected) {

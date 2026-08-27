@@ -11,11 +11,31 @@ describe("browser backend boundary", () => {
       const relative = file.slice(sourceRoot.length + 1);
       const source = readFileSync(file, "utf8");
 
-      if (relative !== "api/client.ts" && /\b(?:globalThis\.)?fetch\s*\(/u.test(source)) {
+      if (
+        relative !== "api/client.ts" &&
+        relative !== "billing/topup.ts" &&
+        /\b(?:globalThis\.)?fetch\s*\(/u.test(source)
+      ) {
         violations.push(`${relative}: direct fetch`);
       }
-      if (relative !== "api/client.ts" && /["'`]\/api\/(?:v1|v2)\b/u.test(source)) {
+      if (
+        relative !== "api/client.ts" &&
+        relative !== "billing/topup.ts" &&
+        /["'`]\/api\/(?:v1|v2)\b/u.test(source)
+      ) {
         violations.push(`${relative}: literal backend path`);
+      }
+      if (relative === "billing/topup.ts") {
+        const backendPaths = [
+          ...source.matchAll(/["'`]([^"'`]*\/api\/(?:v1|v2)[^"'`]*)["'`]/gu),
+        ].map(match => match[1]);
+        if (
+          backendPaths.length !== 1 ||
+          backendPaths[0] !==
+            "/api/v1/billing/topup-intents/${encodeURIComponent(intent.id)}/pay"
+        ) {
+          violations.push(`${relative}: unbounded x402 top-up transport`);
+        }
       }
       if (
         /(?:VITE_|ETHERVIEW_|\bDATABASE_URL\b|\bRPC_URL\b|\bimport\.meta\.env\b|\bprocess\.env\b)/u.test(
@@ -73,6 +93,17 @@ describe("browser backend boundary", () => {
     expect(hooks).not.toMatch(/\bfetch\s*\(/u);
   });
 
+  it("loads the x402 SDK only from the explicit Account top-up action", () => {
+    const billingPage = readFileSync(`${sourceRoot}/pages/BillingPages.tsx`, "utf8");
+    const topup = readFileSync(`${sourceRoot}/billing/topup.ts`, "utf8");
+
+    expect(billingPage).not.toMatch(/from\s+["']@\/billing\/topup["']/u);
+    expect(billingPage).toContain('await import("@/billing/topup")');
+    expect(topup).toContain('from "@x402/core/client"');
+    expect(topup).toContain('from "@x402/evm/exact/client"');
+    expect(topup).toContain('from "@x402/fetch"');
+  });
+
   it("keeps raw providers private and allows only the fixed wallet RPC surface", () => {
     const file = `${sourceRoot}/wallet/WalletProvider.tsx`;
     const provider = readFileSync(file, "utf8");
@@ -127,8 +158,10 @@ const allowedWalletMethods = new Set([
   "eth_accounts",
   "eth_call",
   "eth_chainId",
+  "eth_getTransactionReceipt",
   "eth_requestAccounts",
   "eth_sendTransaction",
+  "eth_signTypedData_v4",
   "personal_sign",
   "wallet_addEthereumChain",
 ]);

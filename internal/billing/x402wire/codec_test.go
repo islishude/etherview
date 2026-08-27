@@ -126,7 +126,7 @@ func TestCodecDecodesOfficialV2TypesAndMatchesRequirement(t *testing.T) {
 	}
 }
 
-func TestCodecAcceptsOfficialV219EIP3009HeaderVector(t *testing.T) {
+func TestCodecAcceptsOfficialV223EIP3009HeaderVector(t *testing.T) {
 	t.Parallel()
 	codec, err := NewCodec(DefaultMaxHeaderBytes)
 	if err != nil {
@@ -329,7 +329,7 @@ func TestCodecRejectsAmbiguousAndUnsupportedPayloads(t *testing.T) {
 			),
 		},
 		{
-			name: "permit2 requirement",
+			name: "permit2 requirement with EIP-3009 payload",
 			json: paymentJSON(t, withExtraTransferMethod),
 		},
 		{
@@ -360,6 +360,150 @@ func TestCodecRejectsAmbiguousAndUnsupportedPayloads(t *testing.T) {
 				t.Fatalf("error leaked hostile input: %q", err)
 			}
 		})
+	}
+}
+
+func TestCodecAcceptsOfficialV223Permit2AndUsesMethodSpecificFingerprint(t *testing.T) {
+	t.Parallel()
+	codec, err := NewCodec(DefaultMaxHeaderBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requirement, err := NewRequirement(RequirementOptions{
+		Network: "eip155:84532", Asset: testAsset, Amount: "125000",
+		PayTo: testRecipient, MaxTimeoutSeconds: 300,
+		AssetTransferMethod: TransferMethodPermit2,
+		PaymentFlow:         PaymentFlowAuthorization,
+		Resource:            testRequirement(t).Resource(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resource := requirement.Resource()
+	payload := (&evm.ExactPermit2Payload{
+		Signature: testSignature,
+		Permit2Authorization: evm.Permit2Authorization{
+			From:      testPayer,
+			Permitted: evm.Permit2TokenPermissions{Token: testAsset, Amount: "125000"},
+			Spender:   evm.X402ExactPermit2ProxyAddress,
+			Nonce:     "7", Deadline: "9999999999",
+			Witness: evm.Permit2Witness{To: testRecipient, ValidAfter: "0"},
+		},
+	}).ToMap()
+	official := x402.PaymentPayload{
+		X402Version: X402Version, Payload: payload,
+		Accepted: requirement.SDK(), Resource: &resource,
+	}
+	decoded := decodeTestPayment(t, codec, official)
+	permit, ok := decoded.Permit2Authorization()
+	if !ok || permit.From != testPayer || permit.Token != testAsset ||
+		permit.Amount != "125000" || permit.Spender != strings.ToLower(evm.X402ExactPermit2ProxyAddress) ||
+		permit.Nonce != "7" || permit.Deadline != "9999999999" ||
+		permit.To != testRecipient || permit.ValidAfter != "0" ||
+		decoded.TransferMethod() != TransferMethodPermit2 ||
+		decoded.PaymentFlow() != PaymentFlowAuthorization || decoded.FingerprintVersion() != 2 {
+		t.Fatalf("decoded Permit2 payment=%+v permit=%+v", decoded, permit)
+	}
+	if err := requirement.Match(decoded); err != nil {
+		t.Fatalf("Permit2 requirement match: %v", err)
+	}
+	pepper := bytes.Repeat([]byte{0x72}, 32)
+	baseline, err := Fingerprint(pepper, decoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	alternateSignature := official
+	alternateSignature.Payload = (&evm.ExactPermit2Payload{
+		Signature: "0x" + strings.Repeat("ab", 65),
+		Permit2Authorization: evm.Permit2Authorization{
+			From:      testPayer,
+			Permitted: evm.Permit2TokenPermissions{Token: testAsset, Amount: "125000"},
+			Spender:   evm.X402ExactPermit2ProxyAddress,
+			Nonce:     "7", Deadline: "9999999999",
+			Witness: evm.Permit2Witness{To: testRecipient, ValidAfter: "0"},
+		},
+	}).ToMap()
+	alternate := decodeTestPayment(t, codec, alternateSignature)
+	if got, fingerprintErr := Fingerprint(pepper, alternate); fingerprintErr != nil || got != baseline {
+		t.Fatalf("signature changed Permit2 fingerprint got=%x error=%v", got, fingerprintErr)
+	}
+
+	mutations := map[string]func(*Permit2Authorization){
+		"owner":              func(value *Permit2Authorization) { value.From = testRecipient },
+		"token":              func(value *Permit2Authorization) { value.Token = testRecipient },
+		"amount":             func(value *Permit2Authorization) { value.Amount = "125001" },
+		"spender":            func(value *Permit2Authorization) { value.Spender = testRecipient },
+		"nonce":              func(value *Permit2Authorization) { value.Nonce = "8" },
+		"deadline":           func(value *Permit2Authorization) { value.Deadline = "9999999998" },
+		"witness recipient":  func(value *Permit2Authorization) { value.To = testPayer },
+		"witness validAfter": func(value *Permit2Authorization) { value.ValidAfter = "1" },
+	}
+	for name, mutate := range mutations {
+		changed := decoded
+		value := *decoded.permit2
+		mutate(&value)
+		changed.permit2 = &value
+		got, fingerprintErr := Fingerprint(pepper, changed)
+		if fingerprintErr != nil || got == baseline {
+			t.Errorf("%s fingerprint got=%x baseline=%x error=%v", name, got, baseline, fingerprintErr)
+		}
+	}
+
+	eipRequirement := testRequirement(t)
+	eipPayment := testSDKPayment(eipRequirement)
+	eipPayment.Accepted.Extra["assetTransferMethod"] = TransferMethodEIP3009
+	eipPayment.Accepted.Extra["paymentFlow"] = PaymentFlowAuthorization
+	eip := decodeTestPayment(t, codec, eipPayment)
+	if got, fingerprintErr := Fingerprint(pepper, eip); fingerprintErr != nil || got == baseline {
+		t.Fatalf("method-specific HMAC domains collided got=%x error=%v", got, fingerprintErr)
+	}
+
+	required, err := PaymentRequired([]Requirement{eipRequirement, requirement}, "payment_required")
+	if err != nil {
+		t.Fatal(err)
+	}
+	headerValue, err := codec.EncodePaymentRequired(required)
+	if err != nil {
+		t.Fatal(err)
+	}
+	header := make(http.Header)
+	header.Set(PaymentRequiredHeader, headerValue)
+	decodedRequirements, err := codec.DecodePaymentRequiredAll(header)
+	if err != nil || len(decodedRequirements) != 2 ||
+		decodedRequirements[0].TransferMethod() != TransferMethodEIP3009 ||
+		decodedRequirements[1].TransferMethod() != TransferMethodPermit2 {
+		t.Fatalf("multi-accept challenge=%+v error=%v", decodedRequirements, err)
+	}
+}
+
+func TestCodecSettlementPendingRequiresOneImmutableHash(t *testing.T) {
+	t.Parallel()
+	codec, err := NewCodec(DefaultMaxHeaderBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending := x402.SettleResponse{
+		Success: false, ErrorReason: "settlement_pending", Payer: testPayer,
+		Transaction: testTxHash, Network: "eip155:84532", Amount: "125000",
+	}
+	encoded, err := codec.EncodePaymentResponse(pending)
+	if err != nil {
+		t.Fatalf("encode pending response: %v", err)
+	}
+	if encoded == "" {
+		t.Fatal("pending response header is empty")
+	}
+	for name, mutate := range map[string]func(*x402.SettleResponse){
+		"missing hash":                   func(value *x402.SettleResponse) { value.Transaction = "" },
+		"malformed hash":                 func(value *x402.SettleResponse) { value.Transaction = "0x12" },
+		"wrong reason":                   func(value *x402.SettleResponse) { value.ErrorReason = "timeout" },
+		"successful with pending reason": func(value *x402.SettleResponse) { value.Success = true },
+	} {
+		candidate := pending
+		mutate(&candidate)
+		if _, encodeErr := codec.EncodePaymentResponse(candidate); encodeErr == nil {
+			t.Errorf("%s pending response encoded", name)
+		}
 	}
 }
 

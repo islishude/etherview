@@ -111,27 +111,61 @@ func decodePaymentJSON(decoded []byte) (Payment, error) {
 	if err != nil {
 		return Payment{}, boundaryError(PhaseHeader, FailureInvalid, CodeHeaderMalformed)
 	}
-	authorization, err := normalizeAuthorization(wire.Payload)
-	if err != nil {
-		return Payment{}, err
+	method := resolvedTransferMethod(requirement)
+	flow := resolvedPaymentFlow(requirement)
+	fingerprintVersion := 2
+	var (
+		authorization Authorization
+		permit2       *Permit2Authorization
+		canonicalBody any
+		sdkBody       map[string]any
+	)
+	switch method {
+	case TransferMethodEIP3009:
+		var exact exactPayloadWire
+		if err := decodeTypedJSON(wire.Payload, &exact); err != nil {
+			return Payment{}, boundaryError(PhaseHeader, FailureInvalid, CodeHeaderMalformed)
+		}
+		authorization, err = normalizeAuthorization(exact)
+		if err != nil {
+			return Payment{}, err
+		}
+		authorizationValue := authorizationWire{
+			From: authorization.From, To: authorization.To, Value: authorization.Value,
+			ValidAfter: authorization.ValidAfter, ValidBefore: authorization.ValidBefore,
+			Nonce: authorization.Nonce,
+		}
+		canonicalBody = canonicalExactPayload{
+			Signature: authorization.Signature, Authorization: authorizationValue,
+		}
+		sdkBody = map[string]any{
+			"signature": authorization.Signature,
+			"authorization": map[string]any{
+				"from": authorization.From, "to": authorization.To,
+				"value": authorization.Value, "validAfter": authorization.ValidAfter,
+				"validBefore": authorization.ValidBefore, "nonce": authorization.Nonce,
+			},
+		}
+		if requirement.Extra.AssetTransferMethod == "" && requirement.Extra.PaymentFlow == "" {
+			fingerprintVersion = 1
+		}
+	case TransferMethodPermit2:
+		value, normalized, permitErr := decodePermit2Payload(wire.Payload)
+		if permitErr != nil {
+			return Payment{}, permitErr
+		}
+		permit2 = &value
+		canonicalBody = normalized
+		sdkBody = permit2PayloadMap(value)
+	default:
+		return Payment{}, boundaryError(PhaseHeader, FailureInvalid, CodePaymentUnsupported)
 	}
 
-	authorizationWire := authorizationWire{
-		From:        authorization.From,
-		To:          authorization.To,
-		Value:       authorization.Value,
-		ValidAfter:  authorization.ValidAfter,
-		ValidBefore: authorization.ValidBefore,
-		Nonce:       authorization.Nonce,
-	}
 	canonical := canonicalPaymentWire{
 		X402Version: X402Version,
-		Payload: canonicalExactPayload{
-			Signature:     authorization.Signature,
-			Authorization: authorizationWire,
-		},
-		Accepted: requirement,
-		Resource: &resource,
+		Payload:     canonicalBody,
+		Accepted:    requirement,
+		Resource:    &resource,
 	}
 	canonicalJSON, err := json.Marshal(canonical)
 	if err != nil {
@@ -140,41 +174,46 @@ func decodePaymentJSON(decoded []byte) (Payment, error) {
 	sdkResource := resourceToSDK(resource)
 	sdkPayload := x402.PaymentPayload{
 		X402Version: X402Version,
-		Payload: map[string]any{
-			"signature": authorization.Signature,
-			"authorization": map[string]any{
-				"from":        authorization.From,
-				"to":          authorization.To,
-				"value":       authorization.Value,
-				"validAfter":  authorization.ValidAfter,
-				"validBefore": authorization.ValidBefore,
-				"nonce":       authorization.Nonce,
-			},
-		},
-		Accepted:   requirementToSDK(requirement),
-		Resource:   &sdkResource,
-		Extensions: nil,
+		Payload:     sdkBody,
+		Accepted:    requirementToSDK(requirement),
+		Resource:    &sdkResource,
+		Extensions:  nil,
 	}
 	return Payment{
-		payload:       sdkPayload,
-		authorization: authorization,
-		payloadJSON:   canonicalJSON,
+		payload:            sdkPayload,
+		authorization:      authorization,
+		permit2:            permit2,
+		transferMethod:     method,
+		paymentFlow:        flow,
+		fingerprintVersion: fingerprintVersion,
+		payloadJSON:        canonicalJSON,
 	}, nil
 }
 
 // DecodePaymentRequired strictly decodes one v2 exact-EVM PAYMENT-REQUIRED
 // challenge into its immutable requirement and resource binding.
 func (c *Codec) DecodePaymentRequired(header http.Header) (Requirement, error) {
+	requirements, err := c.DecodePaymentRequiredAll(header)
+	if err != nil || len(requirements) != 1 {
+		if err != nil {
+			return Requirement{}, err
+		}
+		return Requirement{}, boundaryError(PhaseRequirement, FailureInvalid, CodeRequirementInvalid)
+	}
+	return requirements[0], nil
+}
+
+func (c *Codec) DecodePaymentRequiredAll(header http.Header) ([]Requirement, error) {
 	decoded, err := c.decodeSingleHeader(
 		header,
 		PaymentRequiredHeader,
 		PhaseRequirement,
 	)
 	if err != nil {
-		return Requirement{}, err
+		return nil, err
 	}
 	if err := jsonstrict.Validate(decoded, hostileJSONLimits); err != nil {
-		return Requirement{}, boundaryError(
+		return nil, boundaryError(
 			PhaseRequirement,
 			FailureInvalid,
 			CodeRequirementInvalid,
@@ -182,39 +221,48 @@ func (c *Codec) DecodePaymentRequired(header http.Header) (Requirement, error) {
 	}
 	var wire paymentRequiredWire
 	if err := decodeTypedJSON(decoded, &wire); err != nil {
-		return Requirement{}, boundaryError(
+		return nil, boundaryError(
 			PhaseRequirement,
 			FailureInvalid,
 			CodeRequirementInvalid,
 		)
 	}
 	if wire.X402Version != X402Version || wire.Resource == nil ||
-		len(wire.Accepts) != 1 || wire.Extensions != nil ||
+		(len(wire.Accepts) < 1 || len(wire.Accepts) > 2) || wire.Extensions != nil ||
 		!boundedText(wire.Error, 0, 128) {
-		return Requirement{}, boundaryError(
+		return nil, boundaryError(
 			PhaseRequirement,
 			FailureInvalid,
 			CodeRequirementInvalid,
 		)
 	}
-	requirement, err := normalizeRequirement(wire.Accepts[0], PhaseRequirement)
-	if err != nil {
-		return Requirement{}, err
-	}
 	resource, err := normalizeResource(*wire.Resource, PhaseRequirement)
 	if err != nil {
-		return Requirement{}, err
+		return nil, err
 	}
-	return NewRequirement(RequirementOptions{
-		Network:            requirement.Network,
-		Asset:              requirement.Asset,
-		Amount:             requirement.Amount,
-		PayTo:              requirement.PayTo,
-		MaxTimeoutSeconds:  requirement.MaxTimeoutSeconds,
-		AssetEIP712Name:    requirement.Extra.Name,
-		AssetEIP712Version: requirement.Extra.Version,
-		Resource:           resourceToSDK(resource),
-	})
+	result := make([]Requirement, len(wire.Accepts))
+	seen := make(map[string]bool, len(wire.Accepts))
+	for index := range wire.Accepts {
+		requirement, requirementErr := normalizeRequirement(wire.Accepts[index], PhaseRequirement)
+		if requirementErr != nil || seen[resolvedTransferMethod(requirement)] {
+			return nil, boundaryError(PhaseRequirement, FailureInvalid, CodeRequirementInvalid)
+		}
+		seen[resolvedTransferMethod(requirement)] = true
+		result[index], requirementErr = NewRequirement(RequirementOptions{
+			Network: requirement.Network, Asset: requirement.Asset,
+			Amount: requirement.Amount, PayTo: requirement.PayTo,
+			MaxTimeoutSeconds:   requirement.MaxTimeoutSeconds,
+			AssetEIP712Name:     requirement.Extra.Name,
+			AssetEIP712Version:  requirement.Extra.Version,
+			AssetTransferMethod: requirement.Extra.AssetTransferMethod,
+			PaymentFlow:         requirement.Extra.PaymentFlow,
+			Resource:            resourceToSDK(resource),
+		})
+		if requirementErr != nil {
+			return nil, requirementErr
+		}
+	}
+	return result, nil
 }
 
 // DecodePaymentResponse strictly decodes one successful v2 settlement header.
@@ -292,7 +340,7 @@ func (c *Codec) DecodePaymentResponse(header http.Header) (x402.SettleResponse, 
 // EncodePaymentRequired creates a strict padded-base64 PAYMENT-REQUIRED value.
 func (c *Codec) EncodePaymentRequired(required x402.PaymentRequired) (string, error) {
 	if c == nil || required.X402Version != X402Version || required.Resource == nil ||
-		len(required.Accepts) != 1 || len(required.Extensions) != 0 ||
+		(len(required.Accepts) < 1 || len(required.Accepts) > 2) || len(required.Extensions) != 0 ||
 		!boundedText(required.Error, 0, 128) {
 		return "", boundaryError(PhaseRequirement, FailureInvalid, CodeRequirementInvalid)
 	}
@@ -300,30 +348,36 @@ func (c *Codec) EncodePaymentRequired(required x402.PaymentRequired) (string, er
 	if err != nil {
 		return "", err
 	}
-	accepted, err := requirementFromSDK(required.Accepts[0], PhaseRequirement)
-	if err != nil {
-		return "", err
+	accepted := make([]paymentRequirementWire, len(required.Accepts))
+	seen := make(map[string]bool, len(required.Accepts))
+	for index := range required.Accepts {
+		value, valueErr := requirementFromSDK(required.Accepts[index], PhaseRequirement)
+		if valueErr != nil {
+			return "", valueErr
+		}
+		method := resolvedTransferMethod(value)
+		if seen[method] {
+			return "", boundaryError(PhaseRequirement, FailureInvalid, CodeRequirementInvalid)
+		}
+		seen[method] = true
+		accepted[index] = value
 	}
 	wire := paymentRequiredWire{
 		X402Version: X402Version,
 		Error:       required.Error,
 		Resource:    &resource,
-		Accepts:     []paymentRequirementWire{accepted},
+		Accepts:     accepted,
 	}
 	return c.encodeHeader(PhaseRequirement, wire)
 }
 
 // EncodePaymentResponse creates a strict padded-base64 PAYMENT-RESPONSE value.
 func (c *Codec) EncodePaymentResponse(response x402.SettleResponse) (string, error) {
-	if c == nil || !response.Success || response.ErrorReason != "" || response.ErrorMessage != "" ||
+	if c == nil ||
 		len(response.Extensions) != 0 || len(response.Extra) != 0 {
 		return "", boundaryError(PhaseSettle, FailureInvalid, CodeFacilitatorResponseInvalid)
 	}
 	payer, ok := canonicalAddress(response.Payer)
-	if !ok {
-		return "", boundaryError(PhaseSettle, FailureInvalid, CodeFacilitatorResponseInvalid)
-	}
-	transaction, ok := canonicalFixedHex(response.Transaction)
 	if !ok {
 		return "", boundaryError(PhaseSettle, FailureInvalid, CodeFacilitatorResponseInvalid)
 	}
@@ -339,12 +393,19 @@ func (c *Codec) EncodePaymentResponse(response x402.SettleResponse) (string, err
 			return "", boundaryError(PhaseSettle, FailureInvalid, CodeFacilitatorResponseInvalid)
 		}
 	}
+	transaction, transactionOK := canonicalFixedHex(response.Transaction)
+	if response.Success {
+		if !transactionOK || response.ErrorReason != "" || response.ErrorMessage != "" {
+			return "", boundaryError(PhaseSettle, FailureInvalid, CodeFacilitatorResponseInvalid)
+		}
+	} else if response.ErrorReason != "settlement_pending" || !transactionOK ||
+		!boundedText(response.ErrorMessage, 0, 512) {
+		return "", boundaryError(PhaseSettle, FailureInvalid, CodeFacilitatorResponseInvalid)
+	}
 	wire := x402.SettleResponse{
-		Success:     true,
-		Payer:       payer,
-		Transaction: transaction,
-		Network:     x402.Network(network),
-		Amount:      amount,
+		Success: response.Success, ErrorReason: response.ErrorReason,
+		ErrorMessage: response.ErrorMessage, Payer: payer,
+		Transaction: transaction, Network: x402.Network(network), Amount: amount,
 	}
 	return c.encodeHeader(PhaseSettle, wire)
 }
@@ -377,13 +438,27 @@ func decodeTypedJSON(data []byte, destination any) error {
 var errUnexpectedJSON = io.ErrUnexpectedEOF
 
 func requirementFromSDK(requirement x402.PaymentRequirements, phase Phase) (paymentRequirementWire, error) {
-	if len(requirement.Extra) != 2 {
+	if len(requirement.Extra) == 0 || len(requirement.Extra) > 4 {
 		return paymentRequirementWire{}, boundaryError(phase, FailureInvalid, CodeRequirementInvalid)
 	}
-	name, nameOK := requirement.Extra["name"].(string)
-	version, versionOK := requirement.Extra["version"].(string)
-	if !nameOK || !versionOK {
-		return paymentRequirementWire{}, boundaryError(phase, FailureInvalid, CodeRequirementInvalid)
+	var extra assetExtraWire
+	for key, raw := range requirement.Extra {
+		value, ok := raw.(string)
+		if !ok {
+			return paymentRequirementWire{}, boundaryError(phase, FailureInvalid, CodeRequirementInvalid)
+		}
+		switch key {
+		case "name":
+			extra.Name = value
+		case "version":
+			extra.Version = value
+		case "assetTransferMethod":
+			extra.AssetTransferMethod = value
+		case "paymentFlow":
+			extra.PaymentFlow = value
+		default:
+			return paymentRequirementWire{}, boundaryError(phase, FailureInvalid, CodeRequirementInvalid)
+		}
 	}
 	return normalizeRequirement(paymentRequirementWire{
 		Scheme:            requirement.Scheme,
@@ -392,9 +467,6 @@ func requirementFromSDK(requirement x402.PaymentRequirements, phase Phase) (paym
 		Amount:            requirement.Amount,
 		PayTo:             requirement.PayTo,
 		MaxTimeoutSeconds: requirement.MaxTimeoutSeconds,
-		Extra: &assetExtraWire{
-			Name:    name,
-			Version: version,
-		},
+		Extra:             &extra,
 	}, phase)
 }

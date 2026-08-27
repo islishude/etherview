@@ -49,7 +49,7 @@ export function AccountPage({
   const sessionUser = auth.session.user ?? undefined;
   const expectedChainID = publicConfig.data?.chain_id;
   const billingEnabled =
-    publicConfig.data?.features.x402_billing === true;
+    publicConfig.data?.features.api_billing === true;
   const apiKeysEnabled =
     publicConfig.data?.features.user_api_keys === true;
   const activeTab = tab === "billing" && !billingEnabled ? "overview" : tab;
@@ -649,7 +649,7 @@ export function AdminUsersPage() {
   const auth = useAuth();
   const publicConfig = usePublicConfig();
   const billingEnabled =
-    publicConfig.data?.features.x402_billing === true;
+    publicConfig.data?.features.api_billing === true;
   const [cursors, setCursors] = useState([""]);
   const [announcement, setAnnouncement] = useState<string>();
   const cursor = cursors.at(-1) || undefined;

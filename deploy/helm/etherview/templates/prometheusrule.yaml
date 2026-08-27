@@ -111,7 +111,7 @@ spec:
           annotations:
             summary: Etherview recovered an HTTP handler panic
         - alert: EtherviewX402FacilitatorUnavailable
-          expr: sum(increase(etherview_x402_requests_total{etherview_release="{{ .Release.Name }}",etherview_namespace="{{ .Release.Namespace }}",result="verify_unavailable"}[5m])) > 0
+          expr: sum(increase(etherview_billing_topups_total{etherview_release="{{ .Release.Name }}",etherview_namespace="{{ .Release.Namespace }}",result="verify_unavailable"}[5m])) > 0
           for: 5m
           labels:
             {{- include "etherview.alertScopeLabels" . | nindent 12 }}
@@ -119,14 +119,14 @@ spec:
           annotations:
             summary: Etherview x402 facilitator verification is unavailable
         - alert: EtherviewX402LedgerUnavailable
-          expr: sum(increase(etherview_x402_requests_total{etherview_release="{{ .Release.Name }}",etherview_namespace="{{ .Release.Namespace }}",result="ledger_unavailable"}[5m])) > 0
+          expr: sum(increase(etherview_billing_topups_total{etherview_release="{{ .Release.Name }}",etherview_namespace="{{ .Release.Namespace }}",result="ledger_unavailable"}[5m])) + sum(increase(etherview_billing_usage_total{etherview_release="{{ .Release.Name }}",etherview_namespace="{{ .Release.Namespace }}",result=~"ledger_unavailable|commit_unknown"}[5m])) > 0
           labels:
             {{- include "etherview.alertScopeLabels" . | nindent 12 }}
             severity: critical
           annotations:
             summary: Etherview cannot durably complete an x402 payment transition
         - alert: EtherviewX402SettlementReconciliationRequired
-          expr: max(etherview_x402_stale_settling_payments{etherview_release="{{ .Release.Name }}",etherview_namespace="{{ .Release.Namespace }}",reason=~"settlement_unknown|unmarked_after_timeout"}) > 0
+          expr: max(etherview_x402_stale_settling_payments{etherview_release="{{ .Release.Name }}",etherview_namespace="{{ .Release.Namespace }}",reason=~"settlement_unknown|settlement_pending|unmarked_after_timeout"}) > 0
           for: 0m
           labels:
             {{- include "etherview.alertScopeLabels" . | nindent 12 }}

@@ -269,6 +269,120 @@ paths:
                 $ref: "#/components/schemas/BillingConfigResponse"
         default:
           $ref: "#/components/responses/Error"
+  /billing/account:
+    get:
+      operationId: getCurrentBillingAccount
+      tags: [billing]
+      security:
+        - UserSession: []
+      responses:
+        "200":
+          description: Current authenticated user's prepaid API balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingAccountResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /billing/topup-intents:
+    get:
+      operationId: listCurrentBillingTopupIntents
+      tags: [billing]
+      security:
+        - UserSession: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Current authenticated user's durable top-up history.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingTopupIntentListResponse"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: createBillingTopupIntent
+      tags: [billing]
+      security:
+        - UserSession: []
+      parameters:
+        - $ref: "#/components/parameters/CSRFToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingTopupIntentCreateRequest"
+      responses:
+        "201":
+          description: Bounded top-up intent awaiting x402 payment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingTopupIntentResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /billing/topup-intents/{id}:
+    get:
+      operationId: getBillingTopupIntent
+      tags: [billing]
+      security:
+        - UserSession: []
+      parameters:
+        - $ref: "#/components/parameters/BillingTopupIntentID"
+      responses:
+        "200":
+          description: Current durable top-up state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingTopupIntentResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /billing/topup-intents/{id}/pay:
+    post:
+      operationId: payBillingTopupIntent
+      tags: [billing]
+      security:
+        - UserSession: []
+      parameters:
+        - $ref: "#/components/parameters/BillingTopupIntentID"
+        - $ref: "#/components/parameters/CSRFToken"
+        - $ref: "#/components/parameters/PaymentSignature"
+      responses:
+        "200":
+          description: Settled top-up and updated prepaid balance.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingTopupReceiptResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+        default:
+          $ref: "#/components/responses/Error"
+  /billing/usage:
+    get:
+      operationId: listCurrentUserBillingUsage
+      tags: [billing]
+      security:
+        - UserSession: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Current user's prepaid API usage charges.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingUsageListResponse"
+        default:
+          $ref: "#/components/responses/Error"
   /billing/payments:
     get:
       operationId: listCurrentUserBillingPayments
@@ -311,6 +425,99 @@ paths:
                 $ref: "#/components/schemas/BillingPaymentListResponse"
         default:
           $ref: "#/components/responses/Error"
+  /admin/billing/accounts:
+    get:
+      operationId: listAdminBillingAccounts
+      tags: [billing, admin]
+      security:
+        - UserSession: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Administrator prepaid account ledger view.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingAccountListResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /admin/billing/accounts/{id}/adjustments:
+    post:
+      operationId: adjustAdminBillingAccount
+      tags: [billing, admin]
+      security:
+        - UserSession: []
+      parameters:
+        - $ref: "#/components/parameters/UserID"
+        - $ref: "#/components/parameters/CSRFToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingAdjustmentRequest"
+      responses:
+        "200":
+          description: Atomically adjusted prepaid account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingAccountResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /admin/billing/topups:
+    get:
+      operationId: listAdminBillingTopups
+      tags: [billing, admin]
+      security:
+        - UserSession: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Administrator durable top-up intent view.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingTopupIntentListResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /admin/billing/usage:
+    get:
+      operationId: listAdminBillingUsage
+      tags: [billing, admin]
+      security:
+        - UserSession: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Administrator durable prepaid API usage view.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingUsageListResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /admin/billing/prepaid-summary:
+    get:
+      operationId: getAdminPrepaidBillingSummary
+      tags: [billing, admin]
+      security:
+        - UserSession: []
+      responses:
+        "200":
+          description: Exact aggregate prepaid account counters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingAccountSummaryResponse"
+        default:
+          $ref: "#/components/responses/Error"
   /admin/billing/summary:
     get:
       operationId: getAdminBillingSummary
@@ -338,21 +545,15 @@ paths:
       operationId: listBlocks
       tags: [blocks]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
       responses:
         "200":
           description: Canonical blocks ordered newest first.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/BlockListResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /blocks/{id}:
@@ -360,7 +561,6 @@ paths:
       operationId: getBlock
       tags: [blocks]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - name: id
           in: path
           required: true
@@ -371,15 +571,10 @@ paths:
       responses:
         "200":
           description: Block selected by canonical height or exact hash.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/BlockResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /blocks/{id}/transactions:
@@ -387,7 +582,6 @@ paths:
       operationId: listBlockTransactions
       tags: [blocks, transactions]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - name: id
           in: path
           required: true
@@ -400,15 +594,10 @@ paths:
       responses:
         "200":
           description: Transactions included by the selected exact block identity.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TransactionListResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /genesis/accounts:
@@ -433,21 +622,15 @@ paths:
       operationId: listTransactions
       tags: [transactions]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
       responses:
         "200":
           description: Canonical transactions ordered by block and transaction index, newest first.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TransactionListResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /transactions/{hash}:
@@ -455,20 +638,14 @@ paths:
       operationId: getTransaction
       tags: [transactions]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/TransactionHash"
       responses:
         "200":
           description: Included, pending, or directly replaced transaction detail from durable PostgreSQL state.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TransactionResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /pending:
@@ -477,21 +654,15 @@ paths:
       tags: [transactions]
       description: Transactions from one immutable, successfully polled pending-block snapshot.
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
       responses:
         "200":
           description: Pending transactions ordered by first-seen time and hash, newest first.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/PendingTransactionListResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /transactions/{hash}/trace:
@@ -499,20 +670,14 @@ paths:
       operationId: getTransactionTrace
       tags: [transactions, traces]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/TransactionHash"
       responses:
         "200":
           description: Normalized canonical transaction call tree.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TransactionTraceResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /transactions/{hash}/calldata:
@@ -520,20 +685,14 @@ paths:
       operationId: getTransactionCalldata
       tags: [transactions]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/TransactionHash"
       responses:
         "200":
           description: Exact transaction-time execution identity and calldata decoding.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TransactionCalldataResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /transactions/{hash}/failure:
@@ -541,20 +700,14 @@ paths:
       operationId: getTransactionFailure
       tags: [transactions, traces]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/TransactionHash"
       responses:
         "200":
           description: Canonical root failure and exact transaction-time revert decoding.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TransactionFailureResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /transactions/{hash}/internal-transactions:
@@ -562,22 +715,16 @@ paths:
       operationId: listTransactionInternalTransactions
       tags: [transactions, traces]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/TransactionHash"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
       responses:
         "200":
           description: Successful non-root value-bearing trace frames for the exact transaction inclusion.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TransactionInternalTransactionResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /transactions/{hash}/token-transfers:
@@ -585,22 +732,16 @@ paths:
       operationId: listTransactionTokenTransfers
       tags: [transactions, tokens]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/TransactionHash"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
       responses:
         "200":
           description: Token events for the resolved transaction inclusion.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TransactionTokenTransferResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /transactions/{hash}/logs:
@@ -608,22 +749,16 @@ paths:
       operationId: listTransactionLogs
       tags: [transactions]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/TransactionHash"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
       responses:
         "200":
           description: Raw receipt logs for the resolved transaction inclusion.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TransactionLogResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /transactions/{hash}/state-changes:
@@ -631,22 +766,16 @@ paths:
       operationId: listTransactionStateChanges
       tags: [transactions, traces]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/TransactionHash"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
       responses:
         "200":
           description: Exact published account and storage changes for the resolved transaction inclusion.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TransactionStateChangeResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /transactions/{hash}/authorizations:
@@ -654,22 +783,16 @@ paths:
       operationId: listTransactionAuthorizations
       tags: [transactions, state]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/TransactionHash"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
       responses:
         "200":
           description: Exact EIP-7702 authorization tuples and their transaction-time application outcomes.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TransactionAuthorizationResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /address-names:
@@ -677,7 +800,6 @@ paths:
       operationId: listAddressNames
       tags: [addresses, ens]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - name: addresses
           in: query
           required: true
@@ -694,15 +816,10 @@ paths:
       responses:
         "200":
           description: Snapshot-stable current primary names in request order; individual unavailable entries retain their exact addresses.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AddressNamePageResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         "503":
           $ref: "#/components/responses/Error"
         default:
@@ -712,20 +829,14 @@ paths:
       operationId: getAddress
       tags: [addresses]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/Address"
       responses:
         "200":
           description: Address summary at one canonical block.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AddressResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /addresses/{address}/delegations:
@@ -733,22 +844,16 @@ paths:
       operationId: listAddressDelegations
       tags: [addresses, state]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/Address"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
       responses:
         "200":
           description: Canonical EIP-7702 delegation, redelegation, and clearing history, newest first by numeric block, transaction, and authorization position.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/DelegationHistoryResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /addresses/{address}/delegation:
@@ -756,20 +861,14 @@ paths:
       operationId: getAddressDelegation
       tags: [addresses, state]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/Address"
       responses:
         "200":
           description: Writer-authoritative delegation binding at the exact canonical tip.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/DelegationBindingResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /addresses/{address}/transactions:
@@ -777,22 +876,16 @@ paths:
       operationId: listAddressTransactions
       tags: [addresses, transactions]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/Address"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
       responses:
         "200":
           description: Canonical top-level transactions involving the address, newest first.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TransactionListResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /addresses/{address}/withdrawals:
@@ -800,22 +893,16 @@ paths:
       operationId: listAddressWithdrawals
       tags: [addresses, blocks]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/Address"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
       responses:
         "200":
           description: Canonical withdrawals credited to the address, newest first by numeric withdrawal index.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AddressWithdrawalListResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /addresses/{address}/internal-transactions:
@@ -823,22 +910,16 @@ paths:
       operationId: listAddressInternalTransactions
       tags: [addresses, transactions, traces]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/Address"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
       responses:
         "200":
           description: Canonical non-root trace frames involving the address, newest first.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AddressInternalTransactionListResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /addresses/{address}/erc20-transfers:
@@ -846,22 +927,16 @@ paths:
       operationId: listAddressERC20Transfers
       tags: [addresses, tokens, transactions]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/Address"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
       responses:
         "200":
           description: Canonical ERC-20 transfers involving the address, newest first.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AddressTokenTransferListResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /addresses/{address}/nft-transfers:
@@ -869,22 +944,16 @@ paths:
       operationId: listAddressNFTTransfers
       tags: [addresses, tokens, nfts, transactions]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/Address"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
       responses:
         "200":
           description: Canonical ERC-721 and ERC-1155 transfers involving the address, newest first.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AddressTokenTransferListResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /addresses/{address}/nfts:
@@ -892,22 +961,16 @@ paths:
       operationId: listAddressNFTBalances
       tags: [addresses, tokens, nfts]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/Address"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
       responses:
         "200":
           description: Positive canonical ERC-721/ERC-1155 balances for an owner.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/NFTBalanceListResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /addresses/{address}/erc20-balances:
@@ -915,22 +978,16 @@ paths:
       operationId: listAddressERC20Balances
       tags: [addresses, tokens]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/Address"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
       responses:
         "200":
           description: Positive exact-block ERC-20 balances for an owner.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ERC20BalanceListResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /tokens:
@@ -938,21 +995,15 @@ paths:
       operationId: listTokens
       tags: [tokens]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
       responses:
         "200":
           description: Discovered token contracts at a stable canonical snapshot.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TokenListResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /tokens/{address}:
@@ -960,20 +1011,14 @@ paths:
       operationId: getToken
       tags: [tokens]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/Address"
       responses:
         "200":
           description: A discovered token contract and metadata state.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TokenResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /tokens/{address}/transfers:
@@ -981,22 +1026,16 @@ paths:
       operationId: listTokenTransfers
       tags: [tokens]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/Address"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
       responses:
         "200":
           description: Canonical token events ordered newest first.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TokenEventListResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /nfts/{address}/{token_id}:
@@ -1004,7 +1043,6 @@ paths:
       operationId: getNFTOwner
       tags: [tokens, nfts]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/Address"
         - name: token_id
           in: path
@@ -1014,15 +1052,10 @@ paths:
       responses:
         "200":
           description: Canonical NFT ownership or balance for one token instance.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/NFTOwnershipResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /nfts/{address}/{token_id}/metadata:
@@ -1036,7 +1069,6 @@ paths:
         external URL, or image bytes. A returned image URL is an unverified
         external navigation target, not a media-safety attestation.
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/Address"
         - name: token_id
           in: path
@@ -1046,15 +1078,10 @@ paths:
       responses:
         "200":
           description: Current canonical NFT metadata state and bounded display fields.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/NFTMetadataResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /nfts/{address}/{token_id}/media:
@@ -1145,7 +1172,6 @@ paths:
       operationId: getBlockStats
       tags: [stats]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - name: from_block
           in: query
           required: true
@@ -1159,15 +1185,10 @@ paths:
       responses:
         "200":
           description: Complete canonical per-block statistics for a closed range.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/BlockStatListResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /stats/summary:
@@ -1175,7 +1196,6 @@ paths:
       operationId: getAggregateStats
       tags: [stats]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - name: from_block
           in: query
           required: true
@@ -1189,15 +1209,10 @@ paths:
       responses:
         "200":
           description: Canonical aggregate statistics with explicit range completeness.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AggregateStatsResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /stats/charts/overview:
@@ -1205,19 +1220,13 @@ paths:
       operationId: getChartOverview
       tags: [stats]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
       responses:
         "200":
           description: Recent execution analytics with previous-window comparisons, previews, and backfill coverage.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ChartOverviewResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         "503":
           $ref: "#/components/responses/Error"
         default:
@@ -1227,7 +1236,6 @@ paths:
       operationId: getChartMetric
       tags: [stats]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - name: metric
           in: path
           required: true
@@ -1257,15 +1265,10 @@ paths:
       responses:
         "200":
           description: One bounded exact execution metric series from reorg-safe hourly rollups.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ChartMetricResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         "422":
           $ref: "#/components/responses/Error"
         "503":
@@ -1277,7 +1280,6 @@ paths:
       operationId: search
       tags: [search]
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - name: q
           in: query
           required: true
@@ -1291,15 +1293,10 @@ paths:
       responses:
         "200":
           description: Ranked, non-auto-redirecting search results.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/SearchResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /events:
@@ -1480,9 +1477,7 @@ paths:
       tags: [verification]
       security:
         - APIKey: []
-        - X402Payment: []
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - name: id
           in: path
           required: true
@@ -1492,15 +1487,10 @@ paths:
       responses:
         "200":
           description: Current verifier job state and terminal discriminated outcome.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/VerificationJobResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /verifier/solidity/multipart:
@@ -1653,10 +1643,6 @@ components:
       type: apiKey
       in: cookie
       name: etherview_session
-    X402Payment:
-      type: apiKey
-      in: header
-      name: PAYMENT-SIGNATURE
   parameters:
     Cursor:
       name: cursor
@@ -1713,6 +1699,13 @@ components:
       schema:
         type: string
         pattern: '^[a-z2-7]{10}$'
+    BillingTopupIntentID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     CSRFToken:
       name: X-CSRF-Token
       in: header
@@ -1724,7 +1717,7 @@ components:
     PaymentSignature:
       name: PAYMENT-SIGNATURE
       in: header
-      description: A single x402 v2 exact-EVM payment payload for this canonical resource.
+      description: Optional x402 v2 exact-EVM authorization for this top-up intent; absence returns the payment challenge.
       schema:
         type: string
         minLength: 1
@@ -2051,31 +2044,37 @@ components:
       properties:
         revoked_sessions:
           $ref: "#/components/schemas/Quantity"
-    BillingAccess:
+    BillingAssetTransferMethod:
       type: string
-      enum: [x402, api_key_or_x402]
+      enum: [eip3009, permit2]
     BillingPaymentState:
       type: string
       enum: [reserved, verified, settling, settled, failed, expired]
-    BillingRoutePrice:
+    BillingOperationPrice:
       type: object
       additionalProperties: false
-      required: [operation, access, amount_atomic]
+      required: [operation, amount_atomic]
       properties:
         operation:
           type: string
           minLength: 1
           maxLength: 128
-        access:
-          $ref: "#/components/schemas/BillingAccess"
         amount_atomic:
           $ref: "#/components/schemas/Quantity"
     BillingConfig:
       type: object
       additionalProperties: false
-      required: [enabled, x402_version, scheme, routes]
+      required:
+        - api_billing_enabled
+        - x402_topups_enabled
+        - x402_version
+        - scheme
+        - asset_transfer_methods
+        - operations
       properties:
-        enabled:
+        api_billing_enabled:
+          type: boolean
+        x402_topups_enabled:
           type: boolean
         x402_version:
           type: integer
@@ -2104,17 +2103,228 @@ components:
           maxLength: 32
         recipient:
           $ref: "#/components/schemas/Address"
-        routes:
+        minimum_topup_amount_atomic:
+          $ref: "#/components/schemas/Quantity"
+        maximum_topup_amount_atomic:
+          $ref: "#/components/schemas/Quantity"
+        topup_intent_ttl_seconds:
+          type: integer
+          minimum: 60
+          maximum: 3600
+        asset_transfer_methods:
           type: array
-          maxItems: 36
+          maxItems: 2
+          uniqueItems: true
           items:
-            $ref: "#/components/schemas/BillingRoutePrice"
+            $ref: "#/components/schemas/BillingAssetTransferMethod"
+        operations:
+          type: array
+          maxItems: 22
+          items:
+            $ref: "#/components/schemas/BillingOperationPrice"
+    BillingAccount:
+      type: object
+      additionalProperties: false
+      required:
+        - user_id
+        - network
+        - asset
+        - total_credit_atomic
+        - total_debit_atomic
+        - reserved_atomic
+        - available_atomic
+        - created_at
+        - updated_at
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        network:
+          type: string
+          pattern: '^eip155:[1-9][0-9]*$'
+        asset:
+          $ref: "#/components/schemas/Address"
+        total_credit_atomic:
+          $ref: "#/components/schemas/BillingAggregateQuantity"
+        total_debit_atomic:
+          $ref: "#/components/schemas/BillingAggregateQuantity"
+        reserved_atomic:
+          $ref: "#/components/schemas/BillingAggregateQuantity"
+        available_atomic:
+          $ref: "#/components/schemas/BillingAggregateQuantity"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    BillingTopupIntentState:
+      type: string
+      enum: [open, processing, settling, credited, failed, expired]
+    BillingTopupIntentCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [amount_atomic]
+      properties:
+        amount_atomic:
+          $ref: "#/components/schemas/Quantity"
+    BillingAdjustmentRequest:
+      type: object
+      additionalProperties: false
+      required: [direction, amount_atomic, reason]
+      properties:
+        direction:
+          type: string
+          enum: [credit, debit]
+        amount_atomic:
+          $ref: "#/components/schemas/Quantity"
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 256
+    BillingTopupIntent:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - user_id
+        - amount_atomic
+        - network
+        - asset
+        - recipient
+        - payer
+        - state
+        - expires_at
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        amount_atomic:
+          $ref: "#/components/schemas/Quantity"
+        network:
+          type: string
+        asset:
+          $ref: "#/components/schemas/Address"
+        recipient:
+          $ref: "#/components/schemas/Address"
+        payer:
+          $ref: "#/components/schemas/Address"
+        state:
+          $ref: "#/components/schemas/BillingTopupIntentState"
+        payment_id:
+          type: string
+          format: uuid
+          nullable: true
+        transaction_hash:
+          allOf:
+            - $ref: "#/components/schemas/Hash"
+          nullable: true
+        failure_code:
+          type: string
+          nullable: true
+        expires_at:
+          type: string
+          format: date-time
+        credited_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    BillingUsageState:
+      type: string
+      enum: [reserved, committed, released, expired]
+    BillingUsage:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - user_id
+        - api_key_prefix
+        - method
+        - operation
+        - amount_atomic
+        - state
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        api_key_prefix:
+          type: string
+          pattern: '^[a-z2-7]{10}$'
+        method:
+          type: string
+          enum: [GET, POST]
+        operation:
+          type: string
+          minLength: 1
+          maxLength: 128
+        amount_atomic:
+          $ref: "#/components/schemas/Quantity"
+        state:
+          $ref: "#/components/schemas/BillingUsageState"
+        failure_code:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    BillingTopupReceipt:
+      type: object
+      additionalProperties: false
+      required: [intent, account]
+      properties:
+        intent:
+          $ref: "#/components/schemas/BillingTopupIntent"
+        account:
+          $ref: "#/components/schemas/BillingAccount"
+    BillingAccountSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - account_count
+        - total_credit_atomic
+        - total_debit_atomic
+        - reserved_atomic
+        - available_atomic
+      properties:
+        account_count:
+          $ref: "#/components/schemas/BillingAggregateQuantity"
+        total_credit_atomic:
+          $ref: "#/components/schemas/BillingAggregateQuantity"
+        total_debit_atomic:
+          $ref: "#/components/schemas/BillingAggregateQuantity"
+        reserved_atomic:
+          $ref: "#/components/schemas/BillingAggregateQuantity"
+        available_atomic:
+          $ref: "#/components/schemas/BillingAggregateQuantity"
     BillingPayment:
       type: object
       additionalProperties: false
       required:
         - id
         - operation
+        - method
+        - purpose
+        - asset_transfer_method
+        - payment_flow
         - state
         - network
         - asset
@@ -2130,6 +2340,21 @@ components:
           type: string
           minLength: 1
           maxLength: 128
+        method:
+          type: string
+          enum: [GET, POST]
+        purpose:
+          type: string
+          enum: [legacy_request, account_topup]
+        asset_transfer_method:
+          $ref: "#/components/schemas/BillingAssetTransferMethod"
+        payment_flow:
+          type: string
+          enum: [authorization]
+        topup_intent_id:
+          type: string
+          format: uuid
+          nullable: true
         state:
           $ref: "#/components/schemas/BillingPaymentState"
         network:
@@ -5569,6 +5794,68 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/BillingConfig"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    BillingAccountResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/BillingAccount"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    BillingTopupIntentResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/BillingTopupIntent"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    BillingTopupIntentListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/BillingTopupIntent"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    BillingAccountListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/BillingAccount"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    BillingAccountSummaryResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/BillingAccountSummary"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    BillingTopupReceiptResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/BillingTopupReceipt"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    BillingUsageListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/BillingUsage"
         meta:
           $ref: "#/components/schemas/Meta"
     BillingPaymentListResponse:

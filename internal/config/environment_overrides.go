@@ -27,6 +27,12 @@ func applyRoleEnvironment(cfg *Config, lookup func(string) (string, bool), force
 	if err := setBool(lookup, "FEATURE_X402_BILLING", &cfg.Features.X402Billing); err != nil {
 		return false, err
 	}
+	if err := setBool(lookup, "FEATURE_API_BILLING", &cfg.Features.APIBilling); err != nil {
+		return false, err
+	}
+	if err := setBool(lookup, "FEATURE_X402_TOPUPS", &cfg.Features.X402Topups); err != nil {
+		return false, err
+	}
 	if forcedRoles != nil {
 		cfg.Runtime.Roles = slices.Clone(forcedRoles)
 	} else if value, ok := lookup(envPrefix + "ROLES"); ok {
@@ -92,7 +98,7 @@ func applySecretEnvironment(cfg *Config, lookup func(string) (string, bool), rea
 			cfg.UserAuth.SessionPepper = sessionPepper
 		}
 	}
-	if apiRole && cfg.Features.X402Billing {
+	if apiRole && cfg.Features.X402Topups {
 		fingerprintPepper, err := lookupValueOrFile("X402_FINGERPRINT_PEPPER", lookup, readFile)
 		if err != nil {
 			return err
@@ -350,41 +356,43 @@ func applyNumericEnvironment(cfg *Config, lookup func(string) (string, bool)) er
 
 func applyDurationEnvironment(cfg *Config, lookup func(string) (string, bool)) error {
 	for name, target := range map[string]*time.Duration{
-		"SERVER_SHUTDOWN_TIMEOUT":      &cfg.Server.ShutdownTimeout,
-		"SERVER_READ_TIMEOUT":          &cfg.Server.ReadTimeout,
-		"SERVER_WRITE_TIMEOUT":         &cfg.Server.WriteTimeout,
-		"DATABASE_CONNECT_TIMEOUT":     &cfg.Database.ConnectTimeout,
-		"DATABASE_STATEMENT_TIMEOUT":   &cfg.Database.StatementTimeout,
-		"RPC_REQUEST_TIMEOUT":          &cfg.RPC.RequestTimeout,
-		"CHAIN_GENESIS_FETCH_TIMEOUT":  &cfg.Chain.GenesisFetchTimeout,
-		"POLL_INTERVAL":                &cfg.Runtime.PollInterval,
-		"LEASE_DURATION":               &cfg.Runtime.LeaseDuration,
-		"MEMPOOL_POLL_INTERVAL":        &cfg.Mempool.PollInterval,
-		"MEMPOOL_RETENTION":            &cfg.Mempool.Retention,
-		"MAINTENANCE_INTERVAL":         &cfg.Maintenance.Interval,
-		"METADATA_FETCH_TIMEOUT":       &cfg.Metadata.FetchTimeout,
-		"ADAPTER_FETCH_TIMEOUT":        &cfg.Adapters.FetchTimeout,
-		"ADAPTER_CONNECT_TIMEOUT":      &cfg.Adapters.ConnectTimeout,
-		"ADAPTER_OPERATION_TIMEOUT":    &cfg.Adapters.OperationTimeout,
-		"REDIS_CACHE_TTL":              &cfg.Adapters.RedisCacheTTL,
-		"ADAPTER_PRICE_FRESHNESS":      &cfg.Adapters.PriceFreshness,
-		"ADAPTER_FAILURE_TTL":          &cfg.Adapters.FailureTTL,
-		"ENS_RESOLUTION_FRESHNESS":     &cfg.ENS.ResolutionFreshness,
-		"ENS_SNAPSHOT_TTL":             &cfg.ENS.SnapshotTTL,
-		"ENS_FAILURE_TTL":              &cfg.ENS.FailureTTL,
-		"ENS_REQUEST_TIMEOUT":          &cfg.ENS.RequestTimeout,
-		"VERIFICATION_TIMEOUT":         &cfg.Verification.Timeout,
-		"SOURCIFY_TIMEOUT":             &cfg.Sourcify.Timeout,
-		"SOURCIFY_POLL_INTERVAL":       &cfg.Sourcify.PollInterval,
-		"TRACE_EXPORT_TIMEOUT":         &cfg.Observability.TraceExportTimeout,
-		"METRICS_REFRESH_INTERVAL":     &cfg.Observability.MetricsRefreshInterval,
-		"SYNC_PROGRESS_LOG_INTERVAL":   &cfg.Observability.SyncProgressLogInterval,
-		"USER_AUTH_CHALLENGE_TTL":      &cfg.UserAuth.ChallengeTTL,
-		"USER_AUTH_SESSION_TTL":        &cfg.UserAuth.SessionTTL,
-		"USER_AUTH_LAST_USED_INTERVAL": &cfg.UserAuth.LastUsedInterval,
-		"X402_FACILITATOR_TIMEOUT":     &cfg.Billing.FacilitatorTimeout,
-		"X402_REQUIREMENT_MAX_TIMEOUT": &cfg.Billing.RequirementMaxTimeout,
-		"X402_RESERVATION_TTL":         &cfg.Billing.ReservationTTL,
+		"SERVER_SHUTDOWN_TIMEOUT":       &cfg.Server.ShutdownTimeout,
+		"SERVER_READ_TIMEOUT":           &cfg.Server.ReadTimeout,
+		"SERVER_WRITE_TIMEOUT":          &cfg.Server.WriteTimeout,
+		"DATABASE_CONNECT_TIMEOUT":      &cfg.Database.ConnectTimeout,
+		"DATABASE_STATEMENT_TIMEOUT":    &cfg.Database.StatementTimeout,
+		"RPC_REQUEST_TIMEOUT":           &cfg.RPC.RequestTimeout,
+		"CHAIN_GENESIS_FETCH_TIMEOUT":   &cfg.Chain.GenesisFetchTimeout,
+		"POLL_INTERVAL":                 &cfg.Runtime.PollInterval,
+		"LEASE_DURATION":                &cfg.Runtime.LeaseDuration,
+		"MEMPOOL_POLL_INTERVAL":         &cfg.Mempool.PollInterval,
+		"MEMPOOL_RETENTION":             &cfg.Mempool.Retention,
+		"MAINTENANCE_INTERVAL":          &cfg.Maintenance.Interval,
+		"METADATA_FETCH_TIMEOUT":        &cfg.Metadata.FetchTimeout,
+		"ADAPTER_FETCH_TIMEOUT":         &cfg.Adapters.FetchTimeout,
+		"ADAPTER_CONNECT_TIMEOUT":       &cfg.Adapters.ConnectTimeout,
+		"ADAPTER_OPERATION_TIMEOUT":     &cfg.Adapters.OperationTimeout,
+		"REDIS_CACHE_TTL":               &cfg.Adapters.RedisCacheTTL,
+		"ADAPTER_PRICE_FRESHNESS":       &cfg.Adapters.PriceFreshness,
+		"ADAPTER_FAILURE_TTL":           &cfg.Adapters.FailureTTL,
+		"ENS_RESOLUTION_FRESHNESS":      &cfg.ENS.ResolutionFreshness,
+		"ENS_SNAPSHOT_TTL":              &cfg.ENS.SnapshotTTL,
+		"ENS_FAILURE_TTL":               &cfg.ENS.FailureTTL,
+		"ENS_REQUEST_TIMEOUT":           &cfg.ENS.RequestTimeout,
+		"VERIFICATION_TIMEOUT":          &cfg.Verification.Timeout,
+		"SOURCIFY_TIMEOUT":              &cfg.Sourcify.Timeout,
+		"SOURCIFY_POLL_INTERVAL":        &cfg.Sourcify.PollInterval,
+		"TRACE_EXPORT_TIMEOUT":          &cfg.Observability.TraceExportTimeout,
+		"METRICS_REFRESH_INTERVAL":      &cfg.Observability.MetricsRefreshInterval,
+		"SYNC_PROGRESS_LOG_INTERVAL":    &cfg.Observability.SyncProgressLogInterval,
+		"USER_AUTH_CHALLENGE_TTL":       &cfg.UserAuth.ChallengeTTL,
+		"USER_AUTH_SESSION_TTL":         &cfg.UserAuth.SessionTTL,
+		"USER_AUTH_LAST_USED_INTERVAL":  &cfg.UserAuth.LastUsedInterval,
+		"X402_FACILITATOR_TIMEOUT":      &cfg.Billing.FacilitatorTimeout,
+		"X402_REQUIREMENT_MAX_TIMEOUT":  &cfg.Billing.RequirementMaxTimeout,
+		"X402_RESERVATION_TTL":          &cfg.Billing.ReservationTTL,
+		"BILLING_TOPUP_INTENT_TTL":      &cfg.Billing.TopupIntentTTL,
+		"BILLING_USAGE_RESERVATION_TTL": &cfg.Billing.UsageReservationTTL,
 	} {
 		if err := setDuration(lookup, name, target); err != nil {
 			return err
@@ -406,6 +414,8 @@ func applyBooleanEnvironment(cfg *Config, lookup func(string) (string, bool)) er
 		"FEATURE_USER_AUTH":                                   &cfg.Features.UserAuth,
 		"FEATURE_USER_API_KEYS":                               &cfg.Features.UserAPIKeys,
 		"FEATURE_X402_BILLING":                                &cfg.Features.X402Billing,
+		"FEATURE_API_BILLING":                                 &cfg.Features.APIBilling,
+		"FEATURE_X402_TOPUPS":                                 &cfg.Features.X402Topups,
 		"FEATURE_PROXY_DETECTION_V2":                          &cfg.Features.ProxyDetectionV2,
 		"FEATURE_SAFE_PROXY_DETECTION":                        &cfg.Features.SafeProxyDetection,
 		"FEATURE_DIAMOND_PROXY_DETECTION":                     &cfg.Features.DiamondProxyDetection,

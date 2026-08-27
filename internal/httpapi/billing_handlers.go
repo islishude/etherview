@@ -68,12 +68,14 @@ func (h *Handler) billingConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := gen.BillingConfig{
-		Enabled:     h.cfg.Features.X402Billing,
-		Scheme:      gen.BillingConfigSchemeExact,
-		X402Version: gen.BillingConfigX402VersionN2,
-		Routes:      make([]gen.BillingRoutePrice, 0, len(h.cfg.Billing.Routes)),
+		ApiBillingEnabled:    h.cfg.Features.APIBilling,
+		X402TopupsEnabled:    h.cfg.Features.X402Topups,
+		Scheme:               gen.BillingConfigSchemeExact,
+		X402Version:          gen.BillingConfigX402VersionN2,
+		AssetTransferMethods: make([]gen.BillingAssetTransferMethod, 0, len(h.cfg.Billing.AssetTransferMethods)),
+		Operations:           make([]gen.BillingOperationPrice, 0, len(h.cfg.Billing.Operations)),
 	}
-	if !data.Enabled {
+	if !data.ApiBillingEnabled {
 		writeJSON(w, http.StatusOK, gen.BillingConfigResponse{Data: data, Meta: h.meta(r)})
 		return
 	}
@@ -83,39 +85,49 @@ func (h *Handler) billingConfig(w http.ResponseWriter, r *http.Request) {
 		h.handleBillingFailure(w, r, "map public billing configuration", err)
 		return
 	}
-	recipient, err := checksumAddress(h.cfg.Billing.Recipient)
-	if err != nil {
-		h.handleBillingFailure(w, r, "map public billing configuration", err)
-		return
-	}
 	data.Network = cloneStringPointer(h.cfg.Billing.Network)
 	data.Asset = billingAPIAddressPointer(asset)
 	decimals := int(h.cfg.Billing.AssetDecimals)
 	data.AssetDecimals = &decimals
-	data.AssetEip712Name = cloneStringPointer(h.cfg.Billing.AssetEIP712Name)
-	data.AssetEip712Version = cloneStringPointer(h.cfg.Billing.AssetEIP712Version)
-	data.Recipient = billingAPIAddressPointer(recipient)
+	if h.cfg.Billing.AssetEIP712Name != "" {
+		data.AssetEip712Name = cloneStringPointer(h.cfg.Billing.AssetEIP712Name)
+		data.AssetEip712Version = cloneStringPointer(h.cfg.Billing.AssetEIP712Version)
+	}
+	if h.cfg.Features.X402Topups {
+		recipient, recipientErr := checksumAddress(h.cfg.Billing.Recipient)
+		if recipientErr != nil {
+			h.handleBillingFailure(w, r, "map public billing configuration", recipientErr)
+			return
+		}
+		data.Recipient = billingAPIAddressPointer(recipient)
+		minimum := gen.Quantity(h.cfg.Billing.MinimumTopupAmountAtomic)
+		maximum := gen.Quantity(h.cfg.Billing.MaximumTopupAmountAtomic)
+		data.MinimumTopupAmountAtomic = &minimum
+		data.MaximumTopupAmountAtomic = &maximum
+		ttl := int(h.cfg.Billing.TopupIntentTTL / time.Second)
+		data.TopupIntentTtlSeconds = &ttl
+		for _, method := range h.cfg.Billing.AssetTransferMethods {
+			data.AssetTransferMethods = append(data.AssetTransferMethods, gen.BillingAssetTransferMethod(method))
+		}
+	}
 
-	operations := make([]string, 0, len(h.cfg.Billing.Routes))
-	for operation := range h.cfg.Billing.Routes {
+	operations := make([]string, 0, len(h.cfg.Billing.Operations))
+	for operation := range h.cfg.Billing.Operations {
 		operations = append(operations, operation)
 	}
 	sort.Strings(operations)
 	for _, operation := range operations {
-		route := h.cfg.Billing.Routes[operation]
-		spec, eligible := apiops.Lookup(operation)
-		access := gen.BillingAccess(route.Access)
-		if !eligible || !spec.BillingEligible || !access.Valid() ||
-			!canonicalPositiveUint256(route.AmountAtomic) {
+		operationConfig := h.cfg.Billing.Operations[operation]
+		if !canonicalPositiveUint256(operationConfig.AmountAtomic) {
 			h.handleBillingFailure(
 				w, r, "map public billing configuration",
 				errors.New("configured billing route is invalid"),
 			)
 			return
 		}
-		data.Routes = append(data.Routes, gen.BillingRoutePrice{
-			Operation: operation, Access: access,
-			AmountAtomic: gen.Quantity(route.AmountAtomic),
+		data.Operations = append(data.Operations, gen.BillingOperationPrice{
+			Operation:    operation,
+			AmountAtomic: gen.Quantity(operationConfig.AmountAtomic),
 		})
 	}
 	writeJSON(w, http.StatusOK, gen.BillingConfigResponse{Data: data, Meta: h.meta(r)})
@@ -305,9 +317,16 @@ func (h *Handler) billingPaymentModel(payment billing.Payment) (gen.BillingPayme
 		return gen.BillingPayment{}, errors.New("billing payment identity is invalid")
 	}
 	spec, ok := apiops.Lookup(payment.Operation)
-	if !ok || !spec.BillingEligible || payment.Method != http.MethodGet ||
+	validOperation := payment.Purpose == "legacy_request" && ok && spec.BillingEligible &&
+		payment.Method == http.MethodGet ||
+		payment.Purpose == "account_topup" && payment.Operation == "createBillingTopup" &&
+			payment.Method == http.MethodPost
+	if !validOperation ||
 		!billingHTTPNetworkPattern.MatchString(payment.Network) ||
-		!canonicalPositiveUint256(payment.AmountAtomic) {
+		!canonicalPositiveUint256(payment.AmountAtomic) ||
+		(payment.AssetTransferMethod != "eip3009" && payment.AssetTransferMethod != "permit2") ||
+		payment.PaymentFlow != "authorization" ||
+		(payment.FingerprintVersion != 1 && payment.FingerprintVersion != 2) {
 		return gen.BillingPayment{}, errors.New("billing payment binding is invalid")
 	}
 	state := gen.BillingPaymentState(payment.State)
@@ -318,9 +337,20 @@ func (h *Handler) billingPaymentModel(payment billing.Payment) (gen.BillingPayme
 	recipient := billingAddressModel(payment.Recipient)
 	model := gen.BillingPayment{
 		Id: identifier, Operation: payment.Operation, State: state,
-		Network: payment.Network, Asset: asset,
+		Method:              gen.BillingPaymentMethod(payment.Method),
+		Purpose:             gen.BillingPaymentPurpose(payment.Purpose),
+		AssetTransferMethod: gen.BillingAssetTransferMethod(payment.AssetTransferMethod),
+		PaymentFlow:         gen.BillingPaymentPaymentFlow(payment.PaymentFlow),
+		Network:             payment.Network, Asset: asset,
 		AmountAtomic: gen.Quantity(payment.AmountAtomic), Recipient: recipient,
 		CreatedAt: payment.CreatedAt.UTC(), UpdatedAt: payment.UpdatedAt.UTC(),
+	}
+	if payment.TopupIntentID != nil {
+		intentID, intentErr := uuid.Parse(*payment.TopupIntentID)
+		if intentErr != nil || intentID.Version() != 4 {
+			return gen.BillingPayment{}, errors.New("billing payment top-up intent is invalid")
+		}
+		model.TopupIntentId = &intentID
 	}
 	if payment.Payer != nil {
 		payer := billingAddressModel(*payment.Payer)
@@ -365,7 +395,8 @@ func billingSummaryRowModel(
 ) (gen.BillingSummaryRow, *big.Int, *big.Int, error) {
 	state := gen.BillingPaymentState(row.State)
 	spec, operationOK := apiops.Lookup(row.Operation)
-	if !state.Valid() || !operationOK || !spec.BillingEligible ||
+	operationOK = row.Operation == "createBillingTopup" || operationOK && spec.BillingEligible
+	if !state.Valid() || !operationOK ||
 		!billingHTTPNetworkPattern.MatchString(row.Network) {
 		return gen.BillingSummaryRow{}, nil, nil,
 			errors.New("billing summary identity is invalid")
@@ -407,7 +438,7 @@ func (h *Handler) parseAdminBillingFilter(
 	}
 	if value, present := singleBillingQueryValue(values, "operation"); present {
 		spec, ok := apiops.Lookup(value)
-		if !ok || !spec.BillingEligible || len(value) > 128 {
+		if value != "createBillingTopup" && (!ok || !spec.BillingEligible) || len(value) > 128 {
 			writeInvalidBillingQuery(w, r)
 			return filter, normalized, false
 		}

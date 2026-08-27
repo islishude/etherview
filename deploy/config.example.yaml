@@ -119,7 +119,8 @@ features:
   ens: false
   user_auth: false
   user_api_keys: false
-  x402_billing: false
+  api_billing: false
+  x402_topups: false
   # Shadow collection is independent from public API/UI exposure.
   proxy_detection_v2: false
   safe_proxy_detection: false
@@ -149,9 +150,10 @@ user_auth:
   api_key_burst: 40
   max_active_api_keys: 5
 
-# x402 v2 exact-EVM billing is disabled until explicitly enabled and at least
-# one eligible operation is listed below. The facilitator is a fixed HTTPS
-# origin whose DNS answers must remain inside these canonical CIDRs. Supply
+# Prepaid API billing and x402 top-ups are independently disabled. Only
+# configured bounded Etherscan V2 operations consume account credit. The
+# facilitator is used only for top-ups and has a fixed HTTPS origin whose DNS
+# answers must remain inside these canonical CIDRs. Supply
 # ETHERVIEW_X402_FINGERPRINT_PEPPER(_FILE) and optional
 # ETHERVIEW_X402_FACILITATOR_HEADERS(_FILE) only to all/api processes.
 billing:
@@ -159,6 +161,7 @@ billing:
   facilitator_allowed_cidrs: []
   facilitator_timeout: 10s
   facilitator_max_response_bytes: 1048576
+  facilitator_unsafe_allow_http: false
   network: ""
   asset: ""
   asset_decimals: 0
@@ -167,12 +170,17 @@ billing:
   recipient: ""
   requirement_max_timeout: 60s
   reservation_ttl: 2m
+  topup_intent_ttl: 10m
+  usage_reservation_ttl: 2m
+  minimum_topup_amount_atomic: ""
+  maximum_topup_amount_atomic: ""
+  asset_transfer_methods: []
   max_payment_header_bytes: 16384
   max_buffered_response_bytes: 8388608
   max_captured_header_bytes: 65536
   coarse_ip_rate: 100
   coarse_ip_burst: 200
-  routes: {}
+  operations: {}
 
 # Official Ethereum Mainnet RPC endpoints are API-role secrets supplied through
 # ETHERVIEW_ENS_RPC_URLS(_FILE), never ConfigMap-backed YAML.

@@ -169,6 +169,32 @@ type BeaconObservationGeneration struct {
 	CreatedAt               pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+type BillingAccount struct {
+	UserID            pgtype.UUID        `db:"user_id" json:"user_id"`
+	ChainID           pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	Network           string             `db:"network" json:"network"`
+	Asset             []byte             `db:"asset" json:"asset"`
+	TotalCreditAtomic pgtype.Numeric     `db:"total_credit_atomic" json:"total_credit_atomic"`
+	TotalDebitAtomic  pgtype.Numeric     `db:"total_debit_atomic" json:"total_debit_atomic"`
+	ReservedAtomic    pgtype.Numeric     `db:"reserved_atomic" json:"reserved_atomic"`
+	CreatedAt         pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type BillingAccountEntry struct {
+	ID           pgtype.UUID        `db:"id" json:"id"`
+	UserID       pgtype.UUID        `db:"user_id" json:"user_id"`
+	ChainID      pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	Network      string             `db:"network" json:"network"`
+	Asset        []byte             `db:"asset" json:"asset"`
+	Direction    string             `db:"direction" json:"direction"`
+	Kind         string             `db:"kind" json:"kind"`
+	AmountAtomic pgtype.Numeric     `db:"amount_atomic" json:"amount_atomic"`
+	SourceID     pgtype.UUID        `db:"source_id" json:"source_id"`
+	Reason       *string            `db:"reason" json:"reason"`
+	OccurredAt   pgtype.Timestamptz `db:"occurred_at" json:"occurred_at"`
+}
+
 type BillingPayment struct {
 	ID                   pgtype.UUID        `db:"id" json:"id"`
 	ChainID              pgtype.Numeric     `db:"chain_id" json:"chain_id"`
@@ -200,6 +226,11 @@ type BillingPayment struct {
 	ExpiredAt            pgtype.Timestamptz `db:"expired_at" json:"expired_at"`
 	CreatedAt            pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt            pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	Purpose              string             `db:"purpose" json:"purpose"`
+	AssetTransferMethod  string             `db:"asset_transfer_method" json:"asset_transfer_method"`
+	PaymentFlow          string             `db:"payment_flow" json:"payment_flow"`
+	FingerprintVersion   int16              `db:"fingerprint_version" json:"fingerprint_version"`
+	TopupIntentID        pgtype.UUID        `db:"topup_intent_id" json:"topup_intent_id"`
 }
 
 type BillingPaymentEvent struct {
@@ -211,6 +242,53 @@ type BillingPaymentEvent struct {
 	Actor           string             `db:"actor" json:"actor"`
 	TransactionHash []byte             `db:"transaction_hash" json:"transaction_hash"`
 	OccurredAt      pgtype.Timestamptz `db:"occurred_at" json:"occurred_at"`
+}
+
+type BillingTopupIntent struct {
+	ID              pgtype.UUID        `db:"id" json:"id"`
+	UserID          pgtype.UUID        `db:"user_id" json:"user_id"`
+	ChainID         pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	Network         string             `db:"network" json:"network"`
+	Asset           []byte             `db:"asset" json:"asset"`
+	AmountAtomic    pgtype.Numeric     `db:"amount_atomic" json:"amount_atomic"`
+	Recipient       []byte             `db:"recipient" json:"recipient"`
+	Payer           []byte             `db:"payer" json:"payer"`
+	State           string             `db:"state" json:"state"`
+	ActivePaymentID pgtype.UUID        `db:"active_payment_id" json:"active_payment_id"`
+	TransactionHash []byte             `db:"transaction_hash" json:"transaction_hash"`
+	FailureCode     *string            `db:"failure_code" json:"failure_code"`
+	ExpiresAt       pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	ProcessingAt    pgtype.Timestamptz `db:"processing_at" json:"processing_at"`
+	SettlingAt      pgtype.Timestamptz `db:"settling_at" json:"settling_at"`
+	CreditedAt      pgtype.Timestamptz `db:"credited_at" json:"credited_at"`
+	FailedAt        pgtype.Timestamptz `db:"failed_at" json:"failed_at"`
+	ExpiredAt       pgtype.Timestamptz `db:"expired_at" json:"expired_at"`
+	CreatedAt       pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type BillingUsageCharge struct {
+	ID                   pgtype.UUID        `db:"id" json:"id"`
+	ReservationOwner     pgtype.UUID        `db:"reservation_owner" json:"reservation_owner"`
+	UserID               pgtype.UUID        `db:"user_id" json:"user_id"`
+	ApiKeyPrefix         string             `db:"api_key_prefix" json:"api_key_prefix"`
+	ChainID              pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	Network              string             `db:"network" json:"network"`
+	Asset                []byte             `db:"asset" json:"asset"`
+	Method               string             `db:"method" json:"method"`
+	Operation            string             `db:"operation" json:"operation"`
+	ResourceDigest       []byte             `db:"resource_digest" json:"resource_digest"`
+	AmountAtomic         pgtype.Numeric     `db:"amount_atomic" json:"amount_atomic"`
+	State                string             `db:"state" json:"state"`
+	FailureCode          *string            `db:"failure_code" json:"failure_code"`
+	ResponseDigest       []byte             `db:"response_digest" json:"response_digest"`
+	ResponseBytes        *int64             `db:"response_bytes" json:"response_bytes"`
+	ReservationExpiresAt pgtype.Timestamptz `db:"reservation_expires_at" json:"reservation_expires_at"`
+	CommittedAt          pgtype.Timestamptz `db:"committed_at" json:"committed_at"`
+	ReleasedAt           pgtype.Timestamptz `db:"released_at" json:"released_at"`
+	ExpiredAt            pgtype.Timestamptz `db:"expired_at" json:"expired_at"`
+	CreatedAt            pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt            pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 type Block struct {

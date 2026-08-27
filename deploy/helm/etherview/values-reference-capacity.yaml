@@ -96,7 +96,8 @@ config:
     user_auth: false
     user_api_keys: false
     # Per-request billing is measured separately from the anonymous profile.
-    x402_billing: false
+    api_billing: false
+    x402_topups: false
     proxy_detection_v2: false
     safe_proxy_detection: false
     diamond_proxy_detection: false

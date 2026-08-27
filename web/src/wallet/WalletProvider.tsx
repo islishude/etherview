@@ -33,6 +33,11 @@ import {
   type WalletBoundaryErrorCode,
 } from "./eip6963";
 import { encodeCanonicalSIWEChallenge } from "./siwe";
+import {
+  type BillingSigningBinding,
+  type BillingTypedData,
+  encodeBillingTypedData,
+} from "./billing";
 
 export interface ContractCall {
   to: Address;
@@ -84,6 +89,15 @@ interface WalletContextValue {
     challenge: AuthChallenge,
     expected: ActiveWallet,
   ) => Promise<Hex>;
+  signBillingTypedData?: (
+    typedData: BillingTypedData,
+    binding: BillingSigningBinding,
+    expected: ActiveWallet,
+  ) => Promise<Hex>;
+  waitForBillingTransaction?: (
+    transactionHash: Hex,
+    expected: ActiveWallet,
+  ) => Promise<void>;
 }
 
 const WalletContext = createContext<WalletContextValue | undefined>(undefined);
@@ -483,6 +497,69 @@ export function WalletProvider({ children }: PropsWithChildren) {
     [configuredChainID, requestActiveProvider, requireProvider],
   );
 
+  const signBillingTypedData = useCallback(
+    async (
+      typedData: BillingTypedData,
+      binding: BillingSigningBinding,
+      expected: ActiveWallet,
+    ) => {
+      const wallet = await requireProvider(configuredChainID);
+      assertExpectedWalletIdentity(wallet, expected);
+      if (
+        binding.account !== wallet.account ||
+        binding.chainID !== wallet.chainID
+      ) {
+        throw new WalletBoundaryError("INVALID_REQUEST");
+      }
+      const encoded = encodeBillingTypedData(typedData, binding);
+      const result = await requestActiveProvider(wallet, {
+        method: "eth_signTypedData_v4",
+        params: [wallet.account, encoded],
+      });
+      assertCompletedWalletOperation(activeRef.current, wallet);
+      const completed = await requireProvider(configuredChainID);
+      assertCompletedWalletOperation(completed, wallet);
+      assertExpectedWalletIdentity(completed, expected);
+      if (!isWalletSignature(result)) {
+        throw new WalletBoundaryError("INVALID_PROVIDER_RESPONSE");
+      }
+      return result;
+    },
+    [configuredChainID, requestActiveProvider, requireProvider],
+  );
+
+  const waitForBillingTransaction = useCallback(
+    async (transactionHash: Hex, expected: ActiveWallet) => {
+      if (!isTransactionHash(transactionHash)) {
+        throw new WalletBoundaryError("INVALID_REQUEST");
+      }
+      const wallet = await requireProvider(configuredChainID);
+      assertExpectedWalletIdentity(wallet, expected);
+      for (let attempt = 0; attempt < 120; attempt += 1) {
+        const receipt = await requestActiveProvider(wallet, {
+          method: "eth_getTransactionReceipt",
+          params: [transactionHash],
+        });
+        assertCompletedWalletOperation(activeRef.current, wallet);
+        if (receipt !== null) {
+          if (
+            typeof receipt !== "object" ||
+            !("status" in receipt) ||
+            receipt.status !== "0x1"
+          ) {
+            throw new WalletBoundaryError("TRANSACTION_OUTCOME_UNKNOWN");
+          }
+          const completed = await requireProvider(configuredChainID);
+          assertExpectedWalletIdentity(completed, expected);
+          return;
+        }
+        await new Promise(resolve => globalThis.setTimeout(resolve, 1_000));
+      }
+      throw new WalletBoundaryError("TRANSACTION_OUTCOME_UNKNOWN");
+    },
+    [configuredChainID, requestActiveProvider, requireProvider],
+  );
+
   const disconnect = useCallback(() => {
     connectionAttemptRef.current += 1;
     setConnecting(false);
@@ -513,6 +590,8 @@ export function WalletProvider({ children }: PropsWithChildren) {
       readContract,
       sendTransaction,
       signSIWEChallenge,
+      signBillingTypedData,
+      waitForBillingTransaction,
     }),
     [
       connect,
@@ -529,6 +608,8 @@ export function WalletProvider({ children }: PropsWithChildren) {
       readContract,
       sendTransaction,
       signSIWEChallenge,
+      signBillingTypedData,
+      waitForBillingTransaction,
     ],
   );
 

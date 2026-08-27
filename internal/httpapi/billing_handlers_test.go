@@ -82,12 +82,17 @@ func TestBillingConfigIsFreeSortedAndSecretFree(t *testing.T) {
 		httptest.NewRequest(http.MethodGet, "/api/v1/billing/config", nil),
 	)
 	if recorder.Code != http.StatusOK ||
-		!strings.Contains(recorder.Body.String(), `"enabled":false`) ||
-		!strings.Contains(recorder.Body.String(), `"routes":[]`) {
+		!strings.Contains(recorder.Body.String(), `"api_billing_enabled":false`) ||
+		!strings.Contains(recorder.Body.String(), `"operations":[]`) {
 		t.Fatalf("disabled config status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 
 	cfg := httpBillingConfig("x402")
+	cfg.Features.APIBilling = true
+	cfg.Features.X402Topups = true
+	cfg.Billing.AssetTransferMethods = []string{"eip3009", "permit2"}
+	cfg.Billing.MinimumTopupAmountAtomic = "1"
+	cfg.Billing.MaximumTopupAmountAtomic = "1000000"
 	cfg.Billing.Asset = "0x52908400098527886e0f7030069857d2e4169ee7"
 	cfg.Billing.Recipient = "0xde709f2102306220921060314715629080e2fb77"
 	cfg.Billing.FacilitatorURL = "https://facilitator-secret.example"
@@ -98,6 +103,10 @@ func TestBillingConfigIsFreeSortedAndSecretFree(t *testing.T) {
 	cfg.Billing.Routes = map[string]config.BillingRouteConfig{
 		"listTransactions": {Access: "api_key_or_x402", AmountAtomic: "20"},
 		"listBlocks":       {Access: "x402", AmountAtomic: "10"},
+	}
+	cfg.Billing.Operations = map[string]config.BillingOperationConfig{
+		"etherscan.account.balance":       {AmountAtomic: "10"},
+		"etherscan.transaction.getstatus": {AmountAtomic: "20"},
 	}
 	var quotaCalls atomic.Int32
 	handler, _, _ := httpBillingHandler(t, cfg, &quotaCalls, nil)
@@ -116,15 +125,16 @@ func TestBillingConfigIsFreeSortedAndSecretFree(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	if !response.Data.Enabled || response.Data.X402Version != 2 ||
+	if !response.Data.ApiBillingEnabled || !response.Data.X402TopupsEnabled ||
+		response.Data.X402Version != 2 ||
 		response.Data.Scheme != gen.BillingConfigSchemeExact ||
 		response.Data.Asset == nil ||
 		*response.Data.Asset != "0x52908400098527886E0F7030069857D2E4169EE7" ||
 		response.Data.Recipient == nil ||
 		*response.Data.Recipient != "0xde709f2102306220921060314715629080e2fb77" ||
-		len(response.Data.Routes) != 2 ||
-		response.Data.Routes[0].Operation != "listBlocks" ||
-		response.Data.Routes[1].Operation != "listTransactions" {
+		len(response.Data.Operations) != 2 ||
+		response.Data.Operations[0].Operation != "etherscan.account.balance" ||
+		response.Data.Operations[1].Operation != "etherscan.transaction.getstatus" {
 		t.Fatalf("unexpected enabled billing config: %#v", response.Data)
 	}
 	body := recorder.Body.String()
@@ -170,6 +180,37 @@ func TestBillingHistoryIsUnavailableBeforeParsingWhenUserAuthIsOff(t *testing.T)
 	}
 	if reader.userCalls != 0 || reader.adminCalls != 0 || reader.summaryCalls != 0 {
 		t.Fatalf("feature-off billing reader calls: %#v", reader)
+	}
+}
+
+func TestPaymentSignatureIsRoutedOnlyToTopupPayEndpoint(t *testing.T) {
+	t.Parallel()
+	handler, err := New(Options{
+		Config: config.Default(), Reader: fakeReader{},
+		RequestID: func() string { return "topup-payment-boundary" },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		path   string
+		code   string
+		status int
+	}{
+		{
+			path: "/api/v1/billing/topup-intents/74e5f6a2-30ef-4d7f-93b8-e430f1fdfac4/pay",
+			code: "billing_unavailable", status: http.StatusServiceUnavailable,
+		},
+		{
+			path: "/api/v1/billing/account",
+			code: "unexpected_payment_header", status: http.StatusBadRequest,
+		},
+	} {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, test.path, nil)
+		request.Header.Set("PAYMENT-SIGNATURE", "opaque")
+		handler.ServeHTTP(recorder, request)
+		assertAuthError(t, recorder, test.status, test.code)
 	}
 }
 
@@ -657,6 +698,8 @@ func billingTestPayment(now time.Time) billing.Payment {
 	return billing.Payment{
 		ID:      "00000000-0000-4000-8000-000000000001",
 		ChainID: 11155111, Operation: "listBlocks", Method: http.MethodGet,
+		Purpose: "legacy_request", AssetTransferMethod: "eip3009",
+		PaymentFlow: "authorization", FingerprintVersion: 1,
 		Network: "eip155:84532", Asset: repeatedBillingAddress(0x11),
 		AmountAtomic: "115792089237316195423570985008687907853269984665640564039457584007913129639935",
 		Recipient:    repeatedBillingAddress(0x22),

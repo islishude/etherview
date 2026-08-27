@@ -43,7 +43,7 @@ func checkBillingFacilitator(
 	roles []string,
 	factory billingSupportCheckerFactory,
 ) error {
-	if !cfg.Features.X402Billing || !slices.Contains(roles, "api") {
+	if !cfg.Features.X402Topups || !slices.Contains(roles, "api") {
 		return nil
 	}
 	if factory == nil {
@@ -51,6 +51,7 @@ func checkBillingFacilitator(
 	}
 	checker, err := factory(x402wire.ClientOptions{
 		BaseURL:          cfg.Billing.FacilitatorURL,
+		UnsafeAllowHTTP:  cfg.Billing.FacilitatorUnsafeAllowHTTP,
 		AllowedCIDRs:     cfg.Billing.FacilitatorAllowedCIDRs,
 		Timeout:          cfg.Billing.FacilitatorTimeout,
 		MaxResponseBytes: cfg.Billing.FacilitatorMaxResponseBytes,

@@ -12,6 +12,7 @@ import (
 
 type Querier interface {
 	AcquireENSGenerationLock(ctx context.Context, chainID pgtype.Numeric) error
+	AdjustBillingAccount(ctx context.Context, arg AdjustBillingAccountParams) (AdjustBillingAccountRow, error)
 	AdminWriteEnqueueRepairStatement1(ctx context.Context, arg AdminWriteEnqueueRepairStatement1Params) ([]AdminWriteEnqueueRepairStatement1Row, error)
 	AnalyticsWriteDeferDirty(ctx context.Context, arg AnalyticsWriteDeferDirtyParams) error
 	AnalyticsWriteDeleteDirty(ctx context.Context, column1 pgtype.Numeric, bucketStart pgtype.Timestamptz, generation int64) error
@@ -31,6 +32,7 @@ type Querier interface {
 	AuthWriteRevokeStatement1(ctx context.Context, prefix string, revokedAt pgtype.Timestamptz) error
 	AuthWriteRotateStatement1(ctx context.Context, arg AuthWriteRotateStatement1Params) error
 	AuthWriteRotateStatement2(ctx context.Context, prefix string, revokedAt pgtype.Timestamptz) error
+	BeginBillingTopupSettlement(ctx context.Context, arg BeginBillingTopupSettlementParams) (pgtype.UUID, error)
 	CatalogAddressDelegations(ctx context.Context, arg CatalogAddressDelegationsParams) ([]CatalogAddressDelegationsRow, error)
 	CatalogAddressInternalTransactions(ctx context.Context, arg CatalogAddressInternalTransactionsParams) ([]CatalogAddressInternalTransactionsRow, error)
 	CatalogAddressTokenTransfers(ctx context.Context, arg CatalogAddressTokenTransfersParams) ([]CatalogAddressTokenTransfersRow, error)
@@ -65,6 +67,8 @@ type Querier interface {
 	CatalogTransactionTraceExecution(ctx context.Context, arg CatalogTransactionTraceExecutionParams) ([]CatalogTransactionTraceExecutionRow, error)
 	CatalogTransactionVerifiedAddressSelectors(ctx context.Context, arg CatalogTransactionVerifiedAddressSelectorsParams) ([]CatalogTransactionVerifiedAddressSelectorsRow, error)
 	CatalogValidateCanonicalSnapshot(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]bool, error)
+	ClaimBillingTopupIntent(ctx context.Context, arg ClaimBillingTopupIntentParams) (pgtype.UUID, error)
+	CommitBillingUsage(ctx context.Context, arg CommitBillingUsageParams) (CommitBillingUsageRow, error)
 	ConsumeAuthChallenge(ctx context.Context, consumedAt pgtype.Timestamptz, iD pgtype.UUID) (AuthChallenge, error)
 	ContractArtifactArtifactSource(ctx context.Context, arg ContractArtifactArtifactSourceParams) ([]ContractArtifactArtifactSourceRow, error)
 	ContractArtifactCurrentTarget(ctx context.Context, column1 pgtype.Numeric, address []byte) ([]ContractArtifactCurrentTargetRow, error)
@@ -75,8 +79,10 @@ type Querier interface {
 	CountMissingAnalyticsRollups(ctx context.Context, chainID pgtype.Numeric, fromTime pgtype.Timestamptz, toTime pgtype.Timestamptz) (string, error)
 	CountPendingAnalyticsSources(ctx context.Context, chainID pgtype.Numeric, fromTime pgtype.Timestamptz, toTime pgtype.Timestamptz) (string, error)
 	CreateAuthChallenge(ctx context.Context, arg CreateAuthChallengeParams) (AuthChallenge, error)
+	CreateBillingTopupIntent(ctx context.Context, arg CreateBillingTopupIntentParams) (BillingTopupIntent, error)
 	CreateUserAPIKey(ctx context.Context, arg CreateUserAPIKeyParams) error
 	CreateUserSession(ctx context.Context, arg CreateUserSessionParams) (UserSession, error)
+	CreditBillingTopup(ctx context.Context, arg CreditBillingTopupParams) (CreditBillingTopupRow, error)
 	DeleteExpiredAdapterObservations(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error)
 	DeleteExpiredAuthChallenges(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error)
 	DeleteExpiredENSAddressNameSnapshots(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error)
@@ -234,6 +240,7 @@ type Querier interface {
 	EnrichSavepointStageOutput(ctx context.Context) error
 	EnrichSelectClaimCandidate(ctx context.Context, column1 []byte, column2 int64) ([]EnrichSelectClaimCandidateRow, error)
 	EnrichSelectExhaustedCandidate(ctx context.Context, column1 []byte, column2 int64) ([]int64, error)
+	EnsureBillingAccount(ctx context.Context, arg EnsureBillingAccountParams) (EnsureBillingAccountRow, error)
 	EnsureENSNameObservationPublished(ctx context.Context, observationID int64, chainID pgtype.Numeric) error
 	EtherscanAccountTransactions(ctx context.Context, arg EtherscanAccountTransactionsParams) ([]EtherscanAccountTransactionsRow, error)
 	EtherscanBlockCountdown(ctx context.Context, dollar_1 pgtype.Numeric) ([]EtherscanBlockCountdownRow, error)
@@ -257,6 +264,11 @@ type Querier interface {
 	EventsWriteRecordStatusStatement4(ctx context.Context, column1 pgtype.Numeric, column2 []byte) ([]EventsWriteRecordStatusStatement4Row, error)
 	EventsWriteRecordStatusStatement5(ctx context.Context, column1 pgtype.Numeric, offset int32) error
 	ExpireBillingPayments(ctx context.Context, chainID pgtype.Numeric, observedAt pgtype.Timestamptz, expireLimit int32) (int64, error)
+	ExpireBillingTopupPayments(ctx context.Context, chainID pgtype.Numeric, observedAt pgtype.Timestamptz, expireLimit int32) (int64, error)
+	ExpireBillingUsageReservations(ctx context.Context, arg ExpireBillingUsageReservationsParams) (int64, error)
+	ExpireOpenBillingTopupIntents(ctx context.Context, arg ExpireOpenBillingTopupIntentsParams) (int64, error)
+	FailBillingTopupPayment(ctx context.Context, arg FailBillingTopupPaymentParams) (pgtype.UUID, error)
+	FailBillingTopupSettlement(ctx context.Context, arg FailBillingTopupSettlementParams) (pgtype.UUID, error)
 	FindX402TestnetBillingPayments(ctx context.Context, arg FindX402TestnetBillingPaymentsParams) ([]pgtype.UUID, error)
 	GenesisWriteCompletedRemoteImportStatement1(ctx context.Context, dollar_1 pgtype.Numeric) ([]GenesisWriteCompletedRemoteImportStatement1Row, error)
 	GenesisWriteImportOnceUsingStatement1(ctx context.Context, hashtext string) ([]interface{}, error)
@@ -275,9 +287,12 @@ type Querier interface {
 	GetAnalyticsCoverage(ctx context.Context, chainID pgtype.Numeric) (GetAnalyticsCoverageRow, error)
 	GetAnalyticsSnapshot(ctx context.Context, chainID pgtype.Numeric) (GetAnalyticsSnapshotRow, error)
 	GetAuthChallenge(ctx context.Context, id pgtype.UUID) (AuthChallenge, error)
+	GetBillingAccount(ctx context.Context, arg GetBillingAccountParams) (BillingAccount, error)
 	GetBillingPaymentByFingerprint(ctx context.Context, fingerprint []byte) (BillingPayment, error)
 	GetBillingPaymentByID(ctx context.Context, iD pgtype.UUID, chainID pgtype.Numeric) (BillingPayment, error)
 	GetBillingPaymentForInspection(ctx context.Context, iD pgtype.UUID, chainID pgtype.Numeric) (BillingPayment, error)
+	GetBillingTopupIntent(ctx context.Context, iD pgtype.UUID, chainID pgtype.Numeric) (BillingTopupIntent, error)
+	GetBillingUsageCharge(ctx context.Context, iD pgtype.UUID, chainID pgtype.Numeric) (BillingUsageCharge, error)
 	GetBlockTransactionTargetByHash(ctx context.Context, column1 pgtype.Numeric, hash []byte) (GetBlockTransactionTargetByHashRow, error)
 	GetBlockTransactionTargetByNumber(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) (GetBlockTransactionTargetByNumberRow, error)
 	GetCWIAImplementationAnalyses(ctx context.Context, arg GetCWIAImplementationAnalysesParams) ([]GetCWIAImplementationAnalysesRow, error)
@@ -310,6 +325,7 @@ type Querier interface {
 	GetProxyHistoryCoverage(ctx context.Context, arg GetProxyHistoryCoverageParams) (GetProxyHistoryCoverageRow, error)
 	GetRuntimeEventReplayBounds(ctx context.Context, chainID pgtype.Numeric) (GetRuntimeEventReplayBoundsRow, error)
 	GetSyncRuntimeStatus(ctx context.Context, chainID pgtype.Numeric) (GetSyncRuntimeStatusRow, error)
+	GetUserBillingTopupIntent(ctx context.Context, iD pgtype.UUID, chainID pgtype.Numeric, userID pgtype.UUID) (BillingTopupIntent, error)
 	GetUserByAddress(ctx context.Context, chainID pgtype.Numeric, address []byte) (User, error)
 	GetUserByID(ctx context.Context, iD pgtype.UUID, chainID pgtype.Numeric) (User, error)
 	GetX402TestnetWriterFence(ctx context.Context) (GetX402TestnetWriterFenceRow, error)
@@ -320,7 +336,10 @@ type Querier interface {
 	InsertENSResolutionGeneration(ctx context.Context, arg InsertENSResolutionGenerationParams) (EnsResolutionGeneration, error)
 	ListAddressWithdrawalsAfter(ctx context.Context, arg ListAddressWithdrawalsAfterParams) ([]ListAddressWithdrawalsAfterRow, error)
 	ListAddressWithdrawalsFirst(ctx context.Context, arg ListAddressWithdrawalsFirstParams) ([]ListAddressWithdrawalsFirstRow, error)
+	ListAdminBillingAccounts(ctx context.Context, arg ListAdminBillingAccountsParams) ([]BillingAccount, error)
 	ListAdminBillingPayments(ctx context.Context, arg ListAdminBillingPaymentsParams) ([]BillingPayment, error)
+	ListAdminBillingTopupIntents(ctx context.Context, arg ListAdminBillingTopupIntentsParams) ([]BillingTopupIntent, error)
+	ListAdminBillingUsage(ctx context.Context, arg ListAdminBillingUsageParams) ([]BillingUsageCharge, error)
 	ListAnalyticsHours(ctx context.Context, arg ListAnalyticsHoursParams) ([]ListAnalyticsHoursRow, error)
 	ListAppliedMigrations(ctx context.Context) ([]EtherviewSchemaMigration, error)
 	ListBillingPaymentEvents(ctx context.Context, paymentID pgtype.UUID) ([]BillingPaymentEvent, error)
@@ -335,6 +354,8 @@ type Querier interface {
 	ListRuntimeEvents(ctx context.Context, arg ListRuntimeEventsParams) ([]ListRuntimeEventsRow, error)
 	ListUserAPIKeysPage(ctx context.Context, arg ListUserAPIKeysPageParams) ([]ListUserAPIKeysPageRow, error)
 	ListUserBillingPayments(ctx context.Context, arg ListUserBillingPaymentsParams) ([]BillingPayment, error)
+	ListUserBillingTopupIntents(ctx context.Context, arg ListUserBillingTopupIntentsParams) ([]BillingTopupIntent, error)
+	ListUserBillingUsage(ctx context.Context, arg ListUserBillingUsageParams) ([]BillingUsageCharge, error)
 	ListUsersPage(ctx context.Context, arg ListUsersPageParams) ([]User, error)
 	LockActiveUserForAPIKey(ctx context.Context, userID pgtype.UUID) (pgtype.UUID, error)
 	LockUserAPIKey(ctx context.Context, prefix string, userID pgtype.UUID) (ApiKey, error)
@@ -348,9 +369,12 @@ type Querier interface {
 	MaintenanceLegacyUnlockAdvisory(ctx context.Context, pgAdvisoryUnlock int64) ([]bool, error)
 	MarkBillingPaymentFailed(ctx context.Context, arg MarkBillingPaymentFailedParams) (pgtype.UUID, error)
 	MarkBillingPaymentSettled(ctx context.Context, arg MarkBillingPaymentSettledParams) (pgtype.UUID, error)
+	MarkBillingPaymentSettlementPending(ctx context.Context, arg MarkBillingPaymentSettlementPendingParams) (pgtype.UUID, error)
 	MarkBillingPaymentSettlementUnknown(ctx context.Context, transitionedAt pgtype.Timestamptz, iD pgtype.UUID, reservationOwner pgtype.UUID) (pgtype.UUID, error)
 	MarkBillingPaymentSettling(ctx context.Context, transitionedAt pgtype.Timestamptz, iD pgtype.UUID, reservationOwner pgtype.UUID) (pgtype.UUID, error)
 	MarkBillingPaymentVerified(ctx context.Context, arg MarkBillingPaymentVerifiedParams) (pgtype.UUID, error)
+	MarkBillingTopupSettlementPending(ctx context.Context, arg MarkBillingTopupSettlementPendingParams) (pgtype.UUID, error)
+	MarkBillingTopupSettlementUnknown(ctx context.Context, arg MarkBillingTopupSettlementUnknownParams) (pgtype.UUID, error)
 	MempoolListPendingAfter(ctx context.Context, arg MempoolListPendingAfterParams) ([]MempoolListPendingAfterRow, error)
 	MempoolListPendingFirst(ctx context.Context, arg MempoolListPendingFirstParams) ([]MempoolListPendingFirstRow, error)
 	MempoolLookupPending(ctx context.Context, arg MempoolLookupPendingParams) ([]MempoolLookupPendingRow, error)
@@ -422,9 +446,13 @@ type Querier interface {
 	QueryValidateTransactionCursor(ctx context.Context, arg QueryValidateTransactionCursorParams) ([]*bool, error)
 	ReconcileBillingPaymentFailed(ctx context.Context, arg ReconcileBillingPaymentFailedParams) (pgtype.UUID, error)
 	ReconcileBillingPaymentSettled(ctx context.Context, arg ReconcileBillingPaymentSettledParams) (pgtype.UUID, error)
+	ReconcileBillingTopupFailed(ctx context.Context, arg ReconcileBillingTopupFailedParams) (pgtype.UUID, error)
+	ReconcileBillingTopupSettled(ctx context.Context, arg ReconcileBillingTopupSettledParams) (ReconcileBillingTopupSettledRow, error)
 	RecordAdapterFailure(ctx context.Context, arg RecordAdapterFailureParams) error
 	RecordPriceAdapterSuccess(ctx context.Context, arg RecordPriceAdapterSuccessParams) error
 	RecordUserLogin(ctx context.Context, loggedInAt pgtype.Timestamptz, iD pgtype.UUID) (User, error)
+	ReleaseBillingUsage(ctx context.Context, arg ReleaseBillingUsageParams) (ReleaseBillingUsageRow, error)
+	ReserveBillingUsage(ctx context.Context, arg ReserveBillingUsageParams) (ReserveBillingUsageRow, error)
 	RevokeAllUserAPIKeys(ctx context.Context, revokedAt pgtype.Timestamptz, userID pgtype.UUID) (int64, error)
 	RevokeAllUserSessions(ctx context.Context, revokedAt pgtype.Timestamptz, userID pgtype.UUID) (int64, error)
 	RevokeUserAPIKey(ctx context.Context, revokedAt pgtype.Timestamptz, prefix string, userID pgtype.UUID) (ApiKey, error)
@@ -504,6 +532,7 @@ type Querier interface {
 	StoreLockConfiguredStart(ctx context.Context, dollar_1 pgtype.Numeric) ([]string, error)
 	StoreLockFinality(ctx context.Context, dollar_1 pgtype.Numeric) ([]StoreLockFinalityRow, error)
 	StoreSetDerivedCanonical(ctx context.Context, column1 pgtype.Numeric, column2 []byte, canonical bool) error
+	SummarizeBillingAccounts(ctx context.Context, chainID pgtype.Numeric, network string, asset []byte) (SummarizeBillingAccountsRow, error)
 	SummarizeBillingPayments(ctx context.Context, arg SummarizeBillingPaymentsParams) ([]SummarizeBillingPaymentsRow, error)
 	TouchActiveUserSession(ctx context.Context, observedAt pgtype.Timestamptz, iD pgtype.UUID, touchBefore pgtype.Timestamptz) error
 	TrySearchCatalogMaintenanceLock(ctx context.Context, chainID string) (bool, error)

@@ -11,8 +11,10 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/islishude/etherview/internal/auth"
+	"github.com/islishude/etherview/internal/billing"
 )
 
 type fakeBackend struct {
@@ -20,6 +22,40 @@ type fakeBackend struct {
 	result  any
 	err     error
 	calls   int
+}
+
+type fakeUsageLedger struct {
+	reserves []billing.ReserveUsageInput
+	commits  []billing.CommitUsageInput
+	releases []string
+}
+
+func (ledger *fakeUsageLedger) ReserveUsage(
+	_ context.Context,
+	input billing.ReserveUsageInput,
+) (billing.UsageReservation, error) {
+	ledger.reserves = append(ledger.reserves, input)
+	return billing.UsageReservation{
+		Owner:  "00000000-0000-4000-8000-000000000002",
+		Charge: billing.UsageCharge{ID: fmt.Sprintf("00000000-0000-4000-8000-%012d", len(ledger.reserves))},
+	}, nil
+}
+
+func (ledger *fakeUsageLedger) CommitUsage(
+	_ context.Context,
+	input billing.CommitUsageInput,
+) (billing.UsageCharge, error) {
+	ledger.commits = append(ledger.commits, input)
+	return billing.UsageCharge{ID: input.ChargeID, State: billing.UsageCommitted}, nil
+}
+
+func (ledger *fakeUsageLedger) ReleaseUsage(
+	_ context.Context,
+	chargeID, _, code string,
+	_ time.Time,
+) (billing.UsageCharge, error) {
+	ledger.releases = append(ledger.releases, chargeID+":"+code)
+	return billing.UsageCharge{ID: chargeID, State: billing.UsageReleased}, nil
 }
 
 func (b *fakeBackend) Execute(_ context.Context, request Request) (any, error) {
@@ -241,6 +277,130 @@ func TestDispatchesSupportedAction(t *testing.T) {
 	var response map[string]any
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil || response["status"] != "1" || response["result"] != "123" {
 		t.Fatalf("response=%#v err=%v", response, err)
+	}
+}
+
+func TestPricedCompatibilityActionChargesUserKeyAfterCanonicalValidation(t *testing.T) {
+	t.Parallel()
+	repository := auth.NewMemoryRepository()
+	manager := auth.Manager{
+		Repository: repository, Pepper: bytes.Repeat([]byte{0x61}, 32),
+	}
+	const userID = "74e5f6a2-30ef-4d7f-93b8-e430f1fdfac4"
+	userKey, err := manager.CreateForUser(
+		context.Background(), userID, "user reader", []auth.Scope{auth.ScopeRead},
+		100, 100, 5,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operatorKey, err := manager.CreateScoped(
+		context.Background(), "operator reader", 100, 100, []auth.Scope{auth.ScopeRead},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifyOnly, err := manager.CreateForUser(
+		context.Background(), userID, "verifier", []auth.Scope{auth.ScopeVerification},
+		100, 100, 5,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	usageLedger := &fakeUsageLedger{}
+	usage, err := billing.NewUsageDispatcher(billing.UsageDispatcherOptions{
+		Ledger:       usageLedger,
+		Prices:       map[string]string{"etherscan.account.balance": "10"},
+		MaxBodyBytes: 1 << 20, MaxHeaderBytes: 4096,
+		Now: func() time.Time { return time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &fakeBackend{result: "123"}
+	handler := manager.Middleware(false, Handler{
+		ChainID: 1, Backend: backend, Usage: usage,
+		PublicOrigin: "https://explorer.example",
+	})
+
+	serve := func(method, token, encoded string) *httptest.ResponseRecorder {
+		var request *http.Request
+		if method == http.MethodGet {
+			request = httptest.NewRequest(method, "/v2/api?"+encoded, nil)
+		} else {
+			request = httptest.NewRequest(method, "/v2/api", strings.NewReader(encoded))
+			request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		}
+		if token != "" {
+			request.Header.Set("X-API-Key", token)
+		}
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+		return recorder
+	}
+	base := "chainid=1&module=account&action=balance&address="
+	get := serve(http.MethodGet, userKey.Token, base+"0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	if get.Code != http.StatusOK || len(usageLedger.reserves) != 1 ||
+		len(usageLedger.commits) != 1 || len(usageLedger.releases) != 0 {
+		t.Fatalf("GET status=%d reserves=%d commits=%d releases=%d body=%s",
+			get.Code, len(usageLedger.reserves), len(usageLedger.commits),
+			len(usageLedger.releases), get.Body.String())
+	}
+	first := usageLedger.reserves[0]
+	if first.UserID != userID || first.APIKeyPrefix != userKey.Record.Prefix ||
+		first.Method != http.MethodGet || first.Operation != "etherscan.account.balance" ||
+		first.AmountAtomic != "10" ||
+		backend.request.Values.Get("address") != "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" ||
+		backend.request.Values.Get("tag") != "latest" {
+		t.Fatalf("GET reserve=%+v backend=%+v", first, backend.request)
+	}
+
+	post := serve(
+		http.MethodPost, userKey.Token,
+		base+"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&tag=latest",
+	)
+	if post.Code != http.StatusOK || len(usageLedger.reserves) != 2 ||
+		len(usageLedger.commits) != 2 || usageLedger.reserves[1].Method != http.MethodPost ||
+		usageLedger.reserves[1].Resource == first.Resource {
+		t.Fatalf("POST status=%d reserves=%+v commits=%d body=%s",
+			post.Code, usageLedger.reserves, len(usageLedger.commits), post.Body.String())
+	}
+
+	backend.err = ErrNotFound
+	logical := serve(http.MethodGet, userKey.Token, base+testSender)
+	if logical.Code != http.StatusOK || len(usageLedger.commits) != 2 ||
+		len(usageLedger.releases) != 1 ||
+		!strings.Contains(logical.Body.String(), `"status":"0"`) {
+		t.Fatalf("logical status=%d commits=%d releases=%v body=%s",
+			logical.Code, len(usageLedger.commits), usageLedger.releases, logical.Body.String())
+	}
+	backend.err = nil
+
+	operator := serve(http.MethodGet, operatorKey.Token, base+testSender)
+	if operator.Code != http.StatusOK || len(usageLedger.reserves) != 3 {
+		t.Fatalf("operator status=%d reserves=%d body=%s", operator.Code, len(usageLedger.reserves), operator.Body.String())
+	}
+	missing := serve(http.MethodGet, "", base+testSender)
+	if missing.Code != http.StatusUnauthorized || len(usageLedger.reserves) != 3 {
+		t.Fatalf("missing-key status=%d reserves=%d body=%s", missing.Code, len(usageLedger.reserves), missing.Body.String())
+	}
+	wrongScope := serve(http.MethodGet, verifyOnly.Token, base+testSender)
+	if wrongScope.Code != http.StatusForbidden || len(usageLedger.reserves) != 3 {
+		t.Fatalf("wrong-scope status=%d reserves=%d body=%s", wrongScope.Code, len(usageLedger.reserves), wrongScope.Body.String())
+	}
+
+	for _, invalid := range []string{
+		base + testSender + "&unknown=1",
+		base + testSender + "&address=" + testRecipient,
+	} {
+		beforeBackend, beforeReserves := backend.calls, len(usageLedger.reserves)
+		response := serve(http.MethodGet, userKey.Token, invalid)
+		if response.Code != http.StatusBadRequest || backend.calls != beforeBackend ||
+			len(usageLedger.reserves) != beforeReserves {
+			t.Fatalf("invalid=%q status=%d backend=%d/%d reserves=%d/%d body=%s",
+				invalid, response.Code, backend.calls, beforeBackend,
+				len(usageLedger.reserves), beforeReserves, response.Body.String())
+		}
 	}
 }
 

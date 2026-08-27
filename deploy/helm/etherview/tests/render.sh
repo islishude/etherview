@@ -332,9 +332,10 @@ assert_contains "$distributed" "alert: EtherviewVerificationCompilerUnavailable"
 assert_contains "$distributed" "alert: EtherviewX402FacilitatorUnavailable"
 assert_contains "$distributed" "alert: EtherviewX402LedgerUnavailable"
 assert_contains "$distributed" "alert: EtherviewX402SettlementReconciliationRequired"
-assert_contains "$distributed" 'sum(increase(etherview_x402_requests_total{etherview_release="etherview",etherview_namespace="explorer",result="verify_unavailable"}[5m]))'
-assert_contains "$distributed" 'sum(increase(etherview_x402_requests_total{etherview_release="etherview",etherview_namespace="explorer",result="ledger_unavailable"}[5m]))'
-assert_contains "$distributed" 'max(etherview_x402_stale_settling_payments{etherview_release="etherview",etherview_namespace="explorer",reason=~"settlement_unknown|unmarked_after_timeout"})'
+assert_contains "$distributed" 'sum(increase(etherview_billing_topups_total{etherview_release="etherview",etherview_namespace="explorer",result="verify_unavailable"}[5m]))'
+assert_contains "$distributed" 'sum(increase(etherview_billing_topups_total{etherview_release="etherview",etherview_namespace="explorer",result="ledger_unavailable"}[5m]))'
+assert_contains "$distributed" 'sum(increase(etherview_billing_usage_total{etherview_release="etherview",etherview_namespace="explorer",result=~"ledger_unavailable|commit_unknown"}[5m]))'
+assert_contains "$distributed" 'max(etherview_x402_stale_settling_payments{etherview_release="etherview",etherview_namespace="explorer",reason=~"settlement_unknown|settlement_pending|unmarked_after_timeout"})'
 assert_contains "$distributed" "targetLabel: etherview_release"
 assert_contains "$distributed" 'replacement: "etherview"'
 assert_contains "$distributed" "targetLabel: etherview_namespace"
@@ -475,7 +476,8 @@ assert_not_contains "$monolith" "checksum/secret"
 assert_contains "$monolith" "user_auth: false"
 assert_not_contains "$monolith" "ETHERVIEW_SESSION_PEPPER"
 assert_not_contains "$distributed" "ETHERVIEW_SESSION_PEPPER"
-assert_contains "$monolith" "x402_billing: false"
+assert_contains "$monolith" "api_billing: false"
+assert_contains "$monolith" "x402_topups: false"
 assert_not_contains "$monolith" "ETHERVIEW_X402_FINGERPRINT_PEPPER"
 assert_not_contains "$monolith" "ETHERVIEW_X402_FACILITATOR_HEADERS"
 assert_not_contains "$distributed" "ETHERVIEW_X402_FINGERPRINT_PEPPER"
@@ -615,18 +617,7 @@ done
 
 billing_monolith="$temporary_dir/billing-monolith.yaml"
 "$helm_bin" template etherview "$chart_dir" --namespace explorer \
-  --set config.features.x402_billing=true \
-  --set-string config.server.public_url=https://explorer.example.com \
-  --set-string config.billing.facilitator_url=https://facilitator.example.com \
-  --set-string 'config.billing.facilitator_allowed_cidrs[0]=203.0.113.0/24' \
-  --set-string config.billing.network=eip155:84532 \
-  --set-string config.billing.asset=0x1111111111111111111111111111111111111111 \
-  --set config.billing.asset_decimals=6 \
-  --set-string config.billing.asset_eip712_name=USDC \
-  --set-string config.billing.asset_eip712_version=2 \
-  --set-string config.billing.recipient=0x2222222222222222222222222222222222222222 \
-  --set-string config.billing.routes.listBlocks.access=x402 \
-  --set-string config.billing.routes.listBlocks.amount_atomic=1000 \
+  -f "$script_dir/values-x402.yaml" \
   --set networkPolicy.allowExternalHTTPS=false \
   --set-string 'networkPolicy.runtimeHTTPSCIDRs[0]=198.51.100.0/24' \
   >"$billing_monolith"
@@ -647,18 +638,7 @@ assert_component_occurrences "$billing_monolith" all "name: ETHERVIEW_X402_FACIL
 billing_distributed="$temporary_dir/billing-distributed.yaml"
 "$helm_bin" template etherview "$chart_dir" --namespace explorer \
   -f "$chart_dir/values-distributed.yaml" \
-  --set config.features.x402_billing=true \
-  --set-string config.server.public_url=https://explorer.example.com \
-  --set-string config.billing.facilitator_url=https://facilitator.example.com \
-  --set-string 'config.billing.facilitator_allowed_cidrs[0]=203.0.113.0/24' \
-  --set-string config.billing.network=eip155:84532 \
-  --set-string config.billing.asset=0x1111111111111111111111111111111111111111 \
-  --set config.billing.asset_decimals=6 \
-  --set-string config.billing.asset_eip712_name=USDC \
-  --set-string config.billing.asset_eip712_version=2 \
-  --set-string config.billing.recipient=0x2222222222222222222222222222222222222222 \
-  --set-string config.billing.routes.listBlocks.access=api_key_or_x402 \
-  --set-string config.billing.routes.listBlocks.amount_atomic=1000 \
+  -f "$script_dir/values-x402.yaml" \
   --set networkPolicy.allowExternalHTTPS=false \
   --set-string 'networkPolicy.runtimeHTTPSCIDRs[0]=198.51.100.0/24' \
   >"$billing_distributed"
@@ -682,19 +662,11 @@ done
 
 billing_external_secret="$temporary_dir/billing-external-secret.yaml"
 "$helm_bin" template etherview "$chart_dir" \
+  -f "$script_dir/values-x402.yaml" \
   --set externalSecret.enabled=true \
+  --set-string externalSecret.sessionPepperRemoteKey=runtime/session-pepper \
   --set-string externalSecret.x402FingerprintPepperRemoteKey=runtime/x402-fingerprint \
   --set-string externalSecret.x402FacilitatorHeadersRemoteKey=runtime/x402-headers \
-  --set config.features.x402_billing=true \
-  --set-string config.server.public_url=https://explorer.example.com \
-  --set-string config.billing.facilitator_url=https://facilitator.example.com \
-  --set-string 'config.billing.facilitator_allowed_cidrs[0]=203.0.113.0/24' \
-  --set-string config.billing.network=eip155:84532 \
-  --set-string config.billing.asset=0x1111111111111111111111111111111111111111 \
-  --set config.billing.asset_decimals=6 \
-  --set-string config.billing.asset_eip712_name=USDC \
-  --set-string config.billing.asset_eip712_version=2 \
-  --set-string config.billing.recipient=0x2222222222222222222222222222222222222222 \
   --set networkPolicy.allowExternalHTTPS=false \
   --set-string 'networkPolicy.runtimeHTTPSCIDRs[0]=198.51.100.0/24' \
   >"$billing_external_secret"
@@ -952,17 +924,13 @@ expect_render_failure external-billing-without-fingerprint-pepper \
   --set externalSecret.enabled=true \
   --set-string externalSecret.x402FingerprintPepperRemoteKey=
 expect_render_failure invalid-x402-operation \
-  --set-string config.billing.routes.notEligible.access=x402 \
-  --set-string config.billing.routes.notEligible.amount_atomic=1
+  --set-json 'config.billing.operations={"notEligible":{"amount_atomic":"1"}}'
 expect_render_failure free-verified-artifact-read \
-  --set-string config.billing.routes.getVerifiedContract.access=x402 \
-  --set-string config.billing.routes.getVerifiedContract.amount_atomic=1
-expect_render_failure invalid-x402-access \
-  --set-string config.billing.routes.listBlocks.access=free \
-  --set-string config.billing.routes.listBlocks.amount_atomic=1
+  --set-json 'config.billing.operations={"getVerifiedContract":{"amount_atomic":"1"}}'
+expect_render_failure topups-without-prepaid-dependencies \
+  --set config.features.x402_topups=true
 expect_render_failure invalid-x402-amount \
-  --set-string config.billing.routes.listBlocks.access=x402 \
-  --set-string config.billing.routes.listBlocks.amount_atomic=01
+  --set-json 'config.billing.operations={"etherscan.account.balance":{"amount_atomic":"01"}}'
 expect_render_failure alert-rules-without-scoped-monitor \
   --set prometheusRule.enabled=true \
   --set serviceMonitor.enabled=false

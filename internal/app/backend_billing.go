@@ -43,6 +43,10 @@ type adminBillingPaymentOutput struct {
 	Payer                *string `json:"payer"`
 	UserID               *string `json:"user_id"`
 	APIKeyPrefix         *string `json:"api_key_prefix"`
+	Purpose              string  `json:"purpose"`
+	AssetTransferMethod  string  `json:"asset_transfer_method"`
+	PaymentFlow          string  `json:"payment_flow"`
+	TopupIntentID        *string `json:"topup_intent_id"`
 	TransactionHash      *string `json:"transaction_hash"`
 	State                string  `json:"state"`
 	FailureCode          *string `json:"failure_code"`
@@ -98,15 +102,53 @@ func (b *Backend) adminBilling(
 	case "reconcile":
 		operationAt := time.Now().UTC().Truncate(time.Microsecond)
 		var payment billing.Payment
+		current, inspectErr := ledger.Inspect(ctx, command.id)
+		if inspectErr != nil {
+			return adminBillingOperationError(inspectErr)
+		}
 		switch command.outcome {
 		case "settled":
-			payment, err = ledger.ReconcileSettled(
-				ctx, command.id, *command.transactionHash, operationAt,
-			)
+			if current.Payment.Purpose == "account_topup" {
+				prepaid, configureErr := billing.NewPrepaidLedger(db, billing.PrepaidOptions{
+					ChainID: cfg.Chain.ID, Network: current.Payment.Network,
+					Asset: current.Payment.Asset, Recipient: current.Payment.Recipient,
+					TopupTTL: cfg.Billing.TopupIntentTTL,
+					UsageTTL: cfg.Billing.UsageReservationTTL,
+				})
+				if configureErr != nil {
+					return errors.New("configure prepaid billing administration")
+				}
+				_, err = prepaid.ReconcileTopupSettled(
+					ctx, command.id, *command.transactionHash, operationAt,
+				)
+				if err == nil {
+					payment, err = ledger.Get(ctx, command.id)
+				}
+			} else {
+				payment, err = ledger.ReconcileSettled(
+					ctx, command.id, *command.transactionHash, operationAt,
+				)
+			}
 		case "failed":
-			payment, err = ledger.ReconcileFailed(
-				ctx, command.id, operationAt,
-			)
+			if current.Payment.Purpose == "account_topup" {
+				prepaid, configureErr := billing.NewPrepaidLedger(db, billing.PrepaidOptions{
+					ChainID: cfg.Chain.ID, Network: current.Payment.Network,
+					Asset: current.Payment.Asset, Recipient: current.Payment.Recipient,
+					TopupTTL: cfg.Billing.TopupIntentTTL,
+					UsageTTL: cfg.Billing.UsageReservationTTL,
+				})
+				if configureErr != nil {
+					return errors.New("configure prepaid billing administration")
+				}
+				err = prepaid.ReconcileTopupFailed(ctx, command.id, operationAt)
+				if err == nil {
+					payment, err = ledger.Get(ctx, command.id)
+				}
+			} else {
+				payment, err = ledger.ReconcileFailed(
+					ctx, command.id, operationAt,
+				)
+			}
 		}
 		if err != nil {
 			return adminBillingOperationError(err)
@@ -329,8 +371,13 @@ func newAdminBillingOutput(
 func adminBillingPaymentModel(
 	payment billing.Payment,
 ) (adminBillingPaymentOutput, error) {
+	validBinding := payment.Purpose == "legacy_request" && payment.Method == "GET" ||
+		payment.Purpose == "account_topup" && payment.Method == "POST" &&
+			payment.Operation == "createBillingTopup" && payment.TopupIntentID != nil
 	if payment.ID == "" || payment.ChainID == 0 ||
-		payment.Operation == "" || payment.Method != "GET" ||
+		payment.Operation == "" || !validBinding ||
+		(payment.AssetTransferMethod != "eip3009" && payment.AssetTransferMethod != "permit2") ||
+		payment.PaymentFlow != "authorization" ||
 		payment.Network == "" || payment.AmountAtomic == "" ||
 		payment.ReservationExpiresAt.IsZero() ||
 		payment.CreatedAt.IsZero() || payment.UpdatedAt.IsZero() {
@@ -347,6 +394,9 @@ func adminBillingPaymentModel(
 		Payer:        optionalBillingAddressString(payment.Payer),
 		UserID:       cloneBillingOutputString(payment.UserID),
 		APIKeyPrefix: cloneBillingOutputString(payment.APIKeyPrefix),
+		Purpose:      payment.Purpose, AssetTransferMethod: payment.AssetTransferMethod,
+		PaymentFlow:   payment.PaymentFlow,
+		TopupIntentID: cloneBillingOutputString(payment.TopupIntentID),
 		TransactionHash: optionalBillingHashString(
 			payment.TransactionHash,
 		),

@@ -403,6 +403,8 @@ func validPaymentEvidence() PaymentEvidence {
 		Network: baseSepoliaNetwork, Asset: runTestAsset, Amount: "1",
 		PayTo: runTestRecipient, MaxTimeoutSeconds: 60,
 		AssetEIP712Name: "Test USD", AssetEIP712Version: "2",
+		AssetTransferMethod: x402wire.TransferMethodEIP3009,
+		PaymentFlow:         x402wire.PaymentFlowAuthorization,
 		Resource: x402.ResourceInfo{
 			URL:         "https://explorer.example/api/v1/blocks?limit=1",
 			MimeType:    testnetResourceMimeType,

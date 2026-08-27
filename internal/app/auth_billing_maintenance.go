@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/billing"
 	"github.com/islishude/etherview/internal/components"
 	"github.com/islishude/etherview/internal/config"
@@ -141,7 +142,7 @@ func registerAuthBillingHousekeepers(
 	cfg config.Config,
 	logger *slog.Logger,
 ) error {
-	if !cfg.Features.UserAuth && !cfg.Features.X402Billing {
+	if !cfg.Features.UserAuth && !cfg.Features.X402Billing && !cfg.Features.APIBilling {
 		return nil
 	}
 	if registry == nil {
@@ -181,7 +182,7 @@ func registerAuthBillingHousekeepers(
 			return err
 		}
 	}
-	if cfg.Features.X402Billing {
+	if cfg.Features.X402Billing || cfg.Features.APIBilling {
 		ledger, err := billing.NewPostgresLedger(
 			writer, cfg.Chain.ID, cfg.Billing.ReservationTTL,
 		)
@@ -205,6 +206,39 @@ func registerAuthBillingHousekeepers(
 		if err := registry.Register(
 			components.RoleMaintenance,
 			"48-x402-billing-expiry",
+			func() (components.Service, error) { return housekeeper, nil },
+		); err != nil {
+			return err
+		}
+	}
+	if cfg.Features.APIBilling {
+		ledger, err := billing.NewPrepaidLedger(writer, billing.PrepaidOptions{
+			ChainID: cfg.Chain.ID, Network: cfg.Billing.Network,
+			Asset:     ethcommon.HexToAddress(cfg.Billing.Asset),
+			Recipient: ethcommon.HexToAddress(cfg.Billing.Recipient),
+			TopupTTL:  cfg.Billing.TopupIntentTTL,
+			UsageTTL:  cfg.Billing.UsageReservationTTL,
+		})
+		if err != nil {
+			return err
+		}
+		options := common
+		options.ServiceName = "prepaid-billing-expiry"
+		options.FailureCode = "prepaid_billing_expiry_failed"
+		housekeeper, err := newAuthBillingHousekeeper(
+			func(ctx context.Context, observedAt time.Time, limit int) error {
+				_, expireErr := ledger.Expire(ctx, observedAt, limit)
+				return expireErr
+			},
+			logger,
+			options,
+		)
+		if err != nil {
+			return err
+		}
+		if err := registry.Register(
+			components.RoleMaintenance,
+			"49-prepaid-billing-expiry",
 			func() (components.Service, error) { return housekeeper, nil },
 		); err != nil {
 			return err

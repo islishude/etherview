@@ -15,6 +15,9 @@ import (
 const (
 	X402Version                    = 2
 	ExactScheme                    = "exact"
+	TransferMethodEIP3009          = "eip3009"
+	TransferMethodPermit2          = "permit2"
+	PaymentFlowAuthorization       = "authorization"
 	PaymentSignatureHeader         = "Payment-Signature"
 	PaymentRequiredHeader          = "Payment-Required"
 	PaymentResponseHeader          = "Payment-Response"
@@ -43,9 +46,13 @@ type Authorization struct {
 
 // Payment is a strictly decoded and normalized v2 exact-EVM payment.
 type Payment struct {
-	payload       x402.PaymentPayload
-	authorization Authorization
-	payloadJSON   []byte
+	payload            x402.PaymentPayload
+	authorization      Authorization
+	permit2            *Permit2Authorization
+	transferMethod     string
+	paymentFlow        string
+	fingerprintVersion int
+	payloadJSON        []byte
 }
 
 // Payload returns an independent SDK value suitable for the facilitator wire.
@@ -63,9 +70,29 @@ func (p Payment) Authorization() Authorization {
 	return p.authorization
 }
 
+func (p Payment) Permit2Authorization() (Permit2Authorization, bool) {
+	if p.permit2 == nil {
+		return Permit2Authorization{}, false
+	}
+	return *p.permit2, true
+}
+
+func (p Payment) TransferMethod() string { return p.transferMethod }
+
+func (p Payment) PaymentFlow() string { return p.paymentFlow }
+
+func (p Payment) FingerprintVersion() int { return p.fingerprintVersion }
+
+func (p Payment) Payer() string {
+	if p.permit2 != nil {
+		return p.permit2.From
+	}
+	return p.authorization.From
+}
+
 type paymentPayloadWire struct {
 	X402Version int                        `json:"x402Version"`
-	Payload     exactPayloadWire           `json:"payload"`
+	Payload     json.RawMessage            `json:"payload"`
 	Accepted    paymentRequirementWire     `json:"accepted"`
 	Resource    *resourceWire              `json:"resource,omitempty"`
 	Extensions  map[string]json.RawMessage `json:"extensions,omitempty"`
@@ -96,8 +123,10 @@ type paymentRequirementWire struct {
 }
 
 type assetExtraWire struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
+	AssetTransferMethod string `json:"assetTransferMethod,omitempty"`
+	PaymentFlow         string `json:"paymentFlow,omitempty"`
+	Name                string `json:"name,omitempty"`
+	Version             string `json:"version,omitempty"`
 }
 
 type resourceWire struct {
@@ -111,7 +140,7 @@ type resourceWire struct {
 
 type canonicalPaymentWire struct {
 	X402Version int                    `json:"x402Version"`
-	Payload     canonicalExactPayload  `json:"payload"`
+	Payload     any                    `json:"payload"`
 	Accepted    paymentRequirementWire `json:"accepted"`
 	Resource    *resourceWire          `json:"resource,omitempty"`
 }
@@ -197,8 +226,36 @@ func normalizeRequirement(wire paymentRequirementWire, phase Phase) (paymentRequ
 	if wire.MaxTimeoutSeconds <= 0 || wire.MaxTimeoutSeconds > 300 || wire.Extra == nil {
 		return paymentRequirementWire{}, boundaryError(phase, FailureInvalid, CodeRequirementInvalid)
 	}
-	if !boundedText(wire.Extra.Name, 1, 128) || !boundedText(wire.Extra.Version, 1, 32) {
+	method := wire.Extra.AssetTransferMethod
+	if method == "" {
+		method = TransferMethodEIP3009
+	}
+	if method != TransferMethodEIP3009 && method != TransferMethodPermit2 {
+		return paymentRequirementWire{}, boundaryError(phase, FailureInvalid, CodePaymentUnsupported)
+	}
+	flow := wire.Extra.PaymentFlow
+	if flow == "" {
+		flow = PaymentFlowAuthorization
+	}
+	if flow != PaymentFlowAuthorization {
+		return paymentRequirementWire{}, boundaryError(phase, FailureInvalid, CodePaymentUnsupported)
+	}
+	if method == TransferMethodEIP3009 &&
+		(!boundedText(wire.Extra.Name, 1, 128) || !boundedText(wire.Extra.Version, 1, 32)) {
 		return paymentRequirementWire{}, boundaryError(phase, FailureInvalid, CodeRequirementInvalid)
+	}
+	if method == TransferMethodPermit2 &&
+		((wire.Extra.Name == "") != (wire.Extra.Version == "") ||
+			wire.Extra.Name != "" && (!boundedText(wire.Extra.Name, 1, 128) ||
+				!boundedText(wire.Extra.Version, 1, 32))) {
+		return paymentRequirementWire{}, boundaryError(phase, FailureInvalid, CodeRequirementInvalid)
+	}
+	extra := &assetExtraWire{Name: wire.Extra.Name, Version: wire.Extra.Version}
+	if wire.Extra.AssetTransferMethod != "" {
+		extra.AssetTransferMethod = method
+	}
+	if wire.Extra.PaymentFlow != "" {
+		extra.PaymentFlow = flow
 	}
 	return paymentRequirementWire{
 		Scheme:            ExactScheme,
@@ -207,11 +264,22 @@ func normalizeRequirement(wire paymentRequirementWire, phase Phase) (paymentRequ
 		Amount:            amount,
 		PayTo:             payTo,
 		MaxTimeoutSeconds: wire.MaxTimeoutSeconds,
-		Extra: &assetExtraWire{
-			Name:    wire.Extra.Name,
-			Version: wire.Extra.Version,
-		},
+		Extra:             extra,
 	}, nil
+}
+
+func resolvedTransferMethod(wire paymentRequirementWire) string {
+	if wire.Extra != nil && wire.Extra.AssetTransferMethod != "" {
+		return wire.Extra.AssetTransferMethod
+	}
+	return TransferMethodEIP3009
+}
+
+func resolvedPaymentFlow(wire paymentRequirementWire) string {
+	if wire.Extra != nil && wire.Extra.PaymentFlow != "" {
+		return wire.Extra.PaymentFlow
+	}
+	return PaymentFlowAuthorization
 }
 
 func canonicalEVMNetwork(value string) (string, bool) {
@@ -344,9 +412,16 @@ func boundedPrintableASCII(value string, minLength, maxLength int) bool {
 }
 
 func requirementToSDK(wire paymentRequirementWire) x402.PaymentRequirements {
-	extra := map[string]any{
-		"name":    wire.Extra.Name,
-		"version": wire.Extra.Version,
+	extra := map[string]any{}
+	if wire.Extra.Name != "" {
+		extra["name"] = wire.Extra.Name
+		extra["version"] = wire.Extra.Version
+	}
+	if wire.Extra.AssetTransferMethod != "" {
+		extra["assetTransferMethod"] = wire.Extra.AssetTransferMethod
+	}
+	if wire.Extra.PaymentFlow != "" {
+		extra["paymentFlow"] = wire.Extra.PaymentFlow
 	}
 	return x402.PaymentRequirements{
 		Scheme:            wire.Scheme,

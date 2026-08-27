@@ -81,7 +81,13 @@ export default defineConfig({
               test:
                 /node_modules[\\/](?:viem|ox|abitype|@noble|@scure)(?:[\\/]|$)/,
               priority: 40,
-              maxSize: 350 * KiB,
+            },
+
+            {
+              name: 'x402-vendor',
+              test: /node_modules[\\/]@x402[\\/]/,
+              priority: 45,
+              includeDependenciesRecursively: false,
             },
 
             {

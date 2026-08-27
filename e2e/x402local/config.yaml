@@ -1,0 +1,170 @@
+server:
+  address: 0.0.0.0:8080
+  metrics_address: 0.0.0.0:9090
+  public_url: http://localhost:18080
+  shutdown_timeout: 20s
+  read_timeout: 15s
+  write_timeout: 30s
+
+chain:
+  id: 31337
+  genesis_hash: ""
+  start_block: 0
+  name: Anvil x402 Local
+  native_symbol: ETH
+  native_name: Ether
+  native_decimals: 18
+  max_reorg_depth: 32
+
+wallet:
+  add_chain:
+    rpc_urls: [http://localhost:18545]
+    block_explorer_urls: []
+    icon_urls: []
+
+database:
+  url: ""
+  read_url: ""
+  max_connections: 20
+  min_connections: 2
+  connect_timeout: 10s
+  statement_timeout: 30s
+
+rpc:
+  request_timeout: 10s
+  batch_size: 100
+  endpoints: []
+
+runtime:
+  roles: [all]
+  poll_interval: 250ms
+  worker_count: 2
+  backfill_workers: 2
+  backfill_batch_blocks: 64
+  lease_duration: 10s
+
+maintenance:
+  interval: 30s
+  search_retention_generations: 1000
+  adapter_delete_batch: 100
+
+features:
+  trace: true
+  mempool: false
+  historical_state: true
+  verification: false
+  sourcify: false
+  nft_metadata: true
+  pricing: false
+  ens: false
+  user_auth: true
+  user_api_keys: true
+  api_billing: true
+  x402_topups: true
+  proxy_detection_v2: false
+  safe_proxy_detection: false
+  diamond_proxy_detection: false
+  proxy_detection_v2_public: false
+
+security:
+  public_verification: false
+  api_key_pepper: ""
+  anonymous_rate: 1000
+  anonymous_burst: 2000
+  allowed_origins: [http://localhost:18080]
+  trusted_proxies: []
+
+user_auth:
+  challenge_ttl: 5m
+  session_ttl: 24h
+  last_used_interval: 5m
+  max_message_bytes: 4096
+  max_signature_bytes: 65
+  api_key_rate: 100
+  api_key_burst: 200
+  max_active_api_keys: 5
+
+billing:
+  facilitator_url: http://x402-facilitator:8081
+  facilitator_allowed_cidrs: [172.30.73.0/24, "fd00:402:73::/64"]
+  facilitator_timeout: 10s
+  facilitator_max_response_bytes: 1048576
+  facilitator_unsafe_allow_http: true
+  network: eip155:31337
+  asset: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+  asset_decimals: 6
+  asset_eip712_name: Local USD
+  asset_eip712_version: "1"
+  recipient: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"
+  requirement_max_timeout: 60s
+  reservation_ttl: 2m
+  topup_intent_ttl: 10m
+  usage_reservation_ttl: 30s
+  minimum_topup_amount_atomic: "1"
+  maximum_topup_amount_atomic: "1000000000000"
+  asset_transfer_methods: [eip3009, permit2]
+  max_payment_header_bytes: 16384
+  max_buffered_response_bytes: 8388608
+  max_captured_header_bytes: 65536
+  coarse_ip_rate: 1000
+  coarse_ip_burst: 2000
+  operations:
+    etherscan.account.balance: {amount_atomic: "1"}
+    etherscan.account.balancemulti: {amount_atomic: "1"}
+    etherscan.account.txlist: {amount_atomic: "1"}
+    etherscan.account.txlistinternal: {amount_atomic: "1"}
+    etherscan.account.tokentx: {amount_atomic: "1"}
+    etherscan.account.tokennfttx: {amount_atomic: "1"}
+    etherscan.account.token1155tx: {amount_atomic: "1"}
+    etherscan.account.tokenbalance: {amount_atomic: "1"}
+    etherscan.account.getminedblocks: {amount_atomic: "1"}
+    etherscan.contract.getabi: {amount_atomic: "1"}
+    etherscan.contract.getsourcecode: {amount_atomic: "1"}
+    etherscan.contract.getcontractcreation: {amount_atomic: "1"}
+    etherscan.transaction.getstatus: {amount_atomic: "1"}
+    etherscan.transaction.gettxreceiptstatus: {amount_atomic: "1"}
+    etherscan.logs.getLogs: {amount_atomic: "1"}
+    etherscan.block.getblocknobytime: {amount_atomic: "1"}
+    etherscan.block.getblockcountdown: {amount_atomic: "1"}
+    etherscan.stats.ethprice: {amount_atomic: "1"}
+    etherscan.stats.tokensupply: {amount_atomic: "1"}
+    etherscan.token.tokensupply: {amount_atomic: "1"}
+    etherscan.token.tokenbalance: {amount_atomic: "1"}
+    etherscan.token.tokeninfo: {amount_atomic: "1"}
+
+observability:
+  environment: x402-local
+  log_level: info
+  log_format: json
+  trace_sample_ratio: 0
+  trace_export_timeout: 5s
+  metrics_refresh_interval: 5s
+  sync_progress_log_interval: 5s
+
+verification:
+  max_input_bytes: 5242880
+  max_output_bytes: 67108864
+  worker_count: 1
+  derived_worker_count: 1
+  derived_max_traces_per_scan: 100
+  timeout: 2m
+  cache_directory: /var/lib/etherview/compilers/cache
+  executor_path: /opt/etherview/compiler/etherview-compiler
+  geas_path: /opt/etherview/geas/geas
+  catalog_urls: {solidity: auto}
+  allowed_download_origins: [https://binaries.soliditylang.org]
+  catalog_refresh_interval: 1h
+  catalog_max_staleness: 24h
+
+adapters:
+  namespace: x402-local
+  connect_timeout: 2s
+  operation_timeout: 500ms
+  redis_cache_ttl: 30s
+  s3_prefix: x402-local
+  s3_max_object_bytes: 16777216
+  fetch_timeout: 5s
+  max_response_bytes: 1048576
+  max_redirects: 2
+  price_freshness: 5m
+  failure_ttl: 30s

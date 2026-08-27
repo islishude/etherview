@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -25,7 +26,6 @@ import (
 	"github.com/islishude/etherview/internal/billing/x402wire"
 	"github.com/islishude/etherview/internal/jsonstrict"
 	x402 "github.com/x402-foundation/x402/go/v2"
-	x402http "github.com/x402-foundation/x402/go/v2/http"
 	x402evm "github.com/x402-foundation/x402/go/v2/mechanisms/evm"
 	exactevmclient "github.com/x402-foundation/x402/go/v2/mechanisms/evm/exact/client"
 	evmsigners "github.com/x402-foundation/x402/go/v2/signers/evm"
@@ -175,29 +175,42 @@ func ExecutePayment(
 		return PaymentEvidence{}, boundaryError(codePaymentChallengeInvalid)
 	}
 
-	sdkClient := x402.Newx402Client(
-		x402.WithBeforePaymentCreationHook(
-			func(creation x402.PaymentCreationContext) (*x402.BeforePaymentCreationHookResult, error) {
-				if !matchesRequirementView(reference, creation.SelectedRequirements) {
-					return nil, boundaryError(codePaymentChallengeChanged)
-				}
-				return nil, nil
-			},
-		),
-	)
-	sdkClient.Register(
-		x402.Network(baseSepoliaNetwork),
-		exactevmclient.NewExactEvmScheme(signer, nil),
-	)
-	wrappedClient := x402http.WrapHTTPClientWithPayment(
-		baseClient,
-		x402http.Newx402HTTPClient(sdkClient),
-	)
+	recheck, err := newPaymentRequest(ctx, normalized.targetURL)
+	if err != nil {
+		return PaymentEvidence{}, boundaryError(codePaymentConfigurationInvalid)
+	}
+	recheckResponse, err := baseClient.Do(recheck)
+	if err != nil {
+		return PaymentEvidence{}, stablePaymentError(err, guard.paymentAttempted())
+	}
+	if recheckResponse.StatusCode != http.StatusPaymentRequired {
+		discardAndClose(recheckResponse.Body)
+		return PaymentEvidence{}, boundaryError(codePaymentChallengeChanged)
+	}
+	if err := consumeChallengeBody(recheckResponse.Body, normalized.maxChallengeBodyBytes); err != nil {
+		return PaymentEvidence{}, err
+	}
+	payload, err := exactevmclient.NewExactEvmScheme(signer, nil).
+		CreatePaymentPayload(ctx, reference.SDK())
+	if err != nil {
+		return PaymentEvidence{}, boundaryError(codePaymentSigningFailed)
+	}
+	payload.Accepted = reference.SDK()
+	resource := reference.Resource()
+	payload.Resource = &resource
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return PaymentEvidence{}, boundaryError(codePaymentSigningFailed)
+	}
 	request, err := newPaymentRequest(ctx, normalized.targetURL)
 	if err != nil {
 		return PaymentEvidence{}, boundaryError(codePaymentConfigurationInvalid)
 	}
-	response, err := wrappedClient.Do(request)
+	request.Header.Set(
+		x402wire.PaymentSignatureHeader,
+		base64.StdEncoding.EncodeToString(payloadJSON),
+	)
+	response, err := baseClient.Do(request)
 	if err != nil {
 		return PaymentEvidence{}, stablePaymentError(err, guard.paymentAttempted())
 	}
@@ -266,13 +279,15 @@ func normalizeHTTPOptions(options HTTPOptions) (normalizedHTTPOptions, error) {
 		return normalizedHTTPOptions{}, boundaryError(codePaymentConfigurationInvalid)
 	}
 	expected, err := x402wire.NewRequirement(x402wire.RequirementOptions{
-		Network:            options.Network,
-		Asset:              options.Asset,
-		Amount:             options.AmountAtomic,
-		PayTo:              options.Recipient,
-		MaxTimeoutSeconds:  options.MaxTimeoutSeconds,
-		AssetEIP712Name:    options.AssetEIP712Name,
-		AssetEIP712Version: options.AssetEIP712Version,
+		Network:             options.Network,
+		Asset:               options.Asset,
+		Amount:              options.AmountAtomic,
+		PayTo:               options.Recipient,
+		MaxTimeoutSeconds:   options.MaxTimeoutSeconds,
+		AssetEIP712Name:     options.AssetEIP712Name,
+		AssetEIP712Version:  options.AssetEIP712Version,
+		AssetTransferMethod: x402wire.TransferMethodEIP3009,
+		PaymentFlow:         x402wire.PaymentFlowAuthorization,
 		Resource: x402.ResourceInfo{
 			URL:         options.ExpectedResourceURL,
 			MimeType:    testnetResourceMimeType,
@@ -592,33 +607,6 @@ func matchesExpectedChallenge(
 ) bool {
 	return actual.RequirementDigest() == expected.RequirementDigest() &&
 		actual.ResourceDigest() == expected.ResourceDigest()
-}
-
-func matchesRequirementView(
-	expected x402wire.Requirement,
-	actual x402.PaymentRequirementsView,
-) bool {
-	if actual == nil {
-		return false
-	}
-	extra := actual.GetExtra()
-	name, nameOK := extra["name"].(string)
-	version, versionOK := extra["version"].(string)
-	if !nameOK || !versionOK || len(extra) != 2 {
-		return false
-	}
-	candidate, err := x402wire.NewRequirement(x402wire.RequirementOptions{
-		Network:            actual.GetNetwork(),
-		Asset:              actual.GetAsset(),
-		Amount:             actual.GetAmount(),
-		PayTo:              actual.GetPayTo(),
-		MaxTimeoutSeconds:  actual.GetMaxTimeoutSeconds(),
-		AssetEIP712Name:    name,
-		AssetEIP712Version: version,
-		Resource:           expected.Resource(),
-	})
-	return err == nil &&
-		candidate.RequirementDigest() == expected.RequirementDigest()
 }
 
 func settlementCallDataBinding(

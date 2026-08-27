@@ -174,6 +174,8 @@ type FeatureConfig struct {
 	UserAuth               bool `yaml:"user_auth"`
 	UserAPIKeys            bool `yaml:"user_api_keys"`
 	X402Billing            bool `yaml:"x402_billing"`
+	APIBilling             bool `yaml:"api_billing"`
+	X402Topups             bool `yaml:"x402_topups"`
 	ProxyDetectionV2       bool `yaml:"proxy_detection_v2"`
 	SafeProxyDetection     bool `yaml:"safe_proxy_detection"`
 	DiamondProxyDetection  bool `yaml:"diamond_proxy_detection"`
@@ -271,29 +273,40 @@ type BillingRouteConfig struct {
 	AmountAtomic string `yaml:"amount_atomic"`
 }
 
+type BillingOperationConfig struct {
+	AmountAtomic string `yaml:"amount_atomic"`
+}
+
 // BillingConfig describes the local x402 policy. FingerprintPepper and
 // FacilitatorHeaders are Secret-only values and are never accepted from YAML.
 type BillingConfig struct {
-	FacilitatorURL              string                        `yaml:"facilitator_url"`
-	FacilitatorAllowedCIDRs     []string                      `yaml:"facilitator_allowed_cidrs"`
-	FacilitatorTimeout          time.Duration                 `yaml:"facilitator_timeout"`
-	FacilitatorMaxResponseBytes int64                         `yaml:"facilitator_max_response_bytes"`
-	Network                     string                        `yaml:"network"`
-	Asset                       string                        `yaml:"asset"`
-	AssetDecimals               uint8                         `yaml:"asset_decimals"`
-	AssetEIP712Name             string                        `yaml:"asset_eip712_name"`
-	AssetEIP712Version          string                        `yaml:"asset_eip712_version"`
-	Recipient                   string                        `yaml:"recipient"`
-	RequirementMaxTimeout       time.Duration                 `yaml:"requirement_max_timeout"`
-	ReservationTTL              time.Duration                 `yaml:"reservation_ttl"`
-	MaxPaymentHeaderBytes       int                           `yaml:"max_payment_header_bytes"`
-	MaxBufferedResponseBytes    int64                         `yaml:"max_buffered_response_bytes"`
-	MaxCapturedHeaderBytes      int                           `yaml:"max_captured_header_bytes"`
-	CoarseIPRate                int                           `yaml:"coarse_ip_rate"`
-	CoarseIPBurst               int                           `yaml:"coarse_ip_burst"`
-	Routes                      map[string]BillingRouteConfig `yaml:"routes"`
-	FingerprintPepper           string                        `yaml:"-"`
-	FacilitatorHeaders          map[string]string             `yaml:"-"`
+	FacilitatorURL              string                            `yaml:"facilitator_url"`
+	FacilitatorAllowedCIDRs     []string                          `yaml:"facilitator_allowed_cidrs"`
+	FacilitatorTimeout          time.Duration                     `yaml:"facilitator_timeout"`
+	FacilitatorMaxResponseBytes int64                             `yaml:"facilitator_max_response_bytes"`
+	FacilitatorUnsafeAllowHTTP  bool                              `yaml:"facilitator_unsafe_allow_http"`
+	Network                     string                            `yaml:"network"`
+	Asset                       string                            `yaml:"asset"`
+	AssetDecimals               uint8                             `yaml:"asset_decimals"`
+	AssetEIP712Name             string                            `yaml:"asset_eip712_name"`
+	AssetEIP712Version          string                            `yaml:"asset_eip712_version"`
+	Recipient                   string                            `yaml:"recipient"`
+	RequirementMaxTimeout       time.Duration                     `yaml:"requirement_max_timeout"`
+	ReservationTTL              time.Duration                     `yaml:"reservation_ttl"`
+	TopupIntentTTL              time.Duration                     `yaml:"topup_intent_ttl"`
+	UsageReservationTTL         time.Duration                     `yaml:"usage_reservation_ttl"`
+	MinimumTopupAmountAtomic    string                            `yaml:"minimum_topup_amount_atomic"`
+	MaximumTopupAmountAtomic    string                            `yaml:"maximum_topup_amount_atomic"`
+	AssetTransferMethods        []string                          `yaml:"asset_transfer_methods"`
+	MaxPaymentHeaderBytes       int                               `yaml:"max_payment_header_bytes"`
+	MaxBufferedResponseBytes    int64                             `yaml:"max_buffered_response_bytes"`
+	MaxCapturedHeaderBytes      int                               `yaml:"max_captured_header_bytes"`
+	CoarseIPRate                int                               `yaml:"coarse_ip_rate"`
+	CoarseIPBurst               int                               `yaml:"coarse_ip_burst"`
+	Routes                      map[string]BillingRouteConfig     `yaml:"routes"`
+	Operations                  map[string]BillingOperationConfig `yaml:"operations"`
+	FingerprintPepper           string                            `yaml:"-"`
+	FacilitatorHeaders          map[string]string                 `yaml:"-"`
 }
 
 // AdapterConfig contains optional accelerators. No correctness path may require
@@ -449,12 +462,15 @@ func Default() Config {
 			FacilitatorMaxResponseBytes: 1 << 20,
 			RequirementMaxTimeout:       60 * time.Second,
 			ReservationTTL:              2 * time.Minute,
+			TopupIntentTTL:              10 * time.Minute,
+			UsageReservationTTL:         2 * time.Minute,
 			MaxPaymentHeaderBytes:       16 << 10,
 			MaxBufferedResponseBytes:    8 << 20,
 			MaxCapturedHeaderBytes:      64 << 10,
 			CoarseIPRate:                100,
 			CoarseIPBurst:               200,
 			Routes:                      map[string]BillingRouteConfig{},
+			Operations:                  map[string]BillingOperationConfig{},
 		},
 	}
 }

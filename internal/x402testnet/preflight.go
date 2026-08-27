@@ -68,7 +68,7 @@ func checkServer(
 		return err
 	}
 	if public.Data.ChainId != strconv.FormatUint(baseSepoliaChainID, 10) ||
-		!public.Data.Features["x402_billing"] {
+		(!public.Data.Features["api_billing"] || !public.Data.Features["x402_topups"]) {
 		return boundaryError("preflight_public_config_mismatch")
 	}
 
@@ -79,7 +79,8 @@ func checkServer(
 		return err
 	}
 	data := billing.Data
-	if !data.Enabled || data.X402Version != 2 || data.Scheme != "exact" ||
+	if !data.ApiBillingEnabled || !data.X402TopupsEnabled ||
+		data.X402Version != 2 || data.Scheme != "exact" ||
 		data.Network == nil || *data.Network != baseSepoliaNetwork ||
 		data.Asset == nil ||
 		!strings.EqualFold(string(*data.Asset), options.ExpectedAsset) ||
@@ -93,13 +94,12 @@ func checkServer(
 		!strings.EqualFold(string(*data.Recipient), options.ExpectedRecipient) {
 		return boundaryError("preflight_billing_config_mismatch")
 	}
-	if len(data.Routes) != 1 {
+	if len(data.Operations) != 1 {
 		return boundaryError("preflight_billing_config_mismatch")
 	}
-	route := data.Routes[0]
-	if route.Operation != options.ExpectedOperation ||
-		string(route.Access) != options.ExpectedAccess ||
-		route.AmountAtomic != options.ExpectedAmountAtomic {
+	operation := data.Operations[0]
+	if operation.Operation != options.ExpectedOperation ||
+		operation.AmountAtomic != options.ExpectedAmountAtomic {
 		return boundaryError("preflight_billing_config_mismatch")
 	}
 	return nil

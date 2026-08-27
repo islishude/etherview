@@ -10,14 +10,16 @@ import (
 
 // RequirementOptions describes one server-authored exact-EVM requirement.
 type RequirementOptions struct {
-	Network            string
-	Asset              string
-	Amount             string
-	PayTo              string
-	MaxTimeoutSeconds  int
-	AssetEIP712Name    string
-	AssetEIP712Version string
-	Resource           x402.ResourceInfo
+	Network             string
+	Asset               string
+	Amount              string
+	PayTo               string
+	MaxTimeoutSeconds   int
+	AssetEIP712Name     string
+	AssetEIP712Version  string
+	AssetTransferMethod string
+	PaymentFlow         string
+	Resource            x402.ResourceInfo
 }
 
 // Requirement is an immutable normalized requirement and resource binding.
@@ -40,8 +42,9 @@ func NewRequirement(options RequirementOptions) (Requirement, error) {
 		PayTo:             options.PayTo,
 		MaxTimeoutSeconds: options.MaxTimeoutSeconds,
 		Extra: &assetExtraWire{
-			Name:    options.AssetEIP712Name,
-			Version: options.AssetEIP712Version,
+			Name: options.AssetEIP712Name, Version: options.AssetEIP712Version,
+			AssetTransferMethod: options.AssetTransferMethod,
+			PaymentFlow:         options.PaymentFlow,
 		},
 	}, PhaseRequirement)
 	if err != nil {
@@ -67,6 +70,22 @@ func NewRequirement(options RequirementOptions) (Requirement, error) {
 		valueDigest:    sha256.Sum256(valueJSON),
 		resourceDigest: sha256.Sum256(resourceJSON),
 	}, nil
+}
+
+func (r Requirement) TransferMethod() string {
+	wire, err := requirementFromSDK(r.value, PhaseRequirement)
+	if err != nil {
+		return ""
+	}
+	return resolvedTransferMethod(wire)
+}
+
+func (r Requirement) PaymentFlow() string {
+	wire, err := requirementFromSDK(r.value, PhaseRequirement)
+	if err != nil {
+		return ""
+	}
+	return resolvedPaymentFlow(wire)
 }
 
 // SDK returns an independent SDK representation.
@@ -111,6 +130,29 @@ func (r Requirement) PaymentRequired(errorCode string) x402.PaymentRequired {
 	}
 }
 
+func PaymentRequired(requirements []Requirement, errorCode string) (x402.PaymentRequired, error) {
+	if len(requirements) == 0 || len(requirements) > 2 {
+		return x402.PaymentRequired{}, boundaryError(PhaseRequirement, FailureInvalid, CodeRequirementInvalid)
+	}
+	resource := requirements[0].Resource()
+	accepted := make([]x402.PaymentRequirements, len(requirements))
+	seen := make(map[string]bool, len(requirements))
+	for index, requirement := range requirements {
+		if !reflect.DeepEqual(resource, requirement.Resource()) {
+			return x402.PaymentRequired{}, boundaryError(PhaseRequirement, FailureInvalid, CodeRequirementInvalid)
+		}
+		method := requirement.TransferMethod()
+		if method == "" || seen[method] {
+			return x402.PaymentRequired{}, boundaryError(PhaseRequirement, FailureInvalid, CodeRequirementInvalid)
+		}
+		seen[method] = true
+		accepted[index] = requirement.SDK()
+	}
+	return x402.PaymentRequired{
+		X402Version: X402Version, Error: errorCode, Resource: &resource, Accepts: accepted,
+	}, nil
+}
+
 // Match proves that the client-carried accepted requirement and resource are
 // byte-for-byte equivalent after normalization, and that the signed transfer
 // target and value agree with that requirement.
@@ -143,9 +185,22 @@ func (r Requirement) Match(payment Payment) error {
 	if !reflect.DeepEqual(actualResource, expectedResource) {
 		return boundaryError(PhaseHeader, FailureInvalid, CodePaymentMismatch)
 	}
-	if payment.authorization.To != expectedRequirement.PayTo ||
-		payment.authorization.Value != expectedRequirement.Amount {
+	if !paymentMatchesRequirementBinding(payment, expectedRequirement) {
 		return boundaryError(PhaseHeader, FailureInvalid, CodePaymentMismatch)
 	}
 	return nil
+}
+
+func paymentMatchesRequirementBinding(payment Payment, expectedRequirement paymentRequirementWire) bool {
+	switch resolvedTransferMethod(expectedRequirement) {
+	case TransferMethodEIP3009:
+		return payment.authorization.To == expectedRequirement.PayTo &&
+			payment.authorization.Value == expectedRequirement.Amount
+	case TransferMethodPermit2:
+		return payment.permit2 != nil && payment.permit2.Token == expectedRequirement.Asset &&
+			payment.permit2.Amount == expectedRequirement.Amount &&
+			payment.permit2.To == expectedRequirement.PayTo
+	default:
+		return false
+	}
 }

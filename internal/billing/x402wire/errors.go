@@ -22,6 +22,7 @@ const (
 	FailureRejected          FailureClass = "rejected"
 	FailureUnavailable       FailureClass = "unavailable"
 	FailureSettlementUnknown FailureClass = "settlement_unknown"
+	FailureSettlementPending FailureClass = "settlement_pending"
 )
 
 const (
@@ -39,6 +40,7 @@ const (
 	CodeFacilitatorRejected        = "x402_facilitator_rejected"
 	CodeFacilitatorResponseInvalid = "x402_facilitator_response_invalid"
 	CodeSettlementUnknown          = "x402_settlement_unknown"
+	CodeSettlementPending          = "x402_settlement_pending"
 )
 
 // BoundaryError deliberately contains only closed values. It never wraps a
