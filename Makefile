@@ -408,8 +408,10 @@ test-runtime-e2e-prebuilt:
 		echo "test-runtime-e2e-prebuilt: image $(IMAGE) is not loaded; run 'make docker-build' first"; \
 		exit 1; \
 	}
+	# Both packages own multi-container production topologies. Keep package tests
+	# serial so the bounded runtime load gate does not compete with x402 Compose.
 	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
-		$(GO) test -count=1 -v -tags=runtimee2e ./e2e/runtime ./e2e/x402local
+		$(GO) test -p=1 -count=1 -v -tags=runtimee2e ./e2e/runtime ./e2e/x402local
 
 test-preview-metadata: preview-cert-check preview-genesis-refresh docker-build
 	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \

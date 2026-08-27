@@ -31,6 +31,7 @@ retain an audited quota-controlled bypass.
 | P73-T06 | done | P73-T03, P73-T04 | Disposable local Anvil/Facilitator environment and monolith/split production-image E2E | local chain, ledger, usage, replay, and outage reconciliation |
 | P73-T07 | done | P73-T04, P73-T05 | Metrics, alerts, role-scoped deployment, runbook, administrator adjustment control, reconciliation CLI, and rollback | deployment, security, operations, and common gates |
 | P73-T08 | blocked | P73-T07 | One-shot live EIP-3009 and Permit2 top-up plus API-debit conformance | testnet transactions and writer/chain/credit/usage reports |
+| P73-T09 | done | P73-T06, P73-T07 | Serialize the production-runtime and x402-local Docker E2E packages so their independent load/topology gates do not contend in CI | Makefile command regression and `test-runtime-e2e-prebuilt` |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
@@ -79,3 +80,8 @@ the deployed image/build digest. Local Anvil evidence cannot close it.
   full PostgreSQL integration suite also passes. Role-scoped secrets,
   dual-stack Facilitator CIDRs, prepaid metrics/alerts, rollback ordering, and
   operator reconciliation are documented. P73-T08 remains the sole blocker.
+- P73-T09: CI run 33122804081 showed the general runtime and x402-local Go
+  packages overlapping, which made the existing monolith bounded-load gate
+  miss its unchanged thresholds. The prebuilt target now runs package tests
+  with `-p=1`; the complete target passes runtime monolith/distributed in
+  83.282 seconds, followed by x402 monolith/distributed in 37.837 seconds.

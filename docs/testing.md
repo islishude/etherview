@@ -389,7 +389,10 @@ images and runs the same fixture against production Etherview images in
 monolith and six-role distributed topologies. It verifies real Anvil SIWE,
 EIP-3009 and Permit2 settlement, exact Permit2 approval, replay rejection,
 shared user balance, concurrent debit, logical-failure release, operator
-bypass, and final recipient/account equality.
+bypass, and final recipient/account equality. The general runtime and x402
+packages execute serially: each owns independent multi-container topologies,
+and the general runtime package's bounded-load thresholds require that the
+x402 Docker fixture is not competing for the same runner resources.
 
 For interactive debugging:
 
