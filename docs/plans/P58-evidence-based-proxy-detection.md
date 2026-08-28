@@ -27,6 +27,7 @@ delegatecall inference are explicitly out of scope.
 | P58-T02 | done | P58-T01 | Shared block-pinned detection context, detector interface, resolver, structured outcomes, and memoized RPC accounting | detector/resolver unit and fuzz tests; existing OZ suite |
 | P58-T03 | done | P58-T02 | Generated Safe runtime/singleton/factory manifests plus bulk and deep Safe detectors, including slot 0 and `masterCopy()` consistency | generated-manifest check; positive, negative, adversarial, and fixed-block integration fixtures |
 | P58-T04 | done | P58-T03 | Additive API/UI persistence, shadow-mode diffing, metrics, feature flag, runbook, rollback, and bounded backfill | OpenAPI generation; integration/race/browser/runtime gates; rollout-control review |
+| P58-T05 | done | P58-T04 | Add a factory-created SafeProxy 1.4.1 production-path E2E through Trace discovery, generation-fenced persistence, and the public read boundary | pinned artifact checks; Compose rendering; monolith/split Hardhat production E2E; common gates |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
@@ -43,6 +44,10 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 - [x] Factory provenance keeps initial and current singleton identities separate and is chain-allowlisted.
 - [x] Shadow mode, bounded metrics, independent disablement, rollback, and idempotent fixed-block backfill are documented and tested.
 - [x] Monolith and split-role semantics match.
+- [x] An official SafeProxyFactory-created SafeProxy 1.4.1 traverses canonical
+  `CREATE2` Trace discovery, published `proxy@2` generation evidence, and the
+  public read-only V2 boundary in both production topologies without creating
+  legacy interaction authority.
 
 ## Current Blockers
 
@@ -87,3 +92,20 @@ does not block the completed default-off implementation.
   2026-08-27, `INTEGRATION_GO_PACKAGES=./internal/integration make
   test-integration` passed against its owned PostgreSQL 18 project in 165.243s;
   `make plan-check`, `make source-check`, and `git diff --check` also passed.
+- P58-T05: the Hardhat client now integrity-pins the official
+  `@safe-global/safe-contracts@1.4.1` package, deploys its singleton and
+  SafeProxyFactory, and creates the canonical 171-byte SafeProxy through the
+  factory. The identity fixture uses an empty initializer: an atomic
+  `Safe.setup` legitimately emits a proxy `DELEGATECALL` and therefore also
+  exercises the independently enabled Diamond router candidate path; changing
+  detector resolution was outside this test-only item. The gate proves the
+  exact non-reverted `CREATE2` Trace, canonical/published durable job and
+  generation, `safe-proxy` singleton projection, fixed block identity,
+  `official_singleton=false` for the local deployment, exact shadow diff, no
+  legacy observation/binding/management authority, public API projection, and
+  monolith/six-role parity. On 2026-08-28,
+  `make test-hardhat3-provider-compat`, tagged runtime E2E compilation,
+  `make compose-check`, `make plan-check lint`, and `make check` passed;
+  `make test-hardhat3-e2e` passed monolith in 127.78s and distributed in
+  122.60s (251.91s total). The Hardhat audit retained only eight known low
+  severity findings and passed the repository's high-severity threshold.

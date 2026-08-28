@@ -1,9 +1,18 @@
 import assert from "node:assert/strict";
 import { readFile, readdir, writeFile } from "node:fs/promises";
-import { AbiCoder, Interface, keccak256, solidityPacked, toUtf8Bytes } from "ethers";
+import {
+  AbiCoder,
+  Interface,
+  keccak256,
+  solidityPacked,
+  toUtf8Bytes,
+} from "ethers";
 import { createTransactionSender } from "./transaction-sender.mjs";
 
 const OPENZEPPELIN_VERSION = "5.6.1";
+const SAFE_VERSION = "1.4.1";
+const SAFE_PROXY_RUNTIME_HASH =
+  "0xd7d408ebcd99b2b70be43e20253d6d92a8ea8fab29bd3be7f55b10032331fb4c";
 const ADMIN_SLOT =
   "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103";
 const IMPLEMENTATION_SLOT =
@@ -72,6 +81,7 @@ function receiptSummary(receipt) {
   return {
     hash: receipt.transactionHash,
     blockNumber: receipt.blockNumber,
+    blockHash: receipt.blockHash,
     transactionIndex: receipt.transactionIndex,
     status: receipt.status,
     to: receipt.to,
@@ -148,6 +158,12 @@ for (const packageName of ["contracts", "contracts-upgradeable"]) {
     `@openzeppelin/${packageName} version`,
   );
 }
+const safeMetadata = JSON.parse(
+  await readFile(
+    new URL("./node_modules/@safe-global/safe-contracts/package.json", import.meta.url),
+  ),
+);
+assert.equal(safeMetadata.version, SAFE_VERSION, "@safe-global/safe-contracts version");
 
 const implementationArtifact = await projectArtifact(
   "./build/artifacts/contracts/Implementation.sol/Implementation.json",
@@ -192,6 +208,20 @@ const beaconProxyArtifact = await compilerArtifact(
   "/proxy/beacon/BeaconProxy.sol",
   "BeaconProxy",
 );
+const safeArtifact = await projectArtifact(
+  "./node_modules/@safe-global/safe-contracts/build/artifacts/contracts/Safe.sol/Safe.json",
+);
+const safeProxyFactoryArtifact = await projectArtifact(
+  "./node_modules/@safe-global/safe-contracts/build/artifacts/contracts/proxies/SafeProxyFactory.sol/SafeProxyFactory.json",
+);
+const safeProxyArtifact = await projectArtifact(
+  "./node_modules/@safe-global/safe-contracts/build/artifacts/contracts/proxies/SafeProxy.sol/SafeProxy.json",
+);
+assert.equal(
+  keccak256(safeProxyArtifact.deployedBytecode),
+  SAFE_PROXY_RUNTIME_HASH,
+  "SafeProxy 1.4.1 runtime hash",
+);
 
 const implementationDeployment = await deploy(owner, implementationArtifact);
 const implementationV2Deployment = await deploy(owner, implementationV2Artifact);
@@ -227,6 +257,53 @@ const beaconProxyBDeployment = await deploy(owner, beaconProxyArtifact, [
   beaconDeployment.address,
   initializeData(32n),
 ]);
+
+const safeSingletonDeployment = await deploy(owner, safeArtifact);
+const safeProxyFactoryDeployment = await deploy(owner, safeProxyFactoryArtifact);
+const safeProxyFactoryInterface = new Interface(safeProxyFactoryArtifact.abi);
+const safeCreateTransaction = await sendTransaction(owner, {
+  to: safeProxyFactoryDeployment.address,
+  data: safeProxyFactoryInterface.encodeFunctionData("createProxyWithNonce", [
+    safeSingletonDeployment.address,
+    "0x",
+    141n,
+  ]),
+});
+const safeCreateReceipt = await rpc("eth_getTransactionReceipt", [
+  safeCreateTransaction.hash,
+]);
+assert.ok(safeCreateReceipt, "Safe proxy creation receipt");
+const proxyCreationEvent = safeProxyFactoryInterface.getEvent("ProxyCreation");
+const proxyCreationLog = safeCreateReceipt.logs.find(
+  (log) =>
+    log.address.toLowerCase() === safeProxyFactoryDeployment.address.toLowerCase() &&
+    log.topics[0] === proxyCreationEvent.topicHash,
+);
+assert.ok(proxyCreationLog, "Safe ProxyCreation event");
+const proxyCreation = safeProxyFactoryInterface.parseLog(proxyCreationLog);
+assert.ok(proxyCreation, "decoded Safe ProxyCreation event");
+const safeProxy = proxyCreation.args.proxy;
+assert.equal(
+  proxyCreation.args.singleton.toLowerCase(),
+  safeSingletonDeployment.address.toLowerCase(),
+  "Safe ProxyCreation singleton",
+);
+const safeProxyInterface = new Interface([
+  "function masterCopy() view returns (address)",
+]);
+const [safeMasterCopy] = await call(
+  safeProxy,
+  safeProxyInterface,
+  "masterCopy",
+);
+assert.equal(
+  safeMasterCopy.toLowerCase(),
+  safeSingletonDeployment.address.toLowerCase(),
+  "Safe masterCopy",
+);
+const safeProxyRuntime = await rpc("eth_getCode", [safeProxy, "latest"]);
+assert.equal((safeProxyRuntime.length - 2) / 2, 171, "SafeProxy runtime bytes");
+assert.equal(keccak256(safeProxyRuntime), SAFE_PROXY_RUNTIME_HASH, "SafeProxy runtime hash");
 
 const cloneFactoryDeployment = await deploy(owner, cloneFactoryArtifact);
 const cloneFactoryInterface = new Interface(cloneFactoryArtifact.abi);
@@ -354,8 +431,9 @@ assert.equal(
 );
 
 const output = {
-  schemaVersion: 4,
+  schemaVersion: 5,
   openzeppelinVersion: OPENZEPPELIN_VERSION,
+  safeVersion: SAFE_VERSION,
   owner,
   // The primary fields keep the production Go harness concise while now
   // referring to a real UUPS implementation behind a real ERC1967Proxy.
@@ -404,6 +482,13 @@ const output = {
     value: diamondValue.toString(),
     doubled: diamondDouble.toString(),
   },
+  safe: {
+    factory: safeProxyFactoryDeployment.address,
+    singleton: safeSingletonDeployment.address,
+    proxy: safeProxy,
+    initializer: "0x",
+    runtimeCodeHash: keccak256(safeProxyRuntime),
+  },
   transactions: {
     implementationV1: implementationDeployment.transaction,
     implementationV2: implementationV2Deployment.transaction,
@@ -413,6 +498,9 @@ const output = {
     beacon: beaconDeployment.transaction,
     beaconProxyA: beaconProxyADeployment.transaction,
     beaconProxyB: beaconProxyBDeployment.transaction,
+    safeSingleton: safeSingletonDeployment.transaction,
+    safeFactory: safeProxyFactoryDeployment.transaction,
+    safeCreate: safeCreateTransaction,
     cloneFactory: cloneFactoryDeployment.transaction,
     standardClone: standardCloneTransaction,
     standardCloneInitialization,

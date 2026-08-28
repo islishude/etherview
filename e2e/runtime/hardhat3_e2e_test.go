@@ -36,6 +36,7 @@ const (
 	hardhatCatalogSource    = "https://binaries.soliditylang.org/emscripten-wasm32/list.json"
 	hardhatCompilerArtifact = "https://binaries.soliditylang.org/emscripten-wasm32/solc-emscripten-wasm32-v0.8.30+commit.73712a01.js"
 	hardhatCompilerDigest   = "81475c98b6d2094a821fd9d7b6278556d8095ccc23e0b8a1029b1c08a89cd4b2"
+	hardhatSafeRuntimeHash  = "0xd7d408ebcd99b2b70be43e20253d6d92a8ea8fab29bd3be7f55b10032331fb4c"
 )
 
 type hardhatRuntime struct {
@@ -43,7 +44,9 @@ type hardhatRuntime struct {
 }
 
 type hardhatDeployment struct {
+	SchemaVersion       int    `json:"schemaVersion"`
 	OpenZeppelinVersion string `json:"openzeppelinVersion"`
+	SafeVersion         string `json:"safeVersion"`
 	Owner               string `json:"owner"`
 	Implementation      string `json:"implementation"`
 	ImplementationV2    string `json:"implementationV2"`
@@ -85,6 +88,13 @@ type hardhatDeployment struct {
 		Value   string   `json:"value"`
 		Doubled string   `json:"doubled"`
 	} `json:"diamond"`
+	Safe struct {
+		Factory         string `json:"factory"`
+		Singleton       string `json:"singleton"`
+		Proxy           string `json:"proxy"`
+		Initializer     string `json:"initializer"`
+		RuntimeCodeHash string `json:"runtimeCodeHash"`
+	} `json:"safe"`
 	InitializationData struct {
 		Transparent  string `json:"transparent"`
 		UUPS         string `json:"uups"`
@@ -95,10 +105,12 @@ type hardhatDeployment struct {
 }
 
 type hardhatTransaction struct {
-	Number string `json:"number"`
-	Hash   string `json:"hash"`
-	Status string `json:"status"`
-	To     string `json:"to"`
+	Number      string `json:"number"`
+	BlockNumber string `json:"blockNumber"`
+	BlockHash   string `json:"blockHash"`
+	Hash        string `json:"hash"`
+	Status      string `json:"status"`
+	To          string `json:"to"`
 }
 
 type hardhatUpgradeReport struct {
@@ -151,6 +163,16 @@ type hardhatProxySnapshot struct {
 	DiamondSelectors    int64
 	DiamondCuts         int64
 	DiamondSingular     int64
+	SafeState           string
+	SafeDetector        string
+	SafeFamily          string
+	SafeVariant         string
+	SafeRole            string
+	SafeImplementation  string
+	SafeCanonicalShell  bool
+	SafeOfficial        bool
+	SafeLegacyRows      int64
+	SafeTraceCreates    int64
 }
 
 type hardhatCompilerCacheFile struct {
@@ -316,8 +338,14 @@ func runHardhat3Mode(
 	if err := json.Unmarshal(contents, &deployment); err != nil {
 		t.Fatalf("decode Hardhat deployment: %v", err)
 	}
+	if deployment.SchemaVersion != 5 {
+		t.Fatalf("Hardhat deployment schema = %d, want 5", deployment.SchemaVersion)
+	}
 	if deployment.OpenZeppelinVersion != "5.6.1" {
 		t.Fatalf("OpenZeppelin fixture version = %q, want 5.6.1", deployment.OpenZeppelinVersion)
+	}
+	if deployment.SafeVersion != "1.4.1" {
+		t.Fatalf("Safe fixture version = %q, want 1.4.1", deployment.SafeVersion)
 	}
 	for name, address := range map[string]string{
 		"owner":                   deployment.Owner,
@@ -337,6 +365,9 @@ func runHardhat3Mode(
 		"cwiaImplementation":      deployment.CWIA.Implementation,
 		"cwiaAccount":             deployment.CWIA.Account,
 		"diamond":                 deployment.Diamond.Address,
+		"safeFactory":             deployment.Safe.Factory,
+		"safeSingleton":           deployment.Safe.Singleton,
+		"safeProxy":               deployment.Safe.Proxy,
 	} {
 		if !common.IsHexAddress(address) {
 			t.Fatalf("%s deployment address = %q", name, address)
@@ -368,9 +399,14 @@ func runHardhat3Mode(
 		deployment.CWIA.Number == "" || deployment.CWIA.Stored != "777" {
 		t.Fatalf("primary UUPS fixture is incomplete: %#v", deployment)
 	}
+	if deployment.Safe.Initializer != "0x" ||
+		!strings.EqualFold(deployment.Safe.RuntimeCodeHash, hardhatSafeRuntimeHash) {
+		t.Fatalf("Safe fixture is incomplete: %#v", deployment.Safe)
+	}
 	for _, name := range []string{
 		"implementationV1", "implementationV2", "badUUID", "transparent", "uups",
 		"beacon", "beaconProxyA", "beaconProxyB", "cloneFactory", "standardClone",
+		"safeSingleton", "safeFactory", "safeCreate",
 		"standardCloneInitialization", "immutableArgsClone", "immutableArgsCloneInitialization",
 		"cwiaFactory", "cwiaArtifactSource", "cwiaCreate", "cwiaSetStored",
 		"diamondValueFacet", "diamondMathFacet", "diamond", "diamondSetValue",
@@ -390,6 +426,7 @@ func runHardhat3Mode(
 	waitHardhatProxyObservation(t, ctx, h, deployment.Clones.ImmutableArgs, deployment.Implementation)
 	waitHardhatProxyObservation(t, ctx, h, deployment.CWIA.Account, deployment.CWIA.Implementation)
 	waitHardhatDiamond(t, ctx, h, deployment)
+	waitHardhatSafe(t, ctx, h, deployment)
 	waitHardhatClone(t, ctx, h, deployment.Clones.Standard, deployment.Implementation, "eip1167", "0x")
 	waitHardhatClone(t, ctx, h, deployment.Clones.ImmutableArgs,
 		deployment.Implementation, "eip1167", deployment.Clones.ImmutableArgsData)
@@ -408,6 +445,7 @@ func runHardhat3Mode(
 		deployment.Beacon.Beacon, deployment.Beacon.Proxies[0], deployment.Beacon.Proxies[1],
 		deployment.CWIA.Factory, deployment.CWIA.ArtifactSource,
 		deployment.CWIA.Implementation, deployment.CWIA.Account,
+		deployment.Safe.Factory, deployment.Safe.Singleton, deployment.Safe.Proxy,
 	} {
 		waitHardhatContractCode(t, ctx, h, address)
 	}
@@ -608,7 +646,10 @@ func runHardhat3Mode(
 	assertHardhatClonesHaveNoUpgrades(t, ctx, h,
 		deployment.Clones.Standard, deployment.Clones.ImmutableArgs, deployment.CWIA.Account)
 
-	snapshot := captureHardhatProxySnapshot(t, ctx, h, deployment.Proxy, deployment.Diamond.Address)
+	snapshot := captureHardhatProxySnapshot(
+		t, ctx, h, deployment.Proxy, deployment.Diamond.Address,
+		deployment.Safe.Proxy, deployment.Safe.Singleton,
+	)
 	h.writeJSONArtifact(mode+"-proxy-summary.json", snapshot)
 	return snapshot
 }

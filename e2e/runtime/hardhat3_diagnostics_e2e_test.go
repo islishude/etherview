@@ -4,6 +4,7 @@ package runtimee2e
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -203,6 +204,25 @@ func captureHardhatSQLDiagnostics(h *harness) {
 		             created_at
 		      FROM verified_proxy_bindings
 		    ) AS row
+		  ), '[]'::jsonb),
+		  'proxy_detection_v2', COALESCE((
+		    SELECT jsonb_agg(to_jsonb(row) ORDER BY row.block_number DESC, row.job_generation DESC)
+		    FROM (
+		      SELECT evidence.block_number::text AS block_number,
+			             '0x' || encode(evidence.block_hash, 'hex') AS block_hash,
+			             '0x' || encode(evidence.address, 'hex') AS address,
+			             evidence.detection_state, evidence.durable_job_id,
+			             evidence.job_generation,
+			             evidence.details #>> '{primary,detector}' AS detector,
+			             evidence.details #>> '{primary,family}' AS family,
+			             evidence.details #>> '{primary,variant}' AS variant,
+			             evidence.details #>> '{primary,implementation}' AS implementation
+		      FROM proxy_detection_evidence AS evidence
+		      WHERE evidence.chain_id = 1
+		        AND evidence.candidate_kind = 'proxy_v2'
+		      ORDER BY evidence.block_number DESC, evidence.job_generation DESC
+		      LIMIT 64
+		    ) AS row
 		  ), '[]'::jsonb)
 		)::text`).Scan(&summary)
 	if err != nil {
@@ -216,7 +236,7 @@ func captureHardhatProxySnapshot(
 	t *testing.T,
 	ctx context.Context,
 	h *harness,
-	proxy, diamond string,
+	proxy, diamond, safeProxy, safeSingleton string,
 ) hardhatProxySnapshot {
 	t.Helper()
 	var result hardhatProxySnapshot
@@ -333,6 +353,52 @@ func captureHardhatProxySnapshot(
 	); err != nil {
 		t.Fatal(err)
 	}
+	if err := h.db.QueryRow(ctx, `
+		WITH current AS (
+		    SELECT evidence.detection_state, evidence.details
+		    FROM proxy_detection_evidence AS evidence
+		    JOIN canonical_blocks AS canonical
+		      ON canonical.chain_id = evidence.chain_id
+		     AND canonical.number = evidence.block_number
+		     AND canonical.block_hash = evidence.block_hash
+		    JOIN published_block_stage_results AS published
+		      ON published.chain_id = evidence.chain_id
+		     AND published.block_hash = evidence.block_hash
+		     AND published.stage = 'proxy'
+		     AND published.stage_version = evidence.stage_version
+		     AND published.durable_job_id = evidence.durable_job_id
+		     AND published.job_generation = evidence.job_generation
+		     AND published.state = 'complete'
+		    WHERE evidence.chain_id = 1
+		      AND evidence.address = $1
+		      AND evidence.candidate_kind = 'proxy_v2'
+		      AND evidence.canonical
+		    ORDER BY evidence.block_number DESC, evidence.job_generation DESC
+		    LIMIT 1
+		)
+		SELECT
+		  COALESCE((SELECT detection_state FROM current), ''),
+		  COALESCE((SELECT details #>> '{primary,detector}' FROM current), ''),
+		  COALESCE((SELECT details #>> '{primary,family}' FROM current), ''),
+		  COALESCE((SELECT details #>> '{primary,variant}' FROM current), ''),
+		  COALESCE((SELECT details #>> '{primary,implementation_role}' FROM current), ''),
+		  COALESCE((SELECT details #>> '{primary,implementation}' FROM current), ''),
+		  COALESCE((SELECT (details #>> '{primary,canonical_proxy_shell}')::boolean FROM current), false),
+		  COALESCE((SELECT (details #>> '{primary,official_singleton}')::boolean FROM current), false),
+		  (SELECT count(*) FROM proxy_observations
+		   WHERE chain_id = 1 AND proxy_address = $1),
+		  (SELECT count(*) FROM normalized_traces
+		   WHERE chain_id = 1 AND created_address = $1
+		     AND call_type = 'CREATE2' AND NOT reverted AND canonical)`,
+		common.HexToAddress(safeProxy).Bytes(),
+	).Scan(
+		&result.SafeState, &result.SafeDetector, &result.SafeFamily,
+		&result.SafeVariant, &result.SafeRole, &result.SafeImplementation,
+		&result.SafeCanonicalShell, &result.SafeOfficial,
+		&result.SafeLegacyRows, &result.SafeTraceCreates,
+	); err != nil {
+		t.Fatal(err)
+	}
 	if result.AddressJobs != 9 || result.DerivedJobs != 1 || result.ProxyJobs != 11 ||
 		result.CompilerResults != 11 || result.ProxyResults != 11 ||
 		result.DerivedResults != 1 || result.DerivedPublications != 1 ||
@@ -342,7 +408,12 @@ func captureHardhatProxySnapshot(
 		result.CurrentProxyKind != "eip1967" ||
 		result.DiamondState != "confirmed" || result.DiamondFacets != 3 ||
 		result.DiamondSelectors != 8 || result.DiamondCuts != 1 ||
-		result.DiamondSingular != 0 {
+		result.DiamondSingular != 0 || result.SafeState != "confirmed" ||
+		result.SafeDetector != "safe" || result.SafeFamily != "safe" ||
+		result.SafeVariant != "safe-proxy" || result.SafeRole != "singleton" ||
+		!strings.EqualFold(result.SafeImplementation, safeSingleton) ||
+		!result.SafeCanonicalShell || result.SafeOfficial || result.SafeLegacyRows != 0 ||
+		result.SafeTraceCreates != 1 {
 		t.Fatalf("incomplete Hardhat/proxy persistence: %#v", result)
 	}
 	return result

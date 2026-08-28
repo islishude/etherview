@@ -182,10 +182,13 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   retain legacy proxy authority while generation-fenced shadow persistence,
   bounded metrics, independent flags, rollback, and Web/API presentation pass
   the current common, PostgreSQL, browser, schema, and monolith/split runtime
-  gates. Public V2 remains default-off; a
-  deployment-chain shadow review is required only before an operator promotes
-  that optional public surface. Reviewable commands and results remain in
-  [P58 evidence](docs/plans/P58-evidence-based-proxy-detection.md#evidence).
+  gates. The Hardhat production-path gate additionally creates an official
+  SafeProxy 1.4.1 through SafeProxyFactory and proves Trace discovery,
+  generation-fenced persistence, public read-only projection, and topology
+  parity without creating legacy interaction authority. Public V2 remains
+  default-off; a deployment-chain shadow review is required only before an
+  operator promotes that optional public surface. Reviewable commands and
+  results remain in [P58 evidence](docs/plans/P58-evidence-based-proxy-detection.md#evidence).
 - P59 is complete. P59-T05 keeps Solidity builtin failures concise while
   preserving structured custom-error arguments. P59-T04 exposes the canonical
   root failure as a dedicated

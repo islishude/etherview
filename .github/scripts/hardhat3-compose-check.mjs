@@ -51,6 +51,21 @@ for (const name of appServices) {
     [undefined, null, ""].includes(service.environment?.ETHERVIEW_ENS_RPC_URLS),
     `${name} must not receive an ENS RPC`,
   );
+  assert.equal(
+    service.environment?.ETHERVIEW_FEATURE_PROXY_DETECTION_V2,
+    "true",
+    `${name} Hardhat proxy detection V2`,
+  );
+  assert.equal(
+    service.environment?.ETHERVIEW_FEATURE_SAFE_PROXY_DETECTION,
+    "true",
+    `${name} Hardhat Safe proxy detection`,
+  );
+  assert.equal(
+    service.environment?.ETHERVIEW_FEATURE_PROXY_DETECTION_V2_PUBLIC,
+    "true",
+    `${name} Hardhat public proxy detection V2`,
+  );
   for (const key of removedEnvironment) {
     assert.ok(
       !Object.hasOwn(service.environment ?? {}, key),

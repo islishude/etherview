@@ -136,6 +136,16 @@ replace a required `make test-e2e` pass.
   installation. Final cold-cache installation is serialized by the writer
   PostgreSQL advisory-lock domain; downloads remain outside that lock and a
   validated persistent hit does not acquire it.
+  The same production topology also consumes the integrity-pinned official
+  `@safe-global/safe-contracts@1.4.1` artifacts, deploys the Safe singleton and
+  SafeProxyFactory, and creates a canonical SafeProxy through the factory's
+  internal `CREATE2`. The proxy uses an empty initializer so this
+  proxy-identity gate does not turn Safe's ordinary setup delegatecall into
+  separate Diamond-router evidence. The gate requires the exact 1.4.1 runtime
+  fingerprint, published Trace creation fact, generation-fenced `proxy@2`
+  evidence, singleton-only V2 projection, absence of legacy interaction
+  authority, public API projection, and monolith/split parity. Safe execution
+  and setup behavior remain outside this detector gate.
   No application or test client receives a Docker socket or CLI. The test
   fails when the official catalog or compiler cannot be downloaded. CI builds
   and exercises the native production image independently on AMD64 and ARM64;
