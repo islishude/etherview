@@ -231,18 +231,36 @@ func (e BatchResultsOutcomeKind) Valid() bool {
 	}
 }
 
-// Defines values for BillingAccess.
+// Defines values for BillingAdjustmentRequestDirection.
 const (
-	ApiKeyOrX402 BillingAccess = "api_key_or_x402"
-	X402         BillingAccess = "x402"
+	Credit BillingAdjustmentRequestDirection = "credit"
+	Debit  BillingAdjustmentRequestDirection = "debit"
 )
 
-// Valid indicates whether the value is a known member of the BillingAccess enum.
-func (e BillingAccess) Valid() bool {
+// Valid indicates whether the value is a known member of the BillingAdjustmentRequestDirection enum.
+func (e BillingAdjustmentRequestDirection) Valid() bool {
 	switch e {
-	case ApiKeyOrX402:
+	case Credit:
 		return true
-	case X402:
+	case Debit:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BillingAssetTransferMethod.
+const (
+	Eip3009 BillingAssetTransferMethod = "eip3009"
+	Permit2 BillingAssetTransferMethod = "permit2"
+)
+
+// Valid indicates whether the value is a known member of the BillingAssetTransferMethod enum.
+func (e BillingAssetTransferMethod) Valid() bool {
+	switch e {
+	case Eip3009:
+		return true
+	case Permit2:
 		return true
 	default:
 		return false
@@ -279,6 +297,57 @@ func (e BillingConfigX402Version) Valid() bool {
 	}
 }
 
+// Defines values for BillingPaymentMethod.
+const (
+	BillingPaymentMethodGET  BillingPaymentMethod = "GET"
+	BillingPaymentMethodPOST BillingPaymentMethod = "POST"
+)
+
+// Valid indicates whether the value is a known member of the BillingPaymentMethod enum.
+func (e BillingPaymentMethod) Valid() bool {
+	switch e {
+	case BillingPaymentMethodGET:
+		return true
+	case BillingPaymentMethodPOST:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BillingPaymentPaymentFlow.
+const (
+	Authorization BillingPaymentPaymentFlow = "authorization"
+)
+
+// Valid indicates whether the value is a known member of the BillingPaymentPaymentFlow enum.
+func (e BillingPaymentPaymentFlow) Valid() bool {
+	switch e {
+	case Authorization:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BillingPaymentPurpose.
+const (
+	AccountTopup  BillingPaymentPurpose = "account_topup"
+	LegacyRequest BillingPaymentPurpose = "legacy_request"
+)
+
+// Valid indicates whether the value is a known member of the BillingPaymentPurpose enum.
+func (e BillingPaymentPurpose) Valid() bool {
+	switch e {
+	case AccountTopup:
+		return true
+	case LegacyRequest:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for BillingPaymentState.
 const (
 	BillingPaymentStateExpired  BillingPaymentState = "expired"
@@ -303,6 +372,78 @@ func (e BillingPaymentState) Valid() bool {
 	case BillingPaymentStateSettling:
 		return true
 	case BillingPaymentStateVerified:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BillingTopupIntentState.
+const (
+	BillingTopupIntentStateCredited   BillingTopupIntentState = "credited"
+	BillingTopupIntentStateExpired    BillingTopupIntentState = "expired"
+	BillingTopupIntentStateFailed     BillingTopupIntentState = "failed"
+	BillingTopupIntentStateOpen       BillingTopupIntentState = "open"
+	BillingTopupIntentStateProcessing BillingTopupIntentState = "processing"
+	BillingTopupIntentStateSettling   BillingTopupIntentState = "settling"
+)
+
+// Valid indicates whether the value is a known member of the BillingTopupIntentState enum.
+func (e BillingTopupIntentState) Valid() bool {
+	switch e {
+	case BillingTopupIntentStateCredited:
+		return true
+	case BillingTopupIntentStateExpired:
+		return true
+	case BillingTopupIntentStateFailed:
+		return true
+	case BillingTopupIntentStateOpen:
+		return true
+	case BillingTopupIntentStateProcessing:
+		return true
+	case BillingTopupIntentStateSettling:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BillingUsageMethod.
+const (
+	BillingUsageMethodGET  BillingUsageMethod = "GET"
+	BillingUsageMethodPOST BillingUsageMethod = "POST"
+)
+
+// Valid indicates whether the value is a known member of the BillingUsageMethod enum.
+func (e BillingUsageMethod) Valid() bool {
+	switch e {
+	case BillingUsageMethodGET:
+		return true
+	case BillingUsageMethodPOST:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BillingUsageState.
+const (
+	BillingUsageStateCommitted BillingUsageState = "committed"
+	BillingUsageStateExpired   BillingUsageState = "expired"
+	BillingUsageStateReleased  BillingUsageState = "released"
+	BillingUsageStateReserved  BillingUsageState = "reserved"
+)
+
+// Valid indicates whether the value is a known member of the BillingUsageState enum.
+func (e BillingUsageState) Valid() bool {
+	switch e {
+	case BillingUsageStateCommitted:
+		return true
+	case BillingUsageStateExpired:
+		return true
+	case BillingUsageStateReleased:
+		return true
+	case BillingUsageStateReserved:
 		return true
 	default:
 		return false
@@ -3248,27 +3389,106 @@ type BatchResultsOutcome_Results_Item struct {
 	union json.RawMessage
 }
 
-// BillingAccess defines model for BillingAccess.
-type BillingAccess string
+// BillingAccount defines model for BillingAccount.
+type BillingAccount struct {
+	// Asset A 20-byte address; responses use the EIP-55 checksum form.
+	Asset Address `json:"asset"`
+
+	// AvailableAtomic A canonical non-negative decimal integer used for billing sums and counts that may exceed one uint256.
+	AvailableAtomic BillingAggregateQuantity `json:"available_atomic"`
+	CreatedAt       time.Time                `json:"created_at"`
+	Network         string                   `json:"network"`
+
+	// ReservedAtomic A canonical non-negative decimal integer used for billing sums and counts that may exceed one uint256.
+	ReservedAtomic BillingAggregateQuantity `json:"reserved_atomic"`
+
+	// TotalCreditAtomic A canonical non-negative decimal integer used for billing sums and counts that may exceed one uint256.
+	TotalCreditAtomic BillingAggregateQuantity `json:"total_credit_atomic"`
+
+	// TotalDebitAtomic A canonical non-negative decimal integer used for billing sums and counts that may exceed one uint256.
+	TotalDebitAtomic BillingAggregateQuantity `json:"total_debit_atomic"`
+	UpdatedAt        time.Time                `json:"updated_at"`
+	UserId           openapi_types.UUID       `json:"user_id"`
+}
+
+// BillingAccountListResponse defines model for BillingAccountListResponse.
+type BillingAccountListResponse struct {
+	Data []BillingAccount `json:"data"`
+	Meta Meta             `json:"meta"`
+}
+
+// BillingAccountResponse defines model for BillingAccountResponse.
+type BillingAccountResponse struct {
+	Data BillingAccount `json:"data"`
+	Meta Meta           `json:"meta"`
+}
+
+// BillingAccountSummary defines model for BillingAccountSummary.
+type BillingAccountSummary struct {
+	// AccountCount A canonical non-negative decimal integer used for billing sums and counts that may exceed one uint256.
+	AccountCount BillingAggregateQuantity `json:"account_count"`
+
+	// AvailableAtomic A canonical non-negative decimal integer used for billing sums and counts that may exceed one uint256.
+	AvailableAtomic BillingAggregateQuantity `json:"available_atomic"`
+
+	// ReservedAtomic A canonical non-negative decimal integer used for billing sums and counts that may exceed one uint256.
+	ReservedAtomic BillingAggregateQuantity `json:"reserved_atomic"`
+
+	// TotalCreditAtomic A canonical non-negative decimal integer used for billing sums and counts that may exceed one uint256.
+	TotalCreditAtomic BillingAggregateQuantity `json:"total_credit_atomic"`
+
+	// TotalDebitAtomic A canonical non-negative decimal integer used for billing sums and counts that may exceed one uint256.
+	TotalDebitAtomic BillingAggregateQuantity `json:"total_debit_atomic"`
+}
+
+// BillingAccountSummaryResponse defines model for BillingAccountSummaryResponse.
+type BillingAccountSummaryResponse struct {
+	Data BillingAccountSummary `json:"data"`
+	Meta Meta                  `json:"meta"`
+}
+
+// BillingAdjustmentRequest defines model for BillingAdjustmentRequest.
+type BillingAdjustmentRequest struct {
+	// AmountAtomic A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	AmountAtomic Quantity                          `json:"amount_atomic"`
+	Direction    BillingAdjustmentRequestDirection `json:"direction"`
+	Reason       string                            `json:"reason"`
+}
+
+// BillingAdjustmentRequestDirection defines model for BillingAdjustmentRequest.Direction.
+type BillingAdjustmentRequestDirection string
 
 // BillingAggregateQuantity A canonical non-negative decimal integer used for billing sums and counts that may exceed one uint256.
 type BillingAggregateQuantity = string
 
+// BillingAssetTransferMethod defines model for BillingAssetTransferMethod.
+type BillingAssetTransferMethod string
+
 // BillingConfig defines model for BillingConfig.
 type BillingConfig struct {
+	ApiBillingEnabled bool `json:"api_billing_enabled"`
+
 	// Asset A 20-byte address; responses use the EIP-55 checksum form.
-	Asset              *Address `json:"asset,omitempty"`
-	AssetDecimals      *int     `json:"asset_decimals,omitempty"`
-	AssetEip712Name    *string  `json:"asset_eip712_name,omitempty"`
-	AssetEip712Version *string  `json:"asset_eip712_version,omitempty"`
-	Enabled            bool     `json:"enabled"`
-	Network            *string  `json:"network,omitempty"`
+	Asset                *Address                     `json:"asset,omitempty"`
+	AssetDecimals        *int                         `json:"asset_decimals,omitempty"`
+	AssetEip712Name      *string                      `json:"asset_eip712_name,omitempty"`
+	AssetEip712Version   *string                      `json:"asset_eip712_version,omitempty"`
+	AssetTransferMethods []BillingAssetTransferMethod `json:"asset_transfer_methods"`
+
+	// MaximumTopupAmountAtomic A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	MaximumTopupAmountAtomic *Quantity `json:"maximum_topup_amount_atomic,omitempty"`
+
+	// MinimumTopupAmountAtomic A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	MinimumTopupAmountAtomic *Quantity               `json:"minimum_topup_amount_atomic,omitempty"`
+	Network                  *string                 `json:"network,omitempty"`
+	Operations               []BillingOperationPrice `json:"operations"`
 
 	// Recipient A 20-byte address; responses use the EIP-55 checksum form.
-	Recipient   *Address                 `json:"recipient,omitempty"`
-	Routes      []BillingRoutePrice      `json:"routes"`
-	Scheme      BillingConfigScheme      `json:"scheme"`
-	X402Version BillingConfigX402Version `json:"x402_version"`
+	Recipient             *Address                 `json:"recipient,omitempty"`
+	Scheme                BillingConfigScheme      `json:"scheme"`
+	TopupIntentTtlSeconds *int                     `json:"topup_intent_ttl_seconds,omitempty"`
+	X402TopupsEnabled     bool                     `json:"x402_topups_enabled"`
+	X402Version           BillingConfigX402Version `json:"x402_version"`
 }
 
 // BillingConfigScheme defines model for BillingConfig.Scheme.
@@ -3283,6 +3503,13 @@ type BillingConfigResponse struct {
 	Meta Meta          `json:"meta"`
 }
 
+// BillingOperationPrice defines model for BillingOperationPrice.
+type BillingOperationPrice struct {
+	// AmountAtomic A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	AmountAtomic Quantity `json:"amount_atomic"`
+	Operation    string   `json:"operation"`
+}
+
 // BillingPayment defines model for BillingPayment.
 type BillingPayment struct {
 	// AmountAtomic A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
@@ -3290,22 +3517,36 @@ type BillingPayment struct {
 	ApiKeyPrefix *string  `json:"api_key_prefix,omitempty"`
 
 	// Asset A 20-byte address; responses use the EIP-55 checksum form.
-	Asset       Address            `json:"asset"`
-	CreatedAt   time.Time          `json:"created_at"`
-	FailureCode *string            `json:"failure_code,omitempty"`
-	Id          openapi_types.UUID `json:"id"`
-	Network     string             `json:"network"`
-	Operation   string             `json:"operation"`
-	Payer       *Address           `json:"payer,omitempty"`
+	Asset               Address                    `json:"asset"`
+	AssetTransferMethod BillingAssetTransferMethod `json:"asset_transfer_method"`
+	CreatedAt           time.Time                  `json:"created_at"`
+	FailureCode         *string                    `json:"failure_code,omitempty"`
+	Id                  openapi_types.UUID         `json:"id"`
+	Method              BillingPaymentMethod       `json:"method"`
+	Network             string                     `json:"network"`
+	Operation           string                     `json:"operation"`
+	Payer               *Address                   `json:"payer,omitempty"`
+	PaymentFlow         BillingPaymentPaymentFlow  `json:"payment_flow"`
+	Purpose             BillingPaymentPurpose      `json:"purpose"`
 
 	// Recipient A 20-byte address; responses use the EIP-55 checksum form.
 	Recipient       Address             `json:"recipient"`
 	SettledAt       *time.Time          `json:"settled_at,omitempty"`
 	State           BillingPaymentState `json:"state"`
+	TopupIntentId   *openapi_types.UUID `json:"topup_intent_id,omitempty"`
 	TransactionHash *Hash               `json:"transaction_hash,omitempty"`
 	UpdatedAt       time.Time           `json:"updated_at"`
 	UserId          *openapi_types.UUID `json:"user_id,omitempty"`
 }
+
+// BillingPaymentMethod defines model for BillingPayment.Method.
+type BillingPaymentMethod string
+
+// BillingPaymentPaymentFlow defines model for BillingPayment.PaymentFlow.
+type BillingPaymentPaymentFlow string
+
+// BillingPaymentPurpose defines model for BillingPayment.Purpose.
+type BillingPaymentPurpose string
 
 // BillingPaymentListResponse defines model for BillingPaymentListResponse.
 type BillingPaymentListResponse struct {
@@ -3315,15 +3556,6 @@ type BillingPaymentListResponse struct {
 
 // BillingPaymentState defines model for BillingPaymentState.
 type BillingPaymentState string
-
-// BillingRoutePrice defines model for BillingRoutePrice.
-type BillingRoutePrice struct {
-	Access BillingAccess `json:"access"`
-
-	// AmountAtomic A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	AmountAtomic Quantity `json:"amount_atomic"`
-	Operation    string   `json:"operation"`
-}
 
 // BillingSummary defines model for BillingSummary.
 type BillingSummary struct {
@@ -3357,6 +3589,92 @@ type BillingSummaryRow struct {
 	PaymentCount BillingAggregateQuantity `json:"payment_count"`
 	State        BillingPaymentState      `json:"state"`
 }
+
+// BillingTopupIntent defines model for BillingTopupIntent.
+type BillingTopupIntent struct {
+	// AmountAtomic A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	AmountAtomic Quantity `json:"amount_atomic"`
+
+	// Asset A 20-byte address; responses use the EIP-55 checksum form.
+	Asset       Address            `json:"asset"`
+	CreatedAt   time.Time          `json:"created_at"`
+	CreditedAt  *time.Time         `json:"credited_at,omitempty"`
+	ExpiresAt   time.Time          `json:"expires_at"`
+	FailureCode *string            `json:"failure_code,omitempty"`
+	Id          openapi_types.UUID `json:"id"`
+	Network     string             `json:"network"`
+
+	// Payer A 20-byte address; responses use the EIP-55 checksum form.
+	Payer     Address             `json:"payer"`
+	PaymentId *openapi_types.UUID `json:"payment_id,omitempty"`
+
+	// Recipient A 20-byte address; responses use the EIP-55 checksum form.
+	Recipient       Address                 `json:"recipient"`
+	State           BillingTopupIntentState `json:"state"`
+	TransactionHash *Hash                   `json:"transaction_hash,omitempty"`
+	UpdatedAt       time.Time               `json:"updated_at"`
+	UserId          openapi_types.UUID      `json:"user_id"`
+}
+
+// BillingTopupIntentCreateRequest defines model for BillingTopupIntentCreateRequest.
+type BillingTopupIntentCreateRequest struct {
+	// AmountAtomic A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	AmountAtomic Quantity `json:"amount_atomic"`
+}
+
+// BillingTopupIntentListResponse defines model for BillingTopupIntentListResponse.
+type BillingTopupIntentListResponse struct {
+	Data []BillingTopupIntent `json:"data"`
+	Meta Meta                 `json:"meta"`
+}
+
+// BillingTopupIntentResponse defines model for BillingTopupIntentResponse.
+type BillingTopupIntentResponse struct {
+	Data BillingTopupIntent `json:"data"`
+	Meta Meta               `json:"meta"`
+}
+
+// BillingTopupIntentState defines model for BillingTopupIntentState.
+type BillingTopupIntentState string
+
+// BillingTopupReceipt defines model for BillingTopupReceipt.
+type BillingTopupReceipt struct {
+	Account BillingAccount     `json:"account"`
+	Intent  BillingTopupIntent `json:"intent"`
+}
+
+// BillingTopupReceiptResponse defines model for BillingTopupReceiptResponse.
+type BillingTopupReceiptResponse struct {
+	Data BillingTopupReceipt `json:"data"`
+	Meta Meta                `json:"meta"`
+}
+
+// BillingUsage defines model for BillingUsage.
+type BillingUsage struct {
+	// AmountAtomic A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	AmountAtomic Quantity           `json:"amount_atomic"`
+	ApiKeyPrefix string             `json:"api_key_prefix"`
+	CreatedAt    time.Time          `json:"created_at"`
+	FailureCode  *string            `json:"failure_code,omitempty"`
+	Id           openapi_types.UUID `json:"id"`
+	Method       BillingUsageMethod `json:"method"`
+	Operation    string             `json:"operation"`
+	State        BillingUsageState  `json:"state"`
+	UpdatedAt    time.Time          `json:"updated_at"`
+	UserId       openapi_types.UUID `json:"user_id"`
+}
+
+// BillingUsageMethod defines model for BillingUsage.Method.
+type BillingUsageMethod string
+
+// BillingUsageListResponse defines model for BillingUsageListResponse.
+type BillingUsageListResponse struct {
+	Data []BillingUsage `json:"data"`
+	Meta Meta           `json:"meta"`
+}
+
+// BillingUsageState defines model for BillingUsageState.
+type BillingUsageState string
 
 // Block defines model for Block.
 type Block struct {
@@ -5855,6 +6173,9 @@ type BillingStateFilter = BillingPaymentState
 // BillingToTime defines model for BillingToTime.
 type BillingToTime = time.Time
 
+// BillingTopupIntentID defines model for BillingTopupIntentID.
+type BillingTopupIntentID = openapi_types.UUID
+
 // CSRFToken defines model for CSRFToken.
 type CSRFToken = string
 
@@ -5892,93 +6213,65 @@ type VerificationAccepted = VerificationJobResponse
 type ListAddressNamesParams struct {
 	Addresses string        `form:"addresses" json:"addresses"`
 	Snapshot  *OpaqueCursor `form:"snapshot,omitempty" json:"snapshot,omitempty"`
-
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
-}
-
-// GetAddressParams defines parameters for GetAddress.
-type GetAddressParams struct {
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
-}
-
-// GetAddressDelegationParams defines parameters for GetAddressDelegation.
-type GetAddressDelegationParams struct {
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // ListAddressDelegationsParams defines parameters for ListAddressDelegations.
 type ListAddressDelegationsParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // ListAddressERC20BalancesParams defines parameters for ListAddressERC20Balances.
 type ListAddressERC20BalancesParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // ListAddressERC20TransfersParams defines parameters for ListAddressERC20Transfers.
 type ListAddressERC20TransfersParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // ListAddressInternalTransactionsParams defines parameters for ListAddressInternalTransactions.
 type ListAddressInternalTransactionsParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // ListAddressNFTTransfersParams defines parameters for ListAddressNFTTransfers.
 type ListAddressNFTTransfersParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // ListAddressNFTBalancesParams defines parameters for ListAddressNFTBalances.
 type ListAddressNFTBalancesParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // ListAddressTransactionsParams defines parameters for ListAddressTransactions.
 type ListAddressTransactionsParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // ListAddressWithdrawalsParams defines parameters for ListAddressWithdrawals.
 type ListAddressWithdrawalsParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
 
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+// ListAdminBillingAccountsParams defines parameters for ListAdminBillingAccounts.
+type ListAdminBillingAccountsParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// AdjustAdminBillingAccountParams defines parameters for AdjustAdminBillingAccount.
+type AdjustAdminBillingAccountParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 }
 
 // ListAdminBillingPaymentsParams defines parameters for ListAdminBillingPayments.
@@ -6011,6 +6304,18 @@ type GetAdminBillingSummaryParams struct {
 	ToTime *BillingToTime `form:"to_time,omitempty" json:"to_time,omitempty"`
 }
 
+// ListAdminBillingTopupsParams defines parameters for ListAdminBillingTopups.
+type ListAdminBillingTopupsParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListAdminBillingUsageParams defines parameters for ListAdminBillingUsage.
+type ListAdminBillingUsageParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ListAdminUsersParams defines parameters for ListAdminUsers.
 type ListAdminUsersParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
@@ -6038,28 +6343,41 @@ type ListCurrentUserBillingPaymentsParams struct {
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ListCurrentBillingTopupIntentsParams defines parameters for ListCurrentBillingTopupIntents.
+type ListCurrentBillingTopupIntentsParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// CreateBillingTopupIntentParams defines parameters for CreateBillingTopupIntent.
+type CreateBillingTopupIntentParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// PayBillingTopupIntentParams defines parameters for PayBillingTopupIntent.
+type PayBillingTopupIntentParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+
+	// PAYMENTSIGNATURE Optional x402 v2 exact-EVM authorization for this top-up intent; absence returns the payment challenge.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
+// ListCurrentUserBillingUsageParams defines parameters for ListCurrentUserBillingUsage.
+type ListCurrentUserBillingUsageParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ListBlocksParams defines parameters for ListBlocks.
 type ListBlocksParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
-}
-
-// GetBlockParams defines parameters for GetBlock.
-type GetBlockParams struct {
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // ListBlockTransactionsParams defines parameters for ListBlockTransactions.
 type ListBlockTransactionsParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // ListContractDiamondCutsParams defines parameters for ListContractDiamondCuts.
@@ -6091,25 +6409,10 @@ type ListGenesisAccountsParams struct {
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
-// GetNFTOwnerParams defines parameters for GetNFTOwner.
-type GetNFTOwnerParams struct {
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
-}
-
-// GetNFTMetadataParams defines parameters for GetNFTMetadata.
-type GetNFTMetadataParams struct {
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
-}
-
 // ListPendingTransactionsParams defines parameters for ListPendingTransactions.
 type ListPendingTransactionsParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // SearchParams defines parameters for Search.
@@ -6117,24 +6420,12 @@ type SearchParams struct {
 	Q      string       `form:"q" json:"q"`
 	Limit  *SearchLimit `form:"limit,omitempty" json:"limit,omitempty"`
 	Cursor *Cursor      `form:"cursor,omitempty" json:"cursor,omitempty"`
-
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // GetBlockStatsParams defines parameters for GetBlockStats.
 type GetBlockStatsParams struct {
 	FromBlock Quantity `form:"from_block" json:"from_block"`
 	ToBlock   Quantity `form:"to_block" json:"to_block"`
-
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
-}
-
-// GetChartOverviewParams defines parameters for GetChartOverview.
-type GetChartOverviewParams struct {
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // GetChartMetricParams defines parameters for GetChartMetric.
@@ -6142,9 +6433,6 @@ type GetChartMetricParams struct {
 	FromTime time.Time                     `form:"from_time" json:"from_time"`
 	ToTime   time.Time                     `form:"to_time" json:"to_time"`
 	Interval *GetChartMetricParamsInterval `form:"interval,omitempty" json:"interval,omitempty"`
-
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // GetChartMetricParamsInterval defines parameters for GetChartMetric.
@@ -6154,111 +6442,54 @@ type GetChartMetricParamsInterval string
 type GetAggregateStatsParams struct {
 	FromBlock Quantity `form:"from_block" json:"from_block"`
 	ToBlock   Quantity `form:"to_block" json:"to_block"`
-
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // ListTokensParams defines parameters for ListTokens.
 type ListTokensParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
-}
-
-// GetTokenParams defines parameters for GetToken.
-type GetTokenParams struct {
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // ListTokenTransfersParams defines parameters for ListTokenTransfers.
 type ListTokenTransfersParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // ListTransactionsParams defines parameters for ListTransactions.
 type ListTransactionsParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
-}
-
-// GetTransactionParams defines parameters for GetTransaction.
-type GetTransactionParams struct {
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // ListTransactionAuthorizationsParams defines parameters for ListTransactionAuthorizations.
 type ListTransactionAuthorizationsParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
-}
-
-// GetTransactionCalldataParams defines parameters for GetTransactionCalldata.
-type GetTransactionCalldataParams struct {
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
-}
-
-// GetTransactionFailureParams defines parameters for GetTransactionFailure.
-type GetTransactionFailureParams struct {
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // ListTransactionInternalTransactionsParams defines parameters for ListTransactionInternalTransactions.
 type ListTransactionInternalTransactionsParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // ListTransactionLogsParams defines parameters for ListTransactionLogs.
 type ListTransactionLogsParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // ListTransactionStateChangesParams defines parameters for ListTransactionStateChanges.
 type ListTransactionStateChangesParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // ListTransactionTokenTransfersParams defines parameters for ListTransactionTokenTransfers.
 type ListTransactionTokenTransfersParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
-}
-
-// GetTransactionTraceParams defines parameters for GetTransactionTrace.
-type GetTransactionTraceParams struct {
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // UpdateCurrentUserParams defines parameters for UpdateCurrentUser.
@@ -6292,11 +6523,8 @@ type ListVerifierCompilersParams struct {
 	Language VerifierLanguage `form:"language" json:"language"`
 }
 
-// GetVerifierJobParams defines parameters for GetVerifierJob.
-type GetVerifierJobParams struct {
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
-}
+// AdjustAdminBillingAccountJSONRequestBody defines body for AdjustAdminBillingAccount for application/json ContentType.
+type AdjustAdminBillingAccountJSONRequestBody = BillingAdjustmentRequest
 
 // UpdateAdminUserJSONRequestBody defines body for UpdateAdminUser for application/json ContentType.
 type UpdateAdminUserJSONRequestBody = AdminUserUpdate
@@ -6306,6 +6534,9 @@ type CreateAuthChallengeJSONRequestBody = AuthChallengeRequest
 
 // VerifyAuthChallengeJSONRequestBody defines body for VerifyAuthChallenge for application/json ContentType.
 type VerifyAuthChallengeJSONRequestBody = AuthVerifyRequest
+
+// CreateBillingTopupIntentJSONRequestBody defines body for CreateBillingTopupIntent for application/json ContentType.
+type CreateBillingTopupIntentJSONRequestBody = BillingTopupIntentCreateRequest
 
 // SubmitAddressVerificationJSONRequestBody defines body for SubmitAddressVerification for application/json ContentType.
 type SubmitAddressVerificationJSONRequestBody = AddressVerificationSubmission

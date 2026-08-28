@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/islishude/etherview/internal/api/gen"
-	"github.com/islishude/etherview/internal/apiops"
+	"github.com/islishude/etherview/internal/etherscanops"
 	"gopkg.in/yaml.v3"
 )
 
@@ -80,8 +80,8 @@ func TestOpenAPIContractFoundation(t *testing.T) {
 	assertVerificationBoundary(t, paths, schemas)
 	assertProxyInteractionBoundary(t, paths, components, schemas)
 	billingProperties := mappingValue(t, mappingValue(t, schemas, "BillingConfig"), "properties")
-	billingRouteLimit := mappingValue(t, mappingValue(t, billingProperties, "routes"), "maxItems")
-	assertScalar(t, billingRouteLimit, strconv.Itoa(len(apiops.EligibleIDs())))
+	billingOperationLimit := mappingValue(t, mappingValue(t, billingProperties, "operations"), "maxItems")
+	assertScalar(t, billingOperationLimit, strconv.Itoa(len(etherscanops.EligibleIDs())))
 
 	responses := mappingValue(t, components, "responses")
 	commonError := mappingValue(t, responses, "Error")
@@ -193,12 +193,11 @@ func assertProxyInteractionBoundary(
 func assertVerificationBoundary(t *testing.T, paths, schemas *yaml.Node) {
 	t.Helper()
 	for _, operation := range []struct {
-		path     string
-		method   string
-		billable bool
+		path   string
+		method string
 	}{
 		{path: "/contracts/{address}/verification", method: "post"},
-		{path: "/verifier/jobs/{id}", method: "get", billable: true},
+		{path: "/verifier/jobs/{id}", method: "get"},
 		{path: "/verifier/solidity/multipart", method: "post"},
 		{path: "/verifier/solidity/standard-json", method: "post"},
 		{path: "/verifier/solidity/batch/multipart", method: "post"},
@@ -208,16 +207,10 @@ func assertVerificationBoundary(t *testing.T, paths, schemas *yaml.Node) {
 	} {
 		security := mappingValue(t, mappingValue(t, mappingValue(t, paths, operation.path), operation.method), "security")
 		wantRequirements := 1
-		if operation.billable {
-			wantRequirements = 2
-		}
 		if security.Kind != yaml.SequenceNode || len(security.Content) != wantRequirements {
 			t.Fatalf("%s %s must declare %d security requirements", operation.method, operation.path, wantRequirements)
 		}
 		mappingValue(t, security.Content[0], "APIKey")
-		if operation.billable {
-			mappingValue(t, security.Content[1], "X402Payment")
-		}
 	}
 	for _, operation := range []struct {
 		path   string

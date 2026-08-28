@@ -360,80 +360,50 @@ Use `ETHERVIEW_LOAD_API_KEY_FILE` or the process environment
 `ETHERVIEW_LOAD_API_KEY` for an authenticated profile. Never place a key in a
 URL, route argument, report metadata, or command-line value.
 
-## Real x402 Base Sepolia gate
+## Real prepaid x402 Base Sepolia gate
 
-`make test-x402-testnet` is an explicit, one-shot real-payment gate. It is not
-a dependency of `check`, CI, `test`, or `test-integration`. Running it spends
-the configured Base Sepolia token and must never be used as an ordinary
-retrying test. The harness is fixed to payment network `eip155:84532` and
-ledger/RPC chain ID `84532`; there is no mainnet switch or implicit asset
-default.
+The live release gate is separate from local and ordinary CI. It must create
+two independently preserved reports, one for EIP-3009 and one for Permit2.
+Each report covers the complete staging sequence:
 
-Every non-secret expectation is required and validated before any Secret file
-is opened:
+1. SIWE authenticates the funded payer.
+2. The Account endpoint creates and settles one bounded top-up intent.
+3. The writer commits exactly one account credit.
+4. A newly issued user-owned `api:read` key commits one priced
+   `/v2/api` debit.
+5. Independent writer and Base Sepolia RPC checks reconcile the payment,
+   credit entry, usage entry, transaction hash, payer, recipient, asset, and
+   amount.
 
-- `ETHERVIEW_X402_TESTNET_CONFIRM` must equal
-  `BASE_SEPOLIA_REAL_PAYMENT`.
-- `ETHERVIEW_X402_TESTNET_REVISION` is the full 40-character lowercase Git
-  revision of the local harness checkout. The running Go binary must carry that
-  exact clean Git VCS revision; this proves harness provenance, not the
-  revision deployed at the target URL.
-- `ETHERVIEW_X402_TESTNET_TARGET_URL` is the exact HTTPS priced GET to call.
-- `ETHERVIEW_X402_TESTNET_EXPECTED_RESOURCE_URL` is the exact canonical HTTPS
-  resource expected in the x402 requirement, including sorted query defaults.
-- `ETHERVIEW_X402_TESTNET_EXPECTED_OPERATION` is one billing-eligible operation
-  ID whose catalog ServeMux pattern matches both URLs.
-- `ETHERVIEW_X402_TESTNET_EXPECTED_ACCESS` is exactly `x402` or
-  `api_key_or_x402`. The harness supplies neither an API key nor a Cookie.
-- `ETHERVIEW_X402_TESTNET_EXPECTED_ASSET`,
-  `ETHERVIEW_X402_TESTNET_EXPECTED_RECIPIENT`, and
-  `ETHERVIEW_X402_TESTNET_EXPECTED_PAYER` are exact non-zero EIP-55 addresses.
-- `ETHERVIEW_X402_TESTNET_EXPECTED_ASSET_DECIMALS`,
-  `ETHERVIEW_X402_TESTNET_EXPECTED_ASSET_EIP712_NAME`, and
-  `ETHERVIEW_X402_TESTNET_EXPECTED_ASSET_EIP712_VERSION` bind the explicit
-  asset domain returned by `/api/v1/billing/config`.
-- `ETHERVIEW_X402_TESTNET_EXPECTED_AMOUNT_ATOMIC` is a canonical positive
-  uint256 decimal string.
-- `ETHERVIEW_X402_TESTNET_EXPECTED_MAX_TIMEOUT_SECONDS` is a canonical decimal
-  integer from 1 through 60.
-- `ETHERVIEW_X402_TESTNET_LEDGER_CHAIN_ID` must explicitly equal `84532`.
+The gate is one-shot and non-retrying. All payer keys, independent RPC URLs,
+and writer URLs are file-only `0600` inputs. The operator must also record the
+staging Facilitator identity and deployed production image digest. Missing
+funds, credentials, staging Facilitator, writer, independent RPC, or image
+digest leaves P73-T08 blocked. Local Anvil evidence never closes this gate.
+After an unknown or incomplete attempt, inspect and reconcile that exact
+payment before authorizing any new attempt.
 
-The three credential inputs are file-only:
+`make test-runtime-e2e` does not spend testnet funds. In addition to the
+general runtime suite, it builds the test-only x402 contract and Facilitator
+images and runs the same fixture against production Etherview images in
+monolith and six-role distributed topologies. It verifies real Anvil SIWE,
+EIP-3009 and Permit2 settlement, exact Permit2 approval, replay rejection,
+shared user balance, concurrent debit, logical-failure release, operator
+bypass, and final recipient/account equality. The general runtime and x402
+packages execute serially: each owns independent multi-container topologies,
+and the general runtime package's bounded-load thresholds require that the
+x402 Docker fixture is not competing for the same runner resources.
 
-- `ETHERVIEW_X402_TESTNET_PRIVATE_KEY_FILE`
-- `ETHERVIEW_X402_TESTNET_RPC_URL_FILE`
-- `ETHERVIEW_X402_TESTNET_WRITER_DATABASE_URL_FILE`
-
-Use absolute paths to ordinary, non-symlink files with mode `0600`. Generate a
-fresh funded test key through trusted wallet tooling; its file contains exactly
-64 lowercase hexadecimal characters without `0x`, optionally followed by one
-newline. The payer expectation must match that key. The RPC file contains one
-HTTPS Base Sepolia endpoint and the writer file contains one `postgres` or
-`postgresql` URL. Plaintext `..._PRIVATE_KEY`, `..._RPC_URL`, and
-`..._WRITER_DATABASE_URL` environment variables are rejected.
-
-After configuring the staging route and independently checking the price and
-wallet balance, export the public expectations and Secret file paths, then run
-exactly once:
+For interactive debugging:
 
 ```sh
-make test-x402-testnet
+make start-x402-local
+X402_LOCAL_TOPOLOGY=distributed make recreate-x402-local
+make stop-x402-local
 ```
 
-Success prints one bounded JSON report containing the reviewed SDK version,
-`harness_revision`, operation, public payment facts, ledger payment ID,
-transaction hash, protected-response digest, and receipt block evidence. It
-never prints a URL, credential, authorization, facilitator body, protected
-response, or database error. Record the independently verified staging
-image/build digest beside this report; the harness does not infer remote
-deployment provenance from its own Git revision. A failure prints only a
-stable code. Never rerun automatically. In particular,
-`x402_testnet_paid_outcome_unknown` means authorization may have reached the
-server, while `x402_testnet_paid_reconciliation_incomplete` means the
-facilitator confirmed payment but the evidence pass did not finish. Do not
-rerun either target; inspect the ledger, facilitator, and Base Sepolia
-transaction and use the manual reconciliation procedure in the operations
-runbook.
+The local environment uses deterministic development keys. Never fund or reuse
+them on any external network.
 
 ## Evidence Rules
 

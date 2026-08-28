@@ -203,6 +203,8 @@ func TestAdminBillingOutputIsSafeAndOrdered(t *testing.T) {
 		Payment: billing.Payment{
 			ID: testAdminBillingID, ChainID: 84532,
 			Operation: "listBlocks", Method: "GET",
+			Purpose: "legacy_request", AssetTransferMethod: "eip3009",
+			PaymentFlow: "authorization", FingerprintVersion: 1,
 			Network:      "eip155:84532",
 			Asset:        common.Address{19: 0x11},
 			AmountAtomic: "1000",

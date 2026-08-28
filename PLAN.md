@@ -33,13 +33,14 @@ batch semantics are not core v1 scope.
 | P63 | [Geas Contract Verification](docs/plans/P63-geas-contract-verification.md) | done | P30, P40, P50, P60 | Pinned Geas v0.3.3 address verification for multi-file sys-asm contracts |
 | P64 | [NFT Metadata Web](docs/plans/P64-nft-metadata-web.md) | done | P20, P30, P40, P50, P60 | Canonical NFT metadata projection, standard-event refresh, and guarded external-image navigation |
 | P65 | [User Authentication](docs/plans/P65-user-auth.md) | done | P40, P50 | SIWE wallet login, revocable sessions, profiles, administration, and scoped user API keys with a tabbed `/account` workspace |
-| P66 | [x402 API Billing](docs/plans/P66-x402-billing.md) | blocked | P40, P60; optional P65 | Accountless exact-EVM per-request payment and durable reconciliation |
+| P66 | [x402 API Billing](docs/plans/P66-x402-billing.md) | superseded | P40, P60; optional P65 | Superseded accountless per-request x402 design; historical audit record only |
 | P67 | [ENS Primary Names](docs/plans/P67-ens-primary-names.md) | done | P20, P40, P50, P60 | Snapshot-stable official and custom ENS forward resolution plus verified primary-name display |
 | P68 | [Runtime and Architecture Hardening](docs/plans/P68-runtime-architecture-hardening.md) | done | P00, P40, P50, P60 | Stream lifecycle correctness plus explicit SQL, runtime, HTTP, Web, and quality boundaries |
 | P69 | [Solady Legacy CWIA Proxies](docs/plans/P69-solady-legacy-cwia-proxies.md) | done | P20, P30, P40, P50, P58, P60 | Exact legacy LibCWIA recognition, verified immutable-argument decoding, and read/write interaction fencing |
-| P70 | [Release](docs/plans/P70-release.md) | blocked | P10–P69, P71, P72 | Security, conformance, performance, E2E, documentation, and v1 release |
+| P70 | [Release](docs/plans/P70-release.md) | blocked | P10–P69, P71, P72, P73 | Security, conformance, performance, E2E, documentation, and v1 release |
 | P71 | [Factory-derived Contract Verification](docs/plans/P71-factory-derived-verification.md) | done | P20, P30, P40, P50, P60 | Authenticated compilation-unit persistence and canonical CREATE/CREATE2 verification propagation |
 | P72 | [Factory-derived Verification Hardening](docs/plans/P72-derived-verification-hardening.md) | done | P71 | Generation-safe derived work, short publication, exact provenance, and structural hardening |
+| P73 | [Prepaid API Billing](docs/plans/P73-prepaid-api-billing.md) | blocked | P40, P60, P65 | x402 account top-ups and PostgreSQL prepaid credit for bounded Etherscan V2 reads |
 
 Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 `superseded`.
@@ -273,12 +274,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   P65-T09 adds scoped user-owned API keys and the tabbed `/account` workspace;
   PostgreSQL, browser, schema/runtime, Hardhat, Foundry, security, race,
   deployment, and aggregate gates pass for monolith and six-role deployments.
-- P66 is blocked: the additive ledger, reviewed v2 exact-EVM adapter,
-  replay-fenced capture and settlement middleware, free and administrative
-  APIs, operator reconciliation, optional payer attribution, and embedded
-  account/administrator views plus operational/deployment closure are
-  complete. The payment protocol remains accountless; the explicit opt-in Base
-  Sepolia transaction and reconciliation gate remains open.
+- P66 is superseded by P73. Its accountless per-request payment rows remain
+  immutable audit history but never grant prepaid credit. P73 implemented
+  SIWE-bound x402 top-ups and user-owned API-key usage debits for `/v2/api`.
 - P67 is complete: explicitly enabled ENS recognition normalizes browser input
   with Viem and Go input with `adraffy/go-ens-normalize`, while
   `wealdtech/go-ens` supplies hashing and DNS wire encoding. Exact-block
@@ -373,8 +371,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   ARM64. P70-T15 now completes Preview public verification and one exact
   public-IPFS NFT metadata fetch, including scoped Docker fake-IP diagnostics,
   one-attempt PostgreSQL persistence, and metadata-worker restart stability.
-  P66 live-payment evidence still gates conformance, security, release CI,
-  documentation, and artifact work.
+  P73 local prepaid billing evidence is complete; its two-method live testnet
+  top-up, credit, usage, and chain evidence still gates conformance,
+  security, release CI, documentation, and artifact work.
 - P71 is complete: P71-T01 completed the reusable verifier matcher and
   shared publication boundary without changing submitted-verification
   behavior; P71-T02 now persists immutable authenticated compilation units and
@@ -406,7 +405,7 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 
 ## Global Release Gates
 
-- [ ] Every required P00–P72 plan is `done` with reviewable evidence.
+- [ ] Every required P00–P73 plan is `done` or explicitly `superseded` with reviewable evidence.
 - [ ] Genesis-to-head ingestion is gap-free, restart-safe, and reorg-safe.
 - [ ] Monolith and split-role modes pass the same behavioral acceptance suite.
 - [ ] Optional RPC capabilities and optional infrastructure fail explicitly and

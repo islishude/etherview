@@ -1,0 +1,208 @@
+name: etherview-x402-local
+
+x-common-environment: &common-environment
+  ETHERVIEW_DATABASE_URL: postgres://etherview:etherview-x402-local@postgres:5432/etherview?sslmode=disable
+  ETHERVIEW_RPC_URLS: http://anvil:8545
+  ETHERVIEW_CHAIN_ID: "31337"
+  ETHERVIEW_SERVER_PUBLIC_URL: ${X402_LOCAL_PUBLIC_URL:-http://localhost:18080}
+  ETHERVIEW_POLL_INTERVAL: 250ms
+  ETHERVIEW_LOG_LEVEL: info
+  ETHERVIEW_LOG_FORMAT: json
+
+x-api-environment: &api-environment
+  <<: *common-environment
+  ETHERVIEW_API_KEY_PEPPER: x402-local-api-key-pepper-000000000000000000000000000000000
+  ETHERVIEW_SESSION_PEPPER: x402-local-session-pepper-000000000000000000000000000000000
+  ETHERVIEW_X402_FINGERPRINT_PEPPER: x402-local-fingerprint-pepper-0000000000000000000000000000000
+
+x-app: &app
+  image: ${ETHERVIEW_IMAGE:-etherview:local}
+  build:
+    context: ../..
+    target: production
+  init: true
+  read_only: true
+  user: "65532:65532"
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  volumes:
+    - ./config.yaml:/etc/etherview/config.yaml:ro
+
+x-app-healthcheck: &app-healthcheck
+  test: [CMD, /etherview, healthcheck]
+  interval: 2s
+  timeout: 3s
+  retries: 60
+  start_period: 5s
+
+x-runtime-dependencies: &runtime-dependencies
+  migration:
+    condition: service_completed_successfully
+  x402-fixture:
+    condition: service_completed_successfully
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: etherview
+      POSTGRES_USER: etherview
+      POSTGRES_PASSWORD: etherview-x402-local
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U etherview -d etherview]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+    ports:
+      - 127.0.0.1:${X402_LOCAL_POSTGRES_PORT:-15432}:5432
+    volumes:
+      - postgres-data:/var/lib/postgresql
+
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:v1.7.1
+    entrypoint: [sh, -ec]
+    command: ["anvil --host 0.0.0.0 --port 8545 --chain-id 31337"]
+    healthcheck:
+      test: [CMD, cast, block-number, --rpc-url, http://127.0.0.1:8545]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+    ports:
+      - 127.0.0.1:${X402_LOCAL_ANVIL_PORT:-18545}:8545
+
+  x402-fixture:
+    build:
+      context: .
+      dockerfile: fixture.Dockerfile
+    image: etherview-x402-local-fixture:local
+    depends_on:
+      anvil:
+        condition: service_healthy
+    environment:
+      RPC_URL: http://anvil:8545
+    command:
+      - |
+        bytecode="$$(forge inspect LocalBillingToken bytecode)"
+        arguments="$$(cast abi-encode 'constructor(string,string,address,uint256)' 'Local USD' '1' 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 1000000000000000000)"
+        cast send --rpc-url "$$RPC_URL" --private-key ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 --create "$${bytecode}$${arguments#0x}"
+        test "$$(cast code --rpc-url "$$RPC_URL" 0x5FbDB2315678afecb367f032d93F642f64180aa3)" != "0x"
+    restart: "no"
+
+  x402-facilitator:
+    build:
+      context: ../..
+      dockerfile: e2e/x402local/facilitator.Dockerfile
+    image: etherview-x402-local-facilitator:local
+    depends_on:
+      x402-fixture:
+        condition: service_completed_successfully
+    environment:
+      X402_LOCAL_RPC_URL: http://anvil:8545
+      X402_LOCAL_NETWORK: eip155:31337
+      X402_LOCAL_TOKEN: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+      X402_LOCAL_FACILITATOR_PRIVATE_KEY: 59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d
+    healthcheck:
+      test: [CMD, /x402localfacilitator, --healthcheck]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  migration:
+    <<: *app
+    profiles: [monolith, distributed]
+    command: [migrate, up, --config=/etc/etherview/migration.config.yaml]
+    environment: *common-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./migration.config.yaml:/etc/etherview/migration.config.yaml:ro
+    restart: "no"
+
+  etherview:
+    <<: *app
+    profiles: [monolith]
+    command: [serve, --roles=all, --config=/etc/etherview/config.yaml]
+    environment:
+      <<: *api-environment
+      ETHERVIEW_ROLES: all
+    depends_on:
+      <<: *runtime-dependencies
+      x402-facilitator:
+        condition: service_healthy
+    healthcheck: *app-healthcheck
+    ports:
+      - 127.0.0.1:${X402_LOCAL_PORT:-18080}:8080
+
+  api:
+    <<: *app
+    profiles: [distributed]
+    command: [serve, --roles=api, --config=/etc/etherview/config.yaml]
+    environment:
+      <<: *api-environment
+      ETHERVIEW_ROLES: api
+    depends_on:
+      <<: *runtime-dependencies
+      x402-facilitator:
+        condition: service_healthy
+    healthcheck: *app-healthcheck
+    ports:
+      - 127.0.0.1:${X402_LOCAL_PORT:-18080}:8080
+
+  sync:
+    <<: *app
+    profiles: [distributed]
+    command: [serve, --roles=sync, --config=/etc/etherview/config.yaml]
+    environment:
+      <<: *common-environment
+      ETHERVIEW_ROLES: sync
+    depends_on: *runtime-dependencies
+
+  enrich:
+    <<: *app
+    profiles: [distributed]
+    command: [serve, --roles=enrich, --config=/etc/etherview/config.yaml]
+    environment:
+      <<: *common-environment
+      ETHERVIEW_ROLES: enrich
+    depends_on: *runtime-dependencies
+
+  trace:
+    <<: *app
+    profiles: [distributed]
+    command: [serve, --roles=trace, --config=/etc/etherview/config.yaml]
+    environment:
+      <<: *common-environment
+      ETHERVIEW_ROLES: trace
+    depends_on: *runtime-dependencies
+
+  metadata:
+    <<: *app
+    profiles: [distributed]
+    command: [serve, --roles=metadata, --config=/etc/etherview/config.yaml]
+    environment:
+      <<: *common-environment
+      ETHERVIEW_ROLES: metadata
+    depends_on: *runtime-dependencies
+
+  maintenance:
+    <<: *app
+    profiles: [distributed]
+    command: [serve, --roles=maintenance, --config=/etc/etherview/config.yaml]
+    environment:
+      <<: *common-environment
+      ETHERVIEW_ROLES: maintenance
+    depends_on: *runtime-dependencies
+
+networks:
+  default:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.30.73.0/24
+        - subnet: "fd00:402:73::/64"
+
+volumes:
+  postgres-data:

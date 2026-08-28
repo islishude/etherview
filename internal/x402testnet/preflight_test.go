@@ -30,14 +30,15 @@ func TestCheckServerRequiresExactFreeConfiguration(t *testing.T) {
 					"native_symbol":"ETH",
 					"native_name":"Ether",
 					"native_decimals":18,
-					"features":{"x402_billing":true}
+					"features":{"api_billing":true,"x402_topups":true}
 				},
 				"meta":{"request_id":"test"}
 			}`))
 		case "/api/v1/billing/config":
 			_, _ = writer.Write([]byte(`{
 				"data":{
-					"enabled":true,
+					"api_billing_enabled":true,
+					"x402_topups_enabled":true,
 					"x402_version":2,
 					"scheme":"exact",
 					"network":"eip155:84532",
@@ -46,9 +47,9 @@ func TestCheckServerRequiresExactFreeConfiguration(t *testing.T) {
 					"asset_eip712_name":"Test USD",
 					"asset_eip712_version":"2",
 					"recipient":"0x2222222222222222222222222222222222222222",
-					"routes":[{
-						"operation":"listBlocks",
-						"access":"x402",
+					"asset_transfer_methods":["eip3009","permit2"],
+					"operations":[{
+						"operation":"etherscan.account.balance",
 						"amount_atomic":"125000"
 					}]
 				},
@@ -84,14 +85,15 @@ func TestCheckServerRequiresOnlyOnePricedRoute(t *testing.T) {
 					"native_symbol":"ETH",
 					"native_name":"Ether",
 					"native_decimals":18,
-					"features":{"x402_billing":true}
+					"features":{"api_billing":true,"x402_topups":true}
 				},
 				"meta":{"request_id":"test"}
 			}`))
 		case "/api/v1/billing/config":
 			_, _ = writer.Write([]byte(`{
 				"data":{
-					"enabled":true,
+					"api_billing_enabled":true,
+					"x402_topups_enabled":true,
 					"x402_version":2,
 					"scheme":"exact",
 					"network":"eip155:84532",
@@ -100,9 +102,10 @@ func TestCheckServerRequiresOnlyOnePricedRoute(t *testing.T) {
 					"asset_eip712_name":"Test USD",
 					"asset_eip712_version":"2",
 					"recipient":"0x2222222222222222222222222222222222222222",
-					"routes":[
-						{"operation":"listBlocks","access":"x402","amount_atomic":"125000"},
-						{"operation":"getBlock","access":"x402","amount_atomic":"125000"}
+					"asset_transfer_methods":["eip3009","permit2"],
+					"operations":[
+						{"operation":"etherscan.account.balance","amount_atomic":"125000"},
+						{"operation":"etherscan.account.balancemulti","amount_atomic":"125000"}
 					]
 				},
 				"meta":{"request_id":"test"}
@@ -210,7 +213,7 @@ func TestProductionPreflightClientIsRestricted(t *testing.T) {
 
 func testPreflightOptions(target string) PreflightOptions {
 	return PreflightOptions{
-		TargetURL: target, ExpectedOperation: "listBlocks",
+		TargetURL: target, ExpectedOperation: "etherscan.account.balance",
 		ExpectedAccess:        "x402",
 		ExpectedAsset:         "0x1111111111111111111111111111111111111111",
 		ExpectedAssetDecimals: 6, ExpectedAssetName: "Test USD",

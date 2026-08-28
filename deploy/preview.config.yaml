@@ -93,7 +93,8 @@ features:
   ens: false
   user_auth: true
   user_api_keys: true
-  x402_billing: false
+  api_billing: false
+  x402_topups: false
   proxy_detection_v2: true
   safe_proxy_detection: true
   diamond_proxy_detection: true

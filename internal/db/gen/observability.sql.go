@@ -33,15 +33,15 @@ WITH metric_rows AS (
     SELECT 'billing'::text,
            operation,
            CASE
-               WHEN failure_code = 'settlement_unknown'
-                   THEN 'settlement_unknown'
+               WHEN failure_code IN ('settlement_unknown', 'settlement_pending')
+                   THEN failure_code
                ELSE 'unmarked_after_timeout'
            END
     FROM billing_payments
     WHERE chain_id = $1::numeric
       AND state = 'settling'
       AND (
-          failure_code = 'settlement_unknown'
+          failure_code IN ('settlement_unknown', 'settlement_pending')
           OR (
               failure_code IS NULL
               AND settling_at <= now() - (

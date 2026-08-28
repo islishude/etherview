@@ -591,17 +591,31 @@ size alone is not sufficient justification to weaken those invariants.
   observations plus ENS snapshots and retained generations. Cleanup failure
   emits a stable redacted code and retries with
   bounded backoff without making readiness or core correctness depend on it.
-- The same maintenance-role graph conditionally owns writer-only user-auth
-  cleanup and x402 reservation expiry. Each enabled feature runs one immediate
-  and then periodic chain-scoped batch of at most 1,000 rows; authentication
-  cleanup removes expired challenges and expired or revoked sessions, while
-  billing expiry advances only timed-out `reserved`/`verified` rows and appends
-  their events. Replica sweeps use `SKIP LOCKED` candidate selection.
-  Feature-off processes register neither component. Split maintenance
-  processes load no session pepper, billing fingerprint pepper, or facilitator
-  header Secret, and transient writer failures emit only the stable
-  `user_auth_cleanup_failed` or `x402_billing_expiry_failed` code before a
+- The same maintenance-role graph conditionally owns writer-only user-auth and
+  prepaid-billing cleanup. It releases only expired usage reservations, reopens
+  or expires the matching top-up intent when a pre-settlement payment lease
+  expires, and expires untouched intents. Each account update and durable state
+  transition is one PostgreSQL statement with `SKIP LOCKED` candidates; it
+  never refunds committed usage or guesses a settling outcome. Split
+  maintenance processes load no session pepper, billing fingerprint pepper, or
+  facilitator header Secret. Failures emit only `user_auth_cleanup_failed`,
+  `x402_billing_expiry_failed`, or `prepaid_billing_expiry_failed` before a
   bounded retry.
+- ADR-0044 replaces per-request x402. Native `/api/v1` reads are free and reject
+  `PAYMENT-SIGNATURE`; only the Account top-up payment endpoint accepts it.
+  Configured bounded `/v2/api` actions reserve a user account's permanent
+  token-atomic credit after API-key quota and full compatibility validation.
+  Operator keys have no owner and retain a quota-controlled credit bypass.
+  A debit commits only for an HTTP 200 Etherscan envelope with `status:"1"`;
+  every logical/transport/panic/cancellation/capture failure releases the
+  reservation. The committed debit precedes response delivery.
+- Top-up intents bind user, SIWE address, chain, asset, amount, recipient, and
+  expiry. x402 v2.23 exact-EVM `authorization` supports only EIP-3009 and
+  Permit2. Their replay HMACs use separate domains and exclude the signature;
+  Permit2 material includes owner, token, amount, canonical proxy spender,
+  nonce, deadline, and witness. A valid pending settlement stores its one
+  transaction hash immutably, and operator settlement reconciliation must
+  reuse that hash before the atomic payment/intent/credit/account commit.
 - The exact Etherscan V2 module/action, method, parameter, API-key, capability,
   unavailable-action, and wire-difference contract is maintained in the
   [Etherscan V2 compatibility matrix](etherscan-v2-compatibility.md).

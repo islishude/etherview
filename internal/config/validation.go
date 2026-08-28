@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/islishude/etherview/internal/apiops"
+	"github.com/islishude/etherview/internal/etherscanops"
 )
 
 // Validate checks structural and security-sensitive invariants without making
@@ -125,10 +125,13 @@ func (c Config) ValidateForRoles(roles []string) error {
 	if needsVerificationReadAuth && len(c.Security.APIKeyPepper) < 32 {
 		errs = append(errs, errors.New("API role verification reads require API key authentication"))
 	}
+	if needsAPI && c.Features.UserAPIKeys && len(c.Security.APIKeyPepper) < 32 {
+		errs = append(errs, errors.New("API role user API keys require API key authentication"))
+	}
 	if needsAPI && c.Features.UserAuth && len(c.UserAuth.SessionPepper) < 32 {
 		errs = append(errs, errors.New("API role user authentication requires a session pepper of at least 32 bytes"))
 	}
-	if needsAPI && c.Features.X402Billing {
+	if needsAPI && c.Features.X402Topups {
 		if len(c.Billing.FingerprintPepper) < 32 {
 			errs = append(errs, errors.New("API role x402 billing requires a fingerprint pepper of at least 32 bytes"))
 		}
@@ -394,9 +397,12 @@ func validateUserAuthConfig(cfg Config) error {
 		if !cfg.Features.UserAuth {
 			errs = append(errs, errors.New("features.user_api_keys requires features.user_auth"))
 		}
-		if len(cfg.Security.APIKeyPepper) < 32 {
-			errs = append(errs, errors.New("features.user_api_keys requires API key authentication"))
-		}
+	}
+	if cfg.Features.APIBilling && (!cfg.Features.UserAuth || !cfg.Features.UserAPIKeys) {
+		errs = append(errs, errors.New("features.api_billing requires user_auth and user_api_keys"))
+	}
+	if cfg.Features.X402Topups && !cfg.Features.APIBilling {
+		errs = append(errs, errors.New("features.x402_topups requires features.api_billing"))
 	}
 	return errors.Join(errs...)
 }
@@ -427,6 +433,12 @@ func validateBillingConfig(cfg Config) error {
 	if billing.ReservationTTL < 10*time.Second || billing.ReservationTTL > 10*time.Minute {
 		errs = append(errs, errors.New("billing.reservation_ttl must be between 10s and 10m"))
 	}
+	if billing.TopupIntentTTL < time.Minute || billing.TopupIntentTTL > time.Hour {
+		errs = append(errs, errors.New("billing.topup_intent_ttl must be between 1m and 1h"))
+	}
+	if billing.UsageReservationTTL < 10*time.Second || billing.UsageReservationTTL > 10*time.Minute {
+		errs = append(errs, errors.New("billing.usage_reservation_ttl must be between 10s and 10m"))
+	}
 	if billing.MaxPaymentHeaderBytes < 1024 || billing.MaxPaymentHeaderBytes > 16<<10 {
 		errs = append(errs, errors.New("billing.max_payment_header_bytes must be between 1024 and 16384"))
 	}
@@ -456,34 +468,29 @@ func validateBillingConfig(cfg Config) error {
 			errs = append(errs, fmt.Errorf("billing.facilitator_allowed_cidrs[%d] must be a canonical masked CIDR prefix", index))
 		}
 	}
-	if len(billing.Routes) > 0 && !cfg.Features.X402Billing {
-		errs = append(errs, errors.New("billing.routes requires features.x402_billing"))
+	if cfg.Features.X402Billing || len(billing.Routes) != 0 {
+		errs = append(errs, errors.New("features.x402_billing and billing.routes were superseded by api_billing, x402_topups, and billing.operations"))
 	}
-	for operationID, route := range billing.Routes {
-		operation, ok := apiops.Lookup(operationID)
+	if len(billing.Operations) > 0 && !cfg.Features.APIBilling {
+		errs = append(errs, errors.New("billing.operations requires features.api_billing"))
+	}
+	for operationID, operationConfig := range billing.Operations {
+		operation, ok := etherscanops.Lookup(operationID)
 		if !ok || !operation.BillingEligible {
-			errs = append(errs, fmt.Errorf("billing route operation %q is not eligible", operationID))
+			errs = append(errs, fmt.Errorf("billing operation %q is not eligible", operationID))
 		}
-		if route.Access != "x402" && route.Access != "api_key_or_x402" {
-			errs = append(errs, fmt.Errorf("billing route %q access must be x402 or api_key_or_x402", operationID))
-		}
-		if !decimalAtomicPattern.MatchString(route.AmountAtomic) {
-			errs = append(errs, fmt.Errorf("billing route %q amount_atomic must be a canonical positive integer", operationID))
-		} else if len(route.AmountAtomic) > 78 {
-			errs = append(errs, fmt.Errorf("billing route %q amount_atomic must fit in uint256", operationID))
-		} else if amount, ok := new(big.Int).SetString(route.AmountAtomic, 10); !ok ||
-			amount.Cmp(maximumBillingAtomic) > 0 {
-			errs = append(errs, fmt.Errorf("billing route %q amount_atomic must fit in uint256", operationID))
+		if !validBillingAtomic(operationConfig.AmountAtomic) {
+			errs = append(errs, fmt.Errorf("billing operation %q amount_atomic must fit in uint256", operationID))
 		}
 	}
-	if !cfg.Features.X402Billing {
+	if !cfg.Features.APIBilling {
+		if cfg.Features.X402Topups {
+			errs = append(errs, errors.New("features.x402_topups requires features.api_billing"))
+		}
+		if billing.FacilitatorUnsafeAllowHTTP {
+			errs = append(errs, errors.New("billing.facilitator_unsafe_allow_http requires features.x402_topups"))
+		}
 		return errors.Join(errs...)
-	}
-	if cfg.Server.PublicURL == "" {
-		errs = append(errs, errors.New("features.x402_billing requires server.public_url"))
-	}
-	if err := validateHTTPSOrigin("billing.facilitator_url", billing.FacilitatorURL); err != nil {
-		errs = append(errs, err)
 	}
 	if !caip2EVMNetworkPattern.MatchString(billing.Network) {
 		errs = append(errs, errors.New("billing.network must be a canonical eip155 CAIP-2 network"))
@@ -491,16 +498,74 @@ func validateBillingConfig(cfg Config) error {
 	if !validFixedHex(billing.Asset, 20) {
 		errs = append(errs, errors.New("billing.asset must be a 20-byte 0x-prefixed address"))
 	}
+	if !cfg.Features.X402Topups {
+		if len(billing.AssetTransferMethods) != 0 || billing.MinimumTopupAmountAtomic != "" ||
+			billing.MaximumTopupAmountAtomic != "" {
+			errs = append(errs, errors.New("billing top-up policy requires features.x402_topups"))
+		}
+		return errors.Join(errs...)
+	}
+	if cfg.Server.PublicURL == "" {
+		errs = append(errs, errors.New("features.x402_topups requires server.public_url"))
+	}
+	if err := validateFacilitatorOrigin(billing.FacilitatorURL, billing.FacilitatorUnsafeAllowHTTP); err != nil {
+		errs = append(errs, err)
+	}
 	if !validFixedHex(billing.Recipient, 20) {
 		errs = append(errs, errors.New("billing.recipient must be a 20-byte 0x-prefixed address"))
 	}
-	if value := billing.AssetEIP712Name; value == "" || value != strings.TrimSpace(value) || len(value) > 128 {
-		errs = append(errs, errors.New("billing.asset_eip712_name must contain between 1 and 128 trimmed bytes"))
+	methods := make(map[string]bool, len(billing.AssetTransferMethods))
+	for _, method := range billing.AssetTransferMethods {
+		if method != "eip3009" && method != "permit2" || methods[method] {
+			errs = append(errs, errors.New("billing.asset_transfer_methods must contain unique eip3009 or permit2 values"))
+			break
+		}
+		methods[method] = true
 	}
-	if value := billing.AssetEIP712Version; value == "" || value != strings.TrimSpace(value) || len(value) > 32 {
-		errs = append(errs, errors.New("billing.asset_eip712_version must contain between 1 and 32 trimmed bytes"))
+	if len(methods) == 0 {
+		errs = append(errs, errors.New("billing.asset_transfer_methods is required for x402 top-ups"))
+	}
+	if methods["eip3009"] {
+		if value := billing.AssetEIP712Name; value == "" || value != strings.TrimSpace(value) || len(value) > 128 {
+			errs = append(errs, errors.New("billing.asset_eip712_name must contain between 1 and 128 trimmed bytes for eip3009"))
+		}
+		if value := billing.AssetEIP712Version; value == "" || value != strings.TrimSpace(value) || len(value) > 32 {
+			errs = append(errs, errors.New("billing.asset_eip712_version must contain between 1 and 32 trimmed bytes for eip3009"))
+		}
+	}
+	minimum, minimumOK := billingAtomic(billing.MinimumTopupAmountAtomic)
+	maximum, maximumOK := billingAtomic(billing.MaximumTopupAmountAtomic)
+	if !minimumOK || !maximumOK || minimum.Cmp(maximum) > 0 {
+		errs = append(errs, errors.New("billing top-up amount bounds must be canonical positive uint256 values with minimum <= maximum"))
 	}
 	return errors.Join(errs...)
+}
+
+func validateFacilitatorOrigin(raw string, unsafeAllowHTTP bool) error {
+	if !unsafeAllowHTTP {
+		return validateHTTPSOrigin("billing.facilitator_url", raw)
+	}
+	parsed, err := url.Parse(raw)
+	if raw == "" || raw != strings.TrimSpace(raw) || err != nil || parsed == nil ||
+		parsed.Scheme != "http" || parsed.Hostname() == "" || parsed.User != nil ||
+		parsed.Opaque != "" || parsed.RawQuery != "" || parsed.ForceQuery ||
+		parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
+		return errors.New("billing.facilitator_url must be a root HTTP origin when facilitator_unsafe_allow_http is enabled")
+	}
+	return nil
+}
+
+func validBillingAtomic(value string) bool {
+	_, ok := billingAtomic(value)
+	return ok
+}
+
+func billingAtomic(value string) (*big.Int, bool) {
+	if !decimalAtomicPattern.MatchString(value) || len(value) > 78 {
+		return nil, false
+	}
+	amount, ok := new(big.Int).SetString(value, 10)
+	return amount, ok && amount.Cmp(maximumBillingAtomic) <= 0 && amount.String() == value
 }
 
 func validateHTTPSOrigin(name, raw string) error {

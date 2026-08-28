@@ -17,6 +17,11 @@ INSERT INTO billing_payments (
     user_id,
     api_key_prefix,
     facilitator_digest,
+    purpose,
+    asset_transfer_method,
+    payment_flow,
+    fingerprint_version,
+    topup_intent_id,
     state,
     reservation_expires_at,
     created_at,
@@ -26,7 +31,7 @@ INSERT INTO billing_payments (
     sqlc.arg(chain_id)::numeric,
     sqlc.arg(fingerprint),
     sqlc.arg(reservation_owner)::uuid,
-    'GET',
+    sqlc.arg(method),
     sqlc.arg(operation),
     sqlc.arg(resource_digest),
     sqlc.arg(requirement_digest),
@@ -39,6 +44,11 @@ INSERT INTO billing_payments (
     NULL::uuid,
     sqlc.narg(api_key_prefix)::text,
     sqlc.arg(facilitator_digest),
+    sqlc.arg(purpose),
+    sqlc.arg(asset_transfer_method),
+    sqlc.arg(payment_flow),
+    sqlc.arg(fingerprint_version),
+    sqlc.narg(topup_intent_id)::uuid,
     'reserved',
     sqlc.arg(reservation_expires_at),
     sqlc.arg(created_at),
@@ -134,6 +144,7 @@ WITH updated AS (
         updated_at = sqlc.arg(transitioned_at)
     WHERE id = sqlc.arg(id)::uuid
       AND reservation_owner = sqlc.arg(reservation_owner)::uuid
+      AND purpose = 'legacy_request'
       AND state = 'verified'
       AND handler_started_at IS NULL
       AND reservation_expires_at > sqlc.arg(transitioned_at)
@@ -156,6 +167,7 @@ WITH updated AS (
         updated_at = sqlc.arg(transitioned_at)
     WHERE id = sqlc.arg(id)::uuid
       AND reservation_owner = sqlc.arg(reservation_owner)::uuid
+      AND purpose = 'legacy_request'
       AND state = 'verified'
       AND handler_started_at IS NOT NULL
       AND reservation_expires_at > sqlc.arg(transitioned_at)
@@ -177,6 +189,7 @@ WITH updated AS (
         updated_at = sqlc.arg(transitioned_at)
     WHERE id = sqlc.arg(id)::uuid
       AND reservation_owner = sqlc.arg(reservation_owner)::uuid
+      AND purpose = 'legacy_request'
       AND state = 'settling'
       AND failure_code IS NULL
     RETURNING *
@@ -190,6 +203,29 @@ WITH updated AS (
 )
 SELECT id FROM updated;
 
+-- name: MarkBillingPaymentSettlementPending :one
+WITH updated AS (
+    UPDATE billing_payments
+    SET failure_code = 'settlement_pending',
+        transaction_hash = sqlc.arg(transaction_hash),
+        updated_at = sqlc.arg(transitioned_at)
+    WHERE id = sqlc.arg(id)::uuid
+      AND reservation_owner = sqlc.arg(reservation_owner)::uuid
+      AND purpose = 'legacy_request'
+      AND state = 'settling'
+      AND failure_code IS NULL
+      AND transaction_hash IS NULL
+    RETURNING *
+), event AS (
+    INSERT INTO billing_payment_events (
+        payment_id, from_state, to_state, code, actor, transaction_hash, occurred_at
+    )
+    SELECT id, 'settling', 'settling', 'settlement_pending', 'runtime',
+           sqlc.arg(transaction_hash), sqlc.arg(transitioned_at)
+    FROM updated
+)
+SELECT id FROM updated;
+
 -- name: MarkBillingPaymentSettled :one
 WITH updated AS (
     UPDATE billing_payments
@@ -199,6 +235,7 @@ WITH updated AS (
         settled_at = sqlc.arg(transitioned_at),
         updated_at = sqlc.arg(transitioned_at)
     WHERE id = sqlc.arg(id)::uuid
+      AND purpose = 'legacy_request'
       AND state = 'settling'
       AND reservation_owner = sqlc.arg(reservation_owner)::uuid
       AND failure_code IS NULL
@@ -232,6 +269,7 @@ WITH updated AS (
         failed_at = sqlc.arg(transitioned_at),
         updated_at = sqlc.arg(transitioned_at)
     WHERE id = sqlc.arg(id)::uuid
+      AND purpose = 'legacy_request'
       AND (
           (
               state IN ('reserved', 'verified')
@@ -264,15 +302,16 @@ SELECT id FROM updated;
 
 -- name: ReconcileBillingPaymentSettled :one
 WITH candidate AS (
-    SELECT id, failure_code
+    SELECT id, failure_code, transaction_hash
     FROM billing_payments
     WHERE id = sqlc.arg(id)::uuid
       AND chain_id = sqlc.arg(chain_id)::numeric
+      AND purpose = 'legacy_request'
       AND state = 'settling'
       AND sqlc.arg(transitioned_at)::timestamptz >= settling_at
       AND sqlc.arg(transitioned_at)::timestamptz >= updated_at
       AND (
-          failure_code = 'settlement_unknown'
+          failure_code IN ('settlement_unknown', 'settlement_pending')
           OR (
               failure_code IS NULL
               AND settling_at <= sqlc.arg(stale_before)::timestamptz
@@ -282,13 +321,15 @@ WITH candidate AS (
 ), updated AS (
     UPDATE billing_payments AS payment
     SET state = 'settled',
-        transaction_hash = sqlc.arg(transaction_hash),
+        transaction_hash = COALESCE(payment.transaction_hash, sqlc.arg(transaction_hash)),
         failure_code = NULL,
         settled_at = sqlc.arg(transitioned_at),
         updated_at = sqlc.arg(transitioned_at)
     FROM candidate
     WHERE payment.id = candidate.id
-    RETURNING payment.id, candidate.failure_code AS prior_failure_code
+      AND (payment.transaction_hash IS NULL OR payment.transaction_hash = sqlc.arg(transaction_hash))
+    RETURNING payment.id, payment.transaction_hash,
+              candidate.failure_code AS prior_failure_code
 ), event AS (
     INSERT INTO billing_payment_events (
         payment_id,
@@ -303,12 +344,12 @@ WITH candidate AS (
            'settling',
            'settled',
            CASE
-               WHEN prior_failure_code = 'settlement_unknown'
+               WHEN prior_failure_code IN ('settlement_unknown', 'settlement_pending')
                    THEN 'operator_reconciled_settled'
                ELSE 'operator_reconciled_stale_settling_settled'
            END,
            'operator',
-           sqlc.arg(transaction_hash),
+           transaction_hash,
            sqlc.arg(transitioned_at)
     FROM updated
 )
@@ -316,15 +357,16 @@ SELECT id FROM updated;
 
 -- name: ReconcileBillingPaymentFailed :one
 WITH candidate AS (
-    SELECT id, failure_code
+    SELECT id, failure_code, transaction_hash
     FROM billing_payments
     WHERE id = sqlc.arg(id)::uuid
       AND chain_id = sqlc.arg(chain_id)::numeric
+      AND purpose = 'legacy_request'
       AND state = 'settling'
       AND sqlc.arg(transitioned_at)::timestamptz >= settling_at
       AND sqlc.arg(transitioned_at)::timestamptz >= updated_at
       AND (
-          failure_code = 'settlement_unknown'
+          failure_code IN ('settlement_unknown', 'settlement_pending')
           OR (
               failure_code IS NULL
               AND settling_at <= sqlc.arg(stale_before)::timestamptz
@@ -339,20 +381,22 @@ WITH candidate AS (
         updated_at = sqlc.arg(transitioned_at)
     FROM candidate
     WHERE payment.id = candidate.id
-    RETURNING payment.id, candidate.failure_code AS prior_failure_code
+    RETURNING payment.id, payment.transaction_hash,
+              candidate.failure_code AS prior_failure_code
 ), event AS (
     INSERT INTO billing_payment_events (
-        payment_id, from_state, to_state, code, actor, occurred_at
+        payment_id, from_state, to_state, code, actor, transaction_hash, occurred_at
     )
     SELECT id,
            'settling',
            'failed',
            CASE
-               WHEN prior_failure_code = 'settlement_unknown'
+               WHEN prior_failure_code IN ('settlement_unknown', 'settlement_pending')
                    THEN 'operator_reconciled_failed'
                ELSE 'operator_reconciled_stale_settling_failed'
            END,
            'operator',
+           transaction_hash,
            sqlc.arg(transitioned_at)
     FROM updated
 )
@@ -363,6 +407,7 @@ WITH candidates AS (
     SELECT payment.id
     FROM billing_payments AS payment
     WHERE payment.chain_id = sqlc.arg(chain_id)::numeric
+      AND payment.purpose = 'legacy_request'
       AND payment.state IN ('reserved', 'verified')
       AND payment.reservation_expires_at <= sqlc.arg(observed_at)
     ORDER BY payment.reservation_expires_at, payment.id

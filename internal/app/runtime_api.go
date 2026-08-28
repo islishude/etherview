@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"net/http"
 
 	"github.com/islishude/etherview/internal/analytics"
 	"github.com/islishude/etherview/internal/auth"
@@ -187,10 +186,6 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			}
 			verificationTargets = authoritativeBackend
 		}
-		compatibility := etherscan.Handler{
-			ChainID: cfg.Chain.ID, Backend: compatibilityBackend,
-			MaxBody: int64(cfg.Verification.MaxInputBytes) + 1<<20,
-		}
 		var (
 			metadataReader metadata.NFTMetadataReader
 			mediaSource    metadata.NFTImageSource
@@ -260,23 +255,22 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 		if err != nil {
 			return err
 		}
+		prepaidLedger, usageDispatcher, err := newPrepaidServices(cfg, db, logger, registry)
+		if err != nil {
+			return err
+		}
+		topupDispatcher, err := newTopupDispatcher(cfg, billingReader, prepaidLedger, logger, registry)
+		if err != nil {
+			return err
+		}
 		limiter := auth.Limiter(auth.NewMemoryLimiter(nil))
 		if redisAccelerator != nil {
 			limiter = redisAccelerator.Limiter(limiter)
 		}
-		trustedProxies, err := auth.NewTrustedProxySet(cfg.Security.TrustedProxies)
-		if err != nil {
-			return fmt.Errorf("configure trusted proxies: %w", err)
-		}
-		var quota func(http.Handler) http.Handler
-		if cfg.Features.X402Billing {
-			quota = auth.RateMiddleware{
-				Limiter: limiter,
-				Anonymous: auth.Limit{
-					Rate: cfg.Security.AnonymousRate, Burst: cfg.Security.AnonymousBurst,
-				},
-				Observer: registry, TrustedProxies: trustedProxies,
-			}.Wrap
+		compatibility := &etherscan.Handler{
+			ChainID: cfg.Chain.ID, Backend: compatibilityBackend,
+			MaxBody:      int64(cfg.Verification.MaxInputBytes) + 1<<20,
+			PublicOrigin: cfg.Server.PublicURL, Usage: usageDispatcher,
 		}
 		proxyReader := newProxyReaderAdapter(
 			writerReader, cfg.Chain.ID, cfg.Features.ProxyDetectionV2Public,
@@ -299,7 +293,9 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			NFTMediaSource:      mediaSource, NFTMediaProxy: mediaProxy,
 			UserAuth: userAuthenticator, UserAdministration: userAdministration,
 			UserAPIKeys: userAPIKeys,
-			Billing:     billingDispatcher, BillingReader: billingReader, Quota: quota,
+			Billing:     billingDispatcher, BillingReader: billingReader,
+			PrepaidBilling:      prepaidLedger,
+			TopupBilling:        topupDispatcher,
 			MaxVerificationBody: int64(cfg.Verification.MaxInputBytes) + 1<<20,
 			Metrics:             registry.Handler(), Logger: logger, RuntimeReady: lifecycle.Ready,
 			ReadinessStatus: readinessStatus,
@@ -312,14 +308,7 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 		if err != nil {
 			return err
 		}
-		outerLimiter := limiter
-		if cfg.Features.X402Billing {
-			outerLimiter = auth.NewMemoryLimiter(nil)
-			if redisAccelerator != nil {
-				outerLimiter = redisAccelerator.Limiter(outerLimiter)
-			}
-		}
-		publicHandler, err := b.protectPublicAPI(db, cfg, registry, outerLimiter, handler)
+		publicHandler, err := b.protectPublicAPI(db, cfg, registry, limiter, handler)
 		if err != nil {
 			return err
 		}

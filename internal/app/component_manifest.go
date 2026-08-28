@@ -80,8 +80,11 @@ func productionComponentKeys(cfg config.Config, roles []components.Role, wakeEna
 			if cfg.Features.UserAuth {
 				add("47-user-auth-cleanup")
 			}
-			if cfg.Features.X402Billing {
+			if cfg.Features.X402Billing || cfg.Features.APIBilling {
 				add("48-x402-billing-expiry")
+			}
+			if cfg.Features.APIBilling {
+				add("49-prepaid-billing-expiry")
 			}
 		}
 	}

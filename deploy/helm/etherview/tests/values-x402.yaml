@@ -2,7 +2,10 @@ config:
   server:
     public_url: https://explorer.example.com
   features:
-    x402_billing: true
+    user_auth: true
+    user_api_keys: true
+    api_billing: true
+    x402_topups: true
   billing:
     facilitator_url: https://facilitator.example.com
     facilitator_allowed_cidrs:
@@ -13,9 +16,11 @@ config:
     asset_eip712_name: USDC
     asset_eip712_version: "2"
     recipient: "0x2222222222222222222222222222222222222222"
-    routes:
-      listBlocks:
-        access: x402
+    minimum_topup_amount_atomic: "1"
+    maximum_topup_amount_atomic: "1000000"
+    asset_transfer_methods: [eip3009, permit2]
+    operations:
+      etherscan.account.balance:
         amount_atomic: "1000"
 
 networkPolicy:

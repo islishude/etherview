@@ -16,7 +16,6 @@ import (
 
 	"github.com/islishude/etherview/internal/billing/x402wire"
 	x402 "github.com/x402-foundation/x402/go/v2"
-	x402http "github.com/x402-foundation/x402/go/v2/http"
 	exactevmclient "github.com/x402-foundation/x402/go/v2/mechanisms/evm/exact/client"
 	evmsigners "github.com/x402-foundation/x402/go/v2/signers/evm"
 )
@@ -742,7 +741,7 @@ func TestPaymentGuardBlocksSecondAuthorizationBeforeNetwork(t *testing.T) {
 	}
 }
 
-func TestPaymentGuardMakesOfficialCorrectiveRetryUnknownWithoutSendingIt(t *testing.T) {
+func TestPaymentGuardTreatsSignedPaymentRequiredAsUnknownWithoutRetry(t *testing.T) {
 	t.Parallel()
 	codec := httpTestCodec(t)
 	privateKey, payer := httpTestSigner(t, 9)
@@ -780,35 +779,25 @@ func TestPaymentGuardMakesOfficialCorrectiveRetryUnknownWithoutSendingIt(t *test
 		reference:             requirement,
 		referenceHeader:       challenge,
 	}
-	signer, err := evmsigners.NewClientSignerFromPrivateKey(
-		hex.EncodeToString(privateKey),
-	)
+	client := newRestrictedPaymentClient(guard, defaultPaymentTimeout)
+	recheck, err := newPaymentRequest(context.Background(), target)
 	if err != nil {
-		t.Fatalf("NewClientSignerFromPrivateKey(): %v", err)
+		t.Fatal(err)
 	}
-	client := x402.Newx402Client(
-		x402.WithOnPaymentResponseHook(
-			func(
-				context.Context,
-				x402.PaymentResponseContext,
-			) (x402.PaymentResponseResult, error) {
-				return x402.PaymentResponseResult{Recovered: true}, nil
-			},
-		),
-	)
-	client.Register(
-		x402.Network(baseSepoliaNetwork),
-		exactevmclient.NewExactEvmScheme(signer, nil),
-	)
-	wrapped := x402http.WrapHTTPClientWithPayment(
-		newRestrictedPaymentClient(guard, defaultPaymentTimeout),
-		x402http.Newx402HTTPClient(client),
-	)
+	response, err := client.Do(recheck)
+	if err != nil {
+		t.Fatal(err)
+	}
+	discardAndClose(response.Body)
 	request, err := newPaymentRequest(context.Background(), target)
 	if err != nil {
 		t.Fatal(err)
 	}
-	response, err := wrapped.Do(request)
+	request.Header.Set(
+		x402wire.PaymentSignatureHeader,
+		httpTestSignedHeader(t, privateKey, requirement),
+	)
+	response, err = client.Do(request)
 	if response != nil {
 		discardAndClose(response.Body)
 	}
@@ -1169,13 +1158,15 @@ func httpTestRequirement(
 ) x402wire.Requirement {
 	t.Helper()
 	requirement, err := x402wire.NewRequirement(x402wire.RequirementOptions{
-		Network:            baseSepoliaNetwork,
-		Asset:              httpTestAsset,
-		Amount:             httpTestAmount,
-		PayTo:              httpTestRecipient,
-		MaxTimeoutSeconds:  60,
-		AssetEIP712Name:    "Test USD",
-		AssetEIP712Version: "2",
+		Network:             baseSepoliaNetwork,
+		Asset:               httpTestAsset,
+		Amount:              httpTestAmount,
+		PayTo:               httpTestRecipient,
+		MaxTimeoutSeconds:   60,
+		AssetEIP712Name:     "Test USD",
+		AssetEIP712Version:  "2",
+		AssetTransferMethod: x402wire.TransferMethodEIP3009,
+		PaymentFlow:         x402wire.PaymentFlowAuthorization,
 		Resource: x402.ResourceInfo{
 			URL:         target,
 			Description: "",

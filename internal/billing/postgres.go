@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net/http"
 	"regexp"
 	"strings"
 	"time"
@@ -67,6 +68,7 @@ func (ledger *PostgresLedger) Reserve(
 	ctx context.Context,
 	input ReserveInput,
 ) (Reservation, error) {
+	input = normalizeReserveInput(input)
 	if err := validateReserveInput(input); err != nil {
 		return Reservation{}, err
 	}
@@ -80,12 +82,17 @@ func (ledger *PostgresLedger) Reserve(
 	}
 	amount := new(big.Int)
 	amount.SetString(input.AmountAtomic, 10)
+	topupIntentID, err := optionalUUID(input.TopupIntentID)
+	if err != nil {
+		return Reservation{}, err
+	}
 	createdAt := input.ObservedAt.UTC()
 	params := dbgen.InsertBillingPaymentParams{
 		ID:                   uuidValue(paymentID),
 		ChainID:              ledger.chainNumeric,
 		Fingerprint:          input.Fingerprint[:],
 		ReservationOwner:     uuidValue(owner),
+		Method:               input.Method,
 		Operation:            input.Operation,
 		ResourceDigest:       input.ResourceDigest[:],
 		RequirementDigest:    input.RequirementDigest[:],
@@ -95,6 +102,11 @@ func (ledger *PostgresLedger) Reserve(
 		Recipient:            input.Recipient[:],
 		ApiKeyPrefix:         cloneString(input.APIKeyPrefix),
 		FacilitatorDigest:    input.FacilitatorDigest[:],
+		Purpose:              input.Purpose,
+		AssetTransferMethod:  input.AssetTransferMethod,
+		PaymentFlow:          input.PaymentFlow,
+		FingerprintVersion:   input.FingerprintVersion,
+		TopupIntentID:        topupIntentID,
 		ReservationExpiresAt: postgresTime(createdAt.Add(ledger.reservationTTL)),
 		CreatedAt:            postgresTime(createdAt),
 	}
@@ -111,6 +123,23 @@ func (ledger *PostgresLedger) Reserve(
 			return queryErr
 		}
 		owned = true
+		if input.Purpose == "account_topup" {
+			intentID, parseErr := parseUUID(*input.TopupIntentID)
+			if parseErr != nil {
+				return parseErr
+			}
+			userID, parseErr := parseUUID(*input.UserID)
+			if parseErr != nil {
+				return parseErr
+			}
+			if _, claimErr := queries.ClaimBillingTopupIntent(ctx, dbgen.ClaimBillingTopupIntentParams{
+				PaymentID: row.ID, TransitionedAt: postgresTime(createdAt),
+				ID: intentID, UserID: userID, ChainID: ledger.chainNumeric,
+				Payer: input.ExpectedPayer[:],
+			}); claimErr != nil {
+				return claimErr
+			}
+		}
 		return queries.AppendBillingPaymentEvent(ctx, dbgen.AppendBillingPaymentEventParams{
 			PaymentID: row.ID, ToState: string(StateReserved),
 			Code: "payment_reserved", Actor: string(ActorRuntime),
@@ -132,9 +161,27 @@ func (ledger *PostgresLedger) Reserve(
 }
 
 func validateReserveInput(input ReserveInput) error {
-	operation, ok := apiops.Lookup(input.Operation)
-	if !ok || !operation.BillingEligible || operation.Method != "GET" {
-		return fmt.Errorf("%w: operation is not billing eligible", ErrInvalidInput)
+	input = normalizeReserveInput(input)
+	switch input.Purpose {
+	case "legacy_request":
+		operation, ok := apiops.Lookup(input.Operation)
+		if !ok || !operation.BillingEligible || input.Method != http.MethodGet ||
+			input.TopupIntentID != nil {
+			return fmt.Errorf("%w: legacy operation is not billing eligible", ErrInvalidInput)
+		}
+	case "account_topup":
+		if input.Operation != "createBillingTopup" || input.Method != http.MethodPost ||
+			input.TopupIntentID == nil || input.UserID == nil ||
+			input.ExpectedPayer == (common.Address{}) || input.APIKeyPrefix != nil {
+			return fmt.Errorf("%w: top-up payment binding is invalid", ErrInvalidInput)
+		}
+	default:
+		return fmt.Errorf("%w: payment purpose is invalid", ErrInvalidInput)
+	}
+	if input.AssetTransferMethod != "eip3009" && input.AssetTransferMethod != "permit2" ||
+		input.PaymentFlow != "authorization" ||
+		(input.FingerprintVersion != 1 && input.FingerprintVersion != 2) {
+		return fmt.Errorf("%w: payment mechanism is invalid", ErrInvalidInput)
 	}
 	if !billingNetworkPattern.MatchString(input.Network) {
 		return fmt.Errorf("%w: network is not canonical", ErrInvalidInput)
@@ -156,7 +203,11 @@ func validateReserveInput(input ReserveInput) error {
 func sameReservation(payment Payment, input ReserveInput) bool {
 	return payment.ChainID != 0 &&
 		payment.Operation == input.Operation &&
-		payment.Method == "GET" &&
+		payment.Method == input.Method && payment.Purpose == input.Purpose &&
+		payment.AssetTransferMethod == input.AssetTransferMethod &&
+		payment.PaymentFlow == input.PaymentFlow &&
+		payment.FingerprintVersion == input.FingerprintVersion &&
+		optionalStringsEqual(payment.TopupIntentID, input.TopupIntentID) &&
 		payment.Network == input.Network &&
 		payment.AmountAtomic == input.AmountAtomic &&
 		payment.Asset == input.Asset &&
@@ -165,6 +216,29 @@ func sameReservation(payment Payment, input ReserveInput) bool {
 		digestEqual(payment.resourceDigest, input.ResourceDigest) &&
 		digestEqual(payment.requirementDigest, input.RequirementDigest) &&
 		digestEqual(payment.facilitatorDigest, input.FacilitatorDigest)
+}
+
+func normalizeReserveInput(input ReserveInput) ReserveInput {
+	if input.Method == "" {
+		input.Method = http.MethodGet
+	}
+	if input.Purpose == "" {
+		input.Purpose = "legacy_request"
+	}
+	if input.AssetTransferMethod == "" {
+		input.AssetTransferMethod = "eip3009"
+	}
+	if input.PaymentFlow == "" {
+		input.PaymentFlow = "authorization"
+	}
+	if input.FingerprintVersion == 0 {
+		input.FingerprintVersion = 1
+	}
+	return input
+}
+
+func optionalStringsEqual(left, right *string) bool {
+	return left == nil && right == nil || left != nil && right != nil && *left == *right
 }
 
 func digestEqual(left, right Digest) bool {
@@ -312,6 +386,32 @@ func (ledger *PostgresLedger) MarkSettlementUnknown(
 	return ledger.transition(ctx, id, func(queries *dbgen.Queries) error {
 		_, queryErr := queries.MarkBillingPaymentSettlementUnknown(
 			ctx, postgresTime(observedAt), id, fence,
+		)
+		return queryErr
+	})
+}
+
+func (ledger *PostgresLedger) MarkSettlementPending(
+	ctx context.Context,
+	paymentID string,
+	owner string,
+	transactionHash common.Hash,
+	observedAt time.Time,
+) (Payment, error) {
+	if zeroTransactionHash(transactionHash) {
+		return Payment{}, ErrInvalidInput
+	}
+	id, fence, err := transitionIDs(paymentID, owner)
+	if err != nil || observedAt.IsZero() {
+		return Payment{}, ErrInvalidInput
+	}
+	return ledger.transition(ctx, id, func(queries *dbgen.Queries) error {
+		_, queryErr := queries.MarkBillingPaymentSettlementPending(
+			ctx,
+			dbgen.MarkBillingPaymentSettlementPendingParams{
+				TransactionHash: transactionHash[:], TransitionedAt: postgresTime(observedAt),
+				ID: id, ReservationOwner: fence,
+			},
 		)
 		return queryErr
 	})
@@ -593,10 +693,12 @@ func (ledger *PostgresLedger) Summary(
 		count, countErr := integerNumericString(row.PaymentCount)
 		amount, amountErr := integerNumericString(row.AmountAtomic)
 		operation, operationOK := apiops.Lookup(row.Operation)
+		operationEligible := row.Operation == "createBillingTopup" ||
+			operationOK && operation.BillingEligible
 		countInteger, countOK := new(big.Int).SetString(count, 10)
 		amountInteger, amountOK := new(big.Int).SetString(amount, 10)
 		if !state.valid() || assetErr != nil || countErr != nil || amountErr != nil ||
-			!operationOK || !operation.BillingEligible ||
+			!operationEligible ||
 			!billingNetworkPattern.MatchString(row.Network) || len(row.Network) > 96 ||
 			!countOK || countInteger.Sign() <= 0 ||
 			!amountOK || amountInteger.Sign() <= 0 {
@@ -624,7 +726,7 @@ func (ledger *PostgresLedger) adminParams(
 	params.Operation = cloneString(filter.Operation)
 	if params.Operation != nil {
 		operation, ok := apiops.Lookup(*params.Operation)
-		if !ok || !operation.BillingEligible {
+		if *params.Operation != "createBillingTopup" && (!ok || !operation.BillingEligible) {
 			return params, ErrInvalidInput
 		}
 	}
@@ -706,12 +808,10 @@ func (ledger *PostgresLedger) paymentFromRow(row dbgen.BillingPayment) (Payment,
 	state := State(row.State)
 	amount, err := integerNumericString(row.AmountAtomic)
 	amountInteger, amountOK := new(big.Int).SetString(amount, 10)
-	operation, operationOK := apiops.Lookup(row.Operation)
-	if err != nil || !state.valid() || row.Method != "GET" ||
+	if err != nil || !state.valid() ||
 		row.ProtocolVersion != 2 || row.Scheme != "exact" ||
 		!billingNetworkPattern.MatchString(row.Network) || len(row.Network) > 96 ||
-		!operationOK || !operation.BillingEligible ||
-		operation.Method != row.Method || !amountOK ||
+		!validPaymentOperation(row.Purpose, row.Method, row.Operation) || !amountOK ||
 		amountInteger.Sign() <= 0 || amountInteger.Cmp(maximumUint256) > 0 {
 		return Payment{}, ErrIntegrity
 	}
@@ -780,6 +880,8 @@ func (ledger *PostgresLedger) paymentFromRow(row dbgen.BillingPayment) (Payment,
 	}
 	payment := Payment{
 		ID: id, ChainID: chainID, Operation: row.Operation, Method: row.Method,
+		Purpose: row.Purpose, AssetTransferMethod: row.AssetTransferMethod,
+		PaymentFlow: row.PaymentFlow, FingerprintVersion: row.FingerprintVersion,
 		Network: row.Network, Asset: asset, AmountAtomic: amount,
 		Recipient: recipient, State: state, FailureCode: cloneString(row.FailureCode),
 		APIKeyPrefix:         cloneString(row.ApiKeyPrefix),
@@ -790,6 +892,13 @@ func (ledger *PostgresLedger) paymentFromRow(row dbgen.BillingPayment) (Payment,
 		ExpiredAt: expiredAt, CreatedAt: createdAt, UpdatedAt: updatedAt,
 		fingerprint: fingerprint, resourceDigest: resourceDigest,
 		requirementDigest: requirementDigest, facilitatorDigest: facilitatorDigest,
+	}
+	if row.TopupIntentID.Valid {
+		value, intentErr := uuidString(row.TopupIntentID)
+		if intentErr != nil {
+			return Payment{}, ErrIntegrity
+		}
+		payment.TopupIntentID = &value
 	}
 	if len(row.Payer) != 0 {
 		value, payerErr := addressFromBytes(row.Payer)
@@ -818,10 +927,29 @@ func (ledger *PostgresLedger) paymentFromRow(row dbgen.BillingPayment) (Payment,
 	if payment.FailureCode != nil && !validFailureCode(*payment.FailureCode) {
 		return Payment{}, ErrIntegrity
 	}
+	if (payment.Purpose != "legacy_request" && payment.Purpose != "account_topup") ||
+		(payment.AssetTransferMethod != "eip3009" && payment.AssetTransferMethod != "permit2") ||
+		payment.PaymentFlow != "authorization" ||
+		(payment.FingerprintVersion != 1 && payment.FingerprintVersion != 2) ||
+		(payment.Purpose == "legacy_request") != (payment.TopupIntentID == nil) ||
+		(payment.Purpose == "account_topup" && payment.Method != http.MethodPost) {
+		return Payment{}, ErrIntegrity
+	}
 	if !validPaymentStateFacts(payment) {
 		return Payment{}, ErrIntegrity
 	}
 	return payment, nil
+}
+
+func validPaymentOperation(purpose, method, operation string) bool {
+	if purpose == "account_topup" {
+		return method == http.MethodPost && operation == "createBillingTopup"
+	}
+	if purpose != "legacy_request" || method != http.MethodGet {
+		return false
+	}
+	metadata, ok := apiops.Lookup(operation)
+	return ok && metadata.BillingEligible && metadata.Method == method
 }
 
 func (ledger *PostgresLedger) eventsFromRows(
@@ -876,7 +1004,8 @@ func (ledger *PostgresLedger) eventsFromRows(
 			}
 			transactionHash = &value
 		}
-		if (toState == StateSettled) != (transactionHash != nil) ||
+		if (toState == StateSettled && transactionHash == nil) ||
+			(toState != StateSettled && toState != StateSettling && transactionHash != nil) ||
 			(actor == ActorOperator) != strings.HasPrefix(row.Code, "operator_") {
 			return nil, ErrIntegrity
 		}
@@ -975,9 +1104,10 @@ func validPaymentStateFacts(payment Payment) bool {
 		return payment.Payer != nil && payment.VerifiedAt != nil &&
 			payment.HandlerStartedAt != nil && payment.SettlingAt != nil &&
 			payment.SettledAt == nil && payment.FailedAt == nil &&
-			payment.ExpiredAt == nil && payment.TransactionHash == nil &&
-			(payment.FailureCode == nil ||
-				*payment.FailureCode == "settlement_unknown")
+			payment.ExpiredAt == nil &&
+			(payment.FailureCode == nil && payment.TransactionHash == nil ||
+				payment.FailureCode != nil && *payment.FailureCode == "settlement_unknown" && payment.TransactionHash == nil ||
+				payment.FailureCode != nil && *payment.FailureCode == "settlement_pending" && payment.TransactionHash != nil)
 	case StateSettled:
 		return payment.Payer != nil && payment.VerifiedAt != nil &&
 			payment.HandlerStartedAt != nil && payment.SettlingAt != nil &&
@@ -987,7 +1117,7 @@ func validPaymentStateFacts(payment Payment) bool {
 			!payment.SettledAt.Before(*payment.SettlingAt)
 	case StateFailed:
 		return payment.SettledAt == nil && payment.FailedAt != nil &&
-			payment.ExpiredAt == nil && payment.TransactionHash == nil &&
+			payment.ExpiredAt == nil &&
 			payment.FailureCode != nil &&
 			*payment.FailureCode != "settlement_unknown" &&
 			*payment.FailureCode != "reservation_expired" &&

@@ -46,9 +46,11 @@ PREVIEW_TLS_KEY := $(PREVIEW_TLS_DIR)/tls.key
 PREVIEW_TLS_CA := $(PREVIEW_TLS_DIR)/rootCA.pem
 PREVIEW_GENESIS_TEMPLATE := deploy/preview.genesis.json
 PREVIEW_GENESIS_RUNTIME := .local/preview-genesis.json
+X402_LOCAL_COMPOSE := e2e/x402local/compose.yaml
+X402_LOCAL_TOPOLOGY ?= monolith
 
 .DEFAULT_GOAL := check
-.NOTPARALLEL: check generate-check start-preview recreate-preview test-preview-metadata
+.NOTPARALLEL: check generate-check start-preview recreate-preview test-preview-metadata start-x402-local recreate-x402-local
 
 .PHONY: \
 	check compose-check deployment-check \
@@ -61,10 +63,11 @@ PREVIEW_GENESIS_RUNTIME := .local/preview-genesis.json
 	test-runtime-e2e-prebuilt test-hardhat3-provider-compat test-hardhat3-e2e \
 	test-hardhat3-e2e-prebuilt test-hardhat3-offline-compile hardhat3-client-image-build \
 	test-foundry-e2e test-foundry-e2e-prebuilt test-foundry-offline-compile foundry-client-image-build \
-	test-preview-metadata test-schema-e2e test-soak test-x402-testnet \
+	test-preview-metadata test-schema-e2e test-soak \
 	web-build web-generate web-install web-lint web-test preview-cert preview-cert-check \
 	preview-genesis-check preview-genesis-refresh preview-genesis-runtime \
-	start-preview stop-preview recreate-preview
+	start-preview stop-preview recreate-preview \
+	start-x402-local stop-x402-local recreate-x402-local
 
 go-build: web-build
 	$(GO) build $(GO_BUILD_FLAGS) -ldflags="$(GO_BUILD_LDFLAGS)" -o $(GO_BUILD_OUTPUT) ./cmd/etherview
@@ -192,11 +195,6 @@ test-integration-race: web-build
 		DOCKER="$(DOCKER)" GO="$(GO)" \
 		$(GO) run ./cmd/testintegration -root . -packages "$(INTEGRATION_GO_PACKAGES)" -race
 
-# This opt-in target sends exactly one real Base Sepolia payment. It is
-# intentionally absent from check, CI, and the ordinary integration suite.
-test-x402-testnet:
-	$(GO) run ./cmd/x402testnet
-
 test-load:
 	@$(GO) run ./cmd/loadtest
 
@@ -314,6 +312,8 @@ docker-image-check:
 compose-check: preview-genesis-check
 	@DOCKER="$(DOCKER)" $(COMPOSE) version >/dev/null 2>&1 || { echo "compose-check: Docker Compose is required"; exit 1; }
 	@command -v "$(NODE)" >/dev/null 2>&1 || { echo "compose-check: Node.js is required for rendered environment checks"; exit 1; }
+	DOCKER="$(DOCKER)" $(COMPOSE) -f e2e/x402local/compose.yaml --profile monolith config --quiet
+	DOCKER="$(DOCKER)" $(COMPOSE) -f e2e/x402local/compose.yaml --profile distributed config --quiet
 	@test ! -e compose.tls.yaml || { echo "compose-check: compose.tls.yaml must remain removed"; exit 1; }
 	DOCKER="$(DOCKER)" $(COMPOSE) --profile monolith config --quiet
 	DOCKER="$(DOCKER)" $(COMPOSE) --profile distributed config --quiet
@@ -408,8 +408,10 @@ test-runtime-e2e-prebuilt:
 		echo "test-runtime-e2e-prebuilt: image $(IMAGE) is not loaded; run 'make docker-build' first"; \
 		exit 1; \
 	}
+	# Both packages own multi-container production topologies. Keep package tests
+	# serial so the bounded runtime load gate does not compete with x402 Compose.
 	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
-		$(GO) test -count=1 -v -tags=runtimee2e ./e2e/runtime
+		$(GO) test -p=1 -count=1 -v -tags=runtimee2e ./e2e/runtime ./e2e/x402local
 
 test-preview-metadata: preview-cert-check preview-genesis-refresh docker-build
 	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
@@ -485,3 +487,16 @@ recreate-preview: preview-cert-check preview-genesis-runtime docker-build
 		GETH_GENESIS_FILE="$${GETH_GENESIS_FILE:-$(PREVIEW_GENESIS_RUNTIME)}" \
 		ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
 		up -d --no-build --wait --wait-timeout 180 --remove-orphans $(PREVIEW_RUNTIME_SERVICES)
+
+start-x402-local: docker-build
+	@case "$(X402_LOCAL_TOPOLOGY)" in monolith|distributed) ;; *) echo "X402_LOCAL_TOPOLOGY must be monolith or distributed"; exit 1;; esac
+	@DOCKER="$(DOCKER)" $(COMPOSE) -f "$(X402_LOCAL_COMPOSE)" build x402-fixture x402-facilitator
+	@ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f "$(X402_LOCAL_COMPOSE)" \
+		--profile "$(X402_LOCAL_TOPOLOGY)" up -d --no-build --wait --wait-timeout 180 --remove-orphans
+	@echo "x402 local: explorer=http://localhost:$${X402_LOCAL_PORT:-18080} anvil=http://localhost:$${X402_LOCAL_ANVIL_PORT:-18545} topology=$(X402_LOCAL_TOPOLOGY)"
+
+stop-x402-local:
+	@DOCKER="$(DOCKER)" $(COMPOSE) -f "$(X402_LOCAL_COMPOSE)" \
+		--profile monolith --profile distributed down --volumes --remove-orphans
+
+recreate-x402-local: stop-x402-local start-x402-local

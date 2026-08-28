@@ -152,7 +152,7 @@ spec:
                   name: {{ $root.Values.secrets.existingSecret | quote }}
                   key: {{ $root.Values.secrets.sessionPepperKey | quote }}
             {{- end }}
-            {{- if and $root.Values.config.features.x402_billing (or (eq $roleName "all") (eq $roleName "api")) }}
+            {{- if and $root.Values.config.features.x402_topups (or (eq $roleName "all") (eq $roleName "api")) }}
             - name: ETHERVIEW_X402_FINGERPRINT_PEPPER
               valueFrom:
                 secretKeyRef:

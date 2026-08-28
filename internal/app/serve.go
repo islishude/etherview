@@ -338,15 +338,13 @@ func (b *Backend) protectPublicAPI(db *sql.DB, cfg config.Config, observer auth.
 		return nil, fmt.Errorf("configure trusted proxies: %w", err)
 	}
 	protected := next
-	if !cfg.Features.X402Billing {
-		protected = auth.RateMiddleware{
-			Limiter: limiter,
-			Anonymous: auth.Limit{
-				Rate: cfg.Security.AnonymousRate, Burst: cfg.Security.AnonymousBurst,
-			},
-			Observer: observer, TrustedProxies: trustedProxies,
-		}.Wrap(protected)
-	}
+	protected = auth.RateMiddleware{
+		Limiter: limiter,
+		Anonymous: auth.Limit{
+			Rate: cfg.Security.AnonymousRate, Burst: cfg.Security.AnonymousBurst,
+		},
+		Observer: observer, TrustedProxies: trustedProxies,
+	}.Wrap(protected)
 	if cfg.Security.APIKeyPepper != "" {
 		repository, err := auth.NewPostgresRepository(db)
 		if err != nil {
@@ -357,18 +355,6 @@ func (b *Backend) protectPublicAPI(db *sql.DB, cfg config.Config, observer auth.
 			MaxCompatibilityFormBodyBytes: int64(cfg.Verification.MaxInputBytes) + 1<<20,
 		}
 		protected = manager.Middleware(false, protected)
-	}
-	if cfg.Features.X402Billing {
-		// The coarse per-peer bucket deliberately precedes API-key parsing. The
-		// handler's inner quota gate preserves the original anonymous/API-key
-		// policy after billing selects a paid versus bypass route.
-		protected = auth.RateMiddleware{
-			Limiter: limiter,
-			Anonymous: auth.Limit{
-				Rate: cfg.Billing.CoarseIPRate, Burst: cfg.Billing.CoarseIPBurst,
-			},
-			Observer: observer, TrustedProxies: trustedProxies,
-		}.Wrap(protected)
 	}
 	return httpapi.NFTMediaSecurityMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/v2/api" {

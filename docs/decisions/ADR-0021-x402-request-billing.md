@@ -1,6 +1,6 @@
 # ADR-0021: Durable x402 Per-Request Billing
 
-Status: accepted
+Status: superseded by ADR-0044
 
 ## Context
 
@@ -97,3 +97,6 @@ Secret, and require no billing egress.
   operational signals, not a ledger.
 - A future durable-response or automatic settlement-recovery design requires a
   facilitator-specific idempotency/status contract and a separate decision.
+- ADR-0044 replaces this per-request payment model with authenticated prepaid
+  accounts and x402 top-ups. Existing rows remain immutable audit history and
+  are never converted into account credit.

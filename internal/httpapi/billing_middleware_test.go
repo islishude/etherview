@@ -2,8 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -214,69 +212,16 @@ func TestEnabledBillingRequiresWriterBackedDispatcher(t *testing.T) {
 	}
 }
 
-func paymentHeaderFromChallenge(t *testing.T, encoded string) string {
-	t.Helper()
-	decoded, err := base64.StdEncoding.Strict().DecodeString(encoded)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var required x402.PaymentRequired
-	if err := json.Unmarshal(decoded, &required); err != nil {
-		t.Fatal(err)
-	}
-	payment := x402.PaymentPayload{
-		X402Version: 2,
-		Payload: map[string]any{
-			"signature": "0x" + strings.Repeat("11", 65),
-			"authorization": map[string]any{
-				"from": "0x3333333333333333333333333333333333333333",
-				"to":   required.Accepts[0].PayTo, "value": required.Accepts[0].Amount,
-				"validAfter": "0", "validBefore": "9999999999",
-				"nonce": "0x" + strings.Repeat("01", 32),
-			},
-		},
-		Accepted: required.Accepts[0], Resource: required.Resource,
-	}
-	body, err := json.Marshal(payment)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return base64.StdEncoding.EncodeToString(body)
-}
-
-func TestBillingDispatchBypassesQuotaOnlyForPurePaidPath(t *testing.T) {
+func TestNativeBusinessReadsStayFreeAndRejectPaymentHeaders(t *testing.T) {
 	t.Parallel()
 	var quotaCalls atomic.Int32
 	cfg := httpBillingConfig("x402")
 	handler, ledger, facilitator := httpBillingHandler(t, cfg, &quotaCalls, nil)
-	repository := auth.NewMemoryRepository()
-	manager := auth.Manager{
-		Repository: repository, Pepper: []byte(strings.Repeat("p", 32)),
-	}
-	issued, err := manager.Create(context.Background(), "test", 10, 20)
-	if err != nil {
-		t.Fatal(err)
-	}
-	protected := manager.Middleware(false, handler)
-
-	challenge := httptest.NewRecorder()
-	challengeRequest := httptest.NewRequest(http.MethodGet, "/api/v1/blocks", nil)
-	challengeRequest.Header.Set("X-API-Key", issued.Token)
-	protected.ServeHTTP(challenge, challengeRequest)
-	if challenge.Code != http.StatusPaymentRequired || quotaCalls.Load() != 0 {
-		t.Fatalf("challenge=%d quota=%d", challenge.Code, quotaCalls.Load())
-	}
-	paymentHeader := paymentHeaderFromChallenge(
-		t, challenge.Header().Get(x402wire.PaymentRequiredHeader),
-	)
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/blocks", nil)
-	request.Header.Set("X-API-Key", issued.Token)
-	request.Header.Set(x402wire.PaymentSignatureHeader, paymentHeader)
 	response := httptest.NewRecorder()
-	protected.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || quotaCalls.Load() != 0 ||
-		ledger.state != billing.StateSettled ||
-		facilitator.verifyCalls.Load() != 1 || facilitator.settleCalls.Load() != 1 {
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/blocks", nil)
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || quotaCalls.Load() != 1 || ledger.state != "" ||
+		facilitator.verifyCalls.Load() != 0 || facilitator.settleCalls.Load() != 0 {
 		t.Fatalf(
 			"status=%d quota=%d state=%s verify=%d settle=%d body=%s",
 			response.Code, quotaCalls.Load(), ledger.state,
@@ -285,12 +230,12 @@ func TestBillingDispatchBypassesQuotaOnlyForPurePaidPath(t *testing.T) {
 		)
 	}
 
-	invalid := httptest.NewRequest(http.MethodGet, "/api/v1/blocks", nil)
-	invalid.Header.Set("X-API-Key", "invalid")
-	invalidResponse := httptest.NewRecorder()
-	protected.ServeHTTP(invalidResponse, invalid)
-	if invalidResponse.Code != http.StatusUnauthorized {
-		t.Fatalf("invalid key status=%d body=%s", invalidResponse.Code, invalidResponse.Body.String())
+	request = httptest.NewRequest(http.MethodGet, "/api/v1/blocks", nil)
+	request.Header.Set(x402wire.PaymentSignatureHeader, "unexpected")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest || quotaCalls.Load() != 1 {
+		t.Fatalf("payment header status=%d quota=%d body=%s", response.Code, quotaCalls.Load(), response.Body.String())
 	}
 }
 
@@ -339,31 +284,16 @@ func TestBillingAPIKeyBypassKeepsQuotaAndRejectsPaymentHeader(t *testing.T) {
 	}
 }
 
-func TestBillingAPIKeyOrX402WithoutKeyUsesPayment(t *testing.T) {
+func TestLegacyMixedAccessCannotReenablePerRequestPayment(t *testing.T) {
 	t.Parallel()
 	var quotaCalls atomic.Int32
 	cfg := httpBillingConfig("api_key_or_x402")
 	handler, ledger, facilitator := httpBillingHandler(t, cfg, &quotaCalls, nil)
-
-	challenge := httptest.NewRecorder()
-	handler.ServeHTTP(
-		challenge,
-		httptest.NewRequest(http.MethodGet, "/api/v1/blocks", nil),
-	)
-	if challenge.Code != http.StatusPaymentRequired || quotaCalls.Load() != 0 {
-		t.Fatalf("challenge=%d quota=%d", challenge.Code, quotaCalls.Load())
-	}
-	paymentHeader := paymentHeaderFromChallenge(
-		t, challenge.Header().Get(x402wire.PaymentRequiredHeader),
-	)
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/blocks", nil)
-	request.Header.Set(x402wire.PaymentSignatureHeader, paymentHeader)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || quotaCalls.Load() != 0 ||
-		ledger.state != billing.StateSettled ||
-		facilitator.verifyCalls.Load() != 1 ||
-		facilitator.settleCalls.Load() != 1 {
+	if response.Code != http.StatusOK || quotaCalls.Load() != 1 || ledger.state != "" ||
+		facilitator.verifyCalls.Load() != 0 || facilitator.settleCalls.Load() != 0 {
 		t.Fatalf(
 			"status=%d quota=%d state=%s verify=%d settle=%d body=%s",
 			response.Code, quotaCalls.Load(), ledger.state,
@@ -383,22 +313,6 @@ func TestFacilitatorOutageAffectsOnlyPricedProductionMuxRoute(t *testing.T) {
 		nil,
 	)
 
-	challenge := httptest.NewRecorder()
-	handler.ServeHTTP(
-		challenge,
-		httptest.NewRequest(http.MethodGet, "/api/v1/blocks", nil),
-	)
-	if challenge.Code != http.StatusPaymentRequired {
-		t.Fatalf(
-			"challenge status=%d body=%s",
-			challenge.Code,
-			challenge.Body.String(),
-		)
-	}
-	paymentHeader := paymentHeaderFromChallenge(
-		t,
-		challenge.Header().Get(x402wire.PaymentRequiredHeader),
-	)
 	facilitator.verifyErr = &x402wire.BoundaryError{
 		Phase: x402wire.PhaseVerify,
 		Class: x402wire.FailureUnavailable,
@@ -409,12 +323,10 @@ func TestFacilitatorOutageAffectsOnlyPricedProductionMuxRoute(t *testing.T) {
 		"/api/v1/blocks",
 		nil,
 	)
-	paidRequest.Header.Set(x402wire.PaymentSignatureHeader, paymentHeader)
 	paidResponse := httptest.NewRecorder()
 	handler.ServeHTTP(paidResponse, paidRequest)
-	if paidResponse.Code != http.StatusServiceUnavailable ||
-		ledger.state != billing.StateFailed ||
-		facilitator.verifyCalls.Load() != 1 ||
+	if paidResponse.Code != http.StatusOK || ledger.state != "" ||
+		facilitator.verifyCalls.Load() != 0 ||
 		facilitator.settleCalls.Load() != 0 {
 		t.Fatalf(
 			"paid status=%d state=%s verify=%d settle=%d body=%s",
@@ -444,7 +356,7 @@ func TestFacilitatorOutageAffectsOnlyPricedProductionMuxRoute(t *testing.T) {
 			)
 		}
 	}
-	if facilitator.verifyCalls.Load() != 1 ||
+	if facilitator.verifyCalls.Load() != 0 ||
 		facilitator.settleCalls.Load() != 0 {
 		t.Fatalf(
 			"free routes reached facilitator: verify=%d settle=%d",
@@ -518,7 +430,7 @@ func TestOperationCatalogPatternsAreRegisteredByTheProductionMux(t *testing.T) {
 	}
 }
 
-func TestBillableCatalogPatternsAreRegisteredByTheProductionMux(t *testing.T) {
+func TestHistoricalBillableCatalogPatternsRemainRegisteredButNativeFree(t *testing.T) {
 	t.Parallel()
 	cfg := httpBillingConfig("x402")
 	cfg.Billing.Routes = make(map[string]config.BillingRouteConfig)
@@ -549,6 +461,7 @@ func TestBillableCatalogPatternsAreRegisteredByTheProductionMux(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	expectedQuotaCalls := int32(0)
 	for _, spec := range apiops.All() {
 		if !spec.BillingEligible {
 			continue
@@ -565,15 +478,16 @@ func TestBillableCatalogPatternsAreRegisteredByTheProductionMux(t *testing.T) {
 		}
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
-		if response.Code != http.StatusPaymentRequired ||
-			response.Header().Get(x402wire.PaymentRequiredHeader) == "" {
+		expectedQuotaCalls++
+		if response.Code == http.StatusPaymentRequired ||
+			response.Header().Get(x402wire.PaymentRequiredHeader) != "" {
 			t.Errorf(
 				"%s target=%s status=%d body=%s",
 				spec.ID, target, response.Code, response.Body.String(),
 			)
 		}
 	}
-	if quotaCalls.Load() != 0 || ledger.reserveCalls.Load() != 0 ||
+	if quotaCalls.Load() != expectedQuotaCalls || ledger.reserveCalls.Load() != 0 ||
 		facilitator.verifyCalls.Load() != 0 ||
 		facilitator.settleCalls.Load() != 0 {
 		t.Fatalf(

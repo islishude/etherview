@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -320,6 +321,7 @@ type Identity struct {
 	Rate          int
 	Burst         int
 	Scopes        []Scope
+	OwnerUserID   *string
 }
 
 func (identity Identity) HasScope(scope Scope) bool {
@@ -404,9 +406,18 @@ func (m Manager) Middleware(require bool, next http.Handler) http.Handler {
 		identity := Identity{
 			Authenticated: true, Prefix: record.Prefix, Name: record.Name,
 			Rate: record.Rate, Burst: record.Burst, Scopes: slices.Clone(record.Scopes),
+			OwnerUserID: cloneIdentityString(record.OwnerUserID),
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), identityKey{}, identity)))
 	})
+}
+
+func cloneIdentityString(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func (m Manager) compatibilityFormAPIKey(r *http.Request) (string, string) {
@@ -590,4 +601,144 @@ func (r *MemoryRepository) List(_ context.Context) ([]APIKey, error) {
 		items = append(items, key)
 	}
 	return items, nil
+}
+
+func (r *MemoryRepository) PutForUser(
+	_ context.Context,
+	userID string,
+	key APIKey,
+	maximumActive int,
+) error {
+	if userID == "" || key.OwnerUserID == nil || *key.OwnerUserID != userID || maximumActive < 1 {
+		return errors.New("user API key input is invalid")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, exists := r.records[key.Prefix]; exists {
+		return errors.New("API key prefix already exists")
+	}
+	active := 0
+	for _, existing := range r.records {
+		if existing.OwnerUserID != nil && *existing.OwnerUserID == userID && existing.RevokedAt == nil {
+			active++
+		}
+	}
+	if active >= maximumActive {
+		return ErrAPIKeyLimitReached
+	}
+	key.ownerActive = true
+	key.Digest = append([]byte(nil), key.Digest...)
+	key.Scopes = slices.Clone(key.Scopes)
+	r.records[key.Prefix] = key
+	return nil
+}
+
+func (r *MemoryRepository) UserKey(
+	_ context.Context,
+	userID, prefix string,
+) (APIKey, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	key, exists := r.records[prefix]
+	if !exists || key.OwnerUserID == nil || *key.OwnerUserID != userID {
+		return APIKey{}, ErrAPIKeyNotFound
+	}
+	key.ownerActive = true
+	key.Digest = append([]byte(nil), key.Digest...)
+	key.Scopes = slices.Clone(key.Scopes)
+	return key, nil
+}
+
+func (r *MemoryRepository) RotateForUser(
+	_ context.Context,
+	userID, prefix string,
+	replacement APIKey,
+) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	current, exists := r.records[prefix]
+	if !exists || current.OwnerUserID == nil || *current.OwnerUserID != userID {
+		return ErrAPIKeyNotFound
+	}
+	if current.RevokedAt != nil {
+		return ErrAPIKeyNotActive
+	}
+	if replacement.OwnerUserID == nil || *replacement.OwnerUserID != userID {
+		return errors.New("replacement API key owner differs")
+	}
+	if _, exists := r.records[replacement.Prefix]; exists {
+		return errors.New("replacement API key prefix already exists")
+	}
+	revokedAt := replacement.CreatedAt.UTC()
+	current.RevokedAt = &revokedAt
+	replacement.ownerActive = true
+	replacement.Digest = append([]byte(nil), replacement.Digest...)
+	replacement.Scopes = slices.Clone(replacement.Scopes)
+	r.records[prefix] = current
+	r.records[replacement.Prefix] = replacement
+	return nil
+}
+
+func (r *MemoryRepository) RevokeForUser(
+	_ context.Context,
+	userID, prefix string,
+	revokedAt time.Time,
+) (APIKey, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	key, exists := r.records[prefix]
+	if !exists || key.OwnerUserID == nil || *key.OwnerUserID != userID {
+		return APIKey{}, ErrAPIKeyNotFound
+	}
+	if key.RevokedAt != nil {
+		return APIKey{}, ErrAPIKeyNotActive
+	}
+	revokedAt = revokedAt.UTC()
+	key.RevokedAt = &revokedAt
+	key.ownerActive = true
+	r.records[prefix] = key
+	key.Digest = nil
+	key.Scopes = slices.Clone(key.Scopes)
+	return key, nil
+}
+
+func (r *MemoryRepository) ListForUser(
+	_ context.Context,
+	userID string,
+	after *UserKeyPageAfter,
+	limit int,
+) ([]APIKey, int, error) {
+	if userID == "" || limit < 1 {
+		return nil, 0, errors.New("user API key list input is invalid")
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	items := make([]APIKey, 0)
+	active := 0
+	for _, key := range r.records {
+		if key.OwnerUserID == nil || *key.OwnerUserID != userID {
+			continue
+		}
+		if key.RevokedAt == nil {
+			active++
+		}
+		if after != nil && (key.CreatedAt.After(after.CreatedAt) ||
+			(key.CreatedAt.Equal(after.CreatedAt) && key.Prefix >= after.Prefix)) {
+			continue
+		}
+		key.Digest = nil
+		key.ownerActive = true
+		key.Scopes = slices.Clone(key.Scopes)
+		items = append(items, key)
+	}
+	sort.Slice(items, func(left, right int) bool {
+		if items[left].CreatedAt.Equal(items[right].CreatedAt) {
+			return items[left].Prefix > items[right].Prefix
+		}
+		return items[left].CreatedAt.After(items[right].CreatedAt)
+	})
+	if len(items) > limit {
+		items = items[:limit]
+	}
+	return items, active, nil
 }

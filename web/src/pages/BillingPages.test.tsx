@@ -75,6 +75,9 @@ describe("billing pages", () => {
           if (url === "/api/v1/auth/verify") {
             return envelope(authSession("user"));
           }
+          if (url === "/api/v1/billing/config") return billingConfigResponse();
+          if (url === "/api/v1/billing/account") return billingAccountResponse();
+          if (url.startsWith("/api/v1/billing/topup-intents?")) return envelope([]);
           if (url.startsWith("/api/v1/billing/payments?")) {
             const parsed = relativeURL(url);
             return parsed.searchParams.get("cursor") === personalCursor
@@ -108,7 +111,7 @@ describe("billing pages", () => {
     expect(
       screen.getByText(/follows the HttpOnly Cookie session/),
     ).toBeVisible();
-    expect(screen.getByText(amount, { exact: true })).toBeVisible();
+    expect(screen.getAllByText(amount, { exact: true }).length).toBeGreaterThan(0);
     expect(document.body).not.toHaveTextContent(currentUserID);
     expect(document.body).not.toHaveTextContent(apiKeyPrefix);
     expect(document.body).not.toHaveTextContent(csrfToken);
@@ -356,7 +359,35 @@ function configResponse() {
     native_symbol: "ETH",
     native_name: "Ether",
     native_decimals: 18,
-    features: { user_auth: true, x402_billing: true },
+    features: { user_auth: true, api_billing: true },
+  });
+}
+
+function billingConfigResponse() {
+  return envelope({
+    api_billing_enabled: true,
+    x402_topups_enabled: true,
+    network: "eip155:1",
+    asset,
+    recipient,
+    minimum_topup_amount_atomic: "1",
+    maximum_topup_amount_atomic: amount,
+    asset_transfer_methods: ["eip3009", "permit2"],
+    operations: {},
+    asset_eip712_name: "Billing Token",
+    asset_eip712_version: "1",
+  });
+}
+
+function billingAccountResponse() {
+  return envelope({
+    user_id: currentUserID,
+    total_credit_atomic: amount,
+    total_debit_atomic: "0",
+    reserved_atomic: "0",
+    available_atomic: amount,
+    created_at: "2026-07-25T23:58:00Z",
+    updated_at: "2026-07-26T00:00:00Z",
   });
 }
 

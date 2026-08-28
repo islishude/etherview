@@ -24,10 +24,10 @@ func (limiter *appCaptureLimiter) Allow(_ context.Context, key string, limit aut
 	return true, 0
 }
 
-func TestProtectPublicAPIBillingUsesTrustedProxyAwareCoarseLimit(t *testing.T) {
+func TestProtectPublicAPIBillingUsesTheSameTrustedProxyAwareQuota(t *testing.T) {
 	t.Parallel()
 	cfg := config.Default()
-	cfg.Features.X402Billing = true
+	cfg.Features.APIBilling = true
 	cfg.Security.TrustedProxies = []string{"10.0.0.0/8"}
 	limiter := &appCaptureLimiter{}
 	handler, err := (&Backend{}).protectPublicAPI(
@@ -46,8 +46,8 @@ func TestProtectPublicAPIBillingUsesTrustedProxyAwareCoarseLimit(t *testing.T) {
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusNoContent || limiter.calls != 1 ||
 		limiter.key != "anonymous:198.51.100.7" ||
-		limiter.limit.Rate != cfg.Billing.CoarseIPRate ||
-		limiter.limit.Burst != cfg.Billing.CoarseIPBurst {
+		limiter.limit.Rate != cfg.Security.AnonymousRate ||
+		limiter.limit.Burst != cfg.Security.AnonymousBurst {
 		t.Fatalf(
 			"status=%d calls=%d key=%q limit=%#v",
 			response.Code, limiter.calls, limiter.key, limiter.limit,
@@ -80,7 +80,7 @@ func TestProtectPublicAPIWiresTrustedProxyIdentity(t *testing.T) {
 func TestProtectPublicAPIFeatureOffUsesExactlyOriginalQuota(t *testing.T) {
 	t.Parallel()
 	cfg := config.Default()
-	if cfg.Features.X402Billing {
+	if cfg.Features.APIBilling || cfg.Features.X402Topups {
 		t.Fatal("billing unexpectedly enabled by default")
 	}
 	limiter := &appCaptureLimiter{}

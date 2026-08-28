@@ -210,6 +210,36 @@ func TestClientInteroperatesWithFacilitatorV2Wire(t *testing.T) {
 	}
 }
 
+func TestClientPlainHTTPRequiresExplicitLocalFixtureEscapeHatch(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/supported" {
+			http.NotFound(writer, request)
+			return
+		}
+		writeJSON(t, writer, x402.SupportedResponse{
+			Kinds:      []x402.SupportedKind{{X402Version: 2, Scheme: "exact", Network: "eip155:31337"}},
+			Extensions: []string{}, Signers: map[string][]string{},
+		})
+	}))
+	defer server.Close()
+	base := ClientOptions{
+		BaseURL: server.URL, AllowedCIDRs: []string{"127.0.0.0/8"},
+		Timeout: time.Second, MaxResponseBytes: 4096,
+	}
+	if _, err := NewClient(base); !IsFailure(err, FailureInvalid) {
+		t.Fatalf("plaintext facilitator accepted without escape hatch: %v", err)
+	}
+	base.UnsafeAllowHTTP = true
+	client, err := NewClient(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.GetSupported(t.Context()); err != nil {
+		t.Fatalf("explicit local plaintext facilitator: %v", err)
+	}
+}
+
 func TestClientRawInterfaceRejectsAuthorizationMismatchBeforeNetwork(t *testing.T) {
 	t.Parallel()
 	requirement := testRequirement(t)

@@ -47,9 +47,12 @@ type Dialer interface {
 
 // ClientOptions defines a fixed facilitator origin and its explicit egress
 // policy. RootCAs, Resolver, and Dialer exist for deterministic tests and
-// private PKI; TLS verification itself cannot be disabled.
+// private PKI; TLS verification itself cannot be disabled. UnsafeAllowHTTP is
+// an explicit plaintext escape hatch used only by the repository-owned local
+// Compose fixture and never relaxes DNS/CIDR pinning.
 type ClientOptions struct {
 	BaseURL          string
+	UnsafeAllowHTTP  bool
 	AllowedCIDRs     []string
 	Timeout          time.Duration
 	MaxResponseBytes int64
@@ -80,7 +83,7 @@ var _ x402.FacilitatorClient = (*Client)(nil)
 // NewClient validates the immutable network policy and constructs a restricted
 // facilitator client.
 func NewClient(options ClientOptions) (*Client, error) {
-	parsed, err := parseFacilitatorOrigin(options.BaseURL)
+	parsed, err := parseFacilitatorOrigin(options.BaseURL, options.UnsafeAllowHTTP)
 	if err != nil ||
 		options.Timeout < minimumFacilitatorTimeout ||
 		options.Timeout > maximumFacilitatorTimeout ||
@@ -108,7 +111,11 @@ func NewClient(options ClientOptions) (*Client, error) {
 	baseURL := strings.TrimSuffix(parsed.String(), "/")
 	port := parsed.Port()
 	if port == "" {
-		port = "443"
+		if parsed.Scheme == "http" {
+			port = "80"
+		} else {
+			port = "443"
+		}
 	}
 	client := &Client{
 		baseURL:          baseURL,
@@ -205,7 +212,7 @@ func (c *Client) Verify(
 	if err != nil {
 		return nil, err
 	}
-	return parseVerifyResponse(status, responseBody, payment.authorization.From, requirement)
+	return parseVerifyResponse(status, responseBody, payment.Payer(), requirement)
 }
 
 // Settle implements x402.FacilitatorClient for the v2 exact-EVM subset.
@@ -226,7 +233,7 @@ func (c *Client) Settle(
 	if err != nil {
 		return nil, err
 	}
-	return parseSettleResponse(status, responseBody, payment.authorization.From, requirement)
+	return parseSettleResponse(status, responseBody, payment.Payer(), requirement)
 }
 
 // GetSupported implements x402.FacilitatorClient without automatic retries.
@@ -302,8 +309,7 @@ func prepareFacilitatorRequest(
 	}
 	accepted, err := requirementFromSDK(payment.payload.Accepted, PhaseHeader)
 	if err != nil || !reflect.DeepEqual(accepted, requirement) ||
-		payment.authorization.To != requirement.PayTo ||
-		payment.authorization.Value != requirement.Amount {
+		!paymentMatchesRequirementBinding(payment, requirement) {
 		return Payment{}, paymentRequirementWire{}, nil,
 			boundaryError(PhaseHeader, FailureInvalid, CodePaymentMismatch)
 	}
@@ -465,20 +471,14 @@ func parseSettleResponse(
 	expectedPayer string,
 	requirement paymentRequirementWire,
 ) (*x402.SettleResponse, error) {
-	if status >= http.StatusInternalServerError ||
-		status == http.StatusRequestTimeout ||
-		status == http.StatusTooEarly ||
-		status == http.StatusTooManyRequests {
-		return nil, boundaryError(PhaseSettle, FailureSettlementUnknown, CodeSettlementUnknown)
-	}
 	var wire settleResponseWire
 	if err := decodeTypedJSON(data, &wire); err != nil || wire.Success == nil ||
 		len(wire.Extensions) != 0 || len(wire.Extra) != 0 {
 		return nil, boundaryError(PhaseSettle, FailureSettlementUnknown, CodeSettlementUnknown)
 	}
 	if status != http.StatusOK || !*wire.Success {
-		if *wire.Success || wire.Transaction == nil || *wire.Transaction != "" ||
-			wire.Network == nil || !boundedText(wire.ErrorReason, 1, 128) ||
+		if *wire.Success || wire.Transaction == nil || wire.Network == nil ||
+			!boundedText(wire.ErrorReason, 1, 128) ||
 			!boundedText(wire.ErrorMessage, 0, 512) {
 			return nil, boundaryError(PhaseSettle, FailureSettlementUnknown, CodeSettlementUnknown)
 		}
@@ -491,11 +491,7 @@ func parseSettleResponse(
 			var payerOK bool
 			payer, payerOK = canonicalAddress(wire.Payer)
 			if !payerOK || payer != expectedPayer {
-				return nil, boundaryError(
-					PhaseSettle,
-					FailureSettlementUnknown,
-					CodeSettlementUnknown,
-				)
+				return nil, boundaryError(PhaseSettle, FailureSettlementUnknown, CodeSettlementUnknown)
 			}
 		}
 		amount := ""
@@ -509,6 +505,27 @@ func parseSettleResponse(
 					CodeSettlementUnknown,
 				)
 			}
+		}
+		if wire.ErrorReason == "settlement_pending" {
+			if payer == "" {
+				return nil, boundaryError(PhaseSettle, FailureSettlementUnknown, CodeSettlementUnknown)
+			}
+			transaction, transactionOK := canonicalFixedHex(*wire.Transaction)
+			if !transactionOK {
+				return nil, boundaryError(PhaseSettle, FailureSettlementUnknown, CodeSettlementUnknown)
+			}
+			response := &x402.SettleResponse{
+				Success: false, ErrorReason: "settlement_pending", Payer: payer,
+				Transaction: transaction, Network: x402.Network(network), Amount: amount,
+			}
+			return response, boundaryError(PhaseSettle, FailureSettlementPending, CodeSettlementPending)
+		}
+		if status >= http.StatusInternalServerError || status == http.StatusRequestTimeout ||
+			status == http.StatusTooEarly || status == http.StatusTooManyRequests {
+			return nil, boundaryError(PhaseSettle, FailureSettlementUnknown, CodeSettlementUnknown)
+		}
+		if *wire.Transaction != "" {
+			return nil, boundaryError(PhaseSettle, FailureSettlementUnknown, CodeSettlementUnknown)
 		}
 		response := &x402.SettleResponse{
 			Success:     false,
@@ -615,12 +632,13 @@ func parseSupportedResponse(data []byte) (x402.SupportedResponse, error) {
 	}, nil
 }
 
-func parseFacilitatorOrigin(raw string) (*url.URL, error) {
+func parseFacilitatorOrigin(raw string, unsafeAllowHTTP bool) (*url.URL, error) {
 	if raw == "" || raw != strings.TrimSpace(raw) {
 		return nil, errors.New("invalid origin")
 	}
 	parsed, err := url.Parse(raw)
-	if err != nil || parsed == nil || parsed.Scheme != "https" ||
+	validScheme := parsed != nil && (parsed.Scheme == "https" || unsafeAllowHTTP && parsed.Scheme == "http")
+	if err != nil || parsed == nil || !validScheme ||
 		parsed.Hostname() == "" || parsed.User != nil || parsed.Opaque != "" ||
 		parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" ||
 		parsed.RawPath != "" || parsed.Path != "" && parsed.Path != "/" ||

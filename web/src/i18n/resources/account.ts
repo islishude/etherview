@@ -219,6 +219,27 @@ export const accountResources = {
             },
           },
           billing: {
+            topup: {
+              eyebrow: "Prepaid API account",
+              title: "Balance and top-up",
+              description:
+                "Fund permanent token-denominated credit once, then spend it through user-owned API keys on priced Etherscan V2 actions.",
+              available: "Available credit",
+              reserved: "Reserved by active requests",
+              spent: "Committed usage",
+              amount: "Top-up amount (atomic units)",
+              method: "Payment method",
+              confirmation:
+                "The wallet will authorize this exact amount of {{asset}} to {{recipient}}. Permit2 approval is limited to this top-up.",
+              submit: "Confirm and top up",
+              processing: "Processing top-up…",
+              walletRequired: "Connect the same wallet used for this account before topping up.",
+              credited: "{{amount}} atomic units were credited.",
+              pending: "Settlement is pending. Check this account before attempting another payment.",
+              pendingTransaction: "Settlement transaction: {{hash}}",
+              history: "Top-up history",
+              failed: "The top-up failed or its outcome requires inspection.",
+            },
             personal: {
               eyebrow: "Cookie-session history",
               title: "Payment history",
@@ -322,9 +343,9 @@ export const accountResources = {
               settlementUnknown: "Settlement unknown",
             },
             unavailable: {
-              title: "x402 billing is disabled",
+              title: "Prepaid API billing is disabled",
               description:
-                "This deployment has not enabled request billing. Explorer, account, and wallet features remain available independently.",
+                "This deployment has not enabled prepaid API credit. Explorer, account, and wallet features remain available independently.",
             },
           },
           pending: {
@@ -573,6 +594,27 @@ export const accountResources = {
             },
           },
           billing: {
+            topup: {
+              eyebrow: "预付 API 账户",
+              title: "余额与充值",
+              description:
+                "先一次性充值永久有效的代币原子额度，之后由用户自有 API Key 调用已定价的 Etherscan V2 action 时扣减。",
+              available: "可用额度",
+              reserved: "请求预留额度",
+              spent: "已提交用量",
+              amount: "充值金额（原子单位）",
+              method: "付款方式",
+              confirmation:
+                "钱包将授权本次精确金额的 {{asset}} 给 {{recipient}}；Permit2 approve 仅覆盖本次充值。",
+              submit: "确认并充值",
+              processing: "正在处理充值…",
+              walletRequired: "充值前请连接与当前账户相同的钱包。",
+              credited: "已入账 {{amount}} 个原子单位。",
+              pending: "结算仍在等待确认；再次付款前请先检查账户状态。",
+              pendingTransaction: "结算交易：{{hash}}",
+              history: "充值历史",
+              failed: "充值失败，或其结果需要人工检查。",
+            },
             personal: {
               eyebrow: "Cookie 会话历史",
               title: "付款历史",
@@ -672,9 +714,9 @@ export const accountResources = {
               settlementUnknown: "结算结果未知",
             },
             unavailable: {
-              title: "x402 计费已关闭",
+              title: "预付 API 计费已关闭",
               description:
-                "当前部署未启用按请求计费；区块浏览、账户和钱包功能仍可独立使用。",
+                "当前部署未启用预付 API 额度；区块浏览、账户和钱包功能仍可独立使用。",
             },
           },
           pending: {

@@ -34,7 +34,7 @@ func TestBillingDoctorIsRoleAndFeatureScoped(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			cfg := config.Default()
-			cfg.Features.X402Billing = test.enabled
+			cfg.Features.X402Topups = test.enabled
 			called := false
 			err := checkBillingFacilitator(
 				context.Background(),
@@ -54,7 +54,7 @@ func TestBillingDoctorIsRoleAndFeatureScoped(t *testing.T) {
 
 func TestBillingDoctorUsesRestrictedClientConfiguration(t *testing.T) {
 	cfg := config.Default()
-	cfg.Features.X402Billing = true
+	cfg.Features.X402Topups = true
 	cfg.Billing.FacilitatorURL = "https://facilitator.example"
 	cfg.Billing.FacilitatorAllowedCIDRs = []string{"192.0.2.0/24"}
 	cfg.Billing.FacilitatorTimeout = 7
@@ -119,7 +119,7 @@ func TestBillingDoctorReturnsOnlyClosedErrors(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			checker := &doctorSupportChecker{err: test.err}
 			cfg := config.Default()
-			cfg.Features.X402Billing = true
+			cfg.Features.X402Topups = true
 			cfg.Billing.Network = "eip155:84532"
 			err := checkBillingFacilitator(
 				context.Background(),

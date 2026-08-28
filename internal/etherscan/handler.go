@@ -4,6 +4,7 @@ package etherscan
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,8 @@ import (
 	"strings"
 
 	"github.com/islishude/etherview/internal/auth"
+	"github.com/islishude/etherview/internal/billing"
+	"github.com/islishude/etherview/internal/etherscanops"
 )
 
 var (
@@ -56,9 +59,12 @@ type Backend interface {
 }
 
 type Handler struct {
-	ChainID uint64
-	Backend Backend
-	MaxBody int64
+	ChainID      uint64
+	Backend      Backend
+	MaxBody      int64
+	PublicOrigin string
+	Usage        *billing.UsageDispatcher
+	Quota        func(http.Handler) http.Handler
 }
 
 type response struct {
@@ -136,6 +142,10 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.writeErrorStatus(w, http.StatusMethodNotAllowed, "unsupported HTTP method")
 		return
 	}
+	if billing.PaymentHeaderPresent(r.Header) {
+		h.writeErrorStatus(w, http.StatusBadRequest, "payment authorization is accepted only for account top-ups")
+		return
+	}
 	maxBody := h.MaxBody
 	if maxBody <= 0 {
 		maxBody = 6 << 20
@@ -146,6 +156,10 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	values := cloneValues(r.Form)
+	if err := rejectRepeatedParameters(values); err != nil {
+		h.writeErrorStatus(w, http.StatusBadRequest, "duplicate parameters are not allowed")
+		return
+	}
 	// Authentication is complete before the compatibility handler runs. Never
 	// pass credential material into backend requests or strict action parsers.
 	delete(values, "apikey")
@@ -189,12 +203,106 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, err.Error())
 		return
 	}
-	result, err := h.Backend.Execute(r.Context(), Request{Module: module, Action: action, Values: values})
-	if err != nil {
-		h.writeBackendError(w, err)
+	operation, operationExists := etherscanops.LookupAction(module, action)
+	if !operationExists {
+		h.writeErrorStatus(w, http.StatusInternalServerError, "compatibility operation catalog is unavailable")
 		return
 	}
-	h.write(w, http.StatusOK, response{Status: "1", Message: "OK", Result: result})
+	amount, priced := h.Usage.Price(operation.ID)
+	_ = amount
+	if priced {
+		values, err = canonicalBillableValues(r.Method, module, action, values, spec)
+		if err != nil {
+			h.writeErrorStatus(w, http.StatusBadRequest, "invalid billing resource")
+			return
+		}
+	}
+	request := Request{Module: module, Action: action, Values: values}
+	execute := http.HandlerFunc(func(destination http.ResponseWriter, requestHTTP *http.Request) {
+		result, executeErr := h.Backend.Execute(requestHTTP.Context(), request)
+		if executeErr != nil {
+			h.writeBackendError(destination, executeErr)
+			return
+		}
+		h.write(destination, http.StatusOK, response{Status: "1", Message: "OK", Result: result})
+	})
+	if !priced {
+		h.serveQuota(execute, w, r)
+		return
+	}
+	if !identity.Authenticated {
+		h.writeErrorStatus(w, http.StatusUnauthorized, "API Key required")
+		return
+	}
+	if !identity.HasScope(auth.ScopeRead) {
+		h.writeErrorStatus(w, http.StatusForbidden, "API key scope does not authorize this action")
+		return
+	}
+	if identity.OwnerUserID == nil {
+		h.serveQuota(execute, w, r)
+		return
+	}
+	resourceDigest, canonicalErr := h.canonicalBillingResource(r.Method, values)
+	if canonicalErr != nil {
+		h.writeErrorStatus(w, http.StatusBadRequest, "invalid billing resource")
+		return
+	}
+	billed := http.HandlerFunc(func(destination http.ResponseWriter, requestHTTP *http.Request) {
+		h.Usage.Serve(destination, requestHTTP, billing.UsageRequest{
+			UserID: *identity.OwnerUserID, APIKeyPrefix: identity.Prefix,
+			Operation: operation.ID, Resource: billing.Digest(resourceDigest),
+			MaxBodyBytes: operation.MaxResponseBytes,
+			Chargeable:   etherscanChargeable,
+			WriteError:   h.writeUsageError,
+		}, execute)
+	})
+	h.serveQuota(billed, w, r)
+}
+
+func (h Handler) serveQuota(handler http.Handler, w http.ResponseWriter, r *http.Request) {
+	if h.Quota == nil {
+		handler.ServeHTTP(w, r)
+		return
+	}
+	wrapped := h.Quota(handler)
+	if wrapped == nil {
+		h.writeErrorStatus(w, http.StatusServiceUnavailable, "rate limiter is unavailable")
+		return
+	}
+	wrapped.ServeHTTP(w, r)
+}
+
+func (h Handler) canonicalBillingResource(method string, values url.Values) ([sha256.Size]byte, error) {
+	if h.PublicOrigin == "" || len(values) == 0 {
+		return [sha256.Size]byte{}, errors.New("billing resource is unavailable")
+	}
+	canonical := make(url.Values, len(values))
+	for name, items := range values {
+		if name == "apikey" || name == "" || len(items) != 1 || items[0] == "" {
+			return [sha256.Size]byte{}, errors.New("billing resource is ambiguous")
+		}
+		canonical.Set(name, items[0])
+	}
+	resource := method + "\n" + strings.TrimSuffix(h.PublicOrigin, "/") + "/v2/api?" + canonical.Encode()
+	if len(resource) > 4096 {
+		return [sha256.Size]byte{}, errors.New("billing resource is oversized")
+	}
+	return sha256.Sum256([]byte(resource)), nil
+}
+
+func etherscanChargeable(status int, _ http.Header, body []byte) bool {
+	if status != http.StatusOK || len(body) == 0 || len(body) > 8<<20 {
+		return false
+	}
+	var envelope response
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return false
+	}
+	return envelope.Status == "1" && envelope.Message == "OK"
+}
+
+func (h Handler) writeUsageError(w http.ResponseWriter, status int, _ string, message string) {
+	h.writeErrorStatus(w, status, message)
 }
 
 func validateValues(values url.Values, spec actionSpec) error {

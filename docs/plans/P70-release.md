@@ -14,6 +14,7 @@ and user/operator evidence sufficient for a production public release.
 - [ADR-0019: Authenticated genesis state import](../decisions/ADR-0019-authenticated-genesis-state-import.md)
 - [ADR-0020: SIWE user sessions](../decisions/ADR-0020-siwe-user-sessions.md)
 - [ADR-0021: x402 request billing](../decisions/ADR-0021-x402-request-billing.md)
+- [ADR-0044: prepaid API billing and x402 top-ups](../decisions/ADR-0044-prepaid-api-billing-and-x402-topups.md)
 - [ADR-0022: Go-ethereum type and raw RPC ownership](../decisions/ADR-0022-go-ethereum-type-and-raw-rpc-ownership.md)
 - [ADR-0025: Historical execution analytics](../decisions/ADR-0025-historical-execution-analytics.md)
 - [ADR-0026: Current capability status and numeric canonical tips](../decisions/ADR-0026-current-capability-status-and-numeric-canonical-tips.md)
@@ -30,11 +31,11 @@ and user/operator evidence sufficient for a production public release.
 
 | ID | Status | Depends on | Deliverable | Verification |
 |---|---|---|---|---|
-| P70-T01 | blocked | P10–P69, P71, P72 | Execution/API/token/proxy/verification/authentication/billing conformance matrix | conformance suite |
-| P70-T02 | blocked | P10–P69, P71, P72 | Threat model, security audit, dependency, compiler, session, and payment supply-chain review | security gates |
-| P70-T03 | blocked | P10–P69, P71, P72 | Monolith/split E2E, migration/rollback, outage, reorg, payment, and soak suite | release CI |
+| P70-T01 | blocked | P10–P69, P71, P72, P73 | Execution/API/token/proxy/verification/authentication/billing conformance matrix | conformance suite |
+| P70-T02 | blocked | P10–P69, P71, P72, P73 | Threat model, security audit, dependency, compiler, session, and payment supply-chain review | security gates |
+| P70-T03 | blocked | P10–P69, P71, P72, P73 | Monolith/split E2E, migration/rollback, outage, reorg, payment, and soak suite | release CI |
 | P70-T04 | blocked | P60 | 500 RPS reference capacity report and tuning guide | load report |
-| P70-T05 | blocked | P00–P69, P71, P72 | User/operator/API/authentication/billing/runbook/upgrade documentation | doc review and link check |
+| P70-T05 | blocked | P00–P69, P71, P72, P73 | User/operator/API/authentication/billing/runbook/upgrade documentation | doc review and link check |
 | P70-T06 | todo | P70-T01–P70-T05, P70-T08, P70-T09 | SBOM, checksums, signed multi-arch artifacts and v1.0.0 release | release verification |
 | P70-T07 | done | P60 | Database read/write pool split configuration, deployment wiring, and capacity guidance | helm config/schema tests |
 | P70-T08 | done | P10, P20, P30-T07, P40, P50, P60 | Authenticated local/remote genesis account state, predeploy enrichment, native API, and block-zero UI | root, persistence, API, browser, security, and split-role tests |
@@ -297,17 +298,16 @@ and user/operator evidence sufficient for a production public release.
 
 ## Current Blockers
 
-P00 through P65 are complete, while P66 is `blocked`: P66-T08 still needs
-operator-provided Base Sepolia funding, payer credentials, a compatible
-staging facilitator and priced route, the matching writer and independent RPC
-endpoint, and the deployed image/build digest. One preserved successful
-payment and writer/chain reconciliation report clears P66-T08 and makes P66
-`done`.
+P66 is superseded by P73. P73-T08 still needs operator-provided testnet
+funding, payer credentials, a compatible staging facilitator and top-up
+surface, the matching writer and independent RPC endpoint, and the deployed
+image/build digest. Preserved EIP-3009 and Permit2 reports must cover SIWE,
+top-up settlement, account credit, API-key debit, and writer/chain
+reconciliation.
 
-P70-T01, P70-T02, P70-T03, and P70-T05 are blocked by their P66 dependency.
-They become claimable after the P66-T08 live report is recorded and P66 is
-`done`; none of their conformance, security, release-CI, or documentation
-deliverables is represented as complete before then.
+P70-T01, P70-T02, P70-T03, and P70-T05 are blocked by P73. They become
+claimable after the P73-T08 live reports are recorded and P73 is `done`; local
+Anvil evidence does not substitute for that gate.
 
 P70-T04 is blocked on an operator-provisioned reference environment for the
 final clean revision and image digest: at least two failure domains with room

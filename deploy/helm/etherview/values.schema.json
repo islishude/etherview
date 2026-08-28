@@ -555,12 +555,13 @@
         },
         "features": {
           "type": "object",
-          "required": ["ens", "user_auth", "user_api_keys", "x402_billing"],
+          "required": ["ens", "user_auth", "user_api_keys", "api_billing", "x402_topups"],
           "properties": {
             "ens": {"type": "boolean"},
             "user_auth": {"type": "boolean"},
             "user_api_keys": {"type": "boolean"},
-            "x402_billing": {"type": "boolean"}
+            "api_billing": {"type": "boolean"},
+            "x402_topups": {"type": "boolean"}
           }
         },
         "security": {
@@ -641,6 +642,7 @@
             "facilitator_allowed_cidrs",
             "facilitator_timeout",
             "facilitator_max_response_bytes",
+            "facilitator_unsafe_allow_http",
             "network",
             "asset",
             "asset_decimals",
@@ -649,12 +651,17 @@
             "recipient",
             "requirement_max_timeout",
             "reservation_ttl",
+            "topup_intent_ttl",
+            "usage_reservation_ttl",
+            "minimum_topup_amount_atomic",
+            "maximum_topup_amount_atomic",
+            "asset_transfer_methods",
             "max_payment_header_bytes",
             "max_buffered_response_bytes",
             "max_captured_header_bytes",
             "coarse_ip_rate",
             "coarse_ip_burst",
-            "routes"
+            "operations"
           ],
           "properties": {
             "facilitator_url": {"type": "string", "maxLength": 2048},
@@ -669,6 +676,7 @@
               "minimum": 1,
               "maximum": 1048576
             },
+            "facilitator_unsafe_allow_http": {"const": false},
             "network": {
               "type": "string",
               "pattern": "^(|eip155:[1-9][0-9]*)$"
@@ -690,6 +698,16 @@
             },
             "requirement_max_timeout": {"type": "string", "minLength": 1},
             "reservation_ttl": {"type": "string", "minLength": 1},
+            "topup_intent_ttl": {"type": "string", "minLength": 1},
+            "usage_reservation_ttl": {"type": "string", "minLength": 1},
+            "minimum_topup_amount_atomic": {"type": "string", "pattern": "^(|[1-9][0-9]{0,77})$"},
+            "maximum_topup_amount_atomic": {"type": "string", "pattern": "^(|[1-9][0-9]{0,77})$"},
+            "asset_transfer_methods": {
+              "type": "array",
+              "maxItems": 2,
+              "uniqueItems": true,
+              "items": {"type": "string", "enum": ["eip3009", "permit2"]}
+            },
             "max_payment_header_bytes": {
               "type": "integer",
               "minimum": 1024,
@@ -707,57 +725,39 @@
             },
             "coarse_ip_rate": {"type": "integer", "minimum": 1},
             "coarse_ip_burst": {"type": "integer", "minimum": 1},
-            "routes": {
+            "operations": {
               "type": "object",
               "propertyNames": {
                 "enum": [
-                  "listBlocks",
-                  "getBlock",
-                  "listBlockTransactions",
-                  "listTransactions",
-                  "getTransaction",
-                  "listPendingTransactions",
-                  "getTransactionCalldata",
-                  "getTransactionFailure",
-                  "getTransactionTrace",
-                  "listTransactionInternalTransactions",
-                  "listTransactionAuthorizations",
-                  "listTransactionTokenTransfers",
-                  "listTransactionLogs",
-                  "listTransactionStateChanges",
-                  "getAddress",
-                  "getAddressDelegation",
-                  "listAddressDelegations",
-                  "listAddressTransactions",
-                  "listAddressWithdrawals",
-                  "listAddressInternalTransactions",
-                  "listAddressERC20Transfers",
-                  "listAddressNFTTransfers",
-                  "listAddressNames",
-                  "listAddressERC20Balances",
-                  "listAddressNFTBalances",
-                  "listTokens",
-                  "getToken",
-                  "listTokenTransfers",
-                  "getNFTOwner",
-                  "getNFTMetadata",
-                  "getBlockStats",
-                  "getAggregateStats",
-                  "getChartOverview",
-                  "getChartMetric",
-                  "search",
-                  "getVerifierJob"
+                  "etherscan.account.balance",
+                  "etherscan.account.balancemulti",
+                  "etherscan.account.txlist",
+                  "etherscan.account.txlistinternal",
+                  "etherscan.account.tokentx",
+                  "etherscan.account.tokennfttx",
+                  "etherscan.account.token1155tx",
+                  "etherscan.account.tokenbalance",
+                  "etherscan.account.getminedblocks",
+                  "etherscan.contract.getabi",
+                  "etherscan.contract.getsourcecode",
+                  "etherscan.contract.getcontractcreation",
+                  "etherscan.transaction.getstatus",
+                  "etherscan.transaction.gettxreceiptstatus",
+                  "etherscan.logs.getLogs",
+                  "etherscan.block.getblocknobytime",
+                  "etherscan.block.getblockcountdown",
+                  "etherscan.stats.ethprice",
+                  "etherscan.stats.tokensupply",
+                  "etherscan.token.tokensupply",
+                  "etherscan.token.tokenbalance",
+                  "etherscan.token.tokeninfo"
                 ]
               },
               "additionalProperties": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["access", "amount_atomic"],
+                "required": ["amount_atomic"],
                 "properties": {
-                  "access": {
-                    "type": "string",
-                    "enum": ["x402", "api_key_or_x402"]
-                  },
                   "amount_atomic": {
                     "type": "string",
                     "pattern": "^[1-9][0-9]{0,77}$"
@@ -1009,8 +1009,8 @@
           "config": {
             "properties": {
               "features": {
-                "properties": {"x402_billing": {"const": true}},
-                "required": ["x402_billing"]
+                "properties": {"x402_topups": {"const": true}},
+                "required": ["x402_topups"]
               }
             },
             "required": ["features"]
@@ -1022,6 +1022,14 @@
         "properties": {
           "config": {
             "properties": {
+              "features": {
+                "properties": {
+                  "api_billing": {"const": true},
+                  "user_auth": {"const": true},
+                  "user_api_keys": {"const": true}
+                },
+                "required": ["api_billing", "user_auth", "user_api_keys"]
+              },
               "server": {
                 "properties": {"public_url": {"minLength": 1}},
                 "required": ["public_url"]
@@ -1034,7 +1042,10 @@
                   "asset": {"minLength": 42},
                   "asset_eip712_name": {"minLength": 1},
                   "asset_eip712_version": {"minLength": 1},
-                  "recipient": {"minLength": 42}
+                  "recipient": {"minLength": 42},
+                  "minimum_topup_amount_atomic": {"minLength": 1},
+                  "maximum_topup_amount_atomic": {"minLength": 1},
+                  "asset_transfer_methods": {"minItems": 1}
                 }
               }
             },
@@ -1114,8 +1125,8 @@
           "config": {
             "properties": {
               "features": {
-                "properties": {"x402_billing": {"const": true}},
-                "required": ["x402_billing"]
+                "properties": {"x402_topups": {"const": true}},
+                "required": ["x402_topups"]
               }
             },
             "required": ["features"]

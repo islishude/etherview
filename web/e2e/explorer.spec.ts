@@ -1918,7 +1918,8 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
           sourcify: false,
           user_auth: true,
           user_api_keys: true,
-          x402_billing: true,
+          api_billing: true,
+          x402_topups: false,
         },
       }),
     });

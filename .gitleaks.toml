@@ -14,3 +14,11 @@ regexes = ['''^x402-facilitator-headers$''']
 [[allowlists]]
 description = "Ignored mkcert output for the local HTTPS Preview"
 paths = ['''^\.local/preview-tls/''']
+
+[[allowlists]]
+description = "Deterministic public Anvil fixture identities used only by P73 local E2E"
+targetRules = ["generic-api-key"]
+paths = [
+  '''^e2e/x402local/compose\.yaml$''',
+  '''^e2e/x402local/x402_local_test\.go$'''
+]

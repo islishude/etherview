@@ -205,6 +205,8 @@ type Options struct {
 	UserAPIKeys           UserAPIKeyAdministration
 	Billing               *billing.HTTPDispatcher
 	BillingReader         BillingReader
+	PrepaidBilling        *billing.PrepaidLedger
+	TopupBilling          *billing.TopupDispatcher
 	Quota                 func(http.Handler) http.Handler
 	Logger                *slog.Logger
 	RequestID             func() string
@@ -247,6 +249,8 @@ type Handler struct {
 	userAPIKeys           UserAPIKeyAdministration
 	billing               *billing.HTTPDispatcher
 	billingReader         BillingReader
+	prepaidBilling        *billing.PrepaidLedger
+	topupBilling          *billing.TopupDispatcher
 	authOrigin            string
 	authSecureCookie      bool
 	logger                *slog.Logger
@@ -310,6 +314,8 @@ func New(options Options) (*Handler, error) {
 		userAPIKeys:           options.UserAPIKeys,
 		billing:               options.Billing,
 		billingReader:         options.BillingReader,
+		prepaidBilling:        options.PrepaidBilling,
+		topupBilling:          options.TopupBilling,
 		logger:                options.Logger,
 		requestID:             options.RequestID,
 		now:                   options.Now,
@@ -353,19 +359,7 @@ func (h *Handler) handleBillable(operation string, handler http.HandlerFunc) {
 	if !ok || !spec.BillingEligible {
 		panic("httpapi billable operation is absent from the catalog: " + operation)
 	}
-	h.mux.Handle(spec.MuxPattern, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		identity := auth.IdentityFrom(r.Context())
-		billingIdentity := billing.APIKeyIdentity{
-			Authenticated: identity.HasScope(requiredAPIScope(operation)),
-			Prefix:        identity.Prefix,
-		}
-		if r.Method != spec.Method || h.billing == nil ||
-			h.billing.Access(operation, billingIdentity) != billing.AccessPaid {
-			handler.ServeHTTP(w, r)
-			return
-		}
-		h.billing.ServePaid(w, r, spec, billingIdentity, handler)
-	}))
+	h.mux.Handle(spec.MuxPattern, handler)
 }
 
 // RoutePattern reports the pattern selected by the same mux used to dispatch
@@ -605,31 +599,35 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.preflight(w, request)
 		return
 	}
+	if request.URL.Path == "/v2/api" {
+		if billing.PaymentHeaderPresent(request.Header) {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(compatibilityPanicResponse{
+				Status: "0", Message: "NOTOK",
+				Result: "payment authorization is accepted only for account top-ups",
+			})
+			return
+		}
+		h.mux.ServeHTTP(w, request)
+		return
+	}
+	if request.Method == http.MethodPost {
+		_, pattern := h.mux.Handler(request)
+		if pattern == "POST /api/v1/billing/topup-intents/{id}/pay" {
+			h.mux.ServeHTTP(w, request)
+			return
+		}
+	}
+	if billing.PaymentHeaderPresent(request.Header) {
+		writeError(w, request, http.StatusBadRequest, "unexpected_payment_header", "payment authorization is accepted only for account top-ups", nil)
+		return
+	}
 	spec, catalogMatch := h.matchedOperation(request)
 	identity := auth.IdentityFrom(request.Context())
 	if catalogMatch && operationUsesAPIKeyScope(string(spec.ID)) && identity.Authenticated &&
 		!identity.HasScope(requiredAPIScope(string(spec.ID))) {
 		writeError(w, request, http.StatusForbidden, "api_key_scope_required", "API key scope does not authorize this operation", nil)
-		return
-	}
-	billingIdentity := billing.APIKeyIdentity{
-		Authenticated: identity.HasScope(requiredAPIScope(string(spec.ID))),
-		Prefix:        identity.Prefix,
-	}
-	access := billing.AccessFree
-	if catalogMatch && h.billing != nil {
-		access = h.billing.Access(string(spec.ID), billingIdentity)
-	}
-	if billing.PaymentHeaderPresent(request.Header) && access != billing.AccessPaid {
-		writeError(w, request, http.StatusBadRequest, "unexpected_payment_header", "payment authorization is not accepted for this request", nil)
-		return
-	}
-	if access == billing.AccessPaid {
-		if suppliedAPIKey(request) && !identity.Authenticated {
-			writeError(w, request, http.StatusUnauthorized, "invalid_api_key", "authentication failed", nil)
-			return
-		}
-		h.mux.ServeHTTP(w, request)
 		return
 	}
 	// Price discovery must remain available after the original explorer quota
@@ -651,15 +649,6 @@ func (h *Handler) matchedOperation(request *http.Request) (apiops.Spec, bool) {
 		}
 	}
 	return apiops.Spec{}, false
-}
-
-func suppliedAPIKey(request *http.Request) bool {
-	for _, value := range request.Header.Values("X-API-Key") {
-		if strings.TrimSpace(value) != "" {
-			return true
-		}
-	}
-	return false
 }
 
 type compatibilityPanicResponse struct {

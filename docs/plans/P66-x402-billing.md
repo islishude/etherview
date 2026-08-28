@@ -1,6 +1,6 @@
 # P66 — x402 API Billing
 
-Status: `blocked`
+Status: `superseded`
 
 ## Outcome
 
@@ -29,7 +29,7 @@ state commit.
 | P66-T05 | done | P66-T04 | Billing config/history/admin APIs and operator inspection/reconciliation CLI | generated-client, authorization, pagination, and CLI tests |
 | P66-T06 | done | P65-T03, P65-T05, P66-T05 | Optional payer/user association plus account/admin payment views | attribution, bilingual UI, Vitest, and browser tests |
 | P66-T07 | done | P66-T04, P66-T05 | Metrics, alerts, Secret/CIDR deployment, operations guide, and failure runbook | role parity, race, security, Helm, and outage tests |
-| P66-T08 | blocked | P66-T07 | Opt-in real-client and compatible-facilitator testnet conformance | Base Sepolia transaction and ledger reconciliation evidence |
+| P66-T08 | superseded | P66-T07 | Superseded by P73 prepaid-account live conformance | P73-T08 top-up, credit, usage, and chain reconciliation evidence |
 
 ## Acceptance
 
@@ -57,17 +57,14 @@ state commit.
 
 ## Current Blockers
 
-P66-T08's explicit real-payment harness and offline conformance regressions are
-complete. The item is blocked on operator-provided Base Sepolia funds, a payer
-key, one priced route backed by a compatible staging facilitator, the matching
-staging writer, an independent Base Sepolia RPC endpoint, and the target
-deployment image/build digest. Supplying those inputs and preserving one
-successful 402 → signature → settlement → writer/chain report clears the
-blocker. No such live credentials, funding, or staging deployment are stored
-in this repository, so `make test-x402-testnet` has intentionally not been
-executed against a live target.
+None. P66 and P66-T08 are superseded by P73 and P73-T08; the replacement live
+gate covers top-up, credit, API-key usage, writer, and chain reconciliation.
 
 ## Evidence
+
+- P66-T08 is superseded by P73-T08. ADR-0044 replaces accountless per-request
+  payment with SIWE-bound prepaid accounts; historical P66 rows remain
+  audit-only and grant no credit.
 
 - P66-T01 governance and catalog: ADR-0021 plus the repository invariant fix
   settlement-after-capture, persistent replay fencing, and manual convergence

@@ -290,6 +290,30 @@ func TestX402MetricsUseOnlyClosedLabelsAndSingleExposition(t *testing.T) {
 	}
 }
 
+func TestPrepaidBillingMetricsUseClosedMethodOperationAndResultLabels(t *testing.T) {
+	registry := NewRegistry("test", "api")
+	registry.ObserveBillingTopup("permit2", "credited")
+	registry.ObserveBillingTopup("wallet-secret", "remote-secret")
+	registry.ObserveBillingUsage("etherscan.account.balance", "committed")
+	registry.ObserveBillingUsage("https://secret", "database-secret")
+	exposition := registry.Gather()
+	for _, expected := range []string{
+		`etherview_billing_topups_total{method="permit2",result="credited"} 1`,
+		`etherview_billing_topups_total{method="other",result="other"} 1`,
+		`etherview_billing_usage_total{operation="etherscan.account.balance",result="committed"} 1`,
+		`etherview_billing_usage_total{operation="other",result="other"} 1`,
+	} {
+		if !strings.Contains(exposition, expected) {
+			t.Fatalf("prepaid billing metric missing %q:\n%s", expected, exposition)
+		}
+	}
+	for _, forbidden := range []string{"wallet-secret", "remote-secret", "https://secret", "database-secret"} {
+		if strings.Contains(exposition, forbidden) {
+			t.Fatalf("prepaid billing metric leaked %q:\n%s", forbidden, exposition)
+		}
+	}
+}
+
 func TestMetricsAndHTTPMiddleware(t *testing.T) {
 	registry := NewRegistry("v1.2.3", "api")
 	registry.SetSyncLag(7)

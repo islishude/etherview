@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/islishude/etherview/internal/apiops"
+	"github.com/islishude/etherview/internal/etherscanops"
 )
 
 var requestDurationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10}
@@ -54,6 +55,8 @@ type Registry struct {
 	analyticsBackfill             float64
 	rateLimits                    map[string]uint64
 	x402Requests                  map[pair]uint64
+	billingTopups                 map[pair]uint64
+	billingUsage                  map[pair]uint64
 	ensResolutions                map[ensMetricKey]uint64
 	proxyDetectionDuration        *histogram
 	proxyDetectionRPCCalls        map[string]uint64
@@ -121,6 +124,8 @@ func NewRegistry(version, role string) *Registry {
 		analyticsRollups:              make(map[string]uint64),
 		rateLimits:                    make(map[string]uint64),
 		x402Requests:                  make(map[pair]uint64),
+		billingTopups:                 make(map[pair]uint64),
+		billingUsage:                  make(map[pair]uint64),
 		ensResolutions:                make(map[ensMetricKey]uint64),
 		proxyDetectionDuration:        &histogram{Buckets: make([]uint64, len(proxyDetectionDurationBuckets))},
 		proxyDetectionRPCCalls:        make(map[string]uint64),
@@ -378,6 +383,22 @@ func (registry *Registry) ObserveX402Request(operation, result string) {
 	)
 }
 
+func (registry *Registry) ObserveBillingTopup(method, result string) {
+	registry.incrementPair(
+		registry.billingTopups,
+		boundedTopupMethod(method),
+		boundedTopupResult(result),
+	)
+}
+
+func (registry *Registry) ObserveBillingUsage(operation, result string) {
+	registry.incrementPair(
+		registry.billingUsage,
+		boundedUsageOperation(operation),
+		boundedUsageResult(result),
+	)
+}
+
 func (registry *Registry) increment(values map[string]uint64, label string) {
 	registry.mu.Lock()
 	values[safeLabel(label)]++
@@ -496,6 +517,8 @@ func (registry *Registry) Gather() string {
 	fmt.Fprintf(&output, "etherview_analytics_backfill_percent %s\n", formatFloat(registry.analyticsBackfill))
 	writeCounters(&output, "etherview_rate_limit_decisions_total", "Rate limit decisions grouped by outcome.", "decision", registry.rateLimits)
 	writePairCounters(&output, "etherview_x402_requests_total", "x402 request attempts grouped by eligible operation and terminal outcome.", "operation", "result", registry.x402Requests)
+	writePairCounters(&output, "etherview_billing_topups_total", "x402 account top-up attempts grouped by transfer method and terminal outcome.", "method", "result", registry.billingTopups)
+	writePairCounters(&output, "etherview_billing_usage_total", "Prepaid API usage attempts grouped by priced Etherscan operation and terminal outcome.", "operation", "result", registry.billingUsage)
 	return output.String()
 }
 
@@ -776,9 +799,46 @@ func boundedBillingResult(value string) string {
 	}
 }
 
+func boundedTopupMethod(value string) string {
+	switch strings.TrimSpace(value) {
+	case "eip3009", "permit2":
+		return strings.TrimSpace(value)
+	default:
+		return "other"
+	}
+}
+
+func boundedTopupResult(value string) string {
+	switch strings.TrimSpace(value) {
+	case "required", "invalid", "unavailable", "ledger_unavailable", "replayed",
+		"verify_rejected", "verify_unavailable", "settle_rejected",
+		"settlement_pending", "settlement_unknown", "credited":
+		return strings.TrimSpace(value)
+	default:
+		return "other"
+	}
+}
+
+func boundedUsageOperation(value string) string {
+	operation, ok := etherscanops.Lookup(strings.TrimSpace(value))
+	if !ok || !operation.BillingEligible {
+		return "other"
+	}
+	return operation.ID
+}
+
+func boundedUsageResult(value string) string {
+	switch strings.TrimSpace(value) {
+	case "credit_required", "ledger_unavailable", "released", "commit_unknown", "committed":
+		return strings.TrimSpace(value)
+	default:
+		return "other"
+	}
+}
+
 func boundedBillingSettlingReason(value string) string {
 	switch strings.TrimSpace(value) {
-	case "settlement_unknown", "unmarked_after_timeout":
+	case "settlement_unknown", "settlement_pending", "unmarked_after_timeout":
 		return strings.TrimSpace(value)
 	default:
 		return "other"

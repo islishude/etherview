@@ -82,13 +82,15 @@ func run(
 	}
 	expectedRequirement, err := x402wire.NewRequirement(
 		x402wire.RequirementOptions{
-			Network:            baseSepoliaNetwork,
-			Asset:              cfg.ExpectedAsset,
-			Amount:             cfg.ExpectedAmountAtomic,
-			PayTo:              cfg.ExpectedRecipient,
-			MaxTimeoutSeconds:  int(cfg.ExpectedMaxTimeoutSeconds),
-			AssetEIP712Name:    cfg.ExpectedAssetEIP712Name,
-			AssetEIP712Version: cfg.ExpectedAssetEIP712Version,
+			Network:             baseSepoliaNetwork,
+			Asset:               cfg.ExpectedAsset,
+			Amount:              cfg.ExpectedAmountAtomic,
+			PayTo:               cfg.ExpectedRecipient,
+			MaxTimeoutSeconds:   int(cfg.ExpectedMaxTimeoutSeconds),
+			AssetEIP712Name:     cfg.ExpectedAssetEIP712Name,
+			AssetEIP712Version:  cfg.ExpectedAssetEIP712Version,
+			AssetTransferMethod: x402wire.TransferMethodEIP3009,
+			PaymentFlow:         x402wire.PaymentFlowAuthorization,
 			Resource: x402.ResourceInfo{
 				URL:         cfg.ExpectedResourceURL,
 				MimeType:    testnetResourceMimeType,

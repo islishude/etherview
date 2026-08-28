@@ -57,6 +57,11 @@ type Payment struct {
 	ChainID              uint64
 	Operation            string
 	Method               string
+	Purpose              string
+	AssetTransferMethod  string
+	PaymentFlow          string
+	FingerprintVersion   int16
+	TopupIntentID        *string
 	Network              string
 	Asset                common.Address
 	AmountAtomic         string
@@ -92,17 +97,25 @@ type Reservation struct {
 }
 
 type ReserveInput struct {
-	Fingerprint       Digest
-	Operation         string
-	ResourceDigest    Digest
-	RequirementDigest Digest
-	Network           string
-	Asset             common.Address
-	AmountAtomic      string
-	Recipient         common.Address
-	APIKeyPrefix      *string
-	FacilitatorDigest Digest
-	ObservedAt        time.Time
+	Fingerprint         Digest
+	Operation           string
+	Method              string
+	Purpose             string
+	AssetTransferMethod string
+	PaymentFlow         string
+	FingerprintVersion  int16
+	TopupIntentID       *string
+	UserID              *string
+	ExpectedPayer       common.Address
+	ResourceDigest      Digest
+	RequirementDigest   Digest
+	Network             string
+	Asset               common.Address
+	AmountAtomic        string
+	Recipient           common.Address
+	APIKeyPrefix        *string
+	FacilitatorDigest   Digest
+	ObservedAt          time.Time
 }
 
 type VerifiedInput struct {

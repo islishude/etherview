@@ -67,6 +67,12 @@ func (h *Handler) validateIdentityBillingCapability() error {
 	if h.cfg.Features.X402Billing && h.billing == nil {
 		errs = append(errs, errors.New("enabled x402 billing requires a writer-backed dispatcher"))
 	}
+	if h.cfg.Features.APIBilling && h.requirements.Compatibility && h.prepaidBilling == nil {
+		errs = append(errs, errors.New("enabled API billing requires a writer-backed prepaid ledger"))
+	}
+	if h.cfg.Features.X402Topups && h.requirements.Native && h.topupBilling == nil {
+		errs = append(errs, errors.New("enabled x402 top-ups require a top-up dispatcher"))
+	}
 	if h.cfg.Features.X402Billing && h.requirements.Native && !h.quotaConfigured {
 		errs = append(errs, errors.New("enabled x402 billing requires a quota wrapper"))
 	}

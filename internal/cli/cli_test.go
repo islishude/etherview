@@ -577,7 +577,9 @@ func TestAdminUserAndBillingUseNonAPIRoleSecretLoading(t *testing.T) {
 	unsetCLIEnvironment(t, "ETHERVIEW_X402_FINGERPRINT_PEPPER")
 	unsetCLIEnvironment(t, "ETHERVIEW_X402_FACILITATOR_HEADERS")
 	t.Setenv("ETHERVIEW_FEATURE_USER_AUTH", "true")
-	t.Setenv("ETHERVIEW_FEATURE_X402_BILLING", "true")
+	t.Setenv("ETHERVIEW_FEATURE_USER_API_KEYS", "true")
+	t.Setenv("ETHERVIEW_FEATURE_API_BILLING", "true")
+	t.Setenv("ETHERVIEW_FEATURE_X402_TOPUPS", "true")
 	t.Setenv("ETHERVIEW_SESSION_PEPPER_FILE", "/does/not/exist/session")
 	t.Setenv(
 		"ETHERVIEW_X402_FINGERPRINT_PEPPER_FILE",
@@ -597,7 +599,9 @@ database:
   url: postgres://localhost/etherview
 features:
   user_auth: true
-  x402_billing: true
+  user_api_keys: true
+  api_billing: true
+  x402_topups: true
 billing:
   facilitator_url: https://facilitator.example
   facilitator_allowed_cidrs: [203.0.113.0/24]
@@ -607,6 +611,9 @@ billing:
   asset_eip712_name: USDC
   asset_eip712_version: "2"
   recipient: "0x2222222222222222222222222222222222222222"
+  minimum_topup_amount_atomic: "1"
+  maximum_topup_amount_atomic: "1000000"
+  asset_transfer_methods: [eip3009, permit2]
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}

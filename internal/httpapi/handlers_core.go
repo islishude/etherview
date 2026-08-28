@@ -58,7 +58,8 @@ func (h *Handler) publicConfig(w http.ResponseWriter, r *http.Request) {
 		"ens":              h.cfg.Features.ENS,
 		"user_auth":        h.cfg.Features.UserAuth,
 		"user_api_keys":    h.cfg.Features.UserAPIKeys,
-		"x402_billing":     h.cfg.Features.X402Billing,
+		"api_billing":      h.cfg.Features.APIBilling,
+		"x402_topups":      h.cfg.Features.X402Topups,
 	}
 	data := gen.PublicConfig{
 		ChainId:        quantity(h.cfg.Chain.ID),
