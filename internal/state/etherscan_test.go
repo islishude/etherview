@@ -48,6 +48,34 @@ func TestNativeBalanceUsesFixedCanonicalHash(t *testing.T) {
 	}
 }
 
+func TestAccountKindUsesExactCodeAndWriterCanonicality(t *testing.T) {
+	delegation := append([]byte{0xef, 0x01, 0x00}, common.HexToAddress("0x1234").Bytes()...)
+	for _, test := range []struct {
+		name, want string
+		code       []byte
+	}{
+		{name: "EOA", want: "eoa", code: []byte{}},
+		{name: "delegated EOA", want: "delegated_eoa", code: delegation},
+		{name: "contract", want: "contract", code: []byte{0x60, 0x00}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			service := &testStateRPC{code: test.code}
+			reader := fixedStateReader(t, service, true)
+			kind, number, hash, err := reader.AccountKind(t.Context(), "0x000000000000000000000000000000000000dEaD")
+			if err != nil || kind != test.want || number != "42" || hash != testStateHash(9).Hex() {
+				t.Fatalf("kind=%q number=%q hash=%q error=%v", kind, number, hash, err)
+			}
+			if service.method != "eth_getCode" {
+				t.Fatalf("method=%s", service.method)
+			}
+			canonical, err := reader.IsCanonical(t.Context(), number, hash)
+			if err != nil || !canonical {
+				t.Fatalf("canonical=%t error=%v", canonical, err)
+			}
+		})
+	}
+}
+
 func TestNativeBalancesBatchSharesCanonicalObservation(t *testing.T) {
 	reader := fixedStateReader(t, &testStateRPC{}, true)
 	balances, err := reader.NativeBalances(t.Context(), []string{

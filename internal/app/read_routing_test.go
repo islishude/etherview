@@ -96,6 +96,26 @@ func TestReplicaAwareEtherscanBackendRoutesAuthoritativeActions(t *testing.T) {
 			readerCalls: 1,
 		},
 		{
+			name:        "exact holding candidate read",
+			request:     etherscan.Request{Module: "account", Action: "addresstokenbalance"},
+			readerCalls: 1,
+		},
+		{
+			name:        "funding origin read",
+			request:     etherscan.Request{Module: "account", Action: "fundedby"},
+			readerCalls: 1,
+		},
+		{
+			name:        "beacon withdrawal read",
+			request:     etherscan.Request{Module: "account", Action: "txsBeaconWithdrawal"},
+			readerCalls: 1,
+		},
+		{
+			name:        "block count read",
+			request:     etherscan.Request{Module: "block", Action: "getblocktxnscount"},
+			readerCalls: 1,
+		},
+		{
 			name:        "contract source read",
 			request:     etherscan.Request{Module: "contract", Action: "getsourcecode"},
 			readerCalls: 1,

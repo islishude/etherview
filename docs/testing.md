@@ -256,6 +256,10 @@ replace a required `make test-e2e` pass.
   and changed hourly analytics, an orphaned delegation followed by canonical
   delegation, redelegation, ordinary delegated execution, and clearing, plus
   an applied and a signed `nonce_mismatch` tuple in one type-4 transaction.
+  After the required Core/Trace/Token publications, the same production API
+  verifies the Etherscan V2 advanced transaction filter, current-EOA
+  `fundedby`, and exact-block transaction counts and includes them in the
+  normalized monolith/split parity snapshot.
   It checks exact authorization signatures/outcomes, transaction-time calldata
   execution identity, cleared EOA history/current binding, hidden skipped and
   orphan authorizations, retained orphan PostgreSQL evidence, API/SSE/SPA
@@ -302,7 +306,9 @@ replace a required `make test-e2e` pass.
   Compose project with fresh volumes and random loopback ports. It uses the
   fixed CIDv1 `/metadata.json` documented by IPFS, a reviewed solc 0.8.30
   ERC-721/ERC-4906 creation artifact, Geth's unlocked development account, and
-  the trusted local Preview certificate. After the initial version succeeds,
+  the trusted local Preview certificate. It also proves the Etherscan V2
+  ERC-721 holding and inventory actions through exact `ownerOf` state. After
+  the initial version succeeds,
   a transaction with no Transfer changes `tokenURI`, emits `MetadataUpdate(1)`,
   and requires a second exact source/document/job version. Each version has one
   successful attempt, `application/json`, 205 bytes, SHA-256
@@ -400,7 +406,9 @@ monolith and six-role distributed topologies. It verifies real Anvil SIWE,
 EIP-3009 and Permit2 settlement, exact Permit2 approval, replay rejection,
 shared user balance, concurrent debit, logical-failure release, operator
 bypass, and final recipient/account equality. The general runtime and x402
-packages execute serially: each owns independent multi-container topologies,
+fixture also proves a priced-but-operator-bypassed Etherscan ERC-20 holding
+read against the real token and exact Anvil state. The packages execute
+serially: each owns independent multi-container topologies,
 and the general runtime package's bounded-load thresholds require that the
 x402 Docker fixture is not competing for the same runner resources.
 

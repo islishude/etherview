@@ -2119,7 +2119,7 @@ components:
             $ref: "#/components/schemas/BillingAssetTransferMethod"
         operations:
           type: array
-          maxItems: 22
+          maxItems: 28
           items:
             $ref: "#/components/schemas/BillingOperationPrice"
     BillingAccount:

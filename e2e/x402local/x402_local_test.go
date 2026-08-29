@@ -196,6 +196,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string) modeResult {
 
 	operatorKey := createOperatorKey(t, ctx, project, mode)
 	consumeBalance(t, httpClient, publicOrigin, operatorKey, owner)
+	assertERC20Holdings(t, httpClient, publicOrigin, operatorKey, owner)
 	account = billingAccount(t, httpClient, publicOrigin)
 	if account.TotalDebitAtomic != "18" {
 		t.Fatalf("operator bypass changed user balance: %+v", account)
@@ -209,6 +210,45 @@ func runMode(t *testing.T, ctx context.Context, root, mode string) modeResult {
 		Credit: account.TotalCreditAtomic, Debit: account.TotalDebitAtomic,
 		Available: account.AvailableAtomic, Recipient: recipient.String(),
 	}
+}
+
+func assertERC20Holdings(t *testing.T, client *http.Client, origin, key string, owner common.Address) {
+	t.Helper()
+	target := origin + "/v2/api?chainid=31337&module=account&action=addresstokenbalance&address=" +
+		owner.Hex() + "&apikey=" + url.QueryEscape(key)
+	deadline := time.Now().Add(30 * time.Second)
+	var last string
+	for time.Now().Before(deadline) {
+		response, err := client.Get(target)
+		if err != nil {
+			last = err.Error()
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		var envelope struct {
+			Status string          `json:"status"`
+			Result json.RawMessage `json:"result"`
+		}
+		decodeErr := json.NewDecoder(response.Body).Decode(&envelope)
+		_ = response.Body.Close()
+		if decodeErr == nil && response.StatusCode == http.StatusOK && envelope.Status == "1" {
+			var holdings []struct {
+				TokenAddress  string `json:"TokenAddress"`
+				TokenQuantity string `json:"TokenQuantity"`
+			}
+			if err := json.Unmarshal(envelope.Result, &holdings); err == nil {
+				for _, holding := range holdings {
+					quantity, ok := new(big.Int).SetString(holding.TokenQuantity, 10)
+					if strings.EqualFold(holding.TokenAddress, tokenAddress) && ok && quantity.Sign() > 0 {
+						return
+					}
+				}
+			}
+		}
+		last = fmt.Sprintf("status=%d envelope=%s result=%s", response.StatusCode, envelope.Status, envelope.Result)
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("ERC-20 compatibility holding did not become available: %s", last)
 }
 
 type topupPayment struct {

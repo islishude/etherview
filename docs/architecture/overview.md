@@ -619,6 +619,12 @@ size alone is not sufficient justification to weaken those invariants.
 - The exact Etherscan V2 module/action, method, parameter, API-key, capability,
   unavailable-action, and wire-difference contract is maintained in the
   [Etherscan V2 compatibility matrix](etherscan-v2-compatibility.md).
+- The compatibility allowlist includes bounded canonical withdrawals,
+  per-block Core/Trace/Token counts, current-EOA first funding, and mutually
+  exclusive legacy versus advanced from/to list selectors. Address ERC-20 and
+  ERC-721 holding reads require genesis-through-tip Core and Token coverage and
+  fail closed when a dense requested page cannot be proven within 1,000
+  candidates; they never introduce a holder ledger or RPC proxy.
 - Etherscan address-only ABI and source lookups resolve the address's latest
   canonical code observation, then require a verified artifact with the same
   chain, address, code hash, and a validity range covering the canonical tip.
@@ -752,7 +758,9 @@ size alone is not sufficient justification to weaken those invariants.
   response. Address ERC-20 holdings bulk-read permanent exact observations by
   owner, token, and block hash, batch only cache misses, persist zero as well
   as positive balances, and reject conflicting concurrent observations;
-  Etherscan-compatible single-token balance and supply reads remain uncached.
+  Etherscan-compatible address-holding pages reuse that exact cache inside
+  their fixed candidate bound, while single-token balance and supply reads
+  remain uncached.
   Orphan cache rows are retained but cannot satisfy a canonical lookup. Token
   classifications are retained per observed block hash, so a reorg can fall
   back to an older canonical observation even when the runtime code hash did

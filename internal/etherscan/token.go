@@ -16,9 +16,9 @@ import (
 )
 
 func (b *PostgresBackend) accountTokenTransfers(ctx context.Context, action string, values url.Values) ([]tokenTransfer, error) {
-	_, addressBytes, err := parseAddressParameter(values.Get("address"), "address")
+	selector, err := tokenTransferSelector(values)
 	if err != nil {
-		return nil, err
+		return nil, invalidParameter("%v", err)
 	}
 	standard := map[string]string{
 		"tokentx": "erc20", "tokennfttx": "erc721", "token1155tx": "erc1155",
@@ -26,13 +26,9 @@ func (b *PostgresBackend) accountTokenTransfers(ctx context.Context, action stri
 	if standard == "" {
 		return nil, invalidParameter("unsupported token transfer action %q", action)
 	}
-	var contractArgument any
-	if raw := strings.TrimSpace(values.Get("contractaddress")); raw != "" {
-		_, contractBytes, parseErr := parseAddressParameter(raw, "contractaddress")
-		if parseErr != nil {
-			return nil, parseErr
-		}
-		contractArgument = contractBytes
+	contractArgument, err := optionalAddressBytes(values.Get("contractaddress"), "contractaddress")
+	if err != nil {
+		return nil, err
 	}
 	page, err := parsePagination(values)
 	if err != nil {
@@ -55,10 +51,37 @@ func (b *PostgresBackend) accountTokenTransfers(ctx context.Context, action stri
 	if end != nil {
 		endArgument = *end
 	}
-	rows, err := tx.QueryContext(ctx, dbgen.EtherscanTokenTransfers,
-		b.chain, addressBytes, standard, start, endArgument, contractArgument,
-		page.limit, page.offset, page.direction,
-	)
+	query := dbgen.EtherscanTokenTransfers
+	arguments := make([]any, 0, 11)
+	if selector.mode == selectorLegacyAddress {
+		_, addressBytes, parseErr := parseAddressParameter(values.Get("address"), "address")
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		arguments = append(arguments,
+			b.chain, addressBytes, standard, start, endArgument, contractArgument,
+			page.limit, page.offset, page.direction,
+		)
+	} else {
+		from, parseErr := optionalAddressBytes(values.Get("from"), "from")
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		to, parseErr := optionalAddressBytes(values.Get("to"), "to")
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		operator := strings.ToUpper(selector.op)
+		if operator == "" {
+			operator = "AND"
+		}
+		query = dbgen.EtherscanTokenTransfersAdvanced
+		arguments = append(arguments,
+			b.chain, standard, contractArgument, from, to, operator,
+			start, endArgument, page.limit, page.offset, page.direction,
+		)
+	}
+	rows, err := tx.QueryContext(ctx, query, arguments...)
 	if err != nil {
 		return nil, fmt.Errorf("query %s token transfers: %w", standard, err)
 	}

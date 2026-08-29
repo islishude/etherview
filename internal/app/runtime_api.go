@@ -165,6 +165,7 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 		}
 		compatibilityOptions := etherscan.PostgresOptions{
 			ChainID: cfg.Chain.ID, State: compatibilityState, Price: priceProvider,
+			ERC20State: erc20State, NFTState: nftState,
 			Verification: compatibilityVerification, Artifacts: artifactResolver,
 			VerificationMaxInputBytes: cfg.Verification.MaxInputBytes,
 		}

@@ -63,7 +63,7 @@ func canonicalBillableValues(
 		}
 		canonical.Set("tag", "latest")
 	}
-	if spec.list {
+	if spec.list || spec.pageOnly {
 		pagination, parseErr := parsePagination(canonical)
 		if parseErr != nil {
 			return nil, parseErr
@@ -74,7 +74,11 @@ func canonicalBillableValues(
 		}
 		canonical.Set("page", page)
 		canonical.Set("offset", fmt.Sprintf("%d", pagination.limit))
-		canonical.Set("sort", strings.ToLower(pagination.direction))
+		if spec.list {
+			canonical.Set("sort", strings.ToLower(pagination.direction))
+		} else {
+			canonical.Del("sort")
+		}
 	}
 
 	switch module + "." + action {
@@ -82,9 +86,27 @@ func canonicalBillableValues(
 		if err := canonicalizeAddressList(canonical, "address", 20, false); err != nil {
 			return nil, err
 		}
-	case "account.txlist", "account.tokentx", "account.tokennfttx", "account.token1155tx":
-		if err := canonicalizeDecimalRange(canonical, "startblock", "endblock"); err != nil {
+	case "account.txlist":
+		if _, err := normalTransactionSelector(canonical); err != nil {
 			return nil, err
+		}
+		if err := canonicalizeDecimalRange(canonical, "startblock", "endblock", true); err != nil {
+			return nil, err
+		}
+		canonical.Set("fromto_opr", strings.ToLower(canonical.Get("fromto_opr")))
+		if canonical.Get("fromto_opr") == "" {
+			canonical.Del("fromto_opr")
+		}
+	case "account.tokentx", "account.tokennfttx", "account.token1155tx":
+		if _, err := tokenTransferSelector(canonical); err != nil {
+			return nil, err
+		}
+		if err := canonicalizeDecimalRange(canonical, "startblock", "endblock", true); err != nil {
+			return nil, err
+		}
+		canonical.Set("fromto_opr", strings.ToLower(canonical.Get("fromto_opr")))
+		if canonical.Get("fromto_opr") == "" {
+			canonical.Del("fromto_opr")
 		}
 	case "account.txlistinternal":
 		if err := canonicalizeInternalTransactionParameters(canonical); err != nil {
@@ -120,30 +142,24 @@ func canonicalBillableValues(
 		if err := canonicalizeDecimal(canonical, "blockno"); err != nil {
 			return nil, err
 		}
+	case "block.getblocktxnscount":
+		if err := canonicalizeDecimal(canonical, "blockno"); err != nil {
+			return nil, err
+		}
+	case "account.txsBeaconWithdrawal":
+		if err := canonicalizeDecimalRange(canonical, "startblock", "endblock", false); err != nil {
+			return nil, err
+		}
+	case "account.addresstokenbalance", "account.addresstokennftbalance", "account.addresstokennftinventory":
+		if holdingWindowExceeded(canonical) {
+			return nil, ErrHoldingWindowUnavailable
+		}
 	}
 	return canonical, nil
 }
 
 func billableParameterNames(module, action string, spec actionSpec) map[string]bool {
-	result := map[string]bool{"chainid": true, "module": true, "action": true}
-	for _, names := range [][]string{
-		spec.required, spec.addresses, spec.optionalAddresses, spec.hashes,
-	} {
-		for _, name := range names {
-			result[name] = true
-		}
-	}
-	if spec.hashOptional != "" {
-		result[spec.hashOptional] = true
-	}
-	if spec.state {
-		result["tag"] = true
-	}
-	if spec.list {
-		for _, name := range []string{"page", "offset", "sort"} {
-			result[name] = true
-		}
-	}
+	result := actionParameterNames(spec)
 	switch module + "." + action {
 	case "account.txlist", "account.txlistinternal", "account.tokentx",
 		"account.tokennfttx", "account.token1155tx":
@@ -182,7 +198,7 @@ func canonicalizeDecimal(values url.Values, name string) error {
 	return nil
 }
 
-func canonicalizeDecimalRange(values url.Values, startName, endName string) error {
+func canonicalizeDecimalRange(values url.Values, startName, endName string, allowLatest bool) error {
 	start := "0"
 	if raw := strings.TrimSpace(values.Get(startName)); raw != "" {
 		value, err := parseDecimal(raw, startName)
@@ -193,6 +209,10 @@ func canonicalizeDecimalRange(values url.Values, startName, endName string) erro
 	}
 	values.Set(startName, start)
 	if raw := strings.TrimSpace(values.Get(endName)); raw != "" {
+		if allowLatest && raw == "latest" {
+			values.Del(endName)
+			return nil
+		}
 		value, err := parseDecimal(raw, endName)
 		if err != nil {
 			return err
@@ -230,19 +250,12 @@ func canonicalizeAddressList(values url.Values, name string, maximum int, reject
 }
 
 func canonicalizeInternalTransactionParameters(values url.Values) error {
+	selector, err := internalTransactionSelector(values)
+	if err != nil {
+		return err
+	}
 	address := strings.TrimSpace(values.Get("address"))
 	hash := strings.TrimSpace(values.Get("txhash"))
-	if address != "" && hash != "" {
-		return errors.New("txlistinternal accepts address or txhash, not both")
-	}
-	if address == "" && hash == "" &&
-		(strings.TrimSpace(values.Get("startblock")) == "" ||
-			strings.TrimSpace(values.Get("endblock")) == "") {
-		return errors.New("txlistinternal requires address, txhash, or a block range")
-	}
-	if hash != "" && (values.Get("startblock") != "" || values.Get("endblock") != "") {
-		return errors.New("txhash mode does not accept a block range")
-	}
 	if address != "" {
 		parsed, _, err := parseAddressParameter(address, "address")
 		if err != nil {
@@ -253,11 +266,19 @@ func canonicalizeInternalTransactionParameters(values url.Values) error {
 	if hash != "" {
 		return canonicalizeHash(values, "txhash")
 	}
-	return canonicalizeDecimalRange(values, "startblock", "endblock")
+	if selector.mode == selectorDirectional {
+		values.Set("fromto_opr", selector.op)
+	} else {
+		values.Del("fromto_opr")
+	}
+	if err := canonicalizeDecimalRange(values, "startblock", "endblock", true); err != nil {
+		return err
+	}
+	return nil
 }
 
 func canonicalizeLogs(values url.Values) error {
-	if err := canonicalizeDecimalRange(values, "fromBlock", "toBlock"); err != nil {
+	if err := canonicalizeDecimalRange(values, "fromBlock", "toBlock", false); err != nil {
 		return err
 	}
 	filters, err := buildTopicFilter(values)

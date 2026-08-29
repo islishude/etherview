@@ -182,7 +182,7 @@ func TestInternalTransactionsRejectAmbiguousOrUnboundedSelectors(t *testing.T) {
 	t.Parallel()
 	for _, values := range []url.Values{
 		{},
-		{"startblock": {"10"}},
+		{"endblock": {"10"}},
 		{"address": {testSender}, "txhash": {testHash(7)}},
 		{"txhash": {testHash(7)}, "startblock": {"10"}, "endblock": {"10"}},
 	} {

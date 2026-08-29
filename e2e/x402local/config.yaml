@@ -118,6 +118,11 @@ billing:
     etherscan.account.token1155tx: {amount_atomic: "1"}
     etherscan.account.tokenbalance: {amount_atomic: "1"}
     etherscan.account.getminedblocks: {amount_atomic: "1"}
+    etherscan.account.txsBeaconWithdrawal: {amount_atomic: "1"}
+    etherscan.account.addresstokenbalance: {amount_atomic: "1"}
+    etherscan.account.addresstokennftbalance: {amount_atomic: "1"}
+    etherscan.account.addresstokennftinventory: {amount_atomic: "1"}
+    etherscan.account.fundedby: {amount_atomic: "1"}
     etherscan.contract.getabi: {amount_atomic: "1"}
     etherscan.contract.getsourcecode: {amount_atomic: "1"}
     etherscan.contract.getcontractcreation: {amount_atomic: "1"}
@@ -126,6 +131,7 @@ billing:
     etherscan.logs.getLogs: {amount_atomic: "1"}
     etherscan.block.getblocknobytime: {amount_atomic: "1"}
     etherscan.block.getblockcountdown: {amount_atomic: "1"}
+    etherscan.block.getblocktxnscount: {amount_atomic: "1"}
     etherscan.stats.ethprice: {amount_atomic: "1"}
     etherscan.stats.tokensupply: {amount_atomic: "1"}
     etherscan.token.tokensupply: {amount_atomic: "1"}

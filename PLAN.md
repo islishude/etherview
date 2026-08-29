@@ -37,10 +37,11 @@ batch semantics are not core v1 scope.
 | P67 | [ENS Primary Names](docs/plans/P67-ens-primary-names.md) | done | P20, P40, P50, P60 | Snapshot-stable official and custom ENS forward resolution plus verified primary-name display |
 | P68 | [Runtime and Architecture Hardening](docs/plans/P68-runtime-architecture-hardening.md) | done | P00, P40, P50, P60 | Stream lifecycle correctness plus explicit SQL, runtime, HTTP, Web, and quality boundaries |
 | P69 | [Solady Legacy CWIA Proxies](docs/plans/P69-solady-legacy-cwia-proxies.md) | done | P20, P30, P40, P50, P58, P60 | Exact legacy LibCWIA recognition, verified immutable-argument decoding, and read/write interaction fencing |
-| P70 | [Release](docs/plans/P70-release.md) | blocked | P10–P69, P71, P72, P73 | Security, conformance, performance, E2E, documentation, and v1 release |
+| P70 | [Release](docs/plans/P70-release.md) | blocked | P10–P69, P71, P72, P73, P74 | Security, conformance, performance, E2E, documentation, and v1 release |
 | P71 | [Factory-derived Contract Verification](docs/plans/P71-factory-derived-verification.md) | done | P20, P30, P40, P50, P60 | Authenticated compilation-unit persistence and canonical CREATE/CREATE2 verification propagation |
 | P72 | [Factory-derived Verification Hardening](docs/plans/P72-derived-verification-hardening.md) | done | P71 | Generation-safe derived work, short publication, exact provenance, and structural hardening |
 | P73 | [Prepaid API Billing](docs/plans/P73-prepaid-api-billing.md) | blocked | P40, P60, P65 | x402 account top-ups and PostgreSQL prepaid credit for bounded Etherscan V2 reads |
+| P74 | [Etherscan V2 Read Expansion](docs/plans/P74-etherscan-v2-read-expansion.md) | done | P20, P40, P65 | Authoritative withdrawals, holdings, funding, block counts, and advanced compatibility filters |
 
 Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 `superseded`.
@@ -405,10 +406,18 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   deployment, generation, source, plan, and whitespace gates pass. Reviewable
   commands and results remain in [P72
   evidence](docs/plans/P72-derived-verification-hardening.md#evidence).
+- P74 is complete: the Etherscan V2 allowlist has 34 explicit actions and
+  28 bounded billing-eligible reads. Canonical withdrawals, advanced
+  normal/internal/token filters, exact-block transaction counts, EOA-only
+  funding origin, and dense bounded ERC-20/ERC-721 holdings preserve
+  continuous coverage, exact state, reader/writer, and prepaid billing
+  boundaries. Real PostgreSQL/race and real-Anvil monolith/six-role runtime
+  gates pass; reviewable commands and results remain in [P74
+  evidence](docs/plans/P74-etherscan-v2-read-expansion.md#evidence).
 
 ## Global Release Gates
 
-- [ ] Every required P00–P73 plan is `done` or explicitly `superseded` with reviewable evidence.
+- [ ] Every required P00–P74 plan is `done` or explicitly `superseded` with reviewable evidence.
 - [ ] Genesis-to-head ingestion is gap-free, restart-safe, and reorg-safe.
 - [ ] Monolith and split-role modes pass the same behavioral acceptance suite.
 - [ ] Optional RPC capabilities and optional infrastructure fail explicitly and

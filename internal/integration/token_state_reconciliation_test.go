@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net/url"
 	"sync"
 	"testing"
 	"time"
@@ -19,11 +20,149 @@ import (
 	"github.com/islishude/etherview/internal/catalog"
 	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/enrich"
+	"github.com/islishude/etherview/internal/etherscan"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/httpapi"
 	"github.com/islishude/etherview/internal/state"
 	"github.com/islishude/etherview/internal/store"
 )
+
+func TestEtherscanERC20HoldingsUseExactPostgresCache(t *testing.T) {
+	db := newMigratedPostgres(t)
+	repository, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
+	defer cancel()
+	if err := repository.ConfigureIndex(ctx, "1", 0); err != nil {
+		t.Fatal(err)
+	}
+
+	genesis := testBundle(0, testHash(150_000), testHash(0), testHash(151_000), "etherscan-holding-genesis")
+	tip := testBundle(1, testHash(150_001), testHash(150_000), testHash(151_001), "etherscan-holding-tip")
+	if _, err := repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{genesis, tip}); err != nil {
+		t.Fatal(err)
+	}
+	markTokenStageComplete(t, ctx, db, genesis)
+	markTokenStageComplete(t, ctx, db, tip)
+
+	contract, owner := testAddress(3), testAddress(150_100)
+	insertTokenObservation(t, ctx, db, tip, contract, testHash(150_200), "Holding Token")
+	reference := mustBlockRef(t, tip)
+	transactionHash := tip.Block.Transactions()[0].Hash()
+	execFixture(t, ctx, db, `
+		INSERT INTO token_events (
+			chain_id, block_number, block_hash, log_index, sub_index,
+			transaction_hash, token_address, standard, event_kind,
+			from_address, to_address, amount, canonical, confidence, raw
+		) VALUES (1, 1, $1, 0, 0, $2, $3, 'erc20', 'mint',
+			$4, $5, 7, TRUE, 'high', '{}'::jsonb)`,
+		mustBytes(t, reference.Hash), mustBytes(t, transactionHash), mustBytes(t, contract),
+		make([]byte, common.AddressLength), mustBytes(t, owner),
+	)
+	execFixture(t, ctx, db, `
+		INSERT INTO token_balance_deltas (
+			chain_id, block_number, block_hash, log_index, sub_index,
+			token_address, owner_address, token_id, delta, canonical
+		) VALUES (1, 1, $1, 0, 0, $2, $3, NULL, 7, TRUE)`,
+		mustBytes(t, reference.Hash), mustBytes(t, contract), mustBytes(t, owner),
+	)
+
+	canonical := state.PostgresCanonicalSource{DB: db, ChainID: "1"}
+	caller := &exactERC20Caller{balances: map[common.Address]string{contract: "7"}}
+	reconciler, err := state.NewNFTReconciler(db, newERC20StatePool(t, caller), canonical)
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend, err := etherscan.NewPostgresBackend(db, etherscan.PostgresOptions{
+		ChainID: 1, ERC20State: reconciler,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	transfers, err := backend.Execute(ctx, etherscan.Request{
+		Module: "account", Action: "tokentx",
+		Values: url.Values{
+			"contractaddress": {contract.String()}, "to": {owner.String()},
+			"fromto_opr": {"and"}, "startblock": {"0"}, "endblock": {"latest"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("query advanced ERC-20 transfers: %v", err)
+	}
+	transferRows := etherscanResultRows(t, transfers)
+	if len(transferRows) != 1 || transferRows[0]["contractAddress"] != contract.String() ||
+		transferRows[0]["to"] != owner.String() || transferRows[0]["value"] != "7" {
+		t.Fatalf("advanced ERC-20 transfers=%#v", transferRows)
+	}
+	result, err := backend.Execute(ctx, etherscan.Request{
+		Module: "account", Action: "addresstokenbalance",
+		Values: url.Values{"address": {owner.String()}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := etherscanResultRows(t, result)
+	if len(rows) != 1 || rows[0]["TokenAddress"] != contract.String() ||
+		rows[0]["TokenQuantity"] != "7" || rows[0]["TokenName"] != "Holding Token" {
+		t.Fatalf("exact compatibility holdings=%#v", rows)
+	}
+	if caller.calls != 1 {
+		t.Fatalf("exact compatibility holding RPC calls=%d, want 1", caller.calls)
+	}
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM erc20_balance_reconciliations
+		WHERE chain_id = 1 AND token_address = $1 AND owner_address = $2 AND block_hash = $3`,
+		1, mustBytes(t, contract), mustBytes(t, owner), mustBytes(t, reference.Hash),
+	)
+
+	failing := &exactERC20Caller{err: errors.New("cached compatibility holding must not call RPC")}
+	cached, err := state.NewNFTReconciler(db, newERC20StatePool(t, failing), canonical)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cachedBackend, err := etherscan.NewPostgresBackend(db, etherscan.PostgresOptions{
+		ChainID: 1, ERC20State: cached,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cachedBackend.Execute(ctx, etherscan.Request{
+		Module: "account", Action: "addresstokenbalance",
+		Values: url.Values{"address": {owner.String()}},
+	}); err != nil {
+		t.Fatalf("read cached compatibility holding: %v", err)
+	}
+	if failing.calls != 0 {
+		t.Fatalf("cached compatibility holding made %d RPC calls", failing.calls)
+	}
+
+	next := testBundle(2, testHash(160_002), reference.Hash, testHash(161_002), "etherscan-holding-reclassified")
+	if _, err := repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{next}); err != nil {
+		t.Fatal(err)
+	}
+	markTokenStageComplete(t, ctx, db, next)
+	nextReference := mustBlockRef(t, next)
+	execFixture(t, ctx, db, `
+		INSERT INTO token_contracts (
+			chain_id, address, code_hash, standard, confidence,
+			name, symbol, decimals, total_supply, metadata_state,
+			observed_block_number, observed_block_hash
+		) VALUES (1, $1, $2, 'unknown', 'high',
+			NULL, NULL, NULL, NULL, 'complete', 2, $3)`,
+		mustBytes(t, contract), mustBytes(t, testHash(160_200)), mustBytes(t, nextReference.Hash),
+	)
+	if _, err := cachedBackend.Execute(ctx, etherscan.Request{
+		Module: "account", Action: "addresstokenbalance",
+		Values: url.Values{"address": {owner.String()}},
+	}); !errors.Is(err, etherscan.ErrNotFound) {
+		t.Fatalf("reclassified compatibility holding error=%v, want no records", err)
+	}
+	if failing.calls != 0 {
+		t.Fatalf("reclassified token reused stale ERC-20 classification; RPC calls=%d", failing.calls)
+	}
+}
 
 func TestExactNFTObservationsRejectConcurrentConflictsAndPreserveIdenticalWrites(t *testing.T) {
 	db := newMigratedPostgres(t)

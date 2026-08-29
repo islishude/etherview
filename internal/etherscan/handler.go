@@ -30,6 +30,8 @@ var (
 	ErrSupplyUnavailable                   = errors.New("supply unavailable")
 	ErrTokenUnavailable                    = errors.New("token index unavailable")
 	ErrUncleUnavailable                    = errors.New("uncle index unavailable")
+	ErrHoldingWindowUnavailable            = errors.New("holding result window unavailable")
+	ErrFundedByEOARequired                 = errors.New("fundedby is available only for EOAs")
 	ErrVerificationUnavailable             = errors.New("verification workflow unavailable")
 	ErrVerificationTargetUnavailable       = fmt.Errorf("%w: canonical code or creation facts unavailable", ErrVerificationUnavailable)
 	ErrProxyVerificationTargetUnavailable  = errors.New("proxy verification target unavailable")
@@ -75,15 +77,20 @@ type response struct {
 
 var supported = map[string]map[string]actionSpec{
 	"account": {
-		"balance":        {addresses: []string{"address"}, state: true},
-		"balancemulti":   {required: []string{"address"}, state: true},
-		"txlist":         {addresses: []string{"address"}, list: true},
-		"txlistinternal": {optionalAddresses: []string{"address"}, hashOptional: "txhash", list: true, trace: true},
-		"tokentx":        {addresses: []string{"address"}, optionalAddresses: []string{"contractaddress"}, list: true},
-		"tokennfttx":     {addresses: []string{"address"}, optionalAddresses: []string{"contractaddress"}, list: true},
-		"token1155tx":    {addresses: []string{"address"}, optionalAddresses: []string{"contractaddress"}, list: true},
-		"tokenbalance":   {addresses: []string{"contractaddress", "address"}, state: true},
-		"getminedblocks": {addresses: []string{"address"}, list: true},
+		"balance":                  {addresses: []string{"address"}, state: true},
+		"balancemulti":             {required: []string{"address"}, state: true},
+		"txlist":                   {optionalAddresses: []string{"address", "from", "to"}, extra: []string{"startblock", "endblock", "fromto_opr"}, list: true, strict: true, validate: validateNormalTransactionMode},
+		"txlistinternal":           {optionalAddresses: []string{"address", "from", "to"}, hashOptional: "txhash", extra: []string{"startblock", "endblock", "fromto_opr"}, list: true, trace: true, strict: true, validate: validateInternalTransactionMode},
+		"tokentx":                  tokenTransferActionSpec(),
+		"tokennfttx":               tokenTransferActionSpec(),
+		"token1155tx":              tokenTransferActionSpec(),
+		"tokenbalance":             {addresses: []string{"contractaddress", "address"}, state: true},
+		"getminedblocks":           {addresses: []string{"address"}, list: true},
+		"txsBeaconWithdrawal":      {optionalAddresses: []string{"address"}, extra: []string{"startblock", "endblock"}, list: true, strict: true},
+		"addresstokenbalance":      {addresses: []string{"address"}, pageOnly: true, strict: true},
+		"addresstokennftbalance":   {addresses: []string{"address"}, pageOnly: true, strict: true},
+		"addresstokennftinventory": {addresses: []string{"address", "contractaddress"}, pageOnly: true, strict: true},
+		"fundedby":                 {addresses: []string{"address"}, strict: true},
 	},
 	"contract": {
 		"getabi":                 {addresses: []string{"address"}},
@@ -104,6 +111,7 @@ var supported = map[string]map[string]actionSpec{
 	"block": {
 		"getblocknobytime":  {required: []string{"timestamp", "closest"}},
 		"getblockcountdown": {required: []string{"blockno"}},
+		"getblocktxnscount": {required: []string{"blockno"}, strict: true},
 	},
 	"stats": {
 		"ethsupply":   {},
@@ -125,11 +133,25 @@ type actionSpec struct {
 	hashes            []string
 	hashOptional      string
 	list              bool
+	pageOnly          bool
 	method            string
 	trace             bool
 	price             bool
 	state             bool
 	keyed             bool
+	strict            bool
+	extra             []string
+	validate          func(url.Values) error
+}
+
+func tokenTransferActionSpec() actionSpec {
+	return actionSpec{
+		optionalAddresses: []string{"address", "contractaddress", "from", "to"},
+		extra:             []string{"startblock", "endblock", "fromto_opr"},
+		list:              true,
+		strict:            true,
+		validate:          validateTokenTransferMode,
+	}
 }
 
 func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -213,6 +235,10 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if priced {
 		values, err = canonicalBillableValues(r.Method, module, action, values, spec)
 		if err != nil {
+			if errors.Is(err, ErrHoldingWindowUnavailable) {
+				h.writeBackendError(w, err)
+				return
+			}
 			h.writeErrorStatus(w, http.StatusBadRequest, "invalid billing resource")
 			return
 		}
@@ -329,7 +355,7 @@ func validateValues(values url.Values, spec actionSpec) error {
 	if spec.hashOptional != "" && values.Get(spec.hashOptional) != "" && !hashPattern.MatchString(values.Get(spec.hashOptional)) {
 		return fmt.Errorf("invalid hash parameter %s", spec.hashOptional)
 	}
-	if spec.list {
+	if spec.list || spec.pageOnly {
 		if raw := values.Get("page"); raw != "" {
 			page, err := strconv.Atoi(raw)
 			if err != nil || page < 1 {
@@ -342,8 +368,21 @@ func validateValues(values url.Values, spec actionSpec) error {
 				return errors.New("offset must be between 1 and 1000")
 			}
 		}
-		if order := values.Get("sort"); order != "" && order != "asc" && order != "desc" {
+		if order := values.Get("sort"); spec.list && order != "" && order != "asc" && order != "desc" {
 			return errors.New("sort must be asc or desc")
+		}
+	}
+	if spec.validate != nil {
+		if err := spec.validate(values); err != nil {
+			return err
+		}
+	}
+	if spec.strict {
+		allowed := actionParameterNames(spec)
+		for name := range values {
+			if !allowed[name] {
+				return fmt.Errorf("unsupported parameter %s", name)
+			}
 		}
 	}
 	return nil
@@ -373,6 +412,10 @@ func (h Handler) writeBackendError(w http.ResponseWriter, err error) {
 		h.writeError(w, "token index capability unavailable")
 	case errors.Is(err, ErrUncleUnavailable):
 		h.writeError(w, "uncle index capability unavailable")
+	case errors.Is(err, ErrHoldingWindowUnavailable):
+		h.writeError(w, "holding result window unavailable")
+	case errors.Is(err, ErrFundedByEOARequired):
+		h.writeError(w, "fundedby is available only for EOAs")
 	case errors.Is(err, ErrProxyVerificationTargetUnavailable):
 		h.writeError(w, "proxy verification target unavailable")
 	case errors.Is(err, ErrProxySourceUnverified):

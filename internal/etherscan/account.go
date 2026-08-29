@@ -15,9 +15,9 @@ import (
 )
 
 func (b *PostgresBackend) accountTransactions(ctx context.Context, values url.Values) ([]accountTransaction, error) {
-	address, _, err := parseAddressParameter(values.Get("address"), "address")
+	selector, err := normalTransactionSelector(values)
 	if err != nil {
-		return nil, err
+		return nil, invalidParameter("%v", err)
 	}
 	page, err := parsePagination(values)
 	if err != nil {
@@ -40,10 +40,33 @@ func (b *PostgresBackend) accountTransactions(ctx context.Context, values url.Va
 	if end != nil {
 		endArgument = *end
 	}
-	rows, err := tx.QueryContext(ctx, dbgen.EtherscanAccountTransactions,
-		b.chain, strings.ToLower(address.Hex()), start, endArgument,
-		page.limit, page.offset, page.direction,
-	)
+	query := dbgen.EtherscanAccountTransactions
+	arguments := make([]any, 0, 9)
+	if selector.mode == selectorLegacyAddress {
+		address, _, parseErr := parseAddressParameter(values.Get("address"), "address")
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		arguments = append(arguments,
+			b.chain, strings.ToLower(address.Hex()), start, endArgument,
+			page.limit, page.offset, page.direction,
+		)
+	} else {
+		from, parseErr := optionalAddressText(values.Get("from"), "from")
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		to, parseErr := optionalAddressText(values.Get("to"), "to")
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		query = dbgen.EtherscanAccountTransactionsAdvanced
+		arguments = append(arguments,
+			b.chain, from, to, strings.ToUpper(selector.op), start, endArgument,
+			page.limit, page.offset, page.direction,
+		)
+	}
+	rows, err := tx.QueryContext(ctx, query, arguments...)
 	if err != nil {
 		return nil, fmt.Errorf("query account transactions: %w", err)
 	}

@@ -75,6 +75,22 @@ LEFT JOIN LATERAL (
     LIMIT 1
 ) AS coverage ON true;
 
+-- name: EtherscanCanonicalSnapshot :many
+SELECT number::text, block_hash
+FROM canonical_blocks
+WHERE chain_id = $1::numeric
+ORDER BY number DESC
+LIMIT 1;
+
+-- name: EtherscanCanonicalReference :many
+SELECT EXISTS (
+    SELECT 1
+    FROM canonical_blocks
+    WHERE chain_id = $1::numeric
+      AND number = $2::numeric
+      AND block_hash = $3
+);
+
 -- name: EtherscanCanonicalStageRange :many
 WITH tip AS (
     SELECT number

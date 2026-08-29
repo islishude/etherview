@@ -162,6 +162,69 @@ func (q *Queries) EtherscanCanonicalCoreRange(ctx context.Context, column1 pgtyp
 	return items, nil
 }
 
+const EtherscanCanonicalReference = `-- name: EtherscanCanonicalReference :many
+SELECT EXISTS (
+    SELECT 1
+    FROM canonical_blocks
+    WHERE chain_id = $1::numeric
+      AND number = $2::numeric
+      AND block_hash = $3
+)
+`
+
+func (q *Queries) EtherscanCanonicalReference(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]bool, error) {
+	rows, err := q.db.Query(ctx, EtherscanCanonicalReference, column1, column2, blockHash)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []bool{}
+	for rows.Next() {
+		var exists bool
+		if err := rows.Scan(&exists); err != nil {
+			return nil, err
+		}
+		items = append(items, exists)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const EtherscanCanonicalSnapshot = `-- name: EtherscanCanonicalSnapshot :many
+SELECT number::text, block_hash
+FROM canonical_blocks
+WHERE chain_id = $1::numeric
+ORDER BY number DESC
+LIMIT 1
+`
+
+type EtherscanCanonicalSnapshotRow struct {
+	Number    string `db:"number" json:"number"`
+	BlockHash []byte `db:"block_hash" json:"block_hash"`
+}
+
+func (q *Queries) EtherscanCanonicalSnapshot(ctx context.Context, dollar_1 pgtype.Numeric) ([]EtherscanCanonicalSnapshotRow, error) {
+	rows, err := q.db.Query(ctx, EtherscanCanonicalSnapshot, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EtherscanCanonicalSnapshotRow{}
+	for rows.Next() {
+		var i EtherscanCanonicalSnapshotRow
+		if err := rows.Scan(&i.Number, &i.BlockHash); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const EtherscanCanonicalStageRange = `-- name: EtherscanCanonicalStageRange :many
 WITH tip AS (
     SELECT number

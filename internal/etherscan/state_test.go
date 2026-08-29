@@ -19,6 +19,10 @@ type testStateProvider struct {
 	nativeCalls  [][]string
 	balanceCall  []string
 	supplyCall   string
+	accountKind  string
+	accountBlock string
+	accountHash  string
+	nonCanonical bool
 }
 
 func (provider *testStateProvider) NativeBalances(_ context.Context, addresses []string) ([]string, error) {
@@ -41,6 +45,24 @@ func (provider *testStateProvider) ERC20Balance(_ context.Context, contract, own
 func (provider *testStateProvider) ERC20TotalSupply(_ context.Context, contract string) (string, error) {
 	provider.supplyCall = contract
 	return provider.tokenSupply, provider.err
+}
+
+func (provider *testStateProvider) AccountKind(context.Context, string) (string, string, string, error) {
+	kind, block, hash := provider.accountKind, provider.accountBlock, provider.accountHash
+	if kind == "" {
+		kind = "eoa"
+	}
+	if block == "" {
+		block = "1"
+	}
+	if hash == "" {
+		hash = testHash(1)
+	}
+	return kind, block, hash, provider.err
+}
+
+func (provider *testStateProvider) IsCanonical(context.Context, string, string) (bool, error) {
+	return provider.err == nil && !provider.nonCanonical, provider.err
 }
 
 func TestNativeBalanceActionsUseAuthoritativeStateProvider(t *testing.T) {

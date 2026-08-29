@@ -27,10 +27,15 @@ this matrix and the compatibility golden tests in the same change.
 - In the tables, **list controls** means optional `page` (default `1`, positive
   integer), `offset` (default `100`, range `1..1000`), and `sort` (default
   `asc`, either `asc` or `desc`).
+- Address-holding actions accept `page` and `offset` but not `sort`. They return
+  dense positive-state pages only when the requested window can be proven
+  within 1,000 event-discovered candidates; otherwise they report
+  `holding result window unavailable` instead of returning a partial page.
 - **Block range** means optional canonical uint256 decimal `startblock`
   (default `0`) and `endblock` (default current canonical tip), with
   `endblock >= startblock`. **Log range** is the equivalent `fromBlock` and
-  `toBlock` pair. Tags other than omitted or `latest` are not accepted.
+  `toBlock` pair. The five advanced-filter account actions additionally accept
+  `endblock=latest`; other tags and log-range tags are not accepted.
 - Unless a row says **required**, an API key is optional. A valid optional key
   selects its keyed quota; omitting it selects the anonymous quota. Supplying
   an invalid key never falls back to anonymous access.
@@ -43,6 +48,7 @@ this matrix and the compatibility golden tests in the same change.
 | State | A state-purpose RPC endpoint, one exact canonical EIP-1898 block-hash observation, and a successful post-call canonicality recheck. Event-derived balances do not qualify. |
 | Trace | After the Core coverage proof, a `complete` published Trace stage result for every canonical block in the selected range. |
 | Token | After the Core coverage proof, a `complete` published Token stage result for every canonical block in the selected range. |
+| Holdings | Genesis-through-tip Core and Token coverage, followed by bounded ERC-20 `balanceOf` or ERC-721 `ownerOf` observations at one exact canonical block hash. Event deltas only discover candidates. |
 | Verified | The newest canonical code observation for the address and a durable verified artifact for that exact code hash whose validity range covers the canonical tip. |
 | Price | An enabled pricing adapter with a fresh, valid USD/BTC observation. |
 | Public verification | Verification is enabled, `security.public_verification` is enabled, and the durable public verification service is usable. |
@@ -66,20 +72,42 @@ failed stage is not an empty success.
 |---|---|---|---|---|---|
 | `balance` | `GET`, `POST` | `address` | `tag` | Optional | State |
 | `balancemulti` | `GET`, `POST` | `address` as a comma-separated list of 1 to 20 addresses | `tag` | Optional | State |
-| `txlist` | `GET`, `POST` | `address` | Block range; list controls | Optional | Core |
-| `txlistinternal` | `GET`, `POST` | One selector mode described below | `address`, `txhash`, block range; list controls | Optional | Trace for the resolved range |
-| `tokentx` | `GET`, `POST` | `address` | `contractaddress`; block range; list controls | Optional | Token for the selected range, plus Core transaction and receipt facts |
-| `tokennfttx` | `GET`, `POST` | `address` | `contractaddress`; block range; list controls | Optional | Token for the selected range, plus Core transaction and receipt facts |
-| `token1155tx` | `GET`, `POST` | `address` | `contractaddress`; block range; list controls | Optional | Token for the selected range, plus Core transaction and receipt facts |
+| `txlist` | `GET`, `POST` | `address`, or advanced `from`/`to` mode | Block range; `fromto_opr`; list controls | Optional | Core |
+| `txlistinternal` | `GET`, `POST` | One selector mode described below | `address`, `txhash`, `from`, `to`, `fromto_opr`, block range; list controls | Optional | Trace for the resolved range |
+| `tokentx` | `GET`, `POST` | Legacy `address`, or advanced `contractaddress`/`from`/`to` mode | Block range; `fromto_opr`; list controls | Optional | Token for the selected range, plus Core transaction and receipt facts |
+| `tokennfttx` | `GET`, `POST` | Legacy `address`, or advanced `contractaddress`/`from`/`to` mode | Block range; `fromto_opr`; list controls | Optional | Token for the selected range, plus Core transaction and receipt facts |
+| `token1155tx` | `GET`, `POST` | Legacy `address`, or advanced `contractaddress`/`from`/`to` mode | Block range; `fromto_opr`; list controls | Optional | Token for the selected range, plus Core transaction and receipt facts |
 | `tokenbalance` | `GET`, `POST` | `contractaddress`, `address` | `tag` | Optional | State; the contract is read with ERC-20 `balanceOf` |
 | `getminedblocks` | `GET`, `POST` | `address` | `blocktype` (`blocks` by default); list controls | Optional | Core for `blocks`; `uncles` is intentionally unavailable |
+| `txsBeaconWithdrawal` | `GET`, `POST` | None | `address`; block range; list controls | Optional | Core |
+| `addresstokenbalance` | `GET`, `POST` | `address` | `page`, `offset` | Optional | Holdings for ERC-20 candidates |
+| `addresstokennftbalance` | `GET`, `POST` | `address` | `page`, `offset` | Optional | Holdings for ERC-721 candidates |
+| `addresstokennftinventory` | `GET`, `POST` | `address`, `contractaddress` | `page`, `offset` | Optional | Holdings for one ERC-721 contract |
+| `fundedby` | `GET`, `POST` | `address` | None | Optional | Current exact EOA classification plus genesis-through-tip Core and Trace |
 
 `txlistinternal` accepts exactly one of these selector modes:
 
 1. `address`, with an optional block range;
 2. `txhash`, with no address or block range; or
-3. an explicit `startblock` and `endblock` range, with neither address nor
-   transaction hash.
+3. an explicit `startblock` with optional `endblock`, with neither address nor
+   transaction hash; omitted `endblock` reads through the canonical tip.
+
+It additionally accepts advanced `from`/`to` mode, which is mutually exclusive
+with `address`, `txhash`, and range-only mode. `txlist` has the equivalent
+legacy-address versus advanced-directional split. Token-transfer actions accept
+legacy `address` with optional `contractaddress`, or advanced mode containing
+at least one of `contractaddress`, `from`, or `to`. Whenever `from` or `to` is
+present, `fromto_opr` is required and is `and` or `or`; modes cannot be mixed.
+For these five actions, `endblock=latest` is equivalent to omitting `endblock`.
+
+Holding pages order ERC-20 contracts and ERC-721 contracts by address and NFT
+inventory by numeric token ID. Exact zero results remain permanently cached but
+are excluded from the response. `addresstokennftbalance` aggregates only
+ERC-721 ownership; ERC-1155 balances are not relabeled as ERC-721 holdings.
+`fundedby` returns the first successful positive direct or internal native
+transfer from a different address. Genesis allocation, withdrawals, fee
+recipient income, failures, reverted traces, self-transfers, and current
+contract accounts do not qualify.
 
 ### `contract`
 
@@ -118,6 +146,7 @@ inputs are canonical uint256 decimal values.
 |---|---|---|---|---|---|
 | `getblocknobytime` | `GET`, `POST` | `timestamp` as a canonical uint256 decimal; `closest` as `before` or `after` | None | Optional | Core, with one continuous durable coverage range from genesis through the tip |
 | `getblockcountdown` | `GET`, `POST` | `blockno` as a canonical uint256 decimal | None | Optional | The Core interval containing the canonical tip, with a future target and a positive continuous time/block span over at most its latest 128 blocks |
+| `getblocktxnscount` | `GET`, `POST` | `blockno` as a canonical uint256 decimal | None | Optional | Core, Trace, and Token complete for the exact canonical block |
 
 ### `stats`
 
@@ -319,6 +348,13 @@ such; they are not forwarded upstream.
   `functionName` is empty and `methodId` is only the lowercase four-byte
   selector when the input contains one. Failed `getstatus` responses use the
   controlled description `execution failed` rather than upstream revert text.
+- `getblocktxnscount` emits all six quantities as decimal strings instead of
+  JSON numbers. Its internal count is canonical depth-positive Trace rows;
+  token counts are canonical transfer/mint/burn event rows, including distinct
+  ERC-1155 batch sub-items.
+- Address holding responses omit `TokenPriceUSD` when no authoritative
+  per-token price exists. Missing optional name, symbol, or decimals metadata
+  never becomes a fabricated price or balance.
 - Source verification binds to server-derived canonical target facts and
   returns a durable UUID. It is stricter than permissive compatibility
   parsers: repeated or unknown form fields, duplicate JSON keys, external

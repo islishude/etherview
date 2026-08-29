@@ -17,6 +17,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -208,6 +209,7 @@ func (h *harness) run(ctx context.Context) {
 	initialReceipt := h.deployNFT(ctx)
 	contract := *initialReceipt.ContractAddress
 	h.waitTokenContract(ctx, initialReceipt)
+	h.assertCompatibilityHoldings(ctx, contract)
 	h.waitSourceObservation(ctx, initialReceipt, contract, metadataURI)
 	h.waitMetadata(ctx, initialReceipt, contract, resolvedMetadataURL)
 	h.assertMetadataAPI(ctx, initialReceipt, contract)
@@ -226,6 +228,68 @@ func (h *harness) run(ctx context.Context) {
 	h.restartMetadataAndAssertPersistence(ctx, updatedReceipt, contract, updatedMetadata, updatedJob)
 	h.assertVersionHistory(ctx, contract, initialReceipt, updatedReceipt, initialJob, updatedJob)
 	h.writeReport(ctx, initialReceipt, updatedReceipt, updatedMetadata, updatedJob, initialTransition, updatedTransition)
+}
+
+func (h *harness) assertCompatibilityHoldings(ctx context.Context, contract common.Address) {
+	h.t.Helper()
+	tests := []struct {
+		name, action string
+		parameters   url.Values
+		assert       func(json.RawMessage) bool
+	}{
+		{
+			name: "ERC-721 holdings", action: "addresstokennftbalance",
+			parameters: url.Values{"address": {h.developer.Hex()}},
+			assert: func(raw json.RawMessage) bool {
+				var items []struct {
+					TokenAddress  string `json:"TokenAddress"`
+					TokenQuantity string `json:"TokenQuantity"`
+				}
+				return json.Unmarshal(raw, &items) == nil && len(items) == 1 &&
+					strings.EqualFold(items[0].TokenAddress, contract.Hex()) && items[0].TokenQuantity == "1"
+			},
+		},
+		{
+			name: "ERC-721 inventory", action: "addresstokennftinventory",
+			parameters: url.Values{"address": {h.developer.Hex()}, "contractaddress": {contract.Hex()}},
+			assert: func(raw json.RawMessage) bool {
+				var items []struct {
+					TokenAddress string `json:"TokenAddress"`
+					TokenID      string `json:"TokenId"`
+				}
+				return json.Unmarshal(raw, &items) == nil && len(items) == 1 &&
+					strings.EqualFold(items[0].TokenAddress, contract.Hex()) && items[0].TokenID == metadataTokenID
+			},
+		},
+	}
+	for _, test := range tests {
+		values := url.Values{
+			"chainid": {previewChainID}, "module": {"account"}, "action": {test.action},
+		}
+		for name, items := range test.parameters {
+			values[name] = append([]string(nil), items...)
+		}
+		waitFor(h.t, ctx, test.name, func() (bool, string, error) {
+			request, err := http.NewRequestWithContext(ctx, http.MethodGet, h.apiURL+"/v2/api?"+values.Encode(), nil)
+			if err != nil {
+				return false, "", err
+			}
+			response, err := h.http.Do(request)
+			if err != nil {
+				return false, "", nil
+			}
+			defer response.Body.Close() //nolint:errcheck
+			var envelope struct {
+				Status string          `json:"status"`
+				Result json.RawMessage `json:"result"`
+			}
+			if err := json.NewDecoder(response.Body).Decode(&envelope); err != nil {
+				return false, err.Error(), nil
+			}
+			ok := response.StatusCode == http.StatusOK && envelope.Status == "1" && test.assert(envelope.Result)
+			return ok, fmt.Sprintf("status=%d envelope=%s result=%s", response.StatusCode, envelope.Status, envelope.Result), nil
+		})
+	}
 }
 
 func (h *harness) validateFixture() {

@@ -36,6 +36,55 @@ type minedBlock struct {
 	BlockReward string `json:"blockReward,omitempty"`
 }
 
+type beaconWithdrawal struct {
+	WithdrawalIndex string `json:"withdrawalIndex"`
+	ValidatorIndex  string `json:"validatorIndex"`
+	Address         string `json:"address"`
+	Amount          string `json:"amount"`
+	BlockNumber     string `json:"blockNumber"`
+	Timestamp       string `json:"timestamp"`
+}
+
+type blockTransactionCounts struct {
+	Block            string `json:"block"`
+	Transactions     string `json:"txsCount"`
+	Internal         string `json:"internalTxsCount"`
+	ERC20Transfers   string `json:"erc20TxsCount"`
+	ERC721Transfers  string `json:"erc721TxsCount"`
+	ERC1155Transfers string `json:"erc1155TxsCount"`
+}
+
+type fundedByResult struct {
+	Block          string `json:"block"`
+	TimeStamp      string `json:"timeStamp"`
+	FundingAddress string `json:"fundingAddress"`
+	FundingTxn     string `json:"fundingTxn"`
+	Value          string `json:"value"`
+}
+
+type addressTokenHolding struct {
+	TokenAddress  string `json:"TokenAddress"`
+	TokenName     string `json:"TokenName"`
+	TokenSymbol   string `json:"TokenSymbol"`
+	TokenQuantity string `json:"TokenQuantity"`
+	TokenDivisor  string `json:"TokenDivisor,omitempty"`
+	// Etherview has no authoritative per-token price adapter. Omitting this
+	// optional compatibility field is safer than fabricating a zero price.
+	TokenPriceUSD string `json:"TokenPriceUSD,omitempty"`
+}
+
+type addressNFTHolding struct {
+	TokenAddress  string `json:"TokenAddress"`
+	TokenName     string `json:"TokenName"`
+	TokenSymbol   string `json:"TokenSymbol"`
+	TokenQuantity string `json:"TokenQuantity"`
+}
+
+type addressNFTInventoryItem struct {
+	TokenAddress string `json:"TokenAddress"`
+	TokenID      string `json:"TokenId"`
+}
+
 type transactionErrorStatus struct {
 	IsError        string `json:"isError"`
 	ErrDescription string `json:"errDescription"`

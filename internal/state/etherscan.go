@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strconv"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -12,6 +14,49 @@ import (
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/httpapi"
 )
+
+// AccountKind returns the current account classification bound to one exact
+// canonical block. It is intentionally narrower than Address: compatibility
+// callers that only need the EOA/contract boundary do not also trigger origin,
+// delegation-history, balance, or nonce work.
+func (r *Reader) AccountKind(ctx context.Context, address string) (string, string, string, error) {
+	parsed, err := ethrpc.ParseAddress(address)
+	if err != nil {
+		return "", "", "", fmt.Errorf("invalid account address: %w", err)
+	}
+	reference, endpoint, err := r.fixedStateEndpoint(ctx)
+	if err != nil {
+		return "", "", "", err
+	}
+	selector := canonicalSelector(reference)
+	var code hexutil.Bytes
+	if err := endpoint.CallContext(ctx, &code, "eth_getCode", parsed, selector); err != nil {
+		r.Pool.ReportFailure(endpoint.Name)
+		return "", "", "", stateUnavailable(err)
+	}
+	if err := r.confirmCanonical(ctx, endpoint, reference); err != nil {
+		return "", "", "", err
+	}
+	kind, _ := classifyCode(code)
+	return string(kind), strconv.FormatUint(reference.Number, 10), strings.ToLower(reference.Hash.Hex()), nil
+}
+
+// IsCanonical rechecks a compatibility state reference against the writer
+// authority after PostgreSQL projection work has completed.
+func (r *Reader) IsCanonical(ctx context.Context, blockNumber, blockHash string) (bool, error) {
+	if r == nil || r.Canonical == nil {
+		return false, CapabilityError{Code: "not_configured"}
+	}
+	number, err := strconv.ParseUint(blockNumber, 10, 64)
+	if err != nil || strconv.FormatUint(number, 10) != blockNumber {
+		return false, errors.New("invalid canonical state block number")
+	}
+	hash, err := ethrpc.ParseHash(blockHash)
+	if err != nil || strings.ToLower(hash.Hex()) != blockHash {
+		return false, errors.New("invalid canonical state block hash")
+	}
+	return r.Canonical.IsCanonical(ctx, CanonicalRef{Number: number, Hash: hash})
+}
 
 var (
 	erc20BalanceOfSelector   = []byte{0x70, 0xa0, 0x82, 0x31}

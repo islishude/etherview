@@ -13,6 +13,10 @@ import (
 )
 
 func (b *PostgresBackend) internalTransactions(ctx context.Context, values url.Values) ([]internalTransaction, error) {
+	selector, err := internalTransactionSelector(values)
+	if err != nil {
+		return nil, invalidParameter("%v", err)
+	}
 	var addressBytes any
 	rawAddress := strings.TrimSpace(values.Get("address"))
 	if rawAddress != "" {
@@ -30,16 +34,6 @@ func (b *PostgresBackend) internalTransactions(ctx context.Context, values url.V
 			return nil, parseErr
 		}
 		transactionHashBytes = hashBytes
-	}
-	if rawAddress != "" && rawHash != "" {
-		return nil, invalidParameter("txlistinternal accepts address or txhash, not both")
-	}
-	if rawAddress == "" && rawHash == "" &&
-		(strings.TrimSpace(values.Get("startblock")) == "" || strings.TrimSpace(values.Get("endblock")) == "") {
-		return nil, invalidParameter("txlistinternal requires address, txhash, or an explicit startblock/endblock range")
-	}
-	if rawHash != "" && (strings.TrimSpace(values.Get("startblock")) != "" || strings.TrimSpace(values.Get("endblock")) != "") {
-		return nil, invalidParameter("txhash mode does not accept a block range")
 	}
 	page, err := parsePagination(values)
 	if err != nil {
@@ -77,10 +71,29 @@ func (b *PostgresBackend) internalTransactions(ctx context.Context, values url.V
 	if end != nil {
 		endArgument = *end
 	}
-	rows, err := tx.QueryContext(ctx, dbgen.EtherscanInternalTransactions,
-		b.chain, addressBytes, transactionHashBytes, start, endArgument,
-		page.limit, page.offset, page.direction,
-	)
+	query := dbgen.EtherscanInternalTransactions
+	arguments := make([]any, 0, 9)
+	if selector.mode == selectorDirectional {
+		from, parseErr := optionalAddressBytes(values.Get("from"), "from")
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		to, parseErr := optionalAddressBytes(values.Get("to"), "to")
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		query = dbgen.EtherscanInternalTransactionsAdvanced
+		arguments = append(arguments,
+			b.chain, from, to, strings.ToUpper(selector.op), start, endArgument,
+			page.limit, page.offset, page.direction,
+		)
+	} else {
+		arguments = append(arguments,
+			b.chain, addressBytes, transactionHashBytes, start, endArgument,
+			page.limit, page.offset, page.direction,
+		)
+	}
+	rows, err := tx.QueryContext(ctx, query, arguments...)
 	if err != nil {
 		return nil, fmt.Errorf("query internal transactions: %w", err)
 	}

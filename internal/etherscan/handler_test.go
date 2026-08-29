@@ -89,6 +89,11 @@ func compatibilityActionCases() []compatibilityActionCase {
 		{module: "account", action: "token1155tx", values: url.Values{"address": {testSender}}},
 		{module: "account", action: "tokenbalance", values: url.Values{"contractaddress": {testContract}, "address": {testSender}}},
 		{module: "account", action: "getminedblocks", values: url.Values{"address": {testSender}}},
+		{module: "account", action: "txsBeaconWithdrawal", values: url.Values{"address": {testSender}}},
+		{module: "account", action: "addresstokenbalance", values: url.Values{"address": {testSender}}},
+		{module: "account", action: "addresstokennftbalance", values: url.Values{"address": {testSender}}},
+		{module: "account", action: "addresstokennftinventory", values: url.Values{"address": {testSender}, "contractaddress": {testContract}}},
+		{module: "account", action: "fundedby", values: url.Values{"address": {testSender}}},
 
 		{module: "contract", action: "getabi", values: url.Values{"address": {testContract}}},
 		{module: "contract", action: "getsourcecode", values: url.Values{"address": {testContract}}},
@@ -109,6 +114,7 @@ func compatibilityActionCases() []compatibilityActionCase {
 		{module: "logs", action: "getLogs", values: url.Values{"address": {testContract}}},
 		{module: "block", action: "getblocknobytime", values: url.Values{"timestamp": {"100"}, "closest": {"before"}}},
 		{module: "block", action: "getblockcountdown", values: url.Values{"blockno": {"20"}}},
+		{module: "block", action: "getblocktxnscount", values: url.Values{"blockno": {"20"}}},
 		{module: "stats", action: "ethsupply", values: url.Values{}},
 		{module: "stats", action: "ethprice", values: url.Values{}},
 		{module: "stats", action: "tokensupply", values: url.Values{"contractaddress": {testContract}}},
@@ -309,8 +315,11 @@ func TestPricedCompatibilityActionChargesUserKeyAfterCanonicalValidation(t *test
 	}
 	usageLedger := &fakeUsageLedger{}
 	usage, err := billing.NewUsageDispatcher(billing.UsageDispatcherOptions{
-		Ledger:       usageLedger,
-		Prices:       map[string]string{"etherscan.account.balance": "10"},
+		Ledger: usageLedger,
+		Prices: map[string]string{
+			"etherscan.account.balance":             "10",
+			"etherscan.account.addresstokenbalance": "10",
+		},
 		MaxBodyBytes: 1 << 20, MaxHeaderBytes: 4096,
 		Now: func() time.Time { return time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC) },
 	})
@@ -401,6 +410,18 @@ func TestPricedCompatibilityActionChargesUserKeyAfterCanonicalValidation(t *test
 				invalid, response.Code, backend.calls, beforeBackend,
 				len(usageLedger.reserves), beforeReserves, response.Body.String())
 		}
+	}
+	beforeBackend, beforeReserves := backend.calls, len(usageLedger.reserves)
+	deepHolding := serve(
+		http.MethodGet, userKey.Token,
+		"chainid=1&module=account&action=addresstokenbalance&address="+testSender+"&page=11&offset=100",
+	)
+	if deepHolding.Code != http.StatusOK ||
+		!strings.Contains(deepHolding.Body.String(), "holding result window unavailable") ||
+		backend.calls != beforeBackend || len(usageLedger.reserves) != beforeReserves {
+		t.Fatalf("deep holding status=%d backend=%d/%d reserves=%d/%d body=%s",
+			deepHolding.Code, backend.calls, beforeBackend,
+			len(usageLedger.reserves), beforeReserves, deepHolding.Body.String())
 	}
 }
 

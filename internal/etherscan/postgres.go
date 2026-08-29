@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/islishude/etherview/internal/catalog"
 	"github.com/islishude/etherview/internal/contractartifact"
 )
 
@@ -42,6 +43,8 @@ type StateProvider interface {
 	NativeBalances(context.Context, []string) ([]string, error)
 	ERC20Balance(context.Context, string, string) (string, error)
 	ERC20TotalSupply(context.Context, string) (string, error)
+	AccountKind(context.Context, string) (kind, blockNumber, blockHash string, err error)
+	IsCanonical(context.Context, string, string) (bool, error)
 }
 
 type PostgresOptions struct {
@@ -49,6 +52,8 @@ type PostgresOptions struct {
 	Supply                    SupplyProvider
 	Price                     PriceProvider
 	State                     StateProvider
+	ERC20State                catalog.ERC20StateReconciler
+	NFTState                  catalog.NFTStateReconciler
 	Verification              VerificationService
 	Artifacts                 *contractartifact.Resolver
 	VerificationMaxInputBytes int
@@ -63,6 +68,8 @@ type PostgresBackend struct {
 	supply                    SupplyProvider
 	price                     PriceProvider
 	state                     StateProvider
+	erc20State                catalog.ERC20StateReconciler
+	nftState                  catalog.NFTStateReconciler
 	verification              VerificationService
 	artifacts                 *contractartifact.Resolver
 	maxVerificationInputBytes int
@@ -92,6 +99,7 @@ func NewPostgresBackend(db *sql.DB, options PostgresOptions) (*PostgresBackend, 
 	return &PostgresBackend{
 		db: db, chainID: options.ChainID,
 		chain: strconv.FormatUint(options.ChainID, 10), supply: options.Supply, price: options.Price, state: options.State,
+		erc20State: options.ERC20State, nftState: options.NFTState,
 		verification: options.Verification, artifacts: artifacts,
 		maxVerificationInputBytes: maximum,
 	}, nil
@@ -119,6 +127,16 @@ func (b *PostgresBackend) Execute(ctx context.Context, request Request) (any, er
 		return b.tokenBalance(ctx, request.Values)
 	case "account.getminedblocks":
 		return b.minedBlocks(ctx, request.Values)
+	case "account.txsBeaconWithdrawal":
+		return b.beaconWithdrawals(ctx, request.Values)
+	case "account.addresstokenbalance":
+		return b.addressTokenHoldings(ctx, request.Values)
+	case "account.addresstokennftbalance":
+		return b.addressNFTHoldings(ctx, request.Values)
+	case "account.addresstokennftinventory":
+		return b.addressNFTInventory(ctx, request.Values)
+	case "account.fundedby":
+		return b.fundedBy(ctx, request.Values)
 
 	case "transaction.getstatus":
 		return b.transactionStatus(ctx, request.Values, false)
@@ -132,6 +150,8 @@ func (b *PostgresBackend) Execute(ctx context.Context, request Request) (any, er
 		return b.blockNumberByTime(ctx, request.Values)
 	case "block.getblockcountdown":
 		return b.blockCountdown(ctx, request.Values)
+	case "block.getblocktxnscount":
+		return b.blockTransactionCounts(ctx, request.Values)
 
 	case "stats.ethsupply":
 		return b.ethSupply(ctx)
@@ -251,6 +271,10 @@ func parseCanonicalDecimal(raw string) (*big.Int, error) {
 }
 
 func decimalRange(values url.Values) (string, *string, error) {
+	return decimalRangePolicy(values, true)
+}
+
+func decimalRangePolicy(values url.Values, allowLatest bool) (string, *string, error) {
 	start := "0"
 	if raw := strings.TrimSpace(values.Get("startblock")); raw != "" {
 		value, err := parseDecimal(raw, "startblock")
@@ -261,6 +285,9 @@ func decimalRange(values url.Values) (string, *string, error) {
 	}
 	var end *string
 	if raw := strings.TrimSpace(values.Get("endblock")); raw != "" {
+		if allowLatest && raw == "latest" {
+			return start, nil, nil
+		}
 		value, err := parseDecimal(raw, "endblock")
 		if err != nil {
 			return "", nil, err

@@ -94,6 +94,8 @@ type fixture struct {
 	failedHash             string
 	compoundHash           string
 	contractAddress        string
+	nftCreationHash        string
+	nftAddress             string
 	delegateA              string
 	delegateB              string
 	orphanDelegationHash   string
@@ -168,6 +170,10 @@ type apiSnapshot struct {
 	ClearingStatus            string
 	ENSName                   string
 	ENSNameSource             string
+	EtherscanAdvanced         string
+	EtherscanFunding          string
+	EtherscanBlockCounts      string
+	EtherscanNFTHoldings      string
 }
 
 type modeResult struct {
@@ -749,7 +755,7 @@ func (h *harness) initializeFixture(ctx context.Context) {
 	}
 	h.fixture.nativeHash = h.sendTransaction(ctx, map[string]any{
 		"from": h.fixture.accounts[0], "to": nativeTransferTarget,
-		"value": "0x0", "gas": "0x5208", "gasPrice": "0x3b9aca00",
+		"value": "0xb", "gas": "0x5208", "gasPrice": "0x3b9aca00",
 	})
 	delegateAHash := h.sendTransaction(ctx, map[string]any{
 		"from": h.fixture.accounts[0], "data": noCBORCreationBytecode,
@@ -759,22 +765,9 @@ func (h *harness) initializeFixture(ctx context.Context) {
 		"from": h.fixture.accounts[0], "data": noCBORCreationBytecode,
 		"gas": "0x7a120", "gasPrice": "0x3b9aca00",
 	})
+	h.fixture.nftCreationHash = h.sendEtherscanNFTDeployment(ctx)
 	h.mine(ctx, h.baseTimestamp+1)
-	for hash, target := range map[string]*string{
-		delegateAHash: &h.fixture.delegateA,
-		delegateBHash: &h.fixture.delegateB,
-	} {
-		receipt := h.waitReceipt(ctx, hash)
-		if receipt.Status != "0x1" || !common.IsHexAddress(receipt.ContractAddress) {
-			h.t.Fatalf("delegate deployment receipt %s = %#v", hash, receipt)
-		}
-		*target = common.HexToAddress(receipt.ContractAddress).Hex()
-		var code string
-		h.rpcCall(ctx, &code, "eth_getCode", *target, "latest")
-		if !strings.EqualFold(code, noCBORRuntimeBytecode) {
-			h.t.Fatalf("delegate runtime code %s = %s", *target, code)
-		}
-	}
+	h.captureInitialContractDeployments(ctx, delegateAHash, delegateBHash)
 	h.fixture.blockOneHash = h.latestBlock(ctx).Hash
 	var pendingNonce hexutil.Uint64
 	h.rpcCall(ctx, &pendingNonce, "eth_getTransactionCount", h.fixture.accounts[0], "latest")
@@ -1350,6 +1343,8 @@ func (h *harness) captureAPI(ctx context.Context) apiSnapshot {
 	h.mustGetJSON(ctx, "/api/v1/blocks?limit=20", &blocks)
 	var transactions gen.TransactionListResponse
 	h.mustGetJSON(ctx, "/api/v1/transactions?limit=20", &transactions)
+	etherscanAdvanced, etherscanFunding, etherscanCounts := h.captureEtherscanExpansion(ctx)
+	etherscanNFTHoldings := h.captureEtherscanNFTHoldings(ctx)
 	var from gen.AddressResponse
 	h.mustGetJSON(ctx, "/api/v1/addresses/"+h.fixture.accounts[0], &from)
 	var contract gen.AddressResponse
@@ -1483,6 +1478,10 @@ func (h *harness) captureAPI(ctx context.Context) apiSnapshot {
 		ClearingStatus:            eip7702.clearingStatus,
 		ENSName:                   ensName,
 		ENSNameSource:             ensSource,
+		EtherscanAdvanced:         etherscanAdvanced,
+		EtherscanFunding:          etherscanFunding,
+		EtherscanBlockCounts:      etherscanCounts,
+		EtherscanNFTHoldings:      etherscanNFTHoldings,
 	}
 }
 

@@ -83,11 +83,16 @@ be retained under the same write-once trust boundary as NFT state.
   terminal `unavailable` capability facts for that block. Transport failures
   retain their cause for retry policy while exposing only a stable message;
   malformed successful wire values are permanent failures.
-- ERC-20 balance and supply compatibility queries continue to use request-time
-  exact block-hash `balanceOf` and `totalSupply` calls with a post-call
-  canonicality check; they do not consume the address-holdings cache. Stored
-  token `total_supply` is an observation at its explicitly reported block, not
-  an implicit current value.
+- Etherscan-compatible address-holding actions reuse this exact cache only
+  after proving genesis-through-tip Core and Token coverage. One request scans
+  at most 1,000 event-discovered candidates in batches no larger than 200 and
+  fails closed when it cannot prove a dense requested page inside that bound.
+  This does not add an enumerable holder index or proactive reconciliation.
+- Single-token ERC-20 balance and supply compatibility queries continue to use
+  request-time exact block-hash `balanceOf` and `totalSupply` calls with a
+  post-call canonicality check; they do not consume the address-holdings cache.
+  Stored token `total_supply` is an observation at its explicitly reported
+  block, not an implicit current value.
 
 ## Consequences
 
