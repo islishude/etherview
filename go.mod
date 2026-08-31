@@ -15,7 +15,7 @@ require (
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/minio/minio-go/v7 v7.2.1
 	github.com/nats-io/nats.go v1.52.0
-	github.com/oapi-codegen/runtime v1.6.0
+	github.com/oapi-codegen/runtime v1.7.0
 	github.com/redis/go-redis/v9 v9.21.0
 	github.com/signinwithethereum/siwe-go v1.0.0
 	github.com/wealdtech/go-ens/v3 v3.6.0
