@@ -39,7 +39,7 @@
     "@x402/evm": "2.23.0",
     "@x402/fetch": "2.23.0",
     "echarts": "6.1.0",
-    "i18next": "26.3.6",
+    "i18next": "26.4.0",
     "lucide-react": "1.31.0",
     "openapi-fetch": "0.17.0",
     "qrcode.react": "4.2.0",
