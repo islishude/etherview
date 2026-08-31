@@ -60,7 +60,7 @@
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.4",
-    "axe-core": "4.12.1",
+    "axe-core": "4.13.0",
     "jsdom": "29.1.1",
     "license-checker-rseidelsohn": "5.0.1",
     "tailwindcss": "4.3.3",
