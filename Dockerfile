@@ -2,7 +2,7 @@
 
 FROM gcr.io/distroless/base-debian13:nonroot AS production-base
 
-FROM node:26.7.0-slim AS web-builder
+FROM node:26.8.1-slim AS web-builder
 WORKDIR /src
 COPY web/package.json web/package-lock.json web/.npmrc ./web/
 RUN --mount=type=cache,target=/root/.npm npm --prefix web ci
@@ -13,7 +13,7 @@ COPY web/scripts ./web/scripts
 COPY web/src ./web/src
 RUN npm --prefix api run generate:api && npm --prefix web run build
 
-FROM node:26.7.0-slim AS compiler-builder
+FROM node:26.8.1-slim AS compiler-builder
 RUN apt-get update \
     && apt-get install -y --no-install-recommends binutils pax-utils \
     && rm -rf /var/lib/apt/lists/*
