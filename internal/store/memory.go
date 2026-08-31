@@ -101,18 +101,15 @@ func (r *MemoryRepository) CommitCanonical(_ context.Context, chainID string, bu
 	if err != nil {
 		return err
 	}
-	if err := chainbundle.Validate(bundle); err != nil {
+	copy, err := cloneBundle(bundle)
+	if err != nil {
 		return err
 	}
-	reference, err := RefFromBundle(bundle)
+	reference, err := RefFromBundle(copy)
 	if err != nil {
 		return err
 	}
 	if err := ValidateCheckpoint(checkpoint, reference); err != nil {
-		return err
-	}
-	copy, err := cloneBundle(bundle)
-	if err != nil {
 		return err
 	}
 	r.mu.Lock()
@@ -152,14 +149,11 @@ func (r *MemoryRepository) RefreshCanonical(
 	if err != nil {
 		return err
 	}
-	if err := chainbundle.Validate(bundle); err != nil {
-		return err
-	}
-	reference, err := RefFromBundle(bundle)
+	copy, err := cloneBundle(bundle)
 	if err != nil {
 		return err
 	}
-	copy, err := cloneBundle(bundle)
+	reference, err := RefFromBundle(copy)
 	if err != nil {
 		return err
 	}
@@ -193,16 +187,9 @@ func (r *MemoryRepository) ApplyReorg(_ context.Context, chainID string, reorg R
 	if err != nil {
 		return err
 	}
-	if err := ValidateReorg(reorg); err != nil {
+	reorg, err = ownReorg(reorg)
+	if err != nil {
 		return err
-	}
-	attachedCopies := make([]chainbundle.Bundle, len(reorg.Attached))
-	for index := range reorg.Attached {
-		copy, err := cloneBundle(reorg.Attached[index])
-		if err != nil {
-			return err
-		}
-		attachedCopies[index] = copy
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -240,18 +227,18 @@ func (r *MemoryRepository) ApplyReorg(_ context.Context, chainID string, reorg R
 			return err
 		}
 	}
-	nextBlocks := make(map[string]chainbundle.Bundle, len(chain.blocks)+len(attachedCopies))
+	nextBlocks := make(map[string]chainbundle.Bundle, len(chain.blocks)+len(reorg.Attached))
 	maps.Copy(nextBlocks, chain.blocks)
-	nextCanonical := make(map[uint64]common.Hash, len(chain.canonical)+len(attachedCopies))
+	nextCanonical := make(map[uint64]common.Hash, len(chain.canonical)+len(reorg.Attached))
 	maps.Copy(nextCanonical, chain.canonical)
-	for _, bundle := range attachedCopies {
+	for _, bundle := range reorg.Attached {
 		reference, _ := RefFromBundle(bundle)
 		nextBlocks[memoryHashKey(reference.Hash)] = bundle
 	}
 	for _, reference := range reorg.Detached {
 		delete(nextCanonical, reference.Number)
 	}
-	for _, bundle := range attachedCopies {
+	for _, bundle := range reorg.Attached {
 		reference, _ := RefFromBundle(bundle)
 		nextCanonical[reference.Number] = reference.Hash
 	}
@@ -277,7 +264,7 @@ func (r *MemoryRepository) ApplyReorg(_ context.Context, chainID string, reorg R
 	for _, reference := range reorg.Detached {
 		markMemoryJournals(chain, reference.Hash, false)
 	}
-	for _, bundle := range attachedCopies {
+	for _, bundle := range reorg.Attached {
 		reference, _ := RefFromBundle(bundle)
 		markMemoryJournals(chain, reference.Hash, true)
 	}

@@ -111,19 +111,22 @@ func (b *PostgresBackend) accountTokenTransfers(ctx context.Context, action stri
 
 func scanTokenTransfer(scanner rowScanner, expectedStandard, tipText string) (tokenTransfer, error) {
 	var (
-		blockNumberText, standard, eventKind    string
-		blockHashBytes, transactionHashBytes    []byte
-		tokenAddressBytes, fromBytes, toBytes   []byte
-		transactionJSON, receiptJSON, blockJSON []byte
-		logIndex, subIndex, transactionIndex    int64
-		tokenID, amount, name, symbol           sql.NullString
-		decimals                                sql.NullInt64
+		blockNumberText, standard, eventKind  string
+		blockTimestampText                    string
+		blockHashBytes, transactionHashBytes  []byte
+		tokenAddressBytes, fromBytes, toBytes []byte
+		transactionJSON, receiptJSON          []byte
+		logIndex, subIndex, transactionIndex  int64
+		tokenID, amount, name, symbol         sql.NullString
+		blockBaseFeeText                      sql.NullString
+		decimals                              sql.NullInt64
 	)
 	if err := scanner.Scan(
 		&blockNumberText, &blockHashBytes, &logIndex, &subIndex,
 		&transactionHashBytes, &tokenAddressBytes, &standard, &eventKind,
 		&fromBytes, &toBytes, &tokenID, &amount,
-		&transactionJSON, &receiptJSON, &blockJSON, &transactionIndex,
+		&transactionJSON, &receiptJSON, &blockTimestampText, &blockBaseFeeText,
+		&transactionIndex,
 		&name, &symbol, &decimals,
 	); err != nil {
 		return tokenTransfer{}, fmt.Errorf("scan token transfer: %w", err)
@@ -165,22 +168,21 @@ func scanTokenTransfer(scanner rowScanner, expectedStandard, tipText string) (to
 	if transaction.Hash() != transactionHash {
 		return tokenTransfer{}, errors.New("stored token transaction raw identity does not match event")
 	}
+	block, err := decodeStoredBlockContext(blockTimestampText, blockBaseFeeText)
+	if err != nil {
+		return tokenTransfer{}, err
+	}
 
 	receipt, err := decodeStoredReceiptWithBlockContext(
 		receiptJSON,
-		blockJSON,
 		transaction,
 		blockHash,
 		blockNumber,
 		transactionIndex,
+		block.BaseFee,
 	)
 	if err != nil {
 		return tokenTransfer{}, fmt.Errorf("decode token receipt raw JSON: %w", err)
-	}
-
-	block, err := decodeStoredBlockProjection(blockJSON, blockHash, blockNumber)
-	if err != nil {
-		return tokenTransfer{}, fmt.Errorf("decode token block raw JSON: %w", err)
 	}
 
 	item := tokenTransfer{
@@ -219,7 +221,7 @@ func scanTokenTransfer(scanner rowScanner, expectedStandard, tipText string) (to
 	if item.To, err = optionalChecksumAddress(toBytes); err != nil {
 		return tokenTransfer{}, fmt.Errorf("checksum token transfer recipient: %w", err)
 	}
-	item.TimeStamp = decimalUint64(uint64(*block.Timestamp))
+	item.TimeStamp = decimalUint64(block.Timestamp)
 	item.Nonce = decimalUint64(transaction.Nonce())
 	item.Gas = decimalUint64(transaction.Gas())
 	gasPrice, err := effectiveGasPrice(transaction, receipt)

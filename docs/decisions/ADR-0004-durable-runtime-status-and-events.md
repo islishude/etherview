@@ -76,6 +76,13 @@ public view.
   existing compact `/api/v1/events` stream retains its durable replay contract.
   A failed refresh retains the previously published snapshot without assigning
   it a newer event ID and retries from PostgreSQL.
+- The embedded Web client opens only `/api/v1/events`. `head`, `reorg`, and
+  `status` events coalesce into React Query invalidations for active chain
+  projections; asynchronous verification and payment workflows retain their
+  own bounded terminal polling. The home route fetches the current atomic
+  feed publication from `GET /api/v1/home` and invalidates it from the same
+  durable event source. `/api/v1/home/stream` remains a supported complete-
+  snapshot stream but is not a second browser connection.
 - Native and compatibility API responses use `Cache-Control: no-store` for
   browsers and unmanaged intermediaries; an explicitly configured server-side
   cache remains behind the event invalidator. The SSE stream itself uses

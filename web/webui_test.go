@@ -2,6 +2,8 @@ package webui
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -274,6 +276,97 @@ func TestHashedAssetCachingAndETag(t *testing.T) {
 	assertSecurityHeaders(t, headResponse.Header())
 	if got := headResponse.Header().Get("Content-Security-Policy"); got != contentSecurityPolicy {
 		t.Errorf("HEAD asset CSP = %q, want baseline %q", got, contentSecurityPolicy)
+	}
+}
+
+func TestHashedAssetNegotiatesPrecompressedRepresentationsAndPreservesRanges(t *testing.T) {
+	t.Parallel()
+	identity := []byte("0123456789abcdefghijklmnopqrstuvwxyz")
+	gzip := []byte("prebuilt-gzip")
+	brotli := []byte("prebuilt-brotli")
+	name := "assets/chunk-12345678.js"
+	assets := fstest.MapFS{
+		"index.html":      {Data: []byte(`<div id="root"></div>`)},
+		name:              {Data: identity},
+		name + ".gz":      {Data: gzip},
+		name + ".br":      {Data: brotli},
+		assetManifestFile: {Data: []byte(`{"internal":true}`)},
+	}
+	handler := &handler{
+		assets: assets,
+		metadata: map[string]assetMetadata{
+			name: {
+				Identity: testAssetRepresentation(name, identity),
+				Gzip:     new(testAssetRepresentation(name+".gz", gzip)),
+				Brotli:   new(testAssetRepresentation(name+".br", brotli)),
+			},
+		},
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/"+name, nil)
+	request.Header.Set("Accept-Encoding", "gzip, br")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || response.Header().Get("Content-Encoding") != "br" ||
+		!bytes.Equal(response.Body.Bytes(), brotli) {
+		t.Fatalf("brotli response status=%d headers=%v body=%q", response.Code, response.Header(), response.Body.Bytes())
+	}
+	if !strings.Contains(strings.Join(response.Header().Values("Vary"), ","), "Accept-Encoding") {
+		t.Fatalf("asset Vary = %v", response.Header().Values("Vary"))
+	}
+	brotliETag := response.Header().Get("ETag")
+
+	conditional := httptest.NewRequest(http.MethodGet, "/"+name, nil)
+	conditional.Header.Set("Accept-Encoding", "br")
+	conditional.Header.Set("If-None-Match", brotliETag)
+	notModified := httptest.NewRecorder()
+	handler.ServeHTTP(notModified, conditional)
+	if notModified.Code != http.StatusNotModified ||
+		notModified.Header().Get("Content-Encoding") != "br" {
+		t.Fatalf("conditional compressed response=%d headers=%v", notModified.Code, notModified.Header())
+	}
+
+	gzipRequest := httptest.NewRequest(http.MethodHead, "/"+name, nil)
+	gzipRequest.Header.Set("Accept-Encoding", "br;q=0, gzip")
+	gzipResponse := httptest.NewRecorder()
+	handler.ServeHTTP(gzipResponse, gzipRequest)
+	if gzipResponse.Code != http.StatusOK || gzipResponse.Header().Get("Content-Encoding") != "gzip" ||
+		gzipResponse.Body.Len() != 0 {
+		t.Fatalf("gzip HEAD response=%d headers=%v body=%d", gzipResponse.Code, gzipResponse.Header(), gzipResponse.Body.Len())
+	}
+
+	rangeRequest := httptest.NewRequest(http.MethodGet, "/"+name, nil)
+	rangeRequest.Header.Set("Accept-Encoding", "br")
+	rangeRequest.Header.Set("Range", "bytes=1-3")
+	rangeResponse := httptest.NewRecorder()
+	handler.ServeHTTP(rangeResponse, rangeRequest)
+	if rangeResponse.Code != http.StatusPartialContent ||
+		rangeResponse.Header().Get("Content-Encoding") != "" ||
+		rangeResponse.Body.String() != "123" {
+		t.Fatalf("range response=%d headers=%v body=%q", rangeResponse.Code, rangeResponse.Header(), rangeResponse.Body.String())
+	}
+
+	notAcceptable := httptest.NewRequest(http.MethodGet, "/"+name, nil)
+	notAcceptable.Header.Set("Accept-Encoding", "identity;q=0, br;q=0, gzip;q=0")
+	notAcceptableResponse := httptest.NewRecorder()
+	handler.ServeHTTP(notAcceptableResponse, notAcceptable)
+	if notAcceptableResponse.Code != http.StatusNotAcceptable {
+		t.Fatalf("not acceptable status=%d", notAcceptableResponse.Code)
+	}
+
+	for _, internal := range []string{"/" + name + ".gz", "/" + name + ".br", "/" + assetManifestFile} {
+		internalResponse := httptest.NewRecorder()
+		handler.ServeHTTP(internalResponse, httptest.NewRequest(http.MethodGet, internal, nil))
+		if internalResponse.Code != http.StatusNotFound {
+			t.Errorf("internal asset %s status=%d", internal, internalResponse.Code)
+		}
+	}
+}
+
+func testAssetRepresentation(name string, contents []byte) assetRepresentation {
+	digest := sha256.Sum256(contents)
+	return assetRepresentation{
+		Path: name, Bytes: int64(len(contents)), SHA256: hex.EncodeToString(digest[:]),
 	}
 }
 

@@ -339,7 +339,8 @@ SELECT inclusion.raw,
        (canonical.block_hash IS NOT NULL) AS canonical,
        finality.safe_number::text AS safe_number,
        finality.finalized_number::text AS finalized_number,
-       block.raw AS block_raw
+       block.timestamp::text AS block_timestamp,
+       block.base_fee_per_gas_quantity AS block_base_fee_per_gas
 FROM transaction_inclusions AS inclusion
 JOIN blocks AS block
   ON block.chain_id = inclusion.chain_id
@@ -381,7 +382,8 @@ type ListBlockTransactionsRow struct {
 	Canonical            interface{} `db:"canonical" json:"canonical"`
 	SafeNumber           string      `db:"safe_number" json:"safe_number"`
 	FinalizedNumber      string      `db:"finalized_number" json:"finalized_number"`
-	BlockRaw             []byte      `db:"block_raw" json:"block_raw"`
+	BlockTimestamp       string      `db:"block_timestamp" json:"block_timestamp"`
+	BlockBaseFeePerGas   *string     `db:"block_base_fee_per_gas" json:"block_base_fee_per_gas"`
 }
 
 func (q *Queries) ListBlockTransactions(ctx context.Context, arg ListBlockTransactionsParams) ([]ListBlockTransactionsRow, error) {
@@ -409,7 +411,8 @@ func (q *Queries) ListBlockTransactions(ctx context.Context, arg ListBlockTransa
 			&i.Canonical,
 			&i.SafeNumber,
 			&i.FinalizedNumber,
-			&i.BlockRaw,
+			&i.BlockTimestamp,
+			&i.BlockBaseFeePerGas,
 		); err != nil {
 			return nil, err
 		}

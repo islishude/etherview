@@ -140,10 +140,11 @@ func validateCanonicalSegment(bundles []chainbundle.Bundle) ([]BlockRef, []chain
 	references := make([]BlockRef, len(bundles))
 	copies := make([]chainbundle.Bundle, len(bundles))
 	for index, bundle := range bundles {
-		if err := chainbundle.Validate(bundle); err != nil {
-			return nil, nil, fmt.Errorf("canonical segment block %d: %w", index, err)
+		copy, err := cloneBundle(bundle)
+		if err != nil {
+			return nil, nil, fmt.Errorf("own canonical segment block %d: %w", index, err)
 		}
-		reference, err := RefFromBundle(bundle)
+		reference, err := RefFromBundle(copy)
 		if err != nil {
 			return nil, nil, fmt.Errorf("canonical segment block %d: %w", index, err)
 		}
@@ -153,10 +154,6 @@ func validateCanonicalSegment(bundles []chainbundle.Bundle) ([]BlockRef, []chain
 				reference.ParentHash != previous.Hash {
 				return nil, nil, fmt.Errorf("%w: canonical segment block %d does not descend from block %d", ErrConflict, reference.Number, previous.Number)
 			}
-		}
-		copy, err := cloneBundle(bundle)
-		if err != nil {
-			return nil, nil, fmt.Errorf("clone canonical segment block %d: %w", index, err)
 		}
 		references[index], copies[index] = reference, copy
 	}

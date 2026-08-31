@@ -17,10 +17,12 @@ import (
 )
 
 const (
-	defaultAnonymousBucketLimit = 16_384
-	defaultAnonymousBucketTTL   = 10 * time.Minute
-	maxForwardedForBytes        = 4 << 10
-	maxForwardedForHops         = 32
+	defaultAnonymousBucketLimit     = 16_384
+	defaultAuthenticatedBucketLimit = 65_536
+	defaultAnonymousBucketTTL       = 10 * time.Minute
+	defaultAuthenticatedBucketTTL   = 10 * time.Minute
+	maxForwardedForBytes            = 4 << 10
+	maxForwardedForHops             = 32
 )
 
 type Limit struct {
@@ -37,20 +39,27 @@ type RateObserver interface {
 }
 
 type MemoryLimiter struct {
-	mu                  sync.Mutex
-	buckets             map[string]*bucket
-	anonymousOrder      *list.List
-	anonymousBuckets    int
-	maxAnonymousBuckets int
-	anonymousBucketTTL  time.Duration
-	now                 func() time.Time
+	mu                      sync.Mutex
+	buckets                 map[string]*bucket
+	anonymousOrder          *list.List
+	authenticatedOrder      *list.List
+	anonymousBuckets        int
+	authenticatedBuckets    int
+	maxAnonymousBuckets     int
+	maxAuthenticatedBuckets int
+	anonymousBucketTTL      time.Duration
+	authenticatedBucketTTL  time.Duration
+	now                     func() time.Time
 }
 
 type bucket struct {
-	key              string
-	tokens           float64
-	last             time.Time
-	anonymousElement *list.Element
+	key                  string
+	tokens               float64
+	last                 time.Time
+	lastSeen             time.Time
+	retention            time.Duration
+	anonymousElement     *list.Element
+	authenticatedElement *list.Element
 }
 
 func NewMemoryLimiter(now func() time.Time) *MemoryLimiter {
@@ -58,11 +67,14 @@ func NewMemoryLimiter(now func() time.Time) *MemoryLimiter {
 		now = time.Now
 	}
 	return &MemoryLimiter{
-		buckets:             make(map[string]*bucket),
-		anonymousOrder:      list.New(),
-		maxAnonymousBuckets: defaultAnonymousBucketLimit,
-		anonymousBucketTTL:  defaultAnonymousBucketTTL,
-		now:                 now,
+		buckets:                 make(map[string]*bucket),
+		anonymousOrder:          list.New(),
+		authenticatedOrder:      list.New(),
+		maxAnonymousBuckets:     defaultAnonymousBucketLimit,
+		maxAuthenticatedBuckets: defaultAuthenticatedBucketLimit,
+		anonymousBucketTTL:      defaultAnonymousBucketTTL,
+		authenticatedBucketTTL:  defaultAuthenticatedBucketTTL,
+		now:                     now,
 	}
 }
 
@@ -74,23 +86,33 @@ func (l *MemoryLimiter) Allow(_ context.Context, key string, limit Limit) (bool,
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	anonymous := strings.HasPrefix(key, "anonymous:")
-	if anonymous {
-		l.expireAnonymous(now)
-	}
+	l.expireBuckets(now, true)
+	l.expireBuckets(now, false)
 	state := l.buckets[key]
 	if state == nil {
-		if anonymous {
-			l.makeAnonymousRoom()
+		if !l.hasBucketRoom(anonymous) {
+			return false, l.bucketRoomRetry(now, anonymous)
 		}
-		state = &bucket{key: key, tokens: float64(limit.Burst), last: now}
+		state = &bucket{
+			key: key, tokens: float64(limit.Burst), last: now, lastSeen: now,
+			retention: l.bucketRetention(limit, anonymous),
+		}
 		if anonymous {
 			state.anonymousElement = l.anonymousOrder.PushBack(state)
 			l.anonymousBuckets++
+		} else {
+			state.authenticatedElement = l.authenticatedOrder.PushBack(state)
+			l.authenticatedBuckets++
 		}
 		l.buckets[key] = state
 	} else if state.anonymousElement != nil {
 		l.anonymousOrder.MoveToBack(state.anonymousElement)
+	} else if state.authenticatedElement != nil {
+		l.authenticatedOrder.MoveToBack(state.authenticatedElement)
 	}
+	state.lastSeen = now
+	state.retention = l.bucketRetention(limit, anonymous)
+	state.tokens = math.Min(float64(limit.Burst), state.tokens)
 	elapsed := now.Sub(state.last).Seconds()
 	if elapsed > 0 {
 		state.tokens = math.Min(float64(limit.Burst), state.tokens+elapsed*float64(limit.Rate))
@@ -104,51 +126,98 @@ func (l *MemoryLimiter) Allow(_ context.Context, key string, limit Limit) (bool,
 	return false, retry
 }
 
-func (l *MemoryLimiter) expireAnonymous(now time.Time) {
-	if l.anonymousOrder == nil || l.anonymousBucketTTL <= 0 {
+func (l *MemoryLimiter) expireBuckets(now time.Time, anonymous bool) {
+	order := l.authenticatedOrder
+	if anonymous {
+		order = l.anonymousOrder
+	}
+	if order == nil {
 		return
 	}
-	for element := l.anonymousOrder.Front(); element != nil; element = l.anonymousOrder.Front() {
+	for element := order.Front(); element != nil; element = order.Front() {
 		state, ok := element.Value.(*bucket)
 		if !ok || state == nil {
-			l.anonymousOrder.Remove(element)
+			order.Remove(element)
 			continue
 		}
-		if now.Sub(state.last) < l.anonymousBucketTTL {
+		if now.Sub(state.lastSeen) < state.retention {
 			return
 		}
-		l.removeAnonymous(state)
+		l.removeBucket(state)
 	}
 }
 
-func (l *MemoryLimiter) makeAnonymousRoom() {
-	maximum := l.maxAnonymousBuckets
+func (l *MemoryLimiter) hasBucketRoom(anonymous bool) bool {
+	maximum := l.maxAuthenticatedBuckets
+	count := l.authenticatedBuckets
+	if anonymous {
+		maximum = l.maxAnonymousBuckets
+		count = l.anonymousBuckets
+	}
 	if maximum <= 0 {
-		maximum = defaultAnonymousBucketLimit
-	}
-	for l.anonymousBuckets >= maximum {
-		element := l.anonymousOrder.Front()
-		if element == nil {
-			l.anonymousBuckets = 0
-			return
+		maximum = defaultAuthenticatedBucketLimit
+		if anonymous {
+			maximum = defaultAnonymousBucketLimit
 		}
-		state, _ := element.Value.(*bucket)
-		if state == nil {
-			l.anonymousOrder.Remove(element)
-			continue
-		}
-		l.removeAnonymous(state)
 	}
+	return count < maximum
 }
 
-func (l *MemoryLimiter) removeAnonymous(state *bucket) {
-	if state == nil || state.anonymousElement == nil {
+func (l *MemoryLimiter) bucketRoomRetry(now time.Time, anonymous bool) time.Duration {
+	order := l.authenticatedOrder
+	if anonymous {
+		order = l.anonymousOrder
+	}
+	if order == nil || order.Front() == nil {
+		return time.Second
+	}
+	state, _ := order.Front().Value.(*bucket)
+	if state == nil {
+		return time.Second
+	}
+	retry := state.lastSeen.Add(state.retention).Sub(now)
+	if retry <= 0 {
+		return time.Millisecond
+	}
+	return retry
+}
+
+func (l *MemoryLimiter) bucketRetention(limit Limit, anonymous bool) time.Duration {
+	minimum := l.authenticatedBucketTTL
+	if anonymous {
+		minimum = l.anonymousBucketTTL
+	}
+	if minimum <= 0 {
+		minimum = defaultAuthenticatedBucketTTL
+		if anonymous {
+			minimum = defaultAnonymousBucketTTL
+		}
+	}
+	fullRefillNanos := math.Ceil(
+		float64(limit.Burst) * float64(time.Second) / float64(limit.Rate),
+	)
+	fullRefill := time.Duration(math.MaxInt64)
+	if fullRefillNanos < float64(math.MaxInt64) {
+		fullRefill = time.Duration(fullRefillNanos)
+	}
+	return max(minimum, fullRefill)
+}
+
+func (l *MemoryLimiter) removeBucket(state *bucket) {
+	if state == nil {
 		return
 	}
 	delete(l.buckets, state.key)
-	l.anonymousOrder.Remove(state.anonymousElement)
-	state.anonymousElement = nil
-	l.anonymousBuckets--
+	if state.anonymousElement != nil {
+		l.anonymousOrder.Remove(state.anonymousElement)
+		state.anonymousElement = nil
+		l.anonymousBuckets--
+	}
+	if state.authenticatedElement != nil {
+		l.authenticatedOrder.Remove(state.authenticatedElement)
+		state.authenticatedElement = nil
+		l.authenticatedBuckets--
+	}
 }
 
 // TrustedProxySet contains only canonical IP addresses and masked CIDR

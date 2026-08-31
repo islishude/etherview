@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/islishude/etherview/internal/abicontract"
 )
 
 func ParseAddress(value string) (common.Address, error) {
@@ -89,28 +90,17 @@ func SignatureSelector(signature string) [4]byte {
 	return [4]byte(hash[:4])
 }
 
-type Confidence string
+type Confidence = abicontract.Confidence
 
 const (
 	// ConfidenceVerified is reserved for ABI material verified against deployed
 	// bytecode. Callers cannot obtain it from signature-database registration.
-	ConfidenceVerified Confidence = "verified"
-	ConfidenceHigh     Confidence = "high"
-	ConfidenceInferred Confidence = "inferred"
-	ConfidenceGuess    Confidence = "guess"
+	ConfidenceVerified = abicontract.ConfidenceVerified
+	ConfidenceHigh     = abicontract.ConfidenceHigh
+	ConfidenceInferred = abicontract.ConfidenceInferred
+	ConfidenceGuess    = abicontract.ConfidenceGuess
 )
 
 func confidenceRank(value Confidence) int {
-	switch value {
-	case ConfidenceVerified:
-		return 4
-	case ConfidenceHigh:
-		return 3
-	case ConfidenceInferred:
-		return 2
-	case ConfidenceGuess:
-		return 1
-	default:
-		return 0
-	}
+	return abicontract.ConfidenceRank(value)
 }

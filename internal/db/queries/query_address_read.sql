@@ -30,7 +30,8 @@ SELECT
     TRUE,
     finality.safe_number::text,
     finality.finalized_number::text,
-	block.raw,
+	block.timestamp::text,
+	block.base_fee_per_gas_quantity,
 	EXISTS (
 	    SELECT 1
 	    FROM published_block_stage_results AS published_state_diff
@@ -183,7 +184,8 @@ SELECT
     TRUE,
     finality.safe_number::text,
     finality.finalized_number::text,
-	block.raw,
+	block.timestamp::text,
+	block.base_fee_per_gas_quantity,
 	EXISTS (
 	    SELECT 1
 	    FROM published_block_stage_results AS published_state_diff

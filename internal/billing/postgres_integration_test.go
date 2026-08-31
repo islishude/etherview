@@ -39,7 +39,7 @@ func TestPostgresBillingReplayFenceAndUnknownReconciliation(t *testing.T) {
 	for range 8 {
 		attempts.Go(func() {
 			<-start
-			reservation, reserveErr := ledger.Reserve(context.Background(), input)
+			reservation, reserveErr := ledger.reservePayment(context.Background(), input)
 			results <- reservation
 			errorsByReserve <- reserveErr
 		})
@@ -149,7 +149,7 @@ func TestPostgresBillingReplayFenceAndUnknownReconciliation(t *testing.T) {
 	); !errors.Is(err, ErrStateConflict) {
 		t.Fatalf("operator moved an unknown failure timestamp backward: %v", err)
 	}
-	replayed, err := ledger.Reserve(t.Context(), input)
+	replayed, err := ledger.reservePayment(t.Context(), input)
 	if err != nil || replayed.Owned || replayed.Payment.State != StateSettling ||
 		replayed.Owner != "" {
 		t.Fatalf("unknown replay=%+v error=%v", replayed, err)
@@ -459,7 +459,7 @@ func TestPostgresBillingUserAttributionIsExactOptionalAndNotBackfilled(t *testin
 		input.ObservedAt = input.ObservedAt.Add(
 			time.Duration(identityByte) * time.Minute,
 		)
-		reservation, reserveErr := ledger.Reserve(t.Context(), input)
+		reservation, reserveErr := ledger.reservePayment(t.Context(), input)
 		if reserveErr != nil {
 			t.Fatal(reserveErr)
 		}
@@ -620,7 +620,7 @@ func TestPostgresBillingFailureAndExpiryAreTerminal(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := testReserveInput()
-	reserved, err := ledger.Reserve(t.Context(), first)
+	reserved, err := ledger.reservePayment(t.Context(), first)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -649,7 +649,7 @@ func TestPostgresBillingFailureAndExpiryAreTerminal(t *testing.T) {
 	second := first
 	second.Fingerprint[0] ^= 0xff
 	second.ResourceDigest[0] ^= 0xff
-	expiring, err := ledger.Reserve(t.Context(), second)
+	expiring, err := ledger.reservePayment(t.Context(), second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -689,14 +689,14 @@ func TestPostgresBillingExpiryIsChainScoped(t *testing.T) {
 		t.Fatal(err)
 	}
 	firstInput := testReserveInput()
-	first, err := firstLedger.Reserve(t.Context(), firstInput)
+	first, err := firstLedger.reservePayment(t.Context(), firstInput)
 	if err != nil {
 		t.Fatal(err)
 	}
 	secondInput := firstInput
 	secondInput.Fingerprint[0] ^= 0xff
 	secondInput.ResourceDigest[0] ^= 0xff
-	second, err := secondLedger.Reserve(t.Context(), secondInput)
+	second, err := secondLedger.reservePayment(t.Context(), secondInput)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -742,7 +742,7 @@ func createSettlingPaymentFromInput(
 	userID *string,
 ) (Reservation, time.Time) {
 	t.Helper()
-	reservation, err := ledger.Reserve(t.Context(), input)
+	reservation, err := ledger.reservePayment(t.Context(), input)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -12,7 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/ethrpc"
-	"github.com/islishude/etherview/internal/httpapi"
+	"github.com/islishude/etherview/internal/publicquery"
 )
 
 // AccountKind returns the current account classification bound to one exact
@@ -189,7 +189,7 @@ func (r *Reader) confirmCanonical(ctx context.Context, endpoint *ethrpc.Endpoint
 		return fmt.Errorf("recheck fixed state block: %w", err)
 	}
 	if !canonical {
-		return fmt.Errorf("%w: canonical block changed during state query", httpapi.ErrNotReady)
+		return fmt.Errorf("%w: canonical block changed during state query", publicquery.ErrNotReady)
 	}
 	r.Pool.ReportSuccess(endpoint.Name)
 	return nil

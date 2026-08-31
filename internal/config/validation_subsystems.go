@@ -176,6 +176,20 @@ func validateRuntimeConfig(c Config) error {
 	if c.Runtime.BackfillBatchBlocks <= 0 || c.Runtime.BackfillBatchBlocks > maximumRuntimeBackfillBatchBlocks {
 		errs = append(errs, fmt.Errorf("runtime.backfill_batch_blocks must be between 1 and %d", maximumRuntimeBackfillBatchBlocks))
 	}
+	if c.Runtime.BackfillBatchBytes < minimumRuntimeBackfillBatchBytes ||
+		c.Runtime.BackfillBatchBytes > maximumRuntimeBackfillBatchBytes {
+		errs = append(errs, fmt.Errorf(
+			"runtime.backfill_batch_bytes must be between %d and %d",
+			minimumRuntimeBackfillBatchBytes, maximumRuntimeBackfillBatchBytes,
+		))
+	}
+	if c.Runtime.BackfillBatchRows < minimumRuntimeBackfillBatchRows ||
+		c.Runtime.BackfillBatchRows > maximumRuntimeBackfillBatchRows {
+		errs = append(errs, fmt.Errorf(
+			"runtime.backfill_batch_rows must be between %d and %d",
+			minimumRuntimeBackfillBatchRows, maximumRuntimeBackfillBatchRows,
+		))
+	}
 	return errors.Join(errs...)
 }
 

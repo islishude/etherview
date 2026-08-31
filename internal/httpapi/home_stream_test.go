@@ -26,6 +26,51 @@ func (fixture homeSnapshotSourceFixture) Subscribe(context.Context) (<-chan Home
 	return fixture.channel, fixture.err
 }
 
+func TestHomeSnapshotReturnsCurrentAtomicPublication(t *testing.T) {
+	t.Parallel()
+	publications := make(chan HomePublication, 1)
+	publications <- HomePublication{
+		EventID: 7,
+		Data: HomeSnapshot{
+			Status: gen.Status{
+				ChainId: "1", LatestBlock: "7", IndexedBlock: "7", Lag: "0",
+				CoreReady: true, BackfillComplete: true,
+				Completeness: gen.Completeness{Core: gen.StageStateComplete},
+			},
+			Blocks: []gen.Block{}, Transactions: []gen.Transaction{},
+		},
+		CoverageStart: "0", CoverageEnd: "7",
+	}
+	cfg := config.Default()
+	cfg.Chain.ID = 1
+	handler, err := New(Options{
+		Config: cfg, Reader: fakeReader{},
+		HomeSnapshots: homeSnapshotSourceFixture{channel: publications},
+		RequestID:     func() string { return "home-get" },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/home", nil))
+	if recorder.Code != http.StatusOK ||
+		recorder.Header().Get("Content-Type") != "application/json; charset=utf-8" {
+		t.Fatalf("home response status=%d headers=%v", recorder.Code, recorder.Header())
+	}
+	var response struct {
+		Data HomeSnapshot `json:"data"`
+		Meta gen.Meta     `json:"meta"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Data.Status.LatestBlock != "7" || response.Meta.RequestId != "home-get" ||
+		response.Meta.CoverageStart == nil || *response.Meta.CoverageStart != "0" ||
+		response.Meta.CoverageEnd == nil || *response.Meta.CoverageEnd != "7" {
+		t.Fatalf("home response = %+v", response)
+	}
+}
+
 func TestHomeSnapshotStreamSendsCurrentCompleteSnapshot(t *testing.T) {
 	t.Parallel()
 	publications := make(chan HomePublication, 1)

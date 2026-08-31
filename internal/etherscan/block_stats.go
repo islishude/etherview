@@ -28,12 +28,15 @@ func (b *PostgresBackend) blockNumberByTime(ctx context.Context, values url.Valu
 	if _, err := b.requireCanonicalCoreRange(ctx, tx, "0", nil); err != nil {
 		return "", err
 	}
-	var raw []byte
 	var numberText, timestampText string
 	var hashBytes []byte
-	err = tx.QueryRowContext(ctx, dbgen.EtherscanBlockNumberByTime,
-		b.chain, timestamp.String(), closest,
-	).Scan(&raw, &numberText, &hashBytes, &timestampText)
+	query := dbgen.EtherscanBlockNumberByTimeBefore
+	if closest == "after" {
+		query = dbgen.EtherscanBlockNumberByTimeAfter
+	}
+	err = tx.QueryRowContext(ctx, query, b.chain, timestamp.String()).Scan(
+		&numberText, &hashBytes, &timestampText,
+	)
 	if err == sql.ErrNoRows {
 		return "", ErrNotFound
 	}
@@ -44,20 +47,14 @@ func (b *PostgresBackend) blockNumberByTime(ctx context.Context, values url.Valu
 	if !ok || number.Sign() < 0 {
 		return "", errors.New("stored block number is invalid")
 	}
-	hash, err := hashFromBytes(hashBytes)
-	if err != nil {
+	if _, err := hashFromBytes(hashBytes); err != nil {
 		return "", err
 	}
-	block, err := decodeStoredBlockProjection(raw, hash, number)
-	if err != nil {
-		return "", fmt.Errorf("decode block-by-time raw JSON: %w", err)
-	}
-	wireTimestamp := new(big.Int).SetUint64(uint64(*block.Timestamp))
 	indexedTimestamp, ok := new(big.Int).SetString(timestampText, 10)
-	if !ok || indexedTimestamp.Sign() < 0 || wireTimestamp.Cmp(indexedTimestamp) != 0 {
-		return "", errors.New("stored block-by-time raw timestamp does not match indexed row")
+	if !ok || indexedTimestamp.Sign() < 0 {
+		return "", errors.New("stored block-by-time timestamp is invalid")
 	}
-	if closest == "before" && wireTimestamp.Cmp(timestamp) > 0 || closest == "after" && wireTimestamp.Cmp(timestamp) < 0 {
+	if closest == "before" && indexedTimestamp.Cmp(timestamp) > 0 || closest == "after" && indexedTimestamp.Cmp(timestamp) < 0 {
 		return "", errors.New("block-by-time query returned a block outside the requested bound")
 	}
 	if err := tx.Commit(); err != nil {

@@ -698,6 +698,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/home": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Return the current writer-authoritative home-page snapshot. The Web UI invalidates this bounded snapshot from the durable event stream. */
+        get: operations["getHomeSnapshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/home/stream": {
         parameters: {
             query?: never;
@@ -4345,6 +4362,28 @@ export interface operations {
                     "application/json": components["schemas"]["GenesisAccountListResponse"];
                 };
             };
+            default: components["responses"]["Error"];
+        };
+    };
+    getHomeSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current atomic home-page snapshot. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HomeSnapshotResponse"];
+                };
+            };
+            503: components["responses"]["Error"];
             default: components["responses"]["Error"];
         };
     };

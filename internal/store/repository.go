@@ -128,6 +128,27 @@ func ValidateCheckpoint(checkpoint Checkpoint, expected BlockRef) error {
 }
 
 func ValidateReorg(reorg Reorg) error {
+	return validateReorg(reorg, true)
+}
+
+func ownReorg(reorg Reorg) (Reorg, error) {
+	owned := reorg
+	owned.Detached = append([]BlockRef(nil), reorg.Detached...)
+	owned.Attached = make([]chainbundle.Bundle, len(reorg.Attached))
+	for index, bundle := range reorg.Attached {
+		copy, err := cloneBundle(bundle)
+		if err != nil {
+			return Reorg{}, fmt.Errorf("own attached block %d: %w", index, err)
+		}
+		owned.Attached[index] = copy
+	}
+	if err := validateReorg(owned, false); err != nil {
+		return Reorg{}, err
+	}
+	return owned, nil
+}
+
+func validateReorg(reorg Reorg, validateAttached bool) error {
 	if len(reorg.Detached) == 0 && len(reorg.Attached) == 0 {
 		return errors.New("reorg contains no canonical changes")
 	}
@@ -155,8 +176,10 @@ func ValidateReorg(reorg Reorg) error {
 	}
 	parent := reorg.Ancestor
 	for index, bundle := range reorg.Attached {
-		if err := chainbundle.Validate(bundle); err != nil {
-			return fmt.Errorf("attached block %d: %w", index, err)
+		if validateAttached {
+			if err := chainbundle.Validate(bundle); err != nil {
+				return fmt.Errorf("attached block %d: %w", index, err)
+			}
 		}
 		ref, err := RefFromBundle(bundle)
 		if err != nil {

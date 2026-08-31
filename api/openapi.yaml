@@ -1327,6 +1327,24 @@ paths:
           $ref: "#/components/responses/Error"
         default:
           $ref: "#/components/responses/Error"
+  /home:
+    get:
+      operationId: getHomeSnapshot
+      tags: [system]
+      description: >-
+        Return the current writer-authoritative home-page snapshot. The Web UI
+        invalidates this bounded snapshot from the durable event stream.
+      responses:
+        "200":
+          description: Current atomic home-page snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HomeSnapshotResponse"
+        "503":
+          $ref: "#/components/responses/Error"
+        default:
+          $ref: "#/components/responses/Error"
   /home/stream:
     get:
       operationId: streamHomeSnapshots

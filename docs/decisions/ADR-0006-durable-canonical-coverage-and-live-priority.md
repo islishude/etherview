@@ -33,12 +33,26 @@ ownership without a durable coordination rule.
   idempotent segments. Coverage, not a queued job row, remains the work truth;
   an expired lease can be reclaimed after a crash, including a crash after the
   segment commit but before lease completion.
+- Each historical lease also has aggregate owned-raw-byte and relational-row
+  budgets. A worker reserves half of those budgets for the next block and may
+  commit multiple contiguous canonical subsegments under one lease. Coverage
+  records every committed prefix atomically; lease completion still requires
+  the full claimed range, so cancellation, crash, or a later oversized block
+  leaves only uncovered work for a later claim.
 - Sparse shallow live reorganizations always detach the complete highest
   isolated range under the same finalized-depth and orphan-retention rules.
   If closing the gap exposes a lower fork, the same transaction also detaches
   every covered canonical block above the discovered ancestor and attaches the
   authoritative continuous branch. Connected coverage continues through the
   ordinary common-ancestor reorg path.
+- Canonical ancestry resolution uses `chain.max_reorg_depth` as a pre-work
+  bound as well as a publication bound. A candidate whose forward gap exceeds
+  that limit stays on the sparse/backfill path. An alternate branch is rejected
+  before another parent RPC once its minimum possible detach depth exceeds the
+  limit or it reaches the finalized floor. Numeric detach depth and covered
+  sparse-range cardinality are checked before allocating or enumerating the
+  branch; the limit is never enforced only after collecting attacker-controlled
+  work.
 - Runtime status distinguishes the latest observed head, the contiguous
   indexed checkpoint, the highest covered block, and whether backfill is
   complete through the latest known head.

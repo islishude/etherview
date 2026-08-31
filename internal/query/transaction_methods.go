@@ -11,8 +11,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/islishude/etherview/internal/abicalldata"
+	"github.com/islishude/etherview/internal/abicontract"
 	"github.com/islishude/etherview/internal/db/gen"
-	"github.com/islishude/etherview/internal/enrich"
 )
 
 const maxSelectorCandidatesPerTransaction = 32
@@ -117,7 +118,7 @@ func (r *PostgresReader) projectTransactionMethods(
 			return fmt.Errorf("scan verified transaction selector candidate: %w", err)
 		}
 		if len(candidates[ordinal]) >= maxSelectorCandidatesPerTransaction {
-			priority := transactionSelectorSourcePriority(enrich.ABISource(source))
+			priority := transactionSelectorSourcePriority(abicontract.Source(source))
 			if current := overflowPriority[ordinal]; current == 0 || priority < current {
 				overflowPriority[ordinal] = priority
 			}
@@ -162,8 +163,8 @@ func strongPublishedMethod(method transactionMethodContext) bool {
 		return false
 	}
 	return validTransactionMethodSignature(method.decodedSignature.String) &&
-		(method.decodedConfidence.String == string(enrich.ConfidenceVerified) ||
-			method.decodedConfidence.String == string(enrich.ConfidenceHigh))
+		(method.decodedConfidence.String == string(abicontract.ConfidenceVerified) ||
+			method.decodedConfidence.String == string(abicontract.ConfidenceHigh))
 }
 
 func parseTransactionSelectorCandidate(
@@ -185,10 +186,10 @@ func parseTransactionSelectorCandidate(
 			return transactionSelectorCandidate{}, false
 		}
 	}
-	parsedSource := enrich.ABISource(source)
+	parsedSource := abicontract.Source(source)
 	switch parsedSource {
-	case enrich.ABISourceVerified, enrich.ABISourceCodeHash,
-		enrich.ABISourceProxyImplementation, enrich.ABISourceDiamondFacet:
+	case abicontract.SourceVerified, abicontract.SourceCodeHash,
+		abicontract.SourceProxyImplementation, abicontract.SourceDiamondFacet:
 	default:
 		return transactionSelectorCandidate{}, false
 	}
@@ -200,13 +201,13 @@ func parseTransactionSelectorCandidate(
 	}, true
 }
 
-func transactionSelectorSourcePriority(source enrich.ABISource) int {
+func transactionSelectorSourcePriority(source abicontract.Source) int {
 	switch source {
-	case enrich.ABISourceVerified:
+	case abicontract.SourceVerified:
 		return 1
-	case enrich.ABISourceCodeHash:
+	case abicontract.SourceCodeHash:
 		return 2
-	case enrich.ABISourceProxyImplementation, enrich.ABISourceDiamondFacet:
+	case abicontract.SourceProxyImplementation, abicontract.SourceDiamondFacet:
 		return 3
 	default:
 		return 4
@@ -231,7 +232,7 @@ func decodeTransactionSelector(
 			if candidate.priority != priority {
 				continue
 			}
-			signature, ok := enrich.DecodeVerifiedFunctionCalldata(candidate.abiEntry, input)
+			signature, ok := abicalldata.DecodeVerifiedFunction(candidate.abiEntry, input)
 			if ok && signature == candidate.signature && validTransactionMethodSignature(signature) {
 				matches[signature+"\x00"+candidate.sourceCodeHash.Hex()] = signature
 			}

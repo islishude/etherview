@@ -28,6 +28,43 @@ func registerCoreHandlers(mux *http.ServeMux, homeStreams *homeStreamHub) {
 			},
 		})
 	})
+	mux.HandleFunc("GET /api/v1/home", func(response http.ResponseWriter, request *http.Request) {
+		update := homeStreams.stream(homeStreamSession(request)).current()
+		response.Header().Set("Content-Type", "application/json; charset=utf-8")
+		response.WriteHeader(http.StatusOK)
+		_, _ = response.Write(update.payload)
+	})
+	mux.HandleFunc("GET /api/v1/events", func(response http.ResponseWriter, request *http.Request) {
+		stream := homeStreams.stream(homeStreamSession(request))
+		channel, unsubscribe := stream.subscribeFuture()
+		defer unsubscribe()
+		response.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+		response.Header().Set("Cache-Control", "no-cache, no-transform")
+		response.Header().Set("X-Accel-Buffering", "no")
+		response.WriteHeader(http.StatusOK)
+		flusher, ok := response.(http.Flusher)
+		if !ok {
+			return
+		}
+		flusher.Flush()
+		for {
+			select {
+			case update, open := <-channel:
+				if !open {
+					return
+				}
+				if _, err := fmt.Fprintf(
+					response, "id: %d\nevent: head\ndata: {\"number\":\"%d\"}\n\n",
+					update.id, update.id,
+				); err != nil {
+					return
+				}
+				flusher.Flush()
+			case <-request.Context().Done():
+				return
+			}
+		}
+	})
 	mux.HandleFunc("GET /api/v1/home/stream", func(response http.ResponseWriter, request *http.Request) {
 		stream := homeStreams.stream(homeStreamSession(request))
 		channel, unsubscribe := stream.subscribe()
@@ -70,10 +107,6 @@ func registerCoreHandlers(mux *http.ServeMux, homeStreams *homeStreamHub) {
 	})
 	mux.HandleFunc("POST /__e2e/home/head", func(response http.ResponseWriter, request *http.Request) {
 		session := homeStreamSession(request)
-		if session == "" {
-			response.WriteHeader(http.StatusBadRequest)
-			return
-		}
 		homeStreams.stream(session).advance()
 		writeJSON(response, map[string]string{"status": "advanced"})
 	})

@@ -344,7 +344,7 @@ func createReservedTopup(
 	input.Asset = intent.Asset
 	input.AmountAtomic = intent.AmountAtomic
 	input.Recipient = intent.Recipient
-	reservation, err := payments.Reserve(t.Context(), input)
+	reservation, err := payments.ReserveTopup(t.Context(), input)
 	if err != nil {
 		t.Fatal(err)
 	}

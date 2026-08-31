@@ -43,9 +43,33 @@ SELECT EXISTS (
 
 -- name: QueryBlockByHash :many
 SELECT
-    block.raw,
     block.number::text,
     block.hash,
+    block.parent_hash,
+    block.timestamp::text,
+    block.miner_text,
+    block.gas_used_quantity,
+    block.gas_limit_quantity,
+    block.base_fee_per_gas_quantity,
+    block.transaction_count,
+    (SELECT COUNT(*) FROM transaction_inclusions AS inclusion
+     WHERE inclusion.chain_id = block.chain_id
+       AND inclusion.block_number = block.number
+       AND inclusion.block_hash = block.hash),
+    block.withdrawals_present,
+    block.withdrawal_count,
+    COALESCE((
+        SELECT jsonb_agg(jsonb_build_object(
+            'index', withdrawal.withdrawal_index::text,
+            'validator_index', withdrawal.validator_index::text,
+            'address', '0x' || encode(withdrawal.address, 'hex'),
+            'amount', withdrawal.amount::text
+        ) ORDER BY withdrawal.withdrawal_index)
+        FROM withdrawals AS withdrawal
+        WHERE withdrawal.chain_id = block.chain_id
+          AND withdrawal.block_number = block.number
+          AND withdrawal.block_hash = block.hash
+    ), '[]'::jsonb),
     (canonical.block_hash IS NOT NULL),
     finality.safe_number::text,
     finality.finalized_number::text
@@ -60,9 +84,33 @@ LIMIT 1;
 
 -- name: QueryBlockByNumber :many
 SELECT
-    block.raw,
-    canonical.number::text,
-    canonical.block_hash,
+    block.number::text,
+    block.hash,
+    block.parent_hash,
+    block.timestamp::text,
+    block.miner_text,
+    block.gas_used_quantity,
+    block.gas_limit_quantity,
+    block.base_fee_per_gas_quantity,
+    block.transaction_count,
+    (SELECT COUNT(*) FROM transaction_inclusions AS inclusion
+     WHERE inclusion.chain_id = block.chain_id
+       AND inclusion.block_number = block.number
+       AND inclusion.block_hash = block.hash),
+    block.withdrawals_present,
+    block.withdrawal_count,
+    COALESCE((
+        SELECT jsonb_agg(jsonb_build_object(
+            'index', withdrawal.withdrawal_index::text,
+            'validator_index', withdrawal.validator_index::text,
+            'address', '0x' || encode(withdrawal.address, 'hex'),
+            'amount', withdrawal.amount::text
+        ) ORDER BY withdrawal.withdrawal_index)
+        FROM withdrawals AS withdrawal
+        WHERE withdrawal.chain_id = block.chain_id
+          AND withdrawal.block_number = block.number
+          AND withdrawal.block_hash = block.hash
+    ), '[]'::jsonb),
     TRUE,
     finality.safe_number::text,
     finality.finalized_number::text
@@ -197,7 +245,7 @@ WITH candidates AS (
      AND canonical.block_hash = block.hash
     WHERE block.chain_id = $1::numeric
       AND block.number <= $2::numeric
-      AND lower(block.raw->>'miner') = lower('0x' || encode($3, 'hex'))
+      AND lower(block.miner_text) = lower('0x' || encode($3, 'hex'))
 )
 SELECT block_number::text, source_address, transaction_hash, origin_kind, block_hash, withdrawal_index
 FROM candidates
@@ -222,9 +270,33 @@ SELECT EXISTS (
 
 -- name: QueryListBlocks :many
 SELECT
-    block.raw,
-    canonical.number::text,
-    canonical.block_hash,
+    block.number::text,
+    block.hash,
+    block.parent_hash,
+    block.timestamp::text,
+    block.miner_text,
+    block.gas_used_quantity,
+    block.gas_limit_quantity,
+    block.base_fee_per_gas_quantity,
+    block.transaction_count,
+    (SELECT COUNT(*) FROM transaction_inclusions AS inclusion
+     WHERE inclusion.chain_id = block.chain_id
+       AND inclusion.block_number = block.number
+       AND inclusion.block_hash = block.hash),
+    block.withdrawals_present,
+    block.withdrawal_count,
+    COALESCE((
+        SELECT jsonb_agg(jsonb_build_object(
+            'index', withdrawal.withdrawal_index::text,
+            'validator_index', withdrawal.validator_index::text,
+            'address', '0x' || encode(withdrawal.address, 'hex'),
+            'amount', withdrawal.amount::text
+        ) ORDER BY withdrawal.withdrawal_index)
+        FROM withdrawals AS withdrawal
+        WHERE withdrawal.chain_id = block.chain_id
+          AND withdrawal.block_number = block.number
+          AND withdrawal.block_hash = block.hash
+    ), '[]'::jsonb),
     TRUE,
     finality.safe_number::text,
     finality.finalized_number::text
@@ -241,9 +313,33 @@ LIMIT $3;
 
 -- name: QueryListBlocksFirst :many
 SELECT
-    block.raw,
-    canonical.number::text,
-    canonical.block_hash,
+    block.number::text,
+    block.hash,
+    block.parent_hash,
+    block.timestamp::text,
+    block.miner_text,
+    block.gas_used_quantity,
+    block.gas_limit_quantity,
+    block.base_fee_per_gas_quantity,
+    block.transaction_count,
+    (SELECT COUNT(*) FROM transaction_inclusions AS inclusion
+     WHERE inclusion.chain_id = block.chain_id
+       AND inclusion.block_number = block.number
+       AND inclusion.block_hash = block.hash),
+    block.withdrawals_present,
+    block.withdrawal_count,
+    COALESCE((
+        SELECT jsonb_agg(jsonb_build_object(
+            'index', withdrawal.withdrawal_index::text,
+            'validator_index', withdrawal.validator_index::text,
+            'address', '0x' || encode(withdrawal.address, 'hex'),
+            'amount', withdrawal.amount::text
+        ) ORDER BY withdrawal.withdrawal_index)
+        FROM withdrawals AS withdrawal
+        WHERE withdrawal.chain_id = block.chain_id
+          AND withdrawal.block_number = block.number
+          AND withdrawal.block_hash = block.hash
+    ), '[]'::jsonb),
     TRUE,
     finality.safe_number::text,
     finality.finalized_number::text
@@ -269,7 +365,8 @@ SELECT
     TRUE,
     finality.safe_number::text,
     finality.finalized_number::text,
-    block.raw
+    block.timestamp::text,
+    block.base_fee_per_gas_quantity
 FROM transaction_inclusions AS inclusion
 JOIN canonical_blocks AS canonical
   ON canonical.chain_id = inclusion.chain_id
@@ -301,7 +398,8 @@ SELECT
     TRUE,
     finality.safe_number::text,
     finality.finalized_number::text,
-	block.raw,
+	block.timestamp::text,
+	block.base_fee_per_gas_quantity,
 	EXISTS (
 	    SELECT 1
 	    FROM published_block_stage_results AS published_state_diff
@@ -434,7 +532,8 @@ SELECT
     TRUE,
     finality.safe_number::text,
     finality.finalized_number::text,
-	block.raw,
+	block.timestamp::text,
+	block.base_fee_per_gas_quantity,
 	EXISTS (
 	    SELECT 1
 	    FROM published_block_stage_results AS published_state_diff
@@ -833,7 +932,8 @@ SELECT
     (canonical.block_hash IS NOT NULL),
     finality.safe_number::text,
     finality.finalized_number::text,
-    block.raw
+    block.timestamp::text,
+    block.base_fee_per_gas_quantity
 FROM transaction_inclusions AS inclusion
 JOIN blocks AS block
   ON block.chain_id = inclusion.chain_id

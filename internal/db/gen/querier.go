@@ -246,7 +246,8 @@ type Querier interface {
 	EtherscanAccountTransactionsAdvanced(ctx context.Context, arg EtherscanAccountTransactionsAdvancedParams) ([]EtherscanAccountTransactionsAdvancedRow, error)
 	EtherscanBeaconWithdrawals(ctx context.Context, arg EtherscanBeaconWithdrawalsParams) ([]EtherscanBeaconWithdrawalsRow, error)
 	EtherscanBlockCountdown(ctx context.Context, dollar_1 pgtype.Numeric) ([]EtherscanBlockCountdownRow, error)
-	EtherscanBlockNumberByTime(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, column3 string) ([]EtherscanBlockNumberByTimeRow, error)
+	EtherscanBlockNumberByTimeAfter(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) ([]EtherscanBlockNumberByTimeAfterRow, error)
+	EtherscanBlockNumberByTimeBefore(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) ([]EtherscanBlockNumberByTimeBeforeRow, error)
 	EtherscanBlockTransactionCounts(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) ([]EtherscanBlockTransactionCountsRow, error)
 	EtherscanCanonicalCoreRange(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, column3 pgtype.Numeric) ([]EtherscanCanonicalCoreRangeRow, error)
 	EtherscanCanonicalReference(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]bool, error)
@@ -260,8 +261,10 @@ type Querier interface {
 	EtherscanFirstFunding(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, encode []byte) ([]EtherscanFirstFundingRow, error)
 	EtherscanInternalTransactions(ctx context.Context, arg EtherscanInternalTransactionsParams) ([]EtherscanInternalTransactionsRow, error)
 	EtherscanInternalTransactionsAdvanced(ctx context.Context, arg EtherscanInternalTransactionsAdvancedParams) ([]EtherscanInternalTransactionsAdvancedRow, error)
-	EtherscanLogs(ctx context.Context, arg EtherscanLogsParams) ([]EtherscanLogsRow, error)
-	EtherscanMinedBlocks(ctx context.Context, arg EtherscanMinedBlocksParams) ([]EtherscanMinedBlocksRow, error)
+	EtherscanLogsAsc(ctx context.Context, arg EtherscanLogsAscParams) ([]EtherscanLogsAscRow, error)
+	EtherscanLogsDesc(ctx context.Context, arg EtherscanLogsDescParams) ([]EtherscanLogsDescRow, error)
+	EtherscanMinedBlocksAsc(ctx context.Context, arg EtherscanMinedBlocksAscParams) ([]EtherscanMinedBlocksAscRow, error)
+	EtherscanMinedBlocksDesc(ctx context.Context, arg EtherscanMinedBlocksDescParams) ([]EtherscanMinedBlocksDescRow, error)
 	EtherscanProxyVerificationTarget(ctx context.Context, column1 pgtype.Numeric, column2 []byte) ([]EtherscanProxyVerificationTargetRow, error)
 	EtherscanTokenTransfers(ctx context.Context, arg EtherscanTokenTransfersParams) ([]EtherscanTokenTransfersRow, error)
 	EtherscanTokenTransfersAdvanced(ctx context.Context, arg EtherscanTokenTransfersAdvancedParams) ([]EtherscanTokenTransfersAdvancedRow, error)
@@ -482,14 +485,13 @@ type Querier interface {
 	StoreCanonicalBlock(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) ([]StoreCanonicalBlockRow, error)
 	StoreCanonicalTip(ctx context.Context, dollar_1 pgtype.Numeric) ([]StoreCanonicalTipRow, error)
 	StoreConfiguredStart(ctx context.Context, dollar_1 pgtype.Numeric) ([]string, error)
+	StoreDeleteCanonicalBlocksBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte) (int64, error)
 	StoreDeleteCoreBlockFacts(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, column3 []byte) error
 	StoreDeleteDerivedBlockFacts(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, column3 []byte) error
 	StoreFinality(ctx context.Context, dollar_1 pgtype.Numeric) ([]StoreFinalityRow, error)
+	StoreInsertCanonicalBlocksBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte) error
+	StoreInsertCoreOutboxBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte) error
 	StoreLegacyAppendJournalStatement1(ctx context.Context, arg StoreLegacyAppendJournalStatement1Params) error
-	StoreLegacyApplyReorgStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) error
-	StoreLegacyApplyReorgStatement2(ctx context.Context, column1 pgtype.Numeric, blockHash []byte) error
-	StoreLegacyApplyReorgStatement3(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) error
-	StoreLegacyApplyReorgStatement4(ctx context.Context, column1 pgtype.Numeric, blockHash []byte) error
 	StoreLegacyApplyReorgStatement5(ctx context.Context, column1 pgtype.Numeric, stage string) error
 	StoreLegacyBindChainIdentityStatement1(ctx context.Context, dollar_1 pgtype.Numeric) ([][]byte, error)
 	StoreLegacyBindChainIdentityStatement2(ctx context.Context, column1 pgtype.Numeric, genesisHash []byte) ([][]byte, error)
@@ -501,26 +503,17 @@ type Querier interface {
 	StoreLegacyClaimBackfillRangeStatement1(ctx context.Context, column1 pgtype.Numeric, expiresAt pgtype.Timestamptz) error
 	StoreLegacyClaimBackfillRangeStatement2(ctx context.Context, arg StoreLegacyClaimBackfillRangeStatement2Params) ([]bool, error)
 	StoreLegacyClaimBackfillRangeStatement3(ctx context.Context, arg StoreLegacyClaimBackfillRangeStatement3Params) error
-	StoreLegacyCommitCanonicalSegmentStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) error
-	StoreLegacyCommitCanonicalStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) error
 	StoreLegacyCompleteBackfillRangeStatement1(ctx context.Context, arg StoreLegacyCompleteBackfillRangeStatement1Params) ([]pgtype.Timestamptz, error)
 	StoreLegacyCompleteBackfillRangeStatement2(ctx context.Context, arg StoreLegacyCompleteBackfillRangeStatement2Params) error
 	StoreLegacyConfigureIndexStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) error
 	StoreLegacyConfigureIndexStatement2(ctx context.Context, column1 pgtype.Numeric, stage string) error
 	StoreLegacyDeleteBundleFactsTxStatement1(ctx context.Context, column1 pgtype.Numeric, blockHash []byte) error
 	StoreLegacyEnsureChainStatement1(ctx context.Context, dollar_1 pgtype.Numeric) error
-	StoreLegacyInsertCoreOutboxTxStatement1(ctx context.Context, arg StoreLegacyInsertCoreOutboxTxStatement1Params) error
 	StoreLegacyInsertReorgEventStatement1(ctx context.Context, arg StoreLegacyInsertReorgEventStatement1Params) error
 	StoreLegacyInsertRuntimeEventTxStatement1(ctx context.Context, column1 pgtype.Numeric, eventType string, column3 []byte) error
 	StoreLegacyInsertSparseReorgEventsTxStatement1(ctx context.Context, arg StoreLegacyInsertSparseReorgEventsTxStatement1Params) error
 	StoreLegacyJournalsByBlockStatement1(ctx context.Context, column1 pgtype.Numeric, blockHash []byte) ([]StoreLegacyJournalsByBlockStatement1Row, error)
 	StoreLegacyLockChainStatement1(ctx context.Context, dollar_1 *string) ([]interface{}, error)
-	StoreLegacyPutBundleTxStatement1(ctx context.Context, arg StoreLegacyPutBundleTxStatement1Params) error
-	StoreLegacyPutBundleTxStatement2(ctx context.Context, arg StoreLegacyPutBundleTxStatement2Params) error
-	StoreLegacyPutBundleTxStatement3(ctx context.Context, arg StoreLegacyPutBundleTxStatement3Params) error
-	StoreLegacyPutBundleTxStatement4(ctx context.Context, arg StoreLegacyPutBundleTxStatement4Params) error
-	StoreLegacyPutBundleTxStatement5(ctx context.Context, arg StoreLegacyPutBundleTxStatement5Params) error
-	StoreLegacyPutBundleTxStatement6(ctx context.Context, arg StoreLegacyPutBundleTxStatement6Params) error
 	StoreLegacyQueryCanonicalReferencesTxStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) ([]StoreLegacyQueryCanonicalReferencesTxStatement1Row, error)
 	StoreLegacyQueryCoverageRangesTxStatement1(ctx context.Context, dollar_1 pgtype.Numeric) ([]StoreLegacyQueryCoverageRangesTxStatement1Row, error)
 	StoreLegacyReadSchemaStatusStatement1(ctx context.Context) ([]string, error)
@@ -530,10 +523,6 @@ type Querier interface {
 	StoreLegacyReplaceCoverageRangesTxStatement1(ctx context.Context, dollar_1 pgtype.Numeric) error
 	StoreLegacyReplaceCoverageRangesTxStatement2(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, column3 pgtype.Numeric) error
 	StoreLegacyReplaceHighestCanonicalSegmentStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) ([]int64, error)
-	StoreLegacyReplaceHighestCanonicalSegmentStatement2(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) error
-	StoreLegacyReplaceHighestCanonicalSegmentStatement3(ctx context.Context, column1 pgtype.Numeric, blockHash []byte) error
-	StoreLegacyReplaceHighestCanonicalSegmentStatement4(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) error
-	StoreLegacyReplaceHighestCanonicalSegmentStatement5(ctx context.Context, column1 pgtype.Numeric, blockHash []byte) error
 	StoreLegacyUpdateFinalityStatement1(ctx context.Context, arg StoreLegacyUpdateFinalityStatement1Params) error
 	StoreLegacyUpsertCheckpointTxStatement1(ctx context.Context, arg StoreLegacyUpsertCheckpointTxStatement1Params) error
 	StoreLegacyValidateRefreshParentTxStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) ([]bool, error)
@@ -541,7 +530,14 @@ type Querier interface {
 	StoreLockCanonicalTip(ctx context.Context, dollar_1 pgtype.Numeric) ([]StoreLockCanonicalTipRow, error)
 	StoreLockConfiguredStart(ctx context.Context, dollar_1 pgtype.Numeric) ([]string, error)
 	StoreLockFinality(ctx context.Context, dollar_1 pgtype.Numeric) ([]StoreLockFinalityRow, error)
-	StoreSetDerivedCanonical(ctx context.Context, column1 pgtype.Numeric, column2 []byte, canonical bool) error
+	StorePutBlocksBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte) error
+	StorePutLogsBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte) error
+	StorePutReceiptsBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte) error
+	StorePutTransactionInclusionsBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte) error
+	StorePutTransactionsBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte) error
+	StorePutWithdrawalsBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte) error
+	StoreSetBlockJournalsCanonicalBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte, column3 bool) error
+	StoreSetDerivedCanonicalBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte, canonical bool) error
 	SummarizeBillingAccounts(ctx context.Context, chainID pgtype.Numeric, network string, asset []byte) (SummarizeBillingAccountsRow, error)
 	SummarizeBillingPayments(ctx context.Context, arg SummarizeBillingPaymentsParams) ([]SummarizeBillingPaymentsRow, error)
 	TouchActiveUserSession(ctx context.Context, observedAt pgtype.Timestamptz, iD pgtype.UUID, touchBefore pgtype.Timestamptz) error

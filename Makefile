@@ -16,6 +16,7 @@ INTEGRATION_GO_PACKAGES ?=
 GO_BUILD_OUTPUT ?= ./etherview
 GO_BUILD_FLAGS ?= -trimpath
 GO_BUILD_LDFLAGS ?= -s -w
+BENCHTIME ?= 1s
 
 GOVULNCHECK ?= govulncheck
 GITLEAKS ?= gitleaks
@@ -53,6 +54,7 @@ X402_LOCAL_TOPOLOGY ?= monolith
 .NOTPARALLEL: check generate-check start-preview recreate-preview test-preview-metadata start-x402-local recreate-x402-local
 
 .PHONY: \
+	benchmark benchmark-integration \
 	check compose-check deployment-check \
 	docker-build docker-check docker-image-check \
 	compiler-install go-build generate generate-check generate-go helm-check install-lint-tools install-security-tools \
@@ -194,6 +196,16 @@ test-integration-race: web-build
 	@INTEGRATION_DATABASE_URL="$(INTEGRATION_DATABASE_URL)" COMPOSE="$(COMPOSE)" \
 		DOCKER="$(DOCKER)" GO="$(GO)" \
 		$(GO) run ./cmd/testintegration -root . -packages "$(INTEGRATION_GO_PACKAGES)" -race
+
+benchmark:
+	$(GO) test -run '^$$' -bench '^BenchmarkBundleBoundary$$' -benchmem \
+		-benchtime="$(BENCHTIME)" ./internal/chainbundle
+
+benchmark-integration: web-build
+	@INTEGRATION_DATABASE_URL="$(INTEGRATION_DATABASE_URL)" COMPOSE="$(COMPOSE)" \
+		DOCKER="$(DOCKER)" GO="$(GO)" \
+		$(GO) run ./cmd/testintegration -root . -packages "./internal/integration" \
+		-benchmark '^BenchmarkCorePersistenceAndProjection$$' -benchtime "$(BENCHTIME)"
 
 test-load:
 	@$(GO) run ./cmd/loadtest

@@ -56,6 +56,43 @@ func TestFixtureDecodesKnownTransactionTypesAndPreservesRawAlignment(t *testing.
 	}
 }
 
+func TestCloneOwnsAuthoritativeRootsAndRejectsPoisonedDerivedViews(t *testing.T) {
+	t.Parallel()
+	bundle, err := testfixture.New(testfixture.Options{
+		Number: 1, TransactionTypes: []uint8{types.LegacyTxType}, LogsPerTransaction: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	poisoned := bundle
+	poisoned.Block = types.NewBlockWithHeader(&types.Header{Number: big.NewInt(99)})
+	poisoned.Receipts = types.Receipts{&types.Receipt{GasUsed: 99}}
+	poisoned.RawTransactions = []json.RawMessage{json.RawMessage(`{"poison":true}`)}
+	poisoned.RawLogs = [][]json.RawMessage{{json.RawMessage(`{"poison":true}`)}}
+	poisoned.RawWithdrawals = []json.RawMessage{json.RawMessage(`{"poison":true}`)}
+
+	if owned, err := poisoned.Clone(); err == nil || owned.Block != nil {
+		t.Fatalf("poisoned derived state cloned: %#v, %v", owned, err)
+	}
+
+	owned, err := bundle.Clone()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := range bundle.RawBlock {
+		bundle.RawBlock[index] = 'x'
+	}
+	if err := chainbundle.Validate(owned); err != nil || owned.Block == nil {
+		t.Fatalf("owned bundle changed with its source: %#v, %v", owned, err)
+	}
+
+	poisonedRoot := bundle
+	poisonedRoot.RawBlock = json.RawMessage(`{"number":"0x1"}`)
+	if clone, err := poisonedRoot.Clone(); err == nil || clone.Block != nil {
+		t.Fatalf("malformed authoritative root cloned: %#v, %v", clone, err)
+	}
+}
+
 func TestDecodeBlockRejectsUnknownTransactionTypeAtomically(t *testing.T) {
 	t.Parallel()
 	bundle, err := testfixture.New(testfixture.Options{
@@ -667,6 +704,33 @@ func TestStoredBlockPersistenceAndLegacyCompatibility(t *testing.T) {
 		t.Fatalf("DecodeStoredBlock() rejected the short-lived exact envelope: %v", err)
 	} else if decoded.Block.Hash() != bundle.Block.Hash() {
 		t.Fatalf("short-lived envelope hash = %s, want %s", decoded.Block.Hash(), bundle.Block.Hash())
+	}
+}
+
+func TestOwnedStoredBlockEncodingRequiresClone(t *testing.T) {
+	t.Parallel()
+	bundle, err := testfixture.New(testfixture.Options{Number: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored, err := chainbundle.EncodeOwnedStoredBlock(bundle); err == nil || stored != nil {
+		t.Fatalf("EncodeOwnedStoredBlock(unowned) = %s, %v", stored, err)
+	}
+
+	owned, err := bundle.Clone()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := chainbundle.EncodeOwnedStoredBlock(owned)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := chainbundle.DecodeStoredBlock(stored)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Block.Hash() != bundle.Block.Hash() {
+		t.Fatalf("stored block hash = %s, want %s", decoded.Block.Hash(), bundle.Block.Hash())
 	}
 }
 

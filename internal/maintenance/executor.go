@@ -9,6 +9,7 @@ import (
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/indexer"
+	"github.com/islishude/etherview/internal/stagecontract"
 	"github.com/islishude/etherview/internal/store"
 )
 
@@ -33,7 +34,7 @@ type CanonicalBlockSource interface {
 // ReplayQueue exposes only durable scheduling operations needed by reindex.
 // Requeue is responsible for preserving an active lease.
 type ReplayQueue interface {
-	Enqueue(context.Context, enrich.EnqueueRequest) (enrich.EnqueueResult, error)
+	Enqueue(context.Context, stagecontract.EnqueueRequest) (enrich.EnqueueResult, error)
 	Requeue(context.Context, enrich.Job) error
 }
 
@@ -131,7 +132,7 @@ func (executor *Executor) Reindex(ctx context.Context, request Request) error {
 		if reference.Number != number {
 			return fmt.Errorf("reindex %s block %d: canonical source returned height %d", stage, number, reference.Number)
 		}
-		result, err := executor.queue.Enqueue(ctx, enrich.EnqueueRequest{
+		result, err := executor.queue.Enqueue(ctx, stagecontract.EnqueueRequest{
 			Stage: stage, ChainID: executor.chainID,
 			BlockHash: reference.Hash, BlockNumber: number,
 		})
@@ -170,22 +171,22 @@ func (executor *Executor) validate(request Request, operation Operation) error {
 	return nil
 }
 
-func replayStage(name string) (enrich.StageID, bool) {
+func replayStage(name string) (stagecontract.ID, bool) {
 	switch name {
 	case "proxy":
-		return enrich.ProxyStage, true
+		return stagecontract.Proxy, true
 	case "abi":
-		return enrich.ABIStage, true
+		return stagecontract.ABI, true
 	case "token":
-		return enrich.StageID{Name: "token", Version: 1}, true
+		return stagecontract.Token, true
 	case "stats":
-		return enrich.StatsStage, true
+		return stagecontract.Stats, true
 	case "trace":
-		return enrich.TraceStage, true
+		return stagecontract.Trace, true
 	case "state_diff":
-		return enrich.StateDiffStage, true
+		return stagecontract.StateDiff, true
 	default:
-		return enrich.StageID{}, false
+		return stagecontract.ID{}, false
 	}
 }
 

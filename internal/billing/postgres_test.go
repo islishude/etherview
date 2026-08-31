@@ -1,6 +1,7 @@
 package billing
 
 import (
+	"context"
 	"errors"
 	"math/big"
 	"strings"
@@ -39,6 +40,14 @@ func TestReserveInputUsesClosedOperationAndCanonicalUint256(t *testing.T) {
 		if err := validateReserveInput(candidate); err == nil {
 			t.Fatalf("invalid reserve input passed: %+v", candidate)
 		}
+	}
+}
+
+func TestPublicPaymentReservationAcceptsOnlyAccountTopups(t *testing.T) {
+	t.Parallel()
+	ledger := &PostgresLedger{}
+	if _, err := ledger.ReserveTopup(context.Background(), testReserveInput()); !errors.Is(err, ErrInvalidInput) || !strings.Contains(err.Error(), "only account top-ups") {
+		t.Fatalf("legacy reservation error = %v", err)
 	}
 }
 

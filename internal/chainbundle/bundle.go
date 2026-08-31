@@ -60,6 +60,10 @@ type Bundle struct {
 	// storedReceiptShape permits the legacy receipt omissions documented by
 	// WithStoredReceipts without weakening fresh RPC validation.
 	storedReceiptShape bool
+	// owned is set only after Clone reconstructs and aligns every view from the
+	// authoritative roots. Persistence-only helpers require this marker so they
+	// do not repeat the same decode.
+	owned bool
 }
 
 func (b Bundle) Number() (uint64, error) {
@@ -80,12 +84,11 @@ func (b Bundle) BlockHash() (common.Hash, error) {
 	return b.Block.Hash(), nil
 }
 
-// Clone re-decodes the preserved raw payloads, producing independent raw and
-// typed slices while retaining the already validated uncle headers.
+// Clone takes ownership from the authoritative root Raw payloads. It decodes
+// those roots once into independent typed and Raw collections and then checks
+// the caller's typed and derived Raw views against that reconstruction.
+// Mutated or malformed input fails closed without a second decode.
 func (b Bundle) Clone() (Bundle, error) {
-	if err := Validate(b); err != nil {
-		return Bundle{}, err
-	}
 	var clone Bundle
 	var err error
 	if b.legacyStoredBlockShape {
@@ -97,34 +100,31 @@ func (b Bundle) Clone() (Bundle, error) {
 		return Bundle{}, err
 	}
 	if b.storedReceiptShape {
-		return clone.withReceipts(b.RawReceipts, true)
+		clone, err = clone.withReceipts(b.RawReceipts, true)
+	} else {
+		clone, err = clone.WithReceipts(b.RawReceipts)
 	}
-	return clone.WithReceipts(b.RawReceipts)
+	if err != nil {
+		return Bundle{}, err
+	}
+	if err := validateAlignment(b, clone); err != nil {
+		return Bundle{}, err
+	}
+	clone.owned = true
+	return clone, nil
 }
 
 // Validate verifies both the typed facts and every raw-alignment slice by
 // decoding the exact source payload again. A caller cannot substitute a typed
 // value or a regenerated raw child without detection.
 func Validate(bundle Bundle) error {
+	_, err := bundle.Clone()
+	return err
+}
+
+func validateAlignment(bundle, decoded Bundle) error {
 	if bundle.Block == nil {
 		return validation("block", "must not be nil")
-	}
-	var decoded Bundle
-	var err error
-	if bundle.legacyStoredBlockShape {
-		decoded, err = decodeBlock(bundle.RawBlock, bundle.RawUncles, true)
-	} else {
-		decoded, err = DecodeBlock(bundle.RawBlock, bundle.RawUncles)
-	}
-	if err != nil {
-		return err
-	}
-	decoded, err = decoded.withReceipts(
-		bundle.RawReceipts,
-		bundle.storedReceiptShape,
-	)
-	if err != nil {
-		return err
 	}
 	if decoded.Block.Hash() != bundle.Block.Hash() {
 		return validation("block", "typed header does not match raw block")

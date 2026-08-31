@@ -40,7 +40,6 @@ export function useChainStatus() {
     },
     retry: false,
     staleTime: liveRefetchInterval,
-    refetchInterval: liveRefetchInterval,
   });
 }
 
@@ -68,7 +67,6 @@ export function useBlocks(limit = 12, cursor?: string, refreshGeneration = 0) {
     },
     retry: false,
     staleTime: liveRefetchInterval,
-    refetchInterval: cursor ? false : liveRefetchInterval,
   });
 }
 
@@ -111,7 +109,6 @@ export function useTransactions(limit = 12, cursor?: string, refreshGeneration =
     },
     retry: false,
     staleTime: liveRefetchInterval,
-    refetchInterval: cursor ? false : liveRefetchInterval,
   });
 }
 
@@ -373,7 +370,6 @@ export function useAddressTransactions(
     enabled: enabled && address.length > 0,
     retry: false,
     staleTime: liveRefetchInterval,
-    refetchInterval: cursor ? false : liveRefetchInterval,
   });
 }
 
@@ -401,7 +397,6 @@ export function useAddressWithdrawals(
     enabled: enabled && address.length > 0,
     retry: false,
     staleTime: liveRefetchInterval,
-    refetchInterval: cursor ? false : liveRefetchInterval,
   });
 }
 
@@ -429,7 +424,6 @@ export function useAddressInternalTransactions(
     enabled: enabled && address.length > 0,
     retry: false,
     staleTime: liveRefetchInterval,
-    refetchInterval: cursor ? false : liveRefetchInterval,
   });
 }
 
@@ -501,7 +495,6 @@ function useAddressTokenActivity(
     enabled: enabled && address.length > 0,
     retry: false,
     staleTime: liveRefetchInterval,
-    refetchInterval: cursor ? false : liveRefetchInterval,
   });
 }
 

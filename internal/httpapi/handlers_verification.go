@@ -14,9 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
 	"github.com/islishude/etherview/internal/api/gen"
-	"github.com/islishude/etherview/internal/apiops"
 	"github.com/islishude/etherview/internal/auth"
-	"github.com/islishude/etherview/internal/billing"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/verify"
 )
@@ -492,12 +490,6 @@ func (h *Handler) requireAPIKey(w http.ResponseWriter, r *http.Request, scope au
 		}
 		writeError(w, r, http.StatusForbidden, "api_key_scope_required", "API key scope does not authorize this operation", nil)
 		return false
-	}
-	if operation, ok := billing.PaidOperationFrom(r.Context()); ok {
-		spec, exists := apiops.Lookup(operation)
-		if exists && spec.BillingEligible && spec.MuxPattern == r.Pattern {
-			return true
-		}
 	}
 	writeError(w, r, http.StatusUnauthorized, "api_key_required", "an API key is required", nil)
 	return false

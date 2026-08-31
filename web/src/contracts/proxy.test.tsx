@@ -109,7 +109,7 @@ describe("proxy API adapter", () => {
 	).toMatchObject({ target: { code_hash: oldHash } });
   });
 
-	it("refetches an unavailable proxy classification until a published state is available", async () => {
+	it("refetches an unavailable proxy classification after durable event invalidation", async () => {
 		const fetcher = vi.fn<typeof fetch>()
 			.mockResolvedValueOnce(envelope({
 				address: proxyAddress,
@@ -129,10 +129,8 @@ describe("proxy API adapter", () => {
 		);
 
 		await waitFor(() => expect(result.current.data?.state).toBe("unavailable"));
-		await waitFor(
-			() => expect(result.current.data?.state).toBe("verified"),
-			{ timeout: 2_000 },
-		);
+		await queryClient.invalidateQueries({ queryKey: ["contract-proxy", proxyAddress] });
+		await waitFor(() => expect(result.current.data?.state).toBe("verified"));
 		expect(fetcher).toHaveBeenCalledTimes(2);
 	});
 

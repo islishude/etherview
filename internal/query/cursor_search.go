@@ -13,7 +13,7 @@ import (
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
-	"github.com/islishude/etherview/internal/httpapi"
+	"github.com/islishude/etherview/internal/publicquery"
 )
 
 type blockCursor struct {
@@ -400,5 +400,5 @@ func mergeSearchResults(results []gen.SearchResult, extra gen.SearchResult, limi
 func httpUnavailableNotReady() error {
 	// Kept in this file to make the cursor path's empty-database behavior
 	// explicit without treating an empty chain as a missing block.
-	return fmt.Errorf("%w: canonical index is empty", httpapi.ErrNotReady)
+	return fmt.Errorf("%w: canonical index is empty", publicquery.ErrNotReady)
 }

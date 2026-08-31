@@ -205,12 +205,12 @@ func TestERC20TransfersUseCanonicalRowsAndPreserveUint256(t *testing.T) {
 		completedStageExpectation("token", "10", "20"),
 		sqlExpectation{
 			contains: "-- name: EtherscanTokenTransfers :many",
-			columns:  fakeColumns(19),
+			columns:  fakeColumns(20),
 			rows: [][]driver.Value{{
 				"10", testHashBytes(3), int64(4), int64(0), testTransactionHashBytes(testRecipient), testAddressBytes(testContract),
 				"erc20", "transfer", testAddressBytes(testSender), testAddressBytes(testRecipient), nil, maximum,
 				testTransactionJSON(7, testRecipient), testReceiptJSON("0x1", ""),
-				testBlockJSON(10, 2), int64(1), "Example", "TOK", int64(18),
+				"100", "0x3b9aca00", int64(1), "Example", "TOK", int64(18),
 			}},
 			check: func(arguments []driver.NamedValue) error {
 				if len(arguments) != 9 || arguments[0].Value != "1" ||
@@ -274,12 +274,12 @@ func TestNFTTransferActionsKeepStandardSpecificQuantities(t *testing.T) {
 				completeCoreCoverageExpectation("0", "", "12"),
 				completedStageExpectation("token", "0", ""),
 				sqlExpectation{
-					contains: "event.standard = $3", columns: fakeColumns(19),
+					contains: "event.standard = $3", columns: fakeColumns(20),
 					rows: [][]driver.Value{{
 						"10", testHashBytes(3), int64(4), int64(0), testTransactionHashBytes(testRecipient), testAddressBytes(testContract),
 						test.standard, "transfer", testAddressBytes(testSender), testAddressBytes(testRecipient), test.tokenID, test.amount,
 						testTransactionJSON(7, testRecipient), testReceiptJSON("0x1", ""),
-						testBlockJSON(10, 2), int64(1), "Collectible", "NFT", nil,
+						"100", "0x3b9aca00", int64(1), "Collectible", "NFT", nil,
 					}},
 				},
 			)

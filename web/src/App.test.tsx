@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import i18n from "./i18n";
 import { makeRouter } from "./router";
+import { ChainEventInvalidation } from "./api/eventInvalidation";
 import { AuthProvider } from "./auth/AuthProvider";
 import { ThemeProvider } from "./theme/ThemeProvider";
 import { WalletProvider } from "./wallet/WalletProvider";
@@ -141,6 +142,59 @@ describe("embedded explorer shell", () => {
     const blockHash = `0x${"ab".repeat(32)}`;
     const transactionHash = `0x${"cd".repeat(32)}`;
     const address = `0x${"11".repeat(20)}`;
+    const completeness = {
+      core: "complete",
+      trace: "unavailable",
+      metadata: "pending",
+      state: "complete",
+    };
+    const homeSnapshot = {
+      data: {
+        status: {
+          chain_id: "1",
+          core_ready: true,
+          latest_block: "12",
+          indexed_block: "12",
+          finalized_block: "10",
+          backfill_complete: true,
+          lag: "0",
+          completeness,
+        },
+        blocks: [{
+          hash: blockHash,
+          number: "12",
+          parent_hash: `0x${"aa".repeat(32)}`,
+          timestamp: "2026-01-01T00:00:00Z",
+          transaction_count: 1,
+          gas_used: "21000",
+          canonical: true,
+          finality: "latest",
+          completeness,
+        }],
+        transactions: [{
+          hash: transactionHash,
+          block_hash: blockHash,
+          block_number: "12",
+          transaction_index: 0,
+          from: address,
+          to: address,
+          nonce: "0",
+          value: "1",
+          gas: "21000",
+          input: "0x",
+          status: "success",
+          canonical: true,
+          finality: "latest",
+          completeness,
+        }],
+      },
+      meta: {
+        request_id: "web-test",
+        chain_id: "1",
+        coverage_start: "0",
+        coverage_end: "12",
+      },
+    };
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const path = String(input);
       const meta = { request_id: "web-test", chain_id: "1" };
@@ -157,6 +211,7 @@ describe("embedded explorer shell", () => {
           meta,
         });
       }
+      if (path === "/api/v1/home") return Response.json(homeSnapshot);
       return Response.json(
         { error: { code: "NOT_FOUND", message: "not found" } },
         { status: 404 },
@@ -167,69 +222,12 @@ describe("embedded explorer shell", () => {
       "EventSource",
       AppEventSource as unknown as typeof EventSource,
     );
-    const completeness = {
-      core: "complete",
-      trace: "unavailable",
-      metadata: "pending",
-      state: "complete",
-    };
-
     AppEventSource.latest = undefined;
     renderExplorer("/");
     await act(async () => {
       await Promise.resolve();
     });
-    const homeSource = AppEventSource.current();
-    expect(homeSource?.url).toBe("/api/v1/home/stream");
-    await act(async () => {
-      homeSource?.snapshot({
-        data: {
-          status: {
-            chain_id: "1",
-            core_ready: true,
-            latest_block: "12",
-            indexed_block: "12",
-            finalized_block: "10",
-            backfill_complete: true,
-            lag: "0",
-            completeness,
-          },
-          blocks: [{
-            hash: blockHash,
-            number: "12",
-            parent_hash: `0x${"aa".repeat(32)}`,
-            timestamp: "2026-01-01T00:00:00Z",
-            transaction_count: 1,
-            gas_used: "21000",
-            canonical: true,
-            finality: "latest",
-            completeness,
-          }],
-          transactions: [{
-            hash: transactionHash,
-            block_hash: blockHash,
-            block_number: "12",
-            transaction_index: 0,
-            from: address,
-            to: address,
-            nonce: "0",
-            value: "1",
-            gas: "21000",
-            input: "0x",
-            status: "success",
-            canonical: true,
-            finality: "latest",
-            completeness,
-          }],
-        },
-        meta: {
-          request_id: "web-test",
-          chain_id: "1",
-          coverage_start: "0",
-          coverage_end: "12",
-        },
-      });
-    });
+    expect(AppEventSource.current()?.url).toBe("/api/v1/events");
     expect(await screen.findByText("#12")).toBeVisible();
     expect(await screen.findByText("Testnet")).toBeVisible();
     expect(screen.getByText("0xcdcdcd…cdcdcd")).toBeVisible();
@@ -302,7 +300,7 @@ describe("embedded explorer shell", () => {
     renderExplorer("/status");
 
     expect(await screen.findByText("Coverage Testnet")).toBeVisible();
-    expect(screen.getByText("Highest covered block")).toBeVisible();
+    expect(await screen.findByText("Highest covered block")).toBeVisible();
     expect(screen.getByText("120")).toBeVisible();
     expect(screen.getByText("Historical backfill")).toBeVisible();
     expect(screen.getByText("In progress")).toBeVisible();
@@ -926,6 +924,7 @@ function renderExplorer(path: string) {
   });
   return render(
     <QueryClientProvider client={queryClient}>
+      <ChainEventInvalidation />
       <ThemeProvider>
         <WalletProvider>
           <AuthProvider>

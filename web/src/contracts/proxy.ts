@@ -22,7 +22,6 @@ type Address = components["schemas"]["Address"];
 type Quantity = components["schemas"]["Quantity"];
 
 export const DEFAULT_PROXY_HISTORY_LIMIT = 20;
-const UNAVAILABLE_PROXY_REFETCH_INTERVAL_MS = 500;
 
 export interface ContractProxyManagementArtifact {
   address: Address;
@@ -209,14 +208,10 @@ export function useContractProxy(address: string, enabled = true) {
   return useQuery({
     queryKey: ["contract-proxy", address],
     queryFn: () => getContractProxy(address),
-    enabled: enabled && address.length > 0,
-    retry: false,
-    staleTime: 5_000,
-		refetchInterval: (query) =>
-			query.state.data?.state === "unavailable"
-				? UNAVAILABLE_PROXY_REFETCH_INTERVAL_MS
-				: false,
-  });
+		enabled: enabled && address.length > 0,
+		retry: false,
+		staleTime: 5_000,
+	});
 }
 
 export function useContractProxyUpgrades(

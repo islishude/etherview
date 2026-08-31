@@ -217,6 +217,8 @@ type pagination struct {
 	direction string
 }
 
+const maximumPaginationWindow int64 = 10_000
+
 func parsePagination(values url.Values) (pagination, error) {
 	page, err := parsePositiveInt(values.Get("page"), 1, math.MaxInt64)
 	if err != nil {
@@ -228,6 +230,12 @@ func parsePagination(values url.Values) (pagination, error) {
 	}
 	if page > math.MaxInt64/int64(limit) {
 		return pagination{}, invalidParameter("page and offset are too large")
+	}
+	if page*int64(limit) > maximumPaginationWindow {
+		return pagination{}, invalidParameter(
+			"page and offset exceed the %d-result compatibility window",
+			maximumPaginationWindow,
+		)
 	}
 	direction := strings.ToUpper(strings.TrimSpace(values.Get("sort")))
 	if direction == "" {

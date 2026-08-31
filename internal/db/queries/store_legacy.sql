@@ -10,22 +10,6 @@ INSERT INTO block_journals (
 		WHERE EXISTS (
 		    SELECT 1 FROM blocks WHERE chain_id = $1::numeric AND hash = $2
 			);
--- name: StoreLegacyApplyReorgStatement1 :exec
-DELETE FROM canonical_blocks
-			WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3;
-
--- name: StoreLegacyApplyReorgStatement2 :exec
-UPDATE block_journals SET canonical = FALSE
-			WHERE chain_id = $1::numeric AND block_hash = $2;
-
--- name: StoreLegacyApplyReorgStatement3 :exec
-INSERT INTO canonical_blocks (chain_id, number, block_hash)
-			VALUES ($1::numeric, $2::numeric, $3);
-
--- name: StoreLegacyApplyReorgStatement4 :exec
-UPDATE block_journals SET canonical = TRUE
-			WHERE chain_id = $1::numeric AND block_hash = $2;
-
 -- name: StoreLegacyApplyReorgStatement5 :exec
 DELETE FROM index_checkpoints
 		WHERE chain_id = $1::numeric AND stage = $2;
@@ -85,14 +69,6 @@ INSERT INTO core_backfill_leases (
 			chain_id, range_start, range_end, owner, lease_token, claimed_at, expires_at
 		) VALUES ($1::numeric, $2::numeric, $3::numeric, $4, $5::uuid, $6, $7);
 
--- name: StoreLegacyCommitCanonicalSegmentStatement1 :exec
-INSERT INTO canonical_blocks (chain_id, number, block_hash)
-				VALUES ($1::numeric, $2::numeric, $3);
-
--- name: StoreLegacyCommitCanonicalStatement1 :exec
-INSERT INTO canonical_blocks (chain_id, number, block_hash)
-			VALUES ($1::numeric, $2::numeric, $3);
-
 -- name: StoreLegacyCompleteBackfillRangeStatement1 :many
 SELECT expires_at
 		FROM core_backfill_leases
@@ -123,19 +99,6 @@ DELETE FROM block_journals
 -- name: StoreLegacyEnsureChainStatement1 :exec
 INSERT INTO chains (chain_id) VALUES ($1::numeric) ON CONFLICT (chain_id) DO NOTHING;
 
--- name: StoreLegacyInsertCoreOutboxTxStatement1 :exec
-INSERT INTO transactional_outbox (
-			chain_id, topic, message_key, payload, generation
-		)
-		VALUES ($1::numeric, $2, $3, $4::jsonb, 1)
-		ON CONFLICT (chain_id, topic, message_key) DO UPDATE SET
-			payload = EXCLUDED.payload,
-			generation = transactional_outbox.generation + 1,
-			available_at = clock_timestamp(),
-			published_at = NULL,
-			attempts = 0,
-			last_error = NULL;
-
 -- name: StoreLegacyInsertReorgEventStatement1 :exec
 INSERT INTO reorg_events (
 			chain_id, ancestor_number, ancestor_hash, old_tip_number, old_tip_hash,
@@ -160,51 +123,6 @@ SELECT stage, sequence::text, payload, canonical, created_at
 
 -- name: StoreLegacyLockChainStatement1 :many
 SELECT pg_advisory_xact_lock(hashtext('etherview:chain:' || $1));
-
--- name: StoreLegacyPutBundleTxStatement1 :exec
-INSERT INTO blocks (chain_id, number, hash, parent_hash, timestamp, raw)
-		VALUES ($1::numeric, $2::numeric, $3, $4, $5::numeric, $6::jsonb)
-		ON CONFLICT (chain_id, number, hash) DO UPDATE SET
-			parent_hash = EXCLUDED.parent_hash,
-			timestamp = EXCLUDED.timestamp,
-			raw = EXCLUDED.raw;
-
--- name: StoreLegacyPutBundleTxStatement2 :exec
-INSERT INTO transactions (chain_id, hash, tx_type, raw)
-			VALUES ($1::numeric, $2, $3::numeric, $4::jsonb)
-			ON CONFLICT (chain_id, hash) DO UPDATE SET
-				tx_type = EXCLUDED.tx_type,
-				raw = EXCLUDED.raw;
-
--- name: StoreLegacyPutBundleTxStatement3 :exec
-INSERT INTO transaction_inclusions (
-				chain_id, block_number, block_hash, tx_index, tx_hash, raw
-			) VALUES ($1::numeric, $2::numeric, $3, $4, $5, $6::jsonb)
-			ON CONFLICT (chain_id, block_number, block_hash, tx_index)
-			DO UPDATE SET raw = EXCLUDED.raw;
-
--- name: StoreLegacyPutBundleTxStatement4 :exec
-INSERT INTO receipts (
-				chain_id, block_number, block_hash, tx_index, tx_hash, raw
-			) VALUES ($1::numeric, $2::numeric, $3, $4, $5, $6::jsonb)
-			ON CONFLICT (chain_id, block_number, block_hash, tx_index)
-			DO UPDATE SET raw = EXCLUDED.raw;
-
--- name: StoreLegacyPutBundleTxStatement5 :exec
-INSERT INTO logs (
-					chain_id, block_number, block_hash, log_index, tx_index,
-					tx_hash, address, topic0, raw
-				) VALUES ($1::numeric, $2::numeric, $3, $4, $5, $6, $7, $8, $9::jsonb)
-				ON CONFLICT (chain_id, block_number, block_hash, log_index)
-				DO UPDATE SET raw = EXCLUDED.raw;
-
--- name: StoreLegacyPutBundleTxStatement6 :exec
-INSERT INTO withdrawals (
-				chain_id, block_number, block_hash, withdrawal_index,
-				validator_index, address, amount, raw
-			) VALUES ($1::numeric, $2::numeric, $3, $4::numeric, $5::numeric, $6, $7::numeric, $8::jsonb)
-			ON CONFLICT (chain_id, block_number, block_hash, withdrawal_index)
-			DO UPDATE SET raw = EXCLUDED.raw;
 
 -- name: StoreLegacyQueryCanonicalReferencesTxStatement1 :many
 SELECT cb.number::text, cb.block_hash, b.parent_hash
@@ -254,22 +172,6 @@ INSERT INTO core_coverage_ranges (chain_id, range_start, range_end)
 SELECT COUNT(*)
 			FROM canonical_blocks
 			WHERE chain_id = $1::numeric AND number > $2::numeric;
-
--- name: StoreLegacyReplaceHighestCanonicalSegmentStatement2 :exec
-DELETE FROM canonical_blocks
-			WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3;
-
--- name: StoreLegacyReplaceHighestCanonicalSegmentStatement3 :exec
-UPDATE block_journals SET canonical = FALSE
-			WHERE chain_id = $1::numeric AND block_hash = $2;
-
--- name: StoreLegacyReplaceHighestCanonicalSegmentStatement4 :exec
-INSERT INTO canonical_blocks (chain_id, number, block_hash)
-			VALUES ($1::numeric, $2::numeric, $3);
-
--- name: StoreLegacyReplaceHighestCanonicalSegmentStatement5 :exec
-UPDATE block_journals SET canonical = TRUE
-			WHERE chain_id = $1::numeric AND block_hash = $2;
 
 -- name: StoreLegacyUpdateFinalityStatement1 :exec
 INSERT INTO chain_finality (

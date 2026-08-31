@@ -64,7 +64,17 @@ func NewPostgresLedger(
 	}, nil
 }
 
-func (ledger *PostgresLedger) Reserve(
+func (ledger *PostgresLedger) ReserveTopup(
+	ctx context.Context,
+	input ReserveInput,
+) (Reservation, error) {
+	if input.Purpose != "account_topup" {
+		return Reservation{}, fmt.Errorf("%w: only account top-ups can be reserved", ErrInvalidInput)
+	}
+	return ledger.reservePayment(ctx, input)
+}
+
+func (ledger *PostgresLedger) reservePayment(
 	ctx context.Context,
 	input ReserveInput,
 ) (Reservation, error) {

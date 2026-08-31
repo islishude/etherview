@@ -12,6 +12,7 @@ import (
 
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/events"
+	"github.com/islishude/etherview/internal/publicquery"
 )
 
 const (
@@ -21,16 +22,8 @@ const (
 
 var ErrHomeSnapshotUnavailable = errors.New("home snapshot is temporarily unavailable")
 
-type HomeSnapshotState struct {
-	EventID      uint64
-	Status       StatusSnapshot
-	Blocks       []gen.Block
-	Transactions []gen.Transaction
-}
-
-type HomeSnapshotReader interface {
-	HomeSnapshot(context.Context) (HomeSnapshotState, error)
-}
+type HomeSnapshotState = publicquery.HomeSnapshotState
+type HomeSnapshotReader = publicquery.HomeSnapshotReader
 
 type HomePublication struct {
 	EventID       uint64

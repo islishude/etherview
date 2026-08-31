@@ -43,7 +43,8 @@ SELECT
     TRUE,
     finality.safe_number::text,
     finality.finalized_number::text,
-	block.raw,
+	block.timestamp::text,
+	block.base_fee_per_gas_quantity,
 	EXISTS (
 	    SELECT 1
 	    FROM published_block_stage_results AS published_state_diff
@@ -183,7 +184,8 @@ type QueryListAddressTransactionsRow struct {
 	Column7                 bool    `db:"column_7" json:"column_7"`
 	FinalitySafeNumber      string  `db:"finality_safe_number" json:"finality_safe_number"`
 	FinalityFinalizedNumber string  `db:"finality_finalized_number" json:"finality_finalized_number"`
-	Raw_3                   []byte  `db:"raw_3" json:"raw_3"`
+	BlockTimestamp          string  `db:"block_timestamp" json:"block_timestamp"`
+	BaseFeePerGasQuantity   *string `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
 	Exists                  bool    `db:"exists" json:"exists"`
 	Resolution              string  `db:"resolution" json:"resolution"`
 	ExecutionAddress        []byte  `db:"execution_address" json:"execution_address"`
@@ -218,7 +220,8 @@ func (q *Queries) QueryListAddressTransactions(ctx context.Context, arg QueryLis
 			&i.Column7,
 			&i.FinalitySafeNumber,
 			&i.FinalityFinalizedNumber,
-			&i.Raw_3,
+			&i.BlockTimestamp,
+			&i.BaseFeePerGasQuantity,
 			&i.Exists,
 			&i.Resolution,
 			&i.ExecutionAddress,
@@ -269,7 +272,8 @@ SELECT
     TRUE,
     finality.safe_number::text,
     finality.finalized_number::text,
-	block.raw,
+	block.timestamp::text,
+	block.base_fee_per_gas_quantity,
 	EXISTS (
 	    SELECT 1
 	    FROM published_block_stage_results AS published_state_diff
@@ -408,7 +412,8 @@ type QueryListAddressTransactionsFirstRow struct {
 	Column7                 bool    `db:"column_7" json:"column_7"`
 	FinalitySafeNumber      string  `db:"finality_safe_number" json:"finality_safe_number"`
 	FinalityFinalizedNumber string  `db:"finality_finalized_number" json:"finality_finalized_number"`
-	Raw_3                   []byte  `db:"raw_3" json:"raw_3"`
+	BlockTimestamp          string  `db:"block_timestamp" json:"block_timestamp"`
+	BaseFeePerGasQuantity   *string `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
 	Exists                  bool    `db:"exists" json:"exists"`
 	Resolution              string  `db:"resolution" json:"resolution"`
 	ExecutionAddress        []byte  `db:"execution_address" json:"execution_address"`
@@ -442,7 +447,8 @@ func (q *Queries) QueryListAddressTransactionsFirst(ctx context.Context, arg Que
 			&i.Column7,
 			&i.FinalitySafeNumber,
 			&i.FinalityFinalizedNumber,
-			&i.Raw_3,
+			&i.BlockTimestamp,
+			&i.BaseFeePerGasQuantity,
 			&i.Exists,
 			&i.Resolution,
 			&i.ExecutionAddress,

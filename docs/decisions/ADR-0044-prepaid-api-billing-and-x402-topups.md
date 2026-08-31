@@ -27,6 +27,16 @@ The native billing endpoints are a free control plane for configuration,
 balances, top-up intents, top-up/payment history, usage history, and
 administrator inspection.
 
+The superseded request-payment configuration and execution surface is removed,
+not merely disabled. `features.x402_billing`, `billing.routes`, its coarse
+limiter settings and environment aliases are rejected, and no native quota or
+HTTP payment dispatcher is assembled. The writer payment ledger exposes new
+reservation only for `account_topup`; its decoder, history queries, append-only
+events, expiration, and operator reconciliation continue to accept historical
+`legacy_request` rows without turning them into prepaid credit.
+The P66 accountless `x402testnet` command and support package are also removed;
+live acceptance belongs to the user-bound top-up and prepaid-usage workflow.
+
 The billable operation catalog is the closed bounded-read subset of the
 Etherscan V2 compatibility matrix. A configured price is denominated in the
 configured token's atomic units. Missing prices mean free actions. Verification

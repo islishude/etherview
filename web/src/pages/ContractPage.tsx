@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useEffect,
   useMemo,
   useState,
@@ -14,7 +16,6 @@ import { CopyableField } from "@/components/CopyButton";
 import { QueryNotice } from "@/components/QueryNotice";
 import { AddressIdentity } from "@/ens/AddressIdentity";
 import { AbiFunctionExplorer } from "@/contracts/AbiFunctionForm";
-import { ContractArtifactPanel } from "@/contracts/ContractArtifactPanel";
 import {
   useContractProxy,
   useContractDiamondCuts,
@@ -33,6 +34,11 @@ import {
   type ContractInteractionTarget,
   type DiamondFacetInteractionTarget,
 } from "@/contracts/targets";
+
+const ContractArtifactPanel = lazy(async () => {
+  const module = await import("@/contracts/ContractArtifactPanel");
+  return { default: module.ContractArtifactPanel };
+});
 
 export type ContractTab =
   | "code"
@@ -1081,7 +1087,11 @@ function ArtifactPanel({
           </Link>
         </div>
       ) : null}
-      {artifact ? <ContractArtifactPanel artifact={artifact} /> : null}
+      {artifact ? (
+        <Suspense fallback={<p className="query-notice" role="status">{t("state.loading")}</p>}>
+          <ContractArtifactPanel artifact={artifact} />
+        </Suspense>
+      ) : null}
     </div>
   );
 }

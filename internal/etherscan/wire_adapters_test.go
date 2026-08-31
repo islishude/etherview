@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"math/big"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/islishude/etherview/internal/chainbundle/testfixture"
 )
@@ -50,11 +52,11 @@ func TestDynamicEffectiveGasPriceRequiresAuthenticatedBlockContext(t *testing.T)
 
 	authenticated, err := decodeStoredReceiptWithBlockContext(
 		bundle.RawReceipts[0],
-		bundle.RawBlock,
 		transaction,
 		bundle.Block.Hash(),
 		blockNumber,
 		0,
+		bundle.Block.BaseFee(),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -75,11 +77,11 @@ func TestDynamicEffectiveGasPriceRequiresAuthenticatedBlockContext(t *testing.T)
 	)
 	if receipt, err := decodeStoredReceiptWithBlockContext(
 		poisoned,
-		bundle.RawBlock,
 		transaction,
 		bundle.Block.Hash(),
 		blockNumber,
 		0,
+		bundle.Block.BaseFee(),
 	); err == nil || receipt != nil {
 		t.Fatalf(
 			"authenticated decode accepted poisoned effectiveGasPrice: %#v, %v",
@@ -134,11 +136,12 @@ func TestAccountScanAuthenticatesDynamicEffectiveGasPriceFromStoredHeader(t *tes
 				completeCoreCoverageExpectation("0", "", "9"),
 				sqlExpectation{
 					contains: "FROM transaction_inclusions AS inclusion",
-					columns:  fakeColumns(8),
+					columns:  fakeColumns(9),
 					rows: [][]driver.Value{{
 						[]byte(bundle.RawTransactions[0]),
 						[]byte(test.receipt),
-						[]byte(bundle.RawBlock),
+						strconv.FormatUint(bundle.Block.Time(), 10),
+						hexutil.EncodeBig(bundle.Block.BaseFee()),
 						"9",
 						bundle.Block.Hash().Bytes(),
 						int64(0),

@@ -11,7 +11,7 @@ import (
 	"github.com/islishude/etherview/internal/api/gen"
 	dbaccess "github.com/islishude/etherview/internal/db"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
-	"github.com/islishude/etherview/internal/httpapi"
+	"github.com/islishude/etherview/internal/publicquery"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -64,17 +64,17 @@ func (r *PostgresReader) GenesisAccounts(
 		return err
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, "", httpapi.NewCapabilityUnavailableError(
+		return nil, "", publicquery.NewCapabilityUnavailableError(
 			"genesis_state", "unavailable", "genesis_state_not_imported",
 		)
 	}
 	if errors.Is(err, errGenesisImportNotCanonical) {
-		return nil, "", httpapi.NewCapabilityUnavailableError(
+		return nil, "", publicquery.NewCapabilityUnavailableError(
 			"genesis_state", "failed", "genesis_state_not_canonical",
 		)
 	}
 	if err != nil {
-		if errors.Is(err, httpapi.ErrInvalidCursor) {
+		if errors.Is(err, publicquery.ErrInvalidCursor) {
 			return nil, "", err
 		}
 		return nil, "", fmt.Errorf("query genesis accounts: %w", err)
@@ -82,13 +82,13 @@ func (r *PostgresReader) GenesisAccounts(
 	switch imported.State {
 	case "complete":
 	case "pending":
-		return nil, "", httpapi.ErrNotReady
+		return nil, "", publicquery.ErrNotReady
 	case "failed":
 		code := controlledGenesisCode(imported.LastErrorCode, "genesis_import_failed")
-		return nil, "", httpapi.NewCapabilityUnavailableError("genesis_state", "failed", code)
+		return nil, "", publicquery.NewCapabilityUnavailableError("genesis_state", "failed", code)
 	default:
 		code := controlledGenesisCode(imported.LastErrorCode, "genesis_file_not_configured")
-		return nil, "", httpapi.NewCapabilityUnavailableError("genesis_state", "unavailable", code)
+		return nil, "", publicquery.NewCapabilityUnavailableError("genesis_state", "unavailable", code)
 	}
 	models := make([]gen.GenesisAccount, 0, min(limit, len(rows)))
 	for index, row := range rows {
@@ -103,7 +103,7 @@ func (r *PostgresReader) GenesisAccounts(
 	}
 	var next string
 	if len(rows) > limit && len(models) > 0 {
-		next, err = httpapi.EncodeCursor(genesisCursor{
+		next, err = publicquery.EncodeCursor(genesisCursor{
 			ChainID: r.chainID, BlockHash: "0x" + hex.EncodeToString(imported.BlockHash),
 			After: strings.ToLower(models[len(models)-1].Address),
 		})
@@ -123,7 +123,7 @@ func decodeGenesisCursor(
 		return []byte{}, nil
 	}
 	var cursor genesisCursor
-	if err := httpapi.DecodeCursor(encoded, &cursor); err != nil {
+	if err := publicquery.DecodeCursor(encoded, &cursor); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidCursor, err)
 	}
 	expectedHash := "0x" + hex.EncodeToString(blockHash)

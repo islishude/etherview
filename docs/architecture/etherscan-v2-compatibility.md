@@ -26,7 +26,9 @@ this matrix and the compatibility golden tests in the same change.
   topic hash is exactly 32 hexadecimal bytes, each with a `0x` prefix.
 - In the tables, **list controls** means optional `page` (default `1`, positive
   integer), `offset` (default `100`, range `1..1000`), and `sort` (default
-  `asc`, either `asc` or `desc`).
+  `asc`, either `asc` or `desc`). The complete requested window is bounded:
+  `page * offset` must not exceed 10,000, so response limits cannot hide an
+  arbitrarily deep PostgreSQL `OFFSET` scan.
 - Address-holding actions accept `page` and `offset` but not `sort`. They return
   dense positive-state pages only when the requested window can be proven
   within 1,000 event-discovered candidates; otherwise they report
@@ -34,7 +36,8 @@ this matrix and the compatibility golden tests in the same change.
 - **Block range** means optional canonical uint256 decimal `startblock`
   (default `0`) and `endblock` (default current canonical tip), with
   `endblock >= startblock`. **Log range** is the equivalent `fromBlock` and
-  `toBlock` pair. The five advanced-filter account actions additionally accept
+  `toBlock` pair and contains at most 100,000 tip-clamped inclusive blocks.
+  The five advanced-filter account actions additionally accept
   `endblock=latest`; other tags and log-range tags are not accepted.
 - Unless a row says **required**, an API key is optional. A valid optional key
   selects its keyed quota; omitting it selects the anonymous quota. Supplying
@@ -63,6 +66,19 @@ range covers the result. A range wholly above the tip reports
 proof first and report `No records found` only after every canonical block in
 the resulting range has a `complete` published stage result. An absent or
 failed stage is not an empty success.
+
+Compatibility work bounds apply before a result can be billed as successful.
+Mined-block and timestamp lookups use dedicated miner/timestamp indexes and
+fixed direction queries. A `getLogs` topic-zero predicate is pushed into the
+typed `logs.topic0` index only when the complete requested boolean expression
+requires topic zero; an `OR` expression is never narrowed incorrectly.
+
+Compatibility account, token, log, mined-block, and block-time reads project
+only the exact block timestamp, miner, and base-fee scalars they consume. They
+do not repeat a complete `blocks.raw` value for every result row. Dynamic-fee
+receipts remain authenticated against the exact block identity and normalized
+base fee, so this transport optimization does not broaden compatibility or
+weaken the raw-first ingestion boundary.
 
 ## Supported Actions
 

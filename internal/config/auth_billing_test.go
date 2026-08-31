@@ -14,7 +14,7 @@ import (
 func TestAuthAndBillingDefaultsAreDisabledAndBounded(t *testing.T) {
 	t.Parallel()
 	cfg := Default()
-	if cfg.Features.UserAuth || cfg.Features.UserAPIKeys || cfg.Features.X402Billing ||
+	if cfg.Features.UserAuth || cfg.Features.UserAPIKeys ||
 		cfg.Features.APIBilling || cfg.Features.X402Topups {
 		t.Fatalf("auth and billing must default off: %#v", cfg.Features)
 	}
@@ -24,13 +24,40 @@ func TestAuthAndBillingDefaultsAreDisabledAndBounded(t *testing.T) {
 		cfg.Billing.RequirementMaxTimeout.String() != "1m0s" ||
 		cfg.Billing.ReservationTTL.String() != "2m0s" ||
 		cfg.UserAuth.APIKeyRate != 20 || cfg.UserAuth.APIKeyBurst != 40 ||
-		cfg.UserAuth.MaxActiveAPIKeys != 5 || len(cfg.Billing.Routes) != 0 ||
+		cfg.UserAuth.MaxActiveAPIKeys != 5 ||
 		len(cfg.Billing.Operations) != 0 || cfg.Billing.TopupIntentTTL.String() != "10m0s" ||
 		cfg.Billing.UsageReservationTTL.String() != "2m0s" {
 		t.Fatalf("unexpected auth or billing defaults: auth=%#v billing=%#v", cfg.UserAuth, cfg.Billing)
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRemovedRequestPaymentConfigurationIsRejected(t *testing.T) {
+	t.Parallel()
+	cfg := Default()
+	if err := applyEnvironment(&cfg, func(key string) (string, bool) {
+		if key == "ETHERVIEW_FEATURE_X402_BILLING" {
+			return "false", true
+		}
+		return "", false
+	}, nil); err == nil || !strings.Contains(err.Error(), "no longer supported") {
+		t.Fatalf("removed environment error = %v", err)
+	}
+	for name, contents := range map[string]string{
+		"feature": "features:\n  x402_billing: false\n",
+		"routes":  "billing:\n  routes: {}\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "field") {
+				t.Fatalf("removed YAML error = %v", err)
+			}
+		})
 	}
 }
 
@@ -436,7 +463,7 @@ func validX402Config() Config {
 	return cfg
 }
 
-func TestHelmBillingRouteEnumMatchesEligibleCatalog(t *testing.T) {
+func TestHelmBillingOperationEnumMatchesEligibleCatalog(t *testing.T) {
 	t.Parallel()
 	encoded, err := os.ReadFile("../../deploy/helm/etherview/values.schema.json")
 	if err != nil {
@@ -461,13 +488,13 @@ func TestHelmBillingRouteEnumMatchesEligibleCatalog(t *testing.T) {
 	}
 	rawOperations, ok := value.([]any)
 	if !ok {
-		t.Fatal("Helm billing route enum is not an array")
+		t.Fatal("Helm billing operation enum is not an array")
 	}
 	actual := make([]string, len(rawOperations))
 	for index, operation := range rawOperations {
 		actual[index], ok = operation.(string)
 		if !ok {
-			t.Fatalf("Helm billing route operation %d is not a string", index)
+			t.Fatalf("Helm billing operation %d is not a string", index)
 		}
 	}
 	expected := etherscanops.EligibleIDs()

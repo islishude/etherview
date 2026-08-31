@@ -98,9 +98,33 @@ func (q *Queries) QueryAddressOriginReference(ctx context.Context, column1 pgtyp
 
 const QueryBlockByHash = `-- name: QueryBlockByHash :many
 SELECT
-    block.raw,
     block.number::text,
     block.hash,
+    block.parent_hash,
+    block.timestamp::text,
+    block.miner_text,
+    block.gas_used_quantity,
+    block.gas_limit_quantity,
+    block.base_fee_per_gas_quantity,
+    block.transaction_count,
+    (SELECT COUNT(*) FROM transaction_inclusions AS inclusion
+     WHERE inclusion.chain_id = block.chain_id
+       AND inclusion.block_number = block.number
+       AND inclusion.block_hash = block.hash),
+    block.withdrawals_present,
+    block.withdrawal_count,
+    COALESCE((
+        SELECT jsonb_agg(jsonb_build_object(
+            'index', withdrawal.withdrawal_index::text,
+            'validator_index', withdrawal.validator_index::text,
+            'address', '0x' || encode(withdrawal.address, 'hex'),
+            'amount', withdrawal.amount::text
+        ) ORDER BY withdrawal.withdrawal_index)
+        FROM withdrawals AS withdrawal
+        WHERE withdrawal.chain_id = block.chain_id
+          AND withdrawal.block_number = block.number
+          AND withdrawal.block_hash = block.hash
+    ), '[]'::jsonb),
     (canonical.block_hash IS NOT NULL),
     finality.safe_number::text,
     finality.finalized_number::text
@@ -115,10 +139,20 @@ LIMIT 1
 `
 
 type QueryBlockByHashRow struct {
-	Raw                     []byte      `db:"raw" json:"raw"`
 	BlockNumber             string      `db:"block_number" json:"block_number"`
 	Hash                    []byte      `db:"hash" json:"hash"`
-	Column4                 interface{} `db:"column_4" json:"column_4"`
+	ParentHash              []byte      `db:"parent_hash" json:"parent_hash"`
+	BlockTimestamp          string      `db:"block_timestamp" json:"block_timestamp"`
+	MinerText               *string     `db:"miner_text" json:"miner_text"`
+	GasUsedQuantity         *string     `db:"gas_used_quantity" json:"gas_used_quantity"`
+	GasLimitQuantity        *string     `db:"gas_limit_quantity" json:"gas_limit_quantity"`
+	BaseFeePerGasQuantity   *string     `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
+	TransactionCount        *int64      `db:"transaction_count" json:"transaction_count"`
+	Count                   int64       `db:"count" json:"count"`
+	WithdrawalsPresent      *bool       `db:"withdrawals_present" json:"withdrawals_present"`
+	WithdrawalCount         *int64      `db:"withdrawal_count" json:"withdrawal_count"`
+	Coalesce                interface{} `db:"coalesce" json:"coalesce"`
+	Column14                interface{} `db:"column_14" json:"column_14"`
 	FinalitySafeNumber      string      `db:"finality_safe_number" json:"finality_safe_number"`
 	FinalityFinalizedNumber string      `db:"finality_finalized_number" json:"finality_finalized_number"`
 }
@@ -133,10 +167,20 @@ func (q *Queries) QueryBlockByHash(ctx context.Context, column1 pgtype.Numeric, 
 	for rows.Next() {
 		var i QueryBlockByHashRow
 		if err := rows.Scan(
-			&i.Raw,
 			&i.BlockNumber,
 			&i.Hash,
-			&i.Column4,
+			&i.ParentHash,
+			&i.BlockTimestamp,
+			&i.MinerText,
+			&i.GasUsedQuantity,
+			&i.GasLimitQuantity,
+			&i.BaseFeePerGasQuantity,
+			&i.TransactionCount,
+			&i.Count,
+			&i.WithdrawalsPresent,
+			&i.WithdrawalCount,
+			&i.Coalesce,
+			&i.Column14,
 			&i.FinalitySafeNumber,
 			&i.FinalityFinalizedNumber,
 		); err != nil {
@@ -152,9 +196,33 @@ func (q *Queries) QueryBlockByHash(ctx context.Context, column1 pgtype.Numeric, 
 
 const QueryBlockByNumber = `-- name: QueryBlockByNumber :many
 SELECT
-    block.raw,
-    canonical.number::text,
-    canonical.block_hash,
+    block.number::text,
+    block.hash,
+    block.parent_hash,
+    block.timestamp::text,
+    block.miner_text,
+    block.gas_used_quantity,
+    block.gas_limit_quantity,
+    block.base_fee_per_gas_quantity,
+    block.transaction_count,
+    (SELECT COUNT(*) FROM transaction_inclusions AS inclusion
+     WHERE inclusion.chain_id = block.chain_id
+       AND inclusion.block_number = block.number
+       AND inclusion.block_hash = block.hash),
+    block.withdrawals_present,
+    block.withdrawal_count,
+    COALESCE((
+        SELECT jsonb_agg(jsonb_build_object(
+            'index', withdrawal.withdrawal_index::text,
+            'validator_index', withdrawal.validator_index::text,
+            'address', '0x' || encode(withdrawal.address, 'hex'),
+            'amount', withdrawal.amount::text
+        ) ORDER BY withdrawal.withdrawal_index)
+        FROM withdrawals AS withdrawal
+        WHERE withdrawal.chain_id = block.chain_id
+          AND withdrawal.block_number = block.number
+          AND withdrawal.block_hash = block.hash
+    ), '[]'::jsonb),
     TRUE,
     finality.safe_number::text,
     finality.finalized_number::text
@@ -168,12 +236,22 @@ WHERE canonical.chain_id = $1::numeric AND canonical.number = $2::numeric
 `
 
 type QueryBlockByNumberRow struct {
-	Raw                     []byte `db:"raw" json:"raw"`
-	CanonicalNumber         string `db:"canonical_number" json:"canonical_number"`
-	BlockHash               []byte `db:"block_hash" json:"block_hash"`
-	Column4                 bool   `db:"column_4" json:"column_4"`
-	FinalitySafeNumber      string `db:"finality_safe_number" json:"finality_safe_number"`
-	FinalityFinalizedNumber string `db:"finality_finalized_number" json:"finality_finalized_number"`
+	BlockNumber             string      `db:"block_number" json:"block_number"`
+	Hash                    []byte      `db:"hash" json:"hash"`
+	ParentHash              []byte      `db:"parent_hash" json:"parent_hash"`
+	BlockTimestamp          string      `db:"block_timestamp" json:"block_timestamp"`
+	MinerText               *string     `db:"miner_text" json:"miner_text"`
+	GasUsedQuantity         *string     `db:"gas_used_quantity" json:"gas_used_quantity"`
+	GasLimitQuantity        *string     `db:"gas_limit_quantity" json:"gas_limit_quantity"`
+	BaseFeePerGasQuantity   *string     `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
+	TransactionCount        *int64      `db:"transaction_count" json:"transaction_count"`
+	Count                   int64       `db:"count" json:"count"`
+	WithdrawalsPresent      *bool       `db:"withdrawals_present" json:"withdrawals_present"`
+	WithdrawalCount         *int64      `db:"withdrawal_count" json:"withdrawal_count"`
+	Coalesce                interface{} `db:"coalesce" json:"coalesce"`
+	Column14                bool        `db:"column_14" json:"column_14"`
+	FinalitySafeNumber      string      `db:"finality_safe_number" json:"finality_safe_number"`
+	FinalityFinalizedNumber string      `db:"finality_finalized_number" json:"finality_finalized_number"`
 }
 
 func (q *Queries) QueryBlockByNumber(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) ([]QueryBlockByNumberRow, error) {
@@ -186,10 +264,20 @@ func (q *Queries) QueryBlockByNumber(ctx context.Context, column1 pgtype.Numeric
 	for rows.Next() {
 		var i QueryBlockByNumberRow
 		if err := rows.Scan(
-			&i.Raw,
-			&i.CanonicalNumber,
-			&i.BlockHash,
-			&i.Column4,
+			&i.BlockNumber,
+			&i.Hash,
+			&i.ParentHash,
+			&i.BlockTimestamp,
+			&i.MinerText,
+			&i.GasUsedQuantity,
+			&i.GasLimitQuantity,
+			&i.BaseFeePerGasQuantity,
+			&i.TransactionCount,
+			&i.Count,
+			&i.WithdrawalsPresent,
+			&i.WithdrawalCount,
+			&i.Coalesce,
+			&i.Column14,
 			&i.FinalitySafeNumber,
 			&i.FinalityFinalizedNumber,
 		); err != nil {
@@ -353,7 +441,7 @@ WITH candidates AS (
      AND canonical.block_hash = block.hash
     WHERE block.chain_id = $1::numeric
       AND block.number <= $2::numeric
-      AND lower(block.raw->>'miner') = lower('0x' || encode($3, 'hex'))
+      AND lower(block.miner_text) = lower('0x' || encode($3, 'hex'))
 )
 SELECT block_number::text, source_address, transaction_hash, origin_kind, block_hash, withdrawal_index
 FROM candidates
@@ -436,9 +524,33 @@ func (q *Queries) QueryGenesisAddressOrigin(ctx context.Context, column1 pgtype.
 
 const QueryListBlocks = `-- name: QueryListBlocks :many
 SELECT
-    block.raw,
-    canonical.number::text,
-    canonical.block_hash,
+    block.number::text,
+    block.hash,
+    block.parent_hash,
+    block.timestamp::text,
+    block.miner_text,
+    block.gas_used_quantity,
+    block.gas_limit_quantity,
+    block.base_fee_per_gas_quantity,
+    block.transaction_count,
+    (SELECT COUNT(*) FROM transaction_inclusions AS inclusion
+     WHERE inclusion.chain_id = block.chain_id
+       AND inclusion.block_number = block.number
+       AND inclusion.block_hash = block.hash),
+    block.withdrawals_present,
+    block.withdrawal_count,
+    COALESCE((
+        SELECT jsonb_agg(jsonb_build_object(
+            'index', withdrawal.withdrawal_index::text,
+            'validator_index', withdrawal.validator_index::text,
+            'address', '0x' || encode(withdrawal.address, 'hex'),
+            'amount', withdrawal.amount::text
+        ) ORDER BY withdrawal.withdrawal_index)
+        FROM withdrawals AS withdrawal
+        WHERE withdrawal.chain_id = block.chain_id
+          AND withdrawal.block_number = block.number
+          AND withdrawal.block_hash = block.hash
+    ), '[]'::jsonb),
     TRUE,
     finality.safe_number::text,
     finality.finalized_number::text
@@ -455,12 +567,22 @@ LIMIT $3
 `
 
 type QueryListBlocksRow struct {
-	Raw                     []byte `db:"raw" json:"raw"`
-	CanonicalNumber         string `db:"canonical_number" json:"canonical_number"`
-	BlockHash               []byte `db:"block_hash" json:"block_hash"`
-	Column4                 bool   `db:"column_4" json:"column_4"`
-	FinalitySafeNumber      string `db:"finality_safe_number" json:"finality_safe_number"`
-	FinalityFinalizedNumber string `db:"finality_finalized_number" json:"finality_finalized_number"`
+	BlockNumber             string      `db:"block_number" json:"block_number"`
+	Hash                    []byte      `db:"hash" json:"hash"`
+	ParentHash              []byte      `db:"parent_hash" json:"parent_hash"`
+	BlockTimestamp          string      `db:"block_timestamp" json:"block_timestamp"`
+	MinerText               *string     `db:"miner_text" json:"miner_text"`
+	GasUsedQuantity         *string     `db:"gas_used_quantity" json:"gas_used_quantity"`
+	GasLimitQuantity        *string     `db:"gas_limit_quantity" json:"gas_limit_quantity"`
+	BaseFeePerGasQuantity   *string     `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
+	TransactionCount        *int64      `db:"transaction_count" json:"transaction_count"`
+	Count                   int64       `db:"count" json:"count"`
+	WithdrawalsPresent      *bool       `db:"withdrawals_present" json:"withdrawals_present"`
+	WithdrawalCount         *int64      `db:"withdrawal_count" json:"withdrawal_count"`
+	Coalesce                interface{} `db:"coalesce" json:"coalesce"`
+	Column14                bool        `db:"column_14" json:"column_14"`
+	FinalitySafeNumber      string      `db:"finality_safe_number" json:"finality_safe_number"`
+	FinalityFinalizedNumber string      `db:"finality_finalized_number" json:"finality_finalized_number"`
 }
 
 func (q *Queries) QueryListBlocks(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, limit int32) ([]QueryListBlocksRow, error) {
@@ -473,10 +595,20 @@ func (q *Queries) QueryListBlocks(ctx context.Context, column1 pgtype.Numeric, c
 	for rows.Next() {
 		var i QueryListBlocksRow
 		if err := rows.Scan(
-			&i.Raw,
-			&i.CanonicalNumber,
-			&i.BlockHash,
-			&i.Column4,
+			&i.BlockNumber,
+			&i.Hash,
+			&i.ParentHash,
+			&i.BlockTimestamp,
+			&i.MinerText,
+			&i.GasUsedQuantity,
+			&i.GasLimitQuantity,
+			&i.BaseFeePerGasQuantity,
+			&i.TransactionCount,
+			&i.Count,
+			&i.WithdrawalsPresent,
+			&i.WithdrawalCount,
+			&i.Coalesce,
+			&i.Column14,
 			&i.FinalitySafeNumber,
 			&i.FinalityFinalizedNumber,
 		); err != nil {
@@ -492,9 +624,33 @@ func (q *Queries) QueryListBlocks(ctx context.Context, column1 pgtype.Numeric, c
 
 const QueryListBlocksFirst = `-- name: QueryListBlocksFirst :many
 SELECT
-    block.raw,
-    canonical.number::text,
-    canonical.block_hash,
+    block.number::text,
+    block.hash,
+    block.parent_hash,
+    block.timestamp::text,
+    block.miner_text,
+    block.gas_used_quantity,
+    block.gas_limit_quantity,
+    block.base_fee_per_gas_quantity,
+    block.transaction_count,
+    (SELECT COUNT(*) FROM transaction_inclusions AS inclusion
+     WHERE inclusion.chain_id = block.chain_id
+       AND inclusion.block_number = block.number
+       AND inclusion.block_hash = block.hash),
+    block.withdrawals_present,
+    block.withdrawal_count,
+    COALESCE((
+        SELECT jsonb_agg(jsonb_build_object(
+            'index', withdrawal.withdrawal_index::text,
+            'validator_index', withdrawal.validator_index::text,
+            'address', '0x' || encode(withdrawal.address, 'hex'),
+            'amount', withdrawal.amount::text
+        ) ORDER BY withdrawal.withdrawal_index)
+        FROM withdrawals AS withdrawal
+        WHERE withdrawal.chain_id = block.chain_id
+          AND withdrawal.block_number = block.number
+          AND withdrawal.block_hash = block.hash
+    ), '[]'::jsonb),
     TRUE,
     finality.safe_number::text,
     finality.finalized_number::text
@@ -511,12 +667,22 @@ LIMIT $3
 `
 
 type QueryListBlocksFirstRow struct {
-	Raw                     []byte `db:"raw" json:"raw"`
-	CanonicalNumber         string `db:"canonical_number" json:"canonical_number"`
-	BlockHash               []byte `db:"block_hash" json:"block_hash"`
-	Column4                 bool   `db:"column_4" json:"column_4"`
-	FinalitySafeNumber      string `db:"finality_safe_number" json:"finality_safe_number"`
-	FinalityFinalizedNumber string `db:"finality_finalized_number" json:"finality_finalized_number"`
+	BlockNumber             string      `db:"block_number" json:"block_number"`
+	Hash                    []byte      `db:"hash" json:"hash"`
+	ParentHash              []byte      `db:"parent_hash" json:"parent_hash"`
+	BlockTimestamp          string      `db:"block_timestamp" json:"block_timestamp"`
+	MinerText               *string     `db:"miner_text" json:"miner_text"`
+	GasUsedQuantity         *string     `db:"gas_used_quantity" json:"gas_used_quantity"`
+	GasLimitQuantity        *string     `db:"gas_limit_quantity" json:"gas_limit_quantity"`
+	BaseFeePerGasQuantity   *string     `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
+	TransactionCount        *int64      `db:"transaction_count" json:"transaction_count"`
+	Count                   int64       `db:"count" json:"count"`
+	WithdrawalsPresent      *bool       `db:"withdrawals_present" json:"withdrawals_present"`
+	WithdrawalCount         *int64      `db:"withdrawal_count" json:"withdrawal_count"`
+	Coalesce                interface{} `db:"coalesce" json:"coalesce"`
+	Column14                bool        `db:"column_14" json:"column_14"`
+	FinalitySafeNumber      string      `db:"finality_safe_number" json:"finality_safe_number"`
+	FinalityFinalizedNumber string      `db:"finality_finalized_number" json:"finality_finalized_number"`
 }
 
 func (q *Queries) QueryListBlocksFirst(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, limit int32) ([]QueryListBlocksFirstRow, error) {
@@ -529,10 +695,20 @@ func (q *Queries) QueryListBlocksFirst(ctx context.Context, column1 pgtype.Numer
 	for rows.Next() {
 		var i QueryListBlocksFirstRow
 		if err := rows.Scan(
-			&i.Raw,
-			&i.CanonicalNumber,
-			&i.BlockHash,
-			&i.Column4,
+			&i.BlockNumber,
+			&i.Hash,
+			&i.ParentHash,
+			&i.BlockTimestamp,
+			&i.MinerText,
+			&i.GasUsedQuantity,
+			&i.GasLimitQuantity,
+			&i.BaseFeePerGasQuantity,
+			&i.TransactionCount,
+			&i.Count,
+			&i.WithdrawalsPresent,
+			&i.WithdrawalCount,
+			&i.Coalesce,
+			&i.Column14,
 			&i.FinalitySafeNumber,
 			&i.FinalityFinalizedNumber,
 		); err != nil {
@@ -557,7 +733,8 @@ SELECT
     TRUE,
     finality.safe_number::text,
     finality.finalized_number::text,
-    block.raw
+    block.timestamp::text,
+    block.base_fee_per_gas_quantity
 FROM transaction_inclusions AS inclusion
 JOIN canonical_blocks AS canonical
   ON canonical.chain_id = inclusion.chain_id
@@ -580,16 +757,17 @@ LIMIT $3
 `
 
 type QueryListTransactionsFirstRow struct {
-	Raw                     []byte `db:"raw" json:"raw"`
-	Raw_2                   []byte `db:"raw_2" json:"raw_2"`
-	InclusionBlockNumber    string `db:"inclusion_block_number" json:"inclusion_block_number"`
-	BlockHash               []byte `db:"block_hash" json:"block_hash"`
-	TxIndex                 int64  `db:"tx_index" json:"tx_index"`
-	TxHash                  []byte `db:"tx_hash" json:"tx_hash"`
-	Column7                 bool   `db:"column_7" json:"column_7"`
-	FinalitySafeNumber      string `db:"finality_safe_number" json:"finality_safe_number"`
-	FinalityFinalizedNumber string `db:"finality_finalized_number" json:"finality_finalized_number"`
-	Raw_3                   []byte `db:"raw_3" json:"raw_3"`
+	Raw                     []byte  `db:"raw" json:"raw"`
+	Raw_2                   []byte  `db:"raw_2" json:"raw_2"`
+	InclusionBlockNumber    string  `db:"inclusion_block_number" json:"inclusion_block_number"`
+	BlockHash               []byte  `db:"block_hash" json:"block_hash"`
+	TxIndex                 int64   `db:"tx_index" json:"tx_index"`
+	TxHash                  []byte  `db:"tx_hash" json:"tx_hash"`
+	Column7                 bool    `db:"column_7" json:"column_7"`
+	FinalitySafeNumber      string  `db:"finality_safe_number" json:"finality_safe_number"`
+	FinalityFinalizedNumber string  `db:"finality_finalized_number" json:"finality_finalized_number"`
+	BlockTimestamp          string  `db:"block_timestamp" json:"block_timestamp"`
+	BaseFeePerGasQuantity   *string `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
 }
 
 func (q *Queries) QueryListTransactionsFirst(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, limit int32) ([]QueryListTransactionsFirstRow, error) {
@@ -611,7 +789,8 @@ func (q *Queries) QueryListTransactionsFirst(ctx context.Context, column1 pgtype
 			&i.Column7,
 			&i.FinalitySafeNumber,
 			&i.FinalityFinalizedNumber,
-			&i.Raw_3,
+			&i.BlockTimestamp,
+			&i.BaseFeePerGasQuantity,
 		); err != nil {
 			return nil, err
 		}
@@ -634,7 +813,8 @@ SELECT
     TRUE,
     finality.safe_number::text,
     finality.finalized_number::text,
-	block.raw,
+	block.timestamp::text,
+	block.base_fee_per_gas_quantity,
 	EXISTS (
 	    SELECT 1
 	    FROM published_block_stage_results AS published_state_diff
@@ -774,7 +954,8 @@ type QueryListTransactionsWithMethodRow struct {
 	Column7                 bool    `db:"column_7" json:"column_7"`
 	FinalitySafeNumber      string  `db:"finality_safe_number" json:"finality_safe_number"`
 	FinalityFinalizedNumber string  `db:"finality_finalized_number" json:"finality_finalized_number"`
-	Raw_3                   []byte  `db:"raw_3" json:"raw_3"`
+	BlockTimestamp          string  `db:"block_timestamp" json:"block_timestamp"`
+	BaseFeePerGasQuantity   *string `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
 	Exists                  bool    `db:"exists" json:"exists"`
 	Resolution              string  `db:"resolution" json:"resolution"`
 	ExecutionAddress        []byte  `db:"execution_address" json:"execution_address"`
@@ -808,7 +989,8 @@ func (q *Queries) QueryListTransactionsWithMethod(ctx context.Context, arg Query
 			&i.Column7,
 			&i.FinalitySafeNumber,
 			&i.FinalityFinalizedNumber,
-			&i.Raw_3,
+			&i.BlockTimestamp,
+			&i.BaseFeePerGasQuantity,
 			&i.Exists,
 			&i.Resolution,
 			&i.ExecutionAddress,
@@ -838,7 +1020,8 @@ SELECT
     TRUE,
     finality.safe_number::text,
     finality.finalized_number::text,
-	block.raw,
+	block.timestamp::text,
+	block.base_fee_per_gas_quantity,
 	EXISTS (
 	    SELECT 1
 	    FROM published_block_stage_results AS published_state_diff
@@ -968,7 +1151,8 @@ type QueryListTransactionsWithMethodFirstRow struct {
 	Column7                 bool    `db:"column_7" json:"column_7"`
 	FinalitySafeNumber      string  `db:"finality_safe_number" json:"finality_safe_number"`
 	FinalityFinalizedNumber string  `db:"finality_finalized_number" json:"finality_finalized_number"`
-	Raw_3                   []byte  `db:"raw_3" json:"raw_3"`
+	BlockTimestamp          string  `db:"block_timestamp" json:"block_timestamp"`
+	BaseFeePerGasQuantity   *string `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
 	Exists                  bool    `db:"exists" json:"exists"`
 	Resolution              string  `db:"resolution" json:"resolution"`
 	ExecutionAddress        []byte  `db:"execution_address" json:"execution_address"`
@@ -997,7 +1181,8 @@ func (q *Queries) QueryListTransactionsWithMethodFirst(ctx context.Context, colu
 			&i.Column7,
 			&i.FinalitySafeNumber,
 			&i.FinalityFinalizedNumber,
-			&i.Raw_3,
+			&i.BlockTimestamp,
+			&i.BaseFeePerGasQuantity,
 			&i.Exists,
 			&i.Resolution,
 			&i.ExecutionAddress,
@@ -1482,7 +1667,8 @@ SELECT
     (canonical.block_hash IS NOT NULL),
     finality.safe_number::text,
     finality.finalized_number::text,
-    block.raw
+    block.timestamp::text,
+    block.base_fee_per_gas_quantity
 FROM transaction_inclusions AS inclusion
 JOIN blocks AS block
   ON block.chain_id = inclusion.chain_id
@@ -1513,7 +1699,8 @@ type QueryTransactionByHashRow struct {
 	Column7                 interface{} `db:"column_7" json:"column_7"`
 	FinalitySafeNumber      string      `db:"finality_safe_number" json:"finality_safe_number"`
 	FinalityFinalizedNumber string      `db:"finality_finalized_number" json:"finality_finalized_number"`
-	Raw_3                   []byte      `db:"raw_3" json:"raw_3"`
+	BlockTimestamp          string      `db:"block_timestamp" json:"block_timestamp"`
+	BaseFeePerGasQuantity   *string     `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
 }
 
 func (q *Queries) QueryTransactionByHash(ctx context.Context, column1 pgtype.Numeric, txHash []byte) ([]QueryTransactionByHashRow, error) {
@@ -1535,7 +1722,8 @@ func (q *Queries) QueryTransactionByHash(ctx context.Context, column1 pgtype.Num
 			&i.Column7,
 			&i.FinalitySafeNumber,
 			&i.FinalityFinalizedNumber,
-			&i.Raw_3,
+			&i.BlockTimestamp,
+			&i.BaseFeePerGasQuantity,
 		); err != nil {
 			return nil, err
 		}

@@ -17,6 +17,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/db/gen"
+	"github.com/islishude/etherview/internal/stagecontract"
 )
 
 var (
@@ -32,25 +33,8 @@ const (
 	minPostgresInteger           = -maxPostgresInteger - 1
 )
 
-// ReplaySource identifies one durable reason to replay a job. Repeating the
-// same source after a crash is idempotent; a new source advances the target
-// generation exactly once.
-type ReplaySource struct {
-	Kind string
-	Key  string
-}
-
-type EnqueueRequest struct {
-	Kind        string
-	Stage       StageID
-	ChainID     string
-	BlockHash   common.Hash
-	BlockNumber uint64
-	Payload     json.RawMessage
-	Priority    int
-	MaxAttempts uint32
-	Replay      ReplaySource
-}
+type ReplaySource = stagecontract.ReplaySource
+type EnqueueRequest = stagecontract.EnqueueRequest
 
 type EnqueueResult struct {
 	Job      Job
@@ -230,7 +214,7 @@ func requestJobReplayTx(ctx context.Context, tx *sql.Tx, target Job, source Repl
 	if err := target.Validate(); err != nil {
 		return false, err
 	}
-	if err := source.validate(); err != nil {
+	if err := source.Validate(); err != nil {
 		return false, err
 	}
 	id, err := strconv.ParseInt(target.ID, 10, 64)
@@ -251,7 +235,7 @@ func requestJobReplayTx(ctx context.Context, tx *sql.Tx, target Job, source Repl
 }
 
 func requestLockedJobReplayTx(ctx context.Context, tx *sql.Tx, target Job, status string, source ReplaySource) (bool, error) {
-	if err := source.validate(); err != nil {
+	if err := source.Validate(); err != nil {
 		return false, err
 	}
 	if status == "cancelled" {
@@ -305,7 +289,7 @@ func replaySourceForStageKind(source Job, kind string) (ReplaySource, error) {
 		Kind: kind,
 		Key:  fmt.Sprintf("%s:%s:%d", source.Stage, key, generation),
 	}
-	if err := replay.validate(); err != nil {
+	if err := replay.Validate(); err != nil {
 		return ReplaySource{}, err
 	}
 	return replay, nil
@@ -540,21 +524,8 @@ func validateEnqueueRequest(request EnqueueRequest) error {
 	if len(request.Payload) > 0 && !json.Valid(request.Payload) {
 		return errors.New("enrichment job payload is not valid JSON")
 	}
-	if err := request.Replay.validate(); err != nil {
+	if err := request.Replay.Validate(); err != nil {
 		return err
-	}
-	return nil
-}
-
-func (source ReplaySource) validate() error {
-	if source == (ReplaySource{}) {
-		return nil
-	}
-	if strings.TrimSpace(source.Kind) == "" || len(source.Kind) > 64 {
-		return errors.New("enrichment replay source kind must contain between 1 and 64 bytes")
-	}
-	if strings.TrimSpace(source.Key) == "" || len(source.Key) > 256 {
-		return errors.New("enrichment replay source key must contain between 1 and 256 bytes")
 	}
 	return nil
 }

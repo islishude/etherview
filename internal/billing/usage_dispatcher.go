@@ -3,12 +3,15 @@ package billing
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 )
+
+const usagePersistenceTimeout = 5 * time.Second
 
 type UsageLedger interface {
 	ReserveUsage(context.Context, ReserveUsageInput) (UsageReservation, error)
@@ -192,7 +195,9 @@ func (dispatcher *UsageDispatcher) releaseDetached(
 	parent context.Context,
 	chargeID, owner, code string,
 ) error {
-	ctx, cancel := detachedPersistenceContext(parent)
+	ctx, cancel := context.WithTimeout(
+		context.WithoutCancel(parent), usagePersistenceTimeout,
+	)
 	defer cancel()
 	_, err := dispatcher.ledger.ReleaseUsage(ctx, chargeID, owner, code, dispatcher.now().UTC())
 	if err != nil {
@@ -209,5 +214,17 @@ func (dispatcher *UsageDispatcher) log(code string, err error) {
 }
 
 func writeUsageError(writer http.ResponseWriter, status int, code, message string) {
-	writeBillingError(writer, status, code, message)
+	response := struct {
+		Error struct {
+			Code      string `json:"code"`
+			Message   string `json:"message"`
+			RequestID string `json:"request_id"`
+		} `json:"error"`
+	}{}
+	response.Error.Code = code
+	response.Error.Message = message
+	response.Error.RequestID = writer.Header().Get("X-Request-ID")
+	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+	writer.WriteHeader(status)
+	_ = json.NewEncoder(writer).Encode(response)
 }

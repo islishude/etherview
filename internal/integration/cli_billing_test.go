@@ -19,7 +19,6 @@ import (
 
 func TestCLIAdminBillingInspectionAndReconciliationUseWriter(t *testing.T) {
 	t.Setenv("ETHERVIEW_FEATURE_USER_AUTH", "false")
-	t.Setenv("ETHERVIEW_FEATURE_X402_BILLING", "false")
 
 	db := newMigratedPostgres(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
@@ -60,7 +59,7 @@ func TestCLIAdminBillingInspectionAndReconciliationUseWriter(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "etherview-billing-admin.yaml")
 	configBody := fmt.Sprintf(
 		"chain:\n  id: 1\ndatabase:\n  url: %s\n  read_url: %s\n"+
-			"features:\n  user_auth: false\n  x402_billing: false\n",
+			"features:\n  user_auth: false\n",
 		strconv.Quote(databaseURL),
 		strconv.Quote("postgres://127.0.0.1:1/unreachable"),
 	)
@@ -240,7 +239,7 @@ func createCLIUnknownBillingPayment(
 	asset[19] = 0x11
 	recipient[19] = 0x22
 	payer[19] = 0x33
-	reservation, err := ledger.Reserve(ctx, billing.ReserveInput{
+	reservation, err := ledger.ReserveLegacyForIntegrationTest(ctx, billing.ReserveInput{
 		Fingerprint: fingerprint, Operation: "listBlocks",
 		ResourceDigest: resourceDigest, RequirementDigest: requirementDigest,
 		Network: "eip155:84532", Asset: asset, AmountAtomic: "1000",

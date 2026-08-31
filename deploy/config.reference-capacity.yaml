@@ -36,6 +36,8 @@ runtime:
   worker_count: 4
   backfill_workers: 8
   backfill_batch_blocks: 64
+  backfill_batch_bytes: 134217728
+  backfill_batch_rows: 100000
   lease_duration: 30s
 
 observability:
@@ -105,9 +107,6 @@ billing:
   max_payment_header_bytes: 16384
   max_buffered_response_bytes: 8388608
   max_captured_header_bytes: 65536
-  coarse_ip_rate: 100
-  coarse_ip_burst: 200
-  routes: {}
 
 ens:
   official_gateways: ["https://ccip-v3.ens.xyz"]

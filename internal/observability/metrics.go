@@ -1,9 +1,11 @@
 package observability
 
 import (
+	"database/sql"
 	"fmt"
 	"io"
 	"net/http"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -54,7 +56,6 @@ type Registry struct {
 	analyticsOldestDirty          float64
 	analyticsBackfill             float64
 	rateLimits                    map[string]uint64
-	x402Requests                  map[pair]uint64
 	billingTopups                 map[pair]uint64
 	billingUsage                  map[pair]uint64
 	ensResolutions                map[ensMetricKey]uint64
@@ -66,6 +67,7 @@ type Registry struct {
 	proxyDetectionInconsistent    uint64
 	safeProxyFingerprintMatches   uint64
 	safeProxyCompatibleCandidates uint64
+	databasePools                 map[string]*sql.DB
 }
 
 type requestKey struct {
@@ -123,7 +125,6 @@ func NewRegistry(version, role string) *Registry {
 		maintenance:                   make(map[pair]uint64),
 		analyticsRollups:              make(map[string]uint64),
 		rateLimits:                    make(map[string]uint64),
-		x402Requests:                  make(map[pair]uint64),
 		billingTopups:                 make(map[pair]uint64),
 		billingUsage:                  make(map[pair]uint64),
 		ensResolutions:                make(map[ensMetricKey]uint64),
@@ -131,7 +132,31 @@ func NewRegistry(version, role string) *Registry {
 		proxyDetectionRPCCalls:        make(map[string]uint64),
 		proxyDetectionRPCErrors:       make(map[string]uint64),
 		proxyDetectionResults:         make(map[proxyDetectionResultKey]uint64),
+		databasePools:                 make(map[string]*sql.DB),
 	}
+}
+
+// RegisterDatabasePool adds one process-local database/sql pool to the bounded
+// operational metric set. Only the architectural writer and optional reader
+// identities are accepted; connection strings and endpoint details never
+// become labels.
+func (registry *Registry) RegisterDatabasePool(name string, database *sql.DB) error {
+	if registry == nil {
+		return fmt.Errorf("register database pool: nil registry")
+	}
+	if name != "writer" && name != "reader" {
+		return fmt.Errorf("register database pool: unsupported pool %q", name)
+	}
+	if database == nil {
+		return fmt.Errorf("register database pool %q: nil database", name)
+	}
+	registry.mu.Lock()
+	defer registry.mu.Unlock()
+	if _, exists := registry.databasePools[name]; exists {
+		return fmt.Errorf("register database pool: duplicate pool %q", name)
+	}
+	registry.databasePools[name] = database
+	return nil
 }
 
 // ObserveProxyDetectionRun records one bounded detector-suite execution. RPC
@@ -371,18 +396,6 @@ func (registry *Registry) RecordRateLimit(decision string) {
 	registry.increment(registry.rateLimits, boundedRateDecision(decision))
 }
 
-// ObserveX402Request records one terminal process-local billing outcome. Both
-// labels are closed over the static eligible-operation catalog and a fixed
-// result vocabulary; payer, payment, resource, and remote error values cannot
-// become metric labels.
-func (registry *Registry) ObserveX402Request(operation, result string) {
-	registry.incrementPair(
-		registry.x402Requests,
-		boundedBillingOperation(operation),
-		boundedBillingResult(result),
-	)
-}
-
 func (registry *Registry) ObserveBillingTopup(method, result string) {
 	registry.incrementPair(
 		registry.billingTopups,
@@ -437,6 +450,8 @@ func (registry *Registry) Gather() string {
 	var output strings.Builder
 	writeHelp(&output, "etherview_build_info", "Static build and runtime role information.", "gauge")
 	fmt.Fprintf(&output, "etherview_build_info{role=%s,version=%s} 1\n", quote(registry.role), quote(registry.version))
+	writeRuntimeMetrics(&output)
+	writeDatabaseMetrics(&output, registry.databasePools)
 	writeHelp(&output, "etherview_sync_lag_blocks", "Difference between upstream and indexed canonical head.", "gauge")
 	fmt.Fprintf(&output, "etherview_sync_lag_blocks %s\n", formatFloat(registry.syncLag))
 	writeHelp(&output, "etherview_reorg_depth_blocks", "Depth of the most recently observed reorganization.", "gauge")
@@ -516,7 +531,6 @@ func (registry *Registry) Gather() string {
 	writeHelp(&output, "etherview_analytics_backfill_percent", "Canonical block source publication progress for historical analytics.", "gauge")
 	fmt.Fprintf(&output, "etherview_analytics_backfill_percent %s\n", formatFloat(registry.analyticsBackfill))
 	writeCounters(&output, "etherview_rate_limit_decisions_total", "Rate limit decisions grouped by outcome.", "decision", registry.rateLimits)
-	writePairCounters(&output, "etherview_x402_requests_total", "x402 request attempts grouped by eligible operation and terminal outcome.", "operation", "result", registry.x402Requests)
 	writePairCounters(&output, "etherview_billing_topups_total", "x402 account top-up attempts grouped by transfer method and terminal outcome.", "method", "result", registry.billingTopups)
 	writePairCounters(&output, "etherview_billing_usage_total", "Prepaid API usage attempts grouped by priced Etherscan operation and terminal outcome.", "operation", "result", registry.billingUsage)
 	return output.String()
@@ -524,6 +538,59 @@ func (registry *Registry) Gather() string {
 
 func writeHelp(output *strings.Builder, name, help, metricType string) {
 	fmt.Fprintf(output, "# HELP %s %s\n# TYPE %s %s\n", name, help, name, metricType)
+}
+
+func writeRuntimeMetrics(output *strings.Builder) {
+	var memory runtime.MemStats
+	runtime.ReadMemStats(&memory)
+	writeHelp(output, "etherview_go_goroutines", "Current number of goroutines in this process.", "gauge")
+	fmt.Fprintf(output, "etherview_go_goroutines %d\n", runtime.NumGoroutine())
+	writeHelp(output, "etherview_go_heap_alloc_bytes", "Bytes allocated and still in use on the Go heap.", "gauge")
+	fmt.Fprintf(output, "etherview_go_heap_alloc_bytes %d\n", memory.HeapAlloc)
+	writeHelp(output, "etherview_go_heap_objects", "Allocated Go heap objects still in use.", "gauge")
+	fmt.Fprintf(output, "etherview_go_heap_objects %d\n", memory.HeapObjects)
+	writeHelp(output, "etherview_go_gc_cycles_total", "Completed Go garbage-collection cycles.", "counter")
+	fmt.Fprintf(output, "etherview_go_gc_cycles_total %d\n", memory.NumGC)
+	writeHelp(output, "etherview_go_gc_pause_seconds_total", "Cumulative stop-the-world Go garbage-collection pause time.", "counter")
+	fmt.Fprintf(output, "etherview_go_gc_pause_seconds_total %s\n", formatFloat(float64(memory.PauseTotalNs)/float64(time.Second)))
+}
+
+func writeDatabaseMetrics(output *strings.Builder, pools map[string]*sql.DB) {
+	if len(pools) == 0 {
+		return
+	}
+	writeHelp(output, "etherview_database_max_open_connections", "Configured database/sql maximum open connections.", "gauge")
+	writeHelp(output, "etherview_database_connections", "Current database/sql connections grouped by state.", "gauge")
+	writeHelp(output, "etherview_database_wait_count_total", "database/sql connection waits.", "counter")
+	writeHelp(output, "etherview_database_wait_duration_seconds_total", "Cumulative database/sql connection wait duration.", "counter")
+	writeHelp(output, "etherview_database_connections_closed_total", "database/sql connections closed by bounded lifecycle policy.", "counter")
+	for _, name := range sortedKeys(pools) {
+		stats := pools[name].Stats()
+		pool := quote(name)
+		fmt.Fprintf(output, "etherview_database_max_open_connections{pool=%s} %d\n", pool, stats.MaxOpenConnections)
+		for _, state := range []struct {
+			name  string
+			value int
+		}{
+			{name: "open", value: stats.OpenConnections},
+			{name: "in_use", value: stats.InUse},
+			{name: "idle", value: stats.Idle},
+		} {
+			fmt.Fprintf(output, "etherview_database_connections{pool=%s,state=%s} %d\n", pool, quote(state.name), state.value)
+		}
+		fmt.Fprintf(output, "etherview_database_wait_count_total{pool=%s} %d\n", pool, stats.WaitCount)
+		fmt.Fprintf(output, "etherview_database_wait_duration_seconds_total{pool=%s} %s\n", pool, formatFloat(stats.WaitDuration.Seconds()))
+		for _, closed := range []struct {
+			reason string
+			value  int64
+		}{
+			{reason: "idle_limit", value: stats.MaxIdleClosed},
+			{reason: "idle_time", value: stats.MaxIdleTimeClosed},
+			{reason: "lifetime", value: stats.MaxLifetimeClosed},
+		} {
+			fmt.Fprintf(output, "etherview_database_connections_closed_total{pool=%s,reason=%s} %d\n", pool, quote(closed.reason), closed.value)
+		}
+	}
 }
 
 func writeCounters(output *strings.Builder, name, help, labelName string, values map[string]uint64) {
@@ -785,18 +852,6 @@ func boundedBillingOperation(value string) string {
 		return "other"
 	}
 	return string(operation.ID)
-}
-
-func boundedBillingResult(value string) string {
-	switch strings.TrimSpace(value) {
-	case "required", "invalid", "binding_conflict", "replayed",
-		"verify_rejected", "verify_unavailable", "handler_non_success",
-		"handler_failed", "ledger_unavailable", "settle_rejected",
-		"settlement_unknown", "settled":
-		return strings.TrimSpace(value)
-	default:
-		return "other"
-	}
 }
 
 func boundedTopupMethod(value string) string {

@@ -14,10 +14,10 @@ import (
 	"github.com/islishude/etherview/internal/db/gen"
 	ensresolver "github.com/islishude/etherview/internal/ens"
 	"github.com/islishude/etherview/internal/ethrpc"
-	"github.com/islishude/etherview/internal/httpapi"
+	"github.com/islishude/etherview/internal/publicquery"
 )
 
-var ErrInvalidCursor = httpapi.ErrInvalidCursor
+var ErrInvalidCursor = publicquery.ErrInvalidCursor
 
 type LatestBlockFunc func(context.Context) (uint64, error)
 
@@ -57,7 +57,7 @@ type PostgresReader struct {
 	nameResolver  NameResolver
 }
 
-var _ httpapi.Reader = (*PostgresReader)(nil)
+var _ publicquery.Reader = (*PostgresReader)(nil)
 
 func NewPostgresReader(db *sql.DB, options Options) (*PostgresReader, error) {
 	if db == nil {
@@ -89,7 +89,7 @@ func NewPostgresReader(db *sql.DB, options Options) (*PostgresReader, error) {
 	}, nil
 }
 
-func (r *PostgresReader) Status(ctx context.Context) (httpapi.StatusSnapshot, error) {
+func (r *PostgresReader) Status(ctx context.Context) (publicquery.StatusSnapshot, error) {
 	return r.status(ctx, r.db, r.runtimeStatus, r.latestBlock)
 }
 
@@ -98,8 +98,8 @@ func (r *PostgresReader) status(
 	queryer searchQueryer,
 	runtimeStatus RuntimeStatusFunc,
 	latestBlock LatestBlockFunc,
-) (httpapi.StatusSnapshot, error) {
-	snapshot := httpapi.StatusSnapshot{
+) (publicquery.StatusSnapshot, error) {
+	snapshot := publicquery.StatusSnapshot{
 		CoverageStart: r.startBlock,
 		CoverageEnd:   r.startBlock,
 		Completeness:  r.completeness,
@@ -115,76 +115,76 @@ func (r *PostgresReader) status(
 		&safeHeight, &finalizedHeight,
 		&traceState,
 	); err != nil {
-		return httpapi.StatusSnapshot{}, fmt.Errorf("query index status: %w", err)
+		return publicquery.StatusSnapshot{}, fmt.Errorf("query index status: %w", err)
 	}
 	configured := configuredStart.Valid
 	if configured {
 		persistedStart, err := parseDecimalUint64(configuredStart.String)
 		if err != nil {
-			return httpapi.StatusSnapshot{}, fmt.Errorf("decode configured index start: %w", err)
+			return publicquery.StatusSnapshot{}, fmt.Errorf("decode configured index start: %w", err)
 		}
 		if persistedStart != r.startBlock {
-			return httpapi.StatusSnapshot{}, fmt.Errorf("configured index start mismatch: persisted=%d requested=%d", persistedStart, r.startBlock)
+			return publicquery.StatusSnapshot{}, fmt.Errorf("configured index start mismatch: persisted=%d requested=%d", persistedStart, r.startBlock)
 		}
 		snapshot.CoverageStart = persistedStart
 	}
 	if contiguousEnd.Valid != checkpointHeight.Valid {
-		return httpapi.StatusSnapshot{}, errors.New("core coverage and checkpoint presence differ")
+		return publicquery.StatusSnapshot{}, errors.New("core coverage and checkpoint presence differ")
 	}
 	if contiguousEnd.Valid {
 		if len(contiguousHash) != 32 || len(checkpointHash) != 32 || !equalBytes(contiguousHash, checkpointHash) {
-			return httpapi.StatusSnapshot{}, errors.New("core coverage and checkpoint identities differ")
+			return publicquery.StatusSnapshot{}, errors.New("core coverage and checkpoint identities differ")
 		}
 		indexed, err := parseDecimalUint64(contiguousEnd.String)
 		if err != nil {
-			return httpapi.StatusSnapshot{}, fmt.Errorf("decode contiguous coverage end: %w", err)
+			return publicquery.StatusSnapshot{}, fmt.Errorf("decode contiguous coverage end: %w", err)
 		}
 		checkpoint, err := parseDecimalUint64(checkpointHeight.String)
 		if err != nil {
-			return httpapi.StatusSnapshot{}, fmt.Errorf("decode core checkpoint: %w", err)
+			return publicquery.StatusSnapshot{}, fmt.Errorf("decode core checkpoint: %w", err)
 		}
 		if indexed != checkpoint {
-			return httpapi.StatusSnapshot{}, errors.New("core coverage and checkpoint heights differ")
+			return publicquery.StatusSnapshot{}, errors.New("core coverage and checkpoint heights differ")
 		}
 		snapshot.IndexedBlock = indexed
 	}
 	if highestEnd.Valid {
 		if !configured || len(highestHash) != 32 {
-			return httpapi.StatusSnapshot{}, errors.New("highest coverage identity is internally inconsistent")
+			return publicquery.StatusSnapshot{}, errors.New("highest coverage identity is internally inconsistent")
 		}
 		highest, err := parseDecimalUint64(highestEnd.String)
 		if err != nil {
-			return httpapi.StatusSnapshot{}, fmt.Errorf("decode highest covered block: %w", err)
+			return publicquery.StatusSnapshot{}, fmt.Errorf("decode highest covered block: %w", err)
 		}
 		if contiguousEnd.Valid && snapshot.IndexedBlock > highest {
-			return httpapi.StatusSnapshot{}, errors.New("contiguous coverage exceeds highest covered block")
+			return publicquery.StatusSnapshot{}, errors.New("contiguous coverage exceeds highest covered block")
 		}
 		snapshot.HighestCoveredBlock = highest
 		snapshot.HighestCoveredKnown = true
 		snapshot.CoverageEnd = highest
 	} else if contiguousEnd.Valid {
-		return httpapi.StatusSnapshot{}, errors.New("contiguous coverage exists without highest coverage")
+		return publicquery.StatusSnapshot{}, errors.New("contiguous coverage exists without highest coverage")
 	}
 	var err error
 	snapshot.SafeBlock, snapshot.FinalizedBlock, err = finalityNumbers(safeHeight, finalizedHeight)
 	if err != nil {
-		return httpapi.StatusSnapshot{}, err
+		return publicquery.StatusSnapshot{}, err
 	}
 	if !snapshot.HighestCoveredKnown && (snapshot.SafeBlock != nil || snapshot.FinalizedBlock != nil) {
-		return httpapi.StatusSnapshot{}, errors.New("finality markers exist without canonical blocks")
+		return publicquery.StatusSnapshot{}, errors.New("finality markers exist without canonical blocks")
 	}
 	if snapshot.HighestCoveredKnown {
 		if snapshot.SafeBlock != nil && *snapshot.SafeBlock > snapshot.HighestCoveredBlock {
-			return httpapi.StatusSnapshot{}, errors.New("safe height exceeds canonical coverage")
+			return publicquery.StatusSnapshot{}, errors.New("safe height exceeds canonical coverage")
 		}
 		if snapshot.FinalizedBlock != nil && *snapshot.FinalizedBlock > snapshot.HighestCoveredBlock {
-			return httpapi.StatusSnapshot{}, errors.New("finalized height exceeds canonical coverage")
+			return publicquery.StatusSnapshot{}, errors.New("finalized height exceeds canonical coverage")
 		}
 	}
 	if snapshot.Completeness.Trace == gen.StageStatePending {
 		snapshot.Completeness.Trace, err = currentTraceCompleteness(contiguousEnd.Valid, traceState)
 		if err != nil {
-			return httpapi.StatusSnapshot{}, err
+			return publicquery.StatusSnapshot{}, err
 		}
 	}
 
@@ -194,7 +194,7 @@ func (r *PostgresReader) status(
 	if runtimeStatus != nil {
 		runtime, exists, err := runtimeStatus(ctx)
 		if err != nil {
-			return httpapi.StatusSnapshot{}, fmt.Errorf("read durable sync runtime status: %w", err)
+			return publicquery.StatusSnapshot{}, fmt.Errorf("read durable sync runtime status: %w", err)
 		}
 		if exists && runtime.LatestKnown {
 			snapshot.LatestBlock = runtime.Latest
@@ -211,7 +211,7 @@ func (r *PostgresReader) status(
 	} else if latestBlock != nil {
 		latest, err := latestBlock(ctx)
 		if err != nil {
-			return httpapi.StatusSnapshot{}, fmt.Errorf("read upstream latest block: %w", err)
+			return publicquery.StatusSnapshot{}, fmt.Errorf("read upstream latest block: %w", err)
 		}
 		snapshot.LatestBlock = latest
 		latestKnown = true
@@ -242,7 +242,7 @@ func (r *PostgresReader) Blocks(ctx context.Context, encodedCursor string, limit
 			return nil, "", err
 		}
 	} else {
-		if err := httpapi.DecodeCursor(encodedCursor, &snapshot); err != nil {
+		if err := publicquery.DecodeCursor(encodedCursor, &snapshot); err != nil {
 			return nil, "", fmt.Errorf("%w: %v", ErrInvalidCursor, err)
 		}
 		if err := r.validateBlockCursor(ctx, tx, snapshot); err != nil {
@@ -288,7 +288,7 @@ func (r *PostgresReader) Blocks(ctx context.Context, encodedCursor string, limit
 		return items, "", nil
 	}
 	last := records[len(records)-1]
-	next, err := httpapi.EncodeCursor(blockCursor{
+	next, err := publicquery.EncodeCursor(blockCursor{
 		ChainID:        r.chainID,
 		SnapshotNumber: snapshot.SnapshotNumber,
 		SnapshotHash:   snapshot.SnapshotHash,
@@ -314,7 +314,7 @@ func (r *PostgresReader) Block(ctx context.Context, identifier string) (gen.Bloc
 			if err := rows.Err(); err != nil {
 				return gen.Block{}, fmt.Errorf("query block by hash: %w", err)
 			}
-			return gen.Block{}, httpapi.ErrNotFound
+			return gen.Block{}, publicquery.ErrNotFound
 		}
 		record, err := r.scanBlock(rows, false)
 		if err != nil {
@@ -335,7 +335,7 @@ func (r *PostgresReader) Block(ctx context.Context, identifier string) (gen.Bloc
 		if err := rows.Err(); err != nil {
 			return gen.Block{}, fmt.Errorf("query block by number: %w", err)
 		}
-		return gen.Block{}, httpapi.ErrNotFound
+		return gen.Block{}, publicquery.ErrNotFound
 	}
 	record, err := r.scanBlock(rows, true)
 	if err != nil {
@@ -367,7 +367,7 @@ func (r *PostgresReader) Transaction(ctx context.Context, value string) (gen.Tra
 		if err := rows.Err(); err != nil {
 			return gen.Transaction{}, fmt.Errorf("query transaction: %w", err)
 		}
-		return gen.Transaction{}, httpapi.ErrNotFound
+		return gen.Transaction{}, publicquery.ErrNotFound
 	}
 	record, err := r.scanTransaction(rows, snapshot.SnapshotNumber)
 	if err != nil {
@@ -386,7 +386,7 @@ func (r *PostgresReader) Address(_ context.Context, value string) (gen.AddressSu
 	if _, err := ethrpc.ParseAddress(value); err != nil {
 		return gen.AddressSummary{}, fmt.Errorf("invalid address: %w", err)
 	}
-	return gen.AddressSummary{}, fmt.Errorf("%w: address balance, nonce, and code state are not indexed", httpapi.ErrUnavailable)
+	return gen.AddressSummary{}, fmt.Errorf("%w: address balance, nonce, and code state are not indexed", publicquery.ErrUnavailable)
 }
 
 func (r *PostgresReader) Search(ctx context.Context, value, encodedCursor string, limit int) ([]gen.SearchResult, string, error) {
@@ -458,7 +458,7 @@ func (r *PostgresReader) search(
 	var boundary *searchCursor
 	if encodedCursor != "" {
 		var decoded searchCursor
-		if err := httpapi.DecodeCursor(encodedCursor, &decoded); err != nil {
+		if err := publicquery.DecodeCursor(encodedCursor, &decoded); err != nil {
 			return nil, "", fmt.Errorf("%w: %v", ErrInvalidCursor, err)
 		}
 		if err := r.validateSearchCursor(ctx, tx, decoded, value); err != nil {
@@ -543,7 +543,7 @@ func (r *PostgresReader) search(
 		return results, "", nil
 	}
 	last := results[len(results)-1]
-	next, err := httpapi.EncodeCursor(searchCursor{
+	next, err := publicquery.EncodeCursor(searchCursor{
 		ChainID: r.chainID, SnapshotNumber: snapshot.SnapshotNumber, SnapshotHash: snapshot.SnapshotHash,
 		Generation: generation, Query: strings.ToLower(value),
 		ResolvedName: gate.Name, ResolvedNameAddress: gate.Address,
@@ -562,13 +562,13 @@ type capabilityDetailer interface {
 
 func nameResolverError(err error) error {
 	if errors.Is(err, ensresolver.ErrInvalidName) {
-		return httpapi.ErrInvalidInput
+		return publicquery.ErrInvalidInput
 	}
 	var detailer capabilityDetailer
 	if errors.As(err, &detailer) {
 		capability, state, code := detailer.CapabilityDetails()
 		if capability == "name" && stableNameCapabilityCode(code) {
-			if stable := httpapi.NewCapabilityUnavailableError(capability, state, code); stable != httpapi.ErrUnavailable {
+			if stable := publicquery.NewCapabilityUnavailableError(capability, state, code); stable != publicquery.ErrUnavailable {
 				return stable
 			}
 		}
@@ -592,7 +592,7 @@ func stableNameCapabilityCode(code string) bool {
 }
 
 func nameCapabilityUnavailable(state, code string) error {
-	return httpapi.NewCapabilityUnavailableError("name", state, code)
+	return publicquery.NewCapabilityUnavailableError("name", state, code)
 }
 
 func externalNameQuery(value string) bool {

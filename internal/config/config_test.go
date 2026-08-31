@@ -374,6 +374,8 @@ func TestLoadEnvironmentAndSecretFile(t *testing.T) {
 	t.Setenv("ETHERVIEW_API_KEY_PEPPER", strings.Repeat("p", 32))
 	t.Setenv("ETHERVIEW_BACKFILL_WORKERS", "8")
 	t.Setenv("ETHERVIEW_BACKFILL_BATCH_BLOCKS", "128")
+	t.Setenv("ETHERVIEW_BACKFILL_BATCH_BYTES", "134217728")
+	t.Setenv("ETHERVIEW_BACKFILL_BATCH_ROWS", "12345")
 	t.Setenv("ETHERVIEW_MEMPOOL_POLL_INTERVAL", "1500ms")
 	t.Setenv("ETHERVIEW_MEMPOOL_RETENTION", "15m")
 	t.Setenv("ETHERVIEW_MEMPOOL_MAX_TRANSACTIONS", "1234")
@@ -396,6 +398,7 @@ func TestLoadEnvironmentAndSecretFile(t *testing.T) {
 		t.Fatalf("unexpected endpoints: %#v", cfg.RPC.Endpoints)
 	}
 	if cfg.Runtime.BackfillWorkers != 8 || cfg.Runtime.BackfillBatchBlocks != 128 ||
+		cfg.Runtime.BackfillBatchBytes != 128<<20 || cfg.Runtime.BackfillBatchRows != 12345 ||
 		len(cfg.Security.APIKeyPepper) != 32 {
 		t.Fatalf("unexpected runtime/security override: %#v", cfg)
 	}
@@ -534,6 +537,8 @@ func TestRuntimeWorkerAndBackfillConfigurationIsStrictlyBounded(t *testing.T) {
 	cfg.Runtime.WorkerCount = maximumRuntimeWorkerCount
 	cfg.Runtime.BackfillWorkers = maximumRuntimeBackfillWorkers
 	cfg.Runtime.BackfillBatchBlocks = maximumRuntimeBackfillBatchBlocks
+	cfg.Runtime.BackfillBatchBytes = maximumRuntimeBackfillBatchBytes
+	cfg.Runtime.BackfillBatchRows = maximumRuntimeBackfillBatchRows
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("maximum runtime bounds rejected: %v", err)
 	}
@@ -560,6 +565,18 @@ func TestRuntimeWorkerAndBackfillConfigurationIsStrictlyBounded(t *testing.T) {
 		}},
 		{name: "excessive backfill batch", field: "runtime.backfill_batch_blocks", mutate: func(cfg *Config) {
 			cfg.Runtime.BackfillBatchBlocks = maximumRuntimeBackfillBatchBlocks + 1
+		}},
+		{name: "small backfill byte batch", field: "runtime.backfill_batch_bytes", mutate: func(cfg *Config) {
+			cfg.Runtime.BackfillBatchBytes = minimumRuntimeBackfillBatchBytes - 1
+		}},
+		{name: "excessive backfill byte batch", field: "runtime.backfill_batch_bytes", mutate: func(cfg *Config) {
+			cfg.Runtime.BackfillBatchBytes = maximumRuntimeBackfillBatchBytes + 1
+		}},
+		{name: "zero backfill row batch", field: "runtime.backfill_batch_rows", mutate: func(cfg *Config) {
+			cfg.Runtime.BackfillBatchRows = minimumRuntimeBackfillBatchRows - 1
+		}},
+		{name: "excessive backfill row batch", field: "runtime.backfill_batch_rows", mutate: func(cfg *Config) {
+			cfg.Runtime.BackfillBatchRows = maximumRuntimeBackfillBatchRows + 1
 		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {

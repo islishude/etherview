@@ -18,6 +18,12 @@ const (
 	maximumRuntimeWorkerCount         = 64
 	maximumRuntimeBackfillWorkers     = 64
 	maximumRuntimeBackfillBatchBlocks = 256
+	minimumRuntimeBackfillBatchBytes  = 1 << 20
+	maximumRuntimeBackfillBatchBytes  = 1 << 30
+	minimumRuntimeBackfillBatchRows   = 2
+	maximumRuntimeBackfillBatchRows   = 2_000_000
+	defaultRuntimeBackfillBatchBytes  = 256 << 20
+	defaultRuntimeBackfillBatchRows   = 200_000
 
 	defaultVerificationExecutorPath = "/opt/etherview/solcjs/etherview-solcjs"
 	defaultVerificationGeasPath     = "/usr/local/bin/etherview-geas-compiler"
@@ -115,6 +121,8 @@ type RuntimeConfig struct {
 	WorkerCount         int           `yaml:"worker_count"`
 	BackfillWorkers     int           `yaml:"backfill_workers"`
 	BackfillBatchBlocks int           `yaml:"backfill_batch_blocks"`
+	BackfillBatchBytes  int64         `yaml:"backfill_batch_bytes"`
+	BackfillBatchRows   int           `yaml:"backfill_batch_rows"`
 	LeaseDuration       time.Duration `yaml:"lease_duration"`
 }
 
@@ -173,7 +181,6 @@ type FeatureConfig struct {
 	ENS                    bool `yaml:"ens"`
 	UserAuth               bool `yaml:"user_auth"`
 	UserAPIKeys            bool `yaml:"user_api_keys"`
-	X402Billing            bool `yaml:"x402_billing"`
 	APIBilling             bool `yaml:"api_billing"`
 	X402Topups             bool `yaml:"x402_topups"`
 	ProxyDetectionV2       bool `yaml:"proxy_detection_v2"`
@@ -268,17 +275,13 @@ type UserAuthConfig struct {
 	SessionPepper     string        `yaml:"-"`
 }
 
-type BillingRouteConfig struct {
-	Access       string `yaml:"access"`
-	AmountAtomic string `yaml:"amount_atomic"`
-}
-
 type BillingOperationConfig struct {
 	AmountAtomic string `yaml:"amount_atomic"`
 }
 
-// BillingConfig describes the local x402 policy. FingerprintPepper and
-// FacilitatorHeaders are Secret-only values and are never accepted from YAML.
+// BillingConfig describes prepaid usage and optional x402 top-up policy.
+// FingerprintPepper and FacilitatorHeaders are Secret-only values and are
+// never accepted from YAML.
 type BillingConfig struct {
 	FacilitatorURL              string                            `yaml:"facilitator_url"`
 	FacilitatorAllowedCIDRs     []string                          `yaml:"facilitator_allowed_cidrs"`
@@ -301,9 +304,6 @@ type BillingConfig struct {
 	MaxPaymentHeaderBytes       int                               `yaml:"max_payment_header_bytes"`
 	MaxBufferedResponseBytes    int64                             `yaml:"max_buffered_response_bytes"`
 	MaxCapturedHeaderBytes      int                               `yaml:"max_captured_header_bytes"`
-	CoarseIPRate                int                               `yaml:"coarse_ip_rate"`
-	CoarseIPBurst               int                               `yaml:"coarse_ip_burst"`
-	Routes                      map[string]BillingRouteConfig     `yaml:"routes"`
 	Operations                  map[string]BillingOperationConfig `yaml:"operations"`
 	FingerprintPepper           string                            `yaml:"-"`
 	FacilitatorHeaders          map[string]string                 `yaml:"-"`
@@ -373,6 +373,8 @@ func Default() Config {
 			WorkerCount:         4,
 			BackfillWorkers:     4,
 			BackfillBatchBlocks: maximumRuntimeBackfillBatchBlocks,
+			BackfillBatchBytes:  defaultRuntimeBackfillBatchBytes,
+			BackfillBatchRows:   defaultRuntimeBackfillBatchRows,
 			LeaseDuration:       30 * time.Second,
 		},
 		Mempool: MempoolConfig{
@@ -467,9 +469,6 @@ func Default() Config {
 			MaxPaymentHeaderBytes:       16 << 10,
 			MaxBufferedResponseBytes:    8 << 20,
 			MaxCapturedHeaderBytes:      64 << 10,
-			CoarseIPRate:                100,
-			CoarseIPBurst:               200,
-			Routes:                      map[string]BillingRouteConfig{},
 			Operations:                  map[string]BillingOperationConfig{},
 		},
 	}

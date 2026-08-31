@@ -87,6 +87,8 @@ config:
     worker_count: 4
     backfill_workers: 8
     backfill_batch_blocks: 64
+    backfill_batch_bytes: 134217728
+    backfill_batch_rows: 100000
     lease_duration: 30s
   observability:
     metrics_refresh_interval: 5s

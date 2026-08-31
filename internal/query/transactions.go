@@ -13,7 +13,7 @@ import (
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
-	"github.com/islishude/etherview/internal/httpapi"
+	"github.com/islishude/etherview/internal/publicquery"
 )
 
 type transactionCursor struct {
@@ -62,7 +62,7 @@ func (r *PostgresReader) Transactions(ctx context.Context, encodedCursor string,
 			return nil, "", err
 		}
 	} else {
-		if err := httpapi.DecodeCursor(encodedCursor, &cursor); err != nil {
+		if err := publicquery.DecodeCursor(encodedCursor, &cursor); err != nil {
 			return nil, "", fmt.Errorf("%w: %v", ErrInvalidCursor, err)
 		}
 		if err := r.validateTransactionCursor(ctx, tx, cursor); err != nil {
@@ -118,7 +118,7 @@ func (r *PostgresReader) Transactions(ctx context.Context, encodedCursor string,
 		return items, "", nil
 	}
 	last := records[len(records)-1]
-	next, err := httpapi.EncodeCursor(transactionCursor{
+	next, err := publicquery.EncodeCursor(transactionCursor{
 		ChainID: r.chainID, SnapshotNumber: cursor.SnapshotNumber, SnapshotHash: cursor.SnapshotHash,
 		BeforeBlockNumber: last.BlockNumber, BeforeBlockHash: last.BlockHash.String(),
 		BeforeTxIndex: last.Index, BeforeTxHash: last.Hash.String(),
@@ -133,16 +133,17 @@ func (r *PostgresReader) scanTransactionWithMethod(
 	scanner rowScanner,
 	tipNumber uint64,
 ) (transactionRecord, error) {
-	var transactionJSON, receiptJSON, blockRaw []byte
-	var blockNumberText string
+	var transactionJSON, receiptJSON []byte
+	var blockNumberText, blockTimestampText string
 	var blockHashBytes, transactionHashBytes []byte
 	var transactionIndex int64
 	var canonical bool
-	var safeHeight, finalizedHeight sql.NullString
+	var safeHeight, finalizedHeight, blockBaseFeeText sql.NullString
 	var method transactionMethodContext
 	if err := scanner.Scan(
 		&transactionJSON, &receiptJSON, &blockNumberText, &blockHashBytes, &transactionIndex,
-		&transactionHashBytes, &canonical, &safeHeight, &finalizedHeight, &blockRaw,
+		&transactionHashBytes, &canonical, &safeHeight, &finalizedHeight,
+		&blockTimestampText, &blockBaseFeeText,
 		&method.stateDiffComplete, &method.executionResolution,
 		&method.executionAddress, &method.executionCodeHash,
 		&method.decodedSignature, &method.decodedSource, &method.decodedConfidence,
@@ -150,7 +151,8 @@ func (r *PostgresReader) scanTransactionWithMethod(
 		return transactionRecord{}, fmt.Errorf("scan transaction with method: %w", err)
 	}
 	model, err := r.transactionModel(
-		transactionJSON, receiptJSON, blockRaw, blockNumberText, blockHashBytes, transactionIndex,
+		transactionJSON, receiptJSON, blockTimestampText, blockBaseFeeText,
+		blockNumberText, blockHashBytes, transactionIndex,
 		transactionHashBytes, canonical, safeHeight, finalizedHeight, tipNumber,
 	)
 	if err != nil {
@@ -263,20 +265,22 @@ func (r *PostgresReader) validateTransactionCursor(ctx context.Context, tx *sql.
 }
 
 func (r *PostgresReader) scanTransaction(scanner rowScanner, tipNumber uint64) (transactionRecord, error) {
-	var transactionJSON, receiptJSON, blockRaw []byte
-	var blockNumberText string
+	var transactionJSON, receiptJSON []byte
+	var blockNumberText, blockTimestampText string
 	var blockHashBytes, transactionHashBytes []byte
 	var transactionIndex int64
 	var canonical bool
-	var safeHeight, finalizedHeight sql.NullString
+	var safeHeight, finalizedHeight, blockBaseFeeText sql.NullString
 	if err := scanner.Scan(
 		&transactionJSON, &receiptJSON, &blockNumberText, &blockHashBytes, &transactionIndex,
-		&transactionHashBytes, &canonical, &safeHeight, &finalizedHeight, &blockRaw,
+		&transactionHashBytes, &canonical, &safeHeight, &finalizedHeight,
+		&blockTimestampText, &blockBaseFeeText,
 	); err != nil {
 		return transactionRecord{}, fmt.Errorf("scan transaction: %w", err)
 	}
 	model, err := r.transactionModel(
-		transactionJSON, receiptJSON, blockRaw, blockNumberText, blockHashBytes, transactionIndex,
+		transactionJSON, receiptJSON, blockTimestampText, blockBaseFeeText,
+		blockNumberText, blockHashBytes, transactionIndex,
 		transactionHashBytes, canonical, safeHeight, finalizedHeight, tipNumber,
 	)
 	if err != nil {

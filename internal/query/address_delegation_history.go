@@ -8,7 +8,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
-	"github.com/islishude/etherview/internal/httpapi"
+	"github.com/islishude/etherview/internal/publicquery"
 )
 
 // HasAddressDelegationHistory reports whether an address has at least one
@@ -38,7 +38,7 @@ func (r *PostgresReader) HasAddressDelegationHistory(
 		return false, fmt.Errorf("check address delegation history: %w", err)
 	}
 	if !referenceCanonical {
-		return false, fmt.Errorf("%w: address state reference is no longer canonical", httpapi.ErrNotReady)
+		return false, fmt.Errorf("%w: address state reference is no longer canonical", publicquery.ErrNotReady)
 	}
 	if err := tx.Commit(); err != nil {
 		return false, fmt.Errorf("commit delegation history snapshot: %w", err)

@@ -2,6 +2,7 @@ package etherscan
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,23 +12,28 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/islishude/etherview/internal/db/gen"
 )
 
 var topicOperatorPattern = regexp.MustCompile(`^topic([0-3])_([0-3])_opr$`)
 
+const maximumLogBlockSpan uint64 = 100_000
+
 func (b *PostgresBackend) logs(ctx context.Context, values url.Values) ([]logEntry, error) {
 	page, err := parsePagination(values)
 	if err != nil {
 		return nil, err
 	}
+	fromNumber := new(big.Int)
 	fromBlock := "0"
 	if raw := strings.TrimSpace(values.Get("fromBlock")); raw != "" {
 		value, err := parseDecimal(raw, "fromBlock")
 		if err != nil {
 			return nil, err
 		}
+		fromNumber = value
 		fromBlock = value.String()
 	}
 	var coverageEnd *string
@@ -66,12 +72,30 @@ func (b *PostgresBackend) logs(ctx context.Context, values url.Values) ([]logEnt
 		return nil, err
 	}
 	defer tx.Rollback() //nolint:errcheck
-	if _, err := b.requireCanonicalCoreRange(ctx, tx, fromBlock, coverageEnd); err != nil {
+	tip, err := b.requireCanonicalCoreRange(ctx, tx, fromBlock, coverageEnd)
+	if err != nil {
 		return nil, err
 	}
-	rows, err := tx.QueryContext(ctx, dbgen.EtherscanLogs,
+	effectiveEnd := mustBig(tip)
+	if coverageEnd != nil {
+		requestedEnd := mustBig(*coverageEnd)
+		if requestedEnd.Cmp(effectiveEnd) < 0 {
+			effectiveEnd = requestedEnd
+		}
+	}
+	span := new(big.Int).Sub(effectiveEnd, fromNumber)
+	span.Add(span, big.NewInt(1))
+	if span.Cmp(new(big.Int).SetUint64(maximumLogBlockSpan)) > 0 {
+		return nil, invalidParameter("log block range exceeds %d blocks", maximumLogBlockSpan)
+	}
+	indexedTopic0 := indexableTopic0(topicFilters)
+	query := dbgen.EtherscanLogsAsc
+	if page.direction == "DESC" {
+		query = dbgen.EtherscanLogsDesc
+	}
+	rows, err := tx.QueryContext(ctx, query,
 		b.chain, fromBlock, toBlock, address, encodedTopics,
-		page.limit, page.offset, page.direction,
+		indexedTopic0 != nil, indexedTopic0, page.limit, page.offset,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query logs: %w", err)
@@ -98,6 +122,18 @@ func (b *PostgresBackend) logs(ctx context.Context, values url.Values) ([]logEnt
 		return nil, fmt.Errorf("commit log snapshot: %w", err)
 	}
 	return result, nil
+}
+
+func indexableTopic0(filters []sqlTopicFilter) []byte {
+	if len(filters) == 0 || filters[0].Index != 0 {
+		return nil
+	}
+	for _, filter := range filters[1:] {
+		if filter.Operator != "AND" {
+			return nil
+		}
+	}
+	return common.HexToHash(filters[0].Value).Bytes()
 }
 
 type sqlTopicFilter struct {
@@ -178,12 +214,14 @@ func buildTopicFilter(values url.Values) ([]sqlTopicFilter, error) {
 }
 
 func scanLogEntry(scanner rowScanner) (logEntry, error) {
-	var logJSON, receiptJSON, transactionJSON, blockJSON []byte
-	var blockNumberText string
+	var logJSON, receiptJSON, transactionJSON []byte
+	var blockTimestampText, blockNumberText string
+	var blockBaseFeeText sql.NullString
 	var blockHashBytes, transactionHashBytes, addressBytes []byte
 	var logIndex, transactionIndex int64
 	if err := scanner.Scan(
-		&logJSON, &receiptJSON, &transactionJSON, &blockJSON, &blockNumberText,
+		&logJSON, &receiptJSON, &transactionJSON,
+		&blockTimestampText, &blockBaseFeeText, &blockNumberText,
 		&blockHashBytes, &logIndex, &transactionIndex, &transactionHashBytes, &addressBytes,
 	); err != nil {
 		return logEntry{}, fmt.Errorf("scan log: %w", err)
@@ -225,22 +263,21 @@ func scanLogEntry(scanner rowScanner) (logEntry, error) {
 	if transaction.Hash() != transactionHash {
 		return logEntry{}, errors.New("stored log transaction identity does not match indexed row")
 	}
+	block, err := decodeStoredBlockContext(blockTimestampText, blockBaseFeeText)
+	if err != nil {
+		return logEntry{}, err
+	}
 
 	receipt, err := decodeStoredReceiptWithBlockContext(
 		receiptJSON,
-		blockJSON,
 		transaction,
 		blockHash,
 		blockNumber,
 		transactionIndex,
+		block.BaseFee,
 	)
 	if err != nil {
 		return logEntry{}, fmt.Errorf("decode log receipt raw JSON: %w", err)
-	}
-
-	block, err := decodeStoredBlockProjection(blockJSON, blockHash, blockNumber)
-	if err != nil {
-		return logEntry{}, fmt.Errorf("decode log block raw JSON: %w", err)
 	}
 
 	address, err := checksumAddress(wireLog.Address)
@@ -257,7 +294,7 @@ func scanLogEntry(scanner rowScanner) (logEntry, error) {
 	for index, topic := range wireLog.Topics {
 		result.Topics[index] = strings.ToLower(topic.Hex())
 	}
-	result.TimeStamp = hexutil.EncodeUint64(uint64(*block.Timestamp))
+	result.TimeStamp = hexutil.EncodeUint64(block.Timestamp)
 	result.GasUsed = hexutil.EncodeUint64(receipt.GasUsed)
 	gasPrice, err := effectiveGasPrice(transaction, receipt)
 	if err != nil {

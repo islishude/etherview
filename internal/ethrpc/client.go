@@ -2,6 +2,7 @@ package ethrpc
 
 import (
 	"bytes"
+	"container/list"
 	"context"
 	"encoding/json"
 	"errors"
@@ -335,34 +336,91 @@ type requestLimiter struct {
 	mu       sync.Mutex
 	next     time.Time
 	now      func() time.Time
+	after    func(time.Duration) <-chan time.Time
+	waiters  list.List
+	dispatch bool
+}
+
+type requestLimiterWaiter struct {
+	ready   chan struct{}
+	element *list.Element
 }
 
 func newRequestLimiter(requestsPerSecond int) *requestLimiter {
 	return &requestLimiter{
 		interval: time.Second / time.Duration(requestsPerSecond),
 		now:      time.Now,
+		after:    time.After,
 	}
 }
 
 func (limiter *requestLimiter) acquire(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	waiter := &requestLimiterWaiter{ready: make(chan struct{})}
 	limiter.mu.Lock()
+	if err := ctx.Err(); err != nil {
+		limiter.mu.Unlock()
+		return err
+	}
 	now := limiter.now()
-	waitUntil := limiter.next
-	if waitUntil.Before(now) {
-		waitUntil = now
+	if !limiter.dispatch && limiter.waiters.Len() == 0 && !limiter.next.After(now) {
+		limiter.next = now.Add(limiter.interval)
+		limiter.mu.Unlock()
+		return nil
 	}
-	limiter.next = waitUntil.Add(limiter.interval)
+	waiter.element = limiter.waiters.PushBack(waiter)
+	if !limiter.dispatch {
+		limiter.dispatch = true
+		go limiter.dispatchWaiters()
+	}
 	limiter.mu.Unlock()
-	wait := time.Until(waitUntil)
-	if wait <= 0 {
+	select {
+	case <-waiter.ready:
+		return nil
+	case <-ctx.Done():
+		limiter.mu.Lock()
+		if waiter.element != nil {
+			limiter.waiters.Remove(waiter.element)
+			waiter.element = nil
+			limiter.mu.Unlock()
+			return ctx.Err()
+		}
+		limiter.mu.Unlock()
+		// The grant linearized before cancellation. Treat it as acquired so a
+		// canceled select cannot discard a slot that later callers must honor.
 		return nil
 	}
-	timer := time.NewTimer(wait)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
+}
+
+func (limiter *requestLimiter) dispatchWaiters() {
+	for {
+		limiter.mu.Lock()
+		front := limiter.waiters.Front()
+		if front == nil {
+			limiter.dispatch = false
+			limiter.mu.Unlock()
+			return
+		}
+		now := limiter.now()
+		if limiter.next.After(now) {
+			wait := limiter.next.Sub(now)
+			after := limiter.after
+			limiter.mu.Unlock()
+			<-after(wait)
+			continue
+		}
+		waiter, ok := front.Value.(*requestLimiterWaiter)
+		if !ok || waiter == nil {
+			limiter.waiters.Remove(front)
+			limiter.mu.Unlock()
+			continue
+		}
+		limiter.waiters.Remove(front)
+		waiter.element = nil
+		limiter.next = now.Add(limiter.interval)
+		close(waiter.ready)
+		limiter.mu.Unlock()
 	}
 }

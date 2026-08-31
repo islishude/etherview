@@ -642,7 +642,7 @@ test("trace and log disclosures retain raw data and exact execution provenance",
   await assertAccessibleRoute(page, `/tx/${decodedTransactionHash}?tab=trace`);
 });
 
-test("home uses one atomic snapshot stream without REST polling", async ({
+test("home uses one durable event stream and atomic snapshots without list polling", async ({
   context,
   page,
 }) => {
@@ -653,21 +653,22 @@ test("home uses one atomic snapshot stream without REST polling", async ({
     url: "http://127.0.0.1:4173",
   }]);
   const dynamicRequests: string[] = [];
-  const streamRequests: string[] = [];
+  const snapshotRequests: string[] = [];
+  const eventRequests: string[] = [];
   page.on("request", (request) => {
     const pathname = new URL(request.url()).pathname;
     if (["/api/v1/status", "/api/v1/blocks", "/api/v1/transactions"].includes(pathname)) {
       dynamicRequests.push(pathname);
     }
-    if (pathname === "/api/v1/home/stream") {
-      streamRequests.push(pathname);
-    }
+    if (pathname === "/api/v1/home") snapshotRequests.push(pathname);
+    if (pathname === "/api/v1/events") eventRequests.push(pathname);
   });
 
   await page.goto("/");
   await expect(page.getByRole("link", { name: "#2" })).toBeVisible();
   await expect(page.getByText("0 – 2", { exact: true })).toBeVisible();
-  expect(streamRequests).toHaveLength(1);
+  expect(snapshotRequests).toHaveLength(1);
+  expect(eventRequests).toHaveLength(1);
   expect(dynamicRequests).toEqual([]);
 
   const advanced = await page.evaluate(async () => {
@@ -682,7 +683,8 @@ test("home uses one atomic snapshot stream without REST polling", async ({
   ).toContainText("3");
   await page.waitForTimeout(2_200);
   expect(dynamicRequests).toEqual([]);
-  expect(streamRequests).toHaveLength(1);
+  expect(snapshotRequests).toHaveLength(2);
+  expect(eventRequests).toHaveLength(1);
 
   await activateInView(page.getByRole("button", { name: "Switch color theme" }));
   await activateInView(page.getByRole("button", { name: "切换到中文" }));
@@ -1530,6 +1532,10 @@ test("Solady legacy CWIA displays verified packed arguments and gates writes on 
 	await expect(page.getByRole("heading", { name: "Verified artifact" })).toHaveCount(0);
 	await expect(page.getByRole("link", { name: "Submit a verification request" })).toHaveCount(0);
 	allowReadOnlyClassification = true;
+	await page.evaluate(async () => {
+		const response = await fetch("/__e2e/home/head", { method: "POST" });
+		if (!response.ok) throw new Error("failed to publish E2E head event");
+	});
 	await expect(page.getByRole("heading", { name: "Proxy identity" })).toBeVisible();
 	await page.getByRole("heading", { name: "Proxy identity" }).click();
 	await expect(page.getByText("Verified Solidity AST unavailable", { exact: true })).toBeVisible();

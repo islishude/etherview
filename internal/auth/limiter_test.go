@@ -168,12 +168,13 @@ func TestAuthenticatedRateIdentityIgnoresPeerAndForwardedHeaders(t *testing.T) {
 	}
 }
 
-func TestMemoryLimiterBoundsAndExpiresAnonymousBucketsWithoutEvictingAPIKeys(t *testing.T) {
+func TestMemoryLimiterBoundsBothIdentityClassesWithoutEarlyEviction(t *testing.T) {
 	t.Parallel()
 	now := time.Unix(100, 0)
 	limiter := NewMemoryLimiter(func() time.Time { return now })
 	limiter.maxAnonymousBuckets = 2
 	limiter.anonymousBucketTTL = time.Minute
+	limiter.authenticatedBucketTTL = time.Minute
 	limit := Limit{Rate: 1, Burst: 1}
 
 	if allowed, _ := limiter.Allow(context.Background(), "key:authenticated", limit); !allowed {
@@ -182,10 +183,13 @@ func TestMemoryLimiterBoundsAndExpiresAnonymousBucketsWithoutEvictingAPIKeys(t *
 	if allowed, _ := limiter.Allow(context.Background(), "key:authenticated", limit); allowed {
 		t.Fatal("authenticated key did not retain its exhausted bucket")
 	}
-	for _, key := range []string{"anonymous:192.0.2.1", "anonymous:192.0.2.2", "anonymous:192.0.2.3"} {
+	for _, key := range []string{"anonymous:192.0.2.1", "anonymous:192.0.2.2"} {
 		if allowed, _ := limiter.Allow(context.Background(), key, limit); !allowed {
 			t.Fatalf("%s first request was denied", key)
 		}
+	}
+	if allowed, retry := limiter.Allow(context.Background(), "anonymous:192.0.2.3", limit); allowed || retry != time.Minute {
+		t.Fatalf("anonymous cardinality overflow allowed=%v retry=%s", allowed, retry)
 	}
 	if limiter.anonymousBuckets != 2 || len(limiter.buckets) != 3 {
 		t.Fatalf("bucket counts anonymous=%d total=%d", limiter.anonymousBuckets, len(limiter.buckets))
@@ -201,8 +205,46 @@ func TestMemoryLimiterBoundsAndExpiresAnonymousBucketsWithoutEvictingAPIKeys(t *
 	if limiter.anonymousBuckets != 1 {
 		t.Fatalf("expired anonymous buckets retained: %d", limiter.anonymousBuckets)
 	}
-	if _, exists := limiter.buckets["key:authenticated"]; !exists {
-		t.Fatal("anonymous expiry removed authenticated key state")
+	if len(limiter.buckets) != 1 {
+		t.Fatalf("inactive buckets retained after safe expiry: %d", len(limiter.buckets))
+	}
+}
+
+func TestMemoryLimiterAuthenticatedCardinalityPreservesExhaustedStateUntilRefill(t *testing.T) {
+	t.Parallel()
+	now := time.Unix(100, 0)
+	limiter := NewMemoryLimiter(func() time.Time { return now })
+	limiter.maxAuthenticatedBuckets = 2
+	limiter.authenticatedBucketTTL = time.Millisecond
+	limit := Limit{Rate: 1, Burst: 10}
+	for range limit.Burst {
+		if allowed, _ := limiter.Allow(context.Background(), "key:first", limit); !allowed {
+			t.Fatal("authenticated bucket exhausted before its configured burst")
+		}
+	}
+	if allowed, _ := limiter.Allow(context.Background(), "key:second", limit); !allowed {
+		t.Fatal("second authenticated bucket was not created")
+	}
+	if allowed, retry := limiter.Allow(context.Background(), "key:third", limit); allowed || retry != 10*time.Second {
+		t.Fatalf("authenticated cardinality overflow allowed=%v retry=%s", allowed, retry)
+	}
+	if allowed, _ := limiter.Allow(context.Background(), "key:first", limit); allowed {
+		t.Fatal("cardinality pressure reset an exhausted authenticated bucket")
+	}
+
+	now = now.Add(9 * time.Second)
+	if allowed, _ := limiter.Allow(context.Background(), "key:third", limit); allowed {
+		t.Fatal("authenticated bucket expired before a complete refill")
+	}
+	now = now.Add(time.Second)
+	if allowed, _ := limiter.Allow(context.Background(), "key:third", limit); !allowed {
+		t.Fatal("authenticated bucket was not reusable after safe expiry")
+	}
+	if limiter.authenticatedBuckets != 1 || limiter.authenticatedOrder.Len() != 1 {
+		t.Fatalf(
+			"authenticated buckets/order = %d/%d, want 1/1",
+			limiter.authenticatedBuckets, limiter.authenticatedOrder.Len(),
+		)
 	}
 }
 

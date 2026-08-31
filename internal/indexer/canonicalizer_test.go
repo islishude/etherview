@@ -168,10 +168,97 @@ func TestCanonicalizerEnforcesReorgDepth(t *testing.T) {
 		mustIndexerTestRef(t, newOne).Hash,
 		13,
 	)
-	canonicalizer.Source = newMapSource(newOne)
+	source := newMapSource(newOne)
+	canonicalizer.Source = source
 	_, err := canonicalizer.Apply(ctx, newTwo)
 	if !errors.Is(err, ErrReorgTooDeep) {
 		t.Fatalf("error = %v, want ErrReorgTooDeep", err)
+	}
+	if source.CallCount() != 1 {
+		t.Fatalf("parent source calls = %d, want 1", source.CallCount())
+	}
+}
+
+func TestCanonicalizerBoundsRejectedAncestryBeforeExtraParentFetch(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repository := store.NewMemoryRepository()
+	canonicalizer := testCanonicalizer(repository, nil)
+	canonicalizer.MaxReorgDepth = 2
+	canonical := indexerTestChain(t, 5)
+	for _, bundle := range canonical {
+		if _, err := canonicalizer.Apply(ctx, bundle); err != nil {
+			t.Fatal(err)
+		}
+	}
+	newOne := indexerTestBundle(1, mustIndexerTestRef(t, canonical[0]).Hash, 21)
+	newTwo := indexerTestBundle(2, mustIndexerTestRef(t, newOne).Hash, 22)
+	newThree := indexerTestBundle(3, mustIndexerTestRef(t, newTwo).Hash, 23)
+	newFour := indexerTestBundle(4, mustIndexerTestRef(t, newThree).Hash, 24)
+	source := newMapSource(newOne, newTwo, newThree)
+	canonicalizer.Source = source
+	_, err := canonicalizer.Apply(ctx, newFour)
+	if !errors.Is(err, ErrReorgTooDeep) {
+		t.Fatalf("Apply() error = %v, want ErrReorgTooDeep", err)
+	}
+	if source.CallCount() != 2 {
+		t.Fatalf("parent source calls = %d, want bounded 2", source.CallCount())
+	}
+}
+
+func TestCanonicalizerRejectsOversizedForwardGapWithoutParentFetch(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repository := store.NewMemoryRepository()
+	canonicalizer := testCanonicalizer(repository, nil)
+	canonicalizer.MaxReorgDepth = 2
+	genesis := indexerTestBundle(0, common.Hash{}, 1)
+	if _, err := canonicalizer.Apply(ctx, genesis); err != nil {
+		t.Fatal(err)
+	}
+	one := indexerTestBundle(1, mustIndexerTestRef(t, genesis).Hash, 2)
+	two := indexerTestBundle(2, mustIndexerTestRef(t, one).Hash, 3)
+	three := indexerTestBundle(3, mustIndexerTestRef(t, two).Hash, 4)
+	source := newMapSource(one, two)
+	canonicalizer.Source = source
+	_, err := canonicalizer.Apply(ctx, three)
+	if !errors.Is(err, ErrGap) {
+		t.Fatalf("Apply() error = %v, want ErrGap", err)
+	}
+	if source.CallCount() != 0 {
+		t.Fatalf("parent source calls = %d, want 0", source.CallCount())
+	}
+}
+
+func TestCanonicalizerRejectsOversizedDetachBeforeCanonicalTraversal(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	counting := &countingCanonicalRepository{Repository: store.NewMemoryRepository()}
+	canonicalizer := testCanonicalizer(counting, nil)
+	canonicalizer.MaxReorgDepth = 2
+	_, err := canonicalizer.truncateHead(
+		ctx,
+		store.BlockRef{Number: 1_000, Hash: indexerTestHash(1)},
+		store.BlockRef{Number: 1, Hash: indexerTestHash(2)},
+	)
+	if !errors.Is(err, ErrReorgTooDeep) {
+		t.Fatalf("truncateHead() error = %v, want ErrReorgTooDeep", err)
+	}
+	if counting.CallCount() != 0 {
+		t.Fatalf("canonical row calls = %d, want 0", counting.CallCount())
+	}
+	_, err = canonicalizer.replaceSparseHead(
+		ctx,
+		store.BlockRef{Number: 1_000, Hash: indexerTestHash(3)},
+		store.BlockRef{Number: 1_001, Hash: indexerTestHash(4)},
+		store.BlockRange{Start: 10, End: 1_000},
+		nil,
+	)
+	if !errors.Is(err, ErrReorgTooDeep) {
+		t.Fatalf("replaceSparseHead() error = %v, want ErrReorgTooDeep", err)
+	}
+	if counting.CallCount() != 0 {
+		t.Fatalf("canonical row calls after sparse rejection = %d, want 0", counting.CallCount())
 	}
 }
 
@@ -565,7 +652,9 @@ func TestIngestorUsesOnePurposeEndpointForBlockAndReceipts(t *testing.T) {
 }
 
 type mapSource struct {
+	mu      sync.Mutex
 	bundles map[common.Hash]chainbundle.Bundle
+	calls   int
 }
 
 func newMapSource(bundles ...chainbundle.Bundle) *mapSource {
@@ -583,8 +672,40 @@ func (s *mapSource) BundleByHash(
 	_ context.Context,
 	hash common.Hash,
 ) (chainbundle.Bundle, bool, error) {
+	s.mu.Lock()
+	s.calls++
+	s.mu.Unlock()
 	bundle, exists := s.bundles[hash]
 	return bundle, exists, nil
+}
+
+func (s *mapSource) CallCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.calls
+}
+
+type countingCanonicalRepository struct {
+	store.Repository
+	mu    sync.Mutex
+	calls int
+}
+
+func (repository *countingCanonicalRepository) CanonicalBlock(
+	ctx context.Context,
+	chainID string,
+	number uint64,
+) (store.BlockRef, bool, error) {
+	repository.mu.Lock()
+	repository.calls++
+	repository.mu.Unlock()
+	return repository.Repository.CanonicalBlock(ctx, chainID, number)
+}
+
+func (repository *countingCanonicalRepository) CallCount() int {
+	repository.mu.Lock()
+	defer repository.mu.Unlock()
+	return repository.calls
 }
 
 type indexerFakeRPC struct {

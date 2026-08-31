@@ -116,7 +116,8 @@ SELECT inclusion.raw,
        (canonical.block_hash IS NOT NULL) AS canonical,
        finality.safe_number::text AS safe_number,
        finality.finalized_number::text AS finalized_number,
-       block.raw AS block_raw
+       block.timestamp::text AS block_timestamp,
+       block.base_fee_per_gas_quantity AS block_base_fee_per_gas
 FROM transaction_inclusions AS inclusion
 JOIN blocks AS block
   ON block.chain_id = inclusion.chain_id

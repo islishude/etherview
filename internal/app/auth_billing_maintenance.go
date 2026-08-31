@@ -142,7 +142,7 @@ func registerAuthBillingHousekeepers(
 	cfg config.Config,
 	logger *slog.Logger,
 ) error {
-	if !cfg.Features.UserAuth && !cfg.Features.X402Billing && !cfg.Features.APIBilling {
+	if !cfg.Features.UserAuth && !cfg.Features.APIBilling {
 		return nil
 	}
 	if registry == nil {
@@ -182,7 +182,7 @@ func registerAuthBillingHousekeepers(
 			return err
 		}
 	}
-	if cfg.Features.X402Billing || cfg.Features.APIBilling {
+	if cfg.Features.APIBilling {
 		ledger, err := billing.NewPostgresLedger(
 			writer, cfg.Chain.ID, cfg.Billing.ReservationTTL,
 		)

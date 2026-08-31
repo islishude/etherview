@@ -12,7 +12,7 @@ import (
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
-	"github.com/islishude/etherview/internal/httpapi"
+	"github.com/islishude/etherview/internal/publicquery"
 )
 
 type addressWithdrawalCursor struct {
@@ -57,7 +57,7 @@ func (r *PostgresReader) AddressWithdrawals(
 			SnapshotNumber: snapshot.SnapshotNumber, SnapshotHash: snapshot.SnapshotHash,
 		}
 	} else {
-		if err := httpapi.DecodeCursor(encodedCursor, &cursor); err != nil ||
+		if err := publicquery.DecodeCursor(encodedCursor, &cursor); err != nil ||
 			cursor.Version != 1 || cursor.ChainID != r.chainID || cursor.Address != normalizedAddress ||
 			cursor.BeforeBlockNumber > cursor.SnapshotNumber {
 			return nil, "", ErrInvalidCursor
@@ -151,7 +151,7 @@ func (r *PostgresReader) AddressWithdrawals(
 		return items, "", nil
 	}
 	last := records[len(records)-1]
-	next, err := httpapi.EncodeCursor(addressWithdrawalCursor{
+	next, err := publicquery.EncodeCursor(addressWithdrawalCursor{
 		Version: 1, ChainID: r.chainID, Address: normalizedAddress,
 		SnapshotNumber: cursor.SnapshotNumber, SnapshotHash: cursor.SnapshotHash,
 		BeforeIndex: last.index, BeforeBlockNumber: last.blockNumber, BeforeBlockHash: last.blockHash.String(),

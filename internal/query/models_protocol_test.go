@@ -4,9 +4,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"math/big"
+	"strconv"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/chainbundle/testfixture"
 )
 
@@ -37,7 +40,8 @@ func TestTransactionModelPublishesBlobTypedFields(t *testing.T) {
 	}
 	reader := &PostgresReader{}
 	model, err := reader.transactionModel(
-		bundle.RawTransactions[0], rawReceipt, bundle.RawBlock,
+		bundle.RawTransactions[0], rawReceipt,
+		strconv.FormatUint(bundle.Block.Time(), 10), sql.NullString{String: "0x1", Valid: true},
 		"12", bundle.Block.Hash().Bytes(), 0, transaction.Hash().Bytes(), true,
 		sql.NullString{String: "12", Valid: true}, sql.NullString{String: "10", Valid: true}, 12,
 	)
@@ -78,9 +82,7 @@ func TestBlockModelPublishesPresentAndEmptyWithdrawals(t *testing.T) {
 		t.Fatal(err)
 	}
 	reader := &PostgresReader{}
-	record, err := reader.scanBlock(&singleRowScanner{values: []any{
-		[]byte(bundle.RawBlock), "12", bundle.Block.Hash().Bytes(), true, nil, nil,
-	}}, false)
+	record, err := reader.scanBlock(&singleRowScanner{values: projectedBlockRow(t, bundle)}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,14 +95,50 @@ func TestBlockModelPublishesPresentAndEmptyWithdrawals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	emptyRecord, err := reader.scanBlock(&singleRowScanner{values: []any{
-		[]byte(emptyBundle.RawBlock), "12", emptyBundle.Block.Hash().Bytes(), true, nil, nil,
-	}}, false)
+	emptyRecord, err := reader.scanBlock(
+		&singleRowScanner{values: projectedBlockRow(t, emptyBundle)}, false,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if emptyRecord.Model.Withdrawals == nil || len(*emptyRecord.Model.Withdrawals) != 0 {
 		t.Fatalf("empty withdrawals=%v", emptyRecord.Model.Withdrawals)
+	}
+}
+
+func projectedBlockRow(t *testing.T, bundle chainbundle.Bundle) []any {
+	t.Helper()
+	withdrawals := make([]storedWithdrawalProjection, len(bundle.Block.Withdrawals()))
+	for index, withdrawal := range bundle.Block.Withdrawals() {
+		withdrawals[index] = storedWithdrawalProjection{
+			Index:          strconv.FormatUint(withdrawal.Index, 10),
+			ValidatorIndex: strconv.FormatUint(withdrawal.Validator, 10),
+			Address:        withdrawal.Address.Hex(),
+			Amount:         strconv.FormatUint(withdrawal.Amount, 10),
+		}
+	}
+	withdrawalsJSON, err := json.Marshal(withdrawals)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var baseFee any
+	if bundle.Block.BaseFee() != nil {
+		baseFee = hexutil.EncodeBig(bundle.Block.BaseFee())
+	}
+	withdrawalsPresent := bundle.Block.Withdrawals() != nil
+	var withdrawalCount any
+	if withdrawalsPresent {
+		withdrawalCount = int64(len(withdrawals))
+	}
+	return []any{
+		strconv.FormatUint(bundle.Block.NumberU64(), 10),
+		bundle.Block.Hash().Bytes(), bundle.Block.ParentHash().Bytes(),
+		strconv.FormatUint(bundle.Block.Time(), 10), bundle.Block.Coinbase().Hex(),
+		hexutil.EncodeUint64(bundle.Block.GasUsed()),
+		hexutil.EncodeUint64(bundle.Block.GasLimit()), baseFee,
+		int64(len(bundle.Block.Transactions())), int64(len(bundle.Block.Transactions())),
+		withdrawalsPresent, withdrawalCount, withdrawalsJSON,
+		true, nil, nil,
 	}
 }
 
@@ -132,6 +170,12 @@ func (row *singleRowScanner) Scan(dest ...any) error {
 				return &scanTypeError{index: index}
 			}
 			*target = targetValue
+		case *int64:
+			targetValue, ok := value.(int64)
+			if !ok {
+				return &scanTypeError{index: index}
+			}
+			*target = targetValue
 		case *sql.NullString:
 			if value == nil {
 				*target = sql.NullString{}
@@ -142,6 +186,26 @@ func (row *singleRowScanner) Scan(dest ...any) error {
 				return &scanTypeError{index: index}
 			}
 			*target = sql.NullString{String: targetValue, Valid: true}
+		case *sql.NullInt64:
+			if value == nil {
+				*target = sql.NullInt64{}
+				continue
+			}
+			targetValue, ok := value.(int64)
+			if !ok {
+				return &scanTypeError{index: index}
+			}
+			*target = sql.NullInt64{Int64: targetValue, Valid: true}
+		case *sql.NullBool:
+			if value == nil {
+				*target = sql.NullBool{}
+				continue
+			}
+			targetValue, ok := value.(bool)
+			if !ok {
+				return &scanTypeError{index: index}
+			}
+			*target = sql.NullBool{Bool: targetValue, Valid: true}
 		default:
 			return &scanTypeError{index: index}
 		}

@@ -13,38 +13,12 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/stagecontract"
 )
 
 var ErrAtomicPublicationRequired = errors.New("successful enrichment output requires lease-fenced atomic publication")
 
-// StageID changes whenever persisted output semantics change. Replaying a new
-// version therefore creates a distinct durable job instead of mutating the
-// meaning of a previously completed one.
-type StageID struct {
-	Name    string
-	Version uint32
-}
-
-func (stage StageID) Validate() error {
-	if stage.Name == "" {
-		return errors.New("stage name is empty")
-	}
-	for _, character := range stage.Name {
-		if (character < 'a' || character > 'z') &&
-			(character < '0' || character > '9') &&
-			character != '-' && character != '_' {
-			return fmt.Errorf("stage name %q contains an unsupported character", stage.Name)
-		}
-	}
-	if stage.Version == 0 {
-		return errors.New("stage version must be positive")
-	}
-	return nil
-}
-
-func (stage StageID) String() string {
-	return fmt.Sprintf("%s@%d", stage.Name, stage.Version)
-}
+type StageID = stagecontract.ID
 
 // Job identifies enrichment for one immutable block hash. Number is useful for
 // scheduling but deliberately does not participate in identity.

@@ -180,11 +180,12 @@ asking users to sign in again; replicas running different pepper versions can
 temporarily disagree about otherwise valid Cookies. Keep the session and
 API-key peppers independent.
 
-Fingerprint-pepper rotation requires draining paid routes first: clear the
-route map, let reservations expire, reconcile all `settling` rows, rotate all
-`all`/`api` replicas together, run `doctor`, and re-enable routes gradually.
-Old handler responses are never recovered by reconciliation. See the
-operations runbook for the unknown-settlement procedure.
+Fingerprint-pepper rotation requires pausing new x402 top-ups first, letting
+pre-settlement reservations expire, reconciling every `settling` row, rotating
+all `all`/`api` replicas together, running `doctor`, and then re-enabling
+top-ups. Old request-payment rows remain audit history and are never converted
+to prepaid credit. See the operations runbook for the unknown-settlement
+procedure.
 
 ## Genesis account state
 

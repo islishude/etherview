@@ -128,6 +128,12 @@ authoritative empty result.
   contains the canonical tip; sample heights must be continuous, and a
   one-block interval is estimate-unavailable rather than permission to bridge
   an older coverage island.
+- Compatibility response bounds also bound database work. List controls reject
+  a `page * offset` window above 10,000, and `logs.getLogs` rejects a
+  tip-clamped inclusive range above 100,000 blocks. Directional miner,
+  timestamp, and log reads use fixed-order SQL. Topic zero is pushed into its
+  typed indexed column only when the complete topic expression requires it;
+  an `OR` filter is evaluated without that narrowing.
 - Compatibility wire models are action-specific. Account, token, block, and
   statistics quantities remain decimal strings, while `logs.getLogs` uses
   lowercase RPC-style hexadecimal quantities. `contract.getsourcecode`

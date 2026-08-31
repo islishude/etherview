@@ -18,7 +18,6 @@ import (
 )
 
 var (
-	TraceStage             = StageID{Name: "trace", Version: 3}
 	errTraceRPCUnavailable = errors.New("trace RPC capability unavailable")
 )
 

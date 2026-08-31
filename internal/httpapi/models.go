@@ -17,7 +17,7 @@ import (
 func (h *Handler) handleReaderError(w http.ResponseWriter, r *http.Request, err error) {
 	var capability *CapabilityUnavailableError
 	switch {
-	case errors.As(err, &capability) && capability.valid():
+	case errors.As(err, &capability) && capability.Valid():
 		writeError(w, r, http.StatusServiceUnavailable, "capability_unavailable", "required capability is unavailable", map[string]any{
 			"capability": capability.Capability,
 			"state":      capability.State,

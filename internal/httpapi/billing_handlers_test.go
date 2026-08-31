@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -87,7 +86,7 @@ func TestBillingConfigIsFreeSortedAndSecretFree(t *testing.T) {
 		t.Fatalf("disabled config status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 
-	cfg := httpBillingConfig("x402")
+	cfg := config.Default()
 	cfg.Features.APIBilling = true
 	cfg.Features.X402Topups = true
 	cfg.Billing.AssetTransferMethods = []string{"eip3009", "permit2"}
@@ -100,16 +99,14 @@ func TestBillingConfigIsFreeSortedAndSecretFree(t *testing.T) {
 	cfg.Billing.FacilitatorHeaders = map[string]string{
 		"Authorization": "Bearer facilitator-secret",
 	}
-	cfg.Billing.Routes = map[string]config.BillingRouteConfig{
-		"listTransactions": {Access: "api_key_or_x402", AmountAtomic: "20"},
-		"listBlocks":       {Access: "x402", AmountAtomic: "10"},
-	}
 	cfg.Billing.Operations = map[string]config.BillingOperationConfig{
 		"etherscan.account.balance":       {AmountAtomic: "10"},
 		"etherscan.transaction.getstatus": {AmountAtomic: "20"},
 	}
-	var quotaCalls atomic.Int32
-	handler, _, _ := httpBillingHandler(t, cfg, &quotaCalls, nil)
+	handler, err := New(Options{Config: cfg, Reader: fakeReader{}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	recorder = httptest.NewRecorder()
 	handler.ServeHTTP(
 		recorder,
@@ -117,9 +114,6 @@ func TestBillingConfigIsFreeSortedAndSecretFree(t *testing.T) {
 	)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("enabled config status=%d body=%s", recorder.Code, recorder.Body.String())
-	}
-	if quotaCalls.Load() != 0 {
-		t.Fatalf("public billing config consumed explorer quota %d times", quotaCalls.Load())
 	}
 	var response gen.BillingConfigResponse
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {

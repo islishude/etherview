@@ -25,6 +25,7 @@ import (
 	"github.com/islishude/etherview/internal/config"
 	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/enrich"
+	"github.com/islishude/etherview/internal/stagecontract"
 )
 
 const (
@@ -579,10 +580,10 @@ func (importer *Importer) requestProxyReplay(
 	if importer.queue == nil {
 		return nil
 	}
-	_, err := importer.queue.EnqueueTx(ctx, tx, enrich.EnqueueRequest{
-		Stage: enrich.ProxyStage, ChainID: importer.chainID,
+	_, err := importer.queue.EnqueueTx(ctx, tx, stagecontract.EnqueueRequest{
+		Stage: stagecontract.Proxy, ChainID: importer.chainID,
 		BlockHash: blockHash, BlockNumber: 0,
-		Replay: enrich.ReplaySource{
+		Replay: stagecontract.ReplaySource{
 			Kind: "genesis-import",
 			Key:  blockHash.String() + ":" + stateRoot.String(),
 		},

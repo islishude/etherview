@@ -3,6 +3,7 @@ package observability
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -13,6 +14,47 @@ import (
 	"testing"
 	"time"
 )
+
+func TestRegistryExportsBoundedRuntimeAndDatabasePoolMetrics(t *testing.T) {
+	registry := NewRegistry("test", "api")
+	writer := new(sql.DB)
+	writer.SetMaxOpenConns(7)
+	reader := new(sql.DB)
+	reader.SetMaxOpenConns(5)
+	if err := registry.RegisterDatabasePool("writer", writer); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.RegisterDatabasePool("reader", reader); err != nil {
+		t.Fatal(err)
+	}
+	for _, invalid := range []struct {
+		name string
+		db   *sql.DB
+	}{
+		{name: "other", db: new(sql.DB)},
+		{name: "writer", db: writer},
+		{name: "reader", db: nil},
+	} {
+		if err := registry.RegisterDatabasePool(invalid.name, invalid.db); err == nil {
+			t.Fatalf("RegisterDatabasePool(%q) unexpectedly succeeded", invalid.name)
+		}
+	}
+	exposition := registry.Gather()
+	for _, expected := range []string{
+		"# TYPE etherview_go_goroutines gauge",
+		"# TYPE etherview_go_heap_alloc_bytes gauge",
+		"# TYPE etherview_go_gc_cycles_total counter",
+		`etherview_database_max_open_connections{pool="reader"} 5`,
+		`etherview_database_max_open_connections{pool="writer"} 7`,
+		`etherview_database_connections{pool="writer",state="open"} 0`,
+		`etherview_database_wait_count_total{pool="writer"} 0`,
+		`etherview_database_connections_closed_total{pool="writer",reason="lifetime"} 0`,
+	} {
+		if !strings.Contains(exposition, expected) {
+			t.Fatalf("metrics missing %q:\n%s", expected, exposition)
+		}
+	}
+}
 
 func TestLoggerRedactsSecretsAndURLPaths(t *testing.T) {
 	var output bytes.Buffer
@@ -253,40 +295,6 @@ func TestDerivedVerificationMetricsUseClosedLabels(t *testing.T) {
 	}
 	if strings.Contains(metrics, "hostile-kind") || strings.Contains(metrics, "hostile-result") {
 		t.Fatalf("unbounded derived labels leaked:\n%s", metrics)
-	}
-}
-
-func TestX402MetricsUseOnlyClosedLabelsAndSingleExposition(t *testing.T) {
-	registry := NewRegistry("test", "api")
-	registry.ObserveX402Request("listBlocks", "settled")
-	registry.ObserveX402Request("wallet-0x-secret", "https://remote/secret")
-	registry.ObserveX402Request("getBillingConfig", "settled")
-
-	exposition := registry.Gather()
-	for _, expected := range []string{
-		`etherview_x402_requests_total{operation="listBlocks",result="settled"} 1`,
-		`etherview_x402_requests_total{operation="other",result="other"} 1`,
-		`etherview_x402_requests_total{operation="other",result="settled"} 1`,
-	} {
-		if !strings.Contains(exposition, expected) {
-			t.Fatalf("x402 metric missing %q:\n%s", expected, exposition)
-		}
-	}
-	for _, forbidden := range []string{"wallet-0x-secret", "remote/secret", "getBillingConfig"} {
-		if strings.Contains(exposition, forbidden) {
-			t.Fatalf("x402 metric leaked unbounded label %q:\n%s", forbidden, exposition)
-		}
-	}
-
-	response := httptest.NewRecorder()
-	registry.Handler().ServeHTTP(
-		response,
-		httptest.NewRequest(http.MethodGet, "/metrics", nil),
-	)
-	body := response.Body.String()
-	if strings.Count(body, "# HELP etherview_x402_requests_total ") != 1 ||
-		strings.Count(body, "# TYPE etherview_x402_requests_total counter") != 1 {
-		t.Fatalf("metric exposition was duplicated:\n%s", body)
 	}
 }
 

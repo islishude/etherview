@@ -37,18 +37,17 @@ func TestHomeSnapshotUsesOneTransactionAndReturnsBoundedCanonicalActivity(t *tes
 		},
 		queryExpectation{
 			contains: "canonical.number <= $2::numeric",
-			columns:  columns(6), rows: [][]driver.Value{{
-				testBlockRaw(2, 3, 1, 0), "2", tipHash, true, "1", "0",
-			}},
-			check: checkLimit,
+			columns:  columns(16),
+			rows:     [][]driver.Value{testBlockProjectionRow(2, 3, 1, 1, true, "1", "0")},
+			check:    checkLimit,
 		},
 		queryExpectation{
 			contains: "inclusion.block_number <= $2::numeric",
-			columns:  columns(10), rows: [][]driver.Value{{
+			columns:  columns(11), rows: [][]driver.Value{{
 				testTransactionRawAt(2, 3, 102, 0),
 				testReceiptRawAt(2, 3, 102, 0, "0x1"),
 				"2", tipHash, int64(0), testTransactionHashBytes(102),
-				true, "1", "0", testBlockRaw(2, 3, 1, 0),
+				true, "1", "0", "100", "0x3b9aca00",
 			}},
 			check: checkLimit,
 		},

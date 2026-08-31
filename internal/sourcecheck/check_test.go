@@ -53,6 +53,28 @@ func TestCheckAllowsGeneratedSourcesTestsAndRawExecutors(t *testing.T) {
 	}
 }
 
+func TestCheckRejectsTransportAndWorkerImportsFromPublicReaders(t *testing.T) {
+	root := t.TempDir()
+	writeFixture(t, root, "internal/query/reader.go", `package query
+import _ "github.com/islishude/etherview/internal/httpapi"
+`)
+	writeFixture(t, root, "internal/state/reader.go", `package state
+import _ "github.com/islishude/etherview/internal/httpapi"
+`)
+	writeFixture(t, root, "internal/abicontract/types.go", `package abicontract
+import _ "github.com/islishude/etherview/internal/enrich"
+`)
+	report := Check(root)
+	if report.OK() || len(report.Diagnostics) != 3 {
+		t.Fatalf("report=%+v", report)
+	}
+	for _, diagnostic := range report.Diagnostics {
+		if !strings.Contains(diagnostic.Message, "package boundary forbids") {
+			t.Fatalf("diagnostic=%+v", diagnostic)
+		}
+	}
+}
+
 func TestLooksLikeSQLRejectsFragmentsWithoutMatchingErrorText(t *testing.T) {
 	for _, value := range []string{
 		"SELECT pg_advisory_lock(1)", "INSERT INTO jobs (id) VALUES (1)",

@@ -21,6 +21,33 @@ import (
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
+func TestParsePaginationBoundsDatabaseWorkWindow(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name    string
+		values  url.Values
+		wantErr bool
+	}{
+		{name: "last complete page", values: url.Values{"page": {"10"}, "offset": {"1000"}}},
+		{name: "small deep page", values: url.Values{"page": {"100"}, "offset": {"100"}}},
+		{name: "one row beyond", values: url.Values{"page": {"10001"}, "offset": {"1"}}, wantErr: true},
+		{name: "large deep page", values: url.Values{"page": {"11"}, "offset": {"1000"}}, wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			page, err := parsePagination(test.values)
+			if test.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "10000-result") {
+					t.Fatalf("parsePagination() = %+v, %v", page, err)
+				}
+				return
+			}
+			if err != nil || int64(page.limit)+page.offset > maximumPaginationWindow {
+				t.Fatalf("parsePagination() = %+v, %v", page, err)
+			}
+		})
+	}
+}
+
 const (
 	testSender    = "0x52908400098527886e0f7030069857d2e4169ee7"
 	testRecipient = "0xde709f2102306220921060314715629080e2fb77"
@@ -38,29 +65,37 @@ func TestNewPostgresBackendValidatesConfiguration(t *testing.T) {
 	}
 }
 
-func TestStoredBlockProjectionAcceptsNonStringFormatExtension(t *testing.T) {
+func TestStoredBlockContextUsesNarrowCanonicalScalars(t *testing.T) {
 	t.Parallel()
-	raw := testBlockJSON(2, 1)
-	var fields map[string]any
-	if err := json.Unmarshal(raw, &fields); err != nil {
-		t.Fatal(err)
-	}
-	fields["format"] = map[string]any{"vendor": 1}
-	raw, err := json.Marshal(fields)
-	if err != nil {
-		t.Fatal(err)
-	}
-	projection, err := decodeStoredBlockProjection(
-		raw,
-		common.HexToHash(testHash(3)),
-		big.NewInt(2),
+	projection, err := decodeStoredBlockContext(
+		"100", sql.NullString{String: "0x3b9aca00", Valid: true},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if projection.Number == nil || projection.Number.ToInt().Uint64() != 2 ||
-		projection.Hash == nil || *projection.Hash != common.HexToHash(testHash(3)) {
+	if projection.Timestamp != 100 || projection.BaseFee == nil ||
+		projection.BaseFee.Cmp(big.NewInt(1_000_000_000)) != 0 {
 		t.Fatalf("projection = %#v", projection)
+	}
+}
+
+func TestCompatibilityResultQueriesDoNotTransferFullBlockRaw(t *testing.T) {
+	t.Parallel()
+	for name, query := range map[string]string{
+		"account":           dbgen.EtherscanAccountTransactions,
+		"account advanced":  dbgen.EtherscanAccountTransactionsAdvanced,
+		"mined asc":         dbgen.EtherscanMinedBlocksAsc,
+		"mined desc":        dbgen.EtherscanMinedBlocksDesc,
+		"block time before": dbgen.EtherscanBlockNumberByTimeBefore,
+		"block time after":  dbgen.EtherscanBlockNumberByTimeAfter,
+		"token":             dbgen.EtherscanTokenTransfers,
+		"token advanced":    dbgen.EtherscanTokenTransfersAdvanced,
+		"logs asc":          dbgen.EtherscanLogsAsc,
+		"logs desc":         dbgen.EtherscanLogsDesc,
+	} {
+		if strings.Contains(query, "block.raw") {
+			t.Errorf("%s query transfers block.raw", name)
+		}
 	}
 }
 
@@ -117,11 +152,11 @@ func TestAccountTransactionsAreCanonicalDecimalAndStable(t *testing.T) {
 		completeCoreCoverageExpectation("10", "20", "12"),
 		sqlExpectation{
 			contains: "-- name: EtherscanAccountTransactions :many",
-			columns:  fakeColumns(8),
+			columns:  fakeColumns(9),
 			rows: [][]driver.Value{{
 				testTransactionJSON(7, testRecipient),
 				testReceiptJSON("0x1", ""),
-				testBlockJSON(10, 2),
+				"100", "0x3b9aca00",
 				"10", testHashBytes(3), int64(1), testTransactionHashBytes(testRecipient), "12",
 			}},
 			check: func(arguments []driver.NamedValue) error {
@@ -166,10 +201,10 @@ func TestAccountTransactionsRejectRawIdentityMismatch(t *testing.T) {
 		completeCoreCoverageExpectation("0", "", "12"),
 		sqlExpectation{
 			contains: "FROM transaction_inclusions AS inclusion",
-			columns:  fakeColumns(8),
+			columns:  fakeColumns(9),
 			rows: [][]driver.Value{{
 				testTransactionJSON(99, testRecipient),
-				testReceiptJSON("0x1", ""), testBlockJSON(10, 2),
+				testReceiptJSON("0x1", ""), "100", "0x3b9aca00",
 				"10", testHashBytes(3), int64(1), testTransactionHashBytes(testRecipient), "12",
 			}},
 		},
@@ -186,9 +221,9 @@ func TestMinedBlocksOmitsUnknownReward(t *testing.T) {
 	db := fakeDatabase(t,
 		completeCoreCoverageExpectation("0", "", "10"),
 		sqlExpectation{
-			contains: "-- name: EtherscanMinedBlocks :many",
-			columns:  fakeColumns(3),
-			rows:     [][]driver.Value{{testBlockJSON(10, 2), "10", testHashBytes(3)}},
+			contains: "-- name: EtherscanMinedBlocksAsc :many",
+			columns:  fakeColumns(4),
+			rows:     [][]driver.Value{{"10", testHashBytes(3), "100", testSender}},
 		},
 	)
 	backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})
@@ -238,24 +273,25 @@ func TestLogsUseParameterizedTopicExpressionAndHexWireModel(t *testing.T) {
 	db := fakeDatabase(t,
 		completeCoreCoverageExpectation("5", "12", "12"),
 		sqlExpectation{
-			contains: "-- name: EtherscanLogs :many",
-			columns:  fakeColumns(10),
+			contains: "-- name: EtherscanLogsDesc :many",
+			columns:  fakeColumns(11),
 			rows: [][]driver.Value{{
 				testLogJSON(10, 3, 7, 1, 4, testContract, []string{topic0, testHash(22), topic2}),
 				testReceiptJSON("0x1", ""),
 				testTransactionJSON(7, testRecipient),
-				testBlockJSON(10, 2),
+				"100", "0x3b9aca00",
 				"10", testHashBytes(3), int64(4), int64(1), testTransactionHashBytes(testRecipient), testAddressBytes(testContract),
 			}},
 			check: func(arguments []driver.NamedValue) error {
-				if len(arguments) != 8 || fmt.Sprint(arguments[0].Value) != "1" || fmt.Sprint(arguments[1].Value) != "5" || fmt.Sprint(arguments[2].Value) != "12" {
+				if len(arguments) != 9 || fmt.Sprint(arguments[0].Value) != "1" || fmt.Sprint(arguments[1].Value) != "5" || fmt.Sprint(arguments[2].Value) != "12" {
 					return fmt.Errorf("arguments=%v", arguments)
 				}
 				wantTopics := `[{"index":0,"value":"` + topic0 + `","operator":"AND"},{"index":2,"value":"` + topic2 + `","operator":"OR"}]`
+				indexedTopic, indexedTopicOK := arguments[6].Value.([]byte)
 				if !reflect.DeepEqual(arguments[3].Value, testAddressBytes(testContract)) ||
 					string(arguments[4].Value.([]byte)) != wantTopics ||
-					fmt.Sprint(arguments[5].Value) != "100" || fmt.Sprint(arguments[6].Value) != "0" ||
-					arguments[7].Value != "DESC" {
+					arguments[5].Value != false || !indexedTopicOK || len(indexedTopic) != 0 ||
+					fmt.Sprint(arguments[7].Value) != "100" || fmt.Sprint(arguments[8].Value) != "0" {
 					return fmt.Errorf("binary/topic arguments=%v", arguments)
 				}
 				return nil
@@ -281,6 +317,31 @@ func TestLogsUseParameterizedTopicExpressionAndHexWireModel(t *testing.T) {
 	}
 }
 
+func TestLogsBoundBlockSpanAndSelectOnlyRequiredTopicZero(t *testing.T) {
+	t.Parallel()
+	backend := testPostgresBackend(t, fakeDatabase(t,
+		completeCoreCoverageExpectation("0", "100000", "100000"),
+	), PostgresOptions{ChainID: 1})
+	_, err := backend.Execute(context.Background(), Request{Module: "logs", Action: "getLogs", Values: url.Values{
+		"fromBlock": {"0"}, "toBlock": {"100000"},
+	}})
+	if !errors.Is(err, ErrInvalidParameter) || !strings.Contains(err.Error(), "100000 blocks") {
+		t.Fatalf("oversized log range error = %v", err)
+	}
+	andFilters, err := buildTopicFilter(url.Values{
+		"topic0": {testHash(1)}, "topic2": {testHash(2)}, "topic0_2_opr": {"and"},
+	})
+	if err != nil || !reflect.DeepEqual(indexableTopic0(andFilters), testHashBytes(1)) {
+		t.Fatalf("AND topic0 index = %x, error=%v", indexableTopic0(andFilters), err)
+	}
+	orFilters, err := buildTopicFilter(url.Values{
+		"topic0": {testHash(1)}, "topic2": {testHash(2)}, "topic0_2_opr": {"or"},
+	})
+	if err != nil || indexableTopic0(orFilters) != nil {
+		t.Fatalf("OR topic0 unexpectedly required: %x, error=%v", indexableTopic0(orFilters), err)
+	}
+}
+
 func TestTopicValidationRejectsIgnoredOrInjectedOperators(t *testing.T) {
 	t.Parallel()
 	backend := testPostgresBackend(t, fakeDatabase(t), PostgresOptions{ChainID: 1})
@@ -302,7 +363,7 @@ func TestBlockTimeCountdownAndSupply(t *testing.T) {
 	t.Parallel()
 	db := fakeDatabase(t,
 		completeCoreCoverageExpectation("0", "", "10"),
-		sqlExpectation{contains: "-- name: EtherscanBlockNumberByTime :many", columns: fakeColumns(4), rows: [][]driver.Value{{testBlockJSON(10, 2), "10", testHashBytes(3), "100"}}},
+		sqlExpectation{contains: "-- name: EtherscanBlockNumberByTimeBefore :many", columns: fakeColumns(3), rows: [][]driver.Value{{"10", testHashBytes(3), "100"}}},
 		sqlExpectation{contains: "tip_coverage AS", columns: fakeColumns(8), rows: [][]driver.Value{{"10", "100", "2", "20", "9", "0", "0", "10"}}},
 	)
 	backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1, Supply: func(_ context.Context, chainID uint64) (string, error) {
@@ -747,7 +808,7 @@ func TestListQueriesReturnNotFoundInsteadOfEmptySuccess(t *testing.T) {
 	}{
 		{"account", "txlist", url.Values{"address": {testSender}}, "FROM transaction_inclusions AS inclusion", 8},
 		{"account", "getminedblocks", url.Values{"address": {testSender}}, "FROM blocks AS block", 3},
-		{"logs", "getLogs", url.Values{}, "FROM logs AS log", 10},
+		{"logs", "getLogs", url.Values{}, "FROM candidate_logs AS log", 10},
 	} {
 		db := fakeDatabase(t,
 			completeCoreCoverageExpectation("0", "", "10"),
@@ -784,14 +845,6 @@ func testAddressBytes(value string) []byte {
 		panic(err)
 	}
 	return address.Bytes()
-}
-
-func testBlockJSON(number uint64, parent byte) []byte {
-	return mustJSON(map[string]any{
-		"number": fmt.Sprintf("0x%x", number), "hash": testHash(3), "parentHash": testHash(parent),
-		"timestamp": "0x64", "miner": testSender,
-		"gasUsed": "0x5208", "gasLimit": "0x1c9c380", "transactions": []any{},
-	})
 }
 
 func testTransactionJSON(transactionHash byte, to string) []byte {

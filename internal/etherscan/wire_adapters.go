@@ -1,6 +1,7 @@
 package etherscan
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,43 +12,41 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/islishude/etherview/internal/chainbundle"
+	"github.com/islishude/etherview/internal/ethrpc"
 )
 
-// storedBlockProjection is a repository persistence adapter, not an Ethereum
-// protocol model. Pointer fields preserve missing/null distinctions while the
-// scalar authority remains go-ethereum.
-type storedBlockProjection struct {
-	Number    *hexutil.Big    `json:"number"`
-	Hash      *common.Hash    `json:"hash"`
-	Timestamp *hexutil.Uint64 `json:"timestamp"`
-	Miner     *common.Address `json:"miner"`
+type storedBlockContext struct {
+	Timestamp uint64
+	BaseFee   *big.Int
 }
 
-func decodeStoredBlockProjection(
-	raw json.RawMessage,
-	expectedHash common.Hash,
-	expectedNumber *big.Int,
-) (storedBlockProjection, error) {
-	var block storedBlockProjection
-	if err := decodeRawObject(raw, &block); err != nil {
-		return storedBlockProjection{}, err
+func decodeStoredBlockContext(
+	timestampText string,
+	baseFeeText sql.NullString,
+) (storedBlockContext, error) {
+	timestamp, err := storedUint256(timestampText, "block timestamp")
+	if err != nil || !timestamp.IsUint64() {
+		return storedBlockContext{}, errors.New("stored block timestamp is invalid")
 	}
-	if block.Number == nil || block.Hash == nil || block.Timestamp == nil {
-		bundle, err := chainbundle.DecodeStoredBlock(raw)
+	context := storedBlockContext{Timestamp: timestamp.Uint64()}
+	if baseFeeText.Valid {
+		context.BaseFee, err = ethrpc.ParseQuantity(baseFeeText.String)
 		if err != nil {
-			return storedBlockProjection{}, err
-		}
-		if err := decodeRawObject(bundle.RawBlock, &block); err != nil {
-			return storedBlockProjection{}, err
+			return storedBlockContext{}, errors.New("stored block base fee is invalid")
 		}
 	}
-	if block.Number == nil || block.Hash == nil || block.Timestamp == nil {
-		return storedBlockProjection{}, errors.New("stored block raw identity fields are null")
+	return context, nil
+}
+
+func decodeStoredBlockMiner(value sql.NullString) (common.Address, error) {
+	if !value.Valid {
+		return common.Address{}, errors.New("stored block miner is missing")
 	}
-	if *block.Hash != expectedHash || block.Number.ToInt().Cmp(expectedNumber) != 0 {
-		return storedBlockProjection{}, errors.New("stored block raw identity does not match indexed row")
+	miner, err := ethrpc.ParseAddress(value.String)
+	if err != nil {
+		return common.Address{}, errors.New("stored block miner is invalid")
 	}
-	return block, nil
+	return miner, nil
 }
 
 func decodeStoredTransaction(
@@ -83,44 +82,28 @@ func decodeStoredReceipt(
 }
 
 func decodeStoredReceiptWithBlockContext(
-	raw, blockRaw json.RawMessage,
+	raw json.RawMessage,
 	transaction *types.Transaction,
 	blockHash common.Hash,
 	blockNumber *big.Int,
 	transactionIndex int64,
+	baseFee *big.Int,
 ) (*types.Receipt, error) {
-	if !blockNumber.IsUint64() || transactionIndex < 0 {
+	if transaction == nil || !blockNumber.IsUint64() || transactionIndex < 0 {
 		return nil, errors.New("stored receipt inclusion exceeds supported range")
-	}
-	switch transaction.Type() {
-	case types.LegacyTxType, types.AccessListTxType:
-		return decodeStoredReceipt(
-			raw,
-			transaction,
-			blockHash,
-			blockNumber,
-			transactionIndex,
-		)
-	}
-	header, err := chainbundle.DecodeStoredHeader(blockRaw)
-	if err != nil {
-		return nil, fmt.Errorf("authenticate stored receipt block header: %w", err)
-	}
-	if header.Hash() != blockHash ||
-		header.Number == nil ||
-		header.Number.Cmp(blockNumber) != 0 {
-		return nil, errors.New("stored receipt block header does not match indexed identity")
 	}
 	firstLogIndex, err := storedReceiptFirstLogIndex(raw)
 	if err != nil {
 		return nil, err
 	}
-	receipt, _, _, err := chainbundle.DecodeStoredReceiptWithHeader(
+	receipt, _, _, err := chainbundle.DecodeStoredReceiptWithBaseFee(
 		raw,
 		transaction,
-		header,
+		blockHash,
+		blockNumber.Uint64(),
 		uint64(transactionIndex),
 		firstLogIndex,
+		baseFee,
 	)
 	return receipt, err
 }

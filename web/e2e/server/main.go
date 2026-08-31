@@ -269,12 +269,28 @@ type homeTestStream struct {
 	subscribers map[uint64]chan homeTestUpdate
 }
 
+func (stream *homeTestStream) current() homeTestUpdate {
+	stream.mu.Lock()
+	defer stream.mu.Unlock()
+	return stream.updateLocked()
+}
+
 func (stream *homeTestStream) subscribe() (<-chan homeTestUpdate, func()) {
+	return stream.subscribeWithCurrent(true)
+}
+
+func (stream *homeTestStream) subscribeFuture() (<-chan homeTestUpdate, func()) {
+	return stream.subscribeWithCurrent(false)
+}
+
+func (stream *homeTestStream) subscribeWithCurrent(current bool) (<-chan homeTestUpdate, func()) {
 	stream.mu.Lock()
 	stream.nextID++
 	id := stream.nextID
 	channel := make(chan homeTestUpdate, 1)
-	channel <- stream.updateLocked()
+	if current {
+		channel <- stream.updateLocked()
+	}
 	stream.subscribers[id] = channel
 	stream.mu.Unlock()
 	return channel, func() {

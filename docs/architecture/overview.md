@@ -45,6 +45,17 @@ features keep their stable disabled routes and typed unavailable responses;
 enabled production modules never infer dependencies through reader/catalog/Web
 type assertions or silently omit a route.
 
+Public read errors, cursor encoding, core reader/status interfaces, and atomic
+home snapshot state live in transport-independent `internal/publicquery`.
+`internal/query` and `internal/state` cannot import `internal/httpapi`;
+`internal/query` also cannot import the enrichment worker package. Shared ABI
+provenance/confidence, exact verified calldata, proxy/Diamond vocabulary, and
+durable stage/replay/enqueue identities live in `internal/abicontract`,
+`internal/abicalldata`, `internal/proxycontract`, and
+`internal/stagecontract`. Worker implementations may alias those contracts,
+but readers and producers import the neutral owner. `make source-check`
+enforces these directions in addition to SQL/file-size ownership.
+
 The public API listener optionally serves TLS from one startup-loaded
 certificate/private-key pair as specified by
 [ADR-0027](../decisions/ADR-0027-process-native-api-tls.md). TLS is enabled
@@ -61,8 +72,9 @@ without making metrics a correctness dependency; refresh failure retains the
 last snapshot and exposes its age/failure state. Replicas expose the same
 chain snapshot, so current gauges—including
 `etherview_x402_stale_settling_payments`—are deduplicated with `max`, while
-per-process counters such as `etherview_x402_requests_total` aggregate with
-`sum`/`rate` or `sum`/`increase`. Optional OTLP/HTTP tracing starts
+per-process counters such as `etherview_billing_topups_total` and
+`etherview_billing_usage_total` aggregate with `sum`/`rate` or
+`sum`/`increase`. Optional OTLP/HTTP tracing starts
 only with an explicit collector endpoint, propagates W3C trace context through
 HTTP, and flushes within the supervisor's bounded shutdown. Collector or
 exporter loss never withdraws readiness. Operator response procedures are in
@@ -95,6 +107,15 @@ are merged from the same seven domain modules, preventing one language from
 silently acquiring a different key layout. The pinned Biome gate is part of
 `web-lint` and checks hooks, unused code, selected complexity, function size,
 and production file size before the embedded distribution is built.
+Route components and feature-heavy editors/charts are lazy chunks; the initial
+asset graph explicitly forbids page, ECharts, x402, verified-source, and
+CodeMirror chunks. Hashed assets are built with Gzip/Brotli sidecars and a
+SHA-256 size manifest. The embedded handler performs representation-aware
+conditional delivery while keeping shell nonces, CSP, immutable caching,
+HEAD, range, fallback, and reserved-path behavior intact. One durable
+`/api/v1/events` EventSource invalidates live React Query data; the home page
+refetches one atomic `/api/v1/home` publication instead of opening a second
+stream, and canonical lists no longer poll every two seconds.
 
 Optional accelerator behavior is intentionally asymmetric: NATS carries only
 coalesced poll hints, Redis shares rate buckets and caches only the durable
@@ -178,6 +199,31 @@ executors. The routing and lag contract is specified in
   classification, redaction, SQL models, and public API models remain explicit
   Etherview adapters; see
   [ADR-0022](../decisions/ADR-0022-go-ethereum-type-and-raw-rpc-ownership.md).
+- Each per-endpoint RPC limiter grants FIFO time slots only to live waiters.
+  Canceling a queued request removes it without advancing the next slot, so a
+  canceled call cannot delay unrelated later work or poison the provider-rate
+  schedule.
+- Core persistence takes one root-normalized owned copy of each incoming
+  bundle. That single decode both validates caller alignment and isolates the
+  stored rows from later source mutation; segment ancestry and row insertion
+  consume the owned result without repeating full bundle validation.
+- The owned segment is written in foreign-key order through relation-specific
+  JSONB record batches. A batch contains at most 512 rows and targets 4 MiB of
+  encoded input; an indivisible larger row is sent alone and remains bounded by
+  the ingestion/backfill input budget. Block identity, transaction identity,
+  inclusions, receipts, logs, withdrawals, canonical mappings, journal and
+  derived canonical flags, and core outbox messages remain inside the same
+  chain-locked transaction. Batching changes round-trip count, not authority or
+  publication atomicity.
+- Public block, transaction, address-activity, and Etherscan list/detail reads
+  never fan out the complete `blocks.raw` JSONB value. Stored generated columns
+  retain the validated miner, gas, base-fee, transaction-count, and withdrawals
+  presence/count scalars; relational block identity and timestamp remain the
+  query keys. Block responses aggregate normalized withdrawal rows and compare
+  normalized transaction/withdrawal counts with the authenticated Raw-derived
+  counts. Transaction and compatibility receipt validation uses the exact block
+  identity plus the narrow base-fee projection. Missing, malformed, or drifting
+  projections fail closed rather than silently returning a partial model.
 - New-head subscriptions are hints. Polling, ancestry checks, and gap scans are
   authoritative.
 - The upstream head, indexed position, readiness, and bounded head/reorg/status
@@ -211,6 +257,13 @@ executors. The routing and lag contract is specified in
   PostgreSQL range leases coordinate backfill replicas, while coverage remains
   the restart-safe source of missing work; see
   [ADR-0006](../decisions/ADR-0006-durable-canonical-coverage-and-live-priority.md).
+- A backfill lease is bounded independently by block count, owned raw bytes,
+  and relational row work. One worker retains at most half of the configured
+  byte/row budget in a pending segment so the next fetched block fits inside
+  the total budget, commits each full subsegment through the same canonical
+  coverage transaction, and completes the lease only after its complete range
+  is covered. A crash or later-block failure retains exact committed coverage
+  and makes only the missing suffix reclaimable.
 - Operator repair refetches a block through the normal sticky history-RPC path
   and may refresh core rows only when chain, height, hash, and parent still
   match the canonical mapping. The refresh path never invokes normal
@@ -220,6 +273,11 @@ executors. The routing and lag contract is specified in
   backfill work, records `etherview_sync_halted{reason}` with a stable reason,
   and keeps the process alive and scrapeable until operator cancellation and a
   repair/restart. The Prometheus rule alerts on that durable in-process signal.
+- Fork-choice checks the configured reorg depth and finalized floor before
+  crossing either boundary with another parent RPC, canonical-row traversal,
+  or branch-sized allocation. A forward head gap larger than that bounded
+  ancestry window remains sparse/backfill work rather than being assembled in
+  one canonicalizer call.
 - A core refresh invalidates replayable output directly derived from that
   block. Rebuilding proxy, ABI, token, statistics, or trace output is an
   explicit, block-hash-scoped reindex operation; active leases are never
@@ -609,6 +667,12 @@ size alone is not sufficient justification to weaken those invariants.
   A debit commits only for an HTTP 200 Etherscan envelope with `status:"1"`;
   every logical/transport/panic/cancellation/capture failure releases the
   reservation. The committed debit precedes response delivery.
+- The superseded `features.x402_billing`, `billing.routes`, coarse request-
+  payment limiter settings, native quota wrapper, and HTTP payment dispatcher
+  do not exist. Stale YAML and environment keys fail configuration loading.
+  The payment ledger accepts new reservations only through the account-top-up
+  method; legacy request rows remain readable, immutable audit history and are
+  still available to bounded operator inspection/reconciliation.
 - Top-up intents bind user, SIWE address, chain, asset, amount, recipient, and
   expiry. x402 v2.23 exact-EVM `authorization` supports only EIP-3009 and
   Permit2. Their replay HMACs use separate domains and exclude the signature;
@@ -625,6 +689,10 @@ size alone is not sufficient justification to weaken those invariants.
   ERC-721 holding reads require genesis-through-tip Core and Token coverage and
   fail closed when a dense requested page cannot be proven within 1,000
   candidates; they never introduce a holder ledger or RPC proxy.
+- Every compatibility list additionally caps `page * offset` at 10,000, and a
+  log request covers at most 100,000 tip-clamped blocks. Fixed-direction miner
+  and timestamp queries use dedicated indexes; log topic zero uses the typed
+  index only when the full AND/OR expression makes it mandatory.
 - Etherscan address-only ABI and source lookups resolve the address's latest
   canonical code observation, then require a verified artifact with the same
   chain, address, code hash, and a validity range covering the canonical tip.

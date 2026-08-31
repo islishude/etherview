@@ -168,19 +168,25 @@ func (r *PostgresRepository) CommitCanonicalSegment(
 	if err != nil {
 		return CoreCoverage{}, err
 	}
-	for index, bundle := range copies {
-		reference := references[index]
-		if err := putBundleTx(ctx, tx, chainID, bundle); err != nil {
-			return CoreCoverage{}, err
+	if err := putBundlesTx(ctx, tx, chainID, copies); err != nil {
+		return CoreCoverage{}, err
+	}
+	newReferences := make([]BlockRef, 0, len(references))
+	outboxMessages := make([]coreOutboxMessage, 0, len(references))
+	for index, reference := range references {
+		if !newCanonical[index] {
+			continue
 		}
-		if newCanonical[index] {
-			if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyCommitCanonicalSegmentStatement1, chainID, decimal(reference.Number), mustHashBytes(reference.Hash)); err != nil {
-				return CoreCoverage{}, fmt.Errorf("insert canonical segment block %d: %w", reference.Number, err)
-			}
-			if err := insertCoreOutboxTx(ctx, tx, chainID, "core.block.canonical", reference); err != nil {
-				return CoreCoverage{}, err
-			}
-		}
+		newReferences = append(newReferences, reference)
+		outboxMessages = append(outboxMessages, coreOutboxMessage{
+			Topic: "core.block.canonical", Reference: reference,
+		})
+	}
+	if err := insertCanonicalBlocksTx(ctx, tx, chainID, newReferences); err != nil {
+		return CoreCoverage{}, err
+	}
+	if err := insertCoreOutboxBatchTx(ctx, tx, chainID, outboxMessages); err != nil {
+		return CoreCoverage{}, err
 	}
 	if err := replaceCoverageRangesTx(ctx, tx, chainID, nextRanges); err != nil {
 		return CoreCoverage{}, err
@@ -300,42 +306,44 @@ func (r *PostgresRepository) ReplaceHighestCanonicalSegment(
 	if err != nil {
 		return CoreCoverage{}, err
 	}
-	for _, bundle := range copies {
-		if err := putBundleTx(ctx, tx, chainID, bundle); err != nil {
-			return CoreCoverage{}, err
-		}
+	if err := putBundlesTx(ctx, tx, chainID, copies); err != nil {
+		return CoreCoverage{}, err
 	}
+	if err := deleteCanonicalBlocksTx(ctx, tx, chainID, replacement.Detached); err != nil {
+		return CoreCoverage{}, err
+	}
+	if err := setBlockJournalsCanonicalBatchTx(
+		ctx, tx, chainID, replacement.Detached, false,
+	); err != nil {
+		return CoreCoverage{}, err
+	}
+	if err := setDerivedCanonicalBatchTx(
+		ctx, tx, chainID, replacement.Detached, false,
+	); err != nil {
+		return CoreCoverage{}, err
+	}
+	if err := insertCanonicalBlocksTx(ctx, tx, chainID, attached); err != nil {
+		return CoreCoverage{}, err
+	}
+	if err := setBlockJournalsCanonicalBatchTx(ctx, tx, chainID, attached, true); err != nil {
+		return CoreCoverage{}, err
+	}
+	if err := setDerivedCanonicalBatchTx(ctx, tx, chainID, attached, true); err != nil {
+		return CoreCoverage{}, err
+	}
+	outboxMessages := make([]coreOutboxMessage, 0, len(replacement.Detached)+len(attached))
 	for _, detached := range replacement.Detached {
-		result, err := tx.ExecContext(ctx, dbgen.StoreLegacyReplaceHighestCanonicalSegmentStatement2, chainID, decimal(detached.Number), mustHashBytes(detached.Hash))
-		if err != nil {
-			return CoreCoverage{}, fmt.Errorf("detach sparse canonical block %d: %w", detached.Number, err)
-		}
-		if affected, err := result.RowsAffected(); err != nil || affected != 1 {
-			return CoreCoverage{}, fmt.Errorf("%w: detach sparse canonical block %d affected %d rows", ErrConflict, detached.Number, affected)
-		}
-		if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyReplaceHighestCanonicalSegmentStatement3, chainID, mustHashBytes(detached.Hash)); err != nil {
-			return CoreCoverage{}, fmt.Errorf("mark sparse detached journals: %w", err)
-		}
-		if err := setDerivedCanonicalTx(ctx, tx, chainID, detached.Hash, false); err != nil {
-			return CoreCoverage{}, err
-		}
-		if err := insertCoreOutboxTx(ctx, tx, chainID, "core.block.orphaned", detached); err != nil {
-			return CoreCoverage{}, err
-		}
+		outboxMessages = append(outboxMessages, coreOutboxMessage{
+			Topic: "core.block.orphaned", Reference: detached,
+		})
 	}
 	for _, reference := range attached {
-		if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyReplaceHighestCanonicalSegmentStatement4, chainID, decimal(reference.Number), mustHashBytes(reference.Hash)); err != nil {
-			return CoreCoverage{}, fmt.Errorf("attach sparse canonical block %d: %w", reference.Number, err)
-		}
-		if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyReplaceHighestCanonicalSegmentStatement5, chainID, mustHashBytes(reference.Hash)); err != nil {
-			return CoreCoverage{}, fmt.Errorf("mark sparse attached journals: %w", err)
-		}
-		if err := setDerivedCanonicalTx(ctx, tx, chainID, reference.Hash, true); err != nil {
-			return CoreCoverage{}, err
-		}
-		if err := insertCoreOutboxTx(ctx, tx, chainID, "core.block.canonical", reference); err != nil {
-			return CoreCoverage{}, err
-		}
+		outboxMessages = append(outboxMessages, coreOutboxMessage{
+			Topic: "core.block.canonical", Reference: reference,
+		})
+	}
+	if err := insertCoreOutboxBatchTx(ctx, tx, chainID, outboxMessages); err != nil {
+		return CoreCoverage{}, err
 	}
 	nextRanges, err := coverageRangesAfterSparseReplacement(ranges, replacement, attached)
 	if err != nil {

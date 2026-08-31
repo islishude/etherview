@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
-import { sameOriginAPIPath } from "./client";
+import { apiClient, requireEnvelope } from "./client";
 import type {
   BlockSummary,
   ChainStatus,
@@ -34,54 +34,30 @@ export interface HomeStreamState {
   isPending: boolean;
 }
 
-export function useHomeSnapshotStream(): HomeStreamState {
-  const [state, setState] = useState<HomeStreamState>({ isPending: true });
-
-  useEffect(() => {
-    if (typeof EventSource === "undefined") {
-      setState({ isPending: false, error: new Error("EventSource is unavailable") });
-      return;
-    }
-    const source = new EventSource(sameOriginAPIPath("/home/stream"));
-    const handleSnapshot = (event: MessageEvent<string>) => {
-      try {
-        const response = parseHomeSnapshot(event.data);
-        setState({
-          isPending: false,
-          data: {
-            status: {
-              ...response.data.status,
-              coverage_start: response.meta.coverage_start,
-              coverage_end: response.meta.coverage_end,
-            },
-            blocks: response.data.blocks,
-            transactions: response.data.transactions,
-          },
-        });
-      } catch (error) {
-        setState((current) => current.data
-          ? current
-          : {
-              isPending: false,
-              error: error instanceof Error ? error : new Error("Invalid home snapshot"),
-            });
-      }
-    };
-    const handleError = () => {
-      setState((current) => current.data
-        ? current
-        : { isPending: false, error: new Error("Home snapshot stream unavailable") });
-    };
-    source.addEventListener("snapshot", handleSnapshot as EventListener);
-    source.addEventListener("error", handleError);
-    return () => {
-      source.removeEventListener("snapshot", handleSnapshot as EventListener);
-      source.removeEventListener("error", handleError);
-      source.close();
-    };
-  }, []);
-
-  return state;
+export function useHomeSnapshot(): HomeStreamState {
+  const query = useQuery({
+    queryKey: ["home"],
+    queryFn: async () => {
+      const envelope = requireEnvelope(await apiClient.GET("/home"));
+      const response = parseHomeSnapshot(JSON.stringify(envelope));
+      return {
+        status: {
+          ...response.data.status,
+          coverage_start: response.meta.coverage_start,
+          coverage_end: response.meta.coverage_end,
+        },
+        blocks: response.data.blocks,
+        transactions: response.data.transactions,
+      };
+    },
+    retry: false,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  return {
+    data: query.data,
+    error: query.error ?? undefined,
+    isPending: query.isPending,
+  };
 }
 
 export function parseHomeSnapshot(raw: string): HomeSnapshotResponse {

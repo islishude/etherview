@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -37,25 +38,22 @@ func TestChecksumAddressEIP55Vectors(t *testing.T) {
 	}
 }
 
-func TestStoredBlockProjectionAcceptsNonStringFormatExtension(t *testing.T) {
+func TestPublicQueriesDoNotTransferFullBlockRaw(t *testing.T) {
 	t.Parallel()
-	raw := testBlockRaw(2, 3, 1, 0)
-	var fields map[string]any
-	if err := json.Unmarshal(raw, &fields); err != nil {
-		t.Fatal(err)
-	}
-	fields["format"] = map[string]any{"vendor": 1}
-	raw, err := json.Marshal(fields)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var projection storedBlockProjection
-	if err := decodeStoredBlockProjection(raw, &projection); err != nil {
-		t.Fatal(err)
-	}
-	if projection.Number == nil || projection.Number.ToInt().Uint64() != 2 ||
-		projection.Hash == nil || *projection.Hash != common.HexToHash(testHash(3)) {
-		t.Fatalf("projection = %#v", projection)
+	for name, query := range map[string]string{
+		"block by hash":        dbgen.QueryBlockByHash,
+		"block by number":      dbgen.QueryBlockByNumber,
+		"block list":           dbgen.QueryListBlocks,
+		"block list first":     dbgen.QueryListBlocksFirst,
+		"transaction":          dbgen.QueryTransactionByHash,
+		"transaction list":     dbgen.QueryListTransactionsWithMethod,
+		"transaction first":    dbgen.QueryListTransactionsWithMethodFirst,
+		"block transactions":   dbgen.ListBlockTransactions,
+		"address transactions": dbgen.QueryListAddressTransactions,
+	} {
+		if strings.Contains(query, "block.raw") {
+			t.Errorf("%s query transfers block.raw", name)
+		}
 	}
 }
 
@@ -257,16 +255,16 @@ func TestBlocksUseSnapshotBoundOpaqueCursor(t *testing.T) {
 		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
 		queryExpectation{
 			contains: "canonical.number <= $2::numeric",
-			columns:  columns(6),
+			columns:  columns(16),
 			rows: [][]driver.Value{
-				{testBlockRaw(2, 3, 2, 2), "2", testHashBytes(3), true, "1", "0"},
-				{testBlockRaw(1, 2, 1, 1), "1", testHashBytes(2), true, "1", "0"},
-				{testBlockRaw(0, 1, 0, 0), "0", testHashBytes(1), true, "1", "0"},
+				testBlockProjectionRow(2, 3, 2, 2, true, "1", "0"),
+				testBlockProjectionRow(1, 2, 1, 1, true, "1", "0"),
+				testBlockProjectionRow(0, 1, 0, 0, true, "1", "0"),
 			},
 		},
 		queryExpectation{contains: "SELECT EXISTS", columns: columns(1), rows: [][]driver.Value{{true}}},
-		queryExpectation{contains: "canonical.number < $2::numeric", columns: columns(6), rows: [][]driver.Value{
-			{testBlockRaw(0, 1, 0, 0), "0", testHashBytes(1), true, "1", "0"},
+		queryExpectation{contains: "canonical.number < $2::numeric", columns: columns(16), rows: [][]driver.Value{
+			testBlockProjectionRow(0, 1, 0, 0, true, "1", "0"),
 		}},
 	)
 	reader := testReader(t, db, Options{ChainID: 1})
@@ -320,19 +318,19 @@ func TestTransactionsUseSnapshotBoundCompositeCursor(t *testing.T) {
 		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
 		queryExpectation{
 			contains: "inclusion.block_number <= $2::numeric",
-			columns:  columns(17),
+			columns:  columns(18),
 			rows: [][]driver.Value{
-				{testTransactionRawAt(2, 3, 102, 1), testReceiptRawAt(2, 3, 102, 1, "0x1"), "2", testHashBytes(3), int64(1), testTransactionHashBytes(102), true, "1", "0", testBlockRaw(2, 3, 2, 1), true, "direct", testAddressBytes(1), testHashBytes(4), "transfer(address,uint256)", "verified", "verified"},
-				{testTransactionRawAt(2, 3, 101, 0), testReceiptRawAt(2, 3, 101, 0, "0x1"), "2", testHashBytes(3), int64(0), testTransactionHashBytes(101), true, "1", "0", testBlockRaw(2, 3, 2, 1), true, "empty", nil, nil, nil, nil, nil},
-				{testTransactionRawAt(1, 2, 100, 0), testReceiptRawAt(1, 2, 100, 0, "0x1"), "1", testHashBytes(2), int64(0), testTransactionHashBytes(100), true, "1", "0", testBlockRaw(1, 2, 1, 0), false, nil, nil, nil, nil, nil, nil},
+				{testTransactionRawAt(2, 3, 102, 1), testReceiptRawAt(2, 3, 102, 1, "0x1"), "2", testHashBytes(3), int64(1), testTransactionHashBytes(102), true, "1", "0", "100", "0x3b9aca00", true, "direct", testAddressBytes(1), testHashBytes(4), "transfer(address,uint256)", "verified", "verified"},
+				{testTransactionRawAt(2, 3, 101, 0), testReceiptRawAt(2, 3, 101, 0, "0x1"), "2", testHashBytes(3), int64(0), testTransactionHashBytes(101), true, "1", "0", "100", "0x3b9aca00", true, "empty", nil, nil, nil, nil, nil},
+				{testTransactionRawAt(1, 2, 100, 0), testReceiptRawAt(1, 2, 100, 0, "0x1"), "1", testHashBytes(2), int64(0), testTransactionHashBytes(100), true, "1", "0", "100", "0x3b9aca00", false, nil, nil, nil, nil, nil, nil},
 			},
 		},
 		queryExpectation{contains: "SELECT EXISTS", columns: columns(1), rows: [][]driver.Value{{true}}},
 		queryExpectation{
 			contains: "inclusion.tx_index < $3",
-			columns:  columns(17),
+			columns:  columns(18),
 			rows: [][]driver.Value{
-				{testTransactionRawAt(1, 2, 100, 0), testReceiptRawAt(1, 2, 100, 0, "0x1"), "1", testHashBytes(2), int64(0), testTransactionHashBytes(100), true, "1", "0", testBlockRaw(1, 2, 1, 0), true, "eip7702_delegate", testAddressBytes(2), testHashBytes(5), "setValue(uint256)", "code_hash", "high"},
+				{testTransactionRawAt(1, 2, 100, 0), testReceiptRawAt(1, 2, 100, 0, "0x1"), "1", testHashBytes(2), int64(0), testTransactionHashBytes(100), true, "1", "0", "100", "0x3b9aca00", true, "eip7702_delegate", testAddressBytes(2), testHashBytes(5), "setValue(uint256)", "code_hash", "high"},
 			},
 		},
 	)
@@ -453,15 +451,15 @@ func TestBlockTransactionsUseExactBlockIdentityAndStableIndexCursor(t *testing.T
 	db := testDatabase(t,
 		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"9", testHashBytes(10)}}},
 		queryExpectation{contains: "FROM blocks WHERE chain_id", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
-		queryExpectation{contains: "inclusion.block_hash = $3", columns: columns(10), rows: [][]driver.Value{
-			{testTransactionRawAt(2, 3, 7, 0), testReceiptRawAt(2, 3, 7, 0, "0x1"), "2", testHashBytes(3), int64(0), testTransactionHashBytes(7), false, "8", "7", testBlockRaw(2, 3, 2, 2)},
-			{testTransactionRawAt(2, 3, 8, 1), testReceiptRawAt(2, 3, 8, 1, "0x1"), "2", testHashBytes(3), int64(1), testTransactionHashBytes(8), false, "8", "7", testBlockRaw(2, 3, 2, 2)},
+		queryExpectation{contains: "inclusion.block_hash = $3", columns: columns(11), rows: [][]driver.Value{
+			{testTransactionRawAt(2, 3, 7, 0), testReceiptRawAt(2, 3, 7, 0, "0x1"), "2", testHashBytes(3), int64(0), testTransactionHashBytes(7), false, "8", "7", "100", "0x3b9aca00"},
+			{testTransactionRawAt(2, 3, 8, 1), testReceiptRawAt(2, 3, 8, 1, "0x1"), "2", testHashBytes(3), int64(1), testTransactionHashBytes(8), false, "8", "7", "100", "0x3b9aca00"},
 		}},
 		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"9", testHashBytes(10)}}},
 		queryExpectation{contains: "FROM blocks WHERE chain_id", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
 		queryExpectation{contains: "SELECT EXISTS ( SELECT 1 FROM blocks", columns: columns(1), rows: [][]driver.Value{{true}}},
-		queryExpectation{contains: "inclusion.block_hash = $3", columns: columns(10), rows: [][]driver.Value{
-			{testTransactionRawAt(2, 3, 8, 1), testReceiptRawAt(2, 3, 8, 1, "0x1"), "2", testHashBytes(3), int64(1), testTransactionHashBytes(8), false, "8", "7", testBlockRaw(2, 3, 2, 2)},
+		queryExpectation{contains: "inclusion.block_hash = $3", columns: columns(11), rows: [][]driver.Value{
+			{testTransactionRawAt(2, 3, 8, 1), testReceiptRawAt(2, 3, 8, 1, "0x1"), "2", testHashBytes(3), int64(1), testTransactionHashBytes(8), false, "8", "7", "100", "0x3b9aca00"},
 		}},
 	)
 	reader := testReader(t, db, Options{ChainID: 1})
@@ -484,8 +482,8 @@ func TestBlockTransactionsUseExactBlockIdentityAndStableIndexCursor(t *testing.T
 func TestBlockHashLookupCanReturnRetainedOrphan(t *testing.T) {
 	t.Parallel()
 	db := testDatabase(t, queryExpectation{
-		contains: "block.hash = $2", columns: columns(6),
-		rows: [][]driver.Value{{testBlockRaw(2, 3, 2, 0), "2", testHashBytes(3), false, "5", "4"}},
+		contains: "block.hash = $2", columns: columns(16),
+		rows: [][]driver.Value{testBlockProjectionRow(2, 3, 2, 0, false, "5", "4")},
 	})
 	reader := testReader(t, db, Options{ChainID: 1})
 	block, err := reader.Block(context.Background(), testHash(3))
@@ -497,14 +495,16 @@ func TestBlockHashLookupCanReturnRetainedOrphan(t *testing.T) {
 	}
 }
 
-func TestBlockRejectsRawIdentityMismatch(t *testing.T) {
+func TestBlockRejectsNormalizedTransactionCountMismatch(t *testing.T) {
 	t.Parallel()
+	row := testBlockProjectionRow(2, 3, 2, 0, true, nil, nil)
+	row[9] = int64(1)
 	db := testDatabase(t, queryExpectation{
-		contains: "canonical.number = $2::numeric", columns: columns(6),
-		rows: [][]driver.Value{{testBlockRaw(2, 99, 2, 0), "2", testHashBytes(3), true, nil, nil}},
+		contains: "canonical.number = $2::numeric", columns: columns(16),
+		rows: [][]driver.Value{row},
 	})
 	reader := testReader(t, db, Options{ChainID: 1})
-	if _, err := reader.Block(context.Background(), "2"); err == nil || !strings.Contains(err.Error(), "raw hash") {
+	if _, err := reader.Block(context.Background(), "2"); err == nil || !strings.Contains(err.Error(), "normalized inclusions") {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -514,10 +514,10 @@ func TestTransactionDecodesDecimalQuantitiesChecksumAndReceipt(t *testing.T) {
 	db := testDatabase(t, queryExpectation{
 		contains: "SELECT canonical.number::text, canonical.block_hash", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}},
 	}, queryExpectation{
-		contains: "FROM transaction_inclusions AS inclusion", columns: columns(10),
+		contains: "FROM transaction_inclusions AS inclusion", columns: columns(11),
 		rows: [][]driver.Value{{
 			testTransactionRaw(2, 3, 7), testReceiptRaw(2, 3, 7, "0x1"),
-			"2", testHashBytes(3), int64(0), testTransactionHashBytes(7), true, "2", "1", testBlockRaw(2, 3, 2, 1),
+			"2", testHashBytes(3), int64(0), testTransactionHashBytes(7), true, "2", "1", "100", "0x3b9aca00",
 		}},
 	})
 	reader := testReader(t, db, Options{ChainID: 1})
@@ -584,12 +584,12 @@ func TestTransactionReturnsOnlySuccessfulReceiptContractAddress(t *testing.T) {
 			db := testDatabase(t, queryExpectation{
 				contains: "SELECT canonical.number::text, canonical.block_hash", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}},
 			}, queryExpectation{
-				contains: "FROM transaction_inclusions AS inclusion", columns: columns(10),
+				contains: "FROM transaction_inclusions AS inclusion", columns: columns(11),
 				rows: [][]driver.Value{{
 					testContractCreationTransactionRaw(2, 3, testCase.transactionSeed, 0),
 					testContractCreationReceiptRaw(2, 3, transaction, 0, testCase.status),
 					"2", testHashBytes(3), int64(0), transaction.Hash().Bytes(), true, "2", "1",
-					testBlockRaw(2, 3, 2, 1),
+					"100", "0x3b9aca00",
 				}},
 			})
 			reader := testReader(t, db, Options{ChainID: 1})
@@ -619,10 +619,10 @@ func TestTransactionLegacyTransactionRetainsGasPriceAndClearsBurnedWithoutBaseFe
 	db := testDatabase(t, queryExpectation{
 		contains: "SELECT canonical.number::text, canonical.block_hash", columns: columns(2), rows: [][]driver.Value{{"1", testHashBytes(3)}},
 	}, queryExpectation{
-		contains: "FROM transaction_inclusions AS inclusion", columns: columns(10),
+		contains: "FROM transaction_inclusions AS inclusion", columns: columns(11),
 		rows: [][]driver.Value{{
 			testLegacyTransactionRaw(1, 3, 11), testLegacyReceiptRawAt(1, 3, 11, 0, "0x1"),
-			"1", testHashBytes(3), int64(0), testLegacyTransactionHashBytes(11), true, "1", "0", testBlockRawWithoutBaseFee(1, 3, 0, 1),
+			"1", testHashBytes(3), int64(0), testLegacyTransactionHashBytes(11), true, "1", "0", "100", nil,
 		}},
 	})
 	reader := testReader(t, db, Options{ChainID: 1})
@@ -649,10 +649,10 @@ func TestTransactionDoesNotReturnConfirmationsForOrphan(t *testing.T) {
 	db := testDatabase(t, queryExpectation{
 		contains: "SELECT canonical.number::text, canonical.block_hash", columns: columns(2), rows: [][]driver.Value{{"3", testHashBytes(3)}},
 	}, queryExpectation{
-		contains: "FROM transaction_inclusions AS inclusion", columns: columns(10),
+		contains: "FROM transaction_inclusions AS inclusion", columns: columns(11),
 		rows: [][]driver.Value{{
 			testTransactionRaw(1, 2, 5), testReceiptRawAt(1, 2, 5, 0, "0x1"),
-			"1", testHashBytes(2), int64(0), testTransactionHashBytes(5), false, "1", "0", testBlockRaw(1, 2, 1, 0),
+			"1", testHashBytes(2), int64(0), testTransactionHashBytes(5), false, "1", "0", "100", "0x3b9aca00",
 		}},
 	})
 	reader := testReader(t, db, Options{ChainID: 1})
@@ -951,49 +951,20 @@ func testAddressBytes(value byte) []byte {
 	return result
 }
 
-func testBlockRaw(number uint64, hash, parent byte, transactionCount int) []byte {
-	transactions := make([]string, transactionCount)
-	for index := range transactions {
-		transactions[index] = testHash(byte(100 + index))
+func testBlockProjectionRow(
+	number uint64,
+	hash, parent byte,
+	transactionCount int64,
+	canonical bool,
+	safe, finalized any,
+) []driver.Value {
+	return []driver.Value{
+		strconv.FormatUint(number, 10), testHashBytes(hash), testHashBytes(parent), "100",
+		"0x52908400098527886e0f7030069857d2e4169ee7",
+		"0x5208", "0x1c9c380", "0x3b9aca00",
+		transactionCount, transactionCount,
+		false, nil, []byte("[]"), canonical, safe, finalized,
 	}
-	value := map[string]any{
-		"number":        fmt.Sprintf("0x%x", number),
-		"hash":          testHash(hash),
-		"parentHash":    testHash(parent),
-		"timestamp":     "0x64",
-		"miner":         "0x52908400098527886e0f7030069857d2e4169ee7",
-		"transactions":  transactions,
-		"gasUsed":       "0x5208",
-		"gasLimit":      "0x1c9c380",
-		"baseFeePerGas": "0x3b9aca00",
-	}
-	data, err := json.Marshal(value)
-	if err != nil {
-		panic(err)
-	}
-	return data
-}
-
-func testBlockRawWithoutBaseFee(number uint64, hash, parent byte, transactionCount int) []byte {
-	transactions := make([]string, transactionCount)
-	for index := range transactions {
-		transactions[index] = testHash(byte(100 + index))
-	}
-	value := map[string]any{
-		"number":       fmt.Sprintf("0x%x", number),
-		"hash":         testHash(hash),
-		"parentHash":   testHash(parent),
-		"timestamp":    "0x64",
-		"miner":        "0x52908400098527886e0f7030069857d2e4169ee7",
-		"transactions": transactions,
-		"gasUsed":      "0x5208",
-		"gasLimit":     "0x1c9c380",
-	}
-	data, err := json.Marshal(value)
-	if err != nil {
-		panic(err)
-	}
-	return data
 }
 
 func testTransactionRaw(blockNumber uint64, blockHash, transactionHash byte) []byte {

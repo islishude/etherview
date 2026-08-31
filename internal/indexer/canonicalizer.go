@@ -180,11 +180,25 @@ func (c *Canonicalizer) apply(ctx context.Context, candidate chainbundle.Bundle,
 	if candidateRef.Number < tip.Number && !authoritativeHead {
 		return ApplyResult{}, fmt.Errorf("%w: candidate %d, canonical tip %d", ErrStaleHead, candidateRef.Number, tip.Number)
 	}
+	forwardGap := uint64(0)
+	if candidateRef.Number > tip.Number {
+		forwardGap = candidateRef.Number - tip.Number
+		if forwardGap > c.maxReorgDepth() {
+			return ApplyResult{}, fmt.Errorf(
+				"%w: candidate gap %d exceeds bounded ancestry work %d",
+				ErrGap, forwardGap, c.maxReorgDepth(),
+			)
+		}
+	}
 	resolvingKnownSparseHead := sparseTop != nil && canonicalExists && canonical.Hash == candidateRef.Hash
 
 	backward := []chainbundle.Bundle{candidate}
 	cursor := candidate
 	var ancestor store.BlockRef
+	var finalized *store.BlockRef
+	finalityLoaded := false
+	parentFetches := uint64(0)
+	maximumParentFetches := c.maximumAncestryFetches(forwardGap)
 	for {
 		cursorRef, err := store.RefFromBundle(cursor)
 		if err != nil {
@@ -201,12 +215,45 @@ func (c *Canonicalizer) apply(ctx context.Context, candidate chainbundle.Bundle,
 				backward = backward[:len(backward)-1]
 				break
 			}
+			distanceBelowTip := tip.Number - cursorRef.Number
+			if distanceBelowTip >= c.maxReorgDepth() {
+				return ApplyResult{}, fmt.Errorf(
+					"%w: alternate block %d requires depth greater than %d",
+					ErrReorgTooDeep, cursorRef.Number, c.maxReorgDepth(),
+				)
+			}
+			if !finalityLoaded {
+				current, exists, finalityErr := c.Repository.Finality(ctx, c.ChainID)
+				if finalityErr != nil {
+					return ApplyResult{}, fmt.Errorf("read finality before ancestry traversal: %w", finalityErr)
+				}
+				if exists {
+					finalized = current.Finalized
+				}
+				finalityLoaded = true
+			}
+			if finalized != nil && cursorRef.Number <= finalized.Number {
+				return ApplyResult{}, fmt.Errorf(
+					"%w: alternate block %d reaches finalized block %d",
+					ErrFinalizedReorg, cursorRef.Number, finalized.Number,
+				)
+			}
 		}
 		if sparseTop != nil && cursorRef.Number == sparseTop.Start && !resolvingKnownSparseHead {
 			return c.replaceSparseHead(ctx, oldTip, candidateRef, *sparseTop, backward)
 		}
 		if cursorRef.Number == 0 || cursorRef.Number <= c.StartBlock {
 			return ApplyResult{}, fmt.Errorf("%w above configured start block %d", ErrNoCommonAncestor, c.StartBlock)
+		}
+		if parentFetches >= maximumParentFetches {
+			boundary := ErrReorgTooDeep
+			if cursorRef.Number > tip.Number {
+				boundary = ErrGap
+			}
+			return ApplyResult{}, fmt.Errorf(
+				"%w: ancestry traversal reached %d parent bundles",
+				boundary, maximumParentFetches,
+			)
 		}
 		parent, exists, err := c.parentBundle(ctx, cursorRef.ParentHash, authoritativeHead)
 		if err != nil {
@@ -223,6 +270,7 @@ func (c *Canonicalizer) apply(ctx context.Context, candidate chainbundle.Bundle,
 		}
 		backward = append(backward, parent)
 		cursor = parent
+		parentFetches++
 	}
 
 	attachedBundles := reverseBundles(backward)
@@ -248,11 +296,12 @@ func (c *Canonicalizer) apply(ctx context.Context, candidate chainbundle.Bundle,
 		}, nil
 	}
 
-	detached, err := c.detachedBranch(ctx, tip, ancestor)
-	if err != nil {
+	depth := tip.Number - ancestor.Number
+	if err := c.validateReorgBoundary(ctx, ancestor, depth); err != nil {
 		return ApplyResult{}, err
 	}
-	if err := c.validateReorgBoundary(ctx, ancestor, detached); err != nil {
+	detached, err := c.detachedBranch(ctx, tip, ancestor)
+	if err != nil {
 		return ApplyResult{}, err
 	}
 	reorg := store.Reorg{
@@ -281,7 +330,21 @@ func (c *Canonicalizer) replaceSparseHead(
 	covered store.BlockRange,
 	backward []chainbundle.Bundle,
 ) (ApplyResult, error) {
-	detached := make([]store.BlockRef, 0, covered.End-covered.Start+1)
+	if covered.End < covered.Start {
+		return ApplyResult{}, fmt.Errorf("%w: sparse range ends before it starts", ErrSourceInconsistent)
+	}
+	distance := covered.End - covered.Start
+	if distance >= c.maxReorgDepth() {
+		return ApplyResult{}, fmt.Errorf(
+			"%w: sparse depth exceeds %d",
+			ErrReorgTooDeep, c.maxReorgDepth(),
+		)
+	}
+	depth := distance + 1
+	if err := c.validateSparseRangeBoundary(ctx, covered, depth); err != nil {
+		return ApplyResult{}, err
+	}
+	detached := make([]store.BlockRef, 0, depth)
 	for number := covered.End; ; number-- {
 		reference, exists, err := c.Repository.CanonicalBlock(ctx, c.ChainID, number)
 		if err != nil {
@@ -294,21 +357,6 @@ func (c *Canonicalizer) replaceSparseHead(
 		if number == covered.Start {
 			break
 		}
-	}
-	maxDepth := c.MaxReorgDepth
-	if maxDepth == 0 {
-		maxDepth = 128
-	}
-	if uint64(len(detached)) > maxDepth {
-		return ApplyResult{}, fmt.Errorf("%w: sparse depth %d exceeds %d", ErrReorgTooDeep, len(detached), maxDepth)
-	}
-	finality, hasFinality, err := c.Repository.Finality(ctx, c.ChainID)
-	if err != nil {
-		return ApplyResult{}, fmt.Errorf("read finality for sparse reorg: %w", err)
-	}
-	if hasFinality && finality.Finalized != nil && covered.Start <= finality.Finalized.Number {
-		return ApplyResult{}, fmt.Errorf("%w: sparse range starts at %d at or below finalized block %d",
-			ErrFinalizedReorg, covered.Start, finality.Finalized.Number)
 	}
 	attachedBundles := reverseBundles(backward)
 	attached := make([]store.BlockRef, len(attachedBundles))
@@ -337,11 +385,15 @@ func (c *Canonicalizer) replaceSparseHeadThroughAncestor(
 	attachedBundles []chainbundle.Bundle,
 	attached []store.BlockRef,
 ) (ApplyResult, error) {
-	detached, err := c.detachedCoveredAbove(ctx, oldTip, ancestor, coverage)
+	depth, err := coveredDepthAbove(oldTip, ancestor, coverage, c.maxReorgDepth())
 	if err != nil {
 		return ApplyResult{}, err
 	}
-	if err := c.validateReorgBoundary(ctx, ancestor, detached); err != nil {
+	if err := c.validateReorgBoundary(ctx, ancestor, depth); err != nil {
+		return ApplyResult{}, err
+	}
+	detached, err := c.detachedCoveredAbove(ctx, oldTip, ancestor, coverage, depth)
+	if err != nil {
 		return ApplyResult{}, err
 	}
 	ancestorCopy := ancestor
@@ -366,11 +418,15 @@ func (c *Canonicalizer) truncateSparseHead(
 	coverage store.CoreCoverage,
 	covered store.BlockRange,
 ) (ApplyResult, error) {
-	detached, err := c.detachedCoveredAbove(ctx, oldTip, newTip, coverage)
+	depth, err := coveredDepthAbove(oldTip, newTip, coverage, c.maxReorgDepth())
 	if err != nil {
 		return ApplyResult{}, err
 	}
-	if err := c.validateReorgBoundary(ctx, newTip, detached); err != nil {
+	if err := c.validateReorgBoundary(ctx, newTip, depth); err != nil {
+		return ApplyResult{}, err
+	}
+	detached, err := c.detachedCoveredAbove(ctx, oldTip, newTip, coverage, depth)
+	if err != nil {
 		return ApplyResult{}, err
 	}
 	ancestor := newTip
@@ -400,19 +456,85 @@ func (c *Canonicalizer) shouldResolveSparseHead(
 		return false
 	}
 	gap := top.Start - previous.End - 1
-	maxDepth := c.MaxReorgDepth
-	if maxDepth == 0 {
-		maxDepth = 128
+	return gap <= c.maxReorgDepth()
+}
+
+func (c *Canonicalizer) maxReorgDepth() uint64 {
+	if c.MaxReorgDepth == 0 {
+		return 128
 	}
-	return gap <= maxDepth
+	return c.MaxReorgDepth
+}
+
+func (c *Canonicalizer) maximumAncestryFetches(forwardGap uint64) uint64 {
+	maximum := c.maxReorgDepth()
+	if ^uint64(0)-maximum < forwardGap {
+		return ^uint64(0)
+	}
+	return maximum + forwardGap
+}
+
+func (c *Canonicalizer) validateSparseRangeBoundary(
+	ctx context.Context,
+	covered store.BlockRange,
+	depth uint64,
+) error {
+	if depth > c.maxReorgDepth() {
+		return fmt.Errorf(
+			"%w: sparse depth %d exceeds %d",
+			ErrReorgTooDeep, depth, c.maxReorgDepth(),
+		)
+	}
+	finality, exists, err := c.Repository.Finality(ctx, c.ChainID)
+	if err != nil {
+		return fmt.Errorf("read finality for sparse reorg: %w", err)
+	}
+	if exists && finality.Finalized != nil && covered.Start <= finality.Finalized.Number {
+		return fmt.Errorf(
+			"%w: sparse range starts at %d at or below finalized block %d",
+			ErrFinalizedReorg, covered.Start, finality.Finalized.Number,
+		)
+	}
+	return nil
+}
+
+func coveredDepthAbove(
+	tip, ancestor store.BlockRef,
+	coverage store.CoreCoverage,
+	limit uint64,
+) (uint64, error) {
+	if ancestor.Number > tip.Number {
+		return 0, fmt.Errorf("%w: sparse ancestor is above the canonical tip", ErrSourceInconsistent)
+	}
+	total := uint64(0)
+	for _, covered := range coverage.Ranges {
+		end := min(covered.End, tip.Number)
+		if end <= ancestor.Number {
+			continue
+		}
+		start := covered.Start
+		if start <= ancestor.Number {
+			start = ancestor.Number + 1
+		}
+		if end < start {
+			continue
+		}
+		span := end - start + 1
+		if total > limit || span > limit-total {
+			return 0, fmt.Errorf("%w: covered depth exceeds %d", ErrReorgTooDeep, limit)
+		}
+		total += span
+	}
+	return total, nil
 }
 
 func (c *Canonicalizer) detachedCoveredAbove(
 	ctx context.Context,
 	tip, ancestor store.BlockRef,
 	coverage store.CoreCoverage,
+	expectedDepth uint64,
 ) ([]store.BlockRef, error) {
-	detached := make([]store.BlockRef, 0)
+	detached := make([]store.BlockRef, 0, expectedDepth)
 	for rangeIndex := len(coverage.Ranges); rangeIndex > 0; rangeIndex-- {
 		covered := coverage.Ranges[rangeIndex-1]
 		end := min(covered.End, tip.Number)
@@ -444,6 +566,9 @@ func (c *Canonicalizer) detachedCoveredAbove(
 	if len(detached) == 0 || detached[0].Number != tip.Number || detached[0].Hash != tip.Hash {
 		return nil, fmt.Errorf("%w: highest covered canonical range does not match the tip", ErrGap)
 	}
+	if uint64(len(detached)) != expectedDepth {
+		return nil, fmt.Errorf("%w: covered detach depth changed during traversal", ErrSourceInconsistent)
+	}
 	return detached, nil
 }
 
@@ -470,11 +595,15 @@ func (c *Canonicalizer) commitCanonicalBundles(
 }
 
 func (c *Canonicalizer) truncateHead(ctx context.Context, oldTip, newTip store.BlockRef) (ApplyResult, error) {
-	detached, err := c.detachedBranch(ctx, oldTip, newTip)
-	if err != nil {
+	if newTip.Number > oldTip.Number {
+		return ApplyResult{}, fmt.Errorf("%w: truncated tip is above the current tip", ErrSourceInconsistent)
+	}
+	depth := oldTip.Number - newTip.Number
+	if err := c.validateReorgBoundary(ctx, newTip, depth); err != nil {
 		return ApplyResult{}, err
 	}
-	if err := c.validateReorgBoundary(ctx, newTip, detached); err != nil {
+	detached, err := c.detachedBranch(ctx, oldTip, newTip)
+	if err != nil {
 		return ApplyResult{}, err
 	}
 	reorg := store.Reorg{
@@ -495,13 +624,10 @@ func (c *Canonicalizer) truncateHead(ctx context.Context, oldTip, newTip store.B
 	}, nil
 }
 
-func (c *Canonicalizer) validateReorgBoundary(ctx context.Context, ancestor store.BlockRef, detached []store.BlockRef) error {
-	maxDepth := c.MaxReorgDepth
-	if maxDepth == 0 {
-		maxDepth = 128
-	}
-	if uint64(len(detached)) > maxDepth {
-		return fmt.Errorf("%w: depth %d exceeds %d", ErrReorgTooDeep, len(detached), maxDepth)
+func (c *Canonicalizer) validateReorgBoundary(ctx context.Context, ancestor store.BlockRef, depth uint64) error {
+	maxDepth := c.maxReorgDepth()
+	if depth > maxDepth {
+		return fmt.Errorf("%w: depth %d exceeds %d", ErrReorgTooDeep, depth, maxDepth)
 	}
 	finality, hasFinality, err := c.Repository.Finality(ctx, c.ChainID)
 	if err != nil {
@@ -608,7 +734,14 @@ func (c *Canonicalizer) parentBundle(
 }
 
 func (c *Canonicalizer) detachedBranch(ctx context.Context, tip, ancestor store.BlockRef) ([]store.BlockRef, error) {
-	detached := make([]store.BlockRef, 0, tip.Number-ancestor.Number)
+	if ancestor.Number > tip.Number {
+		return nil, fmt.Errorf("%w: ancestor is above the canonical tip", ErrSourceInconsistent)
+	}
+	depth := tip.Number - ancestor.Number
+	if depth > c.maxReorgDepth() {
+		return nil, fmt.Errorf("%w: depth %d exceeds %d", ErrReorgTooDeep, depth, c.maxReorgDepth())
+	}
+	detached := make([]store.BlockRef, 0, depth)
 	for number := tip.Number; number > ancestor.Number; number-- {
 		reference, exists, err := c.Repository.CanonicalBlock(ctx, c.ChainID, number)
 		if err != nil {

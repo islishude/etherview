@@ -46,46 +46,6 @@ func (q *Queries) StoreLegacyAppendJournalStatement1(ctx context.Context, arg St
 	return err
 }
 
-const StoreLegacyApplyReorgStatement1 = `-- name: StoreLegacyApplyReorgStatement1 :exec
-DELETE FROM canonical_blocks
-			WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3
-`
-
-func (q *Queries) StoreLegacyApplyReorgStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) error {
-	_, err := q.db.Exec(ctx, StoreLegacyApplyReorgStatement1, column1, column2, blockHash)
-	return err
-}
-
-const StoreLegacyApplyReorgStatement2 = `-- name: StoreLegacyApplyReorgStatement2 :exec
-UPDATE block_journals SET canonical = FALSE
-			WHERE chain_id = $1::numeric AND block_hash = $2
-`
-
-func (q *Queries) StoreLegacyApplyReorgStatement2(ctx context.Context, column1 pgtype.Numeric, blockHash []byte) error {
-	_, err := q.db.Exec(ctx, StoreLegacyApplyReorgStatement2, column1, blockHash)
-	return err
-}
-
-const StoreLegacyApplyReorgStatement3 = `-- name: StoreLegacyApplyReorgStatement3 :exec
-INSERT INTO canonical_blocks (chain_id, number, block_hash)
-			VALUES ($1::numeric, $2::numeric, $3)
-`
-
-func (q *Queries) StoreLegacyApplyReorgStatement3(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) error {
-	_, err := q.db.Exec(ctx, StoreLegacyApplyReorgStatement3, column1, column2, blockHash)
-	return err
-}
-
-const StoreLegacyApplyReorgStatement4 = `-- name: StoreLegacyApplyReorgStatement4 :exec
-UPDATE block_journals SET canonical = TRUE
-			WHERE chain_id = $1::numeric AND block_hash = $2
-`
-
-func (q *Queries) StoreLegacyApplyReorgStatement4(ctx context.Context, column1 pgtype.Numeric, blockHash []byte) error {
-	_, err := q.db.Exec(ctx, StoreLegacyApplyReorgStatement4, column1, blockHash)
-	return err
-}
-
 const StoreLegacyApplyReorgStatement5 = `-- name: StoreLegacyApplyReorgStatement5 :exec
 DELETE FROM index_checkpoints
 		WHERE chain_id = $1::numeric AND stage = $2
@@ -372,26 +332,6 @@ func (q *Queries) StoreLegacyClaimBackfillRangeStatement3(ctx context.Context, a
 	return err
 }
 
-const StoreLegacyCommitCanonicalSegmentStatement1 = `-- name: StoreLegacyCommitCanonicalSegmentStatement1 :exec
-INSERT INTO canonical_blocks (chain_id, number, block_hash)
-				VALUES ($1::numeric, $2::numeric, $3)
-`
-
-func (q *Queries) StoreLegacyCommitCanonicalSegmentStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) error {
-	_, err := q.db.Exec(ctx, StoreLegacyCommitCanonicalSegmentStatement1, column1, column2, blockHash)
-	return err
-}
-
-const StoreLegacyCommitCanonicalStatement1 = `-- name: StoreLegacyCommitCanonicalStatement1 :exec
-INSERT INTO canonical_blocks (chain_id, number, block_hash)
-			VALUES ($1::numeric, $2::numeric, $3)
-`
-
-func (q *Queries) StoreLegacyCommitCanonicalStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) error {
-	_, err := q.db.Exec(ctx, StoreLegacyCommitCanonicalStatement1, column1, column2, blockHash)
-	return err
-}
-
 const StoreLegacyCompleteBackfillRangeStatement1 = `-- name: StoreLegacyCompleteBackfillRangeStatement1 :many
 SELECT expires_at
 		FROM core_backfill_leases
@@ -496,37 +436,6 @@ INSERT INTO chains (chain_id) VALUES ($1::numeric) ON CONFLICT (chain_id) DO NOT
 
 func (q *Queries) StoreLegacyEnsureChainStatement1(ctx context.Context, dollar_1 pgtype.Numeric) error {
 	_, err := q.db.Exec(ctx, StoreLegacyEnsureChainStatement1, dollar_1)
-	return err
-}
-
-const StoreLegacyInsertCoreOutboxTxStatement1 = `-- name: StoreLegacyInsertCoreOutboxTxStatement1 :exec
-INSERT INTO transactional_outbox (
-			chain_id, topic, message_key, payload, generation
-		)
-		VALUES ($1::numeric, $2, $3, $4::jsonb, 1)
-		ON CONFLICT (chain_id, topic, message_key) DO UPDATE SET
-			payload = EXCLUDED.payload,
-			generation = transactional_outbox.generation + 1,
-			available_at = clock_timestamp(),
-			published_at = NULL,
-			attempts = 0,
-			last_error = NULL
-`
-
-type StoreLegacyInsertCoreOutboxTxStatement1Params struct {
-	Column1    pgtype.Numeric `db:"column_1" json:"column_1"`
-	Topic      string         `db:"topic" json:"topic"`
-	MessageKey string         `db:"message_key" json:"message_key"`
-	Column4    []byte         `db:"column_4" json:"column_4"`
-}
-
-func (q *Queries) StoreLegacyInsertCoreOutboxTxStatement1(ctx context.Context, arg StoreLegacyInsertCoreOutboxTxStatement1Params) error {
-	_, err := q.db.Exec(ctx, StoreLegacyInsertCoreOutboxTxStatement1,
-		arg.Column1,
-		arg.Topic,
-		arg.MessageKey,
-		arg.Column4,
-	)
 	return err
 }
 
@@ -675,189 +584,6 @@ func (q *Queries) StoreLegacyLockChainStatement1(ctx context.Context, dollar_1 *
 		return nil, err
 	}
 	return items, nil
-}
-
-const StoreLegacyPutBundleTxStatement1 = `-- name: StoreLegacyPutBundleTxStatement1 :exec
-INSERT INTO blocks (chain_id, number, hash, parent_hash, timestamp, raw)
-		VALUES ($1::numeric, $2::numeric, $3, $4, $5::numeric, $6::jsonb)
-		ON CONFLICT (chain_id, number, hash) DO UPDATE SET
-			parent_hash = EXCLUDED.parent_hash,
-			timestamp = EXCLUDED.timestamp,
-			raw = EXCLUDED.raw
-`
-
-type StoreLegacyPutBundleTxStatement1Params struct {
-	Column1    pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2    pgtype.Numeric `db:"column_2" json:"column_2"`
-	Hash       []byte         `db:"hash" json:"hash"`
-	ParentHash []byte         `db:"parent_hash" json:"parent_hash"`
-	Column5    pgtype.Numeric `db:"column_5" json:"column_5"`
-	Column6    []byte         `db:"column_6" json:"column_6"`
-}
-
-func (q *Queries) StoreLegacyPutBundleTxStatement1(ctx context.Context, arg StoreLegacyPutBundleTxStatement1Params) error {
-	_, err := q.db.Exec(ctx, StoreLegacyPutBundleTxStatement1,
-		arg.Column1,
-		arg.Column2,
-		arg.Hash,
-		arg.ParentHash,
-		arg.Column5,
-		arg.Column6,
-	)
-	return err
-}
-
-const StoreLegacyPutBundleTxStatement2 = `-- name: StoreLegacyPutBundleTxStatement2 :exec
-INSERT INTO transactions (chain_id, hash, tx_type, raw)
-			VALUES ($1::numeric, $2, $3::numeric, $4::jsonb)
-			ON CONFLICT (chain_id, hash) DO UPDATE SET
-				tx_type = EXCLUDED.tx_type,
-				raw = EXCLUDED.raw
-`
-
-type StoreLegacyPutBundleTxStatement2Params struct {
-	Column1 pgtype.Numeric `db:"column_1" json:"column_1"`
-	Hash    []byte         `db:"hash" json:"hash"`
-	Column3 pgtype.Numeric `db:"column_3" json:"column_3"`
-	Column4 []byte         `db:"column_4" json:"column_4"`
-}
-
-func (q *Queries) StoreLegacyPutBundleTxStatement2(ctx context.Context, arg StoreLegacyPutBundleTxStatement2Params) error {
-	_, err := q.db.Exec(ctx, StoreLegacyPutBundleTxStatement2,
-		arg.Column1,
-		arg.Hash,
-		arg.Column3,
-		arg.Column4,
-	)
-	return err
-}
-
-const StoreLegacyPutBundleTxStatement3 = `-- name: StoreLegacyPutBundleTxStatement3 :exec
-INSERT INTO transaction_inclusions (
-				chain_id, block_number, block_hash, tx_index, tx_hash, raw
-			) VALUES ($1::numeric, $2::numeric, $3, $4, $5, $6::jsonb)
-			ON CONFLICT (chain_id, block_number, block_hash, tx_index)
-			DO UPDATE SET raw = EXCLUDED.raw
-`
-
-type StoreLegacyPutBundleTxStatement3Params struct {
-	Column1   pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2   pgtype.Numeric `db:"column_2" json:"column_2"`
-	BlockHash []byte         `db:"block_hash" json:"block_hash"`
-	TxIndex   int64          `db:"tx_index" json:"tx_index"`
-	TxHash    []byte         `db:"tx_hash" json:"tx_hash"`
-	Column6   []byte         `db:"column_6" json:"column_6"`
-}
-
-func (q *Queries) StoreLegacyPutBundleTxStatement3(ctx context.Context, arg StoreLegacyPutBundleTxStatement3Params) error {
-	_, err := q.db.Exec(ctx, StoreLegacyPutBundleTxStatement3,
-		arg.Column1,
-		arg.Column2,
-		arg.BlockHash,
-		arg.TxIndex,
-		arg.TxHash,
-		arg.Column6,
-	)
-	return err
-}
-
-const StoreLegacyPutBundleTxStatement4 = `-- name: StoreLegacyPutBundleTxStatement4 :exec
-INSERT INTO receipts (
-				chain_id, block_number, block_hash, tx_index, tx_hash, raw
-			) VALUES ($1::numeric, $2::numeric, $3, $4, $5, $6::jsonb)
-			ON CONFLICT (chain_id, block_number, block_hash, tx_index)
-			DO UPDATE SET raw = EXCLUDED.raw
-`
-
-type StoreLegacyPutBundleTxStatement4Params struct {
-	Column1   pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2   pgtype.Numeric `db:"column_2" json:"column_2"`
-	BlockHash []byte         `db:"block_hash" json:"block_hash"`
-	TxIndex   int64          `db:"tx_index" json:"tx_index"`
-	TxHash    []byte         `db:"tx_hash" json:"tx_hash"`
-	Column6   []byte         `db:"column_6" json:"column_6"`
-}
-
-func (q *Queries) StoreLegacyPutBundleTxStatement4(ctx context.Context, arg StoreLegacyPutBundleTxStatement4Params) error {
-	_, err := q.db.Exec(ctx, StoreLegacyPutBundleTxStatement4,
-		arg.Column1,
-		arg.Column2,
-		arg.BlockHash,
-		arg.TxIndex,
-		arg.TxHash,
-		arg.Column6,
-	)
-	return err
-}
-
-const StoreLegacyPutBundleTxStatement5 = `-- name: StoreLegacyPutBundleTxStatement5 :exec
-INSERT INTO logs (
-					chain_id, block_number, block_hash, log_index, tx_index,
-					tx_hash, address, topic0, raw
-				) VALUES ($1::numeric, $2::numeric, $3, $4, $5, $6, $7, $8, $9::jsonb)
-				ON CONFLICT (chain_id, block_number, block_hash, log_index)
-				DO UPDATE SET raw = EXCLUDED.raw
-`
-
-type StoreLegacyPutBundleTxStatement5Params struct {
-	Column1   pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2   pgtype.Numeric `db:"column_2" json:"column_2"`
-	BlockHash []byte         `db:"block_hash" json:"block_hash"`
-	LogIndex  int64          `db:"log_index" json:"log_index"`
-	TxIndex   int64          `db:"tx_index" json:"tx_index"`
-	TxHash    []byte         `db:"tx_hash" json:"tx_hash"`
-	Address   []byte         `db:"address" json:"address"`
-	Topic0    []byte         `db:"topic0" json:"topic0"`
-	Column9   []byte         `db:"column_9" json:"column_9"`
-}
-
-func (q *Queries) StoreLegacyPutBundleTxStatement5(ctx context.Context, arg StoreLegacyPutBundleTxStatement5Params) error {
-	_, err := q.db.Exec(ctx, StoreLegacyPutBundleTxStatement5,
-		arg.Column1,
-		arg.Column2,
-		arg.BlockHash,
-		arg.LogIndex,
-		arg.TxIndex,
-		arg.TxHash,
-		arg.Address,
-		arg.Topic0,
-		arg.Column9,
-	)
-	return err
-}
-
-const StoreLegacyPutBundleTxStatement6 = `-- name: StoreLegacyPutBundleTxStatement6 :exec
-INSERT INTO withdrawals (
-				chain_id, block_number, block_hash, withdrawal_index,
-				validator_index, address, amount, raw
-			) VALUES ($1::numeric, $2::numeric, $3, $4::numeric, $5::numeric, $6, $7::numeric, $8::jsonb)
-			ON CONFLICT (chain_id, block_number, block_hash, withdrawal_index)
-			DO UPDATE SET raw = EXCLUDED.raw
-`
-
-type StoreLegacyPutBundleTxStatement6Params struct {
-	Column1   pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2   pgtype.Numeric `db:"column_2" json:"column_2"`
-	BlockHash []byte         `db:"block_hash" json:"block_hash"`
-	Column4   pgtype.Numeric `db:"column_4" json:"column_4"`
-	Column5   pgtype.Numeric `db:"column_5" json:"column_5"`
-	Address   []byte         `db:"address" json:"address"`
-	Column7   pgtype.Numeric `db:"column_7" json:"column_7"`
-	Column8   []byte         `db:"column_8" json:"column_8"`
-}
-
-func (q *Queries) StoreLegacyPutBundleTxStatement6(ctx context.Context, arg StoreLegacyPutBundleTxStatement6Params) error {
-	_, err := q.db.Exec(ctx, StoreLegacyPutBundleTxStatement6,
-		arg.Column1,
-		arg.Column2,
-		arg.BlockHash,
-		arg.Column4,
-		arg.Column5,
-		arg.Address,
-		arg.Column7,
-		arg.Column8,
-	)
-	return err
 }
 
 const StoreLegacyQueryCanonicalReferencesTxStatement1 = `-- name: StoreLegacyQueryCanonicalReferencesTxStatement1 :many
@@ -1099,46 +825,6 @@ func (q *Queries) StoreLegacyReplaceHighestCanonicalSegmentStatement1(ctx contex
 		return nil, err
 	}
 	return items, nil
-}
-
-const StoreLegacyReplaceHighestCanonicalSegmentStatement2 = `-- name: StoreLegacyReplaceHighestCanonicalSegmentStatement2 :exec
-DELETE FROM canonical_blocks
-			WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3
-`
-
-func (q *Queries) StoreLegacyReplaceHighestCanonicalSegmentStatement2(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) error {
-	_, err := q.db.Exec(ctx, StoreLegacyReplaceHighestCanonicalSegmentStatement2, column1, column2, blockHash)
-	return err
-}
-
-const StoreLegacyReplaceHighestCanonicalSegmentStatement3 = `-- name: StoreLegacyReplaceHighestCanonicalSegmentStatement3 :exec
-UPDATE block_journals SET canonical = FALSE
-			WHERE chain_id = $1::numeric AND block_hash = $2
-`
-
-func (q *Queries) StoreLegacyReplaceHighestCanonicalSegmentStatement3(ctx context.Context, column1 pgtype.Numeric, blockHash []byte) error {
-	_, err := q.db.Exec(ctx, StoreLegacyReplaceHighestCanonicalSegmentStatement3, column1, blockHash)
-	return err
-}
-
-const StoreLegacyReplaceHighestCanonicalSegmentStatement4 = `-- name: StoreLegacyReplaceHighestCanonicalSegmentStatement4 :exec
-INSERT INTO canonical_blocks (chain_id, number, block_hash)
-			VALUES ($1::numeric, $2::numeric, $3)
-`
-
-func (q *Queries) StoreLegacyReplaceHighestCanonicalSegmentStatement4(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) error {
-	_, err := q.db.Exec(ctx, StoreLegacyReplaceHighestCanonicalSegmentStatement4, column1, column2, blockHash)
-	return err
-}
-
-const StoreLegacyReplaceHighestCanonicalSegmentStatement5 = `-- name: StoreLegacyReplaceHighestCanonicalSegmentStatement5 :exec
-UPDATE block_journals SET canonical = TRUE
-			WHERE chain_id = $1::numeric AND block_hash = $2
-`
-
-func (q *Queries) StoreLegacyReplaceHighestCanonicalSegmentStatement5(ctx context.Context, column1 pgtype.Numeric, blockHash []byte) error {
-	_, err := q.db.Exec(ctx, StoreLegacyReplaceHighestCanonicalSegmentStatement5, column1, blockHash)
-	return err
 }
 
 const StoreLegacyUpdateFinalityStatement1 = `-- name: StoreLegacyUpdateFinalityStatement1 :exec

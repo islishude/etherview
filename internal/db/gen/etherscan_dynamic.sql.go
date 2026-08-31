@@ -19,7 +19,8 @@ WITH tip AS (
     ORDER BY number DESC
     LIMIT 1
 )
-SELECT inclusion.raw, receipt.raw, block.raw, inclusion.block_number::text,
+SELECT inclusion.raw, receipt.raw, block.timestamp::text,
+       block.base_fee_per_gas_quantity, inclusion.block_number::text,
        inclusion.block_hash, inclusion.tx_index, inclusion.tx_hash,
        tip.number::text
 FROM transaction_inclusions AS inclusion
@@ -63,14 +64,15 @@ type EtherscanAccountTransactionsParams struct {
 }
 
 type EtherscanAccountTransactionsRow struct {
-	Raw                  []byte `db:"raw" json:"raw"`
-	Raw_2                []byte `db:"raw_2" json:"raw_2"`
-	Raw_3                []byte `db:"raw_3" json:"raw_3"`
-	InclusionBlockNumber string `db:"inclusion_block_number" json:"inclusion_block_number"`
-	BlockHash            []byte `db:"block_hash" json:"block_hash"`
-	TxIndex              int64  `db:"tx_index" json:"tx_index"`
-	TxHash               []byte `db:"tx_hash" json:"tx_hash"`
-	TipNumber            string `db:"tip_number" json:"tip_number"`
+	Raw                   []byte  `db:"raw" json:"raw"`
+	Raw_2                 []byte  `db:"raw_2" json:"raw_2"`
+	BlockTimestamp        string  `db:"block_timestamp" json:"block_timestamp"`
+	BaseFeePerGasQuantity *string `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
+	InclusionBlockNumber  string  `db:"inclusion_block_number" json:"inclusion_block_number"`
+	BlockHash             []byte  `db:"block_hash" json:"block_hash"`
+	TxIndex               int64   `db:"tx_index" json:"tx_index"`
+	TxHash                []byte  `db:"tx_hash" json:"tx_hash"`
+	TipNumber             string  `db:"tip_number" json:"tip_number"`
 }
 
 func (q *Queries) EtherscanAccountTransactions(ctx context.Context, arg EtherscanAccountTransactionsParams) ([]EtherscanAccountTransactionsRow, error) {
@@ -93,7 +95,8 @@ func (q *Queries) EtherscanAccountTransactions(ctx context.Context, arg Ethersca
 		if err := rows.Scan(
 			&i.Raw,
 			&i.Raw_2,
-			&i.Raw_3,
+			&i.BlockTimestamp,
+			&i.BaseFeePerGasQuantity,
 			&i.InclusionBlockNumber,
 			&i.BlockHash,
 			&i.TxIndex,
@@ -118,7 +121,8 @@ WITH tip AS (
     ORDER BY number DESC
     LIMIT 1
 )
-SELECT inclusion.raw, receipt.raw, block.raw, inclusion.block_number::text,
+SELECT inclusion.raw, receipt.raw, block.timestamp::text,
+       block.base_fee_per_gas_quantity, inclusion.block_number::text,
        inclusion.block_hash, inclusion.tx_index, inclusion.tx_hash,
        tip.number::text
 FROM transaction_inclusions AS inclusion
@@ -171,14 +175,15 @@ type EtherscanAccountTransactionsAdvancedParams struct {
 }
 
 type EtherscanAccountTransactionsAdvancedRow struct {
-	Raw                  []byte `db:"raw" json:"raw"`
-	Raw_2                []byte `db:"raw_2" json:"raw_2"`
-	Raw_3                []byte `db:"raw_3" json:"raw_3"`
-	InclusionBlockNumber string `db:"inclusion_block_number" json:"inclusion_block_number"`
-	BlockHash            []byte `db:"block_hash" json:"block_hash"`
-	TxIndex              int64  `db:"tx_index" json:"tx_index"`
-	TxHash               []byte `db:"tx_hash" json:"tx_hash"`
-	TipNumber            string `db:"tip_number" json:"tip_number"`
+	Raw                   []byte  `db:"raw" json:"raw"`
+	Raw_2                 []byte  `db:"raw_2" json:"raw_2"`
+	BlockTimestamp        string  `db:"block_timestamp" json:"block_timestamp"`
+	BaseFeePerGasQuantity *string `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
+	InclusionBlockNumber  string  `db:"inclusion_block_number" json:"inclusion_block_number"`
+	BlockHash             []byte  `db:"block_hash" json:"block_hash"`
+	TxIndex               int64   `db:"tx_index" json:"tx_index"`
+	TxHash                []byte  `db:"tx_hash" json:"tx_hash"`
+	TipNumber             string  `db:"tip_number" json:"tip_number"`
 }
 
 func (q *Queries) EtherscanAccountTransactionsAdvanced(ctx context.Context, arg EtherscanAccountTransactionsAdvancedParams) ([]EtherscanAccountTransactionsAdvancedRow, error) {
@@ -203,7 +208,8 @@ func (q *Queries) EtherscanAccountTransactionsAdvanced(ctx context.Context, arg 
 		if err := rows.Scan(
 			&i.Raw,
 			&i.Raw_2,
-			&i.Raw_3,
+			&i.BlockTimestamp,
+			&i.BaseFeePerGasQuantity,
 			&i.InclusionBlockNumber,
 			&i.BlockHash,
 			&i.TxIndex,
@@ -301,48 +307,74 @@ func (q *Queries) EtherscanBeaconWithdrawals(ctx context.Context, arg EtherscanB
 	return items, nil
 }
 
-const EtherscanBlockNumberByTime = `-- name: EtherscanBlockNumberByTime :many
-SELECT block.raw, block.number::text, block.hash, block.timestamp::text
+const EtherscanBlockNumberByTimeAfter = `-- name: EtherscanBlockNumberByTimeAfter :many
+SELECT block.number::text, block.hash, block.timestamp::text
 FROM blocks AS block
 JOIN canonical_blocks AS canonical
   ON canonical.chain_id = block.chain_id
  AND canonical.number = block.number
  AND canonical.block_hash = block.hash
 WHERE block.chain_id = $1::numeric
-  AND (($3::text = 'before' AND block.timestamp <= $2::numeric)
-       OR ($3::text = 'after' AND block.timestamp >= $2::numeric))
-ORDER BY
-    CASE WHEN $3::text = 'before' THEN block.timestamp END DESC,
-    CASE WHEN $3::text = 'after' THEN block.timestamp END ASC,
-    CASE WHEN $3::text = 'before' THEN block.number END DESC,
-    CASE WHEN $3::text = 'after' THEN block.number END ASC,
-    CASE WHEN $3::text = 'before' THEN block.hash END DESC,
-    CASE WHEN $3::text = 'after' THEN block.hash END ASC
+  AND block.timestamp >= $2::numeric
+ORDER BY block.timestamp ASC, block.number ASC, block.hash ASC
 LIMIT 1
 `
 
-type EtherscanBlockNumberByTimeRow struct {
-	Raw            []byte `db:"raw" json:"raw"`
+type EtherscanBlockNumberByTimeAfterRow struct {
 	BlockNumber    string `db:"block_number" json:"block_number"`
 	Hash           []byte `db:"hash" json:"hash"`
 	BlockTimestamp string `db:"block_timestamp" json:"block_timestamp"`
 }
 
-func (q *Queries) EtherscanBlockNumberByTime(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, column3 string) ([]EtherscanBlockNumberByTimeRow, error) {
-	rows, err := q.db.Query(ctx, EtherscanBlockNumberByTime, column1, column2, column3)
+func (q *Queries) EtherscanBlockNumberByTimeAfter(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) ([]EtherscanBlockNumberByTimeAfterRow, error) {
+	rows, err := q.db.Query(ctx, EtherscanBlockNumberByTimeAfter, column1, column2)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []EtherscanBlockNumberByTimeRow{}
+	items := []EtherscanBlockNumberByTimeAfterRow{}
 	for rows.Next() {
-		var i EtherscanBlockNumberByTimeRow
-		if err := rows.Scan(
-			&i.Raw,
-			&i.BlockNumber,
-			&i.Hash,
-			&i.BlockTimestamp,
-		); err != nil {
+		var i EtherscanBlockNumberByTimeAfterRow
+		if err := rows.Scan(&i.BlockNumber, &i.Hash, &i.BlockTimestamp); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const EtherscanBlockNumberByTimeBefore = `-- name: EtherscanBlockNumberByTimeBefore :many
+SELECT block.number::text, block.hash, block.timestamp::text
+FROM blocks AS block
+JOIN canonical_blocks AS canonical
+  ON canonical.chain_id = block.chain_id
+ AND canonical.number = block.number
+ AND canonical.block_hash = block.hash
+WHERE block.chain_id = $1::numeric
+  AND block.timestamp <= $2::numeric
+ORDER BY block.timestamp DESC, block.number DESC, block.hash DESC
+LIMIT 1
+`
+
+type EtherscanBlockNumberByTimeBeforeRow struct {
+	BlockNumber    string `db:"block_number" json:"block_number"`
+	Hash           []byte `db:"hash" json:"hash"`
+	BlockTimestamp string `db:"block_timestamp" json:"block_timestamp"`
+}
+
+func (q *Queries) EtherscanBlockNumberByTimeBefore(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) ([]EtherscanBlockNumberByTimeBeforeRow, error) {
+	rows, err := q.db.Query(ctx, EtherscanBlockNumberByTimeBefore, column1, column2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EtherscanBlockNumberByTimeBeforeRow{}
+	for rows.Next() {
+		var i EtherscanBlockNumberByTimeBeforeRow
+		if err := rows.Scan(&i.BlockNumber, &i.Hash, &i.BlockTimestamp); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -940,11 +972,30 @@ func (q *Queries) EtherscanInternalTransactionsAdvanced(ctx context.Context, arg
 	return items, nil
 }
 
-const EtherscanLogs = `-- name: EtherscanLogs :many
-SELECT log.raw, receipt.raw, inclusion.raw, block.raw,
+const EtherscanLogsAsc = `-- name: EtherscanLogsAsc :many
+WITH candidate_logs AS (
+    SELECT chain_id, block_number, block_hash, log_index, tx_index,
+           tx_hash, address, topic0, raw
+    FROM logs
+    WHERE $6::boolean
+      AND chain_id = $1::numeric
+      AND block_number >= $2::numeric
+      AND ($3::numeric IS NULL OR block_number <= $3::numeric)
+      AND topic0 = $7::bytea
+    UNION ALL
+    SELECT chain_id, block_number, block_hash, log_index, tx_index,
+           tx_hash, address, topic0, raw
+    FROM logs
+    WHERE NOT $6::boolean
+      AND chain_id = $1::numeric
+      AND block_number >= $2::numeric
+      AND ($3::numeric IS NULL OR block_number <= $3::numeric)
+)
+SELECT log.raw, receipt.raw, inclusion.raw, block.timestamp::text,
+       block.base_fee_per_gas_quantity,
        log.block_number::text, log.block_hash, log.log_index, log.tx_index,
        log.tx_hash, log.address
-FROM logs AS log
+FROM candidate_logs AS log
 JOIN canonical_blocks AS canonical
   ON canonical.chain_id = log.chain_id
  AND canonical.number = log.block_number
@@ -1004,10 +1055,7 @@ CROSS JOIN LATERAL (
                ELSE folded_3.matched AND requested.match_4
            END AS matched
 ) AS folded_4
-WHERE log.chain_id = $1::numeric
-  AND log.block_number >= $2::numeric
-  AND ($3::numeric IS NULL OR log.block_number <= $3::numeric)
-  AND ($4::bytea IS NULL OR log.address = $4::bytea)
+WHERE ($4::bytea IS NULL OR log.address = $4::bytea)
   AND CASE requested.topic_count
           WHEN 0 THEN TRUE
           WHEN 1 THEN requested.match_1
@@ -1016,63 +1064,61 @@ WHERE log.chain_id = $1::numeric
           WHEN 4 THEN folded_4.matched
           ELSE FALSE
       END
-ORDER BY
-    CASE WHEN $8::text = 'ASC' THEN log.block_number END ASC,
-    CASE WHEN $8::text = 'DESC' THEN log.block_number END DESC,
-    CASE WHEN $8::text = 'ASC' THEN log.log_index END ASC,
-    CASE WHEN $8::text = 'DESC' THEN log.log_index END DESC,
-    CASE WHEN $8::text = 'ASC' THEN log.block_hash END ASC,
-    CASE WHEN $8::text = 'DESC' THEN log.block_hash END DESC
-LIMIT $6 OFFSET $7
+ORDER BY log.block_number ASC, log.log_index ASC, log.block_hash ASC
+LIMIT $8 OFFSET $9
 `
 
-type EtherscanLogsParams struct {
+type EtherscanLogsAscParams struct {
 	Column1 pgtype.Numeric `db:"column_1" json:"column_1"`
 	Column2 pgtype.Numeric `db:"column_2" json:"column_2"`
 	Column3 pgtype.Numeric `db:"column_3" json:"column_3"`
 	Column4 []byte         `db:"column_4" json:"column_4"`
 	Column5 []byte         `db:"column_5" json:"column_5"`
+	Column6 bool           `db:"column_6" json:"column_6"`
+	Column7 []byte         `db:"column_7" json:"column_7"`
 	Limit   int32          `db:"limit" json:"limit"`
 	Offset  int32          `db:"offset" json:"offset"`
-	Column8 string         `db:"column_8" json:"column_8"`
 }
 
-type EtherscanLogsRow struct {
-	Raw            []byte `db:"raw" json:"raw"`
-	Raw_2          []byte `db:"raw_2" json:"raw_2"`
-	Raw_3          []byte `db:"raw_3" json:"raw_3"`
-	Raw_4          []byte `db:"raw_4" json:"raw_4"`
-	LogBlockNumber string `db:"log_block_number" json:"log_block_number"`
-	BlockHash      []byte `db:"block_hash" json:"block_hash"`
-	LogIndex       int64  `db:"log_index" json:"log_index"`
-	TxIndex        int64  `db:"tx_index" json:"tx_index"`
-	TxHash         []byte `db:"tx_hash" json:"tx_hash"`
-	Address        []byte `db:"address" json:"address"`
+type EtherscanLogsAscRow struct {
+	Raw                   []byte  `db:"raw" json:"raw"`
+	Raw_2                 []byte  `db:"raw_2" json:"raw_2"`
+	Raw_3                 []byte  `db:"raw_3" json:"raw_3"`
+	BlockTimestamp        string  `db:"block_timestamp" json:"block_timestamp"`
+	BaseFeePerGasQuantity *string `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
+	LogBlockNumber        string  `db:"log_block_number" json:"log_block_number"`
+	BlockHash             []byte  `db:"block_hash" json:"block_hash"`
+	LogIndex              int64   `db:"log_index" json:"log_index"`
+	TxIndex               int64   `db:"tx_index" json:"tx_index"`
+	TxHash                []byte  `db:"tx_hash" json:"tx_hash"`
+	Address               []byte  `db:"address" json:"address"`
 }
 
-func (q *Queries) EtherscanLogs(ctx context.Context, arg EtherscanLogsParams) ([]EtherscanLogsRow, error) {
-	rows, err := q.db.Query(ctx, EtherscanLogs,
+func (q *Queries) EtherscanLogsAsc(ctx context.Context, arg EtherscanLogsAscParams) ([]EtherscanLogsAscRow, error) {
+	rows, err := q.db.Query(ctx, EtherscanLogsAsc,
 		arg.Column1,
 		arg.Column2,
 		arg.Column3,
 		arg.Column4,
 		arg.Column5,
+		arg.Column6,
+		arg.Column7,
 		arg.Limit,
 		arg.Offset,
-		arg.Column8,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []EtherscanLogsRow{}
+	items := []EtherscanLogsAscRow{}
 	for rows.Next() {
-		var i EtherscanLogsRow
+		var i EtherscanLogsAscRow
 		if err := rows.Scan(
 			&i.Raw,
 			&i.Raw_2,
 			&i.Raw_3,
-			&i.Raw_4,
+			&i.BlockTimestamp,
+			&i.BaseFeePerGasQuantity,
 			&i.LogBlockNumber,
 			&i.BlockHash,
 			&i.LogIndex,
@@ -1090,53 +1136,274 @@ func (q *Queries) EtherscanLogs(ctx context.Context, arg EtherscanLogsParams) ([
 	return items, nil
 }
 
-const EtherscanMinedBlocks = `-- name: EtherscanMinedBlocks :many
-SELECT block.raw, block.number::text, block.hash
+const EtherscanLogsDesc = `-- name: EtherscanLogsDesc :many
+WITH candidate_logs AS (
+    SELECT chain_id, block_number, block_hash, log_index, tx_index,
+           tx_hash, address, topic0, raw
+    FROM logs
+    WHERE $6::boolean
+      AND chain_id = $1::numeric
+      AND block_number >= $2::numeric
+      AND ($3::numeric IS NULL OR block_number <= $3::numeric)
+      AND topic0 = $7::bytea
+    UNION ALL
+    SELECT chain_id, block_number, block_hash, log_index, tx_index,
+           tx_hash, address, topic0, raw
+    FROM logs
+    WHERE NOT $6::boolean
+      AND chain_id = $1::numeric
+      AND block_number >= $2::numeric
+      AND ($3::numeric IS NULL OR block_number <= $3::numeric)
+)
+SELECT log.raw, receipt.raw, inclusion.raw, block.timestamp::text,
+       block.base_fee_per_gas_quantity,
+       log.block_number::text, log.block_hash, log.log_index, log.tx_index,
+       log.tx_hash, log.address
+FROM candidate_logs AS log
+JOIN canonical_blocks AS canonical
+  ON canonical.chain_id = log.chain_id
+ AND canonical.number = log.block_number
+ AND canonical.block_hash = log.block_hash
+JOIN receipts AS receipt
+  ON receipt.chain_id = log.chain_id
+ AND receipt.block_number = log.block_number
+ AND receipt.block_hash = log.block_hash
+ AND receipt.tx_index = log.tx_index
+JOIN transaction_inclusions AS inclusion
+  ON inclusion.chain_id = log.chain_id
+ AND inclusion.block_number = log.block_number
+ AND inclusion.block_hash = log.block_hash
+ AND inclusion.tx_index = log.tx_index
+JOIN blocks AS block
+  ON block.chain_id = log.chain_id
+ AND block.number = log.block_number
+ AND block.hash = log.block_hash
+CROSS JOIN LATERAL (
+    SELECT jsonb_array_length($5::jsonb) AS topic_count,
+           COALESCE(
+               lower(log.raw->'topics'->>(($5::jsonb->0->>'index')::integer)) =
+                   lower($5::jsonb->0->>'value'),
+               FALSE
+           ) AS match_1,
+           COALESCE(
+               lower(log.raw->'topics'->>(($5::jsonb->1->>'index')::integer)) =
+                   lower($5::jsonb->1->>'value'),
+               FALSE
+           ) AS match_2,
+           COALESCE(
+               lower(log.raw->'topics'->>(($5::jsonb->2->>'index')::integer)) =
+                   lower($5::jsonb->2->>'value'),
+               FALSE
+           ) AS match_3,
+           COALESCE(
+               lower(log.raw->'topics'->>(($5::jsonb->3->>'index')::integer)) =
+                   lower($5::jsonb->3->>'value'),
+               FALSE
+           ) AS match_4
+) AS requested
+CROSS JOIN LATERAL (
+    SELECT CASE upper($5::jsonb->1->>'operator')
+               WHEN 'OR' THEN requested.match_1 OR requested.match_2
+               ELSE requested.match_1 AND requested.match_2
+           END AS matched
+) AS folded_2
+CROSS JOIN LATERAL (
+    SELECT CASE upper($5::jsonb->2->>'operator')
+               WHEN 'OR' THEN folded_2.matched OR requested.match_3
+               ELSE folded_2.matched AND requested.match_3
+           END AS matched
+) AS folded_3
+CROSS JOIN LATERAL (
+    SELECT CASE upper($5::jsonb->3->>'operator')
+               WHEN 'OR' THEN folded_3.matched OR requested.match_4
+               ELSE folded_3.matched AND requested.match_4
+           END AS matched
+) AS folded_4
+WHERE ($4::bytea IS NULL OR log.address = $4::bytea)
+  AND CASE requested.topic_count
+          WHEN 0 THEN TRUE
+          WHEN 1 THEN requested.match_1
+          WHEN 2 THEN folded_2.matched
+          WHEN 3 THEN folded_3.matched
+          WHEN 4 THEN folded_4.matched
+          ELSE FALSE
+      END
+ORDER BY log.block_number DESC, log.log_index DESC, log.block_hash DESC
+LIMIT $8 OFFSET $9
+`
+
+type EtherscanLogsDescParams struct {
+	Column1 pgtype.Numeric `db:"column_1" json:"column_1"`
+	Column2 pgtype.Numeric `db:"column_2" json:"column_2"`
+	Column3 pgtype.Numeric `db:"column_3" json:"column_3"`
+	Column4 []byte         `db:"column_4" json:"column_4"`
+	Column5 []byte         `db:"column_5" json:"column_5"`
+	Column6 bool           `db:"column_6" json:"column_6"`
+	Column7 []byte         `db:"column_7" json:"column_7"`
+	Limit   int32          `db:"limit" json:"limit"`
+	Offset  int32          `db:"offset" json:"offset"`
+}
+
+type EtherscanLogsDescRow struct {
+	Raw                   []byte  `db:"raw" json:"raw"`
+	Raw_2                 []byte  `db:"raw_2" json:"raw_2"`
+	Raw_3                 []byte  `db:"raw_3" json:"raw_3"`
+	BlockTimestamp        string  `db:"block_timestamp" json:"block_timestamp"`
+	BaseFeePerGasQuantity *string `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
+	LogBlockNumber        string  `db:"log_block_number" json:"log_block_number"`
+	BlockHash             []byte  `db:"block_hash" json:"block_hash"`
+	LogIndex              int64   `db:"log_index" json:"log_index"`
+	TxIndex               int64   `db:"tx_index" json:"tx_index"`
+	TxHash                []byte  `db:"tx_hash" json:"tx_hash"`
+	Address               []byte  `db:"address" json:"address"`
+}
+
+func (q *Queries) EtherscanLogsDesc(ctx context.Context, arg EtherscanLogsDescParams) ([]EtherscanLogsDescRow, error) {
+	rows, err := q.db.Query(ctx, EtherscanLogsDesc,
+		arg.Column1,
+		arg.Column2,
+		arg.Column3,
+		arg.Column4,
+		arg.Column5,
+		arg.Column6,
+		arg.Column7,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EtherscanLogsDescRow{}
+	for rows.Next() {
+		var i EtherscanLogsDescRow
+		if err := rows.Scan(
+			&i.Raw,
+			&i.Raw_2,
+			&i.Raw_3,
+			&i.BlockTimestamp,
+			&i.BaseFeePerGasQuantity,
+			&i.LogBlockNumber,
+			&i.BlockHash,
+			&i.LogIndex,
+			&i.TxIndex,
+			&i.TxHash,
+			&i.Address,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const EtherscanMinedBlocksAsc = `-- name: EtherscanMinedBlocksAsc :many
+SELECT block.number::text, block.hash, block.timestamp::text, block.miner_text
 FROM blocks AS block
 JOIN canonical_blocks AS canonical
   ON canonical.chain_id = block.chain_id
  AND canonical.number = block.number
  AND canonical.block_hash = block.hash
 WHERE block.chain_id = $1::numeric
-  AND lower(block.raw->>'miner') = $2::text
-ORDER BY
-    CASE WHEN $5::text = 'ASC' THEN block.number END ASC,
-    CASE WHEN $5::text = 'DESC' THEN block.number END DESC,
-    CASE WHEN $5::text = 'ASC' THEN block.hash END ASC,
-    CASE WHEN $5::text = 'DESC' THEN block.hash END DESC
+  AND lower(block.miner_text) = $2::text
+ORDER BY block.number ASC, block.hash ASC
 LIMIT $3 OFFSET $4
 `
 
-type EtherscanMinedBlocksParams struct {
+type EtherscanMinedBlocksAscParams struct {
 	Column1 pgtype.Numeric `db:"column_1" json:"column_1"`
 	Column2 string         `db:"column_2" json:"column_2"`
 	Limit   int32          `db:"limit" json:"limit"`
 	Offset  int32          `db:"offset" json:"offset"`
-	Column5 string         `db:"column_5" json:"column_5"`
 }
 
-type EtherscanMinedBlocksRow struct {
-	Raw         []byte `db:"raw" json:"raw"`
-	BlockNumber string `db:"block_number" json:"block_number"`
-	Hash        []byte `db:"hash" json:"hash"`
+type EtherscanMinedBlocksAscRow struct {
+	BlockNumber    string  `db:"block_number" json:"block_number"`
+	Hash           []byte  `db:"hash" json:"hash"`
+	BlockTimestamp string  `db:"block_timestamp" json:"block_timestamp"`
+	MinerText      *string `db:"miner_text" json:"miner_text"`
 }
 
-func (q *Queries) EtherscanMinedBlocks(ctx context.Context, arg EtherscanMinedBlocksParams) ([]EtherscanMinedBlocksRow, error) {
-	rows, err := q.db.Query(ctx, EtherscanMinedBlocks,
+func (q *Queries) EtherscanMinedBlocksAsc(ctx context.Context, arg EtherscanMinedBlocksAscParams) ([]EtherscanMinedBlocksAscRow, error) {
+	rows, err := q.db.Query(ctx, EtherscanMinedBlocksAsc,
 		arg.Column1,
 		arg.Column2,
 		arg.Limit,
 		arg.Offset,
-		arg.Column5,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []EtherscanMinedBlocksRow{}
+	items := []EtherscanMinedBlocksAscRow{}
 	for rows.Next() {
-		var i EtherscanMinedBlocksRow
-		if err := rows.Scan(&i.Raw, &i.BlockNumber, &i.Hash); err != nil {
+		var i EtherscanMinedBlocksAscRow
+		if err := rows.Scan(
+			&i.BlockNumber,
+			&i.Hash,
+			&i.BlockTimestamp,
+			&i.MinerText,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const EtherscanMinedBlocksDesc = `-- name: EtherscanMinedBlocksDesc :many
+SELECT block.number::text, block.hash, block.timestamp::text, block.miner_text
+FROM blocks AS block
+JOIN canonical_blocks AS canonical
+  ON canonical.chain_id = block.chain_id
+ AND canonical.number = block.number
+ AND canonical.block_hash = block.hash
+WHERE block.chain_id = $1::numeric
+  AND lower(block.miner_text) = $2::text
+ORDER BY block.number DESC, block.hash DESC
+LIMIT $3 OFFSET $4
+`
+
+type EtherscanMinedBlocksDescParams struct {
+	Column1 pgtype.Numeric `db:"column_1" json:"column_1"`
+	Column2 string         `db:"column_2" json:"column_2"`
+	Limit   int32          `db:"limit" json:"limit"`
+	Offset  int32          `db:"offset" json:"offset"`
+}
+
+type EtherscanMinedBlocksDescRow struct {
+	BlockNumber    string  `db:"block_number" json:"block_number"`
+	Hash           []byte  `db:"hash" json:"hash"`
+	BlockTimestamp string  `db:"block_timestamp" json:"block_timestamp"`
+	MinerText      *string `db:"miner_text" json:"miner_text"`
+}
+
+func (q *Queries) EtherscanMinedBlocksDesc(ctx context.Context, arg EtherscanMinedBlocksDescParams) ([]EtherscanMinedBlocksDescRow, error) {
+	rows, err := q.db.Query(ctx, EtherscanMinedBlocksDesc,
+		arg.Column1,
+		arg.Column2,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EtherscanMinedBlocksDescRow{}
+	for rows.Next() {
+		var i EtherscanMinedBlocksDescRow
+		if err := rows.Scan(
+			&i.BlockNumber,
+			&i.Hash,
+			&i.BlockTimestamp,
+			&i.MinerText,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -1152,7 +1419,8 @@ SELECT event.block_number::text, event.block_hash, event.log_index,
        event.sub_index, event.transaction_hash, event.token_address,
        event.standard, event.event_kind, event.from_address, event.to_address,
        event.token_id::text, event.amount::text, inclusion.raw, receipt.raw,
-       block.raw, inclusion.tx_index, metadata.name, metadata.symbol,
+       block.timestamp::text, block.base_fee_per_gas_quantity,
+       inclusion.tx_index, metadata.name, metadata.symbol,
        metadata.decimals
 FROM token_events AS event
 JOIN canonical_blocks AS canonical
@@ -1222,25 +1490,26 @@ type EtherscanTokenTransfersParams struct {
 }
 
 type EtherscanTokenTransfersRow struct {
-	EventBlockNumber string  `db:"event_block_number" json:"event_block_number"`
-	BlockHash        []byte  `db:"block_hash" json:"block_hash"`
-	LogIndex         int64   `db:"log_index" json:"log_index"`
-	SubIndex         int32   `db:"sub_index" json:"sub_index"`
-	TransactionHash  []byte  `db:"transaction_hash" json:"transaction_hash"`
-	TokenAddress     []byte  `db:"token_address" json:"token_address"`
-	Standard         string  `db:"standard" json:"standard"`
-	EventKind        string  `db:"event_kind" json:"event_kind"`
-	FromAddress      []byte  `db:"from_address" json:"from_address"`
-	ToAddress        []byte  `db:"to_address" json:"to_address"`
-	EventTokenID     string  `db:"event_token_id" json:"event_token_id"`
-	EventAmount      string  `db:"event_amount" json:"event_amount"`
-	Raw              []byte  `db:"raw" json:"raw"`
-	Raw_2            []byte  `db:"raw_2" json:"raw_2"`
-	Raw_3            []byte  `db:"raw_3" json:"raw_3"`
-	TxIndex          int64   `db:"tx_index" json:"tx_index"`
-	Name             *string `db:"name" json:"name"`
-	Symbol           *string `db:"symbol" json:"symbol"`
-	Decimals         *int32  `db:"decimals" json:"decimals"`
+	EventBlockNumber      string  `db:"event_block_number" json:"event_block_number"`
+	BlockHash             []byte  `db:"block_hash" json:"block_hash"`
+	LogIndex              int64   `db:"log_index" json:"log_index"`
+	SubIndex              int32   `db:"sub_index" json:"sub_index"`
+	TransactionHash       []byte  `db:"transaction_hash" json:"transaction_hash"`
+	TokenAddress          []byte  `db:"token_address" json:"token_address"`
+	Standard              string  `db:"standard" json:"standard"`
+	EventKind             string  `db:"event_kind" json:"event_kind"`
+	FromAddress           []byte  `db:"from_address" json:"from_address"`
+	ToAddress             []byte  `db:"to_address" json:"to_address"`
+	EventTokenID          string  `db:"event_token_id" json:"event_token_id"`
+	EventAmount           string  `db:"event_amount" json:"event_amount"`
+	Raw                   []byte  `db:"raw" json:"raw"`
+	Raw_2                 []byte  `db:"raw_2" json:"raw_2"`
+	BlockTimestamp        string  `db:"block_timestamp" json:"block_timestamp"`
+	BaseFeePerGasQuantity *string `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
+	TxIndex               int64   `db:"tx_index" json:"tx_index"`
+	Name                  *string `db:"name" json:"name"`
+	Symbol                *string `db:"symbol" json:"symbol"`
+	Decimals              *int32  `db:"decimals" json:"decimals"`
 }
 
 func (q *Queries) EtherscanTokenTransfers(ctx context.Context, arg EtherscanTokenTransfersParams) ([]EtherscanTokenTransfersRow, error) {
@@ -1277,7 +1546,8 @@ func (q *Queries) EtherscanTokenTransfers(ctx context.Context, arg EtherscanToke
 			&i.EventAmount,
 			&i.Raw,
 			&i.Raw_2,
-			&i.Raw_3,
+			&i.BlockTimestamp,
+			&i.BaseFeePerGasQuantity,
 			&i.TxIndex,
 			&i.Name,
 			&i.Symbol,
@@ -1298,7 +1568,8 @@ SELECT event.block_number::text, event.block_hash, event.log_index,
        event.sub_index, event.transaction_hash, event.token_address,
        event.standard, event.event_kind, event.from_address, event.to_address,
        event.token_id::text, event.amount::text, inclusion.raw, receipt.raw,
-       block.raw, inclusion.tx_index, metadata.name, metadata.symbol,
+       block.timestamp::text, block.base_fee_per_gas_quantity,
+       inclusion.tx_index, metadata.name, metadata.symbol,
        metadata.decimals
 FROM token_events AS event
 JOIN canonical_blocks AS canonical
@@ -1378,25 +1649,26 @@ type EtherscanTokenTransfersAdvancedParams struct {
 }
 
 type EtherscanTokenTransfersAdvancedRow struct {
-	EventBlockNumber string  `db:"event_block_number" json:"event_block_number"`
-	BlockHash        []byte  `db:"block_hash" json:"block_hash"`
-	LogIndex         int64   `db:"log_index" json:"log_index"`
-	SubIndex         int32   `db:"sub_index" json:"sub_index"`
-	TransactionHash  []byte  `db:"transaction_hash" json:"transaction_hash"`
-	TokenAddress     []byte  `db:"token_address" json:"token_address"`
-	Standard         string  `db:"standard" json:"standard"`
-	EventKind        string  `db:"event_kind" json:"event_kind"`
-	FromAddress      []byte  `db:"from_address" json:"from_address"`
-	ToAddress        []byte  `db:"to_address" json:"to_address"`
-	EventTokenID     string  `db:"event_token_id" json:"event_token_id"`
-	EventAmount      string  `db:"event_amount" json:"event_amount"`
-	Raw              []byte  `db:"raw" json:"raw"`
-	Raw_2            []byte  `db:"raw_2" json:"raw_2"`
-	Raw_3            []byte  `db:"raw_3" json:"raw_3"`
-	TxIndex          int64   `db:"tx_index" json:"tx_index"`
-	Name             *string `db:"name" json:"name"`
-	Symbol           *string `db:"symbol" json:"symbol"`
-	Decimals         *int32  `db:"decimals" json:"decimals"`
+	EventBlockNumber      string  `db:"event_block_number" json:"event_block_number"`
+	BlockHash             []byte  `db:"block_hash" json:"block_hash"`
+	LogIndex              int64   `db:"log_index" json:"log_index"`
+	SubIndex              int32   `db:"sub_index" json:"sub_index"`
+	TransactionHash       []byte  `db:"transaction_hash" json:"transaction_hash"`
+	TokenAddress          []byte  `db:"token_address" json:"token_address"`
+	Standard              string  `db:"standard" json:"standard"`
+	EventKind             string  `db:"event_kind" json:"event_kind"`
+	FromAddress           []byte  `db:"from_address" json:"from_address"`
+	ToAddress             []byte  `db:"to_address" json:"to_address"`
+	EventTokenID          string  `db:"event_token_id" json:"event_token_id"`
+	EventAmount           string  `db:"event_amount" json:"event_amount"`
+	Raw                   []byte  `db:"raw" json:"raw"`
+	Raw_2                 []byte  `db:"raw_2" json:"raw_2"`
+	BlockTimestamp        string  `db:"block_timestamp" json:"block_timestamp"`
+	BaseFeePerGasQuantity *string `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
+	TxIndex               int64   `db:"tx_index" json:"tx_index"`
+	Name                  *string `db:"name" json:"name"`
+	Symbol                *string `db:"symbol" json:"symbol"`
+	Decimals              *int32  `db:"decimals" json:"decimals"`
 }
 
 func (q *Queries) EtherscanTokenTransfersAdvanced(ctx context.Context, arg EtherscanTokenTransfersAdvancedParams) ([]EtherscanTokenTransfersAdvancedRow, error) {
@@ -1435,7 +1707,8 @@ func (q *Queries) EtherscanTokenTransfersAdvanced(ctx context.Context, arg Ether
 			&i.EventAmount,
 			&i.Raw,
 			&i.Raw_2,
-			&i.Raw_3,
+			&i.BlockTimestamp,
+			&i.BaseFeePerGasQuantity,
 			&i.TxIndex,
 			&i.Name,
 			&i.Symbol,

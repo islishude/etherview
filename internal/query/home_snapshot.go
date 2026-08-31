@@ -8,36 +8,36 @@ import (
 
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/db/gen"
-	"github.com/islishude/etherview/internal/httpapi"
+	"github.com/islishude/etherview/internal/publicquery"
 )
 
 const homeSnapshotLimit = 6
 
-var _ httpapi.HomeSnapshotReader = (*PostgresReader)(nil)
+var _ publicquery.HomeSnapshotReader = (*PostgresReader)(nil)
 
-func (r *PostgresReader) HomeSnapshot(ctx context.Context) (httpapi.HomeSnapshotState, error) {
+func (r *PostgresReader) HomeSnapshot(ctx context.Context) (publicquery.HomeSnapshotState, error) {
 	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
 	if err != nil {
-		return httpapi.HomeSnapshotState{}, fmt.Errorf("begin home snapshot: %w", err)
+		return publicquery.HomeSnapshotState{}, fmt.Errorf("begin home snapshot: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck
 
 	eventID, err := r.homeEventID(ctx, tx)
 	if err != nil {
-		return httpapi.HomeSnapshotState{}, err
+		return publicquery.HomeSnapshotState{}, err
 	}
 	status, err := r.status(ctx, tx, r.transactionRuntimeStatus(tx), nil)
 	if err != nil {
-		return httpapi.HomeSnapshotState{}, fmt.Errorf("read home status: %w", err)
+		return publicquery.HomeSnapshotState{}, fmt.Errorf("read home status: %w", err)
 	}
 	blocks, transactions, err := r.homeActivity(ctx, tx)
 	if err != nil {
-		return httpapi.HomeSnapshotState{}, err
+		return publicquery.HomeSnapshotState{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return httpapi.HomeSnapshotState{}, fmt.Errorf("commit home snapshot: %w", err)
+		return publicquery.HomeSnapshotState{}, fmt.Errorf("commit home snapshot: %w", err)
 	}
-	return httpapi.HomeSnapshotState{
+	return publicquery.HomeSnapshotState{
 		EventID: eventID, Status: status,
 		Blocks: blocks, Transactions: transactions,
 	}, nil

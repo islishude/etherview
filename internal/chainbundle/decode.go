@@ -503,6 +503,37 @@ func DecodeStoredReceiptWithHeader(
 	)
 }
 
+// DecodeStoredReceiptWithBaseFee authenticates a stored receipt's effective
+// gas price from the exact normalized block identity and base-fee projection.
+// It is the narrow read-side equivalent of DecodeStoredReceiptWithHeader for
+// callers that do not need to transfer or reconstruct a complete header.
+func DecodeStoredReceiptWithBaseFee(
+	raw json.RawMessage,
+	transaction *types.Transaction,
+	blockHash common.Hash,
+	blockNumber uint64,
+	transactionIndex uint64,
+	nextLogIndex uint64,
+	baseFee *big.Int,
+) (*types.Receipt, []json.RawMessage, uint64, error) {
+	if transaction == nil {
+		return nil, nil, nextLogIndex, validation("receipt.transaction", "must not be nil")
+	}
+	return decodeSingleReceipt(
+		raw,
+		transaction,
+		blockHash,
+		blockNumber,
+		transactionIndex,
+		nextLogIndex,
+		receiptDecodeOptions{
+			baseFee:                       newBigOrNil(baseFee),
+			effectiveGasPriceContextKnown: true,
+			legacyStoredShape:             true,
+		},
+	)
+}
+
 type receiptDecodeOptions struct {
 	baseFee                       *big.Int
 	effectiveGasPriceContextKnown bool

@@ -2,6 +2,8 @@ package billing
 
 import (
 	"context"
+	"encoding/hex"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -12,8 +14,40 @@ import (
 	x402 "github.com/x402-foundation/x402/go/v2"
 )
 
+type PaymentFacilitator interface {
+	VerifyPayment(context.Context, x402wire.Payment, x402wire.Requirement) (*x402.VerifyResponse, error)
+	SettlePayment(context.Context, x402wire.Payment, x402wire.Requirement) (*x402.SettleResponse, error)
+	OriginDigest() [32]byte
+}
+
+func PaymentHeaderPresent(header http.Header) bool {
+	_, ok := header[http.CanonicalHeaderKey(x402wire.PaymentSignatureHeader)]
+	return ok
+}
+
+func transactionHashFromHex(value string) (common.Hash, bool) {
+	var result common.Hash
+	if len(value) != 2+len(result)*2 || !strings.HasPrefix(value, "0x") {
+		return result, false
+	}
+	decoded, err := hex.DecodeString(value[2:])
+	if err != nil || len(decoded) != len(result) {
+		return result, false
+	}
+	copy(result[:], decoded)
+	return result, true
+}
+
+func boundaryCode(err error) string {
+	var boundary *x402wire.BoundaryError
+	if errors.As(err, &boundary) && boundary.Code != "" {
+		return boundary.Code
+	}
+	return x402wire.CodeHeaderMalformed
+}
+
 type TopupPaymentLedger interface {
-	Reserve(context.Context, ReserveInput) (Reservation, error)
+	ReserveTopup(context.Context, ReserveInput) (Reservation, error)
 	MarkVerified(context.Context, VerifiedInput) (Payment, error)
 	Get(context.Context, string) (Payment, error)
 }
@@ -154,7 +188,7 @@ func (dispatcher *TopupDispatcher) Serve(
 	resourceDigest := requirement.ResourceDigest()
 	requirementDigest := requirement.RequirementDigest()
 	intentID, userID := intent.ID, intent.UserID
-	reservation, err := dispatcher.payments.Reserve(request.Context(), ReserveInput{
+	reservation, err := dispatcher.payments.ReserveTopup(request.Context(), ReserveInput{
 		Fingerprint: Digest(fingerprint), Operation: "createBillingTopup",
 		Method: http.MethodPost, Purpose: "account_topup",
 		AssetTransferMethod: payment.TransferMethod(), PaymentFlow: payment.PaymentFlow(),

@@ -23,7 +23,6 @@ import (
 )
 
 var (
-	StateDiffStage        = StageID{Name: "state_diff", Version: 3}
 	ErrStateDiffLimit     = errors.New("state difference exceeds configured limit")
 	errStateDiffRPCAbsent = errors.New("state difference RPC capability unavailable")
 )

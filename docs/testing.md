@@ -89,6 +89,9 @@ replace a required `make test-e2e` pass.
   because a single-process browser cannot safely reuse test contexts. A
   launched browser with blank pages still requires console/runtime diagnosis.
   CI remains on the ordinary multi-process browser.
+  The same gate verifies route-lazy delivery, one durable browser event stream,
+  event-driven home/list refresh, on-demand CodeMirror, and embedded
+  precompressed asset behavior without console or CSP failures.
   The suite also enables a deterministic generated-client ENS fixture to prove
   Viem normalization, current official/custom presentation, exact address
   disclosure, snapshot reuse, bilingual accessibility, and 390px overflow.
@@ -328,6 +331,17 @@ replace a required `make test-e2e` pass.
   thresholds. Set the typed `ETHERVIEW_LOAD_*` environment inputs, encode the
   route mix as a JSON string array in `ETHERVIEW_LOAD_PATHS`, and describe the
   revision, dataset, hardware, and RPC model.
+- `make benchmark`: run the raw-first chainbundle decode, validation, and clone
+  allocation baselines for empty, typical, and large deterministic blocks.
+  Override `BENCHTIME` with a Go benchmark duration or iteration count. These
+  microbenchmarks compare implementation revisions; they are not a substitute
+  for PostgreSQL or reference-capacity evidence.
+- `make benchmark-integration`: use the same owned PostgreSQL 18 lifecycle as
+  `make test-integration`, then benchmark idempotent core segment persistence
+  plus block and transaction public projections at deterministic typical and
+  large block cardinalities. It honors `INTEGRATION_DATABASE_URL` only for an
+  explicitly disposable external database and accepts the same `BENCHTIME`
+  override. Record the PostgreSQL version and host with results.
 - `make test-soak`: run the same driver at the P70 reference defaults of
   500 RPS for 30 minutes. The target fixes a 5-second request timeout, p95
   below 500 ms, error rate below 0.1%, final lag no greater than two blocks,

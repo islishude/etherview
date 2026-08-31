@@ -11,7 +11,7 @@ import (
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
-	"github.com/islishude/etherview/internal/httpapi"
+	"github.com/islishude/etherview/internal/publicquery"
 )
 
 type blockTransactionCursor struct {
@@ -53,7 +53,7 @@ func (r *PostgresReader) BlockTransactions(
 		BlockHash: blockHash.String(), AfterIndex: -1,
 	}
 	if encodedCursor != "" {
-		if err := httpapi.DecodeCursor(encodedCursor, &cursor); err != nil {
+		if err := publicquery.DecodeCursor(encodedCursor, &cursor); err != nil {
 			return nil, "", fmt.Errorf("%w: %v", ErrInvalidCursor, err)
 		}
 		if err := r.validateBlockTransactionCursor(ctx, tx, cursor, blockNumber, blockHash); err != nil {
@@ -95,7 +95,7 @@ func (r *PostgresReader) BlockTransactions(
 		return items, "", nil
 	}
 	last := records[len(records)-1]
-	next, err := httpapi.EncodeCursor(blockTransactionCursor{
+	next, err := publicquery.EncodeCursor(blockTransactionCursor{
 		ChainID: r.chainID, BlockNumber: blockNumber,
 		BlockHash: blockHash.String(), AfterIndex: int64(last.Index),
 	})
@@ -117,7 +117,7 @@ func (r *PostgresReader) resolveBlockTransactionTarget(
 		var hashBytes []byte
 		if err := tx.QueryRowContext(ctx, dbgen.GetBlockTransactionTargetByHash, r.chainID, hash.Bytes()).Scan(&numberText, &hashBytes); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				return 0, common.Hash{}, httpapi.ErrNotFound
+				return 0, common.Hash{}, publicquery.ErrNotFound
 			}
 			return 0, common.Hash{}, fmt.Errorf("query block transaction target by hash: %w", err)
 		}
@@ -145,7 +145,7 @@ func (r *PostgresReader) resolveBlockTransactionTarget(
 		r.chainID, strconv.FormatUint(number, 10),
 	).Scan(&numberText, &hashBytes); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return 0, common.Hash{}, httpapi.ErrNotFound
+			return 0, common.Hash{}, publicquery.ErrNotFound
 		}
 		return 0, common.Hash{}, fmt.Errorf("query block transaction target by number: %w", err)
 	}

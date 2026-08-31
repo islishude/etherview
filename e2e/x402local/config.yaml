@@ -106,8 +106,6 @@ billing:
   max_payment_header_bytes: 16384
   max_buffered_response_bytes: 8388608
   max_captured_header_bytes: 65536
-  coarse_ip_rate: 1000
-  coarse_ip_burst: 2000
   operations:
     etherscan.account.balance: {amount_atomic: "1"}
     etherscan.account.balancemulti: {amount_atomic: "1"}

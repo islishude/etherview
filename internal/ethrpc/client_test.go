@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -303,6 +304,59 @@ func TestTransportRateLimitHonorsCancellationBeforeSecondRequest(t *testing.T) {
 	}
 	if calls.Load() != 1 {
 		t.Fatalf("server calls = %d", calls.Load())
+	}
+}
+
+func TestRequestLimiterCancellationDoesNotReserveFutureSlot(t *testing.T) {
+	t.Parallel()
+	start := time.Unix(100, 0)
+	var nowNanos atomic.Int64
+	nowNanos.Store(start.UnixNano())
+	type scheduledWait struct {
+		duration time.Duration
+		fire     chan time.Time
+	}
+	scheduled := make(chan scheduledWait, 2)
+	limiter := newRequestLimiter(1)
+	limiter.now = func() time.Time { return time.Unix(0, nowNanos.Load()) }
+	limiter.after = func(duration time.Duration) <-chan time.Time {
+		wait := scheduledWait{duration: duration, fire: make(chan time.Time, 1)}
+		scheduled <- wait
+		return wait.fire
+	}
+	if err := limiter.acquire(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	canceledContext, cancel := context.WithCancel(context.Background())
+	canceled := make(chan error, 1)
+	go func() { canceled <- limiter.acquire(canceledContext) }()
+	wait := <-scheduled
+	if wait.duration != time.Second {
+		t.Fatalf("canceled request wait = %s, want 1s", wait.duration)
+	}
+	cancel()
+	if err := <-canceled; !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled request error = %v", err)
+	}
+
+	third := make(chan error, 1)
+	go func() { third <- limiter.acquire(context.Background()) }()
+	nowNanos.Store(start.Add(time.Second).UnixNano())
+	wait.fire <- start.Add(time.Second)
+	select {
+	case err := <-third:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("third request waited for a slot reserved by the canceled request")
+	}
+	limiter.mu.Lock()
+	next := limiter.next
+	limiter.mu.Unlock()
+	if want := start.Add(2 * time.Second); !next.Equal(want) {
+		t.Fatalf("next slot = %s, want %s", next, want)
 	}
 }
 

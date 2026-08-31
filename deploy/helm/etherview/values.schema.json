@@ -659,8 +659,6 @@
             "max_payment_header_bytes",
             "max_buffered_response_bytes",
             "max_captured_header_bytes",
-            "coarse_ip_rate",
-            "coarse_ip_burst",
             "operations"
           ],
           "properties": {
@@ -723,8 +721,6 @@
               "minimum": 1024,
               "maximum": 65536
             },
-            "coarse_ip_rate": {"type": "integer", "minimum": 1},
-            "coarse_ip_burst": {"type": "integer", "minimum": 1},
             "operations": {
               "type": "object",
               "propertyNames": {

@@ -1,52 +1,14 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   parseHomeSnapshot,
-  useHomeSnapshotStream,
+  useHomeSnapshot,
 } from "./homeStream";
 
-class FakeEventSource {
-  static instances: FakeEventSource[] = [];
-
-  readonly url: string;
-  closed = false;
-  private readonly listeners = new Map<string, Set<EventListener>>();
-
-  constructor(url: string | URL) {
-    this.url = String(url);
-    FakeEventSource.instances.push(this);
-  }
-
-  addEventListener(type: string, listener: EventListenerOrEventListenerObject | null) {
-    if (typeof listener !== "function") return;
-    const listeners = this.listeners.get(type) ?? new Set<EventListener>();
-    listeners.add(listener);
-    this.listeners.set(type, listeners);
-  }
-
-  removeEventListener(type: string, listener: EventListenerOrEventListenerObject | null) {
-    if (typeof listener === "function") {
-      this.listeners.get(type)?.delete(listener);
-    }
-  }
-
-  close() {
-    this.closed = true;
-  }
-
-  emit(type: string, data = "") {
-    const event = type === "snapshot"
-      ? new MessageEvent(type, { data })
-      : new Event(type);
-    for (const listener of this.listeners.get(type) ?? []) {
-      listener(event);
-    }
-  }
-}
-
 function Probe() {
-  const stream = useHomeSnapshotStream();
+  const stream = useHomeSnapshot();
   if (stream.data) {
     return (
       <output>
@@ -58,47 +20,45 @@ function Probe() {
   return <output>pending</output>;
 }
 
-describe("home snapshot EventSource", () => {
-  beforeEach(() => {
-    FakeEventSource.instances = [];
-    vi.stubGlobal("EventSource", FakeEventSource as unknown as typeof EventSource);
-  });
-
+describe("home snapshot query", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it("uses one same-origin stream and atomically replaces complete snapshots", () => {
-    const view = render(<Probe />);
+  it("fetches one same-origin atomic snapshot and replaces it after invalidation", async () => {
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(snapshot("10", ["10", "9"])))
+      .mockResolvedValueOnce(Response.json(snapshot("11", ["11"])));
+    vi.stubGlobal("fetch", fetcher);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <Probe />
+      </QueryClientProvider>,
+    );
     expect(screen.getByText("pending")).toBeVisible();
-    expect(FakeEventSource.instances).toHaveLength(1);
-    const source = FakeEventSource.instances[0]!;
-    expect(source.url).toBe("/api/v1/home/stream");
+    expect(await screen.findByText("10:10,9")).toBeVisible();
+    expect(String(fetcher.mock.calls[0]?.[0])).toBe("/api/v1/home");
 
-    act(() => source.emit("snapshot", JSON.stringify(snapshot("10", ["10", "9"]))));
-    expect(screen.getByText("10:10,9")).toBeVisible();
-
-    act(() => source.emit("snapshot", JSON.stringify(snapshot("11", ["11"]))));
-    expect(screen.getByText("11:11")).toBeVisible();
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: ["home"] });
+    });
+    expect(await screen.findByText("11:11")).toBeVisible();
     expect(screen.queryByText(/10,9/)).not.toBeInTheDocument();
-
-    act(() => source.emit("snapshot", `{"data":{"status":{}}}`));
-    expect(screen.getByText("11:11")).toBeVisible();
-
-    act(() => source.emit("error"));
-    expect(screen.getByText("11:11")).toBeVisible();
-    act(() => source.emit("snapshot", JSON.stringify(snapshot("12", ["12"]))));
-    expect(screen.getByText("12:12")).toBeVisible();
-    expect(FakeEventSource.instances).toHaveLength(1);
-
-    view.unmount();
-    expect(source.closed).toBe(true);
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
-  it("shows an error when the connection fails before a valid snapshot", () => {
-    render(<Probe />);
-    act(() => FakeEventSource.instances[0]!.emit("error"));
-    expect(screen.getByText("error")).toBeVisible();
+  it("shows an error when the snapshot is unavailable", async () => {
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({ error: { code: "NOT_READY", message: "not ready" } }, { status: 503 }),
+    ));
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <Probe />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText("error")).toBeVisible();
   });
 
   it("rejects oversized, unknown, partial, and overlong payloads", () => {

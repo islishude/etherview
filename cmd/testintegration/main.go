@@ -23,9 +23,12 @@ import (
 )
 
 type options struct {
-	root     string
-	packages string
-	race     bool
+	root          string
+	packages      string
+	race          bool
+	benchmark     string
+	benchmarkTime string
+	run           string
 }
 
 func main() {
@@ -33,6 +36,9 @@ func main() {
 	flag.StringVar(&opts.root, "root", ".", "repository root")
 	flag.StringVar(&opts.packages, "packages", "", "optional space-separated Go package patterns")
 	flag.BoolVar(&opts.race, "race", false, "enable the Go race detector")
+	flag.StringVar(&opts.benchmark, "benchmark", "", "optional Go benchmark regexp; skips ordinary tests")
+	flag.StringVar(&opts.benchmarkTime, "benchtime", "1s", "Go benchmark duration or iteration count")
+	flag.StringVar(&opts.run, "run", "", "optional Go test regexp")
 	flag.Parse()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -94,6 +100,21 @@ func run(ctx context.Context, opts options) error {
 	arguments := []string{"test", "-count=1", "-tags=integration"}
 	if opts.race {
 		arguments = append(arguments, "-race")
+	}
+	if opts.benchmark != "" {
+		if opts.race {
+			return errors.New("integration benchmark does not support the race detector")
+		}
+		if strings.TrimSpace(opts.benchmark) != opts.benchmark || strings.TrimSpace(opts.benchmarkTime) == "" ||
+			strings.TrimSpace(opts.benchmarkTime) != opts.benchmarkTime {
+			return errors.New("integration benchmark arguments must be non-empty and trimmed")
+		}
+		arguments = append(arguments, "-run", "^$", "-bench", opts.benchmark, "-benchmem", "-benchtime", opts.benchmarkTime)
+	} else if opts.run != "" {
+		if strings.TrimSpace(opts.run) != opts.run {
+			return errors.New("integration run regexp must be non-empty and trimmed")
+		}
+		arguments = append(arguments, "-run", opts.run)
 	}
 	arguments = append(arguments, packages...)
 	if err := runCommand(ctx, opts.root, []string{"ETHERVIEW_TEST_DATABASE_URL=" + databaseURL},

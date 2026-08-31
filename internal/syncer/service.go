@@ -23,8 +23,12 @@ import (
 
 const (
 	defaultBackfillBatchBlocks = store.MaxBackfillRangeBlocks
+	defaultBackfillBatchBytes  = 256 << 20
+	defaultBackfillBatchRows   = 200_000
 	maximumBackfillCandidates  = 256
 )
+
+var ErrBackfillWorkLimit = errors.New("backfill bundle exceeds configured work limit")
 
 // Source separates scheduling from JSON-RPC transport. PurposeHead calls are
 // never issued by a historical worker, so a blocked history endpoint cannot
@@ -114,6 +118,8 @@ type Service struct {
 	PollInterval            time.Duration
 	Workers                 int
 	BackfillBatchBlocks     uint64
+	BackfillBatchBytes      uint64
+	BackfillBatchRows       uint64
 	WorkerID                string
 	LeaseDuration           time.Duration
 	Source                  Source
@@ -374,44 +380,120 @@ func (s *Service) backfillOnce(ctx context.Context, owner string) (bool, error) 
 }
 
 func (s *Service) processBackfillLease(ctx context.Context, lease store.BackfillLease) error {
-	bundles := make([]chainbundle.Bundle, 0, lease.Range.End-lease.Range.Start+1)
+	leaseOwned := true
+	defer func() {
+		if leaseOwned {
+			releaseTimeout := min(s.leaseDuration(), 5*time.Second)
+			releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), releaseTimeout)
+			defer cancel()
+			_ = s.Repository.ReleaseBackfillRange(releaseCtx, lease)
+		}
+	}()
+
+	segmentLimit := chainbundle.WorkSize{
+		RawBytes: s.backfillBatchBytes() / 2,
+		Rows:     s.backfillBatchRows() / 2,
+	}
+	segment := make([]chainbundle.Bundle, 0, min(s.backfillBatchBlocks(), lease.Range.End-lease.Range.Start+1))
+	segmentWork := chainbundle.WorkSize{}
+	commitSegment := func() error {
+		if len(segment) == 0 {
+			return nil
+		}
+		var renewErr error
+		lease, renewErr = s.renewBackfillLeaseIfNeeded(ctx, lease)
+		if renewErr != nil {
+			return renewErr
+		}
+		if _, commitErr := s.Repository.CommitCanonicalSegment(ctx, s.ChainID, segment); commitErr != nil {
+			return commitErr
+		}
+		s.signalEvents()
+		segment = nil
+		segmentWork = chainbundle.WorkSize{}
+		return nil
+	}
+
 	for number := lease.Range.Start; ; number++ {
-		if s.now().Add(s.leaseDuration() / 2).After(lease.ExpiresAt) {
-			renewed, err := s.Repository.RenewBackfillRange(ctx, lease, s.now(), s.leaseDuration())
-			if err != nil {
-				return fmt.Errorf("renew backfill range %d-%d: %w", lease.Range.Start, lease.Range.End, err)
-			}
-			lease = renewed
+		var err error
+		lease, err = s.renewBackfillLeaseIfNeeded(ctx, lease)
+		if err != nil {
+			return err
 		}
 		bundle, err := s.Source.BundleByNumber(ctx, ethrpc.PurposeHistory, number)
 		if err != nil {
-			_ = s.Repository.ReleaseBackfillRange(ctx, lease)
 			return fmt.Errorf("fetch historical block %d: %w", number, err)
 		}
-		bundles = append(bundles, bundle)
+		bundleWork, err := chainbundle.MeasureWork(bundle)
+		if err != nil {
+			return fmt.Errorf("measure historical block %d work: %w", number, err)
+		}
+		if bundleWork.RawBytes > segmentLimit.RawBytes || bundleWork.Rows > segmentLimit.Rows {
+			return fmt.Errorf(
+				"%w: block %d owns %d raw bytes and %d rows; per-block limits are %d and %d",
+				ErrBackfillWorkLimit, number, bundleWork.RawBytes, bundleWork.Rows,
+				segmentLimit.RawBytes, segmentLimit.Rows,
+			)
+		}
+		combined := segmentWork
+		if err := combined.Add(bundleWork); err != nil {
+			return fmt.Errorf("%w: block %d work overflow", ErrBackfillWorkLimit, number)
+		}
+		if len(segment) > 0 &&
+			(combined.RawBytes > segmentLimit.RawBytes || combined.Rows > segmentLimit.Rows) {
+			if err := commitSegment(); err != nil {
+				return s.resolveBackfillCommitError(ctx, lease, err)
+			}
+			combined = bundleWork
+		}
+		segment = append(segment, bundle)
+		segmentWork = combined
 		if number == lease.Range.End {
 			break
 		}
 	}
-	if _, err := s.Repository.CommitCanonicalSegment(ctx, s.ChainID, bundles); err != nil {
-		_ = s.Repository.ReleaseBackfillRange(ctx, lease)
-		if errors.Is(err, store.ErrConflict) {
-			result, resolveErr := s.resolveAuthoritativeBackfillConflict(ctx)
-			if resolveErr == nil && result.Disposition != indexer.DispositionAlreadyKnown {
-				s.publish(result)
-				return nil
-			}
-			if resolveErr != nil {
-				return fmt.Errorf("resolve historical boundary conflict from authoritative head: %w", resolveErr)
-			}
-		}
-		return fmt.Errorf("commit historical range %d-%d: %w", lease.Range.Start, lease.Range.End, err)
+	if err := commitSegment(); err != nil {
+		return s.resolveBackfillCommitError(ctx, lease, err)
 	}
-	s.signalEvents()
 	if err := s.Repository.CompleteBackfillRange(ctx, lease); err != nil && !errors.Is(err, store.ErrLeaseLost) {
 		return fmt.Errorf("complete historical range %d-%d: %w", lease.Range.Start, lease.Range.End, err)
 	}
+	leaseOwned = false
 	return nil
+}
+
+func (s *Service) renewBackfillLeaseIfNeeded(
+	ctx context.Context,
+	lease store.BackfillLease,
+) (store.BackfillLease, error) {
+	if !s.now().Add(s.leaseDuration() / 2).After(lease.ExpiresAt) {
+		return lease, nil
+	}
+	renewed, err := s.Repository.RenewBackfillRange(ctx, lease, s.now(), s.leaseDuration())
+	if err != nil {
+		return store.BackfillLease{}, fmt.Errorf(
+			"renew backfill range %d-%d: %w", lease.Range.Start, lease.Range.End, err,
+		)
+	}
+	return renewed, nil
+}
+
+func (s *Service) resolveBackfillCommitError(
+	ctx context.Context,
+	lease store.BackfillLease,
+	err error,
+) error {
+	if errors.Is(err, store.ErrConflict) {
+		result, resolveErr := s.resolveAuthoritativeBackfillConflict(ctx)
+		if resolveErr == nil && result.Disposition != indexer.DispositionAlreadyKnown {
+			s.publish(result)
+			return nil
+		}
+		if resolveErr != nil {
+			return fmt.Errorf("resolve historical boundary conflict from authoritative head: %w", resolveErr)
+		}
+	}
+	return fmt.Errorf("commit historical range %d-%d: %w", lease.Range.Start, lease.Range.End, err)
 }
 
 func (s *Service) resolveAuthoritativeBackfillConflict(ctx context.Context) (indexer.ApplyResult, error) {
@@ -833,6 +915,20 @@ func (s *Service) backfillBatchBlocks() uint64 {
 		return defaultBackfillBatchBlocks
 	}
 	return s.BackfillBatchBlocks
+}
+
+func (s *Service) backfillBatchBytes() uint64 {
+	if s.BackfillBatchBytes < 2 {
+		return defaultBackfillBatchBytes
+	}
+	return s.BackfillBatchBytes
+}
+
+func (s *Service) backfillBatchRows() uint64 {
+	if s.BackfillBatchRows < 2 {
+		return defaultBackfillBatchRows
+	}
+	return s.BackfillBatchRows
 }
 
 func (s *Service) leaseDuration() time.Duration {

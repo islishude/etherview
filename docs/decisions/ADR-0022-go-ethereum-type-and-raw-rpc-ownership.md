@@ -76,6 +76,29 @@ go-ethereum projection. PostgreSQL raw JSONB columns retain unknown fields on
 supported objects; typed projections are never re-marshaled as a replacement
 for those objects.
 
+An in-process persistence boundary takes ownership by decoding the authoritative
+root block, receipt, and uncle Raw payloads once into a new aligned bundle and
+comparing every caller-supplied typed and derived Raw view with that result.
+Mutation or misalignment fails closed. The owned result, rather than the
+caller's slices, supplies persistence. Segment validation, cloning, and row
+insertion must not each repeat that same full decode; stored-data reads remain
+an independent hostile boundary and still perform their complete validation.
+The owned values are converted directly into relation-specific bounded JSONB
+write batches in foreign-key order. Each batch is limited by rows and encoded
+bytes, except that one indivisible input row may occupy a batch by itself and
+is still constrained by the accepted RPC/backfill input limits. The batch
+codec carries the accepted Raw values and controlled scalar identities; it
+does not re-marshal typed geth objects as their persisted representation.
+
+Public read models use narrow persistence projections rather than transferring
+the complete block Raw object once per block, transaction, log, or token row.
+Generated block columns preserve validated header/display scalars and Raw array
+counts; normalized inclusions and withdrawals supply relational collections.
+Readers compare those counts and fail closed on drift. A stored receipt can be
+authenticated from the exact block hash/number and the normalized base fee
+without reconstructing a full header, while stored-bundle retrieval remains the
+independent full Raw validation boundary.
+
 `blocks.raw` preserves the original block result's top-level JSON shape so
 existing root-level JSONB paths retain their meaning. A validated PoW block
 with uncles attaches the full raw uncle headers under the reserved

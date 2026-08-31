@@ -15,6 +15,35 @@ import (
 	"github.com/islishude/etherview/internal/db/gen"
 )
 
+func TestRepositoryOwnsRootNormalizedBundleBeforePersistence(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repository := NewMemoryRepository()
+	bundle, err := testfixture.New(testfixture.Options{
+		Number: 0, TransactionTypes: []uint8{types.LegacyTxType}, LogsPerTransaction: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reference, err := RefFromBundle(bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.CommitCanonical(ctx, "1", bundle, NewCoreCheckpoint(reference)); err != nil {
+		t.Fatal(err)
+	}
+	for index := range bundle.RawBlock {
+		bundle.RawBlock[index] = 'x'
+	}
+	stored, exists, err := repository.BundleByHash(ctx, "1", reference.Hash)
+	if err != nil || !exists {
+		t.Fatalf("stored bundle exists=%v error=%v", exists, err)
+	}
+	if err := chainbundle.Validate(stored); err != nil || stored.Block.Hash() != reference.Hash {
+		t.Fatalf("stored owned bundle = %#v, error=%v", stored, err)
+	}
+}
+
 func TestDerivedCanonicalRelationsIncludeUUPSImplementationObservations(t *testing.T) {
 	t.Parallel()
 	for _, relation := range []string{
@@ -23,7 +52,7 @@ func TestDerivedCanonicalRelationsIncludeUUPSImplementationObservations(t *testi
 		"diamond_cut_events",
 		"transaction_effective_execution_identities",
 	} {
-		if strings.Contains(dbgen.StoreSetDerivedCanonical, "UPDATE "+relation+" SET canonical") {
+		if strings.Contains(dbgen.StoreSetDerivedCanonicalBatch, "UPDATE "+relation+" AS target SET canonical") {
 			continue
 		}
 		t.Fatalf("derived canonical query lacks %s", relation)

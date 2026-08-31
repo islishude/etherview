@@ -13,13 +13,13 @@ import (
 	"github.com/islishude/etherview/internal/auth"
 	"github.com/islishude/etherview/internal/components"
 	"github.com/islishude/etherview/internal/config"
-	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/events"
 	"github.com/islishude/etherview/internal/httpapi"
 	"github.com/islishude/etherview/internal/indexer"
 	"github.com/islishude/etherview/internal/mempool"
 	"github.com/islishude/etherview/internal/observability"
+	"github.com/islishude/etherview/internal/stagecontract"
 	"github.com/islishude/etherview/internal/store"
 	"github.com/islishude/etherview/internal/syncer"
 	"github.com/islishude/etherview/internal/verify"
@@ -55,6 +55,14 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		"environment", cfg.Observability.Environment,
 	)
 	registry := observability.NewRegistry(b.Version, strings.Join(roleNames, ","))
+	if err := registry.RegisterDatabasePool("writer", db); err != nil {
+		return err
+	}
+	if readDB != db {
+		if err := registry.RegisterDatabasePool("reader", readDB); err != nil {
+			return err
+		}
+	}
 	businessObserver := observability.NewBusinessObserver(registry, logger)
 	tracker := &syncer.Tracker{}
 	// Operational backlog snapshots stay writer-backed so every role exports
@@ -321,10 +329,12 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 	})
 }
 
-func enrichmentDispatchStages(trace bool) []enrich.StageID {
-	stages := []enrich.StageID{enrich.ProxyStage, enrich.ABIStage, enrich.TokenStage, enrich.StatsStage}
+func enrichmentDispatchStages(trace bool) []stagecontract.ID {
+	stages := []stagecontract.ID{
+		stagecontract.Proxy, stagecontract.ABI, stagecontract.Token, stagecontract.Stats,
+	}
 	if trace {
-		stages = append(stages, enrich.TraceStage, enrich.StateDiffStage)
+		stages = append(stages, stagecontract.Trace, stagecontract.StateDiff)
 	}
 	return stages
 }

@@ -448,9 +448,6 @@ func validateBillingConfig(cfg Config) error {
 	if billing.MaxCapturedHeaderBytes < 1024 || billing.MaxCapturedHeaderBytes > 64<<10 {
 		errs = append(errs, errors.New("billing.max_captured_header_bytes must be between 1024 and 65536"))
 	}
-	if billing.CoarseIPRate <= 0 || billing.CoarseIPBurst < billing.CoarseIPRate {
-		errs = append(errs, errors.New("billing coarse IP rate must be positive and burst must be at least rate"))
-	}
 	if billing.FingerprintPepper != "" && len(billing.FingerprintPepper) < 32 {
 		errs = append(errs, errors.New("billing fingerprint pepper must contain at least 32 bytes"))
 	}
@@ -467,9 +464,6 @@ func validateBillingConfig(cfg Config) error {
 		if err != nil || prefix.Masked() != prefix || prefix.String() != raw {
 			errs = append(errs, fmt.Errorf("billing.facilitator_allowed_cidrs[%d] must be a canonical masked CIDR prefix", index))
 		}
-	}
-	if cfg.Features.X402Billing || len(billing.Routes) != 0 {
-		errs = append(errs, errors.New("features.x402_billing and billing.routes were superseded by api_billing, x402_topups, and billing.operations"))
 	}
 	if len(billing.Operations) > 0 && !cfg.Features.APIBilling {
 		errs = append(errs, errors.New("billing.operations requires features.api_billing"))

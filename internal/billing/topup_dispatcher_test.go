@@ -21,7 +21,7 @@ type topupPaymentLedgerFake struct {
 	payment      Payment
 }
 
-func (fake *topupPaymentLedgerFake) Reserve(
+func (fake *topupPaymentLedgerFake) ReserveTopup(
 	_ context.Context,
 	input ReserveInput,
 ) (Reservation, error) {

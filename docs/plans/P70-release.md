@@ -31,11 +31,11 @@ and user/operator evidence sufficient for a production public release.
 
 | ID | Status | Depends on | Deliverable | Verification |
 |---|---|---|---|---|
-| P70-T01 | blocked | P10–P69, P71, P72, P73 | Execution/API/token/proxy/verification/authentication/billing conformance matrix | conformance suite |
-| P70-T02 | blocked | P10–P69, P71, P72, P73 | Threat model, security audit, dependency, compiler, session, and payment supply-chain review | security gates |
-| P70-T03 | blocked | P10–P69, P71, P72, P73 | Monolith/split E2E, migration/rollback, outage, reorg, payment, and soak suite | release CI |
-| P70-T04 | blocked | P60 | 500 RPS reference capacity report and tuning guide | load report |
-| P70-T05 | blocked | P00–P69, P71, P72, P73 | User/operator/API/authentication/billing/runbook/upgrade documentation | doc review and link check |
+| P70-T01 | blocked | P10–P69, P71–P75 | Execution/API/token/proxy/verification/authentication/billing conformance matrix | conformance suite |
+| P70-T02 | blocked | P10–P69, P71–P75 | Threat model, security audit, dependency, compiler, session, and payment supply-chain review | security gates |
+| P70-T03 | blocked | P10–P69, P71–P75 | Monolith/split E2E, migration/rollback, outage, reorg, payment, and soak suite | release CI |
+| P70-T04 | blocked | P60, P75 | 500 RPS reference capacity report and tuning guide | load report |
+| P70-T05 | blocked | P00–P69, P71–P75 | User/operator/API/authentication/billing/runbook/upgrade documentation | doc review and link check |
 | P70-T06 | todo | P70-T01–P70-T05, P70-T08, P70-T09 | SBOM, checksums, signed multi-arch artifacts and v1.0.0 release | release verification |
 | P70-T07 | done | P60 | Database read/write pool split configuration, deployment wiring, and capacity guidance | helm config/schema tests |
 | P70-T08 | done | P10, P20, P30-T07, P40, P50, P60 | Authenticated local/remote genesis account state, predeploy enrichment, native API, and block-zero UI | root, persistence, API, browser, security, and split-role tests |
@@ -78,7 +78,7 @@ and user/operator evidence sufficient for a production public release.
 
 ## Acceptance
 
-- [ ] Every P00–P68 plan and root release gate is complete with evidence.
+- [ ] Every required P00–P75 plan and root release gate is complete with evidence.
 - [ ] Clean deployment, upgrade, rollback, backup/restore, and repair procedures
       are independently reproducible.
 - [ ] Security findings have no unresolved critical/high issue.

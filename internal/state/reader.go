@@ -19,7 +19,7 @@ import (
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
-	"github.com/islishude/etherview/internal/httpapi"
+	"github.com/islishude/etherview/internal/publicquery"
 	"github.com/islishude/etherview/internal/query"
 )
 
@@ -31,7 +31,7 @@ type CanonicalRef struct {
 type CapabilityError struct{ Code string }
 
 func (CapabilityError) Error() string { return "state capability unavailable" }
-func (CapabilityError) Unwrap() error { return httpapi.ErrUnavailable }
+func (CapabilityError) Unwrap() error { return publicquery.ErrUnavailable }
 
 type CanonicalSource interface {
 	Tip(context.Context) (CanonicalRef, error)
@@ -65,7 +65,7 @@ func (s PostgresCanonicalSource) Tip(ctx context.Context) (CanonicalRef, error) 
 	var hashBytes []byte
 	err := s.DB.QueryRowContext(ctx, dbgen.StateCanonicalTip, s.ChainID).Scan(&number, &hashBytes)
 	if err == sql.ErrNoRows {
-		return CanonicalRef{}, httpapi.ErrNotReady
+		return CanonicalRef{}, publicquery.ErrNotReady
 	}
 	if err != nil {
 		return CanonicalRef{}, fmt.Errorf("query canonical state tip: %w", err)
@@ -88,7 +88,7 @@ func (s PostgresCanonicalSource) IsCanonical(ctx context.Context, reference Cano
 }
 
 type Reader struct {
-	Base              httpapi.Reader
+	Base              publicquery.Reader
 	Origin            AddressOriginReader
 	DelegationHistory AddressDelegationHistoryReader
 	Canonical         CanonicalSource
@@ -96,9 +96,9 @@ type Reader struct {
 	Completeness      gen.Completeness
 }
 
-var _ httpapi.Reader = (*Reader)(nil)
+var _ publicquery.Reader = (*Reader)(nil)
 
-func (r *Reader) Status(ctx context.Context) (httpapi.StatusSnapshot, error) {
+func (r *Reader) Status(ctx context.Context) (publicquery.StatusSnapshot, error) {
 	return r.Base.Status(ctx)
 }
 
@@ -165,7 +165,7 @@ func (r *Reader) Address(ctx context.Context, value string) (gen.AddressSummary,
 		return gen.AddressSummary{}, fmt.Errorf("recheck account state block: %w", err)
 	}
 	if !canonical {
-		return gen.AddressSummary{}, fmt.Errorf("%w: canonical block changed during state query", httpapi.ErrNotReady)
+		return gen.AddressSummary{}, fmt.Errorf("%w: canonical block changed during state query", publicquery.ErrNotReady)
 	}
 	r.Pool.ReportSuccess(endpoint.Name)
 	balanceDecimal := decimal(balance)
@@ -191,7 +191,7 @@ func (r *Reader) Address(ctx context.Context, value string) (gen.AddressSummary,
 			return gen.AddressSummary{}, fmt.Errorf("recheck delegation history block: %w", err)
 		}
 		if !canonical {
-			return gen.AddressSummary{}, fmt.Errorf("%w: canonical block changed during delegation history query", httpapi.ErrNotReady)
+			return gen.AddressSummary{}, fmt.Errorf("%w: canonical block changed during delegation history query", publicquery.ErrNotReady)
 		}
 	}
 	var delegation *gen.DelegationBinding
@@ -206,7 +206,7 @@ func (r *Reader) Address(ctx context.Context, value string) (gen.AddressSummary,
 			return gen.AddressSummary{}, fmt.Errorf("recheck delegation summary block: %w", err)
 		}
 		if !canonical {
-			return gen.AddressSummary{}, fmt.Errorf("%w: canonical block changed during delegation summary", httpapi.ErrNotReady)
+			return gen.AddressSummary{}, fmt.Errorf("%w: canonical block changed during delegation summary", publicquery.ErrNotReady)
 		}
 	}
 	completeness := r.Completeness
@@ -232,7 +232,7 @@ func (r *Reader) Address(ctx context.Context, value string) (gen.AddressSummary,
 			return gen.AddressSummary{}, fmt.Errorf("recheck account origin block: %w", err)
 		}
 		if !canonical {
-			return gen.AddressSummary{}, fmt.Errorf("%w: canonical block changed during origin query", httpapi.ErrNotReady)
+			return gen.AddressSummary{}, fmt.Errorf("%w: canonical block changed during origin query", publicquery.ErrNotReady)
 		}
 	}
 	return gen.AddressSummary{
@@ -275,7 +275,7 @@ func (r *Reader) AddressDelegation(ctx context.Context, value string) (gen.Deleg
 		return gen.DelegationBinding{}, fmt.Errorf("recheck delegation block: %w", err)
 	}
 	if !canonical {
-		return gen.DelegationBinding{}, fmt.Errorf("%w: canonical block changed during delegation query", httpapi.ErrNotReady)
+		return gen.DelegationBinding{}, fmt.Errorf("%w: canonical block changed during delegation query", publicquery.ErrNotReady)
 	}
 	r.Pool.ReportSuccess(endpoint.Name)
 	return binding, nil
@@ -289,7 +289,7 @@ func (r *Reader) canonicalUnavailableDelegation(
 		return gen.DelegationBinding{}, fmt.Errorf("recheck unavailable delegation block: %w", err)
 	}
 	if !canonical {
-		return gen.DelegationBinding{}, fmt.Errorf("%w: canonical block changed during delegation query", httpapi.ErrNotReady)
+		return gen.DelegationBinding{}, fmt.Errorf("%w: canonical block changed during delegation query", publicquery.ErrNotReady)
 	}
 	return unavailableDelegationBinding(r, authority, reference), nil
 }

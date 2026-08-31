@@ -2,6 +2,7 @@ package etherscan
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"math/big"
@@ -97,12 +98,13 @@ func (b *PostgresBackend) accountTransactions(ctx context.Context, values url.Va
 type rowScanner interface{ Scan(...any) error }
 
 func scanAccountTransaction(scanner rowScanner) (accountTransaction, error) {
-	var transactionJSON, receiptJSON, blockJSON []byte
-	var blockNumberText, tipNumberText string
+	var transactionJSON, receiptJSON []byte
+	var blockTimestampText, blockNumberText, tipNumberText string
+	var blockBaseFeeText sql.NullString
 	var blockHashBytes, transactionHashBytes []byte
 	var transactionIndex int64
 	if err := scanner.Scan(
-		&transactionJSON, &receiptJSON, &blockJSON, &blockNumberText,
+		&transactionJSON, &receiptJSON, &blockTimestampText, &blockBaseFeeText, &blockNumberText,
 		&blockHashBytes, &transactionIndex, &transactionHashBytes, &tipNumberText,
 	); err != nil {
 		return accountTransaction{}, fmt.Errorf("scan account transaction: %w", err)
@@ -134,22 +136,21 @@ func scanAccountTransaction(scanner rowScanner) (accountTransaction, error) {
 	if transaction.Hash() != transactionHash {
 		return accountTransaction{}, errors.New("stored transaction raw identity does not match inclusion")
 	}
+	block, err := decodeStoredBlockContext(blockTimestampText, blockBaseFeeText)
+	if err != nil {
+		return accountTransaction{}, err
+	}
 
 	receipt, err := decodeStoredReceiptWithBlockContext(
 		receiptJSON,
-		blockJSON,
 		transaction,
 		blockHash,
 		blockNumber,
 		transactionIndex,
+		block.BaseFee,
 	)
 	if err != nil {
 		return accountTransaction{}, fmt.Errorf("decode receipt raw JSON: %w", err)
-	}
-
-	block, err := decodeStoredBlockProjection(blockJSON, blockHash, blockNumber)
-	if err != nil {
-		return accountTransaction{}, fmt.Errorf("decode block raw JSON: %w", err)
 	}
 
 	from, err := checksumAddress(sender)
@@ -177,7 +178,7 @@ func scanAccountTransaction(scanner rowScanner) (accountTransaction, error) {
 		From: from, To: to, ContractAddress: contractAddress, Input: hexutil.Encode(transaction.Data()),
 		FunctionName: "",
 	}
-	item.TimeStamp = decimalUint64(uint64(*block.Timestamp))
+	item.TimeStamp = decimalUint64(block.Timestamp)
 	item.Nonce = decimalUint64(transaction.Nonce())
 	if item.Value, err = decimalBig(transaction.Value()); err != nil {
 		return accountTransaction{}, fmt.Errorf("decode transaction value: %w", err)
@@ -235,8 +236,12 @@ func (b *PostgresBackend) minedBlocks(ctx context.Context, values url.Values) ([
 	if _, err := b.requireCanonicalCoreRange(ctx, tx, "0", nil); err != nil {
 		return nil, err
 	}
-	rows, err := tx.QueryContext(ctx, dbgen.EtherscanMinedBlocks,
-		b.chain, strings.ToLower(address.Hex()), page.limit, page.offset, page.direction,
+	query := dbgen.EtherscanMinedBlocksAsc
+	if page.direction == "DESC" {
+		query = dbgen.EtherscanMinedBlocksDesc
+	}
+	rows, err := tx.QueryContext(ctx, query,
+		b.chain, strings.ToLower(address.Hex()), page.limit, page.offset,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query mined blocks: %w", err)
@@ -244,28 +249,31 @@ func (b *PostgresBackend) minedBlocks(ctx context.Context, values url.Values) ([
 	defer rows.Close() //nolint:errcheck
 	result := make([]minedBlock, 0, page.limit)
 	for rows.Next() {
-		var raw []byte
-		var numberText string
+		var numberText, timestampText string
 		var hashBytes []byte
-		if err := rows.Scan(&raw, &numberText, &hashBytes); err != nil {
+		var minerText sql.NullString
+		if err := rows.Scan(&numberText, &hashBytes, &timestampText, &minerText); err != nil {
 			return nil, fmt.Errorf("scan mined block: %w", err)
 		}
 		number, ok := new(big.Int).SetString(numberText, 10)
 		if !ok || number.Sign() < 0 {
 			return nil, errors.New("stored block number is invalid")
 		}
-		hash, err := hashFromBytes(hashBytes)
+		if _, err := hashFromBytes(hashBytes); err != nil {
+			return nil, err
+		}
+		block, err := decodeStoredBlockContext(timestampText, sql.NullString{})
 		if err != nil {
 			return nil, err
 		}
-		block, err := decodeStoredBlockProjection(raw, hash, number)
+		miner, err := decodeStoredBlockMiner(minerText)
 		if err != nil {
-			return nil, fmt.Errorf("decode mined block raw JSON: %w", err)
+			return nil, err
 		}
-		if block.Miner == nil || *block.Miner != address {
+		if miner != address {
 			return nil, errors.New("stored mined block raw identity does not match indexed row")
 		}
-		timestamp := decimalUint64(uint64(*block.Timestamp))
+		timestamp := decimalUint64(block.Timestamp)
 		result = append(result, minedBlock{BlockNumber: number.String(), TimeStamp: timestamp})
 	}
 	if err := rows.Err(); err != nil {

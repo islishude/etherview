@@ -11,7 +11,7 @@ import (
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
-	"github.com/islishude/etherview/internal/httpapi"
+	"github.com/islishude/etherview/internal/publicquery"
 )
 
 // AddressOrigin resolves the first genesis- or transaction-backed origin for an
@@ -57,7 +57,7 @@ func (r *PostgresReader) AddressOrigin(
 		return gen.AddressOrigin{}, fmt.Errorf("validate address origin reference: %w", err)
 	}
 	if !canonical {
-		return gen.AddressOrigin{}, fmt.Errorf("%w: address state reference is no longer canonical", httpapi.ErrNotReady)
+		return gen.AddressOrigin{}, fmt.Errorf("%w: address state reference is no longer canonical", publicquery.ErrNotReady)
 	}
 
 	var genesis bool

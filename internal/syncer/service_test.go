@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -184,6 +185,122 @@ func TestCycleFillsBoundedGapAndPublishesReadiness(t *testing.T) {
 	if err != nil || !exists || checkpoint.ContiguousThrough != 2 {
 		t.Fatalf("checkpoint = %+v exists=%v error=%v", checkpoint, exists, err)
 	}
+}
+
+func TestBackfillLeaseCommitsByteBoundedRecoverableSubsegments(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	base := store.NewMemoryRepository()
+	if err := base.ConfigureIndex(ctx, "1", 0); err != nil {
+		t.Fatal(err)
+	}
+	chain := testChain(3)
+	maximumWork := chainbundle.WorkSize{}
+	for _, bundle := range chain {
+		work, err := chainbundle.MeasureWork(bundle)
+		if err != nil {
+			t.Fatal(err)
+		}
+		maximumWork.RawBytes = max(maximumWork.RawBytes, work.RawBytes)
+		maximumWork.Rows = max(maximumWork.Rows, work.Rows)
+	}
+	repository := &segmentRecordingRepository{Repository: base}
+	now := time.Now().UTC()
+	lease, claimed, err := repository.ClaimBackfillRange(
+		ctx, "1", store.BlockRange{Start: 0, End: 2}, "worker", now, time.Minute,
+	)
+	if err != nil || !claimed {
+		t.Fatalf("claim = %+v, %v, %v", lease, claimed, err)
+	}
+	wakes := 0
+	service := &Service{
+		ChainID: "1", BackfillBatchBlocks: 3,
+		BackfillBatchBytes: 2 * maximumWork.RawBytes,
+		BackfillBatchRows:  2 * maximumWork.Rows,
+		LeaseDuration:      time.Minute, Now: func() time.Time { return now },
+		Source: &fakeSource{head: 2, bundles: chain}, Repository: repository,
+		Canonicalizer: &indexer.Canonicalizer{ChainID: "1", Repository: repository},
+		Tracker:       &Tracker{}, EventWake: func() { wakes++ },
+	}
+	if err := service.processBackfillLease(ctx, lease); err != nil {
+		t.Fatal(err)
+	}
+	segments := repository.Segments()
+	if len(segments) != 3 || !slices.Equal(segments, []int{1, 1, 1}) {
+		t.Fatalf("committed segment sizes = %v, want [1 1 1]", segments)
+	}
+	if wakes != 3 {
+		t.Fatalf("event wakes = %d, want 3", wakes)
+	}
+	coverage, exists, err := repository.Coverage(ctx, "1")
+	if err != nil || !exists || coverage.Contiguous == nil || coverage.Contiguous.Number != 2 {
+		t.Fatalf("coverage = %+v, exists=%v error=%v", coverage, exists, err)
+	}
+}
+
+func TestBackfillLeaseRejectsOversizedBlockAndReleasesLease(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	repository := &segmentRecordingRepository{Repository: store.NewMemoryRepository()}
+	if err := repository.ConfigureIndex(ctx, "1", 0); err != nil {
+		t.Fatal(err)
+	}
+	bundle := testChain(1)[0]
+	work, err := chainbundle.MeasureWork(bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	lease, claimed, err := repository.ClaimBackfillRange(
+		ctx, "1", store.BlockRange{Start: 0, End: 0}, "worker", now, time.Minute,
+	)
+	if err != nil || !claimed {
+		t.Fatalf("claim = %+v, %v, %v", lease, claimed, err)
+	}
+	service := &Service{
+		ChainID: "1", BackfillBatchBlocks: 1,
+		BackfillBatchBytes: 2 * (work.RawBytes - 1),
+		BackfillBatchRows:  2 * work.Rows,
+		LeaseDuration:      time.Minute, Now: func() time.Time { return now },
+		Source:     &fakeSource{head: 0, bundles: map[uint64]chainbundle.Bundle{0: bundle}},
+		Repository: repository, Canonicalizer: &indexer.Canonicalizer{ChainID: "1", Repository: repository},
+		Tracker: &Tracker{},
+	}
+	if err := service.processBackfillLease(ctx, lease); !errors.Is(err, ErrBackfillWorkLimit) {
+		t.Fatalf("processBackfillLease() error = %v, want ErrBackfillWorkLimit", err)
+	}
+	if len(repository.Segments()) != 0 {
+		t.Fatalf("oversized block committed segments = %v", repository.Segments())
+	}
+	_, reclaimed, err := repository.ClaimBackfillRange(
+		ctx, "1", store.BlockRange{Start: 0, End: 0}, "retry", now, time.Minute,
+	)
+	if err != nil || !reclaimed {
+		t.Fatalf("released range reclaim = %v, %v", reclaimed, err)
+	}
+}
+
+type segmentRecordingRepository struct {
+	store.Repository
+	mu       sync.Mutex
+	segments []int
+}
+
+func (repository *segmentRecordingRepository) CommitCanonicalSegment(
+	ctx context.Context,
+	chainID string,
+	bundles []chainbundle.Bundle,
+) (store.CoreCoverage, error) {
+	repository.mu.Lock()
+	repository.segments = append(repository.segments, len(bundles))
+	repository.mu.Unlock()
+	return repository.Repository.CommitCanonicalSegment(ctx, chainID, bundles)
+}
+
+func (repository *segmentRecordingRepository) Segments() []int {
+	repository.mu.Lock()
+	defer repository.mu.Unlock()
+	return slices.Clone(repository.segments)
 }
 
 func TestCyclePersistsAuthoritativeStatusAndSignalsRelay(t *testing.T) {

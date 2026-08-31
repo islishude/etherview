@@ -12,7 +12,7 @@ import (
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
-	"github.com/islishude/etherview/internal/httpapi"
+	"github.com/islishude/etherview/internal/publicquery"
 )
 
 type addressTransactionCursor struct {
@@ -59,7 +59,7 @@ func (r *PostgresReader) AddressTransactions(
 			BeforeBlockNumber: snapshot.BeforeBlockNumber, BeforeBlockHash: snapshot.BeforeBlockHash,
 		}
 	} else {
-		if err := httpapi.DecodeCursor(encodedCursor, &cursor); err != nil ||
+		if err := publicquery.DecodeCursor(encodedCursor, &cursor); err != nil ||
 			cursor.Version != 1 || cursor.ChainID != r.chainID || cursor.Address != normalizedAddress ||
 			cursor.BeforeBlockNumber > cursor.SnapshotNumber || cursor.BeforeTxIndex > math.MaxInt64 {
 			return nil, "", ErrInvalidCursor
@@ -126,7 +126,7 @@ func (r *PostgresReader) AddressTransactions(
 		return items, "", nil
 	}
 	last := records[len(records)-1]
-	next, err := httpapi.EncodeCursor(addressTransactionCursor{
+	next, err := publicquery.EncodeCursor(addressTransactionCursor{
 		Version: 1, ChainID: r.chainID, Address: normalizedAddress,
 		SnapshotNumber: cursor.SnapshotNumber, SnapshotHash: cursor.SnapshotHash,
 		BeforeBlockNumber: last.BlockNumber, BeforeBlockHash: last.BlockHash.String(),

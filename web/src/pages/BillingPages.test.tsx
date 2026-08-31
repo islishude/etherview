@@ -97,7 +97,8 @@ describe("billing pages", () => {
       ),
     );
 
-    renderRoute("/account?tab=billing");
+    await renderRoute("/account?tab=billing");
+    expect(await screen.findByRole("heading", { name: "Account", level: 1 })).toBeVisible();
     const user = userEvent.setup();
     await connectTestWallet(user);
     await user.click(
@@ -196,7 +197,7 @@ describe("billing pages", () => {
       ),
     );
 
-    renderRoute("/admin/billing");
+    await renderRoute("/admin/billing");
     const user = userEvent.setup();
     await connectTestWallet(user);
     await signInFromWalletMenu(user);
@@ -313,13 +314,14 @@ describe("billing pages", () => {
   });
 });
 
-function renderRoute(path: string) {
+async function renderRoute(path: string) {
   const router = makeRouter(createMemoryHistory({ initialEntries: [path] }));
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false, refetchOnWindowFocus: false },
     },
   });
+  await router.load();
   return render(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>

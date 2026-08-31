@@ -26,82 +26,38 @@ import (
 	"github.com/islishude/etherview/internal/mempool"
 	"github.com/islishude/etherview/internal/metadata"
 	"github.com/islishude/etherview/internal/observability"
+	"github.com/islishude/etherview/internal/publicquery"
 	"github.com/islishude/etherview/internal/userauth"
 	"github.com/islishude/etherview/internal/verify"
 )
 
 var (
-	ErrNotFound      = errors.New("not found")
-	ErrUnavailable   = errors.New("capability unavailable")
-	ErrNotReady      = errors.New("not ready")
-	ErrInvalidCursor = errors.New("invalid or stale cursor")
-	ErrInvalidInput  = errors.New("invalid input")
+	ErrNotFound      = publicquery.ErrNotFound
+	ErrUnavailable   = publicquery.ErrUnavailable
+	ErrNotReady      = publicquery.ErrNotReady
+	ErrInvalidCursor = publicquery.ErrInvalidCursor
+	ErrInvalidInput  = publicquery.ErrInvalidInput
 )
 
-// CapabilityUnavailableError carries only controlled machine identifiers that
-// are safe to expose in the shared error envelope. Upstream text is never part
-// of this value.
-type CapabilityUnavailableError struct {
-	Capability string
-	State      string
-	Code       string
-}
-
-func (*CapabilityUnavailableError) Error() string { return ErrUnavailable.Error() }
-func (*CapabilityUnavailableError) Unwrap() error { return ErrUnavailable }
+type CapabilityUnavailableError = publicquery.CapabilityUnavailableError
 
 func NewCapabilityUnavailableError(capability, state, code string) error {
-	errorValue := &CapabilityUnavailableError{Capability: capability, State: state, Code: code}
-	if !errorValue.valid() {
-		return ErrUnavailable
-	}
-	return errorValue
-}
-
-func (err *CapabilityUnavailableError) valid() bool {
-	return err != nil && capabilityIdentifierPattern.MatchString(err.Capability) &&
-		(err.State == "unavailable" || err.State == "failed") &&
-		capabilityIdentifierPattern.MatchString(err.Code)
+	return publicquery.NewCapabilityUnavailableError(capability, state, code)
 }
 
 var (
-	hashPattern                 = regexp.MustCompile(`^0x[0-9a-fA-F]{64}$`)
-	addressPattern              = regexp.MustCompile(`^0x[0-9a-fA-F]{40}$`)
-	capabilityIdentifierPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,127}$`)
+	hashPattern    = regexp.MustCompile(`^0x[0-9a-fA-F]{64}$`)
+	addressPattern = regexp.MustCompile(`^0x[0-9a-fA-F]{40}$`)
 )
 
 const (
-	maximumOpaqueCursorLength = 1024
+	maximumOpaqueCursorLength = publicquery.MaximumOpaqueCursorLength
 	maximumPageSize           = 100
 	maximumNativeQueryBytes   = 4096
 )
 
-type StatusSnapshot struct {
-	LatestBlock         uint64
-	IndexedBlock        uint64
-	HighestCoveredBlock uint64
-	HighestCoveredKnown bool
-	BackfillComplete    bool
-	SafeBlock           *uint64
-	FinalizedBlock      *uint64
-	CoverageStart       uint64
-	CoverageEnd         uint64
-	CoreReady           bool
-	Completeness        gen.Completeness
-}
-
-// Reader is the query boundary. Store implementations must return only stable,
-// fully validated API models and must honor canonical/hash lookup semantics.
-type Reader interface {
-	Status(context.Context) (StatusSnapshot, error)
-	Blocks(context.Context, string, int) ([]gen.Block, string, error)
-	Block(context.Context, string) (gen.Block, error)
-	BlockTransactions(context.Context, string, string, int) ([]gen.Transaction, string, error)
-	Transactions(context.Context, string, int) ([]gen.Transaction, string, error)
-	Transaction(context.Context, string) (gen.Transaction, error)
-	Address(context.Context, string) (gen.AddressSummary, error)
-	Search(context.Context, string, string, int) ([]gen.SearchResult, string, error)
-}
+type StatusSnapshot = publicquery.StatusSnapshot
+type Reader = publicquery.Reader
 
 type TransactionReader interface {
 	Transaction(context.Context, string) (gen.Transaction, error)
@@ -203,11 +159,9 @@ type Options struct {
 	UserAuth              UserAuthenticator
 	UserAdministration    UserAdministration
 	UserAPIKeys           UserAPIKeyAdministration
-	Billing               *billing.HTTPDispatcher
 	BillingReader         BillingReader
 	PrepaidBilling        *billing.PrepaidLedger
 	TopupBilling          *billing.TopupDispatcher
-	Quota                 func(http.Handler) http.Handler
 	Logger                *slog.Logger
 	RequestID             func() string
 	Now                   func() time.Time
@@ -247,7 +201,6 @@ type Handler struct {
 	userAuth              UserAuthenticator
 	userAdministration    UserAdministration
 	userAPIKeys           UserAPIKeyAdministration
-	billing               *billing.HTTPDispatcher
 	billingReader         BillingReader
 	prepaidBilling        *billing.PrepaidLedger
 	topupBilling          *billing.TopupDispatcher
@@ -261,9 +214,7 @@ type Handler struct {
 	readinessExplicit     bool
 	maxVerificationBody   int64
 	requirements          CapabilityRequirements
-	quotaConfigured       bool
 	mux                   *http.ServeMux
-	quotaMux              http.Handler
 }
 
 func New(options Options) (*Handler, error) {
@@ -312,7 +263,6 @@ func New(options Options) (*Handler, error) {
 		userAuth:              options.UserAuth,
 		userAdministration:    options.UserAdministration,
 		userAPIKeys:           options.UserAPIKeys,
-		billing:               options.Billing,
 		billingReader:         options.BillingReader,
 		prepaidBilling:        options.PrepaidBilling,
 		topupBilling:          options.TopupBilling,
@@ -324,7 +274,6 @@ func New(options Options) (*Handler, error) {
 		readinessExplicit:     options.ReadinessStatus != nil,
 		maxVerificationBody:   options.MaxVerificationBody,
 		requirements:          options.Requirements,
-		quotaConfigured:       options.Quota != nil,
 		mux:                   http.NewServeMux(),
 	}
 	if h.readinessStatus == nil {
@@ -343,13 +292,6 @@ func New(options Options) (*Handler, error) {
 	}
 	if err := h.routes(); err != nil {
 		return nil, err
-	}
-	h.quotaMux = h.mux
-	if options.Quota != nil {
-		h.quotaMux = options.Quota(h.mux)
-		if h.quotaMux == nil {
-			return nil, errors.New("httpapi quota wrapper returned nil")
-		}
 	}
 	return h, nil
 }
@@ -468,6 +410,51 @@ type homeSnapshotResponse struct {
 	Meta gen.Meta        `json:"meta"`
 }
 
+func (h *Handler) homeSnapshot(w http.ResponseWriter, r *http.Request) {
+	if h.homeSnapshots == nil {
+		writeError(
+			w, r, http.StatusServiceUnavailable,
+			"home_snapshot_unavailable", ErrHomeSnapshotUnavailable.Error(), nil,
+		)
+		return
+	}
+	channel, err := h.homeSnapshots.Subscribe(r.Context())
+	if err != nil {
+		writeError(
+			w, r, http.StatusServiceUnavailable,
+			"home_snapshot_unavailable", ErrHomeSnapshotUnavailable.Error(), nil,
+		)
+		return
+	}
+	select {
+	case publication, open := <-channel:
+		if !open {
+			writeError(
+				w, r, http.StatusServiceUnavailable,
+				"home_snapshot_unavailable", ErrHomeSnapshotUnavailable.Error(), nil,
+			)
+			return
+		}
+		encoded, err := h.encodeHomeSnapshotResponse(r, publication)
+		if err != nil {
+			h.logger.ErrorContext(
+				r.Context(), "home snapshot response encoding failed",
+				"request_id", requestIDFrom(r.Context()),
+			)
+			writeError(
+				w, r, http.StatusInternalServerError,
+				"home_snapshot_encoding_failed", "home snapshot encoding failed", nil,
+			)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(encoded)
+	case <-r.Context().Done():
+		return
+	}
+}
+
 func (h *Handler) homeSnapshotStream(w http.ResponseWriter, r *http.Request) {
 	if h.homeSnapshots == nil {
 		writeError(
@@ -505,25 +492,8 @@ func (h *Handler) homeSnapshotStream(w http.ResponseWriter, r *http.Request) {
 			if !open {
 				return
 			}
-			meta := h.meta(r)
-			meta.CoverageStart = &publication.CoverageStart
-			meta.CoverageEnd = &publication.CoverageEnd
-			encodedData := publication.EncodedData
-			if len(encodedData) == 0 {
-				encodedData, err = json.Marshal(publication.Data)
-				if err != nil {
-					h.logger.ErrorContext(
-						r.Context(), "home snapshot data encoding failed",
-						"request_id", requestIDFrom(r.Context()),
-					)
-					return
-				}
-			}
-			encoded, err := json.Marshal(homeSnapshotResponse{
-				Data: encodedData,
-				Meta: meta,
-			})
-			if err != nil || len(encoded) > maxHomeSnapshotBytes {
+			encoded, err := h.encodeHomeSnapshotResponse(r, publication)
+			if err != nil {
 				h.logger.ErrorContext(
 					r.Context(), "home snapshot response encoding failed",
 					"request_id", requestIDFrom(r.Context()),
@@ -544,6 +514,31 @@ func (h *Handler) homeSnapshotStream(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+}
+
+func (h *Handler) encodeHomeSnapshotResponse(
+	r *http.Request,
+	publication HomePublication,
+) ([]byte, error) {
+	meta := h.meta(r)
+	meta.CoverageStart = &publication.CoverageStart
+	meta.CoverageEnd = &publication.CoverageEnd
+	encodedData := publication.EncodedData
+	var err error
+	if len(encodedData) == 0 {
+		encodedData, err = json.Marshal(publication.Data)
+		if err != nil {
+			return nil, err
+		}
+	}
+	encoded, err := json.Marshal(homeSnapshotResponse{Data: encodedData, Meta: meta})
+	if err != nil {
+		return nil, err
+	}
+	if len(encoded) > maxHomeSnapshotBytes {
+		return nil, errors.New("home snapshot response exceeds encoded size limit")
+	}
+	return encoded, nil
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -630,15 +625,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, request, http.StatusForbidden, "api_key_scope_required", "API key scope does not authorize this operation", nil)
 		return
 	}
-	// Price discovery must remain available after the original explorer quota
-	// is exhausted. The outer coarse per-peer limiter still bounds this free
-	// endpoint when x402 is enabled.
-	if request.Method == http.MethodGet &&
-		request.URL.Path == "/api/v1/billing/config" {
-		h.mux.ServeHTTP(w, request)
-		return
-	}
-	h.quotaMux.ServeHTTP(w, request)
+	h.mux.ServeHTTP(w, request)
 }
 
 func (h *Handler) matchedOperation(request *http.Request) (apiops.Spec, bool) {

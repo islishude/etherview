@@ -72,8 +72,6 @@ export default defineConfig({
               test:
                 /node_modules[\\/](?:echarts|zrender)(?:[\\/]|$)/,
               priority: 40,
-
-              maxSize: 350 * KiB,
             },
 
             {

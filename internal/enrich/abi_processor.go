@@ -19,8 +19,6 @@ import (
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
-var ABIStage = StageID{Name: "abi", Version: 4}
-
 const (
 	abiObjectTransactionCalldata = "transaction_calldata"
 	abiObjectLog                 = "log"
@@ -1067,7 +1065,7 @@ func persistABIBinding(ctx context.Context, tx *sql.Tx, candidate persistedABIBi
 	}
 	identity := candidate.binding.Identity
 	if _, err := tx.ExecContext(ctx, dbgen.EnrichInlinePersistABIBindingStatement1, identity.ChainID, identity.Address[:], identity.CodeHash[:], candidate.binding.Source,
-		candidate.binding.Source.confidence(), candidate.abi,
+		candidate.binding.Source.Confidence(), candidate.abi,
 		strconv.FormatUint(candidate.binding.ValidFromBlock, 10), validTo,
 		strconv.FormatUint(identity.BlockNumber, 10), identity.BlockHash[:],
 		candidate.binding.SourceAddress[:], candidate.binding.SourceCodeHash[:],

@@ -17,41 +17,12 @@ import {
   formatTimestamp,
 } from "@/components/format";
 import { QueryNotice } from "@/components/QueryNotice";
+import { type ChartPreset, type ChartSearch } from "./chartRoute";
 
 const MetricChart = lazy(async () => {
   const module = await import("@/components/MetricChart");
   return { default: module.MetricChart };
 });
-
-export const chartMetrics = [
-  "transactions",
-  "failed-transactions",
-  "average-tps",
-  "erc20-transfers",
-  "nft-transfers",
-  "contract-creations",
-  "blocks",
-  "average-block-time",
-  "gas-used",
-  "gas-utilization",
-  "average-base-fee",
-  "execution-fees",
-  "average-transaction-fee",
-  "priority-fees",
-  "burned-fees",
-  "blob-gas-used",
-  "average-blob-base-fee",
-  "blob-burned-fees",
-] as const satisfies readonly ChartMetric[];
-
-type ChartPreset = "24h" | "7d" | "30d" | "90d" | "1y" | "all" | "custom";
-
-export interface ChartSearch {
-  range: ChartPreset;
-  from_time?: string;
-  to_time?: string;
-  interval: ChartInterval;
-}
 
 const sections: Array<{ key: string; metrics: ChartMetric[] }> = [
   {
@@ -81,10 +52,6 @@ const sections: Array<{ key: string; metrics: ChartMetric[] }> = [
 const overviewMetrics: ChartMetric[] = [
   "transactions", "average-tps", "execution-fees", "gas-utilization",
 ];
-
-export function isChartMetric(value: string): value is ChartMetric {
-  return chartMetrics.includes(value as ChartMetric);
-}
 
 export function ChartsPage() {
   const { i18n, t } = useTranslation();

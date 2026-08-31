@@ -164,24 +164,25 @@ func TestRegisterAuthBillingHousekeepersIsFeatureAwareAndBounded(t *testing.T) {
 	}
 
 	tests := []struct {
-		name string
-		auth bool
-		x402 bool
-		want []string
+		name    string
+		auth    bool
+		billing bool
+		want    []string
 	}{
 		{
 			name: "user authentication only", auth: true,
 			want: []string{"47-user-auth-cleanup"},
 		},
 		{
-			name: "x402 billing only", x402: true,
-			want: []string{"48-x402-billing-expiry"},
+			name: "API billing only", billing: true,
+			want: []string{"48-x402-billing-expiry", "49-prepaid-billing-expiry"},
 		},
 		{
-			name: "both features", auth: true, x402: true,
+			name: "both features", auth: true, billing: true,
 			want: []string{
 				"47-user-auth-cleanup",
 				"48-x402-billing-expiry",
+				"49-prepaid-billing-expiry",
 			},
 		},
 	}
@@ -189,7 +190,12 @@ func TestRegisterAuthBillingHousekeepersIsFeatureAwareAndBounded(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			cfg := config.Default()
 			cfg.Features.UserAuth = test.auth
-			cfg.Features.X402Billing = test.x402
+			cfg.Features.APIBilling = test.billing
+			if test.billing {
+				cfg.Billing.Network = "eip155:1"
+				cfg.Billing.Asset = "0x1111111111111111111111111111111111111111"
+				cfg.Billing.Recipient = "0x2222222222222222222222222222222222222222"
+			}
 			registry := components.NewRegistry()
 			if err := registerAuthBillingHousekeepers(
 				registry, &sql.DB{}, cfg, nil,

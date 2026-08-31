@@ -43,6 +43,13 @@ commit; the advisory lock, targeted row locks, and atomic transaction are the
 serialization protocol. Snapshot-wide isolation must not turn expected
 multi-role contention into serialization failures.
 
+Core segment and reorganization writes batch each normalized relation,
+canonical mapping update, canonicality fanout, and outbox update under that
+same lock and transaction. The batches are bounded independently by row count
+and encoded bytes and preserve foreign-key order. They are a transport
+optimization only: PostgreSQL constraints, conflict checks, coverage,
+checkpoints, and outbox publication still commit or roll back together.
+
 ## Consequences
 
 - Monolith and split-role behavior can share the same test fixtures.

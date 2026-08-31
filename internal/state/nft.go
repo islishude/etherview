@@ -15,7 +15,7 @@ import (
 	"github.com/islishude/etherview/internal/catalog"
 	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
-	"github.com/islishude/etherview/internal/httpapi"
+	"github.com/islishude/etherview/internal/publicquery"
 	"github.com/islishude/etherview/internal/query"
 )
 
@@ -451,7 +451,7 @@ func nftExecutionReverted(err error) bool {
 }
 
 func nftRPCUnavailable() error {
-	return fmt.Errorf("%w: exact NFT state RPC is unavailable", httpapi.ErrUnavailable)
+	return fmt.Errorf("%w: exact NFT state RPC is unavailable", publicquery.ErrUnavailable)
 }
 
 func exactNFTBalance(balance string) catalog.NFTBalanceObservation {
@@ -464,7 +464,7 @@ func (reconciler *NFTReconciler) requireCanonical(ctx context.Context, reference
 		return fmt.Errorf("recheck exact NFT state block: %w", err)
 	}
 	if !canonical {
-		return fmt.Errorf("%w: canonical block changed during NFT state reconciliation", httpapi.ErrNotReady)
+		return fmt.Errorf("%w: canonical block changed during NFT state reconciliation", publicquery.ErrNotReady)
 	}
 	return nil
 }
@@ -717,7 +717,7 @@ func classifyOwnerPersistenceMiss(
 		return fmt.Errorf("inspect exact ERC-721 owner persistence miss: %w", err)
 	}
 	if !canonical {
-		return fmt.Errorf("%w: canonical block changed before ERC-721 observation persistence", httpapi.ErrNotReady)
+		return fmt.Errorf("%w: canonical block changed before ERC-721 observation persistence", publicquery.ErrNotReady)
 	}
 	if stored {
 		return ErrExactNFTObservationConflict
@@ -741,7 +741,7 @@ func classifyBalancePersistenceMiss(
 		return fmt.Errorf("inspect exact ERC-1155 balance persistence miss: %w", err)
 	}
 	if !canonical {
-		return fmt.Errorf("%w: canonical block changed before ERC-1155 observation persistence", httpapi.ErrNotReady)
+		return fmt.Errorf("%w: canonical block changed before ERC-1155 observation persistence", publicquery.ErrNotReady)
 	}
 	if stored {
 		return ErrExactNFTObservationConflict

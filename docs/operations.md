@@ -374,6 +374,18 @@ one additional pool only in an `api` or `all` process. An empty reader URL
 inherits the writer endpoint, and a zero reader bound inherits the corresponding
 writer bound.
 
+Every process exports its local writer pool and, when present, API reader pool
+through `etherview_database_max_open_connections`,
+`etherview_database_connections`, `etherview_database_wait_count_total`,
+`etherview_database_wait_duration_seconds_total`, and
+`etherview_database_connections_closed_total`. Use the bounded `pool` label to
+separate writer and reader saturation. The same scrape exposes
+`etherview_go_goroutines`, `etherview_go_heap_alloc_bytes`,
+`etherview_go_heap_objects`, `etherview_go_gc_cycles_total`, and
+`etherview_go_gc_pause_seconds_total`; correlate these process-local signals
+with Pod/container CPU and memory rather than treating either source alone as a
+capacity result.
+
 For capacity planning, define:
 
 ```text
@@ -415,11 +427,17 @@ ordinary read-model results are not promised read-after-write consistency.
 `runtime.worker_count` controls durable enrichment, trace, verification,
 metadata, and maintenance workers in each process. `runtime.backfill_workers`
 controls independent sync range claimers, while
-`runtime.backfill_batch_blocks` bounds each lease and transaction to 1–256
-blocks. Multiplying either worker value by replicas increases PostgreSQL and
-RPC pressure; it does not change lease ownership or publication fencing.
-Start with the reference values and use queue age, sync lag, RPC latency, pool
-saturation, CPU, and memory together rather than tuning from CPU alone.
+`runtime.backfill_batch_blocks` bounds each durable range lease to 1–256
+blocks. `runtime.backfill_batch_bytes` and `runtime.backfill_batch_rows` bound
+the complete raw ownership and relational work retained by each worker while
+that lease is processed. The worker reserves half of each aggregate budget for
+the next fetched block, commits restart-safe canonical subsegments when the
+other half fills, and rejects a single block that cannot fit rather than
+exceeding the bound. Multiplying either worker value by replicas increases
+PostgreSQL, RPC, and aggregate memory pressure; it does not change lease
+ownership or publication fencing. Start with the reference values and use
+queue age, sync lag, RPC latency, pool saturation, CPU, heap, and GC together
+rather than tuning from CPU alone.
 
 Address ERC-20 holdings retain every first-seen exact `(chain, owner, token,
 block hash)` balance in `erc20_balance_reconciliations`, including zero and
@@ -460,8 +478,12 @@ Anonymous rate limiting uses the direct peer unless it matches one of the
 canonical IPs or CIDRs in `security.trusted_proxies`. Only a trusted peer may
 supply a bounded `X-Forwarded-For` chain, which is resolved from right to left
 to the first untrusted hop. Never trust an internet-wide CIDR. Process-local
-buckets expire when inactive. When Redis is configured, a timeout falls back
-to that bounded local limiter and opens a short circuit so a continuing Redis
+anonymous and authenticated bucket sets have independent cardinality limits
+(16,384 and 65,536 per process respectively).
+An inactive bucket expires only after a complete refill and its idle TTL; if a
+set is full before then, a new identity is rate-limited rather than resetting
+an existing client's state. When Redis is configured, a timeout falls back to
+that bounded local limiter and opens a short circuit so a continuing Redis
 outage does not spend the full adapter timeout on every request. The fallback
 quota is per replica; it preserves availability, not a globally exact budget.
 Runtime-status cache invalidation uses an independent circuit with the same

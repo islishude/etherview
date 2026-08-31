@@ -19,15 +19,6 @@ import (
 	"github.com/islishude/etherview/internal/db/gen"
 )
 
-var (
-	TokenStage = StageID{Name: "token", Version: 1}
-	// stats@3 adds receipt-authenticated execution fees, priority fees, failed
-	// transactions, and successful top-level creations. Its new durable
-	// identity prevents stats@1 or stats@2 completions from claiming the
-	// expanded persisted contract.
-	StatsStage = StageID{Name: "stats", Version: 3}
-)
-
 type PostgresTokenProcessor struct {
 	db       *sql.DB
 	detector TokenDetector

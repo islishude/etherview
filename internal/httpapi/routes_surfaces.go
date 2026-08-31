@@ -7,6 +7,7 @@ func (h *Handler) registerExternalSurfaceRoutes() {
 	if h.events != nil {
 		h.mux.HandleFunc("GET /api/v1/events", h.eventStream)
 	}
+	h.mux.HandleFunc("GET /api/v1/home", h.homeSnapshot)
 	h.mux.HandleFunc("GET /api/v1/home/stream", h.homeSnapshotStream)
 	if h.web != nil {
 		h.mux.Handle("/", h.web)

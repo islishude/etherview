@@ -289,7 +289,7 @@ func migrationLedger(t *testing.T, ctx context.Context, db *sql.DB) map[string]l
 	return entries
 }
 
-func newMigratedPostgres(t *testing.T) *sql.DB {
+func newMigratedPostgres(t testing.TB) *sql.DB {
 	t.Helper()
 	db := newIsolatedPostgres(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
@@ -303,7 +303,7 @@ func newMigratedPostgres(t *testing.T) *sql.DB {
 	return db
 }
 
-func newIsolatedPostgres(t *testing.T) *sql.DB {
+func newIsolatedPostgres(t testing.TB) *sql.DB {
 	t.Helper()
 	resetFixtureHashes()
 	rawURL := strings.TrimSpace(os.Getenv(testDatabaseEnvironment))
@@ -363,7 +363,7 @@ func newIsolatedPostgres(t *testing.T) *sql.DB {
 	return db
 }
 
-func integrationSchemaName(t *testing.T) string {
+func integrationSchemaName(t testing.TB) string {
 	t.Helper()
 	random := make([]byte, 8)
 	if _, err := rand.Read(random); err != nil {

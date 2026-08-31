@@ -18,6 +18,18 @@ worker dependencies.
   `web/dist`, and `go:embed` packages that directory into the Go
   binary. `index.html` may reference only same-origin, content-hashed build
   assets; production has no CDN or frontend runtime service.
+- Route components are dynamic imports. Feature pages, ECharts, verified-source
+  rendering, and CodeMirror are absent from the initial shell graph; the source
+  editor loads only after an exact verified artifact is displayed. The checked
+  asset graph has explicit raw/compressed budgets and forbidden feature-chunk
+  patterns.
+- The build emits deterministic Gzip and Brotli representations for
+  compressible hashed assets plus a bounded manifest containing every
+  representation's path, size, and SHA-256 digest. The embedded handler loads
+  that manifest once, negotiates `br`, `gzip`, or identity, emits
+  representation-specific strong ETags and `Vary: Accept-Encoding`, and uses
+  identity for range requests. Sidecars and the manifest are never directly
+  addressable.
 - `web/dist` is a build-only artifact and is not committed; the repository
   stores source and embed logic, while build pipelines generate distribution
   files before verification and packaging.
@@ -57,7 +69,8 @@ worker dependencies.
 Adding an inline bootstrap, external resource, worker, iframe, or new browser
 resource type requires an explicit revision of this decision and its CSP tests.
 Only the trusted, per-response CodeMirror runtime style may consume the shell
-nonce; no other inline style or script may do so. New public routes under a
+nonce; no other inline style or script may do so. Precompression never applies
+to the nonce-bearing shell. New public routes under a
 reserved namespace remain protected even before a route handler exists. A
 developer-server rendering or source-tree scan alone cannot satisfy the browser
 boundary: cache, fallback, nonce, and header regressions are tested against the

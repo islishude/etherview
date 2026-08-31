@@ -35,9 +35,7 @@ func newCapturedResponse(maxBodyBytes int64, maxHeaderBytes int) *capturedRespon
 	}
 }
 
-func (capture *capturedResponse) Header() http.Header {
-	return capture.header
-}
+func (capture *capturedResponse) Header() http.Header { return capture.header }
 
 func (capture *capturedResponse) WriteHeader(status int) {
 	if capture.status != 0 {
@@ -63,9 +61,6 @@ func (capture *capturedResponse) Write(value []byte) (int, error) {
 	return len(value), nil
 }
 
-// Flush, Hijack, and Push deliberately satisfy optional interfaces so an
-// attempted use is recorded as a hard capture violation rather than silently
-// changing behavior or escaping the settlement gate.
 func (capture *capturedResponse) Flush() {
 	capture.streamViolation = true
 	if capture.status == 0 {
@@ -97,8 +92,6 @@ func (capture *capturedResponse) finish() error {
 	if capture.status == 0 {
 		capture.WriteHeader(http.StatusOK)
 	}
-	// Mutations after WriteHeader are not part of net/http's committed
-	// response, but count them toward the hostile-memory boundary.
 	if headerBytes(capture.header) > capture.maxHeaderBytes {
 		capture.headerOverflow = true
 	}
@@ -179,4 +172,18 @@ func forbiddenCapturedHeader(name string, connectionHeaders map[string]struct{})
 	default:
 		return strings.HasPrefix(strings.ToLower(name), "payment-")
 	}
+}
+
+func invokeCapturedHandler(
+	capture *capturedResponse,
+	request *http.Request,
+	handler http.Handler,
+) (panicked bool) {
+	defer func() {
+		if recover() != nil {
+			panicked = true
+		}
+	}()
+	handler.ServeHTTP(capture, request)
+	return false
 }

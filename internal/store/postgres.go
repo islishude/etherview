@@ -102,7 +102,8 @@ func (r *PostgresRepository) CommitCanonical(ctx context.Context, chainID string
 	if err != nil {
 		return err
 	}
-	if err := chainbundle.Validate(bundle); err != nil {
+	bundle, err = cloneBundle(bundle)
+	if err != nil {
 		return err
 	}
 	reference, err := RefFromBundle(bundle)
@@ -152,15 +153,17 @@ func (r *PostgresRepository) CommitCanonical(ctx context.Context, chainID string
 		return err
 	}
 	if !exists {
-		if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyCommitCanonicalStatement1, chainID, decimal(reference.Number), mustHashBytes(reference.Hash)); err != nil {
-			return fmt.Errorf("insert canonical block: %w", err)
+		if err := insertCanonicalBlocksTx(ctx, tx, chainID, []BlockRef{reference}); err != nil {
+			return err
 		}
 	}
 	if err := upsertCheckpointTx(ctx, tx, chainID, checkpoint); err != nil {
 		return err
 	}
 	if !exists {
-		if err := insertCoreOutboxTx(ctx, tx, chainID, "core.block.canonical", reference); err != nil {
+		if err := insertCoreOutboxBatchTx(ctx, tx, chainID, []coreOutboxMessage{{
+			Topic: "core.block.canonical", Reference: reference,
+		}}); err != nil {
 			return err
 		}
 		if err := insertRuntimeHeadEventTx(ctx, tx, chainID, reference); err != nil {
@@ -189,7 +192,8 @@ func (r *PostgresRepository) RefreshCanonical(
 	if err != nil {
 		return err
 	}
-	if err := chainbundle.Validate(bundle); err != nil {
+	bundle, err = cloneBundle(bundle)
+	if err != nil {
 		return err
 	}
 	reference, err := RefFromBundle(bundle)
@@ -249,7 +253,8 @@ func (r *PostgresRepository) ApplyReorg(ctx context.Context, chainID string, reo
 	if err != nil {
 		return err
 	}
-	if err := ValidateReorg(reorg); err != nil {
+	reorg, err = ownReorg(reorg)
+	if err != nil {
 		return err
 	}
 	attachedReferences := make([]BlockRef, len(reorg.Attached))
@@ -310,43 +315,40 @@ func (r *PostgresRepository) ApplyReorg(ctx context.Context, chainID string, reo
 	if err != nil {
 		return err
 	}
-	for _, bundle := range reorg.Attached {
-		if err := putBundleTx(ctx, tx, chainID, bundle); err != nil {
-			return err
-		}
+	if err := putBundlesTx(ctx, tx, chainID, reorg.Attached); err != nil {
+		return err
 	}
+	if err := deleteCanonicalBlocksTx(ctx, tx, chainID, reorg.Detached); err != nil {
+		return err
+	}
+	if err := setBlockJournalsCanonicalBatchTx(ctx, tx, chainID, reorg.Detached, false); err != nil {
+		return err
+	}
+	if err := setDerivedCanonicalBatchTx(ctx, tx, chainID, reorg.Detached, false); err != nil {
+		return err
+	}
+	if err := insertCanonicalBlocksTx(ctx, tx, chainID, attachedReferences); err != nil {
+		return err
+	}
+	if err := setBlockJournalsCanonicalBatchTx(ctx, tx, chainID, attachedReferences, true); err != nil {
+		return err
+	}
+	if err := setDerivedCanonicalBatchTx(ctx, tx, chainID, attachedReferences, true); err != nil {
+		return err
+	}
+	outboxMessages := make([]coreOutboxMessage, 0, len(reorg.Detached)+len(attachedReferences))
 	for _, detached := range reorg.Detached {
-		result, err := tx.ExecContext(ctx, dbgen.StoreLegacyApplyReorgStatement1, chainID, decimal(detached.Number), mustHashBytes(detached.Hash))
-		if err != nil {
-			return fmt.Errorf("detach canonical block %d: %w", detached.Number, err)
-		}
-		if affected, err := result.RowsAffected(); err != nil || affected != 1 {
-			return fmt.Errorf("%w: detach canonical block %d affected %d rows", ErrConflict, detached.Number, affected)
-		}
-		if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyApplyReorgStatement2, chainID, mustHashBytes(detached.Hash)); err != nil {
-			return fmt.Errorf("mark detached journals: %w", err)
-		}
-		if err := setDerivedCanonicalTx(ctx, tx, chainID, detached.Hash, false); err != nil {
-			return err
-		}
-		if err := insertCoreOutboxTx(ctx, tx, chainID, "core.block.orphaned", detached); err != nil {
-			return err
-		}
+		outboxMessages = append(outboxMessages, coreOutboxMessage{
+			Topic: "core.block.orphaned", Reference: detached,
+		})
 	}
-	for _, bundle := range reorg.Attached {
-		reference, _ := RefFromBundle(bundle)
-		if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyApplyReorgStatement3, chainID, decimal(reference.Number), mustHashBytes(reference.Hash)); err != nil {
-			return fmt.Errorf("attach canonical block %d: %w", reference.Number, err)
-		}
-		if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyApplyReorgStatement4, chainID, mustHashBytes(reference.Hash)); err != nil {
-			return fmt.Errorf("mark attached journals: %w", err)
-		}
-		if err := setDerivedCanonicalTx(ctx, tx, chainID, reference.Hash, true); err != nil {
-			return err
-		}
-		if err := insertCoreOutboxTx(ctx, tx, chainID, "core.block.canonical", reference); err != nil {
-			return err
-		}
+	for _, reference := range attachedReferences {
+		outboxMessages = append(outboxMessages, coreOutboxMessage{
+			Topic: "core.block.canonical", Reference: reference,
+		})
+	}
+	if err := insertCoreOutboxBatchTx(ctx, tx, chainID, outboxMessages); err != nil {
+		return err
 	}
 	checkpoint := reorg.Checkpoint
 	checkpointExists := true
@@ -644,60 +646,7 @@ func scanBlockRef(row *sql.Row, operation string) (BlockRef, bool, error) {
 }
 
 func putBundleTx(ctx context.Context, tx *sql.Tx, chainID string, bundle chainbundle.Bundle) error {
-	if err := chainbundle.Validate(bundle); err != nil {
-		return fmt.Errorf("validate bundle for persistence: %w", err)
-	}
-	reference, _ := RefFromBundle(bundle)
-	blockJSON, err := chainbundle.EncodeStoredBlock(bundle)
-	if err != nil {
-		return fmt.Errorf("encode block persistence: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyPutBundleTxStatement1, chainID, decimal(reference.Number), mustHashBytes(reference.Hash),
-		mustHashBytes(reference.ParentHash), decimal(bundle.Block.Time()),
-		blockJSON); err != nil {
-		return fmt.Errorf("upsert block %d: %w", reference.Number, err)
-	}
-	for index, transaction := range bundle.Block.Transactions() {
-		transactionHash := transaction.Hash()
-		transactionJSON := bundle.RawTransactions[index]
-		if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyPutBundleTxStatement2, chainID, mustHashBytes(transactionHash),
-			strconv.FormatUint(uint64(transaction.Type()), 10),
-			transactionJSON); err != nil {
-			return fmt.Errorf("upsert transaction %d: %w", index, err)
-		}
-		if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyPutBundleTxStatement3, chainID, decimal(reference.Number), mustHashBytes(reference.Hash), index,
-			mustHashBytes(transactionHash), transactionJSON); err != nil {
-			return fmt.Errorf("upsert transaction inclusion %d: %w", index, err)
-		}
-
-		receipt := bundle.Receipts[index]
-		receiptJSON := bundle.RawReceipts[index]
-		if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyPutBundleTxStatement4, chainID, decimal(reference.Number), mustHashBytes(reference.Hash), index,
-			mustHashBytes(transactionHash), receiptJSON); err != nil {
-			return fmt.Errorf("upsert receipt %d: %w", index, err)
-		}
-		for logPosition := range receipt.Logs {
-			log := receipt.Logs[logPosition]
-			logJSON := bundle.RawLogs[index][logPosition]
-			var topic0 any
-			if len(log.Topics) > 0 {
-				topic0 = mustHashBytes(log.Topics[0])
-			}
-			if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyPutBundleTxStatement5, chainID, decimal(reference.Number), mustHashBytes(reference.Hash), log.Index,
-				index, mustHashBytes(transactionHash), log.Address.Bytes(), topic0, logJSON); err != nil {
-				return fmt.Errorf("upsert log %d: %w", logPosition, err)
-			}
-		}
-	}
-	for index, withdrawal := range bundle.Block.Withdrawals() {
-		withdrawalJSON := bundle.RawWithdrawals[index]
-		if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyPutBundleTxStatement6, chainID, decimal(reference.Number), mustHashBytes(reference.Hash),
-			decimal(withdrawal.Index), decimal(withdrawal.Validator),
-			withdrawal.Address.Bytes(), decimal(withdrawal.Amount), withdrawalJSON); err != nil {
-			return fmt.Errorf("upsert withdrawal %d: %w", index, err)
-		}
-	}
-	return nil
+	return putBundlesTx(ctx, tx, chainID, []chainbundle.Bundle{bundle})
 }
 
 func ensureChain(ctx context.Context, tx *sql.Tx, chainID string) error {
@@ -866,29 +815,6 @@ func insertRuntimeEventTx(ctx context.Context, tx *sql.Tx, chainID, eventType st
 	}
 	if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyInsertRuntimeEventTxStatement1, chainID, eventType, encoded); err != nil {
 		return fmt.Errorf("insert %s runtime event: %w", eventType, err)
-	}
-	return nil
-}
-
-func insertCoreOutboxTx(ctx context.Context, tx *sql.Tx, chainID, topic string, reference BlockRef) error {
-	payload, err := json.Marshal(map[string]string{
-		"block_hash":   reference.Hash.String(),
-		"block_number": decimal(reference.Number),
-	})
-	if err != nil {
-		return fmt.Errorf("encode core outbox message: %w", err)
-	}
-	messageKey := reference.Hash.String()
-	if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyInsertCoreOutboxTxStatement1, chainID, topic, messageKey, payload); err != nil {
-		return fmt.Errorf("insert %s outbox message: %w", topic, err)
-	}
-	return nil
-}
-
-func setDerivedCanonicalTx(ctx context.Context, tx *sql.Tx, chainID string, hash common.Hash, canonical bool) error {
-	if _, err := tx.ExecContext(ctx, dbgen.StoreSetDerivedCanonical,
-		chainID, mustHashBytes(hash), canonical); err != nil {
-		return fmt.Errorf("set derived canonical=%t: %w", canonical, err)
 	}
 	return nil
 }

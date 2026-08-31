@@ -8,24 +8,24 @@ import (
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/proxycontract"
 )
 
-type ProxyKind string
-
-type ProxyPattern string
+type ProxyKind = proxycontract.Kind
+type ProxyPattern = proxycontract.Pattern
 
 const (
-	ProxyMinimal1167 ProxyKind = "eip1167"
-	ProxyCWIA        ProxyKind = "cwia"
-	ProxyEIP1967     ProxyKind = "eip1967"
-	ProxyBeacon      ProxyKind = "beacon"
+	ProxyMinimal1167 = proxycontract.Minimal1167
+	ProxyCWIA        = proxycontract.CWIA
+	ProxyEIP1967     = proxycontract.EIP1967
+	ProxyBeacon      = proxycontract.Beacon
 
-	ProxyPatternClone       ProxyPattern = "clone"
-	ProxyPatternERC1967     ProxyPattern = "erc1967"
-	ProxyPatternTransparent ProxyPattern = "transparent"
-	ProxyPatternUUPS        ProxyPattern = "uups"
-	ProxyPatternBeacon      ProxyPattern = "beacon"
-	ProxyPatternUnknown     ProxyPattern = "unknown"
+	ProxyPatternClone       = proxycontract.PatternClone
+	ProxyPatternERC1967     = proxycontract.PatternERC1967
+	ProxyPatternTransparent = proxycontract.PatternTransparent
+	ProxyPatternUUPS        = proxycontract.PatternUUPS
+	ProxyPatternBeacon      = proxycontract.PatternBeacon
+	ProxyPatternUnknown     = proxycontract.PatternUnknown
 )
 
 const (

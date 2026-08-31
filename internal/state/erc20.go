@@ -13,7 +13,7 @@ import (
 	"github.com/islishude/etherview/internal/catalog"
 	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
-	"github.com/islishude/etherview/internal/httpapi"
+	"github.com/islishude/etherview/internal/publicquery"
 )
 
 var _ catalog.ERC20StateReconciler = (*NFTReconciler)(nil)
@@ -305,7 +305,7 @@ func classifyERC20BalancePersistenceMiss(
 		return fmt.Errorf("inspect exact ERC-20 balance persistence miss: %w", err)
 	}
 	if !canonical {
-		return fmt.Errorf("%w: canonical block changed before ERC-20 balance persistence", httpapi.ErrNotReady)
+		return fmt.Errorf("%w: canonical block changed before ERC-20 balance persistence", publicquery.ErrNotReady)
 	}
 	if stored {
 		return ErrExactERC20BalanceObservationConflict
@@ -322,11 +322,11 @@ func (reconciler *NFTReconciler) requireCanonicalERC20(
 		return fmt.Errorf("recheck exact ERC-20 state block: %w", err)
 	}
 	if !canonical {
-		return fmt.Errorf("%w: canonical block changed during ERC-20 state reconciliation", httpapi.ErrNotReady)
+		return fmt.Errorf("%w: canonical block changed during ERC-20 state reconciliation", publicquery.ErrNotReady)
 	}
 	return nil
 }
 
 func erc20RPCUnavailable() error {
-	return fmt.Errorf("%w: exact ERC-20 state RPC is unavailable", httpapi.ErrUnavailable)
+	return fmt.Errorf("%w: exact ERC-20 state RPC is unavailable", publicquery.ErrUnavailable)
 }

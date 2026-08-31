@@ -12,8 +12,6 @@ import (
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
-var ProxyStage = StageID{Name: "proxy", Version: 2}
-
 var errProxyDependencyPending = errors.New("proxy stage dependency is not complete")
 
 const (

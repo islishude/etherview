@@ -250,9 +250,7 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 				return err
 			}
 		}
-		billingDispatcher, billingReader, err := newBillingServices(
-			cfg, db, userRepository, registry, logger,
-		)
+		billingReader, err := newBillingServices(cfg, db)
 		if err != nil {
 			return err
 		}
@@ -293,8 +291,8 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			NFTMetadataReader:   metadataReader,
 			NFTMediaSource:      mediaSource, NFTMediaProxy: mediaProxy,
 			UserAuth: userAuthenticator, UserAdministration: userAdministration,
-			UserAPIKeys: userAPIKeys,
-			Billing:     billingDispatcher, BillingReader: billingReader,
+			UserAPIKeys:         userAPIKeys,
+			BillingReader:       billingReader,
 			PrepaidBilling:      prepaidLedger,
 			TopupBilling:        topupDispatcher,
 			MaxVerificationBody: int64(cfg.Verification.MaxInputBytes) + 1<<20,

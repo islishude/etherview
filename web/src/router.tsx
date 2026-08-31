@@ -2,32 +2,42 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
+  lazyRouteComponent,
   type RouterHistory,
 } from "@tanstack/react-router";
 import { getAddress, isAddress } from "viem";
 
 import { AppShell } from "@/components/AppShell";
-import {
-  BlocksPage,
-  GenesisPage,
-  HomePage,
-  NotFoundPage,
-  SearchPage,
-  StatusPage,
-  TokensPage,
-  TransactionsPage,
-} from "@/pages/pages";
-import { EntityPage } from "@/pages/EntityPage";
-import { VerifyPage } from "@/pages/VerifyPage";
-import {
-  ChartMetricPage,
-  ChartsPage,
-  isChartMetric,
-  type ChartSearch,
-} from "@/pages/ChartsPages";
-import { PendingPage } from "@/pages/PendingPage";
-import { AccountPage, AdminUsersPage } from "@/pages/AuthPages";
-import { AdminBillingPage } from "@/pages/BillingPages";
+import { isChartMetric, type ChartSearch } from "@/pages/chartRoute";
+
+const HomePage = lazyRouteComponent(() => import("@/pages/pages"), "HomePage");
+const BlocksPage = lazyRouteComponent(() => import("@/pages/pages"), "BlocksPage");
+const GenesisPage = lazyRouteComponent(() => import("@/pages/pages"), "GenesisPage");
+const NotFoundPage = lazyRouteComponent(() => import("@/pages/pages"), "NotFoundPage");
+const SearchPage = lazyRouteComponent(() => import("@/pages/pages"), "SearchPage");
+const StatusPage = lazyRouteComponent(() => import("@/pages/pages"), "StatusPage");
+const TokensPage = lazyRouteComponent(() => import("@/pages/pages"), "TokensPage");
+const TransactionsPage = lazyRouteComponent(
+  () => import("@/pages/pages"),
+  "TransactionsPage",
+);
+const EntityPage = lazyRouteComponent(() => import("@/pages/EntityPage"), "EntityPage");
+const VerifyPage = lazyRouteComponent(() => import("@/pages/VerifyPage"), "VerifyPage");
+const ChartsPage = lazyRouteComponent(() => import("@/pages/ChartsPages"), "ChartsPage");
+const ChartMetricPage = lazyRouteComponent(
+  () => import("@/pages/ChartsPages"),
+  "ChartMetricPage",
+);
+const PendingPage = lazyRouteComponent(() => import("@/pages/PendingPage"), "PendingPage");
+const AccountPage = lazyRouteComponent(() => import("@/pages/AuthPages"), "AccountPage");
+const AdminUsersPage = lazyRouteComponent(
+  () => import("@/pages/AuthPages"),
+  "AdminUsersPage",
+);
+const AdminBillingPage = lazyRouteComponent(
+  () => import("@/pages/BillingPages"),
+  "AdminBillingPage",
+);
 
 const rootRoute = createRootRoute({
   component: AppShell,

@@ -10,6 +10,11 @@ import (
 func applyRoleEnvironment(cfg *Config, lookup func(string) (string, bool), forcedRoles []string) (bool, error) {
 	for _, removed := range []string{
 		"COMPILER_SANDBOX",
+		"FEATURE_X402_BILLING",
+		"X402_COARSE_IP_RATE",
+		"X402_COARSE_IP_BURST",
+		"X402_MAX_BUFFERED_RESPONSE_BYTES",
+		"X402_MAX_CAPTURED_HEADER_BYTES",
 		"VERIFICATION_RUNNER_ENDPOINT",
 		"VERIFICATION_RUNNER_IMAGE",
 		"VERIFICATION_VYPER_CATALOG_URL",
@@ -22,9 +27,6 @@ func applyRoleEnvironment(cfg *Config, lookup func(string) (string, bool), force
 		return false, err
 	}
 	if err := setBool(lookup, "FEATURE_USER_API_KEYS", &cfg.Features.UserAPIKeys); err != nil {
-		return false, err
-	}
-	if err := setBool(lookup, "FEATURE_X402_BILLING", &cfg.Features.X402Billing); err != nil {
 		return false, err
 	}
 	if err := setBool(lookup, "FEATURE_API_BILLING", &cfg.Features.APIBilling); err != nil {
@@ -234,6 +236,12 @@ func applyNumericEnvironment(cfg *Config, lookup func(string) (string, bool)) er
 	if err := setInt(lookup, "BACKFILL_BATCH_BLOCKS", &cfg.Runtime.BackfillBatchBlocks); err != nil {
 		return err
 	}
+	if err := setInt64(lookup, "BACKFILL_BATCH_BYTES", &cfg.Runtime.BackfillBatchBytes); err != nil {
+		return err
+	}
+	if err := setInt(lookup, "BACKFILL_BATCH_ROWS", &cfg.Runtime.BackfillBatchRows); err != nil {
+		return err
+	}
 	if err := setInt(lookup, "MEMPOOL_MAX_TRANSACTIONS", &cfg.Mempool.MaxTransactions); err != nil {
 		return err
 	}
@@ -330,13 +338,7 @@ func applyNumericEnvironment(cfg *Config, lookup func(string) (string, bool)) er
 	if err := setInt(lookup, "X402_MAX_PAYMENT_HEADER_BYTES", &cfg.Billing.MaxPaymentHeaderBytes); err != nil {
 		return err
 	}
-	if err := setInt(lookup, "X402_MAX_CAPTURED_HEADER_BYTES", &cfg.Billing.MaxCapturedHeaderBytes); err != nil {
-		return err
-	}
-	if err := setInt(lookup, "X402_COARSE_IP_RATE", &cfg.Billing.CoarseIPRate); err != nil {
-		return err
-	}
-	if err := setInt(lookup, "X402_COARSE_IP_BURST", &cfg.Billing.CoarseIPBurst); err != nil {
+	if err := setInt(lookup, "BILLING_MAX_CAPTURED_HEADER_BYTES", &cfg.Billing.MaxCapturedHeaderBytes); err != nil {
 		return err
 	}
 	if err := setInt64(lookup, "SOURCIFY_MAX_RESPONSE_BYTES", &cfg.Sourcify.MaxResponseBytes); err != nil {
@@ -345,7 +347,7 @@ func applyNumericEnvironment(cfg *Config, lookup func(string) (string, bool)) er
 	if err := setInt64(lookup, "X402_FACILITATOR_MAX_RESPONSE_BYTES", &cfg.Billing.FacilitatorMaxResponseBytes); err != nil {
 		return err
 	}
-	if err := setInt64(lookup, "X402_MAX_BUFFERED_RESPONSE_BYTES", &cfg.Billing.MaxBufferedResponseBytes); err != nil {
+	if err := setInt64(lookup, "BILLING_MAX_BUFFERED_RESPONSE_BYTES", &cfg.Billing.MaxBufferedResponseBytes); err != nil {
 		return err
 	}
 	if err := setFloat64(lookup, "TRACE_SAMPLE_RATIO", &cfg.Observability.TraceSampleRatio); err != nil {
@@ -413,7 +415,6 @@ func applyBooleanEnvironment(cfg *Config, lookup func(string) (string, bool)) er
 		"FEATURE_ENS":                                         &cfg.Features.ENS,
 		"FEATURE_USER_AUTH":                                   &cfg.Features.UserAuth,
 		"FEATURE_USER_API_KEYS":                               &cfg.Features.UserAPIKeys,
-		"FEATURE_X402_BILLING":                                &cfg.Features.X402Billing,
 		"FEATURE_API_BILLING":                                 &cfg.Features.APIBilling,
 		"FEATURE_X402_TOPUPS":                                 &cfg.Features.X402Topups,
 		"FEATURE_PROXY_DETECTION_V2":                          &cfg.Features.ProxyDetectionV2,

@@ -16,9 +16,9 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/islishude/etherview/internal/cwiaargs"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
-	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/ethrpc"
-	"github.com/islishude/etherview/internal/httpapi"
+	"github.com/islishude/etherview/internal/proxycontract"
+	"github.com/islishude/etherview/internal/publicquery"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -276,7 +276,7 @@ func (r *PostgresReader) Proxy(ctx context.Context, rawAddress string) (ProxyDet
 			}
 			result.Management.AffectedProxyCount = count
 		}
-		if result.Mechanism == string(enrich.ProxyCWIA) {
+		if result.Mechanism == string(proxycontract.CWIA) {
 			if result.Implementation == nil {
 				return errors.New("CWIA implementation identity is missing")
 			}
@@ -307,12 +307,12 @@ func (r *PostgresReader) Proxy(ctx context.Context, rawAddress string) (ProxyDet
 		return nil
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return ProxyDetail{}, httpapi.ErrNotReady
+		return ProxyDetail{}, publicquery.ErrNotReady
 	}
 	if err != nil {
 		return ProxyDetail{}, fmt.Errorf("query proxy detail: %w", err)
 	}
-	if result.Mechanism == string(enrich.ProxyCWIA) {
+	if result.Mechanism == string(proxycontract.CWIA) {
 		decoding := cwiaargs.Decode(result.ImmutableArgs, cwiaAnalysis, cwiaResolution)
 		result.ImmutableArgsDecoding = &decoding
 	}
@@ -376,7 +376,7 @@ func (r *PostgresReader) ProxyUpgrades(
 			}
 			cursor.BeforeEventOrder = last.eventOrder
 			cursor.BeforeSourceRank = last.sourceRank
-			result.NextCursor, err = httpapi.EncodeCursor(cursor)
+			result.NextCursor, err = publicquery.EncodeCursor(cursor)
 			if err != nil {
 				return fmt.Errorf("encode proxy upgrade cursor: %w", err)
 			}
@@ -384,7 +384,7 @@ func (r *PostgresReader) ProxyUpgrades(
 		return nil
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return ProxyUpgradePage{}, httpapi.ErrNotReady
+		return ProxyUpgradePage{}, publicquery.ErrNotReady
 	}
 	if err != nil {
 		if errors.Is(err, ErrInvalidCursor) {
@@ -454,7 +454,7 @@ func (r *PostgresReader) ProxyInitializations(
 				return errors.New("stored proxy initialization log index is invalid")
 			}
 			cursor.BeforeLogIndex = logIndex
-			result.NextCursor, err = httpapi.EncodeCursor(cursor)
+			result.NextCursor, err = publicquery.EncodeCursor(cursor)
 			if err != nil {
 				return fmt.Errorf("encode proxy initialization cursor: %w", err)
 			}
@@ -462,7 +462,7 @@ func (r *PostgresReader) ProxyInitializations(
 		return nil
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return ProxyInitializationPage{}, httpapi.ErrNotReady
+		return ProxyInitializationPage{}, publicquery.ErrNotReady
 	}
 	if err != nil {
 		if errors.Is(err, ErrInvalidCursor) {
@@ -553,7 +553,7 @@ func (r *PostgresReader) DiamondCuts(
 			if err != nil || cursor.BeforeLogIndex < 0 {
 				return errors.New("stored DiamondCut log index is invalid")
 			}
-			result.NextCursor, err = httpapi.EncodeCursor(cursor)
+			result.NextCursor, err = publicquery.EncodeCursor(cursor)
 			if err != nil {
 				return fmt.Errorf("encode DiamondCut cursor: %w", err)
 			}
@@ -561,7 +561,7 @@ func (r *PostgresReader) DiamondCuts(
 		return nil
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return DiamondCutPage{}, httpapi.ErrNotReady
+		return DiamondCutPage{}, publicquery.ErrNotReady
 	}
 	if err != nil {
 		if errors.Is(err, ErrInvalidCursor) {
@@ -639,7 +639,7 @@ func (r *PostgresReader) decodeProxyHistoryCursor(
 	if encoded == "" {
 		return address, cursor, nil
 	}
-	if err := httpapi.DecodeCursor(encoded, &cursor); err != nil ||
+	if err := publicquery.DecodeCursor(encoded, &cursor); err != nil ||
 		cursor.Version != 1 || cursor.ChainID != r.chainID ||
 		cursor.Address != strings.ToLower(address.Hex()) || cursor.Kind != kind ||
 		cursor.BeforeBlockNumber > cursor.SnapshotNumber ||
@@ -674,7 +674,7 @@ func (r *PostgresReader) prepareProxyHistorySnapshot(
 		cursor.SnapshotNumber = number
 		cursor.SnapshotHash = strings.ToLower(common.BytesToHash(snapshot.SnapshotHash).Hex())
 		if snapshot.DurableJobID <= 0 || snapshot.JobGeneration <= 0 {
-			return httpapi.ErrNotReady
+			return publicquery.ErrNotReady
 		}
 		cursor.DurableJobID = snapshot.DurableJobID
 		cursor.JobGeneration = snapshot.JobGeneration
@@ -1088,14 +1088,14 @@ func diamondCutModel(row dbgen.ListDiamondCutHistoryRow) (DiamondCut, error) {
 		Selectors []string `json:"selectors"`
 	}
 	if !json.Valid(row.Cuts) || json.Unmarshal(row.Cuts, &stored) != nil ||
-		len(stored) > enrich.DiamondMaxFacets {
+		len(stored) > proxycontract.DiamondMaxFacets {
 		return DiamondCut{}, errors.New("stored DiamondCut payload is invalid")
 	}
 	cuts := make([]DiamondFacetCut, len(stored))
 	selectorCount := 0
 	for index, cut := range stored {
 		if cut.CutIndex != index || cut.Action > 2 || len(cut.Selectors) == 0 ||
-			len(cut.Selectors) > enrich.DiamondMaxSelectorsPerFacet {
+			len(cut.Selectors) > proxycontract.DiamondMaxSelectorsPerFacet {
 			return DiamondCut{}, errors.New("stored DiamondCut entry is invalid")
 		}
 		facet, err := ethrpc.ParseAddress(cut.Facet)
@@ -1118,7 +1118,7 @@ func diamondCutModel(row dbgen.ListDiamondCutHistoryRow) (DiamondCut, error) {
 			cuts[index].Selectors[selectorIndex] = "0x" + strings.ToLower(selector[2:])
 		}
 		selectorCount += len(cut.Selectors)
-		if selectorCount > enrich.DiamondMaxSelectorsTotal {
+		if selectorCount > proxycontract.DiamondMaxSelectorsTotal {
 			return DiamondCut{}, errors.New("stored DiamondCut selector count exceeds the public bound")
 		}
 	}

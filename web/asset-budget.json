@@ -1,0 +1,18 @@
+{
+  "schema": "etherview-web-asset-budget-v1",
+  "maximumInitialRawBytes": 1000000,
+  "maximumInitialGzipBytes": 310000,
+  "forbiddenInitialPatterns": [
+    "codemirror-vendor",
+    "ContractArtifactPanel-",
+    "EntityPage-",
+    "pages-",
+    "ChartsPages-",
+    "PendingPage-",
+    "VerifyPage-",
+    "AuthPages-",
+    "BillingPages-",
+    "echarts-vendor",
+    "x402-vendor"
+  ]
+}

@@ -29,9 +29,13 @@ correctness implementation and break the PostgreSQL-only deployment.
   Only then may a bounded, fully valid `X-Forwarded-For` chain be considered;
   it is walked from the trusted peer toward the client and stops at the first
   untrusted hop. Malformed or oversized forwarded chains fall back to the
-  direct peer. The process-local fallback expires inactive identities, and a
-  Redis outage is circuit-broken so repeated requests do not each spend the
-  complete adapter timeout before reaching that fallback.
+  direct peer. The process-local fallback maintains separate bounded LRU sets
+  for anonymous and authenticated identities. It removes a bucket only after
+  both its configured idle TTL and a complete token refill; when a class is at
+  capacity with no safely expired bucket, a new identity is rejected with the
+  oldest safe-expiry retry instead of evicting active/exhausted state. A Redis
+  outage is circuit-broken so repeated requests do not each spend the complete
+  adapter timeout before reaching that fallback.
 - The only Redis response cache is the bounded runtime-status model. A process
   fences a new cache generation before enabling reads. Each durable runtime
   event idempotently advances that generation before relay cursor advancement
@@ -86,6 +90,8 @@ correctness implementation and break the PostgreSQL-only deployment.
   controls. Forwarded headers from any other peer are untrusted, while bounded
   local-bucket retention and Redis backoff prevent hostile identity cardinality
   or an accelerator outage from creating unbounded process state or latency.
+  Cardinality pressure can reject a previously unseen local identity; it never
+  resets another client's exhausted bucket before that bucket can fully refill.
 - Adding another cached API model requires proof that every mutation source is
   covered by an idempotent durable invalidation generation. Adding an
   accelerator as the only copy of data or as a lease/completion witness

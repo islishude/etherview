@@ -159,7 +159,7 @@ func TestProductionMonolithGraphEqualsUnionOfSplitRoleGraphs(t *testing.T) {
 			cfg.Features.Verification = true
 			cfg.Features.NFTMetadata = true
 			cfg.Features.UserAuth = true
-			cfg.Features.X402Billing = true
+			cfg.Features.APIBilling = true
 			cfg.Observability.OTLPTraceEndpoint = "https://otel.example:4318"
 			return cfg
 		}(), wake: true},
@@ -263,10 +263,10 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 			},
 		},
 		{
-			name: "maintenance with x402 billing expiry",
+			name: "maintenance with API billing expiry",
 			role: components.RoleMaintenance,
 			setup: func(cfg *config.Config) {
-				cfg.Features.X402Billing = true
+				cfg.Features.APIBilling = true
 			},
 			want: []string{
 				"00-operations-http", "02-durable-metrics",
@@ -275,6 +275,7 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 				"45-maintenance-03", "45-maintenance-04",
 				"46-search-catalog-maintenance",
 				"48-x402-billing-expiry",
+				"49-prepaid-billing-expiry",
 			},
 		},
 		{
@@ -282,7 +283,7 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 			role: components.RoleMaintenance,
 			setup: func(cfg *config.Config) {
 				cfg.Features.UserAuth = true
-				cfg.Features.X402Billing = true
+				cfg.Features.APIBilling = true
 			},
 			want: []string{
 				"00-operations-http", "02-durable-metrics",
@@ -292,6 +293,7 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 				"46-search-catalog-maintenance",
 				"47-user-auth-cleanup",
 				"48-x402-billing-expiry",
+				"49-prepaid-billing-expiry",
 			},
 		},
 	}

@@ -14,7 +14,7 @@ import {
   useTokens,
   useTransactions,
 } from "@/api/hooks";
-import { useHomeSnapshotStream } from "@/api/homeStream";
+import { useHomeSnapshot } from "@/api/homeStream";
 import type {
   BlockSummary,
   ChainStatus,
@@ -120,7 +120,7 @@ export function useCursorHistory(identity: string) {
 
 export function HomePage() {
   const { i18n, t } = useTranslation();
-  const snapshot = useHomeSnapshotStream();
+  const snapshot = useHomeSnapshot();
   const [relativeNow, setRelativeNow] = useState(() => Date.now());
   const locale = i18n.resolvedLanguage ?? "en";
 

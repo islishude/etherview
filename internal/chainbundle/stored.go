@@ -52,6 +52,20 @@ func EncodeStoredBlock(bundle Bundle) (json.RawMessage, error) {
 	if err := Validate(bundle); err != nil {
 		return nil, err
 	}
+	return encodeStoredBlock(bundle)
+}
+
+// EncodeOwnedStoredBlock encodes a bundle returned by Clone without repeating
+// its full root decode and alignment check. It is intended only for the
+// immediate persistence path that owns the cloned value.
+func EncodeOwnedStoredBlock(bundle Bundle) (json.RawMessage, error) {
+	if !bundle.owned {
+		return nil, validation("block", "must be owned before persistence encoding")
+	}
+	return encodeStoredBlock(bundle)
+}
+
+func encodeStoredBlock(bundle Bundle) (json.RawMessage, error) {
 	fields, err := decodeObject(bundle.RawBlock, "block")
 	if err != nil {
 		return nil, err

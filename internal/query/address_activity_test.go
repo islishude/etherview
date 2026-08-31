@@ -21,10 +21,10 @@ func TestAddressTransactionsUseSnapshotCursorAndIndexedCandidateBranches(t *test
 		},
 		queryExpectation{
 			contains: "lower(raw->>'contractAddress') = $3",
-			columns:  columns(17),
+			columns:  columns(18),
 			rows: [][]driver.Value{
-				{testTransactionRawAt(2, 3, 102, 1), testReceiptRawAt(2, 3, 102, 1, "0x1"), "2", testHashBytes(3), int64(1), testTransactionHashBytes(102), true, "1", "0", testBlockRaw(2, 3, 2, 1), false, nil, nil, nil, nil, nil, nil},
-				{testTransactionRawAt(2, 3, 101, 0), testReceiptRawAt(2, 3, 101, 0, "0x1"), "2", testHashBytes(3), int64(0), testTransactionHashBytes(101), true, "1", "0", testBlockRaw(2, 3, 2, 1), false, nil, nil, nil, nil, nil, nil},
+				{testTransactionRawAt(2, 3, 102, 1), testReceiptRawAt(2, 3, 102, 1, "0x1"), "2", testHashBytes(3), int64(1), testTransactionHashBytes(102), true, "1", "0", "100", "0x3b9aca00", false, nil, nil, nil, nil, nil, nil},
+				{testTransactionRawAt(2, 3, 101, 0), testReceiptRawAt(2, 3, 101, 0, "0x1"), "2", testHashBytes(3), int64(0), testTransactionHashBytes(101), true, "1", "0", "100", "0x3b9aca00", false, nil, nil, nil, nil, nil, nil},
 			},
 			check: func(arguments []driver.NamedValue) error {
 				if arguments[2].Value != address {

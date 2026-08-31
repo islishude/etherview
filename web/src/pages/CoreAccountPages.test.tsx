@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -10,6 +10,33 @@ import { makeRouter } from "@/router";
 import { AuthProvider } from "@/auth/AuthProvider";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { WalletProvider } from "@/wallet/WalletProvider";
+import { ChainEventInvalidation } from "@/api/eventInvalidation";
+
+class ChainEventSource {
+  static latest?: ChainEventSource;
+  private readonly listeners = new Map<string, Set<EventListener>>();
+
+  constructor(readonly url: string | URL) {
+    ChainEventSource.latest = this;
+  }
+
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject | null) {
+    if (typeof listener !== "function") return;
+    const listeners = this.listeners.get(type) ?? new Set<EventListener>();
+    listeners.add(listener);
+    this.listeners.set(type, listeners);
+  }
+
+  removeEventListener(type: string, listener: EventListenerOrEventListenerObject | null) {
+    if (typeof listener === "function") this.listeners.get(type)?.delete(listener);
+  }
+
+  close() {}
+
+  emit(type: "head" | "reorg" | "status") {
+    for (const listener of this.listeners.get(type) ?? []) listener(new Event(type));
+  }
+}
 
 const canonicalHash = `0x${"11".repeat(32)}`;
 const olderHash = `0x${"22".repeat(32)}`;
@@ -539,6 +566,8 @@ describe("core account and list pages", () => {
 
   it("refreshes the first transaction page when a newly indexed transaction becomes visible", async () => {
     let transactionRequests = 0;
+    ChainEventSource.latest = undefined;
+    vi.stubGlobal("EventSource", ChainEventSource as unknown as typeof EventSource);
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const path = requestURL(input).pathname;
       if (path === "/api/v1/config") return configResponse();
@@ -578,6 +607,10 @@ describe("core account and list pages", () => {
     renderExplorer("/transactions");
 
     expect(await screen.findByText("No canonical transactions are available in this snapshot.")).toBeVisible();
+    await act(async () => {
+      ChainEventSource.latest?.emit("head");
+      await Promise.resolve();
+    });
     expect(await screen.findByText(shorten(transactionHash), {}, { timeout: 3_500 })).toBeVisible();
     expect(transactionRequests).toBeGreaterThanOrEqual(2);
   });
@@ -690,6 +723,7 @@ function renderExplorer(path: string) {
   });
   return render(
     <QueryClientProvider client={queryClient}>
+      <ChainEventInvalidation />
       <ThemeProvider>
         <WalletProvider>
           <AuthProvider>

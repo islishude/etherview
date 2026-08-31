@@ -39,6 +39,60 @@ var sqlSourceRoots = []string{
 	"internal/store/migrations/",
 }
 
+type importBoundary struct {
+	pathPrefix string
+	forbidden  map[string]bool
+}
+
+var productionImportBoundaries = []importBoundary{
+	{
+		pathPrefix: "internal/query/",
+		forbidden: map[string]bool{
+			"github.com/islishude/etherview/internal/enrich":  true,
+			"github.com/islishude/etherview/internal/httpapi": true,
+		},
+	},
+	{
+		pathPrefix: "internal/state/",
+		forbidden: map[string]bool{
+			"github.com/islishude/etherview/internal/httpapi": true,
+		},
+	},
+	{
+		pathPrefix: "internal/publicquery/",
+		forbidden: map[string]bool{
+			"github.com/islishude/etherview/internal/enrich":  true,
+			"github.com/islishude/etherview/internal/httpapi": true,
+			"github.com/islishude/etherview/internal/query":   true,
+			"github.com/islishude/etherview/internal/state":   true,
+		},
+	},
+	{
+		pathPrefix: "internal/abicalldata/",
+		forbidden: map[string]bool{
+			"github.com/islishude/etherview/internal/enrich": true,
+		},
+	},
+	{
+		pathPrefix: "internal/abicontract/",
+		forbidden: map[string]bool{
+			"github.com/islishude/etherview/internal/enrich": true,
+		},
+	},
+	{
+		pathPrefix: "internal/proxycontract/",
+		forbidden: map[string]bool{
+			"github.com/islishude/etherview/internal/enrich": true,
+		},
+	},
+	{
+		pathPrefix: "internal/stagecontract/",
+		forbidden: map[string]bool{
+			"github.com/islishude/etherview/internal/enrich": true,
+		},
+	},
+}
+
 // Diagnostic is one deterministic source-boundary failure.
 type Diagnostic struct {
 	Path    string
@@ -127,12 +181,13 @@ func Check(root string) Report {
 		if kind == "test" {
 			return nil
 		}
-		if rawSQLExecutors[relative] {
-			return nil
-		}
 		file, err := parser.ParseFile(set, path, content, 0)
 		if err != nil {
 			return err
+		}
+		checkImportBoundaries(set, &report, relative, file)
+		if rawSQLExecutors[relative] {
+			return nil
 		}
 		ast.Inspect(file, func(node ast.Node) bool {
 			literal, ok := node.(*ast.BasicLit)
@@ -162,6 +217,32 @@ func Check(root string) Report {
 		return report.Diagnostics[left].Path < report.Diagnostics[right].Path
 	})
 	return report
+}
+
+func checkImportBoundaries(
+	set *token.FileSet,
+	report *Report,
+	path string,
+	file *ast.File,
+) {
+	for _, boundary := range productionImportBoundaries {
+		if !strings.HasPrefix(path, boundary.pathPrefix) {
+			continue
+		}
+		for _, imported := range file.Imports {
+			value, err := strconv.Unquote(imported.Path.Value)
+			if err != nil || !boundary.forbidden[value] {
+				continue
+			}
+			position := set.Position(imported.Pos())
+			report.Diagnostics = append(report.Diagnostics, Diagnostic{
+				Path: path, Line: position.Line,
+				Message: fmt.Sprintf(
+					"package boundary forbids importing %s", value,
+				),
+			})
+		}
+	}
 }
 
 func looksLikeSQL(value string) bool {

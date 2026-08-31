@@ -10,37 +10,19 @@ import (
 	"unicode/utf8"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/abicontract"
 )
 
-type ABISource string
+type ABISource = abicontract.Source
 
 const (
-	ABISourceVerified            ABISource = "verified"
-	ABISourceCodeHash            ABISource = "code_hash"
-	ABISourceProxyImplementation ABISource = "proxy_implementation"
-	ABISourceDiamondFacet        ABISource = "diamond_facet"
-	ABISourceSignatureDatabase   ABISource = "signature_database"
-	ABISourceBuiltin             ABISource = "builtin"
+	ABISourceVerified            = abicontract.SourceVerified
+	ABISourceCodeHash            = abicontract.SourceCodeHash
+	ABISourceProxyImplementation = abicontract.SourceProxyImplementation
+	ABISourceDiamondFacet        = abicontract.SourceDiamondFacet
+	ABISourceSignatureDatabase   = abicontract.SourceSignatureDatabase
+	ABISourceBuiltin             = abicontract.SourceBuiltin
 )
-
-func (source ABISource) confidence() Confidence {
-	switch source {
-	case ABISourceVerified:
-		return ConfidenceVerified
-	case ABISourceCodeHash, ABISourceProxyImplementation, ABISourceDiamondFacet, ABISourceBuiltin:
-		return ConfidenceHigh
-	case ABISourceSignatureDatabase:
-		return ConfidenceGuess
-	default:
-		return ""
-	}
-}
-
-func (source ABISource) persistent() bool {
-	return source == ABISourceVerified || source == ABISourceCodeHash ||
-		source == ABISourceProxyImplementation || source == ABISourceDiamondFacet ||
-		source == ABISourceSignatureDatabase
-}
 
 // ABIIdentity is the exact target identity at which ABI material may be used.
 // BlockHash deliberately participates in the identity: two forks at the same
@@ -88,7 +70,7 @@ func (binding ABIBinding) validate() error {
 	if err := binding.Identity.validate(); err != nil {
 		return err
 	}
-	if !binding.Source.persistent() {
+	if !binding.Source.Persistent() {
 		return fmt.Errorf("ABI source %q cannot be registered as durable material", binding.Source)
 	}
 	if binding.SourceCodeHash == (common.Hash{}) {
@@ -114,8 +96,8 @@ func (binding ABIBinding) validate() error {
 	return nil
 }
 
-func (source ABISource) validate() error {
-	if source.confidence() == "" {
+func validateABISource(source ABISource) error {
+	if source.Confidence() == "" {
 		return fmt.Errorf("unknown ABI source %q", source)
 	}
 	return nil
@@ -156,7 +138,7 @@ type abiEntry struct {
 	selectorless   string
 }
 
-func (entry abiEntry) confidence() Confidence { return entry.source.confidence() }
+func (entry abiEntry) confidence() Confidence { return entry.source.Confidence() }
 
 type ABIKind string
 
@@ -522,7 +504,7 @@ func validateABIParameter(parameter abiParameter, depth int, limits DecodeLimits
 }
 
 func parseABIEntries(data []byte, source ABISource, limits DecodeLimits) ([]abiEntry, error) {
-	if err := source.validate(); err != nil {
+	if err := validateABISource(source); err != nil {
 		return nil, err
 	}
 	if err := limits.validate(); err != nil {

@@ -13,17 +13,18 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/islishude/etherview/internal/proxycontract"
 )
 
 const (
 	ProxyDetectorFrameworkVersion = "proxy-detectors@2"
-	DiamondMaxFacets              = 256
-	DiamondMaxSelectorsTotal      = 16_384
-	DiamondMaxSelectorsPerFacet   = 4_096
-	DiamondMaxCrossCheckCalls     = 256
-	DiamondMaxBatchConcurrency    = 12
-	DiamondMaxHistoryChanges      = 262_144
-	DiamondMaxRawReturnBytes      = 2 << 20
+	DiamondMaxFacets              = proxycontract.DiamondMaxFacets
+	DiamondMaxSelectorsTotal      = proxycontract.DiamondMaxSelectorsTotal
+	DiamondMaxSelectorsPerFacet   = proxycontract.DiamondMaxSelectorsPerFacet
+	DiamondMaxCrossCheckCalls     = proxycontract.DiamondMaxCrossCheckCalls
+	DiamondMaxBatchConcurrency    = proxycontract.DiamondMaxBatchConcurrency
+	DiamondMaxHistoryChanges      = proxycontract.DiamondMaxHistoryChanges
+	DiamondMaxRawReturnBytes      = proxycontract.DiamondMaxRawReturnBytes
 	DiamondCallGasLimit           = 15_000_000
 )
 

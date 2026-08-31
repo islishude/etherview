@@ -8,7 +8,8 @@ COPY web/package.json web/package-lock.json web/.npmrc ./web/
 RUN --mount=type=cache,target=/root/.npm npm --prefix web ci
 COPY ./api ./api
 RUN --mount=type=cache,target=/root/.npm npm --prefix api ci
-COPY web/index.html web/tsconfig.json web/tsconfig.app.json web/tsconfig.node.json web/vite.config.ts ./web/
+COPY web/index.html web/asset-budget.json web/tsconfig.json web/tsconfig.app.json web/tsconfig.node.json web/vite.config.ts ./web/
+COPY web/scripts ./web/scripts
 COPY web/src ./web/src
 RUN npm --prefix api run generate:api && npm --prefix web run build
 

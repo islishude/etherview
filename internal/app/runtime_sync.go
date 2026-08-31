@@ -50,6 +50,8 @@ func (assembly runtimeAssembly) registerSyncComponents() error {
 			ChainID: chainID, StartBlock: cfg.Chain.StartBlock,
 			PollInterval: cfg.Runtime.PollInterval, Workers: cfg.Runtime.BackfillWorkers,
 			BackfillBatchBlocks:     uint64(cfg.Runtime.BackfillBatchBlocks),
+			BackfillBatchBytes:      uint64(cfg.Runtime.BackfillBatchBytes),
+			BackfillBatchRows:       uint64(cfg.Runtime.BackfillBatchRows),
 			SyncProgressLogInterval: cfg.Observability.SyncProgressLogInterval,
 			WorkerID:                runtimeWorkerID("core-backfill"),
 			LeaseDuration:           cfg.Runtime.LeaseDuration,

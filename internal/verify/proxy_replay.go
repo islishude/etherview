@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/enrich"
+	"github.com/islishude/etherview/internal/stagecontract"
 )
 
 // requestVerificationProxyReplayTx persists explicit fixed-block candidates
@@ -45,10 +46,10 @@ func (repository *PostgresRepository) requestVerificationProxyReplayTx(
 	if err != nil {
 		return err
 	}
-	_, err = queue.EnqueueTx(ctx, tx, enrich.EnqueueRequest{
-		Stage: enrich.ProxyStage, ChainID: strconv.FormatUint(job.RequestV2.Target.ChainID, 10),
+	_, err = queue.EnqueueTx(ctx, tx, stagecontract.EnqueueRequest{
+		Stage: stagecontract.Proxy, ChainID: strconv.FormatUint(job.RequestV2.Target.ChainID, 10),
 		BlockHash: blockHash, BlockNumber: blockNumber,
-		Replay: enrich.ReplaySource{Kind: "verification-publication", Key: job.ID},
+		Replay: stagecontract.ReplaySource{Kind: "verification-publication", Key: job.ID},
 	})
 	if err != nil {
 		return fmt.Errorf("request durable proxy replay after verification publication: %w", err)

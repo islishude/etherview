@@ -4,9 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"sort"
-	"strings"
 
-	gethabi "github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/islishude/etherview/internal/abicalldata"
 )
 
 // VerifiedFunctionSelector is the bounded, canonical function-only projection
@@ -33,30 +32,7 @@ func VerifiedFunctionCalldataMatches(entry json.RawMessage, calldata []byte) boo
 // normalized singleton ABI entry. Readers therefore do not have to trust a
 // denormalized signature column independently from its ABI payload.
 func DecodeVerifiedFunctionCalldata(entry json.RawMessage, calldata []byte) (string, bool) {
-	if len(entry) == 0 || len(calldata) < 4 {
-		return "", false
-	}
-	document := make([]byte, 0, len(entry)+2)
-	document = append(document, '[')
-	document = append(document, entry...)
-	document = append(document, ']')
-	parsed, err := gethabi.JSON(strings.NewReader(string(document)))
-	if err != nil || len(parsed.Methods) != 1 {
-		return "", false
-	}
-	method, err := parsed.MethodById(calldata[:4])
-	if err != nil {
-		return "", false
-	}
-	values, err := method.Inputs.Unpack(calldata[4:])
-	if err != nil {
-		return "", false
-	}
-	reencoded, err := method.Inputs.Pack(values...)
-	if err != nil || !bytes.Equal(reencoded, calldata[4:]) {
-		return "", false
-	}
-	return method.Sig, true
+	return abicalldata.DecodeVerifiedFunction(entry, calldata)
 }
 
 // NormalizeVerifiedFunctionSelectors validates an entire verified ABI with the
