@@ -19,7 +19,7 @@ require (
 	github.com/redis/go-redis/v9 v9.21.0
 	github.com/signinwithethereum/siwe-go v1.0.0
 	github.com/wealdtech/go-ens/v3 v3.6.0
-	github.com/x402-foundation/x402/go/v2 v2.23.0
+	github.com/x402-foundation/x402/go/v2 v2.24.0
 	go.opentelemetry.io/otel v1.46.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.46.0
 	go.opentelemetry.io/otel/sdk v1.46.0
