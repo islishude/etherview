@@ -250,7 +250,7 @@ func runFoundryMode(
 		"e2e/foundry/compose.yaml",
 	)
 	project.Profiles = []string{mode}
-	project.Env = runtimeEnvironment(root, uint64(time.Now().UTC().Truncate(time.Hour).Unix()))
+	project.Env = runtimeEnvironment(root, uint64(time.Now().UTC().Truncate(time.Hour).Unix()), false)
 	project.Env["ETHERVIEW_FOUNDRY_IMAGE"] = runtime.image
 	project.Env["ETHERVIEW_FOUNDRY_API_SERVICE"] = map[string]string{
 		"monolith": "etherview", "distributed": "api",

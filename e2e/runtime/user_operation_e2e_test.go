@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"testing"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -34,6 +35,30 @@ type runtimePackedUserOperation struct {
 	GasFees            [32]byte
 	PaymasterAndData   []byte
 	Signature          []byte
+}
+
+func TestRuntimeEnvironmentScopesUserOperationOptIn(t *testing.T) {
+	t.Parallel()
+	for _, enabled := range []bool{false, true} {
+		environment := runtimeEnvironment(t.TempDir(), 1, enabled)
+		if got := environment["ETHERVIEW_RUNTIME_FEATURE_USER_OPERATIONS"]; got != strconv.FormatBool(enabled) {
+			t.Fatalf("UserOperation runtime feature = %q, want %t", got, enabled)
+		}
+		wantStages := int64(6)
+		if enabled {
+			wantStages++
+		}
+		if got := expectedRuntimeStageCount(environment); got != wantStages {
+			t.Fatalf("runtime stage count = %d, want %d", got, wantStages)
+		}
+	}
+}
+
+func expectedRuntimeStageCount(environment map[string]string) int64 {
+	if environment["ETHERVIEW_RUNTIME_FEATURE_USER_OPERATIONS"] == "true" {
+		return 7
+	}
+	return 6
 }
 
 func (h *harness) configureUserOperationEnvironment() {

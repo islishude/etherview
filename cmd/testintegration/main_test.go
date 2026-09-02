@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 )
 
 func TestDiscoverIntegrationPackages(t *testing.T) {
@@ -24,6 +25,40 @@ func TestDiscoverIntegrationPackages(t *testing.T) {
 	want := []string{"./internal/alpha", "./internal/beta"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("packages = %#v, want %#v", got, want)
+	}
+}
+
+func TestIntegrationTestArgumentsSetExplicitPackageTimeout(t *testing.T) {
+	t.Parallel()
+	arguments, err := integrationTestArguments(options{}, []string{"./internal/integration"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		"-count=1",
+		"-timeout=" + integrationPackageTimeout.String(),
+		"-tags=integration",
+		"./internal/integration",
+	} {
+		if !slices.Contains(arguments, required) {
+			t.Fatalf("integration arguments %q omit %q", arguments, required)
+		}
+	}
+	if integrationPackageTimeout != 15*time.Minute {
+		t.Fatalf("integration package timeout = %s", integrationPackageTimeout)
+	}
+}
+
+func TestIntegrationTestArgumentsPreserveFocusedAndRaceModes(t *testing.T) {
+	t.Parallel()
+	arguments, err := integrationTestArguments(options{race: true, run: "^TestFocused$"}, []string{"./internal/integration"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{"-race", "-run", "^TestFocused$"} {
+		if !slices.Contains(arguments, required) {
+			t.Fatalf("integration arguments %q omit %q", arguments, required)
+		}
 	}
 }
 

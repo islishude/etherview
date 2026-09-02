@@ -31,6 +31,8 @@ type options struct {
 	run           string
 }
 
+const integrationPackageTimeout = 15 * time.Minute
+
 func main() {
 	var opts options
 	flag.StringVar(&opts.root, "root", ".", "repository root")
@@ -97,31 +99,44 @@ func run(ctx context.Context, opts options) error {
 	if len(packages) == 0 {
 		return errors.New("no integration-tagged Go test packages were found")
 	}
-	arguments := []string{"test", "-count=1", "-tags=integration"}
-	if opts.race {
-		arguments = append(arguments, "-race")
+	arguments, err := integrationTestArguments(opts, packages)
+	if err != nil {
+		return err
 	}
-	if opts.benchmark != "" {
-		if opts.race {
-			return errors.New("integration benchmark does not support the race detector")
-		}
-		if strings.TrimSpace(opts.benchmark) != opts.benchmark || strings.TrimSpace(opts.benchmarkTime) == "" ||
-			strings.TrimSpace(opts.benchmarkTime) != opts.benchmarkTime {
-			return errors.New("integration benchmark arguments must be non-empty and trimmed")
-		}
-		arguments = append(arguments, "-run", "^$", "-bench", opts.benchmark, "-benchmem", "-benchtime", opts.benchmarkTime)
-	} else if opts.run != "" {
-		if strings.TrimSpace(opts.run) != opts.run {
-			return errors.New("integration run regexp must be non-empty and trimmed")
-		}
-		arguments = append(arguments, "-run", opts.run)
-	}
-	arguments = append(arguments, packages...)
 	if err := runCommand(ctx, opts.root, []string{"ETHERVIEW_TEST_DATABASE_URL=" + databaseURL},
 		goCommand, arguments...); err != nil {
 		return fmt.Errorf("integration suite: %w", err)
 	}
 	return nil
+}
+
+func integrationTestArguments(opts options, packages []string) ([]string, error) {
+	arguments := []string{
+		"test",
+		"-count=1",
+		"-timeout=" + integrationPackageTimeout.String(),
+		"-tags=integration",
+	}
+	if opts.race {
+		arguments = append(arguments, "-race")
+	}
+	if opts.benchmark != "" {
+		if opts.race {
+			return nil, errors.New("integration benchmark does not support the race detector")
+		}
+		if strings.TrimSpace(opts.benchmark) != opts.benchmark || strings.TrimSpace(opts.benchmarkTime) == "" ||
+			strings.TrimSpace(opts.benchmarkTime) != opts.benchmarkTime {
+			return nil, errors.New("integration benchmark arguments must be non-empty and trimmed")
+		}
+		arguments = append(arguments, "-run", "^$", "-bench", opts.benchmark, "-benchmem", "-benchtime", opts.benchmarkTime)
+	} else if opts.run != "" {
+		if strings.TrimSpace(opts.run) != opts.run {
+			return nil, errors.New("integration run regexp must be non-empty and trimmed")
+		}
+		arguments = append(arguments, "-run", opts.run)
+	}
+	arguments = append(arguments, packages...)
+	return arguments, nil
 }
 
 func discoverIntegrationPackages(root string) ([]string, error) {

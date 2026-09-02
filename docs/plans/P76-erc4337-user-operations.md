@@ -1,6 +1,6 @@
 # P76 — ERC-4337 UserOperation Browsing
 
-Status: `done`
+Status: `blocked`
 
 ## Outcome
 
@@ -33,6 +33,7 @@ nested EntryPoint calls are outside this plan.
 | ID | Status | Depends on | Deliverable | Verification |
 |---|---|---|---|---|
 | P76-T01 | done | P10, P20, P40, P50, P60, P61, P68, P75 | Governance, bounded EntryPoint configuration, `userop@1`, PostgreSQL persistence and coverage, generated native APIs, search, bilingual Web browsing, rollout, and runtime parity | decoder, configuration, PostgreSQL, reorg, generation, Web, browser, real-Anvil, monolith/split, race, and common gates |
+| P76-T02 | blocked | P76-T01 | Restore CI closure by isolating feature-on runtime fixtures from feature-off Hardhat/Foundry overlays, documenting the shared-overlay test contract, and giving the unchanged full PostgreSQL integration package an explicit cold-run timeout | Compose render/runtime regressions, integration runner tests, testing guide, PostgreSQL integration, Hardhat, Foundry, common gates, and a fresh GitHub Actions run |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
@@ -48,10 +49,17 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 - [x] Disabled or mismatched configuration fails explicitly and never exposes output from another configuration digest.
 - [x] Existing databases use explicit bounded `reindex --stage userop`; migrations never enqueue unbounded history.
 - [x] Monolith and split roles produce the same PostgreSQL and public results from real-Anvil EntryPoint wire fixtures.
+- [x] Runtime-only UserOperation fixtures opt in explicitly; unrelated Hardhat and Foundry verification overlays remain feature-off and start successfully.
+- [x] The full PostgreSQL integration package has an explicit bounded timeout above observed cold-CI duration without skipping or weakening tests.
+- [x] The testing guide owns the shared-overlay default-off, explicit opt-in, feature-derived readiness, cross-suite command sequence, timeout, and failure-signature rules.
+- [ ] A fresh GitHub Actions run on the remediation revision passes PostgreSQL integration and both architectures of the Hardhat and Foundry matrices.
 
 ## Current Blockers
 
-None.
+P76-T02 local remediation, executable regressions, and testing-guide hardening
+are complete. Live closure is blocked until the reviewed remediation is
+committed and pushed, then a fresh GitHub Actions run passes PostgreSQL
+integration plus both architectures of the Hardhat and Foundry matrices.
 
 ## Evidence
 
@@ -91,3 +99,31 @@ None.
   examples but deliberately requires operator-supplied chain deployment
   ranges. Historical activation remains an explicit bounded `reindex --stage
   userop`; pending Bundler RPC, submission, and simulation remain outside P76.
+- P76-T02 diagnosed CI run 33619101942: four Hardhat/Foundry jobs inherited
+  `user_operations=true` without an EntryPoint list and failed closed at
+  startup, while PostgreSQL migrations succeeded and the unchanged integration
+  package reached Go's implicit 10-minute package timeout. The runtime overlay
+  now defaults the feature off, the ordinary runtime explicitly opts in, and
+  Hardhat/Foundry explicitly remain off; both Compose render checkers assert
+  the disabled feature and empty registry.
+- `cmd/testintegration` now passes an explicit 15-minute package timeout while
+  preserving all packages, tests, build tags, and race/focused modes. Its unit
+  regressions and `make compose-check` pass. `make test-integration` passes with
+  the exact `-timeout=15m0s` invocation; `internal/integration` completes in
+  199.161 seconds locally.
+- `make test-runtime-e2e-prebuilt` passes the explicit feature-on monolith/split
+  runtime in 84.584 seconds and unchanged x402 runtime in 43.073 seconds.
+  `make test-foundry-e2e` passes both topologies in 155.957 seconds. The first
+  post-fix Hardhat run reached the external compiler boundary and encountered
+  one transient 120-second compiler download timeout; the unchanged exact
+  `make test-hardhat3-e2e-prebuilt` rerun passes both topologies in 260.228
+  seconds. The final `make check` passes.
+- `docs/testing.md` now treats `e2e/runtime/compose.yaml` as a shared contract:
+  optional features default off, each harness declares its effective feature
+  set, readiness derives its expected stage count, both verification render
+  checks assert isolation, and changes run the runtime, Hardhat, and Foundry
+  consumers. It also records the integration-timeout and external-compiler
+  failure signatures. The executable opt-in/stage-count regression,
+  `make source-check`, `make plan-check`, and `git diff --check` pass.
+- Live closure remains intentionally unclaimed: these changes are uncommitted
+  and unpushed, so no GitHub Actions run contains the remediation yet.

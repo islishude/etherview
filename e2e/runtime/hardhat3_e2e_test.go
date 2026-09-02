@@ -280,7 +280,7 @@ func runHardhat3Mode(
 		"e2e/hardhat3/compose.yaml",
 	)
 	project.Profiles = []string{mode}
-	project.Env = runtimeEnvironment(root, uint64(time.Now().UTC().Truncate(time.Hour).Unix()))
+	project.Env = runtimeEnvironment(root, uint64(time.Now().UTC().Truncate(time.Hour).Unix()), false)
 	project.Env["ETHERVIEW_HARDHAT3_IMAGE"] = runtime.image
 	project.Env["ETHERVIEW_HARDHAT3_ARTIFACT_DIR"] = artifacts
 	project.Env["ETHERVIEW_HARDHAT3_API_SERVICE"] = map[string]string{

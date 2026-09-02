@@ -398,7 +398,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		"e2e/runtime/compose.yaml",
 	)
 	project.Profiles = []string{mode}
-	project.Env = runtimeEnvironment(root, baseTimestamp)
+	project.Env = runtimeEnvironment(root, baseTimestamp, true)
 	h := &harness{
 		t: t, root: root, mode: mode, project: project,
 		apiService: map[string]string{"monolith": "etherview", "distributed": "api"}[mode],
@@ -693,7 +693,7 @@ func (h *harness) assertOperationalLogs(ctx context.Context) {
 	}
 }
 
-func runtimeEnvironment(root string, baseTimestamp uint64) map[string]string {
+func runtimeEnvironment(root string, baseTimestamp uint64, userOperations bool) map[string]string {
 	return map[string]string{
 		"ETHERVIEW_IMAGE":                 valueOrDefault("IMAGE", "etherview:local"),
 		"ETHERVIEW_RUNTIME_FIXTURE_IMAGE": valueOrDefault("ETHERVIEW_RUNTIME_FIXTURE_IMAGE", "ghcr.io/foundry-rs/foundry:v1.7.1"),
@@ -704,15 +704,16 @@ func runtimeEnvironment(root string, baseTimestamp uint64) map[string]string {
 				baseTimestamp,
 			),
 		),
-		"ETHERVIEW_CONFIG_FILE":                  filepath.Join(root, "deploy/config.example.yaml"),
-		"ETHERVIEW_RPC_URLS":                     "http://runtime-fixture:8545",
-		"ETHERVIEW_CHAIN_ID":                     "1",
-		"ETHERVIEW_CHAIN_GENESIS_HASH":           "",
-		"ETHERVIEW_ADAPTER_NAMESPACE":            "runtime-e2e",
-		"ETHERVIEW_RUNTIME_SERVER_WRITE_TIMEOUT": runtimeServerWriteTimeout.String(),
-		"ETHERVIEW_PORT":                         "0",
-		"ETHERVIEW_METRICS_PORT":                 "0",
-		"POSTGRES_PASSWORD":                      "etherview-runtime-e2e",
+		"ETHERVIEW_CONFIG_FILE":                     filepath.Join(root, "deploy/config.example.yaml"),
+		"ETHERVIEW_RPC_URLS":                        "http://runtime-fixture:8545",
+		"ETHERVIEW_CHAIN_ID":                        "1",
+		"ETHERVIEW_CHAIN_GENESIS_HASH":              "",
+		"ETHERVIEW_ADAPTER_NAMESPACE":               "runtime-e2e",
+		"ETHERVIEW_RUNTIME_SERVER_WRITE_TIMEOUT":    runtimeServerWriteTimeout.String(),
+		"ETHERVIEW_RUNTIME_FEATURE_USER_OPERATIONS": strconv.FormatBool(userOperations),
+		"ETHERVIEW_PORT":                            "0",
+		"ETHERVIEW_METRICS_PORT":                    "0",
+		"POSTGRES_PASSWORD":                         "etherview-runtime-e2e",
 	}
 }
 
@@ -1012,7 +1013,8 @@ func (h *harness) waitReady(ctx context.Context) {
 func (h *harness) waitCanonical(ctx context.Context, height uint64, hash string) {
 	expected := strings.ToLower(strings.TrimPrefix(hash, "0x"))
 	heightArgument := int64(height)
-	waitFor(h.t, ctx, fmt.Sprintf("canonical block %d with seven complete stages", height), func() (bool, string, error) {
+	expectedStages := expectedRuntimeStageCount(h.project.Env)
+	waitFor(h.t, ctx, fmt.Sprintf("canonical block %d with %d complete stages", height, expectedStages), func() (bool, string, error) {
 		var canonical string
 		var checkpoint int64
 		var complete, active, failed, unpublished int64
@@ -1048,7 +1050,7 @@ func (h *harness) waitCanonical(ctx context.Context, height uint64, hash string)
 			err = errors.New(failures)
 		}
 		return err == nil && canonical == expected && checkpoint == int64(height) &&
-			complete == 7 && active == 0 && failed == 0 && unpublished == 0, state, err
+			complete == expectedStages && active == 0 && failed == 0 && unpublished == 0, state, err
 	})
 }
 

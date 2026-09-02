@@ -37,6 +37,16 @@ for (const name of appServices) {
     "false",
     `${name} Foundry ENS isolation`,
   );
+  assert.equal(
+    service.environment?.ETHERVIEW_FEATURE_USER_OPERATIONS,
+    "false",
+    `${name} Foundry UserOperation isolation`,
+  );
+  assert.equal(
+    service.environment?.ETHERVIEW_ERC4337_ENTRY_POINTS,
+    "[]",
+    `${name} must not receive a runtime EntryPoint registry`,
+  );
   assert.ok(
     [undefined, null, ""].includes(service.environment?.ETHERVIEW_ENS_RPC_URLS),
     `${name} must not receive an ENS RPC`,

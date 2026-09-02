@@ -102,7 +102,9 @@ replace a required `make test-e2e` pass.
   every integration-tagged Go test. When `INTEGRATION_DATABASE_URL` is empty,
   the Go runner owns a fresh PostgreSQL 18 Compose project and removes its
   volume afterward. Supplying the variable uses that explicitly disposable
-  external database instead.
+  external database instead. Each package retains all tests and has an explicit
+  15-minute Go timeout so cold CI is bounded above the observed 10-minute
+  default-timeout failure; the CI job keeps its independent 20-minute bound.
   The ERC-4337 regression commits exact stored EntryPoint calldata and logs,
   drives the durable `userop@1` outbox/worker path, verifies all native reads,
   search and completeness, then replaces the block and requires canonical
@@ -369,6 +371,68 @@ replace a required `make test-e2e` pass.
   opt-in targets because they require dedicated services or runtimes; CI runs
   the browser, managed integration, schema, and runtime E2E suites, not the
   external 30-minute soak.
+
+### Shared production E2E overlay contract
+
+`e2e/runtime/compose.yaml` is shared infrastructure, not a fixture owned only
+by `make test-runtime-e2e`. The general runtime, Hardhat, and Foundry harnesses
+all layer it over the production Compose file. A feature change in its shared
+environment therefore has three consumers with deliberately different feature
+sets.
+
+Follow all of these rules whenever an optional feature or its required
+configuration enters that shared overlay:
+
+1. The Compose interpolation defaults the feature to `false`. Never hardcode a
+   new optional feature to `true` in the shared environment anchor.
+2. Every Go harness passes the intended feature state explicitly through
+   `runtimeEnvironment`. Only the harness that owns the fixture opts in. If the
+   feature requires addresses, credentials, endpoints, or another companion
+   value, that harness must populate the complete valid configuration before
+   starting any application service.
+3. Shared readiness and parity helpers derive expected stages and components
+   from the effective feature set. A globally hardcoded stage count is invalid:
+   the UserOperation runtime publishes seven stages, while feature-off Hardhat
+   and Foundry verification topologies publish six.
+4. Extend both `.github/scripts/hardhat3-compose-check.mjs` and
+   `.github/scripts/foundry-compose-check.mjs` to assert the feature-off value
+   and absence or empty value of its companion configuration on every
+   application service. A successful render without these assertions is not
+   isolation evidence.
+5. Run all affected consumers. Passing the general runtime suite alone is
+   insufficient because it cannot prove that feature-off verification
+   topologies still start.
+
+The required local sequence for a shared-overlay feature change is:
+
+```sh
+make compose-check
+make test-runtime-e2e
+make test-hardhat3-e2e
+make test-foundry-e2e
+```
+
+The `*-prebuilt` variants are CI-equivalent only after the exact working tree's
+production and client images have been built and inspected. Do not use an
+older loaded image as evidence for a harness or Compose change.
+
+Use these failure signatures to route diagnosis before changing product
+correctness checks:
+
+| Failure signal | Meaning and required response |
+| --- | --- |
+| `features.<name> requires ...` while a verification service repeatedly restarts | A shared overlay enabled a feature without its companion configuration. Inspect the fully rendered environment for every application service; restore default-off isolation and explicit owner opt-in. |
+| Canonical wait reports six complete stages while the harness requires seven, or the reverse | The topology started, but a shared assertion encoded one feature set globally. Derive the expected count from the harness's explicit effective feature state. |
+| `panic: test timed out after 10m0s` after migrations succeeded | The managed integration runner did not apply its explicit package timeout. Confirm the emitted command contains `-timeout=15m0s`; do not drop packages, tests, tags, or concurrency to make CI green. |
+| `compiler_unavailable` after the bounded external download deadline | This is an external compiler-artifact boundary, not proof of a Compose feature regression. Retain diagnostics and rerun the unchanged exact target once; repeated failure requires source/network diagnosis rather than weaker verification. |
+
+`cmd/testintegration` owns the PostgreSQL integration invocation. Its
+15-minute timeout applies independently to each Go package and remains below
+the CI job's 20-minute outer bound, leaving time for dependency setup,
+migrations, and teardown. If the explicit 15-minute limit is reached, inspect
+the active test and goroutine dump for a hang or an actual duration regression;
+do not automatically raise either timeout. Focused and race modes must continue
+to use the same package bound.
 
 All Compose-facing targets use `.github/scripts/compose.sh`, and image builds
 use `.github/scripts/buildx.sh`. They prefer Docker's Compose and Buildx
