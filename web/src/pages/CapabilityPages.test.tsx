@@ -812,6 +812,7 @@ function completeness() {
     trace: "unavailable",
     metadata: "complete",
     state: "complete",
+    user_operations: "unavailable",
   };
 }
 

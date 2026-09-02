@@ -414,6 +414,7 @@
         "user_auth",
         "billing",
         "ens",
+        "erc4337",
         "verification",
         "sourcify",
         "adapters"
@@ -555,13 +556,48 @@
         },
         "features": {
           "type": "object",
-          "required": ["ens", "user_auth", "user_api_keys", "api_billing", "x402_topups"],
+          "required": ["ens", "user_auth", "user_api_keys", "api_billing", "x402_topups", "user_operations"],
           "properties": {
             "ens": {"type": "boolean"},
             "user_auth": {"type": "boolean"},
             "user_api_keys": {"type": "boolean"},
             "api_billing": {"type": "boolean"},
-            "x402_topups": {"type": "boolean"}
+            "x402_topups": {"type": "boolean"},
+            "user_operations": {"type": "boolean"}
+          }
+        },
+        "erc4337": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["entry_points"],
+          "properties": {
+            "entry_points": {
+              "type": "array",
+              "maxItems": 16,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["address", "version", "from_block"],
+                "properties": {
+                  "address": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-fA-F]{40}$"
+                  },
+                  "version": {
+                    "type": "string",
+                    "enum": ["0.6", "0.7", "0.8", "0.9"]
+                  },
+                  "from_block": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "to_block": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
           }
         },
         "security": {
@@ -888,6 +924,46 @@
     }
   },
   "allOf": [
+    {
+      "if": {
+        "properties": {
+          "config": {
+            "properties": {
+              "features": {
+                "properties": {"user_operations": {"const": true}},
+                "required": ["user_operations"]
+              }
+            },
+            "required": ["features"]
+          }
+        },
+        "required": ["config"]
+      },
+      "then": {
+        "properties": {
+          "config": {
+            "properties": {
+              "erc4337": {
+                "properties": {"entry_points": {"minItems": 1}},
+                "required": ["entry_points"]
+              }
+            },
+            "required": ["erc4337"]
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "config": {
+            "properties": {
+              "erc4337": {
+                "properties": {"entry_points": {"maxItems": 0}}
+              }
+            }
+          }
+        }
+      }
+    },
     {
       "if": {
         "properties": {

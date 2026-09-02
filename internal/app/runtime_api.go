@@ -9,6 +9,7 @@ import (
 	"github.com/islishude/etherview/internal/catalog"
 	"github.com/islishude/etherview/internal/components"
 	"github.com/islishude/etherview/internal/contractartifact"
+	"github.com/islishude/etherview/internal/erc4337"
 	"github.com/islishude/etherview/internal/etherscan"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/httpapi"
@@ -93,6 +94,14 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			return err
 		}
 		completeness := configuredCompleteness(cfg, rpcBuild)
+		var userOperationRegistry *erc4337.Registry
+		if cfg.Features.UserOperations {
+			configuredRegistry, registryErr := erc4337.NewRegistry(cfg.ERC4337)
+			if registryErr != nil {
+				return registryErr
+			}
+			userOperationRegistry = &configuredRegistry
+		}
 		queryOptions := query.Options{
 			ChainID: cfg.Chain.ID, StartBlock: cfg.Chain.StartBlock,
 			RuntimeStatus: func(callbackCtx context.Context) (query.RuntimeStatus, bool, error) {
@@ -105,6 +114,7 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 				}, exists, err
 			},
 			OptionalStages: completeness, NameResolver: nameResolver,
+			UserOperationRegistry: userOperationRegistry,
 		}
 		reader, err := query.NewPostgresReader(readDB, queryOptions)
 		if err != nil {
@@ -279,7 +289,7 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			Config: cfg, Reader: publicReader, TransactionReader: transactionReader, AddressActivities: reader,
 			AddressEnrichment: catalogReader, AddressNames: addressNames,
 			DelegationBindings: delegationBindings, DelegationHistory: catalogReader,
-			Genesis: reader, Catalog: catalogReader, Web: webHandler,
+			Genesis: reader, Catalog: catalogReader, UserOperations: reader, Web: webHandler,
 			WebRoutePattern: webHandler.RoutePattern,
 			Analytics:       analyticsReader,
 			ProxyReader:     proxyReader,

@@ -148,6 +148,7 @@ function snapshot(latest: string, blockNumbers: string[]) {
     trace: "unavailable",
     metadata: "pending",
     state: "complete",
+    user_operations: "unavailable",
   };
   return {
     data: {

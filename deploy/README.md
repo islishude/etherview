@@ -87,6 +87,16 @@ variables unset do not pass either Secret. Run `etherview doctor` against the
 final API-role configuration before exposing the Account top-up endpoint.
 Existing credit consumption has no Facilitator dependency.
 
+ERC-4337 UserOperation browsing is also disabled by default. Set
+`config.features.user_operations=true` only together with a reviewed,
+chain-specific `config.erc4337.entry_points` list. Each entry binds one address
+to version `0.6`, `0.7`, `0.8`, or `0.9` and an inclusive
+`from_block`/optional `to_block` range. The chart schema rejects an enabled
+feature without entries; application startup additionally rejects zero
+addresses, overlapping ranges for one address, unknown versions, and more than
+16 entries. Follow the bounded enablement and reindex procedure in the
+[operations runbook](../docs/operations.md#erc-4337-useroperation-indexing).
+
 ## Full-stack Preview
 
 `compose.preview.yaml` runs the local Geth development chain and all six
@@ -262,14 +272,14 @@ in monolith and six-application-role distributed layouts from a build-tagged
 Go test.
 The distributed layout starts two sync and enrichment replicas, stops one of
 each, and proves the survivors process a competing-hash reorg. Both layouts
-must publish all six deployed stages, retain the orphan branch, update hourly
+must publish all seven enabled stages, retain the orphan branch, update hourly
 analytics, recover after RPC and PostgreSQL pauses plus an API restart, expose
 the same API/SSE/embedded-SPA behavior, pass bounded load, and finish with
 equivalent normalized durable and public state. Trace, mempool, historical
-state, and NFT metadata are enabled. Verification, Sourcify, pricing, and ENS are
-explicitly disabled in this ordinary runtime suite because they require the
-official external compiler catalog, Ethereum Mainnet RPC, or other
-external-service fixtures.
+state, NFT metadata, ENS, and a deterministic transaction-deployed ERC-4337
+v0.9 EntryPoint wire fixture are enabled. Verification, Sourcify, and pricing are explicitly
+disabled in this ordinary runtime suite because they require the official
+external compiler catalog or other external-service fixtures.
 
 The pinned Anvil fixture currently emits `blobGasPrice` without
 `blobGasUsed` on ordinary receipts. A bounded test-only Go RPC adapter removes

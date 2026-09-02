@@ -356,6 +356,7 @@ func TestEligibleInventoryIsClosed(t *testing.T) {
 		"getTransactionCalldata",
 		"getTransactionFailure",
 		"getTransactionTrace",
+		"getUserOperation",
 		"getVerifierJob",
 		"listAddressDelegations",
 		"listAddressERC20Balances",
@@ -365,6 +366,7 @@ func TestEligibleInventoryIsClosed(t *testing.T) {
 		"listAddressNFTTransfers",
 		"listAddressNames",
 		"listAddressTransactions",
+		"listAddressUserOperations",
 		"listAddressWithdrawals",
 		"listBlockTransactions",
 		"listBlocks",
@@ -376,7 +378,9 @@ func TestEligibleInventoryIsClosed(t *testing.T) {
 		"listTransactionLogs",
 		"listTransactionStateChanges",
 		"listTransactionTokenTransfers",
+		"listTransactionUserOperations",
 		"listTransactions",
+		"listUserOperations",
 		"search",
 	}
 	got := EligibleIDs()

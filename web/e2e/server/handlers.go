@@ -24,7 +24,7 @@ func registerCoreHandlers(mux *http.ServeMux, homeStreams *homeStreamHub) {
 			"features": map[string]bool{
 				"trace": true, "mempool": true, "historical_state": true,
 				"verification": false, "nft_metadata": true, "pricing": false,
-				"sourcify": false,
+				"sourcify": false, "user_operations": true,
 			},
 		})
 	})
@@ -174,6 +174,27 @@ func registerCoreHandlers(mux *http.ServeMux, homeStreams *homeStreamHub) {
 		default:
 			writeNotFound(response)
 		}
+	})
+	mux.HandleFunc("GET /api/v1/user-operations", func(response http.ResponseWriter, _ *http.Request) {
+		writeEnvelopeMeta(response, []any{userOperationSummary(nil)}, map[string]any{
+			"coverage_start": "0", "coverage_end": "2",
+		})
+	})
+	mux.HandleFunc("GET /api/v1/user-operations/{hash}", func(response http.ResponseWriter, request *http.Request) {
+		if request.PathValue("hash") != userOperationHash {
+			writeNotFound(response)
+			return
+		}
+		writeEnvelope(response, userOperationDetail())
+	})
+	mux.HandleFunc("GET /api/v1/transactions/{hash}/user-operations", func(response http.ResponseWriter, request *http.Request) {
+		if request.PathValue("hash") != testTransactionHash {
+			writeEnvelope(response, []any{})
+			return
+		}
+		writeEnvelopeMeta(response, []any{userOperationSummary(nil)}, map[string]any{
+			"coverage_start": "0", "coverage_end": "2",
+		})
 	})
 	mux.HandleFunc("GET /api/v1/transactions/{hash}/failure", func(response http.ResponseWriter, request *http.Request) {
 		if request.PathValue("hash") != failedTxHash {
@@ -581,6 +602,15 @@ func registerResourceHandlers(mux *http.ServeMux) {
 		failedItem["method"] = "disperseToken"
 		writeEnvelope(response, []any{item, failedItem})
 	})
+	mux.HandleFunc("GET /api/v1/addresses/{address}/user-operations", func(response http.ResponseWriter, request *http.Request) {
+		if request.PathValue("address") != testEOA {
+			writeEnvelope(response, []any{})
+			return
+		}
+		writeEnvelopeMeta(response, []any{userOperationSummary([]string{"sender"})}, map[string]any{
+			"coverage_start": "0", "coverage_end": "2",
+		})
+	})
 	mux.HandleFunc("GET /api/v1/addresses/{address}/withdrawals", func(response http.ResponseWriter, request *http.Request) {
 		if request.PathValue("address") != testAddress {
 			writeEnvelope(response, []any{})
@@ -936,6 +966,13 @@ func registerContractHandlers(mux *http.ServeMux) {
 			writeEnvelope(response, []any{map[string]any{
 				"kind": "block", "key": orphanHash, "label": "Retained orphan block #1",
 				"rank": 100, "canonical": false,
+			}})
+			return
+		}
+		if query == userOperationHash {
+			writeEnvelope(response, []any{map[string]any{
+				"kind": "user_operation", "key": userOperationHash,
+				"label": "UserOperation · " + testEOA, "rank": 95, "canonical": true,
 			}})
 			return
 		}

@@ -40,6 +40,8 @@ x-runtime-e2e-environment: &runtime-e2e-environment
   ETHERVIEW_FEATURE_SAFE_PROXY_DETECTION: "true"
   ETHERVIEW_FEATURE_DIAMOND_PROXY_DETECTION: "true"
   ETHERVIEW_FEATURE_PROXY_DETECTION_V2_PUBLIC: "true"
+  ETHERVIEW_FEATURE_USER_OPERATIONS: "true"
+  ETHERVIEW_ERC4337_ENTRY_POINTS: ${ETHERVIEW_RUNTIME_ERC4337_ENTRY_POINTS:-[]}
 
 x-runtime-fixture-dependency: &runtime-fixture-dependency
   runtime-fixture:

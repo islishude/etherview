@@ -332,6 +332,15 @@ WITH input AS (
 ), update_state_changes AS (
     UPDATE transaction_state_changes AS target SET canonical = $3
     FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+), update_user_operations AS (
+    UPDATE erc4337_user_operations AS target SET canonical = $3
+    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+), update_user_operation_events AS (
+    UPDATE erc4337_user_operation_events AS target SET canonical = $3
+    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+), update_user_operation_participants AS (
+    UPDATE erc4337_user_operation_participants AS target SET canonical = $3
+    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
 ), update_statistics AS (
     UPDATE block_statistics AS target SET canonical = $3
     FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash

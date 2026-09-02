@@ -633,6 +633,37 @@ paths:
                 $ref: "#/components/schemas/TransactionListResponse"
         default:
           $ref: "#/components/responses/Error"
+  /user-operations:
+    get:
+      operationId: listUserOperations
+      tags: [user-operations]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Canonical UserOperations at one continuous userop@1 snapshot, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserOperationListResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /user-operations/{hash}:
+    get:
+      operationId: getUserOperation
+      tags: [user-operations]
+      parameters:
+        - $ref: "#/components/parameters/UserOperationHash"
+      responses:
+        "200":
+          description: Exact canonical UserOperation request, inclusion, outcome, and protocol events.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserOperationResponse"
+        default:
+          $ref: "#/components/responses/Error"
   /transactions/{hash}:
     get:
       operationId: getTransaction
@@ -678,6 +709,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TransactionTraceResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /transactions/{hash}/user-operations:
+    get:
+      operationId: listTransactionUserOperations
+      tags: [transactions, user-operations]
+      parameters:
+        - $ref: "#/components/parameters/TransactionHash"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Canonical UserOperations in this direct EntryPoint bundle, in execution order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserOperationListResponse"
         default:
           $ref: "#/components/responses/Error"
   /transactions/{hash}/calldata:
@@ -886,6 +934,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TransactionListResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /addresses/{address}/user-operations:
+    get:
+      operationId: listAddressUserOperations
+      tags: [addresses, user-operations]
+      parameters:
+        - $ref: "#/components/parameters/Address"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Canonical UserOperations involving this address, with its exact participant roles.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserOperationListResponse"
         default:
           $ref: "#/components/responses/Error"
   /addresses/{address}/withdrawals:
@@ -1697,6 +1762,12 @@ components:
       required: true
       schema:
         $ref: "#/components/schemas/Hash"
+    UserOperationHash:
+      name: hash
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Hash"
     Address:
       name: address
       in: path
@@ -2459,7 +2530,7 @@ components:
             $ref: "#/components/schemas/BillingSummaryRow"
     Completeness:
       type: object
-      required: [core, trace, metadata, state]
+      required: [core, trace, metadata, state, user_operations]
       properties:
         core:
           $ref: "#/components/schemas/StageState"
@@ -2472,6 +2543,9 @@ components:
         state:
           $ref: "#/components/schemas/StageState"
           description: Configured historical-state RPC capability; transaction state differences have an independent per-transaction state.
+        user_operations:
+          $ref: "#/components/schemas/StageState"
+          description: Current configured-digest userop@1 coverage through the exact canonical indexed tip.
     StageState:
       type: string
       enum: [complete, pending, unavailable, failed]
@@ -2622,6 +2696,290 @@ components:
           $ref: "#/components/schemas/Finality"
         completeness:
           $ref: "#/components/schemas/Completeness"
+    UserOperationVersion:
+      type: string
+      enum: ["0.6", "0.7", "0.8", "0.9"]
+    UserOperationInitKind:
+      type: string
+      enum: [none, factory, eip7702]
+    UserOperationRole:
+      type: string
+      enum: [sender, entry_point, bundler, beneficiary, factory, paymaster, aggregator, eip7702_delegate]
+    UserOperationEventKind:
+      type: string
+      enum: [account_deployed, ignored_init_code, eip7702_initialized, execution_revert, post_op_revert, prefund_too_low]
+    UserOperationSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - hash
+        - entry_point
+        - entry_point_version
+        - sender
+        - nonce
+        - nonce_key
+        - nonce_sequence
+        - success
+        - actual_gas_cost
+        - actual_gas_used
+        - transaction_hash
+        - transaction_index
+        - operation_index
+        - event_log_index
+        - block_number
+        - block_hash
+        - block_timestamp
+        - canonical
+        - finality
+        - bundler
+        - beneficiary
+        - init_kind
+      properties:
+        hash:
+          $ref: "#/components/schemas/Hash"
+        entry_point:
+          $ref: "#/components/schemas/Address"
+        entry_point_version:
+          $ref: "#/components/schemas/UserOperationVersion"
+        sender:
+          $ref: "#/components/schemas/Address"
+        nonce:
+          $ref: "#/components/schemas/Quantity"
+        nonce_key:
+          $ref: "#/components/schemas/Quantity"
+        nonce_sequence:
+          $ref: "#/components/schemas/Quantity"
+        success:
+          type: boolean
+        actual_gas_cost:
+          $ref: "#/components/schemas/Quantity"
+        actual_gas_used:
+          $ref: "#/components/schemas/Quantity"
+        transaction_hash:
+          $ref: "#/components/schemas/Hash"
+        transaction_index:
+          type: integer
+          minimum: 0
+        operation_index:
+          type: integer
+          minimum: 0
+        event_log_index:
+          type: integer
+          minimum: 0
+          description: Canonical receipt log index of the matching UserOperationEvent.
+        block_number:
+          $ref: "#/components/schemas/Quantity"
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+        block_timestamp:
+          type: string
+          format: date-time
+        canonical:
+          type: boolean
+        finality:
+          $ref: "#/components/schemas/Finality"
+        bundler:
+          $ref: "#/components/schemas/Address"
+          description: Exact outer EntryPoint transaction sender; no stronger off-chain Bundler identity is inferred.
+        beneficiary:
+          $ref: "#/components/schemas/Address"
+        init_kind:
+          $ref: "#/components/schemas/UserOperationInitKind"
+        factory:
+          $ref: "#/components/schemas/Address"
+        paymaster:
+          $ref: "#/components/schemas/Address"
+        aggregator:
+          $ref: "#/components/schemas/Address"
+        participating_roles:
+          type: array
+          uniqueItems: true
+          maxItems: 8
+          items:
+            $ref: "#/components/schemas/UserOperationRole"
+    UserOperationRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - call_gas_limit
+        - verification_gas_limit
+        - pre_verification_gas
+        - max_fee_per_gas
+        - max_priority_fee_per_gas
+        - init_code
+        - factory_data
+        - call_data
+        - paymaster_and_data
+        - paymaster_data
+        - paymaster_signature
+        - signature
+        - aggregated_signature
+      properties:
+        call_gas_limit:
+          $ref: "#/components/schemas/Quantity"
+        verification_gas_limit:
+          $ref: "#/components/schemas/Quantity"
+        pre_verification_gas:
+          $ref: "#/components/schemas/Quantity"
+        max_fee_per_gas:
+          $ref: "#/components/schemas/Quantity"
+        max_priority_fee_per_gas:
+          $ref: "#/components/schemas/Quantity"
+        paymaster_verification_gas_limit:
+          $ref: "#/components/schemas/Quantity"
+        paymaster_post_op_gas_limit:
+          $ref: "#/components/schemas/Quantity"
+        init_code:
+          type: string
+          pattern: '^0x[0-9a-fA-F]*$'
+        factory_data:
+          type: string
+          pattern: '^0x[0-9a-fA-F]*$'
+        call_data:
+          type: string
+          pattern: '^0x[0-9a-fA-F]*$'
+        paymaster_and_data:
+          type: string
+          pattern: '^0x[0-9a-fA-F]*$'
+        paymaster_data:
+          type: string
+          pattern: '^0x[0-9a-fA-F]*$'
+        paymaster_signature:
+          type: string
+          pattern: '^0x[0-9a-fA-F]*$'
+        signature:
+          type: string
+          pattern: '^0x[0-9a-fA-F]*$'
+        account_gas_limits:
+          $ref: "#/components/schemas/Hash"
+        gas_fees:
+          $ref: "#/components/schemas/Hash"
+        aggregated_signature:
+          type: string
+          pattern: '^0x[0-9a-fA-F]*$'
+    UserOperationProtocolEvent:
+      type: object
+      additionalProperties: false
+      required: [kind, log_index, sender, raw_data]
+      properties:
+        kind:
+          $ref: "#/components/schemas/UserOperationEventKind"
+        log_index:
+          type: integer
+          minimum: 0
+        sender:
+          $ref: "#/components/schemas/Address"
+        nonce:
+          $ref: "#/components/schemas/Quantity"
+        related_address:
+          $ref: "#/components/schemas/Address"
+        paymaster:
+          $ref: "#/components/schemas/Address"
+        raw_data:
+          type: string
+          pattern: '^0x[0-9a-fA-F]*$'
+        reason:
+          type: string
+          maxLength: 4096
+        panic_code:
+          $ref: "#/components/schemas/Quantity"
+    UserOperationDetail:
+      type: object
+      additionalProperties: false
+      required:
+        - hash
+        - entry_point
+        - entry_point_version
+        - sender
+        - nonce
+        - nonce_key
+        - nonce_sequence
+        - success
+        - actual_gas_cost
+        - actual_gas_used
+        - transaction_hash
+        - transaction_index
+        - operation_index
+        - event_log_index
+        - block_number
+        - block_hash
+        - block_timestamp
+        - canonical
+        - finality
+        - bundler
+        - beneficiary
+        - init_kind
+        - request
+        - events
+      properties:
+        hash:
+          $ref: "#/components/schemas/Hash"
+        entry_point:
+          $ref: "#/components/schemas/Address"
+        entry_point_version:
+          $ref: "#/components/schemas/UserOperationVersion"
+        sender:
+          $ref: "#/components/schemas/Address"
+        nonce:
+          $ref: "#/components/schemas/Quantity"
+        nonce_key:
+          $ref: "#/components/schemas/Quantity"
+        nonce_sequence:
+          $ref: "#/components/schemas/Quantity"
+        success:
+          type: boolean
+        actual_gas_cost:
+          $ref: "#/components/schemas/Quantity"
+        actual_gas_used:
+          $ref: "#/components/schemas/Quantity"
+        transaction_hash:
+          $ref: "#/components/schemas/Hash"
+        transaction_index:
+          type: integer
+          minimum: 0
+        operation_index:
+          type: integer
+          minimum: 0
+        event_log_index:
+          type: integer
+          minimum: 0
+          description: Canonical receipt log index of the matching UserOperationEvent.
+        block_number:
+          $ref: "#/components/schemas/Quantity"
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+        block_timestamp:
+          type: string
+          format: date-time
+        canonical:
+          type: boolean
+        finality:
+          $ref: "#/components/schemas/Finality"
+        bundler:
+          $ref: "#/components/schemas/Address"
+          description: Exact outer EntryPoint transaction sender; no stronger off-chain Bundler identity is inferred.
+        beneficiary:
+          $ref: "#/components/schemas/Address"
+        init_kind:
+          $ref: "#/components/schemas/UserOperationInitKind"
+        factory:
+          $ref: "#/components/schemas/Address"
+        paymaster:
+          $ref: "#/components/schemas/Address"
+        aggregator:
+          $ref: "#/components/schemas/Address"
+        participating_roles:
+          type: array
+          uniqueItems: true
+          maxItems: 8
+          items:
+            $ref: "#/components/schemas/UserOperationRole"
+        request:
+          $ref: "#/components/schemas/UserOperationRequest"
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserOperationProtocolEvent"
     Transaction:
       type: object
       required: [hash, from, nonce, value, gas, input, canonical, finality, completeness]
@@ -4251,7 +4609,7 @@ components:
       properties:
         kind:
           type: string
-          enum: [block, transaction, address, contract, token, nft, label]
+          enum: [block, transaction, user_operation, address, contract, token, nft, label]
         key:
           type: string
         label:
@@ -5928,6 +6286,26 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Transaction"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    UserOperationResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/UserOperationDetail"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    UserOperationListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserOperationSummary"
         meta:
           $ref: "#/components/schemas/Meta"
     PendingTransactionListResponse:

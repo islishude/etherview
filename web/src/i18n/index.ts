@@ -7,6 +7,7 @@ import { addressesResources } from "./resources/addresses";
 import { tokensResources } from "./resources/tokens";
 import { accountResources } from "./resources/account";
 import { verificationResources } from "./resources/verification";
+import { userOperationsResources } from "./resources/userOperations";
 
 const resources = {
   en: {
@@ -18,6 +19,7 @@ const resources = {
       ...tokensResources.en,
       ...accountResources.en,
       ...verificationResources.en,
+      ...userOperationsResources.en,
     },
   },
   zh: {
@@ -29,6 +31,7 @@ const resources = {
       ...tokensResources.zh,
       ...accountResources.zh,
       ...verificationResources.zh,
+      ...userOperationsResources.zh,
     },
   },
 } as const;

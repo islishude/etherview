@@ -50,6 +50,10 @@ const (
 	failedTxHash               = "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
 	delegationTransactionHash  = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
 	clearingTransactionHash    = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+	userOperationHash          = "0x1212121212121212121212121212121212121212121212121212121212121212"
+	entryPointAddress          = "0x433709009B8330FDa32311DF1C2AFA402eD8D009"
+	userOperationPaymaster     = "0x4444444444444444444444444444444444444444"
+	userOperationBeneficiary   = "0x5555555555555555555555555555555555555555"
 	parentHash                 = "0x0000000000000000000000000000000000000000000000000000000000000000"
 	blockCursor                = "blocks/snapshot + page=2"
 	transactionCursor          = "transactions/snapshot?generation=7 + page=2&exact=true/#"
@@ -234,7 +238,49 @@ func blockStat() map[string]any {
 }
 
 func completeness() map[string]string {
-	return map[string]string{"core": "complete", "trace": "complete", "metadata": "complete", "state": "complete"}
+	return map[string]string{
+		"core": "complete", "trace": "complete", "metadata": "complete",
+		"state": "complete", "user_operations": "complete",
+	}
+}
+
+func userOperationSummary(roles []string) map[string]any {
+	result := map[string]any{
+		"hash": userOperationHash, "entry_point": entryPointAddress,
+		"entry_point_version": "0.9", "sender": testEOA,
+		"nonce": "18446744073709551617", "nonce_key": "1", "nonce_sequence": "1",
+		"success": false, "actual_gas_cost": "1000", "actual_gas_used": "25000",
+		"transaction_hash": testTransactionHash, "transaction_index": 0,
+		"operation_index": 0, "event_log_index": 4, "block_number": "2", "block_hash": secondHash,
+		"block_timestamp": "2026-01-01T00:00:00Z", "canonical": true,
+		"finality": "safe", "bundler": testAddress, "beneficiary": userOperationBeneficiary,
+		"init_kind": "factory", "factory": unverifiedAddress,
+		"paymaster": userOperationPaymaster,
+	}
+	if len(roles) > 0 {
+		result["participating_roles"] = roles
+	}
+	return result
+}
+
+func userOperationDetail() map[string]any {
+	result := userOperationSummary(nil)
+	result["request"] = map[string]any{
+		"call_gas_limit": "100000", "verification_gas_limit": "200000",
+		"pre_verification_gas": "30000", "max_fee_per_gas": "100",
+		"max_priority_fee_per_gas": "2", "init_code": "0x1234",
+		"factory_data": "0x34", "call_data": "0xdeadbeef",
+		"paymaster_and_data": "0xabcd", "paymaster_data": "0xcd",
+		"paymaster_signature": "0x99", "signature": "0x88",
+		"aggregated_signature": "0x", "account_gas_limits": testHash,
+		"gas_fees": secondHash,
+	}
+	result["events"] = []any{map[string]any{
+		"kind": "post_op_revert", "log_index": 3, "sender": testEOA,
+		"nonce": "18446744073709551617", "paymaster": userOperationPaymaster,
+		"raw_data": "0x08c379a0", "reason": "paymaster rejected",
+	}}
+	return result
 }
 
 type homeStreamHub struct {

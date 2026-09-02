@@ -64,6 +64,12 @@ func encodeDerivedJournal(stage StageID) ([]byte, error) {
 			"eip7702_authorizations",
 			"transaction_execution_code_resolutions",
 		}
+	case UserOperationStage:
+		relations = []string{
+			"erc4337_user_operations",
+			"erc4337_user_operation_events",
+			"erc4337_user_operation_participants",
+		}
 	default:
 		return nil, fmt.Errorf("stage %s has no derived journal contract", stage)
 	}

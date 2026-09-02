@@ -16,9 +16,12 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/islishude/etherview/internal/api/gen"
+	"github.com/islishude/etherview/internal/config"
 	"github.com/islishude/etherview/internal/db/gen"
 	ensresolver "github.com/islishude/etherview/internal/ens"
+	"github.com/islishude/etherview/internal/erc4337"
 	"github.com/islishude/etherview/internal/httpapi"
+	"github.com/islishude/etherview/internal/publicquery"
 )
 
 func TestChecksumAddressEIP55Vectors(t *testing.T) {
@@ -710,6 +713,61 @@ func TestCoreSearchCoversAddressBlockNumberAndHash(t *testing.T) {
 	if err != nil || len(hashResults) != 2 || hashResults[0].Label != "Block hash label" ||
 		hashResults[1].Label != "Transaction hash label" || hashResults[0].Canonical == nil || *hashResults[0].Canonical {
 		t.Fatalf("hash search = %+v, error = %v", hashResults, err)
+	}
+}
+
+func TestUserOperationHashSearchCursorBindsContinuousCoverage(t *testing.T) {
+	t.Parallel()
+	userOperationHash := testHashBytes(76)
+	snapshotHash := testHashBytes(3)
+	entryPoint := "0x433709009B8330FDa32311DF1C2AFA402eD8D009"
+	registry, err := erc4337.NewRegistry(config.ERC4337Config{EntryPoints: []config.ERC4337EntryPointConfig{{
+		Address: entryPoint, Version: "0.9",
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	searchRows := [][]driver.Value{{
+		"transaction", common.BytesToHash(userOperationHash).Hex(), "Bundle transaction", int64(110), true,
+	}}
+	userOperationRows := [][]driver.Value{{userOperationHash, testAddressBytes(9)}}
+	db := testDatabase(t,
+		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"2", snapshotHash}}},
+		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]driver.Value{{int64(7), int64(1)}}},
+		queryExpectation{contains: "SELECT coverage.end_block::text AS snapshot_number", columns: columns(2), rows: [][]driver.Value{{"2", snapshotHash}}},
+		queryExpectation{contains: "SELECT kind, key, label, rank, canonical", columns: columns(5), rows: searchRows},
+		queryExpectation{
+			contains: "operation.block_number <= $4::numeric", columns: columns(2), rows: userOperationRows,
+			check: func(arguments []driver.NamedValue) error {
+				if len(arguments) != 4 || arguments[3].Value != "2" {
+					return fmt.Errorf("UserOperation search snapshot arguments = %#v", arguments)
+				}
+				return nil
+			},
+		},
+		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"2", snapshotHash}}},
+		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]driver.Value{{int64(7), int64(1)}}},
+		queryExpectation{contains: "SELECT 1 FROM canonical_blocks AS snapshot", columns: columns(1), rows: [][]driver.Value{{true}}},
+		queryExpectation{contains: "JOIN erc4337_covered_blocks AS required_start", columns: columns(1), rows: [][]driver.Value{{true}}},
+		queryExpectation{contains: "SELECT kind, key, label, rank, canonical", columns: columns(5), rows: searchRows},
+		queryExpectation{contains: "operation.block_number <= $4::numeric", columns: columns(2), rows: userOperationRows},
+	)
+	reader := testReader(t, db, Options{ChainID: 1, UserOperationRegistry: &registry})
+	first, cursor, err := reader.Search(t.Context(), common.BytesToHash(userOperationHash).Hex(), "", 1)
+	if err != nil || len(first) != 1 || first[0].Kind != gen.SearchResultKindTransaction || cursor == "" {
+		t.Fatalf("first UserOperation search page=%+v cursor=%q err=%v", first, cursor, err)
+	}
+	var decoded searchCursor
+	if err := publicquery.DecodeCursor(cursor, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if !decoded.UserOperationSnapshot || decoded.UserOperationSnapshotEnd != 2 ||
+		!strings.EqualFold(decoded.UserOperationSnapshotHash, common.BytesToHash(snapshotHash).Hex()) {
+		t.Fatalf("UserOperation search cursor = %+v", decoded)
+	}
+	second, next, err := reader.Search(t.Context(), common.BytesToHash(userOperationHash).Hex(), cursor, 1)
+	if err != nil || len(second) != 1 || second[0].Kind != gen.SearchResultKindUserOperation || next != "" {
+		t.Fatalf("second UserOperation search page=%+v cursor=%q err=%v", second, next, err)
 	}
 }
 

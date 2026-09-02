@@ -42,6 +42,11 @@ func TestDerivedJournalPayloadIsStableAndControlled(t *testing.T) {
 			"eip7702_authorizations",
 			"transaction_execution_code_resolutions",
 		}},
+		{stage: UserOperationStage, relations: []string{
+			"erc4337_user_operations",
+			"erc4337_user_operation_events",
+			"erc4337_user_operation_participants",
+		}},
 	}
 	for _, test := range tests {
 		t.Run(test.stage.String(), func(t *testing.T) {

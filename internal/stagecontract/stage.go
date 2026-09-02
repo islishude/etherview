@@ -36,12 +36,13 @@ func (stage ID) Validate() error {
 func (stage ID) String() string { return fmt.Sprintf("%s@%d", stage.Name, stage.Version) }
 
 var (
-	Proxy     = ID{Name: "proxy", Version: 2}
-	ABI       = ID{Name: "abi", Version: 4}
-	Token     = ID{Name: "token", Version: 1}
-	Stats     = ID{Name: "stats", Version: 3}
-	Trace     = ID{Name: "trace", Version: 3}
-	StateDiff = ID{Name: "state_diff", Version: 3}
+	Proxy         = ID{Name: "proxy", Version: 2}
+	ABI           = ID{Name: "abi", Version: 4}
+	Token         = ID{Name: "token", Version: 1}
+	Stats         = ID{Name: "stats", Version: 3}
+	Trace         = ID{Name: "trace", Version: 3}
+	StateDiff     = ID{Name: "state_diff", Version: 3}
+	UserOperation = ID{Name: "userop", Version: 1}
 )
 
 type ReplaySource struct {

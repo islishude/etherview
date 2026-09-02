@@ -4,6 +4,7 @@ package query
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/db/gen"
 	ensresolver "github.com/islishude/etherview/internal/ens"
+	"github.com/islishude/etherview/internal/erc4337"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/publicquery"
 )
@@ -39,22 +41,26 @@ type NameResolver interface {
 }
 
 type Options struct {
-	ChainID        uint64
-	StartBlock     uint64
-	LatestBlock    LatestBlockFunc
-	RuntimeStatus  RuntimeStatusFunc
-	OptionalStages gen.Completeness
-	NameResolver   NameResolver
+	ChainID               uint64
+	StartBlock            uint64
+	LatestBlock           LatestBlockFunc
+	RuntimeStatus         RuntimeStatusFunc
+	OptionalStages        gen.Completeness
+	NameResolver          NameResolver
+	UserOperationRegistry *erc4337.Registry
 }
 
 type PostgresReader struct {
-	db            *sql.DB
-	chainID       string
-	startBlock    uint64
-	latestBlock   LatestBlockFunc
-	runtimeStatus RuntimeStatusFunc
-	completeness  gen.Completeness
-	nameResolver  NameResolver
+	db                  *sql.DB
+	chainID             string
+	startBlock          uint64
+	latestBlock         LatestBlockFunc
+	runtimeStatus       RuntimeStatusFunc
+	completeness        gen.Completeness
+	nameResolver        NameResolver
+	userOperationDigest []byte
+	userOperationStart  uint64
+	userOperations      bool
 }
 
 var _ publicquery.Reader = (*PostgresReader)(nil)
@@ -77,8 +83,11 @@ func NewPostgresReader(db *sql.DB, options Options) (*PostgresReader, error) {
 	if completeness.State, err = normalizeOptionalStage(completeness.State); err != nil {
 		return nil, fmt.Errorf("state completeness: %w", err)
 	}
+	if completeness.UserOperations, err = normalizeOptionalStage(completeness.UserOperations); err != nil {
+		return nil, fmt.Errorf("UserOperation completeness: %w", err)
+	}
 	completeness.Core = gen.StageStateComplete
-	return &PostgresReader{
+	reader := &PostgresReader{
 		db:            db,
 		chainID:       strconv.FormatUint(options.ChainID, 10),
 		startBlock:    options.StartBlock,
@@ -86,7 +95,16 @@ func NewPostgresReader(db *sql.DB, options Options) (*PostgresReader, error) {
 		runtimeStatus: options.RuntimeStatus,
 		completeness:  completeness,
 		nameResolver:  options.NameResolver,
-	}, nil
+	}
+	if options.UserOperationRegistry != nil && len(options.UserOperationRegistry.Entries()) > 0 {
+		digest := options.UserOperationRegistry.Digest()
+		reader.userOperationDigest = append([]byte(nil), digest[:]...)
+		reader.userOperationStart = options.UserOperationRegistry.StartBlock(options.StartBlock)
+		reader.userOperations = true
+	} else {
+		reader.completeness.UserOperations = gen.StageStateUnavailable
+	}
+	return reader, nil
 }
 
 func (r *PostgresReader) Status(ctx context.Context) (publicquery.StatusSnapshot, error) {
@@ -185,6 +203,28 @@ func (r *PostgresReader) status(
 		snapshot.Completeness.Trace, err = currentTraceCompleteness(contiguousEnd.Valid, traceState)
 		if err != nil {
 			return publicquery.StatusSnapshot{}, err
+		}
+	}
+	if snapshot.Completeness.UserOperations == gen.StageStatePending && r.userOperations {
+		var coveredNumber string
+		var coveredHash []byte
+		err = queryer.QueryRowContext(
+			ctx, dbgen.ERC4337CurrentSnapshot,
+			strconv.FormatUint(r.userOperationStart, 10), r.chainID, r.userOperationDigest,
+		).Scan(&coveredNumber, &coveredHash)
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			// No continuous configured-digest range is published yet.
+		case err != nil:
+			return publicquery.StatusSnapshot{}, fmt.Errorf("read UserOperation status coverage: %w", err)
+		default:
+			covered, parseErr := parseDecimalUint64(coveredNumber)
+			if parseErr != nil || len(coveredHash) != common.HashLength {
+				return publicquery.StatusSnapshot{}, errors.New("stored UserOperation status coverage is invalid")
+			}
+			if contiguousEnd.Valid && covered >= snapshot.IndexedBlock {
+				snapshot.Completeness.UserOperations = gen.StageStateComplete
+			}
 		}
 	}
 
@@ -433,6 +473,12 @@ type resolvedNameGate struct {
 	ObservationID int64
 }
 
+type userOperationSearchSnapshot struct {
+	available bool
+	end       uint64
+	hash      string
+}
+
 func (r *PostgresReader) search(
 	ctx context.Context,
 	value, searchValue, encodedCursor string,
@@ -455,6 +501,13 @@ func (r *PostgresReader) search(
 	if generation < 0 || minGeneration < 0 || minGeneration > generation {
 		return nil, "", errors.New("search catalog generation is invalid")
 	}
+	userOperations := userOperationSearchSnapshot{}
+	if encodedCursor == "" {
+		userOperations, err = r.currentSearchUserOperationSnapshot(ctx, tx)
+		if err != nil {
+			return nil, "", err
+		}
+	}
 	var boundary *searchCursor
 	if encodedCursor != "" {
 		var decoded searchCursor
@@ -472,6 +525,11 @@ func (r *PostgresReader) search(
 		}
 		if gate.Name != "" {
 			searchValue = gate.Name
+		}
+		userOperations = userOperationSearchSnapshot{
+			available: decoded.UserOperationSnapshot,
+			end:       decoded.UserOperationSnapshotEnd,
+			hash:      decoded.UserOperationSnapshotHash,
 		}
 		boundary = &decoded
 	}
@@ -491,7 +549,7 @@ func (r *PostgresReader) search(
 	if parseErr != nil {
 		return nil, "", parseErr
 	} else if isHash {
-		results, err = r.searchHash(ctx, tx, hash, generation, limit+1)
+		results, err = r.searchHash(ctx, tx, hash, generation, limit+1, userOperations)
 	} else if _, addressErr := ethrpc.ParseAddress(value); addressErr == nil {
 		results, err = r.searchText(
 			ctx, tx, searchValue, snapshot.SnapshotNumber, generation, gate.ObservationID, boundary, limit+2,
@@ -546,7 +604,16 @@ func (r *PostgresReader) search(
 	next, err := publicquery.EncodeCursor(searchCursor{
 		ChainID: r.chainID, SnapshotNumber: snapshot.SnapshotNumber, SnapshotHash: snapshot.SnapshotHash,
 		Generation: generation, Query: strings.ToLower(value),
-		ResolvedName: gate.Name, ResolvedNameAddress: gate.Address,
+		UserOperationDigest: func() string {
+			if r.userOperations {
+				return hex.EncodeToString(r.userOperationDigest)
+			}
+			return ""
+		}(),
+		UserOperationSnapshot:     userOperations.available,
+		UserOperationSnapshotEnd:  userOperations.end,
+		UserOperationSnapshotHash: userOperations.hash,
+		ResolvedName:              gate.Name, ResolvedNameAddress: gate.Address,
 		ResolvedNameObservationID: gate.ObservationID, ResolvedNameSource: gate.Source,
 		AfterRank: last.Rank, AfterKind: string(last.Kind), AfterKey: canonicalSearchBoundaryKey(last.Key),
 	})
@@ -554,6 +621,27 @@ func (r *PostgresReader) search(
 		return nil, "", fmt.Errorf("encode search cursor: %w", err)
 	}
 	return results, next, nil
+}
+
+func (r *PostgresReader) currentSearchUserOperationSnapshot(
+	ctx context.Context,
+	tx *sql.Tx,
+) (userOperationSearchSnapshot, error) {
+	if !r.userOperations {
+		return userOperationSearchSnapshot{}, nil
+	}
+	snapshot, err := r.currentUserOperationSnapshot(ctx, tx)
+	if errors.Is(err, publicquery.ErrNotReady) {
+		return userOperationSearchSnapshot{}, nil
+	}
+	if err != nil {
+		return userOperationSearchSnapshot{}, err
+	}
+	return userOperationSearchSnapshot{
+		available: true,
+		end:       snapshot.SnapshotNumber,
+		hash:      snapshot.SnapshotHash,
+	}, nil
 }
 
 type capabilityDetailer interface {

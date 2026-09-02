@@ -114,7 +114,7 @@ func (executor *Executor) Reindex(ctx context.Context, request Request) error {
 	stage, ok := replayStage(request.Stage)
 	if !ok {
 		return fmt.Errorf(
-			"%w: reindex only supports proxy v2, abi v4, token v1, stats v3, trace v3, or state_diff v3, got %q",
+			"%w: reindex only supports proxy v2, abi v4, token v1, stats v3, trace v3, state_diff v3, or userop v1, got %q",
 			ErrInvalidRequest, request.Stage,
 		)
 	}
@@ -185,6 +185,8 @@ func replayStage(name string) (stagecontract.ID, bool) {
 		return stagecontract.Trace, true
 	case "state_diff":
 		return stagecontract.StateDiff, true
+	case "userop":
+		return stagecontract.UserOperation, true
 	default:
 		return stagecontract.ID{}, false
 	}

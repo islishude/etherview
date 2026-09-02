@@ -49,6 +49,7 @@ export const chainResources = {
             sourcify: "Sourcify interoperability",
             nftMetadata: "NFT metadata",
             pricing: "External pricing",
+            userOperations: "ERC-4337 UserOperations",
           },
           capabilityName: {
             genesisState: "Genesis state",
@@ -218,6 +219,7 @@ export const chainResources = {
             sourcify: "Sourcify 互操作",
             nftMetadata: "NFT 元数据",
             pricing: "外部价格",
+            userOperations: "ERC-4337 UserOperation",
           },
           capabilityName: {
             genesisState: "创世状态",

@@ -344,6 +344,21 @@ func clearStageReplayStateTx(ctx context.Context, tx *sql.Tx, job Job) error {
 			return fmt.Errorf("clear replayed ABI output: %w", err)
 		}
 	}
+	if job.Stage == UserOperationStage {
+		var removed int
+		if err := tx.QueryRowContext(
+			ctx, dbgen.ERC4337RemoveBlockCoverage,
+			job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+		).Scan(&removed); err != nil {
+			return fmt.Errorf("clear replayed UserOperation coverage: %w", err)
+		}
+		if _, err := tx.ExecContext(
+			ctx, dbgen.ERC4337ClearReplayOutputs,
+			job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+		); err != nil {
+			return fmt.Errorf("clear replayed UserOperation output: %w", err)
+		}
+	}
 	if err := requestInvalidatedEvidenceDependentsTx(ctx, tx, job); err != nil {
 		return err
 	}

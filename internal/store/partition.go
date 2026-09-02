@@ -65,12 +65,30 @@ var blockPartitionSpecs = []blockPartitionSpec{
 		NameCode: "eei", Dependencies: []string{"transaction_inclusions"},
 		IntroducedBy: "0048_transaction_effective_execution_identity",
 	},
+	{
+		Parent: "erc4337_user_operations", Default: "erc4337_user_operations_default",
+		NameCode: "uop", Dependencies: []string{"transaction_inclusions"},
+		IntroducedBy: "0063_erc4337_user_operations",
+	},
+	{
+		Parent: "erc4337_user_operation_events", Default: "erc4337_user_operation_events_default",
+		NameCode: "uoe", Dependencies: []string{"erc4337_user_operations"},
+		IntroducedBy: "0063_erc4337_user_operations",
+	},
+	{
+		Parent: "erc4337_user_operation_participants", Default: "erc4337_user_operation_participants_default",
+		NameCode: "uopart", Dependencies: []string{"erc4337_user_operations"},
+		IntroducedBy: "0063_erc4337_user_operations",
+	},
 	{Parent: "address_activities", Default: "address_activities_default", NameCode: "act"},
 }
 
 // Rows must leave child tables before their referenced parents. This ordering
 // is the reverse dependency order of blockPartitionSpecs.
 var blockPartitionDeleteOrder = []string{
+	"erc4337_user_operation_events",
+	"erc4337_user_operation_participants",
+	"erc4337_user_operations",
 	"token_balance_deltas",
 	"token_events",
 	"trace_log_attributions",

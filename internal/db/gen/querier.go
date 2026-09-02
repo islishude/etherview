@@ -113,6 +113,25 @@ type Querier interface {
 	DerivedVerifyRequestBackfill(ctx context.Context, column1 pgtype.Numeric, creatorAddress []byte, reason string) ([]DerivedVerifyRequestBackfillRow, error)
 	DerivedVerifyRetryForwardBlock(ctx context.Context, arg DerivedVerifyRetryForwardBlockParams) error
 	DerivedVerifyRetryScan(ctx context.Context, arg DerivedVerifyRetryScanParams) error
+	ERC4337AddCoveredBlock(ctx context.Context, arg ERC4337AddCoveredBlockParams) (interface{}, error)
+	ERC4337CanonicalTransactionBlock(ctx context.Context, chainID pgtype.Numeric, transactionHash []byte) (ERC4337CanonicalTransactionBlockRow, error)
+	ERC4337ClearReplayOutputs(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error
+	ERC4337CurrentSnapshot(ctx context.Context, indexStart pgtype.Numeric, chainID pgtype.Numeric, configurationDigest []byte) (ERC4337CurrentSnapshotRow, error)
+	ERC4337DeleteBlockOutput(ctx context.Context, arg ERC4337DeleteBlockOutputParams) error
+	ERC4337GetUserOperation(ctx context.Context, chainID pgtype.Numeric, configurationDigest []byte, userOpHash []byte) (ERC4337GetUserOperationRow, error)
+	ERC4337InsertUserOperation(ctx context.Context, arg ERC4337InsertUserOperationParams) error
+	ERC4337InsertUserOperationEvent(ctx context.Context, arg ERC4337InsertUserOperationEventParams) error
+	ERC4337InsertUserOperationParticipant(ctx context.Context, arg ERC4337InsertUserOperationParticipantParams) error
+	ERC4337ListAddressUserOperations(ctx context.Context, arg ERC4337ListAddressUserOperationsParams) ([]ERC4337ListAddressUserOperationsRow, error)
+	ERC4337ListTransactionUserOperations(ctx context.Context, arg ERC4337ListTransactionUserOperationsParams) ([]ERC4337ListTransactionUserOperationsRow, error)
+	ERC4337ListUserOperationEvents(ctx context.Context, arg ERC4337ListUserOperationEventsParams) ([]ERC4337ListUserOperationEventsRow, error)
+	ERC4337ListUserOperations(ctx context.Context, arg ERC4337ListUserOperationsParams) ([]ERC4337ListUserOperationsRow, error)
+	ERC4337RemoveBlockCoverage(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) (int32, error)
+	ERC4337RemoveCoveredBlock(ctx context.Context, chainID pgtype.Numeric, configurationDigest []byte, blockNumber pgtype.Numeric) (interface{}, error)
+	ERC4337SearchUserOperation(ctx context.Context, arg ERC4337SearchUserOperationParams) (ERC4337SearchUserOperationRow, error)
+	ERC4337SourceBlock(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([]byte, error)
+	ERC4337SourceReceipts(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([][]byte, error)
+	ERC4337ValidateSnapshot(ctx context.Context, arg ERC4337ValidateSnapshotParams) (bool, error)
 	EnrichClaimCandidate(ctx context.Context, arg EnrichClaimCandidateParams) ([]EnrichClaimCandidateRow, error)
 	EnrichClearABIReplayOutputs(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, column3 []byte) error
 	EnrichInlineAuthenticateCloneCreationStatement1(ctx context.Context, arg EnrichInlineAuthenticateCloneCreationStatement1Params) ([]EnrichInlineAuthenticateCloneCreationStatement1Row, error)

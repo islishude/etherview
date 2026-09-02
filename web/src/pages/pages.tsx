@@ -745,6 +745,7 @@ export function stageLabel(value: string, t: Translate): string {
     case "trace": return t("stage.trace");
     case "metadata": return t("stage.metadata");
     case "state": return t("stage.state");
+    case "user_operations": return t("feature.userOperations");
     default: return value;
   }
 }
@@ -799,6 +800,7 @@ export function featureLabel(value: string, t: Translate): string {
     case "sourcify": return t("feature.sourcify");
     case "nft_metadata": return t("feature.nftMetadata");
     case "pricing": return t("feature.pricing");
+    case "user_operations": return t("feature.userOperations");
     default: return value;
   }
 }
@@ -834,6 +836,7 @@ export function searchKindLabel(value: SearchResult["kind"], t: Translate): stri
   switch (value) {
     case "block": return t("searchKind.block");
     case "transaction": return t("searchKind.transaction");
+    case "user_operation": return t("searchKind.user_operation");
     case "address": return t("searchKind.address");
     case "contract": return t("searchKind.contract");
     case "token": return t("searchKind.token");
@@ -997,6 +1000,8 @@ function SearchResultLink({ result }: { result: SearchResult }) {
       return <Link className="search-result" to="/blocks/$blockID" params={{ blockID: result.key }}>{content}</Link>;
     case "transaction":
       return <Link className="search-result" to="/tx/$hash" params={{ hash: result.key }} search={{ tab: "overview" }}>{content}</Link>;
+    case "user_operation":
+      return <Link className="search-result" to="/user-op/$hash" params={{ hash: result.key }}>{content}</Link>;
     case "address":
       return <Link className="search-result" to="/address/$address" params={{ address: result.key }}>{content}</Link>;
     case "contract":

@@ -847,6 +847,257 @@ type Erc20BalanceReconciliation struct {
 	ObservedAt   pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
 }
 
+type Erc4337CoverageRange struct {
+	ChainID             pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	ConfigurationDigest []byte             `db:"configuration_digest" json:"configuration_digest"`
+	StartBlock          pgtype.Numeric     `db:"start_block" json:"start_block"`
+	StartBlockHash      []byte             `db:"start_block_hash" json:"start_block_hash"`
+	EndBlock            pgtype.Numeric     `db:"end_block" json:"end_block"`
+	EndBlockHash        []byte             `db:"end_block_hash" json:"end_block_hash"`
+	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type Erc4337CoveredBlock struct {
+	ChainID             pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	ConfigurationDigest []byte             `db:"configuration_digest" json:"configuration_digest"`
+	BlockNumber         pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash           []byte             `db:"block_hash" json:"block_hash"`
+	DurableJobID        int64              `db:"durable_job_id" json:"durable_job_id"`
+	JobGeneration       int64              `db:"job_generation" json:"job_generation"`
+	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type Erc4337UserOperation struct {
+	ChainID                       pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	ConfigurationDigest           []byte             `db:"configuration_digest" json:"configuration_digest"`
+	BlockNumber                   pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash                     []byte             `db:"block_hash" json:"block_hash"`
+	TransactionHash               []byte             `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex              int64              `db:"transaction_index" json:"transaction_index"`
+	OperationIndex                int64              `db:"operation_index" json:"operation_index"`
+	EventLogIndex                 int64              `db:"event_log_index" json:"event_log_index"`
+	UserOpHash                    []byte             `db:"user_op_hash" json:"user_op_hash"`
+	EntryPoint                    []byte             `db:"entry_point" json:"entry_point"`
+	EntryPointVersion             string             `db:"entry_point_version" json:"entry_point_version"`
+	Sender                        []byte             `db:"sender" json:"sender"`
+	Nonce                         pgtype.Numeric     `db:"nonce" json:"nonce"`
+	NonceKey                      pgtype.Numeric     `db:"nonce_key" json:"nonce_key"`
+	NonceSequence                 pgtype.Numeric     `db:"nonce_sequence" json:"nonce_sequence"`
+	Bundler                       []byte             `db:"bundler" json:"bundler"`
+	Beneficiary                   []byte             `db:"beneficiary" json:"beneficiary"`
+	InitKind                      string             `db:"init_kind" json:"init_kind"`
+	Factory                       []byte             `db:"factory" json:"factory"`
+	Paymaster                     []byte             `db:"paymaster" json:"paymaster"`
+	Aggregator                    []byte             `db:"aggregator" json:"aggregator"`
+	Success                       bool               `db:"success" json:"success"`
+	ActualGasCost                 pgtype.Numeric     `db:"actual_gas_cost" json:"actual_gas_cost"`
+	ActualGasUsed                 pgtype.Numeric     `db:"actual_gas_used" json:"actual_gas_used"`
+	CallGasLimit                  pgtype.Numeric     `db:"call_gas_limit" json:"call_gas_limit"`
+	VerificationGasLimit          pgtype.Numeric     `db:"verification_gas_limit" json:"verification_gas_limit"`
+	PreVerificationGas            pgtype.Numeric     `db:"pre_verification_gas" json:"pre_verification_gas"`
+	MaxFeePerGas                  pgtype.Numeric     `db:"max_fee_per_gas" json:"max_fee_per_gas"`
+	MaxPriorityFeePerGas          pgtype.Numeric     `db:"max_priority_fee_per_gas" json:"max_priority_fee_per_gas"`
+	PaymasterVerificationGasLimit pgtype.Numeric     `db:"paymaster_verification_gas_limit" json:"paymaster_verification_gas_limit"`
+	PaymasterPostOpGasLimit       pgtype.Numeric     `db:"paymaster_post_op_gas_limit" json:"paymaster_post_op_gas_limit"`
+	InitCode                      []byte             `db:"init_code" json:"init_code"`
+	FactoryData                   []byte             `db:"factory_data" json:"factory_data"`
+	CallData                      []byte             `db:"call_data" json:"call_data"`
+	PaymasterAndData              []byte             `db:"paymaster_and_data" json:"paymaster_and_data"`
+	PaymasterData                 []byte             `db:"paymaster_data" json:"paymaster_data"`
+	PaymasterSignature            []byte             `db:"paymaster_signature" json:"paymaster_signature"`
+	Signature                     []byte             `db:"signature" json:"signature"`
+	AccountGasLimits              []byte             `db:"account_gas_limits" json:"account_gas_limits"`
+	GasFees                       []byte             `db:"gas_fees" json:"gas_fees"`
+	AggregatedSignature           []byte             `db:"aggregated_signature" json:"aggregated_signature"`
+	Canonical                     bool               `db:"canonical" json:"canonical"`
+	CreatedAt                     pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type Erc4337UserOperationEvent struct {
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	ConfigurationDigest []byte         `db:"configuration_digest" json:"configuration_digest"`
+	BlockNumber         pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash           []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash     []byte         `db:"transaction_hash" json:"transaction_hash"`
+	OperationIndex      int64          `db:"operation_index" json:"operation_index"`
+	LogIndex            int64          `db:"log_index" json:"log_index"`
+	EventKind           string         `db:"event_kind" json:"event_kind"`
+	Sender              []byte         `db:"sender" json:"sender"`
+	Nonce               pgtype.Numeric `db:"nonce" json:"nonce"`
+	RelatedAddress      []byte         `db:"related_address" json:"related_address"`
+	Paymaster           []byte         `db:"paymaster" json:"paymaster"`
+	RawData             []byte         `db:"raw_data" json:"raw_data"`
+	Reason              *string        `db:"reason" json:"reason"`
+	PanicCode           pgtype.Numeric `db:"panic_code" json:"panic_code"`
+	Canonical           bool           `db:"canonical" json:"canonical"`
+}
+
+type Erc4337UserOperationEventsDefault struct {
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	ConfigurationDigest []byte         `db:"configuration_digest" json:"configuration_digest"`
+	BlockNumber         pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash           []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash     []byte         `db:"transaction_hash" json:"transaction_hash"`
+	OperationIndex      int64          `db:"operation_index" json:"operation_index"`
+	LogIndex            int64          `db:"log_index" json:"log_index"`
+	EventKind           string         `db:"event_kind" json:"event_kind"`
+	Sender              []byte         `db:"sender" json:"sender"`
+	Nonce               pgtype.Numeric `db:"nonce" json:"nonce"`
+	RelatedAddress      []byte         `db:"related_address" json:"related_address"`
+	Paymaster           []byte         `db:"paymaster" json:"paymaster"`
+	RawData             []byte         `db:"raw_data" json:"raw_data"`
+	Reason              *string        `db:"reason" json:"reason"`
+	PanicCode           pgtype.Numeric `db:"panic_code" json:"panic_code"`
+	Canonical           bool           `db:"canonical" json:"canonical"`
+}
+
+type Erc4337UserOperationEventsP01000000 struct {
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	ConfigurationDigest []byte         `db:"configuration_digest" json:"configuration_digest"`
+	BlockNumber         pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash           []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash     []byte         `db:"transaction_hash" json:"transaction_hash"`
+	OperationIndex      int64          `db:"operation_index" json:"operation_index"`
+	LogIndex            int64          `db:"log_index" json:"log_index"`
+	EventKind           string         `db:"event_kind" json:"event_kind"`
+	Sender              []byte         `db:"sender" json:"sender"`
+	Nonce               pgtype.Numeric `db:"nonce" json:"nonce"`
+	RelatedAddress      []byte         `db:"related_address" json:"related_address"`
+	Paymaster           []byte         `db:"paymaster" json:"paymaster"`
+	RawData             []byte         `db:"raw_data" json:"raw_data"`
+	Reason              *string        `db:"reason" json:"reason"`
+	PanicCode           pgtype.Numeric `db:"panic_code" json:"panic_code"`
+	Canonical           bool           `db:"canonical" json:"canonical"`
+}
+
+type Erc4337UserOperationParticipant struct {
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	ConfigurationDigest []byte         `db:"configuration_digest" json:"configuration_digest"`
+	BlockNumber         pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash           []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash     []byte         `db:"transaction_hash" json:"transaction_hash"`
+	OperationIndex      int64          `db:"operation_index" json:"operation_index"`
+	Address             []byte         `db:"address" json:"address"`
+	Role                string         `db:"role" json:"role"`
+	Canonical           bool           `db:"canonical" json:"canonical"`
+}
+
+type Erc4337UserOperationParticipantsDefault struct {
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	ConfigurationDigest []byte         `db:"configuration_digest" json:"configuration_digest"`
+	BlockNumber         pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash           []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash     []byte         `db:"transaction_hash" json:"transaction_hash"`
+	OperationIndex      int64          `db:"operation_index" json:"operation_index"`
+	Address             []byte         `db:"address" json:"address"`
+	Role                string         `db:"role" json:"role"`
+	Canonical           bool           `db:"canonical" json:"canonical"`
+}
+
+type Erc4337UserOperationParticipantsP01000000 struct {
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	ConfigurationDigest []byte         `db:"configuration_digest" json:"configuration_digest"`
+	BlockNumber         pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash           []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash     []byte         `db:"transaction_hash" json:"transaction_hash"`
+	OperationIndex      int64          `db:"operation_index" json:"operation_index"`
+	Address             []byte         `db:"address" json:"address"`
+	Role                string         `db:"role" json:"role"`
+	Canonical           bool           `db:"canonical" json:"canonical"`
+}
+
+type Erc4337UserOperationsDefault struct {
+	ChainID                       pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	ConfigurationDigest           []byte             `db:"configuration_digest" json:"configuration_digest"`
+	BlockNumber                   pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash                     []byte             `db:"block_hash" json:"block_hash"`
+	TransactionHash               []byte             `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex              int64              `db:"transaction_index" json:"transaction_index"`
+	OperationIndex                int64              `db:"operation_index" json:"operation_index"`
+	EventLogIndex                 int64              `db:"event_log_index" json:"event_log_index"`
+	UserOpHash                    []byte             `db:"user_op_hash" json:"user_op_hash"`
+	EntryPoint                    []byte             `db:"entry_point" json:"entry_point"`
+	EntryPointVersion             string             `db:"entry_point_version" json:"entry_point_version"`
+	Sender                        []byte             `db:"sender" json:"sender"`
+	Nonce                         pgtype.Numeric     `db:"nonce" json:"nonce"`
+	NonceKey                      pgtype.Numeric     `db:"nonce_key" json:"nonce_key"`
+	NonceSequence                 pgtype.Numeric     `db:"nonce_sequence" json:"nonce_sequence"`
+	Bundler                       []byte             `db:"bundler" json:"bundler"`
+	Beneficiary                   []byte             `db:"beneficiary" json:"beneficiary"`
+	InitKind                      string             `db:"init_kind" json:"init_kind"`
+	Factory                       []byte             `db:"factory" json:"factory"`
+	Paymaster                     []byte             `db:"paymaster" json:"paymaster"`
+	Aggregator                    []byte             `db:"aggregator" json:"aggregator"`
+	Success                       bool               `db:"success" json:"success"`
+	ActualGasCost                 pgtype.Numeric     `db:"actual_gas_cost" json:"actual_gas_cost"`
+	ActualGasUsed                 pgtype.Numeric     `db:"actual_gas_used" json:"actual_gas_used"`
+	CallGasLimit                  pgtype.Numeric     `db:"call_gas_limit" json:"call_gas_limit"`
+	VerificationGasLimit          pgtype.Numeric     `db:"verification_gas_limit" json:"verification_gas_limit"`
+	PreVerificationGas            pgtype.Numeric     `db:"pre_verification_gas" json:"pre_verification_gas"`
+	MaxFeePerGas                  pgtype.Numeric     `db:"max_fee_per_gas" json:"max_fee_per_gas"`
+	MaxPriorityFeePerGas          pgtype.Numeric     `db:"max_priority_fee_per_gas" json:"max_priority_fee_per_gas"`
+	PaymasterVerificationGasLimit pgtype.Numeric     `db:"paymaster_verification_gas_limit" json:"paymaster_verification_gas_limit"`
+	PaymasterPostOpGasLimit       pgtype.Numeric     `db:"paymaster_post_op_gas_limit" json:"paymaster_post_op_gas_limit"`
+	InitCode                      []byte             `db:"init_code" json:"init_code"`
+	FactoryData                   []byte             `db:"factory_data" json:"factory_data"`
+	CallData                      []byte             `db:"call_data" json:"call_data"`
+	PaymasterAndData              []byte             `db:"paymaster_and_data" json:"paymaster_and_data"`
+	PaymasterData                 []byte             `db:"paymaster_data" json:"paymaster_data"`
+	PaymasterSignature            []byte             `db:"paymaster_signature" json:"paymaster_signature"`
+	Signature                     []byte             `db:"signature" json:"signature"`
+	AccountGasLimits              []byte             `db:"account_gas_limits" json:"account_gas_limits"`
+	GasFees                       []byte             `db:"gas_fees" json:"gas_fees"`
+	AggregatedSignature           []byte             `db:"aggregated_signature" json:"aggregated_signature"`
+	Canonical                     bool               `db:"canonical" json:"canonical"`
+	CreatedAt                     pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type Erc4337UserOperationsP01000000 struct {
+	ChainID                       pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	ConfigurationDigest           []byte             `db:"configuration_digest" json:"configuration_digest"`
+	BlockNumber                   pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash                     []byte             `db:"block_hash" json:"block_hash"`
+	TransactionHash               []byte             `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex              int64              `db:"transaction_index" json:"transaction_index"`
+	OperationIndex                int64              `db:"operation_index" json:"operation_index"`
+	EventLogIndex                 int64              `db:"event_log_index" json:"event_log_index"`
+	UserOpHash                    []byte             `db:"user_op_hash" json:"user_op_hash"`
+	EntryPoint                    []byte             `db:"entry_point" json:"entry_point"`
+	EntryPointVersion             string             `db:"entry_point_version" json:"entry_point_version"`
+	Sender                        []byte             `db:"sender" json:"sender"`
+	Nonce                         pgtype.Numeric     `db:"nonce" json:"nonce"`
+	NonceKey                      pgtype.Numeric     `db:"nonce_key" json:"nonce_key"`
+	NonceSequence                 pgtype.Numeric     `db:"nonce_sequence" json:"nonce_sequence"`
+	Bundler                       []byte             `db:"bundler" json:"bundler"`
+	Beneficiary                   []byte             `db:"beneficiary" json:"beneficiary"`
+	InitKind                      string             `db:"init_kind" json:"init_kind"`
+	Factory                       []byte             `db:"factory" json:"factory"`
+	Paymaster                     []byte             `db:"paymaster" json:"paymaster"`
+	Aggregator                    []byte             `db:"aggregator" json:"aggregator"`
+	Success                       bool               `db:"success" json:"success"`
+	ActualGasCost                 pgtype.Numeric     `db:"actual_gas_cost" json:"actual_gas_cost"`
+	ActualGasUsed                 pgtype.Numeric     `db:"actual_gas_used" json:"actual_gas_used"`
+	CallGasLimit                  pgtype.Numeric     `db:"call_gas_limit" json:"call_gas_limit"`
+	VerificationGasLimit          pgtype.Numeric     `db:"verification_gas_limit" json:"verification_gas_limit"`
+	PreVerificationGas            pgtype.Numeric     `db:"pre_verification_gas" json:"pre_verification_gas"`
+	MaxFeePerGas                  pgtype.Numeric     `db:"max_fee_per_gas" json:"max_fee_per_gas"`
+	MaxPriorityFeePerGas          pgtype.Numeric     `db:"max_priority_fee_per_gas" json:"max_priority_fee_per_gas"`
+	PaymasterVerificationGasLimit pgtype.Numeric     `db:"paymaster_verification_gas_limit" json:"paymaster_verification_gas_limit"`
+	PaymasterPostOpGasLimit       pgtype.Numeric     `db:"paymaster_post_op_gas_limit" json:"paymaster_post_op_gas_limit"`
+	InitCode                      []byte             `db:"init_code" json:"init_code"`
+	FactoryData                   []byte             `db:"factory_data" json:"factory_data"`
+	CallData                      []byte             `db:"call_data" json:"call_data"`
+	PaymasterAndData              []byte             `db:"paymaster_and_data" json:"paymaster_and_data"`
+	PaymasterData                 []byte             `db:"paymaster_data" json:"paymaster_data"`
+	PaymasterSignature            []byte             `db:"paymaster_signature" json:"paymaster_signature"`
+	Signature                     []byte             `db:"signature" json:"signature"`
+	AccountGasLimits              []byte             `db:"account_gas_limits" json:"account_gas_limits"`
+	GasFees                       []byte             `db:"gas_fees" json:"gas_fees"`
+	AggregatedSignature           []byte             `db:"aggregated_signature" json:"aggregated_signature"`
+	Canonical                     bool               `db:"canonical" json:"canonical"`
+	CreatedAt                     pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type Erc721OwnerReconciliation struct {
 	ChainID      pgtype.Numeric     `db:"chain_id" json:"chain_id"`
 	TokenAddress []byte             `db:"token_address" json:"token_address"`
@@ -1337,6 +1588,57 @@ type PublishedDiamondLoupeSnapshot struct {
 	DurableJobID            *int64             `db:"durable_job_id" json:"durable_job_id"`
 	JobGeneration           *int64             `db:"job_generation" json:"job_generation"`
 	ObservedAt              pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
+}
+
+type PublishedErc4337UserOperation struct {
+	ChainID                       pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	ConfigurationDigest           []byte             `db:"configuration_digest" json:"configuration_digest"`
+	BlockNumber                   pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash                     []byte             `db:"block_hash" json:"block_hash"`
+	TransactionHash               []byte             `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex              int64              `db:"transaction_index" json:"transaction_index"`
+	OperationIndex                int64              `db:"operation_index" json:"operation_index"`
+	EventLogIndex                 int64              `db:"event_log_index" json:"event_log_index"`
+	UserOpHash                    []byte             `db:"user_op_hash" json:"user_op_hash"`
+	EntryPoint                    []byte             `db:"entry_point" json:"entry_point"`
+	EntryPointVersion             string             `db:"entry_point_version" json:"entry_point_version"`
+	Sender                        []byte             `db:"sender" json:"sender"`
+	Nonce                         pgtype.Numeric     `db:"nonce" json:"nonce"`
+	NonceKey                      pgtype.Numeric     `db:"nonce_key" json:"nonce_key"`
+	NonceSequence                 pgtype.Numeric     `db:"nonce_sequence" json:"nonce_sequence"`
+	Bundler                       []byte             `db:"bundler" json:"bundler"`
+	Beneficiary                   []byte             `db:"beneficiary" json:"beneficiary"`
+	InitKind                      string             `db:"init_kind" json:"init_kind"`
+	Factory                       []byte             `db:"factory" json:"factory"`
+	Paymaster                     []byte             `db:"paymaster" json:"paymaster"`
+	Aggregator                    []byte             `db:"aggregator" json:"aggregator"`
+	Success                       bool               `db:"success" json:"success"`
+	ActualGasCost                 pgtype.Numeric     `db:"actual_gas_cost" json:"actual_gas_cost"`
+	ActualGasUsed                 pgtype.Numeric     `db:"actual_gas_used" json:"actual_gas_used"`
+	CallGasLimit                  pgtype.Numeric     `db:"call_gas_limit" json:"call_gas_limit"`
+	VerificationGasLimit          pgtype.Numeric     `db:"verification_gas_limit" json:"verification_gas_limit"`
+	PreVerificationGas            pgtype.Numeric     `db:"pre_verification_gas" json:"pre_verification_gas"`
+	MaxFeePerGas                  pgtype.Numeric     `db:"max_fee_per_gas" json:"max_fee_per_gas"`
+	MaxPriorityFeePerGas          pgtype.Numeric     `db:"max_priority_fee_per_gas" json:"max_priority_fee_per_gas"`
+	PaymasterVerificationGasLimit pgtype.Numeric     `db:"paymaster_verification_gas_limit" json:"paymaster_verification_gas_limit"`
+	PaymasterPostOpGasLimit       pgtype.Numeric     `db:"paymaster_post_op_gas_limit" json:"paymaster_post_op_gas_limit"`
+	InitCode                      []byte             `db:"init_code" json:"init_code"`
+	FactoryData                   []byte             `db:"factory_data" json:"factory_data"`
+	CallData                      []byte             `db:"call_data" json:"call_data"`
+	PaymasterAndData              []byte             `db:"paymaster_and_data" json:"paymaster_and_data"`
+	PaymasterData                 []byte             `db:"paymaster_data" json:"paymaster_data"`
+	PaymasterSignature            []byte             `db:"paymaster_signature" json:"paymaster_signature"`
+	Signature                     []byte             `db:"signature" json:"signature"`
+	AccountGasLimits              []byte             `db:"account_gas_limits" json:"account_gas_limits"`
+	GasFees                       []byte             `db:"gas_fees" json:"gas_fees"`
+	AggregatedSignature           []byte             `db:"aggregated_signature" json:"aggregated_signature"`
+	Canonical                     bool               `db:"canonical" json:"canonical"`
+	CreatedAt                     pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	BlockTimestamp                pgtype.Numeric     `db:"block_timestamp" json:"block_timestamp"`
+	SafeNumber                    pgtype.Numeric     `db:"safe_number" json:"safe_number"`
+	FinalizedNumber               pgtype.Numeric     `db:"finalized_number" json:"finalized_number"`
+	DurableJobID                  int64              `db:"durable_job_id" json:"durable_job_id"`
+	JobGeneration                 int64              `db:"job_generation" json:"job_generation"`
 }
 
 type Receipt struct {

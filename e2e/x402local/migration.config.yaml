@@ -31,7 +31,11 @@ features:
   user_api_keys: false
   api_billing: false
   x402_topups: false
+  user_operations: false
   proxy_detection_v2: false
   safe_proxy_detection: false
   diamond_proxy_detection: false
   proxy_detection_v2_public: false
+
+erc4337:
+  entry_points: []

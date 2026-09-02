@@ -1,7 +1,10 @@
 package config
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"slices"
 	"strings"
 	"time"
@@ -187,6 +190,13 @@ func applyStringEnvironment(cfg *Config, lookup func(string) (string, bool), rea
 	setString(lookup, "ENS_CUSTOM_UNIVERSAL_RESOLVER", &cfg.ENS.Custom.UniversalResolver)
 	setString(lookup, "ENS_CUSTOM_COIN_TYPE", &cfg.ENS.Custom.CoinType)
 	setString(lookup, "METADATA_IPFS_GATEWAY", &cfg.Metadata.IPFSGateway)
+	if value, ok := lookup(envPrefix + "ERC4337_ENTRY_POINTS"); ok && strings.TrimSpace(value) != "" {
+		entries, err := parseERC4337EntryPoints(value)
+		if err != nil {
+			return err
+		}
+		cfg.ERC4337.EntryPoints = entries
+	}
 	if value, ok := lookup(envPrefix + "ENS_OFFICIAL_GATEWAYS"); ok {
 		cfg.ENS.OfficialGateways = splitCSV(value)
 	}
@@ -194,6 +204,23 @@ func applyStringEnvironment(cfg *Config, lookup func(string) (string, bool), rea
 		cfg.ENS.Custom.Gateways = splitCSV(value)
 	}
 	return nil
+}
+
+func parseERC4337EntryPoints(value string) ([]ERC4337EntryPointConfig, error) {
+	if len(value) > 16<<10 {
+		return nil, errors.New("ETHERVIEW_ERC4337_ENTRY_POINTS exceeds 16384 bytes")
+	}
+	decoder := json.NewDecoder(strings.NewReader(value))
+	decoder.DisallowUnknownFields()
+	var entries []ERC4337EntryPointConfig
+	if err := decoder.Decode(&entries); err != nil {
+		return nil, fmt.Errorf("ETHERVIEW_ERC4337_ENTRY_POINTS must be a JSON array: %w", err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return nil, errors.New("ETHERVIEW_ERC4337_ENTRY_POINTS contains trailing data")
+	}
+	return entries, nil
 }
 
 func applyNumericEnvironment(cfg *Config, lookup func(string) (string, bool)) error {
@@ -413,6 +440,7 @@ func applyBooleanEnvironment(cfg *Config, lookup func(string) (string, bool)) er
 		"FEATURE_NFT_METADATA":                                &cfg.Features.NFTMetadata,
 		"FEATURE_PRICING":                                     &cfg.Features.Pricing,
 		"FEATURE_ENS":                                         &cfg.Features.ENS,
+		"FEATURE_USER_OPERATIONS":                             &cfg.Features.UserOperations,
 		"FEATURE_USER_AUTH":                                   &cfg.Features.UserAuth,
 		"FEATURE_USER_API_KEYS":                               &cfg.Features.UserAPIKeys,
 		"FEATURE_API_BILLING":                                 &cfg.Features.APIBilling,

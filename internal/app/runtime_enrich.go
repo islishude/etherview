@@ -6,6 +6,7 @@ import (
 	"github.com/islishude/etherview/internal/accelerator"
 	"github.com/islishude/etherview/internal/components"
 	"github.com/islishude/etherview/internal/enrich"
+	"github.com/islishude/etherview/internal/erc4337"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -32,7 +33,7 @@ func (assembly runtimeAssembly) registerEnrichComponents() error {
 		if err != nil {
 			return err
 		}
-		stages := enrichmentDispatchStages(cfg.Features.Trace)
+		stages := enrichmentDispatchStages(cfg.Features.Trace, cfg.Features.UserOperations)
 		dispatcher, err := enrich.NewOutboxDispatcher(db, queue, enrich.OutboxDispatcherOptions{
 			PollInterval: cfg.Runtime.PollInterval,
 			Stages:       stages,
@@ -75,6 +76,17 @@ func (assembly runtimeAssembly) registerEnrichComponents() error {
 			return err
 		}
 		processors := []enrich.Processor{proxyProcessor, abiProcessor, tokenProcessor, statsProcessor}
+		if cfg.Features.UserOperations {
+			userRegistry, registryErr := erc4337.NewRegistry(cfg.ERC4337)
+			if registryErr != nil {
+				return registryErr
+			}
+			userOperationProcessor, processorErr := enrich.NewPostgresUserOperationProcessor(db, userRegistry)
+			if processorErr != nil {
+				return processorErr
+			}
+			processors = append(processors, userOperationProcessor)
+		}
 		if err := registerWorkerPool(
 			componentRegistry,
 			components.RoleEnrich,

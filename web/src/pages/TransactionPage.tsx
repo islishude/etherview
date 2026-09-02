@@ -20,6 +20,7 @@ import {
   useTransactionStateChanges,
   useTransactionTokenTransfers,
   useTransactionTrace,
+  useTransactionUserOperations,
 } from "@/api/hooks";
 import type {
   TransactionDetail,
@@ -81,15 +82,17 @@ import {
   useCursorHistory,
   yesNo,
 } from "./pages";
+import { UserOperationTable } from "@/components/UserOperationTable";
 
-const TRANSACTION_TABS = ["overview", "access-list", "blob", "authorizations", "internal-transactions", "token-transfers", "logs", "trace", "state-changes"] as const;
+const TRANSACTION_TABS = ["overview", "access-list", "blob", "authorizations", "user-operations", "internal-transactions", "token-transfers", "logs", "trace", "state-changes"] as const;
 type TransactionTab = typeof TRANSACTION_TABS[number];
 
-function transactionTabsForType(type?: string): TransactionTab[] {
+function transactionTabsForType(type?: string, userOperations = false): TransactionTab[] {
   const tabs: TransactionTab[] = ["overview"];
   if (type === "1" || type === "2" || type === "3" || type === "4") tabs.push("access-list");
   if (type === "3") tabs.push("blob");
   if (type === "4") tabs.push("authorizations");
+  if (userOperations) tabs.push("user-operations");
   tabs.push("internal-transactions", "token-transfers", "logs", "trace", "state-changes");
   return tabs;
 }
@@ -676,6 +679,39 @@ function TransactionAuthorizationsPanel({
   );
 }
 
+function TransactionUserOperationsPanel({ blockHash, hash }: { blockHash?: string; hash: string }) {
+  const { t } = useTranslation();
+  const pager = useCursorHistory(`transaction-user-operations:${hash}`);
+  const operations = useTransactionUserOperations(hash, pager.cursor);
+  const identityCurrent = !blockHash ||
+    (operations.data?.items ?? []).every((operation) => operation.block_hash === blockHash);
+  return (
+    <section className="panel transaction-tab-panel" role="tabpanel">
+      <QueryNotice loading={operations.isPending} error={operations.error} onReset={pager.reset} />
+      {operations.data && !identityCurrent ? (
+        <p className="capability-panel">{t("state.transactionIdentityChanged")}</p>
+      ) : null}
+      {identityCurrent && operations.data?.items.length === 0 ? (
+        <p className="empty-result">{t("state.noTransactionUserOperations")}</p>
+      ) : null}
+      {identityCurrent && operations.data && operations.data.items.length > 0 ? (
+        <UserOperationTable items={operations.data.items} />
+      ) : null}
+      {identityCurrent && operations.data ? (
+        <CursorPagination
+          busy={operations.isFetching}
+          hasNext={Boolean(operations.data.next_cursor)}
+          hasPrevious={pager.hasPrevious}
+          label={t("transactionTabs.user-operations")}
+          onNext={() => pager.next(operations.data?.next_cursor)}
+          onPrevious={pager.previous}
+          page={pager.page}
+        />
+      ) : null}
+    </section>
+  );
+}
+
 export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
   const { i18n, t } = useTranslation();
   const navigate = useNavigate();
@@ -688,7 +724,9 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
   const transaction = detail?.kind === "included"
     ? { ...transactionDetail, data: detail.transaction }
     : { ...transactionDetail, data: undefined };
-  const transactionTabs = transactionTabsForType(transaction.data?.type);
+  const publicConfig = usePublicConfig();
+  const userOperationsEnabled = publicConfig.data?.features.user_operations === true;
+  const transactionTabs = transactionTabsForType(transaction.data?.type, userOperationsEnabled);
   const activeTab = transactionActiveTab(transactionTabs, tab);
   const calldataEnabled = included && activeTab === "overview"
     && Boolean(transaction.data?.to);
@@ -723,7 +761,6 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
     statePager.cursor,
     included && activeTab === "state-changes",
   );
-  const publicConfig = usePublicConfig();
   const nativeDecimals = publicConfig.data?.native_decimals ?? 18;
   const nativeSymbol = publicConfig.data?.native_symbol ?? "";
   const locale = i18n.resolvedLanguage ?? "en";
@@ -1006,6 +1043,10 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
               pager={authorizationPager}
               t={t}
             />
+          )}
+
+          {activeTab === "user-operations" && (
+            <TransactionUserOperationsPanel blockHash={transaction.data.block_hash} hash={hash} />
           )}
 
           {activeTab === "token-transfers" && (

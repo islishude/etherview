@@ -123,11 +123,18 @@ features:
   user_api_keys: false
   api_billing: false
   x402_topups: false
+  user_operations: false
   # Shadow collection is independent from public API/UI exposure.
   proxy_detection_v2: false
   safe_proxy_detection: false
   diamond_proxy_detection: false
   proxy_detection_v2_public: false
+
+erc4337:
+  # Required only with features.user_operations. Bind every reviewed
+  # EntryPoint address to its exact wire version and inclusive chain range;
+  # existing history is populated only by an explicit bounded userop reindex.
+  entry_points: []
 
 security:
   public_verification: false

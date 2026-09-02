@@ -71,6 +71,20 @@ type Reader interface {
 	Search(context.Context, string, string, int) ([]gen.SearchResult, string, error)
 }
 
+type UserOperationPage struct {
+	Items         []gen.UserOperationSummary
+	NextCursor    string
+	CoverageStart uint64
+	CoverageEnd   uint64
+}
+
+type UserOperationReader interface {
+	UserOperations(context.Context, string, int) (UserOperationPage, error)
+	UserOperation(context.Context, string) (gen.UserOperationDetail, error)
+	TransactionUserOperations(context.Context, string, string, int) (UserOperationPage, error)
+	AddressUserOperations(context.Context, string, string, int) (UserOperationPage, error)
+}
+
 type HomeSnapshotState struct {
 	EventID      uint64
 	Status       StatusSnapshot

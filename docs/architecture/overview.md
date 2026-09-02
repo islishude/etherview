@@ -279,12 +279,14 @@ executors. The routing and lag contract is specified in
   ancestry window remains sparse/backfill work rather than being assembled in
   one canonicalizer call.
 - A core refresh invalidates replayable output directly derived from that
-  block. Rebuilding proxy, ABI, token, statistics, or trace output is an
+  block. Rebuilding proxy, ABI, token, statistics, trace, state-difference, or
+  UserOperation output is an
   explicit, block-hash-scoped reindex operation; active leases are never
   reset. A versioned proxy/ABI cutover is replayed in dependency order,
   `proxy` before `abi`, rather than by an unbounded migration enqueue.
-- Proxy/code, ABI, token, statistics, and normalized-trace production
-  processors atomically persist their block-local output, exact durable-job
+- Proxy/code, ABI, token, statistics, normalized-trace, state-difference, and
+  UserOperation production processors atomically persist their block-local
+  output, exact durable-job
   generation marker, stage result, one versioned `stage@version` journal, and
   successful lease completion in one PostgreSQL transaction.
   Journal canonicality is derived from the exact chain/height/hash mapping;
@@ -293,6 +295,14 @@ executors. The routing and lag contract is specified in
   exact lease-published result; see
   [ADR-0012](../decisions/ADR-0012-lease-fenced-derived-publication.md) and
   [ADR-0007](../decisions/ADR-0007-block-scoped-derived-canonicality-journals.md).
+- Feature-gated `userop@1` accepts only direct successful calls to an explicit
+  version-and-range-bound EntryPoint registry. It strictly decodes and
+  canonically re-encodes `handleOps`/`handleAggregatedOps`, correlates every
+  operation with its ordered EntryPoint outcome and lifecycle events, and
+  publishes operations, events, participants, and configuration-digest-bound
+  continuous coverage atomically. Malformed or contradictory bundles publish
+  nothing; pending Bundler mempools are outside this boundary. See
+  [ADR-0045](../decisions/ADR-0045-erc4337-useroperation-index.md).
 - Durable enrichment delivery uses the same lease fence. The successful
   publisher compare-and-set requires the exact unexpired token and requested,
   claimed, leased, and completed generation relationship; stale worker output
@@ -578,6 +588,10 @@ size alone is not sufficient justification to weaken those invariants.
 - Native HTTP API lives under `/api/v1`; Etherscan compatibility lives at
   `/v2/api`; operational endpoints are separate.
 - Large integers cross JSON boundaries as strings.
+- Enabled ERC-4337 browsing exposes canonical global, detail, transaction, and
+  address UserOperation resources plus exact `userOpHash` search. Pagination
+  binds both the canonical snapshot and normalized EntryPoint configuration;
+  unavailable coverage is never represented as an authoritative empty result.
 - The SPA uses the public API for explorer data. Contract `eth_call` and
   `eth_sendTransaction` use only an injected wallet provider.
 - The SPA's sole explorer transport is an `openapi-fetch` client parameterized
@@ -888,11 +902,11 @@ database rechecks canonical identity and finality inside one chain-locked
 transaction. Refreshing a finalized height requires an explicit audited
 override and still cannot replace its hash or parent.
 
-`reindex --stage proxy|abi|token|stats|trace` schedules or replays immutable
-block-hash-scoped jobs. Existing queued or leased jobs remain owned by their
-current worker; only terminal jobs may be reset. A proxy/ABI cutover is run in
-dependency order, `proxy` before `abi`. Repair does not silently infer the
-downstream range an operator intends to rebuild. See
+`reindex --stage proxy|abi|token|stats|trace|state_diff|userop` schedules or
+replays immutable block-hash-scoped jobs. Existing queued or leased jobs remain
+owned by their current worker; only terminal jobs may be reset. A proxy/ABI
+cutover is run in dependency order, `proxy` before `abi`. Repair does not
+silently infer the downstream range an operator intends to rebuild. See
 [ADR-0002](../decisions/ADR-0002-identity-bound-repair-and-explicit-reindex.md).
 
 ## Source-of-Truth Routing

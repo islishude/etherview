@@ -16,6 +16,7 @@ import {
   useAddressNFTTransfers,
   useAddressTransactions,
   useAddressWithdrawals,
+  useAddressUserOperations,
   useAddress,
   usePublicConfig,
 } from "@/api/hooks";
@@ -43,6 +44,7 @@ import {
 import { CopyableField } from "@/components/CopyButton";
 import { AddressIdentity } from "@/ens/AddressIdentity";
 import { QueryNotice } from "@/components/QueryNotice";
+import { UserOperationTable } from "@/components/UserOperationTable";
 import {
   CORE_PAGE_SIZE,
   CursorPagination,
@@ -66,6 +68,7 @@ type AddressTab =
   | "erc20-transfers"
   | "nft-transfers"
   | "assets"
+  | "user-operations"
   | "delegation"
   | "contract";
 
@@ -83,7 +86,10 @@ export function AddressDetailPage({ address, tab }: { address: string; tab: stri
   const nftTransferPager = useCursorHistory(`address-nft-transfers:${address}`);
   const erc20BalancePager = useCursorHistory(`address-erc20-balances:${address}`);
   const nftPager = useCursorHistory(`address-nfts:${address}`);
+  const userOperationPager = useCursorHistory(`address-user-operations:${address}`);
   const account = useAddress(address);
+  const publicConfig = usePublicConfig();
+  const userOperationsEnabled = publicConfig.data?.features.user_operations === true;
   const contractAvailable = account.data?.type === "contract" && Boolean(account.data.code_hash);
   const currentlyDelegated = account.data?.type === "delegated_eoa";
   const delegationAvailable = currentlyDelegated || Boolean(account.data?.has_delegation_history);
@@ -91,7 +97,10 @@ export function AddressDetailPage({ address, tab }: { address: string; tab: stri
     ? "contract"
     : (account.isPending || delegationAvailable) && delegationHash
       ? "delegation"
-      : isAddressTab(tab) && (tab !== "delegation" || account.isPending || delegationAvailable) ? tab : "transactions";
+      : isAddressTab(tab) &&
+          (tab !== "delegation" || account.isPending || delegationAvailable) &&
+          (tab !== "user-operations" || userOperationsEnabled)
+        ? tab : "transactions";
   const transactions = useAddressTransactions(
     address,
     transactionPager.cursor,
@@ -141,7 +150,11 @@ export function AddressDetailPage({ address, tab }: { address: string; tab: stri
     erc20BalancePager.refreshGeneration,
     activeTab === "assets" && isAddress(address),
   );
-  const publicConfig = usePublicConfig();
+  const userOperations = useAddressUserOperations(
+    address,
+    userOperationPager.cursor,
+    activeTab === "user-operations" && isAddress(address) && userOperationsEnabled,
+  );
   const nativeDecimals = publicConfig.data?.native_decimals ?? 18;
   const nativeSymbol = publicConfig.data?.native_symbol ?? "";
   const locale = i18n.resolvedLanguage ?? "en";
@@ -195,6 +208,7 @@ export function AddressDetailPage({ address, tab }: { address: string; tab: stri
           ["erc20-transfers", t("addressTab.erc20Transfers")],
           ["nft-transfers", t("addressTab.nftTransfers")],
           ["assets", t("addressTab.assets")],
+          ...(userOperationsEnabled ? [["user-operations", t("addressTab.userOperations")]] as const : []),
         ] as const).map(([tabID, label]) => (
           <Link
             key={tabID}
@@ -355,6 +369,29 @@ export function AddressDetailPage({ address, tab }: { address: string; tab: stri
             hasPrevious={nftPager.hasPrevious}
           />
         </div>
+      )}
+      {activeTab === "user-operations" && (
+        <section className="panel transaction-tab-panel" aria-labelledby="address-user-operations-title">
+          <h2 id="address-user-operations-title">{t("addressTab.userOperations")}</h2>
+          <QueryNotice loading={userOperations.isPending} error={userOperations.error} onReset={userOperationPager.reset} />
+          {userOperations.data?.items.length === 0 ? (
+            <p className="empty-result">{t("state.noUserOperations")}</p>
+          ) : null}
+          {userOperations.data && userOperations.data.items.length > 0 ? (
+            <UserOperationTable items={userOperations.data.items} />
+          ) : null}
+          {userOperations.data ? (
+            <CursorPagination
+              busy={userOperations.isFetching}
+              hasNext={Boolean(userOperations.data.next_cursor)}
+              hasPrevious={userOperationPager.hasPrevious}
+              label={t("pagination.userOperations")}
+              onNext={() => userOperationPager.next(userOperations.data?.next_cursor)}
+              onPrevious={userOperationPager.previous}
+              page={userOperationPager.page}
+            />
+          ) : null}
+        </section>
       )}
       {activeTab === "contract" && contractAvailable ? <ContractPage address={address} /> : null}
       {activeTab === "delegation" && delegationAvailable ? (
@@ -554,6 +591,7 @@ function isAddressTab(tab: string): tab is AddressTab {
     "erc20-transfers",
     "nft-transfers",
     "assets",
+    "user-operations",
     "delegation",
   ].includes(tab);
 }

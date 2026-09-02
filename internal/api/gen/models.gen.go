@@ -1901,13 +1901,14 @@ func (e ReplacedTransactionDetailKind) Valid() bool {
 
 // Defines values for SearchResultKind.
 const (
-	SearchResultKindAddress     SearchResultKind = "address"
-	SearchResultKindBlock       SearchResultKind = "block"
-	SearchResultKindContract    SearchResultKind = "contract"
-	SearchResultKindLabel       SearchResultKind = "label"
-	SearchResultKindNft         SearchResultKind = "nft"
-	SearchResultKindToken       SearchResultKind = "token"
-	SearchResultKindTransaction SearchResultKind = "transaction"
+	SearchResultKindAddress       SearchResultKind = "address"
+	SearchResultKindBlock         SearchResultKind = "block"
+	SearchResultKindContract      SearchResultKind = "contract"
+	SearchResultKindLabel         SearchResultKind = "label"
+	SearchResultKindNft           SearchResultKind = "nft"
+	SearchResultKindToken         SearchResultKind = "token"
+	SearchResultKindTransaction   SearchResultKind = "transaction"
+	SearchResultKindUserOperation SearchResultKind = "user_operation"
 )
 
 // Valid indicates whether the value is a known member of the SearchResultKind enum.
@@ -1926,6 +1927,8 @@ func (e SearchResultKind) Valid() bool {
 	case SearchResultKindToken:
 		return true
 	case SearchResultKindTransaction:
+		return true
+	case SearchResultKindUserOperation:
 		return true
 	default:
 		return false
@@ -2730,6 +2733,117 @@ func (e UserAPIKeyStatus) Valid() bool {
 	case UserAPIKeyStatusActive:
 		return true
 	case UserAPIKeyStatusRevoked:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UserOperationEventKind.
+const (
+	AccountDeployed    UserOperationEventKind = "account_deployed"
+	Eip7702Initialized UserOperationEventKind = "eip7702_initialized"
+	ExecutionRevert    UserOperationEventKind = "execution_revert"
+	IgnoredInitCode    UserOperationEventKind = "ignored_init_code"
+	PostOpRevert       UserOperationEventKind = "post_op_revert"
+	PrefundTooLow      UserOperationEventKind = "prefund_too_low"
+)
+
+// Valid indicates whether the value is a known member of the UserOperationEventKind enum.
+func (e UserOperationEventKind) Valid() bool {
+	switch e {
+	case AccountDeployed:
+		return true
+	case Eip7702Initialized:
+		return true
+	case ExecutionRevert:
+		return true
+	case IgnoredInitCode:
+		return true
+	case PostOpRevert:
+		return true
+	case PrefundTooLow:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UserOperationInitKind.
+const (
+	UserOperationInitKindEip7702 UserOperationInitKind = "eip7702"
+	UserOperationInitKindFactory UserOperationInitKind = "factory"
+	UserOperationInitKindNone    UserOperationInitKind = "none"
+)
+
+// Valid indicates whether the value is a known member of the UserOperationInitKind enum.
+func (e UserOperationInitKind) Valid() bool {
+	switch e {
+	case UserOperationInitKindEip7702:
+		return true
+	case UserOperationInitKindFactory:
+		return true
+	case UserOperationInitKindNone:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UserOperationRole.
+const (
+	UserOperationRoleAggregator      UserOperationRole = "aggregator"
+	UserOperationRoleBeneficiary     UserOperationRole = "beneficiary"
+	UserOperationRoleBundler         UserOperationRole = "bundler"
+	UserOperationRoleEip7702Delegate UserOperationRole = "eip7702_delegate"
+	UserOperationRoleEntryPoint      UserOperationRole = "entry_point"
+	UserOperationRoleFactory         UserOperationRole = "factory"
+	UserOperationRolePaymaster       UserOperationRole = "paymaster"
+	UserOperationRoleSender          UserOperationRole = "sender"
+)
+
+// Valid indicates whether the value is a known member of the UserOperationRole enum.
+func (e UserOperationRole) Valid() bool {
+	switch e {
+	case UserOperationRoleAggregator:
+		return true
+	case UserOperationRoleBeneficiary:
+		return true
+	case UserOperationRoleBundler:
+		return true
+	case UserOperationRoleEip7702Delegate:
+		return true
+	case UserOperationRoleEntryPoint:
+		return true
+	case UserOperationRoleFactory:
+		return true
+	case UserOperationRolePaymaster:
+		return true
+	case UserOperationRoleSender:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UserOperationVersion.
+const (
+	N06 UserOperationVersion = "0.6"
+	N07 UserOperationVersion = "0.7"
+	N08 UserOperationVersion = "0.8"
+	N09 UserOperationVersion = "0.9"
+)
+
+// Valid indicates whether the value is a known member of the UserOperationVersion enum.
+func (e UserOperationVersion) Valid() bool {
+	switch e {
+	case N06:
+		return true
+	case N07:
+		return true
+	case N08:
+		return true
+	case N09:
 		return true
 	default:
 		return false
@@ -4017,10 +4131,11 @@ type CompilerCatalogResponse struct {
 
 // Completeness defines model for Completeness.
 type Completeness struct {
-	Core     StageState `json:"core"`
-	Metadata StageState `json:"metadata"`
-	State    StageState `json:"state"`
-	Trace    StageState `json:"trace"`
+	Core           StageState `json:"core"`
+	Metadata       StageState `json:"metadata"`
+	State          StageState `json:"state"`
+	Trace          StageState `json:"trace"`
+	UserOperations StageState `json:"user_operations"`
 }
 
 // ContractArtifactResolution How the published source artifact was resolved for the requested code identity. exact_address is an independent address verification; code_hash reuses an artifact verified at a different address with the identical runtime code hash and grants no proxy binding or write authority. On ProxyContractIdentity, exact_address accompanies verification_state=verified, while code_hash accompanies verification_state=unverified; the field is omitted when no artifact is available.
@@ -5923,6 +6038,219 @@ type UserListResponse struct {
 	Meta Meta   `json:"meta"`
 }
 
+// UserOperationDetail defines model for UserOperationDetail.
+type UserOperationDetail struct {
+	// ActualGasCost A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ActualGasCost Quantity `json:"actual_gas_cost"`
+
+	// ActualGasUsed A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ActualGasUsed Quantity `json:"actual_gas_used"`
+
+	// Aggregator A 20-byte address; responses use the EIP-55 checksum form.
+	Aggregator *Address `json:"aggregator,omitempty"`
+
+	// Beneficiary A 20-byte address; responses use the EIP-55 checksum form.
+	Beneficiary Address `json:"beneficiary"`
+
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber    Quantity  `json:"block_number"`
+	BlockTimestamp time.Time `json:"block_timestamp"`
+
+	// Bundler A 20-byte address; responses use the EIP-55 checksum form.
+	Bundler   Address `json:"bundler"`
+	Canonical bool    `json:"canonical"`
+
+	// EntryPoint A 20-byte address; responses use the EIP-55 checksum form.
+	EntryPoint        Address              `json:"entry_point"`
+	EntryPointVersion UserOperationVersion `json:"entry_point_version"`
+
+	// EventLogIndex Canonical receipt log index of the matching UserOperationEvent.
+	EventLogIndex int                          `json:"event_log_index"`
+	Events        []UserOperationProtocolEvent `json:"events"`
+
+	// Factory A 20-byte address; responses use the EIP-55 checksum form.
+	Factory  *Address `json:"factory,omitempty"`
+	Finality Finality `json:"finality"`
+
+	// Hash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	Hash     Hash                  `json:"hash"`
+	InitKind UserOperationInitKind `json:"init_kind"`
+
+	// Nonce A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Nonce Quantity `json:"nonce"`
+
+	// NonceKey A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	NonceKey Quantity `json:"nonce_key"`
+
+	// NonceSequence A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	NonceSequence      Quantity             `json:"nonce_sequence"`
+	OperationIndex     int                  `json:"operation_index"`
+	ParticipatingRoles *[]UserOperationRole `json:"participating_roles,omitempty"`
+
+	// Paymaster A 20-byte address; responses use the EIP-55 checksum form.
+	Paymaster *Address             `json:"paymaster,omitempty"`
+	Request   UserOperationRequest `json:"request"`
+
+	// Sender A 20-byte address; responses use the EIP-55 checksum form.
+	Sender  Address `json:"sender"`
+	Success bool    `json:"success"`
+
+	// TransactionHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	TransactionHash  Hash `json:"transaction_hash"`
+	TransactionIndex int  `json:"transaction_index"`
+}
+
+// UserOperationEventKind defines model for UserOperationEventKind.
+type UserOperationEventKind string
+
+// UserOperationInitKind defines model for UserOperationInitKind.
+type UserOperationInitKind string
+
+// UserOperationListResponse defines model for UserOperationListResponse.
+type UserOperationListResponse struct {
+	Data []UserOperationSummary `json:"data"`
+	Meta Meta                   `json:"meta"`
+}
+
+// UserOperationProtocolEvent defines model for UserOperationProtocolEvent.
+type UserOperationProtocolEvent struct {
+	Kind     UserOperationEventKind `json:"kind"`
+	LogIndex int                    `json:"log_index"`
+
+	// Nonce A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Nonce *Quantity `json:"nonce,omitempty"`
+
+	// PanicCode A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	PanicCode *Quantity `json:"panic_code,omitempty"`
+
+	// Paymaster A 20-byte address; responses use the EIP-55 checksum form.
+	Paymaster *Address `json:"paymaster,omitempty"`
+	RawData   string   `json:"raw_data"`
+	Reason    *string  `json:"reason,omitempty"`
+
+	// RelatedAddress A 20-byte address; responses use the EIP-55 checksum form.
+	RelatedAddress *Address `json:"related_address,omitempty"`
+
+	// Sender A 20-byte address; responses use the EIP-55 checksum form.
+	Sender Address `json:"sender"`
+}
+
+// UserOperationRequest defines model for UserOperationRequest.
+type UserOperationRequest struct {
+	// AccountGasLimits A 32-byte hash; responses use normalized lowercase hexadecimal.
+	AccountGasLimits    *Hash  `json:"account_gas_limits,omitempty"`
+	AggregatedSignature string `json:"aggregated_signature"`
+	CallData            string `json:"call_data"`
+
+	// CallGasLimit A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	CallGasLimit Quantity `json:"call_gas_limit"`
+	FactoryData  string   `json:"factory_data"`
+
+	// GasFees A 32-byte hash; responses use normalized lowercase hexadecimal.
+	GasFees  *Hash  `json:"gas_fees,omitempty"`
+	InitCode string `json:"init_code"`
+
+	// MaxFeePerGas A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	MaxFeePerGas Quantity `json:"max_fee_per_gas"`
+
+	// MaxPriorityFeePerGas A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	MaxPriorityFeePerGas Quantity `json:"max_priority_fee_per_gas"`
+	PaymasterAndData     string   `json:"paymaster_and_data"`
+	PaymasterData        string   `json:"paymaster_data"`
+
+	// PaymasterPostOpGasLimit A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	PaymasterPostOpGasLimit *Quantity `json:"paymaster_post_op_gas_limit,omitempty"`
+	PaymasterSignature      string    `json:"paymaster_signature"`
+
+	// PaymasterVerificationGasLimit A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	PaymasterVerificationGasLimit *Quantity `json:"paymaster_verification_gas_limit,omitempty"`
+
+	// PreVerificationGas A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	PreVerificationGas Quantity `json:"pre_verification_gas"`
+	Signature          string   `json:"signature"`
+
+	// VerificationGasLimit A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	VerificationGasLimit Quantity `json:"verification_gas_limit"`
+}
+
+// UserOperationResponse defines model for UserOperationResponse.
+type UserOperationResponse struct {
+	Data UserOperationDetail `json:"data"`
+	Meta Meta                `json:"meta"`
+}
+
+// UserOperationRole defines model for UserOperationRole.
+type UserOperationRole string
+
+// UserOperationSummary defines model for UserOperationSummary.
+type UserOperationSummary struct {
+	// ActualGasCost A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ActualGasCost Quantity `json:"actual_gas_cost"`
+
+	// ActualGasUsed A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ActualGasUsed Quantity `json:"actual_gas_used"`
+
+	// Aggregator A 20-byte address; responses use the EIP-55 checksum form.
+	Aggregator *Address `json:"aggregator,omitempty"`
+
+	// Beneficiary A 20-byte address; responses use the EIP-55 checksum form.
+	Beneficiary Address `json:"beneficiary"`
+
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber    Quantity  `json:"block_number"`
+	BlockTimestamp time.Time `json:"block_timestamp"`
+
+	// Bundler A 20-byte address; responses use the EIP-55 checksum form.
+	Bundler   Address `json:"bundler"`
+	Canonical bool    `json:"canonical"`
+
+	// EntryPoint A 20-byte address; responses use the EIP-55 checksum form.
+	EntryPoint        Address              `json:"entry_point"`
+	EntryPointVersion UserOperationVersion `json:"entry_point_version"`
+
+	// EventLogIndex Canonical receipt log index of the matching UserOperationEvent.
+	EventLogIndex int `json:"event_log_index"`
+
+	// Factory A 20-byte address; responses use the EIP-55 checksum form.
+	Factory  *Address `json:"factory,omitempty"`
+	Finality Finality `json:"finality"`
+
+	// Hash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	Hash     Hash                  `json:"hash"`
+	InitKind UserOperationInitKind `json:"init_kind"`
+
+	// Nonce A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Nonce Quantity `json:"nonce"`
+
+	// NonceKey A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	NonceKey Quantity `json:"nonce_key"`
+
+	// NonceSequence A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	NonceSequence      Quantity             `json:"nonce_sequence"`
+	OperationIndex     int                  `json:"operation_index"`
+	ParticipatingRoles *[]UserOperationRole `json:"participating_roles,omitempty"`
+
+	// Paymaster A 20-byte address; responses use the EIP-55 checksum form.
+	Paymaster *Address `json:"paymaster,omitempty"`
+
+	// Sender A 20-byte address; responses use the EIP-55 checksum form.
+	Sender  Address `json:"sender"`
+	Success bool    `json:"success"`
+
+	// TransactionHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	TransactionHash  Hash `json:"transaction_hash"`
+	TransactionIndex int  `json:"transaction_index"`
+}
+
+// UserOperationVersion defines model for UserOperationVersion.
+type UserOperationVersion string
+
 // UserProfileUpdate defines model for UserProfileUpdate.
 type UserProfileUpdate struct {
 	DisplayName *string `json:"display_name"`
@@ -6200,6 +6528,9 @@ type TransactionHash = Hash
 // UserID defines model for UserID.
 type UserID = openapi_types.UUID
 
+// UserOperationHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+type UserOperationHash = Hash
+
 // Error defines model for Error.
 type Error = ErrorResponse
 
@@ -6253,6 +6584,12 @@ type ListAddressNFTBalancesParams struct {
 
 // ListAddressTransactionsParams defines parameters for ListAddressTransactions.
 type ListAddressTransactionsParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListAddressUserOperationsParams defines parameters for ListAddressUserOperations.
+type ListAddressUserOperationsParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
 }
@@ -6488,6 +6825,18 @@ type ListTransactionStateChangesParams struct {
 
 // ListTransactionTokenTransfersParams defines parameters for ListTransactionTokenTransfers.
 type ListTransactionTokenTransfersParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListTransactionUserOperationsParams defines parameters for ListTransactionUserOperations.
+type ListTransactionUserOperationsParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListUserOperationsParams defines parameters for ListUserOperations.
+type ListUserOperationsParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
 }

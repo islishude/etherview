@@ -105,6 +105,11 @@ export function AppShell() {
           <Link activeProps={{ className: "active" }} to="/transactions">
             {t("nav.transactions")}
           </Link>
+          {publicConfig.data?.features.user_operations === true && (
+            <Link activeProps={{ className: "active" }} to="/user-operations">
+              {t("nav.userOperations")}
+            </Link>
+          )}
           <Link activeProps={{ className: "active" }} to="/tokens">
             {t("nav.tokens")}
           </Link>

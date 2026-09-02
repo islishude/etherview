@@ -56,6 +56,7 @@ func (h *Handler) publicConfig(w http.ResponseWriter, r *http.Request) {
 		"nft_metadata":     h.cfg.Features.NFTMetadata,
 		"pricing":          h.cfg.Features.Pricing,
 		"ens":              h.cfg.Features.ENS,
+		"user_operations":  h.cfg.Features.UserOperations,
 		"user_auth":        h.cfg.Features.UserAuth,
 		"user_api_keys":    h.cfg.Features.UserAPIKeys,
 		"api_billing":      h.cfg.Features.APIBilling,

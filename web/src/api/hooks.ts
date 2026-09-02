@@ -22,6 +22,8 @@ import type {
   TokenEvent,
   TransactionSummary,
   TransactionDetail,
+  UserOperationDetail,
+  UserOperationSummary,
   VerificationSubmission,
 } from "./types";
 
@@ -109,6 +111,67 @@ export function useTransactions(limit = 12, cursor?: string, refreshGeneration =
     },
     retry: false,
     staleTime: liveRefetchInterval,
+  });
+}
+
+export function useUserOperations(limit = 25, cursor?: string, refreshGeneration = 0) {
+  return useQuery({
+    queryKey: ["user-operations", limit, cursor ?? null, refreshGeneration],
+    queryFn: async (): Promise<CursorPage<UserOperationSummary>> => {
+      const response = requireEnvelope(
+        await apiClient.GET("/user-operations", { params: { query: { limit, cursor } } }),
+      );
+      return { items: response.data, meta: response.meta, next_cursor: response.meta.next_cursor };
+    },
+    retry: false,
+    staleTime: liveRefetchInterval,
+  });
+}
+
+export function useUserOperation(hash: string, enabled = true) {
+  return useQuery({
+    queryKey: ["user-operation", hash],
+    queryFn: async (): Promise<UserOperationDetail> =>
+      requireEnvelope(
+        await apiClient.GET("/user-operations/{hash}", { params: { path: { hash } } }),
+      ).data,
+    enabled: enabled && hash.length > 0,
+    retry: false,
+    staleTime: 30_000,
+  });
+}
+
+export function useTransactionUserOperations(hash: string, cursor?: string, enabled = true) {
+  return useQuery({
+    queryKey: ["transaction", hash, "user-operations", cursor ?? null],
+    queryFn: async (): Promise<CursorPage<UserOperationSummary>> => {
+      const response = requireEnvelope(
+        await apiClient.GET("/transactions/{hash}/user-operations", {
+          params: { path: { hash }, query: { cursor, limit: 25 } },
+        }),
+      );
+      return { items: response.data, meta: response.meta, next_cursor: response.meta.next_cursor };
+    },
+    enabled: enabled && hash.length > 0,
+    retry: false,
+    staleTime: 30_000,
+  });
+}
+
+export function useAddressUserOperations(address: string, cursor?: string, enabled = true) {
+  return useQuery({
+    queryKey: ["address", address, "user-operations", cursor ?? null],
+    queryFn: async (): Promise<CursorPage<UserOperationSummary>> => {
+      const response = requireEnvelope(
+        await apiClient.GET("/addresses/{address}/user-operations", {
+          params: { path: { address }, query: { cursor, limit: 25 } },
+        }),
+      );
+      return { items: response.data, meta: response.meta, next_cursor: response.meta.next_cursor };
+    },
+    enabled: enabled && address.length > 0,
+    retry: false,
+    staleTime: 30_000,
   });
 }
 

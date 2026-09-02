@@ -99,6 +99,16 @@ WITH delete_stage_results AS (
     DELETE FROM eip7702_authorizations WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3::bytea
 ), delete_state_changes AS (
     DELETE FROM transaction_state_changes WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3::bytea
+), delete_user_operation_events AS (
+    DELETE FROM erc4337_user_operation_events WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3::bytea
+), delete_user_operation_participants AS (
+    DELETE FROM erc4337_user_operation_participants WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3::bytea
+), delete_user_operations AS (
+    DELETE FROM erc4337_user_operations WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3::bytea
+), delete_user_operation_coverage AS (
+    SELECT erc4337_remove_covered_block(chain_id, configuration_digest, block_number)
+    FROM erc4337_covered_blocks
+    WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3::bytea
 ), delete_address_activities AS (
     DELETE FROM address_activities WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3::bytea
 )

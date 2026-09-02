@@ -29,6 +29,14 @@ const ChartMetricPage = lazyRouteComponent(
   "ChartMetricPage",
 );
 const PendingPage = lazyRouteComponent(() => import("@/pages/PendingPage"), "PendingPage");
+const UserOperationsPage = lazyRouteComponent(
+  () => import("@/pages/UserOperationPages"),
+  "UserOperationsPage",
+);
+const UserOperationDetailPage = lazyRouteComponent(
+  () => import("@/pages/UserOperationPages"),
+  "UserOperationDetailPage",
+);
 const AccountPage = lazyRouteComponent(() => import("@/pages/AuthPages"), "AccountPage");
 const AdminUsersPage = lazyRouteComponent(
   () => import("@/pages/AuthPages"),
@@ -70,13 +78,23 @@ const transactionsRoute = createRoute({
   path: "/transactions",
   component: TransactionsPage,
 });
+const userOperationsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/user-operations",
+  component: UserOperationsPage,
+});
+const userOperationRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/user-op/$hash",
+  component: UserOperationRoutePage,
+});
 const transactionRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/tx/$hash",
   validateSearch: (search: Record<string, unknown>) => {
     const tab = typeof search.tab === "string" ? search.tab : "overview";
     return {
-      tab: ["overview", "access-list", "blob", "authorizations", "internal-transactions", "token-transfers", "logs", "trace", "state-changes"].includes(tab)
+      tab: ["overview", "access-list", "blob", "authorizations", "user-operations", "internal-transactions", "token-transfers", "logs", "trace", "state-changes"].includes(tab)
         ? tab
         : "overview",
     };
@@ -95,6 +113,7 @@ const addressRoute = createRoute({
       "erc20-transfers",
       "nft-transfers",
       "assets",
+      "user-operations",
       "delegation",
     ].includes(tab)
       ? { tab }
@@ -197,6 +216,8 @@ const routeTree = rootRoute.addChildren([
   genesisRoute,
   transactionsRoute,
   transactionRoute,
+  userOperationsRoute,
+  userOperationRoute,
   addressRoute,
   tokensRoute,
   tokenRoute,
@@ -222,6 +243,11 @@ function TransactionRoutePage() {
   const { hash } = transactionRoute.useParams();
   const { tab } = transactionRoute.useSearch();
   return <EntityPage kind="transaction" identifier={hash} transactionTab={tab} />;
+}
+
+function UserOperationRoutePage() {
+  const { hash } = userOperationRoute.useParams();
+  return <UserOperationDetailPage hash={hash} />;
 }
 
 function AddressRoutePage() {

@@ -40,6 +40,10 @@ func (h *harness) captureInitialContractDeployments(ctx context.Context, delegat
 			h.t.Fatalf("delegate runtime code %s = %s", *target, code)
 		}
 	}
+}
+
+func (h *harness) captureEtherscanNFTDeployment(ctx context.Context) {
+	h.t.Helper()
 	nftReceipt := h.waitReceipt(ctx, h.fixture.nftCreationHash)
 	if nftReceipt.Status != "0x1" || !common.IsHexAddress(nftReceipt.ContractAddress) {
 		h.t.Fatalf("Etherscan NFT deployment receipt = %#v", nftReceipt)

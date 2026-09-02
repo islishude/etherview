@@ -164,6 +164,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/addresses/{address}/user-operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAddressUserOperations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/addresses/{address}/withdrawals": {
         parameters: {
             query?: never;
@@ -1103,6 +1119,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/transactions/{hash}/user-operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listTransactionUserOperations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/user-operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listUserOperations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/user-operations/{hash}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getUserOperation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users/me": {
         parameters: {
             query?: never;
@@ -1881,6 +1945,8 @@ export interface components {
             state: components["schemas"]["StageState"];
             /** @description Published trace@3 state for the exact current canonical indexed block, not a claim of gap-free historical Trace coverage. */
             trace: components["schemas"]["StageState"];
+            /** @description Current configured-digest userop@1 coverage through the exact canonical indexed tip. */
+            user_operations: components["schemas"]["StageState"];
         };
         /**
          * @description How the published source artifact was resolved for the requested code identity. exact_address is an independent address verification; code_hash reuses an artifact verified at a different address with the identical runtime code hash and grants no proxy binding or write authority. On ProxyContractIdentity, exact_address accompanies verification_state=verified, while code_hash accompanies verification_state=unverified; the field is omitted when no artifact is available.
@@ -2538,7 +2604,7 @@ export interface components {
             canonical?: boolean;
             key: string;
             /** @enum {string} */
-            kind: "block" | "transaction" | "address" | "contract" | "token" | "nft" | "label";
+            kind: "block" | "transaction" | "user_operation" | "address" | "contract" | "token" | "nft" | "label";
             label: string;
             /** @enum {string} */
             name_source?: "ens" | "custom_ens";
@@ -2994,6 +3060,116 @@ export interface components {
             data: components["schemas"]["User"][];
             meta: components["schemas"]["Meta"];
         };
+        UserOperationDetail: {
+            actual_gas_cost: components["schemas"]["Quantity"];
+            actual_gas_used: components["schemas"]["Quantity"];
+            aggregator?: components["schemas"]["Address"];
+            beneficiary: components["schemas"]["Address"];
+            block_hash: components["schemas"]["Hash"];
+            block_number: components["schemas"]["Quantity"];
+            /** Format: date-time */
+            block_timestamp: string;
+            /** @description Exact outer EntryPoint transaction sender; no stronger off-chain Bundler identity is inferred. */
+            bundler: components["schemas"]["Address"];
+            canonical: boolean;
+            entry_point: components["schemas"]["Address"];
+            entry_point_version: components["schemas"]["UserOperationVersion"];
+            /** @description Canonical receipt log index of the matching UserOperationEvent. */
+            event_log_index: number;
+            events: components["schemas"]["UserOperationProtocolEvent"][];
+            factory?: components["schemas"]["Address"];
+            finality: components["schemas"]["Finality"];
+            hash: components["schemas"]["Hash"];
+            init_kind: components["schemas"]["UserOperationInitKind"];
+            nonce: components["schemas"]["Quantity"];
+            nonce_key: components["schemas"]["Quantity"];
+            nonce_sequence: components["schemas"]["Quantity"];
+            operation_index: number;
+            participating_roles?: components["schemas"]["UserOperationRole"][];
+            paymaster?: components["schemas"]["Address"];
+            request: components["schemas"]["UserOperationRequest"];
+            sender: components["schemas"]["Address"];
+            success: boolean;
+            transaction_hash: components["schemas"]["Hash"];
+            transaction_index: number;
+        };
+        /** @enum {string} */
+        UserOperationEventKind: "account_deployed" | "ignored_init_code" | "eip7702_initialized" | "execution_revert" | "post_op_revert" | "prefund_too_low";
+        /** @enum {string} */
+        UserOperationInitKind: "none" | "factory" | "eip7702";
+        UserOperationListResponse: {
+            data: components["schemas"]["UserOperationSummary"][];
+            meta: components["schemas"]["Meta"];
+        };
+        UserOperationProtocolEvent: {
+            kind: components["schemas"]["UserOperationEventKind"];
+            log_index: number;
+            nonce?: components["schemas"]["Quantity"];
+            panic_code?: components["schemas"]["Quantity"];
+            paymaster?: components["schemas"]["Address"];
+            raw_data: string;
+            reason?: string;
+            related_address?: components["schemas"]["Address"];
+            sender: components["schemas"]["Address"];
+        };
+        UserOperationRequest: {
+            account_gas_limits?: components["schemas"]["Hash"];
+            aggregated_signature: string;
+            call_data: string;
+            call_gas_limit: components["schemas"]["Quantity"];
+            factory_data: string;
+            gas_fees?: components["schemas"]["Hash"];
+            init_code: string;
+            max_fee_per_gas: components["schemas"]["Quantity"];
+            max_priority_fee_per_gas: components["schemas"]["Quantity"];
+            paymaster_and_data: string;
+            paymaster_data: string;
+            paymaster_post_op_gas_limit?: components["schemas"]["Quantity"];
+            paymaster_signature: string;
+            paymaster_verification_gas_limit?: components["schemas"]["Quantity"];
+            pre_verification_gas: components["schemas"]["Quantity"];
+            signature: string;
+            verification_gas_limit: components["schemas"]["Quantity"];
+        };
+        UserOperationResponse: {
+            data: components["schemas"]["UserOperationDetail"];
+            meta: components["schemas"]["Meta"];
+        };
+        /** @enum {string} */
+        UserOperationRole: "sender" | "entry_point" | "bundler" | "beneficiary" | "factory" | "paymaster" | "aggregator" | "eip7702_delegate";
+        UserOperationSummary: {
+            actual_gas_cost: components["schemas"]["Quantity"];
+            actual_gas_used: components["schemas"]["Quantity"];
+            aggregator?: components["schemas"]["Address"];
+            beneficiary: components["schemas"]["Address"];
+            block_hash: components["schemas"]["Hash"];
+            block_number: components["schemas"]["Quantity"];
+            /** Format: date-time */
+            block_timestamp: string;
+            /** @description Exact outer EntryPoint transaction sender; no stronger off-chain Bundler identity is inferred. */
+            bundler: components["schemas"]["Address"];
+            canonical: boolean;
+            entry_point: components["schemas"]["Address"];
+            entry_point_version: components["schemas"]["UserOperationVersion"];
+            /** @description Canonical receipt log index of the matching UserOperationEvent. */
+            event_log_index: number;
+            factory?: components["schemas"]["Address"];
+            finality: components["schemas"]["Finality"];
+            hash: components["schemas"]["Hash"];
+            init_kind: components["schemas"]["UserOperationInitKind"];
+            nonce: components["schemas"]["Quantity"];
+            nonce_key: components["schemas"]["Quantity"];
+            nonce_sequence: components["schemas"]["Quantity"];
+            operation_index: number;
+            participating_roles?: components["schemas"]["UserOperationRole"][];
+            paymaster?: components["schemas"]["Address"];
+            sender: components["schemas"]["Address"];
+            success: boolean;
+            transaction_hash: components["schemas"]["Hash"];
+            transaction_index: number;
+        };
+        /** @enum {string} */
+        UserOperationVersion: "0.6" | "0.7" | "0.8" | "0.9";
         UserProfileUpdate: {
             display_name: string | null;
         };
@@ -3229,6 +3405,7 @@ export interface components {
         SearchLimit: number;
         TransactionHash: components["schemas"]["Hash"];
         UserID: string;
+        UserOperationHash: components["schemas"]["Hash"];
     };
     requestBodies: never;
     headers: {
@@ -3489,6 +3666,32 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TransactionListResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAddressUserOperations: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                address: components["parameters"]["Address"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Canonical UserOperations involving this address, with its exact participant roles. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserOperationListResponse"];
                 };
             };
             default: components["responses"]["Error"];
@@ -4985,6 +5188,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TransactionTraceResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listTransactionUserOperations: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                hash: components["parameters"]["TransactionHash"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Canonical UserOperations in this direct EntryPoint bundle, in execution order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserOperationListResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listUserOperations: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Canonical UserOperations at one continuous userop@1 snapshot, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserOperationListResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getUserOperation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                hash: components["parameters"]["UserOperationHash"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Exact canonical UserOperation request, inclusion, outcome, and protocol events. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserOperationResponse"];
                 };
             };
             default: components["responses"]["Error"];

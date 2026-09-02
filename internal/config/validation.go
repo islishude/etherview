@@ -32,6 +32,7 @@ func (c Config) Validate() error {
 		validateObservability(c.Observability),
 		validateMetadataConfig(c),
 		validateENSConfig(c.ENS, c.Features.ENS),
+		validateERC4337Config(c),
 		validateConfiguredRoles(c.Runtime.Roles),
 		validateFeatureSecurityConfig(c),
 		validateVerificationConfig(c),
@@ -39,6 +40,55 @@ func (c Config) Validate() error {
 		validateBillingConfig(c),
 		validateAdapterConfig(c),
 	)
+}
+
+func validateERC4337Config(cfg Config) error {
+	const maximumEntryPoints = 16
+	var errs []error
+	entries := cfg.ERC4337.EntryPoints
+	if cfg.Features.UserOperations && len(entries) == 0 {
+		errs = append(errs, errors.New("features.user_operations requires at least one erc4337.entry_points entry"))
+	}
+	if !cfg.Features.UserOperations && len(entries) > 0 {
+		errs = append(errs, errors.New("erc4337.entry_points requires features.user_operations"))
+	}
+	if len(entries) > maximumEntryPoints {
+		errs = append(errs, fmt.Errorf("erc4337.entry_points must contain at most %d entries", maximumEntryPoints))
+	}
+	for index, entry := range entries {
+		if !validFixedHex(entry.Address, 20) || strings.EqualFold(entry.Address, "0x"+strings.Repeat("0", 40)) {
+			errs = append(errs, fmt.Errorf("erc4337.entry_points[%d].address must be a non-zero 20-byte 0x-prefixed address", index))
+		}
+		switch entry.Version {
+		case "0.6", "0.7", "0.8", "0.9":
+		default:
+			errs = append(errs, fmt.Errorf("erc4337.entry_points[%d].version must be one of 0.6, 0.7, 0.8, or 0.9", index))
+		}
+		if entry.ToBlock != nil && *entry.ToBlock < entry.FromBlock {
+			errs = append(errs, fmt.Errorf("erc4337.entry_points[%d].to_block must be at least from_block", index))
+		}
+	}
+	for left := range entries {
+		for right := left + 1; right < len(entries); right++ {
+			if !strings.EqualFold(entries[left].Address, entries[right].Address) {
+				continue
+			}
+			leftEnd, rightEnd := uint64(math.MaxUint64), uint64(math.MaxUint64)
+			if entries[left].ToBlock != nil {
+				leftEnd = *entries[left].ToBlock
+			}
+			if entries[right].ToBlock != nil {
+				rightEnd = *entries[right].ToBlock
+			}
+			if entries[left].FromBlock <= rightEnd && entries[right].FromBlock <= leftEnd {
+				errs = append(errs, fmt.Errorf(
+					"erc4337.entry_points[%d] and erc4337.entry_points[%d] overlap for the same address",
+					left, right,
+				))
+			}
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // ValidateForRoles applies dependencies that are specific to runnable roles.

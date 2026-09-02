@@ -543,6 +543,62 @@ authenticated routes, pass a server-readable key through `ETHERVIEW_LOAD_API_KEY
 `ETHERVIEW_LOAD_API_KEY`; the driver rejects credentialed URLs, cross-origin
 paths, redirects, and `apikey` query parameters.
 
+## ERC-4337 UserOperation indexing
+
+UserOperation browsing is disabled by default. Enable it only with an explicit
+EntryPoint registry whose address, wire version, and inclusive active block
+range have been verified for the indexed chain. The four currently supported
+official singleton addresses are shown below; replace each `from_block` with
+that deployment's exact block on the selected chain, and set `to_block` when a
+deployment is no longer accepted there:
+
+```yaml
+features:
+  user_operations: true
+
+erc4337:
+  entry_points:
+    - address: "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789"
+      version: "0.6"
+      from_block: 123
+      to_block: 456
+    - address: "0x0000000071727De22E5E9d8BAf0edAc6f37da032"
+      version: "0.7"
+      from_block: 457
+      to_block: 789
+    - address: "0x4337084d9e255ff0702461cf8895ce9e3b5ff108"
+      version: "0.8"
+      from_block: 790
+      to_block: 999
+    - address: "0x433709009B8330FDa32311DF1C2AFA402eD8D009"
+      version: "0.9"
+      from_block: 1000
+```
+
+The numeric ranges above are placeholders, not mainnet deployment facts.
+Entries for the same address must not overlap; at most 16 entries are accepted.
+An operator may instead provide the complete array through the bounded JSON
+environment value `ETHERVIEW_ERC4337_ENTRY_POINTS`. Configuration is normalized
+into a digest that scopes publications, coverage, readers, and cursors, so an
+address/version/range change does not expose results produced under the old
+registry.
+
+New canonical heads enter `userop@1` through the ordinary enrichment outbox.
+Migrations never schedule historical work. After first enablement or a registry
+change, record the canonical range and run an explicit bounded reindex, then
+wait for continuous UserOperation completeness in `/api/v1/status`:
+
+```sh
+etherview reindex --config /etc/etherview/config.yaml \
+  --from 12000000 --to 12010000 --stage userop \
+  --reason "publish userop@1 for the reviewed EntryPoint registry"
+```
+
+Do not use a successful empty list as evidence beyond the published coverage
+range. The index intentionally excludes pending Bundler mempools, submission,
+simulation, nested EntryPoint calls, and locally reconstructed UserOperation
+hashes.
+
 ## Repair and reindex
 
 Before scheduling work, record the exact chain, inclusive block range, current
@@ -574,6 +630,10 @@ etherview reindex --config /etc/etherview/config.yaml \
   --from 0 --to 12000010 --stage state_diff \
   --reason "publish state_diff v3 complete-prestate execution identities"
 
+etherview reindex --config /etc/etherview/config.yaml \
+  --from 12000000 --to 12000010 --stage userop \
+  --reason "publish userop@1 for the reviewed EntryPoint registry"
+
 etherview admin repair list --config /etc/etherview/config.yaml --limit 100 --format table
 ```
 
@@ -583,10 +643,11 @@ holding the chain lock. It cannot move canonicality or checkpoints. A range at
 or below finalized height requires `--allow-finalized` plus the recorded
 reason; this permits only a same-identity refresh.
 
-`reindex --stage proxy|abi|token|stats|trace|state_diff` queues work for the currently canonical
-block hash. It does not steal queued work or an active lease. Repair deliberately
-does not infer a downstream rebuild range; schedule each required derived
-stage explicitly and wait for its durable publication result. After the
+`reindex --stage proxy|abi|token|stats|trace|state_diff|userop` queues work for
+the currently canonical block hash. It does not steal queued work or an active
+lease. Repair deliberately does not infer a downstream rebuild range; schedule
+each required derived stage explicitly and wait for its durable publication
+result. After the
 OpenZeppelin proxy cutover, schedule `proxy` before `abi`; the ABI worker also
 refuses to claim a block until the current `proxy@2` result is published.
 The `trace@3` cutover is an explicit bounded reindex, never a migration-time

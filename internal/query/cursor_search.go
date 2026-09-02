@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sort"
@@ -30,6 +31,10 @@ type searchCursor struct {
 	SnapshotHash              string `json:"snapshot_hash"`
 	Generation                int64  `json:"generation"`
 	Query                     string `json:"query"`
+	UserOperationDigest       string `json:"user_operation_digest,omitempty"`
+	UserOperationSnapshot     bool   `json:"user_operation_snapshot,omitempty"`
+	UserOperationSnapshotEnd  uint64 `json:"user_operation_snapshot_end,omitempty"`
+	UserOperationSnapshotHash string `json:"user_operation_snapshot_hash,omitempty"`
 	ResolvedName              string `json:"resolved_name,omitempty"`
 	ResolvedNameAddress       string `json:"resolved_name_address,omitempty"`
 	ResolvedNameObservationID int64  `json:"resolved_name_observation_id,omitempty"`
@@ -94,6 +99,7 @@ func (r *PostgresReader) searchHash(
 	hash common.Hash,
 	generation int64,
 	limit int,
+	userOperations userOperationSearchSnapshot,
 ) ([]gen.SearchResult, error) {
 	rows, err := queryer.QueryContext(ctx, dbgen.QuerySearchHash, r.chainID, hash.Bytes(), generation, limit)
 	if err != nil {
@@ -130,6 +136,29 @@ func (r *PostgresReader) searchHash(
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate hash search results: %w", err)
+	}
+	if r.userOperations && userOperations.available {
+		var userOpHash, sender []byte
+		err := queryer.QueryRowContext(
+			ctx, dbgen.ERC4337SearchUserOperation,
+			r.chainID, r.userOperationDigest, hash[:],
+			strconv.FormatUint(userOperations.end, 10),
+		).Scan(&userOpHash, &sender)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("search UserOperation hash: %w", err)
+		}
+		if err == nil {
+			if len(userOpHash) != common.HashLength || len(sender) != common.AddressLength || common.BytesToHash(userOpHash) != hash {
+				return nil, errors.New("UserOperation hash search returned an invalid identity")
+			}
+			canonical := true
+			results = mergeSearchResults(results, gen.SearchResult{
+				Kind:  gen.SearchResultKindUserOperation,
+				Key:   strings.ToLower(hash.Hex()),
+				Label: "UserOperation · " + common.BytesToAddress(sender).Hex(),
+				Rank:  95, Canonical: &canonical,
+			}, limit)
+		}
 	}
 	return results, nil
 }
@@ -225,7 +254,12 @@ type searchQueryer interface {
 }
 
 func (r *PostgresReader) validateSearchCursor(ctx context.Context, tx *sql.Tx, cursor searchCursor, query string) error {
+	expectedUserOperationDigest := ""
+	if r.userOperations {
+		expectedUserOperationDigest = hex.EncodeToString(r.userOperationDigest)
+	}
 	if cursor.ChainID != r.chainID || cursor.Query != strings.ToLower(query) || cursor.Generation < 0 ||
+		cursor.UserOperationDigest != expectedUserOperationDigest ||
 		cursor.AfterKind == "" || cursor.AfterKey == "" {
 		return fmt.Errorf("%w: search cursor identity is invalid", ErrInvalidCursor)
 	}
@@ -255,6 +289,31 @@ func (r *PostgresReader) validateSearchCursor(ctx context.Context, tx *sql.Tx, c
 	}
 	if !valid {
 		return fmt.Errorf("%w: canonical branch changed", ErrInvalidCursor)
+	}
+	if cursor.UserOperationSnapshot {
+		if !r.userOperations || cursor.UserOperationSnapshotEnd < r.userOperationStart {
+			return fmt.Errorf("%w: UserOperation snapshot identity is invalid", ErrInvalidCursor)
+		}
+		userOperationHash, err := ethrpc.ParseHash(cursor.UserOperationSnapshotHash)
+		if err != nil {
+			return fmt.Errorf("%w: UserOperation snapshot hash is invalid", ErrInvalidCursor)
+		}
+		if err := tx.QueryRowContext(
+			ctx,
+			dbgen.ERC4337ValidateSnapshot,
+			strconv.FormatUint(r.userOperationStart, 10),
+			strconv.FormatUint(cursor.UserOperationSnapshotEnd, 10),
+			userOperationHash[:],
+			r.chainID,
+			r.userOperationDigest,
+		).Scan(&valid); err != nil {
+			return fmt.Errorf("validate search UserOperation snapshot: %w", err)
+		}
+		if !valid {
+			return fmt.Errorf("%w: UserOperation coverage changed", ErrInvalidCursor)
+		}
+	} else if cursor.UserOperationSnapshotEnd != 0 || cursor.UserOperationSnapshotHash != "" {
+		return fmt.Errorf("%w: unexpected UserOperation snapshot identity", ErrInvalidCursor)
 	}
 	if cursor.ResolvedNameObservationID > 0 {
 		visible, err := r.resolvedNameVisible(
@@ -353,7 +412,7 @@ func normalizeSearchResult(
 		} else if height, parseErr := parseDecimalUint64(key); parseErr != nil || strconv.FormatUint(height, 10) != key {
 			return gen.SearchResult{}, errors.New("database returned invalid block search key")
 		}
-	case gen.SearchResultKindTransaction:
+	case gen.SearchResultKindTransaction, gen.SearchResultKindUserOperation:
 		hash, err := ethrpc.ParseHash(key)
 		if err != nil {
 			return gen.SearchResult{}, fmt.Errorf("database returned invalid transaction search key: %w", err)

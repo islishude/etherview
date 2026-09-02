@@ -97,10 +97,14 @@ features:
   user_api_keys: true
   api_billing: false
   x402_topups: false
+  user_operations: false
   proxy_detection_v2: true
   safe_proxy_detection: true
   diamond_proxy_detection: true
   proxy_detection_v2_public: false
+
+erc4337:
+  entry_points: []
 
 security:
   public_verification: true

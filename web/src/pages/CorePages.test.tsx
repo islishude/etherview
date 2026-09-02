@@ -984,7 +984,10 @@ function configResponse() {
 }
 
 function completeness() {
-  return { core: "complete", trace: "unavailable", metadata: "pending", state: "complete" };
+  return {
+    core: "complete", trace: "unavailable", metadata: "pending", state: "complete",
+    user_operations: "unavailable",
+  };
 }
 
 function mempoolTransaction(hash: string, overrides: Record<string, unknown> = {}) {

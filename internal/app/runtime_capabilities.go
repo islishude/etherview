@@ -13,8 +13,9 @@ func configuredCompleteness(cfg config.Config, rpcBuild *RPCBuild) gen.Completen
 	}
 	return gen.Completeness{
 		Core: gen.StageStateComplete, Trace: trace,
-		Metadata: configuredStageState(cfg.Features.NFTMetadata),
-		State:    historicalStateCompleteness(cfg, rpcBuild),
+		Metadata:       configuredStageState(cfg.Features.NFTMetadata),
+		State:          historicalStateCompleteness(cfg, rpcBuild),
+		UserOperations: configuredStageState(cfg.Features.UserOperations),
 	}
 }
 

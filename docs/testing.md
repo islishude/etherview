@@ -92,6 +92,9 @@ replace a required `make test-e2e` pass.
   The same gate verifies route-lazy delivery, one durable browser event stream,
   event-driven home/list refresh, on-demand CodeMirror, and embedded
   precompressed asset behavior without console or CSP failures.
+  It also browses the ERC-4337 global list, detail, transaction activity, and
+  address activity against the generated client, including a decoded failure
+  reason and feature-gated navigation.
   The suite also enables a deterministic generated-client ENS fixture to prove
   Viem normalization, current official/custom presentation, exact address
   disclosure, snapshot reuse, bilingual accessibility, and 390px overflow.
@@ -100,6 +103,10 @@ replace a required `make test-e2e` pass.
   the Go runner owns a fresh PostgreSQL 18 Compose project and removes its
   volume afterward. Supplying the variable uses that explicitly disposable
   external database instead.
+  The ERC-4337 regression commits exact stored EntryPoint calldata and logs,
+  drives the durable `userop@1` outbox/worker path, verifies all native reads,
+  search and completeness, then replaces the block and requires canonical
+  withdrawal with retained orphan evidence.
 - `make test-integration-race`: run the same owned database lifecycle with the
   Go race detector. This expensive variant is explicit and is not part of
   default CI.
@@ -254,7 +261,7 @@ replace a required `make test-e2e` pass.
   underpriced same-sender/nonce transaction followed by its signed fee-bumped
   replacement, verifies the old hash as `replaced` and the new hash as
   `pending`, then mines and verifies the new hash as included `success`. It
-  also verifies contract creation and a failed call, all six deployed stage
+  also verifies contract creation and a failed call, all seven enabled stage
   publications, a distinct competing-hash reorg with orphan/journal retention
   and changed hourly analytics, an orphaned delegation followed by canonical
   delegation, redelegation, ordinary delegated execution, and clearing, plus
@@ -269,6 +276,11 @@ replace a required `make test-e2e` pass.
   behavior, an SSE event delivered after an idle period longer than the
   production server's test write timeout, RPC and PostgreSQL outage recovery,
   API process restart, bounded load, and final durable/public parity. The
+  initial Prague block additionally executes the exact packed v0.9 `handleOps`
+  ABI at a configured, transaction-deployed EntryPoint fixture and requires
+  the canonical UserOperation list/detail/transaction/address/search
+  projections and decoded revert event in both topologies. Decoder unit vectors
+  independently cover the v0.6-v0.9 wire layouts and aggregated operations. The
   test-only ordinary-response write timeout and load request timeout share one
   2-second budget; the SSE client is independently context-bounded and stays
   idle for three times that budget before requiring the durable event.

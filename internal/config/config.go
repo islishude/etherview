@@ -49,6 +49,7 @@ type Config struct {
 	UserAuth      UserAuthConfig      `yaml:"user_auth"`
 	Billing       BillingConfig       `yaml:"billing"`
 	ENS           ENSConfig           `yaml:"ens"`
+	ERC4337       ERC4337Config       `yaml:"erc4337"`
 	Adapters      AdapterConfig       `yaml:"adapters"`
 }
 
@@ -179,6 +180,7 @@ type FeatureConfig struct {
 	NFTMetadata            bool `yaml:"nft_metadata"`
 	Pricing                bool `yaml:"pricing"`
 	ENS                    bool `yaml:"ens"`
+	UserOperations         bool `yaml:"user_operations"`
 	UserAuth               bool `yaml:"user_auth"`
 	UserAPIKeys            bool `yaml:"user_api_keys"`
 	APIBilling             bool `yaml:"api_billing"`
@@ -187,6 +189,20 @@ type FeatureConfig struct {
 	SafeProxyDetection     bool `yaml:"safe_proxy_detection"`
 	DiamondProxyDetection  bool `yaml:"diamond_proxy_detection"`
 	ProxyDetectionV2Public bool `yaml:"proxy_detection_v2_public"`
+}
+
+// ERC4337Config is an explicit chain-local EntryPoint allowlist. Addresses are
+// never discovered from event topics or bytecode because either signal can be
+// reproduced by an unrelated contract.
+type ERC4337Config struct {
+	EntryPoints []ERC4337EntryPointConfig `yaml:"entry_points"`
+}
+
+type ERC4337EntryPointConfig struct {
+	Address   string  `json:"address" yaml:"address"`
+	Version   string  `json:"version" yaml:"version"`
+	FromBlock uint64  `json:"from_block" yaml:"from_block"`
+	ToBlock   *uint64 `json:"to_block,omitempty" yaml:"to_block"`
 }
 
 // ENSConfig bounds the optional current-name capability. OfficialRPCEndpoints

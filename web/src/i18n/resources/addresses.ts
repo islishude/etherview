@@ -13,6 +13,7 @@ export const addressesResources = {
             erc20Transfers: "ERC-20 Transfers",
             nftTransfers: "NFT Transfers",
             assets: "Assets",
+            userOperations: "User Ops",
             delegation: "Delegation",
             contract: "Contract",
           },
@@ -52,6 +53,7 @@ export const addressesResources = {
           searchKind: {
             block: "Block",
             transaction: "Transaction",
+            user_operation: "UserOperation",
             address: "Address",
             contract: "Contract",
             token: "Token",
@@ -73,6 +75,7 @@ export const addressesResources = {
             erc20Transfers: "ERC-20 转账",
             nftTransfers: "NFT 转账",
             assets: "资产",
+            userOperations: "User Ops",
             delegation: "委托",
             contract: "合约",
           },
@@ -112,6 +115,7 @@ export const addressesResources = {
           searchKind: {
             block: "区块",
             transaction: "交易",
+            user_operation: "UserOperation",
             address: "地址",
             contract: "合约",
             token: "代币",

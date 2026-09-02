@@ -217,10 +217,10 @@ function validateHashes(value: unknown, label: string): void {
 function validateCompleteness(value: unknown): void {
   const record = objectWithKeys(
     value,
-    ["core", "trace", "metadata", "state"],
-    ["core", "trace", "metadata", "state"],
+    ["core", "trace", "metadata", "state", "user_operations"],
+    ["core", "trace", "metadata", "state", "user_operations"],
   );
-  for (const key of ["core", "trace", "metadata", "state"] as const) {
+  for (const key of ["core", "trace", "metadata", "state", "user_operations"] as const) {
     enumeration(record[key], stageStates, `completeness.${key}`);
   }
 }

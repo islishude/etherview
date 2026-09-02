@@ -106,6 +106,10 @@ type fixture struct {
 	delegatedCallHash      string
 	clearingHash           string
 	clearingAuth           types.SetCodeAuthorization
+	entryPoint             string
+	entryPointCreationHash string
+	userOperationHash      string
+	userOperationTxHash    string
 	blockOneHash           string
 	orphanHash             string
 	finalHash              string
@@ -129,6 +133,7 @@ type durableSnapshot struct {
 	Authorizations       int64
 	OrphanAuthorizations int64
 	ENSObservations      int64
+	UserOperations       int64
 }
 
 type apiSnapshot struct {
@@ -174,23 +179,7 @@ type apiSnapshot struct {
 	EtherscanFunding          string
 	EtherscanBlockCounts      string
 	EtherscanNFTHoldings      string
-}
-
-type modeResult struct {
-	durable durableSnapshot
-	api     apiSnapshot
-}
-
-type eip7702APISnapshot struct {
-	authorityType             string
-	hasDelegationHistory      bool
-	delegationStatus          string
-	delegationHistory         string
-	authorizationOutcomes     string
-	delegatedResolution       string
-	delegatedExecutionAddress string
-	clearingResolution        string
-	clearingStatus            string
+	UserOperationHash         string
 }
 
 type harness struct {
@@ -432,6 +421,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 			t.Fatal(err)
 		}
 		h.initializeFixture(ctx)
+		h.configureUserOperationEnvironment()
 		h.rpcProxy = startReceiptProxy(t, "http://"+binding)
 		h.rpcProxy.ensAddress = common.HexToAddress(h.fixture.authority)
 		h.ensRPC = startENSMainnetRPC(t)
@@ -447,6 +437,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		h.resolveAPI(ctx)
 		h.waitReady(ctx)
 		h.waitCanonical(ctx, 1, h.fixture.blockOneHash)
+		h.assertUserOperation(ctx)
 		if h.rpcProxy.normalized.Load() == 0 {
 			t.Fatal("RPC fixture adapter did not normalize Anvil's incomplete blob fee observation")
 		}
@@ -500,6 +491,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 			"from": h.fixture.accounts[0], "data": noCBORCreationBytecode,
 			"gas": "0x7a120", "gasPrice": "0x3b9aca00",
 		})
+		h.fixture.nftCreationHash = h.sendEtherscanNFTDeployment(ctx)
 		h.fixture.delegationAuths = []types.SetCodeAuthorization{
 			h.signAuthorization(h.fixture.authorityKey, common.HexToAddress(h.fixture.delegateB), 0),
 			h.signAuthorization(h.fixture.skippedKey, common.HexToAddress(h.fixture.delegateA), 1),
@@ -520,6 +512,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 			t.Fatalf("creation receipt = %#v", receipt)
 		}
 		h.fixture.contractAddress = receipt.ContractAddress
+		h.captureEtherscanNFTDeployment(ctx)
 		delegationReceipt := h.waitReceipt(ctx, h.fixture.delegationHash)
 		if delegationReceipt.Status != "0x1" {
 			t.Fatalf("canonical delegation receipt status = %s, want 0x1", delegationReceipt.Status)
@@ -685,6 +678,7 @@ func (h *harness) assertOperationalLogs(ctx context.Context) {
 		`"job":{"id":`,
 		`"stage":{"name":"trace","version":3}`,
 		`"stage":{"name":"state_diff","version":3}`,
+		`"stage":{"name":"userop","version":1}`,
 		`"block":{"number":"` + strconv.FormatUint(h.fixture.finalHeight, 10) + `","hash":"` + strings.ToLower(h.fixture.finalHash) + `"}`,
 		`"summary":{`,
 	} {
@@ -753,6 +747,7 @@ func (h *harness) initializeFixture(ctx context.Context) {
 			h.t.Fatalf("EIP-7702 fixture balance for %s = %s", funded, balance)
 		}
 	}
+	h.sendUserOperationEntryPointDeployment(ctx)
 	h.fixture.nativeHash = h.sendTransaction(ctx, map[string]any{
 		"from": h.fixture.accounts[0], "to": nativeTransferTarget,
 		"value": "0xb", "gas": "0x5208", "gasPrice": "0x3b9aca00",
@@ -765,9 +760,10 @@ func (h *harness) initializeFixture(ctx context.Context) {
 		"from": h.fixture.accounts[0], "data": noCBORCreationBytecode,
 		"gas": "0x7a120", "gasPrice": "0x3b9aca00",
 	})
-	h.fixture.nftCreationHash = h.sendEtherscanNFTDeployment(ctx)
+	h.sendUserOperationBundle(ctx)
 	h.mine(ctx, h.baseTimestamp+1)
 	h.captureInitialContractDeployments(ctx, delegateAHash, delegateBHash)
+	h.captureUserOperationFixture(ctx)
 	h.fixture.blockOneHash = h.latestBlock(ctx).Hash
 	var pendingNonce hexutil.Uint64
 	h.rpcCall(ctx, &pendingNonce, "eth_getTransactionCount", h.fixture.accounts[0], "latest")
@@ -1016,7 +1012,7 @@ func (h *harness) waitReady(ctx context.Context) {
 func (h *harness) waitCanonical(ctx context.Context, height uint64, hash string) {
 	expected := strings.ToLower(strings.TrimPrefix(hash, "0x"))
 	heightArgument := int64(height)
-	waitFor(h.t, ctx, fmt.Sprintf("canonical block %d with six complete stages", height), func() (bool, string, error) {
+	waitFor(h.t, ctx, fmt.Sprintf("canonical block %d with seven complete stages", height), func() (bool, string, error) {
 		var canonical string
 		var checkpoint int64
 		var complete, active, failed, unpublished int64
@@ -1031,13 +1027,13 @@ func (h *harness) waitCanonical(ctx context.Context, height uint64, hash string)
 					WHERE chain_id = 1 AND block_number = $1 AND block_hash = decode($2, 'hex')
 					  AND state = 'complete' AND (stage, stage_version) IN (
 					    ('proxy',$3::integer),('abi',$4::integer),('token',1),
-					    ('stats',3),('trace',$5::integer),('state_diff',$6::integer))),
+					    ('stats',3),('trace',$5::integer),('state_diff',$6::integer),('userop',1))),
 				(SELECT count(*) FROM durable_jobs WHERE status IN ('queued','leased')),
 				(SELECT count(*) FROM published_block_stage_results
 					WHERE chain_id = 1 AND block_number = $1 AND block_hash = decode($2, 'hex')
 					  AND state <> 'complete' AND (stage, stage_version) IN (
 					    ('proxy',$3::integer),('abi',$4::integer),('token',1),
-					    ('stats',3),('trace',$5::integer),('state_diff',$6::integer))),
+					    ('stats',3),('trace',$5::integer),('state_diff',$6::integer),('userop',1))),
 				(SELECT count(*) FROM transactional_outbox WHERE published_at IS NULL),
 				COALESCE((SELECT string_agg(stage || ':' || left(last_error, 512), ';' ORDER BY stage)
 					FROM published_block_stage_results
@@ -1052,7 +1048,7 @@ func (h *harness) waitCanonical(ctx context.Context, height uint64, hash string)
 			err = errors.New(failures)
 		}
 		return err == nil && canonical == expected && checkpoint == int64(height) &&
-			complete == 6 && active == 0 && failed == 0 && unpublished == 0, state, err
+			complete == 7 && active == 0 && failed == 0 && unpublished == 0, state, err
 	})
 }
 
@@ -1311,13 +1307,15 @@ func (h *harness) captureDurable(ctx context.Context) durableSnapshot {
 			(SELECT count(*) FROM eip7702_authorizations WHERE chain_id = 1),
 			(SELECT count(*) FROM eip7702_authorizations
 				WHERE chain_id = 1 AND transaction_hash = decode($1, 'hex')),
-			(SELECT count(*) FROM ens_name_observations WHERE chain_id = 1)
+			(SELECT count(*) FROM ens_name_observations WHERE chain_id = 1),
+			(SELECT count(*) FROM erc4337_user_operations WHERE chain_id = 1)
 	`, strings.TrimPrefix(h.fixture.orphanDelegationHash, "0x")).Scan(
 		&snapshot.GenesisHash, &snapshot.Canonical, &snapshot.BlockCount,
 		&snapshot.TransactionCount, &snapshot.ReceiptCount, &snapshot.CompleteStages,
 		&snapshot.FailedStages, &snapshot.UnpublishedOutbox, &snapshot.Checkpoint,
 		&snapshot.OrphanCount, &snapshot.Rollup, &snapshot.Statistics,
 		&snapshot.Authorizations, &snapshot.OrphanAuthorizations, &snapshot.ENSObservations,
+		&snapshot.UserOperations,
 	)
 	if err != nil {
 		h.t.Fatal(err)
@@ -1331,6 +1329,9 @@ func (h *harness) captureDurable(ctx context.Context) durableSnapshot {
 	if snapshot.ENSObservations < 2 {
 		h.t.Fatalf("ENS durable observations = %d, want forward and primary facts", snapshot.ENSObservations)
 	}
+	if snapshot.UserOperations != 1 {
+		h.t.Fatalf("durable UserOperations = %d, want 1", snapshot.UserOperations)
+	}
 	return snapshot
 }
 
@@ -1343,6 +1344,8 @@ func (h *harness) captureAPI(ctx context.Context) apiSnapshot {
 	h.mustGetJSON(ctx, "/api/v1/blocks?limit=20", &blocks)
 	var transactions gen.TransactionListResponse
 	h.mustGetJSON(ctx, "/api/v1/transactions?limit=20", &transactions)
+	var userOperation gen.UserOperationResponse
+	h.mustGetJSON(ctx, "/api/v1/user-operations/"+h.fixture.userOperationHash, &userOperation)
 	etherscanAdvanced, etherscanFunding, etherscanCounts := h.captureEtherscanExpansion(ctx)
 	etherscanNFTHoldings := h.captureEtherscanNFTHoldings(ctx)
 	var from gen.AddressResponse
@@ -1482,6 +1485,7 @@ func (h *harness) captureAPI(ctx context.Context) apiSnapshot {
 		EtherscanFunding:          etherscanFunding,
 		EtherscanBlockCounts:      etherscanCounts,
 		EtherscanNFTHoldings:      etherscanNFTHoldings,
+		UserOperationHash:         string(userOperation.Data.Hash),
 	}
 }
 
@@ -1661,16 +1665,6 @@ func assertRuntimeAuthorization(
 	if skipReason != "" && (actual.SkipReason == nil || string(*actual.SkipReason) != skipReason) {
 		t.Fatalf("authorization skip reason = %#v, want %q", actual.SkipReason, skipReason)
 	}
-}
-
-type rpcBlock struct {
-	Hash   string `json:"hash"`
-	Number string `json:"number"`
-}
-
-type rpcReceipt struct {
-	Status          string `json:"status"`
-	ContractAddress string `json:"contractAddress"`
 }
 
 type receiptProxy struct {

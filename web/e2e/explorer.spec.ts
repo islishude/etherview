@@ -35,6 +35,7 @@ const predecessorTransactionHash = `0x${"9".repeat(64)}`;
 const replacementTransactionHash = `0x${"8".repeat(64)}`;
 const delegationTransactionHash = `0x${"e".repeat(64)}`;
 const clearingTransactionHash = `0x${"f".repeat(64)}`;
+const userOperationHash = `0x${"12".repeat(32)}`;
 const readAPIKey = "ev_e2e_read";
 const verificationJobID = "123e4567-e89b-42d3-a456-426614174000";
 const transactionCursor = "transactions/snapshot?generation=7 + page=2&exact=true/#";
@@ -130,6 +131,37 @@ test("embedded SPA deep links, language, theme, and keyboard entry remain functi
   await page.goto("/contracts");
   await expect(page.getByRole("heading", { name: /404 ·/ })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "合约" })).toHaveCount(0);
+});
+
+test("ERC-4337 UserOperations browse globally and from transaction and address activity", async ({ page }) => {
+  const response = await page.goto("/user-operations");
+  expect(response?.status()).toBe(200);
+  await expect(page.getByRole("heading", { name: "UserOperations" })).toBeVisible();
+  const list = page.getByRole("table", {
+    name: "Canonical ERC-4337 operations from one continuous indexed snapshot.",
+  });
+  await expect(list.getByRole("link", { name: /0x121212/u })).toBeVisible();
+  await expect(list.getByText("Failed", { exact: true })).toBeVisible();
+
+  await activateInView(list.getByRole("link", { name: /0x121212/u }));
+  await expect(page).toHaveURL(`/user-op/${userOperationHash}`);
+  await expect(page.getByRole("heading", { name: "UserOperation", exact: true, level: 1 })).toBeVisible();
+  await expect(page.getByText("paymaster rejected", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("0xdeadbeef", { exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await assertA11yAndNoOverflow(page, "ERC-4337 UserOperation detail at 390px");
+
+  await page.goto(`/tx/${decodedTransactionHash}?tab=user-operations`);
+  const transactionTabs = page.getByRole("tablist", { name: "Transaction detail sections" });
+  await expect(transactionTabs.getByRole("tab", { name: "User Operations" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("table", {
+    name: "Canonical ERC-4337 operations from one continuous indexed snapshot.",
+  })).toBeVisible();
+
+  await page.goto(`/address/${walletAccount}?tab=user-operations`);
+  await expect(page.getByRole("heading", { name: "User Ops", exact: true })).toBeVisible();
+  await expect(page.getByText("Sender", { exact: true }).last()).toBeVisible();
+  await assertA11yAndNoOverflow(page, "ERC-4337 address activity at 390px");
 });
 
 test("verification compiler versions preserve semantic order", async ({ page }) => {

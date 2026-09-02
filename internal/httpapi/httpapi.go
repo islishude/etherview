@@ -58,6 +58,7 @@ const (
 
 type StatusSnapshot = publicquery.StatusSnapshot
 type Reader = publicquery.Reader
+type UserOperationReader = publicquery.UserOperationReader
 
 type TransactionReader interface {
 	Transaction(context.Context, string) (gen.Transaction, error)
@@ -140,6 +141,7 @@ type Options struct {
 	DelegationHistory     DelegationHistoryReader
 	Genesis               GenesisReader
 	Catalog               catalog.Reader
+	UserOperations        UserOperationReader
 	Analytics             AnalyticsReader
 	Web                   http.Handler
 	WebRoutePattern       func(*http.Request) string
@@ -182,6 +184,7 @@ type Handler struct {
 	delegationHistory     DelegationHistoryReader
 	genesis               GenesisReader
 	catalog               catalog.Reader
+	userOperations        UserOperationReader
 	analytics             AnalyticsReader
 	web                   http.Handler
 	webRoutePattern       func(*http.Request) string
@@ -244,6 +247,7 @@ func New(options Options) (*Handler, error) {
 		delegationHistory:     options.DelegationHistory,
 		genesis:               options.Genesis,
 		catalog:               options.Catalog,
+		userOperations:        options.UserOperations,
 		analytics:             options.Analytics,
 		web:                   options.Web,
 		webRoutePattern:       options.WebRoutePattern,

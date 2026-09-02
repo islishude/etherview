@@ -147,6 +147,7 @@ describe("embedded explorer shell", () => {
       trace: "unavailable",
       metadata: "pending",
       state: "complete",
+      user_operations: "unavailable",
     };
     const homeSnapshot = {
       data: {

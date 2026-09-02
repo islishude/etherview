@@ -11,6 +11,7 @@ truth. Redis, NATS, and S3-compatible storage are optional accelerators.
 
 - Reorg-safe block, transaction, receipt, log, withdrawal, and mempool indexing
 - Block-scoped traces, ABI/proxy decoding, tokens, NFTs, balances, and statistics
+- Optional canonical ERC-4337 EntryPoint v0.6-v0.9 UserOperation browsing
 - Solidity/Yul contract verification and optional Sourcify interoperability
 - Native REST/SSE APIs, an Etherscan V2 compatibility subset, and an embedded
   bilingual explorer
@@ -22,10 +23,11 @@ L2-specific batch semantics are outside the v1 core scope.
 
 ## Project status
 
-The implementation plans through P65 are complete. P66 billing conformance and
-P70 release evidence are still open, so the repository does not yet claim a
-v1.0.0 production release. [PLAN.md](PLAN.md) is the authoritative status and
-evidence index.
+The implementation plans through P75 are complete except for work explicitly
+marked blocked or superseded in the plan. P76 ERC-4337 browsing is complete; P70
+release evidence remains open, so the repository does not yet claim a v1.0.0
+production release. [PLAN.md](PLAN.md) is the authoritative status and evidence
+index.
 
 ## Quick start
 
