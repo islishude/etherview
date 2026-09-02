@@ -1,6 +1,6 @@
 # P76 — ERC-4337 UserOperation Browsing
 
-Status: `blocked`
+Status: `done`
 
 ## Outcome
 
@@ -33,7 +33,7 @@ nested EntryPoint calls are outside this plan.
 | ID | Status | Depends on | Deliverable | Verification |
 |---|---|---|---|---|
 | P76-T01 | done | P10, P20, P40, P50, P60, P61, P68, P75 | Governance, bounded EntryPoint configuration, `userop@1`, PostgreSQL persistence and coverage, generated native APIs, search, bilingual Web browsing, rollout, and runtime parity | decoder, configuration, PostgreSQL, reorg, generation, Web, browser, real-Anvil, monolith/split, race, and common gates |
-| P76-T02 | blocked | P76-T01 | Restore CI closure by isolating feature-on runtime fixtures from feature-off Hardhat/Foundry overlays, documenting the shared-overlay test contract, and giving the unchanged full PostgreSQL integration package an explicit cold-run timeout | Compose render/runtime regressions, integration runner tests, testing guide, PostgreSQL integration, Hardhat, Foundry, common gates, and a fresh GitHub Actions run |
+| P76-T02 | done | P76-T01 | Restore CI closure by isolating feature-on runtime fixtures from feature-off Hardhat/Foundry overlays, documenting the shared-overlay test contract, and giving the unchanged full PostgreSQL integration package an explicit cold-run timeout | Compose render/runtime regressions, integration runner tests, testing guide, PostgreSQL integration, Hardhat, Foundry, common gates, and a fresh GitHub Actions run |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
@@ -52,14 +52,11 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 - [x] Runtime-only UserOperation fixtures opt in explicitly; unrelated Hardhat and Foundry verification overlays remain feature-off and start successfully.
 - [x] The full PostgreSQL integration package has an explicit bounded timeout above observed cold-CI duration without skipping or weakening tests.
 - [x] The testing guide owns the shared-overlay default-off, explicit opt-in, feature-derived readiness, cross-suite command sequence, timeout, and failure-signature rules.
-- [ ] A fresh GitHub Actions run on the remediation revision passes PostgreSQL integration and both architectures of the Hardhat and Foundry matrices.
+- [x] A fresh GitHub Actions run on the remediation revision passes PostgreSQL integration and both architectures of the Hardhat and Foundry matrices.
 
 ## Current Blockers
 
-P76-T02 local remediation, executable regressions, and testing-guide hardening
-are complete. Live closure is blocked until the reviewed remediation is
-committed and pushed, then a fresh GitHub Actions run passes PostgreSQL
-integration plus both architectures of the Hardhat and Foundry matrices.
+None.
 
 ## Evidence
 
@@ -125,5 +122,9 @@ integration plus both architectures of the Hardhat and Foundry matrices.
   consumers. It also records the integration-timeout and external-compiler
   failure signatures. The executable opt-in/stage-count regression,
   `make source-check`, `make plan-check`, and `git diff --check` pass.
-- Live closure remains intentionally unclaimed: these changes are uncommitted
-  and unpushed, so no GitHub Actions run contains the remediation yet.
+- [GitHub Actions run 33634682073](https://github.com/islishude/etherview/actions/runs/33634682073)
+  passes on remediation commit `7214ecbf85cdfc19c54aac2e4e89eb288dacb708`:
+  PostgreSQL integration, both architectures of the Hardhat and Foundry
+  production verification matrices, common generation/lint/tests, security
+  and licenses, browser E2E, and container/Compose/Helm runtime verification
+  all complete successfully. P76-T02 and P76 are closed.

@@ -43,7 +43,7 @@ batch semantics are not core v1 scope.
 | P73 | [Prepaid API Billing](docs/plans/P73-prepaid-api-billing.md) | blocked | P40, P60, P65 | x402 account top-ups and PostgreSQL prepaid credit for bounded Etherscan V2 reads |
 | P74 | [Etherscan V2 Read Expansion](docs/plans/P74-etherscan-v2-read-expansion.md) | done | P20, P40, P65 | Authoritative withdrawals, holdings, funding, block counts, and advanced compatibility filters |
 | P75 | [Runtime and Performance Hardening](docs/plans/P75-runtime-performance-hardening.md) | done | P10, P40, P60, P68, P73, P74 | Bounded canonical traversal and backfill, efficient core persistence/projections, bounded compatibility reads, lean SPA delivery, and structural cleanup |
-| P76 | [ERC-4337 UserOperation Browsing](docs/plans/P76-erc4337-user-operations.md) | blocked | P10, P20, P40, P50, P60, P61, P68, P75 | Canonical EntryPoint v0.6-v0.9 UserOperation indexing, APIs, search, and bilingual Web browsing |
+| P76 | [ERC-4337 UserOperation Browsing](docs/plans/P76-erc4337-user-operations.md) | done | P10, P20, P40, P50, P60, P61, P68, P75 | Canonical EntryPoint v0.6-v0.9 UserOperation indexing, APIs, search, and bilingual Web browsing |
 
 Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 `superseded`.
@@ -433,10 +433,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   evidence](docs/plans/P75-runtime-performance-hardening.md#evidence). P70-T04
   still owns the representative capacity run and P73's live-testnet boundary
   remains a separate release blocker.
-- P76 implementation, local CI remediation, executable regressions, and the
-  shared-overlay testing contract are complete. Live closure is blocked on a
-  remediation commit/push and fresh GitHub Actions run. An explicit normalized
-  EntryPoint v0.6-v0.9 registry drives
+- P76 is complete, including the shared-overlay isolation and explicit
+  integration-timeout remediation confirmed by GitHub Actions run 33634682073.
+  An explicit normalized EntryPoint v0.6-v0.9 registry drives
   the lease-fenced `userop@1` stage from exact stored calldata and receipts.
   Configuration-scoped PostgreSQL coverage and cursors, canonical/orphan
   journals, outcome and lifecycle facts, participant roles, generated global,
@@ -444,7 +443,7 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   views remain fail-closed across malformed bundles, replay, detach, reattach,
   and configuration changes. Common, PostgreSQL ordinary/race, Playwright,
   production-schema, deployment, and real-Anvil monolith/split runtime gates
-  pass locally; P76-T02 owns the remaining GitHub Actions rerun.
+  pass locally and in CI.
   Reviewable evidence remains in [P76
   evidence](docs/plans/P76-erc4337-user-operations.md#evidence).
 
