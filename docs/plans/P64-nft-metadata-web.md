@@ -25,7 +25,7 @@ no-referrer tab.
 |---|---|---|---|---|
 | P64-T01 | done | P30-T05, P40-T03 | Public exact-canonical NFT metadata contract, bounded display projection, image-link policy, and revised ADR | OpenAPI generation, metadata/catalog/HTTP unit and PostgreSQL integration tests |
 | P64-T02 | done | P64-T01, P50-T03 | Bilingual ERC-721/ERC-1155 detail UI, ordered traits, NFT deep links, and per-open external-link confirmation | focused Vitest, embedded Playwright, responsive and accessibility checks |
-| P64-T03 | done | P64-T02, P60 | Real IPFS Preview assertion plus production-image, race, security, deployment, and common-gate closure | Preview metadata, runtime, integration, E2E, and common repository gates |
+| P64-T03 | done | P64-T02, P30 | Real IPFS Preview assertion plus production-image, race, security, deployment, and common-gate closure | Preview metadata, runtime, integration, E2E, and common repository gates |
 | P64-T04 | done | P64-T03 | Exact immutable ERC-4906/ERC-1155 metadata-update observations, parser, schema, and accepted ADR revisions | parser, migration, sqlc, source, concurrency, and reorg tests |
 | P64-T05 | done | P64-T04 | Metadata-role update discoverer plus exact event-driven source refresh for direct and bounded known-ID batch signals | component parity, exact RPC, deduplication, batch, and PostgreSQL tests |
 | P64-T06 | done | P64-T05 | Canonical stale-while-refresh API projection and bilingual prior-content warning without media prefetch | OpenAPI generation, HTTP/Web, accessibility, and embedded browser tests |

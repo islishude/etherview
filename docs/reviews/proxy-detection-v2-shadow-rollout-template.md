@@ -3,7 +3,7 @@
 Review state: template
 
 Use this redacted aggregate record before enabling
-`proxy_detection_v2_public` in one deployment. It is not a source-code, P58,
+`proxy_detection_v2_public` in one deployment. It is not a source-code, P30,
 or release-plan completion record. Controlled raw exports remain outside Git;
 record only their SHA-256 digests and reviewed aggregate conclusions here.
 
@@ -22,7 +22,7 @@ record only their SHA-256 digests and reviewed aggregate conclusions here.
 | Canonical manifest SHA-256 | pending |
 | Reindex request ID | pending |
 | Reindex requested/completed time | pending |
-| Range first processed by a P69-capable revision | pending |
+| Range first processed by a CWIA-capable revision | pending |
 | Separate CWIA backfill approval, if required | not applicable or reference |
 | `proxy_detection_v2` | `true` required |
 | `safe_proxy_detection` | enabled only when reviewed |
@@ -50,7 +50,7 @@ pending
 
 | Review | Required conclusion | Observed conclusion |
 | --- | --- | --- |
-| Legacy projection | Existing rows are unchanged; older pre-P69 history was not replayed without separate CWIA approval | pending |
+| Legacy projection | Existing rows are unchanged; older pre-CWIA history was not replayed without separate CWIA approval | pending |
 | V2/OZ differences | Every difference is explained; no legacy family or implementation regression | pending |
 | Unknown outcomes | None remain unexplained; transient rows were replayed only after exact-state RPC health returned | pending |
 | Inconsistent outcomes | Every row is evidence-correct hostile/ambiguous input, not a detector or publication defect | pending |

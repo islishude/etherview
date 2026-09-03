@@ -20,13 +20,12 @@ canonical EIP-1167, EIP-1967, and beacon observations.
 - Keep the provider regression as a fast component-level compatibility test
   and name it accordingly. A separate production-path E2E uses the pinned
   Hardhat CLI, Anvil, PostgreSQL, production images, the official compiler
-  catalog, and the digest-pinned networkless compiler runner.
+  catalog, and the current API-owned solc-js executor.
 - Run the production-path E2E in both `roles=all` and the complete split
-  topology. The production application image sends verified compiler payloads
-  to the same digest-pinned remote runner used by deployments. Hardhat runs
-  from an independent dependency-locked client image; neither image receives a
-  Docker CLI or daemon socket. ADR-0029 defines this superseding execution
-  boundary.
+  topology. The production application image uses the API-owned architecture-
+  neutral executor defined by ADR-0031 and ADR-0040. Hardhat runs from an
+  independent dependency-locked client image; neither image receives a Docker
+  CLI or daemon socket.
 - Proxy verification uses the existing durable verification queue. A proxy job
   records the exact proxy code hash, observation block hash, proxy kind,
   implementation address, and implementation code hash. The optional expected

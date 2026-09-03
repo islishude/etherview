@@ -23,7 +23,7 @@ retain an audited quota-controlled bypass.
 
 | ID | Status | Depends on | Deliverable | Verification |
 |---|---|---|---|---|
-| P73-T01 | done | P40, P60, P65 | Governance, ADR, public contracts, feature/config schema, and operation catalog | `make generate-check plan-check` |
+| P73-T01 | done | P40, P30, P65 | Governance, ADR, public contracts, feature/config schema, and operation catalog | `make generate-check plan-check` |
 | P73-T02 | done | P73-T01 | Prepaid accounts, append-only entries, top-up intents, usage reservations, migration, and generated SQL | PostgreSQL concurrency, migration, and race tests |
 | P73-T03 | done | P73-T02 | x402 v2.23 EIP-3009/Permit2 top-up adapter, strict replay identity, pending settlement, and reconciliation | protocol vectors and hostile transport tests |
 | P73-T04 | done | P73-T02 | `/v2/api` user-key reservation/debit gate, operator bypass, canonical action resources, and bounded capture | compatibility, quota, failure, and race matrix |
@@ -37,7 +37,8 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
 ## Acceptance
 
-- [x] Historical P66 payments remain audit-only and never grant credit.
+- [x] Historical accountless request-payment rows remain audit-only and never
+      grant credit.
 - [x] A settled top-up credits exactly one matching active user account once.
 - [x] EIP-3009 and Permit2 top-ups are replay-fenced and payer-bound.
 - [x] User-owned keys share account credit; operator keys bypass credit only.

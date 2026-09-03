@@ -31,7 +31,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T04 | done        | P30-T01, P40      | EIP-6963 discovery and wallet-only contract read/write forms             | provider/mismatch tests   |
 | P50-T05 | done        | P50-T01       | Embedded assets, deep-link fallback, cache headers, CSP, accessibility   | binary E2E and a11y tests |
 | P50-T06 | done        | P40-T07       | Etherscan-inspired tabbed transaction detail system                      | frontend, embedded E2E, responsive and a11y tests |
-| P50-T07 | done        | P50-T02, P60-T03 | Numeric latest-page cursor, live-head Preview wake, and activity refresh | query/frontend regressions and Preview smoke |
+| P50-T07 | done        | P50-T02, P30-T35 | Numeric latest-page cursor, live-head Preview wake, and activity refresh | query/frontend regressions and Preview smoke |
 | P50-T08 | done        | P50-T06       | Persistent transaction copy controls and receipt-backed creation address | query/frontend regressions and generation checks |
 | P50-T09 | done        | P50-T02       | Compact home, relative recent-block time, and shared brand icon          | frontend, embedded E2E, and generation checks |
 | P50-T10 | done        | P40-T08       | Address activity tabs, lazy assets, and contract-address entry           | frontend, embedded E2E, and generation checks |
@@ -78,7 +78,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T51 | done        | P50-T50 | Remove the standalone Contracts navigation and route, and link definitively unverified contracts to address-prefilled Web verification | focused frontend, bilingual, embedded browser, accessibility, and common gates |
 | P50-T52 | done        | P50-T51 | Organize the global stylesheet into documented responsibility-based modules without visual or interaction changes | stylesheet regressions, complete frontend tests, lint, build, generation, plan check, and diff check |
 | P50-T53 | done        | P40-T14, P50-T52 | Merge transaction gas limit and usage and expose execution and blob fee settings | focused frontend, bilingual, responsive, accessibility, embedded browser, and common gates |
-| P50-T54 | done        | P50-T53, P61-T13 | Classify transaction actions from exact transaction-time execution code instead of calldata presence | focused frontend, bilingual, execution-identity, embedded browser, and common gates |
+| P50-T54 | done        | P50-T53, P30-T55 | Classify transaction actions from exact transaction-time execution code instead of calldata presence | focused frontend, bilingual, execution-identity, embedded browser, and common gates |
 | P50-T55 | done | P40-T15, P50-T54 | Preview pending and replaced transaction details with automatic transitions and iconized transaction statuses | focused frontend, bilingual, responsive, accessibility, embedded browser, and runtime E2E gates |
 | P50-T56 | done | P40-T16, P50-T55 | Lazy address withdrawal history and exact Ether display for address and block withdrawals | focused frontend, bilingual, responsive, accessibility, embedded browser, and common gates |
 | P50-T57 | done | P40-T17, P50-T56 | Compact transaction-list Method column with full-signature disclosure and exact fallback labels | focused frontend, bilingual, responsive, accessibility, embedded browser, and common gates |

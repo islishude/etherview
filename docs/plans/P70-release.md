@@ -13,15 +13,12 @@ and user/operator evidence sufficient for a production public release.
 - [ADR-0018](../decisions/ADR-0018-api-read-replica-routing.md)
 - [ADR-0019: Authenticated genesis state import](../decisions/ADR-0019-authenticated-genesis-state-import.md)
 - [ADR-0020: SIWE user sessions](../decisions/ADR-0020-siwe-user-sessions.md)
-- [ADR-0021: x402 request billing](../decisions/ADR-0021-x402-request-billing.md)
 - [ADR-0044: prepaid API billing and x402 top-ups](../decisions/ADR-0044-prepaid-api-billing-and-x402-topups.md)
 - [ADR-0022: Go-ethereum type and raw RPC ownership](../decisions/ADR-0022-go-ethereum-type-and-raw-rpc-ownership.md)
 - [ADR-0025: Historical execution analytics](../decisions/ADR-0025-historical-execution-analytics.md)
 - [ADR-0026: Current capability status and numeric canonical tips](../decisions/ADR-0026-current-capability-status-and-numeric-canonical-tips.md)
 - [ADR-0027: Process-native API TLS](../decisions/ADR-0027-process-native-api-tls.md)
 - [ADR-0028: Durable proxy verification and real Hardhat E2E](../decisions/ADR-0028-proxy-verification-and-hardhat-e2e.md)
-- [ADR-0029: Daemonless remote compiler runner](../decisions/ADR-0029-daemonless-remote-compiler-runner.md)
-- [ADR-0030: API-integrated verifier and self-contained runner](../decisions/ADR-0030-api-integrated-verifier-and-self-contained-runner.md)
 - [ADR-0031: API-owned architecture-neutral solc-js executor](../decisions/ADR-0031-api-owned-solc-js-executor.md)
 - [ADR-0037: Rebuildable persistent solc-js artifact cache](../decisions/ADR-0037-persistent-solcjs-artifact-cache.md)
 - [ADR-0040: SEA-packaged solc-js executor](../decisions/ADR-0040-sea-packaged-solcjs-executor.md)
@@ -31,44 +28,44 @@ and user/operator evidence sufficient for a production public release.
 
 | ID | Status | Depends on | Deliverable | Verification |
 |---|---|---|---|---|
-| P70-T01 | blocked | P10–P69, P71–P75 | Execution/API/token/proxy/verification/authentication/billing conformance matrix | conformance suite |
-| P70-T02 | blocked | P10–P69, P71–P75 | Threat model, security audit, dependency, compiler, session, and payment supply-chain review | security gates |
-| P70-T03 | blocked | P10–P69, P71–P75 | Monolith/split E2E, migration/rollback, outage, reorg, payment, and soak suite | release CI |
-| P70-T04 | blocked | P60, P75 | 500 RPS reference capacity report and tuning guide | load report |
-| P70-T05 | blocked | P00–P69, P71–P75 | User/operator/API/authentication/billing/runbook/upgrade documentation | doc review and link check |
+| P70-T01 | blocked | P10, P20, P30, P40, P50, P64, P65, P67, P68, P73, P74, P75 | Execution/API/token/proxy/verification/authentication/billing conformance matrix | conformance suite |
+| P70-T02 | blocked | P10, P20, P30, P40, P50, P64, P65, P67, P68, P73, P74, P75 | Threat model, security audit, dependency, compiler, session, and payment supply-chain review | security gates |
+| P70-T03 | blocked | P10, P20, P30, P40, P50, P64, P65, P67, P68, P73, P74, P75 | Monolith/split E2E, migration/rollback, outage, reorg, payment, and soak suite | release CI |
+| P70-T04 | blocked | P30, P75 | 500 RPS reference capacity report and tuning guide | load report |
+| P70-T05 | blocked | P00, P10, P20, P30, P40, P50, P64, P65, P67, P68, P73, P74, P75 | User/operator/API/authentication/billing/runbook/upgrade documentation | doc review and link check |
 | P70-T06 | todo | P70-T01–P70-T05, P70-T08, P70-T09 | SBOM, checksums, signed multi-arch artifacts and v1.0.0 release | release verification |
-| P70-T07 | done | P60 | Database read/write pool split configuration, deployment wiring, and capacity guidance | helm config/schema tests |
-| P70-T08 | done | P10, P20, P30-T07, P40, P50, P60 | Authenticated local/remote genesis account state, predeploy enrichment, native API, and block-zero UI | root, persistence, API, browser, security, and split-role tests |
-| P70-T09 | done | P10, P20, P30-T07, P40, P50, P60 | Replace duplicative Ethereum RPC/domain types and codecs with reviewed go-ethereum equivalents while retaining explicit hostile-input, persistence, and public-contract adapters | focused compatibility, integration, generation, security, license, and common gates |
-| P70-T10 | done | P60 | Configurable process log level and JSON/text output across file, environment, CLI, and deployment surfaces | config, CLI, observability, Compose, and Helm tests |
+| P70-T07 | done | P30 | Database read/write pool split configuration, deployment wiring, and capacity guidance | helm config/schema tests |
+| P70-T08 | done | P10, P20, P30-T07, P40, P50, P30 | Authenticated local/remote genesis account state, predeploy enrichment, native API, and block-zero UI | root, persistence, API, browser, security, and split-role tests |
+| P70-T09 | done | P10, P20, P30-T07, P40, P50, P30 | Replace duplicative Ethereum RPC/domain types and codecs with reviewed go-ethereum equivalents while retaining explicit hostile-input, persistence, and public-contract adapters | focused compatibility, integration, generation, security, license, and common gates |
+| P70-T10 | done | P30 | Configurable process log level and JSON/text output across file, environment, CLI, and deployment surfaces | config, CLI, observability, Compose, and Helm tests |
 | P70-T11 | done | P50 | Keep embedded-browser native-value assertions aligned with configured decimal display | focused Playwright E2E and common frontend gates |
-| P70-T12 | done | P20, P60 | Align durable stage-name validation with the deployed `state_diff@1` manifest | focused stage validation and Compose runtime smoke |
-| P70-T13 | done | P50, P60 | Split the full-stack Preview Compose deployment into all seven runtime roles | Compose render assertions and Preview runtime smoke |
-| P70-T14 | done | P10, P60 | Add reporter-fenced rate-limited sync progress and durable worker outcome logs | focused logging, race, deployment, and Preview tests |
-| P70-T15 | done | P30-T02, P60, P70-T13 | Enable Preview public verification and NFT metadata with the architecture-neutral compiler runtime | Compose render, production-image boundary, and Preview runtime tests |
-| P70-T16 | done | P20, P40, P50, P60 | Etherscan-inspired execution analytics with `stats@3`, reorg-safe hourly rollups, native history APIs, and overview/detail charts | stage, migration, API, browser, reorg, load, and production Compose E2E |
-| P70-T17 | done | P20, P40, P50, P60 | Report current Trace and historical-state capability accurately and select exact state/ABI observations by numeric block height | PostgreSQL, API, browser, ABI, reorg, and Preview tests |
+| P70-T12 | done | P20, P30 | Align durable stage-name validation with the deployed `state_diff@1` manifest | focused stage validation and Compose runtime smoke |
+| P70-T13 | done | P50, P30 | Split the full-stack Preview Compose deployment into all seven runtime roles | Compose render assertions and Preview runtime smoke |
+| P70-T14 | done | P10, P30 | Add reporter-fenced rate-limited sync progress and durable worker outcome logs | focused logging, race, deployment, and Preview tests |
+| P70-T15 | done | P30-T02, P30, P70-T13 | Enable Preview public verification and NFT metadata with the architecture-neutral compiler runtime | Compose render, production-image boundary, and Preview runtime tests |
+| P70-T16 | done | P20, P40, P50, P30 | Etherscan-inspired execution analytics with `stats@3`, reorg-safe hourly rollups, native history APIs, and overview/detail charts | stage, migration, API, browser, reorg, load, and production Compose E2E |
+| P70-T17 | done | P20, P40, P50, P30 | Report current Trace and historical-state capability accurately and select exact state/ABI observations by numeric block height | PostgreSQL, API, browser, ABI, reorg, and Preview tests |
 | P70-T18 | done | P40-T10, P50-T12 | Release validation for address origins, exact ERC-20 balances, and the add-network browser flow | PostgreSQL integration and embedded Playwright E2E |
-| P70-T19 | done | P20, P40, P50, P60 | Go-native managed PostgreSQL integration tests and production-Compose schema/runtime E2E orchestration | integration, schema, runtime, outage, reorg, parity, and load tests |
-| P70-T20 | done | P60 | Optional native TLS for API listeners with Preview-local Compose and Helm certificate delivery | config, HTTPS service, Preview Compose, Helm, security, and common gates |
+| P70-T19 | done | P20, P40, P50, P30 | Go-native managed PostgreSQL integration tests and production-Compose schema/runtime E2E orchestration | integration, schema, runtime, outage, reorg, parity, and load tests |
+| P70-T20 | done | P30 | Optional native TLS for API listeners with Preview-local Compose and Helm certificate delivery | config, HTTPS service, Preview Compose, Helm, security, and common gates |
 | P70-T21 | done | P30-T11, P40-T06 | Hardhat 3 Etherscan-provider source-verification submission and GET status-polling compatibility | handler goldens, pinned Hardhat 3 provider test, security, documentation, and common gates |
 | P70-T22 | done | P70-T16, P70-T19 | Clock-stable historical analytics rollup integration regression | targeted managed PostgreSQL regression and governance gates |
 | P70-T23 | done | P70-T20 | Keep the production-container TLS runtime fixture readable by the fixed non-root UID on native Linux hosts | focused file-mode regression and production Compose runtime E2E |
 | P70-T24 | done | P70-T19 | Replace noisy distributed runtime output with phase-bound failure summaries and retained CI diagnostics | focused orchestration regressions and production Compose runtime E2E |
 | P70-T25 | done | P50-T13 | Center the full-width account action in the wallet menu | focused frontend regression and lint |
 | P70-T26 | done | P70-T20 | Align the branded Preview browser origin with SIWE, wallet metadata, TLS checks, and operator documentation | focused config/origin tests, Compose rendering, and live Preview challenge |
-| P70-T27 | done | P20-T03, P30-T11, P40-T06, P60-T03, P70-T21 | Durable proxy-verification compatibility plus real Hardhat 3 production-path E2E | handler, PostgreSQL, migration, monolith/split Compose, and real compiler gates |
-| P70-T28 | superseded | P30-T14, P60 | Superseded by P70-T29: replace application-controlled Docker compiler isolation with a daemonless remote compiler-runner service | historical protocol, sandbox, Compose, Helm, Preview, and compiler evidence |
-| P70-T29 | done | P30-T14, P60, P70-T28 | Replace the platform-bound compiler-runner and Vyper surface with an API-owned architecture-neutral solc-js executor | ADR, migration, OpenAPI, subprocess, Compose, Helm, Preview, and multi-architecture compiler gates |
-| P70-T30 | done | P60, P70-T27 | Make the release Hardhat fixture independent of runtime compiler downloads and keep retained diagnostics readable by CI artifact upload | offline compiler, artifact-mode, and production Compose E2E regressions |
-| P70-T31 | done | P30-T11, P40-T06, P60-T03, P70-T29, P70-T30 | Add an independent Foundry production-path source-verification E2E without replacing the Hardhat 3 proxy gate | offline compiler, strict Etherscan V2, monolith/split provenance parity, and native AMD64/ARM64 CI gates |
+| P70-T27 | done | P20-T03, P30-T11, P40-T06, P30-T35, P70-T21 | Durable proxy-verification compatibility plus real Hardhat 3 production-path E2E | handler, PostgreSQL, migration, monolith/split Compose, and real compiler gates |
+| P70-T28 | superseded | P30-T14, P30 | Superseded by P70-T29: replace application-controlled Docker compiler isolation with a daemonless remote compiler-runner service | historical protocol, sandbox, Compose, Helm, Preview, and compiler evidence |
+| P70-T29 | done | P30-T14, P30, P70-T28 | Replace the platform-bound compiler-runner and Vyper surface with an API-owned architecture-neutral solc-js executor | ADR, migration, OpenAPI, subprocess, Compose, Helm, Preview, and multi-architecture compiler gates |
+| P70-T30 | done | P30, P70-T27 | Make the release Hardhat fixture independent of runtime compiler downloads and keep retained diagnostics readable by CI artifact upload | offline compiler, artifact-mode, and production Compose E2E regressions |
+| P70-T31 | done | P30-T11, P40-T06, P30-T35, P70-T29, P70-T30 | Add an independent Foundry production-path source-verification E2E without replacing the Hardhat 3 proxy gate | offline compiler, strict Etherscan V2, monolith/split provenance parity, and native AMD64/ARM64 CI gates |
 | P70-T32 | done | P70-T29 | Make the trusted solc-js runtime paths explicit and operator-configurable without changing its fixed runtime identity or deployment mount boundary | config, runtime, Compose, Helm, production-image, and real compiler gates |
-| P70-T33 | superseded | P60, P70-T13 | Superseded by P70-T34: remove the auxiliary role-probe image and perform bounded Preview readiness checks through the host Docker CLI and the running API container | historical focused checker regressions and live Preview lifecycle validation |
-| P70-T34 | done | P60-T01, P60-T03, P70-T13, P70-T33 | Make Docker Compose `--wait` the sole Preview health owner through an application-native healthcheck command and remove the redundant custom Preview checker | CLI, Compose-render, repository-surface, and live Preview lifecycle regressions |
-| P70-T35 | done | P60, P70-T13, P70-T34 | Replace the Preview Reth development node with Geth and initialize its persistent Genesis through a Shell entrypoint | shell syntax, Compose rendering, Preview runtime, and common deployment gates |
+| P70-T33 | superseded | P30, P70-T13 | Superseded by P70-T34: remove the auxiliary role-probe image and perform bounded Preview readiness checks through the host Docker CLI and the running API container | historical focused checker regressions and live Preview lifecycle validation |
+| P70-T34 | done | P30-T33, P30-T35, P70-T13, P70-T33 | Make Docker Compose `--wait` the sole Preview health owner through an application-native healthcheck command and remove the redundant custom Preview checker | CLI, Compose-render, repository-surface, and live Preview lifecycle regressions |
+| P70-T35 | done | P30, P70-T13, P70-T34 | Replace the Preview Reth development node with Geth and initialize its persistent Genesis through a Shell entrypoint | shell syntax, Compose rendering, Preview runtime, and common deployment gates |
 | P70-T36 | done | P70-T08, P40-T10, P50-T12 | Mark authenticated genesis allocation addresses as the explicit address-origin source | OpenAPI, generated contracts, query, API, frontend, and common gates |
-| P70-T37 | done | P60, P70-T10 | Suppress routine HTTP access logs for operational health endpoints while retaining telemetry and failure signals | observability regression tests and common gates |
-| P70-T38 | done | P60, P70-T29 | Persist checksum-addressed solc-js artifacts across application replacement without changing compiler trust or catalog-freshness semantics | cache concurrency, Compose/Helm, image, real compiler restart, and common gates |
+| P70-T37 | done | P30, P70-T10 | Suppress routine HTTP access logs for operational health endpoints while retaining telemetry and failure signals | observability regression tests and common gates |
+| P70-T38 | done | P30, P70-T29 | Persist checksum-addressed solc-js artifacts across application replacement without changing compiler trust or catalog-freshness semantics | cache concurrency, Compose/Helm, image, real compiler restart, and common gates |
 | P70-T39 | done | P70-T38 | Serialize shared solc-js cache installation with writer PostgreSQL advisory locks and stable file snapshots | cache concurrency, PostgreSQL integration, persistence, and common gates |
 | P70-T40 | done | P70-T29, P70-T32, P70-T38, P70-T39 | Package the trusted solc-js protocol as one Node SEA with generated target-rootfs ELF closure and one relocatable executor path | ADR, manifest, subprocess, config, image, cache persistence, and real compiler gates |
 | P70-T41 | done | P70-T35 | Render a per-start Preview Genesis runtime copy from the checked-in template while preserving persistent-volume identity semantics | script, Makefile, Compose, and Preview runtime checks |
@@ -304,8 +301,8 @@ and user/operator evidence sufficient for a production public release.
 
 ## Current Blockers
 
-P66 is superseded by P73. P73-T08 still needs operator-provided testnet
-funding, payer credentials, a compatible staging facilitator and top-up
+The superseded accountless request-payment path is replaced by P73. P73-T08
+still needs operator-provided testnet funding, payer credentials, a compatible staging facilitator and top-up
 surface, the matching writer and independent RPC endpoint, and the deployed
 image/build digest. Preserved EIP-3009 and Permit2 reports must cover SIWE,
 top-up settlement, account credit, API-key debit, and writer/chain
@@ -324,7 +321,7 @@ monitoring. Running the exact 500 RPS/30-minute target there and preserving the
 load report, resource peaks, monitoring data, and tuning guide clears the
 blocker.
 
-P70-T15 is complete. P60-T07 supplies exact durable NFT identity and bounded
+P70-T15 is complete. P30-T39 supplies exact durable NFT identity and bounded
 network diagnostics, and the Go-owned Preview gate now proves one exact public
 IPFS fetch through Docker fake-IP plus restart-stable persistence. Its Preview
 compiler portion passes through P70-T29: a fresh host-native ARM64 Preview kept
@@ -648,9 +645,9 @@ those gates.
   database parity in both production topologies. Together with the handler,
   PostgreSQL migration, reorg, idempotency, and concurrency regressions in
   `make check` and `make test-integration-race`, this completes P70-T27.
-- Historical pre-0031 P70-T28 implementation evidence: ADR-0030 superseded
-  ADR-0029 only
-  for verification-role, readiness, protocol, and catalog/cache ownership
+- Historical pre-current-executor P70-T28 implementation evidence is retained
+  only as superseded runner history. The former runner design covered
+  verification-role, readiness, protocol, and catalog/cache ownership
   decisions. The API now owns a coordinator and independently bounded worker
   pool; runner protocol v4 resolves, downloads, validates, caches, and executes
   one exact compiler while PostgreSQL migration 0030 permits only one atomic
@@ -690,8 +687,9 @@ those gates.
   because the official Solidity catalog download failed closed in the local
   transparent-DNS environment. P70-T27 therefore remained `in_progress` at
   that point.
-- Historical pre-0031 P70-T28 implementation evidence: ADR-0029 replaced
-  application-controlled compiler containers with a versioned internal HTTP
+- Historical pre-current-executor P70-T28 implementation evidence is retained
+  only as superseded runner history. It replaced application-controlled
+  compiler containers with a versioned internal HTTP
   runner. The worker retains official catalog/artifact download, platform and
   SHA-256 validation, cache ownership, dual compilation, and immutable
   `runner_digest`; one request transfers the compiler once and executes up to

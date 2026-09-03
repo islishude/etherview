@@ -1,10 +1,11 @@
 # Etherview Repository Instructions
 
 This file is the compact entry point for repository work. Keep current task
-status and evidence in [the plan](PLAN.md) and [child plans](docs/plans/),
+status and evidence in [the plan](PLAN.md) and [child plans](docs/plans/);
+use the [plan catalog](docs/plans/index.md) for responsibility grouping,
 engineering workflow in [the development guide](docs/development.md),
 architecture detail in [the overview](docs/architecture/overview.md) and
-[accepted ADRs](docs/decisions/), runnable verification guidance in
+[accepted ADR catalog](docs/decisions/index.md), runnable verification guidance in
 [the testing guide](docs/testing.md), and operator procedures in
 [the runbook](docs/operations.md). Accepted ADRs remain mandatory even when a
 rule is not repeated here.

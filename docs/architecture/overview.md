@@ -742,7 +742,8 @@ size alone is not sufficient justification to weaken those invariants.
   before replacing guards or validating data by taking write-conflicting
   relation locks in the production write order: immutable results, verified
   projections, then terminal job updates. See
-  [ADR-0014](../decisions/ADR-0014-durable-verification-identity-and-publication.md).
+  [ADR-0024](../decisions/ADR-0024-verifier-v2-workflow.md) and
+  [ADR-0031](../decisions/ADR-0031-api-owned-solc-js-executor.md).
 - Verification prepares duplicate-key-free, inline-source Solidity and Yul
   Standard JSON inputs with bounded server-owned outputs. It compiles the
   original sources and one whitespace-modified copy with the same exact

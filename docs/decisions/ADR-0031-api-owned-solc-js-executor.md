@@ -10,9 +10,9 @@ accepted.
 
 ## Context
 
-ADR-0029 and ADR-0030 removed application-controlled container daemons but
-retained a separately deployed compiler-runner. That runner still selects a
-native solc-bin directory from its container CPU architecture. Preview also
+Earlier remote-runner decisions removed application-controlled container
+daemons but retained a separately deployed compiler-runner. That runner still
+selects a native solc-bin directory from its container CPU architecture. Preview also
 persisted the runner image digest outside Compose, so a previously built
 `linux/amd64` image remained active after source-level platform settings were
 removed.
@@ -92,8 +92,9 @@ the platform coupling this decision removes.
   follows the same rule: drain bound jobs, deploy one manifest digest to every
   API-capable replica, and restart those replicas before admitting new work.
 
-This decision supersedes ADR-0029 and ADR-0030. It supersedes ADR-0024 only
-where that decision requires Vyper, native executable platform selection,
+This decision supersedes the earlier remote-runner decisions. It supersedes
+ADR-0024 only where that decision requires Vyper, native executable platform
+selection,
 hard compiler isolation, runner images, or runner provenance. ADR-0024 remains
 authoritative for catalog integrity, dual compilation, bounded matching,
 canonical publication, stable errors, and hostile-input handling.

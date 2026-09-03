@@ -512,11 +512,11 @@ The runtime Compose smoke exercises monolith/distributed semantic parity and
 worker loss on a deterministic dataset; the repository load driver records
 route mix, throughput, latency, errors, and final core lag.
 
-The short P60 load profile is a regression for the harness and failover
+The short runtime load profile is a regression for the harness and failover
 contract. P70-T04 remains responsible for the final revision's 500 RPS,
 30-minute report with named hardware, dataset, RPC behavior, resource peaks,
 common-query p95 below 500 ms, error rate below 0.1%, and lag no more than two
-blocks. Do not promote that release gate from a shorter P60 run.
+blocks. Do not promote that release gate from a shorter runtime run.
 
 Run a bounded tuning pass against an already deployed instance with:
 
@@ -684,7 +684,7 @@ the last delegation observed for an address in the block.
 Proxy detection V2 is additive and defaults off. It never replaces the legacy
 OpenZeppelin observation, verified binding, ABI dependency, or browser write
 authority. This shadow review is a deployment-specific prerequisite for
-setting `proxy_detection_v2_public: true`; it is not a source-code or P58 plan
+setting `proxy_detection_v2_public: true`; it is not a source-code or P30 plan
 completion gate.
 
 1. Require `etherview migrate status` to report the current schema compatible,
@@ -777,7 +777,7 @@ Solady legacy CWIA authority is not controlled by the V2 public flag. Migration
 `0050` only extends the existing `proxy@2` contracts and never enqueues or
 replays history. New blocks first processed after deployment can publish
 `mechanism=cwia`; no historical CWIA coverage is claimed. Use a shadow sample
-range already processed by a P69-capable revision. Reindexing older history
+range already processed by a CWIA-capable revision. Reindexing older history
 can create authoritative CWIA coverage and therefore requires separate
 operator approval as a bounded CWIA backfill before it can serve as a V2
 public-promotion sample.
@@ -891,7 +891,8 @@ Cookie, rotate the session pepper as part of the rollback before restarting.
 ## Prepaid API billing and x402 top-ups
 
 Apply migration `0060_prepaid_api_billing.sql` with both new features off.
-Historical P66 rows are retained as `legacy_request` audit facts and never
+Historical accountless request-payment rows are retained as `legacy_request`
+audit facts and never
 produce account credit. Configure `features.api_billing`, the CAIP-2 network,
 asset, reservation TTLs, and the explicit
 `billing.operations.<etherscan.module.action>.amount_atomic` catalog first.
@@ -946,7 +947,7 @@ For rollback, first clear `billing.operations` so no new usage reservations
 start, then disable `features.x402_topups`, and finally disable
 `features.api_billing` if required. Permanently retain accounts, balances,
 entries, usage, intents, payments, and payment events. Never convert legacy
-P66 settlements into credit.
+accountless request settlements into credit.
 
 The disposable local environment is:
 
@@ -1019,7 +1020,7 @@ existing audited command; migration startup must not substitute for it:
 ```sh
 etherview admin derived-verification backfill \
   --config /etc/etherview/config.yaml \
-  --reason "P72 queue hardening recovery"
+  --reason "derived verification queue hardening recovery"
 ```
 
 Then observe only the closed-label
