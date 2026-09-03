@@ -55,7 +55,7 @@ available over HTTP on <http://localhost:9090>.
 Preview builds the production image for the current Docker host architecture.
 The `api` process downloads checksum-pinned `emscripten-wasm32` solc-js
 artifacts and executes each bounded Standard JSON compilation in a fresh,
-permission-restricted Node 26.7.0 SEA subprocess. It also supports address verification
+permission-restricted Node 26.8.1 SEA subprocess. It also supports address verification
 for multi-file Geas v0.3.3 sources (including ethereum/sys-asm relative
 `#include` and `assemble()` entrypoints) through the bundled read-only helper.
 There is no standalone runner, Docker socket, nested runtime, or caller-chosen

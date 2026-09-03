@@ -245,7 +245,7 @@ replace a required `make test-e2e` pass.
   Docker host architecture, run it with the numeric non-root identity and
   hardened runtime flags, validate the exact SEA/compiler runtime manifest,
   recursive ELF closure, and self-test, and scan its exported root filesystem.
-  The image contains one read-only Node 26.7.0 SEA, only the automatically
+  The image contains one read-only Node 26.8.1 SEA, only the automatically
   discovered private libraries missing from the final base rootfs, and the
   read-only Geas v0.3.3 helper, but no general Node executable, wrapper source,
   package metadata, `node_modules`, npm, npx, corepack, shell, Go toolchain,

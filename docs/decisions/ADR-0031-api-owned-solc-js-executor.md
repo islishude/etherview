@@ -40,7 +40,7 @@ the platform coupling this decision removes.
   `emscripten-wasm32/list.json` format or an explicitly configured mirror with
   the same platform identity. `emscripten-wasm32` is compiler artifact
   provenance, not an OCI or CPU architecture constraint.
-- The production image contains the Node 26.7.0 SEA and exact-lockfile
+- The production image contains the Node 26.8.1 SEA and exact-lockfile
   `solc@0.8.36` wrapper defined by ADR-0040. The wrapper loads one exact
   checksum-verified soljson file, confirms its normalized long version, accepts
   one Standard JSON document on stdin, supplies no import callback, and writes

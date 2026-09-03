@@ -161,7 +161,7 @@ Verification v2 treats user-supplied Solidity/Yul and Geas input as hostile.
 The `api` process
 owns bounded official `emscripten-wasm32` catalog discovery, approved-origin
 and redirect checks, checksum-pinned download, a rebuildable persistent cache,
-and execution. Each compile starts a fresh Node 26.7.0 SEA subprocess with a minimal
+and execution. Each compile starts a fresh Node 26.8.1 SEA subprocess with a minimal
 environment, private temporary directory, read-only permissions, bounded
 heap/input/output/time, and process-group cleanup. The subprocess receives no
 network, child-process, worker, addon, WASI, FFI, or inspector permission.
@@ -441,7 +441,7 @@ metric staleness, alerts, and repair/reindex response.
 
 The Dockerfile builds the SPA and application/helper Go binaries, and assembles a
 distroless non-root image for BuildKit's target architecture. The production
-stage contains the application binary plus one read-only Node 26.7.0 SEA, its
+stage contains the application binary plus one read-only Node 26.8.1 SEA, its
 canonical runtime manifest and automatically discovered private ELF libraries,
 and the read-only Geas v0.3.3 helper. It contains no general Node executable,
 npm, wrapper source, package metadata, `node_modules`, npx, corepack, shell,
