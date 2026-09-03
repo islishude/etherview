@@ -86,7 +86,9 @@ linked documents, not this summary, define the exact contract.
   truth; `docs/testing.md` defines each gate's scope and evidence rules.
 - Run `make generate-check` after OpenAPI, SQL, generated-client, or embedded
   SPA changes; `make source-check` after database execution-boundary changes;
-  and `make plan-check` after plan, ADR-link, or governance changes.
+  run `make docs-check` after maintained documentation or executable
+  deployment/runtime-surface changes; and run `make plan-check` after plan,
+  ADR-link, or governance changes.
 - Do not substitute local mocks or a weaker browser/container mode for a
   required production, integration, or operator gate. Record what actually ran
   and leave unmet external evidence explicit.

@@ -21,14 +21,6 @@ truth. Redis, NATS, and S3-compatible storage are optional accelerators.
 Consensus-layer browsing, archived blob bodies, MEV accounting, and
 L2-specific batch semantics are outside the v1 core scope.
 
-## Project status
-
-The implementation plans through P75 are complete except for work explicitly
-marked blocked or superseded in the plan. P76 ERC-4337 browsing is complete;
-P70 release evidence remains open, so the repository does not yet claim a
-v1.0.0 production release. [PLAN.md](PLAN.md) is the authoritative status and
-evidence index.
-
 ## Quick start
 
 Docker Compose starts PostgreSQL, applies migrations, builds the current tree,

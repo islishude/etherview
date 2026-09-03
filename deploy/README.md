@@ -19,10 +19,11 @@ The `monolith` profile starts PostgreSQL, a migration run, and one
 `serve --roles=all` process. The `distributed` profile starts the same migration
 and one process per role. Add `--profile accelerators` only when developing an
 optional adapter; those services are intentionally absent from `depends_on`.
-Public verification additionally uses `--profile verification`. The selected
-`all` or `api` process owns the checksum-verified solc-js cache and restricted
-Node subprocess executor; there is no standalone compiler service or image
-reference.
+Public verification is configured in the mounted YAML through
+`features.verification` and `security.public_verification`; it is not a Compose
+profile. The selected `all` or `api` process owns the checksum-verified solc-js
+cache and restricted Node subprocess executor; there is no standalone compiler
+service or image reference.
 Set the commented `ETHERVIEW_NATS_URL`, `ETHERVIEW_REDIS_URL`, and S3 variables
 only when using them. The application remains ready when any accelerator is
 unreachable; create the configured S3 bucket before expecting trace-cache hits.

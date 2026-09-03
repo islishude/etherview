@@ -94,7 +94,7 @@ Execution RPC -> sync/canonicalizer -> PostgreSQL writer -> durable jobs
                     |                         -> runtime status/events -> API replica relays
                     -> expiring pending snapshots
 PostgreSQL reader (optional; otherwise writer) -> projection query API -> embedded React SPA
-API verification workers -> restricted Node SEA -> approved solc-js catalogs/artifacts
+API verification workers -> approved solc-js catalogs/artifacts -> restricted Node SEA
 outbox -> optional NATS wake-up
 API -> optional Redis cache/rate limit
 large blobs -> optional S3-compatible storage

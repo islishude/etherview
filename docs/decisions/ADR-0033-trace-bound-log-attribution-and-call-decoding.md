@@ -88,6 +88,7 @@ revert, bounded fallback, and cache boundaries.
 Log decoding can name both the immutable receipt emitter and the exact executed
 code when evidence exists. A provider that omits supported log detail degrades
 availability rather than fabricating ownership, while hostile partial data
-cannot poison durable attribution. `trace@1` history is not interpreted as
-`trace@2`; operators rebuild bounded ranges with `reindex --stage trace`, after
-which the existing proxy and ABI replay chain refreshes dependent projections.
+cannot poison durable attribution. Historical `trace@1` and `trace@2` output is
+not interpreted as current `trace@3`; operators rebuild bounded ranges with
+`reindex --stage trace`, after which the existing proxy and ABI replay chain
+refreshes dependent projections.

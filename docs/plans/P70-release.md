@@ -75,6 +75,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T42 | done | P70-T41 | Keep Preview recreation strictly Genesis-immutable, including when the default runtime copy is absent | Makefile, documentation, and focused lifecycle regression |
 | P70-T43 | done | P70-T31 | Disable disposable Foundry project caching so repeated one-shot verification clients cannot race an empty tmpfs cache while retaining offline solc availability | pinned client-config assertion and production Foundry E2E |
 | P70-T44 | done | P70-T19, P70-T27 | Remove every disposable Compose project resource during Go-owned test teardown, including volumes referenced only by inactive one-off client profiles | focused command regression and Hardhat project cleanup inspection |
+| P70-T45 | done | P70-T42, P70-T44, P76 | Reconcile maintained deployment and operations documentation with the current Makefile, Compose, runtime, and public capability contracts | focused source/doc audit, plan/link/whitespace checks, and applicable common gates |
 
 ## Acceptance
 
@@ -158,6 +159,11 @@ and user/operator evidence sufficient for a production public release.
       unused by the active service profiles before removing project volumes and
       orphans, so one-off Hardhat build volumes cannot survive a successful or
       failed test cleanup.
+- [x] P70-T45: maintained README, deployment, operations, architecture, and
+      testing guidance agrees with the current executable Makefile/Compose
+      surfaces and explicitly records any intentional historical-only
+      references; the documented Preview Genesis lifecycle and verification
+      enablement/profile boundary are tested against the current implementation.
 - [x] P70-T19: `make test-integration` owns a fresh PostgreSQL 18 lifecycle
       when no external disposable URL is supplied; the explicit race variant,
       production-image schema E2E, and unified plugin/standalone Compose
@@ -356,6 +362,20 @@ P70-T08, and P70-T09 are all complete; the v1 release cannot close before
 those gates.
 
 ## Evidence
+
+- P70-T45 reconciles the maintained deployment, operations, architecture,
+  testing, and ADR guidance with the current Makefile, Compose, runtime stage,
+  compiler SEA, worker-count, and Etherscan action contracts. It removes the
+  obsolete Compose verification profile claim, records that `recreate-preview`
+  fails instead of creating a missing runtime Genesis, updates the current
+  ABI/stage/runtime wording, and corrects the compiler data-flow diagram. The
+  new `.github/scripts/docs-check.mjs` derives the Node SEA version, enrichment
+  stages, Compose profiles, and all 34 Etherscan actions from source and checks
+  them against eight maintained documents. `node --check
+  .github/scripts/docs-check.mjs`, `make docs-check`, `make plan-check`,
+  `git diff --check`, and the full cache-scoped `make check` pass. P70-T45 is
+  complete; P70 remains blocked by the independent P73 live-payment and
+  P70-T04 reference-capacity gates.
 
 - P70-T44 adds Compose's global `--all-resources` selection to the shared
   `internal/testcompose.Project.Down` boundary before `down --volumes

@@ -75,6 +75,8 @@ change. Add a nested `AGENTS.md` only for genuinely different subtree rules.
 - Run `make generate-check` after OpenAPI, SQL, generated-client, or embedded
   SPA changes; `make source-check` after database execution-boundary changes;
   and `make plan-check` after governance changes.
+- Run `make docs-check` after maintained documentation or executable
+  deployment/runtime-surface changes.
 - Follow the restricted-host matrix in `docs/testing.md`. Permission plumbing
   may change, but the repository-owned target and its acceptance criteria may
   not be weakened.
