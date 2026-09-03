@@ -91,11 +91,15 @@ still expose state-backed capabilities without weakening their error contract.
   logged only with a stable code and retried with bounded backoff; it neither
   exits the component nor withdraws process readiness. PostgreSQL remains the
   only dependency of this cleanup path.
-- Statistics advance to `stats@2`. Except for the exact configured indexing
-  start, a block requires its exact canonical parent and a strictly positive
-  timestamp interval. The start block has null interval/TPS. Aggregate TPS is
-  `sum(transaction_count) / sum(block_interval_seconds)` over blocks with a
-  known interval, and remains null when no such interval exists.
+- Statistics advance to `stats@3`; the earlier `stats@2` rows remain historical
+  and are not used by the current projection. Except for the exact configured
+  indexing start, a block requires its exact canonical parent and a strictly
+  positive timestamp interval. The start block has null interval/TPS. Aggregate
+  TPS is `sum(transaction_count) / sum(block_interval_seconds)` over blocks with
+  a known interval, and remains null when no such interval exists. Execution
+  fees, priority fees, failed transactions, and successful top-level creation
+  counts are authenticated from the exact receipt/block facts as defined by
+  [ADR-0025](ADR-0025-historical-execution-analytics.md).
 - Blob base fee and burn use the exact block header and receipt facts. A block
   with no blob transactions records null blob base fee and zero blob burn.
   Receipt blob gas without the required header inputs is permanent source

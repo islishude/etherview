@@ -4,8 +4,9 @@ Status: accepted
 
 ## Context
 
-ADR-0021 attached one x402 authorization and settlement to each selected native
-API read. The product now requires a prepaid account instead: an authenticated
+The former accountless design attached one x402 authorization and settlement
+to each selected native API read. The product now requires a prepaid account:
+an authenticated
 user funds one durable balance, then user-owned API keys spend that balance on
 priced Etherscan V2 compatibility actions. Explorer reads must not prompt for or
 silently create payments.
@@ -34,7 +35,7 @@ HTTP payment dispatcher is assembled. The writer payment ledger exposes new
 reservation only for `account_topup`; its decoder, history queries, append-only
 events, expiration, and operator reconciliation continue to accept historical
 `legacy_request` rows without turning them into prepaid credit.
-The P66 accountless `x402testnet` command and support package are also removed;
+The retired accountless `x402testnet` command and support package are also removed;
 live acceptance belongs to the user-bound top-up and prepaid-usage workflow.
 
 The billable operation catalog is the closed bounded-read subset of the
@@ -53,8 +54,8 @@ whose response was not received. No automatic refund guesses delivery.
 
 Account balances are permanent and asset-specific. PostgreSQL atomically
 maintains cumulative credits, debits, and active reservations alongside an
-append-only entry ledger. Credit is never inferred from historical ADR-0021
-payments. Administrative corrections are explicit, reason-bound credit or
+append-only entry ledger. Credit is never inferred from historical accountless
+request payments. Administrative corrections are explicit, reason-bound credit or
 debit entries; users cannot withdraw or self-refund.
 
 An authenticated user creates a bounded, expiring top-up intent. The payer must
@@ -72,8 +73,8 @@ poll the intent after an uncertain response but never resubmit automatically.
 
 ## Consequences
 
-- ADR-0021 and P66 are superseded. Their rows remain immutable audit history
-  and do not create prepaid credit.
+- The former accountless request-payment design is superseded. Its rows remain
+  immutable audit history and do not create prepaid credit.
 - Facilitator failure prevents new top-ups but does not affect spending an
   existing balance.
 - User-owned keys for one user share the same account and concurrency fence;

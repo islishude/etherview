@@ -55,7 +55,7 @@ X402_LOCAL_TOPOLOGY ?= monolith
 
 .PHONY: \
 	benchmark benchmark-integration \
-	check compose-check deployment-check \
+	check compose-check deployment-check docs-check \
 	docker-build docker-check docker-image-check \
 	compiler-install go-build generate generate-check generate-go helm-check install-lint-tools install-security-tools \
 	golangci-lint \
@@ -76,6 +76,9 @@ go-build: web-build
 
 plan-check:
 	$(GO) run ./cmd/plancheck -root .
+
+docs-check:
+	$(NODE) .github/scripts/docs-check.mjs
 
 source-check:
 	$(GO) run ./cmd/sourcecheck -root .
@@ -441,7 +444,7 @@ helm-check:
 
 deployment-check: docker-check compose-check helm-check
 
-check: toolchain-check security-tool-check license-tool-check plan-check generate-check lint test test-race security-check license-check deployment-check
+check: toolchain-check security-tool-check license-tool-check docs-check plan-check generate-check lint test test-race security-check license-check deployment-check
 
 preview-cert:
 	@command -v "$(MKCERT)" >/dev/null 2>&1 || { echo "preview-cert: mkcert is required"; exit 1; }

@@ -7,8 +7,9 @@ does not imply that an action can always succeed: optional or intentionally
 unavailable capabilities remain addressable so callers receive a stable
 Etherscan envelope instead of a misleading empty result.
 
-The source of truth for dispatch is `internal/etherscan/handler.go`; production
-capability wiring and execution live in `internal/app/serve.go` and
+The source of truth for dispatch is `internal/etherscan/handler.go`; shared
+resource setup lives in `internal/app/serve.go`, API capability wiring lives in
+`internal/app/runtime_api.go`, and PostgreSQL execution lives in
 `internal/etherscan/postgres.go`. A change to any of those surfaces must update
 this matrix and the compatibility golden tests in the same change.
 

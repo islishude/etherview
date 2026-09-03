@@ -74,7 +74,7 @@ supply-chain, conformance, release-CI, artifact, and long-soak review.
 
 - P65-T01 governance and contract: ADR-0020 establishes writer-authoritative
   SIWE sessions and ADR-0003 plus `AGENTS.md` now include only the bounded
-  SIWE `personal_sign` extension. The root and release plans include P65/P66
+  SIWE `personal_sign` extension. The root and release plans include P65/P73
   without promoting P70.
 - P65-T01 persistence and generation: migration `0023_user_auth.sql` creates
   the three bounded tables and indexes; `user_auth.sql` generates the challenge,

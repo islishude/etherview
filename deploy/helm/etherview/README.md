@@ -252,7 +252,7 @@ runbook for the evidence boundary and tuning formula.
 Public source verification requires NetworkPolicy. The selected `all` or `api`
 Pods own official
 `emscripten-wasm32` catalog discovery, checksum validation, and execution in a
-fresh permission-restricted Node 26.7.0 SEA subprocess. The single SEA,
+fresh permission-restricted Node 26.8.1 SEA subprocess. The single SEA,
 canonical read-only runtime manifest, and automatically discovered private ELF
 libraries are part of the production image for its native architecture. There is no runner
 Deployment, Service, image value, runtime class, native compiler fallback, or

@@ -41,7 +41,7 @@ the P70 reference-capacity result.
 | P75-T07 | done | P75-T01 | Replace full block-Raw fanout on list/detail reads with exact narrow typed/scalar projections and normalized withdrawals | query/model corruption tests, PostgreSQL plans/benchmarks, API/browser/runtime parity |
 | P75-T08 | done | P75-T01 | Make RPC reservations cancellation-safe and bound inactive authenticated and anonymous local rate buckets | deterministic cancellation/cardinality tests, Redis fallback race and metrics |
 | P75-T09 | done | P75-T01 | Route-lazy Web chunks, on-demand CodeMirror, precompressed immutable assets with precomputed metadata, and one durable SSE invalidation source instead of live polling | asset-graph budget, handler cache/encoding/CSP tests, Vitest, Playwright and runtime E2E |
-| P75-T10 | done | P75-T04 | Remove the superseded P66 request-payment runtime and configuration while retaining immutable payment audit rows and P73 top-up accounting | config, migration/audit, billing, generation, deployment and runtime tests |
+| P75-T10 | done | P75-T04 | Remove the superseded accountless request-payment runtime and configuration while retaining immutable payment audit rows and P73 top-up accounting | config, migration/audit, billing, generation, deployment and runtime tests |
 | P75-T11 | done | P75-T05, P75-T07, P75-T10 | Move public-query/error/cursor and ABI/proxy/stage contracts out of transport/worker hubs; split oversized production and test scenarios and enforce function boundaries | import graph, source/lint, focused tests, common and topology gates |
 | P75-T12 | done | P75-T02–P75-T11 | Complete aggregate security, race, generation, integration, browser, deployment, and monolith/split production-topology acceptance on the final tree | `make check`, explicit integration/race/browser/runtime/Hardhat/Foundry gates |
 
@@ -186,7 +186,7 @@ None.
 - P75-T10 removes `features.x402_billing`, `billing.routes`, coarse request-
   payment settings/environment aliases, the HTTP payment dispatcher and
   canonical-resource codec, the native quota wrapper, paid API-key context
-  bypass, the retired request metric, and the P66 accountless `x402testnet`
+  bypass, the retired request metric, and the accountless `x402testnet`
   command/support package. Stale YAML and environment keys now
   fail loading and ordinary native/compatibility requests reject payment
   authorization before dispatch. Production payment creation is exposed only

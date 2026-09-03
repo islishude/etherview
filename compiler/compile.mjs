@@ -5,7 +5,7 @@ import { isSea } from "node:sea";
 import solcPackage from "solc/package.json" with { type: "json" };
 import solcWrapper from "solc/wrapper";
 
-const requiredNodeVersion = "v26.7.0";
+const requiredNodeVersion = "v26.8.1";
 const requiredWrapperPackageVersion = "0.8.36";
 const fixedExecArgv = [
   "--permission",

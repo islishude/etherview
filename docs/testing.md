@@ -57,6 +57,9 @@ replace a required `make test-e2e` pass.
   versions are supported; older, malformed, and prerelease versions fail.
 - `make plan-check`: validate plan links, IDs, statuses, dependencies, evidence,
   and parent/child state.
+- `make docs-check`: compare maintained high-risk documentation with current
+  Makefile/Compose profiles, Preview Genesis lifecycle, compiler runtime
+  identity, enrichment stages, and the Etherscan action allowlist.
 - `make source-check`: reject production SQL literals outside the migration
   runner and validated partition-DDL module, reject `.sql` sources outside
   `internal/db/queries` and `internal/store/migrations`, and cap hand-written Go
@@ -242,7 +245,7 @@ replace a required `make test-e2e` pass.
   Docker host architecture, run it with the numeric non-root identity and
   hardened runtime flags, validate the exact SEA/compiler runtime manifest,
   recursive ELF closure, and self-test, and scan its exported root filesystem.
-  The image contains one read-only Node 26.7.0 SEA, only the automatically
+  The image contains one read-only Node 26.8.1 SEA, only the automatically
   discovered private libraries missing from the final base rootfs, and the
   read-only Geas v0.3.3 helper, but no general Node executable, wrapper source,
   package metadata, `node_modules`, npm, npx, corepack, shell, Go toolchain,
@@ -366,7 +369,8 @@ replace a required `make test-e2e` pass.
   release evidence by itself; P70-T04 still requires the named reference
   deployment, dataset, hardware, RPC behavior, and independently captured
   resource peaks.
-- `make check`: source, unit/race, security, license, generation, and deployment
+- `make check`: documentation, source, unit/race, security, license, generation,
+  and deployment
   gates. Browser, integration, parity, load, and soak suites are explicit
   opt-in targets because they require dedicated services or runtimes; CI runs
   the browser, managed integration, schema, and runtime E2E suites, not the

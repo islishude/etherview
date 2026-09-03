@@ -19,10 +19,11 @@ The `monolith` profile starts PostgreSQL, a migration run, and one
 `serve --roles=all` process. The `distributed` profile starts the same migration
 and one process per role. Add `--profile accelerators` only when developing an
 optional adapter; those services are intentionally absent from `depends_on`.
-Public verification additionally uses `--profile verification`. The selected
-`all` or `api` process owns the checksum-verified solc-js cache and restricted
-Node subprocess executor; there is no standalone compiler service or image
-reference.
+Public verification is configured in the mounted YAML through
+`features.verification` and `security.public_verification`; it is not a Compose
+profile. The selected `all` or `api` process owns the checksum-verified solc-js
+cache and restricted Node subprocess executor; there is no standalone compiler
+service or image reference.
 Set the commented `ETHERVIEW_NATS_URL`, `ETHERVIEW_REDIS_URL`, and S3 variables
 only when using them. The application remains ready when any accelerator is
 unreachable; create the configured S3 bucket before expecting trace-cache hits.
@@ -160,7 +161,7 @@ Verification v2 treats user-supplied Solidity/Yul and Geas input as hostile.
 The `api` process
 owns bounded official `emscripten-wasm32` catalog discovery, approved-origin
 and redirect checks, checksum-pinned download, a rebuildable persistent cache,
-and execution. Each compile starts a fresh Node 26.7.0 SEA subprocess with a minimal
+and execution. Each compile starts a fresh Node 26.8.1 SEA subprocess with a minimal
 environment, private temporary directory, read-only permissions, bounded
 heap/input/output/time, and process-group cleanup. The subprocess receives no
 network, child-process, worker, addon, WASI, FFI, or inspector permission.
@@ -440,7 +441,7 @@ metric staleness, alerts, and repair/reindex response.
 
 The Dockerfile builds the SPA and application/helper Go binaries, and assembles a
 distroless non-root image for BuildKit's target architecture. The production
-stage contains the application binary plus one read-only Node 26.7.0 SEA, its
+stage contains the application binary plus one read-only Node 26.8.1 SEA, its
 canonical runtime manifest and automatically discovered private ELF libraries,
 and the read-only Geas v0.3.3 helper. It contains no general Node executable,
 npm, wrapper source, package metadata, `node_modules`, npx, corepack, shell,

@@ -8,9 +8,9 @@ the detailed architecture, testing, or operations manuals.
 
 | Concern | Authoritative source |
 | --- | --- |
-| Current scope, dependencies, status, and evidence | [Root plan](../PLAN.md) and [child plans](plans/) |
+| Current scope, dependencies, status, and evidence | [Root plan](../PLAN.md), [plan catalog](plans/index.md), and [child plans](plans/) |
 | Current system behavior and component boundaries | [Architecture overview](architecture/overview.md) |
-| Accepted consequential decisions and invariants | [Accepted ADRs](decisions/) |
+| Accepted consequential decisions and invariants | [ADR catalog](decisions/index.md) and accepted ADR files |
 | Runnable commands, test scope, restricted hosts, and evidence | [Makefile](../Makefile) and [testing guide](testing.md) |
 | Deployment, telemetry, recovery, and administration | [Operations runbook](operations.md) |
 | Public HTTP contract | [OpenAPI source](../api/openapi.yaml) |
@@ -86,7 +86,9 @@ linked documents, not this summary, define the exact contract.
   truth; `docs/testing.md` defines each gate's scope and evidence rules.
 - Run `make generate-check` after OpenAPI, SQL, generated-client, or embedded
   SPA changes; `make source-check` after database execution-boundary changes;
-  and `make plan-check` after plan, ADR-link, or governance changes.
+  run `make docs-check` after maintained documentation or executable
+  deployment/runtime-surface changes; and run `make plan-check` after plan,
+  ADR-link, or governance changes.
 - Do not substitute local mocks or a weaker browser/container mode for a
   required production, integration, or operator gate. Record what actually ran
   and leave unmet external evidence explicit.

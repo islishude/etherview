@@ -32,7 +32,7 @@ nested EntryPoint calls are outside this plan.
 
 | ID | Status | Depends on | Deliverable | Verification |
 |---|---|---|---|---|
-| P76-T01 | done | P10, P20, P40, P50, P60, P61, P68, P75 | Governance, bounded EntryPoint configuration, `userop@1`, PostgreSQL persistence and coverage, generated native APIs, search, bilingual Web browsing, rollout, and runtime parity | decoder, configuration, PostgreSQL, reorg, generation, Web, browser, real-Anvil, monolith/split, race, and common gates |
+| P76-T01 | done | P10, P20, P30, P40, P50, P68, P75 | Governance, bounded EntryPoint configuration, `userop@1`, PostgreSQL persistence and coverage, generated native APIs, search, bilingual Web browsing, rollout, and runtime parity | decoder, configuration, PostgreSQL, reorg, generation, Web, browser, real-Anvil, monolith/split, race, and common gates |
 | P76-T02 | done | P76-T01 | Restore CI closure by isolating feature-on runtime fixtures from feature-off Hardhat/Foundry overlays, documenting the shared-overlay test contract, and giving the unchanged full PostgreSQL integration package an explicit cold-run timeout | Compose render/runtime regressions, integration runner tests, testing guide, PostgreSQL integration, Hardhat, Foundry, common gates, and a fresh GitHub Actions run |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.

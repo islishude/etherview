@@ -21,14 +21,6 @@ truth. Redis, NATS, and S3-compatible storage are optional accelerators.
 Consensus-layer browsing, archived blob bodies, MEV accounting, and
 L2-specific batch semantics are outside the v1 core scope.
 
-## Project status
-
-The implementation plans through P75 are complete except for work explicitly
-marked blocked or superseded in the plan. P76 ERC-4337 browsing is complete;
-P70 release evidence remains open, so the repository does not yet claim a
-v1.0.0 production release. [PLAN.md](PLAN.md) is the authoritative status and
-evidence index.
-
 ## Quick start
 
 Docker Compose starts PostgreSQL, applies migrations, builds the current tree,
@@ -63,7 +55,7 @@ available over HTTP on <http://localhost:9090>.
 Preview builds the production image for the current Docker host architecture.
 The `api` process downloads checksum-pinned `emscripten-wasm32` solc-js
 artifacts and executes each bounded Standard JSON compilation in a fresh,
-permission-restricted Node 26.7.0 SEA subprocess. It also supports address verification
+permission-restricted Node 26.8.1 SEA subprocess. It also supports address verification
 for multi-file Geas v0.3.3 sources (including ethereum/sys-asm relative
 `#include` and `assemble()` entrypoints) through the bundled read-only helper.
 There is no standalone runner, Docker socket, nested runtime, or caller-chosen

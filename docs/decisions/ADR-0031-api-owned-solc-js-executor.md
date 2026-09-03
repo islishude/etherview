@@ -3,14 +3,16 @@
 Status: accepted
 
 [ADR-0037](ADR-0037-persistent-solcjs-artifact-cache.md) supersedes only this
-decision's disposable-cache deployment consequence. The compiler trust,
-runtime, provenance, and execution decisions below remain accepted.
+decision's disposable-cache deployment consequence. [ADR-0040](ADR-0040-sea-packaged-solcjs-executor.md)
+supersedes the runtime packaging, runtime-path, manifest, and launch details
+below. The compiler trust, catalog, provenance, and execution decisions remain
+accepted.
 
 ## Context
 
-ADR-0029 and ADR-0030 removed application-controlled container daemons but
-retained a separately deployed compiler-runner. That runner still selects a
-native solc-bin directory from its container CPU architecture. Preview also
+Earlier remote-runner decisions removed application-controlled container
+daemons but retained a separately deployed compiler-runner. That runner still
+selects a native solc-bin directory from its container CPU architecture. Preview also
 persisted the runner image digest outside Compose, so a previously built
 `linux/amd64` image remained active after source-level platform settings were
 removed.
@@ -38,11 +40,13 @@ the platform coupling this decision removes.
   `emscripten-wasm32/list.json` format or an explicitly configured mirror with
   the same platform identity. `emscripten-wasm32` is compiler artifact
   provenance, not an OCI or CPU architecture constraint.
-- The production image contains a host-native Node 26.5.0 binary and an
-  exact-lockfile `solc@0.8.36` wrapper package. The wrapper loads one exact
+- The production image contains the Node 26.8.1 SEA and exact-lockfile
+  `solc@0.8.36` wrapper defined by ADR-0040. The wrapper loads one exact
   checksum-verified soljson file, confirms its normalized long version, accepts
   one Standard JSON document on stdin, supplies no import callback, and writes
-  only compiler JSON to stdout.
+  only compiler JSON to stdout. ADR-0040 owns the single-executable packaging
+  and complete runtime-tree layout; this ADR retains the trust and subprocess
+  contract.
 - The Node executable, wrapper, and runtime-manifest paths default to their
   production-image locations but are explicit non-secret operator
   configuration. Overrides must be absolute clean paths that identify one
@@ -88,8 +92,9 @@ the platform coupling this decision removes.
   follows the same rule: drain bound jobs, deploy one manifest digest to every
   API-capable replica, and restart those replicas before admitting new work.
 
-This decision supersedes ADR-0029 and ADR-0030. It supersedes ADR-0024 only
-where that decision requires Vyper, native executable platform selection,
+This decision supersedes the earlier remote-runner decisions. It supersedes
+ADR-0024 only where that decision requires Vyper, native executable platform
+selection,
 hard compiler isolation, runner images, or runner provenance. ADR-0024 remains
 authoritative for catalog integrity, dual compilation, bounded matching,
 canonical publication, stable errors, and hostile-input handling.

@@ -94,7 +94,7 @@ Execution RPC -> sync/canonicalizer -> PostgreSQL writer -> durable jobs
                     |                         -> runtime status/events -> API replica relays
                     -> expiring pending snapshots
 PostgreSQL reader (optional; otherwise writer) -> projection query API -> embedded React SPA
-API verification workers -> restricted Node SEA -> approved solc-js catalogs/artifacts
+API verification workers -> approved solc-js catalogs/artifacts -> restricted Node SEA
 outbox -> optional NATS wake-up
 API -> optional Redis cache/rate limit
 large blobs -> optional S3-compatible storage
@@ -742,7 +742,8 @@ size alone is not sufficient justification to weaken those invariants.
   before replacing guards or validating data by taking write-conflicting
   relation locks in the production write order: immutable results, verified
   projections, then terminal job updates. See
-  [ADR-0014](../decisions/ADR-0014-durable-verification-identity-and-publication.md).
+  [ADR-0024](../decisions/ADR-0024-verifier-v2-workflow.md) and
+  [ADR-0031](../decisions/ADR-0031-api-owned-solc-js-executor.md).
 - Verification prepares duplicate-key-free, inline-source Solidity and Yul
   Standard JSON inputs with bounded server-owned outputs. It compiles the
   original sources and one whitespace-modified copy with the same exact
@@ -793,7 +794,7 @@ size alone is not sufficient justification to weaken those invariants.
   published. The helper's exact Go module checksum and executable digest bind
   once under the job lease without a compiler catalog. See
   [ADR-0039](../decisions/ADR-0039-pinned-geas-verification-executor.md).
-- The production image includes one Node 26.7.0 SEA containing the
+- The production image includes one Node 26.8.1 SEA containing the
   `solc@0.8.36` wrapper protocol, plus a canonical read-only runtime manifest
   and any target-rootfs-missing ELF libraries discovered recursively at build
   time. It contains no general Node executable, npm tree, wrapper source, or

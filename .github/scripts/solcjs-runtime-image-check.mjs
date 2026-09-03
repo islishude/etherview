@@ -20,7 +20,7 @@ const rootfs = new Set(
     .filter(Boolean),
 );
 assert.equal(manifest.schema, "etherview-solcjs-sea-runtime-v1");
-assert.equal(manifest.node_version, "v26.7.0");
+assert.equal(manifest.node_version, "v26.8.1");
 assert.equal(manifest.wrapper_package, "solc@0.8.36");
 assert.equal(manifest.bundle_builder, "esbuild@0.28.2");
 assert.deepEqual(manifest.sea, {

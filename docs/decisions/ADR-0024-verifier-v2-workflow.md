@@ -21,10 +21,10 @@ commit `5cb8bdc88ebdbccf779bc138f1aeb8933b37eb07`, but is an independent Go
 implementation. Blockscout source is not copied, vendored, linked, or included
 as a dependency.
 
-This ADR supersedes ADR-0014, ADR-0016, and ADR-0017 where their verifier-v1
-request, compiler-catalog, match, publication, or Sourcify decisions conflict
-with this decision. Their general lease fencing, canonicality, hostile-input,
-redaction, and fail-closed cleanup requirements remain mandatory.
+This ADR replaces the earlier verifier-v1 request, compiler-catalog, match,
+publication, and Sourcify decisions where they conflict with this decision.
+Their general lease fencing, canonicality, hostile-input, redaction, and
+fail-closed cleanup requirements remain mandatory.
 
 ## Decision
 

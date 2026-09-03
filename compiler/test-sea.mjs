@@ -52,7 +52,7 @@ const selfTest = run(["--self-test"]);
 if (
   selfTest.status !== 0 ||
   selfTest.stdout !==
-    '{"schema":"etherview-solcjs-sea-self-test-v1","sea":true,"node_version":"v26.7.0","wrapper_package":"solc@0.8.36","exec_argv":["--permission","--disable-sigusr1","--no-addons","--no-global-search-paths","--max-old-space-size=384"],"permissions":"restricted","write_denied":true}'
+    '{"schema":"etherview-solcjs-sea-self-test-v1","sea":true,"node_version":"v26.8.1","wrapper_package":"solc@0.8.36","exec_argv":["--permission","--disable-sigusr1","--no-addons","--no-global-search-paths","--max-old-space-size=384"],"permissions":"restricted","write_denied":true}'
 ) {
   throw new Error(
     `SEA self-test failed: status=${selfTest.status} signal=${selfTest.signal} error=${selfTest.error} stdout=${selfTest.stdout} stderr=${selfTest.stderr}`,
