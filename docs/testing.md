@@ -112,6 +112,11 @@ replace a required `make test-e2e` pass.
   drives the durable `userop@1` outbox/worker path, verifies all native reads,
   search and completeness, then replaces the block and requires canonical
   withdrawal with retained orphan evidence.
+  The authoritative ERC-20 Holder regression publishes `proxy@2`, `token@1`,
+  and `holder@1` through the durable worker path, performs exact EIP-1898
+  supply/balance calls, verifies native and Etherscan list/count parity, rejects
+  direct balance mutation, and requires a reorged snapshot to become
+  unavailable while retaining orphan evidence.
 - `make test-integration-race`: run the same owned database lifecycle with the
   Go race detector. This expensive variant is explicit and is not part of
   default CI.
@@ -396,8 +401,9 @@ configuration enters that shared overlay:
    starting any application service.
 3. Shared readiness and parity helpers derive expected stages and components
    from the effective feature set. A globally hardcoded stage count is invalid:
-   the UserOperation runtime publishes seven stages, while feature-off Hardhat
-   and Foundry verification topologies publish six.
+   the always-on Holder stage makes the UserOperation runtime publish eight
+   stages, while feature-off Hardhat and Foundry verification topologies
+   publish seven.
 4. Extend both `.github/scripts/hardhat3-compose-check.mjs` and
    `.github/scripts/foundry-compose-check.mjs` to assert the feature-off value
    and absence or empty value of its companion configuration on every

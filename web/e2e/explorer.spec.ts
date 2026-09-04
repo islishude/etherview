@@ -3,6 +3,7 @@ import AxeBuilder from "@axe-core/playwright";
 
 const address = "0x1111111111111111111111111111111111111111";
 const unverifiedAddress = "0x1212121212121212121212121212121212121212";
+const holderToken = "0x0101010101010101010101010101010101010101";
 const delegatedAddress = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 const clearedDelegationAddress = "0x7777777777777777777777777777777777777777";
 const delegatedDelegate = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
@@ -1296,6 +1297,21 @@ test("capability pages survive the embedded binary boundary in both accessible t
     await assertAccessibleRoute(page, route);
   }
   expect(externalRequests).toEqual([]);
+});
+
+test("authoritative ERC-20 holders remain accessible and bilingual at 390px", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/token/${holderToken}`);
+  await expect(page.getByRole("heading", { name: "Holder Token", level: 1 })).toBeVisible();
+  const holders = page.getByRole("region", { name: "Token holders" });
+  await expect(holders.getByText("Authoritative holder snapshot")).toBeVisible();
+  await expect(holders.getByText("Holder count")).toBeVisible();
+  await expect(holders.getByRole("link", { name: "0x222222…222222" })).toBeVisible();
+  await assertA11yAndNoOverflow(page, "authoritative ERC-20 holders in English");
+  await page.getByRole("button", { name: "切换到中文" }).click();
+  await expect(page.getByRole("region", { name: "代币持有人" })).toBeVisible();
+  await expect(page.getByText("权威持有人快照")).toBeVisible();
+  await assertA11yAndNoOverflow(page, "authoritative ERC-20 holders in Chinese");
 });
 
 test("verified OpenZeppelin proxy pages use anonymous generated forms and exact bound targets", async ({

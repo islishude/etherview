@@ -15,11 +15,11 @@ func TestExpandedCompatibilityInventoryCounts(t *testing.T) {
 	for _, actions := range supported {
 		registered += len(actions)
 	}
-	if registered != 34 {
-		t.Fatalf("registered actions=%d, want 34", registered)
+	if registered != 35 {
+		t.Fatalf("registered actions=%d, want 35", registered)
 	}
-	if eligible := len(etherscanops.EligibleIDs()); eligible != 28 {
-		t.Fatalf("billing-eligible actions=%d, want 28", eligible)
+	if eligible := len(etherscanops.EligibleIDs()); eligible != 30 {
+		t.Fatalf("billing-eligible actions=%d, want 30", eligible)
 	}
 }
 

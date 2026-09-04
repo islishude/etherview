@@ -5330,6 +5330,85 @@ type TokenEventListResponse struct {
 	Meta Meta         `json:"meta"`
 }
 
+// TokenHolder defines model for TokenHolder.
+type TokenHolder struct {
+	// Balance A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Balance Quantity `json:"balance"`
+
+	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ChainId Quantity `json:"chain_id"`
+
+	// Confidence State observed by an exact block-hash RPC call and rechecked against canonicality.
+	Confidence StateConfidence `json:"confidence"`
+
+	// HolderAddress A 20-byte address; responses use the EIP-55 checksum form.
+	HolderAddress Address `json:"holder_address"`
+
+	// ObservedBlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	ObservedBlockHash Hash `json:"observed_block_hash"`
+
+	// ObservedBlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ObservedBlockNumber Quantity `json:"observed_block_number"`
+
+	// TokenAddress A 20-byte address; responses use the EIP-55 checksum form.
+	TokenAddress Address `json:"token_address"`
+}
+
+// TokenHolderCount defines model for TokenHolderCount.
+type TokenHolderCount struct {
+	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ChainId Quantity `json:"chain_id"`
+
+	// HolderCount A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	HolderCount Quantity `json:"holder_count"`
+
+	// TokenAddress A 20-byte address; responses use the EIP-55 checksum form.
+	TokenAddress Address `json:"token_address"`
+}
+
+// TokenHolderCountResponse defines model for TokenHolderCountResponse.
+type TokenHolderCountResponse struct {
+	Data TokenHolderCount `json:"data"`
+	Meta TokenHolderMeta  `json:"meta"`
+}
+
+// TokenHolderListResponse defines model for TokenHolderListResponse.
+type TokenHolderListResponse struct {
+	Data []TokenHolder   `json:"data"`
+	Meta TokenHolderMeta `json:"meta"`
+}
+
+// TokenHolderMeta defines model for TokenHolderMeta.
+type TokenHolderMeta struct {
+	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ChainId Quantity `json:"chain_id"`
+
+	// CoverageEnd A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	CoverageEnd Quantity `json:"coverage_end"`
+
+	// CoverageStart A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	CoverageStart Quantity `json:"coverage_start"`
+
+	// HolderCount A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	HolderCount Quantity `json:"holder_count"`
+
+	// NextCursor A bounded server-issued traversal token that clients must not decode or construct.
+	NextCursor *OpaqueCursor `json:"next_cursor,omitempty"`
+
+	// ReconciledBalanceSum A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ReconciledBalanceSum Quantity `json:"reconciled_balance_sum"`
+	RequestId            string   `json:"request_id"`
+
+	// SnapshotBlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	SnapshotBlockHash Hash `json:"snapshot_block_hash"`
+
+	// SnapshotBlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	SnapshotBlockNumber Quantity `json:"snapshot_block_number"`
+
+	// TotalSupply A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	TotalSupply Quantity `json:"total_supply"`
+}
+
 // TokenListResponse defines model for TokenListResponse.
 type TokenListResponse struct {
 	Data []TokenContract `json:"data"`
@@ -6510,6 +6589,9 @@ type CSRFToken = string
 // Cursor A bounded server-issued traversal token that clients must not decode or construct.
 type Cursor = OpaqueCursor
 
+// HolderLimit defines model for HolderLimit.
+type HolderLimit = int
+
 // Limit defines model for Limit.
 type Limit = int
 
@@ -6785,6 +6867,12 @@ type GetAggregateStatsParams struct {
 type ListTokensParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListTokenHoldersParams defines parameters for ListTokenHolders.
+type ListTokenHoldersParams struct {
+	Cursor *Cursor      `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *HolderLimit `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // ListTokenTransfersParams defines parameters for ListTokenTransfers.

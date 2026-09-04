@@ -22,17 +22,18 @@ and user/operator evidence sufficient for a production public release.
 - [ADR-0031: API-owned architecture-neutral solc-js executor](../decisions/ADR-0031-api-owned-solc-js-executor.md)
 - [ADR-0037: Rebuildable persistent solc-js artifact cache](../decisions/ADR-0037-persistent-solcjs-artifact-cache.md)
 - [ADR-0040: SEA-packaged solc-js executor](../decisions/ADR-0040-sea-packaged-solcjs-executor.md)
+- [ADR-0046: authoritative ERC-20 holder reconciliation](../decisions/ADR-0046-authoritative-erc20-holder-reconciliation.md)
 - [Testing](../testing.md)
 
 ## Work Items
 
 | ID | Status | Depends on | Deliverable | Verification |
 |---|---|---|---|---|
-| P70-T01 | blocked | P10, P20, P30, P40, P50, P64, P65, P67, P68, P73, P74, P75 | Execution/API/token/proxy/verification/authentication/billing conformance matrix | conformance suite |
-| P70-T02 | blocked | P10, P20, P30, P40, P50, P64, P65, P67, P68, P73, P74, P75 | Threat model, security audit, dependency, compiler, session, and payment supply-chain review | security gates |
-| P70-T03 | blocked | P10, P20, P30, P40, P50, P64, P65, P67, P68, P73, P74, P75 | Monolith/split E2E, migration/rollback, outage, reorg, payment, and soak suite | release CI |
-| P70-T04 | blocked | P30, P75 | 500 RPS reference capacity report and tuning guide | load report |
-| P70-T05 | blocked | P00, P10, P20, P30, P40, P50, P64, P65, P67, P68, P73, P74, P75 | User/operator/API/authentication/billing/runbook/upgrade documentation | doc review and link check |
+| P70-T01 | blocked | P10, P20, P30, P40, P50, P64, P65, P67, P68, P73, P74, P75, P77 | Execution/API/token/holder/proxy/verification/authentication/billing conformance matrix | conformance suite |
+| P70-T02 | blocked | P10, P20, P30, P40, P50, P64, P65, P67, P68, P73, P74, P75, P77 | Threat model, security audit, dependency, compiler, session, holder reconciliation, and payment supply-chain review | security gates |
+| P70-T03 | blocked | P10, P20, P30, P40, P50, P64, P65, P67, P68, P73, P74, P75, P77 | Monolith/split E2E, migration/rollback, outage, reorg, holder, payment, and soak suite | release CI |
+| P70-T04 | blocked | P30, P75, P77 | 500 RPS reference capacity report including holder reads and concurrent reconciliation, plus tuning guide | load report |
+| P70-T05 | blocked | P00, P10, P20, P30, P40, P50, P64, P65, P67, P68, P73, P74, P75, P77 | User/operator/API/authentication/billing/holder/runbook/upgrade documentation | doc review and link check |
 | P70-T06 | todo | P70-T01–P70-T05, P70-T08, P70-T09 | SBOM, checksums, signed multi-arch artifacts and v1.0.0 release | release verification |
 | P70-T07 | done | P30 | Database read/write pool split configuration, deployment wiring, and capacity guidance | helm config/schema tests |
 | P70-T08 | done | P10, P20, P30-T07, P40, P50, P30 | Authenticated local/remote genesis account state, predeploy enrichment, native API, and block-zero UI | root, persistence, API, browser, security, and split-role tests |
@@ -76,7 +77,7 @@ and user/operator evidence sufficient for a production public release.
 
 ## Acceptance
 
-- [ ] Every required P00–P75 plan and root release gate is complete with evidence.
+- [ ] Every required root plan through P77 and every root release gate is complete with evidence.
 - [ ] Clean deployment, upgrade, rollback, backup/restore, and repair procedures
       are independently reproducible.
 - [ ] Security findings have no unresolved critical/high issue.
@@ -308,17 +309,22 @@ image/build digest. Preserved EIP-3009 and Permit2 reports must cover SIWE,
 top-up settlement, account credit, API-key debit, and writer/chain
 reconciliation.
 
-P70-T01, P70-T02, P70-T03, and P70-T05 are blocked by P73. They become
-claimable after the P73-T08 live reports are recorded and P73 is `done`; local
-Anvil evidence does not substitute for that gate.
+P70-T01, P70-T02, P70-T03, and P70-T05 are blocked by P73. P77's holder
+implementation, conformance, security, topology, documentation, license, and
+common-gate evidence is complete. These P70 items become claimable after the
+P73-T08 live reports are recorded and P73 is `done`; local Anvil evidence does
+not substitute for the live-payment gate.
 
 P70-T04 is blocked on an operator-provisioned reference environment for the
 final clean revision and image digest: at least two failure domains with room
 for the documented 9-to-18-pod topology, HA PostgreSQL sized for its connection
 budget, a named representative chain snapshot with cardinalities, healthy
 purpose-specific RPC behavior, and independent timestamp-aligned resource
-monitoring. Running the exact 500 RPS/30-minute target there and preserving the
-load report, resource peaks, monitoring data, and tuning guide clears the
+monitoring. Running the exact 500 RPS/30-minute target there must include
+representative high-cardinality native holder pages, `tokenholderlist`,
+`tokenholdercount`, and concurrent incremental holder reconciliation while
+preserving the existing latency, error-rate, and lag thresholds. Preserving
+the load report, resource peaks, monitoring data, and tuning guide clears the
 blocker.
 
 P70-T15 is complete. P30-T39 supplies exact durable NFT identity and bounded

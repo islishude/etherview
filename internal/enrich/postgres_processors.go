@@ -122,10 +122,18 @@ func (processor *PostgresTokenProcessor) processTokenTx(ctx context.Context, tx 
 			parsedEvents++
 		}
 	}
+	holderRequeued := false
+	if job.Generation > 1 {
+		holderRequeued, err = resetTerminalDependentStageTx(ctx, tx, job, HolderStage)
+		if err != nil {
+			return StageResult{}, err
+		}
+	}
 	return StageResult{
 		State: ResultComplete,
 		Details: map[string]string{
 			"events": strconv.Itoa(parsedEvents), "malformed_logs": strconv.Itoa(malformedLogs),
+			"holder_requeued": strconv.FormatBool(holderRequeued),
 		},
 	}, nil
 }
@@ -287,11 +295,19 @@ func (processor *PostgresTokenProcessor) persistDetectedTokenBlockTx(
 			parsedEvents++
 		}
 	}
+	holderRequeued := false
+	if job.Generation > 1 {
+		holderRequeued, err = resetTerminalDependentStageTx(ctx, tx, job, HolderStage)
+		if err != nil {
+			return StageResult{}, err
+		}
+	}
 	return StageResult{
 		State: ResultComplete,
 		Details: map[string]string{
 			"contracts": strconv.Itoa(len(detections)), "events": strconv.Itoa(parsedEvents),
-			"malformed_logs": strconv.Itoa(malformedLogs),
+			"malformed_logs":  strconv.Itoa(malformedLogs),
+			"holder_requeued": strconv.FormatBool(holderRequeued),
 		},
 	}, nil
 }

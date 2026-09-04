@@ -683,6 +683,10 @@ func registerResourceHandlers(mux *http.ServeMux) {
 		writeEnvelope(response, []any{tokenContract()})
 	})
 	mux.HandleFunc("GET /api/v1/tokens/{address}", func(response http.ResponseWriter, request *http.Request) {
+		if request.PathValue("address") == testHolderToken {
+			writeEnvelope(response, holderTokenContract())
+			return
+		}
 		if request.PathValue("address") != testAddress {
 			writeNotFound(response)
 			return
@@ -690,6 +694,10 @@ func registerResourceHandlers(mux *http.ServeMux) {
 		writeEnvelope(response, tokenContract())
 	})
 	mux.HandleFunc("GET /api/v1/tokens/{address}/transfers", func(response http.ResponseWriter, request *http.Request) {
+		if request.PathValue("address") == testHolderToken {
+			writeEnvelope(response, []any{})
+			return
+		}
 		if request.PathValue("address") != testAddress {
 			writeNotFound(response)
 			return
@@ -701,6 +709,34 @@ func registerResourceHandlers(mux *http.ServeMux) {
 			"from": testAddress, "to": testAddress, "token_id": "1", "amount": "1",
 			"confidence": "verified",
 		}})
+	})
+	mux.HandleFunc("GET /api/v1/tokens/{address}/holders", func(response http.ResponseWriter, request *http.Request) {
+		if request.PathValue("address") != testHolderToken {
+			writeNotFound(response)
+			return
+		}
+		writeEnvelopeMeta(response, []any{map[string]any{
+			"chain_id": "1", "token_address": testHolderToken, "holder_address": testEOA,
+			"balance": "7000000", "confidence": "rpc_exact",
+			"observed_block_number": "2", "observed_block_hash": secondHash,
+		}}, map[string]any{
+			"snapshot_block_number": "2", "snapshot_block_hash": secondHash,
+			"coverage_start": "0", "coverage_end": "2", "holder_count": "1",
+			"total_supply": "7000000", "reconciled_balance_sum": "7000000",
+		})
+	})
+	mux.HandleFunc("GET /api/v1/tokens/{address}/holders/count", func(response http.ResponseWriter, request *http.Request) {
+		if request.PathValue("address") != testHolderToken {
+			writeNotFound(response)
+			return
+		}
+		writeEnvelopeMeta(response, map[string]any{
+			"chain_id": "1", "token_address": testHolderToken, "holder_count": "1",
+		}, map[string]any{
+			"snapshot_block_number": "2", "snapshot_block_hash": secondHash,
+			"coverage_start": "0", "coverage_end": "2", "holder_count": "1",
+			"total_supply": "7000000", "reconciled_balance_sum": "7000000",
+		})
 	})
 	mux.HandleFunc("GET /api/v1/nfts/{address}/{token_id}", func(response http.ResponseWriter, request *http.Request) {
 		if request.PathValue("address") != testAddress ||

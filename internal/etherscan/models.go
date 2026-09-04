@@ -85,6 +85,11 @@ type addressNFTInventoryItem struct {
 	TokenID      string `json:"TokenId"`
 }
 
+type tokenHolder struct {
+	TokenHolderAddress  string `json:"TokenHolderAddress"`
+	TokenHolderQuantity string `json:"TokenHolderQuantity"`
+}
+
 type transactionErrorStatus struct {
 	IsError        string `json:"isError"`
 	ErrDescription string `json:"errDescription"`

@@ -44,7 +44,7 @@ func TestRuntimeEnvironmentScopesUserOperationOptIn(t *testing.T) {
 		if got := environment["ETHERVIEW_RUNTIME_FEATURE_USER_OPERATIONS"]; got != strconv.FormatBool(enabled) {
 			t.Fatalf("UserOperation runtime feature = %q, want %t", got, enabled)
 		}
-		wantStages := int64(6)
+		wantStages := int64(7)
 		if enabled {
 			wantStages++
 		}
@@ -56,9 +56,9 @@ func TestRuntimeEnvironmentScopesUserOperationOptIn(t *testing.T) {
 
 func expectedRuntimeStageCount(environment map[string]string) int64 {
 	if environment["ETHERVIEW_RUNTIME_FEATURE_USER_OPERATIONS"] == "true" {
-		return 7
+		return 8
 	}
-	return 6
+	return 7
 }
 
 func (h *harness) configureUserOperationEnvironment() {

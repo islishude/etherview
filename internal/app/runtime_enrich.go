@@ -75,7 +75,11 @@ func (assembly runtimeAssembly) registerEnrichComponents() error {
 		if err != nil {
 			return err
 		}
-		processors := []enrich.Processor{proxyProcessor, abiProcessor, tokenProcessor, statsProcessor}
+		holderProcessor, err := enrich.NewPostgresHolderProcessor(db, rpcBuild.Pool)
+		if err != nil {
+			return err
+		}
+		processors := []enrich.Processor{proxyProcessor, abiProcessor, tokenProcessor, holderProcessor, statsProcessor}
 		if cfg.Features.UserOperations {
 			userRegistry, registryErr := erc4337.NewRegistry(cfg.ERC4337)
 			if registryErr != nil {

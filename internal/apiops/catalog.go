@@ -214,6 +214,11 @@ var catalog = []Spec{
 	spec("listTokenTransfers", "GET", "/tokens/{address}/transfers", true,
 		pathParameter("address", ParameterAddress),
 		cursorParameter(), limitParameter("25")),
+	spec("listTokenHolders", "GET", "/tokens/{address}/holders", true,
+		pathParameter("address", ParameterAddress),
+		cursorParameter(), holderLimitParameter()),
+	spec("getTokenHolderCount", "GET", "/tokens/{address}/holders/count", true,
+		pathParameter("address", ParameterAddress)),
 	spec("getNFTOwner", "GET", "/nfts/{address}/{token_id}", true,
 		pathParameter("address", ParameterAddress),
 		pathParameter("token_id", ParameterUint256)),
@@ -328,6 +333,12 @@ func limitParameter(defaultValue string) ParameterSpec {
 	parameter.Minimum = 1
 	parameter.HasMaximum = true
 	parameter.Maximum = 100
+	return parameter
+}
+
+func holderLimitParameter() ParameterSpec {
+	parameter := limitParameter("50")
+	parameter.Maximum = 200
 	return parameter
 }
 

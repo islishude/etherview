@@ -119,10 +119,11 @@ var supported = map[string]map[string]actionSpec{
 		"tokensupply": {addresses: []string{"contractaddress"}, state: true},
 	},
 	"token": {
-		"tokensupply":     {addresses: []string{"contractaddress"}, state: true},
-		"tokenbalance":    {addresses: []string{"contractaddress", "address"}, state: true},
-		"tokeninfo":       {addresses: []string{"contractaddress"}},
-		"tokenholderlist": {addresses: []string{"contractaddress"}, list: true},
+		"tokensupply":      {addresses: []string{"contractaddress"}, state: true},
+		"tokenbalance":     {addresses: []string{"contractaddress", "address"}, state: true},
+		"tokeninfo":        {addresses: []string{"contractaddress"}},
+		"tokenholderlist":  {addresses: []string{"contractaddress"}, pageOnly: true, strict: true},
+		"tokenholdercount": {addresses: []string{"contractaddress"}, strict: true},
 	},
 }
 

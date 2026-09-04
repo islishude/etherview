@@ -20,7 +20,7 @@ arbitrary executable SQL would create a second migration and security surface.
 ## Decision
 
 - Every successful or stale production `proxy@2`, `abi@4`, `token@1`,
-  `stats@3`, `trace@3`, and `state_diff@3`
+  `holder@1`, `stats@3`, `trace@3`, and `state_diff@3`
   attempt upserts exactly one journal identified by chain, immutable block
   hash, full `stage@version`, and sequence `1`.
 - The journal, `block_stage_results` row, and all output written by that stage

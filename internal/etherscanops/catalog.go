@@ -48,7 +48,8 @@ var catalog = []Spec{
 	billable("token", "tokensupply"),
 	billable("token", "tokenbalance"),
 	billable("token", "tokeninfo"),
-	nonBillable("token", "tokenholderlist"),
+	billable("token", "tokenholderlist"),
+	billable("token", "tokenholdercount"),
 }
 
 func billable(module, action string) Spec {

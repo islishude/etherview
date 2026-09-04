@@ -51,6 +51,8 @@ func TestDerivedCanonicalRelationsIncludeUUPSImplementationObservations(t *testi
 		"diamond_loupe_snapshots",
 		"diamond_cut_events",
 		"transaction_effective_execution_identities",
+		"erc20_holder_balances",
+		"erc20_holder_snapshots",
 	} {
 		if strings.Contains(dbgen.StoreSetDerivedCanonicalBatch, "UPDATE "+relation+" AS target SET canonical") {
 			continue

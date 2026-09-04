@@ -844,6 +844,19 @@ size alone is not sufficient justification to weaken those invariants.
   Etherscan-compatible address-holding pages reuse that exact cache inside
   their fixed candidate bound, while single-token balance and supply reads
   remain uncached.
+  The always-scheduled `holder@1` stage is the separate enumerable-owner
+  boundary. It accepts only high/verified ERC-20 Transfer participants from a
+  block-zero continuous canonical history, reconciles every candidate with
+  exact `balanceOf` plus `totalSupply` at one block hash, and publishes a token
+  snapshot only when the positive balances and supply agree. Public reads
+  reconstruct immutable per-holder observations: ordinary
+  forward blocks refresh only exact Transfer participants, while first
+  observation, coverage gaps, code/proxy generation changes, and the rotating
+  audit lane perform a full candidate reconciliation. Native and compatibility
+  holder reads are PostgreSQL-only, address ordered, and require
+  Holder coverage through the current canonical tip. A reorg, replay,
+  unavailable state endpoint, non-standard supply, or incomplete snapshot is
+  an explicit unavailable capability rather than a partial list.
   Orphan cache rows are retained but cannot satisfy a canonical lookup. Token
   classifications are retained per observed block hash, so a reorg can fall
   back to an older canonical observation even when the runtime code hash did

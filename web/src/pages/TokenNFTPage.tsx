@@ -10,15 +10,19 @@ import {
   useNFTMetadata,
   useNFTOwnership,
   useToken,
+  useTokenHolders,
   useTokenTransfers,
 } from "@/api/hooks";
 import type {
   NFTMetadata,
   TokenEvent,
+  TokenHolder,
+  TokenHolderMeta,
 } from "@/api/types";
 import { ApiError } from "@/api/client";
 import {
   formatInteger,
+  formatTokenAmount,
   shorten,
 } from "@/components/format";
 import { CopyButton, } from "@/components/CopyButton";
@@ -43,12 +47,20 @@ import {
 export function TokenDetailPage({ address }: { address: string }) {
   const { i18n, t } = useTranslation();
   const transferPager = useCursorHistory(`token-transfers:${address}`);
+  const holderPager = useCursorHistory(`token-holders:${address}`);
   const token = useToken(address);
   const transfers = useTokenTransfers(
     address,
     CORE_PAGE_SIZE,
     transferPager.cursor,
     transferPager.refreshGeneration,
+  );
+  const holders = useTokenHolders(
+    address,
+    50,
+    holderPager.cursor,
+    holderPager.refreshGeneration,
+    token.data?.standard === "erc20",
   );
   const locale = i18n.resolvedLanguage ?? "en";
 
@@ -93,6 +105,23 @@ export function TokenDetailPage({ address }: { address: string }) {
           />
         </DetailList>
       )}
+      {token.data?.standard === "erc20" && (
+        <TokenHolders
+          busy={holders.isFetching}
+          decimals={token.data.decimals}
+          error={holders.error}
+          hasNext={Boolean(holders.data?.next_cursor)}
+          hasPrevious={holderPager.hasPrevious}
+          holders={holders.data?.items}
+          loading={holders.isPending}
+          locale={locale}
+          meta={holders.data?.meta}
+          onNext={() => holderPager.next(holders.data?.next_cursor)}
+          onPrevious={holderPager.previous}
+          onReset={holderPager.reset}
+          page={holderPager.page}
+        />
+      )}
       <TokenTransfers
         busy={transfers.isFetching}
         error={transfers.error}
@@ -107,6 +136,91 @@ export function TokenDetailPage({ address }: { address: string }) {
         page={transferPager.page}
       />
     </Page>
+  );
+}
+
+function TokenHolders({
+  busy,
+  decimals,
+  error,
+  hasNext,
+  hasPrevious,
+  holders,
+  loading,
+  locale,
+  meta,
+  onNext,
+  onPrevious,
+  onReset,
+  page,
+}: {
+  busy: boolean;
+  decimals?: number;
+  error: unknown;
+  hasNext: boolean;
+  hasPrevious: boolean;
+  holders?: TokenHolder[];
+  loading: boolean;
+  locale: string;
+  meta?: TokenHolderMeta;
+  onNext: () => void;
+  onPrevious: () => void;
+  onReset: () => void;
+  page: number;
+}) {
+  const { t } = useTranslation();
+  return (
+    <section className="detail-section" aria-labelledby="token-holders-title">
+      <h2 id="token-holders-title">{t("tokenHolder.title")}</h2>
+      <QueryNotice loading={loading} error={error} onReset={onReset} />
+      {meta && (
+        <DetailList label={t("tokenHolder.summary")}>
+          <Detail label={t("tokenHolder.count")} value={formatInteger(meta.holder_count, locale)} />
+          <Detail label={t("table.supply")} value={formatTokenAmount(meta.total_supply, decimals, locale)} />
+          <Detail label={t("tokenHolder.snapshot")} value={formatInteger(meta.snapshot_block_number, locale)} />
+          <Detail label={t("tokenHolder.snapshotHash")} mono value={meta.snapshot_block_hash} />
+        </DetailList>
+      )}
+      {holders && holders.length === 0 && (
+        <p className="empty-result" role="status">{t("tokenHolder.empty")}</p>
+      )}
+      {holders && holders.length > 0 && (
+        <div className="table-scroll" tabIndex={0} aria-label={t("tokenHolder.title")}>
+          <table>
+            <caption className="sr-only">{t("tokenHolder.caption")}</caption>
+            <thead>
+              <tr>
+                <th>{t("tokenHolder.address")}</th>
+                <th>{t("detail.amount")}</th>
+                <th>{t("detail.observedBlock")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {holders.map((holder) => (
+                <tr key={holder.holder_address}>
+                  <td><AddressIdentity address={holder.holder_address} /></td>
+                  <td>{formatTokenAmount(holder.balance, decimals, locale)}</td>
+                  <td>
+                    <Link to="/blocks/$blockID" params={{ blockID: holder.observed_block_hash }}>
+                      {formatInteger(holder.observed_block_number, locale)}
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <CursorPagination
+        busy={busy}
+        hasNext={hasNext}
+        hasPrevious={hasPrevious}
+        label={t("tokenHolder.title")}
+        onNext={onNext}
+        onPrevious={onPrevious}
+        page={page}
+      />
+    </section>
   );
 }
 

@@ -690,7 +690,7 @@ func TestOperationalMetricLabelsUseClosedStateMappings(t *testing.T) {
 		}
 	}
 	for versioned, want := range map[string]string{
-		"proxy@1": "proxy", "proxy@2": "proxy", "abi@1": "abi", "abi@2": "abi", "abi@3": "abi", "abi@4": "abi", "token@1": "token", "stats@2": "stats", "stats@3": "stats", "trace@1": "trace", "trace@2": "trace", "trace@3": "trace", "state_diff@1": "state_diff", "state_diff@2": "state_diff", "state_diff@3": "state_diff", "userop@1": "userop",
+		"proxy@1": "proxy", "proxy@2": "proxy", "abi@1": "abi", "abi@2": "abi", "abi@3": "abi", "abi@4": "abi", "token@1": "token", "holder@1": "holder", "stats@2": "stats", "stats@3": "stats", "trace@1": "trace", "trace@2": "trace", "trace@3": "trace", "state_diff@1": "state_diff", "state_diff@2": "state_diff", "state_diff@3": "state_diff", "userop@1": "userop",
 	} {
 		if got := boundedJobStage(versioned); got != want {
 			t.Fatalf("boundedJobStage(%q) = %q, want %q", versioned, got, want)

@@ -52,6 +52,25 @@ WHERE job.id = $4
       )
   )
   AND (
+      job.stage <> 'holder'
+      OR (
+          EXISTS (
+              SELECT 1 FROM published_block_stage_results AS dependency
+              WHERE dependency.chain_id = job.chain_id
+                AND dependency.block_hash = decode(substr(job.payload->>'block_hash', 3), 'hex')
+                AND dependency.stage = 'token' AND dependency.stage_version = 1
+                AND dependency.state = 'complete'
+          )
+          AND EXISTS (
+              SELECT 1 FROM published_block_stage_results AS dependency
+              WHERE dependency.chain_id = job.chain_id
+                AND dependency.block_hash = decode(substr(job.payload->>'block_hash', 3), 'hex')
+                AND dependency.stage = 'proxy' AND dependency.stage_version = $11::bigint
+                AND dependency.state IN ('complete', 'unavailable')
+          )
+      )
+  )
+  AND (
       (job.status = 'queued' AND job.available_at <= clock_timestamp())
       OR (job.status = 'leased' AND job.lease_expires_at <= clock_timestamp())
   )
@@ -151,6 +170,25 @@ WHERE exhausted_job.id = $1
       )
   )
   AND (
+      exhausted_job.stage <> 'holder'
+      OR (
+          EXISTS (
+              SELECT 1 FROM published_block_stage_results AS dependency
+              WHERE dependency.chain_id = exhausted_job.chain_id
+                AND dependency.block_hash = decode(substr(exhausted_job.payload->>'block_hash', 3), 'hex')
+                AND dependency.stage = 'token' AND dependency.stage_version = 1
+                AND dependency.state = 'complete'
+          )
+          AND EXISTS (
+              SELECT 1 FROM published_block_stage_results AS dependency
+              WHERE dependency.chain_id = exhausted_job.chain_id
+                AND dependency.block_hash = decode(substr(exhausted_job.payload->>'block_hash', 3), 'hex')
+                AND dependency.stage = 'proxy' AND dependency.stage_version = $3::bigint
+                AND dependency.state IN ('complete', 'unavailable')
+          )
+      )
+  )
+  AND (
       (exhausted_job.status = 'queued' AND exhausted_job.available_at <= clock_timestamp())
       OR (exhausted_job.status = 'leased' AND exhausted_job.lease_expires_at <= clock_timestamp())
   )
@@ -222,6 +260,25 @@ WHERE candidate_job.kind = 'enrichment'
       )
   )
   AND (
+      candidate_job.stage <> 'holder'
+      OR (
+          EXISTS (
+              SELECT 1 FROM published_block_stage_results AS dependency
+              WHERE dependency.chain_id = candidate_job.chain_id
+                AND dependency.block_hash = decode(substr(candidate_job.payload->>'block_hash', 3), 'hex')
+                AND dependency.stage = 'token' AND dependency.stage_version = 1
+                AND dependency.state = 'complete'
+          )
+          AND EXISTS (
+              SELECT 1 FROM published_block_stage_results AS dependency
+              WHERE dependency.chain_id = candidate_job.chain_id
+                AND dependency.block_hash = decode(substr(candidate_job.payload->>'block_hash', 3), 'hex')
+                AND dependency.stage = 'proxy' AND dependency.stage_version = $2::bigint
+                AND dependency.state IN ('complete', 'unavailable')
+          )
+      )
+  )
+  AND (
       (candidate_job.status = 'queued' AND candidate_job.available_at <= clock_timestamp())
       OR (candidate_job.status = 'leased' AND candidate_job.lease_expires_at <= clock_timestamp())
   )
@@ -288,6 +345,25 @@ WHERE exhausted_job.kind = 'enrichment'
             AND dependency.stage = 'proxy'
             AND dependency.stage_version = $2::bigint
             AND dependency.state IN ('complete', 'unavailable')
+      )
+  )
+  AND (
+      exhausted_job.stage <> 'holder'
+      OR (
+          EXISTS (
+              SELECT 1 FROM published_block_stage_results AS dependency
+              WHERE dependency.chain_id = exhausted_job.chain_id
+                AND dependency.block_hash = decode(substr(exhausted_job.payload->>'block_hash', 3), 'hex')
+                AND dependency.stage = 'token' AND dependency.stage_version = 1
+                AND dependency.state = 'complete'
+          )
+          AND EXISTS (
+              SELECT 1 FROM published_block_stage_results AS dependency
+              WHERE dependency.chain_id = exhausted_job.chain_id
+                AND dependency.block_hash = decode(substr(exhausted_job.payload->>'block_hash', 3), 'hex')
+                AND dependency.stage = 'proxy' AND dependency.stage_version = $2::bigint
+                AND dependency.state IN ('complete', 'unavailable')
+          )
       )
   )
   AND (

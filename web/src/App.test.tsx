@@ -337,6 +337,21 @@ describe("embedded explorer shell", () => {
           meta,
         });
       }
+      if (path === `/api/v1/tokens/${address}/holders?limit=50`) {
+        return Response.json({
+          data: [{
+            chain_id: "1", token_address: address, holder_address: peer,
+            balance: "1000000", confidence: "rpc_exact",
+            observed_block_number: "42", observed_block_hash: blockHash,
+          }],
+          meta: {
+            request_id: "token-web-test", chain_id: "1",
+            snapshot_block_number: "42", snapshot_block_hash: blockHash,
+            coverage_start: "0", coverage_end: "42", holder_count: "1",
+            total_supply: "1000000000", reconciled_balance_sum: "1000000000",
+          },
+        });
+      }
       if (path === `/api/v1/tokens/${address}`) {
         return Response.json({
           data: {
@@ -370,14 +385,20 @@ describe("embedded explorer shell", () => {
     expect(screen.getByRole("heading", { name: "Token metadata", level: 2 })).toBeVisible();
     expect(screen.getByText("EXD")).toBeVisible();
     expect(await screen.findByRole("heading", { name: "Token events", level: 2 })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "Token holders", level: 2 })).toBeVisible();
+    expect(screen.getByText("Authoritative holder snapshot")).toBeVisible();
     expect(screen.getByRole("link", { name: "0x787878…787878" })).toHaveAttribute(
       "href",
       `/tx/${transactionHash}?tab=overview`,
     );
-    expect(screen.getByText("1", { exact: true })).toBeVisible();
+    expect(screen.getAllByText("1", { exact: true }).length).toBeGreaterThan(0);
     expect(fetcher).toHaveBeenCalledWith(`/api/v1/tokens/${address}`, expect.anything());
     expect(fetcher).toHaveBeenCalledWith(
       `/api/v1/tokens/${address}/transfers?limit=25`,
+      expect.anything(),
+    );
+    expect(fetcher).toHaveBeenCalledWith(
+      `/api/v1/tokens/${address}/holders?limit=50`,
       expect.anything(),
     );
   });

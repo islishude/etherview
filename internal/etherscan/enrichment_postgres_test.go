@@ -332,12 +332,82 @@ func TestTokenInformationSupplyBalanceAndHolders(t *testing.T) {
 	_, err = backend.Execute(context.Background(), Request{Module: "token", Action: "tokenholderlist", Values: url.Values{
 		"contractaddress": {testContract}, "page": {"2"}, "offset": {"2"}, "sort": {"desc"},
 	}})
-	if !errors.Is(err, ErrStateUnavailable) {
+	if !errors.Is(err, ErrInvalidParameter) {
 		t.Fatalf("holders error=%v", err)
 	}
 	if provider.supplyCall != common.HexToAddress(testContract).Hex() ||
 		!reflect.DeepEqual(provider.balanceCall, []string{common.HexToAddress(testContract).Hex(), common.HexToAddress(testSender).Hex()}) {
 		t.Fatalf("supply call=%q balance call=%v", provider.supplyCall, provider.balanceCall)
+	}
+}
+
+func TestAuthoritativeTokenHolderListAndCount(t *testing.T) {
+	t.Parallel()
+	snapshotExpectation := func() sqlExpectation {
+		return sqlExpectation{
+			contains: "FROM erc20_holder_snapshots AS snapshot",
+			columns:  fakeColumns(7), rows: [][]driver.Value{{
+				"11", testHashBytes(4), "complete", "2", "10", "10", true,
+			}},
+		}
+	}
+	listDB := fakeDatabase(t,
+		completeCoreCoverageExpectation("0", "", "12"),
+		completedStageExpectation(holderStage, "0", ""),
+		holderDependenciesExpectation(),
+		tokenContractExpectation(canonicalTokenRow("erc20", "10")),
+		snapshotExpectation(),
+		sqlExpectation{
+			contains: "FROM erc20_holder_balances AS balance",
+			columns:  fakeColumns(2), rows: [][]driver.Value{
+				{testAddressBytes(testSender), "4"}, {testAddressBytes(testRecipient), "6"},
+			},
+			check: func(arguments []driver.NamedValue) error {
+				if len(arguments) != 5 || arguments[0].Value != int64(0) || arguments[1].Value != 2 {
+					return fmt.Errorf("holder page arguments=%v", arguments)
+				}
+				return nil
+			},
+		},
+	)
+	listBackend := testPostgresBackend(t, listDB, PostgresOptions{ChainID: 1})
+	result, err := listBackend.Execute(context.Background(), Request{
+		Module: "token", Action: "tokenholderlist",
+		Values: url.Values{"contractaddress": {testContract}, "offset": {"2"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `[{"TokenHolderAddress":"` + common.HexToAddress(testSender).Hex() + `","TokenHolderQuantity":"4"},{"TokenHolderAddress":"` + common.HexToAddress(testRecipient).Hex() + `","TokenHolderQuantity":"6"}]`
+	if string(encoded) != want {
+		t.Fatalf("holder list=%s want=%s", encoded, want)
+	}
+
+	countDB := fakeDatabase(t,
+		completeCoreCoverageExpectation("0", "", "12"),
+		completedStageExpectation(holderStage, "0", ""),
+		holderDependenciesExpectation(),
+		tokenContractExpectation(canonicalTokenRow("erc20", "10")),
+		snapshotExpectation(),
+	)
+	countBackend := testPostgresBackend(t, countDB, PostgresOptions{ChainID: 1})
+	count, err := countBackend.Execute(context.Background(), Request{
+		Module: "token", Action: "tokenholdercount",
+		Values: url.Values{"contractaddress": {testContract}},
+	})
+	if err != nil || count != "2" {
+		t.Fatalf("holder count=%#v error=%v", count, err)
+	}
+}
+
+func holderDependenciesExpectation() sqlExpectation {
+	return sqlExpectation{
+		contains: "count(token_publication.block_number)",
+		columns:  fakeColumns(5), rows: [][]driver.Value{{"0", "13", "13", "13", "13"}},
 	}
 }
 
@@ -477,7 +547,6 @@ func TestTokenStateActionsRequireFixedCanonicalProvider(t *testing.T) {
 	}{
 		{"supply", "tokensupply", url.Values{"contractaddress": {testContract}}},
 		{"balance", "tokenbalance", url.Values{"contractaddress": {testContract}, "address": {testSender}}},
-		{"holder ledger", "tokenholderlist", url.Values{"contractaddress": {testContract}}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()

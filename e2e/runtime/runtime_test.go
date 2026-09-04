@@ -1028,13 +1028,13 @@ func (h *harness) waitCanonical(ctx context.Context, height uint64, hash string)
 				(SELECT count(*) FROM published_block_stage_results
 					WHERE chain_id = 1 AND block_number = $1 AND block_hash = decode($2, 'hex')
 					  AND state = 'complete' AND (stage, stage_version) IN (
-					    ('proxy',$3::integer),('abi',$4::integer),('token',1),
+					    ('proxy',$3::integer),('abi',$4::integer),('token',1),('holder',1),
 					    ('stats',3),('trace',$5::integer),('state_diff',$6::integer),('userop',1))),
 				(SELECT count(*) FROM durable_jobs WHERE status IN ('queued','leased')),
 				(SELECT count(*) FROM published_block_stage_results
 					WHERE chain_id = 1 AND block_number = $1 AND block_hash = decode($2, 'hex')
 					  AND state <> 'complete' AND (stage, stage_version) IN (
-					    ('proxy',$3::integer),('abi',$4::integer),('token',1),
+					    ('proxy',$3::integer),('abi',$4::integer),('token',1),('holder',1),
 					    ('stats',3),('trace',$5::integer),('state_diff',$6::integer),('userop',1))),
 				(SELECT count(*) FROM transactional_outbox WHERE published_at IS NULL),
 				COALESCE((SELECT string_agg(stage || ':' || left(last_error, 512), ';' ORDER BY stage)

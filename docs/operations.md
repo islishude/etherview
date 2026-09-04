@@ -527,9 +527,15 @@ ETHERVIEW_LOAD_REVISION=0123456789abcdef \
 ETHERVIEW_LOAD_DATASET=mainnet-snapshot-2026-07-23 \
 ETHERVIEW_LOAD_HARDWARE=kubernetes-reference-profile \
 ETHERVIEW_LOAD_RPC_BEHAVIOR=isolated-head-history-state \
-ETHERVIEW_LOAD_PATHS='["/api/v1/status","/api/v1/blocks?limit=20&sort=desc"]' \
+ETHERVIEW_LOAD_PATHS='["/api/v1/status","/api/v1/blocks?limit=20","/api/v1/tokens/0x1111111111111111111111111111111111111111/holders?limit=200","/api/v1/tokens/0x1111111111111111111111111111111111111111/holders/count","/v2/api?chainid=1&module=token&action=tokenholderlist&contractaddress=0x1111111111111111111111111111111111111111&page=1&offset=1000","/v2/api?chainid=1&module=token&action=tokenholdercount&contractaddress=0x1111111111111111111111111111111111111111"]' \
 make test-load >artifacts/load.json
 ```
+
+Replace the example token address with a named high-cardinality ERC-20 whose
+Holder snapshot is complete in the reference dataset. Run this read mix while
+new canonical blocks contain ERC-20 transfers so `holder@1` reconciliation and
+the HTTP workload compete for the same representative PostgreSQL and RPC
+resources.
 
 `make test-soak` selects the 500 RPS/30-minute P70 defaults and fixes the
 reference gates at p95 below 500 ms, error rate below 0.1%, final lag no
@@ -647,13 +653,21 @@ holding the chain lock. It cannot move canonicality or checkpoints. A range at
 or below finalized height requires `--allow-finalized` plus the recorded
 reason; this permits only a same-identity refresh.
 
-`reindex --stage proxy|abi|token|stats|trace|state_diff|userop` queues work for
+`reindex --stage proxy|abi|token|stats|trace|state_diff|userop|holder` queues work for
 the currently canonical block hash. It does not steal queued work or an active
 lease. Repair deliberately does not infer a downstream rebuild range; schedule
 each required derived stage explicitly and wait for its durable publication
 result. After the
 OpenZeppelin proxy cutover, schedule `proxy` before `abi`; the ABI worker also
 refuses to claim a block until the current `proxy@2` result is published.
+`holder@1` also waits for the exact block's `token@1` result and terminal
+`proxy@2` result. Authoritative holder reads require a bounded sequence of
+Holder reindex requests starting at block zero and continuing through the
+current canonical tip; neither migration nor startup schedules this history.
+Each request must retain its operator reason. The enrich role uses its
+state-purpose endpoint for exact EIP-1898 `balanceOf` and `totalSupply` calls;
+missing historical state leaves the affected Holder block unavailable rather
+than publishing event-derived balances.
 The `trace@3` cutover is an explicit bounded reindex, never a migration-time
 historical enqueue. Each completed Trace generation requests the existing
 `proxy@2` replay and then `abi@4`; wait for those publications before treating

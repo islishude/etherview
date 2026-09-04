@@ -43,6 +43,7 @@ var (
 	Trace         = ID{Name: "trace", Version: 3}
 	StateDiff     = ID{Name: "state_diff", Version: 3}
 	UserOperation = ID{Name: "userop", Version: 1}
+	Holder        = ID{Name: "holder", Version: 1}
 )
 
 type ReplaySource struct {

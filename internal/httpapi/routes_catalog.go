@@ -18,6 +18,8 @@ func (h *Handler) registerCatalogRoutes() {
 	h.handleBillable("listTokens", h.tokens)
 	h.handleBillable("getToken", h.token)
 	h.handleBillable("listTokenTransfers", h.tokenTransfers)
+	h.handleBillable("listTokenHolders", h.tokenHolders)
+	h.handleBillable("getTokenHolderCount", h.tokenHolderCount)
 	h.handleBillable("getNFTOwner", h.nftOwner)
 	h.handleBillable("getBlockStats", h.blockStats)
 	h.handleBillable("getAggregateStats", h.aggregateStats)

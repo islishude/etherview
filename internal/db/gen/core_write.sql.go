@@ -317,6 +317,12 @@ WITH input AS (
 ), update_token_deltas AS (
     UPDATE token_balance_deltas AS target SET canonical = $3
     FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+), update_holder_balances AS (
+    UPDATE erc20_holder_balances AS target SET canonical = $3
+    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+), update_holder_snapshots AS (
+    UPDATE erc20_holder_snapshots AS target SET canonical = $3
+    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
 ), update_trace_attributions AS (
     UPDATE trace_log_attributions AS target SET canonical = $3
     FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash

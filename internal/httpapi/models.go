@@ -70,6 +70,25 @@ func (h *Handler) handleCatalogError(w http.ResponseWriter, r *http.Request, err
 	}
 }
 
+func (h *Handler) handleHolderError(w http.ResponseWriter, r *http.Request, err error) {
+	var stageError catalog.StageUnavailableError
+	switch {
+	case errors.As(err, &stageError) && stageError.Stage == catalog.StageHolder:
+		details := map[string]any{"stage": stageError.Stage, "state": stageError.State}
+		if stageError.BlockNumber != "" {
+			details["block_number"] = stageError.BlockNumber
+		}
+		if stageError.BlockHash != "" {
+			details["block_hash"] = stageError.BlockHash
+		}
+		writeError(w, r, http.StatusServiceUnavailable, "token_holders_unavailable", "authoritative token holders are unavailable", details)
+	case errors.Is(err, catalog.ErrNotApplicable):
+		writeError(w, r, http.StatusUnprocessableEntity, "token_holders_not_applicable", "token holders require an authoritative ERC-20 token", nil)
+	default:
+		h.handleCatalogError(w, r, err)
+	}
+}
+
 func (h *Handler) chainID() string {
 	return strconv.FormatUint(h.cfg.Chain.ID, 10)
 }
@@ -85,10 +104,48 @@ func (h *Handler) catalogPageMeta(r *http.Request, next string, snapshot catalog
 	return meta
 }
 
+func (h *Handler) tokenHolderMeta(
+	r *http.Request,
+	next string,
+	summary catalog.TokenHolderSummary,
+) gen.TokenHolderMeta {
+	meta := gen.TokenHolderMeta{
+		RequestId: requestIDFrom(r.Context()), ChainId: summary.ChainID,
+		SnapshotBlockNumber: summary.Snapshot.BlockNumber,
+		SnapshotBlockHash:   summary.Snapshot.BlockHash,
+		CoverageStart:       "0", CoverageEnd: summary.Snapshot.BlockNumber,
+		HolderCount: summary.HolderCount, TotalSupply: summary.TotalSupply,
+		ReconciledBalanceSum: summary.ReconciledBalanceSum,
+	}
+	if next != "" {
+		value := gen.OpaqueCursor(next)
+		meta.NextCursor = &value
+	}
+	return meta
+}
+
 func parseCatalogPage(w http.ResponseWriter, r *http.Request) (int, string, bool) {
 	limit, ok := parseLimit(w, r, 25)
 	if !ok {
 		return 0, "", false
+	}
+	cursor := r.URL.Query().Get("cursor")
+	if len(cursor) > maximumOpaqueCursorLength {
+		writeError(w, r, http.StatusBadRequest, "invalid_cursor", "cursor is too long", nil)
+		return 0, "", false
+	}
+	return limit, cursor, true
+}
+
+func parseHolderPage(w http.ResponseWriter, r *http.Request) (int, string, bool) {
+	limit := 50
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 200 {
+			writeError(w, r, http.StatusBadRequest, "invalid_limit", "limit must be between 1 and 200", nil)
+			return 0, "", false
+		}
+		limit = parsed
 	}
 	cursor := r.URL.Query().Get("cursor")
 	if len(cursor) > maximumOpaqueCursorLength {

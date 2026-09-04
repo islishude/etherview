@@ -122,6 +122,7 @@ func compatibilityActionCases() []compatibilityActionCase {
 		{module: "token", action: "tokenbalance", values: url.Values{"contractaddress": {testContract}, "address": {testSender}}},
 		{module: "token", action: "tokeninfo", values: url.Values{"contractaddress": {testContract}}},
 		{module: "token", action: "tokenholderlist", values: url.Values{"contractaddress": {testContract}}},
+		{module: "token", action: "tokenholdercount", values: url.Values{"contractaddress": {testContract}}},
 	}
 }
 

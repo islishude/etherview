@@ -138,6 +138,8 @@ billing:
     etherscan.stats.tokensupply: {amount_atomic: "1"}
     etherscan.token.tokensupply: {amount_atomic: "1"}
     etherscan.token.tokenbalance: {amount_atomic: "1"}
+    etherscan.token.tokenholdercount: {amount_atomic: "1"}
+    etherscan.token.tokenholderlist: {amount_atomic: "1"}
     etherscan.token.tokeninfo: {amount_atomic: "1"}
 
 observability:

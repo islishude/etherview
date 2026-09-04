@@ -20,6 +20,7 @@ import type {
   SearchResult,
   TokenContract,
   TokenEvent,
+  TokenHolderPage,
   TransactionSummary,
   TransactionDetail,
   UserOperationDetail,
@@ -616,6 +617,33 @@ export function useTokenTransfers(
     enabled: enabled && address.length > 0,
     retry: false,
     staleTime: 10_000,
+  });
+}
+
+export function useTokenHolders(
+  address: string,
+  limit = 50,
+  cursor?: string,
+  refreshGeneration = 0,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["token", address, "holders", limit, cursor ?? null, refreshGeneration],
+    queryFn: async (): Promise<TokenHolderPage> => {
+      const response = requireEnvelope(
+        await apiClient.GET("/tokens/{address}/holders", {
+          params: { path: { address }, query: { limit, cursor } },
+        }),
+      );
+      return {
+        items: response.data,
+        meta: response.meta,
+        next_cursor: response.meta.next_cursor,
+      };
+    },
+    enabled: enabled && address.length > 0,
+    retry: false,
+    staleTime: liveRefetchInterval,
   });
 }
 

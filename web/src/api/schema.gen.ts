@@ -943,6 +943,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tokens/{address}/holders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listTokenHolders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tokens/{address}/holders/count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getTokenHolderCount"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tokens/{address}/transfers": {
         parameters: {
             query?: never;
@@ -2705,6 +2737,40 @@ export interface components {
             data: components["schemas"]["TokenEvent"][];
             meta: components["schemas"]["Meta"];
         };
+        TokenHolder: {
+            balance: components["schemas"]["Quantity"];
+            chain_id: components["schemas"]["Quantity"];
+            confidence: components["schemas"]["StateConfidence"];
+            holder_address: components["schemas"]["Address"];
+            observed_block_hash: components["schemas"]["Hash"];
+            observed_block_number: components["schemas"]["Quantity"];
+            token_address: components["schemas"]["Address"];
+        };
+        TokenHolderCount: {
+            chain_id: components["schemas"]["Quantity"];
+            holder_count: components["schemas"]["Quantity"];
+            token_address: components["schemas"]["Address"];
+        };
+        TokenHolderCountResponse: {
+            data: components["schemas"]["TokenHolderCount"];
+            meta: components["schemas"]["TokenHolderMeta"];
+        };
+        TokenHolderListResponse: {
+            data: components["schemas"]["TokenHolder"][];
+            meta: components["schemas"]["TokenHolderMeta"];
+        };
+        TokenHolderMeta: {
+            chain_id: components["schemas"]["Quantity"];
+            coverage_end: components["schemas"]["Quantity"];
+            coverage_start: components["schemas"]["Quantity"];
+            holder_count: components["schemas"]["Quantity"];
+            next_cursor?: components["schemas"]["OpaqueCursor"];
+            reconciled_balance_sum: components["schemas"]["Quantity"];
+            request_id: string;
+            snapshot_block_hash: components["schemas"]["Hash"];
+            snapshot_block_number: components["schemas"]["Quantity"];
+            total_supply: components["schemas"]["Quantity"];
+        };
         TokenListResponse: {
             data: components["schemas"]["TokenContract"][];
             meta: components["schemas"]["Meta"];
@@ -3398,6 +3464,7 @@ export interface components {
         BillingToTime: string;
         CSRFToken: string;
         Cursor: components["schemas"]["OpaqueCursor"];
+        HolderLimit: number;
         Limit: number;
         /** @description Optional x402 v2 exact-EVM authorization for this top-up intent; absence returns the payment challenge. */
         PaymentSignature: string;
@@ -4916,6 +4983,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TokenResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listTokenHolders: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["HolderLimit"];
+            };
+            header?: never;
+            path: {
+                address: components["parameters"]["Address"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Address-ordered ERC-20 holders at a genesis-covered, exact-state-reconciled canonical snapshot. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenHolderListResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getTokenHolderCount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address: components["parameters"]["Address"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Exact reconciled ERC-20 holder count at the current canonical snapshot. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenHolderCountResponse"];
                 };
             };
             default: components["responses"]["Error"];

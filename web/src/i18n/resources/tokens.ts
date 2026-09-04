@@ -65,6 +65,16 @@ export const tokensResources = {
             approval: "Approval",
             approvalForAll: "Approval for all",
           },
+          tokenHolder: {
+            title: "Token holders",
+            summary: "Authoritative holder snapshot",
+            count: "Holder count",
+            snapshot: "Snapshot block",
+            snapshotHash: "Snapshot block hash",
+            address: "Holder address",
+            empty: "The reconciled token supply has no holders at this snapshot.",
+            caption: "ERC-20 holders ordered by address",
+          },
   },
   zh: {
           nftMetadata: {
@@ -131,6 +141,16 @@ export const tokensResources = {
             burn: "销毁",
             approval: "授权",
             approvalForAll: "全部授权",
+          },
+          tokenHolder: {
+            title: "代币持有人",
+            summary: "权威持有人快照",
+            count: "持有人数量",
+            snapshot: "快照区块",
+            snapshotHash: "快照区块哈希",
+            address: "持有人地址",
+            empty: "该快照中已对账的代币供应量没有持有人。",
+            caption: "按地址排序的 ERC-20 持有人",
           },
   },
 } as const;

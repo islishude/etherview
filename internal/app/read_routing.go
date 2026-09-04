@@ -84,7 +84,8 @@ func compatibilityUsesAuthoritativeDatabase(request etherscan.Request) bool {
 		"token.tokensupply",
 		"token.tokenbalance",
 		"token.tokeninfo",
-		"token.tokenholderlist":
+		"token.tokenholderlist",
+		"token.tokenholdercount":
 		return false
 	default:
 		return true

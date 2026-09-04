@@ -27,6 +27,7 @@ const (
 	StageStats     Stage = "stats"
 	StageTrace     Stage = "trace"
 	StageStateDiff Stage = "state_diff"
+	StageHolder    Stage = "holder"
 )
 
 func (stage Stage) Version() int {
@@ -37,7 +38,7 @@ func (stage Stage) Version() int {
 		return 3
 	case StageStateDiff:
 		return 3
-	case StageCore, StageToken:
+	case StageCore, StageToken, StageHolder:
 		return 1
 	default:
 		return 0
@@ -129,6 +130,41 @@ type TokenEventPage struct {
 	Items      []TokenEvent
 	NextCursor string
 	Snapshot   Snapshot
+}
+
+type TokenHolder struct {
+	ChainID             string
+	TokenAddress        string
+	HolderAddress       string
+	Balance             string
+	Confidence          string
+	ObservedBlockNumber string
+	ObservedBlockHash   string
+}
+
+type TokenHolderSummary struct {
+	ChainID              string
+	TokenAddress         string
+	HolderCount          string
+	TotalSupply          string
+	ReconciledBalanceSum string
+	ObservedBlockNumber  string
+	ObservedBlockHash    string
+	PublicationEpoch     string
+	Snapshot             Snapshot
+}
+
+type TokenHolderRequest struct {
+	ChainID      string
+	TokenAddress string
+	Cursor       string
+	Limit        int
+}
+
+type TokenHolderPage struct {
+	Items      []TokenHolder
+	NextCursor string
+	Summary    TokenHolderSummary
 }
 
 type AddressActivityRequest struct {
@@ -616,6 +652,8 @@ type Reader interface {
 	TokenContract(context.Context, string, string) (TokenContract, error)
 	TokenContracts(context.Context, TokenListRequest) (TokenPage, error)
 	TokenEvents(context.Context, TokenEventRequest) (TokenEventPage, error)
+	TokenHolders(context.Context, TokenHolderRequest) (TokenHolderPage, error)
+	TokenHolderCount(context.Context, string, string) (TokenHolderSummary, error)
 	NFTOwner(context.Context, string, string, string) (NFTOwnership, error)
 	NFTBalances(context.Context, NFTBalanceRequest) (NFTBalancePage, error)
 	ERC20Balances(context.Context, ERC20BalanceRequest) (ERC20BalancePage, error)

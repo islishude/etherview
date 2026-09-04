@@ -741,6 +741,8 @@ func boundedJobStage(value string) string {
 		return "abi"
 	case "token", "token@1":
 		return "token"
+	case "holder", "holder@1":
+		return "holder"
 	case "stats", "stats@2", "stats@3":
 		return "stats"
 	case "trace", "trace@1", "trace@2", "trace@3":

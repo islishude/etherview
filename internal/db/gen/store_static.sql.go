@@ -163,6 +163,10 @@ WITH delete_stage_results AS (
     DELETE FROM transaction_effective_execution_identities WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3::bytea
 ), delete_token_deltas AS (
     DELETE FROM token_balance_deltas WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3::bytea
+), delete_holder_balances AS (
+    DELETE FROM erc20_holder_balances WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3::bytea
+), delete_holder_snapshots AS (
+    DELETE FROM erc20_holder_snapshots WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3::bytea
 ), delete_nft_metadata_updates AS (
     DELETE FROM nft_metadata_update_observations WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3::bytea
 ), delete_token_events AS (

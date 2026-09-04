@@ -180,7 +180,8 @@ inputs are canonical uint256 decimal values.
 | `tokensupply` | `GET`, `POST` | `contractaddress` | None | Optional | State; alias of `stats.tokensupply` |
 | `tokenbalance` | `GET`, `POST` | `contractaddress`, `address` | `tag` | Optional | State; alias of `account.tokenbalance` |
 | `tokeninfo` | `GET`, `POST` | `contractaddress` | None | Optional | Token through the canonical tip and a current canonical token observation. Exact State is optional; without it, ERC-20 `totalSupply` is omitted. |
-| `tokenholderlist` | `GET`, `POST` | `contractaddress` | List controls | Optional | Intentionally unavailable |
+| `tokenholderlist` | `GET`, `POST` | `contractaddress` | `page`, `offset`, fixed address-ascending order | Optional | Core, Token, Proxy, and Holder complete from genesis through the canonical tip; latest token holder snapshot is complete |
+| `tokenholdercount` | `GET`, `POST` | `contractaddress` | None | Optional | Same authoritative Holder snapshot as `tokenholderlist` |
 
 ## Source-Verification Form
 
@@ -321,9 +322,6 @@ returns the queried proxy's own ABI.
 
 These are stable negative capabilities, not empty datasets:
 
-- `token.tokenholderlist` always reports `state capability unavailable`.
-  Standard JSON-RPC cannot enumerate all current ERC-20 holders, and
-  event-derived deltas are not authoritative current state.
 - `stats.ethsupply` has an authoritative-provider extension point, but no
   production runtime adapter or configuration wires it. The shipped runtime
   therefore reports `supply capability unavailable` rather than inventing an

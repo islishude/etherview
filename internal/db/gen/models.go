@@ -847,6 +847,81 @@ type Erc20BalanceReconciliation struct {
 	ObservedAt   pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
 }
 
+type Erc20HolderBalance struct {
+	ChainID       pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	TokenAddress  []byte             `db:"token_address" json:"token_address"`
+	HolderAddress []byte             `db:"holder_address" json:"holder_address"`
+	BlockNumber   pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash     []byte             `db:"block_hash" json:"block_hash"`
+	Balance       pgtype.Numeric     `db:"balance" json:"balance"`
+	Confidence    string             `db:"confidence" json:"confidence"`
+	Canonical     bool               `db:"canonical" json:"canonical"`
+	ObservedAt    pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
+}
+
+type Erc20HolderBalancesDefault struct {
+	ChainID       pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	TokenAddress  []byte             `db:"token_address" json:"token_address"`
+	HolderAddress []byte             `db:"holder_address" json:"holder_address"`
+	BlockNumber   pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash     []byte             `db:"block_hash" json:"block_hash"`
+	Balance       pgtype.Numeric     `db:"balance" json:"balance"`
+	Confidence    string             `db:"confidence" json:"confidence"`
+	Canonical     bool               `db:"canonical" json:"canonical"`
+	ObservedAt    pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
+}
+
+type Erc20HolderBalancesP01000000 struct {
+	ChainID       pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	TokenAddress  []byte             `db:"token_address" json:"token_address"`
+	HolderAddress []byte             `db:"holder_address" json:"holder_address"`
+	BlockNumber   pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash     []byte             `db:"block_hash" json:"block_hash"`
+	Balance       pgtype.Numeric     `db:"balance" json:"balance"`
+	Confidence    string             `db:"confidence" json:"confidence"`
+	Canonical     bool               `db:"canonical" json:"canonical"`
+	ObservedAt    pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
+}
+
+type Erc20HolderSnapshot struct {
+	ChainID              pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	TokenAddress         []byte             `db:"token_address" json:"token_address"`
+	BlockNumber          pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash            []byte             `db:"block_hash" json:"block_hash"`
+	State                string             `db:"state" json:"state"`
+	HolderCount          pgtype.Numeric     `db:"holder_count" json:"holder_count"`
+	TotalSupply          pgtype.Numeric     `db:"total_supply" json:"total_supply"`
+	ReconciledBalanceSum pgtype.Numeric     `db:"reconciled_balance_sum" json:"reconciled_balance_sum"`
+	Canonical            bool               `db:"canonical" json:"canonical"`
+	CreatedAt            pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type Erc20HolderSnapshotsDefault struct {
+	ChainID              pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	TokenAddress         []byte             `db:"token_address" json:"token_address"`
+	BlockNumber          pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash            []byte             `db:"block_hash" json:"block_hash"`
+	State                string             `db:"state" json:"state"`
+	HolderCount          pgtype.Numeric     `db:"holder_count" json:"holder_count"`
+	TotalSupply          pgtype.Numeric     `db:"total_supply" json:"total_supply"`
+	ReconciledBalanceSum pgtype.Numeric     `db:"reconciled_balance_sum" json:"reconciled_balance_sum"`
+	Canonical            bool               `db:"canonical" json:"canonical"`
+	CreatedAt            pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type Erc20HolderSnapshotsP01000000 struct {
+	ChainID              pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	TokenAddress         []byte             `db:"token_address" json:"token_address"`
+	BlockNumber          pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash            []byte             `db:"block_hash" json:"block_hash"`
+	State                string             `db:"state" json:"state"`
+	HolderCount          pgtype.Numeric     `db:"holder_count" json:"holder_count"`
+	TotalSupply          pgtype.Numeric     `db:"total_supply" json:"total_supply"`
+	ReconciledBalanceSum pgtype.Numeric     `db:"reconciled_balance_sum" json:"reconciled_balance_sum"`
+	Canonical            bool               `db:"canonical" json:"canonical"`
+	CreatedAt            pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type Erc4337CoverageRange struct {
 	ChainID             pgtype.Numeric     `db:"chain_id" json:"chain_id"`
 	ConfigurationDigest []byte             `db:"configuration_digest" json:"configuration_digest"`

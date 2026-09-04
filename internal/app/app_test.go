@@ -68,7 +68,7 @@ func TestEnrichRoleRequiresRPC(t *testing.T) {
 
 func TestEnrichmentDispatcherAlwaysSchedulesABIStage(t *testing.T) {
 	t.Parallel()
-	if got, want := enrichmentDispatchStages(false, false), []enrich.StageID{enrich.ProxyStage, enrich.ABIStage, enrich.TokenStage, enrich.StatsStage}; !slices.Equal(got, want) {
+	if got, want := enrichmentDispatchStages(false, false), []enrich.StageID{enrich.ProxyStage, enrich.ABIStage, enrich.TokenStage, enrich.HolderStage, enrich.StatsStage}; !slices.Equal(got, want) {
 		t.Fatalf("core enrichment stages=%v want=%v", got, want)
 	}
 	got := enrichmentDispatchStages(true, true)

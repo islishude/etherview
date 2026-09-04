@@ -427,16 +427,178 @@ func (b *PostgresBackend) tokenBalance(ctx context.Context, values url.Values) (
 	return balance, nil
 }
 
-func (b *PostgresBackend) tokenHolders(values url.Values) error {
-	_, _, err := parseAddressParameter(values.Get("contractaddress"), "contractaddress")
+func (b *PostgresBackend) tokenHolders(ctx context.Context, values url.Values) ([]tokenHolder, error) {
+	_, tokenAddress, err := parseAddressParameter(values.Get("contractaddress"), "contractaddress")
+	if err != nil {
+		return nil, err
+	}
+	page, err := parsePagination(values)
+	if err != nil {
+		return nil, err
+	}
+	if sortValue := strings.TrimSpace(values.Get("sort")); sortValue != "" && !strings.EqualFold(sortValue, "asc") {
+		return nil, invalidParameter("sort must be asc for tokenholderlist")
+	}
+	tx, err := b.beginEnrichmentSnapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	tip, err := b.requireCanonicalStageRange(ctx, tx, holderStage, "0", nil, ErrStateUnavailable)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireEtherscanHolderDependencies(ctx, tx, b.chain, tip); err != nil {
+		return nil, err
+	}
+	token, err := b.canonicalTokenContract(ctx, tx, tokenAddress)
+	if err != nil {
+		return nil, err
+	}
+	if token.standard != "erc20" || token.confidence != "high" && token.confidence != "verified" {
+		return nil, ErrStateUnavailable
+	}
+	snapshot, err := etherscanHolderSnapshot(ctx, tx, b.chain, tokenAddress, tip)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := tx.QueryContext(
+		ctx, dbgen.EtherscanHolderPage, page.offset, page.limit,
+		b.chain, tokenAddress, snapshot.blockNumber,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query token holders: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+	result := make([]tokenHolder, 0, page.limit)
+	for rows.Next() {
+		var holderBytes []byte
+		var quantity string
+		if err := rows.Scan(&holderBytes, &quantity); err != nil {
+			return nil, fmt.Errorf("scan token holder: %w", err)
+		}
+		holderAddress, err := addressFromBytes(holderBytes)
+		if err != nil {
+			return nil, err
+		}
+		checksum, err := checksumAddress(holderAddress)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := storedUint256(quantity, "token holder quantity"); err != nil {
+			return nil, err
+		}
+		result = append(result, tokenHolder{TokenHolderAddress: checksum, TokenHolderQuantity: quantity})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate token holders: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("close token holders: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit token holder snapshot: %w", err)
+	}
+	return result, nil
+}
+
+func (b *PostgresBackend) tokenHolderCount(ctx context.Context, values url.Values) (string, error) {
+	_, tokenAddress, err := parseAddressParameter(values.Get("contractaddress"), "contractaddress")
+	if err != nil {
+		return "", err
+	}
+	tx, err := b.beginEnrichmentSnapshot(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	tip, err := b.requireCanonicalStageRange(ctx, tx, holderStage, "0", nil, ErrStateUnavailable)
+	if err != nil {
+		return "", err
+	}
+	if err := requireEtherscanHolderDependencies(ctx, tx, b.chain, tip); err != nil {
+		return "", err
+	}
+	token, err := b.canonicalTokenContract(ctx, tx, tokenAddress)
+	if err != nil {
+		return "", err
+	}
+	if token.standard != "erc20" || token.confidence != "high" && token.confidence != "verified" {
+		return "", ErrStateUnavailable
+	}
+	snapshot, err := etherscanHolderSnapshot(ctx, tx, b.chain, tokenAddress, tip)
+	if err != nil {
+		return "", err
+	}
+	if err := tx.Commit(); err != nil {
+		return "", fmt.Errorf("commit token holder count snapshot: %w", err)
+	}
+	return snapshot.holderCount, nil
+}
+
+type etherscanHolderState struct {
+	blockNumber, state, holderCount, totalSupply, balanceSum string
+	blockHash                                                []byte
+	coherent                                                 bool
+}
+
+func requireEtherscanHolderDependencies(
+	ctx context.Context,
+	queryer enrichmentQueryer,
+	chainID string,
+	tip string,
+) error {
+	var configuredStart, holderBlocks, tokenBlocks, proxyBlocks, epoch string
+	if err := queryer.QueryRowContext(ctx, dbgen.CatalogHolderCoverage, tip, chainID).Scan(
+		&configuredStart, &holderBlocks, &tokenBlocks, &proxyBlocks, &epoch,
+	); err != nil {
+		return fmt.Errorf("check token holder dependencies: %w", err)
+	}
+	want, err := storedUint256(tip, "holder dependency tip")
 	if err != nil {
 		return err
 	}
-	if _, err := parsePagination(values); err != nil {
+	want.Add(want, big.NewInt(1))
+	if configuredStart != "0" || holderBlocks != want.String() || tokenBlocks != want.String() ||
+		proxyBlocks != want.String() {
+		return ErrStateUnavailable
+	}
+	if _, err := storedUint256(epoch, "holder publication epoch"); err != nil {
 		return err
 	}
-	// Enumerating all current ERC-20 holders cannot be proven from JSON-RPC.
-	// The event ledger is intentionally not exposed as current state unless a
-	// future reconciliation persists a fixed-canonical-block holder set.
-	return ErrStateUnavailable
+	return nil
+}
+
+func etherscanHolderSnapshot(
+	ctx context.Context,
+	queryer enrichmentQueryer,
+	chainID string,
+	tokenAddress []byte,
+	tip string,
+) (etherscanHolderState, error) {
+	var snapshot etherscanHolderState
+	err := queryer.QueryRowContext(
+		ctx, dbgen.CatalogHolderTokenSnapshot, chainID, tokenAddress, tip,
+	).Scan(
+		&snapshot.blockNumber, &snapshot.blockHash, &snapshot.state,
+		&snapshot.holderCount, &snapshot.totalSupply, &snapshot.balanceSum, &snapshot.coherent,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return etherscanHolderState{}, ErrStateUnavailable
+	}
+	if err != nil {
+		return etherscanHolderState{}, fmt.Errorf("query token holder snapshot: %w", err)
+	}
+	if snapshot.state != "complete" || !snapshot.coherent || len(snapshot.blockHash) != 32 || snapshot.totalSupply != snapshot.balanceSum {
+		return etherscanHolderState{}, ErrStateUnavailable
+	}
+	for name, value := range map[string]string{
+		"snapshot block": snapshot.blockNumber, "holder count": snapshot.holderCount,
+		"total supply": snapshot.totalSupply, "balance sum": snapshot.balanceSum,
+	} {
+		if _, err := storedUint256(value, name); err != nil {
+			return etherscanHolderState{}, err
+		}
+	}
+	return snapshot, nil
 }

@@ -80,12 +80,23 @@ var blockPartitionSpecs = []blockPartitionSpec{
 		NameCode: "uopart", Dependencies: []string{"erc4337_user_operations"},
 		IntroducedBy: "0063_erc4337_user_operations",
 	},
+	{
+		Parent: "erc20_holder_snapshots", Default: "erc20_holder_snapshots_default",
+		NameCode: "ehs", IntroducedBy: "0064_authoritative_erc20_holders",
+	},
+	{
+		Parent: "erc20_holder_balances", Default: "erc20_holder_balances_default",
+		NameCode: "ehb", Dependencies: []string{"erc20_holder_snapshots"},
+		IntroducedBy: "0064_authoritative_erc20_holders",
+	},
 	{Parent: "address_activities", Default: "address_activities_default", NameCode: "act"},
 }
 
 // Rows must leave child tables before their referenced parents. This ordering
 // is the reverse dependency order of blockPartitionSpecs.
 var blockPartitionDeleteOrder = []string{
+	"erc20_holder_balances",
+	"erc20_holder_snapshots",
 	"erc4337_user_operation_events",
 	"erc4337_user_operation_participants",
 	"erc4337_user_operations",

@@ -21,6 +21,8 @@ type fakeCatalog struct {
 	nftOwner     catalog.NFTOwnership
 	nftBalance   catalog.NFTBalancePage
 	erc20Balance catalog.ERC20BalancePage
+	holderPage   catalog.TokenHolderPage
+	holderCount  catalog.TokenHolderSummary
 	nftErr       error
 	trace        catalog.TransactionTrace
 	traceErr     error
@@ -52,6 +54,14 @@ func (fake *fakeCatalog) TokenContracts(context.Context, catalog.TokenListReques
 
 func (*fakeCatalog) TokenEvents(context.Context, catalog.TokenEventRequest) (catalog.TokenEventPage, error) {
 	return catalog.TokenEventPage{}, nil
+}
+
+func (fake *fakeCatalog) TokenHolders(context.Context, catalog.TokenHolderRequest) (catalog.TokenHolderPage, error) {
+	return fake.holderPage, fake.tokenErr
+}
+
+func (fake *fakeCatalog) TokenHolderCount(context.Context, string, string) (catalog.TokenHolderSummary, error) {
+	return fake.holderCount, fake.tokenErr
 }
 
 func (fake *fakeCatalog) NFTOwner(context.Context, string, string, string) (catalog.NFTOwnership, error) {
@@ -363,6 +373,73 @@ func TestCatalogStageUnavailableIsExplicitAndSanitized(t *testing.T) {
 	body := recorder.Body.String()
 	if recorder.Code != http.StatusServiceUnavailable || !strings.Contains(body, `"code":"stage_unavailable"`) || !strings.Contains(body, `"stage":"token"`) || !strings.Contains(body, `"block_number":"99"`) {
 		t.Fatalf("status=%d body=%s", recorder.Code, body)
+	}
+}
+
+func TestTokenHolderListAndCountExposeExactSnapshot(t *testing.T) {
+	t.Parallel()
+	token := "0x1111111111111111111111111111111111111111"
+	holder := "0x2222222222222222222222222222222222222222"
+	hash := "0x" + strings.Repeat("33", 32)
+	summary := catalog.TokenHolderSummary{
+		ChainID: "11155111", TokenAddress: token, HolderCount: "1",
+		TotalSupply: "9", ReconciledBalanceSum: "9", PublicationEpoch: "7",
+		ObservedBlockNumber: "12", ObservedBlockHash: hash,
+		Snapshot: catalog.Snapshot{ChainID: "11155111", BlockNumber: "12", BlockHash: hash},
+	}
+	fake := &fakeCatalog{
+		holderPage: catalog.TokenHolderPage{
+			Items: []catalog.TokenHolder{{
+				ChainID: "11155111", TokenAddress: token, HolderAddress: holder,
+				Balance: "9", Confidence: "rpc_exact",
+				ObservedBlockNumber: "12", ObservedBlockHash: hash,
+			}},
+			NextCursor: "next-holder", Summary: summary,
+		},
+		holderCount: summary,
+	}
+	handler := testCatalogHandler(t, fake)
+
+	listRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(listRecorder, httptest.NewRequest(http.MethodGet, "/api/v1/tokens/"+token+"/holders?limit=50", nil))
+	if listRecorder.Code != http.StatusOK {
+		t.Fatalf("holder list status=%d body=%s", listRecorder.Code, listRecorder.Body.String())
+	}
+	var list gen.TokenHolderListResponse
+	if err := json.Unmarshal(listRecorder.Body.Bytes(), &list); err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Data) != 1 || list.Data[0].HolderAddress != holder || list.Data[0].Balance != "9" ||
+		list.Meta.HolderCount != "1" || list.Meta.NextCursor == nil || *list.Meta.NextCursor != "next-holder" ||
+		list.Meta.SnapshotBlockHash != hash {
+		t.Fatalf("holder list=%+v", list)
+	}
+
+	countRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(countRecorder, httptest.NewRequest(http.MethodGet, "/api/v1/tokens/"+token+"/holders/count", nil))
+	if countRecorder.Code != http.StatusOK {
+		t.Fatalf("holder count status=%d body=%s", countRecorder.Code, countRecorder.Body.String())
+	}
+	var count gen.TokenHolderCountResponse
+	if err := json.Unmarshal(countRecorder.Body.Bytes(), &count); err != nil {
+		t.Fatal(err)
+	}
+	if count.Data.HolderCount != "1" || count.Meta.TotalSupply != "9" {
+		t.Fatalf("holder count=%+v", count)
+	}
+}
+
+func TestTokenHolderUnavailableHasStableError(t *testing.T) {
+	t.Parallel()
+	token := "0x1111111111111111111111111111111111111111"
+	fake := &fakeCatalog{tokenErr: catalog.StageUnavailableError{
+		Stage: catalog.StageHolder, State: catalog.StageMissing,
+		BlockNumber: "12", BlockHash: "0x" + strings.Repeat("33", 32),
+	}}
+	recorder := httptest.NewRecorder()
+	testCatalogHandler(t, fake).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/tokens/"+token+"/holders", nil))
+	if recorder.Code != http.StatusServiceUnavailable || !strings.Contains(recorder.Body.String(), `"code":"token_holders_unavailable"`) {
+		t.Fatalf("holder unavailable status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 }
 

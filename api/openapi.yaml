@@ -1103,6 +1103,38 @@ paths:
                 $ref: "#/components/schemas/TokenEventListResponse"
         default:
           $ref: "#/components/responses/Error"
+  /tokens/{address}/holders:
+    get:
+      operationId: listTokenHolders
+      tags: [tokens]
+      parameters:
+        - $ref: "#/components/parameters/Address"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/HolderLimit"
+      responses:
+        "200":
+          description: Address-ordered ERC-20 holders at a genesis-covered, exact-state-reconciled canonical snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenHolderListResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /tokens/{address}/holders/count:
+    get:
+      operationId: getTokenHolderCount
+      tags: [tokens]
+      parameters:
+        - $ref: "#/components/parameters/Address"
+      responses:
+        "200":
+          description: Exact reconciled ERC-20 holder count at the current canonical snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenHolderCountResponse"
+        default:
+          $ref: "#/components/responses/Error"
   /nfts/{address}/{token_id}:
     get:
       operationId: getNFTOwner
@@ -1740,6 +1772,14 @@ components:
         minimum: 1
         maximum: 100
         default: 25
+    HolderLimit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
     ProxyHistoryLimit:
       name: limit
       in: query
@@ -2208,7 +2248,7 @@ components:
             $ref: "#/components/schemas/BillingAssetTransferMethod"
         operations:
           type: array
-          maxItems: 28
+          maxItems: 30
           items:
             $ref: "#/components/schemas/BillingOperationPrice"
     BillingAccount:
@@ -3498,6 +3538,77 @@ components:
           description: Exact-block ERC-20 decimals. Absent for NFTs or unavailable token metadata.
         confidence:
           type: string
+    TokenHolder:
+      type: object
+      additionalProperties: false
+      required:
+        - chain_id
+        - token_address
+        - holder_address
+        - balance
+        - confidence
+        - observed_block_number
+        - observed_block_hash
+      properties:
+        chain_id:
+          $ref: "#/components/schemas/Quantity"
+        token_address:
+          $ref: "#/components/schemas/Address"
+        holder_address:
+          $ref: "#/components/schemas/Address"
+        balance:
+          $ref: "#/components/schemas/Quantity"
+        confidence:
+          $ref: "#/components/schemas/StateConfidence"
+        observed_block_number:
+          $ref: "#/components/schemas/Quantity"
+        observed_block_hash:
+          $ref: "#/components/schemas/Hash"
+    TokenHolderCount:
+      type: object
+      additionalProperties: false
+      required: [chain_id, token_address, holder_count]
+      properties:
+        chain_id:
+          $ref: "#/components/schemas/Quantity"
+        token_address:
+          $ref: "#/components/schemas/Address"
+        holder_count:
+          $ref: "#/components/schemas/Quantity"
+    TokenHolderMeta:
+      type: object
+      additionalProperties: false
+      required:
+        - request_id
+        - chain_id
+        - snapshot_block_number
+        - snapshot_block_hash
+        - coverage_start
+        - coverage_end
+        - holder_count
+        - total_supply
+        - reconciled_balance_sum
+      properties:
+        request_id:
+          type: string
+        chain_id:
+          $ref: "#/components/schemas/Quantity"
+        next_cursor:
+          $ref: "#/components/schemas/OpaqueCursor"
+        snapshot_block_number:
+          $ref: "#/components/schemas/Quantity"
+        snapshot_block_hash:
+          $ref: "#/components/schemas/Hash"
+        coverage_start:
+          $ref: "#/components/schemas/Quantity"
+        coverage_end:
+          $ref: "#/components/schemas/Quantity"
+        holder_count:
+          $ref: "#/components/schemas/Quantity"
+        total_supply:
+          $ref: "#/components/schemas/Quantity"
+        reconciled_balance_sum:
+          $ref: "#/components/schemas/Quantity"
     StateConfidence:
       type: string
       enum: [rpc_exact]
@@ -6414,6 +6525,27 @@ components:
             $ref: "#/components/schemas/TokenEvent"
         meta:
           $ref: "#/components/schemas/Meta"
+    TokenHolderListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          maxItems: 200
+          items:
+            $ref: "#/components/schemas/TokenHolder"
+        meta:
+          $ref: "#/components/schemas/TokenHolderMeta"
+    TokenHolderCountResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/TokenHolderCount"
+        meta:
+          $ref: "#/components/schemas/TokenHolderMeta"
     NFTOwnershipResponse:
       type: object
       required: [data, meta]

@@ -18,6 +18,7 @@ const (
 	testAddress                = "0x1111111111111111111111111111111111111111"
 	unverifiedAddress          = "0x1212121212121212121212121212121212121212"
 	testEOA                    = "0x2222222222222222222222222222222222222222"
+	testHolderToken            = "0x0101010101010101010101010101010101010101"
 	delegatedAddress           = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
 	clearedDelegationAddress   = "0x7777777777777777777777777777777777777777"
 	delegatedDelegate          = "0x5FbDB2315678afecb367f032d93F642f64180aa3"
@@ -219,6 +220,16 @@ func tokenContract() map[string]any {
 		"chain_id": "1", "address": testAddress, "code_hash": testHash,
 		"standard": "erc721", "confidence": "verified",
 		"name": "Example Collectible", "symbol": "ECO", "total_supply": "9007199254740993",
+		"metadata_state": "complete", "observed_block_number": "2",
+		"observed_block_hash": secondHash, "updated_at": "2026-07-23T00:00:01Z",
+	}
+}
+
+func holderTokenContract() map[string]any {
+	return map[string]any{
+		"chain_id": "1", "address": testHolderToken, "code_hash": testHash,
+		"standard": "erc20", "confidence": "verified", "name": "Holder Token",
+		"symbol": "HLD", "decimals": 6, "total_supply": "7000000",
 		"metadata_state": "complete", "observed_block_number": "2",
 		"observed_block_hash": secondHash, "updated_at": "2026-07-23T00:00:01Z",
 	}

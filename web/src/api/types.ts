@@ -49,6 +49,13 @@ export type GenesisAccount = components["schemas"]["GenesisAccount"];
 export type SearchResult = components["schemas"]["SearchResult"];
 export type TokenContract = components["schemas"]["TokenContract"];
 export type TokenEvent = components["schemas"]["TokenEvent"];
+export type TokenHolder = components["schemas"]["TokenHolder"];
+export type TokenHolderMeta = components["schemas"]["TokenHolderMeta"];
+export interface TokenHolderPage {
+  items: TokenHolder[];
+  meta: TokenHolderMeta;
+  next_cursor?: string;
+}
 export type NFTOwnership = components["schemas"]["NFTOwnership"];
 export type NFTMetadata = components["schemas"]["NFTMetadata"];
 export type NFTBalance = components["schemas"]["NFTBalance"];

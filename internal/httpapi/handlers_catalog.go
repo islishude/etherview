@@ -240,6 +240,56 @@ func (h *Handler) tokenTransfers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gen.TokenEventListResponse{Data: items, Meta: meta})
 }
 
+func (h *Handler) tokenHolders(w http.ResponseWriter, r *http.Request) {
+	address, ok := parseAddressPath(w, r)
+	if !ok {
+		return
+	}
+	limit, cursor, ok := parseHolderPage(w, r)
+	if !ok {
+		return
+	}
+	page, err := h.catalog.TokenHolders(r.Context(), catalog.TokenHolderRequest{
+		ChainID: h.chainID(), TokenAddress: address, Cursor: cursor, Limit: limit,
+	})
+	if err != nil {
+		h.handleHolderError(w, r, err)
+		return
+	}
+	items := make([]gen.TokenHolder, len(page.Items))
+	for index, item := range page.Items {
+		items[index] = gen.TokenHolder{
+			ChainId: item.ChainID, TokenAddress: item.TokenAddress,
+			HolderAddress: item.HolderAddress, Balance: item.Balance,
+			Confidence:          gen.StateConfidence(item.Confidence),
+			ObservedBlockNumber: item.ObservedBlockNumber,
+			ObservedBlockHash:   item.ObservedBlockHash,
+		}
+	}
+	writeJSON(w, http.StatusOK, gen.TokenHolderListResponse{
+		Data: items, Meta: h.tokenHolderMeta(r, page.NextCursor, page.Summary),
+	})
+}
+
+func (h *Handler) tokenHolderCount(w http.ResponseWriter, r *http.Request) {
+	address, ok := parseAddressPath(w, r)
+	if !ok {
+		return
+	}
+	summary, err := h.catalog.TokenHolderCount(r.Context(), h.chainID(), address)
+	if err != nil {
+		h.handleHolderError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, gen.TokenHolderCountResponse{
+		Data: gen.TokenHolderCount{
+			ChainId: summary.ChainID, TokenAddress: summary.TokenAddress,
+			HolderCount: summary.HolderCount,
+		},
+		Meta: h.tokenHolderMeta(r, "", summary),
+	})
+}
+
 func (h *Handler) nftOwner(w http.ResponseWriter, r *http.Request) {
 	address, ok := parseAddressPath(w, r)
 	if !ok {

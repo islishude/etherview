@@ -47,6 +47,16 @@ type tokenEventCursor struct {
 	SubIndex       string `json:"sub_index"`
 }
 
+type tokenHolderCursor struct {
+	Version          int    `json:"v"`
+	ChainID          string `json:"chain_id"`
+	TokenAddress     string `json:"token_address"`
+	SnapshotNumber   string `json:"snapshot_number"`
+	SnapshotHash     string `json:"snapshot_hash"`
+	PublicationEpoch string `json:"publication_epoch"`
+	AfterAddress     string `json:"after_address"`
+}
+
 type nftBalanceCursor struct {
 	Version        int    `json:"v"`
 	ChainID        string `json:"chain_id"`

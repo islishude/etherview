@@ -10,8 +10,9 @@ import (
 )
 
 const (
-	tokenStage = "token"
-	traceStage = "trace"
+	tokenStage  = "token"
+	traceStage  = "trace"
+	holderStage = "holder"
 )
 
 type enrichmentQueryer interface {

@@ -176,8 +176,15 @@ func (processor *PostgresProxyProcessor) persistTx(
 	// replay superseded this transaction. Only later proxy generations carry
 	// facts that can be newer than ABI's initial view.
 	abiRequeued := false
+	holderRequeued := false
 	if job.Generation > 1 {
 		abiRequeued, err = resetTerminalDependentStageTx(ctx, tx, job, ABIStage)
+		if err != nil {
+			return StageResult{}, err
+		}
+	}
+	if job.Generation > 1 && (len(events.upgrades) > 0 || len(codeObservations) > 0) {
+		holderRequeued, err = resetTerminalDependentStageTx(ctx, tx, job, HolderStage)
 		if err != nil {
 			return StageResult{}, err
 		}
@@ -206,7 +213,8 @@ func (processor *PostgresProxyProcessor) persistTx(
 		"carried_negative_evidence": strconv.FormatInt(
 			carried.negativeEvidence, 10,
 		),
-		"abi_requeued": strconv.FormatBool(abiRequeued),
+		"abi_requeued":    strconv.FormatBool(abiRequeued),
+		"holder_requeued": strconv.FormatBool(holderRequeued),
 	}
 	maps.Copy(details, coverageDetails)
 	return StageResult{State: ResultComplete, Details: details}, nil

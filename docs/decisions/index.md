@@ -51,6 +51,7 @@ merging distinct invariants.
 - [ADR-0041 — Snapshot-Stable ENS Primary Names](ADR-0041-snapshot-stable-ens-primary-names.md)
 - [ADR-0044 — Prepaid API Billing with x402 Top-Ups](ADR-0044-prepaid-api-billing-and-x402-topups.md)
 - [ADR-0045 — Canonical ERC-4337 UserOperation Index](ADR-0045-erc4337-useroperation-index.md)
+- [ADR-0046 — Authoritative ERC-20 Holder Reconciliation](ADR-0046-authoritative-erc20-holder-reconciliation.md)
 
 ## Retired decisions
 

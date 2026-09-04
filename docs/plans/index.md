@@ -23,6 +23,7 @@ dependencies. This catalog groups the child plans by responsibility.
 - [P67 — ENS Primary Names](P67-ens-primary-names.md)
 - [P74 — Etherscan V2 Read Expansion](P74-etherscan-v2-read-expansion.md)
 - [P76 — ERC-4337 UserOperation Browsing](P76-erc4337-user-operations.md)
+- [P77 — Authoritative ERC-20 Token Holders](P77-authoritative-erc20-token-holders.md)
 
 ## Identity and billing
 

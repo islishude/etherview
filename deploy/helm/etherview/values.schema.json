@@ -788,6 +788,8 @@
                   "etherscan.stats.tokensupply",
                   "etherscan.token.tokensupply",
                   "etherscan.token.tokenbalance",
+                  "etherscan.token.tokenholdercount",
+                  "etherscan.token.tokenholderlist",
                   "etherscan.token.tokeninfo"
                 ]
               },
