@@ -1,85 +1,62 @@
 # Etherview Repository Instructions
 
-This file is the compact entry point for repository work. Keep current task
-status and evidence in [the plan](PLAN.md) and [child plans](docs/plans/);
-use the [plan catalog](docs/plans/index.md) for responsibility grouping,
-engineering workflow in [the development guide](docs/development.md),
-architecture detail in [the overview](docs/architecture/overview.md) and
-[accepted ADR catalog](docs/decisions/index.md), runnable verification guidance in
-[the testing guide](docs/testing.md), and operator procedures in
-[the runbook](docs/operations.md). Accepted ADRs remain mandatory even when a
-rule is not repeated here.
+## Before editing
 
-## Required reading
+Read [PLAN.md](PLAN.md), the owning [child plan](docs/plans/index.md), the
+[development guide](docs/development.md), relevant [architecture](docs/architecture/overview.md)
+sections and [accepted ADRs](docs/decisions/index.md), and the applicable
+[testing rules](docs/testing.md). Accepted ADRs are mandatory even when omitted
+here; update or add one when its decision changes.
 
-Before editing, read:
-
-1. `PLAN.md`, the owning child plan, and its linked ADRs.
-2. `docs/development.md` for the change workflow and source-of-truth rules.
-3. The relevant sections of `docs/architecture/overview.md`.
-4. `docs/testing.md` for applicable targets, restricted-host handling, and
-   evidence requirements.
-
-Use the current Makefile and maintained documentation as command truth. Old
-plan evidence is historical and must not resurrect removed commands.
-
-Update this file only when repository-wide entry rules or document routing
-change. Add a nested `AGENTS.md` only for genuinely different subtree rules.
+The development guide owns detailed workflow and boundary routing. The current
+[Makefile](Makefile) and testing guide own commands; historical plan evidence
+must not revive removed targets. Operator procedures belong in the
+[runbook](docs/operations.md), task status and evidence in plans.
 
 ## Workflow
 
-- Claim one dependency-ready `todo` item as `in_progress` before changing the
-  implementation. Never share, delete, or reuse an item ID.
-- Preserve and review existing staged, unstaged, and untracked work. Do not
-  overwrite unrelated or parallel changes.
-- Complete the implementation, regressions, plan state, acceptance checks, and
-  concise evidence as one change. Keep the root plan synchronized with child
-  status changes.
-- Mark abandoned work `dropped` with a reason or `superseded` with its
-  replacement. A `blocked` item names both the blocker and clearing condition.
-- Long-lived code TODOs reference a plan item. Run `make plan-check` after
-  governance changes.
+- Review and preserve staged, unstaged, and untracked work. Claim one
+  dependency-ready `todo` item as `in_progress` before implementation.
+- Deliver implementation, regressions, acceptance checks, and concise child-plan
+  evidence together. Synchronize the root plan when child status changes.
+- Never share, delete, or reuse item IDs. Mark abandoned work `dropped` with a
+  reason or `superseded` with its replacement; `blocked` names the blocker and
+  clearing condition. Long-lived code TODOs cite a plan item.
 
-## Non-negotiable boundaries
+## Required boundaries
 
-- Active development targets the current fresh-database schema; do not add
-  backward-compatibility adapters, startup backfills, or legacy readiness
-  states unless explicitly requested.
-- PostgreSQL is authoritative. Redis, NATS, and object storage are optional,
-  disposable accelerators and never the sole copy of correctness data.
-- Preserve exact chain and block identity, canonical/orphan history, endpoint
-  pinning, and lease-fenced atomic publication. Never fall back from a
-  block-hash-scoped read to height or `latest`.
-- `serve --roles=all` and split roles must use the same components and
-  persistence semantics. Keep runtime builders, the production manifest,
-  readiness, shutdown, and parity tests aligned.
-- Do not hold database snapshots across RPC or other external calls. Treat all
-  external input as hostile; bound work and output stable typed errors without
-  leaking nested errors, URLs, or credentials.
-- `api/openapi.yaml` owns public HTTP contracts and
-  `internal/db/queries/` owns production SQL. Regenerate outputs; never
-  hand-edit generated files. Public integers beyond JavaScript's safe range
-  are strings.
-- Keep secrets server-side and role-scoped. Browser explorer traffic uses the
-  generated same-origin client; wallet RPC stays in the injected-provider
-  allowlist. Preserve the authentication and billing identity boundaries in
-  their accepted ADRs.
-- Consult and preserve the relevant ADR before changing any public API,
-  persistent contract, security or external-service boundary, verifier/proxy
-  provenance, or monolith/split runtime decision. Update or add an ADR when the
-  decision itself changes.
+- Target the current fresh-database schema. No compatibility adapters, startup
+  backfills, or legacy readiness states unless explicitly requested.
+- PostgreSQL is authoritative; Redis, NATS, and object storage are disposable
+  accelerators, never the sole copy of correctness data.
+- Preserve chain/block identity, canonical and orphan history, endpoint pinning,
+  and lease-fenced atomic publication. Never fall back from block hash to height
+  or `latest`.
+- Keep `serve --roles=all` and split-role components and persistence identical;
+  align builders, production manifest, readiness, shutdown, and parity tests.
+- Close database snapshots before external calls. Bound hostile input and work;
+  return stable typed errors without nested errors, URLs, or credentials.
+- Public HTTP contracts start in `api/openapi.yaml`; production SQL starts in
+  `internal/db/queries/`. Regenerate outputs, never hand-edit them. Public
+  integers beyond JavaScript's safe range are strings.
+- Keep secrets server-side and role-scoped, explorer traffic on the generated
+  same-origin client, and wallet RPC in the injected-provider allowlist.
+- Consult the relevant ADR before changing APIs, persistent contracts, security,
+  external services, verifier/proxy provenance, runtime topology, or
+  authentication/billing identities; preserve its boundaries.
 
 ## Verification
 
-- Run the smallest targeted regressions first, then every applicable common or
-  explicit boundary gate from `docs/testing.md`.
-- Run `make generate-check` after OpenAPI, SQL, generated-client, or embedded
-  SPA changes; `make source-check` after database execution-boundary changes;
-  and `make plan-check` after governance changes.
-- Run `make docs-check` after maintained documentation or executable
-  deployment/runtime-surface changes.
-- Follow the restricted-host matrix in `docs/testing.md`. Permission plumbing
-  may change, but the repository-owned target and its acceptance criteria may
-  not be weakened.
-- A work item is complete only after its targeted tests and applicable gates
-  pass and its child plan records concise, current evidence.
+Run targeted regressions, then all applicable gates in [docs/testing.md](docs/testing.md):
+
+- `make generate-check`: OpenAPI, SQL, generated-client, or embedded SPA changes.
+- `make source-check`: database execution-boundary changes.
+- `make docs-check`: maintained docs or executable deployment/runtime surfaces.
+- `make plan-check`: plan, ADR-link, or governance changes.
+
+Follow the testing guide's restricted-host matrix without weakening targets or
+acceptance criteria. Mark work `done` only after targeted tests and applicable
+gates pass and the child plan records current evidence.
+
+Keep this file limited to repository-wide rules and document routing. Add nested
+`AGENTS.md` files only for genuinely different subtree rules.

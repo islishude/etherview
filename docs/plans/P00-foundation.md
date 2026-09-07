@@ -31,6 +31,7 @@ and API contracts, and a deterministic embedded-SPA build.
 | P00-T10 | done | P00-T02, P00-T05 | Codex sandbox execution guidance for writable caches, browser gates, and Docker-backed checks | documentation review and `make plan-check` |
 | P00-T11 | done | P00-T07, P00-T08 | Raise the repository Go baseline to 1.27.0 and pin golangci-lint 2.13.1 across development and production build inputs | toolchain regressions, lint configuration, common gates, and production image validation |
 | P00-T12 | done | P00-T01 | Compact repository instruction entry point with routed development, architecture, testing, and operations guidance | documentation review, `make plan-check`, and `git diff --check` |
+| P00-T13 | done | P00-T12 | Streamline README and repository instructions while preserving startup guidance, mandatory boundaries, and authoritative document routing | `make docs-check`, `make plan-check`, local-link review, and `git diff --check` |
 
 ## Acceptance
 
@@ -47,6 +48,14 @@ and API contracts, and a deterministic embedded-SPA build.
 None.
 
 ## Evidence
+
+- P00-T13 streamlines `README.md` from 133 to 91 lines and `AGENTS.md`
+  from 85 to 62 lines. Startup, Preview data-deletion guidance, development
+  commands, mandatory boundaries, and gate routing remain explicit; detailed
+  compiler and service-backed test guidance stays in its authoritative guides.
+  `make docs-check`, `make plan-check`, README/AGENTS local-link and anchor
+  review, and `git diff --check` pass. This is a documentation-only change;
+  application and deployment suites were not rerun.
 
 - P00-T12 reduces the root `AGENTS.md` from 230 to 82 lines while retaining its
   repository-wide workflow and non-negotiable boundaries. Detailed engineering
