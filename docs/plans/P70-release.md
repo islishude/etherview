@@ -74,6 +74,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T43 | done | P70-T31 | Disable disposable Foundry project caching so repeated one-shot verification clients cannot race an empty tmpfs cache while retaining offline solc availability | pinned client-config assertion and production Foundry E2E |
 | P70-T44 | done | P70-T19, P70-T27 | Remove every disposable Compose project resource during Go-owned test teardown, including volumes referenced only by inactive one-off client profiles | focused command regression and Hardhat project cleanup inspection |
 | P70-T45 | done | P70-T42, P70-T44, P76 | Reconcile maintained deployment and operations documentation with the current Makefile, Compose, runtime, and public capability contracts | focused source/doc audit, plan/link/whitespace checks, and applicable common gates |
+| P70-T46 | done | P70-T45 | Run the complete existing CI workflow daily on the default branch | workflow syntax, schedule/concurrency inspection, documentation and plan checks |
 
 ## Acceptance
 
@@ -366,6 +367,15 @@ those gates.
 
 ## Evidence
 
+- P70-T46 adds a daily 00:17 UTC (08:17 Asia/Shanghai) schedule to the existing
+  CI workflow. All jobs, native architecture matrices, permissions and existing
+  triggers are preserved; event-specific concurrency prevents push/schedule
+  cancellation. YAML parsing and structural comparison against the previous
+  workflow, `make docs-check`, `make plan-check` and `git diff --check` pass.
+  The schedule becomes active after merge to the default branch; no scheduled
+  execution is claimed yet. Separately, [PR #56 CI run 34206517641](https://github.com/islishude/etherview/actions/runs/34206517641)
+  passes all nine checks at `9e9f31db1f1f99bc2af8a2318315417c4517ca4c`, including
+  the PostgreSQL heartbeat correction; that run predates this schedule change.
 - P30-T99 and the P30 dependency are complete: [PR #56 CI](https://github.com/islishude/etherview/actions/runs/34178834069)
   passes all nine checks at `4b10534d01d05a9a26876673c3467b767ad885fa`, including
   native AMD64/ARM64 production verification in both topologies. Subsequent local

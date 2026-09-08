@@ -52,6 +52,13 @@ replace a required `make test-e2e` pass.
 
 ## Common Gates
 
+The [CI workflow](../.github/workflows/ci.yml) runs on pull requests, pushes to
+`main`, and daily at 00:17 UTC (08:17 Asia/Shanghai). Scheduled runs execute the
+same complete job set on the default branch, including both native architecture
+matrices. Event-specific concurrency groups prevent a push from cancelling the
+daily run. GitHub activates the schedule after the workflow reaches the default
+branch; scheduled start times may be delayed by runner load.
+
 - `make toolchain-check`: require at least Go 1.27.0, Node 24.18.0, and npm
   11.16.0 before generating or validating artifacts. Compatible newer stable
   versions are supported; older, malformed, and prerelease versions fail.
