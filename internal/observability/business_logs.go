@@ -369,7 +369,7 @@ func boundedVerificationKind(value string) string {
 
 func boundedVerificationLanguage(value string) string {
 	switch verify.Language(value) {
-	case verify.LanguageSolidity, verify.LanguageYul, verify.LanguageGeas:
+	case verify.LanguageSolidity, verify.LanguageYul, verify.LanguageGeas, verify.LanguageVyper:
 		return value
 	default:
 		return "other"

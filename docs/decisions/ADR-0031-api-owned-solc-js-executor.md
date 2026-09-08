@@ -2,6 +2,9 @@
 
 Status: accepted
 
+[ADR-0047](ADR-0047-pinned-vyper-executor.md) supersedes only the Vyper
+prohibition by adding a pinned Python executor.
+
 [ADR-0037](ADR-0037-persistent-solcjs-artifact-cache.md) supersedes only this
 decision's disposable-cache deployment consequence. [ADR-0040](ADR-0040-sea-packaged-solcjs-executor.md)
 supersedes the runtime packaging, runtime-path, manifest, and launch details

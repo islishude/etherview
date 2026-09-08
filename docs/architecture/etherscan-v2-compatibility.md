@@ -192,7 +192,7 @@ and `contractaddress`, these fields are accepted:
 | Parameter | Rule |
 |---|---|
 | `sourceCode` | Required, non-empty, and within the configured verification input limit. It is plain source for `solidity-single-file` and an inline-source Standard JSON object for the JSON formats. Duplicate JSON keys and external source URLs are rejected. |
-| `codeformat` | Required: `solidity-single-file` or `solidity-standard-json-input`. `vyper-json` returns the stable unsupported-codeformat error and does not create a job. |
+| `codeformat` | Required: `solidity-single-file`, `solidity-standard-json-input`, or `vyper-json`. Vyper accepts only 0.4.3, with an exact `contractname` target file and inline sources/interfaces. |
 | `contractname` | Required. It is only a same-quality candidate hint: a single Solidity file may use a bare contract name and Standard JSON uses `source:name`. It can never make a weaker match win. |
 | `compilerversion` | Required and normalized at submission. The API-owned catalog resolves availability asynchronously; an unavailable version produces a terminal verification failure after the GUID is returned. |
 | `optimizationUsed` | Optional `0` or `1`; it must not conflict with Standard JSON settings. |

@@ -66,6 +66,7 @@ type CompilerCatalogOptions struct {
 // CompilerCatalog refreshes immutable PostgreSQL generations and resolves
 // versions only from the current, sufficiently fresh generation.
 type CompilerCatalog struct {
+	vyper            *VyperCompiler
 	db               *sql.DB
 	options          CompilerCatalogOptions
 	origins          map[string]struct{}
@@ -476,6 +477,15 @@ func (catalog *CompilerCatalog) Lookup(ctx context.Context, language Language, v
 }
 
 func (catalog *CompilerCatalog) Versions(ctx context.Context, language Language) ([]string, error) {
+	if language == LanguageVyper {
+		catalog.sourceMu.Lock()
+		runtime := catalog.vyper
+		catalog.sourceMu.Unlock()
+		if runtime == nil || !runtime.Ready() {
+			return nil, ErrCompilerCatalogUnavailable
+		}
+		return []string{VyperCompilerVersion}, nil
+	}
 	if language == LanguageYul {
 		language = LanguageSolidity
 	}
@@ -504,4 +514,11 @@ func (catalog *CompilerCatalog) Versions(ctx context.Context, language Language)
 	}
 	sortCompilerVersions(versions)
 	return versions, nil
+}
+
+// SetVyperRuntime attaches the startup-validated bundled compiler availability.
+func (catalog *CompilerCatalog) SetVyperRuntime(runtime *VyperCompiler) {
+	catalog.sourceMu.Lock()
+	defer catalog.sourceMu.Unlock()
+	catalog.vyper = runtime
 }

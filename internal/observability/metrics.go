@@ -338,7 +338,7 @@ func (registry *Registry) RecordDerivedVerification(kind, result string) {
 // SetVerificationCompilerAvailable records one bounded compiler family's
 // runtime and catalog availability.
 func (registry *Registry) SetVerificationCompilerAvailable(family string, available bool) {
-	if family != "solcjs" && family != "geas" {
+	if family != "solcjs" && family != "geas" && family != "vyper" {
 		return
 	}
 	registry.mu.Lock()
@@ -483,7 +483,7 @@ func (registry *Registry) Gather() string {
 	writePairGauges(&output, "etherview_durable_jobs", "Active durable PostgreSQL backlog grouped by stage and status.", "stage", "status", registry.durableJobs)
 	writeGaugeMap(&output, "etherview_verification_jobs", "Active verification backlog grouped by status.", "status", registry.verificationCurrent)
 	writeHelp(&output, "etherview_verification_compiler_available", "Whether one API verification compiler family has a validated executor runtime and any required fresh catalog.", "gauge")
-	for _, family := range []string{"geas", "solcjs"} {
+	for _, family := range []string{"geas", "solcjs", "vyper"} {
 		if registry.verificationCompilerSeen[family] {
 			fmt.Fprintf(&output, "etherview_verification_compiler_available{family=%s} %s\n", quote(family), formatFloat(registry.verificationCompilerAvailable[family]))
 		}

@@ -216,6 +216,27 @@ func (e AddressVerificationSubmissionInputKind) Valid() bool {
 	}
 }
 
+// Defines values for AddressVerificationSubmissionOptimizationMode.
+const (
+	AddressVerificationSubmissionOptimizationModeCodesize AddressVerificationSubmissionOptimizationMode = "codesize"
+	AddressVerificationSubmissionOptimizationModeGas      AddressVerificationSubmissionOptimizationMode = "gas"
+	AddressVerificationSubmissionOptimizationModeNone     AddressVerificationSubmissionOptimizationMode = "none"
+)
+
+// Valid indicates whether the value is a known member of the AddressVerificationSubmissionOptimizationMode enum.
+func (e AddressVerificationSubmissionOptimizationMode) Valid() bool {
+	switch e {
+	case AddressVerificationSubmissionOptimizationModeCodesize:
+		return true
+	case AddressVerificationSubmissionOptimizationModeGas:
+		return true
+	case AddressVerificationSubmissionOptimizationModeNone:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for BatchResultsOutcomeKind.
 const (
 	BatchResults BatchResultsOutcomeKind = "batch_results"
@@ -2910,6 +2931,8 @@ const (
 	VerificationJobKindSolidityStandardJson      VerificationJobKind = "solidity_standard_json"
 	VerificationJobKindSourcify                  VerificationJobKind = "sourcify"
 	VerificationJobKindSourcifyFromEtherscan     VerificationJobKind = "sourcify_from_etherscan"
+	VerificationJobKindVyperMultipart            VerificationJobKind = "vyper_multipart"
+	VerificationJobKindVyperStandardJson         VerificationJobKind = "vyper_standard_json"
 )
 
 // Valid indicates whether the value is a known member of the VerificationJobKind enum.
@@ -2928,6 +2951,10 @@ func (e VerificationJobKind) Valid() bool {
 	case VerificationJobKindSourcify:
 		return true
 	case VerificationJobKindSourcifyFromEtherscan:
+		return true
+	case VerificationJobKindVyperMultipart:
+		return true
+	case VerificationJobKindVyperStandardJson:
 		return true
 	default:
 		return false
@@ -3076,6 +3103,7 @@ func (e VerifiedContractKind) Valid() bool {
 const (
 	VerifierLanguageGeas     VerifierLanguage = "geas"
 	VerifierLanguageSolidity VerifierLanguage = "solidity"
+	VerifierLanguageVyper    VerifierLanguage = "vyper"
 	VerifierLanguageYul      VerifierLanguage = "yul"
 )
 
@@ -3086,7 +3114,60 @@ func (e VerifierLanguage) Valid() bool {
 		return true
 	case VerifierLanguageSolidity:
 		return true
+	case VerifierLanguageVyper:
+		return true
 	case VerifierLanguageYul:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VyperMultipartRequestCompilerVersion.
+const (
+	VyperMultipartRequestCompilerVersionN043 VyperMultipartRequestCompilerVersion = "0.4.3"
+)
+
+// Valid indicates whether the value is a known member of the VyperMultipartRequestCompilerVersion enum.
+func (e VyperMultipartRequestCompilerVersion) Valid() bool {
+	switch e {
+	case VyperMultipartRequestCompilerVersionN043:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VyperMultipartRequestOptimizationMode.
+const (
+	VyperMultipartRequestOptimizationModeCodesize VyperMultipartRequestOptimizationMode = "codesize"
+	VyperMultipartRequestOptimizationModeGas      VyperMultipartRequestOptimizationMode = "gas"
+	VyperMultipartRequestOptimizationModeNone     VyperMultipartRequestOptimizationMode = "none"
+)
+
+// Valid indicates whether the value is a known member of the VyperMultipartRequestOptimizationMode enum.
+func (e VyperMultipartRequestOptimizationMode) Valid() bool {
+	switch e {
+	case VyperMultipartRequestOptimizationModeCodesize:
+		return true
+	case VyperMultipartRequestOptimizationModeGas:
+		return true
+	case VyperMultipartRequestOptimizationModeNone:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VyperStandardJSONRequestCompilerVersion.
+const (
+	VyperStandardJSONRequestCompilerVersionN043 VyperStandardJSONRequestCompilerVersion = "0.4.3"
+)
+
+// Valid indicates whether the value is a known member of the VyperStandardJSONRequestCompilerVersion enum.
+func (e VyperStandardJSONRequestCompilerVersion) Valid() bool {
+	switch e {
+	case VyperStandardJSONRequestCompilerVersionN043:
 		return true
 	default:
 		return false
@@ -3352,15 +3433,27 @@ type AddressVerificationSubmission struct {
 	EvmVersion         *string                                `json:"evm_version,omitempty"`
 	Input              *map[string]interface{}                `json:"input,omitempty"`
 	InputKind          AddressVerificationSubmissionInputKind `json:"input_kind"`
-	Language           VerifierLanguage                       `json:"language"`
-	Libraries          *map[string]Address                    `json:"libraries,omitempty"`
-	OptimizationRuns   *int                                   `json:"optimization_runs,omitempty"`
-	RuntimeEntrypoint  *string                                `json:"runtime_entrypoint,omitempty"`
-	Sources            *map[string]string                     `json:"sources,omitempty"`
+
+	// Interfaces Vyper multipart inline interfaces containing content or an ABI array.
+	Interfaces *map[string]map[string]interface{} `json:"interfaces,omitempty"`
+	Language   VerifierLanguage                   `json:"language"`
+	Libraries  *map[string]Address                `json:"libraries,omitempty"`
+
+	// OptimizationMode Vyper multipart optimization mode; defaults to gas.
+	OptimizationMode  *AddressVerificationSubmissionOptimizationMode `json:"optimization_mode,omitempty"`
+	OptimizationRuns  *int                                           `json:"optimization_runs,omitempty"`
+	RuntimeEntrypoint *string                                        `json:"runtime_entrypoint,omitempty"`
+	Sources           *map[string]string                             `json:"sources,omitempty"`
+
+	// TargetFile Required Vyper target .vy file in the inline source bundle.
+	TargetFile *string `json:"target_file,omitempty"`
 }
 
 // AddressVerificationSubmissionInputKind defines model for AddressVerificationSubmission.InputKind.
 type AddressVerificationSubmissionInputKind string
+
+// AddressVerificationSubmissionOptimizationMode Vyper multipart optimization mode; defaults to gas.
+type AddressVerificationSubmissionOptimizationMode string
 
 // AddressWithdrawal defines model for AddressWithdrawal.
 type AddressWithdrawal struct {
@@ -6540,6 +6633,44 @@ type VerifierStandardJSONRequest struct {
 	Language *SolcVerifierLanguage  `json:"language,omitempty"`
 }
 
+// VyperMultipartRequest defines model for VyperMultipartRequest.
+type VyperMultipartRequest struct {
+	// Bytecodes At least one creation or runtime bytecode must be non-empty.
+	Bytecodes       VerifierBytecodes                    `json:"bytecodes"`
+	CompilerVersion VyperMultipartRequestCompilerVersion `json:"compiler_version"`
+	EvmVersion      *string                              `json:"evm_version,omitempty"`
+
+	// Interfaces Vyper multipart inline interfaces containing content or an ABI array.
+	Interfaces *map[string]map[string]interface{} `json:"interfaces,omitempty"`
+
+	// OptimizationMode Vyper multipart optimization mode; defaults to gas.
+	OptimizationMode *VyperMultipartRequestOptimizationMode `json:"optimization_mode,omitempty"`
+	Sources          map[string]string                      `json:"sources"`
+
+	// TargetFile Required Vyper target .vy file in the inline source bundle.
+	TargetFile string `json:"target_file"`
+}
+
+// VyperMultipartRequestCompilerVersion defines model for VyperMultipartRequest.CompilerVersion.
+type VyperMultipartRequestCompilerVersion string
+
+// VyperMultipartRequestOptimizationMode Vyper multipart optimization mode; defaults to gas.
+type VyperMultipartRequestOptimizationMode string
+
+// VyperStandardJSONRequest defines model for VyperStandardJSONRequest.
+type VyperStandardJSONRequest struct {
+	// Bytecodes At least one creation or runtime bytecode must be non-empty.
+	Bytecodes       VerifierBytecodes                       `json:"bytecodes"`
+	CompilerVersion VyperStandardJSONRequestCompilerVersion `json:"compiler_version"`
+
+	// Input Inline Vyper Standard JSON with bounded sources and interfaces. Optimization defaults to gas unless explicitly supplied.
+	Input      map[string]interface{} `json:"input"`
+	TargetFile string                 `json:"target_file"`
+}
+
+// VyperStandardJSONRequestCompilerVersion defines model for VyperStandardJSONRequest.CompilerVersion.
+type VyperStandardJSONRequestCompilerVersion string
+
 // WalletAddChainConfig defines model for WalletAddChainConfig.
 type WalletAddChainConfig struct {
 	BlockExplorerUrls *[]string `json:"block_explorer_urls,omitempty"`
@@ -7004,6 +7135,12 @@ type SubmitSourcifyVerificationJSONRequestBody = SourcifySubmission
 
 // SubmitSourcifyFromEtherscanJSONRequestBody defines body for SubmitSourcifyFromEtherscan for application/json ContentType.
 type SubmitSourcifyFromEtherscanJSONRequestBody = SourcifyFromEtherscanSubmission
+
+// VerifyVyperMultipartJSONRequestBody defines body for VerifyVyperMultipart for application/json ContentType.
+type VerifyVyperMultipartJSONRequestBody = VyperMultipartRequest
+
+// VerifyVyperStandardJsonJSONRequestBody defines body for VerifyVyperStandardJson for application/json ContentType.
+type VerifyVyperStandardJsonJSONRequestBody = VyperStandardJSONRequest
 
 // AsVerificationSuccess returns the union data inside the BatchResultsOutcome_Results_Item as a VerificationSuccess
 func (t BatchResultsOutcome_Results_Item) AsVerificationSuccess() (VerificationSuccess, error) {

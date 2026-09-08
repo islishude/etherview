@@ -354,17 +354,20 @@ func (h *Handler) transactionResourceRequest(
 }
 
 type verifierSubmission struct {
-	Language           verify.Language       `json:"language"`
-	CompilerVersion    string                `json:"compiler_version"`
-	InputKind          string                `json:"input_kind"`
-	Input              json.RawMessage       `json:"input"`
-	Sources            map[string]string     `json:"sources"`
-	EVMVersion         string                `json:"evm_version"`
-	OptimizationRuns   *int                  `json:"optimization_runs"`
-	Libraries          map[string]string     `json:"libraries"`
-	Bytecodes          *verify.BytecodePair  `json:"bytecodes"`
-	Contracts          []verify.BytecodePair `json:"contracts"`
-	ContractNameHint   string                `json:"contract_name_hint"`
-	RuntimeEntrypoint  string                `json:"runtime_entrypoint"`
-	CreationEntrypoint string                `json:"creation_entrypoint"`
+	TargetFile         string                     `json:"target_file"`
+	OptimizationMode   string                     `json:"optimization_mode"`
+	Interfaces         map[string]json.RawMessage `json:"interfaces"`
+	Language           verify.Language            `json:"language"`
+	CompilerVersion    string                     `json:"compiler_version"`
+	InputKind          string                     `json:"input_kind"`
+	Input              json.RawMessage            `json:"input"`
+	Sources            map[string]string          `json:"sources"`
+	EVMVersion         string                     `json:"evm_version"`
+	OptimizationRuns   *int                       `json:"optimization_runs"`
+	Libraries          map[string]string          `json:"libraries"`
+	Bytecodes          *verify.BytecodePair       `json:"bytecodes"`
+	Contracts          []verify.BytecodePair      `json:"contracts"`
+	ContractNameHint   string                     `json:"contract_name_hint"`
+	RuntimeEntrypoint  string                     `json:"runtime_entrypoint"`
+	CreationEntrypoint string                     `json:"creation_entrypoint"`
 }

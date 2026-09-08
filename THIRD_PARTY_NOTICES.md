@@ -110,3 +110,14 @@ scanner. The automated gate pins the exact module checksum, verifies the
 upstream and checked-in notice hashes, and includes the reviewed text in the
 production image at
 `/licenses/multiformats-go-base36-Apache-2.0-OR-MIT.md`.
+
+## Pinned Vyper executor
+
+The dedicated Vyper runtime bundles official Vyper 0.4.3 (Apache-2.0), CPython
+3.13.15 (Python Software Foundation license) and a PyInstaller 6.22.2 bootloader
+(GPL with its distribution exception). Exact dependencies and artifact hashes
+are maintained in `compiler/vyper/requirements.lock`; Python distribution and
+ELF dependency license texts are copied into `/opt/etherview/vyper/licenses`.
+The complete runtime manifest records the shipped file and dependency identities.
+The application exposes only its dedicated verification protocol, without a
+Python CLI, package installer or runtime compiler download.

@@ -40,6 +40,8 @@ const (
 	JobAddress                   JobKind = "address"
 	JobSolidityMultipart         JobKind = "solidity_multipart"
 	JobSolidityStandardJSON      JobKind = "solidity_standard_json"
+	JobVyperStandardJSON         JobKind = "vyper_standard_json"
+	JobVyperMultipart            JobKind = "vyper_multipart"
 	JobSolidityBatchMultipart    JobKind = "solidity_batch_multipart"
 	JobSolidityBatchStandardJSON JobKind = "solidity_batch_standard_json"
 	JobSourcify                  JobKind = "sourcify"

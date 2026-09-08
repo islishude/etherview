@@ -134,10 +134,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function parseArtifactSources(
   sources: Record<string, unknown>,
   mainFile: string,
+  language = "solidity",
 ): SourceManifest {
   const files: ContractSourceFile[] = [];
   let invalidEntries = 0;
   for (const [name, value] of Object.entries(sources)) {
+    if (language === "vyper" && isRecord(value) && Array.isArray(value.abi) && Object.keys(value).length === 1) {
+      files.push({ name, content: JSON.stringify(value.abi, null, 2) });
+      continue;
+    }
     if (!isRecord(value) || typeof value.content !== "string") {
       invalidEntries += 1;
       continue;
@@ -266,8 +271,8 @@ export function summarizeCompilerSettings(
 export function ContractArtifactPanel({ artifact }: { artifact: VerifiedContractArtifact }) {
   const { i18n, t } = useTranslation();
   const manifest = useMemo(
-    () => parseArtifactSources(artifact.sources, artifact.file_name),
-    [artifact.file_name, artifact.sources],
+    () => parseArtifactSources(artifact.sources, artifact.file_name, artifact.language),
+    [artifact.file_name, artifact.sources, artifact.language],
   );
   const [selectedName, setSelectedName] = useState(manifest.files[0]?.name ?? "");
   const selected = manifest.files.find((file) => file.name === selectedName) ?? manifest.files[0];
@@ -796,11 +801,12 @@ function CompilerSettings({
   const { t } = useTranslation();
   const explicit = (value: string | number | boolean | undefined) =>
     value === undefined ? t("contracts.artifact.compilerDefault") : String(value);
-  const optimizer = summary.optimizerEnabled === undefined
+  const vyperMode = typeof raw.optimize === "string" && ["none", "gas", "codesize"].includes(raw.optimize) ? raw.optimize : undefined;
+  const optimizer = vyperMode ?? (summary.optimizerEnabled === undefined
     ? t("contracts.artifact.compilerDefault")
     : summary.optimizerEnabled
       ? t("contracts.artifact.enabled")
-      : t("contracts.artifact.disabled");
+      : t("contracts.artifact.disabled"));
   const booleanSetting = (value: boolean | undefined) => value === undefined
     ? t("contracts.artifact.compilerDefault")
     : value
@@ -829,9 +835,9 @@ function CompilerSettings({
       </div>
       <dl className="compiler-settings-grid">
         <SummaryFact label={t("contracts.artifact.optimizer")} value={optimizer} />
-        <SummaryFact label={t("contracts.artifact.optimizerRuns")} value={explicit(summary.optimizerRuns)} />
+        {!vyperMode && <SummaryFact label={t("contracts.artifact.optimizerRuns")} value={explicit(summary.optimizerRuns)} />}
         <SummaryFact label={t("contracts.artifact.evmVersion")} value={explicit(summary.evmVersion)} />
-        <SummaryFact label={t("contracts.artifact.viaIR")} value={booleanSetting(summary.viaIR)} />
+        {!vyperMode && <SummaryFact label={t("contracts.artifact.viaIR")} value={booleanSetting(summary.viaIR)} />}
         <SummaryFact label={t("contracts.artifact.metadata")} value={metadataValue} />
         <SummaryFact label={t("contracts.artifact.remappings")} value={remappingsValue} />
         <SummaryFact label={t("contracts.artifact.sourceCount")} value={String(sourceCount)} />

@@ -40,7 +40,8 @@ WITH exhausted AS (
         WHERE (status = 'queued' OR (status = 'running' AND lease_expires_at <= clock_timestamp()))
           AND (kind IN ('proxy', 'sourcify', 'sourcify_from_etherscan')
                OR ($4::boolean AND language IN ('solidity', 'yul'))
-               OR ($5::boolean AND language = 'geas'))
+               OR ($5::boolean AND language = 'geas')
+               OR ($6::boolean AND language = 'vyper'))
           AND attempt_count >= max_attempts
         ORDER BY created_at, id FOR UPDATE SKIP LOCKED LIMIT 1
     )
@@ -50,7 +51,8 @@ WITH exhausted AS (
     WHERE (status = 'queued' OR (status = 'running' AND lease_expires_at <= clock_timestamp()))
       AND (kind IN ('proxy', 'sourcify', 'sourcify_from_etherscan')
            OR ($4::boolean AND language IN ('solidity', 'yul'))
-           OR ($5::boolean AND language = 'geas'))
+           OR ($5::boolean AND language = 'geas')
+               OR ($6::boolean AND language = 'vyper'))
       AND attempt_count < max_attempts
       AND NOT EXISTS (SELECT 1 FROM exhausted WHERE exhausted.id = verification_jobs.id)
     ORDER BY created_at, id FOR UPDATE SKIP LOCKED LIMIT 1

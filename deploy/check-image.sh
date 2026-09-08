@@ -72,6 +72,11 @@ fi
     --entrypoint /usr/local/bin/etherview-geas-compiler \
     "$image" --self-test >/dev/null
 
+"$docker_command" run --rm --network none --read-only --cap-drop ALL \
+    --security-opt no-new-privileges \
+    --entrypoint /opt/etherview/vyper/etherview-vyper \
+    "$image" --self-test >/dev/null
+
 normalize_architecture() {
     case "$1" in
         amd64|x86_64|x86-64) echo amd64 ;;
@@ -112,6 +117,8 @@ for required_path in \
     usr/local/bin/etherview-geas-compiler \
     opt/etherview/solcjs/etherview-solcjs \
     opt/etherview/solcjs/runtime-manifest.json \
+    opt/etherview/vyper/etherview-vyper \
+    opt/etherview/vyper/runtime-manifest.json \
     licenses/solcjs-runtime/node-LICENSE.txt \
     licenses/solcjs-runtime/solc-LICENSE \
     licenses/solcjs-runtime/esbuild-LICENSE.md \
@@ -130,7 +137,7 @@ do
     fi
 done
 
-grep -Ev '^opt/etherview/solcjs(/|$)' \
+grep -Ev '^opt/etherview/(solcjs|vyper)(/|$)' \
     "$temporary_directory/rootfs.txt" >"$temporary_directory/non-compiler-rootfs.txt"
 forbidden_pattern='(^|/)(node|nodejs|npm|npx|corepack|pnpm|yarn|go|gofmt|solc|solcjs|vyper|vyper-json|docker|podman|containerd|nerdctl|runc)(/|$)|(^|/)node_modules(/|$)|(^|/)(package.json|package-lock.json|yarn.lock|pnpm-lock.yaml)$|(^|/)(sh|bash|ash|dash|zsh|ksh|csh|tcsh|fish|busybox)$'
 if grep -E -i "$forbidden_pattern" "$temporary_directory/non-compiler-rootfs.txt" >"$temporary_directory/forbidden.txt"; then
@@ -181,4 +188,16 @@ do
     fi
 done
 
-echo "docker-image-check: PASS (user=$configured_user, architecture=$image_architecture, SEA=Node-v26.8.1, Geas=0.3.3, hardened rootfs)"
+
+if grep -Ei '(^|/)(python([0-9]+([.][0-9]+)*)?|pip([0-9]+([.][0-9]+)*)?|uv|vyper-json)$' \
+    "$temporary_directory/rootfs.txt" >"$temporary_directory/python-cli.txt"; then
+    echo "docker-image-check: general Python/package CLI in production image" >&2
+    exit 1
+fi
+if awk '$1 ~ /^[-d]/ && $1 ~ /w/ && $NF ~ /^opt\/etherview\/vyper(\/|$)/ { found = 1 } END { exit !found }' \
+    "$temporary_directory/rootfs-verbose.txt"; then
+    echo "docker-image-check: writable Vyper runtime file" >&2
+    exit 1
+fi
+
+echo "docker-image-check: PASS (user=$configured_user, architecture=$image_architecture, SEA=Node-v26.8.1, Geas=0.3.3, Vyper=0.4.3, hardened rootfs)"

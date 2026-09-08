@@ -48,9 +48,14 @@ func (h *Handler) submitAddressVerification(w http.ResponseWriter, r *http.Reque
 	request := verify.SubmissionV2{
 		Kind: verify.JobAddress, Language: submission.Language,
 		CompilerVersion: submission.CompilerVersion, ContractNameHint: submission.ContractNameHint,
-		Target: &target, Bytecodes: []verify.BytecodePair{{
+		TargetFile: submission.TargetFile,
+		Target:     &target, Bytecodes: []verify.BytecodePair{{
 			Creation: target.CreationBytecode, Runtime: target.RuntimeBytecode,
 		}},
+	}
+	if err := validateVyperTransport(submission, submission.Language == verify.LanguageVyper); err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_verification_request", "Vyper verification request is invalid", nil)
+		return
 	}
 	switch submission.InputKind {
 	case "standard_json":
@@ -70,6 +75,10 @@ func (h *Handler) submitAddressVerification(w http.ResponseWriter, r *http.Reque
 			Language: submission.Language, Sources: submission.Sources,
 			EVMVersion: submission.EVMVersion, OptimizationRuns: submission.OptimizationRuns,
 			Libraries: submission.Libraries,
+		}
+		if submission.Language == verify.LanguageVyper {
+			request.Multipart = nil
+			request.VyperMultipart = vyperMultipartSubmission(submission)
 		}
 	case "geas_sources":
 		if submission.Language != verify.LanguageGeas || len(submission.Input) != 0 ||
@@ -138,7 +147,21 @@ func (h *Handler) submitVerifier(w http.ResponseWriter, r *http.Request) {
 	if submission.Bytecodes != nil {
 		bytecodes = *submission.Bytecodes
 	}
+	isVyper := strings.HasPrefix(r.Pattern, "POST /api/v1/verifier/vyper/")
+	if err := validateVyperTransport(submission, isVyper); err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_verification_request", "Vyper verification request is invalid", nil)
+		return
+	}
+	request.TargetFile = submission.TargetFile
 	switch r.Pattern {
+	case "POST /api/v1/verifier/vyper/standard-json":
+		request.Kind, request.Language = verify.JobVyperStandardJSON, verify.LanguageVyper
+		request.StandardJSON = submission.Input
+		request.Bytecodes = []verify.BytecodePair{bytecodes}
+	case "POST /api/v1/verifier/vyper/multipart":
+		request.Kind, request.Language = verify.JobVyperMultipart, verify.LanguageVyper
+		request.VyperMultipart = vyperMultipartSubmission(submission)
+		request.Bytecodes = []verify.BytecodePair{bytecodes}
 	case "POST /api/v1/verifier/solidity/multipart":
 		request.Kind, request.Language = verify.JobSolidityMultipart, submission.Language
 		if request.Language == "" {
@@ -193,8 +216,8 @@ func (h *Handler) submitV2(w http.ResponseWriter, r *http.Request, request verif
 func (h *Handler) verifierCompilers(w http.ResponseWriter, r *http.Request) {
 	language := verify.Language(r.URL.Query().Get("language"))
 	if language != verify.LanguageSolidity && language != verify.LanguageYul &&
-		language != verify.LanguageGeas {
-		writeError(w, r, http.StatusBadRequest, "invalid_language", "language must be solidity, yul, or geas", nil)
+		language != verify.LanguageGeas && language != verify.LanguageVyper {
+		writeError(w, r, http.StatusBadRequest, "invalid_language", "language must be solidity, yul, geas, or vyper", nil)
 		return
 	}
 	if language == verify.LanguageGeas {
@@ -500,6 +523,7 @@ func requiredAPIScope(operation string) auth.Scope {
 	case "getVerifierJob", "getVerifiedContract", "submitAddressVerification",
 		"verifySolidityMultipart", "verifySolidityStandardJson",
 		"batchVerifySolidityMultipart", "batchVerifySolidityStandardJson",
+		"verifyVyperMultipart", "verifyVyperStandardJson",
 		"listVerifierCompilers", "lookupVerifierMethods",
 		"submitSourcifyVerification", "submitSourcifyFromEtherscan":
 		return auth.ScopeVerification

@@ -147,6 +147,7 @@ func (c Config) ValidateForRoles(roles []string) error {
 		}{
 			{name: "executor_path", value: c.Verification.ExecutorPath},
 			{name: "geas_path", value: c.Verification.GeasPath},
+			{name: "vyper_path", value: c.Verification.VyperPath},
 		} {
 			if strings.TrimSpace(runtimePath.value) == "" {
 				errs = append(errs, fmt.Errorf(

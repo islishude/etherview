@@ -3,6 +3,7 @@ SHELL := /bin/sh
 GO ?= go
 NODE ?= node
 NPM ?= npm
+PYTHON ?= python3.13
 DOCKER ?= docker
 BUILDX ?= .github/scripts/buildx.sh
 COMPOSE ?= .github/scripts/compose.sh
@@ -231,6 +232,7 @@ web-install:
 
 compiler-install:
 	$(NPM) --prefix compiler ci --ignore-scripts
+	$(PYTHON) compiler/vyper/install.py
 
 web-generate: web-install
 	$(NPM) --prefix api run generate:api
@@ -285,6 +287,7 @@ security-check: security-tool-check web-build compiler-install
 	$(NPM) --prefix api audit --audit-level=high
 	$(NPM) --prefix web audit --audit-level=high
 	$(NPM) --prefix compiler audit --audit-level=high
+	$(PYTHON) compiler/vyper/audit.py
 	$(NPM) --prefix e2e/hardhat3 audit --audit-level=high
 	$(GO) test ./internal/app ./internal/auth ./internal/billing/... ./internal/cli ./internal/config ./internal/httpapi ./internal/jsonstrict ./internal/metadata ./internal/observability ./internal/userauth ./internal/verify ./web
 
@@ -294,6 +297,7 @@ license-tool-check:
 		echo "license-check: frontend checker must be pinned at $(WEB_LICENSE_CHECKER_VERSION)"; exit 1; }
 
 license-check: license-tool-check web-install compiler-install
+	$(PYTHON) compiler/vyper/licenses.py
 	@test -f LICENSE || { echo "license-check: root LICENSE is missing"; exit 1; }
 	@grep -q "Apache License" LICENSE || { echo "license-check: root LICENSE is not Apache-2.0"; exit 1; }
 	@grep -Eq '^COPY .*LICENSE /LICENSE$$' Dockerfile || { echo "license-check: production image must include /LICENSE"; exit 1; }

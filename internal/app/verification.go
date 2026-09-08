@@ -37,7 +37,7 @@ func verificationCompiler(
 		Path: cfg.Verification.GeasPath, Timeout: cfg.Verification.Timeout,
 		MaxInputBytes: cfg.Verification.MaxInputBytes, MaxOutputBytes: cfg.Verification.MaxOutputBytes,
 	}
-	return verify.NewCompilerRouter(solcJS, geas)
+	return verify.NewCompilerRouter(solcJS, geas, &verify.VyperCompiler{Path: cfg.Verification.VyperPath, Timeout: cfg.Verification.Timeout, MaxInputBytes: cfg.Verification.MaxInputBytes, MaxOutputBytes: cfg.Verification.MaxOutputBytes})
 }
 
 func verificationWorkerID(index int) string {

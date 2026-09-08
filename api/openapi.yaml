@@ -1625,6 +1625,23 @@ paths:
           $ref: "#/components/responses/VerificationAccepted"
         default:
           $ref: "#/components/responses/Error"
+  /verifier/vyper/multipart:
+    post:
+      operationId: verifyVyperMultipart
+      tags: [verification]
+      security:
+        - APIKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VyperMultipartRequest"
+      responses:
+        "202":
+          $ref: "#/components/responses/VerificationAccepted"
+        default:
+          $ref: "#/components/responses/Error"
   /verifier/solidity/standard-json:
     post:
       operationId: verifySolidityStandardJson
@@ -1637,6 +1654,23 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/VerifierStandardJSONRequest"
+      responses:
+        "202":
+          $ref: "#/components/responses/VerificationAccepted"
+        default:
+          $ref: "#/components/responses/Error"
+  /verifier/vyper/standard-json:
+    post:
+      operationId: verifyVyperStandardJson
+      tags: [verification]
+      security:
+        - APIKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VyperStandardJSONRequest"
       responses:
         "202":
           $ref: "#/components/responses/VerificationAccepted"
@@ -1688,7 +1722,7 @@ paths:
             $ref: "#/components/schemas/VerifierLanguage"
       responses:
         "200":
-          description: Versions in the current sufficiently fresh compiler generation.
+          description: Available versions from a sufficiently fresh Solidity catalog or a validated bundled compiler runtime.
           content:
             application/json:
               schema:
@@ -4774,7 +4808,7 @@ components:
           $ref: "#/components/schemas/OpaqueCursor"
     VerifierLanguage:
       type: string
-      enum: [solidity, yul, geas]
+      enum: [solidity, yul, geas, vyper]
     SolcVerifierLanguage:
       type: string
       enum: [solidity, yul]
@@ -4789,6 +4823,59 @@ components:
           type: string
           pattern: '^(0x)?[0-9a-fA-F]*$'
       description: At least one creation or runtime bytecode must be non-empty.
+    VyperStandardJSONRequest:
+      type: object
+      additionalProperties: false
+      required: [compiler_version, target_file, input, bytecodes]
+      properties:
+        compiler_version:
+          type: string
+          enum: ["0.4.3"]
+        target_file:
+          type: string
+          minLength: 1
+          maxLength: 384
+        input:
+          type: object
+          additionalProperties: true
+          description: Inline Vyper Standard JSON with bounded sources and interfaces. Optimization defaults to gas unless explicitly supplied.
+        bytecodes:
+          $ref: "#/components/schemas/VerifierBytecodes"
+    VyperMultipartRequest:
+      type: object
+      additionalProperties: false
+      required: [compiler_version, target_file, sources, bytecodes]
+      properties:
+        compiler_version:
+          type: string
+          enum: ["0.4.3"]
+        target_file:
+          type: string
+          minLength: 1
+          maxLength: 384
+          description: Required Vyper target .vy file in the inline source bundle.
+        optimization_mode:
+          type: string
+          enum: [none, gas, codesize]
+          description: Vyper multipart optimization mode; defaults to gas.
+        interfaces:
+          type: object
+          maxProperties: 1024
+          additionalProperties:
+            type: object
+            additionalProperties: true
+          description: Vyper multipart inline interfaces containing content or an ABI array.
+        sources:
+          type: object
+          minProperties: 1
+          maxProperties: 1024
+          additionalProperties:
+            type: string
+        evm_version:
+          type: string
+          maxLength: 64
+        bytecodes:
+          $ref: "#/components/schemas/VerifierBytecodes"
     VerifierStandardJSONRequest:
       type: object
       additionalProperties: false
@@ -4909,6 +4996,22 @@ components:
       additionalProperties: false
       required: [language, compiler_version, input_kind]
       properties:
+        target_file:
+          type: string
+          minLength: 1
+          maxLength: 384
+          description: Required Vyper target .vy file in the inline source bundle.
+        optimization_mode:
+          type: string
+          enum: [none, gas, codesize]
+          description: Vyper multipart optimization mode; defaults to gas.
+        interfaces:
+          type: object
+          maxProperties: 1024
+          additionalProperties:
+            type: object
+            additionalProperties: true
+          description: Vyper multipart inline interfaces containing content or an ABI array.
         language:
           $ref: "#/components/schemas/VerifierLanguage"
         compiler_version:
@@ -5153,6 +5256,8 @@ components:
             - address
             - solidity_multipart
             - solidity_standard_json
+            - vyper_standard_json
+            - vyper_multipart
             - solidity_batch_multipart
             - solidity_batch_standard_json
             - sourcify

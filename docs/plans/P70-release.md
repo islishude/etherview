@@ -302,6 +302,11 @@ and user/operator evidence sufficient for a production public release.
 
 ## Current Blockers
 
+P30-T95–P30-T98 complete pinned Vyper verification. P30-T99 still requires
+native AMD64 image and monolith/split production E2E evidence for the current
+source revision before the P30 release dependency is complete again. ARM64
+and local common/integration/browser/runtime evidence has passed.
+
 The superseded accountless request-payment path is replaced by P73. P73-T08
 still needs operator-provided testnet funding, payer credentials, a compatible staging facilitator and top-up
 surface, the matching writer and independent RPC endpoint, and the deployed

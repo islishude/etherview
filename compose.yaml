@@ -62,6 +62,7 @@ x-api-environment: &api-environment
   ETHERVIEW_VERIFICATION_WORKER_COUNT:
   # Trusted runtime path overrides are scoped to the compiler-owning process.
   ETHERVIEW_VERIFICATION_EXECUTOR_PATH:
+  ETHERVIEW_VERIFICATION_VYPER_PATH:
   ETHERVIEW_VERIFICATION_GEAS_PATH:
   # S3 is constructed only by API-capable processes. Explicit Etherview keys
   # override the AWS default chain; standard AWS inputs are passed through only

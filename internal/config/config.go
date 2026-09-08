@@ -247,6 +247,7 @@ type VerificationConfig struct {
 	Timeout                time.Duration     `yaml:"timeout"`
 	CacheDirectory         string            `yaml:"cache_directory"`
 	ExecutorPath           string            `yaml:"executor_path"`
+	VyperPath              string            `yaml:"vyper_path"`
 	GeasPath               string            `yaml:"geas_path"`
 	CatalogURLs            map[string]string `yaml:"catalog_urls"`
 	AllowedDownloadOrigins []string          `yaml:"allowed_download_origins"`
@@ -447,6 +448,7 @@ func Default() Config {
 			CacheDirectory:          "/var/lib/etherview/compilers/cache",
 			ExecutorPath:            defaultVerificationExecutorPath,
 			GeasPath:                defaultVerificationGeasPath,
+			VyperPath:               "/opt/etherview/vyper/etherview-vyper",
 			CatalogURLs: map[string]string{
 				"solidity": "auto",
 			},

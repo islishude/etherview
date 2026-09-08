@@ -204,6 +204,15 @@ func PerturbVerifierSources(input json.RawMessage, maxInputBytes int) (json.RawM
 		delete(source, "keccak256")
 		sources[name] = source
 	}
+	if interfaces, ok := document["interfaces"].(map[string]any); ok {
+		for _, raw := range interfaces {
+			if entry, ok := raw.(map[string]any); ok {
+				if content, ok := entry["content"].(string); ok {
+					entry["content"] = content + " "
+				}
+			}
+		}
+	}
 	modified, err := json.Marshal(document)
 	if err != nil || len(modified) > maxInputBytes {
 		return nil, errors.New("modified standard JSON exceeds the input limit")

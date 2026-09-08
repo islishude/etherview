@@ -422,6 +422,7 @@ config:
     cache_directory: /var/lib/etherview/compilers/cache
     executor_path: /opt/etherview/solcjs/etherview-solcjs
     geas_path: /usr/local/bin/etherview-geas-compiler
+    vyper_path: /opt/etherview/vyper/etherview-vyper
     catalog_urls:
       solidity: auto
     allowed_download_origins:

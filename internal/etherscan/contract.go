@@ -122,7 +122,7 @@ func validateVerifiedContractRecord(
 	if len(record.SourceAddress) != common.AddressLength {
 		return verifiedContractRecord{}, errors.New("stored verified contract identity is incomplete")
 	}
-	if record.Language != "solidity" && record.Language != "yul" && record.Language != "geas" {
+	if record.Language != "solidity" && record.Language != "yul" && record.Language != "geas" && record.Language != "vyper" {
 		return verifiedContractRecord{}, fmt.Errorf("stored verified contract has unsupported language %q", record.Language)
 	}
 	if record.MatchKind != "full" && record.MatchKind != "partial" {
@@ -192,6 +192,11 @@ func (b *PostgresBackend) contractSource(ctx context.Context, values url.Values)
 	}
 	compilerType := "solc"
 	contractFileName := ""
+	if record.Language == "vyper" {
+		compilerType = "vyper"
+		contractFileName = record.FileName
+		record.CompilerVersion = "vyper:" + record.CompilerVersion
+	}
 	if record.Language == "geas" {
 		compilerType = "geas"
 		contractFileName = record.FileName
@@ -246,6 +251,15 @@ func sourceSettings(raw []byte) (contractSettings, error) {
 		return contractSettings{}, fmt.Errorf("decode verified contract settings: %w", err)
 	}
 	result := contractSettings{optimized: "0", runs: "0"}
+	if mode := object["optimize"]; len(mode) > 0 {
+		var value string
+		if json.Unmarshal(mode, &value) != nil || (value != "gas" && value != "codesize" && value != "none") {
+			return contractSettings{}, errors.New("invalid Vyper optimization mode")
+		}
+		if value != "none" {
+			result.optimized = "1"
+		}
+	}
 	if optimizerRaw := object["optimizer"]; len(optimizerRaw) != 0 {
 		var optimizer struct {
 			Enabled bool            `json:"enabled"`

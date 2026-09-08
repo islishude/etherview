@@ -5,6 +5,8 @@ func (h *Handler) registerVerificationRoutes() {
 	// the stable typed capability state.
 	h.mux.HandleFunc("POST /api/v1/contracts/{address}/verification", h.submitAddressVerification)
 	h.mux.HandleFunc("POST /api/v1/verifier/solidity/multipart", h.submitVerifier)
+	h.mux.HandleFunc("POST /api/v1/verifier/vyper/multipart", h.submitVerifier)
+	h.mux.HandleFunc("POST /api/v1/verifier/vyper/standard-json", h.submitVerifier)
 	h.mux.HandleFunc("POST /api/v1/verifier/solidity/standard-json", h.submitVerifier)
 	h.mux.HandleFunc("POST /api/v1/verifier/solidity/batch/multipart", h.submitVerifier)
 	h.mux.HandleFunc("POST /api/v1/verifier/solidity/batch/standard-json", h.submitVerifier)

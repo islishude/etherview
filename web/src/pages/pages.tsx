@@ -828,6 +828,7 @@ export function verificationLanguageLabel(value: string, t: Translate): string {
     case "solidity": return t("verificationLanguage.solidity");
     case "yul": return t("verificationLanguage.yul");
     case "geas": return t("verificationLanguage.geas");
+    case "vyper": return t("verificationLanguage.vyper");
     default: return value;
   }
 }
