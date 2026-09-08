@@ -28,6 +28,10 @@ def main():
             "A.vy": {"content": "import lib\ninitializes: lib\n@deploy\ndef __init__(who: address):\n    lib.__init__(who)\n@external\n@view\ndef get_owner() -> address:\n    return lib.get_owner()\n"},
             "lib.vy": {"content": IMMUTABLE.replace("@external", "@internal")},
         }, {}, {}),
+        "module_type": ({
+            "A.vy": {"content": "import lib\ninitializes: lib\n@deploy\ndef __init__(who: address):\n    lib.__init__(who)\n@external\n@view\ndef get_owner() -> address:\n    return lib.get_owner()\n"},
+            "lib.vy": {"content": IMMUTABLE.replace("owner:", "type:").replace("owner =", "type =").replace("return owner", "return type").replace("@external", "@internal")},
+        }, {}, {}),
         "interface": ({"A.vy": {"content": "import I as I\n@external\n@view\ndef value(a: address) -> uint256:\n    return staticcall I(a).answer()\n"}},
                       {"I.vyi": {"content": "@external\n@view\ndef answer() -> uint256:\n    ...\n"}}, {}),
         "builtin": ({"A.vy": {"content": "from ethereum.ercs import IERC20\n@external\n@view\ndef value(a: address) -> uint256:\n    return staticcall IERC20(a).totalSupply()\n"}}, {}, {}),
@@ -53,7 +57,7 @@ def main():
                         if "content" in source:
                             source["content"] += " "
             encoded = json.dumps(current, sort_keys=True)
-            response = subprocess.run([helper, "--compile"], input=encoded, env={}, text=True, capture_output=True, timeout=15, check=True)
+            response = subprocess.run([helper, "--compile", str(5 << 20), str(64 << 20)], input=encoded, env={}, text=True, capture_output=True, timeout=15, check=True)
             data = json.loads(response.stdout)
             if any(e["severity"] == "error" for e in data.get("errors", [])):
                 raise RuntimeError(data)

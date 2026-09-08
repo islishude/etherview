@@ -1,6 +1,6 @@
 # P30 — Contract Platform & Runtime Operations
 
-Status: `blocked`
+Status: `done`
 
 This is the canonical plan for contract verification, contract intelligence,
 and the shared runtime/operations platform. Its current work items use the P30
@@ -174,14 +174,14 @@ credential-scoped operational boundaries.
 | P30-T96 | done | P30-T95 | Vyper input normalization, matcher, fresh-schema provenance and publication | compiler fixtures, malformed input, PostgreSQL and reorg regressions |
 | P30-T97 | done | P30-T96 | Native API, Etherscan vyper-json and bilingual Web verification | generated contracts, API, Web and browser tests |
 | P30-T98 | done | P30-T95 | Production helper packaging, role parity, deployment and licenses | image, configuration, Compose, Helm and license checks |
-| P30-T99 | blocked | P30-T96, P30-T97, P30-T98 | Vyper production verification acceptance and maintained documentation | common gates, native AMD64/ARM64 monolith/split verification E2E |
+| P30-T99 | done | P30-T96, P30-T97, P30-T98 | Vyper production verification acceptance and maintained documentation | common gates, native AMD64/ARM64 monolith/split verification E2E |
 
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
 ## Acceptance
 
-- [ ] P30-T95–P30-T99: Vyper 0.4.3 source verification passes pinned helper,
+- [x] P30-T95–P30-T99: Vyper 0.4.3 source verification passes pinned helper,
       exact matching, native/Etherscan/Web, and native AMD64/ARM64 production
       acceptance without restoring Pyodide or an independent runner.
 
@@ -216,13 +216,10 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
 ## Current Blockers
 
-P30-T99 is blocked only on native Linux AMD64 production-image evidence.
-The current Docker host is ARM64; no native AMD64 run of this working tree
-has been recorded. Clear this item after the AMD64 job in the existing
-[verification CI matrix](../../.github/workflows/ci.yml) builds and checks the
-current image and passes both monolith and split-role Vyper verification E2E.
-Emulation and ARM64 results do not satisfy that requirement. P70 capacity and
-P73 live-testnet evidence remain owned by their current plans.
+None. P30-T99's native AMD64/ARM64 acceptance is recorded below for the exact
+PR #56 commit tested by CI. Subsequent local review corrections retain their
+separate validation boundary. P70 capacity and P73 live-testnet evidence remain
+owned by their current plans.
 
 ## Evidence
 
@@ -416,9 +413,8 @@ P73 live-testnet evidence remain owned by their current plans.
   wheel using the maintainer's patched-version statements; raw audit output
   remains in the ignored audit cache. The [compiler README](../../compiler/vyper/README.md)
   records both references and the narrow correction policy.
-- Remaining blocker: native AMD64 image and monolith/split E2E for this source
-  revision. CI already runs the same Vyper assertions on AMD64 and ARM64; its
-  pending AMD64 evidence must be recorded before P30-T99 or P30 becomes done.
+- The native AMD64 evidence missing from this local run is now supplied by
+  the PR #56 CI closure recorded below.
 
 ### P30-T98 — Builder tag review follow-up
 
@@ -426,3 +422,46 @@ P73 live-testnet evidence remain owned by their current plans.
   `python:3.13.15-slim-trixie`. Updated the compiler README and ADR-0047.
 - Deployment, documentation and plan checks pass, as does `git diff --check`.
   This image-reference-only change did not rerun production image E2E.
+
+### P30-T95/P30-T96 — Review corrections
+
+- Distinguish layout leaves by a string-valued `type`, allowing an imported
+  module to contain an immutable named `type`. Require explicit non-null
+  offsets, and retain strict length/alignment/overlap checks. The official
+  compiler fixture `module_type` proves compilation and transformation-aware
+  matching for this case.
+- Runtime schema v2 requires server-owned input/output byte limits on compile
+  invocations. Go and Python enforce the same effective configuration. Python
+  reads incrementally, so a large configured ceiling does not preallocate that
+  amount of memory. Update the complete helper runtime and drain bound jobs
+  before this protocol upgrade; old manifests fail startup validation.
+- `go test -race ./internal/verify -run '^TestVyper' -count=1` passes configured
+  limits above 5 MiB, exact-boundary acceptance, oversize rejection, invalid CLI
+  limits, module layout regressions, timeout and cleanup checks.
+- `make check` and the focused PostgreSQL `TestVyperDurablePublicationAndReorgFence`
+  integration test pass. An initial dependency-audit service failure was retained
+  as a failed gate; the unchanged audit and complete check passed on rerun.
+- The newly built Linux ARM64 production image passes `make docker-image-check`.
+  Its helper compiles a 5,244,233-byte input with a 16 MiB limit and a small input
+  with a 1 GiB ceiling under the unchanged 512 MiB address-space limit.
+  `make test-hardhat3-e2e-prebuilt` then passes both native production topologies
+  (237.14 seconds), using that rebuilt and inspected image.
+- Documentation, source and plan checks and `git diff --check` pass. These
+  subsequent local corrections are not included in the PR #56 CI commit below;
+  their native AMD64 CI validation must follow submission of the changes.
+
+### P30-T99 — CI closure (2026-09-08)
+
+- [PR #56 CI run 34178834069](https://github.com/islishude/etherview/actions/runs/34178834069)
+  passes all nine checks for `4b10534d01d05a9a26876673c3467b767ad885fa`.
+  This closes P30-T99 and the P30 release dependency for that tested revision.
+- Native production-image Hardhat 3 verification passes on
+  [AMD64](https://github.com/islishude/etherview/actions/runs/34178834069/job/101913548293)
+  and [ARM64](https://github.com/islishude/etherview/actions/runs/34178834069/job/101913548148),
+  covering monolith/split Vyper submission, compilation, publication and
+  source/ABI reads alongside Solidity/Yul regressions. Both native Foundry
+  jobs pass the Geas regressions.
+- Generation/lint/unit tests, PostgreSQL integration, embedded SPA browser E2E,
+  security/licenses and Container/Compose/Helm checks also pass. This CI evidence
+  does not include the subsequent uncommitted review corrections above and does
+  not close P70 capacity or P73 live-payment acceptance.

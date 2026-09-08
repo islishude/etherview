@@ -1093,6 +1093,11 @@ Verification-enabled `api` and `all` processes require the complete read-only
 Vyper runtime at `/opt/etherview/vyper/etherview-vyper`. Override only with
 `verification.vyper_path` / `ETHERVIEW_VERIFICATION_VYPER_PATH` pointing to an
 identical-layout, validated custom runtime. Other roles do not execute it.
+Runtime schema v2 passes `verification.max_input_bytes` and
+`verification.max_output_bytes` to the helper through server-owned arguments;
+there is no separate hardcoded 5 MiB helper input ceiling. Both Go and Python
+enforce the effective limits. Rebuild the full runtime when changing protocol
+version and drain bound jobs as described below.
 The runtime contains CPython 3.13.15, Vyper 0.4.3, locked dependencies, licenses
 and `runtime-manifest.json`; operators never install packages into a running
 container. The dedicated helper is not a Python CLI.

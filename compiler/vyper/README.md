@@ -7,7 +7,12 @@ and hashes; `--only-binary` selects authenticated wheels. The Docker stage uses 
 `python:3.13.15-slim-trixie` version tag, resolves every ELF against
 the final distroless root and tests the helper there as the production user.
 
-The helper only accepts `--self-test` or `--compile` with Standard JSON on stdin.
+The helper accepts `--self-test` or
+`--compile <max-input-bytes> <max-output-bytes>` with Standard JSON on stdin.
+The Go parent supplies effective configured limits as positive canonical decimal
+arguments; source JSON cannot override them. Runtime schema v2 rejects older
+helpers during startup, so rebuild the complete runtime and drain bound jobs
+when upgrading.
 It has no Python CLI or package installer. Compiler sources and interfaces are
 in memory. The read-only runtime manifest covers every installed file; Go
 validates that tree before startup and every execution. Linux self-test proves

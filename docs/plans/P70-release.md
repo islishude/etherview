@@ -302,11 +302,6 @@ and user/operator evidence sufficient for a production public release.
 
 ## Current Blockers
 
-P30-T95–P30-T98 complete pinned Vyper verification. P30-T99 still requires
-native AMD64 image and monolith/split production E2E evidence for the current
-source revision before the P30 release dependency is complete again. ARM64
-and local common/integration/browser/runtime evidence has passed.
-
 The superseded accountless request-payment path is replaced by P73. P73-T08
 still needs operator-provided testnet funding, payer credentials, a compatible staging facilitator and top-up
 surface, the matching writer and independent RPC endpoint, and the deployed
@@ -371,6 +366,12 @@ those gates.
 
 ## Evidence
 
+- P30-T99 and the P30 dependency are complete: [PR #56 CI](https://github.com/islishude/etherview/actions/runs/34178834069)
+  passes all nine checks at `4b10534d01d05a9a26876673c3467b767ad885fa`, including
+  native AMD64/ARM64 production verification in both topologies. Subsequent local
+  review corrections retain separate evidence in [P30](P30-contract-verification.md#evidence)
+  and are not included in that CI run. P70 capacity and P73 live-payment gates
+  remain open.
 - P70-T45 reconciles the maintained deployment, operations, architecture,
   testing, and ADR guidance with the current Makefile, Compose, runtime stage,
   compiler SEA, worker-count, and Etherscan action contracts. It removes the

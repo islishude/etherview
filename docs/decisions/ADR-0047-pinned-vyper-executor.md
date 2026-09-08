@@ -16,7 +16,10 @@ without a platform-pinned deployment, Pyodide, or an independent runner.
   hash locked. The Docker builder uses the `python:3.13.15-slim-trixie` version
   tag without an OCI digest pin. No general Python CLI, package installer, or
   runtime download exists.
-- The dedicated executable accepts only self-test and compile protocols. Each
+- The dedicated executable accepts only self-test and compile protocols. The
+  v2 runtime protocol requires the Go parent to pass its effective input and
+  output byte limits as positive decimal compile arguments; submitted sources
+  cannot select these limits. Old runtime schemas fail startup validation. Each
   compiler input runs in a fresh process with a secret-free environment, bounded
   I/O and wall time, process-group cancellation and fail-closed cleanup. Linux
   enforces a 512 MiB address-space limit, 64 file descriptors and no core dump.
@@ -44,7 +47,9 @@ without a platform-pinned deployment, Pyodide, or an independent runner.
   unsupported. Batch, factory-derived and Sourcify Vyper paths are not added.
 - Original and whitespace-perturbed sources compile with the same exact
   runtime. A Vyper-specific parser authenticates the 0.4.3 creation CBOR footer
-  and compiler layout. Immutable suffixes must have exact declared ranges and
+  and compiler layout. A layout leaf has a string-valued type and explicit
+  numeric offset/length; module members may themselves be named `type`.
+  Immutable suffixes must have exact declared ranges and
   lengths; no undeclared byte differences match. Constructor arguments remain
   ABI-canonical. Runtime without authenticated metadata remains partial.
   Canonical target selection, Genesis provenance, lease fencing, immutable

@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -23,7 +24,7 @@ const (
 	CompilerPlatformPythonWheel = "python-wheel"
 	VyperCompilerSHA256         = "3b9671727c888363740dc678e60336759871487d0e4e9fdd973048fa9635c4fd"
 	vyperDependencyLockSHA256   = "554dc6f7797a99df3d66f0d42a628bc1e48f11fd15231e1349f5948dccdb99d2"
-	vyperRuntimeSchema          = "etherview-vyper-runtime-v1"
+	vyperRuntimeSchema          = "etherview-vyper-runtime-v2"
 )
 
 // A bundled helper cannot recover through a remote catalog refresh.
@@ -131,7 +132,9 @@ func (compiler *VyperCompiler) CompilePinned(ctx context.Context, language Langu
 	if !provenance.valid() || provenance != expected {
 		return nil, ErrCompilerProvenanceConflict
 	}
-	return compiler.run(ctx, []string{"--compile"}, input)
+	return compiler.run(ctx, []string{
+		"--compile", strconv.Itoa(compiler.maxInputBytes()), strconv.Itoa(compiler.maxOutputBytes()),
+	}, input)
 }
 func (compiler *VyperCompiler) timeout() time.Duration {
 	if compiler.Timeout > 0 {
@@ -144,6 +147,13 @@ func (compiler *VyperCompiler) maxInputBytes() int {
 		return compiler.MaxInputBytes
 	}
 	return defaultCompilerInputBytes
+}
+
+func (compiler *VyperCompiler) maxOutputBytes() int {
+	if compiler.MaxOutputBytes > 0 {
+		return compiler.MaxOutputBytes
+	}
+	return defaultCompilerOutputBytes
 }
 
 func validateVyperHelper(path string) (vyperRuntimeIdentity, error) {
@@ -267,10 +277,7 @@ func (compiler *VyperCompiler) run(
 		"LC_ALL=C",
 	}
 	command.Stdin = bytes.NewReader(input)
-	maximumOutput := compiler.MaxOutputBytes
-	if maximumOutput <= 0 {
-		maximumOutput = defaultCompilerOutputBytes
-	}
+	maximumOutput := compiler.maxOutputBytes()
 	stdout, stderr := newLimitedBuffer(maximumOutput), newLimitedBuffer(1<<20)
 	command.Stdout, command.Stderr = stdout, stderr
 	configureCompilerProcess(command)

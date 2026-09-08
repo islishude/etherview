@@ -42,7 +42,7 @@ func TestVyperFixtureChecksums(t *testing.T) {
 }
 
 func TestVyperPinnedCandidateFixtures(t *testing.T) {
-	for _, name := range []string{"plain", "immutable", "no_metadata", "module", "interface", "dispatch", "module_immutable", "builtin", "abi_interface", "filename"} {
+	for _, name := range []string{"plain", "immutable", "no_metadata", "module", "interface", "dispatch", "module_immutable", "module_type", "builtin", "abi_interface", "filename"} {
 		t.Run(name, func(t *testing.T) {
 			first, err := os.ReadFile("testdata/compiler/vyper/" + name + ".input.output.json")
 			if err != nil {
@@ -61,7 +61,7 @@ func TestVyperPinnedCandidateFixtures(t *testing.T) {
 			}
 			candidate := candidates[0]
 			pair := BytecodePair{Creation: candidate.CreationBytecode, Runtime: candidate.RuntimeBytecode}
-			if name == "immutable" || name == "module_immutable" {
+			if name == "immutable" || name == "module_immutable" || name == "module_type" {
 				word := strings.Repeat("00", 12) + strings.Repeat("11", 20)
 				pair.Creation += word
 				pair.Runtime = pair.Runtime[:len(pair.Runtime)-64] + word
@@ -115,6 +115,8 @@ func TestVyperInputBoundaries(t *testing.T) {
 func TestVyperImmutableLayoutRejectsUndeclaredRanges(t *testing.T) {
 	for _, raw := range []string{
 		`{"code_layout":{"a":{"offset":32,"length":32,"type":"address"}}}`,
+		`{"code_layout":{"a":{"bogus":0,"length":32,"type":"address"}}}`,
+		`{"code_layout":{"a":{"offset":null,"length":32,"type":"address"}}}`,
 		`{"code_layout":{"a":{"offset":0,"length":32,"type":"address"},"b":{"offset":0,"length":32,"type":"address"}}}`,
 		`{"code_layout":{"a":{"offset":0,"length":31,"type":"address"}}}`,
 		`{"code_layout":{"a":{"offset":18446744073709551615,"length":32,"type":"address"}}}`,

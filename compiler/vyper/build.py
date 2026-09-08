@@ -62,7 +62,7 @@ def main():
             path.chmod(0o555 if path.stat().st_mode & 0o111 else 0o444)
             files.append({"path": path.relative_to(destination).as_posix(), "sha256": sha(path)})
     manifest = {
-        "schema": "etherview-vyper-runtime-v1", "python": "3.13.15", "vyper": "0.4.3",
+        "schema": "etherview-vyper-runtime-v2", "python": "3.13.15", "vyper": "0.4.3",
         "pyinstaller": "6.22.2", "compiler_sha256": WHEEL_SHA256,
         "lock_sha256": sha(HERE / "requirements.lock"), "dependencies": dependencies, "files": files, "elf_dependencies": elf,
     }

@@ -7,9 +7,39 @@ import socket
 import subprocess
 import sys
 
-SCHEMA = "etherview-vyper-runtime-v1"
-MAX_INPUT = 5 << 20
-MAX_OUTPUT = 64 << 20
+SCHEMA = "etherview-vyper-runtime-v2"
+
+
+def invocation():
+    args = sys.argv[1:]
+    if args == ["--self-test"]:
+        return args[0], 0, 0
+    if len(args) != 3 or args[0] != "--compile":
+        raise ValueError("invalid compiler invocation")
+    bounds = []
+    for raw in args[1:]:
+        if not raw.isascii() or not raw.isdecimal() or len(raw) > 20:
+            raise ValueError("invalid compiler limit")
+        value = int(raw)
+        if value <= 0 or value >= sys.maxsize or str(value) != raw:
+            raise ValueError("invalid compiler limit")
+        bounds.append(value)
+    return args[0], bounds[0], bounds[1]
+
+
+def read_input(max_input):
+    chunks = []
+    remaining = max_input + 1
+    while remaining:
+        chunk = sys.stdin.buffer.read(min(64 << 10, remaining))
+        if not chunk:
+            break
+        chunks.append(chunk)
+        remaining -= len(chunk)
+    raw = b"".join(chunks)
+    if len(raw) > max_input:
+        raise ValueError("compiler input exceeds limit")
+    return raw
 
 
 def limits():
@@ -114,8 +144,7 @@ def denied(operation):
 
 
 def main():
-    if sys.argv[1:] not in (["--self-test"], ["--compile"]):
-        raise ValueError("invalid compiler invocation")
+    mode, max_input, max_output = invocation()
     if not getattr(sys, "frozen", False) or sys.version_info[:3] != (3, 13, 15):
         raise ValueError("invalid compiler runtime")
     limits()
@@ -131,7 +160,7 @@ def main():
     if manifest["schema"] != SCHEMA:
         raise ValueError("invalid compiler manifest")
     guard(root, manifest)
-    if sys.argv[1] == "--self-test":
+    if mode == "--self-test":
         if sys.platform == "linux":
             try:
                 bytearray(513 << 20)
@@ -149,9 +178,7 @@ def main():
             raise ValueError("compiler access self-test failed")
         print(json.dumps({"schema": SCHEMA, "version": vyper.__version__, "python": "3.13.15", "access_denied": True, "limits": sys.platform == "linux"}))
         return
-    raw = sys.stdin.buffer.read(MAX_INPUT + 1)
-    if len(raw) > MAX_INPUT:
-        raise ValueError("compiler input exceeds limit")
+    raw = read_input(max_input)
     value = json.loads(raw, object_pairs_hook=document)
     validate_input(value)
     output = compile_json(value, exc_handler_to_dict)
@@ -159,7 +186,7 @@ def main():
     if any(error.get("component") == "vyper" for error in output.get("errors", [])):
         raise ValueError("compiler runtime failed")
     encoded = json.dumps(output, default=str).encode()
-    if len(encoded) > MAX_OUTPUT:
+    if len(encoded) > max_output:
         raise ValueError("compiler output exceeds limit")
     sys.stdout.buffer.write(encoded)
 

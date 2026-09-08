@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -59,7 +61,8 @@ func TestVyperManifestIntegrity(t *testing.T) {
 	}
 }
 
-func TestVyperRuntime(t *testing.T) {
+func newVyperTestCompiler(t *testing.T) *VyperCompiler {
+	t.Helper()
 	path := os.Getenv("VYPER_EXECUTOR_TEST_PATH")
 	if path == "" {
 		path, _ = filepath.Abs("../../.local/vyper/runtime/etherview-vyper")
@@ -71,6 +74,11 @@ func TestVyperRuntime(t *testing.T) {
 	if err := compiler.ValidateRuntime(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+	return compiler
+}
+
+func TestVyperRuntime(t *testing.T) {
+	compiler := newVyperTestCompiler(t)
 	input := `{"language":"Vyper","sources":{"A.vy":{"content":"@external\ndef value() -> uint256:\n    return 42\n"}},"settings":{"search_paths":["."],"optimize":"gas","outputSelection":{"A.vy":["abi","metadata","layout","evm.bytecode.object","evm.deployedBytecode.object","evm.methodIdentifiers","userdoc","devdoc"]}}}`
 	first, err := compiler.Compile(context.Background(), LanguageVyper, VyperCompilerVersion, []byte(input))
 	if err != nil {
@@ -129,17 +137,7 @@ func TestVyperUnavailableRuntimeDoesNotRetryCatalog(t *testing.T) {
 }
 
 func TestVyperRuntimeTimeoutCleansProcessAndCanCompileAgain(t *testing.T) {
-	path := os.Getenv("VYPER_EXECUTOR_TEST_PATH")
-	if path == "" {
-		path, _ = filepath.Abs("../../.local/vyper/runtime/etherview-vyper")
-	}
-	if _, err := os.Stat(path); err != nil {
-		t.Skip("built Vyper runtime required; run make compiler-install")
-	}
-	compiler := &VyperCompiler{Path: path, Timeout: 10 * time.Second}
-	if err := compiler.ValidateRuntime(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	compiler := newVyperTestCompiler(t)
 	original, err := os.ReadFile("testdata/compiler/vyper/plain.input.json")
 	if err != nil {
 		t.Fatal(err)
@@ -168,5 +166,80 @@ func TestVyperRuntimeTimeoutCleansProcessAndCanCompileAgain(t *testing.T) {
 	compiler.Timeout = 10 * time.Second
 	if _, err := compiler.Compile(context.Background(), LanguageVyper, VyperCompilerVersion, original); err != nil {
 		t.Fatalf("compile after process cleanup: %v", err)
+	}
+}
+
+func TestVyperRuntimeHonorsConfiguredInputLimit(t *testing.T) {
+	compiler := newVyperTestCompiler(t)
+	compiler.MaxInputBytes = 16 << 20
+	raw, err := json.Marshal(map[string]any{
+		"language": "Vyper",
+		"sources":  map[string]any{"A.vy": map[string]string{"content": "@external\ndef value() -> uint256:\n    return 42\n#" + strings.Repeat("x", (5<<20)+1024)}},
+		"settings": map[string]any{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input, err := PrepareVyperStandardJSON(raw, "A.vy", compiler.MaxInputBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(input) <= defaultCompilerInputBytes {
+		t.Fatal("fixture must exceed the old hardcoded limit")
+	}
+	compiler.MaxInputBytes = len(input)
+	output, err := compiler.Compile(context.Background(), LanguageVyper, VyperCompilerVersion, input)
+	if err != nil {
+		t.Fatalf("compile at configured input boundary: %v", err)
+	}
+	var result struct {
+		Contracts map[string]json.RawMessage `json:"contracts"`
+	}
+	if json.Unmarshal(output, &result) != nil || len(result.Contracts) != 1 {
+		t.Fatal("large valid input did not compile")
+	}
+	compiler.MaxInputBytes--
+	if _, err := compiler.Compile(context.Background(), LanguageVyper, VyperCompilerVersion, input); err == nil {
+		t.Fatal("input beyond configured boundary was accepted")
+	}
+	// A configured ceiling is not an allocation request: this exceeds the
+	// Linux helper's address-space limit but the actual input is tiny.
+	compiler.MaxInputBytes = 1 << 30
+	small, err := os.ReadFile("testdata/compiler/vyper/plain.input.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := compiler.Compile(context.Background(), LanguageVyper, VyperCompilerVersion, small); err != nil {
+		t.Fatalf("small input with a large configured ceiling: %v", err)
+	}
+}
+
+func TestVyperHelperRejectsInvalidLimits(t *testing.T) {
+	compiler := newVyperTestCompiler(t)
+	input, err := os.ReadFile("testdata/compiler/vyper/plain.input.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"--compile"},
+		{"--compile", "0", "1024"},
+		{"--compile", "-1", "1024"},
+		{"--compile", "01", "1024"},
+		{"--compile", "1024", "0"},
+		{"--compile", "18446744073709551615", "1024"},
+		{"--compile", strconv.Itoa(len(input) - 1), strconv.Itoa(defaultCompilerOutputBytes)},
+		{"--compile", strconv.Itoa(len(input)), "1"},
+	} {
+		t.Run(strings.Join(args, "_"), func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			command := exec.CommandContext(ctx, compiler.Path, args...)
+			command.Env = []string{}
+			command.Stdin = strings.NewReader(string(input))
+			output, err := command.CombinedOutput()
+			if err == nil || string(output) != "compiler runtime failed\n" {
+				t.Fatalf("invalid/ exceeded limits: error=%v output=%s", err, output)
+			}
+		})
 	}
 }

@@ -244,22 +244,27 @@ func walkVyperLayout(raw json.RawMessage, prefix string, depth int, runtimeSize 
 		if err != nil {
 			return errCompilerOutputMalformed
 		}
-		if _, leaf := fields["type"]; !leaf {
+		var typeName string
+		if json.Unmarshal(fields["type"], &typeName) != nil {
 			if err := walkVyperLayout(value, id, depth+1, runtimeSize, refs, ranges); err != nil {
 				return err
 			}
 			continue
 		}
 		var item struct {
-			Offset uint64 `json:"offset"`
-			Length uint64 `json:"length"`
-			Type   string `json:"type"`
+			Offset *uint64 `json:"offset"`
+			Length uint64  `json:"length"`
+			Type   string  `json:"type"`
 		}
-		if len(fields) != 3 || json.Unmarshal(value, &item) != nil || item.Type == "" || item.Length == 0 || item.Length%32 != 0 || item.Offset%32 != 0 || item.Offset > maxMatcherBytecodeBytes || item.Length > maxMatcherBytecodeBytes-item.Offset {
+		if len(fields) != 3 || json.Unmarshal(value, &item) != nil || item.Offset == nil || item.Type == "" || item.Length == 0 || item.Length%32 != 0 {
 			return errCompilerOutputMalformed
 		}
-		*ranges = append(*ranges, bytecodeRange{Start: item.Offset, Length: item.Length})
-		refs[id] = []bytecodeRange{{Start: runtimeSize + item.Offset, Length: item.Length}}
+		offset := *item.Offset
+		if offset%32 != 0 || offset > maxMatcherBytecodeBytes || item.Length > maxMatcherBytecodeBytes-offset {
+			return errCompilerOutputMalformed
+		}
+		*ranges = append(*ranges, bytecodeRange{Start: offset, Length: item.Length})
+		refs[id] = []bytecodeRange{{Start: runtimeSize + offset, Length: item.Length}}
 		if len(refs) > 4096 {
 			return errCompilerOutputMalformed
 		}
