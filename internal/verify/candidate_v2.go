@@ -159,6 +159,9 @@ func extractCandidatesV2WithInput(
 	input json.RawMessage,
 	deriveMissingYulRuntime bool,
 ) ([]CandidateArtifact, error) {
+	if language == LanguageVyper {
+		return extractVyperCandidates(originalOutput, modifiedOutput, version)
+	}
 	original, err := compilerContractDocuments(originalOutput)
 	if err != nil {
 		return nil, err

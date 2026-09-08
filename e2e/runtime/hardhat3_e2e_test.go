@@ -141,6 +141,9 @@ type hardhatSlotTamperReport struct {
 
 type hardhatProxySnapshot struct {
 	AddressJobs         int64
+	VyperJobs           int64
+	VyperResults        int64
+	VyperProvenance     bool
 	DerivedJobs         int64
 	YulJobs             int64
 	ProxyJobs           int64
@@ -476,6 +479,7 @@ func runHardhat3Mode(
 	waitHardhatCompilerCatalog(t, ctx, h)
 	apiKey := createHardhatAPIKey(t, ctx, h)
 	submitAndWaitHardhatYul(t, ctx, h, apiKey)
+	verifyVyperProduction(t, ctx, h, apiKey)
 	cacheBefore := inspectHardhatCompilerCache(t, ctx, h)
 
 	h.enterPhase("persistent compiler cache across owner replacement")

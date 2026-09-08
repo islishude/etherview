@@ -597,9 +597,25 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		forwardBlock.Block.Hash().Bytes(), forwardBlock.Block.Transactions()[0].Hash().Bytes(),
 		childAddress, grandchildAddress, grandchildRuntime,
 	)
-	pagedObserver := &derivedObservationRecorder{scanDelay: 2 * time.Millisecond}
+	// Hold matching until a real database heartbeat succeeds. Use the normal
+	// lease budget so runner scheduling and SQL latency cannot consume a tiny
+	// test-only lease; the event handshake still requires renewal to execute.
+	renewed := make(chan struct{})
+	var renewalOnce sync.Once
+	pagedObserver := &derivedObservationRecorder{onObservation: func(observation derivedverify.Observation) {
+		if observation.Kind == "lease" && observation.Result == "renewed" {
+			renewalOnce.Do(func() { close(renewed) })
+		}
+		if observation.Kind == "scan" && observation.Result == "trace" {
+			select {
+			case <-renewed:
+			case <-ctx.Done():
+				t.Fatalf("wait for pagination heartbeat: %v", ctx.Err())
+			}
+		}
+	}}
 	pagedWorker, err := derivedverify.NewWorker(db, repository, derivedverify.Options{
-		WorkerID: "derived-pagination", LeaseDuration: 300 * time.Millisecond,
+		WorkerID: "derived-pagination", LeaseDuration: 30 * time.Second,
 		PollInterval: time.Millisecond, MaxTraces: 100, PublishMatches: true,
 		Observer: pagedObserver,
 	})
@@ -623,7 +639,7 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		compilationID, childAddress,
 	)
 	if pagedObserver.count("lease", "renewed") == 0 {
-		t.Fatal("short-lease pagination completed without exercising the heartbeat")
+		t.Fatal("pagination completed without exercising the heartbeat")
 	}
 
 	// A detach racing the non-match write cannot leave a live attempt after the
@@ -681,14 +697,14 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 }
 
 type derivedObservationRecorder struct {
-	mu           sync.Mutex
-	scanDelay    time.Duration
-	observations []derivedverify.Observation
+	mu            sync.Mutex
+	onObservation func(derivedverify.Observation)
+	observations  []derivedverify.Observation
 }
 
 func (recorder *derivedObservationRecorder) RecordDerivedVerification(observation derivedverify.Observation) {
-	if observation.Kind == "scan" && observation.Result == "trace" && recorder.scanDelay > 0 {
-		time.Sleep(recorder.scanDelay)
+	if recorder.onObservation != nil {
+		recorder.onObservation(observation)
 	}
 	recorder.mu.Lock()
 	defer recorder.mu.Unlock()

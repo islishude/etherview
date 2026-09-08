@@ -52,6 +52,13 @@ replace a required `make test-e2e` pass.
 
 ## Common Gates
 
+The [CI workflow](../.github/workflows/ci.yml) runs on pull requests, pushes to
+`main`, and daily at 00:17 UTC (08:17 Asia/Shanghai). Scheduled runs execute the
+same complete job set on the default branch, including both native architecture
+matrices. Event-specific concurrency groups prevent a push from cancelling the
+daily run. GitHub activates the schedule after the workflow reaches the default
+branch; scheduled start times may be delayed by runner load.
+
 - `make toolchain-check`: require at least Go 1.27.0, Node 24.18.0, and npm
   11.16.0 before generating or validating artifacts. Compatible newer stable
   versions are supported; older, malformed, and prerelease versions fail.
@@ -254,7 +261,8 @@ replace a required `make test-e2e` pass.
   discovered private libraries missing from the final base rootfs, and the
   read-only Geas v0.3.3 helper, but no general Node executable, wrapper source,
   package metadata, `node_modules`, npm, npx, corepack, shell, Go toolchain,
-  native solc, or Vyper payload.
+  native solc, or general Python/Vyper CLI. The separate read-only Vyper helper
+  directory contains its pinned interpreter, dependency closure and manifest.
   It also validates the non-root-owned mode-0750 compiler cache seed directory
   used when Docker initializes the persistent named volume.
 - `make test-schema-e2e`: use Go orchestration to migrate a fresh PostgreSQL 18
@@ -532,3 +540,24 @@ them on any external network.
   through documented Compose profiles.
 - Load and soak evidence records the revision, dataset, hardware, RPC behavior,
   duration, throughput, latency, error rate, and index lag.
+
+## Vyper verification gates
+
+`make compiler-install` builds the ignored local Vyper runtime using Python
+3.13.15 (`PYTHON` selects that exact interpreter) and the hash-locked build
+requirements. `make security-check` audits Python dependencies with the exact
+upstream version-range corrections documented in the compiler README, while
+`make license-check` validates the shipped Python license inventory. `make test-go` and `make test-race` then execute real helper
+compilation, version/provenance rejection and cleanup tests; the pinned compiler
+fixtures exercise metadata, immutable suffixes, modules, interfaces and dispatch.
+The PostgreSQL integration suite verifies durable publication, compiler-family
+claiming, immutable provenance and reorg rejection without creating derived
+compilation units for Vyper.
+
+`make test-hardhat3-e2e` additionally deploys two real Vyper immutable contracts
+and verifies them through native REST and Etherscan `vyper-json`, including ABI
+and source reads. It runs inside both production monolith and split-role
+layouts; the existing native AMD64/ARM64 CI matrix owns architecture evidence.
+A local ARM64 run never substitutes for native AMD64 acceptance. Python helper
+build and permission failures must be fixed, not converted into expected-failure
+gates or bypassed with an unrestricted runtime.

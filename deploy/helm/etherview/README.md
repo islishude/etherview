@@ -304,7 +304,7 @@ the cache nor this egress. Catalog outages do not withdraw API readiness:
 version discovery reports unavailable and Solidity/Yul jobs remain queued;
 Geas work may continue. The family-labeled
 `etherview_verification_compiler_available` metric and bundled alert expose
-`solcjs` and `geas` independently. Application Pods never require a Docker daemon, Docker socket, or
+`solcjs`, `geas`, and `vyper` independently. Application Pods never require a Docker daemon, Docker socket, or
 Kubernetes API access to execute compilers.
 
 ## Network policy

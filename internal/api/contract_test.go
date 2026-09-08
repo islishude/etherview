@@ -266,7 +266,6 @@ func assertVerificationBoundary(t *testing.T, paths, schemas *yaml.Node) {
 		"/verification/jobs", "/verification/jobs/{id}",
 		"/sourcify/contracts/{address}", "/sourcify/imports",
 		"/verification/jobs/{id}/sourcify", "/sourcify/jobs/{verification_id}",
-		"/verifier/vyper/multipart", "/verifier/vyper/standard-json",
 	} {
 		if optionalMappingValue(paths, removed) != nil {
 			t.Fatalf("removed verifier path %q is still public", removed)

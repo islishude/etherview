@@ -127,7 +127,7 @@ func (worker *Worker) Run(ctx context.Context) error {
 }
 
 func (worker *Worker) ProcessOne(ctx context.Context) (bool, error) {
-	return worker.processOneRunnable(ctx, CompilerAvailability{SolcJS: true, Geas: true})
+	return worker.processOneRunnable(ctx, CompilerAvailability{SolcJS: true, Geas: true, Vyper: true})
 }
 
 type runnableVerificationClaimer interface {
@@ -144,14 +144,14 @@ func (worker *Worker) compilerAvailability(ctx context.Context) CompilerAvailabi
 		CompilerAvailable(context.Context) bool
 	}); ok {
 		available := runtime.CompilerAvailable(ctx)
-		return CompilerAvailability{SolcJS: available, Geas: available}
+		return CompilerAvailability{SolcJS: available, Geas: available, Vyper: available}
 	}
 	runtime, ok := worker.compiler.(interface{ Ready() bool })
 	if !ok {
-		return CompilerAvailability{SolcJS: true, Geas: true}
+		return CompilerAvailability{SolcJS: true, Geas: true, Vyper: true}
 	}
 	available := runtime.Ready()
-	return CompilerAvailability{SolcJS: available, Geas: available}
+	return CompilerAvailability{SolcJS: available, Geas: available, Vyper: available}
 }
 
 func (worker *Worker) processOneRunnable(
@@ -161,6 +161,7 @@ func (worker *Worker) processOneRunnable(
 	if observer, ok := worker.options.Observer.(verificationAvailabilityObserver); ok {
 		observer.RecordVerificationCompiler(string(CompilerFamilySolcJS), availability.SolcJS)
 		observer.RecordVerificationCompiler(string(CompilerFamilyGeas), availability.Geas)
+		observer.RecordVerificationCompiler(string(CompilerFamilyVyper), availability.Vyper)
 	}
 	var lease VerificationLease
 	var found bool
@@ -170,7 +171,7 @@ func (worker *Worker) processOneRunnable(
 			ctx, worker.options.WorkerID, worker.options.LeaseDuration, availability,
 		)
 	} else {
-		if !availability.SolcJS && !availability.Geas {
+		if !availability.SolcJS && !availability.Geas && !availability.Vyper {
 			return false, nil
 		}
 		lease, found, err = worker.repository.Claim(
@@ -656,11 +657,15 @@ func verificationSuccessOutcome(
 	var sources map[string]any
 	var settings map[string]any
 	var document struct {
-		Sources  map[string]any `json:"sources"`
-		Settings map[string]any `json:"settings"`
+		Sources    map[string]any `json:"sources"`
+		Interfaces map[string]any `json:"interfaces"`
+		Settings   map[string]any `json:"settings"`
 	}
 	_ = json.Unmarshal(request.StandardJSON, &document)
 	sources, settings = document.Sources, document.Settings
+	if request.Language == LanguageVyper {
+		maps.Copy(sources, document.Interfaces)
+	}
 	libraries := make(map[string]string)
 	constructor := ""
 	if result.Creation != nil {

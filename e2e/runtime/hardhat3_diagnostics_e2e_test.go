@@ -261,7 +261,7 @@ func captureHardhatProxySnapshot(
 		    AND executor_kind = 'node_solcjs_v1'
 		    AND execution_policy = 'trusted_subprocess') = 1,
 		  count(*) FILTER (WHERE kind = 'address' AND status = 'succeeded'
-		    AND compiler_digest IS NOT NULL) = 9
+		    AND compiler_digest IS NOT NULL AND language = 'solidity') = 9
 		FROM verification_jobs`).Scan(
 		&result.AddressJobs, &result.DerivedJobs, &result.YulJobs, &result.ProxyJobs,
 		&result.ExecutorProvenance, &result.YulProvenance,
@@ -399,12 +399,26 @@ func captureHardhatProxySnapshot(
 	); err != nil {
 		t.Fatal(err)
 	}
-	if result.AddressJobs != 9 || result.DerivedJobs != 1 || result.ProxyJobs != 11 ||
-		result.CompilerResults != 11 || result.ProxyResults != 11 ||
+	if err := h.db.QueryRow(ctx, `
+ SELECT count(*) FILTER (WHERE language='vyper' AND kind='address' AND status='succeeded'),
+ count(*) FILTER (WHERE language='vyper' AND kind='address' AND status='succeeded'
+   AND compiler_version='0.4.3' AND compiler_platform='python-wheel'
+   AND catalog_language IS NULL AND catalog_generation_id IS NULL
+   AND encode(compiler_digest,'hex')='3b9671727c888363740dc678e60336759871487d0e4e9fdd973048fa9635c4fd'
+   AND executor_kind='etherview_vyper_v1' AND execution_policy='trusted_subprocess'
+   AND octet_length(executor_digest)=32)=2
+ FROM verification_jobs`).Scan(&result.VyperJobs, &result.VyperProvenance); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.db.QueryRow(ctx, `SELECT count(*) FROM verification_results WHERE language='vyper' AND outcome_kind='verification_success'`).Scan(&result.VyperResults); err != nil {
+		t.Fatal(err)
+	}
+	if result.AddressJobs != 11 || result.DerivedJobs != 1 || result.ProxyJobs != 11 ||
+		result.CompilerResults != 13 || result.ProxyResults != 11 ||
 		result.DerivedResults != 1 || result.DerivedPublications != 1 ||
 		result.DerivedAttempts != 1 ||
 		result.ProxyBindings != 11 || result.CatalogEntries == 0 ||
-		!result.ExecutorProvenance || !result.CompilerProvenance ||
+		!result.ExecutorProvenance || !result.CompilerProvenance || result.VyperJobs != 2 || result.VyperResults != 2 || !result.VyperProvenance ||
 		result.CurrentProxyKind != "eip1967" ||
 		result.DiamondState != "confirmed" || result.DiamondFacets != 3 ||
 		result.DiamondSelectors != 8 || result.DiamondCuts != 1 ||

@@ -83,7 +83,7 @@ func (repository *PostgresRepository) Claim(
 	workerID string,
 	leaseFor time.Duration,
 ) (VerificationLease, bool, error) {
-	return repository.claimRunnable(ctx, workerID, leaseFor, CompilerAvailability{SolcJS: true, Geas: true})
+	return repository.claimRunnable(ctx, workerID, leaseFor, CompilerAvailability{SolcJS: true, Geas: true, Vyper: true})
 }
 
 func (repository *PostgresRepository) ClaimRunnable(
@@ -113,7 +113,7 @@ func (repository *PostgresRepository) claimRunnable(
 		return VerificationLease{}, false, err
 	}
 	job, err := repository.scanV2Job(repository.db.QueryRowContext(ctx, dbgen.VerifyV2ClaimRunnable,
-		workerID, token, microseconds, availability.SolcJS, availability.Geas,
+		workerID, token, microseconds, availability.SolcJS, availability.Geas, availability.Vyper,
 	))
 	if errors.Is(err, sql.ErrNoRows) {
 		return VerificationLease{}, false, nil
@@ -135,12 +135,13 @@ func (repository *PostgresRepository) BindCompiler(
 	if lease.Job.RequestV2 == nil || !provenance.valid() {
 		return errors.New("v2 compiler binding is invalid")
 	}
-	if (provenance.Kind != CompilerSolcJS && provenance.Kind != CompilerGeas) ||
+	if (provenance.Kind != CompilerSolcJS && provenance.Kind != CompilerGeas && provenance.Kind != CompilerVyper) ||
 		provenance.ExecutionPolicy != TrustedSubprocessPolicy ||
 		provenance.ExecutorDigest == [sha256.Size]byte{} {
 		return ErrCompilerProvenanceConflict
 	}
-	if (lease.Job.RequestV2.Language == LanguageGeas) != (provenance.Kind == CompilerGeas) ||
+	if (lease.Job.RequestV2.Language == LanguageVyper) != (provenance.Kind == CompilerVyper) ||
+		(lease.Job.RequestV2.Language == LanguageGeas) != (provenance.Kind == CompilerGeas) ||
 		(provenance.Kind == CompilerSolcJS &&
 			lease.Job.RequestV2.Language != LanguageSolidity &&
 			lease.Job.RequestV2.Language != LanguageYul) {
@@ -519,6 +520,8 @@ func (repository *PostgresRepository) scanV2Job(row rowScanner) (VerificationJob
 			switch executorKind.String {
 			case SolcJSExecutorKind:
 				provenance.Kind = CompilerSolcJS
+			case VyperExecutorKind:
+				provenance.Kind = CompilerVyper
 			case GeasExecutorKind:
 				provenance.Kind = CompilerGeas
 			case "legacy_runner":

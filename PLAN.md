@@ -41,7 +41,10 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 - P00, P10, and P20 are complete; foundation, canonical chain history,
   enrichment, reorg retention, and lease-fenced publication are documented in
   their child-plan evidence.
-- P30 is complete as the single contract-platform and runtime-operations plan.
+- P30-T95–P30-T99 complete pinned Python Vyper verification. PR #56 CI passes
+  all nine checks at `4b10534d01d05a9a26876673c3467b767ad885fa`, including native
+  AMD64/ARM64 monolith/split production E2E. Subsequent local review fixes have
+  separate validation evidence and are not covered by that CI run.
   Its current work items preserve distinct verification, proxy, ABI, Trace,
   EIP-7702, Geas, CWIA, derived-verification, deployment, and runtime evidence in
   [P30 evidence](docs/plans/P30-contract-verification.md#evidence).

@@ -328,18 +328,21 @@ func TestVerificationFormRejectsAmbiguousOrConflictingInput(t *testing.T) {
 	}
 }
 
-func TestVyperVerificationFormIsStablyUnsupported(t *testing.T) {
+func TestVyperVerificationFormPinsVersionAndTarget(t *testing.T) {
 	t.Parallel()
 	values := url.Values{
 		"contractaddress": {testContract},
 		"sourceCode":      {`{"language":"Vyper","sources":{"A.vy":{"content":"@external\ndef value() -> uint256: return 1"}},"settings":{"optimize":"gas"}}`},
 		"codeformat":      {"vyper-json"}, "contractname": {"A.vy:A"},
-		"compilerversion": {"vyper:0.4.0"}, "optimizationUsed": {"1"},
+		"compilerversion": {"vyper:0.4.3"}, "optimizationUsed": {"1"},
 	}
-	_, _, _, err := parseEtherscanVerificationForm(values, 1<<20)
-	if !errors.Is(err, ErrInvalidParameter) ||
-		err.Error() != "invalid parameter: unsupported codeformat" {
-		t.Fatalf("Vyper error=%v", err)
+	form, _, _, err := parseEtherscanVerificationForm(values, 1<<20)
+	if err != nil || form.language != verify.LanguageVyper || form.targetFile != "A.vy" || form.compilerVersion != "0.4.3" {
+		t.Fatalf("form=%+v error=%v", form, err)
+	}
+	values.Set("compilerversion", "vyper:0.4.0")
+	if _, _, _, err = parseEtherscanVerificationForm(values, 1<<20); !errors.Is(err, ErrInvalidParameter) {
+		t.Fatalf("unsupported version: %v", err)
 	}
 }
 

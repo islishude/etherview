@@ -34,6 +34,7 @@ type VerificationService interface {
 }
 
 type etherscanVerificationForm struct {
+	targetFile           string
 	language             verify.Language
 	compilerVersion      string
 	contractIdentifier   string
@@ -356,6 +357,7 @@ func (b *PostgresBackend) submitSourceVerification(ctx context.Context, values u
 		Language:         form.language,
 		CompilerVersion:  form.compilerVersion,
 		StandardJSON:     form.standardJSON,
+		TargetFile:       form.targetFile,
 		ContractNameHint: form.contractIdentifier,
 		Bytecodes: []verify.BytecodePair{{
 			Creation: target.CreationBytecode,
@@ -541,6 +543,11 @@ func parseEtherscanVerificationForm(values url.Values, maximum int) (etherscanVe
 		return etherscanVerificationForm{}, nil, "", invalidParameter("licenseType must be between 1 and 14")
 	}
 
+	if codeFormat == "vyper-json" {
+		form, err := parseVyperVerificationForm(values, sourceCode, contractName, compilerVersion, maximum)
+		form.constructorArguments, form.licenseType = constructorArguments, licenseType
+		return form, addressBytes, address.String(), err
+	}
 	language := verify.LanguageSolidity
 	switch codeFormat {
 	case "solidity-single-file", "solidity-standard-json-input":

@@ -264,6 +264,8 @@ var catalog = []Spec{
 		cursorParameter(), limitParameter("20")),
 	spec("submitAddressVerification", "POST", "/contracts/{address}/verification", false,
 		pathParameter("address", ParameterAddress)),
+	spec("verifyVyperMultipart", "POST", "/verifier/vyper/multipart", false),
+	spec("verifyVyperStandardJson", "POST", "/verifier/vyper/standard-json", false),
 	spec("verifySolidityMultipart", "POST", "/verifier/solidity/multipart", false),
 	spec("verifySolidityStandardJson", "POST", "/verifier/solidity/standard-json", false),
 	spec("batchVerifySolidityMultipart", "POST", "/verifier/solidity/batch/multipart", false),

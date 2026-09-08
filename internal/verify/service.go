@@ -77,20 +77,31 @@ func (service *Service) prepareV2(_ context.Context, request *SubmissionV2) erro
 		return ValidateSourcifyV2Request(request.Kind, request.SourcifyRequest, service.maxInputBytes)
 	case JobProxy:
 		return validateProxyVerificationSubmission(request)
-	case JobAddress, JobSolidityMultipart, JobSolidityStandardJSON,
+	case JobAddress, JobVyperStandardJSON, JobVyperMultipart, JobSolidityMultipart, JobSolidityStandardJSON,
 		JobSolidityBatchMultipart, JobSolidityBatchStandardJSON:
 	default:
 		return errors.New("verification job kind is invalid")
 	}
 	if request.Language != LanguageSolidity && request.Language != LanguageYul &&
-		request.Language != LanguageGeas {
+		request.Language != LanguageGeas && request.Language != LanguageVyper {
 		return errors.New("verification language is invalid")
 	}
 	if !versionPattern.MatchString(normalizeCompilerVersion(request.CompilerVersion)) {
 		return errors.New("compiler version is invalid")
 	}
+	if request.Language == LanguageVyper && request.CompilerVersion != VyperCompilerVersion {
+		return errors.New("invalid Vyper compiler version")
+	}
 	request.CompilerVersion = normalizeCompilerVersion(request.CompilerVersion)
-	if request.Language == LanguageGeas {
+	if request.Language != LanguageVyper && (request.TargetFile != "" || request.VyperMultipart != nil) {
+		return errors.New("unexpected Vyper input")
+	}
+	switch request.Language {
+	case LanguageVyper:
+		if err := prepareVyperSubmission(request, service.maxInputBytes); err != nil {
+			return err
+		}
+	case LanguageGeas:
 		if request.Kind != JobAddress || request.Multipart != nil || len(request.StandardJSON) != 0 ||
 			len(request.StandardJSONVariants) != 0 || request.CompilerVersion != GeasCompilerVersion {
 			return errors.New("geas verification request is invalid")
@@ -98,7 +109,10 @@ func (service *Service) prepareV2(_ context.Context, request *SubmissionV2) erro
 		if err := prepareGeasRequest(request.Geas, &request.ContractNameHint, service.maxInputBytes); err != nil {
 			return err
 		}
-	} else {
+	default:
+		if request.VyperMultipart != nil || request.TargetFile != "" || request.Kind == JobVyperStandardJSON || request.Kind == JobVyperMultipart {
+			return errors.New("unexpected Vyper input")
+		}
 		if request.Geas != nil {
 			return errors.New("solidity verification request contains geas input")
 		}

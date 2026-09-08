@@ -1,61 +1,35 @@
-# Future Vyper verification reference
+# Vyper verification
 
-Status: reference only. Etherview does not currently accept, compile, store, or
-publish Vyper verification data. This document is not a roadmap commitment.
-Reintroduction requires a new ADR, threat model, migration, public contract,
-and deployment design; the removed native-runner implementation must not be
-restored as a shortcut.
+The maintained Vyper boundary is [ADR-0047](../decisions/ADR-0047-pinned-vyper-executor.md).
+Implementation and acceptance evidence belong to
+[P30-T95–P30-T99](../plans/P30-contract-verification.md).
 
-## Input and catalog model to reconsider
+## Fixed compiler and executor
 
-A future design would need bounded multipart and inline-only Standard JSON
-inputs with an exact target filename. Source names, interfaces, search paths,
-settings, and output selection must be normalized by the server and resolved
-only from the submitted in-memory source map. Import callbacks and filesystem
-fallbacks must remain unavailable.
+Only official Vyper 0.4.3 is supported. Its Python wheel is identical across
+architectures; the CPython 3.13.15/PyInstaller 6.22.2 helper, native dependencies
+and complete runtime manifest are built for the host architecture. The API owns
+execution and publication without a remote compiler service, Pyodide, runtime
+package installation or catalog downloads. The deployed executor identity is
+immutable for every leased job, so bound work must drain before an upgrade.
 
-Compiler discovery would need an authenticated, immutable version catalog with
-an explicit artifact format, canonical version identity, generation digest,
-artifact SHA-256, maximum size, and freshness policy. Each job would bind that
-identity and an executor digest under its active lease. No CPU or container
-platform may be inferred from the API host. A proposal without a maintained
-architecture-neutral compiler artifact and an executor compatible with the
-current production-image boundary is incomplete.
+## Inputs and matching
 
-## Output and matching boundaries to reconsider
+Native Standard JSON and multipart submissions require `target_file`. Submitted
+modules and interfaces resolve through JSONInputBundle, never the host source
+filesystem. Optimization uses `none`, `gas`, or `codesize`; stable compiler
+settings and server-selected outputs are bounded. Experimental backends,
+debug, storage-layout overrides, Solidity libraries and optimization runs are
+rejected. Etherscan `vyper-json` maps its contract name to the same exact target.
 
-The previous implementation had to account for incompatible output and
-auxdata shapes across compiler versions:
+The verifier compiles original and whitespace-perturbed sources independently.
+Vyper 0.4.3 creation metadata is a five-field CBOR tuple whose terminal length
+includes its own two bytes. Runtime metadata is absent; runtime equality alone
+therefore remains partial. Immutable data is an exact compiler-declared suffix,
+with contiguous, non-overlapping layout ranges and no undeclared wildcard.
+Constructor arguments retain canonical ABI encoding. Address publication uses
+canonical code observations, exact block identity and the existing transaction
+and lease fences. Factory-derived and batch Vyper verification are excluded.
 
-- Standard JSON metadata could be an object, and layout appeared only in newer
-  versions.
-- Creation auxdata used multiple CBOR tuple shapes and length conventions.
-- Some older runtimes carried version metadata while newer runtimes separated
-  creation metadata from deployed code.
-- Immutable suffixes and `layout.code_layout` declarations had to agree before
-  a deployed runtime could be accepted.
-
-A future matcher must derive all transformations from the exact compiler
-output, reject undeclared wildcards, and independently prove creation and
-runtime matches. Metadata-only classification must strip only a validated
-terminal format selected by the bound compiler version. Immutable ranges,
-constructor data, and layout declarations must be exact, non-overlapping,
-in-bounds, and mutually consistent.
-
-## Minimum reintroduction evidence
-
-A new design needs at least:
-
-- official checksum-pinned fixtures for every supported format boundary;
-- malformed catalog, artifact, Standard JSON, metadata, layout, immutable, and
-  output-amplification regressions;
-- deterministic double compilation and exact-version mismatch tests;
-- executor permission, timeout, cancellation, output-bound, and cleanup tests;
-- migration tests for language constraints and provenance immutability;
-- generated OpenAPI and client checks, Etherscan compatibility behavior, and
-  browser coverage;
-- host-native AMD64 and ARM64 production-image E2E without a fixed deployment
-  platform.
-
-Until all of those decisions and gates exist, `vyper-json` remains a stable
-unsupported code format and no Vyper task is created.
+See [testing](../testing.md) for production topology gates and
+[operations](../operations.md) for runtime upgrades and identity failures.

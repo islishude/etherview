@@ -1407,6 +1407,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/verifier/vyper/multipart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["verifyVyperMultipart"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/verifier/vyper/standard-json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["verifyVyperStandardJson"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1529,15 +1561,28 @@ export interface components {
             };
             /** @enum {string} */
             input_kind: "multipart" | "standard_json" | "geas_sources";
+            /** @description Vyper multipart inline interfaces containing content or an ABI array. */
+            interfaces?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
             language: components["schemas"]["VerifierLanguage"];
             libraries?: {
                 [key: string]: components["schemas"]["Address"];
             };
+            /**
+             * @description Vyper multipart optimization mode; defaults to gas.
+             * @enum {string}
+             */
+            optimization_mode?: "none" | "gas" | "codesize";
             optimization_runs?: number;
             runtime_entrypoint?: string;
             sources?: {
                 [key: string]: string;
             };
+            /** @description Required Vyper target .vy file in the inline source bundle. */
+            target_file?: string;
         };
         AddressWithdrawal: {
             address: components["schemas"]["Address"];
@@ -3258,7 +3303,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** @enum {string} */
-            kind: "address" | "solidity_multipart" | "solidity_standard_json" | "solidity_batch_multipart" | "solidity_batch_standard_json" | "sourcify" | "sourcify_from_etherscan";
+            kind: "address" | "solidity_multipart" | "solidity_standard_json" | "vyper_standard_json" | "vyper_multipart" | "solidity_batch_multipart" | "solidity_batch_standard_json" | "sourcify" | "sourcify_from_etherscan";
             outcome?: components["schemas"]["VerificationOutcome"];
             /** @enum {string} */
             status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
@@ -3381,7 +3426,7 @@ export interface components {
             runtime_bytecode?: string;
         };
         /** @enum {string} */
-        VerifierLanguage: "solidity" | "yul" | "geas";
+        VerifierLanguage: "solidity" | "yul" | "geas" | "vyper";
         VerifierMultipartRequest: {
             bytecodes: components["schemas"]["VerifierBytecodes"];
             compiler_version: string;
@@ -3405,6 +3450,38 @@ export interface components {
                 [key: string]: unknown;
             };
             language?: components["schemas"]["SolcVerifierLanguage"];
+        };
+        VyperMultipartRequest: {
+            bytecodes: components["schemas"]["VerifierBytecodes"];
+            /** @enum {string} */
+            compiler_version: "0.4.3";
+            evm_version?: string;
+            /** @description Vyper multipart inline interfaces containing content or an ABI array. */
+            interfaces?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            /**
+             * @description Vyper multipart optimization mode; defaults to gas.
+             * @enum {string}
+             */
+            optimization_mode?: "none" | "gas" | "codesize";
+            sources: {
+                [key: string]: string;
+            };
+            /** @description Required Vyper target .vy file in the inline source bundle. */
+            target_file: string;
+        };
+        VyperStandardJSONRequest: {
+            bytecodes: components["schemas"]["VerifierBytecodes"];
+            /** @enum {string} */
+            compiler_version: "0.4.3";
+            /** @description Inline Vyper Standard JSON with bounded sources and interfaces. Optimization defaults to gas unless explicitly supplied. */
+            input: {
+                [key: string]: unknown;
+            };
+            target_file: string;
         };
         WalletAddChainConfig: {
             block_explorer_urls?: string[];
@@ -5519,7 +5596,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Versions in the current sufficiently fresh compiler generation. */
+            /** @description Available versions from a sufficiently fresh Solidity catalog or a validated bundled compiler runtime. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5674,6 +5751,40 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["SourcifyFromEtherscanSubmission"];
+            };
+        };
+        responses: {
+            202: components["responses"]["VerificationAccepted"];
+            default: components["responses"]["Error"];
+        };
+    };
+    verifyVyperMultipart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VyperMultipartRequest"];
+            };
+        };
+        responses: {
+            202: components["responses"]["VerificationAccepted"];
+            default: components["responses"]["Error"];
+        };
+    };
+    verifyVyperStandardJson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VyperStandardJSONRequest"];
             };
         };
         responses: {

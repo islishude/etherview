@@ -561,6 +561,36 @@ describe("P50 capability pages", () => {
     expect(screen.queryByRole("heading", { name: "Public verification is unavailable" })).toBeNull();
   });
 
+  it("submits Vyper multipart with its target and native optimization mode", async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path === "/api/v1/config") return configResponse({ verification: true });
+      if (path.includes("/verifier/compilers")) {
+        const language = new URL(path, "http://etherview.test").searchParams.get("language");
+        return Response.json({ data: { language, versions: language === "vyper" ? ["0.4.3"] : ["0.8.30"] }, meta });
+      }
+      if (path === `/api/v1/contracts/${address}/verification` && init?.method === "POST") {
+        return apiError("queued-for-test", 503);
+      }
+      return apiError("not_found", 404);
+    });
+    vi.stubGlobal("fetch", fetcher);
+    renderExplorer("/verify");
+    fireEvent.change(await screen.findByLabelText("Language"), { target: { value: "vyper" } });
+    expect(await screen.findByRole("option", { name: "0.4.3" })).toBeVisible();
+    fireEvent.change(screen.getByLabelText("Input format"), { target: { value: "multipart" } });
+    fireEvent.change(screen.getByLabelText("Address"), { target: { value: address } });
+    fireEvent.change(screen.getByLabelText(/^API key/), { target: { value: "test-secret" } });
+    fireEvent.change(screen.getByLabelText("Optimization mode"), { target: { value: "codesize" } });
+    await userEvent.setup().click(screen.getByRole("button", { name: "Submit verification" }));
+    const submitted = fetcher.mock.calls.find(([input, init]) => String(input) === `/api/v1/contracts/${address}/verification` && init?.method === "POST");
+    expect(submitted).toBeDefined();
+    expect(JSON.parse(String(submitted?.[1]?.body))).toMatchObject({
+      language: "vyper", compiler_version: "0.4.3", input_kind: "multipart", target_file: "A.vy", optimization_mode: "codesize",
+    });
+    expect(String(submitted?.[1]?.body)).not.toContain("optimization_runs");
+  });
+
   it("rejects nested duplicate Standard JSON keys before submission", async () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
       if (String(input) === "/api/v1/config") {

@@ -50,6 +50,14 @@ describe("contract artifact view models", () => {
     });
   });
 
+  it("renders Vyper JSON interfaces as read-only source files", () => {
+    const sources = { "A.vy": { content: "@external" }, "I.json": { abi: [{ type: "function", name: "value" }] } };
+    const result = parseArtifactSources(sources, "A.vy", "vyper");
+    expect(result.invalidEntries).toBe(0);
+    expect(result.files[1]?.content).toContain('"name": "value"');
+    expect(parseArtifactSources(sources, "A.vy", "solidity").invalidEntries).toBe(1);
+  });
+
   it("builds nested directories before files while preserving source paths", () => {
     expect(buildSourceTree([
       { name: "src/z/Last.sol", content: "" },

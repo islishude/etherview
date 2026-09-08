@@ -4,14 +4,13 @@ Status: `done`
 
 This is the canonical plan for contract verification, contract intelligence,
 and the shared runtime/operations platform. Its current work items use the P30
-prefix. P70/P73 release and live-payment blockers remain outside this completed
-plan.
+prefix. P70/P73 release and live-payment blockers remain outside this plan.
 
 ## Outcome
 
 Etherview provides fail-closed contract verification and contract intelligence
 over exact chain, address, runtime, block, and generation identities. It supports
-the maintained Solidity/Yul and pinned Geas verification paths, authenticated
+the maintained Solidity/Yul, pinned Geas and pinned Vyper verification paths, authenticated
 artifact reuse, standard/Safe/Diamond/CWIA proxy evidence, trace-bound ABI and
 failure decoding, EIP-7702 execution identity, factory-derived verification,
 and the PostgreSQL-authoritative monolith/split runtime, deployment, telemetry,
@@ -21,7 +20,7 @@ and disposable accelerator boundaries.
 
 ### Verification and compiler platform
 
-P30-T01–P30-T17 and P30-T63–P30-T90 cover durable verification
+P30-T01–P30-T17, P30-T63–P30-T90 and P30-T95–P30-T99 cover durable verification
 requests, compiler provenance, exact matching, Sourcify consent, Geas,
 authenticated compilation units, CREATE/CREATE2 derivation, canonical
 publication, and generation-safe replay.
@@ -74,6 +73,7 @@ credential-scoped operational boundaries.
 - [ADR-0040](../decisions/ADR-0040-sea-packaged-solcjs-executor.md)
 - [ADR-0042](../decisions/ADR-0042-solady-legacy-cwia-identity.md)
 - [ADR-0043](../decisions/ADR-0043-factory-derived-verification-provenance.md)
+- [ADR-0047](../decisions/ADR-0047-pinned-vyper-executor.md)
 - [Testing](../testing.md)
 
 ## Work Items
@@ -170,10 +170,20 @@ credential-scoped operational boundaries.
 | P30-T88 | done | P30-T87 | Exact-epoch parent/child provenance with additive direct-verification creation provenance and unchanged wire shape | A-to-B-to-A, FQN conflict, direct-child, code-hash, API, Web, and generation checks |
 | P30-T89 | done | P30-T88 | Split derived-adjacent Go/Web presentation modules and enforce lower production/test structural ceilings | Go/Web lint, unit, browser, and source-boundary checks |
 | P30-T90 | done | P30-T89 | Complete release, topology, migration, documentation, and operator evidence without implementation changes | common, PostgreSQL/race, schema/runtime, Hardhat, Foundry, browser, deployment, and diff gates |
+| P30-T95 | done | P30-T90 | Pinned Python Vyper 0.4.3 executor, runtime identity, isolation and resource limits | helper build, real compiler, permission/resource and provenance tests |
+| P30-T96 | done | P30-T95 | Vyper input normalization, matcher, fresh-schema provenance and publication | compiler fixtures, malformed input, PostgreSQL and reorg regressions |
+| P30-T97 | done | P30-T96 | Native API, Etherscan vyper-json and bilingual Web verification | generated contracts, API, Web and browser tests |
+| P30-T98 | done | P30-T95 | Production helper packaging, role parity, deployment and licenses | image, configuration, Compose, Helm and license checks |
+| P30-T99 | done | P30-T96, P30-T97, P30-T98 | Vyper production verification acceptance and maintained documentation | common gates, native AMD64/ARM64 monolith/split verification E2E |
+
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
 ## Acceptance
+
+- [x] P30-T95–P30-T99: Vyper 0.4.3 source verification passes pinned helper,
+      exact matching, native/Etherscan/Web, and native AMD64/ARM64 production
+      acceptance without restoring Pyodide or an independent runner.
 
 - [x] Verification is bound to exact chain, address, runtime code, code hash,
       block identity, request digest, compiler identity, and canonicality.
@@ -206,7 +216,9 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
 ## Current Blockers
 
-None. P70 release, reference-capacity, and P73 live-testnet evidence remain
+None. P30-T99's native AMD64/ARM64 acceptance is recorded below for the exact
+PR #56 commit tested by CI. Subsequent local review corrections retain their
+separate validation boundary. P70 capacity and P73 live-testnet evidence remain
 owned by their current plans.
 
 ## Evidence
@@ -325,3 +337,152 @@ owned by their current plans.
 - P30-T88: completed; verification boundary: A-to-B-to-A, FQN conflict, direct-child, code-hash, API, Web, and generation checks.
 - P30-T89: completed; verification boundary: Go/Web lint, unit, browser, and source-boundary checks.
 - P30-T90: completed; verification boundary: common, PostgreSQL/race, schema/runtime, Hardhat, Foundry, browser, deployment, and diff gates.
+
+### P30-T95 — Pinned Python executor
+
+- Built CPython 3.13.15/PyInstaller 6.22.2/Vyper 0.4.3 from the hash-locked
+  dependency set. macOS ARM64 helper self-test and
+  `VYPER_EXECUTOR_TEST_PATH=/tmp/etherview-vyper-runtime-v3/etherview-vyper
+  go test ./internal/verify -run '^TestVyper' -count=1` pass, including real
+  compilation, determinism, version/provenance rejection and cancellation.
+- The pinned Python 3.13.15 Linux ARM64 builder also builds the helper and
+  passes access-denial self-tests with Linux resource limits enabled. This is
+  builder evidence only; production image closure, resource exhaustion and
+  both native architecture E2E gates remain P30-T98/P30-T99.
+- `make plan-check docs-check` passed.
+
+### P30-T96–P30-T97 — Verification and public surfaces
+
+- Vyper-specific Standard JSON/multipart normalization, original/perturbed
+  compilation, CBOR footer checks and recursive immutable layout are covered
+  by official-compiler fixtures, including imported module immutables.
+- PostgreSQL 18 applies migration 0065 successfully.
+  `go run ./cmd/testintegration -root . -packages ./internal/integration
+  -run 'TestVyperDurable'` passes durable publication, family availability,
+  immutable compiler identity, reorg publication rejection and exclusion from
+  factory-derived compilation units. Existing canonical publication regressions
+  also passed against the new schema.
+- Native, Etherscan, generated contract, config, app and verifier package tests
+  pass. The Web suite passes 369 tests; the new Chromium Vyper submission test
+  passes with exact target and native optimization mode. Go/Web lint,
+  `make generate-check`, `make docs-check`, and `make plan-check` pass.
+- Real production-chain, complete runtime and multi-architecture acceptance
+  remain in P30-T98/P30-T99; these local tests do not substitute for them.
+
+### P30-T98 — Production runtime
+
+- Linux ARM64 production image builds the pinned helper, validates its complete
+  ELF dependency closure against the final distroless root and runs self-test
+  as UID/GID 65532. `make docker-image-check` passes read-only, no-network,
+  no-capability helper execution and excludes general Python/package CLIs.
+- Compose and Helm carry the API-owned Vyper path without a platform override
+  or new service. Configuration, role assembly, startup identity and compiler
+  family metrics are aligned; deployment and license gates pass.
+- `make test-hardhat3-e2e` passes both production monolith and split-role
+  topologies on native Linux ARM64. Each deploys two real immutable contracts,
+  proves native and Etherscan verification, chain execution, source/ABI reads,
+  full creation/partial runtime evidence and exact pinned Vyper provenance.
+  Solidity/Yul, proxy, Safe, Diamond and derived-verification regressions also
+  pass. P30-T99 retains the separate native AMD64 acceptance requirement.
+
+### P30-T99 — Acceptance boundary (2026-09-08)
+
+- Implementation is complete through P30-T98. Final `make check` passes
+  generation, source boundaries, Go unit/race, 370 Web tests, lint, security,
+  licenses and deployment rendering. `make test-integration-race` passes the
+  complete PostgreSQL 18 suite; `make test-e2e` passes all 27 Chromium tests.
+- Final `make test-hardhat3-e2e` passes both native Linux ARM64 production
+  topologies (246.78 seconds), including Vyper native/Etherscan submission,
+  immutable execution, full creation/partial runtime evidence, source/ABI reads
+  and independent compiler-family provenance counts.
+- `make test-foundry-e2e`, `make test-schema-e2e`, and
+  `make test-runtime-e2e` pass, including both Foundry/Geas topologies and
+  monolith/split runtime and local x402 regressions. These are isolated Anvil
+  and PostgreSQL tests, not production-chain or live-payment acceptance.
+- `make docker-image-check` confirms the entire Vyper tree is non-writable,
+  its helper runs with no network/capabilities, and no general Python/package
+  CLI is shipped. Checked ARM64 image ID:
+  `sha256:3562037e10b6119665d0841657e07459ebb80a3735fa8cbb63b8f58f14a1bd06`.
+- Final targeted `go test -race ./internal/verify -run '^TestVyper' -count=1`
+  and `make lint-go` pass after adding active compiler-timeout/process-cleanup
+  coverage. The helper can compile again after a timed-out process is removed.
+  Pinned fixtures additionally cover metadata off, modules and module
+  immutables, built-in/inline/JSON interfaces and non-Solidity target filenames.
+- Python dependency auditing scans the complete locked set. Two incorrectly
+  unbounded advisory records are corrected only for the exact official 0.4.3
+  wheel using the maintainer's patched-version statements; raw audit output
+  remains in the ignored audit cache. The [compiler README](../../compiler/vyper/README.md)
+  records both references and the narrow correction policy.
+- The native AMD64 evidence missing from this local run is now supplied by
+  the PR #56 CI closure recorded below.
+
+### P30-T98 — Builder tag review follow-up
+
+- Removed the Python builder OCI digest pin as requested; Docker now uses
+  `python:3.13.15-slim-trixie`. Updated the compiler README and ADR-0047.
+- Deployment, documentation and plan checks pass, as does `git diff --check`.
+  This image-reference-only change did not rerun production image E2E.
+
+### P30-T95/P30-T96 — Review corrections
+
+- Distinguish layout leaves by a string-valued `type`, allowing an imported
+  module to contain an immutable named `type`. Require explicit non-null
+  offsets, and retain strict length/alignment/overlap checks. The official
+  compiler fixture `module_type` proves compilation and transformation-aware
+  matching for this case.
+- Runtime schema v2 requires server-owned input/output byte limits on compile
+  invocations. Go and Python enforce the same effective configuration. Python
+  reads incrementally, so a large configured ceiling does not preallocate that
+  amount of memory. Update the complete helper runtime and drain bound jobs
+  before this protocol upgrade; old manifests fail startup validation.
+- `go test -race ./internal/verify -run '^TestVyper' -count=1` passes configured
+  limits above 5 MiB, exact-boundary acceptance, oversize rejection, invalid CLI
+  limits, module layout regressions, timeout and cleanup checks.
+- `make check` and the focused PostgreSQL `TestVyperDurablePublicationAndReorgFence`
+  integration test pass. An initial dependency-audit service failure was retained
+  as a failed gate; the unchanged audit and complete check passed on rerun.
+- The newly built Linux ARM64 production image passes `make docker-image-check`.
+  Its helper compiles a 5,244,233-byte input with a 16 MiB limit and a small input
+  with a 1 GiB ceiling under the unchanged 512 MiB address-space limit.
+  `make test-hardhat3-e2e-prebuilt` then passes both native production topologies
+  (237.14 seconds), using that rebuilt and inspected image.
+- Documentation, source and plan checks and `git diff --check` pass. These
+  subsequent local corrections are not included in the PR #56 CI commit below;
+  their native AMD64 CI validation must follow submission of the changes.
+
+### P30-T99 — CI closure (2026-09-08)
+
+- [PR #56 CI run 34178834069](https://github.com/islishude/etherview/actions/runs/34178834069)
+  passes all nine checks for `4b10534d01d05a9a26876673c3467b767ad885fa`.
+  This closes P30-T99 and the P30 release dependency for that tested revision.
+- Native production-image Hardhat 3 verification passes on
+  [AMD64](https://github.com/islishude/etherview/actions/runs/34178834069/job/101913548293)
+  and [ARM64](https://github.com/islishude/etherview/actions/runs/34178834069/job/101913548148),
+  covering monolith/split Vyper submission, compilation, publication and
+  source/ABI reads alongside Solidity/Yul regressions. Both native Foundry
+  jobs pass the Geas regressions.
+- Generation/lint/unit tests, PostgreSQL integration, embedded SPA browser E2E,
+  security/licenses and Container/Compose/Helm checks also pass. This CI evidence
+  does not include the subsequent uncommitted review corrections above and does
+  not close P70 capacity or P73 live-payment acceptance.
+
+### P30-T90 — PostgreSQL CI heartbeat regression (2026-09-08)
+
+- [CI run 34191818745](https://github.com/islishude/etherview/actions/runs/34191818745/job/101951263813)
+  at `ead40648f764794a5f2281b37d21d926c7207cb7` fails only PostgreSQL integration:
+  `TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract` loses its
+  test-only 300 ms scan lease on page five. The other eight CI jobs pass,
+  including both native architectures' production verification suites.
+- Replace per-trace sleeps with a context-bounded observer handshake that holds
+  matching until a successful database heartbeat. Use the normal 30-second
+  scan lease; retain all 500 durable outcomes, six-page completion, zero
+  consecutive failures and observed-renewal assertions. Production renewal,
+  ownership checks and publication SQL are unchanged.
+- The owned PostgreSQL focused regression passes with `-race` (15.014 seconds):
+  `go run ./cmd/testintegration -root . -packages ./internal/integration -run
+  '^TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract$' -race`.
+  `go test -race ./internal/derivedverify -count=1`, `make lint-go`,
+  `make docs-check` and `make plan-check` pass, including heartbeat loss and
+  finalized-lease regression coverage. The complete `make test-integration`
+  rerun passes all six packages against owned PostgreSQL 18. P30-T90 returns to
+  done; this local correction has not been submitted to CI.

@@ -20,6 +20,7 @@ const (
 	LanguageSolidity Language = "solidity"
 	LanguageYul      Language = "yul"
 	LanguageGeas     Language = "geas"
+	LanguageVyper    Language = "vyper"
 )
 
 var versionPattern = regexp.MustCompile(`^[0-9A-Za-z][0-9A-Za-z.+_-]{0,127}$`)

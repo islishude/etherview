@@ -4,12 +4,15 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    # Daily at 08:17 Asia/Shanghai (00:17 UTC).
+    - cron: '17 0 * * *'
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -23,6 +26,9 @@ jobs:
         with:
           go-version: stable
           cache: true
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13.15"
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -49,6 +55,9 @@ jobs:
           go-version: stable
           cache: true
 
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13.15"
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -76,6 +85,9 @@ jobs:
         with:
           go-version: stable
           cache: true
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13.15"
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -187,6 +199,9 @@ jobs:
           go-version: stable
           cache: true
 
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13.15"
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -215,6 +230,9 @@ jobs:
           go-version: stable
           cache: true
 
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13.15"
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc

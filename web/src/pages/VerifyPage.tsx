@@ -47,6 +47,10 @@ export function VerifyPage({ initialAddress = "" }: { initialAddress?: string })
   const [standardJSON, setStandardJSON] = useState('{\n  "language": "Solidity",\n  "sources": {},\n  "settings": {}\n}');
   const [multipartSources, setMultipartSources] = useState('{\n  "Contract.sol": "contract Contract {}"\n}');
   const [geasSources, setGeasSources] = useState('{\n  "main.eas": "push 1"\n}');
+  const [targetFile, setTargetFile] = useState("A.vy");
+  const [optimizationMode, setOptimizationMode] = useState<"none" | "gas" | "codesize">("gas");
+  const [vyperJSON, setVyperJSON] = useState('{\n  "language": "Vyper",\n  "sources": {"A.vy": {"content": "@external\\ndef value() -> uint256:\\n    return 42\\n"}},\n  "settings": {}\n}');
+  const [vyperSources, setVyperSources] = useState('{"A.vy": "@external\\ndef value() -> uint256:\\n    return 42\\n"}');
   const [runtimeEntrypoint, setRuntimeEntrypoint] = useState("main.eas");
   const [creationEntrypoint, setCreationEntrypoint] = useState("");
   const [contractName, setContractName] = useState("");
@@ -74,6 +78,17 @@ export function VerifyPage({ initialAddress = "" }: { initialAddress?: string })
     }
   }, [compilerCatalog.data, compilerVersion]);
 
+  const activeStandardJSON = language === "vyper" ? vyperJSON : standardJSON;
+  const activeMultipartSources = language === "vyper" ? vyperSources : multipartSources;
+  const updateInput = (value: string) => {
+    if (language === "geas") setGeasSources(value);
+    else if (inputKind === "standard_json") {
+      if (language === "vyper") setVyperJSON(value);
+      else setStandardJSON(value);
+    } else if (language === "vyper") setVyperSources(value);
+    else setMultipartSources(value);
+  };
+
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setFormError(undefined);
@@ -84,8 +99,8 @@ export function VerifyPage({ initialAddress = "" }: { initialAddress?: string })
     const rawInput = isGeas
       ? geasSources
       : inputKind === "standard_json"
-        ? standardJSON
-        : multipartSources;
+        ? activeStandardJSON
+        : activeMultipartSources;
     if (new TextEncoder().encode(rawInput).byteLength > MAX_STANDARD_JSON_BYTES) {
       setFormError(t("verification.inputTooLarge"));
       return;
@@ -119,7 +134,8 @@ export function VerifyPage({ initialAddress = "" }: { initialAddress?: string })
       !apiKey ||
       !isAddress(address) ||
       !compilerVersion.trim() ||
-      (isGeas && !runtimeEntrypoint.trim())
+      (isGeas && !runtimeEntrypoint.trim()) ||
+      (language === "vyper" && !targetFile.trim())
     ) {
       setFormError(t("verification.invalidFields"));
       return;
@@ -147,6 +163,10 @@ export function VerifyPage({ initialAddress = "" }: { initialAddress?: string })
       request.input = parsed as Record<string, unknown>;
     } else {
       request.sources = parsed as Record<string, string>;
+    }
+    if (language === "vyper") {
+      request.target_file = targetFile;
+      if (inputKind === "multipart") request.optimization_mode = optimizationMode;
     }
     submission.mutate(request);
   };
@@ -180,6 +200,7 @@ export function VerifyPage({ initialAddress = "" }: { initialAddress?: string })
                   <option value="solidity">{t("verificationLanguage.solidity")}</option>
                   <option value="yul">{t("verificationLanguage.yul")}</option>
                   <option value="geas">{t("verificationLanguage.geas")}</option>
+                  <option value="vyper">{t("verificationLanguage.vyper")}</option>
                 </select>
               </label>
               <label className="field-control" htmlFor="verification-input-kind">
@@ -190,7 +211,7 @@ export function VerifyPage({ initialAddress = "" }: { initialAddress?: string })
                   value={inputKind}
                   onChange={(event) => setInputKind(event.target.value as VerificationSubmission["input_kind"])}
                 >
-                  {language === "geas" ? (
+              {language === "geas" ? (
                     <option value="geas_sources">{t("verification.geasSources")}</option>
                   ) : (
                     <>
@@ -212,6 +233,19 @@ export function VerifyPage({ initialAddress = "" }: { initialAddress?: string })
                 </select>
                 <QueryNotice loading={compilerCatalog.isPending} error={compilerCatalog.error} />
               </label>
+                  {language === "vyper" && (
+                <>
+                  <FormField id="verification-target-file" label={t("verification.targetFile")} value={targetFile} onChange={setTargetFile} />
+                  {inputKind === "multipart" && (
+                    <label className="field-control" htmlFor="verification-optimization-mode">
+                      <span>{t("verification.optimizationMode")}</span>
+                      <select id="verification-optimization-mode" value={optimizationMode} onChange={(event) => setOptimizationMode(event.target.value as "none" | "gas" | "codesize")}>
+                        <option value="gas">gas</option><option value="codesize">codesize</option><option value="none">none</option>
+                      </select>
+                    </label>
+                  )}
+                </>
+              )}
               {language === "geas" ? (
                 <>
                   <FormField
@@ -245,12 +279,8 @@ export function VerifyPage({ initialAddress = "" }: { initialAddress?: string })
                   spellCheck={false}
                   value={language === "geas"
                     ? geasSources
-                    : inputKind === "standard_json" ? standardJSON : multipartSources}
-                  onChange={(event) => language === "geas"
-                    ? setGeasSources(event.target.value)
-                    : inputKind === "standard_json"
-                      ? setStandardJSON(event.target.value)
-                      : setMultipartSources(event.target.value)}
+                    : inputKind === "standard_json" ? activeStandardJSON : activeMultipartSources}
+                  onChange={(event) => updateInput(event.target.value)}
                 />
                 <small>{t("verification.sizeLimit")}</small>
               </label>

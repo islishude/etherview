@@ -228,10 +228,14 @@ func TestBusinessObserverExposesCompilerAvailabilityWithoutBusinessLogSpam(t *te
 	observer := NewBusinessObserver(registry, slog.New(slog.NewJSONHandler(&output, nil)))
 	observer.RecordVerificationCompiler("solcjs", false)
 	observer.RecordVerificationCompiler("geas", true)
+	observer.RecordVerificationCompiler("vyper", true)
 	if metrics := registry.Gather(); !strings.Contains(
 		metrics, `etherview_verification_compiler_available{family="solcjs"} 0`,
 	) {
 		t.Fatalf("unavailable compiler metric is absent:\n%s", metrics)
+	}
+	if !strings.Contains(registry.Gather(), `etherview_verification_compiler_available{family="vyper"} 1`) {
+		t.Fatal("missing Vyper compiler availability")
 	}
 	observer.RecordVerificationCompiler("solcjs", true)
 	if metrics := registry.Gather(); !strings.Contains(
