@@ -465,3 +465,24 @@ owned by their current plans.
   security/licenses and Container/Compose/Helm checks also pass. This CI evidence
   does not include the subsequent uncommitted review corrections above and does
   not close P70 capacity or P73 live-payment acceptance.
+
+### P30-T90 — PostgreSQL CI heartbeat regression (2026-09-08)
+
+- [CI run 34191818745](https://github.com/islishude/etherview/actions/runs/34191818745/job/101951263813)
+  at `ead40648f764794a5f2281b37d21d926c7207cb7` fails only PostgreSQL integration:
+  `TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract` loses its
+  test-only 300 ms scan lease on page five. The other eight CI jobs pass,
+  including both native architectures' production verification suites.
+- Replace per-trace sleeps with a context-bounded observer handshake that holds
+  matching until a successful database heartbeat. Use the normal 30-second
+  scan lease; retain all 500 durable outcomes, six-page completion, zero
+  consecutive failures and observed-renewal assertions. Production renewal,
+  ownership checks and publication SQL are unchanged.
+- The owned PostgreSQL focused regression passes with `-race` (15.014 seconds):
+  `go run ./cmd/testintegration -root . -packages ./internal/integration -run
+  '^TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract$' -race`.
+  `go test -race ./internal/derivedverify -count=1`, `make lint-go`,
+  `make docs-check` and `make plan-check` pass, including heartbeat loss and
+  finalized-lease regression coverage. The complete `make test-integration`
+  rerun passes all six packages against owned PostgreSQL 18. P30-T90 returns to
+  done; this local correction has not been submitted to CI.
