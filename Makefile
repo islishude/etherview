@@ -155,7 +155,7 @@ test-hardhat3-e2e-prebuilt: test-hardhat3-offline-compile
 	}
 	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" NODE="$(NODE)" \
 		ETHERVIEW_HARDHAT3_IMAGE="$(HARDHAT3_IMAGE)" \
-		$(GO) test -count=1 -v -tags='runtimee2e hardhat3e2e' \
+		$(GO) test -count=1 -v -timeout=30m0s -tags='runtimee2e hardhat3e2e' \
 		-run '^TestHardhat3ProductionE2E$$' ./e2e/runtime
 
 foundry-client-image-build:

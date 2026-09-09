@@ -69,6 +69,12 @@ and resource/error-path tests are required, not just successful compilation.
 Cold startup, throughput and RSS may regress; record comparison evidence without
 relaxing current timeouts or substituting emulation for native architecture gates.
 
+The explicitly approved Hardhat test-runner correction sets Go's package timeout
+to the test's pre-existing 30-minute context budget for both topologies together.
+The implicit Go ten-minute default previously truncated the second topology on
+native CI. This exception changes only the outer test runner; compiler deadlines,
+input/output bounds, worker counts and the complete acceptance cases are unchanged.
+
 Code generation uses at most four wazero compilation workers, capped by the
 process Go CPU concurrency. Verification worker count and fresh-process/guest
 isolation remain unchanged; no native-code cache is introduced. The exported

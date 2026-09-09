@@ -628,6 +628,19 @@ owned by their current plans.
 
 ### P30-T106 — candidate packaging and acceptance in progress
 
+- CI run 34299874572 at 56527a21 passes both native compiler-baseline matrices
+  and Foundry gates, but Hardhat reaches Go's implicit ten-minute package
+  timeout during the second topology. The completed monolith takes about 397s
+  on AMD64 and 345s on ARM64. The test already has a 30-minute context and CI a
+  45-minute job budget. The user approved explicitly aligning the Go runner to
+  30 minutes; production compiler deadlines and all acceptance cases remain
+  unchanged. This supersedes the earlier ten-minute aggregate gate requirement
+  for Hardhat only, not the recorded runtime performance cost. Native rerun
+  results remain pending; T106 is not complete.
+  Validation: the Make dry-run command retains the complete test selector/tags
+  and emits `-timeout=30m0s`; `make docs-check plan-check` and `git diff --check`
+  pass. The runner-only change does not require a new production image build.
+
 - The candidate production image contains the dedicated static Go helper and
   source-built CPython WASI bundle; Node SEA and native Python/PyInstaller are
   absent. API/all do not link wazero. Local Linux ARM64 image checks, self-tests
