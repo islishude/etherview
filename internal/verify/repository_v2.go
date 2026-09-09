@@ -135,14 +135,14 @@ func (repository *PostgresRepository) BindCompiler(
 	if lease.Job.RequestV2 == nil || !provenance.valid() {
 		return errors.New("v2 compiler binding is invalid")
 	}
-	if (provenance.Kind != CompilerSolcJS && provenance.Kind != CompilerGeas && provenance.Kind != CompilerVyper) ||
-		provenance.ExecutionPolicy != TrustedSubprocessPolicy ||
+	if (provenance.Kind != CompilerSolcWasm && provenance.Kind != CompilerGeas && provenance.Kind != CompilerVyper) ||
+		((provenance.Kind == CompilerGeas && provenance.ExecutionPolicy != TrustedSubprocessPolicy) || (provenance.Kind != CompilerGeas && provenance.ExecutionPolicy != WasmSubprocessPolicy)) ||
 		provenance.ExecutorDigest == [sha256.Size]byte{} {
 		return ErrCompilerProvenanceConflict
 	}
 	if (lease.Job.RequestV2.Language == LanguageVyper) != (provenance.Kind == CompilerVyper) ||
 		(lease.Job.RequestV2.Language == LanguageGeas) != (provenance.Kind == CompilerGeas) ||
-		(provenance.Kind == CompilerSolcJS &&
+		(provenance.Kind == CompilerSolcWasm &&
 			lease.Job.RequestV2.Language != LanguageSolidity &&
 			lease.Job.RequestV2.Language != LanguageYul) {
 		return ErrCompilerProvenanceConflict
@@ -518,6 +518,12 @@ func (repository *PostgresRepository) scanV2Job(row rowScanner) (VerificationJob
 				copy(provenance.ExecutorDigest[:], executorDigest)
 			}
 			switch executorKind.String {
+			case WasmExecutorKind:
+				if job.RequestV2.Language == LanguageVyper {
+					provenance.Kind = CompilerVyper
+				} else {
+					provenance.Kind = CompilerSolcWasm
+				}
 			case SolcJSExecutorKind:
 				provenance.Kind = CompilerSolcJS
 			case VyperExecutorKind:

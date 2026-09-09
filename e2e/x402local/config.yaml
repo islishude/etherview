@@ -159,7 +159,7 @@ verification:
   derived_max_traces_per_scan: 100
   timeout: 2m
   cache_directory: /var/lib/etherview/compilers/cache
-  executor_path: /opt/etherview/compiler/etherview-compiler
+  wasm_path: /opt/etherview/wasm/etherview-wasm
   geas_path: /opt/etherview/geas/geas
   catalog_urls: {solidity: auto}
   allowed_download_origins: [https://binaries.soliditylang.org]

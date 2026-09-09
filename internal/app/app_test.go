@@ -470,7 +470,7 @@ func TestPublicVerificationServiceHonorsSecuritySwitch(t *testing.T) {
 func TestVerificationCompilerUsesCompleteConfiguration(t *testing.T) {
 	t.Parallel()
 	cfg := config.Default()
-	cfg.Verification.ExecutorPath = "/custom/runtime/etherview-solcjs"
+	cfg.Verification.WasmPath = "/custom/runtime/etherview-solcjs"
 	cfg.Verification.GeasPath = "/custom/bin/etherview-geas-compiler"
 	cfg.Verification.CacheDirectory = "/custom/cache"
 	cfg.Verification.Timeout = 17 * time.Second
@@ -487,8 +487,11 @@ func TestVerificationCompilerUsesCompleteConfiguration(t *testing.T) {
 	if !ok {
 		t.Fatalf("verification compiler type = %T", compiler)
 	}
-	solcJS := router.SolcJS
-	if solcJS.ExecutorPath != cfg.Verification.ExecutorPath ||
+	solcJS, ok := router.SolcJS.(*verify.WasmCompiler)
+	if !ok {
+		t.Fatalf("unexpected Solidity executor %T", router.SolcJS)
+	}
+	if solcJS.Path != cfg.Verification.WasmPath ||
 		solcJS.Timeout != cfg.Verification.Timeout ||
 		solcJS.MaxInputBytes != cfg.Verification.MaxInputBytes ||
 		solcJS.MaxOutputBytes != cfg.Verification.MaxOutputBytes {

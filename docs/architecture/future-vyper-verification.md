@@ -6,12 +6,13 @@ Implementation and acceptance evidence belong to
 
 ## Fixed compiler and executor
 
-Only official Vyper 0.4.3 is supported. Its Python wheel is identical across
-architectures; the CPython 3.13.15/PyInstaller 6.22.2 helper, native dependencies
-and complete runtime manifest are built for the host architecture. The API owns
-execution and publication without a remote compiler service, Pyodide, runtime
-package installation or catalog downloads. The deployed executor identity is
-immutable for every leased job, so bound work must drain before an upgrade.
+Only official Vyper 0.4.3 is supported. Its unchanged wheel runs in source-built
+CPython 3.13.15 WASI through the dedicated wazero 1.12.0 subprocess. The shared
+runtime uses a Go Keccak bridge and pure-Python dependencies, with immutable
+complete-tree provenance. No Pyodide, native Python/PyInstaller, runtime package
+installation or Vyper catalog download participates. See
+[ADR-0048](../decisions/ADR-0048-wazero-compiler-executor.md) for the replacement
+execution contract and drain-before-cutover rule.
 
 ## Inputs and matching
 

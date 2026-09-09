@@ -202,3 +202,28 @@ func diagnosticText(report Report) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+func TestThreeDigitWorkItems(t *testing.T) {
+	t.Parallel()
+	root := copyFixture(t)
+	for _, name := range []string{"docs/plans/P00-foundation.md"} {
+		path := filepath.Join(root, name)
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		updated := strings.ReplaceAll(strings.ReplaceAll(string(raw), "P00-T01", "P00-T100"), "P00-T02", "P00-T101")
+		if err := os.WriteFile(path, []byte(updated), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	report := Check(root)
+	if !report.OK() {
+		t.Fatal(diagnosticText(report))
+	}
+	c := &checker{}
+	got := c.expandRange("fixture", 1, "test", "P00-T99", "P00-T101", true)
+	if strings.Join(got, ",") != "P00-T99,P00-T100,P00-T101" {
+		t.Fatalf("range = %v", got)
+	}
+}

@@ -1,0 +1,80 @@
+{
+  "schema": "etherview-wasm-build-v1",
+  "python": {
+    "version": "3.13.15",
+    "url": "https://codeload.github.com/python/cpython/legacy.tar.gz/refs/tags/v3.13.15",
+    "sha256": "6836a256c65dead972eedf04b186fb46664758228eae586cf84c75ef53cce0d0",
+    "filename": "cpython-3.13.15.tar.gz"
+  },
+  "wasi_sdk": {
+    "version": "24",
+    "archives": {
+      "arm64-macos": {
+        "url": "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-24/wasi-sdk-24.0-arm64-macos.tar.gz",
+        "sha256": "aeae999396d5f5caa5ce419f52e83c35869d5fd21d40af80acba2c80f51b0b3a"
+      },
+      "arm64-linux": {
+        "url": "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-24/wasi-sdk-24.0-arm64-linux.tar.gz",
+        "sha256": "ae6c1417ea161e54bc54c0a168976af57a0c6e53078857886057a71a0d928646"
+      },
+      "x86_64-linux": {
+        "url": "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-24/wasi-sdk-24.0-x86_64-linux.tar.gz",
+        "sha256": "c6c38aab56e5de88adf6c1ebc9c3ae8da72f88ec2b656fb024eda8d4167a0bc5"
+      }
+    }
+  },
+  "source_date_epoch": 1786060800,
+  "packages": {
+    "vyper": {
+      "version": "0.4.3",
+      "filename": "vyper-0.4.3-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/f3/45/ad3c7d78aaa3e50d229968bc39eaf193f9b8eee79b5f16a3bed8f35e1395/vyper-0.4.3-py3-none-any.whl",
+      "sha256": "3b9671727c888363740dc678e60336759871487d0e4e9fdd973048fa9635c4fd"
+    },
+    "asttokens": {
+      "version": "3.0.2",
+      "filename": "asttokens-3.0.2-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/d4/2b/04b8a15f3a1c77bc79ddf5c73875327f34b4fa75982df2b76e45e402d364/asttokens-3.0.2-py3-none-any.whl",
+      "sha256": "9da13157f5b28becde0bd374fc677dcd3c290614264eff096f167c469cd9f933"
+    },
+    "packaging": {
+      "version": "26.3",
+      "filename": "packaging-26.3-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl",
+      "sha256": "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c"
+    },
+    "cbor2": {
+      "version": "5.9.0",
+      "filename": "cbor2-5.9.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/42/ff/b83492b096fbef26e9cb62c1a4bf2d3cef579ea7b33138c6c37c4ae66f67/cbor2-5.9.0-py3-none-any.whl",
+      "sha256": "27695cbd70c90b8de5c4a284642c2836449b14e2c2e07e3ffe0744cb7669a01b"
+    },
+    "immutables": {
+      "version": "0.21",
+      "filename": "immutables-0.21.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/69/41/0ccaa6ef9943c0609ec5aa663a3b3e681c1712c1007147b84590cec706a0/immutables-0.21.tar.gz",
+      "sha256": "b55ffaf0449790242feb4c56ab799ea7af92801a0a43f9e2f4f8af2ab24dfc4a"
+    }
+  },
+  "host_abi": "etherview.keccak256/v1",
+  "bootstrap_python": "3.13.15",
+  "target": "wasm32-wasip1",
+  "go": "1.27.1",
+  "dependency_overrides": {
+    "pycryptodome": "Go golang.org/x/crypto/sha3 Keccak-256 via static CPython extension",
+    "immutables": "upstream pure-Python implementation"
+  },
+  "sdk_licenses": {
+    "emscripten-LICENSE.txt": "620a78084fc7ca97c0b5dea9abf891f3ffcadfdbf305276f099c9c4e12fc1d86",
+    "llvm-LICENSE.txt": "8d85c1057d742e597985c7d4e6320b015a9139385cff4cbae06ffc0ebe89afee",
+    "wasi-libc-LICENSE-APACHE-LLVM.txt": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+    "wasi-libc-LICENSE-APACHE.txt": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+    "wasi-libc-LICENSE-MIT.txt": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+    "wasi-libc-LICENSE.txt": "673f577e363e80e0058bd78214683f045d1d0c63930969a87f01a1d87d7cf1d6",
+    "wasi-libc-cloudlibc-LICENSE.txt": "c8b789cf5a746611e6300a0cc7750dbf92b61912a709d04e639245f7290656d0",
+    "wasi-libc-dlmalloc-NOTICE.txt": "be2ece632862018e424b33d331a1f2d53fc100e6056512412d22d6fc548a5acc",
+    "wasi-libc-emmalloc-LICENSE.txt": "0f834fbea0d8c689e2597c667e5d0d2e0aa7a1bbdb6dbb2b83b9098dd3e93196",
+    "wasi-libc-libc-top-half_musl_COPYRIGHT.txt": "f9bc4423732350eb0b3f7ed7e91d530298476f8fec0c6c427a1c04ade22655af",
+    "wasi-sdk-LICENSE.txt": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5"
+  }
+}

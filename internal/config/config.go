@@ -25,8 +25,8 @@ const (
 	defaultRuntimeBackfillBatchBytes  = 256 << 20
 	defaultRuntimeBackfillBatchRows   = 200_000
 
-	defaultVerificationExecutorPath = "/opt/etherview/solcjs/etherview-solcjs"
-	defaultVerificationGeasPath     = "/usr/local/bin/etherview-geas-compiler"
+	defaultVerificationWasmPath = "/opt/etherview/wasm/etherview-wasm"
+	defaultVerificationGeasPath = "/usr/local/bin/etherview-geas-compiler"
 )
 
 // Config is the complete runtime configuration. A deployment serves exactly
@@ -246,8 +246,7 @@ type VerificationConfig struct {
 	WorkerCount            int               `yaml:"worker_count"`
 	Timeout                time.Duration     `yaml:"timeout"`
 	CacheDirectory         string            `yaml:"cache_directory"`
-	ExecutorPath           string            `yaml:"executor_path"`
-	VyperPath              string            `yaml:"vyper_path"`
+	WasmPath               string            `yaml:"wasm_path"`
 	GeasPath               string            `yaml:"geas_path"`
 	CatalogURLs            map[string]string `yaml:"catalog_urls"`
 	AllowedDownloadOrigins []string          `yaml:"allowed_download_origins"`
@@ -446,9 +445,8 @@ func Default() Config {
 			DerivedMaxTracesPerScan: 100,
 			Timeout:                 2 * time.Minute,
 			CacheDirectory:          "/var/lib/etherview/compilers/cache",
-			ExecutorPath:            defaultVerificationExecutorPath,
+			WasmPath:                defaultVerificationWasmPath,
 			GeasPath:                defaultVerificationGeasPath,
-			VyperPath:               "/opt/etherview/vyper/etherview-vyper",
 			CatalogURLs: map[string]string{
 				"solidity": "auto",
 			},

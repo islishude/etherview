@@ -21,6 +21,8 @@ func applyRoleEnvironment(cfg *Config, lookup func(string) (string, bool), force
 		"VERIFICATION_RUNNER_ENDPOINT",
 		"VERIFICATION_RUNNER_IMAGE",
 		"VERIFICATION_VYPER_CATALOG_URL",
+		"VERIFICATION_EXECUTOR_PATH",
+		"VERIFICATION_VYPER_PATH",
 	} {
 		if _, exists := lookup(envPrefix + removed); exists {
 			return false, fmt.Errorf("%s%s is no longer supported", envPrefix, removed)
@@ -128,9 +130,8 @@ func applySecretEnvironment(cfg *Config, lookup func(string) (string, bool), rea
 
 func applyStringEnvironment(cfg *Config, lookup func(string) (string, bool), readFile func(string) ([]byte, error), apiRole bool) error {
 	setString(lookup, "COMPILER_CACHE_DIRECTORY", &cfg.Verification.CacheDirectory)
-	setString(lookup, "VERIFICATION_EXECUTOR_PATH", &cfg.Verification.ExecutorPath)
+	setString(lookup, "VERIFICATION_WASM_PATH", &cfg.Verification.WasmPath)
 	setString(lookup, "VERIFICATION_GEAS_PATH", &cfg.Verification.GeasPath)
-	setString(lookup, "VERIFICATION_VYPER_PATH", &cfg.Verification.VyperPath)
 	if value, ok := lookup(envPrefix + "VERIFICATION_SOLIDITY_CATALOG_URL"); ok {
 		if value = strings.TrimSpace(value); value != "" {
 			cfg.Verification.CatalogURLs["solidity"] = value

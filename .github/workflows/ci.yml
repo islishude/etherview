@@ -285,3 +285,32 @@ jobs:
           path: ${{ runner.temp }}/etherview-runtime-e2e-*
           if-no-files-found: warn
           retention-days: 7
+
+  wasm-baseline:
+    name: WASM compiler baseline (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: compiler/package-lock.json
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13.15"
+      - name: Verify every pinned Solidity/Yul compiler
+        run: make test-wasm-baseline SOLC_BASELINE_DIR="${RUNNER_TEMP}/solc-baseline"

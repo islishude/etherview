@@ -250,16 +250,16 @@ func captureHardhatProxySnapshot(
 		    AND compiler_platform = 'emscripten-wasm32'
 		    AND catalog_generation_id IS NOT NULL
 		    AND executor_digest IS NOT NULL
-		    AND executor_kind = 'node_solcjs_v1'
-		    AND execution_policy = 'trusted_subprocess') = 9,
+		    AND executor_kind = 'etherview_wazero_v1'
+		    AND execution_policy = 'wasm_subprocess_v1') = 9,
 		  count(*) FILTER (WHERE language = 'yul' AND status = 'succeeded'
 		    AND compiler_version = '0.8.30+commit.73712a01'
 		    AND compiler_platform = 'emscripten-wasm32'
 		    AND catalog_generation_id IS NOT NULL
 		    AND compiler_digest IS NOT NULL
 		    AND executor_digest IS NOT NULL
-		    AND executor_kind = 'node_solcjs_v1'
-		    AND execution_policy = 'trusted_subprocess') = 1,
+		    AND executor_kind = 'etherview_wazero_v1'
+		    AND execution_policy = 'wasm_subprocess_v1') = 1,
 		  count(*) FILTER (WHERE kind = 'address' AND status = 'succeeded'
 		    AND compiler_digest IS NOT NULL AND language = 'solidity') = 9
 		FROM verification_jobs`).Scan(
@@ -405,7 +405,7 @@ func captureHardhatProxySnapshot(
    AND compiler_version='0.4.3' AND compiler_platform='python-wheel'
    AND catalog_language IS NULL AND catalog_generation_id IS NULL
    AND encode(compiler_digest,'hex')='3b9671727c888363740dc678e60336759871487d0e4e9fdd973048fa9635c4fd'
-   AND executor_kind='etherview_vyper_v1' AND execution_policy='trusted_subprocess'
+   AND executor_kind='etherview_wazero_v1' AND execution_policy='wasm_subprocess_v1'
    AND octet_length(executor_digest)=32)=2
  FROM verification_jobs`).Scan(&result.VyperJobs, &result.VyperProvenance); err != nil {
 		t.Fatal(err)

@@ -2,6 +2,10 @@
 
 Status: accepted
 
+[ADR-0048](ADR-0048-wazero-compiler-executor.md) supersedes the executor,
+packaging, runtime-path and identity details at the gated unified WASM cutover.
+Compiler trust, canonicality, lease and publication requirements remain in force.
+
 ## Context
 
 Vyper 0.4.3 publishes an architecture-independent Python wheel. A dedicated

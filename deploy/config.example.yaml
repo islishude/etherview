@@ -226,7 +226,7 @@ verification:
   cache_directory: /var/lib/etherview/compilers/cache
   # These paths may be relocated by a trusted host or custom image. The SEA
   # executor derives its sibling manifest and private lib directory.
-  executor_path: /opt/etherview/solcjs/etherview-solcjs
+  wasm_path: /opt/etherview/wasm/etherview-wasm
   geas_path: /usr/local/bin/etherview-geas-compiler
   catalog_urls:
     # "auto" always selects the official architecture-neutral

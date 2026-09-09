@@ -1,6 +1,6 @@
 # P30 — Contract Platform & Runtime Operations
 
-Status: `done`
+Status: `in_progress`
 
 This is the canonical plan for contract verification, contract intelligence,
 and the shared runtime/operations platform. Its current work items use the P30
@@ -74,6 +74,7 @@ credential-scoped operational boundaries.
 - [ADR-0042](../decisions/ADR-0042-solady-legacy-cwia-identity.md)
 - [ADR-0043](../decisions/ADR-0043-factory-derived-verification-provenance.md)
 - [ADR-0047](../decisions/ADR-0047-pinned-vyper-executor.md)
+- [ADR-0048](../decisions/ADR-0048-wazero-compiler-executor.md)
 - [Testing](../testing.md)
 
 ## Work Items
@@ -175,7 +176,13 @@ credential-scoped operational boundaries.
 | P30-T97 | done | P30-T96 | Native API, Etherscan vyper-json and bilingual Web verification | generated contracts, API, Web and browser tests |
 | P30-T98 | done | P30-T95 | Production helper packaging, role parity, deployment and licenses | image, configuration, Compose, Helm and license checks |
 | P30-T99 | done | P30-T96, P30-T97, P30-T98 | Vyper production verification acceptance and maintained documentation | common gates, native AMD64/ARM64 monolith/split verification E2E |
-
+| P30-T100 | done | P30-T99 | Isolated wazero feasibility probe for official Solidity/Yul and CPython WASI Vyper; no production executor change | real compiler comparisons, dependency diagnostics, and governance gates |
+| P30-T101 | done | P30-T100 | Pin full solc migration baseline and accepted WASM executor decision | catalog digest inventory and governance gates |
+| P30-T102 | done | P30-T101 | Bounded static soljson extraction and complete Solidity/Yul Emscripten adapter | full baseline differential, malformed and resource tests |
+| P30-T103 | done | P30-T101 | Dedicated bounded Go WASM subprocess protocol and runtime manifest | identity, I/O, timeout, cancellation and process cleanup tests |
+| P30-T104 | done | P30-T102, P30-T103 | Source-built CPython WASI with Go Keccak and pinned Vyper bundle | native differential fixtures, host ABI and reproducible build checks |
+| P30-T105 | done | P30-T104 | Atomic provenance/schema/config integration for unified WASM execution | generated API, PostgreSQL preflight and worker regression gates |
+| P30-T106 | in_progress | P30-T104 | Unified production packaging, native architecture acceptance and old runtime removal | all compiler baselines, AMD64/ARM64 production E2E, performance and common gates |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
@@ -486,3 +493,177 @@ owned by their current plans.
   finalized-lease regression coverage. The complete `make test-integration`
   rerun passes all six packages against owned PostgreSQL 18. P30-T90 returns to
   done; this local correction has not been submitted to CI.
+
+### P30-T100 — wazero feasibility
+
+- Isolated diagnostic implementation and reproduction commands are in
+  [compiler/wazero-probe](../../compiler/wazero-probe/README.md), with a separate
+  Go module pinned to wazero v1.12.0. Production execution, provenance, database,
+  API, deployment and existing accepted ADRs remain unchanged.
+- The experiment uses official catalog SHA-256-verified Solidity 0.8.30 and
+  0.8.36 soljson artifacts, their npm equivalents, and the pinned third-party
+  CPython 3.13.15 / WASI SDK 24 archive. Extracted WASM hashes agree between npm
+  and official-catalog artifacts for both Solidity versions. Extraction still
+  uses Node during preparation; actual candidate compilation runs in wazero.
+- Local macOS ARM64 / Go 1.27.1 results are retained in
+  [evidence.json](../../compiler/wazero-probe/evidence.json): 51 diagnostic cases,
+  with 37 complete JSON reference matches, 12 explicit Solidity/Yul error-path
+  mismatches, and two dependency-load diagnostics. All five existing Solidity
+  0.8.30 fixtures match, as do normal Solidity and Yul cases for both compiler
+  versions from npm and the official catalog. A CGO-disabled binary also
+  successfully compiles official Solidity 0.8.30.
+- Unmodified Vyper cannot import PyCryptodome because CPython WASI lacks
+  `_ctypes`. With the explicitly diagnostic pure-Python Keccak replacement,
+  all 22 original/modified Vyper fixture inputs and two invalid/missing-import
+  inputs match native CPython outputs. Vyper sources are unchanged; immutables
+  and cbor2 use their upstream pure-Python fallbacks. The hash implementation
+  passes 56 differential vectors against pinned PyCryptodome. This is not an
+  approved production hash implementation or full dependency compatibility claim.
+- Solidity syntax errors reach unimplemented `___cxa_allocate_exception`;
+  missing imports remain rejected but differ from the official wrapper's error
+  text. The probe's null callback and incomplete Emscripten exception support
+  therefore cannot replace production yet. Supporting more historical versions,
+  exact callback/errors, and Node-free extraction requires separate work.
+- WASI checks reject `/etc/passwd` access and writes to the exposed read-only
+  package tree, and a 600 MiB allocation raises `MemoryError` under a 512 MiB
+  linear-memory cap. An entered infinite Python loop is cancelled with a
+  5-second context deadline (6.712 seconds observed including teardown).
+  No total RSS limit, exhaustive sandbox audit, Linux image/architecture parity,
+  workload benchmark, or production publication acceptance is claimed.
+- Commands completed: `python3 compiler/wazero-probe/prepare.py
+  /tmp/etherview-wazero-probe`; `go build` and `go vet ./...` inside the isolated
+  module; `check.py` and `boundaries.py` with the executable, work directory and
+  repository arguments documented in the README; Node/Python syntax checks;
+  `make docs-check plan-check`; `git diff --check`. The matrix's successful exit
+  asserts the scoped feasibility checks, not the unsupported production paths.
+  The item is complete as an evaluation; no production migration is authorized
+  or implied by its status.
+
+### P30-T101 — WASM migration baseline
+
+- ADR-0048 accepts the approved staged migration and gated unified cutover.
+- `compiler/wasm/solc-baseline.json` pins 105 official build entries, from
+  0.3.6 through 0.8.36, including the catalog prereleases. Snapshot SHA-256:
+  `0ee86d7e0a30f0d90593ff64dfb56d192c514c8e33feebeb54446be55b12e5ad`. Unique versions and complete SHA-256 fields validate.
+- Plancheck now accepts three-digit work-item identifiers with a cross-width
+  range regression. P30-T100 is in the actual work-item table, not an orphan row.
+- `go test ./internal/plancheck` and `make docs-check plan-check` pass.
+  Artifact execution and whole-catalog differential acceptance remain T102.
+
+### P30-T102 — Solidity/Yul implementation progress
+
+- All 105 baseline artifacts are locally SHA-256 verified. Static extraction,
+  external memory/table initialization, original dynCall and WASM indirect-call
+  bridges, three exception layouts, callback denial and legacy JSON translation
+  are implemented without executing JavaScript or rewriting compiler bytes.
+- Full normal, invalid-source and Yul matrices plus targeted reruns of the ten
+  imported-table versions cover 105/105 entries per mode. Existing version
+  mismatch/broken-reference behavior remains rejected. Five real Solidity
+  fixtures and representative missing-import cases pass. Guest loop cancellation
+  and linear-memory limits pass. These are local macOS ARM64 results only.
+- Direct, race-instrumented JIT construction exceeds the diagnostic one-minute
+  context; the race gate is not claimed passing. T103 builds the already-planned
+  subprocess boundary so real compiler acceptance uses the production process
+  shape, with race checks retained on host logic and parent orchestration.
+  T102/T103 can progress from the pinned T101 baseline independently; T104 waits
+  for both. No production timeout increase or runtime cutover is made.
+
+### P30-T102–P30-T103 — compiler core and subprocess contract
+
+- The 105-entry normal, invalid-source and Yul matrices pass with targeted reruns
+  of the ten imported-table builds after their callback/destructor correction.
+  Representative missing imports (including imported tables), all five existing
+  Solidity fixtures, authentication, malformed input, unknown imports, output
+  bounds, guest cancellation and linear-memory checks pass.
+- Real compilers now run through the actual CGO-disabled dedicated subprocess in
+  tests. Small guest/host tests and parent I/O remain race instrumented. This
+  preserves the production process boundary without increasing the one-minute
+  diagnostic or two-minute production timeout. `go test -race
+  ./internal/wasmcompiler ./internal/plancheck -count=1` passes (82.210s / 2.107s).
+- The lightweight compilerbundle package shares the canonical full-tree manifest
+  and bounded runner without linking the VM into API/all. File tampering,
+  unlisted/symlink files, runtime identity changes, secret-free environment,
+  input/output limits, timeout and descendant cleanup tests pass; ordinary and
+  race package runs pass (3.877s / 8.299s).
+- The helper checks its linked wazero version and applies FD/core limits only
+  inside the subprocess. Its self-test executes a guest memory-limit probe.
+  Scoped lint and governance gates pass. Full production manifest assembly,
+  Vyper, database/config wiring and native architecture acceptance remain T104–T106.
+
+### P30-T104 — source-built Vyper WASI runtime
+
+- CPython 3.13.15 is built from checksum-pinned source with WASI SDK 24 and a
+  static `_etherview_keccak` module calling Go's x/crypto Keccak-256. Official
+  Vyper wheel members remain unchanged; pure-Python cbor2/immutables are used.
+  No PyCryptodome, PyInstaller or native Python extension is in the runtime.
+- All 22 compiler fixtures and native-error comparisons pass. 56 randomized
+  native PyCryptodome/C-bridge vectors, a known vector, ABI memory bounds and
+  overlap checks pass. Version mismatch and output limit fail closed.
+- `build.py` reconstructs source/toolchain trees from authenticated archives;
+  only archives are reused. Fixed epoch/hash seed and checked-hash Python
+  bytecode produce identical manifests in two clean local builds. Packaging
+  bytecode reduced observed local fixture invocations from about 6s to 2s;
+  this is not a controlled production performance claim.
+- Source-built runtime self-tests and readonly guest filesystem checks pass;
+  `TestVyperWasmFixtures` passes in 45.668s and error comparisons in 6.537s on
+  macOS ARM64. Native Linux architecture/image acceptance remains T106.
+
+### P30-T105 — persistence and runtime integration
+
+- API/all construct the unified WASM backends; Geas is unchanged. New work binds
+  `solc_wasm_v1` / `etherview_wazero_v1` / `wasm_subprocess_v1`; Vyper retains its
+  wheel identity. Historical terminal identities remain readable and reusable
+  without new old-executor bindings or provenance rewriting.
+- Migration 0066 refuses queued/running old bindings, preserves terminal rows,
+  and admits new bindings only under the existing lease fence. Existing public
+  admission configuration provides the drain workflow. Retired native executor
+  YAML/environment paths fail configuration validation; Compose/Helm are aligned.
+- Focused migration/reclaim/Vyper publication tests pass (4.250s), the complete
+  internal/integration package passes (214.105s), config/app/verify tests pass,
+  and the real parent WASM identity regression passes. `make source-check`,
+  `make docs-check plan-check`, and Compose rendering pass. No OpenAPI or query
+  generation changes are needed because the HTTP shape and SQL query inputs
+  remain unchanged. Production image/native architecture gates remain T106.
+
+
+### P30-T106 — candidate packaging and acceptance in progress
+
+- The candidate production image contains the dedicated static Go helper and
+  source-built CPython WASI bundle; Node SEA and native Python/PyInstaller are
+  absent. API/all do not link wazero. Local Linux ARM64 image checks, self-tests
+  and monolith/split Hardhat E2E pass (439.53s, within the existing ten-minute
+  gate); Foundry/Geas E2E pass (96.10s). The production compile timeout remains
+  two minutes. Native Linux AMD64 acceptance is still outstanding.
+- Static extraction now separates the authenticated base64 payload before
+  parsing the small JavaScript wrapper. Bounded code generation uses at most
+  four wazero workers inside each fresh helper. No compiler pool, native-code
+  cache or verification worker-count change is introduced. This brought the
+  Hardhat gate within its existing limit; it does not establish a speedup over
+  the old runtime.
+- `make check`, `make generate-check`, Compose/deployment checks and image
+  checks pass locally. Source/toolchain expansion now uses temporary owned build
+  trees; only verified archives are cached. Public CPython fixture keys are no
+  longer left in the workspace, and gitleaks passes without an exclusion.
+  Real SMT-query JSON matches the reference, including requested solver input;
+  the focused differential passes normally and under the host race harness.
+- Native AMD64/ARM64 CI jobs are prepared but have not run for this candidate.
+  Retained old development
+  executors and the original T100 prototype are not shipped in the candidate
+  image; their gated cleanup and full production acceptance are not complete.
+  Do not deploy or mark T106 done based on the local evidence alone.
+
+- Final local full-catalog rerun passes 105/105 entries for each of normal,
+  invalid, missing-import and Yul input (207.152s / 197.293s / 196.514s /
+  198.191s). Extraction/host/golden checks pass (20.712s). Commands and scoped
+  results are retained in [core evidence](../../compiler/wasm/core-evidence.json).
+- [Performance samples](../../compiler/wasm/performance-local.json) compare the
+  actual original Node SEA/native Vyper executors with the candidate on the same
+  macOS ARM64 host, inputs and per-input limits. Single-worker median invocation
+  times are Solidity 0.365s → 3.304s and Vyper 0.106s → 0.966s. Median per-child
+  peak RSS is Solidity 274 MiB → 783 MiB and Vyper 37 MiB → 300 MiB. Two-worker
+  batches of six inputs take Solidity 1.133s → 10.826s and Vyper 0.339s → 2.981s;
+  every output remains JSON-equal. These small-input measurements include fresh
+  startup/JIT, show a substantial cost, and are not production capacity results.
+  The 512 MiB guest linear-memory cap does not bound helper RSS. Operators must
+  budget CPU/RSS from measured workload and existing worker counts; no timeout
+  relaxation or automatic fallback is used to hide the overhead.

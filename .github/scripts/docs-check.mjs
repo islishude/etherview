@@ -82,22 +82,17 @@ const nodeVersions = new Set(
 );
 check(nodeVersions.size === 1, "Dockerfile Node builder versions must agree");
 const nodeVersion = [...nodeVersions][0];
-const runtimeCheck = read(".github/scripts/solcjs-runtime-image-check.mjs");
-const runtimeNodeVersion = runtimeCheck.match(/manifest\.node_version, "v([^"]+)"/u)?.[1];
-const wrapperVersion = runtimeCheck.match(/manifest\.wrapper_package, "([^"]+)"/u)?.[1];
 check(nodeVersion !== undefined, "Dockerfile Node builder version is not discoverable");
-check(nodeVersion === runtimeNodeVersion, "Dockerfile and runtime manifest Node versions drift");
-for (const file of [
-  "README.md",
-  "deploy/README.md",
-  "deploy/helm/etherview/README.md",
-  "docs/testing.md",
-]) {
-  contains(file, `Node ${nodeVersion}`);
+const bundleContract = read("internal/compilerbundle/manifest.go");
+const wasmVersion = bundleContract.match(/WazeroVersion\s*=\s*"v([^"]+)"/u)?.[1];
+const pythonVersion = bundleContract.match(/PythonVersion\s*=\s*"([^"]+)"/u)?.[1];
+check(wasmVersion !== undefined && pythonVersion !== undefined, "WASM runtime identity is not discoverable");
+check(dockerfile.includes(`FROM python:${pythonVersion}-slim-trixie AS wasm-builder`), "CPython builder version drift");
+check(dockerfile.includes("/runtime-copy /opt/etherview"), "production must copy the WASM bundle");
+for (const file of ["deploy/README.md", "deploy/helm/etherview/README.md", "docs/testing.md", "docs/architecture/overview.md"]) {
+  contains(file, `wazero ${wasmVersion}`);
+  contains(file, `CPython ${pythonVersion}`);
 }
-forbid("docs/decisions/ADR-0031-api-owned-solc-js-executor.md", "Node 26.5.0 binary");
-contains("docs/architecture/overview.md", `Node ${nodeVersion} SEA`);
-contains("docs/architecture/overview.md", `\`${wrapperVersion}\` wrapper protocol`);
 
 const stageSource = read("internal/stagecontract/stage.go");
 const stages = [...stageSource.matchAll(/Name:\s*"([a-z0-9_-]+)",\s*Version:\s*(\d+)/gu)].map(

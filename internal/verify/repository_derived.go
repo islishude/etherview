@@ -351,7 +351,7 @@ func (repository *PostgresRepository) CompleteDerived(
 		ID: jobID, Kind: JobDerived, RequestV2: &request,
 		RequestDigest: requestDigest, Status: JobSucceeded,
 		Compiler: &CompilerProvenance{
-			Kind: CompilerSolcJS, CatalogGeneration: evidence.CatalogGenerationID,
+			Kind: derivedCompilerKind(evidence.ExecutorKind), CatalogGeneration: evidence.CatalogGenerationID,
 			Platform: evidence.CompilerPlatform, ExecutorKind: evidence.ExecutorKind,
 			ExecutionPolicy: evidence.ExecutionPolicy,
 		},
@@ -498,4 +498,11 @@ func derivedVerificationOutcome(
 func parseDerivedChainID(value string) uint64 {
 	parsed, _ := strconv.ParseUint(value, 10, 64)
 	return parsed
+}
+
+func derivedCompilerKind(executor string) CompilerKind {
+	if executor == WasmExecutorKind {
+		return CompilerSolcWasm
+	}
+	return CompilerSolcJS
 }

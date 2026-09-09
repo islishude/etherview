@@ -23,7 +23,7 @@ type vyperFixtureCompiler struct {
 
 func (*vyperFixtureCompiler) Provenance(verify.Language, string) (verify.CompilerProvenance, error) {
 	digest, _ := hex.DecodeString(verify.VyperCompilerSHA256)
-	p := verify.CompilerProvenance{Kind: verify.CompilerVyper, Platform: verify.CompilerPlatformPythonWheel, ExecutorKind: verify.VyperExecutorKind, ExecutionPolicy: verify.TrustedSubprocessPolicy, ExecutorDigest: sha256.Sum256([]byte("fixture-vyper-runtime"))}
+	p := verify.CompilerProvenance{Kind: verify.CompilerVyper, Platform: verify.CompilerPlatformPythonWheel, ExecutorKind: verify.WasmExecutorKind, ExecutionPolicy: verify.WasmSubprocessPolicy, ExecutorDigest: sha256.Sum256([]byte("fixture-vyper-runtime"))}
 	copy(p.Digest[:], digest)
 	return p, nil
 }

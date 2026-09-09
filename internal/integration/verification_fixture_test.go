@@ -150,8 +150,8 @@ func insertVerifiedContractFixtureWithCompilationArtifacts(
 		SET compiler_platform = 'emscripten-wasm32',
 		    catalog_generation_id = $2,
 		    compiler_digest = $3,
-		    executor_kind = 'node_solcjs_v1',
-		    execution_policy = 'trusted_subprocess',
+		    executor_kind = 'etherview_wazero_v1',
+		    execution_policy = 'wasm_subprocess_v1',
 		    executor_digest = $4
 		WHERE id = $1::uuid`,
 		jobID, generationID, compilerDigest[:], executorDigest[:],

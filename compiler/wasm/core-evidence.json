@@ -1,0 +1,49 @@
+{
+  "normal": {
+    "versions": 105,
+    "passed": 105,
+    "seconds": 207.152,
+    "command": "SOLC_TEST_CASE=normal SOLC_BASELINE_DIR=/absolute/artifacts go test ./internal/wasmcompiler -run TestSolcCatalogDifferential -count=1 -timeout=30m"
+  },
+  "invalid": {
+    "versions": 105,
+    "passed": 105,
+    "seconds": 197.293,
+    "command": "SOLC_TEST_CASE=invalid SOLC_BASELINE_DIR=/absolute/artifacts go test ./internal/wasmcompiler -run TestSolcCatalogDifferential -count=1 -timeout=30m"
+  },
+  "yul": {
+    "versions": 105,
+    "passed": 105,
+    "seconds": 198.191,
+    "command": "SOLC_TEST_CASE=yul SOLC_BASELINE_DIR=/absolute/artifacts go test ./internal/wasmcompiler -run TestSolcCatalogDifferential -count=1 -timeout=30m"
+  },
+  "scope": "Local macOS ARM64 development evidence, not production architecture acceptance",
+  "reference_rejections": "0.3.6 version-string mismatch and old broken compiler errors remain rejected",
+  "vyper": {
+    "version": "0.4.3",
+    "python": "3.13.15",
+    "fixtures": 22,
+    "errors": 2,
+    "hash_vectors": 56,
+    "reproducible_local_bundle": true
+  },
+  "missing": {
+    "versions": 105,
+    "passed": 105,
+    "seconds": 196.514,
+    "command": "SOLC_TEST_CASE=missing SOLC_BASELINE_DIR=/absolute/artifacts go test ./internal/wasmcompiler -run TestSolcCatalogDifferential -count=1 -timeout=30m"
+  },
+  "modern_smt_query_differential": {
+    "passed": true,
+    "seconds": 10.207,
+    "race_harness_seconds": 11.266
+  },
+  "local_linux_arm64": {
+    "image_check": "pass",
+    "hardhat_monolith_split_seconds": 439.53,
+    "foundry_geas_monolith_split_seconds": 96.1
+  },
+  "native_linux_amd64": "not run",
+  "production_cutover": "not complete",
+  "performance": "performance-local.json"
+}

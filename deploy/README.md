@@ -22,7 +22,7 @@ optional adapter; those services are intentionally absent from `depends_on`.
 Public verification is configured in the mounted YAML through
 `features.verification` and `security.public_verification`; it is not a Compose
 profile. The selected `all` or `api` process owns the checksum-verified solc-js
-cache and restricted Node subprocess executor; there is no standalone compiler
+cache and bounded Go/WASM subprocess executor; there is no standalone compiler
 service or image reference.
 Set the commented `ETHERVIEW_NATS_URL`, `ETHERVIEW_REDIS_URL`, and S3 variables
 only when using them. The application remains ready when any accelerator is
@@ -161,13 +161,12 @@ Verification v2 treats user-supplied Solidity/Yul and Geas input as hostile.
 The `api` process
 owns bounded official `emscripten-wasm32` catalog discovery, approved-origin
 and redirect checks, checksum-pinned download, a rebuildable persistent cache,
-and execution. Each compile starts a fresh Node 26.8.1 SEA subprocess with a minimal
-environment, private temporary directory, read-only permissions, bounded
-heap/input/output/time, and process-group cleanup. The subprocess receives no
-network, child-process, worker, addon, WASI, FFI, or inspector permission.
-Node's permission model is defense in depth, not a JavaScript security
-boundary. Every bound job records the exact catalog generation, artifact
-format, compiler SHA-256, and runtime executor digest.
+and execution. Each compile starts a fresh Go subprocess using wazero 1.12.0,
+with a minimal environment, private temporary directory, bounded I/O/time,
+512 MiB guest linear memory and whole-process-group cleanup. Vyper runs in
+source-built CPython 3.13.15 WASI with the fixed Go Keccak bridge. The guest sees
+only read-only runtime bytes and supplied sources; no host filesystem or network
+is exposed. Every bound job retains exact compiler and executor identities.
 
 Geas address verification accepts only the statically linked v0.3.3 helper
 bundled in the image. It uses no catalog or download: startup verifies the
@@ -176,13 +175,13 @@ SHA-256, and self-test. Each requested runtime/optional creation entrypoint is
 assembled twice from an in-memory source filesystem before exact bytecode
 matching.
 
-The trusted runtime locations are explicit under `verification.executor_path`
+The trusted runtime locations are explicit under `verification.wasm_path`
 and `verification.geas_path`, with matching
-`ETHERVIEW_VERIFICATION_EXECUTOR_PATH` and
+`ETHERVIEW_VERIFICATION_WASM_PATH` and
 `ETHERVIEW_VERIFICATION_GEAS_PATH` overrides. Defaults point at the
 runtime bundled in the production image. An alternate absolute clean executor
-path must identify one coherent read-only SEA tree; its sibling
-`runtime-manifest.json` and `lib/` directory are fixed by layout and must pass
+path must identify one coherent read-only WASM bundle; its sibling
+`runtime-manifest.json`, `python.wasm`, `python.zip` and lock file must pass
 the complete identity, file-set, checksum, and self-test validation. Standard
 Compose and Helm deployments do not add a runtime volume; use a trusted host
 installation or custom image when relocating these files. Keep every
@@ -441,11 +440,11 @@ metric staleness, alerts, and repair/reindex response.
 
 The Dockerfile builds the SPA and application/helper Go binaries, and assembles a
 distroless non-root image for BuildKit's target architecture. The production
-stage contains the application binary plus one read-only Node 26.8.1 SEA, its
-canonical runtime manifest and automatically discovered private ELF libraries,
-and the read-only Geas v0.3.3 helper. It contains no general Node executable,
-npm, wrapper source, package metadata, `node_modules`, npx, corepack, shell,
-native solc, Vyper, Go toolchain, or source tree.
+stage contains the application binary, a read-only Go/WASM compiler bundle,
+and the read-only Geas v0.3.3 helper. Frontend/reference builds use Node 26.8.1;
+production includes no Node SEA, native Python/PyInstaller, package manager,
+shell, native solc, Go toolchain or source tree. The compiler bundle includes
+wazero 1.12.0 and CPython 3.13.15 WASI plus its complete manifest and licenses.
 
 `make docker-image-check` enforces that boundary by inspecting the configured
 user, executing the binary as UID/GID 65532 with a read-only filesystem,

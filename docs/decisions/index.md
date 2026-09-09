@@ -24,6 +24,8 @@ merging distinct invariants.
 
 ## Contract verification and intelligence
 
+- [ADR-0048 — Unified wazero Compiler Executor](ADR-0048-wazero-compiler-executor.md)
+
 - [ADR-0047 — Pinned Python Vyper Executor](ADR-0047-pinned-vyper-executor.md)
 
 - [ADR-0009 — Block-Bound ABI Provenance](ADR-0009-block-bound-abi-provenance.md)

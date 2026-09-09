@@ -94,7 +94,7 @@ Execution RPC -> sync/canonicalizer -> PostgreSQL writer -> durable jobs
                     |                         -> runtime status/events -> API replica relays
                     -> expiring pending snapshots
 PostgreSQL reader (optional; otherwise writer) -> projection query API -> embedded React SPA
-API verification workers -> approved solc-js catalogs/artifacts -> restricted Node SEA
+API verification workers -> approved solc-js catalogs/artifacts -> bounded Go/wazero subprocess
 outbox -> optional NATS wake-up
 API -> optional Redis cache/rate limit
 large blobs -> optional S3-compatible storage
@@ -786,15 +786,13 @@ size alone is not sufficient justification to weaken those invariants.
   use the same writer database lock domain. Cache persistence never overrides
   catalog freshness or provenance. See
   [ADR-0037](../decisions/ADR-0037-persistent-solcjs-artifact-cache.md).
-- Vyper 0.4.3 uses a bundled, hash-locked CPython 3.13.15/PyInstaller 6.22.2
-  directory runtime owned by API/all. Its official wheel identifies the
-  compiler and its complete manifest identifies the executor; no live catalog
-  or download participates. Native Standard JSON/multipart and Etherscan
-  `vyper-json` require an exact target file, resolve inline modules/interfaces
-  in memory and compile both source variants in fresh bounded subprocesses.
-  Vyper-specific CBOR and immutable-layout matching retains partial runtime
-  evidence without metadata and the ordinary canonical publication fences.
-  See [ADR-0047](../decisions/ADR-0047-pinned-vyper-executor.md).
+- Vyper 0.4.3 uses source-built CPython 3.13.15 WASI under wazero 1.12.0.
+  Its official wheel remains unchanged; upstream pure-Python dependencies and
+  a static Python-to-Go Keccak bridge replace native extensions. Runtime files
+  are exposed through a read-only in-memory filesystem. Native and Etherscan
+  submissions retain the fixed target, settings, dual compilation and Vyper
+  matching boundaries in [ADR-0047](../decisions/ADR-0047-pinned-vyper-executor.md),
+  with execution superseded by [ADR-0048](../decisions/ADR-0048-wazero-compiler-executor.md).
 - Native address verification also accepts a bounded inline Geas v0.3.3 source
   filesystem with a required runtime entrypoint and optional creation
   entrypoint. Each entrypoint is assembled twice with stack checking in fresh
@@ -803,18 +801,16 @@ size alone is not sufficient justification to weaken those invariants.
   published. The helper's exact Go module checksum and executable digest bind
   once under the job lease without a compiler catalog. See
   [ADR-0039](../decisions/ADR-0039-pinned-geas-verification-executor.md).
-- The production image includes one Node 26.8.1 SEA containing the
-  `solc@0.8.36` wrapper protocol, plus a canonical read-only runtime manifest
-  and any target-rootfs-missing ELF libraries discovered recursively at build
-  time. It contains no general Node executable, npm tree, wrapper source, or
-  bundled default compiler. Startup verifies every manifest path and digest and
-  performs a permission self-test. Each deterministic compilation is a separate subprocess with a
-  minimal environment, private temporary directory, 384 MiB V8 heap,
-  input/output/time bounds, and whole-process-group termination. The subprocess
-  may read only its runtime and selected compiler artifact and receives no
-  network, child-process, worker, addon, WASI, FFI, or inspector permission.
-  The permission model is defense in depth for trusted checksum-pinned solc-js,
-  not a claim that Node isolates malicious JavaScript.
+- The production image includes one dedicated Go `etherview-wasm` subprocess
+  using wazero 1.12.0, source-built CPython 3.13.15 WASI and a canonical complete
+  runtime manifest. Each input uses a fresh process/guest, a minimal environment,
+  bounded input/output/time, 512 MiB guest linear memory, 64 file descriptors,
+  no core dumps, and process-group cleanup. The memory cap is not a total RSS
+  guarantee. No persistent native-code cache or process pool is used.
+  Solidity artifacts are statically extracted without executing JavaScript;
+  neither Node SEA nor native Python/PyInstaller is needed in the image.
+  `verification.wasm_path` selects the complete read-only bundle. Executor
+  identity is `etherview_wazero_v1` with policy `wasm_subprocess_v1`.
 - API readiness is independent of temporary solc catalog availability. When no
   validated catalog generation is available, the version surface reports
   unavailable and Solidity/Yul jobs remain queued rather than being executed

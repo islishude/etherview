@@ -420,9 +420,8 @@ config:
     derived_worker_count: 1
     derived_max_traces_per_scan: 100
     cache_directory: /var/lib/etherview/compilers/cache
-    executor_path: /opt/etherview/solcjs/etherview-solcjs
+    wasm_path: /opt/etherview/wasm/etherview-wasm
     geas_path: /usr/local/bin/etherview-geas-compiler
-    vyper_path: /opt/etherview/vyper/etherview-vyper
     catalog_urls:
       solidity: auto
     allowed_download_origins:

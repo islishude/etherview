@@ -613,17 +613,17 @@
         "verification": {
           "type": "object",
           "required": [
-            "executor_path", "geas_path", "derived_enabled",
+            "wasm_path", "geas_path", "derived_enabled",
             "derived_backfill_enabled", "derived_forward_enabled",
             "derived_worker_count", "derived_max_traces_per_scan"
           ],
           "propertyNames": {
             "not": {
-              "enum": ["node_path", "wrapper_path", "manifest_path"]
+              "enum": ["node_path", "wrapper_path", "manifest_path", "executor_path", "vyper_path"]
             }
           },
           "properties": {
-            "executor_path": {
+            "wasm_path": {
               "type": "string",
               "minLength": 2,
               "maxLength": 4096,

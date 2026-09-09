@@ -397,8 +397,8 @@ func TestVerifierV2LeaseReclaimKeepsPinnedCompilerIdentity(t *testing.T) {
 	if second.Job.RequestV2.CatalogGenerationID != generation ||
 		second.Job.RequestV2.CompilerPlatform != verify.CompilerPlatformEmscriptenWASM32 ||
 		second.Job.RequestV2.CompilerDigest != hex.EncodeToString(compilerDigest[:]) ||
-		second.Job.RequestV2.ExecutorKind != verify.SolcJSExecutorKind ||
-		second.Job.RequestV2.ExecutionPolicy != verify.TrustedSubprocessPolicy ||
+		second.Job.RequestV2.ExecutorKind != verify.WasmExecutorKind ||
+		second.Job.RequestV2.ExecutionPolicy != verify.WasmSubprocessPolicy ||
 		second.Job.RequestV2.ExecutorDigest != hex.EncodeToString(executorDigest[:]) {
 		t.Fatalf("reclaim changed pinned provenance: %#v", second.Job.RequestV2)
 	}
@@ -407,8 +407,8 @@ func TestVerifierV2LeaseReclaimKeepsPinnedCompilerIdentity(t *testing.T) {
 		second.Job.Compiler.Platform != verify.CompilerPlatformEmscriptenWASM32 ||
 		second.Job.Compiler.Digest != compilerDigest ||
 		second.Job.Compiler.ExecutorDigest != executorDigest ||
-		second.Job.Compiler.ExecutorKind != verify.SolcJSExecutorKind ||
-		second.Job.Compiler.ExecutionPolicy != verify.TrustedSubprocessPolicy {
+		second.Job.Compiler.ExecutorKind != verify.WasmExecutorKind ||
+		second.Job.Compiler.ExecutionPolicy != verify.WasmSubprocessPolicy {
 		t.Fatalf("reclaim lost bound compiler: %#v", second.Job.Compiler)
 	}
 	conflicting := provenance
@@ -552,8 +552,8 @@ func TestGeasVerificationBindsWithoutCatalogAndPublishesExactRuntime(t *testing.
 	compilerDigest := sha256.Sum256([]byte("github.com/fjl/geas@v0.3.3"))
 	executorDigest := sha256.Sum256([]byte("etherview-geas-compiler"))
 	wrongFamily := verify.CompilerProvenance{
-		Kind: verify.CompilerSolcJS, Digest: compilerDigest, ExecutorDigest: executorDigest,
-		ExecutorKind: verify.SolcJSExecutorKind, ExecutionPolicy: verify.TrustedSubprocessPolicy,
+		Kind: verify.CompilerSolcWasm, Digest: compilerDigest, ExecutorDigest: executorDigest,
+		ExecutorKind: verify.WasmExecutorKind, ExecutionPolicy: verify.WasmSubprocessPolicy,
 		Platform: verify.CompilerPlatformEmscriptenWASM32, CatalogGeneration: 1,
 	}
 	if err := repository.BindCompiler(ctx, lease, wrongFamily); !errors.Is(err, verify.ErrCompilerProvenanceConflict) {
@@ -1261,11 +1261,11 @@ func solcJSProvenance(
 	executorDigest [sha256.Size]byte,
 ) verify.CompilerProvenance {
 	return verify.CompilerProvenance{
-		Kind:              verify.CompilerSolcJS,
+		Kind:              verify.CompilerSolcWasm,
 		Digest:            compilerDigest,
 		ExecutorDigest:    executorDigest,
-		ExecutorKind:      verify.SolcJSExecutorKind,
-		ExecutionPolicy:   verify.TrustedSubprocessPolicy,
+		ExecutorKind:      verify.WasmExecutorKind,
+		ExecutionPolicy:   verify.WasmSubprocessPolicy,
 		CatalogGeneration: generation,
 		Platform:          verify.CompilerPlatformEmscriptenWASM32,
 		ArtifactURL:       "https://compiler.example/soljson.js",

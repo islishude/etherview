@@ -5,22 +5,25 @@ files remain the authoritative inventory; this notice calls out dependencies
 whose redistribution terms require material beyond Etherview's Apache-2.0
 license.
 
-## Node SEA and solc-js runtime
+## Unified WASM compiler runtime
 
-- Runtime: Node.js 26.8.1 Single Executable Application
-- Bundled protocol dependency: `solc@0.8.36`
-- Build-only bundler: `esbuild@0.28.2`
-- Upstreams: <https://nodejs.org/>, <https://github.com/ethereum/solc-js>, and
-  <https://github.com/evanw/esbuild>
+The dedicated Go subprocess uses wazero 1.12.0 (Apache-2.0), wabin
+(Apache-2.0), LZ4 (BSD-3-Clause), and Go/x/crypto/x/sys (BSD-3-Clause).
+The Emscripten and legacy compiler adapters follow MIT-licensed solc-js glue;
+its license is retained as `solc-js-LICENSE.txt`.
 
-The production image includes the Node SEA license at
-`/licenses/solcjs-runtime/node-LICENSE.txt`, the bundled npm packages' license
-texts, and Debian copyright records for every private ELF library that the
-build discovers outside the final distroless base rootfs. The canonical runtime
-manifest records each transitive SONAME, provider, package version, resolution
-path, and license digest. Base-provided libraries are bound by the final OCI
-image and its license inventory; `esbuild` is used only while constructing the
-SEA and is not copied into production.
+Vyper 0.4.3 (Apache-2.0) runs in source-built CPython 3.13.15 (PSF license)
+compiled with WASI SDK 24. The SDK/target-library copyright and license texts,
+Python distribution licenses and the exact Python dependency licenses are
+included in `/opt/etherview/wasm/licenses` and `/licenses/wasm-runtime`.
+`compiler/wasm/runtime.lock.json` pins source/toolchain/package artifacts.
+Vyper's wheel is unchanged; the declared PyCryptodome dependency is replaced
+by a fixed Python/C adapter calling Go Keccak. PyCryptodome, PyInstaller and
+Node are not shipped as compiler runtimes. Node and native Python remain
+build/reference tools only.
+
+The canonical runtime manifest binds every shipped file and license digest.
+The final OCI image and its inventory bind the base operating-system payload.
 
 ## go-ethereum library
 
@@ -110,14 +113,3 @@ scanner. The automated gate pins the exact module checksum, verifies the
 upstream and checked-in notice hashes, and includes the reviewed text in the
 production image at
 `/licenses/multiformats-go-base36-Apache-2.0-OR-MIT.md`.
-
-## Pinned Vyper executor
-
-The dedicated Vyper runtime bundles official Vyper 0.4.3 (Apache-2.0), CPython
-3.13.15 (Python Software Foundation license) and a PyInstaller 6.22.2 bootloader
-(GPL with its distribution exception). Exact dependencies and artifact hashes
-are maintained in `compiler/vyper/requirements.lock`; Python distribution and
-ELF dependency license texts are copied into `/opt/etherview/vyper/licenses`.
-The complete runtime manifest records the shipped file and dependency identities.
-The application exposes only its dedicated verification protocol, without a
-Python CLI, package installer or runtime compiler download.

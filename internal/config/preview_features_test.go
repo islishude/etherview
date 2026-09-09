@@ -31,7 +31,7 @@ func TestPreviewEnablesPublicVerificationAndNFTMetadata(t *testing.T) {
 		} `yaml:"security"`
 		Verification struct {
 			CacheDirectory string            `yaml:"cache_directory"`
-			ExecutorPath   string            `yaml:"executor_path"`
+			WasmPath       string            `yaml:"wasm_path"`
 			CatalogURLs    map[string]string `yaml:"catalog_urls"`
 		} `yaml:"verification"`
 	}
@@ -42,12 +42,12 @@ func TestPreviewEnablesPublicVerificationAndNFTMetadata(t *testing.T) {
 		t.Fatal("Preview public verification must be enabled")
 	}
 	if preview.Verification.CacheDirectory != "/var/lib/etherview/compilers/cache" ||
-		preview.Verification.ExecutorPath != defaultVerificationExecutorPath ||
+		preview.Verification.WasmPath != defaultVerificationWasmPath ||
 		preview.Verification.CatalogURLs["solidity"] != "auto" {
 		t.Fatalf(
 			"Preview compiler cache=%q executor=%q catalog=%v",
 			preview.Verification.CacheDirectory,
-			preview.Verification.ExecutorPath,
+			preview.Verification.WasmPath,
 			preview.Verification.CatalogURLs,
 		)
 	}

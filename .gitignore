@@ -28,3 +28,8 @@ node_modules
 .codex/
 
 /.local/vyper/
+
+/.local/wasm/
+
+/compiler/wasm/downloads/*
+!/compiler/wasm/downloads/.keep

@@ -6,6 +6,7 @@ set -eu
 docker_command=${DOCKER:-docker}
 image=${IMAGE:-etherview:local}
 temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/etherview-image-check.XXXXXX")
+temporary_directory=$(cd "$temporary_directory" && pwd -P)
 container_name="etherview-image-check-$$"
 container_created=false
 
@@ -45,19 +46,18 @@ fi
     --security-opt no-new-privileges \
     "$image" version >/dev/null
 
-sea_self_test=$("$docker_command" run --rm \
+wasm_self_test=$("$docker_command" run --rm \
     --read-only \
     --cap-drop ALL \
     --security-opt no-new-privileges \
     --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16m,mode=0700 \
     --env HOME=/nonexistent \
     --env TMPDIR=/tmp \
-    --env LD_LIBRARY_PATH=/opt/etherview/solcjs/lib \
-    --entrypoint /opt/etherview/solcjs/etherview-solcjs \
+    --entrypoint /opt/etherview/wasm/etherview-wasm \
     "$image" \
     --self-test)
-if [ "$sea_self_test" != '{"schema":"etherview-solcjs-sea-self-test-v1","sea":true,"node_version":"v26.8.1","wrapper_package":"solc@0.8.36","exec_argv":["--permission","--disable-sigusr1","--no-addons","--no-global-search-paths","--max-old-space-size=384"],"permissions":"restricted","write_denied":true}' ]; then
-    echo "docker-image-check: unexpected solc-js SEA self-test: $sea_self_test" >&2
+if [ "$wasm_self_test" != '{"schema":"etherview-wazero-self-test-v1","wazero":"v1.12.0","memory_pages":8192}' ]; then
+    echo "docker-image-check: unexpected WASM runtime self-test: $wasm_self_test" >&2
     exit 1
 fi
 
@@ -74,8 +74,8 @@ fi
 
 "$docker_command" run --rm --network none --read-only --cap-drop ALL \
     --security-opt no-new-privileges \
-    --entrypoint /opt/etherview/vyper/etherview-vyper \
-    "$image" --self-test >/dev/null
+    --entrypoint /opt/etherview/wasm/etherview-wasm \
+    "$image" --self-test vyper >/dev/null
 
 normalize_architecture() {
     case "$1" in
@@ -102,26 +102,23 @@ fi
 container_created=true
 "$docker_command" export "$container_name" >"$temporary_directory/rootfs.tar"
 tar -tf "$temporary_directory/rootfs.tar" >"$temporary_directory/rootfs.txt"
-tar -xf "$temporary_directory/rootfs.tar" \
+tar -xpf "$temporary_directory/rootfs.tar" \
     -C "$temporary_directory" \
-    opt/etherview/solcjs licenses/solcjs-runtime
-node .github/scripts/solcjs-runtime-image-check.mjs \
-    "$temporary_directory/opt/etherview/solcjs" \
-    "$temporary_directory/rootfs.txt" \
-    "$temporary_directory/licenses/solcjs-runtime"
+    opt/etherview/wasm licenses/wasm-runtime
+go run ./cmd/wasmpack --image-check "$temporary_directory/opt/etherview/wasm/etherview-wasm"
 
 for required_path in \
     LICENSE \
     THIRD_PARTY_NOTICES.md \
     etherview \
     usr/local/bin/etherview-geas-compiler \
-    opt/etherview/solcjs/etherview-solcjs \
-    opt/etherview/solcjs/runtime-manifest.json \
-    opt/etherview/vyper/etherview-vyper \
-    opt/etherview/vyper/runtime-manifest.json \
-    licenses/solcjs-runtime/node-LICENSE.txt \
-    licenses/solcjs-runtime/solc-LICENSE \
-    licenses/solcjs-runtime/esbuild-LICENSE.md \
+    opt/etherview/wasm/etherview-wasm \
+    opt/etherview/wasm/runtime-manifest.json \
+    opt/etherview/wasm/python.wasm \
+    opt/etherview/wasm/python.zip \
+    opt/etherview/wasm/runtime.lock.json \
+    licenses/wasm-runtime/CPython-LICENSE.txt \
+    licenses/wasm-runtime/solc-js-LICENSE.txt \
     licenses/go-ethereum-LGPL-3.0-or-later.txt \
     licenses/go-ethereum-crypto-bn256-BSD-3-Clause.txt \
     licenses/go-ethereum-crypto-keccak-BSD-3-Clause.txt \
@@ -137,9 +134,9 @@ do
     fi
 done
 
-grep -Ev '^opt/etherview/(solcjs|vyper)(/|$)' \
+grep -Ev '^opt/etherview/wasm(/|$)' \
     "$temporary_directory/rootfs.txt" >"$temporary_directory/non-compiler-rootfs.txt"
-forbidden_pattern='(^|/)(node|nodejs|npm|npx|corepack|pnpm|yarn|go|gofmt|solc|solcjs|vyper|vyper-json|docker|podman|containerd|nerdctl|runc)(/|$)|(^|/)node_modules(/|$)|(^|/)(package.json|package-lock.json|yarn.lock|pnpm-lock.yaml)$|(^|/)(sh|bash|ash|dash|zsh|ksh|csh|tcsh|fish|busybox)$'
+forbidden_pattern='(^|/)(node|nodejs|npm|npx|corepack|pnpm|yarn|go|gofmt|solc|solcjs|vyper|vyper-json|etherview-solcjs|etherview-vyper|wasmpython-build|wasmpack|wazero|docker|podman|containerd|nerdctl|runc)(/|$)|(^|/)node_modules(/|$)|(^|/)(package.json|package-lock.json|yarn.lock|pnpm-lock.yaml)$|(^|/)(sh|bash|ash|dash|zsh|ksh|csh|tcsh|fish|busybox)$'
 if grep -E -i "$forbidden_pattern" "$temporary_directory/non-compiler-rootfs.txt" >"$temporary_directory/forbidden.txt"; then
     echo "docker-image-check: forbidden runtime/build/compiler payload found:" >&2
     sed -n '1,40p' "$temporary_directory/forbidden.txt" >&2
@@ -148,9 +145,9 @@ fi
 
 tar --numeric-owner -tvf "$temporary_directory/rootfs.tar" \
     >"$temporary_directory/rootfs-verbose.txt"
-if awk '$NF == "opt/etherview/solcjs/etherview-solcjs" && ($1 ~ /w/ || $1 !~ /x/) { found = 1 } END { exit !found }' \
+if awk '$NF == "opt/etherview/wasm/etherview-wasm" && ($1 ~ /w/ || $1 !~ /x/) { found = 1 } END { exit !found }' \
     "$temporary_directory/rootfs-verbose.txt"; then
-    echo "docker-image-check: bundled SEA is writable or not executable" >&2
+    echo "docker-image-check: bundled WASM helper is writable or not executable" >&2
     exit 1
 fi
 if awk '$NF == "usr/local/bin/etherview-geas-compiler" && ($1 ~ /w/ || $1 !~ /x/) { found = 1 } END { exit !found }' \
@@ -158,21 +155,17 @@ if awk '$NF == "usr/local/bin/etherview-geas-compiler" && ($1 ~ /w/ || $1 !~ /x/
     echo "docker-image-check: bundled Geas helper is writable or not executable" >&2
     exit 1
 fi
-if awk '$1 ~ /^l/ && $NF ~ /^opt\/etherview\/solcjs(\/|$)/ { found = 1 } END { exit !found }' \
+if awk '$1 ~ /^l/ && $NF ~ /^opt\/etherview\/wasm(\/|$)/ { found = 1 } END { exit !found }' \
     "$temporary_directory/rootfs-verbose.txt"; then
     echo "docker-image-check: compiler runtime contains a symbolic link" >&2
     exit 1
 fi
-if awk '$1 ~ /^d/ && $1 ~ /w/ && $NF ~ /^opt\/etherview\/solcjs(\/|$)/ { found = 1 } END { exit !found }' \
+if awk '$1 ~ /^d/ && $1 ~ /w/ && $NF ~ /^opt\/etherview\/wasm(\/|$)/ { found = 1 } END { exit !found }' \
     "$temporary_directory/rootfs-verbose.txt"; then
     echo "docker-image-check: compiler runtime contains a writable directory" >&2
     exit 1
 fi
-if awk '$1 ~ /^-/ && $NF ~ /^opt\/etherview\/solcjs\/lib\// && ($1 ~ /w/ || $1 ~ /x/) { found = 1 } END { exit !found }' \
-    "$temporary_directory/rootfs-verbose.txt"; then
-    echo "docker-image-check: private SEA library is writable or executable" >&2
-    exit 1
-fi
+
 
 for cache_path in var/lib/etherview/compilers var/lib/etherview/compilers/cache
 do
@@ -194,10 +187,10 @@ if grep -Ei '(^|/)(python([0-9]+([.][0-9]+)*)?|pip([0-9]+([.][0-9]+)*)?|uv|vyper
     echo "docker-image-check: general Python/package CLI in production image" >&2
     exit 1
 fi
-if awk '$1 ~ /^[-d]/ && $1 ~ /w/ && $NF ~ /^opt\/etherview\/vyper(\/|$)/ { found = 1 } END { exit !found }' \
+if awk '$1 ~ /^[-d]/ && $1 ~ /w/ && $NF ~ /^opt\/etherview\/wasm(\/|$)/ { found = 1 } END { exit !found }' \
     "$temporary_directory/rootfs-verbose.txt"; then
-    echo "docker-image-check: writable Vyper runtime file" >&2
+    echo "docker-image-check: writable WASM runtime file" >&2
     exit 1
 fi
 
-echo "docker-image-check: PASS (user=$configured_user, architecture=$image_architecture, SEA=Node-v26.8.1, Geas=0.3.3, Vyper=0.4.3, hardened rootfs)"
+echo "docker-image-check: PASS (user=$configured_user, architecture=$image_architecture, wazero=1.12.0, Geas=0.3.3, Vyper=0.4.3, hardened rootfs)"

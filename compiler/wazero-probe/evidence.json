@@ -1,0 +1,396 @@
+{
+  "date": "2026-09-08",
+  "base_revision": "d81d11ae31fd2067a2b3e53595e6de6846961146",
+  "host": "macOS ARM64",
+  "go": "go1.27.1",
+  "wazero": "v1.12.0",
+  "scope": "feasibility only; not production acceptance",
+  "python": {
+    "url": "https://github.com/brettcannon/cpython-wasi-build/releases/download/v3.13.15/python-3.13.15-wasi_sdk-24.zip",
+    "sha256": "67e1c32a85d5e0600c0939f5fd4023ca0127f1a9e81f5499697467bda67af78d"
+  },
+  "solc": [
+    {
+      "version": "0.8.30",
+      "path": "solc-emscripten-wasm32-v0.8.30+commit.73712a01.js",
+      "sha256": "81475c98b6d2094a821fd9d7b6278556d8095ccc23e0b8a1029b1c08a89cd4b2"
+    },
+    {
+      "version": "0.8.36",
+      "path": "solc-emscripten-wasm32-v0.8.36+commit.8a079791.js",
+      "sha256": "704877a592467d7de651ec5377ea6e3c676ae71d31f325401957d41bedfaa0d8"
+    }
+  ],
+  "python_source_manifest_sha256": "99df28ea072038a06b08fe54901113b2a3461368cf881185c7c7c4d1f154a7ce",
+  "wasm_sha256": {
+    "python/python.wasm": "706dcc16b2eeb89628b774de9fb6841896aa11e2d20b1ec40d70e5e968a43157",
+    "official30/solc.wasm": "8ae51b9094a429cf7737feeff4fa59135bcf020d83df0e1b9cf65e2e272b82b4",
+    "official36/solc.wasm": "779ad6375e76efea6d53d92827fe8ef1087dd0c92d7bf94a63519793543dac10"
+  },
+  "boundaries": {
+    "keccak_differential_vectors": 56,
+    "wasi": {
+      "host_file_unavailable": "FileNotFoundError",
+      "write_denied": "OSError",
+      "memory_limit": "MemoryError"
+    },
+    "loop_cancel_seconds": 6.712
+  },
+  "cases": [
+    {
+      "case": "python-unmodified-import",
+      "exit_code": 2,
+      "seconds": 2.937,
+      "stdout_sha256": "a17cdc3a2f48a97fafe8af154e72c33d044a99df47bb3340fbb03d330714b52e"
+    },
+    {
+      "case": "python-fallback-dependencies",
+      "exit_code": 0,
+      "seconds": 1.302,
+      "stdout_sha256": "6b2300eb7d0881e556cb5c9f118a9e1b275472f1621176a37f93c9aef565c08d"
+    },
+    {
+      "case": "vyper-abi_interface.input",
+      "exit_code": 0,
+      "seconds": 3.453,
+      "stdout_sha256": "366ea54496c3bdc6e2c84fd284090c5a07e64a1125ec6e801de62024236ba186",
+      "matches_reference": true
+    },
+    {
+      "case": "vyper-abi_interface.modified",
+      "exit_code": 0,
+      "seconds": 3.306,
+      "stdout_sha256": "4742538b4d9d8bc2e21d7ee87cf5d83e5726a2e2af90689b929470e48b48ee01",
+      "matches_reference": true
+    },
+    {
+      "case": "vyper-builtin.input",
+      "exit_code": 0,
+      "seconds": 3.429,
+      "stdout_sha256": "161fe10a0844eb9ee96413d95cabe6316184663659245da40b5245b62e5311bc",
+      "matches_reference": true
+    },
+    {
+      "case": "vyper-builtin.modified",
+      "exit_code": 0,
+      "seconds": 3.36,
+      "stdout_sha256": "db832d812fbabca036cf5952dcaf8e90337f1bcc90efc813c23378fea4005dee",
+      "matches_reference": true
+    },
+    {
+      "case": "vyper-dispatch.input",
+      "exit_code": 0,
+      "seconds": 3.702,
+      "stdout_sha256": "a72bd9ff8e3979fbc5b8add5fd9e640e0a68da8941e7efe247551b619cb9550b",
+      "matches_reference": true
+    },
+    {
+      "case": "vyper-dispatch.modified",
+      "exit_code": 0,
+      "seconds": 3.772,
+      "stdout_sha256": "e4bec81ffd04ece7b33d09ee1b4bb9d2a9d1919d85117114c41179132d622887",
+      "matches_reference": true
+    },
+    {
+      "case": "vyper-filename.input",
+      "exit_code": 0,
+      "seconds": 3.318,
+      "stdout_sha256": "d1c172d0e9897ed2bca030d70df18101cc0ede09ef8ea2ee98797683e937bc7d",
+      "matches_reference": true
+    },
+    {
+      "case": "vyper-filename.modified",
+      "exit_code": 0,
+      "seconds": 3.295,
+      "stdout_sha256": "c354a6f63f2be56ecdf5a5c1d53d1963dd1c5a18fc9be3dfb96ff9867cfef065",
+      "matches_reference": true
+    },
+    {
+      "case": "vyper-immutable.input",
+      "exit_code": 0,
+      "seconds": 3.316,
+      "stdout_sha256": "48df339e9d987326772b7f9d0676acd4ffbb8b6de242036af6c8c6e7ff782646",
+      "matches_reference": true
+    },
+    {
+      "case": "vyper-immutable.modified",
+      "exit_code": 0,
+      "seconds": 3.291,
+      "stdout_sha256": "00d6d478be419f6ab2fd73156f89eda034d7400a1a8a5b3797ad5b506081ec4c",
+      "matches_reference": true
+    },
+    {
+      "case": "vyper-interface.input",
+      "exit_code": 0,
+      "seconds": 3.322,
+      "stdout_sha256": "f12e2121647a329f502664d23f1844912c70c265353492f76269e7c6bd0f9886",
+      "matches_reference": true
+    },
+    {
+      "case": "vyper-interface.modified",
+      "exit_code": 0,
+      "seconds": 3.693,
+      "stdout_sha256": "e26fb64a2f87eb24d4bb6944db243ce6896320ca101eb12b69d3d61dff2f7d03",
+      "matches_reference": true
+    },
+    {
+      "case": "vyper-module.input",
+      "exit_code": 0,
+      "seconds": 5.13,
+      "stdout_sha256": "52c9b2717a4c9f1618decc25bd67d4b39059f10eed89577d9e19d1c9d8dc7d10",
+      "matches_reference": true
+    },
+    {
+      "case": "vyper-module.modified",
+      "exit_code": 0,
+      "seconds": 5.117,
+      "stdout_sha256": "a779443159f11efbf2eb29d52ea55181f655806034d4553d81b8de813be1bbed",
+      "matches_reference": true
+    },
+    {
+      "case": "vyper-module_immutable.input",
+      "exit_code": 0,
+      "seconds": 5.196,
+      "stdout_sha256": "34cf3b2927c134b13f1f26cb8ef161a2639ef791877e407da4d2f6f2d571bbd0",
+      "matches_reference": true
+    },
+    {
+      "case": "vyper-module_immutable.modified",
+      "exit_code": 0,
+      "seconds": 5.144,
+      "stdout_sha256": "60a6a93837106408c5e9f2d6b36ddc88ac1fa5dc370560c9efb441374b359e81",
+      "matches_reference": true
+    },
+    {
+      "case": "vyper-module_type.input",
+      "exit_code": 0,
+      "seconds": 5.306,
+      "stdout_sha256": "c83891e5069ddc38d9740857998a0b5f14976ed664d44182e273e5f549e0d586",
+      "matches_reference": true
+    },
+    {
+      "case": "vyper-module_type.modified",
+      "exit_code": 0,
+      "seconds": 5.676,
+      "stdout_sha256": "8be1a374cb0087fc499576e19de14762c93a7d5e035fadfe0d313e8f4ca234cd",
+      "matches_reference": true
+    },
+    {
+      "case": "vyper-no_metadata.input",
+      "exit_code": 0,
+      "seconds": 5.644,
+      "stdout_sha256": "6b850deea784399f180021633d4f3091d1ad961689859fcd47170139b5f0115d",
+      "matches_reference": true
+    },
+    {
+      "case": "vyper-no_metadata.modified",
+      "exit_code": 0,
+      "seconds": 5.81,
+      "stdout_sha256": "6b850deea784399f180021633d4f3091d1ad961689859fcd47170139b5f0115d",
+      "matches_reference": true
+    },
+    {
+      "case": "vyper-plain.input",
+      "exit_code": 0,
+      "seconds": 5.522,
+      "stdout_sha256": "5d75eebd1ebc07a8bfed9e3fc70aa15b64ee1e0d6edc45b5887ca59737ce2775",
+      "matches_reference": true
+    },
+    {
+      "case": "vyper-plain.modified",
+      "exit_code": 0,
+      "seconds": 5.213,
+      "stdout_sha256": "50585dbcd30ad2bf49fbd716aca9c6054df62184ac448337166146139aaf5f60",
+      "matches_reference": true
+    },
+    {
+      "case": "vyper-invalid",
+      "exit_code": 0,
+      "seconds": 5.083,
+      "stdout_sha256": "091053e1b50c226e67a176e5d168ded91e170147c5f5e56e5da6b3e94c4137f9",
+      "matches_reference": true
+    },
+    {
+      "case": "vyper-missing-import",
+      "exit_code": 0,
+      "seconds": 5.046,
+      "stdout_sha256": "d35100638c7b1200fa12fdd56a57830414bce4f29344183a140cd725a508bfad",
+      "matches_reference": true
+    },
+    {
+      "case": "solc30-input.linked.bzzr1",
+      "exit_code": 0,
+      "seconds": 1.093,
+      "stdout_sha256": "395b347d02be5d7d1589f3fdc4f4a4458eaac31a89f5628676c65272aeb5e0e1",
+      "matches_reference": true
+    },
+    {
+      "case": "solc30-input.linked.ipfs-comment",
+      "exit_code": 0,
+      "seconds": 1.099,
+      "stdout_sha256": "f068e5508ced5ec0d8673697b0e11d303ac391a6940ac4b085d6f252c10b5459",
+      "matches_reference": true
+    },
+    {
+      "case": "solc30-input.linked.ipfs",
+      "exit_code": 0,
+      "seconds": 1.184,
+      "stdout_sha256": "a282beb0d3a527f92412c1a3a0e1bc4471819ad891fd987943f05deb2039b3f6",
+      "matches_reference": true
+    },
+    {
+      "case": "solc30-input.no-cbor",
+      "exit_code": 0,
+      "seconds": 0.355,
+      "stdout_sha256": "85bcdcfa67e7d8198459b3a60d484ec866cc22f618d9e4db399c4d8e812add04",
+      "matches_reference": true
+    },
+    {
+      "case": "solc30-input.unlinked.ipfs",
+      "exit_code": 0,
+      "seconds": 1.189,
+      "stdout_sha256": "a625f7d77b8955bc5f707e20fd41246441903635f5146cdc88f645f5bfd59075",
+      "matches_reference": true
+    },
+    {
+      "case": "solc30-solidity-basic",
+      "exit_code": 0,
+      "seconds": 0.28,
+      "stdout_sha256": "3ab5cdacfa13de33a3d2dd948cfac114f5273fc7399cef2cc2ad4f30e9f4fbf9",
+      "matches_reference": true
+    },
+    {
+      "case": "solc30-yul",
+      "exit_code": 0,
+      "seconds": 0.299,
+      "stdout_sha256": "064ebd42ced3030fdc2f3b11b313e6d1f62bf082990aa37cf1dc49dcc2abe24b",
+      "matches_reference": true
+    },
+    {
+      "case": "solc30-solidity-invalid",
+      "exit_code": 2,
+      "seconds": 0.237,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "matches_reference": false
+    },
+    {
+      "case": "solc30-solidity-missing-import",
+      "exit_code": 0,
+      "seconds": 0.236,
+      "stdout_sha256": "bbefc964bb48bf08c523370951f2dcc87614f7b6b8ec10f720490581547bffa3",
+      "matches_reference": false
+    },
+    {
+      "case": "solc30-yul-invalid",
+      "exit_code": 2,
+      "seconds": 0.248,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "matches_reference": false
+    },
+    {
+      "case": "solc36-solidity-basic",
+      "exit_code": 0,
+      "seconds": 6.431,
+      "stdout_sha256": "89ba473d6e7403eceb7efb2ed47c915294554b852f5449498762819d4d38795a",
+      "matches_reference": true
+    },
+    {
+      "case": "solc36-yul",
+      "exit_code": 0,
+      "seconds": 0.291,
+      "stdout_sha256": "064ebd42ced3030fdc2f3b11b313e6d1f62bf082990aa37cf1dc49dcc2abe24b",
+      "matches_reference": true
+    },
+    {
+      "case": "solc36-solidity-invalid",
+      "exit_code": 2,
+      "seconds": 0.233,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "matches_reference": false
+    },
+    {
+      "case": "solc36-solidity-missing-import",
+      "exit_code": 0,
+      "seconds": 0.229,
+      "stdout_sha256": "bbefc964bb48bf08c523370951f2dcc87614f7b6b8ec10f720490581547bffa3",
+      "matches_reference": false
+    },
+    {
+      "case": "solc36-yul-invalid",
+      "exit_code": 2,
+      "seconds": 0.24,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "matches_reference": false
+    },
+    {
+      "case": "solcofficial30-solidity-basic",
+      "exit_code": 0,
+      "seconds": 0.281,
+      "stdout_sha256": "3ab5cdacfa13de33a3d2dd948cfac114f5273fc7399cef2cc2ad4f30e9f4fbf9",
+      "matches_reference": true
+    },
+    {
+      "case": "solcofficial30-yul",
+      "exit_code": 0,
+      "seconds": 0.304,
+      "stdout_sha256": "064ebd42ced3030fdc2f3b11b313e6d1f62bf082990aa37cf1dc49dcc2abe24b",
+      "matches_reference": true
+    },
+    {
+      "case": "solcofficial30-solidity-invalid",
+      "exit_code": 2,
+      "seconds": 0.238,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "matches_reference": false
+    },
+    {
+      "case": "solcofficial30-solidity-missing-import",
+      "exit_code": 0,
+      "seconds": 0.236,
+      "stdout_sha256": "bbefc964bb48bf08c523370951f2dcc87614f7b6b8ec10f720490581547bffa3",
+      "matches_reference": false
+    },
+    {
+      "case": "solcofficial30-yul-invalid",
+      "exit_code": 2,
+      "seconds": 0.246,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "matches_reference": false
+    },
+    {
+      "case": "solcofficial36-solidity-basic",
+      "exit_code": 0,
+      "seconds": 0.266,
+      "stdout_sha256": "89ba473d6e7403eceb7efb2ed47c915294554b852f5449498762819d4d38795a",
+      "matches_reference": true
+    },
+    {
+      "case": "solcofficial36-yul",
+      "exit_code": 0,
+      "seconds": 0.285,
+      "stdout_sha256": "064ebd42ced3030fdc2f3b11b313e6d1f62bf082990aa37cf1dc49dcc2abe24b",
+      "matches_reference": true
+    },
+    {
+      "case": "solcofficial36-solidity-invalid",
+      "exit_code": 2,
+      "seconds": 0.229,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "matches_reference": false
+    },
+    {
+      "case": "solcofficial36-solidity-missing-import",
+      "exit_code": 0,
+      "seconds": 0.228,
+      "stdout_sha256": "bbefc964bb48bf08c523370951f2dcc87614f7b6b8ec10f720490581547bffa3",
+      "matches_reference": false
+    },
+    {
+      "case": "solcofficial36-yul-invalid",
+      "exit_code": 2,
+      "seconds": 0.238,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "matches_reference": false
+    }
+  ]
+}

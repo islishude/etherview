@@ -1,0 +1,206 @@
+{
+  "scope": "macOS ARM64, one worker, sequential fresh processes, 120-second timeout, 5 MiB input / 64 MiB output limits; no native-code cache",
+  "cases": {
+    "solidity_sea": {
+      "samples": [
+        {
+          "seconds": 0.493,
+          "peak_rss_bytes": 291340288
+        },
+        {
+          "seconds": 0.362,
+          "peak_rss_bytes": 287457280
+        },
+        {
+          "seconds": 0.365,
+          "peak_rss_bytes": 286507008
+        }
+      ],
+      "input_sha256": "e8f044e80fe56a58878e6b4f2ed66b6a4a297c571dc7173136057e9bc3b1635a"
+    },
+    "solidity_wazero": {
+      "samples": [
+        {
+          "seconds": 3.253,
+          "peak_rss_bytes": 821100544
+        },
+        {
+          "seconds": 3.304,
+          "peak_rss_bytes": 824557568
+        },
+        {
+          "seconds": 3.34,
+          "peak_rss_bytes": 817397760
+        }
+      ],
+      "input_sha256": "e8f044e80fe56a58878e6b4f2ed66b6a4a297c571dc7173136057e9bc3b1635a"
+    },
+    "vyper_native": {
+      "samples": [
+        {
+          "seconds": 0.108,
+          "peak_rss_bytes": 38764544
+        },
+        {
+          "seconds": 0.106,
+          "peak_rss_bytes": 38420480
+        },
+        {
+          "seconds": 0.106,
+          "peak_rss_bytes": 38453248
+        }
+      ],
+      "input_sha256": "2a63debf955d824dd0ffbecc286bea5f256f7f552bde6daf6c6017129eae008d"
+    },
+    "vyper_wazero": {
+      "samples": [
+        {
+          "seconds": 0.966,
+          "peak_rss_bytes": 314343424
+        },
+        {
+          "seconds": 0.966,
+          "peak_rss_bytes": 316604416
+        },
+        {
+          "seconds": 0.966,
+          "peak_rss_bytes": 312868864
+        }
+      ],
+      "input_sha256": "2a63debf955d824dd0ffbecc286bea5f256f7f552bde6daf6c6017129eae008d"
+    }
+  },
+  "host": {
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "logical_cpus": 16,
+    "cpu": "Apple M3 Max",
+    "memory_bytes": 51539607552
+  },
+  "outputs_equal": true,
+  "concurrency": {
+    "solidity_sea": {
+      "workers": 2,
+      "inputs": 6,
+      "batch_seconds": 1.133,
+      "samples": [
+        {
+          "seconds": 0.38,
+          "peak_rss_bytes": 290455552
+        },
+        {
+          "seconds": 0.375,
+          "peak_rss_bytes": 287424512
+        },
+        {
+          "seconds": 0.375,
+          "peak_rss_bytes": 289964032
+        },
+        {
+          "seconds": 0.375,
+          "peak_rss_bytes": 291880960
+        },
+        {
+          "seconds": 0.377,
+          "peak_rss_bytes": 287440896
+        },
+        {
+          "seconds": 0.378,
+          "peak_rss_bytes": 291061760
+        }
+      ]
+    },
+    "solidity_wazero": {
+      "workers": 2,
+      "inputs": 6,
+      "batch_seconds": 10.826,
+      "samples": [
+        {
+          "seconds": 3.573,
+          "peak_rss_bytes": 817905664
+        },
+        {
+          "seconds": 3.603,
+          "peak_rss_bytes": 824983552
+        },
+        {
+          "seconds": 3.583,
+          "peak_rss_bytes": 836206592
+        },
+        {
+          "seconds": 3.576,
+          "peak_rss_bytes": 838811648
+        },
+        {
+          "seconds": 3.613,
+          "peak_rss_bytes": 853557248
+        },
+        {
+          "seconds": 3.646,
+          "peak_rss_bytes": 836960256
+        }
+      ]
+    },
+    "vyper_native": {
+      "workers": 2,
+      "inputs": 6,
+      "batch_seconds": 0.339,
+      "samples": [
+        {
+          "seconds": 0.114,
+          "peak_rss_bytes": 38748160
+        },
+        {
+          "seconds": 0.113,
+          "peak_rss_bytes": 38436864
+        },
+        {
+          "seconds": 0.112,
+          "peak_rss_bytes": 38797312
+        },
+        {
+          "seconds": 0.112,
+          "peak_rss_bytes": 38830080
+        },
+        {
+          "seconds": 0.113,
+          "peak_rss_bytes": 38715392
+        },
+        {
+          "seconds": 0.112,
+          "peak_rss_bytes": 38436864
+        }
+      ]
+    },
+    "vyper_wazero": {
+      "workers": 2,
+      "inputs": 6,
+      "batch_seconds": 2.981,
+      "samples": [
+        {
+          "seconds": 0.992,
+          "peak_rss_bytes": 274382848
+        },
+        {
+          "seconds": 0.996,
+          "peak_rss_bytes": 309362688
+        },
+        {
+          "seconds": 1.001,
+          "peak_rss_bytes": 312524800
+        },
+        {
+          "seconds": 0.993,
+          "peak_rss_bytes": 315047936
+        },
+        {
+          "seconds": 0.991,
+          "peak_rss_bytes": 310149120
+        },
+        {
+          "seconds": 0.988,
+          "peak_rss_bytes": 312672256
+        }
+      ]
+    }
+  }
+}

@@ -22,9 +22,9 @@ func verificationCompiler(
 	if installLocker == nil {
 		return nil, errors.New("verification compiler cache install locker is unavailable")
 	}
-	solcJS := &verify.SolcJSCompiler{
-		Catalog:      catalog,
-		ExecutorPath: cfg.Verification.ExecutorPath,
+	solcJS := &verify.WasmCompiler{
+		Catalog: catalog,
+		Path:    cfg.Verification.WasmPath,
 		Cache: &verify.CompilerCache{
 			Root: cfg.Verification.CacheDirectory, Timeout: cfg.Verification.Timeout,
 			UnsafeAllowPrivateNetworks: cfg.Verification.UnsafeAllowPrivateDownloadNetworks,
@@ -37,7 +37,7 @@ func verificationCompiler(
 		Path: cfg.Verification.GeasPath, Timeout: cfg.Verification.Timeout,
 		MaxInputBytes: cfg.Verification.MaxInputBytes, MaxOutputBytes: cfg.Verification.MaxOutputBytes,
 	}
-	return verify.NewCompilerRouter(solcJS, geas, &verify.VyperCompiler{Path: cfg.Verification.VyperPath, Timeout: cfg.Verification.Timeout, MaxInputBytes: cfg.Verification.MaxInputBytes, MaxOutputBytes: cfg.Verification.MaxOutputBytes})
+	return verify.NewCompilerRouter(solcJS, geas, &verify.WasmCompiler{Vyper: true, Path: cfg.Verification.WasmPath, Timeout: cfg.Verification.Timeout, MaxInputBytes: cfg.Verification.MaxInputBytes, MaxOutputBytes: cfg.Verification.MaxOutputBytes})
 }
 
 func verificationWorkerID(index int) string {

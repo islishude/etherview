@@ -156,7 +156,7 @@ branch; scheduled start times may be delayed by runner load.
   that artifact without opening proxy writes. The `all` or `api`
   process consumes the durable job, resolves and checksum-validates the
   architecture-independent `emscripten-wasm32` artifact, and runs each bounded
-  Standard JSON compilation in a fresh permission-restricted Node SEA subprocess.
+  Standard JSON compilation in a fresh bounded Go/wazero subprocess.
   The first real compilation populates the Compose named cache volume; the
   harness force-recreates the compiler-owning service, submits another job for
   the same version, and proves the identical artifact survives without a new
@@ -219,7 +219,7 @@ branch; scheduled start times may be delayed by runner load.
   job. Normalized snapshots require one successful job, result, and
   publication; exact constructor arguments and immutable references; the
   official Solidity 0.8.30 compiler URL and SHA-256; and
-  `emscripten-wasm32`, `node_solcjs_v1`, `trusted_subprocess`, and executor
+  `emscripten-wasm32`, `etherview_wazero_v1`, `wasm_subprocess_v1`, and executor
   digest parity. `VERIFIER_API_KEY` is the client's only secret and is passed
   by environment name, never a command argument, URL, Compose value, mount, or
   artifact. The Go harness redacts configured secrets from command and failure
@@ -255,16 +255,11 @@ branch; scheduled start times may be delayed by runner load.
   writer-backed stale-settlement alerts.
 - `make docker-build docker-image-check`: build the production target for the
   Docker host architecture, run it with the numeric non-root identity and
-  hardened runtime flags, validate the exact SEA/compiler runtime manifest,
-  recursive ELF closure, and self-test, and scan its exported root filesystem.
-  The image contains one read-only Node 26.8.1 SEA, only the automatically
-  discovered private libraries missing from the final base rootfs, and the
-  read-only Geas v0.3.3 helper, but no general Node executable, wrapper source,
-  package metadata, `node_modules`, npm, npx, corepack, shell, Go toolchain,
-  native solc, or general Python/Vyper CLI. The separate read-only Vyper helper
-  directory contains its pinned interpreter, dependency closure and manifest.
-  It also validates the non-root-owned mode-0750 compiler cache seed directory
-  used when Docker initializes the persistent named volume.
+  hardened runtime flags, validate the complete WASM runtime manifest and execute
+  both runtime self-tests. Production carries wazero 1.12.0, CPython 3.13.15 WASI,
+  fixed Vyper dependencies and the Geas helper; no Node SEA, native Python,
+  PyInstaller, general interpreter/package CLI or native shared extension is
+  permitted. The original compiler cache keeps its non-root mode-0750 seed.
 - `make test-schema-e2e`: use Go orchestration to migrate a fresh PostgreSQL 18
   volume with the production image and verify exact compatibility through
   `migrate status`.
@@ -561,3 +556,21 @@ layouts; the existing native AMD64/ARM64 CI matrix owns architecture evidence.
 A local ARM64 run never substitutes for native AMD64 acceptance. Python helper
 build and permission failures must be fixed, not converted into expected-failure
 gates or bypassed with an unrestricted runtime.
+
+## WASM compiler migration gates
+
+`make test-wasm-baseline` authenticates all 105 artifacts in the fixed catalog,
+checks static extraction and host coverage, compares the real Solidity fixtures,
+and runs normal, invalid-source, absent-import and Yul reference matrices.
+`SOLC_BASELINE_DIR` selects the disposable artifact directory. Native Linux
+AMD64/ARM64 CI runs this gate independently; the 90-minute job budget covers
+hundreds of fresh processes, not a relaxed per-input compiler timeout.
+
+`make test-wasm-runtime` builds the source-pinned bundle and checks guest/host
+limits, manifest integrity, subprocess cancellation/cleanup, Vyper fixtures,
+Go Keccak, and pinned parent identity. `make test-go` and `make test-race` also
+exercise the built local runtime. Large real compilers run in the actual
+CGO-disabled subprocess; small VM/host ABI tests and parent orchestration run
+under the race detector. This is not race instrumentation of the optimizing
+WASM compiler itself. Production image and existing Hardhat/Foundry topology
+gates remain mandatory and use the same WASM executor.

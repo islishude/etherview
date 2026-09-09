@@ -239,7 +239,7 @@ verifier_custom_runtime="$temporary_dir/verifier-custom-runtime.yaml"
   --set networkPolicy.allowExternalHTTPS=false \
   --set-string compilerCache.existingClaim=etherview-compiler-cache >"$verifier_persistent_distributed"
 "$helm_bin" template etherview "$chart_dir" --namespace explorer \
-  --set-string config.verification.executor_path=/custom/runtime/etherview-solcjs \
+  --set-string config.verification.wasm_path=/custom/runtime/etherview-wasm \
   --set-string config.verification.geas_path=/custom/bin/etherview-geas-compiler \
   --show-only templates/configmap.yaml >"$verifier_custom_runtime"
 
@@ -365,14 +365,14 @@ for role in sync enrich trace metadata maintenance; do
 done
 assert_resource_occurrences "$verifier_distributed" etherview-compiler-catalog "app.kubernetes.io/component: api" 1
 assert_resource_occurrences "$verifier_distributed" etherview-compiler-catalog "port: 443" 1
-assert_contains "$verifier_monolith" "executor_path: /opt/etherview/solcjs/etherview-solcjs"
+assert_contains "$verifier_monolith" "wasm_path: /opt/etherview/wasm/etherview-wasm"
 assert_contains "$verifier_monolith" "geas_path: /usr/local/bin/etherview-geas-compiler"
-assert_contains "$verifier_custom_runtime" "executor_path: /custom/runtime/etherview-solcjs"
+assert_contains "$verifier_custom_runtime" "wasm_path: /custom/runtime/etherview-wasm"
 assert_contains "$verifier_custom_runtime" "geas_path: /custom/bin/etherview-geas-compiler"
 assert_not_contains "$verifier_monolith" "platform:"
 assert_not_contains "$verifier_distributed" "platform:"
 expect_render_failure verification-relative-executor-path \
-  --set-string config.verification.executor_path=custom/runtime/etherview-solcjs
+  --set-string config.verification.wasm_path=custom/runtime/etherview-solcjs
 expect_render_failure verification-removed-node-path \
   --set-string config.verification.node_path=/custom/bin/node
 expect_render_failure verification-removed-wrapper-path \

@@ -1004,8 +1004,8 @@ func captureFoundryVerificationSnapshot(
 		snapshot.CompilerPlatform != "emscripten-wasm32" ||
 		snapshot.CompilerDigest != foundryCompilerDigest || snapshot.CatalogSource != foundryCatalogSource ||
 		snapshot.CompilerArtifact != foundryCompilerArtifact ||
-		snapshot.ExecutorKind != "node_solcjs_v1" ||
-		snapshot.ExecutionPolicy != "trusted_subprocess" || len(snapshot.ExecutorDigest) != 64 ||
+		snapshot.ExecutorKind != "etherview_wazero_v1" ||
+		snapshot.ExecutionPolicy != "wasm_subprocess_v1" || len(snapshot.ExecutorDigest) != 64 ||
 		snapshot.FileName != "src/FoundryVerification.sol" ||
 		snapshot.ContractName != "FoundryVerification" ||
 		(snapshot.MatchType != "full" && snapshot.MatchType != "partial") ||

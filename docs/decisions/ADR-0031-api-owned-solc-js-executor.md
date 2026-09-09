@@ -2,6 +2,10 @@
 
 Status: accepted
 
+[ADR-0048](ADR-0048-wazero-compiler-executor.md) supersedes the executor,
+packaging, runtime-path and identity details at the gated unified WASM cutover.
+Compiler trust, canonicality, lease and publication requirements remain in force.
+
 [ADR-0047](ADR-0047-pinned-vyper-executor.md) supersedes only the Vyper
 prohibition by adding a pinned Python executor.
 

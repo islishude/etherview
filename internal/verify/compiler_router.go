@@ -34,13 +34,21 @@ func (availability CompilerAvailability) Available(language Language) bool {
 	}
 }
 
-type CompilerRouter struct {
-	SolcJS *SolcJSCompiler
-	Geas   *GeasCompiler
-	Vyper  *VyperCompiler
+type CompilerBackend interface {
+	Compiler
+	PinnedCompiler
+	RuntimeValidator
+	Ready() bool
+	CompilerAvailable(context.Context) bool
 }
 
-func NewCompilerRouter(solcJS *SolcJSCompiler, geas *GeasCompiler, vyper *VyperCompiler) (*CompilerRouter, error) {
+type CompilerRouter struct {
+	SolcJS CompilerBackend
+	Geas   *GeasCompiler
+	Vyper  CompilerBackend
+}
+
+func NewCompilerRouter(solcJS CompilerBackend, geas *GeasCompiler, vyper CompilerBackend) (*CompilerRouter, error) {
 	if solcJS == nil || geas == nil || vyper == nil {
 		return nil, errors.New("verification compiler router requires solc-js, Geas and Vyper")
 	}

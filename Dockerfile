@@ -13,49 +13,38 @@ COPY web/scripts ./web/scripts
 COPY web/src ./web/src
 RUN npm --prefix api run generate:api && npm --prefix web run build
 
-FROM node:26.8.1-slim AS compiler-builder
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends binutils pax-utils \
-    && rm -rf /var/lib/apt/lists/*
-WORKDIR /src/compiler
-COPY compiler/package.json compiler/package-lock.json ./
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci --ignore-scripts --no-audit --no-fund
-COPY compiler/compile.mjs compiler/build-sea.mjs compiler/build-runtime.mjs compiler/elf-runtime.mjs compiler/test-elf-runtime.mjs compiler/test-sea.mjs ./
-COPY --from=production-base / /target-rootfs/
-RUN node build-sea.mjs /opt/etherview/solcjs/etherview-solcjs \
-    && install -d -m 0755 /opt/etherview/licenses/solcjs-runtime \
-    && test -f /usr/local/LICENSE \
-    && cp /usr/local/LICENSE /opt/etherview/licenses/solcjs-runtime/node-LICENSE.txt \
-    && find node_modules -mindepth 2 -maxdepth 2 -type f \
-       \( -iname 'license' -o -iname 'license.*' -o -iname 'copying' -o -iname 'copying.*' \) \
-       -exec sh -c 'package="$(basename "$(dirname "$1")")"; extension="$(basename "$1")"; cp "$1" "/opt/etherview/licenses/solcjs-runtime/${package}-${extension}"' _ {} \; \
-    && node build-runtime.mjs \
-       /opt/etherview/solcjs/etherview-solcjs \
-       /target-rootfs \
-       /opt/etherview/licenses/solcjs-runtime \
-    && node test-elf-runtime.mjs /target-rootfs \
-    && install -d -m 1777 /target-rootfs/tmp \
-    && node test-sea.mjs /target-rootfs node_modules/solc/soljson.js \
-    && install -d -m 0755 /solcjs-runtime-copy \
-    && cp -a /opt/etherview/solcjs /solcjs-runtime-copy/ \
-    && install -d -m 0750 /var/lib/etherview/compilers/cache
+FROM golang:1.27.1 AS wasm-tools
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+COPY cmd/etherview-wasm ./cmd/etherview-wasm
+COPY cmd/wasmpack ./cmd/wasmpack
+COPY cmd/wasmpython-build ./cmd/wasmpython-build
+COPY internal/wasmcompiler ./internal/wasmcompiler
+COPY internal/compilerbundle ./internal/compilerbundle
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 go build -trimpath -buildvcs=false -o /wasm-tools/etherview-wasm ./cmd/etherview-wasm \
+    && CGO_ENABLED=0 go build -trimpath -buildvcs=false -o /wasm-tools/wasmpack ./cmd/wasmpack \
+    && CGO_ENABLED=0 go build -trimpath -buildvcs=false -o /wasm-tools/wasmpython-build ./cmd/wasmpython-build \
+    && mkdir -p /wasm-tools/licenses \
+    && cp "$(go env GOROOT)/LICENSE" /wasm-tools/licenses/Go-LICENSE.txt \
+    && for entry in wazero=github.com/tetratelabs/wazero wabin=github.com/tetratelabs/wabin lz4=github.com/pierrec/lz4/v4 x-crypto=golang.org/x/crypto x-sys=golang.org/x/sys; do \
+         name="${entry%%=*}"; module="${entry#*=}"; directory="$(go list -m -f '{{.Dir}}' "$module")"; \
+         cp "$directory/LICENSE" "/wasm-tools/licenses/go-${name}-LICENSE.txt"; \
+       done
 
-FROM python:3.13.15-slim-trixie AS vyper-builder
+FROM python:3.13.15-slim-trixie AS wasm-builder
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends binutils pax-utils \
+    && apt-get install -y --no-install-recommends build-essential curl pkg-config \
     && rm -rf /var/lib/apt/lists/*
-WORKDIR /src/vyper
-COPY compiler/vyper/requirements.lock ./
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --disable-pip-version-check --require-hashes --only-binary=:all: -r requirements.lock
-COPY compiler/vyper/helper.py compiler/vyper/build.py compiler/vyper/linux_runtime.py ./
-COPY --from=production-base / /target-rootfs/
-RUN python build.py /opt/etherview/vyper /target-rootfs \
-    && cp /opt/etherview/vyper/runtime-manifest.json /target-rootfs/opt/etherview/vyper/runtime-manifest.json \
-    && chroot --userspec=65532:65532 /target-rootfs /opt/etherview/vyper/etherview-vyper --self-test \
-    && mkdir /vyper-runtime-copy \
-    && cp -a /opt/etherview/vyper /vyper-runtime-copy/
+WORKDIR /src
+COPY --from=wasm-tools /wasm-tools /wasm-tools
+COPY compiler/wasm ./compiler/wasm
+RUN --mount=type=cache,target=/wasm-cache/downloads \
+    python compiler/wasm/build.py --cache /wasm-cache --output /runtime --tools-directory /wasm-tools \
+    && install -d -m 0750 /var/lib/etherview/compilers/cache \
+    && mkdir /runtime-copy \
+    && cp -a /runtime /runtime-copy/wasm
 
 FROM golang:1.27.1 AS go-builder
 WORKDIR /src
@@ -92,7 +81,7 @@ ARG CREATED=unknown
 LABEL org.opencontainers.image.title="Etherview" \
     org.opencontainers.image.description="Ethereum execution-layer explorer" \
     org.opencontainers.image.source="https://github.com/islishude/etherview" \
-    org.opencontainers.image.licenses="Apache-2.0 AND LGPL-3.0-or-later AND LGPL-3.0-only AND BSD-3-Clause AND BSD-2-Clause-FreeBSD AND MIT AND PSF-2.0 AND (GPL-2.0-or-later WITH Bootloader-exception)" \
+    org.opencontainers.image.licenses="Apache-2.0 AND LGPL-3.0-or-later AND LGPL-3.0-only AND BSD-3-Clause AND BSD-2-Clause-FreeBSD AND MIT AND PSF-2.0 AND BSD-2-Clause AND (Apache-2.0 WITH LLVM-exception)" \
     org.opencontainers.image.version="${VERSION}" \
     org.opencontainers.image.revision="${REVISION}" \
     org.opencontainers.image.created="${CREATED}"
@@ -102,10 +91,9 @@ COPY --from=go-builder --chown=nonroot:nonroot /licenses /licenses
 COPY --chown=nonroot:nonroot licenses /licenses
 COPY --from=go-builder --chown=nonroot:nonroot /go/bin/etherview /etherview
 COPY --from=go-builder --chown=nonroot:nonroot --chmod=0555 /go/bin/etherview-geas-compiler /usr/local/bin/etherview-geas-compiler
-COPY --from=compiler-builder --chown=nonroot:nonroot /solcjs-runtime-copy /opt/etherview
-COPY --from=vyper-builder --chown=nonroot:nonroot /vyper-runtime-copy /opt/etherview
-COPY --from=compiler-builder --chown=nonroot:nonroot /opt/etherview/licenses/solcjs-runtime /licenses/solcjs-runtime
-COPY --from=compiler-builder --chown=nonroot:nonroot --chmod=0750 /var/lib/etherview/compilers /var/lib/etherview/compilers
+COPY --from=wasm-builder --chown=nonroot:nonroot /runtime-copy /opt/etherview
+COPY --from=wasm-builder --chown=nonroot:nonroot /runtime/licenses /licenses/wasm-runtime
+COPY --from=wasm-builder --chown=nonroot:nonroot --chmod=0750 /var/lib/etherview/compilers /var/lib/etherview/compilers
 USER 65532:65532
 EXPOSE 8080 9090
 ENTRYPOINT ["/etherview"]

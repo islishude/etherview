@@ -169,7 +169,7 @@ verification:
   derived_max_traces_per_scan: 100
   # The API process owns the SEA executor and its rebuildable persistent cache.
   cache_directory: /var/lib/etherview/compilers/cache
-  executor_path: /opt/etherview/solcjs/etherview-solcjs
+  wasm_path: /opt/etherview/wasm/etherview-wasm
   geas_path: /usr/local/bin/etherview-geas-compiler
   catalog_urls:
     solidity: auto

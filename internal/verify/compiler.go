@@ -50,6 +50,7 @@ type CompilerKind string
 const (
 	GeasExecutorKind                   = "etherview_geas_v1"
 	CompilerSolcJS        CompilerKind = "node_solcjs_v1"
+	CompilerSolcWasm      CompilerKind = "solc_wasm_v1"
 	CompilerGeas          CompilerKind = "go_geas_v1"
 	CompilerVyper         CompilerKind = "python_vyper_v1"
 	CompilerLegacyRunner  CompilerKind = "legacy_runner"
@@ -78,6 +79,8 @@ func (provenance CompilerProvenance) valid() bool {
 		return false
 	}
 	switch provenance.Kind {
+	case CompilerSolcWasm:
+		return provenance.CatalogGeneration > 0 && provenance.ExecutorDigest != [sha256.Size]byte{} && provenance.ExecutorKind == WasmExecutorKind && provenance.ExecutionPolicy == WasmSubprocessPolicy && provenance.Platform == CompilerPlatformEmscriptenWASM32
 	case CompilerSolcJS:
 		return validCompilerPlatform(provenance.Platform) &&
 			provenance.CatalogGeneration > 0 &&
@@ -86,7 +89,7 @@ func (provenance CompilerProvenance) valid() bool {
 			provenance.ExecutionPolicy == TrustedSubprocessPolicy &&
 			provenance.Platform == CompilerPlatformEmscriptenWASM32
 	case CompilerVyper:
-		return hex.EncodeToString(provenance.Digest[:]) == VyperCompilerSHA256 && provenance.CatalogGeneration == 0 && provenance.CatalogDigest == [sha256.Size]byte{} && provenance.CatalogSource == "" && provenance.CatalogEntryCount == 0 && provenance.ArtifactURL == "" && provenance.ArtifactMaxBytes == 0 && provenance.ExecutorDigest != [sha256.Size]byte{} && provenance.ExecutorKind == VyperExecutorKind && provenance.ExecutionPolicy == TrustedSubprocessPolicy && provenance.Platform == CompilerPlatformPythonWheel
+		return hex.EncodeToString(provenance.Digest[:]) == VyperCompilerSHA256 && provenance.CatalogGeneration == 0 && provenance.CatalogDigest == [sha256.Size]byte{} && provenance.CatalogSource == "" && provenance.CatalogEntryCount == 0 && provenance.ArtifactURL == "" && provenance.ArtifactMaxBytes == 0 && provenance.ExecutorDigest != [sha256.Size]byte{} && ((provenance.ExecutorKind == VyperExecutorKind && provenance.ExecutionPolicy == TrustedSubprocessPolicy) || (provenance.ExecutorKind == WasmExecutorKind && provenance.ExecutionPolicy == WasmSubprocessPolicy)) && provenance.Platform == CompilerPlatformPythonWheel
 	case CompilerGeas:
 		return provenance.CatalogGeneration == 0 &&
 			provenance.CatalogDigest == [sha256.Size]byte{} &&

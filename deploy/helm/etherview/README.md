@@ -12,7 +12,7 @@ and `maintenance` Deployments. `values-distributed.yaml` selects the split
 layout. Each autoscaled role has its own `autoscaling/v2` HPA; roles that own
 singleton work are one replica by default. When public verification is enabled,
 the `all` or `api` Deployment owns the durable verification worker pool,
-checksum cache, and restricted Node/solc-js subprocess executor.
+checksum cache, and bounded Go/WASM subprocess executor.
 
 Install or upgrade with Job waiting enabled so the release command observes
 the migration result:
@@ -252,11 +252,12 @@ runbook for the evidence boundary and tuning formula.
 Public source verification requires NetworkPolicy. The selected `all` or `api`
 Pods own official
 `emscripten-wasm32` catalog discovery, checksum validation, and execution in a
-fresh permission-restricted Node 26.8.1 SEA subprocess. The single SEA,
-canonical read-only runtime manifest, and automatically discovered private ELF
-libraries are part of the production image for its native architecture. There is no runner
-Deployment, Service, image value, runtime class, native compiler fallback, or
-CPU-platform setting.
+fresh Go subprocess using wazero 1.12.0. Vyper uses source-built CPython
+3.13.15 WASI and the Go Keccak bridge in the same read-only runtime bundle.
+Each input gets a fresh guest, 512 MiB linear-memory cap, bounded I/O/time,
+minimal environment and complete process-group cancellation. The cap does not
+bound total process RSS. No Node or native Python runtime is shipped.
+
 
 By default `compilerCache.existingClaim` is empty and each compiler-owning Pod
 receives its existing memory-backed `emptyDir`. Set it to one operator-created
@@ -284,11 +285,11 @@ rebuildable claim, then restart them to download required versions again.
 Monitor and size the PVC at the storage layer because automatic eviction could
 remove a compiler pinned by an older durable job generation.
 
-`config.verification.executor_path` defaults to the bundled SEA and may select
+`config.verification.wasm_path` defaults to the bundled Go helper and may select
 an alternate absolute path supplied by a trusted custom image. The chart
 deliberately provides no external compiler runtime volume. The executor's
-sibling manifest and `lib/` directory must describe one complete read-only
-runtime with the fixed SEA identity, every `all` or `api` replica must use the
+sibling manifest, `python.wasm`, `python.zip` and lock file must describe one complete read-only
+runtime with the fixed WASM identity, every `all` or `api` replica must use the
 same manifest digest, and executor-bound jobs must be drained before a path
 change and replica restart.
 

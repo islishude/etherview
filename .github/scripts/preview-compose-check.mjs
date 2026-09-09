@@ -12,7 +12,7 @@ const unsafeDownloadEnvironment =
 const unsafeMetadataEnvironment =
   "ETHERVIEW_METADATA_UNSAFE_ALLOW_PRIVATE_NETWORKS";
 const runtimePathEnvironment = {
-  ETHERVIEW_VERIFICATION_EXECUTOR_PATH: "/custom/runtime/etherview-solcjs",
+  ETHERVIEW_VERIFICATION_WASM_PATH: "/custom/runtime/etherview-wasm",
   ETHERVIEW_VERIFICATION_GEAS_PATH: "/custom/bin/etherview-geas-compiler",
 };
 const expectRuntimePathOverride =

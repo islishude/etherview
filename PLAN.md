@@ -19,7 +19,7 @@ batch semantics are not core v1 scope.
 | P00 | [Foundation](docs/plans/P00-foundation.md) | done | — | Governance, toolchain, config, CLI, migrations, CI, and embedded SPA skeleton |
 | P10 | [Indexing](docs/plans/P10-indexing.md) | done | P00 | Full-history core indexing, canonicality, finality, reorgs, and repair |
 | P20 | [Enrichment](docs/plans/P20-enrichment.md) | done | P10 | Tokens, NFTs, ABI/proxy decoding, traces, balances, and statistics |
-| P30 | [Contract Platform & Runtime Operations](docs/plans/P30-contract-verification.md) | done | P00, P10, P20 | Consolidated verification, contract intelligence, runtime, deployment, telemetry, and optional accelerators |
+| P30 | [Contract Platform & Runtime Operations](docs/plans/P30-contract-verification.md) | in_progress | P00, P10, P20 | Consolidated verification, contract intelligence, runtime, deployment, telemetry, and optional accelerators |
 | P40 | [API](docs/plans/P40-api.md) | done | P10; incremental P20/P30 | Native REST, search, API keys, SSE, and Etherscan V2 compatibility |
 | P50 | [Web](docs/plans/P50-web.md) | done | P40; incremental P20/P30 | Bilingual embedded SPA and injected-wallet contract interaction |
 | P64 | [NFT Metadata Web](docs/plans/P64-nft-metadata-web.md) | done | P20, P30, P40, P50 | Canonical NFT metadata projection, standard-event refresh, and guarded external-image navigation |
@@ -48,6 +48,16 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   Its current work items preserve distinct verification, proxy, ABI, Trace,
   EIP-7702, Geas, CWIA, derived-verification, deployment, and runtime evidence in
   [P30 evidence](docs/plans/P30-contract-verification.md#evidence).
+- P30-T100 completes an isolated wazero feasibility evaluation: normal
+  Solidity/Yul compilation and Vyper with a diagnostic Keccak replacement
+  reproduce reference outputs. Production execution remains unchanged;
+  exception/callback adaptation and a production Vyper hash dependency remain
+  outside the completed evaluation.
+- P30-T101–P30-T105 implement the authenticated WASM compiler core, source-built
+  Vyper bundle, subprocess boundary and persistence/config integration under
+  ADR-0048. P30-T106 is in progress: the candidate image and native Linux ARM64
+  local E2E pass, but native AMD64 acceptance and gated old-source removal remain
+  outstanding. This is not a completed production cutover.
 - P40 and P50 are complete; native API, compatibility, embedded SPA, wallet,
   browser, and generated-contract evidence remains in their child plans.
 - P64, P65, P67, P68, P74, P75, and P76 are complete with their current

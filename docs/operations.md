@@ -1087,31 +1087,38 @@ reuse the captured values.
 Set `ANVIL_ARGS` only for local launch tuning (for example alternate anvil
 defaults) and keep these test-only overrides out of production runbooks.
 
-## Pinned Vyper runtime
+## Unified WASM compiler runtime
 
-Verification-enabled `api` and `all` processes require the complete read-only
-Vyper runtime at `/opt/etherview/vyper/etherview-vyper`. Override only with
-`verification.vyper_path` / `ETHERVIEW_VERIFICATION_VYPER_PATH` pointing to an
-identical-layout, validated custom runtime. Other roles do not execute it.
-Runtime schema v2 passes `verification.max_input_bytes` and
-`verification.max_output_bytes` to the helper through server-owned arguments;
-there is no separate hardcoded 5 MiB helper input ceiling. Both Go and Python
-enforce the effective limits. Rebuild the full runtime when changing protocol
-version and drain bound jobs as described below.
-The runtime contains CPython 3.13.15, Vyper 0.4.3, locked dependencies, licenses
-and `runtime-manifest.json`; operators never install packages into a running
-container. The dedicated helper is not a Python CLI.
+Verification-enabled `api` and `all` use `/opt/etherview/wasm/etherview-wasm`.
+Override with `verification.wasm_path` / `ETHERVIEW_VERIFICATION_WASM_PATH`
+only for a coherent, validated read-only bundle. Geas keeps its separate path.
+`executor_path`, `vyper_path` and their environment overrides are retired.
+The bundle contains wazero 1.12.0, source-built CPython 3.13.15 WASI, the fixed
+Vyper 0.4.3 wheel/dependencies, licenses and `runtime-manifest.json`. It exposes
+only fixed self-test/compile protocols, not a general interpreter CLI.
 
-Build or change the runtime as one unit. Drain executor-bound verification
-jobs, deploy one identical executor digest to all API-capable replicas in the
-deployment, then admit new work. Architecture changes also change that digest.
-Terminal artifacts remain readable. Missing, changed or writable runtime files
-fail validation; restore the full runtime instead of rewriting persisted job
-provenance. Catalog outages do not affect the fixed Vyper version list.
+Before migration 0066, redeploy the **existing image** with
+`security.public_verification=false` while keeping `features.verification=true`.
+This pauses public native/Etherscan submissions while workers continue draining.
+Wait until queued/running jobs bound to the old Node or Python executor reach
+terminal state, then stop API/all replicas. Apply migrations using the new image;
+the preflight refuses outstanding old bindings and never cancels or rebinds them.
+Deploy one runtime digest to all API-capable replicas, validate readiness, then
+restore public admissions. Do not use a workspace rebuild to perform the initial
+old-image drain. Rollback after new bindings exist requires draining them and an
+explicit compatible release; it must not rewrite job provenance.
 
-Linux compilation uses a 512 MiB per-process address-space limit, 64 file
-descriptors, no core dump and the configured verification timeout/I/O bounds.
-Size API memory resources for the shared verification worker count plus the
-API itself. The Python audit guard is defense in depth for trusted compiler
-code; it is not a sandbox for arbitrary Python or native code. Source imports
-resolve only from the submitted bundle and pinned built-ins.
+Each original/modified input runs in a fresh Go subprocess and WASM instance.
+Effective I/O and timeout configuration is preserved. Guest linear memory is
+capped at 512 MiB; process RSS can exceed that cap. The helper limits file
+descriptors to 64 and disables core dumps. Guest files are read-only runtime
+bytes, imports use the submitted source bundle, and no host directories or
+network are exposed. Cancellation kills and checks the entire process group;
+cleanup failure prevents accepting output or releasing ownership as successful.
+
+Build or change runtime files as a unit. Bound jobs must drain before a runtime
+identity/architecture change. Terminal history remains readable. Restore changed,
+missing or writable runtime files; never edit stored digests. The original solc
+artifact cache remains rebuildable and checksum checked, with its existing
+PostgreSQL installation locks. Vyper availability does not depend on catalog
+freshness. Native machine-code caches and persistent guest processes are not used.

@@ -47,7 +47,8 @@ make start-preview
 `preview-cert` installs mkcert's local CA and creates ignored localhost
 certificates. Open <https://etherview.localhost:8080>; the operations listener
 is at <http://localhost:9090>. Solidity/Yul compilation uses a bounded,
-permission-restricted Node 26.8.1 SEA subprocess.
+bounded Go/wazero subprocess. Vyper 0.4.3 runs in source-built CPython WASI
+with the same runtime bundle; production needs neither Node nor native Python.
 
 Use `make recreate-preview` to rebuild application roles while preserving data
 and the compiler cache. **`make stop-preview` deletes Preview and all its

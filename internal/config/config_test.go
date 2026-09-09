@@ -53,7 +53,7 @@ func TestDefaultCompilerCatalogUsesAutomaticSolidityPlatform(t *testing.T) {
 func TestVerificationRuntimePathsDefaultAndEnvironmentOverride(t *testing.T) {
 	t.Parallel()
 	cfg := Default()
-	if cfg.Verification.ExecutorPath != defaultVerificationExecutorPath ||
+	if cfg.Verification.WasmPath != defaultVerificationWasmPath ||
 		cfg.Verification.GeasPath != defaultVerificationGeasPath {
 		t.Fatalf("unexpected default verification runtime paths: %#v", cfg.Verification)
 	}
@@ -63,14 +63,14 @@ func TestVerificationRuntimePathsDefaultAndEnvironmentOverride(t *testing.T) {
 	if err := decoder.Decode(&cfg); err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Verification.ExecutorPath != defaultVerificationExecutorPath ||
+	if cfg.Verification.WasmPath != defaultVerificationWasmPath ||
 		cfg.Verification.GeasPath != defaultVerificationGeasPath {
 		t.Fatalf("partial YAML cleared verification runtime defaults: %#v", cfg.Verification)
 	}
 
 	overrides := map[string]string{
-		"ETHERVIEW_VERIFICATION_EXECUTOR_PATH": "/custom/runtime/etherview-solcjs",
-		"ETHERVIEW_VERIFICATION_GEAS_PATH":     "/custom/bin/etherview-geas-compiler",
+		"ETHERVIEW_VERIFICATION_WASM_PATH": "/custom/runtime/etherview-wasm",
+		"ETHERVIEW_VERIFICATION_GEAS_PATH": "/custom/bin/etherview-geas-compiler",
 	}
 	if err := applyEnvironment(&cfg, func(key string) (string, bool) {
 		value, ok := overrides[key]
@@ -78,7 +78,7 @@ func TestVerificationRuntimePathsDefaultAndEnvironmentOverride(t *testing.T) {
 	}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Verification.ExecutorPath != overrides["ETHERVIEW_VERIFICATION_EXECUTOR_PATH"] ||
+	if cfg.Verification.WasmPath != overrides["ETHERVIEW_VERIFICATION_WASM_PATH"] ||
 		cfg.Verification.GeasPath != overrides["ETHERVIEW_VERIFICATION_GEAS_PATH"] {
 		t.Fatalf("verification runtime environment override was not applied: %#v", cfg.Verification)
 	}
@@ -124,23 +124,23 @@ func TestVerificationWorkerRequiresExplicitAbsoluteCleanRuntimePaths(t *testing.
 		{
 			name: "empty executor",
 			configure: func(verification *VerificationConfig) {
-				verification.ExecutorPath = ""
+				verification.WasmPath = ""
 			},
-			field: "verification.executor_path",
+			field: "verification.wasm_path",
 		},
 		{
 			name: "relative executor",
 			configure: func(verification *VerificationConfig) {
-				verification.ExecutorPath = "runtime/etherview-solcjs"
+				verification.WasmPath = "runtime/etherview-solcjs"
 			},
-			field: "verification.executor_path",
+			field: "verification.wasm_path",
 		},
 		{
 			name: "unclean executor",
 			configure: func(verification *VerificationConfig) {
-				verification.ExecutorPath = "/opt/etherview/solcjs/../etherview-solcjs"
+				verification.WasmPath = "/opt/etherview/solcjs/../etherview-solcjs"
 			},
-			field: "verification.executor_path",
+			field: "verification.wasm_path",
 		},
 		{
 			name: "unsafe cache wildcard",
@@ -1542,6 +1542,8 @@ func TestRemovedCompilerYAMLFieldsAreUnknown(t *testing.T) {
 		"verification:\n  runner_endpoint: http://compiler-runner:8091\n",
 		"verification:\n  runner_image: image@sha256:deadbeef\n",
 		"verification:\n  artifacts: {}\n",
+		"verification:\n  executor_path: /old/solc\n",
+		"verification:\n  vyper_path: /old/vyper\n",
 		"verification:\n  node_path: /usr/local/bin/node\n",
 		"verification:\n  wrapper_path: /opt/etherview/compiler/compile.mjs\n",
 		"verification:\n  manifest_path: /opt/etherview/compiler/runtime-manifest.json\n",
@@ -1569,8 +1571,8 @@ func TestRemovedCompilerEnvironmentPathsAreIgnored(t *testing.T) {
 	}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Verification.ExecutorPath != defaultVerificationExecutorPath {
-		t.Fatalf("removed environment changed executor path: %q", cfg.Verification.ExecutorPath)
+	if cfg.Verification.WasmPath != defaultVerificationWasmPath {
+		t.Fatalf("removed environment changed executor path: %q", cfg.Verification.WasmPath)
 	}
 }
 
@@ -1602,4 +1604,14 @@ func unsetHostEnvironment(t *testing.T, name string) {
 			_ = os.Unsetenv(name)
 		}
 	})
+}
+
+func TestRemovedNativeCompilerEnvironmentRejected(t *testing.T) {
+	for _, name := range []string{"ETHERVIEW_VERIFICATION_EXECUTOR_PATH", "ETHERVIEW_VERIFICATION_VYPER_PATH"} {
+		cfg := Default()
+		err := applyEnvironment(&cfg, func(key string) (string, bool) { return "/old/runtime", key == name }, nil)
+		if err == nil || !strings.Contains(err.Error(), name) {
+			t.Fatalf("retired environment %s: %v", name, err)
+		}
+	}
 }
