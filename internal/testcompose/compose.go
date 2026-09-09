@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -38,12 +39,26 @@ func (e OSExecutor) Run(ctx context.Context, command Command) ([]byte, error) {
 	cmd.Dir = command.Dir
 	cmd.Env = command.Env
 	var captured bytes.Buffer
-	cmd.Stdout = io.MultiWriter(&captured, writerOrDiscard(e.Stdout))
-	cmd.Stderr = io.MultiWriter(&captured, writerOrDiscard(e.Stderr))
+	// os/exec copies distinct stdout/stderr writers concurrently. Serialize
+	// both capture and streaming, including when the caller shares one sink.
+	var outputMu sync.Mutex
+	cmd.Stdout = lockedWriter{mu: &outputMu, writer: io.MultiWriter(&captured, writerOrDiscard(e.Stdout))}
+	cmd.Stderr = lockedWriter{mu: &outputMu, writer: io.MultiWriter(&captured, writerOrDiscard(e.Stderr))}
 	if err := cmd.Run(); err != nil {
 		return captured.Bytes(), fmt.Errorf("%s %s: %w", command.Name, strings.Join(command.Args, " "), err)
 	}
 	return captured.Bytes(), nil
+}
+
+type lockedWriter struct {
+	mu     *sync.Mutex
+	writer io.Writer
+}
+
+func (w lockedWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.writer.Write(p)
 }
 
 func writerOrDiscard(writer io.Writer) io.Writer {

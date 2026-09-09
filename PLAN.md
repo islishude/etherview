@@ -48,6 +48,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   Its current work items preserve distinct verification, proxy, ABI, Trace,
   EIP-7702, Geas, CWIA, derived-verification, deployment, and runtime evidence in
   [P30 evidence](docs/plans/P30-contract-verification.md#evidence).
+- P30-T100 fixes concurrent Compose output capture; race regressions and local
+  ARM64 Foundry monolith/split E2E pass. Native AMD64 CI has not been rerun
+  with this fix.
 - P40 and P50 are complete; native API, compatibility, embedded SPA, wallet,
   browser, and generated-contract evidence remains in their child plans.
 - P64, P65, P67, P68, P74, P75, and P76 are complete with their current

@@ -176,6 +176,7 @@ credential-scoped operational boundaries.
 | P30-T98 | done | P30-T95 | Production helper packaging, role parity, deployment and licenses | image, configuration, Compose, Helm and license checks |
 | P30-T99 | done | P30-T96, P30-T97, P30-T98 | Vyper production verification acceptance and maintained documentation | common gates, native AMD64/ARM64 monolith/split verification E2E |
 
+| P30-T100 | done | P30-T99 | Serialize Compose stdout/stderr capture and streaming to prevent concurrent buffer corruption | real-process output and failure regressions under the race detector; Foundry E2E; docs/plan checks |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
@@ -486,3 +487,29 @@ owned by their current plans.
   finalized-lease regression coverage. The complete `make test-integration`
   rerun passes all six packages against owned PostgreSQL 18. P30-T90 returns to
   done; this local correction has not been submitted to CI.
+
+
+### P30-T100 — Compose output capture race (2026-09-09)
+
+- PR #61 job `102321283132` in run `34305519245` panicked in
+  `bytes.Buffer.grow` through `io.MultiWriter` during Forge verification.
+  `OSExecutor.Run` gave stdout and stderr distinct writers sharing one
+  unsynchronized buffer. A real-process regression reproduced data races and
+  the same slice-bounds panic before the fix; this is a harness concurrency
+  defect, not evidence of a gRPC behavior regression.
+- One per-command mutex now serializes capture and streaming together, also
+  protecting callers that use the same sink for both streams. Tests assert
+  complete capture, separate-stream routing, shared-stream equality, and
+  retained output plus exit status on command failure.
+- `go test -race ./internal/testcompose ./cmd/testintegration
+  ./cmd/testschemae2e -count=1` passes. The concurrent-output regression also
+  passes five repetitions under `-race`; the package passes with main's
+  original dependency files supplied through a temporary `-modfile`.
+  `golangci-lint run ./internal/testcompose/...` reports zero issues.
+- `make test-foundry-e2e` rebuilt current production/client images and passes
+  monolith and distributed Forge/Geas verification on local ARM64 (96 seconds).
+  The working tree included separately updated dependencies, including gRPC
+  1.83.2. This is local evidence; the linked native AMD64 CI job has not been
+  rerun with this fix.
+- `make docs-check plan-check` and `git diff --check` pass. No public,
+  persistent, compiler, or topology contract changes were needed.
