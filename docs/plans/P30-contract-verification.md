@@ -1,6 +1,6 @@
 # P30 — Contract Platform & Runtime Operations
 
-Status: `in_progress`
+Status: `done`
 
 This is the canonical plan for contract verification, contract intelligence,
 and the shared runtime/operations platform. Its current work items use the P30
@@ -178,10 +178,10 @@ credential-scoped operational boundaries.
 
 | P30-T100 | done | P30-T99 | Serialize Compose stdout/stderr capture and streaming to prevent concurrent buffer corruption | real-process output and failure regressions under the race detector; Foundry E2E; docs/plan checks |
 
-| P30-T107 | in_progress | P30-T100 | Signed dynamic Vyper runtime catalogs, immutable provenance and authenticated cache | signature, persistence, download, cache and subprocess regressions |
-| P30-T108 | in_progress | P30-T107 | All non-withdrawn stable Vyper build locks and version-aware input/output and matching | official compiler differential matrix on native AMD64/ARM64 |
-| P30-T109 | in_progress | P30-T108 | Vyper capability API, generated client and bilingual Web | API, Etherscan and browser regressions |
-| P30-T110 | blocked | P30-T109 | Runtime release pipeline, deployment parity and complete acceptance | Blocked by Docker Hub OAuth resets and missing native Linux acceptance; clear when deployment checks and AMD64/ARM64 production E2E pass |
+| P30-T107 | done | P30-T100 | Signed dynamic Vyper runtime catalogs, immutable provenance and authenticated cache | signature, persistence, download, cache and subprocess regressions |
+| P30-T108 | done | P30-T107 | All non-withdrawn stable Vyper build locks and version-aware input/output and matching | official compiler differential matrix on native AMD64/ARM64 |
+| P30-T109 | done | P30-T108 | Vyper capability API, generated client and bilingual Web | API, Etherscan and browser regressions |
+| P30-T110 | done | P30-T109 | Runtime release pipeline, deployment parity and complete acceptance | common gates, PostgreSQL, and native AMD64/ARM64 monolith/split production E2E |
 
 | P30-T111 | done | P30-T100 | Fix Vyper release archive padding and preserve cancelled legacy jobs during migration | Python producer/Go extractor regressions, gzip integrity and padding bounds, PostgreSQL migration preservation and maintained gates |
 
@@ -192,6 +192,12 @@ credential-scoped operational boundaries.
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
 ## Acceptance
+
+- [x] P30-T107–P30-T113: 26 non-withdrawn stable Vyper releases, signed dynamic
+      runtimes, API/Web and provenance/migration regressions pass all 11 checks
+      in [PR #63 CI run 34694346465](https://github.com/islishude/etherview/actions/runs/34694346465)
+      at `dc2d689c0edda6173a77e257889b60e13fa8c9c5`, including both native
+      Linux architectures and monolith/split production acceptance.
 
 - [x] P30-T95–P30-T99: Vyper 0.4.3 source verification passes pinned helper,
       exact matching, native/Etherscan/Web, and native AMD64/ARM64 production
@@ -558,8 +564,9 @@ owned by their current plans.
   production catalog can be signed without both acceptance records. Remote
   publication remains a separate explicitly authorized release operation.
 
-Items remain open until the applicable gates above complete; no local/mock or
-macOS result closes the native production acceptance boundary.
+At this local-only checkpoint the items remained open; local/mock and macOS
+results did not close native production acceptance. The subsequent remote CI
+closure below supplies the missing evidence.
 
 ### P30-T111 — Release archive padding and cancelled history fixes (2026-09-12)
 
@@ -630,3 +637,22 @@ macOS result closes the native production acceptance boundary.
 - A local production rebuild again fails fetching the Docker Hub frontend OAuth
   token (connection reset). Full production E2E and a new remote CI run remain
   unverified; this count fix does not close P30-T110's native topology gate.
+
+### P30-T107–P30-T113 — Remote acceptance closure (2026-09-12)
+
+- [PR #63](https://github.com/islishude/etherview/pull/63) head and the local
+  code commit are `dc2d689c0edda6173a77e257889b60e13fa8c9c5`.
+  [CI run 34694346465](https://github.com/islishude/etherview/actions/runs/34694346465)
+  is a successful pull-request run with all 11 checks successful.
+- Native Vyper runtime matrices pass on Linux AMD64 and ARM64. Both native
+  Hardhat jobs pass monolith/distributed verification and topology parity;
+  their `vyper-acceptance-amd64` and `vyper-acceptance-arm64` artifacts each
+  contain 26 descriptor digests with `monolith=true` and `split=true`.
+- Generation/lint/unit/race, PostgreSQL integration, native AMD64/ARM64 Foundry,
+  embedded SPA browser E2E, security/licenses and Container/Compose/Helm gates
+  also pass at that commit. This supersedes the earlier incomplete acceptance
+  checkpoints and closes T107–T110; T111–T113 fixes are included in the same run.
+- P30 returns to done. This evidence is CI acceptance, not production deployment
+  or publication of a signed compiler catalog. P70/P73 external release blockers
+  remain outside this work. Documentation-only closure is checked locally with
+  `make docs-check plan-check` and `git diff --check`.

@@ -19,7 +19,7 @@ batch semantics are not core v1 scope.
 | P00 | [Foundation](docs/plans/P00-foundation.md) | done | — | Governance, toolchain, config, CLI, migrations, CI, and embedded SPA skeleton |
 | P10 | [Indexing](docs/plans/P10-indexing.md) | done | P00 | Full-history core indexing, canonicality, finality, reorgs, and repair |
 | P20 | [Enrichment](docs/plans/P20-enrichment.md) | done | P10 | Tokens, NFTs, ABI/proxy decoding, traces, balances, and statistics |
-| P30 | [Contract Platform & Runtime Operations](docs/plans/P30-contract-verification.md) | in_progress | P00, P10, P20 | Consolidated verification, contract intelligence, runtime, deployment, telemetry, and optional accelerators |
+| P30 | [Contract Platform & Runtime Operations](docs/plans/P30-contract-verification.md) | done | P00, P10, P20 | Consolidated verification, contract intelligence, runtime, deployment, telemetry, and optional accelerators |
 | P40 | [API](docs/plans/P40-api.md) | done | P10; incremental P20/P30 | Native REST, search, API keys, SSE, and Etherscan V2 compatibility |
 | P50 | [Web](docs/plans/P50-web.md) | done | P40; incremental P20/P30 | Bilingual embedded SPA and injected-wallet contract interaction |
 | P64 | [NFT Metadata Web](docs/plans/P64-nft-metadata-web.md) | done | P20, P30, P40, P50 | Canonical NFT metadata projection, standard-event refresh, and guarded external-image navigation |
@@ -61,15 +61,12 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   P73-T08 live payment reconciliation and P70-T04 reference-capacity evidence.
   Local or synthetic evidence does not close either external gate.
 
-P30 is reopened for T107–T110: dynamic signed Vyper catalogs and multi-version
-verification. Local compiler, API/Web and PostgreSQL regressions pass; Docker
-registry connectivity and native Linux AMD64/ARM64 production acceptance remain
-open. See the child plan for the exact validation boundary. P30-T111 fixes
-release tar padding and cancelled-history migration, with targeted race and
-PostgreSQL regressions passing. P30-T112 fixes the Vyper environment-variable
-rejection identified in both Hardhat CI jobs. P30-T113 corrects their subsequent
-persistence-count failure after the Vyper matrix expansion; full production E2E
-replay remains open.
+P30-T107–T113 are complete. [PR #63 CI run 34694346465](https://github.com/islishude/etherview/actions/runs/34694346465)
+passes all 11 checks at `dc2d689c0edda6173a77e257889b60e13fa8c9c5`, including
+26-version Vyper matrices on native Linux AMD64/ARM64, both Hardhat production
+topologies, Foundry, PostgreSQL, browser, security and deployment-surface gates.
+Both native Vyper acceptance artifacts confirm monolith/split success with 26
+descriptor digests. P30 returns to done; P70/P73 external release blockers remain.
 
 ## Global Release Gates
 
