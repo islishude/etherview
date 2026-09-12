@@ -16,9 +16,10 @@ const (
 )
 
 type CompilerAvailability struct {
-	SolcJS bool
-	Geas   bool
-	Vyper  bool
+	SolcJS     bool
+	Geas       bool
+	Vyper      bool
+	VyperBound bool
 }
 
 func (availability CompilerAvailability) Available(language Language) bool {
@@ -65,9 +66,10 @@ func (router *CompilerRouter) Availability(ctx context.Context) CompilerAvailabi
 		return CompilerAvailability{}
 	}
 	return CompilerAvailability{
-		Vyper:  router.Vyper != nil && router.Vyper.CompilerAvailable(ctx),
-		SolcJS: router.SolcJS != nil && router.SolcJS.CompilerAvailable(ctx),
-		Geas:   router.Geas != nil && router.Geas.CompilerAvailable(ctx),
+		Vyper:      router.Vyper != nil && router.Vyper.CompilerAvailable(ctx),
+		VyperBound: router.Vyper != nil && router.Vyper.Ready(),
+		SolcJS:     router.SolcJS != nil && router.SolcJS.CompilerAvailable(ctx),
+		Geas:       router.Geas != nil && router.Geas.CompilerAvailable(ctx),
 	}
 }
 

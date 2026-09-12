@@ -1087,27 +1087,39 @@ reuse the captured values.
 Set `ANVIL_ARGS` only for local launch tuning (for example alternate anvil
 defaults) and keep these test-only overrides out of production runbooks.
 
-## Pinned Vyper runtime
+## Signed Vyper runtime catalog
 
-Verification-enabled `api` and `all` processes require the complete read-only
-Vyper runtime at `/opt/etherview/vyper/etherview-vyper`. Override only with
-`verification.vyper_path` / `ETHERVIEW_VERIFICATION_VYPER_PATH` pointing to an
-identical-layout, validated custom runtime. Other roles do not execute it.
-Runtime schema v2 passes `verification.max_input_bytes` and
-`verification.max_output_bytes` to the helper through server-owned arguments;
-there is no separate hardcoded 5 MiB helper input ceiling. Both Go and Python
-enforce the effective limits. Rebuild the full runtime when changing protocol
-version and drain bound jobs as described below.
-The runtime contains CPython 3.13.15, Vyper 0.4.3, locked dependencies, licenses
-and `runtime-manifest.json`; operators never install packages into a running
-container. The dedicated helper is not a Python CLI.
+API/all processes obtain dedicated Vyper runtimes from the configured signed
+catalog. Set `verification.vyper_catalog_url` and
+`verification.vyper_catalog_public_key` (base64-encoded 32-byte Ed25519 public
+key), and add the catalog and artifact HTTPS origins to
+`verification.allowed_download_origins`. Compose exposes the corresponding
+`ETHERVIEW_VERIFICATION_VYPER_CATALOG_URL` and
+`ETHERVIEW_VERIFICATION_VYPER_CATALOG_PUBLIC_KEY` only to API/all. An empty
+configuration leaves Vyper unavailable while other compiler families continue.
+The signing private key must never be installed on application replicas.
 
-Build or change the runtime as one unit. Drain executor-bound verification
-jobs, deploy one identical executor digest to all API-capable replicas in the
-deployment, then admit new work. Architecture changes also change that digest.
-Terminal artifacts remain readable. Missing, changed or writable runtime files
-fail validation; restore the full runtime instead of rewriting persisted job
-provenance. Catalog outages do not affect the fixed Vyper version list.
+The catalog contains only tested non-withdrawn stable versions. Hourly refresh
+persists immutable generations in PostgreSQL. New bindings stop after 24 hours
+without a fresh catalog, or at signed expiry. Previously bound jobs retain their
+exact compiler and executor identity; refreshing or withdrawing a release never
+rebinds a retry. Keep old published packages available for those jobs.
+
+Runtime archives share the existing disposable compiler cache volume. Downloads
+are authenticated before bounded extraction and atomic installation. Every
+execution rechecks the complete read-only manifest and files. Runtime schema v3
+passes the configured input/output limits through server-owned arguments; no
+pip, source build or general-purpose Python CLI runs in application processes.
+The older bundled helper is retained as a local regression fixture; production
+catalog execution does not fall back to it.
+
+Run API-capable replicas in one deployment on the same architecture; drain bound
+work before moving that deployment to another architecture. Before applying
+migration 0067, drain all queued/running Vyper jobs. The migration
+refuses an undrained queue and never changes terminal provenance. Missing,
+changed, wrong-platform or writable runtimes fail closed. Restore an authentic
+runtime or distribution service instead of editing persisted job provenance.
+The cache can be rebuilt; stop all cache owners before operator cleanup.
 
 Linux compilation uses a 512 MiB per-process address-space limit, 64 file
 descriptors, no core dump and the configured verification timeout/I/O bounds.

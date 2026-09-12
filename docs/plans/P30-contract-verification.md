@@ -178,9 +178,26 @@ credential-scoped operational boundaries.
 
 | P30-T100 | done | P30-T99 | Serialize Compose stdout/stderr capture and streaming to prevent concurrent buffer corruption | real-process output and failure regressions under the race detector; Foundry E2E; docs/plan checks |
 
+| P30-T107 | done | P30-T100 | Signed dynamic Vyper runtime catalogs, immutable provenance and authenticated cache | signature, persistence, download, cache and subprocess regressions |
+| P30-T108 | done | P30-T107 | All non-withdrawn stable Vyper build locks and version-aware input/output and matching | official compiler differential matrix on native AMD64/ARM64 |
+| P30-T109 | done | P30-T108 | Vyper capability API, generated client and bilingual Web | API, Etherscan and browser regressions |
+| P30-T110 | done | P30-T109 | Runtime release pipeline, deployment parity and complete acceptance | common gates, PostgreSQL, and native AMD64/ARM64 monolith/split production E2E |
+
+| P30-T111 | done | P30-T100 | Fix Vyper release archive padding and preserve cancelled legacy jobs during migration | Python producer/Go extractor regressions, gzip integrity and padding bounds, PostgreSQL migration preservation and maintained gates |
+
+| P30-T112 | done | P30-T111 | Restore signed Vyper catalog environment loading at the production startup boundary | Config loading for API/all, rejection of invalid trust settings, and Hardhat startup regression checks |
+
+| P30-T113 | done | P30-T112 | Align strict Hardhat persistence totals with the expanded Vyper version/protocol matrix | Replay CI totals, reject missing/duplicate jobs and results, preserve provenance and topology parity checks |
+
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
 ## Acceptance
+
+- [x] P30-T107–P30-T113: 26 non-withdrawn stable Vyper releases, signed dynamic
+      runtimes, API/Web and provenance/migration regressions pass all 11 checks
+      in [PR #63 CI run 34694346465](https://github.com/islishude/etherview/actions/runs/34694346465)
+      at `dc2d689c0edda6173a77e257889b60e13fa8c9c5`, including both native
+      Linux architectures and monolith/split production acceptance.
 
 - [x] P30-T95–P30-T99: Vyper 0.4.3 source verification passes pinned helper,
       exact matching, native/Etherscan/Web, and native AMD64/ARM64 production
@@ -513,3 +530,129 @@ owned by their current plans.
   rerun with this fix.
 - `make docs-check plan-check` and `git diff --check` pass. No public,
   persistent, compiler, or topology contract changes were needed.
+
+### P30-T107–P30-T110 — Dynamic Vyper runtime catalogs (2026-09-12)
+
+- Implementation covers 26 non-withdrawn stable releases, with official-source
+  packaging for 0.2.0; signed Ed25519 catalogs, immutable runtime provenance,
+  authenticated archive/cache installation, historical compiler adapters,
+  capability API/Web controls and native release/production E2E workflows.
+- IDs T101–T106, ADR-0048 and migration 0066 already belong to the separate
+  `simplify-contract-verify-runtime` branch. This work uses T107–T110,
+  ADR-0049 and migration 0067 to avoid sharing those identifiers.
+- Local macOS ARM64: all 26 frozen helpers pass 362 original/perturbed reference
+  executions covering constructors, supported immutables, interfaces, missing
+  imports, optimization modes, metadata omission and malformed sources. The Go
+  matrix verifies startup, real execution, exact matching and identity changes.
+  These are not Linux production or native AMD64 evidence.
+- Targeted Go tests for verify/httpapi/etherscan/config/app pass. Vyper/catalog
+  race regressions, cold download/checksum/cache-repair tests, signed-catalog
+  publisher tests, Web's 370 tests and the real Chromium Vyper submission pass.
+- PostgreSQL Vyper publication/reorg, catalog expiry/freshness, bound retry without
+  a fresh catalog, immutable rebinding rejection and catalog/history migration
+  regressions pass. The broad integration run found one obsolete assertion
+  forbidding all Vyper catalog rows after the full migration chain; that assertion
+  was updated for the current schema and its targeted regression passes.
+- Generation, source, docs, plan, Go vet/lint and Web lint checks pass. A full
+  `make check` passed through unit/race/security/license checks but stopped at
+  Docker deployment validation. Retrying `make deployment-check` encounters the
+  same Docker Hub OAuth connection reset; the gate remains open.
+- Remaining acceptance: native Linux AMD64 and ARM64 runtime matrices, production
+  image/deployment checks and both production topologies using the collected
+  native artifacts. CI now builds both architecture sets before those tests and
+  writes descriptor-bound acceptance only after topology parity passes. No
+  production catalog can be signed without both acceptance records. Remote
+  publication remains a separate explicitly authorized release operation.
+
+At this local-only checkpoint the items remained open; local/mock and macOS
+results did not close native production acceptance. The subsequent remote CI
+closure below supplies the missing evidence.
+
+### P30-T111 — Release archive padding and cancelled history fixes (2026-09-12)
+
+- The extractor accepts the Python producer's final 10 KiB USTAR record padding
+  (up to 19 complete zero blocks), while rejecting nonzero bytes, partial blocks
+  and excessive padding. Reading through gzip EOF still rejects corrupt CRCs
+  and truncated trailers. The release packer is shared with the Python-to-Go
+  round-trip regression instead of reproducing it with Go's different tar writer.
+- Migration 0067 retains cancelled v1 Vyper jobs, both unbound and previously
+  lease-bound. The PostgreSQL regression creates these states under schema 0065,
+  applies the actual migration chain, compares complete job snapshots and checks
+  that cancelled jobs cannot be claimed again. No rows are rewritten or rebound.
+- Both regressions failed before their fixes: valid producer archives were
+  rejected, and the migration failed with constraint violation 23514.
+- `go test -race ./internal/verify -run 'TestVyperArchive|TestVyperRuntimeCache'
+  -count=1` passes, including producer interoperability, padding bounds,
+  gzip corruption/truncation and authenticated cache repair.
+- `go run ./cmd/testintegration -root . -packages './internal/integration'
+  -run '^TestVyper|TestSolcJSExecutorMigrationDeletesVyperAndPreservesSolidity$'`
+  passes against the owned PostgreSQL 18 project, including cancellation
+  preservation and the existing publication, reorg and provenance regressions.
+- All 26 existing macOS ARM64 release archives additionally pass extraction,
+  authenticated manifest validation and helper self-test through a temporary Go
+  test overlay (72.071s). This does not close P30-T110's native Linux gates.
+- `make generate-check source-check docs-check plan-check lint-go` and
+  `git diff --check` pass. P30-T107–P30-T110 retain their existing acceptance state.
+
+### P30-T112 — Hardhat CI startup configuration failure (2026-09-12)
+
+- Run 34687982706 at 506d3de failed in both native Hardhat jobs during monolith
+  startup, before verification: the retained Compose logs report
+  `ETHERVIEW_VERIFICATION_VYPER_CATALOG_URL is no longer supported`.
+  The new environment reader was unreachable because the same variable remained
+  in the retired-setting denylist. Remove only that obsolete rejection.
+- A regression exercises the actual `LoadForRoles` path for `all` and `api`,
+  including configured and explicitly empty catalog settings. It failed with
+  the identical CI error before the fix. Missing/malformed public keys,
+  non-HTTPS URLs and unlisted origins remain rejected after the fix; genuinely
+  retired compiler environment variables remain rejected as well.
+- `go test -race ./internal/config ./internal/app` and
+  `make source-check docs-check plan-check lint-go` pass.
+- The cited run's native Vyper runtime matrices and other CI jobs passed; this
+  is not a compiler-matrix or package-timeout failure. The run predates the
+  uncommitted T111 archive/migration fixes, which are preserved in this worktree.
+- Local `make docker-build` was attempted for a production E2E replay but failed
+  fetching the Docker Hub frontend OAuth token (connection reset). Full native
+  Hardhat E2E and a new remote CI run remain unverified; T110 stays open.
+
+### P30-T113 — Hardhat persistence totals after Vyper expansion (2026-09-12)
+
+- Run 34689671531 at 5d26cec reaches the final monolith snapshot on both AMD64
+  and ARM64. All six Vyper families pass native/Etherscan verification and cache
+  owner replacement; the snapshot has 21 address jobs, 23 compiler results and
+  12 Vyper jobs/results with valid provenance. The old 11/13 total assertions
+  still assumed only two Vyper jobs, so both checks fail despite complete data.
+- Version and protocol matrices now supply one Vyper job count to execution,
+  provenance SQL and strict snapshot checks. Expected totals remain exact:
+  nine Solidity addresses plus Vyper, and eleven non-Vyper results plus Vyper.
+  All existing proxy, Yul, derived, Safe/Diamond and topology-parity checks remain.
+- The regression replays the observed CI totals, rejects the obsolete totals,
+  rejects missing/duplicate counts in every category and covers another matrix
+  size. It failed against the original checks and passes with the correction.
+  `test-hardhat3-e2e-prebuilt` now includes this regression alongside the full
+  production test, so the lightweight count test is not omitted by its filter.
+- `go test -race -tags='runtimee2e hardhat3e2e' ./e2e/runtime
+  -run '^TestHardhat3VerificationCounts$' -count=1`, tagged golangci-lint and
+  `make source-check docs-check plan-check lint-go` pass.
+- A local production rebuild again fails fetching the Docker Hub frontend OAuth
+  token (connection reset). Full production E2E and a new remote CI run remain
+  unverified; this count fix does not close P30-T110's native topology gate.
+
+### P30-T107–P30-T113 — Remote acceptance closure (2026-09-12)
+
+- [PR #63](https://github.com/islishude/etherview/pull/63) head and the local
+  code commit are `dc2d689c0edda6173a77e257889b60e13fa8c9c5`.
+  [CI run 34694346465](https://github.com/islishude/etherview/actions/runs/34694346465)
+  is a successful pull-request run with all 11 checks successful.
+- Native Vyper runtime matrices pass on Linux AMD64 and ARM64. Both native
+  Hardhat jobs pass monolith/distributed verification and topology parity;
+  their `vyper-acceptance-amd64` and `vyper-acceptance-arm64` artifacts each
+  contain 26 descriptor digests with `monolith=true` and `split=true`.
+- Generation/lint/unit/race, PostgreSQL integration, native AMD64/ARM64 Foundry,
+  embedded SPA browser E2E, security/licenses and Container/Compose/Helm gates
+  also pass at that commit. This supersedes the earlier incomplete acceptance
+  checkpoints and closes T107–T110; T111–T113 fixes are included in the same run.
+- P30 returns to done. This evidence is CI acceptance, not production deployment
+  or publication of a signed compiler catalog. P70/P73 external release blockers
+  remain outside this work. Documentation-only closure is checked locally with
+  `make docs-check plan-check` and `git diff --check`.

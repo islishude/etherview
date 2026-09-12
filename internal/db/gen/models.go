@@ -449,13 +449,15 @@ type ChartRollupDirtyHour struct {
 }
 
 type CompilerCatalogEntry struct {
-	GenerationID   int64  `db:"generation_id" json:"generation_id"`
-	Language       string `db:"language" json:"language"`
-	Version        string `db:"version" json:"version"`
-	Platform       string `db:"platform" json:"platform"`
-	ArtifactUrl    string `db:"artifact_url" json:"artifact_url"`
-	ArtifactSha256 []byte `db:"artifact_sha256" json:"artifact_sha256"`
-	MaxBytes       int64  `db:"max_bytes" json:"max_bytes"`
+	GenerationID   int64              `db:"generation_id" json:"generation_id"`
+	Language       string             `db:"language" json:"language"`
+	Version        string             `db:"version" json:"version"`
+	Platform       string             `db:"platform" json:"platform"`
+	ArtifactUrl    string             `db:"artifact_url" json:"artifact_url"`
+	ArtifactSha256 []byte             `db:"artifact_sha256" json:"artifact_sha256"`
+	MaxBytes       int64              `db:"max_bytes" json:"max_bytes"`
+	VyperRuntimes  []byte             `db:"vyper_runtimes" json:"vyper_runtimes"`
+	ExpiresAt      pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
 }
 
 type CompilerCatalogGeneration struct {

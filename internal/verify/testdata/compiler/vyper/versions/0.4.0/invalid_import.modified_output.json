@@ -1,0 +1,1 @@
+{"compiler": "vyper-0.4.0", "errors": [{"component": "compiler", "formattedMessage": "Missing\n\n  contract \"A.vy:1\", line 1:0 \n  ---> 1 import Missing as Missing\n  -------^\n       2 @external\n", "message": "Missing", "severity": "error", "sourceLocation": {"file": "A.vy"}, "type": "ModuleNotFound"}]}

@@ -1,0 +1,7 @@
+asttokens==2.0.3
+semantic-version==2.8.5
+pycryptodome==3.23.0
+pyinstaller==6.22.2
+setuptools==80.9.0
+wheel==0.45.1
+pytest-runner==6.0.1

@@ -1,35 +1,26 @@
 # Vyper verification
 
-The maintained Vyper boundary is [ADR-0047](../decisions/ADR-0047-pinned-vyper-executor.md).
-Implementation and acceptance evidence belong to
-[P30-T95–P30-T99](../plans/P30-contract-verification.md).
+[ADR-0049](../decisions/ADR-0049-dynamic-vyper-runtimes.md) owns the signed dynamic
+runtime catalog and preserves ADR-0047's API-owned subprocess execution.
+[P30-T107–P30-T110](../plans/P30-contract-verification.md) track implementation and
+native acceptance. The version build index includes all 26 currently identified
+non-withdrawn stable versions, including official-source-only 0.2.0.
 
-## Fixed compiler and executor
+Native REST Standard JSON and multipart, Etherscan `vyper-json`, and the Web use
+one version-aware pipeline. The compiler catalog response includes per-version
+capabilities. Omitted options retain upstream defaults; unsupported explicit
+options fail rather than being silently ignored. Sources and interfaces remain
+bounded inline data. Historical format adapters recover compiler-produced
+layout output omitted by older JSON formatters; 0.3.1–0.3.3 export exact typed
+AST offsets and lengths. No arbitrary bytecode range is inferred or masked.
 
-Only official Vyper 0.4.3 is supported. Its Python wheel is identical across
-architectures; the CPython 3.13.15/PyInstaller 6.22.2 helper, native dependencies
-and complete runtime manifest are built for the host architecture. The API owns
-execution and publication without a remote compiler service, Pyodide, runtime
-package installation or catalog downloads. The deployed executor identity is
-immutable for every leased job, so bound work must drain before an upgrade.
+Original and whitespace-perturbed sources compile independently. Releases from
+0.4.1 carry the five-field integrity footer; older version-only metadata does not
+create full-source evidence. Runtime without authenticated source metadata
+remains partial, and immutable differences are limited to exact declared ranges.
+Constructor ABI, canonical code/block provenance, lease fencing and atomic
+publication retain the common verification boundary. Batch, derived and Sourcify
+Vyper paths remain excluded.
 
-## Inputs and matching
-
-Native Standard JSON and multipart submissions require `target_file`. Submitted
-modules and interfaces resolve through JSONInputBundle, never the host source
-filesystem. Optimization uses `none`, `gas`, or `codesize`; stable compiler
-settings and server-selected outputs are bounded. Experimental backends,
-debug, storage-layout overrides, Solidity libraries and optimization runs are
-rejected. Etherscan `vyper-json` maps its contract name to the same exact target.
-
-The verifier compiles original and whitespace-perturbed sources independently.
-Vyper 0.4.3 creation metadata is a five-field CBOR tuple whose terminal length
-includes its own two bytes. Runtime metadata is absent; runtime equality alone
-therefore remains partial. Immutable data is an exact compiler-declared suffix,
-with contiguous, non-overlapping layout ranges and no undeclared wildcard.
-Constructor arguments retain canonical ABI encoding. Address publication uses
-canonical code observations, exact block identity and the existing transaction
-and lease fences. Factory-derived and batch Vyper verification are excluded.
-
-See [testing](../testing.md) for production topology gates and
-[operations](../operations.md) for runtime upgrades and identity failures.
+See [testing](../testing.md) for native matrix and production topology gates and
+[operations](../operations.md#signed-vyper-runtime-catalog) for configuration.

@@ -180,7 +180,7 @@ func TestVyperRuntimeHonorsConfiguredInputLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	input, err := PrepareVyperStandardJSON(raw, "A.vy", compiler.MaxInputBytes)
+	input, err := PrepareVyperStandardJSON(raw, "A.vy", VyperCompilerVersion, compiler.MaxInputBytes)
 	if err != nil {
 		t.Fatal(err)
 	}

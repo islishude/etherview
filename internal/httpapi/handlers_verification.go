@@ -239,8 +239,22 @@ func (h *Handler) verifierCompilers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusServiceUnavailable, "compiler_catalog_unavailable", "compiler catalog is unavailable", nil)
 		return
 	}
+	data := gen.CompilerCatalog{Language: gen.VerifierLanguage(language), Versions: versions}
+	if language == verify.LanguageVyper {
+		capabilities := map[string]gen.VyperCompilerCapabilities{}
+		for _, version := range versions {
+			if profile, ok := verify.VyperVersionCapabilities(version); ok {
+				modes := make([]gen.VyperCompilerCapabilitiesOptimizationModes, 0, len(profile.OptimizationModes))
+				for _, mode := range profile.OptimizationModes {
+					modes = append(modes, gen.VyperCompilerCapabilitiesOptimizationModes(mode))
+				}
+				capabilities[version] = gen.VyperCompilerCapabilities{OptimizationModes: modes, EvmVersions: profile.EVMVersions, DefaultEvmVersion: profile.DefaultEVMVersion, BytecodeMetadata: profile.BytecodeMetadata, EnableDecimals: profile.EnableDecimals}
+			}
+		}
+		data.Capabilities = &capabilities
+	}
 	writeJSON(w, http.StatusOK, gen.CompilerCatalogResponse{
-		Data: gen.CompilerCatalog{Language: gen.VerifierLanguage(language), Versions: versions},
+		Data: data,
 		Meta: h.meta(r),
 	})
 }

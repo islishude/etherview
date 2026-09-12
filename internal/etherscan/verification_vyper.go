@@ -11,8 +11,8 @@ import (
 
 func parseVyperVerificationForm(values url.Values, source, target, version string, maximum int) (etherscanVerificationForm, error) {
 	invalid := invalidParameter("invalid Vyper verification input")
-	version = strings.TrimPrefix(version, "vyper:")
-	if version != verify.VyperCompilerVersion {
+	version = strings.TrimPrefix(strings.TrimPrefix(version, "vyper:"), "v")
+	if _, ok := verify.VyperVersionCapabilities(version); !ok {
 		return etherscanVerificationForm{}, invalid
 	}
 	filename, name := target, ""
@@ -33,7 +33,7 @@ func parseVyperVerificationForm(values url.Values, source, target, version strin
 			}
 		}
 	}
-	prepared, err := verify.PrepareVyperStandardJSON(json.RawMessage(source), filename, maximum)
+	prepared, err := verify.PrepareVyperStandardJSON(json.RawMessage(source), filename, version, maximum)
 	if err != nil {
 		return etherscanVerificationForm{}, invalid
 	}

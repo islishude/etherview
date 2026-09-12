@@ -4830,7 +4830,7 @@ components:
       properties:
         compiler_version:
           type: string
-          enum: ["0.4.3"]
+          pattern: '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
         target_file:
           type: string
           minLength: 1
@@ -4838,7 +4838,7 @@ components:
         input:
           type: object
           additionalProperties: true
-          description: Inline Vyper Standard JSON with bounded sources and interfaces. Optimization defaults to gas unless explicitly supplied.
+          description: Inline Vyper Standard JSON with bounded sources and interfaces. Omitted settings use the selected compiler defaults; explicit settings must be supported by its capabilities.
         bytecodes:
           $ref: "#/components/schemas/VerifierBytecodes"
     VyperMultipartRequest:
@@ -4848,7 +4848,7 @@ components:
       properties:
         compiler_version:
           type: string
-          enum: ["0.4.3"]
+          pattern: '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
         target_file:
           type: string
           minLength: 1
@@ -4857,7 +4857,7 @@ components:
         optimization_mode:
           type: string
           enum: [none, gas, codesize]
-          description: Vyper multipart optimization mode; defaults to gas.
+          description: Vyper multipart optimization mode; omit to use the selected compiler default.
         interfaces:
           type: object
           maxProperties: 1024
@@ -5004,7 +5004,7 @@ components:
         optimization_mode:
           type: string
           enum: [none, gas, codesize]
-          description: Vyper multipart optimization mode; defaults to gas.
+          description: Vyper multipart optimization mode; omit to use the selected compiler default.
         interfaces:
           type: object
           maxProperties: 1024
@@ -5287,6 +5287,31 @@ components:
           description: Semantic versions in ascending precedence order; equal-precedence builds use their exact version text as a deterministic tie-breaker.
           items:
             type: string
+        capabilities:
+          type: object
+          description: Vyper capabilities keyed by exact available compiler version.
+          additionalProperties:
+            $ref: "#/components/schemas/VyperCompilerCapabilities"
+    VyperCompilerCapabilities:
+      type: object
+      additionalProperties: false
+      required: [optimization_modes, evm_versions, default_evm_version, bytecode_metadata, enable_decimals]
+      properties:
+        optimization_modes:
+          type: array
+          items:
+            type: string
+            enum: [none, gas, codesize]
+        evm_versions:
+          type: array
+          items:
+            type: string
+        default_evm_version:
+          type: string
+        bytecode_metadata:
+          type: boolean
+        enable_decimals:
+          type: boolean
     LookupMethodsRequest:
       type: object
       additionalProperties: false

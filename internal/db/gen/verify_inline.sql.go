@@ -568,7 +568,7 @@ func (q *Queries) VerifyInlineFailStatement1(ctx context.Context, column1 pgtype
 const VerifyInlineLookupStatement1 = `-- name: VerifyInlineLookupStatement1 :many
 SELECT entry.generation_id, entry.language, entry.version,
 		       entry.platform, entry.artifact_url, entry.artifact_sha256,
-		       entry.max_bytes, head.updated_at
+		       entry.max_bytes, head.updated_at, entry.expires_at
 		FROM compiler_catalog_heads AS head
 		JOIN compiler_catalog_generations AS generation
 		  ON generation.id = head.generation_id AND generation.language = head.language
@@ -586,6 +586,7 @@ type VerifyInlineLookupStatement1Row struct {
 	ArtifactSha256 []byte             `db:"artifact_sha256" json:"artifact_sha256"`
 	MaxBytes       int64              `db:"max_bytes" json:"max_bytes"`
 	UpdatedAt      pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ExpiresAt      pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
 }
 
 func (q *Queries) VerifyInlineLookupStatement1(ctx context.Context, language string, version string) ([]VerifyInlineLookupStatement1Row, error) {
@@ -606,6 +607,7 @@ func (q *Queries) VerifyInlineLookupStatement1(ctx context.Context, language str
 			&i.ArtifactSha256,
 			&i.MaxBytes,
 			&i.UpdatedAt,
+			&i.ExpiresAt,
 		); err != nil {
 			return nil, err
 		}
@@ -725,7 +727,7 @@ func (q *Queries) VerifyInlinePersistStatement3(ctx context.Context, language st
 }
 
 const VerifyInlineVersionsStatement1 = `-- name: VerifyInlineVersionsStatement1 :many
-SELECT entry.version, head.updated_at
+SELECT entry.version, head.updated_at, entry.expires_at, entry.vyper_runtimes
 		FROM compiler_catalog_heads AS head
 		JOIN compiler_catalog_generations AS generation
 		  ON generation.id = head.generation_id AND generation.language = head.language
@@ -736,8 +738,10 @@ SELECT entry.version, head.updated_at
 `
 
 type VerifyInlineVersionsStatement1Row struct {
-	Version   string             `db:"version" json:"version"`
-	UpdatedAt pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	Version       string             `db:"version" json:"version"`
+	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ExpiresAt     pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	VyperRuntimes []byte             `db:"vyper_runtimes" json:"vyper_runtimes"`
 }
 
 func (q *Queries) VerifyInlineVersionsStatement1(ctx context.Context, language string) ([]VerifyInlineVersionsStatement1Row, error) {
@@ -749,7 +753,12 @@ func (q *Queries) VerifyInlineVersionsStatement1(ctx context.Context, language s
 	items := []VerifyInlineVersionsStatement1Row{}
 	for rows.Next() {
 		var i VerifyInlineVersionsStatement1Row
-		if err := rows.Scan(&i.Version, &i.UpdatedAt); err != nil {
+		if err := rows.Scan(
+			&i.Version,
+			&i.UpdatedAt,
+			&i.ExpiresAt,
+			&i.VyperRuntimes,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

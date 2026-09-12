@@ -543,21 +543,31 @@ them on any external network.
 
 ## Vyper verification gates
 
-`make compiler-install` builds the ignored local Vyper runtime using Python
-3.13.15 (`PYTHON` selects that exact interpreter) and the hash-locked build
-requirements. `make security-check` audits Python dependencies with the exact
-upstream version-range corrections documented in the compiler README, while
-`make license-check` validates the shipped Python license inventory. `make test-go` and `make test-race` then execute real helper
-compilation, version/provenance rejection and cleanup tests; the pinned compiler
-fixtures exercise metadata, immutable suffixes, modules, interfaces and dispatch.
-The PostgreSQL integration suite verifies durable publication, compiler-family
-claiming, immutable provenance and reorg rejection without creating derived
-compilation units for Vyper.
+`make compiler-install` builds the pinned 0.4.3 regression helper. `make
+security-check` and `make license-check` retain their dependency and license
+checks. `make test-go` and `make test-race` exercise real compilation, manifest,
+input-limit, cancellation and cleanup regressions. The checked-in 26-version
+reference matrix covers normal code, constructors, invalid source and supported
+immutables, with ABI/bytecode comparisons against the official compiler.
 
-`make test-hardhat3-e2e` additionally deploys two real Vyper immutable contracts
-and verifies them through native REST and Etherscan `vyper-json`, including ABI
-and source reads. It runs inside both production monolith and split-role
-layouts; the existing native AMD64/ARM64 CI matrix owns architecture evidence.
-A local ARM64 run never substitutes for native AMD64 acceptance. Python helper
-build and permission failures must be fixed, not converted into expected-failure
-gates or bypassed with an unrestricted runtime.
+`make test-vyper-matrix` requires uv 0.12.12 and builds all hash-locked versions
+using their exact Python versions, then tests the frozen helpers and Go execution
+boundary. Outputs go to `.local/vyper-releases/`. CI runs this independently on
+native Linux AMD64 and ARM64 and collects both sets before production E2E.
+`compiler/vyper/fixtures_versions.py` explicitly regenerates reference fixtures
+from installed locked build environments; acceptance never rewrites references.
+
+`make test-hardhat3-e2e` also runs the strict persistence-count regression, with
+Vyper expectations derived from the version/protocol matrix. It requires both
+Linux artifact sets in
+`.local/vyper-releases/`. An ephemeral signed HTTPS fixture exercises real cold
+runtime downloads. It deploys contracts from six protocol families through
+native REST and Etherscan in both monolith and split layouts, verifies constructor
+and immutable values, ABI/source reads and catalog-bound provenance. Successful
+runs write descriptor-bound acceptance records used by the release catalog tool.
+A macOS run or emulated architecture never substitutes for native Linux gates.
+
+PostgreSQL integration tests cover durable binding/publication and reorg
+rejection. Signature, catalogue expiry, unsafe archives and runtime identity
+regressions remain passing release gates. Runtime or permission failures must be
+fixed, never converted to expected failures or unrestricted execution.

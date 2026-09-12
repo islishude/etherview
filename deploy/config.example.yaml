@@ -228,6 +228,9 @@ verification:
   # executor derives its sibling manifest and private lib directory.
   executor_path: /opt/etherview/solcjs/etherview-solcjs
   geas_path: /usr/local/bin/etherview-geas-compiler
+  # Configure both fields to enable signed dynamic Vyper runtimes.
+  vyper_catalog_url: ""
+  vyper_catalog_public_key: ""
   catalog_urls:
     # "auto" always selects the official architecture-neutral
     # emscripten-wasm32 list. An explicit HTTPS list is a mirror override.

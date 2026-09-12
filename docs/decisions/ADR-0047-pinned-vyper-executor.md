@@ -2,6 +2,9 @@
 
 Status: accepted
 
+[ADR-0049](ADR-0049-dynamic-vyper-runtimes.md) supersedes the fixed-version and
+bundled-only distribution decision. The subprocess and publication boundaries remain.
+
 ## Context
 
 Vyper 0.4.3 publishes an architecture-independent Python wheel. A dedicated

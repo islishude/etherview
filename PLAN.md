@@ -61,6 +61,13 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   P73-T08 live payment reconciliation and P70-T04 reference-capacity evidence.
   Local or synthetic evidence does not close either external gate.
 
+P30-T107–T113 are complete. [PR #63 CI run 34694346465](https://github.com/islishude/etherview/actions/runs/34694346465)
+passes all 11 checks at `dc2d689c0edda6173a77e257889b60e13fa8c9c5`, including
+26-version Vyper matrices on native Linux AMD64/ARM64, both Hardhat production
+topologies, Foundry, PostgreSQL, browser, security and deployment-surface gates.
+Both native Vyper acceptance artifacts confirm monolith/split success with 26
+descriptor digests. P30 returns to done; P70/P73 external release blockers remain.
+
 ## Global Release Gates
 
 - [ ] Every plan required by P70 is `done` or explicitly `superseded` with reviewable evidence.

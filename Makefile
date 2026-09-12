@@ -156,7 +156,7 @@ test-hardhat3-e2e-prebuilt: test-hardhat3-offline-compile
 	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" NODE="$(NODE)" \
 		ETHERVIEW_HARDHAT3_IMAGE="$(HARDHAT3_IMAGE)" \
 		$(GO) test -count=1 -v -tags='runtimee2e hardhat3e2e' \
-		-run '^TestHardhat3ProductionE2E$$' ./e2e/runtime
+		-run '^TestHardhat3(ProductionE2E|VerificationCounts)$$' ./e2e/runtime
 
 foundry-client-image-build:
 	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "foundry-client-image-build: docker is required"; exit 1; }
@@ -519,3 +519,13 @@ stop-x402-local:
 		--profile monolith --profile distributed down --volumes --remove-orphans
 
 recreate-x402-local: stop-x402-local start-x402-local
+
+.PHONY: test-vyper-matrix
+test-vyper-matrix:
+	python3 compiler/vyper/matrix.py
+	ETHERVIEW_TEST_VYPER_MATRIX_ROOT="$(CURDIR)/.local/vyper-builds" $(GO) test ./internal/verify -run '^TestVyper(DynamicRuntimeMatrix|StableVersionMatrix)$$' -count=1 -timeout=30m
+
+.PHONY: test-vyper-release
+test: test-vyper-release
+test-vyper-release:
+	$(NODE) --test compiler/vyper/catalog.test.mjs

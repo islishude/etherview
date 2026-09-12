@@ -20,7 +20,6 @@ func applyRoleEnvironment(cfg *Config, lookup func(string) (string, bool), force
 		"X402_MAX_CAPTURED_HEADER_BYTES",
 		"VERIFICATION_RUNNER_ENDPOINT",
 		"VERIFICATION_RUNNER_IMAGE",
-		"VERIFICATION_VYPER_CATALOG_URL",
 	} {
 		if _, exists := lookup(envPrefix + removed); exists {
 			return false, fmt.Errorf("%s%s is no longer supported", envPrefix, removed)
@@ -130,7 +129,8 @@ func applyStringEnvironment(cfg *Config, lookup func(string) (string, bool), rea
 	setString(lookup, "COMPILER_CACHE_DIRECTORY", &cfg.Verification.CacheDirectory)
 	setString(lookup, "VERIFICATION_EXECUTOR_PATH", &cfg.Verification.ExecutorPath)
 	setString(lookup, "VERIFICATION_GEAS_PATH", &cfg.Verification.GeasPath)
-	setString(lookup, "VERIFICATION_VYPER_PATH", &cfg.Verification.VyperPath)
+	setString(lookup, "VERIFICATION_VYPER_CATALOG_URL", &cfg.Verification.VyperCatalogURL)
+	setString(lookup, "VERIFICATION_VYPER_CATALOG_PUBLIC_KEY", &cfg.Verification.VyperCatalogPublicKey)
 	if value, ok := lookup(envPrefix + "VERIFICATION_SOLIDITY_CATALOG_URL"); ok {
 		if value = strings.TrimSpace(value); value != "" {
 			cfg.Verification.CatalogURLs["solidity"] = value

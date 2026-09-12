@@ -967,8 +967,8 @@ func TestSolcJSExecutorMigrationDeletesVyperAndPreservesSolidity(t *testing.T) {
 		INSERT INTO compiler_catalog_generations (
 			language, source_url, catalog_digest, entry_count
 		) VALUES ('vyper', 'https://compiler.example/vyper/list.json',
-			decode(repeat('91', 32), 'hex'), 1)`); err == nil {
-		t.Fatal("post-migration Vyper catalog write was accepted")
+			decode(repeat('91', 32), 'hex'), 1)`); err != nil {
+		t.Fatalf("current schema rejected a new Vyper catalog: %v", err)
 	}
 	if _, err := db.ExecContext(ctx, `
 		INSERT INTO verification_jobs (

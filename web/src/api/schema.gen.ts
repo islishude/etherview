@@ -1572,7 +1572,7 @@ export interface components {
                 [key: string]: components["schemas"]["Address"];
             };
             /**
-             * @description Vyper multipart optimization mode; defaults to gas.
+             * @description Vyper multipart optimization mode; omit to use the selected compiler default.
              * @enum {string}
              */
             optimization_mode?: "none" | "gas" | "codesize";
@@ -2006,6 +2006,10 @@ export interface components {
             kind: "compilation_failure";
         };
         CompilerCatalog: {
+            /** @description Vyper capabilities keyed by exact available compiler version. */
+            capabilities?: {
+                [key: string]: components["schemas"]["VyperCompilerCapabilities"];
+            };
             language: components["schemas"]["VerifierLanguage"];
             /** @description Semantic versions in ascending precedence order; equal-precedence builds use their exact version text as a deterministic tie-breaker. */
             versions: string[];
@@ -3451,10 +3455,16 @@ export interface components {
             };
             language?: components["schemas"]["SolcVerifierLanguage"];
         };
+        VyperCompilerCapabilities: {
+            bytecode_metadata: boolean;
+            default_evm_version: string;
+            enable_decimals: boolean;
+            evm_versions: string[];
+            optimization_modes: ("none" | "gas" | "codesize")[];
+        };
         VyperMultipartRequest: {
             bytecodes: components["schemas"]["VerifierBytecodes"];
-            /** @enum {string} */
-            compiler_version: "0.4.3";
+            compiler_version: string;
             evm_version?: string;
             /** @description Vyper multipart inline interfaces containing content or an ABI array. */
             interfaces?: {
@@ -3463,7 +3473,7 @@ export interface components {
                 };
             };
             /**
-             * @description Vyper multipart optimization mode; defaults to gas.
+             * @description Vyper multipart optimization mode; omit to use the selected compiler default.
              * @enum {string}
              */
             optimization_mode?: "none" | "gas" | "codesize";
@@ -3475,9 +3485,8 @@ export interface components {
         };
         VyperStandardJSONRequest: {
             bytecodes: components["schemas"]["VerifierBytecodes"];
-            /** @enum {string} */
-            compiler_version: "0.4.3";
-            /** @description Inline Vyper Standard JSON with bounded sources and interfaces. Optimization defaults to gas unless explicitly supplied. */
+            compiler_version: string;
+            /** @description Inline Vyper Standard JSON with bounded sources and interfaces. Omitted settings use the selected compiler defaults; explicit settings must be supported by its capabilities. */
             input: {
                 [key: string]: unknown;
             };

@@ -567,7 +567,7 @@ describe("P50 capability pages", () => {
       if (path === "/api/v1/config") return configResponse({ verification: true });
       if (path.includes("/verifier/compilers")) {
         const language = new URL(path, "http://etherview.test").searchParams.get("language");
-        return Response.json({ data: { language, versions: language === "vyper" ? ["0.4.3"] : ["0.8.30"] }, meta });
+        return Response.json({ data: { language, versions: language === "vyper" ? ["0.4.3"] : ["0.8.30"], capabilities: language === "vyper" ? { "0.4.3": { optimization_modes: ["none", "gas", "codesize"], evm_versions: ["prague"], default_evm_version: "prague", bytecode_metadata: true, enable_decimals: true } } : undefined }, meta });
       }
       if (path === `/api/v1/contracts/${address}/verification` && init?.method === "POST") {
         return apiError("queued-for-test", 503);

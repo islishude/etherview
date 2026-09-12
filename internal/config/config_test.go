@@ -307,7 +307,6 @@ func TestRemovedCompilerEnvironmentIsRejected(t *testing.T) {
 		"ETHERVIEW_COMPILER_SANDBOX",
 		"ETHERVIEW_VERIFICATION_RUNNER_ENDPOINT",
 		"ETHERVIEW_VERIFICATION_RUNNER_IMAGE",
-		"ETHERVIEW_VERIFICATION_VYPER_CATALOG_URL",
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

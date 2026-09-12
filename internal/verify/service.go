@@ -89,8 +89,13 @@ func (service *Service) prepareV2(_ context.Context, request *SubmissionV2) erro
 	if !versionPattern.MatchString(normalizeCompilerVersion(request.CompilerVersion)) {
 		return errors.New("compiler version is invalid")
 	}
-	if request.Language == LanguageVyper && request.CompilerVersion != VyperCompilerVersion {
-		return errors.New("invalid Vyper compiler version")
+	if request.Language == LanguageVyper {
+		if !stableVyperVersion(request.CompilerVersion) {
+			return ErrCompilerVersionUnavailable
+		}
+		if _, ok := VyperVersionCapabilities(request.CompilerVersion); !ok {
+			return ErrCompilerVersionUnavailable
+		}
 	}
 	request.CompilerVersion = normalizeCompilerVersion(request.CompilerVersion)
 	if request.Language != LanguageVyper && (request.TargetFile != "" || request.VyperMultipart != nil) {

@@ -29,3 +29,9 @@ node_modules
 .codex/
 
 /.local/vyper/
+
+# Vyper matrix build environments, release outputs and Python bytecode
+/.local/vyper-matrix/
+/.local/vyper-builds/
+/.local/vyper-releases/
+/compiler/vyper/__pycache__/

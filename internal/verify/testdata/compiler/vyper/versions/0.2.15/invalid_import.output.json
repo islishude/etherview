@@ -1,0 +1,1 @@
+{"compiler": "vyper-0.2.15", "errors": [{"component": "parser", "message": "Cannot locate interface 'Missing{.vy,.json}'", "severity": "error", "sourceLocation": {"file": "A.vy"}, "type": "FileNotFoundError"}]}

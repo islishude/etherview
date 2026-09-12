@@ -23,7 +23,8 @@ WITH exhausted AS (
           AND (kind IN ('proxy', 'sourcify', 'sourcify_from_etherscan')
                OR ($4::boolean AND language IN ('solidity', 'yul'))
                OR ($5::boolean AND language = 'geas')
-               OR ($6::boolean AND language = 'vyper'))
+               OR ($6::boolean AND language = 'vyper')
+               OR ($7::boolean AND language = 'vyper' AND compiler_digest IS NOT NULL AND executor_kind = 'etherview_vyper_v3'))
           AND attempt_count >= max_attempts
         ORDER BY created_at, id FOR UPDATE SKIP LOCKED LIMIT 1
     )
@@ -34,7 +35,8 @@ WITH exhausted AS (
       AND (kind IN ('proxy', 'sourcify', 'sourcify_from_etherscan')
            OR ($4::boolean AND language IN ('solidity', 'yul'))
            OR ($5::boolean AND language = 'geas')
-               OR ($6::boolean AND language = 'vyper'))
+               OR ($6::boolean AND language = 'vyper')
+               OR ($7::boolean AND language = 'vyper' AND compiler_digest IS NOT NULL AND executor_kind = 'etherview_vyper_v3'))
       AND attempt_count < max_attempts
       AND NOT EXISTS (SELECT 1 FROM exhausted WHERE exhausted.id = verification_jobs.id)
     ORDER BY created_at, id FOR UPDATE SKIP LOCKED LIMIT 1
@@ -60,6 +62,7 @@ type VerifyV2ClaimRunnableParams struct {
 	Column4    bool        `db:"column_4" json:"column_4"`
 	Column5    bool        `db:"column_5" json:"column_5"`
 	Column6    bool        `db:"column_6" json:"column_6"`
+	Column7    bool        `db:"column_7" json:"column_7"`
 }
 
 type VerifyV2ClaimRunnableRow struct {
@@ -93,6 +96,7 @@ func (q *Queries) VerifyV2ClaimRunnable(ctx context.Context, arg VerifyV2ClaimRu
 		arg.Column4,
 		arg.Column5,
 		arg.Column6,
+		arg.Column7,
 	)
 	if err != nil {
 		return nil, err
