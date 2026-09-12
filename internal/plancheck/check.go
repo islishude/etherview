@@ -15,9 +15,9 @@ import (
 
 var (
 	planIDPattern     = regexp.MustCompile(`^P[0-9]{2}$`)
-	workItemIDPattern = regexp.MustCompile(`^P[0-9]{2}-T[0-9]{2}$`)
-	dependencyPattern = regexp.MustCompile(`P[0-9]{2}(?:-T[0-9]{2})?`)
-	dependencyRange   = regexp.MustCompile(`(P[0-9]{2}(?:-T[0-9]{2})?)\s*[-\x{2013}\x{2014}]\s*(P[0-9]{2}(?:-T[0-9]{2})?)`)
+	workItemIDPattern = regexp.MustCompile(`^P[0-9]{2}-T[0-9]{2,}$`)
+	dependencyPattern = regexp.MustCompile(`P[0-9]{2}(?:-T[0-9]{2,})?`)
+	dependencyRange   = regexp.MustCompile(`(P[0-9]{2}(?:-T[0-9]{2,})?)\s*[-\x{2013}\x{2014}]\s*(P[0-9]{2}(?:-T[0-9]{2,})?)`)
 	dependencyToken   = regexp.MustCompile(`P[0-9][0-9A-Za-z-]*`)
 	markdownLink      = regexp.MustCompile(`!?\[[^]]*\]\(([^)]+)\)`)
 	checkboxPattern   = regexp.MustCompile(`^\s*-\s*\[([ xX])\]\s+(.+)$`)
@@ -382,7 +382,7 @@ func (c *checker) indexWorkItems() {
 		localSeen := make(map[string]int)
 		for _, item := range plan.items {
 			if !workItemIDPattern.MatchString(item.id) {
-				c.add(plan.path, item.line, fmt.Sprintf("malformed work-item ID %q; expected PNN-TNN", item.id))
+				c.add(plan.path, item.line, fmt.Sprintf("malformed work-item ID %q; expected PNN-TNN with at least two task digits", item.id))
 			} else if !strings.HasPrefix(item.id, plan.id+"-T") {
 				c.add(plan.path, item.line, fmt.Sprintf("work item %s must use parent prefix %s-T", item.id, plan.id))
 			}

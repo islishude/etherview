@@ -202,3 +202,21 @@ func diagnosticText(report Report) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+func TestCheckAcceptsThreeDigitWorkItemsAndDependencies(t *testing.T) {
+	t.Parallel()
+	root := copyFixture(t)
+	planPath := filepath.Join(root, "docs", "plans", "P00-foundation.md")
+	replaceInFile(t, planPath, "P00-T01", "P00-T100")
+	replaceInFile(t, planPath, "P00-T02", "P00-T101")
+	replaceInFile(t, planPath, "| todo | P00-T01 |", "| todo | P00-T100 |")
+	report := Check(root)
+	if !report.OK() || report.WorkItems != 3 {
+		t.Fatalf("three-digit work items: count=%d diagnostics=%s", report.WorkItems, diagnosticText(report))
+	}
+	replaceInFile(t, planPath, "| P00-T101 | todo | P00-T100 |", "| P00-T101 | todo | P00-T102 |")
+	report = Check(root)
+	if report.OK() || !strings.Contains(diagnosticText(report), "dependency P00-T102 does not resolve") {
+		t.Fatalf("missing three-digit dependency accepted: %s", diagnosticText(report))
+	}
+}

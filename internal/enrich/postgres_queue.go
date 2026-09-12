@@ -771,6 +771,12 @@ func (queue *PostgresJobQueue) Renew(ctx context.Context, lease Lease, leaseFor 
 }
 
 func (queue *PostgresJobQueue) Finish(ctx context.Context, lease Lease, stageResult StageResult) error {
+	return retryAbortedQueueTransaction(ctx, func() error {
+		return queue.finishOnce(ctx, lease, stageResult)
+	})
+}
+
+func (queue *PostgresJobQueue) finishOnce(ctx context.Context, lease Lease, stageResult StageResult) error {
 	if queue == nil || queue.db == nil {
 		return errors.New("finish using nil PostgreSQL enrichment queue")
 	}
@@ -845,6 +851,12 @@ func (queue *PostgresJobQueue) Finish(ctx context.Context, lease Lease, stageRes
 }
 
 func (queue *PostgresJobQueue) Retry(ctx context.Context, lease Lease, retry Retry) error {
+	return retryAbortedQueueTransaction(ctx, func() error {
+		return queue.retryOnce(ctx, lease, retry)
+	})
+}
+
+func (queue *PostgresJobQueue) retryOnce(ctx context.Context, lease Lease, retry Retry) error {
 	if queue == nil || queue.db == nil {
 		return errors.New("retry using nil PostgreSQL enrichment queue")
 	}

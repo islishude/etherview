@@ -310,6 +310,10 @@ executors. The routing and lag contract is specified in
   generation, clears its publication, and queues the new one atomically.
   `failed` and `unavailable` outcomes have no journal but change the job
   terminal state and upsert the exact job/generation result in one transaction.
+  `Finish` and `Retry` retry a PostgreSQL-aborted deadlock or serialization
+  transaction at most five times with cancellable jittered backoff, rechecking
+  the original lease/generation each time. Ambiguous commits and lease loss
+  are never retried. These transaction retries do not consume job attempts.
   Retry exhaustion and crash-expired exhaustion use the same result contract, and
   `durable_jobs.max_attempts` is the only attempt limit interpreted by workers.
   Replay reuses the immutable idempotency key and records a unique source key

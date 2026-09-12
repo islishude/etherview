@@ -40,6 +40,13 @@ immutable block, stage version, result, and replay generation.
   `Finish(complete)` for any known derived stage name and version is rejected;
   a future stage version cannot silently fall back to the old two-transaction
   path.
+- `Finish` and `Retry` may repeat their entire transaction only after PostgreSQL
+  reports an aborted transaction (`40P01` deadlock or `40001` serialization
+  failure). Each attempt rolls back before a bounded, cancellable jittered
+  backoff and rechecks the original lease and generation in a fresh transaction.
+  At most five transaction attempts share the caller deadline; this does not
+  consume another durable job attempt or rerun external RPC work. Lease loss,
+  other SQL errors, and ambiguous commits are not retried.
 - `block_stage_results` and `block_journals` carry a nullable
   `(durable_job_id, job_generation)` pair. Null markers are retained only for
   direct fixtures and pre-migration audit rows. A direct processor may update
