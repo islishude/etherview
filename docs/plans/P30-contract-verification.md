@@ -183,6 +183,10 @@ credential-scoped operational boundaries.
 | P30-T109 | in_progress | P30-T108 | Vyper capability API, generated client and bilingual Web | API, Etherscan and browser regressions |
 | P30-T110 | blocked | P30-T109 | Runtime release pipeline, deployment parity and complete acceptance | Blocked by Docker Hub OAuth resets and missing native Linux acceptance; clear when deployment checks and AMD64/ARM64 production E2E pass |
 
+| P30-T111 | done | P30-T100 | Fix Vyper release archive padding and preserve cancelled legacy jobs during migration | Python producer/Go extractor regressions, gzip integrity and padding bounds, PostgreSQL migration preservation and maintained gates |
+
+| P30-T112 | done | P30-T111 | Restore signed Vyper catalog environment loading at the production startup boundary | Config loading for API/all, rejection of invalid trust settings, and Hardhat startup regression checks |
+
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
 ## Acceptance
@@ -554,3 +558,50 @@ owned by their current plans.
 
 Items remain open until the applicable gates above complete; no local/mock or
 macOS result closes the native production acceptance boundary.
+
+### P30-T111 — Release archive padding and cancelled history fixes (2026-09-12)
+
+- The extractor accepts the Python producer's final 10 KiB USTAR record padding
+  (up to 19 complete zero blocks), while rejecting nonzero bytes, partial blocks
+  and excessive padding. Reading through gzip EOF still rejects corrupt CRCs
+  and truncated trailers. The release packer is shared with the Python-to-Go
+  round-trip regression instead of reproducing it with Go's different tar writer.
+- Migration 0067 retains cancelled v1 Vyper jobs, both unbound and previously
+  lease-bound. The PostgreSQL regression creates these states under schema 0065,
+  applies the actual migration chain, compares complete job snapshots and checks
+  that cancelled jobs cannot be claimed again. No rows are rewritten or rebound.
+- Both regressions failed before their fixes: valid producer archives were
+  rejected, and the migration failed with constraint violation 23514.
+- `go test -race ./internal/verify -run 'TestVyperArchive|TestVyperRuntimeCache'
+  -count=1` passes, including producer interoperability, padding bounds,
+  gzip corruption/truncation and authenticated cache repair.
+- `go run ./cmd/testintegration -root . -packages './internal/integration'
+  -run '^TestVyper|TestSolcJSExecutorMigrationDeletesVyperAndPreservesSolidity$'`
+  passes against the owned PostgreSQL 18 project, including cancellation
+  preservation and the existing publication, reorg and provenance regressions.
+- All 26 existing macOS ARM64 release archives additionally pass extraction,
+  authenticated manifest validation and helper self-test through a temporary Go
+  test overlay (72.071s). This does not close P30-T110's native Linux gates.
+- `make generate-check source-check docs-check plan-check lint-go` and
+  `git diff --check` pass. P30-T107–P30-T110 retain their existing acceptance state.
+
+### P30-T112 — Hardhat CI startup configuration failure (2026-09-12)
+
+- Run 34687982706 at 506d3de failed in both native Hardhat jobs during monolith
+  startup, before verification: the retained Compose logs report
+  `ETHERVIEW_VERIFICATION_VYPER_CATALOG_URL is no longer supported`.
+  The new environment reader was unreachable because the same variable remained
+  in the retired-setting denylist. Remove only that obsolete rejection.
+- A regression exercises the actual `LoadForRoles` path for `all` and `api`,
+  including configured and explicitly empty catalog settings. It failed with
+  the identical CI error before the fix. Missing/malformed public keys,
+  non-HTTPS URLs and unlisted origins remain rejected after the fix; genuinely
+  retired compiler environment variables remain rejected as well.
+- `go test -race ./internal/config ./internal/app` and
+  `make source-check docs-check plan-check lint-go` pass.
+- The cited run's native Vyper runtime matrices and other CI jobs passed; this
+  is not a compiler-matrix or package-timeout failure. The run predates the
+  uncommitted T111 archive/migration fixes, which are preserved in this worktree.
+- Local `make docker-build` was attempted for a production E2E replay but failed
+  fetching the Docker Hub frontend OAuth token (connection reset). Full native
+  Hardhat E2E and a new remote CI run remain unverified; T110 stays open.

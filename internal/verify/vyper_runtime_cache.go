@@ -2,6 +2,7 @@ package verify
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
@@ -116,8 +117,12 @@ func extractVyperArchive(archive, target string) error {
 			return invalid
 		}
 	}
-	// Consume the gzip trailer; truncated or corrupt transport must fail even if tar ended.
-	if remaining, err := io.Copy(io.Discard, io.LimitReader(compressed, 1025)); err != nil || remaining > 1024 {
+	// Python tarfile pads the final USTAR record to 20 blocks (10 KiB).
+	// After tar's two EOF blocks, at most 19 zero blocks can remain. Read
+	// through gzip EOF as well so a corrupt or truncated trailer still fails.
+	const recordBytes = 20 * 512
+	padding, err := io.ReadAll(io.LimitReader(compressed, recordBytes+1))
+	if err != nil || len(padding) >= recordBytes || len(padding)%512 != 0 || len(bytes.Trim(padding, "\x00")) != 0 {
 		return invalid
 	}
 	if !seen["runtime-manifest.json"] || !seen["etherview-vyper"] {

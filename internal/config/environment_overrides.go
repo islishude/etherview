@@ -20,7 +20,6 @@ func applyRoleEnvironment(cfg *Config, lookup func(string) (string, bool), force
 		"X402_MAX_CAPTURED_HEADER_BYTES",
 		"VERIFICATION_RUNNER_ENDPOINT",
 		"VERIFICATION_RUNNER_IMAGE",
-		"VERIFICATION_VYPER_CATALOG_URL",
 	} {
 		if _, exists := lookup(envPrefix + removed); exists {
 			return false, fmt.Errorf("%s%s is no longer supported", envPrefix, removed)

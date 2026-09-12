@@ -72,6 +72,18 @@ def verify_runtime(item, helper):
     return count
 
 
+def pack_runtime(runtime, archive_path):
+    """Package a runtime using the same USTAR record framing as release builds."""
+    with tarfile.open(archive_path, "w:gz", format=tarfile.USTAR_FORMAT) as archive:
+        for path in sorted(runtime.rglob("*")):
+            if path.is_file():
+                info = archive.gettarinfo(str(path), path.relative_to(runtime).as_posix())
+                info.uid = info.gid = info.mtime = 0
+                info.uname = info.gname = ""
+                with path.open("rb") as stream:
+                    archive.addfile(info, stream)
+
+
 def build(item, cache, output):
     version = item["version"]
     workspace = cache / version
@@ -94,14 +106,7 @@ def build(item, cache, output):
     manifest = json.loads((runtime / "runtime-manifest.json").read_bytes())
     name = "vyper-" + version + "-" + manifest["platform"]
     archive_path = output / (name + ".tar.gz")
-    with tarfile.open(archive_path, "w:gz", format=tarfile.USTAR_FORMAT) as archive:
-        for path in sorted(runtime.rglob("*")):
-            if path.is_file():
-                info = archive.gettarinfo(str(path), path.relative_to(runtime).as_posix())
-                info.uid = info.gid = info.mtime = 0
-                info.uname = info.gname = ""
-                with path.open("rb") as stream:
-                    archive.addfile(info, stream)
+    pack_runtime(runtime, archive_path)
     descriptor = {"version": version, "compiler_sha256": item["compiler_sha256"], "platform": manifest["platform"], "sha256": digest(archive_path), "manifest_sha256": digest(runtime / "runtime-manifest.json"), "max_bytes": archive_path.stat().st_size, "protocol": manifest["schema"], "archive": archive_path.name, "fixture_cases": tested}
     (output / (name + ".json")).write_text(json.dumps(descriptor, sort_keys=True) + "\n")
     print("verified", version, manifest["platform"], tested, flush=True)

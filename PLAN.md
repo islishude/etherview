@@ -64,7 +64,10 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 P30 is reopened for T107–T110: dynamic signed Vyper catalogs and multi-version
 verification. Local compiler, API/Web and PostgreSQL regressions pass; Docker
 registry connectivity and native Linux AMD64/ARM64 production acceptance remain
-open. See the child plan for the exact validation boundary.
+open. See the child plan for the exact validation boundary. P30-T111 fixes
+release tar padding and cancelled-history migration, with targeted race and
+PostgreSQL regressions passing. P30-T112 fixes the Vyper environment-variable
+rejection identified in both Hardhat CI jobs; production E2E replay remains open.
 
 ## Global Release Gates
 

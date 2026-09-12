@@ -67,7 +67,7 @@ ALTER TABLE verification_jobs
         ) OR (
             ((kind = 'address' AND language = 'geas' AND compiler_version = '0.3.3') OR
              (kind IN ('address', 'vyper_standard_json', 'vyper_multipart') AND
-              language = 'vyper' AND compiler_version = '0.4.3' AND status IN ('succeeded','failed'))) AND catalog_language IS NULL AND
+              language = 'vyper' AND compiler_version = '0.4.3' AND status IN ('succeeded','failed','cancelled'))) AND catalog_language IS NULL AND
             (
                 (
                     compiler_platform IS NULL AND
@@ -176,4 +176,3 @@ BEGIN
     RAISE EXCEPTION 'verification compiler provenance is immutable after binding';
 END
 $$;
-
