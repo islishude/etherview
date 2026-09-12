@@ -48,7 +48,7 @@ export function VerifyPage({ initialAddress = "" }: { initialAddress?: string })
   const [multipartSources, setMultipartSources] = useState('{\n  "Contract.sol": "contract Contract {}"\n}');
   const [geasSources, setGeasSources] = useState('{\n  "main.eas": "push 1"\n}');
   const [targetFile, setTargetFile] = useState("A.vy");
-  const [optimizationMode, setOptimizationMode] = useState<"none" | "gas" | "codesize">("gas");
+  const [optimizationMode, setOptimizationMode] = useState<"" | "none" | "gas" | "codesize">("");
   const [vyperJSON, setVyperJSON] = useState('{\n  "language": "Vyper",\n  "sources": {"A.vy": {"content": "@external\\ndef value() -> uint256:\\n    return 42\\n"}},\n  "settings": {}\n}');
   const [vyperSources, setVyperSources] = useState('{"A.vy": "@external\\ndef value() -> uint256:\\n    return 42\\n"}');
   const [runtimeEntrypoint, setRuntimeEntrypoint] = useState("main.eas");
@@ -77,6 +77,11 @@ export function VerifyPage({ initialAddress = "" }: { initialAddress?: string })
       setCompilerVersion(versions[0] ?? "");
     }
   }, [compilerCatalog.data, compilerVersion]);
+
+  const optimizationModes = compilerCatalog.data?.capabilities?.[compilerVersion]?.optimization_modes ?? [];
+  useEffect(() => {
+    if (optimizationMode && !optimizationModes.includes(optimizationMode)) setOptimizationMode("");
+  }, [optimizationMode, optimizationModes]);
 
   const activeStandardJSON = language === "vyper" ? vyperJSON : standardJSON;
   const activeMultipartSources = language === "vyper" ? vyperSources : multipartSources;
@@ -166,7 +171,7 @@ export function VerifyPage({ initialAddress = "" }: { initialAddress?: string })
     }
     if (language === "vyper") {
       request.target_file = targetFile;
-      if (inputKind === "multipart") request.optimization_mode = optimizationMode;
+      if (inputKind === "multipart" && optimizationMode) request.optimization_mode = optimizationMode;
     }
     submission.mutate(request);
   };
@@ -239,8 +244,9 @@ export function VerifyPage({ initialAddress = "" }: { initialAddress?: string })
                   {inputKind === "multipart" && (
                     <label className="field-control" htmlFor="verification-optimization-mode">
                       <span>{t("verification.optimizationMode")}</span>
-                      <select id="verification-optimization-mode" value={optimizationMode} onChange={(event) => setOptimizationMode(event.target.value as "none" | "gas" | "codesize")}>
-                        <option value="gas">gas</option><option value="codesize">codesize</option><option value="none">none</option>
+                      <select id="verification-optimization-mode" value={optimizationMode} onChange={(event) => setOptimizationMode(event.target.value as "" | "none" | "gas" | "codesize")}>
+                        <option value="">{t("verification.compilerDefault")}</option>
+                        {optimizationModes.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
                       </select>
                     </label>
                   )}

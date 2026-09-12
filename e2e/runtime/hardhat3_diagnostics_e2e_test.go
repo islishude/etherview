@@ -402,11 +402,10 @@ func captureHardhatProxySnapshot(
 	if err := h.db.QueryRow(ctx, `
  SELECT count(*) FILTER (WHERE language='vyper' AND kind='address' AND status='succeeded'),
  count(*) FILTER (WHERE language='vyper' AND kind='address' AND status='succeeded'
-   AND compiler_version='0.4.3' AND compiler_platform='python-wheel'
-   AND catalog_language IS NULL AND catalog_generation_id IS NULL
-   AND encode(compiler_digest,'hex')='3b9671727c888363740dc678e60336759871487d0e4e9fdd973048fa9635c4fd'
-   AND executor_kind='etherview_vyper_v1' AND execution_policy='trusted_subprocess'
-   AND octet_length(executor_digest)=32)=2
+   AND compiler_platform='python-wheel'
+   AND catalog_language='vyper' AND catalog_generation_id IS NOT NULL
+   AND executor_kind='etherview_vyper_v3' AND execution_policy='trusted_subprocess'
+   AND octet_length(executor_digest)=32)=12
  FROM verification_jobs`).Scan(&result.VyperJobs, &result.VyperProvenance); err != nil {
 		t.Fatal(err)
 	}
@@ -418,7 +417,7 @@ func captureHardhatProxySnapshot(
 		result.DerivedResults != 1 || result.DerivedPublications != 1 ||
 		result.DerivedAttempts != 1 ||
 		result.ProxyBindings != 11 || result.CatalogEntries == 0 ||
-		!result.ExecutorProvenance || !result.CompilerProvenance || result.VyperJobs != 2 || result.VyperResults != 2 || !result.VyperProvenance ||
+		!result.ExecutorProvenance || !result.CompilerProvenance || result.VyperJobs != 12 || result.VyperResults != 12 || !result.VyperProvenance ||
 		result.CurrentProxyKind != "eip1967" ||
 		result.DiamondState != "confirmed" || result.DiamondFacets != 3 ||
 		result.DiamondSelectors != 8 || result.DiamondCuts != 1 ||

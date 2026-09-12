@@ -54,6 +54,11 @@ func (refresher *CatalogRefresher) Run(ctx context.Context) error {
 }
 
 func (refresher *CatalogRefresher) refreshDelay(ctx context.Context) time.Duration {
+	if catalog, ok := refresher.catalog.(*CompilerCatalog); ok && catalog.vyperConfigured() {
+		if _, err := catalog.Refresh(ctx, LanguageVyper); err != nil {
+			refresher.logger.WarnContext(ctx, "Vyper catalog refresh failed", "family", "vyper", "error_code", "catalog_refresh_failed")
+		}
+	}
 	generation, refreshErr := refresher.catalog.Refresh(ctx, LanguageSolidity)
 	if refreshErr == nil {
 		level := slog.LevelDebug

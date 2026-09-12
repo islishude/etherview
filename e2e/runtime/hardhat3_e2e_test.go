@@ -206,6 +206,7 @@ func TestHardhat3ProductionE2E(t *testing.T) {
 		t.Fatalf("Hardhat 3 topology parity mismatch\nmonolith: %#v\ndistributed: %#v",
 			results["monolith"], results["distributed"])
 	}
+	writeVyperReleaseAcceptance(t, root)
 }
 
 func prepareHardhatRuntime(t *testing.T, ctx context.Context) hardhatRuntime {
@@ -297,6 +298,7 @@ func runHardhat3Mode(
 		phase:      "initialization",
 	}
 	t.Cleanup(func() { h.cleanup() })
+	configureVyperCatalogFixture(t, h)
 
 	h.enterPhase("isolated Anvil and production topology")
 	if err := project.Up(ctx, "runtime-fixture"); err != nil {

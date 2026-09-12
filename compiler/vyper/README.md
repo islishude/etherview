@@ -1,3 +1,38 @@
+# Vyper runtime builds
+
+Dynamic distribution is defined by ADR-0049 and P30-T107–P30-T110. The existing
+0.4.3 installer remains the ordinary local regression fixture. Production uses
+configured signed catalogs and never falls back to that bundled executable.
+
+`versions/index.json` locks the official compiler artifact and Python version;
+per-version `.lock` files lock compiler/build dependencies. 0.2.0 is built from
+its pinned official Git source because PyPI has no artifact. Only the generated
+upstream git-version packaging file is supplied; compiler implementation bytes
+are not patched. Historical helper adapters expose compiler-computed layouts.
+
+Run `make test-vyper-matrix` with uv 0.12.12 to create native runtime archives and
+descriptors in `.local/vyper-releases/`. Every helper must pass reference fixture
+comparisons and Go runtime identity checks. CI builds Linux AMD64/ARM64 separately
+and gathers both artifact sets for production monolith/split E2E. The production
+E2E records bind acceptance to the exact descriptor digests. Merge the two
+acceptance JSON objects into one file without changing their contents.
+
+After native gates pass, assemble a local signed catalog with:
+
+```sh
+node compiler/vyper/catalog.mjs --artifacts .local/vyper-releases \
+  --origin https://compilers.example/vyper/ --acceptance acceptance.json \
+  --key-file /secure/path/vyper-ed25519.pem --expires-at 2026-12-01T00:00:00Z \
+  --output catalog.json
+```
+
+Choose a future expiry. The tool refuses missing versions, missing architectures,
+stale acceptance, artifact digest changes and non-Ed25519 keys. Publish archives
+before their signed catalog only under explicit release authorization. Keep old
+artifacts for bound retries. No production signing key is stored in this repo.
+
+## Existing 0.4.3 audit policy
+
 # Pinned Vyper runtime
 
 ADR-0047 owns the boundary. `make compiler-install` builds a dedicated

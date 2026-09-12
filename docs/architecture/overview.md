@@ -790,15 +790,13 @@ size alone is not sufficient justification to weaken those invariants.
   use the same writer database lock domain. Cache persistence never overrides
   catalog freshness or provenance. See
   [ADR-0037](../decisions/ADR-0037-persistent-solcjs-artifact-cache.md).
-- Vyper 0.4.3 uses a bundled, hash-locked CPython 3.13.15/PyInstaller 6.22.2
-  directory runtime owned by API/all. Its official wheel identifies the
-  compiler and its complete manifest identifies the executor; no live catalog
-  or download participates. Native Standard JSON/multipart and Etherscan
-  `vyper-json` require an exact target file, resolve inline modules/interfaces
-  in memory and compile both source variants in fresh bounded subprocesses.
-  Vyper-specific CBOR and immutable-layout matching retains partial runtime
-  evidence without metadata and the ordinary canonical publication fences.
-  See [ADR-0047](../decisions/ADR-0047-pinned-vyper-executor.md).
+- Vyper uses signed, versioned runtime catalogs with complete per-platform
+  Python helper manifests, authenticated downloads and fresh API-owned
+  subprocesses. Compiler lists expose only tested stable non-withdrawn releases
+  and their capabilities. Version adapters preserve upstream settings, inline
+  imports, metadata and immutable layouts. Missing authenticated metadata
+  remains partial evidence. See
+  [ADR-0049](../decisions/ADR-0049-dynamic-vyper-runtimes.md).
 - Native address verification also accepts a bounded inline Geas v0.3.3 source
   filesystem with a required runtime entrypoint and optional creation
   entrypoint. Each entrypoint is assembled twice with stack checking in fresh

@@ -9,7 +9,7 @@ import sys
 here = Path(__file__).resolve().parent
 cache = here.parents[1] / ".local/vyper"
 runtime = cache / "runtime"
-identity = hashlib.sha256(b"".join((here / name).read_bytes() for name in ["helper.py", "build.py", "linux_runtime.py", "requirements.lock"])).hexdigest()
+identity = hashlib.sha256(b"".join((here / name).read_bytes() for name in ["helper.py", "adapter.py", "build.py", "linux_runtime.py", "requirements.lock"])).hexdigest()
 if (runtime / "runtime-manifest.json").exists() and (cache / "build-identity").exists():
     if (cache / "build-identity").read_text() == identity:
         subprocess.run([str(runtime / "etherview-vyper"), "--self-test"], check=True, env={}, stdout=subprocess.DEVNULL)

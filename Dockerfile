@@ -49,7 +49,7 @@ WORKDIR /src/vyper
 COPY compiler/vyper/requirements.lock ./
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --disable-pip-version-check --require-hashes --only-binary=:all: -r requirements.lock
-COPY compiler/vyper/helper.py compiler/vyper/build.py compiler/vyper/linux_runtime.py ./
+COPY compiler/vyper/helper.py compiler/vyper/adapter.py compiler/vyper/build.py compiler/vyper/linux_runtime.py ./
 COPY --from=production-base / /target-rootfs/
 RUN python build.py /opt/etherview/vyper /target-rootfs \
     && cp /opt/etherview/vyper/runtime-manifest.json /target-rootfs/opt/etherview/vyper/runtime-manifest.json \

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path"
 	"sort"
 	"strings"
@@ -15,7 +16,7 @@ import (
 
 // Vyper 0.4.3: [integrity, runtime size, data sizes, immutable size, version]
 // followed by a big-endian length INCLUDING the two length bytes.
-func vyperFooter(code []byte) (start int, runtimeSize, immutableSize uint64, ok bool) {
+func vyperVersionFooter(code []byte, expectedVersion string) (start int, runtimeSize, immutableSize uint64, ok bool) {
 	if len(code) < 3 {
 		return
 	}
@@ -47,7 +48,7 @@ func vyperFooter(code []byte) (start int, runtimeSize, immutableSize uint64, ok 
 		dataSize += size
 	}
 	v := version["vyper"]
-	if len(v) != 3 || v[0] != 0 || v[1] != 4 || v[2] != 3 {
+	if len(v) != 3 || fmt.Sprintf("%d.%d.%d", v[0], v[1], v[2]) != expectedVersion {
 		return 0, 0, 0, false
 	}
 	if runtimeSize > maxMatcherBytecodeBytes || immutableSize > maxMatcherBytecodeBytes {
@@ -90,14 +91,14 @@ func vyperContractDocuments(output json.RawMessage) (map[string]json.RawMessage,
 }
 
 func extractVyperCandidates(firstOutput, secondOutput json.RawMessage, version string) ([]CandidateArtifact, error) {
-	if version != VyperCompilerVersion {
+	if _, supported := VyperVersionCapabilities(version); !supported {
 		return nil, errCompilerOutputMalformed
 	}
 	for _, raw := range []json.RawMessage{firstOutput, secondOutput} {
 		var identity struct {
 			Compiler string `json:"compiler"`
 		}
-		if json.Unmarshal(raw, &identity) != nil || identity.Compiler != "vyper-0.4.3" {
+		if json.Unmarshal(raw, &identity) != nil || identity.Compiler != "vyper-"+version {
 			return nil, errCompilerOutputMalformed
 		}
 	}
@@ -140,8 +141,8 @@ func extractVyperCandidates(firstOutput, secondOutput json.RawMessage, version s
 		if err != nil {
 			return nil, err
 		}
-		start, rs, is, has := vyperFooter(a.creationBytes)
-		other, brs, bis, bhas := vyperFooter(b.creationBytes)
+		start, rs, is, has := vyperVersionFooter(a.creationBytes, version)
+		other, brs, bis, bhas := vyperVersionFooter(b.creationBytes, version)
 		if has != bhas {
 			return nil, errCompilerOutputMalformed
 		}

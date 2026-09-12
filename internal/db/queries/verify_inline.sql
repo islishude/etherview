@@ -143,7 +143,7 @@ UPDATE verification_jobs
 -- name: VerifyInlineLookupStatement1 :many
 SELECT entry.generation_id, entry.language, entry.version,
 		       entry.platform, entry.artifact_url, entry.artifact_sha256,
-		       entry.max_bytes, head.updated_at
+		       entry.max_bytes, head.updated_at, entry.expires_at
 		FROM compiler_catalog_heads AS head
 		JOIN compiler_catalog_generations AS generation
 		  ON generation.id = head.generation_id AND generation.language = head.language
@@ -175,7 +175,7 @@ INSERT INTO compiler_catalog_heads (language, generation_id)
 		SET generation_id = EXCLUDED.generation_id, updated_at = now();
 
 -- name: VerifyInlineVersionsStatement1 :many
-SELECT entry.version, head.updated_at
+SELECT entry.version, head.updated_at, entry.expires_at, entry.vyper_runtimes
 		FROM compiler_catalog_heads AS head
 		JOIN compiler_catalog_generations AS generation
 		  ON generation.id = head.generation_id AND generation.language = head.language

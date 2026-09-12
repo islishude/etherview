@@ -620,6 +620,8 @@ type Querier interface {
 	VerifyV2GetJob(ctx context.Context, dollar_1 pgtype.UUID) ([]VerifyV2GetJobRow, error)
 	VerifyV2LockRunningJob(ctx context.Context, column1 pgtype.UUID, leaseToken *string) ([]VerifyV2LockRunningJobRow, error)
 	VerifyV2SubmitJob(ctx context.Context, arg VerifyV2SubmitJobParams) ([]VerifyV2SubmitJobRow, error)
+	VerifyVyperPersistRuntime(ctx context.Context, arg VerifyVyperPersistRuntimeParams) error
+	VerifyVyperRuntime(ctx context.Context, generationID int64, version string) ([]VerifyVyperRuntimeRow, error)
 }
 
 var _ Querier = (*Queries)(nil)

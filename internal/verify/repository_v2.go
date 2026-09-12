@@ -42,6 +42,9 @@ func (repository *PostgresRepository) SubmitV2(
 		if request.Language == LanguageSolidity || request.Language == LanguageYul {
 			catalogLanguage = LanguageSolidity
 		}
+		if request.Language == LanguageVyper {
+			catalogLanguage = LanguageVyper
+		}
 	}
 	var chainID, address, codeHash, blockHash any
 	if request.Kind == JobAddress || request.Kind == JobProxy {
@@ -113,7 +116,7 @@ func (repository *PostgresRepository) claimRunnable(
 		return VerificationLease{}, false, err
 	}
 	job, err := repository.scanV2Job(repository.db.QueryRowContext(ctx, dbgen.VerifyV2ClaimRunnable,
-		workerID, token, microseconds, availability.SolcJS, availability.Geas, availability.Vyper,
+		workerID, token, microseconds, availability.SolcJS, availability.Geas, availability.Vyper, availability.VyperBound,
 	))
 	if errors.Is(err, sql.ErrNoRows) {
 		return VerificationLease{}, false, nil
@@ -520,7 +523,7 @@ func (repository *PostgresRepository) scanV2Job(row rowScanner) (VerificationJob
 			switch executorKind.String {
 			case SolcJSExecutorKind:
 				provenance.Kind = CompilerSolcJS
-			case VyperExecutorKind:
+			case VyperExecutorKind, VyperDynamicExecutorKind:
 				provenance.Kind = CompilerVyper
 			case GeasExecutorKind:
 				provenance.Kind = CompilerGeas

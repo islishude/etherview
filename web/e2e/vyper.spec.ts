@@ -12,7 +12,7 @@ test("Vyper submission preserves its target, sources and optimization mode", asy
   });
   await page.route("**/api/v1/verifier/compilers?**", async (route) => {
     const language = new URL(route.request().url()).searchParams.get("language");
-    await route.fulfill({ json: { data: { language, versions: language === "vyper" ? ["0.4.3"] : ["0.8.30"] }, meta } });
+    await route.fulfill({ json: { data: { language, versions: language === "vyper" ? ["0.4.3"] : ["0.8.30"], capabilities: language === "vyper" ? { "0.4.3": { optimization_modes: ["none", "gas", "codesize"], evm_versions: ["prague"], default_evm_version: "prague", bytecode_metadata: true, enable_decimals: true } } : undefined }, meta } });
   });
   const job = {
     id, kind: "address", status: "succeeded", created_at: "2026-09-08T00:00:00Z", updated_at: "2026-09-08T00:00:01Z",

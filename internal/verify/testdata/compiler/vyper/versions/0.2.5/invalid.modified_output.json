@@ -1,0 +1,1 @@
+{"compiler": "vyper-0.2.5", "errors": [{"component": "parser", "formattedMessage": "invalid syntax (<unknown>, line 1)\n  line 1:17 \n  ---> 1 this is invalid vyper syntax\n  ------------------------^\n", "message": "invalid syntax (<unknown>, line 1)", "severity": "error", "sourceLocation": {"file": "A.vy"}, "type": "SyntaxException"}]}

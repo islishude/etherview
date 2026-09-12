@@ -27,6 +27,7 @@ export const verificationResources = {
             compilerVersion: "Compiler version",
             targetFile: "Target file",
             optimizationMode: "Optimization mode",
+            compilerDefault: "Compiler default",
             standardJSON: "Standard JSON input",
             multipart: "Multipart sources",
             multipartSources: "Source files (JSON path-to-content map)",
@@ -422,6 +423,7 @@ export const verificationResources = {
           verification: {
             targetFile: "目标文件",
             optimizationMode: "优化模式",
+            compilerDefault: "编译器默认值",
             unavailable: "公开合约验证不可用",
             unavailableDetail: "当前部署已关闭新的公开验证提交。",
             request: "验证请求",

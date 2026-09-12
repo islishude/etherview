@@ -519,3 +519,13 @@ stop-x402-local:
 		--profile monolith --profile distributed down --volumes --remove-orphans
 
 recreate-x402-local: stop-x402-local start-x402-local
+
+.PHONY: test-vyper-matrix
+test-vyper-matrix:
+	python3 compiler/vyper/matrix.py
+	ETHERVIEW_TEST_VYPER_MATRIX_ROOT="$(CURDIR)/.local/vyper-builds" $(GO) test ./internal/verify -run '^TestVyper(DynamicRuntimeMatrix|StableVersionMatrix)$$' -count=1 -timeout=30m
+
+.PHONY: test-vyper-release
+test: test-vyper-release
+test-vyper-release:
+	$(NODE) --test compiler/vyper/catalog.test.mjs

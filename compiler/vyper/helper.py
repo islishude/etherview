@@ -124,7 +124,7 @@ def validate_input(value):
         raise ValueError("unsupported compiler settings")
     if settings.get("search_paths") != ["."]:
         raise ValueError("invalid compiler search paths")
-    if settings.get("optimize") not in ("none", "gas", "codesize"):
+    if "optimize" in settings and settings["optimize"] not in ("none", "gas", "codesize", True, False):
         raise ValueError("invalid compiler optimization")
     selected = settings.get("outputSelection")
     if not isinstance(selected, dict) or len(selected) != 1:
@@ -145,19 +145,17 @@ def denied(operation):
 
 def main():
     mode, max_input, max_output = invocation()
-    if not getattr(sys, "frozen", False) or sys.version_info[:3] != (3, 13, 15):
+    if not getattr(sys, "frozen", False):
         raise ValueError("invalid compiler runtime")
     limits()
     import vyper
-    from vyper.cli.vyper_json import compile_json, exc_handler_to_dict
+    from adapter import compile_input
     # Initialize the trusted native hash implementation before denying dlopen.
     from vyper.utils import keccak256
     keccak256(b"self-test")
-    if vyper.__version__ != "0.4.3":
-        raise ValueError("invalid compiler version")
     root = Path(sys.executable).resolve().parent
     manifest = json.loads((root / "runtime-manifest.json").read_text())
-    if manifest["schema"] != SCHEMA:
+    if manifest["schema"] not in (SCHEMA, "etherview-vyper-runtime-v3") or manifest["vyper"] != vyper.__version__ or manifest["python"] != ".".join(map(str, sys.version_info[:3])):
         raise ValueError("invalid compiler manifest")
     guard(root, manifest)
     if mode == "--self-test":
@@ -176,12 +174,12 @@ def main():
         ]
         if not all(checks):
             raise ValueError("compiler access self-test failed")
-        print(json.dumps({"schema": SCHEMA, "version": vyper.__version__, "python": "3.13.15", "access_denied": True, "limits": sys.platform == "linux"}))
+        print(json.dumps({"schema": manifest["schema"], "version": vyper.__version__, "python": manifest["python"], "access_denied": True, "limits": sys.platform == "linux"}))
         return
     raw = read_input(max_input)
     value = json.loads(raw, object_pairs_hook=document)
     validate_input(value)
-    output = compile_json(value, exc_handler_to_dict)
+    output = compile_input(value)
     # System exceptions and absolute runtime paths are never compiler diagnostics.
     if any(error.get("component") == "vyper" for error in output.get("errors", [])):
         raise ValueError("compiler runtime failed")

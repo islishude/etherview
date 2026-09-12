@@ -56,7 +56,7 @@ func validateCompilerArtifact(
 	artifact CompilerArtifact,
 	allowHTTP bool,
 ) (*url.URL, [sha256.Size]byte, int64, error) {
-	if language != LanguageSolidity {
+	if language != LanguageSolidity && language != LanguageVyper {
 		return nil, [sha256.Size]byte{}, 0, fmt.Errorf("language %q is not allowlisted", language)
 	}
 	if !versionPattern.MatchString(version) {

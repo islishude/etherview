@@ -16,8 +16,12 @@ type VyperMultipartRequest struct {
 	OptimizationMode string
 }
 
-func PrepareVyperStandardJSON(input json.RawMessage, target string, maxBytes int) (json.RawMessage, error) {
+func PrepareVyperStandardJSON(input json.RawMessage, target, version string, maxBytes int) (json.RawMessage, error) {
 	invalid := errors.New("invalid Vyper Standard JSON")
+	profile, supported := VyperVersionCapabilities(version)
+	if !supported {
+		return nil, ErrCompilerVersionUnavailable
+	}
 	if maxBytes <= 0 {
 		maxBytes = defaultCompilerInputBytes
 	}
@@ -86,7 +90,7 @@ func PrepareVyperStandardJSON(input json.RawMessage, target string, maxBytes int
 				return nil, invalid
 			}
 		case "optimize":
-			if value != "none" && value != "gas" && value != "codesize" {
+			if value != "none" && value != "gas" && value != "codesize" && value != true && value != false {
 				return nil, invalid
 			}
 		case "bytecodeMetadata", "enable_decimals":
@@ -106,8 +110,8 @@ func PrepareVyperStandardJSON(input json.RawMessage, target string, maxBytes int
 			return nil, invalid
 		}
 	}
-	if _, exists := settings["optimize"]; !exists {
-		settings["optimize"] = "gas"
+	if err := validateVyperSettings(settings, profile); err != nil {
+		return nil, err
 	}
 	settings["search_paths"] = []string{"."}
 	settings["outputSelection"] = map[string]any{target: vyperOutputs}
@@ -119,7 +123,7 @@ func PrepareVyperStandardJSON(input json.RawMessage, target string, maxBytes int
 	return encoded, nil
 }
 
-func BuildVyperMultipart(request VyperMultipartRequest, target string, maxBytes int) (json.RawMessage, error) {
+func BuildVyperMultipart(request VyperMultipartRequest, target, version string, maxBytes int) (json.RawMessage, error) {
 	sources := map[string]any{}
 	for name, content := range request.Sources {
 		sources[name] = map[string]string{"content": content}
@@ -139,11 +143,11 @@ func BuildVyperMultipart(request VyperMultipartRequest, target string, maxBytes 
 	if err != nil {
 		return nil, err
 	}
-	return PrepareVyperStandardJSON(encoded, target, maxBytes)
+	return PrepareVyperStandardJSON(encoded, target, version, maxBytes)
 }
 
 func prepareVyperSubmission(request *SubmissionV2, maxBytes int) error {
-	if request.CompilerVersion != VyperCompilerVersion || request.Geas != nil || request.Multipart != nil || len(request.StandardJSONVariants) > 0 || (request.Kind != JobAddress && request.Kind != JobVyperStandardJSON && request.Kind != JobVyperMultipart) {
+	if request.Geas != nil || request.Multipart != nil || len(request.StandardJSONVariants) > 0 || (request.Kind != JobAddress && request.Kind != JobVyperStandardJSON && request.Kind != JobVyperMultipart) {
 		return errors.New("invalid Vyper verification request")
 	}
 	var input json.RawMessage
@@ -152,9 +156,9 @@ func prepareVyperSubmission(request *SubmissionV2, maxBytes int) error {
 		if len(request.StandardJSON) != 0 {
 			return errors.New("conflicting Vyper inputs")
 		}
-		input, err = BuildVyperMultipart(*request.VyperMultipart, request.TargetFile, maxBytes)
+		input, err = BuildVyperMultipart(*request.VyperMultipart, request.TargetFile, request.CompilerVersion, maxBytes)
 	} else {
-		input, err = PrepareVyperStandardJSON(request.StandardJSON, request.TargetFile, maxBytes)
+		input, err = PrepareVyperStandardJSON(request.StandardJSON, request.TargetFile, request.CompilerVersion, maxBytes)
 	}
 	if err != nil {
 		return err

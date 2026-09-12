@@ -1,0 +1,187 @@
+{
+  "schema": "etherview-vyper-builds-v1",
+  "versions": [
+    {
+      "version": "0.2.0",
+      "source_url": "https://github.com/vyperlang/vyper/archive/d2c0c87a50dcfca115cb68a96d4063a7576e3dfa.tar.gz",
+      "compiler_sha256": "5f5f7d0133927b26f58c5c6c5eceff29f04ab1be48d4a82def4aab263ac3a945",
+      "python_family": "3.9",
+      "python": "3.9.25"
+    },
+    {
+      "version": "0.2.1",
+      "source_url": "https://files.pythonhosted.org/packages/e6/1c/663cf311df3254398b7696e5f66f4155d2301331b921c3a45c06414ff831/vyper-0.2.1-py3-none-any.whl",
+      "compiler_sha256": "1f9c288d01716f69b026a835086e1b3a3adbd6fc7b43e629a11903901048b5bf",
+      "python_family": "3.9",
+      "python": "3.9.25"
+    },
+    {
+      "version": "0.2.2",
+      "source_url": "https://files.pythonhosted.org/packages/1d/a3/55118fbdc63ad844383f57e29c47e1bf9a8a56900da570ae9c5c007c19f0/vyper-0.2.2-py3-none-any.whl",
+      "compiler_sha256": "8c21d6970722b1b9571645f0683d0ea845312fa130fba6c6579196ffa5a16acf",
+      "python_family": "3.9",
+      "python": "3.9.25"
+    },
+    {
+      "version": "0.2.3",
+      "source_url": "https://files.pythonhosted.org/packages/40/cd/f517a68248605a2b7f97ef30ceb19917a21ea9f30fc7adb997180b36cc70/vyper-0.2.3-py3-none-any.whl",
+      "compiler_sha256": "545433a2641b7c8bac889720f3d79993b7f1081806776c3b7bf288ac7459c749",
+      "python_family": "3.9",
+      "python": "3.9.25"
+    },
+    {
+      "version": "0.2.4",
+      "source_url": "https://files.pythonhosted.org/packages/70/2c/69ea3e0b4da06b153e79110860121bfc88fc1cdecc5102e36b94f23d6f58/vyper-0.2.4-py3-none-any.whl",
+      "compiler_sha256": "48b6747fb181718cf0e2f63ecc75984d50581de4240843badd6a9547b505d8f8",
+      "python_family": "3.9",
+      "python": "3.9.25"
+    },
+    {
+      "version": "0.2.5",
+      "source_url": "https://files.pythonhosted.org/packages/b2/21/aa19589d3f1cf0d5ca546e72c8cc9591403d75f108af7b71695a08d7384b/vyper-0.2.5-py3-none-any.whl",
+      "compiler_sha256": "64cd3d445be47e07d0aa5edfbbe083b1e4d56b223c3d0e3f9ba3843d973cd32e",
+      "python_family": "3.9",
+      "python": "3.9.25"
+    },
+    {
+      "version": "0.2.7",
+      "source_url": "https://files.pythonhosted.org/packages/7a/24/a9f9835c8db5063fbfdf22d0a1f6d70f8ccc65039e685ad84fc4f240d312/vyper-0.2.7-py3-none-any.whl",
+      "compiler_sha256": "23ef37ce25c9620fde737abb0d3e45373cd349adb1e0df487de80f5b6b461fa6",
+      "python_family": "3.9",
+      "python": "3.9.25"
+    },
+    {
+      "version": "0.2.8",
+      "source_url": "https://files.pythonhosted.org/packages/d5/d3/8f8086dd6c58fa2c29724d7546f288ef5767ea2f24f46e2916d72f5ccc56/vyper-0.2.8-py3-none-any.whl",
+      "compiler_sha256": "8e1c7b991440765847923842278b4f5611423fbea3d231a5780f661e87d80500",
+      "python_family": "3.9",
+      "python": "3.9.25"
+    },
+    {
+      "version": "0.2.11",
+      "source_url": "https://files.pythonhosted.org/packages/50/38/a3401d32789c263339efe775bb5476d346e13acf2c41b42bd0035683cc5b/vyper-0.2.11-py3-none-any.whl",
+      "compiler_sha256": "006ef530930a842478db2de4b171d4ccb1fa7fb8185e6f31204618837c3c1d0b",
+      "python_family": "3.9",
+      "python": "3.9.25"
+    },
+    {
+      "version": "0.2.12",
+      "source_url": "https://files.pythonhosted.org/packages/e1/55/9d17c0d0ef1aa1ee45574a78d50c63e468f28c6df13a44d81e1a6e0b2f02/vyper-0.2.12-py3-none-any.whl",
+      "compiler_sha256": "c97dd2d2c9ed5185338c8d9c78ad00432873fbe3387db62ecf7e33bf4e33882a",
+      "python_family": "3.9",
+      "python": "3.9.25"
+    },
+    {
+      "version": "0.2.15",
+      "source_url": "https://files.pythonhosted.org/packages/85/3e/4eb5f6acdf24e2b97970bc194357aa22c6ff27c3593c85bc922cf2550508/vyper-0.2.15-py3-none-any.whl",
+      "compiler_sha256": "68f57ff7ca68e3a30d68100a232370f32640b15b56e244765c7675e4f21c8386",
+      "python_family": "3.9",
+      "python": "3.9.25"
+    },
+    {
+      "version": "0.2.16",
+      "source_url": "https://files.pythonhosted.org/packages/a2/4d/e652880489f34b597fea596c7ec981d31ad0ef0bf7fc0018cd6d51b7e2dd/vyper-0.2.16-py3-none-any.whl",
+      "compiler_sha256": "8f6e623a19bedc35947e0ab2aa4ccc88fc31683e56e293fc3b808a88730bc731",
+      "python_family": "3.9",
+      "python": "3.9.25"
+    },
+    {
+      "version": "0.3.0",
+      "source_url": "https://files.pythonhosted.org/packages/fb/f8/e0b1b326998ed3342a15e014eab33bd643851758431f64a34031e5298520/vyper-0.3.0-py3-none-any.whl",
+      "compiler_sha256": "2e36910faef0776e76a99fa9aa6c0b7d50cb15f67bf0313763de415dcab2c6c2",
+      "python_family": "3.9",
+      "python": "3.9.25"
+    },
+    {
+      "version": "0.3.1",
+      "source_url": "https://files.pythonhosted.org/packages/30/66/c51426e9a62f0c089782e91b841a198b66bf66b988736d0c843e3ecd4e9b/vyper-0.3.1-py3-none-any.whl",
+      "compiler_sha256": "40eabebb0cf859f9660ad94d3af273d3176252d50597fdb94fa808446943d1c5",
+      "python_family": "3.9",
+      "python": "3.9.25"
+    },
+    {
+      "version": "0.3.2",
+      "source_url": "https://files.pythonhosted.org/packages/28/5f/0e43e97c8377824e51c13a18531f4d061eb1b3519ef44bcd7d223bbcb16e/vyper-0.3.2-py3-none-any.whl",
+      "compiler_sha256": "019867231da9cedda8a6ef85c967c9ec444e5439bef63f231b81fba884616de8",
+      "python_family": "3.9",
+      "python": "3.9.25"
+    },
+    {
+      "version": "0.3.3",
+      "source_url": "https://files.pythonhosted.org/packages/9f/d5/46fc6d82a6de7950f88d93bef191dd6bdfb038f04e08f38ff8c1e5b236d1/vyper-0.3.3-py3-none-any.whl",
+      "compiler_sha256": "436dbc49e3bf08d3f36e331384fcdbffec3341d7561fe05960969508686257e6",
+      "python_family": "3.9",
+      "python": "3.9.25"
+    },
+    {
+      "version": "0.3.4",
+      "source_url": "https://files.pythonhosted.org/packages/43/5f/a17130cad4e2ca4db9364bdd5f003e31a2553a9710548370163891eff854/vyper-0.3.4-py3-none-any.whl",
+      "compiler_sha256": "6fcc796bc7e167bc30b9cd50c8572560e7b586268e0d3e46e622495a54b28d41",
+      "python_family": "3.9",
+      "python": "3.9.25"
+    },
+    {
+      "version": "0.3.6",
+      "source_url": "https://files.pythonhosted.org/packages/04/78/704d66ce98c91000e318baae3cfdc0a0bd67836dd3c94727713c4ba1f5b1/vyper-0.3.6-py3-none-any.whl",
+      "compiler_sha256": "d9d18e8eaed281b4f8b5545fa164215d08ed34c2977ec1cce624347707056909",
+      "python_family": "3.9",
+      "python": "3.9.25"
+    },
+    {
+      "version": "0.3.7",
+      "source_url": "https://files.pythonhosted.org/packages/17/a3/32e5888c8a4ba8fb0e7fab181377986f234642eea421baea9f3e15e0f6ae/vyper-0.3.7-py3-none-any.whl",
+      "compiler_sha256": "9432db96db9d685ce74423b2bf685b0bcefa7bec39589036cd52bb1635fc1800",
+      "python_family": "3.9",
+      "python": "3.9.25"
+    },
+    {
+      "version": "0.3.8",
+      "source_url": "https://files.pythonhosted.org/packages/dd/47/199115b2919692bafad602b25e4cadbfbaec615e27d83f3a44c297f8e586/vyper-0.3.8-py3-none-any.whl",
+      "compiler_sha256": "e36d58a271dacc7e1265226a7e9478f078d7251bf3ecd56ecd67a312529c697a",
+      "python_family": "3.10",
+      "python": "3.10.21"
+    },
+    {
+      "version": "0.3.9",
+      "source_url": "https://files.pythonhosted.org/packages/99/90/98786f7811d234516f1c9e0221de5ec4f52957882ed948f489db8e27f5e9/vyper-0.3.9-py3-none-any.whl",
+      "compiler_sha256": "eed86456068ddbf5329de831fb51c4e2741ac786d75bd86df925d1d0569ce8e9",
+      "python_family": "3.10",
+      "python": "3.10.21"
+    },
+    {
+      "version": "0.3.10",
+      "source_url": "https://files.pythonhosted.org/packages/1a/7b/4976166c71b4a782a9995d5e595c76855845696e1d50de7b8c87db52eff0/vyper-0.3.10-py3-none-any.whl",
+      "compiler_sha256": "05636302341bf89602b19f749fcabc8d184a265d8eea4a45c20b3259780353b0",
+      "python_family": "3.10",
+      "python": "3.10.21"
+    },
+    {
+      "version": "0.4.0",
+      "source_url": "https://files.pythonhosted.org/packages/37/0b/7c14ae8aec83187a67d8c13a4fdff9bc4d72d9ef822ec7ce026b301a00cb/vyper-0.4.0-py3-none-any.whl",
+      "compiler_sha256": "22d7e1eca229e95a909dc971ff5b1685c8379404e3fc3b7b84dbc59b5de1c262",
+      "python_family": "3.10",
+      "python": "3.10.21"
+    },
+    {
+      "version": "0.4.1",
+      "source_url": "https://files.pythonhosted.org/packages/2f/3f/fb474ea7f3e00a16fb23ea01e1844977e450aca7962e7ad9d11badb61683/vyper-0.4.1-py3-none-any.whl",
+      "compiler_sha256": "b22e19e20557b3c13fa2721efabc4e926f624af9a3bd328e1da8fb6b727d908f",
+      "python_family": "3.10",
+      "python": "3.10.21"
+    },
+    {
+      "version": "0.4.2",
+      "source_url": "https://files.pythonhosted.org/packages/61/68/57ef12cfe5a4e116eadc754a8c2e84ab6dfd566cd671958e0d01da7c74aa/vyper-0.4.2-py3-none-any.whl",
+      "compiler_sha256": "847d2310551273519b9e7eb46191fdcf61943865e251b28157f773aa5beea9a1",
+      "python_family": "3.10",
+      "python": "3.10.21"
+    },
+    {
+      "version": "0.4.3",
+      "source_url": "https://files.pythonhosted.org/packages/f3/45/ad3c7d78aaa3e50d229968bc39eaf193f9b8eee79b5f16a3bed8f35e1395/vyper-0.4.3-py3-none-any.whl",
+      "compiler_sha256": "3b9671727c888363740dc678e60336759871487d0e4e9fdd973048fa9635c4fd",
+      "python_family": "3.13.15",
+      "python": "3.13.15"
+    }
+  ]
+}

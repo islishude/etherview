@@ -36,9 +36,6 @@ func (assembly runtimeAssembly) registerVerificationComponents() error {
 		if err := runtimeValidator.ValidateRuntime(ctx); err != nil {
 			return fmt.Errorf("validate verification compiler runtime: %w", err)
 		}
-		if router, ok := compiler.(*verify.CompilerRouter); ok {
-			compilerCatalog.SetVyperRuntime(router.Vyper)
-		}
 		catalogRefresher, err := verify.NewCatalogRefresher(
 			compilerCatalog, cfg.Verification.CatalogRefreshInterval, logger,
 		)

@@ -1,6 +1,6 @@
 # P30 — Contract Platform & Runtime Operations
 
-Status: `done`
+Status: `in_progress`
 
 This is the canonical plan for contract verification, contract intelligence,
 and the shared runtime/operations platform. Its current work items use the P30
@@ -177,6 +177,11 @@ credential-scoped operational boundaries.
 | P30-T99 | done | P30-T96, P30-T97, P30-T98 | Vyper production verification acceptance and maintained documentation | common gates, native AMD64/ARM64 monolith/split verification E2E |
 
 | P30-T100 | done | P30-T99 | Serialize Compose stdout/stderr capture and streaming to prevent concurrent buffer corruption | real-process output and failure regressions under the race detector; Foundry E2E; docs/plan checks |
+
+| P30-T107 | in_progress | P30-T100 | Signed dynamic Vyper runtime catalogs, immutable provenance and authenticated cache | signature, persistence, download, cache and subprocess regressions |
+| P30-T108 | in_progress | P30-T107 | All non-withdrawn stable Vyper build locks and version-aware input/output and matching | official compiler differential matrix on native AMD64/ARM64 |
+| P30-T109 | in_progress | P30-T108 | Vyper capability API, generated client and bilingual Web | API, Etherscan and browser regressions |
+| P30-T110 | blocked | P30-T109 | Runtime release pipeline, deployment parity and complete acceptance | Blocked by Docker Hub OAuth resets and missing native Linux acceptance; clear when deployment checks and AMD64/ARM64 production E2E pass |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
@@ -513,3 +518,39 @@ owned by their current plans.
   rerun with this fix.
 - `make docs-check plan-check` and `git diff --check` pass. No public,
   persistent, compiler, or topology contract changes were needed.
+
+### P30-T107–P30-T110 — Dynamic Vyper runtime catalogs (2026-09-12)
+
+- Implementation covers 26 non-withdrawn stable releases, with official-source
+  packaging for 0.2.0; signed Ed25519 catalogs, immutable runtime provenance,
+  authenticated archive/cache installation, historical compiler adapters,
+  capability API/Web controls and native release/production E2E workflows.
+- IDs T101–T106, ADR-0048 and migration 0066 already belong to the separate
+  `simplify-contract-verify-runtime` branch. This work uses T107–T110,
+  ADR-0049 and migration 0067 to avoid sharing those identifiers.
+- Local macOS ARM64: all 26 frozen helpers pass 362 original/perturbed reference
+  executions covering constructors, supported immutables, interfaces, missing
+  imports, optimization modes, metadata omission and malformed sources. The Go
+  matrix verifies startup, real execution, exact matching and identity changes.
+  These are not Linux production or native AMD64 evidence.
+- Targeted Go tests for verify/httpapi/etherscan/config/app pass. Vyper/catalog
+  race regressions, cold download/checksum/cache-repair tests, signed-catalog
+  publisher tests, Web's 370 tests and the real Chromium Vyper submission pass.
+- PostgreSQL Vyper publication/reorg, catalog expiry/freshness, bound retry without
+  a fresh catalog, immutable rebinding rejection and catalog/history migration
+  regressions pass. The broad integration run found one obsolete assertion
+  forbidding all Vyper catalog rows after the full migration chain; that assertion
+  was updated for the current schema and its targeted regression passes.
+- Generation, source, docs, plan, Go vet/lint and Web lint checks pass. A full
+  `make check` passed through unit/race/security/license checks but stopped at
+  Docker deployment validation. Retrying `make deployment-check` encounters the
+  same Docker Hub OAuth connection reset; the gate remains open.
+- Remaining acceptance: native Linux AMD64 and ARM64 runtime matrices, production
+  image/deployment checks and both production topologies using the collected
+  native artifacts. CI now builds both architecture sets before those tests and
+  writes descriptor-bound acceptance only after topology parity passes. No
+  production catalog can be signed without both acceptance records. Remote
+  publication remains a separate explicitly authorized release operation.
+
+Items remain open until the applicable gates above complete; no local/mock or
+macOS result closes the native production acceptance boundary.

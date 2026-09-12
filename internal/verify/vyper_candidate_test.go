@@ -98,16 +98,16 @@ func TestVyperInputBoundaries(t *testing.T) {
 		strings.Replace(valid, `"content":`, `"urls":`, 1),
 		strings.Replace(valid, `"language":"Vyper"`, `"language":"Vyper","language":"Vyper"`, 1),
 	} {
-		if _, err := PrepareVyperStandardJSON(json.RawMessage(input), "A.vy", 1<<20); err == nil {
+		if _, err := PrepareVyperStandardJSON(json.RawMessage(input), "A.vy", VyperCompilerVersion, 1<<20); err == nil {
 			t.Fatalf("accepted %s", input)
 		}
 	}
 	for _, target := range []string{"", "../A.vy", "/A.vy", "A.sol", "B.vy"} {
-		if _, err := PrepareVyperStandardJSON(json.RawMessage(valid), target, 1<<20); err == nil {
+		if _, err := PrepareVyperStandardJSON(json.RawMessage(valid), target, VyperCompilerVersion, 1<<20); err == nil {
 			t.Fatalf("accepted target %s", target)
 		}
 	}
-	if _, err := PrepareVyperStandardJSON(json.RawMessage(valid), "A.vy", 1<<20); err != nil {
+	if _, err := PrepareVyperStandardJSON(json.RawMessage(valid), "A.vy", VyperCompilerVersion, 1<<20); err != nil {
 		t.Fatal(err)
 	}
 }

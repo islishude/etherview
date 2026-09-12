@@ -3,6 +3,7 @@ package verify
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -45,10 +46,13 @@ type CatalogEntry struct {
 	ArtifactURL    string
 	ArtifactSHA256 [sha256.Size]byte
 	MaxBytes       int64
+	VyperRuntimes  json.RawMessage
+	ExpiresAt      time.Time
 	FetchedAt      time.Time
 }
 
 type CompilerCatalogOptions struct {
+	VyperPublicKey             ed25519.PublicKey
 	Sources                    map[Language]string
 	Platform                   string
 	AllowedOrigins             []string
@@ -66,7 +70,6 @@ type CompilerCatalogOptions struct {
 // CompilerCatalog refreshes immutable PostgreSQL generations and resolves
 // versions only from the current, sufficiently fresh generation.
 type CompilerCatalog struct {
-	vyper            *VyperCompiler
 	db               *sql.DB
 	options          CompilerCatalogOptions
 	origins          map[string]struct{}
@@ -87,6 +90,7 @@ func NewCompilerCatalog(db *sql.DB, options CompilerCatalogOptions) (*CompilerCa
 }
 
 func newCompilerCatalogParser(options CompilerCatalogOptions) (*CompilerCatalog, error) {
+	options.VyperPublicKey = append(ed25519.PublicKey(nil), options.VyperPublicKey...)
 	if options.MaxCatalogBytes <= 0 {
 		options.MaxCatalogBytes = defaultCatalogBytes
 	}
@@ -133,12 +137,19 @@ func newCompilerCatalogParser(options CompilerCatalogOptions) (*CompilerCatalog,
 	}
 	automaticSources := make(map[Language]bool, len(options.Sources))
 	for language, raw := range options.Sources {
-		if language != LanguageSolidity {
+		if language != LanguageSolidity && language != LanguageVyper {
 			return nil, fmt.Errorf("compiler catalog language %q is unsupported", language)
 		}
 		automaticSources[language] = strings.TrimSpace(raw) == "" ||
 			strings.TrimSpace(raw) == automaticCatalogSource
-		raw, err := resolveCatalogSource(language, raw, options.Platform)
+		if language == LanguageVyper && len(options.VyperPublicKey) != ed25519.PublicKeySize {
+			return nil, errors.New("vyper catalog signing key is required")
+		}
+		resolved, err := resolveCatalogSource(language, raw, options.Platform)
+		if language == LanguageVyper {
+			resolved, err = raw, nil
+		}
+		raw = resolved
 		if err != nil {
 			return nil, err
 		}
@@ -299,6 +310,9 @@ type compilerCatalogDocument struct {
 }
 
 func (catalog *CompilerCatalog) parse(language Language, source string, raw []byte) ([]CatalogEntry, error) {
+	if language == LanguageVyper {
+		return catalog.parseVyper(source, raw)
+	}
 	if err := validateUniqueJSON(raw); err != nil {
 		return nil, fmt.Errorf("invalid compiler catalog JSON: %w", err)
 	}
@@ -426,6 +440,11 @@ func (catalog *CompilerCatalog) persist(
 			entry.ArtifactSHA256[:], entry.MaxBytes); err != nil {
 			return 0, fmt.Errorf("persist compiler catalog entry: %w", err)
 		}
+		if entry.Language == LanguageVyper {
+			if _, err := tx.ExecContext(ctx, dbgen.VerifyVyperPersistRuntime, generationID, entry.Version, []byte(entry.VyperRuntimes), entry.ExpiresAt); err != nil {
+				return 0, errors.New("persist Vyper runtime catalog")
+			}
+		}
 	}
 	if _, err := tx.ExecContext(ctx, dbgen.VerifyInlinePersistStatement3, language, generationID); err != nil {
 		return 0, fmt.Errorf("activate compiler catalog generation: %w", err)
@@ -437,15 +456,19 @@ func (catalog *CompilerCatalog) persist(
 }
 
 func (catalog *CompilerCatalog) Lookup(ctx context.Context, language Language, version string) (CatalogEntry, error) {
+	if language == LanguageVyper && !catalog.vyperConfigured() {
+		return CatalogEntry{}, ErrCompilerCatalogUnavailable
+	}
 	if language == LanguageYul {
 		language = LanguageSolidity
 	}
 	version = normalizeCompilerVersion(version)
 	var entry CatalogEntry
 	var digest []byte
+	var expires sql.NullTime
 	err := catalog.db.QueryRowContext(ctx, dbgen.VerifyInlineLookupStatement1, language, version).Scan(
 		&entry.GenerationID, &entry.Language, &entry.Version, &entry.Platform,
-		&entry.ArtifactURL, &digest, &entry.MaxBytes, &entry.FetchedAt,
+		&entry.ArtifactURL, &digest, &entry.MaxBytes, &entry.FetchedAt, &expires,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		var exists bool
@@ -467,24 +490,18 @@ func (catalog *CompilerCatalog) Lookup(ctx context.Context, language Language, v
 		return CatalogEntry{}, errors.New("stored compiler catalog digest is invalid")
 	}
 	copy(entry.ArtifactSHA256[:], digest)
-	if !validCompilerPlatform(entry.Platform) {
+	if !validCompilerPlatform(entry.Platform) && (language != LanguageVyper || entry.Platform != CompilerPlatformPythonWheel) {
 		return CatalogEntry{}, errors.New("stored compiler catalog platform is invalid")
 	}
-	if time.Since(entry.FetchedAt) > catalog.options.Freshness {
+	if time.Since(entry.FetchedAt) > catalog.options.Freshness || (expires.Valid && !expires.Time.After(time.Now())) {
 		return CatalogEntry{}, ErrCompilerCatalogStale
 	}
 	return entry, nil
 }
 
 func (catalog *CompilerCatalog) Versions(ctx context.Context, language Language) ([]string, error) {
-	if language == LanguageVyper {
-		catalog.sourceMu.Lock()
-		runtime := catalog.vyper
-		catalog.sourceMu.Unlock()
-		if runtime == nil || !runtime.Ready() {
-			return nil, ErrCompilerCatalogUnavailable
-		}
-		return []string{VyperCompilerVersion}, nil
+	if language == LanguageVyper && !catalog.vyperConfigured() {
+		return nil, ErrCompilerCatalogUnavailable
 	}
 	if language == LanguageYul {
 		language = LanguageSolidity
@@ -498,8 +515,16 @@ func (catalog *CompilerCatalog) Versions(ctx context.Context, language Language)
 	var fetchedAt time.Time
 	for rows.Next() {
 		var version string
-		if err := rows.Scan(&version, &fetchedAt); err != nil {
+		var expires sql.NullTime
+		var runtimes []byte
+		if err := rows.Scan(&version, &fetchedAt, &expires, &runtimes); err != nil {
 			return nil, fmt.Errorf("scan compiler catalog: %w", err)
+		}
+		if expires.Valid && !expires.Time.After(time.Now()) {
+			return nil, ErrCompilerCatalogStale
+		}
+		if language == LanguageVyper && !vyperHostSupported(runtimes) {
+			continue
 		}
 		versions = append(versions, version)
 	}
@@ -514,11 +539,4 @@ func (catalog *CompilerCatalog) Versions(ctx context.Context, language Language)
 	}
 	sortCompilerVersions(versions)
 	return versions, nil
-}
-
-// SetVyperRuntime attaches the startup-validated bundled compiler availability.
-func (catalog *CompilerCatalog) SetVyperRuntime(runtime *VyperCompiler) {
-	catalog.sourceMu.Lock()
-	defer catalog.sourceMu.Unlock()
-	catalog.vyper = runtime
 }

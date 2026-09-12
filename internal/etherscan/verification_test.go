@@ -340,7 +340,7 @@ func TestVyperVerificationFormPinsVersionAndTarget(t *testing.T) {
 	if err != nil || form.language != verify.LanguageVyper || form.targetFile != "A.vy" || form.compilerVersion != "0.4.3" {
 		t.Fatalf("form=%+v error=%v", form, err)
 	}
-	values.Set("compilerversion", "vyper:0.4.0")
+	values.Set("compilerversion", "vyper:0.3.5")
 	if _, _, _, err = parseEtherscanVerificationForm(values, 1<<20); !errors.Is(err, ErrInvalidParameter) {
 		t.Fatalf("unsupported version: %v", err)
 	}

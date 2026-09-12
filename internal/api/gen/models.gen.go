@@ -3123,15 +3123,21 @@ func (e VerifierLanguage) Valid() bool {
 	}
 }
 
-// Defines values for VyperMultipartRequestCompilerVersion.
+// Defines values for VyperCompilerCapabilitiesOptimizationModes.
 const (
-	VyperMultipartRequestCompilerVersionN043 VyperMultipartRequestCompilerVersion = "0.4.3"
+	VyperCompilerCapabilitiesOptimizationModesCodesize VyperCompilerCapabilitiesOptimizationModes = "codesize"
+	VyperCompilerCapabilitiesOptimizationModesGas      VyperCompilerCapabilitiesOptimizationModes = "gas"
+	VyperCompilerCapabilitiesOptimizationModesNone     VyperCompilerCapabilitiesOptimizationModes = "none"
 )
 
-// Valid indicates whether the value is a known member of the VyperMultipartRequestCompilerVersion enum.
-func (e VyperMultipartRequestCompilerVersion) Valid() bool {
+// Valid indicates whether the value is a known member of the VyperCompilerCapabilitiesOptimizationModes enum.
+func (e VyperCompilerCapabilitiesOptimizationModes) Valid() bool {
 	switch e {
-	case VyperMultipartRequestCompilerVersionN043:
+	case VyperCompilerCapabilitiesOptimizationModesCodesize:
+		return true
+	case VyperCompilerCapabilitiesOptimizationModesGas:
+		return true
+	case VyperCompilerCapabilitiesOptimizationModesNone:
 		return true
 	default:
 		return false
@@ -3153,21 +3159,6 @@ func (e VyperMultipartRequestOptimizationMode) Valid() bool {
 	case VyperMultipartRequestOptimizationModeGas:
 		return true
 	case VyperMultipartRequestOptimizationModeNone:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for VyperStandardJSONRequestCompilerVersion.
-const (
-	VyperStandardJSONRequestCompilerVersionN043 VyperStandardJSONRequestCompilerVersion = "0.4.3"
-)
-
-// Valid indicates whether the value is a known member of the VyperStandardJSONRequestCompilerVersion enum.
-func (e VyperStandardJSONRequestCompilerVersion) Valid() bool {
-	switch e {
-	case VyperStandardJSONRequestCompilerVersionN043:
 		return true
 	default:
 		return false
@@ -3439,7 +3430,7 @@ type AddressVerificationSubmission struct {
 	Language   VerifierLanguage                   `json:"language"`
 	Libraries  *map[string]Address                `json:"libraries,omitempty"`
 
-	// OptimizationMode Vyper multipart optimization mode; defaults to gas.
+	// OptimizationMode Vyper multipart optimization mode; omit to use the selected compiler default.
 	OptimizationMode  *AddressVerificationSubmissionOptimizationMode `json:"optimization_mode,omitempty"`
 	OptimizationRuns  *int                                           `json:"optimization_runs,omitempty"`
 	RuntimeEntrypoint *string                                        `json:"runtime_entrypoint,omitempty"`
@@ -3452,7 +3443,7 @@ type AddressVerificationSubmission struct {
 // AddressVerificationSubmissionInputKind defines model for AddressVerificationSubmission.InputKind.
 type AddressVerificationSubmissionInputKind string
 
-// AddressVerificationSubmissionOptimizationMode Vyper multipart optimization mode; defaults to gas.
+// AddressVerificationSubmissionOptimizationMode Vyper multipart optimization mode; omit to use the selected compiler default.
 type AddressVerificationSubmissionOptimizationMode string
 
 // AddressWithdrawal defines model for AddressWithdrawal.
@@ -4210,7 +4201,9 @@ type CompilationFailureOutcomeKind string
 
 // CompilerCatalog defines model for CompilerCatalog.
 type CompilerCatalog struct {
-	Language VerifierLanguage `json:"language"`
+	// Capabilities Vyper capabilities keyed by exact available compiler version.
+	Capabilities *map[string]VyperCompilerCapabilities `json:"capabilities,omitempty"`
+	Language     VerifierLanguage                      `json:"language"`
 
 	// Versions Semantic versions in ascending precedence order; equal-precedence builds use their exact version text as a deterministic tie-breaker.
 	Versions []string `json:"versions"`
@@ -6633,17 +6626,29 @@ type VerifierStandardJSONRequest struct {
 	Language *SolcVerifierLanguage  `json:"language,omitempty"`
 }
 
+// VyperCompilerCapabilities defines model for VyperCompilerCapabilities.
+type VyperCompilerCapabilities struct {
+	BytecodeMetadata  bool                                         `json:"bytecode_metadata"`
+	DefaultEvmVersion string                                       `json:"default_evm_version"`
+	EnableDecimals    bool                                         `json:"enable_decimals"`
+	EvmVersions       []string                                     `json:"evm_versions"`
+	OptimizationModes []VyperCompilerCapabilitiesOptimizationModes `json:"optimization_modes"`
+}
+
+// VyperCompilerCapabilitiesOptimizationModes defines model for VyperCompilerCapabilities.OptimizationModes.
+type VyperCompilerCapabilitiesOptimizationModes string
+
 // VyperMultipartRequest defines model for VyperMultipartRequest.
 type VyperMultipartRequest struct {
 	// Bytecodes At least one creation or runtime bytecode must be non-empty.
-	Bytecodes       VerifierBytecodes                    `json:"bytecodes"`
-	CompilerVersion VyperMultipartRequestCompilerVersion `json:"compiler_version"`
-	EvmVersion      *string                              `json:"evm_version,omitempty"`
+	Bytecodes       VerifierBytecodes `json:"bytecodes"`
+	CompilerVersion string            `json:"compiler_version"`
+	EvmVersion      *string           `json:"evm_version,omitempty"`
 
 	// Interfaces Vyper multipart inline interfaces containing content or an ABI array.
 	Interfaces *map[string]map[string]interface{} `json:"interfaces,omitempty"`
 
-	// OptimizationMode Vyper multipart optimization mode; defaults to gas.
+	// OptimizationMode Vyper multipart optimization mode; omit to use the selected compiler default.
 	OptimizationMode *VyperMultipartRequestOptimizationMode `json:"optimization_mode,omitempty"`
 	Sources          map[string]string                      `json:"sources"`
 
@@ -6651,25 +6656,19 @@ type VyperMultipartRequest struct {
 	TargetFile string `json:"target_file"`
 }
 
-// VyperMultipartRequestCompilerVersion defines model for VyperMultipartRequest.CompilerVersion.
-type VyperMultipartRequestCompilerVersion string
-
-// VyperMultipartRequestOptimizationMode Vyper multipart optimization mode; defaults to gas.
+// VyperMultipartRequestOptimizationMode Vyper multipart optimization mode; omit to use the selected compiler default.
 type VyperMultipartRequestOptimizationMode string
 
 // VyperStandardJSONRequest defines model for VyperStandardJSONRequest.
 type VyperStandardJSONRequest struct {
 	// Bytecodes At least one creation or runtime bytecode must be non-empty.
-	Bytecodes       VerifierBytecodes                       `json:"bytecodes"`
-	CompilerVersion VyperStandardJSONRequestCompilerVersion `json:"compiler_version"`
+	Bytecodes       VerifierBytecodes `json:"bytecodes"`
+	CompilerVersion string            `json:"compiler_version"`
 
-	// Input Inline Vyper Standard JSON with bounded sources and interfaces. Optimization defaults to gas unless explicitly supplied.
+	// Input Inline Vyper Standard JSON with bounded sources and interfaces. Omitted settings use the selected compiler defaults; explicit settings must be supported by its capabilities.
 	Input      map[string]interface{} `json:"input"`
 	TargetFile string                 `json:"target_file"`
 }
-
-// VyperStandardJSONRequestCompilerVersion defines model for VyperStandardJSONRequest.CompilerVersion.
-type VyperStandardJSONRequestCompilerVersion string
 
 // WalletAddChainConfig defines model for WalletAddChainConfig.
 type WalletAddChainConfig struct {
