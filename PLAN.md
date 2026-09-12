@@ -67,7 +67,9 @@ registry connectivity and native Linux AMD64/ARM64 production acceptance remain
 open. See the child plan for the exact validation boundary. P30-T111 fixes
 release tar padding and cancelled-history migration, with targeted race and
 PostgreSQL regressions passing. P30-T112 fixes the Vyper environment-variable
-rejection identified in both Hardhat CI jobs; production E2E replay remains open.
+rejection identified in both Hardhat CI jobs. P30-T113 corrects their subsequent
+persistence-count failure after the Vyper matrix expansion; full production E2E
+replay remains open.
 
 ## Global Release Gates
 

@@ -557,7 +557,9 @@ native Linux AMD64 and ARM64 and collects both sets before production E2E.
 `compiler/vyper/fixtures_versions.py` explicitly regenerates reference fixtures
 from installed locked build environments; acceptance never rewrites references.
 
-`make test-hardhat3-e2e` requires both Linux artifact sets in
+`make test-hardhat3-e2e` also runs the strict persistence-count regression, with
+Vyper expectations derived from the version/protocol matrix. It requires both
+Linux artifact sets in
 `.local/vyper-releases/`. An ephemeral signed HTTPS fixture exercises real cold
 runtime downloads. It deploys contracts from six protocol families through
 native REST and Etherscan in both monolith and split layouts, verifies constructor

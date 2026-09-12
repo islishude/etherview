@@ -405,19 +405,19 @@ func captureHardhatProxySnapshot(
    AND compiler_platform='python-wheel'
    AND catalog_language='vyper' AND catalog_generation_id IS NOT NULL
    AND executor_kind='etherview_vyper_v3' AND execution_policy='trusted_subprocess'
-   AND octet_length(executor_digest)=32)=12
- FROM verification_jobs`).Scan(&result.VyperJobs, &result.VyperProvenance); err != nil {
+   AND octet_length(executor_digest)=32)=$1
+ FROM verification_jobs`, vyperProductionJobCount).Scan(&result.VyperJobs, &result.VyperProvenance); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.db.QueryRow(ctx, `SELECT count(*) FROM verification_results WHERE language='vyper' AND outcome_kind='verification_success'`).Scan(&result.VyperResults); err != nil {
 		t.Fatal(err)
 	}
-	if result.AddressJobs != 11 || result.DerivedJobs != 1 || result.ProxyJobs != 11 ||
-		result.CompilerResults != 13 || result.ProxyResults != 11 ||
+	if !result.hasExpectedVerificationCounts(vyperProductionJobCount) || result.DerivedJobs != 1 || result.ProxyJobs != 11 ||
+		result.ProxyResults != 11 ||
 		result.DerivedResults != 1 || result.DerivedPublications != 1 ||
 		result.DerivedAttempts != 1 ||
 		result.ProxyBindings != 11 || result.CatalogEntries == 0 ||
-		!result.ExecutorProvenance || !result.CompilerProvenance || result.VyperJobs != 12 || result.VyperResults != 12 || !result.VyperProvenance ||
+		!result.ExecutorProvenance || !result.CompilerProvenance || !result.VyperProvenance ||
 		result.CurrentProxyKind != "eip1967" ||
 		result.DiamondState != "confirmed" || result.DiamondFacets != 3 ||
 		result.DiamondSelectors != 8 || result.DiamondCuts != 1 ||
@@ -430,4 +430,13 @@ func captureHardhatProxySnapshot(
 		t.Fatalf("incomplete Hardhat/proxy persistence: %#v", result)
 	}
 	return result
+}
+
+func (result hardhatProxySnapshot) hasExpectedVerificationCounts(vyperJobs int64) bool {
+	// The remaining fixture has nine Solidity address jobs, one standalone
+	// Yul result and one factory-derived result. Keep each family exact so
+	// missing Vyper work cannot be hidden by extra Solidity work (or vice versa).
+	return result.AddressJobs == 9+vyperJobs &&
+		result.CompilerResults == 11+vyperJobs &&
+		result.VyperJobs == vyperJobs && result.VyperResults == vyperJobs
 }

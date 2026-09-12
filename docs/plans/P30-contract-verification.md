@@ -187,6 +187,8 @@ credential-scoped operational boundaries.
 
 | P30-T112 | done | P30-T111 | Restore signed Vyper catalog environment loading at the production startup boundary | Config loading for API/all, rejection of invalid trust settings, and Hardhat startup regression checks |
 
+| P30-T113 | done | P30-T112 | Align strict Hardhat persistence totals with the expanded Vyper version/protocol matrix | Replay CI totals, reject missing/duplicate jobs and results, preserve provenance and topology parity checks |
+
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
 ## Acceptance
@@ -605,3 +607,26 @@ macOS result closes the native production acceptance boundary.
 - Local `make docker-build` was attempted for a production E2E replay but failed
   fetching the Docker Hub frontend OAuth token (connection reset). Full native
   Hardhat E2E and a new remote CI run remain unverified; T110 stays open.
+
+### P30-T113 — Hardhat persistence totals after Vyper expansion (2026-09-12)
+
+- Run 34689671531 at 5d26cec reaches the final monolith snapshot on both AMD64
+  and ARM64. All six Vyper families pass native/Etherscan verification and cache
+  owner replacement; the snapshot has 21 address jobs, 23 compiler results and
+  12 Vyper jobs/results with valid provenance. The old 11/13 total assertions
+  still assumed only two Vyper jobs, so both checks fail despite complete data.
+- Version and protocol matrices now supply one Vyper job count to execution,
+  provenance SQL and strict snapshot checks. Expected totals remain exact:
+  nine Solidity addresses plus Vyper, and eleven non-Vyper results plus Vyper.
+  All existing proxy, Yul, derived, Safe/Diamond and topology-parity checks remain.
+- The regression replays the observed CI totals, rejects the obsolete totals,
+  rejects missing/duplicate counts in every category and covers another matrix
+  size. It failed against the original checks and passes with the correction.
+  `test-hardhat3-e2e-prebuilt` now includes this regression alongside the full
+  production test, so the lightweight count test is not omitted by its filter.
+- `go test -race -tags='runtimee2e hardhat3e2e' ./e2e/runtime
+  -run '^TestHardhat3VerificationCounts$' -count=1`, tagged golangci-lint and
+  `make source-check docs-check plan-check lint-go` pass.
+- A local production rebuild again fails fetching the Docker Hub frontend OAuth
+  token (connection reset). Full production E2E and a new remote CI run remain
+  unverified; this count fix does not close P30-T110's native topology gate.

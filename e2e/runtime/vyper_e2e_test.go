@@ -20,8 +20,13 @@ import (
 	"github.com/islishude/etherview/internal/api/gen"
 )
 
+var vyperProductionVersions = [...]string{"0.2.0", "0.3.1", "0.3.4", "0.3.10", "0.4.0", "0.4.3"}
+var vyperProductionProtocols = [...]string{"native", "etherscan"}
+
+const vyperProductionJobCount = int64(len(vyperProductionVersions) * len(vyperProductionProtocols))
+
 func verifyVyperProduction(t *testing.T, ctx context.Context, h *harness, key string) {
-	for _, version := range []string{"0.2.0", "0.3.1", "0.3.4", "0.3.10", "0.4.0", "0.4.3"} {
+	for _, version := range vyperProductionVersions {
 		verifyVyperProductionCase(t, ctx, h, key, version)
 	}
 }
@@ -64,7 +69,7 @@ func verifyVyperProductionCase(t *testing.T, ctx context.Context, h *harness, ke
 	if len(catalog.Data.Versions) != 26 || !slices.Contains(catalog.Data.Versions, "0.4.3") {
 		t.Fatalf("Vyper catalog=%+v", catalog.Data)
 	}
-	for _, protocol := range []string{"native", "etherscan"} {
+	for _, protocol := range vyperProductionProtocols {
 		word := strings.Repeat("0", 62) + "2a"
 		tx := h.sendTransaction(ctx, map[string]any{"from": h.fixture.accounts[0], "data": creation + word, "gas": "0x100000"})
 		var mined any
