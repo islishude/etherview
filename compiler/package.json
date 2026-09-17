@@ -4,13 +4,13 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": "26.8.1"
+    "node": "26.9.0"
   },
   "scripts": {
     "build:sea": "node build-sea.mjs"
   },
   "dependencies": {
-    "solc": "0.8.36"
+    "solc": "0.8.37"
   },
   "devDependencies": {
     "esbuild": "0.28.2"

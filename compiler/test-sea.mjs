@@ -52,7 +52,7 @@ const selfTest = run(["--self-test"]);
 if (
   selfTest.status !== 0 ||
   selfTest.stdout !==
-    '{"schema":"etherview-solcjs-sea-self-test-v1","sea":true,"node_version":"v26.8.1","wrapper_package":"solc@0.8.36","exec_argv":["--permission","--disable-sigusr1","--no-addons","--no-global-search-paths","--max-old-space-size=384"],"permissions":"restricted","write_denied":true}'
+    '{"schema":"etherview-solcjs-sea-self-test-v1","sea":true,"node_version":"v26.9.0","wrapper_package":"solc@0.8.37","exec_argv":["--permission","--disable-sigusr1","--no-addons","--no-global-search-paths","--max-old-space-size=384"],"permissions":"restricted","write_denied":true}'
 ) {
   throw new Error(
     `SEA self-test failed: status=${selfTest.status} signal=${selfTest.signal} error=${selfTest.error} stdout=${selfTest.stdout} stderr=${selfTest.stderr}`,
@@ -75,7 +75,7 @@ for (const permission of [
 
 const nodeOptions = `--node-options=--allow-fs-read=${JSON.stringify(artifact)}`;
 const compilation = run(
-  [nodeOptions, "--compile", artifact, "0.8.36+commit.8a079791"],
+  [nodeOptions, "--compile", artifact, "0.8.37+commit.f401782d"],
   input,
 );
 if (compilation.status !== 0) {
@@ -87,7 +87,7 @@ if (!output.contracts?.["Contract.sol"]?.Contract) {
 }
 if (
   run(
-    [nodeOptions, "--compile", artifact, "0.8.36+commit.8a079791", "unexpected"],
+    [nodeOptions, "--compile", artifact, "0.8.37+commit.f401782d", "unexpected"],
     input,
   ).status === 0
 ) {
@@ -102,7 +102,7 @@ for (const permission of [
     `--node-options=${permission} --allow-fs-read=${JSON.stringify(artifact)}`;
   if (
     run(
-      [widenedOptions, "--compile", artifact, "0.8.36+commit.8a079791"],
+      [widenedOptions, "--compile", artifact, "0.8.37+commit.f401782d"],
       input,
     ).status === 0
   ) {
@@ -111,7 +111,7 @@ for (const permission of [
 }
 
 const mismatch = run(
-  [nodeOptions, "--compile", artifact, "0.8.36+commit.deadbeef"],
+  [nodeOptions, "--compile", artifact, "0.8.37+commit.deadbeef"],
   input,
 );
 if (mismatch.status === 0) {
@@ -124,7 +124,7 @@ const importInput = JSON.stringify({
   settings: { outputSelection: { "*": { "*": ["abi"] } } },
 });
 const importResult = run(
-  [nodeOptions, "--compile", artifact, "0.8.36+commit.8a079791"],
+  [nodeOptions, "--compile", artifact, "0.8.37+commit.f401782d"],
   importInput,
 );
 if (

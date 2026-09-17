@@ -243,21 +243,22 @@ func TestSolcJSArtifactNodeOptions(t *testing.T) {
 }
 
 func TestValidateSolcJSSelfTest(t *testing.T) {
-	valid := []byte(`{"schema":"etherview-solcjs-sea-self-test-v1","sea":true,"node_version":"v26.8.1","wrapper_package":"solc@0.8.36","exec_argv":["--permission","--disable-sigusr1","--no-addons","--no-global-search-paths","--max-old-space-size=384"],"permissions":"restricted","write_denied":true}`)
+	valid := []byte(`{"schema":"etherview-solcjs-sea-self-test-v1","sea":true,"node_version":"v26.9.0","wrapper_package":"solc@0.8.37","exec_argv":["--permission","--disable-sigusr1","--no-addons","--no-global-search-paths","--max-old-space-size=384"],"permissions":"restricted","write_denied":true}`)
 	if err := validateSolcJSSelfTest(valid); err != nil {
 		t.Fatalf("valid self-test failed: %v", err)
 	}
 	staleVersion := bytes.Replace(
 		valid,
+		[]byte(`"node_version":"v26.9.0"`),
 		[]byte(`"node_version":"v26.8.1"`),
-		[]byte(`"node_version":"v26.8.0"`),
 		1,
 	)
 	for _, invalid := range [][]byte{
 		append(append([]byte(nil), valid...), '\n'),
 		staleVersion,
-		[]byte(`{"schema":"etherview-solcjs-sea-self-test-v1","sea":false,"node_version":"v26.8.1","wrapper_package":"solc@0.8.36","exec_argv":["--permission","--disable-sigusr1","--no-addons","--no-global-search-paths","--max-old-space-size=384"],"permissions":"restricted","write_denied":true}`),
-		[]byte(`{"schema":"etherview-solcjs-sea-self-test-v1","sea":true,"node_version":"v26.8.1","wrapper_package":"solc@0.8.36","exec_argv":["--permission","--disable-sigusr1","--no-addons","--no-global-search-paths","--max-old-space-size=384"],"permissions":"restricted","write_denied":true,"extra":true}`),
+		bytes.Replace(valid, []byte(`"wrapper_package":"solc@0.8.37"`), []byte(`"wrapper_package":"solc@0.8.36"`), 1),
+		[]byte(`{"schema":"etherview-solcjs-sea-self-test-v1","sea":false,"node_version":"v26.9.0","wrapper_package":"solc@0.8.37","exec_argv":["--permission","--disable-sigusr1","--no-addons","--no-global-search-paths","--max-old-space-size=384"],"permissions":"restricted","write_denied":true}`),
+		[]byte(`{"schema":"etherview-solcjs-sea-self-test-v1","sea":true,"node_version":"v26.9.0","wrapper_package":"solc@0.8.37","exec_argv":["--permission","--disable-sigusr1","--no-addons","--no-global-search-paths","--max-old-space-size=384"],"permissions":"restricted","write_denied":true,"extra":true}`),
 	} {
 		if err := validateSolcJSSelfTest(invalid); err == nil {
 			t.Fatalf("invalid self-test passed: %s", invalid)
@@ -284,7 +285,7 @@ func TestSolcJSCompileInvocation(t *testing.T) {
 	runtimeRoot := filepath.Dir(executor)
 	if _, err := compiler.run(
 		context.Background(), runtimeRoot, artifactPath,
-		"0.8.36+commit.8a079791", []byte(`{}`), false,
+		"0.8.37+commit.f401782d", []byte(`{}`), false,
 	); err != nil {
 		t.Fatalf("run fake SEA: %v", err)
 	}
@@ -297,7 +298,7 @@ func TestSolcJSCompileInvocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantArguments := strings.Join([]string{
-		wantOptions, "--compile", artifactPath, "0.8.36+commit.8a079791", "",
+		wantOptions, "--compile", artifactPath, "0.8.37+commit.f401782d", "",
 	}, "\n")
 	if string(rawArguments) != wantArguments {
 		t.Fatalf("SEA arguments = %q, want %q", rawArguments, wantArguments)
@@ -320,7 +321,7 @@ func TestSolcJSProcessBoundsAndCancellation(t *testing.T) {
 		compiler := fakeSolcJSCompiler(fakeExecutor)
 		compiler.MaxOutputBytes = 128
 		if _, err := compiler.run(
-			context.Background(), filepath.Dir(fakeExecutor), fakeExecutor, "0.8.36",
+			context.Background(), filepath.Dir(fakeExecutor), fakeExecutor, "0.8.37",
 			[]byte(`{}`), false,
 		); err == nil || err.Error() != "compiler output exceeds size limit" {
 			t.Fatalf("unexpected output-limit result: %v", err)
@@ -333,7 +334,7 @@ func TestSolcJSProcessBoundsAndCancellation(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 		defer cancel()
 		if _, err := compiler.run(
-			ctx, filepath.Dir(fakeExecutor), fakeExecutor, "0.8.36", []byte(`{}`), false,
+			ctx, filepath.Dir(fakeExecutor), fakeExecutor, "0.8.37", []byte(`{}`), false,
 		); !errors.Is(err, context.DeadlineExceeded) {
 			t.Fatalf("unexpected timeout result: %v", err)
 		}
@@ -351,7 +352,7 @@ func TestSolcJSProcessBoundsAndCancellation(t *testing.T) {
 		result := make(chan error, 1)
 		go func() {
 			_, err := compiler.run(
-				ctx, filepath.Dir(fakeExecutor), fakeExecutor, "0.8.36", []byte(`{}`), false,
+				ctx, filepath.Dir(fakeExecutor), fakeExecutor, "0.8.37", []byte(`{}`), false,
 			)
 			result <- err
 		}()
@@ -384,7 +385,7 @@ func writeTestSolcJSRuntime(t *testing.T) (string, string) {
 	})
 	executorPath := filepath.Join(runtimeRoot, "etherview-solcjs")
 	libraryPath := filepath.Join(libraryRoot, "libatomic.so.1")
-	selfTest := `{"schema":"etherview-solcjs-sea-self-test-v1","sea":true,"node_version":"v26.8.1","wrapper_package":"solc@0.8.36","exec_argv":["--permission","--disable-sigusr1","--no-addons","--no-global-search-paths","--max-old-space-size=384"],"permissions":"restricted","write_denied":true}`
+	selfTest := `{"schema":"etherview-solcjs-sea-self-test-v1","sea":true,"node_version":"v26.9.0","wrapper_package":"solc@0.8.37","exec_argv":["--permission","--disable-sigusr1","--no-addons","--no-global-search-paths","--max-old-space-size=384"],"permissions":"restricted","write_denied":true}`
 	if err := os.WriteFile(
 		executorPath, []byte("#!/bin/sh\nprintf '%s' '"+selfTest+"'\n"), 0o555,
 	); err != nil {

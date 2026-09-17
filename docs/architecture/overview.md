@@ -805,8 +805,8 @@ size alone is not sufficient justification to weaken those invariants.
   published. The helper's exact Go module checksum and executable digest bind
   once under the job lease without a compiler catalog. See
   [ADR-0039](../decisions/ADR-0039-pinned-geas-verification-executor.md).
-- The production image includes one Node 26.8.1 SEA containing the
-  `solc@0.8.36` wrapper protocol, plus a canonical read-only runtime manifest
+- The production image includes one Node 26.9.0 SEA containing the
+  `solc@0.8.37` wrapper protocol, plus a canonical read-only runtime manifest
   and any target-rootfs-missing ELF libraries discovered recursively at build
   time. It contains no general Node executable, npm tree, wrapper source, or
   bundled default compiler. Startup verifies every manifest path and digest and
