@@ -13,12 +13,12 @@
     "@openzeppelin/contracts-upgradeable": "5.6.1",
     "@safe-global/safe-contracts": "1.4.1",
     "ethers": "6.17.0",
-    "hardhat": "3.11.1",
+    "hardhat": "3.17.0",
     "solady": "0.1.26",
     "solc": "0.8.30"
   },
   "overrides": {
-    "adm-zip": "0.6.0",
+    "adm-zip": "0.6.1",
     "tmp": "0.2.7"
   }
 }
