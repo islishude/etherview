@@ -5,8 +5,8 @@ import { isSea } from "node:sea";
 import solcPackage from "solc/package.json" with { type: "json" };
 import solcWrapper from "solc/wrapper";
 
-const requiredNodeVersion = "v26.8.1";
-const requiredWrapperPackageVersion = "0.8.36";
+const requiredNodeVersion = "v26.9.0";
+const requiredWrapperPackageVersion = "0.8.37";
 const fixedExecArgv = [
   "--permission",
   "--disable-sigusr1",

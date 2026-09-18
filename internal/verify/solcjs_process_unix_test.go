@@ -27,7 +27,7 @@ func TestSolcJSCancellationTerminatesWholeProcessGroup(t *testing.T) {
 	result := make(chan error, 1)
 	go func() {
 		_, err := compiler.run(
-			ctx, filepath.Dir(fakeExecutor), fakeExecutor, "0.8.36", []byte(`{}`), false,
+			ctx, filepath.Dir(fakeExecutor), fakeExecutor, "0.8.37", []byte(`{}`), false,
 		)
 		result <- err
 	}()
