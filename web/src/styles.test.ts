@@ -45,8 +45,12 @@ describe("shared button layout", () => {
 
   it("normalizes address tab entries before applying the active state", () => {
     const stylesheet = readStylesheet("styles/explorer.css");
-    const addressRule = stylesheet.match(/\.transaction-tabs\s*>\s*\.transaction-tab\s*\{(?<body>[^}]*)\}/u);
-    const addressActiveRule = stylesheet.match(/\.transaction-tabs\s*>\s*\.transaction-tab\.active\s*\{(?<body>[^}]*)\}/u);
+    const addressRule = stylesheet.match(
+      /\.transaction-tabs\s*>\s*\.transaction-tab\s*\{(?<body>[^}]*)\}/u,
+    );
+    const addressActiveRule = stylesheet.match(
+      /\.transaction-tabs\s*>\s*\.transaction-tab\.active\s*\{(?<body>[^}]*)\}/u,
+    );
 
     expect(addressRule?.groups?.body).toMatch(/\bmargin-inline-start:\s*0;/u);
     expect(addressRule?.groups?.body).toMatch(/\bborder:\s*0;/u);
@@ -56,11 +60,12 @@ describe("shared button layout", () => {
 
   it("soft-wraps read-only raw calldata inside its textarea", () => {
     const stylesheet = readStylesheet("styles/explorer.css");
-    const rawCalldataRule = stylesheet.match(/\.transaction-calldata-raw-value\s*\{(?<body>[^}]*)\}/u);
+    const rawCalldataRule = stylesheet.match(
+      /\.transaction-calldata-raw-value\s*\{(?<body>[^}]*)\}/u,
+    );
 
     expect(rawCalldataRule?.groups?.body).toMatch(/\boverflow-wrap:\s*anywhere;/u);
     expect(rawCalldataRule?.groups?.body).toMatch(/\bwhite-space:\s*pre-wrap;/u);
     expect(rawCalldataRule?.groups?.body).toMatch(/\bword-break:\s*break-word;/u);
   });
-
 });

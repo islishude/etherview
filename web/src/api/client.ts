@@ -43,9 +43,7 @@ export function createExplorerClient(fetcher: Fetcher = dynamicFetch) {
   });
 }
 
-export function sameOriginAPIPath<Path extends keyof paths>(
-  path: Path,
-): `/api/v1${Path & string}` {
+export function sameOriginAPIPath<Path extends keyof paths>(path: Path): `/api/v1${Path & string}` {
   return `/api/v1${path}`;
 }
 
@@ -53,10 +51,7 @@ export function requireEnvelope<T extends ApiEnvelope<unknown, ApiMeta>>(
   result: ClientResult<T>,
 ): T {
   if (!result.response.ok || result.error !== undefined) {
-    throw new ApiError(
-      result.response.status,
-      isApiError(result.error) ? result.error : undefined,
-    );
+    throw new ApiError(result.response.status, isApiError(result.error) ? result.error : undefined);
   }
   if (!isEnvelope(result.data)) {
     throw new ApiError(result.response.status, undefined, {
@@ -69,10 +64,7 @@ export function requireEnvelope<T extends ApiEnvelope<unknown, ApiMeta>>(
 
 export function requireNoContent(result: ClientResult<unknown>): void {
   if (result.response.status !== 204 || result.error !== undefined) {
-    throw new ApiError(
-      result.response.status,
-      isApiError(result.error) ? result.error : undefined,
-    );
+    throw new ApiError(result.response.status, isApiError(result.error) ? result.error : undefined);
   }
 }
 
@@ -85,7 +77,9 @@ function makeRelativeFetcher(origin: string, fetcher: Fetcher) {
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
     if (url.origin !== origin || !url.pathname.startsWith("/api/v1/")) {
-      throw new TypeError("Explorer API requests must stay within the same-origin /api/v1 boundary");
+      throw new TypeError(
+        "Explorer API requests must stay within the same-origin /api/v1 boundary",
+      );
     }
     const hasBody = request.method !== "GET" && request.method !== "HEAD";
     const body = hasBody ? await request.clone().text() : undefined;

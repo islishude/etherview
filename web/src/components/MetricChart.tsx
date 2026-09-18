@@ -1,17 +1,13 @@
 import { useEffect, useRef } from "react";
 import { LineChart } from "echarts/charts";
-import {
-  DataZoomComponent,
-  GridComponent,
-  TooltipComponent,
-} from "echarts/components";
-import { init, use, type ECharts, type EChartsCoreOption } from "echarts/core";
+import { DataZoomComponent, GridComponent, TooltipComponent } from "echarts/components";
+import { init, use as registerCharts, type ECharts, type EChartsCoreOption } from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 
 import type { ChartPoint } from "@/api/types";
 import { useTheme } from "@/theme/ThemeProvider";
 
-use([LineChart, DataZoomComponent, GridComponent, TooltipComponent, CanvasRenderer]);
+registerCharts([LineChart, DataZoomComponent, GridComponent, TooltipComponent, CanvasRenderer]);
 
 export function MetricChart({
   data,
@@ -79,26 +75,26 @@ export function MetricChart({
         { type: "inside", filterMode: "none" },
         { type: "slider", filterMode: "none", bottom: 12, height: 24 },
       ],
-      series: [{
-        name: label,
-        type: "line",
-        showSymbol: data.length <= 48,
-        symbolSize: 5,
-        smooth: false,
-        lineStyle: { width: 2 },
-        areaStyle: { opacity: 0.08 },
-        data: data.map((point) => ({
-          value: chartNumber(point.value),
-          exact: point.value,
-          timestamp: point.bucket_start,
-        })),
-      }],
+      series: [
+        {
+          name: label,
+          type: "line",
+          showSymbol: data.length <= 48,
+          symbolSize: 5,
+          smooth: false,
+          lineStyle: { width: 2 },
+          areaStyle: { opacity: 0.08 },
+          data: data.map((point) => ({
+            value: chartNumber(point.value),
+            exact: point.value,
+            timestamp: point.bucket_start,
+          })),
+        },
+      ],
     };
     chart.setOption(option);
     const resize = () => chart?.resize();
-    const observer = typeof ResizeObserver === "undefined"
-      ? undefined
-      : new ResizeObserver(resize);
+    const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(resize);
     if (observer) observer.observe(host.current);
     else window.addEventListener("resize", resize);
     return () => {

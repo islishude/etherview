@@ -1,20 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { apiClient, requireEnvelope } from "./client";
-import type {
-  BlockSummary,
-  ChainStatus,
-  HomeSnapshotResponse,
-  TransactionSummary,
-} from "./types";
+import type { BlockSummary, ChainStatus, HomeSnapshotResponse, TransactionSummary } from "./types";
 
 const MAX_HOME_SNAPSHOT_BYTES = 2 * 1024 * 1024;
 const quantityPattern = /^(0|[1-9][0-9]*)$/;
 const hashPattern = /^0x[0-9a-fA-F]{64}$/;
 const addressPattern = /^0x[0-9a-fA-F]{40}$/;
 const inputPattern = /^0x[0-9a-fA-F]*$/;
-const dateTimePattern =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
+const dateTimePattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 const stageStates = new Set(["complete", "pending", "unavailable", "failed"]);
 const finalityStates = new Set(["pending", "latest", "safe", "finalized", "orphan"]);
 const transactionStates = new Set(["pending", "success", "failed", "unknown"]);
@@ -61,8 +55,10 @@ export function useHomeSnapshot(): HomeStreamState {
 }
 
 export function parseHomeSnapshot(raw: string): HomeSnapshotResponse {
-  if (typeof raw !== "string" ||
-      new TextEncoder().encode(raw).byteLength > MAX_HOME_SNAPSHOT_BYTES) {
+  if (
+    typeof raw !== "string" ||
+    new TextEncoder().encode(raw).byteLength > MAX_HOME_SNAPSHOT_BYTES
+  ) {
     throw new Error("Home snapshot exceeds its size limit");
   }
   const parsed: unknown = JSON.parse(raw);
@@ -87,13 +83,25 @@ function validateStatus(value: unknown): void {
   const record = objectWithKeys(
     value,
     [
-      "chain_id", "core_ready", "latest_block", "indexed_block",
-      "highest_covered_block", "backfill_complete", "safe_block",
-      "finalized_block", "lag", "completeness",
+      "chain_id",
+      "core_ready",
+      "latest_block",
+      "indexed_block",
+      "highest_covered_block",
+      "backfill_complete",
+      "safe_block",
+      "finalized_block",
+      "lag",
+      "completeness",
     ],
     [
-      "chain_id", "core_ready", "latest_block", "indexed_block",
-      "backfill_complete", "lag", "completeness",
+      "chain_id",
+      "core_ready",
+      "latest_block",
+      "indexed_block",
+      "backfill_complete",
+      "lag",
+      "completeness",
     ],
   );
   quantity(record.chain_id, "status.chain_id");
@@ -112,13 +120,29 @@ function validateBlock(value: unknown): void {
   const record = objectWithKeys(
     value,
     [
-      "hash", "number", "parent_hash", "timestamp", "miner",
-      "transaction_count", "gas_used", "gas_limit", "base_fee_per_gas",
-      "withdrawals", "canonical", "finality", "completeness",
+      "hash",
+      "number",
+      "parent_hash",
+      "timestamp",
+      "miner",
+      "transaction_count",
+      "gas_used",
+      "gas_limit",
+      "base_fee_per_gas",
+      "withdrawals",
+      "canonical",
+      "finality",
+      "completeness",
     ],
     [
-      "hash", "number", "parent_hash", "timestamp", "transaction_count",
-      "canonical", "finality", "completeness",
+      "hash",
+      "number",
+      "parent_hash",
+      "timestamp",
+      "transaction_count",
+      "canonical",
+      "finality",
+      "completeness",
     ],
   );
   hash(record.hash, "block.hash");
@@ -140,13 +164,36 @@ function validateTransaction(value: unknown): void {
   const record = objectWithKeys(
     value,
     [
-      "hash", "block_timestamp", "confirmations", "block_hash", "block_number",
-      "transaction_index", "from", "to", "contract_address", "nonce", "value",
-      "gas", "gas_used", "base_fee_per_gas", "blob_base_fee_per_gas",
-      "effective_gas_price", "tx_fee_wei", "gas_price",
-      "max_fee_per_gas", "max_priority_fee_per_gas", "max_fee_per_blob_gas",
-      "access_list", "blob_versioned_hashes", "burned_wei", "type", "input",
-      "status", "canonical", "finality", "completeness",
+      "hash",
+      "block_timestamp",
+      "confirmations",
+      "block_hash",
+      "block_number",
+      "transaction_index",
+      "from",
+      "to",
+      "contract_address",
+      "nonce",
+      "value",
+      "gas",
+      "gas_used",
+      "base_fee_per_gas",
+      "blob_base_fee_per_gas",
+      "effective_gas_price",
+      "tx_fee_wei",
+      "gas_price",
+      "max_fee_per_gas",
+      "max_priority_fee_per_gas",
+      "max_fee_per_blob_gas",
+      "access_list",
+      "blob_versioned_hashes",
+      "burned_wei",
+      "type",
+      "input",
+      "status",
+      "canonical",
+      "finality",
+      "completeness",
     ],
     ["hash", "from", "nonce", "value", "gas", "input", "canonical", "finality", "completeness"],
   );
@@ -165,9 +212,15 @@ function validateTransaction(value: unknown): void {
   quantity(record.value, "transaction.value");
   quantity(record.gas, "transaction.gas");
   for (const key of [
-    "gas_used", "base_fee_per_gas", "blob_base_fee_per_gas",
-    "effective_gas_price", "tx_fee_wei", "gas_price",
-    "max_fee_per_gas", "max_priority_fee_per_gas", "max_fee_per_blob_gas",
+    "gas_used",
+    "base_fee_per_gas",
+    "blob_base_fee_per_gas",
+    "effective_gas_price",
+    "tx_fee_wei",
+    "gas_price",
+    "max_fee_per_gas",
+    "max_priority_fee_per_gas",
+    "max_fee_per_blob_gas",
     "burned_wei",
   ] as const) {
     optional(record, key, quantity);
@@ -185,29 +238,33 @@ function validateTransaction(value: unknown): void {
 }
 
 function validateWithdrawals(value: unknown, label: string): void {
-  validateList(value, (item) => {
-    const record = objectWithKeys(
-      item,
-      ["index", "validator_index", "address", "amount"],
-      ["index", "validator_index", "address", "amount"],
-    );
-    quantity(record.index, `${label}.index`);
-    quantity(record.validator_index, `${label}.validator_index`);
-    address(record.address, `${label}.address`);
-    quantity(record.amount, `${label}.amount`);
-  }, label);
+  validateList(
+    value,
+    (item) => {
+      const record = objectWithKeys(
+        item,
+        ["index", "validator_index", "address", "amount"],
+        ["index", "validator_index", "address", "amount"],
+      );
+      quantity(record.index, `${label}.index`);
+      quantity(record.validator_index, `${label}.validator_index`);
+      address(record.address, `${label}.address`);
+      quantity(record.amount, `${label}.amount`);
+    },
+    label,
+  );
 }
 
 function validateAccessList(value: unknown, label: string): void {
-  validateList(value, (item) => {
-    const record = objectWithKeys(
-      item,
-      ["address", "storage_keys"],
-      ["address", "storage_keys"],
-    );
-    address(record.address, `${label}.address`);
-    validateHashes(record.storage_keys, `${label}.storage_keys`);
-  }, label);
+  validateList(
+    value,
+    (item) => {
+      const record = objectWithKeys(item, ["address", "storage_keys"], ["address", "storage_keys"]);
+      address(record.address, `${label}.address`);
+      validateHashes(record.storage_keys, `${label}.storage_keys`);
+    },
+    label,
+  );
 }
 
 function validateHashes(value: unknown, label: string): void {
@@ -249,11 +306,7 @@ function validateArray(
   value.forEach(validate);
 }
 
-function validateList(
-  value: unknown,
-  validate: (item: unknown) => void,
-  label: string,
-): void {
+function validateList(value: unknown, validate: (item: unknown) => void, label: string): void {
   if (!Array.isArray(value)) {
     throw new Error(`Invalid ${label}`);
   }
@@ -270,8 +323,10 @@ function objectWithKeys(
   }
   const record = value as Record<string, unknown>;
   const keys = Object.keys(record);
-  if (keys.some((key) => !allowed.includes(key)) ||
-      required.some((key) => !Object.hasOwn(record, key))) {
+  if (
+    keys.some((key) => !allowed.includes(key)) ||
+    required.some((key) => !Object.hasOwn(record, key))
+  ) {
     throw new Error("Object shape is invalid");
   }
   return record;

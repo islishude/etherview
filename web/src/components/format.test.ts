@@ -20,28 +20,20 @@ describe("formatRelativeTimestamp", () => {
   const now = new Date("2026-07-28T08:00:00Z").getTime();
 
   it("localizes complete elapsed units", () => {
-    expect(formatRelativeTimestamp("2026-07-28T07:59:15Z", "en", now))
-      .toBe("45 seconds ago");
-    expect(formatRelativeTimestamp("2026-07-28T07:59:00Z", "en", now))
-      .toBe("1 minute ago");
-    expect(formatRelativeTimestamp("2026-07-28T06:00:00Z", "en", now))
-      .toBe("2 hours ago");
-    expect(formatRelativeTimestamp("2026-07-25T08:00:00Z", "en", now))
-      .toBe("3 days ago");
-    expect(formatRelativeTimestamp("2026-07-28T07:59:00Z", "zh-CN", now))
-      .toBe("1分钟前");
+    expect(formatRelativeTimestamp("2026-07-28T07:59:15Z", "en", now)).toBe("45 seconds ago");
+    expect(formatRelativeTimestamp("2026-07-28T07:59:00Z", "en", now)).toBe("1 minute ago");
+    expect(formatRelativeTimestamp("2026-07-28T06:00:00Z", "en", now)).toBe("2 hours ago");
+    expect(formatRelativeTimestamp("2026-07-25T08:00:00Z", "en", now)).toBe("3 days ago");
+    expect(formatRelativeTimestamp("2026-07-28T07:59:00Z", "zh-CN", now)).toBe("1分钟前");
   });
 
   it("formats future timestamps relative to now", () => {
-    expect(formatRelativeTimestamp("2026-07-28T08:02:00Z", "en", now))
-      .toBe("in 2 minutes");
-    expect(formatRelativeTimestamp("2026-07-28T08:02:00Z", "zh-CN", now))
-      .toBe("2分钟后");
+    expect(formatRelativeTimestamp("2026-07-28T08:02:00Z", "en", now)).toBe("in 2 minutes");
+    expect(formatRelativeTimestamp("2026-07-28T08:02:00Z", "zh-CN", now)).toBe("2分钟后");
   });
 
   it("returns malformed timestamps unchanged", () => {
-    expect(formatRelativeTimestamp("not-a-timestamp", "en", now))
-      .toBe("not-a-timestamp");
+    expect(formatRelativeTimestamp("not-a-timestamp", "en", now)).toBe("not-a-timestamp");
   });
 });
 
@@ -79,8 +71,9 @@ describe("formatGweiFromWei", () => {
 describe("formatPercentageRatio", () => {
   it("rounds an exact bigint ratio to two decimal places", () => {
     expect(formatPercentageRatio("430551", "567028", "en")).toBe("75.93%");
-    expect(formatPercentageRatio("1000000000000000000000001", "1000000000000000000000000", "en"))
-      .toBe("100.00%");
+    expect(
+      formatPercentageRatio("1000000000000000000000001", "1000000000000000000000000", "en"),
+    ).toBe("100.00%");
   });
 
   it("fails closed for missing, malformed, or zero totals", () => {

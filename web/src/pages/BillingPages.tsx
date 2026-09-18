@@ -96,15 +96,12 @@ export function PersonalBillingHistory() {
   const publicConfig = usePublicConfig();
   const [cursors, setCursors] = useState([""]);
   const cursor = cursors.at(-1) || undefined;
-  const userID =
-    auth.session.authenticated ? auth.session.user?.id : undefined;
+  const userID = auth.session.authenticated ? auth.session.user?.id : undefined;
   const locale = i18n.resolvedLanguage ?? "en";
-  const billingEnabled =
-    publicConfig.data?.features.api_billing === true;
+  const billingEnabled = publicConfig.data?.features.api_billing === true;
   const payments = useQuery({
     queryKey: ["current-user-billing-payments", userID ?? null, cursor ?? null],
-    queryFn: () =>
-      listCurrentUserBillingPayments(PERSONAL_PAGE_SIZE, cursor),
+    queryFn: () => listCurrentUserBillingPayments(PERSONAL_PAGE_SIZE, cursor),
     enabled: Boolean(auth.enabled && billingEnabled && userID),
     retry: false,
     staleTime: 0,
@@ -120,64 +117,59 @@ export function PersonalBillingHistory() {
   return (
     <>
       <PrepaidBillingPanel />
-      <section
-      className="panel billing-history-section"
-      aria-labelledby="personal-billing-title"
-    >
-      <div className="panel-heading billing-section-heading">
-        <div>
-          <span className="eyebrow">{t("billing.personal.eyebrow")}</span>
-          <h2 id="personal-billing-title">{t("billing.personal.title")}</h2>
-          <p>{t("billing.personal.description")}</p>
-          <p className="billing-boundary-note">
-            {t("billing.personal.sessionBoundary")}
-          </p>
+      <section className="panel billing-history-section" aria-labelledby="personal-billing-title">
+        <div className="panel-heading billing-section-heading">
+          <div>
+            <span className="eyebrow">{t("billing.personal.eyebrow")}</span>
+            <h2 id="personal-billing-title">{t("billing.personal.title")}</h2>
+            <p>{t("billing.personal.description")}</p>
+            <p className="billing-boundary-note">{t("billing.personal.sessionBoundary")}</p>
+          </div>
+          <button
+            className="button secondary"
+            disabled={payments.isFetching}
+            onClick={() => void payments.refetch()}
+            type="button"
+          >
+            {t("billing.actions.refresh")}
+          </button>
         </div>
-        <button
-          className="button secondary"
-          disabled={payments.isFetching}
-          onClick={() => void payments.refetch()}
-          type="button"
-        >
-          {t("billing.actions.refresh")}
-        </button>
-      </div>
 
-      {payments.isPending && (
-        <p className="query-notice" role="status">
-          {t("billing.personal.loading")}
-        </p>
-      )}
-      {payments.error && (
-        <BillingLoadError
-          detail={t("billing.personal.loadFailedDetail")}
-          onRetry={() => void payments.refetch()}
-          title={t("billing.personal.loadFailed")}
-        />
-      )}
-      {payments.data?.data.length === 0 && (
-        <p className="empty-result billing-empty" role="status">
-          {t("billing.personal.empty")}
-        </p>
-      )}
-      {payments.data && payments.data.data.length > 0 && (
-        <PaymentLedgerTable
-          locale={locale}
-          payments={payments.data.data}
-          showAttribution={false}
-          tableDescription={t("billing.personal.tableDescription")}
-          tableLabel={t("billing.personal.tableLabel")}
-        />
-      )}
-      {payments.data && (
-        <BillingPagination
-          busy={payments.isFetching}
-          cursors={cursors}
-          label={t("billing.personal.pagination")}
-          nextCursor={payments.data.meta.next_cursor}
-          onChange={setCursors}
-        />
-      )}
+        {payments.isPending && (
+          <p className="query-notice" role="status">
+            {t("billing.personal.loading")}
+          </p>
+        )}
+        {payments.error && (
+          <BillingLoadError
+            detail={t("billing.personal.loadFailedDetail")}
+            onRetry={() => void payments.refetch()}
+            title={t("billing.personal.loadFailed")}
+          />
+        )}
+        {payments.data?.data.length === 0 && (
+          <p className="empty-result billing-empty" role="status">
+            {t("billing.personal.empty")}
+          </p>
+        )}
+        {payments.data && payments.data.data.length > 0 && (
+          <PaymentLedgerTable
+            locale={locale}
+            payments={payments.data.data}
+            showAttribution={false}
+            tableDescription={t("billing.personal.tableDescription")}
+            tableLabel={t("billing.personal.tableLabel")}
+          />
+        )}
+        {payments.data && (
+          <BillingPagination
+            busy={payments.isFetching}
+            cursors={cursors}
+            label={t("billing.personal.pagination")}
+            nextCursor={payments.data.meta.next_cursor}
+            onChange={setCursors}
+          />
+        )}
       </section>
     </>
   );
@@ -230,7 +222,7 @@ function PrepaidBillingPanel() {
   useEffect(() => {
     if (pendingIntentID) return;
     const recoverable = topups.data?.data.find(
-      intent => intent.state === "processing" || intent.state === "settling",
+      (intent) => intent.state === "processing" || intent.state === "settling",
     );
     if (recoverable) setPendingIntentID(recoverable.id);
   }, [pendingIntentID, topups.data?.data]);
@@ -315,27 +307,33 @@ function PrepaidBillingPanel() {
         <dl className="billing-summary-grid">
           <div>
             <dt>{t("billing.topup.available")}</dt>
-            <dd><code>{account.data.available_atomic}</code></dd>
+            <dd>
+              <code>{account.data.available_atomic}</code>
+            </dd>
           </div>
           <div>
             <dt>{t("billing.topup.reserved")}</dt>
-            <dd><code>{account.data.reserved_atomic}</code></dd>
+            <dd>
+              <code>{account.data.reserved_atomic}</code>
+            </dd>
           </div>
           <div>
             <dt>{t("billing.topup.spent")}</dt>
-            <dd><code>{account.data.total_debit_atomic}</code></dd>
+            <dd>
+              <code>{account.data.total_debit_atomic}</code>
+            </dd>
           </div>
         </dl>
       )}
       {config.data?.x402_topups_enabled && (
-        <form className="billing-topup-form" onSubmit={event => void submit(event)}>
+        <form className="billing-topup-form" onSubmit={(event) => void submit(event)}>
           <label className="field-control">
             <span>{t("billing.topup.amount")}</span>
             <input
               inputMode="numeric"
               min={config.data.minimum_topup_amount_atomic}
               max={config.data.maximum_topup_amount_atomic}
-              onChange={event => setAmount(event.target.value)}
+              onChange={(event) => setAmount(event.target.value)}
               pattern="[1-9][0-9]*"
               required
               value={amount}
@@ -344,11 +342,13 @@ function PrepaidBillingPanel() {
           <label className="field-control">
             <span>{t("billing.topup.method")}</span>
             <select
-              onChange={event => setMethod(event.target.value as BillingTransferMethod)}
+              onChange={(event) => setMethod(event.target.value as BillingTransferMethod)}
               value={method}
             >
-              {config.data.asset_transfer_methods.map(value => (
-                <option key={value} value={value}>{value}</option>
+              {config.data.asset_transfer_methods.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
               ))}
             </select>
           </label>
@@ -363,8 +363,16 @@ function PrepaidBillingPanel() {
           </button>
         </form>
       )}
-      {notice && <p className="form-success" role="status">{notice}</p>}
-      {error && <p className="form-error" role="alert">{error}</p>}
+      {notice && (
+        <p className="form-success" role="status">
+          {notice}
+        </p>
+      )}
+      {error && (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      )}
       {pendingIntent.data?.transaction_hash && (
         <p className="billing-boundary-note">
           {t("billing.topup.pendingTransaction", {
@@ -376,7 +384,7 @@ function PrepaidBillingPanel() {
         <div className="billing-topup-history">
           <h3>{t("billing.topup.history")}</h3>
           <ul className="plain-list">
-            {topups.data.data.map(intent => (
+            {topups.data.data.map((intent) => (
               <li key={intent.id}>
                 <code>{intent.amount_atomic}</code> · {intent.state}
               </li>
@@ -388,9 +396,7 @@ function PrepaidBillingPanel() {
   );
 }
 
-function isTopupPendingError(
-  value: unknown,
-): value is Error & { intentID: string } {
+function isTopupPendingError(value: unknown): value is Error & { intentID: string } {
   return (
     value instanceof Error &&
     value.name === "TopupPendingError" &&
@@ -413,12 +419,10 @@ export function AdminBillingPage() {
     auth.session.user?.status === "active" &&
     auth.session.user.role === "admin";
   const locale = i18n.resolvedLanguage ?? "en";
-  const billingEnabled =
-    publicConfig.data?.features.api_billing === true;
+  const billingEnabled = publicConfig.data?.features.api_billing === true;
   const payments = useQuery({
     queryKey: ["admin-billing-payments", filters, cursor ?? null],
-    queryFn: () =>
-      listAdminBillingPayments(ADMIN_PAGE_SIZE, cursor, filters),
+    queryFn: () => listAdminBillingPayments(ADMIN_PAGE_SIZE, cursor, filters),
     enabled: auth.enabled && billingEnabled && isAdmin,
     retry: false,
     staleTime: 0,
@@ -460,10 +464,7 @@ export function AdminBillingPage() {
   };
 
   return (
-    <Page
-      title={t("billing.admin.title")}
-      description={t("billing.admin.description")}
-    >
+    <Page title={t("billing.admin.title")} description={t("billing.admin.description")}>
       {!auth.enabled && !auth.loading ? (
         <BillingUnavailable />
       ) : !billingEnabled && !publicConfig.isPending ? (
@@ -484,10 +485,7 @@ export function AdminBillingPage() {
         />
       ) : (
         <>
-          <nav
-            className="admin-surface-links"
-            aria-label={t("billing.admin.adminNavigation")}
-          >
+          <nav className="admin-surface-links" aria-label={t("billing.admin.adminNavigation")}>
             <Link className="button secondary" to="/admin/users">
               {t("auth.admin.openUsers")}
             </Link>
@@ -508,12 +506,8 @@ export function AdminBillingPage() {
           >
             <div className="panel-heading billing-section-heading">
               <div>
-                <span className="eyebrow">
-                  {t("billing.admin.defaultWindow")}
-                </span>
-                <h2 id="billing-summary-title">
-                  {t("billing.admin.summaryTitle")}
-                </h2>
+                <span className="eyebrow">{t("billing.admin.defaultWindow")}</span>
+                <h2 id="billing-summary-title">{t("billing.admin.summaryTitle")}</h2>
                 <p>{t("billing.admin.summaryDescription")}</p>
               </div>
               <button
@@ -537,26 +531,17 @@ export function AdminBillingPage() {
                 title={t("billing.admin.summaryFailed")}
               />
             )}
-            {summary.data && (
-              <BillingSummaryView locale={locale} summary={summary.data} />
-            )}
+            {summary.data && <BillingSummaryView locale={locale} summary={summary.data} />}
           </section>
 
-          <section
-            className="panel billing-ledger-section"
-            aria-labelledby="billing-ledger-title"
-          >
+          <section className="panel billing-ledger-section" aria-labelledby="billing-ledger-title">
             <div className="panel-heading billing-section-heading">
               <div>
-                <h2 id="billing-ledger-title">
-                  {t("billing.admin.ledgerTitle")}
-                </h2>
+                <h2 id="billing-ledger-title">{t("billing.admin.ledgerTitle")}</h2>
                 <p>{t("billing.admin.ledgerDescription")}</p>
               </div>
               <div className="billing-ledger-actions">
-                <span>
-                  {t("pagination.page", { page: cursors.length })}
-                </span>
+                <span>{t("pagination.page", { page: cursors.length })}</span>
                 <button
                   className="button secondary"
                   disabled={payments.isFetching}
@@ -651,9 +636,7 @@ function BillingFilterPanel({
           <label className="field-control">
             <span>{t("billing.fields.operation")}</span>
             <select
-              onChange={(event) =>
-                onChange({ ...draft, operation: event.target.value })
-              }
+              onChange={(event) => onChange({ ...draft, operation: event.target.value })}
               value={draft.operation}
             >
               <option value="">{t("billing.filters.anyOperation")}</option>
@@ -669,9 +652,7 @@ function BillingFilterPanel({
             <input
               autoCapitalize="none"
               maxLength={96}
-              onChange={(event) =>
-                onChange({ ...draft, network: event.target.value })
-              }
+              onChange={(event) => onChange({ ...draft, network: event.target.value })}
               placeholder="eip155:84532"
               spellCheck={false}
               value={draft.network}
@@ -682,9 +663,7 @@ function BillingFilterPanel({
             <input
               autoCapitalize="none"
               maxLength={42}
-              onChange={(event) =>
-                onChange({ ...draft, asset: event.target.value })
-              }
+              onChange={(event) => onChange({ ...draft, asset: event.target.value })}
               placeholder="0x…"
               spellCheck={false}
               value={draft.asset}
@@ -693,9 +672,7 @@ function BillingFilterPanel({
           <label className="field-control">
             <span>{t("billing.filters.fromTime")}</span>
             <input
-              onChange={(event) =>
-                onChange({ ...draft, fromTime: event.target.value })
-              }
+              onChange={(event) => onChange({ ...draft, fromTime: event.target.value })}
               type="datetime-local"
               value={draft.fromTime}
             />
@@ -703,9 +680,7 @@ function BillingFilterPanel({
           <label className="field-control">
             <span>{t("billing.filters.toTime")}</span>
             <input
-              onChange={(event) =>
-                onChange({ ...draft, toTime: event.target.value })
-              }
+              onChange={(event) => onChange({ ...draft, toTime: event.target.value })}
               type="datetime-local"
               value={draft.toTime}
             />
@@ -751,17 +726,13 @@ function BillingSummaryView({
         <div className="panel">
           <dt>{t("billing.filters.fromTime")}</dt>
           <dd>
-            <time dateTime={summary.from_time}>
-              {formatTimestamp(summary.from_time, locale)}
-            </time>
+            <time dateTime={summary.from_time}>{formatTimestamp(summary.from_time, locale)}</time>
           </dd>
         </div>
         <div className="panel">
           <dt>{t("billing.filters.toTime")}</dt>
           <dd>
-            <time dateTime={summary.to_time}>
-              {formatTimestamp(summary.to_time, locale)}
-            </time>
+            <time dateTime={summary.to_time}>{formatTimestamp(summary.to_time, locale)}</time>
           </dd>
         </div>
       </dl>
@@ -776,9 +747,7 @@ function BillingSummaryView({
           aria-label={t("billing.admin.summaryTableLabel")}
         >
           <table>
-            <caption className="sr-only">
-              {t("billing.admin.summaryTableDescription")}
-            </caption>
+            <caption className="sr-only">{t("billing.admin.summaryTableDescription")}</caption>
             <thead>
               <tr>
                 <th scope="col">{t("billing.fields.operation")}</th>
@@ -791,18 +760,19 @@ function BillingSummaryView({
             </thead>
             <tbody>
               {summary.rows.map((row) => (
-                <tr
-                  key={[
-                    row.operation,
-                    row.state,
-                    row.network,
-                    row.asset,
-                  ].join(":")}
-                >
-                  <td><code>{row.operation}</code></td>
-                  <td><PaymentState state={row.state} /></td>
-                  <td><code>{row.network}</code></td>
-                  <td><code className="billing-address">{row.asset}</code></td>
+                <tr key={[row.operation, row.state, row.network, row.asset].join(":")}>
+                  <td>
+                    <code>{row.operation}</code>
+                  </td>
+                  <td>
+                    <PaymentState state={row.state} />
+                  </td>
+                  <td>
+                    <code>{row.network}</code>
+                  </td>
+                  <td>
+                    <code className="billing-address">{row.asset}</code>
+                  </td>
                   <td className="billing-quantity">{row.payment_count}</td>
                   <td className="billing-quantity">{row.amount_atomic}</td>
                 </tr>
@@ -830,11 +800,7 @@ function PaymentLedgerTable({
 }) {
   const { t } = useTranslation();
   return (
-    <div
-      className="table-scroll billing-table"
-      tabIndex={0}
-      aria-label={tableLabel}
-    >
+    <div className="table-scroll billing-table" tabIndex={0} aria-label={tableLabel}>
       <table>
         <caption className="sr-only">{tableDescription}</caption>
         <thead>
@@ -859,44 +825,37 @@ function PaymentLedgerTable({
         <tbody>
           {payments.map((payment) => (
             <tr key={payment.id}>
-              <td><code>{payment.operation}</code></td>
               <td>
-                <PaymentState
-                  failureCode={payment.failure_code}
-                  state={payment.state}
-                />
+                <code>{payment.operation}</code>
+              </td>
+              <td>
+                <PaymentState failureCode={payment.failure_code} state={payment.state} />
               </td>
               <td className="billing-quantity">{payment.amount_atomic}</td>
-              <td><code>{payment.network}</code></td>
-              <td><code className="billing-address">{payment.asset}</code></td>
               <td>
-                {payment.payer ? (
-                  <code className="billing-address">{payment.payer}</code>
-                ) : "—"}
+                <code>{payment.network}</code>
+              </td>
+              <td>
+                <code className="billing-address">{payment.asset}</code>
+              </td>
+              <td>
+                {payment.payer ? <code className="billing-address">{payment.payer}</code> : "—"}
               </td>
               <td>
                 <code className="billing-address">{payment.recipient}</code>
               </td>
               {showAttribution && (
                 <>
-                  <td>
-                    {payment.user_id ? (
-                      <code>{payment.user_id}</code>
-                    ) : "—"}
-                  </td>
-                  <td>
-                    {payment.api_key_prefix ? (
-                      <code>{payment.api_key_prefix}</code>
-                    ) : "—"}
-                  </td>
+                  <td>{payment.user_id ? <code>{payment.user_id}</code> : "—"}</td>
+                  <td>{payment.api_key_prefix ? <code>{payment.api_key_prefix}</code> : "—"}</td>
                 </>
               )}
               <td>
                 {payment.transaction_hash ? (
-                  <code className="billing-hash">
-                    {payment.transaction_hash}
-                  </code>
-                ) : "—"}
+                  <code className="billing-hash">{payment.transaction_hash}</code>
+                ) : (
+                  "—"
+                )}
               </td>
               <td>
                 <time dateTime={payment.created_at}>
@@ -919,15 +878,10 @@ function PaymentState({
   state: BillingPaymentState;
 }) {
   const { t } = useTranslation();
-  const settlementUnknown =
-    state === "settling" && failureCode === "settlement_unknown";
+  const settlementUnknown = state === "settling" && failureCode === "settlement_unknown";
   return (
-    <span
-      className={`billing-state ${settlementUnknown ? "unknown" : state}`}
-    >
-      {settlementUnknown
-        ? t("billing.states.settlementUnknown")
-        : t(`billing.states.${state}`)}
+    <span className={`billing-state ${settlementUnknown ? "unknown" : state}`}>
+      {settlementUnknown ? t("billing.states.settlementUnknown") : t(`billing.states.${state}`)}
     </span>
   );
 }
@@ -951,18 +905,12 @@ function BillingPagination({
       <button
         className="button secondary"
         disabled={busy || cursors.length === 1}
-        onClick={() =>
-          onChange((current) =>
-            current.length > 1 ? current.slice(0, -1) : current,
-          )
-        }
+        onClick={() => onChange((current) => (current.length > 1 ? current.slice(0, -1) : current))}
         type="button"
       >
         {t("pagination.previous")}
       </button>
-      <span aria-live="polite">
-        {t("pagination.page", { page: cursors.length })}
-      </span>
+      <span aria-live="polite">{t("pagination.page", { page: cursors.length })}</span>
       <button
         className="button secondary"
         disabled={busy || !nextCursor}
@@ -1000,13 +948,7 @@ function BillingLoadError({
   );
 }
 
-function BillingAuthGate({
-  detail,
-  title,
-}: {
-  detail: string;
-  title: string;
-}) {
+function BillingAuthGate({ detail, title }: { detail: string; title: string }) {
   const { t } = useTranslation();
   return (
     <section className="panel auth-gate" aria-labelledby="billing-auth-title">
@@ -1022,13 +964,8 @@ function BillingAuthGate({
 function BillingUnavailable() {
   const { t } = useTranslation();
   return (
-    <section
-      className="panel auth-gate"
-      aria-labelledby="billing-unavailable-title"
-    >
-      <h2 id="billing-unavailable-title">
-        {t("auth.unavailable.title")}
-      </h2>
+    <section className="panel auth-gate" aria-labelledby="billing-unavailable-title">
+      <h2 id="billing-unavailable-title">{t("auth.unavailable.title")}</h2>
       <p>{t("billing.admin.authUnavailable")}</p>
     </section>
   );
@@ -1037,13 +974,8 @@ function BillingUnavailable() {
 function BillingFeatureUnavailable() {
   const { t } = useTranslation();
   return (
-    <section
-      className="panel auth-gate"
-      aria-labelledby="billing-feature-unavailable-title"
-    >
-      <h2 id="billing-feature-unavailable-title">
-        {t("billing.unavailable.title")}
-      </h2>
+    <section className="panel auth-gate" aria-labelledby="billing-feature-unavailable-title">
+      <h2 id="billing-feature-unavailable-title">{t("billing.unavailable.title")}</h2>
       <p>{t("billing.unavailable.description")}</p>
     </section>
   );
@@ -1051,9 +983,7 @@ function BillingFeatureUnavailable() {
 
 function parseBillingFilters(
   draft: BillingFilterForm,
-):
-  | { valid: true; filters: AdminBillingFilters }
-  | { valid: false; errorKey: string } {
+): { valid: true; filters: AdminBillingFilters } | { valid: false; errorKey: string } {
   const network = draft.network.trim();
   const asset = draft.asset.trim();
   if (network && (network.length > 96 || !NETWORK_PATTERN.test(network))) {
@@ -1062,37 +992,24 @@ function parseBillingFilters(
   if (asset && !ADDRESS_PATTERN.test(asset)) {
     return { valid: false, errorKey: "billing.filters.invalidAsset" };
   }
-  if (
-    draft.operation &&
-    !BILLABLE_OPERATIONS.some((operation) => operation === draft.operation)
-  ) {
+  if (draft.operation && !BILLABLE_OPERATIONS.some((operation) => operation === draft.operation)) {
     return { valid: false, errorKey: "billing.filters.invalidOperation" };
   }
-  if (
-    draft.state &&
-    !PAYMENT_STATES.some((state) => state === draft.state)
-  ) {
+  if (draft.state && !PAYMENT_STATES.some((state) => state === draft.state)) {
     return { valid: false, errorKey: "billing.filters.invalidState" };
   }
 
   const fromTime = parseDateTime(draft.fromTime);
   const toTime = parseDateTime(draft.toTime);
-  if (
-    (draft.fromTime && !fromTime) ||
-    (draft.toTime && !toTime)
-  ) {
+  if ((draft.fromTime && !fromTime) || (draft.toTime && !toTime)) {
     return { valid: false, errorKey: "billing.filters.invalidTime" };
   }
   const toMilliseconds = toTime?.milliseconds ?? Date.now();
-  const fromMilliseconds =
-    fromTime?.milliseconds ?? toMilliseconds - 24 * 60 * 60 * 1_000;
+  const fromMilliseconds = fromTime?.milliseconds ?? toMilliseconds - 24 * 60 * 60 * 1_000;
   if (fromMilliseconds >= toMilliseconds) {
     return { valid: false, errorKey: "billing.filters.invalidOrder" };
   }
-  if (
-    toMilliseconds - fromMilliseconds >
-    MAX_SUMMARY_RANGE_MILLISECONDS
-  ) {
+  if (toMilliseconds - fromMilliseconds > MAX_SUMMARY_RANGE_MILLISECONDS) {
     return { valid: false, errorKey: "billing.filters.rangeTooLong" };
   }
 
@@ -1109,9 +1026,7 @@ function parseBillingFilters(
   };
 }
 
-function parseDateTime(
-  value: string,
-): { iso: string; milliseconds: number } | undefined {
+function parseDateTime(value: string): { iso: string; milliseconds: number } | undefined {
   if (!value) return undefined;
   const milliseconds = new Date(value).getTime();
   if (!Number.isFinite(milliseconds)) return undefined;

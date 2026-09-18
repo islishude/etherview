@@ -29,23 +29,31 @@ describe("ERC-4337 UserOperation pages", () => {
   });
 
   it("renders the continuous list and exact failure detail through generated API routes", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const url = new URL(String(input), "http://etherview.test");
-      if (url.pathname === "/api/v1/config") return configResponse();
-      if (url.pathname === "/api/v1/user-operations") {
-        return Response.json({
-          data: [summary()],
-          meta: {
-            request_id: "userop-list-test", chain_id: "1",
-            coverage_start: "10", coverage_end: "42",
-          },
-        });
-      }
-      if (url.pathname === `/api/v1/user-operations/${userOpHash}`) {
-        return Response.json({ data: detail(), meta: { request_id: "userop-detail-test", chain_id: "1" } });
-      }
-      return notFound();
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = new URL(String(input), "http://etherview.test");
+        if (url.pathname === "/api/v1/config") return configResponse();
+        if (url.pathname === "/api/v1/user-operations") {
+          return Response.json({
+            data: [summary()],
+            meta: {
+              request_id: "userop-list-test",
+              chain_id: "1",
+              coverage_start: "10",
+              coverage_end: "42",
+            },
+          });
+        }
+        if (url.pathname === `/api/v1/user-operations/${userOpHash}`) {
+          return Response.json({
+            data: detail(),
+            meta: { request_id: "userop-detail-test", chain_id: "1" },
+          });
+        }
+        return notFound();
+      }),
+    );
 
     renderExplorer("/user-operations");
     expect(await screen.findByRole("heading", { name: "UserOperations" })).toBeVisible();
@@ -58,7 +66,9 @@ describe("ERC-4337 UserOperation pages", () => {
     expect(within(table).getByText("0.000000000000001")).toBeVisible();
 
     await userEvent.setup().click(within(table).getByRole("link", { name: /0x121212/u }));
-    expect(await screen.findAllByRole("heading", { name: "Paymaster postOp reverted" })).toHaveLength(2);
+    expect(
+      await screen.findAllByRole("heading", { name: "Paymaster postOp reverted" }),
+    ).toHaveLength(2);
     expect(screen.getAllByText("paymaster rejected")).toHaveLength(2);
     expect(screen.getByText("0xdeadbeef", { exact: true })).toBeVisible();
     expect(screen.getByText("v0.9", { exact: true })).toBeVisible();
@@ -118,23 +128,28 @@ function detail() {
       account_gas_limits: `0x${"00".repeat(32)}`,
       gas_fees: `0x${"01".repeat(32)}`,
     },
-    events: [{
-      kind: "post_op_revert",
-      log_index: 3,
-      sender,
-      nonce: "18446744073709551617",
-      paymaster,
-      raw_data: "0x08c379a0",
-      reason: "paymaster rejected",
-    }],
+    events: [
+      {
+        kind: "post_op_revert",
+        log_index: 3,
+        sender,
+        nonce: "18446744073709551617",
+        paymaster,
+        raw_data: "0x08c379a0",
+        reason: "paymaster rejected",
+      },
+    ],
   };
 }
 
 function configResponse() {
   return Response.json({
     data: {
-      chain_id: "1", chain_name: "Ethereum", native_symbol: "ETH",
-      native_name: "Ether", native_decimals: 18,
+      chain_id: "1",
+      chain_name: "Ethereum",
+      native_symbol: "ETH",
+      native_name: "Ether",
+      native_decimals: 18,
       features: { user_operations: true, user_auth: false },
     },
     meta: { request_id: "userop-config-test", chain_id: "1" },
@@ -142,9 +157,12 @@ function configResponse() {
 }
 
 function notFound() {
-  return Response.json({
-    error: { code: "not_found", message: "not found", request_id: "userop-pages-test" },
-  }, { status: 404 });
+  return Response.json(
+    {
+      error: { code: "not_found", message: "not found", request_id: "userop-pages-test" },
+    },
+    { status: 404 },
+  );
 }
 
 function renderExplorer(path: string) {

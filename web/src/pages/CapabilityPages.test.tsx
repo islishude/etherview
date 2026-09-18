@@ -52,15 +52,17 @@ describe("P50 capability pages", () => {
         !request.searchParams.get("cursor")
       ) {
         return Response.json({
-          data: [{
-            address,
-            type: "contract",
-            balance: "1000000000000000000",
-            nonce: "3",
-            code_hash: codeHash,
-            storage_root: blockHash,
-            block_hash: blockHash,
-          }],
+          data: [
+            {
+              address,
+              type: "contract",
+              balance: "1000000000000000000",
+              nonce: "3",
+              code_hash: codeHash,
+              storage_root: blockHash,
+              block_hash: blockHash,
+            },
+          ],
           meta: { ...meta, next_cursor: cursor },
         });
       }
@@ -103,7 +105,9 @@ describe("P50 capability pages", () => {
           meta: { ...meta, next_cursor: cursor },
         });
       }
-      if (path === "/api/v1/tokens?limit=25&cursor=tokens%3Asnapshot%2Bnext%2Fpage%3F2%26rank%3D1") {
+      if (
+        path === "/api/v1/tokens?limit=25&cursor=tokens%3Asnapshot%2Bnext%2Fpage%3F2%26rank%3D1"
+      ) {
         return apiError("invalid_cursor", 400);
       }
       return apiError("not_found", 404);
@@ -127,7 +131,8 @@ describe("P50 capability pages", () => {
 
   it("links exact ERC-1155 balances to the shared metadata instance route", async () => {
     const tokenID = "340282366920938463463374607431768211455";
-    const balance = "115792089237316195423570985008687907853269984665640564039457584007913129639935";
+    const balance =
+      "115792089237316195423570985008687907853269984665640564039457584007913129639935";
     const cursor = "nft-owner:snapshot+next/page?2";
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
       const path = String(input);
@@ -147,18 +152,23 @@ describe("P50 capability pages", () => {
       }
       if (path === `/api/v1/addresses/${owner}/nfts?limit=25`) {
         return Response.json({
-          data: [{
-            chain_id: "1",
-            owner,
-            token_address: address,
-            token_id: tokenID,
-            balance,
-            confidence: "rpc_exact",
-          }],
+          data: [
+            {
+              chain_id: "1",
+              owner,
+              token_address: address,
+              token_id: tokenID,
+              balance,
+              confidence: "rpc_exact",
+            },
+          ],
           meta: { ...meta, coverage_end: "999", next_cursor: cursor },
         });
       }
-      if (path === `/api/v1/addresses/${owner}/nfts?limit=25&cursor=nft-owner%3Asnapshot%2Bnext%2Fpage%3F2`) {
+      if (
+        path ===
+        `/api/v1/addresses/${owner}/nfts?limit=25&cursor=nft-owner%3Asnapshot%2Bnext%2Fpage%3F2`
+      ) {
         return Response.json({ data: [], meta: { ...meta, coverage_end: "999" } });
       }
       return apiError("not_found", 404);
@@ -181,7 +191,9 @@ describe("P50 capability pages", () => {
     );
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Next page" }));
-    expect(await screen.findByText("No positive NFT balances were observed in this canonical snapshot.")).toBeVisible();
+    expect(
+      await screen.findByText("No positive NFT balances were observed in this canonical snapshot."),
+    ).toBeVisible();
     expect(fetcher).toHaveBeenCalledWith(
       `/api/v1/addresses/${owner}/nfts?limit=25&cursor=nft-owner%3Asnapshot%2Bnext%2Fpage%3F2`,
       expect.anything(),
@@ -192,55 +204,70 @@ describe("P50 capability pages", () => {
     const tokenID = "9007199254740993";
     const imageURL = "https://media.example/nft/very-long-image-name.png?signature=public-token";
     const requested: string[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
-      requested.push(path);
-      if (path === `/api/v1/tokens/${address}`) {
-        return Response.json({
-          data: { ...tokenContract("Collectible contract"), standard: "erc721" },
-          meta,
-        });
-      }
-      if (path === `/api/v1/nfts/${address}/${tokenID}`) {
-        return Response.json({
-          data: {
-            chain_id: "1", token_address: address, token_id: tokenID,
-            owner, balance: "1", confidence: "rpc_exact",
-            snapshot: { chain_id: "1", block_number: "520", block_hash: blockHash },
-          },
-          meta,
-        });
-      }
-      if (path === `/api/v1/nfts/${address}/${tokenID}/metadata`) {
-        return Response.json({
-          data: {
-            chain_id: "1", token_address: address, token_id: tokenID,
-            state: "available",
-            observation: { chain_id: "1", block_number: "519", block_hash: blockHash },
-            content_observation: { chain_id: "1", block_number: "519", block_hash: blockHash },
-            content_stale: false,
-            name: "<img src=x onerror=alert(1)>", name_truncated: false,
-            description: "**plain text only**", description_truncated: true,
-            attributes: [
-              { trait_type: "Level", value: "9007199254740993", display_type: "number" },
-            ],
-            omitted_attribute_count: 2,
-            image: { state: "available", url: imageURL, source_scheme: "https" },
-          },
-          meta,
-        });
-      }
-      return apiError("not_found", 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        requested.push(path);
+        if (path === `/api/v1/tokens/${address}`) {
+          return Response.json({
+            data: { ...tokenContract("Collectible contract"), standard: "erc721" },
+            meta,
+          });
+        }
+        if (path === `/api/v1/nfts/${address}/${tokenID}`) {
+          return Response.json({
+            data: {
+              chain_id: "1",
+              token_address: address,
+              token_id: tokenID,
+              owner,
+              balance: "1",
+              confidence: "rpc_exact",
+              snapshot: { chain_id: "1", block_number: "520", block_hash: blockHash },
+            },
+            meta,
+          });
+        }
+        if (path === `/api/v1/nfts/${address}/${tokenID}/metadata`) {
+          return Response.json({
+            data: {
+              chain_id: "1",
+              token_address: address,
+              token_id: tokenID,
+              state: "available",
+              observation: { chain_id: "1", block_number: "519", block_hash: blockHash },
+              content_observation: { chain_id: "1", block_number: "519", block_hash: blockHash },
+              content_stale: false,
+              name: "<img src=x onerror=alert(1)>",
+              name_truncated: false,
+              description: "**plain text only**",
+              description_truncated: true,
+              attributes: [
+                { trait_type: "Level", value: "9007199254740993", display_type: "number" },
+              ],
+              omitted_attribute_count: 2,
+              image: { state: "available", url: imageURL, source_scheme: "https" },
+            },
+            meta,
+          });
+        }
+        return apiError("not_found", 404);
+      }),
+    );
     renderExplorer(`/nft/${address}/${tokenID}`);
 
-    expect(await screen.findByRole("heading", { name: "<img src=x onerror=alert(1)>", level: 1 })).toBeVisible();
+    expect(
+      await screen.findByRole("heading", { name: "<img src=x onerror=alert(1)>", level: 1 }),
+    ).toBeVisible();
     expect(screen.getByRole("heading", { name: "NFT instance", level: 2 })).toBeVisible();
     expect(await screen.findByRole("heading", { name: "NFT ownership", level: 2 })).toBeVisible();
     const metadataRegion = screen.getByRole("region", { name: "NFT metadata" });
     expect(within(metadataRegion).getByText("**plain text only**")).toBeVisible();
     expect(within(metadataRegion).getByText("9007199254740993")).toBeVisible();
-    expect(within(metadataRegion).getByText("2 non-standard or over-limit traits were omitted.")).toBeVisible();
+    expect(
+      within(metadataRegion).getByText("2 non-standard or over-limit traits were omitted."),
+    ).toBeVisible();
     expect(within(metadataRegion).queryByRole("img")).toBeNull();
     expect(document.querySelector("img[src='x']")).toBeNull();
     expect(requested).not.toContain(`/api/v1/nfts/${address}/${tokenID}/media`);
@@ -254,7 +281,9 @@ describe("P50 capability pages", () => {
     expect(review).not.toHaveTextContent("signature");
     await user.click(review);
     const dialog = screen.getByRole("dialog", { name: "Open an unverified external link?" });
-    expect(within(dialog).getByRole("alert")).toHaveTextContent("connects your browser directly to a third party");
+    expect(within(dialog).getByRole("alert")).toHaveTextContent(
+      "connects your browser directly to a third party",
+    );
     const external = within(dialog).getByRole("link", { name: "Open in new tab" });
     expect(external).toHaveAttribute("href", imageURL);
     expect(external).toHaveAttribute("target", "_blank");
@@ -272,36 +301,45 @@ describe("P50 capability pages", () => {
   it("supports ERC-1155 metadata without requesting a unique owner", async () => {
     const tokenID = "42";
     const requested: string[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
-      requested.push(path);
-      if (path === `/api/v1/tokens/${address}`) {
-        return Response.json({
-          data: { ...tokenContract("Shared collectible"), standard: "erc1155" },
-          meta,
-        });
-      }
-      if (path === `/api/v1/nfts/${address}/${tokenID}/metadata`) {
-        return Response.json({
-          data: {
-            chain_id: "1", token_address: address, token_id: tokenID,
-            state: "available",
-            observation: { chain_id: "1", block_number: "519", block_hash: blockHash },
-            content_observation: { chain_id: "1", block_number: "519", block_hash: blockHash },
-            content_stale: false,
-            name: "Shared collectible #42", name_truncated: false,
-            description_truncated: false,
-            attributes: [], omitted_attribute_count: 0,
-            image: { state: "missing" },
-          },
-          meta,
-        });
-      }
-      return apiError("not_found", 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        requested.push(path);
+        if (path === `/api/v1/tokens/${address}`) {
+          return Response.json({
+            data: { ...tokenContract("Shared collectible"), standard: "erc1155" },
+            meta,
+          });
+        }
+        if (path === `/api/v1/nfts/${address}/${tokenID}/metadata`) {
+          return Response.json({
+            data: {
+              chain_id: "1",
+              token_address: address,
+              token_id: tokenID,
+              state: "available",
+              observation: { chain_id: "1", block_number: "519", block_hash: blockHash },
+              content_observation: { chain_id: "1", block_number: "519", block_hash: blockHash },
+              content_stale: false,
+              name: "Shared collectible #42",
+              name_truncated: false,
+              description_truncated: false,
+              attributes: [],
+              omitted_attribute_count: 0,
+              image: { state: "missing" },
+            },
+            meta,
+          });
+        }
+        return apiError("not_found", 404);
+      }),
+    );
     renderExplorer(`/nft/${address}/${tokenID}`);
 
-    expect(await screen.findByRole("heading", { name: "Shared collectible #42", level: 1 })).toBeVisible();
+    expect(
+      await screen.findByRole("heading", { name: "Shared collectible #42", level: 1 }),
+    ).toBeVisible();
     expect(screen.getByText(/ERC-1155 tokens may have multiple holders/)).toBeVisible();
     expect(screen.getByText("The metadata document has no image link")).toBeVisible();
     expect(screen.getByText(/No standard scalar traits are available/)).toBeVisible();
@@ -309,31 +347,46 @@ describe("P50 capability pages", () => {
   });
 
   it("keeps a terminal metadata state distinct from a fabricated document", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
-      if (path === `/api/v1/tokens/${address}`) {
-        return Response.json({ data: { ...tokenContract("Unsafe collectible"), standard: "erc1155" }, meta });
-      }
-      if (path === `/api/v1/nfts/${address}/7/metadata`) {
-        return Response.json({
-          data: {
-            chain_id: "1", token_address: address, token_id: "7", state: "unsafe",
-            observation: { chain_id: "1", block_number: "519", block_hash: blockHash },
-            content_stale: false,
-            name_truncated: false, description_truncated: false,
-            attributes: [], omitted_attribute_count: 0,
-            image: { state: "unavailable" },
-          },
-          meta,
-        });
-      }
-      return apiError("not_found", 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        if (path === `/api/v1/tokens/${address}`) {
+          return Response.json({
+            data: { ...tokenContract("Unsafe collectible"), standard: "erc1155" },
+            meta,
+          });
+        }
+        if (path === `/api/v1/nfts/${address}/7/metadata`) {
+          return Response.json({
+            data: {
+              chain_id: "1",
+              token_address: address,
+              token_id: "7",
+              state: "unsafe",
+              observation: { chain_id: "1", block_number: "519", block_hash: blockHash },
+              content_stale: false,
+              name_truncated: false,
+              description_truncated: false,
+              attributes: [],
+              omitted_attribute_count: 0,
+              image: { state: "unavailable" },
+            },
+            meta,
+          });
+        }
+        return apiError("not_found", 404);
+      }),
+    );
     renderExplorer(`/nft/${address}/7`);
 
     const metadataRegion = await screen.findByRole("region", { name: "NFT metadata" });
-    expect((await within(metadataRegion).findAllByText("Rejected as unsafe")).length).toBeGreaterThan(0);
-    expect(within(metadataRegion).getByText("No metadata document is inferred from this state.")).toBeVisible();
+    expect(
+      (await within(metadataRegion).findAllByText("Rejected as unsafe")).length,
+    ).toBeGreaterThan(0);
+    expect(
+      within(metadataRegion).getByText("No metadata document is inferred from this state."),
+    ).toBeVisible();
     expect(within(metadataRegion).queryByText("Traits")).toBeNull();
   });
 
@@ -343,47 +396,69 @@ describe("P50 capability pages", () => {
     const contentHash = `0x${"92".repeat(32)}`;
     const imageURL = "https://media.example/prior.png?version=1";
     const requested: string[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input);
-      requested.push(path);
-      if (path === `/api/v1/tokens/${address}`) {
-        return Response.json({ data: { ...tokenContract("Refreshable collectible"), standard: "erc1155" }, meta });
-      }
-      if (path === `/api/v1/nfts/${address}/${tokenID}/metadata`) {
-        return Response.json({
-          data: {
-            chain_id: "1", token_address: address, token_id: tokenID, state: "pending",
-            observation: { chain_id: "1", block_number: "520", block_hash: latestHash },
-            content_observation: { chain_id: "1", block_number: "519", block_hash: contentHash },
-            content_stale: true,
-            name: "Prior collectible #8", name_truncated: false,
-            description: "Last available canonical content", description_truncated: false,
-            attributes: [{ trait_type: "Version", value: "1" }], omitted_attribute_count: 0,
-            image: { state: "available", url: imageURL, source_scheme: "https" },
-          },
-          meta,
-        });
-      }
-      return apiError("not_found", 404);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        requested.push(path);
+        if (path === `/api/v1/tokens/${address}`) {
+          return Response.json({
+            data: { ...tokenContract("Refreshable collectible"), standard: "erc1155" },
+            meta,
+          });
+        }
+        if (path === `/api/v1/nfts/${address}/${tokenID}/metadata`) {
+          return Response.json({
+            data: {
+              chain_id: "1",
+              token_address: address,
+              token_id: tokenID,
+              state: "pending",
+              observation: { chain_id: "1", block_number: "520", block_hash: latestHash },
+              content_observation: { chain_id: "1", block_number: "519", block_hash: contentHash },
+              content_stale: true,
+              name: "Prior collectible #8",
+              name_truncated: false,
+              description: "Last available canonical content",
+              description_truncated: false,
+              attributes: [{ trait_type: "Version", value: "1" }],
+              omitted_attribute_count: 0,
+              image: { state: "available", url: imageURL, source_scheme: "https" },
+            },
+            meta,
+          });
+        }
+        return apiError("not_found", 404);
+      }),
+    );
     renderExplorer(`/nft/${address}/${tokenID}`);
 
-    expect(await screen.findByRole("heading", { name: "Prior collectible #8", level: 1 })).toBeVisible();
+    expect(
+      await screen.findByRole("heading", { name: "Prior collectible #8", level: 1 }),
+    ).toBeVisible();
     const metadataRegion = screen.getByRole("region", { name: "NFT metadata" });
-    expect(within(metadataRegion).getByText("A newer metadata refresh is not available yet")).toBeVisible();
-    expect(within(metadataRegion).getByText(/refresh at block 520 is Pending/)).toHaveTextContent("block 519");
+    expect(
+      within(metadataRegion).getByText("A newer metadata refresh is not available yet"),
+    ).toBeVisible();
+    expect(within(metadataRegion).getByText(/refresh at block 520 is Pending/)).toHaveTextContent(
+      "block 519",
+    );
     expect(within(metadataRegion).getByText("Last available canonical content")).toBeVisible();
     expect(within(metadataRegion).getByText("Version")).toBeVisible();
-    expect(within(metadataRegion).getByRole("button", {
-      name: `Review unverified external image target ${imageURL}`,
-    })).toBeVisible();
+    expect(
+      within(metadataRegion).getByRole("button", {
+        name: `Review unverified external image target ${imageURL}`,
+      }),
+    ).toBeVisible();
     expect(within(metadataRegion).queryByRole("img")).toBeNull();
     expect(requested).not.toContain(`/api/v1/nfts/${address}/${tokenID}/media`);
 
     await userEvent.setup().click(screen.getByRole("button", { name: "切换到中文" }));
     const localized = screen.getByRole("region", { name: "NFT 元数据" });
     expect(within(localized).getByText("较新的元数据刷新尚不可用")).toBeVisible();
-    expect(within(localized).getByText(/区块 520 的刷新状态为处理中/)).toHaveTextContent("区块 519");
+    expect(within(localized).getByText(/区块 520 的刷新状态为处理中/)).toHaveTextContent(
+      "区块 519",
+    );
   });
 
   it("keeps NFT stage loss distinct from an authoritative empty balance page", async () => {
@@ -406,19 +481,22 @@ describe("P50 capability pages", () => {
           });
         }
         if (path === `/api/v1/addresses/${owner}/nfts?limit=25`) {
-          return Response.json({
-            error: {
-              code: "stage_unavailable",
-              message: "token state unavailable",
-              details: {
-                stage: "token",
-                state: "unavailable",
-                block_number: "999",
-                block_hash: blockHash,
+          return Response.json(
+            {
+              error: {
+                code: "stage_unavailable",
+                message: "token state unavailable",
+                details: {
+                  stage: "token",
+                  state: "unavailable",
+                  block_number: "999",
+                  block_hash: blockHash,
+                },
+                request_id: "nft-stage-test",
               },
-              request_id: "nft-stage-test",
             },
-          }, { status: 503 });
+            { status: 503 },
+          );
         }
         return apiError("not_found", 404);
       }),
@@ -476,7 +554,9 @@ describe("P50 capability pages", () => {
     vi.stubGlobal("fetch", fetcher);
     renderExplorer("/verify");
 
-    expect(await screen.findByRole("heading", { name: "Public verification is unavailable" })).toBeVisible();
+    expect(
+      await screen.findByRole("heading", { name: "Public verification is unavailable" }),
+    ).toBeVisible();
     expect(screen.queryByRole("heading", { name: "Verification request" })).toBeNull();
     expect(screen.getByRole("heading", { name: "Open a durable verification job" })).toBeVisible();
     fireEvent.change(screen.getByLabelText("Job ID"), { target: { value: jobID } });
@@ -485,8 +565,12 @@ describe("P50 capability pages", () => {
 
     expect(await screen.findByText("succeeded")).toBeVisible();
     expect(screen.getAllByText("full").length).toBeGreaterThan(0);
-    expect(fetcher.mock.calls.some(([input]) => String(input) === "/api/v1/verification/jobs")).toBe(false);
-    expect(String(fetcher.mock.calls.find(([input]) => String(input).includes(jobID))?.[0])).not.toContain(secret);
+    expect(
+      fetcher.mock.calls.some(([input]) => String(input) === "/api/v1/verification/jobs"),
+    ).toBe(false);
+    expect(
+      String(fetcher.mock.calls.find(([input]) => String(input).includes(jobID))?.[0]),
+    ).not.toContain(secret);
 
     const scan = await axe.run(document, {
       runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"] },
@@ -518,8 +602,19 @@ describe("P50 capability pages", () => {
         return Response.json({
           data: {
             resolution: "exact_address",
-            target: { chain_id: "1", address, code_hash: codeHash, block_number: "520", block_hash: blockHash },
-            source: { address, code_hash: codeHash, valid_from_block: "500", created_at: "2026-07-20T10:00:00Z" },
+            target: {
+              chain_id: "1",
+              address,
+              code_hash: codeHash,
+              block_number: "520",
+              block_hash: blockHash,
+            },
+            source: {
+              address,
+              code_hash: codeHash,
+              valid_from_block: "500",
+              created_at: "2026-07-20T10:00:00Z",
+            },
             language: "solidity",
             compiler_version: "0.8.30",
             file_name: "src/ReadOnly.sol",
@@ -555,10 +650,14 @@ describe("P50 capability pages", () => {
     vi.stubGlobal("fetch", fetcher);
     renderExplorer(`/address/${address}#code`);
 
-		expect(await screen.findAllByText(/no API key is required/)).not.toHaveLength(0);
-    expect(await screen.findByRole("heading", { name: "ReadOnlyArtifact", level: 2 })).toBeVisible();
+    expect(await screen.findAllByText(/no API key is required/)).not.toHaveLength(0);
+    expect(
+      await screen.findByRole("heading", { name: "ReadOnlyArtifact", level: 2 }),
+    ).toBeVisible();
     expect(screen.queryByLabelText("API key")).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Public verification is unavailable" })).toBeNull();
+    expect(
+      screen.queryByRole("heading", { name: "Public verification is unavailable" }),
+    ).toBeNull();
   });
 
   it("submits Vyper multipart with its target and native optimization mode", async () => {
@@ -567,7 +666,25 @@ describe("P50 capability pages", () => {
       if (path === "/api/v1/config") return configResponse({ verification: true });
       if (path.includes("/verifier/compilers")) {
         const language = new URL(path, "http://etherview.test").searchParams.get("language");
-        return Response.json({ data: { language, versions: language === "vyper" ? ["0.4.3"] : ["0.8.30"], capabilities: language === "vyper" ? { "0.4.3": { optimization_modes: ["none", "gas", "codesize"], evm_versions: ["prague"], default_evm_version: "prague", bytecode_metadata: true, enable_decimals: true } } : undefined }, meta });
+        return Response.json({
+          data: {
+            language,
+            versions: language === "vyper" ? ["0.4.3"] : ["0.8.30"],
+            capabilities:
+              language === "vyper"
+                ? {
+                    "0.4.3": {
+                      optimization_modes: ["none", "gas", "codesize"],
+                      evm_versions: ["prague"],
+                      default_evm_version: "prague",
+                      bytecode_metadata: true,
+                      enable_decimals: true,
+                    },
+                  }
+                : undefined,
+          },
+          meta,
+        });
       }
       if (path === `/api/v1/contracts/${address}/verification` && init?.method === "POST") {
         return apiError("queued-for-test", 503);
@@ -583,10 +700,17 @@ describe("P50 capability pages", () => {
     fireEvent.change(screen.getByLabelText(/^API key/), { target: { value: "test-secret" } });
     fireEvent.change(screen.getByLabelText("Optimization mode"), { target: { value: "codesize" } });
     await userEvent.setup().click(screen.getByRole("button", { name: "Submit verification" }));
-    const submitted = fetcher.mock.calls.find(([input, init]) => String(input) === `/api/v1/contracts/${address}/verification` && init?.method === "POST");
+    const submitted = fetcher.mock.calls.find(
+      ([input, init]) =>
+        String(input) === `/api/v1/contracts/${address}/verification` && init?.method === "POST",
+    );
     expect(submitted).toBeDefined();
     expect(JSON.parse(String(submitted?.[1]?.body))).toMatchObject({
-      language: "vyper", compiler_version: "0.4.3", input_kind: "multipart", target_file: "A.vy", optimization_mode: "codesize",
+      language: "vyper",
+      compiler_version: "0.4.3",
+      input_kind: "multipart",
+      target_file: "A.vy",
+      optimization_mode: "codesize",
     });
     expect(String(submitted?.[1]?.body)).not.toContain("optimization_runs");
   });
@@ -612,7 +736,11 @@ describe("P50 capability pages", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Standard JSON input contains a duplicate key and was not submitted.",
     );
-    expect(fetcher.mock.calls.some(([input]) => String(input).includes("/verification") && String(input).includes(address))).toBe(false);
+    expect(
+      fetcher.mock.calls.some(
+        ([input]) => String(input).includes("/verification") && String(input).includes(address),
+      ),
+    ).toBe(false);
     expect(fetcher.mock.calls.some(([input]) => String(input).includes("/sourcify"))).toBe(false);
   });
 
@@ -637,11 +765,14 @@ describe("P50 capability pages", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Standard JSON numbers must be safe integers so the submitted compiler input is not changed.",
     );
-    expect(fetcher.mock.calls.some(([input]) => String(input) === "/api/v1/verification/jobs")).toBe(false);
+    expect(
+      fetcher.mock.calls.some(([input]) => String(input) === "/api/v1/verification/jobs"),
+    ).toBe(false);
   });
 
   it("renders categorized historical analytics and localizes the overview", async () => {
-    const hugeBurn = "115792089237316195423570985008687907853269984665640564039457584007913129639935";
+    const hugeBurn =
+      "115792089237316195423570985008687907853269984665640564039457584007913129639935";
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
       const path = String(input);
       if (path === "/api/v1/config") return configResponse({});
@@ -659,10 +790,34 @@ describe("P50 capability pages", () => {
               backfill_progress: "100",
             },
             metrics: [
-              { metric: "transactions", current_value: hugeBurn, previous_value: "1", change_percent: "5", points: [] },
-              { metric: "average-tps", current_value: "1.416666666666666667", previous_value: "1", change_percent: "41.666667", points: [] },
-              { metric: "execution-fees", current_value: "1000000000000000000", previous_value: "1", change_percent: "1", points: [] },
-              { metric: "gas-utilization", current_value: "72.5", previous_value: "70", change_percent: "3.571429", points: [] },
+              {
+                metric: "transactions",
+                current_value: hugeBurn,
+                previous_value: "1",
+                change_percent: "5",
+                points: [],
+              },
+              {
+                metric: "average-tps",
+                current_value: "1.416666666666666667",
+                previous_value: "1",
+                change_percent: "41.666667",
+                points: [],
+              },
+              {
+                metric: "execution-fees",
+                current_value: "1000000000000000000",
+                previous_value: "1",
+                change_percent: "1",
+                points: [],
+              },
+              {
+                metric: "gas-utilization",
+                current_value: "72.5",
+                previous_value: "70",
+                change_percent: "3.571429",
+                points: [],
+              },
             ],
             pending: false,
           },
@@ -722,7 +877,9 @@ describe("P50 capability pages", () => {
     expect(await screen.findByText("Historical analytics are being rebuilt")).toBeVisible();
     expect(screen.getByText(/21 UTC hour buckets/)).toBeVisible();
     expect(screen.queryByText("0", { exact: true })).not.toBeInTheDocument();
-    expect(fetcher.mock.calls.some(([input]) => String(input).includes("/stats/charts/transactions"))).toBe(false);
+    expect(
+      fetcher.mock.calls.some(([input]) => String(input).includes("/stats/charts/transactions")),
+    ).toBe(false);
   });
 
   it("localizes sync facts separately from configured feature availability", async () => {
@@ -847,11 +1004,14 @@ function completeness() {
 }
 
 function apiError(code: string, status: number): Response {
-  return Response.json({
-    error: {
-      code,
-      message: code,
-      request_id: "capability-pages-error",
+  return Response.json(
+    {
+      error: {
+        code,
+        message: code,
+        request_id: "capability-pages-error",
+      },
     },
-  }, { status });
+    { status },
+  );
 }

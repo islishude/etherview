@@ -12,11 +12,7 @@ export function formatTimestamp(value: string, locale: string): string {
   }).format(date);
 }
 
-export function formatRelativeTimestamp(
-  value: string,
-  locale: string,
-  now = Date.now(),
-): string {
+export function formatRelativeTimestamp(value: string, locale: string, now = Date.now()): string {
   const timestamp = new Date(value).getTime();
   if (Number.isNaN(timestamp)) return value;
 
@@ -36,13 +32,8 @@ export function formatRelativeTimestamp(
     unit = "minute";
   }
 
-  const relativeValue = deltaMilliseconds === 0
-    ? -0
-    : Math.trunc(deltaMilliseconds / divisor);
-  return new Intl.RelativeTimeFormat(locale, { numeric: "always" }).format(
-    relativeValue,
-    unit,
-  );
+  const relativeValue = deltaMilliseconds === 0 ? -0 : Math.trunc(deltaMilliseconds / divisor);
+  return new Intl.RelativeTimeFormat(locale, { numeric: "always" }).format(relativeValue, unit);
 }
 
 export function formatInteger(value?: string | number | bigint, locale?: string): string {
@@ -61,9 +52,7 @@ export function formatNativeAmount(
 ): string {
   if (value === undefined || value === null || value === "") return "—";
 
-  const decimals = Number.isInteger(nativeDecimals) && nativeDecimals >= 0
-    ? nativeDecimals
-    : 18;
+  const decimals = Number.isInteger(nativeDecimals) && nativeDecimals >= 0 ? nativeDecimals : 18;
   const maxDecimalDigits = Math.min(decimals, 18);
 
   try {
@@ -86,10 +75,7 @@ export function formatNativeAmount(
   }
 }
 
-export function formatEtherFromGwei(
-  value?: string | number | bigint,
-  locale?: string,
-): string {
+export function formatEtherFromGwei(value?: string | number | bigint, locale?: string): string {
   return formatNativeAmount(value, locale, 9);
 }
 
@@ -125,8 +111,15 @@ export function formatPercentageRatio(
   total?: string | number | bigint,
   locale?: string,
 ): string | undefined {
-  if (value === undefined || value === null || value === ""
-    || total === undefined || total === null || total === "") return undefined;
+  if (
+    value === undefined ||
+    value === null ||
+    value === "" ||
+    total === undefined ||
+    total === null ||
+    total === ""
+  )
+    return undefined;
   try {
     const numerator = BigInt(value);
     const denominator = BigInt(total);
@@ -134,8 +127,9 @@ export function formatPercentageRatio(
     const roundedHundredths = (numerator * 10_000n + denominator / 2n) / denominator;
     const integerPart = roundedHundredths / 100n;
     const fractionalPart = (roundedHundredths % 100n).toString().padStart(2, "0");
-    const decimalSeparator = new Intl.NumberFormat(locale).formatToParts(1.1)
-      .find((part) => part.type === "decimal")?.value ?? ".";
+    const decimalSeparator =
+      new Intl.NumberFormat(locale).formatToParts(1.1).find((part) => part.type === "decimal")
+        ?.value ?? ".";
     return `${new Intl.NumberFormat(locale).format(integerPart)}${decimalSeparator}${fractionalPart}%`;
   } catch {
     return undefined;

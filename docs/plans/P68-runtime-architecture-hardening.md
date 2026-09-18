@@ -33,9 +33,14 @@ schema remain unchanged.
 | P68-T08 | done | P68-T01, P68-T07 | Align runtime E2E ordinary-response write deadlines with its bounded-load request budget while retaining the longer-idle SSE deadline regression | focused runtime tests, Compose validation, and production-topology E2E |
 | P68-T09 | done | P68-T01, P68-T07 | Make the home-feed slow-subscriber race regression wait for the complete fanout operation before inspecting disconnect state | focused repeated race test, HTTP API race tests, and common gates |
 
+| P68-T10 | done | P68-T06 | Replace Biome with pinned Oxlint/Oxfmt gates, preserve size limits, and refactor formatted Web modules | tooling policy regressions, Web unit/browser tests, generation, docs and plan gates |
+
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
 ## Acceptance
+
+- [x] P68-T10: pinned Oxlint/Oxfmt gates replace Biome with unchanged length limits,
+      explicit cyclomatic complexity policy, and passing Web acceptance.
 
 - [x] Idle SSE connections survive longer than `server.write_timeout`, while
       each individual write and flush remains bounded by that timeout.
@@ -65,6 +70,33 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 None.
 
 ## Evidence
+
+- P68-T10 replaces Biome with exact `oxlint@1.83.0` and `oxfmt@0.68.0`
+  lockfile pins. `web-lint` retains TypeScript and explicit unused-code/Hook
+  checks, adds a read-only formatting gate, and keeps production file/function
+  limits at 1,400/400 and test limits at 2,500/1,000 (blank lines excluded,
+  comments counted, IIFEs exempt). Classic cyclomatic complexity is capped at
+  150 against the measured pre-refactor maximum of 142, with tests exempt;
+  this is not an equivalence claim for Biome's prior cognitive metric of 75.
+  Transaction presentation and contract proxy facts are split by responsibility;
+  wallet operation callbacks retain their original session fences in an internal
+  Hook. New Hook diagnostics are resolved through stable defaults, precise
+  callback dependencies, captured focus targets, and an explicit ECharts alias.
+  Five executable tooling-policy regressions exercise positive/negative limits,
+  Hook and unused-code failures, test overrides, generated exclusions, and
+  formatting idempotence. The QR regression also asserts restored opener focus.
+  `make web-lint web-test generate-check test-e2e` passes: 39 Vitest files / 370
+  tests, eight Node script tests, generated-contract consistency, production
+  asset budgets, and 27 embedded Chromium tests. `make docs-check plan-check`
+  and `git diff --check` pass. A repeated format leaves tracked Web bytes
+  unchanged, including the lockfile and generated API types. `npm audit
+  --audit-level=high` reports zero vulnerabilities; the maintained production
+  license allowlist passes, and the five newly installed tool/runtime packages
+  have MIT licenses (all added platform-package lock entries also declare MIT).
+  A broader diagnostic scan of all development packages finds the pre-existing
+  `chownr@3.0.0` BlueOak-1.0.0 license outside the production allowlist; no
+  dependency version or license policy was changed to suppress it. Evidence is
+  local macOS validation; remote CI and Linux tool binaries were not rerun.
 
 - P68-T09 diagnoses GitHub Actions run 32549443570 job 96973645743 as a test
   synchronization race: receiving the active subscriber's update did not prove

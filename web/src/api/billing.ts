@@ -2,30 +2,22 @@ import type { components, operations } from "./schema.gen";
 import { apiClient, requireEnvelope } from "./client";
 
 export type BillingPayment = components["schemas"]["BillingPayment"];
-export type BillingPaymentState =
-  components["schemas"]["BillingPaymentState"];
+export type BillingPaymentState = components["schemas"]["BillingPaymentState"];
 export type BillingSummary = components["schemas"]["BillingSummary"];
 export type BillingAccount = components["schemas"]["BillingAccount"];
 export type BillingConfig = components["schemas"]["BillingConfig"];
 export type BillingTopupIntent = components["schemas"]["BillingTopupIntent"];
 export type BillingTopupReceipt = components["schemas"]["BillingTopupReceipt"];
-export type BillingTransferMethod =
-  components["schemas"]["BillingAssetTransferMethod"];
+export type BillingTransferMethod = components["schemas"]["BillingAssetTransferMethod"];
 
-type AdminPaymentQuery =
-  NonNullable<
-    operations["listAdminBillingPayments"]["parameters"]["query"]
-  >;
+type AdminPaymentQuery = NonNullable<operations["listAdminBillingPayments"]["parameters"]["query"]>;
 
 export type AdminBillingFilters = Pick<
   AdminPaymentQuery,
   "asset" | "from_time" | "network" | "operation" | "state" | "to_time"
 >;
 
-export async function listCurrentUserBillingPayments(
-  limit: number,
-  cursor?: string,
-) {
+export async function listCurrentUserBillingPayments(limit: number, cursor?: string) {
   return requireEnvelope(
     await apiClient.GET("/billing/payments", {
       params: { query: { cursor, limit } },
@@ -70,9 +62,7 @@ export async function listCurrentBillingTopupIntents(limit = 10, cursor?: string
 }
 
 export async function listCurrentUserBillingUsage(limit = 25) {
-  return requireEnvelope(
-    await apiClient.GET("/billing/usage", { params: { query: { limit } } }),
-  );
+  return requireEnvelope(await apiClient.GET("/billing/usage", { params: { query: { limit } } }));
 }
 
 export async function listAdminBillingPayments(

@@ -12,7 +12,7 @@ import {
   listContractDiamondCuts,
   listContractProxyInitializations,
   listContractProxyUpgrades,
-	useContractProxy,
+  useContractProxy,
   useVerifiedContractArtifact,
   type ContractProxyDetails,
 } from "./proxy";
@@ -33,20 +33,17 @@ afterEach(() => {
 describe("proxy API adapter", () => {
   it("automatically reads a verified artifact anonymously through the generated client", async () => {
     const storageWrite = vi.spyOn(window.localStorage, "setItem");
-    const fetcher = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(envelope(verifiedArtifact()));
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(envelope(verifiedArtifact()));
     vi.stubGlobal("fetch", fetcher);
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
 
-    const { result } = renderHook(
-      () => useVerifiedContractArtifact(proxyAddress),
-      { wrapper: queryWrapper(queryClient) },
-    );
+    const { result } = renderHook(() => useVerifiedContractArtifact(proxyAddress), {
+      wrapper: queryWrapper(queryClient),
+    });
 
-	await waitFor(() => expect(result.current.data?.target.address).toBe(proxyAddress));
+    await waitFor(() => expect(result.current.data?.target.address).toBe(proxyAddress));
     expect(result.current.data?.abi?.[0]).toMatchObject({
       name: "value",
       stateMutability: "view",
@@ -70,10 +67,12 @@ describe("proxy API adapter", () => {
     const fetcher = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(envelope(verifiedArtifact()))
-		.mockResolvedValueOnce(envelope({
-			...verifiedArtifact(),
-			target: { ...verifiedArtifact().target, code_hash: oldHash },
-		}));
+      .mockResolvedValueOnce(
+        envelope({
+          ...verifiedArtifact(),
+          target: { ...verifiedArtifact().target, code_hash: oldHash },
+        }),
+      );
     vi.stubGlobal("fetch", fetcher);
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -87,52 +86,46 @@ describe("proxy API adapter", () => {
         wrapper: queryWrapper(queryClient),
       },
     );
-	await waitFor(() => expect(result.current.data?.target.code_hash).toBe(hash));
+    await waitFor(() => expect(result.current.data?.target.code_hash).toBe(hash));
 
     rerender({ expectedCodeHash: oldHash });
-	await waitFor(() => expect(result.current.data?.target.code_hash).toBe(oldHash));
+    await waitFor(() => expect(result.current.data?.target.code_hash).toBe(oldHash));
 
     expect(fetcher).toHaveBeenCalledTimes(2);
     expect(
-      queryClient.getQueryData([
-        "verified-contract-artifact",
-        proxyAddress,
-        hash,
-      ]),
-	).toMatchObject({ target: { code_hash: hash } });
+      queryClient.getQueryData(["verified-contract-artifact", proxyAddress, hash]),
+    ).toMatchObject({ target: { code_hash: hash } });
     expect(
-      queryClient.getQueryData([
-		"verified-contract-artifact",
-		proxyAddress,
-		oldHash,
-	]),
-	).toMatchObject({ target: { code_hash: oldHash } });
+      queryClient.getQueryData(["verified-contract-artifact", proxyAddress, oldHash]),
+    ).toMatchObject({ target: { code_hash: oldHash } });
   });
 
-	it("refetches an unavailable proxy classification after durable event invalidation", async () => {
-		const fetcher = vi.fn<typeof fetch>()
-			.mockResolvedValueOnce(envelope({
-				address: proxyAddress,
-				status: "unavailable",
-				snapshot: snapshot(),
-				evidence: [],
-			}))
-			.mockResolvedValue(envelope(verifiedProxyDetail()));
-		vi.stubGlobal("fetch", fetcher);
-		const queryClient = new QueryClient({
-			defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
-		});
+  it("refetches an unavailable proxy classification after durable event invalidation", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        envelope({
+          address: proxyAddress,
+          status: "unavailable",
+          snapshot: snapshot(),
+          evidence: [],
+        }),
+      )
+      .mockResolvedValue(envelope(verifiedProxyDetail()));
+    vi.stubGlobal("fetch", fetcher);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
+    });
 
-		const { result } = renderHook(
-			() => useContractProxy(proxyAddress),
-			{ wrapper: queryWrapper(queryClient) },
-		);
+    const { result } = renderHook(() => useContractProxy(proxyAddress), {
+      wrapper: queryWrapper(queryClient),
+    });
 
-		await waitFor(() => expect(result.current.data?.state).toBe("unavailable"));
-		await queryClient.invalidateQueries({ queryKey: ["contract-proxy", proxyAddress] });
-		await waitFor(() => expect(result.current.data?.state).toBe("verified"));
-		expect(fetcher).toHaveBeenCalledTimes(2);
-	});
+    await waitFor(() => expect(result.current.data?.state).toBe("unavailable"));
+    await queryClient.invalidateQueries({ queryKey: ["contract-proxy", proxyAddress] });
+    await waitFor(() => expect(result.current.data?.state).toBe("verified"));
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
 
   it("exposes implementation and management artifacts only for an exact verified binding", async () => {
     vi.stubGlobal(
@@ -221,44 +214,29 @@ describe("proxy API adapter", () => {
     });
     vi.stubGlobal("fetch", fetcher);
 
-    const upgrades = await listContractProxyUpgrades(
-      proxyAddress,
-      opaqueCursor,
-      7,
-    );
+    const upgrades = await listContractProxyUpgrades(proxyAddress, opaqueCursor, 7);
     const initializations = await listContractProxyInitializations(proxyAddress);
     const cuts = await listContractDiamondCuts(proxyAddress, opaqueCursor, 5);
 
     expect(upgrades.next_cursor).toBe(opaqueCursor);
-    expect(upgrades.items[0]?.new_implementation.address).toBe(
-      implementationAddress,
-    );
+    expect(upgrades.items[0]?.new_implementation.address).toBe(implementationAddress);
     expect(initializations.next_cursor).toBe(opaqueCursor);
-    expect(initializations.items[0]?.version).toBe(
-      "18446744073709551615",
-    );
+    expect(initializations.items[0]?.version).toBe("18446744073709551615");
     expect(cuts.next_cursor).toBe(opaqueCursor);
     expect(cuts.items[0]?.cuts[0]?.selectors).toEqual(["0x11223344"]);
 
     const upgradeURL = new URL(String(fetcher.mock.calls[0]?.[0]), "http://localhost");
-    expect(upgradeURL.pathname).toBe(
-      `/api/v1/contracts/${proxyAddress}/proxy/upgrades`,
-    );
+    expect(upgradeURL.pathname).toBe(`/api/v1/contracts/${proxyAddress}/proxy/upgrades`);
     expect(Object.fromEntries(upgradeURL.searchParams)).toEqual({
       cursor: opaqueCursor,
       limit: "7",
     });
-    const initializationURL = new URL(
-      String(fetcher.mock.calls[1]?.[0]),
-      "http://localhost",
-    );
+    const initializationURL = new URL(String(fetcher.mock.calls[1]?.[0]), "http://localhost");
     expect(Object.fromEntries(initializationURL.searchParams)).toEqual({
       limit: "20",
     });
     const cutsURL = new URL(String(fetcher.mock.calls[2]?.[0]), "http://localhost");
-    expect(cutsURL.pathname).toBe(
-      `/api/v1/contracts/${proxyAddress}/proxy/diamond-cuts`,
-    );
+    expect(cutsURL.pathname).toBe(`/api/v1/contracts/${proxyAddress}/proxy/diamond-cuts`);
     expect(Object.fromEntries(cutsURL.searchParams)).toEqual({
       cursor: opaqueCursor,
       limit: "5",
@@ -293,11 +271,7 @@ describe("proxy API adapter", () => {
 
 function queryWrapper(queryClient: QueryClient) {
   return function QueryWrapper({ children }: PropsWithChildren) {
-    return (
-      <QueryClientProvider client={queryClient}>
-        {children}
-      </QueryClientProvider>
-    );
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
   };
 }
 
@@ -335,22 +309,26 @@ function diamondCutHistory() {
     diamond_address: proxyAddress,
     snapshot: snapshot(),
     coverage: { state: "complete", from_block: "1", to_block: "42" },
-    items: [{
-      block_number: "1",
-      block_hash: hash,
-      block_timestamp: "2026-08-13T00:00:00Z",
-      transaction_hash: oldHash,
-      transaction_index: "0",
-      log_index: "0",
-      init_address: managementAddress,
-      init_calldata: "0x",
-      cuts: [{
-        cut_index: 0,
-        action: "add",
-        facet_address: implementationAddress,
-        selectors: ["0x11223344"],
-      }],
-    }],
+    items: [
+      {
+        block_number: "1",
+        block_hash: hash,
+        block_timestamp: "2026-08-13T00:00:00Z",
+        transaction_hash: oldHash,
+        transaction_index: "0",
+        log_index: "0",
+        init_address: managementAddress,
+        init_calldata: "0x",
+        cuts: [
+          {
+            cut_index: 0,
+            action: "add",
+            facet_address: implementationAddress,
+            selectors: ["0x11223344"],
+          },
+        ],
+      },
+    ],
   };
 }
 
@@ -369,7 +347,7 @@ function verifiedProxyDetail(): ContractProxyDetails {
       address: proxyAddress,
       code_hash: hash,
       verification_state: "verified",
-			artifact_resolution: "exact_address",
+      artifact_resolution: "exact_address",
       artifact_kind: "transparent_proxy",
       standard_version: "5.6.1",
     },
@@ -377,7 +355,7 @@ function verifiedProxyDetail(): ContractProxyDetails {
       address: implementationAddress,
       code_hash: hash,
       verification_state: "verified",
-			artifact_resolution: "exact_address",
+      artifact_resolution: "exact_address",
     },
     management: {
       kind: "proxy_admin",
@@ -385,7 +363,7 @@ function verifiedProxyDetail(): ContractProxyDetails {
         address: managementAddress,
         code_hash: hash,
         verification_state: "verified",
-			artifact_resolution: "exact_address",
+        artifact_resolution: "exact_address",
         artifact_kind: "proxy_admin",
         standard_version: "5.6.1",
       },
@@ -396,7 +374,7 @@ function verifiedProxyDetail(): ContractProxyDetails {
 }
 
 function verifiedArtifact() {
-	return {
+  return {
     kind: "verification_success",
     file_name: "Implementation.sol",
     contract_name: "Implementation",
@@ -418,16 +396,21 @@ function verifiedArtifact() {
     runtime_code_artifacts: {},
     libraries: {},
     is_blueprint: false,
-		resolution: "exact_address",
-		target: {
-			chain_id: "1", address: proxyAddress, code_hash: hash,
-			block_number: "42", block_hash: hash,
-		},
-		source: {
-			address: proxyAddress, code_hash: hash, valid_from_block: "1",
-			created_at: "2026-08-02T00:00:00Z",
-		},
-	};
+    resolution: "exact_address",
+    target: {
+      chain_id: "1",
+      address: proxyAddress,
+      code_hash: hash,
+      block_number: "42",
+      block_hash: hash,
+    },
+    source: {
+      address: proxyAddress,
+      code_hash: hash,
+      valid_from_block: "1",
+      created_at: "2026-08-02T00:00:00Z",
+    },
+  };
 }
 
 function upgradeHistory() {

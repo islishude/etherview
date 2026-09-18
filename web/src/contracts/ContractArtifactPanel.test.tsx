@@ -1,11 +1,11 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
-	createMemoryHistory,
-	createRootRoute,
-	createRoute,
-	createRouter,
-	RouterContextProvider,
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterContextProvider,
 } from "@tanstack/react-router";
 import { encodeAbiParameters } from "viem";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -35,12 +35,17 @@ afterEach(() => {
 
 describe("contract artifact view models", () => {
   it("orders the main source first and rejects non-inline source entries", () => {
-    expect(parseArtifactSources({
-      "src/Z.sol": { content: "contract Z {}" },
-      "src/Main.sol": { content: "contract Main {}" },
-      "src/A.sol": { content: "contract A {}" },
-      "src/Remote.sol": { urls: ["https://example.invalid/Remote.sol"] },
-    }, "src/Main.sol")).toEqual({
+    expect(
+      parseArtifactSources(
+        {
+          "src/Z.sol": { content: "contract Z {}" },
+          "src/Main.sol": { content: "contract Main {}" },
+          "src/A.sol": { content: "contract A {}" },
+          "src/Remote.sol": { urls: ["https://example.invalid/Remote.sol"] },
+        },
+        "src/Main.sol",
+      ),
+    ).toEqual({
       files: [
         { name: "src/Main.sol", content: "contract Main {}" },
         { name: "src/A.sol", content: "contract A {}" },
@@ -51,7 +56,10 @@ describe("contract artifact view models", () => {
   });
 
   it("renders Vyper JSON interfaces as read-only source files", () => {
-    const sources = { "A.vy": { content: "@external" }, "I.json": { abi: [{ type: "function", name: "value" }] } };
+    const sources = {
+      "A.vy": { content: "@external" },
+      "I.json": { abi: [{ type: "function", name: "value" }] },
+    };
     const result = parseArtifactSources(sources, "A.vy", "vyper");
     expect(result.invalidEntries).toBe(0);
     expect(result.files[1]?.content).toContain('"name": "value"');
@@ -59,12 +67,14 @@ describe("contract artifact view models", () => {
   });
 
   it("builds nested directories before files while preserving source paths", () => {
-    expect(buildSourceTree([
-      { name: "src/z/Last.sol", content: "" },
-      { name: "README.md", content: "" },
-      { name: "src/Main.sol", content: "" },
-      { name: "src/a/First.sol", content: "" },
-    ])).toEqual([
+    expect(
+      buildSourceTree([
+        { name: "src/z/Last.sol", content: "" },
+        { name: "README.md", content: "" },
+        { name: "src/Main.sol", content: "" },
+        { name: "src/a/First.sol", content: "" },
+      ]),
+    ).toEqual([
       {
         id: "directory:src",
         kind: "directory",
@@ -117,10 +127,12 @@ describe("contract artifact view models", () => {
   });
 
   it("compacts consecutive directories with one directory child", () => {
-    expect(buildSourceTree([
-      { name: "src/contracts/interfaces/IFoo.sol", content: "interface IFoo {}" },
-      { name: "src/contracts/interfaces/IBar.sol", content: "interface IBar {}" },
-    ])).toEqual([
+    expect(
+      buildSourceTree([
+        { name: "src/contracts/interfaces/IFoo.sol", content: "interface IFoo {}" },
+        { name: "src/contracts/interfaces/IBar.sol", content: "interface IBar {}" },
+      ]),
+    ).toEqual([
       {
         id: "directory:src/contracts/interfaces",
         kind: "directory",
@@ -145,17 +157,25 @@ describe("contract artifact view models", () => {
   });
 
   it("summarizes bounded ABI and explicit compiler settings", () => {
-    expect(summarizeABI([
-      { type: "function" }, { type: "function" }, { type: "event" },
-      { type: "error" }, { type: "constructor" }, null,
-    ])).toEqual({ functions: 2, events: 1, errors: 1, constructors: 1 });
-    expect(summarizeCompilerSettings({
-      optimizer: { enabled: true, runs: 500 },
-      evmVersion: "cancun",
-      viaIR: true,
-      metadata: { bytecodeHash: "ipfs", appendCBOR: false, nested: {} },
-      remappings: ["@openzeppelin/=lib/openzeppelin/", 4],
-    })).toEqual({
+    expect(
+      summarizeABI([
+        { type: "function" },
+        { type: "function" },
+        { type: "event" },
+        { type: "error" },
+        { type: "constructor" },
+        null,
+      ]),
+    ).toEqual({ functions: 2, events: 1, errors: 1, constructors: 1 });
+    expect(
+      summarizeCompilerSettings({
+        optimizer: { enabled: true, runs: 500 },
+        evmVersion: "cancun",
+        viaIR: true,
+        metadata: { bytecodeHash: "ipfs", appendCBOR: false, nested: {} },
+        remappings: ["@openzeppelin/=lib/openzeppelin/", 4],
+      }),
+    ).toEqual({
       optimizerEnabled: true,
       optimizerRuns: 500,
       evmVersion: "cancun",
@@ -170,127 +190,149 @@ describe("contract artifact view models", () => {
 });
 
 describe("ContractArtifactPanel", () => {
-	it("explains factory-derived verification and lists bounded created contracts", () => {
-		const creator = "0x2222222222222222222222222222222222222222";
-		const child = "0x3333333333333333333333333333333333333333";
-		const transaction = `0x${"44".repeat(32)}`;
-		const rootRoute = createRootRoute();
-		const addressRoute = createRoute({
-			getParentRoute: () => rootRoute,
-			path: "/address/$address",
-			component: () => null,
-		});
-		const router = createRouter({
-			history: createMemoryHistory({ initialEntries: ["/"] }),
-			routeTree: rootRoute.addChildren([addressRoute]),
-		});
-		render(<RouterContextProvider router={router}><ContractArtifactPanel artifact={fixtureArtifact({
-			verification_origin: "factory_derived",
-			derived_from: {
-				creator_address: creator,
-				created_address: "0x1111111111111111111111111111111111111111",
-				transaction_hash: transaction,
-				trace_path: "0.1",
-				call_type: "CREATE2",
-				block_number: "2",
-				block_hash: `0x${"55".repeat(32)}`,
-				parent_file_name: "Factory.sol",
-				parent_contract_name: "Factory",
-			},
-			derived_children: [{
-				address: child,
-				transaction_hash: transaction,
-				trace_path: "0.2",
-				call_type: "CREATE",
-				block_number: "3",
-				block_hash: `0x${"66".repeat(32)}`,
-				status: "matched",
-				auto_verified: true,
-				contract_name: "Child",
-				file_name: "Child.sol",
-			}],
-		})} /></RouterContextProvider>);
+  it("explains factory-derived verification and lists bounded created contracts", () => {
+    const creator = "0x2222222222222222222222222222222222222222";
+    const child = "0x3333333333333333333333333333333333333333";
+    const transaction = `0x${"44".repeat(32)}`;
+    const rootRoute = createRootRoute();
+    const addressRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: "/address/$address",
+      component: () => null,
+    });
+    const router = createRouter({
+      history: createMemoryHistory({ initialEntries: ["/"] }),
+      routeTree: rootRoute.addChildren([addressRoute]),
+    });
+    render(
+      <RouterContextProvider router={router}>
+        <ContractArtifactPanel
+          artifact={fixtureArtifact({
+            verification_origin: "factory_derived",
+            derived_from: {
+              creator_address: creator,
+              created_address: "0x1111111111111111111111111111111111111111",
+              transaction_hash: transaction,
+              trace_path: "0.1",
+              call_type: "CREATE2",
+              block_number: "2",
+              block_hash: `0x${"55".repeat(32)}`,
+              parent_file_name: "Factory.sol",
+              parent_contract_name: "Factory",
+            },
+            derived_children: [
+              {
+                address: child,
+                transaction_hash: transaction,
+                trace_path: "0.2",
+                call_type: "CREATE",
+                block_number: "3",
+                block_hash: `0x${"66".repeat(32)}`,
+                status: "matched",
+                auto_verified: true,
+                contract_name: "Child",
+                file_name: "Child.sol",
+              },
+            ],
+          })}
+        />
+      </RouterContextProvider>,
+    );
 
-		expect(screen.getByRole("status")).toHaveTextContent("Auto-verified from verified factory:");
-		expect(screen.getByText("Factory-derived")).toBeVisible();
-		expect(screen.getByRole("heading", { name: "Created contracts" })).toBeVisible();
-		expect(screen.getByRole("link", { name: child })).toBeVisible();
-			expect(screen.getByText("Auto-verified")).toBeVisible();
-		});
+    expect(screen.getByRole("status")).toHaveTextContent("Auto-verified from verified factory:");
+    expect(screen.getByText("Factory-derived")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Created contracts" })).toBeVisible();
+    expect(screen.getByRole("link", { name: child })).toBeVisible();
+    expect(screen.getByText("Auto-verified")).toBeVisible();
+  });
 
-		it("shows additive factory creation provenance without changing submitted origin", () => {
-			const creator = "0x2222222222222222222222222222222222222222";
-			const rootRoute = createRootRoute();
-			const addressRoute = createRoute({
-				getParentRoute: () => rootRoute,
-				path: "/address/$address",
-				component: () => null,
-			});
-			const router = createRouter({
-				history: createMemoryHistory({ initialEntries: ["/"] }),
-				routeTree: rootRoute.addChildren([addressRoute]),
-			});
-			render(<RouterContextProvider router={router}><ContractArtifactPanel artifact={fixtureArtifact({
-				verification_origin: "submitted",
-				derived_from: {
-					creator_address: creator,
-					created_address: "0x1111111111111111111111111111111111111111",
-					transaction_hash: `0x${"44".repeat(32)}`,
-					trace_path: "0.1",
-					call_type: "CREATE",
-					block_number: "2",
-					block_hash: `0x${"55".repeat(32)}`,
-					parent_file_name: "Factory.sol",
-					parent_contract_name: "Factory",
-				},
-			})} /></RouterContextProvider>);
+  it("shows additive factory creation provenance without changing submitted origin", () => {
+    const creator = "0x2222222222222222222222222222222222222222";
+    const rootRoute = createRootRoute();
+    const addressRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: "/address/$address",
+      component: () => null,
+    });
+    const router = createRouter({
+      history: createMemoryHistory({ initialEntries: ["/"] }),
+      routeTree: rootRoute.addChildren([addressRoute]),
+    });
+    render(
+      <RouterContextProvider router={router}>
+        <ContractArtifactPanel
+          artifact={fixtureArtifact({
+            verification_origin: "submitted",
+            derived_from: {
+              creator_address: creator,
+              created_address: "0x1111111111111111111111111111111111111111",
+              transaction_hash: `0x${"44".repeat(32)}`,
+              trace_path: "0.1",
+              call_type: "CREATE",
+              block_number: "2",
+              block_hash: `0x${"55".repeat(32)}`,
+              parent_file_name: "Factory.sol",
+              parent_contract_name: "Factory",
+            },
+          })}
+        />
+      </RouterContextProvider>,
+    );
 
-			expect(screen.getByRole("status")).toHaveTextContent("Created by verified factory compilation:");
-			expect(screen.queryByText("Factory-derived")).not.toBeInTheDocument();
-		});
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Created by verified factory compilation:",
+    );
+    expect(screen.queryByText("Factory-derived")).not.toBeInTheDocument();
+  });
 
-	it("presents a code-hash artifact as verified source without claiming address verification", () => {
-		const sourceAddress = "0x2222222222222222222222222222222222222222";
-		const rootRoute = createRootRoute();
-		const addressRoute = createRoute({
-			getParentRoute: () => rootRoute,
-			path: "/address/$address",
-			component: () => null,
-		});
-		const router = createRouter({
-			history: createMemoryHistory({ initialEntries: ["/"] }),
-			routeTree: rootRoute.addChildren([addressRoute]),
-		});
-			render(<RouterContextProvider router={router}><ContractArtifactPanel artifact={fixtureArtifact({
-				resolution: "code_hash",
-				verification_origin: "factory_derived",
-				derived_from: {
-					creator_address: "0x3333333333333333333333333333333333333333",
-					created_address: "0x1111111111111111111111111111111111111111",
-					transaction_hash: `0x${"44".repeat(32)}`,
-					trace_path: "0.1",
-					call_type: "CREATE",
-					block_number: "2",
-					block_hash: `0x${"55".repeat(32)}`,
-					parent_file_name: "Factory.sol",
-					parent_contract_name: "Factory",
-				},
-			source: {
-				address: sourceAddress,
-				code_hash: `0x${"ab".repeat(32)}`,
-				valid_from_block: "1",
-				created_at: "2026-08-02T00:00:01Z",
-			},
-		})} /></RouterContextProvider>);
+  it("presents a code-hash artifact as verified source without claiming address verification", () => {
+    const sourceAddress = "0x2222222222222222222222222222222222222222";
+    const rootRoute = createRootRoute();
+    const addressRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: "/address/$address",
+      component: () => null,
+    });
+    const router = createRouter({
+      history: createMemoryHistory({ initialEntries: ["/"] }),
+      routeTree: rootRoute.addChildren([addressRoute]),
+    });
+    render(
+      <RouterContextProvider router={router}>
+        <ContractArtifactPanel
+          artifact={fixtureArtifact({
+            resolution: "code_hash",
+            verification_origin: "factory_derived",
+            derived_from: {
+              creator_address: "0x3333333333333333333333333333333333333333",
+              created_address: "0x1111111111111111111111111111111111111111",
+              transaction_hash: `0x${"44".repeat(32)}`,
+              trace_path: "0.1",
+              call_type: "CREATE",
+              block_number: "2",
+              block_hash: `0x${"55".repeat(32)}`,
+              parent_file_name: "Factory.sol",
+              parent_contract_name: "Factory",
+            },
+            source: {
+              address: sourceAddress,
+              code_hash: `0x${"ab".repeat(32)}`,
+              valid_from_block: "1",
+              created_at: "2026-08-02T00:00:01Z",
+            },
+          })}
+        />
+      </RouterContextProvider>,
+    );
 
-			expect(screen.getAllByText("Source verified by code hash")).toHaveLength(2);
-			expect(screen.queryByText("Auto-verified from verified factory:")).not.toBeInTheDocument();
-		expect(screen.queryByText("Source code verified", { exact: true })).toBeNull();
-		expect(screen.getByRole("status")).toHaveTextContent(
-			"Source verified by identical runtime code hash:",
-		);
-		expect(screen.getAllByRole("link", { name: sourceAddress })).not.toHaveLength(0);
-	});
+    expect(screen.getAllByText("Source verified by code hash")).toHaveLength(2);
+    expect(screen.queryByText("Auto-verified from verified factory:")).not.toBeInTheDocument();
+    expect(screen.queryByText("Source code verified", { exact: true })).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Source verified by identical runtime code hash:",
+    );
+    expect(screen.getAllByRole("link", { name: sourceAddress })).not.toHaveLength(0);
+  });
 
   it("shows decoded constructor parameters and preserves copyable raw encoding", async () => {
     const user = userEvent.setup();
@@ -300,18 +342,30 @@ describe("ContractArtifactPanel", () => {
       value: { writeText },
     });
     const encoded = encodeAbiParameters(
-      [{ name: "owner", type: "address" }, { name: "count", type: "uint256" }],
+      [
+        { name: "owner", type: "address" },
+        { name: "count", type: "uint256" },
+      ],
       ["0x1111111111111111111111111111111111111111", 42n],
     );
 
-    render(<ContractArtifactPanel artifact={fixtureArtifact({
-      constructor_arguments: encoded,
-      abi: [
-        { type: "constructor", stateMutability: "nonpayable", inputs: [
-          { name: "owner", type: "address" }, { name: "count", type: "uint256" },
-        ] },
-      ],
-    })} />);
+    render(
+      <ContractArtifactPanel
+        artifact={fixtureArtifact({
+          constructor_arguments: encoded,
+          abi: [
+            {
+              type: "constructor",
+              stateMutability: "nonpayable",
+              inputs: [
+                { name: "owner", type: "address" },
+                { name: "count", type: "uint256" },
+              ],
+            },
+          ],
+        })}
+      />,
+    );
 
     await user.click(screen.getByText("Constructor arguments"));
     const decoded = screen.getByRole("region", { name: "Decoded parameters" });
@@ -328,16 +382,22 @@ describe("ContractArtifactPanel", () => {
   it("retains raw constructor arguments when ABI decoding is unavailable", async () => {
     const user = userEvent.setup();
     const encoded = `0x${"00".repeat(32)}`;
-    render(<ContractArtifactPanel artifact={fixtureArtifact({
-      constructor_arguments: encoded,
-      abi: [],
-    })} />);
+    render(
+      <ContractArtifactPanel
+        artifact={fixtureArtifact({
+          constructor_arguments: encoded,
+          abi: [],
+        })}
+      />,
+    );
 
     await user.click(screen.getByText("Constructor arguments"));
     expect(screen.getByRole("status")).toHaveTextContent(
       "ABI decoding is unavailable; showing the raw encoding only.",
     );
-    expect(screen.getByRole("region", { name: "Raw encoded arguments" })).toHaveTextContent(encoded);
+    expect(screen.getByRole("region", { name: "Raw encoded arguments" })).toHaveTextContent(
+      encoded,
+    );
   });
 
   it("renders a read-only multi-file editor and structured settings", async () => {
@@ -371,7 +431,9 @@ describe("ContractArtifactPanel", () => {
 
     const fileNavigation = screen.getByRole("complementary", { name: "Source files" });
     expect(within(fileNavigation).getByRole("tree")).toBeVisible();
-    const sourceFolder = within(fileNavigation).getByRole("treeitem", { name: "Collapse folder: src" });
+    const sourceFolder = within(fileNavigation).getByRole("treeitem", {
+      name: "Collapse folder: src",
+    });
     expect(sourceFolder).toHaveAttribute("aria-expanded", "true");
     await user.click(within(fileNavigation).getByRole("treeitem", { name: "Library.sol" }));
     const libraryEditor = screen.getByRole("textbox", {
@@ -388,7 +450,9 @@ describe("ContractArtifactPanel", () => {
     const editorShell = document.querySelector(".source-editor-shell");
     expect(editorShell).not.toBeNull();
     await user.click(within(editorShell as HTMLElement).getByRole("button", { name: "Copy" }));
-    expect(writeText).toHaveBeenCalledWith("library Library { function value() internal pure returns (uint256) { return 1; } }");
+    expect(writeText).toHaveBeenCalledWith(
+      "library Library { function value() internal pure returns (uint256) { return 1; } }",
+    );
   });
 
   it("applies the current document CSP nonce to CodeMirror runtime styles", () => {
@@ -401,22 +465,30 @@ describe("ContractArtifactPanel", () => {
     render(<ContractArtifactPanel artifact={fixtureArtifact()} />);
 
     expect(document.head.querySelector(`style[nonce="${nonce}"]`)).not.toBeNull();
-    expect(screen.getByRole("textbox", {
-      name: "Read-only source editor for src/Example.sol",
-    })).toHaveAttribute("contenteditable", "false");
+    expect(
+      screen.getByRole("textbox", {
+        name: "Read-only source editor for src/Example.sol",
+      }),
+    ).toHaveAttribute("contenteditable", "false");
   });
 
   it("supports directory toggling and keyboard tree navigation", async () => {
     const user = userEvent.setup();
-    render(<ContractArtifactPanel artifact={fixtureArtifact({
-      sources: {
-        "src/Example.sol": { content: "contract Example {}" },
-        "src/lib/Library.sol": { content: "library Library {}" },
-      },
-    })} />);
+    render(
+      <ContractArtifactPanel
+        artifact={fixtureArtifact({
+          sources: {
+            "src/Example.sol": { content: "contract Example {}" },
+            "src/lib/Library.sol": { content: "library Library {}" },
+          },
+        })}
+      />,
+    );
 
     const fileNavigation = screen.getByRole("complementary", { name: "Source files" });
-    const sourceFolder = within(fileNavigation).getByRole("treeitem", { name: "Collapse folder: src" });
+    const sourceFolder = within(fileNavigation).getByRole("treeitem", {
+      name: "Collapse folder: src",
+    });
     await user.click(sourceFolder);
     expect(sourceFolder).toHaveAttribute("aria-expanded", "false");
     expect(within(fileNavigation).queryByRole("button", { name: "Example.sol" })).toBeNull();
@@ -427,16 +499,25 @@ describe("ContractArtifactPanel", () => {
     await user.keyboard("{ArrowDown}");
     await user.keyboard("{ArrowDown}");
     await user.keyboard("{Enter}");
-    expect(screen.getByRole("textbox", { name: "Read-only source editor for src/Example.sol" })).toHaveTextContent("contract Example");
-    expect(within(fileNavigation).getByRole("treeitem", { name: "Example.sol" })).toHaveAttribute("aria-selected", "true");
+    expect(
+      screen.getByRole("textbox", { name: "Read-only source editor for src/Example.sol" }),
+    ).toHaveTextContent("contract Example");
+    expect(within(fileNavigation).getByRole("treeitem", { name: "Example.sol" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
   });
 
   it("fails closed for malformed sources while retaining raw diagnostics", async () => {
     const user = userEvent.setup();
-    render(<ContractArtifactPanel artifact={fixtureArtifact({
-      file_name: "Broken.sol",
-      sources: { "Broken.sol": { urls: ["file:///private/source.sol"] } },
-    })} />);
+    render(
+      <ContractArtifactPanel
+        artifact={fixtureArtifact({
+          file_name: "Broken.sol",
+          sources: { "Broken.sol": { urls: ["file:///private/source.sol"] } },
+        })}
+      />,
+    );
 
     expect(screen.getByRole("alert")).toHaveTextContent("No verified source entry");
     expect(screen.queryByRole("textbox", { name: /read-only source editor/iu })).toBeNull();
@@ -445,13 +526,17 @@ describe("ContractArtifactPanel", () => {
   });
 
   it("renders legacy match details with null transformations", () => {
-    render(<ContractArtifactPanel artifact={fixtureArtifact({
-      creation_match: {
-        match_type: "full",
-        transformations: null as never,
-        values: {},
-      },
-    })} />);
+    render(
+      <ContractArtifactPanel
+        artifact={fixtureArtifact({
+          creation_match: {
+            match_type: "full",
+            transformations: null as never,
+            values: {},
+          },
+        })}
+      />,
+    );
 
     expect(screen.getAllByText("0 declared transformations")).toHaveLength(2);
     expect(screen.getByRole("heading", { name: "Example" })).toBeVisible();
@@ -478,11 +563,15 @@ describe("ContractArtifactPanel", () => {
       value: requestFullscreen,
     });
 
-    render(<ContractArtifactPanel artifact={fixtureArtifact({
-      language: "yul",
-      file_name: "main.yul",
-      sources: { "main.yul": { content: "object \"Main\" { code { let value := 1 } }" } },
-    })} />);
+    render(
+      <ContractArtifactPanel
+        artifact={fixtureArtifact({
+          language: "yul",
+          file_name: "main.yul",
+          sources: { "main.yul": { content: 'object "Main" { code { let value := 1 } }' } },
+        })}
+      />,
+    );
 
     const editor = screen.getByRole("textbox", { name: "Read-only source editor for main.yul" });
     expect(editor).toHaveAttribute("contenteditable", "false");
@@ -492,37 +581,45 @@ describe("ContractArtifactPanel", () => {
 
     await user.click(screen.getByRole("button", { name: "Fullscreen" }));
     expect(requestFullscreen).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: "Exit fullscreen" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Exit fullscreen" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     await user.click(screen.getByRole("button", { name: "Exit fullscreen" }));
     expect(exitFullscreen).toHaveBeenCalledTimes(1);
-
   });
 
   it("renders Geas as read-only plain text with its pinned entrypoint settings", async () => {
     const user = userEvent.setup();
-    render(<ContractArtifactPanel artifact={fixtureArtifact({
-      language: "geas",
-      compiler_version: "0.3.3",
-      file_name: "withdrawals/main.eas",
-      contract_name: "Withdrawals",
-      sources: {
-        "withdrawals/main.eas": { content: "#include \"../common/fake_expo.eas\"\npush 1\n" },
-        "common/fake_expo.eas": { content: "#define %fake_expo { add }\n" },
-      },
-      settings: {
-        runtime_entrypoint: "withdrawals/main.eas",
-        creation_entrypoint: "withdrawals/ctor.eas",
-        stack_check: true,
-      },
-      abi: [],
-      compilation_artifacts: {},
-      creation_code_artifacts: {},
-      runtime_code_artifacts: {},
-      libraries: {},
-    })} />);
+    render(
+      <ContractArtifactPanel
+        artifact={fixtureArtifact({
+          language: "geas",
+          compiler_version: "0.3.3",
+          file_name: "withdrawals/main.eas",
+          contract_name: "Withdrawals",
+          sources: {
+            "withdrawals/main.eas": { content: '#include "../common/fake_expo.eas"\npush 1\n' },
+            "common/fake_expo.eas": { content: "#define %fake_expo { add }\n" },
+          },
+          settings: {
+            runtime_entrypoint: "withdrawals/main.eas",
+            creation_entrypoint: "withdrawals/ctor.eas",
+            stack_check: true,
+          },
+          abi: [],
+          compilation_artifacts: {},
+          creation_code_artifacts: {},
+          runtime_code_artifacts: {},
+          libraries: {},
+        })}
+      />,
+    );
 
     expect(screen.getByRole("heading", { name: "Withdrawals" })).toBeVisible();
-    expect(screen.getAllByText("0 functions · 0 events · 0 errors · 0 constructors").length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText("0 functions · 0 events · 0 errors · 0 constructors").length,
+    ).toBeGreaterThan(0);
     const editor = screen.getByRole("textbox", {
       name: "Read-only source editor for withdrawals/main.eas",
     });
@@ -533,7 +630,9 @@ describe("ContractArtifactPanel", () => {
     const settingsDisclosure = screen.getByText("Complete compiler settings").closest("details");
     expect(settingsDisclosure).not.toBeNull();
     await user.click(screen.getByText("Complete compiler settings"));
-    expect(within(settingsDisclosure as HTMLElement).getByText(/runtime_entrypoint/u)).toBeVisible();
+    expect(
+      within(settingsDisclosure as HTMLElement).getByText(/runtime_entrypoint/u),
+    ).toBeVisible();
     expect(within(settingsDisclosure as HTMLElement).getByText(/stack_check/u)).toBeVisible();
   });
 });
@@ -543,30 +642,36 @@ function fixtureArtifact(
 ): VerifiedContractArtifact {
   return {
     kind: "verification_success",
-		verification_origin: "submitted",
-		derived_children: [],
-		resolution: "exact_address",
-		target: {
-			chain_id: "1",
-			address: "0x1111111111111111111111111111111111111111",
-			code_hash: `0x${"ab".repeat(32)}`,
-			block_number: "2",
-			block_hash: `0x${"cd".repeat(32)}`,
-		},
-		source: {
-			address: "0x1111111111111111111111111111111111111111",
-			code_hash: `0x${"ab".repeat(32)}`,
-			valid_from_block: "1",
-			created_at: "2026-08-02T00:00:01Z",
-		},
+    verification_origin: "submitted",
+    derived_children: [],
+    resolution: "exact_address",
+    target: {
+      chain_id: "1",
+      address: "0x1111111111111111111111111111111111111111",
+      code_hash: `0x${"ab".repeat(32)}`,
+      block_number: "2",
+      block_hash: `0x${"cd".repeat(32)}`,
+    },
+    source: {
+      address: "0x1111111111111111111111111111111111111111",
+      code_hash: `0x${"ab".repeat(32)}`,
+      valid_from_block: "1",
+      created_at: "2026-08-02T00:00:01Z",
+    },
     language: "solidity",
     compiler_version: "0.8.30+commit.73712a01",
     file_name: "src/Example.sol",
     contract_name: "Example",
     is_blueprint: false,
     sources: {
-      "src/Example.sol": { content: "contract Example { function value() external pure returns (uint256) { return Library.value(); } }" },
-      "src/Library.sol": { content: "library Library { function value() internal pure returns (uint256) { return 1; } }" },
+      "src/Example.sol": {
+        content:
+          "contract Example { function value() external pure returns (uint256) { return Library.value(); } }",
+      },
+      "src/Library.sol": {
+        content:
+          "library Library { function value() internal pure returns (uint256) { return 1; } }",
+      },
     },
     settings: {
       optimizer: { enabled: true, runs: 500, details: { yul: true } },
@@ -589,6 +694,6 @@ function fixtureArtifact(
     runtime_code_artifacts: { sourceMap: "4:5:6" },
     runtime_match: { match_type: "full", transformations: [], values: {} },
     libraries: { Library: "0x2222222222222222222222222222222222222222" },
-		...overrides,
+    ...overrides,
   };
 }

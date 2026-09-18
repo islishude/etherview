@@ -44,58 +44,62 @@ describe("AddNetworkControl", () => {
 
     mockConfig(true);
     rerender(<AddNetworkControl menuOpen />);
-    expect(screen.getByRole("button", { name: "Add Wallet Testnet network" }))
-      .toBeDisabled();
-    expect(screen.queryByText("Install or unlock a browser wallet, then refresh discovery."))
-      .not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add Wallet Testnet network" })).toBeDisabled();
+    expect(
+      screen.queryByText("Install or unlock a browser wallet, then refresh discovery."),
+    ).not.toBeInTheDocument();
 
-    vi.mocked(useWallet).mockReturnValue(walletState({
-      addingChain: true,
-      providers: [providerA],
-    }));
+    vi.mocked(useWallet).mockReturnValue(
+      walletState({
+        addingChain: true,
+        providers: [providerA],
+      }),
+    );
     rerender(<AddNetworkControl menuOpen />);
-    expect(screen.getByRole("button", { name: "Add Wallet Testnet network" }))
-      .toBeDisabled();
+    expect(screen.getByRole("button", { name: "Add Wallet Testnet network" })).toBeDisabled();
   });
 
   it("adds through the sole discovered provider without connecting an account", async () => {
     const addChain = vi.fn(async (_uuid: string) => {});
     const connect = vi.fn(async (_uuid: string) => activeWallet());
-    vi.mocked(useWallet).mockReturnValue(walletState({
-      addChain,
-      connect,
-      providers: [providerA],
-    }));
+    vi.mocked(useWallet).mockReturnValue(
+      walletState({
+        addChain,
+        connect,
+        providers: [providerA],
+      }),
+    );
 
     render(<AddNetworkControl menuOpen />);
-    await userEvent.setup().click(
-      screen.getByRole("button", { name: "Add Wallet Testnet network" }),
-    );
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Add Wallet Testnet network" }));
 
     await waitFor(() => expect(addChain).toHaveBeenCalledWith(providerA.uuid));
     expect(connect).not.toHaveBeenCalled();
-    expect(await screen.findByText("Wallet Testnet was added to the wallet."))
-      .toBeVisible();
+    expect(await screen.findByText("Wallet Testnet was added to the wallet.")).toBeVisible();
   });
 
   it("prefers the active wallet when several providers are available", async () => {
     const addChain = vi.fn(async (_uuid: string) => {});
-    vi.mocked(useWallet).mockReturnValue(walletState({
-      active: {
-        uuid: providerB.uuid,
-        name: providerB.name,
-        account: "0x1111111111111111111111111111111111111111",
-        chainID: "1",
-        revision: 1,
-      },
-      addChain,
-      providers: [providerA, providerB],
-    }));
+    vi.mocked(useWallet).mockReturnValue(
+      walletState({
+        active: {
+          uuid: providerB.uuid,
+          name: providerB.name,
+          account: "0x1111111111111111111111111111111111111111",
+          chainID: "1",
+          revision: 1,
+        },
+        addChain,
+        providers: [providerA, providerB],
+      }),
+    );
 
     render(<AddNetworkControl menuOpen />);
-    await userEvent.setup().click(
-      screen.getByRole("button", { name: "Add Wallet Testnet network" }),
-    );
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Add Wallet Testnet network" }));
 
     await waitFor(() => expect(addChain).toHaveBeenCalledWith(providerB.uuid));
     expect(
@@ -107,16 +111,16 @@ describe("AddNetworkControl", () => {
 
   it("chooses among multiple disconnected wallets inline and resets when the menu closes", async () => {
     const addChain = vi.fn(async (_uuid: string) => {});
-    vi.mocked(useWallet).mockReturnValue(walletState({
-      addChain,
-      providers: [providerA, providerB],
-    }));
+    vi.mocked(useWallet).mockReturnValue(
+      walletState({
+        addChain,
+        providers: [providerA, providerB],
+      }),
+    );
 
     const { rerender } = render(<AddNetworkControl menuOpen />);
     const user = userEvent.setup();
-    await user.click(
-      screen.getByRole("button", { name: "Add Wallet Testnet network" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Add Wallet Testnet network" }));
     const chooser = screen.getByRole("group", {
       name: "Choose a wallet to add Wallet Testnet",
     });
@@ -132,9 +136,7 @@ describe("AddNetworkControl", () => {
       }),
     ).not.toBeInTheDocument();
 
-    await user.click(
-      screen.getByRole("button", { name: "Add Wallet Testnet network" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Add Wallet Testnet network" }));
     await user.click(screen.getByRole("button", { name: /Beta Wallet/u }));
     await waitFor(() => expect(addChain).toHaveBeenCalledWith(providerB.uuid));
   });
@@ -143,21 +145,22 @@ describe("AddNetworkControl", () => {
     const addChain = vi.fn(async (_uuid: string) => {
       throw new WalletBoundaryError("USER_REJECTED");
     });
-    vi.mocked(useWallet).mockReturnValue(walletState({
-      addChain,
-      providers: [providerA],
-    }));
+    vi.mocked(useWallet).mockReturnValue(
+      walletState({
+        addChain,
+        providers: [providerA],
+      }),
+    );
 
     const { rerender } = render(<AddNetworkControl menuOpen />);
-    await userEvent.setup().click(
-      screen.getByRole("button", { name: "Add Wallet Testnet network" }),
-    );
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Add Wallet Testnet network" }));
     expect(await screen.findByText("The wallet request was rejected.")).toBeVisible();
 
     rerender(<AddNetworkControl menuOpen={false} />);
     await waitFor(() => {
-      expect(screen.queryByText("The wallet request was rejected."))
-        .not.toBeInTheDocument();
+      expect(screen.queryByText("The wallet request was rejected.")).not.toBeInTheDocument();
     });
   });
 });

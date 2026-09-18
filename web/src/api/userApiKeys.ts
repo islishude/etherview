@@ -41,10 +41,7 @@ export async function rotateCurrentUserAPIKey(
   ).data;
 }
 
-export async function revokeCurrentUserAPIKey(
-  csrfToken: string,
-  prefix: string,
-): Promise<void> {
+export async function revokeCurrentUserAPIKey(csrfToken: string, prefix: string): Promise<void> {
   requireNoContent(
     await apiClient.DELETE("/users/me/api-keys/{prefix}", {
       params: {

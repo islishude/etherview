@@ -35,84 +35,95 @@ describe("core value and address pages", () => {
   });
 
   it("renders ETH-formatted values on transaction detail and trace", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = requestURL(input).pathname;
-      const meta = { request_id: "tx-copy-web-test", chain_id: "1" };
-      if (path === "/api/v1/config") return configResponse();
-      if (path === `/api/v1/transactions/${transactionHash}`) {
-        return Response.json({
-          data: { kind: "included", transaction: {
-            hash: transactionHash,
-            block_hash: canonicalHash,
-            block_number: "12",
-            transaction_index: 0,
-            from: address,
-            to: address,
-              nonce: "1",
-              value: "2100000000000000000",
-              gas: "567028",
-              gas_used: "430551",
-              base_fee_per_gas: "112489733",
-              effective_gas_price: "2000000000",
-              tx_fee_wei: "42000000000000",
-              burned_wei: "21000000000000",
-              gas_price: "1000000000",
-              max_fee_per_gas: "151663696",
-              max_priority_fee_per_gas: "28319880",
-              type: "2",
-              input: "0x",
-              status: "success",
-              canonical: true,
-              finality: "safe",
-            completeness: completeness(),
-          } },
-          meta,
-        });
-      }
-      if (path === `/api/v1/transactions/${transactionHash}/trace`) {
-        return Response.json({
-          data: {
-            state: "complete",
-            frames: [{
-              call_type: "CALL",
-              value: "1000000000000000000",
-              path: [],
-              parent_path: [],
-              depth: 0,
-              from: address,
-              to: address,
-              direct_reverted: false,
-              reverted: false,
-              execution: {
-                context_address: address,
-                address,
-                code_hash: `0x${"11".repeat(32)}`,
-                resolution: "direct",
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = requestURL(input).pathname;
+        const meta = { request_id: "tx-copy-web-test", chain_id: "1" };
+        if (path === "/api/v1/config") return configResponse();
+        if (path === `/api/v1/transactions/${transactionHash}`) {
+          return Response.json({
+            data: {
+              kind: "included",
+              transaction: {
+                hash: transactionHash,
+                block_hash: canonicalHash,
+                block_number: "12",
+                transaction_index: 0,
+                from: address,
+                to: address,
+                nonce: "1",
+                value: "2100000000000000000",
+                gas: "567028",
+                gas_used: "430551",
+                base_fee_per_gas: "112489733",
+                effective_gas_price: "2000000000",
+                tx_fee_wei: "42000000000000",
+                burned_wei: "21000000000000",
+                gas_price: "1000000000",
+                max_fee_per_gas: "151663696",
+                max_priority_fee_per_gas: "28319880",
+                type: "2",
+                input: "0x",
+                status: "success",
+                canonical: true,
+                finality: "safe",
+                completeness: completeness(),
               },
-              decoding: {
-                kind: "function",
-                status: "decoded",
-                function_name: "receive",
-                signature: "receive()",
-                inputs: [],
-                output_status: "empty",
-                outputs: [],
-                candidates: ["receive()"],
-                confidence: "verified",
-                abi_source: { kind: "exact_address", address, code_hash: `0x${"11".repeat(32)}` },
-              },
-            }],
-          },
-          meta,
-        });
-      }
-      return notFound();
-    }));
+            },
+            meta,
+          });
+        }
+        if (path === `/api/v1/transactions/${transactionHash}/trace`) {
+          return Response.json({
+            data: {
+              state: "complete",
+              frames: [
+                {
+                  call_type: "CALL",
+                  value: "1000000000000000000",
+                  path: [],
+                  parent_path: [],
+                  depth: 0,
+                  from: address,
+                  to: address,
+                  direct_reverted: false,
+                  reverted: false,
+                  execution: {
+                    context_address: address,
+                    address,
+                    code_hash: `0x${"11".repeat(32)}`,
+                    resolution: "direct",
+                  },
+                  decoding: {
+                    kind: "function",
+                    status: "decoded",
+                    function_name: "receive",
+                    signature: "receive()",
+                    inputs: [],
+                    output_status: "empty",
+                    outputs: [],
+                    candidates: ["receive()"],
+                    confidence: "verified",
+                    abi_source: {
+                      kind: "exact_address",
+                      address,
+                      code_hash: `0x${"11".repeat(32)}`,
+                    },
+                  },
+                },
+              ],
+            },
+            meta,
+          });
+        }
+        return notFound();
+      }),
+    );
 
     renderExplorer(`/tx/${transactionHash}`);
 
-    const detailSection = (await screen.findByText("Transaction summary"))
-      .closest("section");
+    const detailSection = (await screen.findByText("Transaction summary")).closest("section");
     if (!detailSection) throw new Error("transaction summary section is missing");
     const detailValueLabel = await within(detailSection).findByText("Value (ETH)");
     const detailValueRow = detailValueLabel.closest(".detail-item") as HTMLElement | null;
@@ -133,7 +144,9 @@ describe("core value and address pages", () => {
     expect(gasFeesRow).toHaveTextContent("Max Priority: 0.02831988 Gwei");
 
     const effectiveGasPriceLabel = await screen.findByText("Effective gas price (gwei)");
-    const effectiveGasPriceRow = effectiveGasPriceLabel.closest(".detail-item") as HTMLElement | null;
+    const effectiveGasPriceRow = effectiveGasPriceLabel.closest(
+      ".detail-item",
+    ) as HTMLElement | null;
     if (!effectiveGasPriceRow) throw new Error("effective gas price detail row missing");
     expect(within(effectiveGasPriceRow).getByText("2")).toBeVisible();
 
@@ -156,20 +169,36 @@ describe("core value and address pages", () => {
   });
 
   it("uses gas price for legacy max and max-priority fee settings", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = requestURL(input).pathname;
-      if (path === "/api/v1/config") return configResponse();
-      if (path === `/api/v1/transactions/${transactionHash}`) {
-        return envelope({
-          hash: transactionHash, block_hash: canonicalHash, block_number: "12",
-          transaction_index: 0, from: address, to: address, nonce: "1", value: "0",
-          gas: "21000", gas_used: "21000", gas_price: "151663696",
-          base_fee_per_gas: "112489733", type: "0", input: "0x", status: "success",
-          canonical: true, finality: "safe", completeness: completeness(),
-        });
-      }
-      return notFound();
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = requestURL(input).pathname;
+        if (path === "/api/v1/config") return configResponse();
+        if (path === `/api/v1/transactions/${transactionHash}`) {
+          return envelope({
+            hash: transactionHash,
+            block_hash: canonicalHash,
+            block_number: "12",
+            transaction_index: 0,
+            from: address,
+            to: address,
+            nonce: "1",
+            value: "0",
+            gas: "21000",
+            gas_used: "21000",
+            gas_price: "151663696",
+            base_fee_per_gas: "112489733",
+            type: "0",
+            input: "0x",
+            status: "success",
+            canonical: true,
+            finality: "safe",
+            completeness: completeness(),
+          });
+        }
+        return notFound();
+      }),
+    );
 
     renderExplorer(`/tx/${transactionHash}`);
     await userEvent.setup().click(await screen.findByText("More details"));
@@ -181,27 +210,48 @@ describe("core value and address pages", () => {
   });
 
   it("shows blob base and max fees in both Overview and Blob", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = requestURL(input).pathname;
-      if (path === "/api/v1/config") return configResponse();
-      if (path === `/api/v1/transactions/${transactionHash}`) {
-        return envelope({
-          hash: transactionHash, block_hash: canonicalHash, block_number: "12",
-          transaction_index: 0, from: address, to: address, nonce: "1", value: "0",
-          gas: "21000", gas_used: "21000", base_fee_per_gas: "112489733",
-          blob_base_fee_per_gas: "1000000", max_fee_per_gas: "151663696",
-          max_priority_fee_per_gas: "28319880", max_fee_per_blob_gas: "1000000000",
-          access_list: [], blob_versioned_hashes: [canonicalHash], type: "3", input: "0x",
-          status: "success", canonical: true, finality: "safe", completeness: completeness(),
-        });
-      }
-      return notFound();
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = requestURL(input).pathname;
+        if (path === "/api/v1/config") return configResponse();
+        if (path === `/api/v1/transactions/${transactionHash}`) {
+          return envelope({
+            hash: transactionHash,
+            block_hash: canonicalHash,
+            block_number: "12",
+            transaction_index: 0,
+            from: address,
+            to: address,
+            nonce: "1",
+            value: "0",
+            gas: "21000",
+            gas_used: "21000",
+            base_fee_per_gas: "112489733",
+            blob_base_fee_per_gas: "1000000",
+            max_fee_per_gas: "151663696",
+            max_priority_fee_per_gas: "28319880",
+            max_fee_per_blob_gas: "1000000000",
+            access_list: [],
+            blob_versioned_hashes: [canonicalHash],
+            type: "3",
+            input: "0x",
+            status: "success",
+            canonical: true,
+            finality: "safe",
+            completeness: completeness(),
+          });
+        }
+        return notFound();
+      }),
+    );
 
     renderExplorer(`/tx/${transactionHash}`);
     const user = userEvent.setup();
     await user.click(await screen.findByText("More details"));
-    const overviewBlobFees = screen.getByText("Blob Gas Fees").closest(".detail-item") as HTMLElement | null;
+    const overviewBlobFees = screen
+      .getByText("Blob Gas Fees")
+      .closest(".detail-item") as HTMLElement | null;
     if (!overviewBlobFees) throw new Error("overview blob fee settings row missing");
     expect(overviewBlobFees).toHaveTextContent("Blob Base Fee: 0.001 Gwei");
     expect(overviewBlobFees).toHaveTextContent("Max: 1 Gwei");
@@ -214,66 +264,74 @@ describe("core value and address pages", () => {
   });
 
   it("reports an ordinary EOA transfer trace as having no executable code", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = requestURL(input).pathname;
-      const meta = { request_id: "tx-transfer-trace-web-test", chain_id: "1" };
-      if (path === "/api/v1/config") return configResponse();
-      if (path === `/api/v1/transactions/${transactionHash}`) {
-        return Response.json({
-          data: { kind: "included", transaction: {
-            hash: transactionHash,
-            block_hash: canonicalHash,
-            block_number: "12",
-            transaction_index: 0,
-            from: address,
-            to: delegatedAddress,
-            nonce: "1",
-            value: "1000000000000000000",
-            gas: "21000",
-            gas_price: "1000000000",
-            type: "2",
-            input: "0x",
-            status: "success",
-            canonical: true,
-            finality: "safe",
-            completeness: completeness(),
-          } },
-          meta,
-        });
-      }
-      if (path === `/api/v1/transactions/${transactionHash}/trace`) {
-        return Response.json({
-          data: {
-            state: "complete",
-            frames: [{
-              call_type: "CALL",
-              value: "1000000000000000000",
-              path: [],
-              parent_path: [],
-              depth: 0,
-              from: address,
-              to: delegatedAddress,
-              input: "0x",
-              output: "0x",
-              direct_reverted: false,
-              reverted: false,
-              execution: { context_address: delegatedAddress, resolution: "empty" },
-              decoding: {
-                kind: "function",
-                status: "not_applicable",
-                inputs: [],
-                output_status: "not_applicable",
-                outputs: [],
-                candidates: [],
-                warning: "call execution code is empty",
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = requestURL(input).pathname;
+        const meta = { request_id: "tx-transfer-trace-web-test", chain_id: "1" };
+        if (path === "/api/v1/config") return configResponse();
+        if (path === `/api/v1/transactions/${transactionHash}`) {
+          return Response.json({
+            data: {
+              kind: "included",
+              transaction: {
+                hash: transactionHash,
+                block_hash: canonicalHash,
+                block_number: "12",
+                transaction_index: 0,
+                from: address,
+                to: delegatedAddress,
+                nonce: "1",
+                value: "1000000000000000000",
+                gas: "21000",
+                gas_price: "1000000000",
+                type: "2",
+                input: "0x",
+                status: "success",
+                canonical: true,
+                finality: "safe",
+                completeness: completeness(),
               },
-            }],
-          },
-          meta,
-        });
-      }
-      return notFound();
-    }));
+            },
+            meta,
+          });
+        }
+        if (path === `/api/v1/transactions/${transactionHash}/trace`) {
+          return Response.json({
+            data: {
+              state: "complete",
+              frames: [
+                {
+                  call_type: "CALL",
+                  value: "1000000000000000000",
+                  path: [],
+                  parent_path: [],
+                  depth: 0,
+                  from: address,
+                  to: delegatedAddress,
+                  input: "0x",
+                  output: "0x",
+                  direct_reverted: false,
+                  reverted: false,
+                  execution: { context_address: delegatedAddress, resolution: "empty" },
+                  decoding: {
+                    kind: "function",
+                    status: "not_applicable",
+                    inputs: [],
+                    output_status: "not_applicable",
+                    outputs: [],
+                    candidates: [],
+                    warning: "call execution code is empty",
+                  },
+                },
+              ],
+            },
+            meta,
+          });
+        }
+        return notFound();
+      }),
+    );
 
     renderExplorer(`/tx/${transactionHash}`);
     await userEvent.setup().click(await screen.findByRole("tab", { name: "Trace" }));
@@ -288,53 +346,103 @@ describe("core value and address pages", () => {
   it("shows successful internal ETH transfers in a lazy tab before token transfers", async () => {
     const createdAddress = `0x${"55".repeat(20)}`;
     const requestedPaths: string[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const url = requestURL(input);
-      requestedPaths.push(url.pathname);
-      if (url.pathname === "/api/v1/config") return configResponse();
-      if (url.pathname === `/api/v1/transactions/${transactionHash}`) {
-        return envelope({
-          hash: transactionHash, block_hash: canonicalHash, block_number: "12",
-          transaction_index: 0, from: address, to: delegatedAddress, nonce: "1",
-          value: "0", gas: "21000", input: "0x", status: "success",
-          canonical: true, finality: "safe", completeness: completeness(),
-        });
-      }
-      if (url.pathname === `/api/v1/transactions/${transactionHash}/internal-transactions`) {
-        const cursor = url.searchParams.get("cursor");
-        return envelope({
-          state: "complete", chain_id: "1", block_number: "12",
-          block_hash: canonicalHash, transaction_hash: transactionHash,
-          transaction_index: "0",
-          items: cursor === "internal-next" ? [{
-            path: [1], depth: 1, call_type: "CREATE2", from: address,
-            created_address: createdAddress, value: "2000000000000000000",
-          }] : [{
-            path: [0], depth: 1, call_type: "CALL", from: address,
-            to: delegatedAddress, value: "1250000000000000000",
-          }],
-        }, cursor ? {} : { next_cursor: "internal-next" });
-      }
-      if (url.pathname === `/api/v1/transactions/${transactionHash}/token-transfers`) {
-        return envelope({
-          state: "complete", chain_id: "1", block_number: "12",
-          block_hash: canonicalHash, transaction_hash: transactionHash,
-          transaction_index: "0", items: [{
-            chain_id: "1", block_number: "12", block_hash: canonicalHash,
-            log_index: "0", sub_index: "0", transaction_hash: transactionHash,
-            token_address: createdAddress, standard: "erc20", kind: "transfer",
-            from: address, to: delegatedAddress, amount: "1234500", decimals: 6,
-            confidence: "high",
-          }],
-        });
-      }
-      return notFound();
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = requestURL(input);
+        requestedPaths.push(url.pathname);
+        if (url.pathname === "/api/v1/config") return configResponse();
+        if (url.pathname === `/api/v1/transactions/${transactionHash}`) {
+          return envelope({
+            hash: transactionHash,
+            block_hash: canonicalHash,
+            block_number: "12",
+            transaction_index: 0,
+            from: address,
+            to: delegatedAddress,
+            nonce: "1",
+            value: "0",
+            gas: "21000",
+            input: "0x",
+            status: "success",
+            canonical: true,
+            finality: "safe",
+            completeness: completeness(),
+          });
+        }
+        if (url.pathname === `/api/v1/transactions/${transactionHash}/internal-transactions`) {
+          const cursor = url.searchParams.get("cursor");
+          return envelope(
+            {
+              state: "complete",
+              chain_id: "1",
+              block_number: "12",
+              block_hash: canonicalHash,
+              transaction_hash: transactionHash,
+              transaction_index: "0",
+              items:
+                cursor === "internal-next"
+                  ? [
+                      {
+                        path: [1],
+                        depth: 1,
+                        call_type: "CREATE2",
+                        from: address,
+                        created_address: createdAddress,
+                        value: "2000000000000000000",
+                      },
+                    ]
+                  : [
+                      {
+                        path: [0],
+                        depth: 1,
+                        call_type: "CALL",
+                        from: address,
+                        to: delegatedAddress,
+                        value: "1250000000000000000",
+                      },
+                    ],
+            },
+            cursor ? {} : { next_cursor: "internal-next" },
+          );
+        }
+        if (url.pathname === `/api/v1/transactions/${transactionHash}/token-transfers`) {
+          return envelope({
+            state: "complete",
+            chain_id: "1",
+            block_number: "12",
+            block_hash: canonicalHash,
+            transaction_hash: transactionHash,
+            transaction_index: "0",
+            items: [
+              {
+                chain_id: "1",
+                block_number: "12",
+                block_hash: canonicalHash,
+                log_index: "0",
+                sub_index: "0",
+                transaction_hash: transactionHash,
+                token_address: createdAddress,
+                standard: "erc20",
+                kind: "transfer",
+                from: address,
+                to: delegatedAddress,
+                amount: "1234500",
+                decimals: 6,
+                confidence: "high",
+              },
+            ],
+          });
+        }
+        return notFound();
+      }),
+    );
 
     renderExplorer(`/tx/${transactionHash}`);
 
-    expect(screen.queryByRole("heading", { name: "Internal Transactions" }))
-      .not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Internal Transactions" }),
+    ).not.toBeInTheDocument();
     expect(requestedPaths).not.toContain(
       `/api/v1/transactions/${transactionHash}/internal-transactions`,
     );
@@ -344,13 +452,16 @@ describe("core value and address pages", () => {
 
     const user = userEvent.setup();
     await user.click(internalTab);
-    const section = (await screen.findByRole("heading", { name: "Internal Transactions" }))
-      .closest("section");
+    const section = (await screen.findByRole("heading", { name: "Internal Transactions" })).closest(
+      "section",
+    );
     if (!section) throw new Error("internal-transactions section is missing");
     expect(within(section).getByText("CALL", { exact: true })).toBeVisible();
     expect(within(section).getByText("1.25", { exact: true })).toBeVisible();
-    expect(within(section).getByRole("link", { name: shorten(delegatedAddress) }))
-      .toHaveAttribute("href", `/address/${delegatedAddress}`);
+    expect(within(section).getByRole("link", { name: shorten(delegatedAddress) })).toHaveAttribute(
+      "href",
+      `/address/${delegatedAddress}`,
+    );
     expect(requestedPaths).not.toContain(`/api/v1/transactions/${transactionHash}/trace`);
 
     await user.click(within(section).getByRole("button", { name: "Next page" }));
@@ -366,46 +477,52 @@ describe("core value and address pages", () => {
   });
 
   it("renders transaction confirmations and block timestamp in /tx detail", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = requestURL(input).pathname;
-      const meta = { request_id: "tx-copy-web-test", chain_id: "1" };
-      if (path === "/api/v1/config") return configResponse();
-      if (path === `/api/v1/transactions/${transactionHash}`) {
-        return Response.json({
-          data: { kind: "included", transaction: {
-            hash: transactionHash,
-            block_hash: canonicalHash,
-            block_number: "12",
-            block_timestamp: "1970-01-01T00:01:40Z",
-            confirmations: "11",
-            transaction_index: 0,
-            from: address,
-            to: address,
-            nonce: "1",
-            value: "2",
-            gas: "21000",
-            gas_price: "1000000000",
-            type: "2",
-            input: "0x",
-            status: "success",
-            canonical: true,
-            finality: "safe",
-            completeness: completeness(),
-          } },
-          meta,
-        });
-      }
-      if (path === `/api/v1/transactions/${transactionHash}/trace`) {
-        return Response.json({
-          data: {
-            state: "complete",
-            frames: [],
-          },
-          meta,
-        });
-      }
-      return notFound();
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = requestURL(input).pathname;
+        const meta = { request_id: "tx-copy-web-test", chain_id: "1" };
+        if (path === "/api/v1/config") return configResponse();
+        if (path === `/api/v1/transactions/${transactionHash}`) {
+          return Response.json({
+            data: {
+              kind: "included",
+              transaction: {
+                hash: transactionHash,
+                block_hash: canonicalHash,
+                block_number: "12",
+                block_timestamp: "1970-01-01T00:01:40Z",
+                confirmations: "11",
+                transaction_index: 0,
+                from: address,
+                to: address,
+                nonce: "1",
+                value: "2",
+                gas: "21000",
+                gas_price: "1000000000",
+                type: "2",
+                input: "0x",
+                status: "success",
+                canonical: true,
+                finality: "safe",
+                completeness: completeness(),
+              },
+            },
+            meta,
+          });
+        }
+        if (path === `/api/v1/transactions/${transactionHash}/trace`) {
+          return Response.json({
+            data: {
+              state: "complete",
+              frames: [],
+            },
+            meta,
+          });
+        }
+        return notFound();
+      }),
+    );
 
     renderExplorer(`/tx/${transactionHash}`);
 
@@ -428,54 +545,62 @@ describe("core value and address pages", () => {
   });
 
   it("renders ETH-formatted native balance on address page", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = requestURL(input).pathname;
-      if (path === "/api/v1/config") return configResponse();
-      if (path === `/api/v1/addresses/${address}`) {
-        return envelope({
-          address,
-          type: "eoa",
-          balance: "1000000000000000000",
-          nonce: "0",
-          at_block: canonicalHash,
-          completeness: completeness(),
-          code_hash: canonicalHash,
-          has_delegation_history: false,
-        });
-      }
-      if (path === `/api/v1/addresses/${address}/nfts`) {
-        return envelope([]);
-      }
-      return notFound();
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = requestURL(input).pathname;
+        if (path === "/api/v1/config") return configResponse();
+        if (path === `/api/v1/addresses/${address}`) {
+          return envelope({
+            address,
+            type: "eoa",
+            balance: "1000000000000000000",
+            nonce: "0",
+            at_block: canonicalHash,
+            completeness: completeness(),
+            code_hash: canonicalHash,
+            has_delegation_history: false,
+          });
+        }
+        if (path === `/api/v1/addresses/${address}/nfts`) {
+          return envelope([]);
+        }
+        return notFound();
+      }),
+    );
 
     renderExplorer(`/address/${address}`);
 
     const detailNativeBalance = await screen.findByText("Native balance (ETH)");
-    const detailNativeBalanceRow = detailNativeBalance.closest(".detail-item") as HTMLElement | null;
+    const detailNativeBalanceRow = detailNativeBalance.closest(
+      ".detail-item",
+    ) as HTMLElement | null;
     if (!detailNativeBalanceRow) throw new Error("address native balance row missing");
     expect(within(detailNativeBalanceRow).getByText("1 ETH")).toBeVisible();
   });
 
   it("renders Genesis for both EOA origin fields without address or transaction links", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = requestURL(input).pathname;
-      if (path === "/api/v1/config") return configResponse();
-      if (path === `/api/v1/addresses/${address}`) {
-        return envelope({
-          address,
-          type: "eoa",
-          balance: "0",
-          nonce: "0",
-          at_block: canonicalHash,
-          completeness: completeness(),
-          has_delegation_history: false,
-          origin: { kind: "funding", state: "genesis" },
-        });
-      }
-      if (path === `/api/v1/addresses/${address}/nfts`) return envelope([]);
-      return notFound();
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = requestURL(input).pathname;
+        if (path === "/api/v1/config") return configResponse();
+        if (path === `/api/v1/addresses/${address}`) {
+          return envelope({
+            address,
+            type: "eoa",
+            balance: "0",
+            nonce: "0",
+            at_block: canonicalHash,
+            completeness: completeness(),
+            has_delegation_history: false,
+            origin: { kind: "funding", state: "genesis" },
+          });
+        }
+        if (path === `/api/v1/addresses/${address}/nfts`) return envelope([]);
+        return notFound();
+      }),
+    );
 
     renderExplorer(`/address/${address}`);
 
@@ -492,26 +617,29 @@ describe("core value and address pages", () => {
   });
 
   it("renders Genesis for predeploy contract origin fields", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = requestURL(input).pathname;
-      if (path === "/api/v1/config") return configResponse();
-      if (path === `/api/v1/addresses/${address}`) {
-        return envelope({
-          address,
-          name: "Activity contract",
-          type: "contract",
-          balance: "0",
-          nonce: "0",
-          at_block: canonicalHash,
-          completeness: completeness(),
-          code_hash: canonicalHash,
-          has_delegation_history: false,
-          origin: { kind: "contract_creation", state: "genesis" },
-        });
-      }
-      if (path === `/api/v1/addresses/${address}/nfts`) return envelope([]);
-      return notFound();
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = requestURL(input).pathname;
+        if (path === "/api/v1/config") return configResponse();
+        if (path === `/api/v1/addresses/${address}`) {
+          return envelope({
+            address,
+            name: "Activity contract",
+            type: "contract",
+            balance: "0",
+            nonce: "0",
+            at_block: canonicalHash,
+            completeness: completeness(),
+            code_hash: canonicalHash,
+            has_delegation_history: false,
+            origin: { kind: "contract_creation", state: "genesis" },
+          });
+        }
+        if (path === `/api/v1/addresses/${address}/nfts`) return envelope([]);
+        return notFound();
+      }),
+    );
 
     renderExplorer(`/address/${address}`);
 
@@ -520,7 +648,9 @@ describe("core value and address pages", () => {
     if (!creatorRow) throw new Error("contract-creator row is missing");
     expect(within(creatorRow).getByText("Genesis")).toBeVisible();
     const creationTransaction = screen.getByText("Creation transaction");
-    const creationTransactionRow = creationTransaction.closest(".detail-item") as HTMLElement | null;
+    const creationTransactionRow = creationTransaction.closest(
+      ".detail-item",
+    ) as HTMLElement | null;
     if (!creationTransactionRow) throw new Error("creation-transaction row is missing");
     expect(within(creationTransactionRow).getByText("Genesis")).toBeVisible();
     expect(within(creatorRow).queryByRole("link")).not.toBeInTheDocument();
@@ -530,144 +660,170 @@ describe("core value and address pages", () => {
   it("loads address activity tabs on demand and exposes contracts without summary hashes", async () => {
     const requestedPaths: string[] = [];
     const createdAddress = `0x${"55".repeat(20)}`;
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const url = requestURL(input);
-      requestedPaths.push(url.pathname);
-      if (url.pathname === "/api/v1/config") return configResponse();
-      if (url.pathname === `/api/v1/addresses/${address}`) {
-        return envelope({
-          address,
-          name: "Activity contract",
-          type: "contract",
-          balance: "1000000000000000000",
-          nonce: "7",
-          at_block: canonicalHash,
-          completeness: completeness(),
-          code_hash: olderHash,
-          has_delegation_history: false,
-          origin: {
-            kind: "contract_creation",
-            state: "found",
-            source_address: createdAddress,
-            transaction_hash: transactionHash,
-          },
-        });
-      }
-      if (url.pathname === `/api/v1/addresses/${address}/transactions`) {
-        return envelope([{
-          hash: transactionHash,
-          status: "success",
-          block_hash: canonicalHash,
-          block_number: "12",
-          block_timestamp: "2026-07-28T08:00:00Z",
-          from: address,
-          to: address,
-          transaction_index: 0,
-          nonce: "7",
-          value: "1000000000000000000",
-          gas: "21000",
-          input: "0x",
-          method: "transferTokensWithAnIntentionallyLongMethodName",
-          method_signature: "transferTokensWithAnIntentionallyLongMethodName(address,uint256)",
-          completeness: completeness(),
-          finality: "safe",
-          canonical: true,
-        }]);
-      }
-      if (url.pathname === `/api/v1/addresses/${address}/internal-transactions`) {
-        return envelope([{
-          block_hash: canonicalHash,
-          block_number: "12",
-          block_timestamp: "2026-07-28T08:00:00Z",
-          transaction_hash: transactionHash,
-          transaction_index: "0",
-          path: [0],
-          depth: 1,
-          call_type: "create",
-          from: address,
-          created_address: createdAddress,
-          value: "2",
-          reverted: false,
-        }]);
-      }
-      if (url.pathname === `/api/v1/addresses/${address}/withdrawals`) {
-        if (url.searchParams.get("cursor") === "withdrawal-next") {
-          return envelope([{
-            index: "1",
-            validator_index: "101",
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = requestURL(input);
+        requestedPaths.push(url.pathname);
+        if (url.pathname === "/api/v1/config") return configResponse();
+        if (url.pathname === `/api/v1/addresses/${address}`) {
+          return envelope({
             address,
-            amount: "1000000000",
-            block_number: "9",
-            block_hash: transactionHash,
-            block_timestamp: "2026-07-26T08:00:00Z",
-          }]);
+            name: "Activity contract",
+            type: "contract",
+            balance: "1000000000000000000",
+            nonce: "7",
+            at_block: canonicalHash,
+            completeness: completeness(),
+            code_hash: olderHash,
+            has_delegation_history: false,
+            origin: {
+              kind: "contract_creation",
+              state: "found",
+              source_address: createdAddress,
+              transaction_hash: transactionHash,
+            },
+          });
         }
-        return envelope([{
-          index: "10",
-          validator_index: "110",
-          address,
-          amount: "3200000000",
-          block_number: "12",
-          block_hash: canonicalHash,
-          block_timestamp: "2026-07-28T08:00:00Z",
-        }, {
-          index: "2",
-          validator_index: "102",
-          address,
-          amount: "1",
-          block_number: "10",
-          block_hash: olderHash,
-          block_timestamp: "2026-07-27T08:00:00Z",
-        }], { next_cursor: "withdrawal-next" });
-      }
-      if (url.pathname === `/api/v1/addresses/${address}/erc20-transfers`) {
-        return envelope([{
-          block_hash: canonicalHash,
-          block_number: "12",
-          block_timestamp: "2026-07-28T08:00:00Z",
-          transaction_hash: transactionHash,
-          transaction_index: "0",
-          log_index: "1",
-          sub_index: "0",
-          token_address: createdAddress,
-          standard: "erc20",
-          kind: "transfer",
-          from: address,
-          to: createdAddress,
-          amount: "1234500",
-          decimals: 6,
-          confidence: "high",
-        }]);
-      }
-      if (url.pathname === `/api/v1/addresses/${address}/nfts`) {
-        return envelope([]);
-      }
-      if (url.pathname === `/api/v1/addresses/${address}/erc20-balances`) {
-        return envelope([{
-          chain_id: "1",
-          owner: address,
-          token_address: createdAddress,
-          balance: "1234500",
-          confidence: "rpc_exact",
-          name: "Asset Token",
-          symbol: "AST",
-          decimals: 4,
-        }]);
-      }
-      return notFound();
-    }));
+        if (url.pathname === `/api/v1/addresses/${address}/transactions`) {
+          return envelope([
+            {
+              hash: transactionHash,
+              status: "success",
+              block_hash: canonicalHash,
+              block_number: "12",
+              block_timestamp: "2026-07-28T08:00:00Z",
+              from: address,
+              to: address,
+              transaction_index: 0,
+              nonce: "7",
+              value: "1000000000000000000",
+              gas: "21000",
+              input: "0x",
+              method: "transferTokensWithAnIntentionallyLongMethodName",
+              method_signature: "transferTokensWithAnIntentionallyLongMethodName(address,uint256)",
+              completeness: completeness(),
+              finality: "safe",
+              canonical: true,
+            },
+          ]);
+        }
+        if (url.pathname === `/api/v1/addresses/${address}/internal-transactions`) {
+          return envelope([
+            {
+              block_hash: canonicalHash,
+              block_number: "12",
+              block_timestamp: "2026-07-28T08:00:00Z",
+              transaction_hash: transactionHash,
+              transaction_index: "0",
+              path: [0],
+              depth: 1,
+              call_type: "create",
+              from: address,
+              created_address: createdAddress,
+              value: "2",
+              reverted: false,
+            },
+          ]);
+        }
+        if (url.pathname === `/api/v1/addresses/${address}/withdrawals`) {
+          if (url.searchParams.get("cursor") === "withdrawal-next") {
+            return envelope([
+              {
+                index: "1",
+                validator_index: "101",
+                address,
+                amount: "1000000000",
+                block_number: "9",
+                block_hash: transactionHash,
+                block_timestamp: "2026-07-26T08:00:00Z",
+              },
+            ]);
+          }
+          return envelope(
+            [
+              {
+                index: "10",
+                validator_index: "110",
+                address,
+                amount: "3200000000",
+                block_number: "12",
+                block_hash: canonicalHash,
+                block_timestamp: "2026-07-28T08:00:00Z",
+              },
+              {
+                index: "2",
+                validator_index: "102",
+                address,
+                amount: "1",
+                block_number: "10",
+                block_hash: olderHash,
+                block_timestamp: "2026-07-27T08:00:00Z",
+              },
+            ],
+            { next_cursor: "withdrawal-next" },
+          );
+        }
+        if (url.pathname === `/api/v1/addresses/${address}/erc20-transfers`) {
+          return envelope([
+            {
+              block_hash: canonicalHash,
+              block_number: "12",
+              block_timestamp: "2026-07-28T08:00:00Z",
+              transaction_hash: transactionHash,
+              transaction_index: "0",
+              log_index: "1",
+              sub_index: "0",
+              token_address: createdAddress,
+              standard: "erc20",
+              kind: "transfer",
+              from: address,
+              to: createdAddress,
+              amount: "1234500",
+              decimals: 6,
+              confidence: "high",
+            },
+          ]);
+        }
+        if (url.pathname === `/api/v1/addresses/${address}/nfts`) {
+          return envelope([]);
+        }
+        if (url.pathname === `/api/v1/addresses/${address}/erc20-balances`) {
+          return envelope([
+            {
+              chain_id: "1",
+              owner: address,
+              token_address: createdAddress,
+              balance: "1234500",
+              confidence: "rpc_exact",
+              name: "Asset Token",
+              symbol: "AST",
+              decimals: 4,
+            },
+          ]);
+        }
+        return notFound();
+      }),
+    );
 
     renderExplorer(`/address/${address}`);
 
     const contractLink = await screen.findByRole("link", { name: "Contract" });
     const addressTabs = screen.getByRole("navigation", { name: "Address activity sections" });
-    expect(within(addressTabs).getAllByRole("link").slice(0, 6).map((link) => link.textContent)).toEqual([
-      "Transactions", "Internal Transactions", "Withdrawals", "ERC-20 Transfers", "NFT Transfers", "Assets",
+    expect(
+      within(addressTabs)
+        .getAllByRole("link")
+        .slice(0, 6)
+        .map((link) => link.textContent),
+    ).toEqual([
+      "Transactions",
+      "Internal Transactions",
+      "Withdrawals",
+      "ERC-20 Transfers",
+      "NFT Transfers",
+      "Assets",
     ]);
-    expect(contractLink).toHaveAttribute(
-      "href",
-      `/address/${address}#code`,
-    );
+    expect(contractLink).toHaveAttribute("href", `/address/${address}#code`);
     expect(contractLink).toHaveClass("transaction-tab");
     expect(contractLink).not.toHaveClass("active", "contract-entry");
     expect(screen.getByRole("heading", { level: 1, name: "Contract" })).toBeVisible();
@@ -690,6 +846,7 @@ describe("core value and address pages", () => {
     expect(within(dialog).getByText(`ethereum:${address}@1`)).toBeVisible();
     await userEvent.setup().keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show QR code" })).toHaveFocus();
     expect(screen.queryByText("Data completeness")).not.toBeInTheDocument();
     expect(screen.queryByText("Code hash")).not.toBeInTheDocument();
     expect(screen.queryByText("State block hash")).not.toBeInTheDocument();
@@ -699,13 +856,28 @@ describe("core value and address pages", () => {
     if (!transactionRow) throw new Error("address transaction row is missing");
     const transactionTable = transactionRow.closest("table");
     if (!transactionTable) throw new Error("address transaction table is missing");
-    expect(within(transactionTable).getAllByRole("columnheader").map((header) => header.textContent)).toEqual([
-      "Hash", "Method", "Block", "Timestamp", "Status", "From", "Direction", "To", "Value (ETH)", "Finality",
+    expect(
+      within(transactionTable)
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent),
+    ).toEqual([
+      "Hash",
+      "Method",
+      "Block",
+      "Timestamp",
+      "Status",
+      "From",
+      "Direction",
+      "To",
+      "Value (ETH)",
+      "Finality",
     ]);
     const transactionCells = within(transactionRow).getAllByRole("cell");
     expect(transactionCells).toHaveLength(10);
     expect(transactionCells[4]?.querySelector('[data-status="success"]')).not.toBeNull();
-    expect(transactionCells[4]?.querySelector(".transaction-status-group")?.childElementCount).toBe(1);
+    expect(transactionCells[4]?.querySelector(".transaction-status-group")?.childElementCount).toBe(
+      1,
+    );
     expect(within(transactionCells[9]!).getByText("Safe", { exact: true })).toBeVisible();
     expect(screen.getByRole("columnheader", { name: "Method" })).toBeVisible();
     expect(screen.getByRole("columnheader", { name: "Direction" })).toBeVisible();
@@ -725,9 +897,7 @@ describe("core value and address pages", () => {
     expect(
       within(transactionRow).queryByRole("link", { name: shorten(address) }),
     ).not.toBeInTheDocument();
-    expect(
-      within(transactionRow).getAllByRole("button", { name: "Copy" }),
-    ).toHaveLength(2);
+    expect(within(transactionRow).getAllByRole("button", { name: "Copy" })).toHaveLength(2);
     expect(requestedPaths).toContain(`/api/v1/addresses/${address}/transactions`);
     expect(requestedPaths).not.toContain(`/api/v1/addresses/${address}/internal-transactions`);
     expect(requestedPaths).not.toContain(`/api/v1/addresses/${address}/withdrawals`);
@@ -748,16 +918,16 @@ describe("core value and address pages", () => {
     expect(
       within(internalRow).getByRole("link", { name: shorten(createdAddress) }),
     ).toHaveAttribute("href", `/address/${createdAddress}?tab=transactions`);
-    expect(
-      within(internalRow).getAllByRole("button", { name: "Copy" }),
-    ).toHaveLength(2);
+    expect(within(internalRow).getAllByRole("button", { name: "Copy" })).toHaveLength(2);
     expect(within(internalRow).getByText("OUT")).toBeVisible();
     expect(requestedPaths).toContain(`/api/v1/addresses/${address}/internal-transactions`);
     expect(requestedPaths).not.toContain(`/api/v1/addresses/${address}/nfts`);
 
     await user.click(screen.getByRole("link", { name: "Withdrawals" }));
     const withdrawalTable = await screen.findByRole("table", { name: "Withdrawals" });
-    expect(within(withdrawalTable).queryByRole("columnheader", { name: "Finality" })).not.toBeInTheDocument();
+    expect(
+      within(withdrawalTable).queryByRole("columnheader", { name: "Finality" }),
+    ).not.toBeInTheDocument();
     const withdrawalRows = within(withdrawalTable).getAllByRole("row").slice(1);
     expect(withdrawalRows).toHaveLength(2);
     expect(withdrawalRows[0]).toHaveTextContent("10");
@@ -765,12 +935,17 @@ describe("core value and address pages", () => {
     expect(within(withdrawalRows[0]!).getByText("3.2 Ether")).toBeVisible();
     expect(within(withdrawalRows[1]!).getByText("0.000000001 Ether")).toBeVisible();
     expect(within(withdrawalRows[0]!).getByRole("link", { name: "12" })).toHaveAttribute(
-      "href", `/blocks/${canonicalHash}`,
+      "href",
+      `/blocks/${canonicalHash}`,
     );
     expect(requestedPaths).toContain(`/api/v1/addresses/${address}/withdrawals`);
     await user.click(screen.getByRole("button", { name: "Next page" }));
     expect(await screen.findByText("Page 2", { exact: true })).toBeVisible();
-    expect(within(screen.getByRole("table", { name: "Withdrawals" })).getByText("1 Ether", { exact: true })).toBeVisible();
+    expect(
+      within(screen.getByRole("table", { name: "Withdrawals" })).getByText("1 Ether", {
+        exact: true,
+      }),
+    ).toBeVisible();
 
     await user.click(screen.getByRole("link", { name: "ERC-20 Transfers" }));
     expect(await screen.findByText("1.2345", { exact: true })).toBeVisible();
@@ -787,11 +962,8 @@ describe("core value and address pages", () => {
     expect(screen.getByText("123.45 AST")).toBeVisible();
     expect(requestedPaths).toContain(`/api/v1/addresses/${address}/nfts`);
     expect(requestedPaths).toContain(`/api/v1/addresses/${address}/erc20-balances`);
-
   });
-
 });
-
 
 function _block(number: string, hash: string, canonical = true) {
   return {
@@ -811,19 +983,22 @@ function _block(number: string, hash: string, canonical = true) {
 }
 
 function _statusResponse(overrides: Record<string, unknown>, meta: Record<string, unknown> = {}) {
-  return envelope({
-    chain_id: "1",
-    core_ready: true,
-    latest_block: "12",
-    indexed_block: "12",
-    highest_covered_block: "12",
-    backfill_complete: true,
-    safe_block: "12",
-    finalized_block: "10",
-    lag: "0",
-    completeness: completeness(),
-    ...overrides,
-  }, meta);
+  return envelope(
+    {
+      chain_id: "1",
+      core_ready: true,
+      latest_block: "12",
+      indexed_block: "12",
+      highest_covered_block: "12",
+      backfill_complete: true,
+      safe_block: "12",
+      finalized_block: "10",
+      lag: "0",
+      completeness: completeness(),
+      ...overrides,
+    },
+    meta,
+  );
 }
 
 function configResponse() {
@@ -839,7 +1014,10 @@ function configResponse() {
 
 function completeness() {
   return {
-    core: "complete", trace: "unavailable", metadata: "pending", state: "complete",
+    core: "complete",
+    trace: "unavailable",
+    metadata: "pending",
+    state: "complete",
     user_operations: "unavailable",
   };
 }
@@ -876,19 +1054,24 @@ function envelope(data: unknown, meta: Record<string, unknown> = {}) {
 function includedTransactionFixture(data: unknown): data is Record<string, unknown> {
   if (!data || Array.isArray(data) || typeof data !== "object") return false;
   const candidate = data as Record<string, unknown>;
-  return typeof candidate.hash === "string"
-    && typeof candidate.from === "string"
-    && typeof candidate.nonce === "string"
-    && typeof candidate.gas === "string"
-    && typeof candidate.input === "string"
-    && typeof candidate.canonical === "boolean"
-    && typeof candidate.finality === "string";
+  return (
+    typeof candidate.hash === "string" &&
+    typeof candidate.from === "string" &&
+    typeof candidate.nonce === "string" &&
+    typeof candidate.gas === "string" &&
+    typeof candidate.input === "string" &&
+    typeof candidate.canonical === "boolean" &&
+    typeof candidate.finality === "string"
+  );
 }
 
 function notFound() {
-  return Response.json({
-    error: { code: "not_found", message: "not found", request_id: "core-pages-test" },
-  }, { status: 404 });
+  return Response.json(
+    {
+      error: { code: "not_found", message: "not found", request_id: "core-pages-test" },
+    },
+    { status: 404 },
+  );
 }
 
 function requestURL(input: RequestInfo | URL) {

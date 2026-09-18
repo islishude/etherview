@@ -62,12 +62,14 @@ describe("embedded explorer shell", () => {
     await i18n.changeLanguage("en");
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(
-        Response.json(
-          { error: { code: "NOT_READY", message: "API not ready" } },
-          { status: 503 },
+      vi
+        .fn()
+        .mockResolvedValue(
+          Response.json(
+            { error: { code: "NOT_READY", message: "API not ready" } },
+            { status: 503 },
+          ),
         ),
-      ),
     );
   });
 
@@ -161,33 +163,37 @@ describe("embedded explorer shell", () => {
           lag: "0",
           completeness,
         },
-        blocks: [{
-          hash: blockHash,
-          number: "12",
-          parent_hash: `0x${"aa".repeat(32)}`,
-          timestamp: "2026-01-01T00:00:00Z",
-          transaction_count: 1,
-          gas_used: "21000",
-          canonical: true,
-          finality: "latest",
-          completeness,
-        }],
-        transactions: [{
-          hash: transactionHash,
-          block_hash: blockHash,
-          block_number: "12",
-          transaction_index: 0,
-          from: address,
-          to: address,
-          nonce: "0",
-          value: "1",
-          gas: "21000",
-          input: "0x",
-          status: "success",
-          canonical: true,
-          finality: "latest",
-          completeness,
-        }],
+        blocks: [
+          {
+            hash: blockHash,
+            number: "12",
+            parent_hash: `0x${"aa".repeat(32)}`,
+            timestamp: "2026-01-01T00:00:00Z",
+            transaction_count: 1,
+            gas_used: "21000",
+            canonical: true,
+            finality: "latest",
+            completeness,
+          },
+        ],
+        transactions: [
+          {
+            hash: transactionHash,
+            block_hash: blockHash,
+            block_number: "12",
+            transaction_index: 0,
+            from: address,
+            to: address,
+            nonce: "0",
+            value: "1",
+            gas: "21000",
+            input: "0x",
+            status: "success",
+            canonical: true,
+            finality: "latest",
+            completeness,
+          },
+        ],
       },
       meta: {
         request_id: "web-test",
@@ -213,16 +219,10 @@ describe("embedded explorer shell", () => {
         });
       }
       if (path === "/api/v1/home") return Response.json(homeSnapshot);
-      return Response.json(
-        { error: { code: "NOT_FOUND", message: "not found" } },
-        { status: 404 },
-      );
+      return Response.json({ error: { code: "NOT_FOUND", message: "not found" } }, { status: 404 });
     });
     vi.stubGlobal("fetch", fetchMock);
-    vi.stubGlobal(
-      "EventSource",
-      AppEventSource as unknown as typeof EventSource,
-    );
+    vi.stubGlobal("EventSource", AppEventSource as unknown as typeof EventSource);
     AppEventSource.latest = undefined;
     renderExplorer("/");
     await act(async () => {
@@ -234,20 +234,20 @@ describe("embedded explorer shell", () => {
     expect(screen.getByText("0xcdcdcd…cdcdcd")).toBeVisible();
     expect(screen.getByText("1 minute ago")).toBeVisible();
     expect(document.querySelector(".hero")).not.toBeInTheDocument();
-    expect(screen.queryByText("Follow every block, call and asset movement."))
-      .not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Follow every block, call and asset movement."),
+    ).not.toBeInTheDocument();
 
     const brand = screen.getByRole("link", { name: "Etherview home" });
     const brandMark = brand.querySelector("img.brand-mark");
     expect(brandMark).toHaveAttribute("alt", "");
     expect(brandMark).toHaveAttribute("aria-hidden", "true");
-    expect(brandMark).toHaveAttribute(
-      "src",
-      expect.stringMatching(/etherview-mark.*\.svg$/),
-    );
-    expect(fetchMock.mock.calls.some(([input]) =>
-      /^\/api\/v1\/(status|blocks|transactions)(?:\?|$)/.test(String(input)),
-    )).toBe(false);
+    expect(brandMark).toHaveAttribute("src", expect.stringMatching(/etherview-mark.*\.svg$/));
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        /^\/api\/v1\/(status|blocks|transactions)(?:\?|$)/.test(String(input)),
+      ),
+    ).toBe(false);
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1_000);
@@ -294,7 +294,10 @@ describe("embedded explorer shell", () => {
             meta,
           });
         }
-        return Response.json({ error: { code: "NOT_FOUND", message: "not found" } }, { status: 404 });
+        return Response.json(
+          { error: { code: "NOT_FOUND", message: "not found" } },
+          { status: 404 },
+        );
       }),
     );
 
@@ -318,37 +321,50 @@ describe("embedded explorer shell", () => {
       const meta = { request_id: "token-web-test", chain_id: "1" };
       if (path === `/api/v1/tokens/${address}/transfers?limit=25`) {
         return Response.json({
-          data: [{
-            chain_id: "1",
-            block_number: "42",
-            block_hash: blockHash,
-            log_index: "3",
-            sub_index: "0",
-            transaction_hash: transactionHash,
-            token_address: address,
-            standard: "erc20",
-            kind: "transfer",
-            from: peer,
-            to: address,
-            amount: "1000000",
-            decimals: 6,
-            confidence: "verified",
-          }],
+          data: [
+            {
+              chain_id: "1",
+              block_number: "42",
+              block_hash: blockHash,
+              log_index: "3",
+              sub_index: "0",
+              transaction_hash: transactionHash,
+              token_address: address,
+              standard: "erc20",
+              kind: "transfer",
+              from: peer,
+              to: address,
+              amount: "1000000",
+              decimals: 6,
+              confidence: "verified",
+            },
+          ],
           meta,
         });
       }
       if (path === `/api/v1/tokens/${address}/holders?limit=50`) {
         return Response.json({
-          data: [{
-            chain_id: "1", token_address: address, holder_address: peer,
-            balance: "1000000", confidence: "rpc_exact",
-            observed_block_number: "42", observed_block_hash: blockHash,
-          }],
+          data: [
+            {
+              chain_id: "1",
+              token_address: address,
+              holder_address: peer,
+              balance: "1000000",
+              confidence: "rpc_exact",
+              observed_block_number: "42",
+              observed_block_hash: blockHash,
+            },
+          ],
           meta: {
-            request_id: "token-web-test", chain_id: "1",
-            snapshot_block_number: "42", snapshot_block_hash: blockHash,
-            coverage_start: "0", coverage_end: "42", holder_count: "1",
-            total_supply: "1000000000", reconciled_balance_sum: "1000000000",
+            request_id: "token-web-test",
+            chain_id: "1",
+            snapshot_block_number: "42",
+            snapshot_block_hash: blockHash,
+            coverage_start: "0",
+            coverage_end: "42",
+            holder_count: "1",
+            total_supply: "1000000000",
+            reconciled_balance_sum: "1000000000",
           },
         });
       }
@@ -432,30 +448,33 @@ describe("embedded explorer shell", () => {
         }
         if (path === `/api/v1/transactions/${hash}`) {
           return Response.json({
-            data: { kind: "included", transaction: {
-              hash,
-              block_hash: blockHash,
-              block_number: "42",
-              transaction_index: 0,
-              from: address,
-              to: address,
-              nonce: "1",
-              value: "2",
-              gas: "21000",
-              effective_gas_price: "2000000000",
-              tx_fee_wei: "42000000000000",
-              burned_wei: "21000000000000",
-              input: "0x",
-              status: "success",
-              canonical: true,
-              finality: "safe",
-              completeness: {
-                core: "complete",
-                trace: "unavailable",
-                metadata: "pending",
-                state: "complete",
+            data: {
+              kind: "included",
+              transaction: {
+                hash,
+                block_hash: blockHash,
+                block_number: "42",
+                transaction_index: 0,
+                from: address,
+                to: address,
+                nonce: "1",
+                value: "2",
+                gas: "21000",
+                effective_gas_price: "2000000000",
+                tx_fee_wei: "42000000000000",
+                burned_wei: "21000000000000",
+                input: "0x",
+                status: "success",
+                canonical: true,
+                finality: "safe",
+                completeness: {
+                  core: "complete",
+                  trace: "unavailable",
+                  metadata: "pending",
+                  state: "complete",
+                },
               },
-            } },
+            },
             meta,
           });
         }
@@ -519,14 +538,16 @@ describe("embedded explorer shell", () => {
               interval: "day",
               from_time: "2026-01-01T00:00:00Z",
               to_time: "2026-01-08T00:00:00Z",
-              points: [{
-                bucket_start: "2026-01-07T00:00:00Z",
-                bucket_end: "2026-01-08T00:00:00Z",
-                value: "123456789012345678901234567890",
-                partial: false,
-                from_block: "1",
-                to_block: "12",
-              }],
+              points: [
+                {
+                  bucket_start: "2026-01-07T00:00:00Z",
+                  bucket_end: "2026-01-08T00:00:00Z",
+                  value: "123456789012345678901234567890",
+                  partial: false,
+                  from_block: "1",
+                  to_block: "12",
+                },
+              ],
               summary: {
                 current: "123456789012345678901234567890",
                 highest: "123456789012345678901234567890",
@@ -547,14 +568,21 @@ describe("embedded explorer shell", () => {
             meta,
           });
         }
-        return Response.json({ error: { code: "NOT_FOUND", message: "not found" } }, { status: 404 });
+        return Response.json(
+          { error: { code: "NOT_FOUND", message: "not found" } },
+          { status: 404 },
+        );
       }),
     );
 
     renderExplorer("/charts/execution-fees?range=7d&interval=day");
 
-    expect(await screen.findByRole("heading", { name: "Execution gas fees", level: 1 })).toBeVisible();
-    expect(await screen.findByText("Accessible exact values from the same response used by the chart")).toBeVisible();
+    expect(
+      await screen.findByRole("heading", { name: "Execution gas fees", level: 1 }),
+    ).toBeVisible();
+    expect(
+      await screen.findByText("Accessible exact values from the same response used by the chart"),
+    ).toBeVisible();
     expect(screen.getAllByText("123456789012345678901234567890").length).toBeGreaterThan(0);
     expect(screen.getByRole("table")).toBeVisible();
   });
@@ -571,15 +599,21 @@ describe("embedded explorer shell", () => {
       vi.fn(async (input: RequestInfo | URL) => {
         const path = String(input);
         if (path === "/api/v1/stats/charts/overview") {
-          return Response.json({
-            error: {
-              code: "analytics_pending",
-              message: "historical analytics are still being rebuilt",
-              request_id: "chart-stage-test",
+          return Response.json(
+            {
+              error: {
+                code: "analytics_pending",
+                message: "historical analytics are still being rebuilt",
+                request_id: "chart-stage-test",
+              },
             },
-          }, { status: 503 });
+            { status: 503 },
+          );
         }
-        return Response.json({ error: { code: "NOT_READY", message: "not ready" } }, { status: 503 });
+        return Response.json(
+          { error: { code: "NOT_READY", message: "not ready" } },
+          { status: 503 },
+        );
       }),
     );
 
@@ -610,28 +644,38 @@ describe("embedded explorer shell", () => {
     vi.stubGlobal("fetch", fetcher);
 
     renderExplorer("/verify");
-    fireEvent.change(await screen.findByLabelText(/^Standard JSON input/), { target: { value: "{" } });
+    fireEvent.change(await screen.findByLabelText(/^Standard JSON input/), {
+      target: { value: "{" },
+    });
     await userEvent.setup().click(screen.getByRole("button", { name: "Submit verification" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Standard JSON input is not valid JSON.");
-    expect(fetcher.mock.calls.every(([input]) => String(input) !== "/api/v1/verification/jobs")).toBe(true);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Standard JSON input is not valid JSON.",
+    );
+    expect(
+      fetcher.mock.calls.every(([input]) => String(input) !== "/api/v1/verification/jobs"),
+    ).toBe(true);
 
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => Response.json({
-        data: {
-          chain_id: "1",
-          chain_name: "Testnet",
-          native_symbol: "ETH",
-          native_name: "Ether",
-          native_decimals: 18,
-          features: { verification: false },
-        },
-        meta: { request_id: "verify-disabled-test", chain_id: "1" },
-      })),
+      vi.fn(async () =>
+        Response.json({
+          data: {
+            chain_id: "1",
+            chain_name: "Testnet",
+            native_symbol: "ETH",
+            native_name: "Ether",
+            native_decimals: 18,
+            features: { verification: false },
+          },
+          meta: { request_id: "verify-disabled-test", chain_id: "1" },
+        }),
+      ),
     );
     renderExplorer("/verify");
-    expect(await screen.findByRole("heading", { name: "Public verification is unavailable", level: 2 })).toBeVisible();
+    expect(
+      await screen.findByRole("heading", { name: "Public verification is unavailable", level: 2 }),
+    ).toBeVisible();
   });
 
   it("submits and polls a verification job without persisting or routing the API key", async () => {
@@ -661,21 +705,26 @@ describe("embedded explorer shell", () => {
         return Response.json({
           data: {
             language: "solidity",
-            versions: [
-              "0.8.3+commit.8d00100c",
-              "0.8.20+commit.a1b79de6",
-              "0.8.30+commit.73712a01",
-            ],
+            versions: ["0.8.3+commit.8d00100c", "0.8.20+commit.a1b79de6", "0.8.30+commit.73712a01"],
           },
           meta,
         });
       }
       if (path === `/api/v1/contracts/${address}/verification` && init?.method === "POST") {
         submittedBody = JSON.parse(String(init.body)) as Record<string, unknown>;
-        return Response.json({
-          data: { id: jobID, kind: "address", status: "queued", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" },
-          meta,
-        }, { status: 202 });
+        return Response.json(
+          {
+            data: {
+              id: jobID,
+              kind: "address",
+              status: "queued",
+              created_at: "2026-01-01T00:00:00Z",
+              updated_at: "2026-01-01T00:00:00Z",
+            },
+            meta,
+          },
+          { status: 202 },
+        );
       }
       if (path === `/api/v1/verifier/jobs/${jobID}`) {
         return Response.json({
@@ -710,7 +759,7 @@ describe("embedded explorer shell", () => {
     renderExplorer(`/verify?address=${address}`);
 
     expect(await screen.findByLabelText("Address")).toHaveValue(address);
-    const compilerVersion = await screen.findByLabelText("Compiler version") as HTMLSelectElement;
+    const compilerVersion = (await screen.findByLabelText("Compiler version")) as HTMLSelectElement;
     expect(Array.from(compilerVersion.options, (option) => option.value)).toEqual([
       "0.8.3+commit.8d00100c",
       "0.8.20+commit.a1b79de6",
@@ -731,8 +780,9 @@ describe("embedded explorer shell", () => {
     expect(submittedBody).not.toHaveProperty("at_block_hash");
     expect(submittedBody).not.toHaveProperty("creation_bytecode");
     expect(submittedBody).not.toHaveProperty("runtime_bytecode");
-    const protectedCalls = fetcher.mock.calls.filter(([input]) =>
-      String(input).includes("/verification") || String(input).includes("/verifier/jobs/"),
+    const protectedCalls = fetcher.mock.calls.filter(
+      ([input]) =>
+        String(input).includes("/verification") || String(input).includes("/verifier/jobs/"),
     );
     expect(protectedCalls).toHaveLength(2);
     for (const [url, init] of protectedCalls) {
@@ -741,7 +791,9 @@ describe("embedded explorer shell", () => {
     }
     expect(window.location.href).not.toContain(secret);
     expect(storageSpy.mock.calls.every(([, value]) => !String(value).includes(secret))).toBe(true);
-    expect(consoleSpy.mock.calls.flat().every((value) => !String(value).includes(secret))).toBe(true);
+    expect(consoleSpy.mock.calls.flat().every((value) => !String(value).includes(secret))).toBe(
+      true,
+    );
   });
 
   it("submits a multi-file Geas address verification with explicit entrypoints", async () => {
@@ -772,10 +824,19 @@ describe("embedded explorer shell", () => {
       }
       if (path === `/api/v1/contracts/${address}/verification` && init?.method === "POST") {
         submittedBody = JSON.parse(String(init.body)) as Record<string, unknown>;
-        return Response.json({
-          data: { id: jobID, kind: "address", status: "queued", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" },
-          meta,
-        }, { status: 202 });
+        return Response.json(
+          {
+            data: {
+              id: jobID,
+              kind: "address",
+              status: "queued",
+              created_at: "2026-01-01T00:00:00Z",
+              updated_at: "2026-01-01T00:00:00Z",
+            },
+            meta,
+          },
+          { status: 202 },
+        );
       }
       if (path === `/api/v1/verifier/jobs/${jobID}`) {
         return Response.json({
@@ -820,14 +881,20 @@ describe("embedded explorer shell", () => {
     expect(screen.getByLabelText("Input format")).toBeDisabled();
     expect(screen.getByLabelText("Input format")).toHaveValue("geas_sources");
     expect(await screen.findByLabelText("Compiler version")).toHaveValue("0.3.3");
-    fireEvent.change(screen.getByLabelText("Runtime entrypoint"), { target: { value: "system/main.eas" } });
-    fireEvent.change(screen.getByLabelText("Creation entrypoint (optional)"), { target: { value: "system/ctor.eas" } });
-    fireEvent.change(screen.getByLabelText("Contract name (optional)"), { target: { value: "Withdrawals" } });
+    fireEvent.change(screen.getByLabelText("Runtime entrypoint"), {
+      target: { value: "system/main.eas" },
+    });
+    fireEvent.change(screen.getByLabelText("Creation entrypoint (optional)"), {
+      target: { value: "system/ctor.eas" },
+    });
+    fireEvent.change(screen.getByLabelText("Contract name (optional)"), {
+      target: { value: "Withdrawals" },
+    });
     fireEvent.change(screen.getByLabelText(/^Geas source files/), {
       target: {
         value: JSON.stringify({
-          "system/main.eas": "#include \"../common/value.eas\"\npush VALUE\n",
-          "system/ctor.eas": "#bytes code: assemble(\"main.eas\")\n",
+          "system/main.eas": '#include "../common/value.eas"\npush VALUE\n',
+          "system/ctor.eas": '#bytes code: assemble("main.eas")\n',
           "common/value.eas": "#define VALUE = 1\n",
         }),
       },
@@ -844,8 +911,8 @@ describe("embedded explorer shell", () => {
       language: "geas",
       runtime_entrypoint: "system/main.eas",
       sources: {
-        "system/main.eas": "#include \"../common/value.eas\"\npush VALUE\n",
-        "system/ctor.eas": "#bytes code: assemble(\"main.eas\")\n",
+        "system/main.eas": '#include "../common/value.eas"\npush VALUE\n',
+        "system/ctor.eas": '#bytes code: assemble("main.eas")\n',
         "common/value.eas": "#define VALUE = 1\n",
       },
     });
@@ -891,8 +958,19 @@ describe("embedded explorer shell", () => {
         return Response.json({
           data: {
             resolution: "exact_address",
-            target: { chain_id: "1", address, code_hash: codeHash, block_number: "12", block_hash: codeHash },
-            source: { address, code_hash: codeHash, valid_from_block: "12", created_at: "2026-01-01T00:00:00Z" },
+            target: {
+              chain_id: "1",
+              address,
+              code_hash: codeHash,
+              block_number: "12",
+              block_hash: codeHash,
+            },
+            source: {
+              address,
+              code_hash: codeHash,
+              valid_from_block: "12",
+              created_at: "2026-01-01T00:00:00Z",
+            },
             language: "solidity",
             compiler_version: "0.8.30",
             file_name: "src/Hostile.sol",

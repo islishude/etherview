@@ -73,11 +73,7 @@ export function useBlocks(limit = 12, cursor?: string, refreshGeneration = 0) {
   });
 }
 
-export function useGenesisAccounts(
-  limit = 25,
-  cursor?: string,
-  refreshGeneration = 0,
-) {
+export function useGenesisAccounts(limit = 25, cursor?: string, refreshGeneration = 0) {
   return useQuery({
     queryKey: ["genesis-accounts", limit, cursor ?? null, refreshGeneration],
     queryFn: async (): Promise<CursorPage<GenesisAccount>> => {
@@ -202,20 +198,15 @@ export function useBlock(identifier: string, enabled = true) {
   return useQuery({
     queryKey: ["block", identifier],
     queryFn: async () =>
-      requireEnvelope(
-        await apiClient.GET("/blocks/{id}", { params: { path: { id: identifier } } }),
-      ).data,
+      requireEnvelope(await apiClient.GET("/blocks/{id}", { params: { path: { id: identifier } } }))
+        .data,
     enabled: enabled && identifier.length > 0,
     retry: false,
     staleTime: 5_000,
   });
 }
 
-export function useBlockTransactions(
-  identifier: string,
-  cursor?: string,
-  enabled = true,
-) {
+export function useBlockTransactions(identifier: string, cursor?: string, enabled = true) {
   return useQuery({
     queryKey: ["block", identifier, "transactions", cursor ?? null],
     queryFn: async () => {
@@ -240,9 +231,8 @@ export function useTransaction(hash: string, enabled = true) {
   return useQuery({
     queryKey: ["transaction", hash],
     queryFn: async (): Promise<TransactionDetail> =>
-      requireEnvelope(
-        await apiClient.GET("/transactions/{hash}", { params: { path: { hash } } }),
-      ).data,
+      requireEnvelope(await apiClient.GET("/transactions/{hash}", { params: { path: { hash } } }))
+        .data,
     enabled: enabled && hash.length > 0,
     retry: false,
     staleTime: liveRefetchInterval,
@@ -296,11 +286,7 @@ export function useTransactionTrace(hash: string, enabled = true) {
   });
 }
 
-export function useTransactionAuthorizations(
-  hash: string,
-  cursor?: string,
-  enabled = true,
-) {
+export function useTransactionAuthorizations(hash: string, cursor?: string, enabled = true) {
   return useQuery({
     queryKey: ["transaction", hash, "authorizations", cursor ?? null],
     queryFn: async () => {
@@ -317,11 +303,7 @@ export function useTransactionAuthorizations(
   });
 }
 
-export function useTransactionTokenTransfers(
-  hash: string,
-  cursor?: string,
-  enabled = true,
-) {
+export function useTransactionTokenTransfers(hash: string, cursor?: string, enabled = true) {
   return useQuery({
     queryKey: ["transaction", hash, "token-transfers", cursor ?? null],
     queryFn: async () => {
@@ -338,11 +320,7 @@ export function useTransactionTokenTransfers(
   });
 }
 
-export function useTransactionInternalTransactions(
-  hash: string,
-  cursor?: string,
-  enabled = true,
-) {
+export function useTransactionInternalTransactions(hash: string, cursor?: string, enabled = true) {
   return useQuery({
     queryKey: ["transaction", hash, "internal-transactions", cursor ?? null],
     queryFn: async () => {
@@ -376,11 +354,7 @@ export function useTransactionLogs(hash: string, cursor?: string, enabled = true
   });
 }
 
-export function useTransactionStateChanges(
-  hash: string,
-  cursor?: string,
-  enabled = true,
-) {
+export function useTransactionStateChanges(hash: string, cursor?: string, enabled = true) {
   return useQuery({
     queryKey: ["transaction", hash, "state-changes", cursor ?? null],
     queryFn: async () => {
@@ -472,7 +446,14 @@ export function useAddressInternalTransactions(
   enabled = true,
 ) {
   return useQuery({
-    queryKey: ["address", address, "internal-transactions", cursor ?? null, limit, refreshGeneration],
+    queryKey: [
+      "address",
+      address,
+      "internal-transactions",
+      cursor ?? null,
+      limit,
+      refreshGeneration,
+    ],
     queryFn: async (): Promise<CursorPage<AddressInternalTransaction>> => {
       const response = requireEnvelope(
         await apiClient.GET("/addresses/{address}/internal-transactions", {
@@ -529,9 +510,7 @@ export function useAddressNFTTransfers(
 
 function useAddressTokenActivity(
   kind: "erc20-transfers" | "nft-transfers",
-  path:
-    | "/addresses/{address}/erc20-transfers"
-    | "/addresses/{address}/nft-transfers",
+  path: "/addresses/{address}/erc20-transfers" | "/addresses/{address}/nft-transfers",
   address: string,
   cursor: string | undefined,
   limit: number,
@@ -584,9 +563,8 @@ export function useToken(address: string, enabled = true) {
   return useQuery({
     queryKey: ["token", address],
     queryFn: async () =>
-      requireEnvelope(
-        await apiClient.GET("/tokens/{address}", { params: { path: { address } } }),
-      ).data,
+      requireEnvelope(await apiClient.GET("/tokens/{address}", { params: { path: { address } } }))
+        .data,
     enabled: enabled && address.length > 0,
     retry: false,
     staleTime: 30_000,
@@ -863,10 +841,7 @@ export function useVerificationJob(
   });
 }
 
-export function useCompilerCatalog(
-  language: VerificationSubmission["language"],
-  enabled = true,
-) {
+export function useCompilerCatalog(language: VerificationSubmission["language"], enabled = true) {
   return useQuery({
     queryKey: ["verifier-compilers", language],
     queryFn: async () =>

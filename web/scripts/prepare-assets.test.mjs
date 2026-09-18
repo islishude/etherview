@@ -5,11 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { gunzipSync, brotliDecompressSync } from "node:zlib";
 
-import {
-  assetManifestName,
-  assetManifestSchema,
-  prepareDistribution,
-} from "./prepare-assets.mjs";
+import { assetManifestName, assetManifestSchema, prepareDistribution } from "./prepare-assets.mjs";
 
 test("prepares deterministic compressed hashed assets and a bounded manifest", () => {
   const distribution = mkdtempSync(join(tmpdir(), "etherview-web-assets-"));
@@ -24,10 +20,7 @@ test("prepares deterministic compressed hashed assets and a bounded manifest", (
     assert.equal(manifest.schema, assetManifestSchema);
     const asset = manifest.assets["assets/index-12345678.js"];
     assert.ok(asset?.gzip && asset.br);
-    assert.deepEqual(
-      gunzipSync(readFileSync(join(distribution, asset.gzip.path))),
-      javascript,
-    );
+    assert.deepEqual(gunzipSync(readFileSync(join(distribution, asset.gzip.path))), javascript);
     assert.deepEqual(
       brotliDecompressSync(readFileSync(join(distribution, asset.br.path))),
       javascript,

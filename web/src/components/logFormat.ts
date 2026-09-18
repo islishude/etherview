@@ -58,7 +58,10 @@ export function isAnonymousDecodedLog(
   arguments_: readonly Pick<LogArgumentInput, "indexed">[],
 ): boolean {
   if (status !== "decoded") return false;
-  const indexedCount = arguments_.reduce((count, argument) => count + (argument.indexed ? 1 : 0), 0);
+  const indexedCount = arguments_.reduce(
+    (count, argument) => count + (argument.indexed ? 1 : 0),
+    0,
+  );
   return topicCount === indexedCount;
 }
 
@@ -70,7 +73,16 @@ export function flattenLogArgument(
 ): readonly LogArgumentRow[] {
   const rootPath = argument.name || `[${index}]`;
   const rows: LogArgumentRow[] = [];
-  appendLogArgumentRows(rows, rootPath, argument.type, argument.value, argument.indexed, 0, maximumDepth, maximumRows);
+  appendLogArgumentRows(
+    rows,
+    rootPath,
+    argument.type,
+    argument.value,
+    argument.indexed,
+    0,
+    maximumDepth,
+    maximumRows,
+  );
   return rows;
 }
 
@@ -92,14 +104,34 @@ function appendLogArgumentRows(
   if (Array.isArray(value)) {
     const childType = arrayElementType(type);
     value.slice(0, MAX_LOG_ARGUMENT_ITEMS).forEach((child, index) => {
-      appendLogArgumentRows(rows, `${path}[${index}]`, childType, child, undefined, depth + 1, maximumDepth, maximumRows);
+      appendLogArgumentRows(
+        rows,
+        `${path}[${index}]`,
+        childType,
+        child,
+        undefined,
+        depth + 1,
+        maximumDepth,
+        maximumRows,
+      );
     });
     return;
   }
 
   for (const [key, child] of Object.entries(value).slice(0, MAX_LOG_ARGUMENT_ITEMS)) {
-    const childPath = isSimpleIdentifier(key) ? `${path}.${key}` : `${path}[${JSON.stringify(key)}]`;
-    appendLogArgumentRows(rows, childPath, "", child, undefined, depth + 1, maximumDepth, maximumRows);
+    const childPath = isSimpleIdentifier(key)
+      ? `${path}.${key}`
+      : `${path}[${JSON.stringify(key)}]`;
+    appendLogArgumentRows(
+      rows,
+      childPath,
+      "",
+      child,
+      undefined,
+      depth + 1,
+      maximumDepth,
+      maximumRows,
+    );
   }
 }
 

@@ -3,10 +3,8 @@ import { getAddress, isAddress, type Address, type Hex } from "viem";
 import type { AuthChallenge } from "@/api/auth";
 import { MAX_SIGN_MESSAGE_BYTES, normalizeChainID, WalletBoundaryError } from "./eip6963";
 
-const CHALLENGE_ID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
-const CANONICAL_TIMESTAMP_PATTERN =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
+const CHALLENGE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
+const CANONICAL_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const CANONICAL_SIWE_PATTERN =
   /^(?<scheme>[a-zA-Z][a-zA-Z0-9+.-]*):\/\/(?<domain>[^\s/]+) wants you to sign in with your Ethereum account:\n(?<address>0x[0-9a-fA-F]{40})\n\n\nURI: (?<uri>[^\r\n]+)\nVersion: (?<version>[^\r\n]+)\nChain ID: (?<chainID>[1-9][0-9]*)\nNonce: (?<nonce>[a-zA-Z0-9]{24})\nIssued At: (?<issuedAt>[^\r\n]+)\nExpiration Time: (?<expirationTime>[^\r\n]+)\nRequest ID: (?<requestID>[^\r\n]+)$/u;
 
@@ -39,11 +37,7 @@ export function encodeCanonicalSIWEChallenge(
     const origin = currentPublicOrigin();
     const expectedChain = normalizeChainID(expectedChainID);
     const fields = CANONICAL_SIWE_PATTERN.exec(challenge.message)?.groups;
-    if (
-      !fields ||
-      expectedChain === undefined ||
-      expectedChainID !== expectedChain
-    ) {
+    if (!fields || expectedChain === undefined || expectedChainID !== expectedChain) {
       throw new WalletBoundaryError("INVALID_REQUEST");
     }
 

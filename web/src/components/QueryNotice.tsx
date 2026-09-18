@@ -23,17 +23,20 @@ export function QueryNotice({ loading, error, compact, onReset }: QueryNoticePro
   if (error instanceof ApiError && error.code === "stage_unavailable") {
     const details = stageDetails(error.details);
     return (
-      <div className={compact ? "query-notice degraded compact" : "query-notice degraded"} role="status">
+      <div
+        className={compact ? "query-notice degraded compact" : "query-notice degraded"}
+        role="status"
+      >
         <span className="status-dot warning" aria-hidden="true" />
         <span>
-          <strong>
-            {t("state.stageUnavailable", { stage: stageLabel(details.stage, t) })}
-          </strong>
+          <strong>{t("state.stageUnavailable", { stage: stageLabel(details.stage, t) })}</strong>
           {!compact && (
             <small>
               {t("state.stageUnavailableDetail", {
                 state: capabilityStateLabel(details.state, t),
-                block: details.blockNumber ? t("state.atBlock", { block: details.blockNumber }) : "",
+                block: details.blockNumber
+                  ? t("state.atBlock", { block: details.blockNumber })
+                  : "",
               })}
             </small>
           )}
@@ -49,33 +52,37 @@ export function QueryNotice({ loading, error, compact, onReset }: QueryNoticePro
   if (error instanceof ApiError) {
     const code = error.code.toLowerCase();
     const details = capabilityDetails(error.details);
-    const typed = code === "capability_unavailable"
-      ? {
-          title: t("state.capabilityUnavailable", {
-            capability: capabilityLabel(details.capability, t),
-          }),
-          detail: t("state.capabilityUnavailableDetail", {
-            state: capabilityStateLabel(details.state, t),
-          }),
-          diagnosticCode: details.code,
-        }
-      : code === "not_ready"
-        ? { title: t("state.coreNotReady"), detail: t("state.coreNotReadyDetail") }
-      : code === "mempool_unavailable"
+    const typed =
+      code === "capability_unavailable"
         ? {
-            title: t("pending.unavailable"),
-            detail: t("pending.unavailableDetail"),
-            diagnosticCode: detailString(error.details, "reason"),
+            title: t("state.capabilityUnavailable", {
+              capability: capabilityLabel(details.capability, t),
+            }),
+            detail: t("state.capabilityUnavailableDetail", {
+              state: capabilityStateLabel(details.state, t),
+            }),
+            diagnosticCode: details.code,
           }
-      : code === "analytics_pending"
-          ? { title: t("charts.backfillPending"), detail: t("charts.backfillPendingDetail", { dirty: "—" }) }
-        : code === "invalid_cursor"
-          ? { title: t("state.cursorInvalid"), detail: t("state.cursorInvalidDetail") }
-          : code === "not_found"
-            ? { title: t("state.notFound"), detail: t("state.notFoundDetail") }
-            : code.startsWith("invalid_")
-              ? { title: t("state.invalidRequest"), detail: t("state.invalidRequestDetail") }
-              : undefined;
+        : code === "not_ready"
+          ? { title: t("state.coreNotReady"), detail: t("state.coreNotReadyDetail") }
+          : code === "mempool_unavailable"
+            ? {
+                title: t("pending.unavailable"),
+                detail: t("pending.unavailableDetail"),
+                diagnosticCode: detailString(error.details, "reason"),
+              }
+            : code === "analytics_pending"
+              ? {
+                  title: t("charts.backfillPending"),
+                  detail: t("charts.backfillPendingDetail", { dirty: "—" }),
+                }
+              : code === "invalid_cursor"
+                ? { title: t("state.cursorInvalid"), detail: t("state.cursorInvalidDetail") }
+                : code === "not_found"
+                  ? { title: t("state.notFound"), detail: t("state.notFoundDetail") }
+                  : code.startsWith("invalid_")
+                    ? { title: t("state.invalidRequest"), detail: t("state.invalidRequestDetail") }
+                    : undefined;
     if (typed) {
       return (
         <div
@@ -122,38 +129,57 @@ type Translate = ReturnType<typeof useTranslation>["t"];
 
 function capabilityLabel(value: string, t: Translate): string {
   switch (value) {
-    case "state": return t("capabilityName.state");
-    case "name": return t("capabilityName.name");
-    case "core": return t("capabilityName.core");
-    case "trace": return t("capabilityName.trace");
-    case "search": return t("capabilityName.search");
-    case "genesis_state": return t("capabilityName.genesisState");
-    default: return t("capabilityName.optional");
+    case "state":
+      return t("capabilityName.state");
+    case "name":
+      return t("capabilityName.name");
+    case "core":
+      return t("capabilityName.core");
+    case "trace":
+      return t("capabilityName.trace");
+    case "search":
+      return t("capabilityName.search");
+    case "genesis_state":
+      return t("capabilityName.genesisState");
+    default:
+      return t("capabilityName.optional");
   }
 }
 
 function capabilityStateLabel(value: string, t: Translate): string {
   switch (value) {
-    case "complete": return t("stageState.complete");
-    case "pending": return t("stageState.pending");
-    case "missing": return t("stageState.missing");
-    case "unavailable": return t("stageState.unavailable");
-    case "failed": return t("stageState.failed");
-    default: return t("stageState.unavailable");
+    case "complete":
+      return t("stageState.complete");
+    case "pending":
+      return t("stageState.pending");
+    case "missing":
+      return t("stageState.missing");
+    case "unavailable":
+      return t("stageState.unavailable");
+    case "failed":
+      return t("stageState.failed");
+    default:
+      return t("stageState.unavailable");
   }
 }
 
 function stageLabel(value: string, t: Translate): string {
   switch (value) {
-    case "core": return t("stage.core");
-    case "token": return t("stage.token");
+    case "core":
+      return t("stage.core");
+    case "token":
+      return t("stage.token");
     case "stats":
     case "statistics":
       return t("stage.stats");
-    case "trace": return t("stage.trace");
-    case "metadata": return t("stage.metadata");
-    case "state": return t("stage.state");
-    default: return t("stage.optional");
+    case "trace":
+      return t("stage.trace");
+    case "metadata":
+      return t("stage.metadata");
+    case "state":
+      return t("stage.state");
+    default:
+      return t("stage.optional");
   }
 }
 

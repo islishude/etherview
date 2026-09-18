@@ -18,16 +18,11 @@ export function SIWELoginControl({ full = false }: SIWELoginControlProps) {
   const [choosing, setChoosing] = useState(false);
   const expectedChainID = config.data?.chain_id;
   const walletOnChain =
-    wallet.active !== undefined &&
-    chainsMatch(wallet.active.chainID, expectedChainID);
+    wallet.active !== undefined && chainsMatch(wallet.active.chainID, expectedChainID);
   const busy = auth.pending || wallet.connecting;
 
   useEffect(() => {
-    if (
-      wallet.active ||
-      auth.session.authenticated ||
-      wallet.providers.length <= 1
-    ) {
+    if (wallet.active || auth.session.authenticated || wallet.providers.length <= 1) {
       setChoosing(false);
     }
   }, [auth.session.authenticated, wallet.active, wallet.providers.length]);
@@ -50,10 +45,7 @@ export function SIWELoginControl({ full = false }: SIWELoginControlProps) {
     <div className={`siwe-login-control${full ? " full" : ""}`}>
       <button
         className={`button primary${full ? " full" : ""}`}
-        disabled={
-          busy ||
-          (wallet.active ? !walletOnChain : wallet.providers.length === 0)
-        }
+        disabled={busy || (wallet.active ? !walletOnChain : wallet.providers.length === 0)}
         onClick={start}
         type="button"
       >

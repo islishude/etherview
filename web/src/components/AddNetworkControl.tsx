@@ -70,10 +70,7 @@ export function AddNetworkControl({ menuOpen }: AddNetworkControlProps) {
   };
 
   return (
-    <section
-      aria-labelledby="wallet-network-title"
-      className="wallet-network-section"
-    >
+    <section aria-labelledby="wallet-network-title" className="wallet-network-section">
       <div className="popover-heading">
         <strong id="wallet-network-title">{t("common.chain")}</strong>
         <span className="quiet">{chainName}</span>

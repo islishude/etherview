@@ -11,9 +11,7 @@ export async function getAuthSession(): Promise<AuthSession> {
 }
 
 export async function createAuthChallenge(address: string) {
-  return requireEnvelope(
-    await apiClient.POST("/auth/challenge", { body: { address } }),
-  ).data;
+  return requireEnvelope(await apiClient.POST("/auth/challenge", { body: { address } })).data;
 }
 
 export async function verifyAuthChallenge(
@@ -71,10 +69,7 @@ export async function updateAdminUser(
   ).data;
 }
 
-export async function revokeAdminUserSessions(
-  csrfToken: string,
-  id: string,
-): Promise<string> {
+export async function revokeAdminUserSessions(csrfToken: string, id: string): Promise<string> {
   return requireEnvelope(
     await apiClient.POST("/admin/users/{id}/sessions/revoke", {
       params: {

@@ -63,29 +63,37 @@ describe("core account and list pages", () => {
 
   it("deep-links an empty address withdrawal history without loading transactions", async () => {
     const requestedPaths: string[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const url = requestURL(input);
-      requestedPaths.push(url.pathname);
-      if (url.pathname === "/api/v1/config") return configResponse();
-      if (url.pathname === `/api/v1/addresses/${address}`) {
-        return envelope({
-          address,
-          type: "eoa",
-          balance: "0",
-          nonce: "0",
-          at_block: canonicalHash,
-          completeness: completeness(),
-          has_delegation_history: false,
-        });
-      }
-      if (url.pathname === `/api/v1/addresses/${address}/withdrawals`) return envelope([]);
-      return notFound();
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = requestURL(input);
+        requestedPaths.push(url.pathname);
+        if (url.pathname === "/api/v1/config") return configResponse();
+        if (url.pathname === `/api/v1/addresses/${address}`) {
+          return envelope({
+            address,
+            type: "eoa",
+            balance: "0",
+            nonce: "0",
+            at_block: canonicalHash,
+            completeness: completeness(),
+            has_delegation_history: false,
+          });
+        }
+        if (url.pathname === `/api/v1/addresses/${address}/withdrawals`) return envelope([]);
+        return notFound();
+      }),
+    );
 
     renderExplorer(`/address/${address}?tab=withdrawals`);
 
-    expect(await screen.findByText("This address has no withdrawals in this snapshot.")).toBeVisible();
-    expect(screen.getByRole("link", { name: "Withdrawals" })).toHaveAttribute("aria-current", "page");
+    expect(
+      await screen.findByText("This address has no withdrawals in this snapshot."),
+    ).toBeVisible();
+    expect(screen.getByRole("link", { name: "Withdrawals" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     expect(requestedPaths).toContain(`/api/v1/addresses/${address}/withdrawals`);
     expect(requestedPaths).not.toContain(`/api/v1/addresses/${address}/transactions`);
   });
@@ -129,13 +137,15 @@ describe("core account and list pages", () => {
       runtime_code_artifacts: {},
       libraries: {},
       is_blueprint: false,
-      abi: [{
-        type: "function",
-        name: "setValue",
-        stateMutability: "nonpayable",
-        inputs: [{ name: "value", type: "uint256" }],
-        outputs: [],
-      }],
+      abi: [
+        {
+          type: "function",
+          name: "setValue",
+          stateMutability: "nonpayable",
+          inputs: [{ name: "value", type: "uint256" }],
+          outputs: [],
+        },
+      ],
     };
     const olderHistoryItem = {
       authority: delegatedAddress,
@@ -156,39 +166,44 @@ describe("core account and list pages", () => {
       transaction_hash: transactionHash,
     };
 
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const url = requestURL(input);
-      requestedPaths.push(url.pathname);
-      if (url.pathname === "/api/v1/config") return configResponse();
-      if (url.pathname === `/api/v1/addresses/${delegatedAddress}`) {
-        return envelope({
-          address: delegatedAddress,
-          type: "delegated_eoa",
-          balance: "1000000000000000000",
-          nonce: "4",
-          at_block: delegationBlockHash,
-          code_hash: delegateCodeHash,
-          completeness: completeness(),
-          has_delegation_history: true,
-        });
-      }
-      if (url.pathname === `/api/v1/addresses/${delegatedAddress}/delegation`) {
-        return envelope(delegation);
-      }
-      if (url.pathname === `/api/v1/addresses/${delegatedAddress}/delegations`) {
-        return url.searchParams.get("cursor") === nextCursor
-          ? envelope([olderHistoryItem])
-          : envelope([newestHistoryItem], { next_cursor: nextCursor });
-      }
-      if (url.pathname === `/api/v1/contracts/${delegateAddress}/verification`) {
-        return envelope(artifact);
-      }
-      return notFound();
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = requestURL(input);
+        requestedPaths.push(url.pathname);
+        if (url.pathname === "/api/v1/config") return configResponse();
+        if (url.pathname === `/api/v1/addresses/${delegatedAddress}`) {
+          return envelope({
+            address: delegatedAddress,
+            type: "delegated_eoa",
+            balance: "1000000000000000000",
+            nonce: "4",
+            at_block: delegationBlockHash,
+            code_hash: delegateCodeHash,
+            completeness: completeness(),
+            has_delegation_history: true,
+          });
+        }
+        if (url.pathname === `/api/v1/addresses/${delegatedAddress}/delegation`) {
+          return envelope(delegation);
+        }
+        if (url.pathname === `/api/v1/addresses/${delegatedAddress}/delegations`) {
+          return url.searchParams.get("cursor") === nextCursor
+            ? envelope([olderHistoryItem])
+            : envelope([newestHistoryItem], { next_cursor: nextCursor });
+        }
+        if (url.pathname === `/api/v1/contracts/${delegateAddress}/verification`) {
+          return envelope(artifact);
+        }
+        return notFound();
+      }),
+    );
 
     renderExplorer(`/address/${delegatedAddress}`);
 
-    const addressTabs = await screen.findByRole("navigation", { name: "Address activity sections" });
+    const addressTabs = await screen.findByRole("navigation", {
+      name: "Address activity sections",
+    });
     const delegationEntry = await within(addressTabs).findByRole("link", { name: "Delegation" });
     expect(delegationEntry).toHaveAttribute(
       "href",
@@ -202,20 +217,22 @@ describe("core account and list pages", () => {
     expect(activeDelegationEntry).toHaveClass("transaction-tab", "active");
     expect(activeDelegationEntry).not.toHaveClass("contract-entry");
 
-    const bindingHeading = await screen.findByRole("heading", { name: "EIP-7702 delegation binding" });
+    const bindingHeading = await screen.findByRole("heading", {
+      name: "EIP-7702 delegation binding",
+    });
     const delegateLink = await screen.findByRole("link", { name: delegateAddress });
     const bindingPanel = bindingHeading.closest("section");
     if (!bindingPanel) throw new Error("delegation binding panel is missing");
     expect(bindingPanel).toHaveClass("panel", "detail-card");
     expect(bindingPanel.querySelector(".detail-grid")).not.toBeNull();
     expect(bindingPanel.querySelectorAll(".detail-item")).toHaveLength(5);
-    expect(delegateLink).toHaveAttribute(
-      "href",
-      `/address/${delegateAddress}?tab=transactions`,
-    );
+    expect(delegateLink).toHaveAttribute("href", `/address/${delegateAddress}?tab=transactions`);
 
     const tabs = screen.getByRole("tablist", { name: "Delegated account sections" });
-    expect(within(tabs).getByRole("tab", { name: "Code" })).toHaveAttribute("aria-selected", "true");
+    expect(within(tabs).getByRole("tab", { name: "Code" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     expect(await within(tabs).findByRole("tab", { name: "Read contract" })).toBeVisible();
     expect(within(tabs).getByRole("tab", { name: "Write contract" })).toBeVisible();
     expect(within(tabs).getByRole("tab", { name: "Delegation history" })).toBeVisible();
@@ -259,48 +276,55 @@ describe("core account and list pages", () => {
       transaction_index: "0",
       authorization_index: "0",
     };
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const url = requestURL(input);
-      requestedPaths.push(url.pathname);
-      if (url.pathname === "/api/v1/config") return configResponse();
-      if (url.pathname === `/api/v1/addresses/${clearedDelegationAddress}`) {
-        return envelope({
-          address: clearedDelegationAddress,
-          type: "eoa",
-          balance: "0",
-          nonce: "5",
-          at_block: canonicalHash,
-          completeness: completeness(),
-          has_delegation_history: true,
-        });
-      }
-      if (url.pathname === `/api/v1/addresses/${clearedDelegationAddress}/transactions`) {
-        return envelope([]);
-      }
-      if (url.pathname === `/api/v1/addresses/${clearedDelegationAddress}/delegations`) {
-        return envelope([clearedHistoryItem]);
-      }
-      if (url.pathname === `/api/v1/addresses/${clearedDelegationAddress}/delegation`) {
-        return envelope({
-          authority: clearedDelegationAddress,
-          status: "not_delegated",
-          chain_id: "1",
-          block_number: "102",
-          block_hash: canonicalHash,
-        });
-      }
-      return notFound();
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = requestURL(input);
+        requestedPaths.push(url.pathname);
+        if (url.pathname === "/api/v1/config") return configResponse();
+        if (url.pathname === `/api/v1/addresses/${clearedDelegationAddress}`) {
+          return envelope({
+            address: clearedDelegationAddress,
+            type: "eoa",
+            balance: "0",
+            nonce: "5",
+            at_block: canonicalHash,
+            completeness: completeness(),
+            has_delegation_history: true,
+          });
+        }
+        if (url.pathname === `/api/v1/addresses/${clearedDelegationAddress}/transactions`) {
+          return envelope([]);
+        }
+        if (url.pathname === `/api/v1/addresses/${clearedDelegationAddress}/delegations`) {
+          return envelope([clearedHistoryItem]);
+        }
+        if (url.pathname === `/api/v1/addresses/${clearedDelegationAddress}/delegation`) {
+          return envelope({
+            authority: clearedDelegationAddress,
+            status: "not_delegated",
+            chain_id: "1",
+            block_number: "102",
+            block_hash: canonicalHash,
+          });
+        }
+        return notFound();
+      }),
+    );
 
     renderExplorer(`/address/${clearedDelegationAddress}`);
 
-    const addressTabs = await screen.findByRole("navigation", { name: "Address activity sections" });
+    const addressTabs = await screen.findByRole("navigation", {
+      name: "Address activity sections",
+    });
     const delegationEntry = await within(addressTabs).findByRole("link", { name: "Delegation" });
     expect(delegationEntry).toHaveAttribute(
       "href",
       `/address/${clearedDelegationAddress}?tab=delegation#history`,
     );
-    expect(requestedPaths).not.toContain(`/api/v1/addresses/${clearedDelegationAddress}/delegations`);
+    expect(requestedPaths).not.toContain(
+      `/api/v1/addresses/${clearedDelegationAddress}/delegations`,
+    );
 
     const user = userEvent.setup();
     await user.click(delegationEntry);
@@ -308,7 +332,9 @@ describe("core account and list pages", () => {
     expect(await screen.findByRole("heading", { name: "Delegation history" })).toBeVisible();
     expect(await screen.findByText("Cleared")).toBeVisible();
     expect(requestedPaths).toContain(`/api/v1/addresses/${clearedDelegationAddress}/delegations`);
-    expect(requestedPaths).not.toContain(`/api/v1/addresses/${clearedDelegationAddress}/delegation`);
+    expect(requestedPaths).not.toContain(
+      `/api/v1/addresses/${clearedDelegationAddress}/delegation`,
+    );
     expect(requestedPaths).not.toContain(`/api/v1/contracts/${delegateAddress}/verification`);
     const delegatedTabs = screen.getByRole("tablist", { name: "Delegated account sections" });
     expect(within(delegatedTabs).getByRole("tab", { name: "Delegation history" })).toHaveAttribute(
@@ -320,9 +346,14 @@ describe("core account and list pages", () => {
     expect(await screen.findByRole("heading", { name: "Delegation status" })).toBeVisible();
     expect(await screen.findByText("Not delegated", { exact: true })).toBeVisible();
     expect(screen.getByText(/currently has no active EIP-7702 delegation/)).toBeVisible();
-    expect(screen.getByRole("link", { name: "102" })).toHaveAttribute("href", `/blocks/${canonicalHash}`);
+    expect(screen.getByRole("link", { name: "102" })).toHaveAttribute(
+      "href",
+      `/blocks/${canonicalHash}`,
+    );
     expect(screen.queryByRole("heading", { name: "Verified artifact" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "View delegation history" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "View delegation history" }),
+    ).not.toBeInTheDocument();
     expect(requestedPaths).toContain(`/api/v1/addresses/${clearedDelegationAddress}/delegation`);
     expect(requestedPaths).not.toContain(`/api/v1/contracts/${delegateAddress}/verification`);
     await user.click(screen.getByRole("button", { name: "切换到中文" }));
@@ -331,33 +362,36 @@ describe("core account and list pages", () => {
 
   it("does not report an unavailable delegation binding as cleared", async () => {
     const requestedPaths: string[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const url = requestURL(input);
-      requestedPaths.push(url.pathname);
-      if (url.pathname === "/api/v1/config") return configResponse();
-      if (url.pathname === `/api/v1/addresses/${clearedDelegationAddress}`) {
-        return envelope({
-          address: clearedDelegationAddress,
-          type: "eoa",
-          balance: "0",
-          nonce: "5",
-          at_block: canonicalHash,
-          completeness: completeness(),
-          has_delegation_history: true,
-        });
-      }
-      if (url.pathname === `/api/v1/addresses/${clearedDelegationAddress}/delegation`) {
-        return envelope({
-          authority: clearedDelegationAddress,
-          status: "unavailable",
-          reason: "state_unavailable",
-          chain_id: "1",
-          block_number: "103",
-          block_hash: canonicalHash,
-        });
-      }
-      return notFound();
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = requestURL(input);
+        requestedPaths.push(url.pathname);
+        if (url.pathname === "/api/v1/config") return configResponse();
+        if (url.pathname === `/api/v1/addresses/${clearedDelegationAddress}`) {
+          return envelope({
+            address: clearedDelegationAddress,
+            type: "eoa",
+            balance: "0",
+            nonce: "5",
+            at_block: canonicalHash,
+            completeness: completeness(),
+            has_delegation_history: true,
+          });
+        }
+        if (url.pathname === `/api/v1/addresses/${clearedDelegationAddress}/delegation`) {
+          return envelope({
+            authority: clearedDelegationAddress,
+            status: "unavailable",
+            reason: "state_unavailable",
+            chain_id: "1",
+            block_number: "103",
+            block_hash: canonicalHash,
+          });
+        }
+        return notFound();
+      }),
+    );
 
     renderExplorer(`/address/${clearedDelegationAddress}?tab=delegation#code`);
 
@@ -368,40 +402,45 @@ describe("core account and list pages", () => {
     );
     expect(await screen.findByText("Unavailable", { exact: true })).toBeVisible();
     expect(screen.getByText(/It is not treated as cleared/)).toBeVisible();
-    expect(screen.queryByText(/currently has no active EIP-7702 delegation/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/currently has no active EIP-7702 delegation/),
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Verified artifact" })).not.toBeInTheDocument();
     expect(requestedPaths).not.toContain(`/api/v1/contracts/${delegateAddress}/verification`);
   });
 
   it("uses the latest binding to replace stale delegated tabs with Status", async () => {
     const requestedPaths: string[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const url = requestURL(input);
-      requestedPaths.push(url.pathname);
-      if (url.pathname === "/api/v1/config") return configResponse();
-      if (url.pathname === `/api/v1/addresses/${delegatedAddress}`) {
-        return envelope({
-          address: delegatedAddress,
-          type: "delegated_eoa",
-          balance: "0",
-          nonce: "5",
-          at_block: delegationBlockHash,
-          code_hash: delegateCodeHash,
-          completeness: completeness(),
-          has_delegation_history: true,
-        });
-      }
-      if (url.pathname === `/api/v1/addresses/${delegatedAddress}/delegation`) {
-        return envelope({
-          authority: delegatedAddress,
-          status: "not_delegated",
-          chain_id: "1",
-          block_number: "104",
-          block_hash: canonicalHash,
-        });
-      }
-      return notFound();
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = requestURL(input);
+        requestedPaths.push(url.pathname);
+        if (url.pathname === "/api/v1/config") return configResponse();
+        if (url.pathname === `/api/v1/addresses/${delegatedAddress}`) {
+          return envelope({
+            address: delegatedAddress,
+            type: "delegated_eoa",
+            balance: "0",
+            nonce: "5",
+            at_block: delegationBlockHash,
+            code_hash: delegateCodeHash,
+            completeness: completeness(),
+            has_delegation_history: true,
+          });
+        }
+        if (url.pathname === `/api/v1/addresses/${delegatedAddress}/delegation`) {
+          return envelope({
+            authority: delegatedAddress,
+            status: "not_delegated",
+            chain_id: "1",
+            block_number: "104",
+            block_hash: canonicalHash,
+          });
+        }
+        return notFound();
+      }),
+    );
 
     renderExplorer(`/address/${delegatedAddress}?tab=delegation#read-contract`);
 
@@ -418,46 +457,51 @@ describe("core account and list pages", () => {
 
   it("renders ETH-formatted values on transactions list", async () => {
     const requestedPaths: string[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = requestURL(input).pathname;
-      requestedPaths.push(path);
-      if (path === "/api/v1/config") return configResponse();
-      if (path === "/api/v1/status") {
-        return statusResponse({
-          core_ready: true,
-          latest_block: "12",
-          indexed_block: "12",
-          highest_covered_block: "12",
-          backfill_complete: true,
-          lag: "0",
-        });
-      }
-      if (path === "/api/v1/transactions") {
-        return envelope([{
-          hash: transactionHash,
-          status: "success",
-          block_hash: canonicalHash,
-          block_number: "12",
-          from: address,
-          to: address,
-          transaction_index: 0,
-          nonce: "0",
-          value: "1500000000000000000",
-          gas: "21000",
-          gas_price: "1000000000",
-          input: "0xa9059cbb",
-          method: "transferTokensWithAnIntentionallyLongMethodName",
-          method_signature: "transferTokensWithAnIntentionallyLongMethodName(address,uint256)",
-          completeness: completeness(),
-          finality: "safe",
-          canonical: true,
-        }]);
-      }
-      if (path === `/api/v1/addresses/${address}/nfts`) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = requestURL(input).pathname;
+        requestedPaths.push(path);
+        if (path === "/api/v1/config") return configResponse();
+        if (path === "/api/v1/status") {
+          return statusResponse({
+            core_ready: true,
+            latest_block: "12",
+            indexed_block: "12",
+            highest_covered_block: "12",
+            backfill_complete: true,
+            lag: "0",
+          });
+        }
+        if (path === "/api/v1/transactions") {
+          return envelope([
+            {
+              hash: transactionHash,
+              status: "success",
+              block_hash: canonicalHash,
+              block_number: "12",
+              from: address,
+              to: address,
+              transaction_index: 0,
+              nonce: "0",
+              value: "1500000000000000000",
+              gas: "21000",
+              gas_price: "1000000000",
+              input: "0xa9059cbb",
+              method: "transferTokensWithAnIntentionallyLongMethodName",
+              method_signature: "transferTokensWithAnIntentionallyLongMethodName(address,uint256)",
+              completeness: completeness(),
+              finality: "safe",
+              canonical: true,
+            },
+          ]);
+        }
+        if (path === `/api/v1/addresses/${address}/nfts`) {
+          return notFound();
+        }
         return notFound();
-      }
-      return notFound();
-    }));
+      }),
+    );
 
     renderExplorer("/transactions");
 
@@ -482,43 +526,48 @@ describe("core account and list pages", () => {
     await i18n.changeLanguage("zh-CN");
     const requestedPaths: string[] = [];
     const hashes = [transactionHash, delegationTransactionHash, orphanHash, olderHash];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = requestURL(input).pathname;
-      requestedPaths.push(path);
-      if (path === "/api/v1/config") return configResponse();
-      if (path === "/api/v1/status") {
-        return statusResponse({
-          core_ready: true,
-          latest_block: "12",
-          indexed_block: "12",
-          highest_covered_block: "12",
-          backfill_complete: true,
-          lag: "0",
-        });
-      }
-      if (path === "/api/v1/transactions") {
-        const methods = ["Native Transfer", "Contract Creation", "0xdeadbeef", undefined];
-        return envelope(hashes.map((hash, index) => ({
-          hash,
-          status: "success",
-          block_hash: canonicalHash,
-          block_number: "12",
-          from: address,
-          to: index === 1 ? null : address,
-          transaction_index: index,
-          nonce: String(index),
-          value: "0",
-          gas: "21000",
-          gas_price: "1000000000",
-          input: index === 0 ? "0x" : index === 1 ? "0x6000" : "0xdeadbeef",
-          method: methods[index],
-          completeness: completeness(),
-          finality: "safe",
-          canonical: true,
-        })));
-      }
-      return notFound();
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = requestURL(input).pathname;
+        requestedPaths.push(path);
+        if (path === "/api/v1/config") return configResponse();
+        if (path === "/api/v1/status") {
+          return statusResponse({
+            core_ready: true,
+            latest_block: "12",
+            indexed_block: "12",
+            highest_covered_block: "12",
+            backfill_complete: true,
+            lag: "0",
+          });
+        }
+        if (path === "/api/v1/transactions") {
+          const methods = ["Native Transfer", "Contract Creation", "0xdeadbeef", undefined];
+          return envelope(
+            hashes.map((hash, index) => ({
+              hash,
+              status: "success",
+              block_hash: canonicalHash,
+              block_number: "12",
+              from: address,
+              to: index === 1 ? null : address,
+              transaction_index: index,
+              nonce: String(index),
+              value: "0",
+              gas: "21000",
+              gas_price: "1000000000",
+              input: index === 0 ? "0x" : index === 1 ? "0x6000" : "0xdeadbeef",
+              method: methods[index],
+              completeness: completeness(),
+              finality: "safe",
+              canonical: true,
+            })),
+          );
+        }
+        return notFound();
+      }),
+    );
 
     renderExplorer("/transactions");
 
@@ -534,79 +583,93 @@ describe("core account and list pages", () => {
 
   it("clears a contract hash for an EOA and returns to transactions", async () => {
     const requestedPaths: string[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const url = requestURL(input);
-      requestedPaths.push(url.pathname);
-      if (url.pathname === "/api/v1/config") return configResponse();
-      if (url.pathname === `/api/v1/addresses/${address}`) {
-        return envelope({
-          address,
-          type: "eoa",
-          balance: "0",
-          nonce: "0",
-          at_block: canonicalHash,
-          completeness: completeness(),
-          has_delegation_history: false,
-        });
-      }
-      if (url.pathname === `/api/v1/addresses/${address}/transactions`) return envelope([]);
-      return notFound();
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = requestURL(input);
+        requestedPaths.push(url.pathname);
+        if (url.pathname === "/api/v1/config") return configResponse();
+        if (url.pathname === `/api/v1/addresses/${address}`) {
+          return envelope({
+            address,
+            type: "eoa",
+            balance: "0",
+            nonce: "0",
+            at_block: canonicalHash,
+            completeness: completeness(),
+            has_delegation_history: false,
+          });
+        }
+        if (url.pathname === `/api/v1/addresses/${address}/transactions`) return envelope([]);
+        return notFound();
+      }),
+    );
 
     renderExplorer(`/address/${address}#code`);
 
-    const addressTabs = await screen.findByRole("navigation", { name: "Address activity sections" });
+    const addressTabs = await screen.findByRole("navigation", {
+      name: "Address activity sections",
+    });
     const transactions = within(addressTabs).getByRole("link", { name: "Transactions" });
     await waitFor(() => expect(transactions).toHaveAttribute("aria-current", "page"));
     expect(screen.queryByRole("link", { name: "Contract" })).not.toBeInTheDocument();
     expect(within(addressTabs).queryByRole("link", { name: "Delegation" })).not.toBeInTheDocument();
     expect(requestedPaths).not.toContain(`/api/v1/addresses/${address}/delegations`);
-    expect(await screen.findByText("No matching address activity is available in this snapshot.")).toBeVisible();
+    expect(
+      await screen.findByText("No matching address activity is available in this snapshot."),
+    ).toBeVisible();
   });
 
   it("refreshes the first transaction page when a newly indexed transaction becomes visible", async () => {
     let transactionRequests = 0;
     ChainEventSource.latest = undefined;
     vi.stubGlobal("EventSource", ChainEventSource as unknown as typeof EventSource);
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const path = requestURL(input).pathname;
-      if (path === "/api/v1/config") return configResponse();
-      if (path === "/api/v1/status") {
-        return statusResponse({
-          core_ready: true,
-          latest_block: "12",
-          indexed_block: "12",
-          highest_covered_block: "12",
-          backfill_complete: true,
-          lag: "0",
-        });
-      }
-      if (path === "/api/v1/transactions") {
-        transactionRequests += 1;
-        if (transactionRequests === 1) return envelope([]);
-        return envelope([{
-          hash: transactionHash,
-          status: "success",
-          block_hash: canonicalHash,
-          block_number: "12",
-          from: address,
-          to: address,
-          transaction_index: 0,
-          nonce: "0",
-          value: "1",
-          gas: "21000",
-          gas_price: "1",
-          completeness: completeness(),
-          finality: "latest",
-          canonical: true,
-        }]);
-      }
-      return notFound();
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = requestURL(input).pathname;
+        if (path === "/api/v1/config") return configResponse();
+        if (path === "/api/v1/status") {
+          return statusResponse({
+            core_ready: true,
+            latest_block: "12",
+            indexed_block: "12",
+            highest_covered_block: "12",
+            backfill_complete: true,
+            lag: "0",
+          });
+        }
+        if (path === "/api/v1/transactions") {
+          transactionRequests += 1;
+          if (transactionRequests === 1) return envelope([]);
+          return envelope([
+            {
+              hash: transactionHash,
+              status: "success",
+              block_hash: canonicalHash,
+              block_number: "12",
+              from: address,
+              to: address,
+              transaction_index: 0,
+              nonce: "0",
+              value: "1",
+              gas: "21000",
+              gas_price: "1",
+              completeness: completeness(),
+              finality: "latest",
+              canonical: true,
+            },
+          ]);
+        }
+        return notFound();
+      }),
+    );
 
     renderExplorer("/transactions");
 
-    expect(await screen.findByText("No canonical transactions are available in this snapshot.")).toBeVisible();
+    expect(
+      await screen.findByText("No canonical transactions are available in this snapshot."),
+    ).toBeVisible();
     await act(async () => {
       ChainEventSource.latest?.emit("head");
       await Promise.resolve();
@@ -615,7 +678,6 @@ describe("core account and list pages", () => {
     expect(transactionRequests).toBeGreaterThanOrEqual(2);
   });
 });
-
 
 function _block(number: string, hash: string, canonical = true) {
   return {
@@ -635,19 +697,22 @@ function _block(number: string, hash: string, canonical = true) {
 }
 
 function statusResponse(overrides: Record<string, unknown>, meta: Record<string, unknown> = {}) {
-  return envelope({
-    chain_id: "1",
-    core_ready: true,
-    latest_block: "12",
-    indexed_block: "12",
-    highest_covered_block: "12",
-    backfill_complete: true,
-    safe_block: "12",
-    finalized_block: "10",
-    lag: "0",
-    completeness: completeness(),
-    ...overrides,
-  }, meta);
+  return envelope(
+    {
+      chain_id: "1",
+      core_ready: true,
+      latest_block: "12",
+      indexed_block: "12",
+      highest_covered_block: "12",
+      backfill_complete: true,
+      safe_block: "12",
+      finalized_block: "10",
+      lag: "0",
+      completeness: completeness(),
+      ...overrides,
+    },
+    meta,
+  );
 }
 
 function configResponse() {
@@ -663,7 +728,10 @@ function configResponse() {
 
 function completeness() {
   return {
-    core: "complete", trace: "unavailable", metadata: "pending", state: "complete",
+    core: "complete",
+    trace: "unavailable",
+    metadata: "pending",
+    state: "complete",
     user_operations: "unavailable",
   };
 }
@@ -700,19 +768,24 @@ function envelope(data: unknown, meta: Record<string, unknown> = {}) {
 function includedTransactionFixture(data: unknown): data is Record<string, unknown> {
   if (!data || Array.isArray(data) || typeof data !== "object") return false;
   const candidate = data as Record<string, unknown>;
-  return typeof candidate.hash === "string"
-    && typeof candidate.from === "string"
-    && typeof candidate.nonce === "string"
-    && typeof candidate.gas === "string"
-    && typeof candidate.input === "string"
-    && typeof candidate.canonical === "boolean"
-    && typeof candidate.finality === "string";
+  return (
+    typeof candidate.hash === "string" &&
+    typeof candidate.from === "string" &&
+    typeof candidate.nonce === "string" &&
+    typeof candidate.gas === "string" &&
+    typeof candidate.input === "string" &&
+    typeof candidate.canonical === "boolean" &&
+    typeof candidate.finality === "string"
+  );
 }
 
 function notFound() {
-  return Response.json({
-    error: { code: "not_found", message: "not found", request_id: "core-pages-test" },
-  }, { status: 404 });
+  return Response.json(
+    {
+      error: { code: "not_found", message: "not found", request_id: "core-pages-test" },
+    },
+    { status: 404 },
+  );
 }
 
 function requestURL(input: RequestInfo | URL) {

@@ -72,9 +72,8 @@ describe("AuthProvider", () => {
       mocks.wallet.active = connected;
       return connected;
     });
-    mocks.wallet.isActiveWallet.mockImplementation(
-      (expected: ReturnType<typeof initialWallet>) =>
-        sameWallet(mocks.wallet.active, expected),
+    mocks.wallet.isActiveWallet.mockImplementation((expected: ReturnType<typeof initialWallet>) =>
+      sameWallet(mocks.wallet.active, expected),
     );
     mocks.wallet.signSIWEChallenge.mockResolvedValue(signature);
     mocks.getAuthSession.mockResolvedValue({ authenticated: false });
@@ -111,13 +110,8 @@ describe("AuthProvider", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "Log in" }));
 
     expect(await screen.findByTestId("auth-state")).toHaveTextContent("authenticated");
-    expect(mocks.createAuthChallenge).toHaveBeenCalledWith(
-      mocks.wallet.active.account,
-    );
-    expect(mocks.wallet.signSIWEChallenge).toHaveBeenCalledWith(
-      challenge,
-      initialWallet(),
-    );
+    expect(mocks.createAuthChallenge).toHaveBeenCalledWith(mocks.wallet.active.account);
+    expect(mocks.wallet.signSIWEChallenge).toHaveBeenCalledWith(challenge, initialWallet());
     expect(mocks.verifyAuthChallenge).toHaveBeenCalledWith(challengeID, signature);
     expect(mocks.createAuthChallenge.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.wallet.signSIWEChallenge.mock.invocationCallOrder[0]!,
@@ -159,9 +153,7 @@ describe("AuthProvider", () => {
     await screen.findByTestId("auth-state");
     await userEvent.setup().click(screen.getByRole("button", { name: "Log in" }));
 
-    expect(await screen.findByTestId("auth-error")).toHaveTextContent(
-      "INVALID_AUTH_RESPONSE",
-    );
+    expect(await screen.findByTestId("auth-error")).toHaveTextContent("INVALID_AUTH_RESPONSE");
     expect(mocks.wallet.signSIWEChallenge).not.toHaveBeenCalled();
     expect(mocks.verifyAuthChallenge).not.toHaveBeenCalled();
   });
@@ -174,20 +166,16 @@ describe("AuthProvider", () => {
 
     renderAuth();
     await screen.findByTestId("auth-state");
-    await userEvent.setup().click(
-      screen.getByRole("button", { name: "Log in with selected wallet" }),
-    );
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Log in with selected wallet" }));
 
-    expect(await screen.findByTestId("auth-state")).toHaveTextContent(
-      "authenticated",
-    );
+    expect(await screen.findByTestId("auth-state")).toHaveTextContent("authenticated");
     expect(mocks.wallet.connect).toHaveBeenCalledWith(initialWallet().uuid);
     expect(mocks.wallet.connect.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.createAuthChallenge.mock.invocationCallOrder[0]!,
     );
-    expect(mocks.createAuthChallenge).toHaveBeenCalledWith(
-      initialWallet().account,
-    );
+    expect(mocks.createAuthChallenge).toHaveBeenCalledWith(initialWallet().account);
   });
 
   it("does not create a challenge when the selected wallet is on another chain", async () => {
@@ -200,22 +188,18 @@ describe("AuthProvider", () => {
 
     renderAuth();
     await screen.findByTestId("auth-state");
-    await userEvent.setup().click(
-      screen.getByRole("button", { name: "Log in with selected wallet" }),
-    );
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Log in with selected wallet" }));
 
-    expect(await screen.findByTestId("auth-error")).toHaveTextContent(
-      "CHAIN_MISMATCH",
-    );
+    expect(await screen.findByTestId("auth-error")).toHaveTextContent("CHAIN_MISMATCH");
     expect(mocks.createAuthChallenge).not.toHaveBeenCalled();
     expect(mocks.wallet.signSIWEChallenge).not.toHaveBeenCalled();
   });
 
   it("reports a rejected connection and permits a clean retry", async () => {
     mocks.wallet.active = undefined as never;
-    mocks.wallet.connect.mockRejectedValueOnce(
-      new WalletBoundaryError("USER_REJECTED"),
-    );
+    mocks.wallet.connect.mockRejectedValueOnce(new WalletBoundaryError("USER_REJECTED"));
 
     renderAuth();
     await screen.findByTestId("auth-state");
@@ -223,17 +207,13 @@ describe("AuthProvider", () => {
       name: "Log in with selected wallet",
     });
     await userEvent.setup().click(selectedLogin);
-    expect(await screen.findByTestId("auth-error")).toHaveTextContent(
-      "USER_REJECTED",
-    );
+    expect(await screen.findByTestId("auth-error")).toHaveTextContent("USER_REJECTED");
     expect(mocks.createAuthChallenge).not.toHaveBeenCalled();
 
     mocks.createAuthChallenge.mockResolvedValue(authChallenge());
     mocks.verifyAuthChallenge.mockResolvedValue(authenticatedSession());
     await userEvent.setup().click(selectedLogin);
-    expect(await screen.findByTestId("auth-state")).toHaveTextContent(
-      "authenticated",
-    );
+    expect(await screen.findByTestId("auth-state")).toHaveTextContent("authenticated");
   });
 
   it.each([
@@ -249,9 +229,7 @@ describe("AuthProvider", () => {
       const view = renderAuth();
       expect(await screen.findByTestId("auth-state")).toHaveTextContent("authenticated");
 
-      mocks.wallet.active = update
-        ? { ...initialWallet(), ...update }
-        : undefined as never;
+      mocks.wallet.active = update ? { ...initialWallet(), ...update } : (undefined as never);
       view.rerender(authTree());
 
       expect(await screen.findByTestId("auth-state")).toHaveTextContent("anonymous");
@@ -293,45 +271,34 @@ describe("AuthProvider", () => {
   });
 
   it.each([
-    [
-      "different account",
-      { account: "0x2222222222222222222222222222222222222222" },
-    ],
+    ["different account", { account: "0x2222222222222222222222222222222222222222" }],
     ["different chain", { chainID: "2" }],
-  ])(
-    "rejects an initially restored session when the wallet is %s",
-    async (_name, update) => {
-      mocks.wallet.active = { ...initialWallet(), ...update };
-      mocks.getAuthSession.mockResolvedValue(authenticatedSession());
-
-      renderAuth();
-
-      expect(await screen.findByTestId("auth-state")).toHaveTextContent("anonymous");
-      expect(mocks.logoutAuthSession).toHaveBeenCalledWith(csrfToken);
-    },
-  );
-
-  it.each([
-    "",
-    " leading",
-    "trailing ",
-    "control\u0000name",
-    "x".repeat(65),
-  ])("rejects a non-canonical returned display name %j", async (displayName) => {
-    mocks.getAuthSession.mockResolvedValue(
-      authenticatedSession({
-        user: { ...userRecord(), display_name: displayName },
-      }),
-    );
+  ])("rejects an initially restored session when the wallet is %s", async (_name, update) => {
+    mocks.wallet.active = { ...initialWallet(), ...update };
+    mocks.getAuthSession.mockResolvedValue(authenticatedSession());
 
     renderAuth();
 
     expect(await screen.findByTestId("auth-state")).toHaveTextContent("anonymous");
-    expect(screen.getByTestId("auth-error")).toHaveTextContent(
-      "INVALID_AUTH_RESPONSE",
-    );
     expect(mocks.logoutAuthSession).toHaveBeenCalledWith(csrfToken);
   });
+
+  it.each(["", " leading", "trailing ", "control\u0000name", "x".repeat(65)])(
+    "rejects a non-canonical returned display name %j",
+    async (displayName) => {
+      mocks.getAuthSession.mockResolvedValue(
+        authenticatedSession({
+          user: { ...userRecord(), display_name: displayName },
+        }),
+      );
+
+      renderAuth();
+
+      expect(await screen.findByTestId("auth-state")).toHaveTextContent("anonymous");
+      expect(screen.getByTestId("auth-error")).toHaveTextContent("INVALID_AUTH_RESPONSE");
+      expect(mocks.logoutAuthSession).toHaveBeenCalledWith(csrfToken);
+    },
+  );
 
   it("revokes a server-created session when wallet identity changes during verify", async () => {
     let resolveVerification: ((value: AuthSession) => void) | undefined;
@@ -350,9 +317,7 @@ describe("AuthProvider", () => {
     mocks.wallet.active = { ...initialWallet(), revision: 2 };
     view.rerender(authTree());
     await act(async () => {
-      resolveVerification?.(
-        authenticatedSession({ csrf_token: replacementCSRFToken }),
-      );
+      resolveVerification?.(authenticatedSession({ csrf_token: replacementCSRFToken }));
     });
 
     expect(screen.getByTestId("auth-state")).toHaveTextContent("anonymous");
@@ -375,16 +340,13 @@ describe("AuthProvider", () => {
     await screen.findByTestId("auth-state");
     await userEvent.setup().click(screen.getByRole("button", { name: "Log in" }));
 
-    expect(await screen.findByTestId("auth-error")).toHaveTextContent(
-      "INVALID_AUTH_RESPONSE",
-    );
+    expect(await screen.findByTestId("auth-error")).toHaveTextContent("INVALID_AUTH_RESPONSE");
     expect(mocks.logoutAuthSession).toHaveBeenCalledWith(replacementCSRFToken);
   });
 
   it("never renders hostile provider or API error text", async () => {
     const providerFailure = new WalletBoundaryError("REQUEST_FAILED");
-    providerFailure.message =
-      "secret provider error https://wallet.invalid/?credential=private";
+    providerFailure.message = "secret provider error https://wallet.invalid/?credential=private";
     mocks.createAuthChallenge.mockResolvedValue(authChallenge());
     mocks.wallet.signSIWEChallenge.mockRejectedValue(providerFailure);
 
@@ -404,9 +366,7 @@ describe("AuthProvider", () => {
       }),
     );
     await userEvent.setup().click(screen.getByRole("button", { name: "Refresh" }));
-    expect(await screen.findByTestId("auth-error")).toHaveTextContent(
-      "user_auth_unavailable",
-    );
+    expect(await screen.findByTestId("auth-error")).toHaveTextContent("user_auth_unavailable");
     expect(document.body).not.toHaveTextContent("secret database endpoint");
   });
 
@@ -423,9 +383,7 @@ describe("AuthProvider", () => {
     expect(await screen.findByTestId("auth-state")).toHaveTextContent("authenticated");
     await userEvent.setup().click(screen.getByRole("button", { name: "Update profile" }));
 
-    expect(await screen.findByTestId("auth-error")).toHaveTextContent(
-      "INVALID_AUTH_RESPONSE",
-    );
+    expect(await screen.findByTestId("auth-error")).toHaveTextContent("INVALID_AUTH_RESPONSE");
     expect(screen.getByTestId("auth-state")).toHaveTextContent("authenticated");
     expect(screen.getByText("Alice")).toBeVisible();
   });
@@ -468,10 +426,7 @@ function AuthHarness() {
       <button type="button" onClick={() => void auth.login()}>
         Log in
       </button>
-      <button
-        type="button"
-        onClick={() => void auth.login(initialWallet().uuid)}
-      >
+      <button type="button" onClick={() => void auth.login(initialWallet().uuid)}>
         Log in with selected wallet
       </button>
       <button type="button" onClick={() => void auth.refresh()}>
@@ -557,9 +512,7 @@ function userRecord() {
   };
 }
 
-function authenticatedSession(
-  overrides: Partial<AuthSession> = {},
-): AuthSession {
+function authenticatedSession(overrides: Partial<AuthSession> = {}): AuthSession {
   return {
     authenticated: true,
     csrf_token: csrfToken,

@@ -22,19 +22,16 @@ export function PendingPage() {
   const mempoolEnabled = publicConfig.data?.features.mempool !== false;
   const canLoadPending = publicConfig.isSuccess && mempoolEnabled;
   const cursor = cursorHistory.at(-1) || undefined;
-  const pending = usePendingTransactions(
-    cursor,
-    canLoadPending,
-    PAGE_SIZE,
-    refreshGeneration,
-  );
+  const pending = usePendingTransactions(cursor, canLoadPending, PAGE_SIZE, refreshGeneration);
   const locale = i18n.resolvedLanguage ?? "en";
   const nativeDecimals = publicConfig.data?.native_decimals ?? 18;
   const nativeSymbol = publicConfig.data?.native_symbol ?? "";
   const expiresAt = pending.data ? Date.parse(pending.data.meta.expires_at) : Number.NaN;
-  const snapshotExpired = expiredSnapshot || (Number.isFinite(expiresAt) && expiresAt <= Date.now());
+  const snapshotExpired =
+    expiredSnapshot || (Number.isFinite(expiresAt) && expiresAt <= Date.now());
   const snapshot = snapshotExpired ? undefined : pending.data;
-  const unavailable = pending.error instanceof ApiError &&
+  const unavailable =
+    pending.error instanceof ApiError &&
     pending.error.status === 503 &&
     pending.error.code === "mempool_unavailable"
       ? pendingUnavailableDetails(pending.error.details)
@@ -165,15 +162,21 @@ function PendingSnapshotSummary({ meta, locale }: { meta: PendingMeta; locale: s
       <dl className="pending-snapshot-grid">
         <div>
           <dt>{t("pending.snapshotTime")}</dt>
-          <dd><time dateTime={meta.snapshot_at}>{formatTimestamp(meta.snapshot_at, locale)}</time></dd>
+          <dd>
+            <time dateTime={meta.snapshot_at}>{formatTimestamp(meta.snapshot_at, locale)}</time>
+          </dd>
         </div>
         <div>
           <dt>{t("pending.expiresAt")}</dt>
-          <dd><time dateTime={meta.expires_at}>{formatTimestamp(meta.expires_at, locale)}</time></dd>
+          <dd>
+            <time dateTime={meta.expires_at}>{formatTimestamp(meta.expires_at, locale)}</time>
+          </dd>
         </div>
         <div>
           <dt>{t("pending.endpoint")}</dt>
-          <dd><code>{meta.endpoint}</code></dd>
+          <dd>
+            <code>{meta.endpoint}</code>
+          </dd>
         </div>
         <div>
           <dt>{t("pending.total")}</dt>
@@ -217,12 +220,20 @@ function PendingTable({
           {transactions.map((transaction) => (
             <tr key={transaction.hash}>
               <td>
-                <Link to="/tx/$hash" params={{ hash: transaction.hash }} search={{ tab: "overview" }}>
+                <Link
+                  to="/tx/$hash"
+                  params={{ hash: transaction.hash }}
+                  search={{ tab: "overview" }}
+                >
                   <code title={transaction.hash}>{shorten(transaction.hash)}</code>
                 </Link>
               </td>
-              <td><TransactionStatus label={t("transactionStatus.pending")} status="pending" /></td>
-              <td><AddressIdentity address={transaction.from} /></td>
+              <td>
+                <TransactionStatus label={t("transactionStatus.pending")} status="pending" />
+              </td>
+              <td>
+                <AddressIdentity address={transaction.from} />
+              </td>
               <td>
                 {transaction.to ? (
                   <AddressIdentity address={transaction.to} />
@@ -230,11 +241,25 @@ function PendingTable({
                   t("common.contractCreation")
                 )}
               </td>
-              <td><code>{formatInteger(transaction.nonce, locale)}</code></td>
-              <td><code>{formatNativeAmount(transaction.value, locale, nativeDecimals)}</code></td>
-              <td><PendingFees transaction={transaction} locale={locale} /></td>
-              <td><time dateTime={transaction.first_seen_at}>{formatTimestamp(transaction.first_seen_at, locale)}</time></td>
-              <td><time dateTime={transaction.last_seen_at}>{formatTimestamp(transaction.last_seen_at, locale)}</time></td>
+              <td>
+                <code>{formatInteger(transaction.nonce, locale)}</code>
+              </td>
+              <td>
+                <code>{formatNativeAmount(transaction.value, locale, nativeDecimals)}</code>
+              </td>
+              <td>
+                <PendingFees transaction={transaction} locale={locale} />
+              </td>
+              <td>
+                <time dateTime={transaction.first_seen_at}>
+                  {formatTimestamp(transaction.first_seen_at, locale)}
+                </time>
+              </td>
+              <td>
+                <time dateTime={transaction.last_seen_at}>
+                  {formatTimestamp(transaction.last_seen_at, locale)}
+                </time>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -257,7 +282,9 @@ function PendingFees({ transaction, locale }: { transaction: PendingTransaction;
       {fees.map(([label, value]) => (
         <div key={label}>
           <dt>{label}</dt>
-          <dd><code>{formatInteger(value, locale)}</code></dd>
+          <dd>
+            <code>{formatInteger(value, locale)}</code>
+          </dd>
         </div>
       ))}
     </dl>
@@ -281,17 +308,31 @@ function PendingUnavailablePanel({
   const locale = i18n.resolvedLanguage ?? "en";
   return (
     <section className="capability-panel pending-unavailable" role="status">
-      <span className="capability-mark" aria-hidden="true">!</span>
+      <span className="capability-mark" aria-hidden="true">
+        !
+      </span>
       <div>
         <h2>{title}</h2>
         <p>{detail}</p>
         <dl className="pending-unavailable-details">
-          <div><dt>{t("pending.state")}</dt><dd><code>{state}</code></dd></div>
-          <div><dt>{t("pending.reason")}</dt><dd><code>{reason}</code></dd></div>
+          <div>
+            <dt>{t("pending.state")}</dt>
+            <dd>
+              <code>{state}</code>
+            </dd>
+          </div>
+          <div>
+            <dt>{t("pending.reason")}</dt>
+            <dd>
+              <code>{reason}</code>
+            </dd>
+          </div>
           {lastAttemptAt && (
             <div>
               <dt>{t("pending.lastAttempt")}</dt>
-              <dd><time dateTime={lastAttemptAt}>{formatTimestamp(lastAttemptAt, locale)}</time></dd>
+              <dd>
+                <time dateTime={lastAttemptAt}>{formatTimestamp(lastAttemptAt, locale)}</time>
+              </dd>
             </div>
           )}
         </dl>
@@ -304,11 +345,16 @@ type Translate = ReturnType<typeof useTranslation>["t"];
 
 function pendingStateLabel(value: string, t: Translate): string {
   switch (value) {
-    case "complete": return t("stageState.complete");
-    case "pending": return t("stageState.pending");
-    case "unavailable": return t("stageState.unavailable");
-    case "failed": return t("stageState.failed");
-    default: return value;
+    case "complete":
+      return t("stageState.complete");
+    case "pending":
+      return t("stageState.pending");
+    case "unavailable":
+      return t("stageState.unavailable");
+    case "failed":
+      return t("stageState.failed");
+    default:
+      return value;
   }
 }
 

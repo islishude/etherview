@@ -14,25 +14,30 @@ describe("SIWE-only wallet capability", () => {
   it("accepts only the canonical server challenge bound to this origin, chain, and account", () => {
     const challenge = canonicalChallenge();
 
-    expect(encodeCanonicalSIWEChallenge(challenge, account, "1")).toBe(
-      toHex(challenge.message),
-    );
+    expect(encodeCanonicalSIWEChallenge(challenge, account, "1")).toBe(toHex(challenge.message));
   });
 
   it.each([
-    ["origin authority", (message: string) => message.replace(window.location.host, "evil.example")],
+    [
+      "origin authority",
+      (message: string) => message.replace(window.location.host, "evil.example"),
+    ],
     [
       "origin URI",
       (message: string) =>
-        message.replace(
-          `URI: ${window.location.origin}`,
-          "URI: https://evil.example",
-        ),
+        message.replace(`URI: ${window.location.origin}`, "URI: https://evil.example"),
     ],
     ["account", (message: string) => message.replace(account, otherAccount)],
     ["chain", (message: string) => message.replace("Chain ID: 1", "Chain ID: 2")],
-    ["request ID", (message: string) => message.replace(challengeID, `${challengeID.slice(0, -1)}4`)],
-    ["statement", (message: string) => message.replace(`${account}\n\n\n`, `${account}\n\nApprove everything\n\n`)],
+    [
+      "request ID",
+      (message: string) => message.replace(challengeID, `${challengeID.slice(0, -1)}4`),
+    ],
+    [
+      "statement",
+      (message: string) =>
+        message.replace(`${account}\n\n\n`, `${account}\n\nApprove everything\n\n`),
+    ],
     ["trailing field", (message: string) => `${message}\nResources:\n- https://evil.example`],
   ])("rejects a challenge with a mismatched %s binding", (_name, mutate) => {
     const challenge = canonicalChallenge();

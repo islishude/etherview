@@ -1,17 +1,7 @@
-import {
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname, join, relative, resolve, sep } from "node:path";
-import {
-  brotliCompressSync,
-  constants as zlibConstants,
-  gzipSync,
-} from "node:zlib";
+import { brotliCompressSync, constants as zlibConstants, gzipSync } from "node:zlib";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const assetManifestName = "asset-manifest.json";
@@ -75,10 +65,7 @@ export function prepareDistribution(distributionPath) {
     assets[name] = metadata;
   }
   const manifest = { schema: assetManifestSchema, assets };
-  writeFileSync(
-    join(distribution, assetManifestName),
-    `${JSON.stringify(manifest, null, 2)}\n`,
-  );
+  writeFileSync(join(distribution, assetManifestName), `${JSON.stringify(manifest, null, 2)}\n`);
   return manifest;
 }
 
@@ -86,7 +73,9 @@ function main() {
   const scriptDirectory = dirname(fileURLToPath(import.meta.url));
   const webRoot = resolve(scriptDirectory, "..");
   const manifest = prepareDistribution(process.argv[2] ?? join(webRoot, "dist"));
-  const compressed = Object.values(manifest.assets).filter((asset) => asset.br || asset.gzip).length;
+  const compressed = Object.values(manifest.assets).filter(
+    (asset) => asset.br || asset.gzip,
+  ).length;
   process.stdout.write(
     `web-assets: files=${Object.keys(manifest.assets).length} compressed=${compressed}\n`,
   );

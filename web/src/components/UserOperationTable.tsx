@@ -35,17 +35,20 @@ export function UserOperationTable({ items }: { items: UserOperationSummary[] })
                   {shorten(operation.hash)}
                 </Link>
                 <small className="table-secondary">
-                  v{operation.entry_point_version} · #{operation.operation_index} · {t("userOperation.eventShort")} #{operation.event_log_index}
+                  v{operation.entry_point_version} · #{operation.operation_index} ·{" "}
+                  {t("userOperation.eventShort")} #{operation.event_log_index}
                 </small>
               </td>
-              <td><UserOperationStatus success={operation.success} /></td>
+              <td>
+                <UserOperationStatus success={operation.success} />
+              </td>
               <td>
                 <AddressIdentity address={operation.sender} />
                 {operation.participating_roles?.length ? (
                   <small className="table-secondary">
-                    {operation.participating_roles.map((role) =>
-                      t(`userOperation.role.${role}`)
-                    ).join(", ")}
+                    {operation.participating_roles
+                      .map((role) => t(`userOperation.role.${role}`))
+                      .join(", ")}
                   </small>
                 ) : null}
               </td>
@@ -54,10 +57,18 @@ export function UserOperationTable({ items }: { items: UserOperationSummary[] })
                   {formatInteger(operation.block_number, locale)}
                 </Link>
               </td>
-              <td><AddressIdentity address={operation.bundler} /></td>
-              <td>{operation.paymaster ? <AddressIdentity address={operation.paymaster} /> : "—"}</td>
-              <td><code>{formatNativeAmount(operation.actual_gas_cost, locale, nativeDecimals)}</code></td>
-              <td><UserOperationFinality finality={operation.finality} /></td>
+              <td>
+                <AddressIdentity address={operation.bundler} />
+              </td>
+              <td>
+                {operation.paymaster ? <AddressIdentity address={operation.paymaster} /> : "—"}
+              </td>
+              <td>
+                <code>{formatNativeAmount(operation.actual_gas_cost, locale, nativeDecimals)}</code>
+              </td>
+              <td>
+                <UserOperationFinality finality={operation.finality} />
+              </td>
             </tr>
           ))}
         </tbody>

@@ -4,11 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { getAddress, isAddress } from "viem";
 
-import {
-  listAdminUsers,
-  type AdminUserUpdate,
-  type User,
-} from "@/api/auth";
+import { listAdminUsers, type AdminUserUpdate, type User } from "@/api/auth";
 import {
   createCurrentUserAPIKey,
   listCurrentUserAPIKeys,
@@ -22,10 +18,7 @@ import { usePublicConfig } from "@/api/hooks";
 import { CopyButton } from "@/components/CopyButton";
 import { formatTimestamp, shorten } from "@/components/format";
 import { SIWELoginControl } from "@/components/SIWELoginControl";
-import {
-  authErrorTranslationKey,
-  useAuth,
-} from "@/auth/AuthProvider";
+import { authErrorTranslationKey, useAuth } from "@/auth/AuthProvider";
 import { chainsMatch } from "@/wallet/eip6963";
 import { useWallet } from "@/wallet/WalletProvider";
 import { PersonalBillingHistory } from "./BillingPages";
@@ -33,11 +26,7 @@ import { Page } from "./pages";
 
 const ADMIN_PAGE_SIZE = 25;
 
-export function AccountPage({
-  tab,
-}: {
-  tab: "overview" | "api-keys" | "billing";
-}) {
+export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" }) {
   const { i18n, t } = useTranslation();
   const auth = useAuth();
   const wallet = useWallet();
@@ -48,14 +37,11 @@ export function AccountPage({
   const locale = i18n.resolvedLanguage ?? "en";
   const sessionUser = auth.session.user ?? undefined;
   const expectedChainID = publicConfig.data?.chain_id;
-  const billingEnabled =
-    publicConfig.data?.features.api_billing === true;
-  const apiKeysEnabled =
-    publicConfig.data?.features.user_api_keys === true;
+  const billingEnabled = publicConfig.data?.features.api_billing === true;
+  const apiKeysEnabled = publicConfig.data?.features.user_api_keys === true;
   const activeTab = tab === "billing" && !billingEnabled ? "overview" : tab;
   const walletOnChain =
-    Boolean(wallet.active) &&
-    chainsMatch(wallet.active?.chainID, expectedChainID);
+    Boolean(wallet.active) && chainsMatch(wallet.active?.chainID, expectedChainID);
   const walletMatchesUser =
     Boolean(wallet.active && sessionUser) &&
     addressesMatch(wallet.active?.account, sessionUser?.address) &&
@@ -96,10 +82,7 @@ export function AccountPage({
         <UnavailablePanel />
       ) : (
         <>
-          <section
-            className="identity-grid"
-            aria-label={t("auth.account.identityStatus")}
-          >
+          <section className="identity-grid" aria-label={t("auth.account.identityStatus")}>
             <article className="panel identity-card">
               <div className="identity-card-heading">
                 <span
@@ -135,11 +118,7 @@ export function AccountPage({
             <article className="panel identity-card">
               <div className="identity-card-heading">
                 <span
-                  className={
-                    auth.session.authenticated
-                      ? "status-dot success"
-                      : "status-dot"
-                  }
+                  className={auth.session.authenticated ? "status-dot success" : "status-dot"}
                   aria-hidden="true"
                 />
                 <h2>{t("auth.sessionState.title")}</h2>
@@ -173,10 +152,7 @@ export function AccountPage({
           )}
 
           {!auth.loading && !auth.session.authenticated && (
-            <section
-              className="panel auth-action-panel"
-              aria-labelledby="sign-in-title"
-            >
+            <section className="panel auth-action-panel" aria-labelledby="sign-in-title">
               <div>
                 <span className="eyebrow">{t("auth.signIn.eyebrow")}</span>
                 <h2 id="sign-in-title">{t("auth.signIn.title")}</h2>
@@ -216,22 +192,19 @@ export function AccountPage({
 
           {auth.session.authenticated && sessionUser && activeTab === "overview" && (
             <div className="account-layout" data-account-tab="overview">
-              <section
-                className="panel profile-panel"
-                aria-labelledby="profile-title"
-              >
+              <section className="panel profile-panel" aria-labelledby="profile-title">
                 <div className="panel-heading">
                   <h2 id="profile-title">{t("auth.profile.title")}</h2>
-                  <span
-                    className={`user-state ${sessionUser.status}`}
-                  >
+                  <span className={`user-state ${sessionUser.status}`}>
                     {t(`auth.status.${sessionUser.status}`)}
                   </span>
                 </div>
                 <dl className="profile-details">
                   <div>
                     <dt>{t("auth.fields.address")}</dt>
-                    <dd><code>{sessionUser.address}</code></dd>
+                    <dd>
+                      <code>{sessionUser.address}</code>
+                    </dd>
                   </div>
                   <div>
                     <dt>{t("auth.fields.role")}</dt>
@@ -252,15 +225,15 @@ export function AccountPage({
                         <time dateTime={sessionUser.last_login_at}>
                           {formatTimestamp(sessionUser.last_login_at, locale)}
                         </time>
-                      ) : "—"}
+                      ) : (
+                        "—"
+                      )}
                     </dd>
                   </div>
                 </dl>
                 <form className="profile-form" onSubmit={submitProfile}>
                   <div className="field-control">
-                    <label htmlFor="auth-display-name">
-                      {t("auth.profile.displayName")}
-                    </label>
+                    <label htmlFor="auth-display-name">{t("auth.profile.displayName")}</label>
                     <input
                       aria-describedby="display-name-hint"
                       autoComplete="nickname"
@@ -273,47 +246,34 @@ export function AccountPage({
                       }}
                       value={displayName}
                     />
-                    <small id="display-name-hint">
-                      {t("auth.profile.displayNameHint")}
-                    </small>
+                    <small id="display-name-hint">{t("auth.profile.displayNameHint")}</small>
                   </div>
                   {profileError && (
-                    <p className="form-error" role="alert">{profileError}</p>
+                    <p className="form-error" role="alert">
+                      {profileError}
+                    </p>
                   )}
                   {profileSaved && (
                     <p className="form-success" role="status">
                       {t("auth.profile.saved")}
                     </p>
                   )}
-                  <button
-                    className="button primary"
-                    disabled={auth.pending}
-                    type="submit"
-                  >
+                  <button className="button primary" disabled={auth.pending} type="submit">
                     {t("auth.profile.save")}
                   </button>
                 </form>
               </section>
 
-              <aside
-                className="panel session-panel"
-                aria-labelledby="session-actions-title"
-              >
+              <aside className="panel session-panel" aria-labelledby="session-actions-title">
                 <h2 id="session-actions-title">{t("auth.sessionActions.title")}</h2>
                 <p>{t("auth.sessionActions.description")}</p>
                 {sessionUser.role === "admin" && (
                   <>
-                    <Link
-                      className="button secondary inline-button"
-                      to="/admin/users"
-                    >
+                    <Link className="button secondary inline-button" to="/admin/users">
                       {t("auth.admin.openUsers")}
                     </Link>
                     {billingEnabled && (
-                      <Link
-                        className="button secondary inline-button"
-                        to="/admin/billing"
-                      >
+                      <Link className="button secondary inline-button" to="/admin/billing">
                         {t("billing.admin.openBilling")}
                       </Link>
                     )}
@@ -330,19 +290,21 @@ export function AccountPage({
               </aside>
             </div>
           )}
-          {auth.session.authenticated && sessionUser && activeTab === "api-keys" && (
-            apiKeysEnabled ? (
+          {auth.session.authenticated &&
+            sessionUser &&
+            activeTab === "api-keys" &&
+            (apiKeysEnabled ? (
               <UserAPIKeysPanel locale={locale} />
             ) : (
               <section className="panel auth-gate" aria-labelledby="api-keys-unavailable-title">
                 <h2 id="api-keys-unavailable-title">{t("auth.apiKeys.unavailableTitle")}</h2>
                 <p>{t("auth.apiKeys.unavailableDescription")}</p>
               </section>
-            )
-          )}
-          {billingEnabled && auth.session.authenticated && sessionUser && activeTab === "billing" && (
-            <PersonalBillingHistory />
-          )}
+            ))}
+          {billingEnabled &&
+            auth.session.authenticated &&
+            sessionUser &&
+            activeTab === "billing" && <PersonalBillingHistory />}
         </>
       )}
     </Page>
@@ -452,7 +414,9 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
             <dl>
               <div>
                 <dt>{t("auth.apiKeys.active")}</dt>
-                <dd>{policy.active_count} / {policy.maximum_active}</dd>
+                <dd>
+                  {policy.active_count} / {policy.maximum_active}
+                </dd>
               </div>
               <div>
                 <dt>{t("auth.apiKeys.rate")}</dt>
@@ -491,8 +455,12 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
                   type="checkbox"
                 />
                 <span>
-                  <strong>{t(`auth.apiKeys.scope.${apiKeyScopeTranslationKey(scope)}.title`)}</strong>
-                  <small>{t(`auth.apiKeys.scope.${apiKeyScopeTranslationKey(scope)}.description`)}</small>
+                  <strong>
+                    {t(`auth.apiKeys.scope.${apiKeyScopeTranslationKey(scope)}.title`)}
+                  </strong>
+                  <small>
+                    {t(`auth.apiKeys.scope.${apiKeyScopeTranslationKey(scope)}.description`)}
+                  </small>
                 </span>
               </label>
             ))}
@@ -507,8 +475,16 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
         </form>
       </div>
 
-      {formError && <p className="form-error" role="alert">{formError}</p>}
-      {keys.isPending && <p className="query-notice" role="status">{t("auth.apiKeys.loading")}</p>}
+      {formError && (
+        <p className="form-error" role="alert">
+          {formError}
+        </p>
+      )}
+      {keys.isPending && (
+        <p className="query-notice" role="status">
+          {t("auth.apiKeys.loading")}
+        </p>
+      )}
       {keys.error && (
         <div className="query-notice degraded" role="alert">
           <span>
@@ -518,7 +494,9 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
         </div>
       )}
       {keys.data?.data.items.length === 0 && (
-        <p className="empty-result" role="status">{t("auth.apiKeys.empty")}</p>
+        <p className="empty-result" role="status">
+          {t("auth.apiKeys.empty")}
+        </p>
       )}
       {keys.data && keys.data.data.items.length > 0 && (
         <div className="api-key-list" aria-label={t("auth.apiKeys.listLabel")}>
@@ -529,29 +507,41 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
                   <h3>{key.name}</h3>
                   <code>{key.prefix}</code>
                 </div>
-                <span className={`user-state ${key.status}`}>{t(`auth.apiKeys.status.${key.status}`)}</span>
+                <span className={`user-state ${key.status}`}>
+                  {t(`auth.apiKeys.status.${key.status}`)}
+                </span>
               </div>
               <dl>
                 <div>
                   <dt>{t("auth.apiKeys.scopes")}</dt>
                   <dd>
                     {key.scopes
-                      .map((scope) => t(`auth.apiKeys.scope.${apiKeyScopeTranslationKey(scope)}.short`))
+                      .map((scope) =>
+                        t(`auth.apiKeys.scope.${apiKeyScopeTranslationKey(scope)}.short`),
+                      )
                       .join(", ")}
                   </dd>
                 </div>
                 <div>
                   <dt>{t("auth.apiKeys.quota")}</dt>
-                  <dd>{key.rate_per_second}/s · {key.burst}</dd>
+                  <dd>
+                    {key.rate_per_second}/s · {key.burst}
+                  </dd>
                 </div>
                 <div>
                   <dt>{t("auth.apiKeys.created")}</dt>
-                  <dd><time dateTime={key.created_at}>{formatTimestamp(key.created_at, locale)}</time></dd>
+                  <dd>
+                    <time dateTime={key.created_at}>{formatTimestamp(key.created_at, locale)}</time>
+                  </dd>
                 </div>
                 {key.revoked_at && (
                   <div>
                     <dt>{t("auth.apiKeys.revoked")}</dt>
-                    <dd><time dateTime={key.revoked_at}>{formatTimestamp(key.revoked_at, locale)}</time></dd>
+                    <dd>
+                      <time dateTime={key.revoked_at}>
+                        {formatTimestamp(key.revoked_at, locale)}
+                      </time>
+                    </dd>
                   </div>
                 )}
               </dl>
@@ -584,7 +574,9 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
           <button
             className="button secondary"
             disabled={keys.isFetching || cursors.length === 1}
-            onClick={() => setCursors((current) => current.length > 1 ? current.slice(0, -1) : current)}
+            onClick={() =>
+              setCursors((current) => (current.length > 1 ? current.slice(0, -1) : current))
+            }
             type="button"
           >
             {t("pagination.previous")}
@@ -648,8 +640,7 @@ export function AdminUsersPage() {
   const { i18n, t } = useTranslation();
   const auth = useAuth();
   const publicConfig = usePublicConfig();
-  const billingEnabled =
-    publicConfig.data?.features.api_billing === true;
+  const billingEnabled = publicConfig.data?.features.api_billing === true;
   const [cursors, setCursors] = useState([""]);
   const [announcement, setAnnouncement] = useState<string>();
   const cursor = cursors.at(-1) || undefined;
@@ -680,17 +671,16 @@ export function AdminUsersPage() {
       {!auth.enabled && !auth.loading ? (
         <UnavailablePanel />
       ) : auth.loading ? (
-        <p className="query-notice" role="status">{t("auth.sessionState.checking")}</p>
+        <p className="query-notice" role="status">
+          {t("auth.sessionState.checking")}
+        </p>
       ) : !auth.session.authenticated ? (
         <AuthGate
           detail={t("auth.admin.authenticationRequired")}
           title={t("auth.errors.authenticationRequired")}
         />
       ) : !isAdmin ? (
-        <AuthGate
-          detail={t("auth.admin.adminRequired")}
-          title={t("auth.errors.adminRequired")}
-        />
+        <AuthGate detail={t("auth.admin.adminRequired")} title={t("auth.errors.adminRequired")} />
       ) : (
         <>
           <div className="admin-toolbar">
@@ -717,7 +707,9 @@ export function AdminUsersPage() {
             </p>
           )}
           {announcement && (
-            <p className="form-success" role="status">{announcement}</p>
+            <p className="form-success" role="status">
+              {announcement}
+            </p>
           )}
           {users.isPending && (
             <p className="query-notice" role="status">
@@ -738,10 +730,7 @@ export function AdminUsersPage() {
             </p>
           )}
           {users.data && users.data.data.length > 0 && (
-            <div
-              className="admin-user-list"
-              aria-label={t("auth.admin.userList")}
-            >
+            <div className="admin-user-list" aria-label={t("auth.admin.userList")}>
               {users.data.data.map((user) => (
                 <AdminUserCard
                   currentUserID={auth.session.user?.id}
@@ -754,18 +743,13 @@ export function AdminUsersPage() {
             </div>
           )}
           {users.data && (
-            <nav
-              className="cursor-pagination"
-              aria-label={t("auth.admin.pagination")}
-            >
+            <nav className="cursor-pagination" aria-label={t("auth.admin.pagination")}>
               <button
                 className="button secondary"
                 disabled={users.isFetching || cursors.length === 1}
                 onClick={() => {
                   setAnnouncement(undefined);
-                  setCursors((current) =>
-                    current.length > 1 ? current.slice(0, -1) : current,
-                  );
+                  setCursors((current) => (current.length > 1 ? current.slice(0, -1) : current));
                 }}
                 type="button"
               >
@@ -774,10 +758,7 @@ export function AdminUsersPage() {
               <span>{t("pagination.page", { page: cursors.length })}</span>
               <button
                 className="button secondary"
-                disabled={
-                  users.isFetching ||
-                  !users.data.meta.next_cursor
-                }
+                disabled={users.isFetching || !users.data.meta.next_cursor}
                 onClick={() => {
                   const next = users.data?.meta.next_cursor;
                   if (!next) return;
@@ -825,9 +806,7 @@ function AdminUserCard({
     if (Object.keys(update).length === 0) return;
     try {
       await auth.updateUser(user.id, update);
-      await onMutationComplete(
-        t("auth.admin.updated", { address: shorten(user.address) }),
-      );
+      await onMutationComplete(t("auth.admin.updated", { address: shorten(user.address) }));
     } catch {
       // Stable AuthProvider error is rendered by the owning page.
     }
@@ -866,15 +845,15 @@ function AdminUserCard({
               <time dateTime={user.last_login_at}>
                 {formatTimestamp(user.last_login_at, locale)}
               </time>
-            ) : "—"}
+            ) : (
+              "—"
+            )}
           </dd>
         </div>
         <div>
           <dt>{t("auth.fields.createdAt")}</dt>
           <dd>
-            <time dateTime={user.created_at}>
-              {formatTimestamp(user.created_at, locale)}
-            </time>
+            <time dateTime={user.created_at}>{formatTimestamp(user.created_at, locale)}</time>
           </dd>
         </div>
       </dl>
@@ -884,9 +863,7 @@ function AdminUserCard({
           <select
             aria-label={t("auth.admin.roleFor", { address: user.address })}
             disabled={auth.pending}
-            onChange={(event) =>
-              setRole(event.target.value as User["role"])
-            }
+            onChange={(event) => setRole(event.target.value as User["role"])}
             value={role}
           >
             <option value="user">{t("auth.role.user")}</option>
@@ -898,9 +875,7 @@ function AdminUserCard({
           <select
             aria-label={t("auth.admin.statusFor", { address: user.address })}
             disabled={auth.pending}
-            onChange={(event) =>
-              setStatus(event.target.value as User["status"])
-            }
+            onChange={(event) => setStatus(event.target.value as User["status"])}
             value={status}
           >
             <option value="active">{t("auth.status.active")}</option>
@@ -972,10 +947,7 @@ function normalizeDisplayName(
   return { valid: true, value: normalized };
 }
 
-function addressesMatch(
-  left: string | undefined,
-  right: string | undefined,
-): boolean {
+function addressesMatch(left: string | undefined, right: string | undefined): boolean {
   if (!left || !right || !isAddress(left) || !isAddress(right)) return false;
   try {
     return getAddress(left) === getAddress(right);

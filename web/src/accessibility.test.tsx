@@ -16,12 +16,14 @@ describe("explorer accessibility baseline", () => {
     await i18n.changeLanguage("en");
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(
-        Response.json(
-          { error: { code: "NOT_READY", message: "API not ready", request_id: "a11y-test" } },
-          { status: 503 },
+      vi
+        .fn()
+        .mockResolvedValue(
+          Response.json(
+            { error: { code: "NOT_READY", message: "API not ready", request_id: "a11y-test" } },
+            { status: 503 },
+          ),
         ),
-      ),
     );
   });
 

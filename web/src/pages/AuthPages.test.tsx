@@ -41,10 +41,13 @@ describe("authentication pages", () => {
   });
 
   it("renders the disabled feature without inventing user authority", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      if (String(input) === "/api/v1/config") return configResponse(false);
-      return notFound();
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input) === "/api/v1/config") return configResponse(false);
+        return notFound();
+      }),
+    );
 
     renderRoute("/account");
 
@@ -58,22 +61,23 @@ describe("authentication pages", () => {
   });
 
   it("keeps direct sign-in disabled when no injected wallet is discovered", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      if (String(input) === "/api/v1/config") return configResponse(true);
-      if (String(input) === "/api/v1/auth/session") {
-        return envelope({ authenticated: false });
-      }
-      return notFound();
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input) === "/api/v1/config") return configResponse(true);
+        if (String(input) === "/api/v1/auth/session") {
+          return envelope({ authenticated: false });
+        }
+        return notFound();
+      }),
+    );
 
     renderRoute("/account");
     await screen.findByRole("heading", { name: "Wallet connection" });
 
     await waitFor(() => expect(accountPageSignInButton()).toBeDisabled());
     expect(
-      screen.getByText(
-        "Install or unlock a browser wallet, then refresh discovery.",
-      ),
+      screen.getByText("Install or unlock a browser wallet, then refresh discovery."),
     ).toBeInTheDocument();
   });
 
@@ -81,25 +85,28 @@ describe("authentication pages", () => {
     const fake = fakeProvider();
     registerProvider(fake.provider);
     const requests: Array<{ url: string; request?: RequestInit }> = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, request?: RequestInit) => {
-      const url = String(input);
-      requests.push({ url, request });
-      if (url === "/api/v1/config") return configResponse(true);
-      if (url === "/api/v1/auth/session") {
-        return envelope({ authenticated: false });
-      }
-      if (url === "/api/v1/auth/challenge") {
-        return envelope(authSIWEChallenge());
-      }
-      if (url === "/api/v1/auth/verify") {
-        return envelope(authSession(userRecord()));
-      }
-      if (url === "/api/v1/users/me" && request?.method === "PATCH") {
-        const body = JSON.parse(String(request.body)) as { display_name: string | null };
-        return envelope({ ...userRecord(), display_name: body.display_name });
-      }
-      return notFound();
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, request?: RequestInit) => {
+        const url = String(input);
+        requests.push({ url, request });
+        if (url === "/api/v1/config") return configResponse(true);
+        if (url === "/api/v1/auth/session") {
+          return envelope({ authenticated: false });
+        }
+        if (url === "/api/v1/auth/challenge") {
+          return envelope(authSIWEChallenge());
+        }
+        if (url === "/api/v1/auth/verify") {
+          return envelope(authSession(userRecord()));
+        }
+        if (url === "/api/v1/users/me" && request?.method === "PATCH") {
+          const body = JSON.parse(String(request.body)) as { display_name: string | null };
+          return envelope({ ...userRecord(), display_name: body.display_name });
+        }
+        return notFound();
+      }),
+    );
 
     renderRoute("/account");
     const user = userEvent.setup();
@@ -107,13 +114,9 @@ describe("authentication pages", () => {
     await waitFor(() => expect(accountPageSignInButton()).toBeEnabled());
     await user.click(accountPageSignInButton());
 
-    expect(
-      await screen.findByRole("heading", { name: "Wallet connection" }),
-    ).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "Wallet connection" })).toBeVisible();
     expect(screen.getByText("Wallet connected", { exact: true })).toBeVisible();
-    expect(
-      screen.getAllByText("User authenticated", { exact: true }),
-    ).toHaveLength(2);
+    expect(screen.getAllByText("User authenticated", { exact: true })).toHaveLength(2);
     expect(screen.getByRole("link", { name: "User admin" })).toBeVisible();
     expect(document.body).not.toHaveTextContent(csrfToken);
     expect([...storageValues()]).not.toContain(csrfToken);
@@ -127,27 +130,19 @@ describe("authentication pages", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("Profile saved.");
 
     const profileRequest = requests.find(
-      ({ url, request }) =>
-        url === "/api/v1/users/me" && request?.method === "PATCH",
+      ({ url, request }) => url === "/api/v1/users/me" && request?.method === "PATCH",
     );
-    expect(new Headers(profileRequest?.request?.headers).get("X-CSRF-Token")).toBe(
-      csrfToken,
-    );
-    expect(profileRequest?.request?.body).toBe(
-      JSON.stringify({ display_name: "Updated profile" }),
-    );
+    expect(new Headers(profileRequest?.request?.headers).get("X-CSRF-Token")).toBe(csrfToken);
+    expect(profileRequest?.request?.body).toBe(JSON.stringify({ display_name: "Updated profile" }));
     expect(profileRequest?.url).not.toContain(csrfToken);
 
     await user.clear(displayName);
     await user.type(displayName, "x".repeat(65));
     await user.click(screen.getByRole("button", { name: "Save profile" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Use at most 64 Unicode characters",
-    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("Use at most 64 Unicode characters");
     expect(
       requests.filter(
-        ({ url, request }) =>
-          url === "/api/v1/users/me" && request?.method === "PATCH",
+        ({ url, request }) => url === "/api/v1/users/me" && request?.method === "PATCH",
       ),
     ).toHaveLength(1);
 
@@ -161,9 +156,7 @@ describe("authentication pages", () => {
     expect(scan.violations, JSON.stringify(scan.violations, null, 2)).toEqual([]);
 
     await user.click(screen.getByRole("button", { name: "切换到中文" }));
-    expect(
-      await screen.findByRole("heading", { name: "钱包连接" }),
-    ).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "钱包连接" })).toBeVisible();
     expect(screen.getAllByText("用户已登录", { exact: true })).toHaveLength(2);
   });
 
@@ -171,30 +164,31 @@ describe("authentication pages", () => {
     const fake = fakeProvider();
     registerProvider(fake.provider);
     const requests: Array<{ url: string; request?: RequestInit }> = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, request?: RequestInit) => {
-      const url = String(input);
-      requests.push({ url, request });
-      if (url === "/api/v1/config") return configResponse(true);
-      if (url === "/api/v1/auth/session") {
-        return envelope({ authenticated: false });
-      }
-      if (url === "/api/v1/auth/challenge") {
-        return envelope(authSIWEChallenge());
-      }
-      if (url === "/api/v1/auth/verify") {
-        return envelope(authSession(userRecord()));
-      }
-      return notFound();
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, request?: RequestInit) => {
+        const url = String(input);
+        requests.push({ url, request });
+        if (url === "/api/v1/config") return configResponse(true);
+        if (url === "/api/v1/auth/session") {
+          return envelope({ authenticated: false });
+        }
+        if (url === "/api/v1/auth/challenge") {
+          return envelope(authSIWEChallenge());
+        }
+        if (url === "/api/v1/auth/verify") {
+          return envelope(authSession(userRecord()));
+        }
+        return notFound();
+      }),
+    );
 
     renderRoute("/account");
     const user = userEvent.setup();
     await screen.findByRole("heading", { name: "Wallet connection" });
     await waitFor(() => expect(accountPageSignInButton()).toBeEnabled());
     await user.click(accountPageSignInButton());
-    expect(
-      await screen.findAllByText("User authenticated", { exact: true }),
-    ).toHaveLength(2);
+    expect(await screen.findAllByText("User authenticated", { exact: true })).toHaveLength(2);
     expect(fake.request).toHaveBeenCalledWith({
       method: "personal_sign",
       params: [
@@ -210,12 +204,8 @@ describe("authentication pages", () => {
         .filter((method) => method === "personal_sign"),
     ).toEqual(["personal_sign"]);
 
-    const challengeRequest = requests.find(
-      ({ url }) => url === "/api/v1/auth/challenge",
-    );
-    const verifyRequest = requests.find(
-      ({ url }) => url === "/api/v1/auth/verify",
-    );
+    const challengeRequest = requests.find(({ url }) => url === "/api/v1/auth/challenge");
+    const verifyRequest = requests.find(({ url }) => url === "/api/v1/auth/verify");
     expect(challengeRequest?.request?.body).toBe(JSON.stringify({ address: account }));
     expect(verifyRequest?.request?.body).toBe(
       JSON.stringify({ challenge_id: challengeID, signature }),
@@ -226,60 +216,68 @@ describe("authentication pages", () => {
   it("manages scoped API keys only from the deep-linked account workspace", async () => {
     const token = `evk_abcdefghij_${"a".repeat(43)}`;
     const requests: Array<{ url: string; request?: RequestInit }> = [];
-    vi.stubGlobal("confirm", vi.fn(() => true));
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, request?: RequestInit) => {
-      const url = String(input);
-      requests.push({ url, request });
-      if (url === "/api/v1/config") {
-        return envelope({
-          chain_id: "1",
-          chain_name: "Auth Testnet",
-          native_symbol: "ETH",
-          native_name: "Ether",
-          native_decimals: 18,
-          features: { user_auth: true, user_api_keys: true },
-        });
-      }
-      if (url === "/api/v1/auth/session") return envelope(authSession(userRecord()));
-      if (url.startsWith("/api/v1/users/me/api-keys") && request?.method === "POST") {
-        return envelope({
-          token,
-          key: {
-            prefix: "abcdefghij",
-            name: "Production indexer",
-            scopes: ["api:read", "contract:verify"],
-            rate_per_second: 20,
-            burst: 40,
-            status: "active",
-            created_at: "2026-08-10T00:00:00Z",
-          },
-        });
-      }
-      if (url.startsWith("/api/v1/users/me/api-keys") && request?.method === "DELETE") {
-        return new Response(null, { status: 204 });
-      }
-      if (url.startsWith("/api/v1/users/me/api-keys")) {
-        return envelope({
-          items: [{
-            prefix: "abcdefghij",
-            name: "Existing reader",
-            scopes: ["api:read"],
-            rate_per_second: 20,
-            burst: 40,
-            status: "active",
-            created_at: "2026-08-09T00:00:00Z",
-          }],
-          policy: {
-            rate_per_second: 20,
-            burst: 40,
-            maximum_active: 5,
-            active_count: 1,
-            allowed_scopes: ["api:read", "contract:verify"],
-          },
-        });
-      }
-      return notFound();
-    }));
+    vi.stubGlobal(
+      "confirm",
+      vi.fn(() => true),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, request?: RequestInit) => {
+        const url = String(input);
+        requests.push({ url, request });
+        if (url === "/api/v1/config") {
+          return envelope({
+            chain_id: "1",
+            chain_name: "Auth Testnet",
+            native_symbol: "ETH",
+            native_name: "Ether",
+            native_decimals: 18,
+            features: { user_auth: true, user_api_keys: true },
+          });
+        }
+        if (url === "/api/v1/auth/session") return envelope(authSession(userRecord()));
+        if (url.startsWith("/api/v1/users/me/api-keys") && request?.method === "POST") {
+          return envelope({
+            token,
+            key: {
+              prefix: "abcdefghij",
+              name: "Production indexer",
+              scopes: ["api:read", "contract:verify"],
+              rate_per_second: 20,
+              burst: 40,
+              status: "active",
+              created_at: "2026-08-10T00:00:00Z",
+            },
+          });
+        }
+        if (url.startsWith("/api/v1/users/me/api-keys") && request?.method === "DELETE") {
+          return new Response(null, { status: 204 });
+        }
+        if (url.startsWith("/api/v1/users/me/api-keys")) {
+          return envelope({
+            items: [
+              {
+                prefix: "abcdefghij",
+                name: "Existing reader",
+                scopes: ["api:read"],
+                rate_per_second: 20,
+                burst: 40,
+                status: "active",
+                created_at: "2026-08-09T00:00:00Z",
+              },
+            ],
+            policy: {
+              rate_per_second: 20,
+              burst: 40,
+              maximum_active: 5,
+              active_count: 1,
+              allowed_scopes: ["api:read", "contract:verify"],
+            },
+          });
+        }
+        return notFound();
+      }),
+    );
 
     renderRoute("/account?tab=api-keys");
     const user = userEvent.setup();
@@ -298,17 +296,24 @@ describe("authentication pages", () => {
       ({ url, request }) => url === "/api/v1/users/me/api-keys" && request?.method === "POST",
     );
     expect(new Headers(createRequest?.request?.headers).get("X-CSRF-Token")).toBe(csrfToken);
-    expect(createRequest?.request?.body).toBe(JSON.stringify({
-      name: "Production indexer",
-      scopes: ["api:read", "contract:verify"],
-    }));
+    expect(createRequest?.request?.body).toBe(
+      JSON.stringify({
+        name: "Production indexer",
+        scopes: ["api:read", "contract:verify"],
+      }),
+    );
 
     await user.click(screen.getByRole("button", { name: "I saved the token" }));
     expect(screen.queryByText(token)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Revoke" }));
-    await waitFor(() => expect(requests.some(
-      ({ url, request }) => url === "/api/v1/users/me/api-keys/abcdefghij" && request?.method === "DELETE",
-    )).toBe(true));
+    await waitFor(() =>
+      expect(
+        requests.some(
+          ({ url, request }) =>
+            url === "/api/v1/users/me/api-keys/abcdefghij" && request?.method === "DELETE",
+        ),
+      ).toBe(true),
+    );
   });
 
   it("chooses among multiple wallets inline and connects only the selected provider", async () => {
@@ -324,20 +329,23 @@ describe("authentication pages", () => {
       name: "Beta Wallet",
       rdns: "org.etherview.beta",
     });
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      switch (String(input)) {
-        case "/api/v1/config":
-          return configResponse(true);
-        case "/api/v1/auth/session":
-          return envelope({ authenticated: false });
-        case "/api/v1/auth/challenge":
-          return envelope(authSIWEChallenge());
-        case "/api/v1/auth/verify":
-          return envelope(authSession(userRecord()));
-        default:
-          return notFound();
-      }
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        switch (String(input)) {
+          case "/api/v1/config":
+            return configResponse(true);
+          case "/api/v1/auth/session":
+            return envelope({ authenticated: false });
+          case "/api/v1/auth/challenge":
+            return envelope(authSIWEChallenge());
+          case "/api/v1/auth/verify":
+            return envelope(authSession(userRecord()));
+          default:
+            return notFound();
+        }
+      }),
+    );
 
     renderRoute("/account");
     const user = userEvent.setup();
@@ -348,13 +356,9 @@ describe("authentication pages", () => {
     const chooser = screen.getByRole("group", {
       name: "Choose a wallet to sign in",
     });
-    await user.click(
-      within(chooser).getByRole("button", { name: /Beta Wallet/u }),
-    );
+    await user.click(within(chooser).getByRole("button", { name: /Beta Wallet/u }));
 
-    expect(
-      await screen.findAllByText("User authenticated", { exact: true }),
-    ).toHaveLength(2);
+    expect(await screen.findAllByText("User authenticated", { exact: true })).toHaveLength(2);
     expect(
       alpha.request.mock.calls.some(([request]) => request.method === "eth_requestAccounts"),
     ).toBe(false);
@@ -374,52 +378,50 @@ describe("authentication pages", () => {
       role: "user",
       display_name: null,
     });
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, request?: RequestInit) => {
-      const url = String(input);
-      requests.push({ url, request });
-      if (url === "/api/v1/config") return configResponse(true);
-      if (url === "/api/v1/auth/session") {
-        return envelope({ authenticated: false });
-      }
-      if (url === "/api/v1/auth/challenge") {
-        return envelope(authSIWEChallenge());
-      }
-      if (url === "/api/v1/auth/verify") {
-        return envelope(authSession(userRecord()));
-      }
-      if (url.startsWith("/api/v1/admin/users?")) {
-        if (url.includes("cursor=")) {
-          return envelope([userRecord()], {});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, request?: RequestInit) => {
+        const url = String(input);
+        requests.push({ url, request });
+        if (url === "/api/v1/config") return configResponse(true);
+        if (url === "/api/v1/auth/session") {
+          return envelope({ authenticated: false });
         }
-        return envelope([target], { next_cursor: opaqueCursor });
-      }
-      if (
-        url === `/api/v1/admin/users/${targetUserID}` &&
-        request?.method === "PATCH"
-      ) {
-        const update = JSON.parse(String(request.body)) as {
-          role?: "user" | "admin";
-          status?: "active" | "disabled";
-        };
-        target = { ...target, ...update };
-        return envelope(target);
-      }
-      if (
-        url === `/api/v1/admin/users/${targetUserID}/sessions/revoke` &&
-        request?.method === "POST"
-      ) {
-        return envelope({ revoked_sessions: "3" });
-      }
-      return notFound();
-    }));
+        if (url === "/api/v1/auth/challenge") {
+          return envelope(authSIWEChallenge());
+        }
+        if (url === "/api/v1/auth/verify") {
+          return envelope(authSession(userRecord()));
+        }
+        if (url.startsWith("/api/v1/admin/users?")) {
+          if (url.includes("cursor=")) {
+            return envelope([userRecord()], {});
+          }
+          return envelope([target], { next_cursor: opaqueCursor });
+        }
+        if (url === `/api/v1/admin/users/${targetUserID}` && request?.method === "PATCH") {
+          const update = JSON.parse(String(request.body)) as {
+            role?: "user" | "admin";
+            status?: "active" | "disabled";
+          };
+          target = { ...target, ...update };
+          return envelope(target);
+        }
+        if (
+          url === `/api/v1/admin/users/${targetUserID}/sessions/revoke` &&
+          request?.method === "POST"
+        ) {
+          return envelope({ revoked_sessions: "3" });
+        }
+        return notFound();
+      }),
+    );
 
     renderRoute("/admin/users");
     const user = userEvent.setup();
     await signInFromWalletMenu(user);
 
-    expect(
-      await screen.findByRole("heading", { name: "User administration" }),
-    ).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "User administration" })).toBeVisible();
     expect(await screen.findByText(targetAccount)).toBeVisible();
     await user.selectOptions(
       screen.getByRole("combobox", { name: `Role for ${targetAccount}` }),
@@ -434,37 +436,25 @@ describe("authentication pages", () => {
 
     const updateRequest = requests.find(
       ({ url, request }) =>
-        url === `/api/v1/admin/users/${targetUserID}` &&
-        request?.method === "PATCH",
+        url === `/api/v1/admin/users/${targetUserID}` && request?.method === "PATCH",
     );
     expect(updateRequest?.request?.body).toBe(
       JSON.stringify({ role: "admin", status: "disabled" }),
     );
-    expect(new Headers(updateRequest?.request?.headers).get("X-CSRF-Token")).toBe(
-      csrfToken,
-    );
+    expect(new Headers(updateRequest?.request?.headers).get("X-CSRF-Token")).toBe(csrfToken);
 
     await user.click(screen.getByRole("button", { name: "Revoke sessions" }));
-    expect(
-      await screen.findByText("Revoked 3 session(s) for 0x222222…222222."),
-    ).toBeVisible();
+    expect(await screen.findByText("Revoked 3 session(s) for 0x222222…222222.")).toBeVisible();
     const revokeRequest = requests.find(
       ({ url, request }) =>
-        url === `/api/v1/admin/users/${targetUserID}/sessions/revoke` &&
-        request?.method === "POST",
+        url === `/api/v1/admin/users/${targetUserID}/sessions/revoke` && request?.method === "POST",
     );
-    expect(new Headers(revokeRequest?.request?.headers).get("X-CSRF-Token")).toBe(
-      csrfToken,
-    );
+    expect(new Headers(revokeRequest?.request?.headers).get("X-CSRF-Token")).toBe(csrfToken);
 
     await user.click(screen.getByRole("button", { name: "Next page" }));
     await waitFor(() => {
       expect(
-        requests.some(({ url }) =>
-          url.includes(
-            "cursor=users%2Fsnapshot%20%2B%20page%3D2",
-          ),
-        ),
+        requests.some(({ url }) => url.includes("cursor=users%2Fsnapshot%20%2B%20page%3D2")),
       ).toBe(true);
     });
 
@@ -507,12 +497,8 @@ function accountPageSignInButton() {
   });
 }
 
-async function signInFromWalletMenu(
-  user: ReturnType<typeof userEvent.setup>,
-) {
-  await user.click(
-    await screen.findByText("Connect wallet", { selector: "summary" }),
-  );
+async function signInFromWalletMenu(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByText("Connect wallet", { selector: "summary" }));
   const section = document.querySelector<HTMLElement>(".wallet-auth-section");
   expect(section).not.toBeNull();
   const signIn = within(section as HTMLElement).getByRole("button", {
@@ -647,21 +633,19 @@ function registerProvider(
 
 function fakeProvider() {
   const listeners = new Map<EIP1193Event, Set<(value: unknown) => void>>();
-  const request = vi.fn(
-    async ({ method }: EIP1193RequestArguments): Promise<unknown> => {
-      switch (method) {
-        case "eth_requestAccounts":
-        case "eth_accounts":
-          return [account];
-        case "eth_chainId":
-          return "0x1";
-        case "personal_sign":
-          return signature;
-        default:
-          throw new Error(`unexpected method ${method}`);
-      }
-    },
-  );
+  const request = vi.fn(async ({ method }: EIP1193RequestArguments): Promise<unknown> => {
+    switch (method) {
+      case "eth_requestAccounts":
+      case "eth_accounts":
+        return [account];
+      case "eth_chainId":
+        return "0x1";
+      case "personal_sign":
+        return signature;
+      default:
+        throw new Error(`unexpected method ${method}`);
+    }
+  });
   const provider: EIP1193Provider = {
     request: request as EIP1193Provider["request"],
     on(event, listener) {

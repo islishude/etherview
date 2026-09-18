@@ -24,10 +24,7 @@ const chainQueryRoots = new Set([
   "contract-proxy",
 ]);
 
-export function shouldInvalidateFromChainEvent(
-  eventType: string,
-  queryKey: QueryKey,
-): boolean {
+export function shouldInvalidateFromChainEvent(eventType: string, queryKey: QueryKey): boolean {
   const root = queryKey[0];
   if (typeof root !== "string") return false;
   if (eventType === "status") return root === "home" || root === "status";
@@ -47,8 +44,8 @@ export function ChainEventInvalidation() {
       const eventTypes = [...pending];
       pending.clear();
       void queryClient.invalidateQueries({
-        predicate: (query) => eventTypes.some((eventType) =>
-          shouldInvalidateFromChainEvent(eventType, query.queryKey)),
+        predicate: (query) =>
+          eventTypes.some((eventType) => shouldInvalidateFromChainEvent(eventType, query.queryKey)),
       });
     };
     const invalidate = (event: Event) => {

@@ -45,9 +45,13 @@ describe("verified ABI parsing", () => {
     expect(configure).toBeDefined();
     expect(Object.isFrozen(configure?.inputs)).toBe(true);
     expect(Object.isFrozen(configure?.inputs[0])).toBe(true);
-    expect(Object.isFrozen(configure?.inputs[0] && "components" in configure.inputs[0]
-      ? configure.inputs[0].components
-      : undefined)).toBe(true);
+    expect(
+      Object.isFrozen(
+        configure?.inputs[0] && "components" in configure.inputs[0]
+          ? configure.inputs[0].components
+          : undefined,
+      ),
+    ).toBe(true);
 
     source[0] = { type: "receive", stateMutability: "payable" };
     expect(abi[0]?.type).toBe("function");
@@ -60,37 +64,53 @@ describe("verified ABI parsing", () => {
     expect(() => parseVerifiedABI([accessor])).toThrowError(AbiFormError);
     expect(getter).not.toHaveBeenCalled();
 
-    expect(() => parseVerifiedABI([{ ...simpleFunction("f", "uint256"), extra: true }]))
-      .toThrowError(expect.objectContaining({ code: "INVALID_ABI" }));
+    expect(() =>
+      parseVerifiedABI([{ ...simpleFunction("f", "uint256"), extra: true }]),
+    ).toThrowError(expect.objectContaining({ code: "INVALID_ABI" }));
     expect(() => parseVerifiedABI(new Array(2))).toThrowError(AbiFormError);
-    expect(() => parseVerifiedABI([Object.assign(Object.create({}), simpleFunction("f", "uint256"))]))
-      .toThrowError(AbiFormError);
-    expect(() => parseVerifiedABI("{"))
-      .toThrowError(expect.objectContaining({ code: "INVALID_ABI_JSON" }));
-    expect(() => parseVerifiedABI(`[${" ".repeat(ABI_LIMITS.jsonBytes)}]`))
-      .toThrowError(expect.objectContaining({ code: "ABI_LIMIT_EXCEEDED" }));
-
-    const tooMany = Array.from(
-      { length: ABI_LIMITS.items + 1 },
-      () => ({ type: "receive", stateMutability: "payable" }),
+    expect(() =>
+      parseVerifiedABI([Object.assign(Object.create({}), simpleFunction("f", "uint256"))]),
+    ).toThrowError(AbiFormError);
+    expect(() => parseVerifiedABI("{")).toThrowError(
+      expect.objectContaining({ code: "INVALID_ABI_JSON" }),
     );
-    expect(() => parseVerifiedABI(tooMany))
-      .toThrowError(expect.objectContaining({ code: "ABI_LIMIT_EXCEEDED" }));
-    expect(() => parseVerifiedABI([simpleFunction("large", `uint256[${ABI_LIMITS.fixedArrayLength + 1}]`)]))
-      .toThrowError(expect.objectContaining({ code: "ABI_LIMIT_EXCEEDED" }));
-    expect(() => parseVerifiedABI([
-      simpleFunction("deep", `uint256${"[]".repeat(ABI_LIMITS.depth + 1)}`),
-    ])).toThrowError(expect.objectContaining({ code: "ABI_LIMIT_EXCEEDED" }));
-    expect(() => parseVerifiedABI([simpleFunction("unsupported", "function")]))
-      .toThrowError(expect.objectContaining({ code: "INVALID_ABI" }));
+    expect(() => parseVerifiedABI(`[${" ".repeat(ABI_LIMITS.jsonBytes)}]`)).toThrowError(
+      expect.objectContaining({ code: "ABI_LIMIT_EXCEEDED" }),
+    );
+
+    const tooMany = Array.from({ length: ABI_LIMITS.items + 1 }, () => ({
+      type: "receive",
+      stateMutability: "payable",
+    }));
+    expect(() => parseVerifiedABI(tooMany)).toThrowError(
+      expect.objectContaining({ code: "ABI_LIMIT_EXCEEDED" }),
+    );
+    expect(() =>
+      parseVerifiedABI([simpleFunction("large", `uint256[${ABI_LIMITS.fixedArrayLength + 1}]`)]),
+    ).toThrowError(expect.objectContaining({ code: "ABI_LIMIT_EXCEEDED" }));
+    expect(() =>
+      parseVerifiedABI([simpleFunction("deep", `uint256${"[]".repeat(ABI_LIMITS.depth + 1)}`)]),
+    ).toThrowError(expect.objectContaining({ code: "ABI_LIMIT_EXCEEDED" }));
+    expect(() => parseVerifiedABI([simpleFunction("unsupported", "function")])).toThrowError(
+      expect.objectContaining({ code: "INVALID_ABI" }),
+    );
   });
 
   it("normalizes canonical overload signatures and rejects canonical duplicates", () => {
     const abi = parseVerifiedABI([
       simpleFunction("lookup", "uint"),
-      simpleFunction("lookup", "tuple[][2]", [{ name: "id", type: "uint" }, { name: "who", type: "address" }]),
+      simpleFunction("lookup", "tuple[][2]", [
+        { name: "id", type: "uint" },
+        { name: "who", type: "address" },
+      ]),
       { type: "function", name: "store", stateMutability: "payable", inputs: [], outputs: [] },
-      { type: "function", name: "version", stateMutability: "pure", inputs: [], outputs: [{ type: "string" }] },
+      {
+        type: "function",
+        name: "version",
+        stateMutability: "pure",
+        inputs: [],
+        outputs: [{ type: "string" }],
+      },
     ]);
     const functions = abi.filter((item): item is AbiFunction => item.type === "function");
 
@@ -111,30 +131,34 @@ describe("verified ABI parsing", () => {
     ]);
     expect(partitioned.read[0]?.abi).toEqual(singleFunctionAbi(functions[0]!));
 
-    expect(() => parseVerifiedABI([
-      simpleFunction("same", "uint"),
-      simpleFunction("same", "uint256"),
-    ])).toThrowError(expect.objectContaining({ code: "INVALID_ABI" }));
+    expect(() =>
+      parseVerifiedABI([simpleFunction("same", "uint"), simpleFunction("same", "uint256")]),
+    ).toThrowError(expect.objectContaining({ code: "INVALID_ABI" }));
   });
 });
 
 describe("constructor argument decoding", () => {
   it("decodes and formats named scalar, tuple, array, and bytes parameters", () => {
-    const abi = [{
-      type: "constructor" as const,
-      stateMutability: "nonpayable" as const,
-      inputs: [
-        { name: "owner", type: "address" },
-        { name: "count", type: "uint256" },
-        {
-          name: "config",
-          type: "tuple",
-          components: [{ name: "label", type: "string" }, { name: "enabled", type: "bool" }],
-        },
-        { name: "values", type: "uint16[]" },
-        { name: "salt", type: "bytes4" },
-      ],
-    }];
+    const abi = [
+      {
+        type: "constructor" as const,
+        stateMutability: "nonpayable" as const,
+        inputs: [
+          { name: "owner", type: "address" },
+          { name: "count", type: "uint256" },
+          {
+            name: "config",
+            type: "tuple",
+            components: [
+              { name: "label", type: "string" },
+              { name: "enabled", type: "bool" },
+            ],
+          },
+          { name: "values", type: "uint16[]" },
+          { name: "salt", type: "bytes4" },
+        ],
+      },
+    ];
     const encoded = encodeAbiParameters(abi[0]!.inputs, [
       getAddress(addressA),
       42n,
@@ -143,11 +167,13 @@ describe("constructor argument decoding", () => {
       "0xAABBCCDD",
     ]);
 
-    expect(decodeConstructorArguments(abi, encoded).map((argument) => [
-      argument.name,
-      argument.type,
-      argument.display,
-    ])).toEqual([
+    expect(
+      decodeConstructorArguments(abi, encoded).map((argument) => [
+        argument.name,
+        argument.type,
+        argument.display,
+      ]),
+    ).toEqual([
       ["owner", "address", getAddress(addressA)],
       ["count", "uint256", "42"],
       ["config", "tuple", "(label: ready, enabled: true)"],
@@ -165,26 +191,31 @@ describe("constructor argument decoding", () => {
     const encoded = encodeAbiParameters(constructor.inputs, [7n]);
 
     expect(() => decodeConstructorArguments([], encoded)).toThrowError(AbiFormError);
-    expect(() => decodeConstructorArguments([constructor, constructor], encoded))
-      .toThrowError(expect.objectContaining({ path: "constructor" }));
-    expect(() => decodeConstructorArguments([constructor], `${encoded}00`))
-      .toThrowError(expect.objectContaining({ path: "constructorArguments" }));
-    expect(() => decodeConstructorArguments([constructor], "0x0"))
-      .toThrowError(expect.objectContaining({ code: "INVALID_ABI_VALUE" }));
+    expect(() => decodeConstructorArguments([constructor, constructor], encoded)).toThrowError(
+      expect.objectContaining({ path: "constructor" }),
+    );
+    expect(() => decodeConstructorArguments([constructor], `${encoded}00`)).toThrowError(
+      expect.objectContaining({ path: "constructorArguments" }),
+    );
+    expect(() => decodeConstructorArguments([constructor], "0x0")).toThrowError(
+      expect.objectContaining({ code: "INVALID_ABI_VALUE" }),
+    );
   });
 });
 
 describe("calldata decoding", () => {
-  const transferABI = parseVerifiedABI([{
-    type: "function",
-    name: "transfer",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "recipient", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
-    outputs: [],
-  }]);
+  const transferABI = parseVerifiedABI([
+    {
+      type: "function",
+      name: "transfer",
+      stateMutability: "nonpayable",
+      inputs: [
+        { name: "recipient", type: "address" },
+        { name: "amount", type: "uint256" },
+      ],
+      outputs: [],
+    },
+  ]);
 
   it("decodes a selector and named arguments", () => {
     const encoded = encodeFunctionData({
@@ -197,7 +228,11 @@ describe("calldata decoding", () => {
       selector: encoded.slice(0, 10),
       signature: "transfer(address,uint256)",
       args: [
-        expect.objectContaining({ name: "recipient", type: "address", display: getAddress(addressA) }),
+        expect.objectContaining({
+          name: "recipient",
+          type: "address",
+          display: getAddress(addressA),
+        }),
         expect.objectContaining({ name: "amount", type: "uint256", display: "12" }),
       ],
     });
@@ -215,27 +250,39 @@ describe("calldata decoding", () => {
       args: [addressA, 12n],
     });
     expect(decodeCalldata(transferABI, `${valid}00`).status).toBe("malformed_calldata");
-    expect(decodeCalldata([{ type: "not-an-abi-item" }], "0xdeadbeef").status)
-      .toBe("abi_unavailable");
+    expect(decodeCalldata([{ type: "not-an-abi-item" }], "0xdeadbeef").status).toBe(
+      "abi_unavailable",
+    );
     const encoded = encodeFunctionData({
-      abi: parseVerifiedABI([{
-        type: "function",
-        name: "many",
-        stateMutability: "view",
-        inputs: [{ name: "values", type: "uint256[]" }],
-        outputs: [],
-      }]),
+      abi: parseVerifiedABI([
+        {
+          type: "function",
+          name: "many",
+          stateMutability: "view",
+          inputs: [{ name: "values", type: "uint256[]" }],
+          outputs: [],
+        },
+      ]),
       functionName: "many",
-      args: [Array.from({ length: ABI_LIMITS.dynamicArrayLength + 1 }, (_, index) => BigInt(index))],
+      args: [
+        Array.from({ length: ABI_LIMITS.dynamicArrayLength + 1 }, (_, index) => BigInt(index)),
+      ],
     });
     expect(decodeCalldata(transferABI, `${encoded}00`).status).toBe("unknown_selector");
-    expect(decodeCalldata(parseVerifiedABI([{
-      type: "function",
-      name: "many",
-      stateMutability: "view",
-      inputs: [{ name: "values", type: "uint256[]" }],
-      outputs: [],
-    }]), encoded).status).toBe("malformed_calldata");
+    expect(
+      decodeCalldata(
+        parseVerifiedABI([
+          {
+            type: "function",
+            name: "many",
+            stateMutability: "view",
+            inputs: [{ name: "values", type: "uint256[]" }],
+            outputs: [],
+          },
+        ]),
+        encoded,
+      ).status,
+    ).toBe("malformed_calldata");
   });
 
   it("deduplicates identical candidate results and reports conflicts", () => {
@@ -247,10 +294,7 @@ describe("calldata decoding", () => {
     };
     const second = { ...first };
     expect(mergeCalldataResults([first, second])).toBe(first);
-    expect(mergeCalldataResults([
-      first,
-      { ...first, signature: "g(uint256)" },
-    ])).toEqual({
+    expect(mergeCalldataResults([first, { ...first, signature: "g(uint256)" }])).toEqual({
       status: "ambiguous_abi_match",
       selector: "0x12345678",
       signatures: ["f(uint256)", "g(uint256)"],
@@ -284,69 +328,117 @@ describe("transaction calldata projection", () => {
       },
     ]);
 
-    expect(formatted[0]).toEqual(expect.objectContaining({
-      index: 0,
-      name: "count",
-      display: "42",
-      value: { kind: "scalar", type: "uint256", text: "42" },
-    }));
-    expect(formatted[1]).toEqual(expect.objectContaining({
-      name: "config",
-      internalType: "struct Fixture.Config",
-      display: `(owner: ${getAddress(addressA)}, 1: [[1, 2], []])`,
-    }));
-    expect(formatted[1]?.value).toEqual(expect.objectContaining({
-      kind: "tuple",
-      internalType: "struct Fixture.Config",
-      fields: [
-        expect.objectContaining({ name: "owner", type: "address" }),
-        expect.objectContaining({ name: "", type: "uint16[][2]" }),
-      ],
-    }));
-    expect(formatted[2]?.value).toEqual(expect.objectContaining({
-      kind: "array",
-      type: "tuple[][2]",
-      internalType: "struct Fixture.Batch[][2]",
-      items: [
-        expect.objectContaining({ kind: "array", items: [expect.objectContaining({ kind: "tuple" })] }),
-        expect.objectContaining({ kind: "array", items: [] }),
-      ],
-    }));
+    expect(formatted[0]).toEqual(
+      expect.objectContaining({
+        index: 0,
+        name: "count",
+        display: "42",
+        value: { kind: "scalar", type: "uint256", text: "42" },
+      }),
+    );
+    expect(formatted[1]).toEqual(
+      expect.objectContaining({
+        name: "config",
+        internalType: "struct Fixture.Config",
+        display: `(owner: ${getAddress(addressA)}, 1: [[1, 2], []])`,
+      }),
+    );
+    expect(formatted[1]?.value).toEqual(
+      expect.objectContaining({
+        kind: "tuple",
+        internalType: "struct Fixture.Config",
+        fields: [
+          expect.objectContaining({ name: "owner", type: "address" }),
+          expect.objectContaining({ name: "", type: "uint16[][2]" }),
+        ],
+      }),
+    );
+    expect(formatted[2]?.value).toEqual(
+      expect.objectContaining({
+        kind: "array",
+        type: "tuple[][2]",
+        internalType: "struct Fixture.Batch[][2]",
+        items: [
+          expect.objectContaining({
+            kind: "array",
+            items: [expect.objectContaining({ kind: "tuple" })],
+          }),
+          expect.objectContaining({ kind: "array", items: [] }),
+        ],
+      }),
+    );
     expect(Object.isFrozen(formatted)).toBe(true);
   });
 
   it("fails closed when parameter shape and positional values disagree", () => {
     for (const value of [
       [{ name: "value", type: "uint256", value: "1" }],
-      [{ name: "value", type: "uint256", value: "1", components: [{ name: "x", type: "uint8", components: [] }] }],
-      [{ name: "pair", type: "tuple", value: ["1"], components: [
-        { name: "x", type: "uint8", components: [] },
-        { name: "y", type: "uint8", components: [] },
-      ] }],
+      [
+        {
+          name: "value",
+          type: "uint256",
+          value: "1",
+          components: [{ name: "x", type: "uint8", components: [] }],
+        },
+      ],
+      [
+        {
+          name: "pair",
+          type: "tuple",
+          value: ["1"],
+          components: [
+            { name: "x", type: "uint8", components: [] },
+            { name: "y", type: "uint8", components: [] },
+          ],
+        },
+      ],
       [{ name: "values", type: "uint8[2]", value: ["1"], components: [] }],
-      [{ name: "pair", type: "tuple", value: { x: "1" }, components: [
-        { name: "x", type: "uint8", components: [] },
-      ] }],
+      [
+        {
+          name: "pair",
+          type: "tuple",
+          value: { x: "1" },
+          components: [{ name: "x", type: "uint8", components: [] }],
+        },
+      ],
     ]) {
       expect(() => formatTransactionCalldataInputs(value)).toThrowError(AbiFormError);
     }
   });
 
   it("enforces the recursive depth and 4096-node browser budgets", () => {
-    expect(() => formatTransactionCalldataInputs([{
-      name: "deep",
-      type: `uint256${"[]".repeat(ABI_LIMITS.depth + 1)}`,
-      value: [],
-      components: [],
-    }])).toThrowError(expect.objectContaining({ code: "ABI_LIMIT_EXCEEDED" }));
+    expect(() =>
+      formatTransactionCalldataInputs([
+        {
+          name: "deep",
+          type: `uint256${"[]".repeat(ABI_LIMITS.depth + 1)}`,
+          value: [],
+          components: [],
+        },
+      ]),
+    ).toThrowError(expect.objectContaining({ code: "ABI_LIMIT_EXCEEDED" }));
 
     const within = Array.from({ length: ABI_LIMITS.outputNodes - 1 }, () => "1");
-    expect(formatTransactionCalldataInputs([{
-      name: "values", type: "uint256[]", value: within, components: [],
-    }])[0]?.value).toEqual(expect.objectContaining({ kind: "array", items: expect.any(Array) }));
-    expect(() => formatTransactionCalldataInputs([{
-      name: "values", type: "uint256[]", value: [...within, "1"], components: [],
-    }])).toThrowError(expect.objectContaining({ code: "ABI_VALUE_LIMIT_EXCEEDED" }));
+    expect(
+      formatTransactionCalldataInputs([
+        {
+          name: "values",
+          type: "uint256[]",
+          value: within,
+          components: [],
+        },
+      ])[0]?.value,
+    ).toEqual(expect.objectContaining({ kind: "array", items: expect.any(Array) }));
+    expect(() =>
+      formatTransactionCalldataInputs([
+        {
+          name: "values",
+          type: "uint256[]",
+          value: [...within, "1"],
+          components: [],
+        },
+      ]),
+    ).toThrowError(expect.objectContaining({ code: "ABI_VALUE_LIMIT_EXCEEDED" }));
   });
 });
 
@@ -401,7 +493,9 @@ describe("ABI argument trees", () => {
         array("int16[2]", 2, [scalar("int16", "0"), scalar("int16", "1")]),
       ]),
       array("tuple[][2]", 2, [
-        array("tuple[]", null, [tuple("tuple", [scalar("address", addressB), scalar("uint256", "9")])]),
+        array("tuple[]", null, [
+          tuple("tuple", [scalar("address", addressB), scalar("uint256", "9")]),
+        ]),
         array("tuple[]", null, []),
       ]),
     ];
@@ -409,14 +503,19 @@ describe("ABI argument trees", () => {
 
     expect(args).toEqual([
       [getAddress(addressA), 255n, "0xaabbccdd", true, "配置"],
-      [[-32768n, 32767n], [0n, 1n]],
+      [
+        [-32768n, 32767n],
+        [0n, 1n],
+      ],
       [[[getAddress(addressB), 9n]], []],
     ]);
-    expect(() => encodeFunctionData({
-      abi: singleFunctionAbi(fn),
-      functionName: fn.name,
-      args,
-    })).not.toThrow();
+    expect(() =>
+      encodeFunctionData({
+        abi: singleFunctionAbi(fn),
+        functionName: fn.name,
+        args,
+      }),
+    ).not.toThrow();
   });
 
   it("enforces scalar boundaries without JavaScript number coercion", () => {
@@ -442,34 +541,45 @@ describe("ABI argument trees", () => {
         expect.objectContaining({ code: "INVALID_ABI_VALUE" }),
       );
     }
-    expect(() => parseScalarArgument("string", "x".repeat(ABI_LIMITS.stringBytes + 1)))
-      .toThrowError(expect.objectContaining({ code: "ABI_VALUE_LIMIT_EXCEEDED" }));
-    expect(() => parseScalarArgument("bytes", `0x${"00".repeat(ABI_LIMITS.bytesLength + 1)}`))
-      .toThrowError(expect.objectContaining({ code: "INVALID_ABI_VALUE" }));
+    expect(() =>
+      parseScalarArgument("string", "x".repeat(ABI_LIMITS.stringBytes + 1)),
+    ).toThrowError(expect.objectContaining({ code: "ABI_VALUE_LIMIT_EXCEEDED" }));
+    expect(() =>
+      parseScalarArgument("bytes", `0x${"00".repeat(ABI_LIMITS.bytesLength + 1)}`),
+    ).toThrowError(expect.objectContaining({ code: "INVALID_ABI_VALUE" }));
   });
 
   it("rejects malformed fixed and oversized dynamic array state", () => {
     const fixed = parameter("uint256[2]");
-    expect(() => parseAbiArguments([fixed], [array("uint256[2]", 2, [scalar("uint256", "1")])]))
-      .toThrowError(AbiFormError);
+    expect(() =>
+      parseAbiArguments([fixed], [array("uint256[2]", 2, [scalar("uint256", "1")])]),
+    ).toThrowError(AbiFormError);
 
     const dynamic = parameter("uint256[]");
-    const items = Array.from(
-      { length: ABI_LIMITS.dynamicArrayLength + 1 },
-      () => scalar("uint256", "1"),
+    const items = Array.from({ length: ABI_LIMITS.dynamicArrayLength + 1 }, () =>
+      scalar("uint256", "1"),
     );
-    expect(() => parseAbiArguments([dynamic], [array("uint256[]", null, items)]))
-      .toThrowError(expect.objectContaining({ code: "ABI_VALUE_LIMIT_EXCEEDED" }));
+    expect(() => parseAbiArguments([dynamic], [array("uint256[]", null, items)])).toThrowError(
+      expect.objectContaining({ code: "ABI_VALUE_LIMIT_EXCEEDED" }),
+    );
   });
 
   it("enforces the input-node budget across independently added dynamic items", () => {
     const dynamic = parameter("uint256[256][]");
     const item = createAbiArrayItem(dynamic);
     const withinBudget = [
-      array("uint256[256][]", null, Array.from({ length: 15 }, () => item)),
+      array(
+        "uint256[256][]",
+        null,
+        Array.from({ length: 15 }, () => item),
+      ),
     ];
     const overBudget = [
-      array("uint256[256][]", null, Array.from({ length: 16 }, () => item)),
+      array(
+        "uint256[256][]",
+        null,
+        Array.from({ length: 16 }, () => item),
+      ),
     ];
 
     expect(() => assertAbiInputTreeWithinLimits(withinBudget)).not.toThrow();
@@ -481,25 +591,27 @@ describe("ABI argument trees", () => {
 
 describe("ABI result and revert formatting", () => {
   it("formats bigint, tuple, array, address, bytes, and multiple outputs structurally", () => {
-    const abi = parseVerifiedABI([{
-      type: "function",
-      name: "summary",
-      stateMutability: "view",
-      inputs: [],
-      outputs: [
-        { name: "total", type: "uint256" },
-        {
-          name: "data",
-          type: "tuple",
-          components: [
-            { name: "owner", type: "address" },
-            { name: "values", type: "uint16[]" },
-            { name: "label", type: "string" },
-          ],
-        },
-        { name: "digest", type: "bytes2" },
-      ],
-    }]);
+    const abi = parseVerifiedABI([
+      {
+        type: "function",
+        name: "summary",
+        stateMutability: "view",
+        inputs: [],
+        outputs: [
+          { name: "total", type: "uint256" },
+          {
+            name: "data",
+            type: "tuple",
+            components: [
+              { name: "owner", type: "address" },
+              { name: "values", type: "uint16[]" },
+              { name: "label", type: "string" },
+            ],
+          },
+          { name: "digest", type: "bytes2" },
+        ],
+      },
+    ]);
     const fn = abi[0] as AbiFunction;
     const formatted = formatAbiResult(fn, [
       12345678901234567890n,
@@ -516,7 +628,12 @@ describe("ABI result and revert formatting", () => {
       kind: "tuple",
       type: "tuple",
       fields: [
-        { index: 0, name: "owner", type: "address", value: { kind: "scalar", type: "address", text: getAddress(addressA) } },
+        {
+          index: 0,
+          name: "owner",
+          type: "address",
+          value: { kind: "scalar", type: "address", text: getAddress(addressA) },
+        },
         {
           index: 1,
           name: "values",
@@ -530,50 +647,67 @@ describe("ABI result and revert formatting", () => {
             ],
           },
         },
-        { index: 2, name: "label", type: "string", value: { kind: "scalar", type: "string", text: "ready" } },
+        {
+          index: 2,
+          name: "label",
+          type: "string",
+          value: { kind: "scalar", type: "string", text: "ready" },
+        },
       ],
     });
     expect(Object.isFrozen(formatted)).toBe(true);
 
-    const single = parseVerifiedABI([{
-      type: "function", name: "value", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }],
-    }])[0] as AbiFunction;
+    const single = parseVerifiedABI([
+      {
+        type: "function",
+        name: "value",
+        stateMutability: "view",
+        inputs: [],
+        outputs: [{ type: "uint256" }],
+      },
+    ])[0] as AbiFunction;
     expect(formatAbiResult(single, 7n)[0]?.display).toBe("7");
     expect(() => formatAbiResult(fn, [1n])).toThrowError(AbiFormError);
   });
 
   it("matches viem's number representation for integers up to 48 bits", () => {
-    const abi = parseVerifiedABI([{
-      type: "function",
-      name: "smallIntegers",
-      stateMutability: "view",
-      inputs: [],
-      outputs: [
-        { name: "decimals", type: "uint8" },
-        { name: "minimum", type: "int48" },
-        { name: "large", type: "uint56" },
-      ],
-    }]);
+    const abi = parseVerifiedABI([
+      {
+        type: "function",
+        name: "smallIntegers",
+        stateMutability: "view",
+        inputs: [],
+        outputs: [
+          { name: "decimals", type: "uint8" },
+          { name: "minimum", type: "int48" },
+          { name: "large", type: "uint56" },
+        ],
+      },
+    ]);
     const fn = abi[0] as AbiFunction;
 
-    expect(formatAbiResult(fn, [18, -(2 ** 47), (1n << 56n) - 1n])
-      .map((output) => output.display)).toEqual([
-      "18",
-      "-140737488355328",
-      "72057594037927935",
-    ]);
-    expect(() => formatAbiResult(fn, [18n, -(2 ** 47), (1n << 56n) - 1n]))
-      .toThrowError(expect.objectContaining({ path: "$result[0]" }));
-    expect(() => formatAbiResult(fn, [256, -(2 ** 47), (1n << 56n) - 1n]))
-      .toThrowError(expect.objectContaining({ path: "$result[0]" }));
+    expect(
+      formatAbiResult(fn, [18, -(2 ** 47), (1n << 56n) - 1n]).map((output) => output.display),
+    ).toEqual(["18", "-140737488355328", "72057594037927935"]);
+    expect(() => formatAbiResult(fn, [18n, -(2 ** 47), (1n << 56n) - 1n])).toThrowError(
+      expect.objectContaining({ path: "$result[0]" }),
+    );
+    expect(() => formatAbiResult(fn, [256, -(2 ** 47), (1n << 56n) - 1n])).toThrowError(
+      expect.objectContaining({ path: "$result[0]" }),
+    );
   });
 
   it("decodes custom and Solidity builtin reverts without exposing decoder errors", () => {
-    const abi = parseVerifiedABI([{
-      type: "error",
-      name: "Unauthorized",
-      inputs: [{ name: "caller", type: "address" }, { name: "required", type: "uint256" }],
-    }]);
+    const abi = parseVerifiedABI([
+      {
+        type: "error",
+        name: "Unauthorized",
+        inputs: [
+          { name: "caller", type: "address" },
+          { name: "required", type: "uint256" },
+        ],
+      },
+    ]);
     const customData = encodeErrorResult({
       abi,
       errorName: "Unauthorized",
@@ -601,28 +735,41 @@ describe("ABI result and revert formatting", () => {
       display: `Unauthorized(address,uint256): ${getAddress(addressA)}, 5`,
     });
 
-    const errorAbi = parseVerifiedABI([{
-      type: "error", name: "Error", inputs: [{ name: "message", type: "string" }],
-    }]);
+    const errorAbi = parseVerifiedABI([
+      {
+        type: "error",
+        name: "Error",
+        inputs: [{ name: "message", type: "string" }],
+      },
+    ]);
     const errorData = encodeErrorResult({ abi: errorAbi, errorName: "Error", args: ["denied"] });
     expect(decodeRevert(parseVerifiedABI([]), errorData)?.display).toBe("Error(string): denied");
 
-    const panicAbi = parseVerifiedABI([{
-      type: "error", name: "Panic", inputs: [{ name: "code", type: "uint256" }],
-    }]);
+    const panicAbi = parseVerifiedABI([
+      {
+        type: "error",
+        name: "Panic",
+        inputs: [{ name: "code", type: "uint256" }],
+      },
+    ]);
     const panicData = encodeErrorResult({ abi: panicAbi, errorName: "Panic", args: [17n] });
     expect(decodeRevert(parseVerifiedABI([]), panicData)?.display).toBe("Panic(uint256): 17");
 
-    const smallIntegerErrorABI = parseVerifiedABI([{
-      type: "error", name: "BadDecimals", inputs: [{ name: "decimals", type: "uint8" }],
-    }]);
+    const smallIntegerErrorABI = parseVerifiedABI([
+      {
+        type: "error",
+        name: "BadDecimals",
+        inputs: [{ name: "decimals", type: "uint8" }],
+      },
+    ]);
     const smallIntegerErrorData = encodeErrorResult({
       abi: smallIntegerErrorABI,
       errorName: "BadDecimals",
       args: [18],
     });
-    expect(decodeRevert(smallIntegerErrorABI, smallIntegerErrorData)?.display)
-      .toBe("BadDecimals(uint8): 18");
+    expect(decodeRevert(smallIntegerErrorABI, smallIntegerErrorData)?.display).toBe(
+      "BadDecimals(uint8): 18",
+    );
     expect(decodeRevert(abi, "0xdeadbeef")).toBeUndefined();
     expect(decodeRevert(abi, "not hex")).toBeUndefined();
     expect(decodeRevert(abi, `0x${"00".repeat(ABI_LIMITS.bytesLength + 1)}`)).toBeUndefined();
@@ -635,15 +782,25 @@ function validAbiFixture(): Array<Record<string, unknown>> {
       type: "function",
       name: "configure",
       stateMutability: "nonpayable",
-      inputs: [{
-        name: "config",
-        type: "tuple",
-        internalType: "struct Fixture.Config",
-        components: [{ name: "owner", type: "address" }, { name: "threshold", type: "uint8" }],
-      }],
+      inputs: [
+        {
+          name: "config",
+          type: "tuple",
+          internalType: "struct Fixture.Config",
+          components: [
+            { name: "owner", type: "address" },
+            { name: "threshold", type: "uint8" },
+          ],
+        },
+      ],
       outputs: [],
     },
-    { type: "event", name: "Configured", anonymous: false, inputs: [{ name: "owner", type: "address", indexed: true }] },
+    {
+      type: "event",
+      name: "Configured",
+      anonymous: false,
+      inputs: [{ name: "owner", type: "address", indexed: true }],
+    },
     { type: "error", name: "Unauthorized", inputs: [{ name: "caller", type: "address" }] },
     { type: "receive", stateMutability: "payable" },
   ];
@@ -664,31 +821,36 @@ function simpleFunction(
 }
 
 function inputFixtureFunction(): AbiFunction {
-  const abi = parseVerifiedABI([{
-    type: "function",
-    name: "configure",
-    stateMutability: "nonpayable",
-    inputs: [
-      {
-        name: "config",
-        type: "tuple",
-        components: [
-          { name: "owner", type: "address" },
-          { name: "threshold", type: "uint8" },
-          { name: "digest", type: "bytes4" },
-          { name: "enabled", type: "bool" },
-          { name: "label", type: "string" },
-        ],
-      },
-      { name: "deltas", type: "int16[2][]" },
-      {
-        name: "batches",
-        type: "tuple[][2]",
-        components: [{ name: "recipient", type: "address" }, { name: "amount", type: "uint256" }],
-      },
-    ],
-    outputs: [],
-  }]);
+  const abi = parseVerifiedABI([
+    {
+      type: "function",
+      name: "configure",
+      stateMutability: "nonpayable",
+      inputs: [
+        {
+          name: "config",
+          type: "tuple",
+          components: [
+            { name: "owner", type: "address" },
+            { name: "threshold", type: "uint8" },
+            { name: "digest", type: "bytes4" },
+            { name: "enabled", type: "bool" },
+            { name: "label", type: "string" },
+          ],
+        },
+        { name: "deltas", type: "int16[2][]" },
+        {
+          name: "batches",
+          type: "tuple[][2]",
+          components: [
+            { name: "recipient", type: "address" },
+            { name: "amount", type: "uint256" },
+          ],
+        },
+      ],
+      outputs: [],
+    },
+  ]);
   return abi[0] as AbiFunction;
 }
 

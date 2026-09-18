@@ -1,0 +1,62 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "react"],
+  "categories": {
+    "correctness": "off"
+  },
+  "ignorePatterns": ["src/api/schema.gen.ts"],
+  "rules": {
+    "no-unused-vars": "error",
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "error",
+    "complexity": [
+      "error",
+      {
+        "max": 150,
+        "variant": "classic"
+      }
+    ],
+    "max-lines": [
+      "error",
+      {
+        "max": 1400,
+        "skipBlankLines": true,
+        "skipComments": false
+      }
+    ],
+    "max-lines-per-function": [
+      "error",
+      {
+        "max": 400,
+        "skipBlankLines": true,
+        "skipComments": false,
+        "IIFEs": false
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/test/**/*.ts", "src/test/**/*.tsx"],
+      "rules": {
+        "complexity": "off",
+        "max-lines": [
+          "error",
+          {
+            "max": 2500,
+            "skipBlankLines": true,
+            "skipComments": false
+          }
+        ],
+        "max-lines-per-function": [
+          "error",
+          {
+            "max": 1000,
+            "skipBlankLines": true,
+            "skipComments": false,
+            "IIFEs": false
+          }
+        ]
+      }
+    }
+  ]
+}

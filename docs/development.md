@@ -74,8 +74,16 @@ linked documents, not this summary, define the exact contract.
 | Optional infrastructure | Keep PostgreSQL authoritative and readiness-correct. Redis, NATS, and object storage remain disposable accelerators with explicit bounded fallback behavior. Consult [ADR-0015](decisions/ADR-0015-disposable-runtime-accelerators.md). |
 | Browser, authentication, or billing | Keep secrets out of logs, URLs, ConfigMaps, the SPA, and image layers. Use the generated same-origin API client, keep wallet RPC inside the injected-provider allowlist, and preserve the separate API-key, SIWE-user, and x402-top-up payer identities. Consult [ADR-0013](decisions/ADR-0013-embedded-spa-serving-and-browser-security.md), [ADR-0020](decisions/ADR-0020-siwe-user-sessions.md), [ADR-0035](decisions/ADR-0035-user-owned-scoped-api-keys.md), and [ADR-0044](decisions/ADR-0044-prepaid-api-billing-and-x402-topups.md). |
 | Verification, proxy, Diamond, EIP-7702, CWIA, or Geas behavior | Read the mechanism's accepted ADR and the relevant architecture section before editing. Preserve exact code/block provenance, current binding fences, compiler/helper identity, and fail-closed publication semantics; do not collapse distinct mechanisms into aliases. |
-| SPA structure | Keep core pages and both locale trees split by domain, use only the generated explorer client outside the injected wallet module, and retain the exact `web-lint` policy rather than adding blanket suppressions. |
+| SPA structure | Keep core pages and both locale trees split by domain, use only the generated explorer client outside the injected wallet module, and retain the explicit Oxlint limits and Oxfmt gate in `web-lint` rather than adding blanket suppressions. |
 | Deployment or operator behavior | Update `docs/operations.md` and the relevant Compose/Helm contracts. Keep secrets role-scoped and use repository Compose/Buildx wrappers and supported overrides. |
+
+## Frontend tooling
+
+Use `npm --prefix web run format` after editing hand-written frontend files.
+`make web-lint` runs TypeScript, Oxlint, and a read-only Oxfmt check through the
+same npm scripts used by CI. Keep generated API types under the API generator;
+do not format them manually. The [testing guide](testing.md) owns exact limits,
+formatting scope, and tool-policy regression coverage.
 
 ## Completion checklist
 

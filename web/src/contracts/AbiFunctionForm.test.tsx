@@ -314,10 +314,7 @@ describe("AbiFunctionExplorer", () => {
     expect(await addressCard.findByText("99")).toBeVisible();
 
     expect(readContract).toHaveBeenCalledTimes(2);
-    expect(readContract.mock.calls.map(([call]) => call.data)).toEqual([
-      uintCall,
-      addressCall,
-    ]);
+    expect(readContract.mock.calls.map(([call]) => call.data)).toEqual([uintCall, addressCall]);
   });
 
   it("keeps parameter headings above their controls and copies encoded calldata", async () => {
@@ -334,11 +331,13 @@ describe("AbiFunctionExplorer", () => {
     await user.type(input, "17");
     await user.click(card.getByRole("button", { name: "Copy calldata" }));
 
-    expect(writeText).toHaveBeenCalledWith(encodeFunctionData({
-      abi: [overloadABI[0]],
-      functionName: "lookup",
-      args: [17n],
-    }));
+    expect(writeText).toHaveBeenCalledWith(
+      encodeFunctionData({
+        abi: [overloadABI[0]],
+        functionName: "lookup",
+        args: [17n],
+      }),
+    );
     expect(card.getByRole("button", { name: "Copied" })).toBeVisible();
   });
 
@@ -401,9 +400,7 @@ describe("AbiFunctionExplorer", () => {
     );
     const tooltip = await card.findByRole("tooltip");
     expect(tooltip).toBeVisible();
-    expect(tooltip).toHaveTextContent(
-      "Connect and authorize a wallet account first.",
-    );
+    expect(tooltip).toHaveTextContent("Connect and authorize a wallet account first.");
     await user.click(document.body);
     expect(card.queryByRole("tooltip")).not.toBeInTheDocument();
     const addressCard = await openFunctionCard(user, "lookup(address)");
@@ -412,11 +409,13 @@ describe("AbiFunctionExplorer", () => {
     await user.type(card.getByLabelText(/^id/u), "17");
     await user.click(card.getByRole("button", { name: "Copy calldata" }));
 
-    expect(writeText).toHaveBeenCalledWith(encodeFunctionData({
-      abi: [overloadABI[0]],
-      functionName: "lookup",
-      args: [17n],
-    }));
+    expect(writeText).toHaveBeenCalledWith(
+      encodeFunctionData({
+        abi: [overloadABI[0]],
+        functionName: "lookup",
+        args: [17n],
+      }),
+    );
     expect(readContract).not.toHaveBeenCalled();
   });
 
@@ -426,10 +425,7 @@ describe("AbiFunctionExplorer", () => {
     const { history } = renderExplorer(configureABI, "write", directTargets());
     const user = userEvent.setup();
     const writeText = mockClipboard();
-    const card = await openFunctionCard(
-      user,
-      "configure((address,uint8),(address,uint256)[][])",
-    );
+    const card = await openFunctionCard(user, "configure((address,uint8),(address,uint256)[][])");
 
     await user.type(card.getByLabelText(/^owner/u), ACCOUNT);
     await user.type(card.getByLabelText(/^threshold/u), "7");
@@ -438,14 +434,13 @@ describe("AbiFunctionExplorer", () => {
     await user.type(card.getByLabelText(/^recipient/u), OTHER);
     await user.type(card.getByLabelText(/^amount/u), "9");
     await user.click(card.getByRole("button", { name: "Copy calldata" }));
-    expect(writeText).toHaveBeenCalledWith(encodeFunctionData({
-      abi: configureABI,
-      functionName: "configure",
-      args: [
-        { owner: ACCOUNT, threshold: 7 },
-        [[{ recipient: OTHER, amount: 9n }]],
-      ],
-    }));
+    expect(writeText).toHaveBeenCalledWith(
+      encodeFunctionData({
+        abi: configureABI,
+        functionName: "configure",
+        args: [{ owner: ACCOUNT, threshold: 7 }, [[{ recipient: OTHER, amount: 9n }]]],
+      }),
+    );
     await user.click(card.getByRole("button", { name: "Send transaction" }));
 
     await waitFor(() => expect(sendTransaction).toHaveBeenCalledOnce());
@@ -455,19 +450,13 @@ describe("AbiFunctionExplorer", () => {
         data: encodeFunctionData({
           abi: configureABI,
           functionName: "configure",
-          args: [
-            { owner: ACCOUNT, threshold: 7 },
-            [[{ recipient: OTHER, amount: 9n }]],
-          ],
+          args: [{ owner: ACCOUNT, threshold: 7 }, [[{ recipient: OTHER, amount: 9n }]]],
         }),
       },
       "31337",
     );
     const transactionLink = await card.findByRole("link", { name: TRANSACTION_HASH });
-    expect(transactionLink).toHaveAttribute(
-      "href",
-      `/tx/${TRANSACTION_HASH}?tab=overview`,
-    );
+    expect(transactionLink).toHaveAttribute("href", `/tx/${TRANSACTION_HASH}?tab=overview`);
 
     await user.click(transactionLink);
 
@@ -478,11 +467,13 @@ describe("AbiFunctionExplorer", () => {
 
   it("decodes and renders multiple viem return values without numeric loss", async () => {
     const total = 11_579_208_923_731_619_542_357_098_500n;
-    const readContract = vi.fn(async () => encodeFunctionResult({
-      abi: multipleOutputABI,
-      functionName: "summary",
-      result: [total, OTHER, true],
-    }));
+    const readContract = vi.fn(async () =>
+      encodeFunctionResult({
+        abi: multipleOutputABI,
+        functionName: "summary",
+        result: [total, OTHER, true],
+      }),
+    );
     mockWallet({ readContract });
     renderExplorer(multipleOutputABI, "read", directTargets());
     const user = userEvent.setup();
@@ -497,11 +488,13 @@ describe("AbiFunctionExplorer", () => {
   });
 
   it("decodes and renders an ERC-20 decimals() uint8 result", async () => {
-    const readContract = vi.fn(async () => encodeFunctionResult({
-      abi: erc20DecimalsABI,
-      functionName: "decimals",
-      result: 18,
-    }));
+    const readContract = vi.fn(async () =>
+      encodeFunctionResult({
+        abi: erc20DecimalsABI,
+        functionName: "decimals",
+        result: 18,
+      }),
+    );
     mockWallet({ readContract });
     renderExplorer(erc20DecimalsABI, "read", directTargets(IMPLEMENTATION));
     const user = userEvent.setup();
@@ -530,10 +523,12 @@ describe("AbiFunctionExplorer", () => {
     expect(nonpayable.queryByLabelText(/^Native value \(wei\)/u)).not.toBeInTheDocument();
     await user.type(payable.getByLabelText(/^Native value \(wei\)/u), "15");
     await user.click(payable.getByRole("button", { name: "Copy calldata" }));
-    expect(writeText).toHaveBeenCalledWith(encodeFunctionData({
-      abi: [payableABI[0]],
-      functionName: "deposit",
-    }));
+    expect(writeText).toHaveBeenCalledWith(
+      encodeFunctionData({
+        abi: [payableABI[0]],
+        functionName: "deposit",
+      }),
+    );
     await user.click(payable.getByRole("button", { name: "Send transaction" }));
 
     await waitFor(() => expect(sendTransaction).toHaveBeenCalledOnce());
@@ -554,10 +549,7 @@ describe("AbiFunctionExplorer", () => {
     mockWallet();
     renderExplorer(oversizedFixedInputABI, "write", directTargets());
 
-    const signature = screen.getByText(
-      "configureHugeFixed(uint256[65][65])",
-      { selector: "code" },
-    );
+    const signature = screen.getByText("configureHugeFixed(uint256[65][65])", { selector: "code" });
     const card = signature.closest("details");
     expect(card).toBeInstanceOf(HTMLDetailsElement);
     expect(within(card as HTMLDetailsElement).getByRole("alert")).toHaveTextContent(
@@ -570,10 +562,7 @@ describe("AbiFunctionExplorer", () => {
     mockWallet();
     renderExplorer(oversizedDynamicItemABI, "write", directTargets());
     const user = userEvent.setup();
-    const card = await openFunctionCard(
-      user,
-      "configureHugeDynamic(uint256[65][65][])",
-    );
+    const card = await openFunctionCard(user, "configureHugeDynamic(uint256[65][65][])");
 
     await user.click(card.getByRole("button", { name: "Add array item" }));
 
@@ -587,10 +576,13 @@ describe("AbiFunctionExplorer", () => {
   it("calls proxiableUUID directly on the implementation and other UUPS reads through the proxy", async () => {
     const uuidResult = `0x${"aa".repeat(32)}` as Hex;
     const readContract = vi.fn(async ({ data }: { data: Hex }) => {
-      if (data === encodeFunctionData({
-        abi: [uupsABI[0]],
-        functionName: "proxiableUUID",
-      })) {
+      if (
+        data ===
+        encodeFunctionData({
+          abi: [uupsABI[0]],
+          functionName: "proxiableUUID",
+        })
+      ) {
         return encodeFunctionResult({
           abi: [uupsABI[0]],
           functionName: "proxiableUUID",
@@ -628,9 +620,9 @@ describe("AbiFunctionExplorer", () => {
 
     renderExplorer(malformedWriteUUIDABI, "write", implementationTargets());
 
-    expect(screen.getByText(
-      "This ABI has no callable state-changing functions for this target.",
-    )).toBeVisible();
+    expect(
+      screen.getByText("This ABI has no callable state-changing functions for this target."),
+    ).toBeVisible();
     expect(screen.queryByText("proxiableUUID()", { selector: "code" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Send transaction" })).toBeNull();
     expect(sendTransaction).not.toHaveBeenCalled();
@@ -648,10 +640,7 @@ describe("AbiFunctionExplorer", () => {
     const renounce = await openFunctionCard(user, "renounceOwnership()");
     expect(renounce.getByText(/high-risk ownership operation/iu)).toBeVisible();
 
-    const upgrade = await openFunctionCard(
-      user,
-      "upgradeAndCall(address,address,bytes)",
-    );
+    const upgrade = await openFunctionCard(user, "upgradeAndCall(address,address,bytes)");
     expect(upgrade.getByText(/high-risk upgrade operation/iu)).toBeVisible();
     expect(upgrade.queryByText(/affects 3 linked proxies/iu)).toBeNull();
   });
@@ -674,10 +663,7 @@ describe("AbiFunctionExplorer", () => {
     mockWallet({ sendTransaction });
     renderExplorer(uupsABI, "write", implementationTargets());
     const user = userEvent.setup();
-    const card = await openFunctionCard(
-      user,
-      "upgradeToAndCall(address,bytes)",
-    );
+    const card = await openFunctionCard(user, "upgradeToAndCall(address,bytes)");
     await user.type(card.getByLabelText(/^newImplementation/u), OTHER);
     await user.type(card.getByLabelText(/^data/u), "0x");
 
@@ -687,12 +673,16 @@ describe("AbiFunctionExplorer", () => {
     await waitFor(() => expect(sendTransaction).toHaveBeenCalledTimes(2));
 
     expect(getContractProxyResponse).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(getContractProxyResponse).mock.invocationCallOrder[0])
-      .toBeLessThan(sendTransaction.mock.invocationCallOrder[0]!);
-    expect(vi.mocked(getContractProxyResponse).mock.invocationCallOrder[1])
-      .toBeLessThan(sendTransaction.mock.invocationCallOrder[1]!);
-    expect(sendTransaction.mock.calls.map(([transaction]) => transaction.to))
-      .toEqual([PROXY, PROXY]);
+    expect(vi.mocked(getContractProxyResponse).mock.invocationCallOrder[0]).toBeLessThan(
+      sendTransaction.mock.invocationCallOrder[0]!,
+    );
+    expect(vi.mocked(getContractProxyResponse).mock.invocationCallOrder[1]).toBeLessThan(
+      sendTransaction.mock.invocationCallOrder[1]!,
+    );
+    expect(sendTransaction.mock.calls.map(([transaction]) => transaction.to)).toEqual([
+      PROXY,
+      PROXY,
+    ]);
   });
 
   it("allows delegated reads across canonical-tip advancement while retaining the authority target", async () => {
@@ -710,17 +700,15 @@ describe("AbiFunctionExplorer", () => {
       block_number: "13",
       block_hash: `0x${"77".repeat(32)}`,
     });
-    const readContract = vi.fn(async () => encodeFunctionResult({
-      abi: [uupsABI[1]],
-      functionName: "value",
-      result: 42n,
-    }));
-    mockWallet({ readContract });
-    renderExplorer(
-      [uupsABI[1]],
-      "read",
-      [buildDelegatedEOAInteractionTarget(PROXY, binding)],
+    const readContract = vi.fn(async () =>
+      encodeFunctionResult({
+        abi: [uupsABI[1]],
+        functionName: "value",
+        result: 42n,
+      }),
     );
+    mockWallet({ readContract });
+    renderExplorer([uupsABI[1]], "read", [buildDelegatedEOAInteractionTarget(PROXY, binding)]);
     const user = userEvent.setup();
     const card = await openFunctionCard(user, "value()");
 
@@ -728,51 +716,52 @@ describe("AbiFunctionExplorer", () => {
 
     expect(await card.findByText("42")).toBeVisible();
     expect(getAddressDelegation).toHaveBeenCalledWith(PROXY);
-    expect(readContract).toHaveBeenCalledWith(
-      expect.objectContaining({ to: PROXY }),
-      "31337",
-    );
+    expect(readContract).toHaveBeenCalledWith(expect.objectContaining({ to: PROXY }), "31337");
   });
 
-	it("keeps the displayed target when a fresh read sees a transient unavailable proxy stage", async () => {
-		vi.mocked(getContractProxyResponse)
-			.mockResolvedValueOnce(proxyResponse({
-				address: PROXY,
-				status: "unavailable",
-				snapshot: {
-					chain_id: "31337",
-					block_number: "21",
-					block_hash: `0x${"77".repeat(32)}`,
-				},
-				evidence: [],
-			}))
-			.mockResolvedValue(proxyResponse());
-		const readContract = vi.fn(async () => encodeFunctionResult({
-			abi: [uupsABI[1]],
-			functionName: "value",
-			result: 42n,
-		}));
-		const onBindingChanged = vi.fn();
-		mockWallet({ readContract });
-		renderExplorer([uupsABI[1]], "read", implementationTargets(), onBindingChanged);
-		const user = userEvent.setup();
-		const card = await openFunctionCard(user, "value()");
+  it("keeps the displayed target when a fresh read sees a transient unavailable proxy stage", async () => {
+    vi.mocked(getContractProxyResponse)
+      .mockResolvedValueOnce(
+        proxyResponse({
+          address: PROXY,
+          status: "unavailable",
+          snapshot: {
+            chain_id: "31337",
+            block_number: "21",
+            block_hash: `0x${"77".repeat(32)}`,
+          },
+          evidence: [],
+        }),
+      )
+      .mockResolvedValue(proxyResponse());
+    const readContract = vi.fn(async () =>
+      encodeFunctionResult({
+        abi: [uupsABI[1]],
+        functionName: "value",
+        result: 42n,
+      }),
+    );
+    const onBindingChanged = vi.fn();
+    mockWallet({ readContract });
+    renderExplorer([uupsABI[1]], "read", implementationTargets(), onBindingChanged);
+    const user = userEvent.setup();
+    const card = await openFunctionCard(user, "value()");
 
-		await user.click(card.getByRole("button", { name: "Read contract" }));
+    await user.click(card.getByRole("button", { name: "Read contract" }));
 
-		expect(await card.findByRole("alert")).toHaveTextContent(
-			"The latest proxy stage is temporarily unavailable",
-		);
-		expect(onBindingChanged).not.toHaveBeenCalled();
-		expect(readContract).not.toHaveBeenCalled();
+    expect(await card.findByRole("alert")).toHaveTextContent(
+      "The latest proxy stage is temporarily unavailable",
+    );
+    expect(onBindingChanged).not.toHaveBeenCalled();
+    expect(readContract).not.toHaveBeenCalled();
 
-		await user.click(card.getByRole("button", { name: "Read contract" }));
+    await user.click(card.getByRole("button", { name: "Read contract" }));
 
-		expect(await card.findByText("42")).toBeVisible();
-		expect(getContractProxyResponse).toHaveBeenCalledTimes(2);
-		expect(readContract).toHaveBeenCalledOnce();
-		expect(onBindingChanged).not.toHaveBeenCalled();
-	});
+    expect(await card.findByText("42")).toBeVisible();
+    expect(getContractProxyResponse).toHaveBeenCalledTimes(2);
+    expect(readContract).toHaveBeenCalledOnce();
+    expect(onBindingChanged).not.toHaveBeenCalled();
+  });
 
   it("blocks a changed binding before send and requests a visible refresh", async () => {
     vi.mocked(getContractProxyResponse).mockResolvedValue(
@@ -783,10 +772,7 @@ describe("AbiFunctionExplorer", () => {
     mockWallet({ sendTransaction });
     renderExplorer(uupsABI, "write", implementationTargets(), onBindingChanged);
     const user = userEvent.setup();
-    const card = await openFunctionCard(
-      user,
-      "upgradeToAndCall(address,bytes)",
-    );
+    const card = await openFunctionCard(user, "upgradeToAndCall(address,bytes)");
     await user.type(card.getByLabelText(/^newImplementation/u), OTHER);
     await user.type(card.getByLabelText(/^data/u), "0x");
     await user.click(card.getByRole("button", { name: "Send transaction" }));
@@ -811,10 +797,7 @@ describe("AbiFunctionExplorer", () => {
     mockWallet({ sendTransaction });
     renderExplorer(uupsABIWithCustomError, "write", implementationTargets());
     const user = userEvent.setup();
-    const card = await openFunctionCard(
-      user,
-      "upgradeToAndCall(address,bytes)",
-    );
+    const card = await openFunctionCard(user, "upgradeToAndCall(address,bytes)");
     await user.type(card.getByLabelText(/^newImplementation/u), OTHER);
     await user.type(card.getByLabelText(/^data/u), "0x");
     await user.click(card.getByRole("button", { name: "Send transaction" }));
@@ -838,10 +821,7 @@ describe("AbiFunctionExplorer", () => {
     mockWallet({ sendTransaction });
     renderExplorer(uupsABIWithCustomError, "write", implementationTargets());
     const user = userEvent.setup();
-    const card = await openFunctionCard(
-      user,
-      "upgradeToAndCall(address,bytes)",
-    );
+    const card = await openFunctionCard(user, "upgradeToAndCall(address,bytes)");
     await user.type(card.getByLabelText(/^newImplementation/u), OTHER);
     await user.type(card.getByLabelText(/^data/u), "0x");
     await user.click(card.getByRole("button", { name: "Send transaction" }));
@@ -866,7 +846,7 @@ function renderExplorer(
     getParentRoute: () => rootRoute,
     path: "/tx/$hash",
     validateSearch: (search: Record<string, unknown>) => ({
-      tab: search.tab === "overview" ? "overview" as const : undefined,
+      tab: search.tab === "overview" ? ("overview" as const) : undefined,
     }),
     component: () => null,
   });
@@ -888,10 +868,7 @@ function renderExplorer(
   return { history };
 }
 
-async function openFunctionCard(
-  user: ReturnType<typeof userEvent.setup>,
-  signature: string,
-) {
+async function openFunctionCard(user: ReturnType<typeof userEvent.setup>, signature: string) {
   const signatureElement = screen.getByText(signature, { selector: "code" });
   const details = signatureElement.closest("details");
   if (!(details instanceof HTMLDetailsElement)) {
@@ -906,16 +883,13 @@ async function openFunctionCard(
 }
 
 function directTargets(address = PROXY): readonly ContractInteractionTarget[] {
-  return buildContractInteractionTargets(address).filter(
-    (target) => target.kind === "contract",
-  );
+  return buildContractInteractionTargets(address).filter((target) => target.kind === "contract");
 }
 
 function implementationTargets(): readonly ContractInteractionTarget[] {
   return buildContractInteractionTargets(PROXY, uupsDetails()).filter(
     (target) =>
-      target.kind === "implementation_as_proxy" ||
-      target.kind === "uups_implementation_direct",
+      target.kind === "implementation_as_proxy" || target.kind === "uups_implementation_direct",
   );
 }
 
@@ -978,7 +952,7 @@ function uupsDetails(overrides: Partial<ProxyDetails> = {}): ProxyDetails {
       address: PROXY,
       code_hash: PROXY_HASH,
       verification_state: "verified",
-			artifact_resolution: "exact_address",
+      artifact_resolution: "exact_address",
       artifact_kind: "erc1967_proxy",
       standard_version: "5.6.1",
     },
@@ -986,7 +960,7 @@ function uupsDetails(overrides: Partial<ProxyDetails> = {}): ProxyDetails {
       address: IMPLEMENTATION,
       code_hash: IMPLEMENTATION_HASH,
       verification_state: "verified",
-			artifact_resolution: "exact_address",
+      artifact_resolution: "exact_address",
       artifact_kind: "uups_implementation",
       standard_version: "5.6.1",
     },
@@ -997,7 +971,7 @@ function uupsDetails(overrides: Partial<ProxyDetails> = {}): ProxyDetails {
         address: PROXY,
         code_hash: PROXY_HASH,
         verification_state: "verified",
-				artifact_resolution: "exact_address",
+        artifact_resolution: "exact_address",
         artifact_kind: "erc1967_proxy",
         standard_version: "5.6.1",
       },
@@ -1005,7 +979,7 @@ function uupsDetails(overrides: Partial<ProxyDetails> = {}): ProxyDetails {
         address: IMPLEMENTATION,
         code_hash: IMPLEMENTATION_HASH,
         verification_state: "verified",
-				artifact_resolution: "exact_address",
+        artifact_resolution: "exact_address",
         artifact_kind: "uups_implementation",
         standard_version: "5.6.1",
       },
@@ -1021,10 +995,9 @@ function managementDetails(pattern: "transparent" | "beacon"): ProxyDetails {
     address: ADMIN,
     code_hash: ADMIN_HASH,
     verification_state: "verified" as const,
-		artifact_resolution: "exact_address" as const,
-    artifact_kind: pattern === "transparent"
-      ? "proxy_admin" as const
-      : "upgradeable_beacon" as const,
+    artifact_resolution: "exact_address" as const,
+    artifact_kind:
+      pattern === "transparent" ? ("proxy_admin" as const) : ("upgradeable_beacon" as const),
     standard_version: "5.6.1" as const,
   };
   return uupsDetails({
@@ -1033,11 +1006,9 @@ function managementDetails(pattern: "transparent" | "beacon"): ProxyDetails {
       address: IMPLEMENTATION,
       code_hash: IMPLEMENTATION_HASH,
       verification_state: "verified",
-			artifact_resolution: "exact_address",
+      artifact_resolution: "exact_address",
     },
-    ...(pattern === "transparent"
-      ? { admin: managementIdentity }
-      : { beacon: managementIdentity }),
+    ...(pattern === "transparent" ? { admin: managementIdentity } : { beacon: managementIdentity }),
     management: {
       kind: pattern === "transparent" ? "proxy_admin" : "upgradeable_beacon",
       target: managementIdentity,
@@ -1046,9 +1017,7 @@ function managementDetails(pattern: "transparent" | "beacon"): ProxyDetails {
   });
 }
 
-function proxyResponse(
-  data: ProxyDetails = uupsDetails(),
-): ProxyDetailsResponse {
+function proxyResponse(data: ProxyDetails = uupsDetails()): ProxyDetailsResponse {
   return {
     data,
     meta: {

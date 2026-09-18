@@ -156,10 +156,7 @@ describe("generated OpenAPI client boundary", () => {
       vi
         .fn<typeof fetch>()
         .mockResolvedValue(
-          Response.json(
-            { error: { code: "LEAKED_CODE", message: "untrusted" } },
-            { status: 503 },
-          ),
+          Response.json({ error: { code: "LEAKED_CODE", message: "untrusted" } }, { status: 503 }),
         ),
     );
 

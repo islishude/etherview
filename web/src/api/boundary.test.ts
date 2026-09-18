@@ -28,11 +28,10 @@ describe("browser backend boundary", () => {
       if (relative === "billing/topup.ts") {
         const backendPaths = [
           ...source.matchAll(/["'`]([^"'`]*\/api\/(?:v1|v2)[^"'`]*)["'`]/gu),
-        ].map(match => match[1]);
+        ].map((match) => match[1]);
         if (
           backendPaths.length !== 1 ||
-          backendPaths[0] !==
-            "/api/v1/billing/topup-intents/${encodeURIComponent(intent.id)}/pay"
+          backendPaths[0] !== "/api/v1/billing/topup-intents/${encodeURIComponent(intent.id)}/pay"
         ) {
           violations.push(`${relative}: unbounded x402 top-up transport`);
         }
@@ -64,10 +63,7 @@ describe("browser backend boundary", () => {
           }
         }
       }
-      if (
-        relative === "wallet/WalletProvider.tsx" &&
-        syntax.dynamicMethodProperties > 0
-      ) {
+      if (relative === "wallet/WalletProvider.tsx" && syntax.dynamicMethodProperties > 0) {
         violations.push(`${relative}: dynamic wallet RPC method`);
       }
       if (
@@ -127,23 +123,15 @@ describe("browser backend boundary", () => {
   });
 
   it("recognizes alternate wallet-call syntax instead of letting it bypass the gate", () => {
+    expect(walletRequestMethods("requestActiveProvider(wallet, { method })")).toEqual([undefined]);
     expect(
-      walletRequestMethods("requestActiveProvider(wallet, { method })"),
+      walletRequestMethods('requestActiveProvider(wallet, { ["method"]: "eth_signTypedData_v4" })'),
     ).toEqual([undefined]);
     expect(
-      walletRequestMethods(
-        'requestActiveProvider(wallet, { ["method"]: "eth_signTypedData_v4" })',
-      ),
-    ).toEqual([undefined]);
-    expect(
-      walletRequestMethods(
-        "requestActiveProvider(wallet, { method: `personal_sign` })",
-      ),
+      walletRequestMethods("requestActiveProvider(wallet, { method: `personal_sign` })"),
     ).toEqual(["personal_sign"]);
     expect(
-      walletRequestMethods(
-        'requestActiveProvider(wallet, { method: "eth_call", ...override })',
-      ),
+      walletRequestMethods('requestActiveProvider(wallet, { method: "eth_call", ...override })'),
     ).toEqual([undefined]);
     expect(
       inspectWalletSyntax(
@@ -195,17 +183,13 @@ function inspectWalletSyntax(
   eip6963EventReferences: number;
 } {
   const rawRequestCalls = [
-    ...source.matchAll(
-      /(?:\.\s*request|\[\s*["'`]request["'`]\s*\])\s*\(/gu,
-    ),
+    ...source.matchAll(/(?:\.\s*request|\[\s*["'`]request["'`]\s*\])\s*\(/gu),
   ].length;
   const requestProviderCalls = file.endsWith("/wallet/WalletProvider.tsx")
     ? walletRequestMethods(source)
-    : [
-        ...source.matchAll(
-          /\bmethod\s*:\s*(["'`])((?:eth|personal|wallet)_[a-zA-Z0-9_]+)\1/gu,
-        ),
-      ].map((match) => match[2]);
+    : [...source.matchAll(/\bmethod\s*:\s*(["'`])((?:eth|personal|wallet)_[a-zA-Z0-9_]+)\1/gu)].map(
+        (match) => match[2],
+      );
   const dynamicMethodProperties = requestProviderCalls.filter(
     (method) => method === undefined,
   ).length;
@@ -316,12 +300,7 @@ function callArguments(
         return { arguments: arguments_, end: offset };
       }
     }
-    if (
-      character === "," &&
-      parentheses === 1 &&
-      braces === 0 &&
-      brackets === 0
-    ) {
+    if (character === "," && parentheses === 1 && braces === 0 && brackets === 0) {
       arguments_.push(source.slice(start, offset));
       start = offset + 1;
     }

@@ -6,14 +6,8 @@ import { QueryNotice } from "@/components/QueryNotice";
 import { AbiFunctionExplorer } from "@/contracts/AbiFunctionForm";
 import { ContractArtifactPanel } from "@/contracts/ContractArtifactPanel";
 import { AddressIdentity } from "@/ens/AddressIdentity";
-import {
-  useAddressDelegation,
-  useAddressDelegationHistory,
-} from "@/contracts/delegation";
-import {
-  useVerifiedContractArtifact,
-  verifiedArtifactMatchesIdentity,
-} from "@/contracts/proxy";
+import { useAddressDelegation, useAddressDelegationHistory } from "@/contracts/delegation";
+import { useVerifiedContractArtifact, verifiedArtifactMatchesIdentity } from "@/contracts/proxy";
 import { buildDelegatedEOAInteractionTarget } from "@/contracts/targets";
 
 export type DelegatedAccountTab = "code" | "read-contract" | "write-contract" | "history";
@@ -46,28 +40,16 @@ export function DelegatedAccountPanel({
   const navigate = useNavigate();
   const requestedTab = delegatedAccountTabFromHash(location.hash);
   const activeTab = requestedTab ?? "code";
-  const binding = useAddressDelegation(
-    authority,
-    currentlyDelegated || activeTab !== "history",
-  );
-  const delegate = binding.data?.status === "delegated" ? binding.data.delegate ?? "" : "";
-  const codeHash = binding.data?.status === "delegated"
-    ? binding.data.delegate_code_hash
-    : undefined;
+  const binding = useAddressDelegation(authority, currentlyDelegated || activeTab !== "history");
+  const delegate = binding.data?.status === "delegated" ? (binding.data.delegate ?? "") : "";
+  const codeHash =
+    binding.data?.status === "delegated" ? binding.data.delegate_code_hash : undefined;
   const artifactRelevant = delegate.length > 0;
   const artifact = useVerifiedContractArtifact(delegate, artifactRelevant, codeHash);
   const artifactPending = artifactRelevant && artifact.isPending;
-  const artifactMatches = verifiedArtifactMatchesIdentity(
-    artifact.data,
-    delegate,
-    codeHash,
-  );
-  const delegatedView = binding.data
-    ? binding.data.status === "delegated"
-    : currentlyDelegated;
-  const codeTabLabel = delegatedView
-    ? t("contracts.tabs.code")
-    : t("delegation.tabs.status");
+  const artifactMatches = verifiedArtifactMatchesIdentity(artifact.data, delegate, codeHash);
+  const delegatedView = binding.data ? binding.data.status === "delegated" : currentlyDelegated;
+  const codeTabLabel = delegatedView ? t("contracts.tabs.code") : t("delegation.tabs.status");
   const targets = useMemo(() => {
     if (!binding.data) return [];
     try {
@@ -93,8 +75,10 @@ export function DelegatedAccountPanel({
     setHistoryState({ identity: authority, cursors: [""] });
   }, [authority, historyState.identity]);
 
-  const bindingTemporarilyUnavailable = binding.error !== undefined && isTemporaryError(binding.error);
-  const artifactTemporarilyUnavailable = artifactRelevant && artifact.error !== undefined && isTemporaryError(artifact.error);
+  const bindingTemporarilyUnavailable =
+    binding.error !== undefined && isTemporaryError(binding.error);
+  const artifactTemporarilyUnavailable =
+    artifactRelevant && artifact.error !== undefined && isTemporaryError(artifact.error);
   const tabs = useMemo(() => {
     const next: Array<{ id: DelegatedAccountTab; label: string }> = [
       { id: "code", label: codeTabLabel },
@@ -108,25 +92,46 @@ export function DelegatedAccountPanel({
     next.push({ id: "history", label: t("delegation.tabs.history") });
     if (
       requestedTab &&
-      (binding.isPending || artifactPending || bindingTemporarilyUnavailable || artifactTemporarilyUnavailable) &&
+      (binding.isPending ||
+        artifactPending ||
+        bindingTemporarilyUnavailable ||
+        artifactTemporarilyUnavailable) &&
       !next.some((tab) => tab.id === requestedTab)
     ) {
       next.push({
         id: requestedTab,
-        label: requestedTab === "read-contract"
-          ? t("contracts.tabs.readContract")
-          : requestedTab === "write-contract"
-            ? t("contracts.tabs.writeContract")
-            : requestedTab === "history"
-              ? t("delegation.tabs.history")
-              : codeTabLabel,
+        label:
+          requestedTab === "read-contract"
+            ? t("contracts.tabs.readContract")
+            : requestedTab === "write-contract"
+              ? t("contracts.tabs.writeContract")
+              : requestedTab === "history"
+                ? t("delegation.tabs.history")
+                : codeTabLabel,
       });
     }
     return next;
-  }, [artifact.data?.abi, artifactMatches, artifactPending, artifactTemporarilyUnavailable, binding.data?.status, binding.isPending, bindingTemporarilyUnavailable, codeTabLabel, requestedTab, t]);
+  }, [
+    artifact.data?.abi,
+    artifactMatches,
+    artifactPending,
+    artifactTemporarilyUnavailable,
+    binding.data?.status,
+    binding.isPending,
+    bindingTemporarilyUnavailable,
+    codeTabLabel,
+    requestedTab,
+    t,
+  ]);
 
   useEffect(() => {
-    if (!requestedTab || binding.isPending || artifactPending || tabs.some((tab) => tab.id === requestedTab)) return;
+    if (
+      !requestedTab ||
+      binding.isPending ||
+      artifactPending ||
+      tabs.some((tab) => tab.id === requestedTab)
+    )
+      return;
     void navigate({
       to: "/address/$address",
       params: { address: authority },
@@ -145,7 +150,10 @@ export function DelegatedAccountPanel({
     });
   };
 
-  const navigateTabs = (event: ReactKeyboardEvent<HTMLButtonElement>, tabID: DelegatedAccountTab) => {
+  const navigateTabs = (
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    tabID: DelegatedAccountTab,
+  ) => {
     const current = tabs.findIndex((tab) => tab.id === tabID);
     let next = current;
     if (event.key === "ArrowRight") next = (current + 1) % tabs.length;
@@ -166,7 +174,12 @@ export function DelegatedAccountPanel({
 
   return (
     <div className="contract-detail-stack">
-      <nav aria-label={t("delegation.sections")} aria-orientation="horizontal" className="contract-tabs" role="tablist">
+      <nav
+        aria-label={t("delegation.sections")}
+        aria-orientation="horizontal"
+        className="contract-tabs"
+        role="tablist"
+      >
         {tabs.map((tab) => (
           <button
             aria-controls={`delegated-panel-${tab.id}`}
@@ -207,7 +220,7 @@ export function DelegatedAccountPanel({
                   delegatedView={delegatedView}
                 />
               ) : null}
-              {(activeTab === "read-contract" || activeTab === "write-contract") ? (
+              {activeTab === "read-contract" || activeTab === "write-contract" ? (
                 <DelegatedInteractionPanel
                   abi={artifact.data?.abi}
                   artifactError={artifact.error}
@@ -227,8 +240,12 @@ export function DelegatedAccountPanel({
                   loading={history.isPending}
                   busy={history.isFetching}
                   cursors={historyCursors}
-                  onNext={(cursor) => setHistoryState({ identity: authority, cursors: [...historyCursors, cursor] })}
-                  onPrevious={() => setHistoryState({ identity: authority, cursors: historyCursors.slice(0, -1) })}
+                  onNext={(cursor) =>
+                    setHistoryState({ identity: authority, cursors: [...historyCursors, cursor] })
+                  }
+                  onPrevious={() =>
+                    setHistoryState({ identity: authority, cursors: historyCursors.slice(0, -1) })
+                  }
                 />
               ) : null}
             </>
@@ -268,17 +285,44 @@ function DelegatedCodePanel({
         <QueryNotice loading={bindingLoading} error={bindingError} />
         {delegated ? (
           <>
-            <p className="capability-panel context-note" role="note">{t("delegation.securityWarning")}</p>
+            <p className="capability-panel context-note" role="note">
+              {t("delegation.securityWarning")}
+            </p>
             <dl className="detail-grid">
-              <div className="detail-item"><dt>{t("delegation.authority")}</dt><dd><AddressIdentity address={binding.authority} compact={false} link={false} /></dd></div>
-              <div className="detail-item"><dt>{t("delegation.status")}</dt><dd>{t(`delegation.statuses.${binding.status}`)}</dd></div>
-              <div className="detail-item"><dt>{t("delegation.delegate")}</dt><dd>{binding.delegate ? (
-                <AddressIdentity address={binding.delegate} activity compact={false} />
-              ) : "—"}</dd></div>
-              <div className="detail-item"><dt>{t("delegation.codeHash")}</dt><dd><code>{binding.delegate_code_hash ?? "—"}</code></dd></div>
-              <div className="detail-item wide"><dt>{t("delegation.snapshot")}</dt><dd>
-                <Link to="/blocks/$blockID" params={{ blockID: binding.block_hash }}><code>{binding.block_number}</code></Link>
-              </dd></div>
+              <div className="detail-item">
+                <dt>{t("delegation.authority")}</dt>
+                <dd>
+                  <AddressIdentity address={binding.authority} compact={false} link={false} />
+                </dd>
+              </div>
+              <div className="detail-item">
+                <dt>{t("delegation.status")}</dt>
+                <dd>{t(`delegation.statuses.${binding.status}`)}</dd>
+              </div>
+              <div className="detail-item">
+                <dt>{t("delegation.delegate")}</dt>
+                <dd>
+                  {binding.delegate ? (
+                    <AddressIdentity address={binding.delegate} activity compact={false} />
+                  ) : (
+                    "—"
+                  )}
+                </dd>
+              </div>
+              <div className="detail-item">
+                <dt>{t("delegation.codeHash")}</dt>
+                <dd>
+                  <code>{binding.delegate_code_hash ?? "—"}</code>
+                </dd>
+              </div>
+              <div className="detail-item wide">
+                <dt>{t("delegation.snapshot")}</dt>
+                <dd>
+                  <Link to="/blocks/$blockID" params={{ blockID: binding.block_hash }}>
+                    <code>{binding.block_number}</code>
+                  </Link>
+                </dd>
+              </div>
             </dl>
           </>
         ) : null}
@@ -290,11 +334,24 @@ function DelegatedCodePanel({
                 : t("delegation.unavailableDescription")}
             </p>
             <dl className="detail-grid">
-              <div className="detail-item"><dt>{t("delegation.authority")}</dt><dd><code>{binding.authority}</code></dd></div>
-              <div className="detail-item"><dt>{t("delegation.status")}</dt><dd>{t(`delegation.statuses.${binding.status}`)}</dd></div>
-              <div className="detail-item wide"><dt>{t("delegation.snapshot")}</dt><dd>
-                <Link to="/blocks/$blockID" params={{ blockID: binding.block_hash }}><code>{binding.block_number}</code></Link>
-              </dd></div>
+              <div className="detail-item">
+                <dt>{t("delegation.authority")}</dt>
+                <dd>
+                  <code>{binding.authority}</code>
+                </dd>
+              </div>
+              <div className="detail-item">
+                <dt>{t("delegation.status")}</dt>
+                <dd>{t(`delegation.statuses.${binding.status}`)}</dd>
+              </div>
+              <div className="detail-item wide">
+                <dt>{t("delegation.snapshot")}</dt>
+                <dd>
+                  <Link to="/blocks/$blockID" params={{ blockID: binding.block_hash }}>
+                    <code>{binding.block_number}</code>
+                  </Link>
+                </dd>
+              </div>
             </dl>
           </>
         ) : null}
@@ -336,7 +393,10 @@ function DelegatedInteractionPanel({
   return (
     <div className="delegated-interaction-stack">
       <p className="quiet">{t("delegation.interactionTarget")}</p>
-      <QueryNotice loading={bindingLoading || artifactLoading} error={bindingError ?? artifactError} />
+      <QueryNotice
+        loading={bindingLoading || artifactLoading}
+        error={bindingError ?? artifactError}
+      />
       {artifactMatches && abi && targets.length > 0 ? (
         <AbiFunctionExplorer
           abi={abi}
@@ -373,19 +433,44 @@ function DelegationHistory({
     <section className="detail-card">
       <h2 id="delegation-history-title">{t("delegation.history")}</h2>
       <QueryNotice loading={loading} error={error} />
-      {data?.items.length === 0 ? <p className="empty-result">{t("delegation.noHistory")}</p> : null}
+      {data?.items.length === 0 ? (
+        <p className="empty-result">{t("delegation.noHistory")}</p>
+      ) : null}
       {data && data.items.length > 0 ? (
         <div className="table-scroll" tabIndex={0}>
           <table>
-            <thead><tr><th>{t("delegation.kind")}</th><th>{t("delegation.delegate")}</th><th>{t("table.transaction")}</th><th>{t("table.block")}</th></tr></thead>
-            <tbody>{data.items.map((item) => (
-              <tr key={`${item.block_hash}:${item.transaction_hash}:${item.authorization_index}`}>
-                <td>{t(`delegation.kinds.${item.kind}`)}</td>
-                <td><code>{item.delegate}</code></td>
-                <td><Link to="/tx/$hash" params={{ hash: item.transaction_hash }} search={{ tab: "overview" }}><code>{item.transaction_hash}</code></Link></td>
-                <td><Link to="/blocks/$blockID" params={{ blockID: item.block_hash }}><code>{item.block_number}</code></Link></td>
+            <thead>
+              <tr>
+                <th>{t("delegation.kind")}</th>
+                <th>{t("delegation.delegate")}</th>
+                <th>{t("table.transaction")}</th>
+                <th>{t("table.block")}</th>
               </tr>
-            ))}</tbody>
+            </thead>
+            <tbody>
+              {data.items.map((item) => (
+                <tr key={`${item.block_hash}:${item.transaction_hash}:${item.authorization_index}`}>
+                  <td>{t(`delegation.kinds.${item.kind}`)}</td>
+                  <td>
+                    <code>{item.delegate}</code>
+                  </td>
+                  <td>
+                    <Link
+                      to="/tx/$hash"
+                      params={{ hash: item.transaction_hash }}
+                      search={{ tab: "overview" }}
+                    >
+                      <code>{item.transaction_hash}</code>
+                    </Link>
+                  </td>
+                  <td>
+                    <Link to="/blocks/$blockID" params={{ blockID: item.block_hash }}>
+                      <code>{item.block_number}</code>
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
           </table>
         </div>
       ) : null}

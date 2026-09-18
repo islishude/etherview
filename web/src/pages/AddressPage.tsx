@@ -1,12 +1,8 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { QRCodeSVG } from "qrcode.react";
-import { isAddress, } from "viem";
+import { isAddress } from "viem";
 
 import {
   useAddressERC20Balances,
@@ -93,14 +89,16 @@ export function AddressDetailPage({ address, tab }: { address: string; tab: stri
   const contractAvailable = account.data?.type === "contract" && Boolean(account.data.code_hash);
   const currentlyDelegated = account.data?.type === "delegated_eoa";
   const delegationAvailable = currentlyDelegated || Boolean(account.data?.has_delegation_history);
-  const activeTab: AddressTab = account.data?.type === "contract" && contractHash
-    ? "contract"
-    : (account.isPending || delegationAvailable) && delegationHash
-      ? "delegation"
-      : isAddressTab(tab) &&
-          (tab !== "delegation" || account.isPending || delegationAvailable) &&
-          (tab !== "user-operations" || userOperationsEnabled)
-        ? tab : "transactions";
+  const activeTab: AddressTab =
+    account.data?.type === "contract" && contractHash
+      ? "contract"
+      : (account.isPending || delegationAvailable) && delegationHash
+        ? "delegation"
+        : isAddressTab(tab) &&
+            (tab !== "delegation" || account.isPending || delegationAvailable) &&
+            (tab !== "user-operations" || userOperationsEnabled)
+          ? tab
+          : "transactions";
   const transactions = useAddressTransactions(
     address,
     transactionPager.cursor,
@@ -159,16 +157,18 @@ export function AddressDetailPage({ address, tab }: { address: string; tab: stri
   const nativeSymbol = publicConfig.data?.native_symbol ?? "";
   const locale = i18n.resolvedLanguage ?? "en";
   const displayAddress = account.data?.address ?? address;
-  const title = account.data?.type === "contract"
-    ? t("page.contract")
-    : account.data?.type === "delegated_eoa"
-      ? t("page.delegatedAccount")
-      : t("page.address");
+  const title =
+    account.data?.type === "contract"
+      ? t("page.contract")
+      : account.data?.type === "delegated_eoa"
+        ? t("page.delegatedAccount")
+        : t("page.address");
   const qrPayload = publicConfig.data
     ? `ethereum:${displayAddress}@${publicConfig.data.chain_id}`
     : undefined;
   useEffect(() => {
-    if (!contractHash || delegationHash || account.isPending || account.error || contractAvailable) return;
+    if (!contractHash || delegationHash || account.isPending || account.error || contractAvailable)
+      return;
     void navigate({
       to: "/address/$address",
       params: { address },
@@ -176,14 +176,20 @@ export function AddressDetailPage({ address, tab }: { address: string; tab: stri
       hash: "",
       replace: true,
     });
-  }, [account.error, account.isPending, address, contractAvailable, contractHash, delegationHash, navigate]);
+  }, [
+    account.error,
+    account.isPending,
+    address,
+    contractAvailable,
+    contractHash,
+    delegationHash,
+    navigate,
+  ]);
 
   return (
     <Page
       title={title}
-      description={(
-        <AddressHeader address={displayAddress} qrPayload={qrPayload} />
-      )}
+      description={<AddressHeader address={displayAddress} qrPayload={qrPayload} />}
       mono
     >
       <QueryNotice loading={account.isPending} error={account.error} />
@@ -197,19 +203,25 @@ export function AddressDetailPage({ address, tab }: { address: string; tab: stri
             <Detail label={t("detail.nonce")} value={formatInteger(account.data.nonce, locale)} />
             <AddressOriginDetails origin={account.data.origin} />
           </DetailList>
-          <p className="context-note" role="note">{t("context.addressSnapshot")}</p>
+          <p className="context-note" role="note">
+            {t("context.addressSnapshot")}
+          </p>
         </>
       )}
       <nav className="transaction-tabs" aria-label={t("detail.addressSections")}>
-        {([
-          ["transactions", t("addressTab.transactions")],
-          ["internal-transactions", t("addressTab.internalTransactions")],
-          ["withdrawals", t("addressTab.withdrawals")],
-          ["erc20-transfers", t("addressTab.erc20Transfers")],
-          ["nft-transfers", t("addressTab.nftTransfers")],
-          ["assets", t("addressTab.assets")],
-          ...(userOperationsEnabled ? [["user-operations", t("addressTab.userOperations")]] as const : []),
-        ] as const).map(([tabID, label]) => (
+        {(
+          [
+            ["transactions", t("addressTab.transactions")],
+            ["internal-transactions", t("addressTab.internalTransactions")],
+            ["withdrawals", t("addressTab.withdrawals")],
+            ["erc20-transfers", t("addressTab.erc20Transfers")],
+            ["nft-transfers", t("addressTab.nftTransfers")],
+            ["assets", t("addressTab.assets")],
+            ...(userOperationsEnabled
+              ? ([["user-operations", t("addressTab.userOperations")]] as const)
+              : []),
+          ] as const
+        ).map(([tabID, label]) => (
           <Link
             key={tabID}
             activeOptions={{ exact: true, includeHash: true }}
@@ -371,9 +383,16 @@ export function AddressDetailPage({ address, tab }: { address: string; tab: stri
         </div>
       )}
       {activeTab === "user-operations" && (
-        <section className="panel transaction-tab-panel" aria-labelledby="address-user-operations-title">
+        <section
+          className="panel transaction-tab-panel"
+          aria-labelledby="address-user-operations-title"
+        >
           <h2 id="address-user-operations-title">{t("addressTab.userOperations")}</h2>
-          <QueryNotice loading={userOperations.isPending} error={userOperations.error} onReset={userOperationPager.reset} />
+          <QueryNotice
+            loading={userOperations.isPending}
+            error={userOperations.error}
+            onReset={userOperationPager.reset}
+          />
           {userOperations.data?.items.length === 0 ? (
             <p className="empty-result">{t("state.noUserOperations")}</p>
           ) : null}
@@ -409,6 +428,7 @@ function AddressHeader({ address, qrPayload }: { address: string; qrPayload?: st
 
   useEffect(() => {
     if (!open) return;
+    const openButton = openButtonRef.current;
     dialogRef.current?.focus();
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -418,7 +438,7 @@ function AddressHeader({ address, qrPayload }: { address: string; qrPayload?: st
     window.addEventListener("keydown", closeOnEscape);
     return () => {
       window.removeEventListener("keydown", closeOnEscape);
-      openButtonRef.current?.focus();
+      openButton?.focus();
     };
   }, [open]);
 
@@ -453,9 +473,11 @@ function AddressHeader({ address, qrPayload }: { address: string; qrPayload?: st
             className="qr-dialog"
             onKeyDown={(event) => {
               if (event.key !== "Tab") return;
-              const focusable = [...event.currentTarget.querySelectorAll<HTMLElement>(
-                "button:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])",
-              )];
+              const focusable = [
+                ...event.currentTarget.querySelectorAll<HTMLElement>(
+                  "button:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])",
+                ),
+              ];
               if (focusable.length === 0) {
                 event.preventDefault();
                 event.currentTarget.focus();
@@ -500,7 +522,9 @@ function AddressHeader({ address, qrPayload }: { address: string; qrPayload?: st
                 value={qrPayload}
               />
             </div>
-            <CopyableField value={qrPayload}><code>{qrPayload}</code></CopyableField>
+            <CopyableField value={qrPayload}>
+              <code>{qrPayload}</code>
+            </CopyableField>
           </div>
         </div>
       ) : null}
@@ -514,16 +538,18 @@ function AddressOriginDetails({ origin }: { origin?: AddressSummary["origin"] })
     return <Detail label={t("detail.origin")} value={t("state.originUnavailable")} wide />;
   }
   const blockOrigin = origin.kind === "withdrawal" || origin.kind === "block_fee_recipient";
-  const sourceLabel = origin.kind === "contract_creation"
-    ? t("detail.contractCreator")
-    : origin.kind === "withdrawal"
-      ? t("detail.blockWithdrawal")
-      : origin.kind === "block_fee_recipient"
-        ? t("detail.blockFeeRecipient")
-        : t("detail.fundedBy");
-  const transactionLabel = origin.kind === "contract_creation"
-    ? t("detail.creationTransaction")
-    : t("detail.fundingTransaction");
+  const sourceLabel =
+    origin.kind === "contract_creation"
+      ? t("detail.contractCreator")
+      : origin.kind === "withdrawal"
+        ? t("detail.blockWithdrawal")
+        : origin.kind === "block_fee_recipient"
+          ? t("detail.blockFeeRecipient")
+          : t("detail.fundedBy");
+  const transactionLabel =
+    origin.kind === "contract_creation"
+      ? t("detail.creationTransaction")
+      : t("detail.fundingTransaction");
   if (origin.state === "genesis") {
     return (
       <>
@@ -544,11 +570,17 @@ function AddressOriginDetails({ origin }: { origin?: AddressSummary["origin"] })
         <Detail
           label={sourceLabel}
           mono
-          value={origin.block_hash ? (
-            <Link to="/blocks/$blockID" params={{ blockID: origin.block_hash }} search={{ tab: "overview" }}>
-              {origin.block_hash}
-            </Link>
-          ) : undefined}
+          value={
+            origin.block_hash ? (
+              <Link
+                to="/blocks/$blockID"
+                params={{ blockID: origin.block_hash }}
+                search={{ tab: "overview" }}
+              >
+                {origin.block_hash}
+              </Link>
+            ) : undefined
+          }
         />
         {origin.kind === "withdrawal" ? (
           <Detail label={t("detail.withdrawalIndex")} value={origin.withdrawal_index} mono />
@@ -560,24 +592,28 @@ function AddressOriginDetails({ origin }: { origin?: AddressSummary["origin"] })
     <>
       <Detail
         label={sourceLabel}
-        value={origin.source_address ? (
-          <AddressIdentity address={origin.source_address} activity compact={false} copy />
-        ) : undefined}
+        value={
+          origin.source_address ? (
+            <AddressIdentity address={origin.source_address} activity compact={false} copy />
+          ) : undefined
+        }
       />
       <Detail
         label={transactionLabel}
         mono
-        value={origin.transaction_hash ? (
-          <CopyableField value={origin.transaction_hash}>
-            <Link
-              params={{ hash: origin.transaction_hash }}
-              search={{ tab: "overview" }}
-              to="/tx/$hash"
-            >
-              {origin.transaction_hash}
-            </Link>
-          </CopyableField>
-        ) : undefined}
+        value={
+          origin.transaction_hash ? (
+            <CopyableField value={origin.transaction_hash}>
+              <Link
+                params={{ hash: origin.transaction_hash }}
+                search={{ tab: "overview" }}
+                to="/tx/$hash"
+              >
+                {origin.transaction_hash}
+              </Link>
+            </CopyableField>
+          ) : undefined
+        }
       />
     </>
   );
@@ -668,7 +704,9 @@ function AddressTransactions({
                     signature: transaction.method_signature,
                   }}
                 />
-                <td><TransactionStatusBadge showFinality={false} transaction={transaction} /></td>
+                <td>
+                  <TransactionStatusBadge showFinality={false} transaction={transaction} />
+                </td>
                 <AddressCell address={transaction.from} currentAddress={address} />
                 <DirectionCell
                   direction={addressDirection(address, transaction.from, destination)}
@@ -678,8 +716,12 @@ function AddressTransactions({
                   created={!transaction.to && Boolean(destination)}
                   currentAddress={address}
                 />
-                <td><code>{formatNativeAmount(transaction.value, locale, nativeDecimals)}</code></td>
-                <td><FinalityBadge finality={transaction.finality} /></td>
+                <td>
+                  <code>{formatNativeAmount(transaction.value, locale, nativeDecimals)}</code>
+                </td>
+                <td>
+                  <FinalityBadge finality={transaction.finality} />
+                </td>
               </tr>
             );
           })}
@@ -733,7 +775,9 @@ function AddressInternalTransactions({
           {items.map((transaction) => {
             const destination = transaction.created_address ?? transaction.to;
             return (
-              <tr key={`${transaction.block_hash}:${transaction.transaction_hash}:${transaction.path.join(".")}`}>
+              <tr
+                key={`${transaction.block_hash}:${transaction.transaction_hash}:${transaction.path.join(".")}`}
+              >
                 <ActivityIdentity
                   blockNumber={transaction.block_number}
                   hash={transaction.transaction_hash}
@@ -755,7 +799,9 @@ function AddressInternalTransactions({
                   created={Boolean(transaction.created_address)}
                   currentAddress={address}
                 />
-                <td><code>{formatNativeAmount(transaction.value, locale, nativeDecimals)}</code></td>
+                <td>
+                  <code>{formatNativeAmount(transaction.value, locale, nativeDecimals)}</code>
+                </td>
               </tr>
             );
           })}
@@ -784,7 +830,9 @@ function AddressWithdrawals({
     <section className="detail-section address-activity" aria-label={title}>
       <QueryNotice loading={loading} error={error} onReset={onReset} />
       {items?.length === 0 ? (
-        <p className="empty-result" role="status">{t("state.noAddressWithdrawals")}</p>
+        <p className="empty-result" role="status">
+          {t("state.noAddressWithdrawals")}
+        </p>
       ) : null}
       {items && items.length > 0 ? (
         <div className="table-scroll" tabIndex={0} aria-label={title}>
@@ -802,15 +850,21 @@ function AddressWithdrawals({
             <tbody>
               {items.map((withdrawal) => (
                 <tr key={`${withdrawal.block_hash}:${withdrawal.index}`}>
-                  <td><code>{formatInteger(withdrawal.index, locale)}</code></td>
-                  <td><code>{formatInteger(withdrawal.validator_index, locale)}</code></td>
+                  <td>
+                    <code>{formatInteger(withdrawal.index, locale)}</code>
+                  </td>
+                  <td>
+                    <code>{formatInteger(withdrawal.validator_index, locale)}</code>
+                  </td>
                   <td>
                     <Link to="/blocks/$blockID" params={{ blockID: withdrawal.block_hash }}>
                       {formatInteger(withdrawal.block_number, locale)}
                     </Link>
                   </td>
                   <td>{formatRelativeTimestamp(withdrawal.block_timestamp, locale)}</td>
-                  <td><code>{formatEtherFromGwei(withdrawal.amount, locale)} Ether</code></td>
+                  <td>
+                    <code>{formatEtherFromGwei(withdrawal.amount, locale)} Ether</code>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -865,7 +919,9 @@ function AddressTokenTransfers({
       {items && items.length > 0 ? (
         <AddressActivityTable label={title} token>
           {items.map((transfer) => (
-            <tr key={`${transfer.block_hash}:${transfer.transaction_hash}:${transfer.log_index}:${transfer.sub_index}`}>
+            <tr
+              key={`${transfer.block_hash}:${transfer.transaction_hash}:${transfer.log_index}:${transfer.sub_index}`}
+            >
               <ActivityIdentity
                 blockNumber={transfer.block_number}
                 hash={transfer.transaction_hash}
@@ -894,13 +950,25 @@ function AddressTokenTransfers({
                   {transfer.amount !== undefined ? (
                     <code>{formatTokenEventAmount(transfer, locale)}</code>
                   ) : transfer.token_id !== undefined && isNFTStandard(transfer.standard) ? (
-                    <NFTTokenIDLink address={transfer.token_address} prefix tokenID={transfer.token_id} />
+                    <NFTTokenIDLink
+                      address={transfer.token_address}
+                      prefix
+                      tokenID={transfer.token_id}
+                    />
                   ) : (
                     <code>{transfer.token_id !== undefined ? `#${transfer.token_id}` : "—"}</code>
                   )}
-                  {transfer.amount !== undefined && transfer.token_id !== undefined && isNFTStandard(transfer.standard)
-                    ? <small><NFTTokenIDLink address={transfer.token_address} prefix tokenID={transfer.token_id} /></small>
-                    : null}
+                  {transfer.amount !== undefined &&
+                  transfer.token_id !== undefined &&
+                  isNFTStandard(transfer.standard) ? (
+                    <small>
+                      <NFTTokenIDLink
+                        address={transfer.token_address}
+                        prefix
+                        tokenID={transfer.token_id}
+                      />
+                    </small>
+                  ) : null}
                 </span>
               </td>
             </tr>
@@ -933,7 +1001,11 @@ function AddressActivitySection({
   return (
     <section className="detail-section address-activity" aria-label={title}>
       <QueryNotice loading={loading} error={error} onReset={onReset} />
-      {empty ? <p className="empty-result" role="status">{t("state.noAddressActivity")}</p> : null}
+      {empty ? (
+        <p className="empty-result" role="status">
+          {t("state.noAddressActivity")}
+        </p>
+      ) : null}
       {children}
       {!loading && !error ? (
         <CursorPagination
@@ -1030,7 +1102,9 @@ function ActivityIdentity({
           <Link to="/blocks/$blockID" params={{ blockID: blockNumber }}>
             {formatInteger(blockNumber, locale)}
           </Link>
-        ) : "—"}
+        ) : (
+          "—"
+        )}
       </td>
       <td>{timestamp ? formatRelativeTimestamp(timestamp, locale) : "—"}</td>
     </>
@@ -1047,11 +1121,9 @@ export function TransactionMethodCell({
   const accessibleName = signature ?? method;
   return (
     <td className="transaction-method-cell">
-      <code
-        aria-label={accessibleName}
-        className="transaction-method"
-        title={accessibleName}
-      >{method ?? "—"}</code>
+      <code aria-label={accessibleName} className="transaction-method" title={accessibleName}>
+        {method ?? "—"}
+      </code>
     </td>
   );
 }
@@ -1070,7 +1142,12 @@ function AddressCell({
   return (
     <td>
       <span className="table-primary">
-        <AddressIdentity address={address} activity copy link={!sameAddress(address, currentAddress)} />
+        <AddressIdentity
+          address={address}
+          activity
+          copy
+          link={!sameAddress(address, currentAddress)}
+        />
         {created ? <small>{t("activity.created")}</small> : null}
       </span>
     </td>
@@ -1142,7 +1219,9 @@ function AddressERC20Balances({
       ) : null}
       <QueryNotice loading={loading} error={error} onReset={onReset} />
       {balances && balances.length === 0 ? (
-        <p className="empty-result" role="status">{t("state.noERC20Balances")}</p>
+        <p className="empty-result" role="status">
+          {t("state.noERC20Balances")}
+        </p>
       ) : null}
       {balances && balances.length > 0 ? (
         <div className="table-scroll" tabIndex={0} aria-label={t("detail.erc20Balances")}>
@@ -1157,9 +1236,10 @@ function AddressERC20Balances({
             </thead>
             <tbody>
               {balances.map((balance) => {
-                const amount = balance.decimals === undefined
-                  ? formatInteger(balance.balance, locale)
-                  : formatNativeAmount(balance.balance, locale, balance.decimals);
+                const amount =
+                  balance.decimals === undefined
+                    ? formatInteger(balance.balance, locale)
+                    : formatNativeAmount(balance.balance, locale, balance.decimals);
                 const tokenLabel = balance.symbol ?? balance.token_address;
                 return (
                   <tr key={balance.token_address}>
@@ -1168,13 +1248,20 @@ function AddressERC20Balances({
                         <Link to="/token/$address" params={{ address: balance.token_address }}>
                           {balance.name ?? tokenLabel}
                         </Link>
-                        <small><code>{balance.symbol ?? shorten(balance.token_address)}</code></small>
+                        <small>
+                          <code>{balance.symbol ?? shorten(balance.token_address)}</code>
+                        </small>
                       </span>
                     </td>
                     <td>
-                      <code>{amount}{balance.symbol ? ` ${balance.symbol}` : ""}</code>
+                      <code>
+                        {amount}
+                        {balance.symbol ? ` ${balance.symbol}` : ""}
+                      </code>
                     </td>
-                    <td><span className="result-kind">{confidenceLabel(balance.confidence, t)}</span></td>
+                    <td>
+                      <span className="result-kind">{confidenceLabel(balance.confidence, t)}</span>
+                    </td>
                   </tr>
                 );
               })}
@@ -1235,7 +1322,9 @@ function AddressNFTBalances({
       )}
       <QueryNotice loading={loading} error={error} onReset={onReset} />
       {balances && balances.length === 0 && (
-        <p className="empty-result" role="status">{t("state.noNFTBalances")}</p>
+        <p className="empty-result" role="status">
+          {t("state.noNFTBalances")}
+        </p>
       )}
       {balances && balances.length > 0 && (
         <div className="table-scroll" tabIndex={0} aria-label={t("detail.nftBalances")}>
@@ -1257,9 +1346,15 @@ function AddressNFTBalances({
                       <code>{shorten(balance.token_address)}</code>
                     </Link>
                   </td>
-                  <td><NFTTokenIDLink address={balance.token_address} tokenID={balance.token_id} /></td>
-                  <td><code>{balance.balance}</code></td>
-                  <td><span className="result-kind">{confidenceLabel(balance.confidence, t)}</span></td>
+                  <td>
+                    <NFTTokenIDLink address={balance.token_address} tokenID={balance.token_id} />
+                  </td>
+                  <td>
+                    <code>{balance.balance}</code>
+                  </td>
+                  <td>
+                    <span className="result-kind">{confidenceLabel(balance.confidence, t)}</span>
+                  </td>
                 </tr>
               ))}
             </tbody>

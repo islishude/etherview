@@ -26,8 +26,12 @@ export function AddressIdentity({
     <span className={`address-identity${primary ? " has-primary-name" : ""}`}>
       {primary ? (
         <span className="address-primary-name-row">
-          <bdi className="address-primary-name" title={primary.name}>{primary.name}</bdi>
-          {primary.source === "custom_ens" ? <small className="custom-ens-badge">Custom ENS</small> : null}
+          <bdi className="address-primary-name" title={primary.name}>
+            {primary.name}
+          </bdi>
+          {primary.source === "custom_ens" ? (
+            <small className="custom-ens-badge">Custom ENS</small>
+          ) : null}
         </span>
       ) : null}
       <code className="address-identity-value" title={address}>
@@ -38,7 +42,9 @@ export function AddressIdentity({
   );
   const linked = link ? (
     <Link
-      aria-label={primary ? `${primary.name}, ${address}` : compact ? shortenAddress(address) : address}
+      aria-label={
+        primary ? `${primary.name}, ${address}` : compact ? shortenAddress(address) : address
+      }
       hash={contract ? "code" : undefined}
       params={{ address }}
       search={contract ? {} : activity ? { tab: "transactions" } : {}}
@@ -46,7 +52,9 @@ export function AddressIdentity({
     >
       {content}
     </Link>
-  ) : content;
+  ) : (
+    content
+  );
   return copy ? <CopyableField value={address}>{linked}</CopyableField> : linked;
 }
 

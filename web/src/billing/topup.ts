@@ -2,13 +2,7 @@ import { x402Client } from "@x402/core/client";
 import type { Network, PaymentRequirements } from "@x402/core/types";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { wrapFetchWithPayment } from "@x402/fetch";
-import {
-  decodeFunctionResult,
-  encodeFunctionData,
-  getAddress,
-  type Address,
-  type Hex,
-} from "viem";
+import { decodeFunctionResult, encodeFunctionData, getAddress, type Address, type Hex } from "viem";
 
 import type {
   BillingConfig,
@@ -108,7 +102,7 @@ export async function payBillingTopup(options: {
   };
   const selector = (_version: number, requirements: PaymentRequirements[]) => {
     const selected = requirements.find(
-      requirement => requirement.extra?.assetTransferMethod === method,
+      (requirement) => requirement.extra?.assetTransferMethod === method,
     );
     if (!selected) throw new TypeError("Selected x402 transfer method is unavailable");
     return selected;
@@ -180,10 +174,5 @@ function required<T>(value: T | null | undefined, name: string): T {
 function isReceiptEnvelope(value: unknown): value is { data: BillingTopupReceipt } {
   if (typeof value !== "object" || value === null || !("data" in value)) return false;
   const data = value.data;
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "intent" in data &&
-    "account" in data
-  );
+  return typeof data === "object" && data !== null && "intent" in data && "account" in data;
 }

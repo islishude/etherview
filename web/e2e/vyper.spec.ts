@@ -12,32 +12,76 @@ test("Vyper submission preserves its target, sources and optimization mode", asy
   });
   await page.route("**/api/v1/verifier/compilers?**", async (route) => {
     const language = new URL(route.request().url()).searchParams.get("language");
-    await route.fulfill({ json: { data: { language, versions: language === "vyper" ? ["0.4.3"] : ["0.8.30"], capabilities: language === "vyper" ? { "0.4.3": { optimization_modes: ["none", "gas", "codesize"], evm_versions: ["prague"], default_evm_version: "prague", bytecode_metadata: true, enable_decimals: true } } : undefined }, meta } });
+    await route.fulfill({
+      json: {
+        data: {
+          language,
+          versions: language === "vyper" ? ["0.4.3"] : ["0.8.30"],
+          capabilities:
+            language === "vyper"
+              ? {
+                  "0.4.3": {
+                    optimization_modes: ["none", "gas", "codesize"],
+                    evm_versions: ["prague"],
+                    default_evm_version: "prague",
+                    bytecode_metadata: true,
+                    enable_decimals: true,
+                  },
+                }
+              : undefined,
+        },
+        meta,
+      },
+    });
   });
   const job = {
-    id, kind: "address", status: "succeeded", created_at: "2026-09-08T00:00:00Z", updated_at: "2026-09-08T00:00:01Z",
+    id,
+    kind: "address",
+    status: "succeeded",
+    created_at: "2026-09-08T00:00:00Z",
+    updated_at: "2026-09-08T00:00:01Z",
     outcome: {
-      kind: "verification_success", language: "vyper", compiler_version: "0.4.3", file_name: "A.vy", contract_name: "A",
-      sources: {}, settings: {}, compilation_artifacts: {}, creation_code_artifacts: {}, runtime_code_artifacts: {}, libraries: {}, is_blueprint: false,
+      kind: "verification_success",
+      language: "vyper",
+      compiler_version: "0.4.3",
+      file_name: "A.vy",
+      contract_name: "A",
+      sources: {},
+      settings: {},
+      compilation_artifacts: {},
+      creation_code_artifacts: {},
+      runtime_code_artifacts: {},
+      libraries: {},
+      is_blueprint: false,
       runtime_match: { match_type: "partial", transformations: [], values: {} },
     },
   };
   await page.route(`**/api/v1/contracts/${address}/verification`, async (route) => {
     expect(route.request().postDataJSON()).toMatchObject({
-      language: "vyper", compiler_version: "0.4.3", input_kind: "multipart", target_file: "A.vy", optimization_mode: "codesize",
+      language: "vyper",
+      compiler_version: "0.4.3",
+      input_kind: "multipart",
+      target_file: "A.vy",
+      optimization_mode: "codesize",
     });
     expect(route.request().postDataJSON().sources["A.vy"]).toContain("def value()");
     expect(route.request().postDataJSON()).not.toHaveProperty("optimization_runs");
     await route.fulfill({ status: 202, json: { data: job, meta } });
   });
-  await page.route(`**/api/v1/verifier/jobs/${id}`, (route) => route.fulfill({ json: { data: job, meta } }));
+  await page.route(`**/api/v1/verifier/jobs/${id}`, (route) =>
+    route.fulfill({ json: { data: job, meta } }),
+  );
   await page.goto("/verify");
   await page.getByRole("combobox", { name: "Language", exact: true }).selectOption("vyper");
-  await expect(page.getByRole("combobox", { name: "Compiler version", exact: true })).toHaveValue("0.4.3");
+  await expect(page.getByRole("combobox", { name: "Compiler version", exact: true })).toHaveValue(
+    "0.4.3",
+  );
   await page.getByRole("combobox", { name: "Input format", exact: true }).selectOption("multipart");
   await page.getByLabel("Address", { exact: true }).fill(address);
   await page.getByLabel(/^API key/).fill("browser-only-test-key");
-  await page.getByRole("combobox", { name: "Optimization mode", exact: true }).selectOption("codesize");
+  await page
+    .getByRole("combobox", { name: "Optimization mode", exact: true })
+    .selectOption("codesize");
   await page.getByRole("button", { name: "Submit verification", exact: true }).click();
   await expect(page.getByText("partial", { exact: true }).first()).toBeVisible();
 });

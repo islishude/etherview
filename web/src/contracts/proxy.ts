@@ -8,14 +8,11 @@ export type VerifiedContractArtifact = components["schemas"]["VerifiedContract"]
 export type ContractProxyDetails = components["schemas"]["ProxyDetails"];
 export type ContractProxyDetailsResponse = components["schemas"]["ProxyDetailsResponse"];
 export type ContractProxyState = components["schemas"]["ProxyDetailStatus"];
-export type ContractProxyUpgradeHistory =
-  components["schemas"]["ProxyUpgradeHistory"];
+export type ContractProxyUpgradeHistory = components["schemas"]["ProxyUpgradeHistory"];
 export type ContractProxyInitializationHistory =
   components["schemas"]["ProxyInitializationHistory"];
-export type ContractDiamondCutHistory =
-  components["schemas"]["DiamondCutHistory"];
-export type ContractProxyManagementKind =
-  components["schemas"]["ProxyManagementKind"];
+export type ContractDiamondCutHistory = components["schemas"]["DiamondCutHistory"];
+export type ContractProxyManagementKind = components["schemas"]["ProxyManagementKind"];
 
 type ApiMeta = components["schemas"]["Meta"];
 type Address = components["schemas"]["Address"];
@@ -43,22 +40,17 @@ export type ContractProxyUpgradePage = ContractProxyUpgradeHistory & {
   next_cursor?: string;
 };
 
-export type ContractProxyInitializationPage =
-  ContractProxyInitializationHistory & {
-    meta: ApiMeta;
-    next_cursor?: string;
-  };
+export type ContractProxyInitializationPage = ContractProxyInitializationHistory & {
+  meta: ApiMeta;
+  next_cursor?: string;
+};
 
 export type ContractDiamondCutPage = ContractDiamondCutHistory & {
   meta: ApiMeta;
   next_cursor?: string;
 };
 
-export type ProxyReadIssueState =
-  | "not_found"
-  | "unavailable"
-  | "failed"
-  | "stale_cursor";
+export type ProxyReadIssueState = "not_found" | "unavailable" | "failed" | "stale_cursor";
 
 export interface ProxyReadIssue {
   state: ProxyReadIssueState;
@@ -102,9 +94,7 @@ export async function getVerifiedContractArtifact(
   return artifact;
 }
 
-export async function getContractProxy(
-  address: string,
-): Promise<ContractProxyView> {
+export async function getContractProxy(address: string): Promise<ContractProxyView> {
   return adaptContractProxy((await getContractProxyResponse(address)).data);
 }
 
@@ -189,16 +179,16 @@ export function verifiedArtifactMatchesIdentity(
   address: string,
   expectedCodeHash: string | undefined,
 ): artifact is VerifiedContractArtifact {
-	if (
-		artifact === undefined ||
-		expectedCodeHash === undefined ||
-		!/^0x[0-9a-f]{64}$/iu.test(expectedCodeHash) ||
-		artifact.target.code_hash.toLowerCase() !== expectedCodeHash.toLowerCase()
-	) {
+  if (
+    artifact === undefined ||
+    expectedCodeHash === undefined ||
+    !/^0x[0-9a-f]{64}$/iu.test(expectedCodeHash) ||
+    artifact.target.code_hash.toLowerCase() !== expectedCodeHash.toLowerCase()
+  ) {
     return false;
   }
   try {
-		return getAddress(artifact.target.address) === getAddress(address);
+    return getAddress(artifact.target.address) === getAddress(address);
   } catch {
     return false;
   }
@@ -208,10 +198,10 @@ export function useContractProxy(address: string, enabled = true) {
   return useQuery({
     queryKey: ["contract-proxy", address],
     queryFn: () => getContractProxy(address),
-		enabled: enabled && address.length > 0,
-		retry: false,
-		staleTime: 5_000,
-	});
+    enabled: enabled && address.length > 0,
+    retry: false,
+    staleTime: 5_000,
+  });
 }
 
 export function useContractProxyUpgrades(
@@ -236,13 +226,7 @@ export function useContractProxyInitializations(
   enabled = true,
 ) {
   return useQuery({
-    queryKey: [
-      "contract-proxy",
-      address,
-      "initializations",
-      limit,
-      cursor ?? null,
-    ],
+    queryKey: ["contract-proxy", address, "initializations", limit, cursor ?? null],
     queryFn: () => listContractProxyInitializations(address, cursor, limit),
     enabled: enabled && address.length > 0,
     retry: false,
@@ -265,12 +249,11 @@ export function useContractDiamondCuts(
   });
 }
 
-export function adaptContractProxy(
-  detail: ContractProxyDetails,
-): ContractProxyView {
-  const supportedStandard = detail.pattern === "clone"
-    ? detail.standard_version === undefined
-    : detail.standard_version === "5.6.1";
+export function adaptContractProxy(detail: ContractProxyDetails): ContractProxyView {
+  const supportedStandard =
+    detail.pattern === "clone"
+      ? detail.standard_version === undefined
+      : detail.standard_version === "5.6.1";
   const exactBinding =
     detail.status === "verified" &&
     detail.evidence_state === "exact" &&
@@ -280,14 +263,16 @@ export function adaptContractProxy(
     typeof detail.binding_id === "string" &&
     detail.binding_id.length > 0;
   const implementationArtifactAddress =
-    exactBinding && detail.implementation?.verification_state === "verified" &&
-		detail.implementation.artifact_resolution === "exact_address"
+    exactBinding &&
+    detail.implementation?.verification_state === "verified" &&
+    detail.implementation.artifact_resolution === "exact_address"
       ? detail.implementation.address
       : undefined;
   const management = detail.management;
   const managementArtifact =
-    exactBinding && management?.target.verification_state === "verified" &&
-		management.target.artifact_resolution === "exact_address"
+    exactBinding &&
+    management?.target.verification_state === "verified" &&
+    management.target.artifact_resolution === "exact_address"
       ? {
           address: management.target.address,
           kind: management.kind,
@@ -312,10 +297,7 @@ export function classifyProxyReadError(error: unknown): ProxyReadIssue {
       state = "stale_cursor";
     } else if (error.code === "not_found" || error.status === 404) {
       state = "not_found";
-    } else if (
-      unavailableErrorCodes.has(error.code) ||
-      error.status === 503
-    ) {
+    } else if (unavailableErrorCodes.has(error.code) || error.status === 503) {
       state = "unavailable";
     }
     return {

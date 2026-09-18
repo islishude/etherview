@@ -34,13 +34,16 @@ export function AddressNamesProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const known = useRef(new Set<string>());
 
-  const register = useCallback((address: string) => {
-    if (!enabled) return;
-    const key = normalizeAddress(address);
-    if (!key || known.current.has(key)) return;
-    known.current.add(key);
-    setPending((current) => current.includes(key) ? current : [...current, key]);
-  }, [enabled]);
+  const register = useCallback(
+    (address: string) => {
+      if (!enabled) return;
+      const key = normalizeAddress(address);
+      if (!key || known.current.has(key)) return;
+      known.current.add(key);
+      setPending((current) => (current.includes(key) ? current : [...current, key]));
+    },
+    [enabled],
+  );
 
   useEffect(() => {
     if (!enabled || loading || pending.length === 0) return;

@@ -74,7 +74,10 @@ describe("pending transaction route", () => {
     );
     const pendingStatus = document.querySelector('.transaction-status[data-status="pending"]');
     expect(pendingStatus).toHaveAttribute("data-status", "pending");
-    expect(pendingStatus?.querySelector("svg.lucide-clock-3")).toHaveAttribute("aria-hidden", "true");
+    expect(pendingStatus?.querySelector("svg.lucide-clock-3")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
     expect(document.querySelector('time[datetime="2026-07-20T10:00:00Z"]')).not.toBeNull();
     expect(document.querySelector('time[datetime="2026-07-20T10:02:00Z"]')).not.toBeNull();
 
@@ -104,7 +107,10 @@ describe("pending transaction route", () => {
             meta: { ...snapshotMeta, transaction_count: "0" },
           });
         }
-        return Response.json({ error: { code: "NOT_FOUND", message: "not found" } }, { status: 404 });
+        return Response.json(
+          { error: { code: "NOT_FOUND", message: "not found" } },
+          { status: 404 },
+        );
       }),
     );
 
@@ -114,7 +120,9 @@ describe("pending transaction route", () => {
       await screen.findByText("The latest successful snapshot contains no pending transactions."),
     ).toBeVisible();
     expect(screen.getByRole("heading", { name: "Immutable node snapshot" })).toBeVisible();
-    expect(screen.queryByRole("heading", { name: "Pending transaction snapshot is unavailable" })).toBeNull();
+    expect(
+      screen.queryByRole("heading", { name: "Pending transaction snapshot is unavailable" }),
+    ).toBeNull();
     expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled();
   });
 
@@ -132,7 +140,9 @@ describe("pending transaction route", () => {
       await screen.findByRole("heading", { name: "Pending transaction indexing is disabled" }),
     ).toBeVisible();
     expect(screen.getByText("feature_disabled")).toBeVisible();
-    expect(fetcher.mock.calls.some(([input]) => String(input).startsWith("/api/v1/pending"))).toBe(false);
+    expect(fetcher.mock.calls.some(([input]) => String(input).startsWith("/api/v1/pending"))).toBe(
+      false,
+    );
 
     await userEvent.setup().click(screen.getByRole("button", { name: "切换到中文" }));
     expect(await screen.findByRole("heading", { name: "待处理交易索引已关闭" })).toBeVisible();
@@ -161,7 +171,10 @@ describe("pending transaction route", () => {
             { status: 503 },
           );
         }
-        return Response.json({ error: { code: "NOT_FOUND", message: "not found" } }, { status: 404 });
+        return Response.json(
+          { error: { code: "NOT_FOUND", message: "not found" } },
+          { status: 404 },
+        );
       }),
     );
 
@@ -194,13 +207,16 @@ describe("pending transaction route", () => {
         });
       }
       if (path === "/api/v1/pending?limit=25&cursor=expired%2Bsnapshot%2Fnext%3Fpage%3D2") {
-        return Response.json({
-          error: {
-            code: "invalid_cursor",
-            message: "cursor expired",
-            request_id: "pending-cursor-test",
+        return Response.json(
+          {
+            error: {
+              code: "invalid_cursor",
+              message: "cursor expired",
+              request_id: "pending-cursor-test",
+            },
           },
-        }, { status: 400 });
+          { status: 400 },
+        );
       }
       return Response.json({ error: { code: "NOT_FOUND", message: "not found" } }, { status: 404 });
     });
@@ -240,16 +256,22 @@ describe("pending transaction route", () => {
               },
             });
           }
-          return Response.json({
-            error: {
-              code: "mempool_unavailable",
-              message: "snapshot unavailable",
-              details: { state: "unavailable", reason: "snapshot_expired" },
-              request_id: "pending-expiry-test",
+          return Response.json(
+            {
+              error: {
+                code: "mempool_unavailable",
+                message: "snapshot unavailable",
+                details: { state: "unavailable", reason: "snapshot_expired" },
+                request_id: "pending-expiry-test",
+              },
             },
-          }, { status: 503 });
+            { status: 503 },
+          );
         }
-        return Response.json({ error: { code: "NOT_FOUND", message: "not found" } }, { status: 404 });
+        return Response.json(
+          { error: { code: "NOT_FOUND", message: "not found" } },
+          { status: 404 },
+        );
       }),
     );
     renderPendingRoute();
@@ -268,7 +290,9 @@ describe("pending transaction route", () => {
     expect(
       screen.queryByText("The latest successful snapshot contains no pending transactions."),
     ).toBeNull();
-    expect(screen.getByRole("heading", { name: "Pending transaction snapshot is unavailable" })).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "Pending transaction snapshot is unavailable" }),
+    ).toBeVisible();
     expect(screen.getByText("snapshot_expired")).toBeVisible();
   });
 });

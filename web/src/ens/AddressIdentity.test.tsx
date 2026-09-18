@@ -21,8 +21,12 @@ it("renders a snapshot-resolved custom primary name while retaining the exact ad
     if (url.pathname === "/api/v1/config") {
       return jsonResponse({
         data: {
-          chain_id: "1", chain_name: "Ethereum", native_symbol: "ETH",
-          native_name: "Ether", native_decimals: 18, features: { ens: true },
+          chain_id: "1",
+          chain_name: "Ethereum",
+          native_symbol: "ETH",
+          native_name: "Ether",
+          native_decimals: 18,
+          features: { ens: true },
         },
         meta: { request_id: "config", chain_id: "1" },
       });
@@ -33,21 +37,29 @@ it("renders a snapshot-resolved custom primary name while retaining the exact ad
       return jsonResponse({
         data: {
           snapshot: "ens-snapshot",
-          items: requested.map((value) => value === address.toLowerCase()
-            ? {
-                address, state: "resolved",
-                primary_name: { name: "alice.custom", source: "custom_ens" },
-              }
-            : { address: value, state: "not_found" }),
+          items: requested.map((value) =>
+            value === address.toLowerCase()
+              ? {
+                  address,
+                  state: "resolved",
+                  primary_name: { name: "alice.custom", source: "custom_ens" },
+                }
+              : { address: value, state: "not_found" },
+          ),
         },
         meta: { request_id: "names", chain_id: "1" },
       });
     }
-    return jsonResponse({ error: { code: "not_found", message: "missing", request_id: "missing" } }, 404);
+    return jsonResponse(
+      { error: { code: "not_found", message: "missing", request_id: "missing" } },
+      404,
+    );
   });
   vi.stubGlobal("fetch", fetcher);
   render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
       <AddressNamesProvider>
         <DynamicAddresses />
       </AddressNamesProvider>
@@ -68,7 +80,9 @@ function DynamicAddresses() {
   return (
     <>
       <AddressIdentity address={address} link={false} />
-      <button onClick={() => setSecond(true)} type="button">Show second</button>
+      <button onClick={() => setSecond(true)} type="button">
+        Show second
+      </button>
       {second ? <AddressIdentity address={secondAddress} link={false} /> : null}
     </>
   );

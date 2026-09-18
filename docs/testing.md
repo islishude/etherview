@@ -76,11 +76,22 @@ branch; scheduled start times may be delayed by runner load.
   and fail on a diff. It snapshots the checked-in baseline in a temporary
   directory before regeneration, so it also works before the repository has an
   initial Git `HEAD`.
-- `make web-lint`: run TypeScript project checking followed by the exact pinned
-  Biome policy. Production files/functions/cognitive complexity are capped at
-  1,400 lines, 400 lines, and 75; test files/functions are capped at 2,500 and
-  1,000 lines while test cognitive complexity remains excluded. Generated
-  OpenAPI remains the only generated-client exception in `web/biome.json`.
+- `make web-lint`: run TypeScript project checking, pinned Oxlint 1.83.0, and
+  Oxfmt 0.68.0 format checking. Oxlint checks hand-written `src` TS/TSX for
+  unused code, hook placement/dependencies, and size. Production files/functions
+  are capped at 1,400/400 lines; test files/functions at 2,500/1,000. Blank lines
+  are excluded, comments count, and IIFEs are exempt from function length.
+  Production classic cyclomatic complexity is capped at 150; test complexity
+  is excluded. This is a new metric baseline, not an equivalent conversion of
+  the former Biome cognitive complexity threshold of 75. Generated OpenAPI
+  types remain the only source exception in `web/.oxlintrc.json`.
+  `npm --prefix web run format` formats hand-written frontend sources, CSS,
+  scripts, configuration, HTML, and Playwright tests; `format:check` is read-only.
+  `web/.oxfmtrc.json` excludes generated API types, lockfiles, distributions,
+  dependencies, browser reports, and Go files. Formatting uses two spaces,
+  double quotes, semicolons, 100 columns, LF, and trailing commas without import,
+  Tailwind-class, or package-key sorting. `make web-test` includes executable
+  tooling-policy regressions for limits, exclusions, hooks, and idempotence.
 - `make test`: Go and frontend unit tests.
 - `make test-race`: Go tests with the race detector.
 - `make test-e2e`: build the embedded SPA and a temporary Go E2E binary, then

@@ -1,8 +1,5 @@
-import {
-  useEffect,
-  useState,
-} from "react";
-import { Link, } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -90,10 +87,7 @@ export function useCursorHistory(identity: string) {
       if (!nextCursor) return;
       setState((current) => ({
         identity,
-        cursors: [
-          ...(current.identity === identity ? current.cursors : [""]),
-          nextCursor,
-        ],
+        cursors: [...(current.identity === identity ? current.cursors : [""]), nextCursor],
         refreshGeneration: current.identity === identity ? current.refreshGeneration : 0,
       }));
     },
@@ -111,8 +105,7 @@ export function useCursorHistory(identity: string) {
       setState((current) => ({
         identity,
         cursors: [""],
-        refreshGeneration:
-          (current.identity === identity ? current.refreshGeneration : 0) + 1,
+        refreshGeneration: (current.identity === identity ? current.refreshGeneration : 0) + 1,
       }));
     },
   };
@@ -137,12 +130,27 @@ export function HomePage() {
       />
 
       <section className="metrics-grid" aria-label={t("home.metrics")}>
-        <Metric label={t("home.indexed")} value={formatInteger(snapshot.data?.status.indexed_block, locale)} />
-        <Metric label={t("home.networkHead")} value={formatInteger(snapshot.data?.status.latest_block, locale)} />
-        <Metric label={t("home.finality")} value={formatInteger(snapshot.data?.status.finalized_block, locale)} />
+        <Metric
+          label={t("home.indexed")}
+          value={formatInteger(snapshot.data?.status.indexed_block, locale)}
+        />
+        <Metric
+          label={t("home.networkHead")}
+          value={formatInteger(snapshot.data?.status.latest_block, locale)}
+        />
+        <Metric
+          label={t("home.finality")}
+          value={formatInteger(snapshot.data?.status.finalized_block, locale)}
+        />
         <Metric
           label={t("home.lag")}
-          value={snapshot.data ? (snapshot.data.status.core_ready && snapshot.data.status.lag === "0" ? t("home.caughtUp") : t("home.syncing")) : "—"}
+          value={
+            snapshot.data
+              ? snapshot.data.status.core_ready && snapshot.data.status.lag === "0"
+                ? t("home.caughtUp")
+                : t("home.syncing")
+              : "—"
+          }
           accent={snapshot.data?.status.core_ready && snapshot.data.status.lag === "0"}
         />
       </section>
@@ -186,7 +194,15 @@ function Metric({ label, value, accent }: { label: string; value: string; accent
   );
 }
 
-function PanelHeading({ id, title, to }: { id: string; title: string; to: "/blocks" | "/transactions" }) {
+function PanelHeading({
+  id,
+  title,
+  to,
+}: {
+  id: string;
+  title: string;
+  to: "/blocks" | "/transactions";
+}) {
   return (
     <header className="panel-heading">
       <h2 id={id}>{title}</h2>
@@ -197,15 +213,7 @@ function PanelHeading({ id, title, to }: { id: string; title: string; to: "/bloc
   );
 }
 
-function BlockRow({
-  block,
-  locale,
-  now,
-}: {
-  block: BlockSummary;
-  locale: string;
-  now: number;
-}) {
+function BlockRow({ block, locale, now }: { block: BlockSummary; locale: string; now: number }) {
   const { t } = useTranslation();
   return (
     <div className="activity-row">
@@ -242,7 +250,8 @@ function TransactionRow({ transaction }: { transaction: TransactionSummary }) {
           {shorten(transaction.hash)}
         </Link>
         <small>
-          <AddressIdentity address={transaction.from} /> → {transaction.to ? <AddressIdentity address={transaction.to} /> : "∅"}
+          <AddressIdentity address={transaction.from} /> →{" "}
+          {transaction.to ? <AddressIdentity address={transaction.to} /> : "∅"}
         </small>
       </span>
       <IncludedTransactionStatus transaction={transaction} />
@@ -265,10 +274,14 @@ export function BlocksPage() {
     <Page title={t("page.blocks")} description={t("page.blocksDescription")}>
       <QueryNotice loading={status.isPending} error={status.error} />
       {status.data && <ChainContextPanel status={status.data} />}
-      <p className="context-note" role="note">{t("context.canonicalBlocksOnly")}</p>
+      <p className="context-note" role="note">
+        {t("context.canonicalBlocksOnly")}
+      </p>
       <QueryNotice loading={blocks.isPending} error={blocks.error} onReset={pager.reset} />
       {blocks.data?.items.length === 0 && (
-        <p className="empty-result" role="status">{t("state.noBlocks")}</p>
+        <p className="empty-result" role="status">
+          {t("state.noBlocks")}
+        </p>
       )}
       {blocks.data && blocks.data.items.length > 0 && (
         <div className="table-scroll" tabIndex={0} aria-label={t("page.blocks")}>
@@ -290,12 +303,16 @@ export function BlocksPage() {
                     <Link to="/blocks/$blockID" params={{ blockID: block.hash }}>
                       {formatInteger(block.number, locale)}
                     </Link>
-                    <code className="table-secondary" title={block.hash}>{shorten(block.hash)}</code>
+                    <code className="table-secondary" title={block.hash}>
+                      {shorten(block.hash)}
+                    </code>
                   </td>
                   <td>{formatTimestamp(block.timestamp, locale)}</td>
                   <td>{formatInteger(block.transaction_count, locale)}</td>
                   <td>{formatInteger(block.gas_used, locale)}</td>
-                  <td><FinalityBadge finality={block.finality} /></td>
+                  <td>
+                    <FinalityBadge finality={block.finality} />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -323,18 +340,18 @@ export function GenesisPage() {
   const nativeDecimals = publicConfig.data?.native_decimals ?? 18;
   const nativeSymbol = publicConfig.data?.native_symbol ?? "";
   const pager = useCursorHistory("genesis");
-  const accounts = useGenesisAccounts(
-    CORE_PAGE_SIZE,
-    pager.cursor,
-    pager.refreshGeneration,
-  );
+  const accounts = useGenesisAccounts(CORE_PAGE_SIZE, pager.cursor, pager.refreshGeneration);
   const locale = i18n.resolvedLanguage ?? "en";
   return (
     <Page title={t("page.genesis")} description={t("page.genesisDescription")}>
-      <p className="context-note" role="note">{t("context.genesisAuthenticated")}</p>
+      <p className="context-note" role="note">
+        {t("context.genesisAuthenticated")}
+      </p>
       <QueryNotice loading={accounts.isPending} error={accounts.error} onReset={pager.reset} />
       {accounts.data?.items.length === 0 && (
-        <p className="empty-result" role="status">{t("state.noGenesisAccounts")}</p>
+        <p className="empty-result" role="status">
+          {t("state.noGenesisAccounts")}
+        </p>
       )}
       {accounts.data && accounts.data.items.length > 0 && (
         <div className="table-scroll" tabIndex={0} aria-label={t("page.genesis")}>
@@ -359,8 +376,12 @@ export function GenesisPage() {
                   <td>{t(`accountType.${account.type}`)}</td>
                   <td>{formatNativeAmount(account.balance, locale, nativeDecimals)}</td>
                   <td>{formatInteger(account.nonce, locale)}</td>
-                  <td><code title={account.code_hash}>{shorten(account.code_hash)}</code></td>
-                  <td><code title={account.storage_root}>{shorten(account.storage_root)}</code></td>
+                  <td>
+                    <code title={account.code_hash}>{shorten(account.code_hash)}</code>
+                  </td>
+                  <td>
+                    <code title={account.storage_root}>{shorten(account.storage_root)}</code>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -388,25 +409,25 @@ export function TransactionsPage() {
   const nativeDecimals = publicConfig.data?.native_decimals ?? 18;
   const nativeSymbol = publicConfig.data?.native_symbol ?? "";
   const pager = useCursorHistory("transactions");
-  const transactions = useTransactions(
-    CORE_PAGE_SIZE,
-    pager.cursor,
-    pager.refreshGeneration,
-  );
+  const transactions = useTransactions(CORE_PAGE_SIZE, pager.cursor, pager.refreshGeneration);
   const status = useChainStatus();
   const locale = i18n.resolvedLanguage ?? "en";
   return (
     <Page title={t("page.transactions")} description={t("page.transactionsDescription")}>
       <QueryNotice loading={status.isPending} error={status.error} />
       {status.data && <ChainContextPanel status={status.data} />}
-      <p className="context-note" role="note">{t("context.canonicalTransactionsOnly")}</p>
+      <p className="context-note" role="note">
+        {t("context.canonicalTransactionsOnly")}
+      </p>
       <QueryNotice
         loading={transactions.isPending}
         error={transactions.error}
         onReset={pager.reset}
       />
       {transactions.data?.items.length === 0 && (
-        <p className="empty-result" role="status">{t("state.noTransactions")}</p>
+        <p className="empty-result" role="status">
+          {t("state.noTransactions")}
+        </p>
       )}
       {transactions.data && transactions.data.items.length > 0 && (
         <div className="table-scroll" tabIndex={0} aria-label={t("page.transactions")}>
@@ -428,7 +449,11 @@ export function TransactionsPage() {
               {transactions.data.items.map((transaction) => (
                 <tr key={transaction.hash}>
                   <td>
-                    <Link to="/tx/$hash" params={{ hash: transaction.hash }} search={{ tab: "overview" }}>
+                    <Link
+                      to="/tx/$hash"
+                      params={{ hash: transaction.hash }}
+                      search={{ tab: "overview" }}
+                    >
                       {shorten(transaction.hash)}
                     </Link>
                   </td>
@@ -441,7 +466,9 @@ export function TransactionsPage() {
                       <Link to="/blocks/$blockID" params={{ blockID: transaction.block_hash }}>
                         {formatInteger(transaction.block_number, locale)}
                       </Link>
-                    ) : "—"}
+                    ) : (
+                      "—"
+                    )}
                   </td>
                   <td>
                     <IncludedTransactionStatus transaction={transaction} />
@@ -452,10 +479,16 @@ export function TransactionsPage() {
                   <td>
                     {transaction.to ? (
                       <AddressIdentity address={transaction.to} />
-                    ) : t("common.contractCreation")}
+                    ) : (
+                      t("common.contractCreation")
+                    )}
                   </td>
-                  <td><code>{formatNativeAmount(transaction.value, locale, nativeDecimals)}</code></td>
-                  <td><FinalityBadge finality={transaction.finality} /></td>
+                  <td>
+                    <code>{formatNativeAmount(transaction.value, locale, nativeDecimals)}</code>
+                  </td>
+                  <td>
+                    <FinalityBadge finality={transaction.finality} />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -487,7 +520,9 @@ export function TokensPage() {
     <Page title={t("page.tokens")} description={t("page.tokensDescription")}>
       <QueryNotice loading={tokens.isPending} error={tokens.error} onReset={pager.reset} />
       {tokens.data && tokens.data.items.length === 0 && (
-        <p className="empty-result" role="status">{t("state.noTokens")}</p>
+        <p className="empty-result" role="status">
+          {t("state.noTokens")}
+        </p>
       )}
       {tokens.data && tokens.data.items.length > 0 && (
         <div className="table-scroll" tabIndex={0} aria-label={t("page.tokens")}>
@@ -513,9 +548,13 @@ export function TokensPage() {
                       <code>{shorten(token.address)}</code>
                     </span>
                   </td>
-                  <td><span className="result-kind">{tokenStandardLabel(token.standard, t)}</span></td>
+                  <td>
+                    <span className="result-kind">{tokenStandardLabel(token.standard, t)}</span>
+                  </td>
                   <td>{confidenceLabel(token.confidence, t)}</td>
-                  <td><code>{formatInteger(token.total_supply, locale)}</code></td>
+                  <td>
+                    <code>{formatInteger(token.total_supply, locale)}</code>
+                  </td>
                   <td>{stageStateLabel(token.metadata_state, t)}</td>
                 </tr>
               ))}
@@ -585,11 +624,15 @@ export function ChainContextPanel({ status }: { status: ChainStatusContext }) {
         </div>
         <div>
           <dt>{t("home.backfill")}</dt>
-          <dd>{status.backfill_complete ? t("home.backfillComplete") : t("home.backfillIncomplete")}</dd>
+          <dd>
+            {status.backfill_complete ? t("home.backfillComplete") : t("home.backfillIncomplete")}
+          </dd>
         </div>
       </dl>
       {!status.backfill_complete && (
-        <p className="coverage-warning" role="status">{t("context.coverageIslandWarning")}</p>
+        <p className="coverage-warning" role="status">
+          {t("context.coverageIslandWarning")}
+        </p>
       )}
     </section>
   );
@@ -599,7 +642,9 @@ export function ReorgContext({ kind, hash }: { kind: "block" | "transaction"; ha
   const { t } = useTranslation();
   return (
     <section className="reorg-context" role="status" aria-labelledby="reorg-context-title">
-      <span className="reorg-mark" aria-hidden="true">↺</span>
+      <span className="reorg-mark" aria-hidden="true">
+        ↺
+      </span>
       <div>
         <h2 id="reorg-context-title">
           {kind === "block" ? t("context.orphanBlock") : t("context.orphanTransaction")}
@@ -662,7 +707,17 @@ export function DetailList({ label, children }: { label: string; children: React
   );
 }
 
-export function Detail({ label, value, mono, wide }: { label: string; value?: React.ReactNode; mono?: boolean; wide?: boolean }) {
+export function Detail({
+  label,
+  value,
+  mono,
+  wide,
+}: {
+  label: string;
+  value?: React.ReactNode;
+  mono?: boolean;
+  wide?: boolean;
+}) {
   return (
     <div className={wide ? "detail-item wide" : "detail-item"}>
       <dt>{label}</dt>
@@ -678,7 +733,9 @@ export function CapabilityDegraded({ stage, state }: { stage: string; state: str
       <span className="status-dot warning" aria-hidden="true" />
       <span>
         <strong>{t("state.stageUnavailable", { stage: stageLabel(stage, t) })}</strong>
-        <small>{t("state.stageUnavailableDetail", { state: stageStateLabel(state, t), block: "" })}</small>
+        <small>
+          {t("state.stageUnavailableDetail", { state: stageStateLabel(state, t), block: "" })}
+        </small>
       </span>
     </div>
   );
@@ -688,22 +745,33 @@ export type Translate = ReturnType<typeof useTranslation>["t"];
 
 export function finalityLabel(value: string, t: Translate): string {
   switch (value) {
-    case "pending": return t("finality.pending");
-    case "latest": return t("finality.latest");
-    case "safe": return t("finality.safe");
-    case "finalized": return t("finality.finalized");
-    case "orphan": return t("finality.orphan");
-    default: return value;
+    case "pending":
+      return t("finality.pending");
+    case "latest":
+      return t("finality.latest");
+    case "safe":
+      return t("finality.safe");
+    case "finalized":
+      return t("finality.finalized");
+    case "orphan":
+      return t("finality.orphan");
+    default:
+      return value;
   }
 }
 
 export function transactionStatusLabel(value: string | undefined, t: Translate): string {
   switch (value) {
-    case "pending": return t("transactionStatus.pending");
-    case "success": return t("transactionStatus.success");
-    case "failed": return t("transactionStatus.failed");
-    case "unknown": return t("transactionStatus.unknown");
-    default: return t("common.indexed");
+    case "pending":
+      return t("transactionStatus.pending");
+    case "success":
+      return t("transactionStatus.success");
+    case "failed":
+      return t("transactionStatus.failed");
+    case "unknown":
+      return t("transactionStatus.unknown");
+    default:
+      return t("common.indexed");
   }
 }
 
@@ -715,11 +783,16 @@ export function transactionTypeLabel(value: string | undefined, t: Translate): s
     : Number.parseInt(normalized, 10);
   if (!Number.isNaN(parsed)) {
     switch (String(parsed)) {
-      case "0": return t("transactionType.legacy");
-      case "1": return t("transactionType.accessList");
-      case "2": return t("transactionType.dynamicFee");
-      case "3": return t("transactionType.blob");
-      case "4": return t("transactionType.eip7702");
+      case "0":
+        return t("transactionType.legacy");
+      case "1":
+        return t("transactionType.accessList");
+      case "2":
+        return t("transactionType.dynamicFee");
+      case "3":
+        return t("transactionType.blob");
+      case "4":
+        return t("transactionType.eip7702");
     }
   }
   return value;
@@ -727,122 +800,185 @@ export function transactionTypeLabel(value: string | undefined, t: Translate): s
 
 export function accountTypeLabel(value: string, t: Translate): string {
   switch (value) {
-    case "eoa": return t("accountType.eoa");
-    case "contract": return t("accountType.contract");
-    case "delegated_eoa": return t("accountType.delegatedEoa");
-    case "unknown": return t("accountType.unknown");
-    default: return t("accountType.unknown");
+    case "eoa":
+      return t("accountType.eoa");
+    case "contract":
+      return t("accountType.contract");
+    case "delegated_eoa":
+      return t("accountType.delegatedEoa");
+    case "unknown":
+      return t("accountType.unknown");
+    default:
+      return t("accountType.unknown");
   }
 }
 
 export function stageLabel(value: string, t: Translate): string {
   switch (value) {
-    case "core": return t("stage.core");
-    case "token": return t("stage.token");
+    case "core":
+      return t("stage.core");
+    case "token":
+      return t("stage.token");
     case "stats":
     case "statistics":
       return t("stage.stats");
-    case "trace": return t("stage.trace");
-    case "metadata": return t("stage.metadata");
-    case "state": return t("stage.state");
-    case "user_operations": return t("feature.userOperations");
-    default: return value;
+    case "trace":
+      return t("stage.trace");
+    case "metadata":
+      return t("stage.metadata");
+    case "state":
+      return t("stage.state");
+    case "user_operations":
+      return t("feature.userOperations");
+    default:
+      return value;
   }
 }
 
 export function stageStateLabel(value: string, t: Translate): string {
   switch (value) {
-    case "complete": return t("stageState.complete");
-    case "pending": return t("stageState.pending");
-    case "unavailable": return t("stageState.unavailable");
-    case "failed": return t("stageState.failed");
-    default: return value;
+    case "complete":
+      return t("stageState.complete");
+    case "pending":
+      return t("stageState.pending");
+    case "unavailable":
+      return t("stageState.unavailable");
+    case "failed":
+      return t("stageState.failed");
+    default:
+      return value;
   }
 }
 
 export function tokenStandardLabel(value: string, t: Translate): string {
   switch (value) {
-    case "erc20": return t("tokenStandard.erc20");
-    case "erc721": return t("tokenStandard.erc721");
-    case "erc1155": return t("tokenStandard.erc1155");
-    default: return t("tokenStandard.unknown");
+    case "erc20":
+      return t("tokenStandard.erc20");
+    case "erc721":
+      return t("tokenStandard.erc721");
+    case "erc1155":
+      return t("tokenStandard.erc1155");
+    default:
+      return t("tokenStandard.unknown");
   }
 }
 
 export function confidenceLabel(value: string, t: Translate): string {
   switch (value) {
-    case "verified": return t("confidence.verified");
-    case "high": return t("confidence.high");
-    case "inferred": return t("confidence.inferred");
-    case "guess": return t("confidence.guess");
-    case "rpc_exact": return t("confidence.rpcExact");
-    default: return value;
+    case "verified":
+      return t("confidence.verified");
+    case "high":
+      return t("confidence.high");
+    case "inferred":
+      return t("confidence.inferred");
+    case "guess":
+      return t("confidence.guess");
+    case "rpc_exact":
+      return t("confidence.rpcExact");
+    default:
+      return value;
   }
 }
 
 export function tokenEventKindLabel(value: string, t: Translate): string {
   switch (value) {
-    case "transfer": return t("tokenEvent.transfer");
-    case "mint": return t("tokenEvent.mint");
-    case "burn": return t("tokenEvent.burn");
-    case "approval": return t("tokenEvent.approval");
-    case "approval_for_all": return t("tokenEvent.approvalForAll");
-    default: return value;
+    case "transfer":
+      return t("tokenEvent.transfer");
+    case "mint":
+      return t("tokenEvent.mint");
+    case "burn":
+      return t("tokenEvent.burn");
+    case "approval":
+      return t("tokenEvent.approval");
+    case "approval_for_all":
+      return t("tokenEvent.approvalForAll");
+    default:
+      return value;
   }
 }
 
 export function featureLabel(value: string, t: Translate): string {
   switch (value) {
-    case "trace": return t("feature.trace");
-    case "mempool": return t("feature.mempool");
-    case "historical_state": return t("feature.historicalState");
-    case "verification": return t("feature.verification");
-    case "sourcify": return t("feature.sourcify");
-    case "nft_metadata": return t("feature.nftMetadata");
-    case "pricing": return t("feature.pricing");
-    case "user_operations": return t("feature.userOperations");
-    default: return value;
+    case "trace":
+      return t("feature.trace");
+    case "mempool":
+      return t("feature.mempool");
+    case "historical_state":
+      return t("feature.historicalState");
+    case "verification":
+      return t("feature.verification");
+    case "sourcify":
+      return t("feature.sourcify");
+    case "nft_metadata":
+      return t("feature.nftMetadata");
+    case "pricing":
+      return t("feature.pricing");
+    case "user_operations":
+      return t("feature.userOperations");
+    default:
+      return value;
   }
 }
 
 export function verificationJobStatusLabel(value: VerificationJob["status"], t: Translate): string {
   switch (value) {
-    case "queued": return t("verificationStatus.queued");
-    case "running": return t("verificationStatus.running");
-    case "succeeded": return t("verificationStatus.succeeded");
-    case "failed": return t("verificationStatus.failed");
-    case "cancelled": return t("verificationStatus.cancelled");
+    case "queued":
+      return t("verificationStatus.queued");
+    case "running":
+      return t("verificationStatus.running");
+    case "succeeded":
+      return t("verificationStatus.succeeded");
+    case "failed":
+      return t("verificationStatus.failed");
+    case "cancelled":
+      return t("verificationStatus.cancelled");
   }
 }
 
 export function verificationMatchLabel(value: string | undefined, t: Translate): string {
   switch (value) {
-    case "full": return t("verificationMatch.full");
-    case "partial": return t("verificationMatch.partial");
-    default: return "—";
+    case "full":
+      return t("verificationMatch.full");
+    case "partial":
+      return t("verificationMatch.partial");
+    default:
+      return "—";
   }
 }
 
 export function verificationLanguageLabel(value: string, t: Translate): string {
   switch (value) {
-    case "solidity": return t("verificationLanguage.solidity");
-    case "yul": return t("verificationLanguage.yul");
-    case "geas": return t("verificationLanguage.geas");
-    case "vyper": return t("verificationLanguage.vyper");
-    default: return value;
+    case "solidity":
+      return t("verificationLanguage.solidity");
+    case "yul":
+      return t("verificationLanguage.yul");
+    case "geas":
+      return t("verificationLanguage.geas");
+    case "vyper":
+      return t("verificationLanguage.vyper");
+    default:
+      return value;
   }
 }
 
 export function searchKindLabel(value: SearchResult["kind"], t: Translate): string {
   switch (value) {
-    case "block": return t("searchKind.block");
-    case "transaction": return t("searchKind.transaction");
-    case "user_operation": return t("searchKind.user_operation");
-    case "address": return t("searchKind.address");
-    case "contract": return t("searchKind.contract");
-    case "token": return t("searchKind.token");
-    case "nft": return t("searchKind.nft");
-    case "label": return t("searchKind.label");
+    case "block":
+      return t("searchKind.block");
+    case "transaction":
+      return t("searchKind.transaction");
+    case "user_operation":
+      return t("searchKind.user_operation");
+    case "address":
+      return t("searchKind.address");
+    case "contract":
+      return t("searchKind.contract");
+    case "token":
+      return t("searchKind.token");
+    case "nft":
+      return t("searchKind.nft");
+    case "label":
+      return t("searchKind.label");
   }
 }
 
@@ -857,7 +993,10 @@ export function StatusPage() {
   const locale = i18n.resolvedLanguage ?? "en";
   return (
     <Page title={t("page.status")} description={t("page.statusDescription")}>
-      <QueryNotice loading={status.isPending || publicConfig.isPending} error={status.error ?? publicConfig.error} />
+      <QueryNotice
+        loading={status.isPending || publicConfig.isPending}
+        error={status.error ?? publicConfig.error}
+      />
       {status.data && (
         <div className="status-layout">
           <section className="panel status-card" aria-labelledby="sync-status-title">
@@ -874,15 +1013,30 @@ export function StatusPage() {
                   </span>
                 </dd>
               </div>
-              <div><dt>{t("home.indexed")}</dt><dd>{formatInteger(status.data.indexed_block, locale)}</dd></div>
+              <div>
+                <dt>{t("home.indexed")}</dt>
+                <dd>{formatInteger(status.data.indexed_block, locale)}</dd>
+              </div>
               <div>
                 <dt>{t("home.highestCovered")}</dt>
                 <dd>{formatInteger(status.data.highest_covered_block, locale)}</dd>
               </div>
-              <div><dt>{t("home.networkHead")}</dt><dd>{formatInteger(status.data.latest_block, locale)}</dd></div>
-              <div><dt>{t("home.lagBlocks")}</dt><dd>{formatInteger(status.data.lag, locale)}</dd></div>
-              <div><dt>{t("context.safeBlock")}</dt><dd>{formatInteger(status.data.safe_block, locale)}</dd></div>
-              <div><dt>{t("home.finality")}</dt><dd>{formatInteger(status.data.finalized_block, locale)}</dd></div>
+              <div>
+                <dt>{t("home.networkHead")}</dt>
+                <dd>{formatInteger(status.data.latest_block, locale)}</dd>
+              </div>
+              <div>
+                <dt>{t("home.lagBlocks")}</dt>
+                <dd>{formatInteger(status.data.lag, locale)}</dd>
+              </div>
+              <div>
+                <dt>{t("context.safeBlock")}</dt>
+                <dd>{formatInteger(status.data.safe_block, locale)}</dd>
+              </div>
+              <div>
+                <dt>{t("home.finality")}</dt>
+                <dd>{formatInteger(status.data.finalized_block, locale)}</dd>
+              </div>
               <div>
                 <dt>{t("context.coverageBounds")}</dt>
                 <dd>
@@ -892,7 +1046,11 @@ export function StatusPage() {
               </div>
               <div>
                 <dt>{t("home.backfill")}</dt>
-                <dd>{status.data.backfill_complete ? t("home.backfillComplete") : t("home.backfillIncomplete")}</dd>
+                <dd>
+                  {status.data.backfill_complete
+                    ? t("home.backfillComplete")
+                    : t("home.backfillIncomplete")}
+                </dd>
               </div>
             </dl>
           </section>
@@ -911,7 +1069,10 @@ export function StatusPage() {
               </ul>
             </section>
             {publicConfig.data && (
-              <section className="panel capability-list" aria-labelledby="configured-features-title">
+              <section
+                className="panel capability-list"
+                aria-labelledby="configured-features-title"
+              >
                 <h2 id="configured-features-title">{t("status.configuredFeatures")}</h2>
                 <ul>
                   {Object.entries(publicConfig.data.features)
@@ -953,7 +1114,9 @@ export function SearchPage({ query }: { query: string }) {
         onReset={pager.reset}
       />
       {search.data && search.data.items.length === 0 && (
-        <p className="empty-result" role="status">{t("state.noResults")}</p>
+        <p className="empty-result" role="status">
+          {t("state.noResults")}
+        </p>
       )}
       <div className="search-results">
         {search.data?.items.map((result) => (
@@ -981,8 +1144,12 @@ function SearchResultLink({ result }: { result: SearchResult }) {
     <>
       <span className="result-kind">{searchKindLabel(result.kind, t)}</span>
       <span>
-        <strong><bdi>{result.label}</bdi></strong>
-        {result.name_source === "custom_ens" ? <small className="custom-ens-badge">Custom ENS</small> : null}
+        <strong>
+          <bdi>{result.label}</bdi>
+        </strong>
+        {result.name_source === "custom_ens" ? (
+          <small className="custom-ens-badge">Custom ENS</small>
+        ) : null}
         <small>{result.key}</small>
       </span>
       <span className="search-result-tail">
@@ -998,19 +1165,58 @@ function SearchResultLink({ result }: { result: SearchResult }) {
 
   switch (result.kind) {
     case "block":
-      return <Link className="search-result" to="/blocks/$blockID" params={{ blockID: result.key }}>{content}</Link>;
+      return (
+        <Link className="search-result" to="/blocks/$blockID" params={{ blockID: result.key }}>
+          {content}
+        </Link>
+      );
     case "transaction":
-      return <Link className="search-result" to="/tx/$hash" params={{ hash: result.key }} search={{ tab: "overview" }}>{content}</Link>;
+      return (
+        <Link
+          className="search-result"
+          to="/tx/$hash"
+          params={{ hash: result.key }}
+          search={{ tab: "overview" }}
+        >
+          {content}
+        </Link>
+      );
     case "user_operation":
-      return <Link className="search-result" to="/user-op/$hash" params={{ hash: result.key }}>{content}</Link>;
+      return (
+        <Link className="search-result" to="/user-op/$hash" params={{ hash: result.key }}>
+          {content}
+        </Link>
+      );
     case "address":
-      return <Link className="search-result" to="/address/$address" params={{ address: result.key }}>{content}</Link>;
+      return (
+        <Link className="search-result" to="/address/$address" params={{ address: result.key }}>
+          {content}
+        </Link>
+      );
     case "contract":
-      return <Link className="search-result" hash="code" params={{ address: result.key }} search={{}} to="/address/$address">{content}</Link>;
+      return (
+        <Link
+          className="search-result"
+          hash="code"
+          params={{ address: result.key }}
+          search={{}}
+          to="/address/$address"
+        >
+          {content}
+        </Link>
+      );
     case "token":
-      return <Link className="search-result" to="/token/$address" params={{ address: result.key }}>{content}</Link>;
+      return (
+        <Link className="search-result" to="/token/$address" params={{ address: result.key }}>
+          {content}
+        </Link>
+      );
     default:
-      return <a className="search-result" href={`/search?q=${encodeURIComponent(result.key)}`}>{content}</a>;
+      return (
+        <a className="search-result" href={`/search?q=${encodeURIComponent(result.key)}`}>
+          {content}
+        </a>
+      );
   }
 }
 
@@ -1141,22 +1347,33 @@ export function assertNoDuplicateJSONKeys(source: string): void {
 
 export function logDecodingKey(status: string) {
   switch (status) {
-    case "decoded": return "detail.logDecoded" as const;
-    case "ambiguous": return "detail.logAmbiguous" as const;
-    case "unknown": return "detail.logUnknown" as const;
-    case "malformed": return "detail.logMalformed" as const;
-    default: return "detail.logUnavailable" as const;
+    case "decoded":
+      return "detail.logDecoded" as const;
+    case "ambiguous":
+      return "detail.logAmbiguous" as const;
+    case "unknown":
+      return "detail.logUnknown" as const;
+    case "malformed":
+      return "detail.logMalformed" as const;
+    default:
+      return "detail.logUnavailable" as const;
   }
 }
 
 export function abiSourceKindLabel(value: string, t: Translate): string {
   switch (value) {
-    case "exact_address": return t("detail.abiSourceKinds.exactAddress");
-    case "code_hash": return t("detail.abiSourceKinds.codeHash");
-    case "proxy_implementation": return t("detail.abiSourceKinds.proxyImplementation");
-    case "signature_database": return t("detail.abiSourceKinds.signatureDatabase");
-    case "builtin": return t("detail.abiSourceKinds.builtin");
-    default: return value;
+    case "exact_address":
+      return t("detail.abiSourceKinds.exactAddress");
+    case "code_hash":
+      return t("detail.abiSourceKinds.codeHash");
+    case "proxy_implementation":
+      return t("detail.abiSourceKinds.proxyImplementation");
+    case "signature_database":
+      return t("detail.abiSourceKinds.signatureDatabase");
+    case "builtin":
+      return t("detail.abiSourceKinds.builtin");
+    default:
+      return value;
   }
 }
 
@@ -1168,23 +1385,35 @@ export function attributionLabel(value: string, t: Translate): string {
 
 export function traceDecodingKey(status: string) {
   switch (status) {
-    case "decoded": return "detail.traceDecoded" as const;
-    case "ambiguous": return "detail.traceAmbiguous" as const;
-    case "unknown": return "detail.traceUnknown" as const;
-    case "malformed": return "detail.traceMalformed" as const;
-    case "not_applicable": return "detail.traceNotApplicable" as const;
-    default: return "detail.traceUnavailable" as const;
+    case "decoded":
+      return "detail.traceDecoded" as const;
+    case "ambiguous":
+      return "detail.traceAmbiguous" as const;
+    case "unknown":
+      return "detail.traceUnknown" as const;
+    case "malformed":
+      return "detail.traceMalformed" as const;
+    case "not_applicable":
+      return "detail.traceNotApplicable" as const;
+    default:
+      return "detail.traceUnavailable" as const;
   }
 }
 
 export function traceOutputStatusKey(status: string) {
   switch (status) {
-    case "decoded": return "detail.outputDecoded" as const;
-    case "empty": return "detail.outputEmpty" as const;
-    case "unknown": return "detail.outputUnknown" as const;
-    case "malformed": return "detail.outputMalformed" as const;
-    case "not_applicable": return "detail.outputNotApplicable" as const;
-    default: return "detail.outputUnavailable" as const;
+    case "decoded":
+      return "detail.outputDecoded" as const;
+    case "empty":
+      return "detail.outputEmpty" as const;
+    case "unknown":
+      return "detail.outputUnknown" as const;
+    case "malformed":
+      return "detail.outputMalformed" as const;
+    case "not_applicable":
+      return "detail.outputNotApplicable" as const;
+    default:
+      return "detail.outputUnavailable" as const;
   }
 }
 

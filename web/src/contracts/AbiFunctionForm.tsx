@@ -1,11 +1,4 @@
-import {
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  type FormEvent,
-} from "react";
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import {
@@ -47,11 +40,7 @@ import {
   submitFencedTransaction,
   type ContractInteractionTarget,
 } from "@/contracts/targets";
-import {
-  chainsMatch,
-  WalletBoundaryError,
-  walletErrorTranslationKey,
-} from "@/wallet/eip6963";
+import { chainsMatch, WalletBoundaryError, walletErrorTranslationKey } from "@/wallet/eip6963";
 import { useWallet } from "@/wallet/WalletProvider";
 
 export interface AbiFunctionExplorerProps {
@@ -84,10 +73,14 @@ export function AbiFunctionExplorer({
   }, [rawABI]);
 
   if (parsed.error || !parsed.abi || !parsed.functions) {
-    return <p className="form-error" role="alert">{t("contracts.functions.invalidABI")}</p>;
+    return (
+      <p className="form-error" role="alert">
+        {t("contracts.functions.invalidABI")}
+      </p>
+    );
   }
 
-  const sections = mode === "all" ? ["read", "write"] as const : [mode] as const;
+  const sections = mode === "all" ? (["read", "write"] as const) : ([mode] as const);
   return (
     <div className="abi-function-explorer">
       {parsed.ambiguousSelectors && parsed.ambiguousSelectors.size > 0 ? (
@@ -178,9 +171,7 @@ function AbiFunctionCard({
   const visibleResult = result?.context === context ? result : undefined;
   const visibleError = error && (error.sticky || error.context === context) ? error : undefined;
   const ready = Boolean(
-    wallet.active &&
-    expectedChainID &&
-    chainsMatch(wallet.active.chainID, expectedChainID),
+    wallet.active && expectedChainID && chainsMatch(wallet.active.chainID, expectedChainID),
   );
   const write = entry.fn.stateMutability !== "view" && entry.fn.stateMutability !== "pure";
   const highRisk = isHighRiskFunction(entry.signature);
@@ -250,9 +241,10 @@ function AbiFunctionCard({
     } catch (cause) {
       setError({
         context,
-        message: cause instanceof AbiFormError
-          ? t("contracts.functions.invalidInput", { path: cause.path })
-          : t("contracts.functions.invalidValue"),
+        message:
+          cause instanceof AbiFormError
+            ? t("contracts.functions.invalidInput", { path: cause.path })
+            : t("contracts.functions.invalidValue"),
       });
       return;
     }
@@ -318,14 +310,15 @@ function AbiFunctionCard({
           getCurrentWallet: wallet.getActiveWallet,
           loadFreshProxy: getContractProxyResponse,
           loadFreshDelegation: getAddressDelegation,
-          send: (freshTarget, chainID) => wallet.sendTransaction(
-            {
-              to: freshTarget.transactionTarget,
-              data: encoded.calldata,
-              ...(encoded.callValue === undefined ? {} : { value: encoded.callValue }),
-            },
-            chainID,
-          ),
+          send: (freshTarget, chainID) =>
+            wallet.sendTransaction(
+              {
+                to: freshTarget.transactionTarget,
+                data: encoded.calldata,
+                ...(encoded.callValue === undefined ? {} : { value: encoded.callValue }),
+              },
+              chainID,
+            ),
         });
         if (outcome.status === "submitted") {
           setResult({ kind: "write", hash: outcome.transactionHash, context });
@@ -354,9 +347,8 @@ function AbiFunctionCard({
       }
     } catch (cause) {
       if (bindingChanged(cause)) onBindingChanged?.();
-      const decoded = cause instanceof WalletBoundaryError
-        ? decodeRevert(abi, cause.revertData)
-        : undefined;
+      const decoded =
+        cause instanceof WalletBoundaryError ? decodeRevert(abi, cause.revertData) : undefined;
       setError({
         context,
         message: decoded
@@ -380,9 +372,10 @@ function AbiFunctionCard({
       setCalldataCopied(false);
       setError({
         context,
-        message: cause instanceof AbiFormError
-          ? t("contracts.functions.invalidInput", { path: cause.path })
-          : t("contracts.functions.copyFailed"),
+        message:
+          cause instanceof AbiFormError
+            ? t("contracts.functions.invalidInput", { path: cause.path })
+            : t("contracts.functions.copyFailed"),
       });
     } finally {
       setCopyingCalldata(false);
@@ -392,19 +385,29 @@ function AbiFunctionCard({
   return (
     <details className="abi-function-card" open={index === 0}>
       <FunctionSummary entry={entry} index={index} />
-      <form aria-busy={pending} className="abi-function-form" onSubmit={(event) => void submit(event)}>
+      <form
+        aria-busy={pending}
+        className="abi-function-form"
+        onSubmit={(event) => void submit(event)}
+      >
         {highRisk ? (
           <p className="risk-notice" role="note">
-            {t(ownershipRisk
-              ? "contracts.functions.ownershipRisk"
-              : "contracts.functions.upgradeRisk")}
+            {t(
+              ownershipRisk
+                ? "contracts.functions.ownershipRisk"
+                : "contracts.functions.upgradeRisk",
+            )}
           </p>
         ) : null}
         {target.kind === "uups_implementation_direct" ? (
-          <p className="context-note" role="note">{t("contracts.functions.uupsDirect")}</p>
+          <p className="context-note" role="note">
+            {t("contracts.functions.uupsDirect")}
+          </p>
         ) : null}
         {inputState.limitError ? (
-          <p className="form-error" role="alert">{t("contracts.functions.inputShapeLimit")}</p>
+          <p className="form-error" role="alert">
+            {t("contracts.functions.inputShapeLimit")}
+          </p>
         ) : null}
         {tree.map((node, parameterIndex) => (
           <AbiInputEditor
@@ -438,11 +441,16 @@ function AbiFunctionCard({
         ) : null}
         <div className="abi-function-actions">
           <span
-            aria-describedby={actionDisabledReason && actionHintVisible ? `${formID}-action-hint` : undefined}
+            aria-describedby={
+              actionDisabledReason && actionHintVisible ? `${formID}-action-hint` : undefined
+            }
             className={`abi-action-tooltip${actionHintVisible ? " is-open" : ""}`}
             onBlur={(event) => {
               const relatedTarget = event.relatedTarget;
-              if (!(relatedTarget instanceof Node) || !event.currentTarget.contains(relatedTarget)) {
+              if (
+                !(relatedTarget instanceof Node) ||
+                !event.currentTarget.contains(relatedTarget)
+              ) {
                 setActionHintVisible(false);
               }
             }}
@@ -452,19 +460,19 @@ function AbiFunctionCard({
             ref={actionTooltipRef}
             tabIndex={actionDisabledReason ? 0 : undefined}
           >
-            <button className={highRisk ? "button danger" : "button primary"} disabled={!ready || pending} type="submit">
+            <button
+              className={highRisk ? "button danger" : "button primary"}
+              disabled={!ready || pending}
+              type="submit"
+            >
               {pending
                 ? t("contracts.functions.pending")
                 : entry.fn.stateMutability === "view" || entry.fn.stateMutability === "pure"
                   ? t("actions.read")
-                : t("actions.write")}
+                  : t("actions.write")}
             </button>
             {actionDisabledReason && actionHintVisible ? (
-              <span
-                className="abi-action-tooltip-text"
-                id={`${formID}-action-hint`}
-                role="tooltip"
-              >
+              <span className="abi-action-tooltip-text" id={`${formID}-action-hint`} role="tooltip">
                 {actionDisabledReason}
               </span>
             ) : null}
@@ -480,15 +488,15 @@ function AbiFunctionCard({
           </button>
         </div>
       </form>
-      {visibleError ? <p className="form-error" role="alert">{visibleError.message}</p> : null}
+      {visibleError ? (
+        <p className="form-error" role="alert">
+          {visibleError.message}
+        </p>
+      ) : null}
       {visibleResult?.kind === "write" ? (
         <output className="call-result" role="status">
           <span>{t("wallet.transactionHash")}</span>
-          <Link
-            params={{ hash: visibleResult.hash }}
-            search={{ tab: "overview" }}
-            to="/tx/$hash"
-          >
+          <Link params={{ hash: visibleResult.hash }} search={{ tab: "overview" }} to="/tx/$hash">
             <code>{visibleResult.hash}</code>
           </Link>
         </output>
@@ -498,12 +506,16 @@ function AbiFunctionCard({
           <strong>{t("wallet.result")}</strong>
           {visibleResult.outputs.length === 0 ? (
             <span>{t("contracts.functions.noOutputs")}</span>
-          ) : visibleResult.outputs.map((output) => (
-            <span key={output.index}>
-              <small>{output.name || `#${output.index}`} · {output.type}</small>
-              <code>{output.display}</code>
-            </span>
-          ))}
+          ) : (
+            visibleResult.outputs.map((output) => (
+              <span key={output.index}>
+                <small>
+                  {output.name || `#${output.index}`} · {output.type}
+                </small>
+                <code>{output.display}</code>
+              </span>
+            ))
+          )}
         </output>
       ) : null}
     </details>
@@ -566,7 +578,9 @@ function AbiInputEditor({
           <textarea
             disabled={disabled}
             id={inputID}
-            maxLength={parameter.type === "string" ? ABI_LIMITS.stringBytes : ABI_LIMITS.bytesLength * 2 + 2}
+            maxLength={
+              parameter.type === "string" ? ABI_LIMITS.stringBytes : ABI_LIMITS.bytesLength * 2 + 2
+            }
             onChange={(event) => onChange({ ...node, value: event.target.value })}
             rows={2}
             spellCheck={false}
@@ -612,17 +626,21 @@ function AbiInputEditor({
     const components = "components" in parameter ? parameter.components : [];
     return (
       <fieldset className="abi-composite-input">
-        <legend>{label} <small>{parameter.type}</small></legend>
+        <legend>
+          {label} <small>{parameter.type}</small>
+        </legend>
         {node.fields.map((field, index) => (
           <AbiInputEditor
             disabled={disabled}
             formID={formID}
             key={index}
             node={field}
-            onChange={(next) => onChange({
-              ...node,
-              fields: replaceRootNode(node.fields, index, next),
-            })}
+            onChange={(next) =>
+              onChange({
+                ...node,
+                fields: replaceRootNode(node.fields, index, next),
+              })
+            }
             onLimitError={onLimitError}
             parameter={components[index]!}
             path={[...path, index]}
@@ -636,17 +654,21 @@ function AbiInputEditor({
   const element = arrayElementParameter(parameter);
   return (
     <fieldset className="abi-composite-input abi-array-input">
-      <legend>{label} <small>{parameter.type}</small></legend>
+      <legend>
+        {label} <small>{parameter.type}</small>
+      </legend>
       {node.items.map((item, index) => (
         <div className="abi-array-item" key={index}>
           <AbiInputEditor
             disabled={disabled}
             formID={formID}
             node={item}
-            onChange={(next) => onChange({
-              ...node,
-              items: replaceRootNode(node.items, index, next),
-            })}
+            onChange={(next) =>
+              onChange({
+                ...node,
+                items: replaceRootNode(node.items, index, next),
+              })
+            }
             onLimitError={onLimitError}
             parameter={element}
             path={[...path, index]}
@@ -656,7 +678,12 @@ function AbiInputEditor({
             <button
               className="button tertiary"
               disabled={disabled}
-              onClick={() => onChange({ ...node, items: node.items.filter((_, itemIndex) => itemIndex !== index) })}
+              onClick={() =>
+                onChange({
+                  ...node,
+                  items: node.items.filter((_, itemIndex) => itemIndex !== index),
+                })
+              }
               type="button"
             >
               {t("contracts.functions.removeArrayItem")}
@@ -700,9 +727,7 @@ function targetForFunction(
   } catch {
     return undefined;
   }
-  return targets.find((target) =>
-    isInteractionFunctionAllowed(target, entry.signature, write),
-  );
+  return targets.find((target) => isInteractionFunctionAllowed(target, entry.signature, write));
 }
 
 function ambiguousFunctionSelectors(functions: {
@@ -732,7 +757,7 @@ function replaceRootNode(
   index: number,
   next: AbiInputNode,
 ): readonly AbiInputNode[] {
-  return nodes.map((node, nodeIndex) => nodeIndex === index ? next : node);
+  return nodes.map((node, nodeIndex) => (nodeIndex === index ? next : node));
 }
 
 function arrayElementParameter(parameter: AbiParameter): AbiParameter {
@@ -777,10 +802,10 @@ function interactionContext(
   chainID: string | undefined,
   wallet: { uuid: string; account: string; chainID: string; revision: number } | undefined,
 ): string {
-	return JSON.stringify([
-		target.kind,
-		target.transactionTarget,
-		interactionBindingContext(target),
+  return JSON.stringify([
+    target.kind,
+    target.transactionTarget,
+    interactionBindingContext(target),
     chainID ?? "",
     wallet?.uuid ?? "",
     wallet?.account ?? "",
@@ -790,35 +815,35 @@ function interactionContext(
 }
 
 function interactionBindingContext(target: ContractInteractionTarget): readonly string[] | string {
-	if (!target.requiresFreshBinding) return "";
-	if (target.kind === "delegated_eoa") {
-		return [
-			target.delegationChainID,
-			target.delegationBlockNumber,
-			target.delegationBlockHash,
-			target.abiAddress,
-			target.abiCodeHash ?? "",
-		];
-	}
-	if (target.kind === "diamond_facet") {
-		return [
-			target.proxyChainID,
-			target.proxyAddress,
-			target.abiAddress,
-			target.abiCodeHash ?? "",
-			...target.facetSelectors,
-		];
-	}
-	return [
-		target.bindingId ?? "",
-		target.proxyCodeHash,
-		target.abiAddress,
-		target.abiCodeHash ?? "",
-		target.abiArtifactResolution ?? "",
-		target.beaconAddress ?? "",
-		target.beaconCodeHash ?? "",
-		target.cwiaSchemaSHA256 ?? "",
-	];
+  if (!target.requiresFreshBinding) return "";
+  if (target.kind === "delegated_eoa") {
+    return [
+      target.delegationChainID,
+      target.delegationBlockNumber,
+      target.delegationBlockHash,
+      target.abiAddress,
+      target.abiCodeHash ?? "",
+    ];
+  }
+  if (target.kind === "diamond_facet") {
+    return [
+      target.proxyChainID,
+      target.proxyAddress,
+      target.abiAddress,
+      target.abiCodeHash ?? "",
+      ...target.facetSelectors,
+    ];
+  }
+  return [
+    target.bindingId ?? "",
+    target.proxyCodeHash,
+    target.abiAddress,
+    target.abiCodeHash ?? "",
+    target.abiArtifactResolution ?? "",
+    target.beaconAddress ?? "",
+    target.beaconCodeHash ?? "",
+    target.cwiaSchemaSHA256 ?? "",
+  ];
 }
 
 function isHighRiskFunction(signature: string): boolean {
@@ -830,17 +855,14 @@ function isOwnershipRiskFunction(signature: string): boolean {
 }
 
 function decodeWalletRevert(abi: Abi, error: unknown) {
-  return error instanceof WalletBoundaryError
-    ? decodeRevert(abi, error.revertData)
-    : undefined;
+  return error instanceof WalletBoundaryError ? decodeRevert(abi, error.revertData) : undefined;
 }
 
 function bindingChanged(error: unknown): boolean {
-  return error instanceof InteractionFenceError && [
-    "BINDING_CHANGED",
-    "TARGET_CHANGED",
-    "FRESH_PROXY_REQUIRED",
-  ].includes(error.code);
+  return (
+    error instanceof InteractionFenceError &&
+    ["BINDING_CHANGED", "TARGET_CHANGED", "FRESH_PROXY_REQUIRED"].includes(error.code)
+  );
 }
 
 type Translate = ReturnType<typeof useTranslation>["t"];
@@ -851,9 +873,9 @@ function interactionErrorMessage(error: unknown, t: Translate): string {
   }
   if (error instanceof InteractionFenceError) {
     if (bindingChanged(error)) return t("contracts.functions.bindingChanged");
-		if (error.code === "FRESH_PROXY_UNAVAILABLE") {
-			return t("contracts.functions.proxyTemporarilyUnavailable");
-		}
+    if (error.code === "FRESH_PROXY_UNAVAILABLE") {
+      return t("contracts.functions.proxyTemporarilyUnavailable");
+    }
     if (["CHAIN_CHANGED"].includes(error.code)) return t("wallet.errors.chainMismatch");
     if (["ACCOUNT_CHANGED"].includes(error.code)) return t("wallet.errors.accountChanged");
     if (["PROVIDER_CHANGED", "PROVIDER_REVISION_CHANGED"].includes(error.code)) {

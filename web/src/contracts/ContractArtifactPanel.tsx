@@ -1,17 +1,8 @@
 import { defaultKeymap } from "@codemirror/commands";
-import {
-  StreamLanguage,
-  syntaxHighlighting,
-  type StreamParser,
-} from "@codemirror/language";
+import { StreamLanguage, syntaxHighlighting, type StreamParser } from "@codemirror/language";
 import { highlightSelectionMatches, openSearchPanel, searchKeymap } from "@codemirror/search";
 import { EditorState } from "@codemirror/state";
-import {
-  EditorView,
-  highlightSpecialChars,
-  keymap,
-  lineNumbers,
-} from "@codemirror/view";
+import { EditorView, highlightSpecialChars, keymap, lineNumbers } from "@codemirror/view";
 import { classHighlighter } from "@lezer/highlight";
 import { solidity } from "@replit/codemirror-lang-solidity";
 import { AddressIdentity } from "@/ens/AddressIdentity";
@@ -139,7 +130,12 @@ export function parseArtifactSources(
   const files: ContractSourceFile[] = [];
   let invalidEntries = 0;
   for (const [name, value] of Object.entries(sources)) {
-    if (language === "vyper" && isRecord(value) && Array.isArray(value.abi) && Object.keys(value).length === 1) {
+    if (
+      language === "vyper" &&
+      isRecord(value) &&
+      Array.isArray(value.abi) &&
+      Object.keys(value).length === 1
+    ) {
       files.push({ name, content: JSON.stringify(value.abi, null, 2) });
       continue;
     }
@@ -180,7 +176,8 @@ export function buildSourceTree(files: readonly ContractSourceFile[]): SourceTre
 
       directoryPath = directoryPath ? `${directoryPath}/${segment}` : segment;
       let directory = children.find(
-        (node): node is SourceTreeDirectoryNode => node.kind === "directory" && node.path === directoryPath,
+        (node): node is SourceTreeDirectoryNode =>
+          node.kind === "directory" && node.path === directoryPath,
       );
       if (!directory) {
         directory = {
@@ -215,7 +212,10 @@ function compactSourceTree(nodes: readonly SourceTreeNode[]): SourceTreeNode[] {
 
     let finalDirectory = node;
     const names = [node.name];
-    while (finalDirectory.children.length === 1 && finalDirectory.children[0]?.kind === "directory") {
+    while (
+      finalDirectory.children.length === 1 &&
+      finalDirectory.children[0]?.kind === "directory"
+    ) {
       finalDirectory = finalDirectory.children[0];
       names.push(finalDirectory.name);
     }
@@ -277,62 +277,74 @@ export function ContractArtifactPanel({ artifact }: { artifact: VerifiedContract
   const [selectedName, setSelectedName] = useState(manifest.files[0]?.name ?? "");
   const selected = manifest.files.find((file) => file.name === selectedName) ?? manifest.files[0];
   const settings = useMemo(() => summarizeCompilerSettings(artifact.settings), [artifact.settings]);
-  const abi = artifact.abi ?? [];
+  const abi = useMemo(() => artifact.abi ?? [], [artifact.abi]);
   const abiSummary = useMemo(() => summarizeABI(abi), [abi]);
   const matchType = artifact.runtime_match?.match_type ?? artifact.creation_match?.match_type;
-	const verificationOrigin = artifact.verification_origin ?? "submitted";
-	const derivedChildren = artifact.derived_children ?? [];
+  const verificationOrigin = artifact.verification_origin ?? "submitted";
+  const derivedChildren = artifact.derived_children ?? [];
 
   useEffect(() => {
-		void artifact.source.address;
-		void artifact.target.address;
-		void artifact.target.code_hash;
+    void artifact.source.address;
+    void artifact.target.address;
+    void artifact.target.code_hash;
     setSelectedName(manifest.files[0]?.name ?? "");
-	}, [artifact.source.address, artifact.target.address, artifact.target.code_hash, manifest.files]);
+  }, [artifact.source.address, artifact.target.address, artifact.target.code_hash, manifest.files]);
 
   return (
-		<div className="contract-code-view">
-				{artifact.resolution === "exact_address" && artifact.derived_from ? (
-					<p className="context-note" role="status">
-						{t(verificationOrigin === "factory_derived"
-							? "contracts.artifact.autoVerifiedFromFactory"
-							: "contracts.artifact.creationProvenanceFromFactory")} {" "}
-					<AddressIdentity address={artifact.derived_from.creator_address} compact={false} contract />
-					{" · "}{artifact.derived_from.call_type}{" · "}
-					<a href={`/tx/${artifact.derived_from.transaction_hash}`}>
-						{t("contracts.artifact.creationTransaction")}
-					</a>
-				</p>
-			) : null}
-			{artifact.resolution === "code_hash" ? (
-				<p className="context-note" role="status">
-					{t("contracts.artifact.similarMatch")}{" "}
-					<AddressIdentity address={artifact.source.address} compact={false} contract />
-				</p>
-			) : null}
+    <div className="contract-code-view">
+      {artifact.resolution === "exact_address" && artifact.derived_from ? (
+        <p className="context-note" role="status">
+          {t(
+            verificationOrigin === "factory_derived"
+              ? "contracts.artifact.autoVerifiedFromFactory"
+              : "contracts.artifact.creationProvenanceFromFactory",
+          )}{" "}
+          <AddressIdentity
+            address={artifact.derived_from.creator_address}
+            compact={false}
+            contract
+          />
+          {" · "}
+          {artifact.derived_from.call_type}
+          {" · "}
+          <a href={`/tx/${artifact.derived_from.transaction_hash}`}>
+            {t("contracts.artifact.creationTransaction")}
+          </a>
+        </p>
+      ) : null}
+      {artifact.resolution === "code_hash" ? (
+        <p className="context-note" role="status">
+          {t("contracts.artifact.similarMatch")}{" "}
+          <AddressIdentity address={artifact.source.address} compact={false} contract />
+        </p>
+      ) : null}
       <header className="artifact-hero">
         <div>
-					<span className="eyebrow">
-						{t(artifact.resolution === "code_hash"
-							? "contracts.artifact.verifiedByCodeHash"
-							: "contracts.artifact.verified")}
-					</span>
+          <span className="eyebrow">
+            {t(
+              artifact.resolution === "code_hash"
+                ? "contracts.artifact.verifiedByCodeHash"
+                : "contracts.artifact.verified",
+            )}
+          </span>
           <h2>{artifact.contract_name}</h2>
           <p className="quiet">{t("contracts.readIndependent")}</p>
         </div>
         <div className="artifact-badges" aria-label={t("contracts.artifact.status")}>
-			<span className="availability yes">
-				{t(artifact.resolution === "code_hash"
-					? "contracts.artifact.verifiedByCodeHash"
-					: "contracts.artifact.verified")}
-			</span>
-			{verificationOrigin === "factory_derived" ? (
-				<span className="artifact-match full">
-					{t("contracts.artifact.autoVerifiedBadge")}
-				</span>
-			) : null}
+          <span className="availability yes">
+            {t(
+              artifact.resolution === "code_hash"
+                ? "contracts.artifact.verifiedByCodeHash"
+                : "contracts.artifact.verified",
+            )}
+          </span>
+          {verificationOrigin === "factory_derived" ? (
+            <span className="artifact-match full">{t("contracts.artifact.autoVerifiedBadge")}</span>
+          ) : null}
           {matchType ? (
-            <span className={matchType === "full" ? "artifact-match full" : "artifact-match partial"}>
+            <span
+              className={matchType === "full" ? "artifact-match full" : "artifact-match partial"}
+            >
               {t(`contracts.artifact.match.${matchType}`)}
             </span>
           ) : null}
@@ -343,16 +355,25 @@ export function ContractArtifactPanel({ artifact }: { artifact: VerifiedContract
         <SummaryFact label={t("contracts.contractName")} value={artifact.contract_name} />
         <SummaryFact label={t("contracts.fileName")} value={artifact.file_name} mono />
         <SummaryFact label={t("contracts.artifact.language")} value={artifact.language} />
-        <SummaryFact label={t("verification.compilerVersion")} value={artifact.compiler_version} mono />
-		<SummaryFact label={t("detail.codeHash")} value={artifact.target.code_hash} mono wide />
-		<SummaryFact label={t("contracts.artifact.sourceAddress")} value={artifact.source.address} mono wide />
-		<SummaryFact
-			label={t("contracts.validBlocks")}
-			value={`${artifact.source.valid_from_block} – ${artifact.source.valid_to_block ?? "∞"}`}
-		/>
-		<SummaryFact
-			label={t("contracts.artifact.verifiedAt")}
-			value={formatTimestamp(artifact.source.created_at, i18n.language)}
+        <SummaryFact
+          label={t("verification.compilerVersion")}
+          value={artifact.compiler_version}
+          mono
+        />
+        <SummaryFact label={t("detail.codeHash")} value={artifact.target.code_hash} mono wide />
+        <SummaryFact
+          label={t("contracts.artifact.sourceAddress")}
+          value={artifact.source.address}
+          mono
+          wide
+        />
+        <SummaryFact
+          label={t("contracts.validBlocks")}
+          value={`${artifact.source.valid_from_block} – ${artifact.source.valid_to_block ?? "∞"}`}
+        />
+        <SummaryFact
+          label={t("contracts.artifact.verifiedAt")}
+          value={formatTimestamp(artifact.source.created_at, i18n.language)}
         />
         <SummaryFact
           label={t("contracts.artifact.sourceCount")}
@@ -360,34 +381,48 @@ export function ContractArtifactPanel({ artifact }: { artifact: VerifiedContract
         />
       </dl>
 
-			{derivedChildren.length > 0 ? (
-				<section className="artifact-section" aria-labelledby="derived-contracts-title">
-					<div className="artifact-section-heading">
-						<div>
-							<span className="eyebrow">{t("contracts.artifact.factoryDeployments")}</span>
-							<h3 id="derived-contracts-title">{t("contracts.artifact.createdContracts")}</h3>
-						</div>
-					</div>
-					<div className="table-scroll" tabIndex={0} aria-label={t("contracts.artifact.createdContracts")}>
-						<table>
-							<thead><tr>
-								<th>{t("page.address")}</th><th>{t("table.status")}</th>
-								<th>{t("contracts.artifact.creationTransaction")}</th><th>{t("contracts.contractName")}</th>
-							</tr></thead>
-							<tbody>
-								{derivedChildren.map((child) => (
-									<tr key={`${child.block_hash}:${child.transaction_hash}:${child.trace_path}`}>
-										<td><AddressIdentity address={child.address} compact={false} contract /></td>
-										<td>{t(`contracts.artifact.derivedStatus.${child.status}`)}</td>
-										<td><a href={`/tx/${child.transaction_hash}`}><code>{child.transaction_hash}</code></a></td>
-										<td>{child.contract_name ?? "—"}</td>
-									</tr>
-								))}
-							</tbody>
-						</table>
-					</div>
-				</section>
-			) : null}
+      {derivedChildren.length > 0 ? (
+        <section className="artifact-section" aria-labelledby="derived-contracts-title">
+          <div className="artifact-section-heading">
+            <div>
+              <span className="eyebrow">{t("contracts.artifact.factoryDeployments")}</span>
+              <h3 id="derived-contracts-title">{t("contracts.artifact.createdContracts")}</h3>
+            </div>
+          </div>
+          <div
+            className="table-scroll"
+            tabIndex={0}
+            aria-label={t("contracts.artifact.createdContracts")}
+          >
+            <table>
+              <thead>
+                <tr>
+                  <th>{t("page.address")}</th>
+                  <th>{t("table.status")}</th>
+                  <th>{t("contracts.artifact.creationTransaction")}</th>
+                  <th>{t("contracts.contractName")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {derivedChildren.map((child) => (
+                  <tr key={`${child.block_hash}:${child.transaction_hash}:${child.trace_path}`}>
+                    <td>
+                      <AddressIdentity address={child.address} compact={false} contract />
+                    </td>
+                    <td>{t(`contracts.artifact.derivedStatus.${child.status}`)}</td>
+                    <td>
+                      <a href={`/tx/${child.transaction_hash}`}>
+                        <code>{child.transaction_hash}</code>
+                      </a>
+                    </td>
+                    <td>{child.contract_name ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
 
       <section className="artifact-section" aria-labelledby="contract-source-title">
         <div className="artifact-section-heading">
@@ -395,7 +430,11 @@ export function ContractArtifactPanel({ artifact }: { artifact: VerifiedContract
             <span className="eyebrow">{t("contracts.artifact.sourceEyebrow")}</span>
             <h3 id="contract-source-title">{t("contracts.artifact.sourceTitle")}</h3>
           </div>
-          {selected ? <span className="artifact-count">{selected.content.split("\n").length} {t("contracts.artifact.lines")}</span> : null}
+          {selected ? (
+            <span className="artifact-count">
+              {selected.content.split("\n").length} {t("contracts.artifact.lines")}
+            </span>
+          ) : null}
         </div>
         {manifest.invalidEntries > 0 ? (
           <p className="chain-warning" role="status">
@@ -410,7 +449,9 @@ export function ContractArtifactPanel({ artifact }: { artifact: VerifiedContract
             selected={selected}
           />
         ) : (
-          <p className="form-error" role="alert">{t("contracts.artifact.noReadableSources")}</p>
+          <p className="form-error" role="alert">
+            {t("contracts.artifact.noReadableSources")}
+          </p>
         )}
         {manifest.invalidEntries > 0 || manifest.files.length === 0 ? (
           <ArtifactDisclosure title={t("contracts.artifact.rawSources")} value={artifact.sources} />
@@ -466,18 +507,25 @@ export function ContractArtifactPanel({ artifact }: { artifact: VerifiedContract
               value={artifact.runtime_match}
             />
           ) : null}
-          <ArtifactDisclosure title={t("contracts.compilationArtifacts")} value={artifact.compilation_artifacts} />
-          <ArtifactDisclosure title={t("contracts.creationArtifacts")} value={artifact.creation_code_artifacts} />
-          <ArtifactDisclosure title={t("contracts.runtimeArtifacts")} value={artifact.runtime_code_artifacts} />
+          <ArtifactDisclosure
+            title={t("contracts.compilationArtifacts")}
+            value={artifact.compilation_artifacts}
+          />
+          <ArtifactDisclosure
+            title={t("contracts.creationArtifacts")}
+            value={artifact.creation_code_artifacts}
+          />
+          <ArtifactDisclosure
+            title={t("contracts.runtimeArtifacts")}
+            value={artifact.runtime_code_artifacts}
+          />
         </div>
       </section>
     </div>
   );
 }
 
-function transformationCount(
-  match: VerifiedContractArtifact["creation_match"],
-): number {
+function transformationCount(match: VerifiedContractArtifact["creation_match"]): number {
   return Array.isArray(match?.transformations) ? match.transformations.length : 0;
 }
 
@@ -502,7 +550,8 @@ function SourceWorkspace({
   const [fullscreen, setFullscreen] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(() => collectDirectoryIDs(tree));
   const [focusedID, setFocusedID] = useState(`file:${selected.name}`);
-  const fullscreenAvailable = typeof document !== "undefined" && document.fullscreenEnabled === true;
+  const fullscreenAvailable =
+    typeof document !== "undefined" && document.fullscreenEnabled === true;
 
   const visibleNodes = useMemo(() => flattenVisibleTree(tree, expanded), [expanded, tree]);
 
@@ -566,11 +615,8 @@ function SourceWorkspace({
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-    const languageExtension = language === "solidity"
-      ? solidity
-      : language === "yul"
-        ? yulLanguage
-        : [];
+    const languageExtension =
+      language === "solidity" ? solidity : language === "yul" ? yulLanguage : [];
     const cspNonce = getDocumentCSPNonce();
     const view = new EditorView({
       state: EditorState.create({
@@ -624,45 +670,60 @@ function SourceWorkspace({
           <strong>{files.length}</strong>
         </div>
         <div aria-label={t("contracts.artifact.files")} className="source-file-tree" role="tree">
-          {tree.map((node, index) => renderSourceTreeNode({
-            depth: 1,
-            focusedID,
-            index,
-            node,
-            onSelect: (name) => {
-              setFocusedID(`file:${name}`);
-              onSelect(name);
-            },
-            onToggle: (id) => {
-              setFocusedID(id);
-              toggleDirectory(id);
-            },
-            selectedName: selected.name,
-            setRef: (id, element) => {
-              if (element) treeItemRefs.current.set(id, element);
-              else treeItemRefs.current.delete(id);
-            },
-            siblingCount: tree.length,
-            expanded,
-            handleKeyDown: handleTreeKeyDown,
-            t,
-          }))}
+          {tree.map((node, index) =>
+            renderSourceTreeNode({
+              depth: 1,
+              focusedID,
+              index,
+              node,
+              onSelect: (name) => {
+                setFocusedID(`file:${name}`);
+                onSelect(name);
+              },
+              onToggle: (id) => {
+                setFocusedID(id);
+                toggleDirectory(id);
+              },
+              selectedName: selected.name,
+              setRef: (id, element) => {
+                if (element) treeItemRefs.current.set(id, element);
+                else treeItemRefs.current.delete(id);
+              },
+              siblingCount: tree.length,
+              expanded,
+              handleKeyDown: handleTreeKeyDown,
+              t,
+            }),
+          )}
         </div>
       </aside>
       <div className="source-editor-shell">
         <div className="source-editor-toolbar">
           <strong title={selected.name}>{selected.name}</strong>
           <div>
-            <button onClick={() => editorRef.current && openSearchPanel(editorRef.current)} type="button">
+            <button
+              onClick={() => editorRef.current && openSearchPanel(editorRef.current)}
+              type="button"
+            >
               {t("contracts.artifact.searchCode")}
             </button>
-            <button aria-pressed={wrap} onClick={() => setWrap((current) => !current)} type="button">
+            <button
+              aria-pressed={wrap}
+              onClick={() => setWrap((current) => !current)}
+              type="button"
+            >
               {t("contracts.artifact.wrapLines")}
             </button>
             <CopyButton className="source-toolbar-copy" value={selected.content} />
             {fullscreenAvailable ? (
-              <button aria-pressed={fullscreen} onClick={() => void toggleFullscreen()} type="button">
-                {fullscreen ? t("contracts.artifact.exitFullscreen") : t("contracts.artifact.fullscreen")}
+              <button
+                aria-pressed={fullscreen}
+                onClick={() => void toggleFullscreen()}
+                type="button"
+              >
+                {fullscreen
+                  ? t("contracts.artifact.exitFullscreen")
+                  : t("contracts.artifact.fullscreen")}
               </button>
             ) : null}
           </div>
@@ -670,7 +731,9 @@ function SourceWorkspace({
         <div className="source-editor" data-read-only="true" ref={hostRef} />
         <footer className="source-editor-status">
           <span>{language.toUpperCase()}</span>
-          <span>{selected.content.split("\n").length} {t("contracts.artifact.lines")}</span>
+          <span>
+            {selected.content.split("\n").length} {t("contracts.artifact.lines")}
+          </span>
           <span>{t("contracts.artifact.readOnly")}</span>
         </footer>
       </div>
@@ -750,37 +813,44 @@ function renderSourceTreeNode({
         aria-selected={selected}
         aria-setsize={siblingCount}
         className={selected ? "source-tree-item active" : "source-tree-item"}
-        onClick={() => isDirectory ? onToggle(node.id) : onSelect(node.file.name)}
+        onClick={() => (isDirectory ? onToggle(node.id) : onSelect(node.file.name))}
         onKeyDown={(event) => handleKeyDown(event, node)}
         ref={(element) => setRef(node.id, element)}
         role="treeitem"
         tabIndex={focusedID === node.id ? 0 : -1}
         title={isDirectory ? node.path : node.file.name}
         {...(isDirectory
-          ? { "aria-label": `${isExpanded ? t("contracts.artifact.collapseFolder") : t("contracts.artifact.expandFolder")}: ${node.name}` }
+          ? {
+              "aria-label": `${isExpanded ? t("contracts.artifact.collapseFolder") : t("contracts.artifact.expandFolder")}: ${node.name}`,
+            }
           : {})}
       >
-        <span aria-hidden="true" className={isDirectory ? "source-tree-chevron" : "source-tree-file-icon"}>
+        <span
+          aria-hidden="true"
+          className={isDirectory ? "source-tree-chevron" : "source-tree-file-icon"}
+        >
           {isDirectory ? (isExpanded ? "⌄" : "›") : "◇"}
         </span>
         <span>{node.name}</span>
       </button>
       {isDirectory && isExpanded ? (
         <div className="source-tree-children" role="group">
-          {node.children.map((child, childIndex) => renderSourceTreeNode({
-            depth: depth + 1,
-            expanded,
-            focusedID,
-            handleKeyDown,
-            index: childIndex,
-            node: child,
-            onSelect,
-            onToggle,
-            selectedName,
-            setRef,
-            siblingCount: node.children.length,
-            t,
-          }))}
+          {node.children.map((child, childIndex) =>
+            renderSourceTreeNode({
+              depth: depth + 1,
+              expanded,
+              focusedID,
+              handleKeyDown,
+              index: childIndex,
+              node: child,
+              onSelect,
+              onToggle,
+              selectedName,
+              setRef,
+              siblingCount: node.children.length,
+              t,
+            }),
+          )}
         </div>
       ) : null}
     </div>
@@ -801,29 +871,38 @@ function CompilerSettings({
   const { t } = useTranslation();
   const explicit = (value: string | number | boolean | undefined) =>
     value === undefined ? t("contracts.artifact.compilerDefault") : String(value);
-  const vyperMode = typeof raw.optimize === "string" && ["none", "gas", "codesize"].includes(raw.optimize) ? raw.optimize : undefined;
-  const optimizer = vyperMode ?? (summary.optimizerEnabled === undefined
-    ? t("contracts.artifact.compilerDefault")
-    : summary.optimizerEnabled
-      ? t("contracts.artifact.enabled")
-      : t("contracts.artifact.disabled"));
-  const booleanSetting = (value: boolean | undefined) => value === undefined
-    ? t("contracts.artifact.compilerDefault")
-    : value
-      ? t("contracts.artifact.enabled")
-      : t("contracts.artifact.disabled");
+  const vyperMode =
+    typeof raw.optimize === "string" && ["none", "gas", "codesize"].includes(raw.optimize)
+      ? raw.optimize
+      : undefined;
+  const optimizer =
+    vyperMode ??
+    (summary.optimizerEnabled === undefined
+      ? t("contracts.artifact.compilerDefault")
+      : summary.optimizerEnabled
+        ? t("contracts.artifact.enabled")
+        : t("contracts.artifact.disabled"));
+  const booleanSetting = (value: boolean | undefined) =>
+    value === undefined
+      ? t("contracts.artifact.compilerDefault")
+      : value
+        ? t("contracts.artifact.enabled")
+        : t("contracts.artifact.disabled");
   const optimizerSettings = isRecord(raw.optimizer) ? raw.optimizer : undefined;
-  const optimizerDetails = optimizerSettings && isRecord(optimizerSettings.details)
-    ? optimizerSettings.details
-    : undefined;
+  const optimizerDetails =
+    optimizerSettings && isRecord(optimizerSettings.details)
+      ? optimizerSettings.details
+      : undefined;
   const outputSelection = isRecord(raw.outputSelection) ? raw.outputSelection : undefined;
   const modelChecker = isRecord(raw.modelChecker) ? raw.modelChecker : undefined;
-  const metadataValue = summary.metadata.length > 0
-    ? t("contracts.artifact.explicitFields", { count: summary.metadata.length })
-    : t("contracts.artifact.compilerDefault");
-  const remappingsValue = summary.remappings.length > 0
-    ? t("contracts.artifact.explicitEntries", { count: summary.remappings.length })
-    : t("contracts.artifact.compilerDefault");
+  const metadataValue =
+    summary.metadata.length > 0
+      ? t("contracts.artifact.explicitFields", { count: summary.metadata.length })
+      : t("contracts.artifact.compilerDefault");
+  const remappingsValue =
+    summary.remappings.length > 0
+      ? t("contracts.artifact.explicitEntries", { count: summary.remappings.length })
+      : t("contracts.artifact.compilerDefault");
 
   return (
     <section className="artifact-section" aria-labelledby="compiler-settings-title">
@@ -835,19 +914,37 @@ function CompilerSettings({
       </div>
       <dl className="compiler-settings-grid">
         <SummaryFact label={t("contracts.artifact.optimizer")} value={optimizer} />
-        {!vyperMode && <SummaryFact label={t("contracts.artifact.optimizerRuns")} value={explicit(summary.optimizerRuns)} />}
-        <SummaryFact label={t("contracts.artifact.evmVersion")} value={explicit(summary.evmVersion)} />
-        {!vyperMode && <SummaryFact label={t("contracts.artifact.viaIR")} value={booleanSetting(summary.viaIR)} />}
+        {!vyperMode && (
+          <SummaryFact
+            label={t("contracts.artifact.optimizerRuns")}
+            value={explicit(summary.optimizerRuns)}
+          />
+        )}
+        <SummaryFact
+          label={t("contracts.artifact.evmVersion")}
+          value={explicit(summary.evmVersion)}
+        />
+        {!vyperMode && (
+          <SummaryFact
+            label={t("contracts.artifact.viaIR")}
+            value={booleanSetting(summary.viaIR)}
+          />
+        )}
         <SummaryFact label={t("contracts.artifact.metadata")} value={metadataValue} />
         <SummaryFact label={t("contracts.artifact.remappings")} value={remappingsValue} />
         <SummaryFact label={t("contracts.artifact.sourceCount")} value={String(sourceCount)} />
-        <SummaryFact label={t("contracts.artifact.libraryCount")} value={String(Object.keys(libraries).length)} />
+        <SummaryFact
+          label={t("contracts.artifact.libraryCount")}
+          value={String(Object.keys(libraries).length)}
+        />
       </dl>
       {summary.metadata.length > 0 ? (
         <div className="compiler-setting-group">
           <h4>{t("contracts.artifact.metadata")}</h4>
           <dl>
-            {summary.metadata.map((item) => <SummaryFact key={item.label} label={item.label} value={item.value} />)}
+            {summary.metadata.map((item) => (
+              <SummaryFact key={item.label} label={item.label} value={item.value} />
+            ))}
           </dl>
         </div>
       ) : null}
@@ -855,16 +952,26 @@ function CompilerSettings({
         <div className="compiler-setting-group">
           <h4>{t("contracts.artifact.remappings")}</h4>
           <ul className="setting-chips">
-            {summary.remappings.map((remapping) => <li key={remapping}><code>{remapping}</code></li>)}
+            {summary.remappings.map((remapping) => (
+              <li key={remapping}>
+                <code>{remapping}</code>
+              </li>
+            ))}
           </ul>
         </div>
       ) : null}
       <div className="artifact-disclosure-list compiler-setting-disclosures">
         {optimizerDetails ? (
-          <ArtifactDisclosure title={t("contracts.artifact.optimizerDetails")} value={optimizerDetails} />
+          <ArtifactDisclosure
+            title={t("contracts.artifact.optimizerDetails")}
+            value={optimizerDetails}
+          />
         ) : null}
         {outputSelection ? (
-          <ArtifactDisclosure title={t("contracts.artifact.outputSelection")} value={outputSelection} />
+          <ArtifactDisclosure
+            title={t("contracts.artifact.outputSelection")}
+            value={outputSelection}
+          />
         ) : null}
         {modelChecker ? (
           <ArtifactDisclosure title={t("contracts.artifact.modelChecker")} value={modelChecker} />
@@ -897,13 +1004,7 @@ function SummaryFact({
   );
 }
 
-function ConstructorArgumentsDisclosure({
-  abi,
-  encoded,
-}: {
-  abi: unknown;
-  encoded: string;
-}) {
+function ConstructorArgumentsDisclosure({ abi, encoded }: { abi: unknown; encoded: string }) {
   const { t } = useTranslation();
   const decoded = useMemo(() => {
     try {
@@ -922,9 +1023,9 @@ function ConstructorArgumentsDisclosure({
           <small>
             {decoded
               ? t("contracts.artifact.constructorDecodedSummary", {
-                bytes: byteCount,
-                count: decoded.length,
-              })
+                  bytes: byteCount,
+                  count: decoded.length,
+                })
               : t("contracts.artifact.hexBytes", { count: byteCount })}
           </small>
         </span>
@@ -943,7 +1044,9 @@ function ConstructorArgumentsDisclosure({
               <div className="constructor-argument-list">
                 {decoded.map((argument) => (
                   <div className="constructor-argument-row" key={argument.index}>
-                    <small>{argument.name || `#${argument.index}`} · {argument.type}</small>
+                    <small>
+                      {argument.name || `#${argument.index}`} · {argument.type}
+                    </small>
                     <code>{argument.display}</code>
                   </div>
                 ))}
@@ -955,7 +1058,10 @@ function ConstructorArgumentsDisclosure({
             {t("contracts.artifact.constructorDecodeUnavailable")}
           </p>
         )}
-        <section className="constructor-arguments-raw" aria-label={t("contracts.artifact.constructorRaw")}>
+        <section
+          className="constructor-arguments-raw"
+          aria-label={t("contracts.artifact.constructorRaw")}
+        >
           <div className="constructor-arguments-raw-heading">
             <strong>{t("contracts.artifact.constructorRaw")}</strong>
             <CopyButton value={encoded} />
@@ -989,7 +1095,9 @@ function ArtifactDisclosure({
         <span aria-hidden="true">＋</span>
       </summary>
       <div className="artifact-disclosure-body">
-        <div className="artifact-disclosure-actions"><CopyButton value={text} /></div>
+        <div className="artifact-disclosure-actions">
+          <CopyButton value={text} />
+        </div>
         <pre tabIndex={0}>{text}</pre>
       </div>
     </details>

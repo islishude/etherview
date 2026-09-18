@@ -113,8 +113,9 @@ describe("EIP-6963 wallet boundary", () => {
     expect(isTransactionHash("0x1234")).toBe(false);
     expect(isWalletSignature(walletSignature)).toBe(true);
     expect(isWalletSignature(`0x${"a".repeat(128)}`)).toBe(false);
-    expect(isUint256Quantity("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"))
-      .toBe(true);
+    expect(
+      isUint256Quantity("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
+    ).toBe(true);
     expect(isUint256Quantity(`0x1${"0".repeat(64)}`)).toBe(false);
     expect(toWalletBoundaryError({ code: 4100 }).code).toBe("NOT_CONNECTED");
     expect(toWalletBoundaryError({ code: 4900 }).code).toBe("PROVIDER_DISCONNECTED");
@@ -140,14 +141,16 @@ describe("EIP-6963 wallet boundary", () => {
   });
 
   it("builds one bounded EIP-3085 add-chain parameter", () => {
-    expect(buildAddEthereumChainParameter({
-      chain_id: "11155111",
-      chain_name: "Wallet Testnet",
-      native_currency: { name: "Test Ether", symbol: "TETH", decimals: 18 },
-      rpc_urls: ["https://rpc.example", "http://localhost:8545"],
-      block_explorer_urls: ["https://explorer.example"],
-      icon_urls: ["https://assets.example/icon.png"],
-    })).toEqual({
+    expect(
+      buildAddEthereumChainParameter({
+        chain_id: "11155111",
+        chain_name: "Wallet Testnet",
+        native_currency: { name: "Test Ether", symbol: "TETH", decimals: 18 },
+        rpc_urls: ["https://rpc.example", "http://localhost:8545"],
+        block_explorer_urls: ["https://explorer.example"],
+        icon_urls: ["https://assets.example/icon.png"],
+      }),
+    ).toEqual({
       chainId: "0xaa36a7",
       chainName: "Wallet Testnet",
       nativeCurrency: { name: "Test Ether", symbol: "TETH", decimals: 18 },
@@ -164,21 +167,25 @@ describe("EIP-6963 wallet boundary", () => {
       "https://rpc.example/?key=secret",
       "https://rpc.example/#fragment",
     ]) {
-      expect(() => buildAddEthereumChainParameter({
-        chain_id: "1",
-        chain_name: "Test",
-        native_currency: { name: "Test", symbol: "TST", decimals: 18 },
-        rpc_urls: [rpcURL],
-      })).toThrowError(new WalletBoundaryError("CHAIN_UNAVAILABLE"));
+      expect(() =>
+        buildAddEthereumChainParameter({
+          chain_id: "1",
+          chain_name: "Test",
+          native_currency: { name: "Test", symbol: "TST", decimals: 18 },
+          rpc_urls: [rpcURL],
+        }),
+      ).toThrowError(new WalletBoundaryError("CHAIN_UNAVAILABLE"));
     }
     for (const field of ["block_explorer_urls", "icon_urls"] as const) {
-      expect(() => buildAddEthereumChainParameter({
-        chain_id: "1",
-        chain_name: "Test",
-        native_currency: { name: "Test", symbol: "TST", decimals: 18 },
-        rpc_urls: ["https://rpc.example"],
-        [field]: ["http://localhost:8080"],
-      })).toThrowError(new WalletBoundaryError("CHAIN_UNAVAILABLE"));
+      expect(() =>
+        buildAddEthereumChainParameter({
+          chain_id: "1",
+          chain_name: "Test",
+          native_currency: { name: "Test", symbol: "TST", decimals: 18 },
+          rpc_urls: ["https://rpc.example"],
+          [field]: ["http://localhost:8080"],
+        }),
+      ).toThrowError(new WalletBoundaryError("CHAIN_UNAVAILABLE"));
     }
   });
 
@@ -192,15 +199,18 @@ describe("EIP-6963 wallet boundary", () => {
     expect(await screen.findByText("added")).toBeVisible();
     expect(fake.request).toHaveBeenCalledWith({
       method: "wallet_addEthereumChain",
-      params: [{
-        chainId: "0x1",
-        chainName: "Wallet Testnet",
-        nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-        rpcUrls: ["http://localhost:8545"],
-      }],
+      params: [
+        {
+          chainId: "0x1",
+          chainName: "Wallet Testnet",
+          nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+          rpcUrls: ["http://localhost:8545"],
+        },
+      ],
     });
-    expect(fake.request.mock.calls.some(([request]) => request.method === "eth_requestAccounts"))
-      .toBe(false);
+    expect(
+      fake.request.mock.calls.some(([request]) => request.method === "eth_requestAccounts"),
+    ).toBe(false);
     expect(screen.queryByTestId("active-account")).not.toBeInTheDocument();
   });
 
@@ -242,9 +252,7 @@ describe("EIP-6963 wallet boundary", () => {
     registerProvider(providerDetail(fake.provider));
     renderWallet();
 
-    await userEvent.setup().click(
-      await screen.findByRole("button", { name: "Test Wallet" }),
-    );
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Test Wallet" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent(
       JSON.stringify({
@@ -318,8 +326,9 @@ describe("EIP-6963 wallet boundary", () => {
         },
       ],
     });
-    expect(fake.request.mock.calls.filter(([request]) => request.method === "eth_accounts"))
-      .toHaveLength(2);
+    expect(
+      fake.request.mock.calls.filter(([request]) => request.method === "eth_accounts"),
+    ).toHaveLength(2);
     expect(fetcher).not.toHaveBeenCalled();
   });
 
@@ -351,9 +360,7 @@ describe("EIP-6963 wallet boundary", () => {
     ).toHaveLength(1);
 
     await user.click(screen.getByRole("button", { name: "Sign with stale identity" }));
-    expect(await screen.findByTestId("operation-error")).toHaveTextContent(
-      "SESSION_CHANGED",
-    );
+    expect(await screen.findByTestId("operation-error")).toHaveTextContent("SESSION_CHANGED");
     expect(
       fake.request.mock.calls.filter(([request]) => request.method === "personal_sign"),
     ).toHaveLength(1);
@@ -372,9 +379,9 @@ describe("EIP-6963 wallet boundary", () => {
     await user.click(await screen.findByRole("button", { name: "Test Wallet" }));
     await user.click(screen.getByRole("button", { name: "Sign" }));
     await waitFor(() => {
-      expect(
-        fake.request.mock.calls.some(([request]) => request.method === "personal_sign"),
-      ).toBe(true);
+      expect(fake.request.mock.calls.some(([request]) => request.method === "personal_sign")).toBe(
+        true,
+      );
     });
     act(() => {
       fake.emit("accountsChanged", [accountB]);
@@ -445,9 +452,9 @@ describe("EIP-6963 wallet boundary", () => {
     await user.click(screen.getByRole("button", { name: "Write" }));
     expect(await screen.findByTestId("operation-error")).toHaveTextContent("SESSION_CHANGED");
     expect(screen.getByTestId("active-chain")).toHaveTextContent("1");
-    expect(
-      mismatch.request.mock.calls.some(([request]) => request.method === "eth_call"),
-    ).toBe(false);
+    expect(mismatch.request.mock.calls.some(([request]) => request.method === "eth_call")).toBe(
+      false,
+    );
     expect(
       mismatch.request.mock.calls.some(([request]) => request.method === "eth_sendTransaction"),
     ).toBe(false);
@@ -500,9 +507,7 @@ describe("EIP-6963 wallet boundary", () => {
       Promise.reject({ code: 4900, message: "secret disconnected reason" }),
     );
     await user.click(screen.getByRole("button", { name: "Read" }));
-    expect(await screen.findByTestId("operation-error")).toHaveTextContent(
-      "PROVIDER_DISCONNECTED",
-    );
+    expect(await screen.findByTestId("operation-error")).toHaveTextContent("PROVIDER_DISCONNECTED");
     expect(screen.getByTestId("context-error")).toHaveTextContent("PROVIDER_DISCONNECTED");
     expect(screen.queryByTestId("active-account")).not.toBeInTheDocument();
 
@@ -575,9 +580,7 @@ describe("EIP-6963 wallet boundary", () => {
     await user.click(screen.getByRole("button", { name: "Current Wallet" }));
     act(() => current.emit("chainChanged", "not-hex"));
     expect(screen.queryByTestId("active-account")).not.toBeInTheDocument();
-    expect(screen.getByTestId("context-error")).toHaveTextContent(
-      "INVALID_PROVIDER_RESPONSE",
-    );
+    expect(screen.getByTestId("context-error")).toHaveTextContent("INVALID_PROVIDER_RESPONSE");
   });
 
   it("does not trust provider array methods or throwing account getters", async () => {
@@ -607,9 +610,7 @@ describe("EIP-6963 wallet boundary", () => {
     });
     act(() => fake.emit("accountsChanged", throwingAccounts));
     expect(screen.queryByTestId("active-account")).not.toBeInTheDocument();
-    expect(screen.getByTestId("context-error")).toHaveTextContent(
-      "INVALID_PROVIDER_RESPONSE",
-    );
+    expect(screen.getByTestId("context-error")).toHaveTextContent("INVALID_PROVIDER_RESPONSE");
 
     fake.setResponse("eth_requestAccounts", [accountA]);
     await user.click(screen.getByRole("button", { name: "Test Wallet" }));
@@ -617,9 +618,7 @@ describe("EIP-6963 wallet boundary", () => {
     revokedAccounts.revoke();
     act(() => fake.emit("accountsChanged", revokedAccounts.proxy));
     expect(screen.queryByTestId("active-account")).not.toBeInTheDocument();
-    expect(screen.getByTestId("context-error")).toHaveTextContent(
-      "INVALID_PROVIDER_RESPONSE",
-    );
+    expect(screen.getByTestId("context-error")).toHaveTextContent("INVALID_PROVIDER_RESPONSE");
   });
 
   it("rejects invalid results and never exposes hostile provider error text", async () => {
@@ -666,9 +665,7 @@ describe("EIP-6963 wallet boundary", () => {
     expect(await screen.findByTestId("operation-error")).toHaveTextContent(
       "TRANSACTION_OUTCOME_UNKNOWN",
     );
-    expect(screen.getByTestId("context-error")).toHaveTextContent(
-      "PROVIDER_DISCONNECTED",
-    );
+    expect(screen.getByTestId("context-error")).toHaveTextContent("PROVIDER_DISCONNECTED");
     expect(screen.queryByTestId("active-account")).not.toBeInTheDocument();
     expect(document.body).not.toHaveTextContent("secret post-dispatch disconnect");
 
@@ -677,10 +674,10 @@ describe("EIP-6963 wallet boundary", () => {
         Promise.reject({ code: 4001, message: "secret-bearing provider message" }),
     });
     const rejectedDetail = providerDetail(rejected.provider, {
-        uuid: secondaryProviderUUID,
-        name: "Rejecting Wallet",
-        rdns: "org.etherview.rejecting",
-      });
+      uuid: secondaryProviderUUID,
+      name: "Rejecting Wallet",
+      rdns: "org.etherview.rejecting",
+    });
     registerProvider(rejectedDetail);
     act(() => announceProvider(rejectedDetail));
     await user.click(await screen.findByRole("button", { name: "Rejecting Wallet" }));
@@ -696,11 +693,13 @@ describe("EIP-6963 wallet boundary", () => {
     const user = userEvent.setup();
 
     await user.click(await screen.findByRole("button", { name: "Test Wallet" }));
-    fake.setResponse("eth_sendTransaction", () => Promise.reject({
-      code: 3,
-      data: revertData,
-      message: "secret provider explanation",
-    }));
+    fake.setResponse("eth_sendTransaction", () =>
+      Promise.reject({
+        code: 3,
+        data: revertData,
+        message: "secret provider explanation",
+      }),
+    );
     await user.click(screen.getByRole("button", { name: "Write" }));
 
     const error = await screen.findByTestId("operation-error");
@@ -726,9 +725,7 @@ describe("EIP-6963 wallet boundary", () => {
     await act(async () => resolveChain?.("0x1"));
 
     expect(await screen.findByTestId("operation-error")).toHaveTextContent("CHAIN_MISMATCH");
-    expect(fake.request.mock.calls.some(([request]) => request.method === "eth_call")).toBe(
-      false,
-    );
+    expect(fake.request.mock.calls.some(([request]) => request.method === "eth_call")).toBe(false);
   });
 
   it("discards a provider result after disconnect and same-provider reconnection", async () => {
@@ -744,9 +741,7 @@ describe("EIP-6963 wallet boundary", () => {
     await user.click(await screen.findByRole("button", { name: "Test Wallet" }));
     await user.click(screen.getByRole("button", { name: "Read" }));
     await waitFor(() => {
-      expect(fake.request.mock.calls.some(([request]) => request.method === "eth_call")).toBe(
-        true,
-      );
+      expect(fake.request.mock.calls.some(([request]) => request.method === "eth_call")).toBe(true);
     });
     act(() => fake.emit("disconnect", { code: 4900 }));
     await user.click(screen.getByRole("button", { name: "Test Wallet" }));
@@ -770,9 +765,7 @@ describe("EIP-6963 wallet boundary", () => {
     await user.click(await screen.findByRole("button", { name: "Test Wallet" }));
     await user.click(screen.getByRole("button", { name: "Read" }));
     await waitFor(() => {
-      expect(fake.request.mock.calls.some(([request]) => request.method === "eth_call")).toBe(
-        true,
-      );
+      expect(fake.request.mock.calls.some(([request]) => request.method === "eth_call")).toBe(true);
     });
     act(() => {
       fake.emit("accountsChanged", [accountB]);
@@ -798,9 +791,7 @@ describe("EIP-6963 wallet boundary", () => {
     await user.click(screen.getByRole("button", { name: "Write" }));
     await waitFor(() => {
       expect(
-        fake.request.mock.calls.some(
-          ([request]) => request.method === "eth_sendTransaction",
-        ),
+        fake.request.mock.calls.some(([request]) => request.method === "eth_sendTransaction"),
       ).toBe(true);
     });
     act(() => {
@@ -812,9 +803,7 @@ describe("EIP-6963 wallet boundary", () => {
     expect(await screen.findByTestId("operation-error")).toHaveTextContent(
       "TRANSACTION_OUTCOME_UNKNOWN",
     );
-    expect(screen.getByTestId("context-error")).toHaveTextContent(
-      "TRANSACTION_OUTCOME_UNKNOWN",
-    );
+    expect(screen.getByTestId("context-error")).toHaveTextContent("TRANSACTION_OUTCOME_UNKNOWN");
     expect(screen.getByTestId("active-account")).toHaveTextContent(accountA);
     expect(screen.queryByText(transactionHash)).not.toBeInTheDocument();
   });
@@ -832,7 +821,8 @@ function WalletHarness() {
             type="button"
             onClick={() => {
               setOperationError(undefined);
-              void wallet.connect(provider.uuid)
+              void wallet
+                .connect(provider.uuid)
                 .then((connected) => setResult(JSON.stringify(connected)))
                 .catch((cause: unknown) => {
                   setOperationError(
@@ -847,7 +837,8 @@ function WalletHarness() {
             type="button"
             onClick={() => {
               setOperationError(undefined);
-              void wallet.addChain(provider.uuid)
+              void wallet
+                .addChain(provider.uuid)
                 .then(() => setResult("added"))
                 .catch((cause: unknown) => {
                   setOperationError(
@@ -1039,9 +1030,7 @@ function announceProvider(detail: unknown) {
   window.dispatchEvent(new CustomEvent(EIP6963_ANNOUNCE_EVENT, { detail }));
 }
 
-type FakeResponse =
-  | unknown
-  | ((request: EIP1193RequestArguments) => unknown | Promise<unknown>);
+type FakeResponse = unknown | ((request: EIP1193RequestArguments) => unknown | Promise<unknown>);
 
 function createFakeProvider(
   initial: Record<string, FakeResponse> = {},

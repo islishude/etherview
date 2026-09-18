@@ -2,10 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  ChainEventInvalidation,
-  shouldInvalidateFromChainEvent,
-} from "./eventInvalidation";
+import { ChainEventInvalidation, shouldInvalidateFromChainEvent } from "./eventInvalidation";
 
 class FakeEventSource {
   static instances: FakeEventSource[] = [];

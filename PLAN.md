@@ -79,6 +79,11 @@ P67-T06 is complete: ENS hashing and wire encoding use
 and local Go unit/race/lint, security/license, and docs/plan gates passing.
 P67 remains done; P70/P73 external release blockers remain.
 
+P68-T10 is complete: Web linting and formatting now use pinned Oxlint/Oxfmt,
+with preserved size limits, an explicit cyclomatic-complexity baseline, and
+local unit, generated-contract, embedded-browser, docs, and plan gates passing.
+P68 remains done; P70/P73 external release blockers remain.
+
 ## Global Release Gates
 
 - [ ] Every plan required by P70 is `done` or explicitly `superseded` with reviewable evidence.

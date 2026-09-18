@@ -17,17 +17,11 @@ const NotFoundPage = lazyRouteComponent(() => import("@/pages/pages"), "NotFound
 const SearchPage = lazyRouteComponent(() => import("@/pages/pages"), "SearchPage");
 const StatusPage = lazyRouteComponent(() => import("@/pages/pages"), "StatusPage");
 const TokensPage = lazyRouteComponent(() => import("@/pages/pages"), "TokensPage");
-const TransactionsPage = lazyRouteComponent(
-  () => import("@/pages/pages"),
-  "TransactionsPage",
-);
+const TransactionsPage = lazyRouteComponent(() => import("@/pages/pages"), "TransactionsPage");
 const EntityPage = lazyRouteComponent(() => import("@/pages/EntityPage"), "EntityPage");
 const VerifyPage = lazyRouteComponent(() => import("@/pages/VerifyPage"), "VerifyPage");
 const ChartsPage = lazyRouteComponent(() => import("@/pages/ChartsPages"), "ChartsPage");
-const ChartMetricPage = lazyRouteComponent(
-  () => import("@/pages/ChartsPages"),
-  "ChartMetricPage",
-);
+const ChartMetricPage = lazyRouteComponent(() => import("@/pages/ChartsPages"), "ChartMetricPage");
 const PendingPage = lazyRouteComponent(() => import("@/pages/PendingPage"), "PendingPage");
 const UserOperationsPage = lazyRouteComponent(
   () => import("@/pages/UserOperationPages"),
@@ -38,10 +32,7 @@ const UserOperationDetailPage = lazyRouteComponent(
   "UserOperationDetailPage",
 );
 const AccountPage = lazyRouteComponent(() => import("@/pages/AuthPages"), "AccountPage");
-const AdminUsersPage = lazyRouteComponent(
-  () => import("@/pages/AuthPages"),
-  "AdminUsersPage",
-);
+const AdminUsersPage = lazyRouteComponent(() => import("@/pages/AuthPages"), "AdminUsersPage");
 const AdminBillingPage = lazyRouteComponent(
   () => import("@/pages/BillingPages"),
   "AdminBillingPage",
@@ -61,10 +52,14 @@ const blocksRoute = createRoute({
 const blockRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/blocks/$blockID",
-  validateSearch: (search: Record<string, unknown>): { tab?: "overview" | "transactions" | "withdrawals" } => ({
-    tab: typeof search.tab === "string" && ["overview", "transactions", "withdrawals"].includes(search.tab)
-      ? search.tab as "overview" | "transactions" | "withdrawals"
-      : undefined,
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { tab?: "overview" | "transactions" | "withdrawals" } => ({
+    tab:
+      typeof search.tab === "string" &&
+      ["overview", "transactions", "withdrawals"].includes(search.tab)
+        ? (search.tab as "overview" | "transactions" | "withdrawals")
+        : undefined,
   }),
   component: BlockRoutePage,
 });
@@ -94,7 +89,18 @@ const transactionRoute = createRoute({
   validateSearch: (search: Record<string, unknown>) => {
     const tab = typeof search.tab === "string" ? search.tab : "overview";
     return {
-      tab: ["overview", "access-list", "blob", "authorizations", "user-operations", "internal-transactions", "token-transfers", "logs", "trace", "state-changes"].includes(tab)
+      tab: [
+        "overview",
+        "access-list",
+        "blob",
+        "authorizations",
+        "user-operations",
+        "internal-transactions",
+        "token-transfers",
+        "logs",
+        "trace",
+        "state-changes",
+      ].includes(tab)
         ? tab
         : "overview",
     };
@@ -140,9 +146,10 @@ const verifyRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/verify",
   validateSearch: (search: Record<string, unknown>): { address?: string } => ({
-    address: typeof search.address === "string" && isAddress(search.address)
-      ? getAddress(search.address)
-      : undefined,
+    address:
+      typeof search.address === "string" && isAddress(search.address)
+        ? getAddress(search.address)
+        : undefined,
   }),
   component: VerifyRoutePage,
 });
@@ -157,12 +164,14 @@ const chartMetricRoute = createRoute({
   validateSearch: (search: Record<string, unknown>): ChartSearch => {
     const ranges = ["24h", "7d", "30d", "90d", "1y", "all", "custom"];
     const intervals = ["auto", "hour", "day", "week", "month"];
-    const range = typeof search.range === "string" && ranges.includes(search.range)
-      ? search.range as ChartSearch["range"]
-      : "7d";
-    const interval = typeof search.interval === "string" && intervals.includes(search.interval)
-      ? search.interval as ChartSearch["interval"]
-      : "auto";
+    const range =
+      typeof search.range === "string" && ranges.includes(search.range)
+        ? (search.range as ChartSearch["range"])
+        : "7d";
+    const interval =
+      typeof search.interval === "string" && intervals.includes(search.interval)
+        ? (search.interval as ChartSearch["interval"])
+        : "auto";
     return {
       range,
       interval,
@@ -185,7 +194,9 @@ const statusRoute = createRoute({
 const accountRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/account",
-  validateSearch: (search: Record<string, unknown>): { tab?: "overview" | "api-keys" | "billing" } => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { tab?: "overview" | "api-keys" | "billing" } => ({
     tab: search.tab === "api-keys" || search.tab === "billing" ? search.tab : undefined,
   }),
   component: AccountRoutePage,

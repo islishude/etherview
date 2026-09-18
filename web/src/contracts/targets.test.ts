@@ -67,28 +67,34 @@ describe("contract interaction targets", () => {
     const fence = captureInteractionFence(target, "31337", wallet);
     expect(assertFreshDelegationFence(fence, wallet, binding)).toEqual(target);
 
-    await expect(refreshInteractionTarget({
-      fence,
-      getCurrentWallet: () => wallet,
-      loadFreshDelegation: async () => ({ ...binding, block_number: "13" }),
-    })).rejects.toMatchObject({ code: "BINDING_CHANGED" });
+    await expect(
+      refreshInteractionTarget({
+        fence,
+        getCurrentWallet: () => wallet,
+        loadFreshDelegation: async () => ({ ...binding, block_number: "13" }),
+      }),
+    ).rejects.toMatchObject({ code: "BINDING_CHANGED" });
 
-    await expect(refreshInteractionTarget({
-      fence,
-      getCurrentWallet: () => wallet,
-      loadFreshDelegation: async () => ({ ...binding, block_number: "13" }),
-      requireExactDelegationSnapshot: false,
-    })).resolves.toMatchObject({
+    await expect(
+      refreshInteractionTarget({
+        fence,
+        getCurrentWallet: () => wallet,
+        loadFreshDelegation: async () => ({ ...binding, block_number: "13" }),
+        requireExactDelegationSnapshot: false,
+      }),
+    ).resolves.toMatchObject({
       kind: "delegated_eoa",
       delegationBlockNumber: "13",
     });
 
-    await expect(refreshInteractionTarget({
-      fence,
-      getCurrentWallet: () => wallet,
-      loadFreshDelegation: async () => ({ ...binding, delegate_code_hash: PROXY_HASH }),
-      requireExactDelegationSnapshot: false,
-    })).rejects.toMatchObject({ code: "BINDING_CHANGED" });
+    await expect(
+      refreshInteractionTarget({
+        fence,
+        getCurrentWallet: () => wallet,
+        loadFreshDelegation: async () => ({ ...binding, delegate_code_hash: PROXY_HASH }),
+        requireExactDelegationSnapshot: false,
+      }),
+    ).rejects.toMatchObject({ code: "BINDING_CHANGED" });
   });
 
   it("opens ordinary implementation interaction without exposing verified management", () => {
@@ -108,47 +114,46 @@ describe("contract interaction targets", () => {
     ]);
     for (const details of [unverified, { ...unverified, status: "verified" as const }]) {
       const targets = buildContractInteractionTargets(PROXY.toLowerCase(), details);
-      expect(targets.map(({ kind }) => kind)).toEqual([
-        "contract",
-        "implementation_as_proxy",
-      ]);
-		const implementation = targetOfKind(targets, "implementation_as_proxy");
-		expect(isInteractionFunctionAllowed(implementation, "value()")).toBe(true);
-		expect(isInteractionFunctionAllowed(implementation, "upgradeToAndCall(address,bytes)")).toBe(false);
+      expect(targets.map(({ kind }) => kind)).toEqual(["contract", "implementation_as_proxy"]);
+      const implementation = targetOfKind(targets, "implementation_as_proxy");
+      expect(isInteractionFunctionAllowed(implementation, "value()")).toBe(true);
+      expect(isInteractionFunctionAllowed(implementation, "upgradeToAndCall(address,bytes)")).toBe(
+        false,
+      );
       expect(Object.isFrozen(targets)).toBe(true);
       expect(Object.isFrozen(targets[0])).toBe(true);
     }
   });
 
-	it("keeps code-hash implementation artifacts readable but never write-authorized", () => {
-		for (const pattern of ["uups", "clone", "beacon"] as const) {
-			const base = proxyDetails(pattern);
-			const implementation = {
-				...base.implementation!,
-				verification_state: "unverified" as const,
-				artifact_resolution: "code_hash" as const,
-			};
-			const details = proxyDetails(pattern, {
-				status: "detected_unverified",
-				binding_id: undefined,
-				implementation,
-				implementation_interaction: {
-					...base.implementation_interaction!,
-					implementation,
-				},
-			});
-			const target = targetOfKind(
-				buildContractInteractionTargets(PROXY, details),
-				"implementation_as_proxy",
-			);
-			expect(target).toMatchObject({
-				abiArtifactResolution: "code_hash",
-				supportsWrites: false,
-			});
-			expect(isInteractionFunctionAllowed(target, "value()", false)).toBe(true);
-			expect(isInteractionFunctionAllowed(target, "setValue(uint256)", true)).toBe(false);
-		}
-	});
+  it("keeps code-hash implementation artifacts readable but never write-authorized", () => {
+    for (const pattern of ["uups", "clone", "beacon"] as const) {
+      const base = proxyDetails(pattern);
+      const implementation = {
+        ...base.implementation!,
+        verification_state: "unverified" as const,
+        artifact_resolution: "code_hash" as const,
+      };
+      const details = proxyDetails(pattern, {
+        status: "detected_unverified",
+        binding_id: undefined,
+        implementation,
+        implementation_interaction: {
+          ...base.implementation_interaction!,
+          implementation,
+        },
+      });
+      const target = targetOfKind(
+        buildContractInteractionTargets(PROXY, details),
+        "implementation_as_proxy",
+      );
+      expect(target).toMatchObject({
+        abiArtifactResolution: "code_hash",
+        supportsWrites: false,
+      });
+      expect(isInteractionFunctionAllowed(target, "value()", false)).toBe(true);
+      expect(isInteractionFunctionAllowed(target, "setValue(uint256)", true)).toBe(false);
+    }
+  });
 
   it("builds UUPS as-proxy and UUID-only direct implementation targets", () => {
     const targets = buildContractInteractionTargets(PROXY, proxyDetails("uups"));
@@ -180,10 +185,12 @@ describe("contract interaction targets", () => {
     expect(isInteractionFunctionAllowed(direct, PROXIABLE_UUID_SIGNATURE)).toBe(true);
     expect(isInteractionFunctionAllowed(direct, PROXIABLE_UUID_SIGNATURE, true)).toBe(false);
     expect(isInteractionFunctionAllowed(direct, "upgradeToAndCall(address,bytes)")).toBe(false);
-    expect(() => assertInteractionFunctionAllowed(asProxy, PROXIABLE_UUID_SIGNATURE))
-      .toThrow(expect.objectContaining({ code: "FUNCTION_NOT_ALLOWED" }));
-    expect(() => assertInteractionFunctionAllowed(direct, PROXIABLE_UUID_SIGNATURE, true))
-      .toThrow(expect.objectContaining({ code: "FUNCTION_NOT_ALLOWED" }));
+    expect(() => assertInteractionFunctionAllowed(asProxy, PROXIABLE_UUID_SIGNATURE)).toThrow(
+      expect.objectContaining({ code: "FUNCTION_NOT_ALLOWED" }),
+    );
+    expect(() => assertInteractionFunctionAllowed(direct, PROXIABLE_UUID_SIGNATURE, true)).toThrow(
+      expect.objectContaining({ code: "FUNCTION_NOT_ALLOWED" }),
+    );
   });
 
   it("requires a valid current proxy code identity before creating bound targets", () => {
@@ -196,9 +203,10 @@ describe("contract interaction targets", () => {
       const targets = buildContractInteractionTargets(
         PROXY,
         proxyDetails("uups", {
-          implementation_interaction: proxyIdentity === undefined
-            ? undefined
-            : { ...base.implementation_interaction!, proxy: proxyIdentity },
+          implementation_interaction:
+            proxyIdentity === undefined
+              ? undefined
+              : { ...base.implementation_interaction!, proxy: proxyIdentity },
         }),
       );
       expect(targets.map(({ kind }) => kind)).not.toContain("implementation_as_proxy");
@@ -223,9 +231,9 @@ describe("contract interaction targets", () => {
     const mismatchedAdmin = proxyDetails("transparent", {
       admin: identity(OTHER, ADMIN_HASH, "proxy_admin"),
     });
-    expect(
-      buildContractInteractionTargets(PROXY, mismatchedAdmin).map(({ kind }) => kind),
-    ).toEqual(["contract", "implementation_as_proxy"]);
+    expect(buildContractInteractionTargets(PROXY, mismatchedAdmin).map(({ kind }) => kind)).toEqual(
+      ["contract", "implementation_as_proxy"],
+    );
 
     const unverifiedManager = proxyDetails("transparent", {
       management: {
@@ -233,7 +241,7 @@ describe("contract interaction targets", () => {
         target: {
           ...identity(ADMIN, ADMIN_HASH, "proxy_admin"),
           verification_state: "unverified",
-					artifact_resolution: "code_hash",
+          artifact_resolution: "code_hash",
         },
         affected_proxy_count: "1",
       },
@@ -260,10 +268,7 @@ describe("contract interaction targets", () => {
 
   it("treats an exact Clone as an implementation-as-proxy target without management", () => {
     const targets = buildContractInteractionTargets(PROXY, proxyDetails("clone"));
-    expect(targets.map(({ kind }) => kind)).toEqual([
-      "contract",
-      "implementation_as_proxy",
-    ]);
+    expect(targets.map(({ kind }) => kind)).toEqual(["contract", "implementation_as_proxy"]);
     expect(targetOfKind(targets, "implementation_as_proxy")).toMatchObject({
       transactionTarget: PROXY,
       abiAddress: IMPLEMENTATION,
@@ -271,96 +276,95 @@ describe("contract interaction targets", () => {
       proxyPattern: "clone",
       supportsWrites: true,
     });
-    expect(targetOfKind(targets, "implementation_as_proxy")).not.toHaveProperty(
-      "standardVersion",
-    );
+    expect(targetOfKind(targets, "implementation_as_proxy")).not.toHaveProperty("standardVersion");
   });
 
-		it("requires a decoded verified CWIA schema only for writes and fences its digest", () => {
-			const unavailable = cwiaProxyDetails({
-				immutable_args_decoding: {
-					status: "schema_unavailable",
-					reason: "ast_unavailable",
-					arguments: [],
-				},
-			});
-			const readOnly = targetOfKind(
-				buildContractInteractionTargets(PROXY, unavailable),
-				"implementation_as_proxy",
-			);
-			expect(readOnly).toMatchObject({
-				proxyMechanism: "cwia",
-				proxyPattern: "clone",
-				bindingId: BINDING_ID,
-				supportsWrites: false,
-			});
-			expect(isInteractionFunctionAllowed(readOnly, "owner()", false)).toBe(true);
-			expect(isInteractionFunctionAllowed(readOnly, "setValue(uint256)", true)).toBe(false);
+  it("requires a decoded verified CWIA schema only for writes and fences its digest", () => {
+    const unavailable = cwiaProxyDetails({
+      immutable_args_decoding: {
+        status: "schema_unavailable",
+        reason: "ast_unavailable",
+        arguments: [],
+      },
+    });
+    const readOnly = targetOfKind(
+      buildContractInteractionTargets(PROXY, unavailable),
+      "implementation_as_proxy",
+    );
+    expect(readOnly).toMatchObject({
+      proxyMechanism: "cwia",
+      proxyPattern: "clone",
+      bindingId: BINDING_ID,
+      supportsWrites: false,
+    });
+    expect(isInteractionFunctionAllowed(readOnly, "owner()", false)).toBe(true);
+    expect(isInteractionFunctionAllowed(readOnly, "setValue(uint256)", true)).toBe(false);
 
-			const decoded = cwiaProxyDetails();
-			const writable = targetOfKind(
-				buildContractInteractionTargets(PROXY, decoded),
-				"implementation_as_proxy",
-			);
-			expect(writable).toMatchObject({
-				proxyMechanism: "cwia",
-				bindingId: BINDING_ID,
-				cwiaSchemaSHA256: CWIA_SCHEMA_HASH,
-				supportsWrites: true,
-			});
-			expect(isInteractionFunctionAllowed(writable, "setValue(uint256)", true)).toBe(true);
+    const decoded = cwiaProxyDetails();
+    const writable = targetOfKind(
+      buildContractInteractionTargets(PROXY, decoded),
+      "implementation_as_proxy",
+    );
+    expect(writable).toMatchObject({
+      proxyMechanism: "cwia",
+      bindingId: BINDING_ID,
+      cwiaSchemaSHA256: CWIA_SCHEMA_HASH,
+      supportsWrites: true,
+    });
+    expect(isInteractionFunctionAllowed(writable, "setValue(uint256)", true)).toBe(true);
 
-			const fence = captureInteractionFence(writable, "31337", wallet);
-			const changed = cwiaProxyDetails({
-				immutable_args_decoding: {
-					...decoded.immutable_args_decoding!,
-					schema: {
-						...decoded.immutable_args_decoding!.schema!,
-						sha256: `0x${"88".repeat(32)}`,
-					},
-				},
-			});
-			expectFenceCode(
-				() => assertFreshInteractionFence(fence, wallet, proxyResponse(changed)),
-				"TARGET_CHANGED",
-			);
+    const fence = captureInteractionFence(writable, "31337", wallet);
+    const changed = cwiaProxyDetails({
+      immutable_args_decoding: {
+        ...decoded.immutable_args_decoding!,
+        schema: {
+          ...decoded.immutable_args_decoding!.schema!,
+          sha256: `0x${"88".repeat(32)}`,
+        },
+      },
+    });
+    expectFenceCode(
+      () => assertFreshInteractionFence(fence, wallet, proxyResponse(changed)),
+      "TARGET_CHANGED",
+    );
 
-			const unverified = cwiaProxyDetails({
-				status: "detected_unverified",
-				confidence: "high",
-				binding_id: undefined,
-				immutable_args_decoding: {
-					...decoded.immutable_args_decoding!,
-					schema_resolution: "code_hash",
-				},
-			});
-			const unverifiedTargets = buildContractInteractionTargets(PROXY, unverified);
-			expect(unverifiedTargets.map(({ kind }) => kind))
-				.toEqual(["contract", "implementation_as_proxy"]);
-			const unverifiedRead = targetOfKind(unverifiedTargets, "implementation_as_proxy");
-			expect(unverifiedRead).toMatchObject({
-				proxyMechanism: "cwia",
-				proxyPattern: "clone",
-				supportsWrites: false,
-			});
-			expect(unverifiedRead).not.toHaveProperty("bindingId");
-			expect(unverifiedRead).not.toHaveProperty("cwiaSchemaSHA256");
-			expect(isInteractionFunctionAllowed(unverifiedRead, "owner()", false)).toBe(true);
-			expect(isInteractionFunctionAllowed(unverifiedRead, "setValue(uint256)", true)).toBe(false);
-			const unverifiedFence = captureInteractionFence(unverifiedRead, "31337", wallet);
-			expect(assertFreshInteractionFence(
-				unverifiedFence,
-				wallet,
-				proxyResponse(unverified),
-			)).toEqual(unverifiedRead);
+    const unverified = cwiaProxyDetails({
+      status: "detected_unverified",
+      confidence: "high",
+      binding_id: undefined,
+      immutable_args_decoding: {
+        ...decoded.immutable_args_decoding!,
+        schema_resolution: "code_hash",
+      },
+    });
+    const unverifiedTargets = buildContractInteractionTargets(PROXY, unverified);
+    expect(unverifiedTargets.map(({ kind }) => kind)).toEqual([
+      "contract",
+      "implementation_as_proxy",
+    ]);
+    const unverifiedRead = targetOfKind(unverifiedTargets, "implementation_as_proxy");
+    expect(unverifiedRead).toMatchObject({
+      proxyMechanism: "cwia",
+      proxyPattern: "clone",
+      supportsWrites: false,
+    });
+    expect(unverifiedRead).not.toHaveProperty("bindingId");
+    expect(unverifiedRead).not.toHaveProperty("cwiaSchemaSHA256");
+    expect(isInteractionFunctionAllowed(unverifiedRead, "owner()", false)).toBe(true);
+    expect(isInteractionFunctionAllowed(unverifiedRead, "setValue(uint256)", true)).toBe(false);
+    const unverifiedFence = captureInteractionFence(unverifiedRead, "31337", wallet);
+    expect(assertFreshInteractionFence(unverifiedFence, wallet, proxyResponse(unverified))).toEqual(
+      unverifiedRead,
+    );
 
-			const inexact = cwiaProxyDetails({
-				...unverified,
-				evidence_state: "partial",
-			});
-			expect(buildContractInteractionTargets(PROXY, inexact).map(({ kind }) => kind))
-				.toEqual(["contract"]);
-		});
+    const inexact = cwiaProxyDetails({
+      ...unverified,
+      evidence_state: "partial",
+    });
+    expect(buildContractInteractionTargets(PROXY, inexact).map(({ kind }) => kind)).toEqual([
+      "contract",
+    ]);
+  });
 
   it("builds selector-scoped Diamond facet targets without inventing one implementation", () => {
     const details = diamondProxyDetails();
@@ -384,14 +388,12 @@ describe("contract interaction targets", () => {
 
   it("disables Diamond facet interaction for partial snapshots and fences route changes", () => {
     const partial = diamondProxyDetails({ completeness: "partial", truncated: true });
-    expect(buildContractInteractionTargets(PROXY, partial).map(({ kind }) => kind))
-      .toEqual(["contract"]);
+    expect(buildContractInteractionTargets(PROXY, partial).map(({ kind }) => kind)).toEqual([
+      "contract",
+    ]);
 
     const loaded = diamondProxyDetails();
-    const target = targetOfKind(
-      buildContractInteractionTargets(PROXY, loaded),
-      "diamond_facet",
-    );
+    const target = targetOfKind(buildContractInteractionTargets(PROXY, loaded), "diamond_facet");
     const fence = captureInteractionFence(target, "31337", wallet);
     const changed = diamondProxyDetails({ selectorFacet: OTHER });
     expectFenceCode(
@@ -407,11 +409,10 @@ describe("interaction fences", () => {
       buildContractInteractionTargets(PROXY, proxyDetails("uups")),
       "implementation_as_proxy",
     );
-    const fence = captureInteractionFence(
-      target,
-      "0x7a69",
-      { ...wallet, account: ACCOUNT.toLowerCase() },
-    );
+    const fence = captureInteractionFence(target, "0x7a69", {
+      ...wallet,
+      account: ACCOUNT.toLowerCase(),
+    });
 
     expect(fence).toMatchObject({
       chainID: "31337",
@@ -458,10 +459,7 @@ describe("interaction fences", () => {
     ["PROVIDER_REVISION_CHANGED", { ...wallet, revision: 8 }],
   ] as const)("rejects a stale wallet with %s", (code, current) => {
     const fence = uupsFence();
-    expectFenceCode(
-      () => assertFreshInteractionFence(fence, current, proxyResponse()),
-      code,
-    );
+    expectFenceCode(() => assertFreshInteractionFence(fence, current, proxyResponse()), code);
   });
 
   it("distinguishes fresh chain, UUPS management binding, target identity, and management scope", () => {
@@ -471,11 +469,12 @@ describe("interaction fences", () => {
       "CHAIN_CHANGED",
     );
     expectFenceCode(
-      () => assertFreshInteractionFence(
-        fence,
-        wallet,
-        proxyResponse(proxyDetails("uups", { binding_id: NEXT_BINDING_ID })),
-      ),
+      () =>
+        assertFreshInteractionFence(
+          fence,
+          wallet,
+          proxyResponse(proxyDetails("uups", { binding_id: NEXT_BINDING_ID })),
+        ),
       "BINDING_CHANGED",
     );
     expectFenceCode(
@@ -483,9 +482,7 @@ describe("interaction fences", () => {
         assertFreshInteractionFence(
           fence,
           wallet,
-          proxyResponse(
-            changedInteraction("implementation", `0x${"88".repeat(32)}`),
-          ),
+          proxyResponse(changedInteraction("implementation", `0x${"88".repeat(32)}`)),
         ),
       "TARGET_CHANGED",
     );
@@ -494,19 +491,14 @@ describe("interaction fences", () => {
         assertFreshInteractionFence(
           fence,
           wallet,
-          proxyResponse(
-            changedInteraction("proxy", `0x${"99".repeat(32)}`),
-          ),
+          proxyResponse(changedInteraction("proxy", `0x${"99".repeat(32)}`)),
         ),
       "TARGET_CHANGED",
     );
 
     const beacon = proxyDetails("beacon");
     const beaconFence = captureInteractionFence(
-      targetOfKind(
-        buildContractInteractionTargets(PROXY, beacon),
-        "beacon_management",
-      ),
+      targetOfKind(buildContractInteractionTargets(PROXY, beacon), "beacon_management"),
       "31337",
       wallet,
     );
@@ -524,58 +516,59 @@ describe("interaction fences", () => {
     );
   });
 
-	it("distinguishes a transient unavailable proxy stage from a changed target", () => {
-		const fence = uupsFence();
-		const unavailable: ProxyDetails = {
-			address: PROXY,
-			status: "unavailable",
-			snapshot: {
-				chain_id: "31337",
-				block_number: "21",
-				block_hash: `0x${"77".repeat(32)}`,
-			},
-			evidence: [],
-		};
-		expectFenceCode(
-			() => assertFreshInteractionFence(fence, wallet, proxyResponse(unavailable)),
-			"FRESH_PROXY_UNAVAILABLE",
-		);
-		expectFenceCode(
-			() => assertFreshInteractionFence(
-				fence,
-				wallet,
-				proxyResponse({ ...unavailable, status: "failed" }),
-			),
-			"BINDING_CHANGED",
-		);
-	});
+  it("distinguishes a transient unavailable proxy stage from a changed target", () => {
+    const fence = uupsFence();
+    const unavailable: ProxyDetails = {
+      address: PROXY,
+      status: "unavailable",
+      snapshot: {
+        chain_id: "31337",
+        block_number: "21",
+        block_hash: `0x${"77".repeat(32)}`,
+      },
+      evidence: [],
+    };
+    expectFenceCode(
+      () => assertFreshInteractionFence(fence, wallet, proxyResponse(unavailable)),
+      "FRESH_PROXY_UNAVAILABLE",
+    );
+    expectFenceCode(
+      () =>
+        assertFreshInteractionFence(
+          fence,
+          wallet,
+          proxyResponse({ ...unavailable, status: "failed" }),
+        ),
+      "BINDING_CHANGED",
+    );
+  });
 
-	it("fails closed when an implementation artifact resolution changes", () => {
-		const exact = proxyDetails("clone");
-		const codeHashImplementation = {
-			...exact.implementation!,
-			verification_state: "unverified" as const,
-			artifact_resolution: "code_hash" as const,
-		};
-		const codeHashOnly = proxyDetails("clone", {
-			status: "detected_unverified",
-			binding_id: undefined,
-			implementation: codeHashImplementation,
-			implementation_interaction: {
-				...exact.implementation_interaction!,
-				implementation: codeHashImplementation,
-			},
-		});
-		const target = targetOfKind(
-			buildContractInteractionTargets(PROXY, codeHashOnly),
-			"implementation_as_proxy",
-		);
-		const fence = captureInteractionFence(target, "31337", wallet);
-		expectFenceCode(
-			() => assertFreshInteractionFence(fence, wallet, proxyResponse(exact)),
-			"TARGET_CHANGED",
-		);
-	});
+  it("fails closed when an implementation artifact resolution changes", () => {
+    const exact = proxyDetails("clone");
+    const codeHashImplementation = {
+      ...exact.implementation!,
+      verification_state: "unverified" as const,
+      artifact_resolution: "code_hash" as const,
+    };
+    const codeHashOnly = proxyDetails("clone", {
+      status: "detected_unverified",
+      binding_id: undefined,
+      implementation: codeHashImplementation,
+      implementation_interaction: {
+        ...exact.implementation_interaction!,
+        implementation: codeHashImplementation,
+      },
+    });
+    const target = targetOfKind(
+      buildContractInteractionTargets(PROXY, codeHashOnly),
+      "implementation_as_proxy",
+    );
+    const fence = captureInteractionFence(target, "31337", wallet);
+    expectFenceCode(
+      () => assertFreshInteractionFence(fence, wallet, proxyResponse(exact)),
+      "TARGET_CHANGED",
+    );
+  });
 
   it("forces one fresh load for bound targets and rechecks wallet drift afterward", async () => {
     const fence = uupsFence();
@@ -754,29 +747,27 @@ function proxyDetails(
     ...(pattern === "clone" ? {} : { standard_version: "5.6.1" as const }),
     evidence_state: "exact",
     confidence: "verified",
-    proxy: pattern === "clone"
-      ? unverifiedIdentity(PROXY, PROXY_HASH)
-      : identity(PROXY, PROXY_HASH),
+    proxy:
+      pattern === "clone" ? unverifiedIdentity(PROXY, PROXY_HASH) : identity(PROXY, PROXY_HASH),
     implementation: identity(
       IMPLEMENTATION,
       IMPLEMENTATION_HASH,
       pattern === "uups" ? "uups_implementation" : undefined,
     ),
-	implementation_interaction: {
-		mechanism: pattern === "clone" ? "eip1167" : pattern === "beacon" ? "beacon" : "eip1967",
-		pattern,
-		proxy: pattern === "clone"
-			? unverifiedIdentity(PROXY, PROXY_HASH)
-			: identity(PROXY, PROXY_HASH),
-		implementation: identity(
-			IMPLEMENTATION,
-			IMPLEMENTATION_HASH,
-			pattern === "uups" ? "uups_implementation" : undefined,
-		),
-		...(pattern === "beacon"
-			? { beacon: identity(BEACON, BEACON_HASH, "upgradeable_beacon") }
-			: {}),
-	},
+    implementation_interaction: {
+      mechanism: pattern === "clone" ? "eip1167" : pattern === "beacon" ? "beacon" : "eip1967",
+      pattern,
+      proxy:
+        pattern === "clone" ? unverifiedIdentity(PROXY, PROXY_HASH) : identity(PROXY, PROXY_HASH),
+      implementation: identity(
+        IMPLEMENTATION,
+        IMPLEMENTATION_HASH,
+        pattern === "uups" ? "uups_implementation" : undefined,
+      ),
+      ...(pattern === "beacon"
+        ? { beacon: identity(BEACON, BEACON_HASH, "upgradeable_beacon") }
+        : {}),
+    },
     binding_id: BINDING_ID,
     evidence: [],
     ...(pattern === "transparent"
@@ -804,36 +795,50 @@ function proxyDetails(
 }
 
 function cwiaProxyDetails(overrides: Partial<ProxyDetails> = {}): ProxyDetails {
-	const clone = proxyDetails("clone");
-	return {
-		...clone,
-		mechanism: "cwia",
-		immutable_args: `0x${"12".repeat(52)}`,
-		immutable_args_decoding: {
-			status: "decoded",
-			schema_resolution: "exact_address",
-			schema: {
-				version: 2,
-				source: "solidity_ast",
-				encoding: "solady-cwia-offsets",
-				helper_sha256: `0x${"bc".repeat(32)}`,
-				sha256: CWIA_SCHEMA_HASH,
-				fields: [
-					{ name: "owner", type: "address", offset: 0, role: "value", getters: ["owner()"], size: { kind: "fixed", bytes: 20 } },
-					{ name: "number", type: "uint256", offset: 20, role: "value", getters: ["number()"], size: { kind: "fixed", bytes: 32 } },
-				],
-			},
-			arguments: [
-				{ name: "owner", type: "address", offset: 0, length: 20, value: ACCOUNT },
-				{ name: "number", type: "uint256", offset: 20, length: 32, value: "42" },
-			],
-		},
-		implementation_interaction: {
-			...clone.implementation_interaction!,
-			mechanism: "cwia",
-		},
-		...overrides,
-	};
+  const clone = proxyDetails("clone");
+  return {
+    ...clone,
+    mechanism: "cwia",
+    immutable_args: `0x${"12".repeat(52)}`,
+    immutable_args_decoding: {
+      status: "decoded",
+      schema_resolution: "exact_address",
+      schema: {
+        version: 2,
+        source: "solidity_ast",
+        encoding: "solady-cwia-offsets",
+        helper_sha256: `0x${"bc".repeat(32)}`,
+        sha256: CWIA_SCHEMA_HASH,
+        fields: [
+          {
+            name: "owner",
+            type: "address",
+            offset: 0,
+            role: "value",
+            getters: ["owner()"],
+            size: { kind: "fixed", bytes: 20 },
+          },
+          {
+            name: "number",
+            type: "uint256",
+            offset: 20,
+            role: "value",
+            getters: ["number()"],
+            size: { kind: "fixed", bytes: 32 },
+          },
+        ],
+      },
+      arguments: [
+        { name: "owner", type: "address", offset: 0, length: 20, value: ACCOUNT },
+        { name: "number", type: "uint256", offset: 20, length: 32, value: "42" },
+      ],
+    },
+    implementation_interaction: {
+      ...clone.implementation_interaction!,
+      mechanism: "cwia",
+    },
+    ...overrides,
+  };
 }
 
 function proxyResponse(
@@ -896,7 +901,7 @@ function diamondProxyDetails({
     ],
     diamond: {
       completeness,
-      validation: completeness === "complete" ? "full" as const : "sampled" as const,
+      validation: completeness === "complete" ? ("full" as const) : ("sampled" as const),
       facets: [
         {
           address: activeFacet,
@@ -938,10 +943,7 @@ function diamondProxyDetails({
   };
 }
 
-function changedInteraction(
-  subject: "proxy" | "implementation",
-  codeHash: string,
-): ProxyDetails {
+function changedInteraction(subject: "proxy" | "implementation", codeHash: string): ProxyDetails {
   const details = proxyDetails("uups");
   return {
     ...details,
@@ -959,30 +961,25 @@ function changedInteraction(
 function identity(
   address: string,
   codeHash: string,
-  artifactKind?: NonNullable<
-    ProxyDetails["implementation"]
-  >["artifact_kind"],
+  artifactKind?: NonNullable<ProxyDetails["implementation"]>["artifact_kind"],
 ): NonNullable<ProxyDetails["implementation"]> {
   return {
     address,
     code_hash: codeHash,
     verification_state: "verified",
-		artifact_resolution: "exact_address",
+    artifact_resolution: "exact_address",
     ...(artifactKind === undefined
       ? {}
       : { artifact_kind: artifactKind, standard_version: "5.6.1" }),
   };
 }
 
-function unverifiedIdentity(
-	address: string,
-	codeHash: string,
-): NonNullable<ProxyDetails["proxy"]> {
-	return {
-		address,
-		code_hash: codeHash,
-		verification_state: "unverified",
-	};
+function unverifiedIdentity(address: string, codeHash: string): NonNullable<ProxyDetails["proxy"]> {
+  return {
+    address,
+    code_hash: codeHash,
+    verification_state: "unverified",
+  };
 }
 
 function expectFenceCode(action: () => unknown, code: InteractionFenceErrorCode): void {

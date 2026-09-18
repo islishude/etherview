@@ -61,8 +61,7 @@ const authSIWEMessage =
   `Expiration Time: ${authSIWEExpiresAt}\n` +
   `Request ID: ${authChallengeID}`;
 const authUserCursor = "users/snapshot + page=2";
-const billingPersonalCursor =
-  "personal/ledger + page=2?exact=true/#";
+const billingPersonalCursor = "personal/ledger + page=2?exact=true/#";
 const billingAdminCursor = "admin/ledger + page=2?exact=true/#";
 const billingPaymentID = "00000000-0000-7000-8000-000000000066";
 const billingHiddenUserID = "00000000-0000-7000-8000-000000000067";
@@ -109,7 +108,9 @@ interface BrowserAuthRequest {
   search: string;
 }
 
-test("embedded SPA deep links, language, theme, and keyboard entry remain functional", async ({ page }) => {
+test("embedded SPA deep links, language, theme, and keyboard entry remain functional", async ({
+  page,
+}) => {
   const response = await page.goto("/blocks/1");
   expect(response?.status()).toBe(200);
   await expect(page.getByRole("heading", { name: "Block", exact: true })).toBeVisible();
@@ -120,7 +121,9 @@ test("embedded SPA deep links, language, theme, and keyboard entry remain functi
 
   await activateInView(page.getByRole("button", { name: "切换到中文" }));
   await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
-  await expect(page.getByRole("navigation", { name: "主导航" }).getByText("区块", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "主导航" }).getByText("区块", { exact: true }),
+  ).toBeVisible();
 
   await page.reload();
   await page.keyboard.press("Tab");
@@ -131,10 +134,14 @@ test("embedded SPA deep links, language, theme, and keyboard entry remain functi
 
   await page.goto("/contracts");
   await expect(page.getByRole("heading", { name: /404 ·/ })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "合约" })).toHaveCount(0);
+  await expect(
+    page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "合约" }),
+  ).toHaveCount(0);
 });
 
-test("ERC-4337 UserOperations browse globally and from transaction and address activity", async ({ page }) => {
+test("ERC-4337 UserOperations browse globally and from transaction and address activity", async ({
+  page,
+}) => {
   const response = await page.goto("/user-operations");
   expect(response?.status()).toBe(200);
   await expect(page.getByRole("heading", { name: "UserOperations" })).toBeVisible();
@@ -146,7 +153,9 @@ test("ERC-4337 UserOperations browse globally and from transaction and address a
 
   await activateInView(list.getByRole("link", { name: /0x121212/u }));
   await expect(page).toHaveURL(`/user-op/${userOperationHash}`);
-  await expect(page.getByRole("heading", { name: "UserOperation", exact: true, level: 1 })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "UserOperation", exact: true, level: 1 }),
+  ).toBeVisible();
   await expect(page.getByText("paymaster rejected", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("0xdeadbeef", { exact: true })).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
@@ -154,10 +163,15 @@ test("ERC-4337 UserOperations browse globally and from transaction and address a
 
   await page.goto(`/tx/${decodedTransactionHash}?tab=user-operations`);
   const transactionTabs = page.getByRole("tablist", { name: "Transaction detail sections" });
-  await expect(transactionTabs.getByRole("tab", { name: "User Operations" })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("table", {
-    name: "Canonical ERC-4337 operations from one continuous indexed snapshot.",
-  })).toBeVisible();
+  await expect(transactionTabs.getByRole("tab", { name: "User Operations" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(
+    page.getByRole("table", {
+      name: "Canonical ERC-4337 operations from one continuous indexed snapshot.",
+    }),
+  ).toBeVisible();
 
   await page.goto(`/address/${walletAccount}?tab=user-operations`);
   await expect(page.getByRole("heading", { name: "User Ops", exact: true })).toBeVisible();
@@ -166,14 +180,10 @@ test("ERC-4337 UserOperations browse globally and from transaction and address a
 });
 
 test("verification compiler versions preserve semantic order", async ({ page }) => {
-  const versions = [
-    "0.8.3+commit.8d00100c",
-    "0.8.20+commit.a1b79de6",
-    "0.8.30+commit.73712a01",
-  ];
+  const versions = ["0.8.3+commit.8d00100c", "0.8.20+commit.a1b79de6", "0.8.30+commit.73712a01"];
   await page.route("**/api/v1/config", async (route) => {
     const response = await route.fetch();
-    const payload = await response.json() as {
+    const payload = (await response.json()) as {
       data: { features: { verification: boolean } };
     };
     payload.data.features.verification = true;
@@ -191,11 +201,13 @@ test("verification compiler versions preserve semantic order", async ({ page }) 
   await assertA11yAndNoOverflow(page, "semantic compiler version order");
 });
 
-test("ENS primary names stay snapshot-stable, disclose addresses, and normalize search", async ({ page }) => {
+test("ENS primary names stay snapshot-stable, disclose addresses, and normalize search", async ({
+  page,
+}) => {
   const snapshots: string[] = [];
   await page.route("**/api/v1/config", async (route) => {
     const response = await route.fetch();
-    const payload = await response.json() as { data: { features: Record<string, boolean> } };
+    const payload = (await response.json()) as { data: { features: Record<string, boolean> } };
     payload.data.features.ens = true;
     await route.fulfill({ response, json: payload });
   });
@@ -206,16 +218,18 @@ test("ENS primary names stay snapshot-stable, disclose addresses, and normalize 
     const addresses = (url.searchParams.get("addresses") ?? "").split(",").filter(Boolean);
     await fulfillAPIEnvelope(route, {
       snapshot: snapshot ?? "ens-browser-snapshot",
-      items: addresses.map((value) => value.toLowerCase() === address.toLowerCase()
-        ? {
-            address: value,
-            state: "resolved",
-            primary_name: {
-              name: "alice-with-an-intentionally-long-name.custom",
-              source: "custom_ens",
-            },
-          }
-        : { address: value, state: "not_found" }),
+      items: addresses.map((value) =>
+        value.toLowerCase() === address.toLowerCase()
+          ? {
+              address: value,
+              state: "resolved",
+              primary_name: {
+                name: "alice-with-an-intentionally-long-name.custom",
+                source: "custom_ens",
+              },
+            }
+          : { address: value, state: "not_found" },
+      ),
     });
   });
   await page.route("**/api/v1/search**", async (route) => {
@@ -223,7 +237,9 @@ test("ENS primary names stay snapshot-stable, disclose addresses, and normalize 
   });
 
   await page.goto(`/address/${address}`);
-  const primary = page.getByText("alice-with-an-intentionally-long-name.custom", { exact: true }).first();
+  const primary = page
+    .getByText("alice-with-an-intentionally-long-name.custom", { exact: true })
+    .first();
   await expect(primary).toBeVisible();
   await expect(primary).toHaveAttribute("title", "alice-with-an-intentionally-long-name.custom");
   await expect(page.getByText("Custom ENS", { exact: true }).first()).toBeVisible();
@@ -243,7 +259,9 @@ test("ENS primary names stay snapshot-stable, disclose addresses, and normalize 
   await assertA11yAndNoOverflow(page, "ENS primary-name search at 390px");
 });
 
-test("transaction calldata separates decoded evidence from the read-only raw value", async ({ page }) => {
+test("transaction calldata separates decoded evidence from the read-only raw value", async ({
+  page,
+}) => {
   const traceRequests: string[] = [];
   const internalTransactionRequests: string[] = [];
   page.on("request", (request) => {
@@ -262,8 +280,9 @@ test("transaction calldata separates decoded evidence from the read-only raw val
   const internalTab = page.getByRole("tab", { name: "Internal Transactions" });
   const tokenTab = page.getByRole("tab", { name: "Token transfers" });
   await expect(internalTab).toBeVisible();
-  expect(await internalTab.evaluate((element) => element.nextElementSibling?.textContent))
-    .toBe(await tokenTab.textContent());
+  expect(await internalTab.evaluate((element) => element.nextElementSibling?.textContent)).toBe(
+    await tokenTab.textContent(),
+  );
   await activateInView(internalTab);
   await expect(page).toHaveURL(new RegExp(`\\?tab=internal-transactions$`));
   const internalTransactions = page.getByRole("tabpanel", { name: "Internal Transactions" });
@@ -284,14 +303,18 @@ test("transaction calldata separates decoded evidence from the read-only raw val
   const evidence = decoded.getByLabel("ABI evidence");
   await expect(evidence.getByText("Transaction-time execution", { exact: true })).toBeVisible();
   await expect(evidence.getByText("Direct code", { exact: true })).toBeVisible();
-  await expect(evidence.getByText("ABI source · proxy_implementation", { exact: true })).toBeVisible();
+  await expect(
+    evidence.getByText("ABI source · proxy_implementation", { exact: true }),
+  ).toBeVisible();
   await expect(evidence.getByRole("link", { name: transparentImplementation })).toBeVisible();
 
   const rawValue = raw.getByRole("textbox", { name: "Raw calldata (Hex)" });
   await expect(rawValue).toHaveAttribute("readonly", "");
   await expect(rawValue).toHaveAttribute("wrap", "soft");
   await expect(rawValue).toHaveValue("0x3fa4f245");
-  expect(await rawValue.evaluate((element) => getComputedStyle(element).whiteSpace)).toBe("pre-wrap");
+  expect(await rawValue.evaluate((element) => getComputedStyle(element).whiteSpace)).toBe(
+    "pre-wrap",
+  );
   await expect(raw.getByRole("button", { name: "View as UTF-8" })).toBeVisible();
   await expect(raw.getByRole("button", { name: "Copy" })).toBeVisible();
 
@@ -299,12 +322,16 @@ test("transaction calldata separates decoded evidence from the read-only raw val
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole("region", { name: "已解码 calldata · value()" })).toBeVisible();
   const rawChinese = page.getByRole("region", { name: "原始 calldata" });
-  await expect(rawChinese.getByRole("textbox", { name: "原始 calldata（十六进制）" })).toHaveValue("0x3fa4f245");
+  await expect(rawChinese.getByRole("textbox", { name: "原始 calldata（十六进制）" })).toHaveValue(
+    "0x3fa4f245",
+  );
   await expect(rawChinese.getByRole("button", { name: "按 UTF-8 查看" })).toBeVisible();
   await assertAccessibleRoute(page, `/tx/${decodedTransactionHash}`);
 });
 
-test("transaction calldata renders a localized responsive recursive struct tree", async ({ page }) => {
+test("transaction calldata renders a localized responsive recursive struct tree", async ({
+  page,
+}) => {
   const requestedPaths: string[] = [];
   page.on("request", (request) => requestedPaths.push(new URL(request.url()).pathname));
 
@@ -337,8 +364,9 @@ test("transaction calldata renders a localized responsive recursive struct tree"
     name: "已解码 calldata · configure((address,uint256),uint8[2][])",
   });
   await expect(decodedChinese.getByText("2 项", { exact: true })).not.toHaveCount(0);
-  await expect(page.getByRole("textbox", { name: "原始 calldata（十六进制）" }))
-    .toHaveValue(/^0xe967f546/u);
+  await expect(page.getByRole("textbox", { name: "原始 calldata（十六进制）" })).toHaveValue(
+    /^0xe967f546/u,
+  );
   await assertA11yAndNoOverflow(page, "recursive calldata tree in Chinese at 390px");
 
   expect(requestedPaths).not.toContain(`/api/v1/contracts/${address}/verification`);
@@ -346,7 +374,9 @@ test("transaction calldata renders a localized responsive recursive struct tree"
   expect(requestedPaths).not.toContain(`/api/v1/addresses/${address}/delegation`);
 });
 
-test("failed transaction renders decoded custom error leaves in Name Type Data columns", async ({ page }) => {
+test("failed transaction renders decoded custom error leaves in Name Type Data columns", async ({
+  page,
+}) => {
   await page.goto(`/tx/${failedTransactionHash}`);
 
   const table = page.getByRole("table", { name: "Failure arguments" });
@@ -356,29 +386,43 @@ test("failed transaction renders decoded custom error leaves in Name Type Data c
   }
   await expect(table.getByText("pair", { exact: true })).toHaveCount(0);
   await expect(table.getByText("items[0]", { exact: true })).toHaveCount(0);
-  await expect(page.getByText(
-    "TransferRejected(address,uint256,(address,uint256),uint256[],uint8[3][])",
-    { exact: true },
-  )).toBeVisible();
+  await expect(
+    page.getByText("TransferRejected(address,uint256,(address,uint256),uint256[],uint8[3][])", {
+      exact: true,
+    }),
+  ).toBeVisible();
 
   await activateInView(page.getByRole("button", { name: "切换到中文" }));
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole("table", { name: "失败参数" }).getByRole("columnheader"))
-    .toHaveText(["名称", "类型", "数据"]);
+  await expect(page.getByRole("table", { name: "失败参数" }).getByRole("columnheader")).toHaveText([
+    "名称",
+    "类型",
+    "数据",
+  ]);
   await assertA11yAndNoOverflow(page, "decoded transaction failure in Chinese at 390px");
 });
 
-test("Solidity builtin failure renders concise error text without an ABI table", async ({ page }) => {
+test("Solidity builtin failure renders concise error text without an ABI table", async ({
+  page,
+}) => {
   await page.route(`**/api/v1/transactions/${failedTransactionHash}/failure`, async (route) => {
     await fulfillAPIEnvelope(route, {
-      chain_id: "1", block_number: "1", block_hash: codeHash,
-      transaction_hash: failedTransactionHash, transaction_index: "0", state: "complete",
-      error: "execution reverted", revert_data: `0x4e487b71${"0".repeat(62)}12`,
+      chain_id: "1",
+      block_number: "1",
+      block_hash: codeHash,
+      transaction_hash: failedTransactionHash,
+      transaction_index: "0",
+      state: "complete",
+      error: "execution reverted",
+      revert_data: `0x4e487b71${"0".repeat(62)}12`,
       decoding: {
-        status: "decoded", error_name: "Panic", signature: "Panic(uint256)",
+        status: "decoded",
+        error_name: "Panic",
+        signature: "Panic(uint256)",
         reason: "division or modulo by zero",
         arguments: [{ name: "code", type: "uint256", value: "18", components: [] }],
-        candidates: [], abi_source: { kind: "builtin" },
+        candidates: [],
+        abi_source: { kind: "builtin" },
       },
     });
   });
@@ -474,7 +518,12 @@ test("mempool details poll from pending through replacement to inclusion with ac
         canonical: true,
         finality: "safe",
         contract_address: delegatedAddress,
-        completeness: { core: "complete", trace: "complete", metadata: "complete", state: "complete" },
+        completeness: {
+          core: "complete",
+          trace: "complete",
+          metadata: "complete",
+          state: "complete",
+        },
       },
     });
   });
@@ -490,7 +539,9 @@ test("mempool details poll from pending through replacement to inclusion with ac
   await expect(page.getByRole("heading", { name: "Waiting for confirmation" })).toBeVisible();
   const detailPendingStatus = page.locator('[data-status="pending"]').first();
   await expect(detailPendingStatus.locator("svg.lucide-clock-3")).toBeVisible();
-  const pendingColor = await detailPendingStatus.evaluate((element) => getComputedStyle(element).color);
+  const pendingColor = await detailPendingStatus.evaluate(
+    (element) => getComputedStyle(element).color,
+  );
   await expect(page.getByRole("link", { name: predecessorTransactionHash })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Raw calldata (Hex)" })).toHaveValue("0x6000");
   await expect(page.getByText("Contract creation", { exact: true })).toBeVisible();
@@ -498,7 +549,9 @@ test("mempool details poll from pending through replacement to inclusion with ac
   await assertA11yAndNoOverflow(page, "pending transaction detail in English light mode at 320px");
 
   phase = "replaced";
-  await expect(page.getByRole("heading", { name: "Transaction replaced" })).toBeVisible({ timeout: 3_500 });
+  await expect(page.getByRole("heading", { name: "Transaction replaced" })).toBeVisible({
+    timeout: 3_500,
+  });
   const replacedStatus = page.locator('[data-status="replaced"]').first();
   await expect(replacedStatus.locator("svg.lucide-arrow-right-left")).toBeVisible();
   const replacedColor = await replacedStatus.evaluate((element) => getComputedStyle(element).color);
@@ -515,16 +568,21 @@ test("mempool details poll from pending through replacement to inclusion with ac
   phase = "included";
   const successStatus = page.locator('[data-status="success"]').first();
   await expect(successStatus).toBeVisible({ timeout: 3_500 });
-  await expect(successStatus.locator("svg.lucide-circle-check")).toHaveAttribute("aria-hidden", "true");
-  await expect(page.getByRole("tablist", { name: "交易详情分区" })).toBeVisible();
-  await expect.poll(() => derivedRequests).toContain(
-    `/api/v1/transactions/${pendingTransactionHash}/token-transfers`,
+  await expect(successStatus.locator("svg.lucide-circle-check")).toHaveAttribute(
+    "aria-hidden",
+    "true",
   );
+  await expect(page.getByRole("tablist", { name: "交易详情分区" })).toBeVisible();
+  await expect
+    .poll(() => derivedRequests)
+    .toContain(`/api/v1/transactions/${pendingTransactionHash}/token-transfers`);
   expect(detailRequests).toBeGreaterThanOrEqual(3);
   await assertA11yAndNoOverflow(page, "included transaction detail in Chinese dark mode at 320px");
 });
 
-test("EIP-7702 transaction keeps authorization outcomes lazy and uses transaction-time delegate code", async ({ page }) => {
+test("EIP-7702 transaction keeps authorization outcomes lazy and uses transaction-time delegate code", async ({
+  page,
+}) => {
   const requestedURLs: URL[] = [];
   page.on("request", (request) => requestedURLs.push(new URL(request.url())));
 
@@ -564,34 +622,49 @@ test("EIP-7702 transaction keeps authorization outcomes lazy and uses transactio
   await expect(applied.getByText(codeHash, { exact: true })).toBeVisible();
 
   const authorizationPagination = page.getByRole("navigation", { name: "Authorizations" });
-  await expect(authorizationPagination.getByRole("button", { name: "Previous page" })).toBeDisabled();
+  await expect(
+    authorizationPagination.getByRole("button", { name: "Previous page" }),
+  ).toBeDisabled();
   await activateInView(authorizationPagination.getByRole("button", { name: "Next page" }));
   const skipped = page.locator("article.transaction-log").filter({ hasText: "Authorization #1" });
   await expect(skipped.getByText("skipped", { exact: true })).toBeVisible();
   await expect(skipped.getByText("valid", { exact: true })).toBeVisible();
   await expect(skipped.getByText("nonce_mismatch", { exact: true })).toBeVisible();
-  expect(requestedURLs.some((url) =>
-    url.pathname === `/api/v1/transactions/${delegationTransactionHash}/authorizations`
-    && url.searchParams.get("cursor") === "authorization-next")).toBe(true);
+  expect(
+    requestedURLs.some(
+      (url) =>
+        url.pathname === `/api/v1/transactions/${delegationTransactionHash}/authorizations` &&
+        url.searchParams.get("cursor") === "authorization-next",
+    ),
+  ).toBe(true);
 
   await page.goto(`/tx/${delegationTransactionHash}?tab=authorizations`);
-  const deepLinkedTab = page.getByRole("tablist", { name: "Transaction detail sections" })
+  const deepLinkedTab = page
+    .getByRole("tablist", { name: "Transaction detail sections" })
     .getByRole("tab", { name: "Authorizations" });
   await expect(deepLinkedTab).toHaveAttribute("aria-selected", "true");
-  await expect(page.locator("article.transaction-log").filter({ hasText: "Authorization #0" })).toBeVisible();
+  await expect(
+    page.locator("article.transaction-log").filter({ hasText: "Authorization #0" }),
+  ).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await activateInView(page.getByRole("button", { name: "切换到中文" }));
-  await expect(page.getByRole("tablist", { name: "交易详情分区" }).getByRole("tab", { name: "授权" })).toBeVisible();
+  await expect(
+    page.getByRole("tablist", { name: "交易详情分区" }).getByRole("tab", { name: "授权" }),
+  ).toBeVisible();
   await assertA11yAndNoOverflow(page, "EIP-7702 authorizations in Chinese narrow mode");
 });
 
-test("EIP-7702 clearing keeps raw calldata and never falls back to stale delegate code", async ({ page }) => {
+test("EIP-7702 clearing keeps raw calldata and never falls back to stale delegate code", async ({
+  page,
+}) => {
   const requestedPaths: string[] = [];
   page.on("request", (request) => requestedPaths.push(new URL(request.url()).pathname));
 
   await page.goto(`/tx/${clearingTransactionHash}`);
-  expect(requestedPaths).not.toContain(`/api/v1/transactions/${clearingTransactionHash}/authorizations`);
+  expect(requestedPaths).not.toContain(
+    `/api/v1/transactions/${clearingTransactionHash}/authorizations`,
+  );
   await expect(page.getByText("EOA transaction", { exact: true })).toBeVisible();
   await expect(page.getByText("Contract interaction", { exact: true })).toHaveCount(0);
   await activateInView(page.getByText("More details", { exact: true }));
@@ -603,8 +676,12 @@ test("EIP-7702 clearing keeps raw calldata and never falls back to stale delegat
   await activateInView(page.getByRole("tab", { name: "Authorizations" }));
   const clearing = page.locator("article.transaction-log").filter({ hasText: "Authorization #0" });
   await expect(clearing.getByText("applied", { exact: true })).toBeVisible();
-  await expect(clearing.getByText("0x0000000000000000000000000000000000000000", { exact: true })).toBeVisible();
-  expect(requestedPaths).toContain(`/api/v1/transactions/${clearingTransactionHash}/authorizations`);
+  await expect(
+    clearing.getByText("0x0000000000000000000000000000000000000000", { exact: true }),
+  ).toBeVisible();
+  expect(requestedPaths).toContain(
+    `/api/v1/transactions/${clearingTransactionHash}/authorizations`,
+  );
   expect(requestedPaths).not.toContain(`/api/v1/addresses/${delegatedAddress}/delegation`);
   expect(requestedPaths).not.toContain(`/api/v1/contracts/${delegatedDelegate}/verification`);
 
@@ -614,7 +691,9 @@ test("EIP-7702 clearing keeps raw calldata and never falls back to stale delegat
   await assertA11yAndNoOverflow(page, "EIP-7702 clearing in Chinese narrow mode");
 });
 
-test("trace and log disclosures retain raw data and exact execution provenance", async ({ page }) => {
+test("trace and log disclosures retain raw data and exact execution provenance", async ({
+  page,
+}) => {
   await page.goto(`/tx/${decodedTransactionHash}?tab=trace`);
   await expect(page.getByText("retrieve()", { exact: true })).toBeVisible();
   await expect(page.getByText("Succeeded", { exact: true })).toBeVisible();
@@ -646,7 +725,9 @@ test("trace and log disclosures retain raw data and exact execution provenance",
   await expect(log.getByRole("heading", { name: "ABI provenance", exact: true })).toBeVisible();
   await expect(log.getByText("Exact address", { exact: true })).toBeVisible();
   await expect(log.getByText("Actual execution code", { exact: true })).toBeVisible();
-  const executionProvenance = log.locator(".transaction-log-provenance-card").filter({ hasText: "Actual execution code" });
+  const executionProvenance = log
+    .locator(".transaction-log-provenance-card")
+    .filter({ hasText: "Actual execution code" });
   await expect(executionProvenance.getByRole("link", { name: uupsImplementation })).toBeVisible();
   await expect(log.getByText("Exact Trace frame", { exact: true })).toBeVisible();
   await expect(executionProvenance.getByText(/^\[\d+(, \d+)*\]$/)).toBeVisible();
@@ -654,7 +735,11 @@ test("trace and log disclosures retain raw data and exact execution provenance",
   await expect(log.getByText("Raw topics and data", { exact: true })).toHaveCount(0);
   await expect(log.getByRole("heading", { name: "Topics", exact: true })).toBeVisible();
   await expect(log.locator(".transaction-log-data code")).toBeVisible();
-  const topicZeroBox = await log.locator(".transaction-topic").first().locator(".copyable-field code").boundingBox();
+  const topicZeroBox = await log
+    .locator(".transaction-topic")
+    .first()
+    .locator(".copyable-field code")
+    .boundingBox();
   const dataBox = await log.locator(".transaction-log-data code").boundingBox();
   expect(topicZeroBox).not.toBeNull();
   expect(dataBox).not.toBeNull();
@@ -667,7 +752,11 @@ test("trace and log disclosures retain raw data and exact execution provenance",
   await expect(log.getByText("精确 Trace 调用帧", { exact: true })).toBeVisible();
   await expect(log.getByText("原始 topics 与 data", { exact: true })).toHaveCount(0);
   await expect(log.getByRole("heading", { name: "主题", exact: true })).toBeVisible();
-  const narrowTopicZeroBox = await log.locator(".transaction-topic").first().locator(".copyable-field code").boundingBox();
+  const narrowTopicZeroBox = await log
+    .locator(".transaction-topic")
+    .first()
+    .locator(".copyable-field code")
+    .boundingBox();
   const narrowDataBox = await log.locator(".transaction-log-data code").boundingBox();
   expect(narrowTopicZeroBox).not.toBeNull();
   expect(narrowDataBox).not.toBeNull();
@@ -680,11 +769,13 @@ test("home uses one durable event stream and atomic snapshots without list polli
   page,
 }) => {
   const session = `home-${Date.now()}-${Math.random()}`;
-  await context.addCookies([{
-    name: "etherview_e2e_home",
-    value: session,
-    url: "http://127.0.0.1:4173",
-  }]);
+  await context.addCookies([
+    {
+      name: "etherview_e2e_home",
+      value: session,
+      url: "http://127.0.0.1:4173",
+    },
+  ]);
   const dynamicRequests: string[] = [];
   const snapshotRequests: string[] = [];
   const eventRequests: string[] = [];
@@ -711,9 +802,7 @@ test("home uses one durable event stream and atomic snapshots without list polli
   expect(advanced).toBe(true);
   await expect(page.getByRole("link", { name: "#3" })).toBeVisible();
   await expect(page.getByText("0 – 3", { exact: true })).toBeVisible();
-  await expect(
-    page.locator(".metric-card").filter({ hasText: "Network head" }),
-  ).toContainText("3");
+  await expect(page.locator(".metric-card").filter({ hasText: "Network head" })).toContainText("3");
   await page.waitForTimeout(2_200);
   expect(dynamicRequests).toEqual([]);
   expect(snapshotRequests).toHaveLength(2);
@@ -768,7 +857,10 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   await expect(page.getByText("Page 2", { exact: true })).toBeVisible();
 
   await page.goto("/blocks/2?tab=withdrawals");
-  await expect(page.getByRole("tab", { name: "Withdrawals" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: "Withdrawals" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await expect(page.getByText("3.2 Ether", { exact: true })).toBeVisible();
 
   await page.goto("/transactions");
@@ -799,7 +891,8 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   await expect(page.getByText("Page 2", { exact: true })).toBeVisible();
   expect(transactionCursors).toContain(transactionCursor);
   await activateInView(secondPageTransaction);
-  const transactionSummary = page.getByRole("heading", { name: "Transaction summary" })
+  const transactionSummary = page
+    .getByRole("heading", { name: "Transaction summary" })
     .locator("..");
   await expect(transactionSummary).toBeVisible();
   await expect(page.locator(".finality-badge.finalized")).toHaveText("Finalized");
@@ -835,7 +928,9 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   await expect(page.getByRole("heading", { name: "Contract", level: 1 })).toBeVisible();
   const addressSummary = page.getByRole("heading", { name: "Address summary" }).locator("..");
   await expect(addressSummary).toBeVisible();
-  await expect(addressSummary.getByText("900.719925474099312345 ETH", { exact: true })).toBeVisible();
+  await expect(
+    addressSummary.getByText("900.719925474099312345 ETH", { exact: true }),
+  ).toBeVisible();
   await expect(addressSummary.getByText("Type", { exact: true })).toHaveCount(0);
   await expect(addressSummary.getByText(address, { exact: true })).toHaveCount(0);
   await expect(addressSummary.getByRole("link", { name: walletAccount })).toBeVisible();
@@ -856,13 +951,20 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   await expect(page.getByRole("link", { name: /0xaaaaaa…aaaaaa/ })).toBeVisible();
   const addressTransactionsTable = page.getByRole("table", { name: "Transactions" });
   expect(await addressTransactionsTable.getByRole("columnheader").allTextContents()).toEqual([
-    "Hash", "Method", "Block", "Timestamp", "Status", "From", "Direction", "To", "Value (ETH)", "Finality",
+    "Hash",
+    "Method",
+    "Block",
+    "Timestamp",
+    "Status",
+    "From",
+    "Direction",
+    "To",
+    "Value (ETH)",
+    "Finality",
   ]);
   await expect(page.getByRole("columnheader", { name: "Method" })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Direction" })).toBeVisible();
-  const addressMethod = page.getByLabel(
-    "valueWithAnIntentionallyLongMethodName(uint256,address)",
-  );
+  const addressMethod = page.getByLabel("valueWithAnIntentionallyLongMethodName(uint256,address)");
   await expect(addressMethod).toHaveText("valueWithAnIntentionallyLongMethodName");
   await addressMethod.hover();
   await expect(addressMethod).toHaveAttribute(
@@ -882,9 +984,7 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   await expect(addressFinalityCells).toHaveCount(2);
   await expect(addressFinalityCells.nth(0).locator(".finality-badge")).toBeVisible();
   await expect(addressFinalityCells.nth(1).locator(".finality-badge")).toBeVisible();
-  const addressTransactionsScroller = page.locator(
-    '.table-scroll[aria-label="Transactions"]',
-  );
+  const addressTransactionsScroller = page.locator('.table-scroll[aria-label="Transactions"]');
   await addressTransactionsScroller.focus();
   await expect(addressTransactionsScroller).toBeFocused();
   const addressMethodOverflow = await page.evaluate(
@@ -899,9 +999,7 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   expect(calldataRequests).toEqual([]);
   await page.goto(`/address/${address}#read-contract`);
   await expect(page.getByRole("heading", { name: "Contract", level: 1 })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Contract", exact: true })).toHaveClass(
-    /\bactive\b/,
-  );
+  await expect(page.getByRole("link", { name: "Contract", exact: true })).toHaveClass(/\bactive\b/);
   await activateInView(page.getByRole("link", { name: "Internal Transactions" }));
   await expect(page).toHaveURL(new RegExp(`/address/${address}\\?tab=internal-transactions$`));
   await expect(page.getByText("SELF", { exact: true })).toBeVisible();
@@ -932,14 +1030,20 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   ]);
   expect(contractStyle).toEqual(ordinaryTabStyle);
   await page.goto(`/address/${address}?tab=withdrawals`);
-  await expect(page.getByRole("link", { name: "Withdrawals" })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("link", { name: "Withdrawals" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
   const withdrawalRows = page.getByRole("table", { name: "Withdrawals" }).getByRole("row");
   await expect(withdrawalRows).toHaveCount(3);
   await expect(withdrawalRows.nth(1)).toContainText("10");
   await expect(withdrawalRows.nth(2)).toContainText("2");
   await expect(withdrawalRows.nth(1).getByText("3.2 Ether", { exact: true })).toBeVisible();
   await expect(withdrawalRows.nth(2).getByText("0.000000001 Ether", { exact: true })).toBeVisible();
-  await expect(withdrawalRows.nth(1).getByRole("link", { name: "2" })).toHaveAttribute("href", `/blocks/${secondBlockHash}`);
+  await expect(withdrawalRows.nth(1).getByRole("link", { name: "2" })).toHaveAttribute(
+    "href",
+    `/blocks/${secondBlockHash}`,
+  );
   expect(addressWithdrawalRequests).toHaveLength(1);
   await activateInView(page.getByRole("button", { name: "切换到中文" }));
   await expect(page.getByRole("link", { name: "提款" })).toHaveAttribute("aria-current", "page");
@@ -977,7 +1081,9 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   await expect(page.getByText("孤链", { exact: true })).toBeVisible();
 });
 
-test("delegated-account panels keep shared layout and accessibility on narrow Preview pages", async ({ page }) => {
+test("delegated-account panels keep shared layout and accessibility on narrow Preview pages", async ({
+  page,
+}) => {
   const pageErrors: string[] = [];
   const consoleErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -1009,7 +1115,9 @@ test("delegated-account panels keep shared layout and accessibility on narrow Pr
   expect(layout.itemDisplay).toBe("grid");
 
   await tabs.getByRole("tab", { name: "Write contract" }).click();
-  await expect(page.getByText("disperseToken(address,(address,uint256)[])", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("disperseToken(address,(address,uint256)[])", { exact: true }),
+  ).toBeVisible();
   await tabs.getByRole("tab", { name: "Delegation history" }).click();
   await expect(page.getByRole("heading", { name: "Delegation history" })).toBeVisible();
   await expect(page.getByText("Re-delegated", { exact: true })).toBeVisible();
@@ -1027,7 +1135,9 @@ test("delegated-account panels keep shared layout and accessibility on narrow Pr
   expect(consoleErrors).toEqual([]);
 });
 
-test("cleared delegated accounts open canonical history without loading current binding", async ({ page }) => {
+test("cleared delegated accounts open canonical history without loading current binding", async ({
+  page,
+}) => {
   const requestedPaths: string[] = [];
   page.on("request", (request) => requestedPaths.push(new URL(request.url()).pathname));
 
@@ -1049,7 +1159,9 @@ test("cleared delegated accounts open canonical history without loading current 
 
   const delegatedTabs = page.getByRole("tablist", { name: "Delegated account sections" });
   await delegatedTabs.getByRole("tab", { name: "Status" }).click();
-  await expect(page).toHaveURL(new RegExp(`/address/${clearedDelegationAddress}\\?tab=delegation#code$`));
+  await expect(page).toHaveURL(
+    new RegExp(`/address/${clearedDelegationAddress}\\?tab=delegation#code$`),
+  );
   await expect(page.getByRole("heading", { name: "Delegation status" })).toBeVisible();
   await expect(page.getByText("Not delegated", { exact: true })).toBeVisible();
   await expect(page.getByText(/currently has no active EIP-7702 delegation/)).toBeVisible();
@@ -1087,11 +1199,17 @@ test("capability pages survive the embedded binary boundary in both accessible t
   await expect(page.getByRole("heading", { name: "Example Collectible", level: 1 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Token events", level: 2 })).toBeVisible();
   await activateInView(page.getByRole("link", { name: "1", exact: true }));
-  await expect(page.getByRole("heading", { name: "Example Collectible #1", exact: true, level: 1 })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "NFT instance", exact: true, level: 2 })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Example Collectible #1", exact: true, level: 1 }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "NFT instance", exact: true, level: 2 }),
+  ).toBeVisible();
   await expect(page.getByRole("heading", { name: "NFT ownership", level: 2 })).toBeVisible();
   const metadataRegion = page.getByRole("region", { name: "NFT metadata" });
-  await expect(metadataRegion.getByText("Plain fixture metadata; no image is embedded.")).toBeVisible();
+  await expect(
+    metadataRegion.getByText("Plain fixture metadata; no image is embedded."),
+  ).toBeVisible();
   await expect(metadataRegion.locator(".nft-trait dd")).toContainText("9007199254740993");
   await expect(metadataRegion.locator("img")).toHaveCount(0);
   const reviewImage = metadataRegion.getByRole("button", {
@@ -1100,7 +1218,9 @@ test("capability pages survive the embedded binary boundary in both accessible t
   await activateInView(reviewImage);
   const warningDialog = page.getByRole("dialog", { name: "Open an unverified external link?" });
   await expect(warningDialog).toBeVisible();
-  await expect(warningDialog.getByRole("alert")).toContainText("connects your browser directly to a third party");
+  await expect(warningDialog.getByRole("alert")).toContainText(
+    "connects your browser directly to a third party",
+  );
   expect(externalRequests).toEqual([]);
   await assertA11yAndNoOverflow(page, "NFT external-link warning in English");
   const externalLink = warningDialog.getByRole("link", { name: "Open in new tab" });
@@ -1118,9 +1238,11 @@ test("capability pages survive the embedded binary boundary in both accessible t
 
   await activateInView(page.getByRole("button", { name: "切换到中文" }));
   const chineseMetadataRegion = page.getByRole("region", { name: "NFT 元数据" });
-  await activateInView(chineseMetadataRegion.getByRole("button", {
-    name: `检查未经验证的外部图片目标 ${nftImageURL}`,
-  }));
+  await activateInView(
+    chineseMetadataRegion.getByRole("button", {
+      name: `检查未经验证的外部图片目标 ${nftImageURL}`,
+    }),
+  );
   const chineseWarning = page.getByRole("dialog", { name: "打开未经验证的外部链接？" });
   await expect(chineseWarning.getByRole("alert")).toContainText("由浏览器直接连接第三方");
   expect(externalRequests).toEqual([]);
@@ -1129,7 +1251,9 @@ test("capability pages survive the embedded binary boundary in both accessible t
 
   await page.goto(`/nft/${address}/2`);
   const staleMetadata = page.getByRole("region", { name: "NFT metadata" });
-  await expect(staleMetadata.getByText("A newer metadata refresh is not available yet")).toBeVisible();
+  await expect(
+    staleMetadata.getByText("A newer metadata refresh is not available yet"),
+  ).toBeVisible();
   await expect(staleMetadata.getByText(/refresh at block 3 is Pending/)).toContainText("block 2");
   await expect(staleMetadata.getByText("Prior canonical metadata remains visible.")).toBeVisible();
   await expect(staleMetadata.locator("img")).toHaveCount(0);
@@ -1146,7 +1270,9 @@ test("capability pages survive the embedded binary boundary in both accessible t
   await expect(page.getByRole("heading", { name: "ERC-20 holdings", level: 2 })).toBeVisible();
   await expect(page.getByText("123.45 EXT", { exact: true })).toBeVisible();
   const nftBalances = page.getByRole("region", { name: "Canonical NFT balances" });
-  await expect(nftBalances.getByRole("heading", { name: "Canonical NFT balances", level: 2 })).toBeVisible();
+  await expect(
+    nftBalances.getByRole("heading", { name: "Canonical NFT balances", level: 2 }),
+  ).toBeVisible();
   await expect(nftBalances.getByText("Exact RPC observation", { exact: true })).toBeVisible();
 
   await page.goto(`/address/${walletAccount}`);
@@ -1157,25 +1283,32 @@ test("capability pages survive the embedded binary boundary in both accessible t
   await page.goto(`/address/${unverifiedAddress}#code`);
   const verificationEntry = page.getByRole("link", { name: "Submit a verification request" });
   await expect(page.getByText(/This contract has not been verified yet/)).toBeVisible();
-  await expect(verificationEntry).toHaveAttribute(
-    "href",
-    `/verify?address=${unverifiedAddress}`,
-  );
+  await expect(verificationEntry).toHaveAttribute("href", `/verify?address=${unverifiedAddress}`);
   await page.setViewportSize({ width: 390, height: 844 });
-  await assertA11yAndNoOverflow(page, "unverified contract verification entry in English narrow mode");
+  await assertA11yAndNoOverflow(
+    page,
+    "unverified contract verification entry in English narrow mode",
+  );
   await page.getByRole("button", { name: "切换到中文" }).click();
   const localizedVerificationEntry = page.getByRole("link", { name: "提交合约验证请求" });
   await expect(localizedVerificationEntry).toHaveAttribute(
     "href",
     `/verify?address=${unverifiedAddress}`,
   );
-  await assertA11yAndNoOverflow(page, "unverified contract verification entry in Chinese narrow mode");
+  await assertA11yAndNoOverflow(
+    page,
+    "unverified contract verification entry in Chinese narrow mode",
+  );
   await page.getByRole("button", { name: "Switch to English" }).click();
   await page.setViewportSize({ width: 1280, height: 720 });
   await activateInView(verificationEntry);
   await expect(page).toHaveURL(new RegExp(`/verify\\?address=${unverifiedAddress}$`));
-  await expect(page.getByRole("heading", { name: "Public verification is unavailable" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Open a durable verification job" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Public verification is unavailable" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Open a durable verification job" }),
+  ).toBeVisible();
   await page.getByLabel("Job ID", { exact: true }).fill(verificationJobID);
   await page.getByLabel("Job read API key", { exact: true }).fill(readAPIKey);
   await activateInView(page.getByRole("button", { name: "Load job", exact: true }));
@@ -1192,10 +1325,10 @@ test("capability pages survive the embedded binary boundary in both accessible t
   page.on("console", onSourceConsole);
   await page.goto(`/address/${address}#code`);
   await expect(page.getByRole("heading", { name: "Verified artifact" })).toBeVisible();
-	await expect(page.getByText("Factory-derived", { exact: true })).toBeVisible();
-	await expect(page.getByRole("status")).toContainText("Auto-verified from verified factory:");
-	await expect(page.getByRole("heading", { name: "Created contracts" })).toBeVisible();
-	await expect(page.getByRole("link", { name: uupsImplementation })).toBeVisible();
+  await expect(page.getByText("Factory-derived", { exact: true })).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("Auto-verified from verified factory:");
+  await expect(page.getByRole("heading", { name: "Created contracts" })).toBeVisible();
+  await expect(page.getByRole("link", { name: uupsImplementation })).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "TransparentUpgradeableProxy", level: 2 }),
   ).toBeVisible();
@@ -1205,14 +1338,16 @@ test("capability pages survive the embedded binary boundary in both accessible t
   });
   await expect(sourceEditor).toHaveAttribute("contenteditable", "false");
   await expect(sourceEditor).toContainText("contract TransparentUpgradeableProxy");
-  const keywordColor = await sourceEditor.locator(".tok-keyword").first().evaluate((keyword) =>
-    getComputedStyle(keyword).color
-  );
+  const keywordColor = await sourceEditor
+    .locator(".tok-keyword")
+    .first()
+    .evaluate((keyword) => getComputedStyle(keyword).color);
   const editorColor = await sourceEditor.evaluate((editor) => getComputedStyle(editor).color);
   expect(keywordColor).not.toBe(editorColor);
-  const sourceLineTop = await sourceEditor.locator(".cm-line").first().evaluate((line) =>
-    line.getBoundingClientRect().top
-  );
+  const sourceLineTop = await sourceEditor
+    .locator(".cm-line")
+    .first()
+    .evaluate((line) => line.getBoundingClientRect().top);
   const firstLineNumberTop = await page
     .locator(".source-editor .cm-lineNumbers .cm-gutterElement")
     .filter({ visible: true })
@@ -1258,14 +1393,18 @@ test("capability pages survive the embedded binary boundary in both accessible t
   await expect(page.getByText("900719925474099312345", { exact: true })).toBeVisible();
 
   await page.goto("/pending");
-  await expect(page.getByRole("heading", { name: "Immutable node snapshot", level: 2 })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Immutable node snapshot", level: 2 }),
+  ).toBeVisible();
   await expect(page.getByText("9,007,199,254,740,993", { exact: true })).toBeVisible();
 
   await page.goto("/status");
   await expect(
     page.getByRole("heading", { name: "Data capabilities and current completeness", level: 2 }),
   ).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Configured optional features", level: 2 })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Configured optional features", level: 2 }),
+  ).toBeVisible();
   const verificationFeature = page
     .getByRole("listitem")
     .filter({ hasText: "New public verification submissions" });
@@ -1356,12 +1495,16 @@ test("verified OpenZeppelin proxy pages use anonymous generated forms and exact 
   await expect(page.getByLabel("newValue")).toBeVisible();
   await expect(page.getByRole("button", { name: "Copy calldata" })).toBeVisible();
 
-  await activateInView(transparentTabs.getByRole("tab", {
-    name: "Read implementation (as proxy)",
-  }));
+  await activateInView(
+    transparentTabs.getByRole("tab", {
+      name: "Read implementation (as proxy)",
+    }),
+  );
   const transparentRead = page.locator(".abi-function-card").filter({ hasText: "value()" });
   await expect(transparentRead.getByText(address, { exact: true })).toHaveCount(0);
-  await expect(transparentRead.getByText(transparentImplementation, { exact: true })).toHaveCount(0);
+  await expect(transparentRead.getByText(transparentImplementation, { exact: true })).toHaveCount(
+    0,
+  );
 
   await activateInView(transparentTabs.getByRole("tab", { name: "Proxy management" }));
   const proxyAdminUpgrade = page.locator(".abi-function-card").filter({
@@ -1371,7 +1514,9 @@ test("verified OpenZeppelin proxy pages use anonymous generated forms and exact 
   await expect(proxyAdminUpgrade.getByText(/High-risk upgrade operation/)).toBeVisible();
 
   await activateInView(transparentTabs.getByRole("tab", { name: "Upgrade history" }));
-  await expect(page.getByRole("heading", { name: "Canonical implementation upgrades" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Canonical implementation upgrades" }),
+  ).toBeVisible();
   await expect(page.getByText(oldImplementation, { exact: true })).toBeVisible();
   await expect(page.getByText(transparentImplementation, { exact: true }).last()).toBeVisible();
 
@@ -1382,18 +1527,22 @@ test("verified OpenZeppelin proxy pages use anonymous generated forms and exact 
   await expect(page.getByRole("heading", { name: "ERC1967Proxy", level: 2 })).toBeVisible();
   const uupsTabs = page.getByRole("tablist", { name: "Contract interaction sections" });
   await expect(uupsTabs.getByRole("tab", { name: "Proxy management" })).toHaveCount(0);
-  await activateInView(uupsTabs.getByRole("tab", {
-    name: "Read implementation (as proxy)",
-  }));
+  await activateInView(
+    uupsTabs.getByRole("tab", {
+      name: "Read implementation (as proxy)",
+    }),
+  );
   const uupsValue = page.locator(".abi-function-card").filter({ hasText: "value()" }).first();
   await expect(uupsValue.getByText(uupsProxyAddress, { exact: true })).toHaveCount(0);
   const proxiable = page.locator(".abi-function-card").filter({ hasText: "proxiableUUID()" });
   await activateInView(proxiable.locator("summary"));
   await expect(proxiable.getByText(uupsImplementation, { exact: true })).toHaveCount(0);
   await expect(proxiable.getByText(/called directly on the implementation/)).toBeVisible();
-  await activateInView(uupsTabs.getByRole("tab", {
-    name: "Write implementation (as proxy)",
-  }));
+  await activateInView(
+    uupsTabs.getByRole("tab", {
+      name: "Write implementation (as proxy)",
+    }),
+  );
   const uupsUpgrade = page.locator(".abi-function-card").filter({
     hasText: "upgradeToAndCall(address,bytes)",
   });
@@ -1404,7 +1553,9 @@ test("verified OpenZeppelin proxy pages use anonymous generated forms and exact 
   await expect(page.getByRole("heading", { name: "BeaconProxy", level: 2 })).toBeVisible();
   const beaconTabs = page.getByRole("tablist", { name: "Contract interaction sections" });
   await activateInView(beaconTabs.getByRole("tab", { name: "Proxy management" }));
-  const beaconUpgrade = page.locator(".abi-function-card").filter({ hasText: "upgradeTo(address)" });
+  const beaconUpgrade = page
+    .locator(".abi-function-card")
+    .filter({ hasText: "upgradeTo(address)" });
   await expect(beaconUpgrade.getByText(upgradeableBeacon, { exact: true })).toHaveCount(0);
   await activateInView(beaconTabs.getByRole("tab", { name: "Upgrade history" }));
   await expect(page.getByText("Beacon implementation changed", { exact: true })).toBeVisible();
@@ -1416,14 +1567,21 @@ test("verified OpenZeppelin proxy pages use anonymous generated forms and exact 
   await expect(page.getByText(/This EIP-1167 Clone is immutable/)).toBeVisible();
   const cloneTabs = page.getByRole("tablist", { name: "Contract interaction sections" });
   await expect(cloneTabs.getByRole("tab", { name: "Upgrade history" })).toHaveCount(0);
-  await activateInView(cloneTabs.getByRole("tab", {
-    name: "Read implementation (as proxy)",
-  }));
+  await activateInView(
+    cloneTabs.getByRole("tab", {
+      name: "Read implementation (as proxy)",
+    }),
+  );
   const cloneRead = page.locator(".abi-function-card").filter({ hasText: "value()" });
   await expect(cloneRead.getByText(cloneAddress, { exact: true })).toHaveCount(0);
   await expect(cloneRead.getByText(cloneImplementation, { exact: true })).toHaveCount(0);
-  await expect.poll(() => contractRequests.some(({ pathname }) =>
-    pathname === `/api/v1/contracts/${cloneAddress}/proxy/upgrades`)).toBe(false);
+  await expect
+    .poll(() =>
+      contractRequests.some(
+        ({ pathname }) => pathname === `/api/v1/contracts/${cloneAddress}/proxy/upgrades`,
+      ),
+    )
+    .toBe(false);
   const cloneCodeTab = cloneTabs.getByRole("tab", { name: "Code" });
   await cloneCodeTab.click();
   await expect(cloneCodeTab).toHaveAttribute("aria-selected", "true");
@@ -1446,229 +1604,260 @@ test("verified OpenZeppelin proxy pages use anonymous generated forms and exact 
     expect(request.headers["payment-signature"]).toBeUndefined();
     expect(request.headers["x-csrf-token"]).toBeUndefined();
   }
-  expect(contractRequests.some(({ pathname }) =>
-    pathname === `/api/v1/contracts/${proxyAdminAddress}/verification`)).toBe(true);
-  expect(contractRequests.some(({ pathname }) =>
-    pathname === `/api/v1/contracts/${upgradeableBeacon}/verification`)).toBe(true);
+  expect(
+    contractRequests.some(
+      ({ pathname }) => pathname === `/api/v1/contracts/${proxyAdminAddress}/verification`,
+    ),
+  ).toBe(true);
+  expect(
+    contractRequests.some(
+      ({ pathname }) => pathname === `/api/v1/contracts/${upgradeableBeacon}/verification`,
+    ),
+  ).toBe(true);
 });
 
 test("Solady legacy CWIA displays verified packed arguments and gates writes on its schema", async ({
-	page,
+  page,
 }) => {
-	test.setTimeout(120_000);
-	let transientProxyReads = 0;
-	let allowReadOnlyClassification = false;
-	await page.route(new RegExp(
-		`/api/v1/contracts/${cwiaReadOnlyAddress}/proxy$`,
-		"iu",
-	), async (route) => {
-		if (!allowReadOnlyClassification) {
-			await fulfillAPIEnvelope(route, {
-				address: cwiaReadOnlyAddress,
-				status: "unavailable",
-				snapshot: {
-					chain_id: "1",
-					block_number: "43",
-					block_hash: codeHash,
-				},
-				evidence: [],
-			});
-			return;
-		}
-		await route.continue();
-	});
-	await page.route(new RegExp(
-		`/api/v1/contracts/${cwiaUnverifiedAddress}/proxy$`,
-		"iu",
-	), async (route) => {
-		transientProxyReads += 1;
-		if (transientProxyReads === 2 || transientProxyReads === 3) {
-			await fulfillAPIEnvelope(route, {
-				address: cwiaUnverifiedAddress,
-				status: "unavailable",
-				snapshot: {
-					chain_id: "1",
-					block_number: "43",
-					block_hash: codeHash,
-				},
-				evidence: [],
-			});
-			return;
-		}
-		await route.continue();
-	});
-	await page.addInitScript(() => {
-		const requests: WalletRequest[] = [];
-		const listeners = new Map<string, Set<(value: unknown) => void>>();
-		const account = "0x2222222222222222222222222222222222222222";
-		const provider = {
-			async request({ method, params }: WalletRequest) {
-				requests.push({ method, params });
-				if (method === "eth_requestAccounts" || method === "eth_accounts") return [account];
-				if (method === "eth_chainId") return "0x1";
-				if (method === "eth_call") return `0x${"0".repeat(63)}2`;
-				throw new Error(`unexpected wallet method: ${method}`);
-			},
-			on(event: string, listener: (value: unknown) => void) {
-				const current = listeners.get(event) ?? new Set();
-				current.add(listener);
-				listeners.set(event, current);
-			},
-			removeListener(event: string, listener: (value: unknown) => void) {
-				listeners.get(event)?.delete(listener);
-			},
-		};
-		const detail = {
-			info: {
-				uuid: "00000000-0000-4000-8000-000000000069",
-				name: "CWIA E2E Wallet",
-				icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'/>",
-				rdns: "org.etherview.cwia-e2e",
-			},
-			provider,
-		};
-		window.addEventListener("eip6963:requestProvider", () => {
-			window.dispatchEvent(new CustomEvent("eip6963:announceProvider", { detail }));
-		});
-		(window as WalletWindow).__etherviewE2EWallet = {
-			requests,
-			resolveWrite() {},
-			setMode() {},
-			emit(event, value) {
-				for (const listener of listeners.get(event) ?? []) listener(value);
-			},
-		};
-	});
-	const requestedPaths: string[] = [];
-	page.on("request", (request) => {
-		const url = new URL(request.url());
-		if (url.pathname.startsWith("/api/v1/contracts/")) requestedPaths.push(url.pathname);
-	});
+  test.setTimeout(120_000);
+  let transientProxyReads = 0;
+  let allowReadOnlyClassification = false;
+  await page.route(
+    new RegExp(`/api/v1/contracts/${cwiaReadOnlyAddress}/proxy$`, "iu"),
+    async (route) => {
+      if (!allowReadOnlyClassification) {
+        await fulfillAPIEnvelope(route, {
+          address: cwiaReadOnlyAddress,
+          status: "unavailable",
+          snapshot: {
+            chain_id: "1",
+            block_number: "43",
+            block_hash: codeHash,
+          },
+          evidence: [],
+        });
+        return;
+      }
+      await route.continue();
+    },
+  );
+  await page.route(
+    new RegExp(`/api/v1/contracts/${cwiaUnverifiedAddress}/proxy$`, "iu"),
+    async (route) => {
+      transientProxyReads += 1;
+      if (transientProxyReads === 2 || transientProxyReads === 3) {
+        await fulfillAPIEnvelope(route, {
+          address: cwiaUnverifiedAddress,
+          status: "unavailable",
+          snapshot: {
+            chain_id: "1",
+            block_number: "43",
+            block_hash: codeHash,
+          },
+          evidence: [],
+        });
+        return;
+      }
+      await route.continue();
+    },
+  );
+  await page.addInitScript(() => {
+    const requests: WalletRequest[] = [];
+    const listeners = new Map<string, Set<(value: unknown) => void>>();
+    const account = "0x2222222222222222222222222222222222222222";
+    const provider = {
+      async request({ method, params }: WalletRequest) {
+        requests.push({ method, params });
+        if (method === "eth_requestAccounts" || method === "eth_accounts") return [account];
+        if (method === "eth_chainId") return "0x1";
+        if (method === "eth_call") return `0x${"0".repeat(63)}2`;
+        throw new Error(`unexpected wallet method: ${method}`);
+      },
+      on(event: string, listener: (value: unknown) => void) {
+        const current = listeners.get(event) ?? new Set();
+        current.add(listener);
+        listeners.set(event, current);
+      },
+      removeListener(event: string, listener: (value: unknown) => void) {
+        listeners.get(event)?.delete(listener);
+      },
+    };
+    const detail = {
+      info: {
+        uuid: "00000000-0000-4000-8000-000000000069",
+        name: "CWIA E2E Wallet",
+        icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'/>",
+        rdns: "org.etherview.cwia-e2e",
+      },
+      provider,
+    };
+    window.addEventListener("eip6963:requestProvider", () => {
+      window.dispatchEvent(new CustomEvent("eip6963:announceProvider", { detail }));
+    });
+    (window as WalletWindow).__etherviewE2EWallet = {
+      requests,
+      resolveWrite() {},
+      setMode() {},
+      emit(event, value) {
+        for (const listener of listeners.get(event) ?? []) listener(value);
+      },
+    };
+  });
+  const requestedPaths: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname.startsWith("/api/v1/contracts/")) requestedPaths.push(url.pathname);
+  });
 
-	await page.goto(`/address/${cwiaAddress}#code`);
-	await expect(page.getByRole("heading", { name: "Proxy identity", level: 2 })).toBeVisible();
-	await expect(page.getByRole("heading", { name: "Verified artifact" })).toHaveCount(0);
-	await expect(page.getByRole("link", { name: "Submit a verification request" })).toHaveCount(0);
-	await page.getByRole("heading", { name: "Proxy identity" }).click();
-	await expect(page.getByText("Solady legacy CWIA bytecode", { exact: true })).toBeVisible();
-	await expect(page.getByText("Verified Solidity AST and decoded", { exact: true })).toBeVisible();
-	await expect(page.getByText("Exact implementation address", { exact: true })).toBeVisible();
-	const argumentsRegion = page.getByRole("region", { name: "Decoded immutable arguments" });
-	const argumentsTable = argumentsRegion.getByRole("table", { name: "Decoded immutable arguments" });
-	for (const heading of ["Name", "Type", "Offset", "Data"]) {
-		await expect(argumentsTable.getByRole("columnheader", { name: heading })).toBeVisible();
-	}
-	await expect(argumentsRegion.getByText("owner", { exact: true })).toBeVisible();
-	await expect(argumentsRegion.getByText("address", { exact: true })).toBeVisible();
-	await expect(argumentsRegion.getByText("0", { exact: true })).toBeVisible();
-	await expect(argumentsRegion.getByText("0x2222222222222222222222222222222222222222", { exact: true })).toBeVisible();
-	await expect(argumentsRegion.getByText("number", { exact: true })).toBeVisible();
-	await expect(argumentsRegion.getByText("uint256", { exact: true })).toBeVisible();
-	await expect(argumentsRegion.getByText("20", { exact: true })).toBeVisible();
-	await expect(argumentsRegion.getByText("42", { exact: true })).toBeVisible();
-	await expect(argumentsRegion.getByText("data_length", { exact: true })).toBeVisible();
-	await expect(argumentsRegion.getByText("data", { exact: true })).toBeVisible();
-	await expect(argumentsRegion.getByRole("button", { name: "Copy" })).toHaveCount(4);
-	await expect(argumentsRegion.getByText("0x68656c6c6f2c776f726c64", { exact: true })).toBeVisible();
-	const writableTabs = page.getByRole("tablist", { name: "Contract interaction sections" });
-	await expect(writableTabs.getByRole("tab", { name: "Upgrade history" })).toHaveCount(0);
-	await activateInView(writableTabs.getByRole("tab", { name: "Write implementation (as proxy)" }));
-	await expect(page.getByText("setValue(uint256)", { exact: true })).toBeVisible();
+  await page.goto(`/address/${cwiaAddress}#code`);
+  await expect(page.getByRole("heading", { name: "Proxy identity", level: 2 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Verified artifact" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Submit a verification request" })).toHaveCount(0);
+  await page.getByRole("heading", { name: "Proxy identity" }).click();
+  await expect(page.getByText("Solady legacy CWIA bytecode", { exact: true })).toBeVisible();
+  await expect(page.getByText("Verified Solidity AST and decoded", { exact: true })).toBeVisible();
+  await expect(page.getByText("Exact implementation address", { exact: true })).toBeVisible();
+  const argumentsRegion = page.getByRole("region", { name: "Decoded immutable arguments" });
+  const argumentsTable = argumentsRegion.getByRole("table", {
+    name: "Decoded immutable arguments",
+  });
+  for (const heading of ["Name", "Type", "Offset", "Data"]) {
+    await expect(argumentsTable.getByRole("columnheader", { name: heading })).toBeVisible();
+  }
+  await expect(argumentsRegion.getByText("owner", { exact: true })).toBeVisible();
+  await expect(argumentsRegion.getByText("address", { exact: true })).toBeVisible();
+  await expect(argumentsRegion.getByText("0", { exact: true })).toBeVisible();
+  await expect(
+    argumentsRegion.getByText("0x2222222222222222222222222222222222222222", { exact: true }),
+  ).toBeVisible();
+  await expect(argumentsRegion.getByText("number", { exact: true })).toBeVisible();
+  await expect(argumentsRegion.getByText("uint256", { exact: true })).toBeVisible();
+  await expect(argumentsRegion.getByText("20", { exact: true })).toBeVisible();
+  await expect(argumentsRegion.getByText("42", { exact: true })).toBeVisible();
+  await expect(argumentsRegion.getByText("data_length", { exact: true })).toBeVisible();
+  await expect(argumentsRegion.getByText("data", { exact: true })).toBeVisible();
+  await expect(argumentsRegion.getByRole("button", { name: "Copy" })).toHaveCount(4);
+  await expect(
+    argumentsRegion.getByText("0x68656c6c6f2c776f726c64", { exact: true }),
+  ).toBeVisible();
+  const writableTabs = page.getByRole("tablist", { name: "Contract interaction sections" });
+  await expect(writableTabs.getByRole("tab", { name: "Upgrade history" })).toHaveCount(0);
+  await activateInView(writableTabs.getByRole("tab", { name: "Write implementation (as proxy)" }));
+  await expect(page.getByText("setValue(uint256)", { exact: true })).toBeVisible();
 
-	await page.goto(`/address/${cwiaReadOnlyAddress}#code`);
-	await expect(page.getByRole("tab", { name: "Code" })).toBeVisible();
-	await expect(page.getByRole("heading", { name: "Verified artifact" })).toHaveCount(0);
-	await expect(page.getByRole("link", { name: "Submit a verification request" })).toHaveCount(0);
-	allowReadOnlyClassification = true;
-	await page.evaluate(async () => {
-		const response = await fetch("/__e2e/home/head", { method: "POST" });
-		if (!response.ok) throw new Error("failed to publish E2E head event");
-	});
-	await expect(page.getByRole("heading", { name: "Proxy identity" })).toBeVisible();
-	await page.getByRole("heading", { name: "Proxy identity" }).click();
-	await expect(page.getByText("Verified Solidity AST unavailable", { exact: true })).toBeVisible();
-	await expect(page.getByText(/writes are disabled.*no current compiler-derived CWIA AST analysis/u)).toBeVisible();
-	const readOnlyTabs = page.getByRole("tablist", { name: "Contract interaction sections" });
-	await activateInView(readOnlyTabs.getByRole("tab", { name: "Read implementation (as proxy)" }));
-	await expect(page.getByText("value()", { exact: true })).toBeVisible();
-	await activateInView(readOnlyTabs.getByRole("tab", { name: "Write implementation (as proxy)" }));
-	await expect(page.getByText("This ABI has no callable state-changing functions for this target.", { exact: true })).toBeVisible();
-	await expect.poll(() => requestedPaths.some((pathname) => pathname.endsWith("/proxy/upgrades"))).toBe(false);
+  await page.goto(`/address/${cwiaReadOnlyAddress}#code`);
+  await expect(page.getByRole("tab", { name: "Code" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Verified artifact" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Submit a verification request" })).toHaveCount(0);
+  allowReadOnlyClassification = true;
+  await page.evaluate(async () => {
+    const response = await fetch("/__e2e/home/head", { method: "POST" });
+    if (!response.ok) throw new Error("failed to publish E2E head event");
+  });
+  await expect(page.getByRole("heading", { name: "Proxy identity" })).toBeVisible();
+  await page.getByRole("heading", { name: "Proxy identity" }).click();
+  await expect(page.getByText("Verified Solidity AST unavailable", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText(/writes are disabled.*no current compiler-derived CWIA AST analysis/u),
+  ).toBeVisible();
+  const readOnlyTabs = page.getByRole("tablist", { name: "Contract interaction sections" });
+  await activateInView(readOnlyTabs.getByRole("tab", { name: "Read implementation (as proxy)" }));
+  await expect(page.getByText("value()", { exact: true })).toBeVisible();
+  await activateInView(readOnlyTabs.getByRole("tab", { name: "Write implementation (as proxy)" }));
+  await expect(
+    page.getByText("This ABI has no callable state-changing functions for this target.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect
+    .poll(() => requestedPaths.some((pathname) => pathname.endsWith("/proxy/upgrades")))
+    .toBe(false);
 
-	await page.goto(`/address/${cwiaUnverifiedAddress}#code`);
-	await expect(page.getByRole("heading", { name: "Verified artifact" })).toHaveCount(0);
-	await expect(page.getByRole("link", { name: "Submit a verification request" })).toHaveCount(0);
-	await page.getByRole("heading", { name: "Proxy identity" }).click();
-	await expect(page.getByText("Verified Solidity AST and decoded", { exact: true })).toBeVisible();
-	await expect(page.getByText("Matching implementation code hash", { exact: true })).toBeVisible();
-	await expect(page.getByText("Verified by code hash", { exact: true })).toBeVisible();
-	await expect(page.getByText(/writes are disabled.*proxy binding is not verified/u)).toBeVisible();
-	await expect(page.getByText("Verified Solidity AST unavailable", { exact: true })).toHaveCount(0);
-	const unverifiedTabs = page.getByRole("tablist", { name: "Contract interaction sections" });
-	await expect(unverifiedTabs.getByRole("tab", { name: "Read contract" })).toHaveCount(0);
-	await activateInView(unverifiedTabs.getByRole("tab", { name: "Read implementation (as proxy)" }));
-	await expect(page.getByText("value()", { exact: true })).toBeVisible();
-	await activateInView(page.getByText("Connect wallet", { exact: true }).first());
-	await activateInView(page.getByRole("button", { name: /CWIA E2E Wallet/u }));
-	const readValue = page.getByRole("button", { name: "Read contract" });
-	await activateInView(readValue);
-	await expect(page.getByRole("alert")).toContainText(
-		"The latest proxy stage is temporarily unavailable",
-	);
-	await expect(unverifiedTabs.getByRole("tab", { name: "Read implementation (as proxy)" })).toBeVisible();
-	await expect(unverifiedTabs.getByRole("tab", { name: "Write implementation (as proxy)" })).toBeVisible();
-	await expect(page).toHaveURL(new RegExp(`${cwiaUnverifiedAddress}#read-implementation$`, "u"));
-	expect(transientProxyReads).toBe(2);
-	let walletRequests = await page.evaluate(
-		() => (window as WalletWindow).__etherviewE2EWallet.requests,
-	);
-	expect(walletRequests.some(({ method }) => method === "eth_call")).toBe(false);
+  await page.goto(`/address/${cwiaUnverifiedAddress}#code`);
+  await expect(page.getByRole("heading", { name: "Verified artifact" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Submit a verification request" })).toHaveCount(0);
+  await page.getByRole("heading", { name: "Proxy identity" }).click();
+  await expect(page.getByText("Verified Solidity AST and decoded", { exact: true })).toBeVisible();
+  await expect(page.getByText("Matching implementation code hash", { exact: true })).toBeVisible();
+  await expect(page.getByText("Verified by code hash", { exact: true })).toBeVisible();
+  await expect(page.getByText(/writes are disabled.*proxy binding is not verified/u)).toBeVisible();
+  await expect(page.getByText("Verified Solidity AST unavailable", { exact: true })).toHaveCount(0);
+  const unverifiedTabs = page.getByRole("tablist", { name: "Contract interaction sections" });
+  await expect(unverifiedTabs.getByRole("tab", { name: "Read contract" })).toHaveCount(0);
+  await activateInView(unverifiedTabs.getByRole("tab", { name: "Read implementation (as proxy)" }));
+  await expect(page.getByText("value()", { exact: true })).toBeVisible();
+  await activateInView(page.getByText("Connect wallet", { exact: true }).first());
+  await activateInView(page.getByRole("button", { name: /CWIA E2E Wallet/u }));
+  const readValue = page.getByRole("button", { name: "Read contract" });
+  await activateInView(readValue);
+  await expect(page.getByRole("alert")).toContainText(
+    "The latest proxy stage is temporarily unavailable",
+  );
+  await expect(
+    unverifiedTabs.getByRole("tab", { name: "Read implementation (as proxy)" }),
+  ).toBeVisible();
+  await expect(
+    unverifiedTabs.getByRole("tab", { name: "Write implementation (as proxy)" }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`${cwiaUnverifiedAddress}#read-implementation$`, "u"));
+  expect(transientProxyReads).toBe(2);
+  let walletRequests = await page.evaluate(
+    () => (window as WalletWindow).__etherviewE2EWallet.requests,
+  );
+  expect(walletRequests.some(({ method }) => method === "eth_call")).toBe(false);
 
-	await activateInView(readValue);
-	await expect(page.getByRole("alert")).toContainText(
-		"The latest proxy stage is temporarily unavailable",
-	);
-	expect(transientProxyReads).toBe(3);
-	await activateInView(readValue);
-	await expect(page.locator(".abi-output").getByText("2", { exact: true })).toBeVisible();
-	expect(transientProxyReads).toBe(4);
-	walletRequests = await page.evaluate(
-		() => (window as WalletWindow).__etherviewE2EWallet.requests,
-	);
-	expect(walletRequests.filter(({ method }) => method === "eth_call")).toHaveLength(1);
-	await activateInView(unverifiedTabs.getByRole("tab", { name: "Write implementation (as proxy)" }));
-	await expect(page.getByText("This ABI has no callable state-changing functions for this target.", { exact: true })).toBeVisible();
+  await activateInView(readValue);
+  await expect(page.getByRole("alert")).toContainText(
+    "The latest proxy stage is temporarily unavailable",
+  );
+  expect(transientProxyReads).toBe(3);
+  await activateInView(readValue);
+  await expect(page.locator(".abi-output").getByText("2", { exact: true })).toBeVisible();
+  expect(transientProxyReads).toBe(4);
+  walletRequests = await page.evaluate(
+    () => (window as WalletWindow).__etherviewE2EWallet.requests,
+  );
+  expect(walletRequests.filter(({ method }) => method === "eth_call")).toHaveLength(1);
+  await activateInView(
+    unverifiedTabs.getByRole("tab", { name: "Write implementation (as proxy)" }),
+  );
+  await expect(
+    page.getByText("This ABI has no callable state-changing functions for this target.", {
+      exact: true,
+    }),
+  ).toBeVisible();
 
-	await page.goto(`/address/${cwiaCodeHashImplementation}#code`);
-	await expect(page.getByRole("heading", { name: "MyAccount", level: 2 })).toBeVisible();
-	await expect(page.getByText("Source verified by code hash")).toHaveCount(2);
-	await expect(page.getByText("Source code verified", { exact: true })).toHaveCount(0);
-	await expect(page.getByRole("status")).toContainText(
-		"Source verified by identical runtime code hash:",
-	);
-	await expect(page.getByRole("link", { name: cwiaImplementation })).toBeVisible();
-	await expect(page.getByRole("link", { name: "Submit a verification request" })).toHaveCount(0);
-	await activateInView(page.getByRole("button", { name: "切换到中文" }));
-	await expect(page.getByText("源码已通过代码哈希验证")).toHaveCount(2);
-	await expect(page.getByRole("status")).toContainText("源码已通过相同运行时代码哈希验证：");
-	await activateInView(page.getByRole("button", { name: "Switch to English" }));
+  await page.goto(`/address/${cwiaCodeHashImplementation}#code`);
+  await expect(page.getByRole("heading", { name: "MyAccount", level: 2 })).toBeVisible();
+  await expect(page.getByText("Source verified by code hash")).toHaveCount(2);
+  await expect(page.getByText("Source code verified", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("status")).toContainText(
+    "Source verified by identical runtime code hash:",
+  );
+  await expect(page.getByRole("link", { name: cwiaImplementation })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Submit a verification request" })).toHaveCount(0);
+  await activateInView(page.getByRole("button", { name: "切换到中文" }));
+  await expect(page.getByText("源码已通过代码哈希验证")).toHaveCount(2);
+  await expect(page.getByRole("status")).toContainText("源码已通过相同运行时代码哈希验证：");
+  await activateInView(page.getByRole("button", { name: "Switch to English" }));
 
-	await page.goto(`/address/${cwiaAddress}#code`);
-	await page.setViewportSize({ width: 390, height: 844 });
-	await page.getByRole("heading", { name: "Proxy identity" }).click();
-	const argumentsScroll = page.locator(".cwia-arguments-scroll");
-	await expect(argumentsScroll).toBeVisible();
-	await expect.poll(() => argumentsScroll.evaluate((element) =>
-		element.scrollWidth > element.clientWidth)).toBe(true);
-	await argumentsScroll.focus();
-	await expect(argumentsScroll).toBeFocused();
-	await activateInView(page.getByRole("button", { name: "Switch color theme" }));
-	await activateInView(page.getByRole("button", { name: "切换到中文" }));
-	const localizedArguments = page.getByRole("region", { name: "已解码 immutable 参数" });
-	for (const heading of ["名称", "类型", "偏移", "数据"]) {
-		await expect(localizedArguments.getByRole("columnheader", { name: heading })).toBeVisible();
-	}
-	await assertA11yAndNoOverflow(page, "decoded CWIA table in Chinese dark narrow mode");
+  await page.goto(`/address/${cwiaAddress}#code`);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("heading", { name: "Proxy identity" }).click();
+  const argumentsScroll = page.locator(".cwia-arguments-scroll");
+  await expect(argumentsScroll).toBeVisible();
+  await expect
+    .poll(() => argumentsScroll.evaluate((element) => element.scrollWidth > element.clientWidth))
+    .toBe(true);
+  await argumentsScroll.focus();
+  await expect(argumentsScroll).toBeFocused();
+  await activateInView(page.getByRole("button", { name: "Switch color theme" }));
+  await activateInView(page.getByRole("button", { name: "切换到中文" }));
+  const localizedArguments = page.getByRole("region", { name: "已解码 immutable 参数" });
+  for (const heading of ["名称", "类型", "偏移", "数据"]) {
+    await expect(localizedArguments.getByRole("columnheader", { name: heading })).toBeVisible();
+  }
+  await assertA11yAndNoOverflow(page, "decoded CWIA table in Chinese dark narrow mode");
 });
 
 test("ERC-2535 pages preserve selector-scoped facets and ordered DiamondCut history", async ({
@@ -1713,8 +1902,13 @@ test("ERC-2535 pages preserve selector-scoped facets and ordered DiamondCut hist
   await expect(page.getByText("Add selectors", { exact: true }).first()).toBeVisible();
   await expect(page.getByText(diamondInitAddress, { exact: true })).toBeVisible();
   await expect(page.getByText("0x55241077", { exact: true })).toBeVisible();
-  await expect.poll(() => contractRequests.some(({ pathname }) =>
-    pathname === `/api/v1/contracts/${diamondAddress}/proxy/diamond-cuts`)).toBe(true);
+  await expect
+    .poll(() =>
+      contractRequests.some(
+        ({ pathname }) => pathname === `/api/v1/contracts/${diamondAddress}/proxy/diamond-cuts`,
+      ),
+    )
+    .toBe(true);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await activateInView(page.getByRole("button", { name: "Switch color theme" }));
@@ -1761,15 +1955,15 @@ test("embedded server isolates SPA fallback and serves only hashed immutable ass
   expect(document.headers()["etag"]).toBeUndefined();
 
   const html = await document.text();
-  const metaNonce = html.match(/<meta name="etherview-csp-nonce" content="([A-Za-z0-9_-]{43})">/u)?.[1];
+  const metaNonce = html.match(
+    /<meta name="etherview-csp-nonce" content="([A-Za-z0-9_-]{43})">/u,
+  )?.[1];
   expect(metaNonce).toBe(shellNonce);
   const entrypoints = [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map(
     ([, target]) => target,
   );
   expect(entrypoints.length).toBeGreaterThan(0);
-  expect(entrypoints.every((target) => /-[A-Za-z0-9_-]{8}\.[A-Za-z0-9]+$/.test(target))).toBe(
-    true,
-  );
+  expect(entrypoints.every((target) => /-[A-Za-z0-9_-]{8}\.[A-Za-z0-9]+$/.test(target))).toBe(true);
 
   const asset = await request.get(entrypoints[0]);
   expect(asset.status()).toBe(200);
@@ -1782,9 +1976,7 @@ test("embedded server isolates SPA fallback and serves only hashed immutable ass
     headers: { "If-None-Match": asset.headers()["etag"] },
   });
   expect(notModified.status()).toBe(304);
-  expect(notModified.headers()["cache-control"]).toBe(
-    "public, max-age=31536000, immutable",
-  );
+  expect(notModified.headers()["cache-control"]).toBe("public, max-age=31536000, immutable");
   expect(notModified.headers()["content-security-policy"]).toBe(basePolicy);
   expect(notModified.headers()["x-content-type-options"]).toBe("nosniff");
 
@@ -1876,10 +2068,9 @@ test("primary shell meets the WCAG 2.1 AA automated baseline on a narrow viewpor
   const darkChineseScan = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
     .analyze();
-  expect(
-    darkChineseScan.violations,
-    JSON.stringify(darkChineseScan.violations, null, 2),
-  ).toEqual([]);
+  expect(darkChineseScan.violations, JSON.stringify(darkChineseScan.violations, null, 2)).toEqual(
+    [],
+  );
 
   await expect(page.getByRole("heading", { name: "区块", exact: true, level: 1 })).toBeVisible();
   await expect(page.getByRole("table")).toBeVisible();
@@ -1986,9 +2177,7 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
       case "GET /api/v1/auth/session":
         await route.fulfill({
           contentType: "application/json",
-          json: envelope(
-            authenticated ? authSession() : { authenticated: false },
-          ),
+          json: envelope(authenticated ? authSession() : { authenticated: false }),
         });
         return;
       case "POST /api/v1/auth/challenge":
@@ -2037,9 +2226,7 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
       rate_per_second: 20,
       burst: 40,
       created_at: "2026-08-10T00:00:00Z",
-      ...(personalKey.status === "revoked"
-        ? { revoked_at: "2026-08-10T01:00:00Z" }
-        : {}),
+      ...(personalKey.status === "revoked" ? { revoked_at: "2026-08-10T01:00:00Z" } : {}),
     });
     if (request.method() === "GET" && url.pathname === "/api/v1/users/me/api-keys") {
       await route.fulfill({
@@ -2095,18 +2282,13 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
     const request = route.request();
     const url = new URL(request.url());
     record(request);
-    if (
-      request.method() === "GET" &&
-      url.pathname === "/api/v1/admin/users"
-    ) {
+    if (request.method() === "GET" && url.pathname === "/api/v1/admin/users") {
       const cursor = url.searchParams.get("cursor");
       await route.fulfill({
         contentType: "application/json",
         json: envelope(
           cursor === authUserCursor ? [currentUser()] : [targetUser()],
-          cursor === authUserCursor
-            ? {}
-            : { next_cursor: authUserCursor },
+          cursor === authUserCursor ? {} : { next_cursor: authUserCursor },
         ),
       });
       return;
@@ -2129,8 +2311,7 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
     }
     if (
       request.method() === "POST" &&
-      url.pathname ===
-        `/api/v1/admin/users/${authTargetUserID}/sessions/revoke`
+      url.pathname === `/api/v1/admin/users/${authTargetUserID}/sessions/revoke`
     ) {
       await route.fulfill({
         contentType: "application/json",
@@ -2140,9 +2321,7 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
     }
     await route.fulfill({ status: 404 });
   });
-  const billingPayment = (
-    overrides: Record<string, unknown> = {},
-  ) => ({
+  const billingPayment = (overrides: Record<string, unknown> = {}) => ({
     id: billingPaymentID,
     operation: "getBlock",
     state: "settled",
@@ -2171,9 +2350,7 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
             user_id: billingHiddenUserID,
           }),
         ],
-        cursor === billingPersonalCursor
-          ? {}
-          : { next_cursor: billingPersonalCursor },
+        cursor === billingPersonalCursor ? {} : { next_cursor: billingPersonalCursor },
       ),
     });
   });
@@ -2181,10 +2358,7 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
     const request = route.request();
     const url = new URL(request.url());
     record(request);
-    if (
-      request.method() === "GET" &&
-      url.pathname === "/api/v1/admin/billing/summary"
-    ) {
+    if (request.method() === "GET" && url.pathname === "/api/v1/admin/billing/summary") {
       await route.fulfill({
         contentType: "application/json",
         json: envelope({
@@ -2206,10 +2380,7 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
       });
       return;
     }
-    if (
-      request.method() === "GET" &&
-      url.pathname === "/api/v1/admin/billing/payments"
-    ) {
+    if (request.method() === "GET" && url.pathname === "/api/v1/admin/billing/payments") {
       const cursor = url.searchParams.get("cursor");
       await route.fulfill({
         contentType: "application/json",
@@ -2222,9 +2393,7 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
               user_id: billingAdminUserID,
             }),
           ],
-          cursor === billingAdminCursor
-            ? {}
-            : { next_cursor: billingAdminCursor },
+          cursor === billingAdminCursor ? {} : { next_cursor: billingAdminCursor },
         ),
       });
       return;
@@ -2263,9 +2432,7 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
         provider,
       });
       window.addEventListener("eip6963:requestProvider", () => {
-        window.dispatchEvent(
-          new CustomEvent("eip6963:announceProvider", { detail }),
-        );
+        window.dispatchEvent(new CustomEvent("eip6963:announceProvider", { detail }));
       });
       (window as AuthWalletWindow).__etherviewE2EAuthWallet = {
         requests,
@@ -2279,15 +2446,9 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
 
   const response = await page.goto("/account");
   expect(response?.status()).toBe(200);
-  await expect(
-    page.getByRole("heading", { name: "Wallet connection" }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Wallet disconnected", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Not logged in", { exact: true }).last(),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Wallet connection" })).toBeVisible();
+  await expect(page.getByText("Wallet disconnected", { exact: true })).toBeVisible();
+  await expect(page.getByText("Not logged in", { exact: true }).last()).toBeVisible();
 
   await activateInView(page.locator(".auth-action-panel button"));
   await expect(
@@ -2296,8 +2457,7 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
     }),
   ).toBeVisible();
   const walletRequests = await page.evaluate(
-    () =>
-      (window as AuthWalletWindow).__etherviewE2EAuthWallet.requests,
+    () => (window as AuthWalletWindow).__etherviewE2EAuthWallet.requests,
   );
   expect(walletRequests.map(({ method }) => method)).toEqual([
     "eth_requestAccounts",
@@ -2308,30 +2468,19 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
     "eth_chainId",
     "eth_accounts",
   ]);
-  expect(
-    walletRequests.filter(({ method }) => method === "personal_sign"),
-  ).toEqual([
+  expect(walletRequests.filter(({ method }) => method === "personal_sign")).toEqual([
     {
       method: "personal_sign",
-      params: [
-        `0x${Buffer.from(authSIWEMessage, "utf8").toString("hex")}`,
-        walletAccount,
-      ],
+      params: [`0x${Buffer.from(authSIWEMessage, "utf8").toString("hex")}`, walletAccount],
     },
   ]);
 
   const challengeRequest = authRequests.find(
     ({ pathname }) => pathname === "/api/v1/auth/challenge",
   );
-  const verifyRequest = authRequests.find(
-    ({ pathname }) => pathname === "/api/v1/auth/verify",
-  );
-  expect(challengeRequest?.body).toBe(
-    JSON.stringify({ address: walletAccount }),
-  );
-  expect(challengeRequest?.headers.origin).toBe(
-    "http://127.0.0.1:4173",
-  );
+  const verifyRequest = authRequests.find(({ pathname }) => pathname === "/api/v1/auth/verify");
+  expect(challengeRequest?.body).toBe(JSON.stringify({ address: walletAccount }));
+  expect(challengeRequest?.headers.origin).toBe("http://127.0.0.1:4173");
   expect(verifyRequest?.body).toBe(
     JSON.stringify({
       challenge_id: authChallengeID,
@@ -2352,8 +2501,7 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
 
   expect(
     authRequests.filter(
-      ({ method, pathname }) =>
-        method === "POST" && pathname === "/api/v1/auth/logout",
+      ({ method, pathname }) => method === "POST" && pathname === "/api/v1/auth/logout",
     ),
   ).toHaveLength(0);
   await page.reload();
@@ -2362,35 +2510,25 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
       exact: true,
     }),
   ).toBeVisible();
-  await expect(
-    page.getByText("Wallet disconnected", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText("Wallet disconnected", { exact: true })).toBeVisible();
   expect(
     authRequests.filter(
-      ({ method, pathname }) =>
-        method === "POST" && pathname === "/api/v1/auth/logout",
+      ({ method, pathname }) => method === "POST" && pathname === "/api/v1/auth/logout",
     ),
   ).toHaveLength(0);
 
   await activateInView(page.locator(".wallet-summary"));
-  await activateInView(
-    page.getByRole("button", { name: /SIWE E2E Wallet/ }),
-  );
-  await expect(
-    page.getByText("Wallet connected", { exact: true }),
-  ).toBeVisible();
+  await activateInView(page.getByRole("button", { name: /SIWE E2E Wallet/ }));
+  await expect(page.getByText("Wallet connected", { exact: true })).toBeVisible();
   expect(
     authRequests.filter(
-      ({ method, pathname }) =>
-        method === "POST" && pathname === "/api/v1/auth/logout",
+      ({ method, pathname }) => method === "POST" && pathname === "/api/v1/auth/logout",
     ),
   ).toHaveLength(0);
 
   page.on("dialog", async (dialog) => dialog.accept());
   const accountSections = page.getByRole("navigation", { name: "Account sections" });
-  await activateInView(
-    accountSections.getByRole("link", { name: "API Keys", exact: true }),
-  );
+  await activateInView(accountSections.getByRole("link", { name: "API Keys", exact: true }));
   await expect(page.getByRole("heading", { name: "API Keys" })).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await assertA11yAndNoOverflow(page, "account API keys in English narrow mode");
@@ -2408,7 +2546,8 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
   expect(page.url()).not.toContain(userAPIKeyToken);
   expect(
     await page.evaluate(
-      (token) => Object.values(localStorage).every((value) => value !== token) &&
+      (token) =>
+        Object.values(localStorage).every((value) => value !== token) &&
         Object.values(sessionStorage).every((value) => value !== token),
       userAPIKeyToken,
     ),
@@ -2424,8 +2563,7 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
     page.locator(".api-key-card .user-state").getByText("Revoked", { exact: true }),
   ).toBeVisible();
   const personalKeyWrites = authRequests.filter(
-    ({ method, pathname }) =>
-      pathname.startsWith("/api/v1/users/me/api-keys") && method !== "GET",
+    ({ method, pathname }) => pathname.startsWith("/api/v1/users/me/api-keys") && method !== "GET",
   );
   expect(personalKeyWrites).toHaveLength(3);
   for (const request of personalKeyWrites) {
@@ -2433,55 +2571,31 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
     expect(request.headers.origin).toBe("http://127.0.0.1:4173");
   }
 
-  await activateInView(
-    accountSections.getByRole("link", { name: "Billing", exact: true }),
-  );
+  await activateInView(accountSections.getByRole("link", { name: "Billing", exact: true }));
 
   const personalHistory = page.locator(".billing-history-section");
-  await expect(
-    personalHistory.getByRole("heading", { name: "Payment history" }),
-  ).toBeVisible();
-  await expect(
-    personalHistory.getByText(billingAmount, { exact: true }),
-  ).toBeVisible();
+  await expect(personalHistory.getByRole("heading", { name: "Payment history" })).toBeVisible();
+  await expect(personalHistory.getByText(billingAmount, { exact: true })).toBeVisible();
   await expect(personalHistory).not.toContainText(billingHiddenUserID);
   await expect(personalHistory).not.toContainText(billingAPIKeyPrefix);
-  await expect(
-    personalHistory.getByRole("columnheader", { name: "User ID" }),
-  ).toHaveCount(0);
-  await activateInView(
-    personalHistory.getByRole("button", { name: "Next page" }),
-  );
-  await expect(
-    personalHistory.getByText("Page 2", { exact: true }),
-  ).toBeVisible();
+  await expect(personalHistory.getByRole("columnheader", { name: "User ID" })).toHaveCount(0);
+  await activateInView(personalHistory.getByRole("button", { name: "Next page" }));
+  await expect(personalHistory.getByText("Page 2", { exact: true })).toBeVisible();
   const personalCursorRequest = authRequests.find(
     ({ pathname, search }) =>
       pathname === "/api/v1/billing/payments" &&
       new URLSearchParams(search).get("cursor") === billingPersonalCursor,
   );
   expect(personalCursorRequest).toBeDefined();
-  expect(
-    new URLSearchParams(personalCursorRequest?.search).has("address"),
-  ).toBe(false);
-  expect(
-    new URLSearchParams(personalCursorRequest?.search).has("user_id"),
-  ).toBe(false);
+  expect(new URLSearchParams(personalCursorRequest?.search).has("address")).toBe(false);
+  expect(new URLSearchParams(personalCursorRequest?.search).has("user_id")).toBe(false);
 
-  await activateInView(
-    accountSections.getByRole("link", { name: "Overview", exact: true }),
-  );
+  await activateInView(accountSections.getByRole("link", { name: "Overview", exact: true }));
   await page.locator(".profile-form input").fill("  Updated Browser Admin  ");
-  await activateInView(
-    page.getByRole("button", { name: "Save profile" }),
-  );
+  await activateInView(page.getByRole("button", { name: "Save profile" }));
   await expect(page.getByRole("status")).toContainText("Profile saved.");
-  const profileRequest = authRequests.find(
-    ({ pathname }) => pathname === "/api/v1/users/me",
-  );
-  expect(profileRequest?.body).toBe(
-    JSON.stringify({ display_name: "Updated Browser Admin" }),
-  );
+  const profileRequest = authRequests.find(({ pathname }) => pathname === "/api/v1/users/me");
+  expect(profileRequest?.body).toBe(JSON.stringify({ display_name: "Updated Browser Admin" }));
   expect(profileRequest?.headers["x-csrf-token"]).toBe(authCSRFToken);
   expect(profileRequest?.headers.origin).toBe("http://127.0.0.1:4173");
 
@@ -2490,36 +2604,21 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
       .getByRole("navigation", { name: "Primary navigation" })
       .getByRole("link", { name: "User admin" }),
   );
-  await expect(
-    page.getByRole("heading", { name: "User administration" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "User administration" })).toBeVisible();
   await expect(page.getByText(address, { exact: true })).toBeVisible();
-  await page
-    .getByRole("combobox", { name: `Role for ${address}` })
-    .selectOption("admin");
-  await page
-    .getByRole("combobox", { name: `Status for ${address}` })
-    .selectOption("disabled");
+  await page.getByRole("combobox", { name: `Role for ${address}` }).selectOption("admin");
+  await page.getByRole("combobox", { name: `Status for ${address}` }).selectOption("disabled");
   await activateInView(page.getByRole("button", { name: "Save user" }));
-  await expect(page.getByRole("status")).toContainText(
-    "Updated 0x111111…111111.",
-  );
-  await activateInView(
-    page.getByRole("button", { name: "Revoke sessions" }),
-  );
-  await expect(page.getByRole("status")).toContainText(
-    "Revoked 3 session(s) for 0x111111…111111.",
-  );
+  await expect(page.getByRole("status")).toContainText("Updated 0x111111…111111.");
+  await activateInView(page.getByRole("button", { name: "Revoke sessions" }));
+  await expect(page.getByRole("status")).toContainText("Revoked 3 session(s) for 0x111111…111111.");
   const adminPatchRequest = authRequests.find(
     ({ method, pathname }) =>
-      method === "PATCH" &&
-      pathname === `/api/v1/admin/users/${authTargetUserID}`,
+      method === "PATCH" && pathname === `/api/v1/admin/users/${authTargetUserID}`,
   );
   const adminRevokeRequest = authRequests.find(
     ({ method, pathname }) =>
-      method === "POST" &&
-      pathname ===
-        `/api/v1/admin/users/${authTargetUserID}/sessions/revoke`,
+      method === "POST" && pathname === `/api/v1/admin/users/${authTargetUserID}/sessions/revoke`,
   );
   expect(adminPatchRequest?.headers["x-csrf-token"]).toBe(authCSRFToken);
   expect(adminRevokeRequest?.headers["x-csrf-token"]).toBe(authCSRFToken);
@@ -2543,40 +2642,18 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
       .getByRole("navigation", { name: "Primary navigation" })
       .getByRole("link", { name: "Billing admin" }),
   );
-  await expect(
-    page.getByRole("heading", { name: "Billing administration" }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Settlement unknown", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByText(billingAdminUserID, { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByText(billingAPIKeyPrefix, { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByText(billingAmount, { exact: true }).first(),
-  ).toBeVisible();
-  await expect(
-    page.getByText(billingCount, { exact: true }).first(),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Billing administration" })).toBeVisible();
+  await expect(page.getByText("Settlement unknown", { exact: true })).toBeVisible();
+  await expect(page.getByText(billingAdminUserID, { exact: true })).toBeVisible();
+  await expect(page.getByText(billingAPIKeyPrefix, { exact: true })).toBeVisible();
+  await expect(page.getByText(billingAmount, { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(billingCount, { exact: true }).first()).toBeVisible();
 
-  await page
-    .getByRole("combobox", { name: "State" })
-    .selectOption("settling");
-  await page
-    .getByRole("combobox", { name: "Operation" })
-    .selectOption("getBlock");
-  await page
-    .getByRole("textbox", { name: "Network" })
-    .fill("eip155:84532");
-  await page
-    .getByRole("textbox", { name: "Asset" })
-    .fill(billingAsset);
-  await activateInView(
-    page.getByRole("button", { name: "Apply filters" }),
-  );
+  await page.getByRole("combobox", { name: "State" }).selectOption("settling");
+  await page.getByRole("combobox", { name: "Operation" }).selectOption("getBlock");
+  await page.getByRole("textbox", { name: "Network" }).fill("eip155:84532");
+  await page.getByRole("textbox", { name: "Asset" }).fill(billingAsset);
+  await activateInView(page.getByRole("button", { name: "Apply filters" }));
   await expect
     .poll(() =>
       authRequests.some(({ pathname, search }) => {
@@ -2607,9 +2684,7 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
   );
   expect(billingCursorRequest).toBeDefined();
 
-  const billingRequests = authRequests.filter(({ pathname }) =>
-    pathname.includes("/billing/"),
-  );
+  const billingRequests = authRequests.filter(({ pathname }) => pathname.includes("/billing/"));
   expect(billingRequests.length).toBeGreaterThanOrEqual(6);
   for (const request of billingRequests) {
     expect(request.method).toBe("GET");
@@ -2630,42 +2705,32 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
 
   await activateInView(page.getByRole("button", { name: "切换到中文" }));
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(
-    page.getByRole("heading", { name: "计费管理", level: 1 }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "计费管理", level: 1 })).toBeVisible();
   const adminScan = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
     .analyze();
-  expect(
-    adminScan.violations,
-    JSON.stringify(adminScan.violations, null, 2),
-  ).toEqual([]);
+  expect(adminScan.violations, JSON.stringify(adminScan.violations, null, 2)).toEqual([]);
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
   expect(overflow).toBeLessThanOrEqual(1);
 
   await page.evaluate(() => {
-    (window as AuthWalletWindow).__etherviewE2EAuthWallet.emit(
-      "accountsChanged",
-      ["0x4444444444444444444444444444444444444444"],
-    );
+    (window as AuthWalletWindow).__etherviewE2EAuthWallet.emit("accountsChanged", [
+      "0x4444444444444444444444444444444444444444",
+    ]);
   });
-  await expect(
-    page.getByRole("heading", { name: "需要已认证的用户会话。" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "需要已认证的用户会话。" })).toBeVisible();
   await expect
     .poll(
       () =>
         authRequests.filter(
-          ({ method, pathname }) =>
-            method === "POST" && pathname === "/api/v1/auth/logout",
+          ({ method, pathname }) => method === "POST" && pathname === "/api/v1/auth/logout",
         ).length,
     )
     .toBe(1);
   const logoutRequest = authRequests.find(
-    ({ method, pathname }) =>
-      method === "POST" && pathname === "/api/v1/auth/logout",
+    ({ method, pathname }) => method === "POST" && pathname === "/api/v1/auth/logout",
   );
   expect(logoutRequest?.headers["x-csrf-token"]).toBe(authCSRFToken);
 });
@@ -2704,9 +2769,7 @@ test("EIP-6963 contract reads and writes stay inside the selected wallet boundar
           if (method === "eth_accounts") return [account];
           if (method === "eth_chainId") return "0x1";
           if (method === "eth_call") {
-            return mode === "invalid-call"
-              ? { result: "0xfeed" }
-              : `0x${"0".repeat(63)}2`;
+            return mode === "invalid-call" ? { result: "0xfeed" } : `0x${"0".repeat(63)}2`;
           }
           if (method === "eth_sendTransaction") {
             if (mode === "delayed-write") {
@@ -2769,8 +2832,7 @@ test("EIP-6963 contract reads and writes stay inside the selected wallet boundar
   ).toBeVisible();
   await expect(page.getByRole("tab", { name: "Proxy management" })).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Etherview home" })
-      .getByText("Ethereum", { exact: true }),
+    page.getByRole("link", { name: "Etherview home" }).getByText("Ethereum", { exact: true }),
   ).toBeVisible();
 
   recordWalletBoundary = true;
@@ -2784,29 +2846,32 @@ test("EIP-6963 contract reads and writes stay inside the selected wallet boundar
   });
   await expect(addNetworkButton).toBeVisible();
   await activateInView(addNetworkButton);
-  await expect.poll(async () => page.evaluate(
-    () => (window as WalletWindow).__etherviewE2EWallet.requests,
-  )).toContainEqual(expect.objectContaining({ method: "wallet_addEthereumChain" }));
+  await expect
+    .poll(async () => page.evaluate(() => (window as WalletWindow).__etherviewE2EWallet.requests))
+    .toContainEqual(expect.objectContaining({ method: "wallet_addEthereumChain" }));
   const addNetworkRequests = await page.evaluate(
     () => (window as WalletWindow).__etherviewE2EWallet.requests,
   );
-  expect(addNetworkRequests).toEqual([{
-    method: "wallet_addEthereumChain",
-    params: [{
-      chainId: "0x1",
-      chainName: "Ethereum",
-      nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-      rpcUrls: ["http://localhost:8545"],
-    }],
-  }]);
+  expect(addNetworkRequests).toEqual([
+    {
+      method: "wallet_addEthereumChain",
+      params: [
+        {
+          chainId: "0x1",
+          chainName: "Ethereum",
+          nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+          rpcUrls: ["http://localhost:8545"],
+        },
+      ],
+    },
+  ]);
   await expect(walletPopover.locator(".wallet-option")).toContainText(longWalletName);
   const providerMenuScan = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
     .analyze();
-  expect(
-    providerMenuScan.violations,
-    JSON.stringify(providerMenuScan.violations, null, 2),
-  ).toEqual([]);
+  expect(providerMenuScan.violations, JSON.stringify(providerMenuScan.violations, null, 2)).toEqual(
+    [],
+  );
   await activateInView(page.locator(".wallet-option"));
   await expect(page.locator(".wallet-summary")).toBeFocused();
 
@@ -2846,14 +2911,17 @@ test("EIP-6963 contract reads and writes stay inside the selected wallet boundar
   });
   expect(requests.find(({ method }) => method === "eth_sendTransaction")).toEqual({
     method: "eth_sendTransaction",
-    params: [expect.objectContaining({
-      chainId: "0x1",
-      from: walletAccount,
-      to: address,
-    })],
+    params: [
+      expect.objectContaining({
+        chainId: "0x1",
+        from: walletAccount,
+        to: address,
+      }),
+    ],
   });
-  const generatedCalls = requests.filter(({ method }) =>
-    method === "eth_call" || method === "eth_sendTransaction");
+  const generatedCalls = requests.filter(
+    ({ method }) => method === "eth_call" || method === "eth_sendTransaction",
+  );
   for (const request of generatedCalls) {
     const transaction = request.params?.[0] as Record<string, unknown>;
     expect(transaction.data).toMatch(/^0x[0-9a-f]+$/u);
@@ -2934,9 +3002,7 @@ test("EIP-6963 contract reads and writes stay inside the selected wallet boundar
       message: "secret-wallet-message https://wallet.invalid/?token=private",
     });
   });
-  await expect(
-    page.getByRole("alert").filter({ hasText: "注入式钱包已断开连接。" }),
-  ).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "注入式钱包已断开连接。" })).toBeVisible();
   await expect(page.locator(".wallet-summary")).toBeFocused();
   await expect(page.getByText(/secret-wallet-message/)).toHaveCount(0);
   await expect(page.getByRole("button", { name: "发送交易" })).toBeDisabled();
@@ -2959,9 +3025,7 @@ test("EIP-6963 contract reads and writes stay inside the selected wallet boundar
     JSON.stringify(disconnectedMenuScan.violations, null, 2),
   ).toEqual([]);
   await activateInView(page.locator(".wallet-option"));
-  await expect(
-    page.getByRole("alert").filter({ hasText: "钱包请求已被拒绝。" }),
-  ).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "钱包请求已被拒绝。" })).toBeVisible();
   await expect(page.getByText(/secret-wallet-message/)).toHaveCount(0);
 
   await page.evaluate(() => {
@@ -3028,10 +3092,7 @@ test("EIP-6963 wallet discovery keeps reads and writes disabled on chain mismatc
   const requests = await page.evaluate(
     () => (window as WalletWindow).__etherviewE2EWallet.requests,
   );
-  expect(requests.map(({ method }) => method)).toEqual([
-    "eth_requestAccounts",
-    "eth_chainId",
-  ]);
+  expect(requests.map(({ method }) => method)).toEqual(["eth_requestAccounts", "eth_chainId"]);
 
   await activateInView(page.locator(".wallet-summary"));
   await activateInView(page.getByRole("button", { name: "Switch color theme" }));
@@ -3071,10 +3132,7 @@ async function assertAccessibleRoute(page: import("@playwright/test").Page, rout
   expect(overflow, route).toBeLessThanOrEqual(1);
 }
 
-async function assertA11yAndNoOverflow(
-  page: import("@playwright/test").Page,
-  context: string,
-) {
+async function assertA11yAndNoOverflow(page: import("@playwright/test").Page, context: string) {
   const scan = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
     .analyze();
@@ -3085,10 +3143,7 @@ async function assertA11yAndNoOverflow(
   expect(overflow, context).toBeLessThanOrEqual(1);
 }
 
-async function fulfillAPIEnvelope(
-  route: import("@playwright/test").Route,
-  data: unknown,
-) {
+async function fulfillAPIEnvelope(route: import("@playwright/test").Route, data: unknown) {
   await route.fulfill({
     status: 200,
     contentType: "application/json",

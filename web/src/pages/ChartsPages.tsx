@@ -11,11 +11,7 @@ import type {
   ChartPoint,
   ChartPreview,
 } from "@/api/types";
-import {
-  formatGweiFromWei,
-  formatInteger,
-  formatTimestamp,
-} from "@/components/format";
+import { formatGweiFromWei, formatInteger, formatTimestamp } from "@/components/format";
 import { QueryNotice } from "@/components/QueryNotice";
 import { type ChartPreset, type ChartSearch } from "./chartRoute";
 
@@ -28,8 +24,12 @@ const sections: Array<{ key: string; metrics: ChartMetric[] }> = [
   {
     key: "activity",
     metrics: [
-      "transactions", "failed-transactions", "average-tps",
-      "erc20-transfers", "nft-transfers", "contract-creations",
+      "transactions",
+      "failed-transactions",
+      "average-tps",
+      "erc20-transfers",
+      "nft-transfers",
+      "contract-creations",
     ],
   },
   {
@@ -39,8 +39,11 @@ const sections: Array<{ key: string; metrics: ChartMetric[] }> = [
   {
     key: "feesBurn",
     metrics: [
-      "average-base-fee", "execution-fees", "average-transaction-fee",
-      "priority-fees", "burned-fees",
+      "average-base-fee",
+      "execution-fees",
+      "average-transaction-fee",
+      "priority-fees",
+      "burned-fees",
     ],
   },
   {
@@ -50,7 +53,10 @@ const sections: Array<{ key: string; metrics: ChartMetric[] }> = [
 ];
 
 const overviewMetrics: ChartMetric[] = [
-  "transactions", "average-tps", "execution-fees", "gas-utilization",
+  "transactions",
+  "average-tps",
+  "execution-fees",
+  "gas-utilization",
 ];
 
 export function ChartsPage() {
@@ -100,15 +106,21 @@ export function ChartsPage() {
                 <span className="pulse-dot" aria-hidden="true" />
                 <div>
                   <strong>{t("charts.backfillPending")}</strong>
-                  <p>{t("charts.backfillPendingDetail", {
-                    dirty: overview.data.coverage.dirty_hours,
-                  })}</p>
+                  <p>
+                    {t("charts.backfillPendingDetail", {
+                      dirty: overview.data.coverage.dirty_hours,
+                    })}
+                  </p>
                 </div>
               </div>
             )}
           </section>
           {sections.map((section) => (
-            <section className="chart-category" key={section.key} aria-labelledby={`chart-${section.key}`}>
+            <section
+              className="chart-category"
+              key={section.key}
+              aria-labelledby={`chart-${section.key}`}
+            >
               <div className="charts-section-heading">
                 <div>
                   <span className="eyebrow">{t(`charts.categories.${section.key}.eyebrow`)}</span>
@@ -129,10 +141,7 @@ export function ChartsPage() {
           ))}
           <p className="charts-snapshot">
             {t("charts.snapshot")}{" "}
-            <Link
-              to="/blocks/$blockID"
-              params={{ blockID: overview.data.snapshot.block_hash }}
-            >
+            <Link to="/blocks/$blockID" params={{ blockID: overview.data.snapshot.block_hash }}>
               <code>{overview.data.snapshot.block_number}</code>
             </Link>
           </p>
@@ -183,15 +192,15 @@ export function ChartMetricPage({
     const to = utcDateEnd(toDate);
     if (!from || !to || from >= to) return;
     updateSearch({
-      range: "custom", from_time: from, to_time: to, interval: search.interval,
+      range: "custom",
+      from_time: from,
+      to_time: to,
+      interval: search.interval,
     });
   };
 
   return (
-    <ChartsPageFrame
-      title={label}
-      description={t("charts.detailDescription", { metric: label })}
-    >
+    <ChartsPageFrame title={label} description={t("charts.detailDescription", { metric: label })}>
       <nav className="chart-breadcrumb" aria-label={t("charts.breadcrumb")}>
         <Link to="/charts">{t("page.charts")}</Link>
         <span aria-hidden="true">/</span>
@@ -214,34 +223,54 @@ export function ChartMetricPage({
         <form className="chart-custom-range" onSubmit={submitCustom}>
           <label>
             <span>{t("charts.fromDate")} · UTC</span>
-            <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(event) => setFromDate(event.target.value)}
+            />
           </label>
           <label>
             <span>{t("charts.toDate")} · UTC</span>
             <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
           </label>
-          <button className="button" type="submit">{t("charts.apply")}</button>
+          <button className="button" type="submit">
+            {t("charts.apply")}
+          </button>
         </form>
         <label className="chart-interval">
           <span>{t("charts.intervalControl")}</span>
           <select
             value={search.interval}
-            onChange={(event) => updateSearch({
-              ...search,
-              interval: event.target.value as ChartInterval,
-            })}
+            onChange={(event) =>
+              updateSearch({
+                ...search,
+                interval: event.target.value as ChartInterval,
+              })
+            }
           >
             {(["auto", "hour", "day", "week", "month"] as const).map((interval) => (
-              <option key={interval} value={interval}>{t(`charts.intervals.${interval}`)}</option>
+              <option key={interval} value={interval}>
+                {t(`charts.intervals.${interval}`)}
+              </option>
             ))}
           </select>
         </label>
       </section>
-      <QueryNotice loading={series.isPending || overview.isPending} error={series.error ?? overview.error} />
+      <QueryNotice
+        loading={series.isPending || overview.isPending}
+        error={series.error ?? overview.error}
+      />
       {series.data && (
         <>
           <section className="chart-summary-grid" aria-label={t("charts.summary")}>
-            {(["current", "highest", "lowest", metricIsAverage(metric) ? "average" : "total"] as const).map((key) => (
+            {(
+              [
+                "current",
+                "highest",
+                "lowest",
+                metricIsAverage(metric) ? "average" : "total",
+              ] as const
+            ).map((key) => (
               <article className="chart-summary-card" key={key}>
                 <span>{t(`charts.summaryLabels.${key}`)}</span>
                 <strong>{display(series.data.summary[key])}</strong>
@@ -255,15 +284,25 @@ export function ChartMetricPage({
                 <h2 id="chart-detail-title">{label}</h2>
               </div>
               <div className="chart-actions">
-                <button className="button" onClick={() => setResetKey((value) => value + 1)} type="button">
+                <button
+                  className="button"
+                  onClick={() => setResetKey((value) => value + 1)}
+                  type="button"
+                >
                   {t("charts.resetZoom")}
                 </button>
-                <button className="button primary" onClick={() => downloadCSV(series.data)} type="button">
+                <button
+                  className="button primary"
+                  onClick={() => downloadCSV(series.data)}
+                  type="button"
+                >
                   {t("charts.downloadCSV")}
                 </button>
               </div>
             </div>
-            <Suspense fallback={<div className="metric-detail-chart chart-loading" aria-hidden="true" />}>
+            <Suspense
+              fallback={<div className="metric-detail-chart chart-loading" aria-hidden="true" />}
+            >
               <MetricChart
                 data={series.data.points}
                 label={label}
@@ -279,9 +318,14 @@ export function ChartMetricPage({
             />
           </section>
           <div className="chart-detail-meta">
-            <span>{t("charts.intervalControl")}: <code>{series.data.interval}</code></span>
-            <span>{t("charts.points")}: <code>{series.data.points.length}</code></span>
-            <span>{t("charts.snapshot")}:{" "}
+            <span>
+              {t("charts.intervalControl")}: <code>{series.data.interval}</code>
+            </span>
+            <span>
+              {t("charts.points")}: <code>{series.data.points.length}</code>
+            </span>
+            <span>
+              {t("charts.snapshot")}:{" "}
               <Link to="/blocks/$blockID" params={{ blockID: series.data.snapshot.block_hash }}>
                 <code>{series.data.snapshot.block_number}</code>
               </Link>
@@ -329,11 +373,13 @@ function Sparkline({ points }: { points: ChartPoint[] }) {
   const minimum = Math.min(...values);
   const maximum = Math.max(...values);
   const spread = maximum - minimum || 1;
-  const path = values.map((value, index) => {
-    const x = (index / (values.length - 1)) * 100;
-    const y = 34 - ((value - minimum) / spread) * 28;
-    return `${x},${y}`;
-  }).join(" ");
+  const path = values
+    .map((value, index) => {
+      const x = (index / (values.length - 1)) * 100;
+      const y = 34 - ((value - minimum) / spread) * 28;
+      return `${x},${y}`;
+    })
+    .join(" ");
   return (
     <svg className="sparkline" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true">
       <polyline points={path} />
@@ -343,12 +389,13 @@ function Sparkline({ points }: { points: ChartPoint[] }) {
 
 function Change({ value }: { value?: string }) {
   const { t } = useTranslation();
-  if (value === undefined) return <small className="chart-change neutral">{t("charts.noComparison")}</small>;
+  if (value === undefined)
+    return <small className="chart-change neutral">{t("charts.noComparison")}</small>;
   const negative = value.startsWith("-");
   return (
     <small className={`chart-change ${negative ? "negative" : "positive"}`}>
-      <span aria-hidden="true">{negative ? "↓" : "↑"}</span>{" "}
-      {value.replace("-", "")}% {t("charts.vsPrevious")}
+      <span aria-hidden="true">{negative ? "↓" : "↑"}</span> {value.replace("-", "")}%{" "}
+      {t("charts.vsPrevious")}
     </small>
   );
 }
@@ -378,7 +425,11 @@ function ExactChartTable({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="table-scroll chart-exact-table" tabIndex={0} aria-label={t("charts.exactTable")}>
+    <div
+      className="table-scroll chart-exact-table"
+      tabIndex={0}
+      aria-label={t("charts.exactTable")}
+    >
       <table>
         <caption>{t("charts.exactTableCaption")}</caption>
         <thead>
@@ -394,12 +445,24 @@ function ExactChartTable({
         <tbody>
           {points.map((point) => (
             <tr key={point.bucket_start}>
-              <td><time dateTime={point.bucket_start}>{formatTimestamp(point.bucket_start, locale)}</time></td>
-              <td><time dateTime={point.bucket_end}>{formatTimestamp(point.bucket_end, locale)}</time></td>
+              <td>
+                <time dateTime={point.bucket_start}>
+                  {formatTimestamp(point.bucket_start, locale)}
+                </time>
+              </td>
+              <td>
+                <time dateTime={point.bucket_end}>{formatTimestamp(point.bucket_end, locale)}</time>
+              </td>
               <td>{display(point.value)}</td>
-              <td><code>{point.value}</code></td>
+              <td>
+                <code>{point.value}</code>
+              </td>
               <td>{point.partial ? t("common.yes") : t("common.no")}</td>
-              <td><code>{point.from_block} – {point.to_block}</code></td>
+              <td>
+                <code>
+                  {point.from_block} – {point.to_block}
+                </code>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -445,9 +508,7 @@ function resolveRange(search: ChartSearch, availableFrom?: string) {
     "90d": 90 * 24 * 60 * 60 * 1_000,
     "1y": 365 * 24 * 60 * 60 * 1_000,
   };
-  const effectiveRange = search.range === "all" || search.range === "custom"
-    ? "7d"
-    : search.range;
+  const effectiveRange = search.range === "all" || search.range === "custom" ? "7d" : search.range;
   const duration = milliseconds[effectiveRange];
   return { from: new Date(now.getTime() - duration).toISOString(), to, valid: true };
 }
@@ -471,8 +532,12 @@ function metricLabel(metric: ChartMetric, t: ReturnType<typeof useTranslation>["
 
 function metricIsAverage(metric: ChartMetric) {
   return [
-    "average-tps", "average-block-time", "gas-utilization",
-    "average-base-fee", "average-transaction-fee", "average-blob-base-fee",
+    "average-tps",
+    "average-block-time",
+    "gas-utilization",
+    "average-base-fee",
+    "average-transaction-fee",
+    "average-blob-base-fee",
   ].includes(metric);
 }
 
@@ -484,7 +549,15 @@ function formatMetricValue(
   nativeSymbol: string,
 ): string {
   if (value === undefined) return "—";
-  if (["execution-fees", "average-transaction-fee", "priority-fees", "burned-fees", "blob-burned-fees"].includes(metric)) {
+  if (
+    [
+      "execution-fees",
+      "average-transaction-fee",
+      "priority-fees",
+      "burned-fees",
+      "blob-burned-fees",
+    ].includes(metric)
+  ) {
     const formatted = formatScaledDecimal(value, nativeDecimals, locale);
     return `${formatted} ${nativeSymbol}`.trim();
   }
@@ -512,26 +585,29 @@ function formatScaledDecimal(value: string, decimals: number, locale: string): s
 
 function downloadCSV(series: ChartMetricSeries) {
   const header = "bucket_start,bucket_end,value,partial,from_block,to_block";
-  const rows = series.points.map((point) => [
-    point.bucket_start,
-    point.bucket_end,
-    point.value,
-    point.partial ? "true" : "false",
-    point.from_block,
-    point.to_block,
-  ].join(","));
+  const rows = series.points.map((point) =>
+    [
+      point.bucket_start,
+      point.bucket_end,
+      point.value,
+      point.partial ? "true" : "false",
+      point.from_block,
+      point.to_block,
+    ].join(","),
+  );
   const blob = new Blob([[header, ...rows].join("\n") + "\n"], {
     type: "text/csv;charset=utf-8",
   });
   const link = document.createElement("a");
   const url = URL.createObjectURL(blob);
   link.href = url;
-  link.download = [
-    series.metric,
-    series.from_time.slice(0, 10),
-    series.to_time.slice(0, 10),
-    series.interval,
-  ].join("_") + ".csv";
+  link.download =
+    [
+      series.metric,
+      series.from_time.slice(0, 10),
+      series.to_time.slice(0, 10),
+      series.interval,
+    ].join("_") + ".csv";
   link.click();
   URL.revokeObjectURL(url);
 }

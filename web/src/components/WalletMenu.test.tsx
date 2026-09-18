@@ -28,11 +28,13 @@ describe("WalletMenu", () => {
     vi.clearAllMocks();
     await i18n.changeLanguage("en");
     vi.mocked(useWallet).mockReturnValue({
-      providers: [{
-        uuid: "00000000-0000-4000-8000-000000000001",
-        name: "Test Wallet",
-        rdns: "org.etherview.test",
-      }],
+      providers: [
+        {
+          uuid: "00000000-0000-4000-8000-000000000001",
+          name: "Test Wallet",
+          rdns: "org.etherview.test",
+        },
+      ],
       connecting: false,
       addingChain: false,
       discover: vi.fn(),

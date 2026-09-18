@@ -17,9 +17,9 @@ afterEach(() => {
 describe("generated billing API adapter", () => {
   it("preserves the personal opaque cursor and never sends payment or CSRF headers", async () => {
     const storageWrite = vi.spyOn(window.localStorage, "setItem");
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
-      envelope([payment()], { next_cursor: paymentCursor }),
-    );
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(envelope([payment()], { next_cursor: paymentCursor }));
     vi.stubGlobal("fetch", fetcher);
 
     const response = await listCurrentUserBillingPayments(10, paymentCursor);
@@ -42,9 +42,9 @@ describe("generated billing API adapter", () => {
   });
 
   it("forwards strict admin filters and the opaque cursor through generated query parameters", async () => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
-      envelope([payment()], { next_cursor: paymentCursor }),
-    );
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(envelope([payment()], { next_cursor: paymentCursor }));
     vi.stubGlobal("fetch", fetcher);
 
     await listAdminBillingPayments(25, paymentCursor, {

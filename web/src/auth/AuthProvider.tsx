@@ -30,10 +30,7 @@ import {
   type WalletBoundaryErrorCode,
   walletErrorTranslationKey,
 } from "@/wallet/eip6963";
-import {
-  type ActiveWallet,
-  useWallet,
-} from "@/wallet/WalletProvider";
+import { type ActiveWallet, useWallet } from "@/wallet/WalletProvider";
 
 export type AuthErrorCode =
   | WalletBoundaryErrorCode
@@ -71,8 +68,7 @@ interface AuthContextValue {
 
 const unauthenticatedSession: AuthSession = Object.freeze({ authenticated: false });
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
 interface LoginAttempt {
   connectionObserved: boolean;
@@ -85,6 +81,7 @@ interface LoginAttempt {
 
 export function AuthProvider({ children }: PropsWithChildren) {
   const wallet = useWallet();
+  const { connect, isActiveWallet, signSIWEChallenge } = wallet;
   const publicConfig = usePublicConfig();
   const enabled = publicConfig.data?.features.user_auth === true;
   const expectedChainID = publicConfig.data?.chain_id;
@@ -161,12 +158,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
     const attempt = loginAttemptRef.current;
     const currentWallet = activeWalletRef.current;
-    const firstObservedConnection =
-      previous === "disconnected" && currentWallet !== undefined;
+    const firstObservedConnection = previous === "disconnected" && currentWallet !== undefined;
     const allowedLoginConnection =
       firstObservedConnection &&
-      ((attempt?.phase === "connecting" &&
-        currentWallet.uuid === attempt.providerUUID) ||
+      ((attempt?.phase === "connecting" && currentWallet.uuid === attempt.providerUUID) ||
         (attempt?.phase === "authenticating" &&
           attempt.wallet !== undefined &&
           sameWallet(currentWallet, attempt.wallet)));
@@ -196,112 +191,102 @@ export function AuthProvider({ children }: PropsWithChildren) {
     bestEffortLogout(current);
   }, [commitSession, walletIdentity]);
 
-  const login = useCallback(async (providerUUID?: string) => {
-    if (!enabled || !expectedChainID) {
-      setError("AUTH_UNAVAILABLE");
-      return;
-    }
-    if (loginAttemptRef.current) return;
-    if (!activeWalletRef.current && !providerUUID) {
-      setError("NOT_CONNECTED");
-      return;
-    }
-    if (
-      activeWalletRef.current &&
-      providerUUID &&
-      activeWalletRef.current.uuid !== providerUUID
-    ) {
-      setError("WALLET_IDENTITY_CHANGED");
-      return;
-    }
-    const generation = generationRef.current + 1;
-    generationRef.current = generation;
-    const attempt: LoginAttempt = activeWalletRef.current
-      ? {
-          connectionObserved: true,
-          finished: false,
-          phase: "authenticating",
-          startedDisconnected: false,
-          wallet: activeWalletRef.current,
+  const login = useCallback(
+    async (providerUUID?: string) => {
+      if (!enabled || !expectedChainID) {
+        setError("AUTH_UNAVAILABLE");
+        return;
+      }
+      if (loginAttemptRef.current) return;
+      if (!activeWalletRef.current && !providerUUID) {
+        setError("NOT_CONNECTED");
+        return;
+      }
+      if (
+        activeWalletRef.current &&
+        providerUUID &&
+        activeWalletRef.current.uuid !== providerUUID
+      ) {
+        setError("WALLET_IDENTITY_CHANGED");
+        return;
+      }
+      const generation = generationRef.current + 1;
+      generationRef.current = generation;
+      const attempt: LoginAttempt = activeWalletRef.current
+        ? {
+            connectionObserved: true,
+            finished: false,
+            phase: "authenticating",
+            startedDisconnected: false,
+            wallet: activeWalletRef.current,
+          }
+        : {
+            connectionObserved: false,
+            finished: false,
+            phase: "connecting",
+            providerUUID,
+            startedDisconnected: true,
+          };
+      loginAttemptRef.current = attempt;
+      setPending(true);
+      setError(undefined);
+      let verified: AuthSession | undefined;
+      let verificationCSRF: string | undefined;
+      let accepted = false;
+      try {
+        const selected = activeWalletRef.current ?? (await connect(providerUUID!));
+        attempt.phase = "authenticating";
+        attempt.wallet = selected;
+        if (!chainsMatch(selected.chainID, expectedChainID)) {
+          throw new WalletBoundaryError("CHAIN_MISMATCH");
         }
-      : {
-          connectionObserved: false,
-          finished: false,
-          phase: "connecting",
-          providerUUID,
-          startedDisconnected: true,
-        };
-    loginAttemptRef.current = attempt;
-    setPending(true);
-    setError(undefined);
-    let verified: AuthSession | undefined;
-    let verificationCSRF: string | undefined;
-    let accepted = false;
-    try {
-      const selected =
-        activeWalletRef.current ?? await wallet.connect(providerUUID!);
-      attempt.phase = "authenticating";
-      attempt.wallet = selected;
-      if (!chainsMatch(selected.chainID, expectedChainID)) {
-        throw new WalletBoundaryError("CHAIN_MISMATCH");
+        const challenge = validateAuthChallenge(await createAuthChallenge(selected.account));
+        if (!isActiveWallet(selected)) {
+          throw new AuthBoundaryError("WALLET_IDENTITY_CHANGED");
+        }
+        const signature = await signSIWEChallenge(challenge, selected);
+        const verificationResponse = await verifyAuthChallenge(challenge.challenge_id, signature);
+        verificationCSRF = extractCSRFToken(verificationResponse);
+        verified = validateAuthSession(verificationResponse, expectedChainID);
+        if (
+          !verified.authenticated ||
+          !verified.user ||
+          !addressesMatch(verified.user.address, selected.account)
+        ) {
+          throw new AuthBoundaryError("INVALID_AUTH_RESPONSE");
+        }
+        if (!isActiveWallet(selected)) {
+          throw new AuthBoundaryError("WALLET_IDENTITY_CHANGED");
+        }
+        if (generationRef.current !== generation) return;
+        commitSession(verified);
+        accepted = true;
+      } catch (cause) {
+        if (generationRef.current === generation) {
+          commitSession(unauthenticatedSession);
+          setError(toAuthErrorCode(cause));
+        }
+      } finally {
+        // /auth/verify may already have installed an HttpOnly Cookie. A wallet
+        // identity/generation race must revoke that server session even though
+        // the stale result is never committed to React state.
+        if (verificationCSRF && !accepted) {
+          bestEffortLogoutToken(verificationCSRF);
+        }
+        attempt.finished = true;
+        if (
+          loginAttemptRef.current === attempt &&
+          (!attempt.startedDisconnected ||
+            attempt.connectionObserved ||
+            attempt.wallet === undefined)
+        ) {
+          loginAttemptRef.current = undefined;
+        }
+        if (generationRef.current === generation) setPending(false);
       }
-      const challenge = validateAuthChallenge(
-        await createAuthChallenge(selected.account),
-      );
-      if (!wallet.isActiveWallet(selected)) {
-        throw new AuthBoundaryError("WALLET_IDENTITY_CHANGED");
-      }
-      const signature = await wallet.signSIWEChallenge(challenge, selected);
-      const verificationResponse = await verifyAuthChallenge(
-        challenge.challenge_id,
-        signature,
-      );
-      verificationCSRF = extractCSRFToken(verificationResponse);
-      verified = validateAuthSession(verificationResponse, expectedChainID);
-      if (
-        !verified.authenticated ||
-        !verified.user ||
-        !addressesMatch(verified.user.address, selected.account)
-      ) {
-        throw new AuthBoundaryError("INVALID_AUTH_RESPONSE");
-      }
-      if (!wallet.isActiveWallet(selected)) {
-        throw new AuthBoundaryError("WALLET_IDENTITY_CHANGED");
-      }
-      if (generationRef.current !== generation) return;
-      commitSession(verified);
-      accepted = true;
-    } catch (cause) {
-      if (generationRef.current === generation) {
-        commitSession(unauthenticatedSession);
-        setError(toAuthErrorCode(cause));
-      }
-    } finally {
-      // /auth/verify may already have installed an HttpOnly Cookie. A wallet
-      // identity/generation race must revoke that server session even though
-      // the stale result is never committed to React state.
-      if (verificationCSRF && !accepted) {
-        bestEffortLogoutToken(verificationCSRF);
-      }
-      attempt.finished = true;
-      if (
-        loginAttemptRef.current === attempt &&
-        (!attempt.startedDisconnected ||
-          attempt.connectionObserved ||
-          attempt.wallet === undefined)
-      ) {
-        loginAttemptRef.current = undefined;
-      }
-      if (generationRef.current === generation) setPending(false);
-    }
-  }, [
-    commitSession,
-    enabled,
-    expectedChainID,
-    wallet.connect,
-    wallet.isActiveWallet,
-    wallet.signSIWEChallenge,
-  ]);
+    },
+    [commitSession, enabled, expectedChainID, connect, isActiveWallet, signSIWEChallenge],
+  );
 
   const logout = useCallback(async () => {
     const current = sessionRef.current;
@@ -325,90 +310,92 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
   }, [commitSession]);
 
-  const updateDisplayName = useCallback(async (displayName: string | null) => {
-    const current = requireAuthenticated(sessionRef.current);
-    const generation = generationRef.current + 1;
-    generationRef.current = generation;
-    setPending(true);
-    setError(undefined);
-    try {
-      const user = validateUpdatedUser(
-        await updateCurrentUser(current.csrf_token, displayName),
-        current.user.chain_id,
-        current.user.id,
-        current.user.address,
-      );
-      if ((user.display_name ?? null) !== displayName) {
-        throw new AuthBoundaryError("INVALID_AUTH_RESPONSE");
-      }
-      if (generationRef.current === generation) {
-        commitSession({ ...current, user });
-      }
-    } catch (cause) {
-      if (generationRef.current === generation) setError(toAuthErrorCode(cause));
-      throw cause;
-    } finally {
-      if (generationRef.current === generation) setPending(false);
-    }
-  }, [commitSession]);
-
-  const updateUser = useCallback(async (id: string, update: AdminUserUpdate) => {
-    const current = requireAdmin(sessionRef.current);
-    const generation = generationRef.current + 1;
-    generationRef.current = generation;
-    setPending(true);
-    setError(undefined);
-    try {
-      const user = validateUpdatedUser(
-        await updateAdminUser(current.csrf_token, id, update),
-        current.user.chain_id,
-        id,
-        current.user.id === id ? current.user.address : undefined,
-      );
-      if (
-        generationRef.current === generation &&
-        current.user?.id === user.id
-      ) {
-        commitSession(
-          user.status === "active"
-            ? { ...current, user }
-            : unauthenticatedSession,
+  const updateDisplayName = useCallback(
+    async (displayName: string | null) => {
+      const current = requireAuthenticated(sessionRef.current);
+      const generation = generationRef.current + 1;
+      generationRef.current = generation;
+      setPending(true);
+      setError(undefined);
+      try {
+        const user = validateUpdatedUser(
+          await updateCurrentUser(current.csrf_token, displayName),
+          current.user.chain_id,
+          current.user.id,
+          current.user.address,
         );
+        if ((user.display_name ?? null) !== displayName) {
+          throw new AuthBoundaryError("INVALID_AUTH_RESPONSE");
+        }
+        if (generationRef.current === generation) {
+          commitSession({ ...current, user });
+        }
+      } catch (cause) {
+        if (generationRef.current === generation) setError(toAuthErrorCode(cause));
+        throw cause;
+      } finally {
+        if (generationRef.current === generation) setPending(false);
       }
-    } catch (cause) {
-      if (generationRef.current === generation) {
-        setError(toAuthErrorCode(cause));
-      }
-      throw cause;
-    } finally {
-      if (generationRef.current === generation) setPending(false);
-    }
-  }, [commitSession]);
+    },
+    [commitSession],
+  );
 
-  const revokeSessions = useCallback(async (id: string) => {
-    const current = requireAdmin(sessionRef.current);
-    const generation = generationRef.current + 1;
-    generationRef.current = generation;
-    setPending(true);
-    setError(undefined);
-    try {
-      const count = await revokeAdminUserSessions(current.csrf_token, id);
-      if (!/^(?:0|[1-9][0-9]*)$/u.test(count) || count.length > 78) {
-        throw new AuthBoundaryError("INVALID_AUTH_RESPONSE");
+  const updateUser = useCallback(
+    async (id: string, update: AdminUserUpdate) => {
+      const current = requireAdmin(sessionRef.current);
+      const generation = generationRef.current + 1;
+      generationRef.current = generation;
+      setPending(true);
+      setError(undefined);
+      try {
+        const user = validateUpdatedUser(
+          await updateAdminUser(current.csrf_token, id, update),
+          current.user.chain_id,
+          id,
+          current.user.id === id ? current.user.address : undefined,
+        );
+        if (generationRef.current === generation && current.user?.id === user.id) {
+          commitSession(user.status === "active" ? { ...current, user } : unauthenticatedSession);
+        }
+      } catch (cause) {
+        if (generationRef.current === generation) {
+          setError(toAuthErrorCode(cause));
+        }
+        throw cause;
+      } finally {
+        if (generationRef.current === generation) setPending(false);
       }
-      if (generationRef.current === generation && current.user?.id === id) {
-        commitSession(unauthenticatedSession);
+    },
+    [commitSession],
+  );
+
+  const revokeSessions = useCallback(
+    async (id: string) => {
+      const current = requireAdmin(sessionRef.current);
+      const generation = generationRef.current + 1;
+      generationRef.current = generation;
+      setPending(true);
+      setError(undefined);
+      try {
+        const count = await revokeAdminUserSessions(current.csrf_token, id);
+        if (!/^(?:0|[1-9][0-9]*)$/u.test(count) || count.length > 78) {
+          throw new AuthBoundaryError("INVALID_AUTH_RESPONSE");
+        }
+        if (generationRef.current === generation && current.user?.id === id) {
+          commitSession(unauthenticatedSession);
+        }
+        return count;
+      } catch (cause) {
+        if (generationRef.current === generation) {
+          setError(toAuthErrorCode(cause));
+        }
+        throw cause;
+      } finally {
+        if (generationRef.current === generation) setPending(false);
       }
-      return count;
-    } catch (cause) {
-      if (generationRef.current === generation) {
-        setError(toAuthErrorCode(cause));
-      }
-      throw cause;
-    } finally {
-      if (generationRef.current === generation) setPending(false);
-    }
-  }, [commitSession]);
+    },
+    [commitSession],
+  );
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -474,12 +461,7 @@ function requireAuthenticated(session: AuthSession): AuthSession & {
   expires_at: string;
   user: User;
 } {
-  if (
-    !session.authenticated ||
-    !session.csrf_token ||
-    !session.expires_at ||
-    !session.user
-  ) {
+  if (!session.authenticated || !session.csrf_token || !session.expires_at || !session.user) {
     throw new AuthBoundaryError("AUTHENTICATION_REQUIRED");
   }
   return session as AuthSession & {
@@ -504,10 +486,10 @@ function sameWallet(
 ) {
   return Boolean(
     current &&
-      current.uuid === expected.uuid &&
-      current.account === expected.account &&
-      current.chainID === expected.chainID &&
-      current.revision === expected.revision,
+    current.uuid === expected.uuid &&
+    current.account === expected.account &&
+    current.chainID === expected.chainID &&
+    current.revision === expected.revision,
   );
 }
 
@@ -529,8 +511,7 @@ function isValidUserRecord(
     !Number.isFinite(Date.parse(value.created_at)) ||
     typeof value.updated_at !== "string" ||
     !Number.isFinite(Date.parse(value.updated_at)) ||
-    (value.last_login_at !== undefined &&
-      !Number.isFinite(Date.parse(value.last_login_at)))
+    (value.last_login_at !== undefined && !Number.isFinite(Date.parse(value.last_login_at)))
   ) {
     return false;
   }
@@ -546,8 +527,7 @@ function validateUpdatedUser(
   if (
     !isValidUserRecord(value, expectedChainID) ||
     value.id !== expectedID ||
-    (expectedAddress !== undefined &&
-      !addressesMatch(value.address, expectedAddress))
+    (expectedAddress !== undefined && !addressesMatch(value.address, expectedAddress))
   ) {
     throw new AuthBoundaryError("INVALID_AUTH_RESPONSE");
   }
@@ -613,10 +593,10 @@ function sessionMatchesWallet(
 ): boolean {
   return Boolean(
     session.authenticated &&
-      session.user &&
-      wallet &&
-      addressesMatch(session.user.address, wallet.account) &&
-      session.user.chain_id === wallet.chainID,
+    session.user &&
+    wallet &&
+    addressesMatch(session.user.address, wallet.account) &&
+    session.user.chain_id === wallet.chainID,
   );
 }
 

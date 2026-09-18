@@ -1,10 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import {
-  TransactionStatus,
-  type TransactionVisualStatus,
-} from "./TransactionStatus";
+import { TransactionStatus, type TransactionVisualStatus } from "./TransactionStatus";
 
 const cases: Array<{
   status: TransactionVisualStatus;
@@ -20,18 +17,17 @@ const cases: Array<{
 ];
 
 describe("TransactionStatus", () => {
-  it.each(cases)("renders $status with visible text and an auxiliary icon", ({
-    status,
-    label,
-    icon,
-  }) => {
-    const { container } = render(<TransactionStatus label={label} status={status} />);
+  it.each(cases)(
+    "renders $status with visible text and an auxiliary icon",
+    ({ status, label, icon }) => {
+      const { container } = render(<TransactionStatus label={label} status={status} />);
 
-    const statusElement = screen.getByText(label).closest(".transaction-status");
-    expect(statusElement).toHaveAttribute("data-status", status);
-    expect(statusElement).toHaveClass(status);
-    const svg = container.querySelector(`svg.${icon}`);
-    expect(svg).not.toBeNull();
-    expect(svg).toHaveAttribute("aria-hidden", "true");
-  });
+      const statusElement = screen.getByText(label).closest(".transaction-status");
+      expect(statusElement).toHaveAttribute("data-status", status);
+      expect(statusElement).toHaveClass(status);
+      const svg = container.querySelector(`svg.${icon}`);
+      expect(svg).not.toBeNull();
+      expect(svg).toHaveAttribute("aria-hidden", "true");
+    },
+  );
 });

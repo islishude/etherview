@@ -1,9 +1,5 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-} from "react";
-import { Link, } from "@tanstack/react-router";
+import { useEffect, useRef, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -13,19 +9,10 @@ import {
   useTokenHolders,
   useTokenTransfers,
 } from "@/api/hooks";
-import type {
-  NFTMetadata,
-  TokenEvent,
-  TokenHolder,
-  TokenHolderMeta,
-} from "@/api/types";
+import type { NFTMetadata, TokenEvent, TokenHolder, TokenHolderMeta } from "@/api/types";
 import { ApiError } from "@/api/client";
-import {
-  formatInteger,
-  formatTokenAmount,
-  shorten,
-} from "@/components/format";
-import { CopyButton, } from "@/components/CopyButton";
+import { formatInteger, formatTokenAmount, shorten } from "@/components/format";
+import { CopyButton } from "@/components/CopyButton";
 import { AddressIdentity } from "@/ens/AddressIdentity";
 import { QueryNotice } from "@/components/QueryNotice";
 import {
@@ -65,7 +52,11 @@ export function TokenDetailPage({ address }: { address: string }) {
   const locale = i18n.resolvedLanguage ?? "en";
 
   return (
-    <Page title={token.data?.name ?? token.data?.symbol ?? t("page.token")} description={address} mono>
+    <Page
+      title={token.data?.name ?? token.data?.symbol ?? t("page.token")}
+      description={address}
+      mono
+    >
       <QueryNotice loading={token.isPending} error={token.error} />
       {token.data && (
         <DetailList label={t("detail.tokenMetadata")}>
@@ -74,12 +65,18 @@ export function TokenDetailPage({ address }: { address: string }) {
           <Detail label={t("table.standard")} value={tokenStandardLabel(token.data.standard, t)} />
           <Detail label={t("table.confidence")} value={confidenceLabel(token.data.confidence, t)} />
           <Detail label={t("detail.decimals")} value={token.data.decimals?.toString()} />
-          <Detail label={t("table.supply")} value={formatInteger(token.data.total_supply, locale)} />
-          <Detail label={t("table.metadata")} value={stageStateLabel(token.data.metadata_state, t)} />
+          <Detail
+            label={t("table.supply")}
+            value={formatInteger(token.data.total_supply, locale)}
+          />
+          <Detail
+            label={t("table.metadata")}
+            value={stageStateLabel(token.data.metadata_state, t)}
+          />
           <Detail
             label={t("detail.codeHash")}
             mono
-            value={(
+            value={
               <Link
                 hash="code"
                 params={{ address: token.data.address }}
@@ -88,20 +85,20 @@ export function TokenDetailPage({ address }: { address: string }) {
               >
                 {token.data.code_hash}
               </Link>
-            )}
+            }
           />
-          <Detail label={t("detail.observedBlock")} value={formatInteger(token.data.observed_block_number, locale)} />
+          <Detail
+            label={t("detail.observedBlock")}
+            value={formatInteger(token.data.observed_block_number, locale)}
+          />
           <Detail
             label={t("detail.observedBlockHash")}
             mono
-            value={(
-              <Link
-                to="/blocks/$blockID"
-                params={{ blockID: token.data.observed_block_hash }}
-              >
+            value={
+              <Link to="/blocks/$blockID" params={{ blockID: token.data.observed_block_hash }}>
                 {token.data.observed_block_hash}
               </Link>
-            )}
+            }
           />
         </DetailList>
       )}
@@ -176,13 +173,21 @@ function TokenHolders({
       {meta && (
         <DetailList label={t("tokenHolder.summary")}>
           <Detail label={t("tokenHolder.count")} value={formatInteger(meta.holder_count, locale)} />
-          <Detail label={t("table.supply")} value={formatTokenAmount(meta.total_supply, decimals, locale)} />
-          <Detail label={t("tokenHolder.snapshot")} value={formatInteger(meta.snapshot_block_number, locale)} />
+          <Detail
+            label={t("table.supply")}
+            value={formatTokenAmount(meta.total_supply, decimals, locale)}
+          />
+          <Detail
+            label={t("tokenHolder.snapshot")}
+            value={formatInteger(meta.snapshot_block_number, locale)}
+          />
           <Detail label={t("tokenHolder.snapshotHash")} mono value={meta.snapshot_block_hash} />
         </DetailList>
       )}
       {holders && holders.length === 0 && (
-        <p className="empty-result" role="status">{t("tokenHolder.empty")}</p>
+        <p className="empty-result" role="status">
+          {t("tokenHolder.empty")}
+        </p>
       )}
       {holders && holders.length > 0 && (
         <div className="table-scroll" tabIndex={0} aria-label={t("tokenHolder.title")}>
@@ -198,7 +203,9 @@ function TokenHolders({
             <tbody>
               {holders.map((holder) => (
                 <tr key={holder.holder_address}>
-                  <td><AddressIdentity address={holder.holder_address} /></td>
+                  <td>
+                    <AddressIdentity address={holder.holder_address} />
+                  </td>
                   <td>{formatTokenAmount(holder.balance, decimals, locale)}</td>
                   <td>
                     <Link to="/blocks/$blockID" params={{ blockID: holder.observed_block_hash }}>
@@ -255,7 +262,9 @@ function TokenTransfers({
       <h2 id="token-events-title">{t("detail.tokenEvents")}</h2>
       <QueryNotice loading={loading} error={error} onReset={onReset} />
       {events && events.length === 0 && (
-        <p className="empty-result" role="status">{t("state.noTransfers")}</p>
+        <p className="empty-result" role="status">
+          {t("state.noTransfers")}
+        </p>
       )}
       {events && events.length > 0 && (
         <div className="table-scroll" tabIndex={0} aria-label={t("detail.tokenEvents")}>
@@ -287,7 +296,11 @@ function TokenTransfers({
                     </span>
                   </td>
                   <td>
-                    <Link to="/tx/$hash" params={{ hash: event.transaction_hash }} search={{ tab: "overview" }}>
+                    <Link
+                      to="/tx/$hash"
+                      params={{ hash: event.transaction_hash }}
+                      search={{ tab: "overview" }}
+                    >
                       {shorten(event.transaction_hash)}
                     </Link>
                   </td>
@@ -303,9 +316,13 @@ function TokenTransfers({
                       >
                         <code>{event.token_id}</code>
                       </Link>
-                    ) : <code>{event.token_id ?? "—"}</code>}
+                    ) : (
+                      <code>{event.token_id ?? "—"}</code>
+                    )}
                   </td>
-                  <td><code>{formatTokenEventAmount(event, locale)}</code></td>
+                  <td>
+                    <code>{formatTokenEventAmount(event, locale)}</code>
+                  </td>
                   <td>{tokenStandardLabel(event.standard, t)}</td>
                   <td>{confidenceLabel(event.confidence, t)}</td>
                 </tr>
@@ -338,18 +355,22 @@ export function NFTDetailPage({ address, tokenID }: { address: string; tokenID: 
   const locale = i18n.resolvedLanguage ?? "en";
 
   return (
-    <Page title={nftMetadata.data?.name || t("page.nft")} description={`${address} / ${tokenID}`} mono>
+    <Page
+      title={nftMetadata.data?.name || t("page.nft")}
+      description={`${address} / ${tokenID}`}
+      mono
+    >
       <QueryNotice loading={token.isPending} error={token.error} />
       {token.data && isNFTStandard(token.data.standard) ? (
         <DetailList label={t("nftMetadata.instance")}>
           <Detail
             label={t("page.token")}
             mono
-            value={(
+            value={
               <Link to="/token/$address" params={{ address: token.data.address }}>
                 {token.data.address}
               </Link>
-            )}
+            }
           />
           <Detail label={t("detail.tokenID")} value={tokenID} />
           <Detail label={t("table.standard")} value={tokenStandardLabel(token.data.standard, t)} />
@@ -358,7 +379,9 @@ export function NFTDetailPage({ address, tokenID }: { address: string; tokenID: 
       {token.data && !isNFTStandard(token.data.standard) ? (
         <div className="query-notice degraded" role="status">
           <span className="status-dot warning" aria-hidden="true" />
-          <span><strong>{t("nftMetadata.notNFT")}</strong></span>
+          <span>
+            <strong>{t("nftMetadata.notNFT")}</strong>
+          </span>
         </div>
       ) : null}
       {isERC721 ? <QueryNotice loading={ownership.isPending} error={ownership.error} /> : null}
@@ -369,26 +392,31 @@ export function NFTDetailPage({ address, tokenID }: { address: string; tokenID: 
             value={<AddressIdentity address={ownership.data.owner} compact={false} />}
           />
           <Detail label={t("detail.balance")} value={ownership.data.balance} />
-          <Detail label={t("table.confidence")} value={confidenceLabel(ownership.data.confidence, t)} />
-          <Detail label={t("detail.snapshotBlock")} value={formatInteger(ownership.data.snapshot.block_number, locale)} />
+          <Detail
+            label={t("table.confidence")}
+            value={confidenceLabel(ownership.data.confidence, t)}
+          />
+          <Detail
+            label={t("detail.snapshotBlock")}
+            value={formatInteger(ownership.data.snapshot.block_number, locale)}
+          />
           <Detail
             label={t("detail.snapshotHash")}
             mono
-            value={(
-              <Link
-                to="/blocks/$blockID"
-                params={{ blockID: ownership.data.snapshot.block_hash }}
-              >
+            value={
+              <Link to="/blocks/$blockID" params={{ blockID: ownership.data.snapshot.block_hash }}>
                 {ownership.data.snapshot.block_hash}
               </Link>
-            )}
+            }
           />
         </DetailList>
       ) : null}
       {token.data?.standard === "erc1155" ? (
         <section className="panel detail-card" aria-label={t("detail.nftOwnership")}>
           <h2>{t("detail.nftOwnership")}</h2>
-          <p className="context-note" role="note">{t("nftMetadata.erc1155Ownership")}</p>
+          <p className="context-note" role="note">
+            {t("nftMetadata.erc1155Ownership")}
+          </p>
         </section>
       ) : null}
       <NFTMetadataPanel
@@ -425,11 +453,13 @@ function NFTMetadataPanel({
               <span className="status-dot warning" aria-hidden="true" />
               <span>
                 <strong>{t("nftMetadata.staleTitle")}</strong>
-                <small>{t("nftMetadata.staleDetail", {
-                  state: nftMetadataStateLabel(data.state, t),
-                  latest: formatInteger(data.observation.block_number, locale),
-                  content: formatInteger(data.content_observation.block_number, locale),
-                })}</small>
+                <small>
+                  {t("nftMetadata.staleDetail", {
+                    state: nftMetadataStateLabel(data.state, t),
+                    latest: formatInteger(data.observation.block_number, locale),
+                    content: formatInteger(data.content_observation.block_number, locale),
+                  })}
+                </small>
               </span>
             </div>
           ) : data.state !== "available" ? (
@@ -450,11 +480,11 @@ function NFTMetadataPanel({
             <Detail
               label={t("detail.observedBlockHash")}
               mono
-              value={(
+              value={
                 <Link to="/blocks/$blockID" params={{ blockID: data.observation.block_hash }}>
                   {data.observation.block_hash}
                 </Link>
-              )}
+              }
             />
             {data.content_stale && data.content_observation ? (
               <>
@@ -465,11 +495,14 @@ function NFTMetadataPanel({
                 <Detail
                   label={t("nftMetadata.contentBlockHash")}
                   mono
-                  value={(
-                    <Link to="/blocks/$blockID" params={{ blockID: data.content_observation.block_hash }}>
+                  value={
+                    <Link
+                      to="/blocks/$blockID"
+                      params={{ blockID: data.content_observation.block_hash }}
+                    >
                       {data.content_observation.block_hash}
                     </Link>
-                  )}
+                  }
                 />
               </>
             ) : null}
@@ -477,23 +510,29 @@ function NFTMetadataPanel({
               <>
                 <Detail
                   label={t("detail.name")}
-                  value={(
-                    <MetadataText value={data.name} truncated={data.name_truncated} />
-                  )}
+                  value={<MetadataText value={data.name} truncated={data.name_truncated} />}
                 />
                 <Detail
                   label={t("nftMetadata.description")}
                   wide
-                  value={(
-                    <MetadataText description value={data.description} truncated={data.description_truncated} />
-                  )}
+                  value={
+                    <MetadataText
+                      description
+                      value={data.description}
+                      truncated={data.description_truncated}
+                    />
+                  }
                 />
                 <Detail
                   label={t("nftMetadata.imageLink")}
                   wide
-                  value={data.image.state === "available" && data.image.url ? (
-                    <NFTExternalImageLink url={data.image.url} />
-                  ) : nftMetadataImageStateLabel(data.image.state, t)}
+                  value={
+                    data.image.state === "available" && data.image.url ? (
+                      <NFTExternalImageLink url={data.image.url} />
+                    ) : (
+                      nftMetadataImageStateLabel(data.image.state, t)
+                    )
+                  }
                 />
               </>
             ) : null}
@@ -543,7 +582,9 @@ function MetadataText({
   return (
     <span className={description ? "nft-metadata-description" : undefined}>
       {value}
-      {truncated ? <small className="nft-metadata-truncated">{t("nftMetadata.textTruncated")}</small> : null}
+      {truncated ? (
+        <small className="nft-metadata-truncated">{t("nftMetadata.textTruncated")}</small>
+      ) : null}
     </span>
   );
 }
@@ -554,17 +595,23 @@ function NFTMetadataQueryNotice({ error, loading }: { error: unknown; loading: b
   if (!(error instanceof ApiError)) return <QueryNotice compact error={error} />;
   const message = (() => {
     switch (error.code.toLowerCase()) {
-      case "nft_metadata_disabled": return t("nftMetadata.disabled");
-      case "nft_metadata_not_found": return t("nftMetadata.notFound");
-      case "nft_metadata_noncanonical": return t("nftMetadata.noncanonical");
-      default: return undefined;
+      case "nft_metadata_disabled":
+        return t("nftMetadata.disabled");
+      case "nft_metadata_not_found":
+        return t("nftMetadata.notFound");
+      case "nft_metadata_noncanonical":
+        return t("nftMetadata.noncanonical");
+      default:
+        return undefined;
     }
   })();
   if (!message) return <QueryNotice compact error={error} />;
   return (
     <div className="query-notice degraded compact" role="status">
       <span className="status-dot warning" aria-hidden="true" />
-      <span><strong>{message}</strong></span>
+      <span>
+        <strong>{message}</strong>
+      </span>
     </div>
   );
 }
@@ -578,6 +625,7 @@ function NFTExternalImageLink({ url }: { url: string }) {
 
   useEffect(() => {
     if (!open) return;
+    const openButton = openButtonRef.current;
     dialogRef.current?.focus();
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -587,7 +635,7 @@ function NFTExternalImageLink({ url }: { url: string }) {
     window.addEventListener("keydown", closeOnEscape);
     return () => {
       window.removeEventListener("keydown", closeOnEscape);
-      openButtonRef.current?.focus();
+      openButton?.focus();
     };
   }, [open]);
 
@@ -669,9 +717,11 @@ function NFTExternalImageLink({ url }: { url: string }) {
 
 function trapDialogFocus(event: React.KeyboardEvent<HTMLDivElement>) {
   if (event.key !== "Tab") return;
-  const focusable = [...event.currentTarget.querySelectorAll<HTMLElement>(
-    "button:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])",
-  )];
+  const focusable = [
+    ...event.currentTarget.querySelectorAll<HTMLElement>(
+      "button:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])",
+    ),
+  ];
   if (focusable.length === 0) {
     event.preventDefault();
     event.currentTarget.focus();
@@ -705,21 +755,32 @@ function externalTargetLabel(value: string): string {
 
 function nftMetadataStateLabel(value: NFTMetadata["state"], t: Translate): string {
   switch (value) {
-    case "available": return t("nftMetadata.state.available");
-    case "pending": return t("nftMetadata.state.pending");
-    case "unavailable": return t("nftMetadata.state.unavailable");
-    case "unsafe": return t("nftMetadata.state.unsafe");
-    case "error": return t("nftMetadata.state.error");
+    case "available":
+      return t("nftMetadata.state.available");
+    case "pending":
+      return t("nftMetadata.state.pending");
+    case "unavailable":
+      return t("nftMetadata.state.unavailable");
+    case "unsafe":
+      return t("nftMetadata.state.unsafe");
+    case "error":
+      return t("nftMetadata.state.error");
   }
 }
 
 function nftMetadataImageStateLabel(value: NFTMetadata["image"]["state"], t: Translate): string {
   switch (value) {
-    case "available": return t("nftMetadata.imageState.available");
-    case "unavailable": return t("nftMetadata.imageState.unavailable");
-    case "missing": return t("nftMetadata.imageState.missing");
-    case "unsafe": return t("nftMetadata.imageState.unsafe");
-    case "unsupported": return t("nftMetadata.imageState.unsupported");
-    case "gateway_unavailable": return t("nftMetadata.imageState.gatewayUnavailable");
+    case "available":
+      return t("nftMetadata.imageState.available");
+    case "unavailable":
+      return t("nftMetadata.imageState.unavailable");
+    case "missing":
+      return t("nftMetadata.imageState.missing");
+    case "unsafe":
+      return t("nftMetadata.imageState.unsafe");
+    case "unsupported":
+      return t("nftMetadata.imageState.unsupported");
+    case "gateway_unavailable":
+      return t("nftMetadata.imageState.gatewayUnavailable");
   }
 }

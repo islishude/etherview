@@ -43,34 +43,49 @@ type ContractPattern = ExactPattern | "clone" | "cwia" | "none";
 type HistoryKind = "upgrades" | "initializations";
 
 it("formats bounded CWIA scalar and array values without guessing dynamic text", () => {
-	expect(formatCWIAArgumentValue("42")).toBe("42");
-	expect(formatCWIAArgumentValue(["1", "2"])).toBe('["1","2"]');
-	expect(formatCWIAArgumentValue([])).toBe("[]");
-	expect(formatCWIAArgumentValue([true])).toBe("—");
+  expect(formatCWIAArgumentValue("42")).toBe("42");
+  expect(formatCWIAArgumentValue(["1", "2"])).toBe('["1","2"]');
+  expect(formatCWIAArgumentValue([])).toBe("[]");
+  expect(formatCWIAArgumentValue([true])).toBe("—");
 });
 
 it("flattens bounded CWIA arrays with exact element offsets and explicit omission", () => {
-	const values = Array.from({ length: 65 }, (_, index) => String(index));
-	const words = [`0x${"11".repeat(32)}`, `0x${"22".repeat(32)}`];
-	const flattened = flattenCWIAArgumentRows([
-		{ name: "items", type: "uint256[]", offset: 10, length: 65 * 32, value: values },
-		{ name: "words", type: "bytes32[]", offset: 2090, length: 64, value: words },
-	]);
-	expect(flattened.rows).toHaveLength(68);
-	expect(flattened.omissions).toEqual([{ name: "items", count: 1 }]);
-	expect(flattened.rows[0]).toMatchObject({
-		name: "items", type: "uint256[]", offset: 10,
-		data: JSON.stringify(values), composite: true,
-	});
-	expect(flattened.rows[1]).toMatchObject({
-		name: "items[0]", type: "uint256", offset: 10, data: "0", depth: 1,
-	});
-	expect(flattened.rows[64]).toMatchObject({
-		name: "items[63]", type: "uint256", offset: 2026, data: "63", depth: 1,
-	});
-	expect(flattened.rows[66]).toMatchObject({
-		name: "words[0]", type: "bytes32", offset: 2090, data: words[0], depth: 1,
-	});
+  const values = Array.from({ length: 65 }, (_, index) => String(index));
+  const words = [`0x${"11".repeat(32)}`, `0x${"22".repeat(32)}`];
+  const flattened = flattenCWIAArgumentRows([
+    { name: "items", type: "uint256[]", offset: 10, length: 65 * 32, value: values },
+    { name: "words", type: "bytes32[]", offset: 2090, length: 64, value: words },
+  ]);
+  expect(flattened.rows).toHaveLength(68);
+  expect(flattened.omissions).toEqual([{ name: "items", count: 1 }]);
+  expect(flattened.rows[0]).toMatchObject({
+    name: "items",
+    type: "uint256[]",
+    offset: 10,
+    data: JSON.stringify(values),
+    composite: true,
+  });
+  expect(flattened.rows[1]).toMatchObject({
+    name: "items[0]",
+    type: "uint256",
+    offset: 10,
+    data: "0",
+    depth: 1,
+  });
+  expect(flattened.rows[64]).toMatchObject({
+    name: "items[63]",
+    type: "uint256",
+    offset: 2026,
+    data: "63",
+    depth: 1,
+  });
+  expect(flattened.rows[66]).toMatchObject({
+    name: "words[0]",
+    type: "bytes32",
+    offset: 2090,
+    data: words[0],
+    depth: 1,
+  });
 });
 
 beforeEach(async () => {
@@ -86,9 +101,11 @@ describe("contract proxy route", () => {
     installContractAPI({ pattern: "none", verificationStatus: 404 });
     renderContractRoute();
 
-    expect(await screen.findByText(
-      "This contract has not been verified yet. Its source code and ABI-based read/write forms are unavailable until verification is complete.",
-    )).toBeVisible();
+    expect(
+      await screen.findByText(
+        "This contract has not been verified yet. Its source code and ABI-based read/write forms are unavailable until verification is complete.",
+      ),
+    ).toBeVisible();
     expect(screen.queryByText("Indexed entity not found")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Submit a verification request" })).toHaveAttribute(
       "href",
@@ -96,9 +113,11 @@ describe("contract proxy route", () => {
     );
 
     await userEvent.setup().click(screen.getByRole("button", { name: "切换到中文" }));
-    expect(await screen.findByText(
-      "该合约尚未完成验证。完成验证后才能查看源码并使用基于 ABI 的合约读写功能。",
-    )).toBeVisible();
+    expect(
+      await screen.findByText(
+        "该合约尚未完成验证。完成验证后才能查看源码并使用基于 ABI 的合约读写功能。",
+      ),
+    ).toBeVisible();
     expect(screen.getByRole("link", { name: "提交合约验证请求" })).toBeVisible();
   });
 
@@ -129,10 +148,12 @@ describe("contract proxy route", () => {
     renderContractRoute("management");
 
     const tabs = await screen.findByRole("tablist", { name: "Contract interaction sections" });
-    await waitFor(() => expect(within(tabs).getByRole("tab", { name: "Code" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    ));
+    await waitFor(() =>
+      expect(within(tabs).getByRole("tab", { name: "Code" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      ),
+    );
     expect(within(tabs).queryByRole("tab", { name: "Management" })).toBeNull();
   });
 
@@ -141,10 +162,12 @@ describe("contract proxy route", () => {
     renderContractRoute("management");
 
     const tabs = await screen.findByRole("tablist", { name: "Contract interaction sections" });
-    await waitFor(() => expect(within(tabs).getByRole("tab", { name: "Proxy management" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    ));
+    await waitFor(() =>
+      expect(within(tabs).getByRole("tab", { name: "Proxy management" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      ),
+    );
   });
 
   it.each([
@@ -161,10 +184,12 @@ describe("contract proxy route", () => {
     renderContractRoute(hashID);
 
     const tabs = await screen.findByRole("tablist", { name: "Contract interaction sections" });
-    await waitFor(() => expect(within(tabs).getByRole("tab", { name: label })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    ));
+    await waitFor(() =>
+      expect(within(tabs).getByRole("tab", { name: label })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      ),
+    );
   });
 
   it("shows a confirmed Safe shell and singleton without enabling legacy proxy writes", async () => {
@@ -178,7 +203,9 @@ describe("contract proxy route", () => {
     expect(await screen.findByText("Safe Proxy")).toBeVisible();
     expect(screen.getAllByText("Confirmed").length).toBeGreaterThan(0);
     expect(screen.getByText(implementationAddress)).toBeVisible();
-    expect(screen.queryByRole("tab", { name: "Read implementation (as proxy)" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("tab", { name: "Read implementation (as proxy)" }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows selector-filtered Diamond facets and ordered DiamondCut history without choosing a first implementation", async () => {
@@ -204,9 +231,9 @@ describe("contract proxy route", () => {
     expect(await screen.findByText("Add selectors")).toBeVisible();
     expect(screen.getByText("One-shot init target", { exact: false })).toBeVisible();
     expect(screen.getByText(managementAddress)).toBeVisible();
-    expect(contractRequests(fetcher).some(({ url }) =>
-      url.pathname.endsWith("/proxy/diamond-cuts")
-    )).toBe(true);
+    expect(
+      contractRequests(fetcher).some(({ url }) => url.pathname.endsWith("/proxy/diamond-cuts")),
+    ).toBe(true);
   });
 
   it.each([
@@ -221,17 +248,13 @@ describe("contract proxy route", () => {
 
       renderContractRoute();
 
-      expect(
-        await screen.findByRole("heading", { name: "Verified artifact" }),
-      ).toBeVisible();
+      expect(await screen.findByRole("heading", { name: "Verified artifact" })).toBeVisible();
       expect(screen.queryByRole("link", { name: "Submit a verification request" })).toBeNull();
       const codePanel = document.getElementById("contract-panel-code");
       expect(codePanel).not.toBeNull();
       await within(codePanel!).findByRole("heading", { name: "Proxy identity" });
       expect(codePanel!.querySelector("details.proxy-summary")).not.toHaveAttribute("open");
-      expect(
-        within(codePanel!).getByRole("heading", { name: "Proxy identity" }),
-      ).toBeVisible();
+      expect(within(codePanel!).getByRole("heading", { name: "Proxy identity" })).toBeVisible();
       const tabs = await screen.findByRole("tablist", {
         name: "Contract interaction sections",
       });
@@ -320,9 +343,7 @@ describe("contract proxy route", () => {
       expect(artifactAddresses).toContain(managementAddress);
     });
     expect(within(tabs).getByRole("tab", { name: "Read contract" })).toBeVisible();
-    expect(
-      within(tabs).queryByRole("tab", { name: "Read implementation (as proxy)" }),
-    ).toBeNull();
+    expect(within(tabs).queryByRole("tab", { name: "Read implementation (as proxy)" })).toBeNull();
     expect(within(tabs).queryByRole("tab", { name: "Proxy management" })).toBeNull();
     expectAnonymousContractRequests(fetcher);
   });
@@ -343,9 +364,7 @@ describe("contract proxy route", () => {
       name: "Contract interaction sections",
     });
     expect(within(tabs).queryByRole("tab", { name: "Upgrade history" })).toBeNull();
-    expect(
-      within(tabs).getByRole("tab", { name: "Initialization history" }),
-    ).toBeVisible();
+    expect(within(tabs).getByRole("tab", { name: "Initialization history" })).toBeVisible();
     expect(
       await within(tabs).findByRole("tab", {
         name: "Read implementation (as proxy)",
@@ -356,121 +375,129 @@ describe("contract proxy route", () => {
         name: "Write implementation (as proxy)",
       }),
     ).toBeVisible();
-		expect(await screen.findByRole("heading", { name: "Verified artifact" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "Verified artifact" })).toBeVisible();
     await waitFor(() => {
       expect(
-        contractRequests(fetcher).some(({ url }) =>
-          url.pathname.endsWith("/proxy/upgrades"),
-        ),
+        contractRequests(fetcher).some(({ url }) => url.pathname.endsWith("/proxy/upgrades")),
       ).toBe(false);
     });
   });
 
-		it("shows verified Solady CWIA raw and decoded immutable arguments", async () => {
-			const fetcher = installContractAPI({ pattern: "cwia" });
+  it("shows verified Solady CWIA raw and decoded immutable arguments", async () => {
+    const fetcher = installContractAPI({ pattern: "cwia" });
 
-			renderContractRoute();
+    renderContractRoute();
 
-			await userEvent.setup().click(await screen.findByRole("heading", { name: "Proxy identity" }));
-			expect(await screen.findByText("Solady legacy CWIA bytecode")).toBeVisible();
-			expect(screen.getByText("Verified Solidity AST and decoded")).toBeVisible();
-			expect(screen.getByText("Verified Solidity AST", { exact: true })).toBeVisible();
-			expect(screen.getByText("Verified at address", { exact: true })).toBeVisible();
-			expect(screen.queryByRole("heading", { name: "Verified artifact" })).toBeNull();
-			expect(screen.queryByRole("link", { name: "Submit a verification request" })).toBeNull();
-			expect(screen.getByText(`0x${"12".repeat(65)}`)).toBeVisible();
-			const decoded = screen.getByRole("region", { name: "Decoded immutable arguments" });
-			const table = within(decoded).getByRole("table", { name: "Decoded immutable arguments" });
-			for (const heading of ["Name", "Type", "Offset", "Data"]) {
-				expect(within(table).getByRole("columnheader", { name: heading })).toBeVisible();
-			}
-			expect(within(table).getByText("owner", { exact: true })).toBeVisible();
-			expect(within(table).getByText("address", { exact: true })).toBeVisible();
-			expect(within(decoded).getByText("0x1234567890AbcdEF1234567890aBcdef12345678")).toBeVisible();
-			expect(within(table).getByText("number", { exact: true })).toBeVisible();
-			expect(within(table).getByText("uint256", { exact: true })).toBeVisible();
-			expect(within(decoded).getByText("1606938044258990275541962092341162602522202993782792835301418")).toBeVisible();
-			expect(within(table).getByText("data_length", { exact: true })).toBeVisible();
-			expect(within(table).getByText("data", { exact: true })).toBeVisible();
-			expect(within(table).getAllByRole("button", { name: "Copy" })).toHaveLength(4);
-			expect(within(decoded).getByText("0x68656c6c6f2c776f726c64")).toBeVisible();
-			expect(screen.getByText(/fixed implementation and no upgrade controls/u)).toBeVisible();
-		const tabs = screen.getByRole("tablist", { name: "Contract interaction sections" });
-		expect(within(tabs).queryByRole("tab", { name: "Upgrade history" })).toBeNull();
-		await waitFor(() => {
-			expect(contractRequests(fetcher).some(({ url }) => url.pathname.endsWith("/proxy/upgrades")))
-				.toBe(false);
-		});
-	});
+    await userEvent.setup().click(await screen.findByRole("heading", { name: "Proxy identity" }));
+    expect(await screen.findByText("Solady legacy CWIA bytecode")).toBeVisible();
+    expect(screen.getByText("Verified Solidity AST and decoded")).toBeVisible();
+    expect(screen.getByText("Verified Solidity AST", { exact: true })).toBeVisible();
+    expect(screen.getByText("Verified at address", { exact: true })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Verified artifact" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Submit a verification request" })).toBeNull();
+    expect(screen.getByText(`0x${"12".repeat(65)}`)).toBeVisible();
+    const decoded = screen.getByRole("region", { name: "Decoded immutable arguments" });
+    const table = within(decoded).getByRole("table", { name: "Decoded immutable arguments" });
+    for (const heading of ["Name", "Type", "Offset", "Data"]) {
+      expect(within(table).getByRole("columnheader", { name: heading })).toBeVisible();
+    }
+    expect(within(table).getByText("owner", { exact: true })).toBeVisible();
+    expect(within(table).getByText("address", { exact: true })).toBeVisible();
+    expect(within(decoded).getByText("0x1234567890AbcdEF1234567890aBcdef12345678")).toBeVisible();
+    expect(within(table).getByText("number", { exact: true })).toBeVisible();
+    expect(within(table).getByText("uint256", { exact: true })).toBeVisible();
+    expect(
+      within(decoded).getByText("1606938044258990275541962092341162602522202993782792835301418"),
+    ).toBeVisible();
+    expect(within(table).getByText("data_length", { exact: true })).toBeVisible();
+    expect(within(table).getByText("data", { exact: true })).toBeVisible();
+    expect(within(table).getAllByRole("button", { name: "Copy" })).toHaveLength(4);
+    expect(within(decoded).getByText("0x68656c6c6f2c776f726c64")).toBeVisible();
+    expect(screen.getByText(/fixed implementation and no upgrade controls/u)).toBeVisible();
+    const tabs = screen.getByRole("tablist", { name: "Contract interaction sections" });
+    expect(within(tabs).queryByRole("tab", { name: "Upgrade history" })).toBeNull();
+    await waitFor(() => {
+      expect(
+        contractRequests(fetcher).some(({ url }) => url.pathname.endsWith("/proxy/upgrades")),
+      ).toBe(false);
+    });
+  });
 
-	it("keeps verified CWIA writes read-only when its AST analysis is unavailable", async () => {
-		installContractAPI({ pattern: "cwia", cwiaSchemaStatus: "schema_unavailable" });
+  it("keeps verified CWIA writes read-only when its AST analysis is unavailable", async () => {
+    installContractAPI({ pattern: "cwia", cwiaSchemaStatus: "schema_unavailable" });
 
-		renderContractRoute();
-		await userEvent.setup().click(await screen.findByRole("heading", { name: "Proxy identity" }));
-		expect(await screen.findByText("Verified Solidity AST unavailable")).toBeVisible();
-		expect(screen.getByText(/writes are disabled.*no current compiler-derived CWIA AST analysis/u)).toBeVisible();
-	});
+    renderContractRoute();
+    await userEvent.setup().click(await screen.findByRole("heading", { name: "Proxy identity" }));
+    expect(await screen.findByText("Verified Solidity AST unavailable")).toBeVisible();
+    expect(
+      screen.getByText(/writes are disabled.*no current compiler-derived CWIA AST analysis/u),
+    ).toBeVisible();
+  });
 
-	it("keeps exact detected CWIA implementation reads visible before proxy verification", async () => {
-		const fetcher = installContractAPI({ pattern: "cwia", cwiaUnverified: true });
-		const user = userEvent.setup();
+  it("keeps exact detected CWIA implementation reads visible before proxy verification", async () => {
+    const fetcher = installContractAPI({ pattern: "cwia", cwiaUnverified: true });
+    const user = userEvent.setup();
 
-		renderContractRoute();
-		const tabs = await screen.findByRole("tablist", {
-			name: "Contract interaction sections",
-		});
-		expect(within(tabs).queryByRole("tab", { name: "Read contract" })).toBeNull();
-		expect(await within(tabs).findByRole("tab", {
-			name: "Read implementation (as proxy)",
-		})).toBeVisible();
-		expect(within(tabs).getByRole("tab", {
-			name: "Write implementation (as proxy)",
-		})).toBeVisible();
+    renderContractRoute();
+    const tabs = await screen.findByRole("tablist", {
+      name: "Contract interaction sections",
+    });
+    expect(within(tabs).queryByRole("tab", { name: "Read contract" })).toBeNull();
+    expect(
+      await within(tabs).findByRole("tab", {
+        name: "Read implementation (as proxy)",
+      }),
+    ).toBeVisible();
+    expect(
+      within(tabs).getByRole("tab", {
+        name: "Write implementation (as proxy)",
+      }),
+    ).toBeVisible();
 
-		await user.click(await screen.findByRole("heading", { name: "Proxy identity" }));
-		expect(await screen.findByText("Verified Solidity AST and decoded")).toBeVisible();
-		expect(screen.getByText("Verified by code hash", { exact: true })).toBeVisible();
-		expect(screen.queryByRole("heading", { name: "Verified artifact" })).toBeNull();
-		expect(screen.queryByRole("link", { name: "Submit a verification request" })).toBeNull();
-		expect(screen.getByText(/writes are disabled.*proxy binding is not verified/u)).toBeVisible();
-		expect(screen.queryByText("Verified Solidity AST unavailable")).toBeNull();
+    await user.click(await screen.findByRole("heading", { name: "Proxy identity" }));
+    expect(await screen.findByText("Verified Solidity AST and decoded")).toBeVisible();
+    expect(screen.getByText("Verified by code hash", { exact: true })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Verified artifact" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Submit a verification request" })).toBeNull();
+    expect(screen.getByText(/writes are disabled.*proxy binding is not verified/u)).toBeVisible();
+    expect(screen.queryByText("Verified Solidity AST unavailable")).toBeNull();
 
-		await user.click(within(tabs).getByRole("tab", {
-			name: "Read implementation (as proxy)",
-		}));
-		expect(await screen.findByText("value()", { exact: true })).toBeVisible();
+    await user.click(
+      within(tabs).getByRole("tab", {
+        name: "Read implementation (as proxy)",
+      }),
+    );
+    expect(await screen.findByText("value()", { exact: true })).toBeVisible();
 
-		await user.click(within(tabs).getByRole("tab", {
-			name: "Write implementation (as proxy)",
-		}));
-		expect(await screen.findByText(
-			"This ABI has no callable state-changing functions for this target.",
-		)).toBeVisible();
-		expectAnonymousContractRequests(fetcher);
-	});
+    await user.click(
+      within(tabs).getByRole("tab", {
+        name: "Write implementation (as proxy)",
+      }),
+    );
+    expect(
+      await screen.findByText("This ABI has no callable state-changing functions for this target."),
+    ).toBeVisible();
+    expectAnonymousContractRequests(fetcher);
+  });
 
   it("hides proxy identity and proxy histories for a non-proxy contract", async () => {
     const fetcher = installContractAPI({ pattern: "none" });
 
     renderContractRoute();
 
-    expect(
-      await screen.findByRole("heading", { name: "Verified artifact" }),
-    ).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "Verified artifact" })).toBeVisible();
     expect(screen.queryByRole("heading", { name: "Proxy identity" })).toBeNull();
     const tabs = screen.getByRole("tablist", {
       name: "Contract interaction sections",
     });
     expect(within(tabs).queryByRole("tab", { name: "Upgrade history" })).toBeNull();
-    expect(
-      within(tabs).queryByRole("tab", { name: "Initialization history" }),
-    ).toBeNull();
+    expect(within(tabs).queryByRole("tab", { name: "Initialization history" })).toBeNull();
     await waitFor(() => {
       expect(
-        contractRequests(fetcher).some(({ url }) =>
-          url.pathname.endsWith("/proxy/upgrades") ||
-          url.pathname.endsWith("/proxy/initializations"),
+        contractRequests(fetcher).some(
+          ({ url }) =>
+            url.pathname.endsWith("/proxy/upgrades") ||
+            url.pathname.endsWith("/proxy/initializations"),
         ),
       ).toBe(false);
     });
@@ -479,37 +506,30 @@ describe("contract proxy route", () => {
   it.each([
     { kind: "upgrades", tab: "Upgrade history" },
     { kind: "initializations", tab: "Initialization history" },
-  ] as const)(
-    "resets a stale $kind snapshot cursor to the first page",
-    async ({ kind, tab }) => {
-      const fetcher = installContractAPI({ pattern: "transparent", staleHistory: kind });
-      const user = userEvent.setup();
+  ] as const)("resets a stale $kind snapshot cursor to the first page", async ({ kind, tab }) => {
+    const fetcher = installContractAPI({ pattern: "transparent", staleHistory: kind });
+    const user = userEvent.setup();
 
-      renderContractRoute();
+    renderContractRoute();
 
-      const historyTab = await screen.findByRole("tab", { name: tab });
-      await user.click(historyTab);
-      expect(await screen.findByText("Page 1")).toBeVisible();
-      const next = screen.getByRole("button", { name: "Next page" });
-      await waitFor(() => expect(next).toBeEnabled());
-      await user.click(next);
+    const historyTab = await screen.findByRole("tab", { name: tab });
+    await user.click(historyTab);
+    expect(await screen.findByText("Page 1")).toBeVisible();
+    const next = screen.getByRole("button", { name: "Next page" });
+    await waitFor(() => expect(next).toBeEnabled());
+    await user.click(next);
 
-      expect(
-        await screen.findByText("This page cursor is no longer valid"),
-      ).toBeVisible();
-      expect(screen.getByText("Page 2")).toBeVisible();
-      await user.click(
-        screen.getByRole("button", { name: "Restart from the first page" }),
-      );
+    expect(await screen.findByText("This page cursor is no longer valid")).toBeVisible();
+    expect(screen.getByText("Page 2")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Restart from the first page" }));
 
-      expect(await screen.findByText("Page 1")).toBeVisible();
-      await waitFor(() => {
-        expect(historyRequests(fetcher, kind, false)).toHaveLength(2);
-      });
-      expect(historyRequests(fetcher, kind, true)).toHaveLength(1);
-      expectAnonymousContractRequests(fetcher);
-    },
-  );
+    expect(await screen.findByText("Page 1")).toBeVisible();
+    await waitFor(() => {
+      expect(historyRequests(fetcher, kind, false)).toHaveLength(2);
+    });
+    expect(historyRequests(fetcher, kind, true)).toHaveLength(1);
+    expectAnonymousContractRequests(fetcher);
+  });
 
   it.each([
     {
@@ -609,8 +629,8 @@ function installContractAPI({
   diamondDetection,
   proxyStatus,
   verificationStatus,
-	cwiaSchemaStatus,
-	cwiaUnverified,
+  cwiaSchemaStatus,
+  cwiaUnverified,
 }: {
   pattern: ContractPattern;
   staleHistory?: HistoryKind;
@@ -620,8 +640,8 @@ function installContractAPI({
   diamondDetection?: boolean;
   proxyStatus?: number;
   verificationStatus?: number;
-	cwiaSchemaStatus?: "decoded" | "schema_unavailable";
-	cwiaUnverified?: boolean;
+  cwiaSchemaStatus?: "decoded" | "schema_unavailable";
+  cwiaUnverified?: boolean;
 }) {
   const fetcher = vi.fn<typeof fetch>().mockImplementation(async (input) => {
     const url = new URL(String(input), "http://localhost");
@@ -654,14 +674,18 @@ function installContractAPI({
         );
       }
       const detail = diamondDetection
-			? diamondProxyDetail()
-			: cwiaUnverified
-				? unverifiedCWIAProxyDetail()
-				: proxyDetail(pattern, cwiaSchemaStatus);
-      return envelope(safeDetection ? {
-        ...detail,
-        proxy_detection_v2: safeProxyDetection(),
-      } : detail);
+        ? diamondProxyDetail()
+        : cwiaUnverified
+          ? unverifiedCWIAProxyDetail()
+          : proxyDetail(pattern, cwiaSchemaStatus);
+      return envelope(
+        safeDetection
+          ? {
+              ...detail,
+              proxy_detection_v2: safeProxyDetection(),
+            }
+          : detail,
+      );
     }
     if (url.pathname.endsWith("/verification")) {
       const address = url.pathname.split("/").at(-2) ?? "";
@@ -677,23 +701,24 @@ function installContractAPI({
           { status: verificationStatus },
         );
       }
-			if (cwiaUnverified && address === proxyAddress) {
-				return Response.json(
-					{
-						error: {
-							code: "not_found",
-							message: "no verified artifact",
-							request_id: "contract-page-test",
-						},
-					},
-					{ status: 404 },
-				);
-			}
-      const codeHash = address === implementationAddress
-        ? implementationArtifactCodeHash
-        : address === managementAddress
-          ? managementArtifactCodeHash
-          : undefined;
+      if (cwiaUnverified && address === proxyAddress) {
+        return Response.json(
+          {
+            error: {
+              code: "not_found",
+              message: "no verified artifact",
+              request_id: "contract-page-test",
+            },
+          },
+          { status: 404 },
+        );
+      }
+      const codeHash =
+        address === implementationAddress
+          ? implementationArtifactCodeHash
+          : address === managementAddress
+            ? managementArtifactCodeHash
+            : undefined;
       return envelope(verifiedArtifact(address, codeHash));
     }
     if (url.pathname === `/api/v1/contracts/${proxyAddress}/proxy/upgrades`) {
@@ -702,14 +727,8 @@ function installContractAPI({
       }
       return envelope(upgradeHistory(pattern), { next_cursor: nextCursor });
     }
-    if (
-      url.pathname ===
-      `/api/v1/contracts/${proxyAddress}/proxy/initializations`
-    ) {
-      if (
-        staleHistory === "initializations" &&
-        url.searchParams.has("cursor")
-      ) {
+    if (url.pathname === `/api/v1/contracts/${proxyAddress}/proxy/initializations`) {
+      if (staleHistory === "initializations" && url.searchParams.has("cursor")) {
         return staleCursor();
       }
       return envelope(initializationHistory(), { next_cursor: nextCursor });
@@ -837,22 +856,26 @@ function diamondCutHistory() {
     diamond_address: proxyAddress,
     snapshot: snapshot(),
     coverage: { state: "complete", from_block: "1", to_block: "42" },
-    items: [{
-      block_number: "1",
-      block_hash: hash,
-      block_timestamp: "2026-08-01T00:00:00Z",
-      transaction_hash: oldHash,
-      transaction_index: "0",
-      log_index: "0",
-      init_address: managementAddress,
-      init_calldata: "0x1234",
-      cuts: [{
-        cut_index: 0,
-        action: "add",
-        facet_address: implementationAddress,
-        selectors: ["0x55241077"],
-      }],
-    }],
+    items: [
+      {
+        block_number: "1",
+        block_hash: hash,
+        block_timestamp: "2026-08-01T00:00:00Z",
+        transaction_hash: oldHash,
+        transaction_index: "0",
+        log_index: "0",
+        init_address: managementAddress,
+        init_calldata: "0x1234",
+        cuts: [
+          {
+            cut_index: 0,
+            action: "add",
+            facet_address: implementationAddress,
+            selectors: ["0x55241077"],
+          },
+        ],
+      },
+    ],
   };
 }
 
@@ -877,9 +900,7 @@ function historyRequests(
   );
 }
 
-function expectAnonymousContractRequests(
-  fetcher: ReturnType<typeof installContractAPI>,
-) {
+function expectAnonymousContractRequests(fetcher: ReturnType<typeof installContractAPI>) {
   const requests = contractRequests(fetcher);
   expect(requests.length).toBeGreaterThan(0);
   for (const { url, init } of requests) {
@@ -925,8 +946,8 @@ function snapshot() {
 }
 
 function proxyDetail(
-	pattern: ContractPattern,
-	cwiaSchemaStatus: "decoded" | "schema_unavailable" = "decoded",
+  pattern: ContractPattern,
+  cwiaSchemaStatus: "decoded" | "schema_unavailable" = "decoded",
 ) {
   if (pattern === "none") {
     return {
@@ -937,22 +958,25 @@ function proxyDetail(
     };
   }
   const clone = pattern === "clone" || pattern === "cwia";
-	const proxyPattern = clone ? "clone" : pattern;
-	const management = pattern === "transparent"
-    ? {
-        kind: "proxy_admin" as const,
-        target: currentIdentity(managementAddress, "proxy_admin"),
-        affected_proxy_count: "1",
-      }
-    : pattern === "beacon"
+  const proxyPattern = clone ? "clone" : pattern;
+  const management =
+    pattern === "transparent"
       ? {
-          kind: "upgradeable_beacon" as const,
-          target: currentIdentity(managementAddress, "upgradeable_beacon"),
-          affected_proxy_count: "2",
+          kind: "proxy_admin" as const,
+          target: currentIdentity(managementAddress, "proxy_admin"),
+          affected_proxy_count: "1",
         }
-      : undefined;
+      : pattern === "beacon"
+        ? {
+            kind: "upgradeable_beacon" as const,
+            target: currentIdentity(managementAddress, "upgradeable_beacon"),
+            affected_proxy_count: "2",
+          }
+        : undefined;
   const mechanism = clone
-    ? pattern === "cwia" ? "cwia" : "eip1167"
+    ? pattern === "cwia"
+      ? "cwia"
+      : "eip1167"
     : pattern === "beacon"
       ? "beacon"
       : "eip1967";
@@ -984,31 +1008,31 @@ function proxyDetail(
       implementationAddress,
       pattern === "uups" ? "uups_implementation" : undefined,
     ),
-	implementation_interaction: {
-		mechanism,
-		pattern: proxyPattern,
-		proxy: clone
-			? {
-				address: proxyAddress,
-				code_hash: hash,
-				verification_state: "unverified" as const,
-			}
-			: currentIdentity(
-				proxyAddress,
-				pattern === "transparent"
-					? "transparent_proxy"
-					: pattern === "beacon"
-						? "beacon_proxy"
-						: "erc1967_proxy",
-			),
-		implementation: currentIdentity(
-			implementationAddress,
-			pattern === "uups" ? "uups_implementation" : undefined,
-		),
-		...(pattern === "beacon"
-			? { beacon: currentIdentity(managementAddress, "upgradeable_beacon") }
-			: {}),
-	},
+    implementation_interaction: {
+      mechanism,
+      pattern: proxyPattern,
+      proxy: clone
+        ? {
+            address: proxyAddress,
+            code_hash: hash,
+            verification_state: "unverified" as const,
+          }
+        : currentIdentity(
+            proxyAddress,
+            pattern === "transparent"
+              ? "transparent_proxy"
+              : pattern === "beacon"
+                ? "beacon_proxy"
+                : "erc1967_proxy",
+          ),
+      implementation: currentIdentity(
+        implementationAddress,
+        pattern === "uups" ? "uups_implementation" : undefined,
+      ),
+      ...(pattern === "beacon"
+        ? { beacon: currentIdentity(managementAddress, "upgradeable_beacon") }
+        : {}),
+    },
     ...(pattern === "transparent"
       ? { admin: currentIdentity(managementAddress, "proxy_admin") }
       : {}),
@@ -1016,69 +1040,129 @@ function proxyDetail(
       ? { beacon: currentIdentity(managementAddress, "upgradeable_beacon") }
       : {}),
     ...(management ? { management } : {}),
-		...(clone ? { immutable_args: pattern === "cwia" ? `0x${"12".repeat(65)}` : "0x1234" } : {}),
-		...(pattern === "cwia" ? {
-			immutable_args_decoding: cwiaSchemaStatus === "decoded"
-				? {
-					status: "decoded" as const,
-					schema_resolution: "exact_address" as const,
-					schema: {
-						version: 2 as const,
-						source: "solidity_ast" as const,
-						encoding: "solady-cwia-offsets" as const,
-						helper_sha256: `0x${"bc".repeat(32)}`,
-						sha256: `0x${"ef".repeat(32)}`,
-						fields: [
-							{ name: "owner", type: "address" as const, offset: 0, role: "value" as const, getters: ["owner()"], size: { kind: "fixed" as const, bytes: 20 } },
-							{ name: "number", type: "uint256" as const, offset: 20, role: "value" as const, getters: ["number()"], size: { kind: "fixed" as const, bytes: 32 } },
-							{ name: "data_length", type: "uint16" as const, offset: 52, role: "length" as const, getters: ["data()"], size: { kind: "fixed" as const, bytes: 2 } },
-							{ name: "data", type: "bytes" as const, offset: 54, role: "value" as const, getters: ["data()"], size: { kind: "field" as const, field: "data_length", multiplier: 1 as const } },
-						],
-					},
-					arguments: [
-						{ name: "owner", type: "address", offset: 0, length: 20, value: "0x1234567890AbcdEF1234567890aBcdef12345678" },
-						{ name: "number", type: "uint256", offset: 20, length: 32, value: "1606938044258990275541962092341162602522202993782792835301418" },
-						{ name: "data_length", type: "uint16", offset: 52, length: 2, value: "11" },
-						{ name: "data", type: "bytes", offset: 54, length: 11, value: "0x68656c6c6f2c776f726c64" },
-					],
-				}
-				: { status: "schema_unavailable" as const, reason: "ast_unavailable" as const, arguments: [] },
-		} : {}),
-    evidence: pattern === "beacon"
-      ? [{
-          source: "runtime_immutable",
-          subject: "beacon",
-          result: "authoritative",
-          address: managementAddress,
-          block_number: "42",
-          block_hash: hash,
-        }]
-      : [],
+    ...(clone ? { immutable_args: pattern === "cwia" ? `0x${"12".repeat(65)}` : "0x1234" } : {}),
+    ...(pattern === "cwia"
+      ? {
+          immutable_args_decoding:
+            cwiaSchemaStatus === "decoded"
+              ? {
+                  status: "decoded" as const,
+                  schema_resolution: "exact_address" as const,
+                  schema: {
+                    version: 2 as const,
+                    source: "solidity_ast" as const,
+                    encoding: "solady-cwia-offsets" as const,
+                    helper_sha256: `0x${"bc".repeat(32)}`,
+                    sha256: `0x${"ef".repeat(32)}`,
+                    fields: [
+                      {
+                        name: "owner",
+                        type: "address" as const,
+                        offset: 0,
+                        role: "value" as const,
+                        getters: ["owner()"],
+                        size: { kind: "fixed" as const, bytes: 20 },
+                      },
+                      {
+                        name: "number",
+                        type: "uint256" as const,
+                        offset: 20,
+                        role: "value" as const,
+                        getters: ["number()"],
+                        size: { kind: "fixed" as const, bytes: 32 },
+                      },
+                      {
+                        name: "data_length",
+                        type: "uint16" as const,
+                        offset: 52,
+                        role: "length" as const,
+                        getters: ["data()"],
+                        size: { kind: "fixed" as const, bytes: 2 },
+                      },
+                      {
+                        name: "data",
+                        type: "bytes" as const,
+                        offset: 54,
+                        role: "value" as const,
+                        getters: ["data()"],
+                        size: {
+                          kind: "field" as const,
+                          field: "data_length",
+                          multiplier: 1 as const,
+                        },
+                      },
+                    ],
+                  },
+                  arguments: [
+                    {
+                      name: "owner",
+                      type: "address",
+                      offset: 0,
+                      length: 20,
+                      value: "0x1234567890AbcdEF1234567890aBcdef12345678",
+                    },
+                    {
+                      name: "number",
+                      type: "uint256",
+                      offset: 20,
+                      length: 32,
+                      value: "1606938044258990275541962092341162602522202993782792835301418",
+                    },
+                    { name: "data_length", type: "uint16", offset: 52, length: 2, value: "11" },
+                    {
+                      name: "data",
+                      type: "bytes",
+                      offset: 54,
+                      length: 11,
+                      value: "0x68656c6c6f2c776f726c64",
+                    },
+                  ],
+                }
+              : {
+                  status: "schema_unavailable" as const,
+                  reason: "ast_unavailable" as const,
+                  arguments: [],
+                },
+        }
+      : {}),
+    evidence:
+      pattern === "beacon"
+        ? [
+            {
+              source: "runtime_immutable",
+              subject: "beacon",
+              result: "authoritative",
+              address: managementAddress,
+              block_number: "42",
+              block_hash: hash,
+            },
+          ]
+        : [],
   };
 }
 
 function unverifiedCWIAProxyDetail(): ContractProxyDetails {
-	const detail = proxyDetail("cwia", "decoded") as ContractProxyDetails;
-	const implementation = {
-		...detail.implementation!,
-		verification_state: "unverified" as const,
-		artifact_resolution: "code_hash" as const,
-	};
-	return {
-		...detail,
-		status: "detected_unverified",
-		confidence: "high",
-		binding_id: undefined,
-		implementation,
-		implementation_interaction: {
-			...detail.implementation_interaction!,
-			implementation,
-		},
-		immutable_args_decoding: {
-			...detail.immutable_args_decoding!,
-			schema_resolution: "code_hash",
-		},
-	};
+  const detail = proxyDetail("cwia", "decoded") as ContractProxyDetails;
+  const implementation = {
+    ...detail.implementation!,
+    verification_state: "unverified" as const,
+    artifact_resolution: "code_hash" as const,
+  };
+  return {
+    ...detail,
+    status: "detected_unverified",
+    confidence: "high",
+    binding_id: undefined,
+    implementation,
+    implementation_interaction: {
+      ...detail.implementation_interaction!,
+      implementation,
+    },
+    immutable_args_decoding: {
+      ...detail.immutable_args_decoding!,
+      schema_resolution: "code_hash",
+    },
+  };
 }
 
 function currentIdentity(
@@ -1095,11 +1179,9 @@ function currentIdentity(
     address,
     code_hash: hash,
     verification_state: "verified",
-		artifact_resolution: "exact_address" as const,
+    artifact_resolution: "exact_address" as const,
     ...(artifactKind ? { artifact_kind: artifactKind } : {}),
-    ...(artifactKind && artifactKind !== "erc1967_proxy"
-      ? { standard_version: "5.6.1" }
-      : {}),
+    ...(artifactKind && artifactKind !== "erc1967_proxy" ? { standard_version: "5.6.1" } : {}),
   };
 }
 
@@ -1133,29 +1215,35 @@ function verifiedArtifact(address: string, codeHash = hash) {
     runtime_code_artifacts: {},
     libraries: {},
     is_blueprint: false,
-		resolution: "exact_address",
-		target: {
-			chain_id: "1", address, code_hash: codeHash,
-			block_number: "42", block_hash: hash,
-		},
-		source: {
-			address, code_hash: codeHash, valid_from_block: "1",
-			created_at: "2026-08-02T00:00:00Z",
-		},
-	};
+    resolution: "exact_address",
+    target: {
+      chain_id: "1",
+      address,
+      code_hash: codeHash,
+      block_number: "42",
+      block_hash: hash,
+    },
+    source: {
+      address,
+      code_hash: codeHash,
+      valid_from_block: "1",
+      created_at: "2026-08-02T00:00:00Z",
+    },
+  };
 }
 
 function upgradeHistory(pattern: ContractPattern) {
-  const beaconEvidence = pattern === "beacon"
-    ? {
-        beacon: historicalIdentity(managementAddress, hash),
-        emitter_address: managementAddress,
-        management: {
-          kind: "upgradeable_beacon" as const,
-          target: historicalIdentity(managementAddress, hash),
-        },
-      }
-    : {};
+  const beaconEvidence =
+    pattern === "beacon"
+      ? {
+          beacon: historicalIdentity(managementAddress, hash),
+          emitter_address: managementAddress,
+          management: {
+            kind: "upgradeable_beacon" as const,
+            target: historicalIdentity(managementAddress, hash),
+          },
+        }
+      : {};
   return {
     proxy_address: proxyAddress,
     snapshot: snapshot(),

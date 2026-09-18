@@ -45,117 +45,117 @@ export function AppShell() {
   return (
     <AddressNamesProvider>
       <AppFrame className="app-frame">
-      <a className="skip-link" href="#main-content">
-        {t("skip")}
-      </a>
-      <header className="site-header">
-        <div className="header-primary shell-width">
-          <Link className="brand" to="/" aria-label="Etherview home">
-            <img alt="" aria-hidden="true" className="brand-mark" src={etherviewMark} />
-            <span>
-              <strong>Etherview</strong>
-              <small>{publicConfig.data?.chain_name ?? t("app.tagline")}</small>
-            </span>
-          </Link>
+        <a className="skip-link" href="#main-content">
+          {t("skip")}
+        </a>
+        <header className="site-header">
+          <div className="header-primary shell-width">
+            <Link className="brand" to="/" aria-label="Etherview home">
+              <img alt="" aria-hidden="true" className="brand-mark" src={etherviewMark} />
+              <span>
+                <strong>Etherview</strong>
+                <small>{publicConfig.data?.chain_name ?? t("app.tagline")}</small>
+              </span>
+            </Link>
 
-          <form className="global-search" role="search" onSubmit={submitSearch}>
-            <label className="sr-only" htmlFor="global-search-input">
-              {t("actions.search")}
-            </label>
-            <input
-              id="global-search-input"
-              aria-describedby={searchError ? "global-search-error" : undefined}
-              aria-invalid={Boolean(searchError)}
-              onChange={(event) => {
-                setQuery(event.target.value);
-                setSearchError("");
-              }}
-              placeholder={t("actions.searchPlaceholder")}
-              type="search"
-              value={query}
-            />
-            <button type="submit">{t("actions.search")}</button>
-            {searchError ? <small className="global-search-error" id="global-search-error" role="alert">{searchError}</small> : null}
-          </form>
+            <form className="global-search" role="search" onSubmit={submitSearch}>
+              <label className="sr-only" htmlFor="global-search-input">
+                {t("actions.search")}
+              </label>
+              <input
+                id="global-search-input"
+                aria-describedby={searchError ? "global-search-error" : undefined}
+                aria-invalid={Boolean(searchError)}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setSearchError("");
+                }}
+                placeholder={t("actions.searchPlaceholder")}
+                type="search"
+                value={query}
+              />
+              <button type="submit">{t("actions.search")}</button>
+              {searchError ? (
+                <small className="global-search-error" id="global-search-error" role="alert">
+                  {searchError}
+                </small>
+              ) : null}
+            </form>
 
-          <div className="header-controls">
-            <button
-              aria-label={t("actions.toggleTheme")}
-              aria-pressed={theme === "dark"}
-              className="control icon-control"
-              onClick={toggleTheme}
-              type="button"
-            >
-              <span aria-hidden="true">{theme === "dark" ? "☾" : "☼"}</span>
-            </button>
-            <button className="control language-control" onClick={toggleLanguage} type="button">
-              {t("actions.toggleLanguage")}
-            </button>
-            <WalletMenu />
+            <div className="header-controls">
+              <button
+                aria-label={t("actions.toggleTheme")}
+                aria-pressed={theme === "dark"}
+                className="control icon-control"
+                onClick={toggleTheme}
+                type="button"
+              >
+                <span aria-hidden="true">{theme === "dark" ? "☾" : "☼"}</span>
+              </button>
+              <button className="control language-control" onClick={toggleLanguage} type="button">
+                {t("actions.toggleLanguage")}
+              </button>
+              <WalletMenu />
+            </div>
           </div>
-        </div>
 
-        <nav className="site-nav shell-width" aria-label={t("nav.primary")}>
-          <Link activeProps={{ className: "active" }} activeOptions={{ exact: true }} to="/">
-            {t("nav.home")}
-          </Link>
-          <Link activeProps={{ className: "active" }} to="/blocks">
-            {t("nav.blocks")}
-          </Link>
-          <Link activeProps={{ className: "active" }} to="/transactions">
-            {t("nav.transactions")}
-          </Link>
-          {publicConfig.data?.features.user_operations === true && (
-            <Link activeProps={{ className: "active" }} to="/user-operations">
-              {t("nav.userOperations")}
+          <nav className="site-nav shell-width" aria-label={t("nav.primary")}>
+            <Link activeProps={{ className: "active" }} activeOptions={{ exact: true }} to="/">
+              {t("nav.home")}
             </Link>
-          )}
-          <Link activeProps={{ className: "active" }} to="/tokens">
-            {t("nav.tokens")}
-          </Link>
-          <Link activeProps={{ className: "active" }} to="/charts">
-            {t("nav.charts")}
-          </Link>
-          <Link activeProps={{ className: "active" }} to="/pending">
-            {t("nav.pending")}
-          </Link>
-          <Link activeProps={{ className: "active" }} to="/status">
-            {t("nav.status")}
-          </Link>
-          {auth.enabled && (
-            <Link activeProps={{ className: "active" }} to="/account">
-              {t("nav.account")}
+            <Link activeProps={{ className: "active" }} to="/blocks">
+              {t("nav.blocks")}
             </Link>
-          )}
-          {auth.session.authenticated &&
-            auth.session.user?.role === "admin" && (
+            <Link activeProps={{ className: "active" }} to="/transactions">
+              {t("nav.transactions")}
+            </Link>
+            {publicConfig.data?.features.user_operations === true && (
+              <Link activeProps={{ className: "active" }} to="/user-operations">
+                {t("nav.userOperations")}
+              </Link>
+            )}
+            <Link activeProps={{ className: "active" }} to="/tokens">
+              {t("nav.tokens")}
+            </Link>
+            <Link activeProps={{ className: "active" }} to="/charts">
+              {t("nav.charts")}
+            </Link>
+            <Link activeProps={{ className: "active" }} to="/pending">
+              {t("nav.pending")}
+            </Link>
+            <Link activeProps={{ className: "active" }} to="/status">
+              {t("nav.status")}
+            </Link>
+            {auth.enabled && (
+              <Link activeProps={{ className: "active" }} to="/account">
+                {t("nav.account")}
+              </Link>
+            )}
+            {auth.session.authenticated && auth.session.user?.role === "admin" && (
               <>
                 <Link activeProps={{ className: "active" }} to="/admin/users">
                   {t("nav.adminUsers")}
                 </Link>
                 {publicConfig.data?.features.api_billing === true && (
-                  <Link
-                    activeProps={{ className: "active" }}
-                    to="/admin/billing"
-                  >
+                  <Link activeProps={{ className: "active" }} to="/admin/billing">
                     {t("nav.adminBilling")}
                   </Link>
                 )}
               </>
             )}
-        </nav>
-      </header>
+          </nav>
+        </header>
 
-      <main id="main-content" className="shell-width site-main" tabIndex={-1}>
-        <Outlet />
-      </main>
+        <main id="main-content" className="shell-width site-main" tabIndex={-1}>
+          <Outlet />
+        </main>
 
-      <footer className="site-footer">
-        <div className="shell-width footer-inner">
-          <span className="footer-brand">Etherview</span>
-          <span>{t("footer.description")}</span>
-        </div>
-      </footer>
+        <footer className="site-footer">
+          <div className="shell-width footer-inner">
+            <span className="footer-brand">Etherview</span>
+            <span>{t("footer.description")}</span>
+          </div>
+        </footer>
       </AppFrame>
     </AddressNamesProvider>
   );

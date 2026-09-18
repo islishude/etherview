@@ -1,4 +1,3 @@
-
 import { AddressDetailPage } from "./AddressPage";
 import { BlockDetailPage } from "./BlockPage";
 import { TokenDetailPage, NFTDetailPage } from "./TokenNFTPage";

@@ -97,9 +97,9 @@ describe("generated authentication API adapter", () => {
 
   it("returns the generated user-list envelope and preserves an opaque cursor", async () => {
     const cursor = "opaque +/?=:cursor";
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
-      envelope([userRecord()], { next_cursor: cursor }),
-    );
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(envelope([userRecord()], { next_cursor: cursor }));
     vi.stubGlobal("fetch", fetcher);
 
     const response = await listAdminUsers(25, cursor);

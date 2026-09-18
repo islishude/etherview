@@ -26,13 +26,16 @@ function withFixture(callback) {
 }
 
 function writeBudget(path, overrides = {}) {
-  writeFileSync(path, JSON.stringify({
-    schema: "etherview-web-asset-budget-v1",
-    maximumInitialRawBytes: 8192,
-    maximumInitialGzipBytes: 8192,
-    forbiddenInitialPatterns: [],
-    ...overrides,
-  }));
+  writeFileSync(
+    path,
+    JSON.stringify({
+      schema: "etherview-web-asset-budget-v1",
+      maximumInitialRawBytes: 8192,
+      maximumInitialGzipBytes: 8192,
+      forbiddenInitialPatterns: [],
+      ...overrides,
+    }),
+  );
 }
 
 test("measures only the root asset graph", () => {

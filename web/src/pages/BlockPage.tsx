@@ -1,16 +1,8 @@
-
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
-import {
-  useBlock,
-  useBlockTransactions,
-  usePublicConfig,
-} from "@/api/hooks";
-import type {
-  BlockSummary,
-  TransactionSummary,
-} from "@/api/types";
+import { useBlock, useBlockTransactions, usePublicConfig } from "@/api/hooks";
+import type { BlockSummary, TransactionSummary } from "@/api/types";
 import {
   formatEtherFromGwei,
   formatInteger,
@@ -34,7 +26,7 @@ import {
 import { TransactionStatusBadge } from "./TransactionPage";
 
 const BLOCK_TABS = ["overview", "transactions", "withdrawals"] as const;
-type BlockTab = typeof BLOCK_TABS[number];
+type BlockTab = (typeof BLOCK_TABS)[number];
 
 function blockTabsForBlock(block?: BlockSummary): BlockTab[] {
   return BLOCK_TABS.filter((tab) => tab !== "withdrawals" || Boolean(block?.withdrawals));
@@ -57,20 +49,32 @@ function BlockWithdrawalsPanel({
         <div className="table-scroll" tabIndex={0}>
           <table>
             <caption className="sr-only">{t("detail.withdrawals")}</caption>
-            <thead><tr>
-              <th>{t("detail.withdrawalIndex")}</th>
-              <th>{t("detail.validatorIndex")}</th>
-              <th>{t("table.address")}</th>
-              <th>{t("detail.withdrawalAmount")}</th>
-            </tr></thead>
-            <tbody>{withdrawals.map((withdrawal) => (
-              <tr key={withdrawal.index}>
-                <td><code>{formatInteger(withdrawal.index, locale)}</code></td>
-                <td><code>{formatInteger(withdrawal.validator_index, locale)}</code></td>
-                <td><AddressIdentity address={withdrawal.address} compact={false} /></td>
-                <td><code>{formatEtherFromGwei(withdrawal.amount, locale)} Ether</code></td>
+            <thead>
+              <tr>
+                <th>{t("detail.withdrawalIndex")}</th>
+                <th>{t("detail.validatorIndex")}</th>
+                <th>{t("table.address")}</th>
+                <th>{t("detail.withdrawalAmount")}</th>
               </tr>
-            ))}</tbody>
+            </thead>
+            <tbody>
+              {withdrawals.map((withdrawal) => (
+                <tr key={withdrawal.index}>
+                  <td>
+                    <code>{formatInteger(withdrawal.index, locale)}</code>
+                  </td>
+                  <td>
+                    <code>{formatInteger(withdrawal.validator_index, locale)}</code>
+                  </td>
+                  <td>
+                    <AddressIdentity address={withdrawal.address} compact={false} />
+                  </td>
+                  <td>
+                    <code>{formatEtherFromGwei(withdrawal.amount, locale)} Ether</code>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
           </table>
         </div>
       )}
@@ -111,39 +115,77 @@ function BlockTransactionsPanel({
 }) {
   const { t } = useTranslation();
   return (
-    <section className="panel transaction-tab-panel" role="tabpanel" aria-label={t("blockTabs.transactions")}>
+    <section
+      className="panel transaction-tab-panel"
+      role="tabpanel"
+      aria-label={t("blockTabs.transactions")}
+    >
       <QueryNotice loading={loading} error={error} onReset={onReset} />
       {items?.length === 0 ? <p className="empty-result">{t("state.noTransactions")}</p> : null}
       {items && items.length > 0 ? (
         <div className="table-scroll" tabIndex={0} aria-label={t("blockTabs.transactions")}>
           <table>
             <caption className="sr-only">{t("blockTabs.transactions")}</caption>
-            <thead><tr>
-              <th>{t("table.hash")}</th>
-              <th>{t("detail.transactionIndex")}</th>
-              <th>{t("table.status")}</th>
-              <th>{t("table.from")}</th>
-              <th>{t("table.to")}</th>
-              <th>{t("table.value", { symbol: nativeSymbol })}</th>
-              <th>{t("detail.gasUsed")}</th>
-              <th>{t("table.finality")}</th>
-            </tr></thead>
-            <tbody>{items.map((transaction) => (
-              <tr key={`${blockHash}:${transaction.transaction_index ?? transaction.hash}:${transaction.hash}`}>
-                <td>
-                  <Link to="/tx/$hash" params={{ hash: transaction.hash }} search={{ tab: "overview" }}>
-                    <code>{shorten(transaction.hash)}</code>
-                  </Link>
-                </td>
-                <td><code>{transaction.transaction_index == null ? "—" : formatInteger(String(transaction.transaction_index), locale)}</code></td>
-                <td><TransactionStatusBadge transaction={transaction} /></td>
-                <td><AddressIdentity address={transaction.from} /></td>
-                <td>{transaction.to ? <AddressIdentity address={transaction.to} /> : t("common.contractCreation")}</td>
-                <td><code>{formatNativeAmount(transaction.value, locale, nativeDecimals)}</code></td>
-                <td><code>{transaction.gas_used ? formatInteger(transaction.gas_used, locale) : "—"}</code></td>
-                <td><FinalityBadge finality={transaction.finality} /></td>
+            <thead>
+              <tr>
+                <th>{t("table.hash")}</th>
+                <th>{t("detail.transactionIndex")}</th>
+                <th>{t("table.status")}</th>
+                <th>{t("table.from")}</th>
+                <th>{t("table.to")}</th>
+                <th>{t("table.value", { symbol: nativeSymbol })}</th>
+                <th>{t("detail.gasUsed")}</th>
+                <th>{t("table.finality")}</th>
               </tr>
-            ))}</tbody>
+            </thead>
+            <tbody>
+              {items.map((transaction) => (
+                <tr
+                  key={`${blockHash}:${transaction.transaction_index ?? transaction.hash}:${transaction.hash}`}
+                >
+                  <td>
+                    <Link
+                      to="/tx/$hash"
+                      params={{ hash: transaction.hash }}
+                      search={{ tab: "overview" }}
+                    >
+                      <code>{shorten(transaction.hash)}</code>
+                    </Link>
+                  </td>
+                  <td>
+                    <code>
+                      {transaction.transaction_index == null
+                        ? "—"
+                        : formatInteger(String(transaction.transaction_index), locale)}
+                    </code>
+                  </td>
+                  <td>
+                    <TransactionStatusBadge transaction={transaction} />
+                  </td>
+                  <td>
+                    <AddressIdentity address={transaction.from} />
+                  </td>
+                  <td>
+                    {transaction.to ? (
+                      <AddressIdentity address={transaction.to} />
+                    ) : (
+                      t("common.contractCreation")
+                    )}
+                  </td>
+                  <td>
+                    <code>{formatNativeAmount(transaction.value, locale, nativeDecimals)}</code>
+                  </td>
+                  <td>
+                    <code>
+                      {transaction.gas_used ? formatInteger(transaction.gas_used, locale) : "—"}
+                    </code>
+                  </td>
+                  <td>
+                    <FinalityBadge finality={transaction.finality} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
           </table>
         </div>
       ) : null}
@@ -168,7 +210,7 @@ export function BlockDetailPage({ identifier, tab }: { identifier: string; tab: 
   const block = useBlock(identifier);
   const pager = useCursorHistory(`block-transactions:${block.data?.hash ?? identifier}`);
   const blockTabs = blockTabsForBlock(block.data);
-  const activeTab: BlockTab = blockTabs.includes(tab as BlockTab) ? tab as BlockTab : "overview";
+  const activeTab: BlockTab = blockTabs.includes(tab as BlockTab) ? (tab as BlockTab) : "overview";
   const transactions = useBlockTransactions(
     identifier,
     pager.cursor,
@@ -184,9 +226,7 @@ export function BlockDetailPage({ identifier, tab }: { identifier: string; tab: 
       <QueryNotice loading={block.isPending} error={block.error} />
       {block.data && (
         <>
-          {!block.data.canonical && (
-            <ReorgContext kind="block" hash={block.data.hash} />
-          )}
+          {!block.data.canonical && <ReorgContext kind="block" hash={block.data.hash} />}
           <nav className="transaction-tabs" role="tablist" aria-label={t("detail.blockSections")}>
             {blockTabs.map((tabID) => (
               <Link
@@ -197,18 +237,24 @@ export function BlockDetailPage({ identifier, tab }: { identifier: string; tab: 
                   if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
                   event.preventDefault();
                   const currentIndex = blockTabs.indexOf(tabID);
-                  const nextIndex = event.key === "Home" ? 0
-                    : event.key === "End" ? blockTabs.length - 1
-                    : event.key === "ArrowLeft"
-                      ? (currentIndex - 1 + blockTabs.length) % blockTabs.length
-                      : (currentIndex + 1) % blockTabs.length;
+                  const nextIndex =
+                    event.key === "Home"
+                      ? 0
+                      : event.key === "End"
+                        ? blockTabs.length - 1
+                        : event.key === "ArrowLeft"
+                          ? (currentIndex - 1 + blockTabs.length) % blockTabs.length
+                          : (currentIndex + 1) % blockTabs.length;
                   const nextTab = blockTabs[nextIndex]!;
                   void navigate({
                     to: "/blocks/$blockID",
                     params: { blockID: identifier },
                     search: { tab: nextTab },
                   }).then(() => {
-                    const tabs = event.currentTarget.parentElement?.querySelectorAll<HTMLElement>('[role="tab"]');
+                    const tabs =
+                      event.currentTarget.parentElement?.querySelectorAll<HTMLElement>(
+                        '[role="tab"]',
+                      );
                     tabs?.[nextIndex]?.focus();
                   });
                 }}
@@ -230,22 +276,40 @@ export function BlockDetailPage({ identifier, tab }: { identifier: string; tab: 
                 <Detail
                   label={t("detail.parentHash")}
                   mono
-                  value={block.data.number === "0" ? block.data.parent_hash : (
-                    <Link to="/blocks/$blockID" params={{ blockID: block.data.parent_hash }}>
-                      {block.data.parent_hash}
-                    </Link>
-                  )}
+                  value={
+                    block.data.number === "0" ? (
+                      block.data.parent_hash
+                    ) : (
+                      <Link to="/blocks/$blockID" params={{ blockID: block.data.parent_hash }}>
+                        {block.data.parent_hash}
+                      </Link>
+                    )
+                  }
                 />
-                <Detail label={t("table.age")} value={formatTimestamp(block.data.timestamp, locale)} />
-                <Detail label={t("table.transactions")} value={formatInteger(block.data.transaction_count, locale)} />
+                <Detail
+                  label={t("table.age")}
+                  value={formatTimestamp(block.data.timestamp, locale)}
+                />
+                <Detail
+                  label={t("table.transactions")}
+                  value={formatInteger(block.data.transaction_count, locale)}
+                />
                 <Detail label={t("table.gas")} value={formatInteger(block.data.gas_used, locale)} />
-                <Detail label={t("detail.gasLimit")} value={formatInteger(block.data.gas_limit, locale)} />
-                <Detail label={t("detail.baseFee")} value={formatInteger(block.data.base_fee_per_gas, locale)} />
+                <Detail
+                  label={t("detail.gasLimit")}
+                  value={formatInteger(block.data.gas_limit, locale)}
+                />
+                <Detail
+                  label={t("detail.baseFee")}
+                  value={formatInteger(block.data.base_fee_per_gas, locale)}
+                />
                 <Detail
                   label={t("detail.miner")}
-                  value={block.data.miner ? (
-                    <AddressIdentity address={block.data.miner} compact={false} />
-                  ) : undefined}
+                  value={
+                    block.data.miner ? (
+                      <AddressIdentity address={block.data.miner} compact={false} />
+                    ) : undefined
+                  }
                 />
                 <Detail label={t("detail.canonical")} value={yesNo(block.data.canonical, t)} />
                 <Detail label={t("table.finality")} value={finalityLabel(block.data.finality, t)} />

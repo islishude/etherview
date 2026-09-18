@@ -2,10 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
-import {
-  authErrorTranslationKey,
-  useAuth,
-} from "@/auth/AuthProvider";
+import { authErrorTranslationKey, useAuth } from "@/auth/AuthProvider";
 import { shorten } from "./format";
 import { walletErrorTranslationKey } from "@/wallet/eip6963";
 import { useWallet } from "@/wallet/WalletProvider";
@@ -25,12 +22,8 @@ export function WalletMenu() {
   const focusAfterTransition = useRef(false);
   const focusWithinMenu = useRef(false);
   const wasConnected = useRef(Boolean(wallet.active));
-  const errorMessage = wallet.error
-    ? t(walletErrorTranslationKey(wallet.error))
-    : undefined;
-  const authErrorMessage = auth.error
-    ? t(authErrorTranslationKey(auth.error))
-    : undefined;
+  const errorMessage = wallet.error ? t(walletErrorTranslationKey(wallet.error)) : undefined;
+  const authErrorMessage = auth.error ? t(authErrorTranslationKey(auth.error)) : undefined;
 
   useEffect(() => {
     const connected = Boolean(wallet.active);
@@ -86,17 +79,28 @@ export function WalletMenu() {
           className="control wallet-summary"
           ref={summaryRef}
         >
-          <span className={wallet.active ? "status-dot success" : "status-dot"} aria-hidden="true" />
-          {wallet.active ? walletPrimaryName?.name ?? shorten(wallet.active.account, 6, 4) : t("actions.connect")}
+          <span
+            className={wallet.active ? "status-dot success" : "status-dot"}
+            aria-hidden="true"
+          />
+          {wallet.active
+            ? (walletPrimaryName?.name ?? shorten(wallet.active.account, 6, 4))
+            : t("actions.connect")}
         </summary>
         <div className="wallet-popover">
           <div className="popover-heading">
             <strong>{t("wallet.title")}</strong>
-            {wallet.active && <span className="quiet">{t("common.chain")} {wallet.active.chainID}</span>}
+            {wallet.active && (
+              <span className="quiet">
+                {t("common.chain")} {wallet.active.chainID}
+              </span>
+            )}
           </div>
           {wallet.active ? (
             <>
-              {walletPrimaryName ? <bdi className="address-primary-name">{walletPrimaryName.name}</bdi> : null}
+              {walletPrimaryName ? (
+                <bdi className="address-primary-name">{walletPrimaryName.name}</bdi>
+              ) : null}
               <code className="wallet-account">{wallet.active.account}</code>
               <button
                 className="button secondary full"
@@ -147,10 +151,7 @@ export function WalletMenu() {
           {errorMessage && <p className="form-error">{errorMessage}</p>}
           <AddNetworkControl menuOpen={open} />
           {auth.enabled && (
-            <section
-              className="wallet-auth-section"
-              aria-labelledby="wallet-auth-title"
-            >
+            <section className="wallet-auth-section" aria-labelledby="wallet-auth-title">
               <div className="popover-heading">
                 <strong id="wallet-auth-title">{t("auth.menu.title")}</strong>
                 <span className="quiet">
@@ -174,10 +175,7 @@ export function WalletMenu() {
                       <small>{t(`auth.role.${auth.session.user.role}`)}</small>
                     </span>
                   </span>
-                  <Link
-                    className="button secondary inline-button full"
-                    to="/account"
-                  >
+                  <Link className="button secondary inline-button full" to="/account">
                     {t("auth.account.open")}
                   </Link>
                   <button
@@ -193,24 +191,25 @@ export function WalletMenu() {
                 <>
                   <p className="quiet">{t("auth.menu.walletIsNotLogin")}</p>
                   <SIWELoginControl full />
-                  <Link
-                    className="button secondary inline-button full"
-                    to="/account"
-                  >
+                  <Link className="button secondary inline-button full" to="/account">
                     {t("auth.account.open")}
                   </Link>
                 </>
               )}
-              {authErrorMessage && (
-                <p className="form-error">{authErrorMessage}</p>
-              )}
+              {authErrorMessage && <p className="form-error">{authErrorMessage}</p>}
             </section>
           )}
         </div>
       </details>
-      {errorMessage && <span className="sr-only" role="alert">{errorMessage}</span>}
+      {errorMessage && (
+        <span className="sr-only" role="alert">
+          {errorMessage}
+        </span>
+      )}
       {authErrorMessage && (
-        <span className="sr-only" role="alert">{authErrorMessage}</span>
+        <span className="sr-only" role="alert">
+          {authErrorMessage}
+        </span>
       )}
     </>
   );

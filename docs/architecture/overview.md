@@ -104,9 +104,13 @@ The SPA keeps route dispatch in `router.tsx`, shared explorer primitives in
 `pages/pages.tsx`, and block, transaction, address, token/NFT, verification,
 and entity dispatch in separate page modules. English and Chinese resources
 are merged from the same seven domain modules, preventing one language from
-silently acquiring a different key layout. The pinned Biome gate is part of
-`web-lint` and checks hooks, unused code, selected complexity, function size,
-and production file size before the embedded distribution is built.
+silently acquiring a different key layout. The pinned Oxlint and Oxfmt gates
+are part of `web-lint`: TypeScript checking is followed by hooks, unused code,
+classic cyclomatic complexity, function/file size, and formatting checks.
+Transaction orchestration is separate from calldata, overview, logs, trace,
+and secondary panels; contract proxy facts are separate from tab orchestration.
+Wallet operation callbacks retain the same session fences in an internal Hook.
+Generated API types remain generator-owned and are excluded from both tools.
 Route components and feature-heavy editors/charts are lazy chunks; the initial
 asset graph explicitly forbids page, ECharts, x402, verified-source, and
 CodeMirror chunks. Hashed assets are built with Gzip/Brotli sidecars and a

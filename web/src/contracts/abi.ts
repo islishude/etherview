@@ -34,9 +34,15 @@ import {
 } from "./abiTypes";
 export { ABI_LIMITS, AbiFormError } from "./abiTypes";
 export type {
-  AbiFormErrorCode, AbiInputNode, AbiFunctionEntry, CalldataDecodeResult,
-  CalldataDecodeStatus, DecodedAbiRevert, FormattedAbiField,
-  FormattedAbiOutput, FormattedAbiValue,
+  AbiFormErrorCode,
+  AbiInputNode,
+  AbiFunctionEntry,
+  CalldataDecodeResult,
+  CalldataDecodeStatus,
+  DecodedAbiRevert,
+  FormattedAbiField,
+  FormattedAbiOutput,
+  FormattedAbiValue,
 } from "./abiTypes";
 /**
  * Parses one verified artifact ABI into a detached, deeply frozen value.
@@ -88,10 +94,7 @@ export function decodeConstructorArguments(
  * arguments are round-tripped through Viem so trailing or non-canonical bytes
  * never become a displayed function call.
  */
-export function decodeCalldata(
-  abi: unknown,
-  encoded: unknown,
-): CalldataDecodeResult {
+export function decodeCalldata(abi: unknown, encoded: unknown): CalldataDecodeResult {
   if (typeof encoded !== "string" || !validHex(encoded, 4, ABI_LIMITS.bytesLength)) {
     return Object.freeze({ status: "malformed_calldata" });
   }
@@ -103,8 +106,9 @@ export function decodeCalldata(
     return Object.freeze({ status: "abi_unavailable" });
   }
 
-  const matches = parsedABI.filter((item): item is AbiFunction =>
-    item.type === "function" && toFunctionSelector(canonicalFunctionSignature(item)) === selector,
+  const matches = parsedABI.filter(
+    (item): item is AbiFunction =>
+      item.type === "function" && toFunctionSelector(canonicalFunctionSignature(item)) === selector,
   );
   if (matches.length === 0) {
     return Object.freeze({ status: "unknown_selector", selector });
@@ -121,12 +125,14 @@ export function decodeCalldata(
         args: result.args,
       });
       if (canonical.toLowerCase() !== encoded.toLowerCase()) continue;
-      decoded.push(Object.freeze({
-        status: "decoded",
-        selector,
-        signature: canonicalFunctionSignature(fn),
-        args: formatParameterValues(fn.inputs, result.args, "$calldata"),
-      }));
+      decoded.push(
+        Object.freeze({
+          status: "decoded",
+          selector,
+          signature: canonicalFunctionSignature(fn),
+          args: formatParameterValues(fn.inputs, result.args, "$calldata"),
+        }),
+      );
     } catch {
       // A selector match with invalid or non-canonical arguments is malformed.
     }
@@ -145,8 +151,9 @@ export function decodeCalldata(
 export function mergeCalldataResults(
   results: readonly CalldataDecodeResult[],
 ): CalldataDecodeResult {
-  const decoded = results.filter((result): result is Extract<CalldataDecodeResult, { status: "decoded" }> =>
-    result.status === "decoded",
+  const decoded = results.filter(
+    (result): result is Extract<CalldataDecodeResult, { status: "decoded" }> =>
+      result.status === "decoded",
   );
   const distinct = new Map<string, Extract<CalldataDecodeResult, { status: "decoded" }>>();
   for (const result of decoded) {
@@ -211,9 +218,7 @@ export function partitionAbiFunctions(abi: Abi): Readonly<{
   return Object.freeze({ read: Object.freeze(read), write: Object.freeze(write) });
 }
 
-export function createAbiInputTree(
-  inputs: readonly AbiParameter[],
-): readonly AbiInputNode[] {
+export function createAbiInputTree(inputs: readonly AbiParameter[]): readonly AbiInputNode[] {
   const budget = new ValueBudget(ABI_LIMITS.inputNodes);
   const nodes = inputs.map((parameter, index) =>
     createInputNode(parameter, `$[${index}]`, 0, budget),
@@ -238,9 +243,7 @@ export function createAbiArrayItem(parameter: AbiParameter): AbiInputNode {
  * work budget. Dynamic array items are created independently, so callers must
  * re-run this check on the complete candidate tree before committing an add.
  */
-export function assertAbiInputTreeWithinLimits(
-  tree: readonly AbiInputNode[],
-): void {
+export function assertAbiInputTreeWithinLimits(tree: readonly AbiInputNode[]): void {
   if (!Array.isArray(tree)) {
     throw new AbiFormError("INVALID_ABI_VALUE", "$");
   }
@@ -262,15 +265,13 @@ export function parseAbiArguments(
   return Object.freeze(values);
 }
 
-export function formatAbiResult(
-  fn: AbiFunction,
-  result: unknown,
-): readonly FormattedAbiOutput[] {
+export function formatAbiResult(fn: AbiFunction, result: unknown): readonly FormattedAbiOutput[] {
   const outputs = fn.outputs;
   if (outputs.length === 0) return Object.freeze([]);
-  const rawValues = outputs.length === 1
-    ? [result]
-    : snapshotArray(result, "$result", outputs.length, "INVALID_ABI_VALUE");
+  const rawValues =
+    outputs.length === 1
+      ? [result]
+      : snapshotArray(result, "$result", outputs.length, "INVALID_ABI_VALUE");
   if (rawValues.length !== outputs.length) {
     throw new AbiFormError("INVALID_ABI_VALUE", "$result");
   }
@@ -283,9 +284,7 @@ export function formatAbiResult(
  * tuple values are always positional arrays. Shape/value disagreements fail
  * closed before any partial tree is rendered.
  */
-export function formatTransactionCalldataInputs(
-  value: unknown,
-): readonly FormattedAbiOutput[] {
+export function formatTransactionCalldataInputs(value: unknown): readonly FormattedAbiOutput[] {
   const schemaBudget = new AbiBudget();
   const values = snapshotArray(value, "$calldata", 256, "INVALID_ABI", schemaBudget);
   const parsed = values.map((item, index) =>
@@ -308,9 +307,11 @@ export function formatTransactionCalldataInputs(
       value: formatted,
       display: formattedValueText(formatted),
     };
-    return Object.freeze(parameter.internalType === undefined
-      ? output
-      : { ...output, internalType: parameter.internalType });
+    return Object.freeze(
+      parameter.internalType === undefined
+        ? output
+        : { ...output, internalType: parameter.internalType },
+    );
   });
   return Object.freeze(outputs);
 }
@@ -328,9 +329,10 @@ export function decodeRevert(abi: Abi, data: unknown): DecodedAbiRevert | undefi
     const decoded = decodeErrorResult({ abi, data: data.toLowerCase() as Hex });
     if (decoded.abiItem.type !== "error") return undefined;
     const inputs = decoded.abiItem.inputs;
-    const rawArgs = inputs.length === 0
-      ? []
-      : snapshotArray(decoded.args, "$revert", inputs.length, "INVALID_ABI_VALUE");
+    const rawArgs =
+      inputs.length === 0
+        ? []
+        : snapshotArray(decoded.args, "$revert", inputs.length, "INVALID_ABI_VALUE");
     if (rawArgs.length !== inputs.length) return undefined;
     const args = formatParameterValues(inputs, rawArgs, "$revert");
     const signature = namedSignature(decoded.errorName, inputs);
@@ -772,13 +774,20 @@ function parseTransactionCalldataParameter(
   const allowed = new Set(["name", "type", "internal_type", "components"]);
   if (includeValue) allowed.add("value");
   assertAllowedKeys(record, allowed, path);
-  if (!record.has("name") || !record.has("type") || !record.has("components") ||
-    (includeValue && !record.has("value"))) {
+  if (
+    !record.has("name") ||
+    !record.has("type") ||
+    !record.has("components") ||
+    (includeValue && !record.has("value"))
+  ) {
     throw new AbiFormError("INVALID_ABI", path);
   }
 
   const name = requiredString(record, "name", path, budget);
-  if (name !== "" && (!identifierPattern.test(name) || textEncoder.encode(name).byteLength > 4096)) {
+  if (
+    name !== "" &&
+    (!identifierPattern.test(name) || textEncoder.encode(name).byteLength > 4096)
+  ) {
     throw new AbiFormError("INVALID_ABI", `${path}.name`);
   }
   const type = requiredString(record, "type", path, budget);
@@ -789,8 +798,11 @@ function parseTransactionCalldataParameter(
   let internalType: string | undefined;
   if (record.has("internal_type")) {
     internalType = requiredString(record, "internal_type", path, budget);
-    if (internalType === "" || internalType.trim() !== internalType ||
-      textEncoder.encode(internalType).byteLength > 4096) {
+    if (
+      internalType === "" ||
+      internalType.trim() !== internalType ||
+      textEncoder.encode(internalType).byteLength > 4096
+    ) {
       throw new AbiFormError("INVALID_ABI", `${path}.internal_type`);
     }
   }
@@ -808,20 +820,24 @@ function parseTransactionCalldataParameter(
   if (parsedType.base !== "tuple" && rawComponents.length !== 0) {
     throw new AbiFormError("INVALID_ABI", `${path}.components`);
   }
-  const components = rawComponents.map((component, index) =>
-    parseTransactionCalldataParameter(
-      component,
-      `${path}.components[${index}]`,
-      budget,
-      depth + parsedType.dimensions.length + 1,
-      false,
-    ).parameter,
+  const components = rawComponents.map(
+    (component, index) =>
+      parseTransactionCalldataParameter(
+        component,
+        `${path}.components[${index}]`,
+        budget,
+        depth + parsedType.dimensions.length + 1,
+        false,
+      ).parameter,
   );
 
   const parameter: Record<string, unknown> = { name, type };
   if (internalType !== undefined) parameter.internalType = internalType;
   if (parsedType.base === "tuple") parameter.components = Object.freeze(components);
-  return Object.freeze({ parameter: Object.freeze(parameter) as AbiParameter, value: record.get("value") });
+  return Object.freeze({
+    parameter: Object.freeze(parameter) as AbiParameter,
+    value: record.get("value"),
+  });
 }
 
 function parseTransactionCalldataType(type: string, path: string): ParsedAbiType {
@@ -851,8 +867,11 @@ function parseTransactionCalldataType(type: string, path: string): ParsedAbiType
       throw new AbiFormError("ABI_LIMIT_EXCEEDED", path);
     }
   }
-  if (remaining.includes("[") || remaining.includes("]") ||
-    (remaining !== "function" && !validBaseType(remaining))) {
+  if (
+    remaining.includes("[") ||
+    remaining.includes("]") ||
+    (remaining !== "function" && !validBaseType(remaining))
+  ) {
     throw new AbiFormError("INVALID_ABI", path);
   }
   return Object.freeze({ base: remaining, dimensions: Object.freeze(dimensions) });
@@ -883,18 +902,22 @@ function formatTransactionCalldataValue(
       throw new AbiFormError("INVALID_ABI_VALUE", path);
     }
     const element = parameterWithType(parameter, array.elementType);
-    const items = values.map((item, index) => formatTransactionCalldataValue(
-      element,
-      item,
-      `${path}[${index}]`,
-      depth + 1,
-      nodeBudget,
-      byteBudget,
-    ));
+    const items = values.map((item, index) =>
+      formatTransactionCalldataValue(
+        element,
+        item,
+        `${path}[${index}]`,
+        depth + 1,
+        nodeBudget,
+        byteBudget,
+      ),
+    );
     const result = { kind: "array" as const, type: parameter.type, items: Object.freeze(items) };
-    return Object.freeze(parameter.internalType === undefined
-      ? result
-      : { ...result, internalType: parameter.internalType });
+    return Object.freeze(
+      parameter.internalType === undefined
+        ? result
+        : { ...result, internalType: parameter.internalType },
+    );
   }
 
   const parsed = parseTransactionCalldataType(parameter.type, path);
@@ -919,14 +942,18 @@ function formatTransactionCalldataValue(
           byteBudget,
         ),
       };
-      return Object.freeze(component.internalType === undefined
-        ? field
-        : { ...field, internalType: component.internalType });
+      return Object.freeze(
+        component.internalType === undefined
+          ? field
+          : { ...field, internalType: component.internalType },
+      );
     });
     const result = { kind: "tuple" as const, type: parameter.type, fields: Object.freeze(fields) };
-    return Object.freeze(parameter.internalType === undefined
-      ? result
-      : { ...result, internalType: parameter.internalType });
+    return Object.freeze(
+      parameter.internalType === undefined
+        ? result
+        : { ...result, internalType: parameter.internalType },
+    );
   }
 
   const result = {
@@ -934,9 +961,11 @@ function formatTransactionCalldataValue(
     type: parameter.type,
     text: formatTransactionCalldataScalar(parsed.base, value, path, byteBudget),
   };
-  return Object.freeze(parameter.internalType === undefined
-    ? result
-    : { ...result, internalType: parameter.internalType });
+  return Object.freeze(
+    parameter.internalType === undefined
+      ? result
+      : { ...result, internalType: parameter.internalType },
+  );
 }
 
 function formatTransactionCalldataScalar(
@@ -1023,9 +1052,11 @@ function formatParameterValues(
       value,
       display: formattedValueText(value),
     };
-    return Object.freeze(parameter.internalType === undefined
-      ? output
-      : { ...output, internalType: parameter.internalType });
+    return Object.freeze(
+      parameter.internalType === undefined
+        ? output
+        : { ...output, internalType: parameter.internalType },
+    );
   });
   return Object.freeze(outputs);
 }
@@ -1057,9 +1088,11 @@ function formatValue(
       type: parameter.type,
       items: Object.freeze(items),
     };
-    return Object.freeze(parameter.internalType === undefined
-      ? result
-      : { ...result, internalType: parameter.internalType });
+    return Object.freeze(
+      parameter.internalType === undefined
+        ? result
+        : { ...result, internalType: parameter.internalType },
+    );
   }
   const parsed = parseType(parameter.type, path);
   if (parsed.base === "tuple") {
@@ -1073,27 +1106,33 @@ function formatValue(
         type: component.type,
         value: formatValue(component, values[index], `${path}.${index}`, depth + 1, budget),
       };
-      return Object.freeze(component.internalType === undefined
-        ? field
-        : { ...field, internalType: component.internalType });
+      return Object.freeze(
+        component.internalType === undefined
+          ? field
+          : { ...field, internalType: component.internalType },
+      );
     });
     const result = {
       kind: "tuple" as const,
       type: parameter.type,
       fields: Object.freeze(fields),
     };
-    return Object.freeze(parameter.internalType === undefined
-      ? result
-      : { ...result, internalType: parameter.internalType });
+    return Object.freeze(
+      parameter.internalType === undefined
+        ? result
+        : { ...result, internalType: parameter.internalType },
+    );
   }
   const result = {
     kind: "scalar" as const,
     type: parameter.type,
     text: formatScalar(parsed.base, value, path),
   };
-  return Object.freeze(parameter.internalType === undefined
-    ? result
-    : { ...result, internalType: parameter.internalType });
+  return Object.freeze(
+    parameter.internalType === undefined
+      ? result
+      : { ...result, internalType: parameter.internalType },
+  );
 }
 
 function formatScalar(type: string, value: unknown, path: string): string {
@@ -1105,7 +1144,7 @@ function formatScalar(type: string, value: unknown, path: string): string {
     if (typeof value !== expectedType) {
       throw new AbiFormError("INVALID_ABI_VALUE", path);
     }
-    const parsed = typeof value === "number" ? BigInt(value) : value as bigint;
+    const parsed = typeof value === "number" ? BigInt(value) : (value as bigint);
     const minimum = signed ? -(1n << BigInt(bits - 1)) : 0n;
     const maximum = signed ? (1n << BigInt(bits - 1)) - 1n : (1n << BigInt(bits)) - 1n;
     if (
@@ -1210,7 +1249,9 @@ function validHex(value: string, minimumBytes: number, maximumBytes: number): bo
 }
 
 function validIdentifier(value: string): boolean {
-  return identifierPattern.test(value) && textEncoder.encode(value).byteLength <= ABI_LIMITS.nameBytes;
+  return (
+    identifierPattern.test(value) && textEncoder.encode(value).byteLength <= ABI_LIMITS.nameBytes
+  );
 }
 
 function snapshotArray(

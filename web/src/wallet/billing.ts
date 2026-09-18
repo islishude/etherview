@@ -1,9 +1,7 @@
 import { getAddress, isAddress, type Address, type Hex } from "viem";
 
 const PERMIT2 = getAddress("0x000000000022D473030F116dDEE9F6B43aC78BA3");
-const X402_EXACT_PERMIT2_PROXY = getAddress(
-  "0x402085c248EeA27D92E8b30b2C58ed07f9E20001",
-);
+const X402_EXACT_PERMIT2_PROXY = getAddress("0x402085c248EeA27D92E8b30b2C58ed07f9E20001");
 
 export type BillingTransferMethod = "eip3009" | "permit2";
 
@@ -37,7 +35,10 @@ export function validateBillingTypedData(
   input: BillingTypedData,
   binding: BillingSigningBinding,
 ): void {
-  if (!canonicalPositiveUint256(binding.chainID) || !canonicalPositiveUint256(binding.amountAtomic)) {
+  if (
+    !canonicalPositiveUint256(binding.chainID) ||
+    !canonicalPositiveUint256(binding.amountAtomic)
+  ) {
     throw new TypeError("Invalid billing signing binding");
   }
   if (decimal(input.domain.chainId) !== binding.chainID) {
@@ -58,8 +59,12 @@ function validateEIP3009(input: BillingTypedData, binding: BillingSigningBinding
     !exactKeys(input.message, ["from", "nonce", "to", "validAfter", "validBefore", "value"]) ||
     !exactTypes(input.types, {
       TransferWithAuthorization: [
-        ["from", "address"], ["to", "address"], ["value", "uint256"],
-        ["validAfter", "uint256"], ["validBefore", "uint256"], ["nonce", "bytes32"],
+        ["from", "address"],
+        ["to", "address"],
+        ["value", "uint256"],
+        ["validAfter", "uint256"],
+        ["validBefore", "uint256"],
+        ["nonce", "bytes32"],
       ],
     }) ||
     input.primaryType !== "TransferWithAuthorization" ||
@@ -91,11 +96,20 @@ function validatePermit2(input: BillingTypedData, binding: BillingSigningBinding
     !exactKeys(witness, ["to", "validAfter"]) ||
     !exactTypes(input.types, {
       PermitWitnessTransferFrom: [
-        ["permitted", "TokenPermissions"], ["spender", "address"],
-        ["nonce", "uint256"], ["deadline", "uint256"], ["witness", "Witness"],
+        ["permitted", "TokenPermissions"],
+        ["spender", "address"],
+        ["nonce", "uint256"],
+        ["deadline", "uint256"],
+        ["witness", "Witness"],
       ],
-      TokenPermissions: [["token", "address"], ["amount", "uint256"]],
-      Witness: [["to", "address"], ["validAfter", "uint256"]],
+      TokenPermissions: [
+        ["token", "address"],
+        ["amount", "uint256"],
+      ],
+      Witness: [
+        ["to", "address"],
+        ["validAfter", "uint256"],
+      ],
     }) ||
     input.primaryType !== "PermitWitnessTransferFrom" ||
     input.domain.name !== "Permit2" ||
@@ -148,7 +162,10 @@ function object(value: unknown): Record<string, unknown> {
 
 function exactKeys(value: Record<string, unknown>, expected: string[]): boolean {
   const actual = Object.keys(value).sort();
-  return actual.length === expected.length && actual.every((key, index) => key === [...expected].sort()[index]);
+  return (
+    actual.length === expected.length &&
+    actual.every((key, index) => key === [...expected].sort()[index])
+  );
 }
 
 function exactTypes(
@@ -165,7 +182,8 @@ function exactTypes(
         !exactKeys(field, ["name", "type"]) ||
         field.name !== fields[index]?.[0] ||
         field.type !== fields[index]?.[1]
-      ) return false;
+      )
+        return false;
     }
   }
   return true;
@@ -174,7 +192,7 @@ function exactTypes(
 function deepJSONValue(value: unknown): unknown {
   if (typeof value === "bigint") return value.toString(10);
   if (value instanceof Uint8Array) {
-    return `0x${[...value].map(item => item.toString(16).padStart(2, "0")).join("")}`;
+    return `0x${[...value].map((item) => item.toString(16).padStart(2, "0")).join("")}`;
   }
   if (Array.isArray(value)) return value.map(deepJSONValue);
   if (typeof value === "object" && value !== null) {

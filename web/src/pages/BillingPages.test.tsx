@@ -58,69 +58,56 @@ describe("billing pages", () => {
     registerProvider(fake);
     vi.stubGlobal(
       "fetch",
-      vi.fn(
-        async (
-          input: RequestInfo | URL,
-          request?: RequestInit,
-        ): Promise<Response> => {
-          const url = String(input);
-          requests.push({ request, url });
-          if (url === "/api/v1/config") return configResponse();
-          if (url === "/api/v1/auth/session") {
-            return envelope({ authenticated: false });
-          }
-          if (url === "/api/v1/auth/challenge") {
-            return envelope(authSIWEChallenge());
-          }
-          if (url === "/api/v1/auth/verify") {
-            return envelope(authSession("user"));
-          }
-          if (url === "/api/v1/billing/config") return billingConfigResponse();
-          if (url === "/api/v1/billing/account") return billingAccountResponse();
-          if (url.startsWith("/api/v1/billing/topup-intents?")) return envelope([]);
-          if (url.startsWith("/api/v1/billing/payments?")) {
-            const parsed = relativeURL(url);
-            return parsed.searchParams.get("cursor") === personalCursor
-              ? envelope([payment({ state: "settled" })])
-              : envelope(
-                  [
-                    payment({
-                      api_key_prefix: apiKeyPrefix,
-                      user_id: currentUserID,
-                    }),
-                  ],
-                  { next_cursor: personalCursor },
-                );
-          }
-          return notFound();
-        },
-      ),
+      vi.fn(async (input: RequestInfo | URL, request?: RequestInit): Promise<Response> => {
+        const url = String(input);
+        requests.push({ request, url });
+        if (url === "/api/v1/config") return configResponse();
+        if (url === "/api/v1/auth/session") {
+          return envelope({ authenticated: false });
+        }
+        if (url === "/api/v1/auth/challenge") {
+          return envelope(authSIWEChallenge());
+        }
+        if (url === "/api/v1/auth/verify") {
+          return envelope(authSession("user"));
+        }
+        if (url === "/api/v1/billing/config") return billingConfigResponse();
+        if (url === "/api/v1/billing/account") return billingAccountResponse();
+        if (url.startsWith("/api/v1/billing/topup-intents?")) return envelope([]);
+        if (url.startsWith("/api/v1/billing/payments?")) {
+          const parsed = relativeURL(url);
+          return parsed.searchParams.get("cursor") === personalCursor
+            ? envelope([payment({ state: "settled" })])
+            : envelope(
+                [
+                  payment({
+                    api_key_prefix: apiKeyPrefix,
+                    user_id: currentUserID,
+                  }),
+                ],
+                { next_cursor: personalCursor },
+              );
+        }
+        return notFound();
+      }),
     );
 
     await renderRoute("/account?tab=billing");
     expect(await screen.findByRole("heading", { name: "Account", level: 1 })).toBeVisible();
     const user = userEvent.setup();
     await connectTestWallet(user);
-    await user.click(
-      document.querySelector(".auth-action-panel button") as HTMLElement,
-    );
+    await user.click(document.querySelector(".auth-action-panel button") as HTMLElement);
 
-    expect(
-      await screen.findByRole("heading", { name: "Payment history" }),
-    ).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "Payment history" })).toBeVisible();
     expect(screen.getByText("Wallet connected", { exact: true })).toBeVisible();
-    expect(
-      screen.getByText(/follows the HttpOnly Cookie session/),
-    ).toBeVisible();
+    expect(screen.getByText(/follows the HttpOnly Cookie session/)).toBeVisible();
     expect(screen.getAllByText(amount, { exact: true }).length).toBeGreaterThan(0);
     expect(document.body).not.toHaveTextContent(currentUserID);
     expect(document.body).not.toHaveTextContent(apiKeyPrefix);
     expect(document.body).not.toHaveTextContent(csrfToken);
     expect([...storageValues()]).not.toContain(csrfToken);
 
-    await user.click(
-      screen.getByRole("button", { name: "Next page" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Next page" }));
     await waitFor(() => {
       expect(
         requests.some(({ url }) => {
@@ -156,45 +143,38 @@ describe("billing pages", () => {
     registerProvider(fake);
     vi.stubGlobal(
       "fetch",
-      vi.fn(
-        async (
-          input: RequestInfo | URL,
-          request?: RequestInit,
-        ): Promise<Response> => {
-          const url = String(input);
-          requests.push({ request, url });
-          if (url === "/api/v1/config") return configResponse();
-          if (url === "/api/v1/auth/session") {
-            return envelope({ authenticated: false });
-          }
-          if (url === "/api/v1/auth/challenge") {
-            return envelope(authSIWEChallenge());
-          }
-          if (url === "/api/v1/auth/verify") {
-            return envelope(authSession("admin"));
-          }
-          if (url.startsWith("/api/v1/admin/billing/summary")) {
-            return envelope(summary());
-          }
-          if (url.startsWith("/api/v1/admin/billing/payments?")) {
-            const parsed = relativeURL(url);
-            return envelope(
-              [
-                payment({
-                  api_key_prefix: apiKeyPrefix,
-                  failure_code: "settlement_unknown",
-                  state: "settling",
-                  user_id: currentUserID,
-                }),
-              ],
-              parsed.searchParams.get("cursor") === adminCursor
-                ? {}
-                : { next_cursor: adminCursor },
-            );
-          }
-          return notFound();
-        },
-      ),
+      vi.fn(async (input: RequestInfo | URL, request?: RequestInit): Promise<Response> => {
+        const url = String(input);
+        requests.push({ request, url });
+        if (url === "/api/v1/config") return configResponse();
+        if (url === "/api/v1/auth/session") {
+          return envelope({ authenticated: false });
+        }
+        if (url === "/api/v1/auth/challenge") {
+          return envelope(authSIWEChallenge());
+        }
+        if (url === "/api/v1/auth/verify") {
+          return envelope(authSession("admin"));
+        }
+        if (url.startsWith("/api/v1/admin/billing/summary")) {
+          return envelope(summary());
+        }
+        if (url.startsWith("/api/v1/admin/billing/payments?")) {
+          const parsed = relativeURL(url);
+          return envelope(
+            [
+              payment({
+                api_key_prefix: apiKeyPrefix,
+                failure_code: "settlement_unknown",
+                state: "settling",
+                user_id: currentUserID,
+              }),
+            ],
+            parsed.searchParams.get("cursor") === adminCursor ? {} : { next_cursor: adminCursor },
+          );
+        }
+        return notFound();
+      }),
     );
 
     await renderRoute("/admin/billing");
@@ -202,19 +182,13 @@ describe("billing pages", () => {
     await connectTestWallet(user);
     await signInFromWalletMenu(user);
 
-    expect(
-      await screen.findByRole("heading", { name: "Billing administration" }),
-    ).toBeVisible();
-    expect(
-      await screen.findByText("Settlement unknown", { exact: true }),
-    ).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "Billing administration" })).toBeVisible();
+    expect(await screen.findByText("Settlement unknown", { exact: true })).toBeVisible();
     expect(screen.getByText(currentUserID, { exact: true })).toBeVisible();
     expect(screen.getByText(apiKeyPrefix, { exact: true })).toBeVisible();
     expect(screen.getAllByText(amount, { exact: true }).length).toBeGreaterThan(0);
     expect(screen.getAllByText(count, { exact: true }).length).toBeGreaterThan(0);
-    expect(
-      screen.queryByRole("option", { name: "getVerifiedContract" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "getVerifiedContract" })).not.toBeInTheDocument();
     for (const operation of [
       "listTransactionTokenTransfers",
       "listTransactionInternalTransactions",
@@ -234,21 +208,13 @@ describe("billing pages", () => {
     await user.type(networkInput, "ethereum-mainnet");
     const requestCount = requests.length;
     await user.click(screen.getByRole("button", { name: "Apply filters" }));
-    expect(
-      await screen.findByRole("alert"),
-    ).toHaveTextContent("Network must use the eip155:");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Network must use the eip155:");
     expect(requests).toHaveLength(requestCount);
 
     await user.clear(networkInput);
     await user.type(networkInput, "eip155:84532");
-    await user.selectOptions(
-      screen.getByRole("combobox", { name: "State" }),
-      "settling",
-    );
-    await user.selectOptions(
-      screen.getByRole("combobox", { name: "Operation" }),
-      "getBlock",
-    );
+    await user.selectOptions(screen.getByRole("combobox", { name: "State" }), "settling");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Operation" }), "getBlock");
     await user.type(screen.getByRole("textbox", { name: "Asset" }), asset);
     fireEvent.change(screen.getByLabelText("From time"), {
       target: { value: "2026-06-01T00:00" },
@@ -257,9 +223,7 @@ describe("billing pages", () => {
       target: { value: "2026-07-03T00:00" },
     });
     await user.click(screen.getByRole("button", { name: "Apply filters" }));
-    expect(
-      await screen.findByRole("alert"),
-    ).toHaveTextContent("cannot exceed 31 days");
+    expect(await screen.findByRole("alert")).toHaveTextContent("cannot exceed 31 days");
 
     fireEvent.change(screen.getByLabelText("From time"), {
       target: { value: "2026-07-02T00:00" },
@@ -482,10 +446,8 @@ function billingRequests(requests: RecordedRequest[]) {
 }
 
 function storageValues() {
-  return Array.from(
-    { length: window.localStorage.length },
-    (_, index) =>
-      window.localStorage.getItem(window.localStorage.key(index) ?? ""),
+  return Array.from({ length: window.localStorage.length }, (_, index) =>
+    window.localStorage.getItem(window.localStorage.key(index) ?? ""),
   );
 }
 
@@ -523,34 +485,18 @@ function registerProvider(provider: EIP1193Provider) {
   window.addEventListener(EIP6963_REQUEST_EVENT, listener);
 }
 
-async function connectTestWallet(
-  user: ReturnType<typeof userEvent.setup>,
-) {
-  await user.click(
-    await screen.findByText("Connect wallet", { selector: "summary" }),
-  );
-  await user.click(
-    await screen.findByRole("button", { name: /Billing Wallet/ }),
-  );
+async function connectTestWallet(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByText("Connect wallet", { selector: "summary" }));
+  await user.click(await screen.findByRole("button", { name: /Billing Wallet/ }));
   await waitFor(() => {
-    expect(document.querySelector(".wallet-summary")).toHaveTextContent(
-      "0x1111…1111",
-    );
+    expect(document.querySelector(".wallet-summary")).toHaveTextContent("0x1111…1111");
   });
-  await user.click(
-    screen.getByText("0x1111…1111", { selector: "summary" }),
-  );
+  await user.click(screen.getByText("0x1111…1111", { selector: "summary" }));
 }
 
-async function signInFromWalletMenu(
-  user: ReturnType<typeof userEvent.setup>,
-) {
-  await user.click(
-    screen.getByText("0x1111…1111", { selector: "summary" }),
-  );
-  const section = document.querySelector<HTMLElement>(
-    ".wallet-auth-section",
-  );
+async function signInFromWalletMenu(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByText("0x1111…1111", { selector: "summary" }));
+  const section = document.querySelector<HTMLElement>(".wallet-auth-section");
   expect(section).not.toBeNull();
   const button = section?.querySelector<HTMLButtonElement>("button");
   expect(button).not.toBeNull();

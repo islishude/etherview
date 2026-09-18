@@ -1,16 +1,7 @@
-import {
-  getAddress,
-  toFunctionSelector,
-  type Address,
-  type Hex,
-} from "viem";
+import { getAddress, toFunctionSelector, type Address, type Hex } from "viem";
 
 import type { components } from "@/api/schema.gen";
-import {
-  isTransactionHash,
-  normalizeChainID,
-  WalletBoundaryError,
-} from "@/wallet/eip6963";
+import { isTransactionHash, normalizeChainID, WalletBoundaryError } from "@/wallet/eip6963";
 
 export type ProxyDetails = components["schemas"]["ProxyDetails"];
 export type ProxyDetailsResponse = components["schemas"]["ProxyDetailsResponse"];
@@ -31,7 +22,7 @@ interface BaseInteractionTarget {
   readonly transactionTarget: Address;
   readonly abiAddress: Address;
   readonly abiCodeHash?: string;
-	readonly abiArtifactResolution?: components["schemas"]["ContractArtifactResolution"];
+  readonly abiArtifactResolution?: components["schemas"]["ContractArtifactResolution"];
   readonly supportsWrites: boolean;
   readonly requiresFreshBinding: boolean;
 }
@@ -46,12 +37,12 @@ interface BoundInteractionTarget extends BaseInteractionTarget {
   readonly proxyAddress: Address;
   readonly proxyCodeHash: string;
   readonly proxyChainID: string;
-	readonly bindingId?: string;
-	readonly proxyMechanism: components["schemas"]["ProxyMechanism"];
-	readonly proxyPattern?: ProxyPattern;
-	readonly beaconAddress?: Address;
-	readonly beaconCodeHash?: string;
-	readonly cwiaSchemaSHA256?: string;
+  readonly bindingId?: string;
+  readonly proxyMechanism: components["schemas"]["ProxyMechanism"];
+  readonly proxyPattern?: ProxyPattern;
+  readonly beaconAddress?: Address;
+  readonly beaconCodeHash?: string;
+  readonly cwiaSchemaSHA256?: string;
   readonly standardVersion?: "5.6.1";
   readonly requiresFreshBinding: true;
 }
@@ -83,23 +74,23 @@ export interface ImplementationAsProxyTarget extends BoundInteractionTarget {
 export interface UUPSImplementationDirectTarget extends BoundInteractionTarget {
   readonly kind: "uups_implementation_direct";
   readonly supportsWrites: false;
-	readonly proxyPattern: "uups";
-	readonly bindingId: string;
+  readonly proxyPattern: "uups";
+  readonly bindingId: string;
 }
 
 export interface TransparentProxyAdminTarget extends BoundInteractionTarget {
   readonly kind: "transparent_proxy_admin";
   readonly supportsWrites: true;
-	readonly proxyPattern: "transparent";
-	readonly bindingId: string;
+  readonly proxyPattern: "transparent";
+  readonly bindingId: string;
   readonly affectedProxyCount?: string;
 }
 
 export interface BeaconManagementTarget extends BoundInteractionTarget {
   readonly kind: "beacon_management";
   readonly supportsWrites: true;
-	readonly proxyPattern: "beacon";
-	readonly bindingId: string;
+  readonly proxyPattern: "beacon";
+  readonly bindingId: string;
   readonly affectedProxyCount?: string;
 }
 
@@ -134,7 +125,7 @@ export type InteractionFenceErrorCode =
   | "PROVIDER_CHANGED"
   | "PROVIDER_REVISION_CHANGED"
   | "FRESH_PROXY_REQUIRED"
-	| "FRESH_PROXY_UNAVAILABLE"
+  | "FRESH_PROXY_UNAVAILABLE"
   | "FRESH_BINDING_REQUIRED"
   | "BINDING_CHANGED"
   | "TARGET_CHANGED"
@@ -149,7 +140,7 @@ const FENCE_ERROR_MESSAGES: Record<InteractionFenceErrorCode, string> = {
   PROVIDER_CHANGED: "The injected wallet provider changed",
   PROVIDER_REVISION_CHANGED: "The injected wallet session changed",
   FRESH_PROXY_REQUIRED: "A fresh proxy response is required",
-	FRESH_PROXY_UNAVAILABLE: "The fresh proxy stage is unavailable",
+  FRESH_PROXY_UNAVAILABLE: "The fresh proxy stage is unavailable",
   FRESH_BINDING_REQUIRED: "A fresh delegation binding is required",
   BINDING_CHANGED: "The verified proxy binding changed; refresh before continuing",
   TARGET_CHANGED: "The verified interaction target changed; refresh before continuing",
@@ -169,21 +160,14 @@ export class InteractionFenceError extends Error {
 export interface RefreshInteractionOptions {
   readonly fence: InteractionFence;
   readonly getCurrentWallet: () => WalletInteractionSession | undefined;
-  readonly loadFreshProxy?: (
-    proxyAddress: Address,
-  ) => Promise<FreshProxyDetails>;
-  readonly loadFreshDelegation?: (
-    authorityAddress: Address,
-  ) => Promise<DelegationBinding>;
+  readonly loadFreshProxy?: (proxyAddress: Address) => Promise<FreshProxyDetails>;
+  readonly loadFreshDelegation?: (authorityAddress: Address) => Promise<DelegationBinding>;
   /** Reads may observe a newer canonical tip; writes require the exact fenced tip. */
   readonly requireExactDelegationSnapshot?: boolean;
 }
 
 export interface SubmitFencedTransactionOptions extends RefreshInteractionOptions {
-  readonly send: (
-    target: ContractInteractionTarget,
-    expectedChainID: string,
-  ) => Promise<unknown>;
+  readonly send: (target: ContractInteractionTarget, expectedChainID: string) => Promise<unknown>;
 }
 
 export type InteractionSendOutcome =
@@ -202,8 +186,7 @@ export type InteractionSendOutcome =
     };
 
 const HASH_PATTERN = /^0x[0-9a-f]{64}$/iu;
-const BINDING_ID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+const BINDING_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
 /**
  * Builds only targets justified by the current public proxy binding. The
@@ -226,72 +209,77 @@ export function buildContractInteractionTargets(
     }),
   ];
 
-	const diamond = confirmedDiamond(proxy, address);
-	if (diamond) {
-		for (const facet of diamond.facets) {
-			targets.push(freezeTarget({
-				kind: "diamond_facet",
-				transactionTarget: address,
-				abiAddress: facet.address,
-				abiCodeHash: facet.codeHash,
-				proxyAddress: address,
-				proxyChainID: diamond.chainID,
-				facetSelectors: Object.freeze([...facet.selectors]),
-				supportsWrites: true,
-				requiresFreshBinding: true,
-			}));
-		}
-	}
+  const diamond = confirmedDiamond(proxy, address);
+  if (diamond) {
+    for (const facet of diamond.facets) {
+      targets.push(
+        freezeTarget({
+          kind: "diamond_facet",
+          transactionTarget: address,
+          abiAddress: facet.address,
+          abiCodeHash: facet.codeHash,
+          proxyAddress: address,
+          proxyChainID: diamond.chainID,
+          facetSelectors: Object.freeze([...facet.selectors]),
+          supportsWrites: true,
+          requiresFreshBinding: true,
+        }),
+      );
+    }
+  }
 
-	const binding = exactBinding(proxy, address);
-	const interaction = standardImplementationInteraction(proxy, address);
-	const cwiaBinding = interaction?.mechanism === "cwia" &&
-		binding?.mechanism === "cwia" && binding.pattern === "clone" &&
-		interaction.implementation.artifactResolution === "exact_address"
-		? binding
-		: undefined;
-	const cwiaSchemaSHA256 = cwiaBinding
-		? verifiedCWIASchemaSHA256(proxy)
-		: undefined;
-	const cwiaReadable = interaction?.mechanism !== "cwia" ||
-		exactCWIAReadObservation(proxy, interaction.pattern);
-	if (interaction && cwiaReadable) {
-		targets.push(freezeTarget({
-			kind: "implementation_as_proxy",
-			transactionTarget: address,
-			abiAddress: interaction.implementation.address,
-			abiCodeHash: interaction.implementation.codeHash,
-			...(interaction.implementation.artifactResolution === undefined
-				? {}
-				: { abiArtifactResolution: interaction.implementation.artifactResolution }),
-			proxyAddress: address,
-			proxyCodeHash: interaction.proxy.codeHash,
-			proxyChainID: interaction.chainID,
-			proxyMechanism: interaction.mechanism,
-			...(interaction.pattern === undefined ? {} : { proxyPattern: interaction.pattern }),
-			...(interaction.beacon === undefined ? {} : {
-				beaconAddress: interaction.beacon.address,
-				beaconCodeHash: interaction.beacon.codeHash,
-			}),
-			...(interaction.standardVersion === undefined
-				? {}
-				: { standardVersion: interaction.standardVersion }),
-			...(interaction.mechanism === "cwia" && cwiaBinding
-				? { bindingId: cwiaBinding.bindingId }
-				: binding?.pattern === "uups"
-					? { bindingId: binding.bindingId }
-				: {}),
-			...(interaction.mechanism === "cwia" && cwiaSchemaSHA256
-				? { cwiaSchemaSHA256 }
-				: {}),
-			supportsWrites: interaction.implementation.artifactResolution === "exact_address" &&
-				(interaction.mechanism !== "cwia" ||
-					(cwiaBinding !== undefined && cwiaSchemaSHA256 !== undefined)),
-			requiresFreshBinding: true,
-		}));
-	}
+  const binding = exactBinding(proxy, address);
+  const interaction = standardImplementationInteraction(proxy, address);
+  const cwiaBinding =
+    interaction?.mechanism === "cwia" &&
+    binding?.mechanism === "cwia" &&
+    binding.pattern === "clone" &&
+    interaction.implementation.artifactResolution === "exact_address"
+      ? binding
+      : undefined;
+  const cwiaSchemaSHA256 = cwiaBinding ? verifiedCWIASchemaSHA256(proxy) : undefined;
+  const cwiaReadable =
+    interaction?.mechanism !== "cwia" || exactCWIAReadObservation(proxy, interaction.pattern);
+  if (interaction && cwiaReadable) {
+    targets.push(
+      freezeTarget({
+        kind: "implementation_as_proxy",
+        transactionTarget: address,
+        abiAddress: interaction.implementation.address,
+        abiCodeHash: interaction.implementation.codeHash,
+        ...(interaction.implementation.artifactResolution === undefined
+          ? {}
+          : { abiArtifactResolution: interaction.implementation.artifactResolution }),
+        proxyAddress: address,
+        proxyCodeHash: interaction.proxy.codeHash,
+        proxyChainID: interaction.chainID,
+        proxyMechanism: interaction.mechanism,
+        ...(interaction.pattern === undefined ? {} : { proxyPattern: interaction.pattern }),
+        ...(interaction.beacon === undefined
+          ? {}
+          : {
+              beaconAddress: interaction.beacon.address,
+              beaconCodeHash: interaction.beacon.codeHash,
+            }),
+        ...(interaction.standardVersion === undefined
+          ? {}
+          : { standardVersion: interaction.standardVersion }),
+        ...(interaction.mechanism === "cwia" && cwiaBinding
+          ? { bindingId: cwiaBinding.bindingId }
+          : binding?.pattern === "uups"
+            ? { bindingId: binding.bindingId }
+            : {}),
+        ...(interaction.mechanism === "cwia" && cwiaSchemaSHA256 ? { cwiaSchemaSHA256 } : {}),
+        supportsWrites:
+          interaction.implementation.artifactResolution === "exact_address" &&
+          (interaction.mechanism !== "cwia" ||
+            (cwiaBinding !== undefined && cwiaSchemaSHA256 !== undefined)),
+        requiresFreshBinding: true,
+      }),
+    );
+  }
 
-	if (!binding) return Object.freeze(targets);
+  if (!binding) return Object.freeze(targets);
 
   if (
     binding.pattern === "uups" &&
@@ -308,8 +296,8 @@ export function buildContractInteractionTargets(
         proxyCodeHash: binding.proxy.codeHash,
         proxyChainID: binding.chainID,
         bindingId: binding.bindingId,
-			proxyPattern: "uups",
-			proxyMechanism: binding.mechanism,
+        proxyPattern: "uups",
+        proxyMechanism: binding.mechanism,
         standardVersion: "5.6.1",
         supportsWrites: false,
         requiresFreshBinding: true,
@@ -331,8 +319,8 @@ export function buildContractInteractionTargets(
           proxyCodeHash: binding.proxy.codeHash,
           proxyChainID: binding.chainID,
           bindingId: binding.bindingId,
-			proxyPattern: "transparent",
-			proxyMechanism: binding.mechanism,
+          proxyPattern: "transparent",
+          proxyMechanism: binding.mechanism,
           standardVersion: "5.6.1",
           supportsWrites: true,
           requiresFreshBinding: true,
@@ -345,11 +333,7 @@ export function buildContractInteractionTargets(
   }
 
   if (binding.pattern === "beacon") {
-    const management = exactManagement(
-      proxy,
-      "upgradeable_beacon",
-      "upgradeable_beacon",
-    );
+    const management = exactManagement(proxy, "upgradeable_beacon", "upgradeable_beacon");
     const beacon = exactVerifiedIdentity(proxy?.beacon);
     if (management && beacon && identitiesMatch(management, beacon)) {
       targets.push(
@@ -362,12 +346,14 @@ export function buildContractInteractionTargets(
           proxyCodeHash: binding.proxy.codeHash,
           proxyChainID: binding.chainID,
           bindingId: binding.bindingId,
-			proxyPattern: "beacon",
-			proxyMechanism: binding.mechanism,
-			...(binding.beacon === undefined ? {} : {
-				beaconAddress: binding.beacon.address,
-				beaconCodeHash: binding.beacon.codeHash,
-			}),
+          proxyPattern: "beacon",
+          proxyMechanism: binding.mechanism,
+          ...(binding.beacon === undefined
+            ? {}
+            : {
+                beaconAddress: binding.beacon.address,
+                beaconCodeHash: binding.beacon.codeHash,
+              }),
           standardVersion: "5.6.1",
           supportsWrites: true,
           requiresFreshBinding: true,
@@ -425,9 +411,12 @@ export function captureInteractionFence(
   if (normalizeChainID(checkedWallet.chainID) !== chainID) {
     throw new InteractionFenceError("CHAIN_CHANGED");
   }
-  const targetChainID = target.kind === "delegated_eoa"
-    ? target.delegationChainID
-    : target.requiresFreshBinding ? target.proxyChainID : chainID;
+  const targetChainID =
+    target.kind === "delegated_eoa"
+      ? target.delegationChainID
+      : target.requiresFreshBinding
+        ? target.proxyChainID
+        : chainID;
   if (target.requiresFreshBinding && targetChainID !== chainID) {
     throw new InteractionFenceError("CHAIN_CHANGED");
   }
@@ -472,26 +461,28 @@ export function assertFreshInteractionFence(
   if (!addressesMatch(freshResponse.details.address, fence.target.proxyAddress)) {
     throw new InteractionFenceError("TARGET_CHANGED");
   }
-	if (freshResponse.details.status === "unavailable") {
-		throw new InteractionFenceError("FRESH_PROXY_UNAVAILABLE");
-	}
-	if (
-		fence.target.kind !== "diamond_facet" &&
-		fence.target.bindingId !== undefined &&
-		freshResponse.details.binding_id !== fence.target.bindingId
-	) {
+  if (freshResponse.details.status === "unavailable") {
+    throw new InteractionFenceError("FRESH_PROXY_UNAVAILABLE");
+  }
+  if (
+    fence.target.kind !== "diamond_facet" &&
+    fence.target.bindingId !== undefined &&
+    freshResponse.details.binding_id !== fence.target.bindingId
+  ) {
     throw new InteractionFenceError("BINDING_CHANGED");
   }
 
-	const freshTargets = buildContractInteractionTargets(
-		fence.target.proxyAddress,
-		freshResponse.details,
-	);
-	const freshTarget = fence.target.kind === "diamond_facet"
-		? freshTargets.find((candidate) =>
-			candidate.kind === "diamond_facet" &&
-			candidate.abiAddress === fence.target.abiAddress)
-		: freshTargets.find((candidate) => candidate.kind === fence.target.kind);
+  const freshTargets = buildContractInteractionTargets(
+    fence.target.proxyAddress,
+    freshResponse.details,
+  );
+  const freshTarget =
+    fence.target.kind === "diamond_facet"
+      ? freshTargets.find(
+          (candidate) =>
+            candidate.kind === "diamond_facet" && candidate.abiAddress === fence.target.abiAddress,
+        )
+      : freshTargets.find((candidate) => candidate.kind === fence.target.kind);
   if (!freshTarget || !targetsMatch(fence.target, freshTarget)) {
     throw new InteractionFenceError("TARGET_CHANGED");
   }
@@ -586,13 +577,8 @@ export async function submitFencedTransaction(
   }
 }
 
-export function isUnknownTransactionOutcome(
-  error: unknown,
-): error is WalletBoundaryError {
-  return (
-    error instanceof WalletBoundaryError &&
-    error.code === "TRANSACTION_OUTCOME_UNKNOWN"
-  );
+export function isUnknownTransactionOutcome(error: unknown): error is WalletBoundaryError {
+  return error instanceof WalletBoundaryError && error.code === "TRANSACTION_OUTCOME_UNKNOWN";
 }
 
 /**
@@ -606,24 +592,24 @@ export function isInteractionFunctionAllowed(
   write = false,
 ): boolean {
   if (write && !target.supportsWrites) return false;
-	if (target.kind === "diamond_facet") {
-		try {
-			return target.facetSelectors.includes(
-				toFunctionSelector(canonicalSignature) as Hex,
-			);
-		} catch {
-			return false;
-		}
-	}
+  if (target.kind === "diamond_facet") {
+    try {
+      return target.facetSelectors.includes(toFunctionSelector(canonicalSignature) as Hex);
+    } catch {
+      return false;
+    }
+  }
   if (target.kind === "uups_implementation_direct") {
     return canonicalSignature === PROXIABLE_UUID_SIGNATURE;
   }
   if (target.kind === "implementation_as_proxy") {
     if (canonicalSignature === PROXIABLE_UUID_SIGNATURE) return false;
-		if (/^(?:upgrade|changeAdmin|transferOwnership\(|renounceOwnership\()/u.test(canonicalSignature)) {
-			return target.bindingId !== undefined;
-		}
-		return true;
+    if (
+      /^(?:upgrade|changeAdmin|transferOwnership\(|renounceOwnership\()/u.test(canonicalSignature)
+    ) {
+      return target.bindingId !== undefined;
+    }
+    return true;
   }
   return true;
 }
@@ -663,9 +649,7 @@ function assertWalletFence(
   }
 }
 
-function checkWallet(
-  wallet: WalletInteractionSession | undefined,
-): WalletInteractionSession {
+function checkWallet(wallet: WalletInteractionSession | undefined): WalletInteractionSession {
   if (
     !wallet ||
     typeof wallet.uuid !== "string" ||
@@ -688,7 +672,7 @@ function exactBinding(proxy: ProxyDetails | undefined, address: Address) {
     proxy.evidence_state !== "exact" ||
     !proxy.pattern ||
     proxy.pattern === "unknown" ||
-		!proxy.mechanism ||
+    !proxy.mechanism ||
     (proxy.pattern === "clone"
       ? proxy.standard_version !== undefined
       : proxy.standard_version !== "5.6.1") ||
@@ -703,115 +687,131 @@ function exactBinding(proxy: ProxyDetails | undefined, address: Address) {
     proxy.proxy,
     proxy.pattern === "clone" ? "unverified" : "verified",
   );
-  if (
-    !implementation ||
-    !proxyIdentity ||
-    !addressesMatch(proxyIdentity.address, address)
-  ) {
+  if (!implementation || !proxyIdentity || !addressesMatch(proxyIdentity.address, address)) {
     return undefined;
   }
-	return {
+  return {
     bindingId: proxy.binding_id,
     chainID,
-		pattern: proxy.pattern,
-		mechanism: proxy.mechanism!,
-		proxy: proxyIdentity,
-		standardVersion: proxy.standard_version,
-		implementation,
-		beacon: currentCodeIdentity(proxy.beacon),
-	} as const;
+    pattern: proxy.pattern,
+    mechanism: proxy.mechanism!,
+    proxy: proxyIdentity,
+    standardVersion: proxy.standard_version,
+    implementation,
+    beacon: currentCodeIdentity(proxy.beacon),
+  } as const;
 }
 
 function confirmedDiamond(proxy: ProxyDetails | undefined, address: Address) {
-	const chainID = normalizeChainID(proxy?.snapshot.chain_id);
-	const outcome = proxy?.proxy_detection_v2?.outcomes.find((candidate) =>
-		candidate.family === "erc2535" && candidate.status === "confirmed" &&
-		candidate.diamond?.completeness === "complete" &&
-		!candidate.diamond.truncated,
-	);
-	if (!proxy || !chainID || !outcome?.diamond ||
-		!addressesMatch(proxy.address, address) || !addressesMatch(outcome.proxy, address)) {
-		return undefined;
-	}
-	const facets: Array<{
-		address: Address;
-		codeHash: string;
-		selectors: readonly Hex[];
-	}> = [];
-	for (const facet of outcome.diamond.facets) {
-		if (facet.role !== "facet" || !facet.code_exists ||
-			!facet.code_hash || !HASH_PATTERN.test(facet.code_hash)) {
-			continue;
-		}
-		const facetAddress = checkedAddress(facet.address);
-		const selectors: Hex[] = [];
-		for (const selector of facet.selectors) {
-			if (!/^0x[0-9a-f]{8}$/iu.test(selector) ||
-				!addressesMatch(outcome.diamond.selector_to_facet[selector.toLowerCase()] ?? "", facetAddress)) {
-				throw new InteractionFenceError("INVALID_TARGET");
-			}
-			selectors.push(selector.toLowerCase() as Hex);
-		}
-		if (selectors.length === 0) continue;
-		facets.push({
-			address: facetAddress,
-			codeHash: facet.code_hash.toLowerCase(),
-			selectors: Object.freeze(selectors),
-		});
-	}
-	return { chainID, facets: Object.freeze(facets) } as const;
+  const chainID = normalizeChainID(proxy?.snapshot.chain_id);
+  const outcome = proxy?.proxy_detection_v2?.outcomes.find(
+    (candidate) =>
+      candidate.family === "erc2535" &&
+      candidate.status === "confirmed" &&
+      candidate.diamond?.completeness === "complete" &&
+      !candidate.diamond.truncated,
+  );
+  if (
+    !proxy ||
+    !chainID ||
+    !outcome?.diamond ||
+    !addressesMatch(proxy.address, address) ||
+    !addressesMatch(outcome.proxy, address)
+  ) {
+    return undefined;
+  }
+  const facets: Array<{
+    address: Address;
+    codeHash: string;
+    selectors: readonly Hex[];
+  }> = [];
+  for (const facet of outcome.diamond.facets) {
+    if (
+      facet.role !== "facet" ||
+      !facet.code_exists ||
+      !facet.code_hash ||
+      !HASH_PATTERN.test(facet.code_hash)
+    ) {
+      continue;
+    }
+    const facetAddress = checkedAddress(facet.address);
+    const selectors: Hex[] = [];
+    for (const selector of facet.selectors) {
+      if (
+        !/^0x[0-9a-f]{8}$/iu.test(selector) ||
+        !addressesMatch(
+          outcome.diamond.selector_to_facet[selector.toLowerCase()] ?? "",
+          facetAddress,
+        )
+      ) {
+        throw new InteractionFenceError("INVALID_TARGET");
+      }
+      selectors.push(selector.toLowerCase() as Hex);
+    }
+    if (selectors.length === 0) continue;
+    facets.push({
+      address: facetAddress,
+      codeHash: facet.code_hash.toLowerCase(),
+      selectors: Object.freeze(selectors),
+    });
+  }
+  return { chainID, facets: Object.freeze(facets) } as const;
 }
 
-function standardImplementationInteraction(
-	proxy: ProxyDetails | undefined,
-	address: Address,
-) {
-	const interaction = proxy?.implementation_interaction;
-	const chainID = normalizeChainID(proxy?.snapshot.chain_id);
-	if (!proxy || !interaction || !chainID || !addressesMatch(proxy.address, address)) {
-		return undefined;
-	}
-	const proxyIdentity = currentCodeIdentity(interaction.proxy);
-	const implementation = currentCodeIdentity(interaction.implementation);
-	const beacon = currentCodeIdentity(interaction.beacon);
-	if (
-		!proxyIdentity || !implementation ||
-		!addressesMatch(proxyIdentity.address, address) ||
-		proxyIdentity.address === implementation.address ||
-		(interaction.mechanism === "beacon" && !beacon)
-	) {
-		return undefined;
-	}
-	return {
-		chainID,
-		mechanism: interaction.mechanism,
-		pattern: interaction.pattern,
-		proxy: proxyIdentity,
-		implementation,
-		beacon,
-		standardVersion: proxy.standard_version,
-	} as const;
+function standardImplementationInteraction(proxy: ProxyDetails | undefined, address: Address) {
+  const interaction = proxy?.implementation_interaction;
+  const chainID = normalizeChainID(proxy?.snapshot.chain_id);
+  if (!proxy || !interaction || !chainID || !addressesMatch(proxy.address, address)) {
+    return undefined;
+  }
+  const proxyIdentity = currentCodeIdentity(interaction.proxy);
+  const implementation = currentCodeIdentity(interaction.implementation);
+  const beacon = currentCodeIdentity(interaction.beacon);
+  if (
+    !proxyIdentity ||
+    !implementation ||
+    !addressesMatch(proxyIdentity.address, address) ||
+    proxyIdentity.address === implementation.address ||
+    (interaction.mechanism === "beacon" && !beacon)
+  ) {
+    return undefined;
+  }
+  return {
+    chainID,
+    mechanism: interaction.mechanism,
+    pattern: interaction.pattern,
+    proxy: proxyIdentity,
+    implementation,
+    beacon,
+    standardVersion: proxy.standard_version,
+  } as const;
 }
 
 function verifiedCWIASchemaSHA256(proxy: ProxyDetails | undefined): string | undefined {
-	const decoding = proxy?.immutable_args_decoding;
-	if (proxy?.mechanism !== "cwia" || decoding?.status !== "decoded" ||
-		!decoding.schema || !HASH_PATTERN.test(decoding.schema.sha256)) {
-		return undefined;
-	}
-	return decoding.schema.sha256.toLowerCase();
+  const decoding = proxy?.immutable_args_decoding;
+  if (
+    proxy?.mechanism !== "cwia" ||
+    decoding?.status !== "decoded" ||
+    !decoding.schema ||
+    !HASH_PATTERN.test(decoding.schema.sha256)
+  ) {
+    return undefined;
+  }
+  return decoding.schema.sha256.toLowerCase();
 }
 
 function exactCWIAReadObservation(
-	proxy: ProxyDetails | undefined,
-	interactionPattern: ProxyPattern | undefined,
+  proxy: ProxyDetails | undefined,
+  interactionPattern: ProxyPattern | undefined,
 ): boolean {
-	return proxy?.mechanism === "cwia" &&
-		proxy.pattern === "clone" &&
-		interactionPattern === "clone" &&
-		proxy.evidence_state === "exact" &&
-		(proxy.confidence === "high" || proxy.confidence === "verified") &&
-		(proxy.status === "detected_unverified" || proxy.status === "verified");
+  return (
+    proxy?.mechanism === "cwia" &&
+    proxy.pattern === "clone" &&
+    interactionPattern === "clone" &&
+    proxy.evidence_state === "exact" &&
+    (proxy.confidence === "high" || proxy.confidence === "verified") &&
+    (proxy.status === "detected_unverified" || proxy.status === "verified")
+  );
 }
 
 function exactManagement(
@@ -834,15 +834,13 @@ function exactManagement(
 function exactVerifiedIdentity(
   identity: components["schemas"]["ProxyContractIdentity"] | undefined,
 ) {
-	if (identity?.artifact_resolution !== "exact_address") return undefined;
+  if (identity?.artifact_resolution !== "exact_address") return undefined;
   return exactCodeIdentity(identity, "verified");
 }
 
-function currentCodeIdentity(
-	identity: components["schemas"]["ProxyContractIdentity"] | undefined,
-) {
-	if (!identity) return undefined;
-	return exactCodeIdentity(identity, identity.verification_state);
+function currentCodeIdentity(identity: components["schemas"]["ProxyContractIdentity"] | undefined) {
+  if (!identity) return undefined;
+  return exactCodeIdentity(identity, identity.verification_state);
 }
 
 function exactCodeIdentity(
@@ -860,8 +858,8 @@ function exactCodeIdentity(
     return {
       address: getAddress(identity.address),
       codeHash: identity.code_hash.toLowerCase(),
-		artifactKind: identity.artifact_kind,
-		artifactResolution: identity.artifact_resolution,
+      artifactKind: identity.artifact_kind,
+      artifactResolution: identity.artifact_resolution,
     } as const;
   } catch {
     return undefined;
@@ -882,63 +880,73 @@ function validateTarget(target: ContractInteractionTarget): void {
     if (target.abiCodeHash !== undefined && !HASH_PATTERN.test(target.abiCodeHash)) {
       throw new Error("invalid code hash");
     }
-		if (target.abiArtifactResolution !== undefined &&
-			target.abiArtifactResolution !== "exact_address" &&
-			target.abiArtifactResolution !== "code_hash") {
-			throw new Error("invalid artifact resolution");
-		}
+    if (
+      target.abiArtifactResolution !== undefined &&
+      target.abiArtifactResolution !== "exact_address" &&
+      target.abiArtifactResolution !== "code_hash"
+    ) {
+      throw new Error("invalid artifact resolution");
+    }
     if (target.requiresFreshBinding) {
       if (target.kind === "delegated_eoa") {
         getAddress(target.authorityAddress);
-        if (target.authorityAddress !== target.transactionTarget ||
-            !normalizeChainID(target.delegationChainID) ||
-            !/^\d+$/u.test(target.delegationBlockNumber) ||
-            !HASH_PATTERN.test(target.delegationBlockHash)) {
+        if (
+          target.authorityAddress !== target.transactionTarget ||
+          !normalizeChainID(target.delegationChainID) ||
+          !/^\d+$/u.test(target.delegationBlockNumber) ||
+          !HASH_PATTERN.test(target.delegationBlockHash)
+        ) {
           throw new Error("invalid delegation identity");
         }
         return;
       }
-		if (target.kind === "diamond_facet") {
-			getAddress(target.proxyAddress);
-			if (target.proxyAddress !== target.transactionTarget ||
-				!normalizeChainID(target.proxyChainID) ||
-				!target.abiCodeHash || !HASH_PATTERN.test(target.abiCodeHash) ||
-				target.facetSelectors.length === 0 ||
-				new Set(target.facetSelectors).size !== target.facetSelectors.length ||
-				target.facetSelectors.some((selector) => !/^0x[0-9a-f]{8}$/u.test(selector))) {
-				throw new Error("invalid Diamond facet identity");
-			}
-			return;
-		}
+      if (target.kind === "diamond_facet") {
+        getAddress(target.proxyAddress);
+        if (
+          target.proxyAddress !== target.transactionTarget ||
+          !normalizeChainID(target.proxyChainID) ||
+          !target.abiCodeHash ||
+          !HASH_PATTERN.test(target.abiCodeHash) ||
+          target.facetSelectors.length === 0 ||
+          new Set(target.facetSelectors).size !== target.facetSelectors.length ||
+          target.facetSelectors.some((selector) => !/^0x[0-9a-f]{8}$/u.test(selector))
+        ) {
+          throw new Error("invalid Diamond facet identity");
+        }
+        return;
+      }
       getAddress(target.proxyAddress);
       if (!HASH_PATTERN.test(target.proxyCodeHash)) {
         throw new Error("invalid proxy code hash");
       }
-		if (!normalizeChainID(target.proxyChainID)) {
-			throw new Error("invalid proxy chain ID");
-		}
-		if (target.bindingId !== undefined && !BINDING_ID_PATTERN.test(target.bindingId)) {
-			throw new Error("invalid binding ID");
-		}
-		if (target.beaconAddress !== undefined) getAddress(target.beaconAddress);
-		if (target.beaconCodeHash !== undefined && !HASH_PATTERN.test(target.beaconCodeHash)) {
-			throw new Error("invalid beacon code hash");
-		}
-			if ((target.beaconAddress === undefined) !== (target.beaconCodeHash === undefined)) {
-				throw new Error("incomplete beacon identity");
-			}
-			if (target.proxyMechanism === "cwia") {
-				if (target.kind !== "implementation_as_proxy" || target.proxyPattern !== "clone" ||
-					target.supportsWrites !== (
-						target.bindingId !== undefined && target.cwiaSchemaSHA256 !== undefined &&
-						target.abiArtifactResolution === "exact_address"
-					) ||
-					target.cwiaSchemaSHA256 !== undefined && !HASH_PATTERN.test(target.cwiaSchemaSHA256)) {
-					throw new Error("invalid CWIA interaction fence");
-				}
-			} else if (target.cwiaSchemaSHA256 !== undefined) {
-				throw new Error("non-CWIA target carries a CWIA schema digest");
-			}
+      if (!normalizeChainID(target.proxyChainID)) {
+        throw new Error("invalid proxy chain ID");
+      }
+      if (target.bindingId !== undefined && !BINDING_ID_PATTERN.test(target.bindingId)) {
+        throw new Error("invalid binding ID");
+      }
+      if (target.beaconAddress !== undefined) getAddress(target.beaconAddress);
+      if (target.beaconCodeHash !== undefined && !HASH_PATTERN.test(target.beaconCodeHash)) {
+        throw new Error("invalid beacon code hash");
+      }
+      if ((target.beaconAddress === undefined) !== (target.beaconCodeHash === undefined)) {
+        throw new Error("incomplete beacon identity");
+      }
+      if (target.proxyMechanism === "cwia") {
+        if (
+          target.kind !== "implementation_as_proxy" ||
+          target.proxyPattern !== "clone" ||
+          target.supportsWrites !==
+            (target.bindingId !== undefined &&
+              target.cwiaSchemaSHA256 !== undefined &&
+              target.abiArtifactResolution === "exact_address") ||
+          (target.cwiaSchemaSHA256 !== undefined && !HASH_PATTERN.test(target.cwiaSchemaSHA256))
+        ) {
+          throw new Error("invalid CWIA interaction fence");
+        }
+      } else if (target.cwiaSchemaSHA256 !== undefined) {
+        throw new Error("non-CWIA target carries a CWIA schema digest");
+      }
     }
   } catch (error) {
     throw new InteractionFenceError("INVALID_TARGET", { cause: error });
@@ -973,7 +981,7 @@ function targetsMatch(
     loaded.transactionTarget === fresh.transactionTarget &&
     loaded.abiAddress === fresh.abiAddress &&
     loaded.abiCodeHash === fresh.abiCodeHash &&
-		loaded.abiArtifactResolution === fresh.abiArtifactResolution &&
+    loaded.abiArtifactResolution === fresh.abiArtifactResolution &&
     loaded.supportsWrites === fresh.supportsWrites &&
     loaded.requiresFreshBinding === fresh.requiresFreshBinding &&
     boundTargetFieldsMatch(loaded, fresh)
@@ -988,29 +996,35 @@ function boundTargetFieldsMatch(
     return !loaded.requiresFreshBinding && !fresh.requiresFreshBinding;
   }
   if (loaded.kind === "delegated_eoa" || fresh.kind === "delegated_eoa") {
-    return loaded.kind === "delegated_eoa" && fresh.kind === "delegated_eoa" &&
+    return (
+      loaded.kind === "delegated_eoa" &&
+      fresh.kind === "delegated_eoa" &&
       loaded.authorityAddress === fresh.authorityAddress &&
       loaded.delegationChainID === fresh.delegationChainID &&
       loaded.delegationBlockNumber === fresh.delegationBlockNumber &&
-      loaded.delegationBlockHash === fresh.delegationBlockHash;
+      loaded.delegationBlockHash === fresh.delegationBlockHash
+    );
   }
-	if (loaded.kind === "diamond_facet" || fresh.kind === "diamond_facet") {
-		return loaded.kind === "diamond_facet" && fresh.kind === "diamond_facet" &&
-			loaded.proxyAddress === fresh.proxyAddress &&
-			loaded.proxyChainID === fresh.proxyChainID &&
-			loaded.facetSelectors.length === fresh.facetSelectors.length &&
-			loaded.facetSelectors.every((selector, index) => selector === fresh.facetSelectors[index]);
-	}
+  if (loaded.kind === "diamond_facet" || fresh.kind === "diamond_facet") {
+    return (
+      loaded.kind === "diamond_facet" &&
+      fresh.kind === "diamond_facet" &&
+      loaded.proxyAddress === fresh.proxyAddress &&
+      loaded.proxyChainID === fresh.proxyChainID &&
+      loaded.facetSelectors.length === fresh.facetSelectors.length &&
+      loaded.facetSelectors.every((selector, index) => selector === fresh.facetSelectors[index])
+    );
+  }
   return (
     loaded.proxyAddress === fresh.proxyAddress &&
     loaded.proxyCodeHash === fresh.proxyCodeHash &&
-		loaded.proxyChainID === fresh.proxyChainID &&
-		loaded.bindingId === fresh.bindingId &&
-		loaded.proxyMechanism === fresh.proxyMechanism &&
-		loaded.proxyPattern === fresh.proxyPattern &&
-			loaded.beaconAddress === fresh.beaconAddress &&
-			loaded.beaconCodeHash === fresh.beaconCodeHash &&
-			loaded.cwiaSchemaSHA256 === fresh.cwiaSchemaSHA256 &&
+    loaded.proxyChainID === fresh.proxyChainID &&
+    loaded.bindingId === fresh.bindingId &&
+    loaded.proxyMechanism === fresh.proxyMechanism &&
+    loaded.proxyPattern === fresh.proxyPattern &&
+    loaded.beaconAddress === fresh.beaconAddress &&
+    loaded.beaconCodeHash === fresh.beaconCodeHash &&
+    loaded.cwiaSchemaSHA256 === fresh.cwiaSchemaSHA256 &&
     loaded.standardVersion === fresh.standardVersion &&
     managementImpact(loaded) === managementImpact(fresh)
   );
