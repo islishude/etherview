@@ -22,6 +22,18 @@ updates:
     open-pull-requests-limit: 10
 
   - package-ecosystem: npm
+    directory: /e2e/hardhat3
+    schedule:
+      interval: monthly
+      day: monday
+      time: "02:30"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 10
+    groups:
+      npm:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
     directory: /api
     schedule:
       interval: monthly
@@ -29,6 +41,21 @@ updates:
       time: "02:30"
       timezone: Asia/Shanghai
     open-pull-requests-limit: 10
+    groups:
+      npm:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /compiler
+    schedule:
+      interval: monthly
+      day: monday
+      time: "02:30"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 10
+    groups:
+      npm:
+        patterns: ["*"]
 
   - package-ecosystem: github-actions
     directory: /
