@@ -12,7 +12,7 @@ require (
 	github.com/fxamacker/cbor/v2 v2.9.2
 	github.com/google/uuid v1.6.0
 	github.com/holiman/uint256 v1.3.2
-	github.com/jackc/pgx/v5 v5.10.0
+	github.com/jackc/pgx/v5 v5.11.0
 	github.com/minio/minio-go/v7 v7.2.1
 	github.com/nats-io/nats.go v1.52.0
 	github.com/oapi-codegen/runtime v1.6.0
