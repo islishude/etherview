@@ -15,7 +15,7 @@
     "ethers": "6.17.0",
     "hardhat": "3.17.0",
     "solady": "0.1.26",
-    "solc": "0.8.30"
+    "solc": "0.8.37"
   },
   "overrides": {
     "adm-zip": "0.6.1",
