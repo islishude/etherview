@@ -1,6 +1,6 @@
 # P30 — Contract Platform & Runtime Operations
 
-Status: `blocked`
+Status: `done`
 
 This is the canonical plan for contract verification, contract intelligence,
 and the shared runtime/operations platform. Its current work items use the P30
@@ -175,7 +175,7 @@ credential-scoped operational boundaries.
 | P30-T97 | done | P30-T96 | Native API, Etherscan vyper-json and bilingual Web verification | generated contracts, API, Web and browser tests |
 | P30-T98 | done | P30-T95 | Production helper packaging, role parity, deployment and licenses | image, configuration, Compose, Helm and license checks |
 | P30-T99 | done | P30-T96, P30-T97, P30-T98 | Vyper production verification acceptance and maintained documentation | common gates, native AMD64/ARM64 monolith/split verification E2E |
-| P30-T114 | blocked | P30-T99 | Upgrade the pinned Node SEA to 26.9.0 and solc wrapper to 0.8.37 | Exact lockfile, runtime identity, real SEA compilation and permission regressions, Go verifier tests, docs and plan gates |
+| P30-T114 | done | P30-T99 | Upgrade the pinned Node SEA to 26.9.0 and solc wrapper to 0.8.37 | Exact lockfile, runtime identity, real SEA compilation and permission regressions, Go verifier tests, docs and plan gates |
 
 | P30-T100 | done | P30-T99 | Serialize Compose stdout/stderr capture and streaming to prevent concurrent buffer corruption | real-process output and failure regressions under the race detector; Foundry E2E; docs/plan checks |
 
@@ -193,6 +193,11 @@ credential-scoped operational boundaries.
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
 ## Acceptance
+
+- [x] P30-T114: Node 26.9.0 and solc 0.8.37 pass all 11 checks in
+      [PR #64 CI run 35206666871](https://github.com/islishude/etherview/actions/runs/35206666871)
+      at `5315b89db49071126d26afe802bf8047cdd406fc`, including production
+      image checks and native Linux AMD64/ARM64 verification E2E.
 
 - [x] P30-T107–P30-T113: 26 non-withdrawn stable Vyper releases, signed dynamic
       runtimes, API/Web and provenance/migration regressions pass all 11 checks
@@ -235,14 +240,9 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
 ## Current Blockers
 
-P30-T114: Docker daemon is unavailable. Clear by starting Docker and passing
-the updated `compiler-builder` image build, including its chroot SEA and ELF
-closure checks.
-
-Prior acceptance: P30-T99's native AMD64/ARM64 acceptance is recorded below for the exact
-PR #56 commit tested by CI. Subsequent local review corrections retain their
-separate validation boundary. P70 capacity and P73 live-testnet evidence remain
-owned by their current plans.
+None. P30-T114's remote acceptance below clears its earlier local Docker
+validation blocker. P70 capacity and P73 live-testnet evidence remain owned
+by their current plans.
 
 ## Evidence
 
@@ -682,6 +682,23 @@ closure below supplies the missing evidence.
   permission flags and uses canonical `/private/tmp` artifact paths. This is
   diagnostic host evidence, not the Linux chroot/ELF gate.
 - `.github/scripts/buildx.sh build --target compiler-builder --tag
-  etherview-solcjs-upgrade:local --load .` is blocked because the Docker daemon
-  is unavailable. Production image and native Linux architecture checks remain
-  unverified for this upgrade; P30-T114 stays blocked pending that build.
+  etherview-solcjs-upgrade:local --load .` was blocked because the local Docker
+  daemon was unavailable. The remote acceptance below supersedes that
+  incomplete validation checkpoint.
+
+### P30-T114 — Remote acceptance closure (2026-09-18)
+
+- [PR #64](https://github.com/islishude/etherview/pull/64) is merged. Its tested
+  head is `5315b89db49071126d26afe802bf8047cdd406fc`; the local squash-merge
+  commit is `91ce8042bb50e87b027037b1ab19af6ee3d4e636`.
+  [CI run 35206666871](https://github.com/islishude/etherview/actions/runs/35206666871),
+  attempt 2, is completed successfully with all 11 PR checks successful.
+- Container/Compose/Helm passes production image build, runtime manifest and
+  image-boundary checks, schema lifecycle and runtime topology acceptance.
+  Hardhat and Foundry production verification E2E and Vyper runtime matrices
+  pass on native Linux AMD64 and ARM64. Generation/lint/tests, PostgreSQL
+  integration, embedded SPA browser E2E and security/licenses also pass.
+- This closes the missing Linux image evidence and marks P30-T114 and P30
+  done. It does not claim a production rollout or close P70/P73 external
+  release blockers. Documentation-only closure is validated locally with
+  `make docs-check plan-check` and `git diff --check`.

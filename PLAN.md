@@ -19,7 +19,7 @@ batch semantics are not core v1 scope.
 | P00 | [Foundation](docs/plans/P00-foundation.md) | done | — | Governance, toolchain, config, CLI, migrations, CI, and embedded SPA skeleton |
 | P10 | [Indexing](docs/plans/P10-indexing.md) | done | P00 | Full-history core indexing, canonicality, finality, reorgs, and repair |
 | P20 | [Enrichment](docs/plans/P20-enrichment.md) | done | P10 | Tokens, NFTs, ABI/proxy decoding, traces, balances, and statistics |
-| P30 | [Contract Platform & Runtime Operations](docs/plans/P30-contract-verification.md) | blocked | P00, P10, P20 | Consolidated verification, contract intelligence, runtime, deployment, telemetry, and optional accelerators |
+| P30 | [Contract Platform & Runtime Operations](docs/plans/P30-contract-verification.md) | done | P00, P10, P20 | Consolidated verification, contract intelligence, runtime, deployment, telemetry, and optional accelerators |
 | P40 | [API](docs/plans/P40-api.md) | done | P10; incremental P20/P30 | Native REST, search, API keys, SSE, and Etherscan V2 compatibility |
 | P50 | [Web](docs/plans/P50-web.md) | done | P40; incremental P20/P30 | Bilingual embedded SPA and injected-wallet contract interaction |
 | P64 | [NFT Metadata Web](docs/plans/P64-nft-metadata-web.md) | done | P20, P30, P40, P50 | Canonical NFT metadata projection, standard-event refresh, and guarded external-image navigation |
@@ -68,9 +68,11 @@ topologies, Foundry, PostgreSQL, browser, security and deployment-surface gates.
 Both native Vyper acceptance artifacts confirm monolith/split success with 26
 descriptor digests. P30 returns to done; P70/P73 external release blockers remain.
 
-P30-T114 updates Node to 26.9.0 and the solc wrapper to 0.8.37. Local
-verification passes; P30 is blocked pending the Linux compiler image gate
-because the local Docker daemon is unavailable.
+P30-T114 is complete: Node 26.9.0 and solc 0.8.37 pass all 11 checks in
+[PR #64 CI run 35206666871](https://github.com/islishude/etherview/actions/runs/35206666871)
+(attempt 2) at `5315b89db49071126d26afe802bf8047cdd406fc`, including the
+production image boundary and native AMD64/ARM64 verification E2E. P30 returns
+to done; P70/P73 external release blockers remain.
 
 ## Global Release Gates
 
