@@ -41,7 +41,7 @@ RUN node build-sea.mjs /opt/etherview/solcjs/etherview-solcjs \
     && cp -a /opt/etherview/solcjs /solcjs-runtime-copy/ \
     && install -d -m 0750 /var/lib/etherview/compilers/cache
 
-FROM python:3.13.15-slim-trixie AS vyper-builder
+FROM python:3.14.7-slim-trixie AS vyper-builder
 RUN apt-get update \
     && apt-get install -y --no-install-recommends binutils pax-utils \
     && rm -rf /var/lib/apt/lists/*
