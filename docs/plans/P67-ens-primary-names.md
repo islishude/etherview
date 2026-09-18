@@ -29,13 +29,14 @@ records, and implicit ENS support in write forms are out of scope.
 | P67-T03 | done | P67-T02 | Shared bilingual primary-name UI across semantic address surfaces with snapshot reuse and exact address disclosure | web unit, accessibility, responsive, and embedded browser tests |
 | P67-T04 | done | P67-T01–P67-T03 | Role-scoped deployment configuration, maintenance, observability, docs, and monolith/split production acceptance | security/license/schema/runtime/common gates |
 | P67-T05 | done | P67-T04 | Keep independent Hardhat and Foundry verification E2E topologies isolated from the ENS-only Mainnet RPC fixture | Compose render regressions and rebuilt Hardhat/Foundry monolith/split E2E |
+| P67-T06 | done | P67-T05 | Migrate hashing and wire encoding to ensdomains/go-ens/v4 with ENSIP-15 Unicode regressions | ENS unit/race, Go unit/race/lint, security/license, docs/plan gates |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
 ## Acceptance
 
 - [x] Browser forward input is normalized with Viem, Go canonicalization uses
-  `github.com/adraffy/go-ens-normalize`, `github.com/wealdtech/go-ens` owns
+  `github.com/adraffy/go-ens-normalize`, `github.com/ensdomains/go-ens/v4` owns
   hashing/wire encoding, and every displayed primary name is
   reverse-plus-forward verified.
 - [x] Official resolution uses Ethereum Mainnet finality and the configured chain coin type; custom resolution uses one exact local canonical block.
@@ -92,3 +93,20 @@ None.
   rebuilt `make test-foundry-e2e` passed monolith (45.91s) and distributed
   (48.53s); `make test-hardhat3-provider-compat` also passed; the final
   `make check` passed on 2026-08-18.
+- P67-T06: migrated hashing and DNS wire encoding to
+  `github.com/ensdomains/go-ens/v4 v4.0.0`; the old ENS module is absent
+  from the resolved module graph. Existing normalization, bounded encoding,
+  resolver, endpoint/block pinning, and CCIP transport contracts are retained.
+  Unicode namehash vectors were independently cross-checked with the SPA's
+  Viem implementation; regressions cover emoji, Arabic-Indic digits,
+  ENSIP-15 rejection, invalid UTF-8, and byte-length boundaries. Required
+  transitive updates include go-base36 v0.2.0: its upstream license SHA-256
+  matches the checked-in notice, and the reviewed version/module checksum
+  and third-party notice were updated without relaxing the license gate.
+  On 2026-09-18, `go test ./internal/ens -count=1`,
+  `go test -race ./internal/ens -count=1`, `make test-go`, `make test-race`,
+  `make lint-go` (0 issues), `make security-check`, `make license-check`,
+  `make docs-check`, `make plan-check`, and `git diff --check` passed locally.
+  The first security run encountered npm ECONNRESET; the unchanged security
+  target passed on retry. Production-container and live-RPC tests were not
+  rerun for this dependency migration.

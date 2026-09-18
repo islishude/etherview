@@ -74,6 +74,11 @@ P30-T114 is complete: Node 26.9.0 and solc 0.8.37 pass all 11 checks in
 production image boundary and native AMD64/ARM64 verification E2E. P30 returns
 to done; P70/P73 external release blockers remain.
 
+P67-T06 is complete: ENS hashing and wire encoding use
+`github.com/ensdomains/go-ens/v4 v4.0.0`, with Unicode/boundary regressions
+and local Go unit/race/lint, security/license, and docs/plan gates passing.
+P67 remains done; P70/P73 external release blockers remain.
+
 ## Global Release Gates
 
 - [ ] Every plan required by P70 is `done` or explicitly `superseded` with reviewable evidence.

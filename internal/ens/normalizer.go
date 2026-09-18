@@ -9,8 +9,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/adraffy/go-ens-normalize/ensip15"
+	goens "github.com/ensdomains/go-ens/v4"
 	"github.com/ethereum/go-ethereum/common"
-	goens "github.com/wealdtech/go-ens/v3"
 )
 
 var ErrInvalidName = errors.New("invalid ENS name")

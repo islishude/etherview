@@ -100,7 +100,7 @@ production image at `/licenses/holiman-bloomfilter-MIT.txt`.
 ## go-base36
 
 - Module: `github.com/multiformats/go-base36`
-- Reviewed version: `v0.1.0`
+- Reviewed version: `v0.2.0`
 - Copyright: Protocol Labs
 - License: Apache-2.0 OR MIT
 - Upstream: <https://github.com/multiformats/go-base36>

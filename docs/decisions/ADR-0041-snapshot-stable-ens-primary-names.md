@@ -38,7 +38,8 @@ a private namespace.
   official ENS results.
 - Go normalization uses the pinned `github.com/adraffy/go-ens-normalize`
   ENSIP-15 implementation. Name hashing and wire encoding use the pinned
-  `github.com/wealdtech/go-ens/v3` implementation. The SPA also normalizes user
+  `github.com/ensdomains/go-ens/v4` implementation, whose name hashing also
+  follows ENSIP-15. The SPA also normalizes user
   input with Viem's `normalize` utility before calling the API; no JavaScript
   runtime is embedded in the Go process.
 - Resolution uses the ENSIP-23 Universal Resolver `resolve(bytes,bytes)` and
