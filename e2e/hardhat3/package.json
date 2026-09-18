@@ -8,14 +8,14 @@
     "npm": ">=11.16.0"
   },
   "devDependencies": {
-    "@nomicfoundation/hardhat-verify": "3.0.21",
+    "@nomicfoundation/hardhat-verify": "3.1.0",
     "@openzeppelin/contracts": "5.6.1",
     "@openzeppelin/contracts-upgradeable": "5.6.1",
     "@safe-global/safe-contracts": "1.4.1",
     "ethers": "6.17.0",
     "hardhat": "3.17.0",
     "solady": "0.1.26",
-    "solc": "0.8.30"
+    "solc": "0.8.37"
   },
   "overrides": {
     "adm-zip": "0.6.1",
