@@ -11,6 +11,9 @@ updates:
     groups:
       opentelemetry:
         patterns: ["go.opentelemetry.io/*"]
+      aws-sdk:
+        patterns:
+          - "github.com/aws/*"
 
   - package-ecosystem: npm
     directory: /web
