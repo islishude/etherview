@@ -885,8 +885,11 @@ assert_contains "$temporary_dir/billing-with-facilitator-runtime-overlap.err" \
 expect_render_failure billing-with-additional-tcp-443 \
   -f "$script_dir/values-x402.yaml" \
   --set-json 'networkPolicy.additionalEgress=[{"ports":[{"protocol":"TCP","port":443}]}]'
-assert_contains "$temporary_dir/billing-with-additional-tcp-443.err" \
-  "/networkPolicy/additionalEgress"
+# Helm 3 reports dotted schema paths; Helm 4 reports JSON pointers.
+tr '/' '.' <"$temporary_dir/billing-with-additional-tcp-443.err" \
+  >"$temporary_dir/billing-with-additional-tcp-443.normalized.err"
+assert_contains "$temporary_dir/billing-with-additional-tcp-443.normalized.err" \
+  "networkPolicy.additionalEgress.0.ports.0"
 expect_template_failure billing-template-with-additional-tcp-443 \
   -f "$script_dir/values-x402.yaml" \
   --set-json 'networkPolicy.additionalEgress=[{"ports":[{"protocol":"TCP","port":443}]}]'
