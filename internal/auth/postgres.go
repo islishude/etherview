@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"slices"
@@ -11,7 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	dbaccess "github.com/islishude/etherview/internal/db"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -19,19 +18,10 @@ import (
 // PostgresRepository keeps only keyed digests. The plaintext token is returned
 // once by Manager.Create and is never persisted.
 type PostgresRepository struct {
-	db *sql.DB
+	db dbaccess.Database
 }
 
-var apiKeyPGTypeMap = newAPIKeyPGTypeMap()
-
-func newAPIKeyPGTypeMap() *pgtype.Map {
-	typeMap := pgtype.NewMap()
-	var scopes []string
-	typeMap.TypeForValue(&scopes) // Prime the map before concurrent repository reads.
-	return typeMap
-}
-
-func NewPostgresRepository(db *sql.DB) (*PostgresRepository, error) {
+func NewPostgresRepository(db dbaccess.Database) (*PostgresRepository, error) {
 	if db == nil {
 		return nil, errors.New("API key repository database is nil")
 	}
@@ -39,8 +29,25 @@ func NewPostgresRepository(db *sql.DB) (*PostgresRepository, error) {
 }
 
 func (r *PostgresRepository) Put(ctx context.Context, key APIKey) error {
-	_, err := r.db.ExecContext(ctx, dbgen.AuthWritePutStatement1, key.Prefix, key.Digest, key.Name, key.Rate, key.Burst, key.CreatedAt.UTC(),
-		key.RevokedAt, key.OwnerUserID, scopeStrings(key.Scopes))
+	err := func() error {
+		if key.Rate < -2147483648 || key.Rate > 2147483647 {
+			return errors.New("invalid stored query value")
+		}
+		if key.Burst < -2147483648 || key.Burst > 2147483647 {
+			return errors.New("invalid stored query value")
+		}
+		var queryValue2 pgtype.Timestamptz
+		if key.RevokedAt != nil {
+			queryValue2 = pgtype.Timestamptz{Time: *key.RevokedAt, Valid: true}
+		}
+		var queryValue3 pgtype.UUID
+		if key.OwnerUserID != nil {
+			if err := queryValue3.Scan(*key.OwnerUserID); err != nil {
+				return err
+			}
+		}
+		return dbgen.New(r.db).AuthWritePutStatement1(ctx, dbgen.AuthWritePutStatement1Params{Prefix: key.Prefix, Digest: key.Digest, Name: key.Name, RatePerSecond: int32(key.Rate), Burst: int32(key.Burst), CreatedAt: pgtype.Timestamptz{Time: key.CreatedAt.UTC(), Valid: true}, RevokedAt: queryValue2, OwnerUserID: queryValue3, Scopes: scopeStrings(key.Scopes)})
+	}()
 	if err != nil {
 		return fmt.Errorf("insert API key: %w", err)
 	}
@@ -48,22 +55,22 @@ func (r *PostgresRepository) Put(ctx context.Context, key APIKey) error {
 }
 
 func (r *PostgresRepository) ByPrefix(ctx context.Context, prefix string) (APIKey, error) {
-	var key APIKey
-	var revoked sql.NullTime
-	var owner pgtype.UUID
-	var ownerActive bool
-	var scopes []string
-	err := r.db.QueryRowContext(ctx, dbgen.AuthLegacyGetAPIKeyByPrefix, prefix).Scan(
-		&key.Prefix, &key.Digest, &key.Name, &key.Rate, &key.Burst,
-		&key.CreatedAt, &revoked, &owner, apiKeyPGTypeMap.SQLScanner(&scopes), &ownerActive,
-	)
-	if err == sql.ErrNoRows {
+	row, err := dbgen.New(r.db).AuthLegacyGetAPIKeyByPrefix(ctx, prefix)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return APIKey{}, errors.New("API key not found")
 	}
 	if err != nil {
 		return APIKey{}, fmt.Errorf("query API key: %w", err)
 	}
-	key.CreatedAt = key.CreatedAt.UTC()
+	key := APIKey{Prefix: row.Prefix, Digest: row.Digest, Name: row.Name, Rate: int(row.RatePerSecond), Burst: int(row.Burst), ownerActive: row.OwnerActive}
+	return decodeAPIKey(key, row.CreatedAt, row.RevokedAt, row.OwnerUserID, row.Scopes)
+}
+
+func decodeAPIKey(key APIKey, created, revoked pgtype.Timestamptz, owner pgtype.UUID, scopes []string) (APIKey, error) {
+	if !created.Valid || created.InfinityModifier != pgtype.Finite || revoked.Valid && revoked.InfinityModifier != pgtype.Finite {
+		return APIKey{}, errors.New("stored API key timestamp is invalid")
+	}
+	key.CreatedAt = created.Time.UTC()
 	if revoked.Valid {
 		value := revoked.Time.UTC()
 		key.RevokedAt = &value
@@ -72,23 +79,20 @@ func (r *PostgresRepository) ByPrefix(ctx context.Context, prefix string) (APIKe
 		value := uuid.UUID(owner.Bytes).String()
 		key.OwnerUserID = &value
 	}
+	var err error
 	key.Scopes, err = scopesFromStrings(scopes)
 	if err != nil {
 		return APIKey{}, err
 	}
-	key.ownerActive = ownerActive
 	return key, nil
 }
 
 func (r *PostgresRepository) Revoke(ctx context.Context, prefix string, at time.Time) error {
-	result, err := r.db.ExecContext(ctx, dbgen.AuthWriteRevokeStatement1, prefix, at.UTC())
+	result, err := dbgen.New(r.db).AuthWriteRevokeStatement1(ctx, prefix, pgtype.Timestamptz{Time: at.UTC(), Valid: true})
 	if err != nil {
 		return fmt.Errorf("revoke API key: %w", err)
 	}
-	count, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("read revoked API key count: %w", err)
-	}
+	count := result
 	if count == 0 {
 		return errors.New("API key not found")
 	}
@@ -96,110 +100,98 @@ func (r *PostgresRepository) Revoke(ctx context.Context, prefix string, at time.
 }
 
 func (r *PostgresRepository) Rotate(ctx context.Context, prefix string, replacement APIKey) error {
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("begin API key rotation: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	if replacement.OwnerUserID != nil {
 		ownerID, parseErr := uuid.Parse(*replacement.OwnerUserID)
 		if parseErr != nil {
 			return errors.New("replacement API key owner is invalid")
 		}
-		var lockedOwner string
-		if err := tx.QueryRowContext(ctx, dbgen.AuthLegacyLockActiveOwner, ownerID).Scan(&lockedOwner); errors.Is(err, sql.ErrNoRows) {
+		if _, err := dbgen.New(r.db).WithTx(tx).AuthLegacyLockActiveOwner(ctx, pgtype.UUID{Bytes: ownerID, Valid: true}); errors.Is(err, pgx.ErrNoRows) {
 			return ErrAPIKeyNotActive
 		} else if err != nil {
 			return fmt.Errorf("lock API key owner for rotation: %w", err)
 		}
 	}
 
-	var name string
-	var rate, burst int
-	var revoked sql.NullTime
-	var owner pgtype.UUID
-	var scopes []string
-	err = tx.QueryRowContext(ctx, dbgen.AuthLegacyLockAPIKeyForRotation, prefix).Scan(
-		&name, &rate, &burst, &revoked, &owner,
-		apiKeyPGTypeMap.SQLScanner(&scopes),
-	)
-	if errors.Is(err, sql.ErrNoRows) {
+	locked, err := dbgen.New(r.db).WithTx(tx).AuthLegacyLockAPIKeyForRotation(ctx, prefix)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return errors.New("API key not found")
 	}
 	if err != nil {
 		return fmt.Errorf("lock API key for rotation: %w", err)
 	}
-	if revoked.Valid {
+	if locked.RevokedAt.Valid {
 		return ErrRevokedAPIKey
 	}
-	currentScopes, err := scopesFromStrings(scopes)
+	currentScopes, err := scopesFromStrings(locked.Scopes)
 	if err != nil {
 		return err
 	}
-	ownerMatches := owner.Valid == (replacement.OwnerUserID != nil)
-	if ownerMatches && owner.Valid {
-		ownerMatches = uuid.UUID(owner.Bytes).String() == *replacement.OwnerUserID
+	ownerMatches := locked.OwnerUserID.Valid == (replacement.OwnerUserID != nil)
+	if ownerMatches && locked.OwnerUserID.Valid {
+		ownerMatches = uuid.UUID(locked.OwnerUserID.Bytes).String() == *replacement.OwnerUserID
 	}
-	if replacement.Name != name || replacement.Rate != rate || replacement.Burst != burst ||
+	if replacement.Name != locked.Name || replacement.Rate != int(locked.RatePerSecond) || replacement.Burst != int(locked.Burst) ||
 		!ownerMatches || !slices.Equal(replacement.Scopes, currentScopes) {
 		return errors.New("replacement API key policy differs from active key")
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.AuthWriteRotateStatement1, replacement.Prefix, replacement.Digest, name, rate, burst,
-		replacement.CreatedAt.UTC(), replacement.OwnerUserID, scopeStrings(replacement.Scopes),
-	); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.UUID
+		if replacement.OwnerUserID != nil {
+			if err := queryValue0.Scan(*replacement.OwnerUserID); err != nil {
+				return err
+			}
+		}
+		return dbgen.New(tx).AuthWriteRotateStatement1(ctx, dbgen.AuthWriteRotateStatement1Params{Prefix: replacement.Prefix, Digest: replacement.Digest, Name: locked.Name, RatePerSecond: locked.RatePerSecond, Burst: locked.Burst, CreatedAt: pgtype.Timestamptz{Time: replacement.CreatedAt.UTC(), Valid: true}, OwnerUserID: queryValue0, Scopes: scopeStrings(replacement.Scopes)})
+	}(); err != nil {
 		return fmt.Errorf("insert replacement API key: %w", err)
 	}
-	result, err := tx.ExecContext(ctx, dbgen.AuthWriteRotateStatement2, prefix, replacement.CreatedAt.UTC())
+	result, err := dbgen.New(tx).AuthWriteRotateStatement2(ctx, prefix, pgtype.Timestamptz{Time: replacement.CreatedAt.UTC(), Valid: true})
 	if err != nil {
 		return fmt.Errorf("revoke rotated API key: %w", err)
 	}
-	count, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("read rotated API key count: %w", err)
-	}
+	count := result
 	if count != 1 {
 		return ErrRevokedAPIKey
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit API key rotation: %w", err)
 	}
 	return nil
 }
 
 func (r *PostgresRepository) List(ctx context.Context) ([]APIKey, error) {
-	rows, err := r.db.QueryContext(ctx, dbgen.AuthLegacyListAPIKeys)
-	if err != nil {
-		return nil, fmt.Errorf("list API keys: %w", err)
-	}
-	defer rows.Close() //nolint:errcheck
+	const pageSize = 512
 	var keys []APIKey
-	for rows.Next() {
-		var key APIKey
-		var revoked sql.NullTime
-		var owner sql.NullString
-		var scopes []string
-		if err := rows.Scan(
-			&key.Prefix, &key.Name, &key.Rate, &key.Burst, &key.CreatedAt,
-			&revoked, &owner, apiKeyPGTypeMap.SQLScanner(&scopes),
-		); err != nil {
-			return nil, fmt.Errorf("scan API key: %w", err)
+	err := dbaccess.WithTransactionOptions(ctx, r.db, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(queries *dbgen.Queries) error {
+		cursor := dbgen.AuthLegacyListAPIKeysParams{PageLimit: pageSize, AfterCreatedAt: pgtype.Timestamptz{Time: time.Unix(0, 0), Valid: true}}
+		for {
+			rows, err := queries.AuthLegacyListAPIKeys(ctx, cursor)
+			if err != nil {
+				return fmt.Errorf("list API keys: %w", err)
+			}
+			for _, row := range rows {
+				key, err := decodeAPIKey(APIKey{Prefix: row.Prefix, Name: row.Name, Rate: int(row.RatePerSecond), Burst: int(row.Burst)}, row.CreatedAt, row.RevokedAt, row.OwnerUserID, row.Scopes)
+				if err != nil {
+					return err
+				}
+				keys = append(keys, key)
+			}
+			if len(rows) < pageSize {
+				return nil
+			}
+			last := rows[len(rows)-1]
+			cursor.HasCursor = true
+			cursor.AfterCreatedAt = last.CreatedAt
+			cursor.AfterPrefix = last.Prefix
 		}
-		key.CreatedAt = key.CreatedAt.UTC()
-		if revoked.Valid {
-			value := revoked.Time.UTC()
-			key.RevokedAt = &value
-		}
-		if owner.Valid {
-			key.OwnerUserID = &owner.String
-		}
-		key.Scopes, err = scopesFromStrings(scopes)
-		if err != nil {
-			return nil, fmt.Errorf("scan API key scopes: %w", err)
-		}
-		keys = append(keys, key)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate API keys: %w", err)
+	})
+	if err != nil {
+		return nil, err
 	}
 	return keys, nil
 }

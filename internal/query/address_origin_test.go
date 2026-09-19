@@ -1,14 +1,15 @@
 package query
 
 import (
-	"database/sql/driver"
 	"errors"
 	"strings"
 	"testing"
 
+	"github.com/islishude/etherview/internal/testpgx"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/api/gen"
-	"github.com/islishude/etherview/internal/db/gen"
+
 	"github.com/islishude/etherview/internal/httpapi"
 )
 
@@ -28,10 +29,10 @@ func TestAddressOriginFoundAndKind(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			db := testDatabase(t,
-				queryExpectation{contains: "FROM canonical_blocks", columns: columns(1), rows: [][]driver.Value{{true}}},
-				queryExpectation{contains: "FROM genesis_account_observations", columns: columns(1), rows: [][]driver.Value{{false}}},
+				queryExpectation{contains: "FROM canonical_blocks", columns: columns(1), rows: [][]any{{true}}},
+				queryExpectation{contains: "FROM genesis_account_observations", columns: columns(1), rows: [][]any{{false}}},
 				queryExpectation{contains: test.query, columns: columns(originColumns(test.accountType)), rows: originRows(test.accountType, source.Bytes(), hash.Bytes())},
-				queryExpectation{contains: "core_complete.complete AND trace_complete.complete", columns: columns(1), rows: [][]driver.Value{{true}}},
+				queryExpectation{contains: "core_complete.complete AND trace_complete.complete", columns: columns(1), rows: [][]any{{true}}},
 			)
 			reader, err := NewPostgresReader(db, Options{ChainID: 1})
 			if err != nil {
@@ -68,10 +69,10 @@ func TestAddressOriginSupportsBlockWithdrawalAndFeeRecipient(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			db := testDatabase(t,
-				queryExpectation{contains: "FROM canonical_blocks", columns: columns(1), rows: [][]driver.Value{{true}}},
-				queryExpectation{contains: "FROM genesis_account_observations", columns: columns(1), rows: [][]driver.Value{{false}}},
-				queryExpectation{contains: test.query, columns: columns(6), rows: [][]driver.Value{{"9", nil, nil, string(test.kind), blockHash.Bytes(), test.index}}},
-				queryExpectation{contains: "core_complete.complete AND trace_complete.complete", columns: columns(1), rows: [][]driver.Value{{true}}},
+				queryExpectation{contains: "FROM canonical_blocks", columns: columns(1), rows: [][]any{{true}}},
+				queryExpectation{contains: "FROM genesis_account_observations", columns: columns(1), rows: [][]any{{false}}},
+				queryExpectation{contains: test.query, columns: columns(6), rows: [][]any{{"9", nil, nil, string(test.kind), blockHash.Bytes(), test.index}}},
+				queryExpectation{contains: "core_complete.complete AND trace_complete.complete", columns: columns(1), rows: [][]any{{true}}},
 			)
 			reader, err := NewPostgresReader(db, Options{ChainID: 1})
 			if err != nil {
@@ -108,11 +109,11 @@ func originColumns(accountType gen.AddressSummaryType) int {
 	return 6
 }
 
-func originRows(accountType gen.AddressSummaryType, source, transaction []byte) [][]driver.Value {
+func originRows(accountType gen.AddressSummaryType, source, transaction []byte) [][]any {
 	if accountType == gen.AddressSummaryTypeContract {
-		return [][]driver.Value{{"4", source, transaction}}
+		return [][]any{{"4", source, transaction}}
 	}
-	return [][]driver.Value{{"4", source, transaction, "funding", common.HexToHash("0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc").Bytes(), nil}}
+	return [][]any{{"4", source, transaction, "funding", common.HexToHash("0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc").Bytes(), nil}}
 }
 
 func TestAddressOriginGenesisAllocation(t *testing.T) {
@@ -128,8 +129,8 @@ func TestAddressOriginGenesisAllocation(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			db := testDatabase(t,
-				queryExpectation{contains: "FROM canonical_blocks", columns: columns(1), rows: [][]driver.Value{{true}}},
-				queryExpectation{contains: "FROM genesis_account_observations", columns: columns(1), rows: [][]driver.Value{{true}}},
+				queryExpectation{contains: "FROM canonical_blocks", columns: columns(1), rows: [][]any{{true}}},
+				queryExpectation{contains: "FROM genesis_account_observations", columns: columns(1), rows: [][]any{{true}}},
 			)
 			reader, err := NewPostgresReader(db, Options{ChainID: 1})
 			if err != nil {
@@ -169,10 +170,10 @@ func TestAddressOriginCoverageAndCanonicality(t *testing.T) {
 
 	t.Run("coverage gap", func(t *testing.T) {
 		db := testDatabase(t,
-			queryExpectation{contains: "FROM canonical_blocks", columns: columns(1), rows: [][]driver.Value{{true}}},
-			queryExpectation{contains: "FROM genesis_account_observations", columns: columns(1), rows: [][]driver.Value{{false}}},
+			queryExpectation{contains: "FROM canonical_blocks", columns: columns(1), rows: [][]any{{true}}},
+			queryExpectation{contains: "FROM genesis_account_observations", columns: columns(1), rows: [][]any{{false}}},
 			queryExpectation{contains: "trace.value > 0", columns: columns(3)},
-			queryExpectation{contains: "core_complete.complete AND trace_complete.complete", columns: columns(1), rows: [][]driver.Value{{false}}},
+			queryExpectation{contains: "core_complete.complete AND trace_complete.complete", columns: columns(1), rows: [][]any{{false}}},
 		)
 		reader, err := NewPostgresReader(db, Options{ChainID: 1})
 		if err != nil {
@@ -189,10 +190,10 @@ func TestAddressOriginCoverageAndCanonicality(t *testing.T) {
 
 	t.Run("complete empty history", func(t *testing.T) {
 		db := testDatabase(t,
-			queryExpectation{contains: "FROM canonical_blocks", columns: columns(1), rows: [][]driver.Value{{true}}},
-			queryExpectation{contains: "FROM genesis_account_observations", columns: columns(1), rows: [][]driver.Value{{false}}},
+			queryExpectation{contains: "FROM canonical_blocks", columns: columns(1), rows: [][]any{{true}}},
+			queryExpectation{contains: "FROM genesis_account_observations", columns: columns(1), rows: [][]any{{false}}},
 			queryExpectation{contains: "trace.value > 0", columns: columns(3)},
-			queryExpectation{contains: "core_complete.complete AND trace_complete.complete", columns: columns(1), rows: [][]driver.Value{{true}}},
+			queryExpectation{contains: "core_complete.complete AND trace_complete.complete", columns: columns(1), rows: [][]any{{true}}},
 		)
 		reader, err := NewPostgresReader(db, Options{ChainID: 1})
 		if err != nil {
@@ -209,7 +210,7 @@ func TestAddressOriginCoverageAndCanonicality(t *testing.T) {
 
 	t.Run("reorg", func(t *testing.T) {
 		db := testDatabase(t,
-			queryExpectation{contains: "FROM canonical_blocks", columns: columns(1), rows: [][]driver.Value{{false}}},
+			queryExpectation{contains: "FROM canonical_blocks", columns: columns(1), rows: [][]any{{false}}},
 		)
 		reader, err := NewPostgresReader(db, Options{ChainID: 1})
 		if err != nil {
@@ -235,7 +236,7 @@ func TestAddressOriginQueriesExcludeFailedRevertedAndZeroValueCandidates(t *test
 		"trace.value > 0",
 		"ORDER BY block_number, tx_index, source_rank, trace_order",
 	} {
-		if !strings.Contains(compactSQL(dbgen.QueryFirstContractOrigin+" "+dbgen.QueryFirstFundingOrigin), compactSQL(fragment)) {
+		if !strings.Contains(compactSQL(testpgx.Statement("QueryFirstContractOrigin")+" "+testpgx.Statement("QueryFirstFundingOrigin")), compactSQL(fragment)) {
 			t.Fatalf("origin queries do not enforce %q", fragment)
 		}
 	}
@@ -244,7 +245,7 @@ func TestAddressOriginQueriesExcludeFailedRevertedAndZeroValueCandidates(t *test
 		"canonical.number = 0",
 		"imported.state = 'complete'",
 	} {
-		if !strings.Contains(compactSQL(dbgen.QueryGenesisAddressOrigin), compactSQL(fragment)) {
+		if !strings.Contains(compactSQL(testpgx.Statement("QueryGenesisAddressOrigin")), compactSQL(fragment)) {
 			t.Fatalf("genesis origin query does not enforce %q", fragment)
 		}
 	}

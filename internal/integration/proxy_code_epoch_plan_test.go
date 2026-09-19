@@ -4,10 +4,12 @@ package integration_test
 
 import (
 	"context"
-	"database/sql"
 	"strings"
 	"testing"
 	"time"
+
+	pgx "github.com/jackc/pgx/v5"
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestProxyCodeEpochPlanUsesCodeOnlyPartialIndex(t *testing.T) {
@@ -25,18 +27,18 @@ func TestProxyCodeEpochPlanUsesCodeOnlyPartialIndex(t *testing.T) {
 		t, ctx, db, "transaction_state_changes_address_idx",
 	)
 
-	tx, err := db.BeginTx(ctx, nil)
+	tx, err := db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback() //nolint:errcheck
-	if _, err := tx.ExecContext(ctx, `
+	defer tx.Rollback(context.Background()) //nolint:errcheck
+	if _, err := tx.Exec(ctx, `
 		SET LOCAL enable_seqscan = off;
 		SET LOCAL enable_bitmapscan = off`); err != nil {
 		t.Fatal(err)
 	}
 	var plan []byte
-	if err := tx.QueryRowContext(ctx, `
+	if err := tx.QueryRow(ctx, `
 		EXPLAIN (FORMAT JSON, COSTS OFF)
 		SELECT COALESCE(max(change.block_number), 0::numeric)
 		FROM transaction_state_changes AS change
@@ -72,11 +74,11 @@ func TestProxyCodeEpochPlanUsesCodeOnlyPartialIndex(t *testing.T) {
 func inheritedIndexNames(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	parentName string,
 ) []string {
 	t.Helper()
-	rows, err := db.QueryContext(ctx, `
+	rows, err := db.Query(ctx, `
 		SELECT child.relname
 		FROM pg_inherits AS inheritance
 		JOIN pg_class AS parent ON parent.oid = inheritance.inhparent

@@ -2,7 +2,6 @@ package adapters
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"io"
@@ -11,7 +10,7 @@ import (
 	"time"
 
 	dbaccess "github.com/islishude/etherview/internal/db"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/metadata"
 )
 
@@ -43,7 +42,7 @@ type PriceService struct {
 	now        func() time.Time
 }
 
-func NewPostgresPriceService(db *sql.DB, chainID uint64, fetcher JSONFetcher, options PriceOptions) (*PriceService, error) {
+func NewPostgresPriceService(db dbaccess.Database, chainID uint64, fetcher JSONFetcher, options PriceOptions) (*PriceService, error) {
 	repository, err := newRepository(db, chainID)
 	if err != nil {
 		return nil, err

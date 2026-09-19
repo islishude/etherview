@@ -5,10 +5,12 @@ package integration_test
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"testing"
+
+	pgx "github.com/jackc/pgx/v5"
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/google/uuid"
 	"github.com/islishude/etherview/internal/verifiedselector"
@@ -20,7 +22,7 @@ import (
 func insertVerifiedContractFixture(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	address, codeHash []byte,
 	validFrom uint64,
 	validTo *uint64,
@@ -36,7 +38,7 @@ func insertVerifiedContractFixture(
 func insertVerifiedContractFixtureWithCompilationArtifacts(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	address, codeHash []byte,
 	validFrom uint64,
 	validTo *uint64,
@@ -105,13 +107,13 @@ func insertVerifiedContractFixtureWithCompilationArtifacts(
 	if validTo != nil {
 		validToValue = int64(*validTo)
 	}
-	tx, err := db.BeginTx(ctx, nil)
+	tx, err := db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		t.Fatalf("begin verified-contract fixture: %v", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer tx.Rollback(context.Background()) //nolint:errcheck
 	var generationID int64
-	if err := tx.QueryRowContext(ctx, `
+	if err := tx.QueryRow(ctx, `
 		INSERT INTO compiler_catalog_generations (
 			language, source_url, catalog_digest, entry_count
 		) VALUES ('solidity', 'https://compiler.example/list.json', $1, 1)
@@ -120,7 +122,7 @@ func insertVerifiedContractFixtureWithCompilationArtifacts(
 		RETURNING id`, catalogDigest[:]).Scan(&generationID); err != nil {
 		t.Fatalf("insert fixture compiler generation: %v", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO compiler_catalog_entries (
 			generation_id, language, version, platform, artifact_url, artifact_sha256, max_bytes
 		) VALUES ($1, 'solidity', $2, 'emscripten-wasm32', 'https://compiler.example/soljson.js', $3, 209715200)
@@ -129,7 +131,7 @@ func insertVerifiedContractFixtureWithCompilationArtifacts(
 	); err != nil {
 		t.Fatalf("insert fixture compiler entry: %v", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO verification_jobs (
 			id, kind, language, catalog_language, compiler_version,
 			chain_id, address, code_hash, block_hash, request, request_payload,
@@ -145,7 +147,7 @@ func insertVerifiedContractFixtureWithCompilationArtifacts(
 	); err != nil {
 		t.Fatalf("insert verifier-v2 fixture job: %v", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := tx.Exec(ctx, `
 		UPDATE verification_jobs
 		SET compiler_platform = 'emscripten-wasm32',
 		    catalog_generation_id = $2,
@@ -158,7 +160,7 @@ func insertVerifiedContractFixtureWithCompilationArtifacts(
 	); err != nil {
 		t.Fatalf("bind verifier-v2 fixture compiler: %v", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO verification_results (
 			job_id, request_digest, outcome_kind, outcome, file_name,
 			contract_name, language, compiler_version, match_type, abi, sources,
@@ -173,7 +175,7 @@ func insertVerifiedContractFixtureWithCompilationArtifacts(
 	); err != nil {
 		t.Fatalf("insert verifier-v2 fixture result: %v", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO verified_contracts (
 			chain_id, address, code_hash, valid_from_block, valid_to_block,
 			verification_job_id, request_digest, file_name, contract_name,
@@ -196,7 +198,7 @@ func insertVerifiedContractFixtureWithCompilationArtifacts(
 	}, []byte(abi)); err != nil {
 		t.Fatalf("insert verified selector fixture: %v", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := tx.Exec(ctx, `
 		UPDATE verification_jobs
 		SET status = 'succeeded', leased_by = NULL, lease_token = NULL,
 		    lease_expires_at = NULL, outcome_kind = 'verification_success',
@@ -206,7 +208,7 @@ func insertVerifiedContractFixtureWithCompilationArtifacts(
 	); err != nil {
 		t.Fatalf("complete verifier-v2 fixture job: %v", err)
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		t.Fatalf("commit verified-contract fixture: %v", err)
 	}
 }

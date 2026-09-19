@@ -3,10 +3,11 @@ package catalog
 import (
 	"bytes"
 	"context"
-	"database/sql/driver"
 	"fmt"
 	"strings"
 	"testing"
+
+	testpgx "github.com/islishude/etherview/internal/testpgx"
 )
 
 func TestAddressDelegationsUsesSafeAuthorizationAliasAndReturnsHistory(t *testing.T) {
@@ -15,15 +16,15 @@ func TestAddressDelegationsUsesSafeAuthorizationAliasAndReturnsHistory(t *testin
 		snapshotStep("100", bytesOf(0xaa, 32)),
 		catalogQueryStep{
 			contains: "FROM eip7702_authorizations AS authz",
-			rows: catalogRows(7, []driver.Value{
+			rows: catalogRows(7, []any{
 				"100", bytesOf(0xbb, 32), bytesOf(0xcc, 32), "2", "0",
 				bytesOf(0x22, 20), nil,
 			}),
-			check: func(arguments []driver.NamedValue) error {
-				if len(arguments) != 8 || arguments[0].Value != "1" ||
-					!bytes.Equal(arguments[1].Value.([]byte), bytesOf(0x11, 20)) || arguments[3].Value != false ||
-					arguments[4].Value != "0" || arguments[5].Value != "0" || arguments[6].Value != "0" ||
-					arguments[7].Value != int64(3) {
+			check: func(arguments []any) error {
+				if len(arguments) != 8 || !testpgx.NumericEquals(arguments[5], "1") ||
+					!bytes.Equal(arguments[6].([]byte), bytesOf(0x11, 20)) || arguments[0] != false ||
+					!testpgx.NumericEquals(arguments[1], "0") || !testpgx.NumericEquals(arguments[2], "0") || !testpgx.NumericEquals(arguments[3], "0") ||
+					arguments[4] != int32(3) {
 					return fmt.Errorf("unexpected delegation arguments: %v", arguments)
 				}
 				return nil

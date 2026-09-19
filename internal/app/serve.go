@@ -2,13 +2,14 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/islishude/etherview/internal/accelerator"
 	"github.com/islishude/etherview/internal/auth"
@@ -26,7 +27,7 @@ import (
 	"github.com/islishude/etherview/internal/verify"
 )
 
-func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []string) error {
+func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []string) (result error) {
 	roles, roleSet, err := componentRoles(roleNames)
 	if err != nil {
 		return err
@@ -35,7 +36,11 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 	if err != nil {
 		return err
 	}
-	defer db.Close() //nolint:errcheck
+	lifecycle := components.NewLifecycle()
+	pools := []databaseCloser{db}
+	defer func() {
+		result = errors.Join(result, closeRuntimeDatabases(ctx, lifecycle, cfg.Server.ShutdownTimeout, pools))
+	}()
 	if err := store.CheckSchema(ctx, db); err != nil {
 		return err
 	}
@@ -46,7 +51,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			return err
 		}
 		readDB = dbForRead
-		defer dbForRead.Close() //nolint:errcheck
+		pools = append(pools, dbForRead)
 		if err := checkReadDatabaseSchema(ctx, readDB); err != nil {
 			return err
 		}
@@ -285,7 +290,6 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 	if err != nil {
 		return err
 	}
-	lifecycle := components.NewLifecycle()
 	componentRegistry := components.NewRegistry()
 	var databaseHealth databasePinger = db
 	if readDB != db {
@@ -346,7 +350,7 @@ func enrichmentDispatchStages(trace, userOperations bool) []stagecontract.ID {
 	return stages
 }
 
-func (b *Backend) protectPublicAPI(db *sql.DB, cfg config.Config, observer auth.RateObserver, limiter auth.Limiter, next http.Handler) (http.Handler, error) {
+func (b *Backend) protectPublicAPI(db *pgxpool.Pool, cfg config.Config, observer auth.RateObserver, limiter auth.Limiter, next http.Handler) (http.Handler, error) {
 	if limiter == nil {
 		limiter = auth.NewMemoryLimiter(nil)
 	}

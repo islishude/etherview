@@ -36,6 +36,10 @@ func registerCoreHandlers(mux *http.ServeMux, homeStreams *homeStreamHub) {
 	})
 	mux.HandleFunc("GET /api/v1/events", func(response http.ResponseWriter, request *http.Request) {
 		stream := homeStreams.stream(homeStreamSession(request))
+		if stream.rejectCursor(request.Header.Get("Last-Event-ID")) {
+			response.WriteHeader(http.StatusBadRequest)
+			return
+		}
 		channel, unsubscribe := stream.subscribeFuture()
 		defer unsubscribe()
 		response.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
@@ -54,8 +58,8 @@ func registerCoreHandlers(mux *http.ServeMux, homeStreams *homeStreamHub) {
 					return
 				}
 				if _, err := fmt.Fprintf(
-					response, "id: %d\nevent: head\ndata: {\"number\":\"%d\"}\n\n",
-					update.id, update.id,
+					response, "id: %d\nevent: %s\ndata: {\"number\":\"%d\"}\n\n",
+					update.id, update.kind, update.id,
 				); err != nil {
 					return
 				}
@@ -104,6 +108,14 @@ func registerCoreHandlers(mux *http.ServeMux, homeStreams *homeStreamHub) {
 				return
 			}
 		}
+	})
+	mux.HandleFunc("POST /__e2e/home/reorg", func(response http.ResponseWriter, request *http.Request) {
+		homeStreams.stream(homeStreamSession(request)).publish("reorg")
+		writeJSON(response, map[string]string{"status": "reorged"})
+	})
+	mux.HandleFunc("POST /__e2e/events/expire", func(response http.ResponseWriter, request *http.Request) {
+		homeStreams.stream(homeStreamSession(request)).expireCursor()
+		writeJSON(response, map[string]string{"status": "expired"})
 	})
 	mux.HandleFunc("POST /__e2e/home/head", func(response http.ResponseWriter, request *http.Request) {
 		session := homeStreamSession(request)

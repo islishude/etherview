@@ -5,17 +5,18 @@ package integration_test
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	pgx "github.com/jackc/pgx/v5"
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -154,7 +155,7 @@ func TestProxyVerificationIsDurableIdempotentAndCodeChangeSafe(t *testing.T) {
 		t.Fatalf("proxy status = %#v, error=%v", status, err)
 	}
 	assertProxyVerificationSource(t, ctx, backend, proxy, implementationOne, true)
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		UPDATE verified_proxy_bindings SET proxy_kind = 'beacon'
 		WHERE verification_job_id = $1::uuid`, guid); err == nil {
 		t.Fatal("immutable proxy verification publication accepted an update")
@@ -490,7 +491,7 @@ func TestProxyVerificationAtoBtoACreatesFreshBindingIdentity(t *testing.T) {
 		  AND implementation_address = $2`, 2, proxy.Bytes(), implementationA.Bytes())
 
 	var currentBinding string
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		WITH latest_observation AS (
 			SELECT observation.*
 			FROM proxy_observations AS observation
@@ -667,12 +668,12 @@ func TestProxyVerificationManagementCodeEpochRejectsAtoBtoA(t *testing.T) {
 			}
 			guid, _ := result.(string)
 			if test.serializeTipAdvance {
-				blocker, beginErr := db.BeginTx(ctx, nil)
+				blocker, beginErr := db.BeginTx(ctx, pgx.TxOptions{})
 				if beginErr != nil {
 					t.Fatal(beginErr)
 				}
-				defer blocker.Rollback() //nolint:errcheck
-				if _, lockErr := blocker.ExecContext(ctx, `
+				defer blocker.Rollback(context.Background()) //nolint:errcheck
+				if _, lockErr := blocker.Exec(ctx, `
 					SELECT pg_advisory_xact_lock(hashtextextended(
 					    'etherview:proxy-interaction-coverage:' || '1', 0
 					))`); lockErr != nil {
@@ -695,7 +696,7 @@ func TestProxyVerificationManagementCodeEpochRejectsAtoBtoA(t *testing.T) {
 					completed <- repository.CompleteProxyV2(ctx, lease)
 				}()
 				waitForProxyCoverageLockWaiters(t, ctx, db, 2)
-				if commitErr := blocker.Commit(); commitErr != nil {
+				if commitErr := blocker.Commit(context.Background()); commitErr != nil {
 					t.Fatal(commitErr)
 				}
 				if advanceErr := <-advanced; advanceErr != nil {
@@ -714,12 +715,12 @@ func TestProxyVerificationManagementCodeEpochRejectsAtoBtoA(t *testing.T) {
 				return
 			}
 			if test.serializeReplayStage.Name != "" {
-				blocker, beginErr := db.BeginTx(ctx, nil)
+				blocker, beginErr := db.BeginTx(ctx, pgx.TxOptions{})
 				if beginErr != nil {
 					t.Fatal(beginErr)
 				}
-				defer blocker.Rollback() //nolint:errcheck
-				if _, lockErr := blocker.ExecContext(ctx, `
+				defer blocker.Rollback(context.Background()) //nolint:errcheck
+				if _, lockErr := blocker.Exec(ctx, `
 					SELECT pg_advisory_xact_lock(hashtextextended(
 					    'etherview:proxy-interaction-coverage:' || '1', 0
 					))`); lockErr != nil {
@@ -759,7 +760,7 @@ func TestProxyVerificationManagementCodeEpochRejectsAtoBtoA(t *testing.T) {
 					completed <- repository.CompleteProxyV2(ctx, lease)
 				}()
 				waitForProxyCoverageLockWaiters(t, ctx, db, 2)
-				if commitErr := blocker.Commit(); commitErr != nil {
+				if commitErr := blocker.Commit(context.Background()); commitErr != nil {
 					t.Fatal(commitErr)
 				}
 				replay := <-replayed
@@ -779,12 +780,12 @@ func TestProxyVerificationManagementCodeEpochRejectsAtoBtoA(t *testing.T) {
 				return
 			}
 			if test.serializeCoverage {
-				blocker, beginErr := db.BeginTx(ctx, nil)
+				blocker, beginErr := db.BeginTx(ctx, pgx.TxOptions{})
 				if beginErr != nil {
 					t.Fatal(beginErr)
 				}
-				defer blocker.Rollback() //nolint:errcheck
-				if _, lockErr := blocker.ExecContext(ctx, `
+				defer blocker.Rollback(context.Background()) //nolint:errcheck
+				if _, lockErr := blocker.Exec(ctx, `
 					SELECT pg_advisory_xact_lock(hashtextextended(
 					    'etherview:proxy-interaction-coverage:' || '1', 0
 					))`); lockErr != nil {
@@ -800,7 +801,7 @@ func TestProxyVerificationManagementCodeEpochRejectsAtoBtoA(t *testing.T) {
 				}()
 				for {
 					var waiters int
-					waitErr := db.QueryRowContext(ctx, `
+					waitErr := db.QueryRow(ctx, `
 						SELECT count(*) FROM pg_locks
 						WHERE locktype = 'advisory' AND granted = FALSE`).Scan(&waiters)
 					if waitErr != nil {
@@ -820,14 +821,14 @@ func TestProxyVerificationManagementCodeEpochRejectsAtoBtoA(t *testing.T) {
 					t.Fatalf("binding completion bypassed coverage lock: %v", earlyErr)
 				default:
 				}
-				if _, deleteErr := blocker.ExecContext(ctx, `
+				if _, deleteErr := blocker.Exec(ctx, `
 					DELETE FROM proxy_interaction_covered_blocks
 					WHERE chain_id = 1 AND block_number = $1::numeric AND block_hash = $2`,
 					blockARef.Number, blockARef.Hash.Bytes(),
 				); deleteErr != nil {
 					t.Fatal(deleteErr)
 				}
-				if commitErr := blocker.Commit(); commitErr != nil {
+				if commitErr := blocker.Commit(context.Background()); commitErr != nil {
 					t.Fatal(commitErr)
 				}
 				completeErr := <-completed
@@ -1549,7 +1550,7 @@ func TestBadUUPSUUIDPersistsERC1967AndCannotFormUUPSBinding(t *testing.T) {
 func insertProxyVerificationObservation(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block store.BlockRef,
 	proxy common.Address,
 	proxyHash common.Hash,
@@ -1565,7 +1566,7 @@ func insertProxyVerificationObservation(
 func insertProxyVerificationObservationKind(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block store.BlockRef,
 	proxy common.Address,
 	proxyHash common.Hash,
@@ -1597,7 +1598,7 @@ func cloneRuntime(implementation common.Address) []byte {
 func publishProxyVerificationObservation(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block store.BlockRef,
 	proxy common.Address,
 	proxyCode []byte,
@@ -1609,7 +1610,7 @@ func publishProxyVerificationObservation(
 		address: proxy,
 		after:   proxyCode,
 	})
-	result, err := db.ExecContext(ctx, `
+	result, err := db.Exec(ctx, `
 		UPDATE transactional_outbox
 		SET published_at = clock_timestamp()
 		WHERE chain_id = 1
@@ -1619,8 +1620,8 @@ func publishProxyVerificationObservation(
 	if err != nil {
 		t.Fatalf("publish proxy verification core outbox: %v", err)
 	}
-	affected, err := result.RowsAffected()
-	if err != nil || affected != 1 {
+	affected := result.RowsAffected()
+	if affected != 1 {
 		t.Fatalf("publish proxy verification core outbox rows=%d error=%v", affected, err)
 	}
 	states := map[string]map[string]proxyContractState{
@@ -1668,7 +1669,7 @@ func publishProxyVerificationObservation(
 func insertProxyVerificationSource(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	address common.Address,
 	codeHash common.Hash,
 	name string,
@@ -1698,10 +1699,10 @@ func completeProxyVerification(
 	}
 }
 
-func proxyVerificationJobCount(t *testing.T, ctx context.Context, db *sql.DB) int64 {
+func proxyVerificationJobCount(t *testing.T, ctx context.Context, db *pgxpool.Pool) int64 {
 	t.Helper()
 	var count int64
-	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM verification_jobs WHERE kind = 'proxy'`).Scan(&count); err != nil {
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM verification_jobs WHERE kind = 'proxy'`).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 	return count
@@ -1710,13 +1711,13 @@ func proxyVerificationJobCount(t *testing.T, ctx context.Context, db *sql.DB) in
 func waitForProxyCoverageLockWaiters(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	want int,
 ) {
 	t.Helper()
 	for {
 		var waiters int
-		if err := db.QueryRowContext(ctx, `
+		if err := db.QueryRow(ctx, `
 			SELECT count(*) FROM pg_locks
 			WHERE locktype = 'advisory' AND granted = FALSE`).Scan(&waiters); err != nil {
 			t.Fatal(err)
@@ -1907,7 +1908,7 @@ func proxyVerificationCallData(value any) ([]byte, error) {
 func insertAuthenticatedProxyArtifactFixture(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block store.BlockRef,
 	generation int64,
 	compilerDigest [sha256.Size]byte,
@@ -1947,7 +1948,7 @@ func insertAuthenticatedProxyArtifactFixture(
 	case "uups_implementation":
 		targetKind = "uups"
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO proxy_replay_targets (
 			chain_id, block_number, block_hash, address, target_kind,
 			source_kind, source_verification_job_id
@@ -1964,7 +1965,7 @@ func insertAuthenticatedProxyArtifactFixture(
 func insertProxyVerificationReplayTarget(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block store.BlockRef,
 	address common.Address,
 	targetKind string,
@@ -1985,13 +1986,13 @@ func insertProxyVerificationReplayTarget(
 func publishAuthenticatedProxyState(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block store.BlockRef,
 	states map[common.Address]proxyVerificationRPCState,
 ) {
 	t.Helper()
 	publishProxyVerificationInteractionCoverage(t, ctx, db, block)
-	result, err := db.ExecContext(ctx, `
+	result, err := db.Exec(ctx, `
 		UPDATE transactional_outbox
 		SET published_at = clock_timestamp()
 		WHERE chain_id = 1
@@ -2000,8 +2001,8 @@ func publishAuthenticatedProxyState(
 	if err != nil {
 		t.Fatalf("publish authenticated proxy fixture core outbox: %v", err)
 	}
-	affected, err := result.RowsAffected()
-	if err != nil || affected != 1 {
+	affected := result.RowsAffected()
+	if affected != 1 {
 		t.Fatalf("publish authenticated proxy fixture core outbox rows=%d error=%v", affected, err)
 	}
 	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
@@ -2026,7 +2027,7 @@ func publishAuthenticatedProxyState(
 	if err != nil {
 		t.Fatal(err)
 	}
-	rows, err := db.QueryContext(ctx, `
+	rows, err := db.Query(ctx, `
 		SELECT DISTINCT source_verification_job_id::text
 		FROM proxy_replay_targets
 		WHERE chain_id = 1 AND block_number = $1::numeric AND block_hash = $2
@@ -2038,7 +2039,7 @@ func publishAuthenticatedProxyState(
 	for rows.Next() {
 		var sourceJobID string
 		if err := rows.Scan(&sourceJobID); err != nil {
-			_ = rows.Close()
+			rows.Close()
 			t.Fatal(err)
 		}
 		job, err = queue.Enqueue(ctx, enrich.EnqueueRequest{
@@ -2049,15 +2050,16 @@ func publishAuthenticatedProxyState(
 			},
 		})
 		if err != nil {
-			_ = rows.Close()
+			rows.Close()
 			t.Fatal(err)
 		}
 	}
 	if err := rows.Err(); err != nil {
-		_ = rows.Close()
+		rows.Close()
 		t.Fatal(err)
 	}
-	if err := rows.Close(); err != nil {
+	rows.Close()
+	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
 	if job.Job.ID == "" {
@@ -2083,7 +2085,7 @@ func publishAuthenticatedProxyState(
 func publishAuthenticatedProxyReplaySources(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block store.BlockRef,
 	service *proxyVerificationRPCService,
 	sourceJobIDs ...string,
@@ -2143,7 +2145,7 @@ type proxyVerificationCodeChange struct {
 }
 
 type proxyVerificationCoverageRPCService struct {
-	db        *sql.DB
+	db        *pgxpool.Pool
 	stateDiff json.RawMessage
 }
 
@@ -2163,7 +2165,7 @@ func (service *proxyVerificationCoverageRPCService) TraceBlockByHash(
 func publishProxyVerificationInteractionCoverage(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block store.BlockRef,
 	codeChanges ...proxyVerificationCodeChange,
 ) {
@@ -2185,7 +2187,7 @@ func publishProxyVerificationInteractionCoverage(
 	if err != nil {
 		t.Fatalf("marshal proxy interaction coverage state diff: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		UPDATE transactional_outbox
 		SET published_at = clock_timestamp()
 		WHERE chain_id = 1
@@ -2257,7 +2259,7 @@ func publishProxyVerificationInteractionCoverage(
 func publishEmptyProxyVerificationCoverage(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block store.BlockRef,
 ) {
 	t.Helper()
@@ -2268,7 +2270,7 @@ func publishEmptyProxyVerificationCoverage(
 func enqueueProxyVerificationCoverageReplay(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block store.BlockRef,
 	key string,
 ) {
@@ -2294,7 +2296,7 @@ func enqueueProxyVerificationCoverageReplay(
 func enqueueProxyVerificationArtifactReplay(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block store.BlockRef,
 	verificationJobID string,
 ) {
@@ -2322,7 +2324,7 @@ func enqueueProxyVerificationArtifactReplay(
 func publishPendingEmptyProxyVerificationCoverage(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block store.BlockRef,
 	stateFixtures ...map[common.Address]proxyVerificationRPCState,
 ) {
@@ -2375,124 +2377,4 @@ func publishPendingEmptyProxyVerificationCoverage(
 		  AND stage = 'proxy' AND stage_version = 2 AND state = 'complete'`,
 		1, block.Hash.Bytes(),
 	)
-}
-
-func exactProxyVerificationSubmission(
-	t *testing.T,
-	ctx context.Context,
-	db *sql.DB,
-	block store.BlockRef,
-	proxy common.Address,
-	proxyCodeHash common.Hash,
-	kind, pattern string,
-	implementation common.Address,
-	implementationCodeHash common.Hash,
-	admin, beacon *common.Address,
-	managementKind string,
-	management *common.Address,
-) verify.SubmissionV2 {
-	t.Helper()
-	var observationGeneration, artifactResolution int64
-	var beaconGeneration sql.NullInt64
-	if err := db.QueryRowContext(ctx, `
-		SELECT observation_generation.id, resolution.id,
-		       beacon_generation.id
-		FROM proxy_observations AS observation
-		JOIN proxy_observation_generations AS observation_generation
-		  ON observation_generation.chain_id = observation.chain_id
-		 AND observation_generation.proxy_address = observation.proxy_address
-		 AND observation_generation.observation_block_hash = observation.block_hash
-		 AND observation_generation.observation_stage_version = observation.stage_version
-		JOIN published_block_stage_results AS published
-		  ON published.chain_id = observation_generation.chain_id
-		 AND published.block_hash = observation_generation.observation_block_hash
-		 AND published.stage = 'proxy'
-		 AND published.stage_version = observation_generation.observation_stage_version
-		 AND published.durable_job_id = observation_generation.durable_job_id
-		 AND published.job_generation = observation_generation.job_generation
-		JOIN proxy_artifact_resolutions AS resolution
-		  ON resolution.chain_id = observation.chain_id
-		 AND resolution.proxy_address = observation.proxy_address
-		 AND resolution.observation_block_hash = observation.block_hash
-		 AND resolution.observation_stage_version = observation.stage_version
-		 AND resolution.durable_job_id = observation_generation.durable_job_id
-		 AND resolution.job_generation = observation_generation.job_generation
-		LEFT JOIN beacon_observation_generations AS beacon_generation
-		  ON resolution.proxy_pattern = 'beacon'
-		 AND beacon_generation.chain_id = resolution.chain_id
-		 AND beacon_generation.beacon_address = resolution.beacon_address
-		 AND beacon_generation.observation_block_hash = resolution.observation_block_hash
-		 AND beacon_generation.observation_stage_version = resolution.observation_stage_version
-		 AND beacon_generation.durable_job_id = resolution.durable_job_id
-		 AND beacon_generation.job_generation = resolution.job_generation
-		WHERE observation.chain_id = 1
-		  AND observation.proxy_address = $1
-		  AND observation.block_hash = $2
-		  AND resolution.proxy_pattern = $3
-		ORDER BY observation_generation.id DESC, resolution.id DESC
-		LIMIT 1`, proxy.Bytes(), block.Hash.Bytes(), pattern,
-	).Scan(&observationGeneration, &artifactResolution, &beaconGeneration); err != nil {
-		t.Fatalf("query exact %s proxy generation: %v", pattern, err)
-	}
-	proxyTarget := &verify.ProxyVerificationTarget{
-		Kind:                         kind,
-		Pattern:                      pattern,
-		StandardVersion:              "5.6.1",
-		SubmissionContextBlockNumber: strconv.FormatUint(block.Number, 10),
-		SubmissionContextBlockHash:   strings.ToLower(block.Hash.String()),
-		ImplementationAddress:        strings.ToLower(implementation.Hex()),
-		ImplementationCodeHash:       strings.ToLower(implementationCodeHash.Hex()),
-		ManagementKind:               managementKind,
-		ObservationGenerationID:      strconv.FormatInt(observationGeneration, 10),
-		ArtifactResolutionID:         strconv.FormatInt(artifactResolution, 10),
-		ExpectedImplementation:       strings.ToLower(implementation.Hex()),
-	}
-	if admin != nil {
-		var codeHash []byte
-		if err := db.QueryRowContext(ctx, `
-			SELECT code_hash FROM contract_code_observations
-			WHERE chain_id = 1 AND address = $1 AND block_hash = $2`,
-			admin.Bytes(), block.Hash.Bytes(),
-		).Scan(&codeHash); err != nil {
-			t.Fatalf("query proxy admin code hash: %v", err)
-		}
-		proxyTarget.AdminAddress = strings.ToLower(admin.Hex())
-		proxyTarget.AdminCodeHash = "0x" + hex.EncodeToString(codeHash)
-	}
-	if beacon != nil {
-		var codeHash []byte
-		if err := db.QueryRowContext(ctx, `
-			SELECT code_hash FROM contract_code_observations
-			WHERE chain_id = 1 AND address = $1 AND block_hash = $2`,
-			beacon.Bytes(), block.Hash.Bytes(),
-		).Scan(&codeHash); err != nil {
-			t.Fatalf("query beacon code hash: %v", err)
-		}
-		proxyTarget.BeaconAddress = strings.ToLower(beacon.Hex())
-		proxyTarget.BeaconCodeHash = "0x" + hex.EncodeToString(codeHash)
-	}
-	if management != nil {
-		var codeHash []byte
-		if err := db.QueryRowContext(ctx, `
-			SELECT code_hash FROM contract_code_observations
-			WHERE chain_id = 1 AND address = $1 AND block_hash = $2`,
-			management.Bytes(), block.Hash.Bytes(),
-		).Scan(&codeHash); err != nil {
-			t.Fatalf("query proxy management code hash: %v", err)
-		}
-		proxyTarget.ManagementAddress = strings.ToLower(management.Hex())
-		proxyTarget.ManagementCodeHash = "0x" + hex.EncodeToString(codeHash)
-	}
-	if beaconGeneration.Valid {
-		proxyTarget.BeaconGenerationID = strconv.FormatInt(beaconGeneration.Int64, 10)
-	}
-	return verify.SubmissionV2{
-		Kind: verify.JobProxy,
-		Target: &verify.VerificationTarget{
-			ChainID: 1, Address: strings.ToLower(proxy.Hex()),
-			CodeHash:    strings.ToLower(proxyCodeHash.Hex()),
-			AtBlockHash: strings.ToLower(block.Hash.Hex()),
-		},
-		ProxyTarget: proxyTarget,
-	}
 }

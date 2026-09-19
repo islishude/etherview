@@ -1,8 +1,9 @@
 package app
 
 import (
-	"database/sql"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/components"
@@ -29,7 +30,7 @@ func TestRegisterMetadataWorkersUseUniqueDurableSafeWorkers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := registerMetadataWorkers(registry, &sql.DB{}, pool, cfg, nil); err != nil {
+	if err := registerMetadataWorkers(registry, &pgxpool.Pool{}, pool, cfg, nil); err != nil {
 		t.Fatal(err)
 	}
 	services, err := registry.Build([]components.Role{components.RoleMetadata})

@@ -18,7 +18,7 @@ func TestVyperMigrationPreservesCancelledJobs(t *testing.T) {
 	db := newIsolatedPostgres(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	if _, err := db.ExecContext(ctx, `CREATE TABLE etherview_schema_migrations (version TEXT PRIMARY KEY, checksum TEXT NOT NULL, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`); err != nil {
+	if _, err := db.Exec(ctx, `CREATE TABLE etherview_schema_migrations (version TEXT PRIMARY KEY, checksum TEXT NOT NULL, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`); err != nil {
 		t.Fatal(err)
 	}
 	applyMigrationsThrough(t, ctx, db, "0065_vyper_verification")
@@ -40,7 +40,7 @@ func TestVyperMigrationPreservesCancelledJobs(t *testing.T) {
 		if bound {
 			status = "queued"
 		}
-		_, err := db.ExecContext(ctx, `INSERT INTO verification_jobs (
+		_, err := db.Exec(ctx, `INSERT INTO verification_jobs (
    id, kind, language, compiler_version, request, request_payload, request_digest, status
   ) VALUES ($1::uuid, 'vyper_standard_json', 'vyper', '0.4.3', $2::jsonb, $3, $4, $5)`, id, string(payload), payload, digest[:], status)
 		if err != nil {
@@ -56,12 +56,12 @@ func TestVyperMigrationPreservesCancelledJobs(t *testing.T) {
 			if err := repository.BindCompiler(ctx, lease, provenance); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := db.ExecContext(ctx, `UPDATE verification_jobs SET status='cancelled', leased_by=NULL, lease_token=NULL, lease_expires_at=NULL WHERE id=$1::uuid`, id); err != nil {
+			if _, err := db.Exec(ctx, `UPDATE verification_jobs SET status='cancelled', leased_by=NULL, lease_token=NULL, lease_expires_at=NULL WHERE id=$1::uuid`, id); err != nil {
 				t.Fatal(err)
 			}
 		}
 		var snapshot string
-		if err := db.QueryRowContext(ctx, `SELECT row_to_json(job)::text FROM verification_jobs job WHERE id=$1::uuid`, id).Scan(&snapshot); err != nil {
+		if err := db.QueryRow(ctx, `SELECT row_to_json(job)::text FROM verification_jobs job WHERE id=$1::uuid`, id).Scan(&snapshot); err != nil {
 			t.Fatal(err)
 		}
 		snapshots[id] = snapshot
@@ -74,7 +74,7 @@ func TestVyperMigrationPreservesCancelledJobs(t *testing.T) {
 	}
 	for id, before := range snapshots {
 		var after string
-		if err := db.QueryRowContext(ctx, `SELECT row_to_json(job)::text FROM verification_jobs job WHERE id=$1::uuid`, id).Scan(&after); err != nil {
+		if err := db.QueryRow(ctx, `SELECT row_to_json(job)::text FROM verification_jobs job WHERE id=$1::uuid`, id).Scan(&after); err != nil {
 			t.Fatal(err)
 		}
 		if after != before {

@@ -3,17 +3,20 @@ package etherscan
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
 	"strings"
 
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/islishude/etherview/internal/contractartifact"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -223,8 +226,19 @@ func (b *PostgresBackend) currentVerifiedProxy(
 		return "", "", err
 	}
 	var implementation []byte
-	err = b.db.QueryRowContext(ctx, dbgen.EtherscanVerifiedProxy, b.chain, address, codeHash).Scan(&implementation)
-	if errors.Is(err, sql.ErrNoRows) {
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(b.chain); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(b.db).EtherscanVerifiedProxy(ctx, queryValue0, address, codeHash)
+		if err != nil {
+			return err
+		}
+		implementation = queryRow
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return "0", "", nil
 	}
 	if err != nil {
@@ -341,7 +355,7 @@ func (b *PostgresBackend) contractCreation(ctx context.Context, values url.Value
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	result := make([]contractCreationResult, 0, len(addresses))
 	for _, address := range addresses {
 		item, err := b.oneContractCreation(ctx, tx, address)
@@ -356,7 +370,7 @@ func (b *PostgresBackend) contractCreation(ctx context.Context, values url.Value
 	if len(result) == 0 {
 		return nil, ErrNotFound
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit contract creation snapshot: %w", err)
 	}
 	return result, nil
@@ -373,14 +387,45 @@ func (b *PostgresBackend) oneContractCreation(
 	var transactionHashBytes, blockHashBytes []byte
 	var blockNumberText, timestampText string
 	var transactionIndex int64
-	var tracePath, callType sql.NullString
-	var traceDepth sql.NullInt64
-	err := queryer.QueryRowContext(ctx, dbgen.EtherscanContractCreation, b.chain, requestedBytes).Scan(
-		&sourceKind, &receiptJSON, &transactionJSON, &transactionHashBytes, &blockHashBytes,
-		&blockNumberText, &timestampText, &transactionIndex,
-		&tracePath, &traceDepth, &callType, &factoryBytes, &traceInput,
-	)
-	if err == sql.ErrNoRows {
+	var tracePath, callType pgtype.Text
+	var traceDepth pgtype.Int8
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(b.chain); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(queryer).EtherscanContractCreation(ctx, queryValue0, requestedBytes)
+		if err != nil {
+			return err
+		}
+		sourceKind = queryRow.SourceKind
+		receiptJSON = queryRow.ReceiptRaw
+		transactionJSON = queryRow.TransactionRaw
+		transactionHashBytes = queryRow.TransactionHash
+		blockHashBytes = queryRow.BlockHash
+		blockNumberText = queryRow.BlockNumber
+		timestampText = queryRow.Timestamp
+		transactionIndex = queryRow.TxIndex
+		var resultValue8 pgtype.Text
+		if queryRow.TracePath != nil {
+			resultValue8 = pgtype.Text{String: *queryRow.TracePath, Valid: true}
+		}
+		tracePath = resultValue8
+		var resultValue10 pgtype.Int8
+		if queryRow.TraceDepth != nil {
+			resultValue10 = pgtype.Int8{Int64: int64(*queryRow.TraceDepth), Valid: true}
+		}
+		traceDepth = resultValue10
+		var resultValue12 pgtype.Text
+		if queryRow.CallType != nil {
+			resultValue12 = pgtype.Text{String: *queryRow.CallType, Valid: true}
+		}
+		callType = resultValue12
+		factoryBytes = queryRow.FactoryAddress
+		traceInput = queryRow.TraceInput
+		return nil
+	}()
+	if err == pgx.ErrNoRows {
 		return contractCreationResult{}, b.contractCreationAbsence(ctx, queryer)
 	}
 	if err != nil {

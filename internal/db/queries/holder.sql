@@ -2,28 +2,28 @@
 SELECT configuration.configured_start::text,
        EXISTS (
            SELECT 1 FROM canonical_blocks AS canonical
-           WHERE canonical.chain_id = sqlc.arg(chain_id)::numeric
-             AND canonical.number = sqlc.arg(block_number)::numeric
-             AND canonical.block_hash = sqlc.arg(block_hash)::bytea
+           WHERE canonical.chain_id = sqlc.arg('chain_id')::numeric
+             AND canonical.number = sqlc.arg('block_number')::numeric
+             AND canonical.block_hash = sqlc.arg('block_hash')::bytea
        ) AS canonical,
        EXISTS (
            SELECT 1 FROM published_block_stage_results AS published
-           WHERE published.chain_id = sqlc.arg(chain_id)::numeric
-             AND published.block_number = sqlc.arg(block_number)::numeric
-             AND published.block_hash = sqlc.arg(block_hash)::bytea
+           WHERE published.chain_id = sqlc.arg('chain_id')::numeric
+             AND published.block_number = sqlc.arg('block_number')::numeric
+             AND published.block_hash = sqlc.arg('block_hash')::bytea
              AND published.stage = 'token' AND published.stage_version = 1
              AND published.state = 'complete'
        ) AS token_complete,
        EXISTS (
            SELECT 1 FROM published_block_stage_results AS published
-           WHERE published.chain_id = sqlc.arg(chain_id)::numeric
-             AND published.block_number = sqlc.arg(block_number)::numeric
-             AND published.block_hash = sqlc.arg(block_hash)::bytea
+           WHERE published.chain_id = sqlc.arg('chain_id')::numeric
+             AND published.block_number = sqlc.arg('block_number')::numeric
+             AND published.block_hash = sqlc.arg('block_hash')::bytea
              AND published.stage = 'proxy' AND published.stage_version = 2
              AND published.state IN ('complete', 'unavailable')
        ) AS proxy_terminal
 FROM core_index_configuration AS configuration
-WHERE configuration.chain_id = sqlc.arg(chain_id)::numeric;
+WHERE configuration.chain_id = sqlc.arg('chain_id')::numeric;
 
 -- name: HolderAffectedTokens :many
 WITH event_tokens AS (
@@ -33,9 +33,9 @@ WITH event_tokens AS (
       ON canonical.chain_id = event.chain_id
      AND canonical.number = event.block_number
      AND canonical.block_hash = event.block_hash
-    WHERE event.chain_id = sqlc.arg(chain_id)::numeric
-      AND event.block_number = sqlc.arg(block_number)::numeric
-      AND event.block_hash = sqlc.arg(block_hash)::bytea
+    WHERE event.chain_id = sqlc.arg('chain_id')::numeric
+      AND event.block_number = sqlc.arg('block_number')::numeric
+      AND event.block_hash = sqlc.arg('block_hash')::bytea
       AND event.canonical AND event.standard = 'erc20'
       AND event.event_kind IN ('transfer', 'mint', 'burn')
       AND event.confidence IN ('high', 'verified')
@@ -47,8 +47,8 @@ WITH event_tokens AS (
       ON canonical.chain_id = token.chain_id
      AND canonical.number = token.observed_block_number
      AND canonical.block_hash = token.observed_block_hash
-    WHERE token.chain_id = sqlc.arg(chain_id)::numeric
-      AND token.observed_block_number <= sqlc.arg(block_number)::numeric
+    WHERE token.chain_id = sqlc.arg('chain_id')::numeric
+      AND token.observed_block_number <= sqlc.arg('block_number')::numeric
     ORDER BY token.address, token.observed_block_number DESC,
              token.updated_at DESC, token.code_hash DESC
 ), eligible_tokens AS (
@@ -58,25 +58,25 @@ WITH event_tokens AS (
 ), latest_snapshots AS (
     SELECT token_address, max(block_number) AS block_number
     FROM erc20_holder_snapshots
-    WHERE chain_id = sqlc.arg(chain_id)::numeric AND canonical
+    WHERE chain_id = sqlc.arg('chain_id')::numeric AND canonical
     GROUP BY token_address
 ), generation_tokens AS (
     SELECT eligible.token_address
     FROM eligible_tokens AS eligible
     JOIN contract_code_observations AS code
-      ON code.chain_id = sqlc.arg(chain_id)::numeric
+      ON code.chain_id = sqlc.arg('chain_id')::numeric
      AND code.address = eligible.token_address
-     AND code.block_number = sqlc.arg(block_number)::numeric
-     AND code.block_hash = sqlc.arg(block_hash)::bytea
+     AND code.block_number = sqlc.arg('block_number')::numeric
+     AND code.block_hash = sqlc.arg('block_hash')::bytea
      AND code.canonical
     UNION
     SELECT eligible.token_address
     FROM eligible_tokens AS eligible
     JOIN proxy_upgrade_events AS upgrade
-      ON upgrade.chain_id = sqlc.arg(chain_id)::numeric
+      ON upgrade.chain_id = sqlc.arg('chain_id')::numeric
      AND upgrade.emitter_address = eligible.token_address
-     AND upgrade.block_number = sqlc.arg(block_number)::numeric
-     AND upgrade.block_hash = sqlc.arg(block_hash)::bytea
+     AND upgrade.block_number = sqlc.arg('block_number')::numeric
+     AND upgrade.block_hash = sqlc.arg('block_hash')::bytea
      AND upgrade.canonical AND upgrade.stage_version = 2
 ), audit_token AS (
     SELECT eligible.token_address
@@ -109,75 +109,49 @@ JOIN canonical_blocks AS canonical
   ON canonical.chain_id = token.chain_id
  AND canonical.number = token.observed_block_number
  AND canonical.block_hash = token.observed_block_hash
-WHERE token.chain_id = sqlc.arg(chain_id)::numeric
-  AND token.address = sqlc.arg(token_address)::bytea
-  AND token.observed_block_number <= sqlc.arg(block_number)::numeric
+WHERE token.chain_id = sqlc.arg('chain_id')::numeric
+  AND token.address = sqlc.arg('token_address')::bytea
+  AND token.observed_block_number <= sqlc.arg('block_number')::numeric
 ORDER BY token.observed_block_number DESC, token.updated_at DESC, token.code_hash DESC
 LIMIT 1;
 
 -- name: HolderCandidates :many
-SELECT candidate.holder_address
-FROM (
-    SELECT event.from_address AS holder_address
-    FROM token_events AS event
-    JOIN canonical_blocks AS canonical
-      ON canonical.chain_id = event.chain_id
-     AND canonical.number = event.block_number
-     AND canonical.block_hash = event.block_hash
-    WHERE event.chain_id = sqlc.arg(chain_id)::numeric
-      AND event.token_address = sqlc.arg(token_address)::bytea
-      AND event.block_number <= sqlc.arg(block_number)::numeric
-      AND event.canonical AND event.standard = 'erc20'
-      AND event.event_kind IN ('transfer', 'mint', 'burn')
-      AND event.confidence IN ('high', 'verified')
-      AND event.from_address IS NOT NULL
-      AND event.from_address <> decode(repeat('00', 20), 'hex')
-    UNION
-    SELECT event.to_address AS holder_address
-    FROM token_events AS event
-    JOIN canonical_blocks AS canonical
-      ON canonical.chain_id = event.chain_id
-     AND canonical.number = event.block_number
-     AND canonical.block_hash = event.block_hash
-    WHERE event.chain_id = sqlc.arg(chain_id)::numeric
-      AND event.token_address = sqlc.arg(token_address)::bytea
-      AND event.block_number <= sqlc.arg(block_number)::numeric
-      AND event.canonical AND event.standard = 'erc20'
-      AND event.event_kind IN ('transfer', 'mint', 'burn')
-      AND event.confidence IN ('high', 'verified')
-      AND event.to_address IS NOT NULL
-      AND event.to_address <> decode(repeat('00', 20), 'hex')
-) AS candidate
-ORDER BY candidate.holder_address;
+SELECT event.block_number::text AS block_number, event.log_index, event.sub_index,
+       event.block_hash, event.from_address, event.to_address
+FROM token_events AS event
+JOIN canonical_blocks AS canonical
+  ON canonical.chain_id = event.chain_id AND canonical.number = event.block_number
+ AND canonical.block_hash = event.block_hash
+WHERE event.chain_id = sqlc.arg('chain_id')::text::numeric
+  AND event.token_address = sqlc.arg('token_address')::bytea
+  AND event.block_number <= sqlc.arg('block_number')::text::numeric
+  AND event.canonical AND event.standard = 'erc20'
+  AND event.event_kind IN ('transfer', 'mint', 'burn')
+  AND event.confidence IN ('high', 'verified')
+  AND (NOT sqlc.arg('has_cursor')::boolean OR
+       (event.block_number, event.log_index, event.sub_index, event.block_hash) <
+       (sqlc.arg('before_number')::text::numeric, sqlc.arg('before_log')::bigint,
+        sqlc.arg('before_sub')::integer, sqlc.arg('before_hash')::bytea))
+ORDER BY event.block_number DESC, event.log_index DESC, event.sub_index DESC, event.block_hash DESC
+LIMIT sqlc.arg('page_limit')::integer;
 
 -- name: HolderTouchedCandidates :many
-SELECT candidate.holder_address
-FROM (
-    SELECT event.from_address AS holder_address
-    FROM token_events AS event
-    WHERE event.chain_id = sqlc.arg(chain_id)::numeric
-      AND event.token_address = sqlc.arg(token_address)::bytea
-      AND event.block_number = sqlc.arg(block_number)::numeric
-      AND event.block_hash = sqlc.arg(block_hash)::bytea
-      AND event.canonical AND event.standard = 'erc20'
-      AND event.event_kind IN ('transfer', 'mint', 'burn')
-      AND event.confidence IN ('high', 'verified')
-      AND event.from_address IS NOT NULL
-      AND event.from_address <> decode(repeat('00', 20), 'hex')
-    UNION
-    SELECT event.to_address AS holder_address
-    FROM token_events AS event
-    WHERE event.chain_id = sqlc.arg(chain_id)::numeric
-      AND event.token_address = sqlc.arg(token_address)::bytea
-      AND event.block_number = sqlc.arg(block_number)::numeric
-      AND event.block_hash = sqlc.arg(block_hash)::bytea
-      AND event.canonical AND event.standard = 'erc20'
-      AND event.event_kind IN ('transfer', 'mint', 'burn')
-      AND event.confidence IN ('high', 'verified')
-      AND event.to_address IS NOT NULL
-      AND event.to_address <> decode(repeat('00', 20), 'hex')
-) AS candidate
-ORDER BY candidate.holder_address;
+SELECT event.block_number::text AS block_number, event.log_index, event.sub_index,
+       event.block_hash, event.from_address, event.to_address
+FROM token_events AS event
+WHERE event.chain_id = sqlc.arg('chain_id')::text::numeric
+  AND event.token_address = sqlc.arg('token_address')::bytea
+  AND event.block_number = sqlc.arg('block_number')::text::numeric
+  AND event.block_hash = sqlc.arg('block_hash')::bytea
+  AND event.canonical AND event.standard = 'erc20'
+  AND event.event_kind IN ('transfer', 'mint', 'burn')
+  AND event.confidence IN ('high', 'verified')
+  AND (NOT sqlc.arg('has_cursor')::boolean OR
+       (event.block_number, event.log_index, event.sub_index, event.block_hash) <
+       (sqlc.arg('before_number')::text::numeric, sqlc.arg('before_log')::bigint,
+        sqlc.arg('before_sub')::integer, sqlc.arg('before_hash')::bytea))
+ORDER BY event.block_number DESC, event.log_index DESC, event.sub_index DESC, event.block_hash DESC
+LIMIT sqlc.arg('page_limit')::integer;
 
 -- name: HolderPreviousSnapshot :one
 SELECT snapshot.block_number::text, snapshot.state,
@@ -188,9 +162,9 @@ JOIN canonical_blocks AS canonical
   ON canonical.chain_id = snapshot.chain_id
  AND canonical.number = snapshot.block_number
  AND canonical.block_hash = snapshot.block_hash
-WHERE snapshot.chain_id = sqlc.arg(chain_id)::numeric
-  AND snapshot.token_address = sqlc.arg(token_address)::bytea
-  AND snapshot.block_number < sqlc.arg(block_number)::numeric
+WHERE snapshot.chain_id = sqlc.arg('chain_id')::numeric
+  AND snapshot.token_address = sqlc.arg('token_address')::bytea
+  AND snapshot.block_number < sqlc.arg('block_number')::numeric
   AND snapshot.canonical
 ORDER BY snapshot.block_number DESC
 LIMIT 1;
@@ -203,10 +177,10 @@ SELECT EXISTS (
       ON canonical.chain_id = event.chain_id
      AND canonical.number = event.block_number
      AND canonical.block_hash = event.block_hash
-    WHERE event.chain_id = sqlc.arg(chain_id)::numeric
-      AND event.token_address = sqlc.arg(token_address)::bytea
-      AND event.block_number > sqlc.arg(previous_block)::numeric
-      AND event.block_number < sqlc.arg(block_number)::numeric
+    WHERE event.chain_id = sqlc.arg('chain_id')::numeric
+      AND event.token_address = sqlc.arg('token_address')::bytea
+      AND event.block_number > sqlc.arg('previous_block')::numeric
+      AND event.block_number < sqlc.arg('block_number')::numeric
       AND event.canonical AND event.standard = 'erc20'
       AND event.event_kind IN ('transfer', 'mint', 'burn')
       AND event.confidence IN ('high', 'verified')
@@ -228,25 +202,25 @@ JOIN canonical_blocks AS canonical
   ON canonical.chain_id = balance.chain_id
  AND canonical.number = balance.block_number
  AND canonical.block_hash = balance.block_hash
-WHERE balance.chain_id = sqlc.arg(chain_id)::numeric
-  AND balance.token_address = sqlc.arg(token_address)::bytea
-  AND balance.holder_address = sqlc.arg(holder_address)::bytea
-  AND balance.block_number <= sqlc.arg(block_number)::numeric
+WHERE balance.chain_id = sqlc.arg('chain_id')::numeric
+  AND balance.token_address = sqlc.arg('token_address')::bytea
+  AND balance.holder_address = sqlc.arg('holder_address')::bytea
+  AND balance.block_number <= sqlc.arg('block_number')::numeric
   AND balance.canonical
 ORDER BY balance.block_number DESC
 LIMIT 1;
 
 -- name: HolderEventSupply :one
 SELECT COALESCE(sum(CASE event.event_kind
-    WHEN 'mint' THEN event.amount WHEN 'burn' THEN -event.amount ELSE 0 END), 0)::text
+    WHEN 'mint' THEN event.amount WHEN 'burn' THEN -event.amount ELSE 0 END), 0)::text AS total_supply
 FROM token_events AS event
 JOIN canonical_blocks AS canonical
   ON canonical.chain_id = event.chain_id
  AND canonical.number = event.block_number
  AND canonical.block_hash = event.block_hash
-WHERE event.chain_id = sqlc.arg(chain_id)::numeric
-  AND event.token_address = sqlc.arg(token_address)::bytea
-  AND event.block_number <= sqlc.arg(block_number)::numeric
+WHERE event.chain_id = sqlc.arg('chain_id')::numeric
+  AND event.token_address = sqlc.arg('token_address')::bytea
+  AND event.block_number <= sqlc.arg('block_number')::numeric
   AND event.canonical AND event.standard = 'erc20'
   AND event.event_kind IN ('mint', 'burn')
   AND event.confidence IN ('high', 'verified');
@@ -254,24 +228,24 @@ WHERE event.chain_id = sqlc.arg(chain_id)::numeric
 -- name: HolderDeleteBlockOutput :exec
 WITH delete_balances AS (
     DELETE FROM erc20_holder_balances
-    WHERE chain_id = sqlc.arg(chain_id)::numeric
-      AND block_number = sqlc.arg(block_number)::numeric
-      AND block_hash = sqlc.arg(block_hash)::bytea
+    WHERE chain_id = sqlc.arg('chain_id')::numeric
+      AND block_number = sqlc.arg('block_number')::numeric
+      AND block_hash = sqlc.arg('block_hash')::bytea
 )
 DELETE FROM erc20_holder_snapshots
-WHERE chain_id = sqlc.arg(chain_id)::numeric
-  AND block_number = sqlc.arg(block_number)::numeric
-  AND block_hash = sqlc.arg(block_hash)::bytea;
+WHERE chain_id = sqlc.arg('chain_id')::numeric
+  AND block_number = sqlc.arg('block_number')::numeric
+  AND block_hash = sqlc.arg('block_hash')::bytea;
 
 -- name: HolderInsertSnapshot :exec
 INSERT INTO erc20_holder_snapshots (
     chain_id, token_address, block_number, block_hash, state,
     holder_count, total_supply, reconciled_balance_sum, canonical
 ) VALUES (
-    sqlc.arg(chain_id)::numeric, sqlc.arg(token_address)::bytea,
-    sqlc.arg(block_number)::numeric, sqlc.arg(block_hash)::bytea,
-    sqlc.arg(state)::text, sqlc.arg(holder_count)::numeric,
-    sqlc.arg(total_supply)::numeric, sqlc.arg(reconciled_balance_sum)::numeric, TRUE
+    sqlc.arg('chain_id')::numeric, sqlc.arg('token_address')::bytea,
+    sqlc.arg('block_number')::numeric, sqlc.arg('block_hash')::bytea,
+    sqlc.arg('state')::text, sqlc.arg('holder_count')::numeric,
+    sqlc.arg('total_supply')::numeric, sqlc.arg('reconciled_balance_sum')::numeric, TRUE
 )
 ON CONFLICT (chain_id, token_address, block_number, block_hash) DO UPDATE SET canonical = TRUE
 WHERE erc20_holder_snapshots.state = EXCLUDED.state
@@ -284,9 +258,9 @@ INSERT INTO erc20_holder_balances (
     chain_id, token_address, holder_address, block_number, block_hash,
     balance, confidence, canonical
 ) VALUES (
-    sqlc.arg(chain_id)::numeric, sqlc.arg(token_address)::bytea,
-    sqlc.arg(holder_address)::bytea, sqlc.arg(block_number)::numeric,
-    sqlc.arg(block_hash)::bytea, sqlc.arg(balance)::numeric, 'rpc_exact', TRUE
+    sqlc.arg('chain_id')::numeric, sqlc.arg('token_address')::bytea,
+    sqlc.arg('holder_address')::bytea, sqlc.arg('block_number')::numeric,
+    sqlc.arg('block_hash')::bytea, sqlc.arg('balance')::numeric, 'rpc_exact', TRUE
 )
 ON CONFLICT (chain_id, token_address, block_number, block_hash, holder_address)
 DO UPDATE SET canonical = TRUE
@@ -302,7 +276,7 @@ SELECT configuration.configured_start::text,
 FROM core_index_configuration AS configuration
 LEFT JOIN canonical_blocks AS canonical
   ON canonical.chain_id = configuration.chain_id
- AND canonical.number BETWEEN 0 AND sqlc.arg(block_number)::numeric
+ AND canonical.number BETWEEN 0 AND sqlc.arg('block_number')::numeric
 LEFT JOIN published_block_stage_results AS published
   ON published.chain_id = canonical.chain_id
  AND published.block_number = canonical.number
@@ -324,7 +298,7 @@ LEFT JOIN published_block_stage_results AS proxy_publication
  AND proxy_publication.stage = 'proxy'
  AND proxy_publication.stage_version = 2
  AND proxy_publication.state IN ('complete', 'unavailable')
-WHERE configuration.chain_id = sqlc.arg(chain_id)::numeric
+WHERE configuration.chain_id = sqlc.arg('chain_id')::numeric
 GROUP BY configuration.configured_start;
 
 -- name: CatalogHolderTokenSnapshot :one
@@ -361,9 +335,9 @@ JOIN canonical_blocks AS canonical
   ON canonical.chain_id = snapshot.chain_id
  AND canonical.number = snapshot.block_number
  AND canonical.block_hash = snapshot.block_hash
-WHERE snapshot.chain_id = sqlc.arg(chain_id)::numeric
-  AND snapshot.token_address = sqlc.arg(token_address)::bytea
-  AND snapshot.block_number <= sqlc.arg(block_number)::numeric
+WHERE snapshot.chain_id = sqlc.arg('chain_id')::numeric
+  AND snapshot.token_address = sqlc.arg('token_address')::bytea
+  AND snapshot.block_number <= sqlc.arg('block_number')::numeric
   AND snapshot.canonical
 ORDER BY snapshot.block_number DESC
 LIMIT 1;
@@ -378,11 +352,11 @@ WITH latest AS (
       ON canonical.chain_id = balance.chain_id
      AND canonical.number = balance.block_number
      AND canonical.block_hash = balance.block_hash
-    WHERE balance.chain_id = sqlc.arg(chain_id)::numeric
-      AND balance.token_address = sqlc.arg(token_address)::bytea
-      AND balance.block_number <= sqlc.arg(block_number)::numeric
+    WHERE balance.chain_id = sqlc.arg('chain_id')::numeric
+      AND balance.token_address = sqlc.arg('token_address')::bytea
+      AND balance.block_number <= sqlc.arg('block_number')::numeric
       AND balance.canonical
-      AND (NOT sqlc.arg(has_after)::boolean OR balance.holder_address > sqlc.arg(after_address)::bytea)
+      AND (NOT sqlc.arg('has_after')::boolean OR balance.holder_address > sqlc.arg('after_address')::bytea)
     ORDER BY balance.holder_address, balance.block_number DESC
 )
 SELECT latest.holder_address, latest.balance::text,
@@ -390,7 +364,7 @@ SELECT latest.holder_address, latest.balance::text,
 FROM latest
 WHERE latest.balance > 0
 ORDER BY latest.holder_address
-LIMIT sqlc.arg(row_limit)::bigint;
+LIMIT sqlc.arg('row_limit')::bigint;
 
 -- name: EtherscanHolderPage :many
 WITH latest AS (
@@ -401,9 +375,9 @@ WITH latest AS (
       ON canonical.chain_id = balance.chain_id
      AND canonical.number = balance.block_number
      AND canonical.block_hash = balance.block_hash
-    WHERE balance.chain_id = sqlc.arg(chain_id)::numeric
-      AND balance.token_address = sqlc.arg(token_address)::bytea
-      AND balance.block_number <= sqlc.arg(block_number)::numeric
+    WHERE balance.chain_id = sqlc.arg('chain_id')::numeric
+      AND balance.token_address = sqlc.arg('token_address')::bytea
+      AND balance.block_number <= sqlc.arg('block_number')::numeric
       AND balance.canonical
     ORDER BY balance.holder_address, balance.block_number DESC
 )
@@ -411,4 +385,4 @@ SELECT latest.holder_address, latest.balance::text
 FROM latest
 WHERE latest.balance > 0
 ORDER BY latest.holder_address
-LIMIT sqlc.arg(row_limit)::bigint OFFSET sqlc.arg(row_offset)::bigint;
+LIMIT sqlc.arg('row_limit')::bigint OFFSET sqlc.arg('row_offset')::bigint;

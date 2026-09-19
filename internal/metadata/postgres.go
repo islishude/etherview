@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -14,8 +13,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -25,12 +29,12 @@ var (
 )
 
 type PostgresRepository struct {
-	db      *sql.DB
+	db      dbaccess.Database
 	chainID string
 	random  io.Reader
 }
 
-func NewPostgresRepository(db *sql.DB, chainID string) (*PostgresRepository, error) {
+func NewPostgresRepository(db dbaccess.Database, chainID string) (*PostgresRepository, error) {
 	if db == nil {
 		return nil, errors.New("metadata repository requires a database")
 	}
@@ -74,36 +78,99 @@ func (repository *PostgresRepository) EnqueueNFT(ctx context.Context, request NF
 	address := request.Token.Bytes()
 	blockHash := request.BlockHash.Bytes()
 
-	tx, err := repository.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	tx, err := repository.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
 	if err != nil {
 		return EnqueueResult{}, fmt.Errorf("begin metadata enqueue transaction: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	var canonical bool
-	if err := tx.QueryRowContext(ctx, dbgen.MetadataCanonicalObservation, request.ChainID, strconv.FormatUint(request.BlockNumber, 10), blockHash).Scan(&canonical); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(request.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(request.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).MetadataCanonicalObservation(ctx, queryValue0, queryValue1, blockHash)
+		if err != nil {
+			return err
+		}
+		canonical = queryRow
+		return nil
+	}(); err != nil {
 		return EnqueueResult{}, fmt.Errorf("check metadata source canonicality: %w", err)
 	}
 	if !canonical {
 		return EnqueueResult{}, errors.New("metadata source block is not canonical")
 	}
 	var nftContract bool
-	if err := tx.QueryRowContext(ctx, dbgen.MetadataCanonicalNFTContract, request.ChainID, address).Scan(&nftContract); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(request.ChainID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).MetadataCanonicalNFTContract(ctx, queryValue0, address)
+		if err != nil {
+			return err
+		}
+		nftContract = queryRow
+		return nil
+	}(); err != nil {
 		return EnqueueResult{}, fmt.Errorf("check metadata NFT contract: %w", err)
 	}
 	if !nftContract {
 		return EnqueueResult{}, errors.New("metadata token address is not a canonical ERC-721 or ERC-1155 contract")
 	}
-	var inserted int
-	err = tx.QueryRowContext(ctx, dbgen.MetadataWriteInsertMetadataResource, request.ChainID, request.resourceKey(), request.SourceURI,
-		address, request.TokenID, strconv.FormatUint(request.BlockNumber, 10), blockHash,
-	).Scan(&inserted)
-	if errors.Is(err, sql.ErrNoRows) {
+
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(request.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(request.TokenID); err != nil {
+			return err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(strconv.FormatUint(request.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).MetadataWriteInsertMetadataResource(ctx, dbgen.MetadataWriteInsertMetadataResourceParams{ChainID: queryValue0, ResourceKey: request.resourceKey(), SourceUri: request.SourceURI, TokenAddress: address, TokenID: queryValue1, ObservedBlockNumber: queryValue2, ObservedBlockHash: blockHash})
+		if err != nil {
+			return err
+		}
+		_ = int(queryRow)
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		var (
 			storedKey, storedURI, storedBlockNumber string
 			storedAddress, storedBlockHash          []byte
 			storedTokenID                           string
 		)
-		err = tx.QueryRowContext(ctx, dbgen.MetadataExistingMetadataResource, request.ChainID, address, request.TokenID, blockHash).Scan(&storedKey, &storedURI, &storedAddress, &storedTokenID, &storedBlockNumber, &storedBlockHash)
+		err = func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(request.ChainID); err != nil {
+				return err
+			}
+			var queryValue1 pgtype.Numeric
+			if err := queryValue1.Scan(request.TokenID); err != nil {
+				return err
+			}
+			queryRow, err := dbgen.New(tx).MetadataExistingMetadataResource(ctx, dbgen.MetadataExistingMetadataResourceParams{ChainID: queryValue0, TokenAddress: address, TokenID: queryValue1, ObservedBlockHash: blockHash})
+			if err != nil {
+				return err
+			}
+			storedKey = queryRow.ResourceKey
+			storedURI = queryRow.SourceUri
+			storedAddress = queryRow.TokenAddress
+			storedTokenID = queryRow.TokenID
+			storedBlockNumber = queryRow.ObservedBlockNumber
+			storedBlockHash = queryRow.ObservedBlockHash
+			return nil
+		}()
 		if err == nil && (storedKey != request.resourceKey() || storedURI != request.SourceURI ||
 			!bytes.Equal(storedAddress, address) || storedTokenID != request.TokenID ||
 			storedBlockNumber != strconv.FormatUint(request.BlockNumber, 10) || !bytes.Equal(storedBlockHash, blockHash)) {
@@ -114,10 +181,35 @@ func (repository *PostgresRepository) EnqueueNFT(ctx context.Context, request NF
 		return EnqueueResult{}, fmt.Errorf("insert NFT metadata resource: %w", err)
 	}
 	var jobID int64
-	err = tx.QueryRowContext(ctx, dbgen.MetadataWriteEnqueueMetadataJob, request.ChainID, key, string(payload), request.Priority, request.MaxAttempts).Scan(&jobID)
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(request.ChainID); err != nil {
+			return err
+		}
+		if request.MaxAttempts > 2147483647 {
+			return errors.New("invalid stored query value")
+		}
+		queryRow, err := dbgen.New(tx).MetadataWriteEnqueueMetadataJob(ctx, dbgen.MetadataWriteEnqueueMetadataJobParams{ChainID: queryValue0, IdempotencyKey: key, Payload: []byte(string(payload)), Priority: request.Priority, MaxAttempts: int32(request.MaxAttempts)})
+		if err != nil {
+			return err
+		}
+		jobID = queryRow
+		return nil
+	}()
 	created := err == nil
-	if errors.Is(err, sql.ErrNoRows) {
-		err = tx.QueryRowContext(ctx, dbgen.MetadataExistingMetadataJob, request.ChainID, key).Scan(&jobID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		err = func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(request.ChainID); err != nil {
+				return err
+			}
+			queryRow, err := dbgen.New(tx).MetadataExistingMetadataJob(ctx, queryValue0, key)
+			if err != nil {
+				return err
+			}
+			jobID = queryRow
+			return nil
+		}()
 	}
 	if err != nil {
 		return EnqueueResult{}, fmt.Errorf("enqueue NFT metadata job: %w", err)
@@ -125,7 +217,7 @@ func (repository *PostgresRepository) EnqueueNFT(ctx context.Context, request NF
 	if jobID <= 0 {
 		return EnqueueResult{}, errors.New("metadata database returned an invalid job ID")
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return EnqueueResult{}, fmt.Errorf("commit metadata enqueue transaction: %w", err)
 	}
 	return EnqueueResult{JobID: jobID, Created: created}, nil
@@ -146,12 +238,18 @@ func (repository *PostgresRepository) Claim(ctx context.Context, workerID string
 	if err != nil {
 		return Lease{}, false, fmt.Errorf("generate metadata lease token: %w", err)
 	}
-	tx, err := repository.db.BeginTx(ctx, nil)
+	tx, err := repository.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return Lease{}, false, fmt.Errorf("begin metadata claim transaction: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
-	if _, err := tx.ExecContext(ctx, dbgen.MetadataExhaustMetadataJobs, repository.chainID); err != nil {
+	defer dbaccess.Rollback(ctx, tx)
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(repository.chainID); err != nil {
+			return err
+		}
+		return dbgen.New(tx).MetadataExhaustMetadataJobs(ctx, queryValue0)
+	}(); err != nil {
 		return Lease{}, false, fmt.Errorf("finalize exhausted metadata jobs: %w", err)
 	}
 	var (
@@ -159,11 +257,24 @@ func (repository *PostgresRepository) Claim(ctx context.Context, workerID string
 		chainID                     string
 		payload                     []byte
 	)
-	err = tx.QueryRowContext(ctx, dbgen.MetadataClaimMetadataJob, workerID, token, leaseMicros, repository.chainID).Scan(
-		&jobID, &chainID, &attempt, &maxAttempts, &payload,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
-		if err := tx.Commit(); err != nil {
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(repository.chainID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).MetadataClaimMetadataJob(ctx, dbgen.MetadataClaimMetadataJobParams{LeasedBy: new(workerID), LeaseToken: new(token), LeaseMicroseconds: leaseMicros, ChainID: queryValue0})
+		if err != nil {
+			return err
+		}
+		jobID = queryRow.ID
+		chainID = queryRow.JobChainID
+		attempt = int64(queryRow.Attempts)
+		maxAttempts = int64(queryRow.MaxAttempts)
+		payload = queryRow.Payload
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
+		if err := tx.Commit(ctx); err != nil {
 			return Lease{}, false, fmt.Errorf("commit empty metadata claim: %w", err)
 		}
 		return Lease{}, false, nil
@@ -181,7 +292,7 @@ func (repository *PostgresRepository) Claim(ctx context.Context, workerID string
 	if request.ChainID != chainID {
 		return Lease{}, false, errors.New("claimed metadata payload chain differs from its durable job")
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return Lease{}, false, fmt.Errorf("commit metadata claim: %w", err)
 	}
 	return Lease{
@@ -204,7 +315,7 @@ func (repository *PostgresRepository) Renew(ctx context.Context, lease Lease, le
 	if err != nil {
 		return fmt.Errorf("metadata lease duration: %w", err)
 	}
-	result, err := repository.db.ExecContext(ctx, dbgen.MetadataWriteRenewMetadataJob, lease.JobID, lease.Token, leaseMicros)
+	result, err := dbgen.New(repository.db).MetadataWriteRenewMetadataJob(ctx, leaseMicros, lease.JobID, new(lease.Token))
 	if err != nil {
 		return fmt.Errorf("renew metadata job: %w", err)
 	}
@@ -237,11 +348,11 @@ func (repository *PostgresRepository) Finish(ctx context.Context, lease Lease, o
 	if err := outcome.validate(); err != nil {
 		return err
 	}
-	tx, err := repository.db.BeginTx(ctx, nil)
+	tx, err := repository.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("begin metadata finish transaction: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	if err := lockOwnedJob(ctx, tx, lease); err != nil {
 		return err
 	}
@@ -258,7 +369,7 @@ func (repository *PostgresRepository) Finish(ctx context.Context, lease Lease, o
 	if err := finishLocked(ctx, tx, lease, outcome, updateResource); err != nil {
 		return err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit metadata finish transaction: %w", err)
 	}
 	return nil
@@ -282,11 +393,11 @@ func (repository *PostgresRepository) Retry(ctx context.Context, lease Lease, co
 	if err != nil {
 		return fmt.Errorf("metadata retry delay: %w", err)
 	}
-	tx, err := repository.db.BeginTx(ctx, nil)
+	tx, err := repository.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("begin metadata retry transaction: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	if err := lockOwnedJob(ctx, tx, lease); err != nil {
 		return err
 	}
@@ -307,22 +418,39 @@ func (repository *PostgresRepository) Retry(ctx context.Context, lease Lease, co
 			return err
 		}
 	} else {
-		result, err := tx.ExecContext(ctx, dbgen.MetadataWriteRecordMetadataRetry, lease.Request.ChainID, lease.Request.resourceKey(), lease.Request.SourceURI,
-			strconv.FormatUint(lease.Request.BlockNumber, 10), mustHashBytes(lease.Request.BlockHash),
-			lease.Attempt, code, message,
-		)
+		result, err := func() (int64, error) {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(lease.Request.ChainID); err != nil {
+				return 0, err
+			}
+			var queryValue1 pgtype.Numeric
+			if err := queryValue1.Scan(strconv.FormatUint(lease.Request.BlockNumber, 10)); err != nil {
+				return 0, err
+			}
+			if lease.Attempt > 2147483647 {
+				return 0, errors.New("invalid stored query value")
+			}
+			return dbgen.New(tx).MetadataWriteRecordMetadataRetry(ctx, dbgen.MetadataWriteRecordMetadataRetryParams{ChainID: queryValue0, ResourceKey: lease.Request.resourceKey(), SourceUri: lease.Request.SourceURI, ObservedBlockNumber: queryValue1, IdentityHash: mustHashBytes(lease.Request.BlockHash), AttemptCount: int32(lease.Attempt), LastErrorCode: new(code), LastError: new(message)})
+		}()
 		if err != nil {
 			return fmt.Errorf("record pending metadata retry: %w", err)
 		}
 		if err := requireOne(result); err != nil {
 			return fmt.Errorf("record pending metadata retry: %w", err)
 		}
-		if _, err := tx.ExecContext(ctx, dbgen.MetadataWriteInsertMetadataAttempt, lease.Request.ChainID, lease.Request.resourceKey(), lease.JobID, lease.Attempt,
-			StateError, lease.Request.SourceURI, nil, nil, nil, nil, code, message,
-		); err != nil {
+		if err := func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(lease.Request.ChainID); err != nil {
+				return err
+			}
+			if lease.Attempt > 2147483647 {
+				return errors.New("invalid stored query value")
+			}
+			return dbgen.New(tx).MetadataWriteInsertMetadataAttempt(ctx, dbgen.MetadataWriteInsertMetadataAttemptParams{ChainID: queryValue0, ResourceKey: lease.Request.resourceKey(), DurableJobID: lease.JobID, Attempt: int32(lease.Attempt), State: string(StateError), SourceUri: lease.Request.SourceURI, ResolvedUri: nil, MediaType: nil, ContentHash: nil, ContentSize: nil, ErrorCode: new(code), ErrorMessage: new(message)})
+		}(); err != nil {
 			return fmt.Errorf("audit metadata retry: %w", err)
 		}
-		result, err = tx.ExecContext(ctx, dbgen.MetadataWriteRetryMetadataJob, lease.JobID, lease.Token, code+": "+message, retryMicros)
+		result, err = dbgen.New(tx).MetadataWriteRetryMetadataJob(ctx, dbgen.MetadataWriteRetryMetadataJobParams{ID: lease.JobID, LeaseToken: new(lease.Token), LastError: new(code + ": " + message), RetryMicroseconds: retryMicros})
 		if err != nil {
 			return fmt.Errorf("queue metadata retry: %w", err)
 		}
@@ -330,54 +458,115 @@ func (repository *PostgresRepository) Retry(ctx context.Context, lease Lease, co
 			return err
 		}
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit metadata retry transaction: %w", err)
 	}
 	return nil
 }
 
-type queryRower interface {
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-}
+type queryRower = dbgen.DBTX
 
 func queryCurrent(ctx context.Context, queryer queryRower, request NFTRequest) (Current, error) {
 	address := request.Token.Bytes()
 	hash := request.BlockHash.Bytes()
 	var current Current
-	if err := queryer.QueryRowContext(ctx, dbgen.MetadataCurrentMetadataResource, request.ChainID, request.resourceKey(), address, request.TokenID,
-		strconv.FormatUint(request.BlockNumber, 10), hash, request.SourceURI,
-	).Scan(&current.Resource, &current.Canonical); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(request.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(request.TokenID); err != nil {
+			return err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(strconv.FormatUint(request.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(queryer).MetadataCurrentMetadataResource(ctx, dbgen.MetadataCurrentMetadataResourceParams{ChainID: queryValue0, ResourceKey: request.resourceKey(), TokenAddress: address, TokenID: queryValue1, ObservedBlockNumber: queryValue2, IdentityHash: hash, SourceUri: request.SourceURI})
+		if err != nil {
+			return err
+		}
+		current.Resource = queryRow.Exists
+		current.Canonical = queryRow.Exists_2
+		return nil
+	}(); err != nil {
 		return Current{}, err
 	}
 	return current, nil
 }
 
-func lockCurrent(ctx context.Context, tx *sql.Tx, request NFTRequest) (Current, error) {
+func lockCurrent(ctx context.Context, tx pgx.Tx, request NFTRequest) (Current, error) {
 	address := request.Token.Bytes()
 	hash := request.BlockHash.Bytes()
 	var matches bool
-	err := tx.QueryRowContext(ctx, dbgen.MetadataLockMetadataResource, request.ChainID, request.resourceKey(), address, request.TokenID,
-		strconv.FormatUint(request.BlockNumber, 10), hash, request.SourceURI,
-	).Scan(&matches)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(request.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(request.TokenID); err != nil {
+			return err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(strconv.FormatUint(request.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).MetadataLockMetadataResource(ctx, dbgen.MetadataLockMetadataResourceParams{ChainID: queryValue0, ResourceKey: request.resourceKey(), TokenAddress: address, TokenID: queryValue1, ObservedBlockNumber: queryValue2, ObservedBlockHash: hash, SourceUri: request.SourceURI})
+		if err != nil {
+			return err
+		}
+		if queryRow == nil {
+			return errors.New("invalid stored query value")
+		}
+		matches = *queryRow
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return Current{}, nil
 	}
 	if err != nil {
 		return Current{}, err
 	}
 	var canonical bool
-	if err := tx.QueryRowContext(ctx, dbgen.MetadataCanonicalObservation, request.ChainID, strconv.FormatUint(request.BlockNumber, 10), hash).Scan(&canonical); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(request.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(request.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).MetadataCanonicalObservation(ctx, queryValue0, queryValue1, hash)
+		if err != nil {
+			return err
+		}
+		canonical = queryRow
+		return nil
+	}(); err != nil {
 		return Current{}, err
 	}
 	return Current{Resource: matches, Canonical: canonical}, nil
 }
 
-func lockOwnedJob(ctx context.Context, tx *sql.Tx, lease Lease) error {
+func lockOwnedJob(ctx context.Context, tx pgx.Tx, lease Lease) error {
 	var payload []byte
 	var chainID string
 	var maxAttempts int64
-	err := tx.QueryRowContext(ctx, dbgen.MetadataLockOwnedMetadataJob, lease.JobID, lease.Token).Scan(&chainID, &payload, &maxAttempts)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+
+		queryRow, err := dbgen.New(tx).MetadataLockOwnedMetadataJob(ctx, lease.JobID, new(lease.Token))
+		if err != nil {
+			return err
+		}
+		chainID = queryRow.ChainID
+		payload = queryRow.Payload
+		maxAttempts = int64(queryRow.MaxAttempts)
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrLeaseLost
 	}
 	if err != nil {
@@ -393,35 +582,42 @@ func lockOwnedJob(ctx context.Context, tx *sql.Tx, lease Lease) error {
 	return nil
 }
 
-func finishLocked(ctx context.Context, tx *sql.Tx, lease Lease, outcome Outcome, updateResource bool) error {
+func finishLocked(ctx context.Context, tx pgx.Tx, lease Lease, outcome Outcome, updateResource bool) error {
 	if err := outcome.validate(); err != nil {
 		return err
 	}
-	var (
-		resolvedURI any
-		mediaType   any
-		contentHash any
-		document    any
-		contentSize any
-		errorCode   any
-		errorText   any
-	)
+	var resolvedURI *string
+	var mediaType *string
+	var contentHash []byte
+	var document []byte
+	var contentSize *int64
+	var errorCode *string
+	var errorText *string
 	if outcome.State == StateAvailable {
-		resolvedURI = outcome.ResolvedURI
-		mediaType = outcome.MediaType
+		resolvedURI = new(outcome.ResolvedURI)
+		mediaType = new(outcome.MediaType)
 		contentHash = outcome.ContentHash[:]
-		document = string(outcome.Document)
-		contentSize = outcome.ContentSize
+		document = []byte(string(outcome.Document))
+		contentSize = new(outcome.ContentSize)
 	} else {
-		errorCode = outcome.Code
-		errorText = outcome.Message
+		errorCode = new(outcome.Code)
+		errorText = new(outcome.Message)
 	}
 	if updateResource {
-		result, err := tx.ExecContext(ctx, dbgen.MetadataWriteFinishMetadataResource, lease.Request.ChainID, lease.Request.resourceKey(), lease.Request.SourceURI,
-			strconv.FormatUint(lease.Request.BlockNumber, 10), mustHashBytes(lease.Request.BlockHash),
-			outcome.State, resolvedURI, mediaType, contentHash, document, contentSize,
-			lease.Attempt, errorCode, errorText,
-		)
+		result, err := func() (int64, error) {
+			if lease.Attempt > 2147483647 {
+				return 0, errors.New("invalid stored query value")
+			}
+			var queryValue1 pgtype.Numeric
+			if err := queryValue1.Scan(lease.Request.ChainID); err != nil {
+				return 0, err
+			}
+			var queryValue2 pgtype.Numeric
+			if err := queryValue2.Scan(strconv.FormatUint(lease.Request.BlockNumber, 10)); err != nil {
+				return 0, err
+			}
+			return dbgen.New(tx).MetadataWriteFinishMetadataResource(ctx, dbgen.MetadataWriteFinishMetadataResourceParams{State: string(outcome.State), ResolvedUri: resolvedURI, MediaType: mediaType, ContentHash: contentHash, Document: document, ContentSize: contentSize, AttemptCount: int32(lease.Attempt), LastErrorCode: errorCode, LastError: errorText, ChainID: queryValue1, ResourceKey: lease.Request.resourceKey(), IdentityHash: mustHashBytes(lease.Request.BlockHash), SourceUri: lease.Request.SourceURI, ObservedBlockNumber: queryValue2})
+		}()
 		if err != nil {
 			return fmt.Errorf("persist metadata outcome: %w", err)
 		}
@@ -429,10 +625,16 @@ func finishLocked(ctx context.Context, tx *sql.Tx, lease Lease, outcome Outcome,
 			return fmt.Errorf("persist metadata outcome: %w", err)
 		}
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.MetadataWriteInsertMetadataAttempt, lease.Request.ChainID, lease.Request.resourceKey(), lease.JobID, lease.Attempt,
-		outcome.State, lease.Request.SourceURI, resolvedURI, mediaType, contentHash, contentSize,
-		errorCode, errorText,
-	); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(lease.Request.ChainID); err != nil {
+			return err
+		}
+		if lease.Attempt > 2147483647 {
+			return errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).MetadataWriteInsertMetadataAttempt(ctx, dbgen.MetadataWriteInsertMetadataAttemptParams{ChainID: queryValue0, ResourceKey: lease.Request.resourceKey(), DurableJobID: lease.JobID, Attempt: int32(lease.Attempt), State: string(outcome.State), SourceUri: lease.Request.SourceURI, ResolvedUri: resolvedURI, MediaType: mediaType, ContentHash: contentHash, ContentSize: contentSize, ErrorCode: errorCode, ErrorMessage: errorText})
+	}(); err != nil {
 		return fmt.Errorf("audit metadata outcome: %w", err)
 	}
 	jobStatus := "succeeded"
@@ -446,7 +648,7 @@ func finishLocked(ctx context.Context, tx *sql.Tx, lease Lease, outcome Outcome,
 	if err != nil {
 		return fmt.Errorf("encode metadata job outcome: %w", err)
 	}
-	result, err := tx.ExecContext(ctx, dbgen.MetadataWriteFinishMetadataJob, lease.JobID, lease.Token, jobStatus, string(summary), errorText)
+	result, err := dbgen.New(tx).MetadataWriteFinishMetadataJob(ctx, dbgen.MetadataWriteFinishMetadataJobParams{Status: jobStatus, Result: []byte(string(summary)), LastError: errorText, ID: lease.JobID, LeaseToken: new(lease.Token)})
 	if err != nil {
 		return fmt.Errorf("finish metadata durable job: %w", err)
 	}
@@ -531,11 +733,8 @@ func durationMicroseconds(value time.Duration, allowZero bool) (int64, error) {
 	return int64(microseconds), nil
 }
 
-func requireOne(result sql.Result) error {
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("read metadata update count: %w", err)
-	}
+func requireOne(result int64) error {
+	affected := result
 	if affected != 1 {
 		return ErrLeaseLost
 	}

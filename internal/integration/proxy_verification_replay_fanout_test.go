@@ -4,9 +4,10 @@ package integration_test
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 	"time"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -166,7 +167,7 @@ func TestProxyReplayCarriesLargeUntouchedGenerationWithoutRPCFanout(t *testing.T
 		replayStatus                                                string
 		requestedGeneration, claimedGeneration, completedGeneration int64
 	)
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT status, requested_generation, claimed_generation, completed_generation
 		FROM durable_jobs
 		WHERE id = $1::bigint`, enqueued.Job.ID,
@@ -187,7 +188,7 @@ func TestProxyReplayCarriesLargeUntouchedGenerationWithoutRPCFanout(t *testing.T
 		WHERE job_id = $1 AND source_kind = 'verification-publication'
 		  AND source_key = $2 AND requested_generation = $3`,
 		1, enqueued.Job.ID, verificationJob.ID, 2)
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO durable_job_replay_requests (
 			job_id, source_kind, source_key, requested_generation
 		) VALUES ($1::bigint, 'verification-publication', 'malformed-legacy-source', 1)`,
@@ -216,7 +217,7 @@ func TestProxyReplayCarriesLargeUntouchedGenerationWithoutRPCFanout(t *testing.T
 		  AND durable_job_id = $2::bigint AND job_generation = 2`,
 		1, blockRef.Hash.Bytes(), enqueued.Job.ID)
 	var candidates, carriedProxies, carriedBeacons, carriedResolutions, carriedNegative int
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT (details->>'candidates')::integer,
 		       (details->>'carried_proxies')::integer,
 		       (details->>'carried_beacons')::integer,
@@ -327,7 +328,7 @@ func TestVerificationReplayPersistsGenerationOneSource(t *testing.T) {
 	}
 
 	var proxyJobID int64
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT id FROM durable_jobs
 		WHERE chain_id = 1 AND stage = 'proxy' AND stage_version = 2
 		  AND payload->>'block_hash' = $1
@@ -346,7 +347,7 @@ func TestVerificationReplayPersistsGenerationOneSource(t *testing.T) {
 		WHERE source_verification_job_id = $1::uuid
 		  AND address = $2 AND target_kind = 'proxy'`,
 		1, job.ID, target.Bytes())
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO durable_job_replay_requests (
 			job_id, source_kind, source_key, requested_generation
 		) VALUES ($1, 'verification-publication', 'invalid-generation-zero', 0)`,
@@ -358,7 +359,7 @@ func TestVerificationReplayPersistsGenerationOneSource(t *testing.T) {
 
 func proxyVerificationProcessor(
 	t *testing.T,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block store.BlockRef,
 	states map[common.Address]proxyVerificationRPCState,
 ) *enrich.PostgresProxyProcessor {
@@ -384,7 +385,7 @@ func proxyVerificationProcessor(
 func seedProxyCarryForwardGeneration(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block store.BlockRef,
 	jobID string,
 	jobGeneration uint64,
@@ -406,7 +407,7 @@ func seedProxyCarryForwardGeneration(
 		redetectedProxy != testAddress(proxyAddressBase+1) {
 		t.Fatal("carry-forward fixture proxy range is inconsistent")
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		WITH proxy_addresses AS (
 			SELECT decode(
 				lpad(to_hex($1::bigint + series.value), 40, '0'), 'hex'
@@ -430,7 +431,7 @@ func seedProxyCarryForwardGeneration(
 	); err != nil {
 		t.Fatalf("insert carry-forward proxy observations: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		WITH proxy_addresses AS (
 			SELECT decode(
 				lpad(to_hex($1::bigint + series.value), 40, '0'), 'hex'
@@ -447,7 +448,7 @@ func seedProxyCarryForwardGeneration(
 	); err != nil {
 		t.Fatalf("insert carry-forward proxy witnesses: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO beacon_implementation_observations (
 			chain_id, beacon_address, block_number, block_hash, beacon_code_hash,
 			implementation_address, implementation_code_hash, stage_version,
@@ -460,7 +461,7 @@ func seedProxyCarryForwardGeneration(
 	); err != nil {
 		t.Fatalf("insert carry-forward beacon observation: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO beacon_observation_generations (
 			chain_id, beacon_address, observation_block_hash,
 			observation_stage_version, durable_job_id, job_generation
@@ -469,7 +470,7 @@ func seedProxyCarryForwardGeneration(
 	); err != nil {
 		t.Fatalf("insert carry-forward beacon witness: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO proxy_artifact_resolutions (
 			chain_id, proxy_address, observation_block_hash,
 			observation_stage_version, proxy_code_hash, proxy_kind,
@@ -485,7 +486,7 @@ func seedProxyCarryForwardGeneration(
 	); err != nil {
 		t.Fatalf("insert carry-forward artifact resolution: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO proxy_detection_evidence (
 			chain_id, address, block_number, block_hash, stage_version,
 			code_hash, candidate_kind, detection_state, reason, canonical,

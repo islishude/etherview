@@ -374,13 +374,18 @@ Budget PostgreSQL connections before raising replicas.
 process. A non-empty `database.read_url` or either non-zero reader bound enables
 one additional pool only in an `api` or `all` process. An empty reader URL
 inherits the writer endpoint, and a zero reader bound inherits the corresponding
-writer bound.
+writer bound. `min_connections` is the native pgxpool minimum connection
+count, not a maximum idle count. Idle lifetime is five minutes; connection
+lifetime is thirty minutes.
 
 Every process exports its local writer pool and, when present, API reader pool
 through `etherview_database_max_open_connections`,
-`etherview_database_connections`, `etherview_database_wait_count_total`,
-`etherview_database_wait_duration_seconds_total`, and
-`etherview_database_connections_closed_total`. Use the bounded `pool` label to
+`etherview_database_connections`, `etherview_database_empty_acquire_count_total`,
+`etherview_database_empty_acquire_wait_seconds_total`, and
+`etherview_database_connections_closed_total`. Empty-acquire counters describe
+successful acquisitions that initially found no idle connection and their wait
+time. Connection closures distinguish idle time and lifetime; the former
+stdlib idle-limit counter has no native equivalent. Use the bounded `pool` label to
 separate writer and reader saturation. The same scrape exposes
 `etherview_go_goroutines`, `etherview_go_heap_alloc_bytes`,
 `etherview_go_heap_objects`, `etherview_go_gc_cycles_total`, and

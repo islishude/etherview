@@ -119,7 +119,12 @@ conditional delivery while keeping shell nonces, CSP, immutable caching,
 HEAD, range, fallback, and reserved-path behavior intact. One durable
 `/api/v1/events` EventSource invalidates live React Query data; the home page
 refetches one atomic `/api/v1/home` publication instead of opening a second
-stream, and canonical lists no longer poll every two seconds.
+stream, and canonical lists no longer poll every two seconds. Home responses
+carry `event_id`; clients pass their highest observed version as `min_event_id`.
+A lagging API replica waits up to two seconds on its background feed before
+returning `home_snapshot_unavailable`. Typed query metadata selects events, and
+a closed EventSource recovers with one cursor-free connection and bounded
+backoff as specified in [ADR-0004](../decisions/ADR-0004-durable-runtime-status-and-events.md).
 
 Optional accelerator behavior is intentionally asymmetric: NATS carries only
 coalesced poll hints, Redis shares rate buckets and caches only the durable
@@ -135,20 +140,21 @@ PostgreSQL stores all correctness-critical facts, canonical mappings, stage
 state, jobs, leases, and outbox records. Optional systems may reduce latency or
 storage pressure but never become the only copy of required state.
 
-Every process uses pgx through `database/sql` for its mandatory writer pool.
-An `api` or `all` process may additionally open a read-only pool against a
-matching PostgreSQL reader endpoint for latency-tolerant projections. Writer
-authority is retained for canonical, authentication, verification,
-runtime-event, and external-call correctness fences; reader startup checks the
-same schema and chain identity, and API readiness fails closed if either pool
-is unavailable. Generated sqlc/pgx queries enter production through a small
-bridge that pins one stdlib connection from the selected pool for the duration
-of the callback. Existing correctness transactions may execute exported,
-generated statements through their pinned `database/sql` transaction adapters,
-but production SQL still originates only in `internal/db/queries`; the
-migration runner and validated partition-DDL module are the only raw-SQL
-executors. The routing and lag contract is specified in
+Every process uses native pgxpool for its mandatory writer pool. An `api` or
+`all` process may additionally open a read-only pool for latency-tolerant
+projections. Reader startup verifies schema and chain identity; readiness fails
+closed if either configured pool is unavailable. Correctness fences remain
+writer-authoritative as specified by
 [ADR-0018](../decisions/ADR-0018-api-read-replica-routing.md).
+
+[ADR-0050](../decisions/ADR-0050-native-pgx-and-typed-queries.md) owns the native
+pgx/sqlc boundary. Repositories use generated parameters and rows, native pgx
+transactions, bounded cancellation-independent rollback, and exact decimal
+values. Dedicated session locks retain their physical connection until unlock;
+uncertain ownership discards that connection. SQL originates in
+`internal/db/queries`; only migrations and validated partition DDL execute
+handwritten SQL. Large scans use bounded keyset pages within their original
+snapshot or chain-lock boundary. P68 tracks production-image acceptance.
 
 ## Chain Correctness
 

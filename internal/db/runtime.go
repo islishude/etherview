@@ -1,87 +1,70 @@
-// Package dbaccess bridges the repository's database/sql pgx pool to the
-// generated sqlc query package. Queries execute only while the underlying
-// pgx stdlib connection is pinned by database/sql.
+// Package dbaccess owns native pgx query and transaction execution.
 package dbaccess
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// WithQueries pins one pgx stdlib connection for the callback and exposes the
-// generated sqlc Queries bound to that exact connection.
-func WithQueries(ctx context.Context, database *sql.DB, callback func(*dbgen.Queries) error) error {
-	if database == nil {
-		return errors.New("sqlc query database is nil")
-	}
-	if callback == nil {
-		return errors.New("sqlc query callback is nil")
-	}
-	connection, err := database.Conn(ctx)
-	if err != nil {
-		return fmt.Errorf("acquire sqlc connection: %w", err)
-	}
-	defer func() { _ = connection.Close() }()
-	return connection.Raw(func(driverConnection any) error {
-		pgxConnection, ok := driverConnection.(*stdlib.Conn)
-		if !ok {
-			return fmt.Errorf("sqlc requires pgx stdlib, got %T", driverConnection)
-		}
-		if err := callback(dbgen.New(pgxConnection.Conn())); err != nil {
-			return fmt.Errorf("execute sqlc query: %w", err)
-		}
-		return nil
-	})
+// Database is the native query and transaction contract shared by repositories.
+// pgxpool.Pool implements it directly; no driver bridge or alternate pool exists.
+type Database interface {
+	dbgen.DBTX
+	BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error)
 }
 
-// WithTransaction pins one pgx stdlib connection and commits generated sqlc
-// calls as one transaction. The callback must not retain the Queries value.
-func WithTransaction(ctx context.Context, database *sql.DB, callback func(*dbgen.Queries) error) error {
+const cleanupTimeout = 5 * time.Second
+
+// Rollback releases a transaction even after its request context is cancelled.
+// pgx closes the underlying connection when rollback cannot be completed.
+func Rollback(ctx context.Context, tx pgx.Tx) {
+	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), cleanupTimeout)
+	defer cancel()
+	_ = tx.Rollback(cleanup)
+}
+
+// Discard removes an outcome-uncertain session from its pool before closing it.
+func Discard(ctx context.Context, conn *pgxpool.Conn) {
+	physical := conn.Hijack()
+	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), cleanupTimeout)
+	defer cancel()
+	_ = physical.Close(cleanup)
+}
+
+func WithQueries(ctx context.Context, database Database, callback func(*dbgen.Queries) error) error {
+	if database == nil || callback == nil {
+		return errors.New("sqlc database and callback are required")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return callback(dbgen.New(database))
+}
+
+func WithTransaction(ctx context.Context, database Database, callback func(*dbgen.Queries) error) error {
 	return WithTransactionOptions(ctx, database, pgx.TxOptions{}, callback)
 }
 
-// WithTransactionOptions is WithTransaction with an explicit pgx isolation and
-// access-mode contract. It is used by generated multi-query read snapshots and
-// correctness writes that need stronger transaction semantics.
-func WithTransactionOptions(
-	ctx context.Context,
-	database *sql.DB,
-	options pgx.TxOptions,
-	callback func(*dbgen.Queries) error,
-) error {
-	if database == nil {
-		return errors.New("sqlc transaction database is nil")
+func WithTransactionOptions(ctx context.Context, database Database, options pgx.TxOptions, callback func(*dbgen.Queries) error) error {
+	if database == nil || callback == nil {
+		return errors.New("sqlc transaction database and callback are required")
 	}
-	if callback == nil {
-		return errors.New("sqlc transaction callback is nil")
-	}
-	connection, err := database.Conn(ctx)
+	tx, err := database.BeginTx(ctx, options)
 	if err != nil {
-		return fmt.Errorf("acquire sqlc transaction connection: %w", err)
+		return fmt.Errorf("begin sqlc transaction: %w", err)
 	}
-	defer func() { _ = connection.Close() }()
-	return connection.Raw(func(driverConnection any) error {
-		pgxConnection, ok := driverConnection.(*stdlib.Conn)
-		if !ok {
-			return fmt.Errorf("sqlc transaction requires pgx stdlib, got %T", driverConnection)
-		}
-		transaction, err := pgxConnection.Conn().BeginTx(ctx, options)
-		if err != nil {
-			return fmt.Errorf("begin sqlc transaction: %w", err)
-		}
-		defer func() { _ = transaction.Rollback(ctx) }()
-		if err := callback(dbgen.New(transaction)); err != nil {
-			return fmt.Errorf("execute sqlc transaction: %w", err)
-		}
-		if err := transaction.Commit(ctx); err != nil {
-			return fmt.Errorf("commit sqlc transaction: %w", err)
-		}
-		return nil
-	})
+	defer Rollback(ctx, tx)
+	if err := callback(dbgen.New(database).WithTx(tx)); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit sqlc transaction: %w", err)
+	}
+	return nil
 }

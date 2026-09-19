@@ -3,17 +3,20 @@ package enrich
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -22,12 +25,12 @@ var (
 )
 
 type TraceRPCProcessor struct {
-	db     *sql.DB
+	db     dbaccess.Database
 	pool   *ethrpc.Pool
 	limits TraceLimits
 }
 
-func NewTraceRPCProcessor(db *sql.DB, pool *ethrpc.Pool, limits TraceLimits) (*TraceRPCProcessor, error) {
+func NewTraceRPCProcessor(db dbaccess.Database, pool *ethrpc.Pool, limits TraceLimits) (*TraceRPCProcessor, error) {
 	if db == nil || pool == nil {
 		return nil, errors.New("trace processor requires a database and RPC pool")
 	}
@@ -160,26 +163,43 @@ func (processor *TraceRPCProcessor) Process(ctx context.Context, job Job) (Stage
 
 func (processor *TraceRPCProcessor) transactions(ctx context.Context, job Job) ([]traceTransaction, bool, error) {
 	var canonical bool
-	if err := processor.db.QueryRowContext(ctx, dbgen.EnrichLegacyTraceCanonical, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]).Scan(&canonical); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(processor.db).EnrichLegacyTraceCanonical(ctx, queryValue0, queryValue1, job.BlockHash[:])
+		if err != nil {
+			return err
+		}
+		canonical = queryRow
+		return nil
+	}(); err != nil {
 		return nil, false, fmt.Errorf("check trace block canonicality: %w", err)
 	}
 	if !canonical {
 		return nil, false, nil
 	}
-	rows, err := processor.db.QueryContext(ctx, dbgen.EnrichLegacyTraceTransactions, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:])
+	var chain, number pgtype.Numeric
+	if err := chain.Scan(job.ChainID); err != nil {
+		return nil, false, err
+	}
+	if err := number.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+		return nil, false, err
+	}
+	rows, err := dbgen.New(processor.db).EnrichLegacyTraceTransactions(ctx, chain, number, job.BlockHash[:])
 	if err != nil {
 		return nil, false, fmt.Errorf("query trace transactions: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
 	var result []traceTransaction
-	for rows.Next() {
-		var index int64
-		var hashBytes []byte
-		var fromText, valueText, inputText string
-		var toText sql.NullString
-		if err := rows.Scan(&index, &hashBytes, &fromText, &toText, &valueText, &inputText); err != nil {
-			return nil, false, fmt.Errorf("scan trace transaction: %w", err)
-		}
+	for _, row := range rows {
+		index, hashBytes, fromText, valueText, inputText := row.TxIndex, row.TxHash, row.FromAddress, row.Value, row.Input
+		toText := pgtype.Text{String: row.ToAddress, Valid: row.ToPresent}
+
 		if index < 0 || len(hashBytes) != 32 {
 			return nil, false, Permanent(errors.New("trace transaction identity is invalid"))
 		}
@@ -210,24 +230,40 @@ func (processor *TraceRPCProcessor) transactions(ctx context.Context, job Job) (
 			index: uint64(index), hash: hash, from: from, to: to, value: valueText, input: input,
 		})
 	}
-	if err := rows.Err(); err != nil {
-		return nil, false, fmt.Errorf("iterate trace transactions: %w", err)
-	}
-	resolutionRows, err := processor.db.QueryContext(ctx, dbgen.EnrichLegacyTraceExecutionResolutions, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-		StateDiffStage.Name, StateDiffStage.Version,
-	)
+	resolutionRows, err := func() ([]dbgen.EnrichLegacyTraceExecutionResolutionsRow, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return nil, err
+		}
+		if StateDiffStage.Version > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		return dbgen.New(processor.db).EnrichLegacyTraceExecutionResolutions(ctx, dbgen.EnrichLegacyTraceExecutionResolutionsParams{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: job.BlockHash[:], Stage: StateDiffStage.Name, StageVersion: int32(StateDiffStage.Version)})
+	}()
 	if err != nil {
 		return nil, false, fmt.Errorf("query trace execution-code resolutions: %w", err)
 	}
-	defer resolutionRows.Close() //nolint:errcheck
+
 	byTransaction := make(map[common.Hash]map[common.Address]executionCodeResolution)
-	for resolutionRows.Next() {
+	for _, storedRow := range resolutionRows {
 		var transactionHash, contextAddress, executionAddress, codeHash []byte
 		var resolution, evidenceSource string
-		if err := resolutionRows.Scan(
-			&transactionHash, &contextAddress, &executionAddress, &codeHash,
-			&resolution, &evidenceSource,
-		); err != nil {
+		if err := func() error {
+			transactionHash = storedRow.TransactionHash
+			contextAddress = storedRow.ContextAddress
+			executionAddress = storedRow.ExecutionAddress
+			codeHash = storedRow.ExecutionCodeHash
+			if !storedRow.Resolution.Valid {
+				return errors.New("invalid stored query value")
+			}
+			resolution = storedRow.Resolution.String
+			evidenceSource = storedRow.EvidenceSource
+			return nil
+		}(); err != nil {
 			return nil, false, fmt.Errorf("scan trace execution-code resolution: %w", err)
 		}
 		if len(transactionHash) != common.HashLength || len(contextAddress) != common.AddressLength ||
@@ -253,9 +289,7 @@ func (processor *TraceRPCProcessor) transactions(ctx context.Context, job Job) (
 		}
 		byTransaction[transaction][contextAddressValue] = item
 	}
-	if err := resolutionRows.Err(); err != nil {
-		return nil, false, fmt.Errorf("iterate trace execution-code resolutions: %w", err)
-	}
+
 	for index := range result {
 		result[index].executions = byTransaction[result[index].hash]
 	}
@@ -454,7 +488,7 @@ func validateTransactionRoot(trace NormalizedTrace, transaction traceTransaction
 	if err != nil {
 		return fmt.Errorf("canonical transaction value: %w", err)
 	}
-	if rootValue == nil || transactionValue == nil || rootValue != transactionValue {
+	if rootValue == nil || transactionValue == nil || *rootValue != *transactionValue {
 		return errors.New("trace root value does not match canonical transaction")
 	}
 	if !bytes.Equal(root.Input, transaction.input) {
@@ -464,14 +498,14 @@ func validateTransactionRoot(trace NormalizedTrace, transaction traceTransaction
 }
 
 func (processor *TraceRPCProcessor) persist(ctx context.Context, job Job, transactions []traceTransaction, source, outcome string) (StageResult, error) {
-	return runStageTransaction(ctx, processor.db, job, func(ctx context.Context, tx *sql.Tx) (StageResult, error) {
+	return runStageTransaction(ctx, processor.db, job, func(ctx context.Context, tx pgx.Tx) (StageResult, error) {
 		return processor.persistTx(ctx, tx, job, transactions, source, outcome)
 	})
 }
 
 func (processor *TraceRPCProcessor) persistTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	transactions []traceTransaction,
 	source string,
@@ -486,10 +520,30 @@ func (processor *TraceRPCProcessor) persistTx(
 		transactions = nil
 	}
 	if canonical {
-		if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyDeleteTraceLogAttributions, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]); err != nil {
+		if err := func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(job.ChainID); err != nil {
+				return err
+			}
+			var queryValue1 pgtype.Numeric
+			if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+				return err
+			}
+			return dbgen.New(tx).EnrichLegacyDeleteTraceLogAttributions(ctx, queryValue0, queryValue1, job.BlockHash[:])
+		}(); err != nil {
 			return StageResult{}, fmt.Errorf("clear previous trace log attribution: %w", err)
 		}
-		if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyDeleteTraceBlock, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]); err != nil {
+		if err := func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(job.ChainID); err != nil {
+				return err
+			}
+			var queryValue1 pgtype.Numeric
+			if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+				return err
+			}
+			return dbgen.New(tx).EnrichLegacyDeleteTraceBlock(ctx, queryValue0, queryValue1, job.BlockHash[:])
+		}(); err != nil {
 			return StageResult{}, fmt.Errorf("clear previous normalized trace: %w", err)
 		}
 	}
@@ -554,16 +608,18 @@ func successfulCreationTargets(transactions []traceTransaction) int {
 	return targets
 }
 
-func persistTraceFrame(ctx context.Context, tx *sql.Tx, job Job, transaction traceTransaction, frame CallFrame) error {
+func persistTraceFrame(ctx context.Context, tx pgx.Tx, job Job, transaction traceTransaction, frame CallFrame) error {
 	if frame.Index < 0 || frame.ParentIndex >= frame.Index || frame.Type == "" || len(frame.Type) > 32 {
 		return Permanent(errors.New("normalized trace frame identity is invalid"))
 	}
 	tracePath := tracePathKey(frame.TraceAddress)
-	var parentPath any
+	var parentPath *string
 	if len(frame.TraceAddress) > 0 {
-		parentPath = tracePathKey(frame.TraceAddress[:len(frame.TraceAddress)-1])
+		parentPath = new(tracePathKey(frame.TraceAddress[:len(frame.TraceAddress)-1]))
 	}
-	var from, to, created any
+	var from []byte
+	var to []byte
+	var created []byte
 	if frame.From != nil {
 		from = frame.From[:]
 	}
@@ -586,13 +642,14 @@ func persistTraceFrame(ctx context.Context, tx *sql.Tx, job Job, transaction tra
 	if err != nil {
 		return Permanent(fmt.Errorf("trace gas used: %w", err))
 	}
-	var traceError any
+	var traceError *string
 	if frame.RevertReason != "" {
-		traceError = frame.RevertReason
+		traceError = new(frame.RevertReason)
 	} else if frame.Error != "" {
-		traceError = frame.Error
+		traceError = new(frame.Error)
 	}
-	var executionAddress, executionCodeHash any
+	var executionAddress []byte
+	var executionCodeHash []byte
 	if frame.ExecutionAddress != nil {
 		executionAddress = frame.ExecutionAddress[:]
 	}
@@ -602,12 +659,41 @@ func persistTraceFrame(ctx context.Context, tx *sql.Tx, job Job, transaction tra
 	if frame.ExecutionResolution == "" {
 		frame.ExecutionResolution = "unavailable"
 	}
-	_, err = tx.ExecContext(ctx, dbgen.EnrichLegacyInsertTraceFrame, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-		transaction.hash[:], transaction.index, tracePath, parentPath, len(frame.TraceAddress),
-		frame.Type, from, to, created, value, gas, gasUsed, nullableBytes(frame.Input),
-		nullableBytes(frame.Output), traceError, frame.DirectReverted, frame.Reverted,
-		executionAddress, executionCodeHash, frame.ExecutionResolution,
-	)
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		if transaction.index > 9223372036854775807 {
+			return errors.New("invalid stored query value")
+		}
+		if len(frame.TraceAddress) < -2147483648 || len(frame.TraceAddress) > 2147483647 {
+			return errors.New("invalid stored query value")
+		}
+		var queryValue4 pgtype.Numeric
+		if value != nil {
+			if err := queryValue4.Scan(*value); err != nil {
+				return err
+			}
+		}
+		var queryValue5 pgtype.Numeric
+		if gas != nil {
+			if err := queryValue5.Scan(*gas); err != nil {
+				return err
+			}
+		}
+		var queryValue6 pgtype.Numeric
+		if gasUsed != nil {
+			if err := queryValue6.Scan(*gasUsed); err != nil {
+				return err
+			}
+		}
+		return dbgen.New(tx).EnrichLegacyInsertTraceFrame(ctx, dbgen.EnrichLegacyInsertTraceFrameParams{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: job.BlockHash[:], TransactionHash: transaction.hash[:], TransactionIndex: int64(transaction.index), TracePath: tracePath, ParentPath: parentPath, Depth: int32(len(frame.TraceAddress)), CallType: frame.Type, FromAddress: from, ToAddress: to, CreatedAddress: created, Value: queryValue4, Gas: queryValue5, GasUsed: queryValue6, Input: nullableBytes(frame.Input), Output: nullableBytes(frame.Output), Error: traceError, DirectReverted: frame.DirectReverted, Reverted: frame.Reverted, ExecutionAddress: executionAddress, ExecutionCodeHash: executionCodeHash, ExecutionResolution: frame.ExecutionResolution})
+	}()
 	if err != nil {
 		return fmt.Errorf("persist normalized trace frame: %w", err)
 	}
@@ -623,21 +709,32 @@ type traceLogAttribution struct {
 
 func loadTraceLogAttributions(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	transaction traceTransaction,
 ) ([]traceLogAttribution, int, error) {
-	rows, err := tx.QueryContext(ctx, dbgen.EnrichLegacyTraceReceiptLogs, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:], transaction.hash[:])
+	rows, err := func() ([]dbgen.EnrichLegacyTraceReceiptLogsRow, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return nil, err
+		}
+		return dbgen.New(tx).EnrichLegacyTraceReceiptLogs(ctx, dbgen.EnrichLegacyTraceReceiptLogsParams{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: job.BlockHash[:], TxHash: transaction.hash[:]})
+	}()
 	if err != nil {
 		return nil, 0, fmt.Errorf("query receipt logs for trace attribution: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	expected := make(map[uint64]types.Log)
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var index int64
 		var raw []byte
-		if err := rows.Scan(&index, &raw); err != nil {
-			return nil, 0, fmt.Errorf("scan receipt log for trace attribution: %w", err)
+		{
+			index = storedRow.LogIndex
+			raw = storedRow.Raw
 		}
 		if index < 0 {
 			return nil, 0, Permanent(errors.New("stored receipt log index is negative"))
@@ -652,9 +749,7 @@ func loadTraceLogAttributions(
 		}
 		expected[uint64(index)] = decoded
 	}
-	if err := rows.Err(); err != nil {
-		return nil, 0, fmt.Errorf("iterate receipt logs for trace attribution: %w", err)
-	}
+
 	captured := 0
 	for _, frame := range transaction.trace.Frames {
 		captured += len(frame.Logs)
@@ -716,21 +811,31 @@ func loadTraceLogAttributions(
 
 func persistTraceLogAttribution(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	transaction traceTransaction,
 	attribution traceLogAttribution,
 ) error {
-	if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyInsertTraceLogAttribution, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-		transaction.hash[:], attribution.logIndex, attribution.tracePath,
-		attribution.callType, attribution.executionAddress[:],
-	); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		if attribution.logIndex > 9223372036854775807 {
+			return errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).EnrichLegacyInsertTraceLogAttribution(ctx, dbgen.EnrichLegacyInsertTraceLogAttributionParams{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: job.BlockHash[:], TransactionHash: transaction.hash[:], LogIndex: int64(attribution.logIndex), TracePath: attribution.tracePath, CallType: attribution.callType, ExecutionAddress: attribution.executionAddress[:]})
+	}(); err != nil {
 		return fmt.Errorf("persist trace log attribution: %w", err)
 	}
 	return nil
 }
 
-func traceDecimal(value string) (any, error) {
+func traceDecimal(value string) (*string, error) {
 	if value == "" {
 		return nil, nil
 	}
@@ -738,10 +843,10 @@ func traceDecimal(value string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return quantity.String(), nil
+	return new(quantity.String()), nil
 }
 
-func nullableBytes(value []byte) any {
+func nullableBytes(value []byte) []byte {
 	if value == nil {
 		return nil
 	}

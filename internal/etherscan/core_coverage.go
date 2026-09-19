@@ -2,10 +2,14 @@ package etherscan
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/islishude/etherview/internal/db/gen"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+
+	dbgen "github.com/islishude/etherview/internal/db/gen"
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
 )
 
 // ErrCoreUnavailable means the requested canonical block interval has not
@@ -13,8 +17,8 @@ import (
 // that incomplete history into either a partial result or a no-records result.
 var ErrCoreUnavailable = errors.New("canonical core coverage unavailable")
 
-func (b *PostgresBackend) beginCanonicalSnapshot(ctx context.Context) (*sql.Tx, error) {
-	tx, err := b.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+func (b *PostgresBackend) beginCanonicalSnapshot(ctx context.Context) (pgx.Tx, error) {
+	tx, err := b.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return nil, fmt.Errorf("begin canonical read snapshot: %w", err)
 	}
@@ -35,7 +39,7 @@ func (b *PostgresBackend) requireCanonicalCoreRange(
 	if err != nil {
 		return "", err
 	}
-	var endArgument any
+	var endArgument *string
 	if end != nil {
 		endNumber, parseErr := storedUint256(*end, "core range end")
 		if parseErr != nil {
@@ -44,13 +48,49 @@ func (b *PostgresBackend) requireCanonicalCoreRange(
 		if endNumber.Cmp(startNumber) < 0 {
 			return "", errors.New("canonical core range end precedes its start")
 		}
-		endArgument = *end
+		endArgument = new(*end)
 	}
 
 	var tip string
-	var configuredStart, coveredStart, coveredEnd sql.NullString
-	err = queryer.QueryRowContext(ctx, dbgen.EtherscanCanonicalCoreRange, b.chain, start, endArgument).Scan(&tip, &configuredStart, &coveredStart, &coveredEnd)
-	if errors.Is(err, sql.ErrNoRows) {
+	var configuredStart, coveredStart, coveredEnd pgtype.Text
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(b.chain); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(start); err != nil {
+			return err
+		}
+		var queryValue2 pgtype.Numeric
+		if endArgument != nil {
+			if err := queryValue2.Scan(*endArgument); err != nil {
+				return err
+			}
+		}
+		queryRow, err := dbgen.New(queryer).EtherscanCanonicalCoreRange(ctx, queryValue0, queryValue1, queryValue2)
+		if err != nil {
+			return err
+		}
+		tip = queryRow.RequestedNumber
+		resultValue1, err := dbaccess.NumericText(queryRow.ConfiguredStart)
+		if err != nil {
+			return err
+		}
+		configuredStart = resultValue1
+		resultValue3, err := dbaccess.NumericText(queryRow.RangeStart)
+		if err != nil {
+			return err
+		}
+		coveredStart = resultValue3
+		resultValue5, err := dbaccess.NumericText(queryRow.RangeEnd)
+		if err != nil {
+			return err
+		}
+		coveredEnd = resultValue5
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrCoreUnavailable
 	}
 	if err != nil {

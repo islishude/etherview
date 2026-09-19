@@ -1,6 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { eventWatermark, observeEvent } from "./chainEvents";
 
 import { parseHomeSnapshot, useHomeSnapshot } from "./homeStream";
 
@@ -37,7 +39,7 @@ describe("home snapshot query", () => {
     );
     expect(screen.getByText("pending")).toBeVisible();
     expect(await screen.findByText("10:10,9")).toBeVisible();
-    expect(String(fetcher.mock.calls[0]?.[0])).toBe("/api/v1/home");
+    expect(String(fetcher.mock.calls[0]?.[0])).toBe("/api/v1/home?min_event_id=0");
 
     await act(async () => {
       await queryClient.invalidateQueries({ queryKey: ["home"] });
@@ -45,6 +47,35 @@ describe("home snapshot query", () => {
     expect(await screen.findByText("11:11")).toBeVisible();
     expect(screen.queryByText(/10,9/)).not.toBeInTheDocument();
     expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(String(fetcher.mock.calls[1]?.[0])).toBe("/api/v1/home?min_event_id=10");
+    expect(eventWatermark(queryClient)).toBe("11");
+    expect(eventWatermark(new QueryClient())).toBe("0");
+  });
+
+  it("discards a late snapshot below the event watermark and retries with the new floor", async () => {
+    let finishOld!: (response: Response) => void;
+    const first = new Promise<Response>((resolve) => {
+      finishOld = resolve;
+    });
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockReturnValueOnce(first)
+      .mockResolvedValueOnce(Response.json(snapshot("11", ["11"])));
+    vi.stubGlobal("fetch", fetcher);
+    const client = new QueryClient();
+    render(
+      <QueryClientProvider client={client}>
+        <Probe />
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      observeEvent(client, "11");
+      finishOld(Response.json(snapshot("10", ["10"])));
+    });
+    expect(screen.queryByText("10:10")).not.toBeInTheDocument();
+    expect(await screen.findByText("11:11")).toBeVisible();
+    expect(String(fetcher.mock.calls[1]?.[0])).toBe("/api/v1/home?min_event_id=11");
   });
 
   it("shows an error when the snapshot is unavailable", async () => {
@@ -181,6 +212,7 @@ function snapshot(latest: string, blockNumbers: string[]) {
     user_operations: "unavailable",
   };
   return {
+    event_id: latest,
     data: {
       status: {
         chain_id: "1",

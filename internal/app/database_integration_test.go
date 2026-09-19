@@ -4,12 +4,13 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"net/url"
 	"os"
 	"testing"
 	"time"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/config"
@@ -32,19 +33,19 @@ func TestDatabasePoolsApplyWriterAndReaderSessionBoundaries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = writer.Close() })
+	t.Cleanup(func() { writer.Close() })
 	reader, err := openReadDatabase(context.Background(), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = reader.Close() })
+	t.Cleanup(func() { reader.Close() })
 
 	assertDatabaseSessionSetting(t, writer, "application_name", "etherview-writer")
 	assertDatabaseSessionSetting(t, writer, "default_transaction_read_only", "off")
 	assertDatabaseSessionSetting(t, reader, "application_name", "etherview-reader")
 	assertDatabaseSessionSetting(t, reader, "default_transaction_read_only", "on")
 
-	_, err = reader.ExecContext(
+	_, err = reader.Exec(
 		context.Background(),
 		`UPDATE etherview_schema_migrations SET version = version WHERE false`,
 	)
@@ -68,12 +69,12 @@ func TestReadDatabaseStartupValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = writer.Close() })
+	t.Cleanup(func() { writer.Close() })
 	reader, err := openReadDatabase(context.Background(), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = reader.Close() })
+	t.Cleanup(func() { reader.Close() })
 
 	if err := checkReadDatabaseSchema(context.Background(), reader); err != nil {
 		t.Fatalf("matching reader schema: %v", err)
@@ -101,16 +102,16 @@ func TestReadDatabaseStartupValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = incompatibleReader.Close() })
+	t.Cleanup(func() { incompatibleReader.Close() })
 	if err := checkReadDatabaseSchema(context.Background(), incompatibleReader); !errors.Is(err, store.ErrSchemaIncompatible) {
 		t.Fatalf("incompatible reader schema error=%v, want ErrSchemaIncompatible", err)
 	}
 }
 
-func assertDatabaseSessionSetting(t *testing.T, database *sql.DB, name, want string) {
+func assertDatabaseSessionSetting(t *testing.T, database *pgxpool.Pool, name, want string) {
 	t.Helper()
 	var got string
-	if err := database.QueryRowContext(
+	if err := database.QueryRow(
 		context.Background(),
 		`SELECT current_setting($1)`,
 		name,
@@ -148,4 +149,35 @@ func databaseURLWithSearchPath(t *testing.T, rawURL, searchPath string) string {
 	query.Set("search_path", searchPath)
 	parsed.RawQuery = query.Encode()
 	return parsed.String()
+}
+
+func TestNativeDatabaseCloseDoesNotExtendExpiredShutdownBudget(t *testing.T) {
+	t.Parallel()
+	databaseURL := os.Getenv("ETHERVIEW_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("ETHERVIEW_TEST_DATABASE_URL is not configured")
+	}
+	database, err := openDatabase(t.Context(), config.DatabaseConfig{URL: databaseURL, MaxConnections: 1, ConnectTimeout: time.Second, StatementTimeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	borrowed, err := database.Acquire(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer borrowed.Release()
+	deadline, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	err = closeDatabasePools(deadline, database)
+	if !errors.Is(err, errDatabaseCloseTimeout) || time.Since(started) > time.Second {
+		t.Fatalf("native pool extended shutdown: error=%v elapsed=%s", err, time.Since(started))
+	}
+	probe, stop := context.WithTimeout(t.Context(), time.Second)
+	defer stop()
+	if conn, err := database.Acquire(probe); err == nil {
+		conn.Release()
+		t.Fatal("closing pool accepted a new borrower")
+	}
 }

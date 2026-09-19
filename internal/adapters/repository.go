@@ -5,7 +5,6 @@ package adapters
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"math/big"
@@ -45,12 +44,12 @@ type observation struct {
 }
 
 type repository struct {
-	db      *sql.DB
+	db      dbaccess.Database
 	chain   uint64
 	chainID pgtype.Numeric
 }
 
-func newRepository(db *sql.DB, chainID uint64) (repository, error) {
+func newRepository(db dbaccess.Database, chainID uint64) (repository, error) {
 	if db == nil {
 		return repository{}, errors.New("adapter repository database is nil")
 	}

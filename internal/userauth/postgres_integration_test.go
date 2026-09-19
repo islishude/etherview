@@ -7,7 +7,6 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/rand"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -18,12 +17,14 @@ import (
 	"testing"
 	"time"
 
+	testpgx "github.com/islishude/etherview/internal/testpgx"
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	apiauth "github.com/islishude/etherview/internal/auth"
 	"github.com/islishude/etherview/internal/store"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/signinwithethereum/siwe-go"
 )
 
@@ -96,7 +97,7 @@ func TestPostgresConcurrentChallengeConsumptionAndImmediateRevocation(t *testing
 	assertUserAuthCount(t, db, "users", 1)
 	assertUserAuthCount(t, db, "user_sessions", 1)
 	var consumed bool
-	if err := db.QueryRowContext(t.Context(),
+	if err := db.QueryRow(t.Context(),
 		`SELECT consumed_at IS NOT NULL FROM auth_challenges WHERE id = $1::uuid`,
 		challenge.ID,
 	).Scan(&consumed); err != nil || !consumed {
@@ -297,7 +298,7 @@ func TestPostgresConcurrentFirstLoginsShareOneUser(t *testing.T) {
 
 func TestPostgresCleanupIsChainScoped(t *testing.T) {
 	db := newUserAuthPostgres(t)
-	if _, err := db.ExecContext(
+	if _, err := db.Exec(
 		t.Context(),
 		`INSERT INTO chains (chain_id) VALUES (84532)`,
 	); err != nil {
@@ -403,7 +404,7 @@ func signUserAuthChallenge(
 	return hexutil.Encode(signature)
 }
 
-func newUserAuthPostgres(t *testing.T) *sql.DB {
+func newUserAuthPostgres(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	rawURL := strings.TrimSpace(os.Getenv(userAuthTestDatabaseEnvironment))
 	if rawURL == "" {
@@ -415,13 +416,11 @@ func newUserAuthPostgres(t *testing.T) *sql.DB {
 	}
 	adminConfig.RuntimeParams = cloneUserAuthRuntimeParams(adminConfig.RuntimeParams)
 	adminConfig.RuntimeParams["application_name"] = "etherview-userauth-admin"
-	adminDB := stdlib.OpenDB(*adminConfig)
-	adminDB.SetMaxOpenConns(2)
-	adminDB.SetMaxIdleConns(1)
+	adminDB := testpgx.Pool(t, adminConfig, int32(2))
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
-	if err := adminDB.PingContext(ctx); err != nil {
-		_ = adminDB.Close()
+	if err := adminDB.Ping(ctx); err != nil {
+		adminDB.Close()
 		t.Fatalf("connect to %s: %v", userAuthTestDatabaseEnvironment, err)
 	}
 	suffix := make([]byte, 8)
@@ -429,32 +428,30 @@ func newUserAuthPostgres(t *testing.T) *sql.DB {
 		t.Fatal(err)
 	}
 	schema := "etherview_userauth_it_" + hex.EncodeToString(suffix)
-	if _, err := adminDB.ExecContext(ctx, `CREATE SCHEMA `+quoteUserAuthIdentifier(schema)); err != nil {
+	if _, err := adminDB.Exec(ctx, `CREATE SCHEMA `+quoteUserAuthIdentifier(schema)); err != nil {
 		t.Fatalf("create schema: %v", err)
 	}
 	testConfig := adminConfig.Copy()
 	testConfig.RuntimeParams = cloneUserAuthRuntimeParams(testConfig.RuntimeParams)
 	testConfig.RuntimeParams["application_name"] = "etherview-userauth-test"
 	testConfig.RuntimeParams["search_path"] = schema
-	db := stdlib.OpenDB(*testConfig)
-	db.SetMaxOpenConns(8)
-	db.SetMaxIdleConns(4)
-	if err := db.PingContext(ctx); err != nil {
+	db := testpgx.Pool(t, testConfig, int32(8))
+	if err := db.Ping(ctx); err != nil {
 		t.Fatalf("connect isolated schema: %v", err)
 	}
 	t.Cleanup(func() {
-		_ = db.Close()
+		db.Close()
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cleanupCancel()
-		_, _ = adminDB.ExecContext(
+		_, _ = adminDB.Exec(
 			cleanupCtx, `DROP SCHEMA `+quoteUserAuthIdentifier(schema)+` CASCADE`,
 		)
-		_ = adminDB.Close()
+		adminDB.Close()
 	})
 	if err := store.RunMigrations(ctx, db); err != nil {
 		t.Fatalf("run migrations: %v", err)
 	}
-	if _, err := db.ExecContext(ctx,
+	if _, err := db.Exec(ctx,
 		`INSERT INTO chains (chain_id) VALUES (11155111)`,
 	); err != nil {
 		t.Fatalf("insert chain: %v", err)
@@ -472,11 +469,11 @@ func quoteUserAuthIdentifier(identifier string) string {
 	return `"` + strings.ReplaceAll(identifier, `"`, `""`) + `"`
 }
 
-func assertUserAuthCount(t *testing.T, db *sql.DB, table string, want int) {
+func assertUserAuthCount(t *testing.T, db *pgxpool.Pool, table string, want int) {
 	t.Helper()
 	var count int
 	query := fmt.Sprintf(`SELECT count(*) FROM %s`, quoteUserAuthIdentifier(table))
-	if err := db.QueryRowContext(t.Context(), query).Scan(&count); err != nil {
+	if err := db.QueryRow(t.Context(), query).Scan(&count); err != nil {
 		t.Fatalf("count %s: %v", table, err)
 	}
 	if count != want {

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"errors"
+
 	"github.com/islishude/etherview/internal/verify"
 )
 

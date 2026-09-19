@@ -1,13 +1,14 @@
 package adminstore
 
 import (
-	"database/sql"
 	"strings"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestRepairRequestListLimitIsBoundedBeforeDatabaseUse(t *testing.T) {
-	repository := &Repository{db: &sql.DB{}, chainID: "1"}
+	repository := &Repository{db: &pgxpool.Pool{}, chainID: "1"}
 	for _, limit := range []int{0, -1, 1001} {
 		if _, err := repository.RepairRequests(t.Context(), limit); err == nil || !strings.Contains(err.Error(), "between 1 and 1000") {
 			t.Fatalf("limit %d error=%v", limit, err)

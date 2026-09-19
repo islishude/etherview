@@ -3,13 +3,15 @@ package metadata
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strconv"
 
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
 var ErrExactNFTSourceConflict = errors.New("exact NFT metadata source observation conflicts with persisted block fact")
@@ -22,10 +24,23 @@ func (repository *PostgresRepository) NextNFTSource(ctx context.Context) (NFTSou
 		addressBytes, hashBytes        []byte
 		tokenID, blockNumber, standard string
 	)
-	err := repository.db.QueryRowContext(ctx, dbgen.MetadataNextNFTSource, repository.chainID).Scan(
-		&addressBytes, &tokenID, &blockNumber, &hashBytes, &standard,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(repository.chainID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(repository.db).MetadataNextNFTSource(ctx, queryValue0)
+		if err != nil {
+			return err
+		}
+		addressBytes = queryRow.TokenAddress
+		tokenID = queryRow.PendingTokenID
+		blockNumber = queryRow.PendingBlockNumber
+		hashBytes = queryRow.BlockHash
+		standard = queryRow.Standard
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return NFTSourceCandidate{}, false, nil
 	}
 	if err != nil {
@@ -64,7 +79,22 @@ func (repository *PostgresRepository) NFTSourceCanonical(ctx context.Context, ca
 		return false, errors.New("NFT metadata source chain differs from repository chain")
 	}
 	var canonical bool
-	err := repository.db.QueryRowContext(ctx, dbgen.MetadataCanonicalObservation, candidate.ChainID, strconv.FormatUint(candidate.BlockNumber, 10), mustHashBytes(candidate.BlockHash)).Scan(&canonical)
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(candidate.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(candidate.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(repository.db).MetadataCanonicalObservation(ctx, queryValue0, queryValue1, mustHashBytes(candidate.BlockHash))
+		if err != nil {
+			return err
+		}
+		canonical = queryRow
+		return nil
+	}()
 	if err != nil {
 		return false, fmt.Errorf("check NFT metadata source canonicality: %w", err)
 	}
@@ -83,24 +113,69 @@ func (repository *PostgresRepository) RecordNFTSource(ctx context.Context, obser
 	}
 	address := observation.Candidate.Token.Bytes()
 	hash := mustHashBytes(observation.Candidate.BlockHash)
-	var inserted int
-	err := repository.db.QueryRowContext(ctx, dbgen.MetadataWriteInsertNFTSource, observation.Candidate.ChainID, address, observation.Candidate.TokenID,
-		strconv.FormatUint(observation.Candidate.BlockNumber, 10), hash,
-		observation.Candidate.Standard, observation.State, nullableString(observation.SourceURI),
-		nullableString(observation.ErrorCode),
-	).Scan(&inserted)
+
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(observation.Candidate.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(observation.Candidate.TokenID); err != nil {
+			return err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(strconv.FormatUint(observation.Candidate.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(repository.db).MetadataWriteInsertNFTSource(ctx, dbgen.MetadataWriteInsertNFTSourceParams{ChainID: queryValue0, TokenAddress: address, TokenID: queryValue1, BlockNumber: queryValue2, BlockHash: hash, Standard: string(observation.Candidate.Standard), State: string(observation.State), SourceUri: nullableString(observation.SourceURI), ErrorCode: nullableString(observation.ErrorCode)})
+		if err != nil {
+			return err
+		}
+		_ = int(queryRow)
+		return nil
+	}()
 	if err == nil {
 		return nil
 	}
-	if !errors.Is(err, sql.ErrNoRows) {
+	if !errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("insert NFT metadata source observation: %w", err)
 	}
 	var (
 		storedAddress, storedHash                         []byte
 		storedTokenID, storedBlock, storedStandard, state string
-		storedURI, storedCode                             sql.NullString
+		storedURI, storedCode                             pgtype.Text
 	)
-	err = repository.db.QueryRowContext(ctx, dbgen.MetadataExistingNFTSource, observation.Candidate.ChainID, address, observation.Candidate.TokenID, hash).Scan(&storedAddress, &storedTokenID, &storedBlock, &storedHash, &storedStandard, &state, &storedURI, &storedCode)
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(observation.Candidate.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(observation.Candidate.TokenID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(repository.db).MetadataExistingNFTSource(ctx, dbgen.MetadataExistingNFTSourceParams{ChainID: queryValue0, TokenAddress: address, TokenID: queryValue1, BlockHash: hash})
+		if err != nil {
+			return err
+		}
+		storedAddress = queryRow.TokenAddress
+		storedTokenID = queryRow.TokenID
+		storedBlock = queryRow.BlockNumber
+		storedHash = queryRow.BlockHash
+		storedStandard = queryRow.Standard
+		state = queryRow.State
+		var resultValue6 pgtype.Text
+		if queryRow.SourceUri != nil {
+			resultValue6 = pgtype.Text{String: *queryRow.SourceUri, Valid: true}
+		}
+		storedURI = resultValue6
+		var resultValue8 pgtype.Text
+		if queryRow.ErrorCode != nil {
+			resultValue8 = pgtype.Text{String: *queryRow.ErrorCode, Valid: true}
+		}
+		storedCode = resultValue8
+		return nil
+	}()
 	if err != nil {
 		return fmt.Errorf("read existing NFT metadata source observation: %w", err)
 	}
@@ -114,9 +189,9 @@ func (repository *PostgresRepository) RecordNFTSource(ctx context.Context, obser
 	return nil
 }
 
-func nullableString(value string) any {
+func nullableString(value string) *string {
 	if value == "" {
 		return nil
 	}
-	return value
+	return new(value)
 }

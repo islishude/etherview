@@ -1,19 +1,19 @@
--- name: MempoolReplacementPredecessorStatus :many
+-- name: MempoolReplacementPredecessorStatus :one
 SELECT state, endpoint_name, latest_snapshot_id, last_snapshot_write_id, last_attempt_at
 FROM mempool_status
-WHERE chain_id = $1::numeric
+WHERE chain_id = sqlc.arg('chain_id')::numeric
 FOR UPDATE;
 
--- name: MempoolReplacementPredecessorSnapshot :many
+-- name: MempoolReplacementPredecessorSnapshot :one
 SELECT endpoint_name, observed_at, expires_at
 FROM mempool_snapshots
-WHERE chain_id = $1::numeric AND id = $2;
+WHERE chain_id = sqlc.arg('chain_id')::numeric AND id = sqlc.arg('i_d');
 
--- name: MempoolLookupPending :many
+-- name: MempoolLookupPending :one
 SELECT pending.tx_hash, pending.from_address, pending.to_address,
        pending.nonce::text, pending.value::text, pending.gas::text,
-       pending.gas_price::text, pending.max_fee_per_gas::text,
-       pending.max_priority_fee_per_gas::text, pending.tx_type::text,
+       pending.gas_price, pending.max_fee_per_gas,
+       pending.max_priority_fee_per_gas, pending.tx_type,
        pending.input, pending.raw, pending.first_seen_at,
        pending.last_seen_at, pending.expires_at,
        predecessor.replaced_hash
@@ -27,20 +27,20 @@ LEFT JOIN LATERAL (
       ON evidence.chain_id = replacement.chain_id AND evidence.id = replacement.snapshot_id
     WHERE replacement.chain_id = pending.chain_id
       AND replacement.replacement_hash = pending.tx_hash
-      AND evidence.observed_at <= $4
-      AND evidence.expires_at > $5
+      AND evidence.observed_at <= sqlc.arg('observed_at')
+      AND evidence.expires_at > sqlc.arg('expires_at')
     ORDER BY evidence.observed_at DESC, evidence.id DESC
     LIMIT 1
 ) AS predecessor ON TRUE
-WHERE member.chain_id = $1::numeric
-  AND member.snapshot_id = $2
-  AND member.tx_hash = $3;
+WHERE member.chain_id = sqlc.arg('chain_id')::numeric
+  AND member.snapshot_id = sqlc.arg('snapshot_id')
+  AND member.tx_hash = sqlc.arg('tx_hash');
 
--- name: MempoolLookupReplaced :many
+-- name: MempoolLookupReplaced :one
 SELECT pending.tx_hash, pending.from_address, pending.to_address,
        pending.nonce::text, pending.value::text, pending.gas::text,
-       pending.gas_price::text, pending.max_fee_per_gas::text,
-       pending.max_priority_fee_per_gas::text, pending.tx_type::text,
+       pending.gas_price, pending.max_fee_per_gas,
+       pending.max_priority_fee_per_gas, pending.tx_type,
        pending.input, pending.raw, pending.first_seen_at,
        pending.last_seen_at, pending.expires_at,
        predecessor.replaced_hash,
@@ -59,31 +59,31 @@ LEFT JOIN LATERAL (
     WHERE earlier.chain_id = pending.chain_id
       AND earlier.replacement_hash = pending.tx_hash
       AND earlier_evidence.observed_at <= evidence.observed_at
-      AND earlier_evidence.expires_at > $3
+      AND earlier_evidence.expires_at > sqlc.arg('expires_at')
     ORDER BY earlier_evidence.observed_at DESC, earlier_evidence.id DESC
     LIMIT 1
 ) AS predecessor ON TRUE
-WHERE replacement.chain_id = $1::numeric
-  AND replacement.replaced_hash = $2
-  AND evidence.expires_at > $3
+WHERE replacement.chain_id = sqlc.arg('chain_id')::numeric
+  AND replacement.replaced_hash = sqlc.arg('replaced_hash')
+  AND evidence.expires_at > sqlc.arg('expires_at')
 ORDER BY evidence.observed_at DESC, evidence.id DESC
 LIMIT 1;
 
--- name: MempoolReadStatus :many
+-- name: MempoolReadStatus :one
 SELECT state, latest_snapshot_id, error_code, last_attempt_at
 FROM mempool_status
-WHERE chain_id = $1::numeric;
+WHERE chain_id = sqlc.arg('chain_id')::numeric;
 
--- name: MempoolReadSnapshot :many
+-- name: MempoolReadSnapshot :one
 SELECT id, endpoint_name, observed_at, expires_at, transaction_count
 FROM mempool_snapshots
-WHERE chain_id = $1::numeric AND id = $2;
+WHERE chain_id = sqlc.arg('chain_id')::numeric AND id = sqlc.arg('i_d');
 
 -- name: MempoolListPendingFirst :many
 SELECT pending.tx_hash, pending.from_address, pending.to_address,
        pending.nonce::text, pending.value::text, pending.gas::text,
-       pending.gas_price::text, pending.max_fee_per_gas::text,
-       pending.max_priority_fee_per_gas::text, pending.tx_type::text,
+       pending.gas_price, pending.max_fee_per_gas,
+       pending.max_priority_fee_per_gas, pending.tx_type,
        pending.input, pending.raw, pending.first_seen_at,
        pending.last_seen_at, pending.expires_at,
        predecessor.replaced_hash
@@ -97,20 +97,20 @@ LEFT JOIN LATERAL (
       ON evidence.chain_id = replacement.chain_id AND evidence.id = replacement.snapshot_id
     WHERE replacement.chain_id = pending.chain_id
       AND replacement.replacement_hash = pending.tx_hash
-      AND evidence.observed_at <= $3
-      AND evidence.expires_at > $4
+      AND evidence.observed_at <= sqlc.arg('observed_at')
+      AND evidence.expires_at > sqlc.arg('expires_at')
     ORDER BY evidence.observed_at DESC, evidence.id DESC
     LIMIT 1
 ) AS predecessor ON TRUE
-WHERE member.chain_id = $1::numeric AND member.snapshot_id = $2
+WHERE member.chain_id = sqlc.arg('chain_id')::numeric AND member.snapshot_id = sqlc.arg('snapshot_id')
 ORDER BY pending.first_seen_at DESC, pending.tx_hash DESC
-LIMIT $5;
+LIMIT sqlc.arg('limit');
 
 -- name: MempoolListPendingAfter :many
 SELECT pending.tx_hash, pending.from_address, pending.to_address,
        pending.nonce::text, pending.value::text, pending.gas::text,
-       pending.gas_price::text, pending.max_fee_per_gas::text,
-       pending.max_priority_fee_per_gas::text, pending.tx_type::text,
+       pending.gas_price, pending.max_fee_per_gas,
+       pending.max_priority_fee_per_gas, pending.tx_type,
        pending.input, pending.raw, pending.first_seen_at,
        pending.last_seen_at, pending.expires_at,
        predecessor.replaced_hash
@@ -124,12 +124,12 @@ LEFT JOIN LATERAL (
       ON evidence.chain_id = replacement.chain_id AND evidence.id = replacement.snapshot_id
     WHERE replacement.chain_id = pending.chain_id
       AND replacement.replacement_hash = pending.tx_hash
-      AND evidence.observed_at <= $3
-      AND evidence.expires_at > $4
+      AND evidence.observed_at <= sqlc.arg('observed_at')
+      AND evidence.expires_at > sqlc.arg('expires_at')
     ORDER BY evidence.observed_at DESC, evidence.id DESC
     LIMIT 1
 ) AS predecessor ON TRUE
-WHERE member.chain_id = $1::numeric AND member.snapshot_id = $2
-  AND (pending.first_seen_at, pending.tx_hash) < ($5, $6)
+WHERE member.chain_id = sqlc.arg('chain_id')::numeric AND member.snapshot_id = sqlc.arg('snapshot_id')
+  AND (pending.first_seen_at, pending.tx_hash) < (sqlc.arg('cursor_first_seen_at')::timestamptz, sqlc.arg('cursor_tx_hash')::bytea)
 ORDER BY pending.first_seen_at DESC, pending.tx_hash DESC
-LIMIT $7;
+LIMIT sqlc.arg('limit');

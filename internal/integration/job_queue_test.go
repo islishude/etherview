@@ -4,10 +4,12 @@ package integration_test
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"testing"
 	"time"
+
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/store"
@@ -100,16 +102,16 @@ func TestPostgresDurableJobLifecycleAndTerminalOnlyRequeue(t *testing.T) {
 type jobState struct {
 	Status     string
 	Attempts   int
-	LeasedBy   sql.NullString
-	LeaseToken sql.NullString
-	Result     sql.NullString
-	LastError  sql.NullString
+	LeasedBy   pgtype.Text
+	LeaseToken pgtype.Text
+	Result     pgtype.Text
+	LastError  pgtype.Text
 }
 
-func readJobState(t *testing.T, ctx context.Context, db *sql.DB, id string) jobState {
+func readJobState(t *testing.T, ctx context.Context, db *pgxpool.Pool, id string) jobState {
 	t.Helper()
 	var state jobState
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT status, attempts, leased_by, lease_token, result::text, last_error
 		FROM durable_jobs
 		WHERE id = $1`, id).Scan(
@@ -120,7 +122,7 @@ func readJobState(t *testing.T, ctx context.Context, db *sql.DB, id string) jobS
 	return state
 }
 
-func assertJobState(t *testing.T, ctx context.Context, db *sql.DB, id string, want jobState) {
+func assertJobState(t *testing.T, ctx context.Context, db *pgxpool.Pool, id string, want jobState) {
 	t.Helper()
 	got := readJobState(t, ctx, db, id)
 	if got.Status != want.Status || got.Attempts != want.Attempts || got.LeasedBy.Valid || got.LeaseToken.Valid || got.Result.Valid || got.LastError.Valid {

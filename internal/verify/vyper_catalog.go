@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -13,6 +12,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	pgx "github.com/jackc/pgx/v5"
 
 	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"golang.org/x/mod/semver"
@@ -148,8 +149,19 @@ func (catalog *CompilerCatalog) validateVyperArtifact(artifact VyperRuntimeArtif
 func (catalog *CompilerCatalog) vyperArtifact(ctx context.Context, generation int64, version string) (CatalogEntry, VyperRuntimeArtifact, error) {
 	var entry CatalogEntry
 	var digest, encoded []byte
-	err := catalog.db.QueryRowContext(ctx, dbgen.VerifyVyperRuntime, generation, version).Scan(&entry.GenerationID, &entry.Version, &digest, &encoded)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+
+		queryRow, err := dbgen.New(catalog.db).VerifyVyperRuntime(ctx, generation, version)
+		if err != nil {
+			return err
+		}
+		entry.GenerationID = queryRow.GenerationID
+		entry.Version = queryRow.Version
+		digest = queryRow.ArtifactSha256
+		encoded = queryRow.VyperRuntimes
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return entry, VyperRuntimeArtifact{}, ErrCompilerVersionUnavailable
 	}
 	if err != nil {

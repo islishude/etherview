@@ -5,11 +5,15 @@ package integration_test
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
+
+	pgconn "github.com/jackc/pgx/v5/pgconn"
+
+	pgx "github.com/jackc/pgx/v5"
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -74,7 +78,7 @@ func TestOpenZeppelinArtifactPublicationRequiresImmutableResultAttestation(t *te
 		  AND proxy_runtime_immutable_address IS NULL
 		  AND proxy_source_manifest_sha256 IS NULL`, 1, job.ID)
 	manifest := sha256.Sum256([]byte("forged-manifest"))
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO verified_contract_proxy_artifacts (
 			chain_id, address, code_hash, valid_from_block,
 			verification_job_id, request_digest, artifact_kind,
@@ -319,7 +323,7 @@ func TestOpenZeppelinArtifactPublicationCanFollowOrdinaryVerification(t *testing
 
 	// Each verification job owns an independent search source identity. Removing
 	// the ordinary publication must not retire the exact artifact's document.
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		DELETE FROM verified_contracts
 		WHERE verification_job_id = $1::uuid`, ordinary.ID); err != nil {
 		t.Fatalf("delete ordinary publication: %v", err)
@@ -353,7 +357,7 @@ type proxyArtifactAttestationIdentity struct {
 
 func insertProxyArtifactAttestationSource(
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block store.BlockRef,
 	generation int64,
 	compilerDigest [sha256.Size]byte,
@@ -361,7 +365,7 @@ func insertProxyArtifactAttestationSource(
 	fixture proxyArtifactAttestationFixture,
 ) (proxyArtifactAttestationIdentity, error) {
 	codeHash := crypto.Keccak256(fixture.Runtime)
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO contract_code_observations (
 			chain_id, address, block_number, block_hash, code_hash, code, canonical
 		) VALUES (1, $1, $2::numeric, $3, $4, $5, TRUE)
@@ -415,12 +419,12 @@ func insertProxyArtifactAttestationSource(
 	); err != nil {
 		return proxyArtifactAttestationIdentity{}, err
 	}
-	tx, err := db.BeginTx(ctx, nil)
+	tx, err := db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return proxyArtifactAttestationIdentity{}, err
 	}
-	defer tx.Rollback() //nolint:errcheck
-	if _, err := tx.ExecContext(ctx, `
+	defer tx.Rollback(context.Background()) //nolint:errcheck
+	if _, err := tx.Exec(ctx, `
 		UPDATE verification_jobs
 		SET status = 'succeeded', outcome_kind = 'verification_success',
 		    outcome = $3::jsonb, error_code = NULL, leased_by = NULL,
@@ -431,7 +435,7 @@ func insertProxyArtifactAttestationSource(
 	); err != nil {
 		return proxyArtifactAttestationIdentity{}, err
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO verification_results (
 			job_id, request_digest, outcome_kind, outcome, file_name,
 			contract_name, language, compiler_version, match_type, abi,
@@ -449,7 +453,7 @@ func insertProxyArtifactAttestationSource(
 	); err != nil {
 		return proxyArtifactAttestationIdentity{}, err
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO verified_contracts (
 			chain_id, address, code_hash, valid_from_block,
 			verification_job_id, request_digest, file_name, contract_name,
@@ -466,7 +470,7 @@ func insertProxyArtifactAttestationSource(
 	); err != nil {
 		return proxyArtifactAttestationIdentity{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return proxyArtifactAttestationIdentity{}, err
 	}
 	return proxyArtifactAttestationIdentity{
@@ -476,12 +480,12 @@ func insertProxyArtifactAttestationSource(
 
 func insertProxyArtifactPublication(
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	fixture proxyArtifactAttestationFixture,
 	identity proxyArtifactAttestationIdentity,
 	validFrom uint64,
-) (sql.Result, error) {
-	return db.ExecContext(ctx, `
+) (pgconn.CommandTag, error) {
+	return db.Exec(ctx, `
 		INSERT INTO verified_contract_proxy_artifacts (
 			chain_id, address, code_hash, valid_from_block,
 			verification_job_id, request_digest, artifact_kind,
@@ -496,12 +500,12 @@ func insertProxyArtifactPublication(
 
 func insertProxyArtifactVerifiedContractAt(
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	fixture proxyArtifactAttestationFixture,
 	identity proxyArtifactAttestationIdentity,
 	validFrom uint64,
 ) error {
-	_, err := db.ExecContext(ctx, `
+	_, err := db.Exec(ctx, `
 		INSERT INTO verified_contracts (
 			chain_id, address, code_hash, valid_from_block,
 			verification_job_id, request_digest, file_name, contract_name,
@@ -522,7 +526,7 @@ func insertProxyArtifactVerifiedContractAt(
 func insertArtifactAttestationCode(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block store.BlockRef,
 	address common.Address,
 	codeHash []byte,

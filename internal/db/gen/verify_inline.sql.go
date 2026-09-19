@@ -11,129 +11,104 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const VerifyInlineBindCompilerStatement1 = `-- name: VerifyInlineBindCompilerStatement1 :exec
+const verifyInlineBindCompilerStatement1 = `-- name: VerifyInlineBindCompilerStatement1 :execrows
 UPDATE verification_jobs
-		SET compiler_platform = $3, catalog_generation_id = $4,
-		    compiler_digest = $5, executor_kind = $6,
-		    execution_policy = $7, executor_digest = $8,
+		SET compiler_platform = $1, catalog_generation_id = $2,
+		    compiler_digest = $3, executor_kind = $4,
+		    execution_policy = $5, executor_digest = $6,
 		    updated_at = clock_timestamp()
-		WHERE id = $1::uuid AND status = 'running' AND lease_token = $2
+		WHERE id = $7::uuid AND status = 'running' AND lease_token = $8
 		  AND lease_expires_at > clock_timestamp()
 		  AND (
 		    (compiler_platform IS NULL AND catalog_generation_id IS NULL
 		     AND compiler_digest IS NULL AND executor_kind IS NULL
 		     AND execution_policy IS NULL AND executor_digest IS NULL)
 		    OR
-		    (compiler_platform = $3 AND catalog_generation_id IS NOT DISTINCT FROM $4
-		     AND compiler_digest = $5 AND executor_kind = $6
-		     AND execution_policy = $7 AND executor_digest = $8)
+		    (compiler_platform = $1 AND catalog_generation_id IS NOT DISTINCT FROM $2
+		     AND compiler_digest = $3 AND executor_kind = $4
+		     AND execution_policy = $5 AND executor_digest = $6)
 		  )
 `
 
 type VerifyInlineBindCompilerStatement1Params struct {
-	Column1             pgtype.UUID `db:"column_1" json:"column_1"`
-	LeaseToken          *string     `db:"lease_token" json:"lease_token"`
 	CompilerPlatform    *string     `db:"compiler_platform" json:"compiler_platform"`
 	CatalogGenerationID *int64      `db:"catalog_generation_id" json:"catalog_generation_id"`
 	CompilerDigest      []byte      `db:"compiler_digest" json:"compiler_digest"`
 	ExecutorKind        *string     `db:"executor_kind" json:"executor_kind"`
 	ExecutionPolicy     *string     `db:"execution_policy" json:"execution_policy"`
 	ExecutorDigest      []byte      `db:"executor_digest" json:"executor_digest"`
+	ID                  pgtype.UUID `db:"id" json:"id"`
+	LeaseToken          *string     `db:"lease_token" json:"lease_token"`
 }
 
-func (q *Queries) VerifyInlineBindCompilerStatement1(ctx context.Context, arg VerifyInlineBindCompilerStatement1Params) error {
-	_, err := q.db.Exec(ctx, VerifyInlineBindCompilerStatement1,
-		arg.Column1,
-		arg.LeaseToken,
+func (q *Queries) VerifyInlineBindCompilerStatement1(ctx context.Context, arg VerifyInlineBindCompilerStatement1Params) (int64, error) {
+	result, err := q.db.Exec(ctx, verifyInlineBindCompilerStatement1,
 		arg.CompilerPlatform,
 		arg.CatalogGenerationID,
 		arg.CompilerDigest,
 		arg.ExecutorKind,
 		arg.ExecutionPolicy,
 		arg.ExecutorDigest,
+		arg.ID,
+		arg.LeaseToken,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const VerifyInlineBindCompilerStatement2 = `-- name: VerifyInlineBindCompilerStatement2 :many
-SELECT TRUE FROM verification_jobs
+const verifyInlineBindCompilerStatement2 = `-- name: VerifyInlineBindCompilerStatement2 :one
+SELECT TRUE AS bound FROM verification_jobs
 		WHERE id = $1::uuid AND status = 'running' AND lease_token = $2
 		  AND lease_expires_at > clock_timestamp()
 `
 
-func (q *Queries) VerifyInlineBindCompilerStatement2(ctx context.Context, column1 pgtype.UUID, leaseToken *string) ([]bool, error) {
-	rows, err := q.db.Query(ctx, VerifyInlineBindCompilerStatement2, column1, leaseToken)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var column_1 bool
-		if err := rows.Scan(&column_1); err != nil {
-			return nil, err
-		}
-		items = append(items, column_1)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) VerifyInlineBindCompilerStatement2(ctx context.Context, iD pgtype.UUID, leaseToken *string) (bool, error) {
+	row := q.db.QueryRow(ctx, verifyInlineBindCompilerStatement2, iD, leaseToken)
+	var bound bool
+	err := row.Scan(&bound)
+	return bound, err
 }
 
-const VerifyInlineCompleteProxyV2Statement1 = `-- name: VerifyInlineCompleteProxyV2Statement1 :many
+const verifyInlineCompleteProxyV2Statement1 = `-- name: VerifyInlineCompleteProxyV2Statement1 :exec
 SELECT pg_advisory_xact_lock(hashtextextended(
 		    'etherview:proxy-interaction-coverage:' || $1::numeric::text,
 		    0
 		))
 `
 
-func (q *Queries) VerifyInlineCompleteProxyV2Statement1(ctx context.Context, dollar_1 pgtype.Numeric) ([]interface{}, error) {
-	rows, err := q.db.Query(ctx, VerifyInlineCompleteProxyV2Statement1, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []interface{}{}
-	for rows.Next() {
-		var pg_advisory_xact_lock interface{}
-		if err := rows.Scan(&pg_advisory_xact_lock); err != nil {
-			return nil, err
-		}
-		items = append(items, pg_advisory_xact_lock)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const VerifyInlineCompleteProxyV2Statement2 = `-- name: VerifyInlineCompleteProxyV2Statement2 :exec
-UPDATE verification_jobs
-		SET status = 'succeeded', outcome_kind = 'proxy_verification_success',
-		    outcome = $3::jsonb, error_code = NULL, leased_by = NULL,
-		    lease_token = NULL, lease_expires_at = NULL,
-		    updated_at = clock_timestamp()
-		WHERE id = $1::uuid AND lease_token = $2
-`
-
-func (q *Queries) VerifyInlineCompleteProxyV2Statement2(ctx context.Context, column1 pgtype.UUID, leaseToken *string, column3 []byte) error {
-	_, err := q.db.Exec(ctx, VerifyInlineCompleteProxyV2Statement2, column1, leaseToken, column3)
+func (q *Queries) VerifyInlineCompleteProxyV2Statement1(ctx context.Context, chainID pgtype.Numeric) error {
+	_, err := q.db.Exec(ctx, verifyInlineCompleteProxyV2Statement1, chainID)
 	return err
 }
 
-const VerifyInlineCompleteProxyV2Statement3 = `-- name: VerifyInlineCompleteProxyV2Statement3 :exec
+const verifyInlineCompleteProxyV2Statement2 = `-- name: VerifyInlineCompleteProxyV2Statement2 :exec
+UPDATE verification_jobs
+		SET status = 'succeeded', outcome_kind = 'proxy_verification_success',
+		    outcome = $1::jsonb, error_code = NULL, leased_by = NULL,
+		    lease_token = NULL, lease_expires_at = NULL,
+		    updated_at = clock_timestamp()
+		WHERE id = $2::uuid AND lease_token = $3
+`
+
+func (q *Queries) VerifyInlineCompleteProxyV2Statement2(ctx context.Context, outcome []byte, iD pgtype.UUID, leaseToken *string) error {
+	_, err := q.db.Exec(ctx, verifyInlineCompleteProxyV2Statement2, outcome, iD, leaseToken)
+	return err
+}
+
+const verifyInlineCompleteProxyV2Statement3 = `-- name: VerifyInlineCompleteProxyV2Statement3 :exec
 INSERT INTO verification_results (
 			job_id, request_digest, outcome_kind, outcome
 		) VALUES ($1::uuid, $2, 'proxy_verification_success', $3::jsonb)
 `
 
-func (q *Queries) VerifyInlineCompleteProxyV2Statement3(ctx context.Context, column1 pgtype.UUID, requestDigest []byte, column3 []byte) error {
-	_, err := q.db.Exec(ctx, VerifyInlineCompleteProxyV2Statement3, column1, requestDigest, column3)
+func (q *Queries) VerifyInlineCompleteProxyV2Statement3(ctx context.Context, jobID pgtype.UUID, requestDigest []byte, outcome []byte) error {
+	_, err := q.db.Exec(ctx, verifyInlineCompleteProxyV2Statement3, jobID, requestDigest, outcome)
 	return err
 }
 
-const VerifyInlineCompleteProxyV2Statement4 = `-- name: VerifyInlineCompleteProxyV2Statement4 :exec
+const verifyInlineCompleteProxyV2Statement4 = `-- name: VerifyInlineCompleteProxyV2Statement4 :exec
 INSERT INTO verified_proxy_bindings (
 			chain_id, proxy_address, proxy_code_hash, observation_block_number,
 			observation_block_hash, observation_stage_version, proxy_kind,
@@ -154,39 +129,39 @@ INSERT INTO verified_proxy_bindings (
 `
 
 type VerifyInlineCompleteProxyV2Statement4Params struct {
-	Column1                pgtype.Numeric `db:"column_1" json:"column_1"`
-	ProxyAddress           []byte         `db:"proxy_address" json:"proxy_address"`
-	ProxyCodeHash          []byte         `db:"proxy_code_hash" json:"proxy_code_hash"`
-	Column4                pgtype.Numeric `db:"column_4" json:"column_4"`
-	ObservationBlockHash   []byte         `db:"observation_block_hash" json:"observation_block_hash"`
-	ProxyKind              string         `db:"proxy_kind" json:"proxy_kind"`
-	ProxyPattern           string         `db:"proxy_pattern" json:"proxy_pattern"`
-	StandardVersion        *string        `db:"standard_version" json:"standard_version"`
-	ImplementationAddress  []byte         `db:"implementation_address" json:"implementation_address"`
-	ImplementationCodeHash []byte         `db:"implementation_code_hash" json:"implementation_code_hash"`
-	AdminAddress           []byte         `db:"admin_address" json:"admin_address"`
-	AdminCodeHash          []byte         `db:"admin_code_hash" json:"admin_code_hash"`
-	BeaconAddress          []byte         `db:"beacon_address" json:"beacon_address"`
-	BeaconCodeHash         []byte         `db:"beacon_code_hash" json:"beacon_code_hash"`
-	ManagementKind         string         `db:"management_kind" json:"management_kind"`
-	ManagementAddress      []byte         `db:"management_address" json:"management_address"`
-	ManagementCodeHash     []byte         `db:"management_code_hash" json:"management_code_hash"`
-	Column18               int64          `db:"column_18" json:"column_18"`
-	Column19               int64          `db:"column_19" json:"column_19"`
-	Column20               int64          `db:"column_20" json:"column_20"`
-	Column21               int64          `db:"column_21" json:"column_21"`
-	Column22               pgtype.Numeric `db:"column_22" json:"column_22"`
-	ContextBlockHash       []byte         `db:"context_block_hash" json:"context_block_hash"`
-	Column24               pgtype.UUID    `db:"column_24" json:"column_24"`
-	RequestDigest          []byte         `db:"request_digest" json:"request_digest"`
+	ChainID                 pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	ProxyAddress            []byte         `db:"proxy_address" json:"proxy_address"`
+	ProxyCodeHash           []byte         `db:"proxy_code_hash" json:"proxy_code_hash"`
+	ObservationBlockNumber  pgtype.Numeric `db:"observation_block_number" json:"observation_block_number"`
+	ObservationBlockHash    []byte         `db:"observation_block_hash" json:"observation_block_hash"`
+	ProxyKind               string         `db:"proxy_kind" json:"proxy_kind"`
+	ProxyPattern            string         `db:"proxy_pattern" json:"proxy_pattern"`
+	StandardVersion         *string        `db:"standard_version" json:"standard_version"`
+	ImplementationAddress   []byte         `db:"implementation_address" json:"implementation_address"`
+	ImplementationCodeHash  []byte         `db:"implementation_code_hash" json:"implementation_code_hash"`
+	AdminAddress            []byte         `db:"admin_address" json:"admin_address"`
+	AdminCodeHash           []byte         `db:"admin_code_hash" json:"admin_code_hash"`
+	BeaconAddress           []byte         `db:"beacon_address" json:"beacon_address"`
+	BeaconCodeHash          []byte         `db:"beacon_code_hash" json:"beacon_code_hash"`
+	ManagementKind          string         `db:"management_kind" json:"management_kind"`
+	ManagementAddress       []byte         `db:"management_address" json:"management_address"`
+	ManagementCodeHash      []byte         `db:"management_code_hash" json:"management_code_hash"`
+	ObservationGenerationID int64          `db:"observation_generation_id" json:"observation_generation_id"`
+	ArtifactResolutionID    *int64         `db:"artifact_resolution_id" json:"artifact_resolution_id"`
+	BeaconGenerationID      *int64         `db:"beacon_generation_id" json:"beacon_generation_id"`
+	UupsGenerationID        *int64         `db:"uups_generation_id" json:"uups_generation_id"`
+	ContextBlockNumber      pgtype.Numeric `db:"context_block_number" json:"context_block_number"`
+	ContextBlockHash        []byte         `db:"context_block_hash" json:"context_block_hash"`
+	VerificationJobID       pgtype.UUID    `db:"verification_job_id" json:"verification_job_id"`
+	RequestDigest           []byte         `db:"request_digest" json:"request_digest"`
 }
 
 func (q *Queries) VerifyInlineCompleteProxyV2Statement4(ctx context.Context, arg VerifyInlineCompleteProxyV2Statement4Params) error {
-	_, err := q.db.Exec(ctx, VerifyInlineCompleteProxyV2Statement4,
-		arg.Column1,
+	_, err := q.db.Exec(ctx, verifyInlineCompleteProxyV2Statement4,
+		arg.ChainID,
 		arg.ProxyAddress,
 		arg.ProxyCodeHash,
-		arg.Column4,
+		arg.ObservationBlockNumber,
 		arg.ObservationBlockHash,
 		arg.ProxyKind,
 		arg.ProxyPattern,
@@ -200,19 +175,19 @@ func (q *Queries) VerifyInlineCompleteProxyV2Statement4(ctx context.Context, arg
 		arg.ManagementKind,
 		arg.ManagementAddress,
 		arg.ManagementCodeHash,
-		arg.Column18,
-		arg.Column19,
-		arg.Column20,
-		arg.Column21,
-		arg.Column22,
+		arg.ObservationGenerationID,
+		arg.ArtifactResolutionID,
+		arg.BeaconGenerationID,
+		arg.UupsGenerationID,
+		arg.ContextBlockNumber,
 		arg.ContextBlockHash,
-		arg.Column24,
+		arg.VerificationJobID,
 		arg.RequestDigest,
 	)
 	return err
 }
 
-const VerifyInlineCompleteV2Statement1 = `-- name: VerifyInlineCompleteV2Statement1 :many
+const verifyInlineCompleteV2Statement1 = `-- name: VerifyInlineCompleteV2Statement1 :one
 SELECT code
 			FROM contract_code_observations
 			WHERE chain_id = $1::numeric AND address = $2
@@ -221,65 +196,52 @@ SELECT code
 `
 
 type VerifyInlineCompleteV2Statement1Params struct {
-	Column1   pgtype.Numeric `db:"column_1" json:"column_1"`
-	Address   []byte         `db:"address" json:"address"`
-	Column3   pgtype.Numeric `db:"column_3" json:"column_3"`
-	BlockHash []byte         `db:"block_hash" json:"block_hash"`
-	CodeHash  []byte         `db:"code_hash" json:"code_hash"`
+	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Address     []byte         `db:"address" json:"address"`
+	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
+	CodeHash    []byte         `db:"code_hash" json:"code_hash"`
 }
 
-func (q *Queries) VerifyInlineCompleteV2Statement1(ctx context.Context, arg VerifyInlineCompleteV2Statement1Params) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, VerifyInlineCompleteV2Statement1,
-		arg.Column1,
+func (q *Queries) VerifyInlineCompleteV2Statement1(ctx context.Context, arg VerifyInlineCompleteV2Statement1Params) ([]byte, error) {
+	row := q.db.QueryRow(ctx, verifyInlineCompleteV2Statement1,
+		arg.ChainID,
 		arg.Address,
-		arg.Column3,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.CodeHash,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := [][]byte{}
-	for rows.Next() {
-		var code []byte
-		if err := rows.Scan(&code); err != nil {
-			return nil, err
-		}
-		items = append(items, code)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var code []byte
+	err := row.Scan(&code)
+	return code, err
 }
 
-const VerifyInlineCompleteV2Statement2 = `-- name: VerifyInlineCompleteV2Statement2 :exec
+const verifyInlineCompleteV2Statement2 = `-- name: VerifyInlineCompleteV2Statement2 :exec
 UPDATE verification_jobs
-		SET status = 'succeeded', outcome_kind = $3, outcome = $4::jsonb,
+		SET status = 'succeeded', outcome_kind = $1, outcome = $2::jsonb,
 		    error_code = NULL, leased_by = NULL, lease_token = NULL,
 		    lease_expires_at = NULL, updated_at = clock_timestamp()
-		WHERE id = $1::uuid AND lease_token = $2
+		WHERE id = $3::uuid AND lease_token = $4
 `
 
 type VerifyInlineCompleteV2Statement2Params struct {
-	Column1     pgtype.UUID `db:"column_1" json:"column_1"`
-	LeaseToken  *string     `db:"lease_token" json:"lease_token"`
 	OutcomeKind *string     `db:"outcome_kind" json:"outcome_kind"`
-	Column4     []byte      `db:"column_4" json:"column_4"`
+	Outcome     []byte      `db:"outcome" json:"outcome"`
+	ID          pgtype.UUID `db:"id" json:"id"`
+	LeaseToken  *string     `db:"lease_token" json:"lease_token"`
 }
 
 func (q *Queries) VerifyInlineCompleteV2Statement2(ctx context.Context, arg VerifyInlineCompleteV2Statement2Params) error {
-	_, err := q.db.Exec(ctx, VerifyInlineCompleteV2Statement2,
-		arg.Column1,
-		arg.LeaseToken,
+	_, err := q.db.Exec(ctx, verifyInlineCompleteV2Statement2,
 		arg.OutcomeKind,
-		arg.Column4,
+		arg.Outcome,
+		arg.ID,
+		arg.LeaseToken,
 	)
 	return err
 }
 
-const VerifyInlineCompleteV2Statement3 = `-- name: VerifyInlineCompleteV2Statement3 :exec
+const verifyInlineCompleteV2Statement3 = `-- name: VerifyInlineCompleteV2Statement3 :exec
 INSERT INTO verification_results (
 			job_id, request_digest, outcome_kind, outcome, file_name, contract_name,
 			language, compiler_version, match_type, abi, sources, settings,
@@ -295,23 +257,23 @@ INSERT INTO verification_results (
 `
 
 type VerifyInlineCompleteV2Statement3Params struct {
-	Column1                      pgtype.UUID `db:"column_1" json:"column_1"`
+	JobID                        pgtype.UUID `db:"job_id" json:"job_id"`
 	RequestDigest                []byte      `db:"request_digest" json:"request_digest"`
 	OutcomeKind                  string      `db:"outcome_kind" json:"outcome_kind"`
-	Column4                      []byte      `db:"column_4" json:"column_4"`
+	Outcome                      []byte      `db:"outcome" json:"outcome"`
 	FileName                     *string     `db:"file_name" json:"file_name"`
 	ContractName                 *string     `db:"contract_name" json:"contract_name"`
 	Language                     *string     `db:"language" json:"language"`
 	CompilerVersion              *string     `db:"compiler_version" json:"compiler_version"`
 	MatchType                    *string     `db:"match_type" json:"match_type"`
-	Column10                     []byte      `db:"column_10" json:"column_10"`
-	Column11                     []byte      `db:"column_11" json:"column_11"`
-	Column12                     []byte      `db:"column_12" json:"column_12"`
-	Column13                     []byte      `db:"column_13" json:"column_13"`
-	Column14                     []byte      `db:"column_14" json:"column_14"`
-	Column15                     []byte      `db:"column_15" json:"column_15"`
+	Abi                          []byte      `db:"abi" json:"abi"`
+	Sources                      []byte      `db:"sources" json:"sources"`
+	Settings                     []byte      `db:"settings" json:"settings"`
+	CompilationArtifacts         []byte      `db:"compilation_artifacts" json:"compilation_artifacts"`
+	CreationCodeArtifacts        []byte      `db:"creation_code_artifacts" json:"creation_code_artifacts"`
+	RuntimeCodeArtifacts         []byte      `db:"runtime_code_artifacts" json:"runtime_code_artifacts"`
 	ConstructorArguments         []byte      `db:"constructor_arguments" json:"constructor_arguments"`
-	Column17                     []byte      `db:"column_17" json:"column_17"`
+	Libraries                    []byte      `db:"libraries" json:"libraries"`
 	IsBlueprint                  *bool       `db:"is_blueprint" json:"is_blueprint"`
 	ProxyArtifactKind            *string     `db:"proxy_artifact_kind" json:"proxy_artifact_kind"`
 	ProxyStandardVersion         *string     `db:"proxy_standard_version" json:"proxy_standard_version"`
@@ -320,24 +282,24 @@ type VerifyInlineCompleteV2Statement3Params struct {
 }
 
 func (q *Queries) VerifyInlineCompleteV2Statement3(ctx context.Context, arg VerifyInlineCompleteV2Statement3Params) error {
-	_, err := q.db.Exec(ctx, VerifyInlineCompleteV2Statement3,
-		arg.Column1,
+	_, err := q.db.Exec(ctx, verifyInlineCompleteV2Statement3,
+		arg.JobID,
 		arg.RequestDigest,
 		arg.OutcomeKind,
-		arg.Column4,
+		arg.Outcome,
 		arg.FileName,
 		arg.ContractName,
 		arg.Language,
 		arg.CompilerVersion,
 		arg.MatchType,
-		arg.Column10,
-		arg.Column11,
-		arg.Column12,
-		arg.Column13,
-		arg.Column14,
-		arg.Column15,
+		arg.Abi,
+		arg.Sources,
+		arg.Settings,
+		arg.CompilationArtifacts,
+		arg.CreationCodeArtifacts,
+		arg.RuntimeCodeArtifacts,
 		arg.ConstructorArguments,
-		arg.Column17,
+		arg.Libraries,
 		arg.IsBlueprint,
 		arg.ProxyArtifactKind,
 		arg.ProxyStandardVersion,
@@ -347,7 +309,7 @@ func (q *Queries) VerifyInlineCompleteV2Statement3(ctx context.Context, arg Veri
 	return err
 }
 
-const VerifyInlineCompleteV2Statement4 = `-- name: VerifyInlineCompleteV2Statement4 :exec
+const verifyInlineCompleteV2Statement4 = `-- name: VerifyInlineCompleteV2Statement4 :exec
 INSERT INTO verified_contracts (
 				chain_id, address, code_hash, valid_from_block, verification_job_id,
 				request_digest, file_name, contract_name, language, compiler_version,
@@ -362,55 +324,55 @@ INSERT INTO verified_contracts (
 `
 
 type VerifyInlineCompleteV2Statement4Params struct {
-	Column1              pgtype.Numeric `db:"column_1" json:"column_1"`
-	Address              []byte         `db:"address" json:"address"`
-	CodeHash             []byte         `db:"code_hash" json:"code_hash"`
-	Column4              pgtype.Numeric `db:"column_4" json:"column_4"`
-	Column5              pgtype.UUID    `db:"column_5" json:"column_5"`
-	RequestDigest        []byte         `db:"request_digest" json:"request_digest"`
-	FileName             string         `db:"file_name" json:"file_name"`
-	ContractName         string         `db:"contract_name" json:"contract_name"`
-	Language             string         `db:"language" json:"language"`
-	CompilerVersion      string         `db:"compiler_version" json:"compiler_version"`
-	MatchType            string         `db:"match_type" json:"match_type"`
-	Column12             []byte         `db:"column_12" json:"column_12"`
-	Column13             []byte         `db:"column_13" json:"column_13"`
-	Column14             []byte         `db:"column_14" json:"column_14"`
-	Column15             []byte         `db:"column_15" json:"column_15"`
-	Column16             []byte         `db:"column_16" json:"column_16"`
-	Column17             []byte         `db:"column_17" json:"column_17"`
-	ConstructorArguments []byte         `db:"constructor_arguments" json:"constructor_arguments"`
-	Column19             []byte         `db:"column_19" json:"column_19"`
-	IsBlueprint          bool           `db:"is_blueprint" json:"is_blueprint"`
+	ChainID               pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Address               []byte         `db:"address" json:"address"`
+	CodeHash              []byte         `db:"code_hash" json:"code_hash"`
+	ValidFromBlock        pgtype.Numeric `db:"valid_from_block" json:"valid_from_block"`
+	VerificationJobID     pgtype.UUID    `db:"verification_job_id" json:"verification_job_id"`
+	RequestDigest         []byte         `db:"request_digest" json:"request_digest"`
+	FileName              *string        `db:"file_name" json:"file_name"`
+	ContractName          *string        `db:"contract_name" json:"contract_name"`
+	Language              *string        `db:"language" json:"language"`
+	CompilerVersion       *string        `db:"compiler_version" json:"compiler_version"`
+	MatchType             string         `db:"match_type" json:"match_type"`
+	Abi                   []byte         `db:"abi" json:"abi"`
+	Sources               []byte         `db:"sources" json:"sources"`
+	Settings              []byte         `db:"settings" json:"settings"`
+	CompilationArtifacts  []byte         `db:"compilation_artifacts" json:"compilation_artifacts"`
+	CreationCodeArtifacts []byte         `db:"creation_code_artifacts" json:"creation_code_artifacts"`
+	RuntimeCodeArtifacts  []byte         `db:"runtime_code_artifacts" json:"runtime_code_artifacts"`
+	ConstructorArguments  []byte         `db:"constructor_arguments" json:"constructor_arguments"`
+	Libraries             []byte         `db:"libraries" json:"libraries"`
+	IsBlueprint           *bool          `db:"is_blueprint" json:"is_blueprint"`
 }
 
 func (q *Queries) VerifyInlineCompleteV2Statement4(ctx context.Context, arg VerifyInlineCompleteV2Statement4Params) error {
-	_, err := q.db.Exec(ctx, VerifyInlineCompleteV2Statement4,
-		arg.Column1,
+	_, err := q.db.Exec(ctx, verifyInlineCompleteV2Statement4,
+		arg.ChainID,
 		arg.Address,
 		arg.CodeHash,
-		arg.Column4,
-		arg.Column5,
+		arg.ValidFromBlock,
+		arg.VerificationJobID,
 		arg.RequestDigest,
 		arg.FileName,
 		arg.ContractName,
 		arg.Language,
 		arg.CompilerVersion,
 		arg.MatchType,
-		arg.Column12,
-		arg.Column13,
-		arg.Column14,
-		arg.Column15,
-		arg.Column16,
-		arg.Column17,
+		arg.Abi,
+		arg.Sources,
+		arg.Settings,
+		arg.CompilationArtifacts,
+		arg.CreationCodeArtifacts,
+		arg.RuntimeCodeArtifacts,
 		arg.ConstructorArguments,
-		arg.Column19,
+		arg.Libraries,
 		arg.IsBlueprint,
 	)
 	return err
 }
 
-const VerifyInlineCompleteV2Statement5 = `-- name: VerifyInlineCompleteV2Statement5 :exec
+const verifyInlineCompleteV2Statement5 = `-- name: VerifyInlineCompleteV2Statement5 :exec
 INSERT INTO verified_contract_proxy_artifacts (
 					chain_id, address, code_hash, valid_from_block,
 					verification_job_id, request_digest, artifact_kind,
@@ -423,11 +385,11 @@ INSERT INTO verified_contract_proxy_artifacts (
 `
 
 type VerifyInlineCompleteV2Statement5Params struct {
-	Column1                 pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID                 pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	Address                 []byte         `db:"address" json:"address"`
 	CodeHash                []byte         `db:"code_hash" json:"code_hash"`
-	Column4                 pgtype.Numeric `db:"column_4" json:"column_4"`
-	Column5                 pgtype.UUID    `db:"column_5" json:"column_5"`
+	ValidFromBlock          pgtype.Numeric `db:"valid_from_block" json:"valid_from_block"`
+	VerificationJobID       pgtype.UUID    `db:"verification_job_id" json:"verification_job_id"`
 	RequestDigest           []byte         `db:"request_digest" json:"request_digest"`
 	ArtifactKind            string         `db:"artifact_kind" json:"artifact_kind"`
 	StandardVersion         string         `db:"standard_version" json:"standard_version"`
@@ -436,12 +398,12 @@ type VerifyInlineCompleteV2Statement5Params struct {
 }
 
 func (q *Queries) VerifyInlineCompleteV2Statement5(ctx context.Context, arg VerifyInlineCompleteV2Statement5Params) error {
-	_, err := q.db.Exec(ctx, VerifyInlineCompleteV2Statement5,
-		arg.Column1,
+	_, err := q.db.Exec(ctx, verifyInlineCompleteV2Statement5,
+		arg.ChainID,
 		arg.Address,
 		arg.CodeHash,
-		arg.Column4,
-		arg.Column5,
+		arg.ValidFromBlock,
+		arg.VerificationJobID,
 		arg.RequestDigest,
 		arg.ArtifactKind,
 		arg.StandardVersion,
@@ -451,7 +413,7 @@ func (q *Queries) VerifyInlineCompleteV2Statement5(ctx context.Context, arg Veri
 	return err
 }
 
-const VerifyInlineCompleteV2Statement6 = `-- name: VerifyInlineCompleteV2Statement6 :many
+const verifyInlineCompleteV2Statement6 = `-- name: VerifyInlineCompleteV2Statement6 :one
 INSERT INTO verification_compilation_units (
 			id, source_job_id, request_digest, language, compiler_version,
 			compiler_platform, catalog_generation_id, compiler_sha256,
@@ -465,56 +427,43 @@ INSERT INTO verification_compilation_units (
 `
 
 type VerifyInlineCompleteV2Statement6Params struct {
-	Column1             pgtype.UUID `db:"column_1" json:"column_1"`
-	Column2             pgtype.UUID `db:"column_2" json:"column_2"`
+	ID                  pgtype.UUID `db:"id" json:"id"`
+	SourceJobID         pgtype.UUID `db:"source_job_id" json:"source_job_id"`
 	RequestDigest       []byte      `db:"request_digest" json:"request_digest"`
 	Language            string      `db:"language" json:"language"`
 	CompilerVersion     string      `db:"compiler_version" json:"compiler_version"`
 	CompilerPlatform    string      `db:"compiler_platform" json:"compiler_platform"`
-	Column7             int64       `db:"column_7" json:"column_7"`
+	CatalogGenerationID int64       `db:"catalog_generation_id" json:"catalog_generation_id"`
 	CompilerSha256      []byte      `db:"compiler_sha256" json:"compiler_sha256"`
 	ExecutorKind        string      `db:"executor_kind" json:"executor_kind"`
 	ExecutionPolicy     string      `db:"execution_policy" json:"execution_policy"`
 	ExecutorSha256      []byte      `db:"executor_sha256" json:"executor_sha256"`
-	Column12            []byte      `db:"column_12" json:"column_12"`
+	StandardJson        []byte      `db:"standard_json" json:"standard_json"`
 	StandardJsonPayload []byte      `db:"standard_json_payload" json:"standard_json_payload"`
 }
 
-func (q *Queries) VerifyInlineCompleteV2Statement6(ctx context.Context, arg VerifyInlineCompleteV2Statement6Params) ([]string, error) {
-	rows, err := q.db.Query(ctx, VerifyInlineCompleteV2Statement6,
-		arg.Column1,
-		arg.Column2,
+func (q *Queries) VerifyInlineCompleteV2Statement6(ctx context.Context, arg VerifyInlineCompleteV2Statement6Params) (string, error) {
+	row := q.db.QueryRow(ctx, verifyInlineCompleteV2Statement6,
+		arg.ID,
+		arg.SourceJobID,
 		arg.RequestDigest,
 		arg.Language,
 		arg.CompilerVersion,
 		arg.CompilerPlatform,
-		arg.Column7,
+		arg.CatalogGenerationID,
 		arg.CompilerSha256,
 		arg.ExecutorKind,
 		arg.ExecutionPolicy,
 		arg.ExecutorSha256,
-		arg.Column12,
+		arg.StandardJson,
 		arg.StandardJsonPayload,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []string{}
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		items = append(items, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var id string
+	err := row.Scan(&id)
+	return id, err
 }
 
-const VerifyInlineCompleteV2Statement7 = `-- name: VerifyInlineCompleteV2Statement7 :exec
+const verifyInlineCompleteV2Statement7 = `-- name: VerifyInlineCompleteV2Statement7 :exec
 INSERT INTO verification_compilation_contracts (
 			compilation_id, file_name, contract_name, abi, creation_bytecode,
 			runtime_bytecode, compilation_artifacts, creation_code_artifacts,
@@ -525,47 +474,50 @@ INSERT INTO verification_compilation_contracts (
 `
 
 type VerifyInlineCompleteV2Statement7Params struct {
-	Column1          pgtype.UUID `db:"column_1" json:"column_1"`
-	FileName         string      `db:"file_name" json:"file_name"`
-	ContractName     string      `db:"contract_name" json:"contract_name"`
-	Column4          []byte      `db:"column_4" json:"column_4"`
-	CreationBytecode []byte      `db:"creation_bytecode" json:"creation_bytecode"`
-	RuntimeBytecode  []byte      `db:"runtime_bytecode" json:"runtime_bytecode"`
-	Column7          []byte      `db:"column_7" json:"column_7"`
-	Column8          []byte      `db:"column_8" json:"column_8"`
-	Column9          []byte      `db:"column_9" json:"column_9"`
+	CompilationID         pgtype.UUID `db:"compilation_id" json:"compilation_id"`
+	FileName              string      `db:"file_name" json:"file_name"`
+	ContractName          string      `db:"contract_name" json:"contract_name"`
+	Abi                   []byte      `db:"abi" json:"abi"`
+	CreationBytecode      []byte      `db:"creation_bytecode" json:"creation_bytecode"`
+	RuntimeBytecode       []byte      `db:"runtime_bytecode" json:"runtime_bytecode"`
+	CompilationArtifacts  []byte      `db:"compilation_artifacts" json:"compilation_artifacts"`
+	CreationCodeArtifacts []byte      `db:"creation_code_artifacts" json:"creation_code_artifacts"`
+	RuntimeCodeArtifacts  []byte      `db:"runtime_code_artifacts" json:"runtime_code_artifacts"`
 }
 
 func (q *Queries) VerifyInlineCompleteV2Statement7(ctx context.Context, arg VerifyInlineCompleteV2Statement7Params) error {
-	_, err := q.db.Exec(ctx, VerifyInlineCompleteV2Statement7,
-		arg.Column1,
+	_, err := q.db.Exec(ctx, verifyInlineCompleteV2Statement7,
+		arg.CompilationID,
 		arg.FileName,
 		arg.ContractName,
-		arg.Column4,
+		arg.Abi,
 		arg.CreationBytecode,
 		arg.RuntimeBytecode,
-		arg.Column7,
-		arg.Column8,
-		arg.Column9,
+		arg.CompilationArtifacts,
+		arg.CreationCodeArtifacts,
+		arg.RuntimeCodeArtifacts,
 	)
 	return err
 }
 
-const VerifyInlineFailStatement1 = `-- name: VerifyInlineFailStatement1 :exec
+const verifyInlineFailStatement1 = `-- name: VerifyInlineFailStatement1 :execrows
 UPDATE verification_jobs
-		SET status = 'failed', outcome_kind = NULL, outcome = NULL, error_code = $3,
+		SET status = 'failed', outcome_kind = NULL, outcome = NULL, error_code = $1,
 		    leased_by = NULL, lease_token = NULL, lease_expires_at = NULL,
 		    updated_at = clock_timestamp()
-		WHERE id = $1::uuid AND status = 'running' AND lease_token = $2
+		WHERE id = $2::uuid AND status = 'running' AND lease_token = $3
 		  AND lease_expires_at > clock_timestamp()
 `
 
-func (q *Queries) VerifyInlineFailStatement1(ctx context.Context, column1 pgtype.UUID, leaseToken *string, errorCode *string) error {
-	_, err := q.db.Exec(ctx, VerifyInlineFailStatement1, column1, leaseToken, errorCode)
-	return err
+func (q *Queries) VerifyInlineFailStatement1(ctx context.Context, errorCode *string, iD pgtype.UUID, leaseToken *string) (int64, error) {
+	result, err := q.db.Exec(ctx, verifyInlineFailStatement1, errorCode, iD, leaseToken)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const VerifyInlineLookupStatement1 = `-- name: VerifyInlineLookupStatement1 :many
+const verifyInlineLookupStatement1 = `-- name: VerifyInlineLookupStatement1 :one
 SELECT entry.generation_id, entry.language, entry.version,
 		       entry.platform, entry.artifact_url, entry.artifact_sha256,
 		       entry.max_bytes, head.updated_at, entry.expires_at
@@ -589,61 +541,35 @@ type VerifyInlineLookupStatement1Row struct {
 	ExpiresAt      pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
 }
 
-func (q *Queries) VerifyInlineLookupStatement1(ctx context.Context, language string, version string) ([]VerifyInlineLookupStatement1Row, error) {
-	rows, err := q.db.Query(ctx, VerifyInlineLookupStatement1, language, version)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []VerifyInlineLookupStatement1Row{}
-	for rows.Next() {
-		var i VerifyInlineLookupStatement1Row
-		if err := rows.Scan(
-			&i.GenerationID,
-			&i.Language,
-			&i.Version,
-			&i.Platform,
-			&i.ArtifactUrl,
-			&i.ArtifactSha256,
-			&i.MaxBytes,
-			&i.UpdatedAt,
-			&i.ExpiresAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) VerifyInlineLookupStatement1(ctx context.Context, language string, version string) (VerifyInlineLookupStatement1Row, error) {
+	row := q.db.QueryRow(ctx, verifyInlineLookupStatement1, language, version)
+	var i VerifyInlineLookupStatement1Row
+	err := row.Scan(
+		&i.GenerationID,
+		&i.Language,
+		&i.Version,
+		&i.Platform,
+		&i.ArtifactUrl,
+		&i.ArtifactSha256,
+		&i.MaxBytes,
+		&i.UpdatedAt,
+		&i.ExpiresAt,
+	)
+	return i, err
 }
 
-const VerifyInlineLookupStatement2 = `-- name: VerifyInlineLookupStatement2 :many
+const verifyInlineLookupStatement2 = `-- name: VerifyInlineLookupStatement2 :one
 SELECT EXISTS (SELECT 1 FROM compiler_catalog_heads WHERE language = $1)
 `
 
-func (q *Queries) VerifyInlineLookupStatement2(ctx context.Context, language string) ([]bool, error) {
-	rows, err := q.db.Query(ctx, VerifyInlineLookupStatement2, language)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var exists bool
-		if err := rows.Scan(&exists); err != nil {
-			return nil, err
-		}
-		items = append(items, exists)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) VerifyInlineLookupStatement2(ctx context.Context, language string) (bool, error) {
+	row := q.db.QueryRow(ctx, verifyInlineLookupStatement2, language)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
-const VerifyInlinePersistStatement1 = `-- name: VerifyInlinePersistStatement1 :many
+const verifyInlinePersistStatement1 = `-- name: VerifyInlinePersistStatement1 :one
 INSERT INTO compiler_catalog_generations
 			(language, source_url, catalog_digest, entry_count)
 		VALUES ($1, $2, $3, $4)
@@ -659,32 +585,19 @@ type VerifyInlinePersistStatement1Params struct {
 	EntryCount    int32  `db:"entry_count" json:"entry_count"`
 }
 
-func (q *Queries) VerifyInlinePersistStatement1(ctx context.Context, arg VerifyInlinePersistStatement1Params) ([]int64, error) {
-	rows, err := q.db.Query(ctx, VerifyInlinePersistStatement1,
+func (q *Queries) VerifyInlinePersistStatement1(ctx context.Context, arg VerifyInlinePersistStatement1Params) (int64, error) {
+	row := q.db.QueryRow(ctx, verifyInlinePersistStatement1,
 		arg.Language,
 		arg.SourceUrl,
 		arg.CatalogDigest,
 		arg.EntryCount,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []int64{}
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		items = append(items, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
-const VerifyInlinePersistStatement2 = `-- name: VerifyInlinePersistStatement2 :exec
+const verifyInlinePersistStatement2 = `-- name: VerifyInlinePersistStatement2 :exec
 INSERT INTO compiler_catalog_entries
 				(generation_id, language, version, platform, artifact_url, artifact_sha256, max_bytes)
 			VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -702,7 +615,7 @@ type VerifyInlinePersistStatement2Params struct {
 }
 
 func (q *Queries) VerifyInlinePersistStatement2(ctx context.Context, arg VerifyInlinePersistStatement2Params) error {
-	_, err := q.db.Exec(ctx, VerifyInlinePersistStatement2,
+	_, err := q.db.Exec(ctx, verifyInlinePersistStatement2,
 		arg.GenerationID,
 		arg.Language,
 		arg.Version,
@@ -714,7 +627,7 @@ func (q *Queries) VerifyInlinePersistStatement2(ctx context.Context, arg VerifyI
 	return err
 }
 
-const VerifyInlinePersistStatement3 = `-- name: VerifyInlinePersistStatement3 :exec
+const verifyInlinePersistStatement3 = `-- name: VerifyInlinePersistStatement3 :exec
 INSERT INTO compiler_catalog_heads (language, generation_id)
 		VALUES ($1, $2)
 		ON CONFLICT (language) DO UPDATE
@@ -722,11 +635,11 @@ INSERT INTO compiler_catalog_heads (language, generation_id)
 `
 
 func (q *Queries) VerifyInlinePersistStatement3(ctx context.Context, language string, generationID int64) error {
-	_, err := q.db.Exec(ctx, VerifyInlinePersistStatement3, language, generationID)
+	_, err := q.db.Exec(ctx, verifyInlinePersistStatement3, language, generationID)
 	return err
 }
 
-const VerifyInlineVersionsStatement1 = `-- name: VerifyInlineVersionsStatement1 :many
+const verifyInlineVersionsStatement1 = `-- name: VerifyInlineVersionsStatement1 :many
 SELECT entry.version, head.updated_at, entry.expires_at, entry.vyper_runtimes
 		FROM compiler_catalog_heads AS head
 		JOIN compiler_catalog_generations AS generation
@@ -745,7 +658,7 @@ type VerifyInlineVersionsStatement1Row struct {
 }
 
 func (q *Queries) VerifyInlineVersionsStatement1(ctx context.Context, language string) ([]VerifyInlineVersionsStatement1Row, error) {
-	rows, err := q.db.Query(ctx, VerifyInlineVersionsStatement1, language)
+	rows, err := q.db.Query(ctx, verifyInlineVersionsStatement1, language)
 	if err != nil {
 		return nil, err
 	}

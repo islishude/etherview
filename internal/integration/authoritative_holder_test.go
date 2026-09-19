@@ -4,7 +4,6 @@ package integration_test
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"math/big"
@@ -12,6 +11,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -138,7 +139,7 @@ func TestAuthoritativeHolderStagePublishesNativeAndCompatibilityReads(t *testing
 	if state.calls != 2 {
 		t.Fatalf("holder exact-state calls=%d, want totalSupply plus balanceOf", state.calls)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		UPDATE erc20_holder_balances SET balance = 8
 		WHERE chain_id = 1 AND token_address = $1 AND holder_address = $2`,
 		mustBytes(t, token), mustBytes(t, owner)); err == nil {
@@ -198,7 +199,7 @@ func TestAuthoritativeHolderStagePublishesNativeAndCompatibilityReads(t *testing
 	}
 }
 
-func markProxyStageComplete(t *testing.T, ctx context.Context, db *sql.DB, block chainbundle.Bundle) {
+func markProxyStageComplete(t *testing.T, ctx context.Context, db *pgxpool.Pool, block chainbundle.Bundle) {
 	t.Helper()
 	reference := mustBlockRef(t, block)
 	word, err := enrich.ParseWord(reference.Hash.String())

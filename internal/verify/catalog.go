@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -19,7 +18,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/islishude/etherview/internal/db/gen"
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"golang.org/x/mod/semver"
 )
 
@@ -70,14 +73,14 @@ type CompilerCatalogOptions struct {
 // CompilerCatalog refreshes immutable PostgreSQL generations and resolves
 // versions only from the current, sufficiently fresh generation.
 type CompilerCatalog struct {
-	db               *sql.DB
+	db               dbaccess.Database
 	options          CompilerCatalogOptions
 	origins          map[string]struct{}
 	automaticSources map[Language]bool
 	sourceMu         sync.RWMutex
 }
 
-func NewCompilerCatalog(db *sql.DB, options CompilerCatalogOptions) (*CompilerCatalog, error) {
+func NewCompilerCatalog(db dbaccess.Database, options CompilerCatalogOptions) (*CompilerCatalog, error) {
 	if db == nil {
 		return nil, errors.New("compiler catalog requires a database")
 	}
@@ -425,31 +428,40 @@ func (catalog *CompilerCatalog) persist(
 	digest [sha256.Size]byte,
 	entries []CatalogEntry,
 ) (int64, error) {
-	tx, err := catalog.db.BeginTx(ctx, nil)
+	tx, err := catalog.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return 0, fmt.Errorf("begin compiler catalog refresh: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	var generationID int64
-	err = tx.QueryRowContext(ctx, dbgen.VerifyInlinePersistStatement1, language, source, digest[:], len(entries)).Scan(&generationID)
+	err = func() error {
+		if len(entries) < -2147483648 || len(entries) > 2147483647 {
+			return errors.New("invalid stored query value")
+		}
+		queryRow, err := dbgen.New(tx).VerifyInlinePersistStatement1(ctx, dbgen.VerifyInlinePersistStatement1Params{Language: string(language), SourceUrl: source, CatalogDigest: digest[:], EntryCount: int32(len(entries))})
+		if err != nil {
+			return err
+		}
+		generationID = queryRow
+		return nil
+	}()
 	if err != nil {
 		return 0, fmt.Errorf("persist compiler catalog generation: %w", err)
 	}
 	for _, entry := range entries {
-		if _, err := tx.ExecContext(ctx, dbgen.VerifyInlinePersistStatement2, generationID, language, entry.Version, entry.Platform, entry.ArtifactURL,
-			entry.ArtifactSHA256[:], entry.MaxBytes); err != nil {
+		if err := dbgen.New(tx).VerifyInlinePersistStatement2(ctx, dbgen.VerifyInlinePersistStatement2Params{GenerationID: generationID, Language: string(language), Version: entry.Version, Platform: entry.Platform, ArtifactUrl: entry.ArtifactURL, ArtifactSha256: entry.ArtifactSHA256[:], MaxBytes: entry.MaxBytes}); err != nil {
 			return 0, fmt.Errorf("persist compiler catalog entry: %w", err)
 		}
 		if entry.Language == LanguageVyper {
-			if _, err := tx.ExecContext(ctx, dbgen.VerifyVyperPersistRuntime, generationID, entry.Version, []byte(entry.VyperRuntimes), entry.ExpiresAt); err != nil {
+			if err := dbgen.New(tx).VerifyVyperPersistRuntime(ctx, dbgen.VerifyVyperPersistRuntimeParams{GenerationID: generationID, Version: entry.Version, VyperRuntimes: []byte(entry.VyperRuntimes), ExpiresAt: pgtype.Timestamptz{Time: entry.ExpiresAt, Valid: true}}); err != nil {
 				return 0, errors.New("persist Vyper runtime catalog")
 			}
 		}
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.VerifyInlinePersistStatement3, language, generationID); err != nil {
+	if err := dbgen.New(tx).VerifyInlinePersistStatement3(ctx, string(language), generationID); err != nil {
 		return 0, fmt.Errorf("activate compiler catalog generation: %w", err)
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return 0, fmt.Errorf("commit compiler catalog refresh: %w", err)
 	}
 	return generationID, nil
@@ -465,16 +477,41 @@ func (catalog *CompilerCatalog) Lookup(ctx context.Context, language Language, v
 	version = normalizeCompilerVersion(version)
 	var entry CatalogEntry
 	var digest []byte
-	var expires sql.NullTime
-	err := catalog.db.QueryRowContext(ctx, dbgen.VerifyInlineLookupStatement1, language, version).Scan(
-		&entry.GenerationID, &entry.Language, &entry.Version, &entry.Platform,
-		&entry.ArtifactURL, &digest, &entry.MaxBytes, &entry.FetchedAt, &expires,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
+	var expires pgtype.Timestamptz
+	err := func() error {
+
+		queryRow, err := dbgen.New(catalog.db).VerifyInlineLookupStatement1(ctx, string(language), version)
+		if err != nil {
+			return err
+		}
+		entry.GenerationID = queryRow.GenerationID
+		entry.Language = Language(queryRow.Language)
+		entry.Version = queryRow.Version
+		entry.Platform = queryRow.Platform
+		entry.ArtifactURL = queryRow.ArtifactUrl
+		digest = queryRow.ArtifactSha256
+		entry.MaxBytes = queryRow.MaxBytes
+		if !queryRow.UpdatedAt.Valid {
+			return errors.New("invalid stored query value")
+		}
+		if queryRow.UpdatedAt.InfinityModifier != pgtype.Finite {
+			return errors.New("invalid stored query value")
+		}
+		entry.FetchedAt = queryRow.UpdatedAt.Time
+		expires = queryRow.ExpiresAt
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		var exists bool
-		headErr := catalog.db.QueryRowContext(
-			ctx, dbgen.VerifyInlineLookupStatement2, language,
-		).Scan(&exists)
+		headErr := func() error {
+
+			queryRow, err := dbgen.New(catalog.db).VerifyInlineLookupStatement2(ctx, string(language))
+			if err != nil {
+				return err
+			}
+			exists = queryRow
+			return nil
+		}()
 		if headErr != nil {
 			return CatalogEntry{}, fmt.Errorf("check compiler catalog availability: %w", headErr)
 		}
@@ -506,18 +543,29 @@ func (catalog *CompilerCatalog) Versions(ctx context.Context, language Language)
 	if language == LanguageYul {
 		language = LanguageSolidity
 	}
-	rows, err := catalog.db.QueryContext(ctx, dbgen.VerifyInlineVersionsStatement1, language)
+	rows, err := dbgen.New(catalog.db).VerifyInlineVersionsStatement1(ctx, string(language))
 	if err != nil {
 		return nil, fmt.Errorf("list compiler catalog: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
 	var versions []string
 	var fetchedAt time.Time
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var version string
-		var expires sql.NullTime
+		var expires pgtype.Timestamptz
 		var runtimes []byte
-		if err := rows.Scan(&version, &fetchedAt, &expires, &runtimes); err != nil {
+		if err := func() error {
+			version = storedRow.Version
+			if !storedRow.UpdatedAt.Valid {
+				return errors.New("invalid stored query value")
+			}
+			if storedRow.UpdatedAt.InfinityModifier != pgtype.Finite {
+				return errors.New("invalid stored query value")
+			}
+			fetchedAt = storedRow.UpdatedAt.Time
+			expires = storedRow.ExpiresAt
+			runtimes = storedRow.VyperRuntimes
+			return nil
+		}(); err != nil {
 			return nil, fmt.Errorf("scan compiler catalog: %w", err)
 		}
 		if expires.Valid && !expires.Time.After(time.Now()) {
@@ -528,9 +576,7 @@ func (catalog *CompilerCatalog) Versions(ctx context.Context, language Language)
 		}
 		versions = append(versions, version)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("read compiler catalog: %w", err)
-	}
+
 	if len(versions) == 0 {
 		return nil, ErrCompilerCatalogUnavailable
 	}

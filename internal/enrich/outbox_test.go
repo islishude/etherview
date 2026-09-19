@@ -2,7 +2,6 @@ package enrich
 
 import (
 	"context"
-	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,23 +10,27 @@ import (
 	"testing"
 	"time"
 
+	testpgx "github.com/islishude/etherview/internal/testpgx"
+	pgx "github.com/jackc/pgx/v5"
+	pgconn "github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/ethereum/go-ethereum/common"
 )
 
-func outboxRow(id int64, topic string, hash common.Hash, block uint64) driver.Rows {
+func outboxRow(id int64, topic string, hash common.Hash, block uint64) pgx.Rows {
 	payload, _ := json.Marshal(coreOutboxPayload{BlockHash: hash.String(), BlockNumber: fmt.Sprint(block)})
-	return &fakeSQLRows{
-		columns: []string{"id", "chain_id", "topic", "message_key", "payload", "attempts", "generation"},
-		values:  [][]driver.Value{{id, "1", topic, hash.String(), payload, int64(0), int64(1)}},
+	return &testpgx.Rows{
+		ColumnNames: []string{"id", "chain_id", "topic", "message_key", "payload", "attempts", "generation"},
+		ValuesList:  [][]any{{id, "1", topic, hash.String(), payload, int64(0), int64(1)}},
 	}
 }
 
-func emptyOutboxRows() driver.Rows {
-	return &fakeSQLRows{columns: []string{"id", "chain_id", "topic", "message_key", "payload", "attempts", "generation"}}
+func emptyOutboxRows() pgx.Rows {
+	return &testpgx.Rows{ColumnNames: []string{"id", "chain_id", "topic", "message_key", "payload", "attempts", "generation"}}
 }
 
-func boolRows(value bool) driver.Rows {
-	return &fakeSQLRows{columns: []string{"exists"}, values: [][]driver.Value{{value}}}
+func boolRows(value bool) pgx.Rows {
+	return &testpgx.Rows{ColumnNames: []string{"exists"}, ValuesList: [][]any{{value}}}
 }
 
 type recordingEnqueuer struct {
@@ -61,7 +64,7 @@ func TestOutboxPostgresQueueEnqueuesAndPublishesInOneTransaction(t *testing.T) {
 			begins++
 			mu.Unlock()
 		},
-		query: func(query string, arguments []driver.NamedValue) (driver.Rows, error) {
+		query: func(query string, arguments []any) (pgx.Rows, error) {
 			mu.Lock()
 			defer mu.Unlock()
 			switch {
@@ -75,28 +78,28 @@ func TestOutboxPostgresQueueEnqueuesAndPublishesInOneTransaction(t *testing.T) {
 			case strings.Contains(query, "FROM durable_jobs") && !strings.Contains(query, "INSERT INTO"):
 				return emptyJobRows(), nil
 			case strings.Contains(query, "INSERT INTO durable_jobs"):
-				stageName := arguments[2].Value.(string)
+				stageName := arguments[2].(string)
 				insertedStages = append(insertedStages, stageName)
-				payload := []byte(arguments[5].Value.(string))
-				return &fakeSQLRows{
-					columns: []string{"id", "chain_id", "stage", "stage_version", "attempts", "max_attempts", "payload", "requested_generation"},
-					values: [][]driver.Value{{
-						int64(100 + len(insertedStages)), "1", stageName, arguments[3].Value.(int64), int64(0), int64(10), payload, int64(1),
+				payload := arguments[5].([]byte)
+				return &testpgx.Rows{
+					ColumnNames: []string{"id", "chain_id", "stage", "stage_version", "attempts", "max_attempts", "payload", "requested_generation"},
+					ValuesList: [][]any{{
+						int64(100 + len(insertedStages)), "1", stageName, int64(arguments[3].(int32)), int64(0), int64(10), payload, int64(1),
 					}},
 				}, nil
 			default:
 				return nil, fmt.Errorf("unexpected query: %s", query)
 			}
 		},
-		exec: func(query string, arguments []driver.NamedValue) (driver.Result, error) {
+		exec: func(query string, arguments []any) (pgconn.CommandTag, error) {
 			mu.Lock()
 			defer mu.Unlock()
 			if strings.Contains(query, "SET published_at") {
-				if err := json.Unmarshal([]byte(arguments[1].Value.(string)), &audit); err != nil {
+				if err := json.Unmarshal(arguments[0].([]byte), &audit); err != nil {
 					t.Errorf("decode dispatch audit: %v", err)
 				}
 			}
-			return driver.RowsAffected(1), nil
+			return testpgx.Affected(1), nil
 		},
 	}
 	db := openFakeSQLDB(t, backend)
@@ -128,7 +131,7 @@ func TestOutboxPartialFailureRetriesAndRecoversIdempotently(t *testing.T) {
 	retries, publishes := 0, 0
 	var publishedAudit dispatchAudit
 	backend := &fakeSQLBackend{
-		query: func(query string, _ []driver.NamedValue) (driver.Rows, error) {
+		query: func(query string, _ []any) (pgx.Rows, error) {
 			switch {
 			case strings.Contains(query, "FROM transactional_outbox"):
 				return outboxRow(8, CoreBlockCanonical, hash, 202), nil
@@ -138,22 +141,22 @@ func TestOutboxPartialFailureRetriesAndRecoversIdempotently(t *testing.T) {
 				return nil, fmt.Errorf("unexpected query: %s", query)
 			}
 		},
-		exec: func(query string, arguments []driver.NamedValue) (driver.Result, error) {
+		exec: func(query string, arguments []any) (pgconn.CommandTag, error) {
 			mu.Lock()
 			defer mu.Unlock()
 			switch {
 			case strings.Contains(query, "SET attempts = LEAST"):
 				retries++
-				if arguments[2].Value != int64(time.Second/time.Microsecond) {
-					t.Errorf("first retry delay=%v", arguments[2].Value)
+				if arguments[1] != int64(time.Second/time.Microsecond) {
+					t.Errorf("first retry delay=%v", arguments[1])
 				}
 			case strings.Contains(query, "SET published_at"):
 				publishes++
-				if err := json.Unmarshal([]byte(arguments[1].Value.(string)), &publishedAudit); err != nil {
+				if err := json.Unmarshal(arguments[0].([]byte), &publishedAudit); err != nil {
 					t.Errorf("decode audit: %v", err)
 				}
 			}
-			return driver.RowsAffected(1), nil
+			return testpgx.Affected(1), nil
 		},
 	}
 	enqueuer := &recordingEnqueuer{result: func(index int, _ EnqueueRequest) (EnqueueResult, error) {
@@ -212,7 +215,7 @@ func TestOutboxOrphanRequiresNonCanonicalJournalsAndAuditsNoReplay(t *testing.T)
 			var audit dispatchAudit
 			published, retried := 0, 0
 			backend := &fakeSQLBackend{
-				query: func(query string, _ []driver.NamedValue) (driver.Rows, error) {
+				query: func(query string, _ []any) (pgx.Rows, error) {
 					switch {
 					case strings.Contains(query, "FROM transactional_outbox"):
 						return outboxRow(11, CoreBlockOrphaned, hash, 303), nil
@@ -227,17 +230,17 @@ func TestOutboxOrphanRequiresNonCanonicalJournalsAndAuditsNoReplay(t *testing.T)
 						return nil, fmt.Errorf("unexpected query: %s", query)
 					}
 				},
-				exec: func(query string, arguments []driver.NamedValue) (driver.Result, error) {
+				exec: func(query string, arguments []any) (pgconn.CommandTag, error) {
 					switch {
 					case strings.Contains(query, "SET published_at"):
 						published++
-						if err := json.Unmarshal([]byte(arguments[1].Value.(string)), &audit); err != nil {
+						if err := json.Unmarshal(arguments[0].([]byte), &audit); err != nil {
 							t.Errorf("decode audit: %v", err)
 						}
 					case strings.Contains(query, "SET attempts = LEAST"):
 						retried++
 					}
-					return driver.RowsAffected(1), nil
+					return testpgx.Affected(1), nil
 				},
 			}
 			enqueuer := &recordingEnqueuer{result: func(int, EnqueueRequest) (EnqueueResult, error) {
@@ -265,7 +268,7 @@ func TestOutboxSkipsAnOrphanGenerationAfterSameHashReattaches(t *testing.T) {
 	hash := uintWord(304)
 	var audit dispatchAudit
 	backend := &fakeSQLBackend{
-		query: func(query string, _ []driver.NamedValue) (driver.Rows, error) {
+		query: func(query string, _ []any) (pgx.Rows, error) {
 			switch {
 			case strings.Contains(query, "FROM transactional_outbox"):
 				return outboxRow(12, CoreBlockOrphaned, hash, 304), nil
@@ -275,13 +278,13 @@ func TestOutboxSkipsAnOrphanGenerationAfterSameHashReattaches(t *testing.T) {
 				return nil, fmt.Errorf("unexpected query: %s", query)
 			}
 		},
-		exec: func(query string, arguments []driver.NamedValue) (driver.Result, error) {
+		exec: func(query string, arguments []any) (pgconn.CommandTag, error) {
 			if strings.Contains(query, "SET published_at") {
-				if err := json.Unmarshal([]byte(arguments[1].Value.(string)), &audit); err != nil {
+				if err := json.Unmarshal(arguments[0].([]byte), &audit); err != nil {
 					t.Fatal(err)
 				}
 			}
-			return driver.RowsAffected(1), nil
+			return testpgx.Affected(1), nil
 		},
 	}
 	dispatcher, _ := NewOutboxDispatcher(
@@ -303,7 +306,7 @@ func TestOutboxConcurrentDispatchUsesDistinctSkipLockedClaims(t *testing.T) {
 	published := 0
 	claimUsesSkipLocked := true
 	backend := &fakeSQLBackend{
-		query: func(query string, _ []driver.NamedValue) (driver.Rows, error) {
+		query: func(query string, _ []any) (pgx.Rows, error) {
 			if strings.Contains(query, "FROM transactional_outbox") {
 				mu.Lock()
 				defer mu.Unlock()
@@ -317,13 +320,13 @@ func TestOutboxConcurrentDispatchUsesDistinctSkipLockedClaims(t *testing.T) {
 			}
 			return nil, fmt.Errorf("unexpected query: %s", query)
 		},
-		exec: func(query string, _ []driver.NamedValue) (driver.Result, error) {
+		exec: func(query string, _ []any) (pgconn.CommandTag, error) {
 			if strings.Contains(query, "SET published_at") {
 				mu.Lock()
 				published++
 				mu.Unlock()
 			}
-			return driver.RowsAffected(1), nil
+			return testpgx.Affected(1), nil
 		},
 	}
 	enqueuer := &recordingEnqueuer{}
@@ -350,7 +353,7 @@ func TestOutboxConcurrentDispatchUsesDistinctSkipLockedClaims(t *testing.T) {
 
 func TestOutboxDispatcherServicePollsUntilCancellation(t *testing.T) {
 	t.Parallel()
-	backend := &fakeSQLBackend{query: func(query string, _ []driver.NamedValue) (driver.Rows, error) {
+	backend := &fakeSQLBackend{query: func(query string, _ []any) (pgx.Rows, error) {
 		if !strings.Contains(query, "FROM transactional_outbox") {
 			return nil, fmt.Errorf("unexpected query: %s", query)
 		}

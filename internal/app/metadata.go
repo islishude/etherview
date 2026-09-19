@@ -1,10 +1,11 @@
 package app
 
 import (
-	"database/sql"
 	"fmt"
 	"log/slog"
 	"strconv"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/islishude/etherview/internal/components"
 	"github.com/islishude/etherview/internal/config"
@@ -14,7 +15,7 @@ import (
 
 func registerMetadataWorkers(
 	registry *components.Registry,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	pool *ethrpc.Pool,
 	cfg config.Config,
 	logger *slog.Logger,

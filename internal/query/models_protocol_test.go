@@ -1,11 +1,14 @@
 package query
 
 import (
-	"database/sql"
 	"encoding/json"
 	"math/big"
 	"strconv"
 	"testing"
+
+	dbgen "github.com/islishude/etherview/internal/db/gen"
+
+	pgtype "github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -41,9 +44,9 @@ func TestTransactionModelPublishesBlobTypedFields(t *testing.T) {
 	reader := &PostgresReader{}
 	model, err := reader.transactionModel(
 		bundle.RawTransactions[0], rawReceipt,
-		strconv.FormatUint(bundle.Block.Time(), 10), sql.NullString{String: "0x1", Valid: true},
+		strconv.FormatUint(bundle.Block.Time(), 10), pgtype.Text{String: "0x1", Valid: true},
 		"12", bundle.Block.Hash().Bytes(), 0, transaction.Hash().Bytes(), true,
-		sql.NullString{String: "12", Valid: true}, sql.NullString{String: "10", Valid: true}, 12,
+		pgtype.Text{String: "12", Valid: true}, pgtype.Text{String: "10", Valid: true}, 12,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -82,7 +85,7 @@ func TestBlockModelPublishesPresentAndEmptyWithdrawals(t *testing.T) {
 		t.Fatal(err)
 	}
 	reader := &PostgresReader{}
-	record, err := reader.scanBlock(&singleRowScanner{values: projectedBlockRow(t, bundle)}, false)
+	record, err := reader.decodeBlock(projectedBlockRow(t, bundle), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,8 +98,8 @@ func TestBlockModelPublishesPresentAndEmptyWithdrawals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	emptyRecord, err := reader.scanBlock(
-		&singleRowScanner{values: projectedBlockRow(t, emptyBundle)}, false,
+	emptyRecord, err := reader.decodeBlock(
+		projectedBlockRow(t, emptyBundle), false,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +109,7 @@ func TestBlockModelPublishesPresentAndEmptyWithdrawals(t *testing.T) {
 	}
 }
 
-func projectedBlockRow(t *testing.T, bundle chainbundle.Bundle) []any {
+func projectedBlockRow(t *testing.T, bundle chainbundle.Bundle) dbgen.QueryListBlocksFirstRow {
 	t.Helper()
 	withdrawals := make([]storedWithdrawalProjection, len(bundle.Block.Withdrawals()))
 	for index, withdrawal := range bundle.Block.Withdrawals() {
@@ -121,102 +124,20 @@ func projectedBlockRow(t *testing.T, bundle chainbundle.Bundle) []any {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var baseFee any
+	var baseFee *string
 	if bundle.Block.BaseFee() != nil {
-		baseFee = hexutil.EncodeBig(bundle.Block.BaseFee())
+		baseFee = new(hexutil.EncodeBig(bundle.Block.BaseFee()))
 	}
 	withdrawalsPresent := bundle.Block.Withdrawals() != nil
-	var withdrawalCount any
+	var withdrawalCount *int64
 	if withdrawalsPresent {
-		withdrawalCount = int64(len(withdrawals))
+		withdrawalCount = new(int64(len(withdrawals)))
 	}
-	return []any{
-		strconv.FormatUint(bundle.Block.NumberU64(), 10),
-		bundle.Block.Hash().Bytes(), bundle.Block.ParentHash().Bytes(),
-		strconv.FormatUint(bundle.Block.Time(), 10), bundle.Block.Coinbase().Hex(),
-		hexutil.EncodeUint64(bundle.Block.GasUsed()),
-		hexutil.EncodeUint64(bundle.Block.GasLimit()), baseFee,
-		int64(len(bundle.Block.Transactions())), int64(len(bundle.Block.Transactions())),
-		withdrawalsPresent, withdrawalCount, withdrawalsJSON,
-		true, nil, nil,
+	return dbgen.QueryListBlocksFirstRow{
+		BlockNumber: strconv.FormatUint(bundle.Block.NumberU64(), 10), Hash: bundle.Block.Hash().Bytes(), ParentHash: bundle.Block.ParentHash().Bytes(),
+		BlockTimestamp: strconv.FormatUint(bundle.Block.Time(), 10), MinerText: new(bundle.Block.Coinbase().Hex()),
+		GasUsedQuantity: new(hexutil.EncodeUint64(bundle.Block.GasUsed())), GasLimitQuantity: new(hexutil.EncodeUint64(bundle.Block.GasLimit())), BaseFeePerGasQuantity: baseFee,
+		TransactionCount: new(int64(len(bundle.Block.Transactions()))), NormalizedTransactionCount: int64(len(bundle.Block.Transactions())),
+		WithdrawalsPresent: new(withdrawalsPresent), WithdrawalCount: withdrawalCount, Withdrawals: withdrawalsJSON, Canonical: true,
 	}
 }
-
-type singleRowScanner struct {
-	values []any
-}
-
-func (row *singleRowScanner) Scan(dest ...any) error {
-	if len(dest) != len(row.values) {
-		return &scanArityError{want: len(row.values), got: len(dest)}
-	}
-	for index, value := range row.values {
-		switch target := dest[index].(type) {
-		case *[]byte:
-			targetValue, ok := value.([]byte)
-			if !ok {
-				return &scanTypeError{index: index}
-			}
-			*target = targetValue
-		case *string:
-			targetValue, ok := value.(string)
-			if !ok {
-				return &scanTypeError{index: index}
-			}
-			*target = targetValue
-		case *bool:
-			targetValue, ok := value.(bool)
-			if !ok {
-				return &scanTypeError{index: index}
-			}
-			*target = targetValue
-		case *int64:
-			targetValue, ok := value.(int64)
-			if !ok {
-				return &scanTypeError{index: index}
-			}
-			*target = targetValue
-		case *sql.NullString:
-			if value == nil {
-				*target = sql.NullString{}
-				continue
-			}
-			targetValue, ok := value.(string)
-			if !ok {
-				return &scanTypeError{index: index}
-			}
-			*target = sql.NullString{String: targetValue, Valid: true}
-		case *sql.NullInt64:
-			if value == nil {
-				*target = sql.NullInt64{}
-				continue
-			}
-			targetValue, ok := value.(int64)
-			if !ok {
-				return &scanTypeError{index: index}
-			}
-			*target = sql.NullInt64{Int64: targetValue, Valid: true}
-		case *sql.NullBool:
-			if value == nil {
-				*target = sql.NullBool{}
-				continue
-			}
-			targetValue, ok := value.(bool)
-			if !ok {
-				return &scanTypeError{index: index}
-			}
-			*target = sql.NullBool{Bool: targetValue, Valid: true}
-		default:
-			return &scanTypeError{index: index}
-		}
-	}
-	return nil
-}
-
-type scanArityError struct{ want, got int }
-
-func (err *scanArityError) Error() string { return "scan arity mismatch" }
-
-type scanTypeError struct{ index int }
-
-func (err *scanTypeError) Error() string { return "scan type mismatch" }

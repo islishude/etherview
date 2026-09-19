@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const VerifiedSelectorWritePersistStatement1 = `-- name: VerifiedSelectorWritePersistStatement1 :exec
+const verifiedSelectorWritePersistStatement1 = `-- name: VerifiedSelectorWritePersistStatement1 :execrows
 INSERT INTO verified_function_selector_sets (
 			verification_job_id, request_digest, chain_id, address, code_hash,
 			valid_from_block, status, function_count, warning
@@ -20,33 +20,36 @@ INSERT INTO verified_function_selector_sets (
 `
 
 type VerifiedSelectorWritePersistStatement1Params struct {
-	Column1       pgtype.UUID    `db:"column_1" json:"column_1"`
-	RequestDigest []byte         `db:"request_digest" json:"request_digest"`
-	Column3       pgtype.Numeric `db:"column_3" json:"column_3"`
-	Address       []byte         `db:"address" json:"address"`
-	CodeHash      []byte         `db:"code_hash" json:"code_hash"`
-	Column6       pgtype.Numeric `db:"column_6" json:"column_6"`
-	Status        string         `db:"status" json:"status"`
-	FunctionCount int32          `db:"function_count" json:"function_count"`
-	Warning       string         `db:"warning" json:"warning"`
+	VerificationJobID pgtype.UUID    `db:"verification_job_id" json:"verification_job_id"`
+	RequestDigest     []byte         `db:"request_digest" json:"request_digest"`
+	ChainID           pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Address           []byte         `db:"address" json:"address"`
+	CodeHash          []byte         `db:"code_hash" json:"code_hash"`
+	ValidFromBlock    pgtype.Numeric `db:"valid_from_block" json:"valid_from_block"`
+	Status            string         `db:"status" json:"status"`
+	FunctionCount     int32          `db:"function_count" json:"function_count"`
+	Warning           string         `db:"warning" json:"warning"`
 }
 
-func (q *Queries) VerifiedSelectorWritePersistStatement1(ctx context.Context, arg VerifiedSelectorWritePersistStatement1Params) error {
-	_, err := q.db.Exec(ctx, VerifiedSelectorWritePersistStatement1,
-		arg.Column1,
+func (q *Queries) VerifiedSelectorWritePersistStatement1(ctx context.Context, arg VerifiedSelectorWritePersistStatement1Params) (int64, error) {
+	result, err := q.db.Exec(ctx, verifiedSelectorWritePersistStatement1,
+		arg.VerificationJobID,
 		arg.RequestDigest,
-		arg.Column3,
+		arg.ChainID,
 		arg.Address,
 		arg.CodeHash,
-		arg.Column6,
+		arg.ValidFromBlock,
 		arg.Status,
 		arg.FunctionCount,
 		arg.Warning,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const VerifiedSelectorWritePersistStatement2 = `-- name: VerifiedSelectorWritePersistStatement2 :exec
+const verifiedSelectorWritePersistStatement2 = `-- name: VerifiedSelectorWritePersistStatement2 :exec
 INSERT INTO verified_function_selectors (
 				verification_job_id, chain_id, address, code_hash,
 				selector, signature, function_name, abi_entry
@@ -54,26 +57,26 @@ INSERT INTO verified_function_selectors (
 `
 
 type VerifiedSelectorWritePersistStatement2Params struct {
-	Column1      pgtype.UUID    `db:"column_1" json:"column_1"`
-	Column2      pgtype.Numeric `db:"column_2" json:"column_2"`
-	Address      []byte         `db:"address" json:"address"`
-	CodeHash     []byte         `db:"code_hash" json:"code_hash"`
-	Selector     []byte         `db:"selector" json:"selector"`
-	Signature    string         `db:"signature" json:"signature"`
-	FunctionName string         `db:"function_name" json:"function_name"`
-	Column8      []byte         `db:"column_8" json:"column_8"`
+	VerificationJobID pgtype.UUID    `db:"verification_job_id" json:"verification_job_id"`
+	ChainID           pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Address           []byte         `db:"address" json:"address"`
+	CodeHash          []byte         `db:"code_hash" json:"code_hash"`
+	Selector          []byte         `db:"selector" json:"selector"`
+	Signature         string         `db:"signature" json:"signature"`
+	FunctionName      string         `db:"function_name" json:"function_name"`
+	AbiEntry          []byte         `db:"abi_entry" json:"abi_entry"`
 }
 
 func (q *Queries) VerifiedSelectorWritePersistStatement2(ctx context.Context, arg VerifiedSelectorWritePersistStatement2Params) error {
-	_, err := q.db.Exec(ctx, VerifiedSelectorWritePersistStatement2,
-		arg.Column1,
-		arg.Column2,
+	_, err := q.db.Exec(ctx, verifiedSelectorWritePersistStatement2,
+		arg.VerificationJobID,
+		arg.ChainID,
 		arg.Address,
 		arg.CodeHash,
 		arg.Selector,
 		arg.Signature,
 		arg.FunctionName,
-		arg.Column8,
+		arg.AbiEntry,
 	)
 	return err
 }

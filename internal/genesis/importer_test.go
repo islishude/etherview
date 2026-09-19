@@ -1,12 +1,13 @@
 package genesis
 
 import (
-	"database/sql"
 	"encoding/binary"
 	"math/big"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
@@ -32,7 +33,7 @@ const genesisFixture = `{
 }`
 
 func TestNewImporterRejectsGenesisFileAboveBlockZero(t *testing.T) {
-	_, err := NewImporter(&sql.DB{}, config.ChainConfig{
+	_, err := NewImporter(&pgxpool.Pool{}, config.ChainConfig{
 		ID: 777, StartBlock: 1, GenesisFile: "/tmp/genesis.json",
 	}, nil, 0)
 	if err == nil || err.Error() != "genesis importer requires indexing from block zero" {
@@ -68,7 +69,7 @@ func TestNewImporterRejectsAmbiguousOrNonzeroRemoteSource(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := NewImporter(&sql.DB{}, test.chain, nil, 0)
+			_, err := NewImporter(&pgxpool.Pool{}, test.chain, nil, 0)
 			if err == nil || err.Error() != test.want {
 				t.Fatalf("NewImporter error = %v, want %q", err, test.want)
 			}

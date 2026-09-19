@@ -11,11 +11,11 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const MempoolListPendingAfter = `-- name: MempoolListPendingAfter :many
+const mempoolListPendingAfter = `-- name: MempoolListPendingAfter :many
 SELECT pending.tx_hash, pending.from_address, pending.to_address,
        pending.nonce::text, pending.value::text, pending.gas::text,
-       pending.gas_price::text, pending.max_fee_per_gas::text,
-       pending.max_priority_fee_per_gas::text, pending.tx_type::text,
+       pending.gas_price, pending.max_fee_per_gas,
+       pending.max_priority_fee_per_gas, pending.tx_type,
        pending.input, pending.raw, pending.first_seen_at,
        pending.last_seen_at, pending.expires_at,
        predecessor.replaced_hash
@@ -29,54 +29,54 @@ LEFT JOIN LATERAL (
       ON evidence.chain_id = replacement.chain_id AND evidence.id = replacement.snapshot_id
     WHERE replacement.chain_id = pending.chain_id
       AND replacement.replacement_hash = pending.tx_hash
-      AND evidence.observed_at <= $3
-      AND evidence.expires_at > $4
+      AND evidence.observed_at <= $1
+      AND evidence.expires_at > $2
     ORDER BY evidence.observed_at DESC, evidence.id DESC
     LIMIT 1
 ) AS predecessor ON TRUE
-WHERE member.chain_id = $1::numeric AND member.snapshot_id = $2
-  AND (pending.first_seen_at, pending.tx_hash) < ($5, $6)
+WHERE member.chain_id = $3::numeric AND member.snapshot_id = $4
+  AND (pending.first_seen_at, pending.tx_hash) < ($5::timestamptz, $6::bytea)
 ORDER BY pending.first_seen_at DESC, pending.tx_hash DESC
 LIMIT $7
 `
 
 type MempoolListPendingAfterParams struct {
-	Column1       pgtype.Numeric     `db:"column_1" json:"column_1"`
-	SnapshotID    int64              `db:"snapshot_id" json:"snapshot_id"`
-	ObservedAt    pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
-	ExpiresAt     pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-	FirstSeenAt   pgtype.Timestamptz `db:"first_seen_at" json:"first_seen_at"`
-	FirstSeenAt_2 pgtype.Timestamptz `db:"first_seen_at_2" json:"first_seen_at_2"`
-	Limit         int32              `db:"limit" json:"limit"`
+	ObservedAt        pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
+	ExpiresAt         pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	ChainID           pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	SnapshotID        int64              `db:"snapshot_id" json:"snapshot_id"`
+	CursorFirstSeenAt pgtype.Timestamptz `db:"cursor_first_seen_at" json:"cursor_first_seen_at"`
+	CursorTxHash      []byte             `db:"cursor_tx_hash" json:"cursor_tx_hash"`
+	Limit             int32              `db:"limit" json:"limit"`
 }
 
 type MempoolListPendingAfterRow struct {
-	TxHash                      []byte             `db:"tx_hash" json:"tx_hash"`
-	FromAddress                 []byte             `db:"from_address" json:"from_address"`
-	ToAddress                   []byte             `db:"to_address" json:"to_address"`
-	PendingNonce                string             `db:"pending_nonce" json:"pending_nonce"`
-	PendingValue                string             `db:"pending_value" json:"pending_value"`
-	PendingGas                  string             `db:"pending_gas" json:"pending_gas"`
-	PendingGasPrice             string             `db:"pending_gas_price" json:"pending_gas_price"`
-	PendingMaxFeePerGas         string             `db:"pending_max_fee_per_gas" json:"pending_max_fee_per_gas"`
-	PendingMaxPriorityFeePerGas string             `db:"pending_max_priority_fee_per_gas" json:"pending_max_priority_fee_per_gas"`
-	PendingTxType               string             `db:"pending_tx_type" json:"pending_tx_type"`
-	Input                       []byte             `db:"input" json:"input"`
-	Raw                         []byte             `db:"raw" json:"raw"`
-	FirstSeenAt                 pgtype.Timestamptz `db:"first_seen_at" json:"first_seen_at"`
-	LastSeenAt                  pgtype.Timestamptz `db:"last_seen_at" json:"last_seen_at"`
-	ExpiresAt                   pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-	ReplacedHash                []byte             `db:"replaced_hash" json:"replaced_hash"`
+	TxHash               []byte             `db:"tx_hash" json:"tx_hash"`
+	FromAddress          []byte             `db:"from_address" json:"from_address"`
+	ToAddress            []byte             `db:"to_address" json:"to_address"`
+	PendingNonce         string             `db:"pending_nonce" json:"pending_nonce"`
+	PendingValue         string             `db:"pending_value" json:"pending_value"`
+	PendingGas           string             `db:"pending_gas" json:"pending_gas"`
+	GasPrice             pgtype.Numeric     `db:"gas_price" json:"gas_price"`
+	MaxFeePerGas         pgtype.Numeric     `db:"max_fee_per_gas" json:"max_fee_per_gas"`
+	MaxPriorityFeePerGas pgtype.Numeric     `db:"max_priority_fee_per_gas" json:"max_priority_fee_per_gas"`
+	TxType               pgtype.Numeric     `db:"tx_type" json:"tx_type"`
+	Input                []byte             `db:"input" json:"input"`
+	Raw                  []byte             `db:"raw" json:"raw"`
+	FirstSeenAt          pgtype.Timestamptz `db:"first_seen_at" json:"first_seen_at"`
+	LastSeenAt           pgtype.Timestamptz `db:"last_seen_at" json:"last_seen_at"`
+	ExpiresAt            pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	ReplacedHash         []byte             `db:"replaced_hash" json:"replaced_hash"`
 }
 
 func (q *Queries) MempoolListPendingAfter(ctx context.Context, arg MempoolListPendingAfterParams) ([]MempoolListPendingAfterRow, error) {
-	rows, err := q.db.Query(ctx, MempoolListPendingAfter,
-		arg.Column1,
-		arg.SnapshotID,
+	rows, err := q.db.Query(ctx, mempoolListPendingAfter,
 		arg.ObservedAt,
 		arg.ExpiresAt,
-		arg.FirstSeenAt,
-		arg.FirstSeenAt_2,
+		arg.ChainID,
+		arg.SnapshotID,
+		arg.CursorFirstSeenAt,
+		arg.CursorTxHash,
 		arg.Limit,
 	)
 	if err != nil {
@@ -93,10 +93,10 @@ func (q *Queries) MempoolListPendingAfter(ctx context.Context, arg MempoolListPe
 			&i.PendingNonce,
 			&i.PendingValue,
 			&i.PendingGas,
-			&i.PendingGasPrice,
-			&i.PendingMaxFeePerGas,
-			&i.PendingMaxPriorityFeePerGas,
-			&i.PendingTxType,
+			&i.GasPrice,
+			&i.MaxFeePerGas,
+			&i.MaxPriorityFeePerGas,
+			&i.TxType,
 			&i.Input,
 			&i.Raw,
 			&i.FirstSeenAt,
@@ -114,11 +114,11 @@ func (q *Queries) MempoolListPendingAfter(ctx context.Context, arg MempoolListPe
 	return items, nil
 }
 
-const MempoolListPendingFirst = `-- name: MempoolListPendingFirst :many
+const mempoolListPendingFirst = `-- name: MempoolListPendingFirst :many
 SELECT pending.tx_hash, pending.from_address, pending.to_address,
        pending.nonce::text, pending.value::text, pending.gas::text,
-       pending.gas_price::text, pending.max_fee_per_gas::text,
-       pending.max_priority_fee_per_gas::text, pending.tx_type::text,
+       pending.gas_price, pending.max_fee_per_gas,
+       pending.max_priority_fee_per_gas, pending.tx_type,
        pending.input, pending.raw, pending.first_seen_at,
        pending.last_seen_at, pending.expires_at,
        predecessor.replaced_hash
@@ -132,49 +132,49 @@ LEFT JOIN LATERAL (
       ON evidence.chain_id = replacement.chain_id AND evidence.id = replacement.snapshot_id
     WHERE replacement.chain_id = pending.chain_id
       AND replacement.replacement_hash = pending.tx_hash
-      AND evidence.observed_at <= $3
-      AND evidence.expires_at > $4
+      AND evidence.observed_at <= $1
+      AND evidence.expires_at > $2
     ORDER BY evidence.observed_at DESC, evidence.id DESC
     LIMIT 1
 ) AS predecessor ON TRUE
-WHERE member.chain_id = $1::numeric AND member.snapshot_id = $2
+WHERE member.chain_id = $3::numeric AND member.snapshot_id = $4
 ORDER BY pending.first_seen_at DESC, pending.tx_hash DESC
 LIMIT $5
 `
 
 type MempoolListPendingFirstParams struct {
-	Column1    pgtype.Numeric     `db:"column_1" json:"column_1"`
-	SnapshotID int64              `db:"snapshot_id" json:"snapshot_id"`
 	ObservedAt pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
 	ExpiresAt  pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	ChainID    pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	SnapshotID int64              `db:"snapshot_id" json:"snapshot_id"`
 	Limit      int32              `db:"limit" json:"limit"`
 }
 
 type MempoolListPendingFirstRow struct {
-	TxHash                      []byte             `db:"tx_hash" json:"tx_hash"`
-	FromAddress                 []byte             `db:"from_address" json:"from_address"`
-	ToAddress                   []byte             `db:"to_address" json:"to_address"`
-	PendingNonce                string             `db:"pending_nonce" json:"pending_nonce"`
-	PendingValue                string             `db:"pending_value" json:"pending_value"`
-	PendingGas                  string             `db:"pending_gas" json:"pending_gas"`
-	PendingGasPrice             string             `db:"pending_gas_price" json:"pending_gas_price"`
-	PendingMaxFeePerGas         string             `db:"pending_max_fee_per_gas" json:"pending_max_fee_per_gas"`
-	PendingMaxPriorityFeePerGas string             `db:"pending_max_priority_fee_per_gas" json:"pending_max_priority_fee_per_gas"`
-	PendingTxType               string             `db:"pending_tx_type" json:"pending_tx_type"`
-	Input                       []byte             `db:"input" json:"input"`
-	Raw                         []byte             `db:"raw" json:"raw"`
-	FirstSeenAt                 pgtype.Timestamptz `db:"first_seen_at" json:"first_seen_at"`
-	LastSeenAt                  pgtype.Timestamptz `db:"last_seen_at" json:"last_seen_at"`
-	ExpiresAt                   pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-	ReplacedHash                []byte             `db:"replaced_hash" json:"replaced_hash"`
+	TxHash               []byte             `db:"tx_hash" json:"tx_hash"`
+	FromAddress          []byte             `db:"from_address" json:"from_address"`
+	ToAddress            []byte             `db:"to_address" json:"to_address"`
+	PendingNonce         string             `db:"pending_nonce" json:"pending_nonce"`
+	PendingValue         string             `db:"pending_value" json:"pending_value"`
+	PendingGas           string             `db:"pending_gas" json:"pending_gas"`
+	GasPrice             pgtype.Numeric     `db:"gas_price" json:"gas_price"`
+	MaxFeePerGas         pgtype.Numeric     `db:"max_fee_per_gas" json:"max_fee_per_gas"`
+	MaxPriorityFeePerGas pgtype.Numeric     `db:"max_priority_fee_per_gas" json:"max_priority_fee_per_gas"`
+	TxType               pgtype.Numeric     `db:"tx_type" json:"tx_type"`
+	Input                []byte             `db:"input" json:"input"`
+	Raw                  []byte             `db:"raw" json:"raw"`
+	FirstSeenAt          pgtype.Timestamptz `db:"first_seen_at" json:"first_seen_at"`
+	LastSeenAt           pgtype.Timestamptz `db:"last_seen_at" json:"last_seen_at"`
+	ExpiresAt            pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	ReplacedHash         []byte             `db:"replaced_hash" json:"replaced_hash"`
 }
 
 func (q *Queries) MempoolListPendingFirst(ctx context.Context, arg MempoolListPendingFirstParams) ([]MempoolListPendingFirstRow, error) {
-	rows, err := q.db.Query(ctx, MempoolListPendingFirst,
-		arg.Column1,
-		arg.SnapshotID,
+	rows, err := q.db.Query(ctx, mempoolListPendingFirst,
 		arg.ObservedAt,
 		arg.ExpiresAt,
+		arg.ChainID,
+		arg.SnapshotID,
 		arg.Limit,
 	)
 	if err != nil {
@@ -191,10 +191,10 @@ func (q *Queries) MempoolListPendingFirst(ctx context.Context, arg MempoolListPe
 			&i.PendingNonce,
 			&i.PendingValue,
 			&i.PendingGas,
-			&i.PendingGasPrice,
-			&i.PendingMaxFeePerGas,
-			&i.PendingMaxPriorityFeePerGas,
-			&i.PendingTxType,
+			&i.GasPrice,
+			&i.MaxFeePerGas,
+			&i.MaxPriorityFeePerGas,
+			&i.TxType,
 			&i.Input,
 			&i.Raw,
 			&i.FirstSeenAt,
@@ -212,11 +212,11 @@ func (q *Queries) MempoolListPendingFirst(ctx context.Context, arg MempoolListPe
 	return items, nil
 }
 
-const MempoolLookupPending = `-- name: MempoolLookupPending :many
+const mempoolLookupPending = `-- name: MempoolLookupPending :one
 SELECT pending.tx_hash, pending.from_address, pending.to_address,
        pending.nonce::text, pending.value::text, pending.gas::text,
-       pending.gas_price::text, pending.max_fee_per_gas::text,
-       pending.max_priority_fee_per_gas::text, pending.tx_type::text,
+       pending.gas_price, pending.max_fee_per_gas,
+       pending.max_priority_fee_per_gas, pending.tx_type,
        pending.input, pending.raw, pending.first_seen_at,
        pending.last_seen_at, pending.expires_at,
        predecessor.replaced_hash
@@ -230,91 +230,78 @@ LEFT JOIN LATERAL (
       ON evidence.chain_id = replacement.chain_id AND evidence.id = replacement.snapshot_id
     WHERE replacement.chain_id = pending.chain_id
       AND replacement.replacement_hash = pending.tx_hash
-      AND evidence.observed_at <= $4
-      AND evidence.expires_at > $5
+      AND evidence.observed_at <= $1
+      AND evidence.expires_at > $2
     ORDER BY evidence.observed_at DESC, evidence.id DESC
     LIMIT 1
 ) AS predecessor ON TRUE
-WHERE member.chain_id = $1::numeric
-  AND member.snapshot_id = $2
-  AND member.tx_hash = $3
+WHERE member.chain_id = $3::numeric
+  AND member.snapshot_id = $4
+  AND member.tx_hash = $5
 `
 
 type MempoolLookupPendingParams struct {
-	Column1    pgtype.Numeric     `db:"column_1" json:"column_1"`
-	SnapshotID int64              `db:"snapshot_id" json:"snapshot_id"`
-	TxHash     []byte             `db:"tx_hash" json:"tx_hash"`
 	ObservedAt pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
 	ExpiresAt  pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	ChainID    pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	SnapshotID int64              `db:"snapshot_id" json:"snapshot_id"`
+	TxHash     []byte             `db:"tx_hash" json:"tx_hash"`
 }
 
 type MempoolLookupPendingRow struct {
-	TxHash                      []byte             `db:"tx_hash" json:"tx_hash"`
-	FromAddress                 []byte             `db:"from_address" json:"from_address"`
-	ToAddress                   []byte             `db:"to_address" json:"to_address"`
-	PendingNonce                string             `db:"pending_nonce" json:"pending_nonce"`
-	PendingValue                string             `db:"pending_value" json:"pending_value"`
-	PendingGas                  string             `db:"pending_gas" json:"pending_gas"`
-	PendingGasPrice             string             `db:"pending_gas_price" json:"pending_gas_price"`
-	PendingMaxFeePerGas         string             `db:"pending_max_fee_per_gas" json:"pending_max_fee_per_gas"`
-	PendingMaxPriorityFeePerGas string             `db:"pending_max_priority_fee_per_gas" json:"pending_max_priority_fee_per_gas"`
-	PendingTxType               string             `db:"pending_tx_type" json:"pending_tx_type"`
-	Input                       []byte             `db:"input" json:"input"`
-	Raw                         []byte             `db:"raw" json:"raw"`
-	FirstSeenAt                 pgtype.Timestamptz `db:"first_seen_at" json:"first_seen_at"`
-	LastSeenAt                  pgtype.Timestamptz `db:"last_seen_at" json:"last_seen_at"`
-	ExpiresAt                   pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-	ReplacedHash                []byte             `db:"replaced_hash" json:"replaced_hash"`
+	TxHash               []byte             `db:"tx_hash" json:"tx_hash"`
+	FromAddress          []byte             `db:"from_address" json:"from_address"`
+	ToAddress            []byte             `db:"to_address" json:"to_address"`
+	PendingNonce         string             `db:"pending_nonce" json:"pending_nonce"`
+	PendingValue         string             `db:"pending_value" json:"pending_value"`
+	PendingGas           string             `db:"pending_gas" json:"pending_gas"`
+	GasPrice             pgtype.Numeric     `db:"gas_price" json:"gas_price"`
+	MaxFeePerGas         pgtype.Numeric     `db:"max_fee_per_gas" json:"max_fee_per_gas"`
+	MaxPriorityFeePerGas pgtype.Numeric     `db:"max_priority_fee_per_gas" json:"max_priority_fee_per_gas"`
+	TxType               pgtype.Numeric     `db:"tx_type" json:"tx_type"`
+	Input                []byte             `db:"input" json:"input"`
+	Raw                  []byte             `db:"raw" json:"raw"`
+	FirstSeenAt          pgtype.Timestamptz `db:"first_seen_at" json:"first_seen_at"`
+	LastSeenAt           pgtype.Timestamptz `db:"last_seen_at" json:"last_seen_at"`
+	ExpiresAt            pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	ReplacedHash         []byte             `db:"replaced_hash" json:"replaced_hash"`
 }
 
-func (q *Queries) MempoolLookupPending(ctx context.Context, arg MempoolLookupPendingParams) ([]MempoolLookupPendingRow, error) {
-	rows, err := q.db.Query(ctx, MempoolLookupPending,
-		arg.Column1,
-		arg.SnapshotID,
-		arg.TxHash,
+func (q *Queries) MempoolLookupPending(ctx context.Context, arg MempoolLookupPendingParams) (MempoolLookupPendingRow, error) {
+	row := q.db.QueryRow(ctx, mempoolLookupPending,
 		arg.ObservedAt,
 		arg.ExpiresAt,
+		arg.ChainID,
+		arg.SnapshotID,
+		arg.TxHash,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []MempoolLookupPendingRow{}
-	for rows.Next() {
-		var i MempoolLookupPendingRow
-		if err := rows.Scan(
-			&i.TxHash,
-			&i.FromAddress,
-			&i.ToAddress,
-			&i.PendingNonce,
-			&i.PendingValue,
-			&i.PendingGas,
-			&i.PendingGasPrice,
-			&i.PendingMaxFeePerGas,
-			&i.PendingMaxPriorityFeePerGas,
-			&i.PendingTxType,
-			&i.Input,
-			&i.Raw,
-			&i.FirstSeenAt,
-			&i.LastSeenAt,
-			&i.ExpiresAt,
-			&i.ReplacedHash,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i MempoolLookupPendingRow
+	err := row.Scan(
+		&i.TxHash,
+		&i.FromAddress,
+		&i.ToAddress,
+		&i.PendingNonce,
+		&i.PendingValue,
+		&i.PendingGas,
+		&i.GasPrice,
+		&i.MaxFeePerGas,
+		&i.MaxPriorityFeePerGas,
+		&i.TxType,
+		&i.Input,
+		&i.Raw,
+		&i.FirstSeenAt,
+		&i.LastSeenAt,
+		&i.ExpiresAt,
+		&i.ReplacedHash,
+	)
+	return i, err
 }
 
-const MempoolLookupReplaced = `-- name: MempoolLookupReplaced :many
+const mempoolLookupReplaced = `-- name: MempoolLookupReplaced :one
 SELECT pending.tx_hash, pending.from_address, pending.to_address,
        pending.nonce::text, pending.value::text, pending.gas::text,
-       pending.gas_price::text, pending.max_fee_per_gas::text,
-       pending.max_priority_fee_per_gas::text, pending.tx_type::text,
+       pending.gas_price, pending.max_fee_per_gas,
+       pending.max_priority_fee_per_gas, pending.tx_type,
        pending.input, pending.raw, pending.first_seen_at,
        pending.last_seen_at, pending.expires_at,
        predecessor.replaced_hash,
@@ -333,82 +320,69 @@ LEFT JOIN LATERAL (
     WHERE earlier.chain_id = pending.chain_id
       AND earlier.replacement_hash = pending.tx_hash
       AND earlier_evidence.observed_at <= evidence.observed_at
-      AND earlier_evidence.expires_at > $3
+      AND earlier_evidence.expires_at > $1
     ORDER BY earlier_evidence.observed_at DESC, earlier_evidence.id DESC
     LIMIT 1
 ) AS predecessor ON TRUE
-WHERE replacement.chain_id = $1::numeric
-  AND replacement.replaced_hash = $2
-  AND evidence.expires_at > $3
+WHERE replacement.chain_id = $2::numeric
+  AND replacement.replaced_hash = $3
+  AND evidence.expires_at > $1
 ORDER BY evidence.observed_at DESC, evidence.id DESC
 LIMIT 1
 `
 
 type MempoolLookupReplacedRow struct {
-	TxHash                      []byte             `db:"tx_hash" json:"tx_hash"`
-	FromAddress                 []byte             `db:"from_address" json:"from_address"`
-	ToAddress                   []byte             `db:"to_address" json:"to_address"`
-	PendingNonce                string             `db:"pending_nonce" json:"pending_nonce"`
-	PendingValue                string             `db:"pending_value" json:"pending_value"`
-	PendingGas                  string             `db:"pending_gas" json:"pending_gas"`
-	PendingGasPrice             string             `db:"pending_gas_price" json:"pending_gas_price"`
-	PendingMaxFeePerGas         string             `db:"pending_max_fee_per_gas" json:"pending_max_fee_per_gas"`
-	PendingMaxPriorityFeePerGas string             `db:"pending_max_priority_fee_per_gas" json:"pending_max_priority_fee_per_gas"`
-	PendingTxType               string             `db:"pending_tx_type" json:"pending_tx_type"`
-	Input                       []byte             `db:"input" json:"input"`
-	Raw                         []byte             `db:"raw" json:"raw"`
-	FirstSeenAt                 pgtype.Timestamptz `db:"first_seen_at" json:"first_seen_at"`
-	LastSeenAt                  pgtype.Timestamptz `db:"last_seen_at" json:"last_seen_at"`
-	ExpiresAt                   pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-	ReplacedHash                []byte             `db:"replaced_hash" json:"replaced_hash"`
-	ReplacementHash             []byte             `db:"replacement_hash" json:"replacement_hash"`
-	ObservedAt                  pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
-	ExpiresAt_2                 pgtype.Timestamptz `db:"expires_at_2" json:"expires_at_2"`
-	EndpointName                string             `db:"endpoint_name" json:"endpoint_name"`
+	TxHash               []byte             `db:"tx_hash" json:"tx_hash"`
+	FromAddress          []byte             `db:"from_address" json:"from_address"`
+	ToAddress            []byte             `db:"to_address" json:"to_address"`
+	PendingNonce         string             `db:"pending_nonce" json:"pending_nonce"`
+	PendingValue         string             `db:"pending_value" json:"pending_value"`
+	PendingGas           string             `db:"pending_gas" json:"pending_gas"`
+	GasPrice             pgtype.Numeric     `db:"gas_price" json:"gas_price"`
+	MaxFeePerGas         pgtype.Numeric     `db:"max_fee_per_gas" json:"max_fee_per_gas"`
+	MaxPriorityFeePerGas pgtype.Numeric     `db:"max_priority_fee_per_gas" json:"max_priority_fee_per_gas"`
+	TxType               pgtype.Numeric     `db:"tx_type" json:"tx_type"`
+	Input                []byte             `db:"input" json:"input"`
+	Raw                  []byte             `db:"raw" json:"raw"`
+	FirstSeenAt          pgtype.Timestamptz `db:"first_seen_at" json:"first_seen_at"`
+	LastSeenAt           pgtype.Timestamptz `db:"last_seen_at" json:"last_seen_at"`
+	ExpiresAt            pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	ReplacedHash         []byte             `db:"replaced_hash" json:"replaced_hash"`
+	ReplacementHash      []byte             `db:"replacement_hash" json:"replacement_hash"`
+	ObservedAt           pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
+	ExpiresAt_2          pgtype.Timestamptz `db:"expires_at_2" json:"expires_at_2"`
+	EndpointName         string             `db:"endpoint_name" json:"endpoint_name"`
 }
 
-func (q *Queries) MempoolLookupReplaced(ctx context.Context, column1 pgtype.Numeric, replacedHash []byte, expiresAt pgtype.Timestamptz) ([]MempoolLookupReplacedRow, error) {
-	rows, err := q.db.Query(ctx, MempoolLookupReplaced, column1, replacedHash, expiresAt)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []MempoolLookupReplacedRow{}
-	for rows.Next() {
-		var i MempoolLookupReplacedRow
-		if err := rows.Scan(
-			&i.TxHash,
-			&i.FromAddress,
-			&i.ToAddress,
-			&i.PendingNonce,
-			&i.PendingValue,
-			&i.PendingGas,
-			&i.PendingGasPrice,
-			&i.PendingMaxFeePerGas,
-			&i.PendingMaxPriorityFeePerGas,
-			&i.PendingTxType,
-			&i.Input,
-			&i.Raw,
-			&i.FirstSeenAt,
-			&i.LastSeenAt,
-			&i.ExpiresAt,
-			&i.ReplacedHash,
-			&i.ReplacementHash,
-			&i.ObservedAt,
-			&i.ExpiresAt_2,
-			&i.EndpointName,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) MempoolLookupReplaced(ctx context.Context, expiresAt pgtype.Timestamptz, chainID pgtype.Numeric, replacedHash []byte) (MempoolLookupReplacedRow, error) {
+	row := q.db.QueryRow(ctx, mempoolLookupReplaced, expiresAt, chainID, replacedHash)
+	var i MempoolLookupReplacedRow
+	err := row.Scan(
+		&i.TxHash,
+		&i.FromAddress,
+		&i.ToAddress,
+		&i.PendingNonce,
+		&i.PendingValue,
+		&i.PendingGas,
+		&i.GasPrice,
+		&i.MaxFeePerGas,
+		&i.MaxPriorityFeePerGas,
+		&i.TxType,
+		&i.Input,
+		&i.Raw,
+		&i.FirstSeenAt,
+		&i.LastSeenAt,
+		&i.ExpiresAt,
+		&i.ReplacedHash,
+		&i.ReplacementHash,
+		&i.ObservedAt,
+		&i.ExpiresAt_2,
+		&i.EndpointName,
+	)
+	return i, err
 }
 
-const MempoolReadSnapshot = `-- name: MempoolReadSnapshot :many
+const mempoolReadSnapshot = `-- name: MempoolReadSnapshot :one
 SELECT id, endpoint_name, observed_at, expires_at, transaction_count
 FROM mempool_snapshots
 WHERE chain_id = $1::numeric AND id = $2
@@ -422,33 +396,20 @@ type MempoolReadSnapshotRow struct {
 	TransactionCount int32              `db:"transaction_count" json:"transaction_count"`
 }
 
-func (q *Queries) MempoolReadSnapshot(ctx context.Context, column1 pgtype.Numeric, iD int64) ([]MempoolReadSnapshotRow, error) {
-	rows, err := q.db.Query(ctx, MempoolReadSnapshot, column1, iD)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []MempoolReadSnapshotRow{}
-	for rows.Next() {
-		var i MempoolReadSnapshotRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.EndpointName,
-			&i.ObservedAt,
-			&i.ExpiresAt,
-			&i.TransactionCount,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) MempoolReadSnapshot(ctx context.Context, chainID pgtype.Numeric, iD int64) (MempoolReadSnapshotRow, error) {
+	row := q.db.QueryRow(ctx, mempoolReadSnapshot, chainID, iD)
+	var i MempoolReadSnapshotRow
+	err := row.Scan(
+		&i.ID,
+		&i.EndpointName,
+		&i.ObservedAt,
+		&i.ExpiresAt,
+		&i.TransactionCount,
+	)
+	return i, err
 }
 
-const MempoolReadStatus = `-- name: MempoolReadStatus :many
+const mempoolReadStatus = `-- name: MempoolReadStatus :one
 SELECT state, latest_snapshot_id, error_code, last_attempt_at
 FROM mempool_status
 WHERE chain_id = $1::numeric
@@ -461,32 +422,19 @@ type MempoolReadStatusRow struct {
 	LastAttemptAt    pgtype.Timestamptz `db:"last_attempt_at" json:"last_attempt_at"`
 }
 
-func (q *Queries) MempoolReadStatus(ctx context.Context, dollar_1 pgtype.Numeric) ([]MempoolReadStatusRow, error) {
-	rows, err := q.db.Query(ctx, MempoolReadStatus, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []MempoolReadStatusRow{}
-	for rows.Next() {
-		var i MempoolReadStatusRow
-		if err := rows.Scan(
-			&i.State,
-			&i.LatestSnapshotID,
-			&i.ErrorCode,
-			&i.LastAttemptAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) MempoolReadStatus(ctx context.Context, chainID pgtype.Numeric) (MempoolReadStatusRow, error) {
+	row := q.db.QueryRow(ctx, mempoolReadStatus, chainID)
+	var i MempoolReadStatusRow
+	err := row.Scan(
+		&i.State,
+		&i.LatestSnapshotID,
+		&i.ErrorCode,
+		&i.LastAttemptAt,
+	)
+	return i, err
 }
 
-const MempoolReplacementPredecessorSnapshot = `-- name: MempoolReplacementPredecessorSnapshot :many
+const mempoolReplacementPredecessorSnapshot = `-- name: MempoolReplacementPredecessorSnapshot :one
 SELECT endpoint_name, observed_at, expires_at
 FROM mempool_snapshots
 WHERE chain_id = $1::numeric AND id = $2
@@ -498,27 +446,14 @@ type MempoolReplacementPredecessorSnapshotRow struct {
 	ExpiresAt    pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
 }
 
-func (q *Queries) MempoolReplacementPredecessorSnapshot(ctx context.Context, column1 pgtype.Numeric, iD int64) ([]MempoolReplacementPredecessorSnapshotRow, error) {
-	rows, err := q.db.Query(ctx, MempoolReplacementPredecessorSnapshot, column1, iD)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []MempoolReplacementPredecessorSnapshotRow{}
-	for rows.Next() {
-		var i MempoolReplacementPredecessorSnapshotRow
-		if err := rows.Scan(&i.EndpointName, &i.ObservedAt, &i.ExpiresAt); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) MempoolReplacementPredecessorSnapshot(ctx context.Context, chainID pgtype.Numeric, iD int64) (MempoolReplacementPredecessorSnapshotRow, error) {
+	row := q.db.QueryRow(ctx, mempoolReplacementPredecessorSnapshot, chainID, iD)
+	var i MempoolReplacementPredecessorSnapshotRow
+	err := row.Scan(&i.EndpointName, &i.ObservedAt, &i.ExpiresAt)
+	return i, err
 }
 
-const MempoolReplacementPredecessorStatus = `-- name: MempoolReplacementPredecessorStatus :many
+const mempoolReplacementPredecessorStatus = `-- name: MempoolReplacementPredecessorStatus :one
 SELECT state, endpoint_name, latest_snapshot_id, last_snapshot_write_id, last_attempt_at
 FROM mempool_status
 WHERE chain_id = $1::numeric
@@ -533,28 +468,15 @@ type MempoolReplacementPredecessorStatusRow struct {
 	LastAttemptAt       pgtype.Timestamptz `db:"last_attempt_at" json:"last_attempt_at"`
 }
 
-func (q *Queries) MempoolReplacementPredecessorStatus(ctx context.Context, dollar_1 pgtype.Numeric) ([]MempoolReplacementPredecessorStatusRow, error) {
-	rows, err := q.db.Query(ctx, MempoolReplacementPredecessorStatus, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []MempoolReplacementPredecessorStatusRow{}
-	for rows.Next() {
-		var i MempoolReplacementPredecessorStatusRow
-		if err := rows.Scan(
-			&i.State,
-			&i.EndpointName,
-			&i.LatestSnapshotID,
-			&i.LastSnapshotWriteID,
-			&i.LastAttemptAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) MempoolReplacementPredecessorStatus(ctx context.Context, chainID pgtype.Numeric) (MempoolReplacementPredecessorStatusRow, error) {
+	row := q.db.QueryRow(ctx, mempoolReplacementPredecessorStatus, chainID)
+	var i MempoolReplacementPredecessorStatusRow
+	err := row.Scan(
+		&i.State,
+		&i.EndpointName,
+		&i.LatestSnapshotID,
+		&i.LastSnapshotWriteID,
+		&i.LastAttemptAt,
+	)
+	return i, err
 }

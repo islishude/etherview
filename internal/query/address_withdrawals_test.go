@@ -2,12 +2,12 @@ package query
 
 import (
 	"context"
-	"database/sql/driver"
 	"errors"
 	"strings"
 	"testing"
 
 	"github.com/islishude/etherview/internal/httpapi"
+	"github.com/islishude/etherview/internal/testpgx"
 )
 
 func TestAddressWithdrawalsUseNumericIndexOrderingAndSnapshotCursor(t *testing.T) {
@@ -17,18 +17,18 @@ func TestAddressWithdrawalsUseNumericIndexOrderingAndSnapshotCursor(t *testing.T
 		queryExpectation{
 			contains: "ORDER BY canonical.number DESC",
 			columns:  columns(2),
-			rows:     [][]driver.Value{{"12", testHashBytes(12)}},
+			rows:     [][]any{{"12", testHashBytes(12)}},
 		},
 		queryExpectation{
 			contains: "ORDER BY withdrawal.withdrawal_index DESC",
 			columns:  columns(7),
-			rows: [][]driver.Value{
+			rows: [][]any{
 				{"10", "110", testWithdrawalAddressBytes(), "3200000000", "12", testHashBytes(12), "1700000012"},
 				{"9", "109", testWithdrawalAddressBytes(), "1", "11", testHashBytes(11), "1700000011"},
 				{"2", "102", testWithdrawalAddressBytes(), "2", "10", testHashBytes(10), "1700000010"},
 			},
-			check: func(arguments []driver.NamedValue) error {
-				if len(arguments) != 4 || arguments[2].Value != "12" || arguments[3].Value != 3 {
+			check: func(arguments []any) error {
+				if len(arguments) != 4 || !testpgx.NumericEquals(arguments[2], "12") || arguments[3] != int32(3) {
 					return errors.New("address withdrawal query did not preserve the numeric snapshot and limit")
 				}
 				return nil
@@ -70,10 +70,10 @@ func TestAddressWithdrawalsRejectCursorForAnotherAddress(t *testing.T) {
 func TestAddressWithdrawalsRejectMalformedStoredQuantity(t *testing.T) {
 	t.Parallel()
 	db := testDatabase(t,
-		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"12", testHashBytes(12)}}},
+		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]any{{"12", testHashBytes(12)}}},
 		queryExpectation{
 			contains: "ORDER BY withdrawal.withdrawal_index DESC", columns: columns(7),
-			rows: [][]driver.Value{{"18446744073709551616", "1", testWithdrawalAddressBytes(), "1", "12", testHashBytes(12), "1"}},
+			rows: [][]any{{"18446744073709551616", "1", testWithdrawalAddressBytes(), "1", "12", testHashBytes(12), "1"}},
 		},
 	)
 	reader := testReader(t, db, Options{ChainID: 1})

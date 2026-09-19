@@ -2,7 +2,6 @@ package observability
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -12,7 +11,7 @@ import (
 
 	"github.com/islishude/etherview/internal/billing"
 	dbaccess "github.com/islishude/etherview/internal/db"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -32,11 +31,11 @@ type durableSnapshotSource interface {
 // rows remain PostgreSQL truth; no in-process counter is used to infer queue or
 // repair status across replicas.
 type PostgresMetricSource struct {
-	db      *sql.DB
+	db      dbaccess.Database
 	chainID pgtype.Numeric
 }
 
-func NewPostgresMetricSource(db *sql.DB, chainID uint64) (*PostgresMetricSource, error) {
+func NewPostgresMetricSource(db dbaccess.Database, chainID uint64) (*PostgresMetricSource, error) {
 	if db == nil {
 		return nil, errors.New("PostgreSQL metric source database is nil")
 	}

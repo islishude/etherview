@@ -4,10 +4,12 @@ package integration_test
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"testing"
 	"time"
+
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -43,7 +45,7 @@ func TestWorkerConsumesTheOutboxDurableRetryBudget(t *testing.T) {
 	word, _ := enrich.ParseWord(reference.Hash.String())
 	job := readEnrichmentJob(t, ctx, db, stage, word, reference.Number)
 	var maximum int
-	if err := db.QueryRowContext(ctx, `SELECT max_attempts FROM durable_jobs WHERE id = $1`, job.ID).Scan(&maximum); err != nil || maximum != int(enrich.DefaultEnrichmentMaxAttempts) {
+	if err := db.QueryRow(ctx, `SELECT max_attempts FROM durable_jobs WHERE id = $1`, job.ID).Scan(&maximum); err != nil || maximum != int(enrich.DefaultEnrichmentMaxAttempts) {
 		t.Fatalf("durable max attempts=%d err=%v", maximum, err)
 	}
 	worker, err := enrich.NewWorker(queue, []enrich.Processor{enrich.ProcessorFunc{
@@ -87,7 +89,7 @@ func TestDurableReplayGenerationMigrationBackfillsExistingQueueRows(t *testing.T
 			replayMigration = migration.SQL
 			break
 		}
-		if _, err := db.ExecContext(ctx, migration.SQL); err != nil {
+		if _, err := db.Exec(ctx, migration.SQL); err != nil {
 			t.Fatalf("apply pre-replay migration %s: %v", migration.Version, err)
 		}
 	}
@@ -120,7 +122,7 @@ func TestDurableReplayGenerationMigrationBackfillsExistingQueueRows(t *testing.T
 	// Applying the additive migration to live pre-generation rows must preserve
 	// ownership/terminal state, and its guards keep a repeated operator run safe.
 	for attempt := 1; attempt <= 2; attempt++ {
-		if _, err := db.ExecContext(ctx, replayMigration); err != nil {
+		if _, err := db.Exec(ctx, replayMigration); err != nil {
 			t.Fatalf("apply durable replay migration attempt %d: %v", attempt, err)
 		}
 	}
@@ -130,20 +132,20 @@ func TestDurableReplayGenerationMigrationBackfillsExistingQueueRows(t *testing.T
 		"legacy-succeeded": {Status: "succeeded", Requested: 1, Claimed: 1, Completed: 1},
 	} {
 		var jobID string
-		if err := db.QueryRowContext(ctx, `SELECT id::text FROM durable_jobs WHERE idempotency_key = $1`, key).Scan(&jobID); err != nil {
+		if err := db.QueryRow(ctx, `SELECT id::text FROM durable_jobs WHERE idempotency_key = $1`, key).Scan(&jobID); err != nil {
 			t.Fatal(err)
 		}
 		assertReplayGeneration(t, ctx, db, jobID, want)
 	}
 	var outboxGeneration int64
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT generation FROM transactional_outbox
 		WHERE chain_id = 1 AND topic = 'core.block.canonical' AND message_key = 'legacy-hash'`,
 	).Scan(&outboxGeneration); err != nil || outboxGeneration != 1 {
 		t.Fatalf("legacy outbox generation=%d err=%v, want 1", outboxGeneration, err)
 	}
 	var replayTable string
-	if err := db.QueryRowContext(ctx, `SELECT to_regclass('durable_job_replay_requests')::text`).Scan(&replayTable); err != nil || replayTable != "durable_job_replay_requests" {
+	if err := db.QueryRow(ctx, `SELECT to_regclass('durable_job_replay_requests')::text`).Scan(&replayTable); err != nil || replayTable != "durable_job_replay_requests" {
 		t.Fatalf("replay request table=%q err=%v", replayTable, err)
 	}
 }
@@ -186,7 +188,7 @@ func TestCanonicalSameHashReattachReplaysTerminalStaleGeneration(t *testing.T) {
 	commitCanonical(t, ctx, repository, original)
 	var originalOutboxGeneration int64
 	var originalPublished bool
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT generation, published_at IS NOT NULL
 		FROM transactional_outbox
 		WHERE chain_id = 1 AND topic = 'core.block.canonical' AND message_key = $1`,
@@ -219,7 +221,7 @@ func TestCanonicalSameHashReattachReplaysTerminalStaleGeneration(t *testing.T) {
 			t.Fatalf("publish reattached canonical generation: result=%+v err=%v", dispatched, err)
 		}
 		var requested int64
-		if err := db.QueryRowContext(ctx, `SELECT requested_generation FROM durable_jobs WHERE id = $1`, job.ID).Scan(&requested); err != nil {
+		if err := db.QueryRow(ctx, `SELECT requested_generation FROM durable_jobs WHERE id = $1`, job.ID).Scan(&requested); err != nil {
 			t.Fatal(err)
 		}
 		if requested == 2 {
@@ -239,7 +241,7 @@ func TestCanonicalSameHashReattachReplaysTerminalStaleGeneration(t *testing.T) {
 		Status: "succeeded", Requested: 2, Claimed: 2, Completed: 2,
 	})
 	var stale bool
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT COALESCE(details->>'outcome' = 'stale_canonical_skipped', FALSE)
 		FROM block_stage_results
 		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'token' AND stage_version = 1`,
@@ -258,7 +260,7 @@ func TestCanonicalSameHashReattachReplaysTerminalStaleGeneration(t *testing.T) {
 		SELECT count(*) FROM durable_job_replay_requests
 		WHERE job_id = $1 AND source_kind = 'canonical-attach'`, 2, job.ID)
 	var outboxGeneration int64
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT generation FROM transactional_outbox
 		WHERE chain_id = 1 AND topic = 'core.block.canonical' AND message_key = $1`,
 		originalRef.Hash.String(),
@@ -566,11 +568,11 @@ type replayGenerationState struct {
 	Leased    bool
 }
 
-func assertReplayGeneration(t *testing.T, ctx context.Context, db *sql.DB, jobID string, want replayGenerationState) {
+func assertReplayGeneration(t *testing.T, ctx context.Context, db *pgxpool.Pool, jobID string, want replayGenerationState) {
 	t.Helper()
 	var got replayGenerationState
-	var leasedGeneration sql.NullInt64
-	if err := db.QueryRowContext(ctx, `
+	var leasedGeneration pgtype.Int8
+	if err := db.QueryRow(ctx, `
 		SELECT status, requested_generation, claimed_generation,
 		       completed_generation, leased_generation
 		FROM durable_jobs WHERE id = $1`, jobID,

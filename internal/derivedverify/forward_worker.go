@@ -2,13 +2,18 @@ package derivedverify
 
 import (
 	"context"
-	"database/sql"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+
 	"github.com/google/uuid"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
 type ForwardOptions struct {
@@ -28,11 +33,11 @@ func (options *ForwardOptions) defaults() {
 }
 
 type ForwardWorker struct {
-	db      *sql.DB
+	db      dbaccess.Database
 	options ForwardOptions
 }
 
-func NewForwardWorker(db *sql.DB, options ForwardOptions) (*ForwardWorker, error) {
+func NewForwardWorker(db dbaccess.Database, options ForwardOptions) (*ForwardWorker, error) {
 	options.defaults()
 	if db == nil || strings.TrimSpace(options.WorkerID) == "" ||
 		len(options.WorkerID) > 128 || options.LeaseDuration < 3*time.Millisecond ||
@@ -104,20 +109,36 @@ func (worker *ForwardWorker) processLease(
 	var affected int64
 	switch lease.SourceStage {
 	case "trace":
-		var result sql.Result
-		result, dispatchErr = worker.db.ExecContext(ctx, dbgen.DerivedVerifyDispatchTraceEvent,
-			lease.ChainID, lease.BlockNumber, lease.BlockHash,
-		)
+		var result int64
+		result, dispatchErr = func() (int64, error) {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(lease.ChainID); err != nil {
+				return 0, err
+			}
+			var queryValue1 pgtype.Numeric
+			if err := queryValue1.Scan(lease.BlockNumber); err != nil {
+				return 0, err
+			}
+			return dbgen.New(worker.db).DerivedVerifyDispatchTraceEvent(ctx, queryValue1, queryValue0, lease.BlockHash)
+		}()
 		if dispatchErr == nil {
-			affected, dispatchErr = result.RowsAffected()
+			affected = result
 		}
 	case "proxy":
-		var result sql.Result
-		result, dispatchErr = worker.db.ExecContext(ctx, dbgen.DerivedVerifyDispatchProxyEvent,
-			lease.ChainID, lease.BlockNumber, lease.BlockHash,
-		)
+		var result int64
+		result, dispatchErr = func() (int64, error) {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(lease.ChainID); err != nil {
+				return 0, err
+			}
+			var queryValue1 pgtype.Numeric
+			if err := queryValue1.Scan(lease.BlockNumber); err != nil {
+				return 0, err
+			}
+			return dbgen.New(worker.db).DerivedVerifyDispatchProxyEvent(ctx, queryValue0, queryValue1, lease.BlockHash)
+		}()
 		if dispatchErr == nil {
-			affected, dispatchErr = result.RowsAffected()
+			affected = result
 		}
 	default:
 		dispatchErr = errors.New("derived forward event stage is invalid")
@@ -137,14 +158,21 @@ func (worker *ForwardWorker) processLease(
 		if err := worker.renew(ctx, lease); err != nil {
 			return err
 		}
-		result, err := worker.db.ExecContext(ctx, dbgen.DerivedVerifyFinishForwardBlock,
-			lease.ID, lease.ChainID, lease.BlockHash, lease.SourceJobID,
-			lease.Generation, lease.WorkerID, lease.Token,
-		)
+		result, err := func() (int64, error) {
+			queryValue0, err := strconv.ParseInt(lease.ID, 10, 64)
+			if err != nil {
+				return 0, err
+			}
+			var queryValue1 pgtype.Numeric
+			if err := queryValue1.Scan(lease.ChainID); err != nil {
+				return 0, err
+			}
+			return dbgen.New(worker.db).DerivedVerifyFinishForwardBlock(ctx, dbgen.DerivedVerifyFinishForwardBlockParams{ID: int64(queryValue0), ChainID: queryValue1, BlockHash: lease.BlockHash, SourceJobID: lease.SourceJobID, SourceGeneration: lease.Generation, LeasedBy: new(lease.WorkerID), LeaseToken: new(lease.Token)})
+		}()
 		if err != nil {
 			return err
 		}
-		if affected, _ := result.RowsAffected(); affected != 1 {
+		if affected := result; affected != 1 {
 			worker.observe("lease", "lost")
 			return errors.New("derived forward event lease was lost")
 		}
@@ -160,13 +188,31 @@ func (worker *ForwardWorker) observe(kind, result string) {
 
 func (worker *ForwardWorker) claim(ctx context.Context) (forwardLease, bool, error) {
 	lease := forwardLease{WorkerID: worker.options.WorkerID, Token: uuid.NewString()}
-	err := worker.db.QueryRowContext(ctx, dbgen.DerivedVerifyClaimForwardBlock,
-		lease.WorkerID, lease.Token, worker.options.LeaseDuration.Microseconds(),
-	).Scan(
-		&lease.ID, &lease.ChainID, &lease.BlockNumber, &lease.BlockHash,
-		&lease.SourceStage, &lease.SourceJobID, &lease.Generation,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+
+		queryRow, err := dbgen.New(worker.db).DerivedVerifyClaimForwardBlock(ctx, new(lease.WorkerID), new(lease.Token), worker.options.LeaseDuration.Microseconds())
+		if err != nil {
+			return err
+		}
+		lease.ID = queryRow.BlockID
+		lease.ChainID = queryRow.BlockChainID
+		lease.BlockNumber = queryRow.BlockBlockNumber
+		lease.BlockHash = queryRow.BlockHash
+		if queryRow.SourceStage == nil {
+			return errors.New("invalid stored query value")
+		}
+		lease.SourceStage = *queryRow.SourceStage
+		if queryRow.SourceJobID == nil {
+			return errors.New("invalid stored query value")
+		}
+		lease.SourceJobID = *queryRow.SourceJobID
+		if queryRow.SourceGeneration == nil {
+			return errors.New("invalid stored query value")
+		}
+		lease.Generation = *queryRow.SourceGeneration
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return forwardLease{}, false, nil
 	}
 	if err != nil {
@@ -182,15 +228,21 @@ func (worker *ForwardWorker) claim(ctx context.Context) (forwardLease, bool, err
 }
 
 func (worker *ForwardWorker) renew(ctx context.Context, lease forwardLease) error {
-	result, err := worker.db.ExecContext(ctx, dbgen.DerivedVerifyRenewForwardEvent,
-		lease.ID, lease.ChainID, lease.BlockHash, lease.SourceJobID,
-		lease.Generation, lease.WorkerID, lease.Token,
-		worker.options.LeaseDuration.Microseconds(),
-	)
+	result, err := func() (int64, error) {
+		queryValue0, err := strconv.ParseInt(lease.ID, 10, 64)
+		if err != nil {
+			return 0, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(lease.ChainID); err != nil {
+			return 0, err
+		}
+		return dbgen.New(worker.db).DerivedVerifyRenewForwardEvent(ctx, dbgen.DerivedVerifyRenewForwardEventParams{ID: int64(queryValue0), ChainID: queryValue1, BlockHash: lease.BlockHash, SourceJobID: lease.SourceJobID, SourceGeneration: lease.Generation, LeasedBy: new(lease.WorkerID), LeaseToken: new(lease.Token), LeaseMicroseconds: worker.options.LeaseDuration.Microseconds()})
+	}()
 	if err != nil {
 		return err
 	}
-	if affected, _ := result.RowsAffected(); affected != 1 {
+	if affected := result; affected != 1 {
 		worker.observe("lease", "lost")
 		return errors.New("derived forward event lease was lost")
 	}
@@ -208,14 +260,25 @@ func (worker *ForwardWorker) failLease(
 }
 
 func (worker *ForwardWorker) retry(ctx context.Context, lease forwardLease) error {
-	result, err := worker.db.ExecContext(ctx, dbgen.DerivedVerifyRetryForwardBlock,
-		lease.ID, lease.ChainID, lease.BlockNumber, lease.BlockHash,
-		lease.SourceJobID, lease.Generation, lease.WorkerID, "dispatch_failed",
-	)
+	result, err := func() (int64, error) {
+		queryValue0, err := strconv.ParseInt(lease.ID, 10, 64)
+		if err != nil {
+			return 0, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(lease.ChainID); err != nil {
+			return 0, err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(lease.BlockNumber); err != nil {
+			return 0, err
+		}
+		return dbgen.New(worker.db).DerivedVerifyRetryForwardBlock(ctx, dbgen.DerivedVerifyRetryForwardBlockParams{ID: int64(queryValue0), ChainID: queryValue1, BlockNumber: queryValue2, BlockHash: lease.BlockHash, SourceJobID: lease.SourceJobID, SourceGeneration: lease.Generation, LeasedBy: new(lease.WorkerID), LastError: new("dispatch_failed")})
+	}()
 	if err != nil {
 		return err
 	}
-	if affected, _ := result.RowsAffected(); affected != 1 {
+	if affected := result; affected != 1 {
 		return errors.New("retry derived forward block: lease lost")
 	}
 	return nil

@@ -11,26 +11,26 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const StateWriteClassifyBalancePersistenceMissStatement1 = `-- name: StateWriteClassifyBalancePersistenceMissStatement1 :many
+const stateWriteClassifyBalancePersistenceMissStatement1 = `-- name: StateWriteClassifyBalancePersistenceMissStatement1 :one
 SELECT
 			EXISTS (
 				SELECT 1 FROM canonical_blocks
-					WHERE chain_id = $1::numeric AND number = $5::numeric AND block_hash = $6::bytea
+					WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3::bytea
 			),
 			EXISTS (
 				SELECT 1 FROM erc1155_balance_reconciliations
-					WHERE chain_id = $1::numeric AND token_address = $2::bytea
-					  AND token_id = $3::numeric AND owner_address = $4::bytea AND block_hash = $6::bytea
+					WHERE chain_id = $1::numeric AND token_address = $4::bytea
+					  AND token_id = $5::numeric AND owner_address = $6::bytea AND block_hash = $3::bytea
 			)
 `
 
 type StateWriteClassifyBalancePersistenceMissStatement1Params struct {
-	Column1 pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2 []byte         `db:"column_2" json:"column_2"`
-	Column3 pgtype.Numeric `db:"column_3" json:"column_3"`
-	Column4 []byte         `db:"column_4" json:"column_4"`
-	Column5 pgtype.Numeric `db:"column_5" json:"column_5"`
-	Column6 []byte         `db:"column_6" json:"column_6"`
+	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Number       pgtype.Numeric `db:"number" json:"number"`
+	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
+	TokenAddress []byte         `db:"token_address" json:"token_address"`
+	TokenID      pgtype.Numeric `db:"token_id" json:"token_id"`
+	OwnerAddress []byte         `db:"owner_address" json:"owner_address"`
 }
 
 type StateWriteClassifyBalancePersistenceMissStatement1Row struct {
@@ -38,52 +38,39 @@ type StateWriteClassifyBalancePersistenceMissStatement1Row struct {
 	Exists_2 bool `db:"exists_2" json:"exists_2"`
 }
 
-func (q *Queries) StateWriteClassifyBalancePersistenceMissStatement1(ctx context.Context, arg StateWriteClassifyBalancePersistenceMissStatement1Params) ([]StateWriteClassifyBalancePersistenceMissStatement1Row, error) {
-	rows, err := q.db.Query(ctx, StateWriteClassifyBalancePersistenceMissStatement1,
-		arg.Column1,
-		arg.Column2,
-		arg.Column3,
-		arg.Column4,
-		arg.Column5,
-		arg.Column6,
+func (q *Queries) StateWriteClassifyBalancePersistenceMissStatement1(ctx context.Context, arg StateWriteClassifyBalancePersistenceMissStatement1Params) (StateWriteClassifyBalancePersistenceMissStatement1Row, error) {
+	row := q.db.QueryRow(ctx, stateWriteClassifyBalancePersistenceMissStatement1,
+		arg.ChainID,
+		arg.Number,
+		arg.BlockHash,
+		arg.TokenAddress,
+		arg.TokenID,
+		arg.OwnerAddress,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []StateWriteClassifyBalancePersistenceMissStatement1Row{}
-	for rows.Next() {
-		var i StateWriteClassifyBalancePersistenceMissStatement1Row
-		if err := rows.Scan(&i.Exists, &i.Exists_2); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i StateWriteClassifyBalancePersistenceMissStatement1Row
+	err := row.Scan(&i.Exists, &i.Exists_2)
+	return i, err
 }
 
-const StateWriteClassifyERC20BalancePersistenceMiss = `-- name: StateWriteClassifyERC20BalancePersistenceMiss :one
+const stateWriteClassifyERC20BalancePersistenceMiss = `-- name: StateWriteClassifyERC20BalancePersistenceMiss :one
 SELECT
             EXISTS (
                 SELECT 1 FROM canonical_blocks
-                    WHERE chain_id = $1::numeric AND number = $4::numeric AND block_hash = $5::bytea
+                    WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3::bytea
             ) AS canonical,
             EXISTS (
                 SELECT 1 FROM erc20_balance_reconciliations
-                    WHERE chain_id = $1::numeric AND token_address = $2::bytea
-                      AND owner_address = $3::bytea AND block_hash = $5::bytea
+                    WHERE chain_id = $1::numeric AND token_address = $4::bytea
+                      AND owner_address = $5::bytea AND block_hash = $3::bytea
             ) AS stored
 `
 
 type StateWriteClassifyERC20BalancePersistenceMissParams struct {
-	Column1 pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2 []byte         `db:"column_2" json:"column_2"`
-	Column3 []byte         `db:"column_3" json:"column_3"`
-	Column4 pgtype.Numeric `db:"column_4" json:"column_4"`
-	Column5 []byte         `db:"column_5" json:"column_5"`
+	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Number       pgtype.Numeric `db:"number" json:"number"`
+	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
+	TokenAddress []byte         `db:"token_address" json:"token_address"`
+	OwnerAddress []byte         `db:"owner_address" json:"owner_address"`
 }
 
 type StateWriteClassifyERC20BalancePersistenceMissRow struct {
@@ -92,37 +79,37 @@ type StateWriteClassifyERC20BalancePersistenceMissRow struct {
 }
 
 func (q *Queries) StateWriteClassifyERC20BalancePersistenceMiss(ctx context.Context, arg StateWriteClassifyERC20BalancePersistenceMissParams) (StateWriteClassifyERC20BalancePersistenceMissRow, error) {
-	row := q.db.QueryRow(ctx, StateWriteClassifyERC20BalancePersistenceMiss,
-		arg.Column1,
-		arg.Column2,
-		arg.Column3,
-		arg.Column4,
-		arg.Column5,
+	row := q.db.QueryRow(ctx, stateWriteClassifyERC20BalancePersistenceMiss,
+		arg.ChainID,
+		arg.Number,
+		arg.BlockHash,
+		arg.TokenAddress,
+		arg.OwnerAddress,
 	)
 	var i StateWriteClassifyERC20BalancePersistenceMissRow
 	err := row.Scan(&i.Canonical, &i.Stored)
 	return i, err
 }
 
-const StateWriteClassifyOwnerPersistenceMissStatement1 = `-- name: StateWriteClassifyOwnerPersistenceMissStatement1 :many
+const stateWriteClassifyOwnerPersistenceMissStatement1 = `-- name: StateWriteClassifyOwnerPersistenceMissStatement1 :one
 SELECT
 			EXISTS (
 				SELECT 1 FROM canonical_blocks
-					WHERE chain_id = $1::numeric AND number = $4::numeric AND block_hash = $5::bytea
+					WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3::bytea
 			),
 			EXISTS (
 				SELECT 1 FROM erc721_owner_reconciliations
-					WHERE chain_id = $1::numeric AND token_address = $2::bytea
-					  AND token_id = $3::numeric AND block_hash = $5::bytea
+					WHERE chain_id = $1::numeric AND token_address = $4::bytea
+					  AND token_id = $5::numeric AND block_hash = $3::bytea
 			)
 `
 
 type StateWriteClassifyOwnerPersistenceMissStatement1Params struct {
-	Column1 pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2 []byte         `db:"column_2" json:"column_2"`
-	Column3 pgtype.Numeric `db:"column_3" json:"column_3"`
-	Column4 pgtype.Numeric `db:"column_4" json:"column_4"`
-	Column5 []byte         `db:"column_5" json:"column_5"`
+	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Number       pgtype.Numeric `db:"number" json:"number"`
+	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
+	TokenAddress []byte         `db:"token_address" json:"token_address"`
+	TokenID      pgtype.Numeric `db:"token_id" json:"token_id"`
 }
 
 type StateWriteClassifyOwnerPersistenceMissStatement1Row struct {
@@ -130,33 +117,20 @@ type StateWriteClassifyOwnerPersistenceMissStatement1Row struct {
 	Exists_2 bool `db:"exists_2" json:"exists_2"`
 }
 
-func (q *Queries) StateWriteClassifyOwnerPersistenceMissStatement1(ctx context.Context, arg StateWriteClassifyOwnerPersistenceMissStatement1Params) ([]StateWriteClassifyOwnerPersistenceMissStatement1Row, error) {
-	rows, err := q.db.Query(ctx, StateWriteClassifyOwnerPersistenceMissStatement1,
-		arg.Column1,
-		arg.Column2,
-		arg.Column3,
-		arg.Column4,
-		arg.Column5,
+func (q *Queries) StateWriteClassifyOwnerPersistenceMissStatement1(ctx context.Context, arg StateWriteClassifyOwnerPersistenceMissStatement1Params) (StateWriteClassifyOwnerPersistenceMissStatement1Row, error) {
+	row := q.db.QueryRow(ctx, stateWriteClassifyOwnerPersistenceMissStatement1,
+		arg.ChainID,
+		arg.Number,
+		arg.BlockHash,
+		arg.TokenAddress,
+		arg.TokenID,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []StateWriteClassifyOwnerPersistenceMissStatement1Row{}
-	for rows.Next() {
-		var i StateWriteClassifyOwnerPersistenceMissStatement1Row
-		if err := rows.Scan(&i.Exists, &i.Exists_2); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i StateWriteClassifyOwnerPersistenceMissStatement1Row
+	err := row.Scan(&i.Exists, &i.Exists_2)
+	return i, err
 }
 
-const StateWriteInsertERC1155BalanceStatement1 = `-- name: StateWriteInsertERC1155BalanceStatement1 :exec
+const stateWriteInsertERC1155BalanceStatement1 = `-- name: StateWriteInsertERC1155BalanceStatement1 :execrows
 INSERT INTO erc1155_balance_reconciliations AS current (
 			chain_id, token_address, token_id, owner_address,
 			block_number, block_hash, balance, confidence
@@ -175,29 +149,32 @@ INSERT INTO erc1155_balance_reconciliations AS current (
 `
 
 type StateWriteInsertERC1155BalanceStatement1Params struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	TokenAddress []byte         `db:"token_address" json:"token_address"`
-	Column3      pgtype.Numeric `db:"column_3" json:"column_3"`
+	TokenID      pgtype.Numeric `db:"token_id" json:"token_id"`
 	OwnerAddress []byte         `db:"owner_address" json:"owner_address"`
-	Column5      pgtype.Numeric `db:"column_5" json:"column_5"`
+	BlockNumber  pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
-	Column7      pgtype.Numeric `db:"column_7" json:"column_7"`
+	Balance      pgtype.Numeric `db:"balance" json:"balance"`
 }
 
-func (q *Queries) StateWriteInsertERC1155BalanceStatement1(ctx context.Context, arg StateWriteInsertERC1155BalanceStatement1Params) error {
-	_, err := q.db.Exec(ctx, StateWriteInsertERC1155BalanceStatement1,
-		arg.Column1,
+func (q *Queries) StateWriteInsertERC1155BalanceStatement1(ctx context.Context, arg StateWriteInsertERC1155BalanceStatement1Params) (int64, error) {
+	result, err := q.db.Exec(ctx, stateWriteInsertERC1155BalanceStatement1,
+		arg.ChainID,
 		arg.TokenAddress,
-		arg.Column3,
+		arg.TokenID,
 		arg.OwnerAddress,
-		arg.Column5,
+		arg.BlockNumber,
 		arg.BlockHash,
-		arg.Column7,
+		arg.Balance,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const StateWriteInsertERC20Balance = `-- name: StateWriteInsertERC20Balance :exec
+const stateWriteInsertERC20Balance = `-- name: StateWriteInsertERC20Balance :execrows
 INSERT INTO erc20_balance_reconciliations AS current (
             chain_id, token_address, owner_address,
             block_number, block_hash, balance, confidence
@@ -216,27 +193,30 @@ INSERT INTO erc20_balance_reconciliations AS current (
 `
 
 type StateWriteInsertERC20BalanceParams struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	TokenAddress []byte         `db:"token_address" json:"token_address"`
 	OwnerAddress []byte         `db:"owner_address" json:"owner_address"`
-	Column4      pgtype.Numeric `db:"column_4" json:"column_4"`
+	BlockNumber  pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
-	Column6      pgtype.Numeric `db:"column_6" json:"column_6"`
+	Balance      pgtype.Numeric `db:"balance" json:"balance"`
 }
 
-func (q *Queries) StateWriteInsertERC20Balance(ctx context.Context, arg StateWriteInsertERC20BalanceParams) error {
-	_, err := q.db.Exec(ctx, StateWriteInsertERC20Balance,
-		arg.Column1,
+func (q *Queries) StateWriteInsertERC20Balance(ctx context.Context, arg StateWriteInsertERC20BalanceParams) (int64, error) {
+	result, err := q.db.Exec(ctx, stateWriteInsertERC20Balance,
+		arg.ChainID,
 		arg.TokenAddress,
 		arg.OwnerAddress,
-		arg.Column4,
+		arg.BlockNumber,
 		arg.BlockHash,
-		arg.Column6,
+		arg.Balance,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const StateWriteInsertOwnerObservationStatement1 = `-- name: StateWriteInsertOwnerObservationStatement1 :exec
+const stateWriteInsertOwnerObservationStatement1 = `-- name: StateWriteInsertOwnerObservationStatement1 :execrows
 INSERT INTO erc721_owner_reconciliations AS current (
 			chain_id, token_address, token_id, block_number, block_hash,
 			state, owner_address, confidence
@@ -256,24 +236,27 @@ INSERT INTO erc721_owner_reconciliations AS current (
 `
 
 type StateWriteInsertOwnerObservationStatement1Params struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	TokenAddress []byte         `db:"token_address" json:"token_address"`
-	Column3      pgtype.Numeric `db:"column_3" json:"column_3"`
-	Column4      pgtype.Numeric `db:"column_4" json:"column_4"`
+	TokenID      pgtype.Numeric `db:"token_id" json:"token_id"`
+	BlockNumber  pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
 	State        string         `db:"state" json:"state"`
 	OwnerAddress []byte         `db:"owner_address" json:"owner_address"`
 }
 
-func (q *Queries) StateWriteInsertOwnerObservationStatement1(ctx context.Context, arg StateWriteInsertOwnerObservationStatement1Params) error {
-	_, err := q.db.Exec(ctx, StateWriteInsertOwnerObservationStatement1,
-		arg.Column1,
+func (q *Queries) StateWriteInsertOwnerObservationStatement1(ctx context.Context, arg StateWriteInsertOwnerObservationStatement1Params) (int64, error) {
+	result, err := q.db.Exec(ctx, stateWriteInsertOwnerObservationStatement1,
+		arg.ChainID,
 		arg.TokenAddress,
-		arg.Column3,
-		arg.Column4,
+		arg.TokenID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.State,
 		arg.OwnerAddress,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

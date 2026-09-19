@@ -1,5 +1,5 @@
--- name: AdminWriteEnqueueRepairStatement1 :many
+-- name: AdminWriteEnqueueRepairStatement1 :one
 INSERT INTO repair_requests (
 			chain_id, operation, stage, from_block, to_block, allow_finalized, reason
-		) VALUES ($1::numeric, $2, $3, $4::numeric, $5::numeric, $6, $7)
+		) VALUES (sqlc.arg('chain_id')::numeric, sqlc.arg('operation'), sqlc.arg('stage'), sqlc.arg('from_block')::numeric, sqlc.arg('to_block')::numeric, sqlc.arg('allow_finalized'), sqlc.arg('reason'))
 			RETURNING id, status, requested_at;

@@ -7,11 +7,16 @@ import (
 	"math/big"
 	"strconv"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/catalog"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/publicquery"
 )
@@ -120,19 +125,21 @@ func (reconciler *NFTReconciler) cachedERC20Balances(
 	reference CanonicalRef,
 	tokenAddresses [][]byte,
 ) (map[common.Address]catalog.ERC20BalanceObservation, error) {
-	rows, err := reconciler.db.QueryContext(
-		ctx,
-		dbgen.StateERC20BalanceObservations,
-		chainID,
-		owner.Bytes(),
-		strconv.FormatUint(reference.Number, 10),
-		reference.Hash.Bytes(),
-		tokenAddresses,
-	)
+	rows, err := func() ([]dbgen.StateERC20BalanceObservationsRow, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(reference.Number, 10)); err != nil {
+			return nil, err
+		}
+		return dbgen.New(reconciler.db).StateERC20BalanceObservations(ctx, dbgen.StateERC20BalanceObservationsParams{ChainID: queryValue0, OwnerAddress: owner.Bytes(), BlockNumber: queryValue1, BlockHash: reference.Hash.Bytes(), TokenAddresses: tokenAddresses})
+	}()
 	if err != nil {
 		return nil, fmt.Errorf("read exact ERC-20 balance observations: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	requested := make(map[common.Address]struct{}, len(tokenAddresses))
 	for _, address := range tokenAddresses {
 		if len(address) != common.AddressLength {
@@ -141,11 +148,13 @@ func (reconciler *NFTReconciler) cachedERC20Balances(
 		requested[common.BytesToAddress(address)] = struct{}{}
 	}
 	observations := make(map[common.Address]catalog.ERC20BalanceObservation, len(tokenAddresses))
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var tokenAddress []byte
 		var balance, confidence string
-		if err := rows.Scan(&tokenAddress, &balance, &confidence); err != nil {
-			return nil, fmt.Errorf("scan exact ERC-20 balance observation: %w", err)
+		{
+			tokenAddress = storedRow.TokenAddress
+			balance = storedRow.ObservationBalance
+			confidence = storedRow.Confidence
 		}
 		if len(tokenAddress) != common.AddressLength {
 			return nil, errors.New("cached ERC-20 token address has invalid length")
@@ -162,12 +171,7 @@ func (reconciler *NFTReconciler) cachedERC20Balances(
 		}
 		observations[address] = catalog.ERC20BalanceObservation{Balance: balance, Confidence: confidence}
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate exact ERC-20 balance observations: %w", err)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, fmt.Errorf("close exact ERC-20 balance observations: %w", err)
-	}
+
 	return observations, nil
 }
 
@@ -223,17 +227,17 @@ func (reconciler *NFTReconciler) persistERC20Balances(
 	missing []int,
 	reference CanonicalRef,
 ) error {
-	tx, err := reconciler.db.BeginTx(ctx, nil)
+	tx, err := reconciler.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("begin ERC-20 balance observation transaction: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	for _, index := range missing {
 		if err := insertERC20Balance(ctx, tx, chainID, candidates[index], owner, reference, observations[index]); err != nil {
 			return err
 		}
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit ERC-20 balance observations: %w", err)
 	}
 	return nil
@@ -251,23 +255,25 @@ func insertERC20Balance(
 	if _, err := parseUint256(observation.Balance); err != nil || observation.Confidence != catalog.NFTStateConfidenceRPCExact {
 		return errors.New("persist invalid ERC-20 balance observation")
 	}
-	result, err := executor.ExecContext(
-		ctx,
-		dbgen.StateWriteInsertERC20Balance,
-		chainID,
-		contract.Bytes(),
-		owner.Bytes(),
-		strconv.FormatUint(reference.Number, 10),
-		reference.Hash.Bytes(),
-		observation.Balance,
-	)
+	result, err := func() (int64, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return 0, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(reference.Number, 10)); err != nil {
+			return 0, err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(observation.Balance); err != nil {
+			return 0, err
+		}
+		return dbgen.New(executor).StateWriteInsertERC20Balance(ctx, dbgen.StateWriteInsertERC20BalanceParams{ChainID: queryValue0, TokenAddress: contract.Bytes(), OwnerAddress: owner.Bytes(), BlockNumber: queryValue1, BlockHash: reference.Hash.Bytes(), Balance: queryValue2})
+	}()
 	if err != nil {
 		return fmt.Errorf("persist exact ERC-20 balance observation: %w", err)
 	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("inspect exact ERC-20 balance persistence: %w", err)
-	}
+	rows := result
 	if rows != 1 {
 		return classifyERC20BalancePersistenceMiss(
 			ctx,
@@ -292,15 +298,23 @@ func classifyERC20BalancePersistenceMiss(
 	blockHash []byte,
 ) error {
 	var canonical, stored bool
-	err := executor.QueryRowContext(
-		ctx,
-		dbgen.StateWriteClassifyERC20BalancePersistenceMiss,
-		chainID,
-		contract,
-		owner,
-		blockNumber,
-		blockHash,
-	).Scan(&canonical, &stored)
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(blockNumber); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(executor).StateWriteClassifyERC20BalancePersistenceMiss(ctx, dbgen.StateWriteClassifyERC20BalancePersistenceMissParams{ChainID: queryValue0, TokenAddress: contract, OwnerAddress: owner, Number: queryValue1, BlockHash: blockHash})
+		if err != nil {
+			return err
+		}
+		canonical = queryRow.Canonical
+		stored = queryRow.Stored
+		return nil
+	}()
 	if err != nil {
 		return fmt.Errorf("inspect exact ERC-20 balance persistence miss: %w", err)
 	}

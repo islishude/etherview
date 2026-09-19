@@ -3,7 +3,6 @@ package enrich
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -12,10 +11,14 @@ import (
 	"slices"
 	"strconv"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
+	pgx "github.com/jackc/pgx/v5"
+
 	gethabi "github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
 var diamondCutEventABI = mustGethABI(`[
@@ -97,7 +100,7 @@ func parseStrictDiamondCutEvent(log types.Log) (diamondCutRecord, bool) {
 	}
 	return diamondCutRecord{
 		transactionIndex: uint64(log.TxIndex), init: init,
-		// database/sql treats a nil []byte as SQL NULL. Preserve canonical empty
+		// pgx treats a nil []byte as SQL NULL. Preserve canonical empty
 		// event bytes as a non-nil zero-length BYTEA value.
 		calldata: append([]byte{}, calldata...), cuts: cuts,
 	}, true
@@ -105,7 +108,7 @@ func parseStrictDiamondCutEvent(log types.Log) (diamondCutRecord, bool) {
 
 func persistDiamondCutRecord(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	record diamondCutRecord,
 ) error {
@@ -123,34 +126,61 @@ func persistDiamondCutRecord(
 	if err != nil {
 		return fmt.Errorf("encode DiamondCut record: %w", err)
 	}
-	result, err := tx.ExecContext(ctx, dbgen.EnrichInlinePersistDiamondCutRecordStatement1, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-		record.hash[:], strconv.FormatUint(record.transactionIndex, 10),
-		strconv.FormatUint(record.index, 10), record.diamond[:], record.init[:],
-		record.calldata, string(encoded), job.Stage.Version,
-	)
+	result, err := func() (int64, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return 0, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return 0, err
+		}
+		queryValue2, err := strconv.ParseInt(strconv.FormatUint(record.transactionIndex, 10), 10, 64)
+		if err != nil {
+			return 0, err
+		}
+		queryValue3, err := strconv.ParseInt(strconv.FormatUint(record.index, 10), 10, 64)
+		if err != nil {
+			return 0, err
+		}
+		if job.Stage.Version > 2147483647 {
+			return 0, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).EnrichInlinePersistDiamondCutRecordStatement1(ctx, dbgen.EnrichInlinePersistDiamondCutRecordStatement1Params{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: job.BlockHash[:], TransactionHash: record.hash[:], TransactionIndex: int64(queryValue2), LogIndex: int64(queryValue3), DiamondAddress: record.diamond[:], InitAddress: record.init[:], InitCalldata: record.calldata, Cuts: []byte(string(encoded)), StageVersion: int32(job.Stage.Version)})
+	}()
 	if err != nil {
 		return fmt.Errorf("persist DiamondCut event: %w", err)
 	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("read DiamondCut event persistence result: %w", err)
-	}
+	affected := result
 	if affected != 1 {
 		return Permanent(errors.New("existing DiamondCut event conflicts with indexed log"))
 	}
 	for cutIndex, cut := range record.cuts {
 		for selectorIndex, selector := range cut.FunctionSelectors {
-			result, err = tx.ExecContext(ctx, dbgen.EnrichInlinePersistDiamondCutRecordStatement2, job.ChainID, job.BlockHash[:], strconv.FormatUint(record.index, 10),
-				job.Stage.Version, cutIndex, selectorIndex, selector[:], cut.Action,
-				cut.FacetAddress[:],
-			)
+			result, err = func() (int64, error) {
+				var queryValue0 pgtype.Numeric
+				if err := queryValue0.Scan(job.ChainID); err != nil {
+					return 0, err
+				}
+				queryValue1, err := strconv.ParseInt(strconv.FormatUint(record.index, 10), 10, 64)
+				if err != nil {
+					return 0, err
+				}
+				if job.Stage.Version > 2147483647 {
+					return 0, errors.New("invalid stored query value")
+				}
+				if cutIndex < -2147483648 || cutIndex > 2147483647 {
+					return 0, errors.New("invalid stored query value")
+				}
+				if selectorIndex < -2147483648 || selectorIndex > 2147483647 {
+					return 0, errors.New("invalid stored query value")
+				}
+				return dbgen.New(tx).EnrichInlinePersistDiamondCutRecordStatement2(ctx, dbgen.EnrichInlinePersistDiamondCutRecordStatement2Params{ChainID: queryValue0, BlockHash: job.BlockHash[:], LogIndex: int64(queryValue1), StageVersion: int32(job.Stage.Version), CutIndex: int32(cutIndex), SelectorIndex: int32(selectorIndex), Selector: selector[:], Action: int16(cut.Action), FacetAddress: cut.FacetAddress[:]})
+			}()
 			if err != nil {
 				return fmt.Errorf("persist Diamond selector change: %w", err)
 			}
-			affected, err = result.RowsAffected()
-			if err != nil {
-				return fmt.Errorf("read Diamond selector change persistence result: %w", err)
-			}
+			affected = result
 			if affected != 1 {
 				return Permanent(errors.New("existing Diamond selector change conflicts with indexed log"))
 			}
@@ -161,7 +191,7 @@ func persistDiamondCutRecord(
 
 func (processor *PostgresProxyProcessor) reconcileDiamondHistory(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	detection *proxyDetection,
 ) error {
@@ -233,7 +263,7 @@ type diamondSelectorChange struct {
 
 func loadAndReplayDiamondHistory(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	diamond common.Address,
 	want map[[4]byte]common.Address,
@@ -246,19 +276,35 @@ func loadAndReplayDiamondHistory(
 		return diamondHistoryUnavailable,
 			"DiamondCut history coverage does not begin at the Diamond creation point", nil
 	}
-	rows, err := tx.QueryContext(ctx, dbgen.EnrichInlineLoadAndReplayDiamondHistoryStatement1, job.ChainID, diamond[:], strconv.FormatUint(job.BlockNumber, 10),
-		job.BlockHash[:], job.Stage.Version, DiamondMaxHistoryChanges+1,
-	)
+	rows, err := func() ([]dbgen.EnrichInlineLoadAndReplayDiamondHistoryStatement1Row, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return nil, err
+		}
+		if job.Stage.Version > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		if DiamondMaxHistoryChanges+1 < -2147483648 || DiamondMaxHistoryChanges+1 > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).EnrichInlineLoadAndReplayDiamondHistoryStatement1(ctx, dbgen.EnrichInlineLoadAndReplayDiamondHistoryStatement1Params{ChainID: queryValue0, DiamondAddress: diamond[:], MaxBlockNumber: queryValue1, BlockHash: job.BlockHash[:], StageVersion: int32(job.Stage.Version), Limit: int32(DiamondMaxHistoryChanges + 1)})
+	}()
 	if err != nil {
 		return diamondHistoryUnavailable, "", fmt.Errorf("query DiamondCut history: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	changes := make([]diamondSelectorChange, 0)
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var selectorBytes, facetBytes []byte
 		var action int
-		if err := rows.Scan(&selectorBytes, &action, &facetBytes); err != nil {
-			return diamondHistoryUnavailable, "", fmt.Errorf("scan DiamondCut history: %w", err)
+		{
+			selectorBytes = storedRow.Selector
+			action = int(storedRow.Action)
+			facetBytes = storedRow.FacetAddress
 		}
 		if len(selectorBytes) != 4 || len(facetBytes) != common.AddressLength ||
 			action < 0 || action > 2 {
@@ -270,9 +316,7 @@ func loadAndReplayDiamondHistory(
 			selector: selector, action: uint8(action), facet: common.BytesToAddress(facetBytes),
 		})
 	}
-	if err := rows.Err(); err != nil {
-		return diamondHistoryUnavailable, "", fmt.Errorf("iterate DiamondCut history: %w", err)
-	}
+
 	if len(changes) == 0 {
 		return diamondHistoryUnavailable, "", nil
 	}
@@ -317,15 +361,31 @@ func replayDiamondSelectorChanges(
 
 func diamondHistoryCoverageComplete(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	diamond common.Address,
 ) (bool, error) {
 	var complete bool
-	err := tx.QueryRowContext(ctx, dbgen.EnrichInlineDiamondHistoryCoverageCompleteStatement1, job.ChainID, diamond[:], strconv.FormatUint(job.BlockNumber, 10),
-		job.BlockHash[:], job.Stage.Version,
-	).Scan(&complete)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		if job.Stage.Version > 2147483647 {
+			return errors.New("invalid stored query value")
+		}
+		queryRow, err := dbgen.New(tx).EnrichInlineDiamondHistoryCoverageCompleteStatement1(ctx, dbgen.EnrichInlineDiamondHistoryCoverageCompleteStatement1Params{ChainID: queryValue0, DiamondAddress: diamond[:], MaxBlockNumber: queryValue1, TargetEndHash: job.BlockHash[:], StageVersion: int32(job.Stage.Version)})
+		if err != nil {
+			return err
+		}
+		complete = queryRow
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
@@ -348,7 +408,7 @@ func equalDiamondRoutes(left, right map[[4]byte]common.Address) bool {
 
 func persistDiamondDetectionSnapshots(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	resolution ProxyDetectionResolution,
 ) error {
@@ -365,7 +425,7 @@ func persistDiamondDetectionSnapshots(
 
 func persistDiamondDetectionSnapshot(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	outcome ProxyDetectionV2,
 ) error {
@@ -384,28 +444,41 @@ func persistDiamondDetectionSnapshot(
 	if err != nil {
 		return Permanent(err)
 	}
-	var cutFacet any
+	var cutFacet []byte
 	if diamond.StandardDiamondCut.Facet != nil {
 		cutFacet = diamond.StandardDiamondCut.Facet[:]
 	}
-	var loupeReported any
+	var loupeReported *bool
 	if diamond.LoupeInterfaceReported != nil {
-		loupeReported = *diamond.LoupeInterfaceReported
+		loupeReported = new(*diamond.LoupeInterfaceReported)
 	}
-	var truncationReason any
+	var truncationReason *string
 	if diamond.TruncationReason != "" {
-		truncationReason = diamond.TruncationReason
+		truncationReason = new(diamond.TruncationReason)
 	}
 	state := string(outcome.Status)
 	validation := string(diamond.Validation)
 	var snapshotID int64
-	err = tx.QueryRowContext(ctx, dbgen.EnrichInlinePersistDiamondDetectionSnapshotStatement1, job.ChainID, outcome.Proxy[:], strconv.FormatUint(job.BlockNumber, 10),
-		job.BlockHash[:], job.Stage.Version, state, string(diamond.Completeness),
-		validation, string(diamond.StandardDiamondCut.Status), cutFacet,
-		loupeReported, diamond.Truncated, truncationReason, string(warnings),
-		jobID, generation,
-	).Scan(&snapshotID)
-	if errors.Is(err, sql.ErrNoRows) {
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		if job.Stage.Version > 2147483647 {
+			return errors.New("invalid stored query value")
+		}
+		queryRow, err := dbgen.New(tx).EnrichInlinePersistDiamondDetectionSnapshotStatement1(ctx, dbgen.EnrichInlinePersistDiamondDetectionSnapshotStatement1Params{ChainID: queryValue0, DiamondAddress: outcome.Proxy[:], BlockNumber: queryValue1, BlockHash: job.BlockHash[:], StageVersion: int32(job.Stage.Version), DetectionState: state, Completeness: string(diamond.Completeness), Validation: validation, StandardDiamondCut: string(diamond.StandardDiamondCut.Status), StandardDiamondCutFacet: cutFacet, LoupeInterfaceReported: loupeReported, Truncated: diamond.Truncated, TruncationReason: truncationReason, Warnings: []byte(string(warnings)), DurableJobID: jobID, JobGeneration: generation})
+		if err != nil {
+			return err
+		}
+		snapshotID = queryRow
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return Permanent(errors.New("existing Diamond Loupe snapshot conflicts with fixed-block state"))
 	}
 	if err != nil {
@@ -419,18 +492,15 @@ func persistDiamondDetectionSnapshot(
 		return bytes.Compare(left.Address[:], right.Address[:])
 	})
 	for _, facet := range facets {
-		var codeHash any
+		var codeHash []byte
 		if facet.CodeHash != nil {
 			codeHash = facet.CodeHash[:]
 		}
-		result, insertErr := tx.ExecContext(ctx, dbgen.EnrichInlinePersistDiamondDetectionSnapshotStatement2, snapshotID, facet.Address[:], string(facet.Role), facet.CodeExists, codeHash)
+		result, insertErr := dbgen.New(tx).EnrichInlinePersistDiamondDetectionSnapshotStatement2(ctx, dbgen.EnrichInlinePersistDiamondDetectionSnapshotStatement2Params{SnapshotID: snapshotID, FacetAddress: facet.Address[:], FacetKind: string(facet.Role), CodeExists: facet.CodeExists, CodeHash: codeHash})
 		if insertErr != nil {
 			return fmt.Errorf("persist Diamond Loupe facet: %w", insertErr)
 		}
-		affected, rowsErr := result.RowsAffected()
-		if rowsErr != nil {
-			return fmt.Errorf("read Diamond Loupe facet persistence result: %w", rowsErr)
-		}
+		affected := result
 		if affected != 1 {
 			return Permanent(errors.New("existing Diamond Loupe facet conflicts with fixed-block state"))
 		}
@@ -439,14 +509,11 @@ func persistDiamondDetectionSnapshot(
 			return bytes.Compare(left[:], right[:])
 		})
 		for _, selector := range selectors {
-			result, insertErr = tx.ExecContext(ctx, dbgen.EnrichInlinePersistDiamondDetectionSnapshotStatement3, snapshotID, selector[:], facet.Address[:])
+			result, insertErr = dbgen.New(tx).EnrichInlinePersistDiamondDetectionSnapshotStatement3(ctx, snapshotID, selector[:], facet.Address[:])
 			if insertErr != nil {
 				return fmt.Errorf("persist Diamond Loupe selector: %w", insertErr)
 			}
-			affected, rowsErr = result.RowsAffected()
-			if rowsErr != nil {
-				return fmt.Errorf("read Diamond Loupe selector persistence result: %w", rowsErr)
-			}
+			affected = result
 			if affected != 1 {
 				return Permanent(errors.New("existing Diamond Loupe selector conflicts with fixed-block state"))
 			}

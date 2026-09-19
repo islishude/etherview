@@ -5,7 +5,6 @@ package integration_test
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"math/big"
@@ -13,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -217,7 +218,7 @@ func TestExactNFTObservationsRejectConcurrentConflictsAndPreserveIdenticalWrites
 	}
 
 	var storedOwner []byte
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT owner_address FROM erc721_owner_reconciliations
 		WHERE chain_id = 1 AND token_address = $1 AND token_id = 42 AND block_hash = $2`,
 		mustBytes(t, contract721), mustBytes(t, reference.Hash),
@@ -227,7 +228,7 @@ func TestExactNFTObservationsRejectConcurrentConflictsAndPreserveIdenticalWrites
 	if !bytes.Equal(storedOwner, mustBytes(t, firstOwner)) {
 		t.Fatalf("stored ERC-721 owner=%x, want first immutable owner", storedOwner)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		UPDATE erc721_owner_reconciliations SET owner_address = $1
 		WHERE chain_id = 1 AND token_address = $2 AND token_id = 42 AND block_hash = $3`,
 		mustBytes(t, conflictingOwner), mustBytes(t, contract721), mustBytes(t, reference.Hash),
@@ -262,7 +263,7 @@ func TestExactNFTObservationsRejectConcurrentConflictsAndPreserveIdenticalWrites
 		t.Fatalf("conflicting ERC-1155 observations=%+v error=%v", secondBalance.observations, secondBalance.err)
 	}
 	var storedBalance string
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT balance::text FROM erc1155_balance_reconciliations
 		WHERE chain_id = 1 AND token_address = $1 AND token_id = 7
 		  AND owner_address = $2 AND block_hash = $3`,
@@ -273,7 +274,7 @@ func TestExactNFTObservationsRejectConcurrentConflictsAndPreserveIdenticalWrites
 	if storedBalance != "7" {
 		t.Fatalf("stored ERC-1155 balance=%s, want first immutable balance", storedBalance)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		UPDATE erc1155_balance_reconciliations SET balance = 9
 		WHERE chain_id = 1 AND token_address = $1 AND token_id = 7
 		  AND owner_address = $2 AND block_hash = $3`,
@@ -298,7 +299,7 @@ func TestExactNFTObservationsRejectConcurrentConflictsAndPreserveIdenticalWrites
 		t.Fatalf("persist first identical ERC-721 observation: %v", err)
 	}
 	var firstObservedAt time.Time
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT observed_at FROM erc721_owner_reconciliations
 		WHERE chain_id = 1 AND token_address = $1 AND token_id = 43 AND block_hash = $2`,
 		mustBytes(t, contract721), mustBytes(t, reference.Hash),
@@ -311,7 +312,7 @@ func TestExactNFTObservationsRejectConcurrentConflictsAndPreserveIdenticalWrites
 		t.Fatalf("second identical ERC-721 observation=%+v error=%v", identical.observation, identical.err)
 	}
 	var secondObservedAt time.Time
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT observed_at FROM erc721_owner_reconciliations
 		WHERE chain_id = 1 AND token_address = $1 AND token_id = 43 AND block_hash = $2`,
 		mustBytes(t, contract721), mustBytes(t, reference.Hash),
@@ -372,7 +373,7 @@ func TestExactERC20BalanceObservationsRejectConcurrentConflictsAndPreserveIdenti
 		t.Fatalf("conflicting ERC-20 balance=%+v error=%v", second.observations, second.err)
 	}
 	var storedBalance string
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT balance::text FROM erc20_balance_reconciliations
 		WHERE chain_id = 1 AND token_address = $1 AND owner_address = $2 AND block_hash = $3`,
 		mustBytes(t, contract), mustBytes(t, owner), mustBytes(t, reference.Hash),
@@ -382,7 +383,7 @@ func TestExactERC20BalanceObservationsRejectConcurrentConflictsAndPreserveIdenti
 	if storedBalance != "7" {
 		t.Fatalf("stored ERC-20 balance=%s, want first immutable balance", storedBalance)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		UPDATE erc20_balance_reconciliations SET balance = 9
 		WHERE chain_id = 1 AND token_address = $1 AND owner_address = $2 AND block_hash = $3`,
 		mustBytes(t, contract), mustBytes(t, owner), mustBytes(t, reference.Hash),
@@ -407,7 +408,7 @@ func TestExactERC20BalanceObservationsRejectConcurrentConflictsAndPreserveIdenti
 		t.Fatalf("persist first identical ERC-20 balance: %v", err)
 	}
 	var firstObservedAt time.Time
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT observed_at FROM erc20_balance_reconciliations
 		WHERE chain_id = 1 AND token_address = $1 AND owner_address = $2 AND block_hash = $3`,
 		mustBytes(t, identicalContract), mustBytes(t, owner), mustBytes(t, reference.Hash),
@@ -420,7 +421,7 @@ func TestExactERC20BalanceObservationsRejectConcurrentConflictsAndPreserveIdenti
 		t.Fatalf("second identical ERC-20 balance=%+v error=%v", identical.observations, identical.err)
 	}
 	var secondObservedAt time.Time
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT observed_at FROM erc20_balance_reconciliations
 		WHERE chain_id = 1 AND token_address = $1 AND owner_address = $2 AND block_hash = $3`,
 		mustBytes(t, identicalContract), mustBytes(t, owner), mustBytes(t, reference.Hash),
@@ -641,10 +642,10 @@ func TestTokenObservationsAndExactNFTStateSurviveRealPostgresReorg(t *testing.T)
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM erc721_owner_reconciliations WHERE block_hash = $1`, 1, mustBytes(t, reference.Hash))
 }
 
-func markTokenStageComplete(t *testing.T, ctx context.Context, db *sql.DB, block chainbundle.Bundle) {
+func markTokenStageComplete(t *testing.T, ctx context.Context, db *pgxpool.Pool, block chainbundle.Bundle) {
 	t.Helper()
 	reference := mustBlockRef(t, block)
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		UPDATE transactional_outbox
 		SET published_at = clock_timestamp()
 		WHERE chain_id = 1 AND topic = 'core.block.canonical' AND message_key = $1`,
@@ -681,7 +682,7 @@ func markTokenStageComplete(t *testing.T, ctx context.Context, db *sql.DB, block
 func insertTokenObservation(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block chainbundle.Bundle,
 	contract common.Address,
 	codeHash common.Hash,

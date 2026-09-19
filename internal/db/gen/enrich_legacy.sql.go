@@ -11,20 +11,75 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const EnrichLegacyAtomicConsumePendingReplay = `-- name: EnrichLegacyAtomicConsumePendingReplay :exec
+const enrichLegacyAtomicConsumePendingReplay = `-- name: EnrichLegacyAtomicConsumePendingReplay :execrows
 UPDATE durable_jobs
 SET status = 'queued',
     attempts = 0,
     available_at = clock_timestamp(),
     result = NULL,
     last_error = NULL,
-    completed_generation = GREATEST(completed_generation, $3),
+    completed_generation = GREATEST(completed_generation, $1),
     leased_by = NULL,
     lease_token = NULL,
     lease_expires_at = NULL,
     leased_generation = NULL,
     updated_at = clock_timestamp()
-WHERE id = $1
+WHERE id = $2
+  AND kind = 'enrichment'
+  AND chain_id = $3::numeric
+  AND stage = $4
+  AND stage_version = $5
+  AND payload->>'block_hash' = $6
+  AND payload->>'block_number' = $7
+  AND status = 'leased'
+  AND lease_token = $8
+  AND lease_expires_at > clock_timestamp()
+  AND claimed_generation = $1
+  AND leased_generation = $1
+  AND requested_generation > $1
+  AND completed_generation < $1
+`
+
+type EnrichLegacyAtomicConsumePendingReplayParams struct {
+	CompletedGeneration int64          `db:"completed_generation" json:"completed_generation"`
+	ID                  int64          `db:"id" json:"id"`
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Stage               string         `db:"stage" json:"stage"`
+	StageVersion        int32          `db:"stage_version" json:"stage_version"`
+	Payload             []byte         `db:"payload" json:"payload"`
+	Payload2            []byte         `db:"payload_2" json:"payload_2"`
+	LeaseToken          *string        `db:"lease_token" json:"lease_token"`
+}
+
+func (q *Queries) EnrichLegacyAtomicConsumePendingReplay(ctx context.Context, arg EnrichLegacyAtomicConsumePendingReplayParams) (int64, error) {
+	result, err := q.db.Exec(ctx, enrichLegacyAtomicConsumePendingReplay,
+		arg.CompletedGeneration,
+		arg.ID,
+		arg.ChainID,
+		arg.Stage,
+		arg.StageVersion,
+		arg.Payload,
+		arg.Payload2,
+		arg.LeaseToken,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const enrichLegacyAtomicPublishSuccess = `-- name: EnrichLegacyAtomicPublishSuccess :execrows
+UPDATE durable_jobs
+SET status = 'succeeded',
+    result = $1::jsonb,
+    last_error = NULL,
+    completed_generation = $2,
+    leased_by = NULL,
+    lease_token = NULL,
+    lease_expires_at = NULL,
+    leased_generation = NULL,
+    updated_at = clock_timestamp()
+WHERE id = $3
   AND kind = 'enrichment'
   AND chain_id = $4::numeric
   AND stage = $5
@@ -32,97 +87,52 @@ WHERE id = $1
   AND payload->>'block_hash' = $7
   AND payload->>'block_number' = $8
   AND status = 'leased'
-  AND lease_token = $2
+  AND lease_token = $9
   AND lease_expires_at > clock_timestamp()
-  AND claimed_generation = $3
-  AND leased_generation = $3
-  AND requested_generation > $3
-  AND completed_generation < $3
-`
-
-type EnrichLegacyAtomicConsumePendingReplayParams struct {
-	ID                  int64          `db:"id" json:"id"`
-	LeaseToken          *string        `db:"lease_token" json:"lease_token"`
-	CompletedGeneration int64          `db:"completed_generation" json:"completed_generation"`
-	Column4             pgtype.Numeric `db:"column_4" json:"column_4"`
-	Stage               string         `db:"stage" json:"stage"`
-	StageVersion        int32          `db:"stage_version" json:"stage_version"`
-	Payload             []byte         `db:"payload" json:"payload"`
-	Payload_2           []byte         `db:"payload_2" json:"payload_2"`
-}
-
-func (q *Queries) EnrichLegacyAtomicConsumePendingReplay(ctx context.Context, arg EnrichLegacyAtomicConsumePendingReplayParams) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyAtomicConsumePendingReplay,
-		arg.ID,
-		arg.LeaseToken,
-		arg.CompletedGeneration,
-		arg.Column4,
-		arg.Stage,
-		arg.StageVersion,
-		arg.Payload,
-		arg.Payload_2,
-	)
-	return err
-}
-
-const EnrichLegacyAtomicPublishSuccess = `-- name: EnrichLegacyAtomicPublishSuccess :exec
-UPDATE durable_jobs
-SET status = 'succeeded',
-    result = $4::jsonb,
-    last_error = NULL,
-    completed_generation = $3,
-    leased_by = NULL,
-    lease_token = NULL,
-    lease_expires_at = NULL,
-    leased_generation = NULL,
-    updated_at = clock_timestamp()
-WHERE id = $1
-  AND kind = 'enrichment'
-  AND chain_id = $5::numeric
-  AND stage = $6
-  AND stage_version = $7
-  AND payload->>'block_hash' = $8
-  AND payload->>'block_number' = $9
-  AND status = 'leased'
-  AND lease_token = $2
-  AND lease_expires_at > clock_timestamp()
-  AND claimed_generation = $3
-  AND leased_generation = $3
-  AND requested_generation = $3
-  AND completed_generation < $3
+  AND claimed_generation = $2
+  AND leased_generation = $2
+  AND requested_generation = $2
+  AND completed_generation < $2
 `
 
 type EnrichLegacyAtomicPublishSuccessParams struct {
-	ID                  int64          `db:"id" json:"id"`
-	LeaseToken          *string        `db:"lease_token" json:"lease_token"`
+	Result              []byte         `db:"result" json:"result"`
 	CompletedGeneration int64          `db:"completed_generation" json:"completed_generation"`
-	Column4             []byte         `db:"column_4" json:"column_4"`
-	Column5             pgtype.Numeric `db:"column_5" json:"column_5"`
+	ID                  int64          `db:"id" json:"id"`
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	Stage               string         `db:"stage" json:"stage"`
 	StageVersion        int32          `db:"stage_version" json:"stage_version"`
 	Payload             []byte         `db:"payload" json:"payload"`
-	Payload_2           []byte         `db:"payload_2" json:"payload_2"`
+	Payload2            []byte         `db:"payload_2" json:"payload_2"`
+	LeaseToken          *string        `db:"lease_token" json:"lease_token"`
 }
 
-func (q *Queries) EnrichLegacyAtomicPublishSuccess(ctx context.Context, arg EnrichLegacyAtomicPublishSuccessParams) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyAtomicPublishSuccess,
-		arg.ID,
-		arg.LeaseToken,
+func (q *Queries) EnrichLegacyAtomicPublishSuccess(ctx context.Context, arg EnrichLegacyAtomicPublishSuccessParams) (int64, error) {
+	result, err := q.db.Exec(ctx, enrichLegacyAtomicPublishSuccess,
+		arg.Result,
 		arg.CompletedGeneration,
-		arg.Column4,
-		arg.Column5,
+		arg.ID,
+		arg.ChainID,
 		arg.Stage,
 		arg.StageVersion,
 		arg.Payload,
-		arg.Payload_2,
+		arg.Payload2,
+		arg.LeaseToken,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const EnrichLegacyBlockStatsSource = `-- name: EnrichLegacyBlockStatsSource :many
-SELECT block.raw, count(inclusion.tx_index), configuration.configured_start::text,
-       parent.number::text, parent.timestamp::text,
-       COALESCE(bool_or(canonical_parent.block_hash IS NOT NULL), FALSE)
+const enrichLegacyBlockStatsSource = `-- name: EnrichLegacyBlockStatsSource :one
+SELECT
+block.raw,
+count(inclusion.tx_index),
+configuration.configured_start,
+parent.number,
+parent.timestamp,
+(COALESCE(bool_or(canonical_parent.block_hash IS NOT NULL), FALSE))::boolean AS parent_canonical
 FROM blocks AS block
 JOIN core_index_configuration AS configuration
   ON configuration.chain_id = block.chain_id
@@ -142,42 +152,29 @@ GROUP BY block.raw, configuration.configured_start, parent.number, parent.timest
 `
 
 type EnrichLegacyBlockStatsSourceRow struct {
-	Raw                          []byte      `db:"raw" json:"raw"`
-	Count                        int64       `db:"count" json:"count"`
-	ConfigurationConfiguredStart string      `db:"configuration_configured_start" json:"configuration_configured_start"`
-	ParentNumber                 string      `db:"parent_number" json:"parent_number"`
-	ParentTimestamp              string      `db:"parent_timestamp" json:"parent_timestamp"`
-	Coalesce                     interface{} `db:"coalesce" json:"coalesce"`
+	Raw             []byte         `db:"raw" json:"raw"`
+	Count           int64          `db:"count" json:"count"`
+	ConfiguredStart pgtype.Numeric `db:"configured_start" json:"configured_start"`
+	Number          pgtype.Numeric `db:"number" json:"number"`
+	Timestamp       pgtype.Numeric `db:"timestamp" json:"timestamp"`
+	ParentCanonical bool           `db:"parent_canonical" json:"parent_canonical"`
 }
 
-func (q *Queries) EnrichLegacyBlockStatsSource(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, hash []byte) ([]EnrichLegacyBlockStatsSourceRow, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacyBlockStatsSource, column1, column2, hash)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EnrichLegacyBlockStatsSourceRow{}
-	for rows.Next() {
-		var i EnrichLegacyBlockStatsSourceRow
-		if err := rows.Scan(
-			&i.Raw,
-			&i.Count,
-			&i.ConfigurationConfiguredStart,
-			&i.ParentNumber,
-			&i.ParentTimestamp,
-			&i.Coalesce,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EnrichLegacyBlockStatsSource(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, hash []byte) (EnrichLegacyBlockStatsSourceRow, error) {
+	row := q.db.QueryRow(ctx, enrichLegacyBlockStatsSource, chainID, number, hash)
+	var i EnrichLegacyBlockStatsSourceRow
+	err := row.Scan(
+		&i.Raw,
+		&i.Count,
+		&i.ConfiguredStart,
+		&i.Number,
+		&i.Timestamp,
+		&i.ParentCanonical,
+	)
+	return i, err
 }
 
-const EnrichLegacyCanonicalBlock = `-- name: EnrichLegacyCanonicalBlock :many
+const enrichLegacyCanonicalBlock = `-- name: EnrichLegacyCanonicalBlock :one
 SELECT EXISTS (
     SELECT 1
     FROM canonical_blocks
@@ -187,87 +184,74 @@ SELECT EXISTS (
 )
 `
 
-func (q *Queries) EnrichLegacyCanonicalBlock(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]bool, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacyCanonicalBlock, column1, column2, blockHash)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var exists bool
-		if err := rows.Scan(&exists); err != nil {
-			return nil, err
-		}
-		items = append(items, exists)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EnrichLegacyCanonicalBlock(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, blockHash []byte) (bool, error) {
+	row := q.db.QueryRow(ctx, enrichLegacyCanonicalBlock, chainID, number, blockHash)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
-const EnrichLegacyCarryForwardProxyGeneration = `-- name: EnrichLegacyCarryForwardProxyGeneration :many
+const enrichLegacyCarryForwardProxyGeneration = `-- name: EnrichLegacyCarryForwardProxyGeneration :one
 WITH source_generation AS MATERIALIZED (
     SELECT publication.job_generation
     FROM durable_stage_publications AS publication
-    WHERE publication.job_id = $5::bigint
-      AND publication.job_generation < $6::bigint
-      AND publication.chain_id = $1::numeric
-      AND publication.block_number = $2::numeric
-      AND publication.block_hash = $3
+    WHERE publication.job_id = $1::bigint
+      AND publication.job_generation < $2::bigint
+      AND publication.chain_id = $3::numeric
+      AND publication.block_number = $4::numeric
+      AND publication.block_hash = $5
       AND publication.stage = 'proxy'
-      AND publication.stage_version = $4
+      AND publication.stage_version = $6
       AND publication.state = 'complete'
     ORDER BY publication.job_generation DESC
     LIMIT 1
 ), redetected AS MATERIALIZED (
     SELECT generation.proxy_address AS address
     FROM proxy_observation_generations AS generation
-    WHERE generation.chain_id = $1::numeric
-      AND generation.observation_block_hash = $3
-      AND generation.observation_stage_version = $4
-      AND generation.durable_job_id = $5::bigint
-      AND generation.job_generation = $6::bigint
+    WHERE generation.chain_id = $3::numeric
+      AND generation.observation_block_hash = $5
+      AND generation.observation_stage_version = $6
+      AND generation.durable_job_id = $1::bigint
+      AND generation.job_generation = $2::bigint
     UNION
     SELECT generation.beacon_address AS address
     FROM beacon_observation_generations AS generation
-    WHERE generation.chain_id = $1::numeric
-      AND generation.observation_block_hash = $3
-      AND generation.observation_stage_version = $4
-      AND generation.durable_job_id = $5::bigint
-      AND generation.job_generation = $6::bigint
+    WHERE generation.chain_id = $3::numeric
+      AND generation.observation_block_hash = $5
+      AND generation.observation_stage_version = $6
+      AND generation.durable_job_id = $1::bigint
+      AND generation.job_generation = $2::bigint
     UNION
 	SELECT generation.implementation_address AS address
 	FROM uups_implementation_observation_generations AS generation
-	WHERE generation.chain_id = $1::numeric
-	  AND generation.observation_block_hash = $3
-	  AND generation.observation_stage_version = $4
-	  AND generation.durable_job_id = $5::bigint
-	  AND generation.job_generation = $6::bigint
+	WHERE generation.chain_id = $3::numeric
+	  AND generation.observation_block_hash = $5
+	  AND generation.observation_stage_version = $6
+	  AND generation.durable_job_id = $1::bigint
+	  AND generation.job_generation = $2::bigint
 	UNION
     SELECT evidence.address
     FROM proxy_detection_evidence AS evidence
-    WHERE evidence.chain_id = $1::numeric
-      AND evidence.block_number = $2::numeric
-      AND evidence.block_hash = $3
-      AND evidence.stage_version = $4
-      AND evidence.durable_job_id = $5::bigint
-      AND evidence.job_generation = $6::bigint
+    WHERE evidence.chain_id = $3::numeric
+      AND evidence.block_number = $4::numeric
+      AND evidence.block_hash = $5
+      AND evidence.stage_version = $6
+      AND evidence.durable_job_id = $1::bigint
+      AND evidence.job_generation = $2::bigint
 ), carried_proxies AS (
     INSERT INTO proxy_observation_generations (
         chain_id, proxy_address, observation_block_hash,
         observation_stage_version, durable_job_id, job_generation
     )
     SELECT source.chain_id, source.proxy_address, source.observation_block_hash,
-           source.observation_stage_version, $5::bigint, $6::bigint
+           source.observation_stage_version, $1::bigint, $2::bigint
     FROM proxy_observation_generations AS source
     JOIN source_generation
       ON source.job_generation = source_generation.job_generation
-    WHERE source.chain_id = $1::numeric
-      AND source.observation_block_hash = $3
-      AND source.observation_stage_version = $4
-      AND source.durable_job_id = $5::bigint
+    WHERE source.chain_id = $3::numeric
+      AND source.observation_block_hash = $5
+      AND source.observation_stage_version = $6
+      AND source.durable_job_id = $1::bigint
       AND NOT EXISTS (
           SELECT 1 FROM redetected WHERE redetected.address = source.proxy_address
       )
@@ -279,14 +263,14 @@ WITH source_generation AS MATERIALIZED (
         observation_stage_version, durable_job_id, job_generation
     )
     SELECT source.chain_id, source.beacon_address, source.observation_block_hash,
-           source.observation_stage_version, $5::bigint, $6::bigint
+           source.observation_stage_version, $1::bigint, $2::bigint
     FROM beacon_observation_generations AS source
     JOIN source_generation
       ON source.job_generation = source_generation.job_generation
-    WHERE source.chain_id = $1::numeric
-      AND source.observation_block_hash = $3
-      AND source.observation_stage_version = $4
-      AND source.durable_job_id = $5::bigint
+    WHERE source.chain_id = $3::numeric
+      AND source.observation_block_hash = $5
+      AND source.observation_stage_version = $6
+      AND source.durable_job_id = $1::bigint
       AND NOT EXISTS (
           SELECT 1 FROM redetected WHERE redetected.address = source.beacon_address
       )
@@ -300,14 +284,14 @@ WITH source_generation AS MATERIALIZED (
 	)
 	SELECT source.chain_id, source.implementation_address,
 		   source.observation_block_hash, source.observation_stage_version,
-		   source.verification_job_id, $5::bigint, $6::bigint
+		   source.verification_job_id, $1::bigint, $2::bigint
 	FROM uups_implementation_observation_generations AS source
 	JOIN source_generation
 	  ON source.job_generation = source_generation.job_generation
-	WHERE source.chain_id = $1::numeric
-	  AND source.observation_block_hash = $3
-	  AND source.observation_stage_version = $4
-	  AND source.durable_job_id = $5::bigint
+	WHERE source.chain_id = $3::numeric
+	  AND source.observation_block_hash = $5
+	  AND source.observation_stage_version = $6
+	  AND source.durable_job_id = $1::bigint
 	  AND NOT EXISTS (
 		  SELECT 1 FROM redetected
 		  WHERE redetected.address = source.implementation_address
@@ -331,14 +315,14 @@ WITH source_generation AS MATERIALIZED (
            source.admin_address, source.admin_code_hash,
            source.beacon_address, source.beacon_code_hash,
            source.proxy_artifact_job_id, source.implementation_artifact_job_id,
-           $5::bigint, $6::bigint, source.evidence
+           $1::bigint, $2::bigint, source.evidence
     FROM proxy_artifact_resolutions AS source
     JOIN source_generation
       ON source.job_generation = source_generation.job_generation
-    WHERE source.chain_id = $1::numeric
-      AND source.observation_block_hash = $3
-      AND source.observation_stage_version = $4
-      AND source.durable_job_id = $5::bigint
+    WHERE source.chain_id = $3::numeric
+      AND source.observation_block_hash = $5
+      AND source.observation_stage_version = $6
+      AND source.durable_job_id = $1::bigint
       AND NOT EXISTS (
           SELECT 1 FROM redetected WHERE redetected.address = source.proxy_address
       )
@@ -353,15 +337,15 @@ WITH source_generation AS MATERIALIZED (
     SELECT source.chain_id, source.address, source.block_number,
            source.block_hash, source.stage_version, source.code_hash,
            source.candidate_kind, source.detection_state, source.reason, TRUE,
-           $5::bigint, $6::bigint, source.details
+           $1::bigint, $2::bigint, source.details
     FROM proxy_detection_evidence AS source
     JOIN source_generation
       ON source.job_generation = source_generation.job_generation
-    WHERE source.chain_id = $1::numeric
-      AND source.block_number = $2::numeric
-      AND source.block_hash = $3
-      AND source.stage_version = $4
-      AND source.durable_job_id = $5::bigint
+    WHERE source.chain_id = $3::numeric
+      AND source.block_number = $4::numeric
+      AND source.block_hash = $5
+      AND source.stage_version = $6
+      AND source.durable_job_id = $1::bigint
       AND NOT EXISTS (
           SELECT 1 FROM redetected WHERE redetected.address = source.address
       )
@@ -376,12 +360,12 @@ SELECT (SELECT count(*) FROM carried_proxies),
 `
 
 type EnrichLegacyCarryForwardProxyGenerationParams struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2      pgtype.Numeric `db:"column_2" json:"column_2"`
-	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
-	StageVersion int32          `db:"stage_version" json:"stage_version"`
-	Column5      int64          `db:"column_5" json:"column_5"`
-	Column6      int64          `db:"column_6" json:"column_6"`
+	DurableJobID  *int64         `db:"durable_job_id" json:"durable_job_id"`
+	JobGeneration *int64         `db:"job_generation" json:"job_generation"`
+	ChainID       pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber   pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash     []byte         `db:"block_hash" json:"block_hash"`
+	StageVersion  int32          `db:"stage_version" json:"stage_version"`
 }
 
 type EnrichLegacyCarryForwardProxyGenerationRow struct {
@@ -392,40 +376,27 @@ type EnrichLegacyCarryForwardProxyGenerationRow struct {
 	Count_5 int64 `db:"count_5" json:"count_5"`
 }
 
-func (q *Queries) EnrichLegacyCarryForwardProxyGeneration(ctx context.Context, arg EnrichLegacyCarryForwardProxyGenerationParams) ([]EnrichLegacyCarryForwardProxyGenerationRow, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacyCarryForwardProxyGeneration,
-		arg.Column1,
-		arg.Column2,
+func (q *Queries) EnrichLegacyCarryForwardProxyGeneration(ctx context.Context, arg EnrichLegacyCarryForwardProxyGenerationParams) (EnrichLegacyCarryForwardProxyGenerationRow, error) {
+	row := q.db.QueryRow(ctx, enrichLegacyCarryForwardProxyGeneration,
+		arg.DurableJobID,
+		arg.JobGeneration,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.StageVersion,
-		arg.Column5,
-		arg.Column6,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EnrichLegacyCarryForwardProxyGenerationRow{}
-	for rows.Next() {
-		var i EnrichLegacyCarryForwardProxyGenerationRow
-		if err := rows.Scan(
-			&i.Count,
-			&i.Count_2,
-			&i.Count_3,
-			&i.Count_4,
-			&i.Count_5,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i EnrichLegacyCarryForwardProxyGenerationRow
+	err := row.Scan(
+		&i.Count,
+		&i.Count_2,
+		&i.Count_3,
+		&i.Count_4,
+		&i.Count_5,
+	)
+	return i, err
 }
 
-const EnrichLegacyClaimOutbox = `-- name: EnrichLegacyClaimOutbox :many
+const enrichLegacyClaimOutbox = `-- name: EnrichLegacyClaimOutbox :one
 SELECT id, chain_id::text, topic, message_key, payload, attempts, generation
 FROM transactional_outbox
 WHERE published_at IS NULL
@@ -446,35 +417,22 @@ type EnrichLegacyClaimOutboxRow struct {
 	Generation int64  `db:"generation" json:"generation"`
 }
 
-func (q *Queries) EnrichLegacyClaimOutbox(ctx context.Context) ([]EnrichLegacyClaimOutboxRow, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacyClaimOutbox)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EnrichLegacyClaimOutboxRow{}
-	for rows.Next() {
-		var i EnrichLegacyClaimOutboxRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.ChainID,
-			&i.Topic,
-			&i.MessageKey,
-			&i.Payload,
-			&i.Attempts,
-			&i.Generation,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EnrichLegacyClaimOutbox(ctx context.Context) (EnrichLegacyClaimOutboxRow, error) {
+	row := q.db.QueryRow(ctx, enrichLegacyClaimOutbox)
+	var i EnrichLegacyClaimOutboxRow
+	err := row.Scan(
+		&i.ID,
+		&i.ChainID,
+		&i.Topic,
+		&i.MessageKey,
+		&i.Payload,
+		&i.Attempts,
+		&i.Generation,
+	)
+	return i, err
 }
 
-const EnrichLegacyConfirmPublishedSuccess = `-- name: EnrichLegacyConfirmPublishedSuccess :many
+const enrichLegacyConfirmPublishedSuccess = `-- name: EnrichLegacyConfirmPublishedSuccess :one
 SELECT EXISTS (
     SELECT 1
     FROM durable_stage_publications AS publication
@@ -484,27 +442,14 @@ SELECT EXISTS (
 )
 `
 
-func (q *Queries) EnrichLegacyConfirmPublishedSuccess(ctx context.Context, jobID int64, jobGeneration int64) ([]bool, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacyConfirmPublishedSuccess, jobID, jobGeneration)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var exists bool
-		if err := rows.Scan(&exists); err != nil {
-			return nil, err
-		}
-		items = append(items, exists)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EnrichLegacyConfirmPublishedSuccess(ctx context.Context, jobID int64, jobGeneration int64) (bool, error) {
+	row := q.db.QueryRow(ctx, enrichLegacyConfirmPublishedSuccess, jobID, jobGeneration)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
-const EnrichLegacyConfirmSupersededPublication = `-- name: EnrichLegacyConfirmSupersededPublication :many
+const enrichLegacyConfirmSupersededPublication = `-- name: EnrichLegacyConfirmSupersededPublication :one
 SELECT EXISTS (
     SELECT 1
     FROM durable_stage_publications AS publication
@@ -514,59 +459,46 @@ SELECT EXISTS (
 )
 `
 
-func (q *Queries) EnrichLegacyConfirmSupersededPublication(ctx context.Context, jobID int64, jobGeneration int64) ([]bool, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacyConfirmSupersededPublication, jobID, jobGeneration)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var exists bool
-		if err := rows.Scan(&exists); err != nil {
-			return nil, err
-		}
-		items = append(items, exists)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EnrichLegacyConfirmSupersededPublication(ctx context.Context, jobID int64, jobGeneration int64) (bool, error) {
+	row := q.db.QueryRow(ctx, enrichLegacyConfirmSupersededPublication, jobID, jobGeneration)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
-const EnrichLegacyDeleteEIP7702AuthorizationsBlock = `-- name: EnrichLegacyDeleteEIP7702AuthorizationsBlock :exec
+const enrichLegacyDeleteEIP7702AuthorizationsBlock = `-- name: EnrichLegacyDeleteEIP7702AuthorizationsBlock :exec
 DELETE FROM eip7702_authorizations
 WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
 `
 
-func (q *Queries) EnrichLegacyDeleteEIP7702AuthorizationsBlock(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyDeleteEIP7702AuthorizationsBlock, column1, column2, blockHash)
+func (q *Queries) EnrichLegacyDeleteEIP7702AuthorizationsBlock(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error {
+	_, err := q.db.Exec(ctx, enrichLegacyDeleteEIP7702AuthorizationsBlock, chainID, blockNumber, blockHash)
 	return err
 }
 
-const EnrichLegacyDeleteExecutionCodeResolutionsBlock = `-- name: EnrichLegacyDeleteExecutionCodeResolutionsBlock :exec
+const enrichLegacyDeleteExecutionCodeResolutionsBlock = `-- name: EnrichLegacyDeleteExecutionCodeResolutionsBlock :exec
 DELETE FROM transaction_execution_code_resolutions
 WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
 `
 
-func (q *Queries) EnrichLegacyDeleteExecutionCodeResolutionsBlock(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyDeleteExecutionCodeResolutionsBlock, column1, column2, blockHash)
+func (q *Queries) EnrichLegacyDeleteExecutionCodeResolutionsBlock(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error {
+	_, err := q.db.Exec(ctx, enrichLegacyDeleteExecutionCodeResolutionsBlock, chainID, blockNumber, blockHash)
 	return err
 }
 
-const EnrichLegacyDeleteStageJournal = `-- name: EnrichLegacyDeleteStageJournal :exec
+const enrichLegacyDeleteStageJournal = `-- name: EnrichLegacyDeleteStageJournal :exec
 DELETE FROM block_journals
 WHERE chain_id = $1::numeric
   AND block_hash = $2
   AND stage = $3
 `
 
-func (q *Queries) EnrichLegacyDeleteStageJournal(ctx context.Context, column1 pgtype.Numeric, blockHash []byte, stage string) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyDeleteStageJournal, column1, blockHash, stage)
+func (q *Queries) EnrichLegacyDeleteStageJournal(ctx context.Context, chainID pgtype.Numeric, blockHash []byte, stage string) error {
+	_, err := q.db.Exec(ctx, enrichLegacyDeleteStageJournal, chainID, blockHash, stage)
 	return err
 }
 
-const EnrichLegacyDeleteStageResult = `-- name: EnrichLegacyDeleteStageResult :exec
+const enrichLegacyDeleteStageResult = `-- name: EnrichLegacyDeleteStageResult :exec
 DELETE FROM block_stage_results
 WHERE chain_id = $1::numeric
   AND block_hash = $2
@@ -575,15 +507,15 @@ WHERE chain_id = $1::numeric
 `
 
 type EnrichLegacyDeleteStageResultParams struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
 	Stage        string         `db:"stage" json:"stage"`
 	StageVersion int32          `db:"stage_version" json:"stage_version"`
 }
 
 func (q *Queries) EnrichLegacyDeleteStageResult(ctx context.Context, arg EnrichLegacyDeleteStageResultParams) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyDeleteStageResult,
-		arg.Column1,
+	_, err := q.db.Exec(ctx, enrichLegacyDeleteStageResult,
+		arg.ChainID,
 		arg.BlockHash,
 		arg.Stage,
 		arg.StageVersion,
@@ -591,37 +523,37 @@ func (q *Queries) EnrichLegacyDeleteStageResult(ctx context.Context, arg EnrichL
 	return err
 }
 
-const EnrichLegacyDeleteStateDiffBlock = `-- name: EnrichLegacyDeleteStateDiffBlock :exec
+const enrichLegacyDeleteStateDiffBlock = `-- name: EnrichLegacyDeleteStateDiffBlock :exec
 DELETE FROM transaction_state_changes
 WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
 `
 
-func (q *Queries) EnrichLegacyDeleteStateDiffBlock(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyDeleteStateDiffBlock, column1, column2, blockHash)
+func (q *Queries) EnrichLegacyDeleteStateDiffBlock(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error {
+	_, err := q.db.Exec(ctx, enrichLegacyDeleteStateDiffBlock, chainID, blockNumber, blockHash)
 	return err
 }
 
-const EnrichLegacyDeleteTraceBlock = `-- name: EnrichLegacyDeleteTraceBlock :exec
+const enrichLegacyDeleteTraceBlock = `-- name: EnrichLegacyDeleteTraceBlock :exec
 DELETE FROM normalized_traces
 WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
 `
 
-func (q *Queries) EnrichLegacyDeleteTraceBlock(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyDeleteTraceBlock, column1, column2, blockHash)
+func (q *Queries) EnrichLegacyDeleteTraceBlock(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error {
+	_, err := q.db.Exec(ctx, enrichLegacyDeleteTraceBlock, chainID, blockNumber, blockHash)
 	return err
 }
 
-const EnrichLegacyDeleteTraceLogAttributions = `-- name: EnrichLegacyDeleteTraceLogAttributions :exec
+const enrichLegacyDeleteTraceLogAttributions = `-- name: EnrichLegacyDeleteTraceLogAttributions :exec
 DELETE FROM trace_log_attributions
 WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
 `
 
-func (q *Queries) EnrichLegacyDeleteTraceLogAttributions(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyDeleteTraceLogAttributions, column1, column2, blockHash)
+func (q *Queries) EnrichLegacyDeleteTraceLogAttributions(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error {
+	_, err := q.db.Exec(ctx, enrichLegacyDeleteTraceLogAttributions, chainID, blockNumber, blockHash)
 	return err
 }
 
-const EnrichLegacyDetectedToken = `-- name: EnrichLegacyDetectedToken :many
+const enrichLegacyDetectedToken = `-- name: EnrichLegacyDetectedToken :one
 SELECT token.standard, token.confidence
 FROM token_contracts AS token
 JOIN canonical_blocks AS canonical
@@ -641,51 +573,23 @@ type EnrichLegacyDetectedTokenRow struct {
 	Confidence string `db:"confidence" json:"confidence"`
 }
 
-func (q *Queries) EnrichLegacyDetectedToken(ctx context.Context, column1 pgtype.Numeric, address []byte, column3 pgtype.Numeric) ([]EnrichLegacyDetectedTokenRow, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacyDetectedToken, column1, address, column3)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EnrichLegacyDetectedTokenRow{}
-	for rows.Next() {
-		var i EnrichLegacyDetectedTokenRow
-		if err := rows.Scan(&i.Standard, &i.Confidence); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EnrichLegacyDetectedToken(ctx context.Context, chainID pgtype.Numeric, address []byte, maxObservedBlockNumber pgtype.Numeric) (EnrichLegacyDetectedTokenRow, error) {
+	row := q.db.QueryRow(ctx, enrichLegacyDetectedToken, chainID, address, maxObservedBlockNumber)
+	var i EnrichLegacyDetectedTokenRow
+	err := row.Scan(&i.Standard, &i.Confidence)
+	return i, err
 }
 
-const EnrichLegacyEnablePublicationProtocol = `-- name: EnrichLegacyEnablePublicationProtocol :many
+const enrichLegacyEnablePublicationProtocol = `-- name: EnrichLegacyEnablePublicationProtocol :exec
 SELECT set_config('etherview.enrichment_publication_protocol', '2', true)
 `
 
-func (q *Queries) EnrichLegacyEnablePublicationProtocol(ctx context.Context) ([]string, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacyEnablePublicationProtocol)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []string{}
-	for rows.Next() {
-		var set_config string
-		if err := rows.Scan(&set_config); err != nil {
-			return nil, err
-		}
-		items = append(items, set_config)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EnrichLegacyEnablePublicationProtocol(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, enrichLegacyEnablePublicationProtocol)
+	return err
 }
 
-const EnrichLegacyEnqueueJob = `-- name: EnrichLegacyEnqueueJob :many
+const enrichLegacyEnqueueJob = `-- name: EnrichLegacyEnqueueJob :one
 INSERT INTO durable_jobs (
     chain_id, kind, stage, stage_version, idempotency_key, payload,
     priority, max_attempts
@@ -695,12 +599,12 @@ RETURNING id, chain_id::text, stage, stage_version, attempts, max_attempts, payl
 `
 
 type EnrichLegacyEnqueueJobParams struct {
-	Column1        pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID        pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	Kind           string         `db:"kind" json:"kind"`
 	Stage          string         `db:"stage" json:"stage"`
 	StageVersion   int32          `db:"stage_version" json:"stage_version"`
 	IdempotencyKey string         `db:"idempotency_key" json:"idempotency_key"`
-	Column6        []byte         `db:"column_6" json:"column_6"`
+	Payload        []byte         `db:"payload" json:"payload"`
 	Priority       int32          `db:"priority" json:"priority"`
 	MaxAttempts    int32          `db:"max_attempts" json:"max_attempts"`
 }
@@ -716,75 +620,49 @@ type EnrichLegacyEnqueueJobRow struct {
 	RequestedGeneration int64  `db:"requested_generation" json:"requested_generation"`
 }
 
-func (q *Queries) EnrichLegacyEnqueueJob(ctx context.Context, arg EnrichLegacyEnqueueJobParams) ([]EnrichLegacyEnqueueJobRow, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacyEnqueueJob,
-		arg.Column1,
+func (q *Queries) EnrichLegacyEnqueueJob(ctx context.Context, arg EnrichLegacyEnqueueJobParams) (EnrichLegacyEnqueueJobRow, error) {
+	row := q.db.QueryRow(ctx, enrichLegacyEnqueueJob,
+		arg.ChainID,
 		arg.Kind,
 		arg.Stage,
 		arg.StageVersion,
 		arg.IdempotencyKey,
-		arg.Column6,
+		arg.Payload,
 		arg.Priority,
 		arg.MaxAttempts,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EnrichLegacyEnqueueJobRow{}
-	for rows.Next() {
-		var i EnrichLegacyEnqueueJobRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.ChainID,
-			&i.Stage,
-			&i.StageVersion,
-			&i.Attempts,
-			&i.MaxAttempts,
-			&i.Payload,
-			&i.RequestedGeneration,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i EnrichLegacyEnqueueJobRow
+	err := row.Scan(
+		&i.ID,
+		&i.ChainID,
+		&i.Stage,
+		&i.StageVersion,
+		&i.Attempts,
+		&i.MaxAttempts,
+		&i.Payload,
+		&i.RequestedGeneration,
+	)
+	return i, err
 }
 
-const EnrichLegacyEnrichmentJobStatus = `-- name: EnrichLegacyEnrichmentJobStatus :many
+const enrichLegacyEnrichmentJobStatus = `-- name: EnrichLegacyEnrichmentJobStatus :one
 SELECT status
 FROM durable_jobs
 WHERE id = $1
 `
 
-func (q *Queries) EnrichLegacyEnrichmentJobStatus(ctx context.Context, id int64) ([]string, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacyEnrichmentJobStatus, id)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []string{}
-	for rows.Next() {
-		var status string
-		if err := rows.Scan(&status); err != nil {
-			return nil, err
-		}
-		items = append(items, status)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EnrichLegacyEnrichmentJobStatus(ctx context.Context, id int64) (string, error) {
+	row := q.db.QueryRow(ctx, enrichLegacyEnrichmentJobStatus, id)
+	var status string
+	err := row.Scan(&status)
+	return status, err
 }
 
-const EnrichLegacyFinishJob = `-- name: EnrichLegacyFinishJob :many
+const enrichLegacyFinishJob = `-- name: EnrichLegacyFinishJob :one
 UPDATE durable_jobs
 SET status = CASE
         WHEN requested_generation > leased_generation THEN 'queued'
-        ELSE $3
+        ELSE $1
     END,
     attempts = CASE
         WHEN requested_generation > leased_generation THEN 0
@@ -796,11 +674,11 @@ SET status = CASE
     END,
     result = CASE
         WHEN requested_generation > leased_generation THEN NULL
-        ELSE $4::jsonb
+        ELSE $2::jsonb
     END,
     last_error = CASE
         WHEN requested_generation > leased_generation THEN NULL
-        ELSE $5
+        ELSE $3
     END,
     completed_generation = GREATEST(completed_generation, leased_generation),
     leased_by = NULL,
@@ -808,71 +686,58 @@ SET status = CASE
     lease_expires_at = NULL,
     leased_generation = NULL,
     updated_at = clock_timestamp()
-WHERE id = $1
+WHERE id = $4
   AND kind = 'enrichment'
-  AND chain_id = $7::numeric
-  AND stage = $8
-  AND stage_version = $9
-  AND payload->>'block_hash' = $10
-  AND payload->>'block_number' = $11
+  AND chain_id = $5::numeric
+  AND stage = $6
+  AND stage_version = $7
+  AND payload->>'block_hash' = $8
+  AND payload->>'block_number' = $9
   AND status = 'leased'
-  AND lease_token = $2
+  AND lease_token = $10
   AND lease_expires_at > clock_timestamp()
-  AND claimed_generation = $6
-  AND leased_generation = $6
-  AND completed_generation < $6
+  AND claimed_generation = $11
+  AND leased_generation = $11
+  AND completed_generation < $11
 RETURNING status = 'queued'
       AND attempts = 0
-      AND completed_generation < requested_generation
+      AND completed_generation < requested_generation AS followup_queued
 `
 
 type EnrichLegacyFinishJobParams struct {
-	ID                int64          `db:"id" json:"id"`
-	LeaseToken        *string        `db:"lease_token" json:"lease_token"`
 	Status            string         `db:"status" json:"status"`
-	Column4           []byte         `db:"column_4" json:"column_4"`
+	Result            []byte         `db:"result" json:"result"`
 	LastError         *string        `db:"last_error" json:"last_error"`
-	ClaimedGeneration int64          `db:"claimed_generation" json:"claimed_generation"`
-	Column7           pgtype.Numeric `db:"column_7" json:"column_7"`
+	ID                int64          `db:"id" json:"id"`
+	ChainID           pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	Stage             string         `db:"stage" json:"stage"`
 	StageVersion      int32          `db:"stage_version" json:"stage_version"`
 	Payload           []byte         `db:"payload" json:"payload"`
-	Payload_2         []byte         `db:"payload_2" json:"payload_2"`
+	Payload2          []byte         `db:"payload2" json:"payload2"`
+	LeaseToken        *string        `db:"lease_token" json:"lease_token"`
+	ClaimedGeneration int64          `db:"claimed_generation" json:"claimed_generation"`
 }
 
-func (q *Queries) EnrichLegacyFinishJob(ctx context.Context, arg EnrichLegacyFinishJobParams) ([]*bool, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacyFinishJob,
-		arg.ID,
-		arg.LeaseToken,
+func (q *Queries) EnrichLegacyFinishJob(ctx context.Context, arg EnrichLegacyFinishJobParams) (*bool, error) {
+	row := q.db.QueryRow(ctx, enrichLegacyFinishJob,
 		arg.Status,
-		arg.Column4,
+		arg.Result,
 		arg.LastError,
-		arg.ClaimedGeneration,
-		arg.Column7,
+		arg.ID,
+		arg.ChainID,
 		arg.Stage,
 		arg.StageVersion,
 		arg.Payload,
-		arg.Payload_2,
+		arg.Payload2,
+		arg.LeaseToken,
+		arg.ClaimedGeneration,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []*bool{}
-	for rows.Next() {
-		var column_1 *bool
-		if err := rows.Scan(&column_1); err != nil {
-			return nil, err
-		}
-		items = append(items, column_1)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var followup_queued *bool
+	err := row.Scan(&followup_queued)
+	return followup_queued, err
 }
 
-const EnrichLegacyInsertBeaconObservationGeneration = `-- name: EnrichLegacyInsertBeaconObservationGeneration :exec
+const enrichLegacyInsertBeaconObservationGeneration = `-- name: EnrichLegacyInsertBeaconObservationGeneration :execrows
 INSERT INTO beacon_observation_generations (
     chain_id, beacon_address, observation_block_hash,
     observation_stage_version, durable_job_id, job_generation
@@ -881,27 +746,30 @@ ON CONFLICT DO NOTHING
 `
 
 type EnrichLegacyInsertBeaconObservationGenerationParams struct {
-	Column1                 pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID                 pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	BeaconAddress           []byte         `db:"beacon_address" json:"beacon_address"`
 	ObservationBlockHash    []byte         `db:"observation_block_hash" json:"observation_block_hash"`
 	ObservationStageVersion int32          `db:"observation_stage_version" json:"observation_stage_version"`
-	Column5                 int64          `db:"column_5" json:"column_5"`
-	Column6                 int64          `db:"column_6" json:"column_6"`
+	DurableJobID            *int64         `db:"durable_job_id" json:"durable_job_id"`
+	JobGeneration           *int64         `db:"job_generation" json:"job_generation"`
 }
 
-func (q *Queries) EnrichLegacyInsertBeaconObservationGeneration(ctx context.Context, arg EnrichLegacyInsertBeaconObservationGenerationParams) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyInsertBeaconObservationGeneration,
-		arg.Column1,
+func (q *Queries) EnrichLegacyInsertBeaconObservationGeneration(ctx context.Context, arg EnrichLegacyInsertBeaconObservationGenerationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, enrichLegacyInsertBeaconObservationGeneration,
+		arg.ChainID,
 		arg.BeaconAddress,
 		arg.ObservationBlockHash,
 		arg.ObservationStageVersion,
-		arg.Column5,
-		arg.Column6,
+		arg.DurableJobID,
+		arg.JobGeneration,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const EnrichLegacyInsertBlockStats = `-- name: EnrichLegacyInsertBlockStats :exec
+const enrichLegacyInsertBlockStats = `-- name: EnrichLegacyInsertBlockStats :exec
 INSERT INTO block_statistics (
     chain_id, block_number, block_hash, transaction_count, gas_used, gas_limit,
     base_fee_per_gas, blob_gas_used, burned_wei, block_timestamp,
@@ -937,53 +805,53 @@ ON CONFLICT (chain_id, block_number, block_hash) DO UPDATE SET
 `
 
 type EnrichLegacyInsertBlockStatsParams struct {
-	Column1                pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2                pgtype.Numeric `db:"column_2" json:"column_2"`
+	ChainID                pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber            pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash              []byte         `db:"block_hash" json:"block_hash"`
 	TransactionCount       int64          `db:"transaction_count" json:"transaction_count"`
-	Column5                pgtype.Numeric `db:"column_5" json:"column_5"`
-	Column6                pgtype.Numeric `db:"column_6" json:"column_6"`
-	Column7                pgtype.Numeric `db:"column_7" json:"column_7"`
-	Column8                pgtype.Numeric `db:"column_8" json:"column_8"`
-	Column9                pgtype.Numeric `db:"column_9" json:"column_9"`
-	Column10               pgtype.Numeric `db:"column_10" json:"column_10"`
-	Column11               pgtype.Numeric `db:"column_11" json:"column_11"`
-	Column12               pgtype.Numeric `db:"column_12" json:"column_12"`
-	Column13               pgtype.Numeric `db:"column_13" json:"column_13"`
-	Column14               pgtype.Numeric `db:"column_14" json:"column_14"`
-	Column15               pgtype.Numeric `db:"column_15" json:"column_15"`
-	Column16               pgtype.Numeric `db:"column_16" json:"column_16"`
-	Column17               pgtype.Numeric `db:"column_17" json:"column_17"`
+	GasUsed                pgtype.Numeric `db:"gas_used" json:"gas_used"`
+	GasLimit               pgtype.Numeric `db:"gas_limit" json:"gas_limit"`
+	BaseFeePerGas          pgtype.Numeric `db:"base_fee_per_gas" json:"base_fee_per_gas"`
+	BlobGasUsed            pgtype.Numeric `db:"blob_gas_used" json:"blob_gas_used"`
+	BurnedWei              pgtype.Numeric `db:"burned_wei" json:"burned_wei"`
+	BlockTimestamp         pgtype.Numeric `db:"block_timestamp" json:"block_timestamp"`
+	BlockIntervalSeconds   pgtype.Numeric `db:"block_interval_seconds" json:"block_interval_seconds"`
+	TransactionsPerSecond  pgtype.Numeric `db:"transactions_per_second" json:"transactions_per_second"`
+	ExcessBlobGas          pgtype.Numeric `db:"excess_blob_gas" json:"excess_blob_gas"`
+	BlobBaseFeePerGas      pgtype.Numeric `db:"blob_base_fee_per_gas" json:"blob_base_fee_per_gas"`
+	BlobBurnedWei          pgtype.Numeric `db:"blob_burned_wei" json:"blob_burned_wei"`
+	ExecutionGasFeeWei     pgtype.Numeric `db:"execution_gas_fee_wei" json:"execution_gas_fee_wei"`
+	PriorityFeeWei         pgtype.Numeric `db:"priority_fee_wei" json:"priority_fee_wei"`
 	FailedTransactionCount *int64         `db:"failed_transaction_count" json:"failed_transaction_count"`
 	ContractCreationCount  *int64         `db:"contract_creation_count" json:"contract_creation_count"`
 }
 
 func (q *Queries) EnrichLegacyInsertBlockStats(ctx context.Context, arg EnrichLegacyInsertBlockStatsParams) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyInsertBlockStats,
-		arg.Column1,
-		arg.Column2,
+	_, err := q.db.Exec(ctx, enrichLegacyInsertBlockStats,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.TransactionCount,
-		arg.Column5,
-		arg.Column6,
-		arg.Column7,
-		arg.Column8,
-		arg.Column9,
-		arg.Column10,
-		arg.Column11,
-		arg.Column12,
-		arg.Column13,
-		arg.Column14,
-		arg.Column15,
-		arg.Column16,
-		arg.Column17,
+		arg.GasUsed,
+		arg.GasLimit,
+		arg.BaseFeePerGas,
+		arg.BlobGasUsed,
+		arg.BurnedWei,
+		arg.BlockTimestamp,
+		arg.BlockIntervalSeconds,
+		arg.TransactionsPerSecond,
+		arg.ExcessBlobGas,
+		arg.BlobBaseFeePerGas,
+		arg.BlobBurnedWei,
+		arg.ExecutionGasFeeWei,
+		arg.PriorityFeeWei,
 		arg.FailedTransactionCount,
 		arg.ContractCreationCount,
 	)
 	return err
 }
 
-const EnrichLegacyInsertDurablePublication = `-- name: EnrichLegacyInsertDurablePublication :many
+const enrichLegacyInsertDurablePublication = `-- name: EnrichLegacyInsertDurablePublication :one
 INSERT INTO durable_stage_publications (
     job_id, job_generation, chain_id, block_number, block_hash,
     stage, stage_version, state, details, last_error
@@ -991,54 +859,41 @@ INSERT INTO durable_stage_publications (
     $1, $2, $3::numeric, $4::numeric, $5,
     $6, $7, $8, $9::jsonb, $10
 )
-RETURNING 1
+RETURNING 1 AS inserted
 `
 
 type EnrichLegacyInsertDurablePublicationParams struct {
 	JobID         int64          `db:"job_id" json:"job_id"`
 	JobGeneration int64          `db:"job_generation" json:"job_generation"`
-	Column3       pgtype.Numeric `db:"column_3" json:"column_3"`
-	Column4       pgtype.Numeric `db:"column_4" json:"column_4"`
+	ChainID       pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber   pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash     []byte         `db:"block_hash" json:"block_hash"`
 	Stage         string         `db:"stage" json:"stage"`
 	StageVersion  int32          `db:"stage_version" json:"stage_version"`
 	State         string         `db:"state" json:"state"`
-	Column9       []byte         `db:"column_9" json:"column_9"`
+	Details       []byte         `db:"details" json:"details"`
 	LastError     *string        `db:"last_error" json:"last_error"`
 }
 
-func (q *Queries) EnrichLegacyInsertDurablePublication(ctx context.Context, arg EnrichLegacyInsertDurablePublicationParams) ([]int32, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacyInsertDurablePublication,
+func (q *Queries) EnrichLegacyInsertDurablePublication(ctx context.Context, arg EnrichLegacyInsertDurablePublicationParams) (int32, error) {
+	row := q.db.QueryRow(ctx, enrichLegacyInsertDurablePublication,
 		arg.JobID,
 		arg.JobGeneration,
-		arg.Column3,
-		arg.Column4,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.Stage,
 		arg.StageVersion,
 		arg.State,
-		arg.Column9,
+		arg.Details,
 		arg.LastError,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []int32{}
-	for rows.Next() {
-		var column_1 int32
-		if err := rows.Scan(&column_1); err != nil {
-			return nil, err
-		}
-		items = append(items, column_1)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var inserted int32
+	err := row.Scan(&inserted)
+	return inserted, err
 }
 
-const EnrichLegacyInsertEIP7702Authorization = `-- name: EnrichLegacyInsertEIP7702Authorization :exec
+const enrichLegacyInsertEIP7702Authorization = `-- name: EnrichLegacyInsertEIP7702Authorization :exec
 INSERT INTO eip7702_authorizations (
     chain_id, block_number, block_hash, transaction_hash, transaction_index,
     authorization_index, authorization_chain_id, authorization_nonce,
@@ -1051,36 +906,36 @@ INSERT INTO eip7702_authorizations (
 `
 
 type EnrichLegacyInsertEIP7702AuthorizationParams struct {
-	Column1            pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2            pgtype.Numeric `db:"column_2" json:"column_2"`
-	BlockHash          []byte         `db:"block_hash" json:"block_hash"`
-	TransactionHash    []byte         `db:"transaction_hash" json:"transaction_hash"`
-	TransactionIndex   int64          `db:"transaction_index" json:"transaction_index"`
-	AuthorizationIndex int64          `db:"authorization_index" json:"authorization_index"`
-	Column7            pgtype.Numeric `db:"column_7" json:"column_7"`
-	Column8            pgtype.Numeric `db:"column_8" json:"column_8"`
-	DelegateAddress    []byte         `db:"delegate_address" json:"delegate_address"`
-	YParity            int16          `db:"y_parity" json:"y_parity"`
-	R                  []byte         `db:"r" json:"r"`
-	S                  []byte         `db:"s" json:"s"`
-	Authority          []byte         `db:"authority" json:"authority"`
-	SignatureStatus    string         `db:"signature_status" json:"signature_status"`
-	ApplicationStatus  string         `db:"application_status" json:"application_status"`
-	SkipReason         *string        `db:"skip_reason" json:"skip_reason"`
+	ChainID              pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber          pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash            []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash      []byte         `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex     int64          `db:"transaction_index" json:"transaction_index"`
+	AuthorizationIndex   int64          `db:"authorization_index" json:"authorization_index"`
+	AuthorizationChainID pgtype.Numeric `db:"authorization_chain_id" json:"authorization_chain_id"`
+	AuthorizationNonce   pgtype.Numeric `db:"authorization_nonce" json:"authorization_nonce"`
+	DelegateAddress      []byte         `db:"delegate_address" json:"delegate_address"`
+	Yparity              int16          `db:"yparity" json:"yparity"`
+	R                    []byte         `db:"r" json:"r"`
+	S                    []byte         `db:"s" json:"s"`
+	Authority            []byte         `db:"authority" json:"authority"`
+	SignatureStatus      string         `db:"signature_status" json:"signature_status"`
+	ApplicationStatus    string         `db:"application_status" json:"application_status"`
+	SkipReason           *string        `db:"skip_reason" json:"skip_reason"`
 }
 
 func (q *Queries) EnrichLegacyInsertEIP7702Authorization(ctx context.Context, arg EnrichLegacyInsertEIP7702AuthorizationParams) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyInsertEIP7702Authorization,
-		arg.Column1,
-		arg.Column2,
+	_, err := q.db.Exec(ctx, enrichLegacyInsertEIP7702Authorization,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.TransactionHash,
 		arg.TransactionIndex,
 		arg.AuthorizationIndex,
-		arg.Column7,
-		arg.Column8,
+		arg.AuthorizationChainID,
+		arg.AuthorizationNonce,
 		arg.DelegateAddress,
-		arg.YParity,
+		arg.Yparity,
 		arg.R,
 		arg.S,
 		arg.Authority,
@@ -1091,7 +946,7 @@ func (q *Queries) EnrichLegacyInsertEIP7702Authorization(ctx context.Context, ar
 	return err
 }
 
-const EnrichLegacyInsertExecutionCodeResolution = `-- name: EnrichLegacyInsertExecutionCodeResolution :exec
+const enrichLegacyInsertExecutionCodeResolution = `-- name: EnrichLegacyInsertExecutionCodeResolution :exec
 INSERT INTO transaction_execution_code_resolutions (
     chain_id, block_number, block_hash, transaction_hash, transaction_index,
     context_address, execution_address, execution_code_hash, resolution,
@@ -1102,22 +957,22 @@ INSERT INTO transaction_execution_code_resolutions (
 `
 
 type EnrichLegacyInsertExecutionCodeResolutionParams struct {
-	Column1           pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2           pgtype.Numeric `db:"column_2" json:"column_2"`
+	ChainID           pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber       pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash         []byte         `db:"block_hash" json:"block_hash"`
 	TransactionHash   []byte         `db:"transaction_hash" json:"transaction_hash"`
 	TransactionIndex  int64          `db:"transaction_index" json:"transaction_index"`
 	ContextAddress    []byte         `db:"context_address" json:"context_address"`
 	ExecutionAddress  []byte         `db:"execution_address" json:"execution_address"`
 	ExecutionCodeHash []byte         `db:"execution_code_hash" json:"execution_code_hash"`
-	Resolution        string         `db:"resolution" json:"resolution"`
+	Resolution        pgtype.Text    `db:"resolution" json:"resolution"`
 	EvidenceSource    string         `db:"evidence_source" json:"evidence_source"`
 }
 
 func (q *Queries) EnrichLegacyInsertExecutionCodeResolution(ctx context.Context, arg EnrichLegacyInsertExecutionCodeResolutionParams) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyInsertExecutionCodeResolution,
-		arg.Column1,
-		arg.Column2,
+	_, err := q.db.Exec(ctx, enrichLegacyInsertExecutionCodeResolution,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.TransactionHash,
 		arg.TransactionIndex,
@@ -1130,7 +985,7 @@ func (q *Queries) EnrichLegacyInsertExecutionCodeResolution(ctx context.Context,
 	return err
 }
 
-const EnrichLegacyInsertProxyArtifactResolution = `-- name: EnrichLegacyInsertProxyArtifactResolution :many
+const enrichLegacyInsertProxyArtifactResolution = `-- name: EnrichLegacyInsertProxyArtifactResolution :one
 WITH inserted AS (
     INSERT INTO proxy_artifact_resolutions (
         chain_id, proxy_address, observation_block_hash,
@@ -1176,30 +1031,30 @@ LIMIT 1
 `
 
 type EnrichLegacyInsertProxyArtifactResolutionParams struct {
-	Column1                 pgtype.Numeric `db:"column_1" json:"column_1"`
-	ProxyAddress            []byte         `db:"proxy_address" json:"proxy_address"`
-	ObservationBlockHash    []byte         `db:"observation_block_hash" json:"observation_block_hash"`
-	ObservationStageVersion int32          `db:"observation_stage_version" json:"observation_stage_version"`
-	ProxyCodeHash           []byte         `db:"proxy_code_hash" json:"proxy_code_hash"`
-	ProxyKind               string         `db:"proxy_kind" json:"proxy_kind"`
-	ProxyPattern            string         `db:"proxy_pattern" json:"proxy_pattern"`
-	StandardVersion         string         `db:"standard_version" json:"standard_version"`
-	ImplementationAddress   []byte         `db:"implementation_address" json:"implementation_address"`
-	ImplementationCodeHash  []byte         `db:"implementation_code_hash" json:"implementation_code_hash"`
-	AdminAddress            []byte         `db:"admin_address" json:"admin_address"`
-	AdminCodeHash           []byte         `db:"admin_code_hash" json:"admin_code_hash"`
-	BeaconAddress           []byte         `db:"beacon_address" json:"beacon_address"`
-	BeaconCodeHash          []byte         `db:"beacon_code_hash" json:"beacon_code_hash"`
-	Column15                pgtype.UUID    `db:"column_15" json:"column_15"`
-	Column16                pgtype.UUID    `db:"column_16" json:"column_16"`
-	Column17                int64          `db:"column_17" json:"column_17"`
-	Column18                int64          `db:"column_18" json:"column_18"`
-	Column19                []byte         `db:"column_19" json:"column_19"`
+	ChainID                     pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	ProxyAddress                []byte         `db:"proxy_address" json:"proxy_address"`
+	ObservationBlockHash        []byte         `db:"observation_block_hash" json:"observation_block_hash"`
+	ObservationStageVersion     int32          `db:"observation_stage_version" json:"observation_stage_version"`
+	ProxyCodeHash               []byte         `db:"proxy_code_hash" json:"proxy_code_hash"`
+	ProxyKind                   string         `db:"proxy_kind" json:"proxy_kind"`
+	ProxyPattern                string         `db:"proxy_pattern" json:"proxy_pattern"`
+	StandardVersion             string         `db:"standard_version" json:"standard_version"`
+	ImplementationAddress       []byte         `db:"implementation_address" json:"implementation_address"`
+	ImplementationCodeHash      []byte         `db:"implementation_code_hash" json:"implementation_code_hash"`
+	AdminAddress                []byte         `db:"admin_address" json:"admin_address"`
+	AdminCodeHash               []byte         `db:"admin_code_hash" json:"admin_code_hash"`
+	BeaconAddress               []byte         `db:"beacon_address" json:"beacon_address"`
+	BeaconCodeHash              []byte         `db:"beacon_code_hash" json:"beacon_code_hash"`
+	ProxyArtifactJobID          pgtype.UUID    `db:"proxy_artifact_job_id" json:"proxy_artifact_job_id"`
+	ImplementationArtifactJobID pgtype.UUID    `db:"implementation_artifact_job_id" json:"implementation_artifact_job_id"`
+	DurableJobID                *int64         `db:"durable_job_id" json:"durable_job_id"`
+	JobGeneration               *int64         `db:"job_generation" json:"job_generation"`
+	Evidence                    []byte         `db:"evidence" json:"evidence"`
 }
 
-func (q *Queries) EnrichLegacyInsertProxyArtifactResolution(ctx context.Context, arg EnrichLegacyInsertProxyArtifactResolutionParams) ([]int64, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacyInsertProxyArtifactResolution,
-		arg.Column1,
+func (q *Queries) EnrichLegacyInsertProxyArtifactResolution(ctx context.Context, arg EnrichLegacyInsertProxyArtifactResolutionParams) (int64, error) {
+	row := q.db.QueryRow(ctx, enrichLegacyInsertProxyArtifactResolution,
+		arg.ChainID,
 		arg.ProxyAddress,
 		arg.ObservationBlockHash,
 		arg.ObservationStageVersion,
@@ -1213,31 +1068,18 @@ func (q *Queries) EnrichLegacyInsertProxyArtifactResolution(ctx context.Context,
 		arg.AdminCodeHash,
 		arg.BeaconAddress,
 		arg.BeaconCodeHash,
-		arg.Column15,
-		arg.Column16,
-		arg.Column17,
-		arg.Column18,
-		arg.Column19,
+		arg.ProxyArtifactJobID,
+		arg.ImplementationArtifactJobID,
+		arg.DurableJobID,
+		arg.JobGeneration,
+		arg.Evidence,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []int64{}
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		items = append(items, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
-const EnrichLegacyInsertProxyObservationGeneration = `-- name: EnrichLegacyInsertProxyObservationGeneration :exec
+const enrichLegacyInsertProxyObservationGeneration = `-- name: EnrichLegacyInsertProxyObservationGeneration :execrows
 INSERT INTO proxy_observation_generations (
     chain_id, proxy_address, observation_block_hash,
     observation_stage_version, durable_job_id, job_generation
@@ -1246,27 +1088,30 @@ ON CONFLICT DO NOTHING
 `
 
 type EnrichLegacyInsertProxyObservationGenerationParams struct {
-	Column1                 pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID                 pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	ProxyAddress            []byte         `db:"proxy_address" json:"proxy_address"`
 	ObservationBlockHash    []byte         `db:"observation_block_hash" json:"observation_block_hash"`
 	ObservationStageVersion int32          `db:"observation_stage_version" json:"observation_stage_version"`
-	Column5                 int64          `db:"column_5" json:"column_5"`
-	Column6                 int64          `db:"column_6" json:"column_6"`
+	DurableJobID            *int64         `db:"durable_job_id" json:"durable_job_id"`
+	JobGeneration           *int64         `db:"job_generation" json:"job_generation"`
 }
 
-func (q *Queries) EnrichLegacyInsertProxyObservationGeneration(ctx context.Context, arg EnrichLegacyInsertProxyObservationGenerationParams) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyInsertProxyObservationGeneration,
-		arg.Column1,
+func (q *Queries) EnrichLegacyInsertProxyObservationGeneration(ctx context.Context, arg EnrichLegacyInsertProxyObservationGenerationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, enrichLegacyInsertProxyObservationGeneration,
+		arg.ChainID,
 		arg.ProxyAddress,
 		arg.ObservationBlockHash,
 		arg.ObservationStageVersion,
-		arg.Column5,
-		arg.Column6,
+		arg.DurableJobID,
+		arg.JobGeneration,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const EnrichLegacyInsertPublishedStageResult = `-- name: EnrichLegacyInsertPublishedStageResult :many
+const enrichLegacyInsertPublishedStageResult = `-- name: EnrichLegacyInsertPublishedStageResult :one
 INSERT INTO block_stage_results AS current (
     chain_id, block_number, block_hash, stage, stage_version,
     state, details, last_error, durable_job_id, job_generation
@@ -1289,54 +1134,41 @@ WHERE (
         current.durable_job_id = EXCLUDED.durable_job_id
         AND current.job_generation <= EXCLUDED.job_generation
       )
-RETURNING 1
+RETURNING 1 AS inserted
 `
 
 type EnrichLegacyInsertPublishedStageResultParams struct {
-	Column1       pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2       pgtype.Numeric `db:"column_2" json:"column_2"`
+	ChainID       pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber   pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash     []byte         `db:"block_hash" json:"block_hash"`
 	Stage         string         `db:"stage" json:"stage"`
 	StageVersion  int32          `db:"stage_version" json:"stage_version"`
 	State         string         `db:"state" json:"state"`
-	Column7       []byte         `db:"column_7" json:"column_7"`
+	Details       []byte         `db:"details" json:"details"`
 	LastError     *string        `db:"last_error" json:"last_error"`
 	DurableJobID  *int64         `db:"durable_job_id" json:"durable_job_id"`
 	JobGeneration *int64         `db:"job_generation" json:"job_generation"`
 }
 
-func (q *Queries) EnrichLegacyInsertPublishedStageResult(ctx context.Context, arg EnrichLegacyInsertPublishedStageResultParams) ([]int32, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacyInsertPublishedStageResult,
-		arg.Column1,
-		arg.Column2,
+func (q *Queries) EnrichLegacyInsertPublishedStageResult(ctx context.Context, arg EnrichLegacyInsertPublishedStageResultParams) (int32, error) {
+	row := q.db.QueryRow(ctx, enrichLegacyInsertPublishedStageResult,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.Stage,
 		arg.StageVersion,
 		arg.State,
-		arg.Column7,
+		arg.Details,
 		arg.LastError,
 		arg.DurableJobID,
 		arg.JobGeneration,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []int32{}
-	for rows.Next() {
-		var column_1 int32
-		if err := rows.Scan(&column_1); err != nil {
-			return nil, err
-		}
-		items = append(items, column_1)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var inserted int32
+	err := row.Scan(&inserted)
+	return inserted, err
 }
 
-const EnrichLegacyInsertReplayRequest = `-- name: EnrichLegacyInsertReplayRequest :exec
+const enrichLegacyInsertReplayRequest = `-- name: EnrichLegacyInsertReplayRequest :execrows
 INSERT INTO durable_job_replay_requests (
     job_id, source_kind, source_key, requested_generation
 ) VALUES ($1, $2, $3, $4)
@@ -1350,17 +1182,20 @@ type EnrichLegacyInsertReplayRequestParams struct {
 	RequestedGeneration int64  `db:"requested_generation" json:"requested_generation"`
 }
 
-func (q *Queries) EnrichLegacyInsertReplayRequest(ctx context.Context, arg EnrichLegacyInsertReplayRequestParams) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyInsertReplayRequest,
+func (q *Queries) EnrichLegacyInsertReplayRequest(ctx context.Context, arg EnrichLegacyInsertReplayRequestParams) (int64, error) {
+	result, err := q.db.Exec(ctx, enrichLegacyInsertReplayRequest,
 		arg.JobID,
 		arg.SourceKind,
 		arg.SourceKey,
 		arg.RequestedGeneration,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const EnrichLegacyInsertStageResult = `-- name: EnrichLegacyInsertStageResult :exec
+const enrichLegacyInsertStageResult = `-- name: EnrichLegacyInsertStageResult :execrows
 INSERT INTO block_stage_results AS current (
     chain_id, block_number, block_hash, stage, stage_version, state, details, last_error
 ) VALUES ($1::numeric, $2::numeric, $3, $4, $5, $6, $7::jsonb, $8)
@@ -1375,31 +1210,34 @@ WHERE current.durable_job_id IS NULL
 `
 
 type EnrichLegacyInsertStageResultParams struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2      pgtype.Numeric `db:"column_2" json:"column_2"`
+	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber  pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
 	Stage        string         `db:"stage" json:"stage"`
 	StageVersion int32          `db:"stage_version" json:"stage_version"`
 	State        string         `db:"state" json:"state"`
-	Column7      []byte         `db:"column_7" json:"column_7"`
+	Details      []byte         `db:"details" json:"details"`
 	LastError    *string        `db:"last_error" json:"last_error"`
 }
 
-func (q *Queries) EnrichLegacyInsertStageResult(ctx context.Context, arg EnrichLegacyInsertStageResultParams) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyInsertStageResult,
-		arg.Column1,
-		arg.Column2,
+func (q *Queries) EnrichLegacyInsertStageResult(ctx context.Context, arg EnrichLegacyInsertStageResultParams) (int64, error) {
+	result, err := q.db.Exec(ctx, enrichLegacyInsertStageResult,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.Stage,
 		arg.StageVersion,
 		arg.State,
-		arg.Column7,
+		arg.Details,
 		arg.LastError,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const EnrichLegacyInsertStateChange = `-- name: EnrichLegacyInsertStateChange :exec
+const enrichLegacyInsertStateChange = `-- name: EnrichLegacyInsertStateChange :exec
 INSERT INTO transaction_state_changes (
     chain_id, block_number, block_hash, transaction_hash, transaction_index,
     address, field_kind, storage_key, before_value, after_value, canonical
@@ -1409,8 +1247,8 @@ INSERT INTO transaction_state_changes (
 `
 
 type EnrichLegacyInsertStateChangeParams struct {
-	Column1          pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2          pgtype.Numeric `db:"column_2" json:"column_2"`
+	ChainID          pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber      pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash        []byte         `db:"block_hash" json:"block_hash"`
 	TransactionHash  []byte         `db:"transaction_hash" json:"transaction_hash"`
 	TransactionIndex int64          `db:"transaction_index" json:"transaction_index"`
@@ -1422,9 +1260,9 @@ type EnrichLegacyInsertStateChangeParams struct {
 }
 
 func (q *Queries) EnrichLegacyInsertStateChange(ctx context.Context, arg EnrichLegacyInsertStateChangeParams) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyInsertStateChange,
-		arg.Column1,
-		arg.Column2,
+	_, err := q.db.Exec(ctx, enrichLegacyInsertStateChange,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.TransactionHash,
 		arg.TransactionIndex,
@@ -1437,7 +1275,7 @@ func (q *Queries) EnrichLegacyInsertStateChange(ctx context.Context, arg EnrichL
 	return err
 }
 
-const EnrichLegacyInsertTokenDelta = `-- name: EnrichLegacyInsertTokenDelta :exec
+const enrichLegacyInsertTokenDelta = `-- name: EnrichLegacyInsertTokenDelta :exec
 INSERT INTO token_balance_deltas (
     chain_id, block_number, block_hash, log_index, sub_index,
     token_address, owner_address, token_id, delta, canonical
@@ -1448,33 +1286,33 @@ ON CONFLICT (
 `
 
 type EnrichLegacyInsertTokenDeltaParams struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2      pgtype.Numeric `db:"column_2" json:"column_2"`
+	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber  pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
 	LogIndex     int64          `db:"log_index" json:"log_index"`
 	SubIndex     int32          `db:"sub_index" json:"sub_index"`
 	TokenAddress []byte         `db:"token_address" json:"token_address"`
 	OwnerAddress []byte         `db:"owner_address" json:"owner_address"`
-	Column8      pgtype.Numeric `db:"column_8" json:"column_8"`
-	Column9      pgtype.Numeric `db:"column_9" json:"column_9"`
+	TokenID      pgtype.Numeric `db:"token_id" json:"token_id"`
+	Delta        pgtype.Numeric `db:"delta" json:"delta"`
 }
 
 func (q *Queries) EnrichLegacyInsertTokenDelta(ctx context.Context, arg EnrichLegacyInsertTokenDeltaParams) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyInsertTokenDelta,
-		arg.Column1,
-		arg.Column2,
+	_, err := q.db.Exec(ctx, enrichLegacyInsertTokenDelta,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.LogIndex,
 		arg.SubIndex,
 		arg.TokenAddress,
 		arg.OwnerAddress,
-		arg.Column8,
-		arg.Column9,
+		arg.TokenID,
+		arg.Delta,
 	)
 	return err
 }
 
-const EnrichLegacyInsertTokenEvent = `-- name: EnrichLegacyInsertTokenEvent :exec
+const enrichLegacyInsertTokenEvent = `-- name: EnrichLegacyInsertTokenEvent :exec
 INSERT INTO token_events (
     chain_id, block_number, block_hash, log_index, sub_index, transaction_hash,
     token_address, standard, event_kind, operator, from_address, to_address,
@@ -1499,8 +1337,8 @@ ON CONFLICT (chain_id, block_number, block_hash, log_index, sub_index) DO UPDATE
 `
 
 type EnrichLegacyInsertTokenEventParams struct {
-	Column1         pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2         pgtype.Numeric `db:"column_2" json:"column_2"`
+	ChainID         pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber     pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash       []byte         `db:"block_hash" json:"block_hash"`
 	LogIndex        int64          `db:"log_index" json:"log_index"`
 	SubIndex        int32          `db:"sub_index" json:"sub_index"`
@@ -1511,16 +1349,16 @@ type EnrichLegacyInsertTokenEventParams struct {
 	Operator        []byte         `db:"operator" json:"operator"`
 	FromAddress     []byte         `db:"from_address" json:"from_address"`
 	ToAddress       []byte         `db:"to_address" json:"to_address"`
-	Column13        pgtype.Numeric `db:"column_13" json:"column_13"`
-	Column14        pgtype.Numeric `db:"column_14" json:"column_14"`
+	TokenID         pgtype.Numeric `db:"token_id" json:"token_id"`
+	Amount          pgtype.Numeric `db:"amount" json:"amount"`
 	Confidence      string         `db:"confidence" json:"confidence"`
-	Column16        []byte         `db:"column_16" json:"column_16"`
+	Raw             []byte         `db:"raw" json:"raw"`
 }
 
 func (q *Queries) EnrichLegacyInsertTokenEvent(ctx context.Context, arg EnrichLegacyInsertTokenEventParams) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyInsertTokenEvent,
-		arg.Column1,
-		arg.Column2,
+	_, err := q.db.Exec(ctx, enrichLegacyInsertTokenEvent,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.LogIndex,
 		arg.SubIndex,
@@ -1531,15 +1369,15 @@ func (q *Queries) EnrichLegacyInsertTokenEvent(ctx context.Context, arg EnrichLe
 		arg.Operator,
 		arg.FromAddress,
 		arg.ToAddress,
-		arg.Column13,
-		arg.Column14,
+		arg.TokenID,
+		arg.Amount,
 		arg.Confidence,
-		arg.Column16,
+		arg.Raw,
 	)
 	return err
 }
 
-const EnrichLegacyInsertTraceFrame = `-- name: EnrichLegacyInsertTraceFrame :exec
+const enrichLegacyInsertTraceFrame = `-- name: EnrichLegacyInsertTraceFrame :exec
 INSERT INTO normalized_traces (
     chain_id, block_number, block_hash, transaction_hash, transaction_index,
     trace_path, parent_path, depth, call_type, from_address, to_address,
@@ -1554,8 +1392,8 @@ INSERT INTO normalized_traces (
 `
 
 type EnrichLegacyInsertTraceFrameParams struct {
-	Column1             pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2             pgtype.Numeric `db:"column_2" json:"column_2"`
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber         pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash           []byte         `db:"block_hash" json:"block_hash"`
 	TransactionHash     []byte         `db:"transaction_hash" json:"transaction_hash"`
 	TransactionIndex    int64          `db:"transaction_index" json:"transaction_index"`
@@ -1566,9 +1404,9 @@ type EnrichLegacyInsertTraceFrameParams struct {
 	FromAddress         []byte         `db:"from_address" json:"from_address"`
 	ToAddress           []byte         `db:"to_address" json:"to_address"`
 	CreatedAddress      []byte         `db:"created_address" json:"created_address"`
-	Column13            pgtype.Numeric `db:"column_13" json:"column_13"`
-	Column14            pgtype.Numeric `db:"column_14" json:"column_14"`
-	Column15            pgtype.Numeric `db:"column_15" json:"column_15"`
+	Value               pgtype.Numeric `db:"value" json:"value"`
+	Gas                 pgtype.Numeric `db:"gas" json:"gas"`
+	GasUsed             pgtype.Numeric `db:"gas_used" json:"gas_used"`
 	Input               []byte         `db:"input" json:"input"`
 	Output              []byte         `db:"output" json:"output"`
 	Error               *string        `db:"error" json:"error"`
@@ -1580,9 +1418,9 @@ type EnrichLegacyInsertTraceFrameParams struct {
 }
 
 func (q *Queries) EnrichLegacyInsertTraceFrame(ctx context.Context, arg EnrichLegacyInsertTraceFrameParams) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyInsertTraceFrame,
-		arg.Column1,
-		arg.Column2,
+	_, err := q.db.Exec(ctx, enrichLegacyInsertTraceFrame,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.TransactionHash,
 		arg.TransactionIndex,
@@ -1593,9 +1431,9 @@ func (q *Queries) EnrichLegacyInsertTraceFrame(ctx context.Context, arg EnrichLe
 		arg.FromAddress,
 		arg.ToAddress,
 		arg.CreatedAddress,
-		arg.Column13,
-		arg.Column14,
-		arg.Column15,
+		arg.Value,
+		arg.Gas,
+		arg.GasUsed,
 		arg.Input,
 		arg.Output,
 		arg.Error,
@@ -1608,7 +1446,7 @@ func (q *Queries) EnrichLegacyInsertTraceFrame(ctx context.Context, arg EnrichLe
 	return err
 }
 
-const EnrichLegacyInsertTraceLogAttribution = `-- name: EnrichLegacyInsertTraceLogAttribution :exec
+const enrichLegacyInsertTraceLogAttribution = `-- name: EnrichLegacyInsertTraceLogAttribution :exec
 INSERT INTO trace_log_attributions (
     chain_id, block_number, block_hash, transaction_hash, log_index,
     trace_path, call_type, execution_address, canonical
@@ -1618,8 +1456,8 @@ INSERT INTO trace_log_attributions (
 `
 
 type EnrichLegacyInsertTraceLogAttributionParams struct {
-	Column1          pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2          pgtype.Numeric `db:"column_2" json:"column_2"`
+	ChainID          pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber      pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash        []byte         `db:"block_hash" json:"block_hash"`
 	TransactionHash  []byte         `db:"transaction_hash" json:"transaction_hash"`
 	LogIndex         int64          `db:"log_index" json:"log_index"`
@@ -1629,9 +1467,9 @@ type EnrichLegacyInsertTraceLogAttributionParams struct {
 }
 
 func (q *Queries) EnrichLegacyInsertTraceLogAttribution(ctx context.Context, arg EnrichLegacyInsertTraceLogAttributionParams) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyInsertTraceLogAttribution,
-		arg.Column1,
-		arg.Column2,
+	_, err := q.db.Exec(ctx, enrichLegacyInsertTraceLogAttribution,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.TransactionHash,
 		arg.LogIndex,
@@ -1642,7 +1480,7 @@ func (q *Queries) EnrichLegacyInsertTraceLogAttribution(ctx context.Context, arg
 	return err
 }
 
-const EnrichLegacyInsertUUPSImplementationObservationGeneration = `-- name: EnrichLegacyInsertUUPSImplementationObservationGeneration :exec
+const enrichLegacyInsertUUPSImplementationObservationGeneration = `-- name: EnrichLegacyInsertUUPSImplementationObservationGeneration :execrows
 INSERT INTO uups_implementation_observation_generations (
     chain_id, implementation_address, observation_block_hash,
     observation_stage_version, verification_job_id,
@@ -1654,80 +1492,55 @@ ON CONFLICT DO NOTHING
 `
 
 type EnrichLegacyInsertUUPSImplementationObservationGenerationParams struct {
-	Column1                 pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID                 pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	ImplementationAddress   []byte         `db:"implementation_address" json:"implementation_address"`
 	ObservationBlockHash    []byte         `db:"observation_block_hash" json:"observation_block_hash"`
 	ObservationStageVersion int32          `db:"observation_stage_version" json:"observation_stage_version"`
-	Column5                 pgtype.UUID    `db:"column_5" json:"column_5"`
-	Column6                 int64          `db:"column_6" json:"column_6"`
-	Column7                 int64          `db:"column_7" json:"column_7"`
+	VerificationJobID       pgtype.UUID    `db:"verification_job_id" json:"verification_job_id"`
+	DurableJobID            int64          `db:"durable_job_id" json:"durable_job_id"`
+	JobGeneration           int64          `db:"job_generation" json:"job_generation"`
 }
 
-func (q *Queries) EnrichLegacyInsertUUPSImplementationObservationGeneration(ctx context.Context, arg EnrichLegacyInsertUUPSImplementationObservationGenerationParams) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyInsertUUPSImplementationObservationGeneration,
-		arg.Column1,
+func (q *Queries) EnrichLegacyInsertUUPSImplementationObservationGeneration(ctx context.Context, arg EnrichLegacyInsertUUPSImplementationObservationGenerationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, enrichLegacyInsertUUPSImplementationObservationGeneration,
+		arg.ChainID,
 		arg.ImplementationAddress,
 		arg.ObservationBlockHash,
 		arg.ObservationStageVersion,
-		arg.Column5,
-		arg.Column6,
-		arg.Column7,
+		arg.VerificationJobID,
+		arg.DurableJobID,
+		arg.JobGeneration,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const EnrichLegacyLockCanonicalBlock = `-- name: EnrichLegacyLockCanonicalBlock :many
-SELECT 1
+const enrichLegacyLockCanonicalBlock = `-- name: EnrichLegacyLockCanonicalBlock :one
+SELECT 1 AS locked
 FROM canonical_blocks
 WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3
 FOR KEY SHARE
 `
 
-func (q *Queries) EnrichLegacyLockCanonicalBlock(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]int32, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacyLockCanonicalBlock, column1, column2, blockHash)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []int32{}
-	for rows.Next() {
-		var column_1 int32
-		if err := rows.Scan(&column_1); err != nil {
-			return nil, err
-		}
-		items = append(items, column_1)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EnrichLegacyLockCanonicalBlock(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, blockHash []byte) (int32, error) {
+	row := q.db.QueryRow(ctx, enrichLegacyLockCanonicalBlock, chainID, number, blockHash)
+	var locked int32
+	err := row.Scan(&locked)
+	return locked, err
 }
 
-const EnrichLegacyLockPublicationJob = `-- name: EnrichLegacyLockPublicationJob :many
+const enrichLegacyLockPublicationJob = `-- name: EnrichLegacyLockPublicationJob :exec
 SELECT pg_advisory_xact_lock(-($1::bigint))
 `
 
-func (q *Queries) EnrichLegacyLockPublicationJob(ctx context.Context, dollar_1 int64) ([]interface{}, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacyLockPublicationJob, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []interface{}{}
-	for rows.Next() {
-		var pg_advisory_xact_lock interface{}
-		if err := rows.Scan(&pg_advisory_xact_lock); err != nil {
-			return nil, err
-		}
-		items = append(items, pg_advisory_xact_lock)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EnrichLegacyLockPublicationJob(ctx context.Context, jobID int64) error {
+	_, err := q.db.Exec(ctx, enrichLegacyLockPublicationJob, jobID)
+	return err
 }
 
-const EnrichLegacyOrphanJournals = `-- name: EnrichLegacyOrphanJournals :many
+const enrichLegacyOrphanJournals = `-- name: EnrichLegacyOrphanJournals :one
 SELECT NOT EXISTS (
     SELECT 1
     FROM block_journals
@@ -1737,59 +1550,33 @@ SELECT NOT EXISTS (
 )
 `
 
-func (q *Queries) EnrichLegacyOrphanJournals(ctx context.Context, column1 pgtype.Numeric, blockHash []byte) ([]bool, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacyOrphanJournals, column1, blockHash)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var not_exists bool
-		if err := rows.Scan(&not_exists); err != nil {
-			return nil, err
-		}
-		items = append(items, not_exists)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EnrichLegacyOrphanJournals(ctx context.Context, chainID pgtype.Numeric, blockHash []byte) (bool, error) {
+	row := q.db.QueryRow(ctx, enrichLegacyOrphanJournals, chainID, blockHash)
+	var not_exists bool
+	err := row.Scan(&not_exists)
+	return not_exists, err
 }
 
-const EnrichLegacyProxyCanonical = `-- name: EnrichLegacyProxyCanonical :many
+const enrichLegacyProxyCanonical = `-- name: EnrichLegacyProxyCanonical :one
 SELECT EXISTS (
     SELECT 1 FROM canonical_blocks
     WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3
 )
 `
 
-func (q *Queries) EnrichLegacyProxyCanonical(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]bool, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacyProxyCanonical, column1, column2, blockHash)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var exists bool
-		if err := rows.Scan(&exists); err != nil {
-			return nil, err
-		}
-		items = append(items, exists)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EnrichLegacyProxyCanonical(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, blockHash []byte) (bool, error) {
+	row := q.db.QueryRow(ctx, enrichLegacyProxyCanonical, chainID, number, blockHash)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
-const EnrichLegacyProxyReplayCandidates = `-- name: EnrichLegacyProxyReplayCandidates :many
-SELECT target.address, target.target_kind, $5::text AS source,
-		       verified.code_hash, verified.verification_job_id::text
+const enrichLegacyProxyReplayCandidates = `-- name: EnrichLegacyProxyReplayCandidates :many
+SELECT target.address, target.target_kind, $1::text AS source,
+		       verified.code_hash, verified.verification_job_id
 		FROM proxy_replay_targets AS target
 		JOIN durable_job_replay_requests AS replay_request
-		  ON replay_request.job_id = $6::bigint
+		  ON replay_request.job_id = $2::bigint
 		 AND replay_request.source_kind = 'verification-publication'
 		 AND target.source_verification_job_id::text = replay_request.source_key
 		JOIN durable_jobs AS replay_job
@@ -1797,12 +1584,12 @@ SELECT target.address, target.target_kind, $5::text AS source,
 		 AND replay_job.chain_id = target.chain_id
 		 AND replay_job.kind = 'enrichment'
 		 AND replay_job.stage = 'proxy'
-		 AND replay_job.stage_version = $4
+		 AND replay_job.stage_version = $3
 		 AND replay_job.payload->>'block_hash' = '0x' || encode(target.block_hash, 'hex')
 		 AND replay_job.payload->>'block_number' = target.block_number::text
 		 AND replay_job.status = 'leased'
-		 AND replay_job.claimed_generation = $7::bigint
-		 AND replay_job.leased_generation = $7::bigint
+		 AND replay_job.claimed_generation = $4::bigint
+		 AND replay_job.leased_generation = $4::bigint
 		LEFT JOIN verified_contract_proxy_artifacts AS artifact
 		  ON target.target_kind = 'uups'
 		 AND artifact.verification_job_id = target.source_verification_job_id
@@ -1821,43 +1608,43 @@ SELECT target.address, target.target_kind, $5::text AS source,
 		 AND verified.request_digest = artifact.request_digest
 		 AND (verified.valid_to_block IS NULL OR
 		      verified.valid_to_block >= target.block_number)
-		WHERE target.chain_id = $1::numeric
-		  AND target.block_number = $2::numeric
-		  AND target.block_hash = $3
+		WHERE target.chain_id = $5::numeric
+		  AND target.block_number = $6::numeric
+		  AND target.block_hash = $7
 		  AND target.source_kind = 'verification_publication'
 		  AND replay_request.requested_generation > replay_job.completed_generation
-		  AND replay_request.requested_generation <= $7::bigint
+		  AND replay_request.requested_generation <= $4::bigint
 		ORDER BY target.address, target.target_kind, source,
 		         verified.verification_job_id
 `
 
 type EnrichLegacyProxyReplayCandidatesParams struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2      pgtype.Numeric `db:"column_2" json:"column_2"`
-	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
-	StageVersion int32          `db:"stage_version" json:"stage_version"`
-	Column5      string         `db:"column_5" json:"column_5"`
-	Column6      int64          `db:"column_6" json:"column_6"`
-	Column7      int64          `db:"column_7" json:"column_7"`
+	Source            string         `db:"source" json:"source"`
+	JobID             int64          `db:"job_id" json:"job_id"`
+	StageVersion      int32          `db:"stage_version" json:"stage_version"`
+	ClaimedGeneration int64          `db:"claimed_generation" json:"claimed_generation"`
+	ChainID           pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber       pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash         []byte         `db:"block_hash" json:"block_hash"`
 }
 
 type EnrichLegacyProxyReplayCandidatesRow struct {
-	Address                   []byte `db:"address" json:"address"`
-	TargetKind                string `db:"target_kind" json:"target_kind"`
-	Source                    string `db:"source" json:"source"`
-	CodeHash                  []byte `db:"code_hash" json:"code_hash"`
-	VerifiedVerificationJobID string `db:"verified_verification_job_id" json:"verified_verification_job_id"`
+	Address           []byte      `db:"address" json:"address"`
+	TargetKind        string      `db:"target_kind" json:"target_kind"`
+	Source            string      `db:"source" json:"source"`
+	CodeHash          []byte      `db:"code_hash" json:"code_hash"`
+	VerificationJobID pgtype.UUID `db:"verification_job_id" json:"verification_job_id"`
 }
 
 func (q *Queries) EnrichLegacyProxyReplayCandidates(ctx context.Context, arg EnrichLegacyProxyReplayCandidatesParams) ([]EnrichLegacyProxyReplayCandidatesRow, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacyProxyReplayCandidates,
-		arg.Column1,
-		arg.Column2,
-		arg.BlockHash,
+	rows, err := q.db.Query(ctx, enrichLegacyProxyReplayCandidates,
+		arg.Source,
+		arg.JobID,
 		arg.StageVersion,
-		arg.Column5,
-		arg.Column6,
-		arg.Column7,
+		arg.ClaimedGeneration,
+		arg.ChainID,
+		arg.BlockNumber,
+		arg.BlockHash,
 	)
 	if err != nil {
 		return nil, err
@@ -1871,7 +1658,7 @@ func (q *Queries) EnrichLegacyProxyReplayCandidates(ctx context.Context, arg Enr
 			&i.TargetKind,
 			&i.Source,
 			&i.CodeHash,
-			&i.VerifiedVerificationJobID,
+			&i.VerificationJobID,
 		); err != nil {
 			return nil, err
 		}
@@ -1883,65 +1670,71 @@ func (q *Queries) EnrichLegacyProxyReplayCandidates(ctx context.Context, arg Enr
 	return items, nil
 }
 
-const EnrichLegacyPublishOutbox = `-- name: EnrichLegacyPublishOutbox :exec
+const enrichLegacyPublishOutbox = `-- name: EnrichLegacyPublishOutbox :execrows
 UPDATE transactional_outbox
 SET published_at = clock_timestamp(),
     last_error = NULL,
-    payload = jsonb_set(payload, '{_etherview_dispatch}', $2::jsonb, true)
-WHERE id = $1 AND published_at IS NULL
+    payload = jsonb_set(payload, '{_etherview_dispatch}', $1::jsonb, true)
+WHERE id = $2 AND published_at IS NULL
 `
 
-func (q *Queries) EnrichLegacyPublishOutbox(ctx context.Context, iD int64, column2 []byte) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyPublishOutbox, iD, column2)
-	return err
+func (q *Queries) EnrichLegacyPublishOutbox(ctx context.Context, dispatch []byte, iD int64) (int64, error) {
+	result, err := q.db.Exec(ctx, enrichLegacyPublishOutbox, dispatch, iD)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const EnrichLegacyRenewJob = `-- name: EnrichLegacyRenewJob :exec
+const enrichLegacyRenewJob = `-- name: EnrichLegacyRenewJob :execrows
 UPDATE durable_jobs
-SET lease_expires_at = clock_timestamp() + ($3 * INTERVAL '1 microsecond'),
+SET lease_expires_at = clock_timestamp() + ($1::bigint * INTERVAL '1 microsecond'),
     updated_at = clock_timestamp()
-WHERE id = $1
+WHERE id = $2
   AND kind = 'enrichment'
-  AND chain_id = $5::numeric
-  AND stage = $6
-  AND stage_version = $7
-  AND payload->>'block_hash' = $8
-  AND payload->>'block_number' = $9
+  AND chain_id = $3::numeric
+  AND stage = $4
+  AND stage_version = $5
+  AND payload->>'block_hash' = $6
+  AND payload->>'block_number' = $7
   AND status = 'leased'
-  AND lease_token = $2
+  AND lease_token = $8
   AND lease_expires_at > clock_timestamp()
-  AND claimed_generation = $4
-  AND leased_generation = $4
+  AND claimed_generation = $9
+  AND leased_generation = $9
 `
 
 type EnrichLegacyRenewJobParams struct {
+	LeaseMicroseconds int64          `db:"lease_microseconds" json:"lease_microseconds"`
 	ID                int64          `db:"id" json:"id"`
-	LeaseToken        *string        `db:"lease_token" json:"lease_token"`
-	Column3           interface{}    `db:"column_3" json:"column_3"`
-	ClaimedGeneration int64          `db:"claimed_generation" json:"claimed_generation"`
-	Column5           pgtype.Numeric `db:"column_5" json:"column_5"`
+	ChainID           pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	Stage             string         `db:"stage" json:"stage"`
 	StageVersion      int32          `db:"stage_version" json:"stage_version"`
 	Payload           []byte         `db:"payload" json:"payload"`
-	Payload_2         []byte         `db:"payload_2" json:"payload_2"`
+	Payload2          []byte         `db:"payload_2" json:"payload_2"`
+	LeaseToken        *string        `db:"lease_token" json:"lease_token"`
+	ClaimedGeneration int64          `db:"claimed_generation" json:"claimed_generation"`
 }
 
-func (q *Queries) EnrichLegacyRenewJob(ctx context.Context, arg EnrichLegacyRenewJobParams) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyRenewJob,
+func (q *Queries) EnrichLegacyRenewJob(ctx context.Context, arg EnrichLegacyRenewJobParams) (int64, error) {
+	result, err := q.db.Exec(ctx, enrichLegacyRenewJob,
+		arg.LeaseMicroseconds,
 		arg.ID,
-		arg.LeaseToken,
-		arg.Column3,
-		arg.ClaimedGeneration,
-		arg.Column5,
+		arg.ChainID,
 		arg.Stage,
 		arg.StageVersion,
 		arg.Payload,
-		arg.Payload_2,
+		arg.Payload2,
+		arg.LeaseToken,
+		arg.ClaimedGeneration,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const EnrichLegacyRequestReplayJob = `-- name: EnrichLegacyRequestReplayJob :exec
+const enrichLegacyRequestReplayJob = `-- name: EnrichLegacyRequestReplayJob :execrows
 UPDATE durable_jobs
 SET requested_generation = $2,
     status = CASE WHEN status = 'leased' THEN status ELSE 'queued' END,
@@ -1958,12 +1751,15 @@ WHERE id = $1
   AND requested_generation = $2 - 1
 `
 
-func (q *Queries) EnrichLegacyRequestReplayJob(ctx context.Context, iD int64, requestedGeneration int64) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyRequestReplayJob, iD, requestedGeneration)
-	return err
+func (q *Queries) EnrichLegacyRequestReplayJob(ctx context.Context, iD int64, requestedGeneration int64) (int64, error) {
+	result, err := q.db.Exec(ctx, enrichLegacyRequestReplayJob, iD, requestedGeneration)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const EnrichLegacyRequeueJob = `-- name: EnrichLegacyRequeueJob :exec
+const enrichLegacyRequeueJob = `-- name: EnrichLegacyRequeueJob :execrows
 UPDATE durable_jobs
 SET status = 'queued',
     attempts = 0,
@@ -1987,24 +1783,27 @@ WHERE id = $1
 
 type EnrichLegacyRequeueJobParams struct {
 	ID             int64          `db:"id" json:"id"`
-	Column2        pgtype.Numeric `db:"column_2" json:"column_2"`
+	ChainID        pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	Stage          string         `db:"stage" json:"stage"`
 	StageVersion   int32          `db:"stage_version" json:"stage_version"`
 	IdempotencyKey string         `db:"idempotency_key" json:"idempotency_key"`
 }
 
-func (q *Queries) EnrichLegacyRequeueJob(ctx context.Context, arg EnrichLegacyRequeueJobParams) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyRequeueJob,
+func (q *Queries) EnrichLegacyRequeueJob(ctx context.Context, arg EnrichLegacyRequeueJobParams) (int64, error) {
+	result, err := q.db.Exec(ctx, enrichLegacyRequeueJob,
 		arg.ID,
-		arg.Column2,
+		arg.ChainID,
 		arg.Stage,
 		arg.StageVersion,
 		arg.IdempotencyKey,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const EnrichLegacyRetryJob = `-- name: EnrichLegacyRetryJob :many
+const enrichLegacyRetryJob = `-- name: EnrichLegacyRetryJob :one
 UPDATE durable_jobs
 SET status = CASE
         WHEN requested_generation > leased_generation THEN 'queued'
@@ -2017,16 +1816,16 @@ SET status = CASE
     END,
     available_at = CASE
         WHEN requested_generation > leased_generation THEN clock_timestamp()
-        ELSE clock_timestamp() + ($4 * INTERVAL '1 microsecond')
+        ELSE clock_timestamp() + ($1::bigint * INTERVAL '1 microsecond')
     END,
     last_error = CASE
         WHEN requested_generation > leased_generation THEN NULL
-        ELSE $3
+        ELSE $2
     END,
     result = CASE
         WHEN requested_generation > leased_generation THEN NULL
         WHEN attempts >= max_attempts
-            THEN jsonb_build_object('state', 'failed', 'error', $3::text)
+            THEN jsonb_build_object('state', 'failed', 'error', $2::text)
         ELSE NULL
     END,
     completed_generation = CASE
@@ -2041,88 +1840,78 @@ SET status = CASE
     lease_expires_at = NULL,
     leased_generation = NULL,
     updated_at = clock_timestamp()
-WHERE id = $1
+WHERE id = $3
   AND kind = 'enrichment'
-  AND chain_id = $6::numeric
-  AND stage = $7
-  AND stage_version = $8
-  AND payload->>'block_hash' = $9
-  AND payload->>'block_number' = $10
+  AND chain_id = $4::numeric
+  AND stage = $5
+  AND stage_version = $6
+  AND payload->>'block_hash' = $7
+  AND payload->>'block_number' = $8
   AND status = 'leased'
-  AND lease_token = $2
+  AND lease_token = $9
   AND lease_expires_at > clock_timestamp()
-  AND claimed_generation = $5
-  AND leased_generation = $5
-  AND completed_generation < $5
+  AND claimed_generation = $10
+  AND leased_generation = $10
+  AND completed_generation < $10
 RETURNING status,
           status = 'queued'
           AND attempts = 0
-          AND completed_generation < requested_generation
+          AND completed_generation < requested_generation AS followup_queued
 `
 
 type EnrichLegacyRetryJobParams struct {
-	ID                int64          `db:"id" json:"id"`
-	LeaseToken        *string        `db:"lease_token" json:"lease_token"`
+	RetryMicroseconds int64          `db:"retry_microseconds" json:"retry_microseconds"`
 	LastError         *string        `db:"last_error" json:"last_error"`
-	Column4           interface{}    `db:"column_4" json:"column_4"`
-	ClaimedGeneration int64          `db:"claimed_generation" json:"claimed_generation"`
-	Column6           pgtype.Numeric `db:"column_6" json:"column_6"`
+	ID                int64          `db:"id" json:"id"`
+	ChainID           pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	Stage             string         `db:"stage" json:"stage"`
 	StageVersion      int32          `db:"stage_version" json:"stage_version"`
 	Payload           []byte         `db:"payload" json:"payload"`
-	Payload_2         []byte         `db:"payload_2" json:"payload_2"`
+	Payload2          []byte         `db:"payload_2" json:"payload_2"`
+	LeaseToken        *string        `db:"lease_token" json:"lease_token"`
+	ClaimedGeneration int64          `db:"claimed_generation" json:"claimed_generation"`
 }
 
 type EnrichLegacyRetryJobRow struct {
-	Status  string `db:"status" json:"status"`
-	Column2 *bool  `db:"column_2" json:"column_2"`
+	Status         string `db:"status" json:"status"`
+	FollowupQueued *bool  `db:"followup_queued" json:"followup_queued"`
 }
 
-func (q *Queries) EnrichLegacyRetryJob(ctx context.Context, arg EnrichLegacyRetryJobParams) ([]EnrichLegacyRetryJobRow, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacyRetryJob,
-		arg.ID,
-		arg.LeaseToken,
+func (q *Queries) EnrichLegacyRetryJob(ctx context.Context, arg EnrichLegacyRetryJobParams) (EnrichLegacyRetryJobRow, error) {
+	row := q.db.QueryRow(ctx, enrichLegacyRetryJob,
+		arg.RetryMicroseconds,
 		arg.LastError,
-		arg.Column4,
-		arg.ClaimedGeneration,
-		arg.Column6,
+		arg.ID,
+		arg.ChainID,
 		arg.Stage,
 		arg.StageVersion,
 		arg.Payload,
-		arg.Payload_2,
+		arg.Payload2,
+		arg.LeaseToken,
+		arg.ClaimedGeneration,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EnrichLegacyRetryJobRow{}
-	for rows.Next() {
-		var i EnrichLegacyRetryJobRow
-		if err := rows.Scan(&i.Status, &i.Column2); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i EnrichLegacyRetryJobRow
+	err := row.Scan(&i.Status, &i.FollowupQueued)
+	return i, err
 }
 
-const EnrichLegacyRetryOutbox = `-- name: EnrichLegacyRetryOutbox :exec
+const enrichLegacyRetryOutbox = `-- name: EnrichLegacyRetryOutbox :execrows
 UPDATE transactional_outbox
 SET attempts = LEAST(attempts + 1, 2147483647),
-    last_error = $2,
-    available_at = clock_timestamp() + ($3 * INTERVAL '1 microsecond')
-WHERE id = $1 AND published_at IS NULL
+    last_error = $1,
+    available_at = clock_timestamp() + ($2::bigint * INTERVAL '1 microsecond')
+WHERE id = $3 AND published_at IS NULL
 `
 
-func (q *Queries) EnrichLegacyRetryOutbox(ctx context.Context, iD int64, lastError *string, column3 interface{}) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyRetryOutbox, iD, lastError, column3)
-	return err
+func (q *Queries) EnrichLegacyRetryOutbox(ctx context.Context, lastError *string, retryMicroseconds int64, iD int64) (int64, error) {
+	result, err := q.db.Exec(ctx, enrichLegacyRetryOutbox, lastError, retryMicroseconds, iD)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const EnrichLegacySelectDependentReplayTargetID = `-- name: EnrichLegacySelectDependentReplayTargetID :many
+const enrichLegacySelectDependentReplayTargetID = `-- name: EnrichLegacySelectDependentReplayTargetID :one
 SELECT id
 FROM durable_jobs
 WHERE chain_id = $1::numeric
@@ -2133,38 +1922,25 @@ WHERE chain_id = $1::numeric
 `
 
 type EnrichLegacySelectDependentReplayTargetIDParams struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	Payload      []byte         `db:"payload" json:"payload"`
 	Stage        string         `db:"stage" json:"stage"`
 	StageVersion int32          `db:"stage_version" json:"stage_version"`
 }
 
-func (q *Queries) EnrichLegacySelectDependentReplayTargetID(ctx context.Context, arg EnrichLegacySelectDependentReplayTargetIDParams) ([]int64, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacySelectDependentReplayTargetID,
-		arg.Column1,
+func (q *Queries) EnrichLegacySelectDependentReplayTargetID(ctx context.Context, arg EnrichLegacySelectDependentReplayTargetIDParams) (int64, error) {
+	row := q.db.QueryRow(ctx, enrichLegacySelectDependentReplayTargetID,
+		arg.ChainID,
 		arg.Payload,
 		arg.Stage,
 		arg.StageVersion,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []int64{}
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		items = append(items, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
-const EnrichLegacySelectExistingJob = `-- name: EnrichLegacySelectExistingJob :many
+const enrichLegacySelectExistingJob = `-- name: EnrichLegacySelectExistingJob :one
 SELECT id, chain_id::text, stage, stage_version, attempts, max_attempts, payload, requested_generation
 FROM durable_jobs
 WHERE chain_id = $1::numeric AND kind = $2 AND idempotency_key = $3
@@ -2181,36 +1957,23 @@ type EnrichLegacySelectExistingJobRow struct {
 	RequestedGeneration int64  `db:"requested_generation" json:"requested_generation"`
 }
 
-func (q *Queries) EnrichLegacySelectExistingJob(ctx context.Context, column1 pgtype.Numeric, kind string, idempotencyKey string) ([]EnrichLegacySelectExistingJobRow, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacySelectExistingJob, column1, kind, idempotencyKey)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EnrichLegacySelectExistingJobRow{}
-	for rows.Next() {
-		var i EnrichLegacySelectExistingJobRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.ChainID,
-			&i.Stage,
-			&i.StageVersion,
-			&i.Attempts,
-			&i.MaxAttempts,
-			&i.Payload,
-			&i.RequestedGeneration,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EnrichLegacySelectExistingJob(ctx context.Context, chainID pgtype.Numeric, kind string, idempotencyKey string) (EnrichLegacySelectExistingJobRow, error) {
+	row := q.db.QueryRow(ctx, enrichLegacySelectExistingJob, chainID, kind, idempotencyKey)
+	var i EnrichLegacySelectExistingJobRow
+	err := row.Scan(
+		&i.ID,
+		&i.ChainID,
+		&i.Stage,
+		&i.StageVersion,
+		&i.Attempts,
+		&i.MaxAttempts,
+		&i.Payload,
+		&i.RequestedGeneration,
+	)
+	return i, err
 }
 
-const EnrichLegacySelectReplayTargetByID = `-- name: EnrichLegacySelectReplayTargetByID :many
+const enrichLegacySelectReplayTargetByID = `-- name: EnrichLegacySelectReplayTargetByID :one
 SELECT id, chain_id::text, stage, stage_version, attempts, max_attempts, payload,
        requested_generation, status
 FROM durable_jobs
@@ -2230,37 +1993,24 @@ type EnrichLegacySelectReplayTargetByIDRow struct {
 	Status              string `db:"status" json:"status"`
 }
 
-func (q *Queries) EnrichLegacySelectReplayTargetByID(ctx context.Context, id int64) ([]EnrichLegacySelectReplayTargetByIDRow, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacySelectReplayTargetByID, id)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EnrichLegacySelectReplayTargetByIDRow{}
-	for rows.Next() {
-		var i EnrichLegacySelectReplayTargetByIDRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.ChainID,
-			&i.Stage,
-			&i.StageVersion,
-			&i.Attempts,
-			&i.MaxAttempts,
-			&i.Payload,
-			&i.RequestedGeneration,
-			&i.Status,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EnrichLegacySelectReplayTargetByID(ctx context.Context, id int64) (EnrichLegacySelectReplayTargetByIDRow, error) {
+	row := q.db.QueryRow(ctx, enrichLegacySelectReplayTargetByID, id)
+	var i EnrichLegacySelectReplayTargetByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.ChainID,
+		&i.Stage,
+		&i.StageVersion,
+		&i.Attempts,
+		&i.MaxAttempts,
+		&i.Payload,
+		&i.RequestedGeneration,
+		&i.Status,
+	)
+	return i, err
 }
 
-const EnrichLegacySelectStageJournalPublications = `-- name: EnrichLegacySelectStageJournalPublications :many
+const enrichLegacySelectStageJournalPublications = `-- name: EnrichLegacySelectStageJournalPublications :many
 SELECT durable_job_id, job_generation
 FROM block_journals
 WHERE chain_id = $1::numeric
@@ -2275,8 +2025,8 @@ type EnrichLegacySelectStageJournalPublicationsRow struct {
 	JobGeneration *int64 `db:"job_generation" json:"job_generation"`
 }
 
-func (q *Queries) EnrichLegacySelectStageJournalPublications(ctx context.Context, column1 pgtype.Numeric, blockHash []byte, stage string) ([]EnrichLegacySelectStageJournalPublicationsRow, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacySelectStageJournalPublications, column1, blockHash, stage)
+func (q *Queries) EnrichLegacySelectStageJournalPublications(ctx context.Context, chainID pgtype.Numeric, blockHash []byte, stage string) ([]EnrichLegacySelectStageJournalPublicationsRow, error) {
+	rows, err := q.db.Query(ctx, enrichLegacySelectStageJournalPublications, chainID, blockHash, stage)
 	if err != nil {
 		return nil, err
 	}
@@ -2295,7 +2045,7 @@ func (q *Queries) EnrichLegacySelectStageJournalPublications(ctx context.Context
 	return items, nil
 }
 
-const EnrichLegacySelectStageResultPublication = `-- name: EnrichLegacySelectStageResultPublication :many
+const enrichLegacySelectStageResultPublication = `-- name: EnrichLegacySelectStageResultPublication :one
 SELECT durable_job_id, job_generation
 FROM block_stage_results
 WHERE chain_id = $1::numeric
@@ -2306,7 +2056,7 @@ FOR UPDATE
 `
 
 type EnrichLegacySelectStageResultPublicationParams struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
 	Stage        string         `db:"stage" json:"stage"`
 	StageVersion int32          `db:"stage_version" json:"stage_version"`
@@ -2317,32 +2067,19 @@ type EnrichLegacySelectStageResultPublicationRow struct {
 	JobGeneration *int64 `db:"job_generation" json:"job_generation"`
 }
 
-func (q *Queries) EnrichLegacySelectStageResultPublication(ctx context.Context, arg EnrichLegacySelectStageResultPublicationParams) ([]EnrichLegacySelectStageResultPublicationRow, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacySelectStageResultPublication,
-		arg.Column1,
+func (q *Queries) EnrichLegacySelectStageResultPublication(ctx context.Context, arg EnrichLegacySelectStageResultPublicationParams) (EnrichLegacySelectStageResultPublicationRow, error) {
+	row := q.db.QueryRow(ctx, enrichLegacySelectStageResultPublication,
+		arg.ChainID,
 		arg.BlockHash,
 		arg.Stage,
 		arg.StageVersion,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EnrichLegacySelectStageResultPublicationRow{}
-	for rows.Next() {
-		var i EnrichLegacySelectStageResultPublicationRow
-		if err := rows.Scan(&i.DurableJobID, &i.JobGeneration); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i EnrichLegacySelectStageResultPublicationRow
+	err := row.Scan(&i.DurableJobID, &i.JobGeneration)
+	return i, err
 }
 
-const EnrichLegacyStateDiffTransactions = `-- name: EnrichLegacyStateDiffTransactions :many
+const enrichLegacyStateDiffTransactions = `-- name: EnrichLegacyStateDiffTransactions :many
 SELECT tx_index, tx_hash, raw
 FROM transaction_inclusions
 WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
@@ -2355,8 +2092,8 @@ type EnrichLegacyStateDiffTransactionsRow struct {
 	Raw     []byte `db:"raw" json:"raw"`
 }
 
-func (q *Queries) EnrichLegacyStateDiffTransactions(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]EnrichLegacyStateDiffTransactionsRow, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacyStateDiffTransactions, column1, column2, blockHash)
+func (q *Queries) EnrichLegacyStateDiffTransactions(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([]EnrichLegacyStateDiffTransactionsRow, error) {
+	rows, err := q.db.Query(ctx, enrichLegacyStateDiffTransactions, chainID, blockNumber, blockHash)
 	if err != nil {
 		return nil, err
 	}
@@ -2375,7 +2112,7 @@ func (q *Queries) EnrichLegacyStateDiffTransactions(ctx context.Context, column1
 	return items, nil
 }
 
-const EnrichLegacyStatsReceiptSource = `-- name: EnrichLegacyStatsReceiptSource :many
+const enrichLegacyStatsReceiptSource = `-- name: EnrichLegacyStatsReceiptSource :many
 SELECT receipt.raw
 FROM receipts AS receipt
 WHERE receipt.chain_id = $1::numeric
@@ -2384,8 +2121,8 @@ WHERE receipt.chain_id = $1::numeric
 ORDER BY receipt.tx_index
 `
 
-func (q *Queries) EnrichLegacyStatsReceiptSource(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacyStatsReceiptSource, column1, column2, blockHash)
+func (q *Queries) EnrichLegacyStatsReceiptSource(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, enrichLegacyStatsReceiptSource, chainID, blockNumber, blockHash)
 	if err != nil {
 		return nil, err
 	}
@@ -2404,18 +2141,18 @@ func (q *Queries) EnrichLegacyStatsReceiptSource(ctx context.Context, column1 pg
 	return items, nil
 }
 
-const EnrichLegacyTerminalizeExhaustedJob = `-- name: EnrichLegacyTerminalizeExhaustedJob :exec
+const enrichLegacyTerminalizeExhaustedJob = `-- name: EnrichLegacyTerminalizeExhaustedJob :execrows
 UPDATE durable_jobs
 SET status = 'failed',
-    result = $3::jsonb,
-    last_error = $4,
-    completed_generation = $2,
+    result = $1::jsonb,
+    last_error = $2,
+    completed_generation = $3,
     leased_by = NULL,
     lease_token = NULL,
     lease_expires_at = NULL,
     leased_generation = NULL,
     updated_at = clock_timestamp()
-WHERE id = $1
+WHERE id = $4
   AND kind = 'enrichment'
   AND chain_id = $5::numeric
   AND stage = $6
@@ -2423,9 +2160,9 @@ WHERE id = $1
   AND payload->>'block_hash' = $8
   AND payload->>'block_number' = $9
   AND attempts >= max_attempts
-  AND claimed_generation = $2
-  AND requested_generation <= $2
-  AND completed_generation < $2
+  AND claimed_generation = $3
+  AND requested_generation <= $3
+  AND completed_generation < $3
   AND (
       (status = 'queued' AND available_at <= clock_timestamp())
       OR (status = 'leased' AND lease_expires_at <= clock_timestamp())
@@ -2433,33 +2170,36 @@ WHERE id = $1
 `
 
 type EnrichLegacyTerminalizeExhaustedJobParams struct {
-	ID                  int64          `db:"id" json:"id"`
-	CompletedGeneration int64          `db:"completed_generation" json:"completed_generation"`
-	Column3             []byte         `db:"column_3" json:"column_3"`
+	Result              []byte         `db:"result" json:"result"`
 	LastError           *string        `db:"last_error" json:"last_error"`
-	Column5             pgtype.Numeric `db:"column_5" json:"column_5"`
+	CompletedGeneration int64          `db:"completed_generation" json:"completed_generation"`
+	ID                  int64          `db:"id" json:"id"`
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	Stage               string         `db:"stage" json:"stage"`
 	StageVersion        int32          `db:"stage_version" json:"stage_version"`
 	Payload             []byte         `db:"payload" json:"payload"`
-	Payload_2           []byte         `db:"payload_2" json:"payload_2"`
+	Payload2            []byte         `db:"payload_2" json:"payload_2"`
 }
 
-func (q *Queries) EnrichLegacyTerminalizeExhaustedJob(ctx context.Context, arg EnrichLegacyTerminalizeExhaustedJobParams) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyTerminalizeExhaustedJob,
-		arg.ID,
-		arg.CompletedGeneration,
-		arg.Column3,
+func (q *Queries) EnrichLegacyTerminalizeExhaustedJob(ctx context.Context, arg EnrichLegacyTerminalizeExhaustedJobParams) (int64, error) {
+	result, err := q.db.Exec(ctx, enrichLegacyTerminalizeExhaustedJob,
+		arg.Result,
 		arg.LastError,
-		arg.Column5,
+		arg.CompletedGeneration,
+		arg.ID,
+		arg.ChainID,
 		arg.Stage,
 		arg.StageVersion,
 		arg.Payload,
-		arg.Payload_2,
+		arg.Payload2,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const EnrichLegacyTokenCanonical = `-- name: EnrichLegacyTokenCanonical :many
+const enrichLegacyTokenCanonical = `-- name: EnrichLegacyTokenCanonical :one
 SELECT EXISTS (
     SELECT 1
     FROM canonical_blocks
@@ -2467,27 +2207,14 @@ SELECT EXISTS (
 )
 `
 
-func (q *Queries) EnrichLegacyTokenCanonical(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]bool, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacyTokenCanonical, column1, column2, blockHash)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var exists bool
-		if err := rows.Scan(&exists); err != nil {
-			return nil, err
-		}
-		items = append(items, exists)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EnrichLegacyTokenCanonical(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, blockHash []byte) (bool, error) {
+	row := q.db.QueryRow(ctx, enrichLegacyTokenCanonical, chainID, number, blockHash)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
-const EnrichLegacyTokenLogs = `-- name: EnrichLegacyTokenLogs :many
+const enrichLegacyTokenLogs = `-- name: EnrichLegacyTokenLogs :many
 SELECT log_index, tx_hash, address, raw
 FROM logs
 WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
@@ -2501,8 +2228,8 @@ type EnrichLegacyTokenLogsRow struct {
 	Raw      []byte `db:"raw" json:"raw"`
 }
 
-func (q *Queries) EnrichLegacyTokenLogs(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]EnrichLegacyTokenLogsRow, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacyTokenLogs, column1, column2, blockHash)
+func (q *Queries) EnrichLegacyTokenLogs(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([]EnrichLegacyTokenLogsRow, error) {
+	rows, err := q.db.Query(ctx, enrichLegacyTokenLogs, chainID, blockNumber, blockHash)
 	if err != nil {
 		return nil, err
 	}
@@ -2526,34 +2253,21 @@ func (q *Queries) EnrichLegacyTokenLogs(ctx context.Context, column1 pgtype.Nume
 	return items, nil
 }
 
-const EnrichLegacyTraceCanonical = `-- name: EnrichLegacyTraceCanonical :many
+const enrichLegacyTraceCanonical = `-- name: EnrichLegacyTraceCanonical :one
 SELECT EXISTS (
     SELECT 1 FROM canonical_blocks
     WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3
 )
 `
 
-func (q *Queries) EnrichLegacyTraceCanonical(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]bool, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacyTraceCanonical, column1, column2, blockHash)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var exists bool
-		if err := rows.Scan(&exists); err != nil {
-			return nil, err
-		}
-		items = append(items, exists)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EnrichLegacyTraceCanonical(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, blockHash []byte) (bool, error) {
+	row := q.db.QueryRow(ctx, enrichLegacyTraceCanonical, chainID, number, blockHash)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
-const EnrichLegacyTraceExecutionResolutions = `-- name: EnrichLegacyTraceExecutionResolutions :many
+const enrichLegacyTraceExecutionResolutions = `-- name: EnrichLegacyTraceExecutionResolutions :many
 SELECT resolution.transaction_hash, resolution.context_address,
        resolution.execution_address, resolution.execution_code_hash,
        resolution.resolution, resolution.evidence_source
@@ -2576,26 +2290,26 @@ ORDER BY resolution.transaction_index, resolution.context_address
 `
 
 type EnrichLegacyTraceExecutionResolutionsParams struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2      pgtype.Numeric `db:"column_2" json:"column_2"`
+	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber  pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
 	Stage        string         `db:"stage" json:"stage"`
 	StageVersion int32          `db:"stage_version" json:"stage_version"`
 }
 
 type EnrichLegacyTraceExecutionResolutionsRow struct {
-	TransactionHash   []byte `db:"transaction_hash" json:"transaction_hash"`
-	ContextAddress    []byte `db:"context_address" json:"context_address"`
-	ExecutionAddress  []byte `db:"execution_address" json:"execution_address"`
-	ExecutionCodeHash []byte `db:"execution_code_hash" json:"execution_code_hash"`
-	Resolution        string `db:"resolution" json:"resolution"`
-	EvidenceSource    string `db:"evidence_source" json:"evidence_source"`
+	TransactionHash   []byte      `db:"transaction_hash" json:"transaction_hash"`
+	ContextAddress    []byte      `db:"context_address" json:"context_address"`
+	ExecutionAddress  []byte      `db:"execution_address" json:"execution_address"`
+	ExecutionCodeHash []byte      `db:"execution_code_hash" json:"execution_code_hash"`
+	Resolution        pgtype.Text `db:"resolution" json:"resolution"`
+	EvidenceSource    string      `db:"evidence_source" json:"evidence_source"`
 }
 
 func (q *Queries) EnrichLegacyTraceExecutionResolutions(ctx context.Context, arg EnrichLegacyTraceExecutionResolutionsParams) ([]EnrichLegacyTraceExecutionResolutionsRow, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacyTraceExecutionResolutions,
-		arg.Column1,
-		arg.Column2,
+	rows, err := q.db.Query(ctx, enrichLegacyTraceExecutionResolutions,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.Stage,
 		arg.StageVersion,
@@ -2625,7 +2339,7 @@ func (q *Queries) EnrichLegacyTraceExecutionResolutions(ctx context.Context, arg
 	return items, nil
 }
 
-const EnrichLegacyTraceReceiptLogs = `-- name: EnrichLegacyTraceReceiptLogs :many
+const enrichLegacyTraceReceiptLogs = `-- name: EnrichLegacyTraceReceiptLogs :many
 SELECT log_index, raw
 FROM logs
 WHERE chain_id = $1::numeric
@@ -2636,10 +2350,10 @@ ORDER BY log_index
 `
 
 type EnrichLegacyTraceReceiptLogsParams struct {
-	Column1   pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2   pgtype.Numeric `db:"column_2" json:"column_2"`
-	BlockHash []byte         `db:"block_hash" json:"block_hash"`
-	TxHash    []byte         `db:"tx_hash" json:"tx_hash"`
+	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
+	TxHash      []byte         `db:"tx_hash" json:"tx_hash"`
 }
 
 type EnrichLegacyTraceReceiptLogsRow struct {
@@ -2648,9 +2362,9 @@ type EnrichLegacyTraceReceiptLogsRow struct {
 }
 
 func (q *Queries) EnrichLegacyTraceReceiptLogs(ctx context.Context, arg EnrichLegacyTraceReceiptLogsParams) ([]EnrichLegacyTraceReceiptLogsRow, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacyTraceReceiptLogs,
-		arg.Column1,
-		arg.Column2,
+	rows, err := q.db.Query(ctx, enrichLegacyTraceReceiptLogs,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.TxHash,
 	)
@@ -2672,25 +2386,25 @@ func (q *Queries) EnrichLegacyTraceReceiptLogs(ctx context.Context, arg EnrichLe
 	return items, nil
 }
 
-const EnrichLegacyTraceTransactions = `-- name: EnrichLegacyTraceTransactions :many
-SELECT tx_index, tx_hash,
-       raw->>'from', raw->>'to', raw->>'value', raw->>'input'
+const enrichLegacyTraceTransactions = `-- name: EnrichLegacyTraceTransactions :many
+SELECT tx_index, tx_hash, (raw->>'from')::text AS from_address, COALESCE(raw->>'to','')::text AS to_address, (raw->>'value')::text AS value, (raw->>'input')::text AS input, ((raw->>'to') IS NOT NULL)::boolean AS to_present
 FROM transaction_inclusions
 WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
 ORDER BY tx_index
 `
 
 type EnrichLegacyTraceTransactionsRow struct {
-	TxIndex int64       `db:"tx_index" json:"tx_index"`
-	TxHash  []byte      `db:"tx_hash" json:"tx_hash"`
-	Column3 interface{} `db:"column_3" json:"column_3"`
-	Column4 interface{} `db:"column_4" json:"column_4"`
-	Column5 interface{} `db:"column_5" json:"column_5"`
-	Column6 interface{} `db:"column_6" json:"column_6"`
+	TxIndex     int64  `db:"tx_index" json:"tx_index"`
+	TxHash      []byte `db:"tx_hash" json:"tx_hash"`
+	FromAddress string `db:"from_address" json:"from_address"`
+	ToAddress   string `db:"to_address" json:"to_address"`
+	Value       string `db:"value" json:"value"`
+	Input       string `db:"input" json:"input"`
+	ToPresent   bool   `db:"to_present" json:"to_present"`
 }
 
-func (q *Queries) EnrichLegacyTraceTransactions(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]EnrichLegacyTraceTransactionsRow, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacyTraceTransactions, column1, column2, blockHash)
+func (q *Queries) EnrichLegacyTraceTransactions(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([]EnrichLegacyTraceTransactionsRow, error) {
+	rows, err := q.db.Query(ctx, enrichLegacyTraceTransactions, chainID, blockNumber, blockHash)
 	if err != nil {
 		return nil, err
 	}
@@ -2701,10 +2415,11 @@ func (q *Queries) EnrichLegacyTraceTransactions(ctx context.Context, column1 pgt
 		if err := rows.Scan(
 			&i.TxIndex,
 			&i.TxHash,
-			&i.Column3,
-			&i.Column4,
-			&i.Column5,
-			&i.Column6,
+			&i.FromAddress,
+			&i.ToAddress,
+			&i.Value,
+			&i.Input,
+			&i.ToPresent,
 		); err != nil {
 			return nil, err
 		}
@@ -2716,7 +2431,7 @@ func (q *Queries) EnrichLegacyTraceTransactions(ctx context.Context, column1 pgt
 	return items, nil
 }
 
-const EnrichLegacyUpsertBeaconImplementationObservation = `-- name: EnrichLegacyUpsertBeaconImplementationObservation :exec
+const enrichLegacyUpsertBeaconImplementationObservation = `-- name: EnrichLegacyUpsertBeaconImplementationObservation :execrows
 INSERT INTO beacon_implementation_observations AS current (
     chain_id, beacon_address, block_number, block_hash, beacon_code_hash,
     implementation_address, implementation_code_hash, stage_version,
@@ -2736,35 +2451,38 @@ WHERE current.block_number = EXCLUDED.block_number
 `
 
 type EnrichLegacyUpsertBeaconImplementationObservationParams struct {
-	Column1                pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID                pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	BeaconAddress          []byte         `db:"beacon_address" json:"beacon_address"`
-	Column3                pgtype.Numeric `db:"column_3" json:"column_3"`
+	BlockNumber            pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash              []byte         `db:"block_hash" json:"block_hash"`
 	BeaconCodeHash         []byte         `db:"beacon_code_hash" json:"beacon_code_hash"`
 	ImplementationAddress  []byte         `db:"implementation_address" json:"implementation_address"`
 	ImplementationCodeHash []byte         `db:"implementation_code_hash" json:"implementation_code_hash"`
 	StageVersion           int32          `db:"stage_version" json:"stage_version"`
 	Confidence             string         `db:"confidence" json:"confidence"`
-	Column10               []byte         `db:"column_10" json:"column_10"`
+	Details                []byte         `db:"details" json:"details"`
 }
 
-func (q *Queries) EnrichLegacyUpsertBeaconImplementationObservation(ctx context.Context, arg EnrichLegacyUpsertBeaconImplementationObservationParams) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyUpsertBeaconImplementationObservation,
-		arg.Column1,
+func (q *Queries) EnrichLegacyUpsertBeaconImplementationObservation(ctx context.Context, arg EnrichLegacyUpsertBeaconImplementationObservationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, enrichLegacyUpsertBeaconImplementationObservation,
+		arg.ChainID,
 		arg.BeaconAddress,
-		arg.Column3,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.BeaconCodeHash,
 		arg.ImplementationAddress,
 		arg.ImplementationCodeHash,
 		arg.StageVersion,
 		arg.Confidence,
-		arg.Column10,
+		arg.Details,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const EnrichLegacyUpsertDerivedJournal = `-- name: EnrichLegacyUpsertDerivedJournal :exec
+const enrichLegacyUpsertDerivedJournal = `-- name: EnrichLegacyUpsertDerivedJournal :execrows
 INSERT INTO block_journals AS current (
     chain_id, block_hash, stage, sequence, payload, canonical
 )
@@ -2784,27 +2502,30 @@ WHERE current.durable_job_id IS NULL
 `
 
 type EnrichLegacyUpsertDerivedJournalParams struct {
-	Column1   pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID   pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	BlockHash []byte         `db:"block_hash" json:"block_hash"`
 	Stage     string         `db:"stage" json:"stage"`
-	Column4   pgtype.Numeric `db:"column_4" json:"column_4"`
-	Column5   []byte         `db:"column_5" json:"column_5"`
-	Column6   pgtype.Numeric `db:"column_6" json:"column_6"`
+	Sequence  pgtype.Numeric `db:"sequence" json:"sequence"`
+	Payload   []byte         `db:"payload" json:"payload"`
+	Number    pgtype.Numeric `db:"number" json:"number"`
 }
 
-func (q *Queries) EnrichLegacyUpsertDerivedJournal(ctx context.Context, arg EnrichLegacyUpsertDerivedJournalParams) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyUpsertDerivedJournal,
-		arg.Column1,
+func (q *Queries) EnrichLegacyUpsertDerivedJournal(ctx context.Context, arg EnrichLegacyUpsertDerivedJournalParams) (int64, error) {
+	result, err := q.db.Exec(ctx, enrichLegacyUpsertDerivedJournal,
+		arg.ChainID,
 		arg.BlockHash,
 		arg.Stage,
-		arg.Column4,
-		arg.Column5,
-		arg.Column6,
+		arg.Sequence,
+		arg.Payload,
+		arg.Number,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const EnrichLegacyUpsertProxyCodeObservation = `-- name: EnrichLegacyUpsertProxyCodeObservation :exec
+const enrichLegacyUpsertProxyCodeObservation = `-- name: EnrichLegacyUpsertProxyCodeObservation :execrows
 INSERT INTO contract_code_observations AS current (
     chain_id, address, block_number, block_hash, code_hash, code, canonical
 ) VALUES ($1::numeric, $2, $3::numeric, $4, $5, $6, TRUE)
@@ -2816,27 +2537,30 @@ WHERE current.code_hash = EXCLUDED.code_hash
 `
 
 type EnrichLegacyUpsertProxyCodeObservationParams struct {
-	Column1   pgtype.Numeric `db:"column_1" json:"column_1"`
-	Address   []byte         `db:"address" json:"address"`
-	Column3   pgtype.Numeric `db:"column_3" json:"column_3"`
-	BlockHash []byte         `db:"block_hash" json:"block_hash"`
-	CodeHash  []byte         `db:"code_hash" json:"code_hash"`
-	Code      []byte         `db:"code" json:"code"`
+	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Address     []byte         `db:"address" json:"address"`
+	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
+	CodeHash    []byte         `db:"code_hash" json:"code_hash"`
+	Code        []byte         `db:"code" json:"code"`
 }
 
-func (q *Queries) EnrichLegacyUpsertProxyCodeObservation(ctx context.Context, arg EnrichLegacyUpsertProxyCodeObservationParams) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyUpsertProxyCodeObservation,
-		arg.Column1,
+func (q *Queries) EnrichLegacyUpsertProxyCodeObservation(ctx context.Context, arg EnrichLegacyUpsertProxyCodeObservationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, enrichLegacyUpsertProxyCodeObservation,
+		arg.ChainID,
 		arg.Address,
-		arg.Column3,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.CodeHash,
 		arg.Code,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const EnrichLegacyUpsertProxyDetectionEvidence = `-- name: EnrichLegacyUpsertProxyDetectionEvidence :exec
+const enrichLegacyUpsertProxyDetectionEvidence = `-- name: EnrichLegacyUpsertProxyDetectionEvidence :execrows
 INSERT INTO proxy_detection_evidence AS current (
     chain_id, address, block_number, block_hash, stage_version, code_hash,
     candidate_kind, detection_state, reason, canonical,
@@ -2858,39 +2582,42 @@ WHERE current.block_number = EXCLUDED.block_number
 `
 
 type EnrichLegacyUpsertProxyDetectionEvidenceParams struct {
-	Column1        pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID        pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	Address        []byte         `db:"address" json:"address"`
-	Column3        pgtype.Numeric `db:"column_3" json:"column_3"`
+	BlockNumber    pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash      []byte         `db:"block_hash" json:"block_hash"`
 	StageVersion   int32          `db:"stage_version" json:"stage_version"`
 	CodeHash       []byte         `db:"code_hash" json:"code_hash"`
 	CandidateKind  string         `db:"candidate_kind" json:"candidate_kind"`
 	DetectionState string         `db:"detection_state" json:"detection_state"`
 	Reason         string         `db:"reason" json:"reason"`
-	Column10       int64          `db:"column_10" json:"column_10"`
-	Column11       int64          `db:"column_11" json:"column_11"`
-	Column12       []byte         `db:"column_12" json:"column_12"`
+	DurableJobID   *int64         `db:"durable_job_id" json:"durable_job_id"`
+	JobGeneration  *int64         `db:"job_generation" json:"job_generation"`
+	Details        []byte         `db:"details" json:"details"`
 }
 
-func (q *Queries) EnrichLegacyUpsertProxyDetectionEvidence(ctx context.Context, arg EnrichLegacyUpsertProxyDetectionEvidenceParams) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyUpsertProxyDetectionEvidence,
-		arg.Column1,
+func (q *Queries) EnrichLegacyUpsertProxyDetectionEvidence(ctx context.Context, arg EnrichLegacyUpsertProxyDetectionEvidenceParams) (int64, error) {
+	result, err := q.db.Exec(ctx, enrichLegacyUpsertProxyDetectionEvidence,
+		arg.ChainID,
 		arg.Address,
-		arg.Column3,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.StageVersion,
 		arg.CodeHash,
 		arg.CandidateKind,
 		arg.DetectionState,
 		arg.Reason,
-		arg.Column10,
-		arg.Column11,
-		arg.Column12,
+		arg.DurableJobID,
+		arg.JobGeneration,
+		arg.Details,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const EnrichLegacyUpsertProxyInitializationEvent = `-- name: EnrichLegacyUpsertProxyInitializationEvent :exec
+const enrichLegacyUpsertProxyInitializationEvent = `-- name: EnrichLegacyUpsertProxyInitializationEvent :execrows
 INSERT INTO proxy_initialization_events AS current (
     chain_id, block_number, block_hash, log_index, transaction_hash,
     contract_address, version, stage_version, canonical
@@ -2907,31 +2634,34 @@ WHERE current.block_number = EXCLUDED.block_number
 `
 
 type EnrichLegacyUpsertProxyInitializationEventParams struct {
-	Column1         pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2         pgtype.Numeric `db:"column_2" json:"column_2"`
+	ChainID         pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber     pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash       []byte         `db:"block_hash" json:"block_hash"`
-	Column4         int64          `db:"column_4" json:"column_4"`
+	LogIndex        int64          `db:"log_index" json:"log_index"`
 	TransactionHash []byte         `db:"transaction_hash" json:"transaction_hash"`
 	ContractAddress []byte         `db:"contract_address" json:"contract_address"`
-	Column7         pgtype.Numeric `db:"column_7" json:"column_7"`
+	Version         pgtype.Numeric `db:"version" json:"version"`
 	StageVersion    int32          `db:"stage_version" json:"stage_version"`
 }
 
-func (q *Queries) EnrichLegacyUpsertProxyInitializationEvent(ctx context.Context, arg EnrichLegacyUpsertProxyInitializationEventParams) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyUpsertProxyInitializationEvent,
-		arg.Column1,
-		arg.Column2,
+func (q *Queries) EnrichLegacyUpsertProxyInitializationEvent(ctx context.Context, arg EnrichLegacyUpsertProxyInitializationEventParams) (int64, error) {
+	result, err := q.db.Exec(ctx, enrichLegacyUpsertProxyInitializationEvent,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
-		arg.Column4,
+		arg.LogIndex,
 		arg.TransactionHash,
 		arg.ContractAddress,
-		arg.Column7,
+		arg.Version,
 		arg.StageVersion,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const EnrichLegacyUpsertProxyObservation = `-- name: EnrichLegacyUpsertProxyObservation :exec
+const enrichLegacyUpsertProxyObservation = `-- name: EnrichLegacyUpsertProxyObservation :execrows
 INSERT INTO proxy_observations AS current (
     chain_id, proxy_address, block_number, block_hash, stage_version,
     proxy_code_hash, proxy_kind, proxy_pattern, standard_version,
@@ -2963,9 +2693,9 @@ WHERE current.block_number = EXCLUDED.block_number
 `
 
 type EnrichLegacyUpsertProxyObservationParams struct {
-	Column1                pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID                pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	ProxyAddress           []byte         `db:"proxy_address" json:"proxy_address"`
-	Column3                pgtype.Numeric `db:"column_3" json:"column_3"`
+	BlockNumber            pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash              []byte         `db:"block_hash" json:"block_hash"`
 	StageVersion           int32          `db:"stage_version" json:"stage_version"`
 	ProxyCodeHash          []byte         `db:"proxy_code_hash" json:"proxy_code_hash"`
@@ -2981,14 +2711,14 @@ type EnrichLegacyUpsertProxyObservationParams struct {
 	ImplementationCodeHash []byte         `db:"implementation_code_hash" json:"implementation_code_hash"`
 	Confidence             string         `db:"confidence" json:"confidence"`
 	EvidenceState          string         `db:"evidence_state" json:"evidence_state"`
-	Column19               []byte         `db:"column_19" json:"column_19"`
+	Details                []byte         `db:"details" json:"details"`
 }
 
-func (q *Queries) EnrichLegacyUpsertProxyObservation(ctx context.Context, arg EnrichLegacyUpsertProxyObservationParams) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyUpsertProxyObservation,
-		arg.Column1,
+func (q *Queries) EnrichLegacyUpsertProxyObservation(ctx context.Context, arg EnrichLegacyUpsertProxyObservationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, enrichLegacyUpsertProxyObservation,
+		arg.ChainID,
 		arg.ProxyAddress,
-		arg.Column3,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.StageVersion,
 		arg.ProxyCodeHash,
@@ -3004,12 +2734,15 @@ func (q *Queries) EnrichLegacyUpsertProxyObservation(ctx context.Context, arg En
 		arg.ImplementationCodeHash,
 		arg.Confidence,
 		arg.EvidenceState,
-		arg.Column19,
+		arg.Details,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const EnrichLegacyUpsertProxyUpgradeEvent = `-- name: EnrichLegacyUpsertProxyUpgradeEvent :exec
+const enrichLegacyUpsertProxyUpgradeEvent = `-- name: EnrichLegacyUpsertProxyUpgradeEvent :execrows
 INSERT INTO proxy_upgrade_events AS current (
     chain_id, block_number, block_hash, log_index, transaction_hash,
     emitter_address, event_kind, target_address, stage_version, canonical
@@ -3027,10 +2760,10 @@ WHERE current.block_number = EXCLUDED.block_number
 `
 
 type EnrichLegacyUpsertProxyUpgradeEventParams struct {
-	Column1         pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2         pgtype.Numeric `db:"column_2" json:"column_2"`
+	ChainID         pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber     pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash       []byte         `db:"block_hash" json:"block_hash"`
-	Column4         int64          `db:"column_4" json:"column_4"`
+	LogIndex        int64          `db:"log_index" json:"log_index"`
 	TransactionHash []byte         `db:"transaction_hash" json:"transaction_hash"`
 	EmitterAddress  []byte         `db:"emitter_address" json:"emitter_address"`
 	EventKind       string         `db:"event_kind" json:"event_kind"`
@@ -3038,22 +2771,25 @@ type EnrichLegacyUpsertProxyUpgradeEventParams struct {
 	StageVersion    int32          `db:"stage_version" json:"stage_version"`
 }
 
-func (q *Queries) EnrichLegacyUpsertProxyUpgradeEvent(ctx context.Context, arg EnrichLegacyUpsertProxyUpgradeEventParams) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyUpsertProxyUpgradeEvent,
-		arg.Column1,
-		arg.Column2,
+func (q *Queries) EnrichLegacyUpsertProxyUpgradeEvent(ctx context.Context, arg EnrichLegacyUpsertProxyUpgradeEventParams) (int64, error) {
+	result, err := q.db.Exec(ctx, enrichLegacyUpsertProxyUpgradeEvent,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
-		arg.Column4,
+		arg.LogIndex,
 		arg.TransactionHash,
 		arg.EmitterAddress,
 		arg.EventKind,
 		arg.TargetAddress,
 		arg.StageVersion,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const EnrichLegacyUpsertPublishedDerivedJournal = `-- name: EnrichLegacyUpsertPublishedDerivedJournal :many
+const enrichLegacyUpsertPublishedDerivedJournal = `-- name: EnrichLegacyUpsertPublishedDerivedJournal :one
 INSERT INTO block_journals AS current (
     chain_id, block_hash, stage, sequence, payload, canonical,
     durable_job_id, job_generation
@@ -3079,50 +2815,37 @@ WHERE (
         current.durable_job_id = EXCLUDED.durable_job_id
         AND current.job_generation <= EXCLUDED.job_generation
       )
-RETURNING 1
+RETURNING 1 AS inserted
 `
 
 type EnrichLegacyUpsertPublishedDerivedJournalParams struct {
-	Column1       pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID       pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	BlockHash     []byte         `db:"block_hash" json:"block_hash"`
 	Stage         string         `db:"stage" json:"stage"`
-	Column4       pgtype.Numeric `db:"column_4" json:"column_4"`
-	Column5       []byte         `db:"column_5" json:"column_5"`
-	Column6       pgtype.Numeric `db:"column_6" json:"column_6"`
+	Sequence      pgtype.Numeric `db:"sequence" json:"sequence"`
+	Payload       []byte         `db:"payload" json:"payload"`
+	Number        pgtype.Numeric `db:"number" json:"number"`
 	DurableJobID  *int64         `db:"durable_job_id" json:"durable_job_id"`
 	JobGeneration *int64         `db:"job_generation" json:"job_generation"`
 }
 
-func (q *Queries) EnrichLegacyUpsertPublishedDerivedJournal(ctx context.Context, arg EnrichLegacyUpsertPublishedDerivedJournalParams) ([]int32, error) {
-	rows, err := q.db.Query(ctx, EnrichLegacyUpsertPublishedDerivedJournal,
-		arg.Column1,
+func (q *Queries) EnrichLegacyUpsertPublishedDerivedJournal(ctx context.Context, arg EnrichLegacyUpsertPublishedDerivedJournalParams) (int32, error) {
+	row := q.db.QueryRow(ctx, enrichLegacyUpsertPublishedDerivedJournal,
+		arg.ChainID,
 		arg.BlockHash,
 		arg.Stage,
-		arg.Column4,
-		arg.Column5,
-		arg.Column6,
+		arg.Sequence,
+		arg.Payload,
+		arg.Number,
 		arg.DurableJobID,
 		arg.JobGeneration,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []int32{}
-	for rows.Next() {
-		var column_1 int32
-		if err := rows.Scan(&column_1); err != nil {
-			return nil, err
-		}
-		items = append(items, column_1)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var inserted int32
+	err := row.Scan(&inserted)
+	return inserted, err
 }
 
-const EnrichLegacyUpsertTokenContract = `-- name: EnrichLegacyUpsertTokenContract :exec
+const enrichLegacyUpsertTokenContract = `-- name: EnrichLegacyUpsertTokenContract :exec
 INSERT INTO token_contracts AS current (
     chain_id, address, code_hash, standard, confidence,
     name, symbol, decimals, total_supply, metadata_state,
@@ -3160,23 +2883,23 @@ ON CONFLICT (chain_id, address, code_hash, observed_block_hash) DO UPDATE SET
 `
 
 type EnrichLegacyUpsertTokenContractParams struct {
-	Column1           pgtype.Numeric `db:"column_1" json:"column_1"`
-	Address           []byte         `db:"address" json:"address"`
-	CodeHash          []byte         `db:"code_hash" json:"code_hash"`
-	Standard          string         `db:"standard" json:"standard"`
-	Confidence        string         `db:"confidence" json:"confidence"`
-	Name              *string        `db:"name" json:"name"`
-	Symbol            *string        `db:"symbol" json:"symbol"`
-	Decimals          *int32         `db:"decimals" json:"decimals"`
-	Column9           pgtype.Numeric `db:"column_9" json:"column_9"`
-	MetadataState     string         `db:"metadata_state" json:"metadata_state"`
-	Column11          pgtype.Numeric `db:"column_11" json:"column_11"`
-	ObservedBlockHash []byte         `db:"observed_block_hash" json:"observed_block_hash"`
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Address             []byte         `db:"address" json:"address"`
+	CodeHash            []byte         `db:"code_hash" json:"code_hash"`
+	Standard            string         `db:"standard" json:"standard"`
+	Confidence          string         `db:"confidence" json:"confidence"`
+	Name                *string        `db:"name" json:"name"`
+	Symbol              *string        `db:"symbol" json:"symbol"`
+	Decimals            *int32         `db:"decimals" json:"decimals"`
+	TotalSupply         pgtype.Numeric `db:"total_supply" json:"total_supply"`
+	MetadataState       string         `db:"metadata_state" json:"metadata_state"`
+	ObservedBlockNumber pgtype.Numeric `db:"observed_block_number" json:"observed_block_number"`
+	ObservedBlockHash   []byte         `db:"observed_block_hash" json:"observed_block_hash"`
 }
 
 func (q *Queries) EnrichLegacyUpsertTokenContract(ctx context.Context, arg EnrichLegacyUpsertTokenContractParams) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyUpsertTokenContract,
-		arg.Column1,
+	_, err := q.db.Exec(ctx, enrichLegacyUpsertTokenContract,
+		arg.ChainID,
 		arg.Address,
 		arg.CodeHash,
 		arg.Standard,
@@ -3184,15 +2907,15 @@ func (q *Queries) EnrichLegacyUpsertTokenContract(ctx context.Context, arg Enric
 		arg.Name,
 		arg.Symbol,
 		arg.Decimals,
-		arg.Column9,
+		arg.TotalSupply,
 		arg.MetadataState,
-		arg.Column11,
+		arg.ObservedBlockNumber,
 		arg.ObservedBlockHash,
 	)
 	return err
 }
 
-const EnrichLegacyUpsertUUPSImplementationObservation = `-- name: EnrichLegacyUpsertUUPSImplementationObservation :exec
+const enrichLegacyUpsertUUPSImplementationObservation = `-- name: EnrichLegacyUpsertUUPSImplementationObservation :execrows
 INSERT INTO uups_implementation_observations AS current (
     chain_id, implementation_address, block_number, block_hash,
     implementation_code_hash, verification_job_id, stage_version,
@@ -3216,12 +2939,12 @@ WHERE current.block_number = EXCLUDED.block_number
 `
 
 type EnrichLegacyUpsertUUPSImplementationObservationParams struct {
-	Column1                 pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID                 pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	ImplementationAddress   []byte         `db:"implementation_address" json:"implementation_address"`
-	Column3                 pgtype.Numeric `db:"column_3" json:"column_3"`
+	BlockNumber             pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash               []byte         `db:"block_hash" json:"block_hash"`
 	ImplementationCodeHash  []byte         `db:"implementation_code_hash" json:"implementation_code_hash"`
-	Column6                 pgtype.UUID    `db:"column_6" json:"column_6"`
+	VerificationJobID       pgtype.UUID    `db:"verification_job_id" json:"verification_job_id"`
 	StageVersion            int32          `db:"stage_version" json:"stage_version"`
 	StandardVersion         string         `db:"standard_version" json:"standard_version"`
 	ProbeState              string         `db:"probe_state" json:"probe_state"`
@@ -3230,14 +2953,14 @@ type EnrichLegacyUpsertUUPSImplementationObservationParams struct {
 	UpgradeInterfaceVersion *string        `db:"upgrade_interface_version" json:"upgrade_interface_version"`
 }
 
-func (q *Queries) EnrichLegacyUpsertUUPSImplementationObservation(ctx context.Context, arg EnrichLegacyUpsertUUPSImplementationObservationParams) error {
-	_, err := q.db.Exec(ctx, EnrichLegacyUpsertUUPSImplementationObservation,
-		arg.Column1,
+func (q *Queries) EnrichLegacyUpsertUUPSImplementationObservation(ctx context.Context, arg EnrichLegacyUpsertUUPSImplementationObservationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, enrichLegacyUpsertUUPSImplementationObservation,
+		arg.ChainID,
 		arg.ImplementationAddress,
-		arg.Column3,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.ImplementationCodeHash,
-		arg.Column6,
+		arg.VerificationJobID,
 		arg.StageVersion,
 		arg.StandardVersion,
 		arg.ProbeState,
@@ -3245,5 +2968,8 @@ func (q *Queries) EnrichLegacyUpsertUUPSImplementationObservation(ctx context.Co
 		arg.ProxiableUuid,
 		arg.UpgradeInterfaceVersion,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

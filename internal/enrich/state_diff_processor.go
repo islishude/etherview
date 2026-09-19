@@ -3,7 +3,6 @@ package enrich
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +10,11 @@ import (
 	"math/big"
 	"sort"
 	"strconv"
+
+	"github.com/jackc/pgx/v5/pgtype"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -63,12 +67,12 @@ func (limits StateDiffLimits) validate() error {
 }
 
 type StateDiffRPCProcessor struct {
-	db     *sql.DB
+	db     dbaccess.Database
 	pool   *ethrpc.Pool
 	limits StateDiffLimits
 }
 
-func NewStateDiffRPCProcessor(db *sql.DB, pool *ethrpc.Pool, limits StateDiffLimits) (*StateDiffRPCProcessor, error) {
+func NewStateDiffRPCProcessor(db dbaccess.Database, pool *ethrpc.Pool, limits StateDiffLimits) (*StateDiffRPCProcessor, error) {
 	if db == nil || pool == nil {
 		return nil, errors.New("state difference processor requires a database and RPC pool")
 	}
@@ -376,23 +380,50 @@ func (processor *StateDiffRPCProcessor) transactions(
 	job Job,
 ) ([]stateDiffTransaction, bool, error) {
 	var canonical bool
-	if err := processor.db.QueryRowContext(ctx, dbgen.EnrichLegacyTraceCanonical, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]).Scan(&canonical); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(processor.db).EnrichLegacyTraceCanonical(ctx, queryValue0, queryValue1, job.BlockHash[:])
+		if err != nil {
+			return err
+		}
+		canonical = queryRow
+		return nil
+	}(); err != nil {
 		return nil, false, fmt.Errorf("check state difference block canonicality: %w", err)
 	}
 	if !canonical {
 		return nil, false, nil
 	}
-	rows, err := processor.db.QueryContext(ctx, dbgen.EnrichLegacyStateDiffTransactions, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:])
+	rows, err := func() ([]dbgen.EnrichLegacyStateDiffTransactionsRow, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return nil, err
+		}
+		return dbgen.New(processor.db).EnrichLegacyStateDiffTransactions(ctx, queryValue0, queryValue1, job.BlockHash[:])
+	}()
 	if err != nil {
 		return nil, false, fmt.Errorf("query state difference transactions: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	var result []stateDiffTransaction
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var index int64
 		var hashBytes, raw []byte
-		if err := rows.Scan(&index, &hashBytes, &raw); err != nil {
-			return nil, false, fmt.Errorf("scan state difference transaction: %w", err)
+		{
+			index = storedRow.TxIndex
+			hashBytes = storedRow.TxHash
+			raw = storedRow.Raw
 		}
 		if index < 0 || len(hashBytes) != common.HashLength {
 			return nil, false, Permanent(errors.New("state difference transaction identity is invalid"))
@@ -409,9 +440,7 @@ func (processor *StateDiffRPCProcessor) transactions(
 			tx: decoded, sender: sender,
 		})
 	}
-	if err := rows.Err(); err != nil {
-		return nil, false, fmt.Errorf("iterate state difference transactions: %w", err)
-	}
+
 	return result, true, nil
 }
 
@@ -992,7 +1021,7 @@ func (processor *StateDiffRPCProcessor) persist(
 	transactions []stateDiffTransaction,
 	outcome string,
 ) (StageResult, error) {
-	return runStageTransaction(ctx, processor.db, job, func(ctx context.Context, tx *sql.Tx) (StageResult, error) {
+	return runStageTransaction(ctx, processor.db, job, func(ctx context.Context, tx pgx.Tx) (StageResult, error) {
 		canonical, err := lockCanonicalBlock(ctx, tx, job)
 		if err != nil {
 			return StageResult{}, err
@@ -1002,13 +1031,43 @@ func (processor *StateDiffRPCProcessor) persist(
 			transactions = nil
 		}
 		if canonical {
-			if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyDeleteStateDiffBlock, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]); err != nil {
+			if err := func() error {
+				var queryValue0 pgtype.Numeric
+				if err := queryValue0.Scan(job.ChainID); err != nil {
+					return err
+				}
+				var queryValue1 pgtype.Numeric
+				if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+					return err
+				}
+				return dbgen.New(tx).EnrichLegacyDeleteStateDiffBlock(ctx, queryValue0, queryValue1, job.BlockHash[:])
+			}(); err != nil {
 				return StageResult{}, fmt.Errorf("clear previous transaction state differences: %w", err)
 			}
-			if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyDeleteEIP7702AuthorizationsBlock, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]); err != nil {
+			if err := func() error {
+				var queryValue0 pgtype.Numeric
+				if err := queryValue0.Scan(job.ChainID); err != nil {
+					return err
+				}
+				var queryValue1 pgtype.Numeric
+				if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+					return err
+				}
+				return dbgen.New(tx).EnrichLegacyDeleteEIP7702AuthorizationsBlock(ctx, queryValue0, queryValue1, job.BlockHash[:])
+			}(); err != nil {
 				return StageResult{}, fmt.Errorf("clear previous EIP-7702 authorizations: %w", err)
 			}
-			if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyDeleteExecutionCodeResolutionsBlock, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]); err != nil {
+			if err := func() error {
+				var queryValue0 pgtype.Numeric
+				if err := queryValue0.Scan(job.ChainID); err != nil {
+					return err
+				}
+				var queryValue1 pgtype.Numeric
+				if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+					return err
+				}
+				return dbgen.New(tx).EnrichLegacyDeleteExecutionCodeResolutionsBlock(ctx, queryValue0, queryValue1, job.BlockHash[:])
+			}(); err != nil {
 				return StageResult{}, fmt.Errorf("clear previous execution-code resolutions: %w", err)
 			}
 		}
@@ -1016,10 +1075,20 @@ func (processor *StateDiffRPCProcessor) persist(
 		proxyRelevantChanges := 0
 		for _, transaction := range transactions {
 			for _, change := range transaction.changes {
-				if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyInsertStateChange, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-					transaction.hash[:], transaction.index, change.address[:], change.kind,
-					change.key, nullableStateValue(change.before), nullableStateValue(change.after),
-				); err != nil {
+				if err := func() error {
+					var queryValue0 pgtype.Numeric
+					if err := queryValue0.Scan(job.ChainID); err != nil {
+						return err
+					}
+					var queryValue1 pgtype.Numeric
+					if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+						return err
+					}
+					if transaction.index > 9223372036854775807 {
+						return errors.New("invalid stored query value")
+					}
+					return dbgen.New(tx).EnrichLegacyInsertStateChange(ctx, dbgen.EnrichLegacyInsertStateChangeParams{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: job.BlockHash[:], TransactionHash: transaction.hash[:], TransactionIndex: int64(transaction.index), Address: change.address[:], FieldKind: change.kind, StorageKey: change.key, BeforeValue: nullableStateValue(change.before), AfterValue: nullableStateValue(change.after)})
+				}(); err != nil {
 					return StageResult{}, fmt.Errorf("persist transaction state difference: %w", err)
 				}
 				changeCount++
@@ -1059,45 +1128,75 @@ func (processor *StateDiffRPCProcessor) persist(
 }
 
 func persistEIP7702Authorization(
-	ctx context.Context, tx *sql.Tx, job Job, transaction stateDiffTransaction,
+	ctx context.Context, tx pgx.Tx, job Job, transaction stateDiffTransaction,
 	result eip7702AuthorizationResult,
 ) error {
-	var authority any
+	var authority []byte
 	if result.authority != nil {
 		authority = result.authority[:]
 	}
 	r := result.authorization.R.Bytes32()
 	s := result.authorization.S.Bytes32()
-	var reason any
+	var reason *string
 	if result.skipReason != "" {
-		reason = result.skipReason
+		reason = new(result.skipReason)
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyInsertEIP7702Authorization, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-		transaction.hash[:], transaction.index, result.index,
-		result.authorization.ChainID.ToBig().String(), result.authorization.Nonce,
-		result.authorization.Address[:], result.authorization.V, r[:], s[:], authority,
-		result.signatureStatus, result.applicationStatus, reason,
-	); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		if transaction.index > 9223372036854775807 {
+			return errors.New("invalid stored query value")
+		}
+		if result.index > 9223372036854775807 {
+			return errors.New("invalid stored query value")
+		}
+		var queryValue4 pgtype.Numeric
+		if err := queryValue4.Scan(result.authorization.ChainID.ToBig().String()); err != nil {
+			return err
+		}
+		var queryValue5 pgtype.Numeric
+		if err := queryValue5.Scan(strconv.FormatUint(uint64(result.authorization.Nonce), 10)); err != nil {
+			return err
+		}
+		return dbgen.New(tx).EnrichLegacyInsertEIP7702Authorization(ctx, dbgen.EnrichLegacyInsertEIP7702AuthorizationParams{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: job.BlockHash[:], TransactionHash: transaction.hash[:], TransactionIndex: int64(transaction.index), AuthorizationIndex: int64(result.index), AuthorizationChainID: queryValue4, AuthorizationNonce: queryValue5, DelegateAddress: result.authorization.Address[:], Yparity: int16(result.authorization.V), R: r[:], S: s[:], Authority: authority, SignatureStatus: result.signatureStatus, ApplicationStatus: result.applicationStatus, SkipReason: reason})
+	}(); err != nil {
 		return fmt.Errorf("persist EIP-7702 authorization: %w", err)
 	}
 	return nil
 }
 
 func persistExecutionCodeResolution(
-	ctx context.Context, tx *sql.Tx, job Job, transaction stateDiffTransaction,
+	ctx context.Context, tx pgx.Tx, job Job, transaction stateDiffTransaction,
 	resolution executionCodeResolution,
 ) error {
-	var execution, codeHash any
+	var execution []byte
+	var codeHash []byte
 	if resolution.execution != nil {
 		execution = resolution.execution[:]
 	}
 	if resolution.codeHash != nil {
 		codeHash = resolution.codeHash[:]
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyInsertExecutionCodeResolution, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-		transaction.hash[:], transaction.index, resolution.context[:], execution,
-		codeHash, resolution.resolution, resolution.evidenceSource,
-	); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		if transaction.index > 9223372036854775807 {
+			return errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).EnrichLegacyInsertExecutionCodeResolution(ctx, dbgen.EnrichLegacyInsertExecutionCodeResolutionParams{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: job.BlockHash[:], TransactionHash: transaction.hash[:], TransactionIndex: int64(transaction.index), ContextAddress: resolution.context[:], ExecutionAddress: execution, ExecutionCodeHash: codeHash, Resolution: pgtype.Text{String: resolution.resolution, Valid: true}, EvidenceSource: resolution.evidenceSource})
+	}(); err != nil {
 		return fmt.Errorf("persist execution-code resolution: %w", err)
 	}
 	return nil
@@ -1119,9 +1218,9 @@ func proxyRelevantStateChange(change stateChange) bool {
 	}
 }
 
-func nullableStateValue(value *string) any {
+func nullableStateValue(value *string) *string {
 	if value == nil {
 		return nil
 	}
-	return *value
+	return new(*value)
 }

@@ -4,11 +4,12 @@ package integration_test
 
 import (
 	"context"
-	"database/sql"
 	"math/big"
 	"slices"
 	"testing"
 	"time"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -94,12 +95,12 @@ func TestHistoricalAnalyticsRecomputesNewestFirstAndCorrectsReorgs(t *testing.T)
 func analyticsRollupTestTime(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	minimum time.Time,
 ) time.Time {
 	t.Helper()
 	var now time.Time
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT GREATEST(
 		    $2::timestamptz,
 		    COALESCE(max(next_attempt_at), $2::timestamptz),
@@ -129,7 +130,7 @@ func TestHistoricalAnalyticsTenYearHourlyRollupQueryStaysBounded(t *testing.T) {
 	commitCanonical(t, ctx, repository, genesis)
 	from := time.Date(2010, 1, 1, 0, 0, 0, 0, time.UTC)
 	to := from.AddDate(10, 0, 0)
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO chart_hourly_rollups (
 		    chain_id, bucket_start, source_generation, from_block, to_block,
 		    block_count, transaction_count, failed_transaction_count,
@@ -149,7 +150,7 @@ func TestHistoricalAnalyticsTenYearHourlyRollupQueryStaysBounded(t *testing.T) {
 		) AS bucket`, from, to); err != nil {
 		t.Fatalf("seed ten-year hourly rollups: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO chart_rollup_backfill (
 		    chain_id, available_from, available_to, completed_blocks,
 		    total_blocks, complete

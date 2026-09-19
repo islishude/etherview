@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"net/url"
@@ -10,18 +9,19 @@ import (
 	"strings"
 	"time"
 
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/islishude/etherview/internal/components"
 	"github.com/islishude/etherview/internal/config"
 	"github.com/islishude/etherview/internal/store"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/stdlib"
 )
 
-func openDatabase(ctx context.Context, cfg config.DatabaseConfig) (*sql.DB, error) {
+func openDatabase(ctx context.Context, cfg config.DatabaseConfig) (*pgxpool.Pool, error) {
 	return openDatabaseWithOptions(ctx, cfg, "etherview-writer", false)
 }
 
-func openReadDatabase(ctx context.Context, cfg config.DatabaseConfig) (*sql.DB, error) {
+func openReadDatabase(ctx context.Context, cfg config.DatabaseConfig) (*pgxpool.Pool, error) {
 	return openDatabaseWithOptions(ctx, cfg, "etherview-reader", true)
 }
 
@@ -30,23 +30,39 @@ func openDatabaseWithOptions(
 	cfg config.DatabaseConfig,
 	applicationName string,
 	readOnly bool,
-) (*sql.DB, error) {
+) (*pgxpool.Pool, error) {
+	poolConfig, err := databasePoolConfig(cfg, applicationName, readOnly)
+	if err != nil {
+		return nil, errors.New("parse PostgreSQL pool configuration")
+	}
+	db, err := pgxpool.NewWithConfig(ctx, poolConfig)
+	if err != nil {
+		return nil, errors.New("create PostgreSQL pool")
+	}
+	connectCtx, cancel := context.WithTimeout(ctx, cfg.ConnectTimeout)
+	defer cancel()
+	if err := db.Ping(connectCtx); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("connect to PostgreSQL: %s", redactDatabaseError(err, cfg.URL))
+	}
+	return db, nil
+}
+
+func databasePoolConfig(cfg config.DatabaseConfig, applicationName string, readOnly bool) (*pgxpool.Config, error) {
 	parsed, err := databaseConnectionConfig(cfg, applicationName, readOnly)
 	if err != nil {
 		return nil, errors.New("parse PostgreSQL configuration")
 	}
-	db := stdlib.OpenDB(*parsed)
-	db.SetMaxOpenConns(int(cfg.MaxConnections))
-	db.SetMaxIdleConns(int(cfg.MinConnections))
-	db.SetConnMaxIdleTime(5 * time.Minute)
-	db.SetConnMaxLifetime(30 * time.Minute)
-	connectCtx, cancel := context.WithTimeout(ctx, cfg.ConnectTimeout)
-	defer cancel()
-	if err := db.PingContext(connectCtx); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("connect to PostgreSQL: %s", redactDatabaseError(err, cfg.URL))
+	poolConfig, err := pgxpool.ParseConfig(cfg.URL)
+	if err != nil {
+		return nil, errors.New("parse PostgreSQL pool configuration")
 	}
-	return db, nil
+	poolConfig.ConnConfig = parsed
+	poolConfig.MaxConns = cfg.MaxConnections
+	poolConfig.MinConns = cfg.MinConnections
+	poolConfig.MaxConnIdleTime = 5 * time.Minute
+	poolConfig.MaxConnLifetime = 30 * time.Minute
+	return poolConfig, nil
 }
 
 func databaseConnectionConfig(
@@ -54,10 +70,11 @@ func databaseConnectionConfig(
 	applicationName string,
 	readOnly bool,
 ) (*pgx.ConnConfig, error) {
-	parsed, err := pgx.ParseConfig(cfg.URL)
+	pool, err := pgxpool.ParseConfig(cfg.URL)
 	if err != nil {
 		return nil, err
 	}
+	parsed := pool.ConnConfig
 	parsed.ConnectTimeout = cfg.ConnectTimeout
 	if parsed.RuntimeParams == nil {
 		parsed.RuntimeParams = make(map[string]string)
@@ -105,7 +122,7 @@ func readDatabaseConfigForRoles(
 	return readDatabaseConfig(cfg)
 }
 
-func checkReadDatabaseSchema(ctx context.Context, db *sql.DB) error {
+func checkReadDatabaseSchema(ctx context.Context, db *pgxpool.Pool) error {
 	if err := store.CheckSchema(ctx, db); err != nil {
 		return fmt.Errorf("check read database schema: %w", err)
 	}
@@ -114,7 +131,7 @@ func checkReadDatabaseSchema(ctx context.Context, db *sql.DB) error {
 
 func validateReadDatabaseIdentity(
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	writerIdentity store.ChainIdentity,
 ) error {
 	readerIdentity, err := store.ReadChainIdentity(ctx, db, writerIdentity.ChainID)

@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const CatalogAddressDelegations = `-- name: CatalogAddressDelegations :many
+const catalogAddressDelegations = `-- name: CatalogAddressDelegations :many
 WITH ordered AS (
     SELECT authz.block_number, authz.block_hash,
            authz.transaction_hash, authz.transaction_index,
@@ -25,54 +25,54 @@ WITH ordered AS (
       ON canonical.chain_id = authz.chain_id
      AND canonical.number = authz.block_number
      AND canonical.block_hash = authz.block_hash
-    WHERE authz.chain_id = $1::numeric
-      AND authz.authority = $2
+    WHERE authz.chain_id = $6::numeric
+      AND authz.authority = $7
       AND authz.application_status = 'applied'
       AND authz.canonical
-      AND authz.block_number <= $3::numeric
+      AND authz.block_number <= $8::numeric
 )
 SELECT block_number::text, block_hash, transaction_hash,
        transaction_index::text, authorization_index::text,
-       delegate_address, previous_delegate
+       delegate_address, previous_delegate::bytea AS previous_delegate
 FROM ordered
-WHERE NOT $4 OR (block_number, transaction_index, authorization_index)
-    < ($5::numeric, $6::numeric, $7::numeric)
+WHERE NOT $1::boolean OR (block_number, transaction_index, authorization_index)
+    < ($2::numeric, $3::numeric, $4::numeric)
 ORDER BY ordered.block_number DESC, ordered.transaction_index DESC,
          ordered.authorization_index DESC
-LIMIT $8
+LIMIT $5
 `
 
 type CatalogAddressDelegationsParams struct {
-	Column1   pgtype.Numeric `db:"column_1" json:"column_1"`
-	Authority []byte         `db:"authority" json:"authority"`
-	Column3   pgtype.Numeric `db:"column_3" json:"column_3"`
-	Column4   interface{}    `db:"column_4" json:"column_4"`
-	Column5   pgtype.Numeric `db:"column_5" json:"column_5"`
-	Column6   pgtype.Numeric `db:"column_6" json:"column_6"`
-	Column7   pgtype.Numeric `db:"column_7" json:"column_7"`
-	Limit     int32          `db:"limit" json:"limit"`
+	HasCursor                bool           `db:"has_cursor" json:"has_cursor"`
+	CursorBlockNumber        pgtype.Numeric `db:"cursor_block_number" json:"cursor_block_number"`
+	CursorTransactionIndex   pgtype.Numeric `db:"cursor_transaction_index" json:"cursor_transaction_index"`
+	CursorAuthorizationIndex pgtype.Numeric `db:"cursor_authorization_index" json:"cursor_authorization_index"`
+	Limit                    int32          `db:"limit" json:"limit"`
+	ChainID                  pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Authority                []byte         `db:"authority" json:"authority"`
+	MaxBlockNumber           pgtype.Numeric `db:"max_block_number" json:"max_block_number"`
 }
 
 type CatalogAddressDelegationsRow struct {
-	BlockNumber        string      `db:"block_number" json:"block_number"`
-	BlockHash          []byte      `db:"block_hash" json:"block_hash"`
-	TransactionHash    []byte      `db:"transaction_hash" json:"transaction_hash"`
-	TransactionIndex   string      `db:"transaction_index" json:"transaction_index"`
-	AuthorizationIndex string      `db:"authorization_index" json:"authorization_index"`
-	DelegateAddress    []byte      `db:"delegate_address" json:"delegate_address"`
-	PreviousDelegate   interface{} `db:"previous_delegate" json:"previous_delegate"`
+	BlockNumber        string `db:"block_number" json:"block_number"`
+	BlockHash          []byte `db:"block_hash" json:"block_hash"`
+	TransactionHash    []byte `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex   string `db:"transaction_index" json:"transaction_index"`
+	AuthorizationIndex string `db:"authorization_index" json:"authorization_index"`
+	DelegateAddress    []byte `db:"delegate_address" json:"delegate_address"`
+	PreviousDelegate   []byte `db:"previous_delegate" json:"previous_delegate"`
 }
 
 func (q *Queries) CatalogAddressDelegations(ctx context.Context, arg CatalogAddressDelegationsParams) ([]CatalogAddressDelegationsRow, error) {
-	rows, err := q.db.Query(ctx, CatalogAddressDelegations,
-		arg.Column1,
-		arg.Authority,
-		arg.Column3,
-		arg.Column4,
-		arg.Column5,
-		arg.Column6,
-		arg.Column7,
+	rows, err := q.db.Query(ctx, catalogAddressDelegations,
+		arg.HasCursor,
+		arg.CursorBlockNumber,
+		arg.CursorTransactionIndex,
+		arg.CursorAuthorizationIndex,
 		arg.Limit,
+		arg.ChainID,
+		arg.Authority,
+		arg.MaxBlockNumber,
 	)
 	if err != nil {
 		return nil, err
@@ -100,28 +100,28 @@ func (q *Queries) CatalogAddressDelegations(ctx context.Context, arg CatalogAddr
 	return items, nil
 }
 
-const CatalogAddressInternalTransactions = `-- name: CatalogAddressInternalTransactions :many
+const catalogAddressInternalTransactions = `-- name: CatalogAddressInternalTransactions :many
 WITH candidates AS (
     SELECT chain_id, block_number, block_hash, transaction_hash, trace_path
     FROM normalized_traces
-    WHERE chain_id = $1::numeric AND canonical = TRUE AND depth > 0
-      AND block_number <= $2::numeric AND from_address = $3::bytea
+    WHERE chain_id = $8::numeric AND canonical = TRUE AND depth > 0
+      AND block_number <= $9::numeric AND from_address = $10::bytea
     UNION
     SELECT chain_id, block_number, block_hash, transaction_hash, trace_path
     FROM normalized_traces
-    WHERE chain_id = $1::numeric AND canonical = TRUE AND depth > 0
-      AND block_number <= $2::numeric AND to_address = $3::bytea
+    WHERE chain_id = $8::numeric AND canonical = TRUE AND depth > 0
+      AND block_number <= $9::numeric AND to_address = $10::bytea
     UNION
     SELECT chain_id, block_number, block_hash, transaction_hash, trace_path
     FROM normalized_traces
-    WHERE chain_id = $1::numeric AND canonical = TRUE AND depth > 0
-      AND block_number <= $2::numeric AND created_address = $3::bytea
+    WHERE chain_id = $8::numeric AND canonical = TRUE AND depth > 0
+      AND block_number <= $9::numeric AND created_address = $10::bytea
 )
 SELECT trace.block_number::text, trace.block_hash, block.timestamp::text,
        trace.transaction_hash, trace.transaction_index::text,
        trace.trace_path, trace.depth, trace.call_type,
        trace.from_address, trace.to_address, trace.created_address,
-       trace.value::text, trace.gas::text, trace.gas_used::text,
+       trace.value AS trace_value, trace.gas AS trace_gas, trace.gas_used AS trace_gas_used,
        trace.input, trace.error, trace.reverted
 FROM candidates
 JOIN normalized_traces AS trace
@@ -138,70 +138,70 @@ JOIN blocks AS block
   ON block.chain_id = trace.chain_id
  AND block.number = trace.block_number
  AND block.hash = trace.block_hash
-WHERE NOT $4::boolean OR (
+WHERE NOT $1::boolean OR (
     trace.block_number,
     trace.transaction_index,
     string_to_array(trace.trace_path, '.')::bigint[],
     trace.block_hash,
     trace.transaction_hash
 ) < (
-    $5::numeric,
-    $6::bigint,
-    string_to_array($7, '.')::bigint[],
-    $8::bytea,
-    $9::bytea
+    $2::numeric,
+    $3::bigint,
+    string_to_array($4, '.')::bigint[],
+    $5::bytea,
+    $6::bytea
 )
 ORDER BY trace.block_number DESC, trace.transaction_index DESC,
          string_to_array(trace.trace_path, '.')::bigint[] DESC,
          trace.block_hash DESC, trace.transaction_hash DESC
-LIMIT $10
+LIMIT $7
 `
 
 type CatalogAddressInternalTransactionsParams struct {
-	Column1       pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2       pgtype.Numeric `db:"column_2" json:"column_2"`
-	Column3       []byte         `db:"column_3" json:"column_3"`
-	Column4       bool           `db:"column_4" json:"column_4"`
-	Column5       pgtype.Numeric `db:"column_5" json:"column_5"`
-	Column6       int64          `db:"column_6" json:"column_6"`
-	StringToArray string         `db:"string_to_array" json:"string_to_array"`
-	Column8       []byte         `db:"column_8" json:"column_8"`
-	Column9       []byte         `db:"column_9" json:"column_9"`
-	Limit         int32          `db:"limit" json:"limit"`
+	HasCursor              bool           `db:"has_cursor" json:"has_cursor"`
+	CursorBlockNumber      pgtype.Numeric `db:"cursor_block_number" json:"cursor_block_number"`
+	CursorTransactionIndex int64          `db:"cursor_transaction_index" json:"cursor_transaction_index"`
+	StringToArray          string         `db:"string_to_array" json:"string_to_array"`
+	CursorBlockHash        []byte         `db:"cursor_block_hash" json:"cursor_block_hash"`
+	CursorTransactionHash  []byte         `db:"cursor_transaction_hash" json:"cursor_transaction_hash"`
+	Limit                  int32          `db:"limit" json:"limit"`
+	ChainID                pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	MaxBlockNumber         pgtype.Numeric `db:"max_block_number" json:"max_block_number"`
+	FromAddress            []byte         `db:"from_address" json:"from_address"`
 }
 
 type CatalogAddressInternalTransactionsRow struct {
-	TraceBlockNumber      string  `db:"trace_block_number" json:"trace_block_number"`
-	BlockHash             []byte  `db:"block_hash" json:"block_hash"`
-	BlockTimestamp        string  `db:"block_timestamp" json:"block_timestamp"`
-	TransactionHash       []byte  `db:"transaction_hash" json:"transaction_hash"`
-	TraceTransactionIndex string  `db:"trace_transaction_index" json:"trace_transaction_index"`
-	TracePath             string  `db:"trace_path" json:"trace_path"`
-	Depth                 int32   `db:"depth" json:"depth"`
-	CallType              string  `db:"call_type" json:"call_type"`
-	FromAddress           []byte  `db:"from_address" json:"from_address"`
-	ToAddress             []byte  `db:"to_address" json:"to_address"`
-	CreatedAddress        []byte  `db:"created_address" json:"created_address"`
-	TraceValue            string  `db:"trace_value" json:"trace_value"`
-	TraceGas              string  `db:"trace_gas" json:"trace_gas"`
-	TraceGasUsed          string  `db:"trace_gas_used" json:"trace_gas_used"`
-	Input                 []byte  `db:"input" json:"input"`
-	Error                 *string `db:"error" json:"error"`
-	Reverted              bool    `db:"reverted" json:"reverted"`
+	TraceBlockNumber      string         `db:"trace_block_number" json:"trace_block_number"`
+	BlockHash             []byte         `db:"block_hash" json:"block_hash"`
+	BlockTimestamp        string         `db:"block_timestamp" json:"block_timestamp"`
+	TransactionHash       []byte         `db:"transaction_hash" json:"transaction_hash"`
+	TraceTransactionIndex string         `db:"trace_transaction_index" json:"trace_transaction_index"`
+	TracePath             string         `db:"trace_path" json:"trace_path"`
+	Depth                 int32          `db:"depth" json:"depth"`
+	CallType              string         `db:"call_type" json:"call_type"`
+	FromAddress           []byte         `db:"from_address" json:"from_address"`
+	ToAddress             []byte         `db:"to_address" json:"to_address"`
+	CreatedAddress        []byte         `db:"created_address" json:"created_address"`
+	TraceValue            pgtype.Numeric `db:"trace_value" json:"trace_value"`
+	TraceGas              pgtype.Numeric `db:"trace_gas" json:"trace_gas"`
+	TraceGasUsed          pgtype.Numeric `db:"trace_gas_used" json:"trace_gas_used"`
+	Input                 []byte         `db:"input" json:"input"`
+	Error                 *string        `db:"error" json:"error"`
+	Reverted              bool           `db:"reverted" json:"reverted"`
 }
 
 func (q *Queries) CatalogAddressInternalTransactions(ctx context.Context, arg CatalogAddressInternalTransactionsParams) ([]CatalogAddressInternalTransactionsRow, error) {
-	rows, err := q.db.Query(ctx, CatalogAddressInternalTransactions,
-		arg.Column1,
-		arg.Column2,
-		arg.Column3,
-		arg.Column4,
-		arg.Column5,
-		arg.Column6,
+	rows, err := q.db.Query(ctx, catalogAddressInternalTransactions,
+		arg.HasCursor,
+		arg.CursorBlockNumber,
+		arg.CursorTransactionIndex,
 		arg.StringToArray,
-		arg.Column8,
-		arg.Column9,
+		arg.CursorBlockHash,
+		arg.CursorTransactionHash,
 		arg.Limit,
+		arg.ChainID,
+		arg.MaxBlockNumber,
+		arg.FromAddress,
 	)
 	if err != nil {
 		return nil, err
@@ -239,28 +239,28 @@ func (q *Queries) CatalogAddressInternalTransactions(ctx context.Context, arg Ca
 	return items, nil
 }
 
-const CatalogAddressTokenTransfers = `-- name: CatalogAddressTokenTransfers :many
+const catalogAddressTokenTransfers = `-- name: CatalogAddressTokenTransfers :many
 WITH candidates AS (
     SELECT chain_id, block_number, block_hash, log_index, sub_index
     FROM token_events
-    WHERE chain_id = $1::numeric AND canonical = TRUE
-      AND block_number <= $2::numeric AND from_address = $3::bytea
+    WHERE chain_id = $9::numeric AND canonical = TRUE
+      AND block_number <= $10::numeric AND from_address = $11::bytea
       AND event_kind IN ('transfer', 'mint', 'burn')
-      AND (($4 = 'erc20' AND standard = 'erc20') OR ($4 = 'nft' AND standard IN ('erc721', 'erc1155')))
+      AND (($12::text = 'erc20' AND standard = 'erc20') OR ($12::text = 'nft' AND standard IN ('erc721', 'erc1155')))
     UNION
     SELECT chain_id, block_number, block_hash, log_index, sub_index
     FROM token_events
-    WHERE chain_id = $1::numeric AND canonical = TRUE
-      AND block_number <= $2::numeric AND to_address = $3::bytea
+    WHERE chain_id = $9::numeric AND canonical = TRUE
+      AND block_number <= $10::numeric AND to_address = $11::bytea
       AND event_kind IN ('transfer', 'mint', 'burn')
-      AND (($4 = 'erc20' AND standard = 'erc20') OR ($4 = 'nft' AND standard IN ('erc721', 'erc1155')))
+      AND (($12::text = 'erc20' AND standard = 'erc20') OR ($12::text = 'nft' AND standard IN ('erc721', 'erc1155')))
 )
 SELECT event.block_number::text, event.block_hash, block.timestamp::text,
        event.transaction_hash, inclusion.tx_index::text,
        event.log_index::text, event.sub_index::text,
        event.token_address, event.standard, event.event_kind,
-       event.from_address, event.to_address, event.token_id::text,
-       event.amount::text, event.confidence, metadata.decimals
+       event.from_address, event.to_address, event.token_id AS event_token_id,
+       event.amount AS event_amount, event.confidence, metadata.decimals
 FROM candidates
 JOIN token_events AS event
   ON event.chain_id = candidates.chain_id
@@ -282,10 +282,10 @@ JOIN transaction_inclusions AS inclusion
  AND inclusion.block_hash = event.block_hash
  AND inclusion.tx_hash = event.transaction_hash
 LEFT JOIN LATERAL (
-    SELECT CASE
+    SELECT (CASE
                WHEN contract.standard = 'erc20' AND contract.metadata_state = 'complete'
                THEN contract.decimals
-           END AS decimals
+           END)::numeric AS decimals
     FROM token_contracts AS contract
     JOIN canonical_blocks AS observation
       ON observation.chain_id = contract.chain_id
@@ -297,7 +297,7 @@ LEFT JOIN LATERAL (
     ORDER BY contract.observed_block_number DESC, contract.code_hash DESC
     LIMIT 1
 ) AS metadata ON event.standard = 'erc20'
-WHERE NOT $5::boolean OR (
+WHERE NOT $1::boolean OR (
     event.block_number,
     inclusion.tx_index,
     event.log_index,
@@ -305,67 +305,67 @@ WHERE NOT $5::boolean OR (
     event.block_hash,
     event.transaction_hash
 ) < (
-    $6::numeric,
-    $7::bigint,
-    $8::bigint,
-    $9::integer,
-    $10::bytea,
-    $11::bytea
+    $2::numeric,
+    $3::bigint,
+    $4::bigint,
+    $5::integer,
+    $6::bytea,
+    $7::bytea
 )
 ORDER BY event.block_number DESC, inclusion.tx_index DESC,
          event.log_index DESC, event.sub_index DESC,
          event.block_hash DESC, event.transaction_hash DESC
-LIMIT $12
+LIMIT $8
 `
 
 type CatalogAddressTokenTransfersParams struct {
-	Column1  pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2  pgtype.Numeric `db:"column_2" json:"column_2"`
-	Column3  []byte         `db:"column_3" json:"column_3"`
-	Column4  interface{}    `db:"column_4" json:"column_4"`
-	Column5  bool           `db:"column_5" json:"column_5"`
-	Column6  pgtype.Numeric `db:"column_6" json:"column_6"`
-	Column7  int64          `db:"column_7" json:"column_7"`
-	Column8  int64          `db:"column_8" json:"column_8"`
-	Column9  int32          `db:"column_9" json:"column_9"`
-	Column10 []byte         `db:"column_10" json:"column_10"`
-	Column11 []byte         `db:"column_11" json:"column_11"`
-	Limit    int32          `db:"limit" json:"limit"`
+	HasCursor              bool           `db:"has_cursor" json:"has_cursor"`
+	CursorBlockNumber      pgtype.Numeric `db:"cursor_block_number" json:"cursor_block_number"`
+	CursorTransactionIndex int64          `db:"cursor_transaction_index" json:"cursor_transaction_index"`
+	CursorLogIndex         int64          `db:"cursor_log_index" json:"cursor_log_index"`
+	CursorBatchIndex       int32          `db:"cursor_batch_index" json:"cursor_batch_index"`
+	CursorBlockHash        []byte         `db:"cursor_block_hash" json:"cursor_block_hash"`
+	CursorTransactionHash  []byte         `db:"cursor_transaction_hash" json:"cursor_transaction_hash"`
+	Limit                  int32          `db:"limit" json:"limit"`
+	ChainID                pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	MaxBlockNumber         pgtype.Numeric `db:"max_block_number" json:"max_block_number"`
+	FromAddress            []byte         `db:"from_address" json:"from_address"`
+	TokenFamily            string         `db:"token_family" json:"token_family"`
 }
 
 type CatalogAddressTokenTransfersRow struct {
-	EventBlockNumber string      `db:"event_block_number" json:"event_block_number"`
-	BlockHash        []byte      `db:"block_hash" json:"block_hash"`
-	BlockTimestamp   string      `db:"block_timestamp" json:"block_timestamp"`
-	TransactionHash  []byte      `db:"transaction_hash" json:"transaction_hash"`
-	InclusionTxIndex string      `db:"inclusion_tx_index" json:"inclusion_tx_index"`
-	EventLogIndex    string      `db:"event_log_index" json:"event_log_index"`
-	EventSubIndex    string      `db:"event_sub_index" json:"event_sub_index"`
-	TokenAddress     []byte      `db:"token_address" json:"token_address"`
-	Standard         string      `db:"standard" json:"standard"`
-	EventKind        string      `db:"event_kind" json:"event_kind"`
-	FromAddress      []byte      `db:"from_address" json:"from_address"`
-	ToAddress        []byte      `db:"to_address" json:"to_address"`
-	EventTokenID     string      `db:"event_token_id" json:"event_token_id"`
-	EventAmount      string      `db:"event_amount" json:"event_amount"`
-	Confidence       string      `db:"confidence" json:"confidence"`
-	Decimals         interface{} `db:"decimals" json:"decimals"`
+	EventBlockNumber string         `db:"event_block_number" json:"event_block_number"`
+	BlockHash        []byte         `db:"block_hash" json:"block_hash"`
+	BlockTimestamp   string         `db:"block_timestamp" json:"block_timestamp"`
+	TransactionHash  []byte         `db:"transaction_hash" json:"transaction_hash"`
+	InclusionTxIndex string         `db:"inclusion_tx_index" json:"inclusion_tx_index"`
+	EventLogIndex    string         `db:"event_log_index" json:"event_log_index"`
+	EventSubIndex    string         `db:"event_sub_index" json:"event_sub_index"`
+	TokenAddress     []byte         `db:"token_address" json:"token_address"`
+	Standard         string         `db:"standard" json:"standard"`
+	EventKind        string         `db:"event_kind" json:"event_kind"`
+	FromAddress      []byte         `db:"from_address" json:"from_address"`
+	ToAddress        []byte         `db:"to_address" json:"to_address"`
+	EventTokenID     pgtype.Numeric `db:"event_token_id" json:"event_token_id"`
+	EventAmount      pgtype.Numeric `db:"event_amount" json:"event_amount"`
+	Confidence       string         `db:"confidence" json:"confidence"`
+	Decimals         pgtype.Numeric `db:"decimals" json:"decimals"`
 }
 
 func (q *Queries) CatalogAddressTokenTransfers(ctx context.Context, arg CatalogAddressTokenTransfersParams) ([]CatalogAddressTokenTransfersRow, error) {
-	rows, err := q.db.Query(ctx, CatalogAddressTokenTransfers,
-		arg.Column1,
-		arg.Column2,
-		arg.Column3,
-		arg.Column4,
-		arg.Column5,
-		arg.Column6,
-		arg.Column7,
-		arg.Column8,
-		arg.Column9,
-		arg.Column10,
-		arg.Column11,
+	rows, err := q.db.Query(ctx, catalogAddressTokenTransfers,
+		arg.HasCursor,
+		arg.CursorBlockNumber,
+		arg.CursorTransactionIndex,
+		arg.CursorLogIndex,
+		arg.CursorBatchIndex,
+		arg.CursorBlockHash,
+		arg.CursorTransactionHash,
 		arg.Limit,
+		arg.ChainID,
+		arg.MaxBlockNumber,
+		arg.FromAddress,
+		arg.TokenFamily,
 	)
 	if err != nil {
 		return nil, err
@@ -402,7 +402,7 @@ func (q *Queries) CatalogAddressTokenTransfers(ctx context.Context, arg CatalogA
 	return items, nil
 }
 
-const CatalogAggregateStats = `-- name: CatalogAggregateStats :many
+const catalogAggregateStats = `-- name: CatalogAggregateStats :one
 WITH selected_stats AS (
     SELECT stats.chain_id, stats.block_number, stats.block_hash, stats.transaction_count, stats.gas_used, stats.gas_limit, stats.base_fee_per_gas, stats.blob_gas_used, stats.burned_wei, stats.canonical, stats.computed_at, stats.block_timestamp, stats.block_interval_seconds, stats.transactions_per_second, stats.excess_blob_gas, stats.blob_base_fee_per_gas, stats.blob_burned_wei, stats.execution_gas_fee_wei, stats.priority_fee_wei, stats.failed_transaction_count, stats.contract_creation_count
     FROM block_statistics AS stats
@@ -424,17 +424,18 @@ WITH selected_stats AS (
       AND event.block_number BETWEEN $2::numeric AND $3::numeric
       AND event.canonical = true
 )
-SELECT count(*)::text,
-       COALESCE(sum(transaction_count), 0)::text,
-       COALESCE(sum(gas_used), 0)::text,
-       COALESCE(sum(burned_wei), 0)::text,
-       COALESCE(sum(blob_burned_wei), 0)::text,
-       (SELECT count(*)::text FROM selected_tokens),
-       (SELECT count(*)::text FROM selected_tokens
-         WHERE standard = 'erc20' AND event_kind IN ('transfer', 'mint', 'burn')),
-       (SELECT count(*)::text FROM selected_tokens
-         WHERE standard IN ('erc721', 'erc1155') AND event_kind IN ('transfer', 'mint', 'burn')),
-       CASE WHEN COALESCE(sum(block_interval_seconds) FILTER (
+SELECT
+count(*)::text AS block_count,
+COALESCE(sum(transaction_count), 0)::text AS transaction_count,
+COALESCE(sum(gas_used), 0)::text AS gas_used,
+COALESCE(sum(burned_wei), 0)::text AS burned_wei,
+COALESCE(sum(blob_burned_wei), 0)::text AS blob_burned_wei,
+(SELECT count(*)::text FROM selected_tokens) AS token_event_count,
+(SELECT count(*)::text FROM selected_tokens
+         WHERE standard = 'erc20' AND event_kind IN ('transfer', 'mint', 'burn')) AS erc20_transfer_count,
+(SELECT count(*)::text FROM selected_tokens
+         WHERE standard IN ('erc721', 'erc1155') AND event_kind IN ('transfer', 'mint', 'burn')) AS nft_transfer_count,
+COALESCE((CASE WHEN COALESCE(sum(block_interval_seconds) FILTER (
                      WHERE block_interval_seconds IS NOT NULL
                  ), 0) = 0 THEN NULL
             ELSE trim(trailing '.' FROM trim(trailing '0' FROM
@@ -443,60 +444,59 @@ SELECT count(*)::text,
                      / sum(block_interval_seconds) FILTER (WHERE block_interval_seconds IS NOT NULL),
                      18
                  )::text))
-       END
+       END),'')::text AS weighted_tps,
+(CASE WHEN COALESCE(sum(block_interval_seconds) FILTER (
+                     WHERE block_interval_seconds IS NOT NULL
+                 ), 0) = 0 THEN NULL
+            ELSE trim(trailing '.' FROM trim(trailing '0' FROM
+                 round(
+                     sum(transaction_count) FILTER (WHERE block_interval_seconds IS NOT NULL)
+                     / sum(block_interval_seconds) FILTER (WHERE block_interval_seconds IS NOT NULL),
+                     18
+                 )::text))
+       END IS NOT NULL)::boolean AS weighted_tps_present
 FROM selected_stats
 `
 
 type CatalogAggregateStatsRow struct {
-	Column1 string      `db:"column_1" json:"column_1"`
-	Column2 string      `db:"column_2" json:"column_2"`
-	Column3 string      `db:"column_3" json:"column_3"`
-	Column4 string      `db:"column_4" json:"column_4"`
-	Column5 string      `db:"column_5" json:"column_5"`
-	Column6 string      `db:"column_6" json:"column_6"`
-	Column7 string      `db:"column_7" json:"column_7"`
-	Column8 string      `db:"column_8" json:"column_8"`
-	Column9 interface{} `db:"column_9" json:"column_9"`
+	BlockCount         string `db:"block_count" json:"block_count"`
+	TransactionCount   string `db:"transaction_count" json:"transaction_count"`
+	GasUsed            string `db:"gas_used" json:"gas_used"`
+	BurnedWei          string `db:"burned_wei" json:"burned_wei"`
+	BlobBurnedWei      string `db:"blob_burned_wei" json:"blob_burned_wei"`
+	TokenEventCount    string `db:"token_event_count" json:"token_event_count"`
+	Erc20TransferCount string `db:"erc20_transfer_count" json:"erc20_transfer_count"`
+	NftTransferCount   string `db:"nft_transfer_count" json:"nft_transfer_count"`
+	WeightedTps        string `db:"weighted_tps" json:"weighted_tps"`
+	WeightedTpsPresent bool   `db:"weighted_tps_present" json:"weighted_tps_present"`
 }
 
-func (q *Queries) CatalogAggregateStats(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, column3 pgtype.Numeric) ([]CatalogAggregateStatsRow, error) {
-	rows, err := q.db.Query(ctx, CatalogAggregateStats, column1, column2, column3)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []CatalogAggregateStatsRow{}
-	for rows.Next() {
-		var i CatalogAggregateStatsRow
-		if err := rows.Scan(
-			&i.Column1,
-			&i.Column2,
-			&i.Column3,
-			&i.Column4,
-			&i.Column5,
-			&i.Column6,
-			&i.Column7,
-			&i.Column8,
-			&i.Column9,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) CatalogAggregateStats(ctx context.Context, chainID pgtype.Numeric, fromBlockNumber pgtype.Numeric, toBlockNumber pgtype.Numeric) (CatalogAggregateStatsRow, error) {
+	row := q.db.QueryRow(ctx, catalogAggregateStats, chainID, fromBlockNumber, toBlockNumber)
+	var i CatalogAggregateStatsRow
+	err := row.Scan(
+		&i.BlockCount,
+		&i.TransactionCount,
+		&i.GasUsed,
+		&i.BurnedWei,
+		&i.BlobBurnedWei,
+		&i.TokenEventCount,
+		&i.Erc20TransferCount,
+		&i.NftTransferCount,
+		&i.WeightedTps,
+		&i.WeightedTpsPresent,
+	)
+	return i, err
 }
 
-const CatalogBlockStats = `-- name: CatalogBlockStats :many
+const catalogBlockStats = `-- name: CatalogBlockStats :many
 SELECT stats.chain_id::text, stats.block_number::text, stats.block_hash,
        stats.transaction_count::text, stats.gas_used::text, stats.gas_limit::text,
-       stats.base_fee_per_gas::text, stats.blob_gas_used::text,
-       stats.excess_blob_gas::text, stats.blob_base_fee_per_gas::text,
-       stats.burned_wei::text, stats.blob_burned_wei::text,
-       stats.block_timestamp::text, stats.block_interval_seconds::text,
-       trim(trailing '.' FROM trim(trailing '0' FROM stats.transactions_per_second::text)),
+       stats.base_fee_per_gas AS stats_base_fee_per_gas, stats.blob_gas_used AS stats_blob_gas_used,
+       stats.excess_blob_gas AS stats_excess_blob_gas, stats.blob_base_fee_per_gas AS stats_blob_base_fee_per_gas,
+       stats.burned_wei AS stats_burned_wei, stats.blob_burned_wei AS stats_blob_burned_wei,
+       stats.block_timestamp::text, stats.block_interval_seconds AS stats_block_interval_seconds,
+       stats.transactions_per_second AS transactions_per_second,
        token.token_event_count::text, token.token_transfer_count::text,
        token.nft_transfer_count::text, stats.computed_at
 FROM block_statistics AS stats
@@ -533,23 +533,23 @@ type CatalogBlockStatsRow struct {
 	StatsTransactionCount     string             `db:"stats_transaction_count" json:"stats_transaction_count"`
 	StatsGasUsed              string             `db:"stats_gas_used" json:"stats_gas_used"`
 	StatsGasLimit             string             `db:"stats_gas_limit" json:"stats_gas_limit"`
-	StatsBaseFeePerGas        string             `db:"stats_base_fee_per_gas" json:"stats_base_fee_per_gas"`
-	StatsBlobGasUsed          string             `db:"stats_blob_gas_used" json:"stats_blob_gas_used"`
-	StatsExcessBlobGas        string             `db:"stats_excess_blob_gas" json:"stats_excess_blob_gas"`
-	StatsBlobBaseFeePerGas    string             `db:"stats_blob_base_fee_per_gas" json:"stats_blob_base_fee_per_gas"`
-	StatsBurnedWei            string             `db:"stats_burned_wei" json:"stats_burned_wei"`
-	StatsBlobBurnedWei        string             `db:"stats_blob_burned_wei" json:"stats_blob_burned_wei"`
+	StatsBaseFeePerGas        pgtype.Numeric     `db:"stats_base_fee_per_gas" json:"stats_base_fee_per_gas"`
+	StatsBlobGasUsed          pgtype.Numeric     `db:"stats_blob_gas_used" json:"stats_blob_gas_used"`
+	StatsExcessBlobGas        pgtype.Numeric     `db:"stats_excess_blob_gas" json:"stats_excess_blob_gas"`
+	StatsBlobBaseFeePerGas    pgtype.Numeric     `db:"stats_blob_base_fee_per_gas" json:"stats_blob_base_fee_per_gas"`
+	StatsBurnedWei            pgtype.Numeric     `db:"stats_burned_wei" json:"stats_burned_wei"`
+	StatsBlobBurnedWei        pgtype.Numeric     `db:"stats_blob_burned_wei" json:"stats_blob_burned_wei"`
 	StatsBlockTimestamp       string             `db:"stats_block_timestamp" json:"stats_block_timestamp"`
-	StatsBlockIntervalSeconds string             `db:"stats_block_interval_seconds" json:"stats_block_interval_seconds"`
-	Rtrim                     []byte             `db:"rtrim" json:"rtrim"`
+	StatsBlockIntervalSeconds pgtype.Numeric     `db:"stats_block_interval_seconds" json:"stats_block_interval_seconds"`
+	TransactionsPerSecond     pgtype.Numeric     `db:"transactions_per_second" json:"transactions_per_second"`
 	TokenTokenEventCount      string             `db:"token_token_event_count" json:"token_token_event_count"`
 	TokenTokenTransferCount   string             `db:"token_token_transfer_count" json:"token_token_transfer_count"`
 	TokenNftTransferCount     string             `db:"token_nft_transfer_count" json:"token_nft_transfer_count"`
 	ComputedAt                pgtype.Timestamptz `db:"computed_at" json:"computed_at"`
 }
 
-func (q *Queries) CatalogBlockStats(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, column3 pgtype.Numeric) ([]CatalogBlockStatsRow, error) {
-	rows, err := q.db.Query(ctx, CatalogBlockStats, column1, column2, column3)
+func (q *Queries) CatalogBlockStats(ctx context.Context, chainID pgtype.Numeric, fromBlockNumber pgtype.Numeric, toBlockNumber pgtype.Numeric) ([]CatalogBlockStatsRow, error) {
+	rows, err := q.db.Query(ctx, catalogBlockStats, chainID, fromBlockNumber, toBlockNumber)
 	if err != nil {
 		return nil, err
 	}
@@ -572,7 +572,7 @@ func (q *Queries) CatalogBlockStats(ctx context.Context, column1 pgtype.Numeric,
 			&i.StatsBlobBurnedWei,
 			&i.StatsBlockTimestamp,
 			&i.StatsBlockIntervalSeconds,
-			&i.Rtrim,
+			&i.TransactionsPerSecond,
 			&i.TokenTokenEventCount,
 			&i.TokenTokenTransferCount,
 			&i.TokenNftTransferCount,
@@ -588,7 +588,7 @@ func (q *Queries) CatalogBlockStats(ctx context.Context, column1 pgtype.Numeric,
 	return items, nil
 }
 
-const CatalogCanonicalSnapshot = `-- name: CatalogCanonicalSnapshot :many
+const catalogCanonicalSnapshot = `-- name: CatalogCanonicalSnapshot :one
 SELECT number::text, block_hash
 FROM canonical_blocks AS canonical
 WHERE chain_id = $1::numeric
@@ -601,27 +601,14 @@ type CatalogCanonicalSnapshotRow struct {
 	BlockHash []byte `db:"block_hash" json:"block_hash"`
 }
 
-func (q *Queries) CatalogCanonicalSnapshot(ctx context.Context, dollar_1 pgtype.Numeric) ([]CatalogCanonicalSnapshotRow, error) {
-	rows, err := q.db.Query(ctx, CatalogCanonicalSnapshot, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []CatalogCanonicalSnapshotRow{}
-	for rows.Next() {
-		var i CatalogCanonicalSnapshotRow
-		if err := rows.Scan(&i.Number, &i.BlockHash); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) CatalogCanonicalSnapshot(ctx context.Context, chainID pgtype.Numeric) (CatalogCanonicalSnapshotRow, error) {
+	row := q.db.QueryRow(ctx, catalogCanonicalSnapshot, chainID)
+	var i CatalogCanonicalSnapshotRow
+	err := row.Scan(&i.Number, &i.BlockHash)
+	return i, err
 }
 
-const CatalogCanonicalTransactionInclusion = `-- name: CatalogCanonicalTransactionInclusion :many
+const catalogCanonicalTransactionInclusion = `-- name: CatalogCanonicalTransactionInclusion :one
 SELECT inclusion.block_number::text, inclusion.block_hash, inclusion.tx_index::text
 FROM transaction_inclusions AS inclusion
 JOIN canonical_blocks AS cb
@@ -638,27 +625,14 @@ type CatalogCanonicalTransactionInclusionRow struct {
 	InclusionTxIndex     string `db:"inclusion_tx_index" json:"inclusion_tx_index"`
 }
 
-func (q *Queries) CatalogCanonicalTransactionInclusion(ctx context.Context, column1 pgtype.Numeric, txHash []byte) ([]CatalogCanonicalTransactionInclusionRow, error) {
-	rows, err := q.db.Query(ctx, CatalogCanonicalTransactionInclusion, column1, txHash)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []CatalogCanonicalTransactionInclusionRow{}
-	for rows.Next() {
-		var i CatalogCanonicalTransactionInclusionRow
-		if err := rows.Scan(&i.InclusionBlockNumber, &i.BlockHash, &i.InclusionTxIndex); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) CatalogCanonicalTransactionInclusion(ctx context.Context, chainID pgtype.Numeric, txHash []byte) (CatalogCanonicalTransactionInclusionRow, error) {
+	row := q.db.QueryRow(ctx, catalogCanonicalTransactionInclusion, chainID, txHash)
+	var i CatalogCanonicalTransactionInclusionRow
+	err := row.Scan(&i.InclusionBlockNumber, &i.BlockHash, &i.InclusionTxIndex)
+	return i, err
 }
 
-const CatalogErc20BalanceCandidates = `-- name: CatalogErc20BalanceCandidates :many
+const catalogErc20BalanceCandidates = `-- name: CatalogErc20BalanceCandidates :many
 SELECT d.token_address
 FROM token_balance_deltas AS d
 JOIN canonical_blocks AS cb
@@ -677,20 +651,20 @@ LIMIT $6
 `
 
 type CatalogErc20BalanceCandidatesParams struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2      pgtype.Numeric `db:"column_2" json:"column_2"`
-	OwnerAddress []byte         `db:"owner_address" json:"owner_address"`
-	Column4      bool           `db:"column_4" json:"column_4"`
-	TokenAddress []byte         `db:"token_address" json:"token_address"`
-	Limit        int32          `db:"limit" json:"limit"`
+	ChainID        pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	MaxBlockNumber pgtype.Numeric `db:"max_block_number" json:"max_block_number"`
+	OwnerAddress   []byte         `db:"owner_address" json:"owner_address"`
+	HasCursor      bool           `db:"has_cursor" json:"has_cursor"`
+	TokenAddress   []byte         `db:"token_address" json:"token_address"`
+	Limit          int32          `db:"limit" json:"limit"`
 }
 
 func (q *Queries) CatalogErc20BalanceCandidates(ctx context.Context, arg CatalogErc20BalanceCandidatesParams) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, CatalogErc20BalanceCandidates,
-		arg.Column1,
-		arg.Column2,
+	rows, err := q.db.Query(ctx, catalogErc20BalanceCandidates,
+		arg.ChainID,
+		arg.MaxBlockNumber,
 		arg.OwnerAddress,
-		arg.Column4,
+		arg.HasCursor,
 		arg.TokenAddress,
 		arg.Limit,
 	)
@@ -712,23 +686,23 @@ func (q *Queries) CatalogErc20BalanceCandidates(ctx context.Context, arg Catalog
 	return items, nil
 }
 
-const CatalogExactConstructorArtifact = `-- name: CatalogExactConstructorArtifact :many
+const catalogExactConstructorArtifact = `-- name: CatalogExactConstructorArtifact :one
 SELECT verified.code_hash, verified.abi, verified.constructor_arguments,
-       verified.valid_from_block::text, verified.valid_to_block::text
+       verified.valid_from_block::text, verified.valid_to_block
 FROM contract_code_observations AS code
 JOIN verified_contracts AS verified
   ON verified.chain_id = code.chain_id
  AND verified.address = code.address
  AND verified.code_hash = code.code_hash
- AND verified.valid_from_block <= $2::numeric
- AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= $2::numeric)
+ AND verified.valid_from_block <= $1::numeric
+ AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= $1::numeric)
 JOIN verification_results AS result
   ON result.job_id = verified.verification_job_id
  AND result.request_digest = verified.request_digest
  AND result.outcome_kind = 'verification_success'
  AND result.outcome->'creation_match'->>'match_type' = 'full'
-WHERE code.chain_id = $1::numeric
-  AND code.block_number = $2::numeric
+WHERE code.chain_id = $2::numeric
+  AND code.block_number = $1::numeric
   AND code.block_hash = $3
   AND code.address = $4
   AND code.canonical
@@ -738,54 +712,41 @@ LIMIT 1
 `
 
 type CatalogExactConstructorArtifactParams struct {
-	Column1   pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2   pgtype.Numeric `db:"column_2" json:"column_2"`
-	BlockHash []byte         `db:"block_hash" json:"block_hash"`
-	Address   []byte         `db:"address" json:"address"`
+	MaxValidFromBlock pgtype.Numeric `db:"max_valid_from_block" json:"max_valid_from_block"`
+	ChainID           pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockHash         []byte         `db:"block_hash" json:"block_hash"`
+	Address           []byte         `db:"address" json:"address"`
 }
 
 type CatalogExactConstructorArtifactRow struct {
-	CodeHash               []byte `db:"code_hash" json:"code_hash"`
-	Abi                    []byte `db:"abi" json:"abi"`
-	ConstructorArguments   []byte `db:"constructor_arguments" json:"constructor_arguments"`
-	VerifiedValidFromBlock string `db:"verified_valid_from_block" json:"verified_valid_from_block"`
-	VerifiedValidToBlock   string `db:"verified_valid_to_block" json:"verified_valid_to_block"`
+	CodeHash               []byte         `db:"code_hash" json:"code_hash"`
+	Abi                    []byte         `db:"abi" json:"abi"`
+	ConstructorArguments   []byte         `db:"constructor_arguments" json:"constructor_arguments"`
+	VerifiedValidFromBlock string         `db:"verified_valid_from_block" json:"verified_valid_from_block"`
+	ValidToBlock           pgtype.Numeric `db:"valid_to_block" json:"valid_to_block"`
 }
 
-func (q *Queries) CatalogExactConstructorArtifact(ctx context.Context, arg CatalogExactConstructorArtifactParams) ([]CatalogExactConstructorArtifactRow, error) {
-	rows, err := q.db.Query(ctx, CatalogExactConstructorArtifact,
-		arg.Column1,
-		arg.Column2,
+func (q *Queries) CatalogExactConstructorArtifact(ctx context.Context, arg CatalogExactConstructorArtifactParams) (CatalogExactConstructorArtifactRow, error) {
+	row := q.db.QueryRow(ctx, catalogExactConstructorArtifact,
+		arg.MaxValidFromBlock,
+		arg.ChainID,
 		arg.BlockHash,
 		arg.Address,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []CatalogExactConstructorArtifactRow{}
-	for rows.Next() {
-		var i CatalogExactConstructorArtifactRow
-		if err := rows.Scan(
-			&i.CodeHash,
-			&i.Abi,
-			&i.ConstructorArguments,
-			&i.VerifiedValidFromBlock,
-			&i.VerifiedValidToBlock,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i CatalogExactConstructorArtifactRow
+	err := row.Scan(
+		&i.CodeHash,
+		&i.Abi,
+		&i.ConstructorArguments,
+		&i.VerifiedValidFromBlock,
+		&i.ValidToBlock,
+	)
+	return i, err
 }
 
-const CatalogFirstIncompleteStageInRange = `-- name: CatalogFirstIncompleteStageInRange :many
+const catalogFirstIncompleteStageInRange = `-- name: CatalogFirstIncompleteStageInRange :one
 WITH heights AS (
-    SELECT generate_series($2::numeric, $3::numeric, 1::numeric) AS number
+    SELECT generate_series($4::numeric, $5::numeric, 1::numeric) AS number
 )
 SELECT heights.number::text, cb.block_hash, latest.state
 FROM heights
@@ -797,8 +758,8 @@ LEFT JOIN LATERAL (
     WHERE result.chain_id = cb.chain_id
       AND result.block_number = cb.number
       AND result.block_hash = cb.block_hash
-      AND result.stage = $4
-      AND result.stage_version = $5
+      AND result.stage = $2
+      AND result.stage_version = $3
 ) AS latest ON true
 WHERE cb.block_hash IS NULL OR latest.state IS DISTINCT FROM 'complete'
 ORDER BY heights.number
@@ -806,46 +767,33 @@ LIMIT 1
 `
 
 type CatalogFirstIncompleteStageInRangeParams struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2      pgtype.Numeric `db:"column_2" json:"column_2"`
-	Column3      pgtype.Numeric `db:"column_3" json:"column_3"`
+	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	Stage        string         `db:"stage" json:"stage"`
 	StageVersion int32          `db:"stage_version" json:"stage_version"`
+	FromBlock    pgtype.Numeric `db:"from_block" json:"from_block"`
+	ToBlock      pgtype.Numeric `db:"to_block" json:"to_block"`
 }
 
 type CatalogFirstIncompleteStageInRangeRow struct {
-	HeightsNumber string `db:"heights_number" json:"heights_number"`
-	BlockHash     []byte `db:"block_hash" json:"block_hash"`
-	State         string `db:"state" json:"state"`
+	HeightsNumber string      `db:"heights_number" json:"heights_number"`
+	BlockHash     []byte      `db:"block_hash" json:"block_hash"`
+	State         pgtype.Text `db:"state" json:"state"`
 }
 
-func (q *Queries) CatalogFirstIncompleteStageInRange(ctx context.Context, arg CatalogFirstIncompleteStageInRangeParams) ([]CatalogFirstIncompleteStageInRangeRow, error) {
-	rows, err := q.db.Query(ctx, CatalogFirstIncompleteStageInRange,
-		arg.Column1,
-		arg.Column2,
-		arg.Column3,
+func (q *Queries) CatalogFirstIncompleteStageInRange(ctx context.Context, arg CatalogFirstIncompleteStageInRangeParams) (CatalogFirstIncompleteStageInRangeRow, error) {
+	row := q.db.QueryRow(ctx, catalogFirstIncompleteStageInRange,
+		arg.ChainID,
 		arg.Stage,
 		arg.StageVersion,
+		arg.FromBlock,
+		arg.ToBlock,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []CatalogFirstIncompleteStageInRangeRow{}
-	for rows.Next() {
-		var i CatalogFirstIncompleteStageInRangeRow
-		if err := rows.Scan(&i.HeightsNumber, &i.BlockHash, &i.State); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i CatalogFirstIncompleteStageInRangeRow
+	err := row.Scan(&i.HeightsNumber, &i.BlockHash, &i.State)
+	return i, err
 }
 
-const CatalogLatestStage = `-- name: CatalogLatestStage :many
+const catalogLatestStage = `-- name: CatalogLatestStage :one
 SELECT state
 FROM published_block_stage_results
 WHERE chain_id = $1::numeric
@@ -856,40 +804,27 @@ WHERE chain_id = $1::numeric
 `
 
 type CatalogLatestStageParams struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2      pgtype.Numeric `db:"column_2" json:"column_2"`
+	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber  pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
 	Stage        string         `db:"stage" json:"stage"`
 	StageVersion int32          `db:"stage_version" json:"stage_version"`
 }
 
-func (q *Queries) CatalogLatestStage(ctx context.Context, arg CatalogLatestStageParams) ([]string, error) {
-	rows, err := q.db.Query(ctx, CatalogLatestStage,
-		arg.Column1,
-		arg.Column2,
+func (q *Queries) CatalogLatestStage(ctx context.Context, arg CatalogLatestStageParams) (pgtype.Text, error) {
+	row := q.db.QueryRow(ctx, catalogLatestStage,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.Stage,
 		arg.StageVersion,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []string{}
-	for rows.Next() {
-		var state string
-		if err := rows.Scan(&state); err != nil {
-			return nil, err
-		}
-		items = append(items, state)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var state pgtype.Text
+	err := row.Scan(&state)
+	return state, err
 }
 
-const CatalogNftBalanceCandidates = `-- name: CatalogNftBalanceCandidates :many
+const catalogNftBalanceCandidates = `-- name: CatalogNftBalanceCandidates :many
 SELECT d.token_address, d.token_id::text
 FROM token_balance_deltas AS d
 JOIN canonical_blocks AS cb
@@ -911,13 +846,13 @@ LIMIT $7
 `
 
 type CatalogNftBalanceCandidatesParams struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2      pgtype.Numeric `db:"column_2" json:"column_2"`
-	OwnerAddress []byte         `db:"owner_address" json:"owner_address"`
-	Column4      bool           `db:"column_4" json:"column_4"`
-	TokenAddress []byte         `db:"token_address" json:"token_address"`
-	Column6      pgtype.Numeric `db:"column_6" json:"column_6"`
-	Limit        int32          `db:"limit" json:"limit"`
+	ChainID        pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	MaxBlockNumber pgtype.Numeric `db:"max_block_number" json:"max_block_number"`
+	OwnerAddress   []byte         `db:"owner_address" json:"owner_address"`
+	HasCursor      bool           `db:"has_cursor" json:"has_cursor"`
+	TokenAddress   []byte         `db:"token_address" json:"token_address"`
+	CursorTokenID  pgtype.Numeric `db:"cursor_token_id" json:"cursor_token_id"`
+	Limit          int32          `db:"limit" json:"limit"`
 }
 
 type CatalogNftBalanceCandidatesRow struct {
@@ -926,13 +861,13 @@ type CatalogNftBalanceCandidatesRow struct {
 }
 
 func (q *Queries) CatalogNftBalanceCandidates(ctx context.Context, arg CatalogNftBalanceCandidatesParams) ([]CatalogNftBalanceCandidatesRow, error) {
-	rows, err := q.db.Query(ctx, CatalogNftBalanceCandidates,
-		arg.Column1,
-		arg.Column2,
+	rows, err := q.db.Query(ctx, catalogNftBalanceCandidates,
+		arg.ChainID,
+		arg.MaxBlockNumber,
 		arg.OwnerAddress,
-		arg.Column4,
+		arg.HasCursor,
 		arg.TokenAddress,
-		arg.Column6,
+		arg.CursorTokenID,
 		arg.Limit,
 	)
 	if err != nil {
@@ -953,22 +888,34 @@ func (q *Queries) CatalogNftBalanceCandidates(ctx context.Context, arg CatalogNf
 	return items, nil
 }
 
-const CatalogTokenEvents = `-- name: CatalogTokenEvents :many
-SELECT e.chain_id::text, e.block_number::text, e.block_hash,
-       e.log_index::text, e.sub_index::text, e.transaction_hash,
-       e.token_address, e.standard, e.event_kind, e.operator,
-       e.from_address, e.to_address, e.token_id::text, e.amount::text,
-       e.confidence, metadata.decimals
+const catalogTokenEvents = `-- name: CatalogTokenEvents :many
+SELECT
+e.chain_id::text AS chain_id,
+e.block_number::text AS block_number,
+e.block_hash AS block_hash,
+e.log_index::text AS log_index,
+e.sub_index::text AS sub_index,
+e.transaction_hash AS transaction_hash,
+e.token_address AS token_address,
+e.standard AS standard,
+e.event_kind AS event_kind,
+e.operator AS operator,
+e.from_address AS from_address,
+e.to_address AS to_address,
+e.token_id AS token_id,
+e.amount AS amount,
+e.confidence AS confidence,
+metadata.decimals AS decimals
 FROM token_events AS e
 JOIN canonical_blocks AS cb
   ON cb.chain_id = e.chain_id
  AND cb.number = e.block_number
  AND cb.block_hash = e.block_hash
 LEFT JOIN LATERAL (
-    SELECT CASE
+    SELECT (CASE
                WHEN contract.standard = 'erc20' AND contract.metadata_state = 'complete'
                THEN contract.decimals
-           END AS decimals
+           END)::numeric AS decimals
     FROM token_contracts AS contract
     JOIN canonical_blocks AS observation
       ON observation.chain_id = contract.chain_id
@@ -980,61 +927,61 @@ LEFT JOIN LATERAL (
     ORDER BY contract.observed_block_number DESC, contract.code_hash DESC
     LIMIT 1
 ) AS metadata ON e.standard = 'erc20'
-WHERE e.chain_id = $1::numeric
-  AND e.block_number <= $2::numeric
+WHERE e.chain_id = $1::text::numeric
+  AND e.block_number <= $2::text::numeric
   AND e.token_address = $3
   AND e.canonical = true
   AND (
       $4::boolean = false OR
       (e.block_number, e.log_index, e.sub_index, e.block_hash) <
-      ($5::numeric, $6::bigint, $7::integer, $8)
+      ($5::text::numeric, $6::text::bigint, $7::text::integer, $8::bytea)
   )
 ORDER BY e.block_number DESC, e.log_index DESC, e.sub_index DESC, e.block_hash DESC
 LIMIT $9
 `
 
 type CatalogTokenEventsParams struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2      pgtype.Numeric `db:"column_2" json:"column_2"`
-	TokenAddress []byte         `db:"token_address" json:"token_address"`
-	Column4      bool           `db:"column_4" json:"column_4"`
-	Column5      pgtype.Numeric `db:"column_5" json:"column_5"`
-	Column6      int64          `db:"column_6" json:"column_6"`
-	Column7      int32          `db:"column_7" json:"column_7"`
-	BlockNumber  pgtype.Numeric `db:"block_number" json:"block_number"`
-	Limit        int32          `db:"limit" json:"limit"`
+	ChainID         string `db:"chain_id" json:"chain_id"`
+	SnapshotNumber  string `db:"snapshot_number" json:"snapshot_number"`
+	TokenAddress    []byte `db:"token_address" json:"token_address"`
+	HasCursor       bool   `db:"has_cursor" json:"has_cursor"`
+	BeforeNumber    string `db:"before_number" json:"before_number"`
+	BeforeLogIndex  string `db:"before_log_index" json:"before_log_index"`
+	BeforeSubIndex  string `db:"before_sub_index" json:"before_sub_index"`
+	BeforeBlockHash []byte `db:"before_block_hash" json:"before_block_hash"`
+	PageLimit       int32  `db:"page_limit" json:"page_limit"`
 }
 
 type CatalogTokenEventsRow struct {
-	EChainID        string      `db:"e_chain_id" json:"e_chain_id"`
-	EBlockNumber    string      `db:"e_block_number" json:"e_block_number"`
-	BlockHash       []byte      `db:"block_hash" json:"block_hash"`
-	ELogIndex       string      `db:"e_log_index" json:"e_log_index"`
-	ESubIndex       string      `db:"e_sub_index" json:"e_sub_index"`
-	TransactionHash []byte      `db:"transaction_hash" json:"transaction_hash"`
-	TokenAddress    []byte      `db:"token_address" json:"token_address"`
-	Standard        string      `db:"standard" json:"standard"`
-	EventKind       string      `db:"event_kind" json:"event_kind"`
-	Operator        []byte      `db:"operator" json:"operator"`
-	FromAddress     []byte      `db:"from_address" json:"from_address"`
-	ToAddress       []byte      `db:"to_address" json:"to_address"`
-	ETokenID        string      `db:"e_token_id" json:"e_token_id"`
-	EAmount         string      `db:"e_amount" json:"e_amount"`
-	Confidence      string      `db:"confidence" json:"confidence"`
-	Decimals        interface{} `db:"decimals" json:"decimals"`
+	ChainID         string         `db:"chain_id" json:"chain_id"`
+	BlockNumber     string         `db:"block_number" json:"block_number"`
+	BlockHash       []byte         `db:"block_hash" json:"block_hash"`
+	LogIndex        string         `db:"log_index" json:"log_index"`
+	SubIndex        string         `db:"sub_index" json:"sub_index"`
+	TransactionHash []byte         `db:"transaction_hash" json:"transaction_hash"`
+	TokenAddress    []byte         `db:"token_address" json:"token_address"`
+	Standard        string         `db:"standard" json:"standard"`
+	EventKind       string         `db:"event_kind" json:"event_kind"`
+	Operator        []byte         `db:"operator" json:"operator"`
+	FromAddress     []byte         `db:"from_address" json:"from_address"`
+	ToAddress       []byte         `db:"to_address" json:"to_address"`
+	TokenID         pgtype.Numeric `db:"token_id" json:"token_id"`
+	Amount          pgtype.Numeric `db:"amount" json:"amount"`
+	Confidence      string         `db:"confidence" json:"confidence"`
+	Decimals        pgtype.Numeric `db:"decimals" json:"decimals"`
 }
 
 func (q *Queries) CatalogTokenEvents(ctx context.Context, arg CatalogTokenEventsParams) ([]CatalogTokenEventsRow, error) {
-	rows, err := q.db.Query(ctx, CatalogTokenEvents,
-		arg.Column1,
-		arg.Column2,
+	rows, err := q.db.Query(ctx, catalogTokenEvents,
+		arg.ChainID,
+		arg.SnapshotNumber,
 		arg.TokenAddress,
-		arg.Column4,
-		arg.Column5,
-		arg.Column6,
-		arg.Column7,
-		arg.BlockNumber,
-		arg.Limit,
+		arg.HasCursor,
+		arg.BeforeNumber,
+		arg.BeforeLogIndex,
+		arg.BeforeSubIndex,
+		arg.BeforeBlockHash,
+		arg.PageLimit,
 	)
 	if err != nil {
 		return nil, err
@@ -1044,11 +991,11 @@ func (q *Queries) CatalogTokenEvents(ctx context.Context, arg CatalogTokenEvents
 	for rows.Next() {
 		var i CatalogTokenEventsRow
 		if err := rows.Scan(
-			&i.EChainID,
-			&i.EBlockNumber,
+			&i.ChainID,
+			&i.BlockNumber,
 			&i.BlockHash,
-			&i.ELogIndex,
-			&i.ESubIndex,
+			&i.LogIndex,
+			&i.SubIndex,
 			&i.TransactionHash,
 			&i.TokenAddress,
 			&i.Standard,
@@ -1056,8 +1003,8 @@ func (q *Queries) CatalogTokenEvents(ctx context.Context, arg CatalogTokenEvents
 			&i.Operator,
 			&i.FromAddress,
 			&i.ToAddress,
-			&i.ETokenID,
-			&i.EAmount,
+			&i.TokenID,
+			&i.Amount,
 			&i.Confidence,
 			&i.Decimals,
 		); err != nil {
@@ -1071,7 +1018,7 @@ func (q *Queries) CatalogTokenEvents(ctx context.Context, arg CatalogTokenEvents
 	return items, nil
 }
 
-const CatalogTraceStagePublication = `-- name: CatalogTraceStagePublication :many
+const catalogTraceStagePublication = `-- name: CatalogTraceStagePublication :one
 SELECT state, durable_job_id, job_generation
 FROM published_block_stage_results
 WHERE chain_id = $1::numeric
@@ -1082,46 +1029,33 @@ WHERE chain_id = $1::numeric
 `
 
 type CatalogTraceStagePublicationParams struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2      pgtype.Numeric `db:"column_2" json:"column_2"`
+	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber  pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
 	Stage        string         `db:"stage" json:"stage"`
 	StageVersion int32          `db:"stage_version" json:"stage_version"`
 }
 
 type CatalogTraceStagePublicationRow struct {
-	State         string `db:"state" json:"state"`
-	DurableJobID  *int64 `db:"durable_job_id" json:"durable_job_id"`
-	JobGeneration *int64 `db:"job_generation" json:"job_generation"`
+	State         pgtype.Text `db:"state" json:"state"`
+	DurableJobID  *int64      `db:"durable_job_id" json:"durable_job_id"`
+	JobGeneration *int64      `db:"job_generation" json:"job_generation"`
 }
 
-func (q *Queries) CatalogTraceStagePublication(ctx context.Context, arg CatalogTraceStagePublicationParams) ([]CatalogTraceStagePublicationRow, error) {
-	rows, err := q.db.Query(ctx, CatalogTraceStagePublication,
-		arg.Column1,
-		arg.Column2,
+func (q *Queries) CatalogTraceStagePublication(ctx context.Context, arg CatalogTraceStagePublicationParams) (CatalogTraceStagePublicationRow, error) {
+	row := q.db.QueryRow(ctx, catalogTraceStagePublication,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.Stage,
 		arg.StageVersion,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []CatalogTraceStagePublicationRow{}
-	for rows.Next() {
-		var i CatalogTraceStagePublicationRow
-		if err := rows.Scan(&i.State, &i.DurableJobID, &i.JobGeneration); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i CatalogTraceStagePublicationRow
+	err := row.Scan(&i.State, &i.DurableJobID, &i.JobGeneration)
+	return i, err
 }
 
-const CatalogTransactionAuthorizations = `-- name: CatalogTransactionAuthorizations :many
+const catalogTransactionAuthorizations = `-- name: CatalogTransactionAuthorizations :many
 SELECT authorization_index, authorization_chain_id::text,
        authorization_nonce::text, delegate_address, y_parity, r, s,
        authority, signature_status, application_status, skip_reason
@@ -1129,15 +1063,15 @@ FROM eip7702_authorizations
 WHERE chain_id = $1::numeric AND block_hash = $2 AND transaction_hash = $3
   AND canonical
 ORDER BY authorization_index
-LIMIT $4 OFFSET $5
+LIMIT $5 OFFSET $4
 `
 
 type CatalogTransactionAuthorizationsParams struct {
-	Column1         pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID         pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	BlockHash       []byte         `db:"block_hash" json:"block_hash"`
 	TransactionHash []byte         `db:"transaction_hash" json:"transaction_hash"`
-	Limit           int32          `db:"limit" json:"limit"`
 	Offset          int32          `db:"offset" json:"offset"`
+	Limit           int32          `db:"limit" json:"limit"`
 }
 
 type CatalogTransactionAuthorizationsRow struct {
@@ -1155,12 +1089,12 @@ type CatalogTransactionAuthorizationsRow struct {
 }
 
 func (q *Queries) CatalogTransactionAuthorizations(ctx context.Context, arg CatalogTransactionAuthorizationsParams) ([]CatalogTransactionAuthorizationsRow, error) {
-	rows, err := q.db.Query(ctx, CatalogTransactionAuthorizations,
-		arg.Column1,
+	rows, err := q.db.Query(ctx, catalogTransactionAuthorizations,
+		arg.ChainID,
 		arg.BlockHash,
 		arg.TransactionHash,
-		arg.Limit,
 		arg.Offset,
+		arg.Limit,
 	)
 	if err != nil {
 		return nil, err
@@ -1192,7 +1126,7 @@ func (q *Queries) CatalogTransactionAuthorizations(ctx context.Context, arg Cata
 	return items, nil
 }
 
-const CatalogTransactionCalldataDecoding = `-- name: CatalogTransactionCalldataDecoding :many
+const catalogTransactionCalldataDecoding = `-- name: CatalogTransactionCalldataDecoding :one
 SELECT decoding.status, decoding.signature, decoding.source, decoding.confidence,
        decoding.arguments, decoding.candidates, decoding.warning,
        decoding.target_address, decoding.target_code_hash,
@@ -1220,7 +1154,7 @@ WHERE decoding.chain_id = $1::numeric
 `
 
 type CatalogTransactionCalldataDecodingParams struct {
-	Column1         pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID         pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	BlockHash       []byte         `db:"block_hash" json:"block_hash"`
 	TransactionHash []byte         `db:"transaction_hash" json:"transaction_hash"`
 	TargetAddress   []byte         `db:"target_address" json:"target_address"`
@@ -1243,47 +1177,34 @@ type CatalogTransactionCalldataDecodingRow struct {
 	ReturnArguments []byte  `db:"return_arguments" json:"return_arguments"`
 }
 
-func (q *Queries) CatalogTransactionCalldataDecoding(ctx context.Context, arg CatalogTransactionCalldataDecodingParams) ([]CatalogTransactionCalldataDecodingRow, error) {
-	rows, err := q.db.Query(ctx, CatalogTransactionCalldataDecoding,
-		arg.Column1,
+func (q *Queries) CatalogTransactionCalldataDecoding(ctx context.Context, arg CatalogTransactionCalldataDecodingParams) (CatalogTransactionCalldataDecodingRow, error) {
+	row := q.db.QueryRow(ctx, catalogTransactionCalldataDecoding,
+		arg.ChainID,
 		arg.BlockHash,
 		arg.TransactionHash,
 		arg.TargetAddress,
 		arg.TargetCodeHash,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []CatalogTransactionCalldataDecodingRow{}
-	for rows.Next() {
-		var i CatalogTransactionCalldataDecodingRow
-		if err := rows.Scan(
-			&i.Status,
-			&i.Signature,
-			&i.Source,
-			&i.Confidence,
-			&i.Arguments,
-			&i.Candidates,
-			&i.Warning,
-			&i.TargetAddress,
-			&i.TargetCodeHash,
-			&i.SourceAddress,
-			&i.SourceCodeHash,
-			&i.ReturnStatus,
-			&i.ReturnArguments,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i CatalogTransactionCalldataDecodingRow
+	err := row.Scan(
+		&i.Status,
+		&i.Signature,
+		&i.Source,
+		&i.Confidence,
+		&i.Arguments,
+		&i.Candidates,
+		&i.Warning,
+		&i.TargetAddress,
+		&i.TargetCodeHash,
+		&i.SourceAddress,
+		&i.SourceCodeHash,
+		&i.ReturnStatus,
+		&i.ReturnArguments,
+	)
+	return i, err
 }
 
-const CatalogTransactionCalldataExecution = `-- name: CatalogTransactionCalldataExecution :many
+const catalogTransactionCalldataExecution = `-- name: CatalogTransactionCalldataExecution :one
 WITH published_abi AS (
     SELECT 1
     FROM published_block_stage_results AS published
@@ -1328,9 +1249,9 @@ LIMIT 1
 `
 
 type CatalogTransactionCalldataExecutionParams struct {
-	Column1          pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2          pgtype.Numeric `db:"column_2" json:"column_2"`
-	Column3          []byte         `db:"column_3" json:"column_3"`
+	ChainID          pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber      pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash        []byte         `db:"block_hash" json:"block_hash"`
 	TransactionHash  []byte         `db:"transaction_hash" json:"transaction_hash"`
 	ContextAddress   []byte         `db:"context_address" json:"context_address"`
 	TransactionIndex int64          `db:"transaction_index" json:"transaction_index"`
@@ -1344,40 +1265,27 @@ type CatalogTransactionCalldataExecutionRow struct {
 	EvidenceSource    string `db:"evidence_source" json:"evidence_source"`
 }
 
-func (q *Queries) CatalogTransactionCalldataExecution(ctx context.Context, arg CatalogTransactionCalldataExecutionParams) ([]CatalogTransactionCalldataExecutionRow, error) {
-	rows, err := q.db.Query(ctx, CatalogTransactionCalldataExecution,
-		arg.Column1,
-		arg.Column2,
-		arg.Column3,
+func (q *Queries) CatalogTransactionCalldataExecution(ctx context.Context, arg CatalogTransactionCalldataExecutionParams) (CatalogTransactionCalldataExecutionRow, error) {
+	row := q.db.QueryRow(ctx, catalogTransactionCalldataExecution,
+		arg.ChainID,
+		arg.BlockNumber,
+		arg.BlockHash,
 		arg.TransactionHash,
 		arg.ContextAddress,
 		arg.TransactionIndex,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []CatalogTransactionCalldataExecutionRow{}
-	for rows.Next() {
-		var i CatalogTransactionCalldataExecutionRow
-		if err := rows.Scan(
-			&i.ContextAddress,
-			&i.ExecutionAddress,
-			&i.ExecutionCodeHash,
-			&i.Resolution,
-			&i.EvidenceSource,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i CatalogTransactionCalldataExecutionRow
+	err := row.Scan(
+		&i.ContextAddress,
+		&i.ExecutionAddress,
+		&i.ExecutionCodeHash,
+		&i.Resolution,
+		&i.EvidenceSource,
+	)
+	return i, err
 }
 
-const CatalogTransactionCalldataIdentity = `-- name: CatalogTransactionCalldataIdentity :many
+const catalogTransactionCalldataIdentity = `-- name: CatalogTransactionCalldataIdentity :one
 SELECT inclusion.block_number::text, inclusion.block_hash, inclusion.tx_index, inclusion.raw
 FROM transaction_inclusions AS inclusion
 JOIN canonical_blocks AS canonical
@@ -1395,33 +1303,22 @@ type CatalogTransactionCalldataIdentityRow struct {
 	Raw                  []byte `db:"raw" json:"raw"`
 }
 
-func (q *Queries) CatalogTransactionCalldataIdentity(ctx context.Context, column1 pgtype.Numeric, txHash []byte) ([]CatalogTransactionCalldataIdentityRow, error) {
-	rows, err := q.db.Query(ctx, CatalogTransactionCalldataIdentity, column1, txHash)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []CatalogTransactionCalldataIdentityRow{}
-	for rows.Next() {
-		var i CatalogTransactionCalldataIdentityRow
-		if err := rows.Scan(
-			&i.InclusionBlockNumber,
-			&i.BlockHash,
-			&i.TxIndex,
-			&i.Raw,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) CatalogTransactionCalldataIdentity(ctx context.Context, chainID pgtype.Numeric, txHash []byte) (CatalogTransactionCalldataIdentityRow, error) {
+	row := q.db.QueryRow(ctx, catalogTransactionCalldataIdentity, chainID, txHash)
+	var i CatalogTransactionCalldataIdentityRow
+	err := row.Scan(
+		&i.InclusionBlockNumber,
+		&i.BlockHash,
+		&i.TxIndex,
+		&i.Raw,
+	)
+	return i, err
 }
 
-const CatalogTransactionFailureReceiptStatus = `-- name: CatalogTransactionFailureReceiptStatus :many
-SELECT receipt.raw->>'status'
+const catalogTransactionFailureReceiptStatus = `-- name: CatalogTransactionFailureReceiptStatus :one
+SELECT
+COALESCE((receipt.raw->>'status'),'')::text AS status,
+(receipt.raw->>'status' IS NOT NULL)::boolean AS status_present
 FROM receipts AS receipt
 WHERE receipt.chain_id = $1::numeric
   AND receipt.block_number = $2::numeric
@@ -1431,41 +1328,33 @@ LIMIT 1
 `
 
 type CatalogTransactionFailureReceiptStatusParams struct {
-	Column1   pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2   pgtype.Numeric `db:"column_2" json:"column_2"`
-	BlockHash []byte         `db:"block_hash" json:"block_hash"`
-	TxHash    []byte         `db:"tx_hash" json:"tx_hash"`
+	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
+	TxHash      []byte         `db:"tx_hash" json:"tx_hash"`
 }
 
-func (q *Queries) CatalogTransactionFailureReceiptStatus(ctx context.Context, arg CatalogTransactionFailureReceiptStatusParams) ([]interface{}, error) {
-	rows, err := q.db.Query(ctx, CatalogTransactionFailureReceiptStatus,
-		arg.Column1,
-		arg.Column2,
+type CatalogTransactionFailureReceiptStatusRow struct {
+	Status        string `db:"status" json:"status"`
+	StatusPresent bool   `db:"status_present" json:"status_present"`
+}
+
+func (q *Queries) CatalogTransactionFailureReceiptStatus(ctx context.Context, arg CatalogTransactionFailureReceiptStatusParams) (CatalogTransactionFailureReceiptStatusRow, error) {
+	row := q.db.QueryRow(ctx, catalogTransactionFailureReceiptStatus,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.TxHash,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []interface{}{}
-	for rows.Next() {
-		var column_1 interface{}
-		if err := rows.Scan(&column_1); err != nil {
-			return nil, err
-		}
-		items = append(items, column_1)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i CatalogTransactionFailureReceiptStatusRow
+	err := row.Scan(&i.Status, &i.StatusPresent)
+	return i, err
 }
 
-const CatalogTransactionFailureRoot = `-- name: CatalogTransactionFailureRoot :many
+const catalogTransactionFailureRoot = `-- name: CatalogTransactionFailureRoot :one
 SELECT trace_path, parent_path, depth, call_type,
        from_address, to_address, created_address,
-       value::text, gas::text, gas_used::text,
+       value AS value, gas AS gas, gas_used AS gas_used,
        input, output, error, direct_reverted, reverted,
        execution_address, execution_code_hash, execution_resolution
 FROM normalized_traces
@@ -1480,78 +1369,65 @@ LIMIT 1
 `
 
 type CatalogTransactionFailureRootParams struct {
-	Column1         pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2         pgtype.Numeric `db:"column_2" json:"column_2"`
+	ChainID         pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber     pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash       []byte         `db:"block_hash" json:"block_hash"`
 	TransactionHash []byte         `db:"transaction_hash" json:"transaction_hash"`
 }
 
 type CatalogTransactionFailureRootRow struct {
-	TracePath           string  `db:"trace_path" json:"trace_path"`
-	ParentPath          *string `db:"parent_path" json:"parent_path"`
-	Depth               int32   `db:"depth" json:"depth"`
-	CallType            string  `db:"call_type" json:"call_type"`
-	FromAddress         []byte  `db:"from_address" json:"from_address"`
-	ToAddress           []byte  `db:"to_address" json:"to_address"`
-	CreatedAddress      []byte  `db:"created_address" json:"created_address"`
-	Value               string  `db:"value" json:"value"`
-	Gas                 string  `db:"gas" json:"gas"`
-	GasUsed             string  `db:"gas_used" json:"gas_used"`
-	Input               []byte  `db:"input" json:"input"`
-	Output              []byte  `db:"output" json:"output"`
-	Error               *string `db:"error" json:"error"`
-	DirectReverted      bool    `db:"direct_reverted" json:"direct_reverted"`
-	Reverted            bool    `db:"reverted" json:"reverted"`
-	ExecutionAddress    []byte  `db:"execution_address" json:"execution_address"`
-	ExecutionCodeHash   []byte  `db:"execution_code_hash" json:"execution_code_hash"`
-	ExecutionResolution string  `db:"execution_resolution" json:"execution_resolution"`
+	TracePath           string         `db:"trace_path" json:"trace_path"`
+	ParentPath          *string        `db:"parent_path" json:"parent_path"`
+	Depth               int32          `db:"depth" json:"depth"`
+	CallType            string         `db:"call_type" json:"call_type"`
+	FromAddress         []byte         `db:"from_address" json:"from_address"`
+	ToAddress           []byte         `db:"to_address" json:"to_address"`
+	CreatedAddress      []byte         `db:"created_address" json:"created_address"`
+	Value               pgtype.Numeric `db:"value" json:"value"`
+	Gas                 pgtype.Numeric `db:"gas" json:"gas"`
+	GasUsed             pgtype.Numeric `db:"gas_used" json:"gas_used"`
+	Input               []byte         `db:"input" json:"input"`
+	Output              []byte         `db:"output" json:"output"`
+	Error               *string        `db:"error" json:"error"`
+	DirectReverted      bool           `db:"direct_reverted" json:"direct_reverted"`
+	Reverted            bool           `db:"reverted" json:"reverted"`
+	ExecutionAddress    []byte         `db:"execution_address" json:"execution_address"`
+	ExecutionCodeHash   []byte         `db:"execution_code_hash" json:"execution_code_hash"`
+	ExecutionResolution string         `db:"execution_resolution" json:"execution_resolution"`
 }
 
-func (q *Queries) CatalogTransactionFailureRoot(ctx context.Context, arg CatalogTransactionFailureRootParams) ([]CatalogTransactionFailureRootRow, error) {
-	rows, err := q.db.Query(ctx, CatalogTransactionFailureRoot,
-		arg.Column1,
-		arg.Column2,
+func (q *Queries) CatalogTransactionFailureRoot(ctx context.Context, arg CatalogTransactionFailureRootParams) (CatalogTransactionFailureRootRow, error) {
+	row := q.db.QueryRow(ctx, catalogTransactionFailureRoot,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.TransactionHash,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []CatalogTransactionFailureRootRow{}
-	for rows.Next() {
-		var i CatalogTransactionFailureRootRow
-		if err := rows.Scan(
-			&i.TracePath,
-			&i.ParentPath,
-			&i.Depth,
-			&i.CallType,
-			&i.FromAddress,
-			&i.ToAddress,
-			&i.CreatedAddress,
-			&i.Value,
-			&i.Gas,
-			&i.GasUsed,
-			&i.Input,
-			&i.Output,
-			&i.Error,
-			&i.DirectReverted,
-			&i.Reverted,
-			&i.ExecutionAddress,
-			&i.ExecutionCodeHash,
-			&i.ExecutionResolution,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i CatalogTransactionFailureRootRow
+	err := row.Scan(
+		&i.TracePath,
+		&i.ParentPath,
+		&i.Depth,
+		&i.CallType,
+		&i.FromAddress,
+		&i.ToAddress,
+		&i.CreatedAddress,
+		&i.Value,
+		&i.Gas,
+		&i.GasUsed,
+		&i.Input,
+		&i.Output,
+		&i.Error,
+		&i.DirectReverted,
+		&i.Reverted,
+		&i.ExecutionAddress,
+		&i.ExecutionCodeHash,
+		&i.ExecutionResolution,
+	)
+	return i, err
 }
 
-const CatalogTransactionInternalTransactions = `-- name: CatalogTransactionInternalTransactions :many
+const catalogTransactionInternalTransactions = `-- name: CatalogTransactionInternalTransactions :many
 SELECT trace.trace_path, trace.depth, trace.call_type,
        trace.from_address, trace.to_address, trace.created_address,
        trace.value::text
@@ -1564,15 +1440,15 @@ WHERE trace.chain_id = $1::numeric
   AND trace.value > 0
   AND trace.reverted = false
 ORDER BY string_to_array(trace.trace_path, '.')::bigint[]
-LIMIT $4 OFFSET $5
+LIMIT $5 OFFSET $4
 `
 
 type CatalogTransactionInternalTransactionsParams struct {
-	Column1         pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID         pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	BlockHash       []byte         `db:"block_hash" json:"block_hash"`
 	TransactionHash []byte         `db:"transaction_hash" json:"transaction_hash"`
-	Limit           int32          `db:"limit" json:"limit"`
 	Offset          int32          `db:"offset" json:"offset"`
+	Limit           int32          `db:"limit" json:"limit"`
 }
 
 type CatalogTransactionInternalTransactionsRow struct {
@@ -1586,12 +1462,12 @@ type CatalogTransactionInternalTransactionsRow struct {
 }
 
 func (q *Queries) CatalogTransactionInternalTransactions(ctx context.Context, arg CatalogTransactionInternalTransactionsParams) ([]CatalogTransactionInternalTransactionsRow, error) {
-	rows, err := q.db.Query(ctx, CatalogTransactionInternalTransactions,
-		arg.Column1,
+	rows, err := q.db.Query(ctx, catalogTransactionInternalTransactions,
+		arg.ChainID,
 		arg.BlockHash,
 		arg.TransactionHash,
-		arg.Limit,
 		arg.Offset,
+		arg.Limit,
 	)
 	if err != nil {
 		return nil, err
@@ -1619,10 +1495,10 @@ func (q *Queries) CatalogTransactionInternalTransactions(ctx context.Context, ar
 	return items, nil
 }
 
-const CatalogTransactionLogABICandidates = `-- name: CatalogTransactionLogABICandidates :many
+const catalogTransactionLogABICandidates = `-- name: CatalogTransactionLogABICandidates :many
 WITH target_code AS (
-    SELECT $5::bytea AS code_hash
-    WHERE $5::bytea IS NOT NULL
+    SELECT $2::bytea AS code_hash
+    WHERE $2::bytea IS NOT NULL
     UNION ALL
     (
         SELECT observation.code_hash
@@ -1631,11 +1507,11 @@ WITH target_code AS (
           ON canonical.chain_id = observation.chain_id
          AND canonical.number = observation.block_number
          AND canonical.block_hash = observation.block_hash
-        WHERE observation.chain_id = $1::numeric
-          AND observation.address = $2::bytea
-          AND observation.block_number <= $3::numeric
+        WHERE observation.chain_id = $3::numeric
+          AND observation.address = $4::bytea
+          AND observation.block_number <= $5::numeric
           AND observation.canonical
-          AND $5::bytea IS NULL
+          AND $2::bytea IS NULL
         ORDER BY observation.block_number DESC, observation.observed_at DESC
         LIMIT 1
     )
@@ -1649,10 +1525,10 @@ WITH target_code AS (
      AND canonical.number = observation.block_number
      AND canonical.block_hash = observation.block_hash
     CROSS JOIN target_code
-    WHERE observation.chain_id = $1::numeric
-      AND observation.proxy_address = $2
+    WHERE observation.chain_id = $3::numeric
+      AND observation.proxy_address = $4
       AND observation.proxy_code_hash = target_code.code_hash
-      AND observation.block_number <= $3::numeric
+      AND observation.block_number <= $5::numeric
       AND observation.canonical
       AND observation.confidence IN ('verified', 'high')
       AND observation.implementation_address IS NOT NULL
@@ -1685,32 +1561,32 @@ WITH target_code AS (
 	           END AS priority,
            binding.created_at, NULL::bytea AS request_digest, NULL::uuid AS job_id
     FROM contract_abis AS binding, target_code
-    WHERE binding.chain_id = $1::numeric
-      AND binding.address = $2
+    WHERE binding.chain_id = $3::numeric
+      AND binding.address = $4
       AND binding.code_hash = target_code.code_hash
-      AND binding.valid_from_block <= $3::numeric
-      AND (binding.valid_to_block IS NULL OR binding.valid_to_block >= $3::numeric)
+      AND binding.valid_from_block <= $5::numeric
+      AND (binding.valid_to_block IS NULL OR binding.valid_to_block >= $5::numeric)
       AND binding.canonical
     UNION ALL
     SELECT target_code.code_hash, verified.abi,
-           CASE WHEN verified.address = $2
-                     AND verified.valid_from_block <= $3::numeric
-                     AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= $3::numeric)
+           CASE WHEN verified.address = $4
+                     AND verified.valid_from_block <= $5::numeric
+                     AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= $5::numeric)
                 THEN 'verified' ELSE 'code_hash' END,
-           CASE WHEN verified.address = $2
-                     AND verified.valid_from_block <= $3::numeric
-                     AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= $3::numeric)
+           CASE WHEN verified.address = $4
+                     AND verified.valid_from_block <= $5::numeric
+                     AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= $5::numeric)
                 THEN 'exact_address' ELSE 'code_hash' END,
 	           verified.address, verified.code_hash,
 	           decode(repeat('00', 32), 'hex'),
            0::numeric, NULL::numeric,
-           CASE WHEN verified.address = $2
-                     AND verified.valid_from_block <= $3::numeric
-                     AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= $3::numeric)
+           CASE WHEN verified.address = $4
+                     AND verified.valid_from_block <= $5::numeric
+                     AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= $5::numeric)
                 THEN 1 ELSE 3 END,
            verified.created_at, verified.request_digest, verified.verification_job_id
     FROM verified_contracts AS verified, target_code
-    WHERE verified.chain_id = $1::numeric
+    WHERE verified.chain_id = $3::numeric
       AND verified.code_hash = target_code.code_hash
       AND verified.abi IS NOT NULL
     UNION ALL
@@ -1721,7 +1597,7 @@ WITH target_code AS (
            CASE WHEN verified.address = proxy.implementation_address THEN 2 ELSE 3 END,
            verified.created_at, verified.request_digest, verified.verification_job_id
     FROM verified_contracts AS verified, target_code, historical_proxy AS proxy
-    WHERE verified.chain_id = $1::numeric
+    WHERE verified.chain_id = $3::numeric
       AND verified.code_hash = proxy.implementation_code_hash
       AND verified.abi IS NOT NULL
       AND (
@@ -1734,40 +1610,40 @@ WITH target_code AS (
 )
 SELECT target_code_hash, abi, registry_source, source_kind,
        source_address, source_code_hash, selector_scope,
-       valid_from_block::text, valid_to_block::text
+       valid_from_block::text, valid_to_block AS valid_to_block
 FROM candidates
 ORDER BY priority, created_at DESC, request_digest ASC NULLS FIRST,
          job_id ASC NULLS FIRST, source_address, source_code_hash
-LIMIT $4
+LIMIT $1
 `
 
 type CatalogTransactionLogABICandidatesParams struct {
-	Column1 pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2 []byte         `db:"column_2" json:"column_2"`
-	Column3 pgtype.Numeric `db:"column_3" json:"column_3"`
-	Limit   int32          `db:"limit" json:"limit"`
-	Column5 []byte         `db:"column_5" json:"column_5"`
+	Limit          int32          `db:"limit" json:"limit"`
+	CodeHash       []byte         `db:"code_hash" json:"code_hash"`
+	ChainID        pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Address        []byte         `db:"address" json:"address"`
+	MaxBlockNumber pgtype.Numeric `db:"max_block_number" json:"max_block_number"`
 }
 
 type CatalogTransactionLogABICandidatesRow struct {
-	TargetCodeHash []byte `db:"target_code_hash" json:"target_code_hash"`
-	Abi            []byte `db:"abi" json:"abi"`
-	RegistrySource string `db:"registry_source" json:"registry_source"`
-	SourceKind     string `db:"source_kind" json:"source_kind"`
-	SourceAddress  []byte `db:"source_address" json:"source_address"`
-	SourceCodeHash []byte `db:"source_code_hash" json:"source_code_hash"`
-	SelectorScope  []byte `db:"selector_scope" json:"selector_scope"`
-	ValidFromBlock string `db:"valid_from_block" json:"valid_from_block"`
-	ValidToBlock   string `db:"valid_to_block" json:"valid_to_block"`
+	TargetCodeHash []byte         `db:"target_code_hash" json:"target_code_hash"`
+	Abi            []byte         `db:"abi" json:"abi"`
+	RegistrySource string         `db:"registry_source" json:"registry_source"`
+	SourceKind     string         `db:"source_kind" json:"source_kind"`
+	SourceAddress  []byte         `db:"source_address" json:"source_address"`
+	SourceCodeHash []byte         `db:"source_code_hash" json:"source_code_hash"`
+	SelectorScope  []byte         `db:"selector_scope" json:"selector_scope"`
+	ValidFromBlock string         `db:"valid_from_block" json:"valid_from_block"`
+	ValidToBlock   pgtype.Numeric `db:"valid_to_block" json:"valid_to_block"`
 }
 
 func (q *Queries) CatalogTransactionLogABICandidates(ctx context.Context, arg CatalogTransactionLogABICandidatesParams) ([]CatalogTransactionLogABICandidatesRow, error) {
-	rows, err := q.db.Query(ctx, CatalogTransactionLogABICandidates,
-		arg.Column1,
-		arg.Column2,
-		arg.Column3,
+	rows, err := q.db.Query(ctx, catalogTransactionLogABICandidates,
 		arg.Limit,
-		arg.Column5,
+		arg.CodeHash,
+		arg.ChainID,
+		arg.Address,
+		arg.MaxBlockNumber,
 	)
 	if err != nil {
 		return nil, err
@@ -1797,7 +1673,7 @@ func (q *Queries) CatalogTransactionLogABICandidates(ctx context.Context, arg Ca
 	return items, nil
 }
 
-const CatalogTransactionLogs = `-- name: CatalogTransactionLogs :many
+const catalogTransactionLogs = `-- name: CatalogTransactionLogs :many
 SELECT log.log_index, log.raw, decoding.status, decoding.signature,
        decoding.source, decoding.confidence, decoding.arguments,
        decoding.candidates, decoding.warning,
@@ -1830,15 +1706,15 @@ LEFT JOIN trace_log_attributions AS attribution
  )
 WHERE log.chain_id = $1::numeric AND log.block_hash = $2 AND log.tx_hash = $3
 ORDER BY log.log_index
-LIMIT $4 OFFSET $5
+LIMIT $5 OFFSET $4
 `
 
 type CatalogTransactionLogsParams struct {
-	Column1   pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID   pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	BlockHash []byte         `db:"block_hash" json:"block_hash"`
 	TxHash    []byte         `db:"tx_hash" json:"tx_hash"`
-	Limit     int32          `db:"limit" json:"limit"`
 	Offset    int32          `db:"offset" json:"offset"`
+	Limit     int32          `db:"limit" json:"limit"`
 }
 
 type CatalogTransactionLogsRow struct {
@@ -1860,12 +1736,12 @@ type CatalogTransactionLogsRow struct {
 }
 
 func (q *Queries) CatalogTransactionLogs(ctx context.Context, arg CatalogTransactionLogsParams) ([]CatalogTransactionLogsRow, error) {
-	rows, err := q.db.Query(ctx, CatalogTransactionLogs,
-		arg.Column1,
+	rows, err := q.db.Query(ctx, catalogTransactionLogs,
+		arg.ChainID,
 		arg.BlockHash,
 		arg.TxHash,
-		arg.Limit,
 		arg.Offset,
+		arg.Limit,
 	)
 	if err != nil {
 		return nil, err
@@ -1901,9 +1777,12 @@ func (q *Queries) CatalogTransactionLogs(ctx context.Context, arg CatalogTransac
 	return items, nil
 }
 
-const CatalogTransactionResourceIdentity = `-- name: CatalogTransactionResourceIdentity :many
-SELECT inclusion.block_number::text, inclusion.block_hash, inclusion.tx_index,
-       (canonical.block_hash IS NOT NULL)
+const catalogTransactionResourceIdentity = `-- name: CatalogTransactionResourceIdentity :one
+SELECT
+inclusion.block_number::text,
+inclusion.block_hash,
+inclusion.tx_index,
+((canonical.block_hash IS NOT NULL))::boolean AS canonical
 FROM transaction_inclusions AS inclusion
 LEFT JOIN canonical_blocks AS canonical
   ON canonical.chain_id = inclusion.chain_id
@@ -1915,38 +1794,25 @@ LIMIT 1
 `
 
 type CatalogTransactionResourceIdentityRow struct {
-	InclusionBlockNumber string      `db:"inclusion_block_number" json:"inclusion_block_number"`
-	BlockHash            []byte      `db:"block_hash" json:"block_hash"`
-	TxIndex              int64       `db:"tx_index" json:"tx_index"`
-	Column4              interface{} `db:"column_4" json:"column_4"`
+	InclusionBlockNumber string `db:"inclusion_block_number" json:"inclusion_block_number"`
+	BlockHash            []byte `db:"block_hash" json:"block_hash"`
+	TxIndex              int64  `db:"tx_index" json:"tx_index"`
+	Canonical            bool   `db:"canonical" json:"canonical"`
 }
 
-func (q *Queries) CatalogTransactionResourceIdentity(ctx context.Context, column1 pgtype.Numeric, txHash []byte) ([]CatalogTransactionResourceIdentityRow, error) {
-	rows, err := q.db.Query(ctx, CatalogTransactionResourceIdentity, column1, txHash)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []CatalogTransactionResourceIdentityRow{}
-	for rows.Next() {
-		var i CatalogTransactionResourceIdentityRow
-		if err := rows.Scan(
-			&i.InclusionBlockNumber,
-			&i.BlockHash,
-			&i.TxIndex,
-			&i.Column4,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) CatalogTransactionResourceIdentity(ctx context.Context, chainID pgtype.Numeric, txHash []byte) (CatalogTransactionResourceIdentityRow, error) {
+	row := q.db.QueryRow(ctx, catalogTransactionResourceIdentity, chainID, txHash)
+	var i CatalogTransactionResourceIdentityRow
+	err := row.Scan(
+		&i.InclusionBlockNumber,
+		&i.BlockHash,
+		&i.TxIndex,
+		&i.Canonical,
+	)
+	return i, err
 }
 
-const CatalogTransactionStageState = `-- name: CatalogTransactionStageState :many
+const catalogTransactionStageState = `-- name: CatalogTransactionStageState :one
 SELECT state, job_generation
 FROM published_block_stage_results
 WHERE chain_id = $1::numeric
@@ -1957,45 +1823,32 @@ WHERE chain_id = $1::numeric
 `
 
 type CatalogTransactionStageStateParams struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2      pgtype.Numeric `db:"column_2" json:"column_2"`
+	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber  pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
 	Stage        string         `db:"stage" json:"stage"`
 	StageVersion int32          `db:"stage_version" json:"stage_version"`
 }
 
 type CatalogTransactionStageStateRow struct {
-	State         string `db:"state" json:"state"`
-	JobGeneration *int64 `db:"job_generation" json:"job_generation"`
+	State         pgtype.Text `db:"state" json:"state"`
+	JobGeneration *int64      `db:"job_generation" json:"job_generation"`
 }
 
-func (q *Queries) CatalogTransactionStageState(ctx context.Context, arg CatalogTransactionStageStateParams) ([]CatalogTransactionStageStateRow, error) {
-	rows, err := q.db.Query(ctx, CatalogTransactionStageState,
-		arg.Column1,
-		arg.Column2,
+func (q *Queries) CatalogTransactionStageState(ctx context.Context, arg CatalogTransactionStageStateParams) (CatalogTransactionStageStateRow, error) {
+	row := q.db.QueryRow(ctx, catalogTransactionStageState,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.Stage,
 		arg.StageVersion,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []CatalogTransactionStageStateRow{}
-	for rows.Next() {
-		var i CatalogTransactionStageStateRow
-		if err := rows.Scan(&i.State, &i.JobGeneration); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i CatalogTransactionStageStateRow
+	err := row.Scan(&i.State, &i.JobGeneration)
+	return i, err
 }
 
-const CatalogTransactionStateChanges = `-- name: CatalogTransactionStateChanges :many
+const catalogTransactionStateChanges = `-- name: CatalogTransactionStateChanges :many
 SELECT address, field_kind, storage_key, before_value, after_value
 FROM transaction_state_changes
 WHERE chain_id = $1::numeric
@@ -2003,15 +1856,15 @@ WHERE chain_id = $1::numeric
   AND transaction_hash = $3
   AND canonical = true
 ORDER BY address, field_kind, storage_key
-LIMIT $4 OFFSET $5
+LIMIT $5 OFFSET $4
 `
 
 type CatalogTransactionStateChangesParams struct {
-	Column1         pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID         pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	BlockHash       []byte         `db:"block_hash" json:"block_hash"`
 	TransactionHash []byte         `db:"transaction_hash" json:"transaction_hash"`
-	Limit           int32          `db:"limit" json:"limit"`
 	Offset          int32          `db:"offset" json:"offset"`
+	Limit           int32          `db:"limit" json:"limit"`
 }
 
 type CatalogTransactionStateChangesRow struct {
@@ -2023,12 +1876,12 @@ type CatalogTransactionStateChangesRow struct {
 }
 
 func (q *Queries) CatalogTransactionStateChanges(ctx context.Context, arg CatalogTransactionStateChangesParams) ([]CatalogTransactionStateChangesRow, error) {
-	rows, err := q.db.Query(ctx, CatalogTransactionStateChanges,
-		arg.Column1,
+	rows, err := q.db.Query(ctx, catalogTransactionStateChanges,
+		arg.ChainID,
 		arg.BlockHash,
 		arg.TransactionHash,
-		arg.Limit,
 		arg.Offset,
+		arg.Limit,
 	)
 	if err != nil {
 		return nil, err
@@ -2054,18 +1907,30 @@ func (q *Queries) CatalogTransactionStateChanges(ctx context.Context, arg Catalo
 	return items, nil
 }
 
-const CatalogTransactionTokenEvents = `-- name: CatalogTransactionTokenEvents :many
-SELECT event.chain_id::text, event.block_number::text, event.block_hash,
-       event.log_index::text, event.sub_index::text, event.transaction_hash,
-       event.token_address, event.standard, event.event_kind, event.operator,
-       event.from_address, event.to_address, event.token_id::text, event.amount::text,
-       event.confidence, metadata.decimals
+const catalogTransactionTokenEvents = `-- name: CatalogTransactionTokenEvents :many
+SELECT
+event.chain_id::text AS chain_id,
+event.block_number::text AS block_number,
+event.block_hash AS block_hash,
+event.log_index::text AS log_index,
+event.sub_index::text AS sub_index,
+event.transaction_hash AS transaction_hash,
+event.token_address AS token_address,
+event.standard AS standard,
+event.event_kind AS event_kind,
+event.operator AS operator,
+event.from_address AS from_address,
+event.to_address AS to_address,
+event.token_id AS token_id,
+event.amount AS amount,
+event.confidence AS confidence,
+metadata.decimals AS decimals
 FROM token_events AS event
 LEFT JOIN LATERAL (
-    SELECT CASE
+    SELECT (CASE
                WHEN contract.standard = 'erc20' AND contract.metadata_state = 'complete'
                THEN contract.decimals
-           END AS decimals
+           END)::numeric AS decimals
     FROM token_contracts AS contract
     JOIN canonical_blocks AS observation
       ON observation.chain_id = contract.chain_id
@@ -2082,43 +1947,43 @@ WHERE event.chain_id = $1::numeric
   AND event.transaction_hash = $3
   AND event.canonical = true
 ORDER BY event.log_index, event.sub_index
-LIMIT $4 OFFSET $5
+LIMIT $5 OFFSET $4
 `
 
 type CatalogTransactionTokenEventsParams struct {
-	Column1         pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID         pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	BlockHash       []byte         `db:"block_hash" json:"block_hash"`
 	TransactionHash []byte         `db:"transaction_hash" json:"transaction_hash"`
-	Limit           int32          `db:"limit" json:"limit"`
 	Offset          int32          `db:"offset" json:"offset"`
+	Limit           int32          `db:"limit" json:"limit"`
 }
 
 type CatalogTransactionTokenEventsRow struct {
-	EventChainID     string      `db:"event_chain_id" json:"event_chain_id"`
-	EventBlockNumber string      `db:"event_block_number" json:"event_block_number"`
-	BlockHash        []byte      `db:"block_hash" json:"block_hash"`
-	EventLogIndex    string      `db:"event_log_index" json:"event_log_index"`
-	EventSubIndex    string      `db:"event_sub_index" json:"event_sub_index"`
-	TransactionHash  []byte      `db:"transaction_hash" json:"transaction_hash"`
-	TokenAddress     []byte      `db:"token_address" json:"token_address"`
-	Standard         string      `db:"standard" json:"standard"`
-	EventKind        string      `db:"event_kind" json:"event_kind"`
-	Operator         []byte      `db:"operator" json:"operator"`
-	FromAddress      []byte      `db:"from_address" json:"from_address"`
-	ToAddress        []byte      `db:"to_address" json:"to_address"`
-	EventTokenID     string      `db:"event_token_id" json:"event_token_id"`
-	EventAmount      string      `db:"event_amount" json:"event_amount"`
-	Confidence       string      `db:"confidence" json:"confidence"`
-	Decimals         interface{} `db:"decimals" json:"decimals"`
+	ChainID         string         `db:"chain_id" json:"chain_id"`
+	BlockNumber     string         `db:"block_number" json:"block_number"`
+	BlockHash       []byte         `db:"block_hash" json:"block_hash"`
+	LogIndex        string         `db:"log_index" json:"log_index"`
+	SubIndex        string         `db:"sub_index" json:"sub_index"`
+	TransactionHash []byte         `db:"transaction_hash" json:"transaction_hash"`
+	TokenAddress    []byte         `db:"token_address" json:"token_address"`
+	Standard        string         `db:"standard" json:"standard"`
+	EventKind       string         `db:"event_kind" json:"event_kind"`
+	Operator        []byte         `db:"operator" json:"operator"`
+	FromAddress     []byte         `db:"from_address" json:"from_address"`
+	ToAddress       []byte         `db:"to_address" json:"to_address"`
+	TokenID         pgtype.Numeric `db:"token_id" json:"token_id"`
+	Amount          pgtype.Numeric `db:"amount" json:"amount"`
+	Confidence      string         `db:"confidence" json:"confidence"`
+	Decimals        pgtype.Numeric `db:"decimals" json:"decimals"`
 }
 
 func (q *Queries) CatalogTransactionTokenEvents(ctx context.Context, arg CatalogTransactionTokenEventsParams) ([]CatalogTransactionTokenEventsRow, error) {
-	rows, err := q.db.Query(ctx, CatalogTransactionTokenEvents,
-		arg.Column1,
+	rows, err := q.db.Query(ctx, catalogTransactionTokenEvents,
+		arg.ChainID,
 		arg.BlockHash,
 		arg.TransactionHash,
-		arg.Limit,
 		arg.Offset,
+		arg.Limit,
 	)
 	if err != nil {
 		return nil, err
@@ -2128,11 +1993,11 @@ func (q *Queries) CatalogTransactionTokenEvents(ctx context.Context, arg Catalog
 	for rows.Next() {
 		var i CatalogTransactionTokenEventsRow
 		if err := rows.Scan(
-			&i.EventChainID,
-			&i.EventBlockNumber,
+			&i.ChainID,
+			&i.BlockNumber,
 			&i.BlockHash,
-			&i.EventLogIndex,
-			&i.EventSubIndex,
+			&i.LogIndex,
+			&i.SubIndex,
 			&i.TransactionHash,
 			&i.TokenAddress,
 			&i.Standard,
@@ -2140,8 +2005,8 @@ func (q *Queries) CatalogTransactionTokenEvents(ctx context.Context, arg Catalog
 			&i.Operator,
 			&i.FromAddress,
 			&i.ToAddress,
-			&i.EventTokenID,
-			&i.EventAmount,
+			&i.TokenID,
+			&i.Amount,
 			&i.Confidence,
 			&i.Decimals,
 		); err != nil {
@@ -2155,10 +2020,10 @@ func (q *Queries) CatalogTransactionTokenEvents(ctx context.Context, arg Catalog
 	return items, nil
 }
 
-const CatalogTransactionTrace = `-- name: CatalogTransactionTrace :many
+const catalogTransactionTrace = `-- name: CatalogTransactionTrace :many
 SELECT trace_path, parent_path, depth, call_type,
        from_address, to_address, created_address,
-       value::text, gas::text, gas_used::text,
+       value AS value, gas AS gas, gas_used AS gas_used,
        input, output, error, direct_reverted, reverted,
        execution_address, execution_code_hash, execution_resolution
 FROM normalized_traces
@@ -2172,38 +2037,38 @@ LIMIT $5
 `
 
 type CatalogTransactionTraceParams struct {
-	Column1         pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2         pgtype.Numeric `db:"column_2" json:"column_2"`
+	ChainID         pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber     pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash       []byte         `db:"block_hash" json:"block_hash"`
 	TransactionHash []byte         `db:"transaction_hash" json:"transaction_hash"`
 	Limit           int32          `db:"limit" json:"limit"`
 }
 
 type CatalogTransactionTraceRow struct {
-	TracePath           string  `db:"trace_path" json:"trace_path"`
-	ParentPath          *string `db:"parent_path" json:"parent_path"`
-	Depth               int32   `db:"depth" json:"depth"`
-	CallType            string  `db:"call_type" json:"call_type"`
-	FromAddress         []byte  `db:"from_address" json:"from_address"`
-	ToAddress           []byte  `db:"to_address" json:"to_address"`
-	CreatedAddress      []byte  `db:"created_address" json:"created_address"`
-	Value               string  `db:"value" json:"value"`
-	Gas                 string  `db:"gas" json:"gas"`
-	GasUsed             string  `db:"gas_used" json:"gas_used"`
-	Input               []byte  `db:"input" json:"input"`
-	Output              []byte  `db:"output" json:"output"`
-	Error               *string `db:"error" json:"error"`
-	DirectReverted      bool    `db:"direct_reverted" json:"direct_reverted"`
-	Reverted            bool    `db:"reverted" json:"reverted"`
-	ExecutionAddress    []byte  `db:"execution_address" json:"execution_address"`
-	ExecutionCodeHash   []byte  `db:"execution_code_hash" json:"execution_code_hash"`
-	ExecutionResolution string  `db:"execution_resolution" json:"execution_resolution"`
+	TracePath           string         `db:"trace_path" json:"trace_path"`
+	ParentPath          *string        `db:"parent_path" json:"parent_path"`
+	Depth               int32          `db:"depth" json:"depth"`
+	CallType            string         `db:"call_type" json:"call_type"`
+	FromAddress         []byte         `db:"from_address" json:"from_address"`
+	ToAddress           []byte         `db:"to_address" json:"to_address"`
+	CreatedAddress      []byte         `db:"created_address" json:"created_address"`
+	Value               pgtype.Numeric `db:"value" json:"value"`
+	Gas                 pgtype.Numeric `db:"gas" json:"gas"`
+	GasUsed             pgtype.Numeric `db:"gas_used" json:"gas_used"`
+	Input               []byte         `db:"input" json:"input"`
+	Output              []byte         `db:"output" json:"output"`
+	Error               *string        `db:"error" json:"error"`
+	DirectReverted      bool           `db:"direct_reverted" json:"direct_reverted"`
+	Reverted            bool           `db:"reverted" json:"reverted"`
+	ExecutionAddress    []byte         `db:"execution_address" json:"execution_address"`
+	ExecutionCodeHash   []byte         `db:"execution_code_hash" json:"execution_code_hash"`
+	ExecutionResolution string         `db:"execution_resolution" json:"execution_resolution"`
 }
 
 func (q *Queries) CatalogTransactionTrace(ctx context.Context, arg CatalogTransactionTraceParams) ([]CatalogTransactionTraceRow, error) {
-	rows, err := q.db.Query(ctx, CatalogTransactionTrace,
-		arg.Column1,
-		arg.Column2,
+	rows, err := q.db.Query(ctx, catalogTransactionTrace,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.TransactionHash,
 		arg.Limit,
@@ -2245,7 +2110,7 @@ func (q *Queries) CatalogTransactionTrace(ctx context.Context, arg CatalogTransa
 	return items, nil
 }
 
-const CatalogTransactionTraceDecodings = `-- name: CatalogTransactionTraceDecodings :many
+const catalogTransactionTraceDecodings = `-- name: CatalogTransactionTraceDecodings :many
 SELECT decoding.object_kind, decoding.object_index, decoding.status,
        decoding.signature, decoding.source, decoding.confidence,
        decoding.arguments, decoding.candidates, decoding.warning,
@@ -2288,8 +2153,8 @@ type CatalogTransactionTraceDecodingsRow struct {
 	ReturnArguments []byte  `db:"return_arguments" json:"return_arguments"`
 }
 
-func (q *Queries) CatalogTransactionTraceDecodings(ctx context.Context, column1 pgtype.Numeric, blockHash []byte, transactionHash []byte) ([]CatalogTransactionTraceDecodingsRow, error) {
-	rows, err := q.db.Query(ctx, CatalogTransactionTraceDecodings, column1, blockHash, transactionHash)
+func (q *Queries) CatalogTransactionTraceDecodings(ctx context.Context, chainID pgtype.Numeric, blockHash []byte, transactionHash []byte) ([]CatalogTransactionTraceDecodingsRow, error) {
+	rows, err := q.db.Query(ctx, catalogTransactionTraceDecodings, chainID, blockHash, transactionHash)
 	if err != nil {
 		return nil, err
 	}
@@ -2324,7 +2189,7 @@ func (q *Queries) CatalogTransactionTraceDecodings(ctx context.Context, column1 
 	return items, nil
 }
 
-const CatalogTransactionTraceExecution = `-- name: CatalogTransactionTraceExecution :many
+const catalogTransactionTraceExecution = `-- name: CatalogTransactionTraceExecution :many
 SELECT trace_path, COALESCE(to_address, created_address, from_address), execution_address,
        execution_code_hash, execution_resolution
 FROM normalized_traces
@@ -2338,8 +2203,8 @@ LIMIT $5
 `
 
 type CatalogTransactionTraceExecutionParams struct {
-	Column1         pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2         pgtype.Numeric `db:"column_2" json:"column_2"`
+	ChainID         pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber     pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash       []byte         `db:"block_hash" json:"block_hash"`
 	TransactionHash []byte         `db:"transaction_hash" json:"transaction_hash"`
 	Limit           int32          `db:"limit" json:"limit"`
@@ -2354,9 +2219,9 @@ type CatalogTransactionTraceExecutionRow struct {
 }
 
 func (q *Queries) CatalogTransactionTraceExecution(ctx context.Context, arg CatalogTransactionTraceExecutionParams) ([]CatalogTransactionTraceExecutionRow, error) {
-	rows, err := q.db.Query(ctx, CatalogTransactionTraceExecution,
-		arg.Column1,
-		arg.Column2,
+	rows, err := q.db.Query(ctx, catalogTransactionTraceExecution,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.TransactionHash,
 		arg.Limit,
@@ -2385,7 +2250,7 @@ func (q *Queries) CatalogTransactionTraceExecution(ctx context.Context, arg Cata
 	return items, nil
 }
 
-const CatalogTransactionVerifiedAddressSelectors = `-- name: CatalogTransactionVerifiedAddressSelectors :many
+const catalogTransactionVerifiedAddressSelectors = `-- name: CatalogTransactionVerifiedAddressSelectors :many
 SELECT indexed.code_hash, selector.signature, selector.abi_entry
 FROM verified_function_selector_sets AS indexed
 JOIN verified_contracts AS verified
@@ -2410,11 +2275,11 @@ LIMIT $5
 `
 
 type CatalogTransactionVerifiedAddressSelectorsParams struct {
-	Column1  pgtype.Numeric `db:"column_1" json:"column_1"`
-	Address  []byte         `db:"address" json:"address"`
-	Column3  pgtype.Numeric `db:"column_3" json:"column_3"`
-	Selector []byte         `db:"selector" json:"selector"`
-	Limit    int32          `db:"limit" json:"limit"`
+	ChainID           pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Address           []byte         `db:"address" json:"address"`
+	MaxValidFromBlock pgtype.Numeric `db:"max_valid_from_block" json:"max_valid_from_block"`
+	Selector          []byte         `db:"selector" json:"selector"`
+	Limit             int32          `db:"limit" json:"limit"`
 }
 
 type CatalogTransactionVerifiedAddressSelectorsRow struct {
@@ -2424,10 +2289,10 @@ type CatalogTransactionVerifiedAddressSelectorsRow struct {
 }
 
 func (q *Queries) CatalogTransactionVerifiedAddressSelectors(ctx context.Context, arg CatalogTransactionVerifiedAddressSelectorsParams) ([]CatalogTransactionVerifiedAddressSelectorsRow, error) {
-	rows, err := q.db.Query(ctx, CatalogTransactionVerifiedAddressSelectors,
-		arg.Column1,
+	rows, err := q.db.Query(ctx, catalogTransactionVerifiedAddressSelectors,
+		arg.ChainID,
 		arg.Address,
-		arg.Column3,
+		arg.MaxValidFromBlock,
 		arg.Selector,
 		arg.Limit,
 	)
@@ -2449,7 +2314,7 @@ func (q *Queries) CatalogTransactionVerifiedAddressSelectors(ctx context.Context
 	return items, nil
 }
 
-const CatalogValidateCanonicalSnapshot = `-- name: CatalogValidateCanonicalSnapshot :many
+const catalogValidateCanonicalSnapshot = `-- name: CatalogValidateCanonicalSnapshot :one
 SELECT EXISTS (
     SELECT 1
     FROM canonical_blocks
@@ -2457,22 +2322,9 @@ SELECT EXISTS (
 )
 `
 
-func (q *Queries) CatalogValidateCanonicalSnapshot(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]bool, error) {
-	rows, err := q.db.Query(ctx, CatalogValidateCanonicalSnapshot, column1, column2, blockHash)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var exists bool
-		if err := rows.Scan(&exists); err != nil {
-			return nil, err
-		}
-		items = append(items, exists)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) CatalogValidateCanonicalSnapshot(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, blockHash []byte) (bool, error) {
+	row := q.db.QueryRow(ctx, catalogValidateCanonicalSnapshot, chainID, number, blockHash)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }

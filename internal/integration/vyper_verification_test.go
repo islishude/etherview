@@ -7,7 +7,6 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -16,6 +15,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/islishude/etherview/internal/store"
 	"github.com/islishude/etherview/internal/verify"
@@ -135,23 +136,23 @@ func TestVyperDurablePublicationAndReorgFence(t *testing.T) {
 			}
 			assertRowCount(t, ctx, db, `SELECT count(*) FROM verified_contracts WHERE language='vyper' AND match_type='partial'`, 1)
 			assertRowCount(t, ctx, db, `SELECT count(*) FROM verification_compilation_units`, 0)
-			if _, err := db.ExecContext(ctx, `UPDATE verification_jobs SET executor_digest=$1 WHERE id=$2`, make([]byte, 32), job.ID); err == nil {
+			if _, err := db.Exec(ctx, `UPDATE verification_jobs SET executor_digest=$1 WHERE id=$2`, make([]byte, 32), job.ID); err == nil {
 				t.Fatal("bound provenance was mutable")
 			}
 		})
 	}
 }
 
-func seedVyperRuntime(t *testing.T, db *sql.DB) int64 {
+func seedVyperRuntime(t *testing.T, db *pgxpool.Pool) int64 {
 	t.Helper()
 	var generation int64
 	digest := sha256.Sum256([]byte("fixture-vyper-catalog"))
-	if err := db.QueryRow(`INSERT INTO compiler_catalog_generations (language, source_url, catalog_digest, entry_count) VALUES ('vyper', 'https://compilers.example/catalog.json', $1, 1) RETURNING id`, digest[:]).Scan(&generation); err != nil {
+	if err := db.QueryRow(context.Background(), `INSERT INTO compiler_catalog_generations (language, source_url, catalog_digest, entry_count) VALUES ('vyper', 'https://compilers.example/catalog.json', $1, 1) RETURNING id`, digest[:]).Scan(&generation); err != nil {
 		t.Fatal(err)
 	}
 	executor := sha256.Sum256([]byte("fixture-vyper-runtime"))
 	artifacts, _ := json.Marshal([]map[string]any{{"platform": runtime.GOOS + "-" + runtime.GOARCH, "manifest_sha256": hex.EncodeToString(executor[:]), "protocol": "etherview-vyper-runtime-v3"}})
-	if _, err := db.Exec(`INSERT INTO compiler_catalog_entries (generation_id, language, version, platform, artifact_url, artifact_sha256, max_bytes, vyper_runtimes) VALUES ($1, 'vyper', '0.4.3', 'python-wheel', 'https://compilers.example/catalog.json', decode($2,'hex'), 1024, $3)`, generation, verify.VyperCompilerSHA256, artifacts); err != nil {
+	if _, err := db.Exec(context.Background(), `INSERT INTO compiler_catalog_entries (generation_id, language, version, platform, artifact_url, artifact_sha256, max_bytes, vyper_runtimes) VALUES ($1, 'vyper', '0.4.3', 'python-wheel', 'https://compilers.example/catalog.json', decode($2,'hex'), 1024, $3)`, generation, verify.VyperCompilerSHA256, artifacts); err != nil {
 		t.Fatal(err)
 	}
 	return generation
@@ -161,10 +162,10 @@ func TestVyperCatalogExpiryAndGenerationRetention(t *testing.T) {
 	db := newMigratedPostgres(t)
 	generation := seedVyperRuntime(t, db)
 	ctx := t.Context()
-	if _, err := db.ExecContext(ctx, `UPDATE compiler_catalog_entries SET expires_at=now()+interval '30 minutes' WHERE generation_id=$1`, generation); err != nil {
+	if _, err := db.Exec(ctx, `UPDATE compiler_catalog_entries SET expires_at=now()+interval '30 minutes' WHERE generation_id=$1`, generation); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ExecContext(ctx, `INSERT INTO compiler_catalog_heads(language,generation_id) VALUES ('vyper',$1)`, generation); err != nil {
+	if _, err := db.Exec(ctx, `INSERT INTO compiler_catalog_heads(language,generation_id) VALUES ('vyper',$1)`, generation); err != nil {
 		t.Fatal(err)
 	}
 	public, _, err := ed25519.GenerateKey(rand.Reader)
@@ -183,7 +184,7 @@ func TestVyperCatalogExpiryAndGenerationRetention(t *testing.T) {
 	if err != nil || len(versions) != 1 || versions[0] != "0.4.3" {
 		t.Fatalf("versions=%v error=%v", versions, err)
 	}
-	if _, err := db.ExecContext(ctx, `UPDATE compiler_catalog_entries SET expires_at=now()-interval '1 second' WHERE generation_id=$1`, generation); err != nil {
+	if _, err := db.Exec(ctx, `UPDATE compiler_catalog_entries SET expires_at=now()-interval '1 second' WHERE generation_id=$1`, generation); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := catalog.Lookup(ctx, verify.LanguageVyper, "0.4.3"); !errors.Is(err, verify.ErrCompilerCatalogStale) {
@@ -193,7 +194,7 @@ func TestVyperCatalogExpiryAndGenerationRetention(t *testing.T) {
 		t.Fatalf("expired versions: %v", err)
 	}
 	var count int
-	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM compiler_catalog_entries WHERE generation_id=$1`, generation).Scan(&count); err != nil || count != 1 {
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM compiler_catalog_entries WHERE generation_id=$1`, generation).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("expired generation removed: count=%d error=%v", count, err)
 	}
 }
@@ -229,7 +230,7 @@ func TestVyperBoundRetryDoesNotRequireFreshCatalog(t *testing.T) {
 	if err := repository.BindCompiler(ctx, bound, provenance); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ExecContext(ctx, `UPDATE verification_jobs SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id IN ($1::uuid,$2::uuid)`, unbound.Job.ID, bound.Job.ID); err != nil {
+	if _, err := db.Exec(ctx, `UPDATE verification_jobs SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id IN ($1::uuid,$2::uuid)`, unbound.Job.ID, bound.Job.ID); err != nil {
 		t.Fatal(err)
 	}
 	retry, ok, err := repository.ClaimRunnable(ctx, "offline-retry", time.Minute, verify.CompilerAvailability{VyperBound: true})

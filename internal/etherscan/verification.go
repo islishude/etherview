@@ -3,7 +3,6 @@ package etherscan
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -14,9 +13,12 @@ import (
 	"strconv"
 	"strings"
 
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/verify"
 )
 
@@ -59,7 +61,7 @@ type proxyVerificationTarget struct {
 	contextBlockHash       []byte
 	kind                   string
 	pattern                string
-	standardVersion        sql.NullString
+	standardVersion        pgtype.Text
 	implementationAddress  []byte
 	implementationCodeHash []byte
 	adminAddress           []byte
@@ -70,13 +72,13 @@ type proxyVerificationTarget struct {
 	managementAddress      []byte
 	managementCodeHash     []byte
 	observationGeneration  int64
-	artifactResolution     sql.NullInt64
-	beaconGeneration       sql.NullInt64
-	uupsGeneration         sql.NullInt64
+	artifactResolution     pgtype.Int8
+	beaconGeneration       pgtype.Int8
+	uupsGeneration         pgtype.Int8
 	proxyVerified          bool
 	implementationVerified bool
 	managementVerified     bool
-	existingBindingID      sql.NullString
+	existingBindingID      pgtype.Text
 }
 
 func (b *PostgresBackend) submitProxyVerification(ctx context.Context, values url.Values) (string, error) {
@@ -88,33 +90,50 @@ func (b *PostgresBackend) submitProxyVerification(ctx context.Context, values ur
 		return "", err
 	}
 	var target proxyVerificationTarget
-	err = b.db.QueryRowContext(ctx, dbgen.EtherscanProxyVerificationTarget, b.chain, addressBytes).Scan(
-		&target.proxyCodeHash,
-		&target.blockHash,
-		&target.contextBlockNumber,
-		&target.contextBlockHash,
-		&target.kind,
-		&target.pattern,
-		&target.standardVersion,
-		&target.implementationAddress,
-		&target.implementationCodeHash,
-		&target.adminAddress,
-		&target.adminCodeHash,
-		&target.beaconAddress,
-		&target.beaconCodeHash,
-		&target.managementKind,
-		&target.managementAddress,
-		&target.managementCodeHash,
-		&target.observationGeneration,
-		&target.artifactResolution,
-		&target.beaconGeneration,
-		&target.uupsGeneration,
-		&target.proxyVerified,
-		&target.implementationVerified,
-		&target.managementVerified,
-		&target.existingBindingID,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(b.chain); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(b.db).EtherscanProxyVerificationTarget(ctx, queryValue0, addressBytes)
+		if err != nil {
+			return err
+		}
+		target.proxyCodeHash = queryRow.ProxyCodeHash
+		target.blockHash = queryRow.BlockHash
+		target.contextBlockNumber = queryRow.CurrentProxyContextNumber
+		target.contextBlockHash = queryRow.ContextHash
+		target.kind = queryRow.ProxyKind
+		target.pattern = queryRow.ProxyPattern
+		target.standardVersion = pgtype.Text{String: queryRow.StandardVersion, Valid: queryRow.StandardVersionPresent}
+		target.implementationAddress = queryRow.ImplementationAddress
+		target.implementationCodeHash = queryRow.ImplementationCodeHash
+		target.adminAddress = queryRow.AdminAddress
+		target.adminCodeHash = queryRow.AdminCodeHash
+		target.beaconAddress = queryRow.BeaconAddress
+		target.beaconCodeHash = queryRow.BeaconCodeHash
+		target.managementKind = queryRow.ManagementKind
+		target.managementAddress = queryRow.ManagementAddress
+		target.managementCodeHash = queryRow.ManagementCodeHash
+		target.observationGeneration = queryRow.ObservationGenerationID
+		target.artifactResolution = pgtype.Int8{Int64: queryRow.ArtifactResolutionID, Valid: queryRow.ArtifactResolutionPresent}
+		var resultValue18 pgtype.Int8
+		if queryRow.BeaconGenerationID != nil {
+			resultValue18 = pgtype.Int8{Int64: *queryRow.BeaconGenerationID, Valid: true}
+		}
+		target.beaconGeneration = resultValue18
+		var resultValue20 pgtype.Int8
+		if queryRow.UupsGenerationID != nil {
+			resultValue20 = pgtype.Int8{Int64: *queryRow.UupsGenerationID, Valid: true}
+		}
+		target.uupsGeneration = resultValue20
+		target.proxyVerified = queryRow.ProxyVerified
+		target.implementationVerified = queryRow.ImplementationVerified
+		target.managementVerified = queryRow.ManagementVerified
+		target.existingBindingID = pgtype.Text{String: queryRow.BindingJobID, Valid: queryRow.BindingJobPresent}
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrProxyVerificationTargetUnavailable
 	}
 	if err != nil {
@@ -295,7 +314,7 @@ func optionalProxyHex(value []byte) string {
 	return "0x" + hex.EncodeToString(value)
 }
 
-func optionalProxyGeneration(value sql.NullInt64) string {
+func optionalProxyGeneration(value pgtype.Int8) string {
 	if !value.Valid {
 		return ""
 	}
@@ -425,12 +444,24 @@ func translateVerificationServiceError(err error) error {
 
 func (b *PostgresBackend) currentVerificationTarget(ctx context.Context, addressBytes []byte, address string) (verificationTarget, error) {
 	var target verificationTarget
-	var creation sql.NullString
-	err := b.db.QueryRowContext(ctx, dbgen.EtherscanVerificationTarget, b.chain, addressBytes, strings.ToLower(address)).Scan(
-		&target.codeHash, &target.blockHash, &target.runtimeBytecode, &creation,
-		&target.genesisPredeploy,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
+	var creation pgtype.Text
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(b.chain); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(b.db).EtherscanVerificationTarget(ctx, addressBytes, queryValue0, strings.ToLower(address))
+		if err != nil {
+			return err
+		}
+		target.codeHash = queryRow.CodeHash
+		target.blockHash = queryRow.BlockHash
+		target.runtimeBytecode = queryRow.Code
+		creation = pgtype.Text{String: queryRow.CreationBytecode, Valid: queryRow.CreationBytecodePresent}
+		target.genesisPredeploy = queryRow.GenesisPredeploy
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return verificationTarget{}, ErrVerificationTargetUnavailable
 	}
 	if err != nil {

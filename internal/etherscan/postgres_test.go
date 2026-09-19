@@ -2,8 +2,6 @@ package etherscan
 
 import (
 	"context"
-	"database/sql"
-	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,10 +12,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/islishude/etherview/internal/testpgx"
+
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -68,7 +69,7 @@ func TestNewPostgresBackendValidatesConfiguration(t *testing.T) {
 func TestStoredBlockContextUsesNarrowCanonicalScalars(t *testing.T) {
 	t.Parallel()
 	projection, err := decodeStoredBlockContext(
-		"100", sql.NullString{String: "0x3b9aca00", Valid: true},
+		"100", pgtype.Text{String: "0x3b9aca00", Valid: true},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -82,16 +83,16 @@ func TestStoredBlockContextUsesNarrowCanonicalScalars(t *testing.T) {
 func TestCompatibilityResultQueriesDoNotTransferFullBlockRaw(t *testing.T) {
 	t.Parallel()
 	for name, query := range map[string]string{
-		"account":           dbgen.EtherscanAccountTransactions,
-		"account advanced":  dbgen.EtherscanAccountTransactionsAdvanced,
-		"mined asc":         dbgen.EtherscanMinedBlocksAsc,
-		"mined desc":        dbgen.EtherscanMinedBlocksDesc,
-		"block time before": dbgen.EtherscanBlockNumberByTimeBefore,
-		"block time after":  dbgen.EtherscanBlockNumberByTimeAfter,
-		"token":             dbgen.EtherscanTokenTransfers,
-		"token advanced":    dbgen.EtherscanTokenTransfersAdvanced,
-		"logs asc":          dbgen.EtherscanLogsAsc,
-		"logs desc":         dbgen.EtherscanLogsDesc,
+		"account":           testpgx.Statement("EtherscanAccountTransactions"),
+		"account advanced":  testpgx.Statement("EtherscanAccountTransactionsAdvanced"),
+		"mined asc":         testpgx.Statement("EtherscanMinedBlocksAsc"),
+		"mined desc":        testpgx.Statement("EtherscanMinedBlocksDesc"),
+		"block time before": testpgx.Statement("EtherscanBlockNumberByTimeBefore"),
+		"block time after":  testpgx.Statement("EtherscanBlockNumberByTimeAfter"),
+		"token":             testpgx.Statement("EtherscanTokenTransfers"),
+		"token advanced":    testpgx.Statement("EtherscanTokenTransfersAdvanced"),
+		"logs asc":          testpgx.Statement("EtherscanLogsAsc"),
+		"logs desc":         testpgx.Statement("EtherscanLogsDesc"),
 	} {
 		if strings.Contains(query, "block.raw") {
 			t.Errorf("%s query transfers block.raw", name)
@@ -153,20 +154,24 @@ func TestAccountTransactionsAreCanonicalDecimalAndStable(t *testing.T) {
 		sqlExpectation{
 			contains: "-- name: EtherscanAccountTransactions :many",
 			columns:  fakeColumns(9),
-			rows: [][]driver.Value{{
+			rows: [][]any{{
 				testTransactionJSON(7, testRecipient),
 				testReceiptJSON("0x1", ""),
 				"100", "0x3b9aca00",
 				"10", testHashBytes(3), int64(1), testTransactionHashBytes(testRecipient), "12",
 			}},
-			check: func(arguments []driver.NamedValue) error {
-				want := []string{"1", strings.ToLower(testSender), "10", "20", "2", "2", "DESC"}
+			check: func(arguments []any) error {
+				want := []string{"1", strings.ToLower(testSender), "10", "20", "DESC", "2", "2"}
 				if len(arguments) != len(want) {
 					return fmt.Errorf("arguments=%v", arguments)
 				}
 				for index := range arguments {
-					if fmt.Sprint(arguments[index].Value) != want[index] {
-						return fmt.Errorf("argument %d=%v, want %s", index, arguments[index].Value, want[index])
+					actual := fmt.Sprint(arguments[index])
+					if index == 3 {
+						actual = *arguments[index].(*string)
+					}
+					if actual != want[index] {
+						return fmt.Errorf("argument %d=%v, want %s", index, arguments[index], want[index])
 					}
 				}
 				return nil
@@ -202,7 +207,7 @@ func TestAccountTransactionsRejectRawIdentityMismatch(t *testing.T) {
 		sqlExpectation{
 			contains: "FROM transaction_inclusions AS inclusion",
 			columns:  fakeColumns(9),
-			rows: [][]driver.Value{{
+			rows: [][]any{{
 				testTransactionJSON(99, testRecipient),
 				testReceiptJSON("0x1", ""), "100", "0x3b9aca00",
 				"10", testHashBytes(3), int64(1), testTransactionHashBytes(testRecipient), "12",
@@ -223,7 +228,7 @@ func TestMinedBlocksOmitsUnknownReward(t *testing.T) {
 		sqlExpectation{
 			contains: "-- name: EtherscanMinedBlocksAsc :many",
 			columns:  fakeColumns(4),
-			rows:     [][]driver.Value{{"10", testHashBytes(3), "100", testSender}},
+			rows:     [][]any{{"10", testHashBytes(3), "100", testSender}},
 		},
 	)
 	backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})
@@ -250,10 +255,10 @@ func TestMinedUnclesAreExplicitlyUnavailable(t *testing.T) {
 
 func TestTransactionStatusUsesCanonicalReceipt(t *testing.T) {
 	t.Parallel()
-	row := []driver.Value{testReceiptJSON("0x0", ""), testTransactionHashBytes(testRecipient), testHashBytes(3), "10", int64(1)}
+	row := []any{testReceiptJSON("0x0", ""), testTransactionHashBytes(testRecipient), testHashBytes(3), "10", int64(1)}
 	db := fakeDatabase(t,
-		sqlExpectation{contains: "JOIN canonical_blocks AS canonical", columns: fakeColumns(5), rows: [][]driver.Value{row}},
-		sqlExpectation{contains: "JOIN canonical_blocks AS canonical", columns: fakeColumns(5), rows: [][]driver.Value{row}},
+		sqlExpectation{contains: "JOIN canonical_blocks AS canonical", columns: fakeColumns(5), rows: [][]any{row}},
+		sqlExpectation{contains: "JOIN canonical_blocks AS canonical", columns: fakeColumns(5), rows: [][]any{row}},
 	)
 	backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})
 	values := url.Values{"txhash": {testTransactionHash(7, testRecipient).Hex()}}
@@ -275,23 +280,20 @@ func TestLogsUseParameterizedTopicExpressionAndHexWireModel(t *testing.T) {
 		sqlExpectation{
 			contains: "-- name: EtherscanLogsDesc :many",
 			columns:  fakeColumns(11),
-			rows: [][]driver.Value{{
+			rows: [][]any{{
 				testLogJSON(10, 3, 7, 1, 4, testContract, []string{topic0, testHash(22), topic2}),
 				testReceiptJSON("0x1", ""),
 				testTransactionJSON(7, testRecipient),
 				"100", "0x3b9aca00",
 				"10", testHashBytes(3), int64(4), int64(1), testTransactionHashBytes(testRecipient), testAddressBytes(testContract),
 			}},
-			check: func(arguments []driver.NamedValue) error {
-				if len(arguments) != 9 || fmt.Sprint(arguments[0].Value) != "1" || fmt.Sprint(arguments[1].Value) != "5" || fmt.Sprint(arguments[2].Value) != "12" {
+			check: func(arguments []any) error {
+				if len(arguments) != 9 || arguments[5] != "1" || arguments[6] != "5" || !testpgx.TextPointerEquals(arguments[7], "12") {
 					return fmt.Errorf("arguments=%v", arguments)
 				}
 				wantTopics := `[{"index":0,"value":"` + topic0 + `","operator":"AND"},{"index":2,"value":"` + topic2 + `","operator":"OR"}]`
-				indexedTopic, indexedTopicOK := arguments[6].Value.([]byte)
-				if !reflect.DeepEqual(arguments[3].Value, testAddressBytes(testContract)) ||
-					string(arguments[4].Value.([]byte)) != wantTopics ||
-					arguments[5].Value != false || !indexedTopicOK || len(indexedTopic) != 0 ||
-					fmt.Sprint(arguments[7].Value) != "100" || fmt.Sprint(arguments[8].Value) != "0" {
+				indexedTopic, indexedTopicOK := arguments[8].([]byte)
+				if !reflect.DeepEqual(arguments[1], testAddressBytes(testContract)) || string(arguments[0].([]byte)) != wantTopics || arguments[4] != false || !indexedTopicOK || len(indexedTopic) != 0 || arguments[3] != int64(100) || arguments[2] != int64(0) {
 					return fmt.Errorf("binary/topic arguments=%v", arguments)
 				}
 				return nil
@@ -363,8 +365,8 @@ func TestBlockTimeCountdownAndSupply(t *testing.T) {
 	t.Parallel()
 	db := fakeDatabase(t,
 		completeCoreCoverageExpectation("0", "", "10"),
-		sqlExpectation{contains: "-- name: EtherscanBlockNumberByTimeBefore :many", columns: fakeColumns(3), rows: [][]driver.Value{{"10", testHashBytes(3), "100"}}},
-		sqlExpectation{contains: "tip_coverage AS", columns: fakeColumns(8), rows: [][]driver.Value{{"10", "100", "2", "20", "9", "0", "0", "10"}}},
+		sqlExpectation{contains: "-- name: EtherscanBlockNumberByTimeBefore :one", columns: fakeColumns(3), rows: [][]any{{"10", testHashBytes(3), "100"}}},
+		sqlExpectation{contains: "tip_coverage AS", columns: fakeColumns(8), rows: [][]any{{"10", "100", "2", "20", "9", "0", "0", "10"}}},
 	)
 	backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1, Supply: func(_ context.Context, chainID uint64) (string, error) {
 		if chainID != 1 {
@@ -393,7 +395,7 @@ func TestBlockTimeCountdownAndSupply(t *testing.T) {
 func TestCountdownRejectsAlreadyPassedBlock(t *testing.T) {
 	t.Parallel()
 	db := fakeDatabase(t, sqlExpectation{
-		contains: "tip_coverage AS", columns: fakeColumns(8), rows: [][]driver.Value{{"10", "100", "2", "20", "9", "0", "0", "10"}},
+		contains: "tip_coverage AS", columns: fakeColumns(8), rows: [][]any{{"10", "100", "2", "20", "9", "0", "0", "10"}},
 	})
 	backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})
 	_, err := backend.Execute(context.Background(), Request{Module: "block", Action: "getblockcountdown", Values: url.Values{"blockno": {"10"}}})
@@ -441,7 +443,7 @@ func TestVerifiedGeasContractExposesEmptyABIAndRuntimeFile(t *testing.T) {
 			currentArtifactTargetExpectation(codeHash),
 			{
 				contains: "FROM verified_contracts AS verified", columns: fakeColumns(24),
-				rows: [][]driver.Value{{
+				rows: [][]any{{
 					true, testAddressBytes(testContract), codeHash, "7", nil,
 					"123e4567-e89b-42d3-a456-426614174000", testHashBytes(8),
 					"withdrawals/main.eas", "Withdrawals", "geas", "0.3.3", "full",
@@ -496,7 +498,7 @@ func verifiedArtifactExpectations(
 func currentArtifactTargetExpectation(codeHash []byte) sqlExpectation {
 	return sqlExpectation{
 		contains: "FROM contract_code_observations AS candidate", columns: fakeColumns(4),
-		rows: [][]driver.Value{{codeHash, "7", testHashBytes(3), "10"}},
+		rows: [][]any{{codeHash, "7", testHashBytes(3), "10"}},
 	}
 }
 
@@ -509,7 +511,7 @@ func verifiedArtifactSourceExpectation(
 ) sqlExpectation {
 	return sqlExpectation{
 		contains: "FROM verified_contracts AS verified", columns: fakeColumns(24),
-		rows: [][]driver.Value{{
+		rows: [][]any{{
 			exact, testAddressBytes(testContract), codeHash, "7", nil,
 			"123e4567-e89b-42d3-a456-426614174000", testHashBytes(8),
 			"A.sol", "A", "solidity", "v0.8.30+commit.73712a01", "full",
@@ -522,7 +524,7 @@ func verifiedArtifactSourceExpectation(
 
 func TestVerifiedProxyQueryRequiresCurrentExactV2Binding(t *testing.T) {
 	t.Parallel()
-	query := compactSQL(dbgen.EtherscanVerifiedProxy)
+	query := compactSQL(testpgx.Statement("EtherscanVerifiedProxy"))
 	for _, required := range []string{
 		"observation.stage_version = 2",
 		"JOIN published_block_stage_results AS published",
@@ -594,7 +596,7 @@ func TestVerifiedProxyQueryRequiresCurrentExactV2Binding(t *testing.T) {
 
 func TestProxyVerificationTargetQueryFencesAllCurrentIdentities(t *testing.T) {
 	t.Parallel()
-	query := compactSQL(dbgen.EtherscanProxyVerificationTarget)
+	query := compactSQL(testpgx.Statement("EtherscanProxyVerificationTarget"))
 	for _, required := range []string{
 		"observation.stage_version = 2",
 		"JOIN published_block_stage_results AS published",
@@ -716,7 +718,7 @@ func TestContractCreationPreservesInputOrderAndChecksums(t *testing.T) {
 	created := crypto.CreateAddress(testTransactionSender(), 15).Hex()
 	db := fakeDatabase(t, sqlExpectation{
 		contains: "trace.call_type IN ('CREATE', 'CREATE2')", columns: fakeColumns(13),
-		rows: [][]driver.Value{{
+		rows: [][]any{{
 			"top_level", testReceiptJSON("0x1", created),
 			testTransactionJSON(7, ""), testTransactionHashBytes(""), testHashBytes(3),
 			"10", "100", int64(1), nil, nil, nil, nil, nil,
@@ -737,7 +739,7 @@ func TestContractCreationIncludesFactoryCreateFacts(t *testing.T) {
 	t.Parallel()
 	db := fakeDatabase(t, sqlExpectation{
 		contains: "trace.created_address = $2", columns: fakeColumns(13),
-		rows: [][]driver.Value{{
+		rows: [][]any{{
 			"trace", nil, testTransactionJSON(7, testRecipient),
 			testTransactionHashBytes(testRecipient), testHashBytes(3), "10", "100", int64(1),
 			"0.2", int64(2), "CREATE2", testAddressBytes(testRecipient), []byte{0x60, 0x00, 0xff},
@@ -779,7 +781,7 @@ func TestContractCreationAbsenceRequiresFullCoreAndTraceCoverage(t *testing.T) {
 			expectations: []sqlExpectation{
 				{contains: "WITH candidates AS", columns: fakeColumns(13)},
 				completeCoreCoverageExpectation("0", "", "10"),
-				{contains: "FROM published_block_stage_results AS result", columns: fakeColumns(4), rows: [][]driver.Value{{"10", nil, nil, nil}}},
+				{contains: "FROM published_block_stage_results AS result", columns: fakeColumns(4), rows: [][]any{{"10", nil, nil, nil}}},
 			},
 			want: ErrNotFound,
 		},
@@ -822,7 +824,7 @@ func TestListQueriesReturnNotFoundInsteadOfEmptySuccess(t *testing.T) {
 	}
 }
 
-func testPostgresBackend(t *testing.T, db *sql.DB, options PostgresOptions) *PostgresBackend {
+func testPostgresBackend(t *testing.T, db *etherscanFakeConn, options PostgresOptions) *PostgresBackend {
 	t.Helper()
 	backend, err := NewPostgresBackend(db, options)
 	if err != nil {

@@ -2,12 +2,12 @@
 INSERT INTO derived_verification_scans (
     compilation_id, chain_id, creator_address, creator_code_hash,
     valid_from_block, valid_to_block, cursor_block_number
-) VALUES ($1::uuid, $2::numeric, $3, $4, $5::numeric, $6::numeric, $5::numeric)
+) VALUES (sqlc.arg('compilation_id')::uuid, sqlc.arg('chain_id')::numeric, sqlc.arg('creator_address'), sqlc.arg('creator_code_hash'), sqlc.arg('cursor_block_number')::numeric, sqlc.arg('valid_to_block')::numeric, sqlc.arg('cursor_block_number')::numeric)
 ON CONFLICT (
     compilation_id, creator_address, creator_code_hash, valid_from_block
 ) DO NOTHING;
 
--- name: DerivedVerifyCreatorCodeEpochStart :many
+-- name: DerivedVerifyCreatorCodeEpochStart :one
 WITH context_observation AS (
     SELECT observation.block_number
     FROM contract_code_observations AS observation
@@ -15,11 +15,11 @@ WITH context_observation AS (
       ON canonical.chain_id = observation.chain_id
      AND canonical.number = observation.block_number
      AND canonical.block_hash = observation.block_hash
-    WHERE observation.chain_id = $1::numeric
-      AND observation.address = $2
-      AND observation.code_hash = $3
-      AND observation.block_number = $4::numeric
-      AND observation.block_hash = $5
+    WHERE observation.chain_id = sqlc.arg('chain_id')::numeric
+      AND observation.address = sqlc.arg('address')
+      AND observation.code_hash = sqlc.arg('code_hash')
+      AND observation.block_number = sqlc.arg('block_number')::numeric
+      AND observation.block_hash = sqlc.arg('block_hash')
       AND observation.canonical
 ), last_different AS (
     SELECT max(observation.block_number) AS block_number
@@ -29,9 +29,9 @@ WITH context_observation AS (
      AND canonical.number = observation.block_number
      AND canonical.block_hash = observation.block_hash
     CROSS JOIN context_observation AS context
-    WHERE observation.chain_id = $1::numeric
-      AND observation.address = $2
-      AND observation.code_hash <> $3
+    WHERE observation.chain_id = sqlc.arg('chain_id')::numeric
+      AND observation.address = sqlc.arg('address')
+      AND observation.code_hash <> sqlc.arg('code_hash')
       AND observation.block_number <= context.block_number
       AND observation.canonical
 )
@@ -43,16 +43,16 @@ JOIN canonical_blocks AS canonical
  AND canonical.block_hash = observation.block_hash
 CROSS JOIN context_observation AS context
 CROSS JOIN last_different AS boundary
-WHERE observation.chain_id = $1::numeric
-  AND observation.address = $2
-  AND observation.code_hash = $3
+WHERE observation.chain_id = sqlc.arg('chain_id')::numeric
+  AND observation.address = sqlc.arg('address')
+  AND observation.code_hash = sqlc.arg('code_hash')
   AND observation.block_number > COALESCE(boundary.block_number, -1::numeric)
   AND observation.block_number <= context.block_number
   AND observation.canonical
 ORDER BY observation.block_number, observation.observed_at, observation.block_hash
 LIMIT 1;
 
--- name: DerivedVerifyClaimScan :many
+-- name: DerivedVerifyClaimScan :one
 WITH exhausted AS (
     UPDATE derived_verification_scans
     SET status = 'failed', last_error = 'attempts_exhausted',
@@ -82,15 +82,15 @@ WITH exhausted AS (
     FOR UPDATE SKIP LOCKED LIMIT 1
 )
 UPDATE derived_verification_scans AS scan
-SET status = 'running', leased_by = $1, lease_token = $2,
-    lease_expires_at = clock_timestamp() + ($3 * INTERVAL '1 microsecond'),
+SET status = 'running', leased_by = sqlc.arg('leased_by'), lease_token = sqlc.arg('lease_token'),
+    lease_expires_at = clock_timestamp() + (sqlc.arg('lease_microseconds')::bigint * INTERVAL '1 microsecond'),
     attempt_count = scan.attempt_count + 1, last_error = NULL,
     updated_at = clock_timestamp()
 FROM candidate
 WHERE scan.id = candidate.id
 RETURNING scan.id::text, scan.compilation_id::text, scan.chain_id::text,
           scan.creator_address, scan.creator_code_hash,
-          scan.valid_from_block::text, scan.valid_to_block::text,
+          scan.valid_from_block::text, scan.valid_to_block,
           scan.cursor_block_number::text, scan.cursor_transaction_hash,
           scan.cursor_trace_path;
 
@@ -103,7 +103,7 @@ SELECT unit.language, unit.compiler_version, unit.standard_json_payload,
 FROM verification_compilation_units AS unit
 JOIN verification_compilation_contracts AS candidate
   ON candidate.compilation_id = unit.id
-WHERE unit.id = $1::uuid
+WHERE unit.id = sqlc.arg('compilation_id')::uuid
 ORDER BY candidate.file_name, candidate.contract_name;
 
 -- name: DerivedVerifyListHistoricalTraces :many
@@ -126,10 +126,10 @@ LEFT JOIN derived_verification_attempts AS attempt
  AND attempt.block_hash = trace.block_hash
  AND attempt.transaction_hash = trace.transaction_hash
  AND attempt.trace_path = trace.trace_path
- AND attempt.compilation_id = $1::uuid
-WHERE trace.chain_id = $2::numeric
-  AND trace.from_address = $3
-  AND $4 = (
+ AND attempt.compilation_id = sqlc.arg('compilation_id')::uuid
+WHERE trace.chain_id = sqlc.arg('chain_id')::numeric
+  AND trace.from_address = sqlc.arg('from_address')
+  AND sqlc.arg('code_hash') = (
       SELECT observation.code_hash
       FROM contract_code_observations AS observation
       JOIN canonical_blocks AS observation_canonical
@@ -148,23 +148,23 @@ WHERE trace.chain_id = $2::numeric
   AND trace.call_type IN ('CREATE', 'CREATE2')
   AND trace.created_address IS NOT NULL
   AND octet_length(trace.input) > 0
-  AND trace.block_number >= $5::numeric
-  AND ($6::numeric IS NULL OR trace.block_number <= $6::numeric)
+  AND trace.block_number >= sqlc.arg('min_block_number')::numeric
+  AND (sqlc.arg('max_block_number')::numeric IS NULL OR trace.block_number <= sqlc.arg('max_block_number')::numeric)
   AND (trace.block_number, trace.transaction_hash, trace.trace_path) >
-      ($7::numeric, $8::bytea, $9::text)
+      (sqlc.arg('cursor_block_number')::numeric, sqlc.arg('cursor_transaction_hash')::bytea, sqlc.arg('cursor_trace_path')::text)
   AND (attempt.id IS NULL OR attempt.status = 'pending_runtime')
 ORDER BY trace.block_number, trace.transaction_hash, trace.trace_path
-LIMIT $10;
+LIMIT sqlc.arg('limit');
 
--- name: DerivedVerifyRenewScan :exec
+-- name: DerivedVerifyRenewScan :execrows
 UPDATE derived_verification_scans
-SET lease_expires_at = clock_timestamp() + ($4 * INTERVAL '1 microsecond'),
+SET lease_expires_at = clock_timestamp() + (sqlc.arg('lease_microseconds')::bigint * INTERVAL '1 microsecond'),
     updated_at = clock_timestamp()
-WHERE id = $1::bigint AND status = 'running'
-  AND lease_token = $2 AND leased_by = $3
+WHERE id = sqlc.arg('id')::bigint AND status = 'running'
+  AND lease_token = sqlc.arg('lease_token') AND leased_by = sqlc.arg('leased_by')
   AND lease_expires_at > clock_timestamp();
 
--- name: DerivedVerifyRecordAttempt :many
+-- name: DerivedVerifyRecordAttempt :one
 WITH evidence AS (
     SELECT trace.chain_id, trace.block_number, trace.block_hash,
            trace.transaction_hash, trace.trace_path,
@@ -174,24 +174,24 @@ WITH evidence AS (
       ON canonical.chain_id = trace.chain_id
      AND canonical.number = trace.block_number
      AND canonical.block_hash = trace.block_hash
-    WHERE trace.chain_id = $2::numeric
-      AND trace.block_number = $3::numeric
-      AND trace.block_hash = $4
-      AND trace.transaction_hash = $5
-      AND trace.trace_path = $6
-      AND trace.from_address = $7
-      AND trace.created_address = $8
-      AND trace.call_type = $9
+    WHERE trace.chain_id = sqlc.arg('chain_id')::numeric
+      AND trace.block_number = sqlc.arg('block_number')::numeric
+      AND trace.block_hash = sqlc.arg('block_hash')
+      AND trace.transaction_hash = sqlc.arg('transaction_hash')
+      AND trace.trace_path = sqlc.arg('trace_path')
+      AND trace.from_address = sqlc.arg('creator_address')
+      AND trace.created_address = sqlc.arg('created_address')::bytea
+      AND trace.call_type = sqlc.arg('call_type')
 )
 INSERT INTO derived_verification_attempts (
     id, chain_id, block_number, block_hash, transaction_hash, trace_path,
     creator_address, created_address, call_type, compilation_id, status,
     stale_from_status
 ) VALUES (
-    $1::uuid, $2::numeric, $3::numeric, $4, $5, $6, $7, $8, $9,
-    $10::uuid,
-    CASE WHEN (SELECT live FROM evidence) THEN $11 ELSE 'stale' END,
-    CASE WHEN (SELECT live FROM evidence) THEN NULL ELSE $11 END
+    sqlc.arg('id')::uuid, sqlc.arg('chain_id')::numeric, sqlc.arg('block_number')::numeric, sqlc.arg('block_hash'), sqlc.arg('transaction_hash'), sqlc.arg('trace_path'), sqlc.arg('creator_address'), sqlc.arg('created_address')::bytea, sqlc.arg('call_type'),
+    sqlc.arg('compilation_id')::uuid,
+    CASE WHEN (SELECT live FROM evidence) THEN sqlc.arg('outcome_status')::text ELSE 'stale' END,
+    CASE WHEN (SELECT live FROM evidence) THEN NULL ELSE sqlc.arg('outcome_status')::text END
 )
 ON CONFLICT (chain_id, block_hash, transaction_hash, trace_path, compilation_id)
 DO UPDATE SET status = EXCLUDED.status,
@@ -200,31 +200,31 @@ DO UPDATE SET status = EXCLUDED.status,
 WHERE derived_verification_attempts.status = 'pending_runtime'
 RETURNING status;
 
--- name: DerivedVerifyAdvanceScan :exec
+-- name: DerivedVerifyAdvanceScan :execrows
 UPDATE derived_verification_scans
 SET status = CASE
         WHEN rescan_from_block IS NOT NULL THEN 'queued'
-        WHEN $4::boolean THEN 'succeeded'
+        WHEN sqlc.arg('complete')::boolean THEN 'succeeded'
         ELSE 'queued'
     END,
     cursor_block_number = CASE
-        WHEN rescan_from_block IS NOT NULL AND rescan_from_block <= $5::numeric
-        THEN rescan_from_block ELSE $5::numeric END,
+        WHEN rescan_from_block IS NOT NULL AND rescan_from_block <= sqlc.arg('max_rescan_from_block')::numeric
+        THEN rescan_from_block ELSE sqlc.arg('max_rescan_from_block')::numeric END,
     cursor_transaction_hash = CASE
-        WHEN rescan_from_block IS NOT NULL AND rescan_from_block <= $5::numeric
-        THEN decode(repeat('00', 32), 'hex') ELSE $6 END,
+        WHEN rescan_from_block IS NOT NULL AND rescan_from_block <= sqlc.arg('max_rescan_from_block')::numeric
+        THEN decode(repeat('00', 32), 'hex') ELSE sqlc.arg('cursor_transaction_hash') END,
     cursor_trace_path = CASE
-        WHEN rescan_from_block IS NOT NULL AND rescan_from_block <= $5::numeric
-        THEN '' ELSE $7 END,
+        WHEN rescan_from_block IS NOT NULL AND rescan_from_block <= sqlc.arg('max_rescan_from_block')::numeric
+        THEN '' ELSE sqlc.arg('cursor_trace_path') END,
     rescan_from_block = NULL,
     attempt_count = 0,
     leased_by = NULL, lease_token = NULL, lease_expires_at = NULL,
     last_error = NULL, updated_at = clock_timestamp()
-WHERE id = $1::bigint AND status = 'running'
-  AND lease_token = $2 AND lease_expires_at > clock_timestamp()
-  AND leased_by = $3;
+WHERE id = sqlc.arg('id')::bigint AND status = 'running'
+  AND lease_token = sqlc.arg('lease_token') AND lease_expires_at > clock_timestamp()
+  AND leased_by = sqlc.arg('leased_by');
 
--- name: DerivedVerifyRetryScan :exec
+-- name: DerivedVerifyRetryScan :execrows
 UPDATE derived_verification_scans
 SET status = 'queued', leased_by = NULL, lease_token = NULL,
     lease_expires_at = NULL,
@@ -238,11 +238,11 @@ SET status = 'queued', leased_by = NULL, lease_token = NULL,
         WHEN rescan_from_block IS NOT NULL AND rescan_from_block <= cursor_block_number
         THEN '' ELSE cursor_trace_path END,
     rescan_from_block = NULL,
-    last_error = $4, updated_at = clock_timestamp()
-WHERE id = $1::bigint AND status = 'running'
-  AND lease_token = $2 AND leased_by = $3;
+    last_error = sqlc.arg('last_error'), updated_at = clock_timestamp()
+WHERE id = sqlc.arg('id')::bigint AND status = 'running'
+  AND lease_token = sqlc.arg('lease_token') AND leased_by = sqlc.arg('leased_by');
 
--- name: DerivedVerifyPublicationEvidence :many
+-- name: DerivedVerifyPublicationEvidence :one
 SELECT trace.chain_id::text, trace.block_number::text, trace.block_hash,
        trace.transaction_hash, trace.trace_path, trace.call_type,
        trace.from_address, trace.created_address, trace.input, runtime.code,
@@ -269,10 +269,10 @@ JOIN verified_contracts AS parent
  )
 JOIN normalized_traces AS trace
   ON trace.chain_id = scan.chain_id
- AND trace.block_number = $2::numeric
- AND trace.block_hash = $3
- AND trace.transaction_hash = $4
- AND trace.trace_path = $5
+ AND trace.block_number = sqlc.arg('block_number')::numeric
+ AND trace.block_hash = sqlc.arg('block_hash')
+ AND trace.transaction_hash = sqlc.arg('transaction_hash')
+ AND trace.trace_path = sqlc.arg('trace_path')
 JOIN canonical_blocks AS canonical
   ON canonical.chain_id = trace.chain_id
  AND canonical.number = trace.block_number
@@ -283,7 +283,7 @@ JOIN contract_code_observations AS runtime
  AND runtime.block_number = trace.block_number
  AND runtime.block_hash = trace.block_hash
  AND runtime.canonical
-WHERE unit.id = $1::uuid
+WHERE unit.id = sqlc.arg('id')::uuid
   AND trace.from_address = scan.creator_address
   AND scan.creator_code_hash = (
       SELECT observation.code_hash
@@ -308,17 +308,17 @@ WHERE unit.id = $1::uuid
   AND (scan.valid_to_block IS NULL OR trace.block_number <= scan.valid_to_block)
 FOR SHARE OF unit, scan, parent, trace, canonical, runtime;
 
--- name: DerivedVerifyLockTarget :many
+-- name: DerivedVerifyLockTarget :exec
 SELECT pg_advisory_xact_lock(hashtextextended(
-    'etherview:derived-verification:' || $1::numeric::text || ':' || encode($2::bytea, 'hex'),
+    'etherview:derived-verification:' || sqlc.arg('chain_id')::numeric::text || ':' || encode(sqlc.arg('address')::bytea, 'hex'),
     0
 ));
 
--- name: DerivedVerifyExistingPublication :many
+-- name: DerivedVerifyExistingPublication :one
 SELECT verification_job_id::text
 FROM verified_contracts
-WHERE chain_id = $1::numeric AND address = $2 AND code_hash = $3
-  AND valid_from_block = $4::numeric
+WHERE chain_id = sqlc.arg('chain_id')::numeric AND address = sqlc.arg('address') AND code_hash = sqlc.arg('code_hash')
+  AND valid_from_block = sqlc.arg('valid_from_block')::numeric
 LIMIT 1;
 
 -- name: DerivedVerifyInsertJob :exec
@@ -330,11 +330,11 @@ INSERT INTO verification_jobs (
     request, request_payload, request_digest, status, attempt_count,
     max_attempts, outcome_kind, outcome
 ) VALUES (
-    $1::uuid, 'derived', 'solidity', 'solidity', $2,
-    $3, $4::bigint, $5, $6, $7, $8,
-    $9::numeric, $10, $11, $12,
-    $13::jsonb, $14, $15, 'succeeded', 1, 1,
-    'verification_success', $16::jsonb
+    sqlc.arg('id')::uuid, 'derived', 'solidity', 'solidity', sqlc.arg('compiler_version'),
+    sqlc.arg('compiler_platform'), sqlc.arg('catalog_generation_id')::bigint, sqlc.arg('compiler_digest'), sqlc.arg('executor_kind'), sqlc.arg('execution_policy'), sqlc.arg('executor_digest'),
+    sqlc.arg('chain_id')::numeric, sqlc.arg('address'), sqlc.arg('code_hash'), sqlc.arg('block_hash'),
+    sqlc.arg('request')::jsonb, sqlc.arg('request_payload'), sqlc.arg('request_digest'), 'succeeded', 1, 1,
+    'verification_success', sqlc.arg('outcome')::jsonb
 );
 
 -- name: DerivedVerifyMatchAttempt :exec
@@ -344,8 +344,8 @@ INSERT INTO derived_verification_attempts (
     file_name, contract_name, status, creation_match, runtime_match,
     verification_job_id
 ) VALUES (
-    $1::uuid, $2::numeric, $3::numeric, $4, $5, $6, $7, $8, $9,
-    $10::uuid, $11, $12, 'matched', $13::jsonb, $14::jsonb, $15::uuid
+    sqlc.arg('id')::uuid, sqlc.arg('chain_id')::numeric, sqlc.arg('block_number')::numeric, sqlc.arg('block_hash'), sqlc.arg('transaction_hash'), sqlc.arg('trace_path'), sqlc.arg('creator_address'), sqlc.arg('created_address'), sqlc.arg('call_type'),
+    sqlc.arg('compilation_id')::uuid, sqlc.arg('file_name'), sqlc.arg('contract_name'), 'matched', sqlc.arg('creation_match')::jsonb, sqlc.arg('runtime_match')::jsonb, sqlc.arg('verification_job_id')::uuid
 )
 ON CONFLICT (chain_id, block_hash, transaction_hash, trace_path, compilation_id)
 DO UPDATE SET file_name = EXCLUDED.file_name,
@@ -357,7 +357,7 @@ DO UPDATE SET file_name = EXCLUDED.file_name,
               updated_at = clock_timestamp()
 WHERE derived_verification_attempts.status = 'pending_runtime';
 
--- name: DerivedVerifyClaimForwardBlock :many
+-- name: DerivedVerifyClaimForwardBlock :one
 WITH exhausted AS (
     UPDATE derived_verification_forward_blocks
     SET status = 'failed', last_error = 'attempts_exhausted',
@@ -397,8 +397,8 @@ WITH exhausted AS (
     FOR UPDATE SKIP LOCKED LIMIT 1
 )
 UPDATE derived_verification_forward_blocks AS block
-SET status = 'running', leased_by = $1, lease_token = $2,
-    lease_expires_at = clock_timestamp() + ($3 * INTERVAL '1 microsecond'),
+SET status = 'running', leased_by = sqlc.arg('leased_by'), lease_token = sqlc.arg('lease_token'),
+    lease_expires_at = clock_timestamp() + (sqlc.arg('lease_microseconds')::bigint * INTERVAL '1 microsecond'),
     attempt_count = block.attempt_count + 1, last_error = NULL,
     updated_at = clock_timestamp()
 FROM candidate
@@ -412,31 +412,31 @@ UPDATE derived_verification_scans AS scan
 SET status = CASE WHEN scan.status = 'running' THEN 'running' ELSE 'queued' END,
     rescan_from_block = CASE
         WHEN scan.status = 'running' THEN LEAST(
-            COALESCE(scan.rescan_from_block, $2::numeric), $2::numeric
+            COALESCE(scan.rescan_from_block, sqlc.arg('min_cursor_block_number')::numeric), sqlc.arg('min_cursor_block_number')::numeric
         )
         ELSE NULL
     END,
     cursor_block_number = CASE
-        WHEN scan.status <> 'running' AND scan.cursor_block_number >= $2::numeric
-        THEN $2::numeric ELSE scan.cursor_block_number END,
+        WHEN scan.status <> 'running' AND scan.cursor_block_number >= sqlc.arg('min_cursor_block_number')::numeric
+        THEN sqlc.arg('min_cursor_block_number')::numeric ELSE scan.cursor_block_number END,
     cursor_transaction_hash = CASE
-        WHEN scan.status <> 'running' AND scan.cursor_block_number >= $2::numeric
+        WHEN scan.status <> 'running' AND scan.cursor_block_number >= sqlc.arg('min_cursor_block_number')::numeric
         THEN decode(repeat('00', 32), 'hex') ELSE scan.cursor_transaction_hash END,
     cursor_trace_path = CASE
-        WHEN scan.status <> 'running' AND scan.cursor_block_number >= $2::numeric
+        WHEN scan.status <> 'running' AND scan.cursor_block_number >= sqlc.arg('min_cursor_block_number')::numeric
         THEN '' ELSE scan.cursor_trace_path END,
     attempt_count = CASE WHEN scan.status = 'running' THEN scan.attempt_count ELSE 0 END,
     last_error = CASE WHEN scan.status = 'running' THEN scan.last_error ELSE NULL END,
     updated_at = clock_timestamp()
 WHERE scan.status IN ('queued', 'succeeded', 'running', 'failed')
   AND scan.last_error IS DISTINCT FROM 'superseded_epoch_start'
-  AND scan.chain_id = $1::numeric
+  AND scan.chain_id = sqlc.arg('chain_id')::numeric
   AND EXISTS (
       SELECT 1
       FROM normalized_traces AS trace
       WHERE trace.chain_id = scan.chain_id
-        AND trace.block_number = $2::numeric
-        AND trace.block_hash = $3
+        AND trace.block_number = sqlc.arg('min_cursor_block_number')::numeric
+        AND trace.block_hash = sqlc.arg('block_hash')
         AND trace.from_address = scan.creator_address
         AND trace.canonical AND NOT trace.reverted
         AND trace.call_type IN ('CREATE', 'CREATE2')
@@ -488,9 +488,9 @@ WITH pending AS (
      AND runtime.block_hash = attempt.block_hash
      AND runtime.canonical
      AND octet_length(runtime.code) > 0
-    WHERE scan.chain_id = $1::numeric
-      AND attempt.block_number = $2::numeric
-      AND attempt.block_hash = $3
+    WHERE scan.chain_id = sqlc.arg('chain_id')::numeric
+      AND attempt.block_number = sqlc.arg('block_number')::numeric
+      AND attempt.block_hash = sqlc.arg('block_hash')
       AND attempt.block_number >= scan.valid_from_block
       AND (scan.valid_to_block IS NULL OR attempt.block_number <= scan.valid_to_block)
       AND scan.status IN ('queued', 'succeeded', 'running', 'failed')
@@ -520,35 +520,35 @@ SET status = CASE WHEN scan.status = 'running' THEN 'running' ELSE 'queued' END,
 FROM pending
 WHERE scan.id = pending.id;
 
--- name: DerivedVerifyRenewForwardEvent :exec
+-- name: DerivedVerifyRenewForwardEvent :execrows
 UPDATE derived_verification_forward_blocks
-SET lease_expires_at = clock_timestamp() + ($8 * INTERVAL '1 microsecond'),
+SET lease_expires_at = clock_timestamp() + (sqlc.arg('lease_microseconds')::bigint * INTERVAL '1 microsecond'),
     updated_at = clock_timestamp()
-WHERE id = $1::bigint AND chain_id = $2::numeric AND block_hash = $3
-  AND source_job_id = $4::bigint AND source_generation = $5::bigint
-  AND status = 'running' AND leased_by = $6 AND lease_token = $7
+WHERE id = sqlc.arg('id')::bigint AND chain_id = sqlc.arg('chain_id')::numeric AND block_hash = sqlc.arg('block_hash')
+  AND source_job_id = sqlc.arg('source_job_id')::bigint AND source_generation = sqlc.arg('source_generation')::bigint
+  AND status = 'running' AND leased_by = sqlc.arg('leased_by') AND lease_token = sqlc.arg('lease_token')
   AND lease_expires_at > clock_timestamp();
 
--- name: DerivedVerifyFinishForwardBlock :exec
+-- name: DerivedVerifyFinishForwardBlock :execrows
 UPDATE derived_verification_forward_blocks
 SET status = 'succeeded', attempt_count = 0,
     leased_by = NULL, lease_token = NULL, lease_expires_at = NULL,
     last_error = NULL, updated_at = clock_timestamp()
-WHERE id = $1::bigint AND chain_id = $2::numeric AND block_hash = $3
-  AND source_job_id = $4::bigint AND source_generation = $5::bigint
-  AND status = 'running' AND leased_by = $6 AND lease_token = $7
+WHERE id = sqlc.arg('id')::bigint AND chain_id = sqlc.arg('chain_id')::numeric AND block_hash = sqlc.arg('block_hash')
+  AND source_job_id = sqlc.arg('source_job_id')::bigint AND source_generation = sqlc.arg('source_generation')::bigint
+  AND status = 'running' AND leased_by = sqlc.arg('leased_by') AND lease_token = sqlc.arg('lease_token')
   AND lease_expires_at > clock_timestamp();
 
--- name: DerivedVerifyRetryForwardBlock :exec
+-- name: DerivedVerifyRetryForwardBlock :execrows
 UPDATE derived_verification_forward_blocks
 SET status = 'queued', leased_by = NULL, lease_token = NULL,
-    lease_expires_at = NULL, last_error = $8, updated_at = clock_timestamp()
-WHERE id = $1::bigint AND chain_id = $2::numeric AND block_number = $3::numeric
-  AND block_hash = $4 AND source_job_id = $5::bigint
-  AND source_generation = $6::bigint
-  AND status = 'running' AND leased_by = $7;
+    lease_expires_at = NULL, last_error = sqlc.arg('last_error'), updated_at = clock_timestamp()
+WHERE id = sqlc.arg('id')::bigint AND chain_id = sqlc.arg('chain_id')::numeric AND block_number = sqlc.arg('block_number')::numeric
+  AND block_hash = sqlc.arg('block_hash') AND source_job_id = sqlc.arg('source_job_id')::bigint
+  AND source_generation = sqlc.arg('source_generation')::bigint
+  AND status = 'running' AND leased_by = sqlc.arg('leased_by');
 
--- name: DerivedVerifyArtifactProvenance :many
+-- name: DerivedVerifyArtifactProvenance :one
 WITH exact AS (
     SELECT attempt.*, scan.creator_code_hash, unit.source_job_id
     FROM derived_verification_attempts AS attempt
@@ -572,7 +572,7 @@ WITH exact AS (
      AND scan.valid_from_block <= attempt.block_number
      AND (scan.valid_to_block IS NULL OR scan.valid_to_block >= attempt.block_number)
      AND scan.last_error IS DISTINCT FROM 'superseded_epoch_start'
-    WHERE attempt.verification_job_id = $1::uuid
+    WHERE attempt.verification_job_id = sqlc.arg('job_id')::uuid
       AND attempt.status = 'matched'
       AND scan.creator_code_hash = (
           SELECT observation.code_hash
@@ -620,21 +620,21 @@ GROUP BY exact.id, exact.creator_address, exact.created_address,
          exact.block_number, exact.block_hash
 HAVING count(*) = 1;
 
--- name: DerivedVerifyArtifactJobKind :many
+-- name: DerivedVerifyArtifactJobKind :one
 SELECT kind
 FROM verification_jobs
-WHERE id = $1::uuid
+WHERE id = sqlc.arg('job_id')::uuid
   AND status = 'succeeded';
 
 -- name: DerivedVerifyCreatedContracts :many
 WITH source_compilations AS (
     SELECT unit.id
     FROM verification_compilation_units AS unit
-    WHERE unit.source_job_id = $4::uuid
+    WHERE unit.source_job_id = sqlc.arg('source_job_id')::uuid
     UNION
     SELECT source_attempt.compilation_id
     FROM derived_verification_attempts AS source_attempt
-    WHERE source_attempt.verification_job_id = $4::uuid
+    WHERE source_attempt.verification_job_id = sqlc.arg('source_job_id')::uuid
       AND source_attempt.status = 'matched'
 ), epoch AS (
     SELECT COALESCE(max(different.block_number), -1::numeric) AS last_different
@@ -643,16 +643,16 @@ WITH source_compilations AS (
       ON different_canonical.chain_id = different.chain_id
      AND different_canonical.number = different.block_number
      AND different_canonical.block_hash = different.block_hash
-    WHERE different.chain_id = $1::numeric
-      AND different.address = $2
-      AND different.code_hash <> $3
-      AND different.block_number <= $5::numeric
+    WHERE different.chain_id = sqlc.arg('chain_id')::numeric
+      AND different.address = sqlc.arg('creator_address')
+      AND different.code_hash <> sqlc.arg('creator_code_hash')
+      AND different.block_number <= sqlc.arg('max_block_number')::numeric
       AND different.canonical
 )
 SELECT attempt.created_address, attempt.transaction_hash, attempt.trace_path,
        attempt.call_type, attempt.block_number::text, attempt.block_hash,
        attempt.status, attempt.file_name, attempt.contract_name,
-       (attempt.verification_job_id IS NOT NULL) AS auto_verified
+       (attempt.verification_job_id IS NOT NULL)::boolean AS auto_verified
 FROM derived_verification_attempts AS attempt
 JOIN source_compilations AS source ON source.id = attempt.compilation_id
 CROSS JOIN epoch
@@ -671,12 +671,12 @@ JOIN derived_verification_scans AS scan
   ON scan.compilation_id = attempt.compilation_id
  AND scan.chain_id = attempt.chain_id
  AND scan.creator_address = attempt.creator_address
- AND scan.creator_code_hash = $3
+ AND scan.creator_code_hash = sqlc.arg('creator_code_hash')
  AND attempt.block_number >= scan.valid_from_block
  AND (scan.valid_to_block IS NULL OR attempt.block_number <= scan.valid_to_block)
  AND scan.last_error IS DISTINCT FROM 'superseded_epoch_start'
-WHERE attempt.chain_id = $1::numeric
-  AND attempt.creator_address = $2
+WHERE attempt.chain_id = sqlc.arg('chain_id')::numeric
+  AND attempt.creator_address = sqlc.arg('creator_address')
   AND attempt.status <> 'stale'
   AND attempt.block_number > epoch.last_different
   AND scan.creator_code_hash = (
@@ -698,7 +698,7 @@ ORDER BY attempt.block_number DESC, attempt.transaction_hash DESC,
          attempt.trace_path DESC, attempt.compilation_id
 LIMIT 100;
 
--- name: DerivedVerifyRequestBackfill :many
+-- name: DerivedVerifyRequestBackfill :one
 WITH selected AS (
     SELECT scan.*,
            epoch.block_number AS epoch_start
@@ -745,8 +745,8 @@ WITH selected AS (
                  observation.block_hash
         LIMIT 1
     ) AS epoch ON TRUE
-    WHERE scan.chain_id = $1::numeric
-      AND ($2::bytea IS NULL OR scan.creator_address = $2)
+    WHERE scan.chain_id = sqlc.arg('chain_id')::numeric
+      AND (sqlc.arg('creator_address')::bytea IS NULL OR scan.creator_address = sqlc.arg('creator_address'))
       AND scan.status <> 'running'
       AND scan.last_error IS DISTINCT FROM 'superseded_epoch_start'
     FOR UPDATE OF scan
@@ -794,6 +794,6 @@ WITH selected AS (
 INSERT INTO derived_verification_backfill_requests (
     chain_id, creator_address, reason, scan_count
 )
-SELECT $1::numeric, $2, $3, count(*)::integer
+SELECT sqlc.arg('chain_id')::numeric, sqlc.arg('creator_address'), sqlc.arg('reason'), count(*)::integer
 FROM corrected
 RETURNING id, scan_count, requested_at;

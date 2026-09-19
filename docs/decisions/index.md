@@ -6,6 +6,8 @@ merging distinct invariants.
 
 ## Core chain, persistence, and runtime correctness
 
+- [ADR-0050 — Native pgx and Typed Queries](ADR-0050-native-pgx-and-typed-queries.md)
+
 - [ADR-0001 — Modular Roles and PostgreSQL Truth](ADR-0001-modular-roles-and-postgresql-truth.md)
 - [ADR-0002 — Identity-Bound Repair and Explicit Reindex](ADR-0002-identity-bound-repair-and-explicit-reindex.md)
 - [ADR-0004 — Durable Runtime Status and Event Replay](ADR-0004-durable-runtime-status-and-events.md)

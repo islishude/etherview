@@ -2,7 +2,6 @@ package etherscan
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,9 +11,12 @@ import (
 	"strconv"
 	"strings"
 
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
 var topicOperatorPattern = regexp.MustCompile(`^topic([0-3])_([0-3])_opr$`)
@@ -37,7 +39,7 @@ func (b *PostgresBackend) logs(ctx context.Context, values url.Values) ([]logEnt
 		fromBlock = value.String()
 	}
 	var coverageEnd *string
-	var toBlock any
+	var toBlock *string
 	if raw := strings.TrimSpace(values.Get("toBlock")); raw != "" {
 		value, err := parseDecimal(raw, "toBlock")
 		if err != nil {
@@ -48,9 +50,9 @@ func (b *PostgresBackend) logs(ctx context.Context, values url.Values) ([]logEnt
 		}
 		text := value.String()
 		coverageEnd = &text
-		toBlock = text
+		toBlock = &text
 	}
-	var address any
+	var address []byte
 	if raw := strings.TrimSpace(values.Get("address")); raw != "" {
 		_, addressBytes, err := parseAddressParameter(raw, "address")
 		if err != nil {
@@ -71,7 +73,7 @@ func (b *PostgresBackend) logs(ctx context.Context, values url.Values) ([]logEnt
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	tip, err := b.requireCanonicalCoreRange(ctx, tx, fromBlock, coverageEnd)
 	if err != nil {
 		return nil, err
@@ -89,36 +91,37 @@ func (b *PostgresBackend) logs(ctx context.Context, values url.Values) ([]logEnt
 		return nil, invalidParameter("log block range exceeds %d blocks", maximumLogBlockSpan)
 	}
 	indexedTopic0 := indexableTopic0(topicFilters)
-	query := dbgen.EtherscanLogsAsc
+	queries := dbgen.New(b.db).WithTx(tx)
+	params := dbgen.EtherscanLogsAscParams{ChainID: b.chain, FromBlock: fromBlock, ToBlock: toBlock, Address: address, Topics: encodedTopics, IndexedTopicZero: indexedTopic0 != nil, TopicZero: indexedTopic0, Limit: int64(page.limit), Offset: page.offset}
+	var rows []dbgen.EtherscanLogsAscRow
 	if page.direction == "DESC" {
-		query = dbgen.EtherscanLogsDesc
+		var descending []dbgen.EtherscanLogsDescRow
+		descending, err = queries.EtherscanLogsDesc(ctx, dbgen.EtherscanLogsDescParams(params))
+		rows = make([]dbgen.EtherscanLogsAscRow, len(descending))
+		for index, row := range descending {
+			rows[index] = dbgen.EtherscanLogsAscRow(row)
+		}
+	} else {
+		rows, err = queries.EtherscanLogsAsc(ctx, params)
 	}
-	rows, err := tx.QueryContext(ctx, query,
-		b.chain, fromBlock, toBlock, address, encodedTopics,
-		indexedTopic0 != nil, indexedTopic0, page.limit, page.offset,
-	)
+
 	if err != nil {
 		return nil, fmt.Errorf("query logs: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	result := make([]logEntry, 0, page.limit)
-	for rows.Next() {
-		item, err := scanLogEntry(rows)
+	for _, storedRow := range rows {
+		item, err := scanLogEntry(storedRow)
 		if err != nil {
 			return nil, err
 		}
 		result = append(result, item)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate logs: %w", err)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, fmt.Errorf("close logs: %w", err)
-	}
+
 	if len(result) == 0 {
 		return nil, ErrNotFound
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit log snapshot: %w", err)
 	}
 	return result, nil
@@ -213,18 +216,28 @@ func buildTopicFilter(values url.Values) ([]sqlTopicFilter, error) {
 	return result, nil
 }
 
-func scanLogEntry(scanner rowScanner) (logEntry, error) {
+func scanLogEntry(scanner dbgen.EtherscanLogsAscRow) (logEntry, error) {
 	var logJSON, receiptJSON, transactionJSON []byte
 	var blockTimestampText, blockNumberText string
-	var blockBaseFeeText sql.NullString
+	var blockBaseFeeText pgtype.Text
 	var blockHashBytes, transactionHashBytes, addressBytes []byte
 	var logIndex, transactionIndex int64
-	if err := scanner.Scan(
-		&logJSON, &receiptJSON, &transactionJSON,
-		&blockTimestampText, &blockBaseFeeText, &blockNumberText,
-		&blockHashBytes, &logIndex, &transactionIndex, &transactionHashBytes, &addressBytes,
-	); err != nil {
-		return logEntry{}, fmt.Errorf("scan log: %w", err)
+	{
+		logJSON = scanner.LogRaw
+		receiptJSON = scanner.ReceiptRaw
+		transactionJSON = scanner.TransactionRaw
+		blockTimestampText = scanner.BlockTimestamp
+		var queryValue4 pgtype.Text
+		if scanner.BlockBaseFee != nil {
+			queryValue4 = pgtype.Text{String: *scanner.BlockBaseFee, Valid: true}
+		}
+		blockBaseFeeText = queryValue4
+		blockNumberText = scanner.BlockNumber
+		blockHashBytes = scanner.BlockHash
+		logIndex = scanner.LogIndex
+		transactionIndex = scanner.TransactionIndex
+		transactionHashBytes = scanner.TransactionHash
+		addressBytes = scanner.Address
 	}
 	if logIndex < 0 || transactionIndex < 0 {
 		return logEntry{}, errors.New("stored log or transaction index is negative")

@@ -178,18 +178,28 @@ func Check(root string) Report {
 				),
 			})
 		}
-		if kind == "test" {
-			return nil
-		}
 		file, err := parser.ParseFile(set, path, content, 0)
 		if err != nil {
 			return err
+		}
+		checkDatabaseImports(set, &report, relative, file, kind == "test")
+		if kind == "test" {
+			return nil
 		}
 		checkImportBoundaries(set, &report, relative, file)
 		if rawSQLExecutors[relative] {
 			return nil
 		}
 		ast.Inspect(file, func(node ast.Node) bool {
+			if call, ok := node.(*ast.CallExpr); ok && len(call.Args) >= 2 {
+				if method, ok := call.Fun.(*ast.SelectorExpr); ok {
+					switch method.Sel.Name {
+					case "Exec", "Query", "QueryRow", "Prepare", "SendBatch", "CopyFrom", "ExecContext", "QueryContext", "QueryRowContext", "PrepareContext":
+						position := set.Position(call.Pos())
+						report.Diagnostics = append(report.Diagnostics, Diagnostic{Path: relative, Line: position.Line, Message: "production database execution must use a generated sqlc method"})
+					}
+				}
+			}
 			literal, ok := node.(*ast.BasicLit)
 			if !ok || literal.Kind != token.STRING {
 				return true
@@ -259,4 +269,25 @@ func hasAllowedPrefix(path string, prefixes []string) bool {
 		}
 	}
 	return false
+}
+
+func checkDatabaseImports(set *token.FileSet, report *Report, path string, file *ast.File, test bool) {
+	for _, spec := range file.Imports {
+		imported, err := strconv.Unquote(spec.Path.Value)
+		if err != nil {
+			continue
+		}
+		message := ""
+		switch imported {
+		case "database/sql", "database/sql/driver", "github.com/jackc/pgx/v5/stdlib", "github.com/lib/pq":
+			message = "database access must use native pgx and pgtype contracts"
+		case "github.com/islishude/etherview/internal/testpgx":
+			if !test {
+				message = "production code must not import database test fixtures"
+			}
+		}
+		if message != "" {
+			report.Diagnostics = append(report.Diagnostics, Diagnostic{Path: path, Line: set.Position(spec.Pos()).Line, Message: message})
+		}
+	}
 }

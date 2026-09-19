@@ -4,12 +4,13 @@ package integration_test
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"math/big"
 	"strings"
 	"testing"
 	"time"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	gethabi "github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -244,7 +245,7 @@ func integrationUserOperationRegistry(t *testing.T, entryPoint common.Address) e
 	return registry
 }
 
-func processUserOperationOutbox(t *testing.T, ctx context.Context, db *sql.DB, registry erc4337.Registry) {
+func processUserOperationOutbox(t *testing.T, ctx context.Context, db *pgxpool.Pool, registry erc4337.Registry) {
 	t.Helper()
 	queue, err := enrich.NewPostgresJobQueue(db)
 	if err != nil {

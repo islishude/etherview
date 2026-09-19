@@ -3,14 +3,17 @@ package enrich
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
+
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/ethereum/go-ethereum/common"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
@@ -25,7 +28,7 @@ func (processor *PostgresProxyProcessor) persist(
 	events proxyBlockEvents,
 	outcome string,
 ) (StageResult, error) {
-	return runStageTransaction(ctx, processor.db, job, func(ctx context.Context, tx *sql.Tx) (StageResult, error) {
+	return runStageTransaction(ctx, processor.db, job, func(ctx context.Context, tx pgx.Tx) (StageResult, error) {
 		return processor.persistTx(ctx, tx, job, detections, beacons, uupsProbes, events, outcome)
 	})
 }
@@ -40,7 +43,7 @@ type proxyCarryForwardCounts struct {
 
 func (processor *PostgresProxyProcessor) persistTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	detections []proxyDetection,
 	beacons []beaconDetection,
@@ -222,7 +225,7 @@ func (processor *PostgresProxyProcessor) persistTx(
 
 func carryForwardProxyGeneration(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 ) (proxyCarryForwardCounts, error) {
 	if job.Generation <= 1 {
@@ -233,12 +236,29 @@ func carryForwardProxyGeneration(
 		return proxyCarryForwardCounts{}, Permanent(err)
 	}
 	var carried proxyCarryForwardCounts
-	err = tx.QueryRowContext(ctx, dbgen.EnrichLegacyCarryForwardProxyGeneration, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-		job.Stage.Version, jobID, generation,
-	).Scan(
-		&carried.proxies, &carried.beacons, &carried.uups, &carried.resolutions,
-		&carried.negativeEvidence,
-	)
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		if job.Stage.Version > 2147483647 {
+			return errors.New("invalid stored query value")
+		}
+		queryRow, err := dbgen.New(tx).EnrichLegacyCarryForwardProxyGeneration(ctx, dbgen.EnrichLegacyCarryForwardProxyGenerationParams{DurableJobID: jobID, JobGeneration: generation, ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: job.BlockHash[:], StageVersion: int32(job.Stage.Version)})
+		if err != nil {
+			return err
+		}
+		carried.proxies = queryRow.Count
+		carried.beacons = queryRow.Count_2
+		carried.uups = queryRow.Count_3
+		carried.resolutions = queryRow.Count_4
+		carried.negativeEvidence = queryRow.Count_5
+		return nil
+	}()
 	if err != nil {
 		return proxyCarryForwardCounts{}, fmt.Errorf("carry forward proxy generation evidence: %w", err)
 	}
@@ -247,7 +267,7 @@ func carryForwardProxyGeneration(
 
 func loadProxyCoverageDetails(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 ) (map[string]string, error) {
 	details := map[string]string{
@@ -255,18 +275,44 @@ func loadProxyCoverageDetails(
 		"trace_coverage":      "missing",
 		"state_diff_coverage": "missing",
 	}
-	rows, err := tx.QueryContext(ctx, dbgen.EnrichInlineLoadProxyCoverageDetailsStatement1, job.ChainID, job.BlockHash[:], TraceStage.Name, TraceStage.Version,
-		StateDiffStage.Name, StateDiffStage.Version,
-	)
+	rows, err := func() ([]dbgen.EnrichInlineLoadProxyCoverageDetailsStatement1Row, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return nil, err
+		}
+		if TraceStage.Version > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		if StateDiffStage.Version > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).EnrichInlineLoadProxyCoverageDetailsStatement1(ctx, dbgen.EnrichInlineLoadProxyCoverageDetailsStatement1Params{ChainID: queryValue0, BlockHash: job.BlockHash[:], Stage: TraceStage.Name, StageVersion: int32(TraceStage.Version), Stage2: StateDiffStage.Name, StageVersion2: int32(StateDiffStage.Version)})
+	}()
 	if err != nil {
 		return nil, fmt.Errorf("query proxy coverage witnesses: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
-	for rows.Next() {
+
+	for _, storedRow := range rows {
 		var stage, state string
-		var version int
-		var durableJobID, generation sql.NullInt64
-		if err := rows.Scan(&stage, &version, &state, &durableJobID, &generation); err != nil {
+		var durableJobID, generation pgtype.Int8
+		if err := func() error {
+			stage = storedRow.Stage
+			if !storedRow.State.Valid {
+				return errors.New("invalid stored query value")
+			}
+			state = storedRow.State.String
+			var queryValue4 pgtype.Int8
+			if storedRow.DurableJobID != nil {
+				queryValue4 = pgtype.Int8{Int64: *storedRow.DurableJobID, Valid: true}
+			}
+			durableJobID = queryValue4
+			var queryValue6 pgtype.Int8
+			if storedRow.JobGeneration != nil {
+				queryValue6 = pgtype.Int8{Int64: *storedRow.JobGeneration, Valid: true}
+			}
+			generation = queryValue6
+			return nil
+		}(); err != nil {
 			return nil, fmt.Errorf("scan proxy coverage witness: %w", err)
 		}
 		key := stage + "_coverage"
@@ -279,9 +325,7 @@ func loadProxyCoverageDetails(
 			details[key] = "unfenced"
 		}
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate proxy coverage witnesses: %w", err)
-	}
+
 	if details["trace_coverage"] == "complete" &&
 		details["state_diff_coverage"] == "complete" {
 		details["history_coverage"] = "complete"
@@ -297,7 +341,7 @@ type proxyCodeObservation struct {
 
 func (processor *PostgresProxyProcessor) persistProxyDetectionEvidence(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	candidate proxyCandidate,
 	codeHash common.Hash,
@@ -324,17 +368,24 @@ func (processor *PostgresProxyProcessor) persistProxyDetectionEvidence(
 	if err != nil {
 		return Permanent(err)
 	}
-	result, err := tx.ExecContext(ctx, dbgen.EnrichLegacyUpsertProxyDetectionEvidence, job.ChainID, candidate.address[:], strconv.FormatUint(job.BlockNumber, 10),
-		job.BlockHash[:], job.Stage.Version, codeHash[:], candidateKind, state, reason,
-		jobID, generation, string(details),
-	)
+	result, err := func() (int64, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return 0, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return 0, err
+		}
+		if job.Stage.Version > 2147483647 {
+			return 0, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).EnrichLegacyUpsertProxyDetectionEvidence(ctx, dbgen.EnrichLegacyUpsertProxyDetectionEvidenceParams{ChainID: queryValue0, Address: candidate.address[:], BlockNumber: queryValue1, BlockHash: job.BlockHash[:], StageVersion: int32(job.Stage.Version), CodeHash: codeHash[:], CandidateKind: candidateKind, DetectionState: state, Reason: reason, DurableJobID: jobID, JobGeneration: generation, Details: []byte(string(details))})
+	}()
 	if err != nil {
 		return fmt.Errorf("persist proxy detection evidence: %w", err)
 	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("read proxy detection evidence result: %w", err)
-	}
+	affected := result
 	if affected != 1 {
 		return Permanent(errors.New("existing proxy detection evidence conflicts with RPC state"))
 	}
@@ -343,7 +394,7 @@ func (processor *PostgresProxyProcessor) persistProxyDetectionEvidence(
 
 func (processor *PostgresProxyProcessor) persistProxyDetectionV2(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	detection proxyDetection,
 ) error {
@@ -359,17 +410,24 @@ func (processor *PostgresProxyProcessor) persistProxyDetectionV2(
 		return Permanent(err)
 	}
 	state := strings.ReplaceAll(string(detection.v2.Status), "-", "_")
-	result, err := tx.ExecContext(ctx, dbgen.EnrichLegacyUpsertProxyDetectionEvidence, job.ChainID, detection.candidate.address[:], strconv.FormatUint(job.BlockNumber, 10),
-		job.BlockHash[:], job.Stage.Version, detection.codeHash[:], "proxy_v2", state, "resolver",
-		jobID, generation, string(details),
-	)
+	result, err := func() (int64, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return 0, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return 0, err
+		}
+		if job.Stage.Version > 2147483647 {
+			return 0, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).EnrichLegacyUpsertProxyDetectionEvidence(ctx, dbgen.EnrichLegacyUpsertProxyDetectionEvidenceParams{ChainID: queryValue0, Address: detection.candidate.address[:], BlockNumber: queryValue1, BlockHash: job.BlockHash[:], StageVersion: int32(job.Stage.Version), CodeHash: detection.codeHash[:], CandidateKind: "proxy_v2", DetectionState: state, Reason: "resolver", DurableJobID: jobID, JobGeneration: generation, Details: []byte(string(details))})
+	}()
 	if err != nil {
 		return fmt.Errorf("persist proxy detection V2 resolution: %w", err)
 	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("read proxy detection V2 persistence result: %w", err)
-	}
+	affected := result
 	if affected != 1 {
 		return Permanent(errors.New("existing proxy detection V2 conflicts with RPC state"))
 	}
@@ -430,24 +488,29 @@ func mergeProxyCodeObservation(observations map[common.Address]proxyCodeObservat
 	return nil
 }
 
-func persistProxyCodeObservation(ctx context.Context, tx *sql.Tx, job Job, observation proxyCodeObservation) error {
-	result, err := tx.ExecContext(ctx, dbgen.EnrichLegacyUpsertProxyCodeObservation, job.ChainID, observation.address[:], strconv.FormatUint(job.BlockNumber, 10),
-		job.BlockHash[:], observation.codeHash[:], observation.code,
-	)
+func persistProxyCodeObservation(ctx context.Context, tx pgx.Tx, job Job, observation proxyCodeObservation) error {
+	result, err := func() (int64, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return 0, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return 0, err
+		}
+		return dbgen.New(tx).EnrichLegacyUpsertProxyCodeObservation(ctx, dbgen.EnrichLegacyUpsertProxyCodeObservationParams{ChainID: queryValue0, Address: observation.address[:], BlockNumber: queryValue1, BlockHash: job.BlockHash[:], CodeHash: observation.codeHash[:], Code: observation.code})
+	}()
 	if err != nil {
 		return fmt.Errorf("persist exact contract code observation: %w", err)
 	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("read exact contract code observation result: %w", err)
-	}
+	affected := result
 	if affected != 1 {
 		return Permanent(errors.New("existing exact contract code observation conflicts with RPC state"))
 	}
 	return nil
 }
 
-func (processor *PostgresProxyProcessor) persistProxyObservation(ctx context.Context, tx *sql.Tx, job Job, detection proxyDetection) error {
+func (processor *PostgresProxyProcessor) persistProxyObservation(ctx context.Context, tx pgx.Tx, job Job, detection proxyDetection) error {
 	resolved := detection.proxy
 	details := map[string]any{"discovery_sources": detection.candidate.sourceList()}
 	if resolved.kind == ProxyMinimal1167 {
@@ -489,7 +552,12 @@ func (processor *PostgresProxyProcessor) persistProxyObservation(ctx context.Con
 	if len(encoded) > processor.limits.MaxDetailsBytes {
 		return Permanent(errors.New("proxy observation details exceed configured limit"))
 	}
-	var admin, adminHash, beacon, beaconHash, immutableArgs, standardVersion any
+	var admin []byte
+	var adminHash []byte
+	var beacon []byte
+	var beaconHash []byte
+	var immutableArgs []byte
+	var standardVersion *string
 	if resolved.admin != nil {
 		admin = resolved.admin[:]
 		adminHash = resolved.adminHash[:]
@@ -502,63 +570,50 @@ func (processor *PostgresProxyProcessor) persistProxyObservation(ctx context.Con
 		immutableArgs = resolved.immutableArgs
 	}
 	if resolved.standardVersion != "" {
-		standardVersion = resolved.standardVersion
+		standardVersion = new(resolved.standardVersion)
 	}
-	result, err := tx.ExecContext(ctx, dbgen.EnrichLegacyUpsertProxyObservation, job.ChainID, detection.candidate.address[:], strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-		job.Stage.Version, detection.codeHash[:], resolved.kind, resolved.pattern, standardVersion,
-		resolved.implementation[:], admin, adminHash, beacon, beaconHash, immutableArgs,
-		resolved.implementationHash[:], ConfidenceHigh, resolved.evidenceState, string(encoded),
-	)
+	result, err := func() (int64, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return 0, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return 0, err
+		}
+		if job.Stage.Version > 2147483647 {
+			return 0, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).EnrichLegacyUpsertProxyObservation(ctx, dbgen.EnrichLegacyUpsertProxyObservationParams{ChainID: queryValue0, ProxyAddress: detection.candidate.address[:], BlockNumber: queryValue1, BlockHash: job.BlockHash[:], StageVersion: int32(job.Stage.Version), ProxyCodeHash: detection.codeHash[:], ProxyKind: string(resolved.kind), ProxyPattern: string(resolved.pattern), StandardVersion: standardVersion, ImplementationAddress: resolved.implementation[:], AdminAddress: admin, AdminCodeHash: adminHash, BeaconAddress: beacon, BeaconCodeHash: beaconHash, ImmutableArgs: immutableArgs, ImplementationCodeHash: resolved.implementationHash[:], Confidence: string(ConfidenceHigh), EvidenceState: resolved.evidenceState, Details: []byte(string(encoded))})
+	}()
 	if err != nil {
 		return fmt.Errorf("persist exact proxy observation: %w", err)
 	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("read exact proxy observation result: %w", err)
-	}
+	affected := result
 	if affected != 1 {
 		return Permanent(errors.New("existing exact proxy observation conflicts with RPC state"))
 	}
 	return nil
 }
 
-func proxyGenerationSQLIdentity(job Job) (any, any, error) {
+func proxyGenerationSQLIdentity(job Job) (*int64, *int64, error) {
 	if job.Generation == 0 {
 		return nil, nil, nil
 	}
-	jobID, err := strconv.ParseInt(job.ID, 10, 64)
-	if err != nil || jobID <= 0 || strconv.FormatInt(jobID, 10) != job.ID {
-		return nil, nil, errors.New("proxy generation job ID is not a canonical positive BIGINT")
+	id, err := strconv.ParseInt(job.ID, 10, 64)
+	if err != nil || id <= 0 || strconv.FormatInt(id, 10) != job.ID || job.Generation > math.MaxInt64 {
+		return nil, nil, errors.New("proxy generation identity is not a canonical positive BIGINT")
 	}
-	return jobID, strconv.FormatUint(job.Generation, 10), nil
+	return new(id), new(int64(job.Generation)), nil
 }
 
-func persistProxyObservationGeneration(
-	ctx context.Context,
-	tx *sql.Tx,
-	job Job,
-	address common.Address,
-) error {
-	jobID, generation, err := proxyGenerationSQLIdentity(job)
-	if err != nil {
-		return Permanent(err)
-	}
-	result, err := tx.ExecContext(ctx, dbgen.EnrichLegacyInsertProxyObservationGeneration, job.ChainID, address[:], job.BlockHash[:], job.Stage.Version, jobID, generation)
-	if err != nil {
-		return fmt.Errorf("persist proxy observation generation: %w", err)
-	}
-	if affected, rowsErr := result.RowsAffected(); rowsErr != nil || affected > 1 {
-		if rowsErr != nil {
-			return fmt.Errorf("read proxy observation generation result: %w", rowsErr)
-		}
-		return Permanent(errors.New("proxy observation generation affected multiple rows"))
-	}
-	return nil
+func persistProxyObservationGeneration(ctx context.Context, tx pgx.Tx, job Job, address common.Address) error {
+	return persistObservationGeneration(ctx, tx, job, address, false)
 }
 
 func (processor *PostgresProxyProcessor) persistProxyArtifactResolution(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	detection proxyDetection,
 ) error {
@@ -577,7 +632,11 @@ func (processor *PostgresProxyProcessor) persistProxyArtifactResolution(
 	if err != nil {
 		return Permanent(err)
 	}
-	var admin, adminHash, beacon, beaconHash, implementationArtifact any
+	var admin []byte
+	var adminHash []byte
+	var beacon []byte
+	var beaconHash []byte
+	var implementationArtifact *string
 	if exact.admin != nil {
 		admin, adminHash = exact.admin[:], exact.adminHash[:]
 	}
@@ -585,15 +644,34 @@ func (processor *PostgresProxyProcessor) persistProxyArtifactResolution(
 		beacon, beaconHash = exact.beacon[:], exact.beaconHash[:]
 	}
 	if exact.implementationArtifactJob != "" {
-		implementationArtifact = exact.implementationArtifactJob
+		implementationArtifact = new(exact.implementationArtifactJob)
 	}
 	var resolutionID int64
-	err = tx.QueryRowContext(ctx, dbgen.EnrichLegacyInsertProxyArtifactResolution, job.ChainID, detection.candidate.address[:], job.BlockHash[:], job.Stage.Version,
-		detection.codeHash[:], exact.kind, exact.pattern, exact.standardVersion,
-		exact.implementation[:], exact.implementationHash[:], admin, adminHash,
-		beacon, beaconHash, exact.proxyArtifactJob, implementationArtifact,
-		jobID, generation, string(encoded),
-	).Scan(&resolutionID)
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		if job.Stage.Version > 2147483647 {
+			return errors.New("invalid stored query value")
+		}
+		var queryValue2 pgtype.UUID
+		if err := queryValue2.Scan(exact.proxyArtifactJob); err != nil {
+			return err
+		}
+		var queryValue3 pgtype.UUID
+		if implementationArtifact != nil {
+			if err := queryValue3.Scan(*implementationArtifact); err != nil {
+				return err
+			}
+		}
+		queryRow, err := dbgen.New(tx).EnrichLegacyInsertProxyArtifactResolution(ctx, dbgen.EnrichLegacyInsertProxyArtifactResolutionParams{ChainID: queryValue0, ProxyAddress: detection.candidate.address[:], ObservationBlockHash: job.BlockHash[:], ObservationStageVersion: int32(job.Stage.Version), ProxyCodeHash: detection.codeHash[:], ProxyKind: string(exact.kind), ProxyPattern: string(exact.pattern), StandardVersion: exact.standardVersion, ImplementationAddress: exact.implementation[:], ImplementationCodeHash: exact.implementationHash[:], AdminAddress: admin, AdminCodeHash: adminHash, BeaconAddress: beacon, BeaconCodeHash: beaconHash, ProxyArtifactJobID: queryValue2, ImplementationArtifactJobID: queryValue3, DurableJobID: jobID, JobGeneration: generation, Evidence: []byte(string(encoded))})
+		if err != nil {
+			return err
+		}
+		resolutionID = queryRow
+		return nil
+	}()
 	if err != nil {
 		return fmt.Errorf("persist authenticated proxy artifact resolution: %w", err)
 	}
@@ -605,7 +683,7 @@ func (processor *PostgresProxyProcessor) persistProxyArtifactResolution(
 
 func (processor *PostgresProxyProcessor) persistBeaconObservation(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	observation proxyBeaconObservation,
 ) error {
@@ -621,63 +699,62 @@ func (processor *PostgresProxyProcessor) persistBeaconObservation(
 	if len(details) > processor.limits.MaxDetailsBytes {
 		return Permanent(errors.New("beacon implementation observation details exceed configured limit"))
 	}
-	result, err := tx.ExecContext(ctx, dbgen.EnrichLegacyUpsertBeaconImplementationObservation, job.ChainID, observation.address[:], strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-		observation.codeHash[:], observation.implementation[:], observation.implementationHash[:],
-		job.Stage.Version, ConfidenceHigh, string(details),
-	)
+	result, err := func() (int64, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return 0, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return 0, err
+		}
+		if job.Stage.Version > 2147483647 {
+			return 0, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).EnrichLegacyUpsertBeaconImplementationObservation(ctx, dbgen.EnrichLegacyUpsertBeaconImplementationObservationParams{ChainID: queryValue0, BeaconAddress: observation.address[:], BlockNumber: queryValue1, BlockHash: job.BlockHash[:], BeaconCodeHash: observation.codeHash[:], ImplementationAddress: observation.implementation[:], ImplementationCodeHash: observation.implementationHash[:], StageVersion: int32(job.Stage.Version), Confidence: string(ConfidenceHigh), Details: []byte(string(details))})
+	}()
 	if err != nil {
 		return fmt.Errorf("persist exact beacon implementation observation: %w", err)
 	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("read exact beacon implementation observation result: %w", err)
-	}
+	affected := result
 	if affected != 1 {
 		return Permanent(errors.New("existing exact beacon implementation observation conflicts with RPC state"))
 	}
 	return nil
 }
 
-func persistBeaconObservationGeneration(
-	ctx context.Context,
-	tx *sql.Tx,
-	job Job,
-	address common.Address,
-) error {
-	jobID, generation, err := proxyGenerationSQLIdentity(job)
-	if err != nil {
-		return Permanent(err)
-	}
-	result, err := tx.ExecContext(ctx, dbgen.EnrichLegacyInsertBeaconObservationGeneration, job.ChainID, address[:], job.BlockHash[:], job.Stage.Version, jobID, generation)
-	if err != nil {
-		return fmt.Errorf("persist beacon observation generation: %w", err)
-	}
-	if affected, rowsErr := result.RowsAffected(); rowsErr != nil || affected > 1 {
-		if rowsErr != nil {
-			return fmt.Errorf("read beacon observation generation result: %w", rowsErr)
-		}
-		return Permanent(errors.New("beacon observation generation affected multiple rows"))
-	}
-	return nil
+func persistBeaconObservationGeneration(ctx context.Context, tx pgx.Tx, job Job, address common.Address) error {
+	return persistObservationGeneration(ctx, tx, job, address, true)
 }
 
 func persistProxyUpgradeEvent(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	event proxyUpgradeEvent,
 ) error {
-	result, err := tx.ExecContext(ctx, dbgen.EnrichLegacyUpsertProxyUpgradeEvent, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-		strconv.FormatUint(event.index, 10), event.hash[:], event.emitter[:], event.kind,
-		event.target[:], job.Stage.Version,
-	)
+	result, err := func() (int64, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return 0, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return 0, err
+		}
+		queryValue2, err := strconv.ParseInt(strconv.FormatUint(event.index, 10), 10, 64)
+		if err != nil {
+			return 0, err
+		}
+		if job.Stage.Version > 2147483647 {
+			return 0, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).EnrichLegacyUpsertProxyUpgradeEvent(ctx, dbgen.EnrichLegacyUpsertProxyUpgradeEventParams{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: job.BlockHash[:], LogIndex: int64(queryValue2), TransactionHash: event.hash[:], EmitterAddress: event.emitter[:], EventKind: event.kind, TargetAddress: event.target[:], StageVersion: int32(job.Stage.Version)})
+	}()
 	if err != nil {
 		return fmt.Errorf("persist strict proxy upgrade event: %w", err)
 	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("read strict proxy upgrade event result: %w", err)
-	}
+	affected := result
 	if affected != 1 {
 		return Permanent(errors.New("existing strict proxy upgrade event conflicts with indexed log"))
 	}
@@ -686,21 +763,36 @@ func persistProxyUpgradeEvent(
 
 func persistProxyInitializationEvent(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	event proxyInitializationEvent,
 ) error {
-	result, err := tx.ExecContext(ctx, dbgen.EnrichLegacyUpsertProxyInitializationEvent, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-		strconv.FormatUint(event.index, 10), event.hash[:], event.address[:],
-		strconv.FormatUint(event.version, 10), job.Stage.Version,
-	)
+	result, err := func() (int64, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return 0, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return 0, err
+		}
+		queryValue2, err := strconv.ParseInt(strconv.FormatUint(event.index, 10), 10, 64)
+		if err != nil {
+			return 0, err
+		}
+		var queryValue3 pgtype.Numeric
+		if err := queryValue3.Scan(strconv.FormatUint(event.version, 10)); err != nil {
+			return 0, err
+		}
+		if job.Stage.Version > 2147483647 {
+			return 0, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).EnrichLegacyUpsertProxyInitializationEvent(ctx, dbgen.EnrichLegacyUpsertProxyInitializationEventParams{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: job.BlockHash[:], LogIndex: int64(queryValue2), TransactionHash: event.hash[:], ContractAddress: event.address[:], Version: queryValue3, StageVersion: int32(job.Stage.Version)})
+	}()
 	if err != nil {
 		return fmt.Errorf("persist strict proxy initialization event: %w", err)
 	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("read strict proxy initialization event result: %w", err)
-	}
+	affected := result
 	if affected != 1 {
 		return Permanent(errors.New("existing strict proxy initialization event conflicts with indexed log"))
 	}
@@ -712,10 +804,40 @@ func persistProxyInitializationEvent(
 // queued, leased, or terminal work. A leased target retains ownership and its
 // completion transaction consumes the pending replay before it can become
 // terminal; unowned output is cleared immediately.
-func resetTerminalDependentStageTx(ctx context.Context, tx *sql.Tx, job Job, dependent StageID) (bool, error) {
+func resetTerminalDependentStageTx(ctx context.Context, tx pgx.Tx, job Job, dependent StageID) (bool, error) {
 	requested, err := requestDependentStageReplayTx(ctx, tx, job, dependent)
 	if err != nil {
 		return false, fmt.Errorf("request dependent stage replay %s: %w", dependent, err)
 	}
 	return requested, nil
+}
+
+func persistObservationGeneration(ctx context.Context, tx pgx.Tx, job Job, address common.Address, beacon bool) error {
+	jobID, generation, err := proxyGenerationSQLIdentity(job)
+	if err != nil {
+		return Permanent(err)
+	}
+	var chain pgtype.Numeric
+	if err := chain.Scan(job.ChainID); err != nil {
+		return err
+	}
+	if job.Stage.Version > math.MaxInt32 {
+		return Permanent(errors.New("observation stage version exceeds PostgreSQL INTEGER"))
+	}
+	queries := dbgen.New(tx)
+	kind := "proxy"
+	var affected int64
+	if beacon {
+		kind = "beacon"
+		affected, err = queries.EnrichLegacyInsertBeaconObservationGeneration(ctx, dbgen.EnrichLegacyInsertBeaconObservationGenerationParams{ChainID: chain, BeaconAddress: address[:], ObservationBlockHash: job.BlockHash[:], ObservationStageVersion: int32(job.Stage.Version), DurableJobID: jobID, JobGeneration: generation})
+	} else {
+		affected, err = queries.EnrichLegacyInsertProxyObservationGeneration(ctx, dbgen.EnrichLegacyInsertProxyObservationGenerationParams{ChainID: chain, ProxyAddress: address[:], ObservationBlockHash: job.BlockHash[:], ObservationStageVersion: int32(job.Stage.Version), DurableJobID: jobID, JobGeneration: generation})
+	}
+	if err != nil {
+		return fmt.Errorf("persist %s observation generation: %w", kind, err)
+	}
+	if affected > 1 {
+		return Permanent(fmt.Errorf("%s observation generation affected multiple rows", kind))
+	}
+	return nil
 }

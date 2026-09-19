@@ -3,8 +3,13 @@ package catalog
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
-	"github.com/islishude/etherview/internal/db/gen"
+
+	"github.com/jackc/pgx/v5/pgtype"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
 func (catalog *Postgres) NFTOwner(ctx context.Context, chainID, tokenAddressText, tokenID string) (NFTOwnership, error) {
@@ -19,7 +24,7 @@ func (catalog *Postgres) NFTOwner(ctx context.Context, chainID, tokenAddressText
 	if err != nil {
 		return NFTOwnership{}, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	snapshot, err := readCanonicalSnapshot(ctx, tx, chainID)
 	if err != nil {
 		return NFTOwnership{}, err
@@ -40,7 +45,7 @@ func (catalog *Postgres) NFTOwner(ctx context.Context, chainID, tokenAddressText
 	// Do not hold a repeatable-read PostgreSQL snapshot or pool connection while
 	// waiting for an external state RPC. The reconciler binds the call to the
 	// immutable block hash and rechecks canonicality before returning.
-	if err := commitRead(tx); err != nil {
+	if err := commitRead(ctx, tx); err != nil {
 		return NFTOwnership{}, err
 	}
 	observation, err := catalog.nftState.Owner(ctx, snapshot, checksummedToken, tokenID)
@@ -81,7 +86,7 @@ func (catalog *Postgres) NFTBalances(ctx context.Context, request NFTBalanceRequ
 	if err != nil {
 		return NFTBalancePage{}, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 
 	var snapshot Snapshot
 	hasBoundary := false
@@ -112,34 +117,45 @@ func (catalog *Postgres) NFTBalances(ctx context.Context, request NFTBalanceRequ
 	if err := requireStage(ctx, tx, snapshot, StageToken); err != nil {
 		return NFTBalancePage{}, err
 	}
-	rows, err := tx.QueryContext(ctx, dbgen.CatalogNftBalanceCandidates, request.ChainID, snapshot.BlockNumber, ownerAddress, hasBoundary,
-		boundaryAddress, boundaryTokenID, limit+1,
-	)
+	rows, err := func() ([]dbgen.CatalogNftBalanceCandidatesRow, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(request.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(snapshot.BlockNumber); err != nil {
+			return nil, err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(boundaryTokenID); err != nil {
+			return nil, err
+		}
+		if limit+1 < -2147483648 || limit+1 > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).CatalogNftBalanceCandidates(ctx, dbgen.CatalogNftBalanceCandidatesParams{ChainID: queryValue0, MaxBlockNumber: queryValue1, OwnerAddress: ownerAddress, HasCursor: hasBoundary, TokenAddress: boundaryAddress, CursorTokenID: queryValue2, Limit: int32(limit + 1)})
+	}()
 	if err != nil {
 		return NFTBalancePage{}, fmt.Errorf("query NFT balances: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	type candidateRow struct {
 		address []byte
 		tokenID string
 	}
 	candidateRows := make([]candidateRow, 0, limit+1)
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var candidate candidateRow
-		if err := rows.Scan(&candidate.address, &candidate.tokenID); err != nil {
-			return NFTBalancePage{}, fmt.Errorf("scan NFT balance: %w", err)
+		{
+			candidate.address = storedRow.TokenAddress
+			candidate.tokenID = storedRow.DTokenID
 		}
 		if len(candidate.address) != 20 || !canonicalUint256(candidate.tokenID) {
 			return NFTBalancePage{}, ErrCorruptData
 		}
 		candidateRows = append(candidateRows, candidate)
 	}
-	if err := rows.Err(); err != nil {
-		return NFTBalancePage{}, fmt.Errorf("iterate NFT balances: %w", err)
-	}
-	if err := rows.Close(); err != nil {
-		return NFTBalancePage{}, fmt.Errorf("close NFT balance candidates: %w", err)
-	}
+
 	hasMore := len(candidateRows) > limit
 	if hasMore {
 		candidateRows = candidateRows[:limit]
@@ -170,7 +186,7 @@ func (catalog *Postgres) NFTBalances(ctx context.Context, request NFTBalanceRequ
 	// Candidate discovery is complete and copied into local bounded values.
 	// Release the database snapshot before potentially slow state RPC calls;
 	// NFTStateReconciler owns exact-block and post-call canonicality checks.
-	if err := commitRead(tx); err != nil {
+	if err := commitRead(ctx, tx); err != nil {
 		return NFTBalancePage{}, err
 	}
 	observations := make([]NFTBalanceObservation, len(candidates))

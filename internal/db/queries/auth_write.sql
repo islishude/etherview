@@ -4,7 +4,7 @@ INSERT INTO api_keys (
 			owner_user_id, scopes
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
 
--- name: AuthWriteRevokeStatement1 :exec
+-- name: AuthWriteRevokeStatement1 :execrows
 UPDATE api_keys
 		SET revoked_at = COALESCE(revoked_at, $2)
 		WHERE prefix = $1;
@@ -15,7 +15,7 @@ INSERT INTO api_keys (
 			owner_user_id, scopes
 		) VALUES ($1, $2, $3, $4, $5, $6, NULL, $7, $8);
 
--- name: AuthWriteRotateStatement2 :exec
+-- name: AuthWriteRotateStatement2 :execrows
 UPDATE api_keys
 		SET revoked_at = $2
 			WHERE prefix = $1 AND revoked_at IS NULL;

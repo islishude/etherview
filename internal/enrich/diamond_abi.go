@@ -2,15 +2,18 @@ package enrich
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
+	pgx "github.com/jackc/pgx/v5"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
 type diamondABIRoute struct {
@@ -46,14 +49,28 @@ func diamondFunctionObservation(observation abiObservation) ([4]byte, bool) {
 
 func resolveDiamondABIRoute(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	observation abiObservation,
 	selector [4]byte,
 ) (diamondABIRoute, error) {
 	var detected bool
-	if err := tx.QueryRowContext(ctx, dbgen.EnrichInlineResolveDiamondABIRouteStatement1, job.ChainID, observation.target[:],
-		strconv.FormatUint(job.BlockNumber, 10)).Scan(&detected); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).EnrichInlineResolveDiamondABIRouteStatement1(ctx, queryValue0, observation.target[:], queryValue1)
+		if err != nil {
+			return err
+		}
+		detected = queryRow
+		return nil
+	}(); err != nil {
 		return diamondABIRoute{}, fmt.Errorf("query Diamond ABI identity: %w", err)
 	}
 	if !detected {
@@ -61,9 +78,25 @@ func resolveDiamondABIRoute(
 	}
 	if observation.objectKind == abiObjectTraceCalldata {
 		var sameTransactionCut bool
-		if err := tx.QueryRowContext(ctx, dbgen.EnrichInlineResolveDiamondABIRouteStatement2, job.ChainID, job.BlockHash[:], observation.target[:],
-			strconv.FormatUint(observation.transactionIndex, 10),
-			ProxyStage.Version).Scan(&sameTransactionCut); err != nil {
+		if err := func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(job.ChainID); err != nil {
+				return err
+			}
+			queryValue1, err := strconv.ParseInt(strconv.FormatUint(observation.transactionIndex, 10), 10, 64)
+			if err != nil {
+				return err
+			}
+			if ProxyStage.Version > 2147483647 {
+				return errors.New("invalid stored query value")
+			}
+			queryRow, err := dbgen.New(tx).EnrichInlineResolveDiamondABIRouteStatement2(ctx, dbgen.EnrichInlineResolveDiamondABIRouteStatement2Params{ChainID: queryValue0, BlockHash: job.BlockHash[:], DiamondAddress: observation.target[:], TransactionIndex: int64(queryValue1), StageVersion: int32(ProxyStage.Version)})
+			if err != nil {
+				return err
+			}
+			sameTransactionCut = queryRow
+			return nil
+		}(); err != nil {
 			return diamondABIRoute{}, fmt.Errorf("query same-transaction DiamondCut: %w", err)
 		}
 		if sameTransactionCut {
@@ -76,10 +109,27 @@ func resolveDiamondABIRoute(
 
 	var action int
 	var facetBytes []byte
-	err := tx.QueryRowContext(ctx, dbgen.EnrichInlineResolveDiamondABIRouteStatement3, job.ChainID, observation.target[:], selector[:],
-		strconv.FormatUint(job.BlockNumber, 10),
-		strconv.FormatUint(observation.transactionIndex, 10),
-	).Scan(&action, &facetBytes)
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryValue2, err := strconv.ParseInt(strconv.FormatUint(observation.transactionIndex, 10), 10, 64)
+		if err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).EnrichInlineResolveDiamondABIRouteStatement3(ctx, dbgen.EnrichInlineResolveDiamondABIRouteStatement3Params{ChainID: queryValue0, DiamondAddress: observation.target[:], Selector: selector[:], MaxBlockNumber: queryValue1, MaxTransactionIndex: int64(queryValue2)})
+		if err != nil {
+			return err
+		}
+		action = int(queryRow.Action)
+		facetBytes = queryRow.FacetAddress
+		return nil
+	}()
 	if err == nil {
 		if action < 0 || action > 2 || len(facetBytes) != common.AddressLength {
 			return diamondABIRoute{}, Permanent(errors.New("stored Diamond ABI route is invalid"))
@@ -110,15 +160,28 @@ func resolveDiamondABIRoute(
 		}
 		return route, nil
 	}
-	if !errors.Is(err, sql.ErrNoRows) {
+	if !errors.Is(err, pgx.ErrNoRows) {
 		return diamondABIRoute{}, fmt.Errorf("query historical Diamond ABI route: %w", err)
 	}
 
 	// A snapshot is a block-end fact. It is safe as a transaction-start route
 	// only when this Diamond has no cuts in the containing block.
 	var blockHasCut bool
-	if err := tx.QueryRowContext(ctx, dbgen.EnrichInlineResolveDiamondABIRouteStatement4, job.ChainID, job.BlockHash[:], observation.target[:],
-		ProxyStage.Version).Scan(&blockHasCut); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		if ProxyStage.Version > 2147483647 {
+			return errors.New("invalid stored query value")
+		}
+		queryRow, err := dbgen.New(tx).EnrichInlineResolveDiamondABIRouteStatement4(ctx, dbgen.EnrichInlineResolveDiamondABIRouteStatement4Params{ChainID: queryValue0, BlockHash: job.BlockHash[:], DiamondAddress: observation.target[:], StageVersion: int32(ProxyStage.Version)})
+		if err != nil {
+			return err
+		}
+		blockHasCut = queryRow
+		return nil
+	}(); err != nil {
 		return diamondABIRoute{}, fmt.Errorf("query block DiamondCut presence: %w", err)
 	}
 	if blockHasCut {
@@ -128,9 +191,24 @@ func resolveDiamondABIRoute(
 		}, nil
 	}
 	var completeness string
-	err = tx.QueryRowContext(ctx, dbgen.EnrichInlineResolveDiamondABIRouteStatement5, job.ChainID, observation.target[:], selector[:],
-		strconv.FormatUint(job.BlockNumber, 10)).Scan(&completeness, &facetBytes)
-	if errors.Is(err, sql.ErrNoRows) {
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).EnrichInlineResolveDiamondABIRouteStatement5(ctx, dbgen.EnrichInlineResolveDiamondABIRouteStatement5Params{ChainID: queryValue0, DiamondAddress: observation.target[:], Selector: selector[:], MaxBlockNumber: queryValue1})
+		if err != nil {
+			return err
+		}
+		completeness = queryRow.Completeness
+		facetBytes = queryRow.FacetAddress
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return diamondABIRoute{detected: true}, nil
 	}
 	if err != nil {
@@ -169,7 +247,7 @@ func resolveDiamondABIRoute(
 
 func loadDiamondFacetCodeHash(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	diamond common.Address,
 	facet common.Address,
@@ -178,9 +256,23 @@ func loadDiamondFacetCodeHash(
 		return common.Hash{}, true, nil
 	}
 	var hashBytes []byte
-	err := tx.QueryRowContext(ctx, dbgen.EnrichInlineLoadDiamondFacetCodeHashStatement1, job.ChainID, diamond[:],
-		strconv.FormatUint(job.BlockNumber, 10), facet[:]).Scan(&hashBytes)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).EnrichInlineLoadDiamondFacetCodeHashStatement1(ctx, dbgen.EnrichInlineLoadDiamondFacetCodeHashStatement1Params{ChainID: queryValue0, DiamondAddress: diamond[:], MaxBlockNumber: queryValue1, FacetAddress: facet[:]})
+		if err != nil {
+			return err
+		}
+		hashBytes = queryRow
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return common.Hash{}, false, nil
 	}
 	if err != nil {
@@ -195,7 +287,7 @@ func loadDiamondFacetCodeHash(
 
 func loadDiamondFacetABIBinding(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	target ABIIdentity,
 	route diamondABIRoute,
 	selector [4]byte,
@@ -270,32 +362,44 @@ func filterABIFunctionSelector(
 
 func loadDiamondAuxiliaryABIBindings(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	target ABIIdentity,
 	limits DecodeLimits,
 ) ([]persistedABIBinding, string, error) {
-	rows, err := tx.QueryContext(ctx, dbgen.EnrichInlineLoadDiamondAuxiliaryABIBindingsStatement1, job.ChainID, target.Address[:], strconv.FormatUint(job.BlockNumber, 10),
-		job.BlockHash[:], ProxyStage.Version, diamondMaxAuxiliaryFacetCandidates+1,
-	)
+	rows, err := func() ([][]byte, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return nil, err
+		}
+		if ProxyStage.Version > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		if diamondMaxAuxiliaryFacetCandidates+1 < -2147483648 || diamondMaxAuxiliaryFacetCandidates+1 > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).EnrichInlineLoadDiamondAuxiliaryABIBindingsStatement1(ctx, dbgen.EnrichInlineLoadDiamondAuxiliaryABIBindingsStatement1Params{ChainID: queryValue0, DiamondAddress: target.Address[:], MaxBlockNumber: queryValue1, BlockHash: job.BlockHash[:], StageVersion: int32(ProxyStage.Version), Limit: int32(diamondMaxAuxiliaryFacetCandidates + 1)})
+	}()
 	if err != nil {
 		return nil, "", fmt.Errorf("query Diamond auxiliary ABI facets: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	addresses := make([]common.Address, 0)
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var addressBytes []byte
-		if err := rows.Scan(&addressBytes); err != nil {
-			return nil, "", fmt.Errorf("scan Diamond auxiliary ABI facet: %w", err)
+		{
+			addressBytes = storedRow
 		}
 		if len(addressBytes) != common.AddressLength {
 			return nil, "", Permanent(errors.New("stored Diamond auxiliary facet is invalid"))
 		}
 		addresses = append(addresses, common.BytesToAddress(addressBytes))
 	}
-	if err := rows.Err(); err != nil {
-		return nil, "", fmt.Errorf("iterate Diamond auxiliary ABI facets: %w", err)
-	}
+
 	if len(addresses) > diamondMaxAuxiliaryFacetCandidates {
 		return nil, "Diamond event/error ABI facet candidate limit exceeded", nil
 	}

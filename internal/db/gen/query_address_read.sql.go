@@ -11,41 +11,41 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const QueryListAddressTransactions = `-- name: QueryListAddressTransactions :many
+const queryListAddressTransactions = `-- name: QueryListAddressTransactions :many
 WITH candidates AS (
     SELECT candidate.block_number, candidate.block_hash, candidate.tx_index, candidate.tx_hash
     FROM (
         SELECT block_number, block_hash, tx_index, tx_hash
         FROM transaction_inclusions
         WHERE chain_id = $1::numeric
-          AND (block_number < $2::numeric OR (block_number = $2::numeric AND tx_index < $3::bigint))
-          AND lower(raw->>'from') = $4::text
+          AND (block_number < $3::numeric OR (block_number = $3::numeric AND tx_index < $4::bigint))
+          AND lower(raw->>'from') = $5::text
         UNION
         SELECT block_number, block_hash, tx_index, tx_hash
         FROM transaction_inclusions
         WHERE chain_id = $1::numeric
-          AND (block_number < $2::numeric OR (block_number = $2::numeric AND tx_index < $3::bigint))
-          AND lower(raw->>'to') = $4::text
+          AND (block_number < $3::numeric OR (block_number = $3::numeric AND tx_index < $4::bigint))
+          AND lower(raw->>'to') = $5::text
         UNION
         SELECT block_number, block_hash, tx_index, tx_hash
         FROM receipts
         WHERE chain_id = $1::numeric
-          AND (block_number < $2::numeric OR (block_number = $2::numeric AND tx_index < $3::bigint))
-          AND lower(raw->>'contractAddress') = $4::text
+          AND (block_number < $3::numeric OR (block_number = $3::numeric AND tx_index < $4::bigint))
+          AND lower(raw->>'contractAddress') = $5::text
     ) AS candidate)
 SELECT
-    inclusion.raw,
-    receipt.raw,
-    inclusion.block_number::text,
-    inclusion.block_hash,
-    inclusion.tx_index,
-    inclusion.tx_hash,
-    TRUE,
-    finality.safe_number::text,
-    finality.finalized_number::text,
-	block.timestamp::text,
-	block.base_fee_per_gas_quantity,
-	EXISTS (
+    inclusion.raw AS raw,
+    receipt.raw AS receipt_raw,
+    inclusion.block_number::text AS block_number,
+    inclusion.block_hash AS block_hash,
+    inclusion.tx_index AS tx_index,
+    inclusion.tx_hash AS tx_hash,
+    (TRUE)::boolean AS canonical,
+    finality.safe_number AS safe_number,
+    finality.finalized_number AS finalized_number,
+    block.timestamp::text AS block_timestamp,
+    block.base_fee_per_gas_quantity AS block_base_fee_per_gas,
+    EXISTS (
 	    SELECT 1
 	    FROM published_block_stage_results AS published_state_diff
 	    WHERE published_state_diff.chain_id = inclusion.chain_id
@@ -55,12 +55,12 @@ SELECT
 	      AND published_state_diff.stage_version = 3
 	      AND published_state_diff.state = 'complete'
 	),
-	execution.resolution,
-	execution.execution_address,
-	execution.execution_code_hash,
-	decoding.signature,
-	decoding.source,
-	decoding.confidence
+    execution.resolution,
+    execution.execution_address,
+    execution.execution_code_hash,
+    decoding.signature,
+    decoding.source,
+    decoding.confidence
 FROM candidates
 JOIN transaction_inclusions AS inclusion
   ON inclusion.chain_id = $1::numeric
@@ -163,45 +163,45 @@ LEFT JOIN abi_decodings AS decoding
        AND published_abi.state = 'complete'
  )
 ORDER BY inclusion.block_number DESC, inclusion.tx_index DESC, inclusion.tx_hash DESC
-LIMIT $5
+LIMIT $2
 `
 
 type QueryListAddressTransactionsParams struct {
-	Column1 pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2 pgtype.Numeric `db:"column_2" json:"column_2"`
-	Column3 int64          `db:"column_3" json:"column_3"`
-	Column4 string         `db:"column_4" json:"column_4"`
-	Limit   int32          `db:"limit" json:"limit"`
+	ChainID        pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Limit          int32          `db:"limit" json:"limit"`
+	MaxBlockNumber pgtype.Numeric `db:"max_block_number" json:"max_block_number"`
+	MaxTxIndex     int64          `db:"max_tx_index" json:"max_tx_index"`
+	AddressHex     string         `db:"address_hex" json:"address_hex"`
 }
 
 type QueryListAddressTransactionsRow struct {
-	Raw                     []byte  `db:"raw" json:"raw"`
-	Raw_2                   []byte  `db:"raw_2" json:"raw_2"`
-	InclusionBlockNumber    string  `db:"inclusion_block_number" json:"inclusion_block_number"`
-	BlockHash               []byte  `db:"block_hash" json:"block_hash"`
-	TxIndex                 int64   `db:"tx_index" json:"tx_index"`
-	TxHash                  []byte  `db:"tx_hash" json:"tx_hash"`
-	Column7                 bool    `db:"column_7" json:"column_7"`
-	FinalitySafeNumber      string  `db:"finality_safe_number" json:"finality_safe_number"`
-	FinalityFinalizedNumber string  `db:"finality_finalized_number" json:"finality_finalized_number"`
-	BlockTimestamp          string  `db:"block_timestamp" json:"block_timestamp"`
-	BaseFeePerGasQuantity   *string `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
-	Exists                  bool    `db:"exists" json:"exists"`
-	Resolution              string  `db:"resolution" json:"resolution"`
-	ExecutionAddress        []byte  `db:"execution_address" json:"execution_address"`
-	ExecutionCodeHash       []byte  `db:"execution_code_hash" json:"execution_code_hash"`
-	Signature               *string `db:"signature" json:"signature"`
-	Source                  *string `db:"source" json:"source"`
-	Confidence              *string `db:"confidence" json:"confidence"`
+	Raw                []byte         `db:"raw" json:"raw"`
+	ReceiptRaw         []byte         `db:"receipt_raw" json:"receipt_raw"`
+	BlockNumber        string         `db:"block_number" json:"block_number"`
+	BlockHash          []byte         `db:"block_hash" json:"block_hash"`
+	TxIndex            int64          `db:"tx_index" json:"tx_index"`
+	TxHash             []byte         `db:"tx_hash" json:"tx_hash"`
+	Canonical          bool           `db:"canonical" json:"canonical"`
+	SafeNumber         pgtype.Numeric `db:"safe_number" json:"safe_number"`
+	FinalizedNumber    pgtype.Numeric `db:"finalized_number" json:"finalized_number"`
+	BlockTimestamp     string         `db:"block_timestamp" json:"block_timestamp"`
+	BlockBaseFeePerGas *string        `db:"block_base_fee_per_gas" json:"block_base_fee_per_gas"`
+	Exists             bool           `db:"exists" json:"exists"`
+	Resolution         pgtype.Text    `db:"resolution" json:"resolution"`
+	ExecutionAddress   []byte         `db:"execution_address" json:"execution_address"`
+	ExecutionCodeHash  []byte         `db:"execution_code_hash" json:"execution_code_hash"`
+	Signature          *string        `db:"signature" json:"signature"`
+	Source             *string        `db:"source" json:"source"`
+	Confidence         *string        `db:"confidence" json:"confidence"`
 }
 
 func (q *Queries) QueryListAddressTransactions(ctx context.Context, arg QueryListAddressTransactionsParams) ([]QueryListAddressTransactionsRow, error) {
-	rows, err := q.db.Query(ctx, QueryListAddressTransactions,
-		arg.Column1,
-		arg.Column2,
-		arg.Column3,
-		arg.Column4,
+	rows, err := q.db.Query(ctx, queryListAddressTransactions,
+		arg.ChainID,
 		arg.Limit,
+		arg.MaxBlockNumber,
+		arg.MaxTxIndex,
+		arg.AddressHex,
 	)
 	if err != nil {
 		return nil, err
@@ -212,16 +212,16 @@ func (q *Queries) QueryListAddressTransactions(ctx context.Context, arg QueryLis
 		var i QueryListAddressTransactionsRow
 		if err := rows.Scan(
 			&i.Raw,
-			&i.Raw_2,
-			&i.InclusionBlockNumber,
+			&i.ReceiptRaw,
+			&i.BlockNumber,
 			&i.BlockHash,
 			&i.TxIndex,
 			&i.TxHash,
-			&i.Column7,
-			&i.FinalitySafeNumber,
-			&i.FinalityFinalizedNumber,
+			&i.Canonical,
+			&i.SafeNumber,
+			&i.FinalizedNumber,
 			&i.BlockTimestamp,
-			&i.BaseFeePerGasQuantity,
+			&i.BlockBaseFeePerGas,
 			&i.Exists,
 			&i.Resolution,
 			&i.ExecutionAddress,
@@ -240,41 +240,41 @@ func (q *Queries) QueryListAddressTransactions(ctx context.Context, arg QueryLis
 	return items, nil
 }
 
-const QueryListAddressTransactionsFirst = `-- name: QueryListAddressTransactionsFirst :many
+const queryListAddressTransactionsFirst = `-- name: QueryListAddressTransactionsFirst :many
 WITH candidates AS (
     SELECT candidate.block_number, candidate.block_hash, candidate.tx_index, candidate.tx_hash
     FROM (
         SELECT block_number, block_hash, tx_index, tx_hash
         FROM transaction_inclusions
         WHERE chain_id = $1::numeric
-          AND block_number <= $2::numeric
-          AND lower(raw->>'from') = $3::text
+          AND block_number <= $3::numeric
+          AND lower(raw->>'from') = $4::text
         UNION
         SELECT block_number, block_hash, tx_index, tx_hash
         FROM transaction_inclusions
         WHERE chain_id = $1::numeric
-          AND block_number <= $2::numeric
-          AND lower(raw->>'to') = $3::text
+          AND block_number <= $3::numeric
+          AND lower(raw->>'to') = $4::text
         UNION
         SELECT block_number, block_hash, tx_index, tx_hash
         FROM receipts
         WHERE chain_id = $1::numeric
-          AND block_number <= $2::numeric
-          AND lower(raw->>'contractAddress') = $3::text
+          AND block_number <= $3::numeric
+          AND lower(raw->>'contractAddress') = $4::text
     ) AS candidate)
 SELECT
-    inclusion.raw,
-    receipt.raw,
-    inclusion.block_number::text,
-    inclusion.block_hash,
-    inclusion.tx_index,
-    inclusion.tx_hash,
-    TRUE,
-    finality.safe_number::text,
-    finality.finalized_number::text,
-	block.timestamp::text,
-	block.base_fee_per_gas_quantity,
-	EXISTS (
+    inclusion.raw AS raw,
+    receipt.raw AS receipt_raw,
+    inclusion.block_number::text AS block_number,
+    inclusion.block_hash AS block_hash,
+    inclusion.tx_index AS tx_index,
+    inclusion.tx_hash AS tx_hash,
+    (TRUE)::boolean AS canonical,
+    finality.safe_number AS safe_number,
+    finality.finalized_number AS finalized_number,
+    block.timestamp::text AS block_timestamp,
+    block.base_fee_per_gas_quantity AS block_base_fee_per_gas,
+    EXISTS (
 	    SELECT 1
 	    FROM published_block_stage_results AS published_state_diff
 	    WHERE published_state_diff.chain_id = inclusion.chain_id
@@ -284,12 +284,12 @@ SELECT
 	      AND published_state_diff.stage_version = 3
 	      AND published_state_diff.state = 'complete'
 	),
-	execution.resolution,
-	execution.execution_address,
-	execution.execution_code_hash,
-	decoding.signature,
-	decoding.source,
-	decoding.confidence
+    execution.resolution,
+    execution.execution_address,
+    execution.execution_code_hash,
+    decoding.signature,
+    decoding.source,
+    decoding.confidence
 FROM candidates
 JOIN transaction_inclusions AS inclusion
   ON inclusion.chain_id = $1::numeric
@@ -392,43 +392,43 @@ LEFT JOIN abi_decodings AS decoding
        AND published_abi.state = 'complete'
  )
 ORDER BY inclusion.block_number DESC, inclusion.tx_index DESC, inclusion.tx_hash DESC
-LIMIT $4
+LIMIT $2
 `
 
 type QueryListAddressTransactionsFirstParams struct {
-	Column1 pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2 pgtype.Numeric `db:"column_2" json:"column_2"`
-	Column3 string         `db:"column_3" json:"column_3"`
-	Limit   int32          `db:"limit" json:"limit"`
+	ChainID        pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Limit          int32          `db:"limit" json:"limit"`
+	MaxBlockNumber pgtype.Numeric `db:"max_block_number" json:"max_block_number"`
+	AddressHex     string         `db:"address_hex" json:"address_hex"`
 }
 
 type QueryListAddressTransactionsFirstRow struct {
-	Raw                     []byte  `db:"raw" json:"raw"`
-	Raw_2                   []byte  `db:"raw_2" json:"raw_2"`
-	InclusionBlockNumber    string  `db:"inclusion_block_number" json:"inclusion_block_number"`
-	BlockHash               []byte  `db:"block_hash" json:"block_hash"`
-	TxIndex                 int64   `db:"tx_index" json:"tx_index"`
-	TxHash                  []byte  `db:"tx_hash" json:"tx_hash"`
-	Column7                 bool    `db:"column_7" json:"column_7"`
-	FinalitySafeNumber      string  `db:"finality_safe_number" json:"finality_safe_number"`
-	FinalityFinalizedNumber string  `db:"finality_finalized_number" json:"finality_finalized_number"`
-	BlockTimestamp          string  `db:"block_timestamp" json:"block_timestamp"`
-	BaseFeePerGasQuantity   *string `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
-	Exists                  bool    `db:"exists" json:"exists"`
-	Resolution              string  `db:"resolution" json:"resolution"`
-	ExecutionAddress        []byte  `db:"execution_address" json:"execution_address"`
-	ExecutionCodeHash       []byte  `db:"execution_code_hash" json:"execution_code_hash"`
-	Signature               *string `db:"signature" json:"signature"`
-	Source                  *string `db:"source" json:"source"`
-	Confidence              *string `db:"confidence" json:"confidence"`
+	Raw                []byte         `db:"raw" json:"raw"`
+	ReceiptRaw         []byte         `db:"receipt_raw" json:"receipt_raw"`
+	BlockNumber        string         `db:"block_number" json:"block_number"`
+	BlockHash          []byte         `db:"block_hash" json:"block_hash"`
+	TxIndex            int64          `db:"tx_index" json:"tx_index"`
+	TxHash             []byte         `db:"tx_hash" json:"tx_hash"`
+	Canonical          bool           `db:"canonical" json:"canonical"`
+	SafeNumber         pgtype.Numeric `db:"safe_number" json:"safe_number"`
+	FinalizedNumber    pgtype.Numeric `db:"finalized_number" json:"finalized_number"`
+	BlockTimestamp     string         `db:"block_timestamp" json:"block_timestamp"`
+	BlockBaseFeePerGas *string        `db:"block_base_fee_per_gas" json:"block_base_fee_per_gas"`
+	Exists             bool           `db:"exists" json:"exists"`
+	Resolution         pgtype.Text    `db:"resolution" json:"resolution"`
+	ExecutionAddress   []byte         `db:"execution_address" json:"execution_address"`
+	ExecutionCodeHash  []byte         `db:"execution_code_hash" json:"execution_code_hash"`
+	Signature          *string        `db:"signature" json:"signature"`
+	Source             *string        `db:"source" json:"source"`
+	Confidence         *string        `db:"confidence" json:"confidence"`
 }
 
 func (q *Queries) QueryListAddressTransactionsFirst(ctx context.Context, arg QueryListAddressTransactionsFirstParams) ([]QueryListAddressTransactionsFirstRow, error) {
-	rows, err := q.db.Query(ctx, QueryListAddressTransactionsFirst,
-		arg.Column1,
-		arg.Column2,
-		arg.Column3,
+	rows, err := q.db.Query(ctx, queryListAddressTransactionsFirst,
+		arg.ChainID,
 		arg.Limit,
+		arg.MaxBlockNumber,
+		arg.AddressHex,
 	)
 	if err != nil {
 		return nil, err
@@ -439,16 +439,16 @@ func (q *Queries) QueryListAddressTransactionsFirst(ctx context.Context, arg Que
 		var i QueryListAddressTransactionsFirstRow
 		if err := rows.Scan(
 			&i.Raw,
-			&i.Raw_2,
-			&i.InclusionBlockNumber,
+			&i.ReceiptRaw,
+			&i.BlockNumber,
 			&i.BlockHash,
 			&i.TxIndex,
 			&i.TxHash,
-			&i.Column7,
-			&i.FinalitySafeNumber,
-			&i.FinalityFinalizedNumber,
+			&i.Canonical,
+			&i.SafeNumber,
+			&i.FinalizedNumber,
 			&i.BlockTimestamp,
-			&i.BaseFeePerGasQuantity,
+			&i.BlockBaseFeePerGas,
 			&i.Exists,
 			&i.Resolution,
 			&i.ExecutionAddress,

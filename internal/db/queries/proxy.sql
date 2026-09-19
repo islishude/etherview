@@ -7,7 +7,7 @@
 WITH canonical_tip AS (
     SELECT number, block_hash
     FROM canonical_blocks
-    WHERE chain_id = sqlc.arg(chain_id)::numeric
+    WHERE chain_id = sqlc.arg('chain_id')::numeric
     ORDER BY number DESC
     LIMIT 1
 ), history_epoch AS (
@@ -15,7 +15,7 @@ WITH canonical_tip AS (
         SELECT epoch.epoch_id
         FROM canonical_tip AS tip
         JOIN proxy_history_epochs AS epoch
-          ON epoch.chain_id = sqlc.arg(chain_id)::numeric
+          ON epoch.chain_id = sqlc.arg('chain_id')::numeric
          AND epoch.block_number <= tip.number
         JOIN canonical_blocks AS canonical
           ON canonical.chain_id = epoch.chain_id
@@ -35,7 +35,7 @@ SELECT tip.number::text AS snapshot_number,
 FROM canonical_tip AS tip
 CROSS JOIN history_epoch
 LEFT JOIN published_block_stage_results AS stage
-  ON stage.chain_id = sqlc.arg(chain_id)::numeric
+  ON stage.chain_id = sqlc.arg('chain_id')::numeric
  AND stage.block_number = tip.number
  AND stage.block_hash = tip.block_hash
  AND stage.stage = 'proxy'
@@ -51,11 +51,11 @@ SELECT EXISTS (
      AND published.block_hash = canonical_blocks.block_hash
      AND published.stage = 'proxy'
      AND published.stage_version = 2
-     AND published.durable_job_id = sqlc.arg(durable_job_id)::bigint
-     AND published.job_generation = sqlc.arg(job_generation)::bigint
-    WHERE canonical_blocks.chain_id = sqlc.arg(chain_id)::numeric
-      AND canonical_blocks.number = sqlc.arg(snapshot_number)::numeric
-      AND canonical_blocks.block_hash = sqlc.arg(snapshot_hash)::bytea
+     AND published.durable_job_id = sqlc.arg('durable_job_id')::bigint
+     AND published.job_generation = sqlc.arg('job_generation')::bigint
+    WHERE canonical_blocks.chain_id = sqlc.arg('chain_id')::numeric
+      AND canonical_blocks.number = sqlc.arg('snapshot_number')::numeric
+      AND canonical_blocks.block_hash = sqlc.arg('snapshot_hash')::bytea
       AND (
           SELECT COALESCE((
               SELECT epoch.epoch_id
@@ -64,19 +64,19 @@ SELECT EXISTS (
                 ON epoch_canonical.chain_id = epoch.chain_id
                AND epoch_canonical.number = epoch.block_number
                AND epoch_canonical.block_hash = epoch.block_hash
-              WHERE epoch.chain_id = sqlc.arg(chain_id)::numeric
-                AND epoch.block_number <= sqlc.arg(snapshot_number)::numeric
+              WHERE epoch.chain_id = sqlc.arg('chain_id')::numeric
+                AND epoch.block_number <= sqlc.arg('snapshot_number')::numeric
               ORDER BY epoch.epoch_id DESC
               LIMIT 1
           ), 0)::bigint
-      ) = sqlc.arg(history_epoch)::bigint
+      ) = sqlc.arg('history_epoch')::bigint
 ) AS canonical;
 
 -- name: GetLatestPublishedProxyDetection :one
 WITH canonical_tip AS (
     SELECT number, block_hash
     FROM canonical_blocks
-    WHERE chain_id = sqlc.arg(chain_id)::numeric
+    WHERE chain_id = sqlc.arg('chain_id')::numeric
     ORDER BY number DESC
     LIMIT 1
 ), latest_raw AS (
@@ -91,8 +91,8 @@ WITH canonical_tip AS (
           ON canonical.chain_id = candidate.chain_id
          AND canonical.number = candidate.block_number
          AND canonical.block_hash = candidate.block_hash
-        WHERE candidate.chain_id = sqlc.arg(chain_id)::numeric
-          AND candidate.proxy_address = sqlc.arg(proxy_address)::bytea
+        WHERE candidate.chain_id = sqlc.arg('chain_id')::numeric
+          AND candidate.proxy_address = sqlc.arg('proxy_address')::bytea
           AND candidate.stage_version = 2
           AND candidate.canonical = TRUE
           AND candidate.block_number <= tip.number
@@ -362,8 +362,8 @@ JOIN published_block_stage_results AS published
  AND published.durable_job_id = evidence.durable_job_id
  AND published.job_generation = evidence.job_generation
  AND published.state = 'complete'
-WHERE evidence.chain_id = sqlc.arg(chain_id)::numeric
-  AND evidence.address = sqlc.arg(proxy_address)::bytea
+WHERE evidence.chain_id = sqlc.arg('chain_id')::numeric
+  AND evidence.address = sqlc.arg('proxy_address')::bytea
   AND evidence.candidate_kind = 'proxy'
   AND evidence.stage_version = 2
   AND evidence.canonical = TRUE
@@ -386,8 +386,8 @@ JOIN published_block_stage_results AS published
  AND published.durable_job_id = evidence.durable_job_id
  AND published.job_generation = evidence.job_generation
  AND published.state = 'complete'
-WHERE evidence.chain_id = sqlc.arg(chain_id)::numeric
-  AND evidence.address = sqlc.arg(proxy_address)::bytea
+WHERE evidence.chain_id = sqlc.arg('chain_id')::numeric
+  AND evidence.address = sqlc.arg('proxy_address')::bytea
   AND evidence.candidate_kind = 'proxy_v2'
   AND evidence.stage_version = 2
   AND evidence.canonical = TRUE
@@ -399,7 +399,7 @@ LIMIT 1;
 WITH canonical_tip AS (
     SELECT number, block_hash
     FROM canonical_blocks
-    WHERE chain_id = sqlc.arg(chain_id)::numeric
+    WHERE chain_id = sqlc.arg('chain_id')::numeric
     ORDER BY number DESC
     LIMIT 1
 ), candidate AS (
@@ -409,8 +409,8 @@ WITH canonical_tip AS (
            resolution.implementation_artifact_job_id
     FROM canonical_tip AS tip
     JOIN verified_proxy_bindings AS binding
-      ON binding.chain_id = sqlc.arg(chain_id)::numeric
-     AND binding.proxy_address = sqlc.arg(proxy_address)::bytea
+      ON binding.chain_id = sqlc.arg('chain_id')::numeric
+     AND binding.proxy_address = sqlc.arg('proxy_address')::bytea
      AND binding.observation_stage_version = 2
     LEFT JOIN proxy_artifact_resolutions AS resolution
       ON resolution.id = binding.artifact_resolution_id
@@ -825,10 +825,10 @@ SELECT verification_job_id::text AS binding_id,
 FROM current_binding;
 
 -- name: GetCWIAImplementationAnalyses :many
-SELECT (verified.address = sqlc.arg(implementation_address)::bytea
-        AND verified.valid_from_block <= sqlc.arg(snapshot_number)::numeric
+SELECT (verified.address = sqlc.arg('implementation_address')::bytea
+        AND verified.valid_from_block <= sqlc.arg('snapshot_number')::numeric
         AND (verified.valid_to_block IS NULL OR
-             verified.valid_to_block >= sqlc.arg(snapshot_number)::numeric))::boolean AS exact,
+             verified.valid_to_block >= sqlc.arg('snapshot_number')::numeric))::boolean AS exact,
        verified.compilation_artifacts->'soladyLegacyCWIAImmutableArgs' AS analysis
 FROM verified_contracts AS verified
 JOIN verification_jobs AS job
@@ -836,8 +836,8 @@ JOIN verification_jobs AS job
  AND job.request_digest = verified.request_digest
  AND job.kind = 'address'
  AND job.status = 'succeeded'
-WHERE verified.chain_id = sqlc.arg(chain_id)::numeric
-  AND verified.code_hash = sqlc.arg(implementation_code_hash)::bytea
+WHERE verified.chain_id = sqlc.arg('chain_id')::numeric
+  AND verified.code_hash = sqlc.arg('implementation_code_hash')::bytea
   AND verified.language = 'solidity'
   AND job.request->>'solidity_analysis_version' = '1'
   AND verified.compilation_artifacts ? 'soladyLegacyCWIAImmutableArgs'
@@ -853,7 +853,7 @@ LIMIT 17;
 WITH canonical_tip AS (
     SELECT number
     FROM canonical_blocks
-    WHERE chain_id = sqlc.arg(chain_id)::numeric
+    WHERE chain_id = sqlc.arg('chain_id')::numeric
     ORDER BY number DESC
     LIMIT 1
 ), current_proxy AS (
@@ -866,7 +866,7 @@ WITH canonical_tip AS (
            tip.number AS snapshot_number
     FROM canonical_tip AS tip
     JOIN proxy_observations AS observation
-      ON observation.chain_id = sqlc.arg(chain_id)::numeric
+      ON observation.chain_id = sqlc.arg('chain_id')::numeric
      AND observation.block_number <= tip.number
      AND observation.stage_version = 2
      AND observation.canonical = TRUE
@@ -918,7 +918,7 @@ WITH canonical_tip AS (
           ON canonical.chain_id = code.chain_id
          AND canonical.number = code.block_number
          AND canonical.block_hash = code.block_hash
-        WHERE code.chain_id = sqlc.arg(chain_id)::numeric
+        WHERE code.chain_id = sqlc.arg('chain_id')::numeric
           AND code.address = current.proxy_address
           AND code.canonical = TRUE
           AND code.block_number <= current.snapshot_number
@@ -941,7 +941,7 @@ WITH canonical_tip AS (
            AND published.durable_job_id = evidence.durable_job_id
            AND published.job_generation = evidence.job_generation
            AND published.state = 'complete'
-          WHERE evidence.chain_id = sqlc.arg(chain_id)::numeric
+          WHERE evidence.chain_id = sqlc.arg('chain_id')::numeric
             AND evidence.address = current.proxy_address
             AND evidence.candidate_kind = 'proxy'
             AND evidence.stage_version = 2
@@ -959,15 +959,15 @@ WITH canonical_tip AS (
 )
 SELECT count(*)::text AS proxy_count
 FROM effective_current
-WHERE beacon_address = sqlc.arg(beacon_address)::bytea;
+WHERE beacon_address = sqlc.arg('beacon_address')::bytea;
 
 -- name: GetProxyHistoryCoverage :one
 WITH canonical_tip AS (
     SELECT number, block_hash
     FROM canonical_blocks
-    WHERE chain_id = sqlc.arg(chain_id)::numeric
-      AND number = sqlc.arg(snapshot_number)::numeric
-      AND block_hash = sqlc.arg(snapshot_hash)::bytea
+    WHERE chain_id = sqlc.arg('chain_id')::numeric
+      AND number = sqlc.arg('snapshot_number')::numeric
+      AND block_hash = sqlc.arg('snapshot_hash')::bytea
 ), first_observation AS (
     SELECT observation.block_number, observation.block_hash,
            observation.proxy_pattern
@@ -976,11 +976,11 @@ WITH canonical_tip AS (
       ON canonical.chain_id = observation.chain_id
      AND canonical.number = observation.block_number
      AND canonical.block_hash = observation.block_hash
-    WHERE observation.chain_id = sqlc.arg(chain_id)::numeric
-      AND observation.proxy_address = sqlc.arg(proxy_address)::bytea
+    WHERE observation.chain_id = sqlc.arg('chain_id')::numeric
+      AND observation.proxy_address = sqlc.arg('proxy_address')::bytea
       AND observation.stage_version = 2
       AND observation.canonical = TRUE
-      AND observation.block_number <= sqlc.arg(snapshot_number)::numeric
+      AND observation.block_number <= sqlc.arg('snapshot_number')::numeric
       AND EXISTS (
           SELECT 1
           FROM proxy_observation_generations AS generation
@@ -1003,9 +1003,9 @@ WITH canonical_tip AS (
 SELECT first_observation.block_number::text AS from_block,
        tip.number::text AS to_block,
        (CASE WHEN first_observation.proxy_pattern = 'clone' AND
-                         sqlc.arg(history_kind)::text = 'upgrades' THEN TRUE
+                         sqlc.arg('history_kind')::text = 'upgrades' THEN TRUE
             ELSE proxy_interaction_coverage_contains(
-                sqlc.arg(chain_id)::numeric,
+                sqlc.arg('chain_id')::numeric,
                 first_observation.block_number, first_observation.block_hash,
                 tip.number, tip.block_hash
             ) END)::boolean AS complete,
@@ -1083,11 +1083,11 @@ WITH published_proxy_observations AS (
         ORDER BY exact.id DESC
         LIMIT 1
     ) AS resolution ON TRUE
-    WHERE observation.chain_id = sqlc.arg(chain_id)::numeric
-      AND observation.proxy_address = sqlc.arg(proxy_address)::bytea
+    WHERE observation.chain_id = sqlc.arg('chain_id')::numeric
+      AND observation.proxy_address = sqlc.arg('proxy_address')::bytea
       AND observation.stage_version = 2
       AND observation.canonical = TRUE
-      AND observation.block_number <= sqlc.arg(snapshot_number)::numeric
+      AND observation.block_number <= sqlc.arg('snapshot_number')::numeric
 ), relevant_beacons AS (
     SELECT DISTINCT beacon_address
     FROM published_proxy_observations
@@ -1107,10 +1107,10 @@ WITH published_proxy_observations AS (
      AND published.durable_job_id = evidence.durable_job_id
      AND published.job_generation = evidence.job_generation
      AND published.state = 'complete'
-    WHERE evidence.chain_id = sqlc.arg(chain_id)::numeric
+    WHERE evidence.chain_id = sqlc.arg('chain_id')::numeric
       AND evidence.stage_version = 2
       AND evidence.canonical = TRUE
-      AND evidence.block_number <= sqlc.arg(snapshot_number)::numeric
+      AND evidence.block_number <= sqlc.arg('snapshot_number')::numeric
       AND NOT (
           evidence.reason = 'immutable_args_creation_unverified'
           AND evidence.candidate_kind = 'proxy'
@@ -1127,7 +1127,7 @@ WITH published_proxy_observations AS (
       )
       AND (
           (evidence.candidate_kind = 'proxy' AND
-           evidence.address = sqlc.arg(proxy_address)::bytea) OR
+           evidence.address = sqlc.arg('proxy_address')::bytea) OR
           (evidence.candidate_kind = 'beacon' AND
            evidence.address IN (SELECT beacon_address FROM relevant_beacons))
       )
@@ -1160,10 +1160,10 @@ WITH published_proxy_observations AS (
         ORDER BY witness.id DESC
         LIMIT 1
     ) AS generation ON TRUE
-    WHERE observation.chain_id = sqlc.arg(chain_id)::numeric
+    WHERE observation.chain_id = sqlc.arg('chain_id')::numeric
       AND observation.stage_version = 2
       AND observation.canonical = TRUE
-      AND observation.block_number <= sqlc.arg(snapshot_number)::numeric
+      AND observation.block_number <= sqlc.arg('snapshot_number')::numeric
 ), published_events AS (
     SELECT event.*
     FROM proxy_upgrade_events AS event
@@ -1171,12 +1171,12 @@ WITH published_proxy_observations AS (
       ON canonical.chain_id = event.chain_id
      AND canonical.number = event.block_number
      AND canonical.block_hash = event.block_hash
-    WHERE event.chain_id = sqlc.arg(chain_id)::numeric
+    WHERE event.chain_id = sqlc.arg('chain_id')::numeric
       AND event.stage_version = 2
       AND event.canonical = TRUE
-      AND event.block_number <= sqlc.arg(snapshot_number)::numeric
+      AND event.block_number <= sqlc.arg('snapshot_number')::numeric
       AND (
-          event.emitter_address = sqlc.arg(proxy_address)::bytea OR
+          event.emitter_address = sqlc.arg('proxy_address')::bytea OR
           event.emitter_address IN (SELECT beacon_address FROM relevant_beacons)
       )
       AND EXISTS (
@@ -1210,7 +1210,7 @@ WITH published_proxy_observations AS (
            NULL::bigint AS witness_job_generation,
            FALSE AS observation_source
     FROM published_events AS event
-    WHERE event.emitter_address = sqlc.arg(proxy_address)::bytea
+    WHERE event.emitter_address = sqlc.arg('proxy_address')::bytea
       AND event.event_kind = 'beacon'
       AND NOT EXISTS (
           SELECT 1
@@ -1418,7 +1418,7 @@ WITH published_proxy_observations AS (
                           AND EXISTS (
                               SELECT 1 FROM verified_contract_proxy_artifacts AS artifact
                               WHERE artifact.chain_id = observation.chain_id
-                                AND artifact.address = sqlc.arg(proxy_address)::bytea
+                                AND artifact.address = sqlc.arg('proxy_address')::bytea
                                 AND artifact.code_hash = association.proxy_code_hash
                                 AND artifact.valid_from_block <= observation.block_number
                                 AND artifact.artifact_kind = 'beacon_proxy'
@@ -1457,7 +1457,7 @@ WITH published_proxy_observations AS (
                association.proxy_pattern, association.standard_version,
                association.evidence_state
         FROM published_proxy_observations AS association
-        WHERE association.proxy_address = sqlc.arg(proxy_address)::bytea
+        WHERE association.proxy_address = sqlc.arg('proxy_address')::bytea
           AND association.block_number <= observation.block_number
           AND association.proxy_code_hash = (
               SELECT code.code_hash
@@ -1534,7 +1534,7 @@ WITH published_proxy_observations AS (
                observation.proxy_kind, observation.standard_version,
                observation.evidence_state
         FROM published_proxy_observations AS observation
-        WHERE observation.proxy_address = sqlc.arg(proxy_address)::bytea
+        WHERE observation.proxy_address = sqlc.arg('proxy_address')::bytea
           AND observation.block_number <= event.block_number
           AND observation.proxy_code_hash = (
               SELECT code.code_hash
@@ -1602,7 +1602,7 @@ WITH published_proxy_observations AS (
                observation.admin_address AS address
         FROM published_proxy_observations AS observation
         WHERE event.event_kind = 'implementation'
-          AND observation.proxy_address = sqlc.arg(proxy_address)::bytea
+          AND observation.proxy_address = sqlc.arg('proxy_address')::bytea
           AND observation.block_number <= event.block_number
           AND observation.standard_version = '5.6.1'
           AND observation.evidence_state = 'exact'
@@ -1626,7 +1626,7 @@ WITH published_proxy_observations AS (
               SELECT 1
               FROM verified_contract_proxy_artifacts AS artifact
               WHERE artifact.chain_id = event.chain_id
-                AND artifact.address = sqlc.arg(proxy_address)::bytea
+                AND artifact.address = sqlc.arg('proxy_address')::bytea
                 AND artifact.code_hash = observation.proxy_code_hash
                 AND artifact.valid_from_block <= event.block_number
                 AND artifact.standard_version = '5.6.1'
@@ -1653,7 +1653,7 @@ WITH published_proxy_observations AS (
         ORDER BY observation.block_number DESC, observation.block_hash DESC
         LIMIT 1
     ) AS management ON TRUE
-    WHERE event.emitter_address = sqlc.arg(proxy_address)::bytea
+    WHERE event.emitter_address = sqlc.arg('proxy_address')::bytea
       AND association.proxy_pattern <> 'clone'
       AND (
           (event.event_kind = 'implementation' AND
@@ -1738,8 +1738,8 @@ WITH published_proxy_observations AS (
                     ON code_canonical.chain_id = code.chain_id
                    AND code_canonical.number = code.block_number
                    AND code_canonical.block_hash = code.block_hash
-                  WHERE code.chain_id = sqlc.arg(chain_id)::numeric
-                    AND code.address = sqlc.arg(proxy_address)::bytea
+                  WHERE code.chain_id = sqlc.arg('chain_id')::numeric
+                    AND code.address = sqlc.arg('proxy_address')::bytea
                     AND code.canonical = TRUE
                     AND code.block_number <= event.block_number
                   ORDER BY code.block_number DESC, code.observed_at DESC,
@@ -1751,7 +1751,7 @@ WITH published_proxy_observations AS (
               SELECT 1
               FROM published_negative_evidence AS evidence
               WHERE evidence.candidate_kind = 'proxy'
-                AND evidence.address = sqlc.arg(proxy_address)::bytea
+                AND evidence.address = sqlc.arg('proxy_address')::bytea
                 AND evidence.block_number <= event.block_number
                 AND (
                     evidence.block_number > point.block_number OR
@@ -1777,7 +1777,7 @@ WITH published_proxy_observations AS (
               SELECT 1
               FROM verified_contract_proxy_artifacts AS artifact
               WHERE artifact.chain_id = event.chain_id
-                AND artifact.address = sqlc.arg(proxy_address)::bytea
+                AND artifact.address = sqlc.arg('proxy_address')::bytea
                 AND artifact.code_hash = context.proxy_code_hash
                 AND artifact.valid_from_block <= event.block_number
                 AND artifact.artifact_kind = 'beacon_proxy'
@@ -1818,7 +1818,7 @@ WITH published_proxy_observations AS (
         LIMIT 1
     ) AS attestation ON TRUE
     WHERE event.event_kind = 'implementation'
-      AND event.emitter_address <> sqlc.arg(proxy_address)::bytea
+      AND event.emitter_address <> sqlc.arg('proxy_address')::bytea
       AND (
           attestation.exact OR (
               NOT EXISTS (
@@ -1851,10 +1851,10 @@ WITH published_proxy_observations AS (
       ON canonical.chain_id = code.chain_id
      AND canonical.number = code.block_number
      AND canonical.block_hash = code.block_hash
-    WHERE code.chain_id = sqlc.arg(chain_id)::numeric
-      AND code.address = sqlc.arg(proxy_address)::bytea
+    WHERE code.chain_id = sqlc.arg('chain_id')::numeric
+      AND code.address = sqlc.arg('proxy_address')::bytea
       AND code.canonical = TRUE
-      AND code.block_number <= sqlc.arg(snapshot_number)::numeric
+      AND code.block_number <= sqlc.arg('snapshot_number')::numeric
     ORDER BY code.block_number, code.block_hash,
              code.observed_at DESC, code.code_hash DESC
 ), canonical_beacon_code AS (
@@ -1866,10 +1866,10 @@ WITH published_proxy_observations AS (
       ON canonical.chain_id = code.chain_id
      AND canonical.number = code.block_number
      AND canonical.block_hash = code.block_hash
-    WHERE code.chain_id = sqlc.arg(chain_id)::numeric
+    WHERE code.chain_id = sqlc.arg('chain_id')::numeric
       AND code.address IN (SELECT beacon_address FROM relevant_beacons)
       AND code.canonical = TRUE
-      AND code.block_number <= sqlc.arg(snapshot_number)::numeric
+      AND code.block_number <= sqlc.arg('snapshot_number')::numeric
     ORDER BY code.address, code.block_number, code.block_hash,
              code.observed_at DESC, code.code_hash DESC
 ), proxy_code_epoch_points AS (
@@ -2011,10 +2011,10 @@ WITH published_proxy_observations AS (
                     ON canonical.chain_id = code.chain_id
                    AND canonical.number = code.block_number
                    AND canonical.block_hash = code.block_hash
-                  WHERE code.chain_id = sqlc.arg(chain_id)::numeric
-                    AND code.address = sqlc.arg(proxy_address)::bytea
+                  WHERE code.chain_id = sqlc.arg('chain_id')::numeric
+                    AND code.address = sqlc.arg('proxy_address')::bytea
                     AND code.canonical = TRUE
-                    AND code.block_number <= sqlc.arg(snapshot_number)::numeric
+                    AND code.block_number <= sqlc.arg('snapshot_number')::numeric
                   ORDER BY code.block_number DESC, code.observed_at DESC,
                            code.code_hash DESC
                   LIMIT 1
@@ -2055,13 +2055,13 @@ WITH published_proxy_observations AS (
     FROM changes
     WHERE NOT (SELECT value FROM target_is_clone)
       AND (
-          NOT sqlc.arg(has_boundary)::boolean
-          OR block_number < sqlc.arg(before_block_number)::numeric
-          OR (block_number = sqlc.arg(before_block_number)::numeric AND
-              event_order < sqlc.arg(before_event_order)::bigint)
-          OR (block_number = sqlc.arg(before_block_number)::numeric AND
-              event_order = sqlc.arg(before_event_order)::bigint AND
-              source_rank < sqlc.arg(before_source_rank)::integer)
+          NOT sqlc.arg('has_boundary')::boolean
+          OR block_number < sqlc.arg('before_block_number')::numeric
+          OR (block_number = sqlc.arg('before_block_number')::numeric AND
+              event_order < sqlc.arg('before_event_order')::bigint)
+          OR (block_number = sqlc.arg('before_block_number')::numeric AND
+              event_order = sqlc.arg('before_event_order')::bigint AND
+              source_rank < sqlc.arg('before_source_rank')::integer)
       )
 )
 SELECT bounded.block_number::text AS block_number,
@@ -2083,24 +2083,24 @@ SELECT bounded.block_number::text AS block_number,
        -- snapshot, even when verification was published after the event.
        EXISTS (
            SELECT 1 FROM verified_contracts AS verified
-           WHERE verified.chain_id = sqlc.arg(chain_id)::numeric
+           WHERE verified.chain_id = sqlc.arg('chain_id')::numeric
              AND verified.address = bounded.old_implementation_address
              AND verified.code_hash = old_code.code_hash
-             AND verified.valid_from_block <= sqlc.arg(snapshot_number)::numeric
+             AND verified.valid_from_block <= sqlc.arg('snapshot_number')::numeric
        ) AS old_implementation_verified,
        EXISTS (
            SELECT 1 FROM verified_contracts AS verified
-           WHERE verified.chain_id = sqlc.arg(chain_id)::numeric
+           WHERE verified.chain_id = sqlc.arg('chain_id')::numeric
              AND verified.address = bounded.new_implementation_address
              AND verified.code_hash = new_code.code_hash
-             AND verified.valid_from_block <= sqlc.arg(snapshot_number)::numeric
+             AND verified.valid_from_block <= sqlc.arg('snapshot_number')::numeric
        ) AS new_implementation_verified,
        EXISTS (
            SELECT 1 FROM verified_contracts AS verified
-           WHERE verified.chain_id = sqlc.arg(chain_id)::numeric
+           WHERE verified.chain_id = sqlc.arg('chain_id')::numeric
              AND verified.address = bounded.management_address
              AND verified.code_hash = management_code.code_hash
-             AND verified.valid_from_block <= sqlc.arg(snapshot_number)::numeric
+             AND verified.valid_from_block <= sqlc.arg('snapshot_number')::numeric
        ) AS management_verified
 FROM bounded
 LEFT JOIN LATERAL (
@@ -2110,7 +2110,7 @@ LEFT JOIN LATERAL (
       ON canonical.chain_id = observation.chain_id
      AND canonical.number = observation.block_number
      AND canonical.block_hash = observation.block_hash
-    WHERE observation.chain_id = sqlc.arg(chain_id)::numeric
+    WHERE observation.chain_id = sqlc.arg('chain_id')::numeric
       AND observation.address = bounded.old_implementation_address
       AND observation.canonical = TRUE
       AND observation.block_number <= bounded.block_number
@@ -2124,7 +2124,7 @@ LEFT JOIN LATERAL (
       ON canonical.chain_id = observation.chain_id
      AND canonical.number = observation.block_number
      AND canonical.block_hash = observation.block_hash
-    WHERE observation.chain_id = sqlc.arg(chain_id)::numeric
+    WHERE observation.chain_id = sqlc.arg('chain_id')::numeric
       AND observation.address = bounded.new_implementation_address
       AND observation.canonical = TRUE
       AND observation.block_number <= bounded.block_number
@@ -2138,7 +2138,7 @@ LEFT JOIN LATERAL (
       ON canonical.chain_id = observation.chain_id
      AND canonical.number = observation.block_number
      AND canonical.block_hash = observation.block_hash
-    WHERE observation.chain_id = sqlc.arg(chain_id)::numeric
+    WHERE observation.chain_id = sqlc.arg('chain_id')::numeric
       AND observation.address = bounded.management_address
       AND observation.canonical = TRUE
       AND observation.block_number <= bounded.block_number
@@ -2150,7 +2150,7 @@ WHERE new_code.code_hash IS NOT NULL
        management_code.code_hash IS NOT NULL)
 ORDER BY bounded.block_number DESC, bounded.event_order DESC,
          bounded.source_rank DESC
-LIMIT sqlc.arg(page_limit);
+LIMIT sqlc.arg('page_limit');
 
 -- name: ListProxyInitializationHistory :many
 WITH published_proxy_observations AS (
@@ -2222,11 +2222,11 @@ WITH published_proxy_observations AS (
         ORDER BY exact.id DESC
         LIMIT 1
     ) AS resolution ON TRUE
-    WHERE observation.chain_id = sqlc.arg(chain_id)::numeric
-      AND observation.proxy_address = sqlc.arg(proxy_address)::bytea
+    WHERE observation.chain_id = sqlc.arg('chain_id')::numeric
+      AND observation.proxy_address = sqlc.arg('proxy_address')::bytea
       AND observation.stage_version = 2
       AND observation.canonical = TRUE
-      AND observation.block_number <= sqlc.arg(snapshot_number)::numeric
+      AND observation.block_number <= sqlc.arg('snapshot_number')::numeric
 ), relevant_beacons AS (
     SELECT DISTINCT beacon_address
     FROM published_proxy_observations
@@ -2246,10 +2246,10 @@ WITH published_proxy_observations AS (
      AND published.durable_job_id = evidence.durable_job_id
      AND published.job_generation = evidence.job_generation
      AND published.state = 'complete'
-    WHERE evidence.chain_id = sqlc.arg(chain_id)::numeric
+    WHERE evidence.chain_id = sqlc.arg('chain_id')::numeric
       AND evidence.stage_version = 2
       AND evidence.canonical = TRUE
-      AND evidence.block_number <= sqlc.arg(snapshot_number)::numeric
+      AND evidence.block_number <= sqlc.arg('snapshot_number')::numeric
       AND NOT (
           evidence.reason = 'immutable_args_creation_unverified'
           AND evidence.candidate_kind = 'proxy'
@@ -2266,7 +2266,7 @@ WITH published_proxy_observations AS (
       )
       AND (
           (evidence.candidate_kind = 'proxy' AND
-           evidence.address = sqlc.arg(proxy_address)::bytea) OR
+           evidence.address = sqlc.arg('proxy_address')::bytea) OR
           (evidence.candidate_kind = 'beacon' AND
            evidence.address IN (SELECT beacon_address FROM relevant_beacons))
       )
@@ -2299,10 +2299,10 @@ WITH published_proxy_observations AS (
         ORDER BY witness.id DESC
         LIMIT 1
     ) AS generation ON TRUE
-    WHERE observation.chain_id = sqlc.arg(chain_id)::numeric
+    WHERE observation.chain_id = sqlc.arg('chain_id')::numeric
       AND observation.stage_version = 2
       AND observation.canonical = TRUE
-      AND observation.block_number <= sqlc.arg(snapshot_number)::numeric
+      AND observation.block_number <= sqlc.arg('snapshot_number')::numeric
 ), published_upgrade_events AS (
     SELECT event.*
     FROM proxy_upgrade_events AS event
@@ -2310,12 +2310,12 @@ WITH published_proxy_observations AS (
       ON canonical.chain_id = event.chain_id
      AND canonical.number = event.block_number
      AND canonical.block_hash = event.block_hash
-    WHERE event.chain_id = sqlc.arg(chain_id)::numeric
+    WHERE event.chain_id = sqlc.arg('chain_id')::numeric
       AND event.stage_version = 2
       AND event.canonical = TRUE
-      AND event.block_number <= sqlc.arg(snapshot_number)::numeric
+      AND event.block_number <= sqlc.arg('snapshot_number')::numeric
       AND (
-          event.emitter_address = sqlc.arg(proxy_address)::bytea OR
+          event.emitter_address = sqlc.arg('proxy_address')::bytea OR
           event.emitter_address IN (SELECT beacon_address FROM relevant_beacons)
       )
       AND EXISTS (
@@ -2346,7 +2346,7 @@ WITH published_proxy_observations AS (
            NULL::bigint AS witness_job_generation,
            FALSE AS observation_source
     FROM published_upgrade_events AS event
-    WHERE event.emitter_address = sqlc.arg(proxy_address)::bytea
+    WHERE event.emitter_address = sqlc.arg('proxy_address')::bytea
       AND event.event_kind = 'beacon'
       AND NOT EXISTS (
           SELECT 1
@@ -2485,7 +2485,7 @@ WITH published_proxy_observations AS (
         ORDER BY point.block_number DESC, point.event_order DESC
         LIMIT 1
     ) AS beacon ON event.event_kind = 'beacon'
-    WHERE event.emitter_address = sqlc.arg(proxy_address)::bytea
+    WHERE event.emitter_address = sqlc.arg('proxy_address')::bytea
       AND (
           (event.event_kind = 'implementation' AND
            proxy_context.proxy_kind = 'eip1967') OR
@@ -2553,8 +2553,8 @@ WITH published_proxy_observations AS (
                     ON code_canonical.chain_id = code.chain_id
                    AND code_canonical.number = code.block_number
                    AND code_canonical.block_hash = code.block_hash
-                  WHERE code.chain_id = sqlc.arg(chain_id)::numeric
-                    AND code.address = sqlc.arg(proxy_address)::bytea
+                  WHERE code.chain_id = sqlc.arg('chain_id')::numeric
+                    AND code.address = sqlc.arg('proxy_address')::bytea
                     AND code.canonical = TRUE
                     AND code.block_number <= event.block_number
                   ORDER BY code.block_number DESC, code.observed_at DESC,
@@ -2566,7 +2566,7 @@ WITH published_proxy_observations AS (
               SELECT 1
               FROM published_negative_evidence AS evidence
               WHERE evidence.candidate_kind = 'proxy'
-                AND evidence.address = sqlc.arg(proxy_address)::bytea
+                AND evidence.address = sqlc.arg('proxy_address')::bytea
                 AND evidence.block_number <= event.block_number
                 AND (
                     evidence.block_number > point.block_number OR
@@ -2699,8 +2699,8 @@ WITH published_proxy_observations AS (
                     ON code_canonical.chain_id = code.chain_id
                    AND code_canonical.number = code.block_number
                    AND code_canonical.block_hash = code.block_hash
-                  WHERE code.chain_id = sqlc.arg(chain_id)::numeric
-                    AND code.address = sqlc.arg(proxy_address)::bytea
+                  WHERE code.chain_id = sqlc.arg('chain_id')::numeric
+                    AND code.address = sqlc.arg('proxy_address')::bytea
                     AND code.canonical = TRUE
                     AND code.block_number <= observation.block_number
                   ORDER BY code.block_number DESC, code.observed_at DESC,
@@ -2712,7 +2712,7 @@ WITH published_proxy_observations AS (
               SELECT 1
               FROM published_negative_evidence AS evidence
               WHERE evidence.candidate_kind = 'proxy'
-                AND evidence.address = sqlc.arg(proxy_address)::bytea
+                AND evidence.address = sqlc.arg('proxy_address')::bytea
                 AND evidence.block_number <= observation.block_number
                 AND (
                     evidence.block_number > point.block_number OR
@@ -2753,11 +2753,11 @@ WITH published_proxy_observations AS (
       ON canonical.chain_id = event.chain_id
      AND canonical.number = event.block_number
      AND canonical.block_hash = event.block_hash
-    WHERE event.chain_id = sqlc.arg(chain_id)::numeric
-      AND event.contract_address = sqlc.arg(proxy_address)::bytea
+    WHERE event.chain_id = sqlc.arg('chain_id')::numeric
+      AND event.contract_address = sqlc.arg('proxy_address')::bytea
       AND event.stage_version = 2
       AND event.canonical = TRUE
-      AND event.block_number <= sqlc.arg(snapshot_number)::numeric
+      AND event.block_number <= sqlc.arg('snapshot_number')::numeric
       AND EXISTS (
           SELECT 1 FROM published_block_stage_results AS published
           WHERE published.chain_id = event.chain_id
@@ -2767,10 +2767,10 @@ WITH published_proxy_observations AS (
             AND published.state = 'complete'
       )
       AND (
-          NOT sqlc.arg(has_boundary)::boolean OR
-          event.block_number < sqlc.arg(before_block_number)::numeric OR
-          (event.block_number = sqlc.arg(before_block_number)::numeric AND
-           event.log_index < sqlc.arg(before_log_index)::bigint)
+          NOT sqlc.arg('has_boundary')::boolean OR
+          event.block_number < sqlc.arg('before_block_number')::numeric OR
+          (event.block_number = sqlc.arg('before_block_number')::numeric AND
+           event.log_index < sqlc.arg('before_log_index')::bigint)
       )
 )
 SELECT initialization.version::text AS version,
@@ -2785,12 +2785,12 @@ SELECT initialization.version::text AS version,
        -- while verification state reflects knowledge at the API snapshot.
        EXISTS (
            SELECT 1 FROM verified_contracts AS verified
-           WHERE verified.chain_id = sqlc.arg(chain_id)::numeric
+           WHERE verified.chain_id = sqlc.arg('chain_id')::numeric
              AND verified.address = COALESCE(preceding.implementation_address,
                                              observed.implementation_address,
                                              standalone.address)
              AND verified.code_hash = implementation_code.code_hash
-             AND verified.valid_from_block <= sqlc.arg(snapshot_number)::numeric
+             AND verified.valid_from_block <= sqlc.arg('snapshot_number')::numeric
        ) AS implementation_verified
 FROM initialization
 JOIN blocks AS block
@@ -2821,8 +2821,8 @@ LEFT JOIN LATERAL (
                     ON code_canonical.chain_id = code.chain_id
                    AND code_canonical.number = code.block_number
                    AND code_canonical.block_hash = code.block_hash
-                  WHERE code.chain_id = sqlc.arg(chain_id)::numeric
-                    AND code.address = sqlc.arg(proxy_address)::bytea
+                  WHERE code.chain_id = sqlc.arg('chain_id')::numeric
+                    AND code.address = sqlc.arg('proxy_address')::bytea
                     AND code.canonical = TRUE
                     AND code.block_number <= initialization.block_number
                   ORDER BY code.block_number DESC, code.observed_at DESC,
@@ -2834,7 +2834,7 @@ LEFT JOIN LATERAL (
               SELECT 1
               FROM published_negative_evidence AS evidence
               WHERE evidence.candidate_kind = 'proxy'
-                AND evidence.address = sqlc.arg(proxy_address)::bytea
+                AND evidence.address = sqlc.arg('proxy_address')::bytea
                 AND evidence.block_number <= initialization.block_number
                 AND (
                     evidence.block_number > point.block_number OR
@@ -2926,7 +2926,7 @@ LEFT JOIN LATERAL (
     LIMIT 1
 ) AS preceding ON TRUE
 LEFT JOIN LATERAL (
-    SELECT sqlc.arg(proxy_address)::bytea AS address
+    SELECT sqlc.arg('proxy_address')::bytea AS address
     WHERE observed.association_present IS NOT TRUE
 ) AS standalone ON TRUE
 LEFT JOIN LATERAL (
@@ -2936,7 +2936,7 @@ LEFT JOIN LATERAL (
       ON canonical.chain_id = observation.chain_id
      AND canonical.number = observation.block_number
      AND canonical.block_hash = observation.block_hash
-    WHERE observation.chain_id = sqlc.arg(chain_id)::numeric
+    WHERE observation.chain_id = sqlc.arg('chain_id')::numeric
       AND observation.address = COALESCE(preceding.implementation_address,
                                          observed.implementation_address,
                                          standalone.address)
@@ -2952,15 +2952,15 @@ WHERE COALESCE(preceding.implementation_address,
        standalone.address IS NOT NULL)
   AND implementation_code.code_hash IS NOT NULL
 ORDER BY initialization.block_number DESC, initialization.log_index DESC
-LIMIT sqlc.arg(page_limit);
+LIMIT sqlc.arg('page_limit');
 
 -- name: GetDiamondCutHistoryCoverage :one
 WITH tip AS (
     SELECT number, block_hash
     FROM canonical_blocks
-    WHERE chain_id = sqlc.arg(chain_id)::numeric
-      AND number = sqlc.arg(snapshot_number)::numeric
-      AND block_hash = sqlc.arg(snapshot_hash)::bytea
+    WHERE chain_id = sqlc.arg('chain_id')::numeric
+      AND number = sqlc.arg('snapshot_number')::numeric
+      AND block_hash = sqlc.arg('snapshot_hash')::bytea
 ), first_cut AS (
     SELECT event.block_number, event.block_hash
     FROM diamond_cut_events AS event
@@ -2975,9 +2975,9 @@ WITH tip AS (
      AND published.stage = 'proxy'
      AND published.stage_version = event.stage_version
      AND published.state = 'complete'
-    WHERE event.chain_id = sqlc.arg(chain_id)::numeric
-      AND event.diamond_address = sqlc.arg(diamond_address)::bytea
-      AND event.block_number <= sqlc.arg(snapshot_number)::numeric
+    WHERE event.chain_id = sqlc.arg('chain_id')::numeric
+      AND event.diamond_address = sqlc.arg('diamond_address')::bytea
+      AND event.block_number <= sqlc.arg('snapshot_number')::numeric
       AND event.stage_version = 2
       AND event.canonical
     ORDER BY event.block_number, event.transaction_index, event.log_index
@@ -2986,11 +2986,11 @@ WITH tip AS (
     SELECT EXISTS (
         SELECT 1
         FROM receipts AS receipt
-        WHERE receipt.chain_id = sqlc.arg(chain_id)::numeric
+        WHERE receipt.chain_id = sqlc.arg('chain_id')::numeric
           AND receipt.block_number = first_cut.block_number
           AND receipt.block_hash = first_cut.block_hash
           AND lower(receipt.raw->>'contractAddress') =
-              lower('0x' || encode(sqlc.arg(diamond_address)::bytea, 'hex'))
+              lower('0x' || encode(sqlc.arg('diamond_address')::bytea, 'hex'))
         UNION ALL
         SELECT 1
         FROM normalized_traces AS trace
@@ -3001,10 +3001,10 @@ WITH tip AS (
          AND published.stage = 'trace'
          AND published.stage_version = 2
          AND published.state = 'complete'
-        WHERE trace.chain_id = sqlc.arg(chain_id)::numeric
+        WHERE trace.chain_id = sqlc.arg('chain_id')::numeric
           AND trace.block_number = first_cut.block_number
           AND trace.block_hash = first_cut.block_hash
-          AND trace.created_address = sqlc.arg(diamond_address)::bytea
+          AND trace.created_address = sqlc.arg('diamond_address')::bytea
           AND trace.call_type IN ('CREATE', 'CREATE2')
           AND NOT trace.reverted
           AND trace.canonical
@@ -3014,7 +3014,7 @@ WITH tip AS (
 SELECT first_cut.block_number::text AS from_block,
        tip.number::text AS to_block,
        (created.at_first_cut AND proxy_interaction_coverage_contains(
-           sqlc.arg(chain_id)::numeric,
+           sqlc.arg('chain_id')::numeric,
            first_cut.block_number, first_cut.block_hash,
            tip.number, tip.block_hash
        ))::boolean AS complete
@@ -3048,16 +3048,16 @@ JOIN published_block_stage_results AS published
  AND published.stage = 'proxy'
  AND published.stage_version = event.stage_version
  AND published.state = 'complete'
-WHERE event.chain_id = sqlc.arg(chain_id)::numeric
-  AND event.diamond_address = sqlc.arg(diamond_address)::bytea
-  AND event.block_number <= sqlc.arg(snapshot_number)::numeric
+WHERE event.chain_id = sqlc.arg('chain_id')::numeric
+  AND event.diamond_address = sqlc.arg('diamond_address')::bytea
+  AND event.block_number <= sqlc.arg('snapshot_number')::numeric
   AND event.stage_version = 2
   AND event.canonical
   AND (
-      NOT sqlc.arg(has_boundary)::boolean OR
-      event.block_number < sqlc.arg(before_block_number)::numeric OR
-      (event.block_number = sqlc.arg(before_block_number)::numeric AND
-       event.log_index < sqlc.arg(before_log_index)::bigint)
+      NOT sqlc.arg('has_boundary')::boolean OR
+      event.block_number < sqlc.arg('before_block_number')::numeric OR
+      (event.block_number = sqlc.arg('before_block_number')::numeric AND
+       event.log_index < sqlc.arg('before_log_index')::bigint)
   )
 ORDER BY event.block_number DESC, event.log_index DESC
-LIMIT sqlc.arg(page_limit);
+LIMIT sqlc.arg('page_limit');

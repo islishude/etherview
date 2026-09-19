@@ -5,9 +5,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/islishude/etherview/internal/testpgx"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/api/gen"
-	"github.com/islishude/etherview/internal/db/gen"
+
 	"github.com/islishude/etherview/internal/enrich"
 )
 
@@ -22,7 +24,7 @@ func TestTransactionMethodProjectionUsesPublishedTransactionScopedEffectiveIdent
 		"NOT EXISTS (",
 		"published_block_stage_results AS published_abi",
 	} {
-		if !strings.Contains(dbgen.QueryListTransactionsWithMethod, fragment) {
+		if !strings.Contains(testpgx.Statement("QueryListTransactionsWithMethod"), fragment) {
 			t.Fatalf("transaction Method projection missing %q", fragment)
 		}
 	}

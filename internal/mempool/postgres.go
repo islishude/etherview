@@ -3,7 +3,6 @@ package mempool
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -13,9 +12,13 @@ import (
 	"strings"
 	"time"
 
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -33,7 +36,7 @@ type PostgresOptions struct {
 }
 
 type Postgres struct {
-	db      *sql.DB
+	db      dbaccess.Database
 	chainID uint64
 	chain   string
 	enabled bool
@@ -43,7 +46,7 @@ type Postgres struct {
 var _ Store = (*Postgres)(nil)
 var _ Reader = (*Postgres)(nil)
 
-func NewPostgres(db *sql.DB, options PostgresOptions) (*Postgres, error) {
+func NewPostgres(db dbaccess.Database, options PostgresOptions) (*Postgres, error) {
 	if db == nil {
 		return nil, errors.New("mempool database is nil")
 	}
@@ -63,11 +66,11 @@ func (repository *Postgres) StoreSnapshot(ctx context.Context, snapshot Snapshot
 	if err := validateSnapshotForStorage(snapshot); err != nil {
 		return SnapshotInfo{}, err
 	}
-	tx, err := repository.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	tx, err := repository.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
 	if err != nil {
 		return SnapshotInfo{}, fmt.Errorf("begin mempool snapshot transaction: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	if err := lockMempool(ctx, tx, repository.chain); err != nil {
 		return SnapshotInfo{}, err
 	}
@@ -77,75 +80,163 @@ func (repository *Postgres) StoreSnapshot(ctx context.Context, snapshot Snapshot
 	}
 
 	var snapshotID int64
-	err = tx.QueryRowContext(ctx, dbgen.MempoolWriteStoreSnapshotStatement1, repository.chain, snapshot.Endpoint, snapshot.ObservedAt, snapshot.ExpiresAt, len(snapshot.Transactions)).Scan(&snapshotID)
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(repository.chain); err != nil {
+			return err
+		}
+		if len(snapshot.Transactions) < -2147483648 || len(snapshot.Transactions) > 2147483647 {
+			return errors.New("invalid stored query value")
+		}
+		queryRow, err := dbgen.New(tx).MempoolWriteStoreSnapshotStatement1(ctx, dbgen.MempoolWriteStoreSnapshotStatement1Params{ChainID: queryValue0, EndpointName: snapshot.Endpoint, ObservedAt: pgtype.Timestamptz{Time: snapshot.ObservedAt, Valid: true}, ExpiresAt: pgtype.Timestamptz{Time: snapshot.ExpiresAt, Valid: true}, TransactionCount: int32(len(snapshot.Transactions))})
+		if err != nil {
+			return err
+		}
+		snapshotID = queryRow
+		return nil
+	}()
 	if err != nil {
 		return SnapshotInfo{}, fmt.Errorf("insert mempool snapshot: %w", err)
 	}
-
-	statement, err := tx.PrepareContext(ctx, dbgen.MempoolWriteStoreSnapshotStatement2)
-	if err != nil {
-		return SnapshotInfo{}, fmt.Errorf("prepare mempool transaction upsert: %w", err)
-	}
-	defer func() { _ = statement.Close() }()
 
 	for index, transaction := range snapshot.Transactions {
 		values, err := transactionStorageValues(transaction)
 		if err != nil {
 			return SnapshotInfo{}, fmt.Errorf("mempool transaction %d: %w", index, err)
 		}
-		result, err := statement.ExecContext(ctx,
-			repository.chain, values.hash, values.from, values.to,
-			transaction.Nonce, transaction.Value, transaction.Gas,
-			nullableString(transaction.GasPrice), nullableString(transaction.MaxFeePerGas),
-			nullableString(transaction.MaxPriorityFeePerGas), nullableString(transaction.Type),
-			values.input, string(transaction.Raw), snapshot.ObservedAt, snapshot.ObservedAt,
-			snapshot.ExpiresAt, snapshot.Endpoint,
-		)
+		result, err := func() (int64, error) {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(repository.chain); err != nil {
+				return 0, err
+			}
+			var queryValue1 pgtype.Numeric
+			if err := queryValue1.Scan(transaction.Nonce); err != nil {
+				return 0, err
+			}
+			var queryValue2 pgtype.Numeric
+			if err := queryValue2.Scan(transaction.Value); err != nil {
+				return 0, err
+			}
+			var queryValue3 pgtype.Numeric
+			if err := queryValue3.Scan(transaction.Gas); err != nil {
+				return 0, err
+			}
+			var queryValue4 pgtype.Numeric
+			if nullableString(transaction.GasPrice) != nil {
+				if err := queryValue4.Scan(*nullableString(transaction.GasPrice)); err != nil {
+					return 0, err
+				}
+			}
+			var queryValue5 pgtype.Numeric
+			if nullableString(transaction.MaxFeePerGas) != nil {
+				if err := queryValue5.Scan(*nullableString(transaction.MaxFeePerGas)); err != nil {
+					return 0, err
+				}
+			}
+			var queryValue6 pgtype.Numeric
+			if nullableString(transaction.MaxPriorityFeePerGas) != nil {
+				if err := queryValue6.Scan(*nullableString(transaction.MaxPriorityFeePerGas)); err != nil {
+					return 0, err
+				}
+			}
+			var queryValue7 pgtype.Numeric
+			if nullableString(transaction.Type) != nil {
+				if err := queryValue7.Scan(*nullableString(transaction.Type)); err != nil {
+					return 0, err
+				}
+			}
+			return dbgen.New(tx).MempoolWriteStoreSnapshotStatement2(ctx, dbgen.MempoolWriteStoreSnapshotStatement2Params{ChainID: queryValue0, TxHash: values.hash, FromAddress: values.from, ToAddress: values.to, Nonce: queryValue1, Value: queryValue2, Gas: queryValue3, GasPrice: queryValue4, MaxFeePerGas: queryValue5, MaxPriorityFeePerGas: queryValue6, TxType: queryValue7, Input: values.input, Raw: []byte(string(transaction.Raw)), FirstSeenAt: pgtype.Timestamptz{Time: snapshot.ObservedAt, Valid: true}, LastSeenAt: pgtype.Timestamptz{Time: snapshot.ObservedAt, Valid: true}, ExpiresAt: pgtype.Timestamptz{Time: snapshot.ExpiresAt, Valid: true}, LastEndpointName: snapshot.Endpoint})
+		}()
 		if err != nil {
 			return SnapshotInfo{}, fmt.Errorf("upsert mempool transaction %d: %w", index, err)
 		}
-		rows, err := result.RowsAffected()
-		if err != nil || rows != 1 {
+		rows := result
+		if rows != 1 {
 			return SnapshotInfo{}, fmt.Errorf("mempool transaction %d conflicts with an existing hash identity", index)
 		}
-		if _, err := tx.ExecContext(ctx, dbgen.MempoolWriteStoreSnapshotStatement3, repository.chain, snapshotID, values.hash); err != nil {
+		if err := func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(repository.chain); err != nil {
+				return err
+			}
+			return dbgen.New(tx).MempoolWriteStoreSnapshotStatement3(ctx, queryValue0, snapshotID, values.hash)
+		}(); err != nil {
 			return SnapshotInfo{}, fmt.Errorf("insert mempool snapshot membership %d: %w", index, err)
 		}
 	}
 
 	if replacementEvidence {
-		if _, err := tx.ExecContext(ctx, dbgen.MempoolWriteStoreSnapshotStatement4, repository.chain, previousSnapshotID, snapshotID); err != nil {
+		if err := func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(repository.chain); err != nil {
+				return err
+			}
+			return dbgen.New(tx).MempoolWriteStoreSnapshotStatement4(ctx, queryValue0, snapshotID, previousSnapshotID)
+		}(); err != nil {
 			return SnapshotInfo{}, fmt.Errorf("insert mempool replacement observations: %w", err)
 		}
-		if _, err := tx.ExecContext(ctx, dbgen.MempoolWriteStoreSnapshotStatement5, repository.chain, snapshotID, snapshot.ExpiresAt); err != nil {
+		if err := func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(repository.chain); err != nil {
+				return err
+			}
+			return dbgen.New(tx).MempoolWriteStoreSnapshotStatement5(ctx, pgtype.Timestamptz{Time: snapshot.ExpiresAt, Valid: true}, queryValue0, snapshotID)
+		}(); err != nil {
 			return SnapshotInfo{}, fmt.Errorf("extend replaced mempool transaction retention: %w", err)
 		}
 	}
 
-	statusResult, err := tx.ExecContext(ctx, dbgen.MempoolWriteStoreSnapshotStatement6, repository.chain, snapshot.Endpoint, snapshotID, len(snapshot.Transactions), snapshot.ObservedAt)
+	statusResult, err := func() (int64, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(repository.chain); err != nil {
+			return 0, err
+		}
+		if len(snapshot.Transactions) < -2147483648 || len(snapshot.Transactions) > 2147483647 {
+			return 0, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).MempoolWriteStoreSnapshotStatement6(ctx, dbgen.MempoolWriteStoreSnapshotStatement6Params{ChainID: queryValue0, EndpointName: new(snapshot.Endpoint), LatestSnapshotID: new(snapshotID), TransactionCount: new(int32(len(snapshot.Transactions))), LastAttemptAt: pgtype.Timestamptz{Time: snapshot.ObservedAt, Valid: true}})
+	}()
 	if err != nil {
 		return SnapshotInfo{}, fmt.Errorf("update complete mempool status: %w", err)
 	}
 	if replacementEvidence {
-		rows, rowsErr := statusResult.RowsAffected()
-		if rowsErr != nil || rows != 1 {
+		rows := statusResult
+		if rows != 1 {
 			return SnapshotInfo{}, fmt.Errorf("%w: replacement snapshot did not become current", ErrCorruptData)
 		}
 	}
-	markerResult, markerErr := tx.ExecContext(ctx, dbgen.MempoolWriteStoreSnapshotStatement7, repository.chain, snapshotID)
+	markerResult, markerErr := func() (int64, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(repository.chain); err != nil {
+			return 0, err
+		}
+		return dbgen.New(tx).MempoolWriteStoreSnapshotStatement7(ctx, new(snapshotID), queryValue0)
+	}()
 	if markerErr != nil {
 		return SnapshotInfo{}, fmt.Errorf("record mempool snapshot write continuity: %w", markerErr)
 	}
-	if rows, rowsErr := markerResult.RowsAffected(); rowsErr != nil || rows != 1 {
+	if rows := markerResult; rows != 1 {
 		return SnapshotInfo{}, fmt.Errorf("%w: mempool snapshot write continuity was not recorded", ErrCorruptData)
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.MempoolWriteStoreSnapshotStatement8, repository.chain, snapshot.ObservedAt, snapshotID); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(repository.chain); err != nil {
+			return err
+		}
+		return dbgen.New(tx).MempoolWriteStoreSnapshotStatement8(ctx, queryValue0, pgtype.Timestamptz{Time: snapshot.ObservedAt, Valid: true}, snapshotID)
+	}(); err != nil {
 		return SnapshotInfo{}, fmt.Errorf("expire mempool snapshots: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.MempoolWriteStoreSnapshotStatement9, repository.chain, snapshot.ObservedAt); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(repository.chain); err != nil {
+			return err
+		}
+		return dbgen.New(tx).MempoolWriteStoreSnapshotStatement9(ctx, queryValue0, pgtype.Timestamptz{Time: snapshot.ObservedAt, Valid: true})
+	}(); err != nil {
 		return SnapshotInfo{}, fmt.Errorf("expire mempool transactions: %w", err)
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return SnapshotInfo{}, fmt.Errorf("commit mempool snapshot: %w", err)
 	}
 	return SnapshotInfo{
@@ -156,16 +247,49 @@ func (repository *Postgres) StoreSnapshot(ctx context.Context, snapshot Snapshot
 
 func (repository *Postgres) replacementPredecessor(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	snapshot Snapshot,
 ) (int64, bool, error) {
 	var state string
-	var endpoint sql.NullString
-	var snapshotID sql.NullInt64
-	var lastSnapshotWriteID sql.NullInt64
+	var endpoint pgtype.Text
+	var snapshotID pgtype.Int8
+	var lastSnapshotWriteID pgtype.Int8
 	var lastAttempt time.Time
-	err := tx.QueryRowContext(ctx, dbgen.MempoolReplacementPredecessorStatus, repository.chain).Scan(&state, &endpoint, &snapshotID, &lastSnapshotWriteID, &lastAttempt)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(repository.chain); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).MempoolReplacementPredecessorStatus(ctx, queryValue0)
+		if err != nil {
+			return err
+		}
+		state = queryRow.State
+		var resultValue1 pgtype.Text
+		if queryRow.EndpointName != nil {
+			resultValue1 = pgtype.Text{String: *queryRow.EndpointName, Valid: true}
+		}
+		endpoint = resultValue1
+		var resultValue3 pgtype.Int8
+		if queryRow.LatestSnapshotID != nil {
+			resultValue3 = pgtype.Int8{Int64: *queryRow.LatestSnapshotID, Valid: true}
+		}
+		snapshotID = resultValue3
+		var resultValue5 pgtype.Int8
+		if queryRow.LastSnapshotWriteID != nil {
+			resultValue5 = pgtype.Int8{Int64: *queryRow.LastSnapshotWriteID, Valid: true}
+		}
+		lastSnapshotWriteID = resultValue5
+		if !queryRow.LastAttemptAt.Valid {
+			return errors.New("invalid stored query value")
+		}
+		if queryRow.LastAttemptAt.InfinityModifier != pgtype.Finite {
+			return errors.New("invalid stored query value")
+		}
+		lastAttempt = queryRow.LastAttemptAt.Time
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, false, nil
 	}
 	if err != nil {
@@ -179,8 +303,33 @@ func (repository *Postgres) replacementPredecessor(
 
 	var previousEndpoint string
 	var previousObservedAt, previousExpiresAt time.Time
-	err = tx.QueryRowContext(ctx, dbgen.MempoolReplacementPredecessorSnapshot, repository.chain, snapshotID.Int64).Scan(&previousEndpoint, &previousObservedAt, &previousExpiresAt)
-	if errors.Is(err, sql.ErrNoRows) {
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(repository.chain); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).MempoolReplacementPredecessorSnapshot(ctx, queryValue0, snapshotID.Int64)
+		if err != nil {
+			return err
+		}
+		previousEndpoint = queryRow.EndpointName
+		if !queryRow.ObservedAt.Valid {
+			return errors.New("invalid stored query value")
+		}
+		if queryRow.ObservedAt.InfinityModifier != pgtype.Finite {
+			return errors.New("invalid stored query value")
+		}
+		previousObservedAt = queryRow.ObservedAt.Time
+		if !queryRow.ExpiresAt.Valid {
+			return errors.New("invalid stored query value")
+		}
+		if queryRow.ExpiresAt.InfinityModifier != pgtype.Finite {
+			return errors.New("invalid stored query value")
+		}
+		previousExpiresAt = queryRow.ExpiresAt.Time
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, false, fmt.Errorf("%w: replacement predecessor snapshot is missing", ErrCorruptData)
 	}
 	if err != nil {
@@ -206,23 +355,29 @@ func (repository *Postgres) StoreFailure(ctx context.Context, failure Failure) e
 		return errors.New("mempool failure endpoint is too long")
 	}
 	failure.Message = boundedMessage(failure.Message)
-	tx, err := repository.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	tx, err := repository.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
 	if err != nil {
 		return fmt.Errorf("begin mempool failure transaction: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	if err := lockMempool(ctx, tx, repository.chain); err != nil {
 		return err
 	}
-	var endpoint any
+	var endpoint *string
 	if failure.Endpoint != "" {
-		endpoint = failure.Endpoint
+		endpoint = new(failure.Endpoint)
 	}
-	_, err = tx.ExecContext(ctx, dbgen.MempoolWriteStoreFailureStatement1, repository.chain, string(failure.State), endpoint, failure.ObservedAt, failure.Code, failure.Message)
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(repository.chain); err != nil {
+			return err
+		}
+		return dbgen.New(tx).MempoolWriteStoreFailureStatement1(ctx, dbgen.MempoolWriteStoreFailureStatement1Params{ChainID: queryValue0, State: string(failure.State), EndpointName: endpoint, LastAttemptAt: pgtype.Timestamptz{Time: failure.ObservedAt, Valid: true}, ErrorCode: new(failure.Code), ErrorMessage: new(failure.Message)})
+	}()
 	if err != nil {
 		return fmt.Errorf("update failed mempool status: %w", err)
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit mempool failure status: %w", err)
 	}
 	return nil
@@ -235,11 +390,11 @@ func (repository *Postgres) Pending(ctx context.Context, encodedCursor string, l
 	if limit <= 0 || limit > 100 {
 		return Page{}, fmt.Errorf("pending transaction limit %d is outside 1..100", limit)
 	}
-	tx, err := repository.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	tx, err := repository.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return Page{}, fmt.Errorf("begin stable mempool query: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	status, err := repository.readStatus(ctx, tx)
 	if err != nil {
 		return Page{}, err
@@ -263,7 +418,7 @@ func (repository *Postgres) Pending(ctx context.Context, encodedCursor string, l
 	}
 	snapshot, err := repository.readSnapshot(ctx, tx, snapshotID)
 	if err != nil {
-		if (errors.Is(err, sql.ErrNoRows) || errors.Is(err, errSnapshotExpired)) && encodedCursor != "" {
+		if (errors.Is(err, pgx.ErrNoRows) || errors.Is(err, errSnapshotExpired)) && encodedCursor != "" {
 			return Page{}, ErrInvalidCursor
 		}
 		if errors.Is(err, errSnapshotExpired) {
@@ -271,7 +426,7 @@ func (repository *Postgres) Pending(ctx context.Context, encodedCursor string, l
 				State: StateUnavailable, Code: "snapshot_expired", LastAttemptAt: status.lastAttemptAt,
 			}
 		}
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return Page{}, fmt.Errorf("%w: latest mempool snapshot is missing", ErrCorruptData)
 		}
 		return Page{}, err
@@ -280,19 +435,16 @@ func (repository *Postgres) Pending(ctx context.Context, encodedCursor string, l
 	if err != nil {
 		return Page{}, err
 	}
-	defer rows.Close() //nolint:errcheck
-	items := make([]Transaction, 0, limit+1)
-	for rows.Next() {
-		transaction, err := repository.scanPending(rows, snapshot)
+	items := make([]Transaction, 0, len(rows))
+	for _, row := range rows {
+		transaction, err := repository.decodePending(row, snapshot)
 		if err != nil {
 			return Page{}, err
 		}
 		items = append(items, transaction)
 	}
-	if err := rows.Err(); err != nil {
-		return Page{}, fmt.Errorf("iterate pending transaction page: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
+
+	if err := tx.Commit(ctx); err != nil {
 		return Page{}, fmt.Errorf("commit stable mempool query: %w", err)
 	}
 	hasMore := len(items) > limit
@@ -321,11 +473,11 @@ func (repository *Postgres) Lookup(ctx context.Context, value string) (Detail, e
 	if err != nil {
 		return Detail{}, errors.New("invalid mempool transaction hash")
 	}
-	tx, err := repository.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	tx, err := repository.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return Detail{}, fmt.Errorf("begin mempool detail query: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	status, err := repository.readStatus(ctx, tx)
 	if err != nil {
 		return Detail{}, err
@@ -338,19 +490,19 @@ func (repository *Postgres) Lookup(ctx context.Context, value string) (Detail, e
 		case snapshotErr == nil:
 			transaction, lookupErr := repository.lookupPending(ctx, tx, snapshot, hash.Bytes())
 			if lookupErr == nil {
-				if err := tx.Commit(); err != nil {
+				if err := tx.Commit(ctx); err != nil {
 					return Detail{}, fmt.Errorf("commit pending transaction detail query: %w", err)
 				}
 				return Detail{Kind: DetailPending, Transaction: transaction}, nil
 			}
-			if !errors.Is(lookupErr, sql.ErrNoRows) {
+			if !errors.Is(lookupErr, pgx.ErrNoRows) {
 				return Detail{}, lookupErr
 			}
 		case errors.Is(snapshotErr, errSnapshotExpired):
 			currentCapability = &CapabilityError{
 				State: StateUnavailable, Code: "snapshot_expired", LastAttemptAt: status.lastAttemptAt,
 			}
-		case errors.Is(snapshotErr, sql.ErrNoRows):
+		case errors.Is(snapshotErr, pgx.ErrNoRows):
 			return Detail{}, fmt.Errorf("%w: latest mempool snapshot is missing", ErrCorruptData)
 		default:
 			return Detail{}, snapshotErr
@@ -363,18 +515,18 @@ func (repository *Postgres) Lookup(ctx context.Context, value string) (Detail, e
 
 	replaced, err := repository.lookupReplaced(ctx, tx, hash.Bytes())
 	if err == nil {
-		if commitErr := tx.Commit(); commitErr != nil {
+		if commitErr := tx.Commit(ctx); commitErr != nil {
 			return Detail{}, fmt.Errorf("commit replaced transaction detail query: %w", commitErr)
 		}
 		return replaced, nil
 	}
-	if !errors.Is(err, sql.ErrNoRows) {
+	if !errors.Is(err, pgx.ErrNoRows) {
 		return Detail{}, err
 	}
 	if currentCapability != nil {
 		return Detail{}, *currentCapability
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return Detail{}, fmt.Errorf("commit absent mempool transaction detail query: %w", err)
 	}
 	return Detail{}, ErrNotFound
@@ -382,62 +534,50 @@ func (repository *Postgres) Lookup(ctx context.Context, value string) (Detail, e
 
 func (repository *Postgres) lookupPending(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	snapshot SnapshotInfo,
 	hash []byte,
 ) (Transaction, error) {
-	row := tx.QueryRowContext(ctx, dbgen.MempoolLookupPending,
-		repository.chain, snapshot.ID, hash, snapshot.ObservedAt, repository.now().UTC(),
-	)
-	return repository.scanPending(row, snapshot)
+	var chain pgtype.Numeric
+	if err := chain.Scan(repository.chain); err != nil {
+		return Transaction{}, err
+	}
+	row, err := dbgen.New(repository.db).WithTx(tx).MempoolLookupPending(ctx, dbgen.MempoolLookupPendingParams{ChainID: chain, SnapshotID: snapshot.ID, TxHash: hash, ObservedAt: pgtype.Timestamptz{Time: snapshot.ObservedAt, Valid: true}, ExpiresAt: pgtype.Timestamptz{Time: repository.now().UTC(), Valid: true}})
+	if err != nil {
+		return Transaction{}, err
+	}
+	return repository.decodePending(dbgen.MempoolListPendingFirstRow(row), snapshot)
 }
 
-func (repository *Postgres) lookupReplaced(ctx context.Context, tx *sql.Tx, hash []byte) (Detail, error) {
-	row := tx.QueryRowContext(ctx, dbgen.MempoolLookupReplaced, repository.chain, hash, repository.now().UTC())
-
-	var hashBytes, from, to, input, raw, replaces, replacement []byte
-	var nonce, value, gas string
-	var gasPrice, maxFee, priorityFee, txType sql.NullString
-	var firstSeen, lastSeen, storedExpires, replacedAt, evidenceExpires time.Time
-	var endpoint string
-	if err := row.Scan(
-		&hashBytes, &from, &to, &nonce, &value, &gas, &gasPrice, &maxFee,
-		&priorityFee, &txType, &input, &raw, &firstSeen, &lastSeen, &storedExpires,
-		&replaces, &replacement, &replacedAt, &evidenceExpires, &endpoint,
-	); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Detail{}, sql.ErrNoRows
-		}
+func (repository *Postgres) lookupReplaced(ctx context.Context, tx pgx.Tx, hash []byte) (Detail, error) {
+	var chain pgtype.Numeric
+	if err := chain.Scan(repository.chain); err != nil {
+		return Detail{}, err
+	}
+	row, err := dbgen.New(repository.db).WithTx(tx).MempoolLookupReplaced(ctx, pgtype.Timestamptz{Time: repository.now().UTC(), Valid: true}, chain, hash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Detail{}, pgx.ErrNoRows
+	}
+	if err != nil {
 		return Detail{}, fmt.Errorf("query replaced mempool transaction: %w", err)
 	}
-	if storedExpires.Before(evidenceExpires) {
+	for _, value := range []pgtype.Timestamptz{row.ExpiresAt, row.ObservedAt, row.ExpiresAt_2} {
+		if !value.Valid || value.InfinityModifier != pgtype.Finite {
+			return Detail{}, ErrCorruptData
+		}
+	}
+	if row.ExpiresAt.Time.Before(row.ExpiresAt_2.Time) {
 		return Detail{}, fmt.Errorf("%w: replaced transaction retention is shorter than its evidence", ErrCorruptData)
 	}
-	transaction, err := repository.decodeStoredTransaction(
-		hashBytes, from, to, input, raw, nonce, value, gas,
-		gasPrice, maxFee, priorityFee, txType,
-		firstSeen.UTC(), lastSeen.UTC(), evidenceExpires.UTC(), SnapshotInfo{
-			Endpoint: endpoint, ObservedAt: lastSeen.UTC(), ExpiresAt: evidenceExpires.UTC(),
-		},
-	)
+	transaction, err := repository.decodePending(dbgen.MempoolListPendingFirstRow{TxHash: row.TxHash, FromAddress: row.FromAddress, ToAddress: row.ToAddress, PendingNonce: row.PendingNonce, PendingValue: row.PendingValue, PendingGas: row.PendingGas, GasPrice: row.GasPrice, MaxFeePerGas: row.MaxFeePerGas, MaxPriorityFeePerGas: row.MaxPriorityFeePerGas, TxType: row.TxType, Input: row.Input, Raw: row.Raw, FirstSeenAt: row.FirstSeenAt, LastSeenAt: row.LastSeenAt, ReplacedHash: row.ReplacedHash, ExpiresAt: row.ExpiresAt_2}, SnapshotInfo{Endpoint: row.EndpointName, ObservedAt: row.LastSeenAt.Time.UTC(), ExpiresAt: row.ExpiresAt_2.Time.UTC()})
 	if err != nil {
 		return Detail{}, err
 	}
-	if replaces != nil {
-		value, err := fixedHash(replaces)
-		if err != nil {
-			return Detail{}, err
-		}
-		transaction.ReplacesHash = &value
-	}
-	replacementHash, err := fixedHash(replacement)
+	replacement, err := fixedHash(row.ReplacementHash)
 	if err != nil {
 		return Detail{}, err
 	}
-	return Detail{
-		Kind: DetailReplaced, Transaction: transaction,
-		ReplacementHash: replacementHash, ReplacedAt: replacedAt.UTC(),
-	}, nil
+	return Detail{Kind: DetailReplaced, Transaction: transaction, ReplacementHash: replacement, ReplacedAt: row.ObservedAt.Time.UTC()}, nil
 }
 
 type statusRecord struct {
@@ -447,13 +587,41 @@ type statusRecord struct {
 	lastAttemptAt time.Time
 }
 
-func (repository *Postgres) readStatus(ctx context.Context, tx *sql.Tx) (statusRecord, error) {
+func (repository *Postgres) readStatus(ctx context.Context, tx pgx.Tx) (statusRecord, error) {
 	var state string
-	var snapshotID sql.NullInt64
-	var errorCode sql.NullString
+	var snapshotID pgtype.Int8
+	var errorCode pgtype.Text
 	var lastAttempt time.Time
-	err := tx.QueryRowContext(ctx, dbgen.MempoolReadStatus, repository.chain).Scan(&state, &snapshotID, &errorCode, &lastAttempt)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(repository.chain); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).MempoolReadStatus(ctx, queryValue0)
+		if err != nil {
+			return err
+		}
+		state = queryRow.State
+		var resultValue1 pgtype.Int8
+		if queryRow.LatestSnapshotID != nil {
+			resultValue1 = pgtype.Int8{Int64: *queryRow.LatestSnapshotID, Valid: true}
+		}
+		snapshotID = resultValue1
+		var resultValue3 pgtype.Text
+		if queryRow.ErrorCode != nil {
+			resultValue3 = pgtype.Text{String: *queryRow.ErrorCode, Valid: true}
+		}
+		errorCode = resultValue3
+		if !queryRow.LastAttemptAt.Valid {
+			return errors.New("invalid stored query value")
+		}
+		if queryRow.LastAttemptAt.InfinityModifier != pgtype.Finite {
+			return errors.New("invalid stored query value")
+		}
+		lastAttempt = queryRow.LastAttemptAt.Time
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return statusRecord{state: StatePending, errorCode: "not_observed"}, nil
 	}
 	if err != nil {
@@ -475,14 +643,39 @@ func (repository *Postgres) readStatus(ctx context.Context, tx *sql.Tx) (statusR
 	}, nil
 }
 
-func (repository *Postgres) readSnapshot(ctx context.Context, tx *sql.Tx, snapshotID int64) (SnapshotInfo, error) {
+func (repository *Postgres) readSnapshot(ctx context.Context, tx pgx.Tx, snapshotID int64) (SnapshotInfo, error) {
 	var snapshot SnapshotInfo
-	err := tx.QueryRowContext(ctx, dbgen.MempoolReadSnapshot,
-		repository.chain, snapshotID,
-	).Scan(&snapshot.ID, &snapshot.Endpoint, &snapshot.ObservedAt, &snapshot.ExpiresAt, &snapshot.TransactionCount)
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(repository.chain); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).MempoolReadSnapshot(ctx, queryValue0, snapshotID)
+		if err != nil {
+			return err
+		}
+		snapshot.ID = queryRow.ID
+		snapshot.Endpoint = queryRow.EndpointName
+		if !queryRow.ObservedAt.Valid {
+			return errors.New("invalid stored query value")
+		}
+		if queryRow.ObservedAt.InfinityModifier != pgtype.Finite {
+			return errors.New("invalid stored query value")
+		}
+		snapshot.ObservedAt = queryRow.ObservedAt.Time
+		if !queryRow.ExpiresAt.Valid {
+			return errors.New("invalid stored query value")
+		}
+		if queryRow.ExpiresAt.InfinityModifier != pgtype.Finite {
+			return errors.New("invalid stored query value")
+		}
+		snapshot.ExpiresAt = queryRow.ExpiresAt.Time
+		snapshot.TransactionCount = int(queryRow.TransactionCount)
+		return nil
+	}()
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return SnapshotInfo{}, sql.ErrNoRows
+		if errors.Is(err, pgx.ErrNoRows) {
+			return SnapshotInfo{}, pgx.ErrNoRows
 		}
 		return SnapshotInfo{}, fmt.Errorf("query mempool snapshot: %w", err)
 	}
@@ -497,55 +690,67 @@ func (repository *Postgres) readSnapshot(ctx context.Context, tx *sql.Tx, snapsh
 	return snapshot, nil
 }
 
-func (repository *Postgres) pendingRows(ctx context.Context, tx *sql.Tx, snapshot SnapshotInfo, cursor *pendingCursor, limit int) (*sql.Rows, error) {
-	var rows *sql.Rows
-	var err error
-	if cursor == nil {
-		rows, err = tx.QueryContext(ctx, dbgen.MempoolListPendingFirst, repository.chain, snapshot.ID, snapshot.ObservedAt, repository.now().UTC(), limit)
-	} else {
-		hash, parseErr := ethrpc.ParseHash(cursor.BeforeHash)
-		if parseErr != nil {
-			return nil, ErrInvalidCursor
-		}
-		rows, err = tx.QueryContext(ctx, dbgen.MempoolListPendingAfter, repository.chain, snapshot.ID, snapshot.ObservedAt, repository.now().UTC(), cursor.BeforeFirstSeen, hash.Bytes(), limit)
+func (repository *Postgres) pendingRows(ctx context.Context, tx pgx.Tx, snapshot SnapshotInfo, cursor *pendingCursor, limit int) ([]dbgen.MempoolListPendingFirstRow, error) {
+	var chain pgtype.Numeric
+	if err := chain.Scan(repository.chain); err != nil {
+		return nil, err
 	}
+	queries := dbgen.New(repository.db).WithTx(tx)
+	observed := pgtype.Timestamptz{Time: snapshot.ObservedAt, Valid: true}
+	now := pgtype.Timestamptz{Time: repository.now().UTC(), Valid: true}
+	if cursor == nil {
+		return queries.MempoolListPendingFirst(ctx, dbgen.MempoolListPendingFirstParams{ChainID: chain, SnapshotID: snapshot.ID, ObservedAt: observed, ExpiresAt: now, Limit: int32(limit)})
+	}
+	hash, err := ethrpc.ParseHash(cursor.BeforeHash)
+	if err != nil {
+		return nil, ErrInvalidCursor
+	}
+	page, err := queries.MempoolListPendingAfter(ctx, dbgen.MempoolListPendingAfterParams{ChainID: chain, SnapshotID: snapshot.ID, ObservedAt: observed, ExpiresAt: now, CursorFirstSeenAt: pgtype.Timestamptz{Time: cursor.BeforeFirstSeen, Valid: true}, CursorTxHash: hash.Bytes(), Limit: int32(limit)})
 	if err != nil {
 		return nil, fmt.Errorf("query pending transaction page: %w", err)
+	}
+	rows := make([]dbgen.MempoolListPendingFirstRow, len(page))
+	for index, row := range page {
+		rows[index] = dbgen.MempoolListPendingFirstRow(row)
 	}
 	return rows, nil
 }
 
-type rowScanner interface{ Scan(...any) error }
-
-func (repository *Postgres) scanPending(scanner rowScanner, snapshot SnapshotInfo) (Transaction, error) {
-	var hash, from, to, input, raw, replaces []byte
-	var nonce, value, gas string
-	var gasPrice, maxFee, priorityFee, txType sql.NullString
-	var firstSeen, lastSeen, expires time.Time
-	if err := scanner.Scan(
-		&hash, &from, &to, &nonce, &value, &gas, &gasPrice, &maxFee,
-		&priorityFee, &txType, &input, &raw, &firstSeen, &lastSeen, &expires, &replaces,
-	); err != nil {
-		return Transaction{}, fmt.Errorf("scan pending transaction: %w", err)
+func (repository *Postgres) decodePending(row dbgen.MempoolListPendingFirstRow, snapshot SnapshotInfo) (Transaction, error) {
+	for _, value := range []pgtype.Timestamptz{row.FirstSeenAt, row.LastSeenAt, row.ExpiresAt} {
+		if !value.Valid || value.InfinityModifier != pgtype.Finite {
+			return Transaction{}, ErrCorruptData
+		}
 	}
-	transaction, err := repository.decodeStoredTransaction(
-		hash, from, to, input, raw, nonce, value, gas,
-		gasPrice, maxFee, priorityFee, txType,
-		firstSeen.UTC(), lastSeen.UTC(), expires.UTC(), snapshot,
-	)
+	gasPrice, err := dbaccess.NumericText(row.GasPrice)
 	if err != nil {
 		return Transaction{}, err
 	}
-	// The membership is an immutable observation. A later poll may update the
-	// transaction's global last-seen fields, so expose the pinned snapshot time.
+	maxFee, err := dbaccess.NumericText(row.MaxFeePerGas)
+	if err != nil {
+		return Transaction{}, err
+	}
+	priorityFee, err := dbaccess.NumericText(row.MaxPriorityFeePerGas)
+	if err != nil {
+		return Transaction{}, err
+	}
+	txType, err := dbaccess.NumericText(row.TxType)
+	if err != nil {
+		return Transaction{}, err
+	}
+	transaction, err := repository.decodeStoredTransaction(row.TxHash, row.FromAddress, row.ToAddress, row.Input, row.Raw, row.PendingNonce, row.PendingValue, row.PendingGas, gasPrice, maxFee, priorityFee, txType, row.FirstSeenAt.Time.UTC(), row.LastSeenAt.Time.UTC(), row.ExpiresAt.Time.UTC(), snapshot)
+	if err != nil {
+		return Transaction{}, err
+	}
+	// Global retention may advance after this immutable membership snapshot.
 	transaction.LastSeenAt = snapshot.ObservedAt
 	transaction.ExpiresAt = snapshot.ExpiresAt
-	if replaces != nil {
-		replacesHash, err := fixedHash(replaces)
+	if row.ReplacedHash != nil {
+		hash, err := fixedHash(row.ReplacedHash)
 		if err != nil {
 			return Transaction{}, err
 		}
-		transaction.ReplacesHash = &replacesHash
+		transaction.ReplacesHash = &hash
 	}
 	return transaction, nil
 }
@@ -553,7 +758,7 @@ func (repository *Postgres) scanPending(scanner rowScanner, snapshot SnapshotInf
 func (repository *Postgres) decodeStoredTransaction(
 	hashBytes, fromBytes, toBytes, inputBytes, raw []byte,
 	nonce, value, gas string,
-	gasPrice, maxFee, priorityFee, txType sql.NullString,
+	gasPrice, maxFee, priorityFee, txType pgtype.Text,
 	firstSeen, lastSeen, expires time.Time,
 	snapshot SnapshotInfo,
 ) (Transaction, error) {
@@ -578,7 +783,7 @@ func (repository *Postgres) decodeStoredTransaction(
 			return Transaction{}, fmt.Errorf("%w: invalid pending quantity", ErrCorruptData)
 		}
 	}
-	for _, quantity := range []sql.NullString{gasPrice, maxFee, priorityFee, txType} {
+	for _, quantity := range []pgtype.Text{gasPrice, maxFee, priorityFee, txType} {
 		if quantity.Valid && !canonicalDecimal(quantity.String) {
 			return Transaction{}, fmt.Errorf("%w: invalid optional pending quantity", ErrCorruptData)
 		}
@@ -676,8 +881,8 @@ func validateSnapshotForStorage(snapshot Snapshot) error {
 	return nil
 }
 
-func lockMempool(ctx context.Context, tx *sql.Tx, chain string) error {
-	if _, err := tx.ExecContext(ctx, dbgen.MempoolWriteLockMempoolStatement1, chain); err != nil {
+func lockMempool(ctx context.Context, tx pgx.Tx, chain string) error {
+	if err := dbgen.New(tx).MempoolWriteLockMempoolStatement1(ctx, new(chain)); err != nil {
 		return fmt.Errorf("lock mempool snapshot state: %w", err)
 	}
 	return nil
@@ -740,17 +945,17 @@ func fixedAddress(value []byte) (string, error) {
 	return checksumAddress(common.BytesToAddress(value)), nil
 }
 
-func nullableString(value *string) any {
+func nullableString(value *string) *string {
 	if value == nil {
 		return nil
 	}
-	return *value
+	return new(*value)
 }
 
 func equalOptionalString(left, right *string) bool {
 	return left == nil && right == nil || left != nil && right != nil && *left == *right
 }
 
-func equalOptionalNull(value *string, stored sql.NullString) bool {
+func equalOptionalNull(value *string, stored pgtype.Text) bool {
 	return value == nil && !stored.Valid || value != nil && stored.Valid && *value == stored.String
 }

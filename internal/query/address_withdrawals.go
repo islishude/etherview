@@ -2,15 +2,19 @@ package query
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/api/gen"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/publicquery"
 )
@@ -40,11 +44,11 @@ func (r *PostgresReader) AddressWithdrawals(
 		return nil, "", fmt.Errorf("invalid address: %w", err)
 	}
 	normalizedAddress := strings.ToLower(address.Hex())
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return nil, "", fmt.Errorf("begin stable address withdrawal query: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 
 	var cursor addressWithdrawalCursor
 	if encodedCursor == "" {
@@ -67,17 +71,26 @@ func (r *PostgresReader) AddressWithdrawals(
 		}
 	}
 
-	query := dbgen.ListAddressWithdrawalsFirst
-	arguments := []any{r.chainID, address.Bytes(), strconv.FormatUint(cursor.SnapshotNumber, 10), limit + 1}
-	if encodedCursor != "" {
-		query = dbgen.ListAddressWithdrawalsAfter
-		arguments = []any{r.chainID, address.Bytes(), strconv.FormatUint(cursor.SnapshotNumber, 10), strconv.FormatUint(cursor.BeforeIndex, 10), limit + 1}
+	chain, err := r.chainNumeric()
+	if err != nil {
+		return nil, "", err
 	}
-	rows, err := tx.QueryContext(ctx, query, arguments...)
+	queries := dbgen.New(r.db).WithTx(tx)
+	var rows []dbgen.ListAddressWithdrawalsFirstRow
+	if encodedCursor == "" {
+		rows, err = queries.ListAddressWithdrawalsFirst(ctx, dbgen.ListAddressWithdrawalsFirstParams{ChainID: chain, Address: address.Bytes(), MaxBlockNumber: numericUint64(cursor.SnapshotNumber), Limit: int32(limit + 1)})
+	} else {
+		var page []dbgen.ListAddressWithdrawalsAfterRow
+		page, err = queries.ListAddressWithdrawalsAfter(ctx, dbgen.ListAddressWithdrawalsAfterParams{ChainID: chain, Address: address.Bytes(), MaxBlockNumber: numericUint64(cursor.SnapshotNumber), MaxWithdrawalIndex: numericUint64(cursor.BeforeIndex), Limit: int32(limit + 1)})
+		rows = make([]dbgen.ListAddressWithdrawalsFirstRow, len(page))
+		for index, row := range page {
+			rows[index] = dbgen.ListAddressWithdrawalsFirstRow(row)
+		}
+	}
 	if err != nil {
 		return nil, "", fmt.Errorf("query canonical address withdrawal page: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	type record struct {
 		model       gen.AddressWithdrawal
 		index       uint64
@@ -85,15 +98,11 @@ func (r *PostgresReader) AddressWithdrawals(
 		blockHash   common.Hash
 	}
 	records := make([]record, 0, limit+1)
-	for rows.Next() {
-		var indexText, validatorText, amountText, blockNumberText, timestampText string
-		var storedAddress, blockHashBytes []byte
-		if err := rows.Scan(
-			&indexText, &validatorText, &storedAddress, &amountText,
-			&blockNumberText, &blockHashBytes, &timestampText,
-		); err != nil {
-			return nil, "", fmt.Errorf("scan address withdrawal: %w", err)
-		}
+	for _, row := range rows {
+		indexText, validatorText, amountText := row.WithdrawalWithdrawalIndex, row.WithdrawalValidatorIndex, row.WithdrawalAmount
+		blockNumberText, timestampText := row.WithdrawalBlockNumber, row.BlockTimestamp
+		storedAddress, blockHashBytes := row.Address, row.BlockHash
+
 		index, err := canonicalUint64(indexText, "withdrawal index")
 		if err != nil {
 			return nil, "", err
@@ -132,10 +141,7 @@ func (r *PostgresReader) AddressWithdrawals(
 			index: index, blockNumber: blockNumber, blockHash: blockHash,
 		})
 	}
-	if err := rows.Err(); err != nil {
-		return nil, "", fmt.Errorf("iterate canonical address withdrawal page: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return nil, "", fmt.Errorf("commit stable address withdrawal query: %w", err)
 	}
 
@@ -172,7 +178,7 @@ func canonicalUint64(value, field string) (uint64, error) {
 
 func (r *PostgresReader) validateAddressWithdrawalCursor(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	cursor addressWithdrawalCursor,
 	address common.Address,
 ) error {
@@ -185,12 +191,33 @@ func (r *PostgresReader) validateAddressWithdrawalCursor(
 		return ErrInvalidCursor
 	}
 	var valid bool
-	if err := tx.QueryRowContext(ctx, dbgen.ValidateAddressWithdrawalCursor,
-		r.chainID,
-		strconv.FormatUint(cursor.SnapshotNumber, 10), snapshotHash.Bytes(),
-		address.Bytes(), strconv.FormatUint(cursor.BeforeIndex, 10),
-		strconv.FormatUint(cursor.BeforeBlockNumber, 10), beforeHash.Bytes(),
-	).Scan(&valid); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(r.chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(cursor.SnapshotNumber, 10)); err != nil {
+			return err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(strconv.FormatUint(cursor.BeforeIndex, 10)); err != nil {
+			return err
+		}
+		var queryValue3 pgtype.Numeric
+		if err := queryValue3.Scan(strconv.FormatUint(cursor.BeforeBlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).ValidateAddressWithdrawalCursor(ctx, dbgen.ValidateAddressWithdrawalCursorParams{ChainID: queryValue0, SnapshotNumber: queryValue1, SnapshotHash: snapshotHash.Bytes(), Address: address.Bytes(), BeforeIndex: queryValue2, BeforeNumber: queryValue3, BeforeHash: beforeHash.Bytes()})
+		if err != nil {
+			return err
+		}
+		if queryRow == nil {
+			return errors.New("invalid stored query value")
+		}
+		valid = *queryRow
+		return nil
+	}(); err != nil {
 		return fmt.Errorf("validate address withdrawal cursor: %w", err)
 	}
 	if !valid {

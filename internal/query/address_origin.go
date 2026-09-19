@@ -2,14 +2,17 @@ package query
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strconv"
 
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/api/gen"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/publicquery"
 )
@@ -31,10 +34,8 @@ func (r *PostgresReader) AddressOrigin(
 		return gen.AddressOrigin{}, fmt.Errorf("invalid origin address: %w", err)
 	}
 	kind := gen.Funding
-	query := dbgen.QueryFirstFundingOrigin
 	if accountType == gen.AddressSummaryTypeContract {
 		kind = gen.ContractCreation
-		query = dbgen.QueryFirstContractOrigin
 	}
 	result := gen.AddressOrigin{Kind: kind, State: gen.AddressOriginStateUnavailable}
 	if accountType != gen.AddressSummaryTypeContract &&
@@ -46,14 +47,29 @@ func (r *PostgresReader) AddressOrigin(
 		return result, nil
 	}
 
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return gen.AddressOrigin{}, fmt.Errorf("begin address origin snapshot: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 
 	var canonical bool
-	if err := tx.QueryRowContext(ctx, dbgen.QueryAddressOriginReference, r.chainID, fmt.Sprint(referenceNumber), referenceHash.Bytes()).Scan(&canonical); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(r.chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(fmt.Sprint(referenceNumber)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).QueryAddressOriginReference(ctx, queryValue0, queryValue1, referenceHash.Bytes())
+		if err != nil {
+			return err
+		}
+		canonical = queryRow
+		return nil
+	}(); err != nil {
 		return gen.AddressOrigin{}, fmt.Errorf("validate address origin reference: %w", err)
 	}
 	if !canonical {
@@ -61,12 +77,23 @@ func (r *PostgresReader) AddressOrigin(
 	}
 
 	var genesis bool
-	if err := tx.QueryRowContext(ctx, dbgen.QueryGenesisAddressOrigin, r.chainID, address.Bytes()).Scan(&genesis); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(r.chainID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).QueryGenesisAddressOrigin(ctx, queryValue0, address.Bytes())
+		if err != nil {
+			return err
+		}
+		genesis = queryRow
+		return nil
+	}(); err != nil {
 		return gen.AddressOrigin{}, fmt.Errorf("check genesis address origin: %w", err)
 	}
 	if genesis {
 		result.State = gen.AddressOriginStateGenesis
-		if err := tx.Commit(); err != nil {
+		if err := tx.Commit(ctx); err != nil {
 			return gen.AddressOrigin{}, fmt.Errorf("commit genesis address origin snapshot: %w", err)
 		}
 		return result, nil
@@ -76,18 +103,27 @@ func (r *PostgresReader) AddressOrigin(
 	var candidateBlock string
 	var sourceBytes, transactionHashBytes, blockHashBytes []byte
 	var originKind string
-	var withdrawalIndex sql.NullString
+	var withdrawalIndex pgtype.Text
+	chain, err := r.chainNumeric()
+	if err != nil {
+		return gen.AddressOrigin{}, err
+	}
+	queries := dbgen.New(r.db).WithTx(tx)
 	if accountType == gen.AddressSummaryTypeContract {
-		err = tx.QueryRowContext(ctx, query,
-			r.chainID, fmt.Sprint(referenceNumber), address.Bytes(),
-		).Scan(&candidateBlock, &sourceBytes, &transactionHashBytes)
+		row, queryErr := queries.QueryFirstContractOrigin(ctx, chain, numericUint64(referenceNumber), address.Bytes())
+		err = queryErr
+		candidateBlock, sourceBytes, transactionHashBytes = row.BlockNumber, row.SourceAddress, row.TransactionHash
 		originKind = string(gen.ContractCreation)
 	} else {
-		err = tx.QueryRowContext(ctx, query,
-			r.chainID, fmt.Sprint(referenceNumber), address.Bytes(),
-		).Scan(&candidateBlock, &sourceBytes, &transactionHashBytes, &originKind, &blockHashBytes, &withdrawalIndex)
+		row, queryErr := queries.QueryFirstFundingOrigin(ctx, chain, numericUint64(referenceNumber), address.Bytes())
+		err = queryErr
+		candidateBlock, sourceBytes, transactionHashBytes, originKind, blockHashBytes = row.BlockNumber, row.SourceAddress, row.TransactionHash, row.OriginKind, row.BlockHash
+		if row.WithdrawalIndex != nil {
+			withdrawalIndex = pgtype.Text{String: *row.WithdrawalIndex, Valid: true}
+		}
 	}
-	notFound := errors.Is(err, sql.ErrNoRows)
+
+	notFound := errors.Is(err, pgx.ErrNoRows)
 	if !notFound && err != nil {
 		return gen.AddressOrigin{}, fmt.Errorf("query address origin: %w", err)
 	}
@@ -100,18 +136,36 @@ func (r *PostgresReader) AddressOrigin(
 	}
 
 	var complete bool
-	if err := tx.QueryRowContext(ctx, dbgen.QueryAddressOriginCoverage, r.chainID, fmt.Sprint(coverageEnd)).Scan(&complete); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(r.chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(fmt.Sprint(coverageEnd)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).QueryAddressOriginCoverage(ctx, queryValue1, queryValue0)
+		if err != nil {
+			return err
+		}
+		if queryRow == nil {
+			return errors.New("invalid stored query value")
+		}
+		complete = *queryRow
+		return nil
+	}(); err != nil {
 		return gen.AddressOrigin{}, fmt.Errorf("check address origin coverage: %w", err)
 	}
 	if !complete {
-		if err := tx.Commit(); err != nil {
+		if err := tx.Commit(ctx); err != nil {
 			return gen.AddressOrigin{}, fmt.Errorf("commit unavailable address origin snapshot: %w", err)
 		}
 		return result, nil
 	}
 	if notFound {
 		result.State = gen.AddressOriginStateNotFound
-		if err := tx.Commit(); err != nil {
+		if err := tx.Commit(ctx); err != nil {
 			return gen.AddressOrigin{}, fmt.Errorf("commit empty address origin snapshot: %w", err)
 		}
 		return result, nil
@@ -148,7 +202,7 @@ func (r *PostgresReader) AddressOrigin(
 	if originKind == string(gen.Withdrawal) || originKind == string(gen.BlockFeeRecipient) {
 		result.BlockNumber = &blockNumber
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return gen.AddressOrigin{}, fmt.Errorf("commit address origin snapshot: %w", err)
 	}
 	return result, nil

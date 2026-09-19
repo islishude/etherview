@@ -11,29 +11,29 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const VerifyVyperPersistRuntime = `-- name: VerifyVyperPersistRuntime :exec
-UPDATE compiler_catalog_entries SET vyper_runtimes = $3::jsonb, expires_at = $4
-WHERE generation_id = $1 AND version = $2 AND language = 'vyper' AND vyper_runtimes IS NULL
+const verifyVyperPersistRuntime = `-- name: VerifyVyperPersistRuntime :exec
+UPDATE compiler_catalog_entries SET vyper_runtimes = $1::jsonb, expires_at = $2
+WHERE generation_id = $3 AND version = $4 AND language = 'vyper' AND vyper_runtimes IS NULL
 `
 
 type VerifyVyperPersistRuntimeParams struct {
-	GenerationID int64              `db:"generation_id" json:"generation_id"`
-	Version      string             `db:"version" json:"version"`
-	Column3      []byte             `db:"column_3" json:"column_3"`
-	ExpiresAt    pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	VyperRuntimes []byte             `db:"vyper_runtimes" json:"vyper_runtimes"`
+	ExpiresAt     pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	GenerationID  int64              `db:"generation_id" json:"generation_id"`
+	Version       string             `db:"version" json:"version"`
 }
 
 func (q *Queries) VerifyVyperPersistRuntime(ctx context.Context, arg VerifyVyperPersistRuntimeParams) error {
-	_, err := q.db.Exec(ctx, VerifyVyperPersistRuntime,
+	_, err := q.db.Exec(ctx, verifyVyperPersistRuntime,
+		arg.VyperRuntimes,
+		arg.ExpiresAt,
 		arg.GenerationID,
 		arg.Version,
-		arg.Column3,
-		arg.ExpiresAt,
 	)
 	return err
 }
 
-const VerifyVyperRuntime = `-- name: VerifyVyperRuntime :many
+const verifyVyperRuntime = `-- name: VerifyVyperRuntime :one
 SELECT generation_id, version, artifact_sha256, vyper_runtimes
 FROM compiler_catalog_entries WHERE generation_id = $1 AND version = $2 AND language = 'vyper'
 `
@@ -45,27 +45,14 @@ type VerifyVyperRuntimeRow struct {
 	VyperRuntimes  []byte `db:"vyper_runtimes" json:"vyper_runtimes"`
 }
 
-func (q *Queries) VerifyVyperRuntime(ctx context.Context, generationID int64, version string) ([]VerifyVyperRuntimeRow, error) {
-	rows, err := q.db.Query(ctx, VerifyVyperRuntime, generationID, version)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []VerifyVyperRuntimeRow{}
-	for rows.Next() {
-		var i VerifyVyperRuntimeRow
-		if err := rows.Scan(
-			&i.GenerationID,
-			&i.Version,
-			&i.ArtifactSha256,
-			&i.VyperRuntimes,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) VerifyVyperRuntime(ctx context.Context, generationID int64, version string) (VerifyVyperRuntimeRow, error) {
+	row := q.db.QueryRow(ctx, verifyVyperRuntime, generationID, version)
+	var i VerifyVyperRuntimeRow
+	err := row.Scan(
+		&i.GenerationID,
+		&i.Version,
+		&i.ArtifactSha256,
+		&i.VyperRuntimes,
+	)
+	return i, err
 }

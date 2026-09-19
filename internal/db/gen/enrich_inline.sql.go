@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const EnrichInlineAuthenticateCloneCreationStatement1 = `-- name: EnrichInlineAuthenticateCloneCreationStatement1 :many
+const enrichInlineAuthenticateCloneCreationStatement1 = `-- name: EnrichInlineAuthenticateCloneCreationStatement1 :one
 SELECT trace.input, trace.output
 		FROM normalized_traces AS trace
 		JOIN canonical_blocks AS canonical
@@ -28,22 +28,22 @@ SELECT trace.input, trace.output
 		      FROM published_block_stage_results AS published
 		      WHERE published.chain_id = trace.chain_id
 		        AND published.block_hash = trace.block_hash
-		        AND published.stage = $4
-		        AND published.stage_version = $5
+		        AND published.stage = $3
+		        AND published.stage_version = $4
 		        AND published.state = 'complete'
 		  )
-		  AND trace.block_number <= $3::numeric
+		  AND trace.block_number <= $5::numeric
 		ORDER BY trace.block_number DESC, trace.transaction_index DESC,
 		         trace.trace_path DESC
 		LIMIT 1
 `
 
 type EnrichInlineAuthenticateCloneCreationStatement1Params struct {
-	Column1        pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID        pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	CreatedAddress []byte         `db:"created_address" json:"created_address"`
-	Column3        pgtype.Numeric `db:"column_3" json:"column_3"`
 	Stage          string         `db:"stage" json:"stage"`
 	StageVersion   int32          `db:"stage_version" json:"stage_version"`
+	MaxBlockNumber pgtype.Numeric `db:"max_block_number" json:"max_block_number"`
 }
 
 type EnrichInlineAuthenticateCloneCreationStatement1Row struct {
@@ -51,33 +51,20 @@ type EnrichInlineAuthenticateCloneCreationStatement1Row struct {
 	Output []byte `db:"output" json:"output"`
 }
 
-func (q *Queries) EnrichInlineAuthenticateCloneCreationStatement1(ctx context.Context, arg EnrichInlineAuthenticateCloneCreationStatement1Params) ([]EnrichInlineAuthenticateCloneCreationStatement1Row, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineAuthenticateCloneCreationStatement1,
-		arg.Column1,
+func (q *Queries) EnrichInlineAuthenticateCloneCreationStatement1(ctx context.Context, arg EnrichInlineAuthenticateCloneCreationStatement1Params) (EnrichInlineAuthenticateCloneCreationStatement1Row, error) {
+	row := q.db.QueryRow(ctx, enrichInlineAuthenticateCloneCreationStatement1,
+		arg.ChainID,
 		arg.CreatedAddress,
-		arg.Column3,
 		arg.Stage,
 		arg.StageVersion,
+		arg.MaxBlockNumber,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EnrichInlineAuthenticateCloneCreationStatement1Row{}
-	for rows.Next() {
-		var i EnrichInlineAuthenticateCloneCreationStatement1Row
-		if err := rows.Scan(&i.Input, &i.Output); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i EnrichInlineAuthenticateCloneCreationStatement1Row
+	err := row.Scan(&i.Input, &i.Output)
+	return i, err
 }
 
-const EnrichInlineDiamondHistoryCoverageCompleteStatement1 = `-- name: EnrichInlineDiamondHistoryCoverageCompleteStatement1 :many
+const enrichInlineDiamondHistoryCoverageCompleteStatement1 = `-- name: EnrichInlineDiamondHistoryCoverageCompleteStatement1 :one
 WITH first_cut AS (
 		    SELECT event.block_number, event.block_hash
 		    FROM diamond_cut_events AS event
@@ -86,12 +73,12 @@ WITH first_cut AS (
 		     AND canonical.number = event.block_number
 		     AND canonical.block_hash = event.block_hash
 		    WHERE event.chain_id = $1::numeric
-		      AND event.diamond_address = $2
-		      AND event.block_number <= $3::numeric
+		      AND event.diamond_address = $4
+		      AND event.block_number <= $2::numeric
 		      AND event.stage_version = $5
 		      AND event.canonical
 		      AND (
-		          event.block_hash = $4 OR EXISTS (
+		          event.block_hash = $3 OR EXISTS (
 		              SELECT 1
 		              FROM published_block_stage_results AS published
 		              WHERE published.chain_id = event.chain_id
@@ -112,7 +99,7 @@ WITH first_cut AS (
 		          AND receipt.block_number = first_cut.block_number
 		          AND receipt.block_hash = first_cut.block_hash
 		          AND lower(receipt.raw->>'contractAddress') =
-		              lower('0x' || encode($2, 'hex'))
+		              lower('0x' || encode($4, 'hex'))
 		        UNION ALL
 		        SELECT 1
 		        FROM normalized_traces AS trace
@@ -126,58 +113,46 @@ WITH first_cut AS (
 		        WHERE trace.chain_id = $1::numeric
 		          AND trace.block_number = first_cut.block_number
 		          AND trace.block_hash = first_cut.block_hash
-		          AND trace.created_address = $2
+		          AND trace.created_address = $4
 		          AND trace.call_type IN ('CREATE', 'CREATE2')
 		          AND NOT trace.reverted
 		          AND trace.canonical
 		    ) AS at_first_cut
 		    FROM first_cut
 		)
-		SELECT COALESCE(
+		SELECT
+(COALESCE(
 		    created.at_first_cut AND proxy_interaction_coverage_contains(
 		        $1::numeric, first_cut.block_number, first_cut.block_hash,
-		        $3::numeric, $4
+		        $2::numeric, $3
 		    ), FALSE
-		)
-		FROM first_cut
+		))::boolean AS complete
+FROM first_cut
 		JOIN created ON TRUE
 `
 
 type EnrichInlineDiamondHistoryCoverageCompleteStatement1Params struct {
-	Column1        pgtype.Numeric `db:"column_1" json:"column_1"`
-	DiamondAddress []byte         `db:"diamond_address" json:"diamond_address"`
-	Column3        pgtype.Numeric `db:"column_3" json:"column_3"`
+	ChainID        pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	MaxBlockNumber pgtype.Numeric `db:"max_block_number" json:"max_block_number"`
 	TargetEndHash  []byte         `db:"target_end_hash" json:"target_end_hash"`
+	DiamondAddress []byte         `db:"diamond_address" json:"diamond_address"`
 	StageVersion   int32          `db:"stage_version" json:"stage_version"`
 }
 
-func (q *Queries) EnrichInlineDiamondHistoryCoverageCompleteStatement1(ctx context.Context, arg EnrichInlineDiamondHistoryCoverageCompleteStatement1Params) ([]interface{}, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineDiamondHistoryCoverageCompleteStatement1,
-		arg.Column1,
-		arg.DiamondAddress,
-		arg.Column3,
+func (q *Queries) EnrichInlineDiamondHistoryCoverageCompleteStatement1(ctx context.Context, arg EnrichInlineDiamondHistoryCoverageCompleteStatement1Params) (bool, error) {
+	row := q.db.QueryRow(ctx, enrichInlineDiamondHistoryCoverageCompleteStatement1,
+		arg.ChainID,
+		arg.MaxBlockNumber,
 		arg.TargetEndHash,
+		arg.DiamondAddress,
 		arg.StageVersion,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []interface{}{}
-	for rows.Next() {
-		var coalesce interface{}
-		if err := rows.Scan(&coalesce); err != nil {
-			return nil, err
-		}
-		items = append(items, coalesce)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var complete bool
+	err := row.Scan(&complete)
+	return complete, err
 }
 
-const EnrichInlineHasCanonicalCodeHistoryStatement1 = `-- name: EnrichInlineHasCanonicalCodeHistoryStatement1 :many
+const enrichInlineHasCanonicalCodeHistoryStatement1 = `-- name: EnrichInlineHasCanonicalCodeHistoryStatement1 :one
 SELECT EXISTS (
 		    SELECT 1
 		    FROM contract_code_observations AS code
@@ -190,27 +165,14 @@ SELECT EXISTS (
 		)
 `
 
-func (q *Queries) EnrichInlineHasCanonicalCodeHistoryStatement1(ctx context.Context, column1 pgtype.Numeric, address []byte, column3 pgtype.Numeric) ([]bool, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineHasCanonicalCodeHistoryStatement1, column1, address, column3)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var exists bool
-		if err := rows.Scan(&exists); err != nil {
-			return nil, err
-		}
-		items = append(items, exists)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EnrichInlineHasCanonicalCodeHistoryStatement1(ctx context.Context, chainID pgtype.Numeric, address []byte, maxBlockNumber pgtype.Numeric) (bool, error) {
+	row := q.db.QueryRow(ctx, enrichInlineHasCanonicalCodeHistoryStatement1, chainID, address, maxBlockNumber)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
-const EnrichInlineHasVerifiedDiamondLoupeABIStatement1 = `-- name: EnrichInlineHasVerifiedDiamondLoupeABIStatement1 :many
+const enrichInlineHasVerifiedDiamondLoupeABIStatement1 = `-- name: EnrichInlineHasVerifiedDiamondLoupeABIStatement1 :one
 SELECT EXISTS (
 			SELECT 1
 			FROM verified_contracts AS verified
@@ -226,27 +188,14 @@ SELECT EXISTS (
 		)
 `
 
-func (q *Queries) EnrichInlineHasVerifiedDiamondLoupeABIStatement1(ctx context.Context, column1 pgtype.Numeric, address []byte, column3 pgtype.Numeric) ([]bool, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineHasVerifiedDiamondLoupeABIStatement1, column1, address, column3)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var exists bool
-		if err := rows.Scan(&exists); err != nil {
-			return nil, err
-		}
-		items = append(items, exists)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EnrichInlineHasVerifiedDiamondLoupeABIStatement1(ctx context.Context, chainID pgtype.Numeric, address []byte, maxValidFromBlock pgtype.Numeric) (bool, error) {
+	row := q.db.QueryRow(ctx, enrichInlineHasVerifiedDiamondLoupeABIStatement1, chainID, address, maxValidFromBlock)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
-const EnrichInlineLoadABIConstructorsStatement1 = `-- name: EnrichInlineLoadABIConstructorsStatement1 :many
+const enrichInlineLoadABIConstructorsStatement1 = `-- name: EnrichInlineLoadABIConstructorsStatement1 :many
 SELECT DISTINCT ON (trace.transaction_hash, trace.trace_path)
 		       trace.transaction_hash, trace.transaction_index, trace.trace_path, trace.created_address,
 		       trace.input, verified.constructor_arguments, verified.abi,
@@ -291,8 +240,8 @@ type EnrichInlineLoadABIConstructorsStatement1Row struct {
 	CodeHash             []byte `db:"code_hash" json:"code_hash"`
 }
 
-func (q *Queries) EnrichInlineLoadABIConstructorsStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]EnrichInlineLoadABIConstructorsStatement1Row, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineLoadABIConstructorsStatement1, column1, column2, blockHash)
+func (q *Queries) EnrichInlineLoadABIConstructorsStatement1(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([]EnrichInlineLoadABIConstructorsStatement1Row, error) {
+	rows, err := q.db.Query(ctx, enrichInlineLoadABIConstructorsStatement1, chainID, blockNumber, blockHash)
 	if err != nil {
 		return nil, err
 	}
@@ -320,7 +269,7 @@ func (q *Queries) EnrichInlineLoadABIConstructorsStatement1(ctx context.Context,
 	return items, nil
 }
 
-const EnrichInlineLoadABILogsStatement1 = `-- name: EnrichInlineLoadABILogsStatement1 :many
+const enrichInlineLoadABILogsStatement1 = `-- name: EnrichInlineLoadABILogsStatement1 :many
 SELECT log.log_index, log.tx_hash, log.address, log.raw,
 		       attribution.execution_address
 		FROM logs AS log
@@ -336,20 +285,20 @@ SELECT log.log_index, log.tx_hash, log.address, log.raw,
 		     FROM published_block_stage_results AS published
 		     WHERE published.chain_id = attribution.chain_id
 		       AND published.block_hash = attribution.block_hash
-		       AND published.stage = $4
-		       AND published.stage_version = $5
+		       AND published.stage = $1
+		       AND published.stage_version = $2
 		       AND published.state = 'complete'
 		 )
-		WHERE log.chain_id = $1::numeric AND log.block_number = $2::numeric AND log.block_hash = $3
+		WHERE log.chain_id = $3::numeric AND log.block_number = $4::numeric AND log.block_hash = $5
 		ORDER BY log.log_index
 `
 
 type EnrichInlineLoadABILogsStatement1Params struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2      pgtype.Numeric `db:"column_2" json:"column_2"`
-	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
 	Stage        string         `db:"stage" json:"stage"`
 	StageVersion int32          `db:"stage_version" json:"stage_version"`
+	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber  pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
 }
 
 type EnrichInlineLoadABILogsStatement1Row struct {
@@ -361,12 +310,12 @@ type EnrichInlineLoadABILogsStatement1Row struct {
 }
 
 func (q *Queries) EnrichInlineLoadABILogsStatement1(ctx context.Context, arg EnrichInlineLoadABILogsStatement1Params) ([]EnrichInlineLoadABILogsStatement1Row, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineLoadABILogsStatement1,
-		arg.Column1,
-		arg.Column2,
-		arg.BlockHash,
+	rows, err := q.db.Query(ctx, enrichInlineLoadABILogsStatement1,
 		arg.Stage,
 		arg.StageVersion,
+		arg.ChainID,
+		arg.BlockNumber,
+		arg.BlockHash,
 	)
 	if err != nil {
 		return nil, err
@@ -392,7 +341,7 @@ func (q *Queries) EnrichInlineLoadABILogsStatement1(ctx context.Context, arg Enr
 	return items, nil
 }
 
-const EnrichInlineLoadABITracesStatement1 = `-- name: EnrichInlineLoadABITracesStatement1 :many
+const enrichInlineLoadABITracesStatement1 = `-- name: EnrichInlineLoadABITracesStatement1 :many
 SELECT transaction_hash, transaction_index, trace_path, execution_address,
 		       execution_code_hash, input, output, direct_reverted
 		FROM normalized_traces AS trace
@@ -415,8 +364,8 @@ SELECT transaction_hash, transaction_index, trace_path, execution_address,
 `
 
 type EnrichInlineLoadABITracesStatement1Params struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2      pgtype.Numeric `db:"column_2" json:"column_2"`
+	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber  pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
 	Stage        string         `db:"stage" json:"stage"`
 	StageVersion int32          `db:"stage_version" json:"stage_version"`
@@ -434,9 +383,9 @@ type EnrichInlineLoadABITracesStatement1Row struct {
 }
 
 func (q *Queries) EnrichInlineLoadABITracesStatement1(ctx context.Context, arg EnrichInlineLoadABITracesStatement1Params) ([]EnrichInlineLoadABITracesStatement1Row, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineLoadABITracesStatement1,
-		arg.Column1,
-		arg.Column2,
+	rows, err := q.db.Query(ctx, enrichInlineLoadABITracesStatement1,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.Stage,
 		arg.StageVersion,
@@ -468,7 +417,7 @@ func (q *Queries) EnrichInlineLoadABITracesStatement1(ctx context.Context, arg E
 	return items, nil
 }
 
-const EnrichInlineLoadAndReplayDiamondHistoryStatement1 = `-- name: EnrichInlineLoadAndReplayDiamondHistoryStatement1 :many
+const enrichInlineLoadAndReplayDiamondHistoryStatement1 = `-- name: EnrichInlineLoadAndReplayDiamondHistoryStatement1 :many
 SELECT change.selector, change.action, change.facet_address
 		FROM diamond_cut_events AS event
 		JOIN diamond_selector_changes AS change
@@ -484,9 +433,9 @@ SELECT change.selector, change.action, change.facet_address
 		  AND event.diamond_address = $2
 		  AND event.block_number <= $3::numeric
 		  AND event.canonical
-		  AND event.stage_version = $5
+		  AND event.stage_version = $4
 		  AND (
-		      event.block_hash = $4 OR EXISTS (
+		      event.block_hash = $5 OR EXISTS (
 		          SELECT 1
 		          FROM published_block_stage_results AS published
 		          WHERE published.chain_id = event.chain_id
@@ -503,11 +452,11 @@ SELECT change.selector, change.action, change.facet_address
 `
 
 type EnrichInlineLoadAndReplayDiamondHistoryStatement1Params struct {
-	Column1        pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID        pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	DiamondAddress []byte         `db:"diamond_address" json:"diamond_address"`
-	Column3        pgtype.Numeric `db:"column_3" json:"column_3"`
-	BlockHash      []byte         `db:"block_hash" json:"block_hash"`
+	MaxBlockNumber pgtype.Numeric `db:"max_block_number" json:"max_block_number"`
 	StageVersion   int32          `db:"stage_version" json:"stage_version"`
+	BlockHash      []byte         `db:"block_hash" json:"block_hash"`
 	Limit          int32          `db:"limit" json:"limit"`
 }
 
@@ -518,12 +467,12 @@ type EnrichInlineLoadAndReplayDiamondHistoryStatement1Row struct {
 }
 
 func (q *Queries) EnrichInlineLoadAndReplayDiamondHistoryStatement1(ctx context.Context, arg EnrichInlineLoadAndReplayDiamondHistoryStatement1Params) ([]EnrichInlineLoadAndReplayDiamondHistoryStatement1Row, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineLoadAndReplayDiamondHistoryStatement1,
-		arg.Column1,
+	rows, err := q.db.Query(ctx, enrichInlineLoadAndReplayDiamondHistoryStatement1,
+		arg.ChainID,
 		arg.DiamondAddress,
-		arg.Column3,
-		arg.BlockHash,
+		arg.MaxBlockNumber,
 		arg.StageVersion,
+		arg.BlockHash,
 		arg.Limit,
 	)
 	if err != nil {
@@ -544,7 +493,7 @@ func (q *Queries) EnrichInlineLoadAndReplayDiamondHistoryStatement1(ctx context.
 	return items, nil
 }
 
-const EnrichInlineLoadDiamondAuxiliaryABIBindingsStatement1 = `-- name: EnrichInlineLoadDiamondAuxiliaryABIBindingsStatement1 :many
+const enrichInlineLoadDiamondAuxiliaryABIBindingsStatement1 = `-- name: EnrichInlineLoadDiamondAuxiliaryABIBindingsStatement1 :many
 WITH selected_snapshots AS (
 		    (SELECT snapshot.id
 		     FROM published_diamond_loupe_snapshots AS snapshot
@@ -552,9 +501,9 @@ WITH selected_snapshots AS (
 		       ON canonical.chain_id = snapshot.chain_id
 		      AND canonical.number = snapshot.block_number
 		      AND canonical.block_hash = snapshot.block_hash
-		     WHERE snapshot.chain_id = $1::numeric
-		       AND snapshot.diamond_address = $2
-		       AND snapshot.block_number <= $3::numeric
+		     WHERE snapshot.chain_id = $2::numeric
+		       AND snapshot.diamond_address = $3
+		       AND snapshot.block_number <= $4::numeric
 		       AND snapshot.detection_state = 'confirmed'
 		       AND snapshot.completeness = 'complete'
 		       AND snapshot.canonical
@@ -567,9 +516,9 @@ WITH selected_snapshots AS (
 		       ON canonical.chain_id = snapshot.chain_id
 		      AND canonical.number = snapshot.block_number
 		      AND canonical.block_hash = snapshot.block_hash
-		     WHERE snapshot.chain_id = $1::numeric
-		       AND snapshot.diamond_address = $2
-		       AND snapshot.block_number < $3::numeric
+		     WHERE snapshot.chain_id = $2::numeric
+		       AND snapshot.diamond_address = $3
+		       AND snapshot.block_number < $4::numeric
 		       AND snapshot.detection_state = 'confirmed'
 		       AND snapshot.completeness = 'complete'
 		       AND snapshot.canonical
@@ -590,37 +539,37 @@ WITH selected_snapshots AS (
 		     AND change.block_hash = event.block_hash
 		     AND change.log_index = event.log_index
 		     AND change.stage_version = event.stage_version
-		    WHERE event.chain_id = $1::numeric
-		      AND event.block_hash = $4
-		      AND event.diamond_address = $2
+		    WHERE event.chain_id = $2::numeric
+		      AND event.block_hash = $5
+		      AND event.diamond_address = $3
 		      AND event.canonical
-		      AND event.stage_version = $5
+		      AND event.stage_version = $6
 		      AND change.action IN (0, 1)
 		      AND change.facet_address <> decode(repeat('00', 20), 'hex')
 		)
 		SELECT facet_address
 		FROM candidates
 		ORDER BY facet_address
-		LIMIT $6
+		LIMIT $1
 `
 
 type EnrichInlineLoadDiamondAuxiliaryABIBindingsStatement1Params struct {
-	Column1        pgtype.Numeric `db:"column_1" json:"column_1"`
+	Limit          int32          `db:"limit" json:"limit"`
+	ChainID        pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	DiamondAddress []byte         `db:"diamond_address" json:"diamond_address"`
-	Column3        pgtype.Numeric `db:"column_3" json:"column_3"`
+	MaxBlockNumber pgtype.Numeric `db:"max_block_number" json:"max_block_number"`
 	BlockHash      []byte         `db:"block_hash" json:"block_hash"`
 	StageVersion   int32          `db:"stage_version" json:"stage_version"`
-	Limit          int32          `db:"limit" json:"limit"`
 }
 
 func (q *Queries) EnrichInlineLoadDiamondAuxiliaryABIBindingsStatement1(ctx context.Context, arg EnrichInlineLoadDiamondAuxiliaryABIBindingsStatement1Params) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineLoadDiamondAuxiliaryABIBindingsStatement1,
-		arg.Column1,
+	rows, err := q.db.Query(ctx, enrichInlineLoadDiamondAuxiliaryABIBindingsStatement1,
+		arg.Limit,
+		arg.ChainID,
 		arg.DiamondAddress,
-		arg.Column3,
+		arg.MaxBlockNumber,
 		arg.BlockHash,
 		arg.StageVersion,
-		arg.Limit,
 	)
 	if err != nil {
 		return nil, err
@@ -640,7 +589,7 @@ func (q *Queries) EnrichInlineLoadDiamondAuxiliaryABIBindingsStatement1(ctx cont
 	return items, nil
 }
 
-const EnrichInlineLoadDiamondFacetCodeHashStatement1 = `-- name: EnrichInlineLoadDiamondFacetCodeHashStatement1 :many
+const enrichInlineLoadDiamondFacetCodeHashStatement1 = `-- name: EnrichInlineLoadDiamondFacetCodeHashStatement1 :one
 SELECT facet.code_hash
 		FROM published_diamond_loupe_snapshots AS snapshot
 		JOIN canonical_blocks AS canonical
@@ -663,38 +612,25 @@ SELECT facet.code_hash
 `
 
 type EnrichInlineLoadDiamondFacetCodeHashStatement1Params struct {
-	Column1        pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID        pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	DiamondAddress []byte         `db:"diamond_address" json:"diamond_address"`
-	Column3        pgtype.Numeric `db:"column_3" json:"column_3"`
+	MaxBlockNumber pgtype.Numeric `db:"max_block_number" json:"max_block_number"`
 	FacetAddress   []byte         `db:"facet_address" json:"facet_address"`
 }
 
-func (q *Queries) EnrichInlineLoadDiamondFacetCodeHashStatement1(ctx context.Context, arg EnrichInlineLoadDiamondFacetCodeHashStatement1Params) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineLoadDiamondFacetCodeHashStatement1,
-		arg.Column1,
+func (q *Queries) EnrichInlineLoadDiamondFacetCodeHashStatement1(ctx context.Context, arg EnrichInlineLoadDiamondFacetCodeHashStatement1Params) ([]byte, error) {
+	row := q.db.QueryRow(ctx, enrichInlineLoadDiamondFacetCodeHashStatement1,
+		arg.ChainID,
 		arg.DiamondAddress,
-		arg.Column3,
+		arg.MaxBlockNumber,
 		arg.FacetAddress,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := [][]byte{}
-	for rows.Next() {
-		var code_hash []byte
-		if err := rows.Scan(&code_hash); err != nil {
-			return nil, err
-		}
-		items = append(items, code_hash)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var code_hash []byte
+	err := row.Scan(&code_hash)
+	return code_hash, err
 }
 
-const EnrichInlineLoadEffectiveTransactionExecutionsStatement1 = `-- name: EnrichInlineLoadEffectiveTransactionExecutionsStatement1 :many
+const enrichInlineLoadEffectiveTransactionExecutionsStatement1 = `-- name: EnrichInlineLoadEffectiveTransactionExecutionsStatement1 :many
 SELECT inclusion.tx_hash, inclusion.tx_index, inclusion.raw,
 		       resolution.context_address, resolution.execution_address,
 		       resolution.execution_code_hash, resolution.resolution,
@@ -716,8 +652,8 @@ SELECT inclusion.tx_hash, inclusion.tx_index, inclusion.raw,
 		     WHERE published.chain_id = resolution.chain_id
 		       AND published.block_number = resolution.block_number
 		       AND published.block_hash = resolution.block_hash
-		       AND published.stage = $4
-		       AND published.stage_version = $5
+		       AND published.stage = $1
+		       AND published.stage_version = $2
 		       AND published.state = 'complete'
 		 )
 		LEFT JOIN normalized_traces AS root
@@ -733,51 +669,51 @@ SELECT inclusion.tx_hash, inclusion.tx_index, inclusion.raw,
 		     WHERE published.chain_id = root.chain_id
 		       AND published.block_number = root.block_number
 		       AND published.block_hash = root.block_hash
-		       AND published.stage = $6
-		       AND published.stage_version = $7
+		       AND published.stage = $3
+		       AND published.stage_version = $4
 		       AND published.state = 'complete'
 		 )
-		WHERE inclusion.chain_id = $1::numeric
-		  AND inclusion.block_number = $2::numeric
-		  AND inclusion.block_hash = $3
+		WHERE inclusion.chain_id = $5::numeric
+		  AND inclusion.block_number = $6::numeric
+		  AND inclusion.block_hash = $7
 		ORDER BY inclusion.tx_index
 `
 
 type EnrichInlineLoadEffectiveTransactionExecutionsStatement1Params struct {
-	Column1        pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2        pgtype.Numeric `db:"column_2" json:"column_2"`
-	BlockHash      []byte         `db:"block_hash" json:"block_hash"`
-	Stage          string         `db:"stage" json:"stage"`
-	StageVersion   int32          `db:"stage_version" json:"stage_version"`
-	Stage_2        string         `db:"stage_2" json:"stage_2"`
-	StageVersion_2 int32          `db:"stage_version_2" json:"stage_version_2"`
+	Stage         string         `db:"stage" json:"stage"`
+	StageVersion  int32          `db:"stage_version" json:"stage_version"`
+	Stage2        string         `db:"stage_2" json:"stage_2"`
+	StageVersion2 int32          `db:"stage_version_2" json:"stage_version_2"`
+	ChainID       pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber   pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash     []byte         `db:"block_hash" json:"block_hash"`
 }
 
 type EnrichInlineLoadEffectiveTransactionExecutionsStatement1Row struct {
-	TxHash              []byte  `db:"tx_hash" json:"tx_hash"`
-	TxIndex             int64   `db:"tx_index" json:"tx_index"`
-	Raw                 []byte  `db:"raw" json:"raw"`
-	ContextAddress      []byte  `db:"context_address" json:"context_address"`
-	ExecutionAddress    []byte  `db:"execution_address" json:"execution_address"`
-	ExecutionCodeHash   []byte  `db:"execution_code_hash" json:"execution_code_hash"`
-	Resolution          *string `db:"resolution" json:"resolution"`
-	EvidenceSource      *string `db:"evidence_source" json:"evidence_source"`
-	ToAddress           []byte  `db:"to_address" json:"to_address"`
-	ExecutionAddress_2  []byte  `db:"execution_address_2" json:"execution_address_2"`
-	ExecutionCodeHash_2 []byte  `db:"execution_code_hash_2" json:"execution_code_hash_2"`
-	ExecutionResolution *string `db:"execution_resolution" json:"execution_resolution"`
-	Input               []byte  `db:"input" json:"input"`
+	TxHash              []byte      `db:"tx_hash" json:"tx_hash"`
+	TxIndex             int64       `db:"tx_index" json:"tx_index"`
+	Raw                 []byte      `db:"raw" json:"raw"`
+	ContextAddress      []byte      `db:"context_address" json:"context_address"`
+	ExecutionAddress    []byte      `db:"execution_address" json:"execution_address"`
+	ExecutionCodeHash   []byte      `db:"execution_code_hash" json:"execution_code_hash"`
+	Resolution          pgtype.Text `db:"resolution" json:"resolution"`
+	EvidenceSource      *string     `db:"evidence_source" json:"evidence_source"`
+	ToAddress           []byte      `db:"to_address" json:"to_address"`
+	ExecutionAddress_2  []byte      `db:"execution_address_2" json:"execution_address_2"`
+	ExecutionCodeHash_2 []byte      `db:"execution_code_hash_2" json:"execution_code_hash_2"`
+	ExecutionResolution *string     `db:"execution_resolution" json:"execution_resolution"`
+	Input               []byte      `db:"input" json:"input"`
 }
 
 func (q *Queries) EnrichInlineLoadEffectiveTransactionExecutionsStatement1(ctx context.Context, arg EnrichInlineLoadEffectiveTransactionExecutionsStatement1Params) ([]EnrichInlineLoadEffectiveTransactionExecutionsStatement1Row, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineLoadEffectiveTransactionExecutionsStatement1,
-		arg.Column1,
-		arg.Column2,
-		arg.BlockHash,
+	rows, err := q.db.Query(ctx, enrichInlineLoadEffectiveTransactionExecutionsStatement1,
 		arg.Stage,
 		arg.StageVersion,
-		arg.Stage_2,
-		arg.StageVersion_2,
+		arg.Stage2,
+		arg.StageVersion2,
+		arg.ChainID,
+		arg.BlockNumber,
+		arg.BlockHash,
 	)
 	if err != nil {
 		return nil, err
@@ -811,21 +747,37 @@ func (q *Queries) EnrichInlineLoadEffectiveTransactionExecutionsStatement1(ctx c
 	return items, nil
 }
 
-const EnrichInlineLoadGenesisCandidatesStatement1 = `-- name: EnrichInlineLoadGenesisCandidatesStatement1 :many
+const enrichInlineLoadGenesisCandidatesStatement1 = `-- name: EnrichInlineLoadGenesisCandidatesStatement1 :many
 SELECT account.address
 		FROM genesis_account_observations AS account
 		JOIN genesis_state_imports AS imported
 		  ON imported.chain_id = account.chain_id
 		 AND imported.block_hash = account.block_hash
 		 AND imported.state = 'complete'
-		WHERE account.chain_id = $1::numeric
-		  AND account.block_hash = $2
+		WHERE account.chain_id = $1::text::numeric
+		  AND account.block_hash = $2::bytea
 		  AND octet_length(account.code) > 0
-		ORDER BY account.address
+AND (NOT $3::boolean OR account.address > $4::bytea)
+ORDER BY account.address
+LIMIT $5::integer
 `
 
-func (q *Queries) EnrichInlineLoadGenesisCandidatesStatement1(ctx context.Context, column1 pgtype.Numeric, blockHash []byte) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineLoadGenesisCandidatesStatement1, column1, blockHash)
+type EnrichInlineLoadGenesisCandidatesStatement1Params struct {
+	ChainID      string `db:"chain_id" json:"chain_id"`
+	BlockHash    []byte `db:"block_hash" json:"block_hash"`
+	HasCursor    bool   `db:"has_cursor" json:"has_cursor"`
+	AfterAddress []byte `db:"after_address" json:"after_address"`
+	PageLimit    int32  `db:"page_limit" json:"page_limit"`
+}
+
+func (q *Queries) EnrichInlineLoadGenesisCandidatesStatement1(ctx context.Context, arg EnrichInlineLoadGenesisCandidatesStatement1Params) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, enrichInlineLoadGenesisCandidatesStatement1,
+		arg.ChainID,
+		arg.BlockHash,
+		arg.HasCursor,
+		arg.AfterAddress,
+		arg.PageLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -844,7 +796,7 @@ func (q *Queries) EnrichInlineLoadGenesisCandidatesStatement1(ctx context.Contex
 	return items, nil
 }
 
-const EnrichInlineLoadLogCandidatesStatement1 = `-- name: EnrichInlineLoadLogCandidatesStatement1 :many
+const enrichInlineLoadLogCandidatesStatement1 = `-- name: EnrichInlineLoadLogCandidatesStatement1 :many
 SELECT log_index, tx_hash, address, topic0, raw
 		FROM logs
 		WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
@@ -859,8 +811,8 @@ type EnrichInlineLoadLogCandidatesStatement1Row struct {
 	Raw      []byte `db:"raw" json:"raw"`
 }
 
-func (q *Queries) EnrichInlineLoadLogCandidatesStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]EnrichInlineLoadLogCandidatesStatement1Row, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineLoadLogCandidatesStatement1, column1, column2, blockHash)
+func (q *Queries) EnrichInlineLoadLogCandidatesStatement1(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([]EnrichInlineLoadLogCandidatesStatement1Row, error) {
+	rows, err := q.db.Query(ctx, enrichInlineLoadLogCandidatesStatement1, chainID, blockNumber, blockHash)
 	if err != nil {
 		return nil, err
 	}
@@ -885,7 +837,7 @@ func (q *Queries) EnrichInlineLoadLogCandidatesStatement1(ctx context.Context, c
 	return items, nil
 }
 
-const EnrichInlineLoadProxyABIBindingStatement1 = `-- name: EnrichInlineLoadProxyABIBindingStatement1 :many
+const enrichInlineLoadProxyABIBindingStatement1 = `-- name: EnrichInlineLoadProxyABIBindingStatement1 :one
 WITH published_proxy_candidates AS (
 		    SELECT observation.chain_id, observation.proxy_address, observation.block_number, observation.block_hash, observation.proxy_code_hash, observation.proxy_kind, observation.implementation_address, observation.beacon_address, observation.implementation_code_hash, observation.confidence, observation.canonical, observation.details, observation.stage_version, observation.proxy_pattern, observation.standard_version, observation.admin_address, observation.admin_code_hash, observation.beacon_code_hash, observation.immutable_args, observation.evidence_state, generation.id AS observation_generation_id,
 		           generation.durable_job_id, generation.job_generation
@@ -910,10 +862,10 @@ WITH published_proxy_candidates AS (
 		    WHERE observation.chain_id = $1::numeric
 			      AND observation.proxy_address = $2::bytea
 			      AND observation.proxy_code_hash = $3::bytea
-		      AND observation.stage_version = $6
+		      AND observation.stage_version = $4
 		      AND observation.canonical
 		      AND observation.confidence IN ('verified', 'high')
-		      AND observation.block_number <= $4::numeric
+		      AND observation.block_number <= $5::numeric
 		), resolved_candidates AS (
 		    SELECT raw.chain_id, raw.proxy_address, raw.block_number, raw.block_hash, raw.proxy_code_hash, raw.proxy_kind, raw.implementation_address, raw.beacon_address, raw.implementation_code_hash, raw.confidence, raw.canonical, raw.details, raw.stage_version, raw.proxy_pattern, raw.standard_version, raw.admin_address, raw.admin_code_hash, raw.beacon_code_hash, raw.immutable_args, raw.evidence_state, raw.observation_generation_id, raw.durable_job_id, raw.job_generation, resolution.id AS artifact_resolution_id,
 		           resolution.proxy_kind AS resolved_kind,
@@ -953,7 +905,7 @@ WITH published_proxy_candidates AS (
 		        resolution.id IS NOT NULL
 		        AND (
 		            resolution.proxy_pattern = 'beacon'
-			            OR (raw.block_number = $4::numeric AND raw.block_hash = $5::bytea)
+			            OR (raw.block_number = $5::numeric AND raw.block_hash = $6::bytea)
 		        )
 		    ) OR (
 		        resolution.id IS NULL
@@ -962,8 +914,8 @@ WITH published_proxy_candidates AS (
 		        AND raw.evidence_state = 'generic'
 		        AND raw.beacon_address IS NULL
 		        AND raw.beacon_code_hash IS NULL
-		        AND raw.block_number = $4::numeric
-			        AND raw.block_hash = $5::bytea
+		        AND raw.block_number = $5::numeric
+			        AND raw.block_hash = $6::bytea
 		        AND raw.implementation_address IS NOT NULL
 		        AND raw.implementation_code_hash IS NOT NULL
 		    )
@@ -1009,23 +961,24 @@ WITH published_proxy_candidates AS (
 		     AND published.job_generation = generation.job_generation
 		     AND published.state = 'complete'
 		    WHERE proxy.effective_pattern = 'beacon'
-		      AND observation.stage_version = $6
+		      AND observation.stage_version = $4
 		      AND observation.canonical
 		      AND observation.confidence IN ('verified', 'high')
-		      AND observation.block_number <= $4::numeric
+		      AND observation.block_number <= $5::numeric
 		    ORDER BY observation.block_number DESC, generation.id DESC
 		    LIMIT 1
 		)
-		SELECT CASE WHEN proxy.effective_pattern = 'beacon'
+		SELECT
+(CASE WHEN proxy.effective_pattern = 'beacon'
 		                   THEN beacon.implementation_address
-		                   ELSE proxy.effective_implementation END,
-		       CASE WHEN proxy.effective_pattern = 'beacon'
+		                   ELSE proxy.effective_implementation END)::bytea AS implementation_address,
+(CASE WHEN proxy.effective_pattern = 'beacon'
 		                   THEN beacon.implementation_code_hash
-		                   ELSE proxy.effective_implementation_hash END,
-		       (proxy.proxy_kind = 'cwia'
+		                   ELSE proxy.effective_implementation_hash END)::bytea AS implementation_code_hash,
+(proxy.proxy_kind = 'cwia'
 		        AND proxy.effective_pattern = 'clone'
-		        AND proxy.evidence_state = 'exact')::boolean
-		FROM selected_proxy AS proxy
+		        AND proxy.evidence_state = 'exact')::boolean AS exact_cwia_evidence
+FROM selected_proxy AS proxy
 		LEFT JOIN published_beacon AS beacon
 		  ON proxy.effective_pattern = 'beacon'
 		WHERE proxy.effective_pattern <> 'beacon'
@@ -1033,48 +986,35 @@ WITH published_proxy_candidates AS (
 `
 
 type EnrichInlineLoadProxyABIBindingStatement1Params struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2      []byte         `db:"column_2" json:"column_2"`
-	Column3      []byte         `db:"column_3" json:"column_3"`
-	Column4      pgtype.Numeric `db:"column_4" json:"column_4"`
-	Column5      []byte         `db:"column_5" json:"column_5"`
-	StageVersion int32          `db:"stage_version" json:"stage_version"`
+	ChainID        pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	ProxyAddress   []byte         `db:"proxy_address" json:"proxy_address"`
+	ProxyCodeHash  []byte         `db:"proxy_code_hash" json:"proxy_code_hash"`
+	StageVersion   int32          `db:"stage_version" json:"stage_version"`
+	MaxBlockNumber pgtype.Numeric `db:"max_block_number" json:"max_block_number"`
+	BlockHash      []byte         `db:"block_hash" json:"block_hash"`
 }
 
 type EnrichInlineLoadProxyABIBindingStatement1Row struct {
-	Column1 interface{} `db:"column_1" json:"column_1"`
-	Column2 interface{} `db:"column_2" json:"column_2"`
-	Column3 bool        `db:"column_3" json:"column_3"`
+	ImplementationAddress  []byte `db:"implementation_address" json:"implementation_address"`
+	ImplementationCodeHash []byte `db:"implementation_code_hash" json:"implementation_code_hash"`
+	ExactCwiaEvidence      bool   `db:"exact_cwia_evidence" json:"exact_cwia_evidence"`
 }
 
-func (q *Queries) EnrichInlineLoadProxyABIBindingStatement1(ctx context.Context, arg EnrichInlineLoadProxyABIBindingStatement1Params) ([]EnrichInlineLoadProxyABIBindingStatement1Row, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineLoadProxyABIBindingStatement1,
-		arg.Column1,
-		arg.Column2,
-		arg.Column3,
-		arg.Column4,
-		arg.Column5,
+func (q *Queries) EnrichInlineLoadProxyABIBindingStatement1(ctx context.Context, arg EnrichInlineLoadProxyABIBindingStatement1Params) (EnrichInlineLoadProxyABIBindingStatement1Row, error) {
+	row := q.db.QueryRow(ctx, enrichInlineLoadProxyABIBindingStatement1,
+		arg.ChainID,
+		arg.ProxyAddress,
+		arg.ProxyCodeHash,
 		arg.StageVersion,
+		arg.MaxBlockNumber,
+		arg.BlockHash,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EnrichInlineLoadProxyABIBindingStatement1Row{}
-	for rows.Next() {
-		var i EnrichInlineLoadProxyABIBindingStatement1Row
-		if err := rows.Scan(&i.Column1, &i.Column2, &i.Column3); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i EnrichInlineLoadProxyABIBindingStatement1Row
+	err := row.Scan(&i.ImplementationAddress, &i.ImplementationCodeHash, &i.ExactCwiaEvidence)
+	return i, err
 }
 
-const EnrichInlineLoadProxyArtifactStatement1 = `-- name: EnrichInlineLoadProxyArtifactStatement1 :many
+const enrichInlineLoadProxyArtifactStatement1 = `-- name: EnrichInlineLoadProxyArtifactStatement1 :one
 SELECT artifact.artifact_kind, artifact.standard_version,
 		       artifact.runtime_immutable_address,
 		       artifact.verification_job_id::text
@@ -1096,10 +1036,10 @@ SELECT artifact.artifact_kind, artifact.standard_version,
 `
 
 type EnrichInlineLoadProxyArtifactStatement1Params struct {
-	Column1  pgtype.Numeric `db:"column_1" json:"column_1"`
-	Address  []byte         `db:"address" json:"address"`
-	CodeHash []byte         `db:"code_hash" json:"code_hash"`
-	Column4  pgtype.Numeric `db:"column_4" json:"column_4"`
+	ChainID           pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Address           []byte         `db:"address" json:"address"`
+	CodeHash          []byte         `db:"code_hash" json:"code_hash"`
+	MaxValidFromBlock pgtype.Numeric `db:"max_valid_from_block" json:"max_valid_from_block"`
 }
 
 type EnrichInlineLoadProxyArtifactStatement1Row struct {
@@ -1109,37 +1049,24 @@ type EnrichInlineLoadProxyArtifactStatement1Row struct {
 	ArtifactVerificationJobID string `db:"artifact_verification_job_id" json:"artifact_verification_job_id"`
 }
 
-func (q *Queries) EnrichInlineLoadProxyArtifactStatement1(ctx context.Context, arg EnrichInlineLoadProxyArtifactStatement1Params) ([]EnrichInlineLoadProxyArtifactStatement1Row, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineLoadProxyArtifactStatement1,
-		arg.Column1,
+func (q *Queries) EnrichInlineLoadProxyArtifactStatement1(ctx context.Context, arg EnrichInlineLoadProxyArtifactStatement1Params) (EnrichInlineLoadProxyArtifactStatement1Row, error) {
+	row := q.db.QueryRow(ctx, enrichInlineLoadProxyArtifactStatement1,
+		arg.ChainID,
 		arg.Address,
 		arg.CodeHash,
-		arg.Column4,
+		arg.MaxValidFromBlock,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EnrichInlineLoadProxyArtifactStatement1Row{}
-	for rows.Next() {
-		var i EnrichInlineLoadProxyArtifactStatement1Row
-		if err := rows.Scan(
-			&i.ArtifactKind,
-			&i.StandardVersion,
-			&i.RuntimeImmutableAddress,
-			&i.ArtifactVerificationJobID,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i EnrichInlineLoadProxyArtifactStatement1Row
+	err := row.Scan(
+		&i.ArtifactKind,
+		&i.StandardVersion,
+		&i.RuntimeImmutableAddress,
+		&i.ArtifactVerificationJobID,
+	)
+	return i, err
 }
 
-const EnrichInlineLoadProxyCoverageDetailsStatement1 = `-- name: EnrichInlineLoadProxyCoverageDetailsStatement1 :many
+const enrichInlineLoadProxyCoverageDetailsStatement1 = `-- name: EnrichInlineLoadProxyCoverageDetailsStatement1 :many
 SELECT stage, stage_version, state, durable_job_id, job_generation
 		FROM published_block_stage_results
 		WHERE chain_id = $1::numeric
@@ -1150,30 +1077,30 @@ SELECT stage, stage_version, state, durable_job_id, job_generation
 `
 
 type EnrichInlineLoadProxyCoverageDetailsStatement1Params struct {
-	Column1        pgtype.Numeric `db:"column_1" json:"column_1"`
-	BlockHash      []byte         `db:"block_hash" json:"block_hash"`
-	Stage          string         `db:"stage" json:"stage"`
-	StageVersion   int32          `db:"stage_version" json:"stage_version"`
-	Stage_2        string         `db:"stage_2" json:"stage_2"`
-	StageVersion_2 int32          `db:"stage_version_2" json:"stage_version_2"`
+	ChainID       pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockHash     []byte         `db:"block_hash" json:"block_hash"`
+	Stage         string         `db:"stage" json:"stage"`
+	StageVersion  int32          `db:"stage_version" json:"stage_version"`
+	Stage2        string         `db:"stage_2" json:"stage_2"`
+	StageVersion2 int32          `db:"stage_version_2" json:"stage_version_2"`
 }
 
 type EnrichInlineLoadProxyCoverageDetailsStatement1Row struct {
-	Stage         string `db:"stage" json:"stage"`
-	StageVersion  int32  `db:"stage_version" json:"stage_version"`
-	State         string `db:"state" json:"state"`
-	DurableJobID  *int64 `db:"durable_job_id" json:"durable_job_id"`
-	JobGeneration *int64 `db:"job_generation" json:"job_generation"`
+	Stage         string      `db:"stage" json:"stage"`
+	StageVersion  int32       `db:"stage_version" json:"stage_version"`
+	State         pgtype.Text `db:"state" json:"state"`
+	DurableJobID  *int64      `db:"durable_job_id" json:"durable_job_id"`
+	JobGeneration *int64      `db:"job_generation" json:"job_generation"`
 }
 
 func (q *Queries) EnrichInlineLoadProxyCoverageDetailsStatement1(ctx context.Context, arg EnrichInlineLoadProxyCoverageDetailsStatement1Params) ([]EnrichInlineLoadProxyCoverageDetailsStatement1Row, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineLoadProxyCoverageDetailsStatement1,
-		arg.Column1,
+	rows, err := q.db.Query(ctx, enrichInlineLoadProxyCoverageDetailsStatement1,
+		arg.ChainID,
 		arg.BlockHash,
 		arg.Stage,
 		arg.StageVersion,
-		arg.Stage_2,
-		arg.StageVersion_2,
+		arg.Stage2,
+		arg.StageVersion2,
 	)
 	if err != nil {
 		return nil, err
@@ -1199,7 +1126,7 @@ func (q *Queries) EnrichInlineLoadProxyCoverageDetailsStatement1(ctx context.Con
 	return items, nil
 }
 
-const EnrichInlineLoadReceiptCandidatesStatement1 = `-- name: EnrichInlineLoadReceiptCandidatesStatement1 :many
+const enrichInlineLoadReceiptCandidatesStatement1 = `-- name: EnrichInlineLoadReceiptCandidatesStatement1 :many
 SELECT tx_index, tx_hash, raw
 		FROM receipts
 		WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
@@ -1212,8 +1139,8 @@ type EnrichInlineLoadReceiptCandidatesStatement1Row struct {
 	Raw     []byte `db:"raw" json:"raw"`
 }
 
-func (q *Queries) EnrichInlineLoadReceiptCandidatesStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]EnrichInlineLoadReceiptCandidatesStatement1Row, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineLoadReceiptCandidatesStatement1, column1, column2, blockHash)
+func (q *Queries) EnrichInlineLoadReceiptCandidatesStatement1(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([]EnrichInlineLoadReceiptCandidatesStatement1Row, error) {
+	rows, err := q.db.Query(ctx, enrichInlineLoadReceiptCandidatesStatement1, chainID, blockNumber, blockHash)
 	if err != nil {
 		return nil, err
 	}
@@ -1232,7 +1159,7 @@ func (q *Queries) EnrichInlineLoadReceiptCandidatesStatement1(ctx context.Contex
 	return items, nil
 }
 
-const EnrichInlineLoadSameCodeABIBindingStatement1 = `-- name: EnrichInlineLoadSameCodeABIBindingStatement1 :many
+const enrichInlineLoadSameCodeABIBindingStatement1 = `-- name: EnrichInlineLoadSameCodeABIBindingStatement1 :one
 SELECT address, abi
 		FROM verified_contracts
 		WHERE chain_id = $1::numeric
@@ -1246,10 +1173,10 @@ SELECT address, abi
 `
 
 type EnrichInlineLoadSameCodeABIBindingStatement1Params struct {
-	Column1  pgtype.Numeric `db:"column_1" json:"column_1"`
-	CodeHash []byte         `db:"code_hash" json:"code_hash"`
-	Address  []byte         `db:"address" json:"address"`
-	Column4  pgtype.Numeric `db:"column_4" json:"column_4"`
+	ChainID           pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	CodeHash          []byte         `db:"code_hash" json:"code_hash"`
+	Address           []byte         `db:"address" json:"address"`
+	MinValidFromBlock pgtype.Numeric `db:"min_valid_from_block" json:"min_valid_from_block"`
 }
 
 type EnrichInlineLoadSameCodeABIBindingStatement1Row struct {
@@ -1257,47 +1184,34 @@ type EnrichInlineLoadSameCodeABIBindingStatement1Row struct {
 	Abi     []byte `db:"abi" json:"abi"`
 }
 
-func (q *Queries) EnrichInlineLoadSameCodeABIBindingStatement1(ctx context.Context, arg EnrichInlineLoadSameCodeABIBindingStatement1Params) ([]EnrichInlineLoadSameCodeABIBindingStatement1Row, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineLoadSameCodeABIBindingStatement1,
-		arg.Column1,
+func (q *Queries) EnrichInlineLoadSameCodeABIBindingStatement1(ctx context.Context, arg EnrichInlineLoadSameCodeABIBindingStatement1Params) (EnrichInlineLoadSameCodeABIBindingStatement1Row, error) {
+	row := q.db.QueryRow(ctx, enrichInlineLoadSameCodeABIBindingStatement1,
+		arg.ChainID,
 		arg.CodeHash,
 		arg.Address,
-		arg.Column4,
+		arg.MinValidFromBlock,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EnrichInlineLoadSameCodeABIBindingStatement1Row{}
-	for rows.Next() {
-		var i EnrichInlineLoadSameCodeABIBindingStatement1Row
-		if err := rows.Scan(&i.Address, &i.Abi); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i EnrichInlineLoadSameCodeABIBindingStatement1Row
+	err := row.Scan(&i.Address, &i.Abi)
+	return i, err
 }
 
-const EnrichInlineLoadSignatureABIBindingStatement1 = `-- name: EnrichInlineLoadSignatureABIBindingStatement1 :many
+const enrichInlineLoadSignatureABIBindingStatement1 = `-- name: EnrichInlineLoadSignatureABIBindingStatement1 :many
 SELECT signature, abi_entry
 			FROM abi_signature_candidates
 			WHERE kind = $1 AND identifier = $2
-			  AND octet_length(signature) <= $3
-			  AND octet_length(abi_entry::text) <= $4
+			  AND octet_length(signature) <= $3::integer
+			  AND octet_length(abi_entry::text) <= $4::integer
 			ORDER BY signature
 			LIMIT $5
 `
 
 type EnrichInlineLoadSignatureABIBindingStatement1Params struct {
-	Kind       string `db:"kind" json:"kind"`
-	Identifier []byte `db:"identifier" json:"identifier"`
-	Signature  string `db:"signature" json:"signature"`
-	AbiEntry   []byte `db:"abi_entry" json:"abi_entry"`
-	Limit      int32  `db:"limit" json:"limit"`
+	Kind              string `db:"kind" json:"kind"`
+	Identifier        []byte `db:"identifier" json:"identifier"`
+	MaxSignatureBytes int32  `db:"max_signature_bytes" json:"max_signature_bytes"`
+	MaxAbiBytes       int32  `db:"max_abi_bytes" json:"max_abi_bytes"`
+	Limit             int32  `db:"limit" json:"limit"`
 }
 
 type EnrichInlineLoadSignatureABIBindingStatement1Row struct {
@@ -1306,11 +1220,11 @@ type EnrichInlineLoadSignatureABIBindingStatement1Row struct {
 }
 
 func (q *Queries) EnrichInlineLoadSignatureABIBindingStatement1(ctx context.Context, arg EnrichInlineLoadSignatureABIBindingStatement1Params) ([]EnrichInlineLoadSignatureABIBindingStatement1Row, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineLoadSignatureABIBindingStatement1,
+	rows, err := q.db.Query(ctx, enrichInlineLoadSignatureABIBindingStatement1,
 		arg.Kind,
 		arg.Identifier,
-		arg.Signature,
-		arg.AbiEntry,
+		arg.MaxSignatureBytes,
+		arg.MaxAbiBytes,
 		arg.Limit,
 	)
 	if err != nil {
@@ -1331,7 +1245,7 @@ func (q *Queries) EnrichInlineLoadSignatureABIBindingStatement1(ctx context.Cont
 	return items, nil
 }
 
-const EnrichInlineLoadStateDiffCandidatesStatement1 = `-- name: EnrichInlineLoadStateDiffCandidatesStatement1 :many
+const enrichInlineLoadStateDiffCandidatesStatement1 = `-- name: EnrichInlineLoadStateDiffCandidatesStatement1 :many
 SELECT DISTINCT address
 		FROM transaction_state_changes AS change
 		WHERE change.chain_id = $1::numeric
@@ -1343,38 +1257,38 @@ SELECT DISTINCT address
 		      FROM published_block_stage_results AS published
 		      WHERE published.chain_id = change.chain_id
 		        AND published.block_hash = change.block_hash
-		        AND published.stage = $7
-		        AND published.stage_version = $8
+		        AND published.stage = $4
+		        AND published.stage_version = $5
 		        AND published.state = 'complete'
 		  )
 		  AND (
 		      change.field_kind = 'code'
-		      OR (change.field_kind = 'storage' AND change.storage_key IN ($4, $5, $6))
+		      OR (change.field_kind = 'storage' AND change.storage_key IN ($6, $7, $8))
 		  )
 		ORDER BY change.address
 `
 
 type EnrichInlineLoadStateDiffCandidatesStatement1Params struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2      pgtype.Numeric `db:"column_2" json:"column_2"`
+	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber  pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
-	StorageKey   []byte         `db:"storage_key" json:"storage_key"`
-	StorageKey_2 []byte         `db:"storage_key_2" json:"storage_key_2"`
-	StorageKey_3 []byte         `db:"storage_key_3" json:"storage_key_3"`
 	Stage        string         `db:"stage" json:"stage"`
 	StageVersion int32          `db:"stage_version" json:"stage_version"`
+	StorageKey   []byte         `db:"storage_key" json:"storage_key"`
+	StorageKey2  []byte         `db:"storage_key_2" json:"storage_key_2"`
+	StorageKey3  []byte         `db:"storage_key_3" json:"storage_key_3"`
 }
 
 func (q *Queries) EnrichInlineLoadStateDiffCandidatesStatement1(ctx context.Context, arg EnrichInlineLoadStateDiffCandidatesStatement1Params) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineLoadStateDiffCandidatesStatement1,
-		arg.Column1,
-		arg.Column2,
+	rows, err := q.db.Query(ctx, enrichInlineLoadStateDiffCandidatesStatement1,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
-		arg.StorageKey,
-		arg.StorageKey_2,
-		arg.StorageKey_3,
 		arg.Stage,
 		arg.StageVersion,
+		arg.StorageKey,
+		arg.StorageKey2,
+		arg.StorageKey3,
 	)
 	if err != nil {
 		return nil, err
@@ -1394,7 +1308,7 @@ func (q *Queries) EnrichInlineLoadStateDiffCandidatesStatement1(ctx context.Cont
 	return items, nil
 }
 
-const EnrichInlineLoadTraceCandidatesStatement1 = `-- name: EnrichInlineLoadTraceCandidatesStatement1 :many
+const enrichInlineLoadTraceCandidatesStatement1 = `-- name: EnrichInlineLoadTraceCandidatesStatement1 :many
 SELECT call_type, from_address, to_address, created_address, reverted
 		FROM normalized_traces AS trace
 		WHERE trace.chain_id = $1::numeric
@@ -1414,8 +1328,8 @@ SELECT call_type, from_address, to_address, created_address, reverted
 `
 
 type EnrichInlineLoadTraceCandidatesStatement1Params struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2      pgtype.Numeric `db:"column_2" json:"column_2"`
+	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber  pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
 	Stage        string         `db:"stage" json:"stage"`
 	StageVersion int32          `db:"stage_version" json:"stage_version"`
@@ -1430,9 +1344,9 @@ type EnrichInlineLoadTraceCandidatesStatement1Row struct {
 }
 
 func (q *Queries) EnrichInlineLoadTraceCandidatesStatement1(ctx context.Context, arg EnrichInlineLoadTraceCandidatesStatement1Params) ([]EnrichInlineLoadTraceCandidatesStatement1Row, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineLoadTraceCandidatesStatement1,
-		arg.Column1,
-		arg.Column2,
+	rows, err := q.db.Query(ctx, enrichInlineLoadTraceCandidatesStatement1,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.Stage,
 		arg.StageVersion,
@@ -1461,7 +1375,7 @@ func (q *Queries) EnrichInlineLoadTraceCandidatesStatement1(ctx context.Context,
 	return items, nil
 }
 
-const EnrichInlineLoadTransactionCandidatesStatement1 = `-- name: EnrichInlineLoadTransactionCandidatesStatement1 :many
+const enrichInlineLoadTransactionCandidatesStatement1 = `-- name: EnrichInlineLoadTransactionCandidatesStatement1 :many
 SELECT tx_hash, raw
 		FROM transaction_inclusions
 		WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
@@ -1473,8 +1387,8 @@ type EnrichInlineLoadTransactionCandidatesStatement1Row struct {
 	Raw    []byte `db:"raw" json:"raw"`
 }
 
-func (q *Queries) EnrichInlineLoadTransactionCandidatesStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]EnrichInlineLoadTransactionCandidatesStatement1Row, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineLoadTransactionCandidatesStatement1, column1, column2, blockHash)
+func (q *Queries) EnrichInlineLoadTransactionCandidatesStatement1(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([]EnrichInlineLoadTransactionCandidatesStatement1Row, error) {
+	rows, err := q.db.Query(ctx, enrichInlineLoadTransactionCandidatesStatement1, chainID, blockNumber, blockHash)
 	if err != nil {
 		return nil, err
 	}
@@ -1493,8 +1407,8 @@ func (q *Queries) EnrichInlineLoadTransactionCandidatesStatement1(ctx context.Co
 	return items, nil
 }
 
-const EnrichInlineLoadVerifiedABIBindingStatement1 = `-- name: EnrichInlineLoadVerifiedABIBindingStatement1 :many
-SELECT abi, valid_from_block::text, valid_to_block::text
+const enrichInlineLoadVerifiedABIBindingStatement1 = `-- name: EnrichInlineLoadVerifiedABIBindingStatement1 :one
+SELECT abi, valid_from_block::text, valid_to_block
 		FROM verified_contracts
 		WHERE chain_id = $1::numeric AND address = $2 AND code_hash = $3
 		  AND abi IS NOT NULL
@@ -1506,44 +1420,31 @@ SELECT abi, valid_from_block::text, valid_to_block::text
 `
 
 type EnrichInlineLoadVerifiedABIBindingStatement1Params struct {
-	Column1  pgtype.Numeric `db:"column_1" json:"column_1"`
-	Address  []byte         `db:"address" json:"address"`
-	CodeHash []byte         `db:"code_hash" json:"code_hash"`
-	Column4  pgtype.Numeric `db:"column_4" json:"column_4"`
+	ChainID           pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Address           []byte         `db:"address" json:"address"`
+	CodeHash          []byte         `db:"code_hash" json:"code_hash"`
+	MaxValidFromBlock pgtype.Numeric `db:"max_valid_from_block" json:"max_valid_from_block"`
 }
 
 type EnrichInlineLoadVerifiedABIBindingStatement1Row struct {
-	Abi            []byte `db:"abi" json:"abi"`
-	ValidFromBlock string `db:"valid_from_block" json:"valid_from_block"`
-	ValidToBlock   string `db:"valid_to_block" json:"valid_to_block"`
+	Abi            []byte         `db:"abi" json:"abi"`
+	ValidFromBlock string         `db:"valid_from_block" json:"valid_from_block"`
+	ValidToBlock   pgtype.Numeric `db:"valid_to_block" json:"valid_to_block"`
 }
 
-func (q *Queries) EnrichInlineLoadVerifiedABIBindingStatement1(ctx context.Context, arg EnrichInlineLoadVerifiedABIBindingStatement1Params) ([]EnrichInlineLoadVerifiedABIBindingStatement1Row, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineLoadVerifiedABIBindingStatement1,
-		arg.Column1,
+func (q *Queries) EnrichInlineLoadVerifiedABIBindingStatement1(ctx context.Context, arg EnrichInlineLoadVerifiedABIBindingStatement1Params) (EnrichInlineLoadVerifiedABIBindingStatement1Row, error) {
+	row := q.db.QueryRow(ctx, enrichInlineLoadVerifiedABIBindingStatement1,
+		arg.ChainID,
 		arg.Address,
 		arg.CodeHash,
-		arg.Column4,
+		arg.MaxValidFromBlock,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EnrichInlineLoadVerifiedABIBindingStatement1Row{}
-	for rows.Next() {
-		var i EnrichInlineLoadVerifiedABIBindingStatement1Row
-		if err := rows.Scan(&i.Abi, &i.ValidFromBlock, &i.ValidToBlock); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i EnrichInlineLoadVerifiedABIBindingStatement1Row
+	err := row.Scan(&i.Abi, &i.ValidFromBlock, &i.ValidToBlock)
+	return i, err
 }
 
-const EnrichInlinePersistABIBindingStatement1 = `-- name: EnrichInlinePersistABIBindingStatement1 :exec
+const enrichInlinePersistABIBindingStatement1 = `-- name: EnrichInlinePersistABIBindingStatement1 :exec
 INSERT INTO contract_abis (
 			chain_id, address, code_hash, source, confidence, abi,
 			valid_from_block, valid_to_block, block_number, block_hash,
@@ -1567,15 +1468,15 @@ INSERT INTO contract_abis (
 `
 
 type EnrichInlinePersistABIBindingStatement1Params struct {
-	Column1        pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID        pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	Address        []byte         `db:"address" json:"address"`
 	CodeHash       []byte         `db:"code_hash" json:"code_hash"`
 	Source         string         `db:"source" json:"source"`
 	Confidence     string         `db:"confidence" json:"confidence"`
-	Column6        []byte         `db:"column_6" json:"column_6"`
-	Column7        pgtype.Numeric `db:"column_7" json:"column_7"`
-	Column8        pgtype.Numeric `db:"column_8" json:"column_8"`
-	Column9        pgtype.Numeric `db:"column_9" json:"column_9"`
+	Abi            []byte         `db:"abi" json:"abi"`
+	ValidFromBlock pgtype.Numeric `db:"valid_from_block" json:"valid_from_block"`
+	ValidToBlock   pgtype.Numeric `db:"valid_to_block" json:"valid_to_block"`
+	BlockNumber    pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash      []byte         `db:"block_hash" json:"block_hash"`
 	SourceAddress  []byte         `db:"source_address" json:"source_address"`
 	SourceCodeHash []byte         `db:"source_code_hash" json:"source_code_hash"`
@@ -1583,16 +1484,16 @@ type EnrichInlinePersistABIBindingStatement1Params struct {
 }
 
 func (q *Queries) EnrichInlinePersistABIBindingStatement1(ctx context.Context, arg EnrichInlinePersistABIBindingStatement1Params) error {
-	_, err := q.db.Exec(ctx, EnrichInlinePersistABIBindingStatement1,
-		arg.Column1,
+	_, err := q.db.Exec(ctx, enrichInlinePersistABIBindingStatement1,
+		arg.ChainID,
 		arg.Address,
 		arg.CodeHash,
 		arg.Source,
 		arg.Confidence,
-		arg.Column6,
-		arg.Column7,
-		arg.Column8,
-		arg.Column9,
+		arg.Abi,
+		arg.ValidFromBlock,
+		arg.ValidToBlock,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.SourceAddress,
 		arg.SourceCodeHash,
@@ -1601,7 +1502,7 @@ func (q *Queries) EnrichInlinePersistABIBindingStatement1(ctx context.Context, a
 	return err
 }
 
-const EnrichInlinePersistABIDecodingStatement1 = `-- name: EnrichInlinePersistABIDecodingStatement1 :exec
+const enrichInlinePersistABIDecodingStatement1 = `-- name: EnrichInlinePersistABIDecodingStatement1 :exec
 INSERT INTO abi_decodings (
 			chain_id, block_number, block_hash, object_kind, transaction_hash,
 			object_index, target_address, target_code_hash, abi_kind, status,
@@ -1616,8 +1517,8 @@ INSERT INTO abi_decodings (
 `
 
 type EnrichInlinePersistABIDecodingStatement1Params struct {
-	Column1         pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2         pgtype.Numeric `db:"column_2" json:"column_2"`
+	ChainID         pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber     pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash       []byte         `db:"block_hash" json:"block_hash"`
 	ObjectKind      string         `db:"object_kind" json:"object_kind"`
 	TransactionHash []byte         `db:"transaction_hash" json:"transaction_hash"`
@@ -1631,18 +1532,18 @@ type EnrichInlinePersistABIDecodingStatement1Params struct {
 	Confidence      *string        `db:"confidence" json:"confidence"`
 	SourceAddress   []byte         `db:"source_address" json:"source_address"`
 	SourceCodeHash  []byte         `db:"source_code_hash" json:"source_code_hash"`
-	Column16        []byte         `db:"column_16" json:"column_16"`
-	Column17        []byte         `db:"column_17" json:"column_17"`
+	Arguments       []byte         `db:"arguments" json:"arguments"`
+	Candidates      []byte         `db:"candidates" json:"candidates"`
 	Warning         string         `db:"warning" json:"warning"`
 	ReturnStatus    string         `db:"return_status" json:"return_status"`
-	Column20        []byte         `db:"column_20" json:"column_20"`
+	ReturnArguments []byte         `db:"return_arguments" json:"return_arguments"`
 	DecodingKind    string         `db:"decoding_kind" json:"decoding_kind"`
 }
 
 func (q *Queries) EnrichInlinePersistABIDecodingStatement1(ctx context.Context, arg EnrichInlinePersistABIDecodingStatement1Params) error {
-	_, err := q.db.Exec(ctx, EnrichInlinePersistABIDecodingStatement1,
-		arg.Column1,
-		arg.Column2,
+	_, err := q.db.Exec(ctx, enrichInlinePersistABIDecodingStatement1,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.ObjectKind,
 		arg.TransactionHash,
@@ -1656,17 +1557,17 @@ func (q *Queries) EnrichInlinePersistABIDecodingStatement1(ctx context.Context, 
 		arg.Confidence,
 		arg.SourceAddress,
 		arg.SourceCodeHash,
-		arg.Column16,
-		arg.Column17,
+		arg.Arguments,
+		arg.Candidates,
 		arg.Warning,
 		arg.ReturnStatus,
-		arg.Column20,
+		arg.ReturnArguments,
 		arg.DecodingKind,
 	)
 	return err
 }
 
-const EnrichInlinePersistDiamondCutRecordStatement1 = `-- name: EnrichInlinePersistDiamondCutRecordStatement1 :exec
+const enrichInlinePersistDiamondCutRecordStatement1 = `-- name: EnrichInlinePersistDiamondCutRecordStatement1 :execrows
 INSERT INTO diamond_cut_events AS current (
 		    chain_id, block_number, block_hash, transaction_hash,
 		    transaction_index, log_index, diamond_address, init_address,
@@ -1691,37 +1592,40 @@ INSERT INTO diamond_cut_events AS current (
 `
 
 type EnrichInlinePersistDiamondCutRecordStatement1Params struct {
-	Column1         pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2         pgtype.Numeric `db:"column_2" json:"column_2"`
-	BlockHash       []byte         `db:"block_hash" json:"block_hash"`
-	TransactionHash []byte         `db:"transaction_hash" json:"transaction_hash"`
-	Column5         int64          `db:"column_5" json:"column_5"`
-	Column6         int64          `db:"column_6" json:"column_6"`
-	DiamondAddress  []byte         `db:"diamond_address" json:"diamond_address"`
-	InitAddress     []byte         `db:"init_address" json:"init_address"`
-	InitCalldata    []byte         `db:"init_calldata" json:"init_calldata"`
-	Column10        []byte         `db:"column_10" json:"column_10"`
-	StageVersion    int32          `db:"stage_version" json:"stage_version"`
+	ChainID          pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber      pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash        []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash  []byte         `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex int64          `db:"transaction_index" json:"transaction_index"`
+	LogIndex         int64          `db:"log_index" json:"log_index"`
+	DiamondAddress   []byte         `db:"diamond_address" json:"diamond_address"`
+	InitAddress      []byte         `db:"init_address" json:"init_address"`
+	InitCalldata     []byte         `db:"init_calldata" json:"init_calldata"`
+	Cuts             []byte         `db:"cuts" json:"cuts"`
+	StageVersion     int32          `db:"stage_version" json:"stage_version"`
 }
 
-func (q *Queries) EnrichInlinePersistDiamondCutRecordStatement1(ctx context.Context, arg EnrichInlinePersistDiamondCutRecordStatement1Params) error {
-	_, err := q.db.Exec(ctx, EnrichInlinePersistDiamondCutRecordStatement1,
-		arg.Column1,
-		arg.Column2,
+func (q *Queries) EnrichInlinePersistDiamondCutRecordStatement1(ctx context.Context, arg EnrichInlinePersistDiamondCutRecordStatement1Params) (int64, error) {
+	result, err := q.db.Exec(ctx, enrichInlinePersistDiamondCutRecordStatement1,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.TransactionHash,
-		arg.Column5,
-		arg.Column6,
+		arg.TransactionIndex,
+		arg.LogIndex,
 		arg.DiamondAddress,
 		arg.InitAddress,
 		arg.InitCalldata,
-		arg.Column10,
+		arg.Cuts,
 		arg.StageVersion,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const EnrichInlinePersistDiamondCutRecordStatement2 = `-- name: EnrichInlinePersistDiamondCutRecordStatement2 :exec
+const enrichInlinePersistDiamondCutRecordStatement2 = `-- name: EnrichInlinePersistDiamondCutRecordStatement2 :execrows
 INSERT INTO diamond_selector_changes AS current (
 				    chain_id, block_hash, log_index, stage_version,
 				    cut_index, selector_index, selector, action, facet_address
@@ -1738,9 +1642,9 @@ INSERT INTO diamond_selector_changes AS current (
 `
 
 type EnrichInlinePersistDiamondCutRecordStatement2Params struct {
-	Column1       pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID       pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	BlockHash     []byte         `db:"block_hash" json:"block_hash"`
-	Column3       int64          `db:"column_3" json:"column_3"`
+	LogIndex      int64          `db:"log_index" json:"log_index"`
 	StageVersion  int32          `db:"stage_version" json:"stage_version"`
 	CutIndex      int32          `db:"cut_index" json:"cut_index"`
 	SelectorIndex int32          `db:"selector_index" json:"selector_index"`
@@ -1749,11 +1653,11 @@ type EnrichInlinePersistDiamondCutRecordStatement2Params struct {
 	FacetAddress  []byte         `db:"facet_address" json:"facet_address"`
 }
 
-func (q *Queries) EnrichInlinePersistDiamondCutRecordStatement2(ctx context.Context, arg EnrichInlinePersistDiamondCutRecordStatement2Params) error {
-	_, err := q.db.Exec(ctx, EnrichInlinePersistDiamondCutRecordStatement2,
-		arg.Column1,
+func (q *Queries) EnrichInlinePersistDiamondCutRecordStatement2(ctx context.Context, arg EnrichInlinePersistDiamondCutRecordStatement2Params) (int64, error) {
+	result, err := q.db.Exec(ctx, enrichInlinePersistDiamondCutRecordStatement2,
+		arg.ChainID,
 		arg.BlockHash,
-		arg.Column3,
+		arg.LogIndex,
 		arg.StageVersion,
 		arg.CutIndex,
 		arg.SelectorIndex,
@@ -1761,10 +1665,13 @@ func (q *Queries) EnrichInlinePersistDiamondCutRecordStatement2(ctx context.Cont
 		arg.Action,
 		arg.FacetAddress,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const EnrichInlinePersistDiamondDetectionSnapshotStatement1 = `-- name: EnrichInlinePersistDiamondDetectionSnapshotStatement1 :many
+const enrichInlinePersistDiamondDetectionSnapshotStatement1 = `-- name: EnrichInlinePersistDiamondDetectionSnapshotStatement1 :one
 INSERT INTO diamond_loupe_snapshots AS current (
 		    chain_id, diamond_address, block_number, block_hash, stage_version,
 		    detection_state, completeness, validation, standard_diamond_cut,
@@ -1800,9 +1707,9 @@ INSERT INTO diamond_loupe_snapshots AS current (
 `
 
 type EnrichInlinePersistDiamondDetectionSnapshotStatement1Params struct {
-	Column1                 pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID                 pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	DiamondAddress          []byte         `db:"diamond_address" json:"diamond_address"`
-	Column3                 pgtype.Numeric `db:"column_3" json:"column_3"`
+	BlockNumber             pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash               []byte         `db:"block_hash" json:"block_hash"`
 	StageVersion            int32          `db:"stage_version" json:"stage_version"`
 	DetectionState          string         `db:"detection_state" json:"detection_state"`
@@ -1813,16 +1720,16 @@ type EnrichInlinePersistDiamondDetectionSnapshotStatement1Params struct {
 	LoupeInterfaceReported  *bool          `db:"loupe_interface_reported" json:"loupe_interface_reported"`
 	Truncated               bool           `db:"truncated" json:"truncated"`
 	TruncationReason        *string        `db:"truncation_reason" json:"truncation_reason"`
-	Column14                []byte         `db:"column_14" json:"column_14"`
+	Warnings                []byte         `db:"warnings" json:"warnings"`
 	DurableJobID            *int64         `db:"durable_job_id" json:"durable_job_id"`
-	Column16                int64          `db:"column_16" json:"column_16"`
+	JobGeneration           *int64         `db:"job_generation" json:"job_generation"`
 }
 
-func (q *Queries) EnrichInlinePersistDiamondDetectionSnapshotStatement1(ctx context.Context, arg EnrichInlinePersistDiamondDetectionSnapshotStatement1Params) ([]int64, error) {
-	rows, err := q.db.Query(ctx, EnrichInlinePersistDiamondDetectionSnapshotStatement1,
-		arg.Column1,
+func (q *Queries) EnrichInlinePersistDiamondDetectionSnapshotStatement1(ctx context.Context, arg EnrichInlinePersistDiamondDetectionSnapshotStatement1Params) (int64, error) {
+	row := q.db.QueryRow(ctx, enrichInlinePersistDiamondDetectionSnapshotStatement1,
+		arg.ChainID,
 		arg.DiamondAddress,
-		arg.Column3,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.StageVersion,
 		arg.DetectionState,
@@ -1833,29 +1740,16 @@ func (q *Queries) EnrichInlinePersistDiamondDetectionSnapshotStatement1(ctx cont
 		arg.LoupeInterfaceReported,
 		arg.Truncated,
 		arg.TruncationReason,
-		arg.Column14,
+		arg.Warnings,
 		arg.DurableJobID,
-		arg.Column16,
+		arg.JobGeneration,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []int64{}
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		items = append(items, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
-const EnrichInlinePersistDiamondDetectionSnapshotStatement2 = `-- name: EnrichInlinePersistDiamondDetectionSnapshotStatement2 :exec
+const enrichInlinePersistDiamondDetectionSnapshotStatement2 = `-- name: EnrichInlinePersistDiamondDetectionSnapshotStatement2 :execrows
 INSERT INTO diamond_loupe_facets AS current (
 			    snapshot_id, facet_address, facet_kind, code_exists, code_hash
 			) VALUES ($1, $2, $3, $4, $5)
@@ -1874,18 +1768,21 @@ type EnrichInlinePersistDiamondDetectionSnapshotStatement2Params struct {
 	CodeHash     []byte `db:"code_hash" json:"code_hash"`
 }
 
-func (q *Queries) EnrichInlinePersistDiamondDetectionSnapshotStatement2(ctx context.Context, arg EnrichInlinePersistDiamondDetectionSnapshotStatement2Params) error {
-	_, err := q.db.Exec(ctx, EnrichInlinePersistDiamondDetectionSnapshotStatement2,
+func (q *Queries) EnrichInlinePersistDiamondDetectionSnapshotStatement2(ctx context.Context, arg EnrichInlinePersistDiamondDetectionSnapshotStatement2Params) (int64, error) {
+	result, err := q.db.Exec(ctx, enrichInlinePersistDiamondDetectionSnapshotStatement2,
 		arg.SnapshotID,
 		arg.FacetAddress,
 		arg.FacetKind,
 		arg.CodeExists,
 		arg.CodeHash,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const EnrichInlinePersistDiamondDetectionSnapshotStatement3 = `-- name: EnrichInlinePersistDiamondDetectionSnapshotStatement3 :exec
+const enrichInlinePersistDiamondDetectionSnapshotStatement3 = `-- name: EnrichInlinePersistDiamondDetectionSnapshotStatement3 :execrows
 INSERT INTO diamond_loupe_selectors AS current (
 				    snapshot_id, selector, facet_address
 				) VALUES ($1, $2, $3)
@@ -1894,22 +1791,25 @@ INSERT INTO diamond_loupe_selectors AS current (
 				WHERE current.facet_address = EXCLUDED.facet_address
 `
 
-func (q *Queries) EnrichInlinePersistDiamondDetectionSnapshotStatement3(ctx context.Context, snapshotID int64, selector []byte, facetAddress []byte) error {
-	_, err := q.db.Exec(ctx, EnrichInlinePersistDiamondDetectionSnapshotStatement3, snapshotID, selector, facetAddress)
-	return err
+func (q *Queries) EnrichInlinePersistDiamondDetectionSnapshotStatement3(ctx context.Context, snapshotID int64, selector []byte, facetAddress []byte) (int64, error) {
+	result, err := q.db.Exec(ctx, enrichInlinePersistDiamondDetectionSnapshotStatement3, snapshotID, selector, facetAddress)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const EnrichInlinePersistEffectiveTransactionExecutionsStatement1 = `-- name: EnrichInlinePersistEffectiveTransactionExecutionsStatement1 :exec
+const enrichInlinePersistEffectiveTransactionExecutionsStatement1 = `-- name: EnrichInlinePersistEffectiveTransactionExecutionsStatement1 :exec
 DELETE FROM transaction_effective_execution_identities
 		WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
 `
 
-func (q *Queries) EnrichInlinePersistEffectiveTransactionExecutionsStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) error {
-	_, err := q.db.Exec(ctx, EnrichInlinePersistEffectiveTransactionExecutionsStatement1, column1, column2, blockHash)
+func (q *Queries) EnrichInlinePersistEffectiveTransactionExecutionsStatement1(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error {
+	_, err := q.db.Exec(ctx, enrichInlinePersistEffectiveTransactionExecutionsStatement1, chainID, blockNumber, blockHash)
 	return err
 }
 
-const EnrichInlinePersistEffectiveTransactionExecutionsStatement2 = `-- name: EnrichInlinePersistEffectiveTransactionExecutionsStatement2 :exec
+const enrichInlinePersistEffectiveTransactionExecutionsStatement2 = `-- name: EnrichInlinePersistEffectiveTransactionExecutionsStatement2 :exec
 INSERT INTO transaction_effective_execution_identities (
 			    chain_id, block_number, block_hash, transaction_hash,
 			    transaction_index, context_address, execution_address,
@@ -1922,23 +1822,23 @@ INSERT INTO transaction_effective_execution_identities (
 `
 
 type EnrichInlinePersistEffectiveTransactionExecutionsStatement2Params struct {
-	Column1           pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2           pgtype.Numeric `db:"column_2" json:"column_2"`
+	ChainID           pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber       pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash         []byte         `db:"block_hash" json:"block_hash"`
 	TransactionHash   []byte         `db:"transaction_hash" json:"transaction_hash"`
 	TransactionIndex  int64          `db:"transaction_index" json:"transaction_index"`
 	ContextAddress    []byte         `db:"context_address" json:"context_address"`
 	ExecutionAddress  []byte         `db:"execution_address" json:"execution_address"`
 	ExecutionCodeHash []byte         `db:"execution_code_hash" json:"execution_code_hash"`
-	Resolution        string         `db:"resolution" json:"resolution"`
+	Resolution        pgtype.Text    `db:"resolution" json:"resolution"`
 	EvidenceSource    string         `db:"evidence_source" json:"evidence_source"`
 	RootTracePath     *string        `db:"root_trace_path" json:"root_trace_path"`
 }
 
 func (q *Queries) EnrichInlinePersistEffectiveTransactionExecutionsStatement2(ctx context.Context, arg EnrichInlinePersistEffectiveTransactionExecutionsStatement2Params) error {
-	_, err := q.db.Exec(ctx, EnrichInlinePersistEffectiveTransactionExecutionsStatement2,
-		arg.Column1,
-		arg.Column2,
+	_, err := q.db.Exec(ctx, enrichInlinePersistEffectiveTransactionExecutionsStatement2,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.TransactionHash,
 		arg.TransactionIndex,
@@ -1952,27 +1852,27 @@ func (q *Queries) EnrichInlinePersistEffectiveTransactionExecutionsStatement2(ct
 	return err
 }
 
-const EnrichInlineProcessTxStatement1 = `-- name: EnrichInlineProcessTxStatement1 :exec
+const enrichInlineProcessTxStatement1 = `-- name: EnrichInlineProcessTxStatement1 :exec
 DELETE FROM abi_decodings
 		WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
 `
 
-func (q *Queries) EnrichInlineProcessTxStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) error {
-	_, err := q.db.Exec(ctx, EnrichInlineProcessTxStatement1, column1, column2, blockHash)
+func (q *Queries) EnrichInlineProcessTxStatement1(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error {
+	_, err := q.db.Exec(ctx, enrichInlineProcessTxStatement1, chainID, blockNumber, blockHash)
 	return err
 }
 
-const EnrichInlineProcessTxStatement2 = `-- name: EnrichInlineProcessTxStatement2 :exec
+const enrichInlineProcessTxStatement2 = `-- name: EnrichInlineProcessTxStatement2 :exec
 DELETE FROM contract_abis
 		WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
 `
 
-func (q *Queries) EnrichInlineProcessTxStatement2(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) error {
-	_, err := q.db.Exec(ctx, EnrichInlineProcessTxStatement2, column1, column2, blockHash)
+func (q *Queries) EnrichInlineProcessTxStatement2(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error {
+	_, err := q.db.Exec(ctx, enrichInlineProcessTxStatement2, chainID, blockNumber, blockHash)
 	return err
 }
 
-const EnrichInlineProxyDependencyStateStatement1 = `-- name: EnrichInlineProxyDependencyStateStatement1 :many
+const enrichInlineProxyDependencyStateStatement1 = `-- name: EnrichInlineProxyDependencyStateStatement1 :one
 SELECT state
 		FROM published_block_stage_results
 		WHERE chain_id = $1::numeric AND block_hash = $2
@@ -1980,38 +1880,25 @@ SELECT state
 `
 
 type EnrichInlineProxyDependencyStateStatement1Params struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
 	Stage        string         `db:"stage" json:"stage"`
 	StageVersion int32          `db:"stage_version" json:"stage_version"`
 }
 
-func (q *Queries) EnrichInlineProxyDependencyStateStatement1(ctx context.Context, arg EnrichInlineProxyDependencyStateStatement1Params) ([]string, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineProxyDependencyStateStatement1,
-		arg.Column1,
+func (q *Queries) EnrichInlineProxyDependencyStateStatement1(ctx context.Context, arg EnrichInlineProxyDependencyStateStatement1Params) (pgtype.Text, error) {
+	row := q.db.QueryRow(ctx, enrichInlineProxyDependencyStateStatement1,
+		arg.ChainID,
 		arg.BlockHash,
 		arg.Stage,
 		arg.StageVersion,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []string{}
-	for rows.Next() {
-		var state string
-		if err := rows.Scan(&state); err != nil {
-			return nil, err
-		}
-		items = append(items, state)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var state pgtype.Text
+	err := row.Scan(&state)
+	return state, err
 }
 
-const EnrichInlineProxyOrBeaconHistoryStatement1 = `-- name: EnrichInlineProxyOrBeaconHistoryStatement1 :many
+const enrichInlineProxyOrBeaconHistoryStatement1 = `-- name: EnrichInlineProxyOrBeaconHistoryStatement1 :one
 SELECT
 		    EXISTS (
 		        SELECT 1
@@ -2066,27 +1953,14 @@ type EnrichInlineProxyOrBeaconHistoryStatement1Row struct {
 	Exists_2 bool `db:"exists_2" json:"exists_2"`
 }
 
-func (q *Queries) EnrichInlineProxyOrBeaconHistoryStatement1(ctx context.Context, column1 pgtype.Numeric, column2 []byte, column3 pgtype.Numeric) ([]EnrichInlineProxyOrBeaconHistoryStatement1Row, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineProxyOrBeaconHistoryStatement1, column1, column2, column3)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EnrichInlineProxyOrBeaconHistoryStatement1Row{}
-	for rows.Next() {
-		var i EnrichInlineProxyOrBeaconHistoryStatement1Row
-		if err := rows.Scan(&i.Exists, &i.Exists_2); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EnrichInlineProxyOrBeaconHistoryStatement1(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte, maxBlockNumber pgtype.Numeric) (EnrichInlineProxyOrBeaconHistoryStatement1Row, error) {
+	row := q.db.QueryRow(ctx, enrichInlineProxyOrBeaconHistoryStatement1, chainID, proxyAddress, maxBlockNumber)
+	var i EnrichInlineProxyOrBeaconHistoryStatement1Row
+	err := row.Scan(&i.Exists, &i.Exists_2)
+	return i, err
 }
 
-const EnrichInlineResolveABICodeIdentityStatement1 = `-- name: EnrichInlineResolveABICodeIdentityStatement1 :many
+const enrichInlineResolveABICodeIdentityStatement1 = `-- name: EnrichInlineResolveABICodeIdentityStatement1 :one
 SELECT observation.block_number::text, observation.code_hash
 		FROM contract_code_observations AS observation
 		WHERE observation.chain_id = $1::numeric AND observation.address = $2 AND observation.canonical
@@ -2100,66 +1974,40 @@ type EnrichInlineResolveABICodeIdentityStatement1Row struct {
 	CodeHash               []byte `db:"code_hash" json:"code_hash"`
 }
 
-func (q *Queries) EnrichInlineResolveABICodeIdentityStatement1(ctx context.Context, column1 pgtype.Numeric, address []byte, column3 pgtype.Numeric) ([]EnrichInlineResolveABICodeIdentityStatement1Row, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineResolveABICodeIdentityStatement1, column1, address, column3)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EnrichInlineResolveABICodeIdentityStatement1Row{}
-	for rows.Next() {
-		var i EnrichInlineResolveABICodeIdentityStatement1Row
-		if err := rows.Scan(&i.ObservationBlockNumber, &i.CodeHash); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EnrichInlineResolveABICodeIdentityStatement1(ctx context.Context, chainID pgtype.Numeric, address []byte, maxBlockNumber pgtype.Numeric) (EnrichInlineResolveABICodeIdentityStatement1Row, error) {
+	row := q.db.QueryRow(ctx, enrichInlineResolveABICodeIdentityStatement1, chainID, address, maxBlockNumber)
+	var i EnrichInlineResolveABICodeIdentityStatement1Row
+	err := row.Scan(&i.ObservationBlockNumber, &i.CodeHash)
+	return i, err
 }
 
-const EnrichInlineResolveABICodeIdentityStatement2 = `-- name: EnrichInlineResolveABICodeIdentityStatement2 :many
-SELECT min(block_number)::text
+const enrichInlineResolveABICodeIdentityStatement2 = `-- name: EnrichInlineResolveABICodeIdentityStatement2 :one
+SELECT min(block_number)::numeric AS next_block_number
 		FROM contract_code_observations
 		WHERE chain_id = $1::numeric AND address = $2 AND canonical
 		  AND block_number > $3::numeric AND code_hash <> $4
 `
 
 type EnrichInlineResolveABICodeIdentityStatement2Params struct {
-	Column1  pgtype.Numeric `db:"column_1" json:"column_1"`
-	Address  []byte         `db:"address" json:"address"`
-	Column3  pgtype.Numeric `db:"column_3" json:"column_3"`
-	CodeHash []byte         `db:"code_hash" json:"code_hash"`
+	ChainID        pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Address        []byte         `db:"address" json:"address"`
+	MinBlockNumber pgtype.Numeric `db:"min_block_number" json:"min_block_number"`
+	CodeHash       []byte         `db:"code_hash" json:"code_hash"`
 }
 
-func (q *Queries) EnrichInlineResolveABICodeIdentityStatement2(ctx context.Context, arg EnrichInlineResolveABICodeIdentityStatement2Params) ([]string, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineResolveABICodeIdentityStatement2,
-		arg.Column1,
+func (q *Queries) EnrichInlineResolveABICodeIdentityStatement2(ctx context.Context, arg EnrichInlineResolveABICodeIdentityStatement2Params) (pgtype.Numeric, error) {
+	row := q.db.QueryRow(ctx, enrichInlineResolveABICodeIdentityStatement2,
+		arg.ChainID,
 		arg.Address,
-		arg.Column3,
+		arg.MinBlockNumber,
 		arg.CodeHash,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []string{}
-	for rows.Next() {
-		var column_1 string
-		if err := rows.Scan(&column_1); err != nil {
-			return nil, err
-		}
-		items = append(items, column_1)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var next_block_number pgtype.Numeric
+	err := row.Scan(&next_block_number)
+	return next_block_number, err
 }
 
-const EnrichInlineResolveDiamondABIRouteStatement1 = `-- name: EnrichInlineResolveDiamondABIRouteStatement1 :many
+const enrichInlineResolveDiamondABIRouteStatement1 = `-- name: EnrichInlineResolveDiamondABIRouteStatement1 :one
 SELECT EXISTS (
 		    SELECT 1
 		    FROM published_diamond_loupe_snapshots AS snapshot
@@ -2175,27 +2023,14 @@ SELECT EXISTS (
 		)
 `
 
-func (q *Queries) EnrichInlineResolveDiamondABIRouteStatement1(ctx context.Context, column1 pgtype.Numeric, diamondAddress []byte, column3 pgtype.Numeric) ([]bool, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineResolveDiamondABIRouteStatement1, column1, diamondAddress, column3)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var exists bool
-		if err := rows.Scan(&exists); err != nil {
-			return nil, err
-		}
-		items = append(items, exists)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EnrichInlineResolveDiamondABIRouteStatement1(ctx context.Context, chainID pgtype.Numeric, diamondAddress []byte, maxBlockNumber pgtype.Numeric) (bool, error) {
+	row := q.db.QueryRow(ctx, enrichInlineResolveDiamondABIRouteStatement1, chainID, diamondAddress, maxBlockNumber)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
-const EnrichInlineResolveDiamondABIRouteStatement2 = `-- name: EnrichInlineResolveDiamondABIRouteStatement2 :many
+const enrichInlineResolveDiamondABIRouteStatement2 = `-- name: EnrichInlineResolveDiamondABIRouteStatement2 :one
 SELECT EXISTS (
 			    SELECT 1
 			    FROM diamond_cut_events AS event
@@ -2209,40 +2044,27 @@ SELECT EXISTS (
 `
 
 type EnrichInlineResolveDiamondABIRouteStatement2Params struct {
-	Column1        pgtype.Numeric `db:"column_1" json:"column_1"`
-	BlockHash      []byte         `db:"block_hash" json:"block_hash"`
-	DiamondAddress []byte         `db:"diamond_address" json:"diamond_address"`
-	Column4        int64          `db:"column_4" json:"column_4"`
-	StageVersion   int32          `db:"stage_version" json:"stage_version"`
+	ChainID          pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockHash        []byte         `db:"block_hash" json:"block_hash"`
+	DiamondAddress   []byte         `db:"diamond_address" json:"diamond_address"`
+	TransactionIndex int64          `db:"transaction_index" json:"transaction_index"`
+	StageVersion     int32          `db:"stage_version" json:"stage_version"`
 }
 
-func (q *Queries) EnrichInlineResolveDiamondABIRouteStatement2(ctx context.Context, arg EnrichInlineResolveDiamondABIRouteStatement2Params) ([]bool, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineResolveDiamondABIRouteStatement2,
-		arg.Column1,
+func (q *Queries) EnrichInlineResolveDiamondABIRouteStatement2(ctx context.Context, arg EnrichInlineResolveDiamondABIRouteStatement2Params) (bool, error) {
+	row := q.db.QueryRow(ctx, enrichInlineResolveDiamondABIRouteStatement2,
+		arg.ChainID,
 		arg.BlockHash,
 		arg.DiamondAddress,
-		arg.Column4,
+		arg.TransactionIndex,
 		arg.StageVersion,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var exists bool
-		if err := rows.Scan(&exists); err != nil {
-			return nil, err
-		}
-		items = append(items, exists)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
-const EnrichInlineResolveDiamondABIRouteStatement3 = `-- name: EnrichInlineResolveDiamondABIRouteStatement3 :many
+const enrichInlineResolveDiamondABIRouteStatement3 = `-- name: EnrichInlineResolveDiamondABIRouteStatement3 :one
 SELECT change.action, change.facet_address
 		FROM diamond_cut_events AS event
 		JOIN diamond_selector_changes AS change
@@ -2277,11 +2099,11 @@ SELECT change.action, change.facet_address
 `
 
 type EnrichInlineResolveDiamondABIRouteStatement3Params struct {
-	Column1        pgtype.Numeric `db:"column_1" json:"column_1"`
-	DiamondAddress []byte         `db:"diamond_address" json:"diamond_address"`
-	Selector       []byte         `db:"selector" json:"selector"`
-	Column4        pgtype.Numeric `db:"column_4" json:"column_4"`
-	Column5        int64          `db:"column_5" json:"column_5"`
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	DiamondAddress      []byte         `db:"diamond_address" json:"diamond_address"`
+	Selector            []byte         `db:"selector" json:"selector"`
+	MaxBlockNumber      pgtype.Numeric `db:"max_block_number" json:"max_block_number"`
+	MaxTransactionIndex int64          `db:"max_transaction_index" json:"max_transaction_index"`
 }
 
 type EnrichInlineResolveDiamondABIRouteStatement3Row struct {
@@ -2289,33 +2111,20 @@ type EnrichInlineResolveDiamondABIRouteStatement3Row struct {
 	FacetAddress []byte `db:"facet_address" json:"facet_address"`
 }
 
-func (q *Queries) EnrichInlineResolveDiamondABIRouteStatement3(ctx context.Context, arg EnrichInlineResolveDiamondABIRouteStatement3Params) ([]EnrichInlineResolveDiamondABIRouteStatement3Row, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineResolveDiamondABIRouteStatement3,
-		arg.Column1,
+func (q *Queries) EnrichInlineResolveDiamondABIRouteStatement3(ctx context.Context, arg EnrichInlineResolveDiamondABIRouteStatement3Params) (EnrichInlineResolveDiamondABIRouteStatement3Row, error) {
+	row := q.db.QueryRow(ctx, enrichInlineResolveDiamondABIRouteStatement3,
+		arg.ChainID,
 		arg.DiamondAddress,
 		arg.Selector,
-		arg.Column4,
-		arg.Column5,
+		arg.MaxBlockNumber,
+		arg.MaxTransactionIndex,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EnrichInlineResolveDiamondABIRouteStatement3Row{}
-	for rows.Next() {
-		var i EnrichInlineResolveDiamondABIRouteStatement3Row
-		if err := rows.Scan(&i.Action, &i.FacetAddress); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i EnrichInlineResolveDiamondABIRouteStatement3Row
+	err := row.Scan(&i.Action, &i.FacetAddress)
+	return i, err
 }
 
-const EnrichInlineResolveDiamondABIRouteStatement4 = `-- name: EnrichInlineResolveDiamondABIRouteStatement4 :many
+const enrichInlineResolveDiamondABIRouteStatement4 = `-- name: EnrichInlineResolveDiamondABIRouteStatement4 :one
 SELECT EXISTS (
 		    SELECT 1 FROM diamond_cut_events AS event
 		    WHERE event.chain_id = $1::numeric
@@ -2327,38 +2136,25 @@ SELECT EXISTS (
 `
 
 type EnrichInlineResolveDiamondABIRouteStatement4Params struct {
-	Column1        pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID        pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	BlockHash      []byte         `db:"block_hash" json:"block_hash"`
 	DiamondAddress []byte         `db:"diamond_address" json:"diamond_address"`
 	StageVersion   int32          `db:"stage_version" json:"stage_version"`
 }
 
-func (q *Queries) EnrichInlineResolveDiamondABIRouteStatement4(ctx context.Context, arg EnrichInlineResolveDiamondABIRouteStatement4Params) ([]bool, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineResolveDiamondABIRouteStatement4,
-		arg.Column1,
+func (q *Queries) EnrichInlineResolveDiamondABIRouteStatement4(ctx context.Context, arg EnrichInlineResolveDiamondABIRouteStatement4Params) (bool, error) {
+	row := q.db.QueryRow(ctx, enrichInlineResolveDiamondABIRouteStatement4,
+		arg.ChainID,
 		arg.BlockHash,
 		arg.DiamondAddress,
 		arg.StageVersion,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var exists bool
-		if err := rows.Scan(&exists); err != nil {
-			return nil, err
-		}
-		items = append(items, exists)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
-const EnrichInlineResolveDiamondABIRouteStatement5 = `-- name: EnrichInlineResolveDiamondABIRouteStatement5 :many
+const enrichInlineResolveDiamondABIRouteStatement5 = `-- name: EnrichInlineResolveDiamondABIRouteStatement5 :one
 SELECT snapshot.completeness, selector.facet_address
 		FROM published_diamond_loupe_snapshots AS snapshot
 		JOIN canonical_blocks AS canonical
@@ -2366,9 +2162,9 @@ SELECT snapshot.completeness, selector.facet_address
 		 AND canonical.number = snapshot.block_number
 		 AND canonical.block_hash = snapshot.block_hash
 		LEFT JOIN diamond_loupe_selectors AS selector
-		  ON selector.snapshot_id = snapshot.id AND selector.selector = $3
-		WHERE snapshot.chain_id = $1::numeric
-		  AND snapshot.diamond_address = $2
+		  ON selector.snapshot_id = snapshot.id AND selector.selector = $1
+		WHERE snapshot.chain_id = $2::numeric
+		  AND snapshot.diamond_address = $3
 		  AND snapshot.block_number <= $4::numeric
 		  AND snapshot.detection_state = 'confirmed'
 		  AND snapshot.canonical
@@ -2377,10 +2173,10 @@ SELECT snapshot.completeness, selector.facet_address
 `
 
 type EnrichInlineResolveDiamondABIRouteStatement5Params struct {
-	Column1        pgtype.Numeric `db:"column_1" json:"column_1"`
-	DiamondAddress []byte         `db:"diamond_address" json:"diamond_address"`
 	Selector       []byte         `db:"selector" json:"selector"`
-	Column4        pgtype.Numeric `db:"column_4" json:"column_4"`
+	ChainID        pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	DiamondAddress []byte         `db:"diamond_address" json:"diamond_address"`
+	MaxBlockNumber pgtype.Numeric `db:"max_block_number" json:"max_block_number"`
 }
 
 type EnrichInlineResolveDiamondABIRouteStatement5Row struct {
@@ -2388,32 +2184,19 @@ type EnrichInlineResolveDiamondABIRouteStatement5Row struct {
 	FacetAddress []byte `db:"facet_address" json:"facet_address"`
 }
 
-func (q *Queries) EnrichInlineResolveDiamondABIRouteStatement5(ctx context.Context, arg EnrichInlineResolveDiamondABIRouteStatement5Params) ([]EnrichInlineResolveDiamondABIRouteStatement5Row, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineResolveDiamondABIRouteStatement5,
-		arg.Column1,
-		arg.DiamondAddress,
+func (q *Queries) EnrichInlineResolveDiamondABIRouteStatement5(ctx context.Context, arg EnrichInlineResolveDiamondABIRouteStatement5Params) (EnrichInlineResolveDiamondABIRouteStatement5Row, error) {
+	row := q.db.QueryRow(ctx, enrichInlineResolveDiamondABIRouteStatement5,
 		arg.Selector,
-		arg.Column4,
+		arg.ChainID,
+		arg.DiamondAddress,
+		arg.MaxBlockNumber,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EnrichInlineResolveDiamondABIRouteStatement5Row{}
-	for rows.Next() {
-		var i EnrichInlineResolveDiamondABIRouteStatement5Row
-		if err := rows.Scan(&i.Completeness, &i.FacetAddress); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i EnrichInlineResolveDiamondABIRouteStatement5Row
+	err := row.Scan(&i.Completeness, &i.FacetAddress)
+	return i, err
 }
 
-const EnrichInlineResolveTransactionStartCodeStatement1 = `-- name: EnrichInlineResolveTransactionStartCodeStatement1 :many
+const enrichInlineResolveTransactionStartCodeStatement1 = `-- name: EnrichInlineResolveTransactionStartCodeStatement1 :many
 SELECT transaction_index, before_value, after_value
 		FROM transaction_state_changes
 		WHERE chain_id = $1::numeric
@@ -2426,10 +2209,10 @@ SELECT transaction_index, before_value, after_value
 `
 
 type EnrichInlineResolveTransactionStartCodeStatement1Params struct {
-	Column1   pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2   pgtype.Numeric `db:"column_2" json:"column_2"`
-	BlockHash []byte         `db:"block_hash" json:"block_hash"`
-	Address   []byte         `db:"address" json:"address"`
+	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
+	Address     []byte         `db:"address" json:"address"`
 }
 
 type EnrichInlineResolveTransactionStartCodeStatement1Row struct {
@@ -2439,9 +2222,9 @@ type EnrichInlineResolveTransactionStartCodeStatement1Row struct {
 }
 
 func (q *Queries) EnrichInlineResolveTransactionStartCodeStatement1(ctx context.Context, arg EnrichInlineResolveTransactionStartCodeStatement1Params) ([]EnrichInlineResolveTransactionStartCodeStatement1Row, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineResolveTransactionStartCodeStatement1,
-		arg.Column1,
-		arg.Column2,
+	rows, err := q.db.Query(ctx, enrichInlineResolveTransactionStartCodeStatement1,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.Address,
 	)
@@ -2463,7 +2246,7 @@ func (q *Queries) EnrichInlineResolveTransactionStartCodeStatement1(ctx context.
 	return items, nil
 }
 
-const EnrichInlineResolveTransactionStartCodeStatement2 = `-- name: EnrichInlineResolveTransactionStartCodeStatement2 :many
+const enrichInlineResolveTransactionStartCodeStatement2 = `-- name: EnrichInlineResolveTransactionStartCodeStatement2 :one
 SELECT observation.code_hash, observation.code
 			FROM contract_code_observations AS observation
 			JOIN canonical_blocks AS canonical
@@ -2484,27 +2267,14 @@ type EnrichInlineResolveTransactionStartCodeStatement2Row struct {
 	Code     []byte `db:"code" json:"code"`
 }
 
-func (q *Queries) EnrichInlineResolveTransactionStartCodeStatement2(ctx context.Context, column1 pgtype.Numeric, address []byte, column3 pgtype.Numeric) ([]EnrichInlineResolveTransactionStartCodeStatement2Row, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineResolveTransactionStartCodeStatement2, column1, address, column3)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EnrichInlineResolveTransactionStartCodeStatement2Row{}
-	for rows.Next() {
-		var i EnrichInlineResolveTransactionStartCodeStatement2Row
-		if err := rows.Scan(&i.CodeHash, &i.Code); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EnrichInlineResolveTransactionStartCodeStatement2(ctx context.Context, chainID pgtype.Numeric, address []byte, maxBlockNumber pgtype.Numeric) (EnrichInlineResolveTransactionStartCodeStatement2Row, error) {
+	row := q.db.QueryRow(ctx, enrichInlineResolveTransactionStartCodeStatement2, chainID, address, maxBlockNumber)
+	var i EnrichInlineResolveTransactionStartCodeStatement2Row
+	err := row.Scan(&i.CodeHash, &i.Code)
+	return i, err
 }
 
-const EnrichInlineResolveTransactionStartCodeStatement3 = `-- name: EnrichInlineResolveTransactionStartCodeStatement3 :many
+const enrichInlineResolveTransactionStartCodeStatement3 = `-- name: EnrichInlineResolveTransactionStartCodeStatement3 :one
 SELECT observation.code_hash, observation.code
 		FROM contract_code_observations AS observation
 		JOIN canonical_blocks AS canonical
@@ -2525,22 +2295,9 @@ type EnrichInlineResolveTransactionStartCodeStatement3Row struct {
 	Code     []byte `db:"code" json:"code"`
 }
 
-func (q *Queries) EnrichInlineResolveTransactionStartCodeStatement3(ctx context.Context, column1 pgtype.Numeric, address []byte, column3 pgtype.Numeric) ([]EnrichInlineResolveTransactionStartCodeStatement3Row, error) {
-	rows, err := q.db.Query(ctx, EnrichInlineResolveTransactionStartCodeStatement3, column1, address, column3)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EnrichInlineResolveTransactionStartCodeStatement3Row{}
-	for rows.Next() {
-		var i EnrichInlineResolveTransactionStartCodeStatement3Row
-		if err := rows.Scan(&i.CodeHash, &i.Code); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EnrichInlineResolveTransactionStartCodeStatement3(ctx context.Context, chainID pgtype.Numeric, address []byte, maxBlockNumber pgtype.Numeric) (EnrichInlineResolveTransactionStartCodeStatement3Row, error) {
+	row := q.db.QueryRow(ctx, enrichInlineResolveTransactionStartCodeStatement3, chainID, address, maxBlockNumber)
+	var i EnrichInlineResolveTransactionStartCodeStatement3Row
+	err := row.Scan(&i.CodeHash, &i.Code)
+	return i, err
 }

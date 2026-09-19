@@ -6,7 +6,7 @@ WITH decoded AS (
            decode(item.value->>'parent_hash', 'hex') AS parent_hash,
            (item.value->>'timestamp')::numeric AS timestamp,
            item.value->'raw' AS raw
-    FROM jsonb_array_elements($2::jsonb) WITH ORDINALITY AS item(value, ordinality)
+    FROM jsonb_array_elements(sqlc.arg('rows')::jsonb) WITH ORDINALITY AS item(value, ordinality)
 ), input AS (
     SELECT DISTINCT ON (number, hash)
            number, hash, parent_hash, timestamp, raw
@@ -14,7 +14,7 @@ WITH decoded AS (
     ORDER BY number, hash, ordinality DESC
 )
 INSERT INTO blocks (chain_id, number, hash, parent_hash, timestamp, raw)
-SELECT $1::numeric, number, hash, parent_hash, timestamp, raw
+SELECT sqlc.arg('chain_id')::numeric, number, hash, parent_hash, timestamp, raw
 FROM input
 ON CONFLICT (chain_id, number, hash) DO UPDATE SET
     parent_hash = EXCLUDED.parent_hash,
@@ -27,14 +27,14 @@ WITH decoded AS (
            decode(item.value->>'hash', 'hex') AS hash,
            (item.value->>'tx_type')::numeric AS tx_type,
            item.value->'raw' AS raw
-    FROM jsonb_array_elements($2::jsonb) WITH ORDINALITY AS item(value, ordinality)
+    FROM jsonb_array_elements(sqlc.arg('rows')::jsonb) WITH ORDINALITY AS item(value, ordinality)
 ), input AS (
     SELECT DISTINCT ON (hash) hash, tx_type, raw
     FROM decoded
     ORDER BY hash, ordinality DESC
 )
 INSERT INTO transactions (chain_id, hash, tx_type, raw)
-SELECT $1::numeric, hash, tx_type, raw
+SELECT sqlc.arg('chain_id')::numeric, hash, tx_type, raw
 FROM input
 ON CONFLICT (chain_id, hash) DO UPDATE SET
     tx_type = EXCLUDED.tx_type,
@@ -48,7 +48,7 @@ WITH decoded AS (
            (item.value->>'tx_index')::bigint AS tx_index,
            decode(item.value->>'tx_hash', 'hex') AS tx_hash,
            item.value->'raw' AS raw
-    FROM jsonb_array_elements($2::jsonb) WITH ORDINALITY AS item(value, ordinality)
+    FROM jsonb_array_elements(sqlc.arg('rows')::jsonb) WITH ORDINALITY AS item(value, ordinality)
 ), input AS (
     SELECT DISTINCT ON (block_number, block_hash, tx_index)
            block_number, block_hash, tx_index, tx_hash, raw
@@ -58,7 +58,7 @@ WITH decoded AS (
 INSERT INTO transaction_inclusions (
     chain_id, block_number, block_hash, tx_index, tx_hash, raw
 )
-SELECT $1::numeric, block_number, block_hash, tx_index, tx_hash, raw
+SELECT sqlc.arg('chain_id')::numeric, block_number, block_hash, tx_index, tx_hash, raw
 FROM input
 ON CONFLICT (chain_id, block_number, block_hash, tx_index)
 DO UPDATE SET raw = EXCLUDED.raw;
@@ -71,7 +71,7 @@ WITH decoded AS (
            (item.value->>'tx_index')::bigint AS tx_index,
            decode(item.value->>'tx_hash', 'hex') AS tx_hash,
            item.value->'raw' AS raw
-    FROM jsonb_array_elements($2::jsonb) WITH ORDINALITY AS item(value, ordinality)
+    FROM jsonb_array_elements(sqlc.arg('rows')::jsonb) WITH ORDINALITY AS item(value, ordinality)
 ), input AS (
     SELECT DISTINCT ON (block_number, block_hash, tx_index)
            block_number, block_hash, tx_index, tx_hash, raw
@@ -81,7 +81,7 @@ WITH decoded AS (
 INSERT INTO receipts (
     chain_id, block_number, block_hash, tx_index, tx_hash, raw
 )
-SELECT $1::numeric, block_number, block_hash, tx_index, tx_hash, raw
+SELECT sqlc.arg('chain_id')::numeric, block_number, block_hash, tx_index, tx_hash, raw
 FROM input
 ON CONFLICT (chain_id, block_number, block_hash, tx_index)
 DO UPDATE SET raw = EXCLUDED.raw;
@@ -98,7 +98,7 @@ WITH decoded AS (
            CASE WHEN item.value->'topic0' = 'null'::jsonb
                 THEN NULL ELSE decode(item.value->>'topic0', 'hex') END AS topic0,
            item.value->'raw' AS raw
-    FROM jsonb_array_elements($2::jsonb) WITH ORDINALITY AS item(value, ordinality)
+    FROM jsonb_array_elements(sqlc.arg('rows')::jsonb) WITH ORDINALITY AS item(value, ordinality)
 ), input AS (
     SELECT DISTINCT ON (block_number, block_hash, log_index)
            block_number, block_hash, log_index, tx_index, tx_hash, address, topic0, raw
@@ -109,7 +109,7 @@ INSERT INTO logs (
     chain_id, block_number, block_hash, log_index, tx_index,
     tx_hash, address, topic0, raw
 )
-SELECT $1::numeric, block_number, block_hash, log_index, tx_index,
+SELECT sqlc.arg('chain_id')::numeric, block_number, block_hash, log_index, tx_index,
        tx_hash, address, topic0, raw
 FROM input
 ON CONFLICT (chain_id, block_number, block_hash, log_index)
@@ -125,7 +125,7 @@ WITH decoded AS (
            decode(item.value->>'address', 'hex') AS address,
            (item.value->>'amount')::numeric AS amount,
            item.value->'raw' AS raw
-    FROM jsonb_array_elements($2::jsonb) WITH ORDINALITY AS item(value, ordinality)
+    FROM jsonb_array_elements(sqlc.arg('rows')::jsonb) WITH ORDINALITY AS item(value, ordinality)
 ), input AS (
     SELECT DISTINCT ON (block_number, block_hash, withdrawal_index)
            block_number, block_hash, withdrawal_index, validator_index, address, amount, raw
@@ -136,7 +136,7 @@ INSERT INTO withdrawals (
     chain_id, block_number, block_hash, withdrawal_index,
     validator_index, address, amount, raw
 )
-SELECT $1::numeric, block_number, block_hash, withdrawal_index,
+SELECT sqlc.arg('chain_id')::numeric, block_number, block_hash, withdrawal_index,
        validator_index, address, amount, raw
 FROM input
 ON CONFLICT (chain_id, block_number, block_hash, withdrawal_index)
@@ -144,116 +144,116 @@ DO UPDATE SET raw = EXCLUDED.raw;
 
 -- name: StoreInsertCanonicalBlocksBatch :exec
 INSERT INTO canonical_blocks (chain_id, number, block_hash)
-SELECT $1::numeric, row.number::numeric, decode(row.hash, 'hex')
-FROM jsonb_to_recordset($2::jsonb) AS row(number text, hash text)
+SELECT sqlc.arg('chain_id')::numeric, row.number::numeric, decode(row.hash, 'hex')
+FROM jsonb_to_recordset(sqlc.arg('rows')::jsonb) AS row(number text, hash text)
 ORDER BY row.number::numeric;
 
 -- name: StoreDeleteCanonicalBlocksBatch :execrows
 WITH input AS (
     SELECT row.number::numeric AS number, decode(row.hash, 'hex') AS hash
-    FROM jsonb_to_recordset($2::jsonb) AS row(number text, hash text)
+    FROM jsonb_to_recordset(sqlc.arg('rows')::jsonb) AS row(number text, hash text)
 )
 DELETE FROM canonical_blocks AS canonical
 USING input
-WHERE canonical.chain_id = $1::numeric
+WHERE canonical.chain_id = sqlc.arg('chain_id')::numeric
   AND canonical.number = input.number
   AND canonical.block_hash = input.hash;
 
 -- name: StoreSetBlockJournalsCanonicalBatch :exec
 WITH input AS (
     SELECT decode(value, 'hex') AS hash
-    FROM jsonb_array_elements_text($2::jsonb)
+    FROM jsonb_array_elements_text(sqlc.arg('block_hashes')::jsonb)
 )
 UPDATE block_journals AS journal
-SET canonical = $3::boolean
+SET canonical = sqlc.arg('canonical')::boolean
 FROM input
-WHERE journal.chain_id = $1::numeric
+WHERE journal.chain_id = sqlc.arg('chain_id')::numeric
   AND journal.block_hash = input.hash;
 
 -- name: StoreSetDerivedCanonicalBatch :exec
 WITH input AS (
     SELECT decode(value, 'hex') AS hash
-    FROM jsonb_array_elements_text($2::jsonb)
+    FROM jsonb_array_elements_text(sqlc.arg('block_hashes')::jsonb)
 ), update_contract_code AS (
-    UPDATE contract_code_observations AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE contract_code_observations AS target SET canonical = sqlc.arg('canonical')
+    FROM input WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash
 ), update_proxy AS (
-    UPDATE proxy_observations AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE proxy_observations AS target SET canonical = sqlc.arg('canonical')
+    FROM input WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash
 ), update_beacon AS (
-    UPDATE beacon_implementation_observations AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE beacon_implementation_observations AS target SET canonical = sqlc.arg('canonical')
+    FROM input WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash
 ), update_uups AS (
-    UPDATE uups_implementation_observations AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE uups_implementation_observations AS target SET canonical = sqlc.arg('canonical')
+    FROM input WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash
 ), update_detection AS (
-    UPDATE proxy_detection_evidence AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE proxy_detection_evidence AS target SET canonical = sqlc.arg('canonical')
+    FROM input WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash
 ), update_proxy_upgrades AS (
-    UPDATE proxy_upgrade_events AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE proxy_upgrade_events AS target SET canonical = sqlc.arg('canonical')
+    FROM input WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash
 ), update_proxy_initializations AS (
-    UPDATE proxy_initialization_events AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE proxy_initialization_events AS target SET canonical = sqlc.arg('canonical')
+    FROM input WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash
 ), update_diamond_snapshots AS (
-    UPDATE diamond_loupe_snapshots AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE diamond_loupe_snapshots AS target SET canonical = sqlc.arg('canonical')
+    FROM input WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash
 ), update_diamond_cuts AS (
-    UPDATE diamond_cut_events AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE diamond_cut_events AS target SET canonical = sqlc.arg('canonical')
+    FROM input WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash
 ), update_contract_abis AS (
-    UPDATE contract_abis AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE contract_abis AS target SET canonical = sqlc.arg('canonical')
+    FROM input WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash
 ), update_abi_decodings AS (
-    UPDATE abi_decodings AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE abi_decodings AS target SET canonical = sqlc.arg('canonical')
+    FROM input WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash
 ), update_effective_identities AS (
-    UPDATE transaction_effective_execution_identities AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE transaction_effective_execution_identities AS target SET canonical = sqlc.arg('canonical')
+    FROM input WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash
 ), update_token_events AS (
-    UPDATE token_events AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE token_events AS target SET canonical = sqlc.arg('canonical')
+    FROM input WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash
 ), update_token_deltas AS (
-    UPDATE token_balance_deltas AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE token_balance_deltas AS target SET canonical = sqlc.arg('canonical')
+    FROM input WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash
 ), update_holder_balances AS (
-    UPDATE erc20_holder_balances AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE erc20_holder_balances AS target SET canonical = sqlc.arg('canonical')
+    FROM input WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash
 ), update_holder_snapshots AS (
-    UPDATE erc20_holder_snapshots AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE erc20_holder_snapshots AS target SET canonical = sqlc.arg('canonical')
+    FROM input WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash
 ), update_trace_attributions AS (
-    UPDATE trace_log_attributions AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE trace_log_attributions AS target SET canonical = sqlc.arg('canonical')
+    FROM input WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash
 ), update_traces AS (
-    UPDATE normalized_traces AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE normalized_traces AS target SET canonical = sqlc.arg('canonical')
+    FROM input WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash
 ), update_execution_resolutions AS (
-    UPDATE transaction_execution_code_resolutions AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE transaction_execution_code_resolutions AS target SET canonical = sqlc.arg('canonical')
+    FROM input WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash
 ), update_authorizations AS (
-    UPDATE eip7702_authorizations AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE eip7702_authorizations AS target SET canonical = sqlc.arg('canonical')
+    FROM input WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash
 ), update_state_changes AS (
-    UPDATE transaction_state_changes AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE transaction_state_changes AS target SET canonical = sqlc.arg('canonical')
+    FROM input WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash
 ), update_user_operations AS (
-    UPDATE erc4337_user_operations AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE erc4337_user_operations AS target SET canonical = sqlc.arg('canonical')
+    FROM input WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash
 ), update_user_operation_events AS (
-    UPDATE erc4337_user_operation_events AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE erc4337_user_operation_events AS target SET canonical = sqlc.arg('canonical')
+    FROM input WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash
 ), update_user_operation_participants AS (
-    UPDATE erc4337_user_operation_participants AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE erc4337_user_operation_participants AS target SET canonical = sqlc.arg('canonical')
+    FROM input WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash
 ), update_statistics AS (
-    UPDATE block_statistics AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE block_statistics AS target SET canonical = sqlc.arg('canonical')
+    FROM input WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash
 )
 UPDATE address_activities AS target
-SET canonical = $3
+SET canonical = sqlc.arg('canonical')
 FROM input
-WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash;
+WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash;
 
 -- name: StoreInsertCoreOutboxBatch :exec
 WITH decoded AS (
@@ -261,7 +261,7 @@ WITH decoded AS (
            item.value->>'topic' AS topic,
            item.value->>'message_key' AS message_key,
            item.value->'payload' AS payload
-    FROM jsonb_array_elements($2::jsonb) WITH ORDINALITY AS item(value, ordinality)
+    FROM jsonb_array_elements(sqlc.arg('rows')::jsonb) WITH ORDINALITY AS item(value, ordinality)
 ), input AS (
     SELECT DISTINCT ON (topic, message_key) topic, message_key, payload
     FROM decoded
@@ -270,7 +270,7 @@ WITH decoded AS (
 INSERT INTO transactional_outbox (
     chain_id, topic, message_key, payload, generation
 )
-SELECT $1::numeric, topic, message_key, payload, 1
+SELECT sqlc.arg('chain_id')::numeric, topic, message_key, payload, 1
 FROM input
 ON CONFLICT (chain_id, topic, message_key) DO UPDATE SET
     payload = EXCLUDED.payload,

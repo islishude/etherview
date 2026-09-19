@@ -1,15 +1,16 @@
 package app
 
 import (
-	"database/sql"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/islishude/etherview/internal/config"
 )
 
 func TestBillingServicesRetainWriterHistoryWithoutRequestDispatcher(t *testing.T) {
 	t.Parallel()
-	db := new(sql.DB)
+	db := new(pgxpool.Pool)
 	cfg := config.Default()
 
 	reader, err := newBillingServices(cfg, db)

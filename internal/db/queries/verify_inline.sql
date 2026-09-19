@@ -1,44 +1,44 @@
--- name: VerifyInlineBindCompilerStatement1 :exec
+-- name: VerifyInlineBindCompilerStatement1 :execrows
 UPDATE verification_jobs
-		SET compiler_platform = $3, catalog_generation_id = $4,
-		    compiler_digest = $5, executor_kind = $6,
-		    execution_policy = $7, executor_digest = $8,
+		SET compiler_platform = sqlc.arg('compiler_platform'), catalog_generation_id = sqlc.narg('catalog_generation_id'),
+		    compiler_digest = sqlc.arg('compiler_digest'), executor_kind = sqlc.arg('executor_kind'),
+		    execution_policy = sqlc.arg('execution_policy'), executor_digest = sqlc.arg('executor_digest'),
 		    updated_at = clock_timestamp()
-		WHERE id = $1::uuid AND status = 'running' AND lease_token = $2
+		WHERE id = sqlc.arg('id')::uuid AND status = 'running' AND lease_token = sqlc.arg('lease_token')
 		  AND lease_expires_at > clock_timestamp()
 		  AND (
 		    (compiler_platform IS NULL AND catalog_generation_id IS NULL
 		     AND compiler_digest IS NULL AND executor_kind IS NULL
 		     AND execution_policy IS NULL AND executor_digest IS NULL)
 		    OR
-		    (compiler_platform = $3 AND catalog_generation_id IS NOT DISTINCT FROM $4
-		     AND compiler_digest = $5 AND executor_kind = $6
-		     AND execution_policy = $7 AND executor_digest = $8)
+		    (compiler_platform = sqlc.arg('compiler_platform') AND catalog_generation_id IS NOT DISTINCT FROM sqlc.narg('catalog_generation_id')
+		     AND compiler_digest = sqlc.arg('compiler_digest') AND executor_kind = sqlc.arg('executor_kind')
+		     AND execution_policy = sqlc.arg('execution_policy') AND executor_digest = sqlc.arg('executor_digest'))
 		  );
 
--- name: VerifyInlineBindCompilerStatement2 :many
-SELECT TRUE FROM verification_jobs
-		WHERE id = $1::uuid AND status = 'running' AND lease_token = $2
+-- name: VerifyInlineBindCompilerStatement2 :one
+SELECT TRUE AS bound FROM verification_jobs
+		WHERE id = sqlc.arg('id')::uuid AND status = 'running' AND lease_token = sqlc.arg('lease_token')
 		  AND lease_expires_at > clock_timestamp();
 
--- name: VerifyInlineCompleteProxyV2Statement1 :many
+-- name: VerifyInlineCompleteProxyV2Statement1 :exec
 SELECT pg_advisory_xact_lock(hashtextextended(
-		    'etherview:proxy-interaction-coverage:' || $1::numeric::text,
+		    'etherview:proxy-interaction-coverage:' || sqlc.arg('chain_id')::numeric::text,
 		    0
 		));
 
 -- name: VerifyInlineCompleteProxyV2Statement2 :exec
 UPDATE verification_jobs
 		SET status = 'succeeded', outcome_kind = 'proxy_verification_success',
-		    outcome = $3::jsonb, error_code = NULL, leased_by = NULL,
+		    outcome = sqlc.arg('outcome')::jsonb, error_code = NULL, leased_by = NULL,
 		    lease_token = NULL, lease_expires_at = NULL,
 		    updated_at = clock_timestamp()
-		WHERE id = $1::uuid AND lease_token = $2;
+		WHERE id = sqlc.arg('id')::uuid AND lease_token = sqlc.arg('lease_token');
 
 -- name: VerifyInlineCompleteProxyV2Statement3 :exec
 INSERT INTO verification_results (
 			job_id, request_digest, outcome_kind, outcome
-		) VALUES ($1::uuid, $2, 'proxy_verification_success', $3::jsonb);
+		) VALUES (sqlc.arg('job_id')::uuid, sqlc.arg('request_digest'), 'proxy_verification_success', sqlc.arg('outcome')::jsonb);
 
 -- name: VerifyInlineCompleteProxyV2Statement4 :exec
 INSERT INTO verified_proxy_bindings (
@@ -53,25 +53,25 @@ INSERT INTO verified_proxy_bindings (
 			context_block_number, context_block_hash,
 			verification_job_id, request_digest
 		) VALUES (
-			$1::numeric, $2, $3, $4::numeric, $5, 2, $6, $7, $8, $9, $10,
-			$11, $12, $13, $14, $15, $16, $17,
-			$18::bigint, $19::bigint, $20::bigint, $21::bigint,
-			$22::numeric, $23, $24::uuid, $25
+			sqlc.arg('chain_id')::numeric, sqlc.arg('proxy_address'), sqlc.arg('proxy_code_hash'), sqlc.arg('observation_block_number')::numeric, sqlc.arg('observation_block_hash'), 2, sqlc.arg('proxy_kind'), sqlc.arg('proxy_pattern'), sqlc.narg('standard_version'), sqlc.arg('implementation_address'), sqlc.arg('implementation_code_hash'),
+			sqlc.arg('admin_address'), sqlc.arg('admin_code_hash'), sqlc.arg('beacon_address'), sqlc.arg('beacon_code_hash'), sqlc.arg('management_kind'), sqlc.arg('management_address'), sqlc.arg('management_code_hash'),
+			sqlc.arg('observation_generation_id')::bigint, sqlc.narg('artifact_resolution_id')::bigint, sqlc.narg('beacon_generation_id')::bigint, sqlc.narg('uups_generation_id')::bigint,
+			sqlc.arg('context_block_number')::numeric, sqlc.arg('context_block_hash'), sqlc.arg('verification_job_id')::uuid, sqlc.arg('request_digest')
 		);
 
--- name: VerifyInlineCompleteV2Statement1 :many
+-- name: VerifyInlineCompleteV2Statement1 :one
 SELECT code
 			FROM contract_code_observations
-			WHERE chain_id = $1::numeric AND address = $2
-			  AND block_number = $3::numeric AND block_hash = $4
-			  AND code_hash = $5 AND canonical = TRUE;
+			WHERE chain_id = sqlc.arg('chain_id')::numeric AND address = sqlc.arg('address')
+			  AND block_number = sqlc.arg('block_number')::numeric AND block_hash = sqlc.arg('block_hash')
+			  AND code_hash = sqlc.arg('code_hash') AND canonical = TRUE;
 
 -- name: VerifyInlineCompleteV2Statement2 :exec
 UPDATE verification_jobs
-		SET status = 'succeeded', outcome_kind = $3, outcome = $4::jsonb,
+		SET status = 'succeeded', outcome_kind = sqlc.arg('outcome_kind'), outcome = sqlc.arg('outcome')::jsonb,
 		    error_code = NULL, leased_by = NULL, lease_token = NULL,
 		    lease_expires_at = NULL, updated_at = clock_timestamp()
-		WHERE id = $1::uuid AND lease_token = $2;
+		WHERE id = sqlc.arg('id')::uuid AND lease_token = sqlc.arg('lease_token');
 
 -- name: VerifyInlineCompleteV2Statement3 :exec
 INSERT INTO verification_results (
@@ -82,9 +82,9 @@ INSERT INTO verification_results (
 			proxy_artifact_kind, proxy_standard_version,
 			proxy_runtime_immutable_address, proxy_source_manifest_sha256
 		) VALUES (
-			$1::uuid, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10::jsonb,
-			$11::jsonb, $12::jsonb, $13::jsonb, $14::jsonb, $15::jsonb,
-			$16, $17::jsonb, $18, $19, $20, $21, $22
+			sqlc.arg('job_id')::uuid, sqlc.arg('request_digest'), sqlc.arg('outcome_kind'), sqlc.arg('outcome')::jsonb, sqlc.narg('file_name'), sqlc.narg('contract_name'), sqlc.narg('language'), sqlc.narg('compiler_version'), sqlc.narg('match_type'), sqlc.arg('abi')::jsonb,
+			sqlc.arg('sources')::jsonb, sqlc.arg('settings')::jsonb, sqlc.arg('compilation_artifacts')::jsonb, sqlc.arg('creation_code_artifacts')::jsonb, sqlc.arg('runtime_code_artifacts')::jsonb,
+			sqlc.arg('constructor_arguments'), sqlc.arg('libraries')::jsonb, sqlc.narg('is_blueprint'), sqlc.narg('proxy_artifact_kind'), sqlc.narg('proxy_standard_version'), sqlc.arg('proxy_runtime_immutable_address'), sqlc.arg('proxy_source_manifest_sha256')
 		);
 
 -- name: VerifyInlineCompleteV2Statement4 :exec
@@ -95,9 +95,9 @@ INSERT INTO verified_contracts (
 				creation_code_artifacts, runtime_code_artifacts, constructor_arguments,
 				libraries, is_blueprint
 			) VALUES (
-				$1::numeric, $2, $3, $4::numeric, $5::uuid, $6, $7, $8, $9, $10,
-				$11, $12::jsonb, $13::jsonb, $14::jsonb, $15::jsonb, $16::jsonb,
-				$17::jsonb, $18, $19::jsonb, $20
+				sqlc.arg('chain_id')::numeric, sqlc.arg('address'), sqlc.arg('code_hash'), sqlc.arg('valid_from_block')::numeric, sqlc.arg('verification_job_id')::uuid, sqlc.arg('request_digest'), sqlc.narg('file_name'), sqlc.narg('contract_name'), sqlc.narg('language'), sqlc.narg('compiler_version'),
+				sqlc.arg('match_type'), sqlc.arg('abi')::jsonb, sqlc.arg('sources')::jsonb, sqlc.arg('settings')::jsonb, sqlc.arg('compilation_artifacts')::jsonb, sqlc.arg('creation_code_artifacts')::jsonb,
+				sqlc.arg('runtime_code_artifacts')::jsonb, sqlc.arg('constructor_arguments'), sqlc.arg('libraries')::jsonb, sqlc.narg('is_blueprint')
 			);
 
 -- name: VerifyInlineCompleteV2Statement5 :exec
@@ -107,19 +107,19 @@ INSERT INTO verified_contract_proxy_artifacts (
 					standard_version, runtime_immutable_address,
 					source_manifest_sha256
 				) VALUES (
-					$1::numeric, $2, $3, $4::numeric,
-					$5::uuid, $6, $7, $8, $9, $10
+					sqlc.arg('chain_id')::numeric, sqlc.arg('address'), sqlc.arg('code_hash'), sqlc.arg('valid_from_block')::numeric,
+					sqlc.arg('verification_job_id')::uuid, sqlc.arg('request_digest'), sqlc.arg('artifact_kind'), sqlc.arg('standard_version'), sqlc.arg('runtime_immutable_address'), sqlc.arg('source_manifest_sha256')
 				);
 
--- name: VerifyInlineCompleteV2Statement6 :many
+-- name: VerifyInlineCompleteV2Statement6 :one
 INSERT INTO verification_compilation_units (
 			id, source_job_id, request_digest, language, compiler_version,
 			compiler_platform, catalog_generation_id, compiler_sha256,
 			executor_kind, execution_policy, executor_sha256,
 			standard_json, standard_json_payload
 		) VALUES (
-			$1::uuid, $2::uuid, $3, $4, $5, $6, $7::bigint, $8, $9, $10, $11,
-			$12::jsonb, $13
+			sqlc.arg('id')::uuid, sqlc.arg('source_job_id')::uuid, sqlc.arg('request_digest'), sqlc.arg('language'), sqlc.arg('compiler_version'), sqlc.arg('compiler_platform'), sqlc.arg('catalog_generation_id')::bigint, sqlc.arg('compiler_sha256'), sqlc.arg('executor_kind'), sqlc.arg('execution_policy'), sqlc.arg('executor_sha256'),
+			sqlc.arg('standard_json')::jsonb, sqlc.arg('standard_json_payload')
 		)
 		RETURNING id::text;
 
@@ -129,18 +129,18 @@ INSERT INTO verification_compilation_contracts (
 			runtime_bytecode, compilation_artifacts, creation_code_artifacts,
 			runtime_code_artifacts
 		) VALUES (
-			$1::uuid, $2, $3, $4::jsonb, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb
+			sqlc.arg('compilation_id')::uuid, sqlc.arg('file_name'), sqlc.arg('contract_name'), sqlc.arg('abi')::jsonb, sqlc.arg('creation_bytecode'), sqlc.arg('runtime_bytecode'), sqlc.arg('compilation_artifacts')::jsonb, sqlc.arg('creation_code_artifacts')::jsonb, sqlc.arg('runtime_code_artifacts')::jsonb
 		);
 
--- name: VerifyInlineFailStatement1 :exec
+-- name: VerifyInlineFailStatement1 :execrows
 UPDATE verification_jobs
-		SET status = 'failed', outcome_kind = NULL, outcome = NULL, error_code = $3,
+		SET status = 'failed', outcome_kind = NULL, outcome = NULL, error_code = sqlc.arg('error_code'),
 		    leased_by = NULL, lease_token = NULL, lease_expires_at = NULL,
 		    updated_at = clock_timestamp()
-		WHERE id = $1::uuid AND status = 'running' AND lease_token = $2
+		WHERE id = sqlc.arg('id')::uuid AND status = 'running' AND lease_token = sqlc.arg('lease_token')
 		  AND lease_expires_at > clock_timestamp();
 
--- name: VerifyInlineLookupStatement1 :many
+-- name: VerifyInlineLookupStatement1 :one
 SELECT entry.generation_id, entry.language, entry.version,
 		       entry.platform, entry.artifact_url, entry.artifact_sha256,
 		       entry.max_bytes, head.updated_at, entry.expires_at
@@ -151,10 +151,10 @@ SELECT entry.generation_id, entry.language, entry.version,
 		  ON entry.generation_id = head.generation_id AND entry.language = head.language
 		WHERE head.language = $1 AND entry.version = $2;
 
--- name: VerifyInlineLookupStatement2 :many
+-- name: VerifyInlineLookupStatement2 :one
 SELECT EXISTS (SELECT 1 FROM compiler_catalog_heads WHERE language = $1);
 
--- name: VerifyInlinePersistStatement1 :many
+-- name: VerifyInlinePersistStatement1 :one
 INSERT INTO compiler_catalog_generations
 			(language, source_url, catalog_digest, entry_count)
 		VALUES ($1, $2, $3, $4)

@@ -152,6 +152,7 @@ describe("embedded explorer shell", () => {
       user_operations: "unavailable",
     };
     const homeSnapshot = {
+      event_id: "0",
       data: {
         status: {
           chain_id: "1",
@@ -218,7 +219,7 @@ describe("embedded explorer shell", () => {
           meta,
         });
       }
-      if (path === "/api/v1/home") return Response.json(homeSnapshot);
+      if (path.startsWith("/api/v1/home?")) return Response.json(homeSnapshot);
       return Response.json({ error: { code: "NOT_FOUND", message: "not found" } }, { status: 404 });
     });
     vi.stubGlobal("fetch", fetchMock);

@@ -20,10 +20,10 @@ func TestObservabilityActiveRepairIndexUpgradesWithoutChangingRows(t *testing.T)
 	db := newMigratedPostgres(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	if _, err := db.ExecContext(ctx, `INSERT INTO chains (chain_id) VALUES (1)`); err != nil {
+	if _, err := db.Exec(ctx, `INSERT INTO chains (chain_id) VALUES (1)`); err != nil {
 		t.Fatalf("insert upgrade fixture chain: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO repair_requests (
 			chain_id, operation, stage, from_block, to_block, reason, status,
 			requested_at, started_at, completed_at
@@ -33,10 +33,10 @@ func TestObservabilityActiveRepairIndexUpgradesWithoutChangingRows(t *testing.T)
 			(1, 'repair', 'core', 3, 3, 'done', 'done', now(), now(), now())`); err != nil {
 		t.Fatalf("insert pre-upgrade repair rows: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `DROP INDEX `+activeRepairMetricsIndex); err != nil {
+	if _, err := db.Exec(ctx, `DROP INDEX `+activeRepairMetricsIndex); err != nil {
 		t.Fatalf("restore pre-0020 index state: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `DELETE FROM etherview_schema_migrations WHERE version = '0020_observability_active_repair_index'`); err != nil {
+	if _, err := db.Exec(ctx, `DELETE FROM etherview_schema_migrations WHERE version = '0020_observability_active_repair_index'`); err != nil {
 		t.Fatalf("restore pre-0020 migration ledger: %v", err)
 	}
 	before, err := store.ReadSchemaStatus(ctx, db)
@@ -53,7 +53,7 @@ func TestObservabilityActiveRepairIndexUpgradesWithoutChangingRows(t *testing.T)
 		valid     bool
 		predicate string
 	)
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT index_state.indisvalid,
 		       pg_get_expr(index_state.indpred, index_state.indrelid)
 		FROM pg_index AS index_state
@@ -66,7 +66,7 @@ func TestObservabilityActiveRepairIndexUpgradesWithoutChangingRows(t *testing.T)
 		t.Fatalf("active repair metric index valid=%t predicate=%q", valid, predicate)
 	}
 	var count int
-	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM repair_requests WHERE chain_id = 1`).Scan(&count); err != nil {
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM repair_requests WHERE chain_id = 1`).Scan(&count); err != nil {
 		t.Fatalf("count post-upgrade repair rows: %v", err)
 	}
 	if count != 3 {
@@ -78,10 +78,10 @@ func TestPostgresMetricSnapshotIsChainScopedAndRetainedAfterRefreshFailure(t *te
 	db := newMigratedPostgres(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	if _, err := db.ExecContext(ctx, `INSERT INTO chains (chain_id) VALUES (1), (2)`); err != nil {
+	if _, err := db.Exec(ctx, `INSERT INTO chains (chain_id) VALUES (1), (2)`); err != nil {
 		t.Fatalf("insert metric fixture chains: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO durable_jobs (
 			chain_id, kind, stage, stage_version, idempotency_key, status,
 			leased_by, lease_token, lease_expires_at, leased_generation
@@ -94,7 +94,7 @@ func TestPostgresMetricSnapshotIsChainScopedAndRetainedAfterRefreshFailure(t *te
 			(2, 'enrichment', 'trace', 1, 'chain-2-queued-b', 'queued', NULL, NULL, NULL, NULL)`); err != nil {
 		t.Fatalf("insert durable metric fixtures: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		WITH fixture(id, chain_id, address, code_hash, block_hash, status) AS (
 			VALUES
 			('00000000-0000-4000-8000-000000000001'::uuid, 1::numeric,
@@ -146,7 +146,7 @@ func TestPostgresMetricSnapshotIsChainScopedAndRetainedAfterRefreshFailure(t *te
 	); err != nil {
 		t.Fatalf("insert verification metric fixtures: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO repair_requests (
 			chain_id, operation, stage, from_block, to_block, reason, status,
 			requested_at, started_at, completed_at, last_error
@@ -211,7 +211,7 @@ func TestPostgresMetricSnapshotIsChainScopedAndRetainedAfterRefreshFailure(t *te
 		}
 	}
 
-	if _, err := db.ExecContext(ctx, `ALTER TABLE durable_jobs RENAME TO durable_jobs_refresh_unavailable`); err != nil {
+	if _, err := db.Exec(ctx, `ALTER TABLE durable_jobs RENAME TO durable_jobs_refresh_unavailable`); err != nil {
 		t.Fatalf("make metric source unavailable: %v", err)
 	}
 	afterFailure := waitForMetrics(t, registry, func(metrics string) bool {
@@ -236,13 +236,13 @@ func TestX402SettlingMetricIsChainScopedAgedAndClearedByReconciliation(
 	db := newMigratedPostgres(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	if _, err := db.ExecContext(
+	if _, err := db.Exec(
 		ctx,
 		`INSERT INTO chains (chain_id) VALUES (1), (2)`,
 	); err != nil {
 		t.Fatalf("insert billing metric fixture chains: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO billing_payments (
 			id, chain_id, fingerprint, reservation_owner, method, operation,
 			resource_digest, requirement_digest, protocol_version, scheme,
@@ -315,7 +315,7 @@ func TestX402SettlingMetricIsChainScopedAgedAndClearedByReconciliation(
 		indexValid     bool
 		indexPredicate string
 	)
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT index_state.indisvalid,
 		       pg_get_expr(index_state.indpred, index_state.indrelid)
 		FROM pg_index AS index_state

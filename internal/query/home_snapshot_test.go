@@ -2,7 +2,6 @@ package query
 
 import (
 	"context"
-	"database/sql/driver"
 	"fmt"
 	"testing"
 )
@@ -10,40 +9,40 @@ import (
 func TestHomeSnapshotUsesOneTransactionAndReturnsBoundedCanonicalActivity(t *testing.T) {
 	t.Parallel()
 	tipHash := testHashBytes(3)
-	checkLimit := func(arguments []driver.NamedValue) error {
-		if len(arguments) != 3 || fmt.Sprint(arguments[2].Value) != "6" {
+	checkLimit := func(arguments []any) error {
+		if len(arguments) != 3 || fmt.Sprint(arguments[2]) != "6" {
 			return fmt.Errorf("home query arguments = %+v", arguments)
 		}
 		return nil
 	}
 	db := testDatabase(t,
 		queryExpectation{
-			contains: "SELECT MAX(id) FROM runtime_events",
-			columns:  columns(1), rows: [][]driver.Value{{int64(42)}},
+			contains: "SELECT COALESCE(MAX(id),0)::bigint AS event_id FROM runtime_events",
+			columns:  columns(1), rows: [][]any{{int64(42)}},
 		},
 		queryExpectation{
-			contains: "configuration.configured_start::text",
-			columns:  columns(10), rows: [][]driver.Value{{
+			contains: "configuration.configured_start AS configured_start",
+			columns:  columns(10), rows: [][]any{{
 				"0", "2", tipHash, "2", tipHash, "2", tipHash, "1", "0", nil,
 			}},
 		},
 		queryExpectation{
 			contains: "FROM sync_runtime_status",
-			columns:  columns(5), rows: [][]driver.Value{{"2", "2", "2", true, true}},
+			columns:  columns(5), rows: [][]any{{"2", "2", "2", true, true}},
 		},
 		queryExpectation{
 			contains: "ORDER BY canonical.number DESC",
-			columns:  columns(2), rows: [][]driver.Value{{"2", tipHash}},
+			columns:  columns(2), rows: [][]any{{"2", tipHash}},
 		},
 		queryExpectation{
 			contains: "canonical.number <= $2::numeric",
 			columns:  columns(16),
-			rows:     [][]driver.Value{testBlockProjectionRow(2, 3, 1, 1, true, "1", "0")},
+			rows:     [][]any{testBlockProjectionRow(2, 3, 1, 1, true, "1", "0")},
 			check:    checkLimit,
 		},
 		queryExpectation{
 			contains: "inclusion.block_number <= $2::numeric",
-			columns:  columns(11), rows: [][]driver.Value{{
+			columns:  columns(11), rows: [][]any{{
 				testTransactionRawAt(2, 3, 102, 0),
 				testReceiptRawAt(2, 3, 102, 0, "0x1"),
 				"2", tipHash, int64(0), testTransactionHashBytes(102),
@@ -76,12 +75,12 @@ func TestHomeSnapshotSupportsEmptyChainWithoutRuntimeEvents(t *testing.T) {
 	t.Parallel()
 	db := testDatabase(t,
 		queryExpectation{
-			contains: "SELECT MAX(id) FROM runtime_events",
-			columns:  columns(1), rows: [][]driver.Value{{nil}},
+			contains: "SELECT COALESCE(MAX(id),0)::bigint AS event_id FROM runtime_events",
+			columns:  columns(1), rows: [][]any{{int64(0)}},
 		},
 		queryExpectation{
-			contains: "configuration.configured_start::text",
-			columns:  columns(10), rows: [][]driver.Value{{
+			contains: "configuration.configured_start AS configured_start",
+			columns:  columns(10), rows: [][]any{{
 				"0", nil, nil, nil, nil, nil, nil, nil, nil, nil,
 			}},
 		},

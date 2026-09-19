@@ -3,59 +3,65 @@ package catalog
 import (
 	"bytes"
 	"context"
-	"database/sql"
-	"database/sql/driver"
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
-)
 
-var catalogDriverSequence atomic.Uint64
+	testpgx "github.com/islishude/etherview/internal/testpgx"
+	pgx "github.com/jackc/pgx/v5"
+	pgconn "github.com/jackc/pgx/v5/pgconn"
+)
 
 type catalogQueryStep struct {
 	contains string
-	rows     driver.Rows
-	check    func([]driver.NamedValue) error
+	rows     pgx.Rows
+	check    func([]any) error
 }
 
 type catalogSQLBackend struct {
 	mu      sync.Mutex
 	steps   []catalogQueryStep
-	begins  []driver.TxOptions
+	begins  []pgx.TxOptions
 	queries []string
 }
 
-type catalogSQLDriver struct{ backend *catalogSQLBackend }
-type catalogSQLConn struct{ backend *catalogSQLBackend }
-type catalogSQLTx struct{}
-
-func (database catalogSQLDriver) Open(string) (driver.Conn, error) {
-	return &catalogSQLConn{backend: database.backend}, nil
+type catalogSQLConn struct {
+	pgx.Tx
+	backend *catalogSQLBackend
+	done    bool
 }
 
-func (connection *catalogSQLConn) Prepare(string) (driver.Stmt, error) {
-	return nil, errors.New("prepared statements are unsupported by the catalog SQL fake")
-}
-
-func (connection *catalogSQLConn) Close() error { return nil }
-func (connection *catalogSQLConn) Begin() (driver.Tx, error) {
-	return connection.BeginTx(context.Background(), driver.TxOptions{})
-}
-
-func (connection *catalogSQLConn) BeginTx(_ context.Context, options driver.TxOptions) (driver.Tx, error) {
+func (connection *catalogSQLConn) BeginTx(_ context.Context, options pgx.TxOptions) (pgx.Tx, error) {
 	connection.backend.mu.Lock()
 	defer connection.backend.mu.Unlock()
 	connection.backend.begins = append(connection.backend.begins, options)
-	return catalogSQLTx{}, nil
+	return &catalogSQLConn{backend: connection.backend}, nil
 }
-
-func (connection *catalogSQLConn) QueryContext(_ context.Context, query string, arguments []driver.NamedValue) (driver.Rows, error) {
+func (connection *catalogSQLConn) QueryRow(ctx context.Context, query string, args ...any) pgx.Row {
+	return testpgx.Row(connection.Query(ctx, query, args...))
+}
+func (connection *catalogSQLConn) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
+	return pgconn.CommandTag{}, fmt.Errorf("unexpected exec")
+}
+func (connection *catalogSQLConn) Commit(context.Context) error {
+	if connection.done {
+		return pgx.ErrTxClosed
+	}
+	connection.done = true
+	return nil
+}
+func (connection *catalogSQLConn) Rollback(context.Context) error {
+	if connection.done {
+		return pgx.ErrTxClosed
+	}
+	connection.done = true
+	return nil
+}
+func (connection *catalogSQLConn) Query(_ context.Context, query string, arguments ...any) (pgx.Rows, error) {
 	connection.backend.mu.Lock()
 	defer connection.backend.mu.Unlock()
 	connection.backend.queries = append(connection.backend.queries, query)
@@ -74,33 +80,12 @@ func (connection *catalogSQLConn) QueryContext(_ context.Context, query string, 
 	}
 	return step.rows, nil
 }
-
-func (catalogSQLTx) Commit() error   { return nil }
-func (catalogSQLTx) Rollback() error { return nil }
-
-type catalogSQLRows struct {
-	columns []string
-	values  [][]driver.Value
-	index   int
-}
-
-func (rows *catalogSQLRows) Columns() []string { return rows.columns }
-func (rows *catalogSQLRows) Close() error      { return nil }
-func (rows *catalogSQLRows) Next(destination []driver.Value) error {
-	if rows.index >= len(rows.values) {
-		return io.EOF
-	}
-	copy(destination, rows.values[rows.index])
-	rows.index++
-	return nil
-}
-
-func catalogRows(columnCount int, values ...[]driver.Value) driver.Rows {
+func catalogRows(columnCount int, values ...[]any) pgx.Rows {
 	columns := make([]string, columnCount)
 	for index := range columns {
 		columns[index] = fmt.Sprintf("column_%d", index)
 	}
-	return &catalogSQLRows{columns: columns, values: values}
+	return &testpgx.Rows{ColumnNames: columns, ValuesList: values}
 }
 
 func openCatalog(t *testing.T, steps ...catalogQueryStep) (*Postgres, *catalogSQLBackend) {
@@ -110,13 +95,7 @@ func openCatalog(t *testing.T, steps ...catalogQueryStep) (*Postgres, *catalogSQ
 func openCatalogWithOptions(t *testing.T, options Options, steps ...catalogQueryStep) (*Postgres, *catalogSQLBackend) {
 	t.Helper()
 	backend := &catalogSQLBackend{steps: steps}
-	name := fmt.Sprintf("etherview_catalog_fake_%d", catalogDriverSequence.Add(1))
-	sql.Register(name, catalogSQLDriver{backend: backend})
-	database, err := sql.Open(name, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = database.Close() })
+	database := &catalogSQLConn{backend: backend}
 	options.DefaultPageSize = 2
 	options.MaxPageSize = 10
 	options.MaxChartPoints = 10
@@ -185,7 +164,7 @@ func assertCatalogConsumed(t *testing.T, backend *catalogSQLBackend) {
 		t.Fatalf("%d SQL expectations were not consumed", len(backend.steps))
 	}
 	for _, options := range backend.begins {
-		if !options.ReadOnly || options.Isolation != driver.IsolationLevel(sql.LevelRepeatableRead) {
+		if options.AccessMode != pgx.ReadOnly || options.IsoLevel != pgx.RepeatableRead {
 			t.Fatalf("catalog transaction options=%+v", options)
 		}
 	}
@@ -196,19 +175,19 @@ func bytesOf(value byte, length int) []byte {
 }
 
 func snapshotStep(number string, hash []byte) catalogQueryStep {
-	return catalogQueryStep{contains: "ORDER BY canonical.number DESC", rows: catalogRows(2, []driver.Value{number, hash})}
+	return catalogQueryStep{contains: "ORDER BY canonical.number DESC", rows: catalogRows(2, []any{number, hash})}
 }
 
 func stageStep(state string) catalogQueryStep {
-	return catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(1, []driver.Value{state})}
+	return catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(1, []any{state})}
 }
 
 func traceStageStep(state string) catalogQueryStep {
-	return catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(3, []driver.Value{state, int64(42), int64(3)})}
+	return catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(3, []any{state, int64(42), int64(3)})}
 }
 
-func tokenRow(address []byte, standard, blockNumber string) []driver.Value {
-	return []driver.Value{
+func tokenRow(address []byte, standard, blockNumber string) []any {
+	return []any{
 		"1", address, bytesOf(0x44, 32), standard, "high", "Token", "TKN", int64(18),
 		"115792089237316195423570985008687907853269984665640564039457584007913129639935",
 		"complete", blockNumber, bytesOf(0x33, 32), time.Unix(1_700_000_000, 0).UTC(),
@@ -239,8 +218,8 @@ func TestTokenContractsUseCanonicalSnapshotAndOpaqueCursor(t *testing.T) {
 		catalogQueryStep{
 			contains: "WITH current_tokens AS",
 			rows:     catalogRows(13, tokenRow(addresses[0], "erc20", "98"), tokenRow(addresses[1], "erc721", "99"), tokenRow(addresses[2], "erc1155", "100")),
-			check: func(arguments []driver.NamedValue) error {
-				if len(arguments) != 5 || arguments[2].Value != false || arguments[4].Value != int64(3) {
+			check: func(arguments []any) error {
+				if len(arguments) != 5 || arguments[3] != false || arguments[0] != int32(3) {
 					return fmt.Errorf("unexpected token list arguments: %v", arguments)
 				}
 				return nil
@@ -261,7 +240,7 @@ func TestTokenContractsUseCanonicalSnapshotAndOpaqueCursor(t *testing.T) {
 	backend.mu.Lock()
 	query := backend.queries[len(backend.queries)-1]
 	backend.mu.Unlock()
-	if !strings.Contains(query, "JOIN canonical_blocks") || !strings.Contains(query, "observed_block_number <= $2") {
+	if !strings.Contains(query, "JOIN canonical_blocks") || !strings.Contains(query, "observed_block_number <= $3") {
 		t.Fatalf("token list is not canonical/snapshot bound: %s", query)
 	}
 	assertCatalogConsumed(t, backend)
@@ -299,8 +278,8 @@ func TestTokenContractDistinguishesMissingStageFromNotFound(t *testing.T) {
 	})
 }
 
-func tokenEventRow(blockNumber, logIndex, subIndex string, tokenAddress []byte) []driver.Value {
-	return []driver.Value{
+func tokenEventRow(blockNumber, logIndex, subIndex string, tokenAddress []byte) []any {
+	return []any{
 		"1", blockNumber, bytesOf(byte(blockNumber[0]), 32), logIndex, subIndex,
 		bytesOf(0xbb, 32), tokenAddress, "erc721", "transfer", nil,
 		bytesOf(0x11, 20), bytesOf(0x22, 20), "99", "1", "high", nil,
@@ -318,8 +297,8 @@ func TestTokenEventsAreCanonicalAndCursorBecomesStaleAfterReorg(t *testing.T) {
 				tokenEventRow("99", "6", "0", token),
 				tokenEventRow("98", "5", "0", token),
 			),
-			check: func(arguments []driver.NamedValue) error {
-				if arguments[3].Value != false || arguments[4].Value != "0" || arguments[5].Value != "0" {
+			check: func(arguments []any) error {
+				if arguments[3] != false || arguments[4] != "0" || arguments[5] != "0" {
 					return fmt.Errorf("first page has unsafe cursor defaults: %v", arguments)
 				}
 				return nil
@@ -344,7 +323,7 @@ func TestTokenEventsAreCanonicalAndCursorBecomesStaleAfterReorg(t *testing.T) {
 	assertCatalogConsumed(t, backend)
 
 	reorged, reorgBackend := openCatalog(t,
-		catalogQueryStep{contains: "SELECT EXISTS", rows: catalogRows(1, []driver.Value{false})},
+		catalogQueryStep{contains: "SELECT EXISTS", rows: catalogRows(1, []any{false})},
 	)
 	_, err = reorged.TokenEvents(context.Background(), TokenEventRequest{
 		ChainID: "1", TokenAddress: "0x" + strings.Repeat("cc", 20), Cursor: page.NextCursor, Limit: 2,
@@ -358,7 +337,7 @@ func TestTokenEventsAreCanonicalAndCursorBecomesStaleAfterReorg(t *testing.T) {
 func TestTokenEventsExposeExactBlockERC20Decimals(t *testing.T) {
 	token := bytesOf(0xcc, 20)
 	row := tokenEventRow("100", "7", "0", token)
-	row[7], row[12], row[15] = "erc20", nil, int64(6)
+	row[7], row[12], row[15] = "erc20", nil, "6"
 	catalog, backend := openCatalog(t,
 		snapshotStep("100", bytesOf(0xaa, 32)), stageStep("complete"),
 		catalogQueryStep{contains: "LEFT JOIN LATERAL", rows: catalogRows(16, row)},
@@ -417,8 +396,8 @@ func TestNFTOwnerAndBalancesRequireExactCanonicalReconciliation(t *testing.T) {
 			catalogQueryStep{
 				contains: "SELECT d.token_address",
 				rows: catalogRows(2,
-					[]driver.Value{token, "99"},
-					[]driver.Value{bytesOf(0xdd, 20), "5"},
+					[]any{token, "99"},
+					[]any{bytesOf(0xdd, 20), "5"},
 				),
 			},
 			catalogQueryStep{contains: "FROM token_contracts", rows: catalogRows(13, tokenRow(token, "erc721", "90"))},
@@ -442,7 +421,7 @@ func TestNFTOwnerAndBalancesRequireExactCanonicalReconciliation(t *testing.T) {
 	t.Run("candidate deltas without reconciler are unavailable", func(t *testing.T) {
 		catalog, backend := openCatalog(t,
 			snapshotStep("100", bytesOf(0xaa, 32)), stageStep("complete"),
-			catalogQueryStep{contains: "SELECT d.token_address", rows: catalogRows(2, []driver.Value{token, "99"})},
+			catalogQueryStep{contains: "SELECT d.token_address", rows: catalogRows(2, []any{token, "99"})},
 			catalogQueryStep{contains: "FROM token_contracts", rows: catalogRows(13, tokenRow(token, "erc721", "90"))},
 		)
 		_, err := catalog.NFTBalances(context.Background(), NFTBalanceRequest{
@@ -469,8 +448,8 @@ func TestERC20BalancesDiscoverCandidatesAndReturnOnlyExactPositiveState(t *testi
 		catalogQueryStep{
 			contains: "FROM token_balance_deltas AS d",
 			rows: catalogRows(1,
-				[]driver.Value{token},
-				[]driver.Value{zeroToken},
+				[]any{token},
+				[]any{zeroToken},
 			),
 		},
 		catalogQueryStep{contains: "FROM token_contracts", rows: catalogRows(13, tokenRow(token, "erc20", "90"))},
@@ -504,8 +483,8 @@ func TestERC20BalancesDiscoverCandidatesAndReturnOnlyExactPositiveState(t *testi
 	assertCatalogConsumed(t, backend)
 }
 
-func statRow(block string) []driver.Value {
-	return []driver.Value{
+func statRow(block string) []any {
+	return []any{
 		"1", block, bytesOf(byte(block[0]), 32), "9007199254740993", "30000000", "60000000",
 		"1000000000", "131072", "393216", "1000000001", "30000000000000000", "131072000131072",
 		"1700000000", "12", "750599937895082.75", "8", "5", "3",
@@ -529,7 +508,7 @@ func TestBlockStatsRequireCompleteCanonicalRange(t *testing.T) {
 
 	missing, missingBackend := openCatalog(t,
 		snapshotStep("101", bytesOf(0xaa, 32)),
-		catalogQueryStep{contains: "WITH heights AS", rows: catalogRows(3, []driver.Value{"100", bytesOf(0x64, 32), nil})},
+		catalogQueryStep{contains: "WITH heights AS", rows: catalogRows(3, []any{"100", bytesOf(0x64, 32), nil})},
 	)
 	_, err = missing.BlockStats(context.Background(), BlockStatsRequest{ChainID: "1", FromBlock: "100", ToBlock: "101"})
 	var stageError StageUnavailableError
@@ -539,12 +518,12 @@ func TestBlockStatsRequireCompleteCanonicalRange(t *testing.T) {
 	assertCatalogConsumed(t, missingBackend)
 }
 
-func traceRow(path string, parent driver.Value, depth int64, callType string) []driver.Value {
-	executionAddress, executionCodeHash, resolution := driver.Value(bytesOf(0x22, 20)), driver.Value(bytesOf(0x33, 32)), "direct"
+func traceRow(path string, parent any, depth int64, callType string) []any {
+	executionAddress, executionCodeHash, resolution := any(bytesOf(0x22, 20)), any(bytesOf(0x33, 32)), "direct"
 	if callType == "CREATE" || callType == "CREATE2" {
 		executionAddress, executionCodeHash, resolution = nil, nil, "not_applicable"
 	}
-	return []driver.Value{
+	return []any{
 		path, parent, depth, callType, bytesOf(0x11, 20), bytesOf(0x22, 20), nil,
 		"1", "1", "1", []byte{0x12, 0x34}, []byte{}, nil, false, false,
 		executionAddress, executionCodeHash, resolution,
@@ -561,7 +540,7 @@ func emptyTraceABISteps() []catalogQueryStep {
 func TestTransactionTraceSortsAndValidatesNormalizedTree(t *testing.T) {
 	txHash, blockHash := bytesOf(0xbb, 32), bytesOf(0xaa, 32)
 	steps := []catalogQueryStep{
-		{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3, []driver.Value{"100", blockHash, "9007199254740993"})},
+		{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3, []any{"100", blockHash, "9007199254740993"})},
 		traceStageStep("complete"),
 		{contains: "FROM normalized_traces", rows: catalogRows(18,
 			traceRow("", nil, 0, "CALL"),
@@ -593,7 +572,7 @@ func TestTransactionTraceStageStateIsNotAnEmptyTrace(t *testing.T) {
 				stage = traceStageStep(string(state))
 			}
 			catalog, backend := openCatalog(t,
-				catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3, []driver.Value{"100", bytesOf(0xaa, 32), "0"})},
+				catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3, []any{"100", bytesOf(0xaa, 32), "0"})},
 				stage,
 			)
 			_, err := catalog.TransactionTrace(context.Background(), "1", "0x"+strings.Repeat("bb", 32))
@@ -608,7 +587,7 @@ func TestTransactionTraceStageStateIsNotAnEmptyTrace(t *testing.T) {
 
 func TestTransactionTraceCompletedEmptyTreeIsCorrupt(t *testing.T) {
 	catalog, backend := openCatalog(t,
-		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3, []driver.Value{"100", bytesOf(0xaa, 32), "0"})},
+		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3, []any{"100", bytesOf(0xaa, 32), "0"})},
 		traceStageStep("complete"),
 		catalogQueryStep{contains: "FROM normalized_traces", rows: catalogRows(18)},
 	)
@@ -621,7 +600,7 @@ func TestTransactionTraceCompletedEmptyTreeIsCorrupt(t *testing.T) {
 
 func TestTransactionTraceRootOnlyIsACompleteEmptyInternalCallTree(t *testing.T) {
 	steps := []catalogQueryStep{
-		{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3, []driver.Value{"100", bytesOf(0xaa, 32), "0"})},
+		{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3, []any{"100", bytesOf(0xaa, 32), "0"})},
 		traceStageStep("complete"),
 		{contains: "FROM normalized_traces", rows: catalogRows(18, traceRow("", nil, 0, "CALL"))},
 	}
@@ -639,7 +618,7 @@ func TestTransactionTraceEmptyExecutionIsNotApplicable(t *testing.T) {
 	row[10] = []byte{}
 	row[15], row[16], row[17] = nil, nil, "empty"
 	catalog, backend := openCatalog(t,
-		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3, []driver.Value{"100", bytesOf(0xaa, 32), "0"})},
+		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3, []any{"100", bytesOf(0xaa, 32), "0"})},
 		traceStageStep("complete"),
 		catalogQueryStep{contains: "FROM normalized_traces", rows: catalogRows(18, row)},
 	)
@@ -667,17 +646,17 @@ func TestTransactionTraceUsesVerifiedAddressSelectorWhenDirectExecutionIsUnavail
 	abiEntry := []byte(`{"type":"function","name":"triggerDivisionByZero","inputs":[],"outputs":[]}`)
 	catalog, backend := openCatalog(t,
 		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3,
-			[]driver.Value{"100", bytesOf(0xaa, 32), "0"})},
+			[]any{"100", bytesOf(0xaa, 32), "0"})},
 		traceStageStep("complete"),
 		catalogQueryStep{contains: "FROM normalized_traces", rows: catalogRows(18, row)},
-		catalogQueryStep{contains: "FROM published_block_stage_results", check: func(arguments []driver.NamedValue) error {
-			if len(arguments) != 5 || arguments[3].Value != "state_diff" {
+		catalogQueryStep{contains: "FROM published_block_stage_results", check: func(arguments []any) error {
+			if len(arguments) != 5 || arguments[3] != "state_diff" {
 				return fmt.Errorf("state-diff publication arguments=%v", arguments)
 			}
 			return nil
-		}, rows: catalogRows(2, []driver.Value{"complete", int64(8)})},
+		}, rows: catalogRows(2, []any{"complete", int64(8)})},
 		catalogQueryStep{contains: "FROM verified_function_selector_sets AS indexed", rows: catalogRows(3,
-			[]driver.Value{codeHash, "triggerDivisionByZero()", abiEntry})},
+			[]any{codeHash, "triggerDivisionByZero()", abiEntry})},
 	)
 	trace, err := catalog.TransactionTrace(context.Background(), "1", "0x"+strings.Repeat("bb", 32))
 	if err != nil || len(trace.Frames) != 1 || trace.Frames[0].Decoding == nil {
@@ -713,13 +692,13 @@ func TestTransactionTraceVerifiedAddressSelectorDecodesStaticCallOutput(t *testi
 	abiEntry := []byte(`{"type":"function","name":"value","inputs":[],"outputs":[{"name":"","type":"uint256"}]}`)
 	catalog, backend := openCatalog(t,
 		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3,
-			[]driver.Value{"100", bytesOf(0xaa, 32), "0"})},
+			[]any{"100", bytesOf(0xaa, 32), "0"})},
 		traceStageStep("complete"),
 		catalogQueryStep{contains: "FROM normalized_traces", rows: catalogRows(18, row)},
 		catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(2,
-			[]driver.Value{"complete", int64(8)})},
+			[]any{"complete", int64(8)})},
 		catalogQueryStep{contains: "FROM verified_function_selector_sets AS indexed", rows: catalogRows(3,
-			[]driver.Value{codeHash, "value()", abiEntry})},
+			[]any{codeHash, "value()", abiEntry})},
 	)
 	trace, err := catalog.TransactionTrace(context.Background(), "1", "0x"+strings.Repeat("bb", 32))
 	if err != nil || len(trace.Frames) != 1 || trace.Frames[0].Decoding == nil {
@@ -753,7 +732,7 @@ func TestTransactionTraceVerifiedAddressFallbackRequiresDirectCallAndCompleteSta
 			row[15], row[16], row[17] = test.executionAddress, nil, "unavailable"
 			steps := []catalogQueryStep{
 				{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3,
-					[]driver.Value{"100", bytesOf(0xaa, 32), "0"})},
+					[]any{"100", bytesOf(0xaa, 32), "0"})},
 				traceStageStep("complete"),
 				{contains: "FROM normalized_traces", rows: catalogRows(18, row)},
 			}
@@ -781,11 +760,11 @@ func TestTransactionTraceDecodesSelectorlessReceiveFromExactHistoricalABI(t *tes
 	row[10] = []byte{}
 	target, codeHash := bytesOf(0x22, 20), bytesOf(0x33, 32)
 	catalog, backend := openCatalog(t,
-		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3, []driver.Value{"100", bytesOf(0xaa, 32), "0"})},
+		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3, []any{"100", bytesOf(0xaa, 32), "0"})},
 		traceStageStep("complete"),
 		catalogQueryStep{contains: "FROM normalized_traces", rows: catalogRows(18, row)},
 		catalogQueryStep{contains: "FROM abi_decodings AS decoding", rows: catalogRows(15)},
-		catalogQueryStep{contains: "WITH target_code AS", rows: catalogRows(9, []driver.Value{
+		catalogQueryStep{contains: "WITH target_code AS", rows: catalogRows(9, []any{
 			codeHash, []byte(`[{"type":"receive","stateMutability":"payable"}]`),
 			"verified", "exact_address", target, codeHash, make([]byte, 32), "0", nil,
 		})},

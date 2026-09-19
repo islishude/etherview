@@ -2,7 +2,6 @@ package metadata
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"math/big"
@@ -10,8 +9,12 @@ import (
 	"strings"
 	"unicode"
 
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
 var (
@@ -42,11 +45,11 @@ type NFTImageSource interface {
 // document observed from the block that is currently canonical at its height
 // is eligible.
 type PostgresImageSource struct {
-	db      *sql.DB
+	db      dbaccess.Database
 	chainID string
 }
 
-func NewPostgresImageSource(db *sql.DB, chainID string) (*PostgresImageSource, error) {
+func NewPostgresImageSource(db dbaccess.Database, chainID string) (*PostgresImageSource, error) {
 	if db == nil {
 		return nil, errors.New("NFT media source requires a database")
 	}
@@ -71,14 +74,50 @@ func (source *PostgresImageSource) SelectNFTImage(ctx context.Context, address c
 
 	var (
 		state       State
-		image       sql.NullString
+		image       pgtype.Text
 		blockNumber string
 		blockHash   []byte
 	)
-	err := source.db.QueryRowContext(ctx, dbgen.MetadataSelectCanonicalNFTImage, source.chainID, addressBytes, tokenID).Scan(&state, &image, &blockNumber, &blockHash)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(source.chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(tokenID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(source.db).MetadataSelectCanonicalNFTImage(ctx, queryValue0, addressBytes, queryValue1)
+		if err != nil {
+			return err
+		}
+		state = State(queryRow.State)
+		image = pgtype.Text{String: queryRow.Image, Valid: queryRow.ImagePresent}
+		blockNumber = queryRow.MetadataObservedBlockNumber
+		blockHash = queryRow.ObservedBlockHash
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		var exists bool
-		if queryErr := source.db.QueryRowContext(ctx, dbgen.MetadataAnyNFTMetadata, source.chainID, addressBytes, tokenID).Scan(&exists); queryErr != nil {
+		if queryErr := func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(source.chainID); err != nil {
+				return err
+			}
+			var queryValue1 pgtype.Numeric
+			if err := queryValue1.Scan(tokenID); err != nil {
+				return err
+			}
+			queryRow, err := dbgen.New(source.db).MetadataAnyNFTMetadata(ctx, queryValue0, addressBytes, queryValue1)
+			if err != nil {
+				return err
+			}
+			if queryRow == nil {
+				return errors.New("invalid stored query value")
+			}
+			exists = *queryRow
+			return nil
+		}(); queryErr != nil {
 			return NFTImageSelection{}, fmt.Errorf("check historical NFT media state: %w", queryErr)
 		}
 		if exists {
@@ -138,9 +177,26 @@ func (source *PostgresImageSource) NFTImageCurrent(
 		return false, errors.New("validate NFT media: invalid selection")
 	}
 	var current bool
-	err := source.db.QueryRowContext(ctx, dbgen.MetadataCurrentNFTImage, source.chainID, addressBytes, tokenID, strconv.FormatUint(selection.BlockNumber, 10),
-		mustHashBytes(selection.BlockHash), selection.URI,
-	).Scan(&current)
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(source.chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(tokenID); err != nil {
+			return err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(strconv.FormatUint(selection.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(source.db).MetadataCurrentNFTImage(ctx, dbgen.MetadataCurrentNFTImageParams{ChainID: queryValue0, TokenAddress: addressBytes, TokenID: queryValue1, ObservedBlockNumber: queryValue2, ObservedBlockHash: mustHashBytes(selection.BlockHash), Document: []byte(selection.URI)})
+		if err != nil {
+			return err
+		}
+		current = queryRow
+		return nil
+	}()
 	if err != nil {
 		return false, fmt.Errorf("validate canonical NFT media selection: %w", err)
 	}

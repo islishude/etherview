@@ -7,7 +7,6 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"io"
@@ -21,11 +20,13 @@ import (
 	"testing"
 	"time"
 
+	testpgx "github.com/islishude/etherview/internal/testpgx"
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/islishude/etherview/internal/config"
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/store"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/stdlib"
 )
 
 const (
@@ -183,7 +184,7 @@ func TestRemoteGenesisCompletedStateReauthenticatesCanonicalRoot(t *testing.T) {
 	defer cancel()
 	seedGenesisIntegrationBlockZero(t, ctx, db, genesisIntegrationStateRoot)
 	documentDigest := sha256.Sum256([]byte(genesisFixture))
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO genesis_state_imports (
 		    chain_id, block_hash, state_root, document_sha256, state,
 		    account_count, imported_at, updated_at
@@ -301,7 +302,7 @@ func TestRemoteGenesisFailurePublishesNoPartialFacts(t *testing.T) {
 			}
 
 			var state, code string
-			if err := db.QueryRowContext(ctx, `
+			if err := db.QueryRow(ctx, `
 				SELECT state, last_error_code
 				FROM genesis_state_imports
 				WHERE chain_id = 777`,
@@ -318,7 +319,7 @@ func TestRemoteGenesisFailurePublishesNoPartialFacts(t *testing.T) {
 				)
 			}
 			var accounts, codeObservations, jobs int
-			if err := db.QueryRowContext(ctx, `
+			if err := db.QueryRow(ctx, `
 				SELECT
 				    (SELECT count(*) FROM genesis_account_observations WHERE chain_id = 777),
 				    (SELECT count(*) FROM contract_code_observations WHERE chain_id = 777),
@@ -340,7 +341,7 @@ func TestRemoteGenesisFailurePublishesNoPartialFacts(t *testing.T) {
 
 func newGenesisIntegrationImporter(
 	t *testing.T,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	chain config.ChainConfig,
 ) *Importer {
 	t.Helper()
@@ -380,7 +381,7 @@ func startGenesisIntegrationImporter(
 func waitForGenesisIntegrationComplete(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	results ...<-chan error,
 ) {
 	t.Helper()
@@ -390,7 +391,7 @@ func waitForGenesisIntegrationComplete(
 	defer ticker.Stop()
 	for {
 		var state string
-		err := db.QueryRowContext(ctx, `
+		err := db.QueryRow(ctx, `
 			SELECT state
 			FROM genesis_state_imports
 			WHERE chain_id = 777`,
@@ -433,11 +434,11 @@ func stopGenesisIntegrationImporter(
 func readGenesisIntegrationSnapshot(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 ) genesisImportSnapshot {
 	t.Helper()
 	var snapshot genesisImportSnapshot
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT
 		    encode(block_hash, 'hex'),
 		    encode(state_root, 'hex'),
@@ -453,7 +454,7 @@ func readGenesisIntegrationSnapshot(
 	); err != nil {
 		t.Fatalf("read Genesis import identity: %v", err)
 	}
-	rows, err := db.QueryContext(ctx, `
+	rows, err := db.Query(ctx, `
 		SELECT
 		    encode(address, 'hex'),
 		    balance::text,
@@ -485,7 +486,7 @@ func readGenesisIntegrationSnapshot(
 	if err := rows.Err(); err != nil {
 		t.Fatalf("iterate Genesis accounts: %v", err)
 	}
-	codeRows, err := db.QueryContext(ctx, `
+	codeRows, err := db.Query(ctx, `
 		SELECT encode(address, 'hex'), encode(code_hash, 'hex'), encode(code, 'hex')
 		FROM contract_code_observations
 		WHERE chain_id = 777 AND block_number = 0
@@ -504,7 +505,7 @@ func readGenesisIntegrationSnapshot(
 	if err := codeRows.Err(); err != nil {
 		t.Fatalf("iterate Genesis code observations: %v", err)
 	}
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT count(*), COALESCE(max(requested_generation), 0)::int
 		FROM durable_jobs
 		WHERE chain_id = 777
@@ -519,19 +520,19 @@ func readGenesisIntegrationSnapshot(
 func seedGenesisIntegrationBlockZero(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	stateRoot string,
 ) {
 	t.Helper()
 	zeroHash := make([]byte, sha256.Size)
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO chains (chain_id, genesis_hash)
 		VALUES (777, decode($1, 'hex'))`,
 		genesisIntegrationBlockHash,
 	); err != nil {
 		t.Fatalf("seed Genesis chain identity: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO blocks (
 		    chain_id, number, hash, parent_hash, timestamp, raw
 		) VALUES (
@@ -544,7 +545,7 @@ func seedGenesisIntegrationBlockZero(
 	); err != nil {
 		t.Fatalf("seed Genesis block zero: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO canonical_blocks (chain_id, number, block_hash)
 		VALUES (777, 0, decode($1, 'hex'))`,
 		genesisIntegrationBlockHash,
@@ -553,7 +554,7 @@ func seedGenesisIntegrationBlockZero(
 	}
 }
 
-func newGenesisIntegrationPostgres(t *testing.T) *sql.DB {
+func newGenesisIntegrationPostgres(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	rawURL := strings.TrimSpace(os.Getenv(genesisIntegrationDatabaseEnvironment))
 	if rawURL == "" {
@@ -565,14 +566,12 @@ func newGenesisIntegrationPostgres(t *testing.T) *sql.DB {
 	}
 	adminConfig.RuntimeParams = cloneGenesisIntegrationRuntimeParams(adminConfig.RuntimeParams)
 	adminConfig.RuntimeParams["application_name"] = "etherview-genesis-integration-admin"
-	adminDB := stdlib.OpenDB(*adminConfig)
-	adminDB.SetMaxOpenConns(2)
-	adminDB.SetMaxIdleConns(1)
+	adminDB := testpgx.Pool(t, adminConfig, int32(2))
 
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
-	if err := adminDB.PingContext(ctx); err != nil {
-		_ = adminDB.Close()
+	if err := adminDB.Ping(ctx); err != nil {
+		adminDB.Close()
 		t.Fatalf("connect to %s: %v", genesisIntegrationDatabaseEnvironment, err)
 	}
 	suffix := make([]byte, 8)
@@ -581,8 +580,8 @@ func newGenesisIntegrationPostgres(t *testing.T) *sql.DB {
 	}
 	schema := "etherview_genesis_it_" + hex.EncodeToString(suffix)
 	quotedSchema := `"` + schema + `"`
-	if _, err := adminDB.ExecContext(ctx, `CREATE SCHEMA `+quotedSchema); err != nil {
-		_ = adminDB.Close()
+	if _, err := adminDB.Exec(ctx, `CREATE SCHEMA `+quotedSchema); err != nil {
+		adminDB.Close()
 		t.Fatalf("create Genesis integration schema: %v", err)
 	}
 
@@ -590,13 +589,11 @@ func newGenesisIntegrationPostgres(t *testing.T) *sql.DB {
 	testConfig.RuntimeParams = cloneGenesisIntegrationRuntimeParams(testConfig.RuntimeParams)
 	testConfig.RuntimeParams["application_name"] = "etherview-genesis-integration-test"
 	testConfig.RuntimeParams["search_path"] = schema
-	db := stdlib.OpenDB(*testConfig)
-	db.SetMaxOpenConns(6)
-	db.SetMaxIdleConns(2)
-	if err := db.PingContext(ctx); err != nil {
-		_ = db.Close()
-		_, _ = adminDB.ExecContext(context.Background(), `DROP SCHEMA `+quotedSchema+` CASCADE`)
-		_ = adminDB.Close()
+	db := testpgx.Pool(t, testConfig, int32(6))
+	if err := db.Ping(ctx); err != nil {
+		db.Close()
+		_, _ = adminDB.Exec(context.Background(), `DROP SCHEMA `+quotedSchema+` CASCADE`)
+		adminDB.Close()
 		t.Fatalf("connect to Genesis integration schema: %v", err)
 	}
 	if err := store.RunMigrations(ctx, db); err != nil {
@@ -606,20 +603,16 @@ func newGenesisIntegrationPostgres(t *testing.T) *sql.DB {
 		t.Fatalf("check Genesis integration schema: %v", err)
 	}
 	t.Cleanup(func() {
-		if err := db.Close(); err != nil {
-			t.Errorf("close Genesis integration database: %v", err)
-		}
+		db.Close()
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cleanupCancel()
-		if _, err := adminDB.ExecContext(
+		if _, err := adminDB.Exec(
 			cleanupCtx,
 			`DROP SCHEMA `+quotedSchema+` CASCADE`,
 		); err != nil {
 			t.Errorf("drop Genesis integration schema: %v", err)
 		}
-		if err := adminDB.Close(); err != nil {
-			t.Errorf("close Genesis integration admin database: %v", err)
-		}
+		adminDB.Close()
 	})
 	return db
 }

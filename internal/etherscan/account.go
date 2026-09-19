@@ -2,7 +2,6 @@ package etherscan
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"math/big"
@@ -10,9 +9,12 @@ import (
 	"strconv"
 	"strings"
 
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
 func (b *PostgresBackend) accountTransactions(ctx context.Context, values url.Values) ([]accountTransaction, error) {
@@ -32,26 +34,19 @@ func (b *PostgresBackend) accountTransactions(ctx context.Context, values url.Va
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	if _, err := b.requireCanonicalCoreRange(ctx, tx, start, end); err != nil {
 		return nil, err
 	}
 
-	var endArgument any
-	if end != nil {
-		endArgument = *end
-	}
-	query := dbgen.EtherscanAccountTransactions
-	arguments := make([]any, 0, 9)
+	queries := dbgen.New(b.db).WithTx(tx)
+	var rows []dbgen.EtherscanAccountTransactionsRow
 	if selector.mode == selectorLegacyAddress {
 		address, _, parseErr := parseAddressParameter(values.Get("address"), "address")
 		if parseErr != nil {
 			return nil, parseErr
 		}
-		arguments = append(arguments,
-			b.chain, strings.ToLower(address.Hex()), start, endArgument,
-			page.limit, page.offset, page.direction,
-		)
+		rows, err = queries.EtherscanAccountTransactions(ctx, dbgen.EtherscanAccountTransactionsParams{ChainID: b.chain, Address: strings.ToLower(address.Hex()), FromBlock: start, ToBlock: end, Limit: int64(page.limit), Offset: page.offset, Direction: page.direction})
 	} else {
 		from, parseErr := optionalAddressText(values.Get("from"), "from")
 		if parseErr != nil {
@@ -61,53 +56,56 @@ func (b *PostgresBackend) accountTransactions(ctx context.Context, values url.Va
 		if parseErr != nil {
 			return nil, parseErr
 		}
-		query = dbgen.EtherscanAccountTransactionsAdvanced
-		arguments = append(arguments,
-			b.chain, from, to, strings.ToUpper(selector.op), start, endArgument,
-			page.limit, page.offset, page.direction,
-		)
+		var advanced []dbgen.EtherscanAccountTransactionsAdvancedRow
+		advanced, err = queries.EtherscanAccountTransactionsAdvanced(ctx, dbgen.EtherscanAccountTransactionsAdvancedParams{ChainID: b.chain, FromAddress: from, ToAddress: to, Operator: strings.ToUpper(selector.op), FromBlock: start, ToBlock: end, Limit: int64(page.limit), Offset: page.offset, Direction: page.direction})
+		rows = make([]dbgen.EtherscanAccountTransactionsRow, len(advanced))
+		for index, row := range advanced {
+			rows[index] = dbgen.EtherscanAccountTransactionsRow(row)
+		}
 	}
-	rows, err := tx.QueryContext(ctx, query, arguments...)
+
 	if err != nil {
 		return nil, fmt.Errorf("query account transactions: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	result := make([]accountTransaction, 0, page.limit)
-	for rows.Next() {
-		item, err := scanAccountTransaction(rows)
+	for _, storedRow := range rows {
+		item, err := scanAccountTransaction(storedRow)
 		if err != nil {
 			return nil, err
 		}
 		result = append(result, item)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate account transactions: %w", err)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, fmt.Errorf("close account transactions: %w", err)
-	}
+
 	if len(result) == 0 {
 		return nil, ErrNotFound
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit account transaction snapshot: %w", err)
 	}
 	return result, nil
 }
 
-type rowScanner interface{ Scan(...any) error }
-
-func scanAccountTransaction(scanner rowScanner) (accountTransaction, error) {
+func scanAccountTransaction(scanner dbgen.EtherscanAccountTransactionsRow) (accountTransaction, error) {
 	var transactionJSON, receiptJSON []byte
 	var blockTimestampText, blockNumberText, tipNumberText string
-	var blockBaseFeeText sql.NullString
+	var blockBaseFeeText pgtype.Text
 	var blockHashBytes, transactionHashBytes []byte
 	var transactionIndex int64
-	if err := scanner.Scan(
-		&transactionJSON, &receiptJSON, &blockTimestampText, &blockBaseFeeText, &blockNumberText,
-		&blockHashBytes, &transactionIndex, &transactionHashBytes, &tipNumberText,
-	); err != nil {
-		return accountTransaction{}, fmt.Errorf("scan account transaction: %w", err)
+	{
+		transactionJSON = scanner.TransactionRaw
+		receiptJSON = scanner.ReceiptRaw
+		blockTimestampText = scanner.BlockTimestamp
+		var queryValue3 pgtype.Text
+		if scanner.BlockBaseFee != nil {
+			queryValue3 = pgtype.Text{String: *scanner.BlockBaseFee, Valid: true}
+		}
+		blockBaseFeeText = queryValue3
+		blockNumberText = scanner.BlockNumber
+		blockHashBytes = scanner.BlockHash
+		transactionIndex = scanner.TransactionIndex
+		transactionHashBytes = scanner.TransactionHash
+		tipNumberText = scanner.TipNumber
 	}
 	if transactionIndex < 0 {
 		return accountTransaction{}, errors.New("stored transaction index is negative")
@@ -232,29 +230,36 @@ func (b *PostgresBackend) minedBlocks(ctx context.Context, values url.Values) ([
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	if _, err := b.requireCanonicalCoreRange(ctx, tx, "0", nil); err != nil {
 		return nil, err
 	}
-	query := dbgen.EtherscanMinedBlocksAsc
+	queries := dbgen.New(b.db).WithTx(tx)
+	params := dbgen.EtherscanMinedBlocksAscParams{ChainID: b.chain, Miner: strings.ToLower(address.Hex()), Limit: int64(page.limit), Offset: page.offset}
+	var rows []dbgen.EtherscanMinedBlocksAscRow
 	if page.direction == "DESC" {
-		query = dbgen.EtherscanMinedBlocksDesc
+		var descending []dbgen.EtherscanMinedBlocksDescRow
+		descending, err = queries.EtherscanMinedBlocksDesc(ctx, dbgen.EtherscanMinedBlocksDescParams(params))
+		rows = make([]dbgen.EtherscanMinedBlocksAscRow, len(descending))
+		for index, row := range descending {
+			rows[index] = dbgen.EtherscanMinedBlocksAscRow(row)
+		}
+	} else {
+		rows, err = queries.EtherscanMinedBlocksAsc(ctx, params)
 	}
-	rows, err := tx.QueryContext(ctx, query,
-		b.chain, strings.ToLower(address.Hex()), page.limit, page.offset,
-	)
+
 	if err != nil {
 		return nil, fmt.Errorf("query mined blocks: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	result := make([]minedBlock, 0, page.limit)
-	for rows.Next() {
-		var numberText, timestampText string
-		var hashBytes []byte
-		var minerText sql.NullString
-		if err := rows.Scan(&numberText, &hashBytes, &timestampText, &minerText); err != nil {
-			return nil, fmt.Errorf("scan mined block: %w", err)
+	for _, storedRow := range rows {
+		numberText, timestampText, hashBytes := storedRow.BlockNumber, storedRow.BlockTimestamp, storedRow.BlockHash
+		var minerText pgtype.Text
+		if storedRow.Miner != nil {
+			minerText = pgtype.Text{String: *storedRow.Miner, Valid: true}
 		}
+
 		number, ok := new(big.Int).SetString(numberText, 10)
 		if !ok || number.Sign() < 0 {
 			return nil, errors.New("stored block number is invalid")
@@ -262,7 +267,7 @@ func (b *PostgresBackend) minedBlocks(ctx context.Context, values url.Values) ([
 		if _, err := hashFromBytes(hashBytes); err != nil {
 			return nil, err
 		}
-		block, err := decodeStoredBlockContext(timestampText, sql.NullString{})
+		block, err := decodeStoredBlockContext(timestampText, pgtype.Text{})
 		if err != nil {
 			return nil, err
 		}
@@ -276,16 +281,11 @@ func (b *PostgresBackend) minedBlocks(ctx context.Context, values url.Values) ([
 		timestamp := decimalUint64(block.Timestamp)
 		result = append(result, minedBlock{BlockNumber: number.String(), TimeStamp: timestamp})
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate mined blocks: %w", err)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, fmt.Errorf("close mined blocks: %w", err)
-	}
+
 	if len(result) == 0 {
 		return nil, ErrNotFound
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit mined block snapshot: %w", err)
 	}
 	return result, nil

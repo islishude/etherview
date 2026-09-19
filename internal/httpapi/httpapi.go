@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -410,11 +411,26 @@ func (h *Handler) eventStream(w http.ResponseWriter, r *http.Request) {
 }
 
 type homeSnapshotResponse struct {
-	Data json.RawMessage `json:"data"`
-	Meta gen.Meta        `json:"meta"`
+	EventID string          `json:"event_id"`
+	Data    json.RawMessage `json:"data"`
+	Meta    gen.Meta        `json:"meta"`
 }
 
 func (h *Handler) homeSnapshot(w http.ResponseWriter, r *http.Request) {
+	var minimum uint64
+	if values, present := r.URL.Query()["min_event_id"]; present {
+		var err error
+		if len(values) == 1 {
+			minimum, err = strconv.ParseUint(values[0], 10, 63)
+		}
+		if len(values) != 1 || err != nil || strconv.FormatUint(minimum, 10) != values[0] {
+			writeError(w, r, http.StatusBadRequest, "invalid_event_id", "minimum event ID must be a canonical non-negative BIGINT", nil)
+			return
+		}
+	}
+	waitContext, cancelWait := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancelWait()
+
 	if h.homeSnapshots == nil {
 		writeError(
 			w, r, http.StatusServiceUnavailable,
@@ -422,7 +438,7 @@ func (h *Handler) homeSnapshot(w http.ResponseWriter, r *http.Request) {
 		)
 		return
 	}
-	channel, err := h.homeSnapshots.Subscribe(r.Context())
+	channel, err := h.homeSnapshots.Subscribe(waitContext)
 	if err != nil {
 		writeError(
 			w, r, http.StatusServiceUnavailable,
@@ -430,32 +446,41 @@ func (h *Handler) homeSnapshot(w http.ResponseWriter, r *http.Request) {
 		)
 		return
 	}
-	select {
-	case publication, open := <-channel:
-		if !open {
-			writeError(
-				w, r, http.StatusServiceUnavailable,
-				"home_snapshot_unavailable", ErrHomeSnapshotUnavailable.Error(), nil,
-			)
+	for {
+		select {
+		case publication, open := <-channel:
+			if !open {
+				writeError(
+					w, r, http.StatusServiceUnavailable,
+					"home_snapshot_unavailable", ErrHomeSnapshotUnavailable.Error(), nil,
+				)
+				return
+			}
+			if publication.EventID < minimum {
+				continue
+			}
+			encoded, err := h.encodeHomeSnapshotResponse(r, publication)
+			if err != nil {
+				h.logger.ErrorContext(
+					r.Context(), "home snapshot response encoding failed",
+					"request_id", requestIDFrom(r.Context()),
+				)
+				writeError(
+					w, r, http.StatusInternalServerError,
+					"home_snapshot_encoding_failed", "home snapshot encoding failed", nil,
+				)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(encoded)
+			return
+		case <-waitContext.Done():
+			if r.Context().Err() == nil {
+				writeError(w, r, http.StatusServiceUnavailable, "home_snapshot_unavailable", ErrHomeSnapshotUnavailable.Error(), nil)
+			}
 			return
 		}
-		encoded, err := h.encodeHomeSnapshotResponse(r, publication)
-		if err != nil {
-			h.logger.ErrorContext(
-				r.Context(), "home snapshot response encoding failed",
-				"request_id", requestIDFrom(r.Context()),
-			)
-			writeError(
-				w, r, http.StatusInternalServerError,
-				"home_snapshot_encoding_failed", "home snapshot encoding failed", nil,
-			)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(encoded)
-	case <-r.Context().Done():
-		return
 	}
 }
 
@@ -535,7 +560,7 @@ func (h *Handler) encodeHomeSnapshotResponse(
 			return nil, err
 		}
 	}
-	encoded, err := json.Marshal(homeSnapshotResponse{Data: encodedData, Meta: meta})
+	encoded, err := json.Marshal(homeSnapshotResponse{EventID: strconv.FormatUint(publication.EventID, 10), Data: encodedData, Meta: meta})
 	if err != nil {
 		return nil, err
 	}

@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const StateCanonicalTip = `-- name: StateCanonicalTip :many
+const stateCanonicalTip = `-- name: StateCanonicalTip :one
 SELECT canonical.number::text, canonical.block_hash
 FROM canonical_blocks AS canonical
 WHERE canonical.chain_id = $1::numeric
@@ -24,27 +24,14 @@ type StateCanonicalTipRow struct {
 	BlockHash       []byte `db:"block_hash" json:"block_hash"`
 }
 
-func (q *Queries) StateCanonicalTip(ctx context.Context, dollar_1 pgtype.Numeric) ([]StateCanonicalTipRow, error) {
-	rows, err := q.db.Query(ctx, StateCanonicalTip, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []StateCanonicalTipRow{}
-	for rows.Next() {
-		var i StateCanonicalTipRow
-		if err := rows.Scan(&i.CanonicalNumber, &i.BlockHash); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) StateCanonicalTip(ctx context.Context, chainID pgtype.Numeric) (StateCanonicalTipRow, error) {
+	row := q.db.QueryRow(ctx, stateCanonicalTip, chainID)
+	var i StateCanonicalTipRow
+	err := row.Scan(&i.CanonicalNumber, &i.BlockHash)
+	return i, err
 }
 
-const StateERC1155BalanceObservation = `-- name: StateERC1155BalanceObservation :many
+const stateERC1155BalanceObservation = `-- name: StateERC1155BalanceObservation :one
 SELECT observation.balance::text, observation.confidence
 FROM erc1155_balance_reconciliations AS observation
 JOIN canonical_blocks AS canonical
@@ -60,11 +47,11 @@ WHERE observation.chain_id = $1::numeric
 `
 
 type StateERC1155BalanceObservationParams struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	TokenAddress []byte         `db:"token_address" json:"token_address"`
-	Column3      pgtype.Numeric `db:"column_3" json:"column_3"`
+	TokenID      pgtype.Numeric `db:"token_id" json:"token_id"`
 	OwnerAddress []byte         `db:"owner_address" json:"owner_address"`
-	Column5      pgtype.Numeric `db:"column_5" json:"column_5"`
+	BlockNumber  pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
 }
 
@@ -73,34 +60,21 @@ type StateERC1155BalanceObservationRow struct {
 	Confidence         string `db:"confidence" json:"confidence"`
 }
 
-func (q *Queries) StateERC1155BalanceObservation(ctx context.Context, arg StateERC1155BalanceObservationParams) ([]StateERC1155BalanceObservationRow, error) {
-	rows, err := q.db.Query(ctx, StateERC1155BalanceObservation,
-		arg.Column1,
+func (q *Queries) StateERC1155BalanceObservation(ctx context.Context, arg StateERC1155BalanceObservationParams) (StateERC1155BalanceObservationRow, error) {
+	row := q.db.QueryRow(ctx, stateERC1155BalanceObservation,
+		arg.ChainID,
 		arg.TokenAddress,
-		arg.Column3,
+		arg.TokenID,
 		arg.OwnerAddress,
-		arg.Column5,
+		arg.BlockNumber,
 		arg.BlockHash,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []StateERC1155BalanceObservationRow{}
-	for rows.Next() {
-		var i StateERC1155BalanceObservationRow
-		if err := rows.Scan(&i.ObservationBalance, &i.Confidence); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i StateERC1155BalanceObservationRow
+	err := row.Scan(&i.ObservationBalance, &i.Confidence)
+	return i, err
 }
 
-const StateERC20BalanceObservations = `-- name: StateERC20BalanceObservations :many
+const stateERC20BalanceObservations = `-- name: StateERC20BalanceObservations :many
 SELECT observation.token_address, observation.balance::text, observation.confidence
 FROM erc20_balance_reconciliations AS observation
 JOIN canonical_blocks AS canonical
@@ -116,11 +90,11 @@ ORDER BY observation.token_address
 `
 
 type StateERC20BalanceObservationsParams struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
-	OwnerAddress []byte         `db:"owner_address" json:"owner_address"`
-	Column3      pgtype.Numeric `db:"column_3" json:"column_3"`
-	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
-	Column5      [][]byte       `db:"column_5" json:"column_5"`
+	ChainID        pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	OwnerAddress   []byte         `db:"owner_address" json:"owner_address"`
+	BlockNumber    pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash      []byte         `db:"block_hash" json:"block_hash"`
+	TokenAddresses [][]byte       `db:"token_addresses" json:"token_addresses"`
 }
 
 type StateERC20BalanceObservationsRow struct {
@@ -130,12 +104,12 @@ type StateERC20BalanceObservationsRow struct {
 }
 
 func (q *Queries) StateERC20BalanceObservations(ctx context.Context, arg StateERC20BalanceObservationsParams) ([]StateERC20BalanceObservationsRow, error) {
-	rows, err := q.db.Query(ctx, StateERC20BalanceObservations,
-		arg.Column1,
+	rows, err := q.db.Query(ctx, stateERC20BalanceObservations,
+		arg.ChainID,
 		arg.OwnerAddress,
-		arg.Column3,
+		arg.BlockNumber,
 		arg.BlockHash,
-		arg.Column5,
+		arg.TokenAddresses,
 	)
 	if err != nil {
 		return nil, err
@@ -155,7 +129,7 @@ func (q *Queries) StateERC20BalanceObservations(ctx context.Context, arg StateER
 	return items, nil
 }
 
-const StateERC721OwnerObservation = `-- name: StateERC721OwnerObservation :many
+const stateERC721OwnerObservation = `-- name: StateERC721OwnerObservation :one
 SELECT observation.state, observation.owner_address, observation.confidence
 FROM erc721_owner_reconciliations AS observation
 JOIN canonical_blocks AS canonical
@@ -170,10 +144,10 @@ WHERE observation.chain_id = $1::numeric
 `
 
 type StateERC721OwnerObservationParams struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	TokenAddress []byte         `db:"token_address" json:"token_address"`
-	Column3      pgtype.Numeric `db:"column_3" json:"column_3"`
-	Column4      pgtype.Numeric `db:"column_4" json:"column_4"`
+	TokenID      pgtype.Numeric `db:"token_id" json:"token_id"`
+	BlockNumber  pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
 }
 
@@ -183,55 +157,29 @@ type StateERC721OwnerObservationRow struct {
 	Confidence   string `db:"confidence" json:"confidence"`
 }
 
-func (q *Queries) StateERC721OwnerObservation(ctx context.Context, arg StateERC721OwnerObservationParams) ([]StateERC721OwnerObservationRow, error) {
-	rows, err := q.db.Query(ctx, StateERC721OwnerObservation,
-		arg.Column1,
+func (q *Queries) StateERC721OwnerObservation(ctx context.Context, arg StateERC721OwnerObservationParams) (StateERC721OwnerObservationRow, error) {
+	row := q.db.QueryRow(ctx, stateERC721OwnerObservation,
+		arg.ChainID,
 		arg.TokenAddress,
-		arg.Column3,
-		arg.Column4,
+		arg.TokenID,
+		arg.BlockNumber,
 		arg.BlockHash,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []StateERC721OwnerObservationRow{}
-	for rows.Next() {
-		var i StateERC721OwnerObservationRow
-		if err := rows.Scan(&i.State, &i.OwnerAddress, &i.Confidence); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i StateERC721OwnerObservationRow
+	err := row.Scan(&i.State, &i.OwnerAddress, &i.Confidence)
+	return i, err
 }
 
-const StateIsCanonical = `-- name: StateIsCanonical :many
+const stateIsCanonical = `-- name: StateIsCanonical :one
 SELECT EXISTS (
     SELECT 1 FROM canonical_blocks
     WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3
 )
 `
 
-func (q *Queries) StateIsCanonical(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]bool, error) {
-	rows, err := q.db.Query(ctx, StateIsCanonical, column1, column2, blockHash)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var exists bool
-		if err := rows.Scan(&exists); err != nil {
-			return nil, err
-		}
-		items = append(items, exists)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) StateIsCanonical(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, blockHash []byte) (bool, error) {
+	row := q.db.QueryRow(ctx, stateIsCanonical, chainID, number, blockHash)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }

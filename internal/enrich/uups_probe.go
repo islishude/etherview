@@ -2,16 +2,19 @@ package enrich
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strconv"
+
+	"github.com/jackc/pgx/v5/pgtype"
+
+	pgx "github.com/jackc/pgx/v5"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/google/uuid"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
 type uupsProbeState string
@@ -209,7 +212,7 @@ func callDirectUUPSProbe(
 // canonical block, and active lease before either row can become consumable.
 func persistUUPSImplementationProbe(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	result uupsImplementationProbeResult,
 ) error {
@@ -231,39 +234,59 @@ func persistUUPSImplementationProbe(
 		return Permanent(err)
 	}
 
-	var rejection, proxiableUUID, interfaceVersion any
+	var rejection *string
+	var proxiableUUID []byte
+	var interfaceVersion *string
 	if result.compatible() {
 		proxiableUUID = result.proxiableUUID[:]
-		interfaceVersion = result.upgradeInterface
+		interfaceVersion = new(result.upgradeInterface)
 	} else {
-		rejection = string(result.rejection)
+		rejection = new(string(result.rejection))
 	}
-	observation, err := tx.ExecContext(ctx, dbgen.EnrichLegacyUpsertUUPSImplementationObservation, job.ChainID, result.target.address[:], strconv.FormatUint(job.BlockNumber, 10),
-		job.BlockHash[:], result.target.codeHash[:], result.target.verificationJobID,
-		job.Stage.Version, OpenZeppelin561Standard, result.state, rejection,
-		proxiableUUID, interfaceVersion,
-	)
+	observation, err := func() (int64, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return 0, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return 0, err
+		}
+		var queryValue2 pgtype.UUID
+		if err := queryValue2.Scan(result.target.verificationJobID); err != nil {
+			return 0, err
+		}
+		if job.Stage.Version > 2147483647 {
+			return 0, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).EnrichLegacyUpsertUUPSImplementationObservation(ctx, dbgen.EnrichLegacyUpsertUUPSImplementationObservationParams{ChainID: queryValue0, ImplementationAddress: result.target.address[:], BlockNumber: queryValue1, BlockHash: job.BlockHash[:], ImplementationCodeHash: result.target.codeHash[:], VerificationJobID: queryValue2, StageVersion: int32(job.Stage.Version), StandardVersion: OpenZeppelin561Standard, ProbeState: string(result.state), RejectionReason: rejection, ProxiableUuid: proxiableUUID, UpgradeInterfaceVersion: interfaceVersion})
+	}()
 	if err != nil {
 		return fmt.Errorf("persist direct UUPS implementation observation: %w", err)
 	}
-	affected, err := observation.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("read UUPS implementation observation result: %w", err)
-	}
+	affected := observation
 	if affected != 1 {
 		return Permanent(errors.New("existing UUPS implementation observation conflicts with exact probe"))
 	}
 
-	witness, err := tx.ExecContext(ctx, dbgen.EnrichLegacyInsertUUPSImplementationObservationGeneration, job.ChainID, result.target.address[:], job.BlockHash[:], job.Stage.Version,
-		result.target.verificationJobID, jobID, generation,
-	)
+	witness, err := func() (int64, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return 0, err
+		}
+		if job.Stage.Version > 2147483647 {
+			return 0, errors.New("invalid stored query value")
+		}
+		var queryValue2 pgtype.UUID
+		if err := queryValue2.Scan(result.target.verificationJobID); err != nil {
+			return 0, err
+		}
+		return dbgen.New(tx).EnrichLegacyInsertUUPSImplementationObservationGeneration(ctx, dbgen.EnrichLegacyInsertUUPSImplementationObservationGenerationParams{ChainID: queryValue0, ImplementationAddress: result.target.address[:], ObservationBlockHash: job.BlockHash[:], ObservationStageVersion: int32(job.Stage.Version), VerificationJobID: queryValue2, DurableJobID: jobID, JobGeneration: generation})
+	}()
 	if err != nil {
 		return fmt.Errorf("persist UUPS implementation observation generation: %w", err)
 	}
-	affected, err = witness.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("read UUPS implementation observation generation result: %w", err)
-	}
+	affected = witness
 	if affected > 1 {
 		return Permanent(errors.New("UUPS implementation observation generation affected multiple rows"))
 	}

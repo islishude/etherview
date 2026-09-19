@@ -77,6 +77,17 @@ linked documents, not this summary, define the exact contract.
 | SPA structure | Keep core pages and both locale trees split by domain, use only the generated explorer client outside the injected wallet module, and retain the explicit Oxlint limits and Oxfmt gate in `web-lint` rather than adding blanket suppressions. |
 | Deployment or operator behavior | Update `docs/operations.md` and the relevant Compose/Helm contracts. Keep secrets role-scoped and use repository Compose/Buildx wrappers and supported overrides. |
 
+## Database access
+
+Follow [ADR-0050](decisions/ADR-0050-native-pgx-and-typed-queries.md): native
+pgxpool and pgx transactions, generated sqlc pgx/v5 methods, and exact numeric
+values. Preserve reader routing and snapshot/lease boundaries. Transaction
+cancellation requires explicit bounded rollback; uncertain session-lock
+ownership requires physical connection disposal. Do not introduce stdlib
+bridges, exported-query scans, or compatibility adapters. Name query arguments
+and computed result columns in SQL. Use `:execrows` when callers enforce an
+affected-row condition and `:exec` when only execution errors matter.
+
 ## Frontend tooling
 
 Use `npm --prefix web run format` after editing hand-written frontend files.

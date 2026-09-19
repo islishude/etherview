@@ -11,60 +11,60 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const MaintenanceLegacyClaimCandidates = `-- name: MaintenanceLegacyClaimCandidates :many
+const maintenanceLegacyClaimCandidates = `-- name: MaintenanceLegacyClaimCandidates :many
 SELECT request.id, request.chain_id::text, request.operation, request.stage,
        request.from_block::text, request.to_block::text,
        request.allow_finalized, request.reason, request.status,
-       finality.finalized_number::text,
+       finality.finalized_number,
        CASE request.status WHEN 'queued' THEN 0 ELSE 1 END AS status_rank,
        request.requested_at
 FROM repair_requests AS request
 LEFT JOIN chain_finality AS finality ON finality.chain_id = request.chain_id
 WHERE request.status IN ('queued', 'running')
   AND (
-      $2 = FALSE
+      $1::boolean = FALSE
       OR (
           CASE request.status WHEN 'queued' THEN 0 ELSE 1 END,
           request.requested_at,
           request.id
-      ) > ($3::integer, $4::timestamptz, $5::bigint)
+      ) > ($2::integer, $3::timestamptz, $4::bigint)
   )
 ORDER BY CASE request.status WHEN 'queued' THEN 0 ELSE 1 END,
          request.requested_at, request.id
 FOR UPDATE OF request SKIP LOCKED
-LIMIT $1
+LIMIT $5
 `
 
 type MaintenanceLegacyClaimCandidatesParams struct {
-	Limit   int32              `db:"limit" json:"limit"`
-	Column2 interface{}        `db:"column_2" json:"column_2"`
-	Column3 int32              `db:"column_3" json:"column_3"`
-	Column4 pgtype.Timestamptz `db:"column_4" json:"column_4"`
-	Column5 int64              `db:"column_5" json:"column_5"`
+	HasCursor         bool               `db:"has_cursor" json:"has_cursor"`
+	CursorStatusRank  int32              `db:"cursor_status_rank" json:"cursor_status_rank"`
+	CursorRequestedAt pgtype.Timestamptz `db:"cursor_requested_at" json:"cursor_requested_at"`
+	CursorID          int64              `db:"cursor_id" json:"cursor_id"`
+	Limit             int32              `db:"limit" json:"limit"`
 }
 
 type MaintenanceLegacyClaimCandidatesRow struct {
-	ID                      int64              `db:"id" json:"id"`
-	RequestChainID          string             `db:"request_chain_id" json:"request_chain_id"`
-	Operation               string             `db:"operation" json:"operation"`
-	Stage                   string             `db:"stage" json:"stage"`
-	RequestFromBlock        string             `db:"request_from_block" json:"request_from_block"`
-	RequestToBlock          string             `db:"request_to_block" json:"request_to_block"`
-	AllowFinalized          bool               `db:"allow_finalized" json:"allow_finalized"`
-	Reason                  string             `db:"reason" json:"reason"`
-	Status                  string             `db:"status" json:"status"`
-	FinalityFinalizedNumber string             `db:"finality_finalized_number" json:"finality_finalized_number"`
-	StatusRank              int32              `db:"status_rank" json:"status_rank"`
-	RequestedAt             pgtype.Timestamptz `db:"requested_at" json:"requested_at"`
+	ID               int64              `db:"id" json:"id"`
+	RequestChainID   string             `db:"request_chain_id" json:"request_chain_id"`
+	Operation        string             `db:"operation" json:"operation"`
+	Stage            string             `db:"stage" json:"stage"`
+	RequestFromBlock string             `db:"request_from_block" json:"request_from_block"`
+	RequestToBlock   string             `db:"request_to_block" json:"request_to_block"`
+	AllowFinalized   bool               `db:"allow_finalized" json:"allow_finalized"`
+	Reason           string             `db:"reason" json:"reason"`
+	Status           string             `db:"status" json:"status"`
+	FinalizedNumber  pgtype.Numeric     `db:"finalized_number" json:"finalized_number"`
+	StatusRank       int32              `db:"status_rank" json:"status_rank"`
+	RequestedAt      pgtype.Timestamptz `db:"requested_at" json:"requested_at"`
 }
 
 func (q *Queries) MaintenanceLegacyClaimCandidates(ctx context.Context, arg MaintenanceLegacyClaimCandidatesParams) ([]MaintenanceLegacyClaimCandidatesRow, error) {
-	rows, err := q.db.Query(ctx, MaintenanceLegacyClaimCandidates,
+	rows, err := q.db.Query(ctx, maintenanceLegacyClaimCandidates,
+		arg.HasCursor,
+		arg.CursorStatusRank,
+		arg.CursorRequestedAt,
+		arg.CursorID,
 		arg.Limit,
-		arg.Column2,
-		arg.Column3,
-		arg.Column4,
-		arg.Column5,
 	)
 	if err != nil {
 		return nil, err
@@ -83,7 +83,7 @@ func (q *Queries) MaintenanceLegacyClaimCandidates(ctx context.Context, arg Main
 			&i.AllowFinalized,
 			&i.Reason,
 			&i.Status,
-			&i.FinalityFinalizedNumber,
+			&i.FinalizedNumber,
 			&i.StatusRank,
 			&i.RequestedAt,
 		); err != nil {
@@ -97,19 +97,22 @@ func (q *Queries) MaintenanceLegacyClaimCandidates(ctx context.Context, arg Main
 	return items, nil
 }
 
-const MaintenanceLegacyCompleteRequest = `-- name: MaintenanceLegacyCompleteRequest :exec
+const maintenanceLegacyCompleteRequest = `-- name: MaintenanceLegacyCompleteRequest :execrows
 UPDATE repair_requests
 SET status = 'done', completed_at = clock_timestamp(), last_error = NULL
 WHERE id = $1 AND status = 'running'
 `
 
-func (q *Queries) MaintenanceLegacyCompleteRequest(ctx context.Context, id int64) error {
-	_, err := q.db.Exec(ctx, MaintenanceLegacyCompleteRequest, id)
-	return err
+func (q *Queries) MaintenanceLegacyCompleteRequest(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.Exec(ctx, maintenanceLegacyCompleteRequest, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const MaintenanceLegacyCurrentFinality = `-- name: MaintenanceLegacyCurrentFinality :many
-SELECT request.status, finality.finalized_number::text
+const maintenanceLegacyCurrentFinality = `-- name: MaintenanceLegacyCurrentFinality :one
+SELECT request.status, finality.finalized_number
 FROM repair_requests AS request
 LEFT JOIN chain_finality AS finality ON finality.chain_id = request.chain_id
 WHERE request.id = $1
@@ -117,42 +120,32 @@ WHERE request.id = $1
 `
 
 type MaintenanceLegacyCurrentFinalityRow struct {
-	Status                  string `db:"status" json:"status"`
-	FinalityFinalizedNumber string `db:"finality_finalized_number" json:"finality_finalized_number"`
+	Status          string         `db:"status" json:"status"`
+	FinalizedNumber pgtype.Numeric `db:"finalized_number" json:"finalized_number"`
 }
 
-func (q *Queries) MaintenanceLegacyCurrentFinality(ctx context.Context, iD int64, column2 pgtype.Numeric) ([]MaintenanceLegacyCurrentFinalityRow, error) {
-	rows, err := q.db.Query(ctx, MaintenanceLegacyCurrentFinality, iD, column2)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []MaintenanceLegacyCurrentFinalityRow{}
-	for rows.Next() {
-		var i MaintenanceLegacyCurrentFinalityRow
-		if err := rows.Scan(&i.Status, &i.FinalityFinalizedNumber); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) MaintenanceLegacyCurrentFinality(ctx context.Context, iD int64, chainID pgtype.Numeric) (MaintenanceLegacyCurrentFinalityRow, error) {
+	row := q.db.QueryRow(ctx, maintenanceLegacyCurrentFinality, iD, chainID)
+	var i MaintenanceLegacyCurrentFinalityRow
+	err := row.Scan(&i.Status, &i.FinalizedNumber)
+	return i, err
 }
 
-const MaintenanceLegacyFailRequest = `-- name: MaintenanceLegacyFailRequest :exec
+const maintenanceLegacyFailRequest = `-- name: MaintenanceLegacyFailRequest :execrows
 UPDATE repair_requests
 SET status = 'failed', completed_at = clock_timestamp(), last_error = $2
 WHERE id = $1 AND status = 'running'
 `
 
-func (q *Queries) MaintenanceLegacyFailRequest(ctx context.Context, iD int64, lastError *string) error {
-	_, err := q.db.Exec(ctx, MaintenanceLegacyFailRequest, iD, lastError)
-	return err
+func (q *Queries) MaintenanceLegacyFailRequest(ctx context.Context, iD int64, lastError *string) (int64, error) {
+	result, err := q.db.Exec(ctx, maintenanceLegacyFailRequest, iD, lastError)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const MaintenanceLegacyMarkRunning = `-- name: MaintenanceLegacyMarkRunning :exec
+const maintenanceLegacyMarkRunning = `-- name: MaintenanceLegacyMarkRunning :execrows
 UPDATE repair_requests
 SET status = 'running',
     started_at = COALESCE(started_at, clock_timestamp()),
@@ -162,12 +155,15 @@ WHERE id = $1
   AND status IN ('queued', 'running')
 `
 
-func (q *Queries) MaintenanceLegacyMarkRunning(ctx context.Context, id int64) error {
-	_, err := q.db.Exec(ctx, MaintenanceLegacyMarkRunning, id)
-	return err
+func (q *Queries) MaintenanceLegacyMarkRunning(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.Exec(ctx, maintenanceLegacyMarkRunning, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const MaintenanceLegacyRejectCandidate = `-- name: MaintenanceLegacyRejectCandidate :exec
+const maintenanceLegacyRejectCandidate = `-- name: MaintenanceLegacyRejectCandidate :execrows
 UPDATE repair_requests
 SET status = 'failed',
     started_at = COALESCE(started_at, clock_timestamp()),
@@ -177,55 +173,32 @@ WHERE id = $1
   AND status IN ('queued', 'running')
 `
 
-func (q *Queries) MaintenanceLegacyRejectCandidate(ctx context.Context, iD int64, lastError *string) error {
-	_, err := q.db.Exec(ctx, MaintenanceLegacyRejectCandidate, iD, lastError)
-	return err
+func (q *Queries) MaintenanceLegacyRejectCandidate(ctx context.Context, iD int64, lastError *string) (int64, error) {
+	result, err := q.db.Exec(ctx, maintenanceLegacyRejectCandidate, iD, lastError)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const MaintenanceLegacyTryAdvisoryLock = `-- name: MaintenanceLegacyTryAdvisoryLock :many
+const maintenanceLegacyTryAdvisoryLock = `-- name: MaintenanceLegacyTryAdvisoryLock :one
 SELECT pg_try_advisory_lock($1)
 `
 
-func (q *Queries) MaintenanceLegacyTryAdvisoryLock(ctx context.Context, pgTryAdvisoryLock int64) ([]bool, error) {
-	rows, err := q.db.Query(ctx, MaintenanceLegacyTryAdvisoryLock, pgTryAdvisoryLock)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var pg_try_advisory_lock bool
-		if err := rows.Scan(&pg_try_advisory_lock); err != nil {
-			return nil, err
-		}
-		items = append(items, pg_try_advisory_lock)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) MaintenanceLegacyTryAdvisoryLock(ctx context.Context, pgTryAdvisoryLock int64) (bool, error) {
+	row := q.db.QueryRow(ctx, maintenanceLegacyTryAdvisoryLock, pgTryAdvisoryLock)
+	var pg_try_advisory_lock bool
+	err := row.Scan(&pg_try_advisory_lock)
+	return pg_try_advisory_lock, err
 }
 
-const MaintenanceLegacyUnlockAdvisory = `-- name: MaintenanceLegacyUnlockAdvisory :many
+const maintenanceLegacyUnlockAdvisory = `-- name: MaintenanceLegacyUnlockAdvisory :one
 SELECT pg_advisory_unlock($1)
 `
 
-func (q *Queries) MaintenanceLegacyUnlockAdvisory(ctx context.Context, pgAdvisoryUnlock int64) ([]bool, error) {
-	rows, err := q.db.Query(ctx, MaintenanceLegacyUnlockAdvisory, pgAdvisoryUnlock)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var pg_advisory_unlock bool
-		if err := rows.Scan(&pg_advisory_unlock); err != nil {
-			return nil, err
-		}
-		items = append(items, pg_advisory_unlock)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) MaintenanceLegacyUnlockAdvisory(ctx context.Context, pgAdvisoryUnlock int64) (bool, error) {
+	row := q.db.QueryRow(ctx, maintenanceLegacyUnlockAdvisory, pgAdvisoryUnlock)
+	var pg_advisory_unlock bool
+	err := row.Scan(&pg_advisory_unlock)
+	return pg_advisory_unlock, err
 }

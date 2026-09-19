@@ -2,7 +2,6 @@ package etherscan
 
 import (
 	"context"
-	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/testpgx"
 )
 
 func TestEnrichmentStageAbsenceIsNeverAnEmptySuccess(t *testing.T) {
@@ -34,9 +34,9 @@ func TestEnrichmentStageAbsenceIsNeverAnEmptySuccess(t *testing.T) {
 				sqlExpectation{
 					contains: "latest.state IS DISTINCT FROM 'complete'",
 					columns:  fakeColumns(4),
-					rows:     [][]driver.Value{{"12", "10", testHashBytes(3), nil}},
-					check: func(arguments []driver.NamedValue) error {
-						if len(arguments) != 4 || arguments[3].Value != test.stage {
+					rows:     [][]any{{"12", "10", testHashBytes(3), nil}},
+					check: func(arguments []any) error {
+						if len(arguments) != 4 || arguments[1] != test.stage {
 							return fmt.Errorf("stage arguments=%v", arguments)
 						}
 						return nil
@@ -62,17 +62,16 @@ func TestInternalTransactionsAreCanonicalPagedAndGolden(t *testing.T) {
 		sqlExpectation{
 			contains: "JOIN canonical_blocks AS canonical ON canonical.chain_id = trace.chain_id AND canonical.number = trace.block_number AND canonical.block_hash = trace.block_hash",
 			columns:  fakeColumns(16),
-			rows: [][]driver.Value{{
+			rows: [][]any{{
 				"10", testHashBytes(3), testHashBytes(7), "100", "0.1", int64(2), "CREATE",
 				testAddressBytes(testSender), nil, testAddressBytes(testContract),
 				"16", "21000", "20000", []byte{0xde, 0xad}, nil, false,
 			}},
-			check: func(arguments []driver.NamedValue) error {
-				if len(arguments) != 8 || arguments[0].Value != "1" ||
-					!reflect.DeepEqual(arguments[1].Value, testAddressBytes(testSender)) || arguments[2].Value != nil ||
-					arguments[3].Value != "10" || arguments[4].Value != "20" ||
-					fmt.Sprint(arguments[5].Value) != "2" || fmt.Sprint(arguments[6].Value) != "2" ||
-					arguments[7].Value != "DESC" {
+			check: func(arguments []any) error {
+				if len(arguments) != 8 || arguments[0] != "1" ||
+					!reflect.DeepEqual(arguments[1], testAddressBytes(testSender)) || arguments[2].([]byte) != nil ||
+					arguments[3] != "10" || !testpgx.TextPointerEquals(arguments[4], "20") ||
+					arguments[5] != "DESC" || fmt.Sprint(arguments[6]) != "2" || fmt.Sprint(arguments[7]) != "2" {
 					return fmt.Errorf("internal transaction arguments=%v", arguments)
 				}
 				return nil
@@ -101,7 +100,7 @@ func TestInternalTransactionsAreCanonicalPagedAndGolden(t *testing.T) {
 
 func TestInternalTransactionsSupportHashAndRangeModes(t *testing.T) {
 	t.Parallel()
-	row := []driver.Value{
+	row := []any{
 		"10", testHashBytes(3), testHashBytes(7), "100", "0", int64(1), "CALL",
 		testAddressBytes(testSender), testAddressBytes(testRecipient), nil,
 		"7", "21000", "20000", []byte{}, nil, false,
@@ -117,9 +116,9 @@ func TestInternalTransactionsSupportHashAndRangeModes(t *testing.T) {
 			expectations: []sqlExpectation{
 				{
 					contains: "FROM transaction_inclusions AS inclusion JOIN canonical_blocks AS canonical",
-					columns:  fakeColumns(1), rows: [][]driver.Value{{"10"}},
-					check: func(arguments []driver.NamedValue) error {
-						if len(arguments) != 2 || arguments[0].Value != "1" || !reflect.DeepEqual(arguments[1].Value, testHashBytes(7)) {
+					columns:  fakeColumns(1), rows: [][]any{{"10"}},
+					check: func(arguments []any) error {
+						if len(arguments) != 2 || !testpgx.NumericEquals(arguments[0], "1") || !reflect.DeepEqual(arguments[1], testHashBytes(7)) {
 							return fmt.Errorf("transaction block arguments=%v", arguments)
 						}
 						return nil
@@ -129,10 +128,10 @@ func TestInternalTransactionsSupportHashAndRangeModes(t *testing.T) {
 				completedStageExpectation("trace", "10", "10"),
 				{
 					contains: "-- name: EtherscanInternalTransactions :many",
-					columns:  fakeColumns(16), rows: [][]driver.Value{row},
-					check: func(arguments []driver.NamedValue) error {
-						if len(arguments) != 8 || arguments[1].Value != nil || !reflect.DeepEqual(arguments[2].Value, testHashBytes(7)) ||
-							arguments[3].Value != "10" || arguments[4].Value != "10" {
+					columns:  fakeColumns(16), rows: [][]any{row},
+					check: func(arguments []any) error {
+						if len(arguments) != 8 || arguments[1].([]byte) != nil || !reflect.DeepEqual(arguments[2], testHashBytes(7)) ||
+							arguments[3] != "10" || !testpgx.TextPointerEquals(arguments[4], "10") {
 							return fmt.Errorf("hash-mode arguments=%v", arguments)
 						}
 						return nil
@@ -148,10 +147,10 @@ func TestInternalTransactionsSupportHashAndRangeModes(t *testing.T) {
 				completedStageExpectation("trace", "10", "20"),
 				{
 					contains: "-- name: EtherscanInternalTransactions :many",
-					columns:  fakeColumns(16), rows: [][]driver.Value{row},
-					check: func(arguments []driver.NamedValue) error {
-						if len(arguments) != 8 || arguments[1].Value != nil || arguments[2].Value != nil ||
-							arguments[3].Value != "10" || arguments[4].Value != "20" {
+					columns:  fakeColumns(16), rows: [][]any{row},
+					check: func(arguments []any) error {
+						if len(arguments) != 8 || arguments[1].([]byte) != nil || arguments[2].([]byte) != nil ||
+							arguments[3] != "10" || !testpgx.TextPointerEquals(arguments[4], "20") {
 							return fmt.Errorf("range-mode arguments=%v", arguments)
 						}
 						return nil
@@ -206,19 +205,18 @@ func TestERC20TransfersUseCanonicalRowsAndPreserveUint256(t *testing.T) {
 		sqlExpectation{
 			contains: "-- name: EtherscanTokenTransfers :many",
 			columns:  fakeColumns(20),
-			rows: [][]driver.Value{{
+			rows: [][]any{{
 				"10", testHashBytes(3), int64(4), int64(0), testTransactionHashBytes(testRecipient), testAddressBytes(testContract),
 				"erc20", "transfer", testAddressBytes(testSender), testAddressBytes(testRecipient), nil, maximum,
 				testTransactionJSON(7, testRecipient), testReceiptJSON("0x1", ""),
 				"100", "0x3b9aca00", int64(1), "Example", "TOK", int64(18),
 			}},
-			check: func(arguments []driver.NamedValue) error {
-				if len(arguments) != 9 || arguments[0].Value != "1" ||
-					!reflect.DeepEqual(arguments[1].Value, testAddressBytes(testSender)) || arguments[2].Value != "erc20" ||
-					arguments[3].Value != "10" || arguments[4].Value != "20" ||
-					!reflect.DeepEqual(arguments[5].Value, testAddressBytes(testContract)) ||
-					fmt.Sprint(arguments[6].Value) != "2" || fmt.Sprint(arguments[7].Value) != "2" ||
-					arguments[8].Value != "DESC" {
+			check: func(arguments []any) error {
+				if len(arguments) != 9 || arguments[0] != "1" ||
+					!reflect.DeepEqual(arguments[1], testAddressBytes(testSender)) || arguments[2] != "erc20" ||
+					arguments[3] != "10" || !testpgx.TextPointerEquals(arguments[4], "20") ||
+					!reflect.DeepEqual(arguments[5], testAddressBytes(testContract)) ||
+					arguments[6] != "DESC" || fmt.Sprint(arguments[7]) != "2" || fmt.Sprint(arguments[8]) != "2" {
 					return fmt.Errorf("token transfer arguments=%v", arguments)
 				}
 				return nil
@@ -275,7 +273,7 @@ func TestNFTTransferActionsKeepStandardSpecificQuantities(t *testing.T) {
 				completedStageExpectation("token", "0", ""),
 				sqlExpectation{
 					contains: "event.standard = $3", columns: fakeColumns(20),
-					rows: [][]driver.Value{{
+					rows: [][]any{{
 						"10", testHashBytes(3), int64(4), int64(0), testTransactionHashBytes(testRecipient), testAddressBytes(testContract),
 						test.standard, "transfer", testAddressBytes(testSender), testAddressBytes(testRecipient), test.tokenID, test.amount,
 						testTransactionJSON(7, testRecipient), testReceiptJSON("0x1", ""),
@@ -346,7 +344,7 @@ func TestAuthoritativeTokenHolderListAndCount(t *testing.T) {
 	snapshotExpectation := func() sqlExpectation {
 		return sqlExpectation{
 			contains: "FROM erc20_holder_snapshots AS snapshot",
-			columns:  fakeColumns(7), rows: [][]driver.Value{{
+			columns:  fakeColumns(7), rows: [][]any{{
 				"11", testHashBytes(4), "complete", "2", "10", "10", true,
 			}},
 		}
@@ -359,11 +357,11 @@ func TestAuthoritativeTokenHolderListAndCount(t *testing.T) {
 		snapshotExpectation(),
 		sqlExpectation{
 			contains: "FROM erc20_holder_balances AS balance",
-			columns:  fakeColumns(2), rows: [][]driver.Value{
+			columns:  fakeColumns(2), rows: [][]any{
 				{testAddressBytes(testSender), "4"}, {testAddressBytes(testRecipient), "6"},
 			},
-			check: func(arguments []driver.NamedValue) error {
-				if len(arguments) != 5 || arguments[0].Value != int64(0) || arguments[1].Value != 2 {
+			check: func(arguments []any) error {
+				if len(arguments) != 5 || arguments[0] != int64(0) || arguments[1] != int64(2) {
 					return fmt.Errorf("holder page arguments=%v", arguments)
 				}
 				return nil
@@ -407,7 +405,7 @@ func TestAuthoritativeTokenHolderListAndCount(t *testing.T) {
 func holderDependenciesExpectation() sqlExpectation {
 	return sqlExpectation{
 		contains: "count(token_publication.block_number)",
-		columns:  fakeColumns(5), rows: [][]driver.Value{{"0", "13", "13", "13", "13"}},
+		columns:  fakeColumns(5), rows: [][]any{{"0", "13", "13", "13", "13"}},
 	}
 }
 
@@ -417,12 +415,12 @@ func TestEnrichmentRowsRejectMalformedOrOverflowValues(t *testing.T) {
 	for _, test := range []struct {
 		name   string
 		values url.Values
-		row    []driver.Value
+		row    []any
 	}{
 		{
 			name:   "internal trace path",
 			values: url.Values{"address": {testSender}},
-			row: []driver.Value{
+			row: []any{
 				"10", testHashBytes(3), testHashBytes(7), "100", "01", int64(1), "CALL",
 				testAddressBytes(testSender), testAddressBytes(testRecipient), nil,
 				"1", "2", "3", []byte{}, nil, false,
@@ -431,7 +429,7 @@ func TestEnrichmentRowsRejectMalformedOrOverflowValues(t *testing.T) {
 		{
 			name:   "internal uint256 overflow",
 			values: url.Values{"address": {testSender}},
-			row: []driver.Value{
+			row: []any{
 				"10", testHashBytes(3), testHashBytes(7), "100", "0", int64(1), "CALL",
 				testAddressBytes(testSender), testAddressBytes(testRecipient), nil,
 				overflow, "2", "3", []byte{}, nil, false,
@@ -443,7 +441,7 @@ func TestEnrichmentRowsRejectMalformedOrOverflowValues(t *testing.T) {
 			db := fakeDatabase(t,
 				completeCoreCoverageExpectation("0", "", "12"),
 				completedStageExpectation("trace", "0", ""),
-				sqlExpectation{contains: "FROM normalized_traces AS trace", columns: fakeColumns(16), rows: [][]driver.Value{test.row}},
+				sqlExpectation{contains: "FROM normalized_traces AS trace", columns: fakeColumns(16), rows: [][]any{test.row}},
 			)
 			backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})
 			if _, err := backend.Execute(context.Background(), Request{
@@ -484,36 +482,36 @@ func TestCompletedEnrichmentWithNoRowsReturnsNotFound(t *testing.T) {
 func completedStageExpectation(stage, start, end string) sqlExpectation {
 	return sqlExpectation{
 		contains: "latest.state IS DISTINCT FROM 'complete'",
-		columns:  fakeColumns(4), rows: [][]driver.Value{{"12", nil, nil, nil}},
-		check: func(arguments []driver.NamedValue) error {
-			if len(arguments) != 4 || arguments[0].Value != "1" || arguments[1].Value != start || arguments[3].Value != stage {
+		columns:  fakeColumns(4), rows: [][]any{{"12", nil, nil, nil}},
+		check: func(arguments []any) error {
+			if len(arguments) != 4 || !testpgx.NumericEquals(arguments[0], "1") || !testpgx.NumericEquals(arguments[2], start) || arguments[1] != stage {
 				return fmt.Errorf("stage arguments=%v", arguments)
 			}
-			if end == "" && arguments[2].Value != nil || end != "" && arguments[2].Value != end {
-				return fmt.Errorf("stage end argument=%v want=%q", arguments[2].Value, end)
+			if end == "" && !testpgx.NumericNull(arguments[3]) || end != "" && !testpgx.NumericEquals(arguments[3], end) {
+				return fmt.Errorf("stage end argument=%v want=%q", arguments[3], end)
 			}
 			return nil
 		},
 	}
 }
 
-func canonicalTokenRow(standard, supply string) []driver.Value {
-	var supplyValue driver.Value
+func canonicalTokenRow(standard, supply string) []any {
+	var supplyValue any
 	if supply != "" {
 		supplyValue = supply
 	}
-	return []driver.Value{
+	return []any{
 		testAddressBytes(testContract), testHashBytes(8), standard, "verified",
 		"Example", "TOK", int64(18), supplyValue, "complete", "10", testHashBytes(3),
 	}
 }
 
-func tokenContractExpectation(row []driver.Value) sqlExpectation {
+func tokenContractExpectation(row []any) sqlExpectation {
 	return sqlExpectation{
 		contains: "JOIN canonical_blocks AS canonical ON canonical.chain_id = token.chain_id AND canonical.number = token.observed_block_number",
-		columns:  fakeColumns(11), rows: [][]driver.Value{row},
-		check: func(arguments []driver.NamedValue) error {
-			if len(arguments) != 2 || arguments[0].Value != "1" || !reflect.DeepEqual(arguments[1].Value, testAddressBytes(testContract)) {
+		columns:  fakeColumns(11), rows: [][]any{row},
+		check: func(arguments []any) error {
+			if len(arguments) != 2 || !testpgx.NumericEquals(arguments[0], "1") || !reflect.DeepEqual(arguments[1], testAddressBytes(testContract)) {
 				return fmt.Errorf("token contract arguments=%v", arguments)
 			}
 			return nil
@@ -527,7 +525,7 @@ func TestStageRangeRejectsInvalidStoredState(t *testing.T) {
 		completeCoreCoverageExpectation("0", "", "12"),
 		sqlExpectation{
 			contains: "latest.state IS DISTINCT FROM 'complete'", columns: fakeColumns(4),
-			rows: [][]driver.Value{{"12", "10", testHashBytes(3), "pending"}},
+			rows: [][]any{{"12", "10", testHashBytes(3), "pending"}},
 		},
 	)
 	backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})

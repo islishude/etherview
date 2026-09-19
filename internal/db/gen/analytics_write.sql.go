@@ -11,50 +11,53 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const AnalyticsWriteDeferDirty = `-- name: AnalyticsWriteDeferDirty :exec
+const analyticsWriteDeferDirty = `-- name: AnalyticsWriteDeferDirty :exec
 UPDATE chart_rollup_dirty_hours
-SET attempts = attempts + 1, next_attempt_at = $4
-WHERE chain_id = $1::numeric AND bucket_start = $2 AND generation = $3
+SET attempts = attempts + 1, next_attempt_at = $1
+WHERE chain_id = $2::numeric AND bucket_start = $3 AND generation = $4
 `
 
 type AnalyticsWriteDeferDirtyParams struct {
-	Column1       pgtype.Numeric     `db:"column_1" json:"column_1"`
+	NextAttemptAt pgtype.Timestamptz `db:"next_attempt_at" json:"next_attempt_at"`
+	ChainID       pgtype.Numeric     `db:"chain_id" json:"chain_id"`
 	BucketStart   pgtype.Timestamptz `db:"bucket_start" json:"bucket_start"`
 	Generation    int64              `db:"generation" json:"generation"`
-	NextAttemptAt pgtype.Timestamptz `db:"next_attempt_at" json:"next_attempt_at"`
 }
 
 func (q *Queries) AnalyticsWriteDeferDirty(ctx context.Context, arg AnalyticsWriteDeferDirtyParams) error {
-	_, err := q.db.Exec(ctx, AnalyticsWriteDeferDirty,
-		arg.Column1,
+	_, err := q.db.Exec(ctx, analyticsWriteDeferDirty,
+		arg.NextAttemptAt,
+		arg.ChainID,
 		arg.BucketStart,
 		arg.Generation,
-		arg.NextAttemptAt,
 	)
 	return err
 }
 
-const AnalyticsWriteDeleteDirty = `-- name: AnalyticsWriteDeleteDirty :exec
+const analyticsWriteDeleteDirty = `-- name: AnalyticsWriteDeleteDirty :execrows
 DELETE FROM chart_rollup_dirty_hours
 WHERE chain_id = $1::numeric AND bucket_start = $2 AND generation = $3
 `
 
-func (q *Queries) AnalyticsWriteDeleteDirty(ctx context.Context, column1 pgtype.Numeric, bucketStart pgtype.Timestamptz, generation int64) error {
-	_, err := q.db.Exec(ctx, AnalyticsWriteDeleteDirty, column1, bucketStart, generation)
-	return err
+func (q *Queries) AnalyticsWriteDeleteDirty(ctx context.Context, chainID pgtype.Numeric, bucketStart pgtype.Timestamptz, generation int64) (int64, error) {
+	result, err := q.db.Exec(ctx, analyticsWriteDeleteDirty, chainID, bucketStart, generation)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const AnalyticsWriteDeleteRollup = `-- name: AnalyticsWriteDeleteRollup :exec
+const analyticsWriteDeleteRollup = `-- name: AnalyticsWriteDeleteRollup :exec
 DELETE FROM chart_hourly_rollups
 WHERE chain_id = $1::numeric AND bucket_start = $2
 `
 
-func (q *Queries) AnalyticsWriteDeleteRollup(ctx context.Context, column1 pgtype.Numeric, bucketStart pgtype.Timestamptz) error {
-	_, err := q.db.Exec(ctx, AnalyticsWriteDeleteRollup, column1, bucketStart)
+func (q *Queries) AnalyticsWriteDeleteRollup(ctx context.Context, chainID pgtype.Numeric, bucketStart pgtype.Timestamptz) error {
+	_, err := q.db.Exec(ctx, analyticsWriteDeleteRollup, chainID, bucketStart)
 	return err
 }
 
-const AnalyticsWriteNextDirty = `-- name: AnalyticsWriteNextDirty :many
+const analyticsWriteNextDirty = `-- name: AnalyticsWriteNextDirty :one
 SELECT bucket_start, generation
 FROM chart_rollup_dirty_hours
 WHERE chain_id = $1::numeric AND next_attempt_at <= $2
@@ -68,27 +71,14 @@ type AnalyticsWriteNextDirtyRow struct {
 	Generation  int64              `db:"generation" json:"generation"`
 }
 
-func (q *Queries) AnalyticsWriteNextDirty(ctx context.Context, column1 pgtype.Numeric, nextAttemptAt pgtype.Timestamptz) ([]AnalyticsWriteNextDirtyRow, error) {
-	rows, err := q.db.Query(ctx, AnalyticsWriteNextDirty, column1, nextAttemptAt)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []AnalyticsWriteNextDirtyRow{}
-	for rows.Next() {
-		var i AnalyticsWriteNextDirtyRow
-		if err := rows.Scan(&i.BucketStart, &i.Generation); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) AnalyticsWriteNextDirty(ctx context.Context, chainID pgtype.Numeric, nextAttemptAt pgtype.Timestamptz) (AnalyticsWriteNextDirtyRow, error) {
+	row := q.db.QueryRow(ctx, analyticsWriteNextDirty, chainID, nextAttemptAt)
+	var i AnalyticsWriteNextDirtyRow
+	err := row.Scan(&i.BucketStart, &i.Generation)
+	return i, err
 }
 
-const AnalyticsWriteRecomputeRollup = `-- name: AnalyticsWriteRecomputeRollup :exec
+const analyticsWriteRecomputeRollup = `-- name: AnalyticsWriteRecomputeRollup :execrows
 WITH source AS (
     SELECT canonical.number, stats.chain_id, stats.block_number, stats.block_hash, stats.transaction_count, stats.gas_used, stats.gas_limit, stats.base_fee_per_gas, stats.blob_gas_used, stats.burned_wei, stats.canonical, stats.computed_at, stats.block_timestamp, stats.block_interval_seconds, stats.transactions_per_second, stats.excess_blob_gas, stats.blob_base_fee_per_gas, stats.blob_burned_wei, stats.execution_gas_fee_wei, stats.priority_fee_wei, stats.failed_transaction_count, stats.contract_creation_count
     FROM canonical_blocks AS canonical
@@ -188,12 +178,15 @@ ON CONFLICT (chain_id, bucket_start) DO UPDATE SET
     computed_at = now()
 `
 
-func (q *Queries) AnalyticsWriteRecomputeRollup(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Timestamptz, sourceGeneration int64) error {
-	_, err := q.db.Exec(ctx, AnalyticsWriteRecomputeRollup, column1, column2, sourceGeneration)
-	return err
+func (q *Queries) AnalyticsWriteRecomputeRollup(ctx context.Context, chainID pgtype.Numeric, bucketStart pgtype.Timestamptz, sourceGeneration int64) (int64, error) {
+	result, err := q.db.Exec(ctx, analyticsWriteRecomputeRollup, chainID, bucketStart, sourceGeneration)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const AnalyticsWriteRefreshBackfill = `-- name: AnalyticsWriteRefreshBackfill :exec
+const analyticsWriteRefreshBackfill = `-- name: AnalyticsWriteRefreshBackfill :exec
 INSERT INTO chart_rollup_backfill AS current (
     chain_id, available_from, available_to, next_block, target_start_block,
     completed_blocks, total_blocks, complete, updated_at
@@ -284,75 +277,49 @@ ON CONFLICT (chain_id) DO UPDATE SET
     updated_at = now()
 `
 
-func (q *Queries) AnalyticsWriteRefreshBackfill(ctx context.Context, dollar_1 pgtype.Numeric) error {
-	_, err := q.db.Exec(ctx, AnalyticsWriteRefreshBackfill, dollar_1)
+func (q *Queries) AnalyticsWriteRefreshBackfill(ctx context.Context, chainID pgtype.Numeric) error {
+	_, err := q.db.Exec(ctx, analyticsWriteRefreshBackfill, chainID)
 	return err
 }
 
-const AnalyticsWriteRollupLock = `-- name: AnalyticsWriteRollupLock :many
+const analyticsWriteRollupLock = `-- name: AnalyticsWriteRollupLock :one
 SELECT pg_try_advisory_xact_lock(hashtextextended('chart-rollup:' || $1, 0))
 `
 
-func (q *Queries) AnalyticsWriteRollupLock(ctx context.Context, dollar_1 *string) ([]bool, error) {
-	rows, err := q.db.Query(ctx, AnalyticsWriteRollupLock, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var pg_try_advisory_xact_lock bool
-		if err := rows.Scan(&pg_try_advisory_xact_lock); err != nil {
-			return nil, err
-		}
-		items = append(items, pg_try_advisory_xact_lock)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) AnalyticsWriteRollupLock(ctx context.Context, chainID *string) (bool, error) {
+	row := q.db.QueryRow(ctx, analyticsWriteRollupLock, chainID)
+	var pg_try_advisory_xact_lock bool
+	err := row.Scan(&pg_try_advisory_xact_lock)
+	return pg_try_advisory_xact_lock, err
 }
 
-const AnalyticsWriteRollupMetrics = `-- name: AnalyticsWriteRollupMetrics :many
+const analyticsWriteRollupMetrics = `-- name: AnalyticsWriteRollupMetrics :one
 SELECT count(dirty.bucket_start),
-       COALESCE(extract(epoch FROM ($2::timestamptz - min(dirty.dirtied_at))), 0)::double precision,
+       COALESCE(extract(epoch FROM ($1::timestamptz - min(dirty.dirtied_at))), 0)::double precision AS oldest_dirty_seconds,
        COALESCE(
            backfill.completed_blocks * 100.0 / NULLIF(backfill.total_blocks, 0),
            0
-       )::double precision
+       )::double precision AS backfill_percent
 FROM chart_rollup_backfill AS backfill
 LEFT JOIN chart_rollup_dirty_hours AS dirty ON dirty.chain_id = backfill.chain_id
-WHERE backfill.chain_id = $1::numeric
+WHERE backfill.chain_id = $2::numeric
 GROUP BY backfill.completed_blocks, backfill.total_blocks
 `
 
 type AnalyticsWriteRollupMetricsRow struct {
-	Count   int64   `db:"count" json:"count"`
-	Column2 float64 `db:"column_2" json:"column_2"`
-	Column3 float64 `db:"column_3" json:"column_3"`
+	Count              int64   `db:"count" json:"count"`
+	OldestDirtySeconds float64 `db:"oldest_dirty_seconds" json:"oldest_dirty_seconds"`
+	BackfillPercent    float64 `db:"backfill_percent" json:"backfill_percent"`
 }
 
-func (q *Queries) AnalyticsWriteRollupMetrics(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Timestamptz) ([]AnalyticsWriteRollupMetricsRow, error) {
-	rows, err := q.db.Query(ctx, AnalyticsWriteRollupMetrics, column1, column2)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []AnalyticsWriteRollupMetricsRow{}
-	for rows.Next() {
-		var i AnalyticsWriteRollupMetricsRow
-		if err := rows.Scan(&i.Count, &i.Column2, &i.Column3); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) AnalyticsWriteRollupMetrics(ctx context.Context, now pgtype.Timestamptz, chainID pgtype.Numeric) (AnalyticsWriteRollupMetricsRow, error) {
+	row := q.db.QueryRow(ctx, analyticsWriteRollupMetrics, now, chainID)
+	var i AnalyticsWriteRollupMetricsRow
+	err := row.Scan(&i.Count, &i.OldestDirtySeconds, &i.BackfillPercent)
+	return i, err
 }
 
-const AnalyticsWriteSourceReadiness = `-- name: AnalyticsWriteSourceReadiness :many
+const analyticsWriteSourceReadiness = `-- name: AnalyticsWriteSourceReadiness :one
 WITH source AS (
     SELECT canonical.number, canonical.block_hash, stats.block_number AS stats_number,
            stats_result.state AS stats_state, token_result.state AS token_state,
@@ -402,22 +369,9 @@ type AnalyticsWriteSourceReadinessRow struct {
 	Count_2 int64 `db:"count_2" json:"count_2"`
 }
 
-func (q *Queries) AnalyticsWriteSourceReadiness(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Timestamptz) ([]AnalyticsWriteSourceReadinessRow, error) {
-	rows, err := q.db.Query(ctx, AnalyticsWriteSourceReadiness, column1, column2)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []AnalyticsWriteSourceReadinessRow{}
-	for rows.Next() {
-		var i AnalyticsWriteSourceReadinessRow
-		if err := rows.Scan(&i.Count, &i.Count_2); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) AnalyticsWriteSourceReadiness(ctx context.Context, chainID pgtype.Numeric, bucketStart pgtype.Timestamptz) (AnalyticsWriteSourceReadinessRow, error) {
+	row := q.db.QueryRow(ctx, analyticsWriteSourceReadiness, chainID, bucketStart)
+	var i AnalyticsWriteSourceReadinessRow
+	err := row.Scan(&i.Count, &i.Count_2)
+	return i, err
 }

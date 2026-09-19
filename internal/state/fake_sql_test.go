@@ -2,35 +2,24 @@ package state
 
 import (
 	"context"
-	"database/sql"
-	"database/sql/driver"
-	"errors"
 	"fmt"
-	"io"
-	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
+
+	"github.com/islishude/etherview/internal/testpgx"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
-
-const stateFakeDriverName = "etherview-state-test"
-
-var (
-	stateFakeScripts sync.Map
-	stateFakeDSN     atomic.Uint64
-)
-
-func init() { sql.Register(stateFakeDriverName, stateFakeDriver{}) }
 
 type stateSQLExpectation struct {
 	kind         string
 	contains     string
 	columns      []string
-	rows         [][]driver.Value
+	rows         [][]any
 	rowsAffected int64
 	err          error
-	check        func([]driver.NamedValue) error
+	check        func([]any) error
 }
 
 type stateSQLScript struct {
@@ -38,64 +27,51 @@ type stateSQLScript struct {
 	expectations []stateSQLExpectation
 }
 
-func stateTestDatabase(t *testing.T, expectations ...stateSQLExpectation) *sql.DB {
+func stateTestDatabase(t *testing.T, expectations ...stateSQLExpectation) *stateFakeConn {
 	t.Helper()
-	dsn := strconv.FormatUint(stateFakeDSN.Add(1), 10)
 	script := &stateSQLScript{expectations: append([]stateSQLExpectation(nil), expectations...)}
-	stateFakeScripts.Store(dsn, script)
-	db, err := sql.Open(stateFakeDriverName, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	db.SetMaxOpenConns(1)
 	t.Cleanup(func() {
-		_ = db.Close()
-		stateFakeScripts.Delete(dsn)
 		script.mu.Lock()
 		defer script.mu.Unlock()
 		if len(script.expectations) != 0 {
-			t.Errorf(
-				"%d state database expectations were not consumed; next %s contains %q",
-				len(script.expectations),
-				script.expectations[0].kind,
-				script.expectations[0].contains,
-			)
+			t.Errorf("%d database expectations were not consumed; next contains %q", len(script.expectations), script.expectations[0].contains)
 		}
 	})
-	return db
+	return &stateFakeConn{script: script}
 }
 
-type stateFakeDriver struct{}
+type stateFakeConn struct {
+	pgx.Tx
+	script *stateSQLScript
+	closed bool
+}
 
-func (stateFakeDriver) Open(name string) (driver.Conn, error) {
-	value, exists := stateFakeScripts.Load(name)
-	if !exists {
-		return nil, fmt.Errorf("unknown state fake database %q", name)
+func (c *stateFakeConn) BeginTx(_ context.Context, options pgx.TxOptions) (pgx.Tx, error) {
+
+	return &stateFakeConn{script: c.script}, nil
+}
+func (c *stateFakeConn) Commit(context.Context) error {
+	if c.closed {
+		return pgx.ErrTxClosed
 	}
-	return &stateFakeConn{script: value.(*stateSQLScript)}, nil
+	c.closed = true
+	return nil
 }
-
-type stateFakeConn struct{ script *stateSQLScript }
-
-func (*stateFakeConn) Prepare(string) (driver.Stmt, error) {
-	return nil, errors.New("prepared statements are unsupported by state fake driver")
+func (c *stateFakeConn) Rollback(context.Context) error {
+	if c.closed {
+		return pgx.ErrTxClosed
+	}
+	c.closed = true
+	return nil
 }
-
-func (*stateFakeConn) Close() error { return nil }
-
-func (*stateFakeConn) Begin() (driver.Tx, error) { return stateFakeTx{}, nil }
-
-func (*stateFakeConn) BeginTx(context.Context, driver.TxOptions) (driver.Tx, error) {
-	return stateFakeTx{}, nil
+func (c *stateFakeConn) QueryRow(ctx context.Context, query string, args ...any) pgx.Row {
+	return testpgx.Row(c.Query(ctx, query, args...))
 }
-
-func (*stateFakeConn) CheckNamedValue(*driver.NamedValue) error { return nil }
-
-func (connection *stateFakeConn) QueryContext(
+func (connection *stateFakeConn) Query(
 	_ context.Context,
 	query string,
-	arguments []driver.NamedValue,
-) (driver.Rows, error) {
+	arguments ...any,
+) (pgx.Rows, error) {
 	expectation, err := connection.next("query", query, arguments)
 	if err != nil {
 		return nil, err
@@ -103,28 +79,26 @@ func (connection *stateFakeConn) QueryContext(
 	if expectation.err != nil {
 		return nil, expectation.err
 	}
-	return &stateFakeRows{columns: expectation.columns, rows: expectation.rows}, nil
+	return &testpgx.Rows{ColumnNames: expectation.columns, ValuesList: expectation.rows}, nil
 }
-
-func (connection *stateFakeConn) ExecContext(
+func (connection *stateFakeConn) Exec(
 	_ context.Context,
 	query string,
-	arguments []driver.NamedValue,
-) (driver.Result, error) {
+	arguments ...any,
+) (pgconn.CommandTag, error) {
 	expectation, err := connection.next("exec", query, arguments)
 	if err != nil {
-		return nil, err
+		return pgconn.CommandTag{}, err
 	}
 	if expectation.err != nil {
-		return nil, expectation.err
+		return pgconn.CommandTag{}, expectation.err
 	}
-	return driver.RowsAffected(expectation.rowsAffected), nil
+	return testpgx.Affected(expectation.rowsAffected), nil
 }
-
 func (connection *stateFakeConn) next(
 	kind string,
 	query string,
-	arguments []driver.NamedValue,
+	arguments []any,
 ) (stateSQLExpectation, error) {
 	connection.script.mu.Lock()
 	defer connection.script.mu.Unlock()
@@ -150,32 +124,4 @@ func (connection *stateFakeConn) next(
 	}
 	return expectation, nil
 }
-
-type stateFakeTx struct{}
-
-func (stateFakeTx) Commit() error   { return nil }
-func (stateFakeTx) Rollback() error { return nil }
-
-type stateFakeRows struct {
-	columns []string
-	rows    [][]driver.Value
-	index   int
-}
-
-func (rows *stateFakeRows) Columns() []string { return rows.columns }
-func (*stateFakeRows) Close() error           { return nil }
-
-func (rows *stateFakeRows) Next(destination []driver.Value) error {
-	if rows.index >= len(rows.rows) {
-		return io.EOF
-	}
-	row := rows.rows[rows.index]
-	rows.index++
-	if len(row) != len(destination) {
-		return fmt.Errorf("state fake row has %d values, destination has %d", len(row), len(destination))
-	}
-	copy(destination, row)
-	return nil
-}
-
 func compactStateSQL(value string) string { return strings.Join(strings.Fields(value), " ") }

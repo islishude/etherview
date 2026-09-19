@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"math"
@@ -10,6 +9,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
 )
 
 const DefaultPartitionSpan uint64 = 1_000_000
@@ -160,7 +162,7 @@ func (e *PartitionRecoveryError) Error() string {
 // EnsureBlockPartitions retains the database-level provisioning API for
 // migration and operator callers. Runtime repository users should call the
 // method on PostgresRepository so successfully provisioned ranges are cached.
-func EnsureBlockPartitions(ctx context.Context, db *sql.DB, start, end, span uint64) error {
+func EnsureBlockPartitions(ctx context.Context, db dbaccess.Database, start, end, span uint64) error {
 	if db == nil {
 		return errors.New("ensure partitions: nil database")
 	}
@@ -229,19 +231,19 @@ func partitionRangeStarts(start, end, span uint64) []uint64 {
 	}
 }
 
-func ensurePartitionRange(ctx context.Context, db *sql.DB, lower, upper uint64) error {
+func ensurePartitionRange(ctx context.Context, db dbaccess.Database, lower, upper uint64) error {
 	// READ COMMITTED is intentional: a competing process may have waited on
 	// the global advisory lock after its transaction began. The catalog recheck
 	// must use a fresh statement snapshot so committed DDL is visible.
-	tx, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	tx, err := db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		return fmt.Errorf("begin partition provisioning: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	if err := ensurePartitionRangeTx(ctx, tx, lower, upper); err != nil {
 		return err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit partition provisioning: %w", err)
 	}
 	return nil
@@ -249,7 +251,7 @@ func ensurePartitionRange(ctx context.Context, db *sql.DB, lower, upper uint64) 
 
 func (r *PostgresRepository) ensureBundlePartitionsTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	references []BlockRef,
 ) ([]uint64, error) {
 	unique := make(map[uint64]struct{}, len(references))
@@ -276,16 +278,16 @@ func (r *PostgresRepository) ensureBundlePartitionsTx(
 	return ranges, nil
 }
 
-func ensurePartitionRangeTx(ctx context.Context, tx *sql.Tx, lower, upper uint64) error {
+func ensurePartitionRangeTx(ctx context.Context, tx pgx.Tx, lower, upper uint64) error {
 	if lower%DefaultPartitionSpan != 0 || upper-lower != DefaultPartitionSpan {
 		return errors.New("partition range is not aligned to the fixed span")
 	}
-	if _, err := tx.ExecContext(ctx,
+	if _, err := tx.Exec(ctx,
 		`SELECT pg_advisory_xact_lock(hashtext($1))`, partitionAdvisoryLock); err != nil {
 		return fmt.Errorf("lock partition lifecycle: %w", err)
 	}
 	var schema string
-	if err := tx.QueryRowContext(ctx, `SELECT current_schema()`).Scan(&schema); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT current_schema()`).Scan(&schema); err != nil {
 		return fmt.Errorf("resolve partition schema: %w", err)
 	}
 	if schema == "" {
@@ -332,13 +334,13 @@ func ensurePartitionRangeTx(ctx context.Context, tx *sql.Tx, lower, upper uint64
 		parent := qualifiedIdentifier(schema, partition.spec.Parent)
 		child := qualifiedIdentifier(schema, partition.name)
 		defaultTable := qualifiedIdentifier(schema, partition.spec.Default)
-		if _, err := tx.ExecContext(ctx, fmt.Sprintf(
+		if _, err := tx.Exec(ctx, fmt.Sprintf(
 			"CREATE TABLE %s (LIKE %s INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING STORAGE)",
 			child, parent,
 		)); err != nil {
 			return fmt.Errorf("create staging partition %s: %w", partition.name, err)
 		}
-		if _, err := tx.ExecContext(ctx, fmt.Sprintf(
+		if _, err := tx.Exec(ctx, fmt.Sprintf(
 			"INSERT INTO %s SELECT * FROM %s WHERE block_number >= $1::numeric AND block_number < $2::numeric",
 			child, defaultTable,
 		), decimal(lower), decimal(upper)); err != nil {
@@ -355,7 +357,7 @@ func ensurePartitionRangeTx(ctx context.Context, tx *sql.Tx, lower, upper uint64
 		if !move {
 			continue
 		}
-		if _, err := tx.ExecContext(ctx, fmt.Sprintf(
+		if _, err := tx.Exec(ctx, fmt.Sprintf(
 			"DELETE FROM %s WHERE block_number >= $1::numeric AND block_number < $2::numeric",
 			qualifiedIdentifier(schema, partition.spec.Default),
 		), decimal(lower), decimal(upper)); err != nil {
@@ -371,7 +373,7 @@ func ensurePartitionRangeTx(ctx context.Context, tx *sql.Tx, lower, upper uint64
 		if !attach {
 			continue
 		}
-		if _, err := tx.ExecContext(ctx, fmt.Sprintf(
+		if _, err := tx.Exec(ctx, fmt.Sprintf(
 			"ALTER TABLE %s ATTACH PARTITION %s FOR VALUES FROM (%s) TO (%s)",
 			qualifiedIdentifier(schema, spec.Parent),
 			qualifiedIdentifier(schema, partition.name),
@@ -388,7 +390,7 @@ func ensurePartitionRangeTx(ctx context.Context, tx *sql.Tx, lower, upper uint64
 
 func availableBlockPartitionSpecs(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	schema string,
 	lower, upper uint64,
 ) ([]blockPartitionSpec, error) {
@@ -432,7 +434,7 @@ func availableBlockPartitionSpecs(
 
 func migrationRecordedTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	schema, version string,
 ) (bool, error) {
 	ledgerExists, err := relationExistsTx(ctx, tx, schema, "etherview_schema_migrations")
@@ -443,7 +445,7 @@ func migrationRecordedTx(
 		return false, nil
 	}
 	var applied bool
-	if err := tx.QueryRowContext(ctx, fmt.Sprintf(
+	if err := tx.QueryRow(ctx, fmt.Sprintf(
 		"SELECT EXISTS (SELECT 1 FROM %s WHERE version = $1)",
 		qualifiedIdentifier(schema, "etherview_schema_migrations"),
 	), version).Scan(&applied); err != nil {
@@ -454,7 +456,7 @@ func migrationRecordedTx(
 
 func lockPartitionTables(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	schema string,
 	specs []blockPartitionSpec,
 ) error {
@@ -468,7 +470,7 @@ func lockPartitionTables(
 	if len(tables) == 0 {
 		return nil
 	}
-	if _, err := tx.ExecContext(ctx,
+	if _, err := tx.Exec(ctx,
 		"LOCK TABLE "+strings.Join(tables, ", ")+" IN ACCESS EXCLUSIVE MODE"); err != nil {
 		return fmt.Errorf("lock partitioned fact tables: %w", err)
 	}
@@ -477,12 +479,12 @@ func lockPartitionTables(
 
 func partitionAttachedForRange(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	schema string,
 	spec blockPartitionSpec,
 	lower, upper uint64,
 ) (bool, error) {
-	rows, err := tx.QueryContext(ctx, `
+	rows, err := tx.Query(ctx, `
 		SELECT child.relname, pg_get_expr(child.relpartbound, child.oid)
 		FROM pg_inherits inheritance
 		JOIN pg_class parent ON parent.oid = inheritance.inhparent
@@ -492,7 +494,7 @@ func partitionAttachedForRange(
 	if err != nil {
 		return false, fmt.Errorf("inspect partitions for %s: %w", spec.Parent, err)
 	}
-	defer func() { _ = rows.Close() }()
+	defer func() { rows.Close() }()
 	wanted := normalizedPartitionBound(lower, upper)
 	newName := partitionName(spec, lower, upper)
 	legacyName := fmt.Sprintf("%s_p_%d_%d", spec.Parent, lower, upper)
@@ -520,7 +522,7 @@ func partitionAttachedForRange(
 
 func validatePartialPartitionDependencies(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	schema string,
 	specs []blockPartitionSpec,
 	pending []pendingPartition,
@@ -540,7 +542,7 @@ func validatePartialPartitionDependencies(
 				continue
 			}
 			var hasRows bool
-			if err := tx.QueryRowContext(ctx, fmt.Sprintf(
+			if err := tx.QueryRow(ctx, fmt.Sprintf(
 				"SELECT EXISTS (SELECT 1 FROM %s WHERE block_number >= $1::numeric AND block_number < $2::numeric)",
 				qualifiedIdentifier(schema, dependent),
 			), decimal(lower), decimal(upper)).Scan(&hasRows); err != nil {
@@ -569,9 +571,9 @@ func dependentPartitionTables(specs []blockPartitionSpec, parent string) []strin
 	return result
 }
 
-func relationExistsTx(ctx context.Context, tx *sql.Tx, schema, relation string) (bool, error) {
+func relationExistsTx(ctx context.Context, tx pgx.Tx, schema, relation string) (bool, error) {
 	var exists bool
-	if err := tx.QueryRowContext(ctx, `
+	if err := tx.QueryRow(ctx, `
 		SELECT EXISTS (
 			SELECT 1
 			FROM pg_class relation

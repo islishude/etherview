@@ -1,17 +1,19 @@
 # P68 — Runtime and Architecture Hardening
 
-Status: `done`
+Status: `blocked`
 
 ## Outcome
 
 Make long-lived API streams shutdown-safe and resistant to replay/cache
 head-of-line blocking, then replace the repository's largest SQL, runtime,
 HTTP, and Web service locators with explicit generated or modular boundaries.
-Public REST contracts, page routes, configuration keys, and the fresh-database
-schema remain unchanged.
+The home snapshot contract adds an event-version fence. Page routes, configuration
+keys, and the fresh-database schema remain unchanged.
 
 ## References
 
+- [ADR-0050: Native pgx and typed queries](../decisions/ADR-0050-native-pgx-and-typed-queries.md)
+- [Native pgx acceptance record](pgx-native-acceptance.md)
 - [Architecture](../architecture/overview.md)
 - [ADR-0001: Modular roles and PostgreSQL truth](../decisions/ADR-0001-modular-roles-and-postgresql-truth.md)
 - [ADR-0004: Durable runtime status and event replay](../decisions/ADR-0004-durable-runtime-status-and-events.md)
@@ -32,13 +34,27 @@ schema remain unchanged.
 | P68-T07 | done | P68-T06 | Close the selected Go complexity/duplication baseline, wire source and SQL checks into repository gates, and complete full acceptance evidence | lint, common gates, PostgreSQL, browser, production topology, Hardhat, Foundry and Preview suites |
 | P68-T08 | done | P68-T01, P68-T07 | Align runtime E2E ordinary-response write deadlines with its bounded-load request budget while retaining the longer-idle SSE deadline regression | focused runtime tests, Compose validation, and production-topology E2E |
 | P68-T09 | done | P68-T01, P68-T07 | Make the home-feed slow-subscriber race regression wait for the complete fanout operation before inspecting disconnect state | focused repeated race test, HTTP API race tests, and common gates |
-
 | P68-T10 | done | P68-T06 | Replace Biome with pinned Oxlint/Oxfmt gates, preserve size limits, and refactor formatted Web modules | tooling policy regressions, Web unit/browser tests, generation, docs and plan gates |
 | P68-T11 | done | P68-T10 | Repair PR 86 lazy-route and Helm schema diagnostic regressions without weakening page or egress assertions | focused route regressions, Web unit/browser tests, Helm 3/4 rendering, generation, docs and plan gates |
+| P68-T12 | blocked | P68-T11 | Explicit verification worker repository and task-local lease-loss recovery with fatal compiler error preservation | worker lifecycle, heartbeat, race, runtime parity |
+| P68-T13 | done | P68-T11 | Version-fenced home snapshot API with bounded cancellation-safe waiting | OpenAPI, HTTP concurrency, generation and browser tests |
+| P68-T14 | done | P68-T11 | Query-local chain event policies, recoverable single SSE connection, and UserOperation reorg refresh | Vitest, browser reconnect and reorg regressions |
+| P68-T15 | dropped | P68-T11 | Standard-library sqlc generation and one typed transaction boundary | generation, numeric/null/array codecs and source boundary tests |
+| P68-T16 | dropped | P68-T11 | All production read paths use typed generated queries with bounded scan memory | reader routing, snapshot, query and PostgreSQL/race tests |
+| P68-T17 | dropped | P68-T11 | All production write paths use typed generated queries and enforce the execution boundary | atomic publication, leases, locks and PostgreSQL/race tests |
+| P68-T18 | dropped | P68-T12, P68-T13, P68-T14, P68-T15, P68-T16, P68-T17 | Aggregate acceptance for all six review fixes and full database migration | common, integration/race, browser, schema, runtime, Hardhat, Foundry and Preview gates |
+| P68-T19 | done | P68-T11 | Native pgx database access ADR, pools, sqlc and transaction infrastructure | pool configuration, cancellation cleanup, generation and routing regressions |
+| P68-T20 | done | P68-T19 | All read paths use typed pgx queries with exact nullable values and bounded keyset scans | reader routing, repeatable snapshots, PostgreSQL and race |
+| P68-T21 | done | P68-T19 | All writes use typed pgx queries with unchanged fencing and commit semantics | lease loss, rollback, reorg and ambiguous commit regressions |
+| P68-T22 | blocked | P68-T19 | Native session locks, migrations, partition DDL, CLI and startup checks | physical connection disposal, schema, runtime parity |
+| P68-T23 | blocked | P68-T20, P68-T21, P68-T22 | Native test boundaries, pool metrics, source enforcement and documentation | source, docs, plan and pool telemetry tests |
+| P68-T24 | blocked | P68-T12, P68-T13, P68-T14, P68-T23 | Aggregate six-fix and full native pgx acceptance | common, integration/race, browser, schema, runtime, Hardhat, Foundry, Preview and benchmarks |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
 ## Acceptance
+
+- [ ] P68-T12–T14 and P68-T19–T24: all six review fixes and full native pgx migration pass their targeted and aggregate acceptance gates.
 
 - [x] P68-T11: cold billing-page rendering awaits asynchronous React work;
       Helm 3/4 both enforce the additional-egress schema and template rejection.
@@ -66,14 +82,77 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
       Web complexity, function-size, duplication, hook, and file-size gates
       pass without blanket suppressions.
 - [x] OpenAPI, database schema, public routes and response shapes, configuration
-      keys, and monolith/split behavior remain unchanged except for the approved
-      corrected stream and startup-failure semantics.
+      keys, and monolith/split behavior remained unchanged through P68-T11.
+      P68-T13 subsequently adds the approved home event-version contract.
 
 ## Current Blockers
 
-None.
+- P68-T12 and P68-T22: the current production image cannot be built because
+  Docker Hub frontend/token access fails (TLS timeout, then connection reset).
+  Runtime parity and schema-image acceptance are unverified. Restore that
+  external access and pass `make test-schema-e2e test-runtime-e2e` against the
+  current working tree to clear these items.
+- P68-T23 remains dependency-blocked by P68-T22. Native fixtures, telemetry,
+  source enforcement and documentation are implemented and their local checks
+  pass; close this work item only after the lifecycle dependency is accepted.
+- P68-T24 remains blocked by P68-T12/P68-T23 and the same production-image
+  prerequisite. Clear with `make check`, schema/runtime, Hardhat, Foundry and
+  Preview Metadata acceptance on the current image. P70/P73 remain independent.
+
 
 ## Evidence
+
+- Current replacement evidence is recorded in [native pgx acceptance](pgx-native-acceptance.md).
+  P68-T12/T22 targeted lease, supervisor, native session disposal and pool-close
+  deadline regressions pass; their production runtime/schema gates remain blocked.
+  P68-T20/T21 remove every manual production query execution outside migration
+  and partition DDL. Exact decimal/NULL contracts, bounded snapshot scans,
+  generated names/cardinalities and native transaction semantics are implemented.
+  Generation, Go/Web lint, unit/race, security/license, Compose and Helm checks
+  pass. The final PostgreSQL ordinary run passes all six packages (core 225.143s);
+  final PostgreSQL race also passes all six packages (core 229.401s).
+  P68-T20/T21 are complete. P68-T13 and P68-T14 also pass all 29 real Chrome tests,
+  including expired-cursor 400 recovery, single-connection ownership and
+  UserOperation head/reorg handling. Home tests cover replica switching, late
+  responses, HTTP-derived version floors and QueryClient isolation. They are done;
+  P68 itself remains blocked until the production-image gates above pass.
+  Serial core benchmarks and their timing variability are recorded in the linked
+  acceptance document; no reference-capacity or latency-improvement claim is made.
+
+- P68-T21 claimed after P68-T19; generated write contracts must preserve
+  affected-row fences, original transaction scopes and unknown-commit handling.
+  Read/write contracts are now implemented; final acceptance is recorded above.
+
+- P68-T22 claimed after finding that native pool Close waits for borrowed
+  connections. Pool teardown must share the supervisor deadline so a timed-out
+  service cannot hold process exit open after readiness has been withdrawn.
+
+- P68-T19: native pools, transaction cleanup and pgx test fixtures replace the
+  stdlib bridge. `go build ./...`, native database/observability/maintenance
+  race regressions, pool configuration tests, and focused query/catalog/state/
+  store/Etherscan/enrichment unit suites pass. The owned PostgreSQL 18 runner
+  passes migration idempotence, generated identity reads, concurrent role
+  binding and home snapshot/reorg tests; a second run passes single-connection
+  cancellation cleanup, physical lock-session disposal, writer/reader session
+  boundaries, reader startup identity/schema checks and compiler-cache locks.
+  Owned containers and volumes were removed. `make generate-check` and
+  `make source-check docs-check plan-check` pass. This is foundation evidence,
+  not full typed-query or aggregate acceptance.
+- P68-T20 claimed after P68-T19 foundation acceptance. Full read-query migration
+  must preserve native NULL semantics and bound every former streaming scan.
+
+- P68-T19 claimed for the approved native pgx replacement. The previous dirty
+  checkout is preserved unchanged; implementation continues in the isolated
+  `codex/pgx-native` worktree from `a805559556025c3f88699a2fb5bc51d137be4d0a`.
+- P68-T15, P68-T16, P68-T17 and P68-T18 are dropped because their database/sql architecture was rejected.
+  P68-T19–T24 replace them. Earlier targeted results describe the previous
+  checkout only; the replacement must rerun its own acceptance.
+
+- Historical abandoned-attempt note: P68-T15–T17 resumed after the first handoff to repair shared projections and nullable finality mappings. This describes the preserved original checkout, not the native replacement.
+
+- Historical abandoned-attempt note: P68-T12–T14 previously passed targeted worker/home race and four Web suites (26 tests). Those results did not close the old P68-T18; current replacement evidence is recorded above.
+
+- P68-T12 claimed on a clean working tree for the accepted six-issue remediation plan.
 
 - P68-T11 reproduces both failures from [PR 86 CI run 35361562536](https://github.com/islishude/etherview/actions/runs/35361562536)
   at `d8a21542af677c577fcc981e293e21cf43fd4400`. The first billing-page

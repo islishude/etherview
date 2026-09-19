@@ -4,12 +4,14 @@ package integration_test
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -454,7 +456,7 @@ type immutableCloneTraceCreation struct {
 }
 
 type immutableCloneTraceService struct {
-	db  *sql.DB
+	db  *pgxpool.Pool
 	raw json.RawMessage
 }
 
@@ -471,7 +473,7 @@ func (service *immutableCloneTraceService) TraceBlockByHash(
 func publishCloneTrace(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	queue *enrich.PostgresJobQueue,
 	reference store.BlockRef,
 	raw json.RawMessage,
@@ -580,14 +582,14 @@ func openZeppelinImmutableCloneInitcode(runtime []byte) []byte {
 func assertProxyDetectionGenerationRejected(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	jobID string,
 	generation int64,
 	reference store.BlockRef,
 	address common.Address,
 ) {
 	t.Helper()
-	_, err := db.ExecContext(ctx, `
+	_, err := db.Exec(ctx, `
 		INSERT INTO proxy_detection_evidence (
 			chain_id, address, block_number, block_hash, stage_version,
 			code_hash, candidate_kind, detection_state, reason, canonical,
@@ -606,7 +608,7 @@ func assertProxyDetectionGenerationRejected(
 func assertCurrentProxyDetectionGeneration(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	reference store.BlockRef,
 	address common.Address,
 	jobID string,
@@ -614,8 +616,8 @@ func assertCurrentProxyDetectionGeneration(
 ) {
 	t.Helper()
 	var count int64
-	var generation sql.NullInt64
-	err := db.QueryRowContext(ctx, `
+	var generation pgtype.Int8
+	err := db.QueryRow(ctx, `
 		SELECT count(*), max(evidence.job_generation)
 		FROM proxy_detection_evidence AS evidence
 		JOIN published_block_stage_results AS published

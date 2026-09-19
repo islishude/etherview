@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const EtherscanBlockCountdown = `-- name: EtherscanBlockCountdown :many
+const etherscanBlockCountdown = `-- name: EtherscanBlockCountdown :one
 WITH tip AS (
     SELECT number
     FROM canonical_blocks
@@ -72,36 +72,23 @@ type EtherscanBlockCountdownRow struct {
 	CoverageRangeEnd        string `db:"coverage_range_end" json:"coverage_range_end"`
 }
 
-func (q *Queries) EtherscanBlockCountdown(ctx context.Context, dollar_1 pgtype.Numeric) ([]EtherscanBlockCountdownRow, error) {
-	rows, err := q.db.Query(ctx, EtherscanBlockCountdown, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EtherscanBlockCountdownRow{}
-	for rows.Next() {
-		var i EtherscanBlockCountdownRow
-		if err := rows.Scan(
-			&i.CurrentSampleNumber,
-			&i.CurrentSampleTimestamp,
-			&i.AnchorNumber,
-			&i.AnchorTimestamp,
-			&i.SampleCountValue,
-			&i.CoverageConfiguredStart,
-			&i.CoverageRangeStart,
-			&i.CoverageRangeEnd,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EtherscanBlockCountdown(ctx context.Context, chainID pgtype.Numeric) (EtherscanBlockCountdownRow, error) {
+	row := q.db.QueryRow(ctx, etherscanBlockCountdown, chainID)
+	var i EtherscanBlockCountdownRow
+	err := row.Scan(
+		&i.CurrentSampleNumber,
+		&i.CurrentSampleTimestamp,
+		&i.AnchorNumber,
+		&i.AnchorTimestamp,
+		&i.SampleCountValue,
+		&i.CoverageConfiguredStart,
+		&i.CoverageRangeStart,
+		&i.CoverageRangeEnd,
+	)
+	return i, err
 }
 
-const EtherscanCanonicalCoreRange = `-- name: EtherscanCanonicalCoreRange :many
+const etherscanCanonicalCoreRange = `-- name: EtherscanCanonicalCoreRange :one
 WITH tip AS (
     SELECT number
     FROM canonical_blocks
@@ -114,8 +101,8 @@ WITH tip AS (
            LEAST(COALESCE($3::numeric, tip.number), tip.number) AS range_end
     FROM tip
 )
-SELECT requested.number::text, configuration.configured_start::text,
-       coverage.range_start::text, coverage.range_end::text
+SELECT requested.number::text, configuration.configured_start,
+       coverage.range_start, coverage.range_end
 FROM requested
 LEFT JOIN core_index_configuration AS configuration
   ON configuration.chain_id = $1::numeric
@@ -131,38 +118,25 @@ LEFT JOIN LATERAL (
 `
 
 type EtherscanCanonicalCoreRangeRow struct {
-	RequestedNumber              string `db:"requested_number" json:"requested_number"`
-	ConfigurationConfiguredStart string `db:"configuration_configured_start" json:"configuration_configured_start"`
-	CoverageRangeStart           string `db:"coverage_range_start" json:"coverage_range_start"`
-	CoverageRangeEnd             string `db:"coverage_range_end" json:"coverage_range_end"`
+	RequestedNumber string         `db:"requested_number" json:"requested_number"`
+	ConfiguredStart pgtype.Numeric `db:"configured_start" json:"configured_start"`
+	RangeStart      pgtype.Numeric `db:"range_start" json:"range_start"`
+	RangeEnd        pgtype.Numeric `db:"range_end" json:"range_end"`
 }
 
-func (q *Queries) EtherscanCanonicalCoreRange(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, column3 pgtype.Numeric) ([]EtherscanCanonicalCoreRangeRow, error) {
-	rows, err := q.db.Query(ctx, EtherscanCanonicalCoreRange, column1, column2, column3)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EtherscanCanonicalCoreRangeRow{}
-	for rows.Next() {
-		var i EtherscanCanonicalCoreRangeRow
-		if err := rows.Scan(
-			&i.RequestedNumber,
-			&i.ConfigurationConfiguredStart,
-			&i.CoverageRangeStart,
-			&i.CoverageRangeEnd,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EtherscanCanonicalCoreRange(ctx context.Context, chainID pgtype.Numeric, rangeStart pgtype.Numeric, rangeEnd pgtype.Numeric) (EtherscanCanonicalCoreRangeRow, error) {
+	row := q.db.QueryRow(ctx, etherscanCanonicalCoreRange, chainID, rangeStart, rangeEnd)
+	var i EtherscanCanonicalCoreRangeRow
+	err := row.Scan(
+		&i.RequestedNumber,
+		&i.ConfiguredStart,
+		&i.RangeStart,
+		&i.RangeEnd,
+	)
+	return i, err
 }
 
-const EtherscanCanonicalReference = `-- name: EtherscanCanonicalReference :many
+const etherscanCanonicalReference = `-- name: EtherscanCanonicalReference :one
 SELECT EXISTS (
     SELECT 1
     FROM canonical_blocks
@@ -172,27 +146,14 @@ SELECT EXISTS (
 )
 `
 
-func (q *Queries) EtherscanCanonicalReference(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]bool, error) {
-	rows, err := q.db.Query(ctx, EtherscanCanonicalReference, column1, column2, blockHash)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var exists bool
-		if err := rows.Scan(&exists); err != nil {
-			return nil, err
-		}
-		items = append(items, exists)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EtherscanCanonicalReference(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, blockHash []byte) (bool, error) {
+	row := q.db.QueryRow(ctx, etherscanCanonicalReference, chainID, number, blockHash)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
-const EtherscanCanonicalSnapshot = `-- name: EtherscanCanonicalSnapshot :many
+const etherscanCanonicalSnapshot = `-- name: EtherscanCanonicalSnapshot :one
 SELECT number::text, block_hash
 FROM canonical_blocks
 WHERE chain_id = $1::numeric
@@ -205,27 +166,14 @@ type EtherscanCanonicalSnapshotRow struct {
 	BlockHash []byte `db:"block_hash" json:"block_hash"`
 }
 
-func (q *Queries) EtherscanCanonicalSnapshot(ctx context.Context, dollar_1 pgtype.Numeric) ([]EtherscanCanonicalSnapshotRow, error) {
-	rows, err := q.db.Query(ctx, EtherscanCanonicalSnapshot, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EtherscanCanonicalSnapshotRow{}
-	for rows.Next() {
-		var i EtherscanCanonicalSnapshotRow
-		if err := rows.Scan(&i.Number, &i.BlockHash); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EtherscanCanonicalSnapshot(ctx context.Context, chainID pgtype.Numeric) (EtherscanCanonicalSnapshotRow, error) {
+	row := q.db.QueryRow(ctx, etherscanCanonicalSnapshot, chainID)
+	var i EtherscanCanonicalSnapshotRow
+	err := row.Scan(&i.Number, &i.BlockHash)
+	return i, err
 }
 
-const EtherscanCanonicalStageRange = `-- name: EtherscanCanonicalStageRange :many
+const etherscanCanonicalStageRange = `-- name: EtherscanCanonicalStageRange :one
 WITH tip AS (
     SELECT number
     FROM canonical_blocks
@@ -242,70 +190,57 @@ WITH tip AS (
         WHERE result.chain_id = canonical.chain_id
           AND result.block_number = canonical.number
           AND result.block_hash = canonical.block_hash
-          AND result.stage = $4
+          AND result.stage = $2
         ORDER BY result.stage_version DESC
         LIMIT 1
     ) AS latest ON true
     WHERE canonical.chain_id = $1::numeric
-      AND canonical.number >= $2::numeric
-      AND canonical.number <= LEAST(COALESCE($3::numeric, tip.number), tip.number)
+      AND canonical.number >= $3::numeric
+      AND canonical.number <= LEAST(COALESCE($4::numeric, tip.number), tip.number)
       AND latest.state IS DISTINCT FROM 'complete'
     ORDER BY canonical.number
     LIMIT 1
 )
-SELECT tip.number::text, incomplete.number::text,
+SELECT tip.number::text, incomplete.number,
        incomplete.block_hash, incomplete.state
 FROM tip
 LEFT JOIN incomplete ON true
 `
 
 type EtherscanCanonicalStageRangeParams struct {
-	Column1 pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2 pgtype.Numeric `db:"column_2" json:"column_2"`
-	Column3 pgtype.Numeric `db:"column_3" json:"column_3"`
-	Stage   string         `db:"stage" json:"stage"`
+	ChainID   pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Stage     string         `db:"stage" json:"stage"`
+	MinNumber pgtype.Numeric `db:"min_number" json:"min_number"`
+	RangeEnd  pgtype.Numeric `db:"range_end" json:"range_end"`
 }
 
 type EtherscanCanonicalStageRangeRow struct {
-	TipNumber        string  `db:"tip_number" json:"tip_number"`
-	IncompleteNumber string  `db:"incomplete_number" json:"incomplete_number"`
-	BlockHash        []byte  `db:"block_hash" json:"block_hash"`
-	State            *string `db:"state" json:"state"`
+	TipNumber string         `db:"tip_number" json:"tip_number"`
+	Number    pgtype.Numeric `db:"number" json:"number"`
+	BlockHash []byte         `db:"block_hash" json:"block_hash"`
+	State     *string        `db:"state" json:"state"`
 }
 
-func (q *Queries) EtherscanCanonicalStageRange(ctx context.Context, arg EtherscanCanonicalStageRangeParams) ([]EtherscanCanonicalStageRangeRow, error) {
-	rows, err := q.db.Query(ctx, EtherscanCanonicalStageRange,
-		arg.Column1,
-		arg.Column2,
-		arg.Column3,
+func (q *Queries) EtherscanCanonicalStageRange(ctx context.Context, arg EtherscanCanonicalStageRangeParams) (EtherscanCanonicalStageRangeRow, error) {
+	row := q.db.QueryRow(ctx, etherscanCanonicalStageRange,
+		arg.ChainID,
 		arg.Stage,
+		arg.MinNumber,
+		arg.RangeEnd,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EtherscanCanonicalStageRangeRow{}
-	for rows.Next() {
-		var i EtherscanCanonicalStageRangeRow
-		if err := rows.Scan(
-			&i.TipNumber,
-			&i.IncompleteNumber,
-			&i.BlockHash,
-			&i.State,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i EtherscanCanonicalStageRangeRow
+	err := row.Scan(
+		&i.TipNumber,
+		&i.Number,
+		&i.BlockHash,
+		&i.State,
+	)
+	return i, err
 }
 
-const EtherscanCanonicalTokenContract = `-- name: EtherscanCanonicalTokenContract :many
+const etherscanCanonicalTokenContract = `-- name: EtherscanCanonicalTokenContract :one
 SELECT token.address, token.code_hash, token.standard, token.confidence,
-       token.name, token.symbol, token.decimals, token.total_supply::text,
+       token.name, token.symbol, token.decimals, token.total_supply,
        token.metadata_state, token.observed_block_number::text, token.observed_block_hash
 FROM token_contracts AS token
 JOIN canonical_blocks AS canonical
@@ -318,52 +253,39 @@ LIMIT 1
 `
 
 type EtherscanCanonicalTokenContractRow struct {
-	Address                  []byte  `db:"address" json:"address"`
-	CodeHash                 []byte  `db:"code_hash" json:"code_hash"`
-	Standard                 string  `db:"standard" json:"standard"`
-	Confidence               string  `db:"confidence" json:"confidence"`
-	Name                     *string `db:"name" json:"name"`
-	Symbol                   *string `db:"symbol" json:"symbol"`
-	Decimals                 *int32  `db:"decimals" json:"decimals"`
-	TokenTotalSupply         string  `db:"token_total_supply" json:"token_total_supply"`
-	MetadataState            string  `db:"metadata_state" json:"metadata_state"`
-	TokenObservedBlockNumber string  `db:"token_observed_block_number" json:"token_observed_block_number"`
-	ObservedBlockHash        []byte  `db:"observed_block_hash" json:"observed_block_hash"`
+	Address                  []byte         `db:"address" json:"address"`
+	CodeHash                 []byte         `db:"code_hash" json:"code_hash"`
+	Standard                 string         `db:"standard" json:"standard"`
+	Confidence               string         `db:"confidence" json:"confidence"`
+	Name                     *string        `db:"name" json:"name"`
+	Symbol                   *string        `db:"symbol" json:"symbol"`
+	Decimals                 *int32         `db:"decimals" json:"decimals"`
+	TotalSupply              pgtype.Numeric `db:"total_supply" json:"total_supply"`
+	MetadataState            string         `db:"metadata_state" json:"metadata_state"`
+	TokenObservedBlockNumber string         `db:"token_observed_block_number" json:"token_observed_block_number"`
+	ObservedBlockHash        []byte         `db:"observed_block_hash" json:"observed_block_hash"`
 }
 
-func (q *Queries) EtherscanCanonicalTokenContract(ctx context.Context, column1 pgtype.Numeric, address []byte) ([]EtherscanCanonicalTokenContractRow, error) {
-	rows, err := q.db.Query(ctx, EtherscanCanonicalTokenContract, column1, address)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EtherscanCanonicalTokenContractRow{}
-	for rows.Next() {
-		var i EtherscanCanonicalTokenContractRow
-		if err := rows.Scan(
-			&i.Address,
-			&i.CodeHash,
-			&i.Standard,
-			&i.Confidence,
-			&i.Name,
-			&i.Symbol,
-			&i.Decimals,
-			&i.TokenTotalSupply,
-			&i.MetadataState,
-			&i.TokenObservedBlockNumber,
-			&i.ObservedBlockHash,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EtherscanCanonicalTokenContract(ctx context.Context, chainID pgtype.Numeric, address []byte) (EtherscanCanonicalTokenContractRow, error) {
+	row := q.db.QueryRow(ctx, etherscanCanonicalTokenContract, chainID, address)
+	var i EtherscanCanonicalTokenContractRow
+	err := row.Scan(
+		&i.Address,
+		&i.CodeHash,
+		&i.Standard,
+		&i.Confidence,
+		&i.Name,
+		&i.Symbol,
+		&i.Decimals,
+		&i.TotalSupply,
+		&i.MetadataState,
+		&i.TokenObservedBlockNumber,
+		&i.ObservedBlockHash,
+	)
+	return i, err
 }
 
-const EtherscanCanonicalTransactionBlock = `-- name: EtherscanCanonicalTransactionBlock :many
+const etherscanCanonicalTransactionBlock = `-- name: EtherscanCanonicalTransactionBlock :one
 SELECT inclusion.block_number::text
 FROM transaction_inclusions AS inclusion
 JOIN canonical_blocks AS canonical
@@ -375,27 +297,14 @@ WHERE inclusion.chain_id = $1::numeric
 LIMIT 1
 `
 
-func (q *Queries) EtherscanCanonicalTransactionBlock(ctx context.Context, column1 pgtype.Numeric, txHash []byte) ([]string, error) {
-	rows, err := q.db.Query(ctx, EtherscanCanonicalTransactionBlock, column1, txHash)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []string{}
-	for rows.Next() {
-		var inclusion_block_number string
-		if err := rows.Scan(&inclusion_block_number); err != nil {
-			return nil, err
-		}
-		items = append(items, inclusion_block_number)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EtherscanCanonicalTransactionBlock(ctx context.Context, chainID pgtype.Numeric, txHash []byte) (string, error) {
+	row := q.db.QueryRow(ctx, etherscanCanonicalTransactionBlock, chainID, txHash)
+	var inclusion_block_number string
+	err := row.Scan(&inclusion_block_number)
+	return inclusion_block_number, err
 }
 
-const EtherscanContractCreation = `-- name: EtherscanContractCreation :many
+const etherscanContractCreation = `-- name: EtherscanContractCreation :one
 WITH candidates AS (
     SELECT 'top_level'::text AS source_kind,
            receipt.raw AS receipt_raw, inclusion.raw AS transaction_raw,
@@ -478,41 +387,28 @@ type EtherscanContractCreationRow struct {
 	TraceInput      []byte  `db:"trace_input" json:"trace_input"`
 }
 
-func (q *Queries) EtherscanContractCreation(ctx context.Context, column1 pgtype.Numeric, encode []byte) ([]EtherscanContractCreationRow, error) {
-	rows, err := q.db.Query(ctx, EtherscanContractCreation, column1, encode)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EtherscanContractCreationRow{}
-	for rows.Next() {
-		var i EtherscanContractCreationRow
-		if err := rows.Scan(
-			&i.SourceKind,
-			&i.ReceiptRaw,
-			&i.TransactionRaw,
-			&i.TransactionHash,
-			&i.BlockHash,
-			&i.BlockNumber,
-			&i.Timestamp,
-			&i.TxIndex,
-			&i.TracePath,
-			&i.TraceDepth,
-			&i.CallType,
-			&i.FactoryAddress,
-			&i.TraceInput,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EtherscanContractCreation(ctx context.Context, chainID pgtype.Numeric, encode []byte) (EtherscanContractCreationRow, error) {
+	row := q.db.QueryRow(ctx, etherscanContractCreation, chainID, encode)
+	var i EtherscanContractCreationRow
+	err := row.Scan(
+		&i.SourceKind,
+		&i.ReceiptRaw,
+		&i.TransactionRaw,
+		&i.TransactionHash,
+		&i.BlockHash,
+		&i.BlockNumber,
+		&i.Timestamp,
+		&i.TxIndex,
+		&i.TracePath,
+		&i.TraceDepth,
+		&i.CallType,
+		&i.FactoryAddress,
+		&i.TraceInput,
+	)
+	return i, err
 }
 
-const EtherscanProxyVerificationTarget = `-- name: EtherscanProxyVerificationTarget :many
+const etherscanProxyVerificationTarget = `-- name: EtherscanProxyVerificationTarget :one
 WITH canonical_tip AS (
     SELECT number, block_hash
     FROM canonical_blocks
@@ -1061,19 +957,28 @@ WITH canonical_tip AS (
     ORDER BY binding.created_at DESC, binding.verification_job_id DESC
     LIMIT 1
 )
-SELECT current_proxy.proxy_code_hash, current_proxy.block_hash,
-       current_proxy.context_number::text, current_proxy.context_hash,
-       current_proxy.proxy_kind, current_proxy.proxy_pattern,
-       current_proxy.standard_version, current_proxy.implementation_address,
-       current_proxy.implementation_code_hash, current_proxy.admin_address,
-       current_proxy.admin_code_hash, current_proxy.beacon_address,
-       current_proxy.beacon_code_hash, current_proxy.management_kind,
-       current_proxy.management_address, current_proxy.management_code_hash,
-       current_proxy.observation_generation_id,
-       current_proxy.artifact_resolution_id,
-       current_proxy.beacon_generation_id,
-       current_proxy.uups_generation_id,
-       current_proxy.proxy_pattern = 'clone' OR (
+SELECT
+current_proxy.proxy_code_hash,
+current_proxy.block_hash,
+current_proxy.context_number::text,
+current_proxy.context_hash,
+(current_proxy.proxy_kind)::text AS proxy_kind,
+(current_proxy.proxy_pattern)::text AS proxy_pattern,
+COALESCE((current_proxy.standard_version),'')::text AS standard_version,
+(current_proxy.implementation_address)::bytea AS implementation_address,
+(current_proxy.implementation_code_hash)::bytea AS implementation_code_hash,
+current_proxy.admin_address,
+current_proxy.admin_code_hash,
+current_proxy.beacon_address,
+current_proxy.beacon_code_hash,
+current_proxy.management_kind,
+current_proxy.management_address::bytea AS management_address,
+current_proxy.management_code_hash::bytea AS management_code_hash,
+current_proxy.observation_generation_id,
+COALESCE((current_proxy.artifact_resolution_id),0)::bigint AS artifact_resolution_id,
+current_proxy.beacon_generation_id,
+current_proxy.uups_generation_id,
+(current_proxy.proxy_pattern = 'clone' OR (
            EXISTS (
                SELECT 1
                FROM expected_identity AS identity
@@ -1118,8 +1023,8 @@ SELECT current_proxy.proxy_code_hash, current_proxy.block_hash,
                  AND (verified.valid_to_block IS NULL
                       OR verified.valid_to_block >= current_proxy.context_number)
            )
-       ),
-       EXISTS (
+       ))::boolean AS proxy_verified,
+(EXISTS (
            SELECT 1
            FROM expected_identity AS identity
            JOIN verified_contracts AS verified
@@ -1158,8 +1063,8 @@ SELECT current_proxy.proxy_code_hash, current_proxy.block_hash,
                  AND (verified.valid_to_block IS NULL
                       OR verified.valid_to_block >= current_proxy.context_number)
            )
-       ),
-       current_proxy.management_kind = 'none' OR EXISTS (
+       ))::boolean AS implementation_verified,
+(current_proxy.management_kind = 'none' OR EXISTS (
            SELECT 1
            FROM verified_contract_proxy_artifacts AS artifact
            JOIN verified_contracts AS verified
@@ -1184,8 +1089,11 @@ SELECT current_proxy.proxy_code_hash, current_proxy.block_hash,
              AND artifact.valid_from_block <= current_proxy.context_number
              AND (verified.valid_to_block IS NULL
                   OR verified.valid_to_block >= current_proxy.context_number)
-       ),
-       (SELECT binding.verification_job_id::text FROM reusable_binding AS binding)
+       ))::boolean AS management_verified,
+COALESCE(((SELECT binding.verification_job_id::text FROM reusable_binding AS binding)),'')::text AS binding_job_id,
+(current_proxy.standard_version IS NOT NULL)::boolean AS standard_version_present,
+(current_proxy.artifact_resolution_id IS NOT NULL)::boolean AS artifact_resolution_present,
+((SELECT binding.verification_job_id::text FROM reusable_binding AS binding) IS NOT NULL)::boolean AS binding_job_present
 FROM current_proxy
 WHERE proxy_interaction_coverage_contains(
           $1::numeric,
@@ -1202,78 +1110,71 @@ WHERE proxy_interaction_coverage_contains(
 `
 
 type EtherscanProxyVerificationTargetRow struct {
-	ProxyCodeHash             []byte      `db:"proxy_code_hash" json:"proxy_code_hash"`
-	BlockHash                 []byte      `db:"block_hash" json:"block_hash"`
-	CurrentProxyContextNumber string      `db:"current_proxy_context_number" json:"current_proxy_context_number"`
-	ContextHash               []byte      `db:"context_hash" json:"context_hash"`
-	ProxyKind                 interface{} `db:"proxy_kind" json:"proxy_kind"`
-	ProxyPattern              interface{} `db:"proxy_pattern" json:"proxy_pattern"`
-	StandardVersion           interface{} `db:"standard_version" json:"standard_version"`
-	ImplementationAddress     interface{} `db:"implementation_address" json:"implementation_address"`
-	ImplementationCodeHash    interface{} `db:"implementation_code_hash" json:"implementation_code_hash"`
-	AdminAddress              []byte      `db:"admin_address" json:"admin_address"`
-	AdminCodeHash             []byte      `db:"admin_code_hash" json:"admin_code_hash"`
-	BeaconAddress             []byte      `db:"beacon_address" json:"beacon_address"`
-	BeaconCodeHash            []byte      `db:"beacon_code_hash" json:"beacon_code_hash"`
-	ManagementKind            string      `db:"management_kind" json:"management_kind"`
-	ManagementAddress         interface{} `db:"management_address" json:"management_address"`
-	ManagementCodeHash        interface{} `db:"management_code_hash" json:"management_code_hash"`
-	ObservationGenerationID   int64       `db:"observation_generation_id" json:"observation_generation_id"`
-	ArtifactResolutionID      int64       `db:"artifact_resolution_id" json:"artifact_resolution_id"`
-	BeaconGenerationID        *int64      `db:"beacon_generation_id" json:"beacon_generation_id"`
-	UupsGenerationID          *int64      `db:"uups_generation_id" json:"uups_generation_id"`
-	Column21                  *bool       `db:"column_21" json:"column_21"`
-	Column22                  *bool       `db:"column_22" json:"column_22"`
-	Column23                  *bool       `db:"column_23" json:"column_23"`
-	BindingVerificationJobID  string      `db:"binding_verification_job_id" json:"binding_verification_job_id"`
+	ProxyCodeHash             []byte `db:"proxy_code_hash" json:"proxy_code_hash"`
+	BlockHash                 []byte `db:"block_hash" json:"block_hash"`
+	CurrentProxyContextNumber string `db:"current_proxy_context_number" json:"current_proxy_context_number"`
+	ContextHash               []byte `db:"context_hash" json:"context_hash"`
+	ProxyKind                 string `db:"proxy_kind" json:"proxy_kind"`
+	ProxyPattern              string `db:"proxy_pattern" json:"proxy_pattern"`
+	StandardVersion           string `db:"standard_version" json:"standard_version"`
+	ImplementationAddress     []byte `db:"implementation_address" json:"implementation_address"`
+	ImplementationCodeHash    []byte `db:"implementation_code_hash" json:"implementation_code_hash"`
+	AdminAddress              []byte `db:"admin_address" json:"admin_address"`
+	AdminCodeHash             []byte `db:"admin_code_hash" json:"admin_code_hash"`
+	BeaconAddress             []byte `db:"beacon_address" json:"beacon_address"`
+	BeaconCodeHash            []byte `db:"beacon_code_hash" json:"beacon_code_hash"`
+	ManagementKind            string `db:"management_kind" json:"management_kind"`
+	ManagementAddress         []byte `db:"management_address" json:"management_address"`
+	ManagementCodeHash        []byte `db:"management_code_hash" json:"management_code_hash"`
+	ObservationGenerationID   int64  `db:"observation_generation_id" json:"observation_generation_id"`
+	ArtifactResolutionID      int64  `db:"artifact_resolution_id" json:"artifact_resolution_id"`
+	BeaconGenerationID        *int64 `db:"beacon_generation_id" json:"beacon_generation_id"`
+	UupsGenerationID          *int64 `db:"uups_generation_id" json:"uups_generation_id"`
+	ProxyVerified             bool   `db:"proxy_verified" json:"proxy_verified"`
+	ImplementationVerified    bool   `db:"implementation_verified" json:"implementation_verified"`
+	ManagementVerified        bool   `db:"management_verified" json:"management_verified"`
+	BindingJobID              string `db:"binding_job_id" json:"binding_job_id"`
+	StandardVersionPresent    bool   `db:"standard_version_present" json:"standard_version_present"`
+	ArtifactResolutionPresent bool   `db:"artifact_resolution_present" json:"artifact_resolution_present"`
+	BindingJobPresent         bool   `db:"binding_job_present" json:"binding_job_present"`
 }
 
-func (q *Queries) EtherscanProxyVerificationTarget(ctx context.Context, column1 pgtype.Numeric, column2 []byte) ([]EtherscanProxyVerificationTargetRow, error) {
-	rows, err := q.db.Query(ctx, EtherscanProxyVerificationTarget, column1, column2)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EtherscanProxyVerificationTargetRow{}
-	for rows.Next() {
-		var i EtherscanProxyVerificationTargetRow
-		if err := rows.Scan(
-			&i.ProxyCodeHash,
-			&i.BlockHash,
-			&i.CurrentProxyContextNumber,
-			&i.ContextHash,
-			&i.ProxyKind,
-			&i.ProxyPattern,
-			&i.StandardVersion,
-			&i.ImplementationAddress,
-			&i.ImplementationCodeHash,
-			&i.AdminAddress,
-			&i.AdminCodeHash,
-			&i.BeaconAddress,
-			&i.BeaconCodeHash,
-			&i.ManagementKind,
-			&i.ManagementAddress,
-			&i.ManagementCodeHash,
-			&i.ObservationGenerationID,
-			&i.ArtifactResolutionID,
-			&i.BeaconGenerationID,
-			&i.UupsGenerationID,
-			&i.Column21,
-			&i.Column22,
-			&i.Column23,
-			&i.BindingVerificationJobID,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EtherscanProxyVerificationTarget(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte) (EtherscanProxyVerificationTargetRow, error) {
+	row := q.db.QueryRow(ctx, etherscanProxyVerificationTarget, chainID, proxyAddress)
+	var i EtherscanProxyVerificationTargetRow
+	err := row.Scan(
+		&i.ProxyCodeHash,
+		&i.BlockHash,
+		&i.CurrentProxyContextNumber,
+		&i.ContextHash,
+		&i.ProxyKind,
+		&i.ProxyPattern,
+		&i.StandardVersion,
+		&i.ImplementationAddress,
+		&i.ImplementationCodeHash,
+		&i.AdminAddress,
+		&i.AdminCodeHash,
+		&i.BeaconAddress,
+		&i.BeaconCodeHash,
+		&i.ManagementKind,
+		&i.ManagementAddress,
+		&i.ManagementCodeHash,
+		&i.ObservationGenerationID,
+		&i.ArtifactResolutionID,
+		&i.BeaconGenerationID,
+		&i.UupsGenerationID,
+		&i.ProxyVerified,
+		&i.ImplementationVerified,
+		&i.ManagementVerified,
+		&i.BindingJobID,
+		&i.StandardVersionPresent,
+		&i.ArtifactResolutionPresent,
+		&i.BindingJobPresent,
+	)
+	return i, err
 }
 
-const EtherscanTransactionStatus = `-- name: EtherscanTransactionStatus :many
+const etherscanTransactionStatus = `-- name: EtherscanTransactionStatus :one
 SELECT receipt.raw, receipt.tx_hash, receipt.block_hash,
        receipt.block_number::text, receipt.tx_index
 FROM receipts AS receipt
@@ -1294,33 +1195,20 @@ type EtherscanTransactionStatusRow struct {
 	TxIndex            int64  `db:"tx_index" json:"tx_index"`
 }
 
-func (q *Queries) EtherscanTransactionStatus(ctx context.Context, column1 pgtype.Numeric, txHash []byte) ([]EtherscanTransactionStatusRow, error) {
-	rows, err := q.db.Query(ctx, EtherscanTransactionStatus, column1, txHash)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EtherscanTransactionStatusRow{}
-	for rows.Next() {
-		var i EtherscanTransactionStatusRow
-		if err := rows.Scan(
-			&i.Raw,
-			&i.TxHash,
-			&i.BlockHash,
-			&i.ReceiptBlockNumber,
-			&i.TxIndex,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EtherscanTransactionStatus(ctx context.Context, chainID pgtype.Numeric, txHash []byte) (EtherscanTransactionStatusRow, error) {
+	row := q.db.QueryRow(ctx, etherscanTransactionStatus, chainID, txHash)
+	var i EtherscanTransactionStatusRow
+	err := row.Scan(
+		&i.Raw,
+		&i.TxHash,
+		&i.BlockHash,
+		&i.ReceiptBlockNumber,
+		&i.TxIndex,
+	)
+	return i, err
 }
 
-const EtherscanVerificationTarget = `-- name: EtherscanVerificationTarget :many
+const etherscanVerificationTarget = `-- name: EtherscanVerificationTarget :one
 WITH current_code AS (
     SELECT observation.code_hash, observation.block_hash,
            observation.block_number, observation.code
@@ -1329,17 +1217,20 @@ WITH current_code AS (
       ON canonical.chain_id = observation.chain_id
      AND canonical.number = observation.block_number
      AND canonical.block_hash = observation.block_hash
-    WHERE observation.chain_id = $1::numeric
-      AND observation.address = $2
+    WHERE observation.chain_id = $2::numeric
+      AND observation.address = $1
       AND observation.canonical = TRUE
     ORDER BY observation.block_number DESC,
              observation.observed_at DESC,
              observation.code_hash DESC
     LIMIT 1
 )
-SELECT current_code.code_hash, current_code.block_hash, current_code.code,
-       creation.creation_bytecode,
-       EXISTS (
+SELECT
+current_code.code_hash,
+current_code.block_hash,
+current_code.code,
+COALESCE((creation.creation_bytecode),'')::text AS creation_bytecode,
+EXISTS (
            SELECT 1
            FROM genesis_state_imports AS imported
            JOIN canonical_blocks AS genesis_canonical
@@ -1349,13 +1240,14 @@ SELECT current_code.code_hash, current_code.block_hash, current_code.code,
            JOIN genesis_account_observations AS account
              ON account.chain_id = imported.chain_id
             AND account.block_hash = imported.block_hash
-            AND account.address = $2
-           WHERE imported.chain_id = $1::numeric
+            AND account.address = $1
+           WHERE imported.chain_id = $2::numeric
              AND imported.state = 'complete'
              AND octet_length(account.code) > 0
              AND account.code_hash = current_code.code_hash
              AND account.code = current_code.code
-       ) AS genesis_predeploy
+       ) AS genesis_predeploy,
+(creation.creation_bytecode IS NOT NULL)::boolean AS creation_bytecode_present
 FROM current_code
 LEFT JOIN LATERAL (
     SELECT candidate.creation_bytecode
@@ -1373,8 +1265,8 @@ LEFT JOIN LATERAL (
          AND inclusion.block_number = receipt.block_number
          AND inclusion.block_hash = receipt.block_hash
          AND inclusion.tx_index = receipt.tx_index
-        WHERE receipt.chain_id = $1::numeric
-          AND lower(receipt.raw->>'contractAddress') = $3
+        WHERE receipt.chain_id = $2::numeric
+          AND lower(receipt.raw->>'contractAddress') = $3::text
           AND receipt.block_number <= current_code.block_number
           AND inclusion.raw->>'input' IS NOT NULL
 
@@ -1388,8 +1280,8 @@ LEFT JOIN LATERAL (
           ON canonical.chain_id = trace.chain_id
          AND canonical.number = trace.block_number
          AND canonical.block_hash = trace.block_hash
-        WHERE trace.chain_id = $1::numeric
-          AND trace.created_address = $2
+        WHERE trace.chain_id = $2::numeric
+          AND trace.created_address = $1
           AND trace.canonical = TRUE
           AND trace.reverted = FALSE
           AND trace.input IS NOT NULL
@@ -1402,40 +1294,29 @@ LEFT JOIN LATERAL (
 `
 
 type EtherscanVerificationTargetRow struct {
-	CodeHash         []byte      `db:"code_hash" json:"code_hash"`
-	BlockHash        []byte      `db:"block_hash" json:"block_hash"`
-	Code             []byte      `db:"code" json:"code"`
-	CreationBytecode interface{} `db:"creation_bytecode" json:"creation_bytecode"`
-	GenesisPredeploy bool        `db:"genesis_predeploy" json:"genesis_predeploy"`
+	CodeHash                []byte `db:"code_hash" json:"code_hash"`
+	BlockHash               []byte `db:"block_hash" json:"block_hash"`
+	Code                    []byte `db:"code" json:"code"`
+	CreationBytecode        string `db:"creation_bytecode" json:"creation_bytecode"`
+	GenesisPredeploy        bool   `db:"genesis_predeploy" json:"genesis_predeploy"`
+	CreationBytecodePresent bool   `db:"creation_bytecode_present" json:"creation_bytecode_present"`
 }
 
-func (q *Queries) EtherscanVerificationTarget(ctx context.Context, column1 pgtype.Numeric, address []byte, raw []byte) ([]EtherscanVerificationTargetRow, error) {
-	rows, err := q.db.Query(ctx, EtherscanVerificationTarget, column1, address, raw)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EtherscanVerificationTargetRow{}
-	for rows.Next() {
-		var i EtherscanVerificationTargetRow
-		if err := rows.Scan(
-			&i.CodeHash,
-			&i.BlockHash,
-			&i.Code,
-			&i.CreationBytecode,
-			&i.GenesisPredeploy,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EtherscanVerificationTarget(ctx context.Context, address []byte, chainID pgtype.Numeric, contractAddressHex string) (EtherscanVerificationTargetRow, error) {
+	row := q.db.QueryRow(ctx, etherscanVerificationTarget, address, chainID, contractAddressHex)
+	var i EtherscanVerificationTargetRow
+	err := row.Scan(
+		&i.CodeHash,
+		&i.BlockHash,
+		&i.Code,
+		&i.CreationBytecode,
+		&i.GenesisPredeploy,
+		&i.CreationBytecodePresent,
+	)
+	return i, err
 }
 
-const EtherscanVerifiedProxy = `-- name: EtherscanVerifiedProxy :many
+const etherscanVerifiedProxy = `-- name: EtherscanVerifiedProxy :one
 WITH canonical_tip AS (
     SELECT number, block_hash
     FROM canonical_blocks
@@ -2129,22 +2010,9 @@ WHERE NOT EXISTS (
   )
 `
 
-func (q *Queries) EtherscanVerifiedProxy(ctx context.Context, column1 pgtype.Numeric, column2 []byte, column3 []byte) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, EtherscanVerifiedProxy, column1, column2, column3)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := [][]byte{}
-	for rows.Next() {
-		var implementation_address []byte
-		if err := rows.Scan(&implementation_address); err != nil {
-			return nil, err
-		}
-		items = append(items, implementation_address)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EtherscanVerifiedProxy(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte, proxyCodeHash []byte) ([]byte, error) {
+	row := q.db.QueryRow(ctx, etherscanVerifiedProxy, chainID, proxyAddress, proxyCodeHash)
+	var implementation_address []byte
+	err := row.Scan(&implementation_address)
+	return implementation_address, err
 }

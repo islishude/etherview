@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const ListRepairRequests = `-- name: ListRepairRequests :many
+const listRepairRequests = `-- name: ListRepairRequests :many
 SELECT id, operation, stage,
        from_block::text AS from_block,
        to_block::text AS to_block,
@@ -40,7 +40,7 @@ type ListRepairRequestsRow struct {
 }
 
 func (q *Queries) ListRepairRequests(ctx context.Context, chainID pgtype.Numeric, rowLimit int32) ([]ListRepairRequestsRow, error) {
-	rows, err := q.db.Query(ctx, ListRepairRequests, chainID, rowLimit)
+	rows, err := q.db.Query(ctx, listRepairRequests, chainID, rowLimit)
 	if err != nil {
 		return nil, err
 	}

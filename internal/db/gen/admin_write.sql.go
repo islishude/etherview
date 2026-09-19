@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const AdminWriteEnqueueRepairStatement1 = `-- name: AdminWriteEnqueueRepairStatement1 :many
+const adminWriteEnqueueRepairStatement1 = `-- name: AdminWriteEnqueueRepairStatement1 :one
 INSERT INTO repair_requests (
 			chain_id, operation, stage, from_block, to_block, allow_finalized, reason
 		) VALUES ($1::numeric, $2, $3, $4::numeric, $5::numeric, $6, $7)
@@ -19,11 +19,11 @@ INSERT INTO repair_requests (
 `
 
 type AdminWriteEnqueueRepairStatement1Params struct {
-	Column1        pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID        pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	Operation      string         `db:"operation" json:"operation"`
 	Stage          string         `db:"stage" json:"stage"`
-	Column4        pgtype.Numeric `db:"column_4" json:"column_4"`
-	Column5        pgtype.Numeric `db:"column_5" json:"column_5"`
+	FromBlock      pgtype.Numeric `db:"from_block" json:"from_block"`
+	ToBlock        pgtype.Numeric `db:"to_block" json:"to_block"`
 	AllowFinalized bool           `db:"allow_finalized" json:"allow_finalized"`
 	Reason         string         `db:"reason" json:"reason"`
 }
@@ -34,30 +34,17 @@ type AdminWriteEnqueueRepairStatement1Row struct {
 	RequestedAt pgtype.Timestamptz `db:"requested_at" json:"requested_at"`
 }
 
-func (q *Queries) AdminWriteEnqueueRepairStatement1(ctx context.Context, arg AdminWriteEnqueueRepairStatement1Params) ([]AdminWriteEnqueueRepairStatement1Row, error) {
-	rows, err := q.db.Query(ctx, AdminWriteEnqueueRepairStatement1,
-		arg.Column1,
+func (q *Queries) AdminWriteEnqueueRepairStatement1(ctx context.Context, arg AdminWriteEnqueueRepairStatement1Params) (AdminWriteEnqueueRepairStatement1Row, error) {
+	row := q.db.QueryRow(ctx, adminWriteEnqueueRepairStatement1,
+		arg.ChainID,
 		arg.Operation,
 		arg.Stage,
-		arg.Column4,
-		arg.Column5,
+		arg.FromBlock,
+		arg.ToBlock,
 		arg.AllowFinalized,
 		arg.Reason,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []AdminWriteEnqueueRepairStatement1Row{}
-	for rows.Next() {
-		var i AdminWriteEnqueueRepairStatement1Row
-		if err := rows.Scan(&i.ID, &i.Status, &i.RequestedAt); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i AdminWriteEnqueueRepairStatement1Row
+	err := row.Scan(&i.ID, &i.Status, &i.RequestedAt)
+	return i, err
 }

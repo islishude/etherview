@@ -2,7 +2,6 @@ package query
 
 import (
 	"context"
-	"database/sql/driver"
 	"errors"
 	"strings"
 	"testing"
@@ -17,17 +16,17 @@ func TestAddressTransactionsUseSnapshotCursorAndIndexedCandidateBranches(t *test
 		queryExpectation{
 			contains: "ORDER BY canonical.number DESC",
 			columns:  columns(2),
-			rows:     [][]driver.Value{{"2", testHashBytes(3)}},
+			rows:     [][]any{{"2", testHashBytes(3)}},
 		},
 		queryExpectation{
-			contains: "lower(raw->>'contractAddress') = $3",
+			contains: "lower(raw->>'contractAddress') = $4",
 			columns:  columns(18),
-			rows: [][]driver.Value{
+			rows: [][]any{
 				{testTransactionRawAt(2, 3, 102, 1), testReceiptRawAt(2, 3, 102, 1, "0x1"), "2", testHashBytes(3), int64(1), testTransactionHashBytes(102), true, "1", "0", "100", "0x3b9aca00", false, nil, nil, nil, nil, nil, nil},
 				{testTransactionRawAt(2, 3, 101, 0), testReceiptRawAt(2, 3, 101, 0, "0x1"), "2", testHashBytes(3), int64(0), testTransactionHashBytes(101), true, "1", "0", "100", "0x3b9aca00", false, nil, nil, nil, nil, nil, nil},
 			},
-			check: func(arguments []driver.NamedValue) error {
-				if arguments[2].Value != address {
+			check: func(arguments []any) error {
+				if arguments[3] != address {
 					return errors.New("address candidate query did not normalize the address")
 				}
 				return nil

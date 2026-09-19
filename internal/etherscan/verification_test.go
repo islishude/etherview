@@ -3,8 +3,6 @@ package etherscan
 import (
 	"bytes"
 	"context"
-	"database/sql"
-	"database/sql/driver"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -12,8 +10,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/islishude/etherview/internal/testpgx"
+
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/verify"
 )
 
@@ -48,8 +49,8 @@ func TestSourceVerificationBuildsCanonicalDurableRequest(t *testing.T) {
 	runtimeBytecode := []byte{0x60, 0x02}
 	codeHash := testRuntimeCodeHash(runtimeBytecode)
 	db := fakeDatabase(t, sqlExpectation{
-		contains: "FROM normalized_traces AS trace", columns: fakeColumns(5),
-		rows: [][]driver.Value{{codeHash, testHashBytes(32), runtimeBytecode, "0x6001aabb", false}},
+		contains: "FROM normalized_traces AS trace", columns: fakeColumns(6),
+		rows: [][]any{{codeHash, testHashBytes(32), runtimeBytecode, "0x6001aabb", false, true}},
 	})
 	backend := testPostgresBackend(t, db, PostgresOptions{
 		ChainID: 1, Verification: service, VerificationMaxInputBytes: 1 << 20,
@@ -127,8 +128,8 @@ func TestSourceVerificationBuildsAuthenticatedGenesisRuntimeOnlyRequest(t *testi
 	runtimeBytecode := []byte{0x60, 0x02}
 	codeHash := testRuntimeCodeHash(runtimeBytecode)
 	backend := testPostgresBackend(t, fakeDatabase(t, sqlExpectation{
-		contains: "FROM genesis_state_imports AS imported", columns: fakeColumns(5),
-		rows: [][]driver.Value{{codeHash, testHashBytes(32), runtimeBytecode, nil, true}},
+		contains: "FROM genesis_state_imports AS imported", columns: fakeColumns(6),
+		rows: [][]any{{codeHash, testHashBytes(32), runtimeBytecode, "", true, false}},
 	}), PostgresOptions{ChainID: 1, Verification: service, VerificationMaxInputBytes: 1 << 20})
 	values := url.Values{
 		"contractaddress": {testContract}, "sourceCode": {"contract A {}"},
@@ -160,7 +161,7 @@ func TestSourceVerificationRejectsMissingProofAndIgnoresConstructorHint(t *testi
 	service := &fakeVerificationService{submitJob: verify.VerificationJob{ID: "123e4567-e89b-42d3-a456-426614174000"}}
 
 	missing := testPostgresBackend(t, fakeDatabase(t, sqlExpectation{
-		contains: "FROM contract_code_observations AS observation", columns: fakeColumns(5),
+		contains: "FROM contract_code_observations AS observation", columns: fakeColumns(6),
 	}), PostgresOptions{ChainID: 1, Verification: service})
 	_, err := missing.Execute(context.Background(), Request{Module: "contract", Action: "verifysourcecode", Values: base})
 	if !errors.Is(err, ErrVerificationTargetUnavailable) || !errors.Is(err, ErrVerificationUnavailable) {
@@ -171,8 +172,8 @@ func TestSourceVerificationRejectsMissingProofAndIgnoresConstructorHint(t *testi
 	mismatchValues.Set("constructorArguments", "ccdd")
 	runtimeBytecode := []byte{0x60, 0x02}
 	mismatch := testPostgresBackend(t, fakeDatabase(t, sqlExpectation{
-		contains: "FROM normalized_traces AS trace", columns: fakeColumns(5),
-		rows: [][]driver.Value{{testRuntimeCodeHash(runtimeBytecode), testHashBytes(32), runtimeBytecode, "0x6001aabb", false}},
+		contains: "FROM normalized_traces AS trace", columns: fakeColumns(6),
+		rows: [][]any{{testRuntimeCodeHash(runtimeBytecode), testHashBytes(32), runtimeBytecode, "0x6001aabb", false, true}},
 	}), PostgresOptions{ChainID: 1, Verification: service})
 	_, err = mismatch.Execute(context.Background(), Request{Module: "contract", Action: "verifysourcecode", Values: mismatchValues})
 	if err != nil || service.submitCalls != 1 || service.submitted.Bytecodes[0].Creation != "0x6001aabb" {
@@ -180,8 +181,8 @@ func TestSourceVerificationRejectsMissingProofAndIgnoresConstructorHint(t *testi
 	}
 
 	corrupt := testPostgresBackend(t, fakeDatabase(t, sqlExpectation{
-		contains: "FROM normalized_traces AS trace", columns: fakeColumns(5),
-		rows: [][]driver.Value{{testHashBytes(31), testHashBytes(32), runtimeBytecode, "0x6001", false}},
+		contains: "FROM normalized_traces AS trace", columns: fakeColumns(6),
+		rows: [][]any{{testHashBytes(31), testHashBytes(32), runtimeBytecode, "0x6001", false, true}},
 	}), PostgresOptions{ChainID: 1, Verification: service})
 	_, err = corrupt.Execute(context.Background(), Request{Module: "contract", Action: "verifysourcecode", Values: base})
 	if !errors.Is(err, ErrVerificationTargetUnavailable) || service.submitCalls != 1 {
@@ -189,8 +190,8 @@ func TestSourceVerificationRejectsMissingProofAndIgnoresConstructorHint(t *testi
 	}
 
 	malformedCreation := testPostgresBackend(t, fakeDatabase(t, sqlExpectation{
-		contains: "FROM normalized_traces AS trace", columns: fakeColumns(5),
-		rows: [][]driver.Value{{testRuntimeCodeHash(runtimeBytecode), testHashBytes(32), runtimeBytecode, "", true}},
+		contains: "FROM normalized_traces AS trace", columns: fakeColumns(6),
+		rows: [][]any{{testRuntimeCodeHash(runtimeBytecode), testHashBytes(32), runtimeBytecode, "", true, true}},
 	}), PostgresOptions{ChainID: 1, Verification: service})
 	_, err = malformedCreation.Execute(context.Background(), Request{
 		Module: "contract", Action: "verifysourcecode", Values: base,
@@ -205,8 +206,8 @@ func TestResolveVerificationTargetReturnsCanonicalServerFacts(t *testing.T) {
 	runtimeBytecode := []byte{0x60, 0x02}
 	codeHash := testRuntimeCodeHash(runtimeBytecode)
 	backend := testPostgresBackend(t, fakeDatabase(t, sqlExpectation{
-		contains: "FROM normalized_traces AS trace", columns: fakeColumns(5),
-		rows: [][]driver.Value{{codeHash, testHashBytes(32), runtimeBytecode, "0x6001AABB", false}},
+		contains: "FROM normalized_traces AS trace", columns: fakeColumns(6),
+		rows: [][]any{{codeHash, testHashBytes(32), runtimeBytecode, "0x6001AABB", false, true}},
 	}), PostgresOptions{ChainID: 1, VerificationMaxInputBytes: 1 << 20})
 	target, err := backend.ResolveVerificationTarget(context.Background(), testContract)
 	if err != nil {
@@ -229,8 +230,8 @@ func TestResolveVerificationTargetReturnsAuthenticatedGenesisFacts(t *testing.T)
 	runtimeBytecode := []byte{0x60, 0x02}
 	codeHash := testRuntimeCodeHash(runtimeBytecode)
 	backend := testPostgresBackend(t, fakeDatabase(t, sqlExpectation{
-		contains: "genesis_canonical.number = 0", columns: fakeColumns(5),
-		rows: [][]driver.Value{{codeHash, testHashBytes(32), runtimeBytecode, nil, true}},
+		contains: "genesis_canonical.number = 0", columns: fakeColumns(6),
+		rows: [][]any{{codeHash, testHashBytes(32), runtimeBytecode, "", true, false}},
 	}), PostgresOptions{ChainID: 1, VerificationMaxInputBytes: 1 << 20})
 	target, err := backend.ResolveVerificationTarget(context.Background(), testContract)
 	if err != nil {
@@ -267,9 +268,9 @@ func TestResolveVerificationTargetRejectsUnprovenGenesisShapes(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			backend := testPostgresBackend(t, fakeDatabase(t, sqlExpectation{
-				contains: "FROM genesis_state_imports AS imported", columns: fakeColumns(5),
-				rows: [][]driver.Value{{
-					test.codeHash, testHashBytes(32), test.runtime, nil, test.proven,
+				contains: "FROM genesis_state_imports AS imported", columns: fakeColumns(6),
+				rows: [][]any{{
+					test.codeHash, testHashBytes(32), test.runtime, "", test.proven, false,
 				}},
 			}), PostgresOptions{ChainID: 1, VerificationMaxInputBytes: 1 << 20})
 			if _, err := backend.ResolveVerificationTarget(
@@ -283,12 +284,12 @@ func TestResolveVerificationTargetRejectsUnprovenGenesisShapes(t *testing.T) {
 
 func TestVerificationTargetQueryAuthenticatesExactGenesisRuntime(t *testing.T) {
 	t.Parallel()
-	query := compactSQL(dbgen.EtherscanVerificationTarget)
+	query := compactSQL(testpgx.Statement("EtherscanVerificationTarget"))
 	for _, required := range []string{
 		"imported.state = 'complete'",
 		"genesis_canonical.number = 0",
 		"genesis_canonical.block_hash = imported.block_hash",
-		"account.address = $2",
+		"account.address = $1",
 		"octet_length(account.code) > 0",
 		"account.code_hash = current_code.code_hash",
 		"account.code = current_code.code",
@@ -429,13 +430,13 @@ func TestProxyVerificationBuildsCanonicalDurableRequest(t *testing.T) {
 		submitJob: verify.VerificationJob{ID: jobID, Kind: verify.JobProxy, Status: verify.JobQueued},
 	}
 	backend := testPostgresBackend(t, fakeDatabase(t, sqlExpectation{
-		contains: "FROM current_proxy", columns: fakeColumns(24),
-		rows: [][]driver.Value{{
+		contains: "FROM current_proxy", columns: fakeColumns(27),
+		rows: [][]any{{
 			proxyCodeHash, blockHash, "123", testHashBytes(83),
 			"eip1967", "transparent", "5.6.1",
 			implementation, implementationCodeHash, admin, adminCodeHash, nil, nil,
 			"proxy_admin", admin, adminCodeHash, int64(101), int64(102), nil, nil,
-			true, true, true, nil,
+			true, true, true, "", true, true, false,
 		}},
 	}), PostgresOptions{ChainID: 1, Verification: service})
 	result, err := backend.Execute(context.Background(), Request{
@@ -482,13 +483,13 @@ func TestProxyVerificationReusesStillCurrentBinding(t *testing.T) {
 	implementationCodeHash := testHashBytes(88)
 	service := &fakeVerificationService{}
 	backend := testPostgresBackend(t, fakeDatabase(t, sqlExpectation{
-		contains: "FROM current_proxy", columns: fakeColumns(24),
-		rows: [][]driver.Value{{
+		contains: "FROM current_proxy", columns: fakeColumns(27),
+		rows: [][]any{{
 			proxyCodeHash, blockHash, "124", testHashBytes(89),
 			"eip1967", "erc1967", "5.6.1",
 			implementation, implementationCodeHash, nil, nil, nil, nil,
 			"none", nil, nil, int64(201), int64(202), nil, nil,
-			true, true, true, bindingID,
+			true, true, true, bindingID, true, true, true,
 		}},
 	}), PostgresOptions{ChainID: 1, Verification: service})
 	result, err := backend.Execute(context.Background(), Request{
@@ -526,13 +527,13 @@ func TestProxyVerificationRejectsUnverifiedOrMalformedManagementBinding(t *testi
 			t.Parallel()
 			service := &fakeVerificationService{}
 			backend := testPostgresBackend(t, fakeDatabase(t, sqlExpectation{
-				contains: "FROM current_proxy", columns: fakeColumns(24),
-				rows: [][]driver.Value{{
+				contains: "FROM current_proxy", columns: fakeColumns(27),
+				rows: [][]any{{
 					proxyCodeHash, blockHash, "123", testHashBytes(95),
 					"eip1967", "transparent", "5.6.1",
 					implementation, implementationCodeHash, admin, adminCodeHash, nil, nil,
 					"proxy_admin", test.managementAddress, adminCodeHash, int64(101), int64(102), nil, nil,
-					true, true, test.managementVerified, nil,
+					true, true, test.managementVerified, "", true, true, false,
 				}},
 			}), PostgresOptions{ChainID: 1, Verification: service})
 			result, err := backend.Execute(context.Background(), Request{
@@ -567,25 +568,25 @@ func TestExactProxyVerificationTargetCoversSupportedManagementShapes(t *testing.
 	cwia.kind, cwia.pattern = "cwia", "clone"
 	erc1967 := base
 	erc1967.kind, erc1967.pattern = "eip1967", "erc1967"
-	erc1967.artifactResolution = sql.NullInt64{Int64: 2, Valid: true}
-	erc1967.standardVersion = sql.NullString{String: "5.6.1", Valid: true}
+	erc1967.artifactResolution = pgtype.Int8{Int64: 2, Valid: true}
+	erc1967.standardVersion = pgtype.Text{String: "5.6.1", Valid: true}
 	uups := base
 	uups.kind, uups.pattern = "eip1967", "uups"
-	uups.artifactResolution = sql.NullInt64{Int64: 2, Valid: true}
-	uups.uupsGeneration = sql.NullInt64{Int64: 4, Valid: true}
-	uups.standardVersion = sql.NullString{String: "5.6.1", Valid: true}
+	uups.artifactResolution = pgtype.Int8{Int64: 2, Valid: true}
+	uups.uupsGeneration = pgtype.Int8{Int64: 4, Valid: true}
+	uups.standardVersion = pgtype.Text{String: "5.6.1", Valid: true}
 	transparent := base
 	transparent.kind, transparent.pattern = "eip1967", "transparent"
-	transparent.artifactResolution = sql.NullInt64{Int64: 2, Valid: true}
-	transparent.standardVersion = sql.NullString{String: "5.6.1", Valid: true}
+	transparent.artifactResolution = pgtype.Int8{Int64: 2, Valid: true}
+	transparent.standardVersion = pgtype.Text{String: "5.6.1", Valid: true}
 	transparent.adminAddress, transparent.adminCodeHash = admin, adminHash
 	transparent.managementKind = "proxy_admin"
 	transparent.managementAddress, transparent.managementCodeHash = admin, adminHash
 	beaconProxy := base
 	beaconProxy.kind, beaconProxy.pattern = "beacon", "beacon"
-	beaconProxy.artifactResolution = sql.NullInt64{Int64: 2, Valid: true}
-	beaconProxy.beaconGeneration = sql.NullInt64{Int64: 3, Valid: true}
-	beaconProxy.standardVersion = sql.NullString{String: "5.6.1", Valid: true}
+	beaconProxy.artifactResolution = pgtype.Int8{Int64: 2, Valid: true}
+	beaconProxy.beaconGeneration = pgtype.Int8{Int64: 3, Valid: true}
+	beaconProxy.standardVersion = pgtype.Text{String: "5.6.1", Valid: true}
 	beaconProxy.beaconAddress, beaconProxy.beaconCodeHash = beacon, beaconHash
 	beaconProxy.managementKind = "upgradeable_beacon"
 	beaconProxy.managementAddress, beaconProxy.managementCodeHash = beacon, beaconHash

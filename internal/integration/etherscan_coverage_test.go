@@ -4,7 +4,6 @@ package integration_test
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -322,7 +323,7 @@ func etherscanCoverageBundle(number uint64, blockHash, parentHash, transactionHa
 }
 
 type integrationEtherscanState struct {
-	db                     *sql.DB
+	db                     *pgxpool.Pool
 	blockNumber, blockHash string
 }
 
@@ -344,7 +345,7 @@ func (state *integrationEtherscanState) AccountKind(context.Context, string) (st
 
 func (state *integrationEtherscanState) IsCanonical(ctx context.Context, number, hash string) (bool, error) {
 	var canonical bool
-	err := state.db.QueryRowContext(ctx, `
+	err := state.db.QueryRow(ctx, `
 		SELECT EXISTS (
 			SELECT 1 FROM canonical_blocks
 			WHERE chain_id = 1 AND number = $1::numeric
@@ -353,10 +354,10 @@ func (state *integrationEtherscanState) IsCanonical(ctx context.Context, number,
 	return canonical, err
 }
 
-func markTraceStageComplete(t *testing.T, ctx context.Context, db *sql.DB, block chainbundle.Bundle) {
+func markTraceStageComplete(t *testing.T, ctx context.Context, db *pgxpool.Pool, block chainbundle.Bundle) {
 	t.Helper()
 	reference := mustBlockRef(t, block)
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		UPDATE transactional_outbox
 		SET published_at = clock_timestamp()
 		WHERE chain_id = 1 AND topic = 'core.block.canonical' AND message_key = $1`,

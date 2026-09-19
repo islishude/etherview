@@ -82,7 +82,7 @@ func TestBoundedRuntimeReplayAndIndependentAPIReplicaRelays(t *testing.T) {
 	db := newMigratedPostgres(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	if _, err := db.ExecContext(ctx, `INSERT INTO chains (chain_id) VALUES (1)`); err != nil {
+	if _, err := db.Exec(ctx, `INSERT INTO chains (chain_id) VALUES (1)`); err != nil {
 		t.Fatalf("insert runtime event chain: %v", err)
 	}
 	firstStore, err := events.NewPostgresStore(db, "1", events.PostgresOptions{ReplayLimit: 3})
@@ -179,7 +179,7 @@ func TestSyncStatusWriterLeaseRejectsLaggingAndFailingReplicas(t *testing.T) {
 	db := newMigratedPostgres(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	if _, err := db.ExecContext(ctx, `INSERT INTO chains (chain_id) VALUES (1)`); err != nil {
+	if _, err := db.Exec(ctx, `INSERT INTO chains (chain_id) VALUES (1)`); err != nil {
 		t.Fatalf("insert runtime status chain: %v", err)
 	}
 	eventStore, err := events.NewPostgresStore(db, "1", events.PostgresOptions{ReplayLimit: 16})
@@ -289,7 +289,7 @@ func TestSyncStatusWriterLeaseRejectsLaggingAndFailingReplicas(t *testing.T) {
 		stored.ErrorCode != "finalized_reorg" || !stored.SafetyHalt || stored.Ready {
 		t.Fatalf("active safety lease status: status=%+v exists=%t err=%v", stored, exists, err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		UPDATE sync_runtime_status_writer_leases
 		SET expires_at = clock_timestamp() - interval '1 second'
 		WHERE chain_id = 1`); err != nil {

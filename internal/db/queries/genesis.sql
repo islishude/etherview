@@ -13,7 +13,7 @@ SELECT
           AND canonical.block_hash = imported.block_hash
     ) AS canonical
 FROM genesis_state_imports AS imported
-WHERE imported.chain_id = sqlc.arg(chain_id)::numeric;
+WHERE imported.chain_id = sqlc.arg('chain_id')::numeric;
 
 -- name: ListGenesisAccounts :many
 SELECT
@@ -25,11 +25,11 @@ SELECT
     account.block_hash,
     octet_length(account.code) > 0 AS contract
 FROM genesis_account_observations AS account
-WHERE account.chain_id = sqlc.arg(chain_id)::numeric
-  AND account.block_hash = sqlc.arg(block_hash)
+WHERE account.chain_id = sqlc.arg('chain_id')::numeric
+  AND account.block_hash = sqlc.arg('block_hash')
   AND (
-      octet_length(sqlc.arg(after_address)::bytea) = 0
-      OR account.address > sqlc.arg(after_address)::bytea
+      octet_length(sqlc.arg('after_address')::bytea) = 0
+      OR account.address > sqlc.arg('after_address')::bytea
   )
 ORDER BY account.address
-LIMIT sqlc.arg(page_limit);
+LIMIT sqlc.arg('page_limit');

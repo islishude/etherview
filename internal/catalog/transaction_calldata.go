@@ -2,7 +2,6 @@ package catalog
 
 import (
 	"context"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -11,9 +10,14 @@ import (
 	"sort"
 	"strconv"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/chainbundle"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/enrich"
 )
 
@@ -33,15 +37,27 @@ func (catalog *Postgres) TransactionCalldata(
 	if err != nil {
 		return TransactionCalldata{}, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 
 	var blockNumberText string
 	var blockHash, raw []byte
 	var transactionIndex int64
-	err = tx.QueryRowContext(ctx, dbgen.CatalogTransactionCalldataIdentity, chainID, transactionHash).Scan(
-		&blockNumberText, &blockHash, &transactionIndex, &raw,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).CatalogTransactionCalldataIdentity(ctx, queryValue0, transactionHash)
+		if err != nil {
+			return err
+		}
+		blockNumberText = queryRow.InclusionBlockNumber
+		blockHash = queryRow.BlockHash
+		transactionIndex = queryRow.TxIndex
+		raw = queryRow.Raw
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return TransactionCalldata{}, ErrNotFound
 	}
 	if err != nil {
@@ -110,7 +126,7 @@ func (catalog *Postgres) TransactionCalldata(
 	} else if err := catalog.decodeTransactionCalldata(ctx, tx, blockNumber, blockHash, transactionHash, wire.Data(), &result); err != nil {
 		return TransactionCalldata{}, err
 	}
-	if err := commitRead(tx); err != nil {
+	if err := commitRead(ctx, tx); err != nil {
 		return TransactionCalldata{}, err
 	}
 	return result, nil
@@ -132,7 +148,7 @@ type verifiedAddressSelectorSelection struct {
 
 func decodeVerifiedAddressSelectorCalldata(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	chainID string,
 	blockNumber uint64,
 	blockHash []byte,
@@ -161,7 +177,7 @@ func decodeVerifiedAddressSelectorCalldata(
 
 func loadVerifiedAddressSelectorSelection(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	chainID string,
 	blockNumber uint64,
 	blockHash []byte,
@@ -171,24 +187,36 @@ func loadVerifiedAddressSelectorSelection(
 	if len(input) < 4 {
 		return verifiedAddressSelectorSelection{}, nil
 	}
-	rows, err := tx.QueryContext(ctx, dbgen.CatalogTransactionVerifiedAddressSelectors, chainID, address[:], strconv.FormatUint(blockNumber, 10), input[:4],
-		maxVerifiedAddressSelectorCandidates+1,
-	)
+	rows, err := func() ([]dbgen.CatalogTransactionVerifiedAddressSelectorsRow, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(blockNumber, 10)); err != nil {
+			return nil, err
+		}
+		if maxVerifiedAddressSelectorCandidates+1 < -2147483648 || maxVerifiedAddressSelectorCandidates+1 > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).CatalogTransactionVerifiedAddressSelectors(ctx, dbgen.CatalogTransactionVerifiedAddressSelectorsParams{ChainID: queryValue0, Address: address[:], MaxValidFromBlock: queryValue1, Selector: input[:4], Limit: int32(maxVerifiedAddressSelectorCandidates + 1)})
+	}()
 	if err != nil {
 		return verifiedAddressSelectorSelection{}, fmt.Errorf("query verified address function selectors: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
 
 	identityBlockHash := common.BytesToHash(blockHash)
 	matches := make(map[string]verifiedAddressSelectorMatch)
 	signatures := make(map[string]struct{})
 	overflow := false
 	candidateCount := 0
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var codeHashBytes, abiEntry []byte
 		var storedSignature string
-		if err := rows.Scan(&codeHashBytes, &storedSignature, &abiEntry); err != nil {
-			return verifiedAddressSelectorSelection{}, fmt.Errorf("scan verified address function selector: %w", err)
+		{
+			codeHashBytes = storedRow.CodeHash
+			storedSignature = storedRow.Signature
+			abiEntry = storedRow.AbiEntry
 		}
 		candidateCount++
 		if candidateCount > maxVerifiedAddressSelectorCandidates {
@@ -233,9 +261,7 @@ func loadVerifiedAddressSelectorSelection(
 		}
 		signatures[storedSignature] = struct{}{}
 	}
-	if err := rows.Err(); err != nil {
-		return verifiedAddressSelectorSelection{}, fmt.Errorf("iterate verified address function selectors: %w", err)
-	}
+
 	if overflow || len(matches) > 1 {
 		candidates := make([]string, 0, len(signatures))
 		for signature := range signatures {
@@ -253,7 +279,7 @@ func loadVerifiedAddressSelectorSelection(
 
 func (catalog *Postgres) loadTransactionExecution(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	chainID, blockNumber string,
 	blockHash, transactionHash []byte,
 	transactionIndex int64,
@@ -262,8 +288,27 @@ func (catalog *Postgres) loadTransactionExecution(
 ) error {
 	var storedContext, executionAddress, executionCodeHash []byte
 	var resolution, evidenceSource string
-	err := tx.QueryRowContext(ctx, dbgen.CatalogTransactionCalldataExecution, chainID, blockNumber, blockHash, transactionHash, contextAddress[:], transactionIndex).Scan(&storedContext, &executionAddress, &executionCodeHash, &resolution, &evidenceSource)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(blockNumber); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).CatalogTransactionCalldataExecution(ctx, dbgen.CatalogTransactionCalldataExecutionParams{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: blockHash, TransactionHash: transactionHash, ContextAddress: contextAddress[:], TransactionIndex: transactionIndex})
+		if err != nil {
+			return err
+		}
+		storedContext = queryRow.ContextAddress
+		executionAddress = queryRow.ExecutionAddress
+		executionCodeHash = queryRow.ExecutionCodeHash
+		resolution = queryRow.Resolution
+		evidenceSource = queryRow.EvidenceSource
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		result.Execution = TransactionExecution{
 			ContextAddress: contextAddress.Hex(), Resolution: "unavailable",
 			EvidenceSource: "unavailable",
@@ -324,7 +369,7 @@ func validTransactionExecution(value *TransactionExecution) bool {
 
 func (catalog *Postgres) decodeTransactionCalldata(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	blockNumber uint64,
 	blockHash, transactionHash, input []byte,
 	result *TransactionCalldata,
@@ -392,20 +437,50 @@ func (catalog *Postgres) decodeTransactionCalldata(
 
 func loadPersistedTransactionCalldata(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	chainID string,
 	blockHash, transactionHash []byte,
 	executionAddress common.Address,
 	executionCodeHash common.Hash,
 ) (*persistedTraceDecoding, error) {
 	value := &persistedTraceDecoding{}
-	err := tx.QueryRowContext(ctx, dbgen.CatalogTransactionCalldataDecoding, chainID, blockHash, transactionHash, executionAddress[:], executionCodeHash[:]).Scan(
-		&value.status, &value.signature, &value.source, &value.confidence,
-		&value.arguments, &value.candidates, &value.warning,
-		&value.targetAddress, &value.targetCodeHash,
-		&value.sourceAddress, &value.sourceCodeHash, &value.returnStatus, &value.returns,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).CatalogTransactionCalldataDecoding(ctx, dbgen.CatalogTransactionCalldataDecodingParams{ChainID: queryValue0, BlockHash: blockHash, TransactionHash: transactionHash, TargetAddress: executionAddress[:], TargetCodeHash: executionCodeHash[:]})
+		if err != nil {
+			return err
+		}
+		value.status = pgtype.Text{String: queryRow.Status, Valid: true}
+		var resultValue1 pgtype.Text
+		if queryRow.Signature != nil {
+			resultValue1 = pgtype.Text{String: *queryRow.Signature, Valid: true}
+		}
+		value.signature = resultValue1
+		var resultValue3 pgtype.Text
+		if queryRow.Source != nil {
+			resultValue3 = pgtype.Text{String: *queryRow.Source, Valid: true}
+		}
+		value.source = resultValue3
+		var resultValue5 pgtype.Text
+		if queryRow.Confidence != nil {
+			resultValue5 = pgtype.Text{String: *queryRow.Confidence, Valid: true}
+		}
+		value.confidence = resultValue5
+		value.arguments = queryRow.Arguments
+		value.candidates = queryRow.Candidates
+		value.warning = pgtype.Text{String: queryRow.Warning, Valid: true}
+		value.targetAddress = queryRow.TargetAddress
+		value.targetCodeHash = queryRow.TargetCodeHash
+		value.sourceAddress = queryRow.SourceAddress
+		value.sourceCodeHash = queryRow.SourceCodeHash
+		value.returnStatus = pgtype.Text{String: queryRow.ReturnStatus, Valid: true}
+		value.returns = queryRow.ReturnArguments
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {

@@ -2,8 +2,6 @@ package enrich
 
 import (
 	"context"
-	"database/sql"
-	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +10,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	testpgx "github.com/islishude/etherview/internal/testpgx"
+	pgx "github.com/jackc/pgx/v5"
+	pgconn "github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -149,8 +151,8 @@ func repeatedBlockTraceResponse(t *testing.T, result json.RawMessage, hashes ...
 	return blockTraceResponse(t, hashes, results, nil)
 }
 
-func traceTransactionRow(index int64, hash common.Hash) []driver.Value {
-	return []driver.Value{index, hash[:], traceAddress1, traceAddress2, "0x5", "0x1234"}
+func traceTransactionRow(index int64, hash common.Hash) []any {
+	return []any{index, hash[:], traceAddress1, traceAddress2, "0x5", "0x1234", true}
 }
 
 func TestTraceRPCProcessorUsesOneEndpointAndPersistsNormalizedFrames(t *testing.T) {
@@ -161,39 +163,39 @@ func TestTraceRPCProcessorUsesOneEndpointAndPersistsNormalizedFrames(t *testing.
 	var replayStages []string
 	stageWritten, journalWritten := false, false
 	backend := &fakeSQLBackend{
-		query: func(query string, arguments []driver.NamedValue) (driver.Rows, error) {
+		query: func(query string, arguments []any) (pgx.Rows, error) {
 			queryCount++
 			switch {
 			case strings.Contains(query, "SELECT EXISTS"):
-				return &fakeSQLRows{columns: []string{"canonical"}, values: [][]driver.Value{{true}}}, nil
+				return &testpgx.Rows{ColumnNames: []string{"canonical"}, ValuesList: [][]any{{true}}}, nil
 			case strings.Contains(query, "FROM transaction_inclusions"):
-				return &fakeSQLRows{columns: []string{"tx_index", "tx_hash", "from", "to", "value", "input"}, values: [][]driver.Value{
+				return &testpgx.Rows{ColumnNames: []string{"tx_index", "tx_hash", "from", "to", "value", "input", "to_present"}, ValuesList: [][]any{
 					traceTransactionRow(0, txHash1), traceTransactionRow(1, txHash2),
 				}}, nil
 			case strings.Contains(query, "FROM transaction_execution_code_resolutions"):
 				return emptyExecutionResolutionRows(), nil
 			case strings.Contains(query, "FROM logs"):
-				return &fakeSQLRows{columns: []string{"log_index", "raw"}}, nil
+				return &testpgx.Rows{ColumnNames: []string{"log_index", "raw"}}, nil
 			case strings.Contains(query, "FOR KEY SHARE"):
-				return &fakeSQLRows{columns: []string{"one"}, values: [][]driver.Value{{int64(1)}}}, nil
+				return &testpgx.Rows{ColumnNames: []string{"one"}, ValuesList: [][]any{{int64(1)}}}, nil
 			case strings.Contains(query, "FROM durable_jobs"):
 				if len(arguments) >= 3 {
-					replayStages = append(replayStages, fmt.Sprint(arguments[2].Value))
+					replayStages = append(replayStages, fmt.Sprint(arguments[2]))
 				}
 				return emptyReplayTargetRows(), nil
 			default:
 				return nil, fmt.Errorf("unexpected query: %s", query)
 			}
 		},
-		exec: func(query string, arguments []driver.NamedValue) (driver.Result, error) {
+		exec: func(query string, arguments []any) (pgconn.CommandTag, error) {
 			switch {
 			case strings.Contains(query, "UPDATE durable_jobs"):
-				return driver.RowsAffected(0), nil
+				return testpgx.Affected(0), nil
 			case strings.Contains(query, "DELETE FROM trace_log_attributions"):
 			case strings.Contains(query, "DELETE FROM normalized_traces"):
 			case strings.Contains(query, "INSERT INTO normalized_traces"):
 				insertedFrames++
-				if arguments[5].Value != "" || arguments[8].Value != "CALL" || arguments[12].Value != "5" {
+				if arguments[5] != "" || arguments[8] != "CALL" || !testpgx.NumericEquals(arguments[12], "5") {
 					t.Errorf("unexpected normalized frame arguments: %+v", arguments)
 				}
 			case strings.Contains(query, "INSERT INTO block_stage_results"):
@@ -201,9 +203,9 @@ func TestTraceRPCProcessorUsesOneEndpointAndPersistsNormalizedFrames(t *testing.
 			case strings.Contains(query, "INSERT INTO block_journals"):
 				journalWritten = true
 			default:
-				return nil, fmt.Errorf("unexpected exec: %s", query)
+				return pgconn.CommandTag{}, fmt.Errorf("unexpected exec: %s", query)
 			}
-			return driver.RowsAffected(1), nil
+			return testpgx.Affected(1), nil
 		},
 	}
 	first := &traceTestCaller{handler: func(method, hash string) (json.RawMessage, error) {
@@ -367,25 +369,25 @@ func TestTraceLogAttributionUsesExecutionFrameAndRejectsContradictions(t *testin
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			backend := &fakeSQLBackend{query: func(query string, _ []driver.NamedValue) (driver.Rows, error) {
+			backend := &fakeSQLBackend{query: func(query string, _ []any) (pgx.Rows, error) {
 				if !strings.Contains(query, "FROM logs") {
 					return nil, fmt.Errorf("unexpected query: %s", query)
 				}
-				rows := [][]driver.Value{}
+				rows := [][]any{}
 				if test.expected >= 1 {
-					rows = append(rows, []driver.Value{int64(stored.Index), raw})
+					rows = append(rows, []any{int64(stored.Index), raw})
 				}
 				if test.expected >= 2 {
-					rows = append(rows, []driver.Value{int64(storedSecond.Index), rawSecond})
+					rows = append(rows, []any{int64(storedSecond.Index), rawSecond})
 				}
-				return &fakeSQLRows{columns: []string{"log_index", "raw"}, values: rows}, nil
+				return &testpgx.Rows{ColumnNames: []string{"log_index", "raw"}, ValuesList: rows}, nil
 			}}
 			db := openFakeSQLDB(t, backend)
-			tx, err := db.BeginTx(context.Background(), nil)
+			tx, err := db.BeginTx(context.Background(), pgx.TxOptions{})
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer tx.Rollback() //nolint:errcheck
+			defer tx.Rollback(context.Background()) //nolint:errcheck
 			attributions, fallback, err := loadTraceLogAttributions(context.Background(), tx, job, traceTransaction{
 				hash: txHash, trace: NormalizedTrace{Frames: []CallFrame{test.frame}},
 			})
@@ -425,21 +427,21 @@ func TestABILogsUseAttributedEIP7702ExecutionAddressWithoutStoredCodeHash(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	backend := &fakeSQLBackend{query: func(query string, _ []driver.NamedValue) (driver.Rows, error) {
+	backend := &fakeSQLBackend{query: func(query string, _ []any) (pgx.Rows, error) {
 		if !strings.Contains(query, "FROM logs AS log") {
 			return nil, fmt.Errorf("unexpected query: %s", query)
 		}
-		return &fakeSQLRows{
-			columns: []string{"log_index", "tx_hash", "address", "raw", "execution_address"},
-			values:  [][]driver.Value{{int64(9), transactionHash[:], emitter[:], raw, delegate[:]}},
+		return &testpgx.Rows{
+			ColumnNames: []string{"log_index", "tx_hash", "address", "raw", "execution_address"},
+			ValuesList:  [][]any{{int64(9), transactionHash[:], emitter[:], raw, delegate[:]}},
 		}, nil
 	}}
 	db := openFakeSQLDB(t, backend)
-	tx, err := db.BeginTx(context.Background(), &sql.TxOptions{ReadOnly: true})
+	tx, err := db.BeginTx(context.Background(), pgx.TxOptions{AccessMode: pgx.ReadOnly})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer tx.Rollback(context.Background()) //nolint:errcheck
 	observations, err := loadABILogs(context.Background(), tx, job)
 	if err != nil {
 		t.Fatal(err)
@@ -792,12 +794,12 @@ func traceEndpoint(
 }
 
 func traceReadBackend(txHash common.Hash) *fakeSQLBackend {
-	return &fakeSQLBackend{query: func(query string, _ []driver.NamedValue) (driver.Rows, error) {
+	return &fakeSQLBackend{query: func(query string, _ []any) (pgx.Rows, error) {
 		switch {
 		case strings.Contains(query, "SELECT EXISTS"):
-			return &fakeSQLRows{columns: []string{"canonical"}, values: [][]driver.Value{{true}}}, nil
+			return &testpgx.Rows{ColumnNames: []string{"canonical"}, ValuesList: [][]any{{true}}}, nil
 		case strings.Contains(query, "FROM transaction_inclusions"):
-			return &fakeSQLRows{columns: []string{"tx_index", "tx_hash", "from", "to", "value", "input"}, values: [][]driver.Value{traceTransactionRow(0, txHash)}}, nil
+			return &testpgx.Rows{ColumnNames: []string{"tx_index", "tx_hash", "from", "to", "value", "input", "to_present"}, ValuesList: [][]any{traceTransactionRow(0, txHash)}}, nil
 		case strings.Contains(query, "FROM transaction_execution_code_resolutions"):
 			return emptyExecutionResolutionRows(), nil
 		default:
@@ -807,16 +809,16 @@ func traceReadBackend(txHash common.Hash) *fakeSQLBackend {
 }
 
 func traceBlockReadBackend(transactionHashes ...common.Hash) *fakeSQLBackend {
-	return &fakeSQLBackend{query: func(query string, _ []driver.NamedValue) (driver.Rows, error) {
+	return &fakeSQLBackend{query: func(query string, _ []any) (pgx.Rows, error) {
 		switch {
 		case strings.Contains(query, "SELECT EXISTS"):
-			return &fakeSQLRows{columns: []string{"canonical"}, values: [][]driver.Value{{true}}}, nil
+			return &testpgx.Rows{ColumnNames: []string{"canonical"}, ValuesList: [][]any{{true}}}, nil
 		case strings.Contains(query, "FROM transaction_inclusions"):
-			values := make([][]driver.Value, len(transactionHashes))
+			values := make([][]any, len(transactionHashes))
 			for index, hash := range transactionHashes {
 				values[index] = traceTransactionRow(int64(index), hash)
 			}
-			return &fakeSQLRows{columns: []string{"tx_index", "tx_hash", "from", "to", "value", "input"}, values: values}, nil
+			return &testpgx.Rows{ColumnNames: []string{"tx_index", "tx_hash", "from", "to", "value", "input", "to_present"}, ValuesList: values}, nil
 		case strings.Contains(query, "FROM transaction_execution_code_resolutions"):
 			return emptyExecutionResolutionRows(), nil
 		default:
@@ -825,8 +827,8 @@ func traceBlockReadBackend(transactionHashes ...common.Hash) *fakeSQLBackend {
 	}}
 }
 
-func emptyExecutionResolutionRows() driver.Rows {
-	return &fakeSQLRows{columns: []string{
+func emptyExecutionResolutionRows() pgx.Rows {
+	return &testpgx.Rows{ColumnNames: []string{
 		"transaction_hash", "context_address", "execution_address",
 		"execution_code_hash", "resolution", "evidence_source",
 	}}
@@ -852,32 +854,32 @@ func traceAPIRoot(t *testing.T, job Job, transactionHash common.Hash, transactio
 func successfulTraceBackend(t *testing.T, txHash common.Hash) *fakeSQLBackend {
 	t.Helper()
 	backend := traceReadBackend(txHash)
-	backend.query = func(original func(string, []driver.NamedValue) (driver.Rows, error)) func(string, []driver.NamedValue) (driver.Rows, error) {
-		return func(query string, arguments []driver.NamedValue) (driver.Rows, error) {
+	backend.query = func(original func(string, []any) (pgx.Rows, error)) func(string, []any) (pgx.Rows, error) {
+		return func(query string, arguments []any) (pgx.Rows, error) {
 			if strings.Contains(query, "FOR KEY SHARE") {
-				return &fakeSQLRows{columns: []string{"one"}, values: [][]driver.Value{{int64(1)}}}, nil
+				return &testpgx.Rows{ColumnNames: []string{"one"}, ValuesList: [][]any{{int64(1)}}}, nil
 			}
 			if strings.Contains(query, "FROM durable_jobs") {
 				return emptyReplayTargetRows(), nil
 			}
 			if strings.Contains(query, "FROM logs") {
-				return &fakeSQLRows{columns: []string{"log_index", "raw"}}, nil
+				return &testpgx.Rows{ColumnNames: []string{"log_index", "raw"}}, nil
 			}
 			return original(query, arguments)
 		}
 	}(backend.query)
-	backend.exec = func(query string, _ []driver.NamedValue) (driver.Result, error) {
+	backend.exec = func(query string, _ []any) (pgconn.CommandTag, error) {
 		switch {
 		case strings.Contains(query, "UPDATE durable_jobs"):
-			return driver.RowsAffected(0), nil
+			return testpgx.Affected(0), nil
 		case strings.Contains(query, "DELETE FROM trace_log_attributions"),
 			strings.Contains(query, "DELETE FROM normalized_traces"),
 			strings.Contains(query, "INSERT INTO normalized_traces"),
 			strings.Contains(query, "INSERT INTO block_stage_results"),
 			strings.Contains(query, "INSERT INTO block_journals"):
-			return driver.RowsAffected(1), nil
+			return testpgx.Affected(1), nil
 		default:
-			return nil, fmt.Errorf("unexpected exec: %s", query)
+			return pgconn.CommandTag{}, fmt.Errorf("unexpected exec: %s", query)
 		}
 	}
 	return backend

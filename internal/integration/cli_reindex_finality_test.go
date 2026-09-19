@@ -20,7 +20,7 @@ func TestCLIReindexRequiresAuditedFinalizedOverride(t *testing.T) {
 	defer cancel()
 
 	var schema string
-	if err := db.QueryRowContext(ctx, `SELECT current_schema()`).Scan(&schema); err != nil {
+	if err := db.QueryRow(ctx, `SELECT current_schema()`).Scan(&schema); err != nil {
 		t.Fatalf("read integration schema: %v", err)
 	}
 	configPath := filepath.Join(t.TempDir(), "etherview.yaml")
@@ -30,10 +30,10 @@ func TestCLIReindexRequiresAuditedFinalizedOverride(t *testing.T) {
 	}
 
 	finalizedHash := testHash(20)
-	if _, err := db.ExecContext(ctx, `INSERT INTO chains (chain_id) VALUES (1)`); err != nil {
+	if _, err := db.Exec(ctx, `INSERT INTO chains (chain_id) VALUES (1)`); err != nil {
 		t.Fatalf("bind reindex chain: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO chain_finality (chain_id, finalized_number, finalized_hash)
 		VALUES (1, 20, $1)`, finalizedHash.Bytes()); err != nil {
 		t.Fatalf("record finalized height: %v", err)
@@ -76,7 +76,7 @@ func TestCLIReindexRequiresAuditedFinalizedOverride(t *testing.T) {
 
 	var persistedAllow bool
 	var persistedReason string
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT allow_finalized, reason
 		FROM repair_requests
 		WHERE chain_id = 1 AND operation = 'reindex' AND stage = 'proxy'`,

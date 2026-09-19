@@ -4,12 +4,13 @@ package billing
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"net/http"
 	"sync"
 	"testing"
 	"time"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
@@ -148,7 +149,7 @@ func TestPrepaidTopupCreditsOnceAndPendingReusesKnownHash(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ExecContext(
+	if _, err := db.Exec(
 		t.Context(),
 		`UPDATE billing_topup_intents SET transaction_hash = $2 WHERE id = $1::uuid`,
 		thirdIntent.ID, wrongHash[:],
@@ -296,7 +297,7 @@ func TestPrepaidUsageSharesBalanceAndExpiresReservations(t *testing.T) {
 
 func newTestPrepaidLedger(
 	t *testing.T,
-	database *sql.DB,
+	database *pgxpool.Pool,
 	asset, recipient common.Address,
 ) *PrepaidLedger {
 	t.Helper()
@@ -353,14 +354,14 @@ func createReservedTopup(
 
 func insertPrepaidAPIKey(
 	t *testing.T,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	prefix, userID string,
 	createdAt time.Time,
 ) {
 	t.Helper()
 	var digest Digest
 	digest[0] = prefix[0]
-	if _, err := db.ExecContext(t.Context(), `
+	if _, err := db.Exec(t.Context(), `
 		INSERT INTO api_keys (
 			prefix, digest, name, rate_per_second, burst, created_at,
 			owner_user_id, scopes
@@ -386,13 +387,13 @@ func assertBillingAccountAmounts(
 
 func assertBillingEntryCount(
 	t *testing.T,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	kind, sourceID string,
 	want int,
 ) {
 	t.Helper()
 	var count int
-	if err := db.QueryRowContext(t.Context(), `
+	if err := db.QueryRow(t.Context(), `
 		SELECT count(*) FROM billing_account_entries
 		WHERE kind = $1 AND source_id = $2::uuid
 	`, kind, sourceID).Scan(&count); err != nil {

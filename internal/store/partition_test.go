@@ -1,11 +1,12 @@
 package store
 
 import (
-	"database/sql"
 	"math"
 	"reflect"
 	"strings"
 	"testing"
+
+	pgx "github.com/jackc/pgx/v5"
 )
 
 func TestPartitionRangesAreFixedAlignedAndBounded(t *testing.T) {
@@ -26,7 +27,7 @@ func TestPartitionRangesAreFixedAlignedAndBounded(t *testing.T) {
 }
 
 func TestChainWritesRefreshSnapshotsAfterAdvisoryLockWait(t *testing.T) {
-	if chainWriteIsolation != sql.LevelReadCommitted {
+	if chainWriteIsolation != pgx.ReadCommitted {
 		t.Fatalf("chain write isolation = %v, want read committed", chainWriteIsolation)
 	}
 }

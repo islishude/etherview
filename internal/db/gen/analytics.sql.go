@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const CountDirtyAnalyticsHours = `-- name: CountDirtyAnalyticsHours :one
+const countDirtyAnalyticsHours = `-- name: CountDirtyAnalyticsHours :one
 SELECT count(*)::text AS dirty_count
 FROM chart_rollup_dirty_hours
 WHERE chain_id = $1::numeric
@@ -20,13 +20,13 @@ WHERE chain_id = $1::numeric
 `
 
 func (q *Queries) CountDirtyAnalyticsHours(ctx context.Context, chainID pgtype.Numeric, toTime pgtype.Timestamptz, fromTime pgtype.Timestamptz) (string, error) {
-	row := q.db.QueryRow(ctx, CountDirtyAnalyticsHours, chainID, toTime, fromTime)
+	row := q.db.QueryRow(ctx, countDirtyAnalyticsHours, chainID, toTime, fromTime)
 	var dirty_count string
 	err := row.Scan(&dirty_count)
 	return dirty_count, err
 }
 
-const CountMissingAnalyticsRollups = `-- name: CountMissingAnalyticsRollups :one
+const countMissingAnalyticsRollups = `-- name: CountMissingAnalyticsRollups :one
 SELECT count(*)::text AS missing_count
 FROM canonical_blocks AS canonical
 JOIN blocks AS block
@@ -47,13 +47,13 @@ WHERE canonical.chain_id = $1::numeric
 `
 
 func (q *Queries) CountMissingAnalyticsRollups(ctx context.Context, chainID pgtype.Numeric, fromTime pgtype.Timestamptz, toTime pgtype.Timestamptz) (string, error) {
-	row := q.db.QueryRow(ctx, CountMissingAnalyticsRollups, chainID, fromTime, toTime)
+	row := q.db.QueryRow(ctx, countMissingAnalyticsRollups, chainID, fromTime, toTime)
 	var missing_count string
 	err := row.Scan(&missing_count)
 	return missing_count, err
 }
 
-const CountPendingAnalyticsSources = `-- name: CountPendingAnalyticsSources :one
+const countPendingAnalyticsSources = `-- name: CountPendingAnalyticsSources :one
 SELECT count(*)::text AS pending_count
 FROM canonical_blocks AS canonical
 JOIN blocks AS block
@@ -81,13 +81,13 @@ WHERE canonical.chain_id = $1::numeric
 `
 
 func (q *Queries) CountPendingAnalyticsSources(ctx context.Context, chainID pgtype.Numeric, fromTime pgtype.Timestamptz, toTime pgtype.Timestamptz) (string, error) {
-	row := q.db.QueryRow(ctx, CountPendingAnalyticsSources, chainID, fromTime, toTime)
+	row := q.db.QueryRow(ctx, countPendingAnalyticsSources, chainID, fromTime, toTime)
 	var pending_count string
 	err := row.Scan(&pending_count)
 	return pending_count, err
 }
 
-const GetAnalyticsCoverage = `-- name: GetAnalyticsCoverage :one
+const getAnalyticsCoverage = `-- name: GetAnalyticsCoverage :one
 SELECT backfill.available_from,
        backfill.available_to,
        COALESCE(backfill.complete, false)::boolean AS complete,
@@ -114,7 +114,7 @@ type GetAnalyticsCoverageRow struct {
 }
 
 func (q *Queries) GetAnalyticsCoverage(ctx context.Context, chainID pgtype.Numeric) (GetAnalyticsCoverageRow, error) {
-	row := q.db.QueryRow(ctx, GetAnalyticsCoverage, chainID)
+	row := q.db.QueryRow(ctx, getAnalyticsCoverage, chainID)
 	var i GetAnalyticsCoverageRow
 	err := row.Scan(
 		&i.AvailableFrom,
@@ -126,7 +126,7 @@ func (q *Queries) GetAnalyticsCoverage(ctx context.Context, chainID pgtype.Numer
 	return i, err
 }
 
-const GetAnalyticsSnapshot = `-- name: GetAnalyticsSnapshot :one
+const getAnalyticsSnapshot = `-- name: GetAnalyticsSnapshot :one
 SELECT canonical.number::text AS block_number, canonical.block_hash
 FROM canonical_blocks AS canonical
 WHERE canonical.chain_id = $1::numeric
@@ -140,13 +140,13 @@ type GetAnalyticsSnapshotRow struct {
 }
 
 func (q *Queries) GetAnalyticsSnapshot(ctx context.Context, chainID pgtype.Numeric) (GetAnalyticsSnapshotRow, error) {
-	row := q.db.QueryRow(ctx, GetAnalyticsSnapshot, chainID)
+	row := q.db.QueryRow(ctx, getAnalyticsSnapshot, chainID)
 	var i GetAnalyticsSnapshotRow
 	err := row.Scan(&i.BlockNumber, &i.BlockHash)
 	return i, err
 }
 
-const ListAnalyticsHours = `-- name: ListAnalyticsHours :many
+const listAnalyticsHours = `-- name: ListAnalyticsHours :many
 WITH requested AS (
     SELECT (CASE $1::text
                WHEN 'hour' THEN date_trunc('hour', bucket_start, 'UTC')
@@ -226,7 +226,7 @@ type ListAnalyticsHoursRow struct {
 }
 
 func (q *Queries) ListAnalyticsHours(ctx context.Context, arg ListAnalyticsHoursParams) ([]ListAnalyticsHoursRow, error) {
-	rows, err := q.db.Query(ctx, ListAnalyticsHours,
+	rows, err := q.db.Query(ctx, listAnalyticsHours,
 		arg.BucketInterval,
 		arg.ChainID,
 		arg.ToTime,

@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -11,6 +10,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/config"
@@ -46,7 +47,7 @@ func (source ensCanonicalSource) IsCanonical(ctx context.Context, reference ensr
 
 func newENSService(
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	cfg config.Config,
 	rpcBuild *RPCBuild,
 	canonical state.CanonicalSource,

@@ -2,11 +2,12 @@ package enrich
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"slices"
 	"time"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/ethrpc"
@@ -177,7 +178,7 @@ type proxyBlockEvents struct {
 // state endpoint is acquired for the whole immutable block and every state
 // request uses the same EIP-1898 block-hash selector.
 type PostgresProxyProcessor struct {
-	db      *sql.DB
+	db      dbaccess.Database
 	pool    *ethrpc.Pool
 	limits  ProxyLimits
 	options ProxyDetectionOptions
@@ -200,12 +201,12 @@ type ProxyDetectionObserver interface {
 	RecordProxyDetectionResult(detector, family, status, confidence string)
 }
 
-func NewPostgresProxyProcessor(db *sql.DB, pool *ethrpc.Pool, limits ProxyLimits) (*PostgresProxyProcessor, error) {
+func NewPostgresProxyProcessor(db dbaccess.Database, pool *ethrpc.Pool, limits ProxyLimits) (*PostgresProxyProcessor, error) {
 	return NewPostgresProxyProcessorWithOptions(db, pool, limits, ProxyDetectionOptions{})
 }
 
 func NewPostgresProxyProcessorWithOptions(
-	db *sql.DB,
+	db dbaccess.Database,
 	pool *ethrpc.Pool,
 	limits ProxyLimits,
 	options ProxyDetectionOptions,

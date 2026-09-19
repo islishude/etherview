@@ -32,7 +32,7 @@ func TestCLIBackendPersistsMigrationsMaintenanceAndAdminState(t *testing.T) {
 	defer cancel()
 
 	var schema string
-	if err := db.QueryRowContext(ctx, `SELECT current_schema()`).Scan(&schema); err != nil {
+	if err := db.QueryRow(ctx, `SELECT current_schema()`).Scan(&schema); err != nil {
 		t.Fatalf("read integration schema: %v", err)
 	}
 	databaseURL := isolatedDatabaseURL(t, schema)
@@ -59,7 +59,7 @@ func TestCLIBackendPersistsMigrationsMaintenanceAndAdminState(t *testing.T) {
 		t.Fatalf("post-migration status code=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
 
-	if _, err := db.ExecContext(ctx, `INSERT INTO chains (chain_id) VALUES (1)`); err != nil {
+	if _, err := db.Exec(ctx, `INSERT INTO chains (chain_id) VALUES (1)`); err != nil {
 		t.Fatalf("bind integration chain: %v", err)
 	}
 	code, _, stderr = runner.run(ctx,
@@ -74,7 +74,7 @@ func TestCLIBackendPersistsMigrationsMaintenanceAndAdminState(t *testing.T) {
 	if code != 0 || stderr != "" {
 		t.Fatalf("reindex code=%d stderr=%q", code, stderr)
 	}
-	rows, err := db.QueryContext(ctx, `
+	rows, err := db.Query(ctx, `
 		SELECT operation, stage, from_block::text, to_block::text, reason, status
 		FROM repair_requests
 		ORDER BY id`)
@@ -104,11 +104,12 @@ func TestCLIBackendPersistsMigrationsMaintenanceAndAdminState(t *testing.T) {
 	if err := rows.Err(); err != nil {
 		t.Fatalf("iterate repair audit records: %v", err)
 	}
-	if err := rows.Close(); err != nil {
+	rows.Close()
+	if err := rows.Err(); err != nil {
 		t.Fatalf("close repair audit rows: %v", err)
 	}
 	const nestedFailure = "postgres://operator:secret@database/etherview"
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		UPDATE repair_requests
 		SET status = 'failed', completed_at = now(), last_error = $1
 		WHERE chain_id = 1 AND operation = 'reindex'`, nestedFailure); err != nil {
@@ -163,7 +164,7 @@ func TestCLIBackendPersistsMigrationsMaintenanceAndAdminState(t *testing.T) {
 		t.Fatalf("issued API key output = %+v", issued)
 	}
 	var persistedDigest []byte
-	if err := db.QueryRowContext(ctx, `SELECT digest FROM api_keys WHERE prefix = $1`, issued.Prefix).Scan(&persistedDigest); err != nil {
+	if err := db.QueryRow(ctx, `SELECT digest FROM api_keys WHERE prefix = $1`, issued.Prefix).Scan(&persistedDigest); err != nil {
 		t.Fatalf("read persisted API key: %v", err)
 	}
 	if len(persistedDigest) != 32 || bytes.Contains(persistedDigest, []byte(issued.Token)) {
@@ -193,7 +194,7 @@ func TestCLIBackendPersistsMigrationsMaintenanceAndAdminState(t *testing.T) {
 	}
 	var oldRevoked, replacementActive bool
 	var replacementDigest []byte
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT
 			(SELECT revoked_at IS NOT NULL FROM api_keys WHERE prefix = $1),
 			(SELECT revoked_at IS NULL FROM api_keys WHERE prefix = $2),
@@ -215,7 +216,7 @@ func TestCLIBackendPersistsMigrationsMaintenanceAndAdminState(t *testing.T) {
 		t.Fatalf("API key revoke code=%d stderr=%q", code, stderr)
 	}
 	var revoked bool
-	if err := db.QueryRowContext(ctx, `SELECT revoked_at IS NOT NULL FROM api_keys WHERE prefix = $1`, replacement.Prefix).Scan(&revoked); err != nil || !revoked {
+	if err := db.QueryRow(ctx, `SELECT revoked_at IS NOT NULL FROM api_keys WHERE prefix = $1`, replacement.Prefix).Scan(&revoked); err != nil || !revoked {
 		t.Fatalf("API key revoked=%v error=%v", revoked, err)
 	}
 }
@@ -239,7 +240,7 @@ func TestCLIOperatorLabelsAreCanonicalChainScopedAndSearchable(t *testing.T) {
 		t.Fatal(err)
 	}
 	var schema string
-	if err := db.QueryRowContext(ctx, `SELECT current_schema()`).Scan(&schema); err != nil {
+	if err := db.QueryRow(ctx, `SELECT current_schema()`).Scan(&schema); err != nil {
 		t.Fatal(err)
 	}
 	databaseURL := isolatedDatabaseURL(t, schema)
@@ -361,7 +362,7 @@ func TestCLIMaintenanceWorkerExecutesRepairAndReindex(t *testing.T) {
 	defer cancel()
 
 	var schema string
-	if err := db.QueryRowContext(ctx, `SELECT current_schema()`).Scan(&schema); err != nil {
+	if err := db.QueryRow(ctx, `SELECT current_schema()`).Scan(&schema); err != nil {
 		t.Fatalf("read integration schema: %v", err)
 	}
 	configPath := filepath.Join(t.TempDir(), "etherview.yaml")
@@ -457,7 +458,7 @@ func TestCLIMaintenanceWorkerExecutesRepairAndReindex(t *testing.T) {
 		t.Fatalf("checkpoint moved: before=%+v after=%+v found=%t error=%v", checkpointBefore, checkpointAfter, found, err)
 	}
 
-	rows, err := db.QueryContext(ctx, `
+	rows, err := db.Query(ctx, `
 		SELECT operation, status, started_at IS NOT NULL, completed_at IS NOT NULL, last_error IS NULL
 		FROM repair_requests
 		ORDER BY id`)
@@ -487,7 +488,7 @@ func TestCLIMaintenanceWorkerExecutesRepairAndReindex(t *testing.T) {
 	}
 
 	var jobStatus, leasedBy, leaseToken string
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT status, leased_by, lease_token
 		FROM durable_jobs
 		WHERE id = $1::bigint`, activeLease.Job.ID,

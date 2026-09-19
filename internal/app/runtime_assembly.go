@@ -2,8 +2,9 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"log/slog"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/islishude/etherview/internal/accelerator"
 	"github.com/islishude/etherview/internal/components"
@@ -25,8 +26,8 @@ type runtimeAssembly struct {
 	cfg                       config.Config
 	roles                     []components.Role
 	roleSet                   map[components.Role]bool
-	db                        *sql.DB
-	readDB                    *sql.DB
+	db                        *pgxpool.Pool
+	readDB                    *pgxpool.Pool
 	logger                    *slog.Logger
 	registry                  *observability.Registry
 	businessObserver          *observability.BusinessObserver

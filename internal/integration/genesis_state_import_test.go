@@ -4,12 +4,13 @@ package integration_test
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	pgconn "github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/islishude/etherview/internal/config"
 	"github.com/islishude/etherview/internal/enrich"
@@ -86,7 +87,7 @@ func TestGenesisStateImportIsAtomicAndPersistsExactPredeployCode(t *testing.T) {
 	for {
 		var state string
 		var count int
-		err := db.QueryRowContext(ctx, `
+		err := db.QueryRow(ctx, `
 			SELECT state, account_count::int
 			FROM genesis_state_imports
 			WHERE chain_id = 777`,
@@ -108,7 +109,7 @@ func TestGenesisStateImportIsAtomicAndPersistsExactPredeployCode(t *testing.T) {
 		balance, nonce                   string
 		code, codeHash, storageRootBytes []byte
 	)
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT balance::text, nonce::text, code, code_hash, storage_root
 		FROM genesis_account_observations
 		WHERE chain_id = 777
@@ -125,7 +126,7 @@ func TestGenesisStateImportIsAtomicAndPersistsExactPredeployCode(t *testing.T) {
 		)
 	}
 	var codeObservations int
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT count(*)
 		FROM contract_code_observations
 		WHERE chain_id = 777
@@ -142,7 +143,7 @@ func TestGenesisStateImportIsAtomicAndPersistsExactPredeployCode(t *testing.T) {
 		t.Fatalf("predeploy code observation count = %d, want 1", codeObservations)
 	}
 	var proxyJobs, requestedGeneration int
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT count(*), max(requested_generation)::int
 		FROM durable_jobs
 		WHERE chain_id = 777
@@ -180,7 +181,7 @@ func TestGenesisStateImportIsAtomicAndPersistsExactPredeployCode(t *testing.T) {
 		secondPage[0].Nonce != "3" || next != "" {
 		t.Fatalf("second genesis account page = %+v cursor=%q", secondPage, next)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		UPDATE genesis_account_observations
 		SET balance = 43
 		WHERE chain_id = 777
@@ -188,7 +189,7 @@ func TestGenesisStateImportIsAtomicAndPersistsExactPredeployCode(t *testing.T) {
 	); err == nil {
 		t.Fatal("mutating an exact genesis account observation succeeded")
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		UPDATE genesis_state_imports
 		SET document_sha256 = decode(repeat('aa', 32), 'hex')
 		WHERE chain_id = 777`,
@@ -203,7 +204,7 @@ func TestGenesisStateImportRollsBackOnExactCodeConflict(t *testing.T) {
 	defer cancel()
 	seedIntegrationGenesisZero(t, ctx, db)
 
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO contract_code_observations (
 		    chain_id, address, block_number, block_hash, code_hash, code, canonical
 		) VALUES (
@@ -238,7 +239,7 @@ func TestGenesisStateImportRollsBackOnExactCodeConflict(t *testing.T) {
 		t.Fatalf("conflicting import error = %v", err)
 	}
 	var imports, accounts, jobs int
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT
 		    (SELECT count(*) FROM genesis_state_imports WHERE chain_id = 777),
 		    (SELECT count(*) FROM genesis_account_observations WHERE chain_id = 777),
@@ -255,18 +256,18 @@ func TestGenesisStateImportRollsBackOnExactCodeConflict(t *testing.T) {
 }
 
 func seedIntegrationGenesisZero(t *testing.T, ctx context.Context, db interface {
-	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
 }) {
 	t.Helper()
 	zeroHash := make([]byte, 32)
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO chains (chain_id, genesis_hash)
 		VALUES (777, decode($1, 'hex'))`,
 		integrationGenesisBlockHash,
 	); err != nil {
 		t.Fatalf("seed genesis chain identity: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO blocks (
 		    chain_id, number, hash, parent_hash, timestamp, raw
 		) VALUES (
@@ -277,7 +278,7 @@ func seedIntegrationGenesisZero(t *testing.T, ctx context.Context, db interface 
 	); err != nil {
 		t.Fatalf("seed block zero: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO canonical_blocks (chain_id, number, block_hash)
 		VALUES (777, 0, decode($1, 'hex'))`,
 		integrationGenesisBlockHash,

@@ -3,7 +3,6 @@ package enrich
 import (
 	"context"
 	"crypto/rand"
-	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -15,8 +14,12 @@ import (
 	"strings"
 	"time"
 
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/stagecontract"
 )
 
@@ -46,16 +49,16 @@ type JobEnqueuer interface {
 	Enqueue(context.Context, EnqueueRequest) (EnqueueResult, error)
 }
 
-// PostgresJobQueue implements durable enrichment scheduling using database/sql.
+// PostgresJobQueue implements durable enrichment scheduling using native pgx.
 // Cross-process publication paths select candidates without a row lock, take a
 // per-job advisory lock, and only then revalidate/lock the durable row. This
 // single order prevents publisher/replay/reaper deadlocks.
 type PostgresJobQueue struct {
-	db     *sql.DB
+	db     dbaccess.Database
 	random io.Reader
 }
 
-func NewPostgresJobQueue(db *sql.DB) (*PostgresJobQueue, error) {
+func NewPostgresJobQueue(db dbaccess.Database) (*PostgresJobQueue, error) {
 	if db == nil {
 		return nil, errors.New("PostgreSQL enrichment queue requires a database")
 	}
@@ -72,16 +75,16 @@ func (queue *PostgresJobQueue) Enqueue(ctx context.Context, request EnqueueReque
 	if queue == nil || queue.db == nil {
 		return EnqueueResult{}, errors.New("enqueue using nil PostgreSQL enrichment queue")
 	}
-	tx, err := queue.db.BeginTx(ctx, nil)
+	tx, err := queue.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return EnqueueResult{}, fmt.Errorf("begin enqueue enrichment job: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	result, err := queue.enqueueTx(ctx, tx, request)
 	if err != nil {
 		return EnqueueResult{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return EnqueueResult{}, fmt.Errorf("commit enqueue enrichment job: %w", err)
 	}
 	return result, nil
@@ -92,7 +95,7 @@ func (queue *PostgresJobQueue) Enqueue(ctx context.Context, request EnqueueReque
 // atomically.
 func (queue *PostgresJobQueue) EnqueueTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	request EnqueueRequest,
 ) (EnqueueResult, error) {
 	return queue.enqueueTx(ctx, tx, request)
@@ -115,22 +118,28 @@ func (queue *PostgresJobQueue) Requeue(ctx context.Context, job Job) error {
 	if err != nil {
 		return err
 	}
-	tx, err := queue.db.BeginTx(ctx, nil)
+	tx, err := queue.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("begin enrichment replay: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	if err := lockPublicationJobTx(ctx, tx, id); err != nil {
 		return err
 	}
-	result, err := tx.ExecContext(ctx, dbgen.EnrichLegacyRequeueJob, id, job.ChainID, job.Stage.Name, job.Stage.Version, idempotencyKey)
+	result, err := func() (int64, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return 0, err
+		}
+		if job.Stage.Version > 2147483647 {
+			return 0, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).EnrichLegacyRequeueJob(ctx, dbgen.EnrichLegacyRequeueJobParams{ID: id, ChainID: queryValue0, Stage: job.Stage.Name, StageVersion: int32(job.Stage.Version), IdempotencyKey: idempotencyKey})
+	}()
 	if err != nil {
 		return fmt.Errorf("requeue enrichment job: %w", err)
 	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("requeue enrichment job: read affected rows: %w", err)
-	}
+	affected := result
 	if affected == 1 {
 		if job.Generation >= uint64(math.MaxInt64) {
 			return errors.New("enrichment replay generation is out of range")
@@ -140,14 +149,22 @@ func (queue *PostgresJobQueue) Requeue(ctx context.Context, job Job) error {
 		if err := clearStageReplayStateTx(ctx, tx, replayed); err != nil {
 			return err
 		}
-		if err := tx.Commit(); err != nil {
+		if err := tx.Commit(ctx); err != nil {
 			return fmt.Errorf("commit enrichment replay: %w", err)
 		}
 		return nil
 	}
 	var status string
-	if err := tx.QueryRowContext(ctx, dbgen.EnrichLegacyEnrichmentJobStatus, id).Scan(&status); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+	if err := func() error {
+
+		queryRow, err := dbgen.New(tx).EnrichLegacyEnrichmentJobStatus(ctx, id)
+		if err != nil {
+			return err
+		}
+		status = queryRow
+		return nil
+	}(); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return errors.New("enrichment job disappeared before replay")
 		}
 		return fmt.Errorf("read enrichment replay status: %w", err)
@@ -162,13 +179,13 @@ func (queue *PostgresJobQueue) Requeue(ctx context.Context, job Job) error {
 // source-stage generation. A repeated source generation is a no-op. A leased
 // target keeps its token and records pending work; its Finish/Retry transition
 // consumes the pending marker without ever letting the request disappear.
-func requestDependentStageReplayTx(ctx context.Context, tx *sql.Tx, source Job, dependent StageID) (bool, error) {
+func requestDependentStageReplayTx(ctx context.Context, tx pgx.Tx, source Job, dependent StageID) (bool, error) {
 	return requestDependentStageReplayForKindTx(ctx, tx, source, dependent, "stage-completion")
 }
 
 func requestDependentStageReplayForKindTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	source Job,
 	dependent StageID,
 	sourceKind string,
@@ -187,8 +204,22 @@ func requestDependentStageReplayForKindTx(
 		return false, err
 	}
 	var targetID int64
-	err = tx.QueryRowContext(ctx, dbgen.EnrichLegacySelectDependentReplayTargetID, source.ChainID, source.BlockHash.String(), dependent.Name, dependent.Version).Scan(&targetID)
-	if errors.Is(err, sql.ErrNoRows) {
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(source.ChainID); err != nil {
+			return err
+		}
+		if dependent.Version > 2147483647 {
+			return errors.New("invalid stored query value")
+		}
+		queryRow, err := dbgen.New(tx).EnrichLegacySelectDependentReplayTargetID(ctx, dbgen.EnrichLegacySelectDependentReplayTargetIDParams{ChainID: queryValue0, Payload: []byte(source.BlockHash.String()), Stage: dependent.Name, StageVersion: int32(dependent.Version)})
+		if err != nil {
+			return err
+		}
+		targetID = queryRow
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
@@ -197,7 +228,10 @@ func requestDependentStageReplayForKindTx(
 	if err := lockPublicationJobTx(ctx, tx, targetID); err != nil {
 		return false, err
 	}
-	target, status, err := scanReplayTarget(tx.QueryRowContext(ctx, dbgen.EnrichLegacySelectReplayTargetByID, targetID))
+	target, status, err := func() (Job, string, error) {
+
+		return decodeReplayTarget(dbgen.New(tx).EnrichLegacySelectReplayTargetByID(ctx, targetID))
+	}()
 	if err != nil {
 		return false, fmt.Errorf("lock dependent stage %s for replay: %w", dependent, err)
 	}
@@ -207,7 +241,7 @@ func requestDependentStageReplayForKindTx(
 	return requestLockedJobReplayTx(ctx, tx, target, status, replaySource)
 }
 
-func requestJobReplayTx(ctx context.Context, tx *sql.Tx, target Job, source ReplaySource) (bool, error) {
+func requestJobReplayTx(ctx context.Context, tx pgx.Tx, target Job, source ReplaySource) (bool, error) {
 	if tx == nil {
 		return false, errors.New("request job replay using nil transaction")
 	}
@@ -224,7 +258,10 @@ func requestJobReplayTx(ctx context.Context, tx *sql.Tx, target Job, source Repl
 	if err := lockPublicationJobTx(ctx, tx, id); err != nil {
 		return false, err
 	}
-	locked, status, err := scanReplayTarget(tx.QueryRowContext(ctx, dbgen.EnrichLegacySelectReplayTargetByID, id))
+	locked, status, err := func() (Job, string, error) {
+
+		return decodeReplayTarget(dbgen.New(tx).EnrichLegacySelectReplayTargetByID(ctx, id))
+	}()
 	if err != nil {
 		return false, fmt.Errorf("lock enrichment replay target: %w", err)
 	}
@@ -234,7 +271,7 @@ func requestJobReplayTx(ctx context.Context, tx *sql.Tx, target Job, source Repl
 	return requestLockedJobReplayTx(ctx, tx, locked, status, source)
 }
 
-func requestLockedJobReplayTx(ctx context.Context, tx *sql.Tx, target Job, status string, source ReplaySource) (bool, error) {
+func requestLockedJobReplayTx(ctx context.Context, tx pgx.Tx, target Job, status string, source ReplaySource) (bool, error) {
 	if err := source.Validate(); err != nil {
 		return false, err
 	}
@@ -248,18 +285,27 @@ func requestLockedJobReplayTx(ctx context.Context, tx *sql.Tx, target Job, statu
 		return false, errors.New("enrichment replay generation is out of range")
 	}
 	nextGeneration := int64(target.Generation + 1)
-	inserted, err := tx.ExecContext(ctx, dbgen.EnrichLegacyInsertReplayRequest, target.ID, source.Kind, source.Key, nextGeneration)
+	inserted, err := func() (int64, error) {
+		queryValue0, err := strconv.ParseInt(target.ID, 10, 64)
+		if err != nil {
+			return 0, err
+		}
+		return dbgen.New(tx).EnrichLegacyInsertReplayRequest(ctx, dbgen.EnrichLegacyInsertReplayRequestParams{JobID: int64(queryValue0), SourceKind: source.Kind, SourceKey: source.Key, RequestedGeneration: nextGeneration})
+	}()
 	if err != nil {
 		return false, fmt.Errorf("record enrichment replay source: %w", err)
 	}
-	affected, err := inserted.RowsAffected()
-	if err != nil {
-		return false, fmt.Errorf("read enrichment replay source result: %w", err)
-	}
+	affected := inserted
 	if affected == 0 {
 		return false, nil
 	}
-	result, err := tx.ExecContext(ctx, dbgen.EnrichLegacyRequestReplayJob, target.ID, nextGeneration)
+	result, err := func() (int64, error) {
+		queryValue0, err := strconv.ParseInt(target.ID, 10, 64)
+		if err != nil {
+			return 0, err
+		}
+		return dbgen.New(tx).EnrichLegacyRequestReplayJob(ctx, int64(queryValue0), nextGeneration)
+	}()
 	if err != nil {
 		return false, fmt.Errorf("advance enrichment replay generation: %w", err)
 	}
@@ -295,67 +341,139 @@ func replaySourceForStageKind(source Job, kind string) (ReplaySource, error) {
 	return replay, nil
 }
 
-func clearStageReplayStateTx(ctx context.Context, tx *sql.Tx, job Job) error {
+func clearStageReplayStateTx(ctx context.Context, tx pgx.Tx, job Job) error {
 	jobID, generation, err := durableJobGeneration(job)
 	if err != nil {
 		return err
 	}
-	var resultJobID, resultGeneration sql.NullInt64
-	err = tx.QueryRowContext(ctx, dbgen.EnrichLegacySelectStageResultPublication, job.ChainID, job.BlockHash[:], job.Stage.Name, job.Stage.Version).Scan(&resultJobID, &resultGeneration)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	var resultJobID, resultGeneration pgtype.Int8
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		if job.Stage.Version > 2147483647 {
+			return errors.New("invalid stored query value")
+		}
+		queryRow, err := dbgen.New(tx).EnrichLegacySelectStageResultPublication(ctx, dbgen.EnrichLegacySelectStageResultPublicationParams{ChainID: queryValue0, BlockHash: job.BlockHash[:], Stage: job.Stage.Name, StageVersion: int32(job.Stage.Version)})
+		if err != nil {
+			return err
+		}
+		var resultValue0 pgtype.Int8
+		if queryRow.DurableJobID != nil {
+			resultValue0 = pgtype.Int8{Int64: *queryRow.DurableJobID, Valid: true}
+		}
+		resultJobID = resultValue0
+		var resultValue2 pgtype.Int8
+		if queryRow.JobGeneration != nil {
+			resultValue2 = pgtype.Int8{Int64: *queryRow.JobGeneration, Valid: true}
+		}
+		resultGeneration = resultValue2
+		return nil
+	}()
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("lock enrichment stage result for replay: %w", err)
 	}
 	if err == nil && !replayMarkerOwned(resultJobID, resultGeneration, jobID, generation) {
 		return ErrStagePublicationConflict
 	}
 
-	rows, err := tx.QueryContext(ctx, dbgen.EnrichLegacySelectStageJournalPublications, job.ChainID, job.BlockHash[:], job.Stage.String())
+	rows, err := func() ([]dbgen.EnrichLegacySelectStageJournalPublicationsRow, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return nil, err
+		}
+		return dbgen.New(tx).EnrichLegacySelectStageJournalPublications(ctx, queryValue0, job.BlockHash[:], job.Stage.String())
+	}()
 	if err != nil {
 		return fmt.Errorf("lock enrichment stage journal for replay: %w", err)
 	}
-	for rows.Next() {
-		var journalJobID, journalGeneration sql.NullInt64
-		if err := rows.Scan(&journalJobID, &journalGeneration); err != nil {
-			_ = rows.Close()
-			return fmt.Errorf("scan enrichment stage journal publication: %w", err)
+	for _, storedRow := range rows {
+		var journalJobID, journalGeneration pgtype.Int8
+		{
+			var queryValue0 pgtype.Int8
+			if storedRow.DurableJobID != nil {
+				queryValue0 = pgtype.Int8{Int64: *storedRow.DurableJobID, Valid: true}
+			}
+			journalJobID = queryValue0
+			var queryValue2 pgtype.Int8
+			if storedRow.JobGeneration != nil {
+				queryValue2 = pgtype.Int8{Int64: *storedRow.JobGeneration, Valid: true}
+			}
+			journalGeneration = queryValue2
 		}
 		if !replayMarkerOwned(journalJobID, journalGeneration, jobID, generation) {
-			_ = rows.Close()
+
 			return ErrStagePublicationConflict
 		}
 	}
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
-		return fmt.Errorf("iterate enrichment stage journal publications: %w", err)
-	}
-	if err := rows.Close(); err != nil {
-		return fmt.Errorf("close enrichment stage journal publications: %w", err)
-	}
 
-	if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyDeleteStageResult, job.ChainID, job.BlockHash[:], job.Stage.Name, job.Stage.Version); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		if job.Stage.Version > 2147483647 {
+			return errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).EnrichLegacyDeleteStageResult(ctx, dbgen.EnrichLegacyDeleteStageResultParams{ChainID: queryValue0, BlockHash: job.BlockHash[:], Stage: job.Stage.Name, StageVersion: int32(job.Stage.Version)})
+	}(); err != nil {
 		return fmt.Errorf("clear enrichment stage result for replay: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyDeleteStageJournal, job.ChainID, job.BlockHash[:], job.Stage.String()); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		return dbgen.New(tx).EnrichLegacyDeleteStageJournal(ctx, queryValue0, job.BlockHash[:], job.Stage.String())
+	}(); err != nil {
 		return fmt.Errorf("clear enrichment stage journal for replay: %w", err)
 	}
 	if job.Stage == ABIStage {
-		if _, err := tx.ExecContext(ctx, dbgen.EnrichClearABIReplayOutputs,
-			job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]); err != nil {
+		if err := func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(job.ChainID); err != nil {
+				return err
+			}
+			var queryValue1 pgtype.Numeric
+			if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+				return err
+			}
+			return dbgen.New(tx).EnrichClearABIReplayOutputs(ctx, queryValue0, queryValue1, job.BlockHash[:])
+		}(); err != nil {
 			return fmt.Errorf("clear replayed ABI output: %w", err)
 		}
 	}
 	if job.Stage == UserOperationStage {
-		var removed int
-		if err := tx.QueryRowContext(
-			ctx, dbgen.ERC4337RemoveBlockCoverage,
-			job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-		).Scan(&removed); err != nil {
+		if err := func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(job.ChainID); err != nil {
+				return err
+			}
+			var queryValue1 pgtype.Numeric
+			if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+				return err
+			}
+			queryRow, err := dbgen.New(tx).ERC4337RemoveBlockCoverage(ctx, queryValue0, queryValue1, job.BlockHash[:])
+			if err != nil {
+				return err
+			}
+			_ = queryRow
+			return nil
+		}(); err != nil {
 			return fmt.Errorf("clear replayed UserOperation coverage: %w", err)
 		}
-		if _, err := tx.ExecContext(
-			ctx, dbgen.ERC4337ClearReplayOutputs,
-			job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-		); err != nil {
+		if err := func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(job.ChainID); err != nil {
+				return err
+			}
+			var queryValue1 pgtype.Numeric
+			if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+				return err
+			}
+			return dbgen.New(tx).ERC4337ClearReplayOutputs(ctx, queryValue0, queryValue1, job.BlockHash[:])
+		}(); err != nil {
 			return fmt.Errorf("clear replayed UserOperation output: %w", err)
 		}
 	}
@@ -372,7 +490,7 @@ func clearStageReplayStateTx(ctx context.Context, tx *sql.Tx, job Job) error {
 // evidence consumed by Trace, so withdrawing it first withdraws Trace; Trace
 // then fans out to Proxy and ABI. Repeated invalidation for the same source
 // generation is idempotent.
-func requestInvalidatedEvidenceDependentsTx(ctx context.Context, tx *sql.Tx, source Job) error {
+func requestInvalidatedEvidenceDependentsTx(ctx context.Context, tx pgx.Tx, source Job) error {
 	var dependents []StageID
 	switch source.Stage {
 	case StateDiffStage:
@@ -392,7 +510,7 @@ func requestInvalidatedEvidenceDependentsTx(ctx context.Context, tx *sql.Tx, sou
 	return nil
 }
 
-func replayMarkerOwned(markerJobID, markerGeneration sql.NullInt64, jobID, generation int64) bool {
+func replayMarkerOwned(markerJobID, markerGeneration pgtype.Int8, jobID, generation int64) bool {
 	if !markerJobID.Valid && !markerGeneration.Valid {
 		return true
 	}
@@ -411,27 +529,27 @@ func durableJobGeneration(job Job) (int64, int64, error) {
 	return id, int64(job.Generation), nil
 }
 
-func lockPublicationJobTx(ctx context.Context, tx *sql.Tx, jobID int64) error {
+func lockPublicationJobTx(ctx context.Context, tx pgx.Tx, jobID int64) error {
 	if tx == nil || jobID <= 0 {
 		return errors.New("publication advisory lock requires a transaction and positive job ID")
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyLockPublicationJob, jobID); err != nil {
+	if err := dbgen.New(tx).EnrichLegacyLockPublicationJob(ctx, jobID); err != nil {
 		return fmt.Errorf("lock enrichment publication job: %w", err)
 	}
 	return nil
 }
 
-func enablePublicationProtocolTx(ctx context.Context, tx *sql.Tx) error {
+func enablePublicationProtocolTx(ctx context.Context, tx pgx.Tx) error {
 	if tx == nil {
 		return errors.New("publication protocol requires a transaction")
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyEnablePublicationProtocol); err != nil {
+	if err := dbgen.New(tx).EnrichLegacyEnablePublicationProtocol(ctx); err != nil {
 		return fmt.Errorf("enable enrichment publication protocol: %w", err)
 	}
 	return nil
 }
 
-func (queue *PostgresJobQueue) enqueueTx(ctx context.Context, tx *sql.Tx, request EnqueueRequest) (EnqueueResult, error) {
+func (queue *PostgresJobQueue) enqueueTx(ctx context.Context, tx pgx.Tx, request EnqueueRequest) (EnqueueResult, error) {
 	if queue == nil || queue.db == nil || tx == nil {
 		return EnqueueResult{}, errors.New("enqueue using nil PostgreSQL enrichment transaction")
 	}
@@ -465,7 +583,13 @@ func (queue *PostgresJobQueue) enqueueTx(ctx context.Context, tx *sql.Tx, reques
 	// INSERT .. ON CONFLICT first: PostgreSQL may wait on the conflicting job
 	// tuple, which would invert the publisher's advisory-lock-first order.
 	if request.Replay != (ReplaySource{}) {
-		existing, existingErr := scanJob(tx.QueryRowContext(ctx, dbgen.EnrichLegacySelectExistingJob, request.ChainID, request.Kind, idempotencyKey))
+		existing, existingErr := func() (Job, error) {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(request.ChainID); err != nil {
+				return Job{}, err
+			}
+			return decodeJob(dbgen.New(tx).EnrichLegacySelectExistingJob(ctx, queryValue0, request.Kind, idempotencyKey))
+		}()
 		if existingErr == nil {
 			replayed, replayErr := requestJobReplayTx(ctx, tx, existing, request.Replay)
 			if replayErr != nil {
@@ -473,24 +597,36 @@ func (queue *PostgresJobQueue) enqueueTx(ctx context.Context, tx *sql.Tx, reques
 			}
 			return EnqueueResult{Job: existing, Replayed: replayed}, nil
 		}
-		if !errors.Is(existingErr, sql.ErrNoRows) {
+		if !errors.Is(existingErr, pgx.ErrNoRows) {
 			return EnqueueResult{}, fmt.Errorf("find existing enrichment replay job: %w", existingErr)
 		}
 	}
 
-	row := tx.QueryRowContext(ctx, dbgen.EnrichLegacyEnqueueJob, request.ChainID,
-		request.Kind,
-		request.Stage.Name,
-		request.Stage.Version,
-		idempotencyKey,
-		string(payload),
-		request.Priority,
-		request.MaxAttempts,
-	)
-	job, scanErr := scanJob(row)
+	job, scanErr := func() (Job, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(request.ChainID); err != nil {
+			return Job{}, err
+		}
+		if request.Stage.Version > 2147483647 {
+			return Job{}, errors.New("invalid stored query value")
+		}
+		if request.Priority < -2147483648 || request.Priority > 2147483647 {
+			return Job{}, errors.New("invalid stored query value")
+		}
+		if request.MaxAttempts > 2147483647 {
+			return Job{}, errors.New("invalid stored query value")
+		}
+		return decodeJob(dbgen.New(tx).EnrichLegacyEnqueueJob(ctx, dbgen.EnrichLegacyEnqueueJobParams{ChainID: queryValue0, Kind: request.Kind, Stage: request.Stage.Name, StageVersion: int32(request.Stage.Version), IdempotencyKey: idempotencyKey, Payload: []byte(string(payload)), Priority: int32(request.Priority), MaxAttempts: int32(request.MaxAttempts)}))
+	}()
 	created := scanErr == nil
-	if errors.Is(scanErr, sql.ErrNoRows) {
-		job, scanErr = scanJob(tx.QueryRowContext(ctx, dbgen.EnrichLegacySelectExistingJob, request.ChainID, request.Kind, idempotencyKey))
+	if errors.Is(scanErr, pgx.ErrNoRows) {
+		job, scanErr = func() (Job, error) {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(request.ChainID); err != nil {
+				return Job{}, err
+			}
+			return decodeJob(dbgen.New(tx).EnrichLegacySelectExistingJob(ctx, queryValue0, request.Kind, idempotencyKey))
+		}()
 	}
 	if scanErr != nil {
 		return EnqueueResult{}, fmt.Errorf("enqueue enrichment job: %w", scanErr)
@@ -501,7 +637,7 @@ func (queue *PostgresJobQueue) enqueueTx(ctx context.Context, tx *sql.Tx, reques
 		if identityErr != nil {
 			return EnqueueResult{}, identityErr
 		}
-		inserted, insertErr := tx.ExecContext(ctx, dbgen.EnrichLegacyInsertReplayRequest, jobID, request.Replay.Kind, request.Replay.Key, generation)
+		inserted, insertErr := dbgen.New(tx).EnrichLegacyInsertReplayRequest(ctx, dbgen.EnrichLegacyInsertReplayRequestParams{JobID: jobID, SourceKind: request.Replay.Kind, SourceKey: request.Replay.Key, RequestedGeneration: generation})
 		if insertErr != nil {
 			return EnqueueResult{}, fmt.Errorf("record initial enrichment replay source: %w", insertErr)
 		}
@@ -601,52 +737,55 @@ func (queue *PostgresJobQueue) Claim(ctx context.Context, workerID string, stage
 	}
 
 	for range 32 {
-		tx, beginErr := queue.db.BeginTx(ctx, nil)
+		tx, beginErr := queue.db.BeginTx(ctx, pgx.TxOptions{})
 		if beginErr != nil {
 			return Lease{}, false, fmt.Errorf("begin claim enrichment job: %w", beginErr)
 		}
 		if setErr := enablePublicationProtocolTx(ctx, tx); setErr != nil {
-			_ = tx.Rollback()
+			dbaccess.Rollback(ctx, tx)
 			return Lease{}, false, setErr
 		}
-		candidate, selectErr := scanJob(tx.QueryRowContext(ctx,
-			dbgen.EnrichSelectClaimCandidate,
-			stageKeys, int64(ProxyStage.Version),
-		))
+		candidate, selectErr := func() (Job, error) {
+
+			return decodeJob(dbgen.New(tx).EnrichSelectClaimCandidate(ctx, []byte(stageKeys), int64(ProxyStage.Version)))
+		}()
 		if selectErr != nil {
-			_ = tx.Rollback()
-			if errors.Is(selectErr, sql.ErrNoRows) {
+			dbaccess.Rollback(ctx, tx)
+			if errors.Is(selectErr, pgx.ErrNoRows) {
 				return Lease{}, false, nil
 			}
 			return Lease{}, false, fmt.Errorf("select enrichment claim candidate: %w", selectErr)
 		}
 		candidateID, _, identityErr := durableJobGeneration(candidate)
 		if identityErr != nil {
-			_ = tx.Rollback()
+			dbaccess.Rollback(ctx, tx)
 			return Lease{}, false, identityErr
 		}
 		if lockErr := lockPublicationJobTx(ctx, tx, candidateID); lockErr != nil {
-			_ = tx.Rollback()
+			dbaccess.Rollback(ctx, tx)
 			return Lease{}, false, lockErr
 		}
 		token, tokenErr := randomLeaseToken(queue.random)
 		if tokenErr != nil {
-			_ = tx.Rollback()
+			dbaccess.Rollback(ctx, tx)
 			return Lease{}, false, fmt.Errorf("generate lease token: %w", tokenErr)
 		}
-		arguments := []any{
-			workerID, token, leaseMicros, candidateID,
-			candidate.ChainID, candidate.Stage.Name, candidate.Stage.Version,
-			candidate.BlockHash.String(), strconv.FormatUint(candidate.BlockNumber, 10),
-		}
-		arguments = append(arguments, stageKeys, int64(ProxyStage.Version))
-		job, claimErr := scanJob(tx.QueryRowContext(ctx, dbgen.EnrichClaimCandidate, arguments...))
-		if errors.Is(claimErr, sql.ErrNoRows) {
-			_ = tx.Rollback()
+		job, claimErr := func() (Job, error) {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(candidate.ChainID); err != nil {
+				return Job{}, err
+			}
+			if candidate.Stage.Version > 2147483647 {
+				return Job{}, errors.New("invalid stored query value")
+			}
+			return decodeJob(dbgen.New(tx).EnrichClaimCandidate(ctx, dbgen.EnrichClaimCandidateParams{LeasedBy: new(workerID), LeaseToken: new(token), LeaseMicroseconds: leaseMicros, ID: candidateID, ChainID: queryValue0, Stage: candidate.Stage.Name, StageVersion: int32(candidate.Stage.Version), Payload: []byte(candidate.BlockHash.String()), Payload2: []byte(strconv.FormatUint(candidate.BlockNumber, 10)), SupportedStages: []byte(stageKeys), ProxyStageVersion: int64(ProxyStage.Version)}))
+		}()
+		if errors.Is(claimErr, pgx.ErrNoRows) {
+			dbaccess.Rollback(ctx, tx)
 			continue
 		}
 		if claimErr != nil {
-			_ = tx.Rollback()
+			dbaccess.Rollback(ctx, tx)
 			return Lease{}, false, fmt.Errorf("claim enrichment job: %w", claimErr)
 		}
 		// A replay requested while the previous generation was leased leaves that
@@ -654,11 +793,11 @@ func (queue *PostgresJobQueue) Claim(ctx context.Context, workerID string, stage
 		// foreign/newer marker and shares the claim transaction.
 		if job.Generation > 1 && job.Attempt == 1 {
 			if clearErr := clearStageReplayStateTx(ctx, tx, job); clearErr != nil {
-				_ = tx.Rollback()
+				dbaccess.Rollback(ctx, tx)
 				return Lease{}, false, clearErr
 			}
 		}
-		if commitErr := tx.Commit(); commitErr != nil {
+		if commitErr := tx.Commit(ctx); commitErr != nil {
 			return Lease{}, false, fmt.Errorf("commit claimed enrichment job: %w", commitErr)
 		}
 		return Lease{Job: job, Token: token}, true, nil
@@ -672,19 +811,25 @@ func (queue *PostgresJobQueue) terminalizeOneExhausted(
 	ctx context.Context,
 	stageKeys string,
 ) (bool, error) {
-	tx, err := queue.db.BeginTx(ctx, nil)
+	tx, err := queue.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return false, fmt.Errorf("begin exhausted enrichment transition: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	if err := enablePublicationProtocolTx(ctx, tx); err != nil {
 		return false, err
 	}
 	var candidateID int64
-	if err := tx.QueryRowContext(ctx, dbgen.EnrichSelectExhaustedCandidate,
-		stageKeys, int64(ProxyStage.Version),
-	).Scan(&candidateID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+	if err := func() error {
+
+		queryRow, err := dbgen.New(tx).EnrichSelectExhaustedCandidate(ctx, []byte(stageKeys), int64(ProxyStage.Version))
+		if err != nil {
+			return err
+		}
+		candidateID = queryRow
+		return nil
+	}(); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return false, nil
 		}
 		return false, fmt.Errorf("select exhausted enrichment job: %w", err)
@@ -692,11 +837,11 @@ func (queue *PostgresJobQueue) terminalizeOneExhausted(
 	if err := lockPublicationJobTx(ctx, tx, candidateID); err != nil {
 		return false, err
 	}
-	job, reason, err := scanExhaustedJob(tx.QueryRowContext(ctx,
-		dbgen.EnrichLockExhaustedJob,
-		candidateID, stageKeys, int64(ProxyStage.Version),
-	))
-	if errors.Is(err, sql.ErrNoRows) {
+	job, reason, err := func() (Job, string, error) {
+
+		return decodeExhaustedJob(dbgen.New(tx).EnrichLockExhaustedJob(ctx, candidateID, []byte(stageKeys), int64(ProxyStage.Version)))
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
@@ -724,17 +869,26 @@ func (queue *PostgresJobQueue) terminalizeOneExhausted(
 	if err != nil {
 		return false, fmt.Errorf("encode exhausted enrichment result: %w", err)
 	}
-	updated, err := tx.ExecContext(ctx, dbgen.EnrichLegacyTerminalizeExhaustedJob, candidateID, job.Generation, string(encoded), reason,
-		job.ChainID, job.Stage.Name, job.Stage.Version,
-		job.BlockHash.String(), strconv.FormatUint(job.BlockNumber, 10),
-	)
+	updated, err := func() (int64, error) {
+		if job.Generation > 9223372036854775807 {
+			return 0, errors.New("invalid stored query value")
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(job.ChainID); err != nil {
+			return 0, err
+		}
+		if job.Stage.Version > 2147483647 {
+			return 0, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).EnrichLegacyTerminalizeExhaustedJob(ctx, dbgen.EnrichLegacyTerminalizeExhaustedJobParams{ID: candidateID, CompletedGeneration: int64(job.Generation), Result: []byte(string(encoded)), LastError: new(reason), ChainID: queryValue1, Stage: job.Stage.Name, StageVersion: int32(job.Stage.Version), Payload: []byte(job.BlockHash.String()), Payload2: []byte(strconv.FormatUint(job.BlockNumber, 10))})
+	}()
 	if err != nil {
 		return false, fmt.Errorf("terminalize exhausted enrichment job: %w", err)
 	}
 	if err := requireSingleUpdate(updated, "terminalize exhausted enrichment job"); err != nil {
 		return false, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return false, fmt.Errorf("commit exhausted enrichment job: %w", err)
 	}
 	return true, nil
@@ -760,10 +914,16 @@ func (queue *PostgresJobQueue) Renew(ctx context.Context, lease Lease, leaseFor 
 	if err != nil {
 		return fmt.Errorf("lease duration: %w", err)
 	}
-	result, err := queue.db.ExecContext(ctx, dbgen.EnrichLegacyRenewJob, identity.jobID, lease.Token, leaseMicros, identity.generation,
-		lease.Job.ChainID, lease.Job.Stage.Name, lease.Job.Stage.Version,
-		lease.Job.BlockHash.String(), strconv.FormatUint(lease.Job.BlockNumber, 10),
-	)
+	result, err := func() (int64, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(lease.Job.ChainID); err != nil {
+			return 0, err
+		}
+		if lease.Job.Stage.Version > 2147483647 {
+			return 0, errors.New("invalid stored query value")
+		}
+		return dbgen.New(queue.db).EnrichLegacyRenewJob(ctx, dbgen.EnrichLegacyRenewJobParams{ID: identity.jobID, LeaseToken: new(lease.Token), LeaseMicroseconds: leaseMicros, ClaimedGeneration: identity.generation, ChainID: queryValue0, Stage: lease.Job.Stage.Name, StageVersion: int32(lease.Job.Stage.Version), Payload: []byte(lease.Job.BlockHash.String()), Payload2: []byte(strconv.FormatUint(lease.Job.BlockNumber, 10))})
+	}()
 	if err != nil {
 		return fmt.Errorf("renew enrichment job: %w", err)
 	}
@@ -792,20 +952,20 @@ func (queue *PostgresJobQueue) finishOnce(ctx context.Context, lease Lease, stag
 		return ErrAtomicPublicationRequired
 	}
 	status := "succeeded"
-	var lastError any
+	var lastError *string
 	if stageResult.State != ResultComplete {
 		status = "failed"
-		lastError = stageResult.Error
+		lastError = new(stageResult.Error)
 	}
 	encodedResult, err := json.Marshal(stageResult)
 	if err != nil {
 		return fmt.Errorf("encode enrichment job result: %w", err)
 	}
-	tx, err := queue.db.BeginTx(ctx, nil)
+	tx, err := queue.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("begin finish enrichment job: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	if err := enablePublicationProtocolTx(ctx, tx); err != nil {
 		return err
 	}
@@ -813,11 +973,25 @@ func (queue *PostgresJobQueue) finishOnce(ctx context.Context, lease Lease, stag
 		return err
 	}
 	var replayPending bool
-	err = tx.QueryRowContext(ctx, dbgen.EnrichLegacyFinishJob, identity.jobID, lease.Token, status, string(encodedResult), lastError, identity.generation,
-		lease.Job.ChainID, lease.Job.Stage.Name, lease.Job.Stage.Version,
-		lease.Job.BlockHash.String(), strconv.FormatUint(lease.Job.BlockNumber, 10),
-	).Scan(&replayPending)
-	if errors.Is(err, sql.ErrNoRows) {
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(lease.Job.ChainID); err != nil {
+			return err
+		}
+		if lease.Job.Stage.Version > 2147483647 {
+			return errors.New("invalid stored query value")
+		}
+		queryRow, err := dbgen.New(tx).EnrichLegacyFinishJob(ctx, dbgen.EnrichLegacyFinishJobParams{Status: status, Result: []byte(string(encodedResult)), LastError: lastError, ID: identity.jobID, ChainID: queryValue0, Stage: lease.Job.Stage.Name, StageVersion: int32(lease.Job.Stage.Version), Payload: []byte(lease.Job.BlockHash.String()), Payload2: []byte(strconv.FormatUint(lease.Job.BlockNumber, 10)), LeaseToken: new(lease.Token), ClaimedGeneration: identity.generation})
+		if err != nil {
+			return err
+		}
+		if queryRow == nil {
+			return errors.New("invalid stored query value")
+		}
+		replayPending = *queryRow
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrLeaseLost
 	}
 	if err != nil {
@@ -844,7 +1018,7 @@ func (queue *PostgresJobQueue) finishOnce(ctx context.Context, lease Lease, stag
 			return err
 		}
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit finished enrichment job: %w", err)
 	}
 	return nil
@@ -871,11 +1045,11 @@ func (queue *PostgresJobQueue) retryOnce(ctx context.Context, lease Lease, retry
 	if err != nil {
 		return fmt.Errorf("retry delay: %w", err)
 	}
-	tx, err := queue.db.BeginTx(ctx, nil)
+	tx, err := queue.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("begin retry enrichment job: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	if err := enablePublicationProtocolTx(ctx, tx); err != nil {
 		return err
 	}
@@ -884,11 +1058,26 @@ func (queue *PostgresJobQueue) retryOnce(ctx context.Context, lease Lease, retry
 	}
 	var status string
 	var replayPending bool
-	err = tx.QueryRowContext(ctx, dbgen.EnrichLegacyRetryJob, identity.jobID, lease.Token, retry.Reason, retryMicros, identity.generation,
-		lease.Job.ChainID, lease.Job.Stage.Name, lease.Job.Stage.Version,
-		lease.Job.BlockHash.String(), strconv.FormatUint(lease.Job.BlockNumber, 10),
-	).Scan(&status, &replayPending)
-	if errors.Is(err, sql.ErrNoRows) {
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(lease.Job.ChainID); err != nil {
+			return err
+		}
+		if lease.Job.Stage.Version > 2147483647 {
+			return errors.New("invalid stored query value")
+		}
+		queryRow, err := dbgen.New(tx).EnrichLegacyRetryJob(ctx, dbgen.EnrichLegacyRetryJobParams{ID: identity.jobID, LeaseToken: new(lease.Token), LastError: new(retry.Reason), RetryMicroseconds: retryMicros, ClaimedGeneration: identity.generation, ChainID: queryValue0, Stage: lease.Job.Stage.Name, StageVersion: int32(lease.Job.Stage.Version), Payload: []byte(lease.Job.BlockHash.String()), Payload2: []byte(strconv.FormatUint(lease.Job.BlockNumber, 10))})
+		if err != nil {
+			return err
+		}
+		status = queryRow.Status
+		if queryRow.FollowupQueued == nil {
+			return errors.New("invalid stored query value")
+		}
+		replayPending = *queryRow.FollowupQueued
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrLeaseLost
 	}
 	if err != nil {
@@ -918,7 +1107,7 @@ func (queue *PostgresJobQueue) retryOnce(ctx context.Context, lease Lease, retry
 	} else if status != "queued" {
 		return fmt.Errorf("retry enrichment job returned invalid status %q", status)
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit enrichment job retry: %w", err)
 	}
 	return nil
@@ -976,63 +1165,30 @@ func databaseStageKeySet(stages []StageID) (string, error) {
 	return string(encoded), nil
 }
 
-type rowScanner interface {
-	Scan(...any) error
+type durableJobProjection interface {
+	dbgen.EnrichLegacySelectExistingJobRow | dbgen.EnrichLegacyEnqueueJobRow | dbgen.EnrichSelectClaimCandidateRow | dbgen.EnrichClaimCandidateRow
 }
 
-func scanJob(row rowScanner) (Job, error) {
-	var (
-		id           int64
-		chainID      string
-		stageName    string
-		stageVersion int64
-		attempt      int64
-		maxAttempts  int64
-		payload      []byte
-		generation   int64
-	)
-	if err := row.Scan(&id, &chainID, &stageName, &stageVersion, &attempt, &maxAttempts, &payload, &generation); err != nil {
+func decodeJob[T durableJobProjection](value T, err error) (Job, error) {
+	if err != nil {
 		return Job{}, err
 	}
-	return decodeScannedJob(id, chainID, stageName, stageVersion, attempt, maxAttempts, payload, generation)
+	row := dbgen.EnrichLegacySelectExistingJobRow(value)
+	return decodeScannedJob(row.ID, row.ChainID, row.Stage, int64(row.StageVersion), int64(row.Attempts), int64(row.MaxAttempts), row.Payload, row.RequestedGeneration)
 }
-
-func scanReplayTarget(row rowScanner) (Job, string, error) {
-	var (
-		id           int64
-		chainID      string
-		stageName    string
-		stageVersion int64
-		attempt      int64
-		maxAttempts  int64
-		payload      []byte
-		generation   int64
-		status       string
-	)
-	if err := row.Scan(&id, &chainID, &stageName, &stageVersion, &attempt, &maxAttempts, &payload, &generation, &status); err != nil {
+func decodeReplayTarget(row dbgen.EnrichLegacySelectReplayTargetByIDRow, err error) (Job, string, error) {
+	if err != nil {
 		return Job{}, "", err
 	}
-	job, err := decodeScannedJob(id, chainID, stageName, stageVersion, attempt, maxAttempts, payload, generation)
-	return job, status, err
+	job, err := decodeScannedJob(row.ID, row.ChainID, row.Stage, int64(row.StageVersion), int64(row.Attempts), int64(row.MaxAttempts), row.Payload, row.RequestedGeneration)
+	return job, row.Status, err
 }
-
-func scanExhaustedJob(row rowScanner) (Job, string, error) {
-	var (
-		id           int64
-		chainID      string
-		stageName    string
-		stageVersion int64
-		attempt      int64
-		maxAttempts  int64
-		payload      []byte
-		generation   int64
-		reason       string
-	)
-	if err := row.Scan(&id, &chainID, &stageName, &stageVersion, &attempt, &maxAttempts, &payload, &generation, &reason); err != nil {
+func decodeExhaustedJob(row dbgen.EnrichLockExhaustedJobRow, err error) (Job, string, error) {
+	if err != nil {
 		return Job{}, "", err
 	}
-	job, err := decodeScannedJob(id, chainID, stageName, stageVersion, attempt, maxAttempts, payload, generation)
-	return job, reason, err
+	job, err := decodeScannedJob(row.ID, row.ChainID, row.Stage, int64(row.StageVersion), int64(row.Attempts), int64(row.MaxAttempts), row.Payload, row.ClaimedGeneration)
+	return job, row.LastError, err
 }
 
 func decodeScannedJob(
@@ -1073,11 +1229,8 @@ func decodeScannedJob(
 	return job, nil
 }
 
-func requireLeaseUpdate(result sql.Result) error {
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("read enrichment job update count: %w", err)
-	}
+func requireLeaseUpdate(result int64) error {
+	affected := result
 	if affected != 1 {
 		return ErrLeaseLost
 	}

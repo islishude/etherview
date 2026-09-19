@@ -172,7 +172,7 @@ func validateFromToOperator(from, to, operator string) error {
 	return nil
 }
 
-func optionalAddressText(raw, name string) (any, error) {
+func optionalAddressText(raw, name string) (*string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil, nil
@@ -181,10 +181,10 @@ func optionalAddressText(raw, name string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return strings.ToLower(address.Hex()), nil
+	return new(strings.ToLower(address.Hex())), nil
 }
 
-func optionalAddressBytes(raw, name string) (any, error) {
+func optionalAddressBytes(raw, name string) ([]byte, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil, nil

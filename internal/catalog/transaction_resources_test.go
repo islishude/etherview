@@ -2,7 +2,6 @@ package catalog
 
 import (
 	"context"
-	"database/sql/driver"
 	"errors"
 	"fmt"
 	"strings"
@@ -12,23 +11,23 @@ import (
 func transactionResourceIdentityStep(blockHash []byte) catalogQueryStep {
 	return catalogQueryStep{
 		contains: "FROM transaction_inclusions AS inclusion",
-		rows:     catalogRows(4, []driver.Value{"100", blockHash, int64(7), true}),
+		rows:     catalogRows(4, []any{"100", blockHash, int64(7), true}),
 	}
 }
 
 func transactionResourceStageStep(state string, generation int64) catalogQueryStep {
 	return catalogQueryStep{
 		contains: "FROM published_block_stage_results",
-		rows:     catalogRows(2, []driver.Value{state, generation}),
+		rows:     catalogRows(2, []any{state, generation}),
 	}
 }
 
-func internalTransactionRow(path string, callType string, created bool, value string) []driver.Value {
-	to, createdAddress := driver.Value(bytesOf(0x22, 20)), driver.Value(nil)
+func internalTransactionRow(path string, callType string, created bool, value string) []any {
+	to, createdAddress := any(bytesOf(0x22, 20)), any(nil)
 	if created {
 		to, createdAddress = nil, bytesOf(0x33, 20)
 	}
-	return []driver.Value{
+	return []any{
 		path, int64(len(strings.Split(path, "."))), callType,
 		bytesOf(0x11, 20), to, createdAddress, value,
 	}
@@ -47,8 +46,8 @@ func TestTransactionInternalTransactionsAreFilteredPaginatedAndGenerationBound(t
 				internalTransactionRow("1.0", "CREATE2", true, "2"),
 				internalTransactionRow("2", "SELFDESTRUCT", false, "3"),
 			),
-			check: func(arguments []driver.NamedValue) error {
-				if len(arguments) != 5 || arguments[3].Value != int64(3) || arguments[4].Value != int64(0) {
+			check: func(arguments []any) error {
+				if len(arguments) != 5 || arguments[4] != int32(3) || arguments[3] != int32(0) {
 					return fmt.Errorf("unexpected first-page arguments: %v", arguments)
 				}
 				return nil

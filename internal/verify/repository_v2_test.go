@@ -5,9 +5,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/islishude/etherview/internal/db/gen"
 	"strings"
 	"testing"
+
+	"github.com/islishude/etherview/internal/testpgx"
 )
 
 func validVerifyRequest() Request {
@@ -54,7 +55,7 @@ func TestDecodeV2ResultFieldsRequiresRuntimeMatchForPublicationData(t *testing.T
 		t.Fatal(err)
 	}
 	if fields.CreationMatch != "partial" || fields.RuntimeMatch != "full" ||
-		fields.MatchType != VerificationMatchFull {
+		fields.MatchType == nil || *fields.MatchType != string(VerificationMatchFull) {
 		t.Fatalf("fields = %#v", fields)
 	}
 }
@@ -147,24 +148,24 @@ func TestDecodeStoredVerificationMatchRestoresPublicationDetails(t *testing.T) {
 
 func TestProxyCompletionQueryFencesExactCurrentBinding(t *testing.T) {
 	t.Parallel()
-	query := strings.Join(strings.Fields(dbgen.VerifyLegacyProxyVerificationCurrentTarget), " ")
+	query := strings.Join(strings.Fields(testpgx.Statement("VerifyLegacyProxyVerificationCurrentTarget")), " ")
 	for _, required := range []string{
 		"observation.stage_version = 2",
 		"raw.proxy_pattern = 'clone' AND raw.evidence_state = 'exact'",
 		"evidence.reason = 'immutable_args_creation_unverified' AND raw.proxy_pattern = 'clone' AND raw.evidence_state = 'exact' AND octet_length(raw.immutable_args) > 0 AND raw.details->>'immutable_args_creation_authenticated' = 'true'",
 		"resolution.id IS NOT NULL",
-		"current_proxy.proxy_pattern = $8",
-		"current_proxy.standard_version IS NOT DISTINCT FROM $9::text",
-		"current_proxy.admin_address IS NOT DISTINCT FROM $10::bytea",
-		"current_proxy.beacon_address IS NOT DISTINCT FROM $12::bytea",
-		"current_proxy.observation_generation_id = $17::bigint",
-		"current_proxy.artifact_resolution_id IS NOT DISTINCT FROM $18::bigint",
-		"current_proxy.beacon_generation_id IS NOT DISTINCT FROM $19::bigint",
-		"current_proxy.uups_generation_id IS NOT DISTINCT FROM $22::bigint",
-		"number = $20::numeric",
-		"block_hash = $21",
+		"current_proxy.proxy_pattern = $6::text",
+		"current_proxy.standard_version IS NOT DISTINCT FROM $7::text",
+		"current_proxy.admin_address IS NOT DISTINCT FROM $8::bytea",
+		"current_proxy.beacon_address IS NOT DISTINCT FROM $10::bytea",
+		"current_proxy.observation_generation_id = $12::bigint",
+		"current_proxy.artifact_resolution_id IS NOT DISTINCT FROM $13::bigint",
+		"current_proxy.beacon_generation_id IS NOT DISTINCT FROM $14::bigint",
+		"current_proxy.uups_generation_id IS NOT DISTINCT FROM $15::bigint",
+		"number = $21::numeric",
+		"block_hash = $22::bytea",
 		"current_proxy.block_number <= submission_context.number",
-		"proxy_interaction_coverage_contains( $1::numeric, current_proxy.block_number, current_proxy.block_hash, current_proxy.context_number, current_proxy.context_hash )",
+		"proxy_interaction_coverage_contains( $16::numeric, current_proxy.block_number, current_proxy.block_hash, current_proxy.context_number, current_proxy.context_hash )",
 		"candidate.proxy_code_hash = raw.proxy_code_hash",
 		"observation.beacon_code_hash = proxy.effective_beacon_hash",
 		"observation.confidence IN ('verified', 'high')",
@@ -222,10 +223,10 @@ func TestProxyCompletionQueryFencesExactCurrentBinding(t *testing.T) {
 
 func TestVerificationProxyReplayPersistsOnlyDirectTarget(t *testing.T) {
 	t.Parallel()
-	query := strings.Join(strings.Fields(dbgen.VerifyLegacyVerificationProxyReplayTarget), " ")
+	query := strings.Join(strings.Fields(testpgx.Statement("VerifyLegacyVerificationProxyReplayTarget")), " ")
 	for _, required := range []string{
 		"INSERT INTO proxy_replay_targets",
-		"$1::numeric, $3::numeric, $4, $2, $5",
+		"$1::numeric, $2::numeric, $3, $4, $5",
 		"'verification_publication', $6::uuid",
 		"ON CONFLICT DO NOTHING",
 	} {
@@ -245,7 +246,7 @@ func TestVerificationProxyReplayPersistsOnlyDirectTarget(t *testing.T) {
 
 func TestDerivedCreatorEpochAndHistoricalPublicationStayCodeBound(t *testing.T) {
 	t.Parallel()
-	epoch := strings.Join(strings.Fields(dbgen.DerivedVerifyCreatorCodeEpochStart), " ")
+	epoch := strings.Join(strings.Fields(testpgx.Statement("DerivedVerifyCreatorCodeEpochStart")), " ")
 	for _, required := range []string{
 		"observation.code_hash = $3",
 		"observation.block_number = $4::numeric",
@@ -259,7 +260,7 @@ func TestDerivedCreatorEpochAndHistoricalPublicationStayCodeBound(t *testing.T) 
 			t.Fatalf("creator epoch query lacks %q: %s", required, epoch)
 		}
 	}
-	publication := strings.Join(strings.Fields(dbgen.DerivedVerifyPublicationEvidence), " ")
+	publication := strings.Join(strings.Fields(testpgx.Statement("DerivedVerifyPublicationEvidence")), " ")
 	for _, required := range []string{
 		"trace.block_number >= scan.valid_from_block",
 		"scan.valid_to_block IS NULL OR trace.block_number <= scan.valid_to_block",
@@ -336,7 +337,7 @@ func TestGenesisPredeployMarkerIsDurableWithoutChangingOrdinaryPayload(t *testin
 
 func TestGenesisCanonicalTargetQueryRechecksAndLocksExactProof(t *testing.T) {
 	t.Parallel()
-	query := strings.Join(strings.Fields(dbgen.VerifyLegacyVerificationCanonicalGenesisTarget), " ")
+	query := strings.Join(strings.Fields(testpgx.Statement("VerifyLegacyVerificationCanonicalGenesisTarget")), " ")
 	for _, required := range []string{
 		"imported.state = 'complete'",
 		"genesis_canonical.number = 0",

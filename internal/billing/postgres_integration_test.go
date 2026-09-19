@@ -5,7 +5,6 @@ package billing
 import (
 	"context"
 	"crypto/rand"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"maps"
@@ -16,11 +15,13 @@ import (
 	"testing"
 	"time"
 
+	testpgx "github.com/islishude/etherview/internal/testpgx"
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
 	"github.com/islishude/etherview/internal/store"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/stdlib"
 )
 
 const billingTestDatabaseEnvironment = "ETHERVIEW_TEST_DATABASE_URL"
@@ -188,13 +189,13 @@ func TestPostgresBillingReplayFenceAndUnknownReconciliation(t *testing.T) {
 		t.Fatalf("reconciliation event=%+v", lastEvent)
 	}
 
-	if _, err := db.ExecContext(t.Context(),
+	if _, err := db.Exec(t.Context(),
 		`UPDATE billing_payments SET amount_atomic = amount_atomic + 1 WHERE id = $1::uuid`,
 		paymentID,
 	); err == nil {
 		t.Fatal("settled financial fields were mutable")
 	}
-	if _, err := db.ExecContext(t.Context(),
+	if _, err := db.Exec(t.Context(),
 		`UPDATE billing_payment_events SET code = 'changed' WHERE payment_id = $1::uuid`,
 		paymentID,
 	); err == nil {
@@ -248,7 +249,7 @@ func TestPostgresBillingCrashWindowReconciliationIsStaleAndFenced(t *testing.T) 
 		t, ledger, 32, nil,
 	)
 	transactionHash[31] = 0xa2
-	if _, err := db.ExecContext(
+	if _, err := db.Exec(
 		t.Context(), `INSERT INTO chains (chain_id) VALUES (999)`,
 	); err != nil {
 		t.Fatal(err)
@@ -442,7 +443,7 @@ func TestPostgresBillingUserAttributionIsExactOptionalAndNotBackfilled(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ExecContext(
+	if _, err := db.Exec(
 		t.Context(), `INSERT INTO chains (chain_id) VALUES (999)`,
 	); err != nil {
 		t.Fatal(err)
@@ -674,7 +675,7 @@ func TestPostgresBillingFailureAndExpiryAreTerminal(t *testing.T) {
 
 func TestPostgresBillingExpiryIsChainScoped(t *testing.T) {
 	db := newBillingPostgres(t)
-	if _, err := db.ExecContext(
+	if _, err := db.Exec(
 		t.Context(),
 		`INSERT INTO chains (chain_id) VALUES (84532)`,
 	); err != nil {
@@ -775,7 +776,7 @@ func createSettlingPaymentFromInput(
 
 func insertBillingUser(
 	t *testing.T,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	userID string,
 	address common.Address,
 ) {
@@ -785,7 +786,7 @@ func insertBillingUser(
 
 func insertBillingUserRecord(
 	t *testing.T,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	userID string,
 	chainID uint64,
 	address common.Address,
@@ -793,7 +794,7 @@ func insertBillingUserRecord(
 ) {
 	t.Helper()
 	createdAt := testReserveInput().ObservedAt
-	if _, err := db.ExecContext(
+	if _, err := db.Exec(
 		t.Context(),
 		`INSERT INTO users (
 			id, chain_id, address, role, status, created_at, updated_at
@@ -804,7 +805,7 @@ func insertBillingUserRecord(
 	}
 }
 
-func newBillingPostgres(t *testing.T) *sql.DB {
+func newBillingPostgres(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	rawURL := strings.TrimSpace(os.Getenv(billingTestDatabaseEnvironment))
 	if rawURL == "" {
@@ -816,11 +817,11 @@ func newBillingPostgres(t *testing.T) *sql.DB {
 	}
 	adminConfig.RuntimeParams = cloneBillingRuntimeParams(adminConfig.RuntimeParams)
 	adminConfig.RuntimeParams["application_name"] = "etherview-billing-admin"
-	adminDB := stdlib.OpenDB(*adminConfig)
+	adminDB := testpgx.Pool(t, adminConfig, 4)
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
-	if err := adminDB.PingContext(ctx); err != nil {
-		_ = adminDB.Close()
+	if err := adminDB.Ping(ctx); err != nil {
+		adminDB.Close()
 		t.Fatalf("connect to %s: %v", billingTestDatabaseEnvironment, err)
 	}
 	suffix := make([]byte, 8)
@@ -828,32 +829,30 @@ func newBillingPostgres(t *testing.T) *sql.DB {
 		t.Fatal(err)
 	}
 	schema := "etherview_billing_it_" + hex.EncodeToString(suffix)
-	if _, err := adminDB.ExecContext(ctx, `CREATE SCHEMA `+quoteBillingIdentifier(schema)); err != nil {
+	if _, err := adminDB.Exec(ctx, `CREATE SCHEMA `+quoteBillingIdentifier(schema)); err != nil {
 		t.Fatalf("create schema: %v", err)
 	}
 	testConfig := adminConfig.Copy()
 	testConfig.RuntimeParams = cloneBillingRuntimeParams(testConfig.RuntimeParams)
 	testConfig.RuntimeParams["application_name"] = "etherview-billing-test"
 	testConfig.RuntimeParams["search_path"] = schema
-	db := stdlib.OpenDB(*testConfig)
-	db.SetMaxOpenConns(12)
-	db.SetMaxIdleConns(6)
-	if err := db.PingContext(ctx); err != nil {
+	db := testpgx.Pool(t, testConfig, int32(12))
+	if err := db.Ping(ctx); err != nil {
 		t.Fatalf("connect isolated schema: %v", err)
 	}
 	t.Cleanup(func() {
-		_ = db.Close()
+		db.Close()
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cleanupCancel()
-		_, _ = adminDB.ExecContext(
+		_, _ = adminDB.Exec(
 			cleanupCtx, `DROP SCHEMA `+quoteBillingIdentifier(schema)+` CASCADE`,
 		)
-		_ = adminDB.Close()
+		adminDB.Close()
 	})
 	if err := store.RunMigrations(ctx, db); err != nil {
 		t.Fatalf("run migrations: %v", err)
 	}
-	if _, err := db.ExecContext(ctx,
+	if _, err := db.Exec(ctx,
 		`INSERT INTO chains (chain_id) VALUES (11155111)`,
 	); err != nil {
 		t.Fatalf("insert chain: %v", err)
@@ -871,10 +870,10 @@ func quoteBillingIdentifier(identifier string) string {
 	return `"` + strings.ReplaceAll(identifier, `"`, `""`) + `"`
 }
 
-func assertBillingEventCount(t *testing.T, db *sql.DB, paymentID string, want int) {
+func assertBillingEventCount(t *testing.T, db *pgxpool.Pool, paymentID string, want int) {
 	t.Helper()
 	var count int
-	if err := db.QueryRowContext(
+	if err := db.QueryRow(
 		t.Context(),
 		`SELECT count(*) FROM billing_payment_events WHERE payment_id = $1::uuid`,
 		paymentID,

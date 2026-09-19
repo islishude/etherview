@@ -3,15 +3,19 @@ package enrich
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
 	"strconv"
+	"uuid"
+
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	dbaccess "github.com/islishude/etherview/internal/db"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
@@ -20,7 +24,22 @@ func (processor *PostgresProxyProcessor) loadCandidates(
 	job Job,
 ) ([]proxyCandidate, []uupsImplementationProbeTarget, proxyBlockEvents, bool, error) {
 	var canonical bool
-	if err := processor.db.QueryRowContext(ctx, dbgen.EnrichLegacyProxyCanonical, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]).Scan(&canonical); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(processor.db).EnrichLegacyProxyCanonical(ctx, queryValue0, queryValue1, job.BlockHash[:])
+		if err != nil {
+			return err
+		}
+		canonical = queryRow
+		return nil
+	}(); err != nil {
 		return nil, nil, proxyBlockEvents{}, false, fmt.Errorf("check proxy block canonicality: %w", err)
 	}
 	if !canonical {
@@ -118,40 +137,51 @@ func (processor *PostgresProxyProcessor) loadGenesisCandidates(
 	if job.BlockNumber != 0 {
 		return nil
 	}
-	rows, err := processor.db.QueryContext(ctx, dbgen.EnrichInlineLoadGenesisCandidatesStatement1, job.ChainID, job.BlockHash[:])
-	if err != nil {
-		return fmt.Errorf("query genesis proxy candidates: %w", err)
-	}
-	defer rows.Close() //nolint:errcheck
-	for rows.Next() {
-		var addressBytes []byte
-		if err := rows.Scan(&addressBytes); err != nil {
-			return fmt.Errorf("scan genesis proxy candidate: %w", err)
+	return dbaccess.WithTransactionOptions(ctx, processor.db, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(queries *dbgen.Queries) error {
+		cursor := dbgen.EnrichInlineLoadGenesisCandidatesStatement1Params{ChainID: job.ChainID, BlockHash: job.BlockHash[:], AfterAddress: make([]byte, common.AddressLength), PageLimit: 512}
+		for {
+			rows, err := queries.EnrichInlineLoadGenesisCandidatesStatement1(ctx, cursor)
+			if err != nil {
+				return fmt.Errorf("query genesis proxy candidates: %w", err)
+			}
+			for _, encoded := range rows {
+				if len(encoded) != common.AddressLength {
+					return Permanent(errors.New("stored genesis address is invalid"))
+				}
+				if err := add(common.BytesToAddress(encoded), proxySourceGenesis, true); err != nil {
+					return err
+				}
+			}
+			if len(rows) < int(cursor.PageLimit) {
+				return nil
+			}
+			cursor.HasCursor = true
+			cursor.AfterAddress = rows[len(rows)-1]
 		}
-		if len(addressBytes) != common.AddressLength {
-			return Permanent(errors.New("stored genesis address is invalid"))
-		}
-		address := common.BytesToAddress(addressBytes)
-		if err := add(address, proxySourceGenesis, true); err != nil {
-			return err
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate genesis proxy candidates: %w", err)
-	}
-	return nil
+	})
 }
 
 func (processor *PostgresProxyProcessor) loadTransactionCandidates(ctx context.Context, job Job, add proxyCandidateAdder) error {
-	rows, err := processor.db.QueryContext(ctx, dbgen.EnrichInlineLoadTransactionCandidatesStatement1, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:])
+	rows, err := func() ([]dbgen.EnrichInlineLoadTransactionCandidatesStatement1Row, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return nil, err
+		}
+		return dbgen.New(processor.db).EnrichInlineLoadTransactionCandidatesStatement1(ctx, queryValue0, queryValue1, job.BlockHash[:])
+	}()
 	if err != nil {
 		return fmt.Errorf("query proxy transaction targets: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
-	for rows.Next() {
+
+	for _, storedRow := range rows {
 		var hashBytes, raw []byte
-		if err := rows.Scan(&hashBytes, &raw); err != nil {
-			return fmt.Errorf("scan proxy transaction target: %w", err)
+		{
+			hashBytes = storedRow.TxHash
+			raw = storedRow.Raw
 		}
 		hash, err := WordFromBytes(hashBytes)
 		if err != nil {
@@ -170,23 +200,33 @@ func (processor *PostgresProxyProcessor) loadTransactionCandidates(ctx context.C
 			}
 		}
 	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate proxy transaction targets: %w", err)
-	}
+
 	return nil
 }
 
 func (processor *PostgresProxyProcessor) loadReceiptCandidates(ctx context.Context, job Job, add proxyCandidateAdder) error {
-	rows, err := processor.db.QueryContext(ctx, dbgen.EnrichInlineLoadReceiptCandidatesStatement1, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:])
+	rows, err := func() ([]dbgen.EnrichInlineLoadReceiptCandidatesStatement1Row, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return nil, err
+		}
+		return dbgen.New(processor.db).EnrichInlineLoadReceiptCandidatesStatement1(ctx, queryValue0, queryValue1, job.BlockHash[:])
+	}()
 	if err != nil {
 		return fmt.Errorf("query proxy creation receipts: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
-	for rows.Next() {
+
+	for _, storedRow := range rows {
 		var index int64
 		var hashBytes, raw []byte
-		if err := rows.Scan(&index, &hashBytes, &raw); err != nil {
-			return fmt.Errorf("scan proxy creation receipt: %w", err)
+		{
+			index = storedRow.TxIndex
+			hashBytes = storedRow.TxHash
+			raw = storedRow.Raw
 		}
 		if index < 0 {
 			return Permanent(errors.New("stored proxy receipt index is invalid"))
@@ -208,9 +248,7 @@ func (processor *PostgresProxyProcessor) loadReceiptCandidates(ctx context.Conte
 			}
 		}
 	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate proxy creation receipts: %w", err)
-	}
+
 	return nil
 }
 
@@ -236,17 +274,31 @@ func (processor *PostgresProxyProcessor) loadLogCandidates(
 	job Job,
 	add proxyCandidateAdder,
 ) (proxyBlockEvents, error) {
-	rows, err := processor.db.QueryContext(ctx, dbgen.EnrichInlineLoadLogCandidatesStatement1, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:])
+	rows, err := func() ([]dbgen.EnrichInlineLoadLogCandidatesStatement1Row, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return nil, err
+		}
+		return dbgen.New(processor.db).EnrichInlineLoadLogCandidatesStatement1(ctx, queryValue0, queryValue1, job.BlockHash[:])
+	}()
 	if err != nil {
 		return proxyBlockEvents{}, fmt.Errorf("query proxy log targets: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	var events proxyBlockEvents
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var index int64
 		var hashBytes, addressBytes, topicBytes, raw []byte
-		if err := rows.Scan(&index, &hashBytes, &addressBytes, &topicBytes, &raw); err != nil {
-			return proxyBlockEvents{}, fmt.Errorf("scan proxy log target: %w", err)
+		{
+			index = storedRow.LogIndex
+			hashBytes = storedRow.TxHash
+			addressBytes = storedRow.Address
+			topicBytes = storedRow.Topic0
+			raw = storedRow.Raw
 		}
 		if index < 0 || len(addressBytes) != common.AddressLength {
 			return proxyBlockEvents{}, Permanent(errors.New("stored proxy log identity is invalid"))
@@ -319,9 +371,7 @@ func (processor *PostgresProxyProcessor) loadLogCandidates(
 			})
 		}
 	}
-	if err := rows.Err(); err != nil {
-		return proxyBlockEvents{}, fmt.Errorf("iterate proxy log targets: %w", err)
-	}
+
 	return events, nil
 }
 
@@ -345,19 +395,34 @@ func parseStrictInitializedEvent(log types.Log) (uint64, bool) {
 }
 
 func (processor *PostgresProxyProcessor) loadTraceCandidates(ctx context.Context, job Job, add proxyCandidateAdder) error {
-	rows, err := processor.db.QueryContext(ctx, dbgen.EnrichInlineLoadTraceCandidatesStatement1, job.ChainID,
-		strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-		TraceStage.Name, TraceStage.Version)
+	rows, err := func() ([]dbgen.EnrichInlineLoadTraceCandidatesStatement1Row, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return nil, err
+		}
+		if TraceStage.Version > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		return dbgen.New(processor.db).EnrichInlineLoadTraceCandidatesStatement1(ctx, dbgen.EnrichInlineLoadTraceCandidatesStatement1Params{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: job.BlockHash[:], Stage: TraceStage.Name, StageVersion: int32(TraceStage.Version)})
+	}()
 	if err != nil {
 		return fmt.Errorf("query proxy trace targets: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
-	for rows.Next() {
+
+	for _, storedRow := range rows {
 		var callType string
 		var fromBytes, toBytes, createdBytes []byte
 		var reverted bool
-		if err := rows.Scan(&callType, &fromBytes, &toBytes, &createdBytes, &reverted); err != nil {
-			return fmt.Errorf("scan proxy trace target: %w", err)
+		{
+			callType = storedRow.CallType
+			fromBytes = storedRow.FromAddress
+			toBytes = storedRow.ToAddress
+			createdBytes = storedRow.CreatedAddress
+			reverted = storedRow.Reverted
 		}
 		if processor.options.DiamondEnabled && !reverted && callType == "DELEGATECALL" && len(fromBytes) != 0 {
 			if len(fromBytes) != common.AddressLength {
@@ -386,9 +451,7 @@ func (processor *PostgresProxyProcessor) loadTraceCandidates(ctx context.Context
 			}
 		}
 	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate proxy trace targets: %w", err)
-	}
+
 	return nil
 }
 
@@ -397,18 +460,28 @@ func (processor *PostgresProxyProcessor) loadStateDiffCandidates(
 	job Job,
 	add proxyCandidateAdder,
 ) error {
-	rows, err := processor.db.QueryContext(ctx, dbgen.EnrichInlineLoadStateDiffCandidatesStatement1, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-		EIP1967ImplementationSlot[:], EIP1967BeaconSlot[:], EIP1967AdminSlot[:],
-		StateDiffStage.Name, StateDiffStage.Version,
-	)
+	rows, err := func() ([][]byte, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return nil, err
+		}
+		if StateDiffStage.Version > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		return dbgen.New(processor.db).EnrichInlineLoadStateDiffCandidatesStatement1(ctx, dbgen.EnrichInlineLoadStateDiffCandidatesStatement1Params{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: job.BlockHash[:], StorageKey: EIP1967ImplementationSlot[:], StorageKey2: EIP1967BeaconSlot[:], StorageKey3: EIP1967AdminSlot[:], Stage: StateDiffStage.Name, StageVersion: int32(StateDiffStage.Version)})
+	}()
 	if err != nil {
 		return fmt.Errorf("query proxy state-difference targets: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
-	for rows.Next() {
+
+	for _, storedRow := range rows {
 		var addressBytes []byte
-		if err := rows.Scan(&addressBytes); err != nil {
-			return fmt.Errorf("scan proxy state-difference target: %w", err)
+		{
+			addressBytes = storedRow
 		}
 		if len(addressBytes) != common.AddressLength {
 			return Permanent(errors.New("stored proxy state-difference target is invalid"))
@@ -417,9 +490,7 @@ func (processor *PostgresProxyProcessor) loadStateDiffCandidates(
 			return err
 		}
 	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate proxy state-difference targets: %w", err)
-	}
+
 	return nil
 }
 
@@ -433,25 +504,44 @@ func (processor *PostgresProxyProcessor) loadReplayCandidates(
 		// provenance. Their ordinary block candidates are still loaded above.
 		return nil, nil
 	}
-	rows, err := processor.db.QueryContext(ctx, dbgen.EnrichLegacyProxyReplayCandidates, job.ChainID, strconv.FormatUint(job.BlockNumber, 10),
-		job.BlockHash[:], job.Stage.Version, proxySourceVerification,
-		job.ID, strconv.FormatUint(job.Generation, 10),
-	)
+	rows, err := func() ([]dbgen.EnrichLegacyProxyReplayCandidatesRow, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return nil, err
+		}
+		if job.Stage.Version > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		queryValue3, err := strconv.ParseInt(job.ID, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		queryValue4, err := strconv.ParseInt(strconv.FormatUint(job.Generation, 10), 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		return dbgen.New(processor.db).EnrichLegacyProxyReplayCandidates(ctx, dbgen.EnrichLegacyProxyReplayCandidatesParams{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: job.BlockHash[:], StageVersion: int32(job.Stage.Version), Source: proxySourceVerification, JobID: int64(queryValue3), ClaimedGeneration: int64(queryValue4)})
+	}()
 	if err != nil {
 		return nil, fmt.Errorf("query exact proxy replay targets: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	uupsTargets := make([]uupsImplementationProbeTarget, 0)
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var addressBytes []byte
 		var targetKind, source string
 		var artifactCodeHash []byte
-		var artifactVerificationJob sql.NullString
-		if err := rows.Scan(
-			&addressBytes, &targetKind, &source,
-			&artifactCodeHash, &artifactVerificationJob,
-		); err != nil {
-			return nil, fmt.Errorf("scan exact proxy replay target: %w", err)
+		var artifactVerificationJob pgtype.UUID
+		{
+			addressBytes = storedRow.Address
+			targetKind = storedRow.TargetKind
+			source = storedRow.Source
+			artifactCodeHash = storedRow.CodeHash
+			artifactVerificationJob = storedRow.VerificationJobID
 		}
 		if len(addressBytes) != common.AddressLength {
 			return nil, Permanent(errors.New("stored exact proxy address is invalid"))
@@ -464,7 +554,7 @@ func (processor *PostgresProxyProcessor) loadReplayCandidates(
 			}
 			target := uupsImplementationProbeTarget{
 				address: address, codeHash: common.BytesToHash(artifactCodeHash),
-				verificationJobID: artifactVerificationJob.String,
+				verificationJobID: uuid.UUID(artifactVerificationJob.Bytes).String(),
 			}
 			if err := target.validate(); err != nil {
 				return nil, Permanent(err)
@@ -481,9 +571,7 @@ func (processor *PostgresProxyProcessor) loadReplayCandidates(
 			return nil, err
 		}
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate exact proxy replay targets: %w", err)
-	}
+
 	return uupsTargets, nil
 }
 
@@ -535,10 +623,26 @@ func (processor *PostgresProxyProcessor) loadProxyArtifact(
 ) (proxyArtifactEvidence, bool, error) {
 	var artifact proxyArtifactEvidence
 	var immutable []byte
-	err := processor.db.QueryRowContext(ctx, dbgen.EnrichInlineLoadProxyArtifactStatement1, job.ChainID, address[:], hash[:], strconv.FormatUint(job.BlockNumber, 10)).Scan(
-		&artifact.kind, &artifact.standardVersion, &immutable, &artifact.verificationJob,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(processor.db).EnrichInlineLoadProxyArtifactStatement1(ctx, dbgen.EnrichInlineLoadProxyArtifactStatement1Params{ChainID: queryValue0, Address: address[:], CodeHash: hash[:], MaxValidFromBlock: queryValue1})
+		if err != nil {
+			return err
+		}
+		artifact.kind = queryRow.ArtifactKind
+		artifact.standardVersion = queryRow.StandardVersion
+		immutable = queryRow.RuntimeImmutableAddress
+		artifact.verificationJob = queryRow.ArtifactVerificationJobID
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return proxyArtifactEvidence{}, false, nil
 	}
 	if err != nil {
@@ -566,7 +670,22 @@ func (processor *PostgresProxyProcessor) hasVerifiedDiamondLoupeABI(
 	address common.Address,
 ) (bool, error) {
 	var found bool
-	err := processor.db.QueryRowContext(ctx, dbgen.EnrichInlineHasVerifiedDiamondLoupeABIStatement1, job.ChainID, address[:], strconv.FormatUint(job.BlockNumber, 10)).Scan(&found)
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(processor.db).EnrichInlineHasVerifiedDiamondLoupeABIStatement1(ctx, queryValue0, address[:], queryValue1)
+		if err != nil {
+			return err
+		}
+		found = queryRow
+		return nil
+	}()
 	if err != nil {
 		return false, fmt.Errorf("query verified Diamond Loupe ABI: %w", err)
 	}
@@ -580,9 +699,27 @@ func (processor *PostgresProxyProcessor) authenticateCloneCreation(
 	runtime []byte,
 ) (bool, error) {
 	var input, output []byte
-	err := processor.db.QueryRowContext(ctx, dbgen.EnrichInlineAuthenticateCloneCreationStatement1, job.ChainID, address[:], strconv.FormatUint(job.BlockNumber, 10),
-		TraceStage.Name, TraceStage.Version).Scan(&input, &output)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		if TraceStage.Version > 2147483647 {
+			return errors.New("invalid stored query value")
+		}
+		queryRow, err := dbgen.New(processor.db).EnrichInlineAuthenticateCloneCreationStatement1(ctx, dbgen.EnrichInlineAuthenticateCloneCreationStatement1Params{ChainID: queryValue0, CreatedAddress: address[:], MaxBlockNumber: queryValue1, Stage: TraceStage.Name, StageVersion: int32(TraceStage.Version)})
+		if err != nil {
+			return err
+		}
+		input = queryRow.Input
+		output = queryRow.Output
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
@@ -601,7 +738,23 @@ func (processor *PostgresProxyProcessor) proxyOrBeaconHistory(
 	address common.Address,
 ) (bool, bool, error) {
 	var proxy, beacon bool
-	err := processor.db.QueryRowContext(ctx, dbgen.EnrichInlineProxyOrBeaconHistoryStatement1, job.ChainID, address[:], strconv.FormatUint(job.BlockNumber, 10)).Scan(&proxy, &beacon)
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(processor.db).EnrichInlineProxyOrBeaconHistoryStatement1(ctx, queryValue0, address[:], queryValue1)
+		if err != nil {
+			return err
+		}
+		proxy = queryRow.Exists
+		beacon = queryRow.Exists_2
+		return nil
+	}()
 	if err != nil {
 		return false, false, fmt.Errorf("query canonical proxy or beacon history: %w", err)
 	}
@@ -610,7 +763,22 @@ func (processor *PostgresProxyProcessor) proxyOrBeaconHistory(
 
 func (processor *PostgresProxyProcessor) hasCanonicalCodeHistory(ctx context.Context, job Job, address common.Address) (bool, error) {
 	var exists bool
-	if err := processor.db.QueryRowContext(ctx, dbgen.EnrichInlineHasCanonicalCodeHistoryStatement1, job.ChainID, address[:], strconv.FormatUint(job.BlockNumber, 10)).Scan(&exists); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(processor.db).EnrichInlineHasCanonicalCodeHistoryStatement1(ctx, queryValue0, address[:], queryValue1)
+		if err != nil {
+			return err
+		}
+		exists = queryRow
+		return nil
+	}(); err != nil {
 		return false, fmt.Errorf("query canonical code history: %w", err)
 	}
 	return exists, nil

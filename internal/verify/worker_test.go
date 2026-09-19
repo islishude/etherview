@@ -255,7 +255,7 @@ func verifyV2Lease() VerificationLease {
 
 func newVerifyTestWorker(
 	t *testing.T,
-	repository Repository,
+	repository WorkerRepository,
 	compiler Compiler,
 ) *Worker {
 	t.Helper()
@@ -731,4 +731,15 @@ func TestVerificationServiceUsesStableNonSensitiveErrors(t *testing.T) {
 	if repository.submits != 1 {
 		t.Fatalf("invalid request reached repository; submits=%d", repository.submits)
 	}
+}
+
+func (repository *verifyMemoryRepository) ClaimRunnable(ctx context.Context, id string, duration time.Duration, availability CompilerAvailability) (VerificationLease, bool, error) {
+	if !availability.SolcJS && !availability.Geas && !availability.Vyper {
+		return VerificationLease{}, false, nil
+	}
+	return repository.Claim(ctx, id, duration)
+}
+
+func (repository *verifyMemoryRepository) CompleteProxyV2(context.Context, VerificationLease) error {
+	return errors.New("unexpected proxy verification in fixture")
 }

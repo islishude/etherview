@@ -3,7 +3,6 @@ package metadata
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,8 +13,12 @@ import (
 	"strings"
 	"unicode"
 
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/netpolicy"
 )
 
@@ -81,12 +84,12 @@ type NFTMetadataReader interface {
 // exact NFT metadata observation that is still canonical. It never returns the
 // metadata source URI, resolved document URI, raw JSON, or image bytes.
 type PostgresMetadataReader struct {
-	db           *sql.DB
+	db           dbaccess.Database
 	chainID      string
 	linkResolver *Client
 }
 
-func NewPostgresMetadataReader(db *sql.DB, chainID, ipfsGateway string) (*PostgresMetadataReader, error) {
+func NewPostgresMetadataReader(db dbaccess.Database, chainID, ipfsGateway string) (*PostgresMetadataReader, error) {
 	if db == nil {
 		return nil, errors.New("NFT metadata reader requires a database")
 	}
@@ -116,26 +119,66 @@ func (reader *PostgresMetadataReader) NFTMetadata(
 		return NFTMetadata{}, errors.New("metadata display token ID exceeds uint256")
 	}
 
-	tx, err := reader.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	tx, err := reader.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return NFTMetadata{}, fmt.Errorf("begin NFT metadata display snapshot: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 
 	var (
 		state              State
 		blockNumber        string
 		blockHash          []byte
 		document           []byte
-		contentBlockNumber sql.NullString
+		contentBlockNumber pgtype.Text
 		contentBlockHash   []byte
 	)
-	err = tx.QueryRowContext(ctx, dbgen.MetadataSelectCanonicalNFTMetadata, reader.chainID, address.Bytes(), tokenID).Scan(
-		&state, &blockNumber, &blockHash, &document, &contentBlockNumber, &contentBlockHash,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(reader.chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(tokenID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).MetadataSelectCanonicalNFTMetadata(ctx, queryValue0, address.Bytes(), queryValue1)
+		if err != nil {
+			return err
+		}
+		state = State(queryRow.State)
+		blockNumber = queryRow.LatestSignalBlockNumber
+		blockHash = queryRow.BlockHash
+		document = queryRow.Document
+		resultValue4, err := dbaccess.NumericText(queryRow.BlockNumber)
+		if err != nil {
+			return err
+		}
+		contentBlockNumber = resultValue4
+		contentBlockHash = queryRow.BlockHash_2
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		var exists bool
-		if queryErr := tx.QueryRowContext(ctx, dbgen.MetadataAnyNFTMetadata, reader.chainID, address.Bytes(), tokenID).Scan(&exists); queryErr != nil {
+		if queryErr := func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(reader.chainID); err != nil {
+				return err
+			}
+			var queryValue1 pgtype.Numeric
+			if err := queryValue1.Scan(tokenID); err != nil {
+				return err
+			}
+			queryRow, err := dbgen.New(tx).MetadataAnyNFTMetadata(ctx, queryValue0, address.Bytes(), queryValue1)
+			if err != nil {
+				return err
+			}
+			if queryRow == nil {
+				return errors.New("invalid stored query value")
+			}
+			exists = *queryRow
+			return nil
+		}(); queryErr != nil {
 			return NFTMetadata{}, fmt.Errorf("check historical NFT metadata display state: %w", queryErr)
 		}
 		if exists {
@@ -196,7 +239,7 @@ func (reader *PostgresMetadataReader) NFTMetadata(
 		projection.ContentStale = contentObservation != result.Observation
 		result = projection
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return NFTMetadata{}, fmt.Errorf("commit NFT metadata display snapshot: %w", err)
 	}
 	return result, nil

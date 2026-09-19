@@ -3,13 +3,15 @@ package store
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"embed"
 	"encoding/hex"
 	"fmt"
 	"io/fs"
 	"sort"
 	"strings"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
 )
 
 //go:embed migrations/*.sql
@@ -48,7 +50,7 @@ func Migrations() ([]Migration, error) {
 
 // RunMigrations applies embedded migrations under a PostgreSQL transaction
 // advisory lock. An already-applied migration whose bytes changed is rejected.
-func RunMigrations(ctx context.Context, db *sql.DB) error {
+func RunMigrations(ctx context.Context, db dbaccess.Database) error {
 	if db == nil {
 		return fmt.Errorf("run migrations: nil database")
 	}
@@ -56,15 +58,15 @@ func RunMigrations(ctx context.Context, db *sql.DB) error {
 	if err != nil {
 		return err
 	}
-	tx, err := db.BeginTx(ctx, nil)
+	tx, err := db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("begin migration transaction: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
-	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext('etherview:migrations'))`); err != nil {
+	defer dbaccess.Rollback(ctx, tx)
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('etherview:migrations'))`); err != nil {
 		return fmt.Errorf("lock migrations: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := tx.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS etherview_schema_migrations (
 			version TEXT PRIMARY KEY,
 			checksum TEXT NOT NULL,
@@ -74,7 +76,7 @@ func RunMigrations(ctx context.Context, db *sql.DB) error {
 	}
 	for _, migration := range migrations {
 		var existingChecksum string
-		err := tx.QueryRowContext(ctx,
+		err := tx.QueryRow(ctx,
 			`SELECT checksum FROM etherview_schema_migrations WHERE version = $1`,
 			migration.Version,
 		).Scan(&existingChecksum)
@@ -84,20 +86,20 @@ func RunMigrations(ctx context.Context, db *sql.DB) error {
 				return fmt.Errorf("migration %s checksum changed after application", migration.Version)
 			}
 			continue
-		case err != sql.ErrNoRows:
+		case err != pgx.ErrNoRows:
 			return fmt.Errorf("read migration %s state: %w", migration.Version, err)
 		}
-		if _, err := tx.ExecContext(ctx, migration.SQL); err != nil {
+		if _, err := tx.Exec(ctx, migration.SQL); err != nil {
 			return fmt.Errorf("apply migration %s: %w", migration.Version, err)
 		}
-		if _, err := tx.ExecContext(ctx,
+		if _, err := tx.Exec(ctx,
 			`INSERT INTO etherview_schema_migrations (version, checksum) VALUES ($1, $2)`,
 			migration.Version, migration.Checksum,
 		); err != nil {
 			return fmt.Errorf("record migration %s: %w", migration.Version, err)
 		}
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit migrations: %w", err)
 	}
 	return nil

@@ -4,12 +4,13 @@ package integration_test
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"sync"
 	"testing"
 	"time"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -20,7 +21,7 @@ import (
 )
 
 type proxyStateDiffService struct {
-	db    *sql.DB
+	db    *pgxpool.Pool
 	raw   json.RawMessage
 	calls int
 }

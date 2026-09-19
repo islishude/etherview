@@ -4,9 +4,10 @@ package integration_test
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -36,14 +37,14 @@ func marshalIntegrationBlockTraceResults(
 
 func marshalDatabaseBlockTraceResults(
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	blockHash common.Hash,
 	result func(common.Hash) (json.RawMessage, error),
 ) (json.RawMessage, error) {
 	if db == nil {
 		return nil, fmt.Errorf("block trace fixture database is not configured")
 	}
-	rows, err := db.QueryContext(ctx, `
+	rows, err := db.Query(ctx, `
 		SELECT tx_hash
 		FROM transaction_inclusions
 		WHERE chain_id = 1 AND block_hash = $1

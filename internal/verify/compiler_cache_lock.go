@@ -3,12 +3,13 @@ package verify
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
-	"database/sql/driver"
 	"encoding/hex"
 	"errors"
-	"github.com/islishude/etherview/internal/db/gen"
 	"time"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 )
 
 const (
@@ -31,12 +32,12 @@ type CompilerCacheInstallLocker interface {
 // compiler cache and writer PostgreSQL lock domain. It uses session locks but
 // never opens a transaction or holds a connection across artifact download.
 type PostgresCompilerCacheInstallLocker struct {
-	db           *sql.DB
+	db           *pgxpool.Pool
 	pollInterval time.Duration
 }
 
 func NewPostgresCompilerCacheInstallLocker(
-	db *sql.DB,
+	db *pgxpool.Pool,
 ) (*PostgresCompilerCacheInstallLocker, error) {
 	if db == nil {
 		return nil, errors.New("compiler cache install locker requires PostgreSQL")
@@ -75,31 +76,36 @@ func compilerCacheDigestKey(digest [sha256.Size]byte) string {
 func (locker *PostgresCompilerCacheInstallLocker) acquire(
 	ctx context.Context,
 	key string,
-) (*sql.Conn, error) {
+) (*pgxpool.Conn, error) {
 	delay := locker.pollInterval
 	if delay <= 0 {
 		delay = compilerCacheLockPollInterval
 	}
 	for {
-		conn, err := locker.db.Conn(ctx)
+		conn, err := locker.db.Acquire(ctx)
 		if err != nil {
 			return nil, err
 		}
 		var acquired bool
-		err = conn.QueryRowContext(ctx, dbgen.VerifyLegacyTryCompilerCacheInstallLock, key).Scan(&acquired)
+		err = func() error {
+
+			queryRow, err := dbgen.New(conn).VerifyLegacyTryCompilerCacheInstallLock(ctx, key)
+			if err != nil {
+				return err
+			}
+			acquired = queryRow
+			return nil
+		}()
 		if err != nil {
 			// The server may have granted the session lock before the result was
 			// lost. Never return an outcome-uncertain session to the pool.
 			discardCompilerCacheLockConnection(conn)
-			_ = conn.Close()
 			return nil, err
 		}
 		if acquired {
 			return conn, nil
 		}
-		if err := conn.Close(); err != nil {
-			return nil, err
-		}
+		conn.Release()
 		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
@@ -110,22 +116,27 @@ func (locker *PostgresCompilerCacheInstallLocker) acquire(
 	}
 }
 
-func releaseCompilerCacheInstallLock(conn *sql.Conn, key string) error {
+func releaseCompilerCacheInstallLock(conn *pgxpool.Conn, key string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), compilerCacheUnlockTimeout)
 	defer cancel()
 	var unlocked bool
-	err := conn.QueryRowContext(ctx, dbgen.VerifyLegacyUnlockCompilerCacheInstall, key).Scan(&unlocked)
+	err := func() error {
+
+		queryRow, err := dbgen.New(conn).VerifyLegacyUnlockCompilerCacheInstall(ctx, key)
+		if err != nil {
+			return err
+		}
+		unlocked = queryRow
+		return nil
+	}()
 	if err != nil || !unlocked {
 		discardCompilerCacheLockConnection(conn)
-		_ = conn.Close()
 		return errors.New("release compiler cache install lock")
 	}
-	if err := conn.Close(); err != nil {
-		return errors.New("release compiler cache install lock")
-	}
+	conn.Release()
 	return nil
 }
 
-func discardCompilerCacheLockConnection(conn *sql.Conn) {
-	_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+func discardCompilerCacheLockConnection(conn *pgxpool.Conn) {
+	dbaccess.Discard(context.Background(), conn)
 }

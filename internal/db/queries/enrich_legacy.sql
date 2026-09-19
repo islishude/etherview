@@ -1,61 +1,65 @@
--- name: EnrichLegacyAtomicConsumePendingReplay :exec
+-- name: EnrichLegacyAtomicConsumePendingReplay :execrows
 UPDATE durable_jobs
 SET status = 'queued',
     attempts = 0,
     available_at = clock_timestamp(),
     result = NULL,
     last_error = NULL,
-    completed_generation = GREATEST(completed_generation, $3),
+    completed_generation = GREATEST(completed_generation, sqlc.arg('completed_generation')),
     leased_by = NULL,
     lease_token = NULL,
     lease_expires_at = NULL,
     leased_generation = NULL,
     updated_at = clock_timestamp()
-WHERE id = $1
+WHERE id = sqlc.arg('id')
   AND kind = 'enrichment'
-  AND chain_id = $4::numeric
-  AND stage = $5
-  AND stage_version = $6
-  AND payload->>'block_hash' = $7
-  AND payload->>'block_number' = $8
+  AND chain_id = sqlc.arg('chain_id')::numeric
+  AND stage = sqlc.arg('stage')
+  AND stage_version = sqlc.arg('stage_version')
+  AND payload->>'block_hash' = sqlc.arg('payload')
+  AND payload->>'block_number' = sqlc.arg('payload_2')
   AND status = 'leased'
-  AND lease_token = $2
+  AND lease_token = sqlc.arg('lease_token')
   AND lease_expires_at > clock_timestamp()
-  AND claimed_generation = $3
-  AND leased_generation = $3
-  AND requested_generation > $3
-  AND completed_generation < $3;
+  AND claimed_generation = sqlc.arg('completed_generation')
+  AND leased_generation = sqlc.arg('completed_generation')
+  AND requested_generation > sqlc.arg('completed_generation')
+  AND completed_generation < sqlc.arg('completed_generation');
 
--- name: EnrichLegacyAtomicPublishSuccess :exec
+-- name: EnrichLegacyAtomicPublishSuccess :execrows
 UPDATE durable_jobs
 SET status = 'succeeded',
-    result = $4::jsonb,
+    result = sqlc.arg('result')::jsonb,
     last_error = NULL,
-    completed_generation = $3,
+    completed_generation = sqlc.arg('completed_generation'),
     leased_by = NULL,
     lease_token = NULL,
     lease_expires_at = NULL,
     leased_generation = NULL,
     updated_at = clock_timestamp()
-WHERE id = $1
+WHERE id = sqlc.arg('id')
   AND kind = 'enrichment'
-  AND chain_id = $5::numeric
-  AND stage = $6
-  AND stage_version = $7
-  AND payload->>'block_hash' = $8
-  AND payload->>'block_number' = $9
+  AND chain_id = sqlc.arg('chain_id')::numeric
+  AND stage = sqlc.arg('stage')
+  AND stage_version = sqlc.arg('stage_version')
+  AND payload->>'block_hash' = sqlc.arg('payload')
+  AND payload->>'block_number' = sqlc.arg('payload_2')
   AND status = 'leased'
-  AND lease_token = $2
+  AND lease_token = sqlc.arg('lease_token')
   AND lease_expires_at > clock_timestamp()
-  AND claimed_generation = $3
-  AND leased_generation = $3
-  AND requested_generation = $3
-  AND completed_generation < $3;
+  AND claimed_generation = sqlc.arg('completed_generation')
+  AND leased_generation = sqlc.arg('completed_generation')
+  AND requested_generation = sqlc.arg('completed_generation')
+  AND completed_generation < sqlc.arg('completed_generation');
 
--- name: EnrichLegacyBlockStatsSource :many
-SELECT block.raw, count(inclusion.tx_index), configuration.configured_start::text,
-       parent.number::text, parent.timestamp::text,
-       COALESCE(bool_or(canonical_parent.block_hash IS NOT NULL), FALSE)
+-- name: EnrichLegacyBlockStatsSource :one
+SELECT
+block.raw,
+count(inclusion.tx_index),
+configuration.configured_start,
+parent.number,
+parent.timestamp,
+(COALESCE(bool_or(canonical_parent.block_hash IS NOT NULL), FALSE))::boolean AS parent_canonical
 FROM blocks AS block
 JOIN core_index_configuration AS configuration
   ON configuration.chain_id = block.chain_id
@@ -70,79 +74,79 @@ LEFT JOIN canonical_blocks AS canonical_parent
   ON canonical_parent.chain_id = parent.chain_id
  AND canonical_parent.number = parent.number
  AND canonical_parent.block_hash = parent.hash
-WHERE block.chain_id = $1::numeric AND block.number = $2::numeric AND block.hash = $3
+WHERE block.chain_id = sqlc.arg('chain_id')::numeric AND block.number = sqlc.arg('number')::numeric AND block.hash = sqlc.arg('hash')
 GROUP BY block.raw, configuration.configured_start, parent.number, parent.timestamp;
 
--- name: EnrichLegacyCanonicalBlock :many
+-- name: EnrichLegacyCanonicalBlock :one
 SELECT EXISTS (
     SELECT 1
     FROM canonical_blocks
-    WHERE chain_id = $1::numeric
-      AND number = $2::numeric
-      AND block_hash = $3
+    WHERE chain_id = sqlc.arg('chain_id')::numeric
+      AND number = sqlc.arg('number')::numeric
+      AND block_hash = sqlc.arg('block_hash')
 );
 
--- name: EnrichLegacyCarryForwardProxyGeneration :many
+-- name: EnrichLegacyCarryForwardProxyGeneration :one
 WITH source_generation AS MATERIALIZED (
     SELECT publication.job_generation
     FROM durable_stage_publications AS publication
-    WHERE publication.job_id = $5::bigint
-      AND publication.job_generation < $6::bigint
-      AND publication.chain_id = $1::numeric
-      AND publication.block_number = $2::numeric
-      AND publication.block_hash = $3
+    WHERE publication.job_id = sqlc.narg('durable_job_id')::bigint
+      AND publication.job_generation < sqlc.narg('job_generation')::bigint
+      AND publication.chain_id = sqlc.arg('chain_id')::numeric
+      AND publication.block_number = sqlc.arg('block_number')::numeric
+      AND publication.block_hash = sqlc.arg('block_hash')
       AND publication.stage = 'proxy'
-      AND publication.stage_version = $4
+      AND publication.stage_version = sqlc.arg('stage_version')
       AND publication.state = 'complete'
     ORDER BY publication.job_generation DESC
     LIMIT 1
 ), redetected AS MATERIALIZED (
     SELECT generation.proxy_address AS address
     FROM proxy_observation_generations AS generation
-    WHERE generation.chain_id = $1::numeric
-      AND generation.observation_block_hash = $3
-      AND generation.observation_stage_version = $4
-      AND generation.durable_job_id = $5::bigint
-      AND generation.job_generation = $6::bigint
+    WHERE generation.chain_id = sqlc.arg('chain_id')::numeric
+      AND generation.observation_block_hash = sqlc.arg('block_hash')
+      AND generation.observation_stage_version = sqlc.arg('stage_version')
+      AND generation.durable_job_id = sqlc.narg('durable_job_id')::bigint
+      AND generation.job_generation = sqlc.narg('job_generation')::bigint
     UNION
     SELECT generation.beacon_address AS address
     FROM beacon_observation_generations AS generation
-    WHERE generation.chain_id = $1::numeric
-      AND generation.observation_block_hash = $3
-      AND generation.observation_stage_version = $4
-      AND generation.durable_job_id = $5::bigint
-      AND generation.job_generation = $6::bigint
+    WHERE generation.chain_id = sqlc.arg('chain_id')::numeric
+      AND generation.observation_block_hash = sqlc.arg('block_hash')
+      AND generation.observation_stage_version = sqlc.arg('stage_version')
+      AND generation.durable_job_id = sqlc.narg('durable_job_id')::bigint
+      AND generation.job_generation = sqlc.narg('job_generation')::bigint
     UNION
 	SELECT generation.implementation_address AS address
 	FROM uups_implementation_observation_generations AS generation
-	WHERE generation.chain_id = $1::numeric
-	  AND generation.observation_block_hash = $3
-	  AND generation.observation_stage_version = $4
-	  AND generation.durable_job_id = $5::bigint
-	  AND generation.job_generation = $6::bigint
+	WHERE generation.chain_id = sqlc.arg('chain_id')::numeric
+	  AND generation.observation_block_hash = sqlc.arg('block_hash')
+	  AND generation.observation_stage_version = sqlc.arg('stage_version')
+	  AND generation.durable_job_id = sqlc.narg('durable_job_id')::bigint
+	  AND generation.job_generation = sqlc.narg('job_generation')::bigint
 	UNION
     SELECT evidence.address
     FROM proxy_detection_evidence AS evidence
-    WHERE evidence.chain_id = $1::numeric
-      AND evidence.block_number = $2::numeric
-      AND evidence.block_hash = $3
-      AND evidence.stage_version = $4
-      AND evidence.durable_job_id = $5::bigint
-      AND evidence.job_generation = $6::bigint
+    WHERE evidence.chain_id = sqlc.arg('chain_id')::numeric
+      AND evidence.block_number = sqlc.arg('block_number')::numeric
+      AND evidence.block_hash = sqlc.arg('block_hash')
+      AND evidence.stage_version = sqlc.arg('stage_version')
+      AND evidence.durable_job_id = sqlc.narg('durable_job_id')::bigint
+      AND evidence.job_generation = sqlc.narg('job_generation')::bigint
 ), carried_proxies AS (
     INSERT INTO proxy_observation_generations (
         chain_id, proxy_address, observation_block_hash,
         observation_stage_version, durable_job_id, job_generation
     )
     SELECT source.chain_id, source.proxy_address, source.observation_block_hash,
-           source.observation_stage_version, $5::bigint, $6::bigint
+           source.observation_stage_version, sqlc.narg('durable_job_id')::bigint, sqlc.narg('job_generation')::bigint
     FROM proxy_observation_generations AS source
     JOIN source_generation
       ON source.job_generation = source_generation.job_generation
-    WHERE source.chain_id = $1::numeric
-      AND source.observation_block_hash = $3
-      AND source.observation_stage_version = $4
-      AND source.durable_job_id = $5::bigint
+    WHERE source.chain_id = sqlc.arg('chain_id')::numeric
+      AND source.observation_block_hash = sqlc.arg('block_hash')
+      AND source.observation_stage_version = sqlc.arg('stage_version')
+      AND source.durable_job_id = sqlc.narg('durable_job_id')::bigint
       AND NOT EXISTS (
           SELECT 1 FROM redetected WHERE redetected.address = source.proxy_address
       )
@@ -154,14 +158,14 @@ WITH source_generation AS MATERIALIZED (
         observation_stage_version, durable_job_id, job_generation
     )
     SELECT source.chain_id, source.beacon_address, source.observation_block_hash,
-           source.observation_stage_version, $5::bigint, $6::bigint
+           source.observation_stage_version, sqlc.narg('durable_job_id')::bigint, sqlc.narg('job_generation')::bigint
     FROM beacon_observation_generations AS source
     JOIN source_generation
       ON source.job_generation = source_generation.job_generation
-    WHERE source.chain_id = $1::numeric
-      AND source.observation_block_hash = $3
-      AND source.observation_stage_version = $4
-      AND source.durable_job_id = $5::bigint
+    WHERE source.chain_id = sqlc.arg('chain_id')::numeric
+      AND source.observation_block_hash = sqlc.arg('block_hash')
+      AND source.observation_stage_version = sqlc.arg('stage_version')
+      AND source.durable_job_id = sqlc.narg('durable_job_id')::bigint
       AND NOT EXISTS (
           SELECT 1 FROM redetected WHERE redetected.address = source.beacon_address
       )
@@ -175,14 +179,14 @@ WITH source_generation AS MATERIALIZED (
 	)
 	SELECT source.chain_id, source.implementation_address,
 		   source.observation_block_hash, source.observation_stage_version,
-		   source.verification_job_id, $5::bigint, $6::bigint
+		   source.verification_job_id, sqlc.narg('durable_job_id')::bigint, sqlc.narg('job_generation')::bigint
 	FROM uups_implementation_observation_generations AS source
 	JOIN source_generation
 	  ON source.job_generation = source_generation.job_generation
-	WHERE source.chain_id = $1::numeric
-	  AND source.observation_block_hash = $3
-	  AND source.observation_stage_version = $4
-	  AND source.durable_job_id = $5::bigint
+	WHERE source.chain_id = sqlc.arg('chain_id')::numeric
+	  AND source.observation_block_hash = sqlc.arg('block_hash')
+	  AND source.observation_stage_version = sqlc.arg('stage_version')
+	  AND source.durable_job_id = sqlc.narg('durable_job_id')::bigint
 	  AND NOT EXISTS (
 		  SELECT 1 FROM redetected
 		  WHERE redetected.address = source.implementation_address
@@ -206,14 +210,14 @@ WITH source_generation AS MATERIALIZED (
            source.admin_address, source.admin_code_hash,
            source.beacon_address, source.beacon_code_hash,
            source.proxy_artifact_job_id, source.implementation_artifact_job_id,
-           $5::bigint, $6::bigint, source.evidence
+           sqlc.narg('durable_job_id')::bigint, sqlc.narg('job_generation')::bigint, source.evidence
     FROM proxy_artifact_resolutions AS source
     JOIN source_generation
       ON source.job_generation = source_generation.job_generation
-    WHERE source.chain_id = $1::numeric
-      AND source.observation_block_hash = $3
-      AND source.observation_stage_version = $4
-      AND source.durable_job_id = $5::bigint
+    WHERE source.chain_id = sqlc.arg('chain_id')::numeric
+      AND source.observation_block_hash = sqlc.arg('block_hash')
+      AND source.observation_stage_version = sqlc.arg('stage_version')
+      AND source.durable_job_id = sqlc.narg('durable_job_id')::bigint
       AND NOT EXISTS (
           SELECT 1 FROM redetected WHERE redetected.address = source.proxy_address
       )
@@ -228,15 +232,15 @@ WITH source_generation AS MATERIALIZED (
     SELECT source.chain_id, source.address, source.block_number,
            source.block_hash, source.stage_version, source.code_hash,
            source.candidate_kind, source.detection_state, source.reason, TRUE,
-           $5::bigint, $6::bigint, source.details
+           sqlc.narg('durable_job_id')::bigint, sqlc.narg('job_generation')::bigint, source.details
     FROM proxy_detection_evidence AS source
     JOIN source_generation
       ON source.job_generation = source_generation.job_generation
-    WHERE source.chain_id = $1::numeric
-      AND source.block_number = $2::numeric
-      AND source.block_hash = $3
-      AND source.stage_version = $4
-      AND source.durable_job_id = $5::bigint
+    WHERE source.chain_id = sqlc.arg('chain_id')::numeric
+      AND source.block_number = sqlc.arg('block_number')::numeric
+      AND source.block_hash = sqlc.arg('block_hash')
+      AND source.stage_version = sqlc.arg('stage_version')
+      AND source.durable_job_id = sqlc.narg('durable_job_id')::bigint
       AND NOT EXISTS (
           SELECT 1 FROM redetected WHERE redetected.address = source.address
       )
@@ -249,7 +253,7 @@ SELECT (SELECT count(*) FROM carried_proxies),
        (SELECT count(*) FROM carried_resolutions),
        (SELECT count(*) FROM carried_negative_evidence);
 
--- name: EnrichLegacyClaimOutbox :many
+-- name: EnrichLegacyClaimOutbox :one
 SELECT id, chain_id::text, topic, message_key, payload, attempts, generation
 FROM transactional_outbox
 WHERE published_at IS NULL
@@ -259,7 +263,7 @@ ORDER BY available_at, id
 FOR UPDATE SKIP LOCKED
 LIMIT 1;
 
--- name: EnrichLegacyConfirmPublishedSuccess :many
+-- name: EnrichLegacyConfirmPublishedSuccess :one
 SELECT EXISTS (
     SELECT 1
     FROM durable_stage_publications AS publication
@@ -268,7 +272,7 @@ SELECT EXISTS (
       AND publication.state = 'complete'
 );
 
--- name: EnrichLegacyConfirmSupersededPublication :many
+-- name: EnrichLegacyConfirmSupersededPublication :one
 SELECT EXISTS (
     SELECT 1
     FROM durable_stage_publications AS publication
@@ -279,72 +283,72 @@ SELECT EXISTS (
 
 -- name: EnrichLegacyDeleteEIP7702AuthorizationsBlock :exec
 DELETE FROM eip7702_authorizations
-WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3;
+WHERE chain_id = sqlc.arg('chain_id')::numeric AND block_number = sqlc.arg('block_number')::numeric AND block_hash = sqlc.arg('block_hash');
 
 -- name: EnrichLegacyDeleteExecutionCodeResolutionsBlock :exec
 DELETE FROM transaction_execution_code_resolutions
-WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3;
+WHERE chain_id = sqlc.arg('chain_id')::numeric AND block_number = sqlc.arg('block_number')::numeric AND block_hash = sqlc.arg('block_hash');
 
 -- name: EnrichLegacyDeleteStageJournal :exec
 DELETE FROM block_journals
-WHERE chain_id = $1::numeric
-  AND block_hash = $2
-  AND stage = $3;
+WHERE chain_id = sqlc.arg('chain_id')::numeric
+  AND block_hash = sqlc.arg('block_hash')
+  AND stage = sqlc.arg('stage');
 
 -- name: EnrichLegacyDeleteStageResult :exec
 DELETE FROM block_stage_results
-WHERE chain_id = $1::numeric
-  AND block_hash = $2
-  AND stage = $3
-  AND stage_version = $4;
+WHERE chain_id = sqlc.arg('chain_id')::numeric
+  AND block_hash = sqlc.arg('block_hash')
+  AND stage = sqlc.arg('stage')
+  AND stage_version = sqlc.arg('stage_version');
 
 -- name: EnrichLegacyDeleteStateDiffBlock :exec
 DELETE FROM transaction_state_changes
-WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3;
+WHERE chain_id = sqlc.arg('chain_id')::numeric AND block_number = sqlc.arg('block_number')::numeric AND block_hash = sqlc.arg('block_hash');
 
 -- name: EnrichLegacyDeleteTraceBlock :exec
 DELETE FROM normalized_traces
-WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3;
+WHERE chain_id = sqlc.arg('chain_id')::numeric AND block_number = sqlc.arg('block_number')::numeric AND block_hash = sqlc.arg('block_hash');
 
 -- name: EnrichLegacyDeleteTraceLogAttributions :exec
 DELETE FROM trace_log_attributions
-WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3;
+WHERE chain_id = sqlc.arg('chain_id')::numeric AND block_number = sqlc.arg('block_number')::numeric AND block_hash = sqlc.arg('block_hash');
 
--- name: EnrichLegacyDetectedToken :many
+-- name: EnrichLegacyDetectedToken :one
 SELECT token.standard, token.confidence
 FROM token_contracts AS token
 JOIN canonical_blocks AS canonical
   ON canonical.chain_id = token.chain_id
  AND canonical.number = token.observed_block_number
  AND canonical.block_hash = token.observed_block_hash
-WHERE token.chain_id = $1::numeric
-  AND token.address = $2
-  AND token.observed_block_number <= $3::numeric
+WHERE token.chain_id = sqlc.arg('chain_id')::numeric
+  AND token.address = sqlc.arg('address')
+  AND token.observed_block_number <= sqlc.arg('max_observed_block_number')::numeric
   AND token.standard <> 'unknown'
 ORDER BY token.observed_block_number DESC, token.updated_at DESC
 LIMIT 1;
 
--- name: EnrichLegacyEnablePublicationProtocol :many
+-- name: EnrichLegacyEnablePublicationProtocol :exec
 SELECT set_config('etherview.enrichment_publication_protocol', '2', true);
 
--- name: EnrichLegacyEnqueueJob :many
+-- name: EnrichLegacyEnqueueJob :one
 INSERT INTO durable_jobs (
     chain_id, kind, stage, stage_version, idempotency_key, payload,
     priority, max_attempts
-) VALUES ($1::numeric, $2, $3, $4, $5, $6::jsonb, $7, $8)
+) VALUES (sqlc.arg('chain_id')::numeric, sqlc.arg('kind'), sqlc.arg('stage'), sqlc.arg('stage_version'), sqlc.arg('idempotency_key'), sqlc.arg('payload')::jsonb, sqlc.arg('priority'), sqlc.arg('max_attempts'))
 ON CONFLICT (chain_id, kind, idempotency_key) DO NOTHING
 RETURNING id, chain_id::text, stage, stage_version, attempts, max_attempts, payload, requested_generation;
 
--- name: EnrichLegacyEnrichmentJobStatus :many
+-- name: EnrichLegacyEnrichmentJobStatus :one
 SELECT status
 FROM durable_jobs
 WHERE id = $1;
 
--- name: EnrichLegacyFinishJob :many
+-- name: EnrichLegacyFinishJob :one
 UPDATE durable_jobs
 SET status = CASE
         WHEN requested_generation > leased_generation THEN 'queued'
-        ELSE $3
+        ELSE sqlc.arg('status')
     END,
     attempts = CASE
         WHEN requested_generation > leased_generation THEN 0
@@ -356,11 +360,11 @@ SET status = CASE
     END,
     result = CASE
         WHEN requested_generation > leased_generation THEN NULL
-        ELSE $4::jsonb
+        ELSE sqlc.arg('result')::jsonb
     END,
     last_error = CASE
         WHEN requested_generation > leased_generation THEN NULL
-        ELSE $5
+        ELSE sqlc.narg('last_error')
     END,
     completed_generation = GREATEST(completed_generation, leased_generation),
     leased_by = NULL,
@@ -368,28 +372,28 @@ SET status = CASE
     lease_expires_at = NULL,
     leased_generation = NULL,
     updated_at = clock_timestamp()
-WHERE id = $1
+WHERE id = sqlc.arg('id')
   AND kind = 'enrichment'
-  AND chain_id = $7::numeric
-  AND stage = $8
-  AND stage_version = $9
-  AND payload->>'block_hash' = $10
-  AND payload->>'block_number' = $11
+  AND chain_id = sqlc.arg('chain_id')::numeric
+  AND stage = sqlc.arg('stage')
+  AND stage_version = sqlc.arg('stage_version')
+  AND payload->>'block_hash' = sqlc.arg('payload')
+  AND payload->>'block_number' = sqlc.arg('payload2')
   AND status = 'leased'
-  AND lease_token = $2
+  AND lease_token = sqlc.arg('lease_token')
   AND lease_expires_at > clock_timestamp()
-  AND claimed_generation = $6
-  AND leased_generation = $6
-  AND completed_generation < $6
+  AND claimed_generation = sqlc.arg('claimed_generation')
+  AND leased_generation = sqlc.arg('claimed_generation')
+  AND completed_generation < sqlc.arg('claimed_generation')
 RETURNING status = 'queued'
       AND attempts = 0
-      AND completed_generation < requested_generation;
+      AND completed_generation < requested_generation AS followup_queued;
 
--- name: EnrichLegacyInsertBeaconObservationGeneration :exec
+-- name: EnrichLegacyInsertBeaconObservationGeneration :execrows
 INSERT INTO beacon_observation_generations (
     chain_id, beacon_address, observation_block_hash,
     observation_stage_version, durable_job_id, job_generation
-) VALUES ($1::numeric, $2, $3, $4, $5::bigint, $6::bigint)
+) VALUES (sqlc.arg('chain_id')::numeric, sqlc.arg('beacon_address'), sqlc.arg('observation_block_hash'), sqlc.arg('observation_stage_version'), sqlc.narg('durable_job_id')::bigint, sqlc.narg('job_generation')::bigint)
 ON CONFLICT DO NOTHING;
 
 -- name: EnrichLegacyInsertBlockStats :exec
@@ -401,10 +405,10 @@ INSERT INTO block_statistics (
     priority_fee_wei, failed_transaction_count, contract_creation_count,
     canonical
 ) VALUES (
-    $1::numeric, $2::numeric, $3, $4, $5::numeric, $6::numeric, $7::numeric,
-    $8::numeric, $9::numeric, $10::numeric, $11::numeric, $12::numeric,
-    $13::numeric, $14::numeric, $15::numeric, $16::numeric, $17::numeric,
-    $18, $19, true
+    sqlc.arg('chain_id')::numeric, sqlc.arg('block_number')::numeric, sqlc.arg('block_hash'), sqlc.arg('transaction_count'), sqlc.arg('gas_used')::numeric, sqlc.arg('gas_limit')::numeric, sqlc.narg('base_fee_per_gas')::numeric,
+    sqlc.narg('blob_gas_used')::numeric, sqlc.narg('burned_wei')::numeric, sqlc.arg('block_timestamp')::numeric, sqlc.narg('block_interval_seconds')::numeric, sqlc.narg('transactions_per_second')::numeric,
+    sqlc.narg('excess_blob_gas')::numeric, sqlc.narg('blob_base_fee_per_gas')::numeric, sqlc.narg('blob_burned_wei')::numeric, sqlc.arg('execution_gas_fee_wei')::numeric, sqlc.arg('priority_fee_wei')::numeric,
+    sqlc.arg('failed_transaction_count'), sqlc.arg('contract_creation_count'), true
 )
 ON CONFLICT (chain_id, block_number, block_hash) DO UPDATE SET
     transaction_count = EXCLUDED.transaction_count,
@@ -426,15 +430,15 @@ ON CONFLICT (chain_id, block_number, block_hash) DO UPDATE SET
     canonical = true,
     computed_at = now();
 
--- name: EnrichLegacyInsertDurablePublication :many
+-- name: EnrichLegacyInsertDurablePublication :one
 INSERT INTO durable_stage_publications (
     job_id, job_generation, chain_id, block_number, block_hash,
     stage, stage_version, state, details, last_error
 ) VALUES (
-    $1, $2, $3::numeric, $4::numeric, $5,
-    $6, $7, $8, $9::jsonb, $10
+    sqlc.arg('job_id'), sqlc.arg('job_generation'), sqlc.arg('chain_id')::numeric, sqlc.arg('block_number')::numeric, sqlc.arg('block_hash'),
+    sqlc.arg('stage'), sqlc.arg('stage_version'), sqlc.arg('state'), sqlc.arg('details')::jsonb, sqlc.narg('last_error')
 )
-RETURNING 1;
+RETURNING 1 AS inserted;
 
 -- name: EnrichLegacyInsertEIP7702Authorization :exec
 INSERT INTO eip7702_authorizations (
@@ -443,8 +447,8 @@ INSERT INTO eip7702_authorizations (
     delegate_address, y_parity, r, s, authority, signature_status,
     application_status, skip_reason, canonical
 ) VALUES (
-    $1::numeric, $2::numeric, $3, $4, $5, $6, $7::numeric, $8::numeric,
-    $9, $10, $11, $12, $13, $14, $15, $16, true
+    sqlc.arg('chain_id')::numeric, sqlc.arg('block_number')::numeric, sqlc.arg('block_hash'), sqlc.arg('transaction_hash'), sqlc.arg('transaction_index'), sqlc.arg('authorization_index'), sqlc.arg('authorization_chain_id')::numeric, sqlc.arg('authorization_nonce')::numeric,
+    sqlc.arg('delegate_address'), sqlc.arg('yparity'), sqlc.arg('r'), sqlc.arg('s'), sqlc.arg('authority'), sqlc.arg('signature_status'), sqlc.arg('application_status'), sqlc.narg('skip_reason'), true
 );
 
 -- name: EnrichLegacyInsertExecutionCodeResolution :exec
@@ -453,10 +457,10 @@ INSERT INTO transaction_execution_code_resolutions (
     context_address, execution_address, execution_code_hash, resolution,
     evidence_source, canonical
 ) VALUES (
-    $1::numeric, $2::numeric, $3, $4, $5, $6, $7, $8, $9, $10, true
+    sqlc.arg('chain_id')::numeric, sqlc.arg('block_number')::numeric, sqlc.arg('block_hash'), sqlc.arg('transaction_hash'), sqlc.arg('transaction_index'), sqlc.arg('context_address'), sqlc.arg('execution_address'), sqlc.arg('execution_code_hash'), sqlc.arg('resolution'), sqlc.arg('evidence_source'), true
 );
 
--- name: EnrichLegacyInsertProxyArtifactResolution :many
+-- name: EnrichLegacyInsertProxyArtifactResolution :one
 WITH inserted AS (
     INSERT INTO proxy_artifact_resolutions (
         chain_id, proxy_address, observation_block_hash,
@@ -467,10 +471,10 @@ WITH inserted AS (
         implementation_artifact_job_id, durable_job_id, job_generation,
         evidence
     ) VALUES (
-        $1::numeric, $2, $3, $4, $5, $6,
-        $7, $8, $9, $10, $11, $12,
-        $13, $14, $15::uuid, $16::uuid, $17::bigint, $18::bigint,
-        $19::jsonb
+        sqlc.arg('chain_id')::numeric, sqlc.arg('proxy_address'), sqlc.arg('observation_block_hash'), sqlc.arg('observation_stage_version'), sqlc.arg('proxy_code_hash'), sqlc.arg('proxy_kind'),
+        sqlc.arg('proxy_pattern'), sqlc.arg('standard_version'), sqlc.arg('implementation_address'), sqlc.arg('implementation_code_hash'), sqlc.arg('admin_address'), sqlc.arg('admin_code_hash'),
+        sqlc.arg('beacon_address'), sqlc.arg('beacon_code_hash'), sqlc.arg('proxy_artifact_job_id')::uuid, sqlc.narg('implementation_artifact_job_id')::uuid, sqlc.narg('durable_job_id')::bigint, sqlc.narg('job_generation')::bigint,
+        sqlc.arg('evidence')::jsonb
     )
     ON CONFLICT DO NOTHING
     RETURNING id
@@ -479,41 +483,41 @@ SELECT id FROM inserted
 UNION ALL
 SELECT existing.id
 FROM proxy_artifact_resolutions AS existing
-WHERE existing.chain_id = $1::numeric
-  AND existing.proxy_address = $2
-  AND existing.observation_block_hash = $3
-  AND existing.observation_stage_version = $4
-  AND existing.durable_job_id IS NOT DISTINCT FROM $17::bigint
-  AND existing.job_generation IS NOT DISTINCT FROM $18::bigint
-  AND existing.proxy_code_hash = $5
-  AND existing.proxy_kind = $6
-  AND existing.proxy_pattern = $7
-  AND existing.standard_version = $8
-  AND existing.implementation_address = $9
-  AND existing.implementation_code_hash = $10
-  AND existing.admin_address IS NOT DISTINCT FROM $11::bytea
-  AND existing.admin_code_hash IS NOT DISTINCT FROM $12::bytea
-  AND existing.beacon_address IS NOT DISTINCT FROM $13::bytea
-  AND existing.beacon_code_hash IS NOT DISTINCT FROM $14::bytea
-  AND existing.proxy_artifact_job_id = $15::uuid
-  AND existing.implementation_artifact_job_id IS NOT DISTINCT FROM $16::uuid
-  AND existing.evidence = $19::jsonb
+WHERE existing.chain_id = sqlc.arg('chain_id')::numeric
+  AND existing.proxy_address = sqlc.arg('proxy_address')
+  AND existing.observation_block_hash = sqlc.arg('observation_block_hash')
+  AND existing.observation_stage_version = sqlc.arg('observation_stage_version')
+  AND existing.durable_job_id IS NOT DISTINCT FROM sqlc.narg('durable_job_id')::bigint
+  AND existing.job_generation IS NOT DISTINCT FROM sqlc.narg('job_generation')::bigint
+  AND existing.proxy_code_hash = sqlc.arg('proxy_code_hash')
+  AND existing.proxy_kind = sqlc.arg('proxy_kind')
+  AND existing.proxy_pattern = sqlc.arg('proxy_pattern')
+  AND existing.standard_version = sqlc.arg('standard_version')
+  AND existing.implementation_address = sqlc.arg('implementation_address')
+  AND existing.implementation_code_hash = sqlc.arg('implementation_code_hash')
+  AND existing.admin_address IS NOT DISTINCT FROM sqlc.arg('admin_address')::bytea
+  AND existing.admin_code_hash IS NOT DISTINCT FROM sqlc.arg('admin_code_hash')::bytea
+  AND existing.beacon_address IS NOT DISTINCT FROM sqlc.arg('beacon_address')::bytea
+  AND existing.beacon_code_hash IS NOT DISTINCT FROM sqlc.arg('beacon_code_hash')::bytea
+  AND existing.proxy_artifact_job_id = sqlc.arg('proxy_artifact_job_id')::uuid
+  AND existing.implementation_artifact_job_id IS NOT DISTINCT FROM sqlc.narg('implementation_artifact_job_id')::uuid
+  AND existing.evidence = sqlc.arg('evidence')::jsonb
 LIMIT 1;
 
--- name: EnrichLegacyInsertProxyObservationGeneration :exec
+-- name: EnrichLegacyInsertProxyObservationGeneration :execrows
 INSERT INTO proxy_observation_generations (
     chain_id, proxy_address, observation_block_hash,
     observation_stage_version, durable_job_id, job_generation
-) VALUES ($1::numeric, $2, $3, $4, $5::bigint, $6::bigint)
+) VALUES (sqlc.arg('chain_id')::numeric, sqlc.arg('proxy_address'), sqlc.arg('observation_block_hash'), sqlc.arg('observation_stage_version'), sqlc.narg('durable_job_id')::bigint, sqlc.narg('job_generation')::bigint)
 ON CONFLICT DO NOTHING;
 
--- name: EnrichLegacyInsertPublishedStageResult :many
+-- name: EnrichLegacyInsertPublishedStageResult :one
 INSERT INTO block_stage_results AS current (
     chain_id, block_number, block_hash, stage, stage_version,
     state, details, last_error, durable_job_id, job_generation
 ) VALUES (
-    $1::numeric, $2::numeric, $3, $4, $5,
-    $6, $7::jsonb, $8, $9, $10
+    sqlc.arg('chain_id')::numeric, sqlc.arg('block_number')::numeric, sqlc.arg('block_hash'), sqlc.arg('stage'), sqlc.arg('stage_version'),
+    sqlc.arg('state'), sqlc.arg('details')::jsonb, sqlc.narg('last_error'), sqlc.arg('durable_job_id'), sqlc.arg('job_generation')
 )
 ON CONFLICT (chain_id, block_hash, stage, stage_version) DO UPDATE SET
     block_number = EXCLUDED.block_number,
@@ -530,18 +534,18 @@ WHERE (
         current.durable_job_id = EXCLUDED.durable_job_id
         AND current.job_generation <= EXCLUDED.job_generation
       )
-RETURNING 1;
+RETURNING 1 AS inserted;
 
--- name: EnrichLegacyInsertReplayRequest :exec
+-- name: EnrichLegacyInsertReplayRequest :execrows
 INSERT INTO durable_job_replay_requests (
     job_id, source_kind, source_key, requested_generation
 ) VALUES ($1, $2, $3, $4)
 ON CONFLICT (job_id, source_kind, source_key) DO NOTHING;
 
--- name: EnrichLegacyInsertStageResult :exec
+-- name: EnrichLegacyInsertStageResult :execrows
 INSERT INTO block_stage_results AS current (
     chain_id, block_number, block_hash, stage, stage_version, state, details, last_error
-) VALUES ($1::numeric, $2::numeric, $3, $4, $5, $6, $7::jsonb, $8)
+) VALUES (sqlc.arg('chain_id')::numeric, sqlc.arg('block_number')::numeric, sqlc.arg('block_hash'), sqlc.arg('stage'), sqlc.arg('stage_version'), sqlc.arg('state'), sqlc.arg('details')::jsonb, sqlc.narg('last_error'))
 ON CONFLICT (chain_id, block_hash, stage, stage_version) DO UPDATE SET
     block_number = EXCLUDED.block_number,
     state = EXCLUDED.state,
@@ -556,14 +560,14 @@ INSERT INTO transaction_state_changes (
     chain_id, block_number, block_hash, transaction_hash, transaction_index,
     address, field_kind, storage_key, before_value, after_value, canonical
 ) VALUES (
-    $1::numeric, $2::numeric, $3, $4, $5, $6, $7, $8, $9, $10, true
+    sqlc.arg('chain_id')::numeric, sqlc.arg('block_number')::numeric, sqlc.arg('block_hash'), sqlc.arg('transaction_hash'), sqlc.arg('transaction_index'), sqlc.arg('address'), sqlc.arg('field_kind'), sqlc.arg('storage_key'), sqlc.narg('before_value'), sqlc.narg('after_value'), true
 );
 
 -- name: EnrichLegacyInsertTokenDelta :exec
 INSERT INTO token_balance_deltas (
     chain_id, block_number, block_hash, log_index, sub_index,
     token_address, owner_address, token_id, delta, canonical
-) VALUES ($1::numeric, $2::numeric, $3, $4, $5, $6, $7, $8::numeric, $9::numeric, true)
+) VALUES (sqlc.arg('chain_id')::numeric, sqlc.arg('block_number')::numeric, sqlc.arg('block_hash'), sqlc.arg('log_index'), sqlc.arg('sub_index'), sqlc.arg('token_address'), sqlc.arg('owner_address'), sqlc.narg('token_id')::numeric, sqlc.arg('delta')::numeric, true)
 ON CONFLICT (
     chain_id, block_number, block_hash, log_index, sub_index, token_address, owner_address
 ) DO UPDATE SET token_id = EXCLUDED.token_id, delta = EXCLUDED.delta, canonical = true;
@@ -574,8 +578,8 @@ INSERT INTO token_events (
     token_address, standard, event_kind, operator, from_address, to_address,
     token_id, amount, canonical, confidence, raw
 ) VALUES (
-    $1::numeric, $2::numeric, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-    $13::numeric, $14::numeric, true, $15, $16::jsonb
+    sqlc.arg('chain_id')::numeric, sqlc.arg('block_number')::numeric, sqlc.arg('block_hash'), sqlc.arg('log_index'), sqlc.arg('sub_index'), sqlc.arg('transaction_hash'), sqlc.arg('token_address'), sqlc.arg('standard'), sqlc.arg('event_kind'), sqlc.arg('operator'), sqlc.arg('from_address'), sqlc.arg('to_address'),
+    sqlc.narg('token_id')::numeric, sqlc.narg('amount')::numeric, true, sqlc.arg('confidence'), sqlc.arg('raw')::jsonb
 )
 ON CONFLICT (chain_id, block_number, block_hash, log_index, sub_index) DO UPDATE SET
     transaction_hash = EXCLUDED.transaction_hash,
@@ -599,9 +603,9 @@ INSERT INTO normalized_traces (
     direct_reverted, reverted, execution_address, execution_code_hash,
     execution_resolution, canonical
 ) VALUES (
-    $1::numeric, $2::numeric, $3, $4, $5, $6, $7, $8, $9, $10, $11,
-    $12, $13::numeric, $14::numeric, $15::numeric, $16, $17, $18, $19, $20,
-    $21, $22, $23, true
+    sqlc.arg('chain_id')::numeric, sqlc.arg('block_number')::numeric, sqlc.arg('block_hash'), sqlc.arg('transaction_hash'), sqlc.arg('transaction_index'), sqlc.arg('trace_path'), sqlc.narg('parent_path'), sqlc.arg('depth'), sqlc.arg('call_type'), sqlc.arg('from_address'), sqlc.arg('to_address'),
+    sqlc.arg('created_address'), sqlc.narg('value')::numeric, sqlc.narg('gas')::numeric, sqlc.narg('gas_used')::numeric, sqlc.arg('input'), sqlc.arg('output'), sqlc.narg('error'), sqlc.arg('direct_reverted'), sqlc.arg('reverted'),
+    sqlc.arg('execution_address'), sqlc.arg('execution_code_hash'), sqlc.arg('execution_resolution'), true
 );
 
 -- name: EnrichLegacyInsertTraceLogAttribution :exec
@@ -609,49 +613,49 @@ INSERT INTO trace_log_attributions (
     chain_id, block_number, block_hash, transaction_hash, log_index,
     trace_path, call_type, execution_address, canonical
 ) VALUES (
-    $1::numeric, $2::numeric, $3, $4, $5, $6, $7, $8, TRUE
+    sqlc.arg('chain_id')::numeric, sqlc.arg('block_number')::numeric, sqlc.arg('block_hash'), sqlc.arg('transaction_hash'), sqlc.arg('log_index'), sqlc.arg('trace_path'), sqlc.arg('call_type'), sqlc.arg('execution_address'), TRUE
 );
 
--- name: EnrichLegacyInsertUUPSImplementationObservationGeneration :exec
+-- name: EnrichLegacyInsertUUPSImplementationObservationGeneration :execrows
 INSERT INTO uups_implementation_observation_generations (
     chain_id, implementation_address, observation_block_hash,
     observation_stage_version, verification_job_id,
     durable_job_id, job_generation
 ) VALUES (
-    $1::numeric, $2, $3, $4, $5::uuid, $6::bigint, $7::bigint
+    sqlc.arg('chain_id')::numeric, sqlc.arg('implementation_address'), sqlc.arg('observation_block_hash'), sqlc.arg('observation_stage_version'), sqlc.arg('verification_job_id')::uuid, sqlc.arg('durable_job_id')::bigint, sqlc.arg('job_generation')::bigint
 )
 ON CONFLICT DO NOTHING;
 
--- name: EnrichLegacyLockCanonicalBlock :many
-SELECT 1
+-- name: EnrichLegacyLockCanonicalBlock :one
+SELECT 1 AS locked
 FROM canonical_blocks
-WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3
+WHERE chain_id = sqlc.arg('chain_id')::numeric AND number = sqlc.arg('number')::numeric AND block_hash = sqlc.arg('block_hash')
 FOR KEY SHARE;
 
--- name: EnrichLegacyLockPublicationJob :many
-SELECT pg_advisory_xact_lock(-($1::bigint));
+-- name: EnrichLegacyLockPublicationJob :exec
+SELECT pg_advisory_xact_lock(-(sqlc.arg('job_id')::bigint));
 
--- name: EnrichLegacyOrphanJournals :many
+-- name: EnrichLegacyOrphanJournals :one
 SELECT NOT EXISTS (
     SELECT 1
     FROM block_journals
-    WHERE chain_id = $1::numeric
-      AND block_hash = $2
+    WHERE chain_id = sqlc.arg('chain_id')::numeric
+      AND block_hash = sqlc.arg('block_hash')
       AND canonical
 );
 
--- name: EnrichLegacyProxyCanonical :many
+-- name: EnrichLegacyProxyCanonical :one
 SELECT EXISTS (
     SELECT 1 FROM canonical_blocks
-    WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3
+    WHERE chain_id = sqlc.arg('chain_id')::numeric AND number = sqlc.arg('number')::numeric AND block_hash = sqlc.arg('block_hash')
 );
 
 -- name: EnrichLegacyProxyReplayCandidates :many
-SELECT target.address, target.target_kind, $5::text AS source,
-		       verified.code_hash, verified.verification_job_id::text
+SELECT target.address, target.target_kind, sqlc.arg('source')::text AS source,
+		       verified.code_hash, verified.verification_job_id
 		FROM proxy_replay_targets AS target
 		JOIN durable_job_replay_requests AS replay_request
-		  ON replay_request.job_id = $6::bigint
+		  ON replay_request.job_id = sqlc.arg('job_id')::bigint
 		 AND replay_request.source_kind = 'verification-publication'
 		 AND target.source_verification_job_id::text = replay_request.source_key
 		JOIN durable_jobs AS replay_job
@@ -659,12 +663,12 @@ SELECT target.address, target.target_kind, $5::text AS source,
 		 AND replay_job.chain_id = target.chain_id
 		 AND replay_job.kind = 'enrichment'
 		 AND replay_job.stage = 'proxy'
-		 AND replay_job.stage_version = $4
+		 AND replay_job.stage_version = sqlc.arg('stage_version')
 		 AND replay_job.payload->>'block_hash' = '0x' || encode(target.block_hash, 'hex')
 		 AND replay_job.payload->>'block_number' = target.block_number::text
 		 AND replay_job.status = 'leased'
-		 AND replay_job.claimed_generation = $7::bigint
-		 AND replay_job.leased_generation = $7::bigint
+		 AND replay_job.claimed_generation = sqlc.arg('claimed_generation')::bigint
+		 AND replay_job.leased_generation = sqlc.arg('claimed_generation')::bigint
 		LEFT JOIN verified_contract_proxy_artifacts AS artifact
 		  ON target.target_kind = 'uups'
 		 AND artifact.verification_job_id = target.source_verification_job_id
@@ -683,40 +687,40 @@ SELECT target.address, target.target_kind, $5::text AS source,
 		 AND verified.request_digest = artifact.request_digest
 		 AND (verified.valid_to_block IS NULL OR
 		      verified.valid_to_block >= target.block_number)
-		WHERE target.chain_id = $1::numeric
-		  AND target.block_number = $2::numeric
-		  AND target.block_hash = $3
+		WHERE target.chain_id = sqlc.arg('chain_id')::numeric
+		  AND target.block_number = sqlc.arg('block_number')::numeric
+		  AND target.block_hash = sqlc.arg('block_hash')
 		  AND target.source_kind = 'verification_publication'
 		  AND replay_request.requested_generation > replay_job.completed_generation
-		  AND replay_request.requested_generation <= $7::bigint
+		  AND replay_request.requested_generation <= sqlc.arg('claimed_generation')::bigint
 		ORDER BY target.address, target.target_kind, source,
 		         verified.verification_job_id;
 
--- name: EnrichLegacyPublishOutbox :exec
+-- name: EnrichLegacyPublishOutbox :execrows
 UPDATE transactional_outbox
 SET published_at = clock_timestamp(),
     last_error = NULL,
-    payload = jsonb_set(payload, '{_etherview_dispatch}', $2::jsonb, true)
-WHERE id = $1 AND published_at IS NULL;
+    payload = jsonb_set(payload, '{_etherview_dispatch}', sqlc.arg('dispatch')::jsonb, true)
+WHERE id = sqlc.arg('i_d') AND published_at IS NULL;
 
--- name: EnrichLegacyRenewJob :exec
+-- name: EnrichLegacyRenewJob :execrows
 UPDATE durable_jobs
-SET lease_expires_at = clock_timestamp() + ($3 * INTERVAL '1 microsecond'),
+SET lease_expires_at = clock_timestamp() + (sqlc.arg('lease_microseconds')::bigint * INTERVAL '1 microsecond'),
     updated_at = clock_timestamp()
-WHERE id = $1
+WHERE id = sqlc.arg('id')
   AND kind = 'enrichment'
-  AND chain_id = $5::numeric
-  AND stage = $6
-  AND stage_version = $7
-  AND payload->>'block_hash' = $8
-  AND payload->>'block_number' = $9
+  AND chain_id = sqlc.arg('chain_id')::numeric
+  AND stage = sqlc.arg('stage')
+  AND stage_version = sqlc.arg('stage_version')
+  AND payload->>'block_hash' = sqlc.arg('payload')
+  AND payload->>'block_number' = sqlc.arg('payload_2')
   AND status = 'leased'
-  AND lease_token = $2
+  AND lease_token = sqlc.arg('lease_token')
   AND lease_expires_at > clock_timestamp()
-  AND claimed_generation = $4
-  AND leased_generation = $4;
+  AND claimed_generation = sqlc.arg('claimed_generation')
+  AND leased_generation = sqlc.arg('claimed_generation');
 
--- name: EnrichLegacyRequestReplayJob :exec
+-- name: EnrichLegacyRequestReplayJob :execrows
 UPDATE durable_jobs
 SET requested_generation = $2,
     status = CASE WHEN status = 'leased' THEN status ELSE 'queued' END,
@@ -732,7 +736,7 @@ SET requested_generation = $2,
 WHERE id = $1
   AND requested_generation = $2 - 1;
 
--- name: EnrichLegacyRequeueJob :exec
+-- name: EnrichLegacyRequeueJob :execrows
 UPDATE durable_jobs
 SET status = 'queued',
     attempts = 0,
@@ -745,15 +749,15 @@ SET status = 'queued',
     result = NULL,
     last_error = NULL,
     updated_at = clock_timestamp()
-WHERE id = $1
-  AND chain_id = $2::numeric
+WHERE id = sqlc.arg('id')
+  AND chain_id = sqlc.arg('chain_id')::numeric
   AND kind = 'enrichment'
-  AND stage = $3
-  AND stage_version = $4
-  AND idempotency_key = $5
+  AND stage = sqlc.arg('stage')
+  AND stage_version = sqlc.arg('stage_version')
+  AND idempotency_key = sqlc.arg('idempotency_key')
   AND status IN ('succeeded', 'failed');
 
--- name: EnrichLegacyRetryJob :many
+-- name: EnrichLegacyRetryJob :one
 UPDATE durable_jobs
 SET status = CASE
         WHEN requested_generation > leased_generation THEN 'queued'
@@ -766,16 +770,16 @@ SET status = CASE
     END,
     available_at = CASE
         WHEN requested_generation > leased_generation THEN clock_timestamp()
-        ELSE clock_timestamp() + ($4 * INTERVAL '1 microsecond')
+        ELSE clock_timestamp() + (sqlc.arg('retry_microseconds')::bigint * INTERVAL '1 microsecond')
     END,
     last_error = CASE
         WHEN requested_generation > leased_generation THEN NULL
-        ELSE $3
+        ELSE sqlc.arg('last_error')
     END,
     result = CASE
         WHEN requested_generation > leased_generation THEN NULL
         WHEN attempts >= max_attempts
-            THEN jsonb_build_object('state', 'failed', 'error', $3::text)
+            THEN jsonb_build_object('state', 'failed', 'error', sqlc.arg('last_error')::text)
         ELSE NULL
     END,
     completed_generation = CASE
@@ -790,46 +794,46 @@ SET status = CASE
     lease_expires_at = NULL,
     leased_generation = NULL,
     updated_at = clock_timestamp()
-WHERE id = $1
+WHERE id = sqlc.arg('id')
   AND kind = 'enrichment'
-  AND chain_id = $6::numeric
-  AND stage = $7
-  AND stage_version = $8
-  AND payload->>'block_hash' = $9
-  AND payload->>'block_number' = $10
+  AND chain_id = sqlc.arg('chain_id')::numeric
+  AND stage = sqlc.arg('stage')
+  AND stage_version = sqlc.arg('stage_version')
+  AND payload->>'block_hash' = sqlc.arg('payload')
+  AND payload->>'block_number' = sqlc.arg('payload_2')
   AND status = 'leased'
-  AND lease_token = $2
+  AND lease_token = sqlc.arg('lease_token')
   AND lease_expires_at > clock_timestamp()
-  AND claimed_generation = $5
-  AND leased_generation = $5
-  AND completed_generation < $5
+  AND claimed_generation = sqlc.arg('claimed_generation')
+  AND leased_generation = sqlc.arg('claimed_generation')
+  AND completed_generation < sqlc.arg('claimed_generation')
 RETURNING status,
           status = 'queued'
           AND attempts = 0
-          AND completed_generation < requested_generation;
+          AND completed_generation < requested_generation AS followup_queued;
 
--- name: EnrichLegacyRetryOutbox :exec
+-- name: EnrichLegacyRetryOutbox :execrows
 UPDATE transactional_outbox
 SET attempts = LEAST(attempts + 1, 2147483647),
-    last_error = $2,
-    available_at = clock_timestamp() + ($3 * INTERVAL '1 microsecond')
-WHERE id = $1 AND published_at IS NULL;
+    last_error = sqlc.arg('last_error'),
+    available_at = clock_timestamp() + (sqlc.arg('retry_microseconds')::bigint * INTERVAL '1 microsecond')
+WHERE id = sqlc.arg('i_d') AND published_at IS NULL;
 
--- name: EnrichLegacySelectDependentReplayTargetID :many
+-- name: EnrichLegacySelectDependentReplayTargetID :one
 SELECT id
 FROM durable_jobs
-WHERE chain_id = $1::numeric
+WHERE chain_id = sqlc.arg('chain_id')::numeric
   AND kind = 'enrichment'
-  AND payload->>'block_hash' = $2
-  AND stage = $3
-  AND stage_version = $4;
+  AND payload->>'block_hash' = sqlc.arg('payload')
+  AND stage = sqlc.arg('stage')
+  AND stage_version = sqlc.arg('stage_version');
 
--- name: EnrichLegacySelectExistingJob :many
+-- name: EnrichLegacySelectExistingJob :one
 SELECT id, chain_id::text, stage, stage_version, attempts, max_attempts, payload, requested_generation
 FROM durable_jobs
-WHERE chain_id = $1::numeric AND kind = $2 AND idempotency_key = $3;
+WHERE chain_id = sqlc.arg('chain_id')::numeric AND kind = sqlc.arg('kind') AND idempotency_key = sqlc.arg('idempotency_key');
 
--- name: EnrichLegacySelectReplayTargetByID :many
+-- name: EnrichLegacySelectReplayTargetByID :one
 SELECT id, chain_id::text, stage, stage_version, attempts, max_attempts, payload,
        requested_generation, status
 FROM durable_jobs
@@ -839,79 +843,79 @@ FOR UPDATE;
 -- name: EnrichLegacySelectStageJournalPublications :many
 SELECT durable_job_id, job_generation
 FROM block_journals
-WHERE chain_id = $1::numeric
-  AND block_hash = $2
-  AND stage = $3
+WHERE chain_id = sqlc.arg('chain_id')::numeric
+  AND block_hash = sqlc.arg('block_hash')
+  AND stage = sqlc.arg('stage')
 ORDER BY sequence
 FOR UPDATE;
 
--- name: EnrichLegacySelectStageResultPublication :many
+-- name: EnrichLegacySelectStageResultPublication :one
 SELECT durable_job_id, job_generation
 FROM block_stage_results
-WHERE chain_id = $1::numeric
-  AND block_hash = $2
-  AND stage = $3
-  AND stage_version = $4
+WHERE chain_id = sqlc.arg('chain_id')::numeric
+  AND block_hash = sqlc.arg('block_hash')
+  AND stage = sqlc.arg('stage')
+  AND stage_version = sqlc.arg('stage_version')
 FOR UPDATE;
 
 -- name: EnrichLegacyStateDiffTransactions :many
 SELECT tx_index, tx_hash, raw
 FROM transaction_inclusions
-WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
+WHERE chain_id = sqlc.arg('chain_id')::numeric AND block_number = sqlc.arg('block_number')::numeric AND block_hash = sqlc.arg('block_hash')
 ORDER BY tx_index;
 
 -- name: EnrichLegacyStatsReceiptSource :many
 SELECT receipt.raw
 FROM receipts AS receipt
-WHERE receipt.chain_id = $1::numeric
-  AND receipt.block_number = $2::numeric
-  AND receipt.block_hash = $3
+WHERE receipt.chain_id = sqlc.arg('chain_id')::numeric
+  AND receipt.block_number = sqlc.arg('block_number')::numeric
+  AND receipt.block_hash = sqlc.arg('block_hash')
 ORDER BY receipt.tx_index;
 
--- name: EnrichLegacyTerminalizeExhaustedJob :exec
+-- name: EnrichLegacyTerminalizeExhaustedJob :execrows
 UPDATE durable_jobs
 SET status = 'failed',
-    result = $3::jsonb,
-    last_error = $4,
-    completed_generation = $2,
+    result = sqlc.arg('result')::jsonb,
+    last_error = sqlc.arg('last_error'),
+    completed_generation = sqlc.arg('completed_generation'),
     leased_by = NULL,
     lease_token = NULL,
     lease_expires_at = NULL,
     leased_generation = NULL,
     updated_at = clock_timestamp()
-WHERE id = $1
+WHERE id = sqlc.arg('id')
   AND kind = 'enrichment'
-  AND chain_id = $5::numeric
-  AND stage = $6
-  AND stage_version = $7
-  AND payload->>'block_hash' = $8
-  AND payload->>'block_number' = $9
+  AND chain_id = sqlc.arg('chain_id')::numeric
+  AND stage = sqlc.arg('stage')
+  AND stage_version = sqlc.arg('stage_version')
+  AND payload->>'block_hash' = sqlc.arg('payload')
+  AND payload->>'block_number' = sqlc.arg('payload_2')
   AND attempts >= max_attempts
-  AND claimed_generation = $2
-  AND requested_generation <= $2
-  AND completed_generation < $2
+  AND claimed_generation = sqlc.arg('completed_generation')
+  AND requested_generation <= sqlc.arg('completed_generation')
+  AND completed_generation < sqlc.arg('completed_generation')
   AND (
       (status = 'queued' AND available_at <= clock_timestamp())
       OR (status = 'leased' AND lease_expires_at <= clock_timestamp())
   );
 
--- name: EnrichLegacyTokenCanonical :many
+-- name: EnrichLegacyTokenCanonical :one
 SELECT EXISTS (
     SELECT 1
     FROM canonical_blocks
-    WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3
+    WHERE chain_id = sqlc.arg('chain_id')::numeric AND number = sqlc.arg('number')::numeric AND block_hash = sqlc.arg('block_hash')
 );
 
 -- name: EnrichLegacyTokenLogs :many
 SELECT log_index, tx_hash, address, raw
 FROM logs
-WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
+WHERE chain_id = sqlc.arg('chain_id')::numeric AND block_number = sqlc.arg('block_number')::numeric AND block_hash = sqlc.arg('block_hash')
 ORDER BY log_index;
 
--- name: EnrichLegacyTraceCanonical :many
+-- name: EnrichLegacyTraceCanonical :one
 SELECT EXISTS (
     SELECT 1 FROM canonical_blocks
-    WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3
+    WHERE chain_id = sqlc.arg('chain_id')::numeric AND number = sqlc.arg('number')::numeric AND block_hash = sqlc.arg('block_hash')
 );
 
 -- name: EnrichLegacyTraceExecutionResolutions :many
@@ -919,9 +923,9 @@ SELECT resolution.transaction_hash, resolution.context_address,
        resolution.execution_address, resolution.execution_code_hash,
        resolution.resolution, resolution.evidence_source
 FROM transaction_execution_code_resolutions AS resolution
-WHERE resolution.chain_id = $1::numeric
-  AND resolution.block_number = $2::numeric
-  AND resolution.block_hash = $3
+WHERE resolution.chain_id = sqlc.arg('chain_id')::numeric
+  AND resolution.block_number = sqlc.arg('block_number')::numeric
+  AND resolution.block_hash = sqlc.arg('block_hash')
   AND resolution.canonical
   AND EXISTS (
       SELECT 1
@@ -929,8 +933,8 @@ WHERE resolution.chain_id = $1::numeric
       WHERE published.chain_id = resolution.chain_id
         AND published.block_number = resolution.block_number
         AND published.block_hash = resolution.block_hash
-        AND published.stage = $4
-        AND published.stage_version = $5
+        AND published.stage = sqlc.arg('stage')
+        AND published.stage_version = sqlc.arg('stage_version')
         AND published.state = 'complete'
   )
 ORDER BY resolution.transaction_index, resolution.context_address;
@@ -938,27 +942,26 @@ ORDER BY resolution.transaction_index, resolution.context_address;
 -- name: EnrichLegacyTraceReceiptLogs :many
 SELECT log_index, raw
 FROM logs
-WHERE chain_id = $1::numeric
-  AND block_number = $2::numeric
-  AND block_hash = $3
-  AND tx_hash = $4
+WHERE chain_id = sqlc.arg('chain_id')::numeric
+  AND block_number = sqlc.arg('block_number')::numeric
+  AND block_hash = sqlc.arg('block_hash')
+  AND tx_hash = sqlc.arg('tx_hash')
 ORDER BY log_index;
 
 -- name: EnrichLegacyTraceTransactions :many
-SELECT tx_index, tx_hash,
-       raw->>'from', raw->>'to', raw->>'value', raw->>'input'
+SELECT tx_index, tx_hash, (raw->>'from')::text AS from_address, COALESCE(raw->>'to','')::text AS to_address, (raw->>'value')::text AS value, (raw->>'input')::text AS input, ((raw->>'to') IS NOT NULL)::boolean AS to_present
 FROM transaction_inclusions
-WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
+WHERE chain_id = sqlc.arg('chain_id')::numeric AND block_number = sqlc.arg('block_number')::numeric AND block_hash = sqlc.arg('block_hash')
 ORDER BY tx_index;
 
--- name: EnrichLegacyUpsertBeaconImplementationObservation :exec
+-- name: EnrichLegacyUpsertBeaconImplementationObservation :execrows
 INSERT INTO beacon_implementation_observations AS current (
     chain_id, beacon_address, block_number, block_hash, beacon_code_hash,
     implementation_address, implementation_code_hash, stage_version,
     confidence, canonical, details
 ) VALUES (
-    $1::numeric, $2, $3::numeric, $4, $5,
-    $6, $7, $8, $9, TRUE, $10::jsonb
+    sqlc.arg('chain_id')::numeric, sqlc.arg('beacon_address'), sqlc.arg('block_number')::numeric, sqlc.arg('block_hash'), sqlc.arg('beacon_code_hash'),
+    sqlc.arg('implementation_address'), sqlc.arg('implementation_code_hash'), sqlc.arg('stage_version'), sqlc.arg('confidence'), TRUE, sqlc.arg('details')::jsonb
 )
 ON CONFLICT (chain_id, beacon_address, block_hash, stage_version) DO UPDATE SET
     canonical = EXCLUDED.canonical,
@@ -969,17 +972,17 @@ WHERE current.block_number = EXCLUDED.block_number
   AND current.implementation_code_hash = EXCLUDED.implementation_code_hash
   AND current.confidence = EXCLUDED.confidence;
 
--- name: EnrichLegacyUpsertDerivedJournal :exec
+-- name: EnrichLegacyUpsertDerivedJournal :execrows
 INSERT INTO block_journals AS current (
     chain_id, block_hash, stage, sequence, payload, canonical
 )
-SELECT $1::numeric, $2, $3, $4::numeric, $5::jsonb,
+SELECT sqlc.arg('chain_id')::numeric, sqlc.arg('block_hash'), sqlc.arg('stage'), sqlc.arg('sequence')::numeric, sqlc.arg('payload')::jsonb,
        EXISTS (
            SELECT 1
            FROM canonical_blocks
-           WHERE chain_id = $1::numeric
-             AND number = $6::numeric
-             AND block_hash = $2
+           WHERE chain_id = sqlc.arg('chain_id')::numeric
+             AND number = sqlc.arg('number')::numeric
+             AND block_hash = sqlc.arg('block_hash')
        )
 ON CONFLICT (chain_id, block_hash, stage, sequence) DO UPDATE SET
     payload = EXCLUDED.payload,
@@ -987,24 +990,24 @@ ON CONFLICT (chain_id, block_hash, stage, sequence) DO UPDATE SET
 WHERE current.durable_job_id IS NULL
   AND current.job_generation IS NULL;
 
--- name: EnrichLegacyUpsertProxyCodeObservation :exec
+-- name: EnrichLegacyUpsertProxyCodeObservation :execrows
 INSERT INTO contract_code_observations AS current (
     chain_id, address, block_number, block_hash, code_hash, code, canonical
-) VALUES ($1::numeric, $2, $3::numeric, $4, $5, $6, TRUE)
+) VALUES (sqlc.arg('chain_id')::numeric, sqlc.arg('address'), sqlc.arg('block_number')::numeric, sqlc.arg('block_hash'), sqlc.arg('code_hash'), sqlc.arg('code'), TRUE)
 ON CONFLICT (chain_id, address, block_hash) DO UPDATE SET
     code = COALESCE(current.code, EXCLUDED.code),
     canonical = EXCLUDED.canonical
 WHERE current.code_hash = EXCLUDED.code_hash
   AND (current.code IS NULL OR current.code = EXCLUDED.code);
 
--- name: EnrichLegacyUpsertProxyDetectionEvidence :exec
+-- name: EnrichLegacyUpsertProxyDetectionEvidence :execrows
 INSERT INTO proxy_detection_evidence AS current (
     chain_id, address, block_number, block_hash, stage_version, code_hash,
     candidate_kind, detection_state, reason, canonical,
     durable_job_id, job_generation, details
 ) VALUES (
-    $1::numeric, $2, $3::numeric, $4, $5, $6,
-    $7, $8, $9, TRUE, $10::bigint, $11::bigint, $12::jsonb
+    sqlc.arg('chain_id')::numeric, sqlc.arg('address'), sqlc.arg('block_number')::numeric, sqlc.arg('block_hash'), sqlc.arg('stage_version'), sqlc.arg('code_hash'),
+    sqlc.arg('candidate_kind'), sqlc.arg('detection_state'), sqlc.arg('reason'), TRUE, sqlc.narg('durable_job_id')::bigint, sqlc.narg('job_generation')::bigint, sqlc.arg('details')::jsonb
 )
 ON CONFLICT (
     chain_id, address, block_hash, stage_version, candidate_kind,
@@ -1017,13 +1020,13 @@ WHERE current.block_number = EXCLUDED.block_number
   AND current.detection_state = EXCLUDED.detection_state
   AND current.reason = EXCLUDED.reason;
 
--- name: EnrichLegacyUpsertProxyInitializationEvent :exec
+-- name: EnrichLegacyUpsertProxyInitializationEvent :execrows
 INSERT INTO proxy_initialization_events AS current (
     chain_id, block_number, block_hash, log_index, transaction_hash,
     contract_address, version, stage_version, canonical
 ) VALUES (
-    $1::numeric, $2::numeric, $3, $4::bigint, $5,
-    $6, $7::numeric, $8, TRUE
+    sqlc.arg('chain_id')::numeric, sqlc.arg('block_number')::numeric, sqlc.arg('block_hash'), sqlc.arg('log_index')::bigint, sqlc.arg('transaction_hash'),
+    sqlc.arg('contract_address'), sqlc.arg('version')::numeric, sqlc.arg('stage_version'), TRUE
 )
 ON CONFLICT (chain_id, block_hash, log_index, stage_version) DO UPDATE SET
     canonical = EXCLUDED.canonical
@@ -1032,7 +1035,7 @@ WHERE current.block_number = EXCLUDED.block_number
   AND current.contract_address = EXCLUDED.contract_address
   AND current.version = EXCLUDED.version;
 
--- name: EnrichLegacyUpsertProxyObservation :exec
+-- name: EnrichLegacyUpsertProxyObservation :execrows
 INSERT INTO proxy_observations AS current (
     chain_id, proxy_address, block_number, block_hash, stage_version,
     proxy_code_hash, proxy_kind, proxy_pattern, standard_version,
@@ -1040,9 +1043,9 @@ INSERT INTO proxy_observations AS current (
     beacon_address, beacon_code_hash, immutable_args,
     implementation_code_hash, confidence, evidence_state, canonical, details
 ) VALUES (
-    $1::numeric, $2, $3::numeric, $4, $5,
-    $6, $7, $8, $9, $10, $11, $12,
-    $13, $14, $15, $16, $17, $18, TRUE, $19::jsonb
+    sqlc.arg('chain_id')::numeric, sqlc.arg('proxy_address'), sqlc.arg('block_number')::numeric, sqlc.arg('block_hash'), sqlc.arg('stage_version'),
+    sqlc.arg('proxy_code_hash'), sqlc.arg('proxy_kind'), sqlc.arg('proxy_pattern'), sqlc.narg('standard_version'), sqlc.arg('implementation_address'), sqlc.arg('admin_address'), sqlc.arg('admin_code_hash'),
+    sqlc.arg('beacon_address'), sqlc.arg('beacon_code_hash'), sqlc.arg('immutable_args'), sqlc.arg('implementation_code_hash'), sqlc.arg('confidence'), sqlc.arg('evidence_state'), TRUE, sqlc.arg('details')::jsonb
 )
 ON CONFLICT (chain_id, proxy_address, block_hash, stage_version) DO UPDATE SET
     canonical = EXCLUDED.canonical,
@@ -1062,13 +1065,13 @@ WHERE current.block_number = EXCLUDED.block_number
   AND current.confidence = EXCLUDED.confidence
   AND current.evidence_state = EXCLUDED.evidence_state;
 
--- name: EnrichLegacyUpsertProxyUpgradeEvent :exec
+-- name: EnrichLegacyUpsertProxyUpgradeEvent :execrows
 INSERT INTO proxy_upgrade_events AS current (
     chain_id, block_number, block_hash, log_index, transaction_hash,
     emitter_address, event_kind, target_address, stage_version, canonical
 ) VALUES (
-    $1::numeric, $2::numeric, $3, $4::bigint, $5,
-    $6, $7, $8, $9, TRUE
+    sqlc.arg('chain_id')::numeric, sqlc.arg('block_number')::numeric, sqlc.arg('block_hash'), sqlc.arg('log_index')::bigint, sqlc.arg('transaction_hash'),
+    sqlc.arg('emitter_address'), sqlc.arg('event_kind'), sqlc.arg('target_address'), sqlc.arg('stage_version'), TRUE
 )
 ON CONFLICT (chain_id, block_hash, log_index, stage_version) DO UPDATE SET
     canonical = EXCLUDED.canonical
@@ -1078,20 +1081,20 @@ WHERE current.block_number = EXCLUDED.block_number
   AND current.event_kind = EXCLUDED.event_kind
   AND current.target_address = EXCLUDED.target_address;
 
--- name: EnrichLegacyUpsertPublishedDerivedJournal :many
+-- name: EnrichLegacyUpsertPublishedDerivedJournal :one
 INSERT INTO block_journals AS current (
     chain_id, block_hash, stage, sequence, payload, canonical,
     durable_job_id, job_generation
 )
-SELECT $1::numeric, $2, $3, $4::numeric, $5::jsonb,
+SELECT sqlc.arg('chain_id')::numeric, sqlc.arg('block_hash'), sqlc.arg('stage'), sqlc.arg('sequence')::numeric, sqlc.arg('payload')::jsonb,
        EXISTS (
            SELECT 1
            FROM canonical_blocks
-           WHERE chain_id = $1::numeric
-             AND number = $6::numeric
-             AND block_hash = $2
+           WHERE chain_id = sqlc.arg('chain_id')::numeric
+             AND number = sqlc.arg('number')::numeric
+             AND block_hash = sqlc.arg('block_hash')
        ),
-       $7, $8
+       sqlc.arg('durable_job_id'), sqlc.arg('job_generation')
 ON CONFLICT (chain_id, block_hash, stage, sequence) DO UPDATE SET
     payload = EXCLUDED.payload,
     canonical = EXCLUDED.canonical,
@@ -1104,7 +1107,7 @@ WHERE (
         current.durable_job_id = EXCLUDED.durable_job_id
         AND current.job_generation <= EXCLUDED.job_generation
       )
-RETURNING 1;
+RETURNING 1 AS inserted;
 
 -- name: EnrichLegacyUpsertTokenContract :exec
 INSERT INTO token_contracts AS current (
@@ -1112,9 +1115,9 @@ INSERT INTO token_contracts AS current (
     name, symbol, decimals, total_supply, metadata_state,
     observed_block_number, observed_block_hash
 ) VALUES (
-    $1::numeric, $2, $3, $4, $5,
-    $6, $7, $8, $9::numeric, $10,
-    $11::numeric, $12
+    sqlc.arg('chain_id')::numeric, sqlc.arg('address'), sqlc.arg('code_hash'), sqlc.arg('standard'), sqlc.arg('confidence'),
+    sqlc.narg('name'), sqlc.narg('symbol'), sqlc.narg('decimals'), sqlc.narg('total_supply')::numeric, sqlc.arg('metadata_state'),
+    sqlc.arg('observed_block_number')::numeric, sqlc.arg('observed_block_hash')
 )
 ON CONFLICT (chain_id, address, code_hash, observed_block_hash) DO UPDATE SET
     standard = CASE
@@ -1142,15 +1145,15 @@ ON CONFLICT (chain_id, address, code_hash, observed_block_hash) DO UPDATE SET
     END,
     updated_at = now();
 
--- name: EnrichLegacyUpsertUUPSImplementationObservation :exec
+-- name: EnrichLegacyUpsertUUPSImplementationObservation :execrows
 INSERT INTO uups_implementation_observations AS current (
     chain_id, implementation_address, block_number, block_hash,
     implementation_code_hash, verification_job_id, stage_version,
     standard_version, probe_state, rejection_reason, proxiable_uuid,
     upgrade_interface_version, canonical
 ) VALUES (
-    $1::numeric, $2, $3::numeric, $4,
-    $5, $6::uuid, $7, $8, $9, $10, $11, $12, TRUE
+    sqlc.arg('chain_id')::numeric, sqlc.arg('implementation_address'), sqlc.arg('block_number')::numeric, sqlc.arg('block_hash'),
+    sqlc.arg('implementation_code_hash'), sqlc.arg('verification_job_id')::uuid, sqlc.arg('stage_version'), sqlc.arg('standard_version'), sqlc.arg('probe_state'), sqlc.narg('rejection_reason'), sqlc.arg('proxiable_uuid'), sqlc.narg('upgrade_interface_version'), TRUE
 )
 ON CONFLICT (
     chain_id, implementation_address, block_hash,

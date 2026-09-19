@@ -2,13 +2,17 @@ package etherscan
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/islishude/etherview/internal/db/gen"
 	"math/big"
 	"net/url"
 	"strconv"
+
+	"github.com/jackc/pgx/v5/pgtype"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
+	pgx "github.com/jackc/pgx/v5"
 )
 
 func (b *PostgresBackend) transactionStatus(ctx context.Context, values url.Values, receiptOnly bool) (any, error) {
@@ -20,15 +24,28 @@ func (b *PostgresBackend) transactionStatus(ctx context.Context, values url.Valu
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	var raw []byte
 	var storedHash, blockHash []byte
 	var blockNumberText string
 	var transactionIndex int64
-	err = tx.QueryRowContext(ctx, dbgen.EtherscanTransactionStatus, b.chain, hashBytes).Scan(
-		&raw, &storedHash, &blockHash, &blockNumberText, &transactionIndex,
-	)
-	if err == sql.ErrNoRows {
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(b.chain); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).EtherscanTransactionStatus(ctx, queryValue0, hashBytes)
+		if err != nil {
+			return err
+		}
+		raw = queryRow.Raw
+		storedHash = queryRow.TxHash
+		blockHash = queryRow.BlockHash
+		blockNumberText = queryRow.ReceiptBlockNumber
+		transactionIndex = queryRow.TxIndex
+		return nil
+	}()
+	if err == pgx.ErrNoRows {
 		if _, coverageErr := b.requireCanonicalCoreRange(ctx, tx, "0", nil); coverageErr != nil {
 			return nil, coverageErr
 		}
@@ -79,7 +96,7 @@ func (b *PostgresBackend) transactionStatus(ctx context.Context, values url.Valu
 		}
 		result = statusResult
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit transaction status snapshot: %w", err)
 	}
 	return result, nil

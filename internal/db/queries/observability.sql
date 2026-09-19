@@ -4,17 +4,17 @@ WITH metric_rows AS (
            (stage || '@' || stage_version::text)::text AS metric_name,
            status AS metric_status
     FROM durable_jobs
-    WHERE chain_id = sqlc.arg(chain_id)::numeric
+    WHERE chain_id = sqlc.arg('chain_id')::numeric
       AND status IN ('queued', 'leased')
     UNION ALL
     SELECT 'verification'::text, 'verification'::text, status
     FROM verification_jobs
-    WHERE chain_id = sqlc.arg(chain_id)::numeric
+    WHERE chain_id = sqlc.arg('chain_id')::numeric
       AND status IN ('queued', 'running')
     UNION ALL
     SELECT 'repair'::text, operation, status
     FROM repair_requests
-    WHERE chain_id = sqlc.arg(chain_id)::numeric
+    WHERE chain_id = sqlc.arg('chain_id')::numeric
       AND status IN ('queued', 'running')
     UNION ALL
     SELECT 'billing'::text,
@@ -25,14 +25,14 @@ WITH metric_rows AS (
                ELSE 'unmarked_after_timeout'
            END
     FROM billing_payments
-    WHERE chain_id = sqlc.arg(chain_id)::numeric
+    WHERE chain_id = sqlc.arg('chain_id')::numeric
       AND state = 'settling'
       AND (
           failure_code IN ('settlement_unknown', 'settlement_pending')
           OR (
               failure_code IS NULL
               AND settling_at <= now() - (
-                  sqlc.arg(settlement_crash_delay_microseconds)::bigint
+                  sqlc.arg('settlement_crash_delay_microseconds')::bigint
                   * interval '1 microsecond'
               )
           )
@@ -48,7 +48,7 @@ WITH metric_rows AS (
                0
            )::double precision AS repair_oldest_seconds
     FROM repair_requests
-    WHERE chain_id = sqlc.arg(chain_id)::numeric AND status = 'queued'
+    WHERE chain_id = sqlc.arg('chain_id')::numeric AND status = 'queued'
 )
 SELECT metric_kind::text, metric_name::text, metric_status::text, metric_count,
        NULL::double precision AS repair_oldest_seconds

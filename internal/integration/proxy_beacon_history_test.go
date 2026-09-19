@@ -4,11 +4,11 @@ package integration_test
 
 import (
 	"context"
-	"database/sql"
-	"fmt"
 	"sync"
 	"testing"
 	"time"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -18,7 +18,6 @@ import (
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/store"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/stdlib"
 )
 
 func TestUpgradeableBeaconSharedHistoryFanoutAndReorg(t *testing.T) {
@@ -101,28 +100,12 @@ func TestUpgradeableBeaconSharedHistoryFanoutAndReorg(t *testing.T) {
 		creation.Block.Hash().Bytes(), beacon.Bytes(), proxyOne.Bytes(), proxyTwo.Bytes())
 	assertSharedBeaconImplementation(t, ctx, db, creation, beacon, implementationA, proxyOne, proxyTwo)
 	assertOneEthCall(t, calls[creation.Block.Hash().String()])
-	connection, err := db.Conn(ctx)
-	if err != nil {
-		t.Fatalf("acquire Beacon count connection: %v", err)
-	}
-	defer connection.Close() //nolint:errcheck
-	var beaconProxyCount string
-	err = connection.Raw(func(driverConnection any) error {
-		pgxConnection, ok := driverConnection.(*stdlib.Conn)
-		if !ok {
-			return fmt.Errorf("Beacon count requires pgx stdlib, got %T", driverConnection)
-		}
-		var countErr error
-		beaconProxyCount, countErr = dbgen.New(pgxConnection.Conn()).CountCurrentBeaconProxies(
-			ctx, beacon.Bytes(), pgtype.Numeric{Int: common.Big1, Valid: true},
-		)
-		return countErr
-	})
+	beaconProxyCount, err := dbgen.New(db).CountCurrentBeaconProxies(ctx, beacon.Bytes(), pgtype.Numeric{Int: common.Big1, Valid: true})
 	if err != nil {
 		t.Fatalf("count current Beacon proxies: %v", err)
 	}
 	if beaconProxyCount != "2" {
-		rows, queryErr := db.QueryContext(ctx, `
+		rows, queryErr := db.Query(ctx, `
 			SELECT encode(observation.proxy_address, 'hex'), observation.proxy_pattern,
 			       encode(observation.proxy_code_hash, 'hex'),
 			       COALESCE((
@@ -159,7 +142,8 @@ func TestUpgradeableBeaconSharedHistoryFanoutAndReorg(t *testing.T) {
 			if err := rows.Err(); err != nil {
 				t.Fatal(err)
 			}
-			if err := rows.Close(); err != nil {
+			rows.Close()
+			if err := rows.Err(); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -230,7 +214,7 @@ func beaconUpgradeBundle(
 func assertPublishedBeaconGeneration(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block chainbundle.Bundle,
 	beacon common.Address,
 	jobID string,
@@ -264,7 +248,7 @@ func assertPublishedBeaconGeneration(
 func assertSharedBeaconImplementation(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	tip chainbundle.Bundle,
 	beacon, implementation, proxyOne, proxyTwo common.Address,
 ) {

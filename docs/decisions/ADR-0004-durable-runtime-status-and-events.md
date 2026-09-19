@@ -83,6 +83,24 @@ public view.
   feed publication from `GET /api/v1/home` and invalidates it from the same
   durable event source. `/api/v1/home/stream` remains a supported complete-
   snapshot stream but is not a second browser connection.
+- Home REST and complete-snapshot SSE envelopes carry a required `event_id`.
+  `GET /api/v1/home` accepts optional `min_event_id`; both use canonical decimal
+  strings from zero through PostgreSQL BIGINT's maximum. An invalid minimum is
+  rejected with 400. A replica waits at most two seconds for its existing feed
+  to publish that version, responds to request cancellation, and returns stable
+  503 `home_snapshot_unavailable` on timeout. It never returns an older snapshot
+  or starts a per-request database read to satisfy the fence.
+- The browser retains the highest observed event or accepted home version per
+  QueryClient and passes it as the next home request's minimum. Cancelled or
+  obsolete responses cannot replace newer data; only snapshot-unavailable
+  failures receive bounded retries. Each query declares its chain-event policy
+  in typed metadata. UserOperation list/detail respond to head and reorg events;
+  reorg invalidation clears a previously successful detail before refetching.
+- EventSource `CONNECTING` retains native browser reconnection. `CLOSED` closes
+  the old instance and rebuilds one cursor-free connection with exponential
+  delays from one to thirty seconds. Chain queries invalidate before rebuilding
+  and after opening. Unmount cancels pending callbacks/timers and closes the
+  connection, preserving the single-connection invariant.
 - Native and compatibility API responses use `Cache-Control: no-store` for
   browsers and unmanaged intermediaries; an explicitly configured server-side
   cache remains behind the event invalidator. The SSE stream itself uses

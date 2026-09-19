@@ -1,8 +1,9 @@
 package catalog
 
 import (
-	"database/sql"
 	"testing"
+
+	pgtype "github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/enrich"
@@ -13,10 +14,10 @@ func TestPublicPersistedLogDecodingPreservesIndexedHashAndExactSource(t *testing
 	address := common.HexToAddress("0x1111111111111111111111111111111111111111")
 	codeHash := common.HexToHash("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 	decoded, found, err := publicPersistedLogDecoding(persistedLogDecoding{
-		status:        sql.NullString{String: "decoded", Valid: true},
-		signature:     sql.NullString{String: "Changed(string)", Valid: true},
-		source:        sql.NullString{String: "verified", Valid: true},
-		confidence:    sql.NullString{String: "verified", Valid: true},
+		status:        pgtype.Text{String: "decoded", Valid: true},
+		signature:     pgtype.Text{String: "Changed(string)", Valid: true},
+		source:        pgtype.Text{String: "verified", Valid: true},
+		confidence:    pgtype.Text{String: "verified", Valid: true},
 		arguments:     []byte(`[{"name":"value","type":"string","indexed":true,"hashed":true,"value":"0x01"}]`),
 		candidates:    []byte(`["Changed(string)"]`),
 		targetAddress: address[:], targetCodeHash: codeHash[:],

@@ -6,8 +6,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"database/sql"
-	"database/sql/driver"
 	"errors"
 	"fmt"
 	"io"
@@ -18,12 +16,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/islishude/etherview/internal/config"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/stagecontract"
 )
@@ -53,7 +57,7 @@ var (
 // Importer is a long-lived sync-role component. It retries only while block
 // zero has not reached PostgreSQL; malformed or mismatched input fails closed.
 type Importer struct {
-	db           *sql.DB
+	db           *pgxpool.Pool
 	chainID      string
 	chainNumber  uint64
 	expectedHash common.Hash
@@ -73,7 +77,7 @@ type remoteImportCheckpoint struct {
 }
 
 func NewImporter(
-	db *sql.DB,
+	db *pgxpool.Pool,
 	chain config.ChainConfig,
 	queue *enrich.PostgresJobQueue,
 	pollInterval time.Duration,
@@ -203,7 +207,7 @@ func (importer *Importer) runRemote(ctx context.Context) error {
 		if err := importer.waitForCanonicalBlockZero(ctx); err != nil {
 			return err
 		}
-		err = importer.withRemoteSourceLock(ctx, func(conn *sql.Conn) error {
+		err = importer.withRemoteSourceLock(ctx, func(conn *pgxpool.Conn) error {
 			after, complete, err := importer.completedRemoteImport(ctx, conn)
 			if err != nil || complete {
 				return err
@@ -272,25 +276,32 @@ func (importer *Importer) runRemote(ctx context.Context) error {
 
 func (importer *Importer) completedRemoteImport(
 	ctx context.Context,
-	queryer interface {
-		QueryRowContext(context.Context, string, ...any) *sql.Row
-	},
+	queryer dbgen.DBTX,
 ) (remoteImportCheckpoint, bool, error) {
 	var (
 		checkpoint                        remoteImportCheckpoint
 		blockHash, stateRoot, digest, raw []byte
 		canonical                         bool
 	)
-	err := queryer.QueryRowContext(ctx, dbgen.GenesisWriteCompletedRemoteImportStatement1, importer.chainID).Scan(
-		&checkpoint.version,
-		&checkpoint.state,
-		&blockHash,
-		&stateRoot,
-		&digest,
-		&canonical,
-		&raw,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(importer.chainID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(queryer).GenesisWriteCompletedRemoteImportStatement1(ctx, queryValue0)
+		if err != nil {
+			return err
+		}
+		checkpoint.version = queryRow.ImportedXmin
+		checkpoint.state = queryRow.State
+		blockHash = queryRow.BlockHash
+		stateRoot = queryRow.StateRoot
+		digest = queryRow.DocumentSha256
+		canonical = queryRow.Canonical
+		raw = queryRow.Raw
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return remoteImportCheckpoint{}, false, nil
 	}
 	if err != nil {
@@ -341,7 +352,18 @@ func (importer *Importer) waitForCanonicalBlockZero(ctx context.Context) error {
 			return ctx.Err()
 		case <-timer.C:
 			var available bool
-			if err := importer.db.QueryRowContext(ctx, dbgen.GenesisWriteWaitForCanonicalBlockZeroStatement1, importer.chainID).Scan(&available); err != nil {
+			if err := func() error {
+				var queryValue0 pgtype.Numeric
+				if err := queryValue0.Scan(importer.chainID); err != nil {
+					return err
+				}
+				queryRow, err := dbgen.New(importer.db).GenesisWriteWaitForCanonicalBlockZeroStatement1(ctx, queryValue0)
+				if err != nil {
+					return err
+				}
+				available = queryRow
+				return nil
+			}(); err != nil {
 				return fmt.Errorf("wait for canonical block zero: %w", err)
 			}
 			if available {
@@ -354,30 +376,50 @@ func (importer *Importer) waitForCanonicalBlockZero(ctx context.Context) error {
 
 func (importer *Importer) withRemoteSourceLock(
 	ctx context.Context,
-	action func(*sql.Conn) error,
+	action func(*pgxpool.Conn) error,
 ) (result error) {
-	conn, err := importer.db.Conn(ctx)
+	conn, err := importer.db.Acquire(ctx)
 	if err != nil {
 		return fmt.Errorf("reserve genesis remote source connection: %w", err)
 	}
 	locked := false
+	uncertain := false
 	defer func() {
 		if locked {
 			unlockCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 			var unlocked bool
-			unlockErr := conn.QueryRowContext(unlockCtx, dbgen.GenesisWriteWithRemoteSourceLockStatement1, importer.chainID).Scan(&unlocked)
+			unlockErr := func() error {
+
+				queryRow, err := dbgen.New(conn).GenesisWriteWithRemoteSourceLockStatement1(unlockCtx, importer.chainID)
+				if err != nil {
+					return err
+				}
+				unlocked = queryRow
+				return nil
+			}()
 			cancel()
 			if unlockErr != nil || !unlocked {
-				_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+				uncertain = true
 				result = errors.Join(result, errors.New("release genesis remote source lock"))
 			}
 		}
-		if closeErr := conn.Close(); closeErr != nil {
-			result = errors.Join(result, errors.New("close genesis remote source connection"))
+		if uncertain {
+			dbaccess.Discard(ctx, conn)
+		} else {
+			conn.Release()
 		}
 	}()
 	for !locked {
-		if err := conn.QueryRowContext(ctx, dbgen.GenesisWriteWithRemoteSourceLockStatement2, importer.chainID).Scan(&locked); err != nil {
+		if err := func() error {
+
+			queryRow, err := dbgen.New(conn).GenesisWriteWithRemoteSourceLockStatement2(ctx, importer.chainID)
+			if err != nil {
+				return err
+			}
+			locked = queryRow
+			return nil
+		}(); err != nil {
+			uncertain = true
 			return fmt.Errorf("lock genesis remote source: %w", err)
 		}
 		if !locked {
@@ -395,9 +437,7 @@ func (importer *Importer) withRemoteSourceLock(
 
 func (importer *Importer) recordRemoteFetchFailure(
 	ctx context.Context,
-	execer interface {
-		ExecContext(context.Context, string, ...any) (sql.Result, error)
-	},
+	execer dbgen.DBTX,
 	fetchErr error,
 ) error {
 	kind, code, ok := remoteErrorDetails(fetchErr)
@@ -410,9 +450,7 @@ func (importer *Importer) recordRemoteFetchFailure(
 
 func (importer *Importer) recordRemoteFailure(
 	ctx context.Context,
-	execer interface {
-		ExecContext(context.Context, string, ...any) (sql.Result, error)
-	},
+	execer dbgen.DBTX,
 	kind remoteFailureKind,
 	code string,
 	cause error,
@@ -420,7 +458,13 @@ func (importer *Importer) recordRemoteFailure(
 	if kind != remoteFailureUnavailable && kind != remoteFailureFailed {
 		return errors.New("record genesis remote failure with invalid state")
 	}
-	if _, err := execer.ExecContext(ctx, dbgen.GenesisWriteRecordRemoteFailureStatement1, importer.chainID, string(kind), code); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(importer.chainID); err != nil {
+			return err
+		}
+		return dbgen.New(execer).GenesisWriteRecordRemoteFailureStatement1(ctx, queryValue0, string(kind), new(code))
+	}(); err != nil {
 		return fmt.Errorf("publish genesis remote source failure: %w", err)
 	}
 	importer.logger.WarnContext(ctx, "genesis state import transitioned",
@@ -433,7 +477,13 @@ func (importer *Importer) recordRemoteFailure(
 }
 
 func (importer *Importer) markUnavailable(ctx context.Context) error {
-	_, err := importer.db.ExecContext(ctx, dbgen.GenesisWriteMarkUnavailableStatement1, importer.chainID)
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(importer.chainID); err != nil {
+			return err
+		}
+		return dbgen.New(importer.db).GenesisWriteMarkUnavailableStatement1(ctx, queryValue0)
+	}()
 	if err != nil {
 		return fmt.Errorf("publish unavailable genesis state: %w", err)
 	}
@@ -453,20 +503,32 @@ func (importer *Importer) importOnce(ctx context.Context) (common.Hash, common.H
 func (importer *Importer) importOnceUsing(
 	ctx context.Context,
 	beginner interface {
-		BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
+		BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error)
 	},
 ) (common.Hash, common.Hash, error) {
-	tx, err := beginner.BeginTx(ctx, nil)
+	tx, err := beginner.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return common.Hash{}, common.Hash{}, fmt.Errorf("begin genesis state import: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
-	if _, err := tx.ExecContext(ctx, dbgen.GenesisWriteImportOnceUsingStatement1, importer.chainID); err != nil {
+	defer dbaccess.Rollback(ctx, tx)
+	if err := dbgen.New(tx).GenesisWriteImportOnceUsingStatement1(ctx, importer.chainID); err != nil {
 		return common.Hash{}, common.Hash{}, fmt.Errorf("lock genesis state import: %w", err)
 	}
 	var blockHash, raw []byte
-	err = tx.QueryRowContext(ctx, dbgen.GenesisWriteImportOnceUsingStatement2, importer.chainID).Scan(&blockHash, &raw)
-	if errors.Is(err, sql.ErrNoRows) {
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(importer.chainID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).GenesisWriteImportOnceUsingStatement2(ctx, queryValue0)
+		if err != nil {
+			return err
+		}
+		blockHash = queryRow.Hash
+		raw = queryRow.Raw
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return common.Hash{}, common.Hash{}, errBlockZeroPending
 	}
 	if err != nil {
@@ -488,7 +550,21 @@ func (importer *Importer) importOnceUsing(
 	}
 	var existingState string
 	var existingHash, existingRoot, existingDigest []byte
-	err = tx.QueryRowContext(ctx, dbgen.GenesisWriteImportOnceUsingStatement3, importer.chainID).Scan(&existingState, &existingHash, &existingRoot, &existingDigest)
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(importer.chainID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).GenesisWriteImportOnceUsingStatement3(ctx, queryValue0)
+		if err != nil {
+			return err
+		}
+		existingState = queryRow.State
+		existingHash = queryRow.BlockHash
+		existingRoot = queryRow.StateRoot
+		existingDigest = queryRow.DocumentSha256
+		return nil
+	}()
 	if err == nil && existingState == "complete" {
 		if !bytes.Equal(existingHash, blockHash) || !bytes.Equal(existingRoot, stateRoot[:]) {
 			return common.Hash{}, common.Hash{}, errors.New("stored genesis import identity conflicts with canonical block zero")
@@ -497,17 +573,25 @@ func (importer *Importer) importOnceUsing(
 			!bytes.Equal(existingDigest, importer.remote.expectedDigest[:]) {
 			return common.Hash{}, common.Hash{}, errStoredGenesisDigestMismatch
 		}
-		if err := tx.Commit(); err != nil {
+		if err := tx.Commit(ctx); err != nil {
 			return common.Hash{}, common.Hash{}, fmt.Errorf("commit existing genesis import: %w", err)
 		}
 		return reference, stateRoot, nil
 	}
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return common.Hash{}, common.Hash{}, fmt.Errorf("read genesis import state: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.GenesisWriteImportOnceUsingStatement4, importer.chainID, blockHash, stateRoot[:], importer.digest[:],
-		strconv.Itoa(len(importer.spec.Alloc)),
-	); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(importer.chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.Itoa(len(importer.spec.Alloc))); err != nil {
+			return err
+		}
+		return dbgen.New(tx).GenesisWriteImportOnceUsingStatement4(ctx, dbgen.GenesisWriteImportOnceUsingStatement4Params{ChainID: queryValue0, BlockHash: blockHash, StateRoot: stateRoot[:], DocumentSha256: importer.digest[:], AccountCount: queryValue1})
+	}(); err != nil {
 		return common.Hash{}, common.Hash{}, fmt.Errorf("persist genesis import identity: %w", err)
 	}
 	addresses := make([]common.Address, 0, len(importer.spec.Alloc))
@@ -528,20 +612,35 @@ func (importer *Importer) importOnceUsing(
 			code = []byte{}
 		}
 		codeHash := crypto.Keccak256Hash(code)
-		if _, err := tx.ExecContext(ctx, dbgen.GenesisWriteImportOnceUsingStatement5, importer.chainID, accountAddress[:], blockHash, account.Balance.String(),
-			strconv.FormatUint(account.Nonce, 10), codeHash[:], code, storageHash[:],
-		); err != nil {
+		if err := func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(importer.chainID); err != nil {
+				return err
+			}
+			var queryValue1 pgtype.Numeric
+			if err := queryValue1.Scan(account.Balance.String()); err != nil {
+				return err
+			}
+			var queryValue2 pgtype.Numeric
+			if err := queryValue2.Scan(strconv.FormatUint(account.Nonce, 10)); err != nil {
+				return err
+			}
+			return dbgen.New(tx).GenesisWriteImportOnceUsingStatement5(ctx, dbgen.GenesisWriteImportOnceUsingStatement5Params{ChainID: queryValue0, Address: accountAddress[:], BlockHash: blockHash, Balance: queryValue1, Nonce: queryValue2, CodeHash: codeHash[:], Code: code, StorageRoot: storageHash[:]})
+		}(); err != nil {
 			return common.Hash{}, common.Hash{}, fmt.Errorf("persist genesis account: %w", err)
 		}
 		if len(code) > 0 {
-			result, err := tx.ExecContext(ctx, dbgen.GenesisWriteImportOnceUsingStatement6, importer.chainID, accountAddress[:], blockHash, codeHash[:], code)
+			result, err := func() (int64, error) {
+				var queryValue0 pgtype.Numeric
+				if err := queryValue0.Scan(importer.chainID); err != nil {
+					return 0, err
+				}
+				return dbgen.New(tx).GenesisWriteImportOnceUsingStatement6(ctx, dbgen.GenesisWriteImportOnceUsingStatement6Params{ChainID: queryValue0, Address: accountAddress[:], BlockHash: blockHash, CodeHash: codeHash[:], Code: code})
+			}()
 			if err != nil {
 				return common.Hash{}, common.Hash{}, fmt.Errorf("persist genesis code observation: %w", err)
 			}
-			affected, err := result.RowsAffected()
-			if err != nil {
-				return common.Hash{}, common.Hash{}, fmt.Errorf("count persisted genesis code observation: %w", err)
-			}
+			affected := result
 			if affected != 1 {
 				return common.Hash{}, common.Hash{}, errors.New("genesis code observation conflicts with an existing exact fact")
 			}
@@ -550,7 +649,7 @@ func (importer *Importer) importOnceUsing(
 	if err := importer.requestProxyReplay(ctx, tx, reference, stateRoot); err != nil {
 		return common.Hash{}, common.Hash{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return common.Hash{}, common.Hash{}, fmt.Errorf("commit genesis state import: %w", err)
 	}
 	source := "file"
@@ -573,7 +672,7 @@ func (importer *Importer) importOnceUsing(
 
 func (importer *Importer) requestProxyReplay(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	blockHash common.Hash,
 	stateRoot common.Hash,
 ) error {

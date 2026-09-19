@@ -3,7 +3,6 @@ package app
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"errors"
 	"log/slog"
 	"slices"
@@ -11,6 +10,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/islishude/etherview/internal/components"
 	"github.com/islishude/etherview/internal/config"
@@ -198,7 +199,7 @@ func TestRegisterAuthBillingHousekeepersIsFeatureAwareAndBounded(t *testing.T) {
 			}
 			registry := components.NewRegistry()
 			if err := registerAuthBillingHousekeepers(
-				registry, &sql.DB{}, cfg, nil,
+				registry, &pgxpool.Pool{}, cfg, nil,
 			); err != nil {
 				t.Fatal(err)
 			}

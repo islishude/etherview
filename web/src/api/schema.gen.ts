@@ -2272,6 +2272,7 @@ export interface components {
         };
         HomeSnapshotResponse: {
             data: components["schemas"]["HomeSnapshot"];
+            event_id: components["schemas"]["RuntimeEventID"];
             meta: components["schemas"]["Meta"];
         };
         IncludedTransactionDetail: {
@@ -2677,6 +2678,8 @@ export interface components {
             replacement_hash: components["schemas"]["Hash"];
             transaction: components["schemas"]["PendingTransaction"];
         };
+        /** @description Canonical decimal durable event ID from 0 through 9223372036854775807. */
+        RuntimeEventID: string;
         SearchResponse: {
             data: components["schemas"]["SearchResult"][];
             meta: components["schemas"]["Meta"];
@@ -4723,7 +4726,10 @@ export interface operations {
     };
     getHomeSnapshot: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Minimum durable event version; waits at most two seconds for the local snapshot. */
+                min_event_id?: components["schemas"]["RuntimeEventID"];
+            };
             header?: never;
             path?: never;
             cookie?: never;

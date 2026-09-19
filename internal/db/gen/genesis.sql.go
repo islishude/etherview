@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const GetGenesisImport = `-- name: GetGenesisImport :one
+const getGenesisImport = `-- name: GetGenesisImport :one
 SELECT
     imported.state,
     imported.block_hash,
@@ -39,7 +39,7 @@ type GetGenesisImportRow struct {
 }
 
 func (q *Queries) GetGenesisImport(ctx context.Context, chainID pgtype.Numeric) (GetGenesisImportRow, error) {
-	row := q.db.QueryRow(ctx, GetGenesisImport, chainID)
+	row := q.db.QueryRow(ctx, getGenesisImport, chainID)
 	var i GetGenesisImportRow
 	err := row.Scan(
 		&i.State,
@@ -52,7 +52,7 @@ func (q *Queries) GetGenesisImport(ctx context.Context, chainID pgtype.Numeric) 
 	return i, err
 }
 
-const ListGenesisAccounts = `-- name: ListGenesisAccounts :many
+const listGenesisAccounts = `-- name: ListGenesisAccounts :many
 SELECT
     account.address,
     account.balance::text AS balance,
@@ -90,7 +90,7 @@ type ListGenesisAccountsRow struct {
 }
 
 func (q *Queries) ListGenesisAccounts(ctx context.Context, arg ListGenesisAccountsParams) ([]ListGenesisAccountsRow, error) {
-	rows, err := q.db.Query(ctx, ListGenesisAccounts,
+	rows, err := q.db.Query(ctx, listGenesisAccounts,
 		arg.ChainID,
 		arg.BlockHash,
 		arg.AfterAddress,

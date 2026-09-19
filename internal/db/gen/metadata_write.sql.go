@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const MetadataWriteEnqueueMetadataJob = `-- name: MetadataWriteEnqueueMetadataJob :many
+const metadataWriteEnqueueMetadataJob = `-- name: MetadataWriteEnqueueMetadataJob :one
 INSERT INTO durable_jobs (
     chain_id, kind, stage, stage_version, idempotency_key, payload,
     priority, max_attempts
@@ -24,116 +24,109 @@ RETURNING id
 `
 
 type MetadataWriteEnqueueMetadataJobParams struct {
-	Column1        pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID        pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	IdempotencyKey string         `db:"idempotency_key" json:"idempotency_key"`
-	Column3        []byte         `db:"column_3" json:"column_3"`
+	Payload        []byte         `db:"payload" json:"payload"`
 	Priority       int32          `db:"priority" json:"priority"`
 	MaxAttempts    int32          `db:"max_attempts" json:"max_attempts"`
 }
 
-func (q *Queries) MetadataWriteEnqueueMetadataJob(ctx context.Context, arg MetadataWriteEnqueueMetadataJobParams) ([]int64, error) {
-	rows, err := q.db.Query(ctx, MetadataWriteEnqueueMetadataJob,
-		arg.Column1,
+func (q *Queries) MetadataWriteEnqueueMetadataJob(ctx context.Context, arg MetadataWriteEnqueueMetadataJobParams) (int64, error) {
+	row := q.db.QueryRow(ctx, metadataWriteEnqueueMetadataJob,
+		arg.ChainID,
 		arg.IdempotencyKey,
-		arg.Column3,
+		arg.Payload,
 		arg.Priority,
 		arg.MaxAttempts,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []int64{}
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		items = append(items, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
-const MetadataWriteFinishMetadataJob = `-- name: MetadataWriteFinishMetadataJob :exec
+const metadataWriteFinishMetadataJob = `-- name: MetadataWriteFinishMetadataJob :execrows
 UPDATE durable_jobs
-SET status = $3, result = $4::jsonb, last_error = $5,
+SET status = $1, result = $2::jsonb, last_error = $3,
     leased_by = NULL, lease_token = NULL, lease_expires_at = NULL,
     updated_at = clock_timestamp()
-WHERE id = $1 AND kind = 'metadata' AND status = 'leased'
-  AND lease_token = $2 AND lease_expires_at > clock_timestamp()
+WHERE id = $4 AND kind = 'metadata' AND status = 'leased'
+  AND lease_token = $5 AND lease_expires_at > clock_timestamp()
 `
 
 type MetadataWriteFinishMetadataJobParams struct {
+	Status     string  `db:"status" json:"status"`
+	Result     []byte  `db:"result" json:"result"`
+	LastError  *string `db:"last_error" json:"last_error"`
 	ID         int64   `db:"id" json:"id"`
 	LeaseToken *string `db:"lease_token" json:"lease_token"`
-	Status     string  `db:"status" json:"status"`
-	Column4    []byte  `db:"column_4" json:"column_4"`
-	LastError  *string `db:"last_error" json:"last_error"`
 }
 
-func (q *Queries) MetadataWriteFinishMetadataJob(ctx context.Context, arg MetadataWriteFinishMetadataJobParams) error {
-	_, err := q.db.Exec(ctx, MetadataWriteFinishMetadataJob,
+func (q *Queries) MetadataWriteFinishMetadataJob(ctx context.Context, arg MetadataWriteFinishMetadataJobParams) (int64, error) {
+	result, err := q.db.Exec(ctx, metadataWriteFinishMetadataJob,
+		arg.Status,
+		arg.Result,
+		arg.LastError,
 		arg.ID,
 		arg.LeaseToken,
-		arg.Status,
-		arg.Column4,
-		arg.LastError,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const MetadataWriteFinishMetadataResource = `-- name: MetadataWriteFinishMetadataResource :exec
+const metadataWriteFinishMetadataResource = `-- name: MetadataWriteFinishMetadataResource :execrows
 UPDATE external_metadata
-SET state = $6, resolved_uri = $7, media_type = $8, content_hash = $9,
-    document = $10::jsonb, content_size = $11, attempt_count = $12,
-    last_error_code = $13, last_error = $14,
+SET state = $1, resolved_uri = $2, media_type = $3, content_hash = $4,
+    document = $5::jsonb, content_size = $6, attempt_count = $7,
+    last_error_code = $8, last_error = $9,
     fetched_at = clock_timestamp(), terminal_at = clock_timestamp(), updated_at = clock_timestamp()
-WHERE chain_id = $1::numeric AND resource_kind = 'nft' AND resource_key = $2
-  AND identity_hash = $5
-  AND source_uri = $3 AND observed_block_number = $4::numeric AND observed_block_hash = $5
+WHERE chain_id = $10::numeric AND resource_kind = 'nft' AND resource_key = $11
+  AND identity_hash = $12
+  AND source_uri = $13 AND observed_block_number = $14::numeric AND observed_block_hash = $12
 `
 
 type MetadataWriteFinishMetadataResourceParams struct {
-	Column1       pgtype.Numeric `db:"column_1" json:"column_1"`
-	ResourceKey   string         `db:"resource_key" json:"resource_key"`
-	SourceUri     string         `db:"source_uri" json:"source_uri"`
-	Column4       pgtype.Numeric `db:"column_4" json:"column_4"`
-	IdentityHash  []byte         `db:"identity_hash" json:"identity_hash"`
-	State         string         `db:"state" json:"state"`
-	ResolvedUri   *string        `db:"resolved_uri" json:"resolved_uri"`
-	MediaType     *string        `db:"media_type" json:"media_type"`
-	ContentHash   []byte         `db:"content_hash" json:"content_hash"`
-	Column10      []byte         `db:"column_10" json:"column_10"`
-	ContentSize   *int64         `db:"content_size" json:"content_size"`
-	AttemptCount  int32          `db:"attempt_count" json:"attempt_count"`
-	LastErrorCode *string        `db:"last_error_code" json:"last_error_code"`
-	LastError     *string        `db:"last_error" json:"last_error"`
+	State               string         `db:"state" json:"state"`
+	ResolvedUri         *string        `db:"resolved_uri" json:"resolved_uri"`
+	MediaType           *string        `db:"media_type" json:"media_type"`
+	ContentHash         []byte         `db:"content_hash" json:"content_hash"`
+	Document            []byte         `db:"document" json:"document"`
+	ContentSize         *int64         `db:"content_size" json:"content_size"`
+	AttemptCount        int32          `db:"attempt_count" json:"attempt_count"`
+	LastErrorCode       *string        `db:"last_error_code" json:"last_error_code"`
+	LastError           *string        `db:"last_error" json:"last_error"`
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	ResourceKey         string         `db:"resource_key" json:"resource_key"`
+	IdentityHash        []byte         `db:"identity_hash" json:"identity_hash"`
+	SourceUri           string         `db:"source_uri" json:"source_uri"`
+	ObservedBlockNumber pgtype.Numeric `db:"observed_block_number" json:"observed_block_number"`
 }
 
-func (q *Queries) MetadataWriteFinishMetadataResource(ctx context.Context, arg MetadataWriteFinishMetadataResourceParams) error {
-	_, err := q.db.Exec(ctx, MetadataWriteFinishMetadataResource,
-		arg.Column1,
-		arg.ResourceKey,
-		arg.SourceUri,
-		arg.Column4,
-		arg.IdentityHash,
+func (q *Queries) MetadataWriteFinishMetadataResource(ctx context.Context, arg MetadataWriteFinishMetadataResourceParams) (int64, error) {
+	result, err := q.db.Exec(ctx, metadataWriteFinishMetadataResource,
 		arg.State,
 		arg.ResolvedUri,
 		arg.MediaType,
 		arg.ContentHash,
-		arg.Column10,
+		arg.Document,
 		arg.ContentSize,
 		arg.AttemptCount,
 		arg.LastErrorCode,
 		arg.LastError,
+		arg.ChainID,
+		arg.ResourceKey,
+		arg.IdentityHash,
+		arg.SourceUri,
+		arg.ObservedBlockNumber,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const MetadataWriteInsertMetadataAttempt = `-- name: MetadataWriteInsertMetadataAttempt :exec
+const metadataWriteInsertMetadataAttempt = `-- name: MetadataWriteInsertMetadataAttempt :exec
 INSERT INTO external_metadata_attempts (
     chain_id, resource_kind, resource_key, durable_job_id, attempt, state,
     source_uri, resolved_uri, media_type, content_hash, content_size,
@@ -149,7 +142,7 @@ ON CONFLICT (durable_job_id, attempt) DO UPDATE SET
 `
 
 type MetadataWriteInsertMetadataAttemptParams struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	ResourceKey  string         `db:"resource_key" json:"resource_key"`
 	DurableJobID int64          `db:"durable_job_id" json:"durable_job_id"`
 	Attempt      int32          `db:"attempt" json:"attempt"`
@@ -164,8 +157,8 @@ type MetadataWriteInsertMetadataAttemptParams struct {
 }
 
 func (q *Queries) MetadataWriteInsertMetadataAttempt(ctx context.Context, arg MetadataWriteInsertMetadataAttemptParams) error {
-	_, err := q.db.Exec(ctx, MetadataWriteInsertMetadataAttempt,
-		arg.Column1,
+	_, err := q.db.Exec(ctx, metadataWriteInsertMetadataAttempt,
+		arg.ChainID,
 		arg.ResourceKey,
 		arg.DurableJobID,
 		arg.Attempt,
@@ -181,7 +174,7 @@ func (q *Queries) MetadataWriteInsertMetadataAttempt(ctx context.Context, arg Me
 	return err
 }
 
-const MetadataWriteInsertMetadataResource = `-- name: MetadataWriteInsertMetadataResource :many
+const metadataWriteInsertMetadataResource = `-- name: MetadataWriteInsertMetadataResource :one
 INSERT INTO external_metadata (
     chain_id, resource_kind, resource_key, source_uri, state,
     token_address, token_id, observed_block_number, observed_block_hash,
@@ -192,48 +185,35 @@ INSERT INTO external_metadata (
     $7, 0, clock_timestamp()
 )
 ON CONFLICT DO NOTHING
-RETURNING 1
+RETURNING 1 AS inserted
 `
 
 type MetadataWriteInsertMetadataResourceParams struct {
-	Column1           pgtype.Numeric `db:"column_1" json:"column_1"`
-	ResourceKey       string         `db:"resource_key" json:"resource_key"`
-	SourceUri         string         `db:"source_uri" json:"source_uri"`
-	TokenAddress      []byte         `db:"token_address" json:"token_address"`
-	Column5           pgtype.Numeric `db:"column_5" json:"column_5"`
-	Column6           pgtype.Numeric `db:"column_6" json:"column_6"`
-	ObservedBlockHash []byte         `db:"observed_block_hash" json:"observed_block_hash"`
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	ResourceKey         string         `db:"resource_key" json:"resource_key"`
+	SourceUri           string         `db:"source_uri" json:"source_uri"`
+	TokenAddress        []byte         `db:"token_address" json:"token_address"`
+	TokenID             pgtype.Numeric `db:"token_id" json:"token_id"`
+	ObservedBlockNumber pgtype.Numeric `db:"observed_block_number" json:"observed_block_number"`
+	ObservedBlockHash   []byte         `db:"observed_block_hash" json:"observed_block_hash"`
 }
 
-func (q *Queries) MetadataWriteInsertMetadataResource(ctx context.Context, arg MetadataWriteInsertMetadataResourceParams) ([]int32, error) {
-	rows, err := q.db.Query(ctx, MetadataWriteInsertMetadataResource,
-		arg.Column1,
+func (q *Queries) MetadataWriteInsertMetadataResource(ctx context.Context, arg MetadataWriteInsertMetadataResourceParams) (int32, error) {
+	row := q.db.QueryRow(ctx, metadataWriteInsertMetadataResource,
+		arg.ChainID,
 		arg.ResourceKey,
 		arg.SourceUri,
 		arg.TokenAddress,
-		arg.Column5,
-		arg.Column6,
+		arg.TokenID,
+		arg.ObservedBlockNumber,
 		arg.ObservedBlockHash,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []int32{}
-	for rows.Next() {
-		var column_1 int32
-		if err := rows.Scan(&column_1); err != nil {
-			return nil, err
-		}
-		items = append(items, column_1)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var inserted int32
+	err := row.Scan(&inserted)
+	return inserted, err
 }
 
-const MetadataWriteInsertNFTSource = `-- name: MetadataWriteInsertNFTSource :many
+const metadataWriteInsertNFTSource = `-- name: MetadataWriteInsertNFTSource :one
 INSERT INTO nft_metadata_source_observations (
     chain_id, token_address, token_id, block_number, block_hash,
     standard, state, source_uri, error_code
@@ -242,14 +222,14 @@ INSERT INTO nft_metadata_source_observations (
     $6, $7, $8, $9
 )
 ON CONFLICT DO NOTHING
-RETURNING 1
+RETURNING 1 AS inserted
 `
 
 type MetadataWriteInsertNFTSourceParams struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	TokenAddress []byte         `db:"token_address" json:"token_address"`
-	Column3      pgtype.Numeric `db:"column_3" json:"column_3"`
-	Column4      pgtype.Numeric `db:"column_4" json:"column_4"`
+	TokenID      pgtype.Numeric `db:"token_id" json:"token_id"`
+	BlockNumber  pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
 	Standard     string         `db:"standard" json:"standard"`
 	State        string         `db:"state" json:"state"`
@@ -257,37 +237,24 @@ type MetadataWriteInsertNFTSourceParams struct {
 	ErrorCode    *string        `db:"error_code" json:"error_code"`
 }
 
-func (q *Queries) MetadataWriteInsertNFTSource(ctx context.Context, arg MetadataWriteInsertNFTSourceParams) ([]int32, error) {
-	rows, err := q.db.Query(ctx, MetadataWriteInsertNFTSource,
-		arg.Column1,
+func (q *Queries) MetadataWriteInsertNFTSource(ctx context.Context, arg MetadataWriteInsertNFTSourceParams) (int32, error) {
+	row := q.db.QueryRow(ctx, metadataWriteInsertNFTSource,
+		arg.ChainID,
 		arg.TokenAddress,
-		arg.Column3,
-		arg.Column4,
+		arg.TokenID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.Standard,
 		arg.State,
 		arg.SourceUri,
 		arg.ErrorCode,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []int32{}
-	for rows.Next() {
-		var column_1 int32
-		if err := rows.Scan(&column_1); err != nil {
-			return nil, err
-		}
-		items = append(items, column_1)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var inserted int32
+	err := row.Scan(&inserted)
+	return inserted, err
 }
 
-const MetadataWriteInsertNFTUpdateObservation = `-- name: MetadataWriteInsertNFTUpdateObservation :many
+const metadataWriteInsertNFTUpdateObservation = `-- name: MetadataWriteInsertNFTUpdateObservation :one
 WITH canonical AS (
     SELECT 1
     FROM canonical_blocks
@@ -305,125 +272,121 @@ SELECT
     $6, $7, $8, $9::numeric, $10::numeric, $11
 FROM canonical
 ON CONFLICT DO NOTHING
-RETURNING 1
+RETURNING 1 AS inserted
 `
 
 type MetadataWriteInsertNFTUpdateObservationParams struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2      pgtype.Numeric `db:"column_2" json:"column_2"`
+	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber  pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
 	LogIndex     int64          `db:"log_index" json:"log_index"`
 	TokenAddress []byte         `db:"token_address" json:"token_address"`
 	Standard     string         `db:"standard" json:"standard"`
 	EventKind    string         `db:"event_kind" json:"event_kind"`
 	State        string         `db:"state" json:"state"`
-	Column9      pgtype.Numeric `db:"column_9" json:"column_9"`
-	Column10     pgtype.Numeric `db:"column_10" json:"column_10"`
+	FromTokenID  pgtype.Numeric `db:"from_token_id" json:"from_token_id"`
+	ToTokenID    pgtype.Numeric `db:"to_token_id" json:"to_token_id"`
 	ErrorCode    *string        `db:"error_code" json:"error_code"`
 }
 
-func (q *Queries) MetadataWriteInsertNFTUpdateObservation(ctx context.Context, arg MetadataWriteInsertNFTUpdateObservationParams) ([]int32, error) {
-	rows, err := q.db.Query(ctx, MetadataWriteInsertNFTUpdateObservation,
-		arg.Column1,
-		arg.Column2,
+func (q *Queries) MetadataWriteInsertNFTUpdateObservation(ctx context.Context, arg MetadataWriteInsertNFTUpdateObservationParams) (int32, error) {
+	row := q.db.QueryRow(ctx, metadataWriteInsertNFTUpdateObservation,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.LogIndex,
 		arg.TokenAddress,
 		arg.Standard,
 		arg.EventKind,
 		arg.State,
-		arg.Column9,
-		arg.Column10,
+		arg.FromTokenID,
+		arg.ToTokenID,
 		arg.ErrorCode,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []int32{}
-	for rows.Next() {
-		var column_1 int32
-		if err := rows.Scan(&column_1); err != nil {
-			return nil, err
-		}
-		items = append(items, column_1)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var inserted int32
+	err := row.Scan(&inserted)
+	return inserted, err
 }
 
-const MetadataWriteRecordMetadataRetry = `-- name: MetadataWriteRecordMetadataRetry :exec
+const metadataWriteRecordMetadataRetry = `-- name: MetadataWriteRecordMetadataRetry :execrows
 UPDATE external_metadata
-SET state = 'pending', attempt_count = $6, last_error_code = $7, last_error = $8,
+SET state = 'pending', attempt_count = $1, last_error_code = $2, last_error = $3,
     fetched_at = clock_timestamp(), terminal_at = NULL, updated_at = clock_timestamp()
-WHERE chain_id = $1::numeric AND resource_kind = 'nft' AND resource_key = $2
-  AND identity_hash = $5
-  AND source_uri = $3 AND observed_block_number = $4::numeric AND observed_block_hash = $5
+WHERE chain_id = $4::numeric AND resource_kind = 'nft' AND resource_key = $5
+  AND identity_hash = $6
+  AND source_uri = $7 AND observed_block_number = $8::numeric AND observed_block_hash = $6
 `
 
 type MetadataWriteRecordMetadataRetryParams struct {
-	Column1       pgtype.Numeric `db:"column_1" json:"column_1"`
-	ResourceKey   string         `db:"resource_key" json:"resource_key"`
-	SourceUri     string         `db:"source_uri" json:"source_uri"`
-	Column4       pgtype.Numeric `db:"column_4" json:"column_4"`
-	IdentityHash  []byte         `db:"identity_hash" json:"identity_hash"`
-	AttemptCount  int32          `db:"attempt_count" json:"attempt_count"`
-	LastErrorCode *string        `db:"last_error_code" json:"last_error_code"`
-	LastError     *string        `db:"last_error" json:"last_error"`
+	AttemptCount        int32          `db:"attempt_count" json:"attempt_count"`
+	LastErrorCode       *string        `db:"last_error_code" json:"last_error_code"`
+	LastError           *string        `db:"last_error" json:"last_error"`
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	ResourceKey         string         `db:"resource_key" json:"resource_key"`
+	IdentityHash        []byte         `db:"identity_hash" json:"identity_hash"`
+	SourceUri           string         `db:"source_uri" json:"source_uri"`
+	ObservedBlockNumber pgtype.Numeric `db:"observed_block_number" json:"observed_block_number"`
 }
 
-func (q *Queries) MetadataWriteRecordMetadataRetry(ctx context.Context, arg MetadataWriteRecordMetadataRetryParams) error {
-	_, err := q.db.Exec(ctx, MetadataWriteRecordMetadataRetry,
-		arg.Column1,
-		arg.ResourceKey,
-		arg.SourceUri,
-		arg.Column4,
-		arg.IdentityHash,
+func (q *Queries) MetadataWriteRecordMetadataRetry(ctx context.Context, arg MetadataWriteRecordMetadataRetryParams) (int64, error) {
+	result, err := q.db.Exec(ctx, metadataWriteRecordMetadataRetry,
 		arg.AttemptCount,
 		arg.LastErrorCode,
 		arg.LastError,
+		arg.ChainID,
+		arg.ResourceKey,
+		arg.IdentityHash,
+		arg.SourceUri,
+		arg.ObservedBlockNumber,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const MetadataWriteRenewMetadataJob = `-- name: MetadataWriteRenewMetadataJob :exec
+const metadataWriteRenewMetadataJob = `-- name: MetadataWriteRenewMetadataJob :execrows
 UPDATE durable_jobs
-SET lease_expires_at = clock_timestamp() + ($3 * INTERVAL '1 microsecond'),
+SET lease_expires_at = clock_timestamp() + ($1::bigint * INTERVAL '1 microsecond'),
     updated_at = clock_timestamp()
-WHERE id = $1 AND kind = 'metadata' AND status = 'leased'
-  AND lease_token = $2 AND lease_expires_at > clock_timestamp()
+WHERE id = $2 AND kind = 'metadata' AND status = 'leased'
+  AND lease_token = $3 AND lease_expires_at > clock_timestamp()
 `
 
-func (q *Queries) MetadataWriteRenewMetadataJob(ctx context.Context, iD int64, leaseToken *string, column3 interface{}) error {
-	_, err := q.db.Exec(ctx, MetadataWriteRenewMetadataJob, iD, leaseToken, column3)
-	return err
+func (q *Queries) MetadataWriteRenewMetadataJob(ctx context.Context, leaseMicroseconds int64, iD int64, leaseToken *string) (int64, error) {
+	result, err := q.db.Exec(ctx, metadataWriteRenewMetadataJob, leaseMicroseconds, iD, leaseToken)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const MetadataWriteRetryMetadataJob = `-- name: MetadataWriteRetryMetadataJob :exec
+const metadataWriteRetryMetadataJob = `-- name: MetadataWriteRetryMetadataJob :execrows
 UPDATE durable_jobs
-SET status = 'queued', available_at = clock_timestamp() + ($4 * INTERVAL '1 microsecond'),
-    last_error = $3, result = NULL,
+SET status = 'queued', available_at = clock_timestamp() + ($1::bigint * INTERVAL '1 microsecond'),
+    last_error = $2, result = NULL,
     leased_by = NULL, lease_token = NULL, lease_expires_at = NULL,
     updated_at = clock_timestamp()
-WHERE id = $1 AND kind = 'metadata' AND status = 'leased'
-  AND lease_token = $2 AND lease_expires_at > clock_timestamp()
+WHERE id = $3 AND kind = 'metadata' AND status = 'leased'
+  AND lease_token = $4 AND lease_expires_at > clock_timestamp()
 `
 
 type MetadataWriteRetryMetadataJobParams struct {
-	ID         int64       `db:"id" json:"id"`
-	LeaseToken *string     `db:"lease_token" json:"lease_token"`
-	LastError  *string     `db:"last_error" json:"last_error"`
-	Column4    interface{} `db:"column_4" json:"column_4"`
+	RetryMicroseconds int64   `db:"retry_microseconds" json:"retry_microseconds"`
+	LastError         *string `db:"last_error" json:"last_error"`
+	ID                int64   `db:"id" json:"id"`
+	LeaseToken        *string `db:"lease_token" json:"lease_token"`
 }
 
-func (q *Queries) MetadataWriteRetryMetadataJob(ctx context.Context, arg MetadataWriteRetryMetadataJobParams) error {
-	_, err := q.db.Exec(ctx, MetadataWriteRetryMetadataJob,
+func (q *Queries) MetadataWriteRetryMetadataJob(ctx context.Context, arg MetadataWriteRetryMetadataJobParams) (int64, error) {
+	result, err := q.db.Exec(ctx, metadataWriteRetryMetadataJob,
+		arg.RetryMicroseconds,
+		arg.LastError,
 		arg.ID,
 		arg.LeaseToken,
-		arg.LastError,
-		arg.Column4,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

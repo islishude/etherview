@@ -2,15 +2,18 @@ package catalog
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
 	gethabi "github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/enrich"
 )
 
@@ -32,15 +35,30 @@ func (catalog *Postgres) TransactionFailure(
 	if err != nil {
 		return TransactionFailure{}, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 
 	identity, blockHash, err := catalog.resolveTraceIdentity(ctx, tx, chainID, transactionHash)
 	if err != nil {
 		return TransactionFailure{}, err
 	}
-	var receiptStatus sql.NullString
-	if err := tx.QueryRowContext(ctx, dbgen.CatalogTransactionFailureReceiptStatus, chainID, identity.BlockNumber, blockHash, transactionHash).Scan(&receiptStatus); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+	var receiptStatus pgtype.Text
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(identity.BlockNumber); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).CatalogTransactionFailureReceiptStatus(ctx, dbgen.CatalogTransactionFailureReceiptStatusParams{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: blockHash, TxHash: transactionHash})
+		if err != nil {
+			return err
+		}
+		receiptStatus = pgtype.Text{String: queryRow.Status, Valid: queryRow.StatusPresent}
+		return nil
+	}(); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return TransactionFailure{}, ErrCorruptData
 		}
 		return TransactionFailure{}, fmt.Errorf("read transaction failure receipt status: %w", err)
@@ -56,12 +74,23 @@ func (catalog *Postgres) TransactionFailure(
 		return TransactionFailure{}, ErrCorruptData
 	}
 
-	root, err := catalog.scanTraceFrame(tx.QueryRowContext(ctx, dbgen.CatalogTransactionFailureRoot, chainID, identity.BlockNumber, blockHash, transactionHash))
+	var chain, number pgtype.Numeric
+	if err := chain.Scan(chainID); err != nil {
+		return TransactionFailure{}, err
+	}
+	if err := number.Scan(identity.BlockNumber); err != nil {
+		return TransactionFailure{}, err
+	}
+	rootRow, err := dbgen.New(catalog.db).WithTx(tx).CatalogTransactionFailureRoot(ctx, dbgen.CatalogTransactionFailureRootParams{ChainID: chain, BlockNumber: number, BlockHash: blockHash, TransactionHash: transactionHash})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return TransactionFailure{}, ErrCorruptData
+	}
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return TransactionFailure{}, ErrCorruptData
-		}
 		return TransactionFailure{}, fmt.Errorf("read transaction failure root: %w", err)
+	}
+	root, err := catalog.scanTraceFrame(dbgen.CatalogTransactionTraceRow(rootRow))
+	if err != nil {
+		return TransactionFailure{}, err
 	}
 	if root.pathText != "" || root.parentText.Valid || root.frame.Depth != 0 ||
 		!root.frame.DirectReverted || !root.frame.Reverted || root.frame.Error == nil ||
@@ -129,7 +158,7 @@ func (catalog *Postgres) TransactionFailure(
 		value := *root.frame.Output
 		result.RevertData = &value
 	}
-	if err := commitRead(tx); err != nil {
+	if err := commitRead(ctx, tx); err != nil {
 		return TransactionFailure{}, err
 	}
 	return result, nil

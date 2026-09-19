@@ -2,15 +2,18 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strconv"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
+	pgx "github.com/jackc/pgx/v5"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/chainbundle"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
 const (
@@ -37,15 +40,18 @@ func newCoreJSONBatchWriter[T any](
 	}
 }
 
-func newCoreSQLBatchWriter[T any](
-	ctx context.Context,
-	tx *sql.Tx,
-	chainID string,
-	query string,
-	operation string,
-) *coreJSONBatchWriter[T] {
+type coreBatchQuery func(context.Context, pgtype.Numeric, []byte) error
+
+type coreCanonicalBatchQuery func(context.Context, bool, pgtype.Numeric, []byte) error
+
+func newCoreQueryBatchWriter[T any](ctx context.Context, chainID string, execute coreBatchQuery, operation string) *coreJSONBatchWriter[T] {
+	var chain pgtype.Numeric
+	parseErr := chain.Scan(chainID)
 	return newCoreJSONBatchWriter[T](operation, func(payload json.RawMessage) error {
-		if _, err := tx.ExecContext(ctx, query, chainID, payload); err != nil {
+		if parseErr != nil {
+			return parseErr
+		}
+		if err := execute(ctx, chain, payload); err != nil {
 			return fmt.Errorf("%s: %w", operation, err)
 		}
 		return nil
@@ -145,7 +151,7 @@ type coreWithdrawalWriteRow struct {
 
 func putBundlesTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	chainID string,
 	bundles []chainbundle.Bundle,
 ) error {
@@ -156,8 +162,8 @@ func putBundlesTx(
 		return err
 	}
 	if err := putTransactionFactRowsTx(
-		ctx, tx, chainID, bundles,
-		dbgen.StorePutTransactionInclusionsBatch,
+		ctx, chainID, bundles,
+		dbgen.New(tx).StorePutTransactionInclusionsBatch,
 		"upsert transaction inclusions",
 		func(bundle chainbundle.Bundle, index int) json.RawMessage {
 			return bundle.RawTransactions[index]
@@ -166,8 +172,8 @@ func putBundlesTx(
 		return err
 	}
 	if err := putTransactionFactRowsTx(
-		ctx, tx, chainID, bundles,
-		dbgen.StorePutReceiptsBatch,
+		ctx, chainID, bundles,
+		dbgen.New(tx).StorePutReceiptsBatch,
 		"upsert receipts",
 		func(bundle chainbundle.Bundle, index int) json.RawMessage {
 			return bundle.RawReceipts[index]
@@ -183,12 +189,12 @@ func putBundlesTx(
 
 func putBlockRowsTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	chainID string,
 	bundles []chainbundle.Bundle,
 ) error {
-	writer := newCoreSQLBatchWriter[coreBlockWriteRow](
-		ctx, tx, chainID, dbgen.StorePutBlocksBatch, "upsert blocks",
+	writer := newCoreQueryBatchWriter[coreBlockWriteRow](
+		ctx, chainID, dbgen.New(tx).StorePutBlocksBatch, "upsert blocks",
 	)
 	for index, bundle := range bundles {
 		reference, err := RefFromBundle(bundle)
@@ -214,12 +220,12 @@ func putBlockRowsTx(
 
 func putTransactionRowsTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	chainID string,
 	bundles []chainbundle.Bundle,
 ) error {
-	writer := newCoreSQLBatchWriter[coreTransactionWriteRow](
-		ctx, tx, chainID, dbgen.StorePutTransactionsBatch, "upsert transactions",
+	writer := newCoreQueryBatchWriter[coreTransactionWriteRow](
+		ctx, chainID, dbgen.New(tx).StorePutTransactionsBatch, "upsert transactions",
 	)
 	for _, bundle := range bundles {
 		for index, transaction := range bundle.Block.Transactions() {
@@ -238,15 +244,14 @@ func putTransactionRowsTx(
 
 func putTransactionFactRowsTx(
 	ctx context.Context,
-	tx *sql.Tx,
 	chainID string,
 	bundles []chainbundle.Bundle,
-	query string,
+	query coreBatchQuery,
 	operation string,
 	rawAt func(chainbundle.Bundle, int) json.RawMessage,
 ) error {
-	writer := newCoreSQLBatchWriter[coreTransactionFactWriteRow](
-		ctx, tx, chainID, query, operation,
+	writer := newCoreQueryBatchWriter[coreTransactionFactWriteRow](
+		ctx, chainID, query, operation,
 	)
 	for _, bundle := range bundles {
 		reference, err := RefFromBundle(bundle)
@@ -271,12 +276,12 @@ func putTransactionFactRowsTx(
 
 func putLogRowsTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	chainID string,
 	bundles []chainbundle.Bundle,
 ) error {
-	writer := newCoreSQLBatchWriter[coreLogWriteRow](
-		ctx, tx, chainID, dbgen.StorePutLogsBatch, "upsert logs",
+	writer := newCoreQueryBatchWriter[coreLogWriteRow](
+		ctx, chainID, dbgen.New(tx).StorePutLogsBatch, "upsert logs",
 	)
 	for _, bundle := range bundles {
 		reference, err := RefFromBundle(bundle)
@@ -312,12 +317,12 @@ func putLogRowsTx(
 
 func putWithdrawalRowsTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	chainID string,
 	bundles []chainbundle.Bundle,
 ) error {
-	writer := newCoreSQLBatchWriter[coreWithdrawalWriteRow](
-		ctx, tx, chainID, dbgen.StorePutWithdrawalsBatch, "upsert withdrawals",
+	writer := newCoreQueryBatchWriter[coreWithdrawalWriteRow](
+		ctx, chainID, dbgen.New(tx).StorePutWithdrawalsBatch, "upsert withdrawals",
 	)
 	for _, bundle := range bundles {
 		reference, err := RefFromBundle(bundle)
@@ -349,12 +354,12 @@ type canonicalBlockWriteRow struct {
 
 func insertCanonicalBlocksTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	chainID string,
 	references []BlockRef,
 ) error {
-	writer := newCoreSQLBatchWriter[canonicalBlockWriteRow](
-		ctx, tx, chainID, dbgen.StoreInsertCanonicalBlocksBatch,
+	writer := newCoreQueryBatchWriter[canonicalBlockWriteRow](
+		ctx, chainID, dbgen.New(tx).StoreInsertCanonicalBlocksBatch,
 		"insert canonical blocks",
 	)
 	for _, reference := range references {
@@ -370,7 +375,7 @@ func insertCanonicalBlocksTx(
 
 func deleteCanonicalBlocksTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	chainID string,
 	references []BlockRef,
 ) error {
@@ -378,16 +383,17 @@ func deleteCanonicalBlocksTx(
 	writer := newCoreJSONBatchWriter[canonicalBlockWriteRow](
 		"delete canonical blocks",
 		func(payload json.RawMessage) error {
-			result, err := tx.ExecContext(
-				ctx, dbgen.StoreDeleteCanonicalBlocksBatch, chainID, payload,
-			)
+			result, err := func() (int64, error) {
+				var queryValue0 pgtype.Numeric
+				if err := queryValue0.Scan(chainID); err != nil {
+					return 0, err
+				}
+				return dbgen.New(tx).StoreDeleteCanonicalBlocksBatch(ctx, queryValue0, []byte(payload))
+			}()
 			if err != nil {
 				return fmt.Errorf("delete canonical blocks: %w", err)
 			}
-			count, err := result.RowsAffected()
-			if err != nil {
-				return fmt.Errorf("count deleted canonical blocks: %w", err)
-			}
+			count := result
 			affected += count
 			return nil
 		},
@@ -414,43 +420,46 @@ func deleteCanonicalBlocksTx(
 
 func setBlockJournalsCanonicalBatchTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	chainID string,
 	references []BlockRef,
 	canonical bool,
 ) error {
 	return writeHashBatchTx(
-		ctx, tx, chainID, references, canonical,
-		dbgen.StoreSetBlockJournalsCanonicalBatch,
+		ctx, chainID, references, canonical,
+		dbgen.New(tx).StoreSetBlockJournalsCanonicalBatch,
 		"set block journal canonical state",
 	)
 }
 
 func setDerivedCanonicalBatchTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	chainID string,
 	references []BlockRef,
 	canonical bool,
 ) error {
 	return writeHashBatchTx(
-		ctx, tx, chainID, references, canonical,
-		dbgen.StoreSetDerivedCanonicalBatch,
+		ctx, chainID, references, canonical,
+		dbgen.New(tx).StoreSetDerivedCanonicalBatch,
 		"set derived canonical state",
 	)
 }
 
 func writeHashBatchTx(
 	ctx context.Context,
-	tx *sql.Tx,
 	chainID string,
 	references []BlockRef,
 	canonical bool,
-	query string,
+	query coreCanonicalBatchQuery,
 	operation string,
 ) error {
+	var chain pgtype.Numeric
+	if err := chain.Scan(chainID); err != nil {
+		return err
+	}
 	writer := newCoreJSONBatchWriter[string](operation, func(payload json.RawMessage) error {
-		if _, err := tx.ExecContext(ctx, query, chainID, payload, canonical); err != nil {
+		if err := query(ctx, canonical, chain, payload); err != nil {
 			return fmt.Errorf("%s: %w", operation, err)
 		}
 		return nil
@@ -481,12 +490,12 @@ type coreOutboxPayload struct {
 
 func insertCoreOutboxBatchTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	chainID string,
 	messages []coreOutboxMessage,
 ) error {
-	writer := newCoreSQLBatchWriter[coreOutboxWriteRow](
-		ctx, tx, chainID, dbgen.StoreInsertCoreOutboxBatch,
+	writer := newCoreQueryBatchWriter[coreOutboxWriteRow](
+		ctx, chainID, dbgen.New(tx).StoreInsertCoreOutboxBatch,
 		"insert core outbox messages",
 	)
 	for _, message := range messages {

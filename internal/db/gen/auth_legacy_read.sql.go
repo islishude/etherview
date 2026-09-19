@@ -11,10 +11,10 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const AuthLegacyGetAPIKeyByPrefix = `-- name: AuthLegacyGetAPIKeyByPrefix :many
+const authLegacyGetAPIKeyByPrefix = `-- name: AuthLegacyGetAPIKeyByPrefix :one
 SELECT key.prefix, key.digest, key.name, key.rate_per_second, key.burst,
        key.created_at, key.revoked_at, key.owner_user_id, key.scopes,
-       COALESCE(owner.status = 'active', TRUE)
+       COALESCE(owner.status = 'active', TRUE)::boolean AS owner_active
 FROM api_keys AS key
 LEFT JOIN users AS owner ON owner.id = key.owner_user_id
 WHERE key.prefix = $1
@@ -30,46 +30,43 @@ type AuthLegacyGetAPIKeyByPrefixRow struct {
 	RevokedAt     pgtype.Timestamptz `db:"revoked_at" json:"revoked_at"`
 	OwnerUserID   pgtype.UUID        `db:"owner_user_id" json:"owner_user_id"`
 	Scopes        []string           `db:"scopes" json:"scopes"`
-	Coalesce      interface{}        `db:"coalesce" json:"coalesce"`
+	OwnerActive   bool               `db:"owner_active" json:"owner_active"`
 }
 
-func (q *Queries) AuthLegacyGetAPIKeyByPrefix(ctx context.Context, prefix string) ([]AuthLegacyGetAPIKeyByPrefixRow, error) {
-	rows, err := q.db.Query(ctx, AuthLegacyGetAPIKeyByPrefix, prefix)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []AuthLegacyGetAPIKeyByPrefixRow{}
-	for rows.Next() {
-		var i AuthLegacyGetAPIKeyByPrefixRow
-		if err := rows.Scan(
-			&i.Prefix,
-			&i.Digest,
-			&i.Name,
-			&i.RatePerSecond,
-			&i.Burst,
-			&i.CreatedAt,
-			&i.RevokedAt,
-			&i.OwnerUserID,
-			&i.Scopes,
-			&i.Coalesce,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) AuthLegacyGetAPIKeyByPrefix(ctx context.Context, prefix string) (AuthLegacyGetAPIKeyByPrefixRow, error) {
+	row := q.db.QueryRow(ctx, authLegacyGetAPIKeyByPrefix, prefix)
+	var i AuthLegacyGetAPIKeyByPrefixRow
+	err := row.Scan(
+		&i.Prefix,
+		&i.Digest,
+		&i.Name,
+		&i.RatePerSecond,
+		&i.Burst,
+		&i.CreatedAt,
+		&i.RevokedAt,
+		&i.OwnerUserID,
+		&i.Scopes,
+		&i.OwnerActive,
+	)
+	return i, err
 }
 
-const AuthLegacyListAPIKeys = `-- name: AuthLegacyListAPIKeys :many
+const authLegacyListAPIKeys = `-- name: AuthLegacyListAPIKeys :many
 SELECT prefix, name, rate_per_second, burst, created_at, revoked_at,
        owner_user_id, scopes
 FROM api_keys
+WHERE NOT $1::boolean
+   OR (created_at, prefix) > ($2::timestamptz, $3::text)
 ORDER BY created_at, prefix
+LIMIT $4::integer
 `
+
+type AuthLegacyListAPIKeysParams struct {
+	HasCursor      bool               `db:"has_cursor" json:"has_cursor"`
+	AfterCreatedAt pgtype.Timestamptz `db:"after_created_at" json:"after_created_at"`
+	AfterPrefix    string             `db:"after_prefix" json:"after_prefix"`
+	PageLimit      int32              `db:"page_limit" json:"page_limit"`
+}
 
 type AuthLegacyListAPIKeysRow struct {
 	Prefix        string             `db:"prefix" json:"prefix"`
@@ -82,8 +79,13 @@ type AuthLegacyListAPIKeysRow struct {
 	Scopes        []string           `db:"scopes" json:"scopes"`
 }
 
-func (q *Queries) AuthLegacyListAPIKeys(ctx context.Context) ([]AuthLegacyListAPIKeysRow, error) {
-	rows, err := q.db.Query(ctx, AuthLegacyListAPIKeys)
+func (q *Queries) AuthLegacyListAPIKeys(ctx context.Context, arg AuthLegacyListAPIKeysParams) ([]AuthLegacyListAPIKeysRow, error) {
+	rows, err := q.db.Query(ctx, authLegacyListAPIKeys,
+		arg.HasCursor,
+		arg.AfterCreatedAt,
+		arg.AfterPrefix,
+		arg.PageLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +113,7 @@ func (q *Queries) AuthLegacyListAPIKeys(ctx context.Context) ([]AuthLegacyListAP
 	return items, nil
 }
 
-const AuthLegacyLockAPIKeyForRotation = `-- name: AuthLegacyLockAPIKeyForRotation :many
+const authLegacyLockAPIKeyForRotation = `-- name: AuthLegacyLockAPIKeyForRotation :one
 SELECT name, rate_per_second, burst, revoked_at, owner_user_id, scopes
 FROM api_keys
 WHERE prefix = $1
@@ -127,56 +129,30 @@ type AuthLegacyLockAPIKeyForRotationRow struct {
 	Scopes        []string           `db:"scopes" json:"scopes"`
 }
 
-func (q *Queries) AuthLegacyLockAPIKeyForRotation(ctx context.Context, prefix string) ([]AuthLegacyLockAPIKeyForRotationRow, error) {
-	rows, err := q.db.Query(ctx, AuthLegacyLockAPIKeyForRotation, prefix)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []AuthLegacyLockAPIKeyForRotationRow{}
-	for rows.Next() {
-		var i AuthLegacyLockAPIKeyForRotationRow
-		if err := rows.Scan(
-			&i.Name,
-			&i.RatePerSecond,
-			&i.Burst,
-			&i.RevokedAt,
-			&i.OwnerUserID,
-			&i.Scopes,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) AuthLegacyLockAPIKeyForRotation(ctx context.Context, prefix string) (AuthLegacyLockAPIKeyForRotationRow, error) {
+	row := q.db.QueryRow(ctx, authLegacyLockAPIKeyForRotation, prefix)
+	var i AuthLegacyLockAPIKeyForRotationRow
+	err := row.Scan(
+		&i.Name,
+		&i.RatePerSecond,
+		&i.Burst,
+		&i.RevokedAt,
+		&i.OwnerUserID,
+		&i.Scopes,
+	)
+	return i, err
 }
 
-const AuthLegacyLockActiveOwner = `-- name: AuthLegacyLockActiveOwner :many
+const authLegacyLockActiveOwner = `-- name: AuthLegacyLockActiveOwner :one
 SELECT id::text
 FROM users
 WHERE id = $1 AND status = 'active'
 FOR UPDATE
 `
 
-func (q *Queries) AuthLegacyLockActiveOwner(ctx context.Context, id pgtype.UUID) ([]string, error) {
-	rows, err := q.db.Query(ctx, AuthLegacyLockActiveOwner, id)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []string{}
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		items = append(items, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) AuthLegacyLockActiveOwner(ctx context.Context, id pgtype.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, authLegacyLockActiveOwner, id)
+	var id_2 string
+	err := row.Scan(&id_2)
+	return id_2, err
 }

@@ -2,7 +2,6 @@ package catalog
 
 import (
 	"context"
-	"database/sql/driver"
 	"errors"
 	"math/big"
 	"strings"
@@ -22,13 +21,13 @@ func TestTransactionFailureDecodesBuiltinPanicWithoutContractABI(t *testing.T) {
 	revertData[len(revertData)-1] = 0x12
 	catalog, backend := openCatalog(t,
 		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3,
-			[]driver.Value{"100", blockHash, "3"},
+			[]any{"100", blockHash, "3"},
 		)},
 		catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(3,
-			[]driver.Value{"complete", int64(7), int64(2)},
+			[]any{"complete", int64(7), int64(2)},
 		)},
-		catalogQueryStep{contains: "SELECT receipt.raw->>'status'", rows: catalogRows(1,
-			[]driver.Value{"0x0"},
+		catalogQueryStep{contains: "AS status_present", rows: catalogRows(2,
+			[]any{"0x0", true},
 		)},
 		catalogQueryStep{contains: "AND trace_path = ''", rows: catalogRows(18,
 			failureRootRow(from, to, revertData, nil, nil, "unavailable"),
@@ -84,19 +83,19 @@ func TestTransactionFailureProjectsExactCustomErrorShape(t *testing.T) {
 	revertData := append(append([]byte{}, errorABI.ID[:4]...), payload...)
 	catalog, backend := openCatalog(t,
 		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3,
-			[]driver.Value{"101", blockHash, "4"},
+			[]any{"101", blockHash, "4"},
 		)},
 		catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(3,
-			[]driver.Value{"complete", int64(8), int64(3)},
+			[]any{"complete", int64(8), int64(3)},
 		)},
-		catalogQueryStep{contains: "SELECT receipt.raw->>'status'", rows: catalogRows(1,
-			[]driver.Value{"0x0"},
+		catalogQueryStep{contains: "AS status_present", rows: catalogRows(2,
+			[]any{"0x0", true},
 		)},
 		catalogQueryStep{contains: "AND trace_path = ''", rows: catalogRows(18,
 			failureRootRow(from, target, revertData, target[:], codeHash, "direct"),
 		)},
 		catalogQueryStep{contains: "WITH target_code AS", rows: catalogRows(9,
-			[]driver.Value{codeHash, []byte(abiJSON), "verified", "exact_address", target[:], codeHash, make([]byte, 32), "0", nil},
+			[]any{codeHash, []byte(abiJSON), "verified", "exact_address", target[:], codeHash, make([]byte, 32), "0", nil},
 		)},
 	)
 
@@ -121,13 +120,13 @@ func TestTransactionFailureRejectsSuccessfulReceipt(t *testing.T) {
 	blockHash := bytesOf(0x77, common.HashLength)
 	catalog, backend := openCatalog(t,
 		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3,
-			[]driver.Value{"102", blockHash, "5"},
+			[]any{"102", blockHash, "5"},
 		)},
 		catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(3,
-			[]driver.Value{"complete", int64(9), int64(4)},
+			[]any{"complete", int64(9), int64(4)},
 		)},
-		catalogQueryStep{contains: "SELECT receipt.raw->>'status'", rows: catalogRows(1,
-			[]driver.Value{"0x1"},
+		catalogQueryStep{contains: "AS status_present", rows: catalogRows(2,
+			[]any{"0x1", true},
 		)},
 	)
 	_, err := catalog.TransactionFailure(context.Background(), "1", transactionHash.Hex())
@@ -148,19 +147,19 @@ func TestTransactionFailureDoesNotGuessCustomErrorFromSignatureDatabase(t *testi
 	revertData := append(append([]byte(nil), selector...), common.LeftPadBytes(from[:], 32)...)
 	catalog, backend := openCatalog(t,
 		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3,
-			[]driver.Value{"103", blockHash, "6"},
+			[]any{"103", blockHash, "6"},
 		)},
 		catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(3,
-			[]driver.Value{"complete", int64(10), int64(5)},
+			[]any{"complete", int64(10), int64(5)},
 		)},
-		catalogQueryStep{contains: "SELECT receipt.raw->>'status'", rows: catalogRows(1,
-			[]driver.Value{"0x0"},
+		catalogQueryStep{contains: "AS status_present", rows: catalogRows(2,
+			[]any{"0x0", true},
 		)},
 		catalogQueryStep{contains: "AND trace_path = ''", rows: catalogRows(18,
 			failureRootRow(from, target, revertData, target[:], codeHash, "direct"),
 		)},
 		catalogQueryStep{contains: "WITH target_code AS", rows: catalogRows(9,
-			[]driver.Value{codeHash, []byte(abiJSON), "signature_database", "selector_guess", target[:], codeHash, make([]byte, 32), "0", nil},
+			[]any{codeHash, []byte(abiJSON), "signature_database", "selector_guess", target[:], codeHash, make([]byte, 32), "0", nil},
 		)},
 	)
 
@@ -179,8 +178,8 @@ func failureRootRow(
 	from, to common.Address,
 	output, executionAddress, codeHash []byte,
 	resolution string,
-) []driver.Value {
-	return []driver.Value{
+) []any {
+	return []any{
 		"", nil, int64(0), "CALL", from[:], to[:], nil,
 		"0", "100000", "21000", []byte{}, output, "execution reverted", true, true,
 		executionAddress, codeHash, resolution,

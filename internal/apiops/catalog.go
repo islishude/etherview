@@ -245,7 +245,7 @@ var catalog = []Spec{
 		limitParameter("20"),
 		boundedTextParameter("q", true, 1, 256, true)),
 	spec("streamHeadEvents", "GET", "/events", false),
-	spec("getHomeSnapshot", "GET", "/home", false),
+	spec("getHomeSnapshot", "GET", "/home", false, boundedTextParameter("min_event_id", false, 0, 19, false)),
 	spec("streamHomeSnapshots", "GET", "/home/stream", false),
 	spec("getVerifierJob", "GET", "/verifier/jobs/{id}", true,
 		pathParameter("id", ParameterUUID)),

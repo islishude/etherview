@@ -2,7 +2,6 @@ package enrich
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,8 +10,13 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
 const (
@@ -92,12 +96,12 @@ type OutboxDispatchResult struct {
 }
 
 type OutboxDispatcher struct {
-	db       *sql.DB
+	db       dbaccess.Database
 	enqueuer JobEnqueuer
 	options  OutboxDispatcherOptions
 }
 
-func NewOutboxDispatcher(db *sql.DB, enqueuer JobEnqueuer, options OutboxDispatcherOptions) (*OutboxDispatcher, error) {
+func NewOutboxDispatcher(db dbaccess.Database, enqueuer JobEnqueuer, options OutboxDispatcherOptions) (*OutboxDispatcher, error) {
 	if db == nil {
 		return nil, errors.New("outbox dispatcher requires a database")
 	}
@@ -213,11 +217,11 @@ func (dispatcher *OutboxDispatcher) DispatchOne(ctx context.Context) (OutboxDisp
 	if dispatcher == nil || dispatcher.db == nil || dispatcher.enqueuer == nil {
 		return OutboxDispatchResult{}, errors.New("dispatch using nil outbox dispatcher")
 	}
-	tx, err := dispatcher.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	tx, err := dispatcher.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		return OutboxDispatchResult{}, fmt.Errorf("begin enrichment outbox dispatch: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	message, found, err := claimOutboxMessage(ctx, tx)
 	if err != nil {
 		return OutboxDispatchResult{}, err
@@ -228,28 +232,28 @@ func (dispatcher *OutboxDispatcher) DispatchOne(ctx context.Context) (OutboxDisp
 	startedAt := time.Now()
 	decodedMessage := message
 	_ = decodedMessage.decode()
-	if _, err := tx.ExecContext(ctx, dbgen.EnrichSavepointDispatchJobs); err != nil {
+	if err := dbgen.New(tx).EnrichSavepointDispatchJobs(ctx); err != nil {
 		return OutboxDispatchResult{}, fmt.Errorf("create enrichment dispatch savepoint: %w", err)
 	}
 	audit, processErr := dispatcher.processMessage(ctx, tx, message)
 	if processErr != nil {
-		if _, err := tx.ExecContext(ctx, dbgen.EnrichRollbackDispatchJobs); err != nil {
+		if err := dbgen.New(tx).EnrichRollbackDispatchJobs(ctx); err != nil {
 			return OutboxDispatchResult{}, fmt.Errorf("rollback partial enrichment dispatch: %w", err)
 		}
-		if _, err := tx.ExecContext(ctx, dbgen.EnrichReleaseDispatchJobs); err != nil {
+		if err := dbgen.New(tx).EnrichReleaseDispatchJobs(ctx); err != nil {
 			return OutboxDispatchResult{}, fmt.Errorf("release failed enrichment dispatch savepoint: %w", err)
 		}
 		delay := dispatcher.retryDelay(message.Attempts)
 		microseconds, _ := durationMicroseconds(delay)
 		reason := truncateOutboxError(processErr.Error())
-		result, updateErr := tx.ExecContext(ctx, dbgen.EnrichLegacyRetryOutbox, message.ID, reason, microseconds)
+		result, updateErr := dbgen.New(tx).EnrichLegacyRetryOutbox(ctx, new(reason), microseconds, message.ID)
 		if updateErr != nil {
 			return OutboxDispatchResult{}, fmt.Errorf("record enrichment outbox retry: %w", updateErr)
 		}
 		if err := requireSingleUpdate(result, "retry enrichment outbox message"); err != nil {
 			return OutboxDispatchResult{}, err
 		}
-		if err := tx.Commit(); err != nil {
+		if err := tx.Commit(ctx); err != nil {
 			return OutboxDispatchResult{}, fmt.Errorf("commit enrichment outbox retry: %w", err)
 		}
 		return OutboxDispatchResult{
@@ -262,21 +266,21 @@ func (dispatcher *OutboxDispatcher) DispatchOne(ctx context.Context) (OutboxDisp
 			},
 		}, nil
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.EnrichReleaseDispatchJobs); err != nil {
+	if err := dbgen.New(tx).EnrichReleaseDispatchJobs(ctx); err != nil {
 		return OutboxDispatchResult{}, fmt.Errorf("release enrichment dispatch savepoint: %w", err)
 	}
 	encodedAudit, err := json.Marshal(audit)
 	if err != nil {
 		return OutboxDispatchResult{}, fmt.Errorf("encode enrichment outbox audit: %w", err)
 	}
-	result, err := tx.ExecContext(ctx, dbgen.EnrichLegacyPublishOutbox, message.ID, string(encodedAudit))
+	result, err := dbgen.New(tx).EnrichLegacyPublishOutbox(ctx, []byte(string(encodedAudit)), message.ID)
 	if err != nil {
 		return OutboxDispatchResult{}, fmt.Errorf("publish enrichment outbox message: %w", err)
 	}
 	if err := requireSingleUpdate(result, "publish enrichment outbox message"); err != nil {
 		return OutboxDispatchResult{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return OutboxDispatchResult{}, fmt.Errorf("commit enrichment outbox dispatch: %w", err)
 	}
 	return OutboxDispatchResult{
@@ -292,19 +296,25 @@ func (dispatcher *OutboxDispatcher) DispatchOne(ctx context.Context) (OutboxDisp
 	}, nil
 }
 
-func claimOutboxMessage(ctx context.Context, tx *sql.Tx) (outboxMessage, bool, error) {
+func claimOutboxMessage(ctx context.Context, tx pgx.Tx) (outboxMessage, bool, error) {
 	var message outboxMessage
 	var payload []byte
-	err := tx.QueryRowContext(ctx, dbgen.EnrichLegacyClaimOutbox).Scan(
-		&message.ID,
-		&message.ChainID,
-		&message.Topic,
-		&message.MessageKey,
-		&payload,
-		&message.Attempts,
-		&message.Generation,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+
+		queryRow, err := dbgen.New(tx).EnrichLegacyClaimOutbox(ctx)
+		if err != nil {
+			return err
+		}
+		message.ID = queryRow.ID
+		message.ChainID = queryRow.ChainID
+		message.Topic = queryRow.Topic
+		message.MessageKey = queryRow.MessageKey
+		payload = queryRow.Payload
+		message.Attempts = int64(queryRow.Attempts)
+		message.Generation = queryRow.Generation
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return outboxMessage{}, false, nil
 	}
 	if err != nil {
@@ -344,7 +354,7 @@ func (message *outboxMessage) decode() error {
 	return nil
 }
 
-func (dispatcher *OutboxDispatcher) processMessage(ctx context.Context, tx *sql.Tx, message outboxMessage) (dispatchAudit, error) {
+func (dispatcher *OutboxDispatcher) processMessage(ctx context.Context, tx pgx.Tx, message outboxMessage) (dispatchAudit, error) {
 	if err := message.decode(); err != nil {
 		return dispatchAudit{}, err
 	}
@@ -358,13 +368,24 @@ func (dispatcher *OutboxDispatcher) processMessage(ctx context.Context, tx *sql.
 	}
 }
 
-func (dispatcher *OutboxDispatcher) processCanonical(ctx context.Context, tx *sql.Tx, message outboxMessage) (dispatchAudit, error) {
+func (dispatcher *OutboxDispatcher) processCanonical(ctx context.Context, tx pgx.Tx, message outboxMessage) (dispatchAudit, error) {
 	var canonical bool
-	if err := tx.QueryRowContext(
-		ctx, dbgen.EnrichLegacyCanonicalBlock, message.ChainID,
-		strconv.FormatUint(message.BlockNumber, 10),
-		message.BlockHash[:],
-	).Scan(&canonical); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(message.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(message.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).EnrichLegacyCanonicalBlock(ctx, queryValue0, queryValue1, message.BlockHash[:])
+		if err != nil {
+			return err
+		}
+		canonical = queryRow
+		return nil
+	}(); err != nil {
 		return dispatchAudit{}, fmt.Errorf("check canonical outbox block: %w", err)
 	}
 	if !canonical {
@@ -395,27 +416,49 @@ func (dispatcher *OutboxDispatcher) processCanonical(ctx context.Context, tx *sq
 	return audit, nil
 }
 
-func (dispatcher *OutboxDispatcher) enqueue(ctx context.Context, tx *sql.Tx, request EnqueueRequest) (EnqueueResult, error) {
+func (dispatcher *OutboxDispatcher) enqueue(ctx context.Context, tx pgx.Tx, request EnqueueRequest) (EnqueueResult, error) {
 	if queue, ok := dispatcher.enqueuer.(*PostgresJobQueue); ok && queue.db == dispatcher.db {
 		return queue.enqueueTx(ctx, tx, request)
 	}
 	return dispatcher.enqueuer.Enqueue(ctx, request)
 }
 
-func (*OutboxDispatcher) processOrphan(ctx context.Context, tx *sql.Tx, message outboxMessage) (dispatchAudit, error) {
+func (*OutboxDispatcher) processOrphan(ctx context.Context, tx pgx.Tx, message outboxMessage) (dispatchAudit, error) {
 	var canonical bool
-	if err := tx.QueryRowContext(
-		ctx, dbgen.EnrichLegacyCanonicalBlock, message.ChainID,
-		strconv.FormatUint(message.BlockNumber, 10),
-		message.BlockHash[:],
-	).Scan(&canonical); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(message.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(message.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).EnrichLegacyCanonicalBlock(ctx, queryValue0, queryValue1, message.BlockHash[:])
+		if err != nil {
+			return err
+		}
+		canonical = queryRow
+		return nil
+	}(); err != nil {
 		return dispatchAudit{}, fmt.Errorf("check orphan outbox block: %w", err)
 	}
 	if canonical {
 		return dispatchAudit{Outcome: "stale_orphan_skipped", Replayed: false}, nil
 	}
 	var journalsNonCanonical bool
-	if err := tx.QueryRowContext(ctx, dbgen.EnrichLegacyOrphanJournals, message.ChainID, message.BlockHash[:]).Scan(&journalsNonCanonical); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(message.ChainID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).EnrichLegacyOrphanJournals(ctx, queryValue0, message.BlockHash[:])
+		if err != nil {
+			return err
+		}
+		journalsNonCanonical = queryRow
+		return nil
+	}(); err != nil {
 		return dispatchAudit{}, fmt.Errorf("check orphaned block journals: %w", err)
 	}
 	if !journalsNonCanonical {
@@ -455,11 +498,8 @@ func truncateOutboxError(value string) string {
 	return value[:end]
 }
 
-func requireSingleUpdate(result sql.Result, operation string) error {
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("%s: read affected rows: %w", operation, err)
-	}
+func requireSingleUpdate(result int64, operation string) error {
+	affected := result
 	if affected != 1 {
 		return fmt.Errorf("%s: affected %d rows, want 1", operation, affected)
 	}

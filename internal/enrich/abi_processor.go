@@ -3,7 +3,6 @@ package enrich
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +10,10 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
 
 	gethabi "github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -32,12 +35,12 @@ const (
 // core/trace observations. It only consumes previously persisted code and
 // proxy observations; discovering either fact belongs to later stages.
 type PostgresABIProcessor struct {
-	db                     *sql.DB
+	db                     dbaccess.Database
 	limits                 DecodeLimits
 	requireProxyDependency bool
 }
 
-func NewPostgresABIProcessor(db *sql.DB) (*PostgresABIProcessor, error) {
+func NewPostgresABIProcessor(db dbaccess.Database) (*PostgresABIProcessor, error) {
 	if db == nil {
 		return nil, errors.New("ABI processor requires a database")
 	}
@@ -48,7 +51,7 @@ func NewPostgresABIProcessor(db *sql.DB) (*PostgresABIProcessor, error) {
 // The dependency prevents ABI guesses or unbound results from becoming
 // terminal before the same-version proxy stage has either completed or reported explicit
 // unavailability for the same immutable block.
-func NewPostgresABIProcessorWithProxyDependency(db *sql.DB) (*PostgresABIProcessor, error) {
+func NewPostgresABIProcessorWithProxyDependency(db dbaccess.Database) (*PostgresABIProcessor, error) {
 	processor, err := NewPostgresABIProcessor(db)
 	if err != nil {
 		return nil, err
@@ -57,7 +60,7 @@ func NewPostgresABIProcessorWithProxyDependency(db *sql.DB) (*PostgresABIProcess
 	return processor, nil
 }
 
-func NewPostgresABIProcessorWithLimits(db *sql.DB, limits DecodeLimits) (*PostgresABIProcessor, error) {
+func NewPostgresABIProcessorWithLimits(db dbaccess.Database, limits DecodeLimits) (*PostgresABIProcessor, error) {
 	if db == nil {
 		return nil, errors.New("ABI processor requires a database")
 	}
@@ -87,12 +90,12 @@ func (processor *PostgresABIProcessor) Process(ctx context.Context, job Job) (St
 	if job.Stage != ABIStage {
 		return StageResult{}, Permanent(fmt.Errorf("ABI processor received stage %s", job.Stage))
 	}
-	return runStageTransaction(ctx, processor.db, job, func(ctx context.Context, tx *sql.Tx) (StageResult, error) {
+	return runStageTransaction(ctx, processor.db, job, func(ctx context.Context, tx pgx.Tx) (StageResult, error) {
 		return processor.processTx(ctx, tx, job)
 	})
 }
 
-func (processor *PostgresABIProcessor) processTx(ctx context.Context, tx *sql.Tx, job Job) (StageResult, error) {
+func (processor *PostgresABIProcessor) processTx(ctx context.Context, tx pgx.Tx, job Job) (StageResult, error) {
 	canonical, err := lockCanonicalBlock(ctx, tx, job)
 	if err != nil {
 		return StageResult{}, err
@@ -128,10 +131,30 @@ func (processor *PostgresABIProcessor) processTx(ctx context.Context, tx *sql.Tx
 	if err != nil {
 		return StageResult{}, err
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.EnrichInlineProcessTxStatement1, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		return dbgen.New(tx).EnrichInlineProcessTxStatement1(ctx, queryValue0, queryValue1, job.BlockHash[:])
+	}(); err != nil {
 		return StageResult{}, fmt.Errorf("clear ABI decodings: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.EnrichInlineProcessTxStatement2, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		return dbgen.New(tx).EnrichInlineProcessTxStatement2(ctx, queryValue0, queryValue1, job.BlockHash[:])
+	}(); err != nil {
 		return StageResult{}, fmt.Errorf("clear ABI bindings: %w", err)
 	}
 	if err := persistEffectiveTransactionExecutions(ctx, tx, job, executions); err != nil {
@@ -255,10 +278,27 @@ func hasDiamondAuxiliaryObservation(observations []abiObservation, identity ABII
 	return false
 }
 
-func proxyDependencyState(ctx context.Context, tx *sql.Tx, job Job) (ResultState, error) {
+func proxyDependencyState(ctx context.Context, tx pgx.Tx, job Job) (ResultState, error) {
 	var state string
-	err := tx.QueryRowContext(ctx, dbgen.EnrichInlineProxyDependencyStateStatement1, job.ChainID, job.BlockHash[:], ProxyStage.Name, ProxyStage.Version).Scan(&state)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		if ProxyStage.Version > 2147483647 {
+			return errors.New("invalid stored query value")
+		}
+		queryRow, err := dbgen.New(tx).EnrichInlineProxyDependencyStateStatement1(ctx, dbgen.EnrichInlineProxyDependencyStateStatement1Params{ChainID: queryValue0, BlockHash: job.BlockHash[:], Stage: ProxyStage.Name, StageVersion: int32(ProxyStage.Version)})
+		if err != nil {
+			return err
+		}
+		if !queryRow.Valid {
+			return errors.New("invalid stored query value")
+		}
+		state = queryRow.String
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return "", nil
 	}
 	if err != nil {
@@ -292,7 +332,7 @@ type abiObservation struct {
 
 func loadABIObservations(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	executions []effectiveTransactionExecution,
 ) ([]abiObservation, error) {
@@ -317,22 +357,36 @@ func loadABIObservations(
 	return result, nil
 }
 
-func loadABIConstructors(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, error) {
-	rows, err := tx.QueryContext(ctx, dbgen.EnrichInlineLoadABIConstructorsStatement1, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:])
+func loadABIConstructors(ctx context.Context, tx pgx.Tx, job Job) ([]abiObservation, error) {
+	rows, err := func() ([]dbgen.EnrichInlineLoadABIConstructorsStatement1Row, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return nil, err
+		}
+		return dbgen.New(tx).EnrichInlineLoadABIConstructorsStatement1(ctx, queryValue0, queryValue1, job.BlockHash[:])
+	}()
 	if err != nil {
 		return nil, fmt.Errorf("query exact constructor observations: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	var observations []abiObservation
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var transactionHashBytes, targetBytes, initcode, arguments, abiJSON, codeHashBytes []byte
 		var transactionIndex int64
 		var tracePath string
-		if err := rows.Scan(
-			&transactionHashBytes, &transactionIndex, &tracePath, &targetBytes, &initcode,
-			&arguments, &abiJSON, &codeHashBytes,
-		); err != nil {
-			return nil, fmt.Errorf("scan exact constructor observation: %w", err)
+		{
+			transactionHashBytes = storedRow.TransactionHash
+			transactionIndex = storedRow.TransactionIndex
+			tracePath = storedRow.TracePath
+			targetBytes = storedRow.CreatedAddress
+			initcode = storedRow.Input
+			arguments = storedRow.ConstructorArguments
+			abiJSON = storedRow.Abi
+			codeHashBytes = storedRow.CodeHash
 		}
 		transactionHash, err := WordFromBytes(transactionHashBytes)
 		if err != nil || transactionIndex < 0 || len(targetBytes) != common.AddressLength || len(codeHashBytes) != common.HashLength {
@@ -352,9 +406,7 @@ func loadABIConstructors(ctx context.Context, tx *sql.Tx, job Job) ([]abiObserva
 		}
 		observations = append(observations, observation)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate exact constructor observations: %w", err)
-	}
+
 	return observations, nil
 }
 
@@ -442,19 +494,35 @@ func storedTransactionInclusion(
 	return hash, number.Uint64(), nil
 }
 
-func loadABILogs(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, error) {
-	rows, err := tx.QueryContext(ctx, dbgen.EnrichInlineLoadABILogsStatement1, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-		TraceStage.Name, TraceStage.Version)
+func loadABILogs(ctx context.Context, tx pgx.Tx, job Job) ([]abiObservation, error) {
+	rows, err := func() ([]dbgen.EnrichInlineLoadABILogsStatement1Row, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return nil, err
+		}
+		if TraceStage.Version > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).EnrichInlineLoadABILogsStatement1(ctx, dbgen.EnrichInlineLoadABILogsStatement1Params{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: job.BlockHash[:], Stage: TraceStage.Name, StageVersion: int32(TraceStage.Version)})
+	}()
 	if err != nil {
 		return nil, fmt.Errorf("query ABI logs: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	var result []abiObservation
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var logIndex int64
 		var transactionHashBytes, addressBytes, raw, executionAddressBytes []byte
-		if err := rows.Scan(&logIndex, &transactionHashBytes, &addressBytes, &raw, &executionAddressBytes); err != nil {
-			return nil, fmt.Errorf("scan ABI log: %w", err)
+		{
+			logIndex = storedRow.LogIndex
+			transactionHashBytes = storedRow.TxHash
+			addressBytes = storedRow.Address
+			raw = storedRow.Raw
+			executionAddressBytes = storedRow.ExecutionAddress
 		}
 		if logIndex < 0 {
 			return nil, Permanent(errors.New("stored ABI log index is negative"))
@@ -489,9 +557,7 @@ func loadABILogs(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, er
 			objectIndex:      strconv.FormatInt(logIndex, 10), target: target, topics: topics, data: data,
 		})
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate ABI logs: %w", err)
-	}
+
 	return result, nil
 }
 
@@ -515,25 +581,40 @@ func validateABILogIdentity(
 	return nil
 }
 
-func loadABITraces(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, error) {
-	rows, err := tx.QueryContext(ctx, dbgen.EnrichInlineLoadABITracesStatement1, job.ChainID,
-		strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-		TraceStage.Name, TraceStage.Version)
+func loadABITraces(ctx context.Context, tx pgx.Tx, job Job) ([]abiObservation, error) {
+	rows, err := func() ([]dbgen.EnrichInlineLoadABITracesStatement1Row, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return nil, err
+		}
+		if TraceStage.Version > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).EnrichInlineLoadABITracesStatement1(ctx, dbgen.EnrichInlineLoadABITracesStatement1Params{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: job.BlockHash[:], Stage: TraceStage.Name, StageVersion: int32(TraceStage.Version)})
+	}()
 	if err != nil {
 		return nil, fmt.Errorf("query ABI traces: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	var result []abiObservation
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var transactionHashBytes, targetBytes, codeHashBytes, input, output []byte
 		var transactionIndex int64
 		var tracePath string
 		var directReverted bool
-		if err := rows.Scan(
-			&transactionHashBytes, &transactionIndex, &tracePath, &targetBytes,
-			&codeHashBytes, &input, &output, &directReverted,
-		); err != nil {
-			return nil, fmt.Errorf("scan ABI trace: %w", err)
+		{
+			transactionHashBytes = storedRow.TransactionHash
+			transactionIndex = storedRow.TransactionIndex
+			tracePath = storedRow.TracePath
+			targetBytes = storedRow.ExecutionAddress
+			codeHashBytes = storedRow.ExecutionCodeHash
+			input = storedRow.Input
+			output = storedRow.Output
+			directReverted = storedRow.DirectReverted
 		}
 		if len(targetBytes) == 0 {
 			continue
@@ -576,9 +657,7 @@ func loadABITraces(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, 
 			result = append(result, revert)
 		}
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate ABI traces: %w", err)
-	}
+
 	return result, nil
 }
 
@@ -594,7 +673,7 @@ func observationsForIdentity(observations []abiObservation, identity ABIIdentity
 
 func resolveABIObservationIdentity(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	observation abiObservation,
 ) (ABIIdentity, abiBlockRange, bool, error) {
@@ -652,11 +731,27 @@ type abiBlockRange struct {
 	to   *uint64
 }
 
-func resolveABICodeIdentity(ctx context.Context, tx *sql.Tx, job Job, address common.Address) (ABIIdentity, abiBlockRange, bool, error) {
+func resolveABICodeIdentity(ctx context.Context, tx pgx.Tx, job Job, address common.Address) (ABIIdentity, abiBlockRange, bool, error) {
 	var blockNumberText string
 	var codeHashBytes []byte
-	err := tx.QueryRowContext(ctx, dbgen.EnrichInlineResolveABICodeIdentityStatement1, job.ChainID, address[:], strconv.FormatUint(job.BlockNumber, 10)).Scan(&blockNumberText, &codeHashBytes)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).EnrichInlineResolveABICodeIdentityStatement1(ctx, queryValue0, address[:], queryValue1)
+		if err != nil {
+			return err
+		}
+		blockNumberText = queryRow.ObservationBlockNumber
+		codeHashBytes = queryRow.CodeHash
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return ABIIdentity{}, abiBlockRange{}, false, nil
 	}
 	if err != nil {
@@ -670,8 +765,27 @@ func resolveABICodeIdentity(ctx context.Context, tx *sql.Tx, job Job, address co
 	if err != nil || codeHash == (common.Hash{}) {
 		return ABIIdentity{}, abiBlockRange{}, false, Permanent(errors.New("stored ABI code hash is invalid"))
 	}
-	var next sql.NullString
-	if err := tx.QueryRowContext(ctx, dbgen.EnrichInlineResolveABICodeIdentityStatement2, job.ChainID, address[:], blockNumberText, codeHash[:]).Scan(&next); err != nil {
+	var next pgtype.Text
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(blockNumberText); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).EnrichInlineResolveABICodeIdentityStatement2(ctx, dbgen.EnrichInlineResolveABICodeIdentityStatement2Params{ChainID: queryValue0, Address: address[:], MinBlockNumber: queryValue1, CodeHash: codeHash[:]})
+		if err != nil {
+			return err
+		}
+		resultValue0, err := dbaccess.NumericText(queryRow)
+		if err != nil {
+			return err
+		}
+		next = resultValue0
+		return nil
+	}(); err != nil {
 		return ABIIdentity{}, abiBlockRange{}, false, fmt.Errorf("query ABI code range end: %w", err)
 	}
 	codeRange := abiBlockRange{from: from}
@@ -700,7 +814,7 @@ type persistedABIBinding struct {
 
 func loadABIBindings(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	identity ABIIdentity,
 	codeRange abiBlockRange,
 	observations []abiObservation,
@@ -740,14 +854,29 @@ func loadABIBindings(
 
 func loadSameCodeABIBinding(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	target ABIIdentity,
 	codeRange abiBlockRange,
 ) (persistedABIBinding, bool, error) {
 	var sourceAddressBytes, abi []byte
-	err := tx.QueryRowContext(ctx, dbgen.EnrichInlineLoadSameCodeABIBindingStatement1, target.ChainID, target.CodeHash[:], target.Address[:],
-		strconv.FormatUint(target.BlockNumber, 10)).Scan(&sourceAddressBytes, &abi)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(target.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(target.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).EnrichInlineLoadSameCodeABIBindingStatement1(ctx, dbgen.EnrichInlineLoadSameCodeABIBindingStatement1Params{ChainID: queryValue0, CodeHash: target.CodeHash[:], Address: target.Address[:], MinValidFromBlock: queryValue1})
+		if err != nil {
+			return err
+		}
+		sourceAddressBytes = queryRow.Address
+		abi = queryRow.Abi
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return persistedABIBinding{}, false, nil
 	}
 	if err != nil {
@@ -767,7 +896,7 @@ func loadSameCodeABIBinding(
 
 func loadVerifiedABIBinding(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	target ABIIdentity,
 	sourceAddress common.Address,
 	sourceCodeHash common.Hash,
@@ -776,9 +905,30 @@ func loadVerifiedABIBinding(
 ) (persistedABIBinding, bool, error) {
 	var abi []byte
 	var fromText string
-	var to sql.NullString
-	err := tx.QueryRowContext(ctx, dbgen.EnrichInlineLoadVerifiedABIBindingStatement1, target.ChainID, sourceAddress[:], sourceCodeHash[:], strconv.FormatUint(target.BlockNumber, 10)).Scan(&abi, &fromText, &to)
-	if errors.Is(err, sql.ErrNoRows) {
+	var to pgtype.Text
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(target.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(target.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).EnrichInlineLoadVerifiedABIBindingStatement1(ctx, dbgen.EnrichInlineLoadVerifiedABIBindingStatement1Params{ChainID: queryValue0, Address: sourceAddress[:], CodeHash: sourceCodeHash[:], MaxValidFromBlock: queryValue1})
+		if err != nil {
+			return err
+		}
+		abi = queryRow.Abi
+		fromText = queryRow.ValidFromBlock
+		resultValue2, err := dbaccess.NumericText(queryRow.ValidToBlock)
+		if err != nil {
+			return err
+		}
+		to = resultValue2
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return persistedABIBinding{}, false, nil
 	}
 	if err != nil {
@@ -799,15 +949,31 @@ func loadVerifiedABIBinding(
 	return persistedABIBinding{binding: binding, abi: append([]byte(nil), abi...)}, true, nil
 }
 
-func loadProxyABIBinding(ctx context.Context, tx *sql.Tx, target ABIIdentity, codeRange abiBlockRange) (persistedABIBinding, bool, error) {
+func loadProxyABIBinding(ctx context.Context, tx pgx.Tx, target ABIIdentity, codeRange abiBlockRange) (persistedABIBinding, bool, error) {
 	var implementationAddressBytes, implementationCodeHashBytes []byte
 	var allowCodeHashArtifact bool
-	err := tx.QueryRowContext(ctx, dbgen.EnrichInlineLoadProxyABIBindingStatement1, target.ChainID, target.Address[:], target.CodeHash[:],
-		strconv.FormatUint(target.BlockNumber, 10), target.BlockHash[:], ProxyStage.Version,
-	).Scan(
-		&implementationAddressBytes, &implementationCodeHashBytes, &allowCodeHashArtifact,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(target.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(target.BlockNumber, 10)); err != nil {
+			return err
+		}
+		if ProxyStage.Version > 2147483647 {
+			return errors.New("invalid stored query value")
+		}
+		queryRow, err := dbgen.New(tx).EnrichInlineLoadProxyABIBindingStatement1(ctx, dbgen.EnrichInlineLoadProxyABIBindingStatement1Params{ChainID: queryValue0, ProxyAddress: target.Address[:], ProxyCodeHash: target.CodeHash[:], MaxBlockNumber: queryValue1, BlockHash: target.BlockHash[:], StageVersion: int32(ProxyStage.Version)})
+		if err != nil {
+			return err
+		}
+		implementationAddressBytes = queryRow.ImplementationAddress
+		implementationCodeHashBytes = queryRow.ImplementationCodeHash
+		allowCodeHashArtifact = queryRow.ExactCwiaEvidence
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return persistedABIBinding{}, false, nil
 	}
 	if err != nil {
@@ -844,19 +1010,31 @@ func loadProxyABIBinding(ctx context.Context, tx *sql.Tx, target ABIIdentity, co
 
 func loadProxyCodeHashABIBinding(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	target ABIIdentity,
 	implementationAddress common.Address,
 	implementationCodeHash common.Hash,
 	validity abiBlockRange,
 ) (persistedABIBinding, bool, error) {
 	var sourceAddressBytes, abi []byte
-	err := tx.QueryRowContext(
-		ctx, dbgen.EnrichInlineLoadSameCodeABIBindingStatement1,
-		target.ChainID, implementationCodeHash[:], implementationAddress[:],
-		strconv.FormatUint(target.BlockNumber, 10),
-	).Scan(&sourceAddressBytes, &abi)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(target.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(target.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).EnrichInlineLoadSameCodeABIBindingStatement1(ctx, dbgen.EnrichInlineLoadSameCodeABIBindingStatement1Params{ChainID: queryValue0, CodeHash: implementationCodeHash[:], Address: implementationAddress[:], MinValidFromBlock: queryValue1})
+		if err != nil {
+			return err
+		}
+		sourceAddressBytes = queryRow.Address
+		abi = queryRow.Abi
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return persistedABIBinding{}, false, nil
 	}
 	if err != nil {
@@ -882,7 +1060,7 @@ type abiIdentifier struct {
 
 func loadSignatureABIBinding(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	identity ABIIdentity,
 	codeRange abiBlockRange,
 	observations []abiObservation,
@@ -897,17 +1075,27 @@ func loadSignatureABIBinding(
 		if len(entries) >= limits.MaxEntries {
 			break
 		}
-		rows, err := tx.QueryContext(ctx, dbgen.EnrichInlineLoadSignatureABIBindingStatement1, string(identifier.kind), identifier.bytes,
-			limits.MaxSignatureBytes, limits.MaxDocumentBytes-2, abiSignatureCandidatesPerID)
+		rows, err := func() ([]dbgen.EnrichInlineLoadSignatureABIBindingStatement1Row, error) {
+			if limits.MaxSignatureBytes < -2147483648 || limits.MaxSignatureBytes > 2147483647 {
+				return nil, errors.New("invalid stored query value")
+			}
+			if limits.MaxDocumentBytes-2 < -2147483648 || limits.MaxDocumentBytes-2 > 2147483647 {
+				return nil, errors.New("invalid stored query value")
+			}
+			if abiSignatureCandidatesPerID < -2147483648 || abiSignatureCandidatesPerID > 2147483647 {
+				return nil, errors.New("invalid stored query value")
+			}
+			return dbgen.New(tx).EnrichInlineLoadSignatureABIBindingStatement1(ctx, dbgen.EnrichInlineLoadSignatureABIBindingStatement1Params{Kind: string(identifier.kind), Identifier: identifier.bytes, MaxSignatureBytes: int32(limits.MaxSignatureBytes), MaxAbiBytes: int32(limits.MaxDocumentBytes - 2), Limit: int32(abiSignatureCandidatesPerID)})
+		}()
 		if err != nil {
 			return persistedABIBinding{}, invalid, fmt.Errorf("query ABI signature candidates: %w", err)
 		}
-		for rows.Next() {
+		for _, storedRow := range rows {
 			var signature string
 			var entry []byte
-			if err := rows.Scan(&signature, &entry); err != nil {
-				_ = rows.Close()
-				return persistedABIBinding{}, invalid, fmt.Errorf("scan ABI signature candidate: %w", err)
+			{
+				signature = storedRow.Signature
+				entry = storedRow.AbiEntry
 			}
 			if _, duplicate := seen[string(identifier.kind)+"\x00"+signature]; duplicate {
 				continue
@@ -924,13 +1112,7 @@ func loadSignatureABIBinding(
 			entries = append(entries, append(json.RawMessage(nil), entry...))
 			totalBytes += len(entry) + 1
 		}
-		if err := rows.Err(); err != nil {
-			_ = rows.Close()
-			return persistedABIBinding{}, invalid, fmt.Errorf("iterate ABI signature candidates: %w", err)
-		}
-		if err := rows.Close(); err != nil {
-			return persistedABIBinding{}, invalid, fmt.Errorf("close ABI signature candidates: %w", err)
-		}
+
 	}
 	if len(entries) == 0 {
 		return persistedABIBinding{}, invalid, nil
@@ -1012,7 +1194,7 @@ func observedABIIdentifiers(observations []abiObservation) []abiIdentifier {
 	return result
 }
 
-func scanABIRange(fromText string, to sql.NullString) (abiBlockRange, error) {
+func scanABIRange(fromText string, to pgtype.Text) (abiBlockRange, error) {
 	from, err := strconv.ParseUint(fromText, 10, 64)
 	if err != nil {
 		return abiBlockRange{}, err
@@ -1055,22 +1237,36 @@ func rangeContains(value abiBlockRange, block uint64) bool {
 	return block >= value.from && (value.to == nil || block <= *value.to)
 }
 
-func persistABIBinding(ctx context.Context, tx *sql.Tx, candidate persistedABIBinding) error {
+func persistABIBinding(ctx context.Context, tx pgx.Tx, candidate persistedABIBinding) error {
 	if err := candidate.binding.validate(); err != nil {
 		return Permanent(err)
 	}
-	var validTo any
+	var validTo *string
 	if candidate.binding.ValidToBlock != nil {
-		validTo = strconv.FormatUint(*candidate.binding.ValidToBlock, 10)
+		validTo = new(strconv.FormatUint(*candidate.binding.ValidToBlock, 10))
 	}
 	identity := candidate.binding.Identity
-	if _, err := tx.ExecContext(ctx, dbgen.EnrichInlinePersistABIBindingStatement1, identity.ChainID, identity.Address[:], identity.CodeHash[:], candidate.binding.Source,
-		candidate.binding.Source.Confidence(), candidate.abi,
-		strconv.FormatUint(candidate.binding.ValidFromBlock, 10), validTo,
-		strconv.FormatUint(identity.BlockNumber, 10), identity.BlockHash[:],
-		candidate.binding.SourceAddress[:], candidate.binding.SourceCodeHash[:],
-		candidate.binding.SelectorScope[:],
-	); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(identity.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(candidate.binding.ValidFromBlock, 10)); err != nil {
+			return err
+		}
+		var queryValue2 pgtype.Numeric
+		if validTo != nil {
+			if err := queryValue2.Scan(*validTo); err != nil {
+				return err
+			}
+		}
+		var queryValue3 pgtype.Numeric
+		if err := queryValue3.Scan(strconv.FormatUint(identity.BlockNumber, 10)); err != nil {
+			return err
+		}
+		return dbgen.New(tx).EnrichInlinePersistABIBindingStatement1(ctx, dbgen.EnrichInlinePersistABIBindingStatement1Params{ChainID: queryValue0, Address: identity.Address[:], CodeHash: identity.CodeHash[:], Source: string(candidate.binding.Source), Confidence: string(candidate.binding.Source.Confidence()), Abi: candidate.abi, ValidFromBlock: queryValue1, ValidToBlock: queryValue2, BlockNumber: queryValue3, BlockHash: identity.BlockHash[:], SourceAddress: candidate.binding.SourceAddress[:], SourceCodeHash: candidate.binding.SourceCodeHash[:], SelectorScope: candidate.binding.SelectorScope[:]})
+	}(); err != nil {
 		return fmt.Errorf("persist ABI binding: %w", err)
 	}
 	return nil
@@ -1121,7 +1317,7 @@ func decodeABIObservation(registry *ABIRegistry, identity ABIIdentity, observati
 
 func persistABIDecoding(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	identity ABIIdentity,
 	observation abiObservation,
@@ -1144,26 +1340,34 @@ func persistABIDecoding(
 	if err != nil {
 		return Permanent(fmt.Errorf("encode decoded ABI return arguments: %w", err))
 	}
-	var signature, source, confidence any
+	var signature *string
+	var source *string
+	var confidence *string
 	if result.Signature != "" {
-		signature = result.Signature
+		signature = new(result.Signature)
 	}
 	if result.Source != "" {
-		source = result.Source
-		confidence = result.Confidence
+		source = new(string(result.Source))
+		confidence = new(string(result.Confidence))
 	}
-	var sourceAddress, sourceCodeHash any
+	var sourceAddress []byte
+	var sourceCodeHash []byte
 	if result.SourceAddress != (common.Address{}) && result.SourceCodeHash != (common.Hash{}) {
 		sourceAddress = result.SourceAddress[:]
 		sourceCodeHash = result.SourceCodeHash[:]
 	}
 	result.Warning = truncateUTF8Bytes(result.Warning, 4096)
-	if _, err := tx.ExecContext(ctx, dbgen.EnrichInlinePersistABIDecodingStatement1, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-		observation.objectKind, observation.transactionHash[:], observation.objectIndex,
-		identity.Address[:], identity.CodeHash[:], result.Kind, result.Status,
-		signature, source, confidence, sourceAddress, sourceCodeHash,
-		arguments, candidates, result.Warning, decoded.returnStatus, returnArguments, result.Kind,
-	); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		return dbgen.New(tx).EnrichInlinePersistABIDecodingStatement1(ctx, dbgen.EnrichInlinePersistABIDecodingStatement1Params{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: job.BlockHash[:], ObjectKind: observation.objectKind, TransactionHash: observation.transactionHash[:], ObjectIndex: observation.objectIndex, TargetAddress: identity.Address[:], TargetCodeHash: identity.CodeHash[:], AbiKind: string(result.Kind), Status: string(result.Status), Signature: signature, Source: source, Confidence: confidence, SourceAddress: sourceAddress, SourceCodeHash: sourceCodeHash, Arguments: arguments, Candidates: candidates, Warning: result.Warning, ReturnStatus: string(decoded.returnStatus), ReturnArguments: returnArguments, DecodingKind: string(result.Kind)})
+	}(); err != nil {
 		return fmt.Errorf("persist ABI decoding: %w", err)
 	}
 	return nil

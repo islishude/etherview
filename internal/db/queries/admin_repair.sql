@@ -6,6 +6,6 @@ SELECT id, operation, stage,
        requested_at, started_at, completed_at,
        CAST(last_error IS NOT NULL AS boolean) AS failure_present
 FROM repair_requests
-WHERE chain_id = sqlc.arg(chain_id)::numeric
+WHERE chain_id = sqlc.arg('chain_id')::numeric
 ORDER BY requested_at DESC, id DESC
-LIMIT sqlc.arg(row_limit);
+LIMIT sqlc.arg('row_limit');
