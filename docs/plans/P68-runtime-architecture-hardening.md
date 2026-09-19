@@ -34,10 +34,14 @@ schema remain unchanged.
 | P68-T09 | done | P68-T01, P68-T07 | Make the home-feed slow-subscriber race regression wait for the complete fanout operation before inspecting disconnect state | focused repeated race test, HTTP API race tests, and common gates |
 
 | P68-T10 | done | P68-T06 | Replace Biome with pinned Oxlint/Oxfmt gates, preserve size limits, and refactor formatted Web modules | tooling policy regressions, Web unit/browser tests, generation, docs and plan gates |
+| P68-T11 | done | P68-T10 | Repair PR 86 lazy-route and Helm schema diagnostic regressions without weakening page or egress assertions | focused route regressions, Web unit/browser tests, Helm 3/4 rendering, generation, docs and plan gates |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
 ## Acceptance
+
+- [x] P68-T11: cold billing-page rendering awaits asynchronous React work;
+      Helm 3/4 both enforce the additional-egress schema and template rejection.
 
 - [x] P68-T10: pinned Oxlint/Oxfmt gates replace Biome with unchanged length limits,
       explicit cyclomatic complexity policy, and passing Web acceptance.
@@ -70,6 +74,24 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 None.
 
 ## Evidence
+
+- P68-T11 reproduces both failures from [PR 86 CI run 35361562536](https://github.com/islishude/etherview/actions/runs/35361562536)
+  at `d8a21542af677c577fcc981e293e21cf43fd4400`. The first billing-page
+  render suspends while loading the nested Account component; a synchronous
+  Testing Library render leaves React's asynchronous `act` work unawaited and
+  the Account heading times out. Awaiting the render inside asynchronous `act`
+  fixes the original regression without changing dependency versions, page
+  assertions, or timeouts. CI's Helm latest-release lookup failed and selected
+  its v3.18.4 fallback, whose dotted schema paths did not match the Helm 4
+  JSON-pointer assertion. The regression normalizes separators and still
+  requires rejection at the additional-egress port path; the independent
+  template TCP/443 rejection remains required. Focused Vitest passes 21 tests;
+  `make web-lint web-test` passes 39 files / 370 tests and eight script tests.
+  `make helm-check` passes with Helm 3.18.4 and 4.3.0; `make deployment-check`,
+  `make docs-check plan-check`, and `git diff --check` pass locally on macOS.
+  `make generate-check test-e2e` passes generated-contract consistency, asset
+  budgets, and all 27 embedded Chrome tests. Remote CI has not been rerun with
+  these changes.
 
 - P68-T10 replaces Biome with exact `oxlint@1.83.0` and `oxfmt@0.68.0`
   lockfile pins. `web-lint` retains TypeScript and explicit unused-code/Hook

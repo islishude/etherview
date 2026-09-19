@@ -84,6 +84,11 @@ with preserved size limits, an explicit cyclomatic-complexity baseline, and
 local unit, generated-contract, embedded-browser, docs, and plan gates passing.
 P68 remains done; P70/P73 external release blockers remain.
 
+P68-T11 is complete: PR #86's cold billing-page test awaits asynchronous
+React rendering, and the egress rejection assertion accepts Helm 3/4 schema
+path formats. Local Web unit/browser, generation, deployment, docs, and plan
+gates pass; remote CI has not been rerun with this fix.
+
 ## Global Release Gates
 
 - [ ] Every plan required by P70 is `done` or explicitly `superseded` with reviewable evidence.

@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
 import axe from "axe-core";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -286,17 +286,19 @@ async function renderRoute(path: string) {
     },
   });
   await router.load();
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <WalletProvider>
-          <AuthProvider>
-            <RouterProvider router={router} />
-          </AuthProvider>
-        </WalletProvider>
-      </ThemeProvider>
-    </QueryClientProvider>,
-  );
+  await act(async () => {
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <WalletProvider>
+            <AuthProvider>
+              <RouterProvider router={router} />
+            </AuthProvider>
+          </WalletProvider>
+        </ThemeProvider>
+      </QueryClientProvider>,
+    );
+  });
 }
 
 function authSession(role: "user" | "admin") {
