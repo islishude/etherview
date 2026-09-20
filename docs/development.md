@@ -117,82 +117,77 @@ formatting scope, and tool-policy regression coverage.
 
 ## Native pgx acceptance record
 
-Historical evidence recorded on 2026-09-20. These results apply to the revisions
-and local working trees named below, not automatically to later changes.
-[P68](plans/P68-runtime-architecture-hardening.md) owns current task status.
+This section summarizes the native pgx migration's acceptance coverage and
+local benchmark observations recorded on 2026-09-20. These are historical
+results, not a substitute for validating later changes. Use
+[ADR-0050](decisions/ADR-0050-native-pgx-and-typed-queries.md) for the database
+contract, the [testing guide](testing.md) for current gate requirements, and
+[P68](plans/P68-runtime-architecture-hardening.md) for task status and execution
+evidence.
 
-These checks were collected in the isolated `codex/pgx-native` working tree,
-based on `a805559556025c3f88699a2fb5bc51d137be4d0a`. The user preserved the
-previous database/sql attempt in a stash and requested integration of the
-native implementation into local `main`. The stash is retained separately.
-The implementation is published as [PR 92](https://github.com/islishude/etherview/pull/92)
-at commit `aebb61fee2783e3f6bb8810a81296b05c142bce6`.
+### Required implementation boundaries
 
-### Implementation boundary
+- Production, CLI and test database access share pgx/v5, pgxpool and pgtype.
+  Business SQL originates in `internal/db/queries/` and executes through typed
+  sqlc methods with private statements. Query arguments and computed result
+  columns have explicit names; writes use `:execrows` only when callers enforce
+  an affected-row condition. Migrations and validated partition DDL retain
+  their explicit raw-SQL boundaries.
+- Reader routing, transaction isolation, chain locks, lease fencing and
+  ambiguous-commit confirmation remain intact. Cancellation explicitly rolls
+  back with bounded cleanup. Uncertain advisory-lock sessions are removed from
+  the pool and physically closed. Pool shutdown respects the supervisor deadline,
+  including when a borrower is stuck.
+- Numeric values remain exact; nullable projections preserve absence. Native
+  arrays, UUIDs and JSONB retain their typed encodings. Large scans use bounded
+  keyset pages under the required snapshot or chain lock, and snapshots close
+  before external calls.
+- The migration adds no schema changes, startup backfills or compatibility
+  adapters. Monolith and split-role deployments use the same persistence and
+  runtime components.
 
-- Production, CLI and test database access use pgx/v5, pgxpool and pgtype.
-  Generated queries use pgx/v5 with private statements and typed parameters and
-  results. Anonymous generated parameters/results have been removed; 97 queries
-  whose callers discard affected counts now use `:exec`, while conditional writes
-  retain `:execrows`. Parameter permutations were checked against all 607 SQL
-  statements and their native parameter/result types before PostgreSQL regression.
-  Business SQL execution remains only inside generated code. Migrations
-  and validated partition DDL retain their existing explicit raw boundaries.
-- Read/write routing, chain locks, transaction isolation, lease fencing and
-  ambiguous-commit confirmation remain intact. Cancellation uses bounded native
-  rollback; uncertain advisory-lock sessions are removed and physically closed.
-  Pool teardown shares the supervisor deadline, including stuck borrowers.
-- Exact numeric/NULL projections and native arrays/UUID/JSONB are validated.
-  API-key, canonical-coverage, Genesis candidate and holder-candidate scans use
-  bounded keyset pages; candidate pages share a snapshot that closes before RPC.
-- Worker lease loss is task-local. Home HTTP/SSE includes decimal event versions
-  with a two-second fence. Browser queries carry typed event metadata and recover
-  one EventSource after CLOSED, including expired cursors and UserOperation reorgs.
-- No schema migration, startup backfill or compatibility adapter was added.
+### Validation coverage
 
-### Passing evidence
+The recorded acceptance includes the following passing checks. When changing
+these boundaries, rerun the applicable gates against the changed tree and
+record the command, environment, result and any unmet requirement in the owning
+child plan.
 
-- `go build ./...`, `make lint-go` (zero issues), source, docs and plan checks.
-- `make compose-check helm-check` passes rendered deployment and Helm contracts;
-  their original local results did not establish production-image acceptance.
-- `make generate-check` through the common gate; OpenAPI and sqlc regeneration
-  remains reproducible. Web lint and 373 Vitest cases plus asset-policy tests pass.
-- `make test-e2e`: all 29 real Chrome tests pass, including server-generated
-  expired-cursor HTTP 400, cursor-free recovery, single EventSource ownership,
-  UserOperation head refresh and removal of orphaned detail.
-- Focused worker/home/component race tests pass. They cover renewal/completion/
-  failure lease loss, continued work and peer liveness, fatal error preservation,
-  cancellation, home version 10→11, replica switching, concurrent waiters and a
-  late obsolete frontend response. Accepted HTTP snapshots also raise the
-  QueryClient version floor; fresh clients remain isolated.
-- `make test-integration`: all six PostgreSQL 18 packages pass. The core
-  integration package completes in 225.143 seconds. `make test-integration-race`
-  passes the same six packages, with the core package in 229.401 seconds.
-  Owned PostgreSQL projects and volumes were removed after each run.
-- Production E2E test sources compile with `go test -run '^$'
-  -tags=runtimee2e,hardhat3e2e,foundrye2e,previewmetadatae2e,hardhat3verify ./e2e/...`.
-  This is compile-only evidence.
-- `make check` passes generation, Go/Web lint, Go/Web unit tests, Go race,
-  security and license checks, then stops at the external Docker syntax-image
-  authentication boundary below. No vulnerabilities in called symbols or leaked
-  secrets were reported by those checks. After the final query-contract and
-  browser version-floor updates, `make generate-check lint test test-race` and
-  `make security-check license-check` pass again. The external Docker prerequisite
-  was blocked at that time; this was not a successful aggregate `make check`
-  result. The PR evidence below subsequently covers those CI gates.
+| Area | Checks and recorded coverage |
+| --- | --- |
+| Generated contracts and source ownership | `make generate-check` and `make source-check`: reproducible generation and enforced SQL execution boundaries. |
+| Common quality gates | `make check`: generation, lint, unit/race, security/license and deployment validation. The completed local run passed the full aggregate gate. |
+| PostgreSQL behavior | `make test-integration` and `make test-integration-race`: all six PostgreSQL 18 packages passed, covering typed values, query semantics and persistence invariants. |
+| Worker and home-feed concurrency | Focused race tests covered task-local lease loss, peer liveness, fatal errors, cancellation, home event-version fencing, replica switching and concurrent waiters. |
+| Embedded browser behavior | `make test-e2e`: 29 Chrome tests passed, including expired-cursor recovery, single EventSource ownership, version-floor handling and UserOperation reorg updates. |
+| Production schema and runtime | Production-image schema lifecycle and monolith/split topology parity passed; native Linux AMD64/ARM64 Vyper, Hardhat and Foundry matrices also passed. See the testing guide for each suite's commands and prerequisites. |
+
+Compilation alone does not establish runtime acceptance, and rendered Compose
+or Helm validation does not establish production-image behavior. Earlier local
+Docker prerequisite failures were followed by successful production checks;
+a partially completed aggregate command must still be recorded as incomplete.
+
+Preview metadata has its own `make test-preview-metadata` gate. Its accepted
+local Kubo replacement verifies exact content, two canonical metadata versions,
+one attempt per version and restart persistence. The prior public-gateway
+failure and replacement evidence belong to P68-T24/P68-T25 in
+[P68](plans/P68-runtime-architecture-hardening.md#evidence). This gate is separate
+from the CI workflow and does not establish public-IPFS availability. Live
+payment and reference-capacity acceptance remain separate release requirements.
 
 ### Core read/write benchmark
 
-Host: macOS 27.0, native arm64, Go 1.27.1, owned PostgreSQL 18. Baseline and native
-measurements ran serially with the same fixture and `-benchtime 1s`. The table
-shows one baseline sample and the range of two final native samples:
+Host: macOS 27.0, native arm64, Go 1.27.1, PostgreSQL 18. The pre-migration
+baseline and native pgx measurements ran serially with the same fixture and
+`-benchtime 1s`. The table shows one baseline sample and the range of two native
+samples. An earlier diagnostic run overlapping an integration test is excluded.
 
-`go run ./cmd/testintegration -root . -packages ./internal/integration -benchmark '^BenchmarkCorePersistenceAndProjection$' -benchtime 1s`
+```sh
+go run ./cmd/testintegration -root . -packages ./internal/integration -benchmark '^BenchmarkCorePersistenceAndProjection$' -benchtime 1s
+```
 
-The earlier diagnostic benchmark overlapping an integration run is excluded.
-These are short local samples, not statistical significance claims or
-P70 reference-capacity evidence. Typical fixtures have 20 transactions/one log;
-large fixtures have 200 transactions/two logs per transaction.
+Typical fixtures contain 20 transactions and one log per transaction; large
+fixtures contain 200 transactions and two logs per transaction.
 
 | Case | Baseline → native ms/op | Baseline → native bytes/op | Baseline → native allocs/op |
 |---|---:|---:|---:|
@@ -203,106 +198,10 @@ large fixtures have 200 transactions/two logs per transaction.
 | large/block_page | 0.877 → 0.811–0.840 | 14,711 → 6,474 | 181 → 123 |
 | large/transaction_page | 20.838 → 20.360–23.415 | 4,607,222 → 4,384,576–4,386,665 | 77,485 → 75,384–75,400 |
 
-Block reads reduce allocations materially. Transaction reads reduce bytes and
-allocations. Large-write time stays close to this baseline; large-write bytes
-rise roughly 1.4 percent. One large transaction-page sample is approximately
-12 percent slower than the baseline, while the confirmation sample is slightly
-faster. These variable short samples do not establish a latency improvement or
-a regression; longer repeated capacity measurements remain separate. Both
-results are retained, and no acceptance threshold was relaxed.
-
-### PR CI evidence and historical Preview blocker
-
-[CI run 35474508539](https://github.com/islishude/etherview/actions/runs/35474508539)
-completed successfully for PR head `aebb61fee2783e3f6bb8810a81296b05c142bce6`.
-All 11 checks pass: deterministic generation/lint/unit/race, PostgreSQL
-integration, embedded browser flows, security/licenses, container/Compose/Helm,
-and native amd64/arm64 Vyper, Hardhat and Foundry matrices. The
-[deployment job](https://github.com/islishude/etherview/actions/runs/35474508539/job/105981319796)
-explicitly succeeds at the production-image schema lifecycle and runtime
-Compose topology-parity steps. The successful CI deployment check clears the
-previous Docker validation blocker for the common gates; this does not assert
-that the literal aggregate `make check` command ran remotely.
-
-The follow-up local `make check` now passes completely, including Docker,
-Compose and Helm validation.
-
-The earlier local Buildx failures (Docker Hub frontend/token TLS timeout and
-connection reset) remain historical evidence. Their schema/runtime and
-Hardhat/Foundry acceptance gaps are now covered by the successful PR run.
-
-Preview Metadata is not part of `.github/workflows/ci.yml`. Its previous
-public-IPFS gate failed as recorded below. The user approved P68-T25 to replace
-that external dependency with local real-Kubo acceptance, retaining exact
-content, version-update and restart-persistence requirements. P70/P73 external
-release gates remain independent.
-
-The follow-up `make test-preview-metadata` successfully builds the current
-native arm64 production image
-`sha256:764e23d149f8944ee59159173acb065b89686da302e5750ac7db230b0dc908c0`.
-The full Preview test then fails after 37.66 seconds at the initial metadata
-version. The worker records HTTP-phase `temporary_fetch_error` on attempts
-one through four and `attempts_exhausted` on attempt five. The failure diagnostics
-are retained as `etherview-preview-metadata-587905476/compose-logs.txt` and
-`compose-ps.txt` in the local test artifact directory; owned Compose resources
-are torn down.
-
-A direct GET of the exact documented fixture returns HTTP 429 with
-`Retry-After: 2114` and `Sunset: Mon, 21 Sep 2026 00:00:00 GMT`. Its response
-announces a switch to a Service Worker gateway and links the
-[gateway-change notice](https://gatewaychanges.ipfs.io/). This does not meet the
-then-current server-side one-attempt public-IPFS contract. At that time the
-clearing condition was endpoint recovery or a reviewed contract replacement.
-No gateway, fixture, timeout, retry limit, or content assertion changed in that
-historical follow-up. P68-T25 now implements the user-approved replacement.
-
-### Local Kubo replacement acceptance (P68-T25 / P68-T24)
-
-The user approved replacing public gateway availability with real local Kubo
-acceptance. Daily Preview uses Kubo v0.43.1 with network retrieval, behind a
-trusted HTTPS proxy; acceptance runs `daemon --offline` and
-`Gateway.NoFetch=true`. The existing 205-byte fixture, CID, content digest,
-contract bytecode, single-attempt requirements, version history and worker
-restart checks remain intact. ADR-0005 records the scoped development boundary.
-
-On 2026-09-20 the final exact `make test-preview-metadata` passes on native arm64
-(`TestPreviewLocalNFTMetadata`, 46.95s). It builds and exercises `cmd/ipfs`
-against real Kubo: repeated wrapped imports reproduce the original CID;
-empty, binary and 1-MiB files roundtrip exactly; missing content fails offline;
-Kubo restart preserves content. TLS requires the trusted CA and the HTTPS
-proxy rejects management paths. All exposed acceptance ports are random and
-loopback-only. Two on-chain metadata versions succeed with one attempt each,
-exact content and canonical provenance, plus unchanged restart persistence.
-
-The retained `etherview-preview-metadata-767907377/report.json` records:
-
-- application image `sha256:d905f800d077725da0b40148b0c9adcf955ca168a94e5bd34bfcc24cdb9cd51c`;
-- Kubo image `sha256:b293923d66e490e70ced64df42ea7a6cf7eac2740e3fb29101df18070fa7be48`;
-- gateway proxy image `sha256:30f1c0d78e0ad60901648be663a710bdadf19e4c10ac6782c235200619158284`;
-- CID `bafybeibnsoufr2renqzsh347nrx54wcubt5lgkeivez63xvivplfwhtpym`, size 205,
-  SHA-256 `a87d3d327d1a2c7f839000c080e07cd152b49ddf653f1a5afa5144eeec103d8d`;
-- `gateway_mode=local-offline`, `cli_roundtrip=true`, `offline_no_fetch=true`,
-  two source versions/two attempts and both `policy_bypassed=true` observations
-  on addresses belonging to the owned gateway.
-
-The report identifies base commit `aebb61fee2783e3f6bb8810a81296b05c142bce6`
-and `dirty=true`; it covers the local working-tree changes, not a new CI commit.
-Its directory also retains Compose state/logs; owned containers and volumes
-were removed. Earlier exploratory attempts found Docker's internal-network
-port-publication limitation and ephemeral-port changes on restart. The final
-harness retains a project network, enforces daemon-level offline/NoFetch policy,
-and resolves host ports again after restart.
-
-`go test -race ./cmd/ipfs ./internal/config ./internal/metadata`, `make lint-go`,
-`make compose-check docs-check plan-check`, and `make security-check license-check`
-pass. Additional CLI coverage proves early response headers do not truncate
-uploads, stream errors do not publish partial files, and existing output remains
-untouched. A separate isolated daily project passes exact `make start-preview`,
-`make recreate-preview` and `make stop-preview`: NoFetch stays false, an additional
-CID stays pinned and downloads identically across recreation, and stop removes
-its data volume. Its report remains in `/tmp/etherview-ipfs-lifecycle.yGcl3Q`.
-This tests the online configuration/lifecycle, not external P2P availability.
-
-P68-T25 and P68-T24 are done using these checks and the earlier aggregate
-acceptance evidence. Remote CI was not rerun for this change. P70/P73 live
-payment and reference-capacity gates remain independent.
+Block reads used fewer allocations; transaction reads used fewer bytes and
+allocations. Large-write time stayed close to the baseline while bytes rose
+about 1.4 percent. One large transaction-page sample was about 12 percent slower
+than baseline and the other was slightly faster. These short samples establish
+neither a latency improvement nor a regression and do not satisfy the P70
+reference-capacity gate. Performance acceptance requires separate repeated
+measurements with the dataset, hardware, duration and load documented.

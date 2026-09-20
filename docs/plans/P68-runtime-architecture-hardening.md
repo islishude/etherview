@@ -51,10 +51,15 @@ keys, and the fresh-database schema remain unchanged.
 | P68-T24 | done | P68-T12, P68-T13, P68-T14, P68-T23, P68-T25 | Aggregate six-fix and full native pgx acceptance | common, integration/race, browser, schema, runtime, Hardhat, Foundry, Preview and benchmarks |
 | P68-T25 | done | P68-T23 | Local Kubo Preview gateway and streaming single-file IPFS CLI | CLI unit/race, Compose/TLS isolation, offline Kubo roundtrip and full Preview acceptance |
 | P68-T26 | done | P68-T25 | Correct IPFS filename and URI encoding; consolidate native pgx acceptance into the development guide | Filename/URI unit and race regressions, lint, docs and plan checks |
+| P68-T27 | done | P68-T26 | Rewrite native pgx acceptance around engineering invariants, validation coverage and benchmark limits without Git or PR history | Documentation and plan checks |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
 ## Acceptance
+
+- [x] P68-T27: native pgx acceptance explains implementation boundaries,
+      validation coverage and benchmark limits without Git or PR history;
+      Preview evidence links resolve to the owning plan.
 
 - [x] P68-T26: multipart filenames use Kubo query encoding; URI paths decode
       once per segment with traversal checks; native pgx acceptance is retained
@@ -101,6 +106,15 @@ historical public-gateway gate; P70/P73 external release gates remain separate.
 
 ## Evidence
 
+- P68-T27 (2026-09-20): rewrote the development-guide acceptance section into
+  implementation invariants, a validation coverage table and the retained local
+  benchmark. Removed branch/stash, commit, PR and CI-run narratives; condensed
+  Preview details into a link to this plan and corrected incoming evidence
+  references. Benchmark fixture sizes were checked against
+  `internal/integration/core_performance_test.go`. `make docs-check plan-check`
+  and `git diff --check` pass. This documentation-only change does not rerun or
+  extend the historical runtime acceptance results.
+
 - P68-T26 (2026-09-20): upload uses query-escaped multipart filenames and
   download distinguishes literal CID/path inputs from percent-encoded IPFS
   URIs. `go test -race ./cmd/ipfs` passes, including wrapped/unwrapped uploads
@@ -112,8 +126,8 @@ historical public-gateway gate; P70/P73 external release gates remain separate.
   `go test -run '^$' -tags=previewmetadatae2e ./e2e/previewmetadata`.
   Docker's local socket is unavailable, so this follow-up did not rerun the
   container gate and does not replace P68-T25's recorded runtime evidence.
-  The complete native pgx acceptance record (including benchmark and image
-  identities) is merged into [the development guide](../development.md#native-pgx-acceptance-record);
+  The native pgx acceptance summary and benchmark are maintained in
+  [the development guide](../development.md#native-pgx-acceptance-record);
   its former standalone document is removed and all incoming links are updated.
 
 - P68-T25 (2026-09-20): `go test -race ./cmd/ipfs ./internal/config
@@ -130,7 +144,7 @@ historical public-gateway gate; P70/P73 external release gates remain separate.
   Application image: `sha256:d905f800d077725da0b40148b0c9adcf955ca168a94e5bd34bfcc24cdb9cd51c`.
   Report and logs remain in `etherview-preview-metadata-767907377`; all owned
   Compose resources were removed. Full image identities and network observations
-  are in `report.json` and [native pgx acceptance](../development.md#native-pgx-acceptance-record).
+  are in `report.json`.
 - Daily online Preview passes the exact `make start-preview`,
   `make recreate-preview`, and `make stop-preview` lifecycle in an isolated
   project. `Gateway.NoFetch=false`; an extra uploaded CID remains pinned across

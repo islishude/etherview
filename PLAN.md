@@ -114,7 +114,7 @@ Preview and the single-file IPFS tool, with CLI unit/race, lint, security/licens
 Compose/docs/plan, and daily startup/recreation/persistence checks passing.
 P68-T24's final `make test-preview-metadata` passes its reviewed offline
 real-Kubo replacement gate with both exact metadata versions and single attempts.
-The [acceptance record](docs/development.md#native-pgx-acceptance-record) retains the historical
+The [P68 evidence](docs/plans/P68-runtime-architecture-hardening.md#evidence) retains the historical
 ipfs.io failure and new local evidence. CI does not run Preview; no new remote
 CI or public-IPFS availability is claimed. P70/P73 release blockers remain.
 
@@ -123,3 +123,8 @@ filename/URI roundtrip and traversal regressions, race, lint, docs and plan
 checks passing. Native pgx acceptance is consolidated into the development
 guide. Docker was unavailable for this follow-up; prior container evidence
 remains revision-specific.
+
+P68-T27 rewrites the native pgx acceptance section around implementation
+boundaries, validation coverage and benchmark limits, removing Git and PR
+history and routing Preview evidence to P68. Documentation and plan checks
+pass; this documentation-only change adds no runtime acceptance claim.
