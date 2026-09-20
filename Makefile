@@ -41,11 +41,13 @@ HARDHAT3_IMAGE ?= etherview-hardhat3:local
 FOUNDRY_IMAGE ?= etherview-foundry:local
 HELM_CHART ?= deploy/helm/etherview
 PREVIEW_APP_SERVICES := api sync enrich trace metadata maintenance
-PREVIEW_RUNTIME_SERVICES := migration $(PREVIEW_APP_SERVICES)
+PREVIEW_RUNTIME_SERVICES := ipfs ipfs-gateway migration $(PREVIEW_APP_SERVICES)
 PREVIEW_TLS_DIR := .local/preview-tls
 PREVIEW_TLS_CERT := $(PREVIEW_TLS_DIR)/tls.crt
 PREVIEW_TLS_KEY := $(PREVIEW_TLS_DIR)/tls.key
 PREVIEW_TLS_CA := $(PREVIEW_TLS_DIR)/rootCA.pem
+PREVIEW_IPFS_CERT := $(PREVIEW_TLS_DIR)/ipfs.crt
+PREVIEW_IPFS_KEY := $(PREVIEW_TLS_DIR)/ipfs.key
 PREVIEW_GENESIS_TEMPLATE := deploy/preview.genesis.json
 PREVIEW_GENESIS_RUNTIME := .local/preview-genesis.json
 X402_LOCAL_COMPOSE := e2e/x402local/compose.yaml
@@ -378,6 +380,12 @@ compose-check: preview-genesis-check
 	@ETHERVIEW_METADATA_IPFS_GATEWAY=https://gateway.example.com \
 		DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml config --format json | \
 		$(NODE) -e 'const services = JSON.parse(require("fs").readFileSync(0, "utf8")).services; for (const role of ["api", "sync", "enrich", "trace", "metadata", "maintenance"]) if (services[role].environment.ETHERVIEW_METADATA_IPFS_GATEWAY !== "https://gateway.example.com") throw new Error("Preview metadata gateway override missing from " + role);'
+	@IPFS_API_PORT=0 IPFS_GATEWAY_PORT=0 \
+		ETHERVIEW_PORT=127.0.0.1:0 ETHERVIEW_METRICS_PORT=127.0.0.1:0 \
+		GETH_HTTP_PORT=127.0.0.1:0 GETH_WS_PORT=127.0.0.1:0 \
+		DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
+		-f e2e/previewmetadata/compose.yaml config --format json | \
+		$(NODE) .github/scripts/preview-metadata-compose-check.mjs
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
 		--profile monolith config --quiet
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
@@ -456,6 +464,8 @@ preview-cert:
 	$(MKCERT) -install
 	$(MKCERT) -ecdsa -cert-file "$(PREVIEW_TLS_CERT)" -key-file "$(PREVIEW_TLS_KEY)" \
 		etherview.localhost localhost 127.0.0.1 ::1
+	$(MKCERT) -ecdsa -cert-file "$(PREVIEW_IPFS_CERT)" -key-file "$(PREVIEW_IPFS_KEY)" \
+		ipfs.preview.test
 	@set -eu; \
 		ca_root="$$("$(MKCERT)" -CAROOT)"; \
 		test -r "$$ca_root/rootCA.pem" || { \
@@ -463,12 +473,13 @@ preview-cert:
 			exit 1; \
 		}; \
 		cp "$$ca_root/rootCA.pem" "$(PREVIEW_TLS_CA)"
-	@chmod 600 "$(PREVIEW_TLS_KEY)"
-	@chmod 644 "$(PREVIEW_TLS_CERT)" "$(PREVIEW_TLS_CA)"
+	@chmod 600 "$(PREVIEW_TLS_KEY)" "$(PREVIEW_IPFS_KEY)"
+	@chmod 644 "$(PREVIEW_TLS_CERT)" "$(PREVIEW_IPFS_CERT)" "$(PREVIEW_TLS_CA)"
 	@echo "preview-cert: wrote $(PREVIEW_TLS_CERT), $(PREVIEW_TLS_KEY), and public $(PREVIEW_TLS_CA)"
 
 preview-cert-check:
-	@test -r "$(PREVIEW_TLS_CERT)" && test -r "$(PREVIEW_TLS_KEY)" && test -r "$(PREVIEW_TLS_CA)" || { \
+	@test -r "$(PREVIEW_TLS_CERT)" && test -r "$(PREVIEW_TLS_KEY)" && test -r "$(PREVIEW_TLS_CA)" && \
+		test -r "$(PREVIEW_IPFS_CERT)" && test -r "$(PREVIEW_IPFS_KEY)" || { \
 		echo "Preview TLS certificate or public root CA missing; run 'make preview-cert' first"; \
 		exit 1; \
 	}

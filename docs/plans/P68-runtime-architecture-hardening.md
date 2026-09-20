@@ -1,6 +1,6 @@
 # P68 — Runtime and Architecture Hardening
 
-Status: `blocked`
+Status: `done`
 
 ## Outcome
 
@@ -13,7 +13,7 @@ keys, and the fresh-database schema remain unchanged.
 ## References
 
 - [ADR-0050: Native pgx and typed queries](../decisions/ADR-0050-native-pgx-and-typed-queries.md)
-- [Native pgx acceptance record](pgx-native-acceptance.md)
+- [Native pgx acceptance record](../development.md#native-pgx-acceptance-record)
 - [Architecture](../architecture/overview.md)
 - [ADR-0001: Modular roles and PostgreSQL truth](../decisions/ADR-0001-modular-roles-and-postgresql-truth.md)
 - [ADR-0004: Durable runtime status and event replay](../decisions/ADR-0004-durable-runtime-status-and-events.md)
@@ -36,7 +36,7 @@ keys, and the fresh-database schema remain unchanged.
 | P68-T09 | done | P68-T01, P68-T07 | Make the home-feed slow-subscriber race regression wait for the complete fanout operation before inspecting disconnect state | focused repeated race test, HTTP API race tests, and common gates |
 | P68-T10 | done | P68-T06 | Replace Biome with pinned Oxlint/Oxfmt gates, preserve size limits, and refactor formatted Web modules | tooling policy regressions, Web unit/browser tests, generation, docs and plan gates |
 | P68-T11 | done | P68-T10 | Repair PR 86 lazy-route and Helm schema diagnostic regressions without weakening page or egress assertions | focused route regressions, Web unit/browser tests, Helm 3/4 rendering, generation, docs and plan gates |
-| P68-T12 | blocked | P68-T11 | Explicit verification worker repository and task-local lease-loss recovery with fatal compiler error preservation | worker lifecycle, heartbeat, race, runtime parity |
+| P68-T12 | done | P68-T11 | Explicit verification worker repository and task-local lease-loss recovery with fatal compiler error preservation | worker lifecycle, heartbeat, race, runtime parity |
 | P68-T13 | done | P68-T11 | Version-fenced home snapshot API with bounded cancellation-safe waiting | OpenAPI, HTTP concurrency, generation and browser tests |
 | P68-T14 | done | P68-T11 | Query-local chain event policies, recoverable single SSE connection, and UserOperation reorg refresh | Vitest, browser reconnect and reorg regressions |
 | P68-T15 | dropped | P68-T11 | Standard-library sqlc generation and one typed transaction boundary | generation, numeric/null/array codecs and source boundary tests |
@@ -46,15 +46,24 @@ keys, and the fresh-database schema remain unchanged.
 | P68-T19 | done | P68-T11 | Native pgx database access ADR, pools, sqlc and transaction infrastructure | pool configuration, cancellation cleanup, generation and routing regressions |
 | P68-T20 | done | P68-T19 | All read paths use typed pgx queries with exact nullable values and bounded keyset scans | reader routing, repeatable snapshots, PostgreSQL and race |
 | P68-T21 | done | P68-T19 | All writes use typed pgx queries with unchanged fencing and commit semantics | lease loss, rollback, reorg and ambiguous commit regressions |
-| P68-T22 | blocked | P68-T19 | Native session locks, migrations, partition DDL, CLI and startup checks | physical connection disposal, schema, runtime parity |
-| P68-T23 | blocked | P68-T20, P68-T21, P68-T22 | Native test boundaries, pool metrics, source enforcement and documentation | source, docs, plan and pool telemetry tests |
-| P68-T24 | blocked | P68-T12, P68-T13, P68-T14, P68-T23 | Aggregate six-fix and full native pgx acceptance | common, integration/race, browser, schema, runtime, Hardhat, Foundry, Preview and benchmarks |
+| P68-T22 | done | P68-T19 | Native session locks, migrations, partition DDL, CLI and startup checks | physical connection disposal, schema, runtime parity |
+| P68-T23 | done | P68-T20, P68-T21, P68-T22 | Native test boundaries, pool metrics, source enforcement and documentation | source, docs, plan and pool telemetry tests |
+| P68-T24 | done | P68-T12, P68-T13, P68-T14, P68-T23, P68-T25 | Aggregate six-fix and full native pgx acceptance | common, integration/race, browser, schema, runtime, Hardhat, Foundry, Preview and benchmarks |
+| P68-T25 | done | P68-T23 | Local Kubo Preview gateway and streaming single-file IPFS CLI | CLI unit/race, Compose/TLS isolation, offline Kubo roundtrip and full Preview acceptance |
+| P68-T26 | done | P68-T25 | Correct IPFS filename and URI encoding; consolidate native pgx acceptance into the development guide | Filename/URI unit and race regressions, lint, docs and plan checks |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
 ## Acceptance
 
-- [ ] P68-T12–T14 and P68-T19–T24: all six review fixes and full native pgx migration pass their targeted and aggregate acceptance gates.
+- [x] P68-T26: multipart filenames use Kubo query encoding; URI paths decode
+      once per segment with traversal checks; native pgx acceptance is retained
+      in the development guide with all incoming links updated.
+
+- [x] P68-T25: local real-Kubo Preview with trusted HTTPS, offline deterministic
+      acceptance, streaming single-file CLI, and persistent daily lifecycle.
+
+- [x] P68-T12–T14 and P68-T19–T24: all six review fixes and full native pgx migration pass their targeted and aggregate acceptance gates.
 
 - [x] P68-T11: cold billing-page rendering awaits asynchronous React work;
       Helm 3/4 both enforce the additional-egress schema and template rejection.
@@ -87,24 +96,76 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
 ## Current Blockers
 
-- P68-T12 and P68-T22: the current production image cannot be built because
-  Docker Hub frontend/token access fails (TLS timeout, then connection reset).
-  Runtime parity and schema-image acceptance are unverified. Restore that
-  external access and pass `make test-schema-e2e test-runtime-e2e` against the
-  current working tree to clear these items.
-- P68-T23 remains dependency-blocked by P68-T22. Native fixtures, telemetry,
-  source enforcement and documentation are implemented and their local checks
-  pass; close this work item only after the lifecycle dependency is accepted.
-- P68-T24 remains blocked by P68-T12/P68-T23 and the same production-image
-  prerequisite. Clear with `make check`, schema/runtime, Hardhat, Foundry and
-  Preview Metadata acceptance on the current image. P70/P73 remain independent.
-
+None for P68. The user-approved P68-T25 local Kubo contract replaces the
+historical public-gateway gate; P70/P73 external release gates remain separate.
 
 ## Evidence
 
-- Current replacement evidence is recorded in [native pgx acceptance](pgx-native-acceptance.md).
+- P68-T26 (2026-09-20): upload uses query-escaped multipart filenames and
+  download distinguishes literal CID/path inputs from percent-encoded IPFS
+  URIs. `go test -race ./cmd/ipfs` passes, including wrapped/unwrapped uploads
+  and literal/URI downloads for plus signs, percent sequences, spaces, Unicode,
+  question marks and hashes. URI cases reject encoded traversal/separators,
+  malformed escapes, controls, credentials, queries and fragments; double-encoded
+  literal percent names are decoded only once. `make lint-go docs-check plan-check`
+  and `git diff --check` pass. Preview E2E sources compile with
+  `go test -run '^$' -tags=previewmetadatae2e ./e2e/previewmetadata`.
+  Docker's local socket is unavailable, so this follow-up did not rerun the
+  container gate and does not replace P68-T25's recorded runtime evidence.
+  The complete native pgx acceptance record (including benchmark and image
+  identities) is merged into [the development guide](../development.md#native-pgx-acceptance-record);
+  its former standalone document is removed and all incoming links are updated.
+
+- P68-T25 (2026-09-20): `go test -race ./cmd/ipfs ./internal/config
+  ./internal/metadata`, `make lint-go`, `make compose-check docs-check plan-check`,
+  and `make security-check license-check` pass locally. CLI regressions include
+  early streaming response headers, cancellation, response trailers/truncation,
+  invalid files/CIDs, and non-overwriting atomic download cleanup.
+- The final exact `make test-preview-metadata` passes on native arm64:
+  `TestPreviewLocalNFTMetadata` completes in 46.95s. Real offline Kubo verifies
+  repeated wrapped imports of the original CID, empty/binary/1-MiB roundtrips,
+  missing-CID failure, gateway restart, trusted/untrusted TLS, and management
+  API isolation. Both canonical metadata versions retain exact 205-byte JSON,
+  SHA-256, one successful attempt, network evidence, and worker-restart history.
+  Application image: `sha256:d905f800d077725da0b40148b0c9adcf955ca168a94e5bd34bfcc24cdb9cd51c`.
+  Report and logs remain in `etherview-preview-metadata-767907377`; all owned
+  Compose resources were removed. Full image identities and network observations
+  are in `report.json` and [native pgx acceptance](../development.md#native-pgx-acceptance-record).
+- Daily online Preview passes the exact `make start-preview`,
+  `make recreate-preview`, and `make stop-preview` lifecycle in an isolated
+  project. `Gateway.NoFetch=false`; an extra uploaded CID remains pinned across
+  recreation and downloads byte-for-byte. Stop removes its IPFS volume.
+  Evidence remains in `/tmp/etherview-ipfs-lifecycle.yGcl3Q`.
+- P68-T24 is done using this reviewed replacement gate plus the previously
+  recorded aggregate/CI/benchmark evidence below. No new remote CI run or public
+  IPFS availability is claimed. P68 returns to done; P70/P73 remain independent.
+
+- P68-T12 and P68-T22: [PR 92 CI run 35474508539](https://github.com/islishude/etherview/actions/runs/35474508539)
+  succeeds for PR head `aebb61fee2783e3f6bb8810a81296b05c142bce6`. All 11 jobs
+  succeed, including the production-image schema lifecycle and runtime topology
+  parity steps, plus native amd64/arm64 Hardhat and Foundry acceptance. This
+  clears their prior production-image acceptance blockers. P68-T23 is claimed
+  after that dependency clearance for final source/docs/plan evidence review.
+  Preview Metadata is absent from this CI workflow and is not inferred to pass.
+- P68-T23: native fixtures/metrics and source enforcement retain their prior
+  unit/race/PostgreSQL evidence. `make docs-check plan-check source-check` passes
+  after reconciling CI evidence; P68-T23 is done. P68-T24 is claimed after its
+  dependencies clear, to run the remaining live Preview Metadata gate.
+- Historical P68-T24 public-gateway attempt: the exact Preview command builds image
+  `sha256:764e23d149f8944ee59159173acb065b89686da302e5750ac7db230b0dc908c0`
+  and reaches the full Preview topology. `TestPreviewPublicNFTMetadata` fails
+  after 37.66s at the first metadata version; structured transitions identify
+  HTTP fetch failures, followed by exhaustion. The independent fixture GET
+  confirms HTTP 429 and the gateway-change notice. This was an external
+  Preview blocker, distinct from the earlier Docker authentication blocker. No code,
+  retry limit, content assertion, gateway or fixture was changed to pass it.
+  The exact local `make check` passed at that revision, including Docker,
+  Compose and Helm; Preview was the remaining gate before P68-T25.
+
+- Earlier local replacement evidence is recorded in [native pgx acceptance](../development.md#native-pgx-acceptance-record).
   P68-T12/T22 targeted lease, supervisor, native session disposal and pool-close
-  deadline regressions pass; their production runtime/schema gates remain blocked.
+  deadline regressions passed while their production runtime/schema gates were
+  still blocked locally; the later CI evidence above clears those gates.
   P68-T20/T21 remove every manual production query execution outside migration
   and partition DDL. Exact decimal/NULL contracts, bounded snapshot scans,
   generated names/cardinalities and native transaction semantics are implemented.
@@ -114,8 +175,9 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
   P68-T20/T21 are complete. P68-T13 and P68-T14 also pass all 29 real Chrome tests,
   including expired-cursor 400 recovery, single-connection ownership and
   UserOperation head/reorg handling. Home tests cover replica switching, late
-  responses, HTTP-derived version floors and QueryClient isolation. They are done;
-  P68 itself remains blocked until the production-image gates above pass.
+  responses, HTTP-derived version floors and QueryClient isolation. They are done.
+  The local production-image blockers are subsequently cleared by PR CI for
+  its covered gates; live Preview Metadata remains outstanding.
   Serial core benchmarks and their timing variability are recorded in the linked
   acceptance document; no reference-capacity or latency-improvement claim is made.
 

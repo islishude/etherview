@@ -346,27 +346,33 @@ branch; scheduled start times may be delayed by runner load.
   Verification, Sourcify, and pricing stay disabled because they require
   separately approved compiler or external-service boundaries.
 - `make test-preview-metadata`: rebuild the host-native production image and
-  run a Go-owned, public-IPFS acceptance gate against a unique full Preview
-  Compose project with fresh volumes and random loopback ports. It uses the
-  fixed CIDv1 `/metadata.json` documented by IPFS, a reviewed solc 0.8.30
-  ERC-721/ERC-4906 creation artifact, Geth's unlocked development account, and
-  the trusted local Preview certificate. It also proves the Etherscan V2
-  ERC-721 holding and inventory actions through exact `ownerOf` state. After
-  the initial version succeeds,
-  a transaction with no Transfer changes `tokenURI`, emits `MetadataUpdate(1)`,
-  and requires a second exact source/document/job version. Each version has one
-  successful attempt, `application/json`, 205 bytes, SHA-256
-  `a87d3d327d1a2c7f839000c080e07cd152b49ddf653f1a5afa5144eeec103d8d`,
-  bounded structured network evidence, and restart-stable persistence. Public
-  DNS is accepted directly; only Docker fake-IP `198.18.0.0/15` may use the
-  Preview metadata exception. Other private routes, alternate gateways,
-  retries, content drift, and internal fixtures fail. The checked-in Preview
-  keeps each cold public-gateway request bounded to 30 seconds so it can remain
-  one durable attempt; a reused policy-checked keep-alive connection may omit a
-  new DNS list but must retain its connected IP and bypass decision. The
-  ordinary metadata default remains 10 seconds. Run
-  `make preview-cert` once first. This live external-service gate is explicit
-  and is not included in `make check`.
+  run a Go-owned local Kubo acceptance gate against a unique full Preview
+  Compose project with fresh volumes and random loopback ports. The pinned Kubo
+  runs offline with `Gateway.NoFetch=true`; no public
+  gateway or P2P retrieval participates. Its startup script imports the reviewed
+  CIDv1 directory with `/metadata.json` and verifies the exact CID, 205 bytes and
+  SHA-256 `a87d3d327d1a2c7f839000c080e07cd152b49ddf653f1a5afa5144eeec103d8d`.
+  The test builds `cmd/ipfs` and exercises wrapped/repeated uploads, empty and
+  binary file roundtrips, unknown-CID failure, and gateway restart persistence.
+  Trusted TLS must pass, an untrusted CA must fail, and the HTTPS gateway must
+  not expose the management API. The reviewed solc 0.8.30 ERC-721/ERC-4906
+  creation artifact and Geth unlocked development account remain unchanged.
+  Both the initial version and no-Transfer `MetadataUpdate(1)` version require
+  exactly one successful attempt, exact JSON/content type/hash/size, canonical
+  holdings/inventory, source/document/job history, and restart-stable database
+  persistence. Every connected/resolved IP must belong to the owned gateway;
+  `policy_bypassed=true` is mandatory. A reused connection may omit new DNS
+  results. Reports record application/Kubo/proxy image identities, offline mode,
+  CID, content digest and network evidence. Success and failure artifacts are
+  retained and their directory is printed. Run `make preview-cert` first (also
+  after upgrading a Preview that lacks the dedicated IPFS certificate).
+  This explicit Docker gate is not included in `make check` or CI and does not
+  establish public IPFS availability. Image pulls/builds still require their
+  normal registry/toolchain prerequisites.
+- `go test -race ./cmd/ipfs`: streaming upload/download regressions for binary
+  and empty files, Kubo multipart filename encoding, literal and URI-encoded
+  paths, encoded traversal rejection, input type, RPC and stream errors,
+  cancellation/timeouts, non-overwriting publication and temporary cleanup.
 - `make test-load`: run the bounded public-API driver. Defaults are a 100 RPS,
   30-second smoke with p95, error-rate, throughput, and final core-lag
   thresholds. Set the typed `ETHERVIEW_LOAD_*` environment inputs, encode the

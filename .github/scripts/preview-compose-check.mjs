@@ -171,6 +171,42 @@ for (const role of roles) {
 }
 
 const api = requireService("api");
+const ipfs = requireService("ipfs");
+const gateway = requireService("ipfs-gateway");
+assert.equal(ipfs.image, "ipfs/kubo:v0.43.1", "pinned Kubo image");
+assert.equal(gateway.image, "nginx:1.28.0-alpine", "pinned gateway proxy image");
+assert.equal(ipfs.environment.IPFS_GATEWAY_NO_FETCH, "false", "daily Preview retrieval");
+assert.ok(!ipfs.command.includes("--offline"), "daily Preview must be online");
+assert.equal(ipfs.ports.length, 1, "only Kubo RPC is published");
+assert.equal(ipfs.ports[0].target, 5001);
+assert.equal(ipfs.ports[0].host_ip, "127.0.0.1");
+assert.equal(gateway.ports.length, 1);
+assert.equal(gateway.ports[0].target, 8443);
+assert.equal(gateway.ports[0].host_ip, "127.0.0.1");
+assert.ok(gateway.networks.default.aliases.includes("ipfs.preview.test"));
+assert.equal(gateway.depends_on.ipfs.condition, "service_healthy");
+assert.equal(services.metadata.depends_on["ipfs-gateway"].condition, "service_healthy");
+assert.match(previewConfig, /ipfs_gateway: https:\/\/ipfs\.preview\.test:8443/u);
+for (const [name, service] of Object.entries(services)) {
+  const mounts = service.volumes ?? [];
+  assert.equal(
+    service.environment?.SSL_CERT_FILE,
+    name === "metadata" ? "/run/ipfs-ca/rootCA.pem" : undefined,
+    `${name} IPFS CA environment scope`,
+  );
+  assert.equal(
+    mounts.some((v) => v.target === "/run/ipfs-ca/rootCA.pem" && v.read_only),
+    name === "metadata",
+    `${name} IPFS public CA scope`,
+  );
+  for (const target of ["/run/ipfs-tls/tls.crt", "/run/ipfs-tls/tls.key"]) {
+    assert.equal(
+      mounts.some((v) => v.target === target && v.read_only),
+      name === "ipfs-gateway",
+      `${name} IPFS certificate scope`,
+    );
+  }
+}
 const apiTargets = new Set((api.ports ?? []).map((port) => port.target));
 assert.deepEqual(apiTargets, new Set([8080, 9090]), "Preview API published ports");
 assert.ok(api.environment.ETHERVIEW_SESSION_PEPPER, "Preview API session pepper");

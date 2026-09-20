@@ -46,7 +46,7 @@ make start-preview
 
 The explicit certificate target runs `mkcert -install` and generates an
 ignored pair for `etherview.localhost`, `localhost`, `127.0.0.1`, and `::1`.
-Preview mounts that pair read-only only into the API service. Its public
+Preview mounts that API pair read-only only into the API service. Its public
 listener is `https://etherview.localhost:8080`, while
 `http://localhost:9090` remains the plain HTTP operations listener. The start
 target renders an ignored `.local/preview-genesis.json` runtime copy from the
@@ -68,15 +68,69 @@ Geth imports and unlocks its built-in ephemeral development account; local
 the tracked template's block-zero identity once and remains strictly a
 development boundary.
 
+Preview includes Kubo `v0.43.1` and an HTTPS gateway at
+`https://ipfs.preview.test:8443`. Add `127.0.0.1 ipfs.preview.test` to the local
+hosts file to open gateway links in a browser; containers resolve the same name
+through a Compose network alias. `make preview-cert` also creates the separate
+`ipfs.crt`/`ipfs.key` pair. Only the gateway proxy mounts this private key; only
+metadata mounts the public root CA. Existing installations must rerun this
+explicit certificate target before starting the updated Preview.
+
+Daily Preview retrieves uncached content over IPFS and retains it in the
+project-scoped `ipfs-data` volume. The reviewed metadata fixture is imported and
+pinned idempotently at every Kubo start. `make recreate-preview` replaces Kubo
+and its proxy along with the application containers while preserving their
+volumes; `make stop-preview` deletes all Preview volumes, including IPFS data.
+`IPFS_GATEWAY_PORT` and `IPFS_API_PORT` override the loopback-only host ports
+(defaults 8443 and 5001). The gateway's container address stays at port 8443;
+when overriding its host port, open it using that port in the browser. Generated
+image links continue using the configured gateway URL.
+
 Preview keeps `metadata.unsafe_allow_private_networks=false` in its mounted
-YAML and overrides it only in the split metadata worker. This development-only
-exception lets a public IPFS request traverse Docker Desktop's `198.18/15`
-fake-IP proxy; API NFT media and every other role remain strict. Run
-`make test-preview-metadata` after `make preview-cert` for the isolated live
-acceptance gate. It uses a unique Compose project and fresh volumes, requires
-one initial and one no-Transfer ERC-4906-triggered exact fixed-CID fetch,
-permits no private route other than the diagnosed Docker fake-IP, and proves a
-metadata-worker restart does not add a third attempt.
+YAML and overrides it only in the split metadata worker for this controlled
+local HTTPS gateway. TLS validation, fetch bounds, and document validation
+remain enabled. API NFT media and every other role remain strict, so the API
+media proxy does not fetch private gateway content. Gateway image links remain
+user-confirmed navigation only. An explicit `ETHERVIEW_METADATA_IPFS_GATEWAY`
+can select another HTTPS gateway; no automatic public fallback exists.
+
+Run `make test-preview-metadata` for the isolated offline acceptance gate. It
+uses a unique project, fresh volumes, and random loopback ports. The Kubo daemon is offline with `Gateway.NoFetch=true`; fixed-content
+and CLI roundtrips need no external retrieval. The test preserves both exact
+metadata versions and their single attempts, checks owned gateway addresses,
+and proves a metadata-worker restart does not add an attempt. Successful and
+failed runs retain diagnostics and a success report when available.
+
+### IPFS file tool
+
+The independent `cmd/ipfs` command uses the local Kubo management API. This
+API is published only on `127.0.0.1:5001`; the HTTPS proxy serves `/ipfs/` reads
+and does not expose management operations. No host IPFS CLI is needed.
+
+```sh
+go run ./cmd/ipfs upload --api http://127.0.0.1:5001 ./file.json
+go run ./cmd/ipfs upload --wrap --api http://127.0.0.1:5001 ./metadata.json
+go run ./cmd/ipfs download --api http://127.0.0.1:5001 --output ./download.json CID/metadata.json
+```
+
+Upload accepts one regular file and pins its CIDv1 SHA-256/raw-leaf content.
+Without `--wrap`, stdout contains the file CID; with `--wrap`, it contains the
+directory CID, allowing `CID/filename` downloads. Download accepts a CID,
+CID/path, or `ipfs://CID/path` and requires a new output filename. Bare CID/path
+arguments preserve literal filename characters, including `+`, `%`, `?`, and
+`#`. URI paths use percent encoding (for example, `my%20file.json` or
+`token%231.json`), decoded once per segment; query strings, fragments and
+decoded traversal/separator characters are rejected. It streams to
+a same-directory temporary file, then publishes atomically without overwriting
+an existing file. Failures and cancellation remove temporary output. Directory
+recursion and IPNS are unsupported. Uploaded data remains pinned locally until
+explicitly removed; other nodes' retention is not guaranteed.
+
+Both commands default to `--api http://127.0.0.1:5001` and `--timeout 5m`.
+HTTPS endpoints use system certificate trust. RPC redirects and environment
+proxies are disabled. Diagnostics go to stderr; exit codes are 0 for success,
+2 for argument errors, and 1 for operation failures. Build an independent
+binary with `go build -o /tmp/etherview-ipfs ./cmd/ipfs`.
 
 For Helm, create or provision a TLS Secret independently, then enable
 `apiTLS.enabled` and set `apiTLS.existingSecret`. `ingress.tls` controls the

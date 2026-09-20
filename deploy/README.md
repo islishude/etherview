@@ -206,45 +206,40 @@ regressions fix the healthcheck definition and role topology, while production
 image checks retain the non-root, native-architecture, and compiler-runtime
 boundaries.
 
-NFT metadata defaults to the best-effort public `https://ipfs.io` gateway.
-The checked-in Preview allows a bounded 30-second cold fetch so its strict live
-gate can complete without a durable retry; the ordinary configuration default
-and example remain 10 seconds.
-Override it without editing the checked-in configuration:
+NFT metadata defaults to the local `https://ipfs.preview.test:8443` Kubo
+HTTPS gateway. Daily Preview uses IPFS network retrieval; the 30-second fetch
+budget remains bounded, and the ordinary metadata default stays 10 seconds.
+Kubo `v0.43.1` retains pinned content in `ipfs-data` and imports the fixed
+metadata fixture idempotently. Add `127.0.0.1 ipfs.preview.test` to the host's
+hosts file for browser navigation. `make preview-cert` creates a dedicated
+IPFS certificate; the proxy alone receives its private key and metadata alone
+receives the public CA. Only loopback ports 8443 (gateway) and 5001 (management
+API) are published; override them with `IPFS_GATEWAY_PORT`/`IPFS_API_PORT`.
 
-```sh
-ETHERVIEW_METADATA_IPFS_GATEWAY=https://gateway.example.com make start-preview
-```
+`ETHERVIEW_METADATA_IPFS_GATEWAY` still permits an explicit HTTPS override,
+without automatic public-gateway fallback. The metadata-only private-network
+exception permits the controlled local gateway, while API media fetches, other
+roles, base Compose and Helm remain strict. TLS, redirect, content and resource
+checks are preserved. The separate API-only compiler-download exception remains
+available for Docker Desktop fake-IP routing. Neither exception is a production
+SSRF policy or permission to contact unrelated private services.
 
-The gateway must remain an absolute public HTTPS URL accepted by the metadata
-SSRF policy. Public gateways have no production availability commitment.
-Compiler catalogs, compiler artifacts, and IPFS gateways are all subject to
-public-IP validation. Transparent or fake-IP DNS that maps public hosts into
-the RFC 2544 benchmarking range `198.18.0.0/15` is rejected by default. The
-checked-in Preview passes
-`ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS=true` only to
-`api` so Docker Desktop's fake-IP proxy can be used for compiler downloads. It
-also passes `ETHERVIEW_METADATA_UNSAFE_ALLOW_PRIVATE_NETWORKS=true` only to the
-split `metadata` worker. The mounted YAML, API NFT media path, other Preview
-roles, base Compose, and Helm keep
-`metadata.unsafe_allow_private_networks=false`. Role validation rejects this
-metadata exception for `all`, `api`, or mixed-role processes. The exceptions
-never broaden the HTTPS origin allowlist, disable TLS, permit unchecked
-redirects, or skip artifact/document size and integrity checks. Do not enable
-either exception in production or use it to target private services or admit
-an unreviewed compiler origin.
+`cmd/ipfs` uploads and pins one file, or downloads a CID/path atomically without
+overwriting an existing file, through the loopback Kubo RPC API. See
+[IPFS file tool](../docs/operations.md#ipfs-file-tool) for commands and defaults.
+The gateway proxy never exposes that management API.
 
-Run `make test-preview-metadata` after `make preview-cert` for the fixed public
-CID/SHA-256 acceptance gate. The Go-owned target uses a unique Preview Compose
-project, a reviewed precompiled ERC-721 fixture, fresh volumes, and no internal
-metadata server. It requires an initial exact durable fetch followed by one
-no-Transfer ERC-4906-triggered version at a changed URI, accepts only public IPs
-or Docker's `198.18.0.0/15` fake-IP with `network.policy_bypassed=true`,
-recreates the metadata role, and proves neither attempt is repeated. It is
-intentionally not part of `make check`.
+Run `make test-preview-metadata` after `make preview-cert` for offline real-Kubo
+acceptance. It owns fresh volumes and random loopback ports, disables external
+retrieval, validates CLI roundtrips and TLS, and preserves both exact metadata
+versions, single attempts, canonical holdings, and restart persistence. Its
+network assertions identify only the owned gateway; reports include immutable
+image identities and are retained on success too. It is not part of `make check`
+or CI and makes no public-IPFS availability claim.
 
 `make recreate-preview` rebuilds the host-native production image and replaces
-the six application containers while preserving PostgreSQL, Geth, and the
+the six application containers plus Kubo and its gateway while preserving
+PostgreSQL, Geth, IPFS data, and the
 project-scoped `compiler-cache` named volume. Cache entries remain ordinary
 read-only files named by SHA-256 and are fully revalidated before reuse. They
 do not make an expired compiler catalog usable and do not belong in backups.

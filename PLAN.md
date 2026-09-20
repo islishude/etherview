@@ -25,7 +25,7 @@ batch semantics are not core v1 scope.
 | P64 | [NFT Metadata Web](docs/plans/P64-nft-metadata-web.md) | done | P20, P30, P40, P50 | Canonical NFT metadata projection, standard-event refresh, and guarded external-image navigation |
 | P65 | [User Authentication](docs/plans/P65-user-auth.md) | done | P40, P50 | SIWE wallet login, revocable sessions, profiles, administration, and scoped user API keys |
 | P67 | [ENS Primary Names](docs/plans/P67-ens-primary-names.md) | done | P20, P30, P40, P50 | Snapshot-stable official and custom ENS forward resolution plus verified primary-name display |
-| P68 | [Runtime and Architecture Hardening](docs/plans/P68-runtime-architecture-hardening.md) | blocked | P00, P30, P40, P50 | Explicit SQL, runtime, HTTP, Web, and quality boundaries |
+| P68 | [Runtime and Architecture Hardening](docs/plans/P68-runtime-architecture-hardening.md) | done | P00, P30, P40, P50 | Explicit SQL, runtime, HTTP, Web, and quality boundaries |
 | P70 | [Release](docs/plans/P70-release.md) | blocked | P10, P20, P30, P40, P50, P64, P65, P67, P68, P73, P74, P75, P77 | Security, conformance, performance, E2E, documentation, and v1 release |
 | P73 | [Prepaid API Billing](docs/plans/P73-prepaid-api-billing.md) | blocked | P30, P40, P65 | x402 account top-ups and PostgreSQL prepaid credit for bounded Etherscan V2 reads |
 | P74 | [Etherscan V2 Read Expansion](docs/plans/P74-etherscan-v2-read-expansion.md) | done | P20, P40, P65 | Authoritative withdrawals, holdings, funding, block counts, and advanced compatibility filters |
@@ -107,12 +107,19 @@ gates pass; remote CI has not been rerun with this fix.
 Follow `AGENTS.md`. Child work items are updated in place. When a child plan
 changes overall state, update the corresponding row above in the same change.
 
-P68 implements the six review fixes and full native pgx/sqlc migration,
-developed on `codex/pgx-native` for integration into local `main`. P68-T15–T18 are dropped; P68-T13/T14 and
-P68-T19–T21 pass their targeted acceptance, including complete PostgreSQL
-ordinary/race and 29 real Chrome tests. P68 is blocked: Docker Hub frontend
-authentication prevents a current production image from reaching schema,
-runtime, Hardhat, Foundry and Preview Metadata acceptance. P68-T12/T22 and their
-downstream items remain open with clearing conditions in the
-[native acceptance record](docs/plans/pgx-native-acceptance.md). P70/P73 external
-release blockers remain unchanged.
+P68 is done: PR #92 CI at `aebb61fee2783e3f6bb8810a81296b05c142bce6`
+clears the production schema/runtime and native amd64/arm64 Hardhat/Foundry
+acceptance; the earlier local `make check` also passed. P68-T25 adds local Kubo
+Preview and the single-file IPFS tool, with CLI unit/race, lint, security/license,
+Compose/docs/plan, and daily startup/recreation/persistence checks passing.
+P68-T24's final `make test-preview-metadata` passes its reviewed offline
+real-Kubo replacement gate with both exact metadata versions and single attempts.
+The [acceptance record](docs/development.md#native-pgx-acceptance-record) retains the historical
+ipfs.io failure and new local evidence. CI does not run Preview; no new remote
+CI or public-IPFS availability is claimed. P70/P73 release blockers remain.
+
+P68-T26 fixes Kubo multipart filename escaping and IPFS URI decoding, with
+filename/URI roundtrip and traversal regressions, race, lint, docs and plan
+checks passing. Native pgx acceptance is consolidated into the development
+guide. Docker was unavailable for this follow-up; prior container evidence
+remains revision-specific.

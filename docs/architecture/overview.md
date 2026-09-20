@@ -929,6 +929,13 @@ size alone is not sufficient justification to weaken those invariants.
   available document only with explicit latest/content observations and a
   stale marker; reorg automatically removes orphan update influence.
 
+Preview uses a pinned local Kubo node behind a dedicated HTTPS proxy. Its
+metadata-only worker trusts the local public CA and explicitly permits the
+owned private gateway; the API media fetch policy remains strict. Daily Preview
+can retrieve IPFS content, while its acceptance topology seeds the same CID and
+runs Kubo offline. The independent operator `cmd/ipfs` tool talks to Kubo's
+loopback management API; it is not an explorer HTTP endpoint or runtime role.
+
 ## Operator Recovery Boundary
 
 Repair and reindex intentionally have different authority. `repair --stage

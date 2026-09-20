@@ -31,7 +31,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	gethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/islishude/etherview/internal/netpolicy"
 	"github.com/islishude/etherview/internal/testcompose"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -43,19 +42,19 @@ const (
 	previewChainID          = "48815"
 	previewChainIDHex       = "0xbeaf"
 	metadataTokenID         = "1"
-	metadataGateway         = "https://ipfs.io"
+	metadataGateway         = "https://ipfs.preview.test:8443"
 	metadataURI             = "ipfs://bafybeibnsoufr2renqzsh347nrx54wcubt5lgkeivez63xvivplfwhtpym/metadata.json"
 	updatedMetadataURI      = metadataURI + "?revision=2"
-	resolvedMetadataURL     = "https://ipfs.io/ipfs/bafybeibnsoufr2renqzsh347nrx54wcubt5lgkeivez63xvivplfwhtpym/metadata.json"
+	resolvedMetadataURL     = "https://ipfs.preview.test:8443/ipfs/bafybeibnsoufr2renqzsh347nrx54wcubt5lgkeivez63xvivplfwhtpym/metadata.json"
 	updatedResolvedMetadata = resolvedMetadataURL + "?revision=2"
-	resolvedImageURL        = "https://ipfs.io/ipfs/bafybeidfjqmasnpu6z7gvn7l6wthdcyzxh5uystkky3xvutddbapchbopi/no-time-to-explain.jpeg"
+	resolvedImageURL        = "https://ipfs.preview.test:8443/ipfs/bafybeidfjqmasnpu6z7gvn7l6wthdcyzxh5uystkky3xvutddbapchbopi/no-time-to-explain.jpeg"
 	expectedMetadataSHA256  = "a87d3d327d1a2c7f839000c080e07cd152b49ddf653f1a5afa5144eeec103d8d"
 	expectedMetadataBytes   = 205
 	previewDatabasePassword = "etherview-preview-metadata-e2e"
 
 	// PreviewMetadataNFT.sol is compiled once with the repository's locked
 	// solc 0.8.30, optimizer runs=200, evmVersion=prague, and compiler metadata
-	// disabled. The live gate deploys this reviewed artifact without invoking a
+	// disabled. The offline gate deploys this reviewed artifact without invoking a
 	// compiler, Hardhat, ethers, or cast.
 	previewNFTCreationBytecode = "0x60a0604052348015600e575f5ffd5b50336080819052604051600191905f907fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef908290a46080516103e16100625f395f8181610165015261021e01526103e15ff3fe608060405234801561000f575f5ffd5b506004361061004a575f3560e01c806301ffc9a71461004e5780636352211e14610076578063c87b56dd146100a1578063efcf5f33146100c1575b5f5ffd5b61006161005c3660046102bb565b6100cb565b60405190151581526020015b60405180910390f35b6100896100843660046102e9565b61011c565b6040516001600160a01b03909116815260200161006d565b6100b46100af3660046102e9565b610189565b60405161006d9190610300565b6100c9610213565b005b5f6301ffc9a760e01b6001600160e01b0319831614806100fb57506380ac58cd60e01b6001600160e01b03198316145b806101165750632483248360e11b6001600160e01b03198316145b92915050565b5f816001146101625760405162461bcd60e51b815260206004820152600d60248201526c36b4b9b9b4b733903a37b5b2b760991b60448201526064015b60405180910390fd5b507f0000000000000000000000000000000000000000000000000000000000000000919050565b6060816001146101cb5760405162461bcd60e51b815260206004820152600d60248201526c36b4b9b9b4b733903a37b5b2b760991b6044820152606401610159565b5f5460ff16156101f4576040518060800160405280605b8152602001610386605b913992915050565b6040518060800160405280605081526020016103366050913992915050565b336001600160a01b037f000000000000000000000000000000000000000000000000000000000000000016146102775760405162461bcd60e51b81526020600482015260096024820152683737ba1037bbb732b960b91b6044820152606401610159565b5f805460ff191660019081179091556040519081527ff8e1a15aba9398e019f0b49df1a4fde98ee17ae345cb5f6b5e2c27f5033e8ce79060200160405180910390a1565b5f602082840312156102cb575f5ffd5b81356001600160e01b0319811681146102e2575f5ffd5b9392505050565b5f602082840312156102f9575f5ffd5b5035919050565b602081525f82518060208401528060208501604085015e5f604082850101526040601f19601f8301168401019150509291505056fe697066733a2f2f62616679626569626e736f7566723272656e717a73683334376e727835347763756274356c676b656976657a363378766976706c6677687470796d2f6d657461646174612e6a736f6e697066733a2f2f62616679626569626e736f7566723272656e717a73683334376e727835347763756274356c676b656976657a363378766976706c6677687470796d2f6d657461646174612e6a736f6e3f7265766973696f6e3d32"
 )
@@ -64,17 +63,19 @@ const (
 var expectedMetadata []byte
 
 type harness struct {
-	t         *testing.T
-	root      string
-	project   *testcompose.Project
-	rpc       *rpc.Client
-	db        *pgxpool.Pool
-	http      *http.Client
-	apiURL    string
-	artifacts string
-	image     string
-	developer common.Address
-	succeeded bool
+	t          *testing.T
+	root       string
+	project    *testcompose.Project
+	rpc        *rpc.Client
+	db         *pgxpool.Pool
+	http       *http.Client
+	apiURL     string
+	artifacts  string
+	image      string
+	developer  common.Address
+	gatewayIPs []string
+	ipfsAPI    string
+	ipfsBinary string
 }
 
 type rpcReceipt struct {
@@ -148,13 +149,12 @@ type metadataTransitionLog struct {
 	} `json:"network"`
 }
 
-func TestPreviewPublicNFTMetadata(t *testing.T) {
+func TestPreviewLocalNFTMetadata(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), previewTimeout)
 	defer cancel()
 	h := newHarness(t)
 	t.Cleanup(h.cleanup)
 	h.run(ctx)
-	h.succeeded = true
 }
 
 func newHarness(t *testing.T) *harness {
@@ -171,6 +171,8 @@ func newHarness(t *testing.T) *harness {
 		filepath.Join(root, ".local", "preview-tls", "tls.crt"),
 		filepath.Join(root, ".local", "preview-tls", "tls.key"),
 		filepath.Join(root, ".local", "preview-tls", "rootCA.pem"),
+		filepath.Join(root, ".local", "preview-tls", "ipfs.crt"),
+		filepath.Join(root, ".local", "preview-tls", "ipfs.key"),
 	} {
 		if info, statErr := os.Stat(required); statErr != nil || !info.Mode().IsRegular() {
 			t.Fatalf("required Preview runtime file %s is unavailable; run the Make target: %v", required, statErr)
@@ -188,11 +190,13 @@ func newHarness(t *testing.T) *harness {
 		"ETHERVIEW_GENESIS_FILE":          genesis,
 		"GETH_GENESIS_FILE":               genesis,
 		"ETHERVIEW_METADATA_IPFS_GATEWAY": metadataGateway,
-		"ETHERVIEW_PORT":                  "0",
-		"ETHERVIEW_METRICS_PORT":          "0",
-		"GETH_HTTP_PORT":                  "0",
-		"GETH_WS_PORT":                    "0",
+		"ETHERVIEW_PORT":                  "127.0.0.1:0",
+		"ETHERVIEW_METRICS_PORT":          "127.0.0.1:0",
+		"GETH_HTTP_PORT":                  "127.0.0.1:0",
+		"GETH_WS_PORT":                    "127.0.0.1:0",
 		"POSTGRES_PASSWORD":               previewDatabasePassword,
+		"IPFS_API_PORT":                   "0",
+		"IPFS_GATEWAY_PORT":               "0",
 	}
 	return &harness{t: t, root: root, project: project, artifacts: artifacts, image: image}
 }
@@ -205,6 +209,7 @@ func (h *harness) run(ctx context.Context) {
 		h.t.Fatal(err)
 	}
 	h.connect(ctx)
+	h.assertLocalGateway(ctx)
 	h.assertPublicConfig(ctx)
 	initialReceipt := h.deployNFT(ctx)
 	contract := *initialReceipt.ContractAddress
@@ -793,37 +798,31 @@ func (h *harness) assertTransitionLog(
 		!strings.EqualFold(record.Block.Hash, receipt.BlockHash.Hex()) ||
 		record.Transition.State != "available" || record.Transition.Code != "" ||
 		record.Source.Scheme != "ipfs" || record.Request.Scheme != "https" ||
-		record.Request.Host != "ipfs.io" || record.Request.Path != "/ipfs/bafybeibnsoufr2renqzsh347nrx54wcubt5lgkeivez63xvivplfwhtpym/metadata.json" ||
+		record.Request.Host != "ipfs.preview.test" || record.Request.Path != "/ipfs/bafybeibnsoufr2renqzsh347nrx54wcubt5lgkeivez63xvivplfwhtpym/metadata.json" ||
 		record.Request.Redirects != 0 {
 		h.t.Fatalf("metadata transition log = %#v", record)
 	}
-	assertNetworkEvidence(h.t, record.Network.ResolvedIPs, record.Network.ConnectedIP, record.Network.PolicyBypassed)
+	h.assertNetworkEvidence(record.Network.ResolvedIPs, record.Network.ConnectedIP, record.Network.PolicyBypassed)
 	return record
 }
 
-func assertNetworkEvidence(t *testing.T, resolved []string, connected string, bypassed bool) {
-	t.Helper()
-	// A subsequent request may reuse an already policy-checked keep-alive
-	// connection and therefore has no new DNS resolution list. The connected IP
-	// remains mandatory and is classified below with the same public/fake-IP
-	// policy; policy_bypassed is carried by the validated connection.
-	if connected == "" {
-		t.Fatalf("metadata network evidence is incomplete: resolved=%v connected=%q", resolved, connected)
+func (h *harness) assertNetworkEvidence(resolved []string, connected string, bypassed bool) {
+	h.t.Helper()
+	if connected == "" || !bypassed {
+		h.t.Fatalf("local gateway evidence incomplete: connected=%q bypassed=%t", connected, bypassed)
 	}
-	fakeIP := false
+	// Reused keep-alive connections can omit DNS results, but always carry
+	// their connected address and policy decision.
 	for _, raw := range append(append([]string(nil), resolved...), connected) {
-		ip := net.ParseIP(raw)
-		decision := netpolicy.ClassifyIP(ip)
-		if decision.Allowed {
-			continue
+		found := false
+		for _, expected := range h.gatewayIPs {
+			if net.ParseIP(raw) != nil && net.ParseIP(raw).Equal(net.ParseIP(expected)) {
+				found = true
+			}
 		}
-		if decision.Classification != netpolicy.IPClassificationSpecialPurpose || decision.Prefix != "198.18.0.0/15" {
-			t.Fatalf("metadata gate connected through unexpected non-public address %s (%+v)", raw, decision)
+		if !found {
+			h.t.Fatalf("metadata connected outside the owned gateway: %s", raw)
 		}
-		fakeIP = true
-	}
-	if bypassed != fakeIP {
-		t.Fatalf("metadata network bypass = %t, fake-IP evidence = %t", bypassed, fakeIP)
 	}
 }
 
@@ -931,6 +930,10 @@ func (h *harness) writeReport(
 	imageID := strings.TrimSpace(commandOutput(ctx, h.root, dockerCommand(), "image", "inspect", "--format", "{{.Id}}", h.image))
 	report := map[string]any{
 		"revision": revision, "dirty": dirty, "image_id": imageID,
+		"gateway_mode": "local-offline", "gateway": metadataGateway,
+		"gateway_ips": h.gatewayIPs, "kubo_image_id": h.serviceImageID(ctx, "ipfs"),
+		"gateway_image_id": h.serviceImageID(ctx, "ipfs-gateway"),
+		"cli_roundtrip":    true, "offline_no_fetch": true,
 		"chain_id": previewChainID, "contract": strings.ToLower(initialReceipt.ContractAddress.Hex()),
 		"token_id":             metadataTokenID,
 		"initial_block_number": uint64(initialReceipt.BlockNumber),
@@ -976,12 +979,7 @@ func (h *harness) cleanup() {
 	if h.db != nil {
 		h.db.Close()
 	}
-	if h.succeeded {
-		if err := os.RemoveAll(h.artifacts); err != nil {
-			h.t.Logf("remove successful Preview metadata artifacts: %v", err)
-		}
-		return
-	}
+
 	h.t.Logf("retained Preview metadata diagnostics: %s", h.artifacts)
 }
 
