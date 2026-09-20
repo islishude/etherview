@@ -128,3 +128,16 @@ P68-T27 rewrites the native pgx acceptance section around implementation
 boundaries, validation coverage and benchmark limits, removing Git and PR
 history and routing Preview evidence to P68. Documentation and plan checks
 pass; this documentation-only change adds no runtime acceptance claim.
+
+
+P30-T115 replaces MinIO with pinned RustFS and AWS SDK S3 transport, retaining
+PostgreSQL-authoritative cache fallback and using a fresh independent volume.
+Local real-RustFS, Go unit/race, lint, security/license, deployment, docs and
+plan gates pass; remote CI has not run for this change. P30 remains done and
+P70/P73 external release blockers remain unchanged.
+
+
+P30-T116 fixes S3 credential redirects and isolates complete explicit
+credentials/region from unrelated AWS profiles. Local regressions, race,
+RustFS, lint, security, docs and plan gates pass; P30 remains done and the
+P70/P73 external release blockers are unchanged.

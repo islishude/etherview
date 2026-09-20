@@ -175,6 +175,8 @@ credential-scoped operational boundaries.
 | P30-T97 | done | P30-T96 | Native API, Etherscan vyper-json and bilingual Web verification | generated contracts, API, Web and browser tests |
 | P30-T98 | done | P30-T95 | Production helper packaging, role parity, deployment and licenses | image, configuration, Compose, Helm and license checks |
 | P30-T99 | done | P30-T96, P30-T97, P30-T98 | Vyper production verification acceptance and maintained documentation | common gates, native AMD64/ARM64 monolith/split verification E2E |
+| P30-T116 | done | P30-T115 | Reject credential redirects and isolate complete explicit S3 credentials from ambient AWS profiles | Redirect and explicit-credential regressions, S3 race, RustFS, lint, docs and plan gates |
+| P30-T115 | done | P30-T42, P30-T36 | Replace MinIO with RustFS and AWS SDK S3 transport, with isolated real-service acceptance | S3 unit/race, RustFS, deployment, security/license, docs and plan gates |
 | P30-T114 | done | P30-T99 | Upgrade the pinned Node SEA to 26.9.0 and solc wrapper to 0.8.37 | Exact lockfile, runtime identity, real SEA compilation and permission regressions, Go verifier tests, docs and plan gates |
 
 | P30-T100 | done | P30-T99 | Serialize Compose stdout/stderr capture and streaming to prevent concurrent buffer corruption | real-process output and failure regressions under the race detector; Foundry E2E; docs/plan checks |
@@ -193,6 +195,15 @@ credential-scoped operational boundaries.
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
 ## Acceptance
+
+- [x] P30-T116: credential redirects are rejected and complete explicit S3
+      credentials/region bypass unrelated AWS profiles, with local regression,
+      race, RustFS, lint, security, docs and plan checks passing.
+
+- [x] P30-T115: RustFS and AWS SDK S3 transport pass isolated real-store
+      acceptance, Go unit/race, lint, security/license, and deployment/docs/plan
+      checks locally. Existing MinIO volumes remain untouched; remote CI has
+      not been run for this change.
 
 - [x] P30-T114: Node 26.9.0 and solc 0.8.37 pass all 11 checks in
       [PR #64 CI run 35206666871](https://github.com/islishude/etherview/actions/runs/35206666871)
@@ -702,3 +713,60 @@ closure below supplies the missing evidence.
   done. It does not claim a production rollout or close P70/P73 external
   release blockers. Documentation-only closure is validated locally with
   `make docs-check plan-check` and `git diff --check`.
+
+
+### P30-T115 — RustFS and AWS SDK S3 transport (2026-09-20)
+
+- Replaced the optional Compose object store with `rustfs/rustfs:1.0.0`,
+  RustFS credential variables, a storage-readiness probe, and independent
+  `rustfs-data`. Service DNS, internal ports, API-only credentials, and
+  PostgreSQL fallback remain unchanged. No existing runtime or old volume was
+  operated on; isolated test containers and volumes were removed successfully.
+- Replaced minio-go with AWS SDK S3 `v1.109.1`, preserving object identities,
+  application SHA-256 metadata, bounded reads, static/default-chain credentials,
+  and stable redacted failures. Added explicit signing-region precedence,
+  precomputed upload checksums, single-attempt requests, and redirect rejection.
+  Container credential refresh needs its own HTTP client timeout because the
+  AWS endpoint provider does not inherit the general client; regression proves
+  both caller timeout and cancellation of the background refresh.
+- `go mod tidy` removes minio-go and unused dependencies. The independent
+  `minio/sha256-simd` hash library remains required through
+  `go-cid -> go-multihash`; it is not an object-storage client.
+- `make test-rustfs` passes on local macOS ARM64 with Docker's Linux ARM64
+  RustFS container (final run: 12.712s): bucket provisioning, nonempty/empty
+  roundtrip, metadata, corruption, miss, forced recreation persistence, and
+  stopped-service bounded errors. An initial Docker Hub token request failed
+  with EOF; the same target passed after retry. CI integration now runs this
+  explicit gate; no remote or Linux AMD64 execution is claimed.
+- `go test -race -timeout=60s ./internal/accelerator ./internal/catalog
+  ./internal/config`, `make test-go test-race`, `make lint-go`, and
+  `golangci-lint run --build-tags=rustfs ./internal/accelerator` pass.
+- `make security-check license-check deployment-check`, `make docs-check
+  plan-check`, and `git diff --check` pass. Security reports no callable Go
+  vulnerabilities; the existing Hardhat fixture's eight low-severity elliptic
+  dependency findings stay below the maintained high-severity failure gate.
+- Updated ADR-0015, architecture, environment example, and operations/testing
+  guidance. Public API, SQL, generated contracts, and Helm external-S3
+  boundaries have no changes. P70/P73 external release blockers remain open.
+
+
+### P30-T116 — S3 credential review fixes (2026-09-20)
+
+- Credential HTTP clients now reject 301/302/303/307/308 redirects. Regression
+  verifies that a same-host, different-port redirect receives no request or Pod
+  Identity token, the configured credential endpoint is contacted once, and no
+  object request follows the redacted credential failure.
+- Complete explicit access/secret/session credentials and region construct AWS
+  config directly, bypassing missing profiles and broken source-profile chains.
+  Regression verifies successful signing with the explicit region and session
+  token; selecting default credentials still reports invalid AWS configuration.
+  Without an explicit region, AWS region discovery and its validation remain.
+- The regressions reproduced the reviewed failures before the fixes.
+  `go test -race -timeout=60s ./internal/accelerator ./internal/catalog
+  ./internal/config ./internal/app` passes after the fixes. `make test-rustfs`
+  passes locally (12.900s), with all isolated test resources cleaned up.
+- `make lint-go docs-check plan-check`, `make security-check`, and
+  `git diff --check` pass. The security gate retains the existing low-severity
+  Hardhat dependency notices recorded in P30-T115; no new dependency was added.
+  ADR-0015 and operations guidance describe the credential boundaries. No
+  remote CI or additional production-topology acceptance is claimed.

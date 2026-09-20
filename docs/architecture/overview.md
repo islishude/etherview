@@ -132,7 +132,9 @@ runtime-status model behind an event generation, and S3-compatible storage
 caches only exact-generation normalized transaction traces. Every adapter has
 a bounded PostgreSQL fallback and is detailed in
 [ADR-0015](../decisions/ADR-0015-disposable-runtime-accelerators.md).
-S3 uses an explicit static override or the refreshable AWS default credential
+S3 uses AWS SDK for Go v2 for object transport, with pinned RustFS in the
+optional Compose profile. Its independent data volume contains disposable
+cache objects only. S3 uses an explicit static override or the refreshable AWS default credential
 chain only inside `all`/`api`; absence of usable credentials cannot withdraw
 readiness or turn object storage into a correctness dependency.
 

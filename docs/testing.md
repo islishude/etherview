@@ -135,6 +135,14 @@ branch; scheduled start times may be delayed by runner load.
   supply/balance calls, verifies native and Etherscan list/count parity, rejects
   direct balance mutation, and requires a reorged snapshot to become
   unavailable while retaining orphan evidence.
+- `make test-rustfs`: start the production RustFS service in an isolated Compose
+  project using fresh credentials, a fresh volume, and a random loopback S3
+  port. Verify bucket creation, nonempty/empty object reads and writes, SHA-256
+  metadata and corruption rejection, missing objects, persistence after forced
+  recreation, and bounded failures after stopping the store. Only this test's
+  resources are removed. It requires Docker and runs in the CI integration job;
+  it is explicit rather than part of ordinary unit/race tests. Local Docker
+  results do not establish native cross-architecture or remote-CI acceptance.
 - `make test-integration-race`: run the same owned database lifecycle with the
   Go race detector. This expensive variant is explicit and is not part of
   default CI.

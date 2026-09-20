@@ -61,12 +61,29 @@ correctness implementation and break the PostgreSQL-only deployment.
   Static configuration errors fail validation, while endpoint reachability is
   not a startup or `doctor` requirement. A complete Etherview S3 access/secret
   pair and optional session token is the highest-precedence explicit override.
+  When that pair and the S3 region are explicit, construction bypasses shared
+  AWS configuration entirely, so unrelated invalid profiles cannot block API
+  startup. Without an explicit region, AWS configuration is still loaded for
+  region selection. Credential HTTP requests reject all redirects, including
+  redirects between ports on the same host.
   Otherwise the AWS SDK default credential chain selects environment, shared
   profile, Web Identity, container, or EC2 role credentials and remains the
   concurrency-safe expiry and refresh authority. Empty explicit keys select
   that chain, never anonymous access. Discovery and refresh use the bounded S3
   operation timeout; failure is a redacted cache error followed by the same
   PostgreSQL fallback.
+- S3 object transport uses AWS SDK for Go v2 directly. Explicit S3 region
+  overrides the AWS default configuration; absent both, signing uses
+  `us-east-1`. Operators targeting an AWS bucket in another region must supply
+  its region. The configured endpoint and path-style option remain authoritative;
+  redirects are not followed and object operations make one request attempt.
+  Uploads carry a precomputed SHA-256 checksum and the existing application
+  metadata checksum; reads still require the bounded application checksum.
+- The optional Compose object store is pinned RustFS on a dedicated
+  `rustfs-data` volume. Existing MinIO volumes are retained but never mounted
+  into RustFS or migrated automatically. Its cache bucket is provisioned by
+  the operator and repopulated from PostgreSQL reads. RustFS health never gates
+  application readiness; its root credentials stay on the object-store service.
 - Only `all` and `api` construct the S3 client or read its explicit Secret
   files. Compose and Helm keep static keys out of migrations and non-API roles.
   Helm can select a dedicated S3 ServiceAccount for those API-capable Pods;

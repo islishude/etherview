@@ -40,3 +40,34 @@ for (const serviceName of ["migration", "sync", "enrich", "trace", "metadata", "
     }
   }
 }
+
+const storage = services["object-storage"];
+if (storage?.image !== "rustfs/rustfs:1.0.0" ||
+    JSON.stringify(storage.command) !== JSON.stringify(["/data"])) {
+  throw new Error("object-storage must run the pinned RustFS image with /data");
+}
+if (!storage.environment?.RUSTFS_ACCESS_KEY || !storage.environment?.RUSTFS_SECRET_KEY ||
+    Object.keys(storage.environment).some((key) => key.startsWith("MINIO_"))) {
+  throw new Error("object-storage requires RustFS credentials without MinIO aliases");
+}
+if (storage.user || storage.ports?.length ||
+    storage.environment.RUSTFS_ADDRESS !== ":9000" ||
+    storage.environment.RUSTFS_CONSOLE_ADDRESS !== ":9001" ||
+    String(storage.environment.RUSTFS_CONSOLE_ENABLE) !== "true") {
+  throw new Error("RustFS must retain its default user and internal listeners");
+}
+if (!storage.volumes?.some((volume) => volume.type === "volume" &&
+    volume.source === "rustfs-data" && volume.target === "/data") ||
+    storage.volumes.some((volume) => volume.source === "object-data")) {
+  throw new Error("RustFS must use its own fresh data volume");
+}
+if (JSON.stringify(storage.healthcheck?.test) !==
+    JSON.stringify(["CMD", "curl", "-fsS", "http://127.0.0.1:9000/health/ready"])) {
+  throw new Error("RustFS storage readiness probe is missing");
+}
+for (const [name, service] of Object.entries(services)) {
+  if (name !== "object-storage" && (service.depends_on?.["object-storage"] ||
+      Object.keys(service.environment ?? {}).some((key) => key.startsWith("RUSTFS_")))) {
+    throw new Error(`${name} must not depend on RustFS or receive its root credentials`);
+  }
+}

@@ -110,6 +110,10 @@ generate-check:
 			diff -ru "$$snapshot/$$path" "$$path"; \
 		done
 
+.PHONY: test-rustfs
+test-rustfs:
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(GO) test $(GO_TEST_FLAGS) -tags rustfs -run '^TestRustFS$$' -count=1 -timeout=6m ./internal/accelerator
+
 test-go: web-build compiler-install
 	$(GO) test $(GO_TEST_FLAGS) $(GO_PACKAGES)
 
@@ -346,7 +350,7 @@ compose-check: preview-genesis-check
 		AWS_SESSION_TOKEN=aws-session \
 		AWS_CONTAINER_CREDENTIALS_FULL_URI=http://169.254.170.23/v1/credentials \
 		AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE=/run/aws/pod-identity-token \
-		DOCKER="$(DOCKER)" $(COMPOSE) --profile monolith config --format json | \
+		DOCKER="$(DOCKER)" $(COMPOSE) --profile monolith --profile accelerators config --format json | \
 		ETHERVIEW_COMPOSE_TOPOLOGY=monolith $(NODE) .github/scripts/s3-compose-check.mjs
 	@ETHERVIEW_S3_ACCESS_KEY=compose-access \
 		ETHERVIEW_S3_SECRET_KEY=compose-secret \
@@ -356,7 +360,7 @@ compose-check: preview-genesis-check
 		AWS_SESSION_TOKEN=aws-session \
 		AWS_CONTAINER_CREDENTIALS_FULL_URI=http://169.254.170.23/v1/credentials \
 		AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE=/run/aws/pod-identity-token \
-		DOCKER="$(DOCKER)" $(COMPOSE) --profile distributed config --format json | \
+		DOCKER="$(DOCKER)" $(COMPOSE) --profile distributed --profile accelerators config --format json | \
 		ETHERVIEW_COMPOSE_TOPOLOGY=distributed $(NODE) .github/scripts/s3-compose-check.mjs
 	DOCKER="$(DOCKER)" $(COMPOSE) --profile accelerators config --quiet
 	@ETHERVIEW_VERIFICATION_EXECUTOR_PATH=/custom/runtime/etherview-solcjs \

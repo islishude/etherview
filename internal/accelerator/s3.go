@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"path"
 	"strings"
@@ -15,11 +17,16 @@ import (
 
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
-	"github.com/minio/minio-go/v7"
-	miniocredentials "github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/credentials/endpointcreds"
+	"github.com/aws/aws-sdk-go-v2/credentials/processcreds"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/smithy-go"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 const blobChecksumMetadata = "X-Amz-Meta-Etherview-Sha256"
+const blobChecksumMetadataKey = "etherview-sha256"
 
 // BlobStore is an optional cache for generation-bound derived objects. A miss
 // or error must always fall back to the PostgreSQL representation.
@@ -44,7 +51,7 @@ type S3Options struct {
 // length and an application checksum on every read before returning bytes to a
 // decoder.
 type S3BlobStore struct {
-	client           *minio.Core
+	client           *s3.Client
 	bucket           string
 	prefix           string
 	operationTimeout time.Duration
@@ -68,103 +75,98 @@ func NewS3BlobStore(ctx context.Context, rawEndpoint string, options S3Options) 
 	if options.MaxObjectBytes <= 0 {
 		options.MaxObjectBytes = 16 << 20
 	}
-	credentialProvider, err := s3CredentialProvider(ctx, options)
+	configuration, err := s3Configuration(ctx, options)
 	if err != nil {
 		return nil, err
 	}
-	transport, err := minio.DefaultTransport(endpoint.Scheme == "https")
-	if err != nil {
-		return nil, errors.New("configure S3-compatible transport")
-	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.ResponseHeaderTimeout = options.OperationTimeout
 	transport.TLSHandshakeTimeout = options.OperationTimeout
 	transport.ExpectContinueTimeout = options.OperationTimeout
-	lookup := minio.BucketLookupAuto
-	if options.PathStyle {
-		lookup = minio.BucketLookupPath
-	}
-	client, err := minio.NewCore(endpoint.Host, &minio.Options{
-		Creds:  credentialProvider,
-		Secure: endpoint.Scheme == "https", Transport: transport, Region: options.Region,
-		BucketLookup: lookup, MaxRetries: 1,
+	client := s3.NewFromConfig(configuration, func(clientOptions *s3.Options) {
+		clientOptions.BaseEndpoint = awssdk.String(strings.TrimSuffix(endpoint.String(), "/"))
+		clientOptions.UsePathStyle = options.PathStyle
+		clientOptions.RetryMaxAttempts = 1
+		clientOptions.HTTPClient = &http.Client{Transport: transport, Timeout: options.OperationTimeout,
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	})
-	if err != nil {
-		return nil, errors.New("configure S3-compatible client")
-	}
-	client.SetAppInfo("etherview", "trace-cache")
 	return &S3BlobStore{
 		client: client, bucket: options.Bucket, prefix: strings.Trim(options.Prefix, "/"),
 		operationTimeout: options.OperationTimeout, maxObjectBytes: options.MaxObjectBytes,
 	}, nil
 }
 
-func s3CredentialProvider(ctx context.Context, options S3Options) (*miniocredentials.Credentials, error) {
+func s3Configuration(ctx context.Context, options S3Options) (awssdk.Config, error) {
 	if (options.AccessKey == "") != (options.SecretKey == "") {
-		return nil, errors.New("configure static S3-compatible credentials")
+		return awssdk.Config{}, errors.New("configure static S3-compatible credentials")
 	}
 	if options.SessionToken != "" && options.AccessKey == "" {
-		return nil, errors.New("configure static S3-compatible session credentials")
+		return awssdk.Config{}, errors.New("configure static S3-compatible session credentials")
 	}
-	if options.AccessKey != "" {
-		return miniocredentials.NewStaticV4(options.AccessKey, options.SecretKey, options.SessionToken), nil
+	// Fully explicit settings must not depend on unrelated shared AWS profiles.
+	// Without an explicit region, load AWS configuration to preserve region
+	// precedence before falling back to us-east-1.
+	if options.AccessKey != "" && options.Region != "" {
+		return awssdk.Config{
+			Region:      options.Region,
+			Credentials: credentials.NewStaticCredentialsProvider(options.AccessKey, options.SecretKey, options.SessionToken),
+			Retryer:     func() awssdk.Retryer { return awssdk.NopRetryer{} },
+		}, nil
 	}
-
-	loadOptions := make([]func(*awsconfig.LoadOptions) error, 0, 1)
+	credentialHTTP := &http.Client{
+		Timeout:       options.OperationTimeout,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	loadOptions := []func(*awsconfig.LoadOptions) error{
+		awsconfig.WithHTTPClient(credentialHTTP),
+		awsconfig.WithRetryer(func() awssdk.Retryer { return awssdk.NopRetryer{} }),
+		// Endpoint credentials construct their own client rather than inheriting
+		// the config HTTP client. Bound background cache refreshes as well.
+		awsconfig.WithEndpointCredentialOptions(func(provider *endpointcreds.Options) {
+			provider.HTTPClient = credentialHTTP
+			provider.Retryer = awssdk.NopRetryer{}
+		}),
+		awsconfig.WithProcessCredentialOptions(func(provider *processcreds.Options) {
+			provider.Timeout = options.OperationTimeout
+		}),
+	}
 	if options.Region != "" {
 		loadOptions = append(loadOptions, awsconfig.WithRegion(options.Region))
 	}
+	if options.AccessKey != "" {
+		loadOptions = append(loadOptions, awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(options.AccessKey, options.SecretKey, options.SessionToken)))
+	}
 	loadCtx, cancel := context.WithTimeout(ctx, options.OperationTimeout)
 	defer cancel()
-	awsConfiguration, err := awsconfig.LoadDefaultConfig(loadCtx, loadOptions...)
+	configuration, err := awsconfig.LoadDefaultConfig(loadCtx, loadOptions...)
 	if err != nil {
-		return nil, errors.New("configure AWS credential provider")
+		return awssdk.Config{}, errors.New("configure AWS credential provider")
 	}
-	return miniocredentials.New(&awsCredentialProvider{
-		provider: awsConfiguration.Credentials,
-		timeout:  options.OperationTimeout,
-	}), nil
+	if configuration.Region == "" {
+		configuration.Region = "us-east-1"
+	}
+	configuration.Credentials = boundedAWSCredentials{provider: configuration.Credentials, timeout: options.OperationTimeout}
+	return configuration, nil
 }
 
-// awsCredentialProvider lets the AWS SDK remain authoritative for source
-// selection, concurrency-safe caching, expiry windows, and refresh while the
-// existing MinIO client continues to provide S3-compatible object transport.
-// IsExpired deliberately returns true so MinIO delegates every signing lookup
-// to the AWS SDK cache instead of retaining a second, independently expiring
-// credential copy.
-type awsCredentialProvider struct {
+// The SDK owns credential selection, caching and refresh. Each caller has a
+// deadline even when the SDK cache shares a refresh with other callers.
+type boundedAWSCredentials struct {
 	provider awssdk.CredentialsProvider
 	timeout  time.Duration
 }
 
-func (provider *awsCredentialProvider) RetrieveWithCredContext(*miniocredentials.CredContext) (miniocredentials.Value, error) {
-	return provider.retrieve()
-}
-
-func (provider *awsCredentialProvider) Retrieve() (miniocredentials.Value, error) {
-	return provider.retrieve()
-}
-
-func (provider *awsCredentialProvider) retrieve() (miniocredentials.Value, error) {
-	if provider == nil || provider.provider == nil || provider.timeout <= 0 {
-		return miniocredentials.Value{}, errors.New("retrieve AWS credentials")
+func (provider boundedAWSCredentials) Retrieve(ctx context.Context) (awssdk.Credentials, error) {
+	if provider.provider == nil {
+		return awssdk.Credentials{}, errors.New("retrieve AWS credentials")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), provider.timeout)
+	ctx, cancel := context.WithTimeout(ctx, provider.timeout)
 	defer cancel()
 	value, err := provider.provider.Retrieve(ctx)
 	if err != nil || !value.HasKeys() {
-		return miniocredentials.Value{}, errors.New("retrieve AWS credentials")
+		return awssdk.Credentials{}, errors.New("retrieve AWS credentials")
 	}
-	return miniocredentials.Value{
-		AccessKeyID:     value.AccessKeyID,
-		SecretAccessKey: value.SecretAccessKey,
-		SessionToken:    value.SessionToken,
-		Expiration:      value.Expires,
-		SignerType:      miniocredentials.SignatureV4,
-	}, nil
-}
-
-func (*awsCredentialProvider) IsExpired() bool {
-	return true
+	return value, nil
 }
 
 func (store *S3BlobStore) Get(ctx context.Context, key string) ([]byte, bool, error) {
@@ -177,26 +179,28 @@ func (store *S3BlobStore) Get(ctx context.Context, key string) ([]byte, bool, er
 	}
 	operationCtx, cancel := context.WithTimeout(ctx, store.operationTimeout)
 	defer cancel()
-	reader, info, _, err := store.client.GetObject(operationCtx, store.bucket, objectName, minio.GetObjectOptions{})
+	info, err := store.client.GetObject(operationCtx, &s3.GetObjectInput{Bucket: awssdk.String(store.bucket), Key: awssdk.String(objectName)})
 	if err != nil {
-		response := minio.ToErrorResponse(err)
-		if response.Code == "NoSuchKey" || response.Code == "NoSuchObject" || response.StatusCode == 404 {
+		var apiError smithy.APIError
+		var responseError *smithyhttp.ResponseError
+		if (errors.As(err, &apiError) && (apiError.ErrorCode() == "NoSuchKey" || apiError.ErrorCode() == "NoSuchObject")) || (errors.As(err, &responseError) && responseError.HTTPStatusCode() == http.StatusNotFound) {
 			return nil, false, nil
 		}
 		return nil, false, errors.New("read S3-compatible cache object")
 	}
+	reader := info.Body
 	defer func() { _ = reader.Close() }()
-	if info.Size < 0 || info.Size > store.maxObjectBytes {
+	if info.ContentLength == nil || *info.ContentLength < 0 || *info.ContentLength > store.maxObjectBytes {
 		return nil, false, errors.New("S3-compatible cache object exceeds configured limit")
 	}
 	value, err := io.ReadAll(io.LimitReader(reader, store.maxObjectBytes+1))
 	if err != nil {
 		return nil, false, errors.New("read S3-compatible cache object body")
 	}
-	if int64(len(value)) > store.maxObjectBytes || int64(len(value)) != info.Size {
+	if int64(len(value)) > store.maxObjectBytes || int64(len(value)) != *info.ContentLength {
 		return nil, false, errors.New("S3-compatible cache object length is invalid")
 	}
-	expected := info.Metadata.Get(blobChecksumMetadata)
+	expected := info.Metadata[blobChecksumMetadataKey]
 	digest := sha256.Sum256(value)
 	if expected == "" || !strings.EqualFold(expected, hex.EncodeToString(digest[:])) {
 		return nil, false, errors.New("S3-compatible cache object checksum is invalid")
@@ -218,9 +222,12 @@ func (store *S3BlobStore) Put(ctx context.Context, key string, value []byte) err
 	digest := sha256.Sum256(value)
 	operationCtx, cancel := context.WithTimeout(ctx, store.operationTimeout)
 	defer cancel()
-	_, err = store.client.PutObject(operationCtx, store.bucket, objectName, bytes.NewReader(value), int64(len(value)), "", hex.EncodeToString(digest[:]), minio.PutObjectOptions{
-		ContentType:  "application/json",
-		UserMetadata: map[string]string{blobChecksumMetadata: hex.EncodeToString(digest[:])},
+	_, err = store.client.PutObject(operationCtx, &s3.PutObjectInput{
+		Bucket: awssdk.String(store.bucket), Key: awssdk.String(objectName),
+		Body: bytes.NewReader(value), ContentLength: awssdk.Int64(int64(len(value))),
+		ContentType:    awssdk.String("application/json"),
+		ChecksumSHA256: awssdk.String(base64.StdEncoding.EncodeToString(digest[:])),
+		Metadata:       map[string]string{blobChecksumMetadataKey: hex.EncodeToString(digest[:])},
 	})
 	if err != nil {
 		return errors.New("write S3-compatible cache object")
