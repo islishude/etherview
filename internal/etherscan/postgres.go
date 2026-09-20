@@ -2,7 +2,6 @@ package etherscan
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"math"
@@ -11,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
 
 	"github.com/islishude/etherview/internal/catalog"
 	"github.com/islishude/etherview/internal/contractartifact"
@@ -62,7 +63,7 @@ type PostgresOptions struct {
 // PostgresBackend serves the Etherscan-compatible subset that can be proven
 // from canonical core rows and verified-contract records.
 type PostgresBackend struct {
-	db                        *sql.DB
+	db                        dbaccess.Database
 	chainID                   uint64
 	chain                     string
 	supply                    SupplyProvider
@@ -77,7 +78,7 @@ type PostgresBackend struct {
 
 var _ Backend = (*PostgresBackend)(nil)
 
-func NewPostgresBackend(db *sql.DB, options PostgresOptions) (*PostgresBackend, error) {
+func NewPostgresBackend(db dbaccess.Database, options PostgresOptions) (*PostgresBackend, error) {
 	if db == nil {
 		return nil, errors.New("etherscan database is nil")
 	}

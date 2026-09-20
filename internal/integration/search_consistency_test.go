@@ -4,12 +4,14 @@ package integration_test
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"math/big"
 	"testing"
 	"time"
+
+	pgx "github.com/jackc/pgx/v5"
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/islishude/etherview/internal/chainbundle"
 	ensresolver "github.com/islishude/etherview/internal/ens"
@@ -23,7 +25,7 @@ func TestSearchCatalogFunctionsRemainBoundToTheirMigrationSchema(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	firstSchema, secondSchema := currentTestSchema(t, ctx, first), currentTestSchema(t, ctx, second)
-	for _, db := range []*sql.DB{first, second} {
+	for _, db := range []*pgxpool.Pool{first, second} {
 		execFixture(t, ctx, db, `INSERT INTO chains (chain_id) VALUES (1)`)
 	}
 	execFixture(t, ctx, second, `INSERT INTO operator_labels
@@ -32,7 +34,7 @@ func TestSearchCatalogFunctionsRemainBoundToTheirMigrationSchema(t *testing.T) {
 	if got := catalogGeneration(t, ctx, second, secondSchema); got != 1 {
 		t.Fatalf("second generation before cross-schema write=%d", got)
 	}
-	if _, err := second.ExecContext(ctx, fmt.Sprintf(`INSERT INTO %s.operator_labels
+	if _, err := second.Exec(ctx, fmt.Sprintf(`INSERT INTO %s.operator_labels
 		(chain_id, object_kind, object_key, label)
 		VALUES (1, 'address', $1, 'first schema')`, quoteIdentifier(firstSchema)), testAddress(941).String()); err != nil {
 		t.Fatal(err)
@@ -44,7 +46,7 @@ func TestSearchCatalogFunctionsRemainBoundToTheirMigrationSchema(t *testing.T) {
 		t.Fatalf("second generation changed after first-schema trigger=%d", got)
 	}
 	var minimum int64
-	if err := second.QueryRowContext(ctx, fmt.Sprintf(
+	if err := second.QueryRow(ctx, fmt.Sprintf(
 		`SELECT %s.prune_search_catalog(1, 1000)`, quoteIdentifier(firstSchema),
 	)).Scan(&minimum); err != nil {
 		t.Fatal(err)
@@ -101,7 +103,7 @@ func TestENSObservationsAreImmutableAndDriveSearchCatalog(t *testing.T) {
 	var source string
 	var observationID int64
 	var open bool
-	if err := db.QueryRowContext(ctx, `SELECT name_source, name_observation_id,
+	if err := db.QueryRow(ctx, `SELECT name_source, name_observation_id,
 		valid_to_generation IS NULL FROM search_catalog_documents
 		WHERE chain_id = 1 AND source_kind = 'name'`).Scan(&source, &observationID, &open); err != nil {
 		t.Fatal(err)
@@ -158,7 +160,7 @@ func TestENSObservationsAreImmutableAndDriveSearchCatalog(t *testing.T) {
 		t.Fatalf("current no-record search=%+v error=%v", current, err)
 	}
 	var openDocuments int
-	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM search_catalog_documents
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM search_catalog_documents
 		WHERE chain_id = 1 AND source_kind = 'name' AND logical_identity = 'alice.eth'
 		  AND valid_to_generation IS NULL`).Scan(&openDocuments); err != nil {
 		t.Fatal(err)
@@ -296,12 +298,12 @@ func TestPostgresCatalogMaintenanceUsesTryLockAndBoundedAdapterBatch(t *testing.
 		t.Fatal(err)
 	}
 
-	lock, err := db.BeginTx(ctx, nil)
+	lock, err := db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lock.Rollback() //nolint:errcheck
-	if _, err := lock.ExecContext(ctx, `SELECT pg_advisory_xact_lock(
+	defer lock.Rollback(context.Background()) //nolint:errcheck
+	if _, err := lock.Exec(ctx, `SELECT pg_advisory_xact_lock(
 		hashtext('etherview:search-catalog-maintenance'), hashtext('1'))`); err != nil {
 		t.Fatal(err)
 	}
@@ -310,7 +312,7 @@ func TestPostgresCatalogMaintenanceUsesTryLockAndBoundedAdapterBatch(t *testing.
 		t.Fatalf("locked sweep result=%+v error=%v", result, err)
 	}
 	assertAdapterObservationCounts(t, ctx, db, 1, now, 4, 1)
-	if err := lock.Commit(); err != nil {
+	if err := lock.Commit(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -327,19 +329,19 @@ func TestPostgresCatalogMaintenanceUsesTryLockAndBoundedAdapterBatch(t *testing.
 	assertAdapterObservationCounts(t, ctx, db, 2, now, 1, 0)
 }
 
-func currentTestSchema(t *testing.T, ctx context.Context, db *sql.DB) string {
+func currentTestSchema(t *testing.T, ctx context.Context, db *pgxpool.Pool) string {
 	t.Helper()
 	var schema string
-	if err := db.QueryRowContext(ctx, `SELECT current_schema()`).Scan(&schema); err != nil {
+	if err := db.QueryRow(ctx, `SELECT current_schema()`).Scan(&schema); err != nil {
 		t.Fatal(err)
 	}
 	return schema
 }
 
-func catalogGeneration(t *testing.T, ctx context.Context, db *sql.DB, schema string) int64 {
+func catalogGeneration(t *testing.T, ctx context.Context, db *pgxpool.Pool, schema string) int64 {
 	t.Helper()
 	var generation int64
-	if err := db.QueryRowContext(ctx, fmt.Sprintf(
+	if err := db.QueryRow(ctx, fmt.Sprintf(
 		`SELECT COALESCE((SELECT generation FROM %s.search_catalog_generations WHERE chain_id = 1), 0)`,
 		quoteIdentifier(schema),
 	)).Scan(&generation); err != nil {
@@ -348,10 +350,10 @@ func catalogGeneration(t *testing.T, ctx context.Context, db *sql.DB, schema str
 	return generation
 }
 
-func currentCatalogGeneration(t *testing.T, ctx context.Context, db *sql.DB) int64 {
+func currentCatalogGeneration(t *testing.T, ctx context.Context, db *pgxpool.Pool) int64 {
 	t.Helper()
 	var generation int64
-	if err := db.QueryRowContext(ctx, `SELECT COALESCE((SELECT generation
+	if err := db.QueryRow(ctx, `SELECT COALESCE((SELECT generation
 		FROM search_catalog_generations WHERE chain_id = 1), 0)`).Scan(&generation); err != nil {
 		t.Fatal(err)
 	}
@@ -361,14 +363,14 @@ func currentCatalogGeneration(t *testing.T, ctx context.Context, db *sql.DB) int
 func assertAdapterObservationCounts(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	chainID uint64,
 	now time.Time,
 	expired, fresh int,
 ) {
 	t.Helper()
 	var gotExpired, gotFresh int
-	if err := db.QueryRowContext(ctx, `SELECT
+	if err := db.QueryRow(ctx, `SELECT
 		count(*) FILTER (WHERE expires_at <= $1),
 		count(*) FILTER (WHERE expires_at > $1)
 		FROM external_adapter_observations

@@ -2,13 +2,13 @@ package etherscan
 
 import (
 	"context"
-	"database/sql/driver"
 	"errors"
 	"fmt"
-	"github.com/islishude/etherview/internal/db/gen"
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/islishude/etherview/internal/testpgx"
 )
 
 func TestCanonicalCoreRangeRequiresOneInclusiveCoverageInterval(t *testing.T) {
@@ -69,7 +69,7 @@ func TestCanonicalCoreRangeRequiresOneInclusiveCoverageInterval(t *testing.T) {
 
 func TestCanonicalCoreRangeSQLProvesSingleContainingRange(t *testing.T) {
 	t.Parallel()
-	query := compactSQL(dbgen.EtherscanCanonicalCoreRange)
+	query := compactSQL(testpgx.Statement("EtherscanCanonicalCoreRange"))
 	for _, required := range []string{
 		"LEAST(COALESCE($3::numeric, tip.number), tip.number) AS range_end",
 		"candidate.range_start <= requested.range_start",
@@ -234,7 +234,7 @@ func TestBlockCountdownNeverSamplesAcrossCoverageIslands(t *testing.T) {
 			name: "single block tip island cannot estimate",
 			expectation: sqlExpectation{
 				contains: "tip_coverage AS", columns: fakeColumns(8),
-				rows: [][]driver.Value{{"2", "102", "2", "102", "1", "0", "2", "2"}},
+				rows: [][]any{{"2", "102", "2", "102", "1", "0", "2", "2"}},
 			},
 			want: ErrEstimateUnavailable,
 		},
@@ -242,7 +242,7 @@ func TestBlockCountdownNeverSamplesAcrossCoverageIslands(t *testing.T) {
 			name: "missing canonical height is rejected",
 			expectation: sqlExpectation{
 				contains: "tip_coverage AS", columns: fakeColumns(8),
-				rows: [][]driver.Value{{"2", "102", "0", "100", "2", "0", "0", "2"}},
+				rows: [][]any{{"2", "102", "0", "100", "2", "0", "0", "2"}},
 			},
 		},
 	}
@@ -267,17 +267,17 @@ func completeCoreCoverageExpectation(start, end, tip string) sqlExpectation {
 	return coreCoverageExpectation(start, end, tip, "0", "0", tip)
 }
 
-func coreCoverageExpectation(start, end, tip string, configured, coveredStart, coveredEnd driver.Value) sqlExpectation {
+func coreCoverageExpectation(start, end, tip string, configured, coveredStart, coveredEnd any) sqlExpectation {
 	return sqlExpectation{
 		contains: "FROM core_coverage_ranges AS candidate",
 		columns:  fakeColumns(4),
-		rows:     [][]driver.Value{{tip, configured, coveredStart, coveredEnd}},
-		check: func(arguments []driver.NamedValue) error {
-			if len(arguments) != 3 || arguments[0].Value != "1" || arguments[1].Value != start {
+		rows:     [][]any{{tip, configured, coveredStart, coveredEnd}},
+		check: func(arguments []any) error {
+			if len(arguments) != 3 || !testpgx.NumericEquals(arguments[0], "1") || !testpgx.NumericEquals(arguments[1], start) {
 				return fmt.Errorf("core coverage arguments=%v", arguments)
 			}
-			if end == "" && arguments[2].Value != nil || end != "" && arguments[2].Value != end {
-				return fmt.Errorf("core coverage end argument=%v want=%q", arguments[2].Value, end)
+			if end == "" && !testpgx.NumericNull(arguments[2]) || end != "" && !testpgx.NumericEquals(arguments[2], end) {
+				return fmt.Errorf("core coverage end argument=%v want=%q", arguments[2], end)
 			}
 			return nil
 		},

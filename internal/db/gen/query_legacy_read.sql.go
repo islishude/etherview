@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const QueryAddressOriginCoverage = `-- name: QueryAddressOriginCoverage :many
+const queryAddressOriginCoverage = `-- name: QueryAddressOriginCoverage :one
 WITH core_complete AS (
     SELECT EXISTS (
         SELECT 1
@@ -19,8 +19,8 @@ WITH core_complete AS (
         JOIN core_coverage_ranges AS coverage
           ON coverage.chain_id = configuration.chain_id
          AND coverage.range_start = 0
-         AND coverage.range_end >= $2::numeric
-        WHERE configuration.chain_id = $1::numeric
+         AND coverage.range_end >= $1::numeric
+        WHERE configuration.chain_id = $2::numeric
           AND configuration.configured_start = 0
     ) AS complete
 ), trace_complete AS (
@@ -37,36 +37,23 @@ WITH core_complete AS (
               AND result.stage_version = 3
             LIMIT 1
         ) AS latest ON TRUE
-        WHERE canonical.chain_id = $1::numeric
-          AND canonical.number <= $2::numeric
+        WHERE canonical.chain_id = $2::numeric
+          AND canonical.number <= $1::numeric
           AND latest.state IS DISTINCT FROM 'complete'
     ) AS complete
 )
-SELECT core_complete.complete AND trace_complete.complete
+SELECT core_complete.complete AND trace_complete.complete AS complete
 FROM core_complete CROSS JOIN trace_complete
 `
 
-func (q *Queries) QueryAddressOriginCoverage(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) ([]*bool, error) {
-	rows, err := q.db.Query(ctx, QueryAddressOriginCoverage, column1, column2)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []*bool{}
-	for rows.Next() {
-		var column_1 *bool
-		if err := rows.Scan(&column_1); err != nil {
-			return nil, err
-		}
-		items = append(items, column_1)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) QueryAddressOriginCoverage(ctx context.Context, minRangeEnd pgtype.Numeric, chainID pgtype.Numeric) (*bool, error) {
+	row := q.db.QueryRow(ctx, queryAddressOriginCoverage, minRangeEnd, chainID)
+	var complete *bool
+	err := row.Scan(&complete)
+	return complete, err
 }
 
-const QueryAddressOriginReference = `-- name: QueryAddressOriginReference :many
+const queryAddressOriginReference = `-- name: QueryAddressOriginReference :one
 SELECT EXISTS (
     SELECT 1
     FROM canonical_blocks
@@ -76,44 +63,31 @@ SELECT EXISTS (
 )
 `
 
-func (q *Queries) QueryAddressOriginReference(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]bool, error) {
-	rows, err := q.db.Query(ctx, QueryAddressOriginReference, column1, column2, blockHash)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var exists bool
-		if err := rows.Scan(&exists); err != nil {
-			return nil, err
-		}
-		items = append(items, exists)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) QueryAddressOriginReference(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, blockHash []byte) (bool, error) {
+	row := q.db.QueryRow(ctx, queryAddressOriginReference, chainID, number, blockHash)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
-const QueryBlockByHash = `-- name: QueryBlockByHash :many
+const queryBlockByHash = `-- name: QueryBlockByHash :one
 SELECT
-    block.number::text,
-    block.hash,
-    block.parent_hash,
-    block.timestamp::text,
-    block.miner_text,
-    block.gas_used_quantity,
-    block.gas_limit_quantity,
-    block.base_fee_per_gas_quantity,
-    block.transaction_count,
+    block.number::text AS block_number,
+    block.hash AS hash,
+    block.parent_hash AS parent_hash,
+    block.timestamp::text AS block_timestamp,
+    block.miner_text AS miner_text,
+    block.gas_used_quantity AS gas_used_quantity,
+    block.gas_limit_quantity AS gas_limit_quantity,
+    block.base_fee_per_gas_quantity AS base_fee_per_gas_quantity,
+    block.transaction_count AS transaction_count,
     (SELECT COUNT(*) FROM transaction_inclusions AS inclusion
      WHERE inclusion.chain_id = block.chain_id
        AND inclusion.block_number = block.number
-       AND inclusion.block_hash = block.hash),
-    block.withdrawals_present,
-    block.withdrawal_count,
-    COALESCE((
+       AND inclusion.block_hash = block.hash) AS normalized_transaction_count,
+    block.withdrawals_present AS withdrawals_present,
+    block.withdrawal_count AS withdrawal_count,
+    (COALESCE((
         SELECT jsonb_agg(jsonb_build_object(
             'index', withdrawal.withdrawal_index::text,
             'validator_index', withdrawal.validator_index::text,
@@ -124,10 +98,10 @@ SELECT
         WHERE withdrawal.chain_id = block.chain_id
           AND withdrawal.block_number = block.number
           AND withdrawal.block_hash = block.hash
-    ), '[]'::jsonb),
-    (canonical.block_hash IS NOT NULL),
-    finality.safe_number::text,
-    finality.finalized_number::text
+    ), '[]'::jsonb))::jsonb AS withdrawals,
+    ((canonical.block_hash IS NOT NULL))::boolean AS canonical,
+    finality.safe_number AS safe_number,
+    finality.finalized_number AS finalized_number
 FROM blocks AS block
 LEFT JOIN canonical_blocks AS canonical
   ON canonical.chain_id = block.chain_id
@@ -139,79 +113,66 @@ LIMIT 1
 `
 
 type QueryBlockByHashRow struct {
-	BlockNumber             string      `db:"block_number" json:"block_number"`
-	Hash                    []byte      `db:"hash" json:"hash"`
-	ParentHash              []byte      `db:"parent_hash" json:"parent_hash"`
-	BlockTimestamp          string      `db:"block_timestamp" json:"block_timestamp"`
-	MinerText               *string     `db:"miner_text" json:"miner_text"`
-	GasUsedQuantity         *string     `db:"gas_used_quantity" json:"gas_used_quantity"`
-	GasLimitQuantity        *string     `db:"gas_limit_quantity" json:"gas_limit_quantity"`
-	BaseFeePerGasQuantity   *string     `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
-	TransactionCount        *int64      `db:"transaction_count" json:"transaction_count"`
-	Count                   int64       `db:"count" json:"count"`
-	WithdrawalsPresent      *bool       `db:"withdrawals_present" json:"withdrawals_present"`
-	WithdrawalCount         *int64      `db:"withdrawal_count" json:"withdrawal_count"`
-	Coalesce                interface{} `db:"coalesce" json:"coalesce"`
-	Column14                interface{} `db:"column_14" json:"column_14"`
-	FinalitySafeNumber      string      `db:"finality_safe_number" json:"finality_safe_number"`
-	FinalityFinalizedNumber string      `db:"finality_finalized_number" json:"finality_finalized_number"`
+	BlockNumber                string         `db:"block_number" json:"block_number"`
+	Hash                       []byte         `db:"hash" json:"hash"`
+	ParentHash                 []byte         `db:"parent_hash" json:"parent_hash"`
+	BlockTimestamp             string         `db:"block_timestamp" json:"block_timestamp"`
+	MinerText                  *string        `db:"miner_text" json:"miner_text"`
+	GasUsedQuantity            *string        `db:"gas_used_quantity" json:"gas_used_quantity"`
+	GasLimitQuantity           *string        `db:"gas_limit_quantity" json:"gas_limit_quantity"`
+	BaseFeePerGasQuantity      *string        `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
+	TransactionCount           *int64         `db:"transaction_count" json:"transaction_count"`
+	NormalizedTransactionCount int64          `db:"normalized_transaction_count" json:"normalized_transaction_count"`
+	WithdrawalsPresent         *bool          `db:"withdrawals_present" json:"withdrawals_present"`
+	WithdrawalCount            *int64         `db:"withdrawal_count" json:"withdrawal_count"`
+	Withdrawals                []byte         `db:"withdrawals" json:"withdrawals"`
+	Canonical                  bool           `db:"canonical" json:"canonical"`
+	SafeNumber                 pgtype.Numeric `db:"safe_number" json:"safe_number"`
+	FinalizedNumber            pgtype.Numeric `db:"finalized_number" json:"finalized_number"`
 }
 
-func (q *Queries) QueryBlockByHash(ctx context.Context, column1 pgtype.Numeric, hash []byte) ([]QueryBlockByHashRow, error) {
-	rows, err := q.db.Query(ctx, QueryBlockByHash, column1, hash)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []QueryBlockByHashRow{}
-	for rows.Next() {
-		var i QueryBlockByHashRow
-		if err := rows.Scan(
-			&i.BlockNumber,
-			&i.Hash,
-			&i.ParentHash,
-			&i.BlockTimestamp,
-			&i.MinerText,
-			&i.GasUsedQuantity,
-			&i.GasLimitQuantity,
-			&i.BaseFeePerGasQuantity,
-			&i.TransactionCount,
-			&i.Count,
-			&i.WithdrawalsPresent,
-			&i.WithdrawalCount,
-			&i.Coalesce,
-			&i.Column14,
-			&i.FinalitySafeNumber,
-			&i.FinalityFinalizedNumber,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) QueryBlockByHash(ctx context.Context, chainID pgtype.Numeric, hash []byte) (QueryBlockByHashRow, error) {
+	row := q.db.QueryRow(ctx, queryBlockByHash, chainID, hash)
+	var i QueryBlockByHashRow
+	err := row.Scan(
+		&i.BlockNumber,
+		&i.Hash,
+		&i.ParentHash,
+		&i.BlockTimestamp,
+		&i.MinerText,
+		&i.GasUsedQuantity,
+		&i.GasLimitQuantity,
+		&i.BaseFeePerGasQuantity,
+		&i.TransactionCount,
+		&i.NormalizedTransactionCount,
+		&i.WithdrawalsPresent,
+		&i.WithdrawalCount,
+		&i.Withdrawals,
+		&i.Canonical,
+		&i.SafeNumber,
+		&i.FinalizedNumber,
+	)
+	return i, err
 }
 
-const QueryBlockByNumber = `-- name: QueryBlockByNumber :many
+const queryBlockByNumber = `-- name: QueryBlockByNumber :one
 SELECT
-    block.number::text,
-    block.hash,
-    block.parent_hash,
-    block.timestamp::text,
-    block.miner_text,
-    block.gas_used_quantity,
-    block.gas_limit_quantity,
-    block.base_fee_per_gas_quantity,
-    block.transaction_count,
+    block.number::text AS block_number,
+    block.hash AS hash,
+    block.parent_hash AS parent_hash,
+    block.timestamp::text AS block_timestamp,
+    block.miner_text AS miner_text,
+    block.gas_used_quantity AS gas_used_quantity,
+    block.gas_limit_quantity AS gas_limit_quantity,
+    block.base_fee_per_gas_quantity AS base_fee_per_gas_quantity,
+    block.transaction_count AS transaction_count,
     (SELECT COUNT(*) FROM transaction_inclusions AS inclusion
      WHERE inclusion.chain_id = block.chain_id
        AND inclusion.block_number = block.number
-       AND inclusion.block_hash = block.hash),
-    block.withdrawals_present,
-    block.withdrawal_count,
-    COALESCE((
+       AND inclusion.block_hash = block.hash) AS normalized_transaction_count,
+    block.withdrawals_present AS withdrawals_present,
+    block.withdrawal_count AS withdrawal_count,
+    (COALESCE((
         SELECT jsonb_agg(jsonb_build_object(
             'index', withdrawal.withdrawal_index::text,
             'validator_index', withdrawal.validator_index::text,
@@ -222,10 +183,10 @@ SELECT
         WHERE withdrawal.chain_id = block.chain_id
           AND withdrawal.block_number = block.number
           AND withdrawal.block_hash = block.hash
-    ), '[]'::jsonb),
-    TRUE,
-    finality.safe_number::text,
-    finality.finalized_number::text
+    ), '[]'::jsonb))::jsonb AS withdrawals,
+    (TRUE)::boolean AS canonical,
+    finality.safe_number AS safe_number,
+    finality.finalized_number AS finalized_number
 FROM canonical_blocks AS canonical
 JOIN blocks AS block
   ON block.chain_id = canonical.chain_id
@@ -236,62 +197,49 @@ WHERE canonical.chain_id = $1::numeric AND canonical.number = $2::numeric
 `
 
 type QueryBlockByNumberRow struct {
-	BlockNumber             string      `db:"block_number" json:"block_number"`
-	Hash                    []byte      `db:"hash" json:"hash"`
-	ParentHash              []byte      `db:"parent_hash" json:"parent_hash"`
-	BlockTimestamp          string      `db:"block_timestamp" json:"block_timestamp"`
-	MinerText               *string     `db:"miner_text" json:"miner_text"`
-	GasUsedQuantity         *string     `db:"gas_used_quantity" json:"gas_used_quantity"`
-	GasLimitQuantity        *string     `db:"gas_limit_quantity" json:"gas_limit_quantity"`
-	BaseFeePerGasQuantity   *string     `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
-	TransactionCount        *int64      `db:"transaction_count" json:"transaction_count"`
-	Count                   int64       `db:"count" json:"count"`
-	WithdrawalsPresent      *bool       `db:"withdrawals_present" json:"withdrawals_present"`
-	WithdrawalCount         *int64      `db:"withdrawal_count" json:"withdrawal_count"`
-	Coalesce                interface{} `db:"coalesce" json:"coalesce"`
-	Column14                bool        `db:"column_14" json:"column_14"`
-	FinalitySafeNumber      string      `db:"finality_safe_number" json:"finality_safe_number"`
-	FinalityFinalizedNumber string      `db:"finality_finalized_number" json:"finality_finalized_number"`
+	BlockNumber                string         `db:"block_number" json:"block_number"`
+	Hash                       []byte         `db:"hash" json:"hash"`
+	ParentHash                 []byte         `db:"parent_hash" json:"parent_hash"`
+	BlockTimestamp             string         `db:"block_timestamp" json:"block_timestamp"`
+	MinerText                  *string        `db:"miner_text" json:"miner_text"`
+	GasUsedQuantity            *string        `db:"gas_used_quantity" json:"gas_used_quantity"`
+	GasLimitQuantity           *string        `db:"gas_limit_quantity" json:"gas_limit_quantity"`
+	BaseFeePerGasQuantity      *string        `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
+	TransactionCount           *int64         `db:"transaction_count" json:"transaction_count"`
+	NormalizedTransactionCount int64          `db:"normalized_transaction_count" json:"normalized_transaction_count"`
+	WithdrawalsPresent         *bool          `db:"withdrawals_present" json:"withdrawals_present"`
+	WithdrawalCount            *int64         `db:"withdrawal_count" json:"withdrawal_count"`
+	Withdrawals                []byte         `db:"withdrawals" json:"withdrawals"`
+	Canonical                  bool           `db:"canonical" json:"canonical"`
+	SafeNumber                 pgtype.Numeric `db:"safe_number" json:"safe_number"`
+	FinalizedNumber            pgtype.Numeric `db:"finalized_number" json:"finalized_number"`
 }
 
-func (q *Queries) QueryBlockByNumber(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) ([]QueryBlockByNumberRow, error) {
-	rows, err := q.db.Query(ctx, QueryBlockByNumber, column1, column2)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []QueryBlockByNumberRow{}
-	for rows.Next() {
-		var i QueryBlockByNumberRow
-		if err := rows.Scan(
-			&i.BlockNumber,
-			&i.Hash,
-			&i.ParentHash,
-			&i.BlockTimestamp,
-			&i.MinerText,
-			&i.GasUsedQuantity,
-			&i.GasLimitQuantity,
-			&i.BaseFeePerGasQuantity,
-			&i.TransactionCount,
-			&i.Count,
-			&i.WithdrawalsPresent,
-			&i.WithdrawalCount,
-			&i.Coalesce,
-			&i.Column14,
-			&i.FinalitySafeNumber,
-			&i.FinalityFinalizedNumber,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) QueryBlockByNumber(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric) (QueryBlockByNumberRow, error) {
+	row := q.db.QueryRow(ctx, queryBlockByNumber, chainID, number)
+	var i QueryBlockByNumberRow
+	err := row.Scan(
+		&i.BlockNumber,
+		&i.Hash,
+		&i.ParentHash,
+		&i.BlockTimestamp,
+		&i.MinerText,
+		&i.GasUsedQuantity,
+		&i.GasLimitQuantity,
+		&i.BaseFeePerGasQuantity,
+		&i.TransactionCount,
+		&i.NormalizedTransactionCount,
+		&i.WithdrawalsPresent,
+		&i.WithdrawalCount,
+		&i.Withdrawals,
+		&i.Canonical,
+		&i.SafeNumber,
+		&i.FinalizedNumber,
+	)
+	return i, err
 }
 
-const QueryFirstContractOrigin = `-- name: QueryFirstContractOrigin :many
+const queryFirstContractOrigin = `-- name: QueryFirstContractOrigin :one
 WITH candidates AS (
     SELECT receipt.block_number, receipt.tx_index,
            ARRAY[]::bigint[] AS trace_order, 0 AS source_rank,
@@ -345,27 +293,14 @@ type QueryFirstContractOriginRow struct {
 	TransactionHash []byte `db:"transaction_hash" json:"transaction_hash"`
 }
 
-func (q *Queries) QueryFirstContractOrigin(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, encode []byte) ([]QueryFirstContractOriginRow, error) {
-	rows, err := q.db.Query(ctx, QueryFirstContractOrigin, column1, column2, encode)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []QueryFirstContractOriginRow{}
-	for rows.Next() {
-		var i QueryFirstContractOriginRow
-		if err := rows.Scan(&i.BlockNumber, &i.SourceAddress, &i.TransactionHash); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) QueryFirstContractOrigin(ctx context.Context, chainID pgtype.Numeric, maxBlockNumber pgtype.Numeric, encode []byte) (QueryFirstContractOriginRow, error) {
+	row := q.db.QueryRow(ctx, queryFirstContractOrigin, chainID, maxBlockNumber, encode)
+	var i QueryFirstContractOriginRow
+	err := row.Scan(&i.BlockNumber, &i.SourceAddress, &i.TransactionHash)
+	return i, err
 }
 
-const QueryFirstFundingOrigin = `-- name: QueryFirstFundingOrigin :many
+const queryFirstFundingOrigin = `-- name: QueryFirstFundingOrigin :one
 WITH candidates AS (
     SELECT inclusion.block_number, inclusion.tx_index,
            ARRAY[]::bigint[] AS trace_order, 0 AS source_rank,
@@ -458,34 +393,21 @@ type QueryFirstFundingOriginRow struct {
 	WithdrawalIndex *string `db:"withdrawal_index" json:"withdrawal_index"`
 }
 
-func (q *Queries) QueryFirstFundingOrigin(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, encode []byte) ([]QueryFirstFundingOriginRow, error) {
-	rows, err := q.db.Query(ctx, QueryFirstFundingOrigin, column1, column2, encode)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []QueryFirstFundingOriginRow{}
-	for rows.Next() {
-		var i QueryFirstFundingOriginRow
-		if err := rows.Scan(
-			&i.BlockNumber,
-			&i.SourceAddress,
-			&i.TransactionHash,
-			&i.OriginKind,
-			&i.BlockHash,
-			&i.WithdrawalIndex,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) QueryFirstFundingOrigin(ctx context.Context, chainID pgtype.Numeric, maxBlockNumber pgtype.Numeric, encode []byte) (QueryFirstFundingOriginRow, error) {
+	row := q.db.QueryRow(ctx, queryFirstFundingOrigin, chainID, maxBlockNumber, encode)
+	var i QueryFirstFundingOriginRow
+	err := row.Scan(
+		&i.BlockNumber,
+		&i.SourceAddress,
+		&i.TransactionHash,
+		&i.OriginKind,
+		&i.BlockHash,
+		&i.WithdrawalIndex,
+	)
+	return i, err
 }
 
-const QueryGenesisAddressOrigin = `-- name: QueryGenesisAddressOrigin :many
+const queryGenesisAddressOrigin = `-- name: QueryGenesisAddressOrigin :one
 SELECT EXISTS (
     SELECT 1
     FROM genesis_account_observations AS observation
@@ -502,44 +424,31 @@ SELECT EXISTS (
 )
 `
 
-func (q *Queries) QueryGenesisAddressOrigin(ctx context.Context, column1 pgtype.Numeric, address []byte) ([]bool, error) {
-	rows, err := q.db.Query(ctx, QueryGenesisAddressOrigin, column1, address)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var exists bool
-		if err := rows.Scan(&exists); err != nil {
-			return nil, err
-		}
-		items = append(items, exists)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) QueryGenesisAddressOrigin(ctx context.Context, chainID pgtype.Numeric, address []byte) (bool, error) {
+	row := q.db.QueryRow(ctx, queryGenesisAddressOrigin, chainID, address)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
-const QueryListBlocks = `-- name: QueryListBlocks :many
+const queryListBlocks = `-- name: QueryListBlocks :many
 SELECT
-    block.number::text,
-    block.hash,
-    block.parent_hash,
-    block.timestamp::text,
-    block.miner_text,
-    block.gas_used_quantity,
-    block.gas_limit_quantity,
-    block.base_fee_per_gas_quantity,
-    block.transaction_count,
+    block.number::text AS block_number,
+    block.hash AS hash,
+    block.parent_hash AS parent_hash,
+    block.timestamp::text AS block_timestamp,
+    block.miner_text AS miner_text,
+    block.gas_used_quantity AS gas_used_quantity,
+    block.gas_limit_quantity AS gas_limit_quantity,
+    block.base_fee_per_gas_quantity AS base_fee_per_gas_quantity,
+    block.transaction_count AS transaction_count,
     (SELECT COUNT(*) FROM transaction_inclusions AS inclusion
      WHERE inclusion.chain_id = block.chain_id
        AND inclusion.block_number = block.number
-       AND inclusion.block_hash = block.hash),
-    block.withdrawals_present,
-    block.withdrawal_count,
-    COALESCE((
+       AND inclusion.block_hash = block.hash) AS normalized_transaction_count,
+    block.withdrawals_present AS withdrawals_present,
+    block.withdrawal_count AS withdrawal_count,
+    (COALESCE((
         SELECT jsonb_agg(jsonb_build_object(
             'index', withdrawal.withdrawal_index::text,
             'validator_index', withdrawal.validator_index::text,
@@ -550,10 +459,10 @@ SELECT
         WHERE withdrawal.chain_id = block.chain_id
           AND withdrawal.block_number = block.number
           AND withdrawal.block_hash = block.hash
-    ), '[]'::jsonb),
-    TRUE,
-    finality.safe_number::text,
-    finality.finalized_number::text
+    ), '[]'::jsonb))::jsonb AS withdrawals,
+    (TRUE)::boolean AS canonical,
+    finality.safe_number AS safe_number,
+    finality.finalized_number AS finalized_number
 FROM canonical_blocks AS canonical
 JOIN blocks AS block
   ON block.chain_id = canonical.chain_id
@@ -567,26 +476,26 @@ LIMIT $3
 `
 
 type QueryListBlocksRow struct {
-	BlockNumber             string      `db:"block_number" json:"block_number"`
-	Hash                    []byte      `db:"hash" json:"hash"`
-	ParentHash              []byte      `db:"parent_hash" json:"parent_hash"`
-	BlockTimestamp          string      `db:"block_timestamp" json:"block_timestamp"`
-	MinerText               *string     `db:"miner_text" json:"miner_text"`
-	GasUsedQuantity         *string     `db:"gas_used_quantity" json:"gas_used_quantity"`
-	GasLimitQuantity        *string     `db:"gas_limit_quantity" json:"gas_limit_quantity"`
-	BaseFeePerGasQuantity   *string     `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
-	TransactionCount        *int64      `db:"transaction_count" json:"transaction_count"`
-	Count                   int64       `db:"count" json:"count"`
-	WithdrawalsPresent      *bool       `db:"withdrawals_present" json:"withdrawals_present"`
-	WithdrawalCount         *int64      `db:"withdrawal_count" json:"withdrawal_count"`
-	Coalesce                interface{} `db:"coalesce" json:"coalesce"`
-	Column14                bool        `db:"column_14" json:"column_14"`
-	FinalitySafeNumber      string      `db:"finality_safe_number" json:"finality_safe_number"`
-	FinalityFinalizedNumber string      `db:"finality_finalized_number" json:"finality_finalized_number"`
+	BlockNumber                string         `db:"block_number" json:"block_number"`
+	Hash                       []byte         `db:"hash" json:"hash"`
+	ParentHash                 []byte         `db:"parent_hash" json:"parent_hash"`
+	BlockTimestamp             string         `db:"block_timestamp" json:"block_timestamp"`
+	MinerText                  *string        `db:"miner_text" json:"miner_text"`
+	GasUsedQuantity            *string        `db:"gas_used_quantity" json:"gas_used_quantity"`
+	GasLimitQuantity           *string        `db:"gas_limit_quantity" json:"gas_limit_quantity"`
+	BaseFeePerGasQuantity      *string        `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
+	TransactionCount           *int64         `db:"transaction_count" json:"transaction_count"`
+	NormalizedTransactionCount int64          `db:"normalized_transaction_count" json:"normalized_transaction_count"`
+	WithdrawalsPresent         *bool          `db:"withdrawals_present" json:"withdrawals_present"`
+	WithdrawalCount            *int64         `db:"withdrawal_count" json:"withdrawal_count"`
+	Withdrawals                []byte         `db:"withdrawals" json:"withdrawals"`
+	Canonical                  bool           `db:"canonical" json:"canonical"`
+	SafeNumber                 pgtype.Numeric `db:"safe_number" json:"safe_number"`
+	FinalizedNumber            pgtype.Numeric `db:"finalized_number" json:"finalized_number"`
 }
 
-func (q *Queries) QueryListBlocks(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, limit int32) ([]QueryListBlocksRow, error) {
-	rows, err := q.db.Query(ctx, QueryListBlocks, column1, column2, limit)
+func (q *Queries) QueryListBlocks(ctx context.Context, chainID pgtype.Numeric, maxNumber pgtype.Numeric, limit int32) ([]QueryListBlocksRow, error) {
+	rows, err := q.db.Query(ctx, queryListBlocks, chainID, maxNumber, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -604,13 +513,13 @@ func (q *Queries) QueryListBlocks(ctx context.Context, column1 pgtype.Numeric, c
 			&i.GasLimitQuantity,
 			&i.BaseFeePerGasQuantity,
 			&i.TransactionCount,
-			&i.Count,
+			&i.NormalizedTransactionCount,
 			&i.WithdrawalsPresent,
 			&i.WithdrawalCount,
-			&i.Coalesce,
-			&i.Column14,
-			&i.FinalitySafeNumber,
-			&i.FinalityFinalizedNumber,
+			&i.Withdrawals,
+			&i.Canonical,
+			&i.SafeNumber,
+			&i.FinalizedNumber,
 		); err != nil {
 			return nil, err
 		}
@@ -622,24 +531,24 @@ func (q *Queries) QueryListBlocks(ctx context.Context, column1 pgtype.Numeric, c
 	return items, nil
 }
 
-const QueryListBlocksFirst = `-- name: QueryListBlocksFirst :many
+const queryListBlocksFirst = `-- name: QueryListBlocksFirst :many
 SELECT
-    block.number::text,
-    block.hash,
-    block.parent_hash,
-    block.timestamp::text,
-    block.miner_text,
-    block.gas_used_quantity,
-    block.gas_limit_quantity,
-    block.base_fee_per_gas_quantity,
-    block.transaction_count,
+    block.number::text AS block_number,
+    block.hash AS hash,
+    block.parent_hash AS parent_hash,
+    block.timestamp::text AS block_timestamp,
+    block.miner_text AS miner_text,
+    block.gas_used_quantity AS gas_used_quantity,
+    block.gas_limit_quantity AS gas_limit_quantity,
+    block.base_fee_per_gas_quantity AS base_fee_per_gas_quantity,
+    block.transaction_count AS transaction_count,
     (SELECT COUNT(*) FROM transaction_inclusions AS inclusion
      WHERE inclusion.chain_id = block.chain_id
        AND inclusion.block_number = block.number
-       AND inclusion.block_hash = block.hash),
-    block.withdrawals_present,
-    block.withdrawal_count,
-    COALESCE((
+       AND inclusion.block_hash = block.hash) AS normalized_transaction_count,
+    block.withdrawals_present AS withdrawals_present,
+    block.withdrawal_count AS withdrawal_count,
+    (COALESCE((
         SELECT jsonb_agg(jsonb_build_object(
             'index', withdrawal.withdrawal_index::text,
             'validator_index', withdrawal.validator_index::text,
@@ -650,10 +559,10 @@ SELECT
         WHERE withdrawal.chain_id = block.chain_id
           AND withdrawal.block_number = block.number
           AND withdrawal.block_hash = block.hash
-    ), '[]'::jsonb),
-    TRUE,
-    finality.safe_number::text,
-    finality.finalized_number::text
+    ), '[]'::jsonb))::jsonb AS withdrawals,
+    (TRUE)::boolean AS canonical,
+    finality.safe_number AS safe_number,
+    finality.finalized_number AS finalized_number
 FROM canonical_blocks AS canonical
 JOIN blocks AS block
   ON block.chain_id = canonical.chain_id
@@ -667,26 +576,26 @@ LIMIT $3
 `
 
 type QueryListBlocksFirstRow struct {
-	BlockNumber             string      `db:"block_number" json:"block_number"`
-	Hash                    []byte      `db:"hash" json:"hash"`
-	ParentHash              []byte      `db:"parent_hash" json:"parent_hash"`
-	BlockTimestamp          string      `db:"block_timestamp" json:"block_timestamp"`
-	MinerText               *string     `db:"miner_text" json:"miner_text"`
-	GasUsedQuantity         *string     `db:"gas_used_quantity" json:"gas_used_quantity"`
-	GasLimitQuantity        *string     `db:"gas_limit_quantity" json:"gas_limit_quantity"`
-	BaseFeePerGasQuantity   *string     `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
-	TransactionCount        *int64      `db:"transaction_count" json:"transaction_count"`
-	Count                   int64       `db:"count" json:"count"`
-	WithdrawalsPresent      *bool       `db:"withdrawals_present" json:"withdrawals_present"`
-	WithdrawalCount         *int64      `db:"withdrawal_count" json:"withdrawal_count"`
-	Coalesce                interface{} `db:"coalesce" json:"coalesce"`
-	Column14                bool        `db:"column_14" json:"column_14"`
-	FinalitySafeNumber      string      `db:"finality_safe_number" json:"finality_safe_number"`
-	FinalityFinalizedNumber string      `db:"finality_finalized_number" json:"finality_finalized_number"`
+	BlockNumber                string         `db:"block_number" json:"block_number"`
+	Hash                       []byte         `db:"hash" json:"hash"`
+	ParentHash                 []byte         `db:"parent_hash" json:"parent_hash"`
+	BlockTimestamp             string         `db:"block_timestamp" json:"block_timestamp"`
+	MinerText                  *string        `db:"miner_text" json:"miner_text"`
+	GasUsedQuantity            *string        `db:"gas_used_quantity" json:"gas_used_quantity"`
+	GasLimitQuantity           *string        `db:"gas_limit_quantity" json:"gas_limit_quantity"`
+	BaseFeePerGasQuantity      *string        `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
+	TransactionCount           *int64         `db:"transaction_count" json:"transaction_count"`
+	NormalizedTransactionCount int64          `db:"normalized_transaction_count" json:"normalized_transaction_count"`
+	WithdrawalsPresent         *bool          `db:"withdrawals_present" json:"withdrawals_present"`
+	WithdrawalCount            *int64         `db:"withdrawal_count" json:"withdrawal_count"`
+	Withdrawals                []byte         `db:"withdrawals" json:"withdrawals"`
+	Canonical                  bool           `db:"canonical" json:"canonical"`
+	SafeNumber                 pgtype.Numeric `db:"safe_number" json:"safe_number"`
+	FinalizedNumber            pgtype.Numeric `db:"finalized_number" json:"finalized_number"`
 }
 
-func (q *Queries) QueryListBlocksFirst(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, limit int32) ([]QueryListBlocksFirstRow, error) {
-	rows, err := q.db.Query(ctx, QueryListBlocksFirst, column1, column2, limit)
+func (q *Queries) QueryListBlocksFirst(ctx context.Context, chainID pgtype.Numeric, maxNumber pgtype.Numeric, limit int32) ([]QueryListBlocksFirstRow, error) {
+	rows, err := q.db.Query(ctx, queryListBlocksFirst, chainID, maxNumber, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -704,13 +613,13 @@ func (q *Queries) QueryListBlocksFirst(ctx context.Context, column1 pgtype.Numer
 			&i.GasLimitQuantity,
 			&i.BaseFeePerGasQuantity,
 			&i.TransactionCount,
-			&i.Count,
+			&i.NormalizedTransactionCount,
 			&i.WithdrawalsPresent,
 			&i.WithdrawalCount,
-			&i.Coalesce,
-			&i.Column14,
-			&i.FinalitySafeNumber,
-			&i.FinalityFinalizedNumber,
+			&i.Withdrawals,
+			&i.Canonical,
+			&i.SafeNumber,
+			&i.FinalizedNumber,
 		); err != nil {
 			return nil, err
 		}
@@ -722,19 +631,19 @@ func (q *Queries) QueryListBlocksFirst(ctx context.Context, column1 pgtype.Numer
 	return items, nil
 }
 
-const QueryListTransactionsFirst = `-- name: QueryListTransactionsFirst :many
+const queryListTransactionsFirst = `-- name: QueryListTransactionsFirst :many
 SELECT
-    inclusion.raw,
-    receipt.raw,
-    inclusion.block_number::text,
-    inclusion.block_hash,
-    inclusion.tx_index,
-    inclusion.tx_hash,
-    TRUE,
-    finality.safe_number::text,
-    finality.finalized_number::text,
-    block.timestamp::text,
-    block.base_fee_per_gas_quantity
+    inclusion.raw AS raw,
+    receipt.raw AS receipt_raw,
+    inclusion.block_number::text AS block_number,
+    inclusion.block_hash AS block_hash,
+    inclusion.tx_index AS tx_index,
+    inclusion.tx_hash AS tx_hash,
+    (TRUE)::boolean AS canonical,
+    finality.safe_number AS safe_number,
+    finality.finalized_number AS finalized_number,
+    block.timestamp::text AS block_timestamp,
+    block.base_fee_per_gas_quantity AS block_base_fee_per_gas
 FROM transaction_inclusions AS inclusion
 JOIN canonical_blocks AS canonical
   ON canonical.chain_id = inclusion.chain_id
@@ -757,21 +666,21 @@ LIMIT $3
 `
 
 type QueryListTransactionsFirstRow struct {
-	Raw                     []byte  `db:"raw" json:"raw"`
-	Raw_2                   []byte  `db:"raw_2" json:"raw_2"`
-	InclusionBlockNumber    string  `db:"inclusion_block_number" json:"inclusion_block_number"`
-	BlockHash               []byte  `db:"block_hash" json:"block_hash"`
-	TxIndex                 int64   `db:"tx_index" json:"tx_index"`
-	TxHash                  []byte  `db:"tx_hash" json:"tx_hash"`
-	Column7                 bool    `db:"column_7" json:"column_7"`
-	FinalitySafeNumber      string  `db:"finality_safe_number" json:"finality_safe_number"`
-	FinalityFinalizedNumber string  `db:"finality_finalized_number" json:"finality_finalized_number"`
-	BlockTimestamp          string  `db:"block_timestamp" json:"block_timestamp"`
-	BaseFeePerGasQuantity   *string `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
+	Raw                []byte         `db:"raw" json:"raw"`
+	ReceiptRaw         []byte         `db:"receipt_raw" json:"receipt_raw"`
+	BlockNumber        string         `db:"block_number" json:"block_number"`
+	BlockHash          []byte         `db:"block_hash" json:"block_hash"`
+	TxIndex            int64          `db:"tx_index" json:"tx_index"`
+	TxHash             []byte         `db:"tx_hash" json:"tx_hash"`
+	Canonical          bool           `db:"canonical" json:"canonical"`
+	SafeNumber         pgtype.Numeric `db:"safe_number" json:"safe_number"`
+	FinalizedNumber    pgtype.Numeric `db:"finalized_number" json:"finalized_number"`
+	BlockTimestamp     string         `db:"block_timestamp" json:"block_timestamp"`
+	BlockBaseFeePerGas *string        `db:"block_base_fee_per_gas" json:"block_base_fee_per_gas"`
 }
 
-func (q *Queries) QueryListTransactionsFirst(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, limit int32) ([]QueryListTransactionsFirstRow, error) {
-	rows, err := q.db.Query(ctx, QueryListTransactionsFirst, column1, column2, limit)
+func (q *Queries) QueryListTransactionsFirst(ctx context.Context, chainID pgtype.Numeric, maxBlockNumber pgtype.Numeric, limit int32) ([]QueryListTransactionsFirstRow, error) {
+	rows, err := q.db.Query(ctx, queryListTransactionsFirst, chainID, maxBlockNumber, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -781,16 +690,16 @@ func (q *Queries) QueryListTransactionsFirst(ctx context.Context, column1 pgtype
 		var i QueryListTransactionsFirstRow
 		if err := rows.Scan(
 			&i.Raw,
-			&i.Raw_2,
-			&i.InclusionBlockNumber,
+			&i.ReceiptRaw,
+			&i.BlockNumber,
 			&i.BlockHash,
 			&i.TxIndex,
 			&i.TxHash,
-			&i.Column7,
-			&i.FinalitySafeNumber,
-			&i.FinalityFinalizedNumber,
+			&i.Canonical,
+			&i.SafeNumber,
+			&i.FinalizedNumber,
 			&i.BlockTimestamp,
-			&i.BaseFeePerGasQuantity,
+			&i.BlockBaseFeePerGas,
 		); err != nil {
 			return nil, err
 		}
@@ -802,20 +711,20 @@ func (q *Queries) QueryListTransactionsFirst(ctx context.Context, column1 pgtype
 	return items, nil
 }
 
-const QueryListTransactionsWithMethod = `-- name: QueryListTransactionsWithMethod :many
+const queryListTransactionsWithMethod = `-- name: QueryListTransactionsWithMethod :many
 SELECT
-    inclusion.raw,
-    receipt.raw,
-    inclusion.block_number::text,
-    inclusion.block_hash,
-    inclusion.tx_index,
-    inclusion.tx_hash,
-    TRUE,
-    finality.safe_number::text,
-    finality.finalized_number::text,
-	block.timestamp::text,
-	block.base_fee_per_gas_quantity,
-	EXISTS (
+    inclusion.raw AS raw,
+    receipt.raw AS receipt_raw,
+    inclusion.block_number::text AS block_number,
+    inclusion.block_hash AS block_hash,
+    inclusion.tx_index AS tx_index,
+    inclusion.tx_hash AS tx_hash,
+    (TRUE)::boolean AS canonical,
+    finality.safe_number AS safe_number,
+    finality.finalized_number AS finalized_number,
+    block.timestamp::text AS block_timestamp,
+    block.base_fee_per_gas_quantity AS block_base_fee_per_gas,
+    EXISTS (
 	    SELECT 1
 	    FROM published_block_stage_results AS published_state_diff
 	    WHERE published_state_diff.chain_id = inclusion.chain_id
@@ -825,12 +734,12 @@ SELECT
 	      AND published_state_diff.stage_version = 3
 	      AND published_state_diff.state = 'complete'
 	),
-	execution.resolution,
-	execution.execution_address,
-	execution.execution_code_hash,
-	decoding.signature,
-	decoding.source,
-	decoding.confidence
+    execution.resolution,
+    execution.execution_address,
+    execution.execution_code_hash,
+    decoding.signature,
+    decoding.source,
+    decoding.confidence
 FROM transaction_inclusions AS inclusion
 JOIN canonical_blocks AS canonical
   ON canonical.chain_id = inclusion.chain_id
@@ -938,37 +847,37 @@ LIMIT $4
 `
 
 type QueryListTransactionsWithMethodParams struct {
-	Column1 pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2 pgtype.Numeric `db:"column_2" json:"column_2"`
-	TxIndex int64          `db:"tx_index" json:"tx_index"`
-	Limit   int32          `db:"limit" json:"limit"`
+	ChainID        pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	MaxBlockNumber pgtype.Numeric `db:"max_block_number" json:"max_block_number"`
+	TxIndex        int64          `db:"tx_index" json:"tx_index"`
+	Limit          int32          `db:"limit" json:"limit"`
 }
 
 type QueryListTransactionsWithMethodRow struct {
-	Raw                     []byte  `db:"raw" json:"raw"`
-	Raw_2                   []byte  `db:"raw_2" json:"raw_2"`
-	InclusionBlockNumber    string  `db:"inclusion_block_number" json:"inclusion_block_number"`
-	BlockHash               []byte  `db:"block_hash" json:"block_hash"`
-	TxIndex                 int64   `db:"tx_index" json:"tx_index"`
-	TxHash                  []byte  `db:"tx_hash" json:"tx_hash"`
-	Column7                 bool    `db:"column_7" json:"column_7"`
-	FinalitySafeNumber      string  `db:"finality_safe_number" json:"finality_safe_number"`
-	FinalityFinalizedNumber string  `db:"finality_finalized_number" json:"finality_finalized_number"`
-	BlockTimestamp          string  `db:"block_timestamp" json:"block_timestamp"`
-	BaseFeePerGasQuantity   *string `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
-	Exists                  bool    `db:"exists" json:"exists"`
-	Resolution              string  `db:"resolution" json:"resolution"`
-	ExecutionAddress        []byte  `db:"execution_address" json:"execution_address"`
-	ExecutionCodeHash       []byte  `db:"execution_code_hash" json:"execution_code_hash"`
-	Signature               *string `db:"signature" json:"signature"`
-	Source                  *string `db:"source" json:"source"`
-	Confidence              *string `db:"confidence" json:"confidence"`
+	Raw                []byte         `db:"raw" json:"raw"`
+	ReceiptRaw         []byte         `db:"receipt_raw" json:"receipt_raw"`
+	BlockNumber        string         `db:"block_number" json:"block_number"`
+	BlockHash          []byte         `db:"block_hash" json:"block_hash"`
+	TxIndex            int64          `db:"tx_index" json:"tx_index"`
+	TxHash             []byte         `db:"tx_hash" json:"tx_hash"`
+	Canonical          bool           `db:"canonical" json:"canonical"`
+	SafeNumber         pgtype.Numeric `db:"safe_number" json:"safe_number"`
+	FinalizedNumber    pgtype.Numeric `db:"finalized_number" json:"finalized_number"`
+	BlockTimestamp     string         `db:"block_timestamp" json:"block_timestamp"`
+	BlockBaseFeePerGas *string        `db:"block_base_fee_per_gas" json:"block_base_fee_per_gas"`
+	Exists             bool           `db:"exists" json:"exists"`
+	Resolution         pgtype.Text    `db:"resolution" json:"resolution"`
+	ExecutionAddress   []byte         `db:"execution_address" json:"execution_address"`
+	ExecutionCodeHash  []byte         `db:"execution_code_hash" json:"execution_code_hash"`
+	Signature          *string        `db:"signature" json:"signature"`
+	Source             *string        `db:"source" json:"source"`
+	Confidence         *string        `db:"confidence" json:"confidence"`
 }
 
 func (q *Queries) QueryListTransactionsWithMethod(ctx context.Context, arg QueryListTransactionsWithMethodParams) ([]QueryListTransactionsWithMethodRow, error) {
-	rows, err := q.db.Query(ctx, QueryListTransactionsWithMethod,
-		arg.Column1,
-		arg.Column2,
+	rows, err := q.db.Query(ctx, queryListTransactionsWithMethod,
+		arg.ChainID,
+		arg.MaxBlockNumber,
 		arg.TxIndex,
 		arg.Limit,
 	)
@@ -981,16 +890,16 @@ func (q *Queries) QueryListTransactionsWithMethod(ctx context.Context, arg Query
 		var i QueryListTransactionsWithMethodRow
 		if err := rows.Scan(
 			&i.Raw,
-			&i.Raw_2,
-			&i.InclusionBlockNumber,
+			&i.ReceiptRaw,
+			&i.BlockNumber,
 			&i.BlockHash,
 			&i.TxIndex,
 			&i.TxHash,
-			&i.Column7,
-			&i.FinalitySafeNumber,
-			&i.FinalityFinalizedNumber,
+			&i.Canonical,
+			&i.SafeNumber,
+			&i.FinalizedNumber,
 			&i.BlockTimestamp,
-			&i.BaseFeePerGasQuantity,
+			&i.BlockBaseFeePerGas,
 			&i.Exists,
 			&i.Resolution,
 			&i.ExecutionAddress,
@@ -1009,20 +918,20 @@ func (q *Queries) QueryListTransactionsWithMethod(ctx context.Context, arg Query
 	return items, nil
 }
 
-const QueryListTransactionsWithMethodFirst = `-- name: QueryListTransactionsWithMethodFirst :many
+const queryListTransactionsWithMethodFirst = `-- name: QueryListTransactionsWithMethodFirst :many
 SELECT
-    inclusion.raw,
-    receipt.raw,
-    inclusion.block_number::text,
-    inclusion.block_hash,
-    inclusion.tx_index,
-    inclusion.tx_hash,
-    TRUE,
-    finality.safe_number::text,
-    finality.finalized_number::text,
-	block.timestamp::text,
-	block.base_fee_per_gas_quantity,
-	EXISTS (
+    inclusion.raw AS raw,
+    receipt.raw AS receipt_raw,
+    inclusion.block_number::text AS block_number,
+    inclusion.block_hash AS block_hash,
+    inclusion.tx_index AS tx_index,
+    inclusion.tx_hash AS tx_hash,
+    (TRUE)::boolean AS canonical,
+    finality.safe_number AS safe_number,
+    finality.finalized_number AS finalized_number,
+    block.timestamp::text AS block_timestamp,
+    block.base_fee_per_gas_quantity AS block_base_fee_per_gas,
+    EXISTS (
 	    SELECT 1
 	    FROM published_block_stage_results AS published_state_diff
 	    WHERE published_state_diff.chain_id = inclusion.chain_id
@@ -1032,12 +941,12 @@ SELECT
 	      AND published_state_diff.stage_version = 3
 	      AND published_state_diff.state = 'complete'
 	),
-	execution.resolution,
-	execution.execution_address,
-	execution.execution_code_hash,
-	decoding.signature,
-	decoding.source,
-	decoding.confidence
+    execution.resolution,
+    execution.execution_address,
+    execution.execution_code_hash,
+    decoding.signature,
+    decoding.source,
+    decoding.confidence
 FROM transaction_inclusions AS inclusion
 JOIN canonical_blocks AS canonical
   ON canonical.chain_id = inclusion.chain_id
@@ -1142,28 +1051,28 @@ LIMIT $3
 `
 
 type QueryListTransactionsWithMethodFirstRow struct {
-	Raw                     []byte  `db:"raw" json:"raw"`
-	Raw_2                   []byte  `db:"raw_2" json:"raw_2"`
-	InclusionBlockNumber    string  `db:"inclusion_block_number" json:"inclusion_block_number"`
-	BlockHash               []byte  `db:"block_hash" json:"block_hash"`
-	TxIndex                 int64   `db:"tx_index" json:"tx_index"`
-	TxHash                  []byte  `db:"tx_hash" json:"tx_hash"`
-	Column7                 bool    `db:"column_7" json:"column_7"`
-	FinalitySafeNumber      string  `db:"finality_safe_number" json:"finality_safe_number"`
-	FinalityFinalizedNumber string  `db:"finality_finalized_number" json:"finality_finalized_number"`
-	BlockTimestamp          string  `db:"block_timestamp" json:"block_timestamp"`
-	BaseFeePerGasQuantity   *string `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
-	Exists                  bool    `db:"exists" json:"exists"`
-	Resolution              string  `db:"resolution" json:"resolution"`
-	ExecutionAddress        []byte  `db:"execution_address" json:"execution_address"`
-	ExecutionCodeHash       []byte  `db:"execution_code_hash" json:"execution_code_hash"`
-	Signature               *string `db:"signature" json:"signature"`
-	Source                  *string `db:"source" json:"source"`
-	Confidence              *string `db:"confidence" json:"confidence"`
+	Raw                []byte         `db:"raw" json:"raw"`
+	ReceiptRaw         []byte         `db:"receipt_raw" json:"receipt_raw"`
+	BlockNumber        string         `db:"block_number" json:"block_number"`
+	BlockHash          []byte         `db:"block_hash" json:"block_hash"`
+	TxIndex            int64          `db:"tx_index" json:"tx_index"`
+	TxHash             []byte         `db:"tx_hash" json:"tx_hash"`
+	Canonical          bool           `db:"canonical" json:"canonical"`
+	SafeNumber         pgtype.Numeric `db:"safe_number" json:"safe_number"`
+	FinalizedNumber    pgtype.Numeric `db:"finalized_number" json:"finalized_number"`
+	BlockTimestamp     string         `db:"block_timestamp" json:"block_timestamp"`
+	BlockBaseFeePerGas *string        `db:"block_base_fee_per_gas" json:"block_base_fee_per_gas"`
+	Exists             bool           `db:"exists" json:"exists"`
+	Resolution         pgtype.Text    `db:"resolution" json:"resolution"`
+	ExecutionAddress   []byte         `db:"execution_address" json:"execution_address"`
+	ExecutionCodeHash  []byte         `db:"execution_code_hash" json:"execution_code_hash"`
+	Signature          *string        `db:"signature" json:"signature"`
+	Source             *string        `db:"source" json:"source"`
+	Confidence         *string        `db:"confidence" json:"confidence"`
 }
 
-func (q *Queries) QueryListTransactionsWithMethodFirst(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, limit int32) ([]QueryListTransactionsWithMethodFirstRow, error) {
-	rows, err := q.db.Query(ctx, QueryListTransactionsWithMethodFirst, column1, column2, limit)
+func (q *Queries) QueryListTransactionsWithMethodFirst(ctx context.Context, chainID pgtype.Numeric, maxBlockNumber pgtype.Numeric, limit int32) ([]QueryListTransactionsWithMethodFirstRow, error) {
+	rows, err := q.db.Query(ctx, queryListTransactionsWithMethodFirst, chainID, maxBlockNumber, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -1173,16 +1082,16 @@ func (q *Queries) QueryListTransactionsWithMethodFirst(ctx context.Context, colu
 		var i QueryListTransactionsWithMethodFirstRow
 		if err := rows.Scan(
 			&i.Raw,
-			&i.Raw_2,
-			&i.InclusionBlockNumber,
+			&i.ReceiptRaw,
+			&i.BlockNumber,
 			&i.BlockHash,
 			&i.TxIndex,
 			&i.TxHash,
-			&i.Column7,
-			&i.FinalitySafeNumber,
-			&i.FinalityFinalizedNumber,
+			&i.Canonical,
+			&i.SafeNumber,
+			&i.FinalizedNumber,
 			&i.BlockTimestamp,
-			&i.BaseFeePerGasQuantity,
+			&i.BlockBaseFeePerGas,
 			&i.Exists,
 			&i.Resolution,
 			&i.ExecutionAddress,
@@ -1201,7 +1110,7 @@ func (q *Queries) QueryListTransactionsWithMethodFirst(ctx context.Context, colu
 	return items, nil
 }
 
-const QuerySearchBlockNumber = `-- name: QuerySearchBlockNumber :many
+const querySearchBlockNumber = `-- name: QuerySearchBlockNumber :one
 WITH visible_labels AS (
     SELECT document.result_key, document.result_label, document.id
     FROM search_catalog_documents AS document
@@ -1214,7 +1123,7 @@ WITH visible_labels AS (
 SELECT canonical.number::text,
        canonical.block_hash,
        COALESCE(operator_label.result_label, 'Block #' || canonical.number::text),
-       CASE WHEN operator_label.result_label IS NULL THEN 100 ELSE 110 END::bigint
+       CASE WHEN operator_label.result_label IS NULL THEN 100 ELSE 110 END::bigint AS rank
 FROM canonical_blocks AS canonical
 LEFT JOIN LATERAL (
     SELECT visible.result_label
@@ -1234,44 +1143,31 @@ type QuerySearchBlockNumberRow struct {
 	CanonicalNumber string  `db:"canonical_number" json:"canonical_number"`
 	BlockHash       []byte  `db:"block_hash" json:"block_hash"`
 	ResultLabel     *string `db:"result_label" json:"result_label"`
-	Column4         int64   `db:"column_4" json:"column_4"`
+	Rank            int64   `db:"rank" json:"rank"`
 }
 
-func (q *Queries) QuerySearchBlockNumber(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, validFromGeneration int64) ([]QuerySearchBlockNumberRow, error) {
-	rows, err := q.db.Query(ctx, QuerySearchBlockNumber, column1, column2, validFromGeneration)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []QuerySearchBlockNumberRow{}
-	for rows.Next() {
-		var i QuerySearchBlockNumberRow
-		if err := rows.Scan(
-			&i.CanonicalNumber,
-			&i.BlockHash,
-			&i.ResultLabel,
-			&i.Column4,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) QuerySearchBlockNumber(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, validFromGeneration int64) (QuerySearchBlockNumberRow, error) {
+	row := q.db.QueryRow(ctx, querySearchBlockNumber, chainID, number, validFromGeneration)
+	var i QuerySearchBlockNumberRow
+	err := row.Scan(
+		&i.CanonicalNumber,
+		&i.BlockHash,
+		&i.ResultLabel,
+		&i.Rank,
+	)
+	return i, err
 }
 
-const QuerySearchHash = `-- name: QuerySearchHash :many
+const querySearchHash = `-- name: QuerySearchHash :many
 WITH visible_labels AS (
     SELECT document.result_kind, document.result_key, document.result_label, document.id
     FROM search_catalog_documents AS document
     WHERE document.chain_id = $1::numeric
       AND document.source_kind = 'label'
-      AND document.valid_from_generation <= $3
-      AND (document.valid_to_generation IS NULL OR document.valid_to_generation > $3)
+      AND document.valid_from_generation <= $4
+      AND (document.valid_to_generation IS NULL OR document.valid_to_generation > $4)
 )
-SELECT kind, key, label, rank, canonical
+SELECT kind, key::text AS key, label::text AS label, rank, canonical::boolean AS canonical
 FROM (
     SELECT
         'block'::text AS kind,
@@ -1322,30 +1218,30 @@ FROM (
     WHERE transaction.chain_id = $1::numeric AND transaction.hash = $2
 ) AS results
 ORDER BY rank DESC, kind
-LIMIT $4
+LIMIT $3
 `
 
 type QuerySearchHashParams struct {
-	Column1             pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	Hash                []byte         `db:"hash" json:"hash"`
-	ValidFromGeneration int64          `db:"valid_from_generation" json:"valid_from_generation"`
 	Limit               int32          `db:"limit" json:"limit"`
+	ValidFromGeneration int64          `db:"valid_from_generation" json:"valid_from_generation"`
 }
 
 type QuerySearchHashRow struct {
-	Kind      string      `db:"kind" json:"kind"`
-	Key       interface{} `db:"key" json:"key"`
-	Label     *string     `db:"label" json:"label"`
-	Rank      int64       `db:"rank" json:"rank"`
-	Canonical interface{} `db:"canonical" json:"canonical"`
+	Kind      string `db:"kind" json:"kind"`
+	Key       string `db:"key" json:"key"`
+	Label     string `db:"label" json:"label"`
+	Rank      int64  `db:"rank" json:"rank"`
+	Canonical bool   `db:"canonical" json:"canonical"`
 }
 
 func (q *Queries) QuerySearchHash(ctx context.Context, arg QuerySearchHashParams) ([]QuerySearchHashRow, error) {
-	rows, err := q.db.Query(ctx, QuerySearchHash,
-		arg.Column1,
+	rows, err := q.db.Query(ctx, querySearchHash,
+		arg.ChainID,
 		arg.Hash,
-		arg.ValidFromGeneration,
 		arg.Limit,
+		arg.ValidFromGeneration,
 	)
 	if err != nil {
 		return nil, err
@@ -1371,13 +1267,13 @@ func (q *Queries) QuerySearchHash(ctx context.Context, arg QuerySearchHashParams
 	return items, nil
 }
 
-const QuerySearchText = `-- name: QuerySearchText :many
+const querySearchText = `-- name: QuerySearchText :many
 WITH visible_documents AS (
     SELECT document.id, document.chain_id, document.source_kind, document.source_identity, document.logical_identity, document.valid_from_generation, document.valid_to_generation, document.result_kind, document.result_key, document.result_label, document.exact_terms, document.partial_terms, document.block_number, document.block_hash, document.target_address, document.code_hash, document.valid_from_block, document.valid_to_block, document.source_canonical, document.recorded_at, document.verification_match_type, document.verification_request_digest, document.verification_job_id, document.name_observation_id, document.name_source
     FROM search_catalog_documents AS document
-    WHERE document.chain_id = $1::numeric
-      AND document.valid_from_generation <= $4
-      AND (document.valid_to_generation IS NULL OR document.valid_to_generation > $4)
+    WHERE document.chain_id = $6::numeric
+      AND document.valid_from_generation <= $7
+      AND (document.valid_to_generation IS NULL OR document.valid_to_generation > $7)
 ), candidates(
     kind, key, label, rank, canonical, name_source,
     verification_match_type, verification_valid_from_block,
@@ -1388,14 +1284,14 @@ WITH visible_documents AS (
            lower(document.result_key) AS key,
            document.result_label AS label,
            CASE document.source_kind
-             WHEN 'label' THEN CASE WHEN $2 = ANY(document.exact_terms) THEN 110 ELSE 80 END
-             WHEN 'name' THEN CASE WHEN $2 = ANY(document.exact_terms) THEN 100 ELSE 70 END
+             WHEN 'label' THEN CASE WHEN $8::text = ANY(document.exact_terms) THEN 110 ELSE 80 END
+             WHEN 'name' THEN CASE WHEN $8::text = ANY(document.exact_terms) THEN 100 ELSE 70 END
              WHEN 'token' THEN CASE
-                 WHEN lower(document.result_key) = $2 THEN 105
-                 WHEN $2 = ANY(document.exact_terms) THEN 95 ELSE 65 END
+                 WHEN lower(document.result_key) = $8::text THEN 105
+                 WHEN $8::text = ANY(document.exact_terms) THEN 95 ELSE 65 END
              WHEN 'verified_contract' THEN CASE
-                 WHEN lower(document.result_key) = $2 THEN 104
-                 WHEN $2 = ANY(document.exact_terms) THEN 94 ELSE 64 END
+                 WHEN lower(document.result_key) = $8::text THEN 104
+                 WHEN $8::text = ANY(document.exact_terms) THEN 94 ELSE 64 END
            END::bigint AS rank,
            CASE WHEN document.source_kind IN ('name', 'token') THEN TRUE ELSE NULL END::boolean AS canonical,
            document.name_source,
@@ -1420,7 +1316,7 @@ WITH visible_documents AS (
         WHERE document.source_kind = 'verified_contract'
           AND observation.source_kind = 'code'
           AND observation.target_address = document.target_address
-          AND observation.block_number <= $3::numeric
+          AND observation.block_number <= $9::numeric
           AND observation.source_canonical = TRUE
         ORDER BY observation.block_number DESC, observation.block_hash DESC
         LIMIT 1
@@ -1439,9 +1335,9 @@ WITH visible_documents AS (
           OR $10::bigint = 0
           OR document.name_observation_id = $10::bigint
       )
-      AND ($2 = ANY(document.exact_terms) OR EXISTS (
+      AND ($8::text = ANY(document.exact_terms) OR EXISTS (
           SELECT 1 FROM unnest(document.partial_terms) AS term
-          WHERE strpos(term, $2) > 0
+          WHERE strpos(term, $8::text) > 0
       ))
       AND (
           document.source_kind <> 'token'
@@ -1454,7 +1350,7 @@ WITH visible_documents AS (
                AND latest_canonical.block_hash = latest.block_hash
               WHERE latest.source_kind = 'token'
                 AND latest.logical_identity = document.logical_identity
-                AND latest.block_number <= $3::numeric
+                AND latest.block_number <= $9::numeric
                 AND latest.source_canonical = TRUE
               ORDER BY latest.block_number DESC, latest.valid_from_generation DESC, latest.id DESC
               LIMIT 1
@@ -1468,14 +1364,14 @@ WITH visible_documents AS (
               AND (
                   document.block_hash IS NULL
                   OR (
-                      document.block_number <= $3::numeric
+                      document.block_number <= $9::numeric
                       AND canonical.block_hash IS NOT NULL
                   )
               )
           )
           OR (
               document.source_kind = 'token'
-              AND document.block_number <= $3::numeric
+              AND document.block_number <= $9::numeric
               AND canonical.block_hash IS NOT NULL
               AND document.source_canonical = TRUE
           )
@@ -1489,7 +1385,8 @@ WITH visible_documents AS (
       )
 )
 SELECT result.kind, result.key, result.label, result.rank,
-       result.canonical, result.name_source
+       COALESCE(result.canonical,FALSE)::boolean AS canonical, result.name_source,
+       (result.canonical IS NOT NULL)::boolean AS canonical_known
 FROM (
     SELECT DISTINCT ON (kind, key) kind, key, label, rank, canonical, name_source
     FROM candidates
@@ -1501,48 +1398,49 @@ FROM (
              verification_job_id ASC NULLS LAST,
              label
 ) AS result
-WHERE $5::boolean = false
-   OR result.rank < $6::bigint
-   OR (result.rank = $6::bigint AND result.kind > $7::text)
-   OR (result.rank = $6::bigint AND result.kind = $7::text AND result.key > $8::text)
+WHERE $1::boolean = false
+   OR result.rank < $2::bigint
+   OR (result.rank = $2::bigint AND result.kind > $3::text)
+   OR (result.rank = $2::bigint AND result.kind = $3::text AND result.key > $4::text)
 ORDER BY result.rank DESC, result.kind, result.key
-LIMIT $9
+LIMIT $5
 `
 
 type QuerySearchTextParams struct {
-	Column1             pgtype.Numeric `db:"column_1" json:"column_1"`
-	ExactTerms          []string       `db:"exact_terms" json:"exact_terms"`
-	Column3             pgtype.Numeric `db:"column_3" json:"column_3"`
-	ValidFromGeneration int64          `db:"valid_from_generation" json:"valid_from_generation"`
-	Column5             bool           `db:"column_5" json:"column_5"`
-	Column6             int64          `db:"column_6" json:"column_6"`
-	Column7             string         `db:"column_7" json:"column_7"`
-	Column8             string         `db:"column_8" json:"column_8"`
+	HasCursor           bool           `db:"has_cursor" json:"has_cursor"`
+	MaxRank             int64          `db:"max_rank" json:"max_rank"`
+	MinKind             string         `db:"min_kind" json:"min_kind"`
+	MinKey              string         `db:"min_key" json:"min_key"`
 	Limit               int32          `db:"limit" json:"limit"`
-	Column10            int64          `db:"column_10" json:"column_10"`
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	ValidFromGeneration int64          `db:"valid_from_generation" json:"valid_from_generation"`
+	SearchTerm          string         `db:"search_term" json:"search_term"`
+	MaxBlockNumber      pgtype.Numeric `db:"max_block_number" json:"max_block_number"`
+	NameObservationID   int64          `db:"name_observation_id" json:"name_observation_id"`
 }
 
 type QuerySearchTextRow struct {
-	Kind       *string `db:"kind" json:"kind"`
-	Key        string  `db:"key" json:"key"`
-	Label      *string `db:"label" json:"label"`
-	Rank       int64   `db:"rank" json:"rank"`
-	Canonical  bool    `db:"canonical" json:"canonical"`
-	NameSource *string `db:"name_source" json:"name_source"`
+	Kind           *string `db:"kind" json:"kind"`
+	Key            string  `db:"key" json:"key"`
+	Label          *string `db:"label" json:"label"`
+	Rank           int64   `db:"rank" json:"rank"`
+	Canonical      bool    `db:"canonical" json:"canonical"`
+	NameSource     *string `db:"name_source" json:"name_source"`
+	CanonicalKnown bool    `db:"canonical_known" json:"canonical_known"`
 }
 
 func (q *Queries) QuerySearchText(ctx context.Context, arg QuerySearchTextParams) ([]QuerySearchTextRow, error) {
-	rows, err := q.db.Query(ctx, QuerySearchText,
-		arg.Column1,
-		arg.ExactTerms,
-		arg.Column3,
-		arg.ValidFromGeneration,
-		arg.Column5,
-		arg.Column6,
-		arg.Column7,
-		arg.Column8,
+	rows, err := q.db.Query(ctx, querySearchText,
+		arg.HasCursor,
+		arg.MaxRank,
+		arg.MinKind,
+		arg.MinKey,
 		arg.Limit,
-		arg.Column10,
+		arg.ChainID,
+		arg.ValidFromGeneration,
+		arg.SearchTerm,
+		arg.MaxBlockNumber,
+		arg.NameObservationID,
 	)
 	if err != nil {
 		return nil, err
@@ -1558,6 +1456,7 @@ func (q *Queries) QuerySearchText(ctx context.Context, arg QuerySearchTextParams
 			&i.Rank,
 			&i.Canonical,
 			&i.NameSource,
+			&i.CanonicalKnown,
 		); err != nil {
 			return nil, err
 		}
@@ -1569,17 +1468,17 @@ func (q *Queries) QuerySearchText(ctx context.Context, arg QuerySearchTextParams
 	return items, nil
 }
 
-const QueryStatusState = `-- name: QueryStatusState :many
+const queryStatusState = `-- name: QueryStatusState :one
 SELECT
-	configuration.configured_start::text,
-	contiguous.range_end::text,
-	contiguous_block.block_hash,
-    checkpoint.contiguous_through::text,
-    checkpoint.block_hash,
-	highest.range_end::text,
-	highest_block.block_hash,
-    finality.safe_number::text,
-    finality.finalized_number::text,
+	configuration.configured_start AS configured_start,
+	contiguous.range_end AS contiguous_range_end,
+	contiguous_block.block_hash AS contiguous_block_hash,
+    checkpoint.contiguous_through AS checkpoint_number,
+    checkpoint.block_hash AS checkpoint_hash,
+	highest.range_end AS highest_range_end,
+	highest_block.block_hash AS highest_block_hash,
+    finality.safe_number AS safe_number,
+    finality.finalized_number AS finalized_number,
     trace_result.state
 FROM (SELECT 1) AS singleton
 LEFT JOIN core_index_configuration AS configuration
@@ -1613,62 +1512,49 @@ LEFT JOIN published_block_stage_results AS trace_result
 `
 
 type QueryStatusStateRow struct {
-	ConfigurationConfiguredStart string  `db:"configuration_configured_start" json:"configuration_configured_start"`
-	ContiguousRangeEnd           string  `db:"contiguous_range_end" json:"contiguous_range_end"`
-	BlockHash                    []byte  `db:"block_hash" json:"block_hash"`
-	CheckpointContiguousThrough  string  `db:"checkpoint_contiguous_through" json:"checkpoint_contiguous_through"`
-	BlockHash_2                  []byte  `db:"block_hash_2" json:"block_hash_2"`
-	HighestRangeEnd              string  `db:"highest_range_end" json:"highest_range_end"`
-	BlockHash_3                  []byte  `db:"block_hash_3" json:"block_hash_3"`
-	FinalitySafeNumber           string  `db:"finality_safe_number" json:"finality_safe_number"`
-	FinalityFinalizedNumber      string  `db:"finality_finalized_number" json:"finality_finalized_number"`
-	State                        *string `db:"state" json:"state"`
+	ConfiguredStart     pgtype.Numeric `db:"configured_start" json:"configured_start"`
+	ContiguousRangeEnd  pgtype.Numeric `db:"contiguous_range_end" json:"contiguous_range_end"`
+	ContiguousBlockHash []byte         `db:"contiguous_block_hash" json:"contiguous_block_hash"`
+	CheckpointNumber    pgtype.Numeric `db:"checkpoint_number" json:"checkpoint_number"`
+	CheckpointHash      []byte         `db:"checkpoint_hash" json:"checkpoint_hash"`
+	HighestRangeEnd     pgtype.Numeric `db:"highest_range_end" json:"highest_range_end"`
+	HighestBlockHash    []byte         `db:"highest_block_hash" json:"highest_block_hash"`
+	SafeNumber          pgtype.Numeric `db:"safe_number" json:"safe_number"`
+	FinalizedNumber     pgtype.Numeric `db:"finalized_number" json:"finalized_number"`
+	State               pgtype.Text    `db:"state" json:"state"`
 }
 
-func (q *Queries) QueryStatusState(ctx context.Context, dollar_1 pgtype.Numeric) ([]QueryStatusStateRow, error) {
-	rows, err := q.db.Query(ctx, QueryStatusState, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []QueryStatusStateRow{}
-	for rows.Next() {
-		var i QueryStatusStateRow
-		if err := rows.Scan(
-			&i.ConfigurationConfiguredStart,
-			&i.ContiguousRangeEnd,
-			&i.BlockHash,
-			&i.CheckpointContiguousThrough,
-			&i.BlockHash_2,
-			&i.HighestRangeEnd,
-			&i.BlockHash_3,
-			&i.FinalitySafeNumber,
-			&i.FinalityFinalizedNumber,
-			&i.State,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) QueryStatusState(ctx context.Context, chainID pgtype.Numeric) (QueryStatusStateRow, error) {
+	row := q.db.QueryRow(ctx, queryStatusState, chainID)
+	var i QueryStatusStateRow
+	err := row.Scan(
+		&i.ConfiguredStart,
+		&i.ContiguousRangeEnd,
+		&i.ContiguousBlockHash,
+		&i.CheckpointNumber,
+		&i.CheckpointHash,
+		&i.HighestRangeEnd,
+		&i.HighestBlockHash,
+		&i.SafeNumber,
+		&i.FinalizedNumber,
+		&i.State,
+	)
+	return i, err
 }
 
-const QueryTransactionByHash = `-- name: QueryTransactionByHash :many
+const queryTransactionByHash = `-- name: QueryTransactionByHash :one
 SELECT
-    inclusion.raw,
-    receipt.raw,
-    inclusion.block_number::text,
-    inclusion.block_hash,
-    inclusion.tx_index,
-    inclusion.tx_hash,
-    (canonical.block_hash IS NOT NULL),
-    finality.safe_number::text,
-    finality.finalized_number::text,
-    block.timestamp::text,
-    block.base_fee_per_gas_quantity
+    inclusion.raw AS raw,
+    receipt.raw AS receipt_raw,
+    inclusion.block_number::text AS block_number,
+    inclusion.block_hash AS block_hash,
+    inclusion.tx_index AS tx_index,
+    inclusion.tx_hash AS tx_hash,
+    ((canonical.block_hash IS NOT NULL))::boolean AS canonical,
+    finality.safe_number AS safe_number,
+    finality.finalized_number AS finalized_number,
+    block.timestamp::text AS block_timestamp,
+    block.base_fee_per_gas_quantity AS block_base_fee_per_gas
 FROM transaction_inclusions AS inclusion
 JOIN blocks AS block
   ON block.chain_id = inclusion.chain_id
@@ -1690,52 +1576,39 @@ LIMIT 1
 `
 
 type QueryTransactionByHashRow struct {
-	Raw                     []byte      `db:"raw" json:"raw"`
-	Raw_2                   []byte      `db:"raw_2" json:"raw_2"`
-	InclusionBlockNumber    string      `db:"inclusion_block_number" json:"inclusion_block_number"`
-	BlockHash               []byte      `db:"block_hash" json:"block_hash"`
-	TxIndex                 int64       `db:"tx_index" json:"tx_index"`
-	TxHash                  []byte      `db:"tx_hash" json:"tx_hash"`
-	Column7                 interface{} `db:"column_7" json:"column_7"`
-	FinalitySafeNumber      string      `db:"finality_safe_number" json:"finality_safe_number"`
-	FinalityFinalizedNumber string      `db:"finality_finalized_number" json:"finality_finalized_number"`
-	BlockTimestamp          string      `db:"block_timestamp" json:"block_timestamp"`
-	BaseFeePerGasQuantity   *string     `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
+	Raw                []byte         `db:"raw" json:"raw"`
+	ReceiptRaw         []byte         `db:"receipt_raw" json:"receipt_raw"`
+	BlockNumber        string         `db:"block_number" json:"block_number"`
+	BlockHash          []byte         `db:"block_hash" json:"block_hash"`
+	TxIndex            int64          `db:"tx_index" json:"tx_index"`
+	TxHash             []byte         `db:"tx_hash" json:"tx_hash"`
+	Canonical          bool           `db:"canonical" json:"canonical"`
+	SafeNumber         pgtype.Numeric `db:"safe_number" json:"safe_number"`
+	FinalizedNumber    pgtype.Numeric `db:"finalized_number" json:"finalized_number"`
+	BlockTimestamp     string         `db:"block_timestamp" json:"block_timestamp"`
+	BlockBaseFeePerGas *string        `db:"block_base_fee_per_gas" json:"block_base_fee_per_gas"`
 }
 
-func (q *Queries) QueryTransactionByHash(ctx context.Context, column1 pgtype.Numeric, txHash []byte) ([]QueryTransactionByHashRow, error) {
-	rows, err := q.db.Query(ctx, QueryTransactionByHash, column1, txHash)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []QueryTransactionByHashRow{}
-	for rows.Next() {
-		var i QueryTransactionByHashRow
-		if err := rows.Scan(
-			&i.Raw,
-			&i.Raw_2,
-			&i.InclusionBlockNumber,
-			&i.BlockHash,
-			&i.TxIndex,
-			&i.TxHash,
-			&i.Column7,
-			&i.FinalitySafeNumber,
-			&i.FinalityFinalizedNumber,
-			&i.BlockTimestamp,
-			&i.BaseFeePerGasQuantity,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) QueryTransactionByHash(ctx context.Context, chainID pgtype.Numeric, txHash []byte) (QueryTransactionByHashRow, error) {
+	row := q.db.QueryRow(ctx, queryTransactionByHash, chainID, txHash)
+	var i QueryTransactionByHashRow
+	err := row.Scan(
+		&i.Raw,
+		&i.ReceiptRaw,
+		&i.BlockNumber,
+		&i.BlockHash,
+		&i.TxIndex,
+		&i.TxHash,
+		&i.Canonical,
+		&i.SafeNumber,
+		&i.FinalizedNumber,
+		&i.BlockTimestamp,
+		&i.BlockBaseFeePerGas,
+	)
+	return i, err
 }
 
-const QueryTransactionSelectorCandidates = `-- name: QueryTransactionSelectorCandidates :many
+const queryTransactionSelectorCandidates = `-- name: QueryTransactionSelectorCandidates :many
 WITH request(
     ordinal, block_number, block_hash, transaction_index,
     address, code_hash, selector, selector_scope, exact_address_only
@@ -1774,7 +1647,7 @@ WITH request(
            selector.signature
     FROM request
     JOIN verified_function_selector_sets AS indexed
-      ON indexed.chain_id = $1::numeric
+      ON indexed.chain_id = $3::numeric
      AND ((NOT request.exact_address_only AND
            indexed.code_hash = decode(request.code_hash, 'hex')) OR
           (request.exact_address_only AND
@@ -1807,7 +1680,7 @@ WITH request(
     FROM request
     JOIN contract_abis AS binding
       ON NOT request.exact_address_only
-     AND binding.chain_id = $1::numeric
+     AND binding.chain_id = $3::numeric
      AND binding.address = decode(request.address, 'hex')
      AND binding.code_hash = decode(request.code_hash, 'hex')
      AND binding.canonical
@@ -1859,7 +1732,7 @@ WITH request(
          AND published.durable_job_id = generation.durable_job_id
          AND published.job_generation = generation.job_generation
          AND published.state = 'complete'
-        WHERE observation.chain_id = $1::numeric
+        WHERE observation.chain_id = $3::numeric
           AND observation.proxy_address = decode(request.address, 'hex')
           AND observation.proxy_code_hash = decode(request.code_hash, 'hex')
           AND observation.stage_version = 2
@@ -1872,7 +1745,7 @@ WITH request(
         LIMIT 1
     ) AS route ON NOT request.exact_address_only
     JOIN verified_function_selector_sets AS indexed
-      ON indexed.chain_id = $1::numeric
+      ON indexed.chain_id = $3::numeric
      AND indexed.code_hash = route.implementation_code_hash
      AND indexed.status = 'complete'
      AND (
@@ -1918,7 +1791,7 @@ WITH request(
             ORDER BY snapshot.block_number DESC, snapshot.id DESC
             LIMIT 1
         ) AS facet ON TRUE
-        WHERE active.chain_id = $1::numeric
+        WHERE active.chain_id = $3::numeric
           AND active.diamond_address = decode(request.address, 'hex')
           AND active.selector = decode(request.selector, 'hex')
           AND (
@@ -1940,7 +1813,7 @@ WITH request(
         LIMIT 1
     ) AS route ON NOT request.exact_address_only
     JOIN verified_function_selector_sets AS indexed
-      ON indexed.chain_id = $1::numeric
+      ON indexed.chain_id = $3::numeric
      AND indexed.address = route.facet_address
      AND indexed.code_hash = route.facet_code_hash
      AND indexed.status = 'complete'
@@ -1961,7 +1834,7 @@ WITH request(
 )
 SELECT ranked.ordinal, ranked.source, ranked.source_address,
        ranked.source_code_hash, ranked.abi_entry,
-       ranked.valid_from_block::text, ranked.valid_to_block::text,
+       ranked.valid_from_block::text, ranked.valid_to_block::numeric AS ranked_valid_to_block,
        ranked.selector_scoped, ranked.signature
 FROM (
     SELECT combined.ordinal, combined.source, combined.source_address, combined.source_code_hash, combined.abi_entry, combined.valid_from_block, combined.valid_to_block, combined.selector_scoped, combined.signature,
@@ -1977,24 +1850,24 @@ FROM (
            ) AS candidate_number
     FROM combined
 ) AS ranked
-WHERE ranked.candidate_number <= $3::bigint
+WHERE ranked.candidate_number <= $1::bigint
 ORDER BY ranked.ordinal, ranked.candidate_number
 `
 
 type QueryTransactionSelectorCandidatesRow struct {
-	Ordinal              int32  `db:"ordinal" json:"ordinal"`
-	Source               string `db:"source" json:"source"`
-	SourceAddress        []byte `db:"source_address" json:"source_address"`
-	SourceCodeHash       []byte `db:"source_code_hash" json:"source_code_hash"`
-	AbiEntry             []byte `db:"abi_entry" json:"abi_entry"`
-	RankedValidFromBlock string `db:"ranked_valid_from_block" json:"ranked_valid_from_block"`
-	RankedValidToBlock   string `db:"ranked_valid_to_block" json:"ranked_valid_to_block"`
-	SelectorScoped       bool   `db:"selector_scoped" json:"selector_scoped"`
-	Signature            string `db:"signature" json:"signature"`
+	Ordinal              int32          `db:"ordinal" json:"ordinal"`
+	Source               string         `db:"source" json:"source"`
+	SourceAddress        []byte         `db:"source_address" json:"source_address"`
+	SourceCodeHash       []byte         `db:"source_code_hash" json:"source_code_hash"`
+	AbiEntry             []byte         `db:"abi_entry" json:"abi_entry"`
+	RankedValidFromBlock string         `db:"ranked_valid_from_block" json:"ranked_valid_from_block"`
+	RankedValidToBlock   pgtype.Numeric `db:"ranked_valid_to_block" json:"ranked_valid_to_block"`
+	SelectorScoped       bool           `db:"selector_scoped" json:"selector_scoped"`
+	Signature            string         `db:"signature" json:"signature"`
 }
 
-func (q *Queries) QueryTransactionSelectorCandidates(ctx context.Context, column1 pgtype.Numeric, column2 []byte, column3 int64) ([]QueryTransactionSelectorCandidatesRow, error) {
-	rows, err := q.db.Query(ctx, QueryTransactionSelectorCandidates, column1, column2, column3)
+func (q *Queries) QueryTransactionSelectorCandidates(ctx context.Context, maxCandidateNumber int64, requests []byte, chainID pgtype.Numeric) ([]QueryTransactionSelectorCandidatesRow, error) {
+	rows, err := q.db.Query(ctx, queryTransactionSelectorCandidates, maxCandidateNumber, requests, chainID)
 	if err != nil {
 		return nil, err
 	}
@@ -2023,7 +1896,7 @@ func (q *Queries) QueryTransactionSelectorCandidates(ctx context.Context, column
 	return items, nil
 }
 
-const QueryValidateTransactionCursor = `-- name: QueryValidateTransactionCursor :many
+const queryValidateTransactionCursor = `-- name: QueryValidateTransactionCursor :one
 SELECT
     EXISTS (
 	    SELECT 1 FROM canonical_blocks AS snapshot
@@ -2043,43 +1916,30 @@ AND EXISTS (
       AND inclusion.block_hash = $5
       AND inclusion.tx_index = $6
       AND inclusion.tx_hash = $7
-)
+) AS valid
 `
 
 type QueryValidateTransactionCursorParams struct {
-	Column1     pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2     pgtype.Numeric `db:"column_2" json:"column_2"`
+	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Number      pgtype.Numeric `db:"number" json:"number"`
 	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
-	Column4     pgtype.Numeric `db:"column_4" json:"column_4"`
-	BlockHash_2 []byte         `db:"block_hash_2" json:"block_hash_2"`
+	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash2  []byte         `db:"block_hash_2" json:"block_hash_2"`
 	TxIndex     int64          `db:"tx_index" json:"tx_index"`
 	TxHash      []byte         `db:"tx_hash" json:"tx_hash"`
 }
 
-func (q *Queries) QueryValidateTransactionCursor(ctx context.Context, arg QueryValidateTransactionCursorParams) ([]*bool, error) {
-	rows, err := q.db.Query(ctx, QueryValidateTransactionCursor,
-		arg.Column1,
-		arg.Column2,
+func (q *Queries) QueryValidateTransactionCursor(ctx context.Context, arg QueryValidateTransactionCursorParams) (*bool, error) {
+	row := q.db.QueryRow(ctx, queryValidateTransactionCursor,
+		arg.ChainID,
+		arg.Number,
 		arg.BlockHash,
-		arg.Column4,
-		arg.BlockHash_2,
+		arg.BlockNumber,
+		arg.BlockHash2,
 		arg.TxIndex,
 		arg.TxHash,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []*bool{}
-	for rows.Next() {
-		var column_1 *bool
-		if err := rows.Scan(&column_1); err != nil {
-			return nil, err
-		}
-		items = append(items, column_1)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var valid *bool
+	err := row.Scan(&valid)
+	return valid, err
 }

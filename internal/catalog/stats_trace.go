@@ -2,15 +2,18 @@ package catalog
 
 import (
 	"context"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/islishude/etherview/internal/db/gen"
 	"math/big"
 	"slices"
 	"strings"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
 )
 
 func (catalog *Postgres) BlockStats(ctx context.Context, request BlockStatsRequest) ([]BlockStat, error) {
@@ -28,7 +31,7 @@ func (catalog *Postgres) BlockStats(ctx context.Context, request BlockStatsReque
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	snapshot, err := readCanonicalSnapshot(ctx, tx, request.ChainID)
 	if err != nil {
 		return nil, err
@@ -42,16 +45,30 @@ func (catalog *Postgres) BlockStats(ctx context.Context, request BlockStatsReque
 	if err := requireStageRange(ctx, tx, request.ChainID, request.FromBlock, request.ToBlock, StageToken); err != nil {
 		return nil, err
 	}
-	rows, err := tx.QueryContext(ctx, dbgen.CatalogBlockStats, request.ChainID, request.FromBlock, request.ToBlock)
+	rows, err := func() ([]dbgen.CatalogBlockStatsRow, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(request.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(request.FromBlock); err != nil {
+			return nil, err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(request.ToBlock); err != nil {
+			return nil, err
+		}
+		return dbgen.New(tx).CatalogBlockStats(ctx, queryValue0, queryValue1, queryValue2)
+	}()
 	if err != nil {
 		return nil, fmt.Errorf("query canonical block statistics: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	items := make([]BlockStat, 0, expectedCount)
 	expectedHeight := new(big.Int)
 	expectedHeight.SetString(request.FromBlock, 10)
-	for rows.Next() {
-		stat, scanErr := scanBlockStat(rows)
+	for _, storedRow := range rows {
+		stat, scanErr := scanBlockStat(dbgen.CatalogBlockStatsRow(storedRow))
 		if scanErr != nil {
 			return nil, fmt.Errorf("scan block statistic: %w", scanErr)
 		}
@@ -61,24 +78,46 @@ func (catalog *Postgres) BlockStats(ctx context.Context, request BlockStatsReque
 		expectedHeight.Add(expectedHeight, big.NewInt(1))
 		items = append(items, stat)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate block statistics: %w", err)
-	}
+
 	if len(items) != expectedCount {
 		return nil, fmt.Errorf("%w: completed stats stage has missing rows", ErrCorruptData)
 	}
-	if err := commitRead(tx); err != nil {
+	if err := commitRead(ctx, tx); err != nil {
 		return nil, err
 	}
 	return items, nil
 }
 
-func requireStageRange(ctx context.Context, tx *sql.Tx, chainID, fromBlock, toBlock string, stage Stage) error {
+func requireStageRange(ctx context.Context, tx pgx.Tx, chainID, fromBlock, toBlock string, stage Stage) error {
 	var blockNumber string
 	var blockHash []byte
-	var state sql.NullString
-	err := tx.QueryRowContext(ctx, dbgen.CatalogFirstIncompleteStageInRange, chainID, fromBlock, toBlock, string(stage), stage.Version()).Scan(&blockNumber, &blockHash, &state)
-	if errors.Is(err, sql.ErrNoRows) {
+	var state pgtype.Text
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(fromBlock); err != nil {
+			return err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(toBlock); err != nil {
+			return err
+		}
+		if stage.Version() < -2147483648 || stage.Version() > 2147483647 {
+			return errors.New("invalid stored query value")
+		}
+		queryRow, err := dbgen.New(tx).CatalogFirstIncompleteStageInRange(ctx, dbgen.CatalogFirstIncompleteStageInRangeParams{ChainID: queryValue0, FromBlock: queryValue1, ToBlock: queryValue2, Stage: string(stage), StageVersion: int32(stage.Version())})
+		if err != nil {
+			return err
+		}
+		blockNumber = queryRow.HeightsNumber
+		blockHash = queryRow.BlockHash
+		state = queryRow.State
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
@@ -105,20 +144,73 @@ func requireStageRange(ctx context.Context, tx *sql.Tx, chainID, fromBlock, toBl
 	}
 }
 
-func scanBlockStat(row rowScanner) (BlockStat, error) {
+func scanBlockStat(row dbgen.CatalogBlockStatsRow) (BlockStat, error) {
 	var (
 		stat                                             BlockStat
 		blockHash                                        []byte
-		baseFee, blobGasUsed, excessBlobGas, blobBaseFee sql.NullString
-		burnedWei, blobBurnedWei, blockInterval, tps     sql.NullString
+		baseFee, blobGasUsed, excessBlobGas, blobBaseFee pgtype.Text
+		burnedWei, blobBurnedWei, blockInterval, tps     pgtype.Text
 	)
-	if err := row.Scan(
-		&stat.ChainID, &stat.BlockNumber, &blockHash, &stat.TransactionCount,
-		&stat.GasUsed, &stat.GasLimit, &baseFee, &blobGasUsed, &excessBlobGas,
-		&blobBaseFee, &burnedWei, &blobBurnedWei, &stat.BlockTimestamp,
-		&blockInterval, &tps, &stat.TokenEventCount, &stat.TokenTransferCount,
-		&stat.NFTTransferCount, &stat.ComputedAt,
-	); err != nil {
+	if err := func() error {
+		stat.ChainID = row.StatsChainID
+		stat.BlockNumber = row.StatsBlockNumber
+		blockHash = row.BlockHash
+		stat.TransactionCount = row.StatsTransactionCount
+		stat.GasUsed = row.StatsGasUsed
+		stat.GasLimit = row.StatsGasLimit
+		if value, err := dbaccess.NumericText(row.StatsBaseFeePerGas); err != nil {
+			return err
+		} else {
+			baseFee = value
+		}
+		if value, err := dbaccess.NumericText(row.StatsBlobGasUsed); err != nil {
+			return err
+		} else {
+			blobGasUsed = value
+		}
+		if value, err := dbaccess.NumericText(row.StatsExcessBlobGas); err != nil {
+			return err
+		} else {
+			excessBlobGas = value
+		}
+		if value, err := dbaccess.NumericText(row.StatsBlobBaseFeePerGas); err != nil {
+			return err
+		} else {
+			blobBaseFee = value
+		}
+		if value, err := dbaccess.NumericText(row.StatsBurnedWei); err != nil {
+			return err
+		} else {
+			burnedWei = value
+		}
+		if value, err := dbaccess.NumericText(row.StatsBlobBurnedWei); err != nil {
+			return err
+		} else {
+			blobBurnedWei = value
+		}
+		stat.BlockTimestamp = row.StatsBlockTimestamp
+		if value, err := dbaccess.NumericText(row.StatsBlockIntervalSeconds); err != nil {
+			return err
+		} else {
+			blockInterval = value
+		}
+		if value, err := normalizedNumericText(row.TransactionsPerSecond); err != nil {
+			return err
+		} else {
+			tps = value
+		}
+		stat.TokenEventCount = row.TokenTokenEventCount
+		stat.TokenTransferCount = row.TokenTokenTransferCount
+		stat.NFTTransferCount = row.TokenNftTransferCount
+		if !row.ComputedAt.Valid {
+			return errors.New("invalid stored query value")
+		}
+		if row.ComputedAt.InfinityModifier != pgtype.Finite {
+			return errors.New("invalid stored query value")
+		}
+		stat.ComputedAt = row.ComputedAt.Time
+		return nil
+	}(); err != nil {
 		return BlockStat{}, err
 	}
 	if err := validateChainID(stat.ChainID); err != nil || !canonicalUint256(stat.BlockNumber) ||
@@ -133,7 +225,7 @@ func scanBlockStat(row rowScanner) (BlockStat, error) {
 		return BlockStat{}, err
 	}
 	for _, optional := range []struct {
-		source      sql.NullString
+		source      pgtype.Text
 		destination **string
 	}{
 		{baseFee, &stat.BaseFeePerGas},
@@ -176,7 +268,7 @@ func (catalog *Postgres) AggregateStats(ctx context.Context, request AggregateSt
 	if err != nil {
 		return AggregateStats{}, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	snapshot, err := readCanonicalSnapshot(ctx, tx, request.ChainID)
 	if err != nil {
 		return AggregateStats{}, err
@@ -193,12 +285,35 @@ func (catalog *Postgres) AggregateStats(ctx context.Context, request AggregateSt
 		ChainID: request.ChainID, FromBlock: request.FromBlock, ToBlock: request.ToBlock,
 		Snapshot: snapshot, CoreComplete: true, StatsComplete: true, TokenComplete: true,
 	}
-	var weightedTPS sql.NullString
-	if err := tx.QueryRowContext(ctx, dbgen.CatalogAggregateStats, request.ChainID, request.FromBlock, request.ToBlock).Scan(
-		&result.BlockCount, &result.TransactionCount, &result.GasUsed,
-		&result.BurnedWei, &result.BlobBurnedWei, &result.TokenEventCount,
-		&result.TokenTransferCount, &result.NFTTransferCount, &weightedTPS,
-	); err != nil {
+	var weightedTPS pgtype.Text
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(request.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(request.FromBlock); err != nil {
+			return err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(request.ToBlock); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).CatalogAggregateStats(ctx, queryValue0, queryValue1, queryValue2)
+		if err != nil {
+			return err
+		}
+		result.BlockCount = queryRow.BlockCount
+		result.TransactionCount = queryRow.TransactionCount
+		result.GasUsed = queryRow.GasUsed
+		result.BurnedWei = queryRow.BurnedWei
+		result.BlobBurnedWei = queryRow.BlobBurnedWei
+		result.TokenEventCount = queryRow.TokenEventCount
+		result.TokenTransferCount = queryRow.Erc20TransferCount
+		result.NFTTransferCount = queryRow.NftTransferCount
+		weightedTPS = pgtype.Text{String: queryRow.WeightedTps, Valid: queryRow.WeightedTpsPresent}
+		return nil
+	}(); err != nil {
 		return AggregateStats{}, fmt.Errorf("query aggregate statistics: %w", err)
 	}
 	for _, value := range []string{
@@ -216,7 +331,7 @@ func (catalog *Postgres) AggregateStats(ctx context.Context, request AggregateSt
 		}
 		result.AverageTPS = &weightedTPS.String
 	}
-	if err := commitRead(tx); err != nil {
+	if err := commitRead(ctx, tx); err != nil {
 		return AggregateStats{}, err
 	}
 	return result, nil
@@ -324,22 +439,35 @@ func (catalog *Postgres) readTraceIdentity(ctx context.Context, chainID string, 
 	if err != nil {
 		return traceIdentity{}, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	identity, _, err := catalog.resolveTraceIdentity(ctx, tx, chainID, transactionHash)
 	if err != nil {
 		return traceIdentity{}, err
 	}
-	if err := commitRead(tx); err != nil {
+	if err := commitRead(ctx, tx); err != nil {
 		return traceIdentity{}, err
 	}
 	return identity, nil
 }
 
-func (catalog *Postgres) resolveTraceIdentity(ctx context.Context, tx *sql.Tx, chainID string, transactionHash []byte) (traceIdentity, []byte, error) {
+func (catalog *Postgres) resolveTraceIdentity(ctx context.Context, tx pgx.Tx, chainID string, transactionHash []byte) (traceIdentity, []byte, error) {
 	var blockNumber, transactionIndex string
 	var blockHash []byte
-	err := tx.QueryRowContext(ctx, dbgen.CatalogCanonicalTransactionInclusion, chainID, transactionHash).Scan(&blockNumber, &blockHash, &transactionIndex)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).CatalogCanonicalTransactionInclusion(ctx, queryValue0, transactionHash)
+		if err != nil {
+			return err
+		}
+		blockNumber = queryRow.InclusionBlockNumber
+		blockHash = queryRow.BlockHash
+		transactionIndex = queryRow.InclusionTxIndex
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return traceIdentity{}, nil, ErrNotFound
 	}
 	if err != nil {
@@ -354,8 +482,37 @@ func (catalog *Postgres) resolveTraceIdentity(ctx context.Context, tx *sql.Tx, c
 	}
 	var state string
 	var jobID, jobGeneration int64
-	err = tx.QueryRowContext(ctx, dbgen.CatalogTraceStagePublication, chainID, blockNumber, blockHash, string(StageTrace), StageTrace.Version()).Scan(&state, &jobID, &jobGeneration)
-	if errors.Is(err, sql.ErrNoRows) {
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(blockNumber); err != nil {
+			return err
+		}
+		if StageTrace.Version() < -2147483648 || StageTrace.Version() > 2147483647 {
+			return errors.New("invalid stored query value")
+		}
+		queryRow, err := dbgen.New(tx).CatalogTraceStagePublication(ctx, dbgen.CatalogTraceStagePublicationParams{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: blockHash, Stage: string(StageTrace), StageVersion: int32(StageTrace.Version())})
+		if err != nil {
+			return err
+		}
+		if !queryRow.State.Valid {
+			return errors.New("invalid stored query value")
+		}
+		state = queryRow.State.String
+		if queryRow.DurableJobID == nil {
+			return errors.New("invalid stored query value")
+		}
+		jobID = *queryRow.DurableJobID
+		if queryRow.JobGeneration == nil {
+			return errors.New("invalid stored query value")
+		}
+		jobGeneration = *queryRow.JobGeneration
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return traceIdentity{}, nil, StageUnavailableError{
 			Stage: StageTrace, State: StageMissing, BlockNumber: blockNumber, BlockHash: encodedBlockHash,
 		}
@@ -386,20 +543,33 @@ func (catalog *Postgres) readTransactionTrace(ctx context.Context, chainID strin
 	if err != nil {
 		return TransactionTrace{}, traceIdentity{}, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	identity, blockHash, err := catalog.resolveTraceIdentity(ctx, tx, chainID, transactionHash)
 	if err != nil {
 		return TransactionTrace{}, traceIdentity{}, err
 	}
-	rows, err := tx.QueryContext(ctx, dbgen.CatalogTransactionTrace, chainID, identity.BlockNumber, blockHash, transactionHash, catalog.options.MaxTraceFrames+1)
+	rows, err := func() ([]dbgen.CatalogTransactionTraceRow, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(identity.BlockNumber); err != nil {
+			return nil, err
+		}
+		if catalog.options.MaxTraceFrames+1 < -2147483648 || catalog.options.MaxTraceFrames+1 > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).CatalogTransactionTrace(ctx, dbgen.CatalogTransactionTraceParams{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: blockHash, TransactionHash: transactionHash, Limit: int32(catalog.options.MaxTraceFrames + 1)})
+	}()
 	if err != nil {
 		return TransactionTrace{}, traceIdentity{}, fmt.Errorf("query normalized transaction trace: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	persisted := make([]scannedTraceFrame, 0)
 	traceDataBytes := 0
-	for rows.Next() {
-		frame, scanErr := catalog.scanTraceFrame(rows)
+	for _, storedRow := range rows {
+		frame, scanErr := catalog.scanTraceFrame(dbgen.CatalogTransactionTraceRow(storedRow))
 		if scanErr != nil {
 			return TransactionTrace{}, traceIdentity{}, fmt.Errorf("scan normalized trace frame: %w", scanErr)
 		}
@@ -412,9 +582,7 @@ func (catalog *Postgres) readTransactionTrace(ctx context.Context, chainID strin
 			return TransactionTrace{}, traceIdentity{}, ErrLimitExceeded
 		}
 	}
-	if err := rows.Err(); err != nil {
-		return TransactionTrace{}, traceIdentity{}, fmt.Errorf("iterate normalized transaction trace: %w", err)
-	}
+
 	slices.SortFunc(persisted, func(left, right scannedTraceFrame) int {
 		return compareTracePaths(left.frame.Path, right.frame.Path)
 	})
@@ -453,7 +621,7 @@ func (catalog *Postgres) readTransactionTrace(ctx context.Context, chainID strin
 	if err := catalog.decorateTraceFrames(ctx, tx, identity, &result); err != nil {
 		return TransactionTrace{}, traceIdentity{}, err
 	}
-	if err := commitRead(tx); err != nil {
+	if err := commitRead(ctx, tx); err != nil {
 		return TransactionTrace{}, traceIdentity{}, err
 	}
 	return result, identity, nil
@@ -557,26 +725,61 @@ func (catalog *Postgres) logTraceCacheBypass(ctx context.Context, message string
 type scannedTraceFrame struct {
 	frame      TraceFrame
 	pathText   string
-	parentText sql.NullString
+	parentText pgtype.Text
 	dataBytes  int
 }
 
-func (catalog *Postgres) scanTraceFrame(row rowScanner) (scannedTraceFrame, error) {
+func (catalog *Postgres) scanTraceFrame(row dbgen.CatalogTransactionTraceRow) (scannedTraceFrame, error) {
 	var (
 		result                              scannedTraceFrame
 		depth                               int64
 		from, to, created, input, output    []byte
 		executionAddress, executionCodeHash []byte
-		value, gas, gasUsed, traceError     sql.NullString
+		value, gas, gasUsed, traceError     pgtype.Text
 		executionResolution                 string
 		directReverted                      bool
 	)
-	if err := row.Scan(
-		&result.pathText, &result.parentText, &depth, &result.frame.CallType,
-		&from, &to, &created, &value, &gas, &gasUsed, &input, &output,
-		&traceError, &directReverted, &result.frame.Reverted,
-		&executionAddress, &executionCodeHash, &executionResolution,
-	); err != nil {
+	if err := func() error {
+		result.pathText = row.TracePath
+		var queryValue1 pgtype.Text
+		if row.ParentPath != nil {
+			queryValue1 = pgtype.Text{String: *row.ParentPath, Valid: true}
+		}
+		result.parentText = queryValue1
+		depth = int64(row.Depth)
+		result.frame.CallType = row.CallType
+		from = row.FromAddress
+		to = row.ToAddress
+		created = row.CreatedAddress
+		if numericValue, err := dbaccess.NumericText(row.Value); err != nil {
+			return err
+		} else {
+			value = numericValue
+		}
+		if value, err := dbaccess.NumericText(row.Gas); err != nil {
+			return err
+		} else {
+			gas = value
+		}
+		if value, err := dbaccess.NumericText(row.GasUsed); err != nil {
+			return err
+		} else {
+			gasUsed = value
+		}
+		input = row.Input
+		output = row.Output
+		var queryValue13 pgtype.Text
+		if row.Error != nil {
+			queryValue13 = pgtype.Text{String: *row.Error, Valid: true}
+		}
+		traceError = queryValue13
+		directReverted = row.DirectReverted
+		result.frame.Reverted = row.Reverted
+		executionAddress = row.ExecutionAddress
+		executionCodeHash = row.ExecutionCodeHash
+		executionResolution = row.ExecutionResolution
+		return nil
+	}(); err != nil {
 		return scannedTraceFrame{}, err
 	}
 	if depth < 0 || depth > 128 || len(result.pathText) > catalog.options.MaxTextBytes ||
@@ -640,7 +843,7 @@ func (catalog *Postgres) scanTraceFrame(row rowScanner) (scannedTraceFrame, erro
 		result.frame.Execution = execution
 	}
 	for _, optional := range []struct {
-		source      sql.NullString
+		source      pgtype.Text
 		destination **string
 	}{
 		{value, &result.frame.Value},
@@ -690,4 +893,17 @@ func compareUnsignedDecimal(left, right string) int {
 	leftInteger.SetString(left, 10)
 	rightInteger.SetString(right, 10)
 	return leftInteger.Cmp(rightInteger)
+}
+
+// PostgreSQL stores exact scale; public statistics omit insignificant trailing
+// fractional zeroes without ever converting to binary floating point.
+func normalizedNumericText(value pgtype.Numeric) (pgtype.Text, error) {
+	text, err := dbaccess.NumericText(value)
+	if err != nil {
+		return pgtype.Text{}, err
+	}
+	if text.Valid && strings.Contains(text.String, ".") {
+		text.String = strings.TrimRight(strings.TrimRight(text.String, "0"), ".")
+	}
+	return text, nil
 }

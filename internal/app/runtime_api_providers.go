@@ -2,8 +2,9 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/islishude/etherview/internal/accelerator"
 	"github.com/islishude/etherview/internal/adapters"
@@ -24,7 +25,7 @@ func newAPITraceCache(ctx context.Context, cfg config.Config) (accelerator.BlobS
 	})
 }
 
-func newAPIPriceProvider(db *sql.DB, cfg config.Config) (etherscan.PriceProvider, error) {
+func newAPIPriceProvider(db *pgxpool.Pool, cfg config.Config) (etherscan.PriceProvider, error) {
 	if !cfg.Features.Pricing {
 		return nil, nil
 	}

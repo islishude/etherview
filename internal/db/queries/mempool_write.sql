@@ -1,11 +1,11 @@
--- name: MempoolWriteLockMempoolStatement1 :many
-SELECT pg_advisory_xact_lock(hashtext('etherview:mempool:' || $1));
+-- name: MempoolWriteLockMempoolStatement1 :exec
+SELECT pg_advisory_xact_lock(hashtext('etherview:mempool:' || sqlc.arg('chain_id')));
 
 -- name: MempoolWriteStoreFailureStatement1 :exec
 INSERT INTO mempool_status (
 			chain_id, state, endpoint_name, latest_snapshot_id, transaction_count,
 			last_attempt_at, last_success_at, error_code, error_message, updated_at
-		) VALUES ($1::numeric, $2, $3, NULL, NULL, $4, NULL, $5, $6, now())
+		) VALUES (sqlc.arg('chain_id')::numeric, sqlc.arg('state'), sqlc.narg('endpoint_name'), NULL, NULL, sqlc.arg('last_attempt_at'), NULL, sqlc.arg('error_code'), sqlc.arg('error_message'), now())
 		ON CONFLICT (chain_id) DO UPDATE SET
 			state = EXCLUDED.state,
 			endpoint_name = EXCLUDED.endpoint_name,
@@ -15,21 +15,21 @@ INSERT INTO mempool_status (
 			updated_at = now()
 		WHERE mempool_status.last_attempt_at <= EXCLUDED.last_attempt_at;
 
--- name: MempoolWriteStoreSnapshotStatement1 :many
+-- name: MempoolWriteStoreSnapshotStatement1 :one
 INSERT INTO mempool_snapshots (
 			chain_id, endpoint_name, observed_at, expires_at, transaction_count
-		) VALUES ($1::numeric, $2, $3, $4, $5)
+		) VALUES (sqlc.arg('chain_id')::numeric, sqlc.arg('endpoint_name'), sqlc.arg('observed_at'), sqlc.arg('expires_at'), sqlc.arg('transaction_count'))
 		RETURNING id;
 
--- name: MempoolWriteStoreSnapshotStatement2 :exec
+-- name: MempoolWriteStoreSnapshotStatement2 :execrows
 INSERT INTO mempool_transactions (
 			chain_id, tx_hash, from_address, to_address, nonce, value, gas,
 			gas_price, max_fee_per_gas, max_priority_fee_per_gas, tx_type,
 			input, raw, first_seen_at, last_seen_at, expires_at, last_endpoint_name
 		) VALUES (
-			$1::numeric, $2, $3, $4, $5::numeric, $6::numeric, $7::numeric,
-			$8::numeric, $9::numeric, $10::numeric, $11::numeric,
-			$12, $13::jsonb, $14, $15, $16, $17
+			sqlc.arg('chain_id')::numeric, sqlc.arg('tx_hash'), sqlc.arg('from_address'), sqlc.arg('to_address'), sqlc.arg('nonce')::numeric, sqlc.arg('value')::numeric, sqlc.arg('gas')::numeric,
+			sqlc.narg('gas_price')::numeric, sqlc.narg('max_fee_per_gas')::numeric, sqlc.narg('max_priority_fee_per_gas')::numeric, sqlc.narg('tx_type')::numeric,
+			sqlc.arg('input'), sqlc.arg('raw')::jsonb, sqlc.arg('first_seen_at'), sqlc.arg('last_seen_at'), sqlc.arg('expires_at'), sqlc.arg('last_endpoint_name')
 		)
 		ON CONFLICT (chain_id, tx_hash) DO UPDATE SET
 			last_seen_at = GREATEST(mempool_transactions.last_seen_at, EXCLUDED.last_seen_at),
@@ -51,7 +51,7 @@ INSERT INTO mempool_transactions (
 
 -- name: MempoolWriteStoreSnapshotStatement3 :exec
 INSERT INTO mempool_snapshot_transactions (chain_id, snapshot_id, tx_hash)
-			VALUES ($1::numeric, $2, $3);
+			VALUES (sqlc.arg('chain_id')::numeric, sqlc.arg('snapshot_id'), sqlc.arg('tx_hash'));
 
 -- name: MempoolWriteStoreSnapshotStatement4 :exec
 WITH previous_slots AS (
@@ -59,7 +59,7 @@ WITH previous_slots AS (
 				FROM mempool_snapshot_transactions AS member
 				JOIN mempool_transactions AS pending
 				  ON pending.chain_id = member.chain_id AND pending.tx_hash = member.tx_hash
-				WHERE member.chain_id = $1::numeric AND member.snapshot_id = $2
+				WHERE member.chain_id = sqlc.arg('chain_id')::numeric AND member.snapshot_id = sqlc.arg('snapshot_id')
 				GROUP BY pending.from_address, pending.nonce
 				HAVING count(*) = 1
 			), current_slots AS (
@@ -67,14 +67,14 @@ WITH previous_slots AS (
 				FROM mempool_snapshot_transactions AS member
 				JOIN mempool_transactions AS pending
 				  ON pending.chain_id = member.chain_id AND pending.tx_hash = member.tx_hash
-				WHERE member.chain_id = $1::numeric AND member.snapshot_id = $3
+				WHERE member.chain_id = sqlc.arg('chain_id')::numeric AND member.snapshot_id = sqlc.arg('snapshot_id_2')
 				GROUP BY pending.from_address, pending.nonce
 				HAVING count(*) = 1
 			)
 			INSERT INTO mempool_transaction_replacements (
 				chain_id, snapshot_id, replaced_hash, replacement_hash
 			)
-			SELECT $1::numeric, $3, previous.tx_hash, current.tx_hash
+			SELECT sqlc.arg('chain_id')::numeric, sqlc.arg('snapshot_id_2'), previous.tx_hash, current.tx_hash
 			FROM previous_slots AS previous
 			JOIN current_slots AS current
 			  ON current.from_address = previous.from_address
@@ -83,18 +83,18 @@ WITH previous_slots AS (
 
 -- name: MempoolWriteStoreSnapshotStatement5 :exec
 UPDATE mempool_transactions AS pending
-			SET expires_at = GREATEST(pending.expires_at, $3)
+			SET expires_at = GREATEST(pending.expires_at, sqlc.arg('expires_at'))
 			FROM mempool_transaction_replacements AS replacement
-			WHERE replacement.chain_id = $1::numeric
-			  AND replacement.snapshot_id = $2
+			WHERE replacement.chain_id = sqlc.arg('chain_id')::numeric
+			  AND replacement.snapshot_id = sqlc.arg('snapshot_id')
 			  AND pending.chain_id = replacement.chain_id
 			  AND pending.tx_hash = replacement.replaced_hash;
 
--- name: MempoolWriteStoreSnapshotStatement6 :exec
+-- name: MempoolWriteStoreSnapshotStatement6 :execrows
 INSERT INTO mempool_status (
 			chain_id, state, endpoint_name, latest_snapshot_id, transaction_count,
 			last_attempt_at, last_success_at, error_code, error_message, updated_at
-		) VALUES ($1::numeric, 'complete', $2, $3, $4, $5, $5, NULL, NULL, now())
+		) VALUES (sqlc.arg('chain_id')::numeric, 'complete', sqlc.arg('endpoint_name'), sqlc.arg('latest_snapshot_id'), sqlc.arg('transaction_count'), sqlc.arg('last_attempt_at'), sqlc.arg('last_attempt_at'), NULL, NULL, now())
 		ON CONFLICT (chain_id) DO UPDATE SET
 			state = EXCLUDED.state,
 			endpoint_name = EXCLUDED.endpoint_name,
@@ -107,19 +107,19 @@ INSERT INTO mempool_status (
 			updated_at = now()
 		WHERE mempool_status.last_attempt_at <= EXCLUDED.last_attempt_at;
 
--- name: MempoolWriteStoreSnapshotStatement7 :exec
+-- name: MempoolWriteStoreSnapshotStatement7 :execrows
 UPDATE mempool_status
-		SET last_snapshot_write_id = $2
-		WHERE chain_id = $1::numeric;
+		SET last_snapshot_write_id = sqlc.arg('last_snapshot_write_id')
+		WHERE chain_id = sqlc.arg('chain_id')::numeric;
 
 -- name: MempoolWriteStoreSnapshotStatement8 :exec
 DELETE FROM mempool_snapshots
-		WHERE chain_id = $1::numeric AND expires_at <= $2 AND id <> $3;
+		WHERE chain_id = sqlc.arg('chain_id')::numeric AND expires_at <= sqlc.arg('expires_at') AND id <> sqlc.arg('i_d');
 
 -- name: MempoolWriteStoreSnapshotStatement9 :exec
 DELETE FROM mempool_transactions AS pending
-		WHERE pending.chain_id = $1::numeric
-		  AND pending.expires_at <= $2
+		WHERE pending.chain_id = sqlc.arg('chain_id')::numeric
+		  AND pending.expires_at <= sqlc.arg('expires_at')
 		  AND NOT EXISTS (
 			SELECT 1 FROM mempool_snapshot_transactions AS member
 			WHERE member.chain_id = pending.chain_id AND member.tx_hash = pending.tx_hash

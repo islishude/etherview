@@ -13,69 +13,69 @@ import (
 type Querier interface {
 	AcquireENSGenerationLock(ctx context.Context, chainID pgtype.Numeric) error
 	AdjustBillingAccount(ctx context.Context, arg AdjustBillingAccountParams) (AdjustBillingAccountRow, error)
-	AdminWriteEnqueueRepairStatement1(ctx context.Context, arg AdminWriteEnqueueRepairStatement1Params) ([]AdminWriteEnqueueRepairStatement1Row, error)
+	AdminWriteEnqueueRepairStatement1(ctx context.Context, arg AdminWriteEnqueueRepairStatement1Params) (AdminWriteEnqueueRepairStatement1Row, error)
 	AnalyticsWriteDeferDirty(ctx context.Context, arg AnalyticsWriteDeferDirtyParams) error
-	AnalyticsWriteDeleteDirty(ctx context.Context, column1 pgtype.Numeric, bucketStart pgtype.Timestamptz, generation int64) error
-	AnalyticsWriteDeleteRollup(ctx context.Context, column1 pgtype.Numeric, bucketStart pgtype.Timestamptz) error
-	AnalyticsWriteNextDirty(ctx context.Context, column1 pgtype.Numeric, nextAttemptAt pgtype.Timestamptz) ([]AnalyticsWriteNextDirtyRow, error)
-	AnalyticsWriteRecomputeRollup(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Timestamptz, sourceGeneration int64) error
-	AnalyticsWriteRefreshBackfill(ctx context.Context, dollar_1 pgtype.Numeric) error
-	AnalyticsWriteRollupLock(ctx context.Context, dollar_1 *string) ([]bool, error)
-	AnalyticsWriteRollupMetrics(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Timestamptz) ([]AnalyticsWriteRollupMetricsRow, error)
-	AnalyticsWriteSourceReadiness(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Timestamptz) ([]AnalyticsWriteSourceReadinessRow, error)
+	AnalyticsWriteDeleteDirty(ctx context.Context, chainID pgtype.Numeric, bucketStart pgtype.Timestamptz, generation int64) (int64, error)
+	AnalyticsWriteDeleteRollup(ctx context.Context, chainID pgtype.Numeric, bucketStart pgtype.Timestamptz) error
+	AnalyticsWriteNextDirty(ctx context.Context, chainID pgtype.Numeric, nextAttemptAt pgtype.Timestamptz) (AnalyticsWriteNextDirtyRow, error)
+	AnalyticsWriteRecomputeRollup(ctx context.Context, chainID pgtype.Numeric, bucketStart pgtype.Timestamptz, sourceGeneration int64) (int64, error)
+	AnalyticsWriteRefreshBackfill(ctx context.Context, chainID pgtype.Numeric) error
+	AnalyticsWriteRollupLock(ctx context.Context, chainID *string) (bool, error)
+	AnalyticsWriteRollupMetrics(ctx context.Context, now pgtype.Timestamptz, chainID pgtype.Numeric) (AnalyticsWriteRollupMetricsRow, error)
+	AnalyticsWriteSourceReadiness(ctx context.Context, chainID pgtype.Numeric, bucketStart pgtype.Timestamptz) (AnalyticsWriteSourceReadinessRow, error)
 	AppendBillingPaymentEvent(ctx context.Context, arg AppendBillingPaymentEventParams) error
-	AuthLegacyGetAPIKeyByPrefix(ctx context.Context, prefix string) ([]AuthLegacyGetAPIKeyByPrefixRow, error)
-	AuthLegacyListAPIKeys(ctx context.Context) ([]AuthLegacyListAPIKeysRow, error)
-	AuthLegacyLockAPIKeyForRotation(ctx context.Context, prefix string) ([]AuthLegacyLockAPIKeyForRotationRow, error)
-	AuthLegacyLockActiveOwner(ctx context.Context, id pgtype.UUID) ([]string, error)
+	AuthLegacyGetAPIKeyByPrefix(ctx context.Context, prefix string) (AuthLegacyGetAPIKeyByPrefixRow, error)
+	AuthLegacyListAPIKeys(ctx context.Context, arg AuthLegacyListAPIKeysParams) ([]AuthLegacyListAPIKeysRow, error)
+	AuthLegacyLockAPIKeyForRotation(ctx context.Context, prefix string) (AuthLegacyLockAPIKeyForRotationRow, error)
+	AuthLegacyLockActiveOwner(ctx context.Context, id pgtype.UUID) (string, error)
 	AuthWritePutStatement1(ctx context.Context, arg AuthWritePutStatement1Params) error
-	AuthWriteRevokeStatement1(ctx context.Context, prefix string, revokedAt pgtype.Timestamptz) error
+	AuthWriteRevokeStatement1(ctx context.Context, prefix string, revokedAt pgtype.Timestamptz) (int64, error)
 	AuthWriteRotateStatement1(ctx context.Context, arg AuthWriteRotateStatement1Params) error
-	AuthWriteRotateStatement2(ctx context.Context, prefix string, revokedAt pgtype.Timestamptz) error
+	AuthWriteRotateStatement2(ctx context.Context, prefix string, revokedAt pgtype.Timestamptz) (int64, error)
 	BeginBillingTopupSettlement(ctx context.Context, arg BeginBillingTopupSettlementParams) (pgtype.UUID, error)
 	CatalogAddressDelegations(ctx context.Context, arg CatalogAddressDelegationsParams) ([]CatalogAddressDelegationsRow, error)
 	CatalogAddressInternalTransactions(ctx context.Context, arg CatalogAddressInternalTransactionsParams) ([]CatalogAddressInternalTransactionsRow, error)
 	CatalogAddressTokenTransfers(ctx context.Context, arg CatalogAddressTokenTransfersParams) ([]CatalogAddressTokenTransfersRow, error)
-	CatalogAggregateStats(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, column3 pgtype.Numeric) ([]CatalogAggregateStatsRow, error)
-	CatalogBlockStats(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, column3 pgtype.Numeric) ([]CatalogBlockStatsRow, error)
-	CatalogCanonicalSnapshot(ctx context.Context, dollar_1 pgtype.Numeric) ([]CatalogCanonicalSnapshotRow, error)
-	CatalogCanonicalTransactionInclusion(ctx context.Context, column1 pgtype.Numeric, txHash []byte) ([]CatalogCanonicalTransactionInclusionRow, error)
+	CatalogAggregateStats(ctx context.Context, chainID pgtype.Numeric, fromBlockNumber pgtype.Numeric, toBlockNumber pgtype.Numeric) (CatalogAggregateStatsRow, error)
+	CatalogBlockStats(ctx context.Context, chainID pgtype.Numeric, fromBlockNumber pgtype.Numeric, toBlockNumber pgtype.Numeric) ([]CatalogBlockStatsRow, error)
+	CatalogCanonicalSnapshot(ctx context.Context, chainID pgtype.Numeric) (CatalogCanonicalSnapshotRow, error)
+	CatalogCanonicalTransactionInclusion(ctx context.Context, chainID pgtype.Numeric, txHash []byte) (CatalogCanonicalTransactionInclusionRow, error)
 	CatalogErc20BalanceCandidates(ctx context.Context, arg CatalogErc20BalanceCandidatesParams) ([][]byte, error)
-	CatalogExactConstructorArtifact(ctx context.Context, arg CatalogExactConstructorArtifactParams) ([]CatalogExactConstructorArtifactRow, error)
-	CatalogFirstIncompleteStageInRange(ctx context.Context, arg CatalogFirstIncompleteStageInRangeParams) ([]CatalogFirstIncompleteStageInRangeRow, error)
+	CatalogExactConstructorArtifact(ctx context.Context, arg CatalogExactConstructorArtifactParams) (CatalogExactConstructorArtifactRow, error)
+	CatalogFirstIncompleteStageInRange(ctx context.Context, arg CatalogFirstIncompleteStageInRangeParams) (CatalogFirstIncompleteStageInRangeRow, error)
 	CatalogHolderCoverage(ctx context.Context, blockNumber pgtype.Numeric, chainID pgtype.Numeric) (CatalogHolderCoverageRow, error)
 	CatalogHolderPage(ctx context.Context, arg CatalogHolderPageParams) ([]CatalogHolderPageRow, error)
 	CatalogHolderTokenSnapshot(ctx context.Context, chainID pgtype.Numeric, tokenAddress []byte, blockNumber pgtype.Numeric) (CatalogHolderTokenSnapshotRow, error)
-	CatalogLatestStage(ctx context.Context, arg CatalogLatestStageParams) ([]string, error)
+	CatalogLatestStage(ctx context.Context, arg CatalogLatestStageParams) (pgtype.Text, error)
 	CatalogNftBalanceCandidates(ctx context.Context, arg CatalogNftBalanceCandidatesParams) ([]CatalogNftBalanceCandidatesRow, error)
-	CatalogTokenContract(ctx context.Context, column1 pgtype.Numeric, address []byte, column3 pgtype.Numeric) ([]CatalogTokenContractRow, error)
+	CatalogTokenContract(ctx context.Context, chainID pgtype.Numeric, address []byte, maxObservedBlockNumber pgtype.Numeric) (CatalogTokenContractRow, error)
 	CatalogTokenContracts(ctx context.Context, arg CatalogTokenContractsParams) ([]CatalogTokenContractsRow, error)
 	CatalogTokenEvents(ctx context.Context, arg CatalogTokenEventsParams) ([]CatalogTokenEventsRow, error)
-	CatalogTraceStagePublication(ctx context.Context, arg CatalogTraceStagePublicationParams) ([]CatalogTraceStagePublicationRow, error)
+	CatalogTraceStagePublication(ctx context.Context, arg CatalogTraceStagePublicationParams) (CatalogTraceStagePublicationRow, error)
 	CatalogTransactionAuthorizations(ctx context.Context, arg CatalogTransactionAuthorizationsParams) ([]CatalogTransactionAuthorizationsRow, error)
-	CatalogTransactionCalldataDecoding(ctx context.Context, arg CatalogTransactionCalldataDecodingParams) ([]CatalogTransactionCalldataDecodingRow, error)
-	CatalogTransactionCalldataExecution(ctx context.Context, arg CatalogTransactionCalldataExecutionParams) ([]CatalogTransactionCalldataExecutionRow, error)
-	CatalogTransactionCalldataIdentity(ctx context.Context, column1 pgtype.Numeric, txHash []byte) ([]CatalogTransactionCalldataIdentityRow, error)
-	CatalogTransactionFailureReceiptStatus(ctx context.Context, arg CatalogTransactionFailureReceiptStatusParams) ([]interface{}, error)
-	CatalogTransactionFailureRoot(ctx context.Context, arg CatalogTransactionFailureRootParams) ([]CatalogTransactionFailureRootRow, error)
+	CatalogTransactionCalldataDecoding(ctx context.Context, arg CatalogTransactionCalldataDecodingParams) (CatalogTransactionCalldataDecodingRow, error)
+	CatalogTransactionCalldataExecution(ctx context.Context, arg CatalogTransactionCalldataExecutionParams) (CatalogTransactionCalldataExecutionRow, error)
+	CatalogTransactionCalldataIdentity(ctx context.Context, chainID pgtype.Numeric, txHash []byte) (CatalogTransactionCalldataIdentityRow, error)
+	CatalogTransactionFailureReceiptStatus(ctx context.Context, arg CatalogTransactionFailureReceiptStatusParams) (CatalogTransactionFailureReceiptStatusRow, error)
+	CatalogTransactionFailureRoot(ctx context.Context, arg CatalogTransactionFailureRootParams) (CatalogTransactionFailureRootRow, error)
 	CatalogTransactionInternalTransactions(ctx context.Context, arg CatalogTransactionInternalTransactionsParams) ([]CatalogTransactionInternalTransactionsRow, error)
 	CatalogTransactionLogABICandidates(ctx context.Context, arg CatalogTransactionLogABICandidatesParams) ([]CatalogTransactionLogABICandidatesRow, error)
 	CatalogTransactionLogs(ctx context.Context, arg CatalogTransactionLogsParams) ([]CatalogTransactionLogsRow, error)
-	CatalogTransactionResourceIdentity(ctx context.Context, column1 pgtype.Numeric, txHash []byte) ([]CatalogTransactionResourceIdentityRow, error)
-	CatalogTransactionStageState(ctx context.Context, arg CatalogTransactionStageStateParams) ([]CatalogTransactionStageStateRow, error)
+	CatalogTransactionResourceIdentity(ctx context.Context, chainID pgtype.Numeric, txHash []byte) (CatalogTransactionResourceIdentityRow, error)
+	CatalogTransactionStageState(ctx context.Context, arg CatalogTransactionStageStateParams) (CatalogTransactionStageStateRow, error)
 	CatalogTransactionStateChanges(ctx context.Context, arg CatalogTransactionStateChangesParams) ([]CatalogTransactionStateChangesRow, error)
 	CatalogTransactionTokenEvents(ctx context.Context, arg CatalogTransactionTokenEventsParams) ([]CatalogTransactionTokenEventsRow, error)
 	CatalogTransactionTrace(ctx context.Context, arg CatalogTransactionTraceParams) ([]CatalogTransactionTraceRow, error)
-	CatalogTransactionTraceDecodings(ctx context.Context, column1 pgtype.Numeric, blockHash []byte, transactionHash []byte) ([]CatalogTransactionTraceDecodingsRow, error)
+	CatalogTransactionTraceDecodings(ctx context.Context, chainID pgtype.Numeric, blockHash []byte, transactionHash []byte) ([]CatalogTransactionTraceDecodingsRow, error)
 	CatalogTransactionTraceExecution(ctx context.Context, arg CatalogTransactionTraceExecutionParams) ([]CatalogTransactionTraceExecutionRow, error)
 	CatalogTransactionVerifiedAddressSelectors(ctx context.Context, arg CatalogTransactionVerifiedAddressSelectorsParams) ([]CatalogTransactionVerifiedAddressSelectorsRow, error)
-	CatalogValidateCanonicalSnapshot(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]bool, error)
+	CatalogValidateCanonicalSnapshot(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, blockHash []byte) (bool, error)
 	ClaimBillingTopupIntent(ctx context.Context, arg ClaimBillingTopupIntentParams) (pgtype.UUID, error)
 	CommitBillingUsage(ctx context.Context, arg CommitBillingUsageParams) (CommitBillingUsageRow, error)
 	ConsumeAuthChallenge(ctx context.Context, consumedAt pgtype.Timestamptz, iD pgtype.UUID) (AuthChallenge, error)
-	ContractArtifactArtifactSource(ctx context.Context, arg ContractArtifactArtifactSourceParams) ([]ContractArtifactArtifactSourceRow, error)
-	ContractArtifactCurrentTarget(ctx context.Context, column1 pgtype.Numeric, address []byte) ([]ContractArtifactCurrentTargetRow, error)
-	ContractArtifactTargetAtBlock(ctx context.Context, arg ContractArtifactTargetAtBlockParams) ([]ContractArtifactTargetAtBlockRow, error)
+	ContractArtifactArtifactSource(ctx context.Context, arg ContractArtifactArtifactSourceParams) (ContractArtifactArtifactSourceRow, error)
+	ContractArtifactCurrentTarget(ctx context.Context, chainID pgtype.Numeric, address []byte) (ContractArtifactCurrentTargetRow, error)
+	ContractArtifactTargetAtBlock(ctx context.Context, arg ContractArtifactTargetAtBlockParams) (ContractArtifactTargetAtBlockRow, error)
 	CountActiveUserAPIKeys(ctx context.Context, userID pgtype.UUID) (int64, error)
 	CountCurrentBeaconProxies(ctx context.Context, beaconAddress []byte, chainID pgtype.Numeric) (string, error)
 	CountDirtyAnalyticsHours(ctx context.Context, chainID pgtype.Numeric, toTime pgtype.Timestamptz, fromTime pgtype.Timestamptz) (string, error)
@@ -92,31 +92,31 @@ type Querier interface {
 	DeleteExpiredENSResolutionGenerations(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error)
 	DeleteExpiredUserSessions(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error)
 	DeleteOperatorLabel(ctx context.Context, chainID pgtype.Numeric, objectKind string, objectKey string) (DeleteOperatorLabelRow, error)
-	DerivedVerifyAdvanceScan(ctx context.Context, arg DerivedVerifyAdvanceScanParams) error
-	DerivedVerifyArtifactJobKind(ctx context.Context, dollar_1 pgtype.UUID) ([]string, error)
-	DerivedVerifyArtifactProvenance(ctx context.Context, dollar_1 pgtype.UUID) ([]DerivedVerifyArtifactProvenanceRow, error)
-	DerivedVerifyClaimForwardBlock(ctx context.Context, leasedBy *string, leaseToken *string, column3 interface{}) ([]DerivedVerifyClaimForwardBlockRow, error)
-	DerivedVerifyClaimScan(ctx context.Context, leasedBy *string, leaseToken *string, column3 interface{}) ([]DerivedVerifyClaimScanRow, error)
+	DerivedVerifyAdvanceScan(ctx context.Context, arg DerivedVerifyAdvanceScanParams) (int64, error)
+	DerivedVerifyArtifactJobKind(ctx context.Context, jobID pgtype.UUID) (string, error)
+	DerivedVerifyArtifactProvenance(ctx context.Context, jobID pgtype.UUID) (DerivedVerifyArtifactProvenanceRow, error)
+	DerivedVerifyClaimForwardBlock(ctx context.Context, leasedBy *string, leaseToken *string, leaseMicroseconds int64) (DerivedVerifyClaimForwardBlockRow, error)
+	DerivedVerifyClaimScan(ctx context.Context, leasedBy *string, leaseToken *string, leaseMicroseconds int64) (DerivedVerifyClaimScanRow, error)
 	DerivedVerifyCreatedContracts(ctx context.Context, arg DerivedVerifyCreatedContractsParams) ([]DerivedVerifyCreatedContractsRow, error)
-	DerivedVerifyCreatorCodeEpochStart(ctx context.Context, arg DerivedVerifyCreatorCodeEpochStartParams) ([]string, error)
-	DerivedVerifyDispatchProxyEvent(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) (int64, error)
-	DerivedVerifyDispatchTraceEvent(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) (int64, error)
+	DerivedVerifyCreatorCodeEpochStart(ctx context.Context, arg DerivedVerifyCreatorCodeEpochStartParams) (string, error)
+	DerivedVerifyDispatchProxyEvent(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) (int64, error)
+	DerivedVerifyDispatchTraceEvent(ctx context.Context, minCursorBlockNumber pgtype.Numeric, chainID pgtype.Numeric, blockHash []byte) (int64, error)
 	DerivedVerifyEnqueueHistoricalScan(ctx context.Context, arg DerivedVerifyEnqueueHistoricalScanParams) error
-	DerivedVerifyExistingPublication(ctx context.Context, arg DerivedVerifyExistingPublicationParams) ([]string, error)
-	DerivedVerifyFinishForwardBlock(ctx context.Context, arg DerivedVerifyFinishForwardBlockParams) error
+	DerivedVerifyExistingPublication(ctx context.Context, arg DerivedVerifyExistingPublicationParams) (string, error)
+	DerivedVerifyFinishForwardBlock(ctx context.Context, arg DerivedVerifyFinishForwardBlockParams) (int64, error)
 	DerivedVerifyInsertJob(ctx context.Context, arg DerivedVerifyInsertJobParams) error
 	DerivedVerifyListHistoricalTraces(ctx context.Context, arg DerivedVerifyListHistoricalTracesParams) ([]DerivedVerifyListHistoricalTracesRow, error)
-	DerivedVerifyLoadCompilationCandidates(ctx context.Context, dollar_1 pgtype.UUID) ([]DerivedVerifyLoadCompilationCandidatesRow, error)
-	DerivedVerifyLockTarget(ctx context.Context, column1 pgtype.Numeric, column2 []byte) ([]interface{}, error)
+	DerivedVerifyLoadCompilationCandidates(ctx context.Context, compilationID pgtype.UUID) ([]DerivedVerifyLoadCompilationCandidatesRow, error)
+	DerivedVerifyLockTarget(ctx context.Context, chainID pgtype.Numeric, address []byte) error
 	DerivedVerifyMatchAttempt(ctx context.Context, arg DerivedVerifyMatchAttemptParams) error
-	DerivedVerifyPublicationEvidence(ctx context.Context, arg DerivedVerifyPublicationEvidenceParams) ([]DerivedVerifyPublicationEvidenceRow, error)
-	DerivedVerifyRecordAttempt(ctx context.Context, arg DerivedVerifyRecordAttemptParams) ([]string, error)
-	DerivedVerifyRenewForwardEvent(ctx context.Context, arg DerivedVerifyRenewForwardEventParams) error
-	DerivedVerifyRenewScan(ctx context.Context, arg DerivedVerifyRenewScanParams) error
-	DerivedVerifyRequestBackfill(ctx context.Context, column1 pgtype.Numeric, creatorAddress []byte, reason string) ([]DerivedVerifyRequestBackfillRow, error)
-	DerivedVerifyRetryForwardBlock(ctx context.Context, arg DerivedVerifyRetryForwardBlockParams) error
-	DerivedVerifyRetryScan(ctx context.Context, arg DerivedVerifyRetryScanParams) error
-	ERC4337AddCoveredBlock(ctx context.Context, arg ERC4337AddCoveredBlockParams) (interface{}, error)
+	DerivedVerifyPublicationEvidence(ctx context.Context, arg DerivedVerifyPublicationEvidenceParams) (DerivedVerifyPublicationEvidenceRow, error)
+	DerivedVerifyRecordAttempt(ctx context.Context, arg DerivedVerifyRecordAttemptParams) (string, error)
+	DerivedVerifyRenewForwardEvent(ctx context.Context, arg DerivedVerifyRenewForwardEventParams) (int64, error)
+	DerivedVerifyRenewScan(ctx context.Context, arg DerivedVerifyRenewScanParams) (int64, error)
+	DerivedVerifyRequestBackfill(ctx context.Context, chainID pgtype.Numeric, creatorAddress []byte, reason string) (DerivedVerifyRequestBackfillRow, error)
+	DerivedVerifyRetryForwardBlock(ctx context.Context, arg DerivedVerifyRetryForwardBlockParams) (int64, error)
+	DerivedVerifyRetryScan(ctx context.Context, arg DerivedVerifyRetryScanParams) (int64, error)
+	ERC4337AddCoveredBlock(ctx context.Context, arg ERC4337AddCoveredBlockParams) (bool, error)
 	ERC4337CanonicalTransactionBlock(ctx context.Context, chainID pgtype.Numeric, transactionHash []byte) (ERC4337CanonicalTransactionBlockRow, error)
 	ERC4337ClearReplayOutputs(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error
 	ERC4337CurrentSnapshot(ctx context.Context, indexStart pgtype.Numeric, chainID pgtype.Numeric, configurationDigest []byte) (ERC4337CurrentSnapshotRow, error)
@@ -130,157 +130,157 @@ type Querier interface {
 	ERC4337ListUserOperationEvents(ctx context.Context, arg ERC4337ListUserOperationEventsParams) ([]ERC4337ListUserOperationEventsRow, error)
 	ERC4337ListUserOperations(ctx context.Context, arg ERC4337ListUserOperationsParams) ([]ERC4337ListUserOperationsRow, error)
 	ERC4337RemoveBlockCoverage(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) (int32, error)
-	ERC4337RemoveCoveredBlock(ctx context.Context, chainID pgtype.Numeric, configurationDigest []byte, blockNumber pgtype.Numeric) (interface{}, error)
+	ERC4337RemoveCoveredBlock(ctx context.Context, chainID pgtype.Numeric, configurationDigest []byte, blockNumber pgtype.Numeric) (bool, error)
 	ERC4337SearchUserOperation(ctx context.Context, arg ERC4337SearchUserOperationParams) (ERC4337SearchUserOperationRow, error)
 	ERC4337SourceBlock(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([]byte, error)
 	ERC4337SourceReceipts(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([][]byte, error)
 	ERC4337ValidateSnapshot(ctx context.Context, arg ERC4337ValidateSnapshotParams) (bool, error)
-	EnrichClaimCandidate(ctx context.Context, arg EnrichClaimCandidateParams) ([]EnrichClaimCandidateRow, error)
-	EnrichClearABIReplayOutputs(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, column3 []byte) error
-	EnrichInlineAuthenticateCloneCreationStatement1(ctx context.Context, arg EnrichInlineAuthenticateCloneCreationStatement1Params) ([]EnrichInlineAuthenticateCloneCreationStatement1Row, error)
-	EnrichInlineDiamondHistoryCoverageCompleteStatement1(ctx context.Context, arg EnrichInlineDiamondHistoryCoverageCompleteStatement1Params) ([]interface{}, error)
-	EnrichInlineHasCanonicalCodeHistoryStatement1(ctx context.Context, column1 pgtype.Numeric, address []byte, column3 pgtype.Numeric) ([]bool, error)
-	EnrichInlineHasVerifiedDiamondLoupeABIStatement1(ctx context.Context, column1 pgtype.Numeric, address []byte, column3 pgtype.Numeric) ([]bool, error)
-	EnrichInlineLoadABIConstructorsStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]EnrichInlineLoadABIConstructorsStatement1Row, error)
+	EnrichClaimCandidate(ctx context.Context, arg EnrichClaimCandidateParams) (EnrichClaimCandidateRow, error)
+	EnrichClearABIReplayOutputs(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error
+	EnrichInlineAuthenticateCloneCreationStatement1(ctx context.Context, arg EnrichInlineAuthenticateCloneCreationStatement1Params) (EnrichInlineAuthenticateCloneCreationStatement1Row, error)
+	EnrichInlineDiamondHistoryCoverageCompleteStatement1(ctx context.Context, arg EnrichInlineDiamondHistoryCoverageCompleteStatement1Params) (bool, error)
+	EnrichInlineHasCanonicalCodeHistoryStatement1(ctx context.Context, chainID pgtype.Numeric, address []byte, maxBlockNumber pgtype.Numeric) (bool, error)
+	EnrichInlineHasVerifiedDiamondLoupeABIStatement1(ctx context.Context, chainID pgtype.Numeric, address []byte, maxValidFromBlock pgtype.Numeric) (bool, error)
+	EnrichInlineLoadABIConstructorsStatement1(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([]EnrichInlineLoadABIConstructorsStatement1Row, error)
 	EnrichInlineLoadABILogsStatement1(ctx context.Context, arg EnrichInlineLoadABILogsStatement1Params) ([]EnrichInlineLoadABILogsStatement1Row, error)
 	EnrichInlineLoadABITracesStatement1(ctx context.Context, arg EnrichInlineLoadABITracesStatement1Params) ([]EnrichInlineLoadABITracesStatement1Row, error)
 	EnrichInlineLoadAndReplayDiamondHistoryStatement1(ctx context.Context, arg EnrichInlineLoadAndReplayDiamondHistoryStatement1Params) ([]EnrichInlineLoadAndReplayDiamondHistoryStatement1Row, error)
 	EnrichInlineLoadDiamondAuxiliaryABIBindingsStatement1(ctx context.Context, arg EnrichInlineLoadDiamondAuxiliaryABIBindingsStatement1Params) ([][]byte, error)
-	EnrichInlineLoadDiamondFacetCodeHashStatement1(ctx context.Context, arg EnrichInlineLoadDiamondFacetCodeHashStatement1Params) ([][]byte, error)
+	EnrichInlineLoadDiamondFacetCodeHashStatement1(ctx context.Context, arg EnrichInlineLoadDiamondFacetCodeHashStatement1Params) ([]byte, error)
 	EnrichInlineLoadEffectiveTransactionExecutionsStatement1(ctx context.Context, arg EnrichInlineLoadEffectiveTransactionExecutionsStatement1Params) ([]EnrichInlineLoadEffectiveTransactionExecutionsStatement1Row, error)
-	EnrichInlineLoadGenesisCandidatesStatement1(ctx context.Context, column1 pgtype.Numeric, blockHash []byte) ([][]byte, error)
-	EnrichInlineLoadLogCandidatesStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]EnrichInlineLoadLogCandidatesStatement1Row, error)
-	EnrichInlineLoadProxyABIBindingStatement1(ctx context.Context, arg EnrichInlineLoadProxyABIBindingStatement1Params) ([]EnrichInlineLoadProxyABIBindingStatement1Row, error)
-	EnrichInlineLoadProxyArtifactStatement1(ctx context.Context, arg EnrichInlineLoadProxyArtifactStatement1Params) ([]EnrichInlineLoadProxyArtifactStatement1Row, error)
+	EnrichInlineLoadGenesisCandidatesStatement1(ctx context.Context, arg EnrichInlineLoadGenesisCandidatesStatement1Params) ([][]byte, error)
+	EnrichInlineLoadLogCandidatesStatement1(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([]EnrichInlineLoadLogCandidatesStatement1Row, error)
+	EnrichInlineLoadProxyABIBindingStatement1(ctx context.Context, arg EnrichInlineLoadProxyABIBindingStatement1Params) (EnrichInlineLoadProxyABIBindingStatement1Row, error)
+	EnrichInlineLoadProxyArtifactStatement1(ctx context.Context, arg EnrichInlineLoadProxyArtifactStatement1Params) (EnrichInlineLoadProxyArtifactStatement1Row, error)
 	EnrichInlineLoadProxyCoverageDetailsStatement1(ctx context.Context, arg EnrichInlineLoadProxyCoverageDetailsStatement1Params) ([]EnrichInlineLoadProxyCoverageDetailsStatement1Row, error)
-	EnrichInlineLoadReceiptCandidatesStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]EnrichInlineLoadReceiptCandidatesStatement1Row, error)
-	EnrichInlineLoadSameCodeABIBindingStatement1(ctx context.Context, arg EnrichInlineLoadSameCodeABIBindingStatement1Params) ([]EnrichInlineLoadSameCodeABIBindingStatement1Row, error)
+	EnrichInlineLoadReceiptCandidatesStatement1(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([]EnrichInlineLoadReceiptCandidatesStatement1Row, error)
+	EnrichInlineLoadSameCodeABIBindingStatement1(ctx context.Context, arg EnrichInlineLoadSameCodeABIBindingStatement1Params) (EnrichInlineLoadSameCodeABIBindingStatement1Row, error)
 	EnrichInlineLoadSignatureABIBindingStatement1(ctx context.Context, arg EnrichInlineLoadSignatureABIBindingStatement1Params) ([]EnrichInlineLoadSignatureABIBindingStatement1Row, error)
 	EnrichInlineLoadStateDiffCandidatesStatement1(ctx context.Context, arg EnrichInlineLoadStateDiffCandidatesStatement1Params) ([][]byte, error)
 	EnrichInlineLoadTraceCandidatesStatement1(ctx context.Context, arg EnrichInlineLoadTraceCandidatesStatement1Params) ([]EnrichInlineLoadTraceCandidatesStatement1Row, error)
-	EnrichInlineLoadTransactionCandidatesStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]EnrichInlineLoadTransactionCandidatesStatement1Row, error)
-	EnrichInlineLoadVerifiedABIBindingStatement1(ctx context.Context, arg EnrichInlineLoadVerifiedABIBindingStatement1Params) ([]EnrichInlineLoadVerifiedABIBindingStatement1Row, error)
+	EnrichInlineLoadTransactionCandidatesStatement1(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([]EnrichInlineLoadTransactionCandidatesStatement1Row, error)
+	EnrichInlineLoadVerifiedABIBindingStatement1(ctx context.Context, arg EnrichInlineLoadVerifiedABIBindingStatement1Params) (EnrichInlineLoadVerifiedABIBindingStatement1Row, error)
 	EnrichInlinePersistABIBindingStatement1(ctx context.Context, arg EnrichInlinePersistABIBindingStatement1Params) error
 	EnrichInlinePersistABIDecodingStatement1(ctx context.Context, arg EnrichInlinePersistABIDecodingStatement1Params) error
-	EnrichInlinePersistDiamondCutRecordStatement1(ctx context.Context, arg EnrichInlinePersistDiamondCutRecordStatement1Params) error
-	EnrichInlinePersistDiamondCutRecordStatement2(ctx context.Context, arg EnrichInlinePersistDiamondCutRecordStatement2Params) error
-	EnrichInlinePersistDiamondDetectionSnapshotStatement1(ctx context.Context, arg EnrichInlinePersistDiamondDetectionSnapshotStatement1Params) ([]int64, error)
-	EnrichInlinePersistDiamondDetectionSnapshotStatement2(ctx context.Context, arg EnrichInlinePersistDiamondDetectionSnapshotStatement2Params) error
-	EnrichInlinePersistDiamondDetectionSnapshotStatement3(ctx context.Context, snapshotID int64, selector []byte, facetAddress []byte) error
-	EnrichInlinePersistEffectiveTransactionExecutionsStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) error
+	EnrichInlinePersistDiamondCutRecordStatement1(ctx context.Context, arg EnrichInlinePersistDiamondCutRecordStatement1Params) (int64, error)
+	EnrichInlinePersistDiamondCutRecordStatement2(ctx context.Context, arg EnrichInlinePersistDiamondCutRecordStatement2Params) (int64, error)
+	EnrichInlinePersistDiamondDetectionSnapshotStatement1(ctx context.Context, arg EnrichInlinePersistDiamondDetectionSnapshotStatement1Params) (int64, error)
+	EnrichInlinePersistDiamondDetectionSnapshotStatement2(ctx context.Context, arg EnrichInlinePersistDiamondDetectionSnapshotStatement2Params) (int64, error)
+	EnrichInlinePersistDiamondDetectionSnapshotStatement3(ctx context.Context, snapshotID int64, selector []byte, facetAddress []byte) (int64, error)
+	EnrichInlinePersistEffectiveTransactionExecutionsStatement1(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error
 	EnrichInlinePersistEffectiveTransactionExecutionsStatement2(ctx context.Context, arg EnrichInlinePersistEffectiveTransactionExecutionsStatement2Params) error
-	EnrichInlineProcessTxStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) error
-	EnrichInlineProcessTxStatement2(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) error
-	EnrichInlineProxyDependencyStateStatement1(ctx context.Context, arg EnrichInlineProxyDependencyStateStatement1Params) ([]string, error)
-	EnrichInlineProxyOrBeaconHistoryStatement1(ctx context.Context, column1 pgtype.Numeric, column2 []byte, column3 pgtype.Numeric) ([]EnrichInlineProxyOrBeaconHistoryStatement1Row, error)
-	EnrichInlineResolveABICodeIdentityStatement1(ctx context.Context, column1 pgtype.Numeric, address []byte, column3 pgtype.Numeric) ([]EnrichInlineResolveABICodeIdentityStatement1Row, error)
-	EnrichInlineResolveABICodeIdentityStatement2(ctx context.Context, arg EnrichInlineResolveABICodeIdentityStatement2Params) ([]string, error)
-	EnrichInlineResolveDiamondABIRouteStatement1(ctx context.Context, column1 pgtype.Numeric, diamondAddress []byte, column3 pgtype.Numeric) ([]bool, error)
-	EnrichInlineResolveDiamondABIRouteStatement2(ctx context.Context, arg EnrichInlineResolveDiamondABIRouteStatement2Params) ([]bool, error)
-	EnrichInlineResolveDiamondABIRouteStatement3(ctx context.Context, arg EnrichInlineResolveDiamondABIRouteStatement3Params) ([]EnrichInlineResolveDiamondABIRouteStatement3Row, error)
-	EnrichInlineResolveDiamondABIRouteStatement4(ctx context.Context, arg EnrichInlineResolveDiamondABIRouteStatement4Params) ([]bool, error)
-	EnrichInlineResolveDiamondABIRouteStatement5(ctx context.Context, arg EnrichInlineResolveDiamondABIRouteStatement5Params) ([]EnrichInlineResolveDiamondABIRouteStatement5Row, error)
+	EnrichInlineProcessTxStatement1(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error
+	EnrichInlineProcessTxStatement2(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error
+	EnrichInlineProxyDependencyStateStatement1(ctx context.Context, arg EnrichInlineProxyDependencyStateStatement1Params) (pgtype.Text, error)
+	EnrichInlineProxyOrBeaconHistoryStatement1(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte, maxBlockNumber pgtype.Numeric) (EnrichInlineProxyOrBeaconHistoryStatement1Row, error)
+	EnrichInlineResolveABICodeIdentityStatement1(ctx context.Context, chainID pgtype.Numeric, address []byte, maxBlockNumber pgtype.Numeric) (EnrichInlineResolveABICodeIdentityStatement1Row, error)
+	EnrichInlineResolveABICodeIdentityStatement2(ctx context.Context, arg EnrichInlineResolveABICodeIdentityStatement2Params) (pgtype.Numeric, error)
+	EnrichInlineResolveDiamondABIRouteStatement1(ctx context.Context, chainID pgtype.Numeric, diamondAddress []byte, maxBlockNumber pgtype.Numeric) (bool, error)
+	EnrichInlineResolveDiamondABIRouteStatement2(ctx context.Context, arg EnrichInlineResolveDiamondABIRouteStatement2Params) (bool, error)
+	EnrichInlineResolveDiamondABIRouteStatement3(ctx context.Context, arg EnrichInlineResolveDiamondABIRouteStatement3Params) (EnrichInlineResolveDiamondABIRouteStatement3Row, error)
+	EnrichInlineResolveDiamondABIRouteStatement4(ctx context.Context, arg EnrichInlineResolveDiamondABIRouteStatement4Params) (bool, error)
+	EnrichInlineResolveDiamondABIRouteStatement5(ctx context.Context, arg EnrichInlineResolveDiamondABIRouteStatement5Params) (EnrichInlineResolveDiamondABIRouteStatement5Row, error)
 	EnrichInlineResolveTransactionStartCodeStatement1(ctx context.Context, arg EnrichInlineResolveTransactionStartCodeStatement1Params) ([]EnrichInlineResolveTransactionStartCodeStatement1Row, error)
-	EnrichInlineResolveTransactionStartCodeStatement2(ctx context.Context, column1 pgtype.Numeric, address []byte, column3 pgtype.Numeric) ([]EnrichInlineResolveTransactionStartCodeStatement2Row, error)
-	EnrichInlineResolveTransactionStartCodeStatement3(ctx context.Context, column1 pgtype.Numeric, address []byte, column3 pgtype.Numeric) ([]EnrichInlineResolveTransactionStartCodeStatement3Row, error)
-	EnrichLegacyAtomicConsumePendingReplay(ctx context.Context, arg EnrichLegacyAtomicConsumePendingReplayParams) error
-	EnrichLegacyAtomicPublishSuccess(ctx context.Context, arg EnrichLegacyAtomicPublishSuccessParams) error
-	EnrichLegacyBlockStatsSource(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, hash []byte) ([]EnrichLegacyBlockStatsSourceRow, error)
-	EnrichLegacyCanonicalBlock(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]bool, error)
-	EnrichLegacyCarryForwardProxyGeneration(ctx context.Context, arg EnrichLegacyCarryForwardProxyGenerationParams) ([]EnrichLegacyCarryForwardProxyGenerationRow, error)
-	EnrichLegacyClaimOutbox(ctx context.Context) ([]EnrichLegacyClaimOutboxRow, error)
-	EnrichLegacyConfirmPublishedSuccess(ctx context.Context, jobID int64, jobGeneration int64) ([]bool, error)
-	EnrichLegacyConfirmSupersededPublication(ctx context.Context, jobID int64, jobGeneration int64) ([]bool, error)
-	EnrichLegacyDeleteEIP7702AuthorizationsBlock(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) error
-	EnrichLegacyDeleteExecutionCodeResolutionsBlock(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) error
-	EnrichLegacyDeleteStageJournal(ctx context.Context, column1 pgtype.Numeric, blockHash []byte, stage string) error
+	EnrichInlineResolveTransactionStartCodeStatement2(ctx context.Context, chainID pgtype.Numeric, address []byte, maxBlockNumber pgtype.Numeric) (EnrichInlineResolveTransactionStartCodeStatement2Row, error)
+	EnrichInlineResolveTransactionStartCodeStatement3(ctx context.Context, chainID pgtype.Numeric, address []byte, maxBlockNumber pgtype.Numeric) (EnrichInlineResolveTransactionStartCodeStatement3Row, error)
+	EnrichLegacyAtomicConsumePendingReplay(ctx context.Context, arg EnrichLegacyAtomicConsumePendingReplayParams) (int64, error)
+	EnrichLegacyAtomicPublishSuccess(ctx context.Context, arg EnrichLegacyAtomicPublishSuccessParams) (int64, error)
+	EnrichLegacyBlockStatsSource(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, hash []byte) (EnrichLegacyBlockStatsSourceRow, error)
+	EnrichLegacyCanonicalBlock(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, blockHash []byte) (bool, error)
+	EnrichLegacyCarryForwardProxyGeneration(ctx context.Context, arg EnrichLegacyCarryForwardProxyGenerationParams) (EnrichLegacyCarryForwardProxyGenerationRow, error)
+	EnrichLegacyClaimOutbox(ctx context.Context) (EnrichLegacyClaimOutboxRow, error)
+	EnrichLegacyConfirmPublishedSuccess(ctx context.Context, jobID int64, jobGeneration int64) (bool, error)
+	EnrichLegacyConfirmSupersededPublication(ctx context.Context, jobID int64, jobGeneration int64) (bool, error)
+	EnrichLegacyDeleteEIP7702AuthorizationsBlock(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error
+	EnrichLegacyDeleteExecutionCodeResolutionsBlock(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error
+	EnrichLegacyDeleteStageJournal(ctx context.Context, chainID pgtype.Numeric, blockHash []byte, stage string) error
 	EnrichLegacyDeleteStageResult(ctx context.Context, arg EnrichLegacyDeleteStageResultParams) error
-	EnrichLegacyDeleteStateDiffBlock(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) error
-	EnrichLegacyDeleteTraceBlock(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) error
-	EnrichLegacyDeleteTraceLogAttributions(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) error
-	EnrichLegacyDetectedToken(ctx context.Context, column1 pgtype.Numeric, address []byte, column3 pgtype.Numeric) ([]EnrichLegacyDetectedTokenRow, error)
-	EnrichLegacyEnablePublicationProtocol(ctx context.Context) ([]string, error)
-	EnrichLegacyEnqueueJob(ctx context.Context, arg EnrichLegacyEnqueueJobParams) ([]EnrichLegacyEnqueueJobRow, error)
-	EnrichLegacyEnrichmentJobStatus(ctx context.Context, id int64) ([]string, error)
-	EnrichLegacyFinishJob(ctx context.Context, arg EnrichLegacyFinishJobParams) ([]*bool, error)
-	EnrichLegacyInsertBeaconObservationGeneration(ctx context.Context, arg EnrichLegacyInsertBeaconObservationGenerationParams) error
+	EnrichLegacyDeleteStateDiffBlock(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error
+	EnrichLegacyDeleteTraceBlock(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error
+	EnrichLegacyDeleteTraceLogAttributions(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error
+	EnrichLegacyDetectedToken(ctx context.Context, chainID pgtype.Numeric, address []byte, maxObservedBlockNumber pgtype.Numeric) (EnrichLegacyDetectedTokenRow, error)
+	EnrichLegacyEnablePublicationProtocol(ctx context.Context) error
+	EnrichLegacyEnqueueJob(ctx context.Context, arg EnrichLegacyEnqueueJobParams) (EnrichLegacyEnqueueJobRow, error)
+	EnrichLegacyEnrichmentJobStatus(ctx context.Context, id int64) (string, error)
+	EnrichLegacyFinishJob(ctx context.Context, arg EnrichLegacyFinishJobParams) (*bool, error)
+	EnrichLegacyInsertBeaconObservationGeneration(ctx context.Context, arg EnrichLegacyInsertBeaconObservationGenerationParams) (int64, error)
 	EnrichLegacyInsertBlockStats(ctx context.Context, arg EnrichLegacyInsertBlockStatsParams) error
-	EnrichLegacyInsertDurablePublication(ctx context.Context, arg EnrichLegacyInsertDurablePublicationParams) ([]int32, error)
+	EnrichLegacyInsertDurablePublication(ctx context.Context, arg EnrichLegacyInsertDurablePublicationParams) (int32, error)
 	EnrichLegacyInsertEIP7702Authorization(ctx context.Context, arg EnrichLegacyInsertEIP7702AuthorizationParams) error
 	EnrichLegacyInsertExecutionCodeResolution(ctx context.Context, arg EnrichLegacyInsertExecutionCodeResolutionParams) error
-	EnrichLegacyInsertProxyArtifactResolution(ctx context.Context, arg EnrichLegacyInsertProxyArtifactResolutionParams) ([]int64, error)
-	EnrichLegacyInsertProxyObservationGeneration(ctx context.Context, arg EnrichLegacyInsertProxyObservationGenerationParams) error
-	EnrichLegacyInsertPublishedStageResult(ctx context.Context, arg EnrichLegacyInsertPublishedStageResultParams) ([]int32, error)
-	EnrichLegacyInsertReplayRequest(ctx context.Context, arg EnrichLegacyInsertReplayRequestParams) error
-	EnrichLegacyInsertStageResult(ctx context.Context, arg EnrichLegacyInsertStageResultParams) error
+	EnrichLegacyInsertProxyArtifactResolution(ctx context.Context, arg EnrichLegacyInsertProxyArtifactResolutionParams) (int64, error)
+	EnrichLegacyInsertProxyObservationGeneration(ctx context.Context, arg EnrichLegacyInsertProxyObservationGenerationParams) (int64, error)
+	EnrichLegacyInsertPublishedStageResult(ctx context.Context, arg EnrichLegacyInsertPublishedStageResultParams) (int32, error)
+	EnrichLegacyInsertReplayRequest(ctx context.Context, arg EnrichLegacyInsertReplayRequestParams) (int64, error)
+	EnrichLegacyInsertStageResult(ctx context.Context, arg EnrichLegacyInsertStageResultParams) (int64, error)
 	EnrichLegacyInsertStateChange(ctx context.Context, arg EnrichLegacyInsertStateChangeParams) error
 	EnrichLegacyInsertTokenDelta(ctx context.Context, arg EnrichLegacyInsertTokenDeltaParams) error
 	EnrichLegacyInsertTokenEvent(ctx context.Context, arg EnrichLegacyInsertTokenEventParams) error
 	EnrichLegacyInsertTraceFrame(ctx context.Context, arg EnrichLegacyInsertTraceFrameParams) error
 	EnrichLegacyInsertTraceLogAttribution(ctx context.Context, arg EnrichLegacyInsertTraceLogAttributionParams) error
-	EnrichLegacyInsertUUPSImplementationObservationGeneration(ctx context.Context, arg EnrichLegacyInsertUUPSImplementationObservationGenerationParams) error
-	EnrichLegacyLockCanonicalBlock(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]int32, error)
-	EnrichLegacyLockPublicationJob(ctx context.Context, dollar_1 int64) ([]interface{}, error)
-	EnrichLegacyOrphanJournals(ctx context.Context, column1 pgtype.Numeric, blockHash []byte) ([]bool, error)
-	EnrichLegacyProxyCanonical(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]bool, error)
+	EnrichLegacyInsertUUPSImplementationObservationGeneration(ctx context.Context, arg EnrichLegacyInsertUUPSImplementationObservationGenerationParams) (int64, error)
+	EnrichLegacyLockCanonicalBlock(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, blockHash []byte) (int32, error)
+	EnrichLegacyLockPublicationJob(ctx context.Context, jobID int64) error
+	EnrichLegacyOrphanJournals(ctx context.Context, chainID pgtype.Numeric, blockHash []byte) (bool, error)
+	EnrichLegacyProxyCanonical(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, blockHash []byte) (bool, error)
 	EnrichLegacyProxyReplayCandidates(ctx context.Context, arg EnrichLegacyProxyReplayCandidatesParams) ([]EnrichLegacyProxyReplayCandidatesRow, error)
-	EnrichLegacyPublishOutbox(ctx context.Context, iD int64, column2 []byte) error
-	EnrichLegacyRenewJob(ctx context.Context, arg EnrichLegacyRenewJobParams) error
-	EnrichLegacyRequestReplayJob(ctx context.Context, iD int64, requestedGeneration int64) error
-	EnrichLegacyRequeueJob(ctx context.Context, arg EnrichLegacyRequeueJobParams) error
-	EnrichLegacyRetryJob(ctx context.Context, arg EnrichLegacyRetryJobParams) ([]EnrichLegacyRetryJobRow, error)
-	EnrichLegacyRetryOutbox(ctx context.Context, iD int64, lastError *string, column3 interface{}) error
-	EnrichLegacySelectDependentReplayTargetID(ctx context.Context, arg EnrichLegacySelectDependentReplayTargetIDParams) ([]int64, error)
-	EnrichLegacySelectExistingJob(ctx context.Context, column1 pgtype.Numeric, kind string, idempotencyKey string) ([]EnrichLegacySelectExistingJobRow, error)
-	EnrichLegacySelectReplayTargetByID(ctx context.Context, id int64) ([]EnrichLegacySelectReplayTargetByIDRow, error)
-	EnrichLegacySelectStageJournalPublications(ctx context.Context, column1 pgtype.Numeric, blockHash []byte, stage string) ([]EnrichLegacySelectStageJournalPublicationsRow, error)
-	EnrichLegacySelectStageResultPublication(ctx context.Context, arg EnrichLegacySelectStageResultPublicationParams) ([]EnrichLegacySelectStageResultPublicationRow, error)
-	EnrichLegacyStateDiffTransactions(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]EnrichLegacyStateDiffTransactionsRow, error)
-	EnrichLegacyStatsReceiptSource(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([][]byte, error)
-	EnrichLegacyTerminalizeExhaustedJob(ctx context.Context, arg EnrichLegacyTerminalizeExhaustedJobParams) error
-	EnrichLegacyTokenCanonical(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]bool, error)
-	EnrichLegacyTokenLogs(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]EnrichLegacyTokenLogsRow, error)
-	EnrichLegacyTraceCanonical(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]bool, error)
+	EnrichLegacyPublishOutbox(ctx context.Context, dispatch []byte, iD int64) (int64, error)
+	EnrichLegacyRenewJob(ctx context.Context, arg EnrichLegacyRenewJobParams) (int64, error)
+	EnrichLegacyRequestReplayJob(ctx context.Context, iD int64, requestedGeneration int64) (int64, error)
+	EnrichLegacyRequeueJob(ctx context.Context, arg EnrichLegacyRequeueJobParams) (int64, error)
+	EnrichLegacyRetryJob(ctx context.Context, arg EnrichLegacyRetryJobParams) (EnrichLegacyRetryJobRow, error)
+	EnrichLegacyRetryOutbox(ctx context.Context, lastError *string, retryMicroseconds int64, iD int64) (int64, error)
+	EnrichLegacySelectDependentReplayTargetID(ctx context.Context, arg EnrichLegacySelectDependentReplayTargetIDParams) (int64, error)
+	EnrichLegacySelectExistingJob(ctx context.Context, chainID pgtype.Numeric, kind string, idempotencyKey string) (EnrichLegacySelectExistingJobRow, error)
+	EnrichLegacySelectReplayTargetByID(ctx context.Context, id int64) (EnrichLegacySelectReplayTargetByIDRow, error)
+	EnrichLegacySelectStageJournalPublications(ctx context.Context, chainID pgtype.Numeric, blockHash []byte, stage string) ([]EnrichLegacySelectStageJournalPublicationsRow, error)
+	EnrichLegacySelectStageResultPublication(ctx context.Context, arg EnrichLegacySelectStageResultPublicationParams) (EnrichLegacySelectStageResultPublicationRow, error)
+	EnrichLegacyStateDiffTransactions(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([]EnrichLegacyStateDiffTransactionsRow, error)
+	EnrichLegacyStatsReceiptSource(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([][]byte, error)
+	EnrichLegacyTerminalizeExhaustedJob(ctx context.Context, arg EnrichLegacyTerminalizeExhaustedJobParams) (int64, error)
+	EnrichLegacyTokenCanonical(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, blockHash []byte) (bool, error)
+	EnrichLegacyTokenLogs(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([]EnrichLegacyTokenLogsRow, error)
+	EnrichLegacyTraceCanonical(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, blockHash []byte) (bool, error)
 	EnrichLegacyTraceExecutionResolutions(ctx context.Context, arg EnrichLegacyTraceExecutionResolutionsParams) ([]EnrichLegacyTraceExecutionResolutionsRow, error)
 	EnrichLegacyTraceReceiptLogs(ctx context.Context, arg EnrichLegacyTraceReceiptLogsParams) ([]EnrichLegacyTraceReceiptLogsRow, error)
-	EnrichLegacyTraceTransactions(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]EnrichLegacyTraceTransactionsRow, error)
-	EnrichLegacyUpsertBeaconImplementationObservation(ctx context.Context, arg EnrichLegacyUpsertBeaconImplementationObservationParams) error
-	EnrichLegacyUpsertDerivedJournal(ctx context.Context, arg EnrichLegacyUpsertDerivedJournalParams) error
-	EnrichLegacyUpsertProxyCodeObservation(ctx context.Context, arg EnrichLegacyUpsertProxyCodeObservationParams) error
-	EnrichLegacyUpsertProxyDetectionEvidence(ctx context.Context, arg EnrichLegacyUpsertProxyDetectionEvidenceParams) error
-	EnrichLegacyUpsertProxyInitializationEvent(ctx context.Context, arg EnrichLegacyUpsertProxyInitializationEventParams) error
-	EnrichLegacyUpsertProxyObservation(ctx context.Context, arg EnrichLegacyUpsertProxyObservationParams) error
-	EnrichLegacyUpsertProxyUpgradeEvent(ctx context.Context, arg EnrichLegacyUpsertProxyUpgradeEventParams) error
-	EnrichLegacyUpsertPublishedDerivedJournal(ctx context.Context, arg EnrichLegacyUpsertPublishedDerivedJournalParams) ([]int32, error)
+	EnrichLegacyTraceTransactions(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([]EnrichLegacyTraceTransactionsRow, error)
+	EnrichLegacyUpsertBeaconImplementationObservation(ctx context.Context, arg EnrichLegacyUpsertBeaconImplementationObservationParams) (int64, error)
+	EnrichLegacyUpsertDerivedJournal(ctx context.Context, arg EnrichLegacyUpsertDerivedJournalParams) (int64, error)
+	EnrichLegacyUpsertProxyCodeObservation(ctx context.Context, arg EnrichLegacyUpsertProxyCodeObservationParams) (int64, error)
+	EnrichLegacyUpsertProxyDetectionEvidence(ctx context.Context, arg EnrichLegacyUpsertProxyDetectionEvidenceParams) (int64, error)
+	EnrichLegacyUpsertProxyInitializationEvent(ctx context.Context, arg EnrichLegacyUpsertProxyInitializationEventParams) (int64, error)
+	EnrichLegacyUpsertProxyObservation(ctx context.Context, arg EnrichLegacyUpsertProxyObservationParams) (int64, error)
+	EnrichLegacyUpsertProxyUpgradeEvent(ctx context.Context, arg EnrichLegacyUpsertProxyUpgradeEventParams) (int64, error)
+	EnrichLegacyUpsertPublishedDerivedJournal(ctx context.Context, arg EnrichLegacyUpsertPublishedDerivedJournalParams) (int32, error)
 	EnrichLegacyUpsertTokenContract(ctx context.Context, arg EnrichLegacyUpsertTokenContractParams) error
-	EnrichLegacyUpsertUUPSImplementationObservation(ctx context.Context, arg EnrichLegacyUpsertUUPSImplementationObservationParams) error
-	EnrichLockExhaustedJob(ctx context.Context, iD int64, column2 []byte, column3 int64) ([]EnrichLockExhaustedJobRow, error)
+	EnrichLegacyUpsertUUPSImplementationObservation(ctx context.Context, arg EnrichLegacyUpsertUUPSImplementationObservationParams) (int64, error)
+	EnrichLockExhaustedJob(ctx context.Context, iD int64, supportedStages []byte, stageVersion int64) (EnrichLockExhaustedJobRow, error)
 	EnrichReleaseDispatchJobs(ctx context.Context) error
 	EnrichRollbackDispatchJobs(ctx context.Context) error
 	EnrichRollbackStageOutput(ctx context.Context) error
 	EnrichSavepointDispatchJobs(ctx context.Context) error
 	EnrichSavepointStageOutput(ctx context.Context) error
-	EnrichSelectClaimCandidate(ctx context.Context, column1 []byte, column2 int64) ([]EnrichSelectClaimCandidateRow, error)
-	EnrichSelectExhaustedCandidate(ctx context.Context, column1 []byte, column2 int64) ([]int64, error)
+	EnrichSelectClaimCandidate(ctx context.Context, supportedStages []byte, stageVersion int64) (EnrichSelectClaimCandidateRow, error)
+	EnrichSelectExhaustedCandidate(ctx context.Context, supportedStages []byte, stageVersion int64) (int64, error)
 	EnsureBillingAccount(ctx context.Context, arg EnsureBillingAccountParams) (EnsureBillingAccountRow, error)
 	EnsureENSNameObservationPublished(ctx context.Context, observationID int64, chainID pgtype.Numeric) error
 	EtherscanAccountTransactions(ctx context.Context, arg EtherscanAccountTransactionsParams) ([]EtherscanAccountTransactionsRow, error)
 	EtherscanAccountTransactionsAdvanced(ctx context.Context, arg EtherscanAccountTransactionsAdvancedParams) ([]EtherscanAccountTransactionsAdvancedRow, error)
 	EtherscanBeaconWithdrawals(ctx context.Context, arg EtherscanBeaconWithdrawalsParams) ([]EtherscanBeaconWithdrawalsRow, error)
-	EtherscanBlockCountdown(ctx context.Context, dollar_1 pgtype.Numeric) ([]EtherscanBlockCountdownRow, error)
-	EtherscanBlockNumberByTimeAfter(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) ([]EtherscanBlockNumberByTimeAfterRow, error)
-	EtherscanBlockNumberByTimeBefore(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) ([]EtherscanBlockNumberByTimeBeforeRow, error)
-	EtherscanBlockTransactionCounts(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) ([]EtherscanBlockTransactionCountsRow, error)
-	EtherscanCanonicalCoreRange(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, column3 pgtype.Numeric) ([]EtherscanCanonicalCoreRangeRow, error)
-	EtherscanCanonicalReference(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]bool, error)
-	EtherscanCanonicalSnapshot(ctx context.Context, dollar_1 pgtype.Numeric) ([]EtherscanCanonicalSnapshotRow, error)
-	EtherscanCanonicalStageRange(ctx context.Context, arg EtherscanCanonicalStageRangeParams) ([]EtherscanCanonicalStageRangeRow, error)
-	EtherscanCanonicalTokenContract(ctx context.Context, column1 pgtype.Numeric, address []byte) ([]EtherscanCanonicalTokenContractRow, error)
-	EtherscanCanonicalTransactionBlock(ctx context.Context, column1 pgtype.Numeric, txHash []byte) ([]string, error)
-	EtherscanContractCreation(ctx context.Context, column1 pgtype.Numeric, encode []byte) ([]EtherscanContractCreationRow, error)
+	EtherscanBlockCountdown(ctx context.Context, chainID pgtype.Numeric) (EtherscanBlockCountdownRow, error)
+	EtherscanBlockNumberByTimeAfter(ctx context.Context, chainID string, timestamp string) (EtherscanBlockNumberByTimeAfterRow, error)
+	EtherscanBlockNumberByTimeBefore(ctx context.Context, chainID string, timestamp string) (EtherscanBlockNumberByTimeBeforeRow, error)
+	EtherscanBlockTransactionCounts(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric) (EtherscanBlockTransactionCountsRow, error)
+	EtherscanCanonicalCoreRange(ctx context.Context, chainID pgtype.Numeric, rangeStart pgtype.Numeric, rangeEnd pgtype.Numeric) (EtherscanCanonicalCoreRangeRow, error)
+	EtherscanCanonicalReference(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, blockHash []byte) (bool, error)
+	EtherscanCanonicalSnapshot(ctx context.Context, chainID pgtype.Numeric) (EtherscanCanonicalSnapshotRow, error)
+	EtherscanCanonicalStageRange(ctx context.Context, arg EtherscanCanonicalStageRangeParams) (EtherscanCanonicalStageRangeRow, error)
+	EtherscanCanonicalTokenContract(ctx context.Context, chainID pgtype.Numeric, address []byte) (EtherscanCanonicalTokenContractRow, error)
+	EtherscanCanonicalTransactionBlock(ctx context.Context, chainID pgtype.Numeric, txHash []byte) (string, error)
+	EtherscanContractCreation(ctx context.Context, chainID pgtype.Numeric, encode []byte) (EtherscanContractCreationRow, error)
 	EtherscanERC20HoldingCandidates(ctx context.Context, arg EtherscanERC20HoldingCandidatesParams) ([]EtherscanERC20HoldingCandidatesRow, error)
 	EtherscanERC721HoldingCandidates(ctx context.Context, arg EtherscanERC721HoldingCandidatesParams) ([]EtherscanERC721HoldingCandidatesRow, error)
-	EtherscanFirstFunding(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, encode []byte) ([]EtherscanFirstFundingRow, error)
+	EtherscanFirstFunding(ctx context.Context, chainID pgtype.Numeric, maxBlockNumber pgtype.Numeric, encode []byte) (EtherscanFirstFundingRow, error)
 	EtherscanHolderPage(ctx context.Context, arg EtherscanHolderPageParams) ([]EtherscanHolderPageRow, error)
 	EtherscanInternalTransactions(ctx context.Context, arg EtherscanInternalTransactionsParams) ([]EtherscanInternalTransactionsRow, error)
 	EtherscanInternalTransactionsAdvanced(ctx context.Context, arg EtherscanInternalTransactionsAdvancedParams) ([]EtherscanInternalTransactionsAdvancedRow, error)
@@ -288,17 +288,17 @@ type Querier interface {
 	EtherscanLogsDesc(ctx context.Context, arg EtherscanLogsDescParams) ([]EtherscanLogsDescRow, error)
 	EtherscanMinedBlocksAsc(ctx context.Context, arg EtherscanMinedBlocksAscParams) ([]EtherscanMinedBlocksAscRow, error)
 	EtherscanMinedBlocksDesc(ctx context.Context, arg EtherscanMinedBlocksDescParams) ([]EtherscanMinedBlocksDescRow, error)
-	EtherscanProxyVerificationTarget(ctx context.Context, column1 pgtype.Numeric, column2 []byte) ([]EtherscanProxyVerificationTargetRow, error)
+	EtherscanProxyVerificationTarget(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte) (EtherscanProxyVerificationTargetRow, error)
 	EtherscanTokenTransfers(ctx context.Context, arg EtherscanTokenTransfersParams) ([]EtherscanTokenTransfersRow, error)
 	EtherscanTokenTransfersAdvanced(ctx context.Context, arg EtherscanTokenTransfersAdvancedParams) ([]EtherscanTokenTransfersAdvancedRow, error)
-	EtherscanTransactionStatus(ctx context.Context, column1 pgtype.Numeric, txHash []byte) ([]EtherscanTransactionStatusRow, error)
-	EtherscanVerificationTarget(ctx context.Context, column1 pgtype.Numeric, address []byte, raw []byte) ([]EtherscanVerificationTargetRow, error)
-	EtherscanVerifiedProxy(ctx context.Context, column1 pgtype.Numeric, column2 []byte, column3 []byte) ([][]byte, error)
-	EventsWriteRecordStatusStatement1(ctx context.Context, dollar_1 *string) ([]interface{}, error)
-	EventsWriteRecordStatusStatement2(ctx context.Context, arg EventsWriteRecordStatusStatement2Params) ([]string, error)
+	EtherscanTransactionStatus(ctx context.Context, chainID pgtype.Numeric, txHash []byte) (EtherscanTransactionStatusRow, error)
+	EtherscanVerificationTarget(ctx context.Context, address []byte, chainID pgtype.Numeric, contractAddressHex string) (EtherscanVerificationTargetRow, error)
+	EtherscanVerifiedProxy(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte, proxyCodeHash []byte) ([]byte, error)
+	EventsWriteRecordStatusStatement1(ctx context.Context, chainID *string) error
+	EventsWriteRecordStatusStatement2(ctx context.Context, arg EventsWriteRecordStatusStatement2Params) (string, error)
 	EventsWriteRecordStatusStatement3(ctx context.Context, arg EventsWriteRecordStatusStatement3Params) error
-	EventsWriteRecordStatusStatement4(ctx context.Context, column1 pgtype.Numeric, column2 []byte) ([]EventsWriteRecordStatusStatement4Row, error)
-	EventsWriteRecordStatusStatement5(ctx context.Context, column1 pgtype.Numeric, offset int32) error
+	EventsWriteRecordStatusStatement4(ctx context.Context, chainID pgtype.Numeric, payload []byte) (EventsWriteRecordStatusStatement4Row, error)
+	EventsWriteRecordStatusStatement5(ctx context.Context, chainID pgtype.Numeric, offset int32) error
 	ExpireBillingPayments(ctx context.Context, chainID pgtype.Numeric, observedAt pgtype.Timestamptz, expireLimit int32) (int64, error)
 	ExpireBillingTopupPayments(ctx context.Context, chainID pgtype.Numeric, observedAt pgtype.Timestamptz, expireLimit int32) (int64, error)
 	ExpireBillingUsageReservations(ctx context.Context, arg ExpireBillingUsageReservationsParams) (int64, error)
@@ -306,18 +306,18 @@ type Querier interface {
 	FailBillingTopupPayment(ctx context.Context, arg FailBillingTopupPaymentParams) (pgtype.UUID, error)
 	FailBillingTopupSettlement(ctx context.Context, arg FailBillingTopupSettlementParams) (pgtype.UUID, error)
 	FindX402TestnetBillingPayments(ctx context.Context, arg FindX402TestnetBillingPaymentsParams) ([]pgtype.UUID, error)
-	GenesisWriteCompletedRemoteImportStatement1(ctx context.Context, dollar_1 pgtype.Numeric) ([]GenesisWriteCompletedRemoteImportStatement1Row, error)
-	GenesisWriteImportOnceUsingStatement1(ctx context.Context, hashtext string) ([]interface{}, error)
-	GenesisWriteImportOnceUsingStatement2(ctx context.Context, dollar_1 pgtype.Numeric) ([]GenesisWriteImportOnceUsingStatement2Row, error)
-	GenesisWriteImportOnceUsingStatement3(ctx context.Context, dollar_1 pgtype.Numeric) ([]GenesisWriteImportOnceUsingStatement3Row, error)
+	GenesisWriteCompletedRemoteImportStatement1(ctx context.Context, chainID pgtype.Numeric) (GenesisWriteCompletedRemoteImportStatement1Row, error)
+	GenesisWriteImportOnceUsingStatement1(ctx context.Context, hashtext string) error
+	GenesisWriteImportOnceUsingStatement2(ctx context.Context, chainID pgtype.Numeric) (GenesisWriteImportOnceUsingStatement2Row, error)
+	GenesisWriteImportOnceUsingStatement3(ctx context.Context, chainID pgtype.Numeric) (GenesisWriteImportOnceUsingStatement3Row, error)
 	GenesisWriteImportOnceUsingStatement4(ctx context.Context, arg GenesisWriteImportOnceUsingStatement4Params) error
 	GenesisWriteImportOnceUsingStatement5(ctx context.Context, arg GenesisWriteImportOnceUsingStatement5Params) error
-	GenesisWriteImportOnceUsingStatement6(ctx context.Context, arg GenesisWriteImportOnceUsingStatement6Params) error
-	GenesisWriteMarkUnavailableStatement1(ctx context.Context, dollar_1 pgtype.Numeric) error
-	GenesisWriteRecordRemoteFailureStatement1(ctx context.Context, column1 pgtype.Numeric, state string, lastErrorCode *string) error
-	GenesisWriteWaitForCanonicalBlockZeroStatement1(ctx context.Context, dollar_1 pgtype.Numeric) ([]bool, error)
-	GenesisWriteWithRemoteSourceLockStatement1(ctx context.Context, hashtext string) ([]bool, error)
-	GenesisWriteWithRemoteSourceLockStatement2(ctx context.Context, hashtext string) ([]bool, error)
+	GenesisWriteImportOnceUsingStatement6(ctx context.Context, arg GenesisWriteImportOnceUsingStatement6Params) (int64, error)
+	GenesisWriteMarkUnavailableStatement1(ctx context.Context, chainID pgtype.Numeric) error
+	GenesisWriteRecordRemoteFailureStatement1(ctx context.Context, chainID pgtype.Numeric, state string, lastErrorCode *string) error
+	GenesisWriteWaitForCanonicalBlockZeroStatement1(ctx context.Context, chainID pgtype.Numeric) (bool, error)
+	GenesisWriteWithRemoteSourceLockStatement1(ctx context.Context, hashtext string) (bool, error)
+	GenesisWriteWithRemoteSourceLockStatement2(ctx context.Context, hashtext string) (bool, error)
 	GetActiveUserSession(ctx context.Context, tokenDigest []byte, observedAt pgtype.Timestamptz) (GetActiveUserSessionRow, error)
 	GetAddressDelegationHistory(ctx context.Context, arg GetAddressDelegationHistoryParams) (GetAddressDelegationHistoryRow, error)
 	GetAnalyticsCoverage(ctx context.Context, chainID pgtype.Numeric) (GetAnalyticsCoverageRow, error)
@@ -329,26 +329,26 @@ type Querier interface {
 	GetBillingPaymentForInspection(ctx context.Context, iD pgtype.UUID, chainID pgtype.Numeric) (BillingPayment, error)
 	GetBillingTopupIntent(ctx context.Context, iD pgtype.UUID, chainID pgtype.Numeric) (BillingTopupIntent, error)
 	GetBillingUsageCharge(ctx context.Context, iD pgtype.UUID, chainID pgtype.Numeric) (BillingUsageCharge, error)
-	GetBlockTransactionTargetByHash(ctx context.Context, column1 pgtype.Numeric, hash []byte) (GetBlockTransactionTargetByHashRow, error)
-	GetBlockTransactionTargetByNumber(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) (GetBlockTransactionTargetByNumberRow, error)
+	GetBlockTransactionTargetByHash(ctx context.Context, chainID pgtype.Numeric, hash []byte) (GetBlockTransactionTargetByHashRow, error)
+	GetBlockTransactionTargetByNumber(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric) (GetBlockTransactionTargetByNumberRow, error)
 	GetCWIAImplementationAnalyses(ctx context.Context, arg GetCWIAImplementationAnalysesParams) ([]GetCWIAImplementationAnalysesRow, error)
 	GetCanonicalBlock(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric) (GetCanonicalBlockRow, error)
 	GetCanonicalTip(ctx context.Context, chainID pgtype.Numeric) (GetCanonicalTipRow, error)
 	GetChainIdentity(ctx context.Context, chainID pgtype.Numeric) (GetChainIdentityRow, error)
-	GetCurrentQueryTip(ctx context.Context, dollar_1 pgtype.Numeric) (GetCurrentQueryTipRow, error)
-	GetCurrentSearchGeneration(ctx context.Context, dollar_1 pgtype.Numeric) (GetCurrentSearchGenerationRow, error)
+	GetCurrentQueryTip(ctx context.Context, chainID pgtype.Numeric) (GetCurrentQueryTipRow, error)
+	GetCurrentSearchGeneration(ctx context.Context, chainID pgtype.Numeric) (GetCurrentSearchGenerationRow, error)
 	GetCurrentVerifiedProxyBinding(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte) (GetCurrentVerifiedProxyBindingRow, error)
 	GetDiamondCutHistoryCoverage(ctx context.Context, arg GetDiamondCutHistoryCoverageParams) (GetDiamondCutHistoryCoverageRow, error)
 	GetENSAddressNameSnapshot(ctx context.Context, arg GetENSAddressNameSnapshotParams) (EnsAddressNameSnapshot, error)
 	GetENSNameObservation(ctx context.Context, arg GetENSNameObservationParams) (EnsNameObservation, error)
 	GetENSResolutionGeneration(ctx context.Context, arg GetENSResolutionGenerationParams) (EnsResolutionGeneration, error)
-	GetFinalizedHeight(ctx context.Context, chainID pgtype.Numeric) (string, error)
+	GetFinalizedHeight(ctx context.Context, chainID pgtype.Numeric) (pgtype.Numeric, error)
 	GetFreshAdapterObservation(ctx context.Context, arg GetFreshAdapterObservationParams) (GetFreshAdapterObservationRow, error)
 	GetFreshENSResolutionFailure(ctx context.Context, arg GetFreshENSResolutionFailureParams) (EnsResolutionFailure, error)
 	GetFreshENSResolutionGeneration(ctx context.Context, chainID pgtype.Numeric, policyKey string, nowAt pgtype.Timestamptz) (EnsResolutionGeneration, error)
 	GetGenesisImport(ctx context.Context, chainID pgtype.Numeric) (GetGenesisImportRow, error)
-	GetHomeRuntimeEventID(ctx context.Context, dollar_1 pgtype.Numeric) (interface{}, error)
-	GetHomeRuntimeStatus(ctx context.Context, dollar_1 pgtype.Numeric) (GetHomeRuntimeStatusRow, error)
+	GetHomeRuntimeEventID(ctx context.Context, chainID pgtype.Numeric) (int64, error)
+	GetHomeRuntimeStatus(ctx context.Context, chainID pgtype.Numeric) (GetHomeRuntimeStatusRow, error)
 	GetLatestPublishedProxyDetection(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte) (GetLatestPublishedProxyDetectionRow, error)
 	GetLatestPublishedProxyDetectionV2(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte) ([]byte, error)
 	GetLatestPublishedProxyNegativeEvidence(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte) (GetLatestPublishedProxyNegativeEvidenceRow, error)
@@ -366,7 +366,7 @@ type Querier interface {
 	GetUserByID(ctx context.Context, iD pgtype.UUID, chainID pgtype.Numeric) (User, error)
 	GetX402TestnetWriterFence(ctx context.Context) (GetX402TestnetWriterFenceRow, error)
 	HolderAffectedTokens(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([]HolderAffectedTokensRow, error)
-	HolderCandidates(ctx context.Context, chainID pgtype.Numeric, tokenAddress []byte, blockNumber pgtype.Numeric) ([][]byte, error)
+	HolderCandidates(ctx context.Context, arg HolderCandidatesParams) ([]HolderCandidatesRow, error)
 	HolderDeleteBlockOutput(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error
 	HolderEventSupply(ctx context.Context, chainID pgtype.Numeric, tokenAddress []byte, blockNumber pgtype.Numeric) (string, error)
 	HolderHasUnreconciledEvents(ctx context.Context, arg HolderHasUnreconciledEventsParams) (bool, error)
@@ -376,7 +376,7 @@ type Querier interface {
 	HolderPreviousSnapshot(ctx context.Context, chainID pgtype.Numeric, tokenAddress []byte, blockNumber pgtype.Numeric) (HolderPreviousSnapshotRow, error)
 	HolderSourcePrerequisites(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) (HolderSourcePrerequisitesRow, error)
 	HolderTokenIdentity(ctx context.Context, chainID pgtype.Numeric, tokenAddress []byte, blockNumber pgtype.Numeric) (HolderTokenIdentityRow, error)
-	HolderTouchedCandidates(ctx context.Context, arg HolderTouchedCandidatesParams) ([][]byte, error)
+	HolderTouchedCandidates(ctx context.Context, arg HolderTouchedCandidatesParams) ([]HolderTouchedCandidatesRow, error)
 	InsertBillingPayment(ctx context.Context, arg InsertBillingPaymentParams) (BillingPayment, error)
 	InsertENSAddressNameSnapshot(ctx context.Context, arg InsertENSAddressNameSnapshotParams) (EnsAddressNameSnapshot, error)
 	InsertENSNameObservation(ctx context.Context, arg InsertENSNameObservationParams) (EnsNameObservation, error)
@@ -408,13 +408,13 @@ type Querier interface {
 	LockActiveUserForAPIKey(ctx context.Context, userID pgtype.UUID) (pgtype.UUID, error)
 	LockUserAPIKey(ctx context.Context, prefix string, userID pgtype.UUID) (ApiKey, error)
 	MaintenanceLegacyClaimCandidates(ctx context.Context, arg MaintenanceLegacyClaimCandidatesParams) ([]MaintenanceLegacyClaimCandidatesRow, error)
-	MaintenanceLegacyCompleteRequest(ctx context.Context, id int64) error
-	MaintenanceLegacyCurrentFinality(ctx context.Context, iD int64, column2 pgtype.Numeric) ([]MaintenanceLegacyCurrentFinalityRow, error)
-	MaintenanceLegacyFailRequest(ctx context.Context, iD int64, lastError *string) error
-	MaintenanceLegacyMarkRunning(ctx context.Context, id int64) error
-	MaintenanceLegacyRejectCandidate(ctx context.Context, iD int64, lastError *string) error
-	MaintenanceLegacyTryAdvisoryLock(ctx context.Context, pgTryAdvisoryLock int64) ([]bool, error)
-	MaintenanceLegacyUnlockAdvisory(ctx context.Context, pgAdvisoryUnlock int64) ([]bool, error)
+	MaintenanceLegacyCompleteRequest(ctx context.Context, id int64) (int64, error)
+	MaintenanceLegacyCurrentFinality(ctx context.Context, iD int64, chainID pgtype.Numeric) (MaintenanceLegacyCurrentFinalityRow, error)
+	MaintenanceLegacyFailRequest(ctx context.Context, iD int64, lastError *string) (int64, error)
+	MaintenanceLegacyMarkRunning(ctx context.Context, id int64) (int64, error)
+	MaintenanceLegacyRejectCandidate(ctx context.Context, iD int64, lastError *string) (int64, error)
+	MaintenanceLegacyTryAdvisoryLock(ctx context.Context, pgTryAdvisoryLock int64) (bool, error)
+	MaintenanceLegacyUnlockAdvisory(ctx context.Context, pgAdvisoryUnlock int64) (bool, error)
 	MarkBillingPaymentFailed(ctx context.Context, arg MarkBillingPaymentFailedParams) (pgtype.UUID, error)
 	MarkBillingPaymentSettled(ctx context.Context, arg MarkBillingPaymentSettledParams) (pgtype.UUID, error)
 	MarkBillingPaymentSettlementPending(ctx context.Context, arg MarkBillingPaymentSettlementPendingParams) (pgtype.UUID, error)
@@ -425,73 +425,73 @@ type Querier interface {
 	MarkBillingTopupSettlementUnknown(ctx context.Context, arg MarkBillingTopupSettlementUnknownParams) (pgtype.UUID, error)
 	MempoolListPendingAfter(ctx context.Context, arg MempoolListPendingAfterParams) ([]MempoolListPendingAfterRow, error)
 	MempoolListPendingFirst(ctx context.Context, arg MempoolListPendingFirstParams) ([]MempoolListPendingFirstRow, error)
-	MempoolLookupPending(ctx context.Context, arg MempoolLookupPendingParams) ([]MempoolLookupPendingRow, error)
-	MempoolLookupReplaced(ctx context.Context, column1 pgtype.Numeric, replacedHash []byte, expiresAt pgtype.Timestamptz) ([]MempoolLookupReplacedRow, error)
-	MempoolReadSnapshot(ctx context.Context, column1 pgtype.Numeric, iD int64) ([]MempoolReadSnapshotRow, error)
-	MempoolReadStatus(ctx context.Context, dollar_1 pgtype.Numeric) ([]MempoolReadStatusRow, error)
-	MempoolReplacementPredecessorSnapshot(ctx context.Context, column1 pgtype.Numeric, iD int64) ([]MempoolReplacementPredecessorSnapshotRow, error)
-	MempoolReplacementPredecessorStatus(ctx context.Context, dollar_1 pgtype.Numeric) ([]MempoolReplacementPredecessorStatusRow, error)
-	MempoolWriteLockMempoolStatement1(ctx context.Context, dollar_1 *string) ([]interface{}, error)
+	MempoolLookupPending(ctx context.Context, arg MempoolLookupPendingParams) (MempoolLookupPendingRow, error)
+	MempoolLookupReplaced(ctx context.Context, expiresAt pgtype.Timestamptz, chainID pgtype.Numeric, replacedHash []byte) (MempoolLookupReplacedRow, error)
+	MempoolReadSnapshot(ctx context.Context, chainID pgtype.Numeric, iD int64) (MempoolReadSnapshotRow, error)
+	MempoolReadStatus(ctx context.Context, chainID pgtype.Numeric) (MempoolReadStatusRow, error)
+	MempoolReplacementPredecessorSnapshot(ctx context.Context, chainID pgtype.Numeric, iD int64) (MempoolReplacementPredecessorSnapshotRow, error)
+	MempoolReplacementPredecessorStatus(ctx context.Context, chainID pgtype.Numeric) (MempoolReplacementPredecessorStatusRow, error)
+	MempoolWriteLockMempoolStatement1(ctx context.Context, chainID *string) error
 	MempoolWriteStoreFailureStatement1(ctx context.Context, arg MempoolWriteStoreFailureStatement1Params) error
-	MempoolWriteStoreSnapshotStatement1(ctx context.Context, arg MempoolWriteStoreSnapshotStatement1Params) ([]int64, error)
-	MempoolWriteStoreSnapshotStatement2(ctx context.Context, arg MempoolWriteStoreSnapshotStatement2Params) error
-	MempoolWriteStoreSnapshotStatement3(ctx context.Context, column1 pgtype.Numeric, snapshotID int64, txHash []byte) error
-	MempoolWriteStoreSnapshotStatement4(ctx context.Context, column1 pgtype.Numeric, snapshotID int64, snapshotID_2 int64) error
-	MempoolWriteStoreSnapshotStatement5(ctx context.Context, column1 pgtype.Numeric, snapshotID int64, expiresAt pgtype.Timestamptz) error
-	MempoolWriteStoreSnapshotStatement6(ctx context.Context, arg MempoolWriteStoreSnapshotStatement6Params) error
-	MempoolWriteStoreSnapshotStatement7(ctx context.Context, column1 pgtype.Numeric, lastSnapshotWriteID *int64) error
-	MempoolWriteStoreSnapshotStatement8(ctx context.Context, column1 pgtype.Numeric, expiresAt pgtype.Timestamptz, iD int64) error
-	MempoolWriteStoreSnapshotStatement9(ctx context.Context, column1 pgtype.Numeric, expiresAt pgtype.Timestamptz) error
-	MetadataAnyNFTMetadata(ctx context.Context, column1 pgtype.Numeric, tokenAddress []byte, column3 pgtype.Numeric) ([]*bool, error)
-	MetadataCanonicalNFTContract(ctx context.Context, column1 pgtype.Numeric, address []byte) ([]bool, error)
-	MetadataCanonicalObservation(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]bool, error)
-	MetadataClaimMetadataJob(ctx context.Context, arg MetadataClaimMetadataJobParams) ([]MetadataClaimMetadataJobRow, error)
-	MetadataCurrentMetadataResource(ctx context.Context, arg MetadataCurrentMetadataResourceParams) ([]MetadataCurrentMetadataResourceRow, error)
-	MetadataCurrentNFTImage(ctx context.Context, arg MetadataCurrentNFTImageParams) ([]bool, error)
-	MetadataExhaustMetadataJobs(ctx context.Context, dollar_1 pgtype.Numeric) error
-	MetadataExistingMetadataJob(ctx context.Context, column1 pgtype.Numeric, idempotencyKey string) ([]int64, error)
-	MetadataExistingMetadataResource(ctx context.Context, arg MetadataExistingMetadataResourceParams) ([]MetadataExistingMetadataResourceRow, error)
-	MetadataExistingNFTSource(ctx context.Context, arg MetadataExistingNFTSourceParams) ([]MetadataExistingNFTSourceRow, error)
-	MetadataExistingNFTUpdateObservation(ctx context.Context, arg MetadataExistingNFTUpdateObservationParams) ([]MetadataExistingNFTUpdateObservationRow, error)
-	MetadataLockMetadataResource(ctx context.Context, arg MetadataLockMetadataResourceParams) ([]*bool, error)
-	MetadataLockOwnedMetadataJob(ctx context.Context, iD int64, leaseToken *string) ([]MetadataLockOwnedMetadataJobRow, error)
-	MetadataNextNFTSource(ctx context.Context, dollar_1 pgtype.Numeric) ([]MetadataNextNFTSourceRow, error)
-	MetadataNextNFTUpdateLog(ctx context.Context, arg MetadataNextNFTUpdateLogParams) ([]MetadataNextNFTUpdateLogRow, error)
-	MetadataSelectCanonicalNFTImage(ctx context.Context, column1 pgtype.Numeric, tokenAddress []byte, column3 pgtype.Numeric) ([]MetadataSelectCanonicalNFTImageRow, error)
-	MetadataSelectCanonicalNFTMetadata(ctx context.Context, column1 pgtype.Numeric, tokenAddress []byte, column3 pgtype.Numeric) ([]MetadataSelectCanonicalNFTMetadataRow, error)
-	MetadataWriteEnqueueMetadataJob(ctx context.Context, arg MetadataWriteEnqueueMetadataJobParams) ([]int64, error)
-	MetadataWriteFinishMetadataJob(ctx context.Context, arg MetadataWriteFinishMetadataJobParams) error
-	MetadataWriteFinishMetadataResource(ctx context.Context, arg MetadataWriteFinishMetadataResourceParams) error
+	MempoolWriteStoreSnapshotStatement1(ctx context.Context, arg MempoolWriteStoreSnapshotStatement1Params) (int64, error)
+	MempoolWriteStoreSnapshotStatement2(ctx context.Context, arg MempoolWriteStoreSnapshotStatement2Params) (int64, error)
+	MempoolWriteStoreSnapshotStatement3(ctx context.Context, chainID pgtype.Numeric, snapshotID int64, txHash []byte) error
+	MempoolWriteStoreSnapshotStatement4(ctx context.Context, chainID pgtype.Numeric, snapshotID2 int64, snapshotID int64) error
+	MempoolWriteStoreSnapshotStatement5(ctx context.Context, expiresAt pgtype.Timestamptz, chainID pgtype.Numeric, snapshotID int64) error
+	MempoolWriteStoreSnapshotStatement6(ctx context.Context, arg MempoolWriteStoreSnapshotStatement6Params) (int64, error)
+	MempoolWriteStoreSnapshotStatement7(ctx context.Context, lastSnapshotWriteID *int64, chainID pgtype.Numeric) (int64, error)
+	MempoolWriteStoreSnapshotStatement8(ctx context.Context, chainID pgtype.Numeric, expiresAt pgtype.Timestamptz, iD int64) error
+	MempoolWriteStoreSnapshotStatement9(ctx context.Context, chainID pgtype.Numeric, expiresAt pgtype.Timestamptz) error
+	MetadataAnyNFTMetadata(ctx context.Context, chainID pgtype.Numeric, tokenAddress []byte, tokenID pgtype.Numeric) (*bool, error)
+	MetadataCanonicalNFTContract(ctx context.Context, chainID pgtype.Numeric, address []byte) (bool, error)
+	MetadataCanonicalObservation(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, blockHash []byte) (bool, error)
+	MetadataClaimMetadataJob(ctx context.Context, arg MetadataClaimMetadataJobParams) (MetadataClaimMetadataJobRow, error)
+	MetadataCurrentMetadataResource(ctx context.Context, arg MetadataCurrentMetadataResourceParams) (MetadataCurrentMetadataResourceRow, error)
+	MetadataCurrentNFTImage(ctx context.Context, arg MetadataCurrentNFTImageParams) (bool, error)
+	MetadataExhaustMetadataJobs(ctx context.Context, chainID pgtype.Numeric) error
+	MetadataExistingMetadataJob(ctx context.Context, chainID pgtype.Numeric, idempotencyKey string) (int64, error)
+	MetadataExistingMetadataResource(ctx context.Context, arg MetadataExistingMetadataResourceParams) (MetadataExistingMetadataResourceRow, error)
+	MetadataExistingNFTSource(ctx context.Context, arg MetadataExistingNFTSourceParams) (MetadataExistingNFTSourceRow, error)
+	MetadataExistingNFTUpdateObservation(ctx context.Context, arg MetadataExistingNFTUpdateObservationParams) (MetadataExistingNFTUpdateObservationRow, error)
+	MetadataLockMetadataResource(ctx context.Context, arg MetadataLockMetadataResourceParams) (*bool, error)
+	MetadataLockOwnedMetadataJob(ctx context.Context, iD int64, leaseToken *string) (MetadataLockOwnedMetadataJobRow, error)
+	MetadataNextNFTSource(ctx context.Context, chainID pgtype.Numeric) (MetadataNextNFTSourceRow, error)
+	MetadataNextNFTUpdateLog(ctx context.Context, arg MetadataNextNFTUpdateLogParams) (MetadataNextNFTUpdateLogRow, error)
+	MetadataSelectCanonicalNFTImage(ctx context.Context, chainID pgtype.Numeric, tokenAddress []byte, tokenID pgtype.Numeric) (MetadataSelectCanonicalNFTImageRow, error)
+	MetadataSelectCanonicalNFTMetadata(ctx context.Context, chainID pgtype.Numeric, tokenAddress []byte, tokenID pgtype.Numeric) (MetadataSelectCanonicalNFTMetadataRow, error)
+	MetadataWriteEnqueueMetadataJob(ctx context.Context, arg MetadataWriteEnqueueMetadataJobParams) (int64, error)
+	MetadataWriteFinishMetadataJob(ctx context.Context, arg MetadataWriteFinishMetadataJobParams) (int64, error)
+	MetadataWriteFinishMetadataResource(ctx context.Context, arg MetadataWriteFinishMetadataResourceParams) (int64, error)
 	MetadataWriteInsertMetadataAttempt(ctx context.Context, arg MetadataWriteInsertMetadataAttemptParams) error
-	MetadataWriteInsertMetadataResource(ctx context.Context, arg MetadataWriteInsertMetadataResourceParams) ([]int32, error)
-	MetadataWriteInsertNFTSource(ctx context.Context, arg MetadataWriteInsertNFTSourceParams) ([]int32, error)
-	MetadataWriteInsertNFTUpdateObservation(ctx context.Context, arg MetadataWriteInsertNFTUpdateObservationParams) ([]int32, error)
-	MetadataWriteRecordMetadataRetry(ctx context.Context, arg MetadataWriteRecordMetadataRetryParams) error
-	MetadataWriteRenewMetadataJob(ctx context.Context, iD int64, leaseToken *string, column3 interface{}) error
-	MetadataWriteRetryMetadataJob(ctx context.Context, arg MetadataWriteRetryMetadataJobParams) error
+	MetadataWriteInsertMetadataResource(ctx context.Context, arg MetadataWriteInsertMetadataResourceParams) (int32, error)
+	MetadataWriteInsertNFTSource(ctx context.Context, arg MetadataWriteInsertNFTSourceParams) (int32, error)
+	MetadataWriteInsertNFTUpdateObservation(ctx context.Context, arg MetadataWriteInsertNFTUpdateObservationParams) (int32, error)
+	MetadataWriteRecordMetadataRetry(ctx context.Context, arg MetadataWriteRecordMetadataRetryParams) (int64, error)
+	MetadataWriteRenewMetadataJob(ctx context.Context, leaseMicroseconds int64, iD int64, leaseToken *string) (int64, error)
+	MetadataWriteRetryMetadataJob(ctx context.Context, arg MetadataWriteRetryMetadataJobParams) (int64, error)
 	OperationalMetricSnapshot(ctx context.Context, chainID pgtype.Numeric, settlementCrashDelayMicroseconds int64) ([]OperationalMetricSnapshotRow, error)
 	PruneSearchCatalog(ctx context.Context, chainID pgtype.Numeric, retentionGenerations int64) (int64, error)
-	QueryAddressOriginCoverage(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) ([]*bool, error)
-	QueryAddressOriginReference(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]bool, error)
-	QueryBlockByHash(ctx context.Context, column1 pgtype.Numeric, hash []byte) ([]QueryBlockByHashRow, error)
-	QueryBlockByNumber(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) ([]QueryBlockByNumberRow, error)
-	QueryFirstContractOrigin(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, encode []byte) ([]QueryFirstContractOriginRow, error)
-	QueryFirstFundingOrigin(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, encode []byte) ([]QueryFirstFundingOriginRow, error)
-	QueryGenesisAddressOrigin(ctx context.Context, column1 pgtype.Numeric, address []byte) ([]bool, error)
+	QueryAddressOriginCoverage(ctx context.Context, minRangeEnd pgtype.Numeric, chainID pgtype.Numeric) (*bool, error)
+	QueryAddressOriginReference(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, blockHash []byte) (bool, error)
+	QueryBlockByHash(ctx context.Context, chainID pgtype.Numeric, hash []byte) (QueryBlockByHashRow, error)
+	QueryBlockByNumber(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric) (QueryBlockByNumberRow, error)
+	QueryFirstContractOrigin(ctx context.Context, chainID pgtype.Numeric, maxBlockNumber pgtype.Numeric, encode []byte) (QueryFirstContractOriginRow, error)
+	QueryFirstFundingOrigin(ctx context.Context, chainID pgtype.Numeric, maxBlockNumber pgtype.Numeric, encode []byte) (QueryFirstFundingOriginRow, error)
+	QueryGenesisAddressOrigin(ctx context.Context, chainID pgtype.Numeric, address []byte) (bool, error)
 	QueryListAddressTransactions(ctx context.Context, arg QueryListAddressTransactionsParams) ([]QueryListAddressTransactionsRow, error)
 	QueryListAddressTransactionsFirst(ctx context.Context, arg QueryListAddressTransactionsFirstParams) ([]QueryListAddressTransactionsFirstRow, error)
-	QueryListBlocks(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, limit int32) ([]QueryListBlocksRow, error)
-	QueryListBlocksFirst(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, limit int32) ([]QueryListBlocksFirstRow, error)
-	QueryListTransactionsFirst(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, limit int32) ([]QueryListTransactionsFirstRow, error)
+	QueryListBlocks(ctx context.Context, chainID pgtype.Numeric, maxNumber pgtype.Numeric, limit int32) ([]QueryListBlocksRow, error)
+	QueryListBlocksFirst(ctx context.Context, chainID pgtype.Numeric, maxNumber pgtype.Numeric, limit int32) ([]QueryListBlocksFirstRow, error)
+	QueryListTransactionsFirst(ctx context.Context, chainID pgtype.Numeric, maxBlockNumber pgtype.Numeric, limit int32) ([]QueryListTransactionsFirstRow, error)
 	QueryListTransactionsWithMethod(ctx context.Context, arg QueryListTransactionsWithMethodParams) ([]QueryListTransactionsWithMethodRow, error)
-	QueryListTransactionsWithMethodFirst(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, limit int32) ([]QueryListTransactionsWithMethodFirstRow, error)
-	QuerySearchBlockNumber(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, validFromGeneration int64) ([]QuerySearchBlockNumberRow, error)
+	QueryListTransactionsWithMethodFirst(ctx context.Context, chainID pgtype.Numeric, maxBlockNumber pgtype.Numeric, limit int32) ([]QueryListTransactionsWithMethodFirstRow, error)
+	QuerySearchBlockNumber(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, validFromGeneration int64) (QuerySearchBlockNumberRow, error)
 	QuerySearchHash(ctx context.Context, arg QuerySearchHashParams) ([]QuerySearchHashRow, error)
 	QuerySearchText(ctx context.Context, arg QuerySearchTextParams) ([]QuerySearchTextRow, error)
-	QueryStatusState(ctx context.Context, dollar_1 pgtype.Numeric) ([]QueryStatusStateRow, error)
-	QueryTransactionByHash(ctx context.Context, column1 pgtype.Numeric, txHash []byte) ([]QueryTransactionByHashRow, error)
-	QueryTransactionSelectorCandidates(ctx context.Context, column1 pgtype.Numeric, column2 []byte, column3 int64) ([]QueryTransactionSelectorCandidatesRow, error)
-	QueryValidateTransactionCursor(ctx context.Context, arg QueryValidateTransactionCursorParams) ([]*bool, error)
+	QueryStatusState(ctx context.Context, chainID pgtype.Numeric) (QueryStatusStateRow, error)
+	QueryTransactionByHash(ctx context.Context, chainID pgtype.Numeric, txHash []byte) (QueryTransactionByHashRow, error)
+	QueryTransactionSelectorCandidates(ctx context.Context, maxCandidateNumber int64, requests []byte, chainID pgtype.Numeric) ([]QueryTransactionSelectorCandidatesRow, error)
+	QueryValidateTransactionCursor(ctx context.Context, arg QueryValidateTransactionCursorParams) (*bool, error)
 	ReconcileBillingPaymentFailed(ctx context.Context, arg ReconcileBillingPaymentFailedParams) (pgtype.UUID, error)
 	ReconcileBillingPaymentSettled(ctx context.Context, arg ReconcileBillingPaymentSettledParams) (pgtype.UUID, error)
 	ReconcileBillingTopupFailed(ctx context.Context, arg ReconcileBillingTopupFailedParams) (pgtype.UUID, error)
@@ -501,78 +501,78 @@ type Querier interface {
 	RecordUserLogin(ctx context.Context, loggedInAt pgtype.Timestamptz, iD pgtype.UUID) (User, error)
 	ReleaseBillingUsage(ctx context.Context, arg ReleaseBillingUsageParams) (ReleaseBillingUsageRow, error)
 	ReserveBillingUsage(ctx context.Context, arg ReserveBillingUsageParams) (ReserveBillingUsageRow, error)
-	RevokeAllUserAPIKeys(ctx context.Context, revokedAt pgtype.Timestamptz, userID pgtype.UUID) (int64, error)
+	RevokeAllUserAPIKeys(ctx context.Context, revokedAt pgtype.Timestamptz, userID pgtype.UUID) error
 	RevokeAllUserSessions(ctx context.Context, revokedAt pgtype.Timestamptz, userID pgtype.UUID) (int64, error)
 	RevokeUserAPIKey(ctx context.Context, revokedAt pgtype.Timestamptz, prefix string, userID pgtype.UUID) (ApiKey, error)
 	RevokeUserSessionByDigest(ctx context.Context, revokedAt pgtype.Timestamptz, tokenDigest []byte) (int64, error)
 	StartBillingPaymentHandler(ctx context.Context, transitionedAt pgtype.Timestamptz, iD pgtype.UUID, reservationOwner pgtype.UUID) (pgtype.UUID, error)
-	StateCanonicalTip(ctx context.Context, dollar_1 pgtype.Numeric) ([]StateCanonicalTipRow, error)
-	StateERC1155BalanceObservation(ctx context.Context, arg StateERC1155BalanceObservationParams) ([]StateERC1155BalanceObservationRow, error)
+	StateCanonicalTip(ctx context.Context, chainID pgtype.Numeric) (StateCanonicalTipRow, error)
+	StateERC1155BalanceObservation(ctx context.Context, arg StateERC1155BalanceObservationParams) (StateERC1155BalanceObservationRow, error)
 	StateERC20BalanceObservations(ctx context.Context, arg StateERC20BalanceObservationsParams) ([]StateERC20BalanceObservationsRow, error)
-	StateERC721OwnerObservation(ctx context.Context, arg StateERC721OwnerObservationParams) ([]StateERC721OwnerObservationRow, error)
-	StateIsCanonical(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]bool, error)
-	StateWriteClassifyBalancePersistenceMissStatement1(ctx context.Context, arg StateWriteClassifyBalancePersistenceMissStatement1Params) ([]StateWriteClassifyBalancePersistenceMissStatement1Row, error)
+	StateERC721OwnerObservation(ctx context.Context, arg StateERC721OwnerObservationParams) (StateERC721OwnerObservationRow, error)
+	StateIsCanonical(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, blockHash []byte) (bool, error)
+	StateWriteClassifyBalancePersistenceMissStatement1(ctx context.Context, arg StateWriteClassifyBalancePersistenceMissStatement1Params) (StateWriteClassifyBalancePersistenceMissStatement1Row, error)
 	StateWriteClassifyERC20BalancePersistenceMiss(ctx context.Context, arg StateWriteClassifyERC20BalancePersistenceMissParams) (StateWriteClassifyERC20BalancePersistenceMissRow, error)
-	StateWriteClassifyOwnerPersistenceMissStatement1(ctx context.Context, arg StateWriteClassifyOwnerPersistenceMissStatement1Params) ([]StateWriteClassifyOwnerPersistenceMissStatement1Row, error)
-	StateWriteInsertERC1155BalanceStatement1(ctx context.Context, arg StateWriteInsertERC1155BalanceStatement1Params) error
-	StateWriteInsertERC20Balance(ctx context.Context, arg StateWriteInsertERC20BalanceParams) error
-	StateWriteInsertOwnerObservationStatement1(ctx context.Context, arg StateWriteInsertOwnerObservationStatement1Params) error
-	StoreCanonicalBlock(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) ([]StoreCanonicalBlockRow, error)
-	StoreCanonicalTip(ctx context.Context, dollar_1 pgtype.Numeric) ([]StoreCanonicalTipRow, error)
-	StoreConfiguredStart(ctx context.Context, dollar_1 pgtype.Numeric) ([]string, error)
-	StoreDeleteCanonicalBlocksBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte) (int64, error)
-	StoreDeleteCoreBlockFacts(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, column3 []byte) error
-	StoreDeleteDerivedBlockFacts(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, column3 []byte) error
-	StoreFinality(ctx context.Context, dollar_1 pgtype.Numeric) ([]StoreFinalityRow, error)
-	StoreInsertCanonicalBlocksBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte) error
-	StoreInsertCoreOutboxBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte) error
-	StoreLegacyAppendJournalStatement1(ctx context.Context, arg StoreLegacyAppendJournalStatement1Params) error
-	StoreLegacyApplyReorgStatement5(ctx context.Context, column1 pgtype.Numeric, stage string) error
-	StoreLegacyBindChainIdentityStatement1(ctx context.Context, dollar_1 pgtype.Numeric) ([][]byte, error)
-	StoreLegacyBindChainIdentityStatement2(ctx context.Context, column1 pgtype.Numeric, genesisHash []byte) ([][]byte, error)
-	StoreLegacyBindChainIdentityStatement3(ctx context.Context, column1 pgtype.Numeric, genesisHash []byte) ([][]byte, error)
-	StoreLegacyBundleByHashStatement1(ctx context.Context, column1 pgtype.Numeric, hash []byte) ([][]byte, error)
-	StoreLegacyBundleByHashStatement2(ctx context.Context, column1 pgtype.Numeric, blockHash []byte) ([][]byte, error)
-	StoreLegacyCheckCheckpointTxStatement1(ctx context.Context, column1 pgtype.Numeric, stage string) ([]StoreLegacyCheckCheckpointTxStatement1Row, error)
-	StoreLegacyCheckpointStatement1(ctx context.Context, column1 pgtype.Numeric, stage string) ([]StoreLegacyCheckpointStatement1Row, error)
-	StoreLegacyClaimBackfillRangeStatement1(ctx context.Context, column1 pgtype.Numeric, expiresAt pgtype.Timestamptz) error
-	StoreLegacyClaimBackfillRangeStatement2(ctx context.Context, arg StoreLegacyClaimBackfillRangeStatement2Params) ([]bool, error)
+	StateWriteClassifyOwnerPersistenceMissStatement1(ctx context.Context, arg StateWriteClassifyOwnerPersistenceMissStatement1Params) (StateWriteClassifyOwnerPersistenceMissStatement1Row, error)
+	StateWriteInsertERC1155BalanceStatement1(ctx context.Context, arg StateWriteInsertERC1155BalanceStatement1Params) (int64, error)
+	StateWriteInsertERC20Balance(ctx context.Context, arg StateWriteInsertERC20BalanceParams) (int64, error)
+	StateWriteInsertOwnerObservationStatement1(ctx context.Context, arg StateWriteInsertOwnerObservationStatement1Params) (int64, error)
+	StoreCanonicalBlock(ctx context.Context, chainID string, number string) (StoreCanonicalBlockRow, error)
+	StoreCanonicalTip(ctx context.Context, chainID string) (StoreCanonicalTipRow, error)
+	StoreConfiguredStart(ctx context.Context, chainID string) (string, error)
+	StoreDeleteCanonicalBlocksBatch(ctx context.Context, chainID pgtype.Numeric, rows []byte) (int64, error)
+	StoreDeleteCoreBlockFacts(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error
+	StoreDeleteDerivedBlockFacts(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error
+	StoreFinality(ctx context.Context, chainID string) (StoreFinalityRow, error)
+	StoreInsertCanonicalBlocksBatch(ctx context.Context, chainID pgtype.Numeric, rows []byte) error
+	StoreInsertCoreOutboxBatch(ctx context.Context, chainID pgtype.Numeric, rows []byte) error
+	StoreLegacyAppendJournalStatement1(ctx context.Context, arg StoreLegacyAppendJournalStatement1Params) (int64, error)
+	StoreLegacyApplyReorgStatement5(ctx context.Context, chainID pgtype.Numeric, stage string) error
+	StoreLegacyBindChainIdentityStatement1(ctx context.Context, chainID pgtype.Numeric) ([]byte, error)
+	StoreLegacyBindChainIdentityStatement2(ctx context.Context, chainID pgtype.Numeric, genesisHash []byte) ([]byte, error)
+	StoreLegacyBindChainIdentityStatement3(ctx context.Context, genesisHash []byte, chainID pgtype.Numeric) ([]byte, error)
+	StoreLegacyBundleByHashStatement1(ctx context.Context, chainID pgtype.Numeric, hash []byte) ([]byte, error)
+	StoreLegacyBundleByHashStatement2(ctx context.Context, chainID pgtype.Numeric, blockHash []byte) ([][]byte, error)
+	StoreLegacyCheckCheckpointTxStatement1(ctx context.Context, chainID pgtype.Numeric, stage string) (StoreLegacyCheckCheckpointTxStatement1Row, error)
+	StoreLegacyCheckpointStatement1(ctx context.Context, chainID pgtype.Numeric, stage string) (StoreLegacyCheckpointStatement1Row, error)
+	StoreLegacyClaimBackfillRangeStatement1(ctx context.Context, chainID pgtype.Numeric, expiresAt pgtype.Timestamptz) error
+	StoreLegacyClaimBackfillRangeStatement2(ctx context.Context, arg StoreLegacyClaimBackfillRangeStatement2Params) (bool, error)
 	StoreLegacyClaimBackfillRangeStatement3(ctx context.Context, arg StoreLegacyClaimBackfillRangeStatement3Params) error
-	StoreLegacyCompleteBackfillRangeStatement1(ctx context.Context, arg StoreLegacyCompleteBackfillRangeStatement1Params) ([]pgtype.Timestamptz, error)
+	StoreLegacyCompleteBackfillRangeStatement1(ctx context.Context, arg StoreLegacyCompleteBackfillRangeStatement1Params) (pgtype.Timestamptz, error)
 	StoreLegacyCompleteBackfillRangeStatement2(ctx context.Context, arg StoreLegacyCompleteBackfillRangeStatement2Params) error
-	StoreLegacyConfigureIndexStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) error
-	StoreLegacyConfigureIndexStatement2(ctx context.Context, column1 pgtype.Numeric, stage string) error
-	StoreLegacyDeleteBundleFactsTxStatement1(ctx context.Context, column1 pgtype.Numeric, blockHash []byte) error
-	StoreLegacyEnsureChainStatement1(ctx context.Context, dollar_1 pgtype.Numeric) error
+	StoreLegacyConfigureIndexStatement1(ctx context.Context, chainID pgtype.Numeric, configuredStart pgtype.Numeric) error
+	StoreLegacyConfigureIndexStatement2(ctx context.Context, chainID pgtype.Numeric, stage string) error
+	StoreLegacyDeleteBundleFactsTxStatement1(ctx context.Context, chainID pgtype.Numeric, blockHash []byte) error
+	StoreLegacyEnsureChainStatement1(ctx context.Context, chainID pgtype.Numeric) error
 	StoreLegacyInsertReorgEventStatement1(ctx context.Context, arg StoreLegacyInsertReorgEventStatement1Params) error
-	StoreLegacyInsertRuntimeEventTxStatement1(ctx context.Context, column1 pgtype.Numeric, eventType string, column3 []byte) error
+	StoreLegacyInsertRuntimeEventTxStatement1(ctx context.Context, chainID pgtype.Numeric, eventType string, payload []byte) error
 	StoreLegacyInsertSparseReorgEventsTxStatement1(ctx context.Context, arg StoreLegacyInsertSparseReorgEventsTxStatement1Params) error
-	StoreLegacyJournalsByBlockStatement1(ctx context.Context, column1 pgtype.Numeric, blockHash []byte) ([]StoreLegacyJournalsByBlockStatement1Row, error)
-	StoreLegacyLockChainStatement1(ctx context.Context, dollar_1 *string) ([]interface{}, error)
-	StoreLegacyQueryCanonicalReferencesTxStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) ([]StoreLegacyQueryCanonicalReferencesTxStatement1Row, error)
-	StoreLegacyQueryCoverageRangesTxStatement1(ctx context.Context, dollar_1 pgtype.Numeric) ([]StoreLegacyQueryCoverageRangesTxStatement1Row, error)
-	StoreLegacyReadSchemaStatusStatement1(ctx context.Context) ([]string, error)
+	StoreLegacyJournalsByBlockStatement1(ctx context.Context, chainID pgtype.Numeric, blockHash []byte) ([]StoreLegacyJournalsByBlockStatement1Row, error)
+	StoreLegacyLockChainStatement1(ctx context.Context, chainID *string) error
+	StoreLegacyQueryCanonicalReferencesTxStatement1(ctx context.Context, arg StoreLegacyQueryCanonicalReferencesTxStatement1Params) ([]StoreLegacyQueryCanonicalReferencesTxStatement1Row, error)
+	StoreLegacyQueryCoverageRangesTxStatement1(ctx context.Context, arg StoreLegacyQueryCoverageRangesTxStatement1Params) ([]StoreLegacyQueryCoverageRangesTxStatement1Row, error)
+	StoreLegacyReadSchemaStatusStatement1(ctx context.Context) (bool, error)
 	StoreLegacyReadSchemaStatusStatement2(ctx context.Context) ([]StoreLegacyReadSchemaStatusStatement2Row, error)
-	StoreLegacyReleaseBackfillRangeStatement1(ctx context.Context, arg StoreLegacyReleaseBackfillRangeStatement1Params) error
-	StoreLegacyRenewBackfillRangeStatement1(ctx context.Context, arg StoreLegacyRenewBackfillRangeStatement1Params) ([]pgtype.Timestamptz, error)
-	StoreLegacyReplaceCoverageRangesTxStatement1(ctx context.Context, dollar_1 pgtype.Numeric) error
-	StoreLegacyReplaceCoverageRangesTxStatement2(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, column3 pgtype.Numeric) error
-	StoreLegacyReplaceHighestCanonicalSegmentStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) ([]int64, error)
+	StoreLegacyReleaseBackfillRangeStatement1(ctx context.Context, arg StoreLegacyReleaseBackfillRangeStatement1Params) (int64, error)
+	StoreLegacyRenewBackfillRangeStatement1(ctx context.Context, arg StoreLegacyRenewBackfillRangeStatement1Params) (pgtype.Timestamptz, error)
+	StoreLegacyReplaceCoverageRangesTxStatement1(ctx context.Context, chainID pgtype.Numeric) error
+	StoreLegacyReplaceCoverageRangesTxStatement2(ctx context.Context, chainID pgtype.Numeric, rangeStart pgtype.Numeric, rangeEnd pgtype.Numeric) error
+	StoreLegacyReplaceHighestCanonicalSegmentStatement1(ctx context.Context, chainID pgtype.Numeric, minNumber pgtype.Numeric) (int64, error)
 	StoreLegacyUpdateFinalityStatement1(ctx context.Context, arg StoreLegacyUpdateFinalityStatement1Params) error
 	StoreLegacyUpsertCheckpointTxStatement1(ctx context.Context, arg StoreLegacyUpsertCheckpointTxStatement1Params) error
-	StoreLegacyValidateRefreshParentTxStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) ([]bool, error)
-	StoreLockCanonicalBlock(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) ([]StoreLockCanonicalBlockRow, error)
-	StoreLockCanonicalTip(ctx context.Context, dollar_1 pgtype.Numeric) ([]StoreLockCanonicalTipRow, error)
-	StoreLockConfiguredStart(ctx context.Context, dollar_1 pgtype.Numeric) ([]string, error)
-	StoreLockFinality(ctx context.Context, dollar_1 pgtype.Numeric) ([]StoreLockFinalityRow, error)
-	StorePutBlocksBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte) error
-	StorePutLogsBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte) error
-	StorePutReceiptsBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte) error
-	StorePutTransactionInclusionsBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte) error
-	StorePutTransactionsBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte) error
-	StorePutWithdrawalsBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte) error
-	StoreSetBlockJournalsCanonicalBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte, column3 bool) error
-	StoreSetDerivedCanonicalBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte, canonical bool) error
+	StoreLegacyValidateRefreshParentTxStatement1(ctx context.Context, chainID pgtype.Numeric, maxNumber pgtype.Numeric) (bool, error)
+	StoreLockCanonicalBlock(ctx context.Context, chainID string, number string) (StoreLockCanonicalBlockRow, error)
+	StoreLockCanonicalTip(ctx context.Context, chainID string) (StoreLockCanonicalTipRow, error)
+	StoreLockConfiguredStart(ctx context.Context, chainID string) (string, error)
+	StoreLockFinality(ctx context.Context, chainID string) (StoreLockFinalityRow, error)
+	StorePutBlocksBatch(ctx context.Context, chainID pgtype.Numeric, rows []byte) error
+	StorePutLogsBatch(ctx context.Context, chainID pgtype.Numeric, rows []byte) error
+	StorePutReceiptsBatch(ctx context.Context, chainID pgtype.Numeric, rows []byte) error
+	StorePutTransactionInclusionsBatch(ctx context.Context, chainID pgtype.Numeric, rows []byte) error
+	StorePutTransactionsBatch(ctx context.Context, chainID pgtype.Numeric, rows []byte) error
+	StorePutWithdrawalsBatch(ctx context.Context, chainID pgtype.Numeric, rows []byte) error
+	StoreSetBlockJournalsCanonicalBatch(ctx context.Context, canonical bool, chainID pgtype.Numeric, blockHashes []byte) error
+	StoreSetDerivedCanonicalBatch(ctx context.Context, canonical bool, chainID pgtype.Numeric, blockHashes []byte) error
 	SummarizeBillingAccounts(ctx context.Context, chainID pgtype.Numeric, network string, asset []byte) (SummarizeBillingAccountsRow, error)
 	SummarizeBillingPayments(ctx context.Context, arg SummarizeBillingPaymentsParams) ([]SummarizeBillingPaymentsRow, error)
 	TouchActiveUserSession(ctx context.Context, observedAt pgtype.Timestamptz, iD pgtype.UUID, touchBefore pgtype.Timestamptz) error
@@ -582,46 +582,46 @@ type Querier interface {
 	UpsertOperatorLabel(ctx context.Context, arg UpsertOperatorLabelParams) (UpsertOperatorLabelRow, error)
 	ValidateAddressWithdrawalCursor(ctx context.Context, arg ValidateAddressWithdrawalCursorParams) (*bool, error)
 	ValidateBlockCursor(ctx context.Context, arg ValidateBlockCursorParams) (*bool, error)
-	ValidateBlockTransactionCursor(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, hash []byte) (bool, error)
+	ValidateBlockTransactionCursor(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, hash []byte) (bool, error)
 	ValidateProxyAPISnapshot(ctx context.Context, arg ValidateProxyAPISnapshotParams) (bool, error)
 	ValidateResolvedSearchName(ctx context.Context, arg ValidateResolvedSearchNameParams) (bool, error)
 	ValidateSearchCursor(ctx context.Context, arg ValidateSearchCursorParams) (*bool, error)
-	VerifiedSelectorWritePersistStatement1(ctx context.Context, arg VerifiedSelectorWritePersistStatement1Params) error
+	VerifiedSelectorWritePersistStatement1(ctx context.Context, arg VerifiedSelectorWritePersistStatement1Params) (int64, error)
 	VerifiedSelectorWritePersistStatement2(ctx context.Context, arg VerifiedSelectorWritePersistStatement2Params) error
-	VerifyInlineBindCompilerStatement1(ctx context.Context, arg VerifyInlineBindCompilerStatement1Params) error
-	VerifyInlineBindCompilerStatement2(ctx context.Context, column1 pgtype.UUID, leaseToken *string) ([]bool, error)
-	VerifyInlineCompleteProxyV2Statement1(ctx context.Context, dollar_1 pgtype.Numeric) ([]interface{}, error)
-	VerifyInlineCompleteProxyV2Statement2(ctx context.Context, column1 pgtype.UUID, leaseToken *string, column3 []byte) error
-	VerifyInlineCompleteProxyV2Statement3(ctx context.Context, column1 pgtype.UUID, requestDigest []byte, column3 []byte) error
+	VerifyInlineBindCompilerStatement1(ctx context.Context, arg VerifyInlineBindCompilerStatement1Params) (int64, error)
+	VerifyInlineBindCompilerStatement2(ctx context.Context, iD pgtype.UUID, leaseToken *string) (bool, error)
+	VerifyInlineCompleteProxyV2Statement1(ctx context.Context, chainID pgtype.Numeric) error
+	VerifyInlineCompleteProxyV2Statement2(ctx context.Context, outcome []byte, iD pgtype.UUID, leaseToken *string) error
+	VerifyInlineCompleteProxyV2Statement3(ctx context.Context, jobID pgtype.UUID, requestDigest []byte, outcome []byte) error
 	VerifyInlineCompleteProxyV2Statement4(ctx context.Context, arg VerifyInlineCompleteProxyV2Statement4Params) error
-	VerifyInlineCompleteV2Statement1(ctx context.Context, arg VerifyInlineCompleteV2Statement1Params) ([][]byte, error)
+	VerifyInlineCompleteV2Statement1(ctx context.Context, arg VerifyInlineCompleteV2Statement1Params) ([]byte, error)
 	VerifyInlineCompleteV2Statement2(ctx context.Context, arg VerifyInlineCompleteV2Statement2Params) error
 	VerifyInlineCompleteV2Statement3(ctx context.Context, arg VerifyInlineCompleteV2Statement3Params) error
 	VerifyInlineCompleteV2Statement4(ctx context.Context, arg VerifyInlineCompleteV2Statement4Params) error
 	VerifyInlineCompleteV2Statement5(ctx context.Context, arg VerifyInlineCompleteV2Statement5Params) error
-	VerifyInlineCompleteV2Statement6(ctx context.Context, arg VerifyInlineCompleteV2Statement6Params) ([]string, error)
+	VerifyInlineCompleteV2Statement6(ctx context.Context, arg VerifyInlineCompleteV2Statement6Params) (string, error)
 	VerifyInlineCompleteV2Statement7(ctx context.Context, arg VerifyInlineCompleteV2Statement7Params) error
-	VerifyInlineFailStatement1(ctx context.Context, column1 pgtype.UUID, leaseToken *string, errorCode *string) error
-	VerifyInlineLookupStatement1(ctx context.Context, language string, version string) ([]VerifyInlineLookupStatement1Row, error)
-	VerifyInlineLookupStatement2(ctx context.Context, language string) ([]bool, error)
-	VerifyInlinePersistStatement1(ctx context.Context, arg VerifyInlinePersistStatement1Params) ([]int64, error)
+	VerifyInlineFailStatement1(ctx context.Context, errorCode *string, iD pgtype.UUID, leaseToken *string) (int64, error)
+	VerifyInlineLookupStatement1(ctx context.Context, language string, version string) (VerifyInlineLookupStatement1Row, error)
+	VerifyInlineLookupStatement2(ctx context.Context, language string) (bool, error)
+	VerifyInlinePersistStatement1(ctx context.Context, arg VerifyInlinePersistStatement1Params) (int64, error)
 	VerifyInlinePersistStatement2(ctx context.Context, arg VerifyInlinePersistStatement2Params) error
 	VerifyInlinePersistStatement3(ctx context.Context, language string, generationID int64) error
 	VerifyInlineVersionsStatement1(ctx context.Context, language string) ([]VerifyInlineVersionsStatement1Row, error)
-	VerifyLegacyProxyVerificationCurrentTarget(ctx context.Context, arg VerifyLegacyProxyVerificationCurrentTargetParams) ([]VerifyLegacyProxyVerificationCurrentTargetRow, error)
-	VerifyLegacyRenewVerification(ctx context.Context, column1 pgtype.UUID, leaseToken *string, column3 interface{}) error
-	VerifyLegacyTryCompilerCacheInstallLock(ctx context.Context, dollar_1 string) ([]bool, error)
-	VerifyLegacyUnlockCompilerCacheInstall(ctx context.Context, dollar_1 string) ([]bool, error)
-	VerifyLegacyVerificationCanonicalGenesisTarget(ctx context.Context, arg VerifyLegacyVerificationCanonicalGenesisTargetParams) ([]string, error)
-	VerifyLegacyVerificationCanonicalTarget(ctx context.Context, arg VerifyLegacyVerificationCanonicalTargetParams) ([]string, error)
+	VerifyLegacyProxyVerificationCurrentTarget(ctx context.Context, arg VerifyLegacyProxyVerificationCurrentTargetParams) (VerifyLegacyProxyVerificationCurrentTargetRow, error)
+	VerifyLegacyRenewVerification(ctx context.Context, leaseMicroseconds int64, iD pgtype.UUID, leaseToken *string) (int64, error)
+	VerifyLegacyTryCompilerCacheInstallLock(ctx context.Context, platform string) (bool, error)
+	VerifyLegacyUnlockCompilerCacheInstall(ctx context.Context, platform string) (bool, error)
+	VerifyLegacyVerificationCanonicalGenesisTarget(ctx context.Context, arg VerifyLegacyVerificationCanonicalGenesisTargetParams) (string, error)
+	VerifyLegacyVerificationCanonicalTarget(ctx context.Context, arg VerifyLegacyVerificationCanonicalTargetParams) (string, error)
 	VerifyLegacyVerificationProxyReplayTarget(ctx context.Context, arg VerifyLegacyVerificationProxyReplayTargetParams) error
-	VerifyV2ClaimRunnable(ctx context.Context, arg VerifyV2ClaimRunnableParams) ([]VerifyV2ClaimRunnableRow, error)
-	VerifyV2FindActiveJobByDigest(ctx context.Context, dollar_1 []byte) ([]VerifyV2FindActiveJobByDigestRow, error)
-	VerifyV2GetJob(ctx context.Context, dollar_1 pgtype.UUID) ([]VerifyV2GetJobRow, error)
-	VerifyV2LockRunningJob(ctx context.Context, column1 pgtype.UUID, leaseToken *string) ([]VerifyV2LockRunningJobRow, error)
-	VerifyV2SubmitJob(ctx context.Context, arg VerifyV2SubmitJobParams) ([]VerifyV2SubmitJobRow, error)
+	VerifyV2ClaimRunnable(ctx context.Context, arg VerifyV2ClaimRunnableParams) (VerifyV2ClaimRunnableRow, error)
+	VerifyV2FindActiveJobByDigest(ctx context.Context, requestDigest []byte) (VerifyV2FindActiveJobByDigestRow, error)
+	VerifyV2GetJob(ctx context.Context, jobID pgtype.UUID) (VerifyV2GetJobRow, error)
+	VerifyV2LockRunningJob(ctx context.Context, iD pgtype.UUID, leaseToken *string) (VerifyV2LockRunningJobRow, error)
+	VerifyV2SubmitJob(ctx context.Context, arg VerifyV2SubmitJobParams) (VerifyV2SubmitJobRow, error)
 	VerifyVyperPersistRuntime(ctx context.Context, arg VerifyVyperPersistRuntimeParams) error
-	VerifyVyperRuntime(ctx context.Context, generationID int64, version string) ([]VerifyVyperRuntimeRow, error)
+	VerifyVyperRuntime(ctx context.Context, generationID int64, version string) (VerifyVyperRuntimeRow, error)
 }
 
 var _ Querier = (*Queries)(nil)

@@ -2,11 +2,15 @@ package etherscan
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/islishude/etherview/internal/db/gen"
 	"math/big"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+
+	dbgen "github.com/islishude/etherview/internal/db/gen"
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
 )
 
 const (
@@ -15,12 +19,9 @@ const (
 	holderStage = "holder"
 )
 
-type enrichmentQueryer interface {
-	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-}
+type enrichmentQueryer = dbgen.DBTX
 
-func (b *PostgresBackend) beginEnrichmentSnapshot(ctx context.Context) (*sql.Tx, error) {
+func (b *PostgresBackend) beginEnrichmentSnapshot(ctx context.Context) (pgx.Tx, error) {
 	return b.beginCanonicalSnapshot(ctx)
 }
 
@@ -38,15 +39,44 @@ func (b *PostgresBackend) requireCanonicalStageRange(
 	if err != nil {
 		return coreTip, err
 	}
-	var endArgument any
-	if end != nil {
-		endArgument = *end
-	}
+	endArgument := end
 	var tip string
-	var incompleteNumber, state sql.NullString
+	var incompleteNumber, state pgtype.Text
 	var incompleteHash []byte
-	err = queryer.QueryRowContext(ctx, dbgen.EtherscanCanonicalStageRange, b.chain, start, endArgument, stage).Scan(&tip, &incompleteNumber, &incompleteHash, &state)
-	if errors.Is(err, sql.ErrNoRows) {
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(b.chain); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(start); err != nil {
+			return err
+		}
+		var queryValue2 pgtype.Numeric
+		if endArgument != nil {
+			if err := queryValue2.Scan(*endArgument); err != nil {
+				return err
+			}
+		}
+		queryRow, err := dbgen.New(queryer).EtherscanCanonicalStageRange(ctx, dbgen.EtherscanCanonicalStageRangeParams{ChainID: queryValue0, MinNumber: queryValue1, RangeEnd: queryValue2, Stage: stage})
+		if err != nil {
+			return err
+		}
+		tip = queryRow.TipNumber
+		resultValue1, err := dbaccess.NumericText(queryRow.Number)
+		if err != nil {
+			return err
+		}
+		incompleteNumber = resultValue1
+		incompleteHash = queryRow.BlockHash
+		var resultValue4 pgtype.Text
+		if queryRow.State != nil {
+			resultValue4 = pgtype.Text{String: *queryRow.State, Valid: true}
+		}
+		state = resultValue4
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return "", errors.New("canonical stage range lost its proven core tip")
 	}
 	if err != nil {

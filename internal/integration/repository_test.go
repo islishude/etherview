@@ -5,12 +5,13 @@ package integration_test
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
 	"time"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/chainbundle"
@@ -293,7 +294,7 @@ func commitCanonical(t *testing.T, ctx context.Context, repository *store.Postgr
 	}
 }
 
-func insertRefreshFixtures(t *testing.T, ctx context.Context, db *sql.DB, bundle chainbundle.Bundle) {
+func insertRefreshFixtures(t *testing.T, ctx context.Context, db *pgxpool.Pool, bundle chainbundle.Bundle) {
 	t.Helper()
 	reference := mustBlockRef(t, bundle)
 	transaction := bundle.Block.Transactions()[0]
@@ -385,7 +386,7 @@ func insertRefreshFixtures(t *testing.T, ctx context.Context, db *sql.DB, bundle
 func assertRefreshFixtures(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	bundle chainbundle.Bundle,
 	replayableCount int,
 	stateObservationCount int,
@@ -427,10 +428,10 @@ func assertRefreshFixtures(
 	)
 }
 
-func assertBlockVariant(t *testing.T, ctx context.Context, db *sql.DB, hash common.Hash, want string) {
+func assertBlockVariant(t *testing.T, ctx context.Context, db *pgxpool.Pool, hash common.Hash, want string) {
 	t.Helper()
 	var variant string
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT raw->>'integrationVariant'
 		FROM blocks
 		WHERE chain_id = 1 AND hash = $1`, mustBytes(t, hash)).Scan(&variant); err != nil {
@@ -441,17 +442,17 @@ func assertBlockVariant(t *testing.T, ctx context.Context, db *sql.DB, hash comm
 	}
 }
 
-func execFixture(t *testing.T, ctx context.Context, db *sql.DB, query string, arguments ...any) {
+func execFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool, query string, arguments ...any) {
 	t.Helper()
-	if _, err := db.ExecContext(ctx, query, arguments...); err != nil {
+	if _, err := db.Exec(ctx, query, arguments...); err != nil {
 		t.Fatalf("insert integration fixture: %v\nquery:%s", err, query)
 	}
 }
 
-func assertRowCount(t *testing.T, ctx context.Context, db *sql.DB, query string, want int, arguments ...any) {
+func assertRowCount(t *testing.T, ctx context.Context, db *pgxpool.Pool, query string, want int, arguments ...any) {
 	t.Helper()
 	var got int
-	if err := db.QueryRowContext(ctx, query, arguments...).Scan(&got); err != nil {
+	if err := db.QueryRow(ctx, query, arguments...).Scan(&got); err != nil {
 		t.Fatalf("query row count: %v\nquery:%s", err, query)
 	}
 	if got != want {

@@ -5,13 +5,14 @@ package verify
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"os"
 	"testing"
 	"time"
 
+	testpgx "github.com/islishude/etherview/internal/testpgx"
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/stdlib"
 )
 
 func TestPostgresCompilerCacheInstallLockerCoordinatesSessions(t *testing.T) {
@@ -61,7 +62,7 @@ func TestPostgresCompilerCacheInstallLockerCoordinatesSessions(t *testing.T) {
 	}
 
 	pingCtx, pingCancel := context.WithTimeout(ctx, time.Second)
-	if err := secondDB.PingContext(pingCtx); err != nil {
+	if err := secondDB.Ping(pingCtx); err != nil {
 		pingCancel()
 		t.Fatalf("contended waiter pinned its only pool connection: %v", err)
 	}
@@ -127,7 +128,7 @@ func TestPostgresCompilerCacheInstallLockReleasesOnSessionDiscard(t *testing.T) 
 		t.Fatal(err)
 	}
 	discardCompilerCacheLockConnection(conn)
-	_ = conn.Close()
+	conn.Release()
 
 	entered := false
 	if err := second.WithCompilerCacheInstallLock(ctx, digest, func() error {
@@ -137,7 +138,7 @@ func TestPostgresCompilerCacheInstallLockReleasesOnSessionDiscard(t *testing.T) 
 		t.Fatalf("reacquire after discarded session entered=%t error=%v", entered, err)
 	}
 
-	unlockedConn, err := firstDB.Conn(ctx)
+	unlockedConn, err := firstDB.Acquire(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +146,7 @@ func TestPostgresCompilerCacheInstallLockReleasesOnSessionDiscard(t *testing.T) 
 		err.Error() != "release compiler cache install lock" {
 		t.Fatalf("release unowned lock error = %v", err)
 	}
-	if err := firstDB.PingContext(ctx); err != nil {
+	if err := firstDB.Ping(ctx); err != nil {
 		t.Fatalf("pool unusable after discarding unowned lock connection: %v", err)
 	}
 }
@@ -157,9 +158,7 @@ func TestPostgresCompilerCacheInstallLockAcquisitionFailure(t *testing.T) {
 	}
 	database := openCompilerCacheLockTestDatabase(t, databaseURL, "compiler-lock-closed", 1)
 	locker := newCompilerCacheLockTestLocker(t, database)
-	if err := database.Close(); err != nil {
-		t.Fatal(err)
-	}
+	database.Close()
 	called := false
 	err := locker.WithCompilerCacheInstallLock(
 		t.Context(),
@@ -179,7 +178,7 @@ func openCompilerCacheLockTestDatabase(
 	databaseURL string,
 	applicationName string,
 	maximumConnections int,
-) *sql.DB {
+) *pgxpool.Pool {
 	t.Helper()
 	config, err := pgx.ParseConfig(databaseURL)
 	if err != nil {
@@ -189,11 +188,9 @@ func openCompilerCacheLockTestDatabase(
 		config.RuntimeParams = make(map[string]string)
 	}
 	config.RuntimeParams["application_name"] = applicationName
-	database := stdlib.OpenDB(*config)
-	database.SetMaxOpenConns(maximumConnections)
-	database.SetMaxIdleConns(maximumConnections)
-	t.Cleanup(func() { _ = database.Close() })
-	if err := database.PingContext(t.Context()); err != nil {
+	database := testpgx.Pool(t, config, int32(maximumConnections))
+	t.Cleanup(func() { database.Close() })
+	if err := database.Ping(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	return database
@@ -201,7 +198,7 @@ func openCompilerCacheLockTestDatabase(
 
 func newCompilerCacheLockTestLocker(
 	t *testing.T,
-	database *sql.DB,
+	database *pgxpool.Pool,
 ) *PostgresCompilerCacheInstallLocker {
 	t.Helper()
 	locker, err := NewPostgresCompilerCacheInstallLocker(database)

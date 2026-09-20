@@ -4590,7 +4590,10 @@ type HomeSnapshot struct {
 // HomeSnapshotResponse defines model for HomeSnapshotResponse.
 type HomeSnapshotResponse struct {
 	Data HomeSnapshot `json:"data"`
-	Meta Meta         `json:"meta"`
+
+	// EventId Canonical decimal durable event ID from 0 through 9223372036854775807.
+	EventId RuntimeEventID `json:"event_id"`
+	Meta    Meta           `json:"meta"`
 }
 
 // IncludedTransactionDetail defines model for IncludedTransactionDetail.
@@ -5221,6 +5224,9 @@ type ReplacedTransactionDetail struct {
 
 // ReplacedTransactionDetailKind defines model for ReplacedTransactionDetail.Kind.
 type ReplacedTransactionDetailKind string
+
+// RuntimeEventID Canonical decimal durable event ID from 0 through 9223372036854775807.
+type RuntimeEventID = string
 
 // SearchResponse defines model for SearchResponse.
 type SearchResponse struct {
@@ -6956,6 +6962,12 @@ type StreamHeadEventsParams struct {
 type ListGenesisAccountsParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetHomeSnapshotParams defines parameters for GetHomeSnapshot.
+type GetHomeSnapshotParams struct {
+	// MinEventId Minimum durable event version; waits at most two seconds for the local snapshot.
+	MinEventId *RuntimeEventID `form:"min_event_id,omitempty" json:"min_event_id,omitempty"`
 }
 
 // ListPendingTransactionsParams defines parameters for ListPendingTransactions.

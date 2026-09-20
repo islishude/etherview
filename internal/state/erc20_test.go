@@ -1,7 +1,6 @@
 package state
 
 import (
-	"database/sql/driver"
 	"errors"
 	"math/big"
 	"reflect"
@@ -14,6 +13,7 @@ import (
 	"github.com/islishude/etherview/internal/catalog"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/httpapi"
+	"github.com/islishude/etherview/internal/testpgx"
 )
 
 func TestERC20BalancesUseOneExactEndpointAndBlockHash(t *testing.T) {
@@ -58,7 +58,7 @@ func TestERC20BalancesUseExactCacheWithoutRPC(t *testing.T) {
 	owner := common.HexToAddress("0x2222222222222222222222222222222222222222")
 	service := &testStateRPC{err: errors.New("RPC must not be called for an exact cache hit")}
 	reconciler := &NFTReconciler{
-		db: stateTestDatabase(t, erc20CacheQueryExpectation([][]driver.Value{{
+		db: stateTestDatabase(t, erc20CacheQueryExpectation([][]any{{
 			contract.Bytes(), "0", catalog.NFTStateConfidenceRPCExact,
 		}})),
 		pool:      newERC20TestPool(t, service, nil),
@@ -102,10 +102,10 @@ func TestERC20BalancesBatchOnlyCacheMissesAndPreserveOrder(t *testing.T) {
 	observer := &nftBatchObserver{}
 	reconciler := &NFTReconciler{
 		db: stateTestDatabase(t,
-			erc20CacheQueryExpectationWithCheck([][]driver.Value{{
+			erc20CacheQueryExpectationWithCheck([][]any{{
 				contracts[1].Bytes(), "2", catalog.NFTStateConfidenceRPCExact,
-			}}, func(arguments []driver.NamedValue) error {
-				addresses, ok := arguments[4].Value.([][]byte)
+			}}, func(arguments []any) error {
+				addresses, ok := arguments[4].([][]byte)
 				if !ok || len(addresses) != len(contracts) {
 					return errors.New("ERC-20 cache lookup was not one bounded address array")
 				}
@@ -157,7 +157,7 @@ func TestERC20BalancesRejectMalformedCacheWithoutRPC(t *testing.T) {
 			t.Parallel()
 			service := &testStateRPC{err: errors.New("RPC must not run for corrupt cache data")}
 			reconciler := &NFTReconciler{
-				db: stateTestDatabase(t, erc20CacheQueryExpectation([][]driver.Value{{
+				db: stateTestDatabase(t, erc20CacheQueryExpectation([][]any{{
 					test.address, test.balance, test.confidence,
 				}})),
 				pool:      newERC20TestPool(t, service, nil),
@@ -220,7 +220,7 @@ func TestERC20BalancePersistenceRejectsConcurrentConflict(t *testing.T) {
 			},
 			stateSQLExpectation{
 				kind: "query", contains: "EXISTS ( SELECT 1 FROM canonical_blocks",
-				columns: []string{"canonical", "stored"}, rows: [][]driver.Value{{true, true}},
+				columns: []string{"canonical", "stored"}, rows: [][]any{{true, true}},
 			},
 		),
 		pool: newERC20TestPool(t, &testStateRPC{callResult: result}, nil),
@@ -236,13 +236,13 @@ func TestERC20BalancePersistenceRejectsConcurrentConflict(t *testing.T) {
 	}
 }
 
-func erc20CacheQueryExpectation(rows [][]driver.Value) stateSQLExpectation {
+func erc20CacheQueryExpectation(rows [][]any) stateSQLExpectation {
 	return erc20CacheQueryExpectationWithCheck(rows, nil)
 }
 
 func erc20CacheQueryExpectationWithCheck(
-	rows [][]driver.Value,
-	check func([]driver.NamedValue) error,
+	rows [][]any,
+	check func([]any) error,
 ) stateSQLExpectation {
 	return stateSQLExpectation{
 		kind: "query", contains: "FROM erc20_balance_reconciliations AS observation",
@@ -253,9 +253,9 @@ func erc20CacheQueryExpectationWithCheck(
 func erc20InsertExpectation(contract, owner common.Address, balance string) stateSQLExpectation {
 	return stateSQLExpectation{
 		kind: "exec", contains: "INSERT INTO erc20_balance_reconciliations", rowsAffected: 1,
-		check: func(arguments []driver.NamedValue) error {
-			if len(arguments) != 6 || !reflect.DeepEqual(arguments[1].Value, contract.Bytes()) ||
-				!reflect.DeepEqual(arguments[2].Value, owner.Bytes()) || arguments[5].Value != balance {
+		check: func(arguments []any) error {
+			if len(arguments) != 6 || !reflect.DeepEqual(arguments[1], contract.Bytes()) ||
+				!reflect.DeepEqual(arguments[2], owner.Bytes()) || !testpgx.NumericEquals(arguments[5], balance) {
 				return errors.New("unexpected exact ERC-20 persistence arguments")
 			}
 			return nil

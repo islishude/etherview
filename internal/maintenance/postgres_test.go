@@ -2,8 +2,6 @@ package maintenance
 
 import (
 	"context"
-	"database/sql"
-	"database/sql/driver"
 	"errors"
 	"fmt"
 	"math"
@@ -25,9 +23,9 @@ func TestPostgresClaimGuardCompleteIsLeaseOwnedAndIdempotent(t *testing.T) {
 	db := maintenanceDatabase(t,
 		sqlStep{
 			kind: "query", contains: "FOR UPDATE OF request SKIP LOCKED", columns: maintenanceColumns(12),
-			rows: [][]driver.Value{maintenanceCandidate(7, "queued", false, "50")},
-			check: func(arguments []driver.NamedValue) error {
-				if len(arguments) != 5 || arguments[0].Value != claimBatchSize || arguments[1].Value != false {
+			rows: [][]any{maintenanceCandidate(7, "queued", false, "50")},
+			check: func(arguments []any) error {
+				if len(arguments) != 5 || arguments[4] != int32(claimBatchSize) || arguments[0] != false {
 					return fmt.Errorf("claim arguments=%v", arguments)
 				}
 				return nil
@@ -36,8 +34,8 @@ func TestPostgresClaimGuardCompleteIsLeaseOwnedAndIdempotent(t *testing.T) {
 		advisoryStep(7, true),
 		sqlStep{kind: "exec", contains: "SET status = 'running'", affected: 1},
 		sqlStep{
-			kind: "query", contains: "SELECT request.status, finality.finalized_number::text",
-			columns: maintenanceColumns(2), rows: [][]driver.Value{{"running", "50"}},
+			kind: "query", contains: "SELECT request.status, finality.finalized_number",
+			columns: maintenanceColumns(2), rows: [][]any{{"running", "50"}},
 		},
 		sqlStep{kind: "exec", contains: "SET status = 'done'", affected: 1},
 		unlockStep(7),
@@ -68,12 +66,12 @@ func TestPostgresClaimGuardCompleteIsLeaseOwnedAndIdempotent(t *testing.T) {
 func TestPostgresClaimRejectsFinalizedRangeAndRecordsFailure(t *testing.T) {
 	t.Parallel()
 	db := maintenanceDatabase(t,
-		sqlStep{kind: "query", contains: "FOR UPDATE OF request SKIP LOCKED", columns: maintenanceColumns(12), rows: [][]driver.Value{maintenanceCandidate(7, "queued", false, "150")}},
+		sqlStep{kind: "query", contains: "FOR UPDATE OF request SKIP LOCKED", columns: maintenanceColumns(12), rows: [][]any{maintenanceCandidate(7, "queued", false, "150")}},
 		advisoryStep(7, true),
 		sqlStep{
 			kind: "exec", contains: "SET status = 'failed'", affected: 1,
-			check: func(arguments []driver.NamedValue) error {
-				if len(arguments) != 2 || arguments[0].Value != int64(7) || !strings.Contains(fmt.Sprint(arguments[1].Value), "intersects finalized height 150") {
+			check: func(arguments []any) error {
+				if len(arguments) != 2 || arguments[0] != int64(7) || !strings.Contains(*arguments[1].(*string), "intersects finalized height 150") {
 					return fmt.Errorf("rejection arguments=%v", arguments)
 				}
 				return nil
@@ -93,7 +91,7 @@ func TestPostgresClaimSkipsOwnedRunningRequestAndCanRecoverReleasedOne(t *testin
 	db := maintenanceDatabase(t,
 		sqlStep{
 			kind: "query", contains: "CASE request.status WHEN 'queued' THEN 0 ELSE 1 END", columns: maintenanceColumns(12),
-			rows: [][]driver.Value{maintenanceCandidate(7, "running", false, nil), maintenanceCandidate(8, "queued", false, nil)},
+			rows: [][]any{maintenanceCandidate(7, "running", false, nil), maintenanceCandidate(8, "queued", false, nil)},
 		},
 		advisoryStep(7, false),
 		advisoryStep(8, true),
@@ -112,7 +110,7 @@ func TestPostgresClaimSkipsOwnedRunningRequestAndCanRecoverReleasedOne(t *testin
 
 func TestPostgresClaimKeysetDoesNotStarveBeyondOwnedBatch(t *testing.T) {
 	t.Parallel()
-	firstBatch := make([][]driver.Value, 0, claimBatchSize)
+	firstBatch := make([][]any, 0, claimBatchSize)
 	steps := []sqlStep{{
 		kind: "query", contains: "FOR UPDATE OF request SKIP LOCKED", columns: maintenanceColumns(12), rows: firstBatch,
 	}}
@@ -123,10 +121,10 @@ func TestPostgresClaimKeysetDoesNotStarveBeyondOwnedBatch(t *testing.T) {
 	steps[0].rows = firstBatch
 	steps = append(steps,
 		sqlStep{
-			kind: "query", contains: ") > ($3::integer, $4::timestamptz, $5::bigint)", columns: maintenanceColumns(12),
-			rows: [][]driver.Value{maintenanceCandidate(65, "running", false, nil)},
-			check: func(arguments []driver.NamedValue) error {
-				if len(arguments) != 5 || arguments[1].Value != true || arguments[2].Value != int64(1) || arguments[4].Value != int64(64) {
+			kind: "query", contains: ") > ($2::integer, $3::timestamptz, $4::bigint)", columns: maintenanceColumns(12),
+			rows: [][]any{maintenanceCandidate(65, "running", false, nil)},
+			check: func(arguments []any) error {
+				if len(arguments) != 5 || arguments[0] != true || arguments[1] != int32(1) || arguments[3] != int64(64) {
 					return fmt.Errorf("cursor arguments=%v", arguments)
 				}
 				return nil
@@ -150,14 +148,14 @@ func TestPostgresClaimKeysetDoesNotStarveBeyondOwnedBatch(t *testing.T) {
 func TestPostgresGuardCatchesFinalityAdvanceBeforeExecution(t *testing.T) {
 	t.Parallel()
 	db := maintenanceDatabase(t,
-		sqlStep{kind: "query", contains: "FOR UPDATE OF request SKIP LOCKED", columns: maintenanceColumns(12), rows: [][]driver.Value{maintenanceCandidate(7, "queued", false, "50")}},
+		sqlStep{kind: "query", contains: "FOR UPDATE OF request SKIP LOCKED", columns: maintenanceColumns(12), rows: [][]any{maintenanceCandidate(7, "queued", false, "50")}},
 		advisoryStep(7, true),
 		sqlStep{kind: "exec", contains: "SET status = 'running'", affected: 1},
-		sqlStep{kind: "query", contains: "WHERE request.id = $1", columns: maintenanceColumns(2), rows: [][]driver.Value{{"running", "150"}}},
+		sqlStep{kind: "query", contains: "WHERE request.id = $1", columns: maintenanceColumns(2), rows: [][]any{{"running", "150"}}},
 		sqlStep{
 			kind: "exec", contains: "SET status = 'failed'", affected: 1,
-			check: func(arguments []driver.NamedValue) error {
-				if len(arguments) != 2 || !strings.Contains(fmt.Sprint(arguments[1].Value), "finalized height 150") {
+			check: func(arguments []any) error {
+				if len(arguments) != 2 || !strings.Contains(*arguments[1].(*string), "finalized height 150") {
 					return fmt.Errorf("failure arguments=%v", arguments)
 				}
 				return nil
@@ -183,10 +181,10 @@ func TestPostgresExplicitFinalityOverrideStillVerifiesRunningLease(t *testing.T)
 	t.Parallel()
 	candidate := maintenanceCandidate(7, "queued", true, "150")
 	db := maintenanceDatabase(t,
-		sqlStep{kind: "query", contains: "FOR UPDATE OF request SKIP LOCKED", columns: maintenanceColumns(12), rows: [][]driver.Value{candidate}},
+		sqlStep{kind: "query", contains: "FOR UPDATE OF request SKIP LOCKED", columns: maintenanceColumns(12), rows: [][]any{candidate}},
 		advisoryStep(7, true),
 		sqlStep{kind: "exec", contains: "SET status = 'running'", affected: 1},
-		sqlStep{kind: "query", contains: "WHERE request.id = $1", columns: maintenanceColumns(2), rows: [][]driver.Value{{"running", "150"}}},
+		sqlStep{kind: "query", contains: "WHERE request.id = $1", columns: maintenanceColumns(2), rows: [][]any{{"running", "150"}}},
 		sqlStep{kind: "exec", contains: "SET status = 'done'", affected: 1},
 		unlockStep(7),
 	)
@@ -207,13 +205,13 @@ func TestPostgresFailureIsBoundedValidUTF8AndIdempotent(t *testing.T) {
 	t.Parallel()
 	candidate := maintenanceCandidate(7, "queued", true, nil)
 	db := maintenanceDatabase(t,
-		sqlStep{kind: "query", contains: "FOR UPDATE OF request SKIP LOCKED", columns: maintenanceColumns(12), rows: [][]driver.Value{candidate}},
+		sqlStep{kind: "query", contains: "FOR UPDATE OF request SKIP LOCKED", columns: maintenanceColumns(12), rows: [][]any{candidate}},
 		advisoryStep(7, true),
 		sqlStep{kind: "exec", contains: "SET status = 'running'", affected: 1},
 		sqlStep{
 			kind: "exec", contains: "SET status = 'failed'", affected: 1,
-			check: func(arguments []driver.NamedValue) error {
-				message := fmt.Sprint(arguments[1].Value)
+			check: func(arguments []any) error {
+				message := *arguments[1].(*string)
 				if len(message) > maximumFailureBytes || !utf8.ValidString(message) || !strings.Contains(message, "bad") {
 					return fmt.Errorf("invalid normalized failure length=%d valid=%v", len(message), utf8.ValidString(message))
 				}
@@ -244,12 +242,12 @@ func TestPostgresInvalidPersistedRequestIsFailedNotDispatched(t *testing.T) {
 	candidate := maintenanceCandidate(7, "queued", false, nil)
 	candidate[4] = "18446744073709551616"
 	db := maintenanceDatabase(t,
-		sqlStep{kind: "query", contains: "FOR UPDATE OF request SKIP LOCKED", columns: maintenanceColumns(12), rows: [][]driver.Value{candidate}},
+		sqlStep{kind: "query", contains: "FOR UPDATE OF request SKIP LOCKED", columns: maintenanceColumns(12), rows: [][]any{candidate}},
 		advisoryStep(7, true),
 		sqlStep{
 			kind: "exec", contains: "SET status = 'failed'", affected: 1,
-			check: func(arguments []driver.NamedValue) error {
-				if !strings.Contains(fmt.Sprint(arguments[1].Value), "from_block is not a canonical uint64") {
+			check: func(arguments []any) error {
+				if !strings.Contains(*arguments[1].(*string), "from_block is not a canonical uint64") {
 					return fmt.Errorf("failure=%v", arguments)
 				}
 				return nil
@@ -264,12 +262,12 @@ func TestPostgresInvalidPersistedRequestIsFailedNotDispatched(t *testing.T) {
 	}
 }
 
-func maintenanceCandidate(id int64, status string, allowFinalized bool, finalized any) []driver.Value {
+func maintenanceCandidate(id int64, status string, allowFinalized bool, finalized any) []any {
 	statusRank := int64(0)
 	if status == "running" {
 		statusRank = 1
 	}
-	return []driver.Value{
+	return []any{
 		id, "1", "repair", "core", "100", "199", allowFinalized,
 		"operator requested gap repair", status, finalized, statusRank,
 		time.Date(2026, 7, 20, 10, 0, int(id), 0, time.UTC),
@@ -278,10 +276,10 @@ func maintenanceCandidate(id int64, status string, allowFinalized bool, finalize
 
 func advisoryStep(id int64, acquired bool) sqlStep {
 	return sqlStep{
-		kind: "query", contains: "pg_try_advisory_lock", columns: maintenanceColumns(1), rows: [][]driver.Value{{acquired}},
-		check: func(arguments []driver.NamedValue) error {
+		kind: "query", contains: "pg_try_advisory_lock", columns: maintenanceColumns(1), rows: [][]any{{acquired}},
+		check: func(arguments []any) error {
 			want := id | int64(math.MinInt64)
-			if len(arguments) != 1 || arguments[0].Value != want {
+			if len(arguments) != 1 || arguments[0] != want {
 				return fmt.Errorf("advisory arguments=%v want=%d", arguments, want)
 			}
 			return nil
@@ -291,10 +289,10 @@ func advisoryStep(id int64, acquired bool) sqlStep {
 
 func unlockStep(id int64) sqlStep {
 	return sqlStep{
-		kind: "query", contains: "pg_advisory_unlock", columns: maintenanceColumns(1), rows: [][]driver.Value{{true}},
-		check: func(arguments []driver.NamedValue) error {
+		kind: "query", contains: "pg_advisory_unlock", columns: maintenanceColumns(1), rows: [][]any{{true}},
+		check: func(arguments []any) error {
 			want := id | int64(math.MinInt64)
-			if len(arguments) != 1 || arguments[0].Value != want {
+			if len(arguments) != 1 || arguments[0] != want {
 				return fmt.Errorf("unlock arguments=%v want=%d", arguments, want)
 			}
 			return nil
@@ -302,11 +300,7 @@ func unlockStep(id int64) sqlStep {
 	}
 }
 
-func mustPostgresRepository(t *testing.T, db *sql.DB) *PostgresRepository {
+func mustPostgresRepository(t *testing.T, db *maintenanceFakeConn) *PostgresRepository {
 	t.Helper()
-	repository, err := NewPostgresRepository(db)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return repository
+	return &PostgresRepository{acquire: func(context.Context) (sessionConnection, error) { return db, nil }}
 }

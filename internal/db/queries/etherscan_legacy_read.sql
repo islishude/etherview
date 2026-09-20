@@ -1,8 +1,8 @@
--- name: EtherscanBlockCountdown :many
+-- name: EtherscanBlockCountdown :one
 WITH tip AS (
     SELECT number
     FROM canonical_blocks
-    WHERE chain_id = $1::numeric
+    WHERE chain_id = sqlc.arg('chain_id')::numeric
     ORDER BY number DESC
     LIMIT 1
 ), tip_coverage AS (
@@ -10,7 +10,7 @@ WITH tip AS (
            coverage.range_start, coverage.range_end
     FROM tip
     JOIN core_index_configuration AS configuration
-      ON configuration.chain_id = $1::numeric
+      ON configuration.chain_id = sqlc.arg('chain_id')::numeric
     JOIN core_coverage_ranges AS coverage
       ON coverage.chain_id = configuration.chain_id
      AND coverage.range_start <= tip.number
@@ -26,7 +26,7 @@ WITH tip AS (
      AND canonical.block_hash = block.hash
     CROSS JOIN tip
     CROSS JOIN tip_coverage AS coverage
-    WHERE block.chain_id = $1::numeric
+    WHERE block.chain_id = sqlc.arg('chain_id')::numeric
       AND block.number >= coverage.range_start
       AND block.number <= tip.number
     ORDER BY block.number DESC
@@ -47,24 +47,24 @@ CROSS JOIN anchor
 CROSS JOIN sample_count
 CROSS JOIN tip_coverage AS coverage;
 
--- name: EtherscanCanonicalCoreRange :many
+-- name: EtherscanCanonicalCoreRange :one
 WITH tip AS (
     SELECT number
     FROM canonical_blocks
-    WHERE chain_id = $1::numeric
+    WHERE chain_id = sqlc.arg('chain_id')::numeric
     ORDER BY number DESC
     LIMIT 1
 ), requested AS (
     SELECT tip.number,
-           $2::numeric AS range_start,
-           LEAST(COALESCE($3::numeric, tip.number), tip.number) AS range_end
+           sqlc.arg('range_start')::numeric AS range_start,
+           LEAST(COALESCE(sqlc.narg('range_end')::numeric, tip.number), tip.number) AS range_end
     FROM tip
 )
-SELECT requested.number::text, configuration.configured_start::text,
-       coverage.range_start::text, coverage.range_end::text
+SELECT requested.number::text, configuration.configured_start,
+       coverage.range_start, coverage.range_end
 FROM requested
 LEFT JOIN core_index_configuration AS configuration
-  ON configuration.chain_id = $1::numeric
+  ON configuration.chain_id = sqlc.arg('chain_id')::numeric
 LEFT JOIN LATERAL (
     SELECT candidate.range_start, candidate.range_end
     FROM core_coverage_ranges AS candidate
@@ -75,27 +75,27 @@ LEFT JOIN LATERAL (
     LIMIT 1
 ) AS coverage ON true;
 
--- name: EtherscanCanonicalSnapshot :many
+-- name: EtherscanCanonicalSnapshot :one
 SELECT number::text, block_hash
 FROM canonical_blocks
-WHERE chain_id = $1::numeric
+WHERE chain_id = sqlc.arg('chain_id')::numeric
 ORDER BY number DESC
 LIMIT 1;
 
--- name: EtherscanCanonicalReference :many
+-- name: EtherscanCanonicalReference :one
 SELECT EXISTS (
     SELECT 1
     FROM canonical_blocks
-    WHERE chain_id = $1::numeric
-      AND number = $2::numeric
-      AND block_hash = $3
+    WHERE chain_id = sqlc.arg('chain_id')::numeric
+      AND number = sqlc.arg('number')::numeric
+      AND block_hash = sqlc.arg('block_hash')
 );
 
--- name: EtherscanCanonicalStageRange :many
+-- name: EtherscanCanonicalStageRange :one
 WITH tip AS (
     SELECT number
     FROM canonical_blocks
-    WHERE chain_id = $1::numeric
+    WHERE chain_id = sqlc.arg('chain_id')::numeric
     ORDER BY number DESC
     LIMIT 1
 ), incomplete AS (
@@ -108,47 +108,47 @@ WITH tip AS (
         WHERE result.chain_id = canonical.chain_id
           AND result.block_number = canonical.number
           AND result.block_hash = canonical.block_hash
-          AND result.stage = $4
+          AND result.stage = sqlc.arg('stage')
         ORDER BY result.stage_version DESC
         LIMIT 1
     ) AS latest ON true
-    WHERE canonical.chain_id = $1::numeric
-      AND canonical.number >= $2::numeric
-      AND canonical.number <= LEAST(COALESCE($3::numeric, tip.number), tip.number)
+    WHERE canonical.chain_id = sqlc.arg('chain_id')::numeric
+      AND canonical.number >= sqlc.arg('min_number')::numeric
+      AND canonical.number <= LEAST(COALESCE(sqlc.arg('range_end')::numeric, tip.number), tip.number)
       AND latest.state IS DISTINCT FROM 'complete'
     ORDER BY canonical.number
     LIMIT 1
 )
-SELECT tip.number::text, incomplete.number::text,
+SELECT tip.number::text, incomplete.number,
        incomplete.block_hash, incomplete.state
 FROM tip
 LEFT JOIN incomplete ON true;
 
--- name: EtherscanCanonicalTokenContract :many
+-- name: EtherscanCanonicalTokenContract :one
 SELECT token.address, token.code_hash, token.standard, token.confidence,
-       token.name, token.symbol, token.decimals, token.total_supply::text,
+       token.name, token.symbol, token.decimals, token.total_supply,
        token.metadata_state, token.observed_block_number::text, token.observed_block_hash
 FROM token_contracts AS token
 JOIN canonical_blocks AS canonical
   ON canonical.chain_id = token.chain_id
  AND canonical.number = token.observed_block_number
  AND canonical.block_hash = token.observed_block_hash
-WHERE token.chain_id = $1::numeric AND token.address = $2
+WHERE token.chain_id = sqlc.arg('chain_id')::numeric AND token.address = sqlc.arg('address')
 ORDER BY token.observed_block_number DESC, token.updated_at DESC, token.code_hash DESC
 LIMIT 1;
 
--- name: EtherscanCanonicalTransactionBlock :many
+-- name: EtherscanCanonicalTransactionBlock :one
 SELECT inclusion.block_number::text
 FROM transaction_inclusions AS inclusion
 JOIN canonical_blocks AS canonical
   ON canonical.chain_id = inclusion.chain_id
  AND canonical.number = inclusion.block_number
  AND canonical.block_hash = inclusion.block_hash
-WHERE inclusion.chain_id = $1::numeric
-  AND inclusion.tx_hash = $2
+WHERE inclusion.chain_id = sqlc.arg('chain_id')::numeric
+  AND inclusion.tx_hash = sqlc.arg('tx_hash')
 LIMIT 1;
 
--- name: EtherscanContractCreation :many
+-- name: EtherscanContractCreation :one
 WITH candidates AS (
     SELECT 'top_level'::text AS source_kind,
            receipt.raw AS receipt_raw, inclusion.raw AS transaction_raw,
@@ -171,8 +171,8 @@ WITH candidates AS (
       ON block.chain_id = receipt.chain_id
      AND block.number = receipt.block_number
      AND block.hash = receipt.block_hash
-    WHERE receipt.chain_id = $1::numeric
-      AND lower(receipt.raw->>'contractAddress') = lower('0x' || encode($2, 'hex'))
+    WHERE receipt.chain_id = sqlc.arg('chain_id')::numeric
+      AND lower(receipt.raw->>'contractAddress') = lower('0x' || encode(sqlc.arg('encode'), 'hex'))
 
     UNION ALL
 
@@ -198,8 +198,8 @@ WITH candidates AS (
       ON block.chain_id = trace.chain_id
      AND block.number = trace.block_number
      AND block.hash = trace.block_hash
-    WHERE trace.chain_id = $1::numeric
-      AND trace.created_address = $2
+    WHERE trace.chain_id = sqlc.arg('chain_id')::numeric
+      AND trace.created_address = sqlc.arg('encode')
       AND trace.canonical = TRUE
       AND trace.reverted = FALSE
       AND trace.depth > 0
@@ -214,11 +214,11 @@ FROM candidates
 ORDER BY block_number ASC, tx_index ASC, source_rank ASC, trace_path ASC
 LIMIT 1;
 
--- name: EtherscanProxyVerificationTarget :many
+-- name: EtherscanProxyVerificationTarget :one
 WITH canonical_tip AS (
     SELECT number, block_hash
     FROM canonical_blocks
-    WHERE chain_id = $1::numeric
+    WHERE chain_id = sqlc.arg('chain_id')::numeric
     ORDER BY number DESC
     LIMIT 1
 ), latest_raw AS (
@@ -232,8 +232,8 @@ WITH canonical_tip AS (
           ON canonical.chain_id = observation.chain_id
          AND canonical.number = observation.block_number
          AND canonical.block_hash = observation.block_hash
-        WHERE observation.chain_id = $1::numeric
-          AND observation.proxy_address = $2::bytea
+        WHERE observation.chain_id = sqlc.arg('chain_id')::numeric
+          AND observation.proxy_address = sqlc.arg('proxy_address')::bytea
           AND observation.canonical = TRUE
           AND observation.stage_version = 2
           AND observation.confidence IN ('verified', 'high')
@@ -632,7 +632,7 @@ WITH canonical_tip AS (
      AND beacon.beacon_address = proxy.effective_beacon
     WHERE proxy.current_pattern <> 'beacon' OR beacon.beacon_generation_id IS NOT NULL
 ), identity_candidates(address, code_hash, context_number) AS (
-    SELECT $2::bytea, proxy_code_hash, context_number FROM current_proxy
+    SELECT sqlc.arg('proxy_address')::bytea, proxy_code_hash, context_number FROM current_proxy
     UNION ALL SELECT implementation_address, implementation_code_hash, context_number FROM current_proxy
     UNION ALL SELECT admin_address, admin_code_hash, context_number FROM current_proxy
     UNION ALL SELECT beacon_address, beacon_code_hash, context_number FROM current_proxy
@@ -648,7 +648,7 @@ WITH canonical_tip AS (
           ON canonical.chain_id = change.chain_id
          AND canonical.number = change.block_number
          AND canonical.block_hash = change.block_hash
-        WHERE change.chain_id = $1::numeric
+        WHERE change.chain_id = sqlc.arg('chain_id')::numeric
           AND change.address = identity.address
           AND change.field_kind = 'code'
           AND change.canonical = TRUE
@@ -669,7 +669,7 @@ WITH canonical_tip AS (
           ON canonical.chain_id = observation.chain_id
          AND canonical.number = observation.block_number
          AND canonical.block_hash = observation.block_hash
-        WHERE observation.chain_id = $1::numeric
+        WHERE observation.chain_id = sqlc.arg('chain_id')::numeric
           AND observation.address = expected.address
           AND observation.canonical = TRUE
           AND observation.block_number <= tip.number
@@ -683,8 +683,8 @@ WITH canonical_tip AS (
     SELECT binding.verification_job_id
     FROM current_proxy
     JOIN verified_proxy_bindings AS binding
-      ON binding.chain_id = $1::numeric
-     AND binding.proxy_address = $2::bytea
+      ON binding.chain_id = sqlc.arg('chain_id')::numeric
+     AND binding.proxy_address = sqlc.arg('proxy_address')::bytea
      AND binding.observation_stage_version = 2
      AND binding.observation_block_number = current_proxy.block_number
      AND binding.observation_block_hash = current_proxy.block_hash
@@ -763,27 +763,36 @@ WITH canonical_tip AS (
     ORDER BY binding.created_at DESC, binding.verification_job_id DESC
     LIMIT 1
 )
-SELECT current_proxy.proxy_code_hash, current_proxy.block_hash,
-       current_proxy.context_number::text, current_proxy.context_hash,
-       current_proxy.proxy_kind, current_proxy.proxy_pattern,
-       current_proxy.standard_version, current_proxy.implementation_address,
-       current_proxy.implementation_code_hash, current_proxy.admin_address,
-       current_proxy.admin_code_hash, current_proxy.beacon_address,
-       current_proxy.beacon_code_hash, current_proxy.management_kind,
-       current_proxy.management_address, current_proxy.management_code_hash,
-       current_proxy.observation_generation_id,
-       current_proxy.artifact_resolution_id,
-       current_proxy.beacon_generation_id,
-       current_proxy.uups_generation_id,
-       current_proxy.proxy_pattern = 'clone' OR (
+SELECT
+current_proxy.proxy_code_hash,
+current_proxy.block_hash,
+current_proxy.context_number::text,
+current_proxy.context_hash,
+(current_proxy.proxy_kind)::text AS proxy_kind,
+(current_proxy.proxy_pattern)::text AS proxy_pattern,
+COALESCE((current_proxy.standard_version),'')::text AS standard_version,
+(current_proxy.implementation_address)::bytea AS implementation_address,
+(current_proxy.implementation_code_hash)::bytea AS implementation_code_hash,
+current_proxy.admin_address,
+current_proxy.admin_code_hash,
+current_proxy.beacon_address,
+current_proxy.beacon_code_hash,
+current_proxy.management_kind,
+current_proxy.management_address::bytea AS management_address,
+current_proxy.management_code_hash::bytea AS management_code_hash,
+current_proxy.observation_generation_id,
+COALESCE((current_proxy.artifact_resolution_id),0)::bigint AS artifact_resolution_id,
+current_proxy.beacon_generation_id,
+current_proxy.uups_generation_id,
+(current_proxy.proxy_pattern = 'clone' OR (
            EXISTS (
                SELECT 1
                FROM expected_identity AS identity
                JOIN verified_contracts AS verified
-                 ON verified.chain_id = $1::numeric
+                 ON verified.chain_id = sqlc.arg('chain_id')::numeric
                 AND verified.address = identity.address
                 AND verified.code_hash = identity.code_hash
-               WHERE identity.address = $2::bytea
+               WHERE identity.address = sqlc.arg('proxy_address')::bytea
                  AND identity.code_hash = current_proxy.proxy_code_hash
                  AND verified.valid_from_block >= identity.epoch_block
                  AND verified.valid_from_block <= current_proxy.context_number
@@ -805,8 +814,8 @@ SELECT current_proxy.proxy_code_hash, current_proxy.block_hash,
                 AND identity.code_hash = artifact.code_hash
                WHERE artifact.verification_job_id =
                      current_proxy.proxy_artifact_job_id
-                 AND artifact.chain_id = $1::numeric
-                 AND artifact.address = $2
+                 AND artifact.chain_id = sqlc.arg('chain_id')::numeric
+                 AND artifact.address = sqlc.arg('proxy_address')
                  AND artifact.code_hash = current_proxy.proxy_code_hash
                  AND artifact.standard_version = '5.6.1'
                  AND artifact.artifact_kind = CASE current_proxy.proxy_pattern
@@ -820,12 +829,12 @@ SELECT current_proxy.proxy_code_hash, current_proxy.block_hash,
                  AND (verified.valid_to_block IS NULL
                       OR verified.valid_to_block >= current_proxy.context_number)
            )
-       ),
-       EXISTS (
+       ))::boolean AS proxy_verified,
+(EXISTS (
            SELECT 1
            FROM expected_identity AS identity
            JOIN verified_contracts AS verified
-             ON verified.chain_id = $1::numeric
+             ON verified.chain_id = sqlc.arg('chain_id')::numeric
             AND verified.address = identity.address
             AND verified.code_hash = identity.code_hash
            WHERE identity.address = current_proxy.implementation_address
@@ -850,7 +859,7 @@ SELECT current_proxy.proxy_code_hash, current_proxy.block_hash,
                 AND identity.code_hash = artifact.code_hash
                WHERE artifact.verification_job_id =
                      current_proxy.implementation_artifact_job_id
-                 AND artifact.chain_id = $1::numeric
+                 AND artifact.chain_id = sqlc.arg('chain_id')::numeric
                  AND artifact.address = current_proxy.implementation_address
                  AND artifact.code_hash = current_proxy.implementation_code_hash
                  AND artifact.standard_version = '5.6.1'
@@ -860,8 +869,8 @@ SELECT current_proxy.proxy_code_hash, current_proxy.block_hash,
                  AND (verified.valid_to_block IS NULL
                       OR verified.valid_to_block >= current_proxy.context_number)
            )
-       ),
-       current_proxy.management_kind = 'none' OR EXISTS (
+       ))::boolean AS implementation_verified,
+(current_proxy.management_kind = 'none' OR EXISTS (
            SELECT 1
            FROM verified_contract_proxy_artifacts AS artifact
            JOIN verified_contracts AS verified
@@ -874,7 +883,7 @@ SELECT current_proxy.proxy_code_hash, current_proxy.block_hash,
            JOIN expected_identity AS identity
              ON identity.address = artifact.address
             AND identity.code_hash = artifact.code_hash
-           WHERE artifact.chain_id = $1::numeric
+           WHERE artifact.chain_id = sqlc.arg('chain_id')::numeric
              AND artifact.address = current_proxy.management_address
              AND artifact.code_hash = current_proxy.management_code_hash
              AND artifact.standard_version = '5.6.1'
@@ -886,11 +895,14 @@ SELECT current_proxy.proxy_code_hash, current_proxy.block_hash,
              AND artifact.valid_from_block <= current_proxy.context_number
              AND (verified.valid_to_block IS NULL
                   OR verified.valid_to_block >= current_proxy.context_number)
-       ),
-       (SELECT binding.verification_job_id::text FROM reusable_binding AS binding)
+       ))::boolean AS management_verified,
+COALESCE(((SELECT binding.verification_job_id::text FROM reusable_binding AS binding)),'')::text AS binding_job_id,
+(current_proxy.standard_version IS NOT NULL)::boolean AS standard_version_present,
+(current_proxy.artifact_resolution_id IS NOT NULL)::boolean AS artifact_resolution_present,
+((SELECT binding.verification_job_id::text FROM reusable_binding AS binding) IS NOT NULL)::boolean AS binding_job_present
 FROM current_proxy
 WHERE proxy_interaction_coverage_contains(
-          $1::numeric,
+          sqlc.arg('chain_id')::numeric,
           current_proxy.block_number,
           current_proxy.block_hash,
           current_proxy.context_number,
@@ -902,7 +914,7 @@ WHERE proxy_interaction_coverage_contains(
     WHERE identity.current_code_hash IS DISTINCT FROM identity.code_hash
 );
 
--- name: EtherscanTransactionStatus :many
+-- name: EtherscanTransactionStatus :one
 SELECT receipt.raw, receipt.tx_hash, receipt.block_hash,
        receipt.block_number::text, receipt.tx_index
 FROM receipts AS receipt
@@ -910,11 +922,11 @@ JOIN canonical_blocks AS canonical
   ON canonical.chain_id = receipt.chain_id
  AND canonical.number = receipt.block_number
  AND canonical.block_hash = receipt.block_hash
-WHERE receipt.chain_id = $1::numeric
-  AND receipt.tx_hash = $2
+WHERE receipt.chain_id = sqlc.arg('chain_id')::numeric
+  AND receipt.tx_hash = sqlc.arg('tx_hash')
 LIMIT 1;
 
--- name: EtherscanVerificationTarget :many
+-- name: EtherscanVerificationTarget :one
 WITH current_code AS (
     SELECT observation.code_hash, observation.block_hash,
            observation.block_number, observation.code
@@ -923,17 +935,20 @@ WITH current_code AS (
       ON canonical.chain_id = observation.chain_id
      AND canonical.number = observation.block_number
      AND canonical.block_hash = observation.block_hash
-    WHERE observation.chain_id = $1::numeric
-      AND observation.address = $2
+    WHERE observation.chain_id = sqlc.arg('chain_id')::numeric
+      AND observation.address = sqlc.arg('address')
       AND observation.canonical = TRUE
     ORDER BY observation.block_number DESC,
              observation.observed_at DESC,
              observation.code_hash DESC
     LIMIT 1
 )
-SELECT current_code.code_hash, current_code.block_hash, current_code.code,
-       creation.creation_bytecode,
-       EXISTS (
+SELECT
+current_code.code_hash,
+current_code.block_hash,
+current_code.code,
+COALESCE((creation.creation_bytecode),'')::text AS creation_bytecode,
+EXISTS (
            SELECT 1
            FROM genesis_state_imports AS imported
            JOIN canonical_blocks AS genesis_canonical
@@ -943,13 +958,14 @@ SELECT current_code.code_hash, current_code.block_hash, current_code.code,
            JOIN genesis_account_observations AS account
              ON account.chain_id = imported.chain_id
             AND account.block_hash = imported.block_hash
-            AND account.address = $2
-           WHERE imported.chain_id = $1::numeric
+            AND account.address = sqlc.arg('address')
+           WHERE imported.chain_id = sqlc.arg('chain_id')::numeric
              AND imported.state = 'complete'
              AND octet_length(account.code) > 0
              AND account.code_hash = current_code.code_hash
              AND account.code = current_code.code
-       ) AS genesis_predeploy
+       ) AS genesis_predeploy,
+(creation.creation_bytecode IS NOT NULL)::boolean AS creation_bytecode_present
 FROM current_code
 LEFT JOIN LATERAL (
     SELECT candidate.creation_bytecode
@@ -967,8 +983,8 @@ LEFT JOIN LATERAL (
          AND inclusion.block_number = receipt.block_number
          AND inclusion.block_hash = receipt.block_hash
          AND inclusion.tx_index = receipt.tx_index
-        WHERE receipt.chain_id = $1::numeric
-          AND lower(receipt.raw->>'contractAddress') = $3
+        WHERE receipt.chain_id = sqlc.arg('chain_id')::numeric
+          AND lower(receipt.raw->>'contractAddress') = sqlc.arg('contract_address_hex')::text
           AND receipt.block_number <= current_code.block_number
           AND inclusion.raw->>'input' IS NOT NULL
 
@@ -982,8 +998,8 @@ LEFT JOIN LATERAL (
           ON canonical.chain_id = trace.chain_id
          AND canonical.number = trace.block_number
          AND canonical.block_hash = trace.block_hash
-        WHERE trace.chain_id = $1::numeric
-          AND trace.created_address = $2
+        WHERE trace.chain_id = sqlc.arg('chain_id')::numeric
+          AND trace.created_address = sqlc.arg('address')
           AND trace.canonical = TRUE
           AND trace.reverted = FALSE
           AND trace.input IS NOT NULL
@@ -994,11 +1010,11 @@ LEFT JOIN LATERAL (
        LIMIT 1
     ) AS creation ON TRUE;
 
--- name: EtherscanVerifiedProxy :many
+-- name: EtherscanVerifiedProxy :one
 WITH canonical_tip AS (
     SELECT number, block_hash
     FROM canonical_blocks
-    WHERE chain_id = $1::numeric
+    WHERE chain_id = sqlc.arg('chain_id')::numeric
     ORDER BY number DESC
     LIMIT 1
 ), latest_raw AS (
@@ -1012,8 +1028,8 @@ WITH canonical_tip AS (
           ON canonical.chain_id = observation.chain_id
          AND canonical.number = observation.block_number
          AND canonical.block_hash = observation.block_hash
-        WHERE observation.chain_id = $1::numeric
-          AND observation.proxy_address = $2::bytea
+        WHERE observation.chain_id = sqlc.arg('chain_id')::numeric
+          AND observation.proxy_address = sqlc.arg('proxy_address')::bytea
           AND observation.canonical = TRUE
           AND observation.stage_version = 2
           AND observation.confidence IN ('verified', 'high')
@@ -1412,7 +1428,7 @@ WITH canonical_tip AS (
      AND beacon.beacon_address = proxy.effective_beacon
     WHERE proxy.current_pattern <> 'beacon' OR beacon.beacon_generation_id IS NOT NULL
 ), identity_candidates(address, code_hash, context_number) AS (
-    SELECT $2::bytea, proxy_code_hash, context_number FROM current_proxy
+    SELECT sqlc.arg('proxy_address')::bytea, proxy_code_hash, context_number FROM current_proxy
     UNION ALL SELECT implementation_address, implementation_code_hash, context_number FROM current_proxy
     UNION ALL SELECT admin_address, admin_code_hash, context_number FROM current_proxy
     UNION ALL SELECT beacon_address, beacon_code_hash, context_number FROM current_proxy
@@ -1428,7 +1444,7 @@ WITH canonical_tip AS (
           ON canonical.chain_id = change.chain_id
          AND canonical.number = change.block_number
          AND canonical.block_hash = change.block_hash
-        WHERE change.chain_id = $1::numeric
+        WHERE change.chain_id = sqlc.arg('chain_id')::numeric
           AND change.address = identity.address
           AND change.field_kind = 'code'
           AND change.canonical = TRUE
@@ -1449,7 +1465,7 @@ WITH canonical_tip AS (
           ON canonical.chain_id = observation.chain_id
          AND canonical.number = observation.block_number
          AND canonical.block_hash = observation.block_hash
-        WHERE observation.chain_id = $1::numeric
+        WHERE observation.chain_id = sqlc.arg('chain_id')::numeric
           AND observation.address = expected.address
           AND observation.canonical = TRUE
           AND observation.block_number <= tip.number
@@ -1465,8 +1481,8 @@ WITH canonical_tip AS (
            current_proxy.implementation_artifact_job_id
     FROM current_proxy
     JOIN verified_proxy_bindings AS binding
-      ON binding.chain_id = $1::numeric
-     AND binding.proxy_address = $2::bytea
+      ON binding.chain_id = sqlc.arg('chain_id')::numeric
+     AND binding.proxy_address = sqlc.arg('proxy_address')::bytea
      AND binding.observation_stage_version = 2
      AND binding.observation_block_number = current_proxy.block_number
      AND binding.observation_block_hash = current_proxy.block_hash
@@ -1496,7 +1512,7 @@ WITH canonical_tip AS (
       ON binding_context.chain_id = binding.chain_id
      AND binding_context.number = binding.context_block_number
      AND binding_context.block_hash = binding.context_block_hash
-    WHERE current_proxy.proxy_code_hash = $3::bytea
+    WHERE current_proxy.proxy_code_hash = sqlc.arg('proxy_code_hash')::bytea
       AND (
           (binding.proxy_pattern = 'transparent'
            AND binding.management_kind = 'proxy_admin'
@@ -1591,7 +1607,7 @@ WHERE NOT EXISTS (
       WHERE NOT EXISTS (
           SELECT 1
           FROM verified_contracts AS verified
-          WHERE verified.chain_id = $1::numeric
+          WHERE verified.chain_id = sqlc.arg('chain_id')::numeric
             AND verified.address = publication.address
             AND verified.code_hash = publication.code_hash
             AND verified.valid_from_block >= publication.epoch_block
@@ -1614,7 +1630,7 @@ WHERE NOT EXISTS (
           JOIN expected_identity AS identity
             ON identity.address = artifact.address
            AND identity.code_hash = artifact.code_hash
-          WHERE artifact.chain_id = $1::numeric
+          WHERE artifact.chain_id = sqlc.arg('chain_id')::numeric
             AND artifact.address = binding.management_address
             AND artifact.code_hash = binding.management_code_hash
             AND artifact.standard_version = '5.6.1'
@@ -1643,7 +1659,7 @@ WHERE NOT EXISTS (
             ON identity.address = artifact.address
            AND identity.code_hash = artifact.code_hash
           WHERE artifact.verification_job_id = binding.proxy_artifact_job_id
-            AND artifact.chain_id = $1::numeric
+            AND artifact.chain_id = sqlc.arg('chain_id')::numeric
             AND artifact.address = binding.proxy_address
             AND artifact.code_hash = binding.proxy_code_hash
             AND artifact.standard_version = '5.6.1'
@@ -1675,7 +1691,7 @@ WHERE NOT EXISTS (
            AND identity.code_hash = artifact.code_hash
           WHERE artifact.verification_job_id =
                 binding.implementation_artifact_job_id
-            AND artifact.chain_id = $1::numeric
+            AND artifact.chain_id = sqlc.arg('chain_id')::numeric
             AND artifact.address = binding.implementation_address
             AND artifact.code_hash = binding.implementation_code_hash
             AND artifact.standard_version = '5.6.1'

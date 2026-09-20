@@ -5,11 +5,15 @@ package state
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/jackc/pgx/v5/pgtype"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -17,7 +21,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/api/gen"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/publicquery"
 	"github.com/islishude/etherview/internal/query"
@@ -53,7 +57,7 @@ type AddressDelegationHistoryReader interface {
 }
 
 type PostgresCanonicalSource struct {
-	DB      *sql.DB
+	DB      dbaccess.Database
 	ChainID string
 }
 
@@ -63,8 +67,20 @@ func (s PostgresCanonicalSource) Tip(ctx context.Context) (CanonicalRef, error) 
 	}
 	var number string
 	var hashBytes []byte
-	err := s.DB.QueryRowContext(ctx, dbgen.StateCanonicalTip, s.ChainID).Scan(&number, &hashBytes)
-	if err == sql.ErrNoRows {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(s.ChainID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(s.DB).StateCanonicalTip(ctx, queryValue0)
+		if err != nil {
+			return err
+		}
+		number = queryRow.CanonicalNumber
+		hashBytes = queryRow.BlockHash
+		return nil
+	}()
+	if err == pgx.ErrNoRows {
 		return CanonicalRef{}, publicquery.ErrNotReady
 	}
 	if err != nil {
@@ -83,7 +99,22 @@ func (s PostgresCanonicalSource) Tip(ctx context.Context) (CanonicalRef, error) 
 
 func (s PostgresCanonicalSource) IsCanonical(ctx context.Context, reference CanonicalRef) (bool, error) {
 	var canonical bool
-	err := s.DB.QueryRowContext(ctx, dbgen.StateIsCanonical, s.ChainID, fmt.Sprint(reference.Number), reference.Hash.Bytes()).Scan(&canonical)
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(s.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(fmt.Sprint(reference.Number)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(s.DB).StateIsCanonical(ctx, queryValue0, queryValue1, reference.Hash.Bytes())
+		if err != nil {
+			return err
+		}
+		canonical = queryRow
+		return nil
+	}()
 	return canonical, err
 }
 

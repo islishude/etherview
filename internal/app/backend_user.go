@@ -2,13 +2,14 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"flag"
 	"io"
 	"strconv"
 	"strings"
 	"time"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/islishude/etherview/internal/config"
 	"github.com/islishude/etherview/internal/ethrpc"
@@ -39,7 +40,7 @@ type adminUserSummary struct {
 
 func (b *Backend) adminUser(
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	cfg config.Config,
 	action string,
 	args []string,

@@ -54,7 +54,7 @@ func TestMempoolSnapshotsRemainCursorStableAndExposeFailures(t *testing.T) {
 		t.Fatalf("store first snapshot: %v", err)
 	}
 	var futureField string
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT raw ->> 'futurePendingField'
 		FROM mempool_transactions
 		WHERE chain_id = 1 AND tx_hash = $1`, mustHashBytes(t, first.Hash)).Scan(&futureField); err != nil || futureField != "1" {
@@ -95,7 +95,7 @@ func TestMempoolSnapshotsRemainCursorStableAndExposeFailures(t *testing.T) {
 	var state, endpoint, errorCode, errorMessage string
 	var latestSnapshotID int64
 	var lastSuccess time.Time
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT state, endpoint_name, error_code, error_message, latest_snapshot_id, last_success_at
 		FROM mempool_status WHERE chain_id = 1`,
 	).Scan(&state, &endpoint, &errorCode, &errorMessage, &latestSnapshotID, &lastSuccess); err != nil {
@@ -192,13 +192,13 @@ func TestMempoolReplacementObservationsAreDirectAndEvidenceBound(t *testing.T) {
 		t.Fatalf("C detail = %+v, error=%v", cDetail, err)
 	}
 	var directRelations int
-	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM mempool_transaction_replacements WHERE chain_id = 1`).Scan(&directRelations); err != nil || directRelations != 2 {
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM mempool_transaction_replacements WHERE chain_id = 1`).Scan(&directRelations); err != nil || directRelations != 2 {
 		t.Fatalf("direct replacement relation count = %d, error=%v", directRelations, err)
 	}
 
 	// Re-observing the same hash does not create a replacement.
 	storeSnapshot("rpc-a", 3*time.Second, c)
-	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM mempool_transaction_replacements WHERE chain_id = 1`).Scan(&directRelations); err != nil || directRelations != 2 {
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM mempool_transaction_replacements WHERE chain_id = 1`).Scan(&directRelations); err != nil || directRelations != 2 {
 		t.Fatalf("same-hash relation count = %d, error=%v", directRelations, err)
 	}
 
@@ -280,7 +280,7 @@ func TestMempoolReplacementObservationsAreDirectAndEvidenceBound(t *testing.T) {
 
 	readNow = base.Add(20 * time.Minute)
 	storeSnapshot("rpc-b", 20*time.Minute)
-	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM mempool_transaction_replacements WHERE chain_id = 1`).Scan(&directRelations); err != nil || directRelations != 0 {
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM mempool_transaction_replacements WHERE chain_id = 1`).Scan(&directRelations); err != nil || directRelations != 0 {
 		t.Fatalf("expired replacement relation count = %d, error=%v", directRelations, err)
 	}
 }

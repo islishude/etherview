@@ -4,10 +4,11 @@ package integration_test
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"testing"
 	"time"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/httpapi"
@@ -54,7 +55,7 @@ func TestAddressWithdrawalsUseNumericIndexOrderingAcrossStablePages(t *testing.T
 		t.Fatalf("second page=%+v next=%q", second, next)
 	}
 
-	if _, err := db.ExecContext(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number IN (12, 13)`); err != nil {
+	if _, err := db.Exec(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number IN (12, 13)`); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := reader.AddressWithdrawals(ctx, address.Hex(), cursor, 2); err == nil || err != httpapi.ErrInvalidCursor {
@@ -63,7 +64,7 @@ func TestAddressWithdrawalsUseNumericIndexOrderingAcrossStablePages(t *testing.T
 }
 
 func insertWithdrawalHistoryBlock(
-	t *testing.T, ctx context.Context, db *sql.DB, number uint64, identity byte, canonical bool,
+	t *testing.T, ctx context.Context, db *pgxpool.Pool, number uint64, identity byte, canonical bool,
 ) common.Hash {
 	t.Helper()
 	hash := common.BytesToHash([]byte{identity})
@@ -82,7 +83,7 @@ func insertWithdrawalHistoryBlock(
 func insertWithdrawalHistoryRow(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	number uint64,
 	blockHash common.Hash,
 	index uint64,

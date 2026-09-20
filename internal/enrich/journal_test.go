@@ -3,14 +3,16 @@ package enrich
 import (
 	"bytes"
 	"context"
-	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/islishude/etherview/internal/db/gen"
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	testpgx "github.com/islishude/etherview/internal/testpgx"
+	pgx "github.com/jackc/pgx/v5"
+	pgconn "github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestDerivedJournalPayloadIsStableAndControlled(t *testing.T) {
@@ -85,10 +87,10 @@ func TestDerivedJournalPayloadIsStableAndControlled(t *testing.T) {
 	if _, err := encodeDerivedJournal(StageID{Name: "future", Version: 1}); err == nil {
 		t.Fatal("unregistered stage journal unexpectedly succeeded")
 	}
-	if !strings.Contains(dbgen.EnrichLegacyUpsertDerivedJournal, "number = $6::numeric") ||
-		!strings.Contains(dbgen.EnrichLegacyUpsertDerivedJournal, "block_hash = $2") ||
-		!strings.Contains(dbgen.EnrichLegacyUpsertDerivedJournal, "canonical = EXCLUDED.canonical") {
-		t.Fatalf("journal upsert does not derive and refresh exact canonical identity:\n%s", dbgen.EnrichLegacyUpsertDerivedJournal)
+	if !strings.Contains(testpgx.Statement("EnrichLegacyUpsertDerivedJournal"), "number = $6::numeric") ||
+		!strings.Contains(testpgx.Statement("EnrichLegacyUpsertDerivedJournal"), "block_hash = $2") ||
+		!strings.Contains(testpgx.Statement("EnrichLegacyUpsertDerivedJournal"), "canonical = EXCLUDED.canonical") {
+		t.Fatalf("journal upsert does not derive and refresh exact canonical identity:\n%s", testpgx.Statement("EnrichLegacyUpsertDerivedJournal"))
 	}
 }
 
@@ -98,22 +100,22 @@ func TestStatsJournalFailureRollsBackStageTransaction(t *testing.T) {
 	journalFailure := errors.New("journal trigger rejected write")
 	var derivedWrites, stageWrites, journalWrites, commits, rollbacks atomic.Int64
 	backend := &fakeSQLBackend{
-		query: func(query string, _ []driver.NamedValue) (driver.Rows, error) {
+		query: func(query string, _ []any) (pgx.Rows, error) {
 			switch {
 			case strings.Contains(query, "FOR KEY SHARE"):
-				return &fakeSQLRows{columns: []string{"one"}, values: [][]driver.Value{{int64(1)}}}, nil
+				return &testpgx.Rows{ColumnNames: []string{"one"}, ValuesList: [][]any{{int64(1)}}}, nil
 			case strings.Contains(query, "GROUP BY block.raw"):
-				return &fakeSQLRows{
-					columns: []string{"raw", "count", "configured_start", "parent_number", "parent_timestamp", "canonical_parent"},
-					values:  [][]driver.Value{{raw, int64(0), "0", "6", "99", true}},
+				return &testpgx.Rows{
+					ColumnNames: []string{"raw", "count", "configured_start", "parent_number", "parent_timestamp", "canonical_parent"},
+					ValuesList:  [][]any{{raw, int64(0), "0", "6", "99", true}},
 				}, nil
 			case strings.Contains(query, "FROM receipts AS receipt"):
-				return &fakeSQLRows{columns: []string{"raw"}}, nil
+				return &testpgx.Rows{ColumnNames: []string{"raw"}}, nil
 			default:
 				return nil, fmt.Errorf("unexpected query: %s", query)
 			}
 		},
-		exec: func(query string, arguments []driver.NamedValue) (driver.Result, error) {
+		exec: func(query string, arguments []any) (pgconn.CommandTag, error) {
 			switch {
 			case strings.Contains(query, "INSERT INTO block_statistics"):
 				derivedWrites.Add(1)
@@ -121,14 +123,14 @@ func TestStatsJournalFailureRollsBackStageTransaction(t *testing.T) {
 				stageWrites.Add(1)
 			case strings.Contains(query, "INSERT INTO block_journals"):
 				journalWrites.Add(1)
-				if arguments[2].Value != StatsStage.String() || arguments[3].Value != derivedJournalSequence {
+				if arguments[2] != StatsStage.String() || !testpgx.NumericEquals(arguments[3], fmt.Sprint(derivedJournalSequence)) {
 					t.Errorf("journal arguments = %+v", arguments)
 				}
-				return nil, journalFailure
+				return pgconn.CommandTag{}, journalFailure
 			default:
-				return nil, fmt.Errorf("unexpected exec: %s", query)
+				return pgconn.CommandTag{}, fmt.Errorf("unexpected exec: %s", query)
 			}
-			return driver.RowsAffected(1), nil
+			return testpgx.Affected(1), nil
 		},
 		commit: func() error {
 			commits.Add(1)

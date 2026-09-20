@@ -5,7 +5,6 @@ package integration_test
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +12,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -170,7 +171,7 @@ func assertCoreProtocolRoundTrip(t *testing.T, expected, actual chainbundle.Bund
 func assertRejectedBundleAtomic(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	repository *store.PostgresRepository,
 	checkpointBefore store.Checkpoint,
 	bad chainbundle.Bundle,
@@ -188,7 +189,7 @@ func assertRejectedBundleAtomic(
 func assertBundleRowsAbsent(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block *types.Block,
 ) {
 	t.Helper()

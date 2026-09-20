@@ -1,25 +1,25 @@
 -- name: AnalyticsWriteDeferDirty :exec
 UPDATE chart_rollup_dirty_hours
-SET attempts = attempts + 1, next_attempt_at = $4
-WHERE chain_id = $1::numeric AND bucket_start = $2 AND generation = $3;
+SET attempts = attempts + 1, next_attempt_at = sqlc.arg('next_attempt_at')
+WHERE chain_id = sqlc.arg('chain_id')::numeric AND bucket_start = sqlc.arg('bucket_start') AND generation = sqlc.arg('generation');
 
--- name: AnalyticsWriteDeleteDirty :exec
+-- name: AnalyticsWriteDeleteDirty :execrows
 DELETE FROM chart_rollup_dirty_hours
-WHERE chain_id = $1::numeric AND bucket_start = $2 AND generation = $3;
+WHERE chain_id = sqlc.arg('chain_id')::numeric AND bucket_start = sqlc.arg('bucket_start') AND generation = sqlc.arg('generation');
 
 -- name: AnalyticsWriteDeleteRollup :exec
 DELETE FROM chart_hourly_rollups
-WHERE chain_id = $1::numeric AND bucket_start = $2;
+WHERE chain_id = sqlc.arg('chain_id')::numeric AND bucket_start = sqlc.arg('bucket_start');
 
--- name: AnalyticsWriteNextDirty :many
+-- name: AnalyticsWriteNextDirty :one
 SELECT bucket_start, generation
 FROM chart_rollup_dirty_hours
-WHERE chain_id = $1::numeric AND next_attempt_at <= $2
+WHERE chain_id = sqlc.arg('chain_id')::numeric AND next_attempt_at <= sqlc.arg('next_attempt_at')
 ORDER BY bucket_start DESC
 LIMIT 1
 FOR UPDATE SKIP LOCKED;
 
--- name: AnalyticsWriteRecomputeRollup :exec
+-- name: AnalyticsWriteRecomputeRollup :execrows
 WITH source AS (
     SELECT canonical.number, stats.*
     FROM canonical_blocks AS canonical
@@ -46,9 +46,9 @@ WITH source AS (
      AND token_result.stage = 'token'
      AND token_result.stage_version = 1
      AND token_result.state = 'complete'
-    WHERE canonical.chain_id = $1::numeric
-      AND block.timestamp >= extract(epoch FROM $2::timestamptz)::numeric
-      AND block.timestamp < extract(epoch FROM ($2::timestamptz + interval '1 hour'))::numeric
+    WHERE canonical.chain_id = sqlc.arg('chain_id')::numeric
+      AND block.timestamp >= extract(epoch FROM sqlc.arg('bucket_start')::timestamptz)::numeric
+      AND block.timestamp < extract(epoch FROM (sqlc.arg('bucket_start')::timestamptz + interval '1 hour'))::numeric
 ), tokens AS (
     SELECT count(*) FILTER (
                WHERE event.standard = 'erc20'
@@ -67,10 +67,10 @@ WITH source AS (
       ON block.chain_id = canonical.chain_id
      AND block.number = canonical.number
      AND block.hash = canonical.block_hash
-    WHERE event.chain_id = $1::numeric
+    WHERE event.chain_id = sqlc.arg('chain_id')::numeric
       AND event.canonical
-      AND block.timestamp >= extract(epoch FROM $2::timestamptz)::numeric
-      AND block.timestamp < extract(epoch FROM ($2::timestamptz + interval '1 hour'))::numeric
+      AND block.timestamp >= extract(epoch FROM sqlc.arg('bucket_start')::timestamptz)::numeric
+      AND block.timestamp < extract(epoch FROM (sqlc.arg('bucket_start')::timestamptz + interval '1 hour'))::numeric
 )
 INSERT INTO chart_hourly_rollups AS current (
     chain_id, bucket_start, source_generation, from_block, to_block, block_count,
@@ -81,7 +81,7 @@ INSERT INTO chart_hourly_rollups AS current (
     blob_base_fee_samples, blob_burned_wei, erc20_transfer_count,
     nft_transfer_count
 )
-SELECT $1::numeric, $2::timestamptz, $3, min(number), max(number), count(*),
+SELECT sqlc.arg('chain_id')::numeric, sqlc.arg('bucket_start')::timestamptz, sqlc.arg('source_generation'), min(number), max(number), count(*),
        sum(transaction_count), sum(failed_transaction_count), sum(contract_creation_count),
        sum(gas_used), sum(gas_limit), COALESCE(sum(block_interval_seconds), 0),
        count(block_interval_seconds), COALESCE(sum(base_fee_per_gas), 0),
@@ -123,13 +123,13 @@ INSERT INTO chart_rollup_backfill AS current (
     chain_id, available_from, available_to, next_block, target_start_block,
     completed_blocks, total_blocks, complete, updated_at
 )
-SELECT $1::numeric,
-       (SELECT min(bucket_start) FROM chart_hourly_rollups WHERE chain_id = $1::numeric),
-       (SELECT max(bucket_start) FROM chart_hourly_rollups WHERE chain_id = $1::numeric),
+SELECT sqlc.arg('chain_id')::numeric,
+       (SELECT min(bucket_start) FROM chart_hourly_rollups WHERE chain_id = sqlc.arg('chain_id')::numeric),
+       (SELECT max(bucket_start) FROM chart_hourly_rollups WHERE chain_id = sqlc.arg('chain_id')::numeric),
        (
            SELECT min(canonical.number)
            FROM canonical_blocks AS canonical
-           WHERE canonical.chain_id = $1::numeric
+           WHERE canonical.chain_id = sqlc.arg('chain_id')::numeric
              AND (
                  NOT EXISTS (
                      SELECT 1 FROM published_block_stage_results AS result
@@ -149,11 +149,11 @@ SELECT $1::numeric,
                  )
              )
        ),
-       (SELECT configured_start FROM core_index_configuration WHERE chain_id = $1::numeric),
+       (SELECT configured_start FROM core_index_configuration WHERE chain_id = sqlc.arg('chain_id')::numeric),
        (
            SELECT count(*)
            FROM canonical_blocks AS canonical
-           WHERE canonical.chain_id = $1::numeric
+           WHERE canonical.chain_id = sqlc.arg('chain_id')::numeric
              AND EXISTS (
                  SELECT 1 FROM published_block_stage_results AS result
                  WHERE result.chain_id = canonical.chain_id
@@ -171,11 +171,11 @@ SELECT $1::numeric,
                    AND result.state = 'complete'
              )
        ),
-       (SELECT count(*) FROM canonical_blocks WHERE chain_id = $1::numeric),
+       (SELECT count(*) FROM canonical_blocks WHERE chain_id = sqlc.arg('chain_id')::numeric),
        NOT EXISTS (
            SELECT 1
            FROM canonical_blocks AS canonical
-           WHERE canonical.chain_id = $1::numeric
+           WHERE canonical.chain_id = sqlc.arg('chain_id')::numeric
              AND (
                  NOT EXISTS (
                      SELECT 1 FROM published_block_stage_results AS result
@@ -195,7 +195,7 @@ SELECT $1::numeric,
                  )
              )
        ) AND NOT EXISTS (
-           SELECT 1 FROM chart_rollup_dirty_hours WHERE chain_id = $1::numeric
+           SELECT 1 FROM chart_rollup_dirty_hours WHERE chain_id = sqlc.arg('chain_id')::numeric
        ),
        now()
 ON CONFLICT (chain_id) DO UPDATE SET
@@ -208,22 +208,22 @@ ON CONFLICT (chain_id) DO UPDATE SET
     complete = EXCLUDED.complete,
     updated_at = now();
 
--- name: AnalyticsWriteRollupLock :many
-SELECT pg_try_advisory_xact_lock(hashtextextended('chart-rollup:' || $1, 0));
+-- name: AnalyticsWriteRollupLock :one
+SELECT pg_try_advisory_xact_lock(hashtextextended('chart-rollup:' || sqlc.arg('chain_id'), 0));
 
--- name: AnalyticsWriteRollupMetrics :many
+-- name: AnalyticsWriteRollupMetrics :one
 SELECT count(dirty.bucket_start),
-       COALESCE(extract(epoch FROM ($2::timestamptz - min(dirty.dirtied_at))), 0)::double precision,
+       COALESCE(extract(epoch FROM (sqlc.arg('now')::timestamptz - min(dirty.dirtied_at))), 0)::double precision AS oldest_dirty_seconds,
        COALESCE(
            backfill.completed_blocks * 100.0 / NULLIF(backfill.total_blocks, 0),
            0
-       )::double precision
+       )::double precision AS backfill_percent
 FROM chart_rollup_backfill AS backfill
 LEFT JOIN chart_rollup_dirty_hours AS dirty ON dirty.chain_id = backfill.chain_id
-WHERE backfill.chain_id = $1::numeric
+WHERE backfill.chain_id = sqlc.arg('chain_id')::numeric
 GROUP BY backfill.completed_blocks, backfill.total_blocks;
 
--- name: AnalyticsWriteSourceReadiness :many
+-- name: AnalyticsWriteSourceReadiness :one
 WITH source AS (
     SELECT canonical.number, canonical.block_hash, stats.block_number AS stats_number,
            stats_result.state AS stats_state, token_result.state AS token_state,
@@ -251,9 +251,9 @@ WITH source AS (
      AND token_result.block_hash = canonical.block_hash
      AND token_result.stage = 'token'
      AND token_result.stage_version = 1
-    WHERE canonical.chain_id = $1::numeric
-      AND block.timestamp >= extract(epoch FROM $2::timestamptz)::numeric
-      AND block.timestamp < extract(epoch FROM ($2::timestamptz + interval '1 hour'))::numeric
+    WHERE canonical.chain_id = sqlc.arg('chain_id')::numeric
+      AND block.timestamp >= extract(epoch FROM sqlc.arg('bucket_start')::timestamptz)::numeric
+      AND block.timestamp < extract(epoch FROM (sqlc.arg('bucket_start')::timestamptz + interval '1 hour'))::numeric
 )
 SELECT count(*),
        count(*) FILTER (

@@ -2,35 +2,27 @@ package store
 
 import (
 	"context"
-	"database/sql"
-	"database/sql/driver"
 	"errors"
 	"fmt"
-	"io"
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
+
+	testpgx "github.com/islishude/etherview/internal/testpgx"
+	pgx "github.com/jackc/pgx/v5"
+	pgconn "github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/chainbundle"
 )
 
-const refreshDriverName = "etherview-store-refresh-test"
-
-var (
-	refreshScripts sync.Map
-	refreshDSN     atomic.Uint64
-)
-
-func init() { sql.Register(refreshDriverName, refreshDriver{}) }
-
 type refreshStep struct {
+	check    func([]any) error
 	kind     string
 	contains string
 	columns  int
-	rows     [][]driver.Value
+	rows     [][]any
 	affected int64
 	err      error
 }
@@ -146,7 +138,7 @@ func refreshTestBundle(t *testing.T) chainbundle.Bundle {
 	)
 }
 
-func newRefreshRepository(t *testing.T, db *sql.DB) *PostgresRepository {
+func newRefreshRepository(t *testing.T, db *refreshConnection) *PostgresRepository {
 	t.Helper()
 	repository, err := NewPostgresRepository(db)
 	if err != nil {
@@ -160,8 +152,8 @@ func newRefreshRepository(t *testing.T, db *sql.DB) *PostgresRepository {
 
 func refreshCanonicalRow(number uint64, hash, parentHash common.Hash) refreshStep {
 	return refreshStep{
-		kind: "query", contains: "-- name: StoreLockCanonicalBlock :many", columns: 3,
-		rows: [][]driver.Value{{
+		kind: "query", contains: "-- name: StoreLockCanonicalBlock :one", columns: 3,
+		rows: [][]any{{
 			strconv.FormatUint(number, 10),
 			mustHashBytes(hash),
 			mustHashBytes(parentHash),
@@ -169,26 +161,17 @@ func refreshCanonicalRow(number uint64, hash, parentHash common.Hash) refreshSte
 	}
 }
 
-func refreshDatabase(t *testing.T, steps ...refreshStep) (*sql.DB, *refreshScript) {
+func refreshDatabase(t *testing.T, steps ...refreshStep) (*refreshConnection, *refreshScript) {
 	t.Helper()
-	dsn := strconv.FormatUint(refreshDSN.Add(1), 10)
 	script := &refreshScript{steps: append([]refreshStep(nil), steps...)}
-	refreshScripts.Store(dsn, script)
-	db, err := sql.Open(refreshDriverName, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	db.SetMaxOpenConns(1)
 	t.Cleanup(func() {
-		_ = db.Close()
-		refreshScripts.Delete(dsn)
 		script.mu.Lock()
 		defer script.mu.Unlock()
 		if len(script.steps) != 0 {
-			t.Errorf("%d refresh SQL steps were not consumed; next %s contains %q", len(script.steps), script.steps[0].kind, script.steps[0].contains)
+			t.Errorf("%d refresh steps not consumed; next %q", len(script.steps), script.steps[0].contains)
 		}
 	})
-	return db, script
+	return &refreshConnection{script: script}, script
 }
 
 func assertRefreshTransactions(t *testing.T, script *refreshScript, committed, rolledBack int) {
@@ -203,42 +186,49 @@ func assertRefreshTransactions(t *testing.T, script *refreshScript, committed, r
 	}
 }
 
-type refreshDriver struct{}
+type refreshConnection struct {
+	pgx.Tx
+	script *refreshScript
+	done   bool
+}
 
-func (refreshDriver) Open(name string) (driver.Conn, error) {
-	value, exists := refreshScripts.Load(name)
-	if !exists {
-		return nil, fmt.Errorf("unknown refresh database %q", name)
+func (connection *refreshConnection) BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error) {
+	return &refreshConnection{script: connection.script}, nil
+}
+func (connection *refreshConnection) QueryRow(ctx context.Context, query string, args ...any) pgx.Row {
+	return testpgx.Row(connection.Query(ctx, query, args...))
+}
+func (connection *refreshConnection) Commit(context.Context) error {
+	connection.script.mu.Lock()
+	defer connection.script.mu.Unlock()
+	if connection.done {
+		return pgx.ErrTxClosed
 	}
-	return &refreshConnection{script: value.(*refreshScript)}, nil
+	connection.done = true
+	connection.script.committed++
+	return nil
 }
-
-type refreshConnection struct{ script *refreshScript }
-
-func (*refreshConnection) Prepare(string) (driver.Stmt, error) {
-	return nil, errors.New("refresh test driver does not support prepared statements")
+func (connection *refreshConnection) Rollback(context.Context) error {
+	connection.script.mu.Lock()
+	defer connection.script.mu.Unlock()
+	if connection.done {
+		return pgx.ErrTxClosed
+	}
+	connection.done = true
+	connection.script.rolledBack++
+	return nil
 }
-func (*refreshConnection) Close() error { return nil }
-func (connection *refreshConnection) Begin() (driver.Tx, error) {
-	return &refreshTransaction{script: connection.script}, nil
-}
-func (connection *refreshConnection) BeginTx(context.Context, driver.TxOptions) (driver.Tx, error) {
-	return &refreshTransaction{script: connection.script}, nil
-}
-func (*refreshConnection) CheckNamedValue(*driver.NamedValue) error { return nil }
-
-func (connection *refreshConnection) ExecContext(_ context.Context, query string, _ []driver.NamedValue) (driver.Result, error) {
+func (connection *refreshConnection) Exec(_ context.Context, query string, _ ...any) (pgconn.CommandTag, error) {
 	step, err := connection.next("exec", query)
 	if err != nil {
-		return nil, err
+		return pgconn.CommandTag{}, err
 	}
 	if step.err != nil {
-		return nil, step.err
+		return pgconn.CommandTag{}, step.err
 	}
-	return driver.RowsAffected(step.affected), nil
+	return testpgx.Affected(step.affected), nil
 }
-
-func (connection *refreshConnection) QueryContext(_ context.Context, query string, _ []driver.NamedValue) (driver.Rows, error) {
+func (connection *refreshConnection) Query(_ context.Context, query string, arguments ...any) (pgx.Rows, error) {
 	step, err := connection.next("query", query)
 	if err != nil {
 		return nil, err
@@ -246,13 +236,17 @@ func (connection *refreshConnection) QueryContext(_ context.Context, query strin
 	if step.err != nil {
 		return nil, step.err
 	}
+	if step.check != nil {
+		if err := step.check(arguments); err != nil {
+			return nil, err
+		}
+	}
 	columns := make([]string, step.columns)
 	for index := range columns {
 		columns[index] = fmt.Sprintf("column_%d", index)
 	}
-	return &refreshRows{columns: columns, rows: step.rows}, nil
+	return &testpgx.Rows{ColumnNames: columns, ValuesList: step.rows}, nil
 }
-
 func (connection *refreshConnection) next(kind, query string) (refreshStep, error) {
 	connection.script.mu.Lock()
 	defer connection.script.mu.Unlock()
@@ -269,38 +263,4 @@ func (connection *refreshConnection) next(kind, query string) (refreshStep, erro
 	}
 	return step, nil
 }
-
-type refreshTransaction struct{ script *refreshScript }
-
-func (tx *refreshTransaction) Commit() error {
-	tx.script.mu.Lock()
-	defer tx.script.mu.Unlock()
-	tx.script.committed++
-	return nil
-}
-
-func (tx *refreshTransaction) Rollback() error {
-	tx.script.mu.Lock()
-	defer tx.script.mu.Unlock()
-	tx.script.rolledBack++
-	return nil
-}
-
-type refreshRows struct {
-	columns []string
-	rows    [][]driver.Value
-	index   int
-}
-
-func (rows *refreshRows) Columns() []string { return rows.columns }
-func (*refreshRows) Close() error           { return nil }
-func (rows *refreshRows) Next(destination []driver.Value) error {
-	if rows.index >= len(rows.rows) {
-		return io.EOF
-	}
-	copy(destination, rows.rows[rows.index])
-	rows.index++
-	return nil
-}
-
 func compactRefreshSQL(value string) string { return strings.Join(strings.Fields(value), " ") }

@@ -3,9 +3,14 @@ package catalog
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
-	"github.com/islishude/etherview/internal/db/gen"
 	"math/big"
+
+	"github.com/jackc/pgx/v5/pgtype"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
 func (catalog *Postgres) ERC20Balances(
@@ -28,7 +33,7 @@ func (catalog *Postgres) ERC20Balances(
 	if err != nil {
 		return ERC20BalancePage{}, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 
 	var snapshot Snapshot
 	hasBoundary := false
@@ -61,30 +66,36 @@ func (catalog *Postgres) ERC20Balances(
 	if err := requireStage(ctx, tx, snapshot, StageToken); err != nil {
 		return ERC20BalancePage{}, err
 	}
-	rows, err := tx.QueryContext(ctx, dbgen.CatalogErc20BalanceCandidates, request.ChainID, snapshot.BlockNumber, ownerAddress,
-		hasBoundary, boundaryAddress, limit+1,
-	)
+	rows, err := func() ([][]byte, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(request.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(snapshot.BlockNumber); err != nil {
+			return nil, err
+		}
+		if limit+1 < -2147483648 || limit+1 > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).CatalogErc20BalanceCandidates(ctx, dbgen.CatalogErc20BalanceCandidatesParams{ChainID: queryValue0, MaxBlockNumber: queryValue1, OwnerAddress: ownerAddress, HasCursor: hasBoundary, TokenAddress: boundaryAddress, Limit: int32(limit + 1)})
+	}()
 	if err != nil {
 		return ERC20BalancePage{}, fmt.Errorf("query ERC-20 balances: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	candidateRows := make([][]byte, 0, limit+1)
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var address []byte
-		if err := rows.Scan(&address); err != nil {
-			return ERC20BalancePage{}, fmt.Errorf("scan ERC-20 balance candidate: %w", err)
+		{
+			address = storedRow
 		}
 		if len(address) != 20 {
 			return ERC20BalancePage{}, ErrCorruptData
 		}
 		candidateRows = append(candidateRows, address)
 	}
-	if err := rows.Err(); err != nil {
-		return ERC20BalancePage{}, fmt.Errorf("iterate ERC-20 balances: %w", err)
-	}
-	if err := rows.Close(); err != nil {
-		return ERC20BalancePage{}, fmt.Errorf("close ERC-20 balance candidates: %w", err)
-	}
+
 	hasMore := len(candidateRows) > limit
 	if hasMore {
 		candidateRows = candidateRows[:limit]
@@ -117,7 +128,7 @@ func (catalog *Postgres) ERC20Balances(
 	if len(stateCandidates) > 0 && catalog.erc20State == nil {
 		return ERC20BalancePage{}, erc20StateUnavailable(snapshot)
 	}
-	if err := commitRead(tx); err != nil {
+	if err := commitRead(ctx, tx); err != nil {
 		return ERC20BalancePage{}, err
 	}
 

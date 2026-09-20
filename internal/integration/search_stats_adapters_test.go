@@ -4,13 +4,15 @@ package integration_test
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/islishude/etherview/internal/adapters"
 	"github.com/islishude/etherview/internal/api/gen"
@@ -75,12 +77,12 @@ func TestSearchCursorGenerationFreezesLateLabelsAndEnrichment(t *testing.T) {
 			VALUES (1, 'address', $1, $2)`, item.address, item.label)
 	}
 	execFixture(t, ctx, db, `INSERT INTO chains (chain_id) VALUES (2)`)
-	if _, err := db.ExecContext(ctx, `UPDATE operator_labels SET chain_id = 2
+	if _, err := db.Exec(ctx, `UPDATE operator_labels SET chain_id = 2
 		WHERE chain_id = 1 AND object_key = $1`, alpha.String()); err == nil || !strings.Contains(err.Error(), "chain_id is immutable") {
 		t.Fatalf("cross-chain source update error=%v", err)
 	}
 	var originalChain string
-	if err := db.QueryRowContext(ctx, `SELECT chain_id::text FROM operator_labels
+	if err := db.QueryRow(ctx, `SELECT chain_id::text FROM operator_labels
 		WHERE object_key = $1`, alpha.String()).Scan(&originalChain); err != nil || originalChain != "1" {
 		t.Fatalf("label chain=%q error=%v", originalChain, err)
 	}
@@ -104,7 +106,7 @@ func TestSearchCursorGenerationFreezesLateLabelsAndEnrichment(t *testing.T) {
 	execFixture(t, ctx, db, `INSERT INTO operator_labels (chain_id, object_kind, object_key, label)
 		SELECT 1, 'address', '0x' || lpad(to_hex(value), 40, '0'), 'noise-' || value::text
 		FROM generate_series(10000, 11004) AS value`)
-	if err := db.QueryRowContext(ctx, `SELECT prune_search_catalog(1, 1000)`).Scan(new(int64)); err != nil {
+	if err := db.QueryRow(ctx, `SELECT prune_search_catalog(1, 1000)`).Scan(new(int64)); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := reader.Search(ctx, "treasury", cursor, 1); !errors.Is(err, query.ErrInvalidCursor) {
@@ -188,8 +190,8 @@ func TestStatsV2ConfiguredStartRemainsParentlessWithRetainedCanonicalHistory(t *
 	if err != nil || result.State != enrich.ResultComplete {
 		t.Fatalf("stats result=%+v error=%v", result, err)
 	}
-	var interval, transactionsPerSecond sql.NullString
-	if err := db.QueryRowContext(ctx, `SELECT block_interval_seconds::text,
+	var interval, transactionsPerSecond pgtype.Text
+	if err := db.QueryRow(ctx, `SELECT block_interval_seconds::text,
 		transactions_per_second::text FROM block_statistics
 		WHERE chain_id = 1 AND block_number = 7 AND block_hash = $1`, mustBytes(t, testHash(915))).Scan(
 		&interval, &transactionsPerSecond,
@@ -267,7 +269,7 @@ func TestSearchUsesLatestCanonicalTokenAndContractObservationAcrossReorg(t *test
 		(chain_id, finalized_number, finalized_hash) VALUES (1, 0, $1)
 		ON CONFLICT (chain_id) DO UPDATE SET finalized_number = 0, finalized_hash = EXCLUDED.finalized_hash`, mustBytes(t, testHash(920)))
 	var minimum int64
-	if err := db.QueryRowContext(ctx, `SELECT prune_search_catalog(1, 1000)`).Scan(&minimum); err != nil {
+	if err := db.QueryRow(ctx, `SELECT prune_search_catalog(1, 1000)`).Scan(&minimum); err != nil {
 		t.Fatal(err)
 	}
 	execFixture(t, ctx, db, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number = 2`)
@@ -383,10 +385,10 @@ func (f *integrationJSONFetcher) Fetch(context.Context, string, metadata.Kind) (
 	return metadata.Result{Body: append([]byte(nil), f.body...), FetchedAt: time.Now().UTC()}, nil
 }
 
-func assertSearchConstraintSet(t *testing.T, ctx context.Context, db *sql.DB) {
+func assertSearchConstraintSet(t *testing.T, ctx context.Context, db *pgxpool.Pool) {
 	t.Helper()
 	var count int
-	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM pg_constraint
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM pg_constraint
 		WHERE conname LIKE 'block_statistics_v2_%'
 		  AND conrelid = 'block_statistics'::regclass
 		  AND convalidated`).Scan(&count); err != nil || count != 4 {

@@ -9,47 +9,47 @@ import (
 	"context"
 )
 
-const EnrichReleaseDispatchJobs = `-- name: EnrichReleaseDispatchJobs :exec
+const enrichReleaseDispatchJobs = `-- name: EnrichReleaseDispatchJobs :exec
 RELEASE SAVEPOINT enrichment_dispatch_jobs
 `
 
 func (q *Queries) EnrichReleaseDispatchJobs(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, EnrichReleaseDispatchJobs)
+	_, err := q.db.Exec(ctx, enrichReleaseDispatchJobs)
 	return err
 }
 
-const EnrichRollbackDispatchJobs = `-- name: EnrichRollbackDispatchJobs :exec
+const enrichRollbackDispatchJobs = `-- name: EnrichRollbackDispatchJobs :exec
 ROLLBACK TO SAVEPOINT enrichment_dispatch_jobs
 `
 
 func (q *Queries) EnrichRollbackDispatchJobs(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, EnrichRollbackDispatchJobs)
+	_, err := q.db.Exec(ctx, enrichRollbackDispatchJobs)
 	return err
 }
 
-const EnrichRollbackStageOutput = `-- name: EnrichRollbackStageOutput :exec
+const enrichRollbackStageOutput = `-- name: EnrichRollbackStageOutput :exec
 ROLLBACK TO SAVEPOINT enrichment_stage_output
 `
 
 func (q *Queries) EnrichRollbackStageOutput(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, EnrichRollbackStageOutput)
+	_, err := q.db.Exec(ctx, enrichRollbackStageOutput)
 	return err
 }
 
-const EnrichSavepointDispatchJobs = `-- name: EnrichSavepointDispatchJobs :exec
+const enrichSavepointDispatchJobs = `-- name: EnrichSavepointDispatchJobs :exec
 SAVEPOINT enrichment_dispatch_jobs
 `
 
 func (q *Queries) EnrichSavepointDispatchJobs(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, EnrichSavepointDispatchJobs)
+	_, err := q.db.Exec(ctx, enrichSavepointDispatchJobs)
 	return err
 }
 
-const EnrichSavepointStageOutput = `-- name: EnrichSavepointStageOutput :exec
+const enrichSavepointStageOutput = `-- name: EnrichSavepointStageOutput :exec
 SAVEPOINT enrichment_stage_output
 `
 
 func (q *Queries) EnrichSavepointStageOutput(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, EnrichSavepointStageOutput)
+	_, err := q.db.Exec(ctx, enrichSavepointStageOutput)
 	return err
 }

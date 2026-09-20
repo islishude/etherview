@@ -3,26 +3,30 @@ package catalog
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbaccess "github.com/islishude/etherview/internal/db"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/enrich"
 )
 
 const maxReadTimeLogABICandidates = 16
 
 type persistedLogDecoding struct {
-	status         sql.NullString
-	signature      sql.NullString
-	source         sql.NullString
-	confidence     sql.NullString
+	status         pgtype.Text
+	signature      pgtype.Text
+	source         pgtype.Text
+	confidence     pgtype.Text
 	arguments      []byte
 	candidates     []byte
-	warning        sql.NullString
+	warning        pgtype.Text
 	targetAddress  []byte
 	targetCodeHash []byte
 	sourceAddress  []byte
@@ -37,12 +41,12 @@ type logABICandidate struct {
 	codeHash      common.Hash
 	selectorScope common.Hash
 	validFrom     uint64
-	validTo       sql.NullString
+	validTo       pgtype.Text
 }
 
 func resolveTransactionLogDecoding(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	chainID string,
 	blockNumber uint64,
 	blockHash []byte,
@@ -109,7 +113,7 @@ func resolveTransactionLogDecoding(
 
 func loadLogABICandidates(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	chainID string,
 	blockNumber uint64,
 	blockHash []byte,
@@ -122,7 +126,7 @@ func loadLogABICandidates(
 
 func loadLogABICandidatesForCodeHash(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	chainID string,
 	blockNumber uint64,
 	blockHash []byte,
@@ -136,27 +140,50 @@ func loadLogABICandidatesForCodeHash(
 	if codeHash != nil {
 		identity.CodeHash = *codeHash
 	}
-	var expectedCodeHash any
+	var expectedCodeHash []byte
 	if codeHash != nil {
 		expectedCodeHash = codeHash[:]
 	}
-	rows, err := tx.QueryContext(ctx, dbgen.CatalogTransactionLogABICandidates, chainID, address[:], fmt.Sprint(blockNumber), maxReadTimeLogABICandidates+1,
-		expectedCodeHash,
-	)
+	rows, err := func() ([]dbgen.CatalogTransactionLogABICandidatesRow, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(fmt.Sprint(blockNumber)); err != nil {
+			return nil, err
+		}
+		if maxReadTimeLogABICandidates+1 < -2147483648 || maxReadTimeLogABICandidates+1 > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).CatalogTransactionLogABICandidates(ctx, dbgen.CatalogTransactionLogABICandidatesParams{ChainID: queryValue0, Address: address[:], MaxBlockNumber: queryValue1, Limit: int32(maxReadTimeLogABICandidates + 1), CodeHash: expectedCodeHash})
+	}()
 	if err != nil {
 		return identity, nil, fmt.Errorf("load log ABI candidates: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	var candidates []logABICandidate
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var candidate logABICandidate
 		var source, sourceKind string
 		var sourceAddress, sourceCodeHash, selectorScope, targetCodeHash []byte
 		var validFrom string
-		if err := rows.Scan(
-			&targetCodeHash, &candidate.abi, &source, &sourceKind,
-			&sourceAddress, &sourceCodeHash, &selectorScope, &validFrom, &candidate.validTo,
-		); err != nil {
+		if err := func() error {
+			targetCodeHash = storedRow.TargetCodeHash
+			candidate.abi = storedRow.Abi
+			source = storedRow.RegistrySource
+			sourceKind = storedRow.SourceKind
+			sourceAddress = storedRow.SourceAddress
+			sourceCodeHash = storedRow.SourceCodeHash
+			selectorScope = storedRow.SelectorScope
+			validFrom = storedRow.ValidFromBlock
+			if value, err := dbaccess.NumericText(storedRow.ValidToBlock); err != nil {
+				return err
+			} else {
+				candidate.validTo = value
+			}
+			return nil
+		}(); err != nil {
 			return identity, nil, fmt.Errorf("scan log ABI candidate: %w", err)
 		}
 		if len(targetCodeHash) != common.HashLength || len(sourceAddress) != common.AddressLength ||
@@ -176,9 +203,7 @@ func loadLogABICandidatesForCodeHash(
 		candidate.validFrom = parsedValidFrom
 		candidates = append(candidates, candidate)
 	}
-	if err := rows.Err(); err != nil {
-		return identity, nil, fmt.Errorf("iterate log ABI candidates: %w", err)
-	}
+
 	return identity, candidates, nil
 }
 

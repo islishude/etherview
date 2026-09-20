@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -14,8 +13,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+
 	"github.com/islishude/etherview/internal/contractartifact"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
 var (
@@ -187,11 +190,8 @@ type VerifiedArtifactSource struct {
 	CreatedAt      time.Time
 }
 
+// Repository is the read contract used by verification services.
 type Repository interface {
-	Claim(context.Context, string, time.Duration) (VerificationLease, bool, error)
-	Renew(context.Context, VerificationLease, time.Duration) error
-	BindCompiler(context.Context, VerificationLease, CompilerProvenance) error
-	Fail(context.Context, VerificationLease, ErrorCode) error
 	Job(context.Context, string) (VerificationJob, bool, error)
 	VerifiedContract(context.Context, uint64, string) (VerifiedContract, bool, error)
 }
@@ -215,13 +215,13 @@ func (options *RepositoryOptions) defaults() {
 }
 
 type PostgresRepository struct {
-	db        *sql.DB
+	db        dbaccess.Database
 	artifacts *contractartifact.Resolver
 	options   RepositoryOptions
 	random    io.Reader
 }
 
-func NewPostgresRepository(db *sql.DB, options RepositoryOptions) (*PostgresRepository, error) {
+func NewPostgresRepository(db dbaccess.Database, options RepositoryOptions) (*PostgresRepository, error) {
 	if db == nil {
 		return nil, errors.New("verification repository requires a database")
 	}
@@ -256,14 +256,18 @@ func (repository *PostgresRepository) Renew(ctx context.Context, lease Verificat
 	if err != nil {
 		return fmt.Errorf("verification lease duration: %w", err)
 	}
-	result, err := repository.db.ExecContext(ctx, dbgen.VerifyLegacyRenewVerification, lease.Job.ID, lease.Token, microseconds)
+	result, err := func() (int64, error) {
+		var queryValue0 pgtype.UUID
+		if err := queryValue0.Scan(lease.Job.ID); err != nil {
+			return 0, err
+		}
+		return dbgen.New(repository.db).VerifyLegacyRenewVerification(ctx, microseconds, queryValue0, new(lease.Token))
+	}()
 	if err != nil {
 		return fmt.Errorf("renew verification lease: %w", err)
 	}
 	return requireVerificationLease(result)
 }
-
-type rowScanner interface{ Scan(...any) error }
 
 func validatePersistedJobState(job VerificationJob) error {
 	switch job.Status {
@@ -306,11 +310,8 @@ func validateVerificationLease(lease VerificationLease) error {
 	return nil
 }
 
-func requireVerificationLease(result sql.Result) error {
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("read verification lease update count: %w", err)
-	}
+func requireVerificationLease(result int64) error {
+	affected := result
 	if affected != 1 {
 		return ErrLeaseLost
 	}

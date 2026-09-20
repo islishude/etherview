@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const CatalogHolderCoverage = `-- name: CatalogHolderCoverage :one
+const catalogHolderCoverage = `-- name: CatalogHolderCoverage :one
 SELECT configuration.configured_start::text,
        count(published.block_number)::text AS covered_blocks,
        count(token_publication.block_number)::text AS token_blocks,
@@ -55,7 +55,7 @@ type CatalogHolderCoverageRow struct {
 }
 
 func (q *Queries) CatalogHolderCoverage(ctx context.Context, blockNumber pgtype.Numeric, chainID pgtype.Numeric) (CatalogHolderCoverageRow, error) {
-	row := q.db.QueryRow(ctx, CatalogHolderCoverage, blockNumber, chainID)
+	row := q.db.QueryRow(ctx, catalogHolderCoverage, blockNumber, chainID)
 	var i CatalogHolderCoverageRow
 	err := row.Scan(
 		&i.ConfigurationConfiguredStart,
@@ -67,7 +67,7 @@ func (q *Queries) CatalogHolderCoverage(ctx context.Context, blockNumber pgtype.
 	return i, err
 }
 
-const CatalogHolderPage = `-- name: CatalogHolderPage :many
+const catalogHolderPage = `-- name: CatalogHolderPage :many
 WITH latest AS (
     SELECT DISTINCT ON (balance.holder_address)
            balance.holder_address, balance.balance,
@@ -110,7 +110,7 @@ type CatalogHolderPageRow struct {
 }
 
 func (q *Queries) CatalogHolderPage(ctx context.Context, arg CatalogHolderPageParams) ([]CatalogHolderPageRow, error) {
-	rows, err := q.db.Query(ctx, CatalogHolderPage,
+	rows, err := q.db.Query(ctx, catalogHolderPage,
 		arg.RowLimit,
 		arg.ChainID,
 		arg.TokenAddress,
@@ -142,7 +142,7 @@ func (q *Queries) CatalogHolderPage(ctx context.Context, arg CatalogHolderPagePa
 	return items, nil
 }
 
-const CatalogHolderTokenSnapshot = `-- name: CatalogHolderTokenSnapshot :one
+const catalogHolderTokenSnapshot = `-- name: CatalogHolderTokenSnapshot :one
 SELECT snapshot.block_number::text, snapshot.block_hash, snapshot.state,
        snapshot.holder_count::text, snapshot.total_supply::text,
        snapshot.reconciled_balance_sum::text,
@@ -195,7 +195,7 @@ type CatalogHolderTokenSnapshotRow struct {
 }
 
 func (q *Queries) CatalogHolderTokenSnapshot(ctx context.Context, chainID pgtype.Numeric, tokenAddress []byte, blockNumber pgtype.Numeric) (CatalogHolderTokenSnapshotRow, error) {
-	row := q.db.QueryRow(ctx, CatalogHolderTokenSnapshot, chainID, tokenAddress, blockNumber)
+	row := q.db.QueryRow(ctx, catalogHolderTokenSnapshot, chainID, tokenAddress, blockNumber)
 	var i CatalogHolderTokenSnapshotRow
 	err := row.Scan(
 		&i.SnapshotBlockNumber,
@@ -209,7 +209,7 @@ func (q *Queries) CatalogHolderTokenSnapshot(ctx context.Context, chainID pgtype
 	return i, err
 }
 
-const EtherscanHolderPage = `-- name: EtherscanHolderPage :many
+const etherscanHolderPage = `-- name: EtherscanHolderPage :many
 WITH latest AS (
     SELECT DISTINCT ON (balance.holder_address)
            balance.holder_address, balance.balance
@@ -245,7 +245,7 @@ type EtherscanHolderPageRow struct {
 }
 
 func (q *Queries) EtherscanHolderPage(ctx context.Context, arg EtherscanHolderPageParams) ([]EtherscanHolderPageRow, error) {
-	rows, err := q.db.Query(ctx, EtherscanHolderPage,
+	rows, err := q.db.Query(ctx, etherscanHolderPage,
 		arg.RowOffset,
 		arg.RowLimit,
 		arg.ChainID,
@@ -270,7 +270,7 @@ func (q *Queries) EtherscanHolderPage(ctx context.Context, arg EtherscanHolderPa
 	return items, nil
 }
 
-const HolderAffectedTokens = `-- name: HolderAffectedTokens :many
+const holderAffectedTokens = `-- name: HolderAffectedTokens :many
 WITH event_tokens AS (
     SELECT DISTINCT event.token_address
     FROM token_events AS event
@@ -354,7 +354,7 @@ type HolderAffectedTokensRow struct {
 }
 
 func (q *Queries) HolderAffectedTokens(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([]HolderAffectedTokensRow, error) {
-	rows, err := q.db.Query(ctx, HolderAffectedTokens, chainID, blockNumber, blockHash)
+	rows, err := q.db.Query(ctx, holderAffectedTokens, chainID, blockNumber, blockHash)
 	if err != nil {
 		return nil, err
 	}
@@ -373,55 +373,78 @@ func (q *Queries) HolderAffectedTokens(ctx context.Context, chainID pgtype.Numer
 	return items, nil
 }
 
-const HolderCandidates = `-- name: HolderCandidates :many
-SELECT candidate.holder_address
-FROM (
-    SELECT event.from_address AS holder_address
-    FROM token_events AS event
-    JOIN canonical_blocks AS canonical
-      ON canonical.chain_id = event.chain_id
-     AND canonical.number = event.block_number
-     AND canonical.block_hash = event.block_hash
-    WHERE event.chain_id = $1::numeric
-      AND event.token_address = $2::bytea
-      AND event.block_number <= $3::numeric
-      AND event.canonical AND event.standard = 'erc20'
-      AND event.event_kind IN ('transfer', 'mint', 'burn')
-      AND event.confidence IN ('high', 'verified')
-      AND event.from_address IS NOT NULL
-      AND event.from_address <> decode(repeat('00', 20), 'hex')
-    UNION
-    SELECT event.to_address AS holder_address
-    FROM token_events AS event
-    JOIN canonical_blocks AS canonical
-      ON canonical.chain_id = event.chain_id
-     AND canonical.number = event.block_number
-     AND canonical.block_hash = event.block_hash
-    WHERE event.chain_id = $1::numeric
-      AND event.token_address = $2::bytea
-      AND event.block_number <= $3::numeric
-      AND event.canonical AND event.standard = 'erc20'
-      AND event.event_kind IN ('transfer', 'mint', 'burn')
-      AND event.confidence IN ('high', 'verified')
-      AND event.to_address IS NOT NULL
-      AND event.to_address <> decode(repeat('00', 20), 'hex')
-) AS candidate
-ORDER BY candidate.holder_address
+const holderCandidates = `-- name: HolderCandidates :many
+SELECT event.block_number::text AS block_number, event.log_index, event.sub_index,
+       event.block_hash, event.from_address, event.to_address
+FROM token_events AS event
+JOIN canonical_blocks AS canonical
+  ON canonical.chain_id = event.chain_id AND canonical.number = event.block_number
+ AND canonical.block_hash = event.block_hash
+WHERE event.chain_id = $1::text::numeric
+  AND event.token_address = $2::bytea
+  AND event.block_number <= $3::text::numeric
+  AND event.canonical AND event.standard = 'erc20'
+  AND event.event_kind IN ('transfer', 'mint', 'burn')
+  AND event.confidence IN ('high', 'verified')
+  AND (NOT $4::boolean OR
+       (event.block_number, event.log_index, event.sub_index, event.block_hash) <
+       ($5::text::numeric, $6::bigint,
+        $7::integer, $8::bytea))
+ORDER BY event.block_number DESC, event.log_index DESC, event.sub_index DESC, event.block_hash DESC
+LIMIT $9::integer
 `
 
-func (q *Queries) HolderCandidates(ctx context.Context, chainID pgtype.Numeric, tokenAddress []byte, blockNumber pgtype.Numeric) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, HolderCandidates, chainID, tokenAddress, blockNumber)
+type HolderCandidatesParams struct {
+	ChainID      string `db:"chain_id" json:"chain_id"`
+	TokenAddress []byte `db:"token_address" json:"token_address"`
+	BlockNumber  string `db:"block_number" json:"block_number"`
+	HasCursor    bool   `db:"has_cursor" json:"has_cursor"`
+	BeforeNumber string `db:"before_number" json:"before_number"`
+	BeforeLog    int64  `db:"before_log" json:"before_log"`
+	BeforeSub    int32  `db:"before_sub" json:"before_sub"`
+	BeforeHash   []byte `db:"before_hash" json:"before_hash"`
+	PageLimit    int32  `db:"page_limit" json:"page_limit"`
+}
+
+type HolderCandidatesRow struct {
+	BlockNumber string `db:"block_number" json:"block_number"`
+	LogIndex    int64  `db:"log_index" json:"log_index"`
+	SubIndex    int32  `db:"sub_index" json:"sub_index"`
+	BlockHash   []byte `db:"block_hash" json:"block_hash"`
+	FromAddress []byte `db:"from_address" json:"from_address"`
+	ToAddress   []byte `db:"to_address" json:"to_address"`
+}
+
+func (q *Queries) HolderCandidates(ctx context.Context, arg HolderCandidatesParams) ([]HolderCandidatesRow, error) {
+	rows, err := q.db.Query(ctx, holderCandidates,
+		arg.ChainID,
+		arg.TokenAddress,
+		arg.BlockNumber,
+		arg.HasCursor,
+		arg.BeforeNumber,
+		arg.BeforeLog,
+		arg.BeforeSub,
+		arg.BeforeHash,
+		arg.PageLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := [][]byte{}
+	items := []HolderCandidatesRow{}
 	for rows.Next() {
-		var holder_address []byte
-		if err := rows.Scan(&holder_address); err != nil {
+		var i HolderCandidatesRow
+		if err := rows.Scan(
+			&i.BlockNumber,
+			&i.LogIndex,
+			&i.SubIndex,
+			&i.BlockHash,
+			&i.FromAddress,
+			&i.ToAddress,
+		); err != nil {
 			return nil, err
 		}
-		items = append(items, holder_address)
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -429,7 +452,7 @@ func (q *Queries) HolderCandidates(ctx context.Context, chainID pgtype.Numeric, 
 	return items, nil
 }
 
-const HolderDeleteBlockOutput = `-- name: HolderDeleteBlockOutput :exec
+const holderDeleteBlockOutput = `-- name: HolderDeleteBlockOutput :exec
 WITH delete_balances AS (
     DELETE FROM erc20_holder_balances
     WHERE chain_id = $1::numeric
@@ -443,13 +466,13 @@ WHERE chain_id = $1::numeric
 `
 
 func (q *Queries) HolderDeleteBlockOutput(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error {
-	_, err := q.db.Exec(ctx, HolderDeleteBlockOutput, chainID, blockNumber, blockHash)
+	_, err := q.db.Exec(ctx, holderDeleteBlockOutput, chainID, blockNumber, blockHash)
 	return err
 }
 
-const HolderEventSupply = `-- name: HolderEventSupply :one
+const holderEventSupply = `-- name: HolderEventSupply :one
 SELECT COALESCE(sum(CASE event.event_kind
-    WHEN 'mint' THEN event.amount WHEN 'burn' THEN -event.amount ELSE 0 END), 0)::text
+    WHEN 'mint' THEN event.amount WHEN 'burn' THEN -event.amount ELSE 0 END), 0)::text AS total_supply
 FROM token_events AS event
 JOIN canonical_blocks AS canonical
   ON canonical.chain_id = event.chain_id
@@ -464,13 +487,13 @@ WHERE event.chain_id = $1::numeric
 `
 
 func (q *Queries) HolderEventSupply(ctx context.Context, chainID pgtype.Numeric, tokenAddress []byte, blockNumber pgtype.Numeric) (string, error) {
-	row := q.db.QueryRow(ctx, HolderEventSupply, chainID, tokenAddress, blockNumber)
-	var column_1 string
-	err := row.Scan(&column_1)
-	return column_1, err
+	row := q.db.QueryRow(ctx, holderEventSupply, chainID, tokenAddress, blockNumber)
+	var total_supply string
+	err := row.Scan(&total_supply)
+	return total_supply, err
 }
 
-const HolderHasUnreconciledEvents = `-- name: HolderHasUnreconciledEvents :one
+const holderHasUnreconciledEvents = `-- name: HolderHasUnreconciledEvents :one
 SELECT EXISTS (
     SELECT 1
     FROM token_events AS event
@@ -505,7 +528,7 @@ type HolderHasUnreconciledEventsParams struct {
 }
 
 func (q *Queries) HolderHasUnreconciledEvents(ctx context.Context, arg HolderHasUnreconciledEventsParams) (bool, error) {
-	row := q.db.QueryRow(ctx, HolderHasUnreconciledEvents,
+	row := q.db.QueryRow(ctx, holderHasUnreconciledEvents,
 		arg.ChainID,
 		arg.TokenAddress,
 		arg.PreviousBlock,
@@ -516,7 +539,7 @@ func (q *Queries) HolderHasUnreconciledEvents(ctx context.Context, arg HolderHas
 	return exists, err
 }
 
-const HolderInsertBalance = `-- name: HolderInsertBalance :exec
+const holderInsertBalance = `-- name: HolderInsertBalance :exec
 INSERT INTO erc20_holder_balances (
     chain_id, token_address, holder_address, block_number, block_hash,
     balance, confidence, canonical
@@ -541,7 +564,7 @@ type HolderInsertBalanceParams struct {
 }
 
 func (q *Queries) HolderInsertBalance(ctx context.Context, arg HolderInsertBalanceParams) error {
-	_, err := q.db.Exec(ctx, HolderInsertBalance,
+	_, err := q.db.Exec(ctx, holderInsertBalance,
 		arg.ChainID,
 		arg.TokenAddress,
 		arg.HolderAddress,
@@ -552,7 +575,7 @@ func (q *Queries) HolderInsertBalance(ctx context.Context, arg HolderInsertBalan
 	return err
 }
 
-const HolderInsertSnapshot = `-- name: HolderInsertSnapshot :exec
+const holderInsertSnapshot = `-- name: HolderInsertSnapshot :exec
 INSERT INTO erc20_holder_snapshots (
     chain_id, token_address, block_number, block_hash, state,
     holder_count, total_supply, reconciled_balance_sum, canonical
@@ -581,7 +604,7 @@ type HolderInsertSnapshotParams struct {
 }
 
 func (q *Queries) HolderInsertSnapshot(ctx context.Context, arg HolderInsertSnapshotParams) error {
-	_, err := q.db.Exec(ctx, HolderInsertSnapshot,
+	_, err := q.db.Exec(ctx, holderInsertSnapshot,
 		arg.ChainID,
 		arg.TokenAddress,
 		arg.BlockNumber,
@@ -594,7 +617,7 @@ func (q *Queries) HolderInsertSnapshot(ctx context.Context, arg HolderInsertSnap
 	return err
 }
 
-const HolderPreviousBalance = `-- name: HolderPreviousBalance :one
+const holderPreviousBalance = `-- name: HolderPreviousBalance :one
 SELECT balance.balance::text
 FROM erc20_holder_balances AS balance
 JOIN canonical_blocks AS canonical
@@ -618,7 +641,7 @@ type HolderPreviousBalanceParams struct {
 }
 
 func (q *Queries) HolderPreviousBalance(ctx context.Context, arg HolderPreviousBalanceParams) (string, error) {
-	row := q.db.QueryRow(ctx, HolderPreviousBalance,
+	row := q.db.QueryRow(ctx, holderPreviousBalance,
 		arg.ChainID,
 		arg.TokenAddress,
 		arg.HolderAddress,
@@ -629,7 +652,7 @@ func (q *Queries) HolderPreviousBalance(ctx context.Context, arg HolderPreviousB
 	return balance_balance, err
 }
 
-const HolderPreviousSnapshot = `-- name: HolderPreviousSnapshot :one
+const holderPreviousSnapshot = `-- name: HolderPreviousSnapshot :one
 SELECT snapshot.block_number::text, snapshot.state,
        snapshot.holder_count::text, snapshot.total_supply::text,
        snapshot.reconciled_balance_sum::text
@@ -655,7 +678,7 @@ type HolderPreviousSnapshotRow struct {
 }
 
 func (q *Queries) HolderPreviousSnapshot(ctx context.Context, chainID pgtype.Numeric, tokenAddress []byte, blockNumber pgtype.Numeric) (HolderPreviousSnapshotRow, error) {
-	row := q.db.QueryRow(ctx, HolderPreviousSnapshot, chainID, tokenAddress, blockNumber)
+	row := q.db.QueryRow(ctx, holderPreviousSnapshot, chainID, tokenAddress, blockNumber)
 	var i HolderPreviousSnapshotRow
 	err := row.Scan(
 		&i.SnapshotBlockNumber,
@@ -667,7 +690,7 @@ func (q *Queries) HolderPreviousSnapshot(ctx context.Context, chainID pgtype.Num
 	return i, err
 }
 
-const HolderSourcePrerequisites = `-- name: HolderSourcePrerequisites :one
+const holderSourcePrerequisites = `-- name: HolderSourcePrerequisites :one
 SELECT configuration.configured_start::text,
        EXISTS (
            SELECT 1 FROM canonical_blocks AS canonical
@@ -703,7 +726,7 @@ type HolderSourcePrerequisitesRow struct {
 }
 
 func (q *Queries) HolderSourcePrerequisites(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) (HolderSourcePrerequisitesRow, error) {
-	row := q.db.QueryRow(ctx, HolderSourcePrerequisites, chainID, blockNumber, blockHash)
+	row := q.db.QueryRow(ctx, holderSourcePrerequisites, chainID, blockNumber, blockHash)
 	var i HolderSourcePrerequisitesRow
 	err := row.Scan(
 		&i.ConfigurationConfiguredStart,
@@ -714,7 +737,7 @@ func (q *Queries) HolderSourcePrerequisites(ctx context.Context, chainID pgtype.
 	return i, err
 }
 
-const HolderTokenIdentity = `-- name: HolderTokenIdentity :one
+const holderTokenIdentity = `-- name: HolderTokenIdentity :one
 SELECT token.standard, token.confidence
 FROM token_contracts AS token
 JOIN canonical_blocks AS canonical
@@ -734,67 +757,84 @@ type HolderTokenIdentityRow struct {
 }
 
 func (q *Queries) HolderTokenIdentity(ctx context.Context, chainID pgtype.Numeric, tokenAddress []byte, blockNumber pgtype.Numeric) (HolderTokenIdentityRow, error) {
-	row := q.db.QueryRow(ctx, HolderTokenIdentity, chainID, tokenAddress, blockNumber)
+	row := q.db.QueryRow(ctx, holderTokenIdentity, chainID, tokenAddress, blockNumber)
 	var i HolderTokenIdentityRow
 	err := row.Scan(&i.Standard, &i.Confidence)
 	return i, err
 }
 
-const HolderTouchedCandidates = `-- name: HolderTouchedCandidates :many
-SELECT candidate.holder_address
-FROM (
-    SELECT event.from_address AS holder_address
-    FROM token_events AS event
-    WHERE event.chain_id = $1::numeric
-      AND event.token_address = $2::bytea
-      AND event.block_number = $3::numeric
-      AND event.block_hash = $4::bytea
-      AND event.canonical AND event.standard = 'erc20'
-      AND event.event_kind IN ('transfer', 'mint', 'burn')
-      AND event.confidence IN ('high', 'verified')
-      AND event.from_address IS NOT NULL
-      AND event.from_address <> decode(repeat('00', 20), 'hex')
-    UNION
-    SELECT event.to_address AS holder_address
-    FROM token_events AS event
-    WHERE event.chain_id = $1::numeric
-      AND event.token_address = $2::bytea
-      AND event.block_number = $3::numeric
-      AND event.block_hash = $4::bytea
-      AND event.canonical AND event.standard = 'erc20'
-      AND event.event_kind IN ('transfer', 'mint', 'burn')
-      AND event.confidence IN ('high', 'verified')
-      AND event.to_address IS NOT NULL
-      AND event.to_address <> decode(repeat('00', 20), 'hex')
-) AS candidate
-ORDER BY candidate.holder_address
+const holderTouchedCandidates = `-- name: HolderTouchedCandidates :many
+SELECT event.block_number::text AS block_number, event.log_index, event.sub_index,
+       event.block_hash, event.from_address, event.to_address
+FROM token_events AS event
+WHERE event.chain_id = $1::text::numeric
+  AND event.token_address = $2::bytea
+  AND event.block_number = $3::text::numeric
+  AND event.block_hash = $4::bytea
+  AND event.canonical AND event.standard = 'erc20'
+  AND event.event_kind IN ('transfer', 'mint', 'burn')
+  AND event.confidence IN ('high', 'verified')
+  AND (NOT $5::boolean OR
+       (event.block_number, event.log_index, event.sub_index, event.block_hash) <
+       ($6::text::numeric, $7::bigint,
+        $8::integer, $9::bytea))
+ORDER BY event.block_number DESC, event.log_index DESC, event.sub_index DESC, event.block_hash DESC
+LIMIT $10::integer
 `
 
 type HolderTouchedCandidatesParams struct {
-	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
-	TokenAddress []byte         `db:"token_address" json:"token_address"`
-	BlockNumber  pgtype.Numeric `db:"block_number" json:"block_number"`
-	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
+	ChainID      string `db:"chain_id" json:"chain_id"`
+	TokenAddress []byte `db:"token_address" json:"token_address"`
+	BlockNumber  string `db:"block_number" json:"block_number"`
+	BlockHash    []byte `db:"block_hash" json:"block_hash"`
+	HasCursor    bool   `db:"has_cursor" json:"has_cursor"`
+	BeforeNumber string `db:"before_number" json:"before_number"`
+	BeforeLog    int64  `db:"before_log" json:"before_log"`
+	BeforeSub    int32  `db:"before_sub" json:"before_sub"`
+	BeforeHash   []byte `db:"before_hash" json:"before_hash"`
+	PageLimit    int32  `db:"page_limit" json:"page_limit"`
 }
 
-func (q *Queries) HolderTouchedCandidates(ctx context.Context, arg HolderTouchedCandidatesParams) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, HolderTouchedCandidates,
+type HolderTouchedCandidatesRow struct {
+	BlockNumber string `db:"block_number" json:"block_number"`
+	LogIndex    int64  `db:"log_index" json:"log_index"`
+	SubIndex    int32  `db:"sub_index" json:"sub_index"`
+	BlockHash   []byte `db:"block_hash" json:"block_hash"`
+	FromAddress []byte `db:"from_address" json:"from_address"`
+	ToAddress   []byte `db:"to_address" json:"to_address"`
+}
+
+func (q *Queries) HolderTouchedCandidates(ctx context.Context, arg HolderTouchedCandidatesParams) ([]HolderTouchedCandidatesRow, error) {
+	rows, err := q.db.Query(ctx, holderTouchedCandidates,
 		arg.ChainID,
 		arg.TokenAddress,
 		arg.BlockNumber,
 		arg.BlockHash,
+		arg.HasCursor,
+		arg.BeforeNumber,
+		arg.BeforeLog,
+		arg.BeforeSub,
+		arg.BeforeHash,
+		arg.PageLimit,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := [][]byte{}
+	items := []HolderTouchedCandidatesRow{}
 	for rows.Next() {
-		var holder_address []byte
-		if err := rows.Scan(&holder_address); err != nil {
+		var i HolderTouchedCandidatesRow
+		if err := rows.Scan(
+			&i.BlockNumber,
+			&i.LogIndex,
+			&i.SubIndex,
+			&i.BlockHash,
+			&i.FromAddress,
+			&i.ToAddress,
+		); err != nil {
 			return nil, err
 		}
-		items = append(items, holder_address)
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

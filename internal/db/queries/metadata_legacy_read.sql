@@ -1,30 +1,30 @@
--- name: MetadataAnyNFTMetadata :many
+-- name: MetadataAnyNFTMetadata :one
 SELECT EXISTS (
     SELECT 1 FROM external_metadata AS metadata
-    WHERE metadata.chain_id = $1::numeric AND metadata.resource_kind = 'nft'
-      AND metadata.token_address = $2 AND metadata.token_id = $3::numeric
+    WHERE metadata.chain_id = sqlc.arg('chain_id')::numeric AND metadata.resource_kind = 'nft'
+      AND metadata.token_address = sqlc.arg('token_address') AND metadata.token_id = sqlc.arg('token_id')::numeric
 ) OR EXISTS (
     SELECT 1 FROM nft_metadata_source_observations AS source
-    WHERE source.chain_id = $1::numeric
-      AND source.token_address = $2 AND source.token_id = $3::numeric
+    WHERE source.chain_id = sqlc.arg('chain_id')::numeric
+      AND source.token_address = sqlc.arg('token_address') AND source.token_id = sqlc.arg('token_id')::numeric
 ) OR EXISTS (
     SELECT 1 FROM nft_metadata_update_observations AS update
-    WHERE update.chain_id = $1::numeric AND update.state = 'accepted'
-      AND update.token_address = $2
+    WHERE update.chain_id = sqlc.arg('chain_id')::numeric AND update.state = 'accepted'
+      AND update.token_address = sqlc.arg('token_address')
       AND (
           (
               update.event_kind IN ('erc4906_single', 'erc1155_uri')
-              AND update.from_token_id = $3::numeric
+              AND update.from_token_id = sqlc.arg('token_id')::numeric
           ) OR (
               update.event_kind = 'erc4906_batch'
-              AND $3::numeric BETWEEN update.from_token_id AND update.to_token_id
+              AND sqlc.arg('token_id')::numeric BETWEEN update.from_token_id AND update.to_token_id
               AND (
                   EXISTS (
                       SELECT 1
                       FROM token_events AS known_event
                       WHERE known_event.chain_id = update.chain_id
                         AND known_event.token_address = update.token_address
-                        AND known_event.token_id = $3::numeric
+                        AND known_event.token_id = sqlc.arg('token_id')::numeric
                         AND known_event.standard = update.standard
                         AND known_event.block_number <= update.block_number
                   ) OR EXISTS (
@@ -32,16 +32,16 @@ SELECT EXISTS (
                       FROM nft_metadata_source_observations AS known_source
                       WHERE known_source.chain_id = update.chain_id
                         AND known_source.token_address = update.token_address
-                        AND known_source.token_id = $3::numeric
+                        AND known_source.token_id = sqlc.arg('token_id')::numeric
                         AND known_source.standard = update.standard
                         AND known_source.block_number <= update.block_number
                   )
               )
           )
       )
-);
+) AS present;
 
--- name: MetadataCanonicalNFTContract :many
+-- name: MetadataCanonicalNFTContract :one
 SELECT EXISTS (
     SELECT 1
     FROM token_contracts AS token
@@ -49,22 +49,22 @@ SELECT EXISTS (
       ON canonical.chain_id = token.chain_id
      AND canonical.number = token.observed_block_number
      AND canonical.block_hash = token.observed_block_hash
-    WHERE token.chain_id = $1::numeric
-      AND token.address = $2
+    WHERE token.chain_id = sqlc.arg('chain_id')::numeric
+      AND token.address = sqlc.arg('address')
       AND token.standard IN ('erc721', 'erc1155')
 );
 
--- name: MetadataCanonicalObservation :many
+-- name: MetadataCanonicalObservation :one
 SELECT EXISTS (
     SELECT 1 FROM canonical_blocks
-    WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3
+    WHERE chain_id = sqlc.arg('chain_id')::numeric AND number = sqlc.arg('number')::numeric AND block_hash = sqlc.arg('block_hash')
 );
 
--- name: MetadataClaimMetadataJob :many
+-- name: MetadataClaimMetadataJob :one
 WITH candidate AS (
     SELECT id FROM durable_jobs
     WHERE kind = 'metadata'
-      AND chain_id = $4::numeric
+      AND chain_id = sqlc.arg('chain_id')::numeric
       AND stage = 'nft-metadata' AND stage_version = 1
       AND attempts < max_attempts
       AND ((status = 'queued' AND available_at <= clock_timestamp())
@@ -75,29 +75,29 @@ WITH candidate AS (
 )
 UPDATE durable_jobs AS job
 SET status = 'leased', attempts = job.attempts + 1,
-    leased_by = $1, lease_token = $2,
-    lease_expires_at = clock_timestamp() + ($3 * INTERVAL '1 microsecond'),
+    leased_by = sqlc.arg('leased_by'), lease_token = sqlc.arg('lease_token'),
+    lease_expires_at = clock_timestamp() + (sqlc.arg('lease_microseconds')::bigint * INTERVAL '1 microsecond'),
     result = NULL, updated_at = clock_timestamp()
 FROM candidate
 WHERE job.id = candidate.id
 RETURNING job.id, job.chain_id::text, job.attempts, job.max_attempts, job.payload;
 
--- name: MetadataCurrentMetadataResource :many
+-- name: MetadataCurrentMetadataResource :one
 SELECT
     EXISTS (
         SELECT 1 FROM external_metadata
-        WHERE chain_id = $1::numeric AND resource_kind = 'nft' AND resource_key = $2
-          AND identity_hash = $6
-          AND token_address = $3 AND token_id = $4::numeric
-          AND observed_block_number = $5::numeric AND observed_block_hash = $6
-          AND source_uri = $7
+        WHERE chain_id = sqlc.arg('chain_id')::numeric AND resource_kind = 'nft' AND resource_key = sqlc.arg('resource_key')
+          AND identity_hash = sqlc.arg('identity_hash')
+          AND token_address = sqlc.arg('token_address') AND token_id = sqlc.arg('token_id')::numeric
+          AND observed_block_number = sqlc.arg('observed_block_number')::numeric AND observed_block_hash = sqlc.arg('identity_hash')
+          AND source_uri = sqlc.arg('source_uri')
     ),
     EXISTS (
         SELECT 1 FROM canonical_blocks
-        WHERE chain_id = $1::numeric AND number = $5::numeric AND block_hash = $6
+        WHERE chain_id = sqlc.arg('chain_id')::numeric AND number = sqlc.arg('observed_block_number')::numeric AND block_hash = sqlc.arg('identity_hash')
     );
 
--- name: MetadataCurrentNFTImage :many
+-- name: MetadataCurrentNFTImage :one
 SELECT EXISTS (
     SELECT 1
     FROM external_metadata AS metadata
@@ -105,15 +105,15 @@ SELECT EXISTS (
       ON canonical.chain_id = metadata.chain_id
      AND canonical.number = metadata.observed_block_number
      AND canonical.block_hash = metadata.observed_block_hash
-    WHERE metadata.chain_id = $1::numeric
+    WHERE metadata.chain_id = sqlc.arg('chain_id')::numeric
       AND metadata.resource_kind = 'nft'
-      AND metadata.token_address = $2
-      AND metadata.token_id = $3::numeric
-      AND metadata.observed_block_number = $4::numeric
-      AND metadata.observed_block_hash = $5
+      AND metadata.token_address = sqlc.arg('token_address')
+      AND metadata.token_id = sqlc.arg('token_id')::numeric
+      AND metadata.observed_block_number = sqlc.arg('observed_block_number')::numeric
+      AND metadata.observed_block_hash = sqlc.arg('observed_block_hash')
       AND metadata.state = 'available'
       AND jsonb_typeof(metadata.document -> 'image') = 'string'
-      AND btrim(metadata.document ->> 'image') = $6
+      AND btrim(metadata.document ->> 'image') = sqlc.arg('document')
       AND NOT EXISTS (
           SELECT 1
           FROM external_metadata AS newer
@@ -138,7 +138,7 @@ WITH exhausted AS (
         leased_by = NULL, lease_token = NULL, lease_expires_at = NULL,
         updated_at = clock_timestamp()
     WHERE kind = 'metadata'
-      AND chain_id = $1::numeric
+      AND chain_id = sqlc.arg('chain_id')::numeric
       AND stage = 'nft-metadata' AND stage_version = 1
       AND attempts >= max_attempts
       AND ((status = 'queued' AND available_at <= clock_timestamp())
@@ -169,52 +169,60 @@ SELECT chain_id, 'nft', payload->>'resource_key', id, attempts, 'error',
 FROM updated
 ON CONFLICT (durable_job_id, attempt) DO NOTHING;
 
--- name: MetadataExistingMetadataJob :many
+-- name: MetadataExistingMetadataJob :one
 SELECT id FROM durable_jobs
-WHERE chain_id = $1::numeric AND kind = 'metadata' AND idempotency_key = $2;
+WHERE chain_id = sqlc.arg('chain_id')::numeric AND kind = 'metadata' AND idempotency_key = sqlc.arg('idempotency_key');
 
--- name: MetadataExistingMetadataResource :many
+-- name: MetadataExistingMetadataResource :one
 SELECT resource_key, source_uri, token_address, token_id::text,
        observed_block_number::text, observed_block_hash
 FROM external_metadata
-WHERE chain_id = $1::numeric AND resource_kind = 'nft'
-  AND token_address = $2 AND token_id = $3::numeric AND observed_block_hash = $4
+WHERE chain_id = sqlc.arg('chain_id')::numeric AND resource_kind = 'nft'
+  AND token_address = sqlc.arg('token_address') AND token_id = sqlc.arg('token_id')::numeric AND observed_block_hash = sqlc.arg('observed_block_hash')
 FOR UPDATE;
 
--- name: MetadataExistingNFTSource :many
+-- name: MetadataExistingNFTSource :one
 SELECT token_address, token_id::text, block_number::text, block_hash,
        standard, state, source_uri, error_code
 FROM nft_metadata_source_observations
-WHERE chain_id = $1::numeric AND token_address = $2
-  AND token_id = $3::numeric AND block_hash = $4;
+WHERE chain_id = sqlc.arg('chain_id')::numeric AND token_address = sqlc.arg('token_address')
+  AND token_id = sqlc.arg('token_id')::numeric AND block_hash = sqlc.arg('block_hash');
 
--- name: MetadataExistingNFTUpdateObservation :many
-SELECT block_number::text, block_hash, log_index, token_address,
-       standard, event_kind, state,
-       COALESCE(from_token_id::text, ''), COALESCE(to_token_id::text, ''), error_code
+-- name: MetadataExistingNFTUpdateObservation :one
+SELECT
+block_number::text,
+block_hash,
+log_index,
+token_address,
+standard,
+event_kind,
+state,
+(COALESCE(from_token_id::text, ''))::text AS from_token_id,
+(COALESCE(to_token_id::text, ''))::text AS to_token_id,
+error_code
 FROM nft_metadata_update_observations
-WHERE chain_id = $1::numeric AND block_number = $2::numeric
-  AND block_hash = $3 AND log_index = $4;
+WHERE chain_id = sqlc.arg('chain_id')::numeric AND block_number = sqlc.arg('block_number')::numeric
+  AND block_hash = sqlc.arg('block_hash') AND log_index = sqlc.arg('log_index');
 
--- name: MetadataLockMetadataResource :many
-SELECT token_address = $3
-   AND token_id = $4::numeric
-   AND observed_block_number = $5::numeric
-   AND observed_block_hash = $6
-   AND source_uri = $7
+-- name: MetadataLockMetadataResource :one
+SELECT token_address = sqlc.arg('token_address')
+   AND token_id = sqlc.arg('token_id')::numeric
+   AND observed_block_number = sqlc.arg('observed_block_number')::numeric
+   AND observed_block_hash = sqlc.arg('observed_block_hash')
+   AND source_uri = sqlc.arg('source_uri') AS locked
 FROM external_metadata
-WHERE chain_id = $1::numeric AND resource_kind = 'nft' AND resource_key = $2
-  AND identity_hash = $6
+WHERE chain_id = sqlc.arg('chain_id')::numeric AND resource_kind = 'nft' AND resource_key = sqlc.arg('resource_key')
+  AND identity_hash = sqlc.arg('observed_block_hash')
 FOR UPDATE;
 
--- name: MetadataLockOwnedMetadataJob :many
+-- name: MetadataLockOwnedMetadataJob :one
 SELECT chain_id::text, payload, max_attempts
 FROM durable_jobs
 WHERE id = $1 AND kind = 'metadata' AND status = 'leased'
   AND lease_token = $2 AND lease_expires_at > clock_timestamp()
 FOR UPDATE;
 
--- name: MetadataNextNFTSource :many
+-- name: MetadataNextNFTSource :one
 WITH known_ids AS (
     SELECT event.chain_id, event.token_address, event.token_id,
            event.standard, event.block_number, event.block_hash
@@ -223,7 +231,7 @@ WITH known_ids AS (
       ON canonical.chain_id = event.chain_id
      AND canonical.number = event.block_number
      AND canonical.block_hash = event.block_hash
-    WHERE event.chain_id = $1::numeric
+    WHERE event.chain_id = sqlc.arg('chain_id')::numeric
       AND event.token_id IS NOT NULL
       AND event.standard IN ('erc721', 'erc1155')
     UNION
@@ -234,7 +242,7 @@ WITH known_ids AS (
       ON canonical.chain_id = source.chain_id
      AND canonical.number = source.block_number
      AND canonical.block_hash = source.block_hash
-    WHERE source.chain_id = $1::numeric
+    WHERE source.chain_id = sqlc.arg('chain_id')::numeric
 ), candidates AS (
     SELECT event.token_address, event.token_id, event.block_number,
            event.block_hash, event.standard, 0::bigint AS signal_order,
@@ -244,7 +252,7 @@ WITH known_ids AS (
       ON canonical.chain_id = event.chain_id
      AND canonical.number = event.block_number
      AND canonical.block_hash = event.block_hash
-    WHERE event.chain_id = $1::numeric
+    WHERE event.chain_id = sqlc.arg('chain_id')::numeric
       AND event.token_id IS NOT NULL
       AND event.standard IN ('erc721', 'erc1155')
     UNION ALL
@@ -256,7 +264,7 @@ WITH known_ids AS (
       ON canonical.chain_id = update.chain_id
      AND canonical.number = update.block_number
      AND canonical.block_hash = update.block_hash
-    WHERE update.chain_id = $1::numeric
+    WHERE update.chain_id = sqlc.arg('chain_id')::numeric
       AND update.state = 'accepted'
       AND update.event_kind IN ('erc4906_single', 'erc1155_uri')
     UNION ALL
@@ -274,7 +282,7 @@ WITH known_ids AS (
      AND known.standard = update.standard
      AND known.block_number <= update.block_number
      AND known.token_id BETWEEN update.from_token_id AND update.to_token_id
-    WHERE update.chain_id = $1::numeric
+    WHERE update.chain_id = sqlc.arg('chain_id')::numeric
       AND update.state = 'accepted'
       AND update.event_kind = 'erc4906_batch'
 ), pending AS (
@@ -288,7 +296,7 @@ WITH known_ids AS (
     WHERE NOT EXISTS (
         SELECT 1
         FROM external_metadata AS metadata
-        WHERE metadata.chain_id = $1::numeric
+        WHERE metadata.chain_id = sqlc.arg('chain_id')::numeric
           AND metadata.resource_kind = 'nft'
           AND metadata.token_address = candidate.token_address
           AND metadata.token_id = candidate.token_id
@@ -297,7 +305,7 @@ WITH known_ids AS (
       AND NOT EXISTS (
         SELECT 1
         FROM nft_metadata_source_observations AS source
-        WHERE source.chain_id = $1::numeric
+        WHERE source.chain_id = sqlc.arg('chain_id')::numeric
           AND source.token_address = candidate.token_address
           AND source.token_id = candidate.token_id
           AND source.block_hash = candidate.block_hash
@@ -313,7 +321,7 @@ ORDER BY pending.block_number, pending.signal_order, pending.log_index,
          pending.sub_index, pending.token_address, pending.token_id
 LIMIT 1;
 
--- name: MetadataNextNFTUpdateLog :many
+-- name: MetadataNextNFTUpdateLog :one
 SELECT log.block_number::text, log.block_hash, log.log_index,
        log.tx_hash, log.address, log.raw, token.standard
 FROM logs AS log
@@ -336,8 +344,8 @@ JOIN LATERAL (
              observation.code_hash DESC
     LIMIT 1
 ) AS token ON token.standard IN ('erc721', 'erc1155')
-WHERE log.chain_id = $1::numeric
-  AND log.topic0 IN ($2, $3, $4)
+WHERE log.chain_id = sqlc.arg('chain_id')::numeric
+  AND log.topic0 IN (sqlc.arg('topic0'), sqlc.arg('topic0_2'), sqlc.arg('topic0_3'))
   AND NOT EXISTS (
       SELECT 1
       FROM nft_metadata_update_observations AS update
@@ -349,28 +357,34 @@ WHERE log.chain_id = $1::numeric
 ORDER BY log.block_number, log.log_index
 LIMIT 1;
 
--- name: MetadataSelectCanonicalNFTImage :many
-SELECT metadata.state,
-       CASE
+-- name: MetadataSelectCanonicalNFTImage :one
+SELECT
+metadata.state,
+COALESCE((CASE
            WHEN jsonb_typeof(metadata.document -> 'image') = 'string'
            THEN metadata.document ->> 'image'
            ELSE NULL
-       END,
-       metadata.observed_block_number::text,
-       metadata.observed_block_hash
+       END),'')::text AS image,
+metadata.observed_block_number::text,
+metadata.observed_block_hash,
+(CASE
+           WHEN jsonb_typeof(metadata.document -> 'image') = 'string'
+           THEN metadata.document ->> 'image'
+           ELSE NULL
+       END IS NOT NULL)::boolean AS image_present
 FROM external_metadata AS metadata
 JOIN canonical_blocks AS canonical
   ON canonical.chain_id = metadata.chain_id
  AND canonical.number = metadata.observed_block_number
  AND canonical.block_hash = metadata.observed_block_hash
-WHERE metadata.chain_id = $1::numeric
+WHERE metadata.chain_id = sqlc.arg('chain_id')::numeric
   AND metadata.resource_kind = 'nft'
-  AND metadata.token_address = $2
-  AND metadata.token_id = $3::numeric
+  AND metadata.token_address = sqlc.arg('token_address')
+  AND metadata.token_id = sqlc.arg('token_id')::numeric
 ORDER BY metadata.observed_block_number DESC, metadata.observed_block_hash
 LIMIT 1;
 
--- name: MetadataSelectCanonicalNFTMetadata :many
+-- name: MetadataSelectCanonicalNFTMetadata :one
 WITH signals AS (
     SELECT metadata.state,
            metadata.observed_block_number AS block_number,
@@ -382,10 +396,10 @@ WITH signals AS (
       ON canonical.chain_id = metadata.chain_id
      AND canonical.number = metadata.observed_block_number
      AND canonical.block_hash = metadata.observed_block_hash
-    WHERE metadata.chain_id = $1::numeric
+    WHERE metadata.chain_id = sqlc.arg('chain_id')::numeric
       AND metadata.resource_kind = 'nft'
-      AND metadata.token_address = $2
-      AND metadata.token_id = $3::numeric
+      AND metadata.token_address = sqlc.arg('token_address')
+      AND metadata.token_id = sqlc.arg('token_id')::numeric
     UNION ALL
     SELECT CASE source.state WHEN 'found' THEN 'pending' ELSE 'unavailable' END,
            source.block_number, source.block_hash,
@@ -395,9 +409,9 @@ WITH signals AS (
       ON canonical.chain_id = source.chain_id
      AND canonical.number = source.block_number
      AND canonical.block_hash = source.block_hash
-    WHERE source.chain_id = $1::numeric
-      AND source.token_address = $2
-      AND source.token_id = $3::numeric
+    WHERE source.chain_id = sqlc.arg('chain_id')::numeric
+      AND source.token_address = sqlc.arg('token_address')
+      AND source.token_id = sqlc.arg('token_id')::numeric
     UNION ALL
     SELECT 'pending', update.block_number, update.block_hash,
            1::bigint, update.log_index
@@ -406,16 +420,16 @@ WITH signals AS (
       ON canonical.chain_id = update.chain_id
      AND canonical.number = update.block_number
      AND canonical.block_hash = update.block_hash
-    WHERE update.chain_id = $1::numeric
+    WHERE update.chain_id = sqlc.arg('chain_id')::numeric
       AND update.state = 'accepted'
-      AND update.token_address = $2
+      AND update.token_address = sqlc.arg('token_address')
       AND (
           (
               update.event_kind IN ('erc4906_single', 'erc1155_uri')
-              AND update.from_token_id = $3::numeric
+              AND update.from_token_id = sqlc.arg('token_id')::numeric
           ) OR (
               update.event_kind = 'erc4906_batch'
-              AND $3::numeric BETWEEN update.from_token_id AND update.to_token_id
+              AND sqlc.arg('token_id')::numeric BETWEEN update.from_token_id AND update.to_token_id
               AND (
                   EXISTS (
                       SELECT 1
@@ -426,7 +440,7 @@ WITH signals AS (
                        AND known_canonical.block_hash = known_event.block_hash
                       WHERE known_event.chain_id = update.chain_id
                         AND known_event.token_address = update.token_address
-                        AND known_event.token_id = $3::numeric
+                        AND known_event.token_id = sqlc.arg('token_id')::numeric
                         AND known_event.standard = update.standard
                         AND known_event.block_number <= update.block_number
                   ) OR EXISTS (
@@ -438,7 +452,7 @@ WITH signals AS (
                        AND known_canonical.block_hash = known_source.block_hash
                       WHERE known_source.chain_id = update.chain_id
                         AND known_source.token_address = update.token_address
-                        AND known_source.token_id = $3::numeric
+                        AND known_source.token_id = sqlc.arg('token_id')::numeric
                         AND known_source.standard = update.standard
                         AND known_source.block_number <= update.block_number
                   )
@@ -459,10 +473,10 @@ WITH signals AS (
       ON canonical.chain_id = metadata.chain_id
      AND canonical.number = metadata.observed_block_number
      AND canonical.block_hash = metadata.observed_block_hash
-    WHERE metadata.chain_id = $1::numeric
+    WHERE metadata.chain_id = sqlc.arg('chain_id')::numeric
       AND metadata.resource_kind = 'nft'
-      AND metadata.token_address = $2
-      AND metadata.token_id = $3::numeric
+      AND metadata.token_address = sqlc.arg('token_address')
+      AND metadata.token_id = sqlc.arg('token_id')::numeric
       AND metadata.state = 'available'
     ORDER BY metadata.observed_block_number DESC, metadata.observed_block_hash DESC
     LIMIT 1
@@ -471,7 +485,7 @@ SELECT latest_signal.state,
        latest_signal.block_number::text,
        latest_signal.block_hash,
        content.document,
-       content.block_number::text,
+       content.block_number,
        content.block_hash
 FROM latest_signal
 LEFT JOIN content ON TRUE;

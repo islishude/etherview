@@ -3,7 +3,6 @@ package observability
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -13,14 +12,14 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestRegistryExportsBoundedRuntimeAndDatabasePoolMetrics(t *testing.T) {
 	registry := NewRegistry("test", "api")
-	writer := new(sql.DB)
-	writer.SetMaxOpenConns(7)
-	reader := new(sql.DB)
-	reader.SetMaxOpenConns(5)
+	writer := testPool(t, 7)
+	reader := testPool(t, 5)
 	if err := registry.RegisterDatabasePool("writer", writer); err != nil {
 		t.Fatal(err)
 	}
@@ -29,9 +28,9 @@ func TestRegistryExportsBoundedRuntimeAndDatabasePoolMetrics(t *testing.T) {
 	}
 	for _, invalid := range []struct {
 		name string
-		db   *sql.DB
+		db   *pgxpool.Pool
 	}{
-		{name: "other", db: new(sql.DB)},
+		{name: "other", db: writer},
 		{name: "writer", db: writer},
 		{name: "reader", db: nil},
 	} {
@@ -47,7 +46,7 @@ func TestRegistryExportsBoundedRuntimeAndDatabasePoolMetrics(t *testing.T) {
 		`etherview_database_max_open_connections{pool="reader"} 5`,
 		`etherview_database_max_open_connections{pool="writer"} 7`,
 		`etherview_database_connections{pool="writer",state="open"} 0`,
-		`etherview_database_wait_count_total{pool="writer"} 0`,
+		`etherview_database_empty_acquire_count_total{pool="writer"} 0`,
 		`etherview_database_connections_closed_total{pool="writer",reason="lifetime"} 0`,
 	} {
 		if !strings.Contains(exposition, expected) {
@@ -767,4 +766,20 @@ func TestParseLogLevel(t *testing.T) {
 			t.Fatalf("ParseLogLevel(%q) = %s, want %s", value, got, want)
 		}
 	}
+}
+
+func testPool(t *testing.T, maximum int32) *pgxpool.Pool {
+	t.Helper()
+	config, err := pgxpool.ParseConfig("postgres://localhost/unused")
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.MinConns = 0
+	config.MaxConns = maximum
+	pool, err := pgxpool.NewWithConfig(t.Context(), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	return pool
 }

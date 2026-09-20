@@ -2,16 +2,17 @@ package catalog
 
 import (
 	"context"
-	"database/sql/driver"
 	"errors"
 	"fmt"
 	"strings"
 	"testing"
+
+	testpgx "github.com/islishude/etherview/internal/testpgx"
 )
 
 func TestAddressInternalTransactionsAreCanonicalPaginatedAndReorgBound(t *testing.T) {
 	subject := "0x" + strings.Repeat("11", 20)
-	rows := [][]driver.Value{
+	rows := [][]any{
 		internalActivityRow("100", "2", "0.1", 0x31),
 		internalActivityRow("99", "1", "0", 0x32),
 		internalActivityRow("98", "0", "0", 0x33),
@@ -22,10 +23,10 @@ func TestAddressInternalTransactionsAreCanonicalPaginatedAndReorgBound(t *testin
 		catalogQueryStep{
 			contains: "FROM candidates",
 			rows:     catalogRows(17, rows...),
-			check: func(arguments []driver.NamedValue) error {
-				if len(arguments) != 10 || arguments[3].Value != false ||
-					arguments[4].Value != "0" || arguments[6].Value != "0" ||
-					arguments[9].Value != int64(3) {
+			check: func(arguments []any) error {
+				if len(arguments) != 10 || arguments[0] != false ||
+					!testpgx.NumericEquals(arguments[1], "0") || arguments[3] != "0" ||
+					arguments[6] != int32(3) {
 					return fmt.Errorf("unsafe first-page arguments: %v", arguments)
 				}
 				return nil
@@ -49,14 +50,14 @@ func TestAddressInternalTransactionsAreCanonicalPaginatedAndReorgBound(t *testin
 	backend.mu.Lock()
 	query := backend.queries[len(backend.queries)-1]
 	backend.mu.Unlock()
-	if !strings.Contains(query, "UNION") || !strings.Contains(query, "created_address = $3") ||
+	if !strings.Contains(query, "UNION") || !strings.Contains(query, "created_address = $10") ||
 		!strings.Contains(query, "JOIN canonical_blocks") {
 		t.Fatalf("query lacks indexed canonical branches: %s", query)
 	}
 	assertCatalogConsumed(t, backend)
 
 	reorged, reorgBackend := openCatalog(t,
-		catalogQueryStep{contains: "SELECT EXISTS", rows: catalogRows(1, []driver.Value{false})},
+		catalogQueryStep{contains: "SELECT EXISTS", rows: catalogRows(1, []any{false})},
 	)
 	_, err = reorged.AddressInternalTransactions(context.Background(), AddressActivityRequest{
 		ChainID: "1", Address: subject, Cursor: page.NextCursor, Limit: 2,
@@ -78,9 +79,9 @@ func TestAddressNFTTransfersMergeERC721AndERC1155(t *testing.T) {
 				tokenActivityRow("100", "2", "9", "0", "erc721", "transfer", "42", nil, 0x41),
 				tokenActivityRow("100", "2", "8", "1", "erc1155", "mint", "7", "340282366920938463463374607431768211455", 0x42),
 			),
-			check: func(arguments []driver.NamedValue) error {
-				if len(arguments) != 12 || arguments[3].Value != "nft" ||
-					arguments[4].Value != false || arguments[11].Value != int64(3) {
+			check: func(arguments []any) error {
+				if len(arguments) != 12 || arguments[11] != "nft" ||
+					arguments[0] != false || arguments[7] != int32(3) {
 					return fmt.Errorf("unexpected NFT arguments: %v", arguments)
 				}
 				return nil
@@ -110,7 +111,7 @@ func TestAddressNFTTransfersMergeERC721AndERC1155(t *testing.T) {
 
 func TestAddressERC20TransfersExposeExactBlockDecimals(t *testing.T) {
 	row := tokenActivityRow("100", "2", "9", "0", "erc20", "transfer", "", "1234500", 0x41)
-	row[12], row[15] = nil, int64(6)
+	row[12], row[15] = nil, "6"
 	catalog, backend := openCatalog(t,
 		snapshotStep("100", bytesOf(0xaa, 32)), stageStep("complete"),
 		catalogQueryStep{contains: "LEFT JOIN LATERAL", rows: catalogRows(16, row)},
@@ -145,9 +146,9 @@ func internalActivityRow(
 	transactionIndex string,
 	path string,
 	hashByte byte,
-) []driver.Value {
+) []any {
 	depth := int64(len(strings.Split(path, ".")))
-	return []driver.Value{
+	return []any{
 		blockNumber, bytesOf(hashByte, 32), "1700000000",
 		bytesOf(hashByte+1, 32), transactionIndex, path, depth, "create",
 		bytesOf(0x11, 20), nil, bytesOf(0x22, 20),
@@ -166,8 +167,8 @@ func tokenActivityRow(
 	tokenID string,
 	amount any,
 	hashByte byte,
-) []driver.Value {
-	return []driver.Value{
+) []any {
+	return []any{
 		blockNumber, bytesOf(hashByte, 32), "1700000000",
 		bytesOf(hashByte+1, 32), transactionIndex, logIndex, subIndex,
 		bytesOf(0x44, 20), standard, kind,

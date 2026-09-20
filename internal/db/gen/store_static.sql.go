@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const EnrichClearABIReplayOutputs = `-- name: EnrichClearABIReplayOutputs :exec
+const enrichClearABIReplayOutputs = `-- name: EnrichClearABIReplayOutputs :exec
 WITH delete_abi_decodings AS (
     DELETE FROM abi_decodings WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3::bytea
 ), delete_contract_abis AS (
@@ -21,20 +21,20 @@ DELETE FROM transaction_effective_execution_identities
 WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3::bytea
 `
 
-func (q *Queries) EnrichClearABIReplayOutputs(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, column3 []byte) error {
-	_, err := q.db.Exec(ctx, EnrichClearABIReplayOutputs, column1, column2, column3)
+func (q *Queries) EnrichClearABIReplayOutputs(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error {
+	_, err := q.db.Exec(ctx, enrichClearABIReplayOutputs, chainID, blockNumber, blockHash)
 	return err
 }
 
-const StoreCanonicalBlock = `-- name: StoreCanonicalBlock :many
+const storeCanonicalBlock = `-- name: StoreCanonicalBlock :one
 SELECT canonical.number::text, canonical.block_hash, block.parent_hash
 FROM canonical_blocks AS canonical
 JOIN blocks AS block
   ON block.chain_id = canonical.chain_id
  AND block.number = canonical.number
  AND block.hash = canonical.block_hash
-WHERE canonical.chain_id = $1::numeric
-  AND canonical.number = $2::numeric
+WHERE canonical.chain_id = $1::text::numeric
+  AND canonical.number = $2::text::numeric
 `
 
 type StoreCanonicalBlockRow struct {
@@ -43,34 +43,21 @@ type StoreCanonicalBlockRow struct {
 	ParentHash      []byte `db:"parent_hash" json:"parent_hash"`
 }
 
-func (q *Queries) StoreCanonicalBlock(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) ([]StoreCanonicalBlockRow, error) {
-	rows, err := q.db.Query(ctx, StoreCanonicalBlock, column1, column2)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []StoreCanonicalBlockRow{}
-	for rows.Next() {
-		var i StoreCanonicalBlockRow
-		if err := rows.Scan(&i.CanonicalNumber, &i.BlockHash, &i.ParentHash); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) StoreCanonicalBlock(ctx context.Context, chainID string, number string) (StoreCanonicalBlockRow, error) {
+	row := q.db.QueryRow(ctx, storeCanonicalBlock, chainID, number)
+	var i StoreCanonicalBlockRow
+	err := row.Scan(&i.CanonicalNumber, &i.BlockHash, &i.ParentHash)
+	return i, err
 }
 
-const StoreCanonicalTip = `-- name: StoreCanonicalTip :many
+const storeCanonicalTip = `-- name: StoreCanonicalTip :one
 SELECT canonical.number::text, canonical.block_hash, block.parent_hash
 FROM canonical_blocks AS canonical
 JOIN blocks AS block
   ON block.chain_id = canonical.chain_id
  AND block.number = canonical.number
  AND block.hash = canonical.block_hash
-WHERE canonical.chain_id = $1::numeric
+WHERE canonical.chain_id = $1::text::numeric
 ORDER BY canonical.number DESC
 LIMIT 1
 `
@@ -81,53 +68,27 @@ type StoreCanonicalTipRow struct {
 	ParentHash      []byte `db:"parent_hash" json:"parent_hash"`
 }
 
-func (q *Queries) StoreCanonicalTip(ctx context.Context, dollar_1 pgtype.Numeric) ([]StoreCanonicalTipRow, error) {
-	rows, err := q.db.Query(ctx, StoreCanonicalTip, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []StoreCanonicalTipRow{}
-	for rows.Next() {
-		var i StoreCanonicalTipRow
-		if err := rows.Scan(&i.CanonicalNumber, &i.BlockHash, &i.ParentHash); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) StoreCanonicalTip(ctx context.Context, chainID string) (StoreCanonicalTipRow, error) {
+	row := q.db.QueryRow(ctx, storeCanonicalTip, chainID)
+	var i StoreCanonicalTipRow
+	err := row.Scan(&i.CanonicalNumber, &i.BlockHash, &i.ParentHash)
+	return i, err
 }
 
-const StoreConfiguredStart = `-- name: StoreConfiguredStart :many
+const storeConfiguredStart = `-- name: StoreConfiguredStart :one
 SELECT configured_start::text
 FROM core_index_configuration
-WHERE chain_id = $1::numeric
+WHERE chain_id = $1::text::numeric
 `
 
-func (q *Queries) StoreConfiguredStart(ctx context.Context, dollar_1 pgtype.Numeric) ([]string, error) {
-	rows, err := q.db.Query(ctx, StoreConfiguredStart, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []string{}
-	for rows.Next() {
-		var configured_start string
-		if err := rows.Scan(&configured_start); err != nil {
-			return nil, err
-		}
-		items = append(items, configured_start)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) StoreConfiguredStart(ctx context.Context, chainID string) (string, error) {
+	row := q.db.QueryRow(ctx, storeConfiguredStart, chainID)
+	var configured_start string
+	err := row.Scan(&configured_start)
+	return configured_start, err
 }
 
-const StoreDeleteCoreBlockFacts = `-- name: StoreDeleteCoreBlockFacts :exec
+const storeDeleteCoreBlockFacts = `-- name: StoreDeleteCoreBlockFacts :exec
 WITH delete_logs AS (
     DELETE FROM logs WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3::bytea
 ), delete_receipts AS (
@@ -139,12 +100,12 @@ DELETE FROM withdrawals
 WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3::bytea
 `
 
-func (q *Queries) StoreDeleteCoreBlockFacts(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, column3 []byte) error {
-	_, err := q.db.Exec(ctx, StoreDeleteCoreBlockFacts, column1, column2, column3)
+func (q *Queries) StoreDeleteCoreBlockFacts(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error {
+	_, err := q.db.Exec(ctx, storeDeleteCoreBlockFacts, chainID, blockNumber, blockHash)
 	return err
 }
 
-const StoreDeleteDerivedBlockFacts = `-- name: StoreDeleteDerivedBlockFacts :exec
+const storeDeleteDerivedBlockFacts = `-- name: StoreDeleteDerivedBlockFacts :exec
 WITH delete_stage_results AS (
     DELETE FROM block_stage_results WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3::bytea
 ), delete_proxy_upgrades AS (
@@ -198,61 +159,48 @@ DELETE FROM block_statistics
 WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3::bytea
 `
 
-func (q *Queries) StoreDeleteDerivedBlockFacts(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, column3 []byte) error {
-	_, err := q.db.Exec(ctx, StoreDeleteDerivedBlockFacts, column1, column2, column3)
+func (q *Queries) StoreDeleteDerivedBlockFacts(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error {
+	_, err := q.db.Exec(ctx, storeDeleteDerivedBlockFacts, chainID, blockNumber, blockHash)
 	return err
 }
 
-const StoreFinality = `-- name: StoreFinality :many
-SELECT safe_number::text, safe_hash, finalized_number::text,
+const storeFinality = `-- name: StoreFinality :one
+SELECT safe_number, safe_hash, finalized_number,
        finalized_hash, updated_at
 FROM chain_finality
-WHERE chain_id = $1::numeric
+WHERE chain_id = $1::text::numeric
 `
 
 type StoreFinalityRow struct {
-	SafeNumber      string             `db:"safe_number" json:"safe_number"`
+	SafeNumber      pgtype.Numeric     `db:"safe_number" json:"safe_number"`
 	SafeHash        []byte             `db:"safe_hash" json:"safe_hash"`
-	FinalizedNumber string             `db:"finalized_number" json:"finalized_number"`
+	FinalizedNumber pgtype.Numeric     `db:"finalized_number" json:"finalized_number"`
 	FinalizedHash   []byte             `db:"finalized_hash" json:"finalized_hash"`
 	UpdatedAt       pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
-func (q *Queries) StoreFinality(ctx context.Context, dollar_1 pgtype.Numeric) ([]StoreFinalityRow, error) {
-	rows, err := q.db.Query(ctx, StoreFinality, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []StoreFinalityRow{}
-	for rows.Next() {
-		var i StoreFinalityRow
-		if err := rows.Scan(
-			&i.SafeNumber,
-			&i.SafeHash,
-			&i.FinalizedNumber,
-			&i.FinalizedHash,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) StoreFinality(ctx context.Context, chainID string) (StoreFinalityRow, error) {
+	row := q.db.QueryRow(ctx, storeFinality, chainID)
+	var i StoreFinalityRow
+	err := row.Scan(
+		&i.SafeNumber,
+		&i.SafeHash,
+		&i.FinalizedNumber,
+		&i.FinalizedHash,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
-const StoreLockCanonicalBlock = `-- name: StoreLockCanonicalBlock :many
+const storeLockCanonicalBlock = `-- name: StoreLockCanonicalBlock :one
 SELECT canonical.number::text, canonical.block_hash, block.parent_hash
 FROM canonical_blocks AS canonical
 JOIN blocks AS block
   ON block.chain_id = canonical.chain_id
  AND block.number = canonical.number
  AND block.hash = canonical.block_hash
-WHERE canonical.chain_id = $1::numeric
-  AND canonical.number = $2::numeric
+WHERE canonical.chain_id = $1::text::numeric
+  AND canonical.number = $2::text::numeric
 FOR UPDATE OF canonical
 `
 
@@ -262,34 +210,21 @@ type StoreLockCanonicalBlockRow struct {
 	ParentHash      []byte `db:"parent_hash" json:"parent_hash"`
 }
 
-func (q *Queries) StoreLockCanonicalBlock(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) ([]StoreLockCanonicalBlockRow, error) {
-	rows, err := q.db.Query(ctx, StoreLockCanonicalBlock, column1, column2)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []StoreLockCanonicalBlockRow{}
-	for rows.Next() {
-		var i StoreLockCanonicalBlockRow
-		if err := rows.Scan(&i.CanonicalNumber, &i.BlockHash, &i.ParentHash); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) StoreLockCanonicalBlock(ctx context.Context, chainID string, number string) (StoreLockCanonicalBlockRow, error) {
+	row := q.db.QueryRow(ctx, storeLockCanonicalBlock, chainID, number)
+	var i StoreLockCanonicalBlockRow
+	err := row.Scan(&i.CanonicalNumber, &i.BlockHash, &i.ParentHash)
+	return i, err
 }
 
-const StoreLockCanonicalTip = `-- name: StoreLockCanonicalTip :many
+const storeLockCanonicalTip = `-- name: StoreLockCanonicalTip :one
 SELECT canonical.number::text, canonical.block_hash, block.parent_hash
 FROM canonical_blocks AS canonical
 JOIN blocks AS block
   ON block.chain_id = canonical.chain_id
  AND block.number = canonical.number
  AND block.hash = canonical.block_hash
-WHERE canonical.chain_id = $1::numeric
+WHERE canonical.chain_id = $1::text::numeric
 ORDER BY canonical.number DESC
 LIMIT 1
 FOR UPDATE OF canonical
@@ -301,91 +236,52 @@ type StoreLockCanonicalTipRow struct {
 	ParentHash      []byte `db:"parent_hash" json:"parent_hash"`
 }
 
-func (q *Queries) StoreLockCanonicalTip(ctx context.Context, dollar_1 pgtype.Numeric) ([]StoreLockCanonicalTipRow, error) {
-	rows, err := q.db.Query(ctx, StoreLockCanonicalTip, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []StoreLockCanonicalTipRow{}
-	for rows.Next() {
-		var i StoreLockCanonicalTipRow
-		if err := rows.Scan(&i.CanonicalNumber, &i.BlockHash, &i.ParentHash); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) StoreLockCanonicalTip(ctx context.Context, chainID string) (StoreLockCanonicalTipRow, error) {
+	row := q.db.QueryRow(ctx, storeLockCanonicalTip, chainID)
+	var i StoreLockCanonicalTipRow
+	err := row.Scan(&i.CanonicalNumber, &i.BlockHash, &i.ParentHash)
+	return i, err
 }
 
-const StoreLockConfiguredStart = `-- name: StoreLockConfiguredStart :many
+const storeLockConfiguredStart = `-- name: StoreLockConfiguredStart :one
 SELECT configured_start::text
 FROM core_index_configuration
-WHERE chain_id = $1::numeric
+WHERE chain_id = $1::text::numeric
 FOR UPDATE
 `
 
-func (q *Queries) StoreLockConfiguredStart(ctx context.Context, dollar_1 pgtype.Numeric) ([]string, error) {
-	rows, err := q.db.Query(ctx, StoreLockConfiguredStart, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []string{}
-	for rows.Next() {
-		var configured_start string
-		if err := rows.Scan(&configured_start); err != nil {
-			return nil, err
-		}
-		items = append(items, configured_start)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) StoreLockConfiguredStart(ctx context.Context, chainID string) (string, error) {
+	row := q.db.QueryRow(ctx, storeLockConfiguredStart, chainID)
+	var configured_start string
+	err := row.Scan(&configured_start)
+	return configured_start, err
 }
 
-const StoreLockFinality = `-- name: StoreLockFinality :many
-SELECT safe_number::text, safe_hash, finalized_number::text,
+const storeLockFinality = `-- name: StoreLockFinality :one
+SELECT safe_number, safe_hash, finalized_number,
        finalized_hash, updated_at
 FROM chain_finality
-WHERE chain_id = $1::numeric
+WHERE chain_id = $1::text::numeric
 FOR UPDATE
 `
 
 type StoreLockFinalityRow struct {
-	SafeNumber      string             `db:"safe_number" json:"safe_number"`
+	SafeNumber      pgtype.Numeric     `db:"safe_number" json:"safe_number"`
 	SafeHash        []byte             `db:"safe_hash" json:"safe_hash"`
-	FinalizedNumber string             `db:"finalized_number" json:"finalized_number"`
+	FinalizedNumber pgtype.Numeric     `db:"finalized_number" json:"finalized_number"`
 	FinalizedHash   []byte             `db:"finalized_hash" json:"finalized_hash"`
 	UpdatedAt       pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
-func (q *Queries) StoreLockFinality(ctx context.Context, dollar_1 pgtype.Numeric) ([]StoreLockFinalityRow, error) {
-	rows, err := q.db.Query(ctx, StoreLockFinality, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []StoreLockFinalityRow{}
-	for rows.Next() {
-		var i StoreLockFinalityRow
-		if err := rows.Scan(
-			&i.SafeNumber,
-			&i.SafeHash,
-			&i.FinalizedNumber,
-			&i.FinalizedHash,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) StoreLockFinality(ctx context.Context, chainID string) (StoreLockFinalityRow, error) {
+	row := q.db.QueryRow(ctx, storeLockFinality, chainID)
+	var i StoreLockFinalityRow
+	err := row.Scan(
+		&i.SafeNumber,
+		&i.SafeHash,
+		&i.FinalizedNumber,
+		&i.FinalizedHash,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

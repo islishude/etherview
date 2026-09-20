@@ -1,4 +1,4 @@
--- name: QueryAddressOriginCoverage :many
+-- name: QueryAddressOriginCoverage :one
 WITH core_complete AS (
     SELECT EXISTS (
         SELECT 1
@@ -6,8 +6,8 @@ WITH core_complete AS (
         JOIN core_coverage_ranges AS coverage
           ON coverage.chain_id = configuration.chain_id
          AND coverage.range_start = 0
-         AND coverage.range_end >= $2::numeric
-        WHERE configuration.chain_id = $1::numeric
+         AND coverage.range_end >= sqlc.arg('min_range_end')::numeric
+        WHERE configuration.chain_id = sqlc.arg('chain_id')::numeric
           AND configuration.configured_start = 0
     ) AS complete
 ), trace_complete AS (
@@ -24,41 +24,41 @@ WITH core_complete AS (
               AND result.stage_version = 3
             LIMIT 1
         ) AS latest ON TRUE
-        WHERE canonical.chain_id = $1::numeric
-          AND canonical.number <= $2::numeric
+        WHERE canonical.chain_id = sqlc.arg('chain_id')::numeric
+          AND canonical.number <= sqlc.arg('min_range_end')::numeric
           AND latest.state IS DISTINCT FROM 'complete'
     ) AS complete
 )
-SELECT core_complete.complete AND trace_complete.complete
+SELECT core_complete.complete AND trace_complete.complete AS complete
 FROM core_complete CROSS JOIN trace_complete;
 
--- name: QueryAddressOriginReference :many
+-- name: QueryAddressOriginReference :one
 SELECT EXISTS (
     SELECT 1
     FROM canonical_blocks
-    WHERE chain_id = $1::numeric
-      AND number = $2::numeric
-      AND block_hash = $3
+    WHERE chain_id = sqlc.arg('chain_id')::numeric
+      AND number = sqlc.arg('number')::numeric
+      AND block_hash = sqlc.arg('block_hash')
 );
 
--- name: QueryBlockByHash :many
+-- name: QueryBlockByHash :one
 SELECT
-    block.number::text,
-    block.hash,
-    block.parent_hash,
-    block.timestamp::text,
-    block.miner_text,
-    block.gas_used_quantity,
-    block.gas_limit_quantity,
-    block.base_fee_per_gas_quantity,
-    block.transaction_count,
+    block.number::text AS block_number,
+    block.hash AS hash,
+    block.parent_hash AS parent_hash,
+    block.timestamp::text AS block_timestamp,
+    block.miner_text AS miner_text,
+    block.gas_used_quantity AS gas_used_quantity,
+    block.gas_limit_quantity AS gas_limit_quantity,
+    block.base_fee_per_gas_quantity AS base_fee_per_gas_quantity,
+    block.transaction_count AS transaction_count,
     (SELECT COUNT(*) FROM transaction_inclusions AS inclusion
      WHERE inclusion.chain_id = block.chain_id
        AND inclusion.block_number = block.number
-       AND inclusion.block_hash = block.hash),
-    block.withdrawals_present,
-    block.withdrawal_count,
-    COALESCE((
+       AND inclusion.block_hash = block.hash) AS normalized_transaction_count,
+    block.withdrawals_present AS withdrawals_present,
+    block.withdrawal_count AS withdrawal_count,
+    (COALESCE((
         SELECT jsonb_agg(jsonb_build_object(
             'index', withdrawal.withdrawal_index::text,
             'validator_index', withdrawal.validator_index::text,
@@ -69,37 +69,37 @@ SELECT
         WHERE withdrawal.chain_id = block.chain_id
           AND withdrawal.block_number = block.number
           AND withdrawal.block_hash = block.hash
-    ), '[]'::jsonb),
-    (canonical.block_hash IS NOT NULL),
-    finality.safe_number::text,
-    finality.finalized_number::text
+    ), '[]'::jsonb))::jsonb AS withdrawals,
+    ((canonical.block_hash IS NOT NULL))::boolean AS canonical,
+    finality.safe_number AS safe_number,
+    finality.finalized_number AS finalized_number
 FROM blocks AS block
 LEFT JOIN canonical_blocks AS canonical
   ON canonical.chain_id = block.chain_id
  AND canonical.number = block.number
  AND canonical.block_hash = block.hash
 LEFT JOIN chain_finality AS finality ON finality.chain_id = block.chain_id
-WHERE block.chain_id = $1::numeric AND block.hash = $2
+WHERE block.chain_id = sqlc.arg('chain_id')::numeric AND block.hash = sqlc.arg('hash')
 LIMIT 1;
 
--- name: QueryBlockByNumber :many
+-- name: QueryBlockByNumber :one
 SELECT
-    block.number::text,
-    block.hash,
-    block.parent_hash,
-    block.timestamp::text,
-    block.miner_text,
-    block.gas_used_quantity,
-    block.gas_limit_quantity,
-    block.base_fee_per_gas_quantity,
-    block.transaction_count,
+    block.number::text AS block_number,
+    block.hash AS hash,
+    block.parent_hash AS parent_hash,
+    block.timestamp::text AS block_timestamp,
+    block.miner_text AS miner_text,
+    block.gas_used_quantity AS gas_used_quantity,
+    block.gas_limit_quantity AS gas_limit_quantity,
+    block.base_fee_per_gas_quantity AS base_fee_per_gas_quantity,
+    block.transaction_count AS transaction_count,
     (SELECT COUNT(*) FROM transaction_inclusions AS inclusion
      WHERE inclusion.chain_id = block.chain_id
        AND inclusion.block_number = block.number
-       AND inclusion.block_hash = block.hash),
-    block.withdrawals_present,
-    block.withdrawal_count,
-    COALESCE((
+       AND inclusion.block_hash = block.hash) AS normalized_transaction_count,
+    block.withdrawals_present AS withdrawals_present,
+    block.withdrawal_count AS withdrawal_count,
+    (COALESCE((
         SELECT jsonb_agg(jsonb_build_object(
             'index', withdrawal.withdrawal_index::text,
             'validator_index', withdrawal.validator_index::text,
@@ -110,19 +110,19 @@ SELECT
         WHERE withdrawal.chain_id = block.chain_id
           AND withdrawal.block_number = block.number
           AND withdrawal.block_hash = block.hash
-    ), '[]'::jsonb),
-    TRUE,
-    finality.safe_number::text,
-    finality.finalized_number::text
+    ), '[]'::jsonb))::jsonb AS withdrawals,
+    (TRUE)::boolean AS canonical,
+    finality.safe_number AS safe_number,
+    finality.finalized_number AS finalized_number
 FROM canonical_blocks AS canonical
 JOIN blocks AS block
   ON block.chain_id = canonical.chain_id
  AND block.number = canonical.number
  AND block.hash = canonical.block_hash
 LEFT JOIN chain_finality AS finality ON finality.chain_id = canonical.chain_id
-WHERE canonical.chain_id = $1::numeric AND canonical.number = $2::numeric;
+WHERE canonical.chain_id = sqlc.arg('chain_id')::numeric AND canonical.number = sqlc.arg('number')::numeric;
 
--- name: QueryFirstContractOrigin :many
+-- name: QueryFirstContractOrigin :one
 WITH candidates AS (
     SELECT receipt.block_number, receipt.tx_index,
            ARRAY[]::bigint[] AS trace_order, 0 AS source_rank,
@@ -139,10 +139,10 @@ WITH candidates AS (
      AND inclusion.block_hash = receipt.block_hash
      AND inclusion.tx_index = receipt.tx_index
      AND inclusion.tx_hash = receipt.tx_hash
-    WHERE receipt.chain_id = $1::numeric
-      AND receipt.block_number <= $2::numeric
+    WHERE receipt.chain_id = sqlc.arg('chain_id')::numeric
+      AND receipt.block_number <= sqlc.arg('max_block_number')::numeric
       AND lower(receipt.raw->>'contractAddress') =
-          lower('0x' || encode($3, 'hex'))
+          lower('0x' || encode(sqlc.arg('encode'), 'hex'))
       AND receipt.raw->>'status' = '0x1'
 
     UNION ALL
@@ -155,9 +155,9 @@ WITH candidates AS (
       ON canonical.chain_id = trace.chain_id
      AND canonical.number = trace.block_number
      AND canonical.block_hash = trace.block_hash
-    WHERE trace.chain_id = $1::numeric
-      AND trace.block_number <= $2::numeric
-      AND trace.created_address = $3
+    WHERE trace.chain_id = sqlc.arg('chain_id')::numeric
+      AND trace.block_number <= sqlc.arg('max_block_number')::numeric
+      AND trace.created_address = sqlc.arg('encode')
       AND trace.canonical = TRUE
       AND trace.reverted = FALSE
       AND trace.depth > 0
@@ -169,7 +169,7 @@ FROM candidates
 ORDER BY block_number, tx_index, source_rank, trace_order
 LIMIT 1;
 
--- name: QueryFirstFundingOrigin :many
+-- name: QueryFirstFundingOrigin :one
 WITH candidates AS (
     SELECT inclusion.block_number, inclusion.tx_index,
            ARRAY[]::bigint[] AS trace_order, 0 AS source_rank,
@@ -189,9 +189,9 @@ WITH candidates AS (
      AND receipt.block_hash = inclusion.block_hash
      AND receipt.tx_index = inclusion.tx_index
      AND receipt.tx_hash = inclusion.tx_hash
-    WHERE inclusion.chain_id = $1::numeric
-      AND inclusion.block_number <= $2::numeric
-      AND lower(inclusion.raw->>'to') = lower('0x' || encode($3, 'hex'))
+    WHERE inclusion.chain_id = sqlc.arg('chain_id')::numeric
+      AND inclusion.block_number <= sqlc.arg('max_block_number')::numeric
+      AND lower(inclusion.raw->>'to') = lower('0x' || encode(sqlc.arg('encode'), 'hex'))
       AND inclusion.raw->>'value' <> '0x0'
       AND receipt.raw->>'status' = '0x1'
 
@@ -206,9 +206,9 @@ WITH candidates AS (
       ON canonical.chain_id = trace.chain_id
      AND canonical.number = trace.block_number
      AND canonical.block_hash = trace.block_hash
-    WHERE trace.chain_id = $1::numeric
-      AND trace.block_number <= $2::numeric
-      AND trace.to_address = $3
+    WHERE trace.chain_id = sqlc.arg('chain_id')::numeric
+      AND trace.block_number <= sqlc.arg('max_block_number')::numeric
+      AND trace.to_address = sqlc.arg('encode')
       AND trace.canonical = TRUE
       AND trace.reverted = FALSE
       AND trace.depth > 0
@@ -227,9 +227,9 @@ WITH candidates AS (
       ON canonical.chain_id = withdrawal.chain_id
      AND canonical.number = withdrawal.block_number
      AND canonical.block_hash = withdrawal.block_hash
-    WHERE withdrawal.chain_id = $1::numeric
-      AND withdrawal.block_number <= $2::numeric
-      AND withdrawal.address = $3
+    WHERE withdrawal.chain_id = sqlc.arg('chain_id')::numeric
+      AND withdrawal.block_number <= sqlc.arg('max_block_number')::numeric
+      AND withdrawal.address = sqlc.arg('encode')
 
     UNION ALL
 
@@ -243,16 +243,16 @@ WITH candidates AS (
       ON canonical.chain_id = block.chain_id
      AND canonical.number = block.number
      AND canonical.block_hash = block.hash
-    WHERE block.chain_id = $1::numeric
-      AND block.number <= $2::numeric
-      AND lower(block.miner_text) = lower('0x' || encode($3, 'hex'))
+    WHERE block.chain_id = sqlc.arg('chain_id')::numeric
+      AND block.number <= sqlc.arg('max_block_number')::numeric
+      AND lower(block.miner_text) = lower('0x' || encode(sqlc.arg('encode'), 'hex'))
 )
 SELECT block_number::text, source_address, transaction_hash, origin_kind, block_hash, withdrawal_index
 FROM candidates
 ORDER BY block_number, tx_index, source_rank, trace_order
 LIMIT 1;
 
--- name: QueryGenesisAddressOrigin :many
+-- name: QueryGenesisAddressOrigin :one
 SELECT EXISTS (
     SELECT 1
     FROM genesis_account_observations AS observation
@@ -263,29 +263,29 @@ SELECT EXISTS (
       ON canonical.chain_id = observation.chain_id
      AND canonical.number = 0
      AND canonical.block_hash = observation.block_hash
-    WHERE observation.chain_id = $1::numeric
-      AND observation.address = $2
+    WHERE observation.chain_id = sqlc.arg('chain_id')::numeric
+      AND observation.address = sqlc.arg('address')
       AND imported.state = 'complete'
 );
 
 -- name: QueryListBlocks :many
 SELECT
-    block.number::text,
-    block.hash,
-    block.parent_hash,
-    block.timestamp::text,
-    block.miner_text,
-    block.gas_used_quantity,
-    block.gas_limit_quantity,
-    block.base_fee_per_gas_quantity,
-    block.transaction_count,
+    block.number::text AS block_number,
+    block.hash AS hash,
+    block.parent_hash AS parent_hash,
+    block.timestamp::text AS block_timestamp,
+    block.miner_text AS miner_text,
+    block.gas_used_quantity AS gas_used_quantity,
+    block.gas_limit_quantity AS gas_limit_quantity,
+    block.base_fee_per_gas_quantity AS base_fee_per_gas_quantity,
+    block.transaction_count AS transaction_count,
     (SELECT COUNT(*) FROM transaction_inclusions AS inclusion
      WHERE inclusion.chain_id = block.chain_id
        AND inclusion.block_number = block.number
-       AND inclusion.block_hash = block.hash),
-    block.withdrawals_present,
-    block.withdrawal_count,
-    COALESCE((
+       AND inclusion.block_hash = block.hash) AS normalized_transaction_count,
+    block.withdrawals_present AS withdrawals_present,
+    block.withdrawal_count AS withdrawal_count,
+    (COALESCE((
         SELECT jsonb_agg(jsonb_build_object(
             'index', withdrawal.withdrawal_index::text,
             'validator_index', withdrawal.validator_index::text,
@@ -296,39 +296,39 @@ SELECT
         WHERE withdrawal.chain_id = block.chain_id
           AND withdrawal.block_number = block.number
           AND withdrawal.block_hash = block.hash
-    ), '[]'::jsonb),
-    TRUE,
-    finality.safe_number::text,
-    finality.finalized_number::text
+    ), '[]'::jsonb))::jsonb AS withdrawals,
+    (TRUE)::boolean AS canonical,
+    finality.safe_number AS safe_number,
+    finality.finalized_number AS finalized_number
 FROM canonical_blocks AS canonical
 JOIN blocks AS block
   ON block.chain_id = canonical.chain_id
  AND block.number = canonical.number
  AND block.hash = canonical.block_hash
 LEFT JOIN chain_finality AS finality ON finality.chain_id = canonical.chain_id
-WHERE canonical.chain_id = $1::numeric
-  AND canonical.number < $2::numeric
+WHERE canonical.chain_id = sqlc.arg('chain_id')::numeric
+  AND canonical.number < sqlc.arg('max_number')::numeric
 ORDER BY canonical.number DESC
-LIMIT $3;
+LIMIT sqlc.arg('limit');
 
 -- name: QueryListBlocksFirst :many
 SELECT
-    block.number::text,
-    block.hash,
-    block.parent_hash,
-    block.timestamp::text,
-    block.miner_text,
-    block.gas_used_quantity,
-    block.gas_limit_quantity,
-    block.base_fee_per_gas_quantity,
-    block.transaction_count,
+    block.number::text AS block_number,
+    block.hash AS hash,
+    block.parent_hash AS parent_hash,
+    block.timestamp::text AS block_timestamp,
+    block.miner_text AS miner_text,
+    block.gas_used_quantity AS gas_used_quantity,
+    block.gas_limit_quantity AS gas_limit_quantity,
+    block.base_fee_per_gas_quantity AS base_fee_per_gas_quantity,
+    block.transaction_count AS transaction_count,
     (SELECT COUNT(*) FROM transaction_inclusions AS inclusion
      WHERE inclusion.chain_id = block.chain_id
        AND inclusion.block_number = block.number
-       AND inclusion.block_hash = block.hash),
-    block.withdrawals_present,
-    block.withdrawal_count,
-    COALESCE((
+       AND inclusion.block_hash = block.hash) AS normalized_transaction_count,
+    block.withdrawals_present AS withdrawals_present,
+    block.withdrawal_count AS withdrawal_count,
+    (COALESCE((
         SELECT jsonb_agg(jsonb_build_object(
             'index', withdrawal.withdrawal_index::text,
             'validator_index', withdrawal.validator_index::text,
@@ -339,34 +339,34 @@ SELECT
         WHERE withdrawal.chain_id = block.chain_id
           AND withdrawal.block_number = block.number
           AND withdrawal.block_hash = block.hash
-    ), '[]'::jsonb),
-    TRUE,
-    finality.safe_number::text,
-    finality.finalized_number::text
+    ), '[]'::jsonb))::jsonb AS withdrawals,
+    (TRUE)::boolean AS canonical,
+    finality.safe_number AS safe_number,
+    finality.finalized_number AS finalized_number
 FROM canonical_blocks AS canonical
 JOIN blocks AS block
   ON block.chain_id = canonical.chain_id
  AND block.number = canonical.number
  AND block.hash = canonical.block_hash
 LEFT JOIN chain_finality AS finality ON finality.chain_id = canonical.chain_id
-WHERE canonical.chain_id = $1::numeric
-  AND canonical.number <= $2::numeric
+WHERE canonical.chain_id = sqlc.arg('chain_id')::numeric
+  AND canonical.number <= sqlc.arg('max_number')::numeric
 ORDER BY canonical.number DESC
-LIMIT $3;
+LIMIT sqlc.arg('limit');
 
 -- name: QueryListTransactionsFirst :many
 SELECT
-    inclusion.raw,
-    receipt.raw,
-    inclusion.block_number::text,
-    inclusion.block_hash,
-    inclusion.tx_index,
-    inclusion.tx_hash,
-    TRUE,
-    finality.safe_number::text,
-    finality.finalized_number::text,
-    block.timestamp::text,
-    block.base_fee_per_gas_quantity
+    inclusion.raw AS raw,
+    receipt.raw AS receipt_raw,
+    inclusion.block_number::text AS block_number,
+    inclusion.block_hash AS block_hash,
+    inclusion.tx_index AS tx_index,
+    inclusion.tx_hash AS tx_hash,
+    (TRUE)::boolean AS canonical,
+    finality.safe_number AS safe_number,
+    finality.finalized_number AS finalized_number,
+    block.timestamp::text AS block_timestamp,
+    block.base_fee_per_gas_quantity AS block_base_fee_per_gas
 FROM transaction_inclusions AS inclusion
 JOIN canonical_blocks AS canonical
   ON canonical.chain_id = inclusion.chain_id
@@ -382,25 +382,25 @@ JOIN receipts AS receipt
  AND receipt.block_hash = inclusion.block_hash
  AND receipt.tx_index = inclusion.tx_index
 LEFT JOIN chain_finality AS finality ON finality.chain_id = inclusion.chain_id
-WHERE inclusion.chain_id = $1::numeric
-  AND inclusion.block_number <= $2::numeric
+WHERE inclusion.chain_id = sqlc.arg('chain_id')::numeric
+  AND inclusion.block_number <= sqlc.arg('max_block_number')::numeric
 ORDER BY inclusion.block_number DESC, inclusion.tx_index DESC
-LIMIT $3;
+LIMIT sqlc.arg('limit');
 
 -- name: QueryListTransactionsWithMethod :many
 SELECT
-    inclusion.raw,
-    receipt.raw,
-    inclusion.block_number::text,
-    inclusion.block_hash,
-    inclusion.tx_index,
-    inclusion.tx_hash,
-    TRUE,
-    finality.safe_number::text,
-    finality.finalized_number::text,
-	block.timestamp::text,
-	block.base_fee_per_gas_quantity,
-	EXISTS (
+    inclusion.raw AS raw,
+    receipt.raw AS receipt_raw,
+    inclusion.block_number::text AS block_number,
+    inclusion.block_hash AS block_hash,
+    inclusion.tx_index AS tx_index,
+    inclusion.tx_hash AS tx_hash,
+    (TRUE)::boolean AS canonical,
+    finality.safe_number AS safe_number,
+    finality.finalized_number AS finalized_number,
+    block.timestamp::text AS block_timestamp,
+    block.base_fee_per_gas_quantity AS block_base_fee_per_gas,
+    EXISTS (
 	    SELECT 1
 	    FROM published_block_stage_results AS published_state_diff
 	    WHERE published_state_diff.chain_id = inclusion.chain_id
@@ -410,12 +410,12 @@ SELECT
 	      AND published_state_diff.stage_version = 3
 	      AND published_state_diff.state = 'complete'
 	),
-	execution.resolution,
-	execution.execution_address,
-	execution.execution_code_hash,
-	decoding.signature,
-	decoding.source,
-	decoding.confidence
+    execution.resolution,
+    execution.execution_address,
+    execution.execution_code_hash,
+    decoding.signature,
+    decoding.source,
+    decoding.confidence
 FROM transaction_inclusions AS inclusion
 JOIN canonical_blocks AS canonical
   ON canonical.chain_id = inclusion.chain_id
@@ -513,28 +513,28 @@ LEFT JOIN abi_decodings AS decoding
        AND published_abi.stage_version = 4
        AND published_abi.state = 'complete'
  )
-WHERE inclusion.chain_id = $1::numeric
+WHERE inclusion.chain_id = sqlc.arg('chain_id')::numeric
   AND (
-      inclusion.block_number < $2::numeric
-      OR (inclusion.block_number = $2::numeric AND inclusion.tx_index < $3)
+      inclusion.block_number < sqlc.arg('max_block_number')::numeric
+      OR (inclusion.block_number = sqlc.arg('max_block_number')::numeric AND inclusion.tx_index < sqlc.arg('tx_index'))
   )
 ORDER BY inclusion.block_number DESC, inclusion.tx_index DESC
-LIMIT $4;
+LIMIT sqlc.arg('limit');
 
 -- name: QueryListTransactionsWithMethodFirst :many
 SELECT
-    inclusion.raw,
-    receipt.raw,
-    inclusion.block_number::text,
-    inclusion.block_hash,
-    inclusion.tx_index,
-    inclusion.tx_hash,
-    TRUE,
-    finality.safe_number::text,
-    finality.finalized_number::text,
-	block.timestamp::text,
-	block.base_fee_per_gas_quantity,
-	EXISTS (
+    inclusion.raw AS raw,
+    receipt.raw AS receipt_raw,
+    inclusion.block_number::text AS block_number,
+    inclusion.block_hash AS block_hash,
+    inclusion.tx_index AS tx_index,
+    inclusion.tx_hash AS tx_hash,
+    (TRUE)::boolean AS canonical,
+    finality.safe_number AS safe_number,
+    finality.finalized_number AS finalized_number,
+    block.timestamp::text AS block_timestamp,
+    block.base_fee_per_gas_quantity AS block_base_fee_per_gas,
+    EXISTS (
 	    SELECT 1
 	    FROM published_block_stage_results AS published_state_diff
 	    WHERE published_state_diff.chain_id = inclusion.chain_id
@@ -544,12 +544,12 @@ SELECT
 	      AND published_state_diff.stage_version = 3
 	      AND published_state_diff.state = 'complete'
 	),
-	execution.resolution,
-	execution.execution_address,
-	execution.execution_code_hash,
-	decoding.signature,
-	decoding.source,
-	decoding.confidence
+    execution.resolution,
+    execution.execution_address,
+    execution.execution_code_hash,
+    decoding.signature,
+    decoding.source,
+    decoding.confidence
 FROM transaction_inclusions AS inclusion
 JOIN canonical_blocks AS canonical
   ON canonical.chain_id = inclusion.chain_id
@@ -647,25 +647,25 @@ LEFT JOIN abi_decodings AS decoding
        AND published_abi.stage_version = 4
        AND published_abi.state = 'complete'
  )
-WHERE inclusion.chain_id = $1::numeric
-  AND inclusion.block_number <= $2::numeric
+WHERE inclusion.chain_id = sqlc.arg('chain_id')::numeric
+  AND inclusion.block_number <= sqlc.arg('max_block_number')::numeric
 ORDER BY inclusion.block_number DESC, inclusion.tx_index DESC
-LIMIT $3;
+LIMIT sqlc.arg('limit');
 
--- name: QuerySearchBlockNumber :many
+-- name: QuerySearchBlockNumber :one
 WITH visible_labels AS (
     SELECT document.result_key, document.result_label, document.id
     FROM search_catalog_documents AS document
-    WHERE document.chain_id = $1::numeric
+    WHERE document.chain_id = sqlc.arg('chain_id')::numeric
       AND document.source_kind = 'label'
       AND document.result_kind = 'block'
-      AND document.valid_from_generation <= $3
-      AND (document.valid_to_generation IS NULL OR document.valid_to_generation > $3)
+      AND document.valid_from_generation <= sqlc.arg('valid_from_generation')
+      AND (document.valid_to_generation IS NULL OR document.valid_to_generation > sqlc.arg('valid_from_generation'))
 )
 SELECT canonical.number::text,
        canonical.block_hash,
        COALESCE(operator_label.result_label, 'Block #' || canonical.number::text),
-       CASE WHEN operator_label.result_label IS NULL THEN 100 ELSE 110 END::bigint
+       CASE WHEN operator_label.result_label IS NULL THEN 100 ELSE 110 END::bigint AS rank
 FROM canonical_blocks AS canonical
 LEFT JOIN LATERAL (
     SELECT visible.result_label
@@ -678,18 +678,18 @@ LEFT JOIN LATERAL (
              visible.id DESC
     LIMIT 1
 ) AS operator_label ON TRUE
-WHERE canonical.chain_id = $1::numeric AND canonical.number = $2::numeric;
+WHERE canonical.chain_id = sqlc.arg('chain_id')::numeric AND canonical.number = sqlc.arg('number')::numeric;
 
 -- name: QuerySearchHash :many
 WITH visible_labels AS (
     SELECT document.result_kind, document.result_key, document.result_label, document.id
     FROM search_catalog_documents AS document
-    WHERE document.chain_id = $1::numeric
+    WHERE document.chain_id = sqlc.arg('chain_id')::numeric
       AND document.source_kind = 'label'
-      AND document.valid_from_generation <= $3
-      AND (document.valid_to_generation IS NULL OR document.valid_to_generation > $3)
+      AND document.valid_from_generation <= sqlc.arg('valid_from_generation')
+      AND (document.valid_to_generation IS NULL OR document.valid_to_generation > sqlc.arg('valid_from_generation'))
 )
-SELECT kind, key, label, rank, canonical
+SELECT kind, key::text AS key, label::text AS label, rank, canonical::boolean AS canonical
 FROM (
     SELECT
         'block'::text AS kind,
@@ -710,7 +710,7 @@ FROM (
         ORDER BY visible.id DESC
         LIMIT 1
     ) AS operator_label ON TRUE
-    WHERE block.chain_id = $1::numeric AND block.hash = $2
+    WHERE block.chain_id = sqlc.arg('chain_id')::numeric AND block.hash = sqlc.arg('hash')
 
     UNION ALL
 
@@ -737,18 +737,18 @@ FROM (
         ORDER BY visible.id DESC
         LIMIT 1
     ) AS operator_label ON TRUE
-    WHERE transaction.chain_id = $1::numeric AND transaction.hash = $2
+    WHERE transaction.chain_id = sqlc.arg('chain_id')::numeric AND transaction.hash = sqlc.arg('hash')
 ) AS results
 ORDER BY rank DESC, kind
-LIMIT $4;
+LIMIT sqlc.arg('limit');
 
 -- name: QuerySearchText :many
 WITH visible_documents AS (
     SELECT document.*
     FROM search_catalog_documents AS document
-    WHERE document.chain_id = $1::numeric
-      AND document.valid_from_generation <= $4
-      AND (document.valid_to_generation IS NULL OR document.valid_to_generation > $4)
+    WHERE document.chain_id = sqlc.arg('chain_id')::numeric
+      AND document.valid_from_generation <= sqlc.arg('valid_from_generation')
+      AND (document.valid_to_generation IS NULL OR document.valid_to_generation > sqlc.arg('valid_from_generation'))
 ), candidates(
     kind, key, label, rank, canonical, name_source,
     verification_match_type, verification_valid_from_block,
@@ -759,14 +759,14 @@ WITH visible_documents AS (
            lower(document.result_key) AS key,
            document.result_label AS label,
            CASE document.source_kind
-             WHEN 'label' THEN CASE WHEN $2 = ANY(document.exact_terms) THEN 110 ELSE 80 END
-             WHEN 'name' THEN CASE WHEN $2 = ANY(document.exact_terms) THEN 100 ELSE 70 END
+             WHEN 'label' THEN CASE WHEN sqlc.arg('search_term')::text = ANY(document.exact_terms) THEN 110 ELSE 80 END
+             WHEN 'name' THEN CASE WHEN sqlc.arg('search_term')::text = ANY(document.exact_terms) THEN 100 ELSE 70 END
              WHEN 'token' THEN CASE
-                 WHEN lower(document.result_key) = $2 THEN 105
-                 WHEN $2 = ANY(document.exact_terms) THEN 95 ELSE 65 END
+                 WHEN lower(document.result_key) = sqlc.arg('search_term')::text THEN 105
+                 WHEN sqlc.arg('search_term')::text = ANY(document.exact_terms) THEN 95 ELSE 65 END
              WHEN 'verified_contract' THEN CASE
-                 WHEN lower(document.result_key) = $2 THEN 104
-                 WHEN $2 = ANY(document.exact_terms) THEN 94 ELSE 64 END
+                 WHEN lower(document.result_key) = sqlc.arg('search_term')::text THEN 104
+                 WHEN sqlc.arg('search_term')::text = ANY(document.exact_terms) THEN 94 ELSE 64 END
            END::bigint AS rank,
            CASE WHEN document.source_kind IN ('name', 'token') THEN TRUE ELSE NULL END::boolean AS canonical,
            document.name_source,
@@ -791,7 +791,7 @@ WITH visible_documents AS (
         WHERE document.source_kind = 'verified_contract'
           AND observation.source_kind = 'code'
           AND observation.target_address = document.target_address
-          AND observation.block_number <= $3::numeric
+          AND observation.block_number <= sqlc.arg('max_block_number')::numeric
           AND observation.source_canonical = TRUE
         ORDER BY observation.block_number DESC, observation.block_hash DESC
         LIMIT 1
@@ -807,12 +807,12 @@ WITH visible_documents AS (
     WHERE document.source_kind <> 'code'
       AND (
           document.source_kind <> 'name'
-          OR $10::bigint = 0
-          OR document.name_observation_id = $10::bigint
+          OR sqlc.arg('name_observation_id')::bigint = 0
+          OR document.name_observation_id = sqlc.arg('name_observation_id')::bigint
       )
-      AND ($2 = ANY(document.exact_terms) OR EXISTS (
+      AND (sqlc.arg('search_term')::text = ANY(document.exact_terms) OR EXISTS (
           SELECT 1 FROM unnest(document.partial_terms) AS term
-          WHERE strpos(term, $2) > 0
+          WHERE strpos(term, sqlc.arg('search_term')::text) > 0
       ))
       AND (
           document.source_kind <> 'token'
@@ -825,7 +825,7 @@ WITH visible_documents AS (
                AND latest_canonical.block_hash = latest.block_hash
               WHERE latest.source_kind = 'token'
                 AND latest.logical_identity = document.logical_identity
-                AND latest.block_number <= $3::numeric
+                AND latest.block_number <= sqlc.arg('max_block_number')::numeric
                 AND latest.source_canonical = TRUE
               ORDER BY latest.block_number DESC, latest.valid_from_generation DESC, latest.id DESC
               LIMIT 1
@@ -839,14 +839,14 @@ WITH visible_documents AS (
               AND (
                   document.block_hash IS NULL
                   OR (
-                      document.block_number <= $3::numeric
+                      document.block_number <= sqlc.arg('max_block_number')::numeric
                       AND canonical.block_hash IS NOT NULL
                   )
               )
           )
           OR (
               document.source_kind = 'token'
-              AND document.block_number <= $3::numeric
+              AND document.block_number <= sqlc.arg('max_block_number')::numeric
               AND canonical.block_hash IS NOT NULL
               AND document.source_canonical = TRUE
           )
@@ -860,7 +860,8 @@ WITH visible_documents AS (
       )
 )
 SELECT result.kind, result.key, result.label, result.rank,
-       result.canonical, result.name_source
+       COALESCE(result.canonical,FALSE)::boolean AS canonical, result.name_source,
+       (result.canonical IS NOT NULL)::boolean AS canonical_known
 FROM (
     SELECT DISTINCT ON (kind, key) kind, key, label, rank, canonical, name_source
     FROM candidates
@@ -872,68 +873,68 @@ FROM (
              verification_job_id ASC NULLS LAST,
              label
 ) AS result
-WHERE $5::boolean = false
-   OR result.rank < $6::bigint
-   OR (result.rank = $6::bigint AND result.kind > $7::text)
-   OR (result.rank = $6::bigint AND result.kind = $7::text AND result.key > $8::text)
+WHERE sqlc.arg('has_cursor')::boolean = false
+   OR result.rank < sqlc.arg('max_rank')::bigint
+   OR (result.rank = sqlc.arg('max_rank')::bigint AND result.kind > sqlc.arg('min_kind')::text)
+   OR (result.rank = sqlc.arg('max_rank')::bigint AND result.kind = sqlc.arg('min_kind')::text AND result.key > sqlc.arg('min_key')::text)
 ORDER BY result.rank DESC, result.kind, result.key
-LIMIT $9;
+LIMIT sqlc.arg('limit');
 
--- name: QueryStatusState :many
+-- name: QueryStatusState :one
 SELECT
-	configuration.configured_start::text,
-	contiguous.range_end::text,
-	contiguous_block.block_hash,
-    checkpoint.contiguous_through::text,
-    checkpoint.block_hash,
-	highest.range_end::text,
-	highest_block.block_hash,
-    finality.safe_number::text,
-    finality.finalized_number::text,
+	configuration.configured_start AS configured_start,
+	contiguous.range_end AS contiguous_range_end,
+	contiguous_block.block_hash AS contiguous_block_hash,
+    checkpoint.contiguous_through AS checkpoint_number,
+    checkpoint.block_hash AS checkpoint_hash,
+	highest.range_end AS highest_range_end,
+	highest_block.block_hash AS highest_block_hash,
+    finality.safe_number AS safe_number,
+    finality.finalized_number AS finalized_number,
     trace_result.state
 FROM (SELECT 1) AS singleton
 LEFT JOIN core_index_configuration AS configuration
-  ON configuration.chain_id = $1::numeric
+  ON configuration.chain_id = sqlc.arg('chain_id')::numeric
 LEFT JOIN core_coverage_ranges AS contiguous
-  ON contiguous.chain_id = $1::numeric
+  ON contiguous.chain_id = sqlc.arg('chain_id')::numeric
  AND contiguous.range_start = configuration.configured_start
 LEFT JOIN canonical_blocks AS contiguous_block
-  ON contiguous_block.chain_id = $1::numeric
+  ON contiguous_block.chain_id = sqlc.arg('chain_id')::numeric
  AND contiguous_block.number = contiguous.range_end
 LEFT JOIN index_checkpoints AS checkpoint
-  ON checkpoint.chain_id = $1::numeric AND checkpoint.stage = 'core'
+  ON checkpoint.chain_id = sqlc.arg('chain_id')::numeric AND checkpoint.stage = 'core'
 LEFT JOIN LATERAL (
 	SELECT range_end
 	FROM core_coverage_ranges
-	WHERE chain_id = $1::numeric
+	WHERE chain_id = sqlc.arg('chain_id')::numeric
 	ORDER BY range_end DESC
 	LIMIT 1
 ) AS highest ON TRUE
 LEFT JOIN canonical_blocks AS highest_block
-  ON highest_block.chain_id = $1::numeric
+  ON highest_block.chain_id = sqlc.arg('chain_id')::numeric
  AND highest_block.number = highest.range_end
 LEFT JOIN chain_finality AS finality
-  ON finality.chain_id = $1::numeric
+  ON finality.chain_id = sqlc.arg('chain_id')::numeric
 LEFT JOIN published_block_stage_results AS trace_result
-  ON trace_result.chain_id = $1::numeric
+  ON trace_result.chain_id = sqlc.arg('chain_id')::numeric
  AND trace_result.block_number = contiguous.range_end
  AND trace_result.block_hash = contiguous_block.block_hash
  AND trace_result.stage = 'trace'
  AND trace_result.stage_version = 3;
 
--- name: QueryTransactionByHash :many
+-- name: QueryTransactionByHash :one
 SELECT
-    inclusion.raw,
-    receipt.raw,
-    inclusion.block_number::text,
-    inclusion.block_hash,
-    inclusion.tx_index,
-    inclusion.tx_hash,
-    (canonical.block_hash IS NOT NULL),
-    finality.safe_number::text,
-    finality.finalized_number::text,
-    block.timestamp::text,
-    block.base_fee_per_gas_quantity
+    inclusion.raw AS raw,
+    receipt.raw AS receipt_raw,
+    inclusion.block_number::text AS block_number,
+    inclusion.block_hash AS block_hash,
+    inclusion.tx_index AS tx_index,
+    inclusion.tx_hash AS tx_hash,
+    ((canonical.block_hash IS NOT NULL))::boolean AS canonical,
+    finality.safe_number AS safe_number,
+    finality.finalized_number AS finalized_number,
+    block.timestamp::text AS block_timestamp,
+    block.base_fee_per_gas_quantity AS block_base_fee_per_gas
 FROM transaction_inclusions AS inclusion
 JOIN blocks AS block
   ON block.chain_id = inclusion.chain_id
@@ -949,7 +950,7 @@ LEFT JOIN canonical_blocks AS canonical
  AND canonical.number = inclusion.block_number
  AND canonical.block_hash = inclusion.block_hash
 LEFT JOIN chain_finality AS finality ON finality.chain_id = inclusion.chain_id
-WHERE inclusion.chain_id = $1::numeric AND inclusion.tx_hash = $2
+WHERE inclusion.chain_id = sqlc.arg('chain_id')::numeric AND inclusion.tx_hash = sqlc.arg('tx_hash')
 ORDER BY (canonical.block_hash IS NOT NULL) DESC, inclusion.block_number DESC
 LIMIT 1;
 
@@ -967,7 +968,7 @@ WITH request(
            element->>'selector',
            element->>'selector_scope',
            (element->>'exact_address_only')::boolean
-    FROM jsonb_array_elements($2::jsonb) AS element
+    FROM jsonb_array_elements(sqlc.arg('requests')::jsonb) AS element
 ), direct_candidates AS (
     SELECT request.ordinal,
            CASE WHEN indexed.address = decode(request.address, 'hex')
@@ -992,7 +993,7 @@ WITH request(
            selector.signature
     FROM request
     JOIN verified_function_selector_sets AS indexed
-      ON indexed.chain_id = $1::numeric
+      ON indexed.chain_id = sqlc.arg('chain_id')::numeric
      AND ((NOT request.exact_address_only AND
            indexed.code_hash = decode(request.code_hash, 'hex')) OR
           (request.exact_address_only AND
@@ -1025,7 +1026,7 @@ WITH request(
     FROM request
     JOIN contract_abis AS binding
       ON NOT request.exact_address_only
-     AND binding.chain_id = $1::numeric
+     AND binding.chain_id = sqlc.arg('chain_id')::numeric
      AND binding.address = decode(request.address, 'hex')
      AND binding.code_hash = decode(request.code_hash, 'hex')
      AND binding.canonical
@@ -1077,7 +1078,7 @@ WITH request(
          AND published.durable_job_id = generation.durable_job_id
          AND published.job_generation = generation.job_generation
          AND published.state = 'complete'
-        WHERE observation.chain_id = $1::numeric
+        WHERE observation.chain_id = sqlc.arg('chain_id')::numeric
           AND observation.proxy_address = decode(request.address, 'hex')
           AND observation.proxy_code_hash = decode(request.code_hash, 'hex')
           AND observation.stage_version = 2
@@ -1090,7 +1091,7 @@ WITH request(
         LIMIT 1
     ) AS route ON NOT request.exact_address_only
     JOIN verified_function_selector_sets AS indexed
-      ON indexed.chain_id = $1::numeric
+      ON indexed.chain_id = sqlc.arg('chain_id')::numeric
      AND indexed.code_hash = route.implementation_code_hash
      AND indexed.status = 'complete'
      AND (
@@ -1136,7 +1137,7 @@ WITH request(
             ORDER BY snapshot.block_number DESC, snapshot.id DESC
             LIMIT 1
         ) AS facet ON TRUE
-        WHERE active.chain_id = $1::numeric
+        WHERE active.chain_id = sqlc.arg('chain_id')::numeric
           AND active.diamond_address = decode(request.address, 'hex')
           AND active.selector = decode(request.selector, 'hex')
           AND (
@@ -1158,7 +1159,7 @@ WITH request(
         LIMIT 1
     ) AS route ON NOT request.exact_address_only
     JOIN verified_function_selector_sets AS indexed
-      ON indexed.chain_id = $1::numeric
+      ON indexed.chain_id = sqlc.arg('chain_id')::numeric
      AND indexed.address = route.facet_address
      AND indexed.code_hash = route.facet_code_hash
      AND indexed.status = 'complete'
@@ -1179,7 +1180,7 @@ WITH request(
 )
 SELECT ranked.ordinal, ranked.source, ranked.source_address,
        ranked.source_code_hash, ranked.abi_entry,
-       ranked.valid_from_block::text, ranked.valid_to_block::text,
+       ranked.valid_from_block::text, ranked.valid_to_block::numeric AS ranked_valid_to_block,
        ranked.selector_scoped, ranked.signature
 FROM (
     SELECT combined.*,
@@ -1195,16 +1196,16 @@ FROM (
            ) AS candidate_number
     FROM combined
 ) AS ranked
-WHERE ranked.candidate_number <= $3::bigint
+WHERE ranked.candidate_number <= sqlc.arg('max_candidate_number')::bigint
 ORDER BY ranked.ordinal, ranked.candidate_number;
 
--- name: QueryValidateTransactionCursor :many
+-- name: QueryValidateTransactionCursor :one
 SELECT
     EXISTS (
 	    SELECT 1 FROM canonical_blocks AS snapshot
-	    WHERE snapshot.chain_id = $1::numeric
-	      AND snapshot.number = $2::numeric
-	      AND snapshot.block_hash = $3
+	    WHERE snapshot.chain_id = sqlc.arg('chain_id')::numeric
+	      AND snapshot.number = sqlc.arg('number')::numeric
+	      AND snapshot.block_hash = sqlc.arg('block_hash')
     )
 AND EXISTS (
     SELECT 1
@@ -1213,9 +1214,9 @@ AND EXISTS (
       ON canonical.chain_id = inclusion.chain_id
      AND canonical.number = inclusion.block_number
      AND canonical.block_hash = inclusion.block_hash
-    WHERE inclusion.chain_id = $1::numeric
-      AND inclusion.block_number = $4::numeric
-      AND inclusion.block_hash = $5
-      AND inclusion.tx_index = $6
-      AND inclusion.tx_hash = $7
-);
+    WHERE inclusion.chain_id = sqlc.arg('chain_id')::numeric
+      AND inclusion.block_number = sqlc.arg('block_number')::numeric
+      AND inclusion.block_hash = sqlc.arg('block_hash_2')
+      AND inclusion.tx_index = sqlc.arg('tx_index')
+      AND inclusion.tx_hash = sqlc.arg('tx_hash')
+) AS valid;

@@ -8,11 +8,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/islishude/etherview/internal/testpgx"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/chainbundle/testfixture"
-	"github.com/islishude/etherview/internal/db/gen"
 )
 
 func TestRepositoryOwnsRootNormalizedBundleBeforePersistence(t *testing.T) {
@@ -54,7 +55,7 @@ func TestDerivedCanonicalRelationsIncludeUUPSImplementationObservations(t *testi
 		"erc20_holder_balances",
 		"erc20_holder_snapshots",
 	} {
-		if strings.Contains(dbgen.StoreSetDerivedCanonicalBatch, "UPDATE "+relation+" AS target SET canonical") {
+		if strings.Contains(testpgx.Statement("StoreSetDerivedCanonicalBatch"), "UPDATE "+relation+" AS target SET canonical") {
 			continue
 		}
 		t.Fatalf("derived canonical query lacks %s", relation)

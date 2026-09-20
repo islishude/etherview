@@ -2,7 +2,6 @@ package etherscan
 
 import (
 	"context"
-	"database/sql/driver"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -12,8 +11,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/islishude/etherview/internal/testpgx"
+
 	"github.com/islishude/etherview/internal/catalog"
-	"github.com/islishude/etherview/internal/db/gen"
 )
 
 func TestAdvancedFiltersUseDedicatedQueries(t *testing.T) {
@@ -24,14 +24,14 @@ func TestAdvancedFiltersUseDedicatedQueries(t *testing.T) {
 		stage        string
 		query        string
 		arguments    int
-		check        func([]driver.NamedValue) error
+		check        func([]any) error
 	}{
 		{
 			name: "normal", action: "txlist",
 			values: url.Values{"from": {testSender}, "to": {testRecipient}, "fromto_opr": {"and"}},
 			query:  "EtherscanAccountTransactionsAdvanced", arguments: 9,
-			check: func(arguments []driver.NamedValue) error {
-				if arguments[1].Value != strings.ToLower(testSender) || arguments[2].Value != strings.ToLower(testRecipient) || arguments[3].Value != "AND" {
+			check: func(arguments []any) error {
+				if arguments[1] != "AND" || !testpgx.TextPointerEquals(arguments[2], strings.ToLower(testSender)) || !testpgx.TextPointerEquals(arguments[3], strings.ToLower(testRecipient)) {
 					return fmt.Errorf("normal filter arguments=%v", arguments)
 				}
 				return nil
@@ -41,9 +41,9 @@ func TestAdvancedFiltersUseDedicatedQueries(t *testing.T) {
 			name: "token", action: "tokentx", stage: tokenStage,
 			values: url.Values{"contractaddress": {testContract}, "from": {testSender}, "fromto_opr": {"or"}},
 			query:  "EtherscanTokenTransfersAdvanced", arguments: 11,
-			check: func(arguments []driver.NamedValue) error {
-				if !reflect.DeepEqual(arguments[2].Value, testAddressBytes(testContract)) ||
-					!reflect.DeepEqual(arguments[3].Value, testAddressBytes(testSender)) || arguments[4].Value != nil || arguments[5].Value != "OR" {
+			check: func(arguments []any) error {
+				if !reflect.DeepEqual(arguments[2], testAddressBytes(testContract)) ||
+					arguments[3] != "OR" || !reflect.DeepEqual(arguments[4], testAddressBytes(testSender)) || arguments[5].([]byte) != nil {
 					return fmt.Errorf("token filter arguments=%v", arguments)
 				}
 				return nil
@@ -53,8 +53,8 @@ func TestAdvancedFiltersUseDedicatedQueries(t *testing.T) {
 			name: "internal", action: "txlistinternal", stage: traceStage,
 			values: url.Values{"to": {testRecipient}, "fromto_opr": {"and"}},
 			query:  "EtherscanInternalTransactionsAdvanced", arguments: 9,
-			check: func(arguments []driver.NamedValue) error {
-				if arguments[1].Value != nil || !reflect.DeepEqual(arguments[2].Value, testAddressBytes(testRecipient)) || arguments[3].Value != "AND" {
+			check: func(arguments []any) error {
+				if arguments[1] != "AND" || arguments[2].([]byte) != nil || !reflect.DeepEqual(arguments[3], testAddressBytes(testRecipient)) {
 					return fmt.Errorf("internal filter arguments=%v", arguments)
 				}
 				return nil
@@ -70,7 +70,7 @@ func TestAdvancedFiltersUseDedicatedQueries(t *testing.T) {
 			}
 			expectations = append(expectations, sqlExpectation{
 				contains: test.query, columns: fakeColumns(map[string]int{"normal": 8, "token": 19, "internal": 16}[test.name]),
-				check: func(arguments []driver.NamedValue) error {
+				check: func(arguments []any) error {
 					if len(arguments) != test.arguments {
 						return fmt.Errorf("arguments=%v", arguments)
 					}
@@ -92,10 +92,10 @@ func TestBeaconWithdrawalsAreCanonicalAndGolden(t *testing.T) {
 		completeCoreCoverageExpectation("10", "20", "12"),
 		sqlExpectation{
 			contains: "EtherscanBeaconWithdrawals", columns: fakeColumns(6),
-			rows: [][]driver.Value{{"13", "117823", testAddressBytes(testRecipient), "3402931175", "10", "1681338599"}},
-			check: func(arguments []driver.NamedValue) error {
-				if len(arguments) != 7 || !reflect.DeepEqual(arguments[1].Value, testAddressBytes(testRecipient)) ||
-					arguments[2].Value != "10" || arguments[3].Value != "20" || arguments[6].Value != "DESC" {
+			rows: [][]any{{"13", "117823", testAddressBytes(testRecipient), "3402931175", "10", "1681338599"}},
+			check: func(arguments []any) error {
+				if len(arguments) != 7 || !reflect.DeepEqual(arguments[1], testAddressBytes(testRecipient)) ||
+					!testpgx.NumericEquals(arguments[2], "10") || !testpgx.NumericEquals(arguments[3], "20") || arguments[4] != "DESC" {
 					return fmt.Errorf("withdrawal arguments=%v", arguments)
 				}
 				return nil
@@ -125,7 +125,7 @@ func TestBlockTransactionCountsRequireTraceAndToken(t *testing.T) {
 		completedStageExpectation(tokenStage, "10", "10"),
 		sqlExpectation{
 			contains: "EtherscanBlockTransactionCounts", columns: fakeColumns(6),
-			rows: [][]driver.Value{{"10", "2", "3", "4", "5", "6"}},
+			rows: [][]any{{"10", "2", "3", "4", "5", "6"}},
 		},
 	)
 	backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})
@@ -145,10 +145,10 @@ func TestFundedByRequiresEOAAndCompleteTraceHistory(t *testing.T) {
 	t.Parallel()
 	state := &testStateProvider{accountBlock: "12", accountHash: testHash(3)}
 	db := fakeDatabase(t,
-		sqlExpectation{contains: "EtherscanCanonicalReference", columns: fakeColumns(1), rows: [][]driver.Value{{true}}},
+		sqlExpectation{contains: "EtherscanCanonicalReference", columns: fakeColumns(1), rows: [][]any{{true}}},
 		sqlExpectation{
-			contains: "EtherscanFirstFunding", columns: fakeColumns(6),
-			rows: [][]driver.Value{{"10", testAddressBytes(testRecipient), testHashBytes(7), "0x10", nil, "1700000000"}},
+			contains: "EtherscanFirstFunding", columns: fakeColumns(8),
+			rows: [][]any{{"10", testAddressBytes(testRecipient), testHashBytes(7), "0x10", "", "1700000000", true, false}},
 		},
 		completeCoreCoverageExpectation("0", "10", "12"),
 		completedStageExpectation(traceStage, "0", "10"),
@@ -177,8 +177,8 @@ func TestFundedByRequiresEOAAndCompleteTraceHistory(t *testing.T) {
 	}
 
 	emptyBackend := testPostgresBackend(t, fakeDatabase(t,
-		sqlExpectation{contains: "EtherscanCanonicalReference", columns: fakeColumns(1), rows: [][]driver.Value{{true}}},
-		sqlExpectation{contains: "EtherscanFirstFunding", columns: fakeColumns(6)},
+		sqlExpectation{contains: "EtherscanCanonicalReference", columns: fakeColumns(1), rows: [][]any{{true}}},
+		sqlExpectation{contains: "EtherscanFirstFunding", columns: fakeColumns(8)},
 		completeCoreCoverageExpectation("0", "12", "12"),
 		completedStageExpectation(traceStage, "0", "12"),
 	), PostgresOptions{ChainID: 1, State: state})
@@ -195,8 +195,8 @@ func TestHoldingClassificationAndFundingSQLPreserveCurrentAuthority(t *testing.T
 	for _, test := range []struct {
 		name, query, standard string
 	}{
-		{"ERC-20", dbgen.EtherscanERC20HoldingCandidates, "erc20"},
-		{"ERC-721", dbgen.EtherscanERC721HoldingCandidates, "erc721"},
+		{"ERC-20", testpgx.Statement("EtherscanERC20HoldingCandidates"), "erc20"},
+		{"ERC-721", testpgx.Statement("EtherscanERC721HoldingCandidates"), "erc721"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			sql := compactSQL(test.query)
@@ -207,7 +207,7 @@ func TestHoldingClassificationAndFundingSQLPreserveCurrentAuthority(t *testing.T
 			}
 		})
 	}
-	funding := compactSQL(dbgen.EtherscanFirstFunding)
+	funding := compactSQL(testpgx.Statement("EtherscanFirstFunding"))
 	if strings.Contains(funding, "receipt.raw->>'status'") ||
 		!strings.Contains(funding, "root_trace.trace_path = ''") ||
 		!strings.Contains(funding, "root_trace.reverted = FALSE") {
@@ -258,10 +258,10 @@ func TestExactAddressHoldingsUseFixedSnapshotAndDenseResults(t *testing.T) {
 	db := fakeDatabase(t,
 		completeCoreCoverageExpectation("0", "", "12"),
 		completedStageExpectation(tokenStage, "0", ""),
-		sqlExpectation{contains: "EtherscanCanonicalSnapshot", columns: fakeColumns(2), rows: [][]driver.Value{{"12", testHashBytes(3)}}},
+		sqlExpectation{contains: "EtherscanCanonicalSnapshot", columns: fakeColumns(2), rows: [][]any{{"12", testHashBytes(3)}}},
 		sqlExpectation{
 			contains: "EtherscanERC20HoldingCandidates", columns: fakeColumns(4),
-			rows: [][]driver.Value{
+			rows: [][]any{
 				{testAddressBytes(testContract), "Zero", "ZERO", int64(18)},
 				{testAddressBytes(testRecipient), "Held", "HLD", int64(6)},
 			},
@@ -291,10 +291,10 @@ func TestExactERC721HoldingsAggregateByContract(t *testing.T) {
 	db := fakeDatabase(t,
 		completeCoreCoverageExpectation("0", "", "12"),
 		completedStageExpectation(tokenStage, "0", ""),
-		sqlExpectation{contains: "EtherscanCanonicalSnapshot", columns: fakeColumns(2), rows: [][]driver.Value{{"12", testHashBytes(3)}}},
+		sqlExpectation{contains: "EtherscanCanonicalSnapshot", columns: fakeColumns(2), rows: [][]any{{"12", testHashBytes(3)}}},
 		sqlExpectation{
 			contains: "EtherscanERC721HoldingCandidates", columns: fakeColumns(4),
-			rows: [][]driver.Value{
+			rows: [][]any{
 				{testAddressBytes(testContract), "1", "Collection", "NFT"},
 				{testAddressBytes(testContract), "2", "Collection", "NFT"},
 				{testAddressBytes(testRecipient), "3", "Other", "OTH"},
@@ -317,11 +317,11 @@ func TestExactERC721HoldingsAggregateByContract(t *testing.T) {
 
 func TestHoldingCandidateCapFailsClosed(t *testing.T) {
 	t.Parallel()
-	rows := make([][]driver.Value, maxHoldingCandidates+1)
+	rows := make([][]any, maxHoldingCandidates+1)
 	for index := range rows {
 		address := make([]byte, 20)
 		binary.BigEndian.PutUint32(address[16:], uint32(index+1))
-		rows[index] = []driver.Value{address, nil, nil, nil}
+		rows[index] = []any{address, nil, nil, nil}
 	}
 	observations := make([]catalog.ERC20BalanceObservation, holdingStateBatch)
 	for index := range observations {
@@ -333,7 +333,7 @@ func TestHoldingCandidateCapFailsClosed(t *testing.T) {
 	db := fakeDatabase(t,
 		completeCoreCoverageExpectation("0", "", "12"),
 		completedStageExpectation(tokenStage, "0", ""),
-		sqlExpectation{contains: "EtherscanCanonicalSnapshot", columns: fakeColumns(2), rows: [][]driver.Value{{"12", testHashBytes(3)}}},
+		sqlExpectation{contains: "EtherscanCanonicalSnapshot", columns: fakeColumns(2), rows: [][]any{{"12", testHashBytes(3)}}},
 		sqlExpectation{contains: "EtherscanERC20HoldingCandidates", columns: fakeColumns(4), rows: rows},
 	)
 	backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1, ERC20State: state})

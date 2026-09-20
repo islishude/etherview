@@ -53,7 +53,7 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   with this fix.
 - P40 and P50 are complete; native API, compatibility, embedded SPA, wallet,
   browser, and generated-contract evidence remains in their child plans.
-- P64, P65, P67, P68, P74, P75, and P76 are complete with their current
+- P64, P65, P67, P74, P75, and P76 are complete with their current
   PostgreSQL, browser, runtime, deployment, and common-gate evidence.
 - P77 is complete with exact-state holder reconciliation, generated APIs,
   compatibility billing, bilingual Web browsing, PostgreSQL/race, production
@@ -106,3 +106,25 @@ gates pass; remote CI has not been rerun with this fix.
 
 Follow `AGENTS.md`. Child work items are updated in place. When a child plan
 changes overall state, update the corresponding row above in the same change.
+
+P68 is done: PR #92 CI at `aebb61fee2783e3f6bb8810a81296b05c142bce6`
+clears the production schema/runtime and native amd64/arm64 Hardhat/Foundry
+acceptance; the earlier local `make check` also passed. P68-T25 adds local Kubo
+Preview and the single-file IPFS tool, with CLI unit/race, lint, security/license,
+Compose/docs/plan, and daily startup/recreation/persistence checks passing.
+P68-T24's final `make test-preview-metadata` passes its reviewed offline
+real-Kubo replacement gate with both exact metadata versions and single attempts.
+The [P68 evidence](docs/plans/P68-runtime-architecture-hardening.md#evidence) retains the historical
+ipfs.io failure and new local evidence. CI does not run Preview; no new remote
+CI or public-IPFS availability is claimed. P70/P73 release blockers remain.
+
+P68-T26 fixes Kubo multipart filename escaping and IPFS URI decoding, with
+filename/URI roundtrip and traversal regressions, race, lint, docs and plan
+checks passing. Native pgx acceptance is consolidated into the development
+guide. Docker was unavailable for this follow-up; prior container evidence
+remains revision-specific.
+
+P68-T27 rewrites the native pgx acceptance section around implementation
+boundaries, validation coverage and benchmark limits, removing Git and PR
+history and routing Preview evidence to P68. Documentation and plan checks
+pass; this documentation-only change adds no runtime acceptance claim.

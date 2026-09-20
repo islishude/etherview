@@ -1,3 +1,4 @@
+import { chainQueryMeta } from "@/api/chainEvents";
 import { useQuery } from "@tanstack/react-query";
 import { getAddress } from "viem";
 
@@ -167,6 +168,7 @@ export function useVerifiedContractArtifact(
   const normalizedCodeHash = expectedCodeHash?.toLowerCase();
   return useQuery({
     queryKey: ["verified-contract-artifact", address, normalizedCodeHash ?? null],
+    meta: chainQueryMeta,
     queryFn: () => getVerifiedContractArtifact(address, normalizedCodeHash),
     enabled: enabled && address.length > 0,
     retry: false,
@@ -197,6 +199,7 @@ export function verifiedArtifactMatchesIdentity(
 export function useContractProxy(address: string, enabled = true) {
   return useQuery({
     queryKey: ["contract-proxy", address],
+    meta: chainQueryMeta,
     queryFn: () => getContractProxy(address),
     enabled: enabled && address.length > 0,
     retry: false,
@@ -212,6 +215,7 @@ export function useContractProxyUpgrades(
 ) {
   return useQuery({
     queryKey: ["contract-proxy", address, "upgrades", limit, cursor ?? null],
+    meta: chainQueryMeta,
     queryFn: () => listContractProxyUpgrades(address, cursor, limit),
     enabled: enabled && address.length > 0,
     retry: false,
@@ -227,6 +231,7 @@ export function useContractProxyInitializations(
 ) {
   return useQuery({
     queryKey: ["contract-proxy", address, "initializations", limit, cursor ?? null],
+    meta: chainQueryMeta,
     queryFn: () => listContractProxyInitializations(address, cursor, limit),
     enabled: enabled && address.length > 0,
     retry: false,
@@ -242,6 +247,7 @@ export function useContractDiamondCuts(
 ) {
   return useQuery({
     queryKey: ["contract-proxy", address, "diamond-cuts", limit, cursor ?? null],
+    meta: chainQueryMeta,
     queryFn: () => listContractDiamondCuts(address, cursor, limit),
     enabled: enabled && address.length > 0,
     retry: false,

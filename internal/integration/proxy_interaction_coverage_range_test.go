@@ -5,11 +5,12 @@ package integration_test
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/store"
@@ -155,12 +156,12 @@ func TestProxyInteractionCoverageMembershipDoesNotDependOnChainHeight(t *testing
 		        decode(lpad(to_hex(10000), 64, '0'), 'hex')`,
 	}
 	for index, statement := range statements {
-		if _, err := db.ExecContext(ctx, statement, syntheticChainID); err != nil {
+		if _, err := db.Exec(ctx, statement, syntheticChainID); err != nil {
 			t.Fatalf("insert long synthetic coverage interval step %d: %v", index, err)
 		}
 	}
 	var covered bool
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT proxy_interaction_coverage_contains(
 			$1, 0, decode(lpad(to_hex(1), 64, '0'), 'hex'),
 			9999, decode(lpad(to_hex(10000), 64, '0'), 'hex')
@@ -172,7 +173,7 @@ func TestProxyInteractionCoverageMembershipDoesNotDependOnChainHeight(t *testing
 	}
 
 	var definition string
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT pg_get_functiondef(
 			'proxy_interaction_coverage_contains(numeric,numeric,bytea,numeric,bytea)'::regprocedure
 		)`).Scan(&definition); err != nil {
@@ -199,11 +200,11 @@ func TestProxyInteractionCoverageMembershipDoesNotDependOnChainHeight(t *testing
 func assertProxyInteractionCoverageRanges(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	want [][2]store.BlockRef,
 ) {
 	t.Helper()
-	rows, err := db.QueryContext(ctx, `
+	rows, err := db.Query(ctx, `
 		SELECT start_block::text, start_block_hash,
 		       end_block::text, end_block_hash
 		FROM proxy_interaction_coverage_ranges
@@ -248,13 +249,13 @@ func assertProxyInteractionCoverageRanges(
 func assertProxyInteractionCoverageContains(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	start, end store.BlockRef,
 	want bool,
 ) {
 	t.Helper()
 	var got bool
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT proxy_interaction_coverage_contains($1, $2, $3, $4, $5)`,
 		1, start.Number, start.Hash.Bytes(), end.Number, end.Hash.Bytes(),
 	).Scan(&got); err != nil {

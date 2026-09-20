@@ -3,7 +3,6 @@ package derivedverify
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -12,8 +11,12 @@ import (
 	"strings"
 	"time"
 
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/google/uuid"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/verify"
 )
 
@@ -56,12 +59,12 @@ func (options *Options) defaults() {
 }
 
 type Worker struct {
-	db        *sql.DB
+	db        dbaccess.Database
 	publisher Publisher
 	options   Options
 }
 
-func NewWorker(db *sql.DB, publisher Publisher, options Options) (*Worker, error) {
+func NewWorker(db dbaccess.Database, publisher Publisher, options Options) (*Worker, error) {
 	options.defaults()
 	if db == nil || publisher == nil || strings.TrimSpace(options.WorkerID) == "" ||
 		len(options.WorkerID) > 128 || options.LeaseDuration < 3*time.Millisecond ||
@@ -101,7 +104,7 @@ type scanLease struct {
 	CreatorAddress        []byte
 	CreatorCodeHash       []byte
 	ValidFromBlock        string
-	ValidToBlock          sql.NullString
+	ValidToBlock          pgtype.Text
 	CursorBlockNumber     string
 	CursorTransactionHash []byte
 	CursorTracePath       string
@@ -220,14 +223,21 @@ func (worker *Worker) processLease(
 		if err := worker.renew(ctx, lease); err != nil {
 			return err
 		}
-		result, err := worker.db.ExecContext(ctx, dbgen.DerivedVerifyAdvanceScan,
-			lease.ID, lease.Token, lease.WorkerID, done,
-			cursorBlock, cursorTransaction, cursorPath,
-		)
+		result, err := func() (int64, error) {
+			queryValue0, err := strconv.ParseInt(lease.ID, 10, 64)
+			if err != nil {
+				return 0, err
+			}
+			var queryValue1 pgtype.Numeric
+			if err := queryValue1.Scan(cursorBlock); err != nil {
+				return 0, err
+			}
+			return dbgen.New(worker.db).DerivedVerifyAdvanceScan(ctx, dbgen.DerivedVerifyAdvanceScanParams{ID: int64(queryValue0), LeaseToken: new(lease.Token), LeasedBy: new(lease.WorkerID), Complete: done, MaxRescanFromBlock: queryValue1, CursorTransactionHash: cursorTransaction, CursorTracePath: cursorPath})
+		}()
 		if err != nil {
 			return err
 		}
-		if affected, _ := result.RowsAffected(); affected != 1 {
+		if affected := result; affected != 1 {
 			worker.observe("lease", "lost")
 			return errors.New("derived verification scan lease was lost")
 		}
@@ -255,15 +265,29 @@ func (worker *Worker) claim(ctx context.Context) (scanLease, bool, error) {
 	token := uuid.NewString()
 	microseconds := worker.options.LeaseDuration.Microseconds()
 	var lease scanLease
-	err := worker.db.QueryRowContext(ctx, dbgen.DerivedVerifyClaimScan,
-		worker.options.WorkerID, token, microseconds,
-	).Scan(
-		&lease.ID, &lease.CompilationID, &lease.ChainID, &lease.CreatorAddress,
-		&lease.CreatorCodeHash, &lease.ValidFromBlock, &lease.ValidToBlock,
-		&lease.CursorBlockNumber, &lease.CursorTransactionHash,
-		&lease.CursorTracePath,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+
+		queryRow, err := dbgen.New(worker.db).DerivedVerifyClaimScan(ctx, new(worker.options.WorkerID), new(token), microseconds)
+		if err != nil {
+			return err
+		}
+		lease.ID = queryRow.ScanID
+		lease.CompilationID = queryRow.ScanCompilationID
+		lease.ChainID = queryRow.ScanChainID
+		lease.CreatorAddress = queryRow.CreatorAddress
+		lease.CreatorCodeHash = queryRow.CreatorCodeHash
+		lease.ValidFromBlock = queryRow.ScanValidFromBlock
+		resultValue6, err := dbaccess.NumericText(queryRow.ValidToBlock)
+		if err != nil {
+			return err
+		}
+		lease.ValidToBlock = resultValue6
+		lease.CursorBlockNumber = queryRow.ScanCursorBlockNumber
+		lease.CursorTransactionHash = queryRow.CursorTransactionHash
+		lease.CursorTracePath = queryRow.CursorTracePath
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return scanLease{}, false, nil
 	}
 	if err != nil {
@@ -278,14 +302,17 @@ func (worker *Worker) claim(ctx context.Context) (scanLease, bool, error) {
 }
 
 func (worker *Worker) renew(ctx context.Context, lease scanLease) error {
-	result, err := worker.db.ExecContext(
-		ctx, dbgen.DerivedVerifyRenewScan,
-		lease.ID, lease.Token, lease.WorkerID, worker.options.LeaseDuration.Microseconds(),
-	)
+	result, err := func() (int64, error) {
+		queryValue0, err := strconv.ParseInt(lease.ID, 10, 64)
+		if err != nil {
+			return 0, err
+		}
+		return dbgen.New(worker.db).DerivedVerifyRenewScan(ctx, dbgen.DerivedVerifyRenewScanParams{ID: int64(queryValue0), LeaseToken: new(lease.Token), LeasedBy: new(lease.WorkerID), LeaseMicroseconds: worker.options.LeaseDuration.Microseconds()})
+	}()
 	if err != nil {
 		return err
 	}
-	if affected, _ := result.RowsAffected(); affected != 1 {
+	if affected := result; affected != 1 {
 		worker.observe("lease", "lost")
 		return errors.New("derived verification scan lease was lost")
 	}
@@ -296,24 +323,35 @@ func (worker *Worker) loadCandidates(
 	ctx context.Context,
 	compilationID string,
 ) (verify.AuthenticatedCompilation, error) {
-	rows, err := worker.db.QueryContext(ctx, dbgen.DerivedVerifyLoadCompilationCandidates, compilationID)
+	rows, err := func() ([]dbgen.DerivedVerifyLoadCompilationCandidatesRow, error) {
+		var queryValue0 pgtype.UUID
+		if err := queryValue0.Scan(compilationID); err != nil {
+			return nil, err
+		}
+		return dbgen.New(worker.db).DerivedVerifyLoadCompilationCandidates(ctx, queryValue0)
+	}()
 	if err != nil {
 		return verify.AuthenticatedCompilation{}, err
 	}
-	defer rows.Close() //nolint:errcheck
+
 	var compilation verify.AuthenticatedCompilation
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var language verify.Language
 		var version string
 		var standardJSON, creation, runtime []byte
 		var candidate verify.CandidateArtifact
-		if err := rows.Scan(
-			&language, &version, &standardJSON, &candidate.FileName,
-			&candidate.ContractName, &candidate.ABI, &creation, &runtime,
-			&candidate.CompilationArtifacts, &candidate.CreationCodeArtifacts,
-			&candidate.RuntimeCodeArtifacts,
-		); err != nil {
-			return verify.AuthenticatedCompilation{}, err
+		{
+			language = verify.Language(storedRow.Language)
+			version = storedRow.CompilerVersion
+			standardJSON = storedRow.StandardJsonPayload
+			candidate.FileName = storedRow.FileName
+			candidate.ContractName = storedRow.ContractName
+			candidate.ABI = json.RawMessage(storedRow.Abi)
+			creation = storedRow.CreationBytecode
+			runtime = storedRow.RuntimeBytecode
+			candidate.CompilationArtifacts = json.RawMessage(storedRow.CompilationArtifacts)
+			candidate.CreationCodeArtifacts = json.RawMessage(storedRow.CreationCodeArtifacts)
+			candidate.RuntimeCodeArtifacts = json.RawMessage(storedRow.RuntimeCodeArtifacts)
 		}
 		if language != verify.LanguageSolidity || !json.Valid(standardJSON) {
 			return verify.AuthenticatedCompilation{}, errors.New("stored derived verification compilation is invalid")
@@ -332,9 +370,7 @@ func (worker *Worker) loadCandidates(
 		}
 		compilation.Candidates = append(compilation.Candidates, candidate)
 	}
-	if err := rows.Err(); err != nil {
-		return verify.AuthenticatedCompilation{}, err
-	}
+
 	if len(compilation.Candidates) == 0 || len(compilation.Candidates) > 4096 {
 		return verify.AuthenticatedCompilation{}, errors.New("stored derived verification candidates are invalid")
 	}
@@ -342,29 +378,52 @@ func (worker *Worker) loadCandidates(
 }
 
 func (worker *Worker) listTraces(ctx context.Context, lease scanLease) ([]traceCandidate, error) {
-	var validTo any
+	var validTo pgtype.Numeric
 	if lease.ValidToBlock.Valid {
-		validTo = lease.ValidToBlock.String
+		if err := validTo.Scan(lease.ValidToBlock.String); err != nil {
+			return nil, err
+		}
 	}
-	rows, err := worker.db.QueryContext(ctx, dbgen.DerivedVerifyListHistoricalTraces,
-		lease.CompilationID, lease.ChainID, lease.CreatorAddress,
-		lease.CreatorCodeHash, lease.ValidFromBlock, validTo, lease.CursorBlockNumber,
-		lease.CursorTransactionHash, lease.CursorTracePath, worker.options.MaxTraces,
-	)
+	rows, err := func() ([]dbgen.DerivedVerifyListHistoricalTracesRow, error) {
+		var queryValue0 pgtype.UUID
+		if err := queryValue0.Scan(lease.CompilationID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(lease.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(lease.ValidFromBlock); err != nil {
+			return nil, err
+		}
+		var queryValue3 pgtype.Numeric
+		if err := queryValue3.Scan(lease.CursorBlockNumber); err != nil {
+			return nil, err
+		}
+		if worker.options.MaxTraces < -2147483648 || worker.options.MaxTraces > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		return dbgen.New(worker.db).DerivedVerifyListHistoricalTraces(ctx, dbgen.DerivedVerifyListHistoricalTracesParams{CompilationID: queryValue0, ChainID: queryValue1, FromAddress: lease.CreatorAddress, CodeHash: lease.CreatorCodeHash, MinBlockNumber: queryValue2, MaxBlockNumber: validTo, CursorBlockNumber: queryValue3, CursorTransactionHash: lease.CursorTransactionHash, CursorTracePath: lease.CursorTracePath, Limit: int32(worker.options.MaxTraces)})
+	}()
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close() //nolint:errcheck
+
 	var traces []traceCandidate
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var trace traceCandidate
 		var blockNumber string
-		if err := rows.Scan(
-			&blockNumber, &trace.BlockHash, &trace.TransactionHash,
-			&trace.TracePath, &trace.CallType, &trace.CreatorAddress,
-			&trace.CreatedAddress, &trace.CreationCode, &trace.RuntimeCode,
-		); err != nil {
-			return nil, err
+		{
+			blockNumber = storedRow.TraceBlockNumber
+			trace.BlockHash = storedRow.BlockHash
+			trace.TransactionHash = storedRow.TransactionHash
+			trace.TracePath = storedRow.TracePath
+			trace.CallType = storedRow.CallType
+			trace.CreatorAddress = storedRow.FromAddress
+			trace.CreatedAddress = storedRow.CreatedAddress
+			trace.CreationCode = storedRow.Input
+			trace.RuntimeCode = storedRow.Code
 		}
 		trace.BlockNumber, err = strconv.ParseUint(blockNumber, 10, 64)
 		if err != nil || len(trace.BlockHash) != 32 || len(trace.TransactionHash) != 32 ||
@@ -375,7 +434,8 @@ func (worker *Worker) listTraces(ctx context.Context, lease scanLease) ([]traceC
 		}
 		traces = append(traces, trace)
 	}
-	return traces, rows.Err()
+
+	return traces, nil
 }
 
 func (worker *Worker) recordAttempt(
@@ -385,13 +445,31 @@ func (worker *Worker) recordAttempt(
 	status string,
 ) (string, error) {
 	var stored string
-	err := worker.db.QueryRowContext(ctx, dbgen.DerivedVerifyRecordAttempt,
-		uuid.NewString(), lease.ChainID, strconv.FormatUint(trace.BlockNumber, 10),
-		trace.BlockHash, trace.TransactionHash, trace.TracePath,
-		trace.CreatorAddress, trace.CreatedAddress, trace.CallType,
-		lease.CompilationID, status,
-	).Scan(&stored)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.UUID
+		if err := queryValue0.Scan(uuid.NewString()); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(lease.ChainID); err != nil {
+			return err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(strconv.FormatUint(trace.BlockNumber, 10)); err != nil {
+			return err
+		}
+		var queryValue3 pgtype.UUID
+		if err := queryValue3.Scan(lease.CompilationID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(worker.db).DerivedVerifyRecordAttempt(ctx, dbgen.DerivedVerifyRecordAttemptParams{ID: queryValue0, ChainID: queryValue1, BlockNumber: queryValue2, BlockHash: trace.BlockHash, TransactionHash: trace.TransactionHash, TracePath: trace.TracePath, CreatorAddress: trace.CreatorAddress, CreatedAddress: trace.CreatedAddress, CallType: trace.CallType, CompilationID: queryValue3, OutcomeStatus: status})
+		if err != nil {
+			return err
+		}
+		stored = queryRow
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return "stale", nil
 	}
 	if err != nil {
@@ -404,13 +482,17 @@ func (worker *Worker) recordAttempt(
 }
 
 func (worker *Worker) retry(ctx context.Context, lease scanLease) error {
-	result, err := worker.db.ExecContext(ctx, dbgen.DerivedVerifyRetryScan,
-		lease.ID, lease.Token, lease.WorkerID, "processing_failed",
-	)
+	result, err := func() (int64, error) {
+		queryValue0, err := strconv.ParseInt(lease.ID, 10, 64)
+		if err != nil {
+			return 0, err
+		}
+		return dbgen.New(worker.db).DerivedVerifyRetryScan(ctx, dbgen.DerivedVerifyRetryScanParams{ID: int64(queryValue0), LeaseToken: new(lease.Token), LeasedBy: new(lease.WorkerID), LastError: new("processing_failed")})
+	}()
 	if err != nil {
 		return err
 	}
-	if affected, _ := result.RowsAffected(); affected != 1 {
+	if affected := result; affected != 1 {
 		return fmt.Errorf("retry derived verification scan: lease lost")
 	}
 	return nil

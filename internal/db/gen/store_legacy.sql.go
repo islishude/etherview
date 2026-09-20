@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const StoreLegacyAppendJournalStatement1 = `-- name: StoreLegacyAppendJournalStatement1 :exec
+const storeLegacyAppendJournalStatement1 = `-- name: StoreLegacyAppendJournalStatement1 :execrows
 INSERT INTO block_journals (
 			chain_id, block_hash, stage, sequence, payload, canonical, created_at
 		)
@@ -26,149 +26,100 @@ INSERT INTO block_journals (
 `
 
 type StoreLegacyAppendJournalStatement1Params struct {
-	Column1   pgtype.Numeric     `db:"column_1" json:"column_1"`
+	ChainID   pgtype.Numeric     `db:"chain_id" json:"chain_id"`
 	BlockHash []byte             `db:"block_hash" json:"block_hash"`
 	Stage     string             `db:"stage" json:"stage"`
-	Column4   pgtype.Numeric     `db:"column_4" json:"column_4"`
-	Column5   []byte             `db:"column_5" json:"column_5"`
+	Sequence  pgtype.Numeric     `db:"sequence" json:"sequence"`
+	Payload   []byte             `db:"payload" json:"payload"`
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
-func (q *Queries) StoreLegacyAppendJournalStatement1(ctx context.Context, arg StoreLegacyAppendJournalStatement1Params) error {
-	_, err := q.db.Exec(ctx, StoreLegacyAppendJournalStatement1,
-		arg.Column1,
+func (q *Queries) StoreLegacyAppendJournalStatement1(ctx context.Context, arg StoreLegacyAppendJournalStatement1Params) (int64, error) {
+	result, err := q.db.Exec(ctx, storeLegacyAppendJournalStatement1,
+		arg.ChainID,
 		arg.BlockHash,
 		arg.Stage,
-		arg.Column4,
-		arg.Column5,
+		arg.Sequence,
+		arg.Payload,
 		arg.CreatedAt,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const StoreLegacyApplyReorgStatement5 = `-- name: StoreLegacyApplyReorgStatement5 :exec
+const storeLegacyApplyReorgStatement5 = `-- name: StoreLegacyApplyReorgStatement5 :exec
 DELETE FROM index_checkpoints
 		WHERE chain_id = $1::numeric AND stage = $2
 `
 
-func (q *Queries) StoreLegacyApplyReorgStatement5(ctx context.Context, column1 pgtype.Numeric, stage string) error {
-	_, err := q.db.Exec(ctx, StoreLegacyApplyReorgStatement5, column1, stage)
+func (q *Queries) StoreLegacyApplyReorgStatement5(ctx context.Context, chainID pgtype.Numeric, stage string) error {
+	_, err := q.db.Exec(ctx, storeLegacyApplyReorgStatement5, chainID, stage)
 	return err
 }
 
-const StoreLegacyBindChainIdentityStatement1 = `-- name: StoreLegacyBindChainIdentityStatement1 :many
+const storeLegacyBindChainIdentityStatement1 = `-- name: StoreLegacyBindChainIdentityStatement1 :one
 SELECT genesis_hash
 		FROM chains
 		WHERE chain_id = $1::numeric
 		FOR NO KEY UPDATE
 `
 
-func (q *Queries) StoreLegacyBindChainIdentityStatement1(ctx context.Context, dollar_1 pgtype.Numeric) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, StoreLegacyBindChainIdentityStatement1, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := [][]byte{}
-	for rows.Next() {
-		var genesis_hash []byte
-		if err := rows.Scan(&genesis_hash); err != nil {
-			return nil, err
-		}
-		items = append(items, genesis_hash)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) StoreLegacyBindChainIdentityStatement1(ctx context.Context, chainID pgtype.Numeric) ([]byte, error) {
+	row := q.db.QueryRow(ctx, storeLegacyBindChainIdentityStatement1, chainID)
+	var genesis_hash []byte
+	err := row.Scan(&genesis_hash)
+	return genesis_hash, err
 }
 
-const StoreLegacyBindChainIdentityStatement2 = `-- name: StoreLegacyBindChainIdentityStatement2 :many
+const storeLegacyBindChainIdentityStatement2 = `-- name: StoreLegacyBindChainIdentityStatement2 :one
 INSERT INTO chains (chain_id, genesis_hash)
 			VALUES ($1::numeric, $2)
 			RETURNING genesis_hash
 `
 
-func (q *Queries) StoreLegacyBindChainIdentityStatement2(ctx context.Context, column1 pgtype.Numeric, genesisHash []byte) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, StoreLegacyBindChainIdentityStatement2, column1, genesisHash)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := [][]byte{}
-	for rows.Next() {
-		var genesis_hash []byte
-		if err := rows.Scan(&genesis_hash); err != nil {
-			return nil, err
-		}
-		items = append(items, genesis_hash)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) StoreLegacyBindChainIdentityStatement2(ctx context.Context, chainID pgtype.Numeric, genesisHash []byte) ([]byte, error) {
+	row := q.db.QueryRow(ctx, storeLegacyBindChainIdentityStatement2, chainID, genesisHash)
+	var genesis_hash []byte
+	err := row.Scan(&genesis_hash)
+	return genesis_hash, err
 }
 
-const StoreLegacyBindChainIdentityStatement3 = `-- name: StoreLegacyBindChainIdentityStatement3 :many
+const storeLegacyBindChainIdentityStatement3 = `-- name: StoreLegacyBindChainIdentityStatement3 :one
 UPDATE chains
-			SET genesis_hash = $2
-			WHERE chain_id = $1::numeric AND genesis_hash IS NULL
+			SET genesis_hash = $1
+			WHERE chain_id = $2::numeric AND genesis_hash IS NULL
 			RETURNING genesis_hash
 `
 
-func (q *Queries) StoreLegacyBindChainIdentityStatement3(ctx context.Context, column1 pgtype.Numeric, genesisHash []byte) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, StoreLegacyBindChainIdentityStatement3, column1, genesisHash)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := [][]byte{}
-	for rows.Next() {
-		var genesis_hash []byte
-		if err := rows.Scan(&genesis_hash); err != nil {
-			return nil, err
-		}
-		items = append(items, genesis_hash)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) StoreLegacyBindChainIdentityStatement3(ctx context.Context, genesisHash []byte, chainID pgtype.Numeric) ([]byte, error) {
+	row := q.db.QueryRow(ctx, storeLegacyBindChainIdentityStatement3, genesisHash, chainID)
+	var genesis_hash []byte
+	err := row.Scan(&genesis_hash)
+	return genesis_hash, err
 }
 
-const StoreLegacyBundleByHashStatement1 = `-- name: StoreLegacyBundleByHashStatement1 :many
+const storeLegacyBundleByHashStatement1 = `-- name: StoreLegacyBundleByHashStatement1 :one
 SELECT raw FROM blocks WHERE chain_id = $1::numeric AND hash = $2
 `
 
-func (q *Queries) StoreLegacyBundleByHashStatement1(ctx context.Context, column1 pgtype.Numeric, hash []byte) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, StoreLegacyBundleByHashStatement1, column1, hash)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := [][]byte{}
-	for rows.Next() {
-		var raw []byte
-		if err := rows.Scan(&raw); err != nil {
-			return nil, err
-		}
-		items = append(items, raw)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) StoreLegacyBundleByHashStatement1(ctx context.Context, chainID pgtype.Numeric, hash []byte) ([]byte, error) {
+	row := q.db.QueryRow(ctx, storeLegacyBundleByHashStatement1, chainID, hash)
+	var raw []byte
+	err := row.Scan(&raw)
+	return raw, err
 }
 
-const StoreLegacyBundleByHashStatement2 = `-- name: StoreLegacyBundleByHashStatement2 :many
+const storeLegacyBundleByHashStatement2 = `-- name: StoreLegacyBundleByHashStatement2 :many
 SELECT raw
 		FROM receipts
 		WHERE chain_id = $1::numeric AND block_hash = $2
 		ORDER BY tx_index
 `
 
-func (q *Queries) StoreLegacyBundleByHashStatement2(ctx context.Context, column1 pgtype.Numeric, blockHash []byte) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, StoreLegacyBundleByHashStatement2, column1, blockHash)
+func (q *Queries) StoreLegacyBundleByHashStatement2(ctx context.Context, chainID pgtype.Numeric, blockHash []byte) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, storeLegacyBundleByHashStatement2, chainID, blockHash)
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +138,7 @@ func (q *Queries) StoreLegacyBundleByHashStatement2(ctx context.Context, column1
 	return items, nil
 }
 
-const StoreLegacyCheckCheckpointTxStatement1 = `-- name: StoreLegacyCheckCheckpointTxStatement1 :many
+const storeLegacyCheckCheckpointTxStatement1 = `-- name: StoreLegacyCheckCheckpointTxStatement1 :one
 SELECT contiguous_through::text, block_hash
 		FROM index_checkpoints
 		WHERE chain_id = $1::numeric AND stage = $2
@@ -199,27 +150,14 @@ type StoreLegacyCheckCheckpointTxStatement1Row struct {
 	BlockHash         []byte `db:"block_hash" json:"block_hash"`
 }
 
-func (q *Queries) StoreLegacyCheckCheckpointTxStatement1(ctx context.Context, column1 pgtype.Numeric, stage string) ([]StoreLegacyCheckCheckpointTxStatement1Row, error) {
-	rows, err := q.db.Query(ctx, StoreLegacyCheckCheckpointTxStatement1, column1, stage)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []StoreLegacyCheckCheckpointTxStatement1Row{}
-	for rows.Next() {
-		var i StoreLegacyCheckCheckpointTxStatement1Row
-		if err := rows.Scan(&i.ContiguousThrough, &i.BlockHash); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) StoreLegacyCheckCheckpointTxStatement1(ctx context.Context, chainID pgtype.Numeric, stage string) (StoreLegacyCheckCheckpointTxStatement1Row, error) {
+	row := q.db.QueryRow(ctx, storeLegacyCheckCheckpointTxStatement1, chainID, stage)
+	var i StoreLegacyCheckCheckpointTxStatement1Row
+	err := row.Scan(&i.ContiguousThrough, &i.BlockHash)
+	return i, err
 }
 
-const StoreLegacyCheckpointStatement1 = `-- name: StoreLegacyCheckpointStatement1 :many
+const storeLegacyCheckpointStatement1 = `-- name: StoreLegacyCheckpointStatement1 :one
 SELECT contiguous_through::text, block_hash, updated_at
 		FROM index_checkpoints
 		WHERE chain_id = $1::numeric AND stage = $2
@@ -231,37 +169,24 @@ type StoreLegacyCheckpointStatement1Row struct {
 	UpdatedAt         pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
-func (q *Queries) StoreLegacyCheckpointStatement1(ctx context.Context, column1 pgtype.Numeric, stage string) ([]StoreLegacyCheckpointStatement1Row, error) {
-	rows, err := q.db.Query(ctx, StoreLegacyCheckpointStatement1, column1, stage)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []StoreLegacyCheckpointStatement1Row{}
-	for rows.Next() {
-		var i StoreLegacyCheckpointStatement1Row
-		if err := rows.Scan(&i.ContiguousThrough, &i.BlockHash, &i.UpdatedAt); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) StoreLegacyCheckpointStatement1(ctx context.Context, chainID pgtype.Numeric, stage string) (StoreLegacyCheckpointStatement1Row, error) {
+	row := q.db.QueryRow(ctx, storeLegacyCheckpointStatement1, chainID, stage)
+	var i StoreLegacyCheckpointStatement1Row
+	err := row.Scan(&i.ContiguousThrough, &i.BlockHash, &i.UpdatedAt)
+	return i, err
 }
 
-const StoreLegacyClaimBackfillRangeStatement1 = `-- name: StoreLegacyClaimBackfillRangeStatement1 :exec
+const storeLegacyClaimBackfillRangeStatement1 = `-- name: StoreLegacyClaimBackfillRangeStatement1 :exec
 DELETE FROM core_backfill_leases
 		WHERE chain_id = $1::numeric AND expires_at <= $2
 `
 
-func (q *Queries) StoreLegacyClaimBackfillRangeStatement1(ctx context.Context, column1 pgtype.Numeric, expiresAt pgtype.Timestamptz) error {
-	_, err := q.db.Exec(ctx, StoreLegacyClaimBackfillRangeStatement1, column1, expiresAt)
+func (q *Queries) StoreLegacyClaimBackfillRangeStatement1(ctx context.Context, chainID pgtype.Numeric, expiresAt pgtype.Timestamptz) error {
+	_, err := q.db.Exec(ctx, storeLegacyClaimBackfillRangeStatement1, chainID, expiresAt)
 	return err
 }
 
-const StoreLegacyClaimBackfillRangeStatement2 = `-- name: StoreLegacyClaimBackfillRangeStatement2 :many
+const storeLegacyClaimBackfillRangeStatement2 = `-- name: StoreLegacyClaimBackfillRangeStatement2 :one
 SELECT EXISTS (
 			SELECT 1
 			FROM core_backfill_leases
@@ -272,67 +197,54 @@ SELECT EXISTS (
 `
 
 type StoreLegacyClaimBackfillRangeStatement2Params struct {
-	Column1   pgtype.Numeric     `db:"column_1" json:"column_1"`
-	ExpiresAt pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-	Column3   pgtype.Numeric     `db:"column_3" json:"column_3"`
-	Column4   pgtype.Numeric     `db:"column_4" json:"column_4"`
+	ChainID       pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	ExpiresAt     pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	MaxRangeEnd   pgtype.Numeric     `db:"max_range_end" json:"max_range_end"`
+	MinRangeStart pgtype.Numeric     `db:"min_range_start" json:"min_range_start"`
 }
 
-func (q *Queries) StoreLegacyClaimBackfillRangeStatement2(ctx context.Context, arg StoreLegacyClaimBackfillRangeStatement2Params) ([]bool, error) {
-	rows, err := q.db.Query(ctx, StoreLegacyClaimBackfillRangeStatement2,
-		arg.Column1,
+func (q *Queries) StoreLegacyClaimBackfillRangeStatement2(ctx context.Context, arg StoreLegacyClaimBackfillRangeStatement2Params) (bool, error) {
+	row := q.db.QueryRow(ctx, storeLegacyClaimBackfillRangeStatement2,
+		arg.ChainID,
 		arg.ExpiresAt,
-		arg.Column3,
-		arg.Column4,
+		arg.MaxRangeEnd,
+		arg.MinRangeStart,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var exists bool
-		if err := rows.Scan(&exists); err != nil {
-			return nil, err
-		}
-		items = append(items, exists)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
-const StoreLegacyClaimBackfillRangeStatement3 = `-- name: StoreLegacyClaimBackfillRangeStatement3 :exec
+const storeLegacyClaimBackfillRangeStatement3 = `-- name: StoreLegacyClaimBackfillRangeStatement3 :exec
 INSERT INTO core_backfill_leases (
 			chain_id, range_start, range_end, owner, lease_token, claimed_at, expires_at
 		) VALUES ($1::numeric, $2::numeric, $3::numeric, $4, $5::uuid, $6, $7)
 `
 
 type StoreLegacyClaimBackfillRangeStatement3Params struct {
-	Column1   pgtype.Numeric     `db:"column_1" json:"column_1"`
-	Column2   pgtype.Numeric     `db:"column_2" json:"column_2"`
-	Column3   pgtype.Numeric     `db:"column_3" json:"column_3"`
-	Owner     string             `db:"owner" json:"owner"`
-	Column5   pgtype.UUID        `db:"column_5" json:"column_5"`
-	ClaimedAt pgtype.Timestamptz `db:"claimed_at" json:"claimed_at"`
-	ExpiresAt pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	ChainID    pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	RangeStart pgtype.Numeric     `db:"range_start" json:"range_start"`
+	RangeEnd   pgtype.Numeric     `db:"range_end" json:"range_end"`
+	Owner      string             `db:"owner" json:"owner"`
+	LeaseToken pgtype.UUID        `db:"lease_token" json:"lease_token"`
+	ClaimedAt  pgtype.Timestamptz `db:"claimed_at" json:"claimed_at"`
+	ExpiresAt  pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
 }
 
 func (q *Queries) StoreLegacyClaimBackfillRangeStatement3(ctx context.Context, arg StoreLegacyClaimBackfillRangeStatement3Params) error {
-	_, err := q.db.Exec(ctx, StoreLegacyClaimBackfillRangeStatement3,
-		arg.Column1,
-		arg.Column2,
-		arg.Column3,
+	_, err := q.db.Exec(ctx, storeLegacyClaimBackfillRangeStatement3,
+		arg.ChainID,
+		arg.RangeStart,
+		arg.RangeEnd,
 		arg.Owner,
-		arg.Column5,
+		arg.LeaseToken,
 		arg.ClaimedAt,
 		arg.ExpiresAt,
 	)
 	return err
 }
 
-const StoreLegacyCompleteBackfillRangeStatement1 = `-- name: StoreLegacyCompleteBackfillRangeStatement1 :many
+const storeLegacyCompleteBackfillRangeStatement1 = `-- name: StoreLegacyCompleteBackfillRangeStatement1 :one
 SELECT expires_at
 		FROM core_backfill_leases
 		WHERE chain_id = $1::numeric
@@ -343,40 +255,27 @@ SELECT expires_at
 `
 
 type StoreLegacyCompleteBackfillRangeStatement1Params struct {
-	Column1 pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2 pgtype.Numeric `db:"column_2" json:"column_2"`
-	Column3 pgtype.Numeric `db:"column_3" json:"column_3"`
-	Owner   string         `db:"owner" json:"owner"`
-	Column5 pgtype.UUID    `db:"column_5" json:"column_5"`
+	ChainID    pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	RangeStart pgtype.Numeric `db:"range_start" json:"range_start"`
+	RangeEnd   pgtype.Numeric `db:"range_end" json:"range_end"`
+	Owner      string         `db:"owner" json:"owner"`
+	LeaseToken pgtype.UUID    `db:"lease_token" json:"lease_token"`
 }
 
-func (q *Queries) StoreLegacyCompleteBackfillRangeStatement1(ctx context.Context, arg StoreLegacyCompleteBackfillRangeStatement1Params) ([]pgtype.Timestamptz, error) {
-	rows, err := q.db.Query(ctx, StoreLegacyCompleteBackfillRangeStatement1,
-		arg.Column1,
-		arg.Column2,
-		arg.Column3,
+func (q *Queries) StoreLegacyCompleteBackfillRangeStatement1(ctx context.Context, arg StoreLegacyCompleteBackfillRangeStatement1Params) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, storeLegacyCompleteBackfillRangeStatement1,
+		arg.ChainID,
+		arg.RangeStart,
+		arg.RangeEnd,
 		arg.Owner,
-		arg.Column5,
+		arg.LeaseToken,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []pgtype.Timestamptz{}
-	for rows.Next() {
-		var expires_at pgtype.Timestamptz
-		if err := rows.Scan(&expires_at); err != nil {
-			return nil, err
-		}
-		items = append(items, expires_at)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var expires_at pgtype.Timestamptz
+	err := row.Scan(&expires_at)
+	return expires_at, err
 }
 
-const StoreLegacyCompleteBackfillRangeStatement2 = `-- name: StoreLegacyCompleteBackfillRangeStatement2 :exec
+const storeLegacyCompleteBackfillRangeStatement2 = `-- name: StoreLegacyCompleteBackfillRangeStatement2 :exec
 DELETE FROM core_backfill_leases
 		WHERE chain_id = $1::numeric
 		  AND range_start = $2::numeric AND range_end = $3::numeric
@@ -384,62 +283,62 @@ DELETE FROM core_backfill_leases
 `
 
 type StoreLegacyCompleteBackfillRangeStatement2Params struct {
-	Column1 pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2 pgtype.Numeric `db:"column_2" json:"column_2"`
-	Column3 pgtype.Numeric `db:"column_3" json:"column_3"`
-	Column4 pgtype.UUID    `db:"column_4" json:"column_4"`
+	ChainID    pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	RangeStart pgtype.Numeric `db:"range_start" json:"range_start"`
+	RangeEnd   pgtype.Numeric `db:"range_end" json:"range_end"`
+	LeaseToken pgtype.UUID    `db:"lease_token" json:"lease_token"`
 }
 
 func (q *Queries) StoreLegacyCompleteBackfillRangeStatement2(ctx context.Context, arg StoreLegacyCompleteBackfillRangeStatement2Params) error {
-	_, err := q.db.Exec(ctx, StoreLegacyCompleteBackfillRangeStatement2,
-		arg.Column1,
-		arg.Column2,
-		arg.Column3,
-		arg.Column4,
+	_, err := q.db.Exec(ctx, storeLegacyCompleteBackfillRangeStatement2,
+		arg.ChainID,
+		arg.RangeStart,
+		arg.RangeEnd,
+		arg.LeaseToken,
 	)
 	return err
 }
 
-const StoreLegacyConfigureIndexStatement1 = `-- name: StoreLegacyConfigureIndexStatement1 :exec
+const storeLegacyConfigureIndexStatement1 = `-- name: StoreLegacyConfigureIndexStatement1 :exec
 INSERT INTO core_index_configuration (chain_id, configured_start)
 		VALUES ($1::numeric, $2::numeric)
 `
 
-func (q *Queries) StoreLegacyConfigureIndexStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) error {
-	_, err := q.db.Exec(ctx, StoreLegacyConfigureIndexStatement1, column1, column2)
+func (q *Queries) StoreLegacyConfigureIndexStatement1(ctx context.Context, chainID pgtype.Numeric, configuredStart pgtype.Numeric) error {
+	_, err := q.db.Exec(ctx, storeLegacyConfigureIndexStatement1, chainID, configuredStart)
 	return err
 }
 
-const StoreLegacyConfigureIndexStatement2 = `-- name: StoreLegacyConfigureIndexStatement2 :exec
+const storeLegacyConfigureIndexStatement2 = `-- name: StoreLegacyConfigureIndexStatement2 :exec
 DELETE FROM index_checkpoints
 		WHERE chain_id = $1::numeric AND stage = $2
 `
 
-func (q *Queries) StoreLegacyConfigureIndexStatement2(ctx context.Context, column1 pgtype.Numeric, stage string) error {
-	_, err := q.db.Exec(ctx, StoreLegacyConfigureIndexStatement2, column1, stage)
+func (q *Queries) StoreLegacyConfigureIndexStatement2(ctx context.Context, chainID pgtype.Numeric, stage string) error {
+	_, err := q.db.Exec(ctx, storeLegacyConfigureIndexStatement2, chainID, stage)
 	return err
 }
 
-const StoreLegacyDeleteBundleFactsTxStatement1 = `-- name: StoreLegacyDeleteBundleFactsTxStatement1 :exec
+const storeLegacyDeleteBundleFactsTxStatement1 = `-- name: StoreLegacyDeleteBundleFactsTxStatement1 :exec
 DELETE FROM block_journals
 		WHERE chain_id = $1::numeric AND block_hash = $2
 `
 
-func (q *Queries) StoreLegacyDeleteBundleFactsTxStatement1(ctx context.Context, column1 pgtype.Numeric, blockHash []byte) error {
-	_, err := q.db.Exec(ctx, StoreLegacyDeleteBundleFactsTxStatement1, column1, blockHash)
+func (q *Queries) StoreLegacyDeleteBundleFactsTxStatement1(ctx context.Context, chainID pgtype.Numeric, blockHash []byte) error {
+	_, err := q.db.Exec(ctx, storeLegacyDeleteBundleFactsTxStatement1, chainID, blockHash)
 	return err
 }
 
-const StoreLegacyEnsureChainStatement1 = `-- name: StoreLegacyEnsureChainStatement1 :exec
+const storeLegacyEnsureChainStatement1 = `-- name: StoreLegacyEnsureChainStatement1 :exec
 INSERT INTO chains (chain_id) VALUES ($1::numeric) ON CONFLICT (chain_id) DO NOTHING
 `
 
-func (q *Queries) StoreLegacyEnsureChainStatement1(ctx context.Context, dollar_1 pgtype.Numeric) error {
-	_, err := q.db.Exec(ctx, StoreLegacyEnsureChainStatement1, dollar_1)
+func (q *Queries) StoreLegacyEnsureChainStatement1(ctx context.Context, chainID pgtype.Numeric) error {
+	_, err := q.db.Exec(ctx, storeLegacyEnsureChainStatement1, chainID)
 	return err
 }
 
-const StoreLegacyInsertReorgEventStatement1 = `-- name: StoreLegacyInsertReorgEventStatement1 :exec
+const storeLegacyInsertReorgEventStatement1 = `-- name: StoreLegacyInsertReorgEventStatement1 :exec
 INSERT INTO reorg_events (
 			chain_id, ancestor_number, ancestor_hash, old_tip_number, old_tip_hash,
 			new_tip_number, new_tip_hash, detached, attached, reason
@@ -447,45 +346,45 @@ INSERT INTO reorg_events (
 `
 
 type StoreLegacyInsertReorgEventStatement1Params struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2      pgtype.Numeric `db:"column_2" json:"column_2"`
-	AncestorHash []byte         `db:"ancestor_hash" json:"ancestor_hash"`
-	Column4      pgtype.Numeric `db:"column_4" json:"column_4"`
-	OldTipHash   []byte         `db:"old_tip_hash" json:"old_tip_hash"`
-	Column6      pgtype.Numeric `db:"column_6" json:"column_6"`
-	NewTipHash   []byte         `db:"new_tip_hash" json:"new_tip_hash"`
-	Column8      []byte         `db:"column_8" json:"column_8"`
-	Column9      []byte         `db:"column_9" json:"column_9"`
-	Reason       string         `db:"reason" json:"reason"`
+	ChainID        pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	AncestorNumber pgtype.Numeric `db:"ancestor_number" json:"ancestor_number"`
+	AncestorHash   []byte         `db:"ancestor_hash" json:"ancestor_hash"`
+	OldTipNumber   pgtype.Numeric `db:"old_tip_number" json:"old_tip_number"`
+	OldTipHash     []byte         `db:"old_tip_hash" json:"old_tip_hash"`
+	NewTipNumber   pgtype.Numeric `db:"new_tip_number" json:"new_tip_number"`
+	NewTipHash     []byte         `db:"new_tip_hash" json:"new_tip_hash"`
+	Detached       []byte         `db:"detached" json:"detached"`
+	Attached       []byte         `db:"attached" json:"attached"`
+	Reason         string         `db:"reason" json:"reason"`
 }
 
 func (q *Queries) StoreLegacyInsertReorgEventStatement1(ctx context.Context, arg StoreLegacyInsertReorgEventStatement1Params) error {
-	_, err := q.db.Exec(ctx, StoreLegacyInsertReorgEventStatement1,
-		arg.Column1,
-		arg.Column2,
+	_, err := q.db.Exec(ctx, storeLegacyInsertReorgEventStatement1,
+		arg.ChainID,
+		arg.AncestorNumber,
 		arg.AncestorHash,
-		arg.Column4,
+		arg.OldTipNumber,
 		arg.OldTipHash,
-		arg.Column6,
+		arg.NewTipNumber,
 		arg.NewTipHash,
-		arg.Column8,
-		arg.Column9,
+		arg.Detached,
+		arg.Attached,
 		arg.Reason,
 	)
 	return err
 }
 
-const StoreLegacyInsertRuntimeEventTxStatement1 = `-- name: StoreLegacyInsertRuntimeEventTxStatement1 :exec
+const storeLegacyInsertRuntimeEventTxStatement1 = `-- name: StoreLegacyInsertRuntimeEventTxStatement1 :exec
 INSERT INTO runtime_events (chain_id, event_type, payload)
 		VALUES ($1::numeric, $2, $3::jsonb)
 `
 
-func (q *Queries) StoreLegacyInsertRuntimeEventTxStatement1(ctx context.Context, column1 pgtype.Numeric, eventType string, column3 []byte) error {
-	_, err := q.db.Exec(ctx, StoreLegacyInsertRuntimeEventTxStatement1, column1, eventType, column3)
+func (q *Queries) StoreLegacyInsertRuntimeEventTxStatement1(ctx context.Context, chainID pgtype.Numeric, eventType string, payload []byte) error {
+	_, err := q.db.Exec(ctx, storeLegacyInsertRuntimeEventTxStatement1, chainID, eventType, payload)
 	return err
 }
 
-const StoreLegacyInsertSparseReorgEventsTxStatement1 = `-- name: StoreLegacyInsertSparseReorgEventsTxStatement1 :exec
+const storeLegacyInsertSparseReorgEventsTxStatement1 = `-- name: StoreLegacyInsertSparseReorgEventsTxStatement1 :exec
 INSERT INTO reorg_events (
 			chain_id, ancestor_number, ancestor_hash, old_tip_number, old_tip_hash,
 			new_tip_number, new_tip_hash, detached, attached, reason
@@ -493,35 +392,35 @@ INSERT INTO reorg_events (
 `
 
 type StoreLegacyInsertSparseReorgEventsTxStatement1Params struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2      pgtype.Numeric `db:"column_2" json:"column_2"`
-	AncestorHash []byte         `db:"ancestor_hash" json:"ancestor_hash"`
-	Column4      pgtype.Numeric `db:"column_4" json:"column_4"`
-	OldTipHash   []byte         `db:"old_tip_hash" json:"old_tip_hash"`
-	Column6      pgtype.Numeric `db:"column_6" json:"column_6"`
-	NewTipHash   []byte         `db:"new_tip_hash" json:"new_tip_hash"`
-	Column8      []byte         `db:"column_8" json:"column_8"`
-	Column9      []byte         `db:"column_9" json:"column_9"`
-	Reason       string         `db:"reason" json:"reason"`
+	ChainID        pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	AncestorNumber pgtype.Numeric `db:"ancestor_number" json:"ancestor_number"`
+	AncestorHash   []byte         `db:"ancestor_hash" json:"ancestor_hash"`
+	OldTipNumber   pgtype.Numeric `db:"old_tip_number" json:"old_tip_number"`
+	OldTipHash     []byte         `db:"old_tip_hash" json:"old_tip_hash"`
+	NewTipNumber   pgtype.Numeric `db:"new_tip_number" json:"new_tip_number"`
+	NewTipHash     []byte         `db:"new_tip_hash" json:"new_tip_hash"`
+	Detached       []byte         `db:"detached" json:"detached"`
+	Attached       []byte         `db:"attached" json:"attached"`
+	Reason         string         `db:"reason" json:"reason"`
 }
 
 func (q *Queries) StoreLegacyInsertSparseReorgEventsTxStatement1(ctx context.Context, arg StoreLegacyInsertSparseReorgEventsTxStatement1Params) error {
-	_, err := q.db.Exec(ctx, StoreLegacyInsertSparseReorgEventsTxStatement1,
-		arg.Column1,
-		arg.Column2,
+	_, err := q.db.Exec(ctx, storeLegacyInsertSparseReorgEventsTxStatement1,
+		arg.ChainID,
+		arg.AncestorNumber,
 		arg.AncestorHash,
-		arg.Column4,
+		arg.OldTipNumber,
 		arg.OldTipHash,
-		arg.Column6,
+		arg.NewTipNumber,
 		arg.NewTipHash,
-		arg.Column8,
-		arg.Column9,
+		arg.Detached,
+		arg.Attached,
 		arg.Reason,
 	)
 	return err
 }
 
-const StoreLegacyJournalsByBlockStatement1 = `-- name: StoreLegacyJournalsByBlockStatement1 :many
+const storeLegacyJournalsByBlockStatement1 = `-- name: StoreLegacyJournalsByBlockStatement1 :many
 SELECT stage, sequence::text, payload, canonical, created_at
 		FROM block_journals
 		WHERE chain_id = $1::numeric AND block_hash = $2
@@ -536,8 +435,8 @@ type StoreLegacyJournalsByBlockStatement1Row struct {
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
-func (q *Queries) StoreLegacyJournalsByBlockStatement1(ctx context.Context, column1 pgtype.Numeric, blockHash []byte) ([]StoreLegacyJournalsByBlockStatement1Row, error) {
-	rows, err := q.db.Query(ctx, StoreLegacyJournalsByBlockStatement1, column1, blockHash)
+func (q *Queries) StoreLegacyJournalsByBlockStatement1(ctx context.Context, chainID pgtype.Numeric, blockHash []byte) ([]StoreLegacyJournalsByBlockStatement1Row, error) {
+	rows, err := q.db.Query(ctx, storeLegacyJournalsByBlockStatement1, chainID, blockHash)
 	if err != nil {
 		return nil, err
 	}
@@ -562,47 +461,48 @@ func (q *Queries) StoreLegacyJournalsByBlockStatement1(ctx context.Context, colu
 	return items, nil
 }
 
-const StoreLegacyLockChainStatement1 = `-- name: StoreLegacyLockChainStatement1 :many
+const storeLegacyLockChainStatement1 = `-- name: StoreLegacyLockChainStatement1 :exec
 SELECT pg_advisory_xact_lock(hashtext('etherview:chain:' || $1))
 `
 
-func (q *Queries) StoreLegacyLockChainStatement1(ctx context.Context, dollar_1 *string) ([]interface{}, error) {
-	rows, err := q.db.Query(ctx, StoreLegacyLockChainStatement1, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []interface{}{}
-	for rows.Next() {
-		var pg_advisory_xact_lock interface{}
-		if err := rows.Scan(&pg_advisory_xact_lock); err != nil {
-			return nil, err
-		}
-		items = append(items, pg_advisory_xact_lock)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) StoreLegacyLockChainStatement1(ctx context.Context, chainID *string) error {
+	_, err := q.db.Exec(ctx, storeLegacyLockChainStatement1, chainID)
+	return err
 }
 
-const StoreLegacyQueryCanonicalReferencesTxStatement1 = `-- name: StoreLegacyQueryCanonicalReferencesTxStatement1 :many
-SELECT cb.number::text, cb.block_hash, b.parent_hash
-		FROM canonical_blocks cb
-		JOIN blocks b
-		  ON b.chain_id = cb.chain_id AND b.number = cb.number AND b.hash = cb.block_hash
-		WHERE cb.chain_id = $1::numeric AND cb.number >= $2::numeric
-		ORDER BY cb.number
+const storeLegacyQueryCanonicalReferencesTxStatement1 = `-- name: StoreLegacyQueryCanonicalReferencesTxStatement1 :many
+SELECT cb.number::text AS number, cb.block_hash, b.parent_hash
+FROM canonical_blocks cb
+JOIN blocks b ON b.chain_id = cb.chain_id AND b.number = cb.number AND b.hash = cb.block_hash
+WHERE cb.chain_id = $1::text::numeric
+  AND cb.number >= $2::text::numeric
+  AND (NOT $3::boolean OR cb.number > $4::text::numeric)
+ORDER BY cb.number
+LIMIT $5::integer
 `
 
+type StoreLegacyQueryCanonicalReferencesTxStatement1Params struct {
+	ChainID         string `db:"chain_id" json:"chain_id"`
+	ConfiguredStart string `db:"configured_start" json:"configured_start"`
+	HasCursor       bool   `db:"has_cursor" json:"has_cursor"`
+	AfterNumber     string `db:"after_number" json:"after_number"`
+	PageLimit       int32  `db:"page_limit" json:"page_limit"`
+}
+
 type StoreLegacyQueryCanonicalReferencesTxStatement1Row struct {
-	CbNumber   string `db:"cb_number" json:"cb_number"`
+	Number     string `db:"number" json:"number"`
 	BlockHash  []byte `db:"block_hash" json:"block_hash"`
 	ParentHash []byte `db:"parent_hash" json:"parent_hash"`
 }
 
-func (q *Queries) StoreLegacyQueryCanonicalReferencesTxStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) ([]StoreLegacyQueryCanonicalReferencesTxStatement1Row, error) {
-	rows, err := q.db.Query(ctx, StoreLegacyQueryCanonicalReferencesTxStatement1, column1, column2)
+func (q *Queries) StoreLegacyQueryCanonicalReferencesTxStatement1(ctx context.Context, arg StoreLegacyQueryCanonicalReferencesTxStatement1Params) ([]StoreLegacyQueryCanonicalReferencesTxStatement1Row, error) {
+	rows, err := q.db.Query(ctx, storeLegacyQueryCanonicalReferencesTxStatement1,
+		arg.ChainID,
+		arg.ConfiguredStart,
+		arg.HasCursor,
+		arg.AfterNumber,
+		arg.PageLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -610,7 +510,7 @@ func (q *Queries) StoreLegacyQueryCanonicalReferencesTxStatement1(ctx context.Co
 	items := []StoreLegacyQueryCanonicalReferencesTxStatement1Row{}
 	for rows.Next() {
 		var i StoreLegacyQueryCanonicalReferencesTxStatement1Row
-		if err := rows.Scan(&i.CbNumber, &i.BlockHash, &i.ParentHash); err != nil {
+		if err := rows.Scan(&i.Number, &i.BlockHash, &i.ParentHash); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -621,20 +521,34 @@ func (q *Queries) StoreLegacyQueryCanonicalReferencesTxStatement1(ctx context.Co
 	return items, nil
 }
 
-const StoreLegacyQueryCoverageRangesTxStatement1 = `-- name: StoreLegacyQueryCoverageRangesTxStatement1 :many
-SELECT range_start::text, range_end::text
-		FROM core_coverage_ranges
-		WHERE chain_id = $1::numeric
-		ORDER BY range_start
+const storeLegacyQueryCoverageRangesTxStatement1 = `-- name: StoreLegacyQueryCoverageRangesTxStatement1 :many
+SELECT range_start::text AS range_start, range_end::text AS range_end
+FROM core_coverage_ranges
+WHERE chain_id = $1::text::numeric
+  AND (NOT $2::boolean OR range_start > $3::text::numeric)
+ORDER BY range_start
+LIMIT $4::integer
 `
+
+type StoreLegacyQueryCoverageRangesTxStatement1Params struct {
+	ChainID    string `db:"chain_id" json:"chain_id"`
+	HasCursor  bool   `db:"has_cursor" json:"has_cursor"`
+	AfterStart string `db:"after_start" json:"after_start"`
+	PageLimit  int32  `db:"page_limit" json:"page_limit"`
+}
 
 type StoreLegacyQueryCoverageRangesTxStatement1Row struct {
 	RangeStart string `db:"range_start" json:"range_start"`
 	RangeEnd   string `db:"range_end" json:"range_end"`
 }
 
-func (q *Queries) StoreLegacyQueryCoverageRangesTxStatement1(ctx context.Context, dollar_1 pgtype.Numeric) ([]StoreLegacyQueryCoverageRangesTxStatement1Row, error) {
-	rows, err := q.db.Query(ctx, StoreLegacyQueryCoverageRangesTxStatement1, dollar_1)
+func (q *Queries) StoreLegacyQueryCoverageRangesTxStatement1(ctx context.Context, arg StoreLegacyQueryCoverageRangesTxStatement1Params) ([]StoreLegacyQueryCoverageRangesTxStatement1Row, error) {
+	rows, err := q.db.Query(ctx, storeLegacyQueryCoverageRangesTxStatement1,
+		arg.ChainID,
+		arg.HasCursor,
+		arg.AfterStart,
+		arg.PageLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -653,31 +567,18 @@ func (q *Queries) StoreLegacyQueryCoverageRangesTxStatement1(ctx context.Context
 	return items, nil
 }
 
-const StoreLegacyReadSchemaStatusStatement1 = `-- name: StoreLegacyReadSchemaStatusStatement1 :many
-SELECT to_regclass('etherview_schema_migrations')::text
+const storeLegacyReadSchemaStatusStatement1 = `-- name: StoreLegacyReadSchemaStatusStatement1 :one
+SELECT (to_regclass('etherview_schema_migrations') IS NOT NULL)::boolean AS ledger_exists
 `
 
-func (q *Queries) StoreLegacyReadSchemaStatusStatement1(ctx context.Context) ([]string, error) {
-	rows, err := q.db.Query(ctx, StoreLegacyReadSchemaStatusStatement1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []string{}
-	for rows.Next() {
-		var column_1 string
-		if err := rows.Scan(&column_1); err != nil {
-			return nil, err
-		}
-		items = append(items, column_1)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) StoreLegacyReadSchemaStatusStatement1(ctx context.Context) (bool, error) {
+	row := q.db.QueryRow(ctx, storeLegacyReadSchemaStatusStatement1)
+	var ledger_exists bool
+	err := row.Scan(&ledger_exists)
+	return ledger_exists, err
 }
 
-const StoreLegacyReadSchemaStatusStatement2 = `-- name: StoreLegacyReadSchemaStatusStatement2 :many
+const storeLegacyReadSchemaStatusStatement2 = `-- name: StoreLegacyReadSchemaStatusStatement2 :many
 SELECT version, checksum
 		FROM etherview_schema_migrations
 		ORDER BY version
@@ -689,7 +590,7 @@ type StoreLegacyReadSchemaStatusStatement2Row struct {
 }
 
 func (q *Queries) StoreLegacyReadSchemaStatusStatement2(ctx context.Context) ([]StoreLegacyReadSchemaStatusStatement2Row, error) {
-	rows, err := q.db.Query(ctx, StoreLegacyReadSchemaStatusStatement2)
+	rows, err := q.db.Query(ctx, storeLegacyReadSchemaStatusStatement2)
 	if err != nil {
 		return nil, err
 	}
@@ -708,7 +609,7 @@ func (q *Queries) StoreLegacyReadSchemaStatusStatement2(ctx context.Context) ([]
 	return items, nil
 }
 
-const StoreLegacyReleaseBackfillRangeStatement1 = `-- name: StoreLegacyReleaseBackfillRangeStatement1 :exec
+const storeLegacyReleaseBackfillRangeStatement1 = `-- name: StoreLegacyReleaseBackfillRangeStatement1 :execrows
 DELETE FROM core_backfill_leases
 		WHERE chain_id = $1::numeric
 		  AND range_start = $2::numeric AND range_end = $3::numeric
@@ -716,25 +617,28 @@ DELETE FROM core_backfill_leases
 `
 
 type StoreLegacyReleaseBackfillRangeStatement1Params struct {
-	Column1 pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2 pgtype.Numeric `db:"column_2" json:"column_2"`
-	Column3 pgtype.Numeric `db:"column_3" json:"column_3"`
-	Owner   string         `db:"owner" json:"owner"`
-	Column5 pgtype.UUID    `db:"column_5" json:"column_5"`
+	ChainID    pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	RangeStart pgtype.Numeric `db:"range_start" json:"range_start"`
+	RangeEnd   pgtype.Numeric `db:"range_end" json:"range_end"`
+	Owner      string         `db:"owner" json:"owner"`
+	LeaseToken pgtype.UUID    `db:"lease_token" json:"lease_token"`
 }
 
-func (q *Queries) StoreLegacyReleaseBackfillRangeStatement1(ctx context.Context, arg StoreLegacyReleaseBackfillRangeStatement1Params) error {
-	_, err := q.db.Exec(ctx, StoreLegacyReleaseBackfillRangeStatement1,
-		arg.Column1,
-		arg.Column2,
-		arg.Column3,
+func (q *Queries) StoreLegacyReleaseBackfillRangeStatement1(ctx context.Context, arg StoreLegacyReleaseBackfillRangeStatement1Params) (int64, error) {
+	result, err := q.db.Exec(ctx, storeLegacyReleaseBackfillRangeStatement1,
+		arg.ChainID,
+		arg.RangeStart,
+		arg.RangeEnd,
 		arg.Owner,
-		arg.Column5,
+		arg.LeaseToken,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const StoreLegacyRenewBackfillRangeStatement1 = `-- name: StoreLegacyRenewBackfillRangeStatement1 :many
+const storeLegacyRenewBackfillRangeStatement1 = `-- name: StoreLegacyRenewBackfillRangeStatement1 :one
 UPDATE core_backfill_leases
 		SET expires_at = $1, updated_at = now()
 		WHERE chain_id = $2::numeric
@@ -744,90 +648,64 @@ UPDATE core_backfill_leases
 `
 
 type StoreLegacyRenewBackfillRangeStatement1Params struct {
-	ExpiresAt   pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-	Column2     pgtype.Numeric     `db:"column_2" json:"column_2"`
-	Column3     pgtype.Numeric     `db:"column_3" json:"column_3"`
-	Column4     pgtype.Numeric     `db:"column_4" json:"column_4"`
-	Owner       string             `db:"owner" json:"owner"`
-	Column6     pgtype.UUID        `db:"column_6" json:"column_6"`
-	ExpiresAt_2 pgtype.Timestamptz `db:"expires_at_2" json:"expires_at_2"`
+	ExpiresAt  pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	ChainID    pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	RangeStart pgtype.Numeric     `db:"range_start" json:"range_start"`
+	RangeEnd   pgtype.Numeric     `db:"range_end" json:"range_end"`
+	Owner      string             `db:"owner" json:"owner"`
+	LeaseToken pgtype.UUID        `db:"lease_token" json:"lease_token"`
+	ExpiresAt2 pgtype.Timestamptz `db:"expires_at_2" json:"expires_at_2"`
 }
 
-func (q *Queries) StoreLegacyRenewBackfillRangeStatement1(ctx context.Context, arg StoreLegacyRenewBackfillRangeStatement1Params) ([]pgtype.Timestamptz, error) {
-	rows, err := q.db.Query(ctx, StoreLegacyRenewBackfillRangeStatement1,
+func (q *Queries) StoreLegacyRenewBackfillRangeStatement1(ctx context.Context, arg StoreLegacyRenewBackfillRangeStatement1Params) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, storeLegacyRenewBackfillRangeStatement1,
 		arg.ExpiresAt,
-		arg.Column2,
-		arg.Column3,
-		arg.Column4,
+		arg.ChainID,
+		arg.RangeStart,
+		arg.RangeEnd,
 		arg.Owner,
-		arg.Column6,
-		arg.ExpiresAt_2,
+		arg.LeaseToken,
+		arg.ExpiresAt2,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []pgtype.Timestamptz{}
-	for rows.Next() {
-		var expires_at pgtype.Timestamptz
-		if err := rows.Scan(&expires_at); err != nil {
-			return nil, err
-		}
-		items = append(items, expires_at)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var expires_at pgtype.Timestamptz
+	err := row.Scan(&expires_at)
+	return expires_at, err
 }
 
-const StoreLegacyReplaceCoverageRangesTxStatement1 = `-- name: StoreLegacyReplaceCoverageRangesTxStatement1 :exec
+const storeLegacyReplaceCoverageRangesTxStatement1 = `-- name: StoreLegacyReplaceCoverageRangesTxStatement1 :exec
 DELETE FROM core_coverage_ranges
 		WHERE chain_id = $1::numeric
 `
 
-func (q *Queries) StoreLegacyReplaceCoverageRangesTxStatement1(ctx context.Context, dollar_1 pgtype.Numeric) error {
-	_, err := q.db.Exec(ctx, StoreLegacyReplaceCoverageRangesTxStatement1, dollar_1)
+func (q *Queries) StoreLegacyReplaceCoverageRangesTxStatement1(ctx context.Context, chainID pgtype.Numeric) error {
+	_, err := q.db.Exec(ctx, storeLegacyReplaceCoverageRangesTxStatement1, chainID)
 	return err
 }
 
-const StoreLegacyReplaceCoverageRangesTxStatement2 = `-- name: StoreLegacyReplaceCoverageRangesTxStatement2 :exec
+const storeLegacyReplaceCoverageRangesTxStatement2 = `-- name: StoreLegacyReplaceCoverageRangesTxStatement2 :exec
 INSERT INTO core_coverage_ranges (chain_id, range_start, range_end)
 			VALUES ($1::numeric, $2::numeric, $3::numeric)
 `
 
-func (q *Queries) StoreLegacyReplaceCoverageRangesTxStatement2(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, column3 pgtype.Numeric) error {
-	_, err := q.db.Exec(ctx, StoreLegacyReplaceCoverageRangesTxStatement2, column1, column2, column3)
+func (q *Queries) StoreLegacyReplaceCoverageRangesTxStatement2(ctx context.Context, chainID pgtype.Numeric, rangeStart pgtype.Numeric, rangeEnd pgtype.Numeric) error {
+	_, err := q.db.Exec(ctx, storeLegacyReplaceCoverageRangesTxStatement2, chainID, rangeStart, rangeEnd)
 	return err
 }
 
-const StoreLegacyReplaceHighestCanonicalSegmentStatement1 = `-- name: StoreLegacyReplaceHighestCanonicalSegmentStatement1 :many
+const storeLegacyReplaceHighestCanonicalSegmentStatement1 = `-- name: StoreLegacyReplaceHighestCanonicalSegmentStatement1 :one
 SELECT COUNT(*)
 			FROM canonical_blocks
 			WHERE chain_id = $1::numeric AND number > $2::numeric
 `
 
-func (q *Queries) StoreLegacyReplaceHighestCanonicalSegmentStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) ([]int64, error) {
-	rows, err := q.db.Query(ctx, StoreLegacyReplaceHighestCanonicalSegmentStatement1, column1, column2)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []int64{}
-	for rows.Next() {
-		var count int64
-		if err := rows.Scan(&count); err != nil {
-			return nil, err
-		}
-		items = append(items, count)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) StoreLegacyReplaceHighestCanonicalSegmentStatement1(ctx context.Context, chainID pgtype.Numeric, minNumber pgtype.Numeric) (int64, error) {
+	row := q.db.QueryRow(ctx, storeLegacyReplaceHighestCanonicalSegmentStatement1, chainID, minNumber)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
-const StoreLegacyUpdateFinalityStatement1 = `-- name: StoreLegacyUpdateFinalityStatement1 :exec
+const storeLegacyUpdateFinalityStatement1 = `-- name: StoreLegacyUpdateFinalityStatement1 :exec
 INSERT INTO chain_finality (
 			chain_id, safe_number, safe_hash, finalized_number, finalized_hash, updated_at
 		) VALUES ($1::numeric, $2::numeric, $3, $4::numeric, $5, $6)
@@ -840,27 +718,27 @@ INSERT INTO chain_finality (
 `
 
 type StoreLegacyUpdateFinalityStatement1Params struct {
-	Column1       pgtype.Numeric     `db:"column_1" json:"column_1"`
-	Column2       pgtype.Numeric     `db:"column_2" json:"column_2"`
-	SafeHash      []byte             `db:"safe_hash" json:"safe_hash"`
-	Column4       pgtype.Numeric     `db:"column_4" json:"column_4"`
-	FinalizedHash []byte             `db:"finalized_hash" json:"finalized_hash"`
-	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ChainID         pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	SafeNumber      pgtype.Numeric     `db:"safe_number" json:"safe_number"`
+	SafeHash        []byte             `db:"safe_hash" json:"safe_hash"`
+	FinalizedNumber pgtype.Numeric     `db:"finalized_number" json:"finalized_number"`
+	FinalizedHash   []byte             `db:"finalized_hash" json:"finalized_hash"`
+	UpdatedAt       pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 func (q *Queries) StoreLegacyUpdateFinalityStatement1(ctx context.Context, arg StoreLegacyUpdateFinalityStatement1Params) error {
-	_, err := q.db.Exec(ctx, StoreLegacyUpdateFinalityStatement1,
-		arg.Column1,
-		arg.Column2,
+	_, err := q.db.Exec(ctx, storeLegacyUpdateFinalityStatement1,
+		arg.ChainID,
+		arg.SafeNumber,
 		arg.SafeHash,
-		arg.Column4,
+		arg.FinalizedNumber,
 		arg.FinalizedHash,
 		arg.UpdatedAt,
 	)
 	return err
 }
 
-const StoreLegacyUpsertCheckpointTxStatement1 = `-- name: StoreLegacyUpsertCheckpointTxStatement1 :exec
+const storeLegacyUpsertCheckpointTxStatement1 = `-- name: StoreLegacyUpsertCheckpointTxStatement1 :exec
 INSERT INTO index_checkpoints (
 			chain_id, stage, contiguous_through, block_hash, updated_at
 		) VALUES ($1::numeric, $2, $3::numeric, $4, $5)
@@ -871,47 +749,34 @@ INSERT INTO index_checkpoints (
 `
 
 type StoreLegacyUpsertCheckpointTxStatement1Params struct {
-	Column1   pgtype.Numeric     `db:"column_1" json:"column_1"`
-	Stage     string             `db:"stage" json:"stage"`
-	Column3   pgtype.Numeric     `db:"column_3" json:"column_3"`
-	BlockHash []byte             `db:"block_hash" json:"block_hash"`
-	UpdatedAt pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ChainID           pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	Stage             string             `db:"stage" json:"stage"`
+	ContiguousThrough pgtype.Numeric     `db:"contiguous_through" json:"contiguous_through"`
+	BlockHash         []byte             `db:"block_hash" json:"block_hash"`
+	UpdatedAt         pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 func (q *Queries) StoreLegacyUpsertCheckpointTxStatement1(ctx context.Context, arg StoreLegacyUpsertCheckpointTxStatement1Params) error {
-	_, err := q.db.Exec(ctx, StoreLegacyUpsertCheckpointTxStatement1,
-		arg.Column1,
+	_, err := q.db.Exec(ctx, storeLegacyUpsertCheckpointTxStatement1,
+		arg.ChainID,
 		arg.Stage,
-		arg.Column3,
+		arg.ContiguousThrough,
 		arg.BlockHash,
 		arg.UpdatedAt,
 	)
 	return err
 }
 
-const StoreLegacyValidateRefreshParentTxStatement1 = `-- name: StoreLegacyValidateRefreshParentTxStatement1 :many
+const storeLegacyValidateRefreshParentTxStatement1 = `-- name: StoreLegacyValidateRefreshParentTxStatement1 :one
 SELECT EXISTS (
 			SELECT 1 FROM canonical_blocks
 			WHERE chain_id = $1::numeric AND number < $2::numeric
 		)
 `
 
-func (q *Queries) StoreLegacyValidateRefreshParentTxStatement1(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) ([]bool, error) {
-	rows, err := q.db.Query(ctx, StoreLegacyValidateRefreshParentTxStatement1, column1, column2)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var exists bool
-		if err := rows.Scan(&exists); err != nil {
-			return nil, err
-		}
-		items = append(items, exists)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) StoreLegacyValidateRefreshParentTxStatement1(ctx context.Context, chainID pgtype.Numeric, maxNumber pgtype.Numeric) (bool, error) {
+	row := q.db.QueryRow(ctx, storeLegacyValidateRefreshParentTxStatement1, chainID, maxNumber)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }

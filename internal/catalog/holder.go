@@ -2,13 +2,17 @@ package catalog
 
 import (
 	"context"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
 
-	"github.com/islishude/etherview/internal/db/gen"
+	"github.com/jackc/pgx/v5/pgtype"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
 func (catalog *Postgres) TokenHolders(
@@ -30,7 +34,7 @@ func (catalog *Postgres) TokenHolders(
 	if err != nil {
 		return TokenHolderPage{}, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 
 	snapshot, afterAddress, hasAfter, cursorEpoch, err := holderRequestSnapshot(ctx, tx, request, tokenAddress)
 	if err != nil {
@@ -56,20 +60,31 @@ func (catalog *Postgres) TokenHolders(
 	if err != nil {
 		return TokenHolderPage{}, err
 	}
-	rows, err := tx.QueryContext(
-		ctx, dbgen.CatalogHolderPage, limit+1, request.ChainID, tokenAddress,
-		summary.ObservedBlockNumber, hasAfter, afterAddress,
-	)
+	rows, err := func() ([]dbgen.CatalogHolderPageRow, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(request.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(summary.ObservedBlockNumber); err != nil {
+			return nil, err
+		}
+		return dbgen.New(tx).CatalogHolderPage(ctx, dbgen.CatalogHolderPageParams{RowLimit: int64(limit + 1), ChainID: queryValue0, TokenAddress: tokenAddress, BlockNumber: queryValue1, HasAfter: hasAfter, AfterAddress: afterAddress})
+	}()
 	if err != nil {
 		return TokenHolderPage{}, fmt.Errorf("query token holder page: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	items := make([]TokenHolder, 0, limit+1)
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var holder, blockHash []byte
 		var balance, blockNumber, confidence string
-		if err := rows.Scan(&holder, &balance, &blockNumber, &blockHash, &confidence); err != nil {
-			return TokenHolderPage{}, fmt.Errorf("scan token holder: %w", err)
+		{
+			holder = storedRow.HolderAddress
+			balance = storedRow.LatestBalance
+			blockNumber = storedRow.LatestBlockNumber
+			blockHash = storedRow.BlockHash
+			confidence = storedRow.Confidence
 		}
 		checksummedHolder, checksumErr := checksumAddressBytes(holder)
 		observedHash, hashErr := lowerHex(blockHash)
@@ -83,12 +98,7 @@ func (catalog *Postgres) TokenHolders(
 			ObservedBlockNumber: blockNumber, ObservedBlockHash: observedHash,
 		})
 	}
-	if err := rows.Err(); err != nil {
-		return TokenHolderPage{}, fmt.Errorf("iterate token holders: %w", err)
-	}
-	if err := rows.Close(); err != nil {
-		return TokenHolderPage{}, fmt.Errorf("close token holders: %w", err)
-	}
+
 	next := ""
 	if len(items) > limit {
 		items = items[:limit]
@@ -106,7 +116,7 @@ func (catalog *Postgres) TokenHolders(
 			return TokenHolderPage{}, err
 		}
 	}
-	if err := commitRead(tx); err != nil {
+	if err := commitRead(ctx, tx); err != nil {
 		return TokenHolderPage{}, err
 	}
 	return TokenHolderPage{Items: items, NextCursor: next, Summary: summary}, nil
@@ -128,7 +138,7 @@ func (catalog *Postgres) TokenHolderCount(
 	if err != nil {
 		return TokenHolderSummary{}, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	snapshot, err := readCanonicalSnapshot(ctx, tx, chainID)
 	if err != nil {
 		return TokenHolderSummary{}, err
@@ -148,7 +158,7 @@ func (catalog *Postgres) TokenHolderCount(
 	if err != nil {
 		return TokenHolderSummary{}, err
 	}
-	if err := commitRead(tx); err != nil {
+	if err := commitRead(ctx, tx); err != nil {
 		return TokenHolderSummary{}, err
 	}
 	return summary, nil
@@ -156,7 +166,7 @@ func (catalog *Postgres) TokenHolderCount(
 
 func holderRequestSnapshot(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	request TokenHolderRequest,
 	tokenAddress []byte,
 ) (Snapshot, []byte, bool, string, error) {
@@ -184,11 +194,28 @@ func holderRequestSnapshot(
 	return snapshot, after, true, cursor.PublicationEpoch, nil
 }
 
-func requireHolderCoverage(ctx context.Context, tx *sql.Tx, snapshot Snapshot) (string, error) {
+func requireHolderCoverage(ctx context.Context, tx pgx.Tx, snapshot Snapshot) (string, error) {
 	var configuredStart, covered, tokenBlocks, proxyBlocks, epoch string
-	if err := tx.QueryRowContext(
-		ctx, dbgen.CatalogHolderCoverage, snapshot.BlockNumber, snapshot.ChainID,
-	).Scan(&configuredStart, &covered, &tokenBlocks, &proxyBlocks, &epoch); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(snapshot.BlockNumber); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(snapshot.ChainID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).CatalogHolderCoverage(ctx, queryValue0, queryValue1)
+		if err != nil {
+			return err
+		}
+		configuredStart = queryRow.ConfigurationConfiguredStart
+		covered = queryRow.CoveredBlocks
+		tokenBlocks = queryRow.TokenBlocks
+		proxyBlocks = queryRow.ProxyBlocks
+		epoch = queryRow.PublicationEpoch
+		return nil
+	}(); err != nil {
 		return "", fmt.Errorf("read holder coverage: %w", err)
 	}
 	want, ok := new(big.Int).SetString(snapshot.BlockNumber, 10)
@@ -208,7 +235,7 @@ func requireHolderCoverage(ctx context.Context, tx *sql.Tx, snapshot Snapshot) (
 
 func readHolderSummary(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	snapshot Snapshot,
 	tokenAddress []byte,
 	checksummedToken string,
@@ -217,11 +244,29 @@ func readHolderSummary(
 	var blockNumber, state, holderCount, totalSupply, balanceSum string
 	var blockHash []byte
 	var coherent bool
-	err := tx.QueryRowContext(
-		ctx, dbgen.CatalogHolderTokenSnapshot, snapshot.ChainID,
-		tokenAddress, snapshot.BlockNumber,
-	).Scan(&blockNumber, &blockHash, &state, &holderCount, &totalSupply, &balanceSum, &coherent)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(snapshot.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(snapshot.BlockNumber); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).CatalogHolderTokenSnapshot(ctx, queryValue0, tokenAddress, queryValue1)
+		if err != nil {
+			return err
+		}
+		blockNumber = queryRow.SnapshotBlockNumber
+		blockHash = queryRow.BlockHash
+		state = queryRow.State
+		holderCount = queryRow.SnapshotHolderCount
+		totalSupply = queryRow.SnapshotTotalSupply
+		balanceSum = queryRow.SnapshotReconciledBalanceSum
+		coherent = queryRow.Coherent
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return TokenHolderSummary{}, StageUnavailableError{
 			Stage: StageHolder, State: StageMissing,
 			BlockNumber: snapshot.BlockNumber, BlockHash: snapshot.BlockHash,

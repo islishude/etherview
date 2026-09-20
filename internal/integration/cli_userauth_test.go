@@ -4,7 +4,6 @@ package integration_test
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -13,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 )
 
 const (
@@ -27,10 +28,10 @@ func TestCLIAdminUserMutationsAreWriterBackedAndChainScoped(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 	defer cancel()
 
-	if _, err := db.ExecContext(ctx, `INSERT INTO chains (chain_id) VALUES (1), (2)`); err != nil {
+	if _, err := db.Exec(ctx, `INSERT INTO chains (chain_id) VALUES (1), (2)`); err != nil {
 		t.Fatalf("insert user-auth chains: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO users (
 			id, chain_id, address, role, status, created_at, updated_at
 		) VALUES
@@ -46,7 +47,7 @@ func TestCLIAdminUserMutationsAreWriterBackedAndChainScoped(t *testing.T) {
 	insertCLIUserSessions(t, ctx, db, cliUserAuthOtherID, "30", "21")
 
 	var schema string
-	if err := db.QueryRowContext(ctx, `SELECT current_schema()`).Scan(&schema); err != nil {
+	if err := db.QueryRow(ctx, `SELECT current_schema()`).Scan(&schema); err != nil {
 		t.Fatalf("read integration schema: %v", err)
 	}
 	databaseURL := isolatedDatabaseURL(t, schema)
@@ -191,7 +192,7 @@ func decodeCLIAdminUserOutput(
 func insertCLIUserSessions(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	userID, idPrefix string,
 	digestPrefixes ...string,
 ) {
@@ -200,7 +201,7 @@ func insertCLIUserSessions(
 		sessionID := fmt.Sprintf(
 			"%s000000-0000-4000-8000-%012d", idPrefix, index+1,
 		)
-		if _, err := db.ExecContext(ctx, `
+		if _, err := db.Exec(ctx, `
 			INSERT INTO user_sessions (
 				id, user_id, token_digest, csrf_digest,
 				created_at, expires_at, last_used_at
@@ -218,12 +219,12 @@ func insertCLIUserSessions(
 func assertCLIUserState(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	userID, wantRole, wantStatus string,
 ) {
 	t.Helper()
 	var role, status string
-	if err := db.QueryRowContext(
+	if err := db.QueryRow(
 		ctx, `SELECT role, status FROM users WHERE id = $1::uuid`, userID,
 	).Scan(&role, &status); err != nil {
 		t.Fatalf("read CLI user state: %v", err)
@@ -239,13 +240,13 @@ func assertCLIUserState(
 func assertCLIActiveSessions(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	userID string,
 	want int,
 ) {
 	t.Helper()
 	var count int
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT count(*)
 		FROM user_sessions
 		WHERE user_id = $1::uuid AND revoked_at IS NULL`,

@@ -102,3 +102,28 @@ func writeFixture(t *testing.T, root, relative, content string) {
 		t.Fatal(err)
 	}
 }
+
+func TestNativeDatabaseExecutionBoundary(t *testing.T) {
+	for _, test := range []struct {
+		name, source string
+		allowed      bool
+	}{
+		{"raw generated constant", "package sample\nfunc call(){ pool.Query(ctx, dbgen.Statement, value) }", false},
+		{"raw query row", "package sample\nfunc call(){ tx.QueryRow(ctx, statement).Scan(&value) }", false},
+		{"prepared bypass", "package sample\nfunc call(){ conn.Prepare(ctx, name, statement) }", false},
+		{"typed generated method", "package sample\nfunc call(){ queries.GetCanonicalTip(ctx, params) }", true},
+		{"URL query", "package sample\nfunc call(){ request.URL.Query() }", true},
+		{"stdlib pool", "package sample\nimport \"database/sql\"\nvar database *sql.DB", false},
+		{"stdlib bridge", "package sample\nimport \"github.com/jackc/pgx/v5/stdlib\"", false},
+		{"test fixture bypass", "package sample\nimport \"github.com/islishude/etherview/internal/testpgx\"", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeFixture(t, root, "internal/sample/query.go", test.source)
+			report := Check(root)
+			if report.OK() != test.allowed {
+				t.Fatalf("allowed=%t report=%+v", test.allowed, report.Diagnostics)
+			}
+		})
+	}
+}

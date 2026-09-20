@@ -2,13 +2,16 @@ package enrich
 
 import (
 	"context"
-	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
 	"strings"
 	"testing"
+
+	testpgx "github.com/islishude/etherview/internal/testpgx"
+	pgx "github.com/jackc/pgx/v5"
+	pgconn "github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -19,10 +22,10 @@ import (
 func TestStatsV2AllowsExactNonZeroConfiguredStartWithoutParent(t *testing.T) {
 	t.Parallel()
 	job, raw := statsTestJobAndRaw(t, "stats-start", 7, 100, nil, nil)
-	var statsArguments []driver.NamedValue
-	backend := statsBackend(t, raw, nil, nil, false, nil, func(query string, arguments []driver.NamedValue) {
+	var statsArguments []any
+	backend := statsBackend(t, raw, nil, nil, false, nil, func(query string, arguments []any) {
 		if strings.Contains(query, "INSERT INTO block_statistics") {
-			statsArguments = append([]driver.NamedValue(nil), arguments...)
+			statsArguments = append([]any(nil), arguments...)
 		}
 	})
 	processor, err := NewPostgresStatsProcessor(openFakeSQLDB(t, backend))
@@ -33,9 +36,9 @@ func TestStatsV2AllowsExactNonZeroConfiguredStartWithoutParent(t *testing.T) {
 	if err != nil || result.State != ResultComplete {
 		t.Fatalf("result=%+v error=%v", result, err)
 	}
-	if len(statsArguments) != 19 || statsArguments[10].Value != nil || statsArguments[11].Value != nil ||
-		statsArguments[13].Value != nil || statsArguments[14].Value != "0" ||
-		statsArguments[15].Value != "0" || statsArguments[16].Value != "0" {
+	if len(statsArguments) != 19 || !testpgx.NumericNull(statsArguments[10]) || !testpgx.NumericNull(statsArguments[11]) ||
+		!testpgx.NumericNull(statsArguments[13]) || !testpgx.NumericEquals(statsArguments[14], "0") ||
+		!testpgx.NumericEquals(statsArguments[15], "0") || !testpgx.NumericEquals(statsArguments[16], "0") {
 		t.Fatalf("stats arguments=%+v", statsArguments)
 	}
 }
@@ -43,10 +46,10 @@ func TestStatsV2AllowsExactNonZeroConfiguredStartWithoutParent(t *testing.T) {
 func TestStatsV2ConfiguredStartIgnoresRetainedCanonicalParent(t *testing.T) {
 	t.Parallel()
 	job, raw := statsTestJobAndRaw(t, "stats-start-parent", 7, 100, nil, nil)
-	var statsArguments []driver.NamedValue
-	backend := statsBackend(t, raw, "6", "99", true, nil, func(query string, arguments []driver.NamedValue) {
+	var statsArguments []any
+	backend := statsBackend(t, raw, "6", "99", true, nil, func(query string, arguments []any) {
 		if strings.Contains(query, "INSERT INTO block_statistics") {
-			statsArguments = append([]driver.NamedValue(nil), arguments...)
+			statsArguments = append([]any(nil), arguments...)
 		}
 	})
 	processor, err := NewPostgresStatsProcessor(openFakeSQLDB(t, backend))
@@ -57,7 +60,7 @@ func TestStatsV2ConfiguredStartIgnoresRetainedCanonicalParent(t *testing.T) {
 	if err != nil || result.State != ResultComplete {
 		t.Fatalf("result=%+v error=%v", result, err)
 	}
-	if len(statsArguments) != 19 || statsArguments[10].Value != nil || statsArguments[11].Value != nil {
+	if len(statsArguments) != 19 || !testpgx.NumericNull(statsArguments[10]) || !testpgx.NumericNull(statsArguments[11]) {
 		t.Fatalf("stats arguments=%+v", statsArguments)
 	}
 }
@@ -141,10 +144,10 @@ func TestStatsV3DerivesAuthenticatedExecutionFeePriorityFailureAndCreation(t *te
 	for index := range bundle.RawReceipts {
 		receipts[index] = bundle.RawReceipts[index]
 	}
-	var statsArguments []driver.NamedValue
-	backend := statsBackend(t, raw, "7", "100", true, receipts, func(query string, arguments []driver.NamedValue) {
+	var statsArguments []any
+	backend := statsBackend(t, raw, "7", "100", true, receipts, func(query string, arguments []any) {
 		if strings.Contains(query, "INSERT INTO block_statistics") {
-			statsArguments = append([]driver.NamedValue(nil), arguments...)
+			statsArguments = append([]any(nil), arguments...)
 		}
 	})
 	processor, err := NewPostgresStatsProcessor(openFakeSQLDB(t, backend))
@@ -158,16 +161,16 @@ func TestStatsV3DerivesAuthenticatedExecutionFeePriorityFailureAndCreation(t *te
 	if len(statsArguments) != 19 {
 		t.Fatalf("stats arguments=%+v", statsArguments)
 	}
-	if got := statsArguments[15].Value; got != "126000" {
+	if got := statsArguments[15]; !testpgx.NumericEquals(got, "126000") {
 		t.Errorf("execution fee=%v want=126000", got)
 	}
-	if got := statsArguments[16].Value; got != "42000" {
+	if got := statsArguments[16]; !testpgx.NumericEquals(got, "42000") {
 		t.Errorf("priority fee=%v want=42000", got)
 	}
-	if got := statsArguments[17].Value; got != int64(1) {
+	if got := statsArguments[17]; *got.(*int64) != int64(1) {
 		t.Errorf("failed transactions=%v want=1", got)
 	}
-	if got := statsArguments[18].Value; got != int64(1) {
+	if got := statsArguments[18]; *got.(*int64) != int64(1) {
 		t.Errorf("contract creations=%v want=1", got)
 	}
 }
@@ -188,20 +191,20 @@ func TestStatsV3RejectsIncompleteReceiptSet(t *testing.T) {
 	}
 	// Override the source count while returning no authenticated receipt rows.
 	backend := statsBackend(t, raw, "7", "100", true, [][]byte{receipt}, nil)
-	backend.query = func(query string, arguments []driver.NamedValue) (driver.Rows, error) {
+	backend.query = func(query string, arguments []any) (pgx.Rows, error) {
 		if strings.Contains(query, "GROUP BY block.raw") {
-			return &fakeSQLRows{
-				columns: []string{"raw", "count", "configured_start", "parent_number", "parent_timestamp", "canonical_parent"},
-				values:  [][]driver.Value{{raw, int64(2), "7", "7", "100", true}},
+			return &testpgx.Rows{
+				ColumnNames: []string{"raw", "count", "configured_start", "parent_number", "parent_timestamp", "canonical_parent"},
+				ValuesList:  [][]any{{raw, int64(2), "7", "7", "100", true}},
 			}, nil
 		}
 		if strings.Contains(query, "FOR KEY SHARE") {
-			return &fakeSQLRows{columns: []string{"one"}, values: [][]driver.Value{{int64(1)}}}, nil
+			return &testpgx.Rows{ColumnNames: []string{"one"}, ValuesList: [][]any{{int64(1)}}}, nil
 		}
 		if strings.Contains(query, "FROM receipts AS receipt") {
-			return &fakeSQLRows{
-				columns: []string{"raw"},
-				values:  [][]driver.Value{{receipt}},
+			return &testpgx.Rows{
+				ColumnNames: []string{"raw"},
+				ValuesList:  [][]any{{receipt}},
 			}, nil
 		}
 		return nil, fmt.Errorf("unexpected query with %d arguments: %s", len(arguments), query)
@@ -320,34 +323,34 @@ func statsBackend(
 	parentTimestamp any,
 	canonicalParent bool,
 	receipts [][]byte,
-	onExec func(string, []driver.NamedValue),
+	onExec func(string, []any),
 ) *fakeSQLBackend {
 	t.Helper()
 	return &fakeSQLBackend{
-		query: func(query string, _ []driver.NamedValue) (driver.Rows, error) {
+		query: func(query string, _ []any) (pgx.Rows, error) {
 			switch {
 			case strings.Contains(query, "FOR KEY SHARE"):
-				return &fakeSQLRows{columns: []string{"one"}, values: [][]driver.Value{{int64(1)}}}, nil
+				return &testpgx.Rows{ColumnNames: []string{"one"}, ValuesList: [][]any{{int64(1)}}}, nil
 			case strings.Contains(query, "GROUP BY block.raw"):
-				return &fakeSQLRows{
-					columns: []string{"raw", "count", "configured_start", "parent_number", "parent_timestamp", "canonical_parent"},
-					values:  [][]driver.Value{{raw, int64(len(receipts)), "7", parentNumber, parentTimestamp, canonicalParent}},
+				return &testpgx.Rows{
+					ColumnNames: []string{"raw", "count", "configured_start", "parent_number", "parent_timestamp", "canonical_parent"},
+					ValuesList:  [][]any{{raw, int64(len(receipts)), "7", parentNumber, parentTimestamp, canonicalParent}},
 				}, nil
 			case strings.Contains(query, "FROM receipts AS receipt"):
-				values := make([][]driver.Value, len(receipts))
+				values := make([][]any, len(receipts))
 				for index := range receipts {
-					values[index] = []driver.Value{receipts[index]}
+					values[index] = []any{receipts[index]}
 				}
-				return &fakeSQLRows{columns: []string{"raw"}, values: values}, nil
+				return &testpgx.Rows{ColumnNames: []string{"raw"}, ValuesList: values}, nil
 			default:
 				return nil, fmt.Errorf("unexpected query: %s", query)
 			}
 		},
-		exec: func(query string, arguments []driver.NamedValue) (driver.Result, error) {
+		exec: func(query string, arguments []any) (pgconn.CommandTag, error) {
 			if onExec != nil {
 				onExec(query, arguments)
 			}
-			return driver.RowsAffected(1), nil
+			return testpgx.Affected(1), nil
 		},
 	}
 }

@@ -1,4 +1,9 @@
 services:
+  ipfs:
+    command: ["daemon", "--offline", "--migrate=false"]
+    environment:
+      IPFS_GATEWAY_NO_FETCH: "true"
+
   postgres:
     ports:
       - target: 5432

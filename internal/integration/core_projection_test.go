@@ -4,10 +4,11 @@ package integration_test
 
 import (
 	"context"
-	"database/sql"
 	"math/big"
 	"strings"
 	"testing"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -43,7 +44,7 @@ func TestCorePublicProjectionUsesNormalizedRowsAndFailsClosedOnDrift(t *testing.
 
 	t.Run("rejects raw transaction count drift", func(t *testing.T) {
 		db, reader, bundle := coreProjectionFixture(t)
-		if _, err := db.ExecContext(context.Background(), `
+		if _, err := db.Exec(context.Background(), `
 			UPDATE blocks
 			SET raw = jsonb_set(raw, '{transactions}', '[]'::jsonb)
 			WHERE chain_id = 1 AND hash = $1
@@ -58,7 +59,7 @@ func TestCorePublicProjectionUsesNormalizedRowsAndFailsClosedOnDrift(t *testing.
 
 	t.Run("rejects normalized withdrawal loss", func(t *testing.T) {
 		db, reader, bundle := coreProjectionFixture(t)
-		if _, err := db.ExecContext(context.Background(), `
+		if _, err := db.Exec(context.Background(), `
 			DELETE FROM withdrawals
 			WHERE chain_id = 1 AND block_hash = $1 AND withdrawal_index = 8
 		`, bundle.Block.Hash().Bytes()); err != nil {
@@ -71,7 +72,7 @@ func TestCorePublicProjectionUsesNormalizedRowsAndFailsClosedOnDrift(t *testing.
 	})
 }
 
-func coreProjectionFixture(t *testing.T) (*sql.DB, *query.PostgresReader, chainbundle.Bundle) {
+func coreProjectionFixture(t *testing.T) (*pgxpool.Pool, *query.PostgresReader, chainbundle.Bundle) {
 	t.Helper()
 	db := newMigratedPostgres(t)
 	bundle, err := testfixture.New(testfixture.Options{

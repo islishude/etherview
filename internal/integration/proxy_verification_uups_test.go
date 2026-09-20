@@ -4,11 +4,12 @@ package integration_test
 
 import (
 	"context"
-	"database/sql"
 	"encoding/hex"
 	"net/url"
 	"testing"
 	"time"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -211,7 +212,7 @@ func TestCompatibleSharedUUPSProbePromotesQuietERC1967Bindings(t *testing.T) {
 func insertProxyVerificationCode(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block store.BlockRef,
 	address common.Address,
 	codeHash common.Hash,

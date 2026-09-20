@@ -23,7 +23,7 @@ func TestCLIAdminBillingInspectionAndReconciliationUseWriter(t *testing.T) {
 	db := newMigratedPostgres(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 	defer cancel()
-	if _, err := db.ExecContext(
+	if _, err := db.Exec(
 		ctx, `INSERT INTO chains (chain_id) VALUES (1), (2)`,
 	); err != nil {
 		t.Fatalf("insert billing chains: %v", err)
@@ -50,7 +50,7 @@ func TestCLIAdminBillingInspectionAndReconciliationUseWriter(t *testing.T) {
 	)
 
 	var schema string
-	if err := db.QueryRowContext(
+	if err := db.QueryRow(
 		ctx, `SELECT current_schema()`,
 	).Scan(&schema); err != nil {
 		t.Fatalf("read integration schema: %v", err)

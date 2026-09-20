@@ -1,10 +1,11 @@
 package app
 
 import (
-	"database/sql"
 	"errors"
 	"log/slog"
 	"time"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/billing"
@@ -14,7 +15,7 @@ import (
 
 func newBillingServices(
 	cfg config.Config,
-	db *sql.DB,
+	db *pgxpool.Pool,
 ) (*billing.PostgresLedger, error) {
 	if !cfg.Features.UserAuth && !cfg.Features.APIBilling && !cfg.Features.X402Topups {
 		return nil, nil
@@ -67,7 +68,7 @@ func newTopupDispatcher(
 
 func newPrepaidServices(
 	cfg config.Config,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	logger *slog.Logger,
 	observer billing.PrepaidObserver,
 ) (*billing.PrepaidLedger, *billing.UsageDispatcher, error) {

@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const AdjustBillingAccount = `-- name: AdjustBillingAccount :one
+const adjustBillingAccount = `-- name: AdjustBillingAccount :one
 WITH locked AS (
     SELECT user_id, chain_id, network, asset, total_credit_atomic, total_debit_atomic, reserved_atomic, created_at, updated_at
     FROM billing_accounts
@@ -79,7 +79,7 @@ type AdjustBillingAccountRow struct {
 }
 
 func (q *Queries) AdjustBillingAccount(ctx context.Context, arg AdjustBillingAccountParams) (AdjustBillingAccountRow, error) {
-	row := q.db.QueryRow(ctx, AdjustBillingAccount,
+	row := q.db.QueryRow(ctx, adjustBillingAccount,
 		arg.UserID,
 		arg.ChainID,
 		arg.Network,
@@ -106,7 +106,7 @@ func (q *Queries) AdjustBillingAccount(ctx context.Context, arg AdjustBillingAcc
 	return i, err
 }
 
-const BeginBillingTopupSettlement = `-- name: BeginBillingTopupSettlement :one
+const beginBillingTopupSettlement = `-- name: BeginBillingTopupSettlement :one
 WITH candidate AS (
     SELECT payment.id, payment.topup_intent_id
     FROM billing_payments AS payment
@@ -155,7 +155,7 @@ type BeginBillingTopupSettlementParams struct {
 }
 
 func (q *Queries) BeginBillingTopupSettlement(ctx context.Context, arg BeginBillingTopupSettlementParams) (pgtype.UUID, error) {
-	row := q.db.QueryRow(ctx, BeginBillingTopupSettlement,
+	row := q.db.QueryRow(ctx, beginBillingTopupSettlement,
 		arg.PaymentID,
 		arg.ReservationOwner,
 		arg.IntentID,
@@ -166,7 +166,7 @@ func (q *Queries) BeginBillingTopupSettlement(ctx context.Context, arg BeginBill
 	return payment_id, err
 }
 
-const ClaimBillingTopupIntent = `-- name: ClaimBillingTopupIntent :one
+const claimBillingTopupIntent = `-- name: ClaimBillingTopupIntent :one
 UPDATE billing_topup_intents
 SET state = 'processing', active_payment_id = $1::uuid,
     processing_at = $2, updated_at = $2
@@ -189,7 +189,7 @@ type ClaimBillingTopupIntentParams struct {
 }
 
 func (q *Queries) ClaimBillingTopupIntent(ctx context.Context, arg ClaimBillingTopupIntentParams) (pgtype.UUID, error) {
-	row := q.db.QueryRow(ctx, ClaimBillingTopupIntent,
+	row := q.db.QueryRow(ctx, claimBillingTopupIntent,
 		arg.PaymentID,
 		arg.TransitionedAt,
 		arg.ID,
@@ -202,7 +202,7 @@ func (q *Queries) ClaimBillingTopupIntent(ctx context.Context, arg ClaimBillingT
 	return id, err
 }
 
-const CommitBillingUsage = `-- name: CommitBillingUsage :one
+const commitBillingUsage = `-- name: CommitBillingUsage :one
 WITH candidate AS (
     SELECT id, reservation_owner, user_id, api_key_prefix, chain_id, network, asset, method, operation, resource_digest, amount_atomic, state, failure_code, response_digest, response_bytes, reservation_expires_at, committed_at, released_at, expired_at, created_at, updated_at
     FROM billing_usage_charges
@@ -278,7 +278,7 @@ type CommitBillingUsageRow struct {
 }
 
 func (q *Queries) CommitBillingUsage(ctx context.Context, arg CommitBillingUsageParams) (CommitBillingUsageRow, error) {
-	row := q.db.QueryRow(ctx, CommitBillingUsage,
+	row := q.db.QueryRow(ctx, commitBillingUsage,
 		arg.ID,
 		arg.ReservationOwner,
 		arg.CommittedAt,
@@ -313,7 +313,7 @@ func (q *Queries) CommitBillingUsage(ctx context.Context, arg CommitBillingUsage
 	return i, err
 }
 
-const CreateBillingTopupIntent = `-- name: CreateBillingTopupIntent :one
+const createBillingTopupIntent = `-- name: CreateBillingTopupIntent :one
 INSERT INTO billing_topup_intents (
     id, user_id, chain_id, network, asset, amount_atomic, recipient, payer,
     state, expires_at, created_at, updated_at
@@ -353,7 +353,7 @@ type CreateBillingTopupIntentParams struct {
 }
 
 func (q *Queries) CreateBillingTopupIntent(ctx context.Context, arg CreateBillingTopupIntentParams) (BillingTopupIntent, error) {
-	row := q.db.QueryRow(ctx, CreateBillingTopupIntent,
+	row := q.db.QueryRow(ctx, createBillingTopupIntent,
 		arg.ID,
 		arg.Network,
 		arg.Asset,
@@ -391,7 +391,7 @@ func (q *Queries) CreateBillingTopupIntent(ctx context.Context, arg CreateBillin
 	return i, err
 }
 
-const CreditBillingTopup = `-- name: CreditBillingTopup :one
+const creditBillingTopup = `-- name: CreditBillingTopup :one
 WITH candidate AS (
     SELECT payment.id, payment.topup_intent_id, payment.user_id,
            payment.chain_id, payment.network, payment.asset,
@@ -476,7 +476,7 @@ type CreditBillingTopupRow struct {
 }
 
 func (q *Queries) CreditBillingTopup(ctx context.Context, arg CreditBillingTopupParams) (CreditBillingTopupRow, error) {
-	row := q.db.QueryRow(ctx, CreditBillingTopup,
+	row := q.db.QueryRow(ctx, creditBillingTopup,
 		arg.PaymentID,
 		arg.ReservationOwner,
 		arg.TransactionHash,
@@ -498,7 +498,7 @@ func (q *Queries) CreditBillingTopup(ctx context.Context, arg CreditBillingTopup
 	return i, err
 }
 
-const EnsureBillingAccount = `-- name: EnsureBillingAccount :one
+const ensureBillingAccount = `-- name: EnsureBillingAccount :one
 WITH inserted AS (
     INSERT INTO billing_accounts (
         user_id, chain_id, network, asset, created_at, updated_at
@@ -543,7 +543,7 @@ type EnsureBillingAccountRow struct {
 }
 
 func (q *Queries) EnsureBillingAccount(ctx context.Context, arg EnsureBillingAccountParams) (EnsureBillingAccountRow, error) {
-	row := q.db.QueryRow(ctx, EnsureBillingAccount,
+	row := q.db.QueryRow(ctx, ensureBillingAccount,
 		arg.Network,
 		arg.Asset,
 		arg.CreatedAt,
@@ -565,7 +565,7 @@ func (q *Queries) EnsureBillingAccount(ctx context.Context, arg EnsureBillingAcc
 	return i, err
 }
 
-const ExpireBillingTopupPayments = `-- name: ExpireBillingTopupPayments :one
+const expireBillingTopupPayments = `-- name: ExpireBillingTopupPayments :one
 WITH candidates AS (
     SELECT payment.id, payment.topup_intent_id, payment.state AS prior_state
     FROM billing_payments AS payment
@@ -611,13 +611,13 @@ SELECT count(*)::bigint AS expired_count FROM intent_update
 `
 
 func (q *Queries) ExpireBillingTopupPayments(ctx context.Context, chainID pgtype.Numeric, observedAt pgtype.Timestamptz, expireLimit int32) (int64, error) {
-	row := q.db.QueryRow(ctx, ExpireBillingTopupPayments, chainID, observedAt, expireLimit)
+	row := q.db.QueryRow(ctx, expireBillingTopupPayments, chainID, observedAt, expireLimit)
 	var expired_count int64
 	err := row.Scan(&expired_count)
 	return expired_count, err
 }
 
-const ExpireBillingUsageReservations = `-- name: ExpireBillingUsageReservations :one
+const expireBillingUsageReservations = `-- name: ExpireBillingUsageReservations :one
 WITH candidates AS (
     SELECT charge.id, charge.reservation_owner, charge.user_id, charge.api_key_prefix, charge.chain_id, charge.network, charge.asset, charge.method, charge.operation, charge.resource_digest, charge.amount_atomic, charge.state, charge.failure_code, charge.response_digest, charge.response_bytes, charge.reservation_expires_at, charge.committed_at, charge.released_at, charge.expired_at, charge.created_at, charge.updated_at
     FROM billing_usage_charges AS charge
@@ -667,7 +667,7 @@ type ExpireBillingUsageReservationsParams struct {
 }
 
 func (q *Queries) ExpireBillingUsageReservations(ctx context.Context, arg ExpireBillingUsageReservationsParams) (int64, error) {
-	row := q.db.QueryRow(ctx, ExpireBillingUsageReservations,
+	row := q.db.QueryRow(ctx, expireBillingUsageReservations,
 		arg.ChainID,
 		arg.Network,
 		arg.Asset,
@@ -679,7 +679,7 @@ func (q *Queries) ExpireBillingUsageReservations(ctx context.Context, arg Expire
 	return expired_count, err
 }
 
-const ExpireOpenBillingTopupIntents = `-- name: ExpireOpenBillingTopupIntents :one
+const expireOpenBillingTopupIntents = `-- name: ExpireOpenBillingTopupIntents :one
 WITH candidates AS (
     SELECT intent.id
     FROM billing_topup_intents AS intent
@@ -711,7 +711,7 @@ type ExpireOpenBillingTopupIntentsParams struct {
 }
 
 func (q *Queries) ExpireOpenBillingTopupIntents(ctx context.Context, arg ExpireOpenBillingTopupIntentsParams) (int64, error) {
-	row := q.db.QueryRow(ctx, ExpireOpenBillingTopupIntents,
+	row := q.db.QueryRow(ctx, expireOpenBillingTopupIntents,
 		arg.ChainID,
 		arg.Network,
 		arg.Asset,
@@ -723,7 +723,7 @@ func (q *Queries) ExpireOpenBillingTopupIntents(ctx context.Context, arg ExpireO
 	return expired_count, err
 }
 
-const FailBillingTopupPayment = `-- name: FailBillingTopupPayment :one
+const failBillingTopupPayment = `-- name: FailBillingTopupPayment :one
 WITH payment_update AS (
     UPDATE billing_payments
     SET state = 'failed', failure_code = $1,
@@ -771,7 +771,7 @@ type FailBillingTopupPaymentParams struct {
 }
 
 func (q *Queries) FailBillingTopupPayment(ctx context.Context, arg FailBillingTopupPaymentParams) (pgtype.UUID, error) {
-	row := q.db.QueryRow(ctx, FailBillingTopupPayment,
+	row := q.db.QueryRow(ctx, failBillingTopupPayment,
 		arg.FailureCode,
 		arg.TransitionedAt,
 		arg.PaymentID,
@@ -783,7 +783,7 @@ func (q *Queries) FailBillingTopupPayment(ctx context.Context, arg FailBillingTo
 	return payment_id, err
 }
 
-const FailBillingTopupSettlement = `-- name: FailBillingTopupSettlement :one
+const failBillingTopupSettlement = `-- name: FailBillingTopupSettlement :one
 WITH payment_update AS (
     UPDATE billing_payments
     SET state = 'failed', failure_code = $1,
@@ -833,7 +833,7 @@ type FailBillingTopupSettlementParams struct {
 }
 
 func (q *Queries) FailBillingTopupSettlement(ctx context.Context, arg FailBillingTopupSettlementParams) (pgtype.UUID, error) {
-	row := q.db.QueryRow(ctx, FailBillingTopupSettlement,
+	row := q.db.QueryRow(ctx, failBillingTopupSettlement,
 		arg.FailureCode,
 		arg.TransitionedAt,
 		arg.PaymentID,
@@ -845,7 +845,7 @@ func (q *Queries) FailBillingTopupSettlement(ctx context.Context, arg FailBillin
 	return payment_id, err
 }
 
-const GetBillingAccount = `-- name: GetBillingAccount :one
+const getBillingAccount = `-- name: GetBillingAccount :one
 SELECT user_id, chain_id, network, asset, total_credit_atomic, total_debit_atomic, reserved_atomic, created_at, updated_at
 FROM billing_accounts
 WHERE user_id = $1::uuid
@@ -862,7 +862,7 @@ type GetBillingAccountParams struct {
 }
 
 func (q *Queries) GetBillingAccount(ctx context.Context, arg GetBillingAccountParams) (BillingAccount, error) {
-	row := q.db.QueryRow(ctx, GetBillingAccount,
+	row := q.db.QueryRow(ctx, getBillingAccount,
 		arg.UserID,
 		arg.ChainID,
 		arg.Network,
@@ -883,7 +883,7 @@ func (q *Queries) GetBillingAccount(ctx context.Context, arg GetBillingAccountPa
 	return i, err
 }
 
-const GetBillingTopupIntent = `-- name: GetBillingTopupIntent :one
+const getBillingTopupIntent = `-- name: GetBillingTopupIntent :one
 SELECT id, user_id, chain_id, network, asset, amount_atomic, recipient, payer, state, active_payment_id, transaction_hash, failure_code, expires_at, processing_at, settling_at, credited_at, failed_at, expired_at, created_at, updated_at
 FROM billing_topup_intents
 WHERE id = $1::uuid
@@ -891,7 +891,7 @@ WHERE id = $1::uuid
 `
 
 func (q *Queries) GetBillingTopupIntent(ctx context.Context, iD pgtype.UUID, chainID pgtype.Numeric) (BillingTopupIntent, error) {
-	row := q.db.QueryRow(ctx, GetBillingTopupIntent, iD, chainID)
+	row := q.db.QueryRow(ctx, getBillingTopupIntent, iD, chainID)
 	var i BillingTopupIntent
 	err := row.Scan(
 		&i.ID,
@@ -918,7 +918,7 @@ func (q *Queries) GetBillingTopupIntent(ctx context.Context, iD pgtype.UUID, cha
 	return i, err
 }
 
-const GetBillingUsageCharge = `-- name: GetBillingUsageCharge :one
+const getBillingUsageCharge = `-- name: GetBillingUsageCharge :one
 SELECT id, reservation_owner, user_id, api_key_prefix, chain_id, network, asset, method, operation, resource_digest, amount_atomic, state, failure_code, response_digest, response_bytes, reservation_expires_at, committed_at, released_at, expired_at, created_at, updated_at
 FROM billing_usage_charges
 WHERE id = $1::uuid
@@ -926,7 +926,7 @@ WHERE id = $1::uuid
 `
 
 func (q *Queries) GetBillingUsageCharge(ctx context.Context, iD pgtype.UUID, chainID pgtype.Numeric) (BillingUsageCharge, error) {
-	row := q.db.QueryRow(ctx, GetBillingUsageCharge, iD, chainID)
+	row := q.db.QueryRow(ctx, getBillingUsageCharge, iD, chainID)
 	var i BillingUsageCharge
 	err := row.Scan(
 		&i.ID,
@@ -954,7 +954,7 @@ func (q *Queries) GetBillingUsageCharge(ctx context.Context, iD pgtype.UUID, cha
 	return i, err
 }
 
-const GetUserBillingTopupIntent = `-- name: GetUserBillingTopupIntent :one
+const getUserBillingTopupIntent = `-- name: GetUserBillingTopupIntent :one
 SELECT id, user_id, chain_id, network, asset, amount_atomic, recipient, payer, state, active_payment_id, transaction_hash, failure_code, expires_at, processing_at, settling_at, credited_at, failed_at, expired_at, created_at, updated_at
 FROM billing_topup_intents
 WHERE id = $1::uuid
@@ -963,7 +963,7 @@ WHERE id = $1::uuid
 `
 
 func (q *Queries) GetUserBillingTopupIntent(ctx context.Context, iD pgtype.UUID, chainID pgtype.Numeric, userID pgtype.UUID) (BillingTopupIntent, error) {
-	row := q.db.QueryRow(ctx, GetUserBillingTopupIntent, iD, chainID, userID)
+	row := q.db.QueryRow(ctx, getUserBillingTopupIntent, iD, chainID, userID)
 	var i BillingTopupIntent
 	err := row.Scan(
 		&i.ID,
@@ -990,7 +990,7 @@ func (q *Queries) GetUserBillingTopupIntent(ctx context.Context, iD pgtype.UUID,
 	return i, err
 }
 
-const ListAdminBillingAccounts = `-- name: ListAdminBillingAccounts :many
+const listAdminBillingAccounts = `-- name: ListAdminBillingAccounts :many
 SELECT user_id, chain_id, network, asset, total_credit_atomic, total_debit_atomic, reserved_atomic, created_at, updated_at
 FROM billing_accounts
 WHERE chain_id = $1::numeric
@@ -1017,7 +1017,7 @@ type ListAdminBillingAccountsParams struct {
 }
 
 func (q *Queries) ListAdminBillingAccounts(ctx context.Context, arg ListAdminBillingAccountsParams) ([]BillingAccount, error) {
-	rows, err := q.db.Query(ctx, ListAdminBillingAccounts,
+	rows, err := q.db.Query(ctx, listAdminBillingAccounts,
 		arg.ChainID,
 		arg.Network,
 		arg.Asset,
@@ -1053,7 +1053,7 @@ func (q *Queries) ListAdminBillingAccounts(ctx context.Context, arg ListAdminBil
 	return items, nil
 }
 
-const ListAdminBillingTopupIntents = `-- name: ListAdminBillingTopupIntents :many
+const listAdminBillingTopupIntents = `-- name: ListAdminBillingTopupIntents :many
 SELECT id, user_id, chain_id, network, asset, amount_atomic, recipient, payer, state, active_payment_id, transaction_hash, failure_code, expires_at, processing_at, settling_at, credited_at, failed_at, expired_at, created_at, updated_at
 FROM billing_topup_intents
 WHERE chain_id = $1::numeric
@@ -1080,7 +1080,7 @@ type ListAdminBillingTopupIntentsParams struct {
 }
 
 func (q *Queries) ListAdminBillingTopupIntents(ctx context.Context, arg ListAdminBillingTopupIntentsParams) ([]BillingTopupIntent, error) {
-	rows, err := q.db.Query(ctx, ListAdminBillingTopupIntents,
+	rows, err := q.db.Query(ctx, listAdminBillingTopupIntents,
 		arg.ChainID,
 		arg.Network,
 		arg.Asset,
@@ -1127,7 +1127,7 @@ func (q *Queries) ListAdminBillingTopupIntents(ctx context.Context, arg ListAdmi
 	return items, nil
 }
 
-const ListAdminBillingUsage = `-- name: ListAdminBillingUsage :many
+const listAdminBillingUsage = `-- name: ListAdminBillingUsage :many
 SELECT id, reservation_owner, user_id, api_key_prefix, chain_id, network, asset, method, operation, resource_digest, amount_atomic, state, failure_code, response_digest, response_bytes, reservation_expires_at, committed_at, released_at, expired_at, created_at, updated_at
 FROM billing_usage_charges
 WHERE chain_id = $1::numeric
@@ -1154,7 +1154,7 @@ type ListAdminBillingUsageParams struct {
 }
 
 func (q *Queries) ListAdminBillingUsage(ctx context.Context, arg ListAdminBillingUsageParams) ([]BillingUsageCharge, error) {
-	rows, err := q.db.Query(ctx, ListAdminBillingUsage,
+	rows, err := q.db.Query(ctx, listAdminBillingUsage,
 		arg.ChainID,
 		arg.Network,
 		arg.Asset,
@@ -1202,7 +1202,7 @@ func (q *Queries) ListAdminBillingUsage(ctx context.Context, arg ListAdminBillin
 	return items, nil
 }
 
-const ListUserBillingTopupIntents = `-- name: ListUserBillingTopupIntents :many
+const listUserBillingTopupIntents = `-- name: ListUserBillingTopupIntents :many
 SELECT id, user_id, chain_id, network, asset, amount_atomic, recipient, payer, state, active_payment_id, transaction_hash, failure_code, expires_at, processing_at, settling_at, credited_at, failed_at, expired_at, created_at, updated_at
 FROM billing_topup_intents
 WHERE chain_id = $1::numeric
@@ -1227,7 +1227,7 @@ type ListUserBillingTopupIntentsParams struct {
 }
 
 func (q *Queries) ListUserBillingTopupIntents(ctx context.Context, arg ListUserBillingTopupIntentsParams) ([]BillingTopupIntent, error) {
-	rows, err := q.db.Query(ctx, ListUserBillingTopupIntents,
+	rows, err := q.db.Query(ctx, listUserBillingTopupIntents,
 		arg.ChainID,
 		arg.UserID,
 		arg.BeforeCreatedAt,
@@ -1273,7 +1273,7 @@ func (q *Queries) ListUserBillingTopupIntents(ctx context.Context, arg ListUserB
 	return items, nil
 }
 
-const ListUserBillingUsage = `-- name: ListUserBillingUsage :many
+const listUserBillingUsage = `-- name: ListUserBillingUsage :many
 SELECT id, reservation_owner, user_id, api_key_prefix, chain_id, network, asset, method, operation, resource_digest, amount_atomic, state, failure_code, response_digest, response_bytes, reservation_expires_at, committed_at, released_at, expired_at, created_at, updated_at
 FROM billing_usage_charges
 WHERE chain_id = $1::numeric
@@ -1298,7 +1298,7 @@ type ListUserBillingUsageParams struct {
 }
 
 func (q *Queries) ListUserBillingUsage(ctx context.Context, arg ListUserBillingUsageParams) ([]BillingUsageCharge, error) {
-	rows, err := q.db.Query(ctx, ListUserBillingUsage,
+	rows, err := q.db.Query(ctx, listUserBillingUsage,
 		arg.ChainID,
 		arg.UserID,
 		arg.BeforeCreatedAt,
@@ -1345,7 +1345,7 @@ func (q *Queries) ListUserBillingUsage(ctx context.Context, arg ListUserBillingU
 	return items, nil
 }
 
-const MarkBillingTopupSettlementPending = `-- name: MarkBillingTopupSettlementPending :one
+const markBillingTopupSettlementPending = `-- name: MarkBillingTopupSettlementPending :one
 WITH payment_update AS (
     UPDATE billing_payments
     SET failure_code = 'settlement_pending', transaction_hash = $1,
@@ -1387,7 +1387,7 @@ type MarkBillingTopupSettlementPendingParams struct {
 }
 
 func (q *Queries) MarkBillingTopupSettlementPending(ctx context.Context, arg MarkBillingTopupSettlementPendingParams) (pgtype.UUID, error) {
-	row := q.db.QueryRow(ctx, MarkBillingTopupSettlementPending,
+	row := q.db.QueryRow(ctx, markBillingTopupSettlementPending,
 		arg.TransactionHash,
 		arg.TransitionedAt,
 		arg.PaymentID,
@@ -1399,7 +1399,7 @@ func (q *Queries) MarkBillingTopupSettlementPending(ctx context.Context, arg Mar
 	return payment_id, err
 }
 
-const MarkBillingTopupSettlementUnknown = `-- name: MarkBillingTopupSettlementUnknown :one
+const markBillingTopupSettlementUnknown = `-- name: MarkBillingTopupSettlementUnknown :one
 WITH payment_update AS (
     UPDATE billing_payments
     SET failure_code = 'settlement_unknown', updated_at = $1
@@ -1437,7 +1437,7 @@ type MarkBillingTopupSettlementUnknownParams struct {
 }
 
 func (q *Queries) MarkBillingTopupSettlementUnknown(ctx context.Context, arg MarkBillingTopupSettlementUnknownParams) (pgtype.UUID, error) {
-	row := q.db.QueryRow(ctx, MarkBillingTopupSettlementUnknown,
+	row := q.db.QueryRow(ctx, markBillingTopupSettlementUnknown,
 		arg.TransitionedAt,
 		arg.PaymentID,
 		arg.ReservationOwner,
@@ -1448,7 +1448,7 @@ func (q *Queries) MarkBillingTopupSettlementUnknown(ctx context.Context, arg Mar
 	return payment_id, err
 }
 
-const ReconcileBillingTopupFailed = `-- name: ReconcileBillingTopupFailed :one
+const reconcileBillingTopupFailed = `-- name: ReconcileBillingTopupFailed :one
 WITH candidate AS (
     SELECT payment.id, payment.topup_intent_id, payment.failure_code,
            payment.transaction_hash
@@ -1507,7 +1507,7 @@ type ReconcileBillingTopupFailedParams struct {
 }
 
 func (q *Queries) ReconcileBillingTopupFailed(ctx context.Context, arg ReconcileBillingTopupFailedParams) (pgtype.UUID, error) {
-	row := q.db.QueryRow(ctx, ReconcileBillingTopupFailed,
+	row := q.db.QueryRow(ctx, reconcileBillingTopupFailed,
 		arg.PaymentID,
 		arg.ChainID,
 		arg.TransitionedAt,
@@ -1518,7 +1518,7 @@ func (q *Queries) ReconcileBillingTopupFailed(ctx context.Context, arg Reconcile
 	return id, err
 }
 
-const ReconcileBillingTopupSettled = `-- name: ReconcileBillingTopupSettled :one
+const reconcileBillingTopupSettled = `-- name: ReconcileBillingTopupSettled :one
 WITH candidate AS (
     SELECT payment.id, payment.topup_intent_id, payment.user_id,
            payment.chain_id, payment.network, payment.asset,
@@ -1629,7 +1629,7 @@ type ReconcileBillingTopupSettledRow struct {
 }
 
 func (q *Queries) ReconcileBillingTopupSettled(ctx context.Context, arg ReconcileBillingTopupSettledParams) (ReconcileBillingTopupSettledRow, error) {
-	row := q.db.QueryRow(ctx, ReconcileBillingTopupSettled,
+	row := q.db.QueryRow(ctx, reconcileBillingTopupSettled,
 		arg.PaymentID,
 		arg.ChainID,
 		arg.TransitionedAt,
@@ -1652,7 +1652,7 @@ func (q *Queries) ReconcileBillingTopupSettled(ctx context.Context, arg Reconcil
 	return i, err
 }
 
-const ReleaseBillingUsage = `-- name: ReleaseBillingUsage :one
+const releaseBillingUsage = `-- name: ReleaseBillingUsage :one
 WITH candidate AS (
     SELECT id, reservation_owner, user_id, api_key_prefix, chain_id, network, asset, method, operation, resource_digest, amount_atomic, state, failure_code, response_digest, response_bytes, reservation_expires_at, committed_at, released_at, expired_at, created_at, updated_at
     FROM billing_usage_charges
@@ -1713,7 +1713,7 @@ type ReleaseBillingUsageRow struct {
 }
 
 func (q *Queries) ReleaseBillingUsage(ctx context.Context, arg ReleaseBillingUsageParams) (ReleaseBillingUsageRow, error) {
-	row := q.db.QueryRow(ctx, ReleaseBillingUsage,
+	row := q.db.QueryRow(ctx, releaseBillingUsage,
 		arg.ID,
 		arg.ReservationOwner,
 		arg.ReleasedAt,
@@ -1746,7 +1746,7 @@ func (q *Queries) ReleaseBillingUsage(ctx context.Context, arg ReleaseBillingUsa
 	return i, err
 }
 
-const ReserveBillingUsage = `-- name: ReserveBillingUsage :one
+const reserveBillingUsage = `-- name: ReserveBillingUsage :one
 WITH eligible AS (
     SELECT account.user_id, account.chain_id, account.network, account.asset
     FROM billing_accounts AS account
@@ -1841,7 +1841,7 @@ type ReserveBillingUsageRow struct {
 }
 
 func (q *Queries) ReserveBillingUsage(ctx context.Context, arg ReserveBillingUsageParams) (ReserveBillingUsageRow, error) {
-	row := q.db.QueryRow(ctx, ReserveBillingUsage,
+	row := q.db.QueryRow(ctx, reserveBillingUsage,
 		arg.ApiKeyPrefix,
 		arg.UserID,
 		arg.ChainID,
@@ -1883,7 +1883,7 @@ func (q *Queries) ReserveBillingUsage(ctx context.Context, arg ReserveBillingUsa
 	return i, err
 }
 
-const SummarizeBillingAccounts = `-- name: SummarizeBillingAccounts :one
+const summarizeBillingAccounts = `-- name: SummarizeBillingAccounts :one
 SELECT count(*)::numeric AS account_count,
        COALESCE(sum(total_credit_atomic), 0)::numeric AS total_credit_atomic,
        COALESCE(sum(total_debit_atomic), 0)::numeric AS total_debit_atomic,
@@ -1902,7 +1902,7 @@ type SummarizeBillingAccountsRow struct {
 }
 
 func (q *Queries) SummarizeBillingAccounts(ctx context.Context, chainID pgtype.Numeric, network string, asset []byte) (SummarizeBillingAccountsRow, error) {
-	row := q.db.QueryRow(ctx, SummarizeBillingAccounts, chainID, network, asset)
+	row := q.db.QueryRow(ctx, summarizeBillingAccounts, chainID, network, asset)
 	var i SummarizeBillingAccountsRow
 	err := row.Scan(
 		&i.AccountCount,

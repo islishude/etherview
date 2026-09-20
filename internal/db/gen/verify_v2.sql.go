@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const VerifyV2ClaimRunnable = `-- name: VerifyV2ClaimRunnable :many
+const verifyV2ClaimRunnable = `-- name: VerifyV2ClaimRunnable :one
 WITH exhausted AS (
     UPDATE verification_jobs
     SET status = 'failed', error_code = 'attempts_exhausted',
@@ -43,11 +43,11 @@ WITH exhausted AS (
 )
 UPDATE verification_jobs AS job
 SET status = 'running', leased_by = $1, lease_token = $2,
-    lease_expires_at = clock_timestamp() + ($3 * INTERVAL '1 microsecond'),
+    lease_expires_at = clock_timestamp() + ($3::bigint * INTERVAL '1 microsecond'),
     attempt_count = job.attempt_count + 1, updated_at = clock_timestamp()
 FROM candidate
 WHERE job.id = candidate.id
-RETURNING job.id::text, job.kind, job.language, job.compiler_version,
+RETURNING job.id::text AS id, job.kind, job.language, job.compiler_version,
           job.compiler_platform, job.catalog_generation_id,
           job.compiler_digest, job.executor_kind, job.execution_policy,
           job.executor_digest, job.request_payload, job.request_digest,
@@ -56,17 +56,17 @@ RETURNING job.id::text, job.kind, job.language, job.compiler_version,
 `
 
 type VerifyV2ClaimRunnableParams struct {
-	LeasedBy   *string     `db:"leased_by" json:"leased_by"`
-	LeaseToken *string     `db:"lease_token" json:"lease_token"`
-	Column3    interface{} `db:"column_3" json:"column_3"`
-	Column4    bool        `db:"column_4" json:"column_4"`
-	Column5    bool        `db:"column_5" json:"column_5"`
-	Column6    bool        `db:"column_6" json:"column_6"`
-	Column7    bool        `db:"column_7" json:"column_7"`
+	LeasedBy             *string `db:"leased_by" json:"leased_by"`
+	LeaseToken           *string `db:"lease_token" json:"lease_token"`
+	LeaseMicroseconds    int64   `db:"lease_microseconds" json:"lease_microseconds"`
+	SolidityEnabled      bool    `db:"solidity_enabled" json:"solidity_enabled"`
+	GeasEnabled          bool    `db:"geas_enabled" json:"geas_enabled"`
+	VyperEnabled         bool    `db:"vyper_enabled" json:"vyper_enabled"`
+	VyperPreparedEnabled bool    `db:"vyper_prepared_enabled" json:"vyper_prepared_enabled"`
 }
 
 type VerifyV2ClaimRunnableRow struct {
-	JobID               string             `db:"job_id" json:"job_id"`
+	ID                  string             `db:"id" json:"id"`
 	Kind                string             `db:"kind" json:"kind"`
 	Language            *string            `db:"language" json:"language"`
 	CompilerVersion     *string            `db:"compiler_version" json:"compiler_version"`
@@ -88,56 +88,43 @@ type VerifyV2ClaimRunnableRow struct {
 	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
-func (q *Queries) VerifyV2ClaimRunnable(ctx context.Context, arg VerifyV2ClaimRunnableParams) ([]VerifyV2ClaimRunnableRow, error) {
-	rows, err := q.db.Query(ctx, VerifyV2ClaimRunnable,
+func (q *Queries) VerifyV2ClaimRunnable(ctx context.Context, arg VerifyV2ClaimRunnableParams) (VerifyV2ClaimRunnableRow, error) {
+	row := q.db.QueryRow(ctx, verifyV2ClaimRunnable,
 		arg.LeasedBy,
 		arg.LeaseToken,
-		arg.Column3,
-		arg.Column4,
-		arg.Column5,
-		arg.Column6,
-		arg.Column7,
+		arg.LeaseMicroseconds,
+		arg.SolidityEnabled,
+		arg.GeasEnabled,
+		arg.VyperEnabled,
+		arg.VyperPreparedEnabled,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []VerifyV2ClaimRunnableRow{}
-	for rows.Next() {
-		var i VerifyV2ClaimRunnableRow
-		if err := rows.Scan(
-			&i.JobID,
-			&i.Kind,
-			&i.Language,
-			&i.CompilerVersion,
-			&i.CompilerPlatform,
-			&i.CatalogGenerationID,
-			&i.CompilerDigest,
-			&i.ExecutorKind,
-			&i.ExecutionPolicy,
-			&i.ExecutorDigest,
-			&i.RequestPayload,
-			&i.RequestDigest,
-			&i.Status,
-			&i.OutcomeKind,
-			&i.Outcome,
-			&i.ErrorCode,
-			&i.AttemptCount,
-			&i.MaxAttempts,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i VerifyV2ClaimRunnableRow
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Language,
+		&i.CompilerVersion,
+		&i.CompilerPlatform,
+		&i.CatalogGenerationID,
+		&i.CompilerDigest,
+		&i.ExecutorKind,
+		&i.ExecutionPolicy,
+		&i.ExecutorDigest,
+		&i.RequestPayload,
+		&i.RequestDigest,
+		&i.Status,
+		&i.OutcomeKind,
+		&i.Outcome,
+		&i.ErrorCode,
+		&i.AttemptCount,
+		&i.MaxAttempts,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
-const VerifyV2FindActiveJobByDigest = `-- name: VerifyV2FindActiveJobByDigest :many
+const verifyV2FindActiveJobByDigest = `-- name: VerifyV2FindActiveJobByDigest :one
 SELECT id::text, kind, language, compiler_version, compiler_platform,
        catalog_generation_id, compiler_digest, executor_kind,
        execution_policy, executor_digest, request_payload, request_digest,
@@ -173,48 +160,35 @@ type VerifyV2FindActiveJobByDigestRow struct {
 	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
-func (q *Queries) VerifyV2FindActiveJobByDigest(ctx context.Context, dollar_1 []byte) ([]VerifyV2FindActiveJobByDigestRow, error) {
-	rows, err := q.db.Query(ctx, VerifyV2FindActiveJobByDigest, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []VerifyV2FindActiveJobByDigestRow{}
-	for rows.Next() {
-		var i VerifyV2FindActiveJobByDigestRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Kind,
-			&i.Language,
-			&i.CompilerVersion,
-			&i.CompilerPlatform,
-			&i.CatalogGenerationID,
-			&i.CompilerDigest,
-			&i.ExecutorKind,
-			&i.ExecutionPolicy,
-			&i.ExecutorDigest,
-			&i.RequestPayload,
-			&i.RequestDigest,
-			&i.Status,
-			&i.OutcomeKind,
-			&i.Outcome,
-			&i.ErrorCode,
-			&i.AttemptCount,
-			&i.MaxAttempts,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) VerifyV2FindActiveJobByDigest(ctx context.Context, requestDigest []byte) (VerifyV2FindActiveJobByDigestRow, error) {
+	row := q.db.QueryRow(ctx, verifyV2FindActiveJobByDigest, requestDigest)
+	var i VerifyV2FindActiveJobByDigestRow
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Language,
+		&i.CompilerVersion,
+		&i.CompilerPlatform,
+		&i.CatalogGenerationID,
+		&i.CompilerDigest,
+		&i.ExecutorKind,
+		&i.ExecutionPolicy,
+		&i.ExecutorDigest,
+		&i.RequestPayload,
+		&i.RequestDigest,
+		&i.Status,
+		&i.OutcomeKind,
+		&i.Outcome,
+		&i.ErrorCode,
+		&i.AttemptCount,
+		&i.MaxAttempts,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
-const VerifyV2GetJob = `-- name: VerifyV2GetJob :many
+const verifyV2GetJob = `-- name: VerifyV2GetJob :one
 SELECT id::text, kind, language, compiler_version, compiler_platform,
        catalog_generation_id, compiler_digest, executor_kind,
        execution_policy, executor_digest, request_payload, request_digest,
@@ -247,48 +221,35 @@ type VerifyV2GetJobRow struct {
 	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
-func (q *Queries) VerifyV2GetJob(ctx context.Context, dollar_1 pgtype.UUID) ([]VerifyV2GetJobRow, error) {
-	rows, err := q.db.Query(ctx, VerifyV2GetJob, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []VerifyV2GetJobRow{}
-	for rows.Next() {
-		var i VerifyV2GetJobRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Kind,
-			&i.Language,
-			&i.CompilerVersion,
-			&i.CompilerPlatform,
-			&i.CatalogGenerationID,
-			&i.CompilerDigest,
-			&i.ExecutorKind,
-			&i.ExecutionPolicy,
-			&i.ExecutorDigest,
-			&i.RequestPayload,
-			&i.RequestDigest,
-			&i.Status,
-			&i.OutcomeKind,
-			&i.Outcome,
-			&i.ErrorCode,
-			&i.AttemptCount,
-			&i.MaxAttempts,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) VerifyV2GetJob(ctx context.Context, jobID pgtype.UUID) (VerifyV2GetJobRow, error) {
+	row := q.db.QueryRow(ctx, verifyV2GetJob, jobID)
+	var i VerifyV2GetJobRow
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Language,
+		&i.CompilerVersion,
+		&i.CompilerPlatform,
+		&i.CatalogGenerationID,
+		&i.CompilerDigest,
+		&i.ExecutorKind,
+		&i.ExecutionPolicy,
+		&i.ExecutorDigest,
+		&i.RequestPayload,
+		&i.RequestDigest,
+		&i.Status,
+		&i.OutcomeKind,
+		&i.Outcome,
+		&i.ErrorCode,
+		&i.AttemptCount,
+		&i.MaxAttempts,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
-const VerifyV2LockRunningJob = `-- name: VerifyV2LockRunningJob :many
+const verifyV2LockRunningJob = `-- name: VerifyV2LockRunningJob :one
 SELECT id::text, kind, language, compiler_version, compiler_platform,
        catalog_generation_id, compiler_digest, executor_kind,
        execution_policy, executor_digest, request_payload, request_digest,
@@ -325,48 +286,35 @@ type VerifyV2LockRunningJobRow struct {
 	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
-func (q *Queries) VerifyV2LockRunningJob(ctx context.Context, column1 pgtype.UUID, leaseToken *string) ([]VerifyV2LockRunningJobRow, error) {
-	rows, err := q.db.Query(ctx, VerifyV2LockRunningJob, column1, leaseToken)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []VerifyV2LockRunningJobRow{}
-	for rows.Next() {
-		var i VerifyV2LockRunningJobRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Kind,
-			&i.Language,
-			&i.CompilerVersion,
-			&i.CompilerPlatform,
-			&i.CatalogGenerationID,
-			&i.CompilerDigest,
-			&i.ExecutorKind,
-			&i.ExecutionPolicy,
-			&i.ExecutorDigest,
-			&i.RequestPayload,
-			&i.RequestDigest,
-			&i.Status,
-			&i.OutcomeKind,
-			&i.Outcome,
-			&i.ErrorCode,
-			&i.AttemptCount,
-			&i.MaxAttempts,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) VerifyV2LockRunningJob(ctx context.Context, iD pgtype.UUID, leaseToken *string) (VerifyV2LockRunningJobRow, error) {
+	row := q.db.QueryRow(ctx, verifyV2LockRunningJob, iD, leaseToken)
+	var i VerifyV2LockRunningJobRow
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Language,
+		&i.CompilerVersion,
+		&i.CompilerPlatform,
+		&i.CatalogGenerationID,
+		&i.CompilerDigest,
+		&i.ExecutorKind,
+		&i.ExecutionPolicy,
+		&i.ExecutorDigest,
+		&i.RequestPayload,
+		&i.RequestDigest,
+		&i.Status,
+		&i.OutcomeKind,
+		&i.Outcome,
+		&i.ErrorCode,
+		&i.AttemptCount,
+		&i.MaxAttempts,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
-const VerifyV2SubmitJob = `-- name: VerifyV2SubmitJob :many
+const verifyV2SubmitJob = `-- name: VerifyV2SubmitJob :one
 INSERT INTO verification_jobs (
     id, kind, language, catalog_language, compiler_version, compiler_platform,
     catalog_generation_id,
@@ -387,7 +335,7 @@ RETURNING id::text, kind, language, compiler_version, compiler_platform,
 `
 
 type VerifyV2SubmitJobParams struct {
-	Column1             pgtype.UUID    `db:"column_1" json:"column_1"`
+	ID                  pgtype.UUID    `db:"id" json:"id"`
 	Kind                string         `db:"kind" json:"kind"`
 	Language            *string        `db:"language" json:"language"`
 	CatalogLanguage     *string        `db:"catalog_language" json:"catalog_language"`
@@ -395,11 +343,11 @@ type VerifyV2SubmitJobParams struct {
 	CompilerPlatform    *string        `db:"compiler_platform" json:"compiler_platform"`
 	CatalogGenerationID *int64         `db:"catalog_generation_id" json:"catalog_generation_id"`
 	CompilerDigest      []byte         `db:"compiler_digest" json:"compiler_digest"`
-	Column9             pgtype.Numeric `db:"column_9" json:"column_9"`
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	Address             []byte         `db:"address" json:"address"`
 	CodeHash            []byte         `db:"code_hash" json:"code_hash"`
 	BlockHash           []byte         `db:"block_hash" json:"block_hash"`
-	Column13            []byte         `db:"column_13" json:"column_13"`
+	Request             []byte         `db:"request" json:"request"`
 	RequestPayload      []byte         `db:"request_payload" json:"request_payload"`
 	RequestDigest       []byte         `db:"request_digest" json:"request_digest"`
 	MaxAttempts         int32          `db:"max_attempts" json:"max_attempts"`
@@ -428,9 +376,9 @@ type VerifyV2SubmitJobRow struct {
 	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
-func (q *Queries) VerifyV2SubmitJob(ctx context.Context, arg VerifyV2SubmitJobParams) ([]VerifyV2SubmitJobRow, error) {
-	rows, err := q.db.Query(ctx, VerifyV2SubmitJob,
-		arg.Column1,
+func (q *Queries) VerifyV2SubmitJob(ctx context.Context, arg VerifyV2SubmitJobParams) (VerifyV2SubmitJobRow, error) {
+	row := q.db.QueryRow(ctx, verifyV2SubmitJob,
+		arg.ID,
 		arg.Kind,
 		arg.Language,
 		arg.CatalogLanguage,
@@ -438,50 +386,37 @@ func (q *Queries) VerifyV2SubmitJob(ctx context.Context, arg VerifyV2SubmitJobPa
 		arg.CompilerPlatform,
 		arg.CatalogGenerationID,
 		arg.CompilerDigest,
-		arg.Column9,
+		arg.ChainID,
 		arg.Address,
 		arg.CodeHash,
 		arg.BlockHash,
-		arg.Column13,
+		arg.Request,
 		arg.RequestPayload,
 		arg.RequestDigest,
 		arg.MaxAttempts,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []VerifyV2SubmitJobRow{}
-	for rows.Next() {
-		var i VerifyV2SubmitJobRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Kind,
-			&i.Language,
-			&i.CompilerVersion,
-			&i.CompilerPlatform,
-			&i.CatalogGenerationID,
-			&i.CompilerDigest,
-			&i.ExecutorKind,
-			&i.ExecutionPolicy,
-			&i.ExecutorDigest,
-			&i.RequestPayload,
-			&i.RequestDigest,
-			&i.Status,
-			&i.OutcomeKind,
-			&i.Outcome,
-			&i.ErrorCode,
-			&i.AttemptCount,
-			&i.MaxAttempts,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i VerifyV2SubmitJobRow
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Language,
+		&i.CompilerVersion,
+		&i.CompilerPlatform,
+		&i.CatalogGenerationID,
+		&i.CompilerDigest,
+		&i.ExecutorKind,
+		&i.ExecutionPolicy,
+		&i.ExecutorDigest,
+		&i.RequestPayload,
+		&i.RequestDigest,
+		&i.Status,
+		&i.OutcomeKind,
+		&i.Outcome,
+		&i.ErrorCode,
+		&i.AttemptCount,
+		&i.MaxAttempts,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

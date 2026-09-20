@@ -1637,7 +1637,7 @@ type PublishedBlockStageResult struct {
 	BlockHash     []byte             `db:"block_hash" json:"block_hash"`
 	Stage         string             `db:"stage" json:"stage"`
 	StageVersion  int32              `db:"stage_version" json:"stage_version"`
-	State         string             `db:"state" json:"state"`
+	State         pgtype.Text        `db:"state" json:"state"`
 	Details       []byte             `db:"details" json:"details"`
 	LastError     *string            `db:"last_error" json:"last_error"`
 	CompletedAt   pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
@@ -2040,7 +2040,7 @@ type TransactionEffectiveExecutionIdentity struct {
 	ContextAddress    []byte         `db:"context_address" json:"context_address"`
 	ExecutionAddress  []byte         `db:"execution_address" json:"execution_address"`
 	ExecutionCodeHash []byte         `db:"execution_code_hash" json:"execution_code_hash"`
-	Resolution        string         `db:"resolution" json:"resolution"`
+	Resolution        pgtype.Text    `db:"resolution" json:"resolution"`
 	EvidenceSource    string         `db:"evidence_source" json:"evidence_source"`
 	RootTracePath     *string        `db:"root_trace_path" json:"root_trace_path"`
 	Canonical         bool           `db:"canonical" json:"canonical"`
@@ -2055,7 +2055,7 @@ type TransactionExecutionCodeResolution struct {
 	ContextAddress    []byte         `db:"context_address" json:"context_address"`
 	ExecutionAddress  []byte         `db:"execution_address" json:"execution_address"`
 	ExecutionCodeHash []byte         `db:"execution_code_hash" json:"execution_code_hash"`
-	Resolution        string         `db:"resolution" json:"resolution"`
+	Resolution        pgtype.Text    `db:"resolution" json:"resolution"`
 	EvidenceSource    string         `db:"evidence_source" json:"evidence_source"`
 	Canonical         bool           `db:"canonical" json:"canonical"`
 }

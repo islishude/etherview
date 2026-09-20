@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const EnrichClaimCandidate = `-- name: EnrichClaimCandidate :many
+const enrichClaimCandidate = `-- name: EnrichClaimCandidate :one
 UPDATE durable_jobs AS job
 SET status = 'leased',
     attempts = CASE
@@ -22,7 +22,7 @@ SET status = 'leased',
     leased_generation = job.requested_generation,
     leased_by = $1,
     lease_token = $2,
-    lease_expires_at = clock_timestamp() + ($3 * INTERVAL '1 microsecond'),
+    lease_expires_at = clock_timestamp() + ($3::bigint * INTERVAL '1 microsecond'),
     result = NULL,
     last_error = CASE
         WHEN job.requested_generation > job.claimed_generation THEN NULL
@@ -74,78 +74,65 @@ WHERE job.id = $4
       (job.status = 'queued' AND job.available_at <= clock_timestamp())
       OR (job.status = 'leased' AND job.lease_expires_at <= clock_timestamp())
   )
-RETURNING job.id, job.chain_id::text, job.stage, job.stage_version,
-          job.attempts, job.max_attempts, job.payload, job.leased_generation
+RETURNING job.id, job.chain_id::text AS chain_id, job.stage, job.stage_version,
+          job.attempts, job.max_attempts, job.payload, job.leased_generation::bigint AS requested_generation
 `
 
 type EnrichClaimCandidateParams struct {
-	LeasedBy     *string        `db:"leased_by" json:"leased_by"`
-	LeaseToken   *string        `db:"lease_token" json:"lease_token"`
-	Column3      interface{}    `db:"column_3" json:"column_3"`
-	ID           int64          `db:"id" json:"id"`
-	Column5      pgtype.Numeric `db:"column_5" json:"column_5"`
-	Stage        string         `db:"stage" json:"stage"`
-	StageVersion int32          `db:"stage_version" json:"stage_version"`
-	Payload      []byte         `db:"payload" json:"payload"`
-	Payload_2    []byte         `db:"payload_2" json:"payload_2"`
-	Column10     []byte         `db:"column_10" json:"column_10"`
-	Column11     int64          `db:"column_11" json:"column_11"`
+	LeasedBy          *string        `db:"leased_by" json:"leased_by"`
+	LeaseToken        *string        `db:"lease_token" json:"lease_token"`
+	LeaseMicroseconds int64          `db:"lease_microseconds" json:"lease_microseconds"`
+	ID                int64          `db:"id" json:"id"`
+	ChainID           pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Stage             string         `db:"stage" json:"stage"`
+	StageVersion      int32          `db:"stage_version" json:"stage_version"`
+	Payload           []byte         `db:"payload" json:"payload"`
+	Payload2          []byte         `db:"payload_2" json:"payload_2"`
+	SupportedStages   []byte         `db:"supported_stages" json:"supported_stages"`
+	ProxyStageVersion int64          `db:"proxy_stage_version" json:"proxy_stage_version"`
 }
 
 type EnrichClaimCandidateRow struct {
-	ID               int64  `db:"id" json:"id"`
-	JobChainID       string `db:"job_chain_id" json:"job_chain_id"`
-	Stage            string `db:"stage" json:"stage"`
-	StageVersion     int32  `db:"stage_version" json:"stage_version"`
-	Attempts         int32  `db:"attempts" json:"attempts"`
-	MaxAttempts      int32  `db:"max_attempts" json:"max_attempts"`
-	Payload          []byte `db:"payload" json:"payload"`
-	LeasedGeneration *int64 `db:"leased_generation" json:"leased_generation"`
+	ID                  int64  `db:"id" json:"id"`
+	ChainID             string `db:"chain_id" json:"chain_id"`
+	Stage               string `db:"stage" json:"stage"`
+	StageVersion        int32  `db:"stage_version" json:"stage_version"`
+	Attempts            int32  `db:"attempts" json:"attempts"`
+	MaxAttempts         int32  `db:"max_attempts" json:"max_attempts"`
+	Payload             []byte `db:"payload" json:"payload"`
+	RequestedGeneration int64  `db:"requested_generation" json:"requested_generation"`
 }
 
-func (q *Queries) EnrichClaimCandidate(ctx context.Context, arg EnrichClaimCandidateParams) ([]EnrichClaimCandidateRow, error) {
-	rows, err := q.db.Query(ctx, EnrichClaimCandidate,
+func (q *Queries) EnrichClaimCandidate(ctx context.Context, arg EnrichClaimCandidateParams) (EnrichClaimCandidateRow, error) {
+	row := q.db.QueryRow(ctx, enrichClaimCandidate,
 		arg.LeasedBy,
 		arg.LeaseToken,
-		arg.Column3,
+		arg.LeaseMicroseconds,
 		arg.ID,
-		arg.Column5,
+		arg.ChainID,
 		arg.Stage,
 		arg.StageVersion,
 		arg.Payload,
-		arg.Payload_2,
-		arg.Column10,
-		arg.Column11,
+		arg.Payload2,
+		arg.SupportedStages,
+		arg.ProxyStageVersion,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EnrichClaimCandidateRow{}
-	for rows.Next() {
-		var i EnrichClaimCandidateRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.JobChainID,
-			&i.Stage,
-			&i.StageVersion,
-			&i.Attempts,
-			&i.MaxAttempts,
-			&i.Payload,
-			&i.LeasedGeneration,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i EnrichClaimCandidateRow
+	err := row.Scan(
+		&i.ID,
+		&i.ChainID,
+		&i.Stage,
+		&i.StageVersion,
+		&i.Attempts,
+		&i.MaxAttempts,
+		&i.Payload,
+		&i.RequestedGeneration,
+	)
+	return i, err
 }
 
-const EnrichLockExhaustedJob = `-- name: EnrichLockExhaustedJob :many
-SELECT exhausted_job.id, exhausted_job.chain_id::text,
+const enrichLockExhaustedJob = `-- name: EnrichLockExhaustedJob :one
+SELECT exhausted_job.id, exhausted_job.chain_id::text AS chain_id,
        exhausted_job.stage, exhausted_job.stage_version,
        exhausted_job.attempts, exhausted_job.max_attempts,
        exhausted_job.payload, exhausted_job.claimed_generation,
@@ -196,49 +183,36 @@ FOR UPDATE
 `
 
 type EnrichLockExhaustedJobRow struct {
-	ID                  int64  `db:"id" json:"id"`
-	ExhaustedJobChainID string `db:"exhausted_job_chain_id" json:"exhausted_job_chain_id"`
-	Stage               string `db:"stage" json:"stage"`
-	StageVersion        int32  `db:"stage_version" json:"stage_version"`
-	Attempts            int32  `db:"attempts" json:"attempts"`
-	MaxAttempts         int32  `db:"max_attempts" json:"max_attempts"`
-	Payload             []byte `db:"payload" json:"payload"`
-	ClaimedGeneration   int64  `db:"claimed_generation" json:"claimed_generation"`
-	LastError           string `db:"last_error" json:"last_error"`
+	ID                int64  `db:"id" json:"id"`
+	ChainID           string `db:"chain_id" json:"chain_id"`
+	Stage             string `db:"stage" json:"stage"`
+	StageVersion      int32  `db:"stage_version" json:"stage_version"`
+	Attempts          int32  `db:"attempts" json:"attempts"`
+	MaxAttempts       int32  `db:"max_attempts" json:"max_attempts"`
+	Payload           []byte `db:"payload" json:"payload"`
+	ClaimedGeneration int64  `db:"claimed_generation" json:"claimed_generation"`
+	LastError         string `db:"last_error" json:"last_error"`
 }
 
-func (q *Queries) EnrichLockExhaustedJob(ctx context.Context, iD int64, column2 []byte, column3 int64) ([]EnrichLockExhaustedJobRow, error) {
-	rows, err := q.db.Query(ctx, EnrichLockExhaustedJob, iD, column2, column3)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EnrichLockExhaustedJobRow{}
-	for rows.Next() {
-		var i EnrichLockExhaustedJobRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.ExhaustedJobChainID,
-			&i.Stage,
-			&i.StageVersion,
-			&i.Attempts,
-			&i.MaxAttempts,
-			&i.Payload,
-			&i.ClaimedGeneration,
-			&i.LastError,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EnrichLockExhaustedJob(ctx context.Context, iD int64, supportedStages []byte, stageVersion int64) (EnrichLockExhaustedJobRow, error) {
+	row := q.db.QueryRow(ctx, enrichLockExhaustedJob, iD, supportedStages, stageVersion)
+	var i EnrichLockExhaustedJobRow
+	err := row.Scan(
+		&i.ID,
+		&i.ChainID,
+		&i.Stage,
+		&i.StageVersion,
+		&i.Attempts,
+		&i.MaxAttempts,
+		&i.Payload,
+		&i.ClaimedGeneration,
+		&i.LastError,
+	)
+	return i, err
 }
 
-const EnrichSelectClaimCandidate = `-- name: EnrichSelectClaimCandidate :many
-SELECT candidate_job.id, candidate_job.chain_id::text,
+const enrichSelectClaimCandidate = `-- name: EnrichSelectClaimCandidate :one
+SELECT candidate_job.id, candidate_job.chain_id::text AS chain_id,
        candidate_job.stage, candidate_job.stage_version,
        candidate_job.attempts, candidate_job.max_attempts,
        candidate_job.payload, candidate_job.requested_generation
@@ -289,7 +263,7 @@ LIMIT 1
 
 type EnrichSelectClaimCandidateRow struct {
 	ID                  int64  `db:"id" json:"id"`
-	CandidateJobChainID string `db:"candidate_job_chain_id" json:"candidate_job_chain_id"`
+	ChainID             string `db:"chain_id" json:"chain_id"`
 	Stage               string `db:"stage" json:"stage"`
 	StageVersion        int32  `db:"stage_version" json:"stage_version"`
 	Attempts            int32  `db:"attempts" json:"attempts"`
@@ -298,36 +272,23 @@ type EnrichSelectClaimCandidateRow struct {
 	RequestedGeneration int64  `db:"requested_generation" json:"requested_generation"`
 }
 
-func (q *Queries) EnrichSelectClaimCandidate(ctx context.Context, column1 []byte, column2 int64) ([]EnrichSelectClaimCandidateRow, error) {
-	rows, err := q.db.Query(ctx, EnrichSelectClaimCandidate, column1, column2)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EnrichSelectClaimCandidateRow{}
-	for rows.Next() {
-		var i EnrichSelectClaimCandidateRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.CandidateJobChainID,
-			&i.Stage,
-			&i.StageVersion,
-			&i.Attempts,
-			&i.MaxAttempts,
-			&i.Payload,
-			&i.RequestedGeneration,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EnrichSelectClaimCandidate(ctx context.Context, supportedStages []byte, stageVersion int64) (EnrichSelectClaimCandidateRow, error) {
+	row := q.db.QueryRow(ctx, enrichSelectClaimCandidate, supportedStages, stageVersion)
+	var i EnrichSelectClaimCandidateRow
+	err := row.Scan(
+		&i.ID,
+		&i.ChainID,
+		&i.Stage,
+		&i.StageVersion,
+		&i.Attempts,
+		&i.MaxAttempts,
+		&i.Payload,
+		&i.RequestedGeneration,
+	)
+	return i, err
 }
 
-const EnrichSelectExhaustedCandidate = `-- name: EnrichSelectExhaustedCandidate :many
+const enrichSelectExhaustedCandidate = `-- name: EnrichSelectExhaustedCandidate :one
 SELECT exhausted_job.id
 FROM durable_jobs AS exhausted_job
 WHERE exhausted_job.kind = 'enrichment'
@@ -374,22 +335,9 @@ ORDER BY exhausted_job.available_at, exhausted_job.id
 LIMIT 1
 `
 
-func (q *Queries) EnrichSelectExhaustedCandidate(ctx context.Context, column1 []byte, column2 int64) ([]int64, error) {
-	rows, err := q.db.Query(ctx, EnrichSelectExhaustedCandidate, column1, column2)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []int64{}
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		items = append(items, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EnrichSelectExhaustedCandidate(ctx context.Context, supportedStages []byte, stageVersion int64) (int64, error) {
+	row := q.db.QueryRow(ctx, enrichSelectExhaustedCandidate, supportedStages, stageVersion)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }

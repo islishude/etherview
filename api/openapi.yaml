@@ -1428,6 +1428,13 @@ paths:
     get:
       operationId: getHomeSnapshot
       tags: [system]
+      parameters:
+        - name: min_event_id
+          in: query
+          required: false
+          description: Minimum durable event version; waits at most two seconds for the local snapshot.
+          schema:
+            $ref: "#/components/schemas/RuntimeEventID"
       description: >-
         Return the current writer-authoritative home-page snapshot. The Web UI
         invalidates this bounded snapshot from the durable event stream.
@@ -6330,11 +6337,18 @@ components:
           maxItems: 6
           items:
             $ref: "#/components/schemas/Transaction"
+    RuntimeEventID:
+      type: string
+      pattern: '^(0|[1-9][0-9]{0,18})$'
+      maxLength: 19
+      description: Canonical decimal durable event ID from 0 through 9223372036854775807.
     HomeSnapshotResponse:
       type: object
       additionalProperties: false
-      required: [data, meta]
+      required: [data, meta, event_id]
       properties:
+        event_id:
+          $ref: "#/components/schemas/RuntimeEventID"
         data:
           $ref: "#/components/schemas/HomeSnapshot"
         meta:

@@ -2,12 +2,15 @@ package verify
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/islishude/etherview/internal/db/gen"
 	"strconv"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
 )
 
 // CompleteProxyV2 publishes a proxy binding only while the exact submitted
@@ -25,14 +28,24 @@ func (repository *PostgresRepository) CompleteProxyV2(
 		lease.Job.RequestV2.Target == nil || lease.Job.RequestV2.ProxyTarget == nil {
 		return errors.New("proxy verification lease is invalid")
 	}
-	tx, err := repository.db.BeginTx(ctx, nil)
+	tx, err := repository.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 
-	job, err := repository.scanV2Job(tx.QueryRowContext(ctx, dbgen.VerifyV2LockRunningJob, lease.Job.ID, lease.Token))
-	if errors.Is(err, sql.ErrNoRows) {
+	job, err := func() (VerificationJob, error) {
+		var queryValue0 pgtype.UUID
+		if err := queryValue0.Scan(lease.Job.ID); err != nil {
+			return VerificationJob{}, err
+		}
+		row, err := dbgen.New(tx).VerifyV2LockRunningJob(ctx, queryValue0, new(lease.Token))
+		if err != nil {
+			return VerificationJob{}, err
+		}
+		return repository.decodeV2Job(dbgen.VerifyV2GetJobRow(row))
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrLeaseLost
 	}
 	if err != nil {
@@ -51,7 +64,13 @@ func (repository *PostgresRepository) CompleteProxyV2(
 	// every proxy interaction coverage refresh. Taking this fence only in the
 	// binding INSERT trigger leaves a window where a canonical-tip advance or a
 	// same-block proxy/state-diff replay can replace the facts selected below.
-	if _, err := tx.ExecContext(ctx, dbgen.VerifyInlineCompleteProxyV2Statement1, chainID); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		return dbgen.New(tx).VerifyInlineCompleteProxyV2Statement1(ctx, queryValue0)
+	}(); err != nil {
 		return err
 	}
 	proxyAddress, _ := decodeFixedHex(request.Target.Address, 20)
@@ -83,42 +102,46 @@ func (repository *PostgresRepository) CompleteProxyV2(
 	artifactResolutionID := proxyGenerationSQLValue(request.ProxyTarget.ArtifactResolutionID)
 	beaconGenerationID := proxyGenerationSQLValue(request.ProxyTarget.BeaconGenerationID)
 	uupsGenerationID := proxyGenerationSQLValue(request.ProxyTarget.UUPSGenerationID)
-	var standardVersion any
+	var standardVersion *string
 	if request.ProxyTarget.StandardVersion != "" {
-		standardVersion = request.ProxyTarget.StandardVersion
+		standardVersion = new(request.ProxyTarget.StandardVersion)
 	}
 
 	var observationBlock, contextBlock string
 	var observationGeneration int64
-	var artifactResolution, beaconGeneration, uupsGeneration sql.NullInt64
+	var artifactResolution, beaconGeneration, uupsGeneration pgtype.Int8
 	var contextHash []byte
-	err = tx.QueryRowContext(ctx, dbgen.VerifyLegacyProxyVerificationCurrentTarget, chainID,
-		proxyAddress,
-		proxyCodeHash,
-		blockHash,
-		request.ProxyTarget.Kind,
-		implementationAddress,
-		implementationCodeHash,
-		request.ProxyTarget.Pattern,
-		standardVersion,
-		adminAddress,
-		adminCodeHash,
-		beaconAddress,
-		beaconCodeHash,
-		request.ProxyTarget.ManagementKind,
-		managementAddress,
-		managementCodeHash,
-		observationGenerationID,
-		artifactResolutionID,
-		beaconGenerationID,
-		request.ProxyTarget.SubmissionContextBlockNumber,
-		submissionContextHash,
-		uupsGenerationID,
-	).Scan(
-		&observationBlock, &observationGeneration, &artifactResolution,
-		&beaconGeneration, &uupsGeneration, &contextBlock, &contextHash,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(request.ProxyTarget.SubmissionContextBlockNumber); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).VerifyLegacyProxyVerificationCurrentTarget(ctx, dbgen.VerifyLegacyProxyVerificationCurrentTargetParams{CodeHash: proxyCodeHash, BlockHash: blockHash, ProxyKind: request.ProxyTarget.Kind, ImplementationAddress: implementationAddress, ImplementationCodeHash: implementationCodeHash, ProxyPattern: request.ProxyTarget.Pattern, StandardVersion: standardVersion, AdminAddress: adminAddress, AdminCodeHash: adminCodeHash, BeaconAddress: beaconAddress, BeaconCodeHash: beaconCodeHash, ObservationGenerationID: observationGenerationID, ArtifactResolutionID: artifactResolutionID, BeaconGenerationID: beaconGenerationID, UupsGenerationID: uupsGenerationID, ChainID: queryValue0, ManagementKind: request.ProxyTarget.ManagementKind, ManagementAddress: managementAddress, ManagementCodeHash: managementCodeHash, ProxyAddress: proxyAddress, SubmissionBlockNumber: queryValue1, SubmissionBlockHash: submissionContextHash})
+		if err != nil {
+			return err
+		}
+		observationBlock = queryRow.CurrentProxyBlockNumber
+		observationGeneration = queryRow.ObservationGenerationID
+		artifactResolution = pgtype.Int8{Int64: queryRow.ArtifactResolutionID, Valid: queryRow.ArtifactResolutionPresent}
+		var resultValue3 pgtype.Int8
+		if queryRow.BeaconGenerationID != nil {
+			resultValue3 = pgtype.Int8{Int64: *queryRow.BeaconGenerationID, Valid: true}
+		}
+		beaconGeneration = resultValue3
+		var resultValue5 pgtype.Int8
+		if queryRow.UupsGenerationID != nil {
+			resultValue5 = pgtype.Int8{Int64: *queryRow.UupsGenerationID, Valid: true}
+		}
+		uupsGeneration = resultValue5
+		contextBlock = queryRow.CurrentProxyContextNumber
+		contextHash = queryRow.ContextHash
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrTargetNotCanonical
 	}
 	if err != nil {
@@ -157,42 +180,63 @@ func (repository *PostgresRepository) CompleteProxyV2(
 	if err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.VerifyInlineCompleteProxyV2Statement2, job.ID, lease.Token, string(outcome)); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.UUID
+		if err := queryValue0.Scan(job.ID); err != nil {
+			return err
+		}
+		return dbgen.New(tx).VerifyInlineCompleteProxyV2Statement2(ctx, []byte(string(outcome)), queryValue0, new(lease.Token))
+	}(); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.VerifyInlineCompleteProxyV2Statement3, job.ID, job.RequestDigest[:], string(outcome)); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.UUID
+		if err := queryValue0.Scan(job.ID); err != nil {
+			return err
+		}
+		return dbgen.New(tx).VerifyInlineCompleteProxyV2Statement3(ctx, queryValue0, job.RequestDigest[:], []byte(string(outcome)))
+	}(); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.VerifyInlineCompleteProxyV2Statement4, chainID, proxyAddress, proxyCodeHash,
-		observationBlock, blockHash, request.ProxyTarget.Kind, request.ProxyTarget.Pattern,
-		standardVersion, implementationAddress, implementationCodeHash,
-		adminAddress, adminCodeHash, beaconAddress, beaconCodeHash,
-		request.ProxyTarget.ManagementKind, managementAddress, managementCodeHash,
-		observationGeneration, nullInt64SQLValue(artifactResolution),
-		nullInt64SQLValue(beaconGeneration), nullInt64SQLValue(uupsGeneration),
-		contextBlock, contextHash,
-		job.ID, job.RequestDigest[:],
-	); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(observationBlock); err != nil {
+			return err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(contextBlock); err != nil {
+			return err
+		}
+		var queryValue3 pgtype.UUID
+		if err := queryValue3.Scan(job.ID); err != nil {
+			return err
+		}
+		return dbgen.New(tx).VerifyInlineCompleteProxyV2Statement4(ctx, dbgen.VerifyInlineCompleteProxyV2Statement4Params{ChainID: queryValue0, ProxyAddress: proxyAddress, ProxyCodeHash: proxyCodeHash, ObservationBlockNumber: queryValue1, ObservationBlockHash: blockHash, ProxyKind: request.ProxyTarget.Kind, ProxyPattern: request.ProxyTarget.Pattern, StandardVersion: standardVersion, ImplementationAddress: implementationAddress, ImplementationCodeHash: implementationCodeHash, AdminAddress: adminAddress, AdminCodeHash: adminCodeHash, BeaconAddress: beaconAddress, BeaconCodeHash: beaconCodeHash, ManagementKind: request.ProxyTarget.ManagementKind, ManagementAddress: managementAddress, ManagementCodeHash: managementCodeHash, ObservationGenerationID: observationGeneration, ArtifactResolutionID: nullInt64SQLValue(artifactResolution), BeaconGenerationID: nullInt64SQLValue(beaconGeneration), UupsGenerationID: nullInt64SQLValue(uupsGeneration), ContextBlockNumber: queryValue2, ContextBlockHash: contextHash, VerificationJobID: queryValue3, RequestDigest: job.RequestDigest[:]})
+	}(); err != nil {
 		return err
 	}
-	return tx.Commit()
+	return tx.Commit(ctx)
 }
 
-func nullInt64Outcome(value sql.NullInt64) any {
+func nullInt64Outcome(value pgtype.Int8) any {
 	if !value.Valid {
 		return nil
 	}
 	return value.Int64
 }
 
-func nullInt64SQLValue(value sql.NullInt64) any {
+func nullInt64SQLValue(value pgtype.Int8) *int64 {
 	if !value.Valid {
 		return nil
 	}
-	return value.Int64
+	return new(value.Int64)
 }
 
-func proxyIdentitySQLValues(address, codeHash string) (any, any) {
+func proxyIdentitySQLValues(address, codeHash string) ([]byte, []byte) {
 	if address == "" {
 		return nil, nil
 	}
@@ -201,12 +245,12 @@ func proxyIdentitySQLValues(address, codeHash string) (any, any) {
 	return addressBytes, codeHashBytes
 }
 
-func proxyGenerationSQLValue(value string) any {
+func proxyGenerationSQLValue(value string) *int64 {
 	if value == "" {
 		return nil
 	}
 	parsed, _ := strconv.ParseInt(value, 10, 64)
-	return parsed
+	return new(parsed)
 }
 
 func proxyOutcomeValue(value string) any {

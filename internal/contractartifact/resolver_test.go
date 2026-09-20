@@ -4,19 +4,19 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/islishude/etherview/internal/db/gen"
+	"github.com/islishude/etherview/internal/testpgx"
 )
 
 func TestArtifactResolverRestoresImmutableOutcomesAndRanksStableSources(t *testing.T) {
 	t.Parallel()
-	query := strings.Join(strings.Fields(dbgen.ContractArtifactArtifactSource), " ")
+	query := strings.Join(strings.Fields(testpgx.Statement("ContractArtifactArtifactSource")), " ")
 	for _, required := range []string{
 		"JOIN verification_results AS result",
 		"result.job_id = verified.verification_job_id",
 		"result.request_digest = verified.request_digest",
 		"result.outcome->'creation_match'",
 		"result.outcome->'runtime_match'",
-		"(verified.address = $2",
+		"(verified.address = $1",
 		"(verified.abi IS NOT NULL) DESC",
 		"(verified.match_type = 'full') DESC",
 		"verified.request_digest ASC",
@@ -31,7 +31,7 @@ func TestArtifactResolverRestoresImmutableOutcomesAndRanksStableSources(t *testi
 
 func TestArtifactResolverHistoricalTargetRequiresExactCanonicalBlock(t *testing.T) {
 	t.Parallel()
-	query := strings.Join(strings.Fields(dbgen.ContractArtifactTargetAtBlock), " ")
+	query := strings.Join(strings.Fields(testpgx.Statement("ContractArtifactTargetAtBlock")), " ")
 	for _, required := range []string{
 		"canonical.number = $3::numeric",
 		"canonical.block_hash = $4",

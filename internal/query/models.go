@@ -1,7 +1,6 @@
 package query
 
 import (
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +11,11 @@ import (
 	"strings"
 	"time"
 
+	dbaccess "github.com/islishude/etherview/internal/db"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
+
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -19,10 +23,6 @@ import (
 	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
-
-type rowScanner interface {
-	Scan(dest ...any) error
-}
 
 type blockRecord struct {
 	Model  gen.Block
@@ -37,40 +37,32 @@ type storedWithdrawalProjection struct {
 	Amount         string `json:"amount"`
 }
 
-func (r *PostgresReader) scanBlock(scanner rowScanner, forceCanonical bool) (blockRecord, error) {
-	var hashBytes, parentHashBytes, withdrawalsJSON []byte
-	var numberText, timestampText string
-	var minerText, gasUsedText, gasLimitText, baseFeeText sql.NullString
-	var expectedTransactionCount, withdrawalCount sql.NullInt64
-	var normalizedTransactionCount int64
-	var withdrawalsPresent sql.NullBool
-	var canonical bool
-	var safeHeight, finalizedHeight sql.NullString
-	if err := scanner.Scan(
-		&numberText, &hashBytes, &parentHashBytes, &timestampText,
-		&minerText, &gasUsedText, &gasLimitText, &baseFeeText,
-		&expectedTransactionCount, &normalizedTransactionCount,
-		&withdrawalsPresent, &withdrawalCount, &withdrawalsJSON,
-		&canonical, &safeHeight, &finalizedHeight,
-	); err != nil {
-		return blockRecord{}, fmt.Errorf("scan block: %w", err)
+func (r *PostgresReader) decodeBlock(scanner dbgen.QueryListBlocksFirstRow, forceCanonical bool) (blockRecord, error) {
+	safeHeight, err := dbaccess.NumericText(scanner.SafeNumber)
+	if err != nil {
+		return blockRecord{}, fmt.Errorf("decode block safe height: %w", err)
 	}
-	if forceCanonical && !canonical {
+	finalizedHeight, err := dbaccess.NumericText(scanner.FinalizedNumber)
+	if err != nil {
+		return blockRecord{}, fmt.Errorf("decode block finalized height: %w", err)
+	}
+
+	if forceCanonical && !scanner.Canonical {
 		return blockRecord{}, errors.New("canonical block query returned an orphan")
 	}
-	number, err := parseDecimalUint64(numberText)
+	number, err := parseDecimalUint64(scanner.BlockNumber)
 	if err != nil {
 		return blockRecord{}, fmt.Errorf("decode block number: %w", err)
 	}
-	hash, err := decodeHashBytes(hashBytes)
+	hash, err := decodeHashBytes(scanner.Hash)
 	if err != nil {
 		return blockRecord{}, err
 	}
-	parentHash, err := decodeHashBytes(parentHashBytes)
+	parentHash, err := decodeHashBytes(scanner.ParentHash)
 	if err != nil {
 		return blockRecord{}, fmt.Errorf("decode block parent hash: %w", err)
 	}
-	timestampSeconds, err := parseDecimalUint64(timestampText)
+	timestampSeconds, err := parseDecimalUint64(scanner.BlockTimestamp)
 	if err != nil {
 		return blockRecord{}, fmt.Errorf("decode block timestamp: %w", err)
 	}
@@ -78,11 +70,11 @@ func (r *PostgresReader) scanBlock(scanner rowScanner, forceCanonical bool) (blo
 	if err != nil {
 		return blockRecord{}, fmt.Errorf("decode block timestamp: %w", err)
 	}
-	if !expectedTransactionCount.Valid || expectedTransactionCount.Int64 < 0 ||
-		expectedTransactionCount.Int64 > int64(math.MaxInt) {
+	if scanner.TransactionCount == nil || *scanner.TransactionCount < 0 ||
+		*scanner.TransactionCount > int64(math.MaxInt) {
 		return blockRecord{}, errors.New("stored block transaction count is invalid")
 	}
-	if normalizedTransactionCount != expectedTransactionCount.Int64 {
+	if scanner.NormalizedTransactionCount != *scanner.TransactionCount {
 		return blockRecord{}, errors.New("stored block transaction count does not match normalized inclusions")
 	}
 	model := gen.Block{
@@ -90,35 +82,35 @@ func (r *PostgresReader) scanBlock(scanner rowScanner, forceCanonical bool) (blo
 		Number:           strconv.FormatUint(number, 10),
 		ParentHash:       strings.ToLower(parentHash.Hex()),
 		Timestamp:        timestamp,
-		TransactionCount: int(expectedTransactionCount.Int64),
-		Canonical:        canonical,
+		TransactionCount: int(*scanner.TransactionCount),
+		Canonical:        scanner.Canonical,
 		Completeness:     r.completeness,
 	}
-	model.Finality, err = classifyFinality(canonical, number, safeHeight, finalizedHeight)
+	model.Finality, err = classifyFinality(scanner.Canonical, number, safeHeight, finalizedHeight)
 	if err != nil {
 		return blockRecord{}, err
 	}
-	if minerText.Valid {
-		miner, err := ChecksumAddress(minerText.String)
+	if scanner.MinerText != nil {
+		miner, err := ChecksumAddress(*scanner.MinerText)
 		if err != nil {
 			return blockRecord{}, fmt.Errorf("checksum block miner: %w", err)
 		}
 		model.Miner = &miner
 	}
-	model.GasUsed, err = blockUint64Quantity(gasUsedText, "gas used")
+	model.GasUsed, err = blockUint64Quantity(scanner.GasUsedQuantity, "gas used")
 	if err != nil {
 		return blockRecord{}, err
 	}
-	model.GasLimit, err = blockUint64Quantity(gasLimitText, "gas limit")
+	model.GasLimit, err = blockUint64Quantity(scanner.GasLimitQuantity, "gas limit")
 	if err != nil {
 		return blockRecord{}, err
 	}
-	model.BaseFeePerGas, err = blockBigQuantity(baseFeeText, "base fee per gas")
+	model.BaseFeePerGas, err = blockBigQuantity(scanner.BaseFeePerGasQuantity, "base fee per gas")
 	if err != nil {
 		return blockRecord{}, err
 	}
 	withdrawals, err := decodeStoredWithdrawals(
-		withdrawalsJSON, withdrawalsPresent, withdrawalCount,
+		scanner.Withdrawals, scanner.WithdrawalsPresent, scanner.WithdrawalCount,
 	)
 	if err != nil {
 		return blockRecord{}, err
@@ -127,11 +119,11 @@ func (r *PostgresReader) scanBlock(scanner rowScanner, forceCanonical bool) (blo
 	return blockRecord{Model: model, Number: number, Hash: hash}, nil
 }
 
-func blockUint64Quantity(value sql.NullString, field string) (*string, error) {
-	if !value.Valid {
+func blockUint64Quantity(value *string, field string) (*string, error) {
+	if value == nil {
 		return nil, nil
 	}
-	parsed, err := ethrpc.ParseQuantity(value.String)
+	parsed, err := ethrpc.ParseQuantity(*value)
 	if err != nil || !parsed.IsUint64() {
 		return nil, fmt.Errorf("decode block %s: invalid uint64 quantity", field)
 	}
@@ -139,11 +131,11 @@ func blockUint64Quantity(value sql.NullString, field string) (*string, error) {
 	return &decimal, nil
 }
 
-func blockBigQuantity(value sql.NullString, field string) (*string, error) {
-	if !value.Valid {
+func blockBigQuantity(value *string, field string) (*string, error) {
+	if value == nil {
 		return nil, nil
 	}
-	parsed, err := ethrpc.ParseQuantity(value.String)
+	parsed, err := ethrpc.ParseQuantity(*value)
 	if err != nil {
 		return nil, fmt.Errorf("decode block %s: invalid quantity", field)
 	}
@@ -153,24 +145,24 @@ func blockBigQuantity(value sql.NullString, field string) (*string, error) {
 
 func decodeStoredWithdrawals(
 	raw []byte,
-	present sql.NullBool,
-	expectedCount sql.NullInt64,
+	present *bool,
+	expectedCount *int64,
 ) (*[]gen.BlockWithdrawal, error) {
-	if !present.Valid {
+	if present == nil {
 		return nil, errors.New("stored block withdrawals presence is invalid")
 	}
 	var projected []storedWithdrawalProjection
 	if err := decodeRawObject(raw, &projected); err != nil {
 		return nil, fmt.Errorf("decode normalized block withdrawals: %w", err)
 	}
-	if !present.Bool {
-		if expectedCount.Valid || len(projected) != 0 {
+	if !*present {
+		if expectedCount != nil || len(projected) != 0 {
 			return nil, errors.New("stored block without withdrawals has normalized withdrawal rows")
 		}
 		return nil, nil
 	}
-	if !expectedCount.Valid || expectedCount.Int64 < 0 ||
-		expectedCount.Int64 != int64(len(projected)) {
+	if expectedCount == nil || *expectedCount < 0 ||
+		*expectedCount != int64(len(projected)) {
 		return nil, errors.New("stored block withdrawal count does not match normalized withdrawals")
 	}
 	withdrawals := make([]gen.BlockWithdrawal, len(projected))
@@ -204,13 +196,13 @@ func decodeStoredWithdrawals(
 func (r *PostgresReader) transactionModel(
 	transactionJSON, receiptJSON []byte,
 	blockTimestampText string,
-	blockBaseFeeText sql.NullString,
+	blockBaseFeeText pgtype.Text,
 	blockNumberText string,
 	blockHashBytes []byte,
 	transactionIndex int64,
 	transactionHashBytes []byte,
 	canonical bool,
-	safeHeight, finalizedHeight sql.NullString,
+	safeHeight, finalizedHeight pgtype.Text,
 	tipNumber uint64,
 ) (gen.Transaction, error) {
 	blockNumber, err := parseDecimalUint64(blockNumberText)
@@ -380,7 +372,7 @@ func (r *PostgresReader) transactionModel(
 	return model, nil
 }
 
-func parseBlockBaseFee(value sql.NullString) (*big.Int, error) {
+func parseBlockBaseFee(value pgtype.Text) (*big.Int, error) {
 	if !value.Valid {
 		return nil, nil
 	}
@@ -441,7 +433,7 @@ func quantityTime(value uint64) (time.Time, error) {
 	return time.Unix(int64(value), 0).UTC(), nil
 }
 
-func classifyFinality(canonical bool, number uint64, safeHeight, finalizedHeight sql.NullString) (gen.Finality, error) {
+func classifyFinality(canonical bool, number uint64, safeHeight, finalizedHeight pgtype.Text) (gen.Finality, error) {
 	if !canonical {
 		return gen.FinalityOrphan, nil
 	}
@@ -462,7 +454,7 @@ func classifyFinality(canonical bool, number uint64, safeHeight, finalizedHeight
 	return gen.FinalityLatest, nil
 }
 
-func finalityNumbers(safeHeight, finalizedHeight sql.NullString) (*uint64, *uint64, error) {
+func finalityNumbers(safeHeight, finalizedHeight pgtype.Text) (*uint64, *uint64, error) {
 	var safe, finalized *uint64
 	if safeHeight.Valid {
 		value, err := parseDecimalUint64(safeHeight.String)

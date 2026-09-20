@@ -11,11 +11,21 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const CatalogTokenContract = `-- name: CatalogTokenContract :many
+const catalogTokenContract = `-- name: CatalogTokenContract :one
 SELECT
-tc.chain_id::text, tc.address, tc.code_hash, tc.standard, tc.confidence,
-tc.name, tc.symbol, tc.decimals, tc.total_supply::text, tc.metadata_state,
-tc.observed_block_number::text, tc.observed_block_hash, tc.updated_at
+tc.chain_id::text AS chain_id,
+tc.address AS address,
+tc.code_hash AS code_hash,
+tc.standard AS standard,
+tc.confidence AS confidence,
+tc.name AS name,
+tc.symbol AS symbol,
+tc.decimals AS decimals,
+tc.total_supply AS total_supply,
+tc.metadata_state AS metadata_state,
+tc.observed_block_number::text AS observed_block_number,
+tc.observed_block_hash AS observed_block_hash,
+tc.updated_at AS updated_at
 FROM token_contracts AS tc
 JOIN canonical_blocks AS cb
   ON cb.chain_id = tc.chain_id
@@ -29,85 +39,83 @@ LIMIT 1
 `
 
 type CatalogTokenContractRow struct {
-	TcChainID             string             `db:"tc_chain_id" json:"tc_chain_id"`
-	Address               []byte             `db:"address" json:"address"`
-	CodeHash              []byte             `db:"code_hash" json:"code_hash"`
-	Standard              string             `db:"standard" json:"standard"`
-	Confidence            string             `db:"confidence" json:"confidence"`
-	Name                  *string            `db:"name" json:"name"`
-	Symbol                *string            `db:"symbol" json:"symbol"`
-	Decimals              *int32             `db:"decimals" json:"decimals"`
-	TcTotalSupply         string             `db:"tc_total_supply" json:"tc_total_supply"`
-	MetadataState         string             `db:"metadata_state" json:"metadata_state"`
-	TcObservedBlockNumber string             `db:"tc_observed_block_number" json:"tc_observed_block_number"`
-	ObservedBlockHash     []byte             `db:"observed_block_hash" json:"observed_block_hash"`
-	UpdatedAt             pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ChainID             string             `db:"chain_id" json:"chain_id"`
+	Address             []byte             `db:"address" json:"address"`
+	CodeHash            []byte             `db:"code_hash" json:"code_hash"`
+	Standard            string             `db:"standard" json:"standard"`
+	Confidence          string             `db:"confidence" json:"confidence"`
+	Name                *string            `db:"name" json:"name"`
+	Symbol              *string            `db:"symbol" json:"symbol"`
+	Decimals            *int32             `db:"decimals" json:"decimals"`
+	TotalSupply         pgtype.Numeric     `db:"total_supply" json:"total_supply"`
+	MetadataState       string             `db:"metadata_state" json:"metadata_state"`
+	ObservedBlockNumber string             `db:"observed_block_number" json:"observed_block_number"`
+	ObservedBlockHash   []byte             `db:"observed_block_hash" json:"observed_block_hash"`
+	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
-func (q *Queries) CatalogTokenContract(ctx context.Context, column1 pgtype.Numeric, address []byte, column3 pgtype.Numeric) ([]CatalogTokenContractRow, error) {
-	rows, err := q.db.Query(ctx, CatalogTokenContract, column1, address, column3)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []CatalogTokenContractRow{}
-	for rows.Next() {
-		var i CatalogTokenContractRow
-		if err := rows.Scan(
-			&i.TcChainID,
-			&i.Address,
-			&i.CodeHash,
-			&i.Standard,
-			&i.Confidence,
-			&i.Name,
-			&i.Symbol,
-			&i.Decimals,
-			&i.TcTotalSupply,
-			&i.MetadataState,
-			&i.TcObservedBlockNumber,
-			&i.ObservedBlockHash,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) CatalogTokenContract(ctx context.Context, chainID pgtype.Numeric, address []byte, maxObservedBlockNumber pgtype.Numeric) (CatalogTokenContractRow, error) {
+	row := q.db.QueryRow(ctx, catalogTokenContract, chainID, address, maxObservedBlockNumber)
+	var i CatalogTokenContractRow
+	err := row.Scan(
+		&i.ChainID,
+		&i.Address,
+		&i.CodeHash,
+		&i.Standard,
+		&i.Confidence,
+		&i.Name,
+		&i.Symbol,
+		&i.Decimals,
+		&i.TotalSupply,
+		&i.MetadataState,
+		&i.ObservedBlockNumber,
+		&i.ObservedBlockHash,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
-const CatalogTokenContracts = `-- name: CatalogTokenContracts :many
+const catalogTokenContracts = `-- name: CatalogTokenContracts :many
 WITH current_tokens AS (
     SELECT DISTINCT ON (tc.address)
-tc.chain_id::text, tc.address, tc.code_hash, tc.standard, tc.confidence,
-tc.name, tc.symbol, tc.decimals, tc.total_supply::text, tc.metadata_state,
-tc.observed_block_number::text, tc.observed_block_hash, tc.updated_at
+tc.chain_id::text AS chain_id, tc.address, tc.code_hash, tc.standard, tc.confidence,
+tc.name, tc.symbol, tc.decimals, tc.total_supply AS total_supply, tc.metadata_state,
+tc.observed_block_number::text AS observed_block_number, tc.observed_block_hash, tc.updated_at
     FROM token_contracts AS tc
     JOIN canonical_blocks AS cb
       ON cb.chain_id = tc.chain_id
      AND cb.number = tc.observed_block_number
      AND cb.block_hash = tc.observed_block_hash
-    WHERE tc.chain_id = $1::numeric
-      AND tc.observed_block_number <= $2::numeric
-      AND ($3::boolean = false OR tc.address > $4)
+    WHERE tc.chain_id = $2::numeric
+      AND tc.observed_block_number <= $3::numeric
+      AND ($4::boolean = false OR tc.address > $5)
     ORDER BY tc.address, tc.observed_block_number DESC, tc.code_hash DESC
 )
-SELECT chain_id::text, address, code_hash, standard, confidence,
-       name, symbol, decimals, total_supply::text, metadata_state,
-       observed_block_number::text, observed_block_hash, updated_at
+SELECT
+chain_id::text AS chain_id,
+address AS address,
+code_hash AS code_hash,
+standard AS standard,
+confidence AS confidence,
+name AS name,
+symbol AS symbol,
+decimals AS decimals,
+total_supply AS total_supply,
+metadata_state AS metadata_state,
+observed_block_number::text AS observed_block_number,
+observed_block_hash AS observed_block_hash,
+updated_at AS updated_at
 FROM current_tokens
 ORDER BY address
-LIMIT $5
+LIMIT $1
 `
 
 type CatalogTokenContractsParams struct {
-	Column1 pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2 pgtype.Numeric `db:"column_2" json:"column_2"`
-	Column3 bool           `db:"column_3" json:"column_3"`
-	Address []byte         `db:"address" json:"address"`
-	Limit   int32          `db:"limit" json:"limit"`
+	Limit                  int32          `db:"limit" json:"limit"`
+	ChainID                pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	MaxObservedBlockNumber pgtype.Numeric `db:"max_observed_block_number" json:"max_observed_block_number"`
+	HasCursor              bool           `db:"has_cursor" json:"has_cursor"`
+	Address                []byte         `db:"address" json:"address"`
 }
 
 type CatalogTokenContractsRow struct {
@@ -119,7 +127,7 @@ type CatalogTokenContractsRow struct {
 	Name                *string            `db:"name" json:"name"`
 	Symbol              *string            `db:"symbol" json:"symbol"`
 	Decimals            *int32             `db:"decimals" json:"decimals"`
-	TotalSupply         string             `db:"total_supply" json:"total_supply"`
+	TotalSupply         pgtype.Numeric     `db:"total_supply" json:"total_supply"`
 	MetadataState       string             `db:"metadata_state" json:"metadata_state"`
 	ObservedBlockNumber string             `db:"observed_block_number" json:"observed_block_number"`
 	ObservedBlockHash   []byte             `db:"observed_block_hash" json:"observed_block_hash"`
@@ -127,12 +135,12 @@ type CatalogTokenContractsRow struct {
 }
 
 func (q *Queries) CatalogTokenContracts(ctx context.Context, arg CatalogTokenContractsParams) ([]CatalogTokenContractsRow, error) {
-	rows, err := q.db.Query(ctx, CatalogTokenContracts,
-		arg.Column1,
-		arg.Column2,
-		arg.Column3,
-		arg.Address,
+	rows, err := q.db.Query(ctx, catalogTokenContracts,
 		arg.Limit,
+		arg.ChainID,
+		arg.MaxObservedBlockNumber,
+		arg.HasCursor,
+		arg.Address,
 	)
 	if err != nil {
 		return nil, err

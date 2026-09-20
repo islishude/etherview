@@ -4,7 +4,6 @@ package adminstore
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"math/big"
@@ -13,7 +12,7 @@ import (
 	"time"
 
 	dbaccess "github.com/islishude/etherview/internal/db"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/maintenance"
 	"github.com/jackc/pgx/v5"
@@ -49,12 +48,12 @@ type RepairRequest struct {
 }
 
 type Repository struct {
-	db             *sql.DB
+	db             dbaccess.Database
 	chainID        string
 	numericChainID pgtype.Numeric
 }
 
-func New(db *sql.DB, chainID uint64) (*Repository, error) {
+func New(db dbaccess.Database, chainID uint64) (*Repository, error) {
 	if db == nil {
 		return nil, errors.New("admin repository database is nil")
 	}
@@ -146,10 +145,34 @@ func (r *Repository) EnqueueRepair(ctx context.Context, request RepairRequest) (
 	if err := validateRepairRequest(request); err != nil {
 		return RepairRequest{}, err
 	}
-	err := r.db.QueryRowContext(ctx, dbgen.AdminWriteEnqueueRepairStatement1, r.chainID, request.Operation, request.Stage,
-		strconv.FormatUint(request.FromBlock, 10), strconv.FormatUint(request.ToBlock, 10),
-		request.AllowFinalized, request.Reason,
-	).Scan(&request.ID, &request.Status, &request.RequestedAt)
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(r.chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(request.FromBlock, 10)); err != nil {
+			return err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(strconv.FormatUint(request.ToBlock, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(r.db).AdminWriteEnqueueRepairStatement1(ctx, dbgen.AdminWriteEnqueueRepairStatement1Params{ChainID: queryValue0, Operation: request.Operation, Stage: request.Stage, FromBlock: queryValue1, ToBlock: queryValue2, AllowFinalized: request.AllowFinalized, Reason: request.Reason})
+		if err != nil {
+			return err
+		}
+		request.ID = queryRow.ID
+		request.Status = queryRow.Status
+		if !queryRow.RequestedAt.Valid {
+			return errors.New("invalid stored query value")
+		}
+		if queryRow.RequestedAt.InfinityModifier != pgtype.Finite {
+			return errors.New("invalid stored query value")
+		}
+		request.RequestedAt = queryRow.RequestedAt.Time
+		return nil
+	}()
 	if err != nil {
 		return RepairRequest{}, fmt.Errorf("enqueue repair request: %w", err)
 	}

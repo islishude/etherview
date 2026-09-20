@@ -33,7 +33,7 @@ func (appCompilerCacheInstallLocker) WithCompilerCacheInstallLock(
 
 type appPinger struct{ err error }
 
-func (p appPinger) PingContext(context.Context) error { return p.err }
+func (p appPinger) Ping(context.Context) error { return p.err }
 
 type appBlockingService struct{ name string }
 

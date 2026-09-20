@@ -5,7 +5,6 @@ package integration_test
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -15,6 +14,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -39,7 +41,7 @@ func TestPostgresMetadataPipelineIsDurableAuditedAndCanonicalBound(t *testing.T)
 	genesis := testBundle(0, testHash(900), testHash(0), testHash(9_000), "metadata-genesis")
 	commitCanonical(t, ctx, core, genesis)
 	token := testAddress(901)
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO token_contracts (
 			chain_id, address, code_hash, standard, confidence, metadata_state,
 			observed_block_number, observed_block_hash
@@ -99,7 +101,7 @@ func TestPostgresMetadataPipelineIsDurableAuditedAndCanonicalBound(t *testing.T)
 	}); err != nil {
 		t.Fatalf("finish available metadata: %v", err)
 	}
-	assertMetadataState(t, ctx, db, request, metadataState{State: "available", Attempts: 2, ContentSize: sql.NullInt64{Int64: int64(len(document)), Valid: true}})
+	assertMetadataState(t, ctx, db, request, metadataState{State: "available", Attempts: 2, ContentSize: pgtype.Int8{Int64: int64(len(document)), Valid: true}})
 	assertMetadataJob(t, ctx, db, first.JobID, "succeeded", 2)
 	assertMetadataAttemptCount(t, ctx, db, first.JobID, 2)
 	if err := repository.Renew(ctx, lease, time.Minute); !errors.Is(err, metadata.ErrLeaseLost) {
@@ -118,7 +120,7 @@ func TestPostgresMetadataPipelineIsDurableAuditedAndCanonicalBound(t *testing.T)
 	if err != nil || !found || exhaustedLease.JobID != exhausted.JobID || exhaustedLease.Attempt != 1 {
 		t.Fatalf("claim exhaustion fixture = %+v, found=%t, err=%v", exhaustedLease, found, err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		UPDATE durable_jobs SET lease_expires_at = clock_timestamp() - INTERVAL '1 second'
 		WHERE id = $1`, exhausted.JobID); err != nil {
 		t.Fatalf("expire crashed metadata lease: %v", err)
@@ -144,7 +146,7 @@ func TestPostgresMetadataPipelineIsDurableAuditedAndCanonicalBound(t *testing.T)
 	if err != nil || !found || orphanLease.JobID != orphan.JobID {
 		t.Fatalf("claim changed source = %+v, found=%t, err=%v", orphanLease, found, err)
 	}
-	if _, err := db.ExecContext(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number = 1`); err != nil {
+	if _, err := db.Exec(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number = 1`); err != nil {
 		t.Fatalf("detach metadata source block: %v", err)
 	}
 	if err := repository.Finish(ctx, orphanLease, metadata.Outcome{
@@ -172,7 +174,7 @@ func TestPostgresNFTMediaSourceRequiresCurrentCanonicalAvailableDocument(t *test
 	blockHash = genesis.Block.Hash()
 	commitCanonical(t, ctx, core, genesis)
 	address := testAddress(911)
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO external_metadata (
 			chain_id, resource_kind, resource_key, source_uri, state, document,
 			resolved_uri, media_type, content_hash, content_size, fetched_at, terminal_at,
@@ -197,7 +199,7 @@ func TestPostgresNFTMediaSourceRequiresCurrentCanonicalAvailableDocument(t *test
 		t.Fatalf("canonical image current=%t err=%v", current, err)
 	}
 
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO external_metadata (
 			chain_id, resource_kind, resource_key, source_uri, state, document,
 			resolved_uri, media_type, content_hash, content_size, fetched_at, terminal_at,
@@ -217,7 +219,7 @@ func TestPostgresNFTMediaSourceRequiresCurrentCanonicalAvailableDocument(t *test
 	newBlock := testBundle(1, newBlockHash, blockHash, testHash(9_140), "media-new")
 	newBlockHash = newBlock.Block.Hash()
 	commitCanonical(t, ctx, core, newBlock)
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO external_metadata (
 			chain_id, resource_kind, resource_key, source_uri, state, document,
 			resolved_uri, media_type, content_hash, content_size, fetched_at, terminal_at,
@@ -233,7 +235,7 @@ func TestPostgresNFTMediaSourceRequiresCurrentCanonicalAvailableDocument(t *test
 	if err != nil || newSelection.BlockHash != newBlockHash || newSelection.URI != "https://media.example.invalid/42-v2.png" {
 		t.Fatalf("new canonical image selection = %+v, err=%v", newSelection, err)
 	}
-	if _, err := db.ExecContext(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number = 1`); err != nil {
+	if _, err := db.Exec(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number = 1`); err != nil {
 		t.Fatalf("orphan newer metadata observation: %v", err)
 	}
 	fallback, err := source.SelectNFTImage(ctx, address, "42")
@@ -241,7 +243,7 @@ func TestPostgresNFTMediaSourceRequiresCurrentCanonicalAvailableDocument(t *test
 		t.Fatalf("canonical fallback selection = %+v, err=%v", fallback, err)
 	}
 
-	if _, err := db.ExecContext(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number = 0`); err != nil {
+	if _, err := db.Exec(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number = 0`); err != nil {
 		t.Fatalf("orphan metadata observation: %v", err)
 	}
 	if current, err := source.NFTImageCurrent(ctx, address, "42", selection); err != nil || current {
@@ -266,7 +268,7 @@ func TestPostgresNFTMetadataDisplayReaderSelectsOnlyNewestCanonicalObservation(t
 	genesisHash := genesis.Block.Hash()
 	address := testAddress(931)
 	document := `{"name":"Canonical NFT","description":"plain","image":"ipfs://bafybeigdyrzt1234567890/42.png","attributes":[{"trait_type":"Level","value":9007199254740993}]}`
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO external_metadata (
 			chain_id, resource_kind, resource_key, source_uri, state, document,
 			resolved_uri, media_type, content_hash, content_size, fetched_at, terminal_at,
@@ -283,7 +285,7 @@ func TestPostgresNFTMetadataDisplayReaderSelectsOnlyNewestCanonicalObservation(t
 	} {
 		tokenID := 43 + index
 		if state == metadata.StatePending {
-			if _, err := db.ExecContext(ctx, `
+			if _, err := db.Exec(ctx, `
 				INSERT INTO external_metadata (
 					chain_id, resource_kind, resource_key, source_uri, state,
 					token_address, token_id, observed_block_number, observed_block_hash, identity_hash
@@ -294,7 +296,7 @@ func TestPostgresNFTMetadataDisplayReaderSelectsOnlyNewestCanonicalObservation(t
 			}
 			continue
 		}
-		if _, err := db.ExecContext(ctx, `
+		if _, err := db.Exec(ctx, `
 			INSERT INTO external_metadata (
 				chain_id, resource_kind, resource_key, source_uri, state,
 				last_error_code, last_error, fetched_at, terminal_at,
@@ -332,7 +334,7 @@ func TestPostgresNFTMetadataDisplayReaderSelectsOnlyNewestCanonicalObservation(t
 	commitCanonical(t, ctx, core, newBlock)
 	newHash := newBlock.Block.Hash()
 	newDocument := `{"name":"New canonical NFT","image":"https://media.example/new.png"}`
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO external_metadata (
 			chain_id, resource_kind, resource_key, source_uri, state, document,
 			resolved_uri, media_type, content_hash, content_size, fetched_at, terminal_at,
@@ -373,7 +375,7 @@ func TestPostgresNFTMetadataDisplayReaderSelectsOnlyNewestCanonicalObservation(t
 		selected.ContentObservation.BlockHash != newHash || selected.Name != "New canonical NFT" {
 		t.Fatalf("pending stale display selection=%+v err=%v", selected, err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO external_metadata (
 			chain_id, resource_kind, resource_key, source_uri, state,
 			last_error_code, last_error, fetched_at, terminal_at,
@@ -389,7 +391,7 @@ func TestPostgresNFTMetadataDisplayReaderSelectsOnlyNewestCanonicalObservation(t
 		selected.ContentObservation.BlockHash != newHash || selected.Name != "New canonical NFT" {
 		t.Fatalf("failed stale display selection=%+v err=%v", selected, err)
 	}
-	if _, err := db.ExecContext(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number = 2`); err != nil {
+	if _, err := db.Exec(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number = 2`); err != nil {
 		t.Fatal(err)
 	}
 	selected, err = reader.NFTMetadata(ctx, address, "42")
@@ -398,14 +400,14 @@ func TestPostgresNFTMetadataDisplayReaderSelectsOnlyNewestCanonicalObservation(t
 		selected.ContentObservation.BlockHash != newHash || selected.Name != "New canonical NFT" {
 		t.Fatalf("post-reorg display selection=%+v err=%v", selected, err)
 	}
-	if _, err := db.ExecContext(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number = 1`); err != nil {
+	if _, err := db.Exec(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number = 1`); err != nil {
 		t.Fatal(err)
 	}
 	selected, err = reader.NFTMetadata(ctx, address, "42")
 	if err != nil || selected.Name != "Canonical NFT" || selected.Observation.BlockHash != genesisHash {
 		t.Fatalf("fallback display selection=%+v err=%v", selected, err)
 	}
-	if _, err := db.ExecContext(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number = 0`); err != nil {
+	if _, err := db.Exec(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number = 0`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := reader.NFTMetadata(ctx, address, "42"); !errors.Is(err, metadata.ErrNFTMetadataNoncanonical) {
@@ -448,7 +450,7 @@ func TestPostgresNFTMetadataUpdateObservationsAreExactImmutableAndReorgSafe(t *t
 		t.Fatalf("process update=%t err=%v", processed, err)
 	}
 	var state, kind, fromID, toID string
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT state, event_kind, from_token_id::text, to_token_id::text
 		FROM nft_metadata_update_observations
 		WHERE chain_id = 1 AND block_number = 0 AND block_hash = $1 AND log_index = 0`,
@@ -488,7 +490,7 @@ func TestPostgresNFTMetadataUpdateObservationsAreExactImmutableAndReorgSafe(t *t
 	if _, err := repository.RecordNFTUpdate(ctx, conflicting); !errors.Is(err, metadata.ErrExactNFTUpdateConflict) {
 		t.Fatalf("conflicting update error=%v", err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		UPDATE nft_metadata_update_observations SET error_code = 'mutated'
 		WHERE chain_id = 1 AND block_number = 0 AND block_hash = $1 AND log_index = 0`,
 		zeroHash.Bytes(),
@@ -506,7 +508,7 @@ func TestPostgresNFTMetadataUpdateObservationsAreExactImmutableAndReorgSafe(t *t
 	if err != nil || !found || staleCandidate.BlockHash != oneHash {
 		t.Fatalf("stale candidate=%+v found=%t err=%v", staleCandidate, found, err)
 	}
-	if _, err := db.ExecContext(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number = 1`); err != nil {
+	if _, err := db.Exec(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number = 1`); err != nil {
 		t.Fatal(err)
 	}
 	canonical, err := repository.RecordNFTUpdate(ctx, metadata.NFTUpdateObservation{
@@ -517,17 +519,17 @@ func TestPostgresNFTMetadataUpdateObservationsAreExactImmutableAndReorgSafe(t *t
 		t.Fatalf("stale record canonical=%t err=%v", canonical, err)
 	}
 	var staleRows int
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT count(*) FROM nft_metadata_update_observations
 		WHERE chain_id = 1 AND block_hash = $1`, oneHash.Bytes(),
 	).Scan(&staleRows); err != nil || staleRows != 0 {
 		t.Fatalf("stale update rows=%d err=%v", staleRows, err)
 	}
-	if _, err := db.ExecContext(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number = 0`); err != nil {
+	if _, err := db.Exec(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number = 0`); err != nil {
 		t.Fatal(err)
 	}
 	var retained int
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT count(*) FROM nft_metadata_update_observations
 		WHERE chain_id = 1 AND block_hash = $1`, zeroHash.Bytes(),
 	).Scan(&retained); err != nil || retained != 1 {
@@ -576,7 +578,7 @@ func TestPostgresNFTMetadataUpdateUsesLatestExactTokenStandard(t *testing.T) {
 		t.Fatalf("process standard mismatch=%t err=%v", processed, err)
 	}
 	var state, errorCode string
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT state, error_code
 		FROM nft_metadata_update_observations
 		WHERE chain_id = 1 AND block_hash = $1 AND log_index = 0`,
@@ -650,14 +652,14 @@ func TestPostgresNFTMetadataUpdateSignalsDriveBoundedExactSourceRefresh(t *testi
 		t.Fatalf("direct RPC calls=%+v", rpcService.calls)
 	}
 	var sameSourceVersions, pendingRows int
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT count(*) FROM nft_metadata_source_observations
 		WHERE chain_id = 1 AND token_address = $1 AND token_id = 42 AND source_uri = $2`,
 		token721.Bytes(), sameURI,
 	).Scan(&sameSourceVersions); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT count(*) FROM external_metadata
 		WHERE chain_id = 1 AND resource_kind = 'nft' AND token_address = $1
 		  AND token_id = 42 AND observed_block_hash = $2 AND state = 'pending'`,
@@ -724,7 +726,7 @@ func TestPostgresNFTMetadataUpdateSignalsDriveBoundedExactSourceRefresh(t *testi
 	}
 	wantExpanded := "https://metadata.example/" + strings.Repeat("0", 63) + "7.json"
 	var storedURI string
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT source_uri FROM nft_metadata_source_observations
 		WHERE chain_id = 1 AND token_address = $1 AND token_id = 7 AND block_hash = $2`,
 		token1155.Bytes(), threeHash.Bytes(),
@@ -816,14 +818,14 @@ func metadataUpdateBundle(
 func insertMetadataUpdateTokenContract(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	token common.Address,
 	blockHash common.Hash,
 	blockNumber uint64,
 	standard string,
 ) {
 	t.Helper()
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO token_contracts (
 			chain_id, address, code_hash, standard, confidence, metadata_state,
 			observed_block_number, observed_block_hash
@@ -862,7 +864,7 @@ func TestPostgresNFTMetadataSourceDiscoveryIsExactAndImmutable(t *testing.T) {
 	blockHash = bundle.Block.Hash()
 	commitCanonical(t, ctx, core, bundle)
 	token := testAddress(921)
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO token_contracts (
 			chain_id, address, code_hash, standard, confidence, metadata_state,
 			observed_block_number, observed_block_hash
@@ -870,7 +872,7 @@ func TestPostgresNFTMetadataSourceDiscoveryIsExactAndImmutable(t *testing.T) {
 		mustBytes(t, token), mustBytes(t, testHash(922)), mustBytes(t, blockHash)); err != nil {
 		t.Fatalf("insert NFT contract: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO token_events (
 			chain_id, block_number, block_hash, log_index, sub_index,
 			transaction_hash, token_address, standard, event_kind,
@@ -909,7 +911,7 @@ func TestPostgresNFTMetadataSourceDiscoveryIsExactAndImmutable(t *testing.T) {
 	if err := repository.RecordNFTSource(ctx, conflicting); !errors.Is(err, metadata.ErrExactNFTSourceConflict) {
 		t.Fatalf("conflicting source observation error = %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		UPDATE nft_metadata_source_observations SET error_code = 'different'
 		WHERE chain_id = 1 AND token_address = $1 AND token_id = 42 AND block_hash = $2`,
 		mustBytes(t, token), mustBytes(t, blockHash)); err == nil {
@@ -921,14 +923,14 @@ type metadataState struct {
 	State       string
 	Attempts    int
 	ErrorCode   string
-	ContentSize sql.NullInt64
+	ContentSize pgtype.Int8
 }
 
-func assertMetadataState(t *testing.T, ctx context.Context, db *sql.DB, request metadata.NFTRequest, want metadataState) {
+func assertMetadataState(t *testing.T, ctx context.Context, db *pgxpool.Pool, request metadata.NFTRequest, want metadataState) {
 	t.Helper()
 	var got metadataState
-	var errorCode sql.NullString
-	if err := db.QueryRowContext(ctx, `
+	var errorCode pgtype.Text
+	if err := db.QueryRow(ctx, `
 		SELECT state, attempt_count, last_error_code, content_size
 		FROM external_metadata
 		WHERE chain_id = $1::numeric AND resource_kind = 'nft'
@@ -945,12 +947,12 @@ func assertMetadataState(t *testing.T, ctx context.Context, db *sql.DB, request 
 	}
 }
 
-func assertMetadataJob(t *testing.T, ctx context.Context, db *sql.DB, jobID int64, status string, attempts int) {
+func assertMetadataJob(t *testing.T, ctx context.Context, db *pgxpool.Pool, jobID int64, status string, attempts int) {
 	t.Helper()
 	var gotStatus string
 	var gotAttempts int
-	var leasedBy sql.NullString
-	if err := db.QueryRowContext(ctx, `
+	var leasedBy pgtype.Text
+	if err := db.QueryRow(ctx, `
 		SELECT status, attempts, leased_by FROM durable_jobs WHERE id = $1`, jobID,
 	).Scan(&gotStatus, &gotAttempts, &leasedBy); err != nil {
 		t.Fatalf("read metadata job: %v", err)
@@ -960,10 +962,10 @@ func assertMetadataJob(t *testing.T, ctx context.Context, db *sql.DB, jobID int6
 	}
 }
 
-func assertMetadataAttemptCount(t *testing.T, ctx context.Context, db *sql.DB, jobID int64, count int) {
+func assertMetadataAttemptCount(t *testing.T, ctx context.Context, db *pgxpool.Pool, jobID int64, count int) {
 	t.Helper()
 	var got int
-	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM external_metadata_attempts WHERE durable_job_id = $1`, jobID).Scan(&got); err != nil {
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM external_metadata_attempts WHERE durable_job_id = $1`, jobID).Scan(&got); err != nil {
 		t.Fatalf("count metadata attempts: %v", err)
 	}
 	if got != count {

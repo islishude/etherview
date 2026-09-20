@@ -2,24 +2,25 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/islishude/etherview/internal/components"
 	"github.com/islishude/etherview/internal/observability"
 )
 
 type databasePinger interface {
-	PingContext(context.Context) error
+	Ping(context.Context) error
 }
 
 type databasePingerGroup []databasePinger
 
-func (group databasePingerGroup) PingContext(ctx context.Context) error {
+func (group databasePingerGroup) Ping(ctx context.Context) error {
 	if len(group) == 0 {
 		return errors.New("database health group is empty")
 	}
@@ -27,7 +28,7 @@ func (group databasePingerGroup) PingContext(ctx context.Context) error {
 		if pinger == nil {
 			return fmt.Errorf("database health target %d is nil", index)
 		}
-		if err := pinger.PingContext(ctx); err != nil {
+		if err := pinger.Ping(ctx); err != nil {
 			return fmt.Errorf("database health target %d: %w", index, err)
 		}
 	}
@@ -102,7 +103,7 @@ func (s *operationalService) handler() http.Handler {
 		}
 		pingCtx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
-		if err := s.db.PingContext(pingCtx); err != nil {
+		if err := s.db.Ping(pingCtx); err != nil {
 			http.Error(w, "not ready", http.StatusServiceUnavailable)
 			return
 		}
@@ -123,7 +124,7 @@ func (s *operationalService) handler() http.Handler {
 // never marks queued work successful or substitutes in-memory correctness.
 type databaseRoleService struct {
 	name     string
-	db       *sql.DB
+	db       *pgxpool.Pool
 	interval time.Duration
 }
 
@@ -142,7 +143,7 @@ func (s *databaseRoleService) Run(ctx context.Context) error {
 			return ctx.Err()
 		case <-ticker.C:
 			pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-			err := s.db.PingContext(pingCtx)
+			err := s.db.Ping(pingCtx)
 			cancel()
 			if err != nil {
 				return fmt.Errorf("%s database health: %w", s.name, err)

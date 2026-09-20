@@ -1,7 +1,7 @@
 -- name: GetAnalyticsSnapshot :one
 SELECT canonical.number::text AS block_number, canonical.block_hash
 FROM canonical_blocks AS canonical
-WHERE canonical.chain_id = sqlc.arg(chain_id)::numeric
+WHERE canonical.chain_id = sqlc.arg('chain_id')::numeric
 ORDER BY canonical.number DESC
 LIMIT 1;
 
@@ -11,7 +11,7 @@ SELECT backfill.available_from,
        COALESCE(backfill.complete, false)::boolean AS complete,
        (SELECT count(*)::text
         FROM chart_rollup_dirty_hours
-        WHERE chain_id = sqlc.arg(chain_id)::numeric)::text AS dirty_hours,
+        WHERE chain_id = sqlc.arg('chain_id')::numeric)::text AS dirty_hours,
        CASE
            WHEN COALESCE(backfill.total_blocks, 0) = 0 THEN '0'::text
            ELSE trim(trailing '.' FROM trim(trailing '0' FROM
@@ -20,14 +20,14 @@ SELECT backfill.available_from,
        END AS progress
 FROM (SELECT 1) AS singleton
 LEFT JOIN chart_rollup_backfill AS backfill
-  ON backfill.chain_id = sqlc.arg(chain_id)::numeric;
+  ON backfill.chain_id = sqlc.arg('chain_id')::numeric;
 
 -- name: CountDirtyAnalyticsHours :one
 SELECT count(*)::text AS dirty_count
 FROM chart_rollup_dirty_hours
-WHERE chain_id = sqlc.arg(chain_id)::numeric
-  AND bucket_start < sqlc.arg(to_time)::timestamptz
-  AND bucket_start + interval '1 hour' > sqlc.arg(from_time)::timestamptz;
+WHERE chain_id = sqlc.arg('chain_id')::numeric
+  AND bucket_start < sqlc.arg('to_time')::timestamptz
+  AND bucket_start + interval '1 hour' > sqlc.arg('from_time')::timestamptz;
 
 -- name: CountPendingAnalyticsSources :one
 SELECT count(*)::text AS pending_count
@@ -50,9 +50,9 @@ LEFT JOIN published_block_stage_results AS token_result
  AND token_result.stage = 'token'
  AND token_result.stage_version = 1
  AND token_result.state = 'complete'
-WHERE canonical.chain_id = sqlc.arg(chain_id)::numeric
-  AND block.timestamp >= extract(epoch FROM sqlc.arg(from_time)::timestamptz)::numeric
-  AND block.timestamp < extract(epoch FROM sqlc.arg(to_time)::timestamptz)::numeric
+WHERE canonical.chain_id = sqlc.arg('chain_id')::numeric
+  AND block.timestamp >= extract(epoch FROM sqlc.arg('from_time')::timestamptz)::numeric
+  AND block.timestamp < extract(epoch FROM sqlc.arg('to_time')::timestamptz)::numeric
   AND (stats_result.block_number IS NULL OR token_result.block_number IS NULL);
 
 -- name: CountMissingAnalyticsRollups :one
@@ -69,14 +69,14 @@ LEFT JOIN chart_hourly_rollups AS rollup
      to_timestamp(block.timestamp::double precision),
      'UTC'
  )
-WHERE canonical.chain_id = sqlc.arg(chain_id)::numeric
-  AND block.timestamp >= extract(epoch FROM sqlc.arg(from_time)::timestamptz)::numeric
-  AND block.timestamp < extract(epoch FROM sqlc.arg(to_time)::timestamptz)::numeric
+WHERE canonical.chain_id = sqlc.arg('chain_id')::numeric
+  AND block.timestamp >= extract(epoch FROM sqlc.arg('from_time')::timestamptz)::numeric
+  AND block.timestamp < extract(epoch FROM sqlc.arg('to_time')::timestamptz)::numeric
   AND rollup.bucket_start IS NULL;
 
 -- name: ListAnalyticsHours :many
 WITH requested AS (
-    SELECT (CASE sqlc.arg(bucket_interval)::text
+    SELECT (CASE sqlc.arg('bucket_interval')::text
                WHEN 'hour' THEN date_trunc('hour', bucket_start, 'UTC')
                WHEN 'day' THEN date_trunc('day', bucket_start, 'UTC')
                WHEN 'week' THEN date_trunc('week', bucket_start, 'UTC')
@@ -90,9 +90,9 @@ WITH requested AS (
            blob_base_fee_per_gas_sum, blob_burned_wei, erc20_transfer_count,
            nft_transfer_count
     FROM chart_hourly_rollups
-    WHERE chain_id = sqlc.arg(chain_id)::numeric
-      AND bucket_start < sqlc.arg(to_time)::timestamptz
-      AND bucket_start + interval '1 hour' > sqlc.arg(from_time)::timestamptz
+    WHERE chain_id = sqlc.arg('chain_id')::numeric
+      AND bucket_start < sqlc.arg('to_time')::timestamptz
+      AND bucket_start + interval '1 hour' > sqlc.arg('from_time')::timestamptz
 )
 SELECT bucket_start,
        min(from_block)::text AS from_block,

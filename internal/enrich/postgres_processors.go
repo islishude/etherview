@@ -3,7 +3,6 @@ package enrich
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,25 +12,29 @@ import (
 	"strconv"
 	"strings"
 
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/islishude/etherview/internal/chainbundle"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
 type PostgresTokenProcessor struct {
-	db       *sql.DB
+	db       dbaccess.Database
 	detector TokenDetector
 }
 
-func NewPostgresTokenProcessor(db *sql.DB) (*PostgresTokenProcessor, error) {
+func NewPostgresTokenProcessor(db dbaccess.Database) (*PostgresTokenProcessor, error) {
 	if db == nil {
 		return nil, errors.New("token processor requires a database")
 	}
 	return &PostgresTokenProcessor{db: db}, nil
 }
 
-func NewPostgresTokenProcessorWithDetector(db *sql.DB, detector TokenDetector) (*PostgresTokenProcessor, error) {
+func NewPostgresTokenProcessorWithDetector(db dbaccess.Database, detector TokenDetector) (*PostgresTokenProcessor, error) {
 	if db == nil || detector == nil {
 		return nil, errors.New("token processor requires a database and detector")
 	}
@@ -61,12 +64,12 @@ func (processor *PostgresTokenProcessor) Process(ctx context.Context, job Job) (
 	if processor.detector != nil {
 		return processor.processDetected(ctx, job)
 	}
-	return runStageTransaction(ctx, processor.db, job, func(ctx context.Context, tx *sql.Tx) (StageResult, error) {
+	return runStageTransaction(ctx, processor.db, job, func(ctx context.Context, tx pgx.Tx) (StageResult, error) {
 		return processor.processTokenTx(ctx, tx, job)
 	})
 }
 
-func (processor *PostgresTokenProcessor) processTokenTx(ctx context.Context, tx *sql.Tx, job Job) (StageResult, error) {
+func (processor *PostgresTokenProcessor) processTokenTx(ctx context.Context, tx pgx.Tx, job Job) (StageResult, error) {
 	canonical, err := lockCanonicalBlock(ctx, tx, job)
 	if err != nil {
 		return StageResult{}, err
@@ -77,7 +80,17 @@ func (processor *PostgresTokenProcessor) processTokenTx(ctx context.Context, tx 
 		}, nil
 	}
 
-	rows, err := tx.QueryContext(ctx, dbgen.EnrichLegacyTokenLogs, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:])
+	rows, err := func() ([]dbgen.EnrichLegacyTokenLogsRow, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return nil, err
+		}
+		return dbgen.New(tx).EnrichLegacyTokenLogs(ctx, queryValue0, queryValue1, job.BlockHash[:])
+	}()
 	if err != nil {
 		return StageResult{}, fmt.Errorf("query token logs: %w", err)
 	}
@@ -185,14 +198,39 @@ func (processor *PostgresTokenProcessor) processDetected(ctx context.Context, jo
 
 func (processor *PostgresTokenProcessor) tokenBlockCanonical(ctx context.Context, job Job) (bool, error) {
 	var canonical bool
-	if err := processor.db.QueryRowContext(ctx, dbgen.EnrichLegacyTokenCanonical, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]).Scan(&canonical); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(processor.db).EnrichLegacyTokenCanonical(ctx, queryValue0, queryValue1, job.BlockHash[:])
+		if err != nil {
+			return err
+		}
+		canonical = queryRow
+		return nil
+	}(); err != nil {
 		return false, fmt.Errorf("check token block canonicality: %w", err)
 	}
 	return canonical, nil
 }
 
 func (processor *PostgresTokenProcessor) collectTokenEvidence(ctx context.Context, job Job) (map[common.Address]TokenLogEvidence, error) {
-	rows, err := processor.db.QueryContext(ctx, dbgen.EnrichLegacyTokenLogs, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:])
+	rows, err := func() ([]dbgen.EnrichLegacyTokenLogsRow, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return nil, err
+		}
+		return dbgen.New(processor.db).EnrichLegacyTokenLogs(ctx, queryValue0, queryValue1, job.BlockHash[:])
+	}()
 	if err != nil {
 		return nil, fmt.Errorf("query token detection logs: %w", err)
 	}
@@ -225,14 +263,14 @@ func (processor *PostgresTokenProcessor) collectTokenEvidence(ctx context.Contex
 }
 
 func (processor *PostgresTokenProcessor) persistDetectedTokenBlock(ctx context.Context, job Job, detections map[common.Address]TokenDetection) (StageResult, error) {
-	return runStageTransaction(ctx, processor.db, job, func(ctx context.Context, tx *sql.Tx) (StageResult, error) {
+	return runStageTransaction(ctx, processor.db, job, func(ctx context.Context, tx pgx.Tx) (StageResult, error) {
 		return processor.persistDetectedTokenBlockTx(ctx, tx, job, detections)
 	})
 }
 
 func (processor *PostgresTokenProcessor) persistDetectedTokenBlockTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	detections map[common.Address]TokenDetection,
 ) (StageResult, error) {
@@ -251,7 +289,17 @@ func (processor *PostgresTokenProcessor) persistDetectedTokenBlockTx(
 			return StageResult{}, err
 		}
 	}
-	rows, err := tx.QueryContext(ctx, dbgen.EnrichLegacyTokenLogs, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:])
+	rows, err := func() ([]dbgen.EnrichLegacyTokenLogsRow, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return nil, err
+		}
+		return dbgen.New(tx).EnrichLegacyTokenLogs(ctx, queryValue0, queryValue1, job.BlockHash[:])
+	}()
 	if err != nil {
 		return StageResult{}, fmt.Errorf("query detected token logs: %w", err)
 	}
@@ -329,33 +377,27 @@ type storedTokenLog struct {
 	raw             []byte
 }
 
-// readStoredTokenLogs releases the query before callers issue lookups or
-// writes on the same transaction. pgx transactions use one connection and
-// cannot execute another statement while streaming rows from it.
-func readStoredTokenLogs(rows *sql.Rows, job Job) ([]storedTokenLog, error) {
-	stored := make([]storedTokenLog, 0)
-	for rows.Next() {
-		tokenLog, transactionHash, raw, err := scanStoredTokenLog(rows, job)
+// Generated queries have closed the database rows before token decoding starts.
+func readStoredTokenLogs(rows []dbgen.EnrichLegacyTokenLogsRow, job Job) ([]storedTokenLog, error) {
+	stored := make([]storedTokenLog, 0, len(rows))
+	for _, row := range rows {
+		tokenLog, transactionHash, raw, err := scanStoredTokenLog(row, job)
 		if err != nil {
-			_ = rows.Close()
 			return nil, err
 		}
 		stored = append(stored, storedTokenLog{log: tokenLog, transactionHash: transactionHash, raw: raw})
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate token logs: %w", err)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, fmt.Errorf("close token logs: %w", err)
-	}
 	return stored, nil
 }
 
-func scanStoredTokenLog(row rowScanner, job Job) (TokenLog, []byte, []byte, error) {
+func scanStoredTokenLog(row dbgen.EnrichLegacyTokenLogsRow, job Job) (TokenLog, []byte, []byte, error) {
 	var logIndex int64
 	var transactionHash, address, raw []byte
-	if err := row.Scan(&logIndex, &transactionHash, &address, &raw); err != nil {
-		return TokenLog{}, nil, nil, fmt.Errorf("scan token log: %w", err)
+	{
+		logIndex = row.LogIndex
+		transactionHash = row.TxHash
+		address = row.Address
+		raw = row.Raw
 	}
 	if logIndex < 0 || len(transactionHash) != common.HashLength || len(address) != common.AddressLength {
 		return TokenLog{}, nil, nil, Permanent(errors.New("stored token log identity is invalid"))
@@ -371,24 +413,40 @@ func scanStoredTokenLog(row rowScanner, job Job) (TokenLog, []byte, []byte, erro
 	return tokenLog, transactionHash, raw, nil
 }
 
-func persistTokenContract(ctx context.Context, tx *sql.Tx, job Job, address common.Address, detection TokenDetection) error {
-	var name, symbol, decimals, totalSupply any
+func persistTokenContract(ctx context.Context, tx pgx.Tx, job Job, address common.Address, detection TokenDetection) error {
+	var name *string
+	var symbol *string
+	var decimals *int32
+	var totalSupply *string
 	if detection.Name != nil {
-		name = *detection.Name
+		name = new(*detection.Name)
 	}
 	if detection.Symbol != nil {
-		symbol = *detection.Symbol
+		symbol = new(*detection.Symbol)
 	}
 	if detection.Decimals != nil {
-		decimals = int64(*detection.Decimals)
+		decimals = new(int32(int64(*detection.Decimals)))
 	}
 	if detection.TotalSupply != nil {
-		totalSupply = *detection.TotalSupply
+		totalSupply = new(*detection.TotalSupply)
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyUpsertTokenContract, job.ChainID, address[:], detection.CodeHash[:], detection.Standard, detection.Confidence,
-		name, symbol, decimals, totalSupply, detection.MetadataState,
-		strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-	); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if totalSupply != nil {
+			if err := queryValue1.Scan(*totalSupply); err != nil {
+				return err
+			}
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		return dbgen.New(tx).EnrichLegacyUpsertTokenContract(ctx, dbgen.EnrichLegacyUpsertTokenContractParams{ChainID: queryValue0, Address: address[:], CodeHash: detection.CodeHash[:], Standard: string(detection.Standard), Confidence: string(detection.Confidence), Name: name, Symbol: symbol, Decimals: decimals, TotalSupply: queryValue1, MetadataState: string(detection.MetadataState), ObservedBlockNumber: queryValue2, ObservedBlockHash: job.BlockHash[:]})
+	}(); err != nil {
 		return fmt.Errorf("persist detected token contract: %w", err)
 	}
 	return nil
@@ -418,10 +476,26 @@ func indexedTokenLog(wire types.Log, logIndex uint64, transactionHash, address [
 	}, nil
 }
 
-func detectedToken(ctx context.Context, tx *sql.Tx, job Job, address common.Address) (TokenStandard, Confidence, bool, error) {
+func detectedToken(ctx context.Context, tx pgx.Tx, job Job, address common.Address) (TokenStandard, Confidence, bool, error) {
 	var standard, confidence string
-	err := tx.QueryRowContext(ctx, dbgen.EnrichLegacyDetectedToken, job.ChainID, address[:], strconv.FormatUint(job.BlockNumber, 10)).Scan(&standard, &confidence)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).EnrichLegacyDetectedToken(ctx, queryValue0, address[:], queryValue1)
+		if err != nil {
+			return err
+		}
+		standard = queryRow.Standard
+		confidence = queryRow.Confidence
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return "", "", false, nil
 	}
 	if err != nil {
@@ -437,11 +511,13 @@ func detectedToken(ctx context.Context, tx *sql.Tx, job Job, address common.Addr
 	return parsedStandard, parsedConfidence, true, nil
 }
 
-func persistTokenEvent(ctx context.Context, tx *sql.Tx, job Job, transactionHash, raw []byte, event TokenEvent) error {
+func persistTokenEvent(ctx context.Context, tx pgx.Tx, job Job, transactionHash, raw []byte, event TokenEvent) error {
 	if event.LogIndex > math.MaxInt64 || event.SubIndex > math.MaxInt32 {
 		return Permanent(errors.New("token event index exceeds PostgreSQL range"))
 	}
-	var operator, from, to any
+	var operator []byte
+	var from []byte
+	var to []byte
 	if event.Operator != nil {
 		operator = event.Operator[:]
 	}
@@ -455,17 +531,43 @@ func persistTokenEvent(ctx context.Context, tx *sql.Tx, job Job, transactionHash
 	} else if event.Spender != nil {
 		to = event.Spender[:]
 	}
-	var tokenID, amount any
+	var tokenID *string
+	var amount *string
 	if event.TokenID != "" {
-		tokenID = event.TokenID
+		tokenID = new(event.TokenID)
 	}
 	if event.Amount != "" {
-		amount = event.Amount
+		amount = new(event.Amount)
 	}
-	_, err := tx.ExecContext(ctx, dbgen.EnrichLegacyInsertTokenEvent, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-		event.LogIndex, event.SubIndex, transactionHash, event.Contract[:], event.Standard,
-		event.Kind, operator, from, to, tokenID, amount, event.Confidence, string(raw),
-	)
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		if event.LogIndex > 9223372036854775807 {
+			return errors.New("invalid stored query value")
+		}
+		if event.SubIndex > 2147483647 {
+			return errors.New("invalid stored query value")
+		}
+		var queryValue4 pgtype.Numeric
+		if tokenID != nil {
+			if err := queryValue4.Scan(*tokenID); err != nil {
+				return err
+			}
+		}
+		var queryValue5 pgtype.Numeric
+		if amount != nil {
+			if err := queryValue5.Scan(*amount); err != nil {
+				return err
+			}
+		}
+		return dbgen.New(tx).EnrichLegacyInsertTokenEvent(ctx, dbgen.EnrichLegacyInsertTokenEventParams{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: job.BlockHash[:], LogIndex: int64(event.LogIndex), SubIndex: int32(event.SubIndex), TransactionHash: transactionHash, TokenAddress: event.Contract[:], Standard: string(event.Standard), EventKind: string(event.Kind), Operator: operator, FromAddress: from, ToAddress: to, TokenID: queryValue4, Amount: queryValue5, Confidence: string(event.Confidence), Raw: []byte(string(raw))})
+	}()
 	if err != nil {
 		return fmt.Errorf("persist token event: %w", err)
 	}
@@ -492,9 +594,33 @@ func persistTokenEvent(ctx context.Context, tx *sql.Tx, job Job, transactionHash
 		if delta.Sign() == 0 {
 			continue
 		}
-		_, err := tx.ExecContext(ctx, dbgen.EnrichLegacyInsertTokenDelta, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:], event.LogIndex,
-			event.SubIndex, event.Contract[:], owner[:], tokenID, delta.String(),
-		)
+		err := func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(job.ChainID); err != nil {
+				return err
+			}
+			var queryValue1 pgtype.Numeric
+			if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+				return err
+			}
+			if event.LogIndex > 9223372036854775807 {
+				return errors.New("invalid stored query value")
+			}
+			if event.SubIndex > 2147483647 {
+				return errors.New("invalid stored query value")
+			}
+			var queryValue4 pgtype.Numeric
+			if tokenID != nil {
+				if err := queryValue4.Scan(*tokenID); err != nil {
+					return err
+				}
+			}
+			var queryValue5 pgtype.Numeric
+			if err := queryValue5.Scan(delta.String()); err != nil {
+				return err
+			}
+			return dbgen.New(tx).EnrichLegacyInsertTokenDelta(ctx, dbgen.EnrichLegacyInsertTokenDeltaParams{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: job.BlockHash[:], LogIndex: int64(event.LogIndex), SubIndex: int32(event.SubIndex), TokenAddress: event.Contract[:], OwnerAddress: owner[:], TokenID: queryValue4, Delta: queryValue5})
+		}()
 		if err != nil {
 			return fmt.Errorf("persist token balance delta: %w", err)
 		}
@@ -502,9 +628,9 @@ func persistTokenEvent(ctx context.Context, tx *sql.Tx, job Job, transactionHash
 	return nil
 }
 
-type PostgresStatsProcessor struct{ db *sql.DB }
+type PostgresStatsProcessor struct{ db dbaccess.Database }
 
-func NewPostgresStatsProcessor(db *sql.DB) (*PostgresStatsProcessor, error) {
+func NewPostgresStatsProcessor(db dbaccess.Database) (*PostgresStatsProcessor, error) {
 	if db == nil {
 		return nil, errors.New("stats processor requires a database")
 	}
@@ -531,12 +657,12 @@ func (processor *PostgresStatsProcessor) Process(ctx context.Context, job Job) (
 	if job.Stage != StatsStage {
 		return StageResult{}, Permanent(fmt.Errorf("stats processor received stage %s", job.Stage))
 	}
-	return runStageTransaction(ctx, processor.db, job, func(ctx context.Context, tx *sql.Tx) (StageResult, error) {
+	return runStageTransaction(ctx, processor.db, job, func(ctx context.Context, tx pgx.Tx) (StageResult, error) {
 		return processor.processStatsTx(ctx, tx, job)
 	})
 }
 
-func (processor *PostgresStatsProcessor) processStatsTx(ctx context.Context, tx *sql.Tx, job Job) (StageResult, error) {
+func (processor *PostgresStatsProcessor) processStatsTx(ctx context.Context, tx pgx.Tx, job Job) (StageResult, error) {
 	canonical, err := lockCanonicalBlock(ctx, tx, job)
 	if err != nil {
 		return StageResult{}, err
@@ -544,14 +670,13 @@ func (processor *PostgresStatsProcessor) processStatsTx(ctx context.Context, tx 
 	if !canonical {
 		return StageResult{State: ResultComplete, Details: map[string]string{"outcome": "stale_canonical_skipped"}}, nil
 	}
-	var raw []byte
-	var transactionCount int64
-	var configuredStart string
-	var parentNumber, parentTimestamp sql.NullString
-	var canonicalParent bool
-	if err := tx.QueryRowContext(ctx, dbgen.EnrichLegacyBlockStatsSource, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]).Scan(&raw, &transactionCount, &configuredStart, &parentNumber, &parentTimestamp, &canonicalParent); err != nil {
+	source, err := readStatsSource(ctx, tx, job)
+	if err != nil {
 		return StageResult{}, fmt.Errorf("query stats source block: %w", err)
 	}
+	raw, transactionCount, configuredStart := source.raw, source.transactionCount, source.configuredStart
+	parentNumber, parentTimestamp, canonicalParent := source.parentNumber, source.parentTimestamp, source.canonicalParent
+
 	if transactionCount < 0 {
 		return StageResult{}, Permanent(errors.New("negative transaction count"))
 	}
@@ -579,7 +704,8 @@ func (processor *PostgresStatsProcessor) processStatsTx(ctx context.Context, tx 
 	gasUsed := new(big.Int).SetUint64(block.GasUsed())
 	gasLimit := new(big.Int).SetUint64(block.GasLimit())
 	timestamp := new(big.Int).SetUint64(block.Time())
-	var blockInterval, transactionsPerSecond any
+	var blockInterval *string
+	var transactionsPerSecond *string
 	// The configured indexing start defines the statistics observation boundary.
 	// Even if an older canonical parent happens to be retained in PostgreSQL, it
 	// is outside that boundary and must not manufacture an interval or TPS value.
@@ -589,23 +715,28 @@ func (processor *PostgresStatsProcessor) processStatsTx(ctx context.Context, tx 
 			return StageResult{}, Permanent(errors.New("stats parent timestamp is invalid"))
 		}
 		interval := new(big.Int).Sub(timestamp, parent)
-		blockInterval = interval.String()
-		transactionsPerSecond = decimalRatio(big.NewInt(transactionCount), interval, 18)
+		blockInterval = new(interval.String())
+		transactionsPerSecond = new(decimalRatio(big.NewInt(transactionCount), interval, 18))
 	}
-	var baseFee, blobGasUsed, excessBlobGas, blobBaseFee, burned, blobBurned any
+	var baseFee *string
+	var blobGasUsed *string
+	var excessBlobGas *string
+	var blobBaseFee *string
+	var burned *string
+	var blobBurned *string
 	if value := block.BaseFee(); value != nil {
-		baseFee = value.String()
-		burned = new(big.Int).Mul(value, gasUsed).String()
+		baseFee = new(value.String())
+		burned = new(new(big.Int).Mul(value, gasUsed).String())
 	}
 	header := block.Header()
 	if (header.BlobGasUsed == nil) != (header.ExcessBlobGas == nil) {
 		return StageResult{}, Permanent(errors.New("stats block has incomplete blob header fields"))
 	}
 	if header.BlobGasUsed != nil {
-		blobGasUsed = strconv.FormatUint(*header.BlobGasUsed, 10)
+		blobGasUsed = new(strconv.FormatUint(*header.BlobGasUsed, 10))
 	}
 	if header.ExcessBlobGas != nil {
-		excessBlobGas = strconv.FormatUint(*header.ExcessBlobGas, 10)
+		excessBlobGas = new(strconv.FormatUint(*header.ExcessBlobGas, 10))
 	}
 	receiptFacts, err := readStatsReceiptFacts(ctx, tx, job, transactionCount)
 	if err != nil {
@@ -624,10 +755,10 @@ func (processor *PostgresStatsProcessor) processStatsTx(ctx context.Context, tx 
 		return StageResult{}, Permanent(errors.New("receipt gas used does not match the block header"))
 	}
 	if receiptFacts.BlobGasPrice != nil {
-		blobBaseFee = receiptFacts.BlobGasPrice.String()
-		blobBurned = new(big.Int).Mul(receiptFacts.BlobGasPrice, receiptFacts.BlobGasUsed).String()
+		blobBaseFee = new(receiptFacts.BlobGasPrice.String())
+		blobBurned = new(new(big.Int).Mul(receiptFacts.BlobGasPrice, receiptFacts.BlobGasUsed).String())
 	} else if receiptFacts.BlobGasUsed.Sign() == 0 {
-		blobBurned = "0"
+		blobBurned = new("0")
 	}
 	baseFeeBurn := new(big.Int)
 	if block.BaseFee() != nil {
@@ -637,12 +768,85 @@ func (processor *PostgresStatsProcessor) processStatsTx(ctx context.Context, tx 
 	if priorityFee.Sign() < 0 {
 		return StageResult{}, Permanent(errors.New("execution fee is below authenticated base fee burn"))
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyInsertBlockStats, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:], transactionCount,
-		gasUsed.String(), gasLimit.String(), baseFee, blobGasUsed, burned,
-		timestamp.String(), blockInterval, transactionsPerSecond, excessBlobGas, blobBaseFee, blobBurned,
-		receiptFacts.ExecutionFee.String(), priorityFee.String(), receiptFacts.FailedTransactions,
-		receiptFacts.ContractCreations,
-	); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(gasUsed.String()); err != nil {
+			return err
+		}
+		var queryValue3 pgtype.Numeric
+		if err := queryValue3.Scan(gasLimit.String()); err != nil {
+			return err
+		}
+		var queryValue4 pgtype.Numeric
+		if baseFee != nil {
+			if err := queryValue4.Scan(*baseFee); err != nil {
+				return err
+			}
+		}
+		var queryValue5 pgtype.Numeric
+		if blobGasUsed != nil {
+			if err := queryValue5.Scan(*blobGasUsed); err != nil {
+				return err
+			}
+		}
+		var queryValue6 pgtype.Numeric
+		if burned != nil {
+			if err := queryValue6.Scan(*burned); err != nil {
+				return err
+			}
+		}
+		var queryValue7 pgtype.Numeric
+		if err := queryValue7.Scan(timestamp.String()); err != nil {
+			return err
+		}
+		var queryValue8 pgtype.Numeric
+		if blockInterval != nil {
+			if err := queryValue8.Scan(*blockInterval); err != nil {
+				return err
+			}
+		}
+		var queryValue9 pgtype.Numeric
+		if transactionsPerSecond != nil {
+			if err := queryValue9.Scan(*transactionsPerSecond); err != nil {
+				return err
+			}
+		}
+		var queryValue10 pgtype.Numeric
+		if excessBlobGas != nil {
+			if err := queryValue10.Scan(*excessBlobGas); err != nil {
+				return err
+			}
+		}
+		var queryValue11 pgtype.Numeric
+		if blobBaseFee != nil {
+			if err := queryValue11.Scan(*blobBaseFee); err != nil {
+				return err
+			}
+		}
+		var queryValue12 pgtype.Numeric
+		if blobBurned != nil {
+			if err := queryValue12.Scan(*blobBurned); err != nil {
+				return err
+			}
+		}
+		var queryValue13 pgtype.Numeric
+		if err := queryValue13.Scan(receiptFacts.ExecutionFee.String()); err != nil {
+			return err
+		}
+		var queryValue14 pgtype.Numeric
+		if err := queryValue14.Scan(priorityFee.String()); err != nil {
+			return err
+		}
+		return dbgen.New(tx).EnrichLegacyInsertBlockStats(ctx, dbgen.EnrichLegacyInsertBlockStatsParams{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: job.BlockHash[:], TransactionCount: transactionCount, GasUsed: queryValue2, GasLimit: queryValue3, BaseFeePerGas: queryValue4, BlobGasUsed: queryValue5, BurnedWei: queryValue6, BlockTimestamp: queryValue7, BlockIntervalSeconds: queryValue8, TransactionsPerSecond: queryValue9, ExcessBlobGas: queryValue10, BlobBaseFeePerGas: queryValue11, BlobBurnedWei: queryValue12, ExecutionGasFeeWei: queryValue13, PriorityFeeWei: queryValue14, FailedTransactionCount: new(receiptFacts.FailedTransactions), ContractCreationCount: new(receiptFacts.ContractCreations)})
+	}(); err != nil {
 		return StageResult{}, fmt.Errorf("persist block statistics: %w", err)
 	}
 	return StageResult{State: ResultComplete, Details: map[string]string{"transactions": strconv.FormatInt(transactionCount, 10)}}, nil
@@ -675,25 +879,35 @@ var maxStatsUint256 = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big
 
 func readStatsReceiptFacts(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	expectedCount int64,
 ) (statsReceiptFacts, error) {
-	rows, err := tx.QueryContext(ctx, dbgen.EnrichLegacyStatsReceiptSource, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:])
+	rows, err := func() ([][]byte, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return nil, err
+		}
+		return dbgen.New(tx).EnrichLegacyStatsReceiptSource(ctx, queryValue0, queryValue1, job.BlockHash[:])
+	}()
 	if err != nil {
 		return statsReceiptFacts{}, fmt.Errorf("query stats source receipts: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	facts := statsReceiptFacts{
 		GasUsed:      new(big.Int),
 		ExecutionFee: new(big.Int),
 		BlobGasUsed:  new(big.Int),
 	}
 	var count int64
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var raw []byte
-		if err := rows.Scan(&raw); err != nil {
-			return statsReceiptFacts{}, fmt.Errorf("scan stats source receipt: %w", err)
+		{
+			raw = storedRow
 		}
 		count++
 		var fields map[string]json.RawMessage
@@ -748,9 +962,7 @@ func readStatsReceiptFacts(
 		facts.BlobGasPrice = new(big.Int).Set(currentPrice)
 		facts.BlobGasUsed.Add(facts.BlobGasUsed, used)
 	}
-	if err := rows.Err(); err != nil {
-		return statsReceiptFacts{}, fmt.Errorf("iterate stats source receipts: %w", err)
-	}
+
 	if count != expectedCount {
 		return statsReceiptFacts{}, Permanent(errors.New("stats receipt count does not match transaction count"))
 	}
@@ -762,10 +974,25 @@ func jsonValuePresent(raw json.RawMessage) bool {
 	return len(trimmed) != 0 && !bytes.Equal(trimmed, []byte("null"))
 }
 
-func lockCanonicalBlock(ctx context.Context, tx *sql.Tx, job Job) (bool, error) {
+func lockCanonicalBlock(ctx context.Context, tx pgx.Tx, job Job) (bool, error) {
 	var locked int
-	err := tx.QueryRowContext(ctx, dbgen.EnrichLegacyLockCanonicalBlock, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]).Scan(&locked)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).EnrichLegacyLockCanonicalBlock(ctx, queryValue0, queryValue1, job.BlockHash[:])
+		if err != nil {
+			return err
+		}
+		locked = int(queryRow)
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
@@ -774,7 +1001,7 @@ func lockCanonicalBlock(ctx context.Context, tx *sql.Tx, job Job) (bool, error) 
 	return locked == 1, nil
 }
 
-func commitStageResult(ctx context.Context, tx *sql.Tx, job Job, result StageResult) (StageResult, error) {
+func commitStageResult(ctx context.Context, tx pgx.Tx, job Job, result StageResult) (StageResult, error) {
 	if err := result.validateForFinish(); err != nil {
 		return StageResult{}, err
 	}
@@ -785,16 +1012,28 @@ func commitStageResult(ctx context.Context, tx *sql.Tx, job Job, result StageRes
 	if err != nil {
 		return StageResult{}, err
 	}
-	journalResult, err := tx.ExecContext(ctx, dbgen.EnrichLegacyUpsertDerivedJournal, job.ChainID, job.BlockHash[:], job.Stage.String(), derivedJournalSequence,
-		string(journal), strconv.FormatUint(job.BlockNumber, 10),
-	)
+	journalResult, err := func() (int64, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return 0, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatInt(int64(derivedJournalSequence), 10)); err != nil {
+			return 0, err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return 0, err
+		}
+		return dbgen.New(tx).EnrichLegacyUpsertDerivedJournal(ctx, dbgen.EnrichLegacyUpsertDerivedJournalParams{ChainID: queryValue0, BlockHash: job.BlockHash[:], Stage: job.Stage.String(), Sequence: queryValue1, Payload: []byte(string(journal)), Number: queryValue2})
+	}()
 	if err != nil {
 		return StageResult{}, fmt.Errorf("persist block stage journal: %w", err)
 	}
 	if err := requireDirectStageWrite(journalResult); err != nil {
 		return StageResult{}, fmt.Errorf("persist block stage journal: %w", err)
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return StageResult{}, fmt.Errorf("commit block stage: %w", err)
 	}
 	return result, nil
@@ -803,7 +1042,7 @@ func commitStageResult(ctx context.Context, tx *sql.Tx, job Job, result StageRes
 // persistStageResultTx writes the nullable-identity marker used only by direct
 // processor fixtures. Durable queue completion uses the lease-bound publication
 // helper so every terminal marker carries its exact job and generation.
-func persistStageResultTx(ctx context.Context, tx *sql.Tx, job Job, result StageResult) error {
+func persistStageResultTx(ctx context.Context, tx pgx.Tx, job Job, result StageResult) error {
 	if tx == nil {
 		return errors.New("persist block stage result using nil transaction")
 	}
@@ -821,29 +1060,85 @@ func persistStageResultTx(ctx context.Context, tx *sql.Tx, job Job, result Stage
 	if err != nil {
 		return fmt.Errorf("encode block stage details: %w", err)
 	}
-	var lastError any
+	var lastError *string
 	if result.Error != "" {
-		lastError = result.Error
+		lastError = new(result.Error)
 	}
-	writeResult, err := tx.ExecContext(ctx, dbgen.EnrichLegacyInsertStageResult, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-		job.Stage.Name, job.Stage.Version, result.State, string(encodedDetails), lastError,
-	)
+	writeResult, err := func() (int64, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return 0, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return 0, err
+		}
+		if job.Stage.Version > 2147483647 {
+			return 0, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).EnrichLegacyInsertStageResult(ctx, dbgen.EnrichLegacyInsertStageResultParams{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: job.BlockHash[:], Stage: job.Stage.Name, StageVersion: int32(job.Stage.Version), State: string(result.State), Details: []byte(string(encodedDetails)), LastError: lastError})
+	}()
 	if err != nil {
 		return fmt.Errorf("persist block stage result: %w", err)
 	}
 	return requireDirectStageWrite(writeResult)
 }
 
-func requireDirectStageWrite(result sql.Result) error {
-	if result == nil {
-		return errors.New("direct block stage write returned no result")
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("read direct block stage write count: %w", err)
-	}
+func requireDirectStageWrite(result int64) error {
+	affected := result
 	if affected != 1 {
 		return ErrAtomicPublicationRequired
 	}
 	return nil
+}
+
+type statsSource struct {
+	raw                           []byte
+	transactionCount              int64
+	configuredStart               string
+	parentNumber, parentTimestamp pgtype.Text
+	canonicalParent               bool
+}
+
+func readStatsSource(ctx context.Context, tx pgx.Tx, job Job) (statsSource, error) {
+	var raw []byte
+	var transactionCount int64
+	var configuredStart string
+	var parentNumber, parentTimestamp pgtype.Text
+	var canonicalParent bool
+
+	var queryValue0 pgtype.Numeric
+	if err := queryValue0.Scan(job.ChainID); err != nil {
+		return statsSource{}, err
+	}
+	var queryValue1 pgtype.Numeric
+	if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+		return statsSource{}, err
+	}
+	queryRow, err := dbgen.New(tx).EnrichLegacyBlockStatsSource(ctx, queryValue0, queryValue1, job.BlockHash[:])
+	if err != nil {
+		return statsSource{}, err
+	}
+	raw = queryRow.Raw
+	transactionCount = queryRow.Count
+	resultValue2, err := dbaccess.NumericText(queryRow.ConfiguredStart)
+	if err != nil {
+		return statsSource{}, err
+	}
+	if !resultValue2.Valid {
+		return statsSource{}, errors.New("invalid stored query value")
+	}
+	configuredStart = resultValue2.String
+	resultValue5, err := dbaccess.NumericText(queryRow.Number)
+	if err != nil {
+		return statsSource{}, err
+	}
+	parentNumber = resultValue5
+	resultValue7, err := dbaccess.NumericText(queryRow.Timestamp)
+	if err != nil {
+		return statsSource{}, err
+	}
+	parentTimestamp = resultValue7
+	canonicalParent = queryRow.ParentCanonical
+	return statsSource{raw: raw, transactionCount: transactionCount, configuredStart: configuredStart, parentNumber: parentNumber, parentTimestamp: parentTimestamp, canonicalParent: canonicalParent}, nil
 }

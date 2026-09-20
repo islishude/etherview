@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const AuthWritePutStatement1 = `-- name: AuthWritePutStatement1 :exec
+const authWritePutStatement1 = `-- name: AuthWritePutStatement1 :exec
 INSERT INTO api_keys (
 			prefix, digest, name, rate_per_second, burst, created_at, revoked_at,
 			owner_user_id, scopes
@@ -31,7 +31,7 @@ type AuthWritePutStatement1Params struct {
 }
 
 func (q *Queries) AuthWritePutStatement1(ctx context.Context, arg AuthWritePutStatement1Params) error {
-	_, err := q.db.Exec(ctx, AuthWritePutStatement1,
+	_, err := q.db.Exec(ctx, authWritePutStatement1,
 		arg.Prefix,
 		arg.Digest,
 		arg.Name,
@@ -45,18 +45,21 @@ func (q *Queries) AuthWritePutStatement1(ctx context.Context, arg AuthWritePutSt
 	return err
 }
 
-const AuthWriteRevokeStatement1 = `-- name: AuthWriteRevokeStatement1 :exec
+const authWriteRevokeStatement1 = `-- name: AuthWriteRevokeStatement1 :execrows
 UPDATE api_keys
 		SET revoked_at = COALESCE(revoked_at, $2)
 		WHERE prefix = $1
 `
 
-func (q *Queries) AuthWriteRevokeStatement1(ctx context.Context, prefix string, revokedAt pgtype.Timestamptz) error {
-	_, err := q.db.Exec(ctx, AuthWriteRevokeStatement1, prefix, revokedAt)
-	return err
+func (q *Queries) AuthWriteRevokeStatement1(ctx context.Context, prefix string, revokedAt pgtype.Timestamptz) (int64, error) {
+	result, err := q.db.Exec(ctx, authWriteRevokeStatement1, prefix, revokedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const AuthWriteRotateStatement1 = `-- name: AuthWriteRotateStatement1 :exec
+const authWriteRotateStatement1 = `-- name: AuthWriteRotateStatement1 :exec
 INSERT INTO api_keys (
 			prefix, digest, name, rate_per_second, burst, created_at, revoked_at,
 			owner_user_id, scopes
@@ -75,7 +78,7 @@ type AuthWriteRotateStatement1Params struct {
 }
 
 func (q *Queries) AuthWriteRotateStatement1(ctx context.Context, arg AuthWriteRotateStatement1Params) error {
-	_, err := q.db.Exec(ctx, AuthWriteRotateStatement1,
+	_, err := q.db.Exec(ctx, authWriteRotateStatement1,
 		arg.Prefix,
 		arg.Digest,
 		arg.Name,
@@ -88,13 +91,16 @@ func (q *Queries) AuthWriteRotateStatement1(ctx context.Context, arg AuthWriteRo
 	return err
 }
 
-const AuthWriteRotateStatement2 = `-- name: AuthWriteRotateStatement2 :exec
+const authWriteRotateStatement2 = `-- name: AuthWriteRotateStatement2 :execrows
 UPDATE api_keys
 		SET revoked_at = $2
 			WHERE prefix = $1 AND revoked_at IS NULL
 `
 
-func (q *Queries) AuthWriteRotateStatement2(ctx context.Context, prefix string, revokedAt pgtype.Timestamptz) error {
-	_, err := q.db.Exec(ctx, AuthWriteRotateStatement2, prefix, revokedAt)
-	return err
+func (q *Queries) AuthWriteRotateStatement2(ctx context.Context, prefix string, revokedAt pgtype.Timestamptz) (int64, error) {
+	result, err := q.db.Exec(ctx, authWriteRotateStatement2, prefix, revokedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

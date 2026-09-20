@@ -4,7 +4,6 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -16,11 +15,17 @@ import (
 	"text/tabwriter"
 	"time"
 
+	dbaccess "github.com/islishude/etherview/internal/db"
+
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/adminstore"
 	"github.com/islishude/etherview/internal/auth"
 	"github.com/islishude/etherview/internal/config"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/maintenance"
 	"github.com/islishude/etherview/internal/store"
 )
@@ -60,7 +65,7 @@ func (b *Backend) Migrate(ctx context.Context, cfg config.Config, action string)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = db.Close() }()
+	defer func() { db.Close() }()
 	switch action {
 	case "up":
 		if err := store.RunMigrations(ctx, db); err != nil {
@@ -99,7 +104,7 @@ func (b *Backend) Admin(ctx context.Context, cfg config.Config, resource, action
 	if err != nil {
 		return err
 	}
-	defer func() { _ = db.Close() }()
+	defer func() { db.Close() }()
 	if err := store.CheckSchema(ctx, db); err != nil {
 		return err
 	}
@@ -123,7 +128,7 @@ func (b *Backend) Admin(ctx context.Context, cfg config.Config, resource, action
 
 func (b *Backend) adminDerivedVerification(
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	cfg config.Config,
 	action string,
 	args []string,
@@ -141,7 +146,7 @@ func (b *Backend) adminDerivedVerification(
 	if fs.NArg() != 0 || strings.TrimSpace(*reason) == "" || len(*reason) > 512 {
 		return errors.New("derived-verification backfill requires a bounded --reason")
 	}
-	var addressBytes any
+	var addressBytes []byte
 	if *address != "" {
 		if !common.IsHexAddress(*address) {
 			return errors.New("derived-verification backfill address is invalid")
@@ -151,9 +156,26 @@ func (b *Backend) adminDerivedVerification(
 	var id int64
 	var count int
 	var requestedAt time.Time
-	err := db.QueryRowContext(ctx, dbgen.DerivedVerifyRequestBackfill,
-		strconv.FormatUint(cfg.Chain.ID, 10), addressBytes, strings.TrimSpace(*reason),
-	).Scan(&id, &count, &requestedAt)
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(strconv.FormatUint(cfg.Chain.ID, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(db).DerivedVerifyRequestBackfill(ctx, queryValue0, addressBytes, strings.TrimSpace(*reason))
+		if err != nil {
+			return err
+		}
+		id = queryRow.ID
+		count = int(queryRow.ScanCount)
+		if !queryRow.RequestedAt.Valid {
+			return errors.New("invalid stored query value")
+		}
+		if queryRow.RequestedAt.InfinityModifier != pgtype.Finite {
+			return errors.New("invalid stored query value")
+		}
+		requestedAt = queryRow.RequestedAt.Time
+		return nil
+	}()
 	if err != nil {
 		return err
 	}
@@ -163,7 +185,7 @@ func (b *Backend) adminDerivedVerification(
 	})
 }
 
-func (b *Backend) adminRepair(ctx context.Context, db *sql.DB, cfg config.Config, action string, args []string) error {
+func (b *Backend) adminRepair(ctx context.Context, db *pgxpool.Pool, cfg config.Config, action string, args []string) error {
 	if action != "list" {
 		return fmt.Errorf("unsupported repair admin action %q", action)
 	}
@@ -211,7 +233,7 @@ func writeRepairRequests(writer io.Writer, format string, requests []adminstore.
 	}
 }
 
-func (b *Backend) adminAPIKey(ctx context.Context, db *sql.DB, cfg config.Config, action string, args []string) error {
+func (b *Backend) adminAPIKey(ctx context.Context, db *pgxpool.Pool, cfg config.Config, action string, args []string) error {
 	if len(cfg.Security.APIKeyPepper) < 32 {
 		return errors.New("security.api_key_pepper or ETHERVIEW_API_KEY_PEPPER_FILE is required for API key administration")
 	}
@@ -292,7 +314,7 @@ func (b *Backend) adminAPIKey(ctx context.Context, db *sql.DB, cfg config.Config
 	}
 }
 
-func (b *Backend) adminLabel(ctx context.Context, db *sql.DB, cfg config.Config, action string, args []string) error {
+func (b *Backend) adminLabel(ctx context.Context, db *pgxpool.Pool, cfg config.Config, action string, args []string) error {
 	repository, err := adminstore.New(db, cfg.Chain.ID)
 	if err != nil {
 		return err
@@ -364,7 +386,7 @@ func (b *Backend) Repair(ctx context.Context, cfg config.Config, operation strin
 	if err != nil {
 		return err
 	}
-	defer func() { _ = db.Close() }()
+	defer func() { db.Close() }()
 	if err := store.CheckSchema(ctx, db); err != nil {
 		return err
 	}
@@ -395,10 +417,25 @@ func validateMaintenanceOperationStage(operation, stage string) error {
 	return maintenance.ValidateOperationStage(maintenance.Operation(operation), stage)
 }
 
-func finalizedHeight(ctx context.Context, db *sql.DB, chainID uint64) (uint64, bool, error) {
-	var raw sql.NullString
-	err := db.QueryRowContext(ctx, dbgen.GetFinalizedHeight, strconv.FormatUint(chainID, 10)).Scan(&raw)
-	if err == sql.ErrNoRows || (err == nil && !raw.Valid) {
+func finalizedHeight(ctx context.Context, db *pgxpool.Pool, chainID uint64) (uint64, bool, error) {
+	var raw pgtype.Text
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(strconv.FormatUint(chainID, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(db).GetFinalizedHeight(ctx, queryValue0)
+		if err != nil {
+			return err
+		}
+		resultValue0, err := dbaccess.NumericText(queryRow)
+		if err != nil {
+			return err
+		}
+		raw = resultValue0
+		return nil
+	}()
+	if err == pgx.ErrNoRows || (err == nil && !raw.Valid) {
 		return 0, false, nil
 	}
 	if err != nil {

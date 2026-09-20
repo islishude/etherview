@@ -11,31 +11,45 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const ContractArtifactArtifactSource = `-- name: ContractArtifactArtifactSource :many
+const contractArtifactArtifactSource = `-- name: ContractArtifactArtifactSource :one
 SELECT
-       (verified.address = $2
-        AND verified.valid_from_block <= $4::numeric
-        AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= $4::numeric)) AS exact,
-       verified.address, verified.code_hash, verified.valid_from_block::text,
-       verified.valid_to_block::text, verified.verification_job_id::text,
-       verified.request_digest, verified.file_name, verified.contract_name,
-       verified.language, verified.compiler_version, verified.match_type,
-       verified.abi, verified.sources, verified.settings,
-       verified.compilation_artifacts, verified.creation_code_artifacts,
-       verified.runtime_code_artifacts, result.outcome->'creation_match',
-       result.outcome->'runtime_match', verified.constructor_arguments,
-       verified.libraries, verified.is_blueprint, verified.created_at
+(verified.address = $1
+        AND verified.valid_from_block <= $2::numeric
+        AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= $2::numeric)) AS exact,
+verified.address,
+verified.code_hash,
+verified.valid_from_block::text,
+verified.valid_to_block,
+verified.verification_job_id::text,
+verified.request_digest,
+verified.file_name,
+verified.contract_name,
+verified.language,
+verified.compiler_version,
+verified.match_type,
+verified.abi,
+verified.sources,
+verified.settings,
+verified.compilation_artifacts,
+verified.creation_code_artifacts,
+verified.runtime_code_artifacts,
+(result.outcome->'creation_match')::jsonb AS creation_match,
+(result.outcome->'runtime_match')::jsonb AS runtime_match,
+verified.constructor_arguments,
+verified.libraries,
+verified.is_blueprint,
+verified.created_at
 FROM verified_contracts AS verified
 JOIN verification_results AS result
   ON result.job_id = verified.verification_job_id
  AND result.request_digest = verified.request_digest
  AND result.outcome_kind = 'verification_success'
-WHERE verified.chain_id = $1::numeric
-  AND verified.code_hash = $3
+WHERE verified.chain_id = $3::numeric
+  AND verified.code_hash = $4
 ORDER BY
-    (verified.address = $2
-     AND verified.valid_from_block <= $4::numeric
-     AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= $4::numeric)) DESC,
+    (verified.address = $1
+     AND verified.valid_from_block <= $2::numeric
+     AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= $2::numeric)) DESC,
     (verified.abi IS NOT NULL) DESC,
     (verified.match_type = 'full') DESC,
     verified.request_digest ASC,
@@ -46,10 +60,10 @@ LIMIT 1
 `
 
 type ContractArtifactArtifactSourceParams struct {
-	Column1  pgtype.Numeric `db:"column_1" json:"column_1"`
-	Address  []byte         `db:"address" json:"address"`
-	CodeHash []byte         `db:"code_hash" json:"code_hash"`
-	Column4  pgtype.Numeric `db:"column_4" json:"column_4"`
+	Address           []byte         `db:"address" json:"address"`
+	MaxValidFromBlock pgtype.Numeric `db:"max_valid_from_block" json:"max_valid_from_block"`
+	ChainID           pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	CodeHash          []byte         `db:"code_hash" json:"code_hash"`
 }
 
 type ContractArtifactArtifactSourceRow struct {
@@ -57,7 +71,7 @@ type ContractArtifactArtifactSourceRow struct {
 	Address                   []byte             `db:"address" json:"address"`
 	CodeHash                  []byte             `db:"code_hash" json:"code_hash"`
 	VerifiedValidFromBlock    string             `db:"verified_valid_from_block" json:"verified_valid_from_block"`
-	VerifiedValidToBlock      string             `db:"verified_valid_to_block" json:"verified_valid_to_block"`
+	ValidToBlock              pgtype.Numeric     `db:"valid_to_block" json:"valid_to_block"`
 	VerifiedVerificationJobID string             `db:"verified_verification_job_id" json:"verified_verification_job_id"`
 	RequestDigest             []byte             `db:"request_digest" json:"request_digest"`
 	FileName                  string             `db:"file_name" json:"file_name"`
@@ -71,65 +85,52 @@ type ContractArtifactArtifactSourceRow struct {
 	CompilationArtifacts      []byte             `db:"compilation_artifacts" json:"compilation_artifacts"`
 	CreationCodeArtifacts     []byte             `db:"creation_code_artifacts" json:"creation_code_artifacts"`
 	RuntimeCodeArtifacts      []byte             `db:"runtime_code_artifacts" json:"runtime_code_artifacts"`
-	Column19                  interface{}        `db:"column_19" json:"column_19"`
-	Column20                  interface{}        `db:"column_20" json:"column_20"`
+	CreationMatch             []byte             `db:"creation_match" json:"creation_match"`
+	RuntimeMatch              []byte             `db:"runtime_match" json:"runtime_match"`
 	ConstructorArguments      []byte             `db:"constructor_arguments" json:"constructor_arguments"`
 	Libraries                 []byte             `db:"libraries" json:"libraries"`
 	IsBlueprint               bool               `db:"is_blueprint" json:"is_blueprint"`
 	CreatedAt                 pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
-func (q *Queries) ContractArtifactArtifactSource(ctx context.Context, arg ContractArtifactArtifactSourceParams) ([]ContractArtifactArtifactSourceRow, error) {
-	rows, err := q.db.Query(ctx, ContractArtifactArtifactSource,
-		arg.Column1,
+func (q *Queries) ContractArtifactArtifactSource(ctx context.Context, arg ContractArtifactArtifactSourceParams) (ContractArtifactArtifactSourceRow, error) {
+	row := q.db.QueryRow(ctx, contractArtifactArtifactSource,
 		arg.Address,
+		arg.MaxValidFromBlock,
+		arg.ChainID,
 		arg.CodeHash,
-		arg.Column4,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ContractArtifactArtifactSourceRow{}
-	for rows.Next() {
-		var i ContractArtifactArtifactSourceRow
-		if err := rows.Scan(
-			&i.Exact,
-			&i.Address,
-			&i.CodeHash,
-			&i.VerifiedValidFromBlock,
-			&i.VerifiedValidToBlock,
-			&i.VerifiedVerificationJobID,
-			&i.RequestDigest,
-			&i.FileName,
-			&i.ContractName,
-			&i.Language,
-			&i.CompilerVersion,
-			&i.MatchType,
-			&i.Abi,
-			&i.Sources,
-			&i.Settings,
-			&i.CompilationArtifacts,
-			&i.CreationCodeArtifacts,
-			&i.RuntimeCodeArtifacts,
-			&i.Column19,
-			&i.Column20,
-			&i.ConstructorArguments,
-			&i.Libraries,
-			&i.IsBlueprint,
-			&i.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i ContractArtifactArtifactSourceRow
+	err := row.Scan(
+		&i.Exact,
+		&i.Address,
+		&i.CodeHash,
+		&i.VerifiedValidFromBlock,
+		&i.ValidToBlock,
+		&i.VerifiedVerificationJobID,
+		&i.RequestDigest,
+		&i.FileName,
+		&i.ContractName,
+		&i.Language,
+		&i.CompilerVersion,
+		&i.MatchType,
+		&i.Abi,
+		&i.Sources,
+		&i.Settings,
+		&i.CompilationArtifacts,
+		&i.CreationCodeArtifacts,
+		&i.RuntimeCodeArtifacts,
+		&i.CreationMatch,
+		&i.RuntimeMatch,
+		&i.ConstructorArguments,
+		&i.Libraries,
+		&i.IsBlueprint,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
-const ContractArtifactCurrentTarget = `-- name: ContractArtifactCurrentTarget :many
+const contractArtifactCurrentTarget = `-- name: ContractArtifactCurrentTarget :one
 WITH canonical_tip AS (
     SELECT number
     FROM canonical_blocks
@@ -165,32 +166,19 @@ type ContractArtifactCurrentTargetRow struct {
 	TipNumber              string `db:"tip_number" json:"tip_number"`
 }
 
-func (q *Queries) ContractArtifactCurrentTarget(ctx context.Context, column1 pgtype.Numeric, address []byte) ([]ContractArtifactCurrentTargetRow, error) {
-	rows, err := q.db.Query(ctx, ContractArtifactCurrentTarget, column1, address)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ContractArtifactCurrentTargetRow{}
-	for rows.Next() {
-		var i ContractArtifactCurrentTargetRow
-		if err := rows.Scan(
-			&i.CodeHash,
-			&i.ObservationBlockNumber,
-			&i.BlockHash,
-			&i.TipNumber,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) ContractArtifactCurrentTarget(ctx context.Context, chainID pgtype.Numeric, address []byte) (ContractArtifactCurrentTargetRow, error) {
+	row := q.db.QueryRow(ctx, contractArtifactCurrentTarget, chainID, address)
+	var i ContractArtifactCurrentTargetRow
+	err := row.Scan(
+		&i.CodeHash,
+		&i.ObservationBlockNumber,
+		&i.BlockHash,
+		&i.TipNumber,
+	)
+	return i, err
 }
 
-const ContractArtifactTargetAtBlock = `-- name: ContractArtifactTargetAtBlock :many
+const contractArtifactTargetAtBlock = `-- name: ContractArtifactTargetAtBlock :one
 WITH context_block AS (
     SELECT canonical.number, canonical.block_hash
     FROM canonical_blocks AS canonical
@@ -220,9 +208,9 @@ JOIN LATERAL (
 `
 
 type ContractArtifactTargetAtBlockParams struct {
-	Column1   pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID   pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	Address   []byte         `db:"address" json:"address"`
-	Column3   pgtype.Numeric `db:"column_3" json:"column_3"`
+	Number    pgtype.Numeric `db:"number" json:"number"`
 	BlockHash []byte         `db:"block_hash" json:"block_hash"`
 }
 
@@ -233,32 +221,19 @@ type ContractArtifactTargetAtBlockRow struct {
 	ContextNumber_2 string `db:"context_number_2" json:"context_number_2"`
 }
 
-func (q *Queries) ContractArtifactTargetAtBlock(ctx context.Context, arg ContractArtifactTargetAtBlockParams) ([]ContractArtifactTargetAtBlockRow, error) {
-	rows, err := q.db.Query(ctx, ContractArtifactTargetAtBlock,
-		arg.Column1,
+func (q *Queries) ContractArtifactTargetAtBlock(ctx context.Context, arg ContractArtifactTargetAtBlockParams) (ContractArtifactTargetAtBlockRow, error) {
+	row := q.db.QueryRow(ctx, contractArtifactTargetAtBlock,
+		arg.ChainID,
 		arg.Address,
-		arg.Column3,
+		arg.Number,
 		arg.BlockHash,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ContractArtifactTargetAtBlockRow{}
-	for rows.Next() {
-		var i ContractArtifactTargetAtBlockRow
-		if err := rows.Scan(
-			&i.CodeHash,
-			&i.ContextNumber,
-			&i.BlockHash,
-			&i.ContextNumber_2,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i ContractArtifactTargetAtBlockRow
+	err := row.Scan(
+		&i.CodeHash,
+		&i.ContextNumber,
+		&i.BlockHash,
+		&i.ContextNumber_2,
+	)
+	return i, err
 }

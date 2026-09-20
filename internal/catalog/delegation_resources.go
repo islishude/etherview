@@ -2,13 +2,16 @@ package catalog
 
 import (
 	"context"
-	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strconv"
 
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
 type delegationCursor struct {
@@ -30,27 +33,47 @@ func (catalog *Postgres) TransactionAuthorizations(
 	if err != nil {
 		return TransactionAuthorizationPage{}, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	page := TransactionAuthorizationPage{Identity: resolution.identity, Items: []EIP7702Authorization{}}
 	if resolution.identity.State == StageComplete {
-		rows, queryErr := tx.QueryContext(ctx, dbgen.CatalogTransactionAuthorizations, request.ChainID, resolution.blockHash, resolution.txHash,
-			resolution.limit+1, resolution.offset,
-		)
+		rows, queryErr := func() ([]dbgen.CatalogTransactionAuthorizationsRow, error) {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(request.ChainID); err != nil {
+				return nil, err
+			}
+			if resolution.limit+1 < -2147483648 || resolution.limit+1 > 2147483647 {
+				return nil, errors.New("invalid stored query value")
+			}
+			if resolution.offset < -2147483648 || resolution.offset > 2147483647 {
+				return nil, errors.New("invalid stored query value")
+			}
+			return dbgen.New(tx).CatalogTransactionAuthorizations(ctx, dbgen.CatalogTransactionAuthorizationsParams{ChainID: queryValue0, BlockHash: resolution.blockHash, TransactionHash: resolution.txHash, Limit: int32(resolution.limit + 1), Offset: int32(resolution.offset)})
+		}()
 		if queryErr != nil {
 			return TransactionAuthorizationPage{}, fmt.Errorf("list transaction authorizations: %w", queryErr)
 		}
-		defer rows.Close() //nolint:errcheck
-		for rows.Next() {
+
+		for _, storedRow := range rows {
 			var item EIP7702Authorization
 			var index int64
 			var delegate, authority, r, s []byte
-			var skipReason sql.NullString
-			if err := rows.Scan(
-				&index, &item.ChainID, &item.Nonce, &delegate, &item.YParity,
-				&r, &s, &authority, &item.SignatureStatus,
-				&item.ApplicationStatus, &skipReason,
-			); err != nil {
-				return TransactionAuthorizationPage{}, fmt.Errorf("scan transaction authorization: %w", err)
+			var skipReason pgtype.Text
+			{
+				index = storedRow.AuthorizationIndex
+				item.ChainID = storedRow.AuthorizationChainID
+				item.Nonce = storedRow.AuthorizationNonce
+				delegate = storedRow.DelegateAddress
+				item.YParity = int(storedRow.YParity)
+				r = storedRow.R
+				s = storedRow.S
+				authority = storedRow.Authority
+				item.SignatureStatus = storedRow.SignatureStatus
+				item.ApplicationStatus = storedRow.ApplicationStatus
+				var queryValue10 pgtype.Text
+				if storedRow.SkipReason != nil {
+					queryValue10 = pgtype.Text{String: *storedRow.SkipReason, Valid: true}
+				}
+				skipReason = queryValue10
 			}
 			if index < 0 || len(delegate) != common.AddressLength || len(r) != common.HashLength ||
 				len(s) != common.HashLength || (len(authority) != 0 && len(authority) != common.AddressLength) ||
@@ -71,9 +94,7 @@ func (catalog *Postgres) TransactionAuthorizations(
 			}
 			page.Items = append(page.Items, item)
 		}
-		if err := rows.Err(); err != nil {
-			return TransactionAuthorizationPage{}, fmt.Errorf("iterate transaction authorizations: %w", err)
-		}
+
 		if len(page.Items) > resolution.limit {
 			page.Items = page.Items[:resolution.limit]
 			page.NextCursor, err = resolution.nextCursor("authorizations", resolution.offset+resolution.limit)
@@ -82,7 +103,7 @@ func (catalog *Postgres) TransactionAuthorizations(
 			}
 		}
 	}
-	if err := commitRead(tx); err != nil {
+	if err := commitRead(ctx, tx); err != nil {
 		return TransactionAuthorizationPage{}, err
 	}
 	return page, nil
@@ -106,7 +127,7 @@ func (catalog *Postgres) AddressDelegations(
 	if err != nil {
 		return DelegationHistoryPage{}, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	snapshot, err := readCanonicalSnapshot(ctx, tx, request.ChainID)
 	if err != nil {
 		return DelegationHistoryPage{}, err
@@ -130,22 +151,48 @@ func (catalog *Postgres) AddressDelegations(
 		// $4 branch makes the comparison logically unnecessary.
 		blockBoundary, transactionBoundary, authorizationBoundary = "0", "0", "0"
 	}
-	rows, err := tx.QueryContext(ctx, dbgen.CatalogAddressDelegations, request.ChainID, authority, snapshot.BlockNumber, hasBoundary,
-		blockBoundary, transactionBoundary, authorizationBoundary, limit+1,
-	)
+	rows, err := func() ([]dbgen.CatalogAddressDelegationsRow, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(request.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(snapshot.BlockNumber); err != nil {
+			return nil, err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(blockBoundary); err != nil {
+			return nil, err
+		}
+		var queryValue3 pgtype.Numeric
+		if err := queryValue3.Scan(transactionBoundary); err != nil {
+			return nil, err
+		}
+		var queryValue4 pgtype.Numeric
+		if err := queryValue4.Scan(authorizationBoundary); err != nil {
+			return nil, err
+		}
+		if limit+1 < -2147483648 || limit+1 > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).CatalogAddressDelegations(ctx, dbgen.CatalogAddressDelegationsParams{ChainID: queryValue0, Authority: authority, MaxBlockNumber: queryValue1, HasCursor: hasBoundary, CursorBlockNumber: queryValue2, CursorTransactionIndex: queryValue3, CursorAuthorizationIndex: queryValue4, Limit: int32(limit + 1)})
+	}()
 	if err != nil {
 		return DelegationHistoryPage{}, fmt.Errorf("list address delegations: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	page := DelegationHistoryPage{Items: []DelegationHistoryItem{}, Snapshot: snapshot}
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var item DelegationHistoryItem
 		var blockHash, transactionHash, delegate, previous []byte
-		if err := rows.Scan(
-			&item.BlockNumber, &blockHash, &transactionHash, &item.TransactionIndex,
-			&item.AuthorizationIndex, &delegate, &previous,
-		); err != nil {
-			return DelegationHistoryPage{}, fmt.Errorf("scan address delegation: %w", err)
+		{
+			item.BlockNumber = storedRow.BlockNumber
+			blockHash = storedRow.BlockHash
+			transactionHash = storedRow.TransactionHash
+			item.TransactionIndex = storedRow.TransactionIndex
+			item.AuthorizationIndex = storedRow.AuthorizationIndex
+			delegate = storedRow.DelegateAddress
+			previous = storedRow.PreviousDelegate
 		}
 		if !canonicalUint256(item.BlockNumber) || !canonicalUint256(item.TransactionIndex) ||
 			!canonicalUint256(item.AuthorizationIndex) || len(blockHash) != common.HashLength ||
@@ -168,9 +215,7 @@ func (catalog *Postgres) AddressDelegations(
 		}
 		page.Items = append(page.Items, item)
 	}
-	if err := rows.Err(); err != nil {
-		return DelegationHistoryPage{}, fmt.Errorf("iterate address delegations: %w", err)
-	}
+
 	if len(page.Items) > limit {
 		page.Items = page.Items[:limit]
 		last := page.Items[len(page.Items)-1]
@@ -184,7 +229,7 @@ func (catalog *Postgres) AddressDelegations(
 			return DelegationHistoryPage{}, err
 		}
 	}
-	if err := commitRead(tx); err != nil {
+	if err := commitRead(ctx, tx); err != nil {
 		return DelegationHistoryPage{}, err
 	}
 	return page, nil

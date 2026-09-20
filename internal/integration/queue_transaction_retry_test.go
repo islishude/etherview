@@ -60,7 +60,7 @@ func TestEnrichmentTerminalTransactionRetriesPostgresAbort(t *testing.T) {
 				assertPublishedTerminalNoJournal(t, ctx, db, job.Job.ID, 1, enrich.ResultFailed, reason)
 				assertEnrichmentJobTerminal(t, ctx, db, job.Job.ID, "failed", 1)
 				var attempts int
-				if err := db.QueryRowContext(ctx, `SELECT last_value FROM terminal_abort_attempt`).Scan(&attempts); err != nil || attempts != 2 {
+				if err := db.QueryRow(ctx, `SELECT last_value FROM terminal_abort_attempt`).Scan(&attempts); err != nil || attempts != 2 {
 					t.Fatalf("transaction attempts=%d err=%v", attempts, err)
 				}
 			})

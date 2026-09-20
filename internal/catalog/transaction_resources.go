@@ -2,15 +2,18 @@ package catalog
 
 import (
 	"context"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
 
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/chainbundle"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
 type transactionResourceCursor struct {
@@ -42,26 +45,34 @@ func (catalog *Postgres) TransactionTokenEvents(
 	if err != nil {
 		return TransactionTokenEventPage{}, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	page := TransactionTokenEventPage{Identity: resolution.identity, Items: []TokenEvent{}}
 	if resolution.identity.State == StageComplete {
-		rows, queryErr := tx.QueryContext(ctx, dbgen.CatalogTransactionTokenEvents, request.ChainID, resolution.blockHash, resolution.txHash,
-			resolution.limit+1, resolution.offset,
-		)
+		rows, queryErr := func() ([]dbgen.CatalogTransactionTokenEventsRow, error) {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(request.ChainID); err != nil {
+				return nil, err
+			}
+			if resolution.limit+1 < -2147483648 || resolution.limit+1 > 2147483647 {
+				return nil, errors.New("invalid stored query value")
+			}
+			if resolution.offset < -2147483648 || resolution.offset > 2147483647 {
+				return nil, errors.New("invalid stored query value")
+			}
+			return dbgen.New(tx).CatalogTransactionTokenEvents(ctx, dbgen.CatalogTransactionTokenEventsParams{ChainID: queryValue0, BlockHash: resolution.blockHash, TransactionHash: resolution.txHash, Limit: int32(resolution.limit + 1), Offset: int32(resolution.offset)})
+		}()
 		if queryErr != nil {
 			return TransactionTokenEventPage{}, fmt.Errorf("list transaction token events: %w", queryErr)
 		}
-		defer rows.Close() //nolint:errcheck
-		for rows.Next() {
-			event, scanErr := scanTokenEvent(rows)
+
+		for _, storedRow := range rows {
+			event, scanErr := scanTokenEvent(dbgen.CatalogTransactionTokenEventsRow(storedRow))
 			if scanErr != nil {
 				return TransactionTokenEventPage{}, fmt.Errorf("scan transaction token event: %w", scanErr)
 			}
 			page.Items = append(page.Items, event)
 		}
-		if err := rows.Err(); err != nil {
-			return TransactionTokenEventPage{}, fmt.Errorf("iterate transaction token events: %w", err)
-		}
+
 		if len(page.Items) > resolution.limit {
 			page.Items = page.Items[:resolution.limit]
 			page.NextCursor, err = resolution.nextCursor("token_transfers", resolution.offset+resolution.limit)
@@ -70,7 +81,7 @@ func (catalog *Postgres) TransactionTokenEvents(
 			}
 		}
 	}
-	if err := commitRead(tx); err != nil {
+	if err := commitRead(ctx, tx); err != nil {
 		return TransactionTokenEventPage{}, err
 	}
 	return page, nil
@@ -84,29 +95,37 @@ func (catalog *Postgres) TransactionInternalTransactions(
 	if err != nil {
 		return TransactionInternalTransactionPage{}, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	page := TransactionInternalTransactionPage{
 		Identity: resolution.identity,
 		Items:    []TransactionInternalTransaction{},
 	}
 	if resolution.identity.State == StageComplete {
-		rows, queryErr := tx.QueryContext(ctx, dbgen.CatalogTransactionInternalTransactions, request.ChainID, resolution.blockHash, resolution.txHash,
-			resolution.limit+1, resolution.offset,
-		)
+		rows, queryErr := func() ([]dbgen.CatalogTransactionInternalTransactionsRow, error) {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(request.ChainID); err != nil {
+				return nil, err
+			}
+			if resolution.limit+1 < -2147483648 || resolution.limit+1 > 2147483647 {
+				return nil, errors.New("invalid stored query value")
+			}
+			if resolution.offset < -2147483648 || resolution.offset > 2147483647 {
+				return nil, errors.New("invalid stored query value")
+			}
+			return dbgen.New(tx).CatalogTransactionInternalTransactions(ctx, dbgen.CatalogTransactionInternalTransactionsParams{ChainID: queryValue0, BlockHash: resolution.blockHash, TransactionHash: resolution.txHash, Limit: int32(resolution.limit + 1), Offset: int32(resolution.offset)})
+		}()
 		if queryErr != nil {
 			return TransactionInternalTransactionPage{}, fmt.Errorf("list transaction internal transactions: %w", queryErr)
 		}
-		defer rows.Close() //nolint:errcheck
-		for rows.Next() {
-			item, scanErr := catalog.scanTransactionInternalTransaction(rows)
+
+		for _, storedRow := range rows {
+			item, scanErr := catalog.scanTransactionInternalTransaction(dbgen.CatalogTransactionInternalTransactionsRow(storedRow))
 			if scanErr != nil {
 				return TransactionInternalTransactionPage{}, fmt.Errorf("scan transaction internal transaction: %w", scanErr)
 			}
 			page.Items = append(page.Items, item)
 		}
-		if err := rows.Err(); err != nil {
-			return TransactionInternalTransactionPage{}, fmt.Errorf("iterate transaction internal transactions: %w", err)
-		}
+
 		if len(page.Items) > resolution.limit {
 			page.Items = page.Items[:resolution.limit]
 			page.NextCursor, err = resolution.nextCursor("internal_transactions", resolution.offset+resolution.limit)
@@ -115,14 +134,14 @@ func (catalog *Postgres) TransactionInternalTransactions(
 			}
 		}
 	}
-	if err := commitRead(tx); err != nil {
+	if err := commitRead(ctx, tx); err != nil {
 		return TransactionInternalTransactionPage{}, err
 	}
 	return page, nil
 }
 
 func (catalog *Postgres) scanTransactionInternalTransaction(
-	row rowScanner,
+	row dbgen.CatalogTransactionInternalTransactionsRow,
 ) (TransactionInternalTransaction, error) {
 	var (
 		item              TransactionInternalTransaction
@@ -130,8 +149,14 @@ func (catalog *Postgres) scanTransactionInternalTransaction(
 		depth             int64
 		from, to, created []byte
 	)
-	if err := row.Scan(&path, &depth, &item.CallType, &from, &to, &created, &item.Value); err != nil {
-		return TransactionInternalTransaction{}, err
+	{
+		path = row.TracePath
+		depth = int64(row.Depth)
+		item.CallType = row.CallType
+		from = row.FromAddress
+		to = row.ToAddress
+		created = row.CreatedAddress
+		item.Value = row.TraceValue
 	}
 	if depth <= 0 || depth > 128 || item.CallType == "" || len(item.CallType) > 128 ||
 		!canonicalUint256(item.Value) || item.Value == "0" {
@@ -171,38 +196,79 @@ func (catalog *Postgres) TransactionLogs(
 	if err != nil {
 		return TransactionLogPage{}, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	page := TransactionLogPage{Identity: resolution.identity, Items: []TransactionLog{}}
-	rows, err := tx.QueryContext(ctx, dbgen.CatalogTransactionLogs, request.ChainID, resolution.blockHash, resolution.txHash,
-		resolution.limit+1, resolution.offset,
-	)
+	rows, err := func() ([]dbgen.CatalogTransactionLogsRow, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(request.ChainID); err != nil {
+			return nil, err
+		}
+		if resolution.limit+1 < -2147483648 || resolution.limit+1 > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		if resolution.offset < -2147483648 || resolution.offset > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).CatalogTransactionLogs(ctx, dbgen.CatalogTransactionLogsParams{ChainID: queryValue0, BlockHash: resolution.blockHash, TxHash: resolution.txHash, Limit: int32(resolution.limit + 1), Offset: int32(resolution.offset)})
+	}()
 	if err != nil {
 		return TransactionLogPage{}, fmt.Errorf("list transaction logs: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	type rawLog struct {
 		index            int64
 		raw              []byte
 		persisted        persistedLogDecoding
-		tracePath        sql.NullString
+		tracePath        pgtype.Text
 		executionAddress []byte
 	}
 	rawLogs := make([]rawLog, 0, resolution.limit+1)
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var raw []byte
 		var logIndex int64
 		var persisted persistedLogDecoding
-		var storedTracePath sql.NullString
+		var storedTracePath pgtype.Text
 		var executionAddress []byte
-		if err := rows.Scan(
-			&logIndex, &raw, &persisted.status, &persisted.signature,
-			&persisted.source, &persisted.confidence, &persisted.arguments,
-			&persisted.candidates, &persisted.warning,
-			&persisted.targetAddress, &persisted.targetCodeHash,
-			&persisted.sourceAddress, &persisted.sourceCodeHash,
-			&storedTracePath, &executionAddress,
-		); err != nil {
-			return TransactionLogPage{}, fmt.Errorf("scan transaction log: %w", err)
+		{
+			logIndex = storedRow.LogIndex
+			raw = storedRow.Raw
+			var queryValue2 pgtype.Text
+			if storedRow.Status != nil {
+				queryValue2 = pgtype.Text{String: *storedRow.Status, Valid: true}
+			}
+			persisted.status = queryValue2
+			var queryValue4 pgtype.Text
+			if storedRow.Signature != nil {
+				queryValue4 = pgtype.Text{String: *storedRow.Signature, Valid: true}
+			}
+			persisted.signature = queryValue4
+			var queryValue6 pgtype.Text
+			if storedRow.Source != nil {
+				queryValue6 = pgtype.Text{String: *storedRow.Source, Valid: true}
+			}
+			persisted.source = queryValue6
+			var queryValue8 pgtype.Text
+			if storedRow.Confidence != nil {
+				queryValue8 = pgtype.Text{String: *storedRow.Confidence, Valid: true}
+			}
+			persisted.confidence = queryValue8
+			persisted.arguments = storedRow.Arguments
+			persisted.candidates = storedRow.Candidates
+			var queryValue12 pgtype.Text
+			if storedRow.Warning != nil {
+				queryValue12 = pgtype.Text{String: *storedRow.Warning, Valid: true}
+			}
+			persisted.warning = queryValue12
+			persisted.targetAddress = storedRow.TargetAddress
+			persisted.targetCodeHash = storedRow.TargetCodeHash
+			persisted.sourceAddress = storedRow.SourceAddress
+			persisted.sourceCodeHash = storedRow.SourceCodeHash
+			var queryValue18 pgtype.Text
+			if storedRow.TracePath != nil {
+				queryValue18 = pgtype.Text{String: *storedRow.TracePath, Valid: true}
+			}
+			storedTracePath = queryValue18
+			executionAddress = storedRow.ExecutionAddress
 		}
 		if logIndex < 0 {
 			return TransactionLogPage{}, ErrCorruptData
@@ -212,12 +278,7 @@ func (catalog *Postgres) TransactionLogs(
 			tracePath: storedTracePath, executionAddress: executionAddress,
 		})
 	}
-	if err := rows.Err(); err != nil {
-		return TransactionLogPage{}, fmt.Errorf("iterate transaction logs: %w", err)
-	}
-	if err := rows.Close(); err != nil {
-		return TransactionLogPage{}, fmt.Errorf("close transaction logs: %w", err)
-	}
+
 	for _, stored := range rawLogs {
 		blockNumber, parseErr := strconv.ParseUint(resolution.identity.BlockNumber, 10, 64)
 		if parseErr != nil {
@@ -269,7 +330,7 @@ func (catalog *Postgres) TransactionLogs(
 			return TransactionLogPage{}, err
 		}
 	}
-	if err := commitRead(tx); err != nil {
+	if err := commitRead(ctx, tx); err != nil {
 		return TransactionLogPage{}, err
 	}
 	return page, nil
@@ -283,22 +344,44 @@ func (catalog *Postgres) TransactionStateChanges(
 	if err != nil {
 		return TransactionStateChangePage{}, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	page := TransactionStateChangePage{Identity: resolution.identity, Items: []TransactionStateChange{}}
 	if resolution.identity.State == StageComplete {
-		rows, queryErr := tx.QueryContext(ctx, dbgen.CatalogTransactionStateChanges, request.ChainID, resolution.blockHash, resolution.txHash,
-			resolution.limit+1, resolution.offset,
-		)
+		rows, queryErr := func() ([]dbgen.CatalogTransactionStateChangesRow, error) {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(request.ChainID); err != nil {
+				return nil, err
+			}
+			if resolution.limit+1 < -2147483648 || resolution.limit+1 > 2147483647 {
+				return nil, errors.New("invalid stored query value")
+			}
+			if resolution.offset < -2147483648 || resolution.offset > 2147483647 {
+				return nil, errors.New("invalid stored query value")
+			}
+			return dbgen.New(tx).CatalogTransactionStateChanges(ctx, dbgen.CatalogTransactionStateChangesParams{ChainID: queryValue0, BlockHash: resolution.blockHash, TransactionHash: resolution.txHash, Limit: int32(resolution.limit + 1), Offset: int32(resolution.offset)})
+		}()
 		if queryErr != nil {
 			return TransactionStateChangePage{}, fmt.Errorf("list transaction state changes: %w", queryErr)
 		}
-		defer rows.Close() //nolint:errcheck
-		for rows.Next() {
+
+		for _, storedRow := range rows {
 			var address, storageKey []byte
 			var change TransactionStateChange
-			var before, after sql.NullString
-			if err := rows.Scan(&address, &change.Kind, &storageKey, &before, &after); err != nil {
-				return TransactionStateChangePage{}, fmt.Errorf("scan transaction state change: %w", err)
+			var before, after pgtype.Text
+			{
+				address = storedRow.Address
+				change.Kind = storedRow.FieldKind
+				storageKey = storedRow.StorageKey
+				var queryValue3 pgtype.Text
+				if storedRow.BeforeValue != nil {
+					queryValue3 = pgtype.Text{String: *storedRow.BeforeValue, Valid: true}
+				}
+				before = queryValue3
+				var queryValue5 pgtype.Text
+				if storedRow.AfterValue != nil {
+					queryValue5 = pgtype.Text{String: *storedRow.AfterValue, Valid: true}
+				}
+				after = queryValue5
 			}
 			if change.Address, err = checksumAddressBytes(address); err != nil {
 				return TransactionStateChangePage{}, ErrCorruptData
@@ -327,9 +410,7 @@ func (catalog *Postgres) TransactionStateChanges(
 			}
 			page.Items = append(page.Items, change)
 		}
-		if err := rows.Err(); err != nil {
-			return TransactionStateChangePage{}, fmt.Errorf("iterate transaction state changes: %w", err)
-		}
+
 		if len(page.Items) > resolution.limit {
 			page.Items = page.Items[:resolution.limit]
 			page.NextCursor, err = resolution.nextCursor("state_changes", resolution.offset+resolution.limit)
@@ -338,7 +419,7 @@ func (catalog *Postgres) TransactionStateChanges(
 			}
 		}
 	}
-	if err := commitRead(tx); err != nil {
+	if err := commitRead(ctx, tx); err != nil {
 		return TransactionStateChangePage{}, err
 	}
 	return page, nil
@@ -349,7 +430,7 @@ func (catalog *Postgres) beginTransactionResource(
 	request TransactionResourceRequest,
 	kind string,
 	stage Stage,
-) (*sql.Tx, transactionResourceResolution, error) {
+) (pgx.Tx, transactionResourceResolution, error) {
 	if err := validateChainID(request.ChainID); err != nil {
 		return nil, transactionResourceResolution{}, err
 	}
@@ -371,20 +452,32 @@ func (catalog *Postgres) beginTransactionResource(
 	resolution.limit = limit
 	var blockNumber string
 	var blockHash []byte
-	err = tx.QueryRowContext(ctx, dbgen.CatalogTransactionResourceIdentity, request.ChainID, txHash).Scan(
-		&blockNumber, &blockHash, &resolution.txIndex, &resolution.canonical,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
-		tx.Rollback() //nolint:errcheck
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(request.ChainID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).CatalogTransactionResourceIdentity(ctx, queryValue0, txHash)
+		if err != nil {
+			return err
+		}
+		blockNumber = queryRow.InclusionBlockNumber
+		blockHash = queryRow.BlockHash
+		resolution.txIndex = queryRow.TxIndex
+		resolution.canonical = queryRow.Canonical
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
+		dbaccess.Rollback(ctx, tx) //nolint:errcheck
 		return nil, transactionResourceResolution{}, ErrNotFound
 	}
 	if err != nil {
-		tx.Rollback() //nolint:errcheck
+		dbaccess.Rollback(ctx, tx) //nolint:errcheck
 		return nil, transactionResourceResolution{}, fmt.Errorf("resolve transaction resource identity: %w", err)
 	}
 	blockHashText, err := lowerHex(blockHash)
 	if err != nil || !canonicalUint256(blockNumber) || resolution.txIndex < 0 {
-		tx.Rollback() //nolint:errcheck
+		dbaccess.Rollback(ctx, tx) //nolint:errcheck
 		return nil, transactionResourceResolution{}, ErrCorruptData
 	}
 	resolution.blockHash = blockHash
@@ -398,7 +491,7 @@ func (catalog *Postgres) beginTransactionResource(
 			ctx, tx, request.ChainID, blockNumber, blockHash, resolution.canonical, stage,
 		)
 		if err != nil {
-			tx.Rollback() //nolint:errcheck
+			dbaccess.Rollback(ctx, tx) //nolint:errcheck
 			return nil, transactionResourceResolution{}, err
 		}
 	}
@@ -408,7 +501,7 @@ func (catalog *Postgres) beginTransactionResource(
 			cursor.Kind != kind || cursor.ChainID != request.ChainID ||
 			cursor.TransactionHash != normalizedHash || cursor.BlockHash != blockHashText ||
 			cursor.Generation != resolution.generation || cursor.Offset <= 0 {
-			tx.Rollback() //nolint:errcheck
+			dbaccess.Rollback(ctx, tx) //nolint:errcheck
 			return nil, transactionResourceResolution{}, ErrInvalidCursor
 		}
 		resolution.offset = cursor.Offset
@@ -418,7 +511,7 @@ func (catalog *Postgres) beginTransactionResource(
 
 func transactionStageState(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	chainID, blockNumber string,
 	blockHash []byte,
 	canonical bool,
@@ -429,8 +522,33 @@ func transactionStageState(
 	}
 	var state string
 	var generation int64
-	err := tx.QueryRowContext(ctx, dbgen.CatalogTransactionStageState, chainID, blockNumber, blockHash, string(stage), stage.Version()).Scan(&state, &generation)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(blockNumber); err != nil {
+			return err
+		}
+		if stage.Version() < -2147483648 || stage.Version() > 2147483647 {
+			return errors.New("invalid stored query value")
+		}
+		queryRow, err := dbgen.New(tx).CatalogTransactionStageState(ctx, dbgen.CatalogTransactionStageStateParams{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: blockHash, Stage: string(stage), StageVersion: int32(stage.Version())})
+		if err != nil {
+			return err
+		}
+		if !queryRow.State.Valid {
+			return errors.New("invalid stored query value")
+		}
+		state = queryRow.State.String
+		if queryRow.JobGeneration == nil {
+			return errors.New("invalid stored query value")
+		}
+		generation = *queryRow.JobGeneration
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return StageMissing, 0, nil
 	}
 	if err != nil {

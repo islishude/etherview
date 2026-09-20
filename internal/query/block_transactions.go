@@ -2,14 +2,18 @@ package query
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strconv"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/api/gen"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/publicquery"
 )
@@ -33,11 +37,11 @@ func (r *PostgresReader) BlockTransactions(
 	if limit <= 0 || limit > 100 {
 		return nil, "", fmt.Errorf("block transaction limit %d is outside 1..100", limit)
 	}
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return nil, "", fmt.Errorf("begin stable block transaction query: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 
 	tip, err := r.currentBlockCursor(ctx, tx)
 	if err != nil {
@@ -61,25 +65,34 @@ func (r *PostgresReader) BlockTransactions(
 		}
 	}
 
-	rows, err := tx.QueryContext(ctx, dbgen.ListBlockTransactions,
-		r.chainID, strconv.FormatUint(blockNumber, 10), blockHash.Bytes(), cursor.AfterIndex, limit+1,
-	)
+	rows, err := func() ([]dbgen.ListBlockTransactionsRow, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(r.chainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(blockNumber, 10)); err != nil {
+			return nil, err
+		}
+		if limit+1 < -2147483648 || limit+1 > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).ListBlockTransactions(ctx, dbgen.ListBlockTransactionsParams{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: blockHash.Bytes(), TxIndex: cursor.AfterIndex, Limit: int32(limit + 1)})
+	}()
 	if err != nil {
 		return nil, "", fmt.Errorf("query block transaction page: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	records := make([]transactionRecord, 0, limit+1)
-	for rows.Next() {
-		record, err := r.scanTransaction(rows, tip.SnapshotNumber)
+	for _, storedRow := range rows {
+		record, err := r.decodeTransaction(dbgen.ListBlockTransactionsRow(storedRow), tip.SnapshotNumber)
 		if err != nil {
 			return nil, "", err
 		}
 		records = append(records, record)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, "", fmt.Errorf("iterate block transaction page: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
+
+	if err := tx.Commit(ctx); err != nil {
 		return nil, "", fmt.Errorf("commit stable block transaction query: %w", err)
 	}
 
@@ -107,7 +120,7 @@ func (r *PostgresReader) BlockTransactions(
 
 func (r *PostgresReader) resolveBlockTransactionTarget(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	identifier string,
 ) (uint64, common.Hash, error) {
 	if hash, isHash, err := parseHashIdentifier(identifier); err != nil {
@@ -115,8 +128,20 @@ func (r *PostgresReader) resolveBlockTransactionTarget(
 	} else if isHash {
 		var numberText string
 		var hashBytes []byte
-		if err := tx.QueryRowContext(ctx, dbgen.GetBlockTransactionTargetByHash, r.chainID, hash.Bytes()).Scan(&numberText, &hashBytes); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
+		if err := func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(r.chainID); err != nil {
+				return err
+			}
+			queryRow, err := dbgen.New(tx).GetBlockTransactionTargetByHash(ctx, queryValue0, hash.Bytes())
+			if err != nil {
+				return err
+			}
+			numberText = queryRow.BlockNumber
+			hashBytes = queryRow.BlockHash
+			return nil
+		}(); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
 				return 0, common.Hash{}, publicquery.ErrNotFound
 			}
 			return 0, common.Hash{}, fmt.Errorf("query block transaction target by hash: %w", err)
@@ -141,10 +166,24 @@ func (r *PostgresReader) resolveBlockTransactionTarget(
 	}
 	var numberText string
 	var hashBytes []byte
-	if err := tx.QueryRowContext(ctx, dbgen.GetBlockTransactionTargetByNumber,
-		r.chainID, strconv.FormatUint(number, 10),
-	).Scan(&numberText, &hashBytes); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(r.chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(number, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).GetBlockTransactionTargetByNumber(ctx, queryValue0, queryValue1)
+		if err != nil {
+			return err
+		}
+		numberText = queryRow.BlockNumber
+		hashBytes = queryRow.BlockHash
+		return nil
+	}(); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return 0, common.Hash{}, publicquery.ErrNotFound
 		}
 		return 0, common.Hash{}, fmt.Errorf("query block transaction target by number: %w", err)
@@ -165,7 +204,7 @@ func (r *PostgresReader) resolveBlockTransactionTarget(
 
 func (r *PostgresReader) validateBlockTransactionCursor(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	cursor blockTransactionCursor,
 	blockNumber uint64,
 	blockHash common.Hash,
@@ -178,9 +217,22 @@ func (r *PostgresReader) validateBlockTransactionCursor(
 		return fmt.Errorf("%w: block transaction cursor block hash is invalid", ErrInvalidCursor)
 	}
 	var exists bool
-	if err := tx.QueryRowContext(ctx, dbgen.ValidateBlockTransactionCursor,
-		r.chainID, strconv.FormatUint(blockNumber, 10), blockHash.Bytes(),
-	).Scan(&exists); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(r.chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(blockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).ValidateBlockTransactionCursor(ctx, queryValue0, queryValue1, blockHash.Bytes())
+		if err != nil {
+			return err
+		}
+		exists = queryRow
+		return nil
+	}(); err != nil {
 		return fmt.Errorf("validate block transaction cursor: %w", err)
 	}
 	if !exists {

@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -15,6 +14,10 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/islishude/etherview/internal/store"
 	"github.com/islishude/etherview/internal/verify"
@@ -105,7 +108,7 @@ func TestVerifierV2PublishesOnlyCanonicalRuntimeAndKeepsResultImmutable(t *testi
 		job.ID, job.RequestDigest[:], []byte(submission.StandardJSONVariants[0]),
 		compilerDigest[:], executorDigest[:], runtime,
 	)
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		UPDATE verification_compilation_contracts SET contract_name = 'Changed'
 		WHERE compilation_id = (
 			SELECT id FROM verification_compilation_units WHERE source_job_id = $1::uuid
@@ -123,12 +126,12 @@ func TestVerifierV2PublishesOnlyCanonicalRuntimeAndKeepsResultImmutable(t *testi
 		SELECT count(*) FROM verified_contracts
 		WHERE match_type = 'full' AND code_hash = $1
 		  AND verification_job_id = $2::uuid`, 1, codeHash, job.ID)
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		UPDATE verification_results SET outcome_kind = 'verification_failure'
 		WHERE job_id = $1::uuid`, job.ID); err == nil {
 		t.Fatal("immutable verifier-v2 result accepted an update")
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		DELETE FROM verification_results WHERE job_id = $1::uuid`, job.ID); err == nil {
 		t.Fatal("immutable verifier-v2 result accepted a delete")
 	}
@@ -367,7 +370,7 @@ func TestVerifierV2LeaseReclaimKeepsPinnedCompilerIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("submit reclaim job: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		UPDATE verification_jobs
 		SET compiler_platform = $2, catalog_generation_id = $3,
 		    compiler_digest = $4
@@ -416,7 +419,7 @@ func TestVerifierV2LeaseReclaimKeepsPinnedCompilerIdentity(t *testing.T) {
 	if err := repository.BindCompiler(ctx, second, conflicting); !errors.Is(err, verify.ErrCompilerProvenanceConflict) {
 		t.Fatalf("rebind compiler error = %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		UPDATE verification_jobs
 		SET compiler_digest = decode(repeat('42', 32), 'hex')
 		WHERE id = $1::uuid`, second.Job.ID); err == nil {
@@ -567,9 +570,9 @@ func TestGeasVerificationBindsWithoutCatalogAndPublishesExactRuntime(t *testing.
 	if err := repository.BindCompiler(ctx, lease, provenance); err != nil {
 		t.Fatalf("bind Geas compiler: %v", err)
 	}
-	var catalogGeneration sql.NullInt64
+	var catalogGeneration pgtype.Int8
 	var platform, executorKind string
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT catalog_generation_id, compiler_platform, executor_kind
 		FROM verification_jobs WHERE id = $1::uuid`, job.ID,
 	).Scan(&catalogGeneration, &platform, &executorKind); err != nil {
@@ -619,7 +622,7 @@ func TestGeasVerificationBindsWithoutCatalogAndPublishesExactRuntime(t *testing.
 	if err != nil || !found || queued.Status != verify.JobQueued || queued.AttemptCount != 0 {
 		t.Fatalf("solc job during Geas-only availability: job=%+v found=%t error=%v", queued, found, err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		UPDATE verification_jobs SET executor_digest = decode(repeat('42', 32), 'hex')
 		WHERE id = $1::uuid`, job.ID); err == nil {
 		t.Fatal("Geas executor provenance rewrite was accepted")
@@ -661,7 +664,7 @@ func TestVerifierV2CatalogVersionsUseSemanticOrder(t *testing.T) {
 	defer cancel()
 	catalogDigest := sha256.Sum256([]byte("semantic-version-order-catalog"))
 	var generation int64
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		INSERT INTO compiler_catalog_generations (
 			language, source_url, catalog_digest, entry_count
 		) VALUES ('solidity', 'https://compiler.example/list.json', $1, 4)
@@ -785,15 +788,15 @@ func TestSolcJSExecutorMigrationDeletesVyperAndPreservesSolidity(t *testing.T) {
 	vyperAddress, vyperCodeHash := bytes.Repeat([]byte{0x22}, 20), bytes.Repeat([]byte{0x42}, 32)
 	proxyAddress, proxyCodeHash := bytes.Repeat([]byte{0x33}, 20), bytes.Repeat([]byte{0x43}, 32)
 
-	tx, err := db.BeginTx(ctx, nil)
+	tx, err := db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback() //nolint:errcheck
-	if _, err := tx.ExecContext(ctx, `INSERT INTO chains (chain_id) VALUES (1)`); err != nil {
+	defer tx.Rollback(context.Background()) //nolint:errcheck
+	if _, err := tx.Exec(ctx, `INSERT INTO chains (chain_id) VALUES (1)`); err != nil {
 		t.Fatalf("insert migration chain fixture: %v", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO blocks (
 			chain_id, number, hash, parent_hash, timestamp, raw
 		) VALUES (1, 0, $1, $2, 0, '{}'::jsonb)`,
@@ -823,7 +826,7 @@ func TestSolcJSExecutorMigrationDeletesVyperAndPreservesSolidity(t *testing.T) {
 		{id: runningJobID, status: "running"},
 	} {
 		requestDigest := sha256.Sum256([]byte("migration-active:" + fixture.id))
-		if _, err := tx.ExecContext(ctx, `
+		if _, err := tx.Exec(ctx, `
 			INSERT INTO verification_jobs (
 				id, kind, language, catalog_language, compiler_version,
 				compiler_platform, catalog_generation_id, compiler_digest,
@@ -876,7 +879,7 @@ func TestSolcJSExecutorMigrationDeletesVyperAndPreservesSolidity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO proxy_observations (
 			chain_id, proxy_address, block_number, block_hash, proxy_code_hash,
 			proxy_kind, implementation_address, implementation_code_hash,
@@ -886,7 +889,7 @@ func TestSolcJSExecutorMigrationDeletesVyperAndPreservesSolidity(t *testing.T) {
 	); err != nil {
 		t.Fatalf("insert Vyper-dependent proxy observation: %v", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO verification_jobs (
 			id, kind, chain_id, address, code_hash, block_hash, request,
 			request_payload, request_digest, status, attempt_count,
@@ -900,7 +903,7 @@ func TestSolcJSExecutorMigrationDeletesVyperAndPreservesSolidity(t *testing.T) {
 	); err != nil {
 		t.Fatalf("insert Vyper-dependent proxy job: %v", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO verification_results (
 			job_id, request_digest, outcome_kind, outcome
 		) VALUES ($1::uuid, $2, 'proxy_verification_success', $3::jsonb)`,
@@ -908,7 +911,7 @@ func TestSolcJSExecutorMigrationDeletesVyperAndPreservesSolidity(t *testing.T) {
 	); err != nil {
 		t.Fatalf("insert Vyper-dependent proxy result: %v", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO verified_proxy_contracts (
 			chain_id, proxy_address, proxy_code_hash, observation_block_number,
 			observation_block_hash, proxy_kind, implementation_address,
@@ -919,7 +922,7 @@ func TestSolcJSExecutorMigrationDeletesVyperAndPreservesSolidity(t *testing.T) {
 	); err != nil {
 		t.Fatalf("insert Vyper-dependent proxy publication: %v", err)
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		t.Fatalf("commit pre-0031 fixtures: %v", err)
 	}
 
@@ -963,14 +966,14 @@ func TestSolcJSExecutorMigrationDeletesVyperAndPreservesSolidity(t *testing.T) {
 		  AND table_name = 'verification_jobs'
 		  AND column_name IN ('runner_digest', 'requires_hard_isolation')`, 0)
 
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO compiler_catalog_generations (
 			language, source_url, catalog_digest, entry_count
 		) VALUES ('vyper', 'https://compiler.example/vyper/list.json',
 			decode(repeat('91', 32), 'hex'), 1)`); err != nil {
 		t.Fatalf("current schema rejected a new Vyper catalog: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO verification_jobs (
 			id, kind, language, catalog_language, compiler_version,
 			request, request_payload, request_digest
@@ -982,18 +985,18 @@ func TestSolcJSExecutorMigrationDeletesVyperAndPreservesSolidity(t *testing.T) {
 		)`); err == nil {
 		t.Fatal("post-migration Vyper job write was accepted")
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		UPDATE verified_contracts SET language = 'vyper'
 		WHERE verification_job_id = $1::uuid`, solidityJobID); err == nil {
 		t.Fatal("post-migration Vyper publication write was accepted")
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		DELETE FROM verification_results WHERE job_id = $1::uuid`,
 		solidityJobID,
 	); err == nil {
 		t.Fatal("migration did not restore result immutability")
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO verification_jobs (
 			id, kind, language, catalog_language, compiler_version,
 			compiler_platform, catalog_generation_id, compiler_digest,
@@ -1050,7 +1053,7 @@ func TestSolcJSExecutorMigrationDeletesVyperAndPreservesSolidity(t *testing.T) {
 func applyMigrationsThrough(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	lastVersion string,
 ) {
 	t.Helper()
@@ -1058,20 +1061,20 @@ func applyMigrationsThrough(
 	if err != nil {
 		t.Fatal(err)
 	}
-	tx, err := db.BeginTx(ctx, nil)
+	tx, err := db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer tx.Rollback(context.Background()) //nolint:errcheck
 	found := false
 	for _, migration := range migrations {
 		if migration.Version > lastVersion {
 			break
 		}
-		if _, err := tx.ExecContext(ctx, migration.SQL); err != nil {
+		if _, err := tx.Exec(ctx, migration.SQL); err != nil {
 			t.Fatalf("apply migration %s: %v", migration.Version, err)
 		}
-		if _, err := tx.ExecContext(ctx, `
+		if _, err := tx.Exec(ctx, `
 			INSERT INTO etherview_schema_migrations (version, checksum)
 			VALUES ($1, $2)`, migration.Version, migration.Checksum,
 		); err != nil {
@@ -1082,7 +1085,7 @@ func applyMigrationsThrough(
 	if !found {
 		t.Fatalf("migration %s not found", lastVersion)
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		t.Fatalf("commit migrations through %s: %v", lastVersion, err)
 	}
 }
@@ -1090,7 +1093,7 @@ func applyMigrationsThrough(
 func insertLegacyCompilerCatalog(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	language verify.Language,
 	version string,
 ) (int64, [sha256.Size]byte, [sha256.Size]byte) {
@@ -1099,7 +1102,7 @@ func insertLegacyCompilerCatalog(
 	compilerDigest := sha256.Sum256([]byte("legacy-compiler:" + string(language)))
 	runnerDigest := sha256.Sum256([]byte("legacy-runner:" + string(language)))
 	var generation int64
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		INSERT INTO compiler_catalog_generations (
 			language, source_url, catalog_digest, entry_count
 		) VALUES ($1, $2, $3, 1) RETURNING id`,
@@ -1108,7 +1111,7 @@ func insertLegacyCompilerCatalog(
 	).Scan(&generation); err != nil {
 		t.Fatalf("insert legacy %s generation: %v", language, err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO compiler_catalog_entries (
 			generation_id, language, version, platform, artifact_url,
 			artifact_sha256, max_bytes
@@ -1119,7 +1122,7 @@ func insertLegacyCompilerCatalog(
 	); err != nil {
 		t.Fatalf("insert legacy %s catalog entry: %v", language, err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO compiler_catalog_heads (language, generation_id)
 		VALUES ($1, $2)`,
 		language, generation,
@@ -1132,7 +1135,7 @@ func insertLegacyCompilerCatalog(
 func insertLegacyAddressPublication(
 	t *testing.T,
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	jobID string,
 	language verify.Language,
 	version string,
@@ -1150,7 +1153,7 @@ func insertLegacyAddressPublication(
 	if language == verify.Language("vyper") {
 		fileName = "Contract.vy"
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO verification_jobs (
 			id, kind, language, catalog_language, compiler_version,
 			compiler_platform, catalog_generation_id, compiler_digest,
@@ -1167,7 +1170,7 @@ func insertLegacyAddressPublication(
 	); err != nil {
 		t.Fatalf("insert legacy %s job: %v", language, err)
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO verification_results (
 			job_id, request_digest, outcome_kind, outcome, file_name,
 			contract_name, language, compiler_version, match_type, abi,
@@ -1183,7 +1186,7 @@ func insertLegacyAddressPublication(
 	); err != nil {
 		t.Fatalf("insert legacy %s result: %v", language, err)
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO verified_contracts (
 			chain_id, address, code_hash, valid_from_block,
 			verification_job_id, request_digest, file_name, contract_name,
@@ -1204,14 +1207,14 @@ func insertLegacyAddressPublication(
 func insertVerifierV2Compiler(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 ) (int64, [sha256.Size]byte, [sha256.Size]byte) {
 	t.Helper()
 	catalogDigest := sha256.Sum256([]byte("verifier-v2-integration-catalog"))
 	compilerDigest := sha256.Sum256([]byte("verifier-v2-integration-compiler"))
 	executorDigest := sha256.Sum256([]byte("verifier-v2-integration-solcjs-executor"))
 	var generation int64
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		INSERT INTO compiler_catalog_generations (
 			language, source_url, catalog_digest, entry_count
 		) VALUES ('solidity', 'https://compiler.example/list.json', $1, 1)

@@ -74,14 +74,13 @@ observability:
   sync_progress_log_interval: 30s
 
 metadata:
-  # Keep the fixed public-IPFS acceptance fetch inside one durable attempt even
-  # when the public gateway needs a cold retrieval.
+  # Bound cold retrievals through the local Kubo gateway.
   fetch_timeout: 30s
   max_document_bytes: 2097152
   max_redirects: 3
-  ipfs_gateway: https://ipfs.io
+  ipfs_gateway: https://ipfs.preview.test:8443
   # The checked-in config stays strict. compose.preview.yaml overrides this
-  # only in the metadata worker process for Docker Desktop fake-IP routing.
+  # only in the metadata worker process for the controlled local gateway.
   unsafe_allow_private_networks: false
 
 features:

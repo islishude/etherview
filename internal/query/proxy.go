@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	dbaccess "github.com/islishude/etherview/internal/db"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/islishude/etherview/internal/cwiaargs"
@@ -21,7 +23,6 @@ import (
 	"github.com/islishude/etherview/internal/publicquery"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/stdlib"
 )
 
 const (
@@ -188,7 +189,7 @@ func (r *PostgresReader) Proxy(ctx context.Context, rawAddress string) (ProxyDet
 	if err != nil {
 		return ProxyDetail{}, fmt.Errorf("invalid proxy address: %w", err)
 	}
-	chainID, err := r.proxyChainNumeric()
+	chainID, err := r.chainNumeric()
 	if err != nil {
 		return ProxyDetail{}, err
 	}
@@ -332,7 +333,7 @@ func (r *PostgresReader) ProxyUpgrades(
 	if err != nil {
 		return ProxyUpgradePage{}, err
 	}
-	chainID, err := r.proxyChainNumeric()
+	chainID, err := r.chainNumeric()
 	if err != nil {
 		return ProxyUpgradePage{}, err
 	}
@@ -408,7 +409,7 @@ func (r *PostgresReader) ProxyInitializations(
 	if err != nil {
 		return ProxyInitializationPage{}, err
 	}
-	chainID, err := r.proxyChainNumeric()
+	chainID, err := r.chainNumeric()
 	if err != nil {
 		return ProxyInitializationPage{}, err
 	}
@@ -486,7 +487,7 @@ func (r *PostgresReader) DiamondCuts(
 	if err != nil {
 		return DiamondCutPage{}, err
 	}
-	chainID, err := r.proxyChainNumeric()
+	chainID, err := r.chainNumeric()
 	if err != nil {
 		return DiamondCutPage{}, err
 	}
@@ -572,7 +573,7 @@ func (r *PostgresReader) DiamondCuts(
 	return result, nil
 }
 
-func (r *PostgresReader) proxyChainNumeric() (pgtype.Numeric, error) {
+func (r *PostgresReader) chainNumeric() (pgtype.Numeric, error) {
 	value, ok := new(big.Int).SetString(r.chainID, 10)
 	if !ok || value.Sign() <= 0 {
 		return pgtype.Numeric{}, errors.New("query reader chain ID is invalid")
@@ -588,31 +589,9 @@ func (r *PostgresReader) withProxyReadTransaction(
 	ctx context.Context,
 	callback func(*dbgen.Queries) error,
 ) error {
-	connection, err := r.db.Conn(ctx)
-	if err != nil {
-		return fmt.Errorf("acquire proxy writer connection: %w", err)
-	}
-	defer func() { _ = connection.Close() }()
-	return connection.Raw(func(driverConnection any) error {
-		stdlibConnection, ok := driverConnection.(*stdlib.Conn)
-		if !ok {
-			return fmt.Errorf("proxy queries require pgx stdlib, got %T", driverConnection)
-		}
-		transaction, err := stdlibConnection.Conn().BeginTx(ctx, pgx.TxOptions{
-			IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly,
-		})
-		if err != nil {
-			return fmt.Errorf("begin stable proxy writer query: %w", err)
-		}
-		defer func() { _ = transaction.Rollback(ctx) }()
-		if err := callback(dbgen.New(transaction)); err != nil {
-			return err
-		}
-		if err := transaction.Commit(ctx); err != nil {
-			return fmt.Errorf("commit stable proxy writer query: %w", err)
-		}
-		return nil
-	})
+	return dbaccess.WithTransactionOptions(ctx, r.db, pgx.TxOptions{
+		IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly,
+	}, callback)
 }
 
 func proxySnapshot(number string, hash []byte) (ProxySnapshot, error) {

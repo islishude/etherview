@@ -4,12 +4,15 @@ package integration_test
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"sync"
 	"testing"
 	"time"
+
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/enrich"
@@ -116,18 +119,18 @@ func TestExpiredWriterCannotPublishAfterReplacementLease(t *testing.T) {
 		t.Fatalf("claim expiring publisher=%+v found=%t err=%v", oldLease, found, err)
 	}
 	const outputBarrier = int64(714_119)
-	lockConnection, err := db.Conn(ctx)
+	lockConnection, err := db.Acquire(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lockConnection.Close() //nolint:errcheck
-	if _, err := lockConnection.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, outputBarrier); err != nil {
+	defer lockConnection.Release() //nolint:errcheck
+	if _, err := lockConnection.Exec(ctx, `SELECT pg_advisory_lock($1)`, outputBarrier); err != nil {
 		t.Fatal(err)
 	}
 	barrierHeld := true
 	defer func() {
 		if barrierHeld {
-			_, _ = lockConnection.ExecContext(context.Background(), `SELECT pg_advisory_unlock($1)`, outputBarrier)
+			_, _ = lockConnection.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, outputBarrier)
 		}
 	}()
 	execFixture(t, ctx, db, `
@@ -163,7 +166,7 @@ func TestExpiredWriterCannotPublishAfterReplacementLease(t *testing.T) {
 		replacementResult <- claimResult{lease: lease, found: claimFound, err: claimErr}
 	}()
 	waitForAdvisoryWaiterCount(t, ctx, db, 2)
-	if _, err := lockConnection.ExecContext(ctx, `SELECT pg_advisory_unlock($1)`, outputBarrier); err != nil {
+	if _, err := lockConnection.Exec(ctx, `SELECT pg_advisory_unlock($1)`, outputBarrier); err != nil {
 		t.Fatal(err)
 	}
 	barrierHeld = false
@@ -421,7 +424,7 @@ func TestPublicationMigrationAndViewRequireExactDurableTerminalIdentity(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO block_stage_results (
 			chain_id, block_number, block_hash, stage, stage_version,
 			state, details, durable_job_id
@@ -430,7 +433,7 @@ func TestPublicationMigrationAndViewRequireExactDurableTerminalIdentity(t *testi
 	); err == nil {
 		t.Fatal("block_stage_results accepted a half-populated publication marker")
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		INSERT INTO block_journals (
 			chain_id, block_hash, stage, sequence, payload, canonical, job_generation
 		) VALUES (1, $1, $2, 1, '{}'::jsonb, TRUE, 1)`,
@@ -447,15 +450,15 @@ func TestPublicationMigrationAndViewRequireExactDurableTerminalIdentity(t *testi
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM published_block_stage_results
 		WHERE durable_job_id = $1`, 0, enqueued.Job.ID)
-	tx, err := db.BeginTx(ctx, nil)
+	tx, err := db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback() //nolint:errcheck
-	if _, err := tx.ExecContext(ctx, `SELECT set_config('etherview.enrichment_publication_protocol', '2', true)`); err != nil {
+	defer tx.Rollback(context.Background()) //nolint:errcheck
+	if _, err := tx.Exec(ctx, `SELECT set_config('etherview.enrichment_publication_protocol', '2', true)`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO block_journals (
 			chain_id, block_hash, stage, sequence, payload, canonical,
 			durable_job_id, job_generation
@@ -464,7 +467,7 @@ func TestPublicationMigrationAndViewRequireExactDurableTerminalIdentity(t *testi
 	); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO durable_stage_publications (
 			job_id, job_generation, chain_id, block_number, block_hash,
 			stage, stage_version, state, details
@@ -473,7 +476,7 @@ func TestPublicationMigrationAndViewRequireExactDurableTerminalIdentity(t *testi
 	); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := tx.Exec(ctx, `
 		UPDATE durable_jobs
 		SET status = 'succeeded', attempts = 1,
 			claimed_generation = 1, completed_generation = 1,
@@ -483,7 +486,7 @@ func TestPublicationMigrationAndViewRequireExactDurableTerminalIdentity(t *testi
 		WHERE id = $1`, enqueued.Job.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
 	assertRowCount(t, ctx, db, `
@@ -526,7 +529,7 @@ func TestLeaseFencedPublicationMigrationReplaysLegacyTerminalsAndGuardsOldWorker
 			publicationMigration = migration.SQL
 			break
 		}
-		if _, err := db.ExecContext(ctx, migration.SQL); err != nil {
+		if _, err := db.Exec(ctx, migration.SQL); err != nil {
 			t.Fatalf("apply pre-publication migration %s: %v", migration.Version, err)
 		}
 	}
@@ -556,7 +559,7 @@ func TestLeaseFencedPublicationMigrationReplaysLegacyTerminalsAndGuardsOldWorker
 		case "failed":
 			result = `{"state":"failed","error":"legacy failure"}`
 		}
-		if err := db.QueryRowContext(ctx, `
+		if err := db.QueryRow(ctx, `
 			INSERT INTO durable_jobs (
 				chain_id, kind, stage, stage_version, idempotency_key, payload,
 				status, attempts, max_attempts, leased_by, lease_token,
@@ -593,7 +596,7 @@ func TestLeaseFencedPublicationMigrationReplaysLegacyTerminalsAndGuardsOldWorker
 		mustBytes(t, reference.Hash))
 
 	for attempt := 1; attempt <= 2; attempt++ {
-		if _, err := db.ExecContext(ctx, publicationMigration); err != nil {
+		if _, err := db.Exec(ctx, publicationMigration); err != nil {
 			t.Fatalf("apply publication migration attempt %d: %v", attempt, err)
 		}
 	}
@@ -618,14 +621,14 @@ func TestLeaseFencedPublicationMigrationReplaysLegacyTerminalsAndGuardsOldWorker
 		0, mustBytes(t, reference.Hash))
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM durable_stage_publications`, 0)
 
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		UPDATE durable_jobs
 		SET status = 'leased', leased_by = 'old-worker', lease_token = 'old-token',
 			lease_expires_at = clock_timestamp() + INTERVAL '1 minute', leased_generation = 1
 		WHERE id = $1`, queuedID); err == nil {
 		t.Fatal("post-migration old worker acquired a derived lease without protocol 2")
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		UPDATE durable_jobs
 		SET status = 'failed', result = '{"state":"failed","error":"old finish"}'::jsonb,
 			last_error = 'old finish', completed_generation = 1,
@@ -703,7 +706,7 @@ func TestOlderExhaustionCannotOverwriteNewerOrForeignPublicationMarker(t *testin
 			}
 			var state, sentinel string
 			var gotJob, gotGeneration int64
-			if err := db.QueryRowContext(ctx, `
+			if err := db.QueryRow(ctx, `
 				SELECT state, details->>'sentinel', durable_job_id, job_generation
 				FROM block_stage_results
 				WHERE chain_id = 1 AND block_hash = $1
@@ -764,7 +767,7 @@ func TestReplayGenerationHandoffRejectsForeignJournal(t *testing.T) {
 		1, mustBytes(t, reference.Hash), enrich.StatsStage.String(), foreign.Job.ID)
 	var status string
 	var attempts, claimed int64
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT status, attempts, claimed_generation FROM durable_jobs WHERE id = $1`, target.Job.ID,
 	).Scan(&status, &attempts, &claimed); err != nil {
 		t.Fatal(err)
@@ -805,18 +808,18 @@ func TestStaleCanonicalPublicationRemainsInvisibleAcrossSameHashReattach(t *test
 	}
 
 	const advisoryKey = int64(714_118)
-	lockConnection, err := db.Conn(ctx)
+	lockConnection, err := db.Acquire(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lockConnection.Close() //nolint:errcheck
-	if _, err := lockConnection.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, advisoryKey); err != nil {
+	defer lockConnection.Release() //nolint:errcheck
+	if _, err := lockConnection.Exec(ctx, `SELECT pg_advisory_lock($1)`, advisoryKey); err != nil {
 		t.Fatal(err)
 	}
 	locked := true
 	defer func() {
 		if locked {
-			_, _ = lockConnection.ExecContext(context.Background(), `SELECT pg_advisory_unlock($1)`, advisoryKey)
+			_, _ = lockConnection.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, advisoryKey)
 		}
 	}()
 	execFixture(t, ctx, db, `
@@ -841,7 +844,7 @@ func TestStaleCanonicalPublicationRemainsInvisibleAcrossSameHashReattach(t *test
 	}()
 	waitForAdvisoryWaiter(t, ctx, db, advisoryKey)
 	applyDerivedReorg(t, ctx, repository, genesis, []chainbundle.Bundle{replacement}, []chainbundle.Bundle{original}, "reattach during stale publication")
-	if _, err := lockConnection.ExecContext(ctx, `SELECT pg_advisory_unlock($1)`, advisoryKey); err != nil {
+	if _, err := lockConnection.Exec(ctx, `SELECT pg_advisory_unlock($1)`, advisoryKey); err != nil {
 		t.Fatal(err)
 	}
 	locked = false
@@ -865,7 +868,7 @@ func TestStaleCanonicalPublicationRemainsInvisibleAcrossSameHashReattach(t *test
 			t.Fatal(err)
 		}
 		var requested int64
-		if err := db.QueryRowContext(ctx, `SELECT requested_generation FROM durable_jobs WHERE id = $1`, enqueued.Job.ID).Scan(&requested); err != nil {
+		if err := db.QueryRow(ctx, `SELECT requested_generation FROM durable_jobs WHERE id = $1`, enqueued.Job.ID).Scan(&requested); err != nil {
 			t.Fatal(err)
 		}
 		if requested == 2 {
@@ -941,7 +944,7 @@ func TestCompletedPublicationRemainsInvisibleUntilSameHashReattachReplay(t *test
 			t.Fatal(err)
 		}
 		var requested int64
-		if err := db.QueryRowContext(ctx, `SELECT requested_generation FROM durable_jobs WHERE id = $1`, enqueued.Job.ID).Scan(&requested); err != nil {
+		if err := db.QueryRow(ctx, `SELECT requested_generation FROM durable_jobs WHERE id = $1`, enqueued.Job.ID).Scan(&requested); err != nil {
 			t.Fatal(err)
 		}
 		if requested == 2 {
@@ -964,7 +967,7 @@ func TestCompletedPublicationRemainsInvisibleUntilSameHashReattachReplay(t *test
 	assertPublishedGeneration(t, ctx, db, enqueued.Job.ID, 2)
 }
 
-func newEmptyProxyProcessor(t *testing.T, db *sql.DB, blockHash string) *enrich.PostgresProxyProcessor {
+func newEmptyProxyProcessor(t *testing.T, db *pgxpool.Pool, blockHash string) *enrich.PostgresProxyProcessor {
 	t.Helper()
 	states := map[string]map[string]proxyContractState{blockHash: {}}
 	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{
@@ -980,7 +983,7 @@ func newEmptyProxyProcessor(t *testing.T, db *sql.DB, blockHash string) *enrich.
 	return processor
 }
 
-func configureAtomicStatsStart(t *testing.T, ctx context.Context, db *sql.DB) {
+func configureAtomicStatsStart(t *testing.T, ctx context.Context, db *pgxpool.Pool) {
 	t.Helper()
 	execFixture(t, ctx, db, `
 		INSERT INTO core_index_configuration (chain_id, configured_start)
@@ -988,13 +991,13 @@ func configureAtomicStatsStart(t *testing.T, ctx context.Context, db *sql.DB) {
 		ON CONFLICT (chain_id) DO UPDATE SET configured_start = EXCLUDED.configured_start`)
 }
 
-func waitForAdvisoryWaiter(t *testing.T, ctx context.Context, db *sql.DB, key int64) {
+func waitForAdvisoryWaiter(t *testing.T, ctx context.Context, db *pgxpool.Pool, key int64) {
 	t.Helper()
 	ticker := time.NewTicker(5 * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		var waiting bool
-		if err := db.QueryRowContext(ctx, `
+		if err := db.QueryRow(ctx, `
 			SELECT EXISTS (
 				SELECT 1 FROM pg_locks
 				WHERE locktype = 'advisory' AND NOT granted
@@ -1013,13 +1016,13 @@ func waitForAdvisoryWaiter(t *testing.T, ctx context.Context, db *sql.DB, key in
 	}
 }
 
-func waitForAdvisoryWaiterCount(t *testing.T, ctx context.Context, db *sql.DB, minimum int) {
+func waitForAdvisoryWaiterCount(t *testing.T, ctx context.Context, db *pgxpool.Pool, minimum int) {
 	t.Helper()
 	ticker := time.NewTicker(5 * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		var waiting int
-		if err := db.QueryRowContext(ctx, `
+		if err := db.QueryRow(ctx, `
 			SELECT count(*) FROM pg_locks
 			WHERE locktype = 'advisory' AND NOT granted`).Scan(&waiting); err != nil {
 			t.Fatal(err)
@@ -1038,7 +1041,7 @@ func waitForAdvisoryWaiterCount(t *testing.T, ctx context.Context, db *sql.DB, m
 func assertAtomicStageAbsent(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	reference store.BlockRef,
 	stage enrich.StageID,
 ) {
@@ -1063,7 +1066,7 @@ func assertAtomicStageAbsent(
 func assertPublishedGeneration(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	jobID string,
 	generation int64,
 ) {
@@ -1086,7 +1089,7 @@ func assertPublishedGeneration(
 func assertPublishedTerminalNoJournal(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	jobID string,
 	generation int64,
 	state enrich.ResultState,
@@ -1094,9 +1097,9 @@ func assertPublishedTerminalNoJournal(
 ) {
 	t.Helper()
 	var gotState string
-	var gotError sql.NullString
+	var gotError pgtype.Text
 	var markerJob, markerGeneration int64
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT state, last_error, durable_job_id, job_generation
 		FROM published_block_stage_results
 		WHERE durable_job_id = $1 AND job_generation = $2`, jobID, generation,

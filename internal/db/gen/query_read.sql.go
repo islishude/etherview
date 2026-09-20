@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const GetAddressDelegationHistory = `-- name: GetAddressDelegationHistory :one
+const getAddressDelegationHistory = `-- name: GetAddressDelegationHistory :one
 SELECT EXISTS (
            SELECT 1
            FROM canonical_blocks AS reference
@@ -47,7 +47,7 @@ type GetAddressDelegationHistoryRow struct {
 }
 
 func (q *Queries) GetAddressDelegationHistory(ctx context.Context, arg GetAddressDelegationHistoryParams) (GetAddressDelegationHistoryRow, error) {
-	row := q.db.QueryRow(ctx, GetAddressDelegationHistory,
+	row := q.db.QueryRow(ctx, getAddressDelegationHistory,
 		arg.ChainID,
 		arg.ReferenceNumber,
 		arg.ReferenceHash,
@@ -58,7 +58,7 @@ func (q *Queries) GetAddressDelegationHistory(ctx context.Context, arg GetAddres
 	return i, err
 }
 
-const GetBlockTransactionTargetByHash = `-- name: GetBlockTransactionTargetByHash :one
+const getBlockTransactionTargetByHash = `-- name: GetBlockTransactionTargetByHash :one
 SELECT number::text AS block_number, hash AS block_hash
 FROM blocks
 WHERE chain_id = $1::numeric AND hash = $2
@@ -70,14 +70,14 @@ type GetBlockTransactionTargetByHashRow struct {
 	BlockHash   []byte `db:"block_hash" json:"block_hash"`
 }
 
-func (q *Queries) GetBlockTransactionTargetByHash(ctx context.Context, column1 pgtype.Numeric, hash []byte) (GetBlockTransactionTargetByHashRow, error) {
-	row := q.db.QueryRow(ctx, GetBlockTransactionTargetByHash, column1, hash)
+func (q *Queries) GetBlockTransactionTargetByHash(ctx context.Context, chainID pgtype.Numeric, hash []byte) (GetBlockTransactionTargetByHashRow, error) {
+	row := q.db.QueryRow(ctx, getBlockTransactionTargetByHash, chainID, hash)
 	var i GetBlockTransactionTargetByHashRow
 	err := row.Scan(&i.BlockNumber, &i.BlockHash)
 	return i, err
 }
 
-const GetBlockTransactionTargetByNumber = `-- name: GetBlockTransactionTargetByNumber :one
+const getBlockTransactionTargetByNumber = `-- name: GetBlockTransactionTargetByNumber :one
 SELECT number::text AS block_number, block_hash
 FROM canonical_blocks
 WHERE chain_id = $1::numeric AND number = $2::numeric
@@ -88,14 +88,14 @@ type GetBlockTransactionTargetByNumberRow struct {
 	BlockHash   []byte `db:"block_hash" json:"block_hash"`
 }
 
-func (q *Queries) GetBlockTransactionTargetByNumber(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) (GetBlockTransactionTargetByNumberRow, error) {
-	row := q.db.QueryRow(ctx, GetBlockTransactionTargetByNumber, column1, column2)
+func (q *Queries) GetBlockTransactionTargetByNumber(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric) (GetBlockTransactionTargetByNumberRow, error) {
+	row := q.db.QueryRow(ctx, getBlockTransactionTargetByNumber, chainID, number)
 	var i GetBlockTransactionTargetByNumberRow
 	err := row.Scan(&i.BlockNumber, &i.BlockHash)
 	return i, err
 }
 
-const GetCurrentQueryTip = `-- name: GetCurrentQueryTip :one
+const getCurrentQueryTip = `-- name: GetCurrentQueryTip :one
 SELECT canonical.number::text, canonical.block_hash
 FROM canonical_blocks AS canonical
 WHERE canonical.chain_id = $1::numeric
@@ -108,14 +108,14 @@ type GetCurrentQueryTipRow struct {
 	BlockHash       []byte `db:"block_hash" json:"block_hash"`
 }
 
-func (q *Queries) GetCurrentQueryTip(ctx context.Context, dollar_1 pgtype.Numeric) (GetCurrentQueryTipRow, error) {
-	row := q.db.QueryRow(ctx, GetCurrentQueryTip, dollar_1)
+func (q *Queries) GetCurrentQueryTip(ctx context.Context, chainID pgtype.Numeric) (GetCurrentQueryTipRow, error) {
+	row := q.db.QueryRow(ctx, getCurrentQueryTip, chainID)
 	var i GetCurrentQueryTipRow
 	err := row.Scan(&i.CanonicalNumber, &i.BlockHash)
 	return i, err
 }
 
-const GetCurrentSearchGeneration = `-- name: GetCurrentSearchGeneration :one
+const getCurrentSearchGeneration = `-- name: GetCurrentSearchGeneration :one
 SELECT COALESCE(generation, 0)::bigint AS generation,
        COALESCE(min_generation, 0)::bigint AS min_generation
 FROM (SELECT 1) AS singleton
@@ -127,30 +127,30 @@ type GetCurrentSearchGenerationRow struct {
 	MinGeneration int64 `db:"min_generation" json:"min_generation"`
 }
 
-func (q *Queries) GetCurrentSearchGeneration(ctx context.Context, dollar_1 pgtype.Numeric) (GetCurrentSearchGenerationRow, error) {
-	row := q.db.QueryRow(ctx, GetCurrentSearchGeneration, dollar_1)
+func (q *Queries) GetCurrentSearchGeneration(ctx context.Context, chainID pgtype.Numeric) (GetCurrentSearchGenerationRow, error) {
+	row := q.db.QueryRow(ctx, getCurrentSearchGeneration, chainID)
 	var i GetCurrentSearchGenerationRow
 	err := row.Scan(&i.Generation, &i.MinGeneration)
 	return i, err
 }
 
-const GetHomeRuntimeEventID = `-- name: GetHomeRuntimeEventID :one
-SELECT MAX(id)
+const getHomeRuntimeEventID = `-- name: GetHomeRuntimeEventID :one
+SELECT COALESCE(MAX(id),0)::bigint AS event_id
 FROM runtime_events
 WHERE chain_id = $1::numeric
 `
 
-func (q *Queries) GetHomeRuntimeEventID(ctx context.Context, dollar_1 pgtype.Numeric) (interface{}, error) {
-	row := q.db.QueryRow(ctx, GetHomeRuntimeEventID, dollar_1)
-	var max interface{}
-	err := row.Scan(&max)
-	return max, err
+func (q *Queries) GetHomeRuntimeEventID(ctx context.Context, chainID pgtype.Numeric) (int64, error) {
+	row := q.db.QueryRow(ctx, getHomeRuntimeEventID, chainID)
+	var event_id int64
+	err := row.Scan(&event_id)
+	return event_id, err
 }
 
-const GetHomeRuntimeStatus = `-- name: GetHomeRuntimeStatus :one
-SELECT latest_number::text,
-       indexed_number::text,
-       highest_covered_number::text,
+const getHomeRuntimeStatus = `-- name: GetHomeRuntimeStatus :one
+SELECT latest_number,
+       indexed_number,
+       highest_covered_number,
        backfill_complete,
        ready
 FROM sync_runtime_status
@@ -158,15 +158,15 @@ WHERE chain_id = $1::numeric
 `
 
 type GetHomeRuntimeStatusRow struct {
-	LatestNumber         string `db:"latest_number" json:"latest_number"`
-	IndexedNumber        string `db:"indexed_number" json:"indexed_number"`
-	HighestCoveredNumber string `db:"highest_covered_number" json:"highest_covered_number"`
-	BackfillComplete     bool   `db:"backfill_complete" json:"backfill_complete"`
-	Ready                bool   `db:"ready" json:"ready"`
+	LatestNumber         pgtype.Numeric `db:"latest_number" json:"latest_number"`
+	IndexedNumber        pgtype.Numeric `db:"indexed_number" json:"indexed_number"`
+	HighestCoveredNumber pgtype.Numeric `db:"highest_covered_number" json:"highest_covered_number"`
+	BackfillComplete     bool           `db:"backfill_complete" json:"backfill_complete"`
+	Ready                bool           `db:"ready" json:"ready"`
 }
 
-func (q *Queries) GetHomeRuntimeStatus(ctx context.Context, dollar_1 pgtype.Numeric) (GetHomeRuntimeStatusRow, error) {
-	row := q.db.QueryRow(ctx, GetHomeRuntimeStatus, dollar_1)
+func (q *Queries) GetHomeRuntimeStatus(ctx context.Context, chainID pgtype.Numeric) (GetHomeRuntimeStatusRow, error) {
+	row := q.db.QueryRow(ctx, getHomeRuntimeStatus, chainID)
 	var i GetHomeRuntimeStatusRow
 	err := row.Scan(
 		&i.LatestNumber,
@@ -178,7 +178,7 @@ func (q *Queries) GetHomeRuntimeStatus(ctx context.Context, dollar_1 pgtype.Nume
 	return i, err
 }
 
-const ListAddressWithdrawalsAfter = `-- name: ListAddressWithdrawalsAfter :many
+const listAddressWithdrawalsAfter = `-- name: ListAddressWithdrawalsAfter :many
 SELECT withdrawal.withdrawal_index::text,
        withdrawal.validator_index::text,
        withdrawal.address,
@@ -204,11 +204,11 @@ LIMIT $5
 `
 
 type ListAddressWithdrawalsAfterParams struct {
-	Column1 pgtype.Numeric `db:"column_1" json:"column_1"`
-	Address []byte         `db:"address" json:"address"`
-	Column3 pgtype.Numeric `db:"column_3" json:"column_3"`
-	Column4 pgtype.Numeric `db:"column_4" json:"column_4"`
-	Limit   int32          `db:"limit" json:"limit"`
+	ChainID            pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Address            []byte         `db:"address" json:"address"`
+	MaxBlockNumber     pgtype.Numeric `db:"max_block_number" json:"max_block_number"`
+	MaxWithdrawalIndex pgtype.Numeric `db:"max_withdrawal_index" json:"max_withdrawal_index"`
+	Limit              int32          `db:"limit" json:"limit"`
 }
 
 type ListAddressWithdrawalsAfterRow struct {
@@ -222,11 +222,11 @@ type ListAddressWithdrawalsAfterRow struct {
 }
 
 func (q *Queries) ListAddressWithdrawalsAfter(ctx context.Context, arg ListAddressWithdrawalsAfterParams) ([]ListAddressWithdrawalsAfterRow, error) {
-	rows, err := q.db.Query(ctx, ListAddressWithdrawalsAfter,
-		arg.Column1,
+	rows, err := q.db.Query(ctx, listAddressWithdrawalsAfter,
+		arg.ChainID,
 		arg.Address,
-		arg.Column3,
-		arg.Column4,
+		arg.MaxBlockNumber,
+		arg.MaxWithdrawalIndex,
 		arg.Limit,
 	)
 	if err != nil {
@@ -255,7 +255,7 @@ func (q *Queries) ListAddressWithdrawalsAfter(ctx context.Context, arg ListAddre
 	return items, nil
 }
 
-const ListAddressWithdrawalsFirst = `-- name: ListAddressWithdrawalsFirst :many
+const listAddressWithdrawalsFirst = `-- name: ListAddressWithdrawalsFirst :many
 SELECT withdrawal.withdrawal_index::text,
        withdrawal.validator_index::text,
        withdrawal.address,
@@ -280,10 +280,10 @@ LIMIT $4
 `
 
 type ListAddressWithdrawalsFirstParams struct {
-	Column1 pgtype.Numeric `db:"column_1" json:"column_1"`
-	Address []byte         `db:"address" json:"address"`
-	Column3 pgtype.Numeric `db:"column_3" json:"column_3"`
-	Limit   int32          `db:"limit" json:"limit"`
+	ChainID        pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Address        []byte         `db:"address" json:"address"`
+	MaxBlockNumber pgtype.Numeric `db:"max_block_number" json:"max_block_number"`
+	Limit          int32          `db:"limit" json:"limit"`
 }
 
 type ListAddressWithdrawalsFirstRow struct {
@@ -297,10 +297,10 @@ type ListAddressWithdrawalsFirstRow struct {
 }
 
 func (q *Queries) ListAddressWithdrawalsFirst(ctx context.Context, arg ListAddressWithdrawalsFirstParams) ([]ListAddressWithdrawalsFirstRow, error) {
-	rows, err := q.db.Query(ctx, ListAddressWithdrawalsFirst,
-		arg.Column1,
+	rows, err := q.db.Query(ctx, listAddressWithdrawalsFirst,
+		arg.ChainID,
 		arg.Address,
-		arg.Column3,
+		arg.MaxBlockNumber,
 		arg.Limit,
 	)
 	if err != nil {
@@ -329,18 +329,19 @@ func (q *Queries) ListAddressWithdrawalsFirst(ctx context.Context, arg ListAddre
 	return items, nil
 }
 
-const ListBlockTransactions = `-- name: ListBlockTransactions :many
-SELECT inclusion.raw,
-       receipt.raw AS receipt_raw,
-       inclusion.block_number::text,
-       inclusion.block_hash,
-       inclusion.tx_index,
-       inclusion.tx_hash,
-       (canonical.block_hash IS NOT NULL) AS canonical,
-       finality.safe_number::text AS safe_number,
-       finality.finalized_number::text AS finalized_number,
-       block.timestamp::text AS block_timestamp,
-       block.base_fee_per_gas_quantity AS block_base_fee_per_gas
+const listBlockTransactions = `-- name: ListBlockTransactions :many
+SELECT
+    inclusion.raw AS raw,
+    receipt.raw AS receipt_raw,
+    inclusion.block_number::text AS block_number,
+    inclusion.block_hash AS block_hash,
+    inclusion.tx_index AS tx_index,
+    inclusion.tx_hash AS tx_hash,
+    ((canonical.block_hash IS NOT NULL))::boolean AS canonical,
+    finality.safe_number AS safe_number,
+    finality.finalized_number AS finalized_number,
+    block.timestamp::text AS block_timestamp,
+    block.base_fee_per_gas_quantity AS block_base_fee_per_gas
 FROM transaction_inclusions AS inclusion
 JOIN blocks AS block
   ON block.chain_id = inclusion.chain_id
@@ -365,31 +366,31 @@ LIMIT $5
 `
 
 type ListBlockTransactionsParams struct {
-	Column1   pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2   pgtype.Numeric `db:"column_2" json:"column_2"`
-	BlockHash []byte         `db:"block_hash" json:"block_hash"`
-	TxIndex   int64          `db:"tx_index" json:"tx_index"`
-	Limit     int32          `db:"limit" json:"limit"`
+	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
+	TxIndex     int64          `db:"tx_index" json:"tx_index"`
+	Limit       int32          `db:"limit" json:"limit"`
 }
 
 type ListBlockTransactionsRow struct {
-	Raw                  []byte      `db:"raw" json:"raw"`
-	ReceiptRaw           []byte      `db:"receipt_raw" json:"receipt_raw"`
-	InclusionBlockNumber string      `db:"inclusion_block_number" json:"inclusion_block_number"`
-	BlockHash            []byte      `db:"block_hash" json:"block_hash"`
-	TxIndex              int64       `db:"tx_index" json:"tx_index"`
-	TxHash               []byte      `db:"tx_hash" json:"tx_hash"`
-	Canonical            interface{} `db:"canonical" json:"canonical"`
-	SafeNumber           string      `db:"safe_number" json:"safe_number"`
-	FinalizedNumber      string      `db:"finalized_number" json:"finalized_number"`
-	BlockTimestamp       string      `db:"block_timestamp" json:"block_timestamp"`
-	BlockBaseFeePerGas   *string     `db:"block_base_fee_per_gas" json:"block_base_fee_per_gas"`
+	Raw                []byte         `db:"raw" json:"raw"`
+	ReceiptRaw         []byte         `db:"receipt_raw" json:"receipt_raw"`
+	BlockNumber        string         `db:"block_number" json:"block_number"`
+	BlockHash          []byte         `db:"block_hash" json:"block_hash"`
+	TxIndex            int64          `db:"tx_index" json:"tx_index"`
+	TxHash             []byte         `db:"tx_hash" json:"tx_hash"`
+	Canonical          bool           `db:"canonical" json:"canonical"`
+	SafeNumber         pgtype.Numeric `db:"safe_number" json:"safe_number"`
+	FinalizedNumber    pgtype.Numeric `db:"finalized_number" json:"finalized_number"`
+	BlockTimestamp     string         `db:"block_timestamp" json:"block_timestamp"`
+	BlockBaseFeePerGas *string        `db:"block_base_fee_per_gas" json:"block_base_fee_per_gas"`
 }
 
 func (q *Queries) ListBlockTransactions(ctx context.Context, arg ListBlockTransactionsParams) ([]ListBlockTransactionsRow, error) {
-	rows, err := q.db.Query(ctx, ListBlockTransactions,
-		arg.Column1,
-		arg.Column2,
+	rows, err := q.db.Query(ctx, listBlockTransactions,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.TxIndex,
 		arg.Limit,
@@ -404,7 +405,7 @@ func (q *Queries) ListBlockTransactions(ctx context.Context, arg ListBlockTransa
 		if err := rows.Scan(
 			&i.Raw,
 			&i.ReceiptRaw,
-			&i.InclusionBlockNumber,
+			&i.BlockNumber,
 			&i.BlockHash,
 			&i.TxIndex,
 			&i.TxHash,
@@ -424,7 +425,7 @@ func (q *Queries) ListBlockTransactions(ctx context.Context, arg ListBlockTransa
 	return items, nil
 }
 
-const ValidateAddressWithdrawalCursor = `-- name: ValidateAddressWithdrawalCursor :one
+const validateAddressWithdrawalCursor = `-- name: ValidateAddressWithdrawalCursor :one
 SELECT EXISTS (
            SELECT 1 FROM canonical_blocks AS snapshot
            WHERE snapshot.chain_id = $1::numeric
@@ -457,7 +458,7 @@ type ValidateAddressWithdrawalCursorParams struct {
 }
 
 func (q *Queries) ValidateAddressWithdrawalCursor(ctx context.Context, arg ValidateAddressWithdrawalCursorParams) (*bool, error) {
-	row := q.db.QueryRow(ctx, ValidateAddressWithdrawalCursor,
+	row := q.db.QueryRow(ctx, validateAddressWithdrawalCursor,
 		arg.ChainID,
 		arg.SnapshotNumber,
 		arg.SnapshotHash,
@@ -471,7 +472,7 @@ func (q *Queries) ValidateAddressWithdrawalCursor(ctx context.Context, arg Valid
 	return valid, err
 }
 
-const ValidateBlockCursor = `-- name: ValidateBlockCursor :one
+const validateBlockCursor = `-- name: ValidateBlockCursor :one
 SELECT EXISTS (
            SELECT 1 FROM canonical_blocks AS snapshot
            WHERE snapshot.chain_id = $1::numeric
@@ -487,27 +488,27 @@ SELECT EXISTS (
 `
 
 type ValidateBlockCursorParams struct {
-	Column1     pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2     pgtype.Numeric `db:"column_2" json:"column_2"`
-	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
-	Column4     pgtype.Numeric `db:"column_4" json:"column_4"`
-	BlockHash_2 []byte         `db:"block_hash_2" json:"block_hash_2"`
+	ChainID        pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	SnapshotNumber pgtype.Numeric `db:"snapshot_number" json:"snapshot_number"`
+	SnapshotHash   []byte         `db:"snapshot_hash" json:"snapshot_hash"`
+	BoundaryNumber pgtype.Numeric `db:"boundary_number" json:"boundary_number"`
+	BoundaryHash   []byte         `db:"boundary_hash" json:"boundary_hash"`
 }
 
 func (q *Queries) ValidateBlockCursor(ctx context.Context, arg ValidateBlockCursorParams) (*bool, error) {
-	row := q.db.QueryRow(ctx, ValidateBlockCursor,
-		arg.Column1,
-		arg.Column2,
-		arg.BlockHash,
-		arg.Column4,
-		arg.BlockHash_2,
+	row := q.db.QueryRow(ctx, validateBlockCursor,
+		arg.ChainID,
+		arg.SnapshotNumber,
+		arg.SnapshotHash,
+		arg.BoundaryNumber,
+		arg.BoundaryHash,
 	)
 	var valid *bool
 	err := row.Scan(&valid)
 	return valid, err
 }
 
-const ValidateBlockTransactionCursor = `-- name: ValidateBlockTransactionCursor :one
+const validateBlockTransactionCursor = `-- name: ValidateBlockTransactionCursor :one
 SELECT EXISTS (
     SELECT 1
     FROM blocks
@@ -515,20 +516,20 @@ SELECT EXISTS (
 ) AS valid
 `
 
-func (q *Queries) ValidateBlockTransactionCursor(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, hash []byte) (bool, error) {
-	row := q.db.QueryRow(ctx, ValidateBlockTransactionCursor, column1, column2, hash)
+func (q *Queries) ValidateBlockTransactionCursor(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, hash []byte) (bool, error) {
+	row := q.db.QueryRow(ctx, validateBlockTransactionCursor, chainID, number, hash)
 	var valid bool
 	err := row.Scan(&valid)
 	return valid, err
 }
 
-const ValidateResolvedSearchName = `-- name: ValidateResolvedSearchName :one
+const validateResolvedSearchName = `-- name: ValidateResolvedSearchName :one
 WITH visible_documents AS (
     SELECT document.id, document.chain_id, document.source_kind, document.source_identity, document.logical_identity, document.valid_from_generation, document.valid_to_generation, document.result_kind, document.result_key, document.result_label, document.exact_terms, document.partial_terms, document.block_number, document.block_hash, document.target_address, document.code_hash, document.valid_from_block, document.valid_to_block, document.source_canonical, document.recorded_at, document.verification_match_type, document.verification_request_digest, document.verification_job_id, document.name_observation_id, document.name_source
     FROM search_catalog_documents AS document
     WHERE document.chain_id = $1::numeric
-      AND document.valid_from_generation <= $5
-      AND (document.valid_to_generation IS NULL OR document.valid_to_generation > $5)
+      AND document.valid_from_generation <= $6
+      AND (document.valid_to_generation IS NULL OR document.valid_to_generation > $6)
 )
 SELECT EXISTS (
     SELECT 1
@@ -542,7 +543,7 @@ SELECT EXISTS (
       AND (
           (
               observation.outcome = 'not_found'
-              AND $6::bytea IS NULL
+              AND $5::bytea IS NULL
               AND NOT EXISTS (
                   SELECT 1 FROM visible_documents AS document
                   WHERE document.source_kind = 'name'
@@ -551,7 +552,7 @@ SELECT EXISTS (
           )
           OR (
               observation.outcome = 'resolved'
-              AND observation.address = $6::bytea
+              AND observation.address = $5::bytea
               AND EXISTS (
                   SELECT 1 FROM visible_documents AS document
                   WHERE document.source_kind = 'name'
@@ -573,29 +574,29 @@ SELECT EXISTS (
 `
 
 type ValidateResolvedSearchNameParams struct {
-	Column1             pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2             int64          `db:"column_2" json:"column_2"`
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	ID                  int64          `db:"id" json:"id"`
 	LookupKey           string         `db:"lookup_key" json:"lookup_key"`
 	Source              string         `db:"source" json:"source"`
+	Address             []byte         `db:"address" json:"address"`
 	ValidFromGeneration int64          `db:"valid_from_generation" json:"valid_from_generation"`
-	Column6             []byte         `db:"column_6" json:"column_6"`
 }
 
 func (q *Queries) ValidateResolvedSearchName(ctx context.Context, arg ValidateResolvedSearchNameParams) (bool, error) {
-	row := q.db.QueryRow(ctx, ValidateResolvedSearchName,
-		arg.Column1,
-		arg.Column2,
+	row := q.db.QueryRow(ctx, validateResolvedSearchName,
+		arg.ChainID,
+		arg.ID,
 		arg.LookupKey,
 		arg.Source,
+		arg.Address,
 		arg.ValidFromGeneration,
-		arg.Column6,
 	)
 	var valid bool
 	err := row.Scan(&valid)
 	return valid, err
 }
 
-const ValidateSearchCursor = `-- name: ValidateSearchCursor :one
+const validateSearchCursor = `-- name: ValidateSearchCursor :one
 SELECT EXISTS (
            SELECT 1 FROM canonical_blocks AS snapshot
            WHERE snapshot.chain_id = $1::numeric
@@ -609,16 +610,16 @@ SELECT EXISTS (
 `
 
 type ValidateSearchCursorParams struct {
-	Column1       pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2       pgtype.Numeric `db:"column_2" json:"column_2"`
+	ChainID       pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Number        pgtype.Numeric `db:"number" json:"number"`
 	BlockHash     []byte         `db:"block_hash" json:"block_hash"`
 	MinGeneration int64          `db:"min_generation" json:"min_generation"`
 }
 
 func (q *Queries) ValidateSearchCursor(ctx context.Context, arg ValidateSearchCursorParams) (*bool, error) {
-	row := q.db.QueryRow(ctx, ValidateSearchCursor,
-		arg.Column1,
-		arg.Column2,
+	row := q.db.QueryRow(ctx, validateSearchCursor,
+		arg.ChainID,
+		arg.Number,
 		arg.BlockHash,
 		arg.MinGeneration,
 	)

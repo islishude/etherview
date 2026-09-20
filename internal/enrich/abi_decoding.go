@@ -2,8 +2,9 @@ package enrich
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
+
+	pgx "github.com/jackc/pgx/v5"
 
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -17,7 +18,7 @@ type abiDecodeSummary struct {
 
 func (processor *PostgresABIProcessor) decodeObservations(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	observations []abiObservation,
 	registry *ABIRegistry,

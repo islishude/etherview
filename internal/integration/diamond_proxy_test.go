@@ -4,7 +4,6 @@ package integration_test
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"slices"
@@ -12,6 +11,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	gethabi "github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -470,7 +471,7 @@ func integrationDiamondCutData(
 func assertDiamondSnapshot(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block chainbundle.Bundle,
 	diamond, externalFacet common.Address,
 	canonical bool,
@@ -501,7 +502,7 @@ func assertDiamondSnapshot(
 func assertDiamondHistoryAfterReorg(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	oldBlock, newBlock chainbundle.Bundle,
 	diamond, currentFacet, init common.Address,
 	selector, transient [4]byte,
@@ -525,7 +526,7 @@ func assertDiamondHistoryAfterReorg(
 		WHERE chain_id = 1 AND facet_address = $1`, 0, init.Bytes())
 
 	var facetBytes []byte
-	err := db.QueryRowContext(ctx, `
+	err := db.QueryRow(ctx, `
 		SELECT facet_address
 		FROM canonical_diamond_selector_intervals
 		WHERE chain_id = 1 AND diamond_address = $1 AND selector = $2
@@ -546,7 +547,7 @@ func assertDiamondHistoryAfterReorg(
 func assertDiamondHistoricalDecoding(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block chainbundle.Bundle,
 	diamond, beforeFacet, afterFacet common.Address,
 	selector [4]byte,
@@ -562,7 +563,7 @@ func assertDiamondHistoricalDecoding(
 		transaction := block.Block.Transactions()[expected.transaction]
 		var status, source, signature string
 		var sourceAddress []byte
-		err := db.QueryRowContext(ctx, `
+		err := db.QueryRow(ctx, `
 			SELECT status, source, signature, source_address
 			FROM abi_decodings
 			WHERE chain_id = 1 AND block_hash = $1

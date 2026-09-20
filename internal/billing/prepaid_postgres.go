@@ -2,7 +2,6 @@ package billing
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"math/big"
@@ -13,13 +12,13 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
 	dbaccess "github.com/islishude/etherview/internal/db"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type PrepaidLedger struct {
-	db           *sql.DB
+	db           dbaccess.Database
 	chainID      uint64
 	chainNumeric pgtype.Numeric
 	network      string
@@ -38,7 +37,7 @@ type PrepaidOptions struct {
 	UsageTTL  time.Duration
 }
 
-func NewPrepaidLedger(db *sql.DB, options PrepaidOptions) (*PrepaidLedger, error) {
+func NewPrepaidLedger(db dbaccess.Database, options PrepaidOptions) (*PrepaidLedger, error) {
 	if db == nil || options.ChainID == 0 ||
 		!billingNetworkPattern.MatchString(options.Network) ||
 		options.Asset == (common.Address{}) {

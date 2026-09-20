@@ -314,16 +314,18 @@ func (hub *homeStreamHub) stream(session string) *homeTestStream {
 }
 
 type homeTestUpdate struct {
+	kind    string
 	id      uint64
 	payload []byte
 }
 
 type homeTestStream struct {
-	mu          sync.Mutex
-	eventID     uint64
-	head        uint64
-	nextID      uint64
-	subscribers map[uint64]chan homeTestUpdate
+	rejectOldCursor bool
+	mu              sync.Mutex
+	eventID         uint64
+	head            uint64
+	nextID          uint64
+	subscribers     map[uint64]chan homeTestUpdate
 }
 
 func (stream *homeTestStream) current() homeTestUpdate {
@@ -360,11 +362,14 @@ func (stream *homeTestStream) subscribeWithCurrent(current bool) (<-chan homeTes
 	}
 }
 
-func (stream *homeTestStream) advance() {
+func (stream *homeTestStream) advance() { stream.publish("head") }
+
+func (stream *homeTestStream) publish(kind string) {
 	stream.mu.Lock()
 	stream.eventID++
 	stream.head++
 	update := stream.updateLocked()
+	update.kind = kind
 	for id, subscriber := range stream.subscribers {
 		select {
 		case subscriber <- update:
@@ -385,6 +390,7 @@ func (stream *homeTestStream) updateLocked() homeTestUpdate {
 		hash, parent, transactionID = secondHash, testHash, testTransactionHash
 	}
 	payload, err := json.Marshal(map[string]any{
+		"event_id": strconv.FormatUint(stream.eventID, 10),
 		"data": map[string]any{
 			"status": map[string]any{
 				"chain_id": "1", "core_ready": true,
@@ -697,4 +703,23 @@ func writeJSON(response http.ResponseWriter, value any) {
 	if err := json.NewEncoder(response).Encode(value); err != nil {
 		panic(err)
 	}
+}
+
+func (stream *homeTestStream) expireCursor() {
+	stream.mu.Lock()
+	defer stream.mu.Unlock()
+	stream.rejectOldCursor = true
+	for id, channel := range stream.subscribers {
+		close(channel)
+		delete(stream.subscribers, id)
+	}
+}
+func (stream *homeTestStream) rejectCursor(cursor string) bool {
+	stream.mu.Lock()
+	defer stream.mu.Unlock()
+	if stream.rejectOldCursor && cursor != "" {
+		stream.rejectOldCursor = false
+		return true
+	}
+	return false
 }

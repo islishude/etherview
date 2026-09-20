@@ -11,8 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/islishude/etherview/internal/testpgx"
+
 	"github.com/islishude/etherview/internal/contractartifact"
-	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/derivedverify"
 	"github.com/islishude/etherview/internal/store"
 	"github.com/islishude/etherview/internal/verify"
@@ -190,7 +191,7 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		factoryAddress, factoryCodeHash, factoryRuntime,
 	)
 	var reattachedEpoch string
-	if err := db.QueryRowContext(ctx, dbgen.DerivedVerifyCreatorCodeEpochStart,
+	if err := db.QueryRow(ctx, testpgx.Statement("DerivedVerifyCreatorCodeEpochStart"),
 		"1", factoryAddress, factoryCodeHash, "4", forwardBlock.Block.Hash().Bytes(),
 	).Scan(&reattachedEpoch); err != nil || reattachedEpoch != "4" {
 		t.Fatalf("A-to-B-to-A creator epoch = %q, error = %v", reattachedEpoch, err)
@@ -209,7 +210,7 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		childAddress, grandchildAddress, grandchildCreation, grandchildRuntime,
 	)
 	var traceJobID int64
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		INSERT INTO durable_jobs (
 			chain_id, kind, stage, stage_version, idempotency_key, payload
 		) VALUES (1, 'enrichment', 'trace', 3, 'derived-forward-fixture',
@@ -318,7 +319,7 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		WHERE chain_id = 1 AND address = $1`, 0, wrongEpochChildAddress)
 
 	var compilationID string
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT id::text FROM verification_compilation_units
 		WHERE source_job_id = (
 			SELECT verification_job_id FROM verified_contracts
@@ -389,7 +390,7 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		t.Fatalf("complete directly verified child: %v", err)
 	}
 	var proxyJobID int64
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		INSERT INTO durable_jobs (
 			chain_id, kind, stage, stage_version, idempotency_key, payload
 		) VALUES (1, 'enrichment', 'proxy', 2, 'derived-proxy-fixture',
@@ -538,7 +539,7 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 	var requestID int64
 	var scanCount int
 	var requestedAt time.Time
-	if err := db.QueryRowContext(ctx, dbgen.DerivedVerifyRequestBackfill,
+	if err := db.QueryRow(ctx, testpgx.Statement("DerivedVerifyRequestBackfill"),
 		"1", factoryAddress, "reviewed integration backfill",
 	).Scan(&requestID, &scanCount, &requestedAt); err != nil {
 		t.Fatalf("request derived backfill: %v", err)
@@ -650,7 +651,7 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		  AND trace_path = '0'`,
 		replacementBlock.Block.Hash().Bytes(), replacementBlock.Block.Transactions()[0].Hash().Bytes())
 	var racedStatus string
-	if err := db.QueryRowContext(ctx, dbgen.DerivedVerifyRecordAttempt,
+	if err := db.QueryRow(ctx, testpgx.Statement("DerivedVerifyRecordAttempt"),
 		"00000000-0000-0000-0000-000000000099", "1", "3",
 		replacementBlock.Block.Hash().Bytes(), replacementBlock.Block.Transactions()[0].Hash().Bytes(),
 		"0", factoryAddress, wrongEpochChildAddress, "CREATE", compilationID, "no_match",

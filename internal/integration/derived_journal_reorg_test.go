@@ -4,7 +4,6 @@ package integration_test
 
 import (
 	"context"
-	"database/sql"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -12,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -198,14 +199,14 @@ type derivedProcessors struct {
 }
 
 type derivedPublicationHarness struct {
-	db        *sql.DB
+	db        *pgxpool.Pool
 	queue     *enrich.PostgresJobQueue
 	worker    *enrich.Worker
 	runs      map[string]int
 	stageList []enrich.StageID
 }
 
-func newDerivedProcessors(t *testing.T, db *sql.DB) derivedProcessors {
+func newDerivedProcessors(t *testing.T, db *pgxpool.Pool) derivedProcessors {
 	t.Helper()
 	token, err := enrich.NewPostgresTokenProcessor(db)
 	if err != nil {
@@ -234,7 +235,7 @@ func newDerivedProcessors(t *testing.T, db *sql.DB) derivedProcessors {
 
 func newDerivedPublicationHarness(
 	t *testing.T,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	processors derivedProcessors,
 ) *derivedPublicationHarness {
 	t.Helper()
@@ -265,7 +266,7 @@ func (harness *derivedPublicationHarness) process(
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := harness.db.ExecContext(ctx, `
+	if _, err := harness.db.Exec(ctx, `
 		UPDATE transactional_outbox
 		SET published_at = clock_timestamp()
 		WHERE chain_id = 1 AND topic = 'core.block.canonical' AND message_key = $1`,
@@ -295,7 +296,7 @@ func (harness *derivedPublicationHarness) process(
 	}
 }
 
-type derivedTraceService struct{ db *sql.DB }
+type derivedTraceService struct{ db *pgxpool.Pool }
 
 func (service *derivedTraceService) TraceBlockByHash(
 	ctx context.Context,
@@ -315,7 +316,7 @@ func (service *derivedTraceService) traceResult(
 		return nil, errors.New("derived trace caller is not configured")
 	}
 	var from, to, value, gas, input string
-	if err := service.db.QueryRowContext(ctx, `
+	if err := service.db.QueryRow(ctx, `
 		SELECT raw->>'from', raw->>'to', raw->>'value', raw->>'gas', raw->>'input'
 		FROM transactions
 		WHERE chain_id = 1 AND hash = $1`, hash.Bytes()).Scan(&from, &to, &value, &gas, &input); err != nil {
@@ -432,7 +433,7 @@ func applyDerivedReorg(
 	}
 }
 
-func assertDerivedBlockState(t *testing.T, ctx context.Context, db *sql.DB, block chainbundle.Bundle, canonical bool) {
+func assertDerivedBlockState(t *testing.T, ctx context.Context, db *pgxpool.Pool, block chainbundle.Bundle, canonical bool) {
 	t.Helper()
 	reference := mustBlockRef(t, block)
 	blockHash := mustBytes(t, reference.Hash)
@@ -444,14 +445,14 @@ func assertDerivedBlockState(t *testing.T, ctx context.Context, db *sql.DB, bloc
 		query := fmt.Sprintf(`
 			SELECT count(*), count(*) FILTER (WHERE canonical = $2)
 			FROM %s WHERE chain_id = 1 AND block_hash = $1`, table)
-		if err := db.QueryRowContext(ctx, query, blockHash, canonical).Scan(&total, &matching); err != nil {
+		if err := db.QueryRow(ctx, query, blockHash, canonical).Scan(&total, &matching); err != nil {
 			t.Fatalf("query %s canonical state: %v", table, err)
 		}
 		if total != expected || matching != expected {
 			t.Fatalf("%s rows total=%d matching canonical=%t:%d, want %d", table, total, canonical, matching, expected)
 		}
 	}
-	rows, err := db.QueryContext(ctx, `
+	rows, err := db.Query(ctx, `
 		SELECT stage, sequence::text, payload, canonical
 		FROM block_journals
 		WHERE chain_id = 1 AND block_hash = $1
@@ -533,7 +534,7 @@ func assertOrphanQueriesUnavailable(
 func assertDerivedQueriesUseBranch(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	reader *catalog.Postgres,
 	contract, recipient common.Address,
 	active, orphan []chainbundle.Bundle,
@@ -578,7 +579,7 @@ func assertDerivedQueriesUseBranch(
 		t.Fatalf("orphan trace error = %v, want not found", err)
 	}
 	var delta string
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT COALESCE(SUM(delta), 0)::text
 		FROM token_balance_deltas AS delta
 		JOIN canonical_blocks AS canonical

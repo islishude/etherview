@@ -2,15 +2,16 @@ package query
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"math"
-	"strconv"
 	"strings"
 
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+
 	"github.com/islishude/etherview/internal/api/gen"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/publicquery"
 )
@@ -41,11 +42,11 @@ func (r *PostgresReader) AddressTransactions(
 		return nil, "", fmt.Errorf("invalid address: %w", err)
 	}
 	normalizedAddress := strings.ToLower(address.Hex())
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return nil, "", fmt.Errorf("begin stable address transaction query: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 
 	var cursor addressTransactionCursor
 	if encodedCursor == "" {
@@ -73,44 +74,46 @@ func (r *PostgresReader) AddressTransactions(
 		}
 	}
 
-	query := dbgen.QueryListAddressTransactions
-	arguments := []any{
-		r.chainID, strconv.FormatUint(cursor.BeforeBlockNumber, 10),
-		cursor.BeforeTxIndex, normalizedAddress, limit + 1,
+	chain, err := r.chainNumeric()
+	if err != nil {
+		return nil, "", err
 	}
+	queries := dbgen.New(r.db).WithTx(tx)
+	var rows []dbgen.QueryListTransactionsWithMethodFirstRow
 	if encodedCursor == "" {
-		query = dbgen.QueryListAddressTransactionsFirst
-		arguments = []any{
-			r.chainID, strconv.FormatUint(cursor.SnapshotNumber, 10),
-			normalizedAddress, limit + 1,
+		page, queryErr := queries.QueryListAddressTransactionsFirst(ctx, dbgen.QueryListAddressTransactionsFirstParams{ChainID: chain, MaxBlockNumber: numericUint64(cursor.SnapshotNumber), AddressHex: normalizedAddress, Limit: int32(limit + 1)})
+		err = queryErr
+		rows = make([]dbgen.QueryListTransactionsWithMethodFirstRow, len(page))
+		for index, row := range page {
+			rows[index] = dbgen.QueryListTransactionsWithMethodFirstRow(row)
+		}
+	} else {
+		page, queryErr := queries.QueryListAddressTransactions(ctx, dbgen.QueryListAddressTransactionsParams{ChainID: chain, MaxBlockNumber: numericUint64(cursor.BeforeBlockNumber), MaxTxIndex: int64(cursor.BeforeTxIndex), AddressHex: normalizedAddress, Limit: int32(limit + 1)})
+		err = queryErr
+		rows = make([]dbgen.QueryListTransactionsWithMethodFirstRow, len(page))
+		for index, row := range page {
+			rows[index] = dbgen.QueryListTransactionsWithMethodFirstRow(row)
 		}
 	}
-	rows, err := tx.QueryContext(ctx, query, arguments...)
 	if err != nil {
 		return nil, "", fmt.Errorf("query canonical address transaction page: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
-	records := make([]transactionRecord, 0, limit+1)
-	for rows.Next() {
-		record, scanErr := r.scanTransactionWithMethod(rows, cursor.SnapshotNumber)
-		if scanErr != nil {
-			return nil, "", scanErr
+	records := make([]transactionRecord, 0, len(rows))
+	for _, row := range rows {
+		record, err := r.decodeTransactionWithMethod(row, cursor.SnapshotNumber)
+		if err != nil {
+			return nil, "", err
 		}
 		if !record.Model.Canonical {
 			return nil, "", errors.New("canonical address transaction query returned an orphan inclusion")
 		}
 		records = append(records, record)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, "", fmt.Errorf("iterate canonical address transaction page: %w", err)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, "", fmt.Errorf("close canonical address transaction page: %w", err)
-	}
+
 	if err := r.projectTransactionMethods(ctx, tx, records); err != nil {
 		return nil, "", err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return nil, "", fmt.Errorf("commit stable address transaction query: %w", err)
 	}
 

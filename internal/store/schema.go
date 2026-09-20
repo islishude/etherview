@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -30,7 +29,7 @@ type ChainIdentity struct {
 	GenesisHash common.Hash
 }
 
-func ReadSchemaStatus(ctx context.Context, db *sql.DB) (SchemaStatus, error) {
+func ReadSchemaStatus(ctx context.Context, db dbaccess.Database) (SchemaStatus, error) {
 	if db == nil {
 		return SchemaStatus{}, errors.New("read schema status: nil database")
 	}
@@ -38,38 +37,29 @@ func ReadSchemaStatus(ctx context.Context, db *sql.DB) (SchemaStatus, error) {
 	if err != nil {
 		return SchemaStatus{}, err
 	}
-	var ledger sql.NullString
-	// Resolve through the connection search_path. Production uses public by
-	// default, while tests and managed deployments can isolate Etherview in a
-	// dedicated schema without making status checks look in the wrong ledger.
-	if err := db.QueryRowContext(ctx, dbgen.StoreLegacyReadSchemaStatusStatement1).Scan(&ledger); err != nil {
+	// Resolve through the session search_path, including isolated test schemas.
+	ledgerExists, err := dbgen.New(db).StoreLegacyReadSchemaStatusStatement1(ctx)
+	if err != nil {
 		return SchemaStatus{}, fmt.Errorf("locate migration ledger: %w", err)
 	}
-	if !ledger.Valid {
+	if !ledgerExists {
 		status := SchemaStatus{Pending: make([]string, 0, len(expected))}
 		for _, migration := range expected {
 			status.Pending = append(status.Pending, migration.Version)
 		}
 		return status, nil
 	}
-	rows, err := db.QueryContext(ctx, dbgen.StoreLegacyReadSchemaStatusStatement2)
+	rows, err := dbgen.New(db).StoreLegacyReadSchemaStatusStatement2(ctx)
 	if err != nil {
 		return SchemaStatus{}, fmt.Errorf("read migration ledger: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
 	applied := make(map[string]string, len(expected))
 	status := SchemaStatus{}
-	for rows.Next() {
-		var version, checksum string
-		if err := rows.Scan(&version, &checksum); err != nil {
-			return SchemaStatus{}, fmt.Errorf("scan migration ledger: %w", err)
-		}
-		applied[version] = checksum
-		status.Applied = append(status.Applied, version)
+	for _, row := range rows {
+		applied[row.Version] = row.Checksum
+		status.Applied = append(status.Applied, row.Version)
 	}
-	if err := rows.Err(); err != nil {
-		return SchemaStatus{}, fmt.Errorf("iterate migration ledger: %w", err)
-	}
+
 	for _, migration := range expected {
 		checksum, ok := applied[migration.Version]
 		if !ok {
@@ -91,7 +81,7 @@ func ReadSchemaStatus(ctx context.Context, db *sql.DB) (SchemaStatus, error) {
 	return status, nil
 }
 
-func CheckSchema(ctx context.Context, db *sql.DB) error {
+func CheckSchema(ctx context.Context, db dbaccess.Database) error {
 	status, err := ReadSchemaStatus(ctx, db)
 	if err != nil {
 		return err
@@ -104,7 +94,7 @@ func CheckSchema(ctx context.Context, db *sql.DB) error {
 
 // BindChainIdentity persists the chain/genesis pair and rejects reuse of a
 // database with another genesis, including when the numeric chain ID matches.
-func BindChainIdentity(ctx context.Context, db *sql.DB, chainID string, genesis common.Hash) error {
+func BindChainIdentity(ctx context.Context, db dbaccess.Database, chainID string, genesis common.Hash) error {
 	if db == nil {
 		return errors.New("bind chain identity: nil database")
 	}
@@ -119,21 +109,54 @@ func BindChainIdentity(ctx context.Context, db *sql.DB, chainID string, genesis 
 	// REPEATABLE READ/SERIALIZABLE would retain the snapshot established by the
 	// blocking lock statement and can spuriously abort concurrent role startup
 	// with SQLSTATE 40001 after the first process commits.
-	tx, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: chainWriteIsolation})
+	tx, err := db.BeginTx(ctx, pgx.TxOptions{IsoLevel: chainWriteIsolation})
 	if err != nil {
 		return fmt.Errorf("begin chain identity transaction: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	if err := lockChain(ctx, tx, chainID); err != nil {
 		return err
 	}
 	var existing []byte
-	err = tx.QueryRowContext(ctx, dbgen.StoreLegacyBindChainIdentityStatement1, chainID).Scan(&existing)
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).StoreLegacyBindChainIdentityStatement1(ctx, queryValue0)
+		if err != nil {
+			return err
+		}
+		existing = queryRow
+		return nil
+	}()
 	switch {
-	case errors.Is(err, sql.ErrNoRows):
-		err = tx.QueryRowContext(ctx, dbgen.StoreLegacyBindChainIdentityStatement2, chainID, genesisBytes).Scan(&existing)
+	case errors.Is(err, pgx.ErrNoRows):
+		err = func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(chainID); err != nil {
+				return err
+			}
+			queryRow, err := dbgen.New(tx).StoreLegacyBindChainIdentityStatement2(ctx, queryValue0, genesisBytes)
+			if err != nil {
+				return err
+			}
+			existing = queryRow
+			return nil
+		}()
 	case err == nil && len(existing) == 0:
-		err = tx.QueryRowContext(ctx, dbgen.StoreLegacyBindChainIdentityStatement3, chainID, genesisBytes).Scan(&existing)
+		err = func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(chainID); err != nil {
+				return err
+			}
+			queryRow, err := dbgen.New(tx).StoreLegacyBindChainIdentityStatement3(ctx, genesisBytes, queryValue0)
+			if err != nil {
+				return err
+			}
+			existing = queryRow
+			return nil
+		}()
 	}
 	if err != nil {
 		return fmt.Errorf("persist chain identity: %w", err)
@@ -141,13 +164,13 @@ func BindChainIdentity(ctx context.Context, db *sql.DB, chainID string, genesis 
 	if !strings.EqualFold(hex.EncodeToString(existing), hex.EncodeToString(genesisBytes)) {
 		return fmt.Errorf("chain identity mismatch: configured genesis %s, database genesis 0x%s", genesis, hex.EncodeToString(existing))
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit chain identity: %w", err)
 	}
 	return nil
 }
 
-func ReadChainIdentity(ctx context.Context, db *sql.DB, chainID string) (ChainIdentity, error) {
+func ReadChainIdentity(ctx context.Context, db dbaccess.Database, chainID string) (ChainIdentity, error) {
 	if db == nil {
 		return ChainIdentity{}, errors.New("read chain identity: nil database")
 	}

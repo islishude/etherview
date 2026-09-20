@@ -2,7 +2,6 @@ package events
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,7 +11,7 @@ import (
 	"time"
 
 	dbaccess "github.com/islishude/etherview/internal/db"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -31,7 +30,7 @@ type PostgresOptions struct {
 }
 
 type PostgresStore struct {
-	db           *sql.DB
+	db           dbaccess.Database
 	chainID      string
 	chainNumeric pgtype.Numeric
 	replayLimit  int
@@ -65,7 +64,7 @@ type statusEventPayload struct {
 	ErrorCode        string    `json:"error_code,omitempty"`
 }
 
-func NewPostgresStore(db *sql.DB, chainID string, options PostgresOptions) (*PostgresStore, error) {
+func NewPostgresStore(db dbaccess.Database, chainID string, options PostgresOptions) (*PostgresStore, error) {
 	if db == nil {
 		return nil, errors.New("runtime event database is nil")
 	}
@@ -120,20 +119,34 @@ func (s *PostgresStore) RecordStatus(ctx context.Context, status SyncStatus) (Ev
 	if len(encoded) > maxEventPayloadBytes {
 		return Event{}, errors.New("sync status event exceeds payload limit")
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return Event{}, fmt.Errorf("begin sync status update: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
-	if _, err := tx.ExecContext(ctx, dbgen.EventsWriteRecordStatusStatement1, s.chainID); err != nil {
+	defer dbaccess.Rollback(ctx, tx)
+	if err := dbgen.New(tx).EventsWriteRecordStatusStatement1(ctx, new(s.chainID)); err != nil {
 		return Event{}, fmt.Errorf("lock sync status writer election: %w", err)
 	}
 	var reporter string
-	err = tx.QueryRowContext(ctx, dbgen.EventsWriteRecordStatusStatement2, s.chainID, status.ReporterID, status.ReporterLease.Milliseconds(),
-		status.ErrorCode, status.LatestKnown,
-		nullableNumber(status.Latest, status.LatestKnown), status.SafetyHalt,
-	).Scan(&reporter)
-	if err == sql.ErrNoRows {
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(s.chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if nullableNumber(status.Latest, status.LatestKnown) != nil {
+			if err := queryValue1.Scan(*nullableNumber(status.Latest, status.LatestKnown)); err != nil {
+				return err
+			}
+		}
+		queryRow, err := dbgen.New(tx).EventsWriteRecordStatusStatement2(ctx, dbgen.EventsWriteRecordStatusStatement2Params{ChainID: queryValue0, ReporterID: status.ReporterID, ObservedLatestNumber: queryValue1, ObservedLatestKnown: status.LatestKnown, SafetyHalt: status.SafetyHalt, LastError: status.ErrorCode, LeaseMilliseconds: status.ReporterLease.Milliseconds()})
+		if err != nil {
+			return err
+		}
+		reporter = queryRow
+		return nil
+	}()
+	if err == pgx.ErrNoRows {
 		return Event{}, nil
 	}
 	if err != nil {
@@ -142,22 +155,69 @@ func (s *PostgresStore) RecordStatus(ctx context.Context, status SyncStatus) (Ev
 	if reporter != status.ReporterID {
 		return Event{}, errors.New("sync status writer lease returned an unexpected reporter")
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.EventsWriteRecordStatusStatement3, s.chainID, nullableNumber(status.Latest, status.LatestKnown),
-		nullableNumber(status.Indexed, status.IndexedKnown),
-		nullableNumber(status.HighestCovered, status.HighestCoveredKnown),
-		status.BackfillComplete, status.Ready, status.PolledAt, status.ErrorCode,
-	); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(s.chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if nullableNumber(status.Latest, status.LatestKnown) != nil {
+			if err := queryValue1.Scan(*nullableNumber(status.Latest, status.LatestKnown)); err != nil {
+				return err
+			}
+		}
+		var queryValue2 pgtype.Numeric
+		if nullableNumber(status.Indexed, status.IndexedKnown) != nil {
+			if err := queryValue2.Scan(*nullableNumber(status.Indexed, status.IndexedKnown)); err != nil {
+				return err
+			}
+		}
+		var queryValue3 pgtype.Numeric
+		if nullableNumber(status.HighestCovered, status.HighestCoveredKnown) != nil {
+			if err := queryValue3.Scan(*nullableNumber(status.HighestCovered, status.HighestCoveredKnown)); err != nil {
+				return err
+			}
+		}
+		return dbgen.New(tx).EventsWriteRecordStatusStatement3(ctx, dbgen.EventsWriteRecordStatusStatement3Params{ChainID: queryValue0, LatestNumber: queryValue1, IndexedNumber: queryValue2, HighestCoveredNumber: queryValue3, BackfillComplete: status.BackfillComplete, Ready: status.Ready, LastPollAt: pgtype.Timestamptz{Time: status.PolledAt, Valid: true}, LastErrorCode: status.ErrorCode})
+	}(); err != nil {
 		return Event{}, fmt.Errorf("upsert sync runtime status: %w", err)
 	}
 	var id int64
 	var createdAt time.Time
-	if err := tx.QueryRowContext(ctx, dbgen.EventsWriteRecordStatusStatement4, s.chainID, encoded).Scan(&id, &createdAt); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(s.chainID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).EventsWriteRecordStatusStatement4(ctx, queryValue0, encoded)
+		if err != nil {
+			return err
+		}
+		id = queryRow.ID
+		if !queryRow.CreatedAt.Valid {
+			return errors.New("invalid stored query value")
+		}
+		if queryRow.CreatedAt.InfinityModifier != pgtype.Finite {
+			return errors.New("invalid stored query value")
+		}
+		createdAt = queryRow.CreatedAt.Time
+		return nil
+	}(); err != nil {
 		return Event{}, fmt.Errorf("insert sync status event: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.EventsWriteRecordStatusStatement5, s.chainID, s.replayLimit-1); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(s.chainID); err != nil {
+			return err
+		}
+		if s.replayLimit-1 < -2147483648 || s.replayLimit-1 > 2147483647 {
+			return errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).EventsWriteRecordStatusStatement5(ctx, queryValue0, int32(s.replayLimit-1))
+	}(); err != nil {
 		return Event{}, fmt.Errorf("prune runtime event replay window: %w", err)
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return Event{}, fmt.Errorf("commit sync status update: %w", err)
 	}
 	if id <= 0 {
@@ -343,11 +403,11 @@ func validChainID(value string) bool {
 	return ok && parsed.Sign() >= 0 && parsed.BitLen() <= 256 && parsed.String() == value
 }
 
-func nullableNumber(value uint64, known bool) any {
+func nullableNumber(value uint64, known bool) *string {
 	if !known {
 		return nil
 	}
-	return strconv.FormatUint(value, 10)
+	return new(strconv.FormatUint(value, 10))
 }
 
 func nullableDecimal(value uint64, known bool) *string {

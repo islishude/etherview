@@ -2,7 +2,6 @@ package analytics
 
 import (
 	"context"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -11,7 +10,7 @@ import (
 	"time"
 
 	dbaccess "github.com/islishude/etherview/internal/db"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -19,10 +18,10 @@ import (
 const maxPoints = 500
 
 type Reader struct {
-	db *sql.DB
+	db dbaccess.Database
 }
 
-func NewReader(db *sql.DB) (*Reader, error) {
+func NewReader(db dbaccess.Database) (*Reader, error) {
 	if db == nil {
 		return nil, errors.New("analytics reader requires a database")
 	}

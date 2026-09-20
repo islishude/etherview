@@ -2,8 +2,6 @@ package query
 
 import (
 	"context"
-	"database/sql"
-	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,12 +10,15 @@ import (
 	"strings"
 	"testing"
 
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/config"
-	"github.com/islishude/etherview/internal/db/gen"
+	"github.com/islishude/etherview/internal/testpgx"
+
 	ensresolver "github.com/islishude/etherview/internal/ens"
 	"github.com/islishude/etherview/internal/erc4337"
 	"github.com/islishude/etherview/internal/httpapi"
@@ -44,15 +45,15 @@ func TestChecksumAddressEIP55Vectors(t *testing.T) {
 func TestPublicQueriesDoNotTransferFullBlockRaw(t *testing.T) {
 	t.Parallel()
 	for name, query := range map[string]string{
-		"block by hash":        dbgen.QueryBlockByHash,
-		"block by number":      dbgen.QueryBlockByNumber,
-		"block list":           dbgen.QueryListBlocks,
-		"block list first":     dbgen.QueryListBlocksFirst,
-		"transaction":          dbgen.QueryTransactionByHash,
-		"transaction list":     dbgen.QueryListTransactionsWithMethod,
-		"transaction first":    dbgen.QueryListTransactionsWithMethodFirst,
-		"block transactions":   dbgen.ListBlockTransactions,
-		"address transactions": dbgen.QueryListAddressTransactions,
+		"block by hash":        testpgx.Statement("QueryBlockByHash"),
+		"block by number":      testpgx.Statement("QueryBlockByNumber"),
+		"block list":           testpgx.Statement("QueryListBlocks"),
+		"block list first":     testpgx.Statement("QueryListBlocksFirst"),
+		"transaction":          testpgx.Statement("QueryTransactionByHash"),
+		"transaction list":     testpgx.Statement("QueryListTransactionsWithMethod"),
+		"transaction first":    testpgx.Statement("QueryListTransactionsWithMethodFirst"),
+		"block transactions":   testpgx.Statement("ListBlockTransactions"),
+		"address transactions": testpgx.Statement("QueryListAddressTransactions"),
 	} {
 		if strings.Contains(query, "block.raw") {
 			t.Errorf("%s query transfers block.raw", name)
@@ -64,7 +65,7 @@ func TestStatusReportsGapFreeCheckpointAndUpstreamHead(t *testing.T) {
 	t.Parallel()
 	tipHash := testHashBytes(3)
 	db := testDatabase(t,
-		queryExpectation{contains: "configuration.configured_start::text", columns: columns(10), rows: [][]driver.Value{{
+		queryExpectation{contains: "configuration.configured_start AS configured_start", columns: columns(10), rows: [][]any{{
 			"0", "2", tipHash, "2", tipHash, "2", tipHash, "1", "0", nil,
 		}}},
 	)
@@ -93,7 +94,7 @@ func TestStatusDoesNotClaimReadyAcrossCanonicalGap(t *testing.T) {
 	t.Parallel()
 	genesisHash, tipHash := testHashBytes(1), testHashBytes(3)
 	db := testDatabase(t,
-		queryExpectation{contains: "configuration.configured_start::text", columns: columns(10), rows: [][]driver.Value{{
+		queryExpectation{contains: "configuration.configured_start AS configured_start", columns: columns(10), rows: [][]any{{
 			"0", "0", genesisHash, "0", genesisHash, "2", tipHash, nil, nil, nil,
 		}}},
 	)
@@ -115,7 +116,7 @@ func TestStatusUsesDurableSplitRoleHeadAndReadiness(t *testing.T) {
 	t.Parallel()
 	tipHash := testHashBytes(9)
 	db := testDatabase(t,
-		queryExpectation{contains: "configuration.configured_start::text", columns: columns(10), rows: [][]driver.Value{{
+		queryExpectation{contains: "configuration.configured_start AS configured_start", columns: columns(10), rows: [][]any{{
 			"0", "8", tipHash, "8", tipHash, "8", tipHash, nil, nil, nil,
 		}}},
 	)
@@ -141,7 +142,7 @@ func TestStatusDoesNotSubstituteCanonicalTipWhenRuntimeStatusIsMissing(t *testin
 	t.Parallel()
 	tipHash := testHashBytes(3)
 	db := testDatabase(t,
-		queryExpectation{contains: "configuration.configured_start::text", columns: columns(10), rows: [][]driver.Value{{
+		queryExpectation{contains: "configuration.configured_start AS configured_start", columns: columns(10), rows: [][]any{{
 			"0", "2", tipHash, "2", tipHash, "2", tipHash, nil, nil, nil,
 		}}},
 	)
@@ -164,8 +165,8 @@ func TestStatusDoesNotTreatIsolatedLiveCoverageAsIndexedOrReady(t *testing.T) {
 	t.Parallel()
 	tipHash := testHashBytes(10)
 	db := testDatabase(t, queryExpectation{
-		contains: "configuration.configured_start::text", columns: columns(10),
-		rows: [][]driver.Value{{"0", nil, nil, nil, nil, "10", tipHash, nil, nil, nil}},
+		contains: "configuration.configured_start AS configured_start", columns: columns(10),
+		rows: [][]any{{"0", nil, nil, nil, nil, "10", tipHash, nil, nil, nil}},
 	})
 	reader := testReader(t, db, Options{
 		ChainID: 1,
@@ -214,7 +215,7 @@ func TestStatusReportsCurrentTracePublication(t *testing.T) {
 			db := testDatabase(t, queryExpectation{
 				contains: "trace_result.block_hash = contiguous_block.block_hash",
 				columns:  columns(10),
-				rows: [][]driver.Value{{
+				rows: [][]any{{
 					"0", contiguousEnd, contiguousHash,
 					contiguousEnd, contiguousHash,
 					contiguousEnd, contiguousHash,
@@ -255,18 +256,18 @@ func TestStatusReportsCurrentTracePublication(t *testing.T) {
 func TestBlocksUseSnapshotBoundOpaqueCursor(t *testing.T) {
 	t.Parallel()
 	db := testDatabase(t,
-		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
+		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]any{{"2", testHashBytes(3)}}},
 		queryExpectation{
 			contains: "canonical.number <= $2::numeric",
 			columns:  columns(16),
-			rows: [][]driver.Value{
+			rows: [][]any{
 				testBlockProjectionRow(2, 3, 2, 2, true, "1", "0"),
 				testBlockProjectionRow(1, 2, 1, 1, true, "1", "0"),
 				testBlockProjectionRow(0, 1, 0, 0, true, "1", "0"),
 			},
 		},
-		queryExpectation{contains: "SELECT EXISTS", columns: columns(1), rows: [][]driver.Value{{true}}},
-		queryExpectation{contains: "canonical.number < $2::numeric", columns: columns(16), rows: [][]driver.Value{
+		queryExpectation{contains: "SELECT EXISTS", columns: columns(1), rows: [][]any{{true}}},
+		queryExpectation{contains: "canonical.number < $2::numeric", columns: columns(16), rows: [][]any{
 			testBlockProjectionRow(0, 1, 0, 0, true, "1", "0"),
 		}},
 	)
@@ -306,7 +307,7 @@ func TestBlocksRejectCursorAfterReorg(t *testing.T) {
 		t.Fatal(err)
 	}
 	db := testDatabase(t,
-		queryExpectation{contains: "SELECT EXISTS", columns: columns(1), rows: [][]driver.Value{{false}}},
+		queryExpectation{contains: "SELECT EXISTS", columns: columns(1), rows: [][]any{{false}}},
 	)
 	reader := testReader(t, db, Options{ChainID: 1})
 	_, _, err = reader.Blocks(context.Background(), cursor, 25)
@@ -318,21 +319,21 @@ func TestBlocksRejectCursorAfterReorg(t *testing.T) {
 func TestTransactionsUseSnapshotBoundCompositeCursor(t *testing.T) {
 	t.Parallel()
 	db := testDatabase(t,
-		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
+		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]any{{"2", testHashBytes(3)}}},
 		queryExpectation{
 			contains: "inclusion.block_number <= $2::numeric",
 			columns:  columns(18),
-			rows: [][]driver.Value{
+			rows: [][]any{
 				{testTransactionRawAt(2, 3, 102, 1), testReceiptRawAt(2, 3, 102, 1, "0x1"), "2", testHashBytes(3), int64(1), testTransactionHashBytes(102), true, "1", "0", "100", "0x3b9aca00", true, "direct", testAddressBytes(1), testHashBytes(4), "transfer(address,uint256)", "verified", "verified"},
 				{testTransactionRawAt(2, 3, 101, 0), testReceiptRawAt(2, 3, 101, 0, "0x1"), "2", testHashBytes(3), int64(0), testTransactionHashBytes(101), true, "1", "0", "100", "0x3b9aca00", true, "empty", nil, nil, nil, nil, nil},
 				{testTransactionRawAt(1, 2, 100, 0), testReceiptRawAt(1, 2, 100, 0, "0x1"), "1", testHashBytes(2), int64(0), testTransactionHashBytes(100), true, "1", "0", "100", "0x3b9aca00", false, nil, nil, nil, nil, nil, nil},
 			},
 		},
-		queryExpectation{contains: "SELECT EXISTS", columns: columns(1), rows: [][]driver.Value{{true}}},
+		queryExpectation{contains: "SELECT EXISTS", columns: columns(1), rows: [][]any{{true}}},
 		queryExpectation{
 			contains: "inclusion.tx_index < $3",
 			columns:  columns(18),
-			rows: [][]driver.Value{
+			rows: [][]any{
 				{testTransactionRawAt(1, 2, 100, 0), testReceiptRawAt(1, 2, 100, 0, "0x1"), "1", testHashBytes(2), int64(0), testTransactionHashBytes(100), true, "1", "0", "100", "0x3b9aca00", true, "eip7702_delegate", testAddressBytes(2), testHashBytes(5), "setValue(uint256)", "code_hash", "high"},
 			},
 		},
@@ -369,36 +370,36 @@ func TestProjectTransactionMethodUsesExactPriorityAndFallbacks(t *testing.T) {
 	tests := []struct {
 		name        string
 		transaction gen.Transaction
-		resolution  sql.NullString
-		signature   sql.NullString
+		resolution  pgtype.Text
+		signature   pgtype.Text
 		wantMethod  string
 		wantFull    string
 	}{
 		{
 			name: "contract creation wins", transaction: gen.Transaction{Input: "0x6000"},
-			resolution: sql.NullString{String: "direct", Valid: true},
-			signature:  sql.NullString{String: "ignored(uint256)", Valid: true},
+			resolution: pgtype.Text{String: "direct", Valid: true},
+			signature:  pgtype.Text{String: "ignored(uint256)", Valid: true},
 			wantMethod: "Contract Creation",
 		},
 		{
 			name: "unique direct decode", transaction: gen.Transaction{To: &to, Input: "0xa9059cbb"},
-			resolution: sql.NullString{String: "direct", Valid: true},
-			signature:  sql.NullString{String: "transfer(address,uint256)", Valid: true},
+			resolution: pgtype.Text{String: "direct", Valid: true},
+			signature:  pgtype.Text{String: "transfer(address,uint256)", Valid: true},
 			wantMethod: "transfer", wantFull: "transfer(address,uint256)",
 		},
 		{
 			name: "unique delegated decode", transaction: gen.Transaction{To: &to, Input: "0x55241077"},
-			resolution: sql.NullString{String: "eip7702_delegate", Valid: true},
-			signature:  sql.NullString{String: "setValue(uint256)", Valid: true},
+			resolution: pgtype.Text{String: "eip7702_delegate", Valid: true},
+			signature:  pgtype.Text{String: "setValue(uint256)", Valid: true},
 			wantMethod: "setValue", wantFull: "setValue(uint256)",
 		},
 		{
 			name: "native transfer", transaction: gen.Transaction{To: &to, Input: "0x"},
-			resolution: sql.NullString{String: "empty", Valid: true}, wantMethod: "Native Transfer",
+			resolution: pgtype.Text{String: "empty", Valid: true}, wantMethod: "Native Transfer",
 		},
 		{
 			name: "empty calldata contract call", transaction: gen.Transaction{To: &to, Input: "0x"},
-			resolution: sql.NullString{String: "direct", Valid: true}, wantMethod: "0x",
+			resolution: pgtype.Text{String: "direct", Valid: true}, wantMethod: "0x",
 		},
 		{
 			name: "unknown selector", transaction: gen.Transaction{To: &to, Input: "0xDEADBEEF0102"},
@@ -406,7 +407,7 @@ func TestProjectTransactionMethodUsesExactPriorityAndFallbacks(t *testing.T) {
 		},
 		{
 			name: "malformed decoded signature falls back", transaction: gen.Transaction{To: &to, Input: "0xDEADBEEF0102"},
-			signature: sql.NullString{String: "(uint256)", Valid: true}, wantMethod: "0xdeadbeef",
+			signature: pgtype.Text{String: "(uint256)", Valid: true}, wantMethod: "0xdeadbeef",
 		},
 		{
 			name: "short calldata", transaction: gen.Transaction{To: &to, Input: "0x1234"},
@@ -440,7 +441,7 @@ func TestTransactionsRejectCursorAfterCanonicalChange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	db := testDatabase(t, queryExpectation{contains: "SELECT EXISTS", columns: columns(1), rows: [][]driver.Value{{false}}})
+	db := testDatabase(t, queryExpectation{contains: "SELECT EXISTS", columns: columns(1), rows: [][]any{{false}}})
 	reader := testReader(t, db, Options{ChainID: 1})
 	_, _, err = reader.Transactions(context.Background(), cursor, 25)
 	if !errors.Is(err, ErrInvalidCursor) {
@@ -452,16 +453,16 @@ func TestBlockTransactionsUseExactBlockIdentityAndStableIndexCursor(t *testing.T
 	t.Parallel()
 	blockHash := testHash(3)
 	db := testDatabase(t,
-		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"9", testHashBytes(10)}}},
-		queryExpectation{contains: "FROM blocks WHERE chain_id", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
-		queryExpectation{contains: "inclusion.block_hash = $3", columns: columns(11), rows: [][]driver.Value{
+		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]any{{"9", testHashBytes(10)}}},
+		queryExpectation{contains: "FROM blocks WHERE chain_id", columns: columns(2), rows: [][]any{{"2", testHashBytes(3)}}},
+		queryExpectation{contains: "inclusion.block_hash = $3", columns: columns(11), rows: [][]any{
 			{testTransactionRawAt(2, 3, 7, 0), testReceiptRawAt(2, 3, 7, 0, "0x1"), "2", testHashBytes(3), int64(0), testTransactionHashBytes(7), false, "8", "7", "100", "0x3b9aca00"},
 			{testTransactionRawAt(2, 3, 8, 1), testReceiptRawAt(2, 3, 8, 1, "0x1"), "2", testHashBytes(3), int64(1), testTransactionHashBytes(8), false, "8", "7", "100", "0x3b9aca00"},
 		}},
-		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"9", testHashBytes(10)}}},
-		queryExpectation{contains: "FROM blocks WHERE chain_id", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
-		queryExpectation{contains: "SELECT EXISTS ( SELECT 1 FROM blocks", columns: columns(1), rows: [][]driver.Value{{true}}},
-		queryExpectation{contains: "inclusion.block_hash = $3", columns: columns(11), rows: [][]driver.Value{
+		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]any{{"9", testHashBytes(10)}}},
+		queryExpectation{contains: "FROM blocks WHERE chain_id", columns: columns(2), rows: [][]any{{"2", testHashBytes(3)}}},
+		queryExpectation{contains: "SELECT EXISTS ( SELECT 1 FROM blocks", columns: columns(1), rows: [][]any{{true}}},
+		queryExpectation{contains: "inclusion.block_hash = $3", columns: columns(11), rows: [][]any{
 			{testTransactionRawAt(2, 3, 8, 1), testReceiptRawAt(2, 3, 8, 1, "0x1"), "2", testHashBytes(3), int64(1), testTransactionHashBytes(8), false, "8", "7", "100", "0x3b9aca00"},
 		}},
 	)
@@ -486,7 +487,7 @@ func TestBlockHashLookupCanReturnRetainedOrphan(t *testing.T) {
 	t.Parallel()
 	db := testDatabase(t, queryExpectation{
 		contains: "block.hash = $2", columns: columns(16),
-		rows: [][]driver.Value{testBlockProjectionRow(2, 3, 2, 0, false, "5", "4")},
+		rows: [][]any{testBlockProjectionRow(2, 3, 2, 0, false, "5", "4")},
 	})
 	reader := testReader(t, db, Options{ChainID: 1})
 	block, err := reader.Block(context.Background(), testHash(3))
@@ -504,7 +505,7 @@ func TestBlockRejectsNormalizedTransactionCountMismatch(t *testing.T) {
 	row[9] = int64(1)
 	db := testDatabase(t, queryExpectation{
 		contains: "canonical.number = $2::numeric", columns: columns(16),
-		rows: [][]driver.Value{row},
+		rows: [][]any{row},
 	})
 	reader := testReader(t, db, Options{ChainID: 1})
 	if _, err := reader.Block(context.Background(), "2"); err == nil || !strings.Contains(err.Error(), "normalized inclusions") {
@@ -515,10 +516,10 @@ func TestBlockRejectsNormalizedTransactionCountMismatch(t *testing.T) {
 func TestTransactionDecodesDecimalQuantitiesChecksumAndReceipt(t *testing.T) {
 	t.Parallel()
 	db := testDatabase(t, queryExpectation{
-		contains: "SELECT canonical.number::text, canonical.block_hash", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}},
+		contains: "SELECT canonical.number::text, canonical.block_hash", columns: columns(2), rows: [][]any{{"2", testHashBytes(3)}},
 	}, queryExpectation{
 		contains: "FROM transaction_inclusions AS inclusion", columns: columns(11),
-		rows: [][]driver.Value{{
+		rows: [][]any{{
 			testTransactionRaw(2, 3, 7), testReceiptRaw(2, 3, 7, "0x1"),
 			"2", testHashBytes(3), int64(0), testTransactionHashBytes(7), true, "2", "1", "100", "0x3b9aca00",
 		}},
@@ -585,10 +586,10 @@ func TestTransactionReturnsOnlySuccessfulReceiptContractAddress(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			transaction := testContractCreationTransaction(testCase.transactionSeed)
 			db := testDatabase(t, queryExpectation{
-				contains: "SELECT canonical.number::text, canonical.block_hash", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}},
+				contains: "SELECT canonical.number::text, canonical.block_hash", columns: columns(2), rows: [][]any{{"2", testHashBytes(3)}},
 			}, queryExpectation{
 				contains: "FROM transaction_inclusions AS inclusion", columns: columns(11),
-				rows: [][]driver.Value{{
+				rows: [][]any{{
 					testContractCreationTransactionRaw(2, 3, testCase.transactionSeed, 0),
 					testContractCreationReceiptRaw(2, 3, transaction, 0, testCase.status),
 					"2", testHashBytes(3), int64(0), transaction.Hash().Bytes(), true, "2", "1",
@@ -620,10 +621,10 @@ func TestTransactionReturnsOnlySuccessfulReceiptContractAddress(t *testing.T) {
 func TestTransactionLegacyTransactionRetainsGasPriceAndClearsBurnedWithoutBaseFee(t *testing.T) {
 	t.Parallel()
 	db := testDatabase(t, queryExpectation{
-		contains: "SELECT canonical.number::text, canonical.block_hash", columns: columns(2), rows: [][]driver.Value{{"1", testHashBytes(3)}},
+		contains: "SELECT canonical.number::text, canonical.block_hash", columns: columns(2), rows: [][]any{{"1", testHashBytes(3)}},
 	}, queryExpectation{
 		contains: "FROM transaction_inclusions AS inclusion", columns: columns(11),
-		rows: [][]driver.Value{{
+		rows: [][]any{{
 			testLegacyTransactionRaw(1, 3, 11), testLegacyReceiptRawAt(1, 3, 11, 0, "0x1"),
 			"1", testHashBytes(3), int64(0), testLegacyTransactionHashBytes(11), true, "1", "0", "100", nil,
 		}},
@@ -650,10 +651,10 @@ func TestTransactionLegacyTransactionRetainsGasPriceAndClearsBurnedWithoutBaseFe
 func TestTransactionDoesNotReturnConfirmationsForOrphan(t *testing.T) {
 	t.Parallel()
 	db := testDatabase(t, queryExpectation{
-		contains: "SELECT canonical.number::text, canonical.block_hash", columns: columns(2), rows: [][]driver.Value{{"3", testHashBytes(3)}},
+		contains: "SELECT canonical.number::text, canonical.block_hash", columns: columns(2), rows: [][]any{{"3", testHashBytes(3)}},
 	}, queryExpectation{
 		contains: "FROM transaction_inclusions AS inclusion", columns: columns(11),
-		rows: [][]driver.Value{{
+		rows: [][]any{{
 			testTransactionRaw(1, 2, 5), testReceiptRawAt(1, 2, 5, 0, "0x1"),
 			"1", testHashBytes(2), int64(0), testTransactionHashBytes(5), false, "1", "0", "100", "0x3b9aca00",
 		}},
@@ -684,17 +685,17 @@ func TestAddressIsHonestlyUnavailable(t *testing.T) {
 func TestCoreSearchCoversAddressBlockNumberAndHash(t *testing.T) {
 	t.Parallel()
 	db := testDatabase(t,
-		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
-		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]driver.Value{{int64(7), int64(1)}}},
-		queryExpectation{contains: "FROM search_catalog_documents AS document", columns: columns(6)},
-		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
-		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]driver.Value{{int64(7), int64(1)}}},
-		queryExpectation{contains: "canonical.number = $2::numeric", columns: columns(4), rows: [][]driver.Value{{
+		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]any{{"2", testHashBytes(3)}}},
+		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]any{{int64(7), int64(1)}}},
+		queryExpectation{contains: "FROM search_catalog_documents AS document", columns: columns(7)},
+		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]any{{"2", testHashBytes(3)}}},
+		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]any{{int64(7), int64(1)}}},
+		queryExpectation{contains: "canonical.number = $2::numeric", columns: columns(4), rows: [][]any{{
 			"2", testHashBytes(3), "Canonical block two", int64(110),
 		}}},
-		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
-		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]driver.Value{{int64(7), int64(1)}}},
-		queryExpectation{contains: "SELECT kind, key, label, rank, canonical", columns: columns(5), rows: [][]driver.Value{
+		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]any{{"2", testHashBytes(3)}}},
+		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]any{{int64(7), int64(1)}}},
+		queryExpectation{contains: "SELECT kind, key::text AS key, label::text AS label, rank, canonical::boolean AS canonical", columns: columns(5), rows: [][]any{
 			{"block", testHash(3), "Block hash label", int64(110), false},
 			{"transaction", testHash(3), "Transaction hash label", int64(110), true},
 		}},
@@ -727,29 +728,29 @@ func TestUserOperationHashSearchCursorBindsContinuousCoverage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	searchRows := [][]driver.Value{{
+	searchRows := [][]any{{
 		"transaction", common.BytesToHash(userOperationHash).Hex(), "Bundle transaction", int64(110), true,
 	}}
-	userOperationRows := [][]driver.Value{{userOperationHash, testAddressBytes(9)}}
+	userOperationRows := [][]any{{userOperationHash, testAddressBytes(9)}}
 	db := testDatabase(t,
-		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"2", snapshotHash}}},
-		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]driver.Value{{int64(7), int64(1)}}},
-		queryExpectation{contains: "SELECT coverage.end_block::text AS snapshot_number", columns: columns(2), rows: [][]driver.Value{{"2", snapshotHash}}},
-		queryExpectation{contains: "SELECT kind, key, label, rank, canonical", columns: columns(5), rows: searchRows},
+		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]any{{"2", snapshotHash}}},
+		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]any{{int64(7), int64(1)}}},
+		queryExpectation{contains: "SELECT coverage.end_block::text AS snapshot_number", columns: columns(2), rows: [][]any{{"2", snapshotHash}}},
+		queryExpectation{contains: "SELECT kind, key::text AS key, label::text AS label, rank, canonical::boolean AS canonical", columns: columns(5), rows: searchRows},
 		queryExpectation{
 			contains: "operation.block_number <= $4::numeric", columns: columns(2), rows: userOperationRows,
-			check: func(arguments []driver.NamedValue) error {
-				if len(arguments) != 4 || arguments[3].Value != "2" {
+			check: func(arguments []any) error {
+				if len(arguments) != 4 || !testpgx.NumericEquals(arguments[3], "2") {
 					return fmt.Errorf("UserOperation search snapshot arguments = %#v", arguments)
 				}
 				return nil
 			},
 		},
-		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"2", snapshotHash}}},
-		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]driver.Value{{int64(7), int64(1)}}},
-		queryExpectation{contains: "SELECT 1 FROM canonical_blocks AS snapshot", columns: columns(1), rows: [][]driver.Value{{true}}},
-		queryExpectation{contains: "JOIN erc4337_covered_blocks AS required_start", columns: columns(1), rows: [][]driver.Value{{true}}},
-		queryExpectation{contains: "SELECT kind, key, label, rank, canonical", columns: columns(5), rows: searchRows},
+		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]any{{"2", snapshotHash}}},
+		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]any{{int64(7), int64(1)}}},
+		queryExpectation{contains: "SELECT 1 FROM canonical_blocks AS snapshot", columns: columns(1), rows: [][]any{{true}}},
+		queryExpectation{contains: "JOIN erc4337_covered_blocks AS required_start", columns: columns(1), rows: [][]any{{true}}},
+		queryExpectation{contains: "SELECT kind, key::text AS key, label::text AS label, rank, canonical::boolean AS canonical", columns: columns(5), rows: searchRows},
 		queryExpectation{contains: "operation.block_number <= $4::numeric", columns: columns(2), rows: userOperationRows},
 	)
 	reader := testReader(t, db, Options{ChainID: 1, UserOperationRegistry: &registry})
@@ -775,11 +776,11 @@ func TestSearchTreatsLowNumericAddressAsAddressBeforeBlockNumber(t *testing.T) {
 	t.Parallel()
 	address := "0x00000000000000000000000000000000000026c0"
 	db := testDatabase(t,
-		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
-		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]driver.Value{{int64(7), int64(1)}}},
+		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]any{{"2", testHashBytes(3)}}},
+		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]any{{int64(7), int64(1)}}},
 		queryExpectation{
-			contains: "FROM search_catalog_documents AS document", columns: columns(6),
-			rows: [][]driver.Value{{"contract", address, "Artifact", int64(104), nil, nil}},
+			contains: "FROM search_catalog_documents AS document", columns: columns(7),
+			rows: [][]any{{"contract", address, "Artifact", int64(104), false, nil, false}},
 		},
 	)
 	reader := testReader(t, db, Options{ChainID: 1})
@@ -797,14 +798,14 @@ func TestSearchCoversCanonicalNamesTokensContractsAndLabels(t *testing.T) {
 	t.Parallel()
 	tokenAddress := "0x5aAe" + "b6053F3E94C9b9A09f33669435E7Ef1BeAed"
 	db := testDatabase(t,
-		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
-		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]driver.Value{{int64(7), int64(1)}}},
+		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]any{{"2", testHashBytes(3)}}},
+		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]any{{int64(7), int64(1)}}},
 		queryExpectation{
-			contains: "FROM search_catalog_documents AS document", columns: columns(6),
-			rows: [][]driver.Value{
-				{"contract", "0x52908400098527886e0f7030069857d2e4169ee7", "Treasury", int64(110), nil, nil},
-				{"address", "0xde709f2102306220921060314715629080e2fb77", "alice.eth", int64(100), true, "ens"},
-				{"token", tokenAddress, "Example Token", int64(65), true, nil},
+			contains: "FROM search_catalog_documents AS document", columns: columns(7),
+			rows: [][]any{
+				{"contract", "0x52908400098527886e0f7030069857d2e4169ee7", "Treasury", int64(110), false, nil, false},
+				{"address", "0xde709f2102306220921060314715629080e2fb77", "alice.eth", int64(100), true, "ens", true},
+				{"token", tokenAddress, "Example Token", int64(65), true, nil, true},
 			},
 		},
 	)
@@ -822,7 +823,7 @@ func TestSearchCoversCanonicalNamesTokensContractsAndLabels(t *testing.T) {
 
 func TestSearchVerifiedContractWinnerUsesCanonicalPublicationOrder(t *testing.T) {
 	t.Parallel()
-	query := compactSQL(dbgen.QuerySearchText)
+	query := compactSQL(testpgx.Statement("QuerySearchText"))
 	for _, required := range []string{
 		"LEFT JOIN verified_contract_proxy_artifacts AS proxy_artifact",
 		"proxy_artifact.verification_job_id IS NOT NULL AS verification_proxy_artifact",
@@ -845,11 +846,11 @@ func TestSearchVerifiedContractWinnerUsesCanonicalPublicationOrder(t *testing.T)
 func TestSearchRejectsMalformedPersistedEntityKey(t *testing.T) {
 	t.Parallel()
 	db := testDatabase(t,
-		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
-		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]driver.Value{{int64(7), int64(1)}}},
+		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]any{{"2", testHashBytes(3)}}},
+		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]any{{int64(7), int64(1)}}},
 		queryExpectation{
-			contains: "FROM search_catalog_documents AS document", columns: columns(6),
-			rows: [][]driver.Value{{"transaction", "not-a-hash", "bad", int64(80), nil, nil}},
+			contains: "FROM search_catalog_documents AS document", columns: columns(7),
+			rows: [][]any{{"transaction", "not-a-hash", "bad", int64(80), false, nil, false}},
 		},
 	)
 	reader := testReader(t, db, Options{ChainID: 1})
@@ -862,8 +863,8 @@ func TestSearchRejectsMalformedPersistedEntityKey(t *testing.T) {
 func TestSearchTextRejectsMalformedPersistedEntityKey(t *testing.T) {
 	t.Parallel()
 	db := testDatabase(t, queryExpectation{
-		contains: "FROM search_catalog_documents AS document", columns: columns(6),
-		rows: [][]driver.Value{{"transaction", "not-a-hash", "bad", int64(80), nil, nil}},
+		contains: "FROM search_catalog_documents AS document", columns: columns(7),
+		rows: [][]any{{"transaction", "not-a-hash", "bad", int64(80), false, nil, false}},
 	})
 	reader := testReader(t, db, Options{ChainID: 1})
 	results, err := reader.searchText(context.Background(), db, "bad", 2, 7, 0, nil, 20)
@@ -982,13 +983,9 @@ func TestDecodeRawObjectRejectsTrailingJSON(t *testing.T) {
 	}
 }
 
-func testReader(t *testing.T, db interface{ Close() error }, options Options) *PostgresReader {
+func testReader(t *testing.T, db *fakeSQLConn, options Options) *PostgresReader {
 	t.Helper()
-	sqlDB, ok := db.(*sql.DB)
-	if !ok {
-		t.Fatal("test database is not *sql.DB")
-	}
-	reader, err := NewPostgresReader(sqlDB, options)
+	reader, err := NewPostgresReader(db, options)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1015,8 +1012,8 @@ func testBlockProjectionRow(
 	transactionCount int64,
 	canonical bool,
 	safe, finalized any,
-) []driver.Value {
-	return []driver.Value{
+) []any {
+	return []any{
 		strconv.FormatUint(number, 10), testHashBytes(hash), testHashBytes(parent), "100",
 		"0x52908400098527886e0f7030069857d2e4169ee7",
 		"0x5208", "0x1c9c380", "0x3b9aca00",

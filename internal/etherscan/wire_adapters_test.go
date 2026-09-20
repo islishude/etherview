@@ -2,7 +2,6 @@ package etherscan
 
 import (
 	"context"
-	"database/sql/driver"
 	"encoding/json"
 	"math/big"
 	"net/url"
@@ -137,7 +136,7 @@ func TestAccountScanAuthenticatesDynamicEffectiveGasPriceFromStoredHeader(t *tes
 				sqlExpectation{
 					contains: "FROM transaction_inclusions AS inclusion",
 					columns:  fakeColumns(9),
-					rows: [][]driver.Value{{
+					rows: [][]any{{
 						[]byte(bundle.RawTransactions[0]),
 						[]byte(test.receipt),
 						strconv.FormatUint(bundle.Block.Time(), 10),

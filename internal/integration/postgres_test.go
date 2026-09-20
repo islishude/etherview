@@ -5,7 +5,6 @@ package integration_test
 import (
 	"context"
 	"crypto/rand"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -17,12 +16,14 @@ import (
 	"testing"
 	"time"
 
+	testpgx "github.com/islishude/etherview/internal/testpgx"
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/store"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/stdlib"
 )
 
 const testDatabaseEnvironment = "ETHERVIEW_TEST_DATABASE_URL"
@@ -81,7 +82,7 @@ func TestEmbeddedMigrationsAreIdempotentAndReportCompatibleState(t *testing.T) {
 	}
 
 	var currentSchema string
-	if err := db.QueryRowContext(ctx, `SELECT current_schema()`).Scan(&currentSchema); err != nil {
+	if err := db.QueryRow(ctx, `SELECT current_schema()`).Scan(&currentSchema); err != nil {
 		t.Fatalf("read current schema: %v", err)
 	}
 	if !strings.HasPrefix(currentSchema, "etherview_it_") {
@@ -93,12 +94,12 @@ func TestEmbeddedMigrationsKeepNamedConstraintsSchemaLocal(t *testing.T) {
 	first, second := newIsolatedPostgres(t), newIsolatedPostgres(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	for index, db := range []*sql.DB{first, second} {
+	for index, db := range []*pgxpool.Pool{first, second} {
 		if err := store.RunMigrations(ctx, db); err != nil {
 			t.Fatalf("migrate isolated schema %d: %v", index+1, err)
 		}
 		var count int
-		if err := db.QueryRowContext(ctx, `
+		if err := db.QueryRow(ctx, `
 			SELECT count(*)
 			FROM pg_constraint
 			WHERE conrelid = 'block_statistics'::regclass
@@ -112,10 +113,10 @@ func TestEmbeddedMigrationsKeepNamedConstraintsSchemaLocal(t *testing.T) {
 			t.Fatalf("schema %d validated constraints=%d error=%v", index+1, count, err)
 		}
 		var schema string
-		if err := db.QueryRowContext(ctx, `SELECT current_schema()`).Scan(&schema); err != nil {
+		if err := db.QueryRow(ctx, `SELECT current_schema()`).Scan(&schema); err != nil {
 			t.Fatal(err)
 		}
-		rows, err := db.QueryContext(ctx, `
+		rows, err := db.Query(ctx, `
 				SELECT procedure.proname, setting
 				FROM pg_proc AS procedure
 				JOIN pg_namespace AS namespace ON namespace.oid = procedure.pronamespace
@@ -133,7 +134,7 @@ func TestEmbeddedMigrationsKeepNamedConstraintsSchemaLocal(t *testing.T) {
 		for rows.Next() {
 			var name, setting string
 			if err := rows.Scan(&name, &setting); err != nil {
-				_ = rows.Close()
+				rows.Close()
 				t.Fatal(err)
 			}
 			pinned[name] = setting
@@ -141,7 +142,8 @@ func TestEmbeddedMigrationsKeepNamedConstraintsSchemaLocal(t *testing.T) {
 		if err := rows.Err(); err != nil {
 			t.Fatal(err)
 		}
-		if err := rows.Close(); err != nil {
+		rows.Close()
+		if err := rows.Err(); err != nil {
 			t.Fatal(err)
 		}
 		wantSearchPath := "search_path=" + schema + ", pg_catalog"
@@ -203,13 +205,13 @@ func TestConcurrentRoleStartupBindsOneChainIdentityWithoutRetry(t *testing.T) {
 		t.Fatalf("chain identity = %+v, want genesis %s", identity, genesis)
 	}
 	var beforeXID, afterXID string
-	if err := db.QueryRowContext(ctx, `SELECT xmin::text FROM chains WHERE chain_id = 1`).Scan(&beforeXID); err != nil {
+	if err := db.QueryRow(ctx, `SELECT xmin::text FROM chains WHERE chain_id = 1`).Scan(&beforeXID); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.BindChainIdentity(ctx, db, "1", genesis); err != nil {
 		t.Fatalf("repeat identical chain identity bind: %v", err)
 	}
-	if err := db.QueryRowContext(ctx, `SELECT xmin::text FROM chains WHERE chain_id = 1`).Scan(&afterXID); err != nil {
+	if err := db.QueryRow(ctx, `SELECT xmin::text FROM chains WHERE chain_id = 1`).Scan(&afterXID); err != nil {
 		t.Fatal(err)
 	}
 	if afterXID != beforeXID {
@@ -263,9 +265,9 @@ type ledgerEntry struct {
 	AppliedAt time.Time
 }
 
-func migrationLedger(t *testing.T, ctx context.Context, db *sql.DB) map[string]ledgerEntry {
+func migrationLedger(t *testing.T, ctx context.Context, db *pgxpool.Pool) map[string]ledgerEntry {
 	t.Helper()
-	rows, err := db.QueryContext(ctx, `
+	rows, err := db.Query(ctx, `
 		SELECT version, checksum, applied_at
 		FROM etherview_schema_migrations
 		ORDER BY version`)
@@ -289,7 +291,7 @@ func migrationLedger(t *testing.T, ctx context.Context, db *sql.DB) map[string]l
 	return entries
 }
 
-func newMigratedPostgres(t testing.TB) *sql.DB {
+func newMigratedPostgres(t testing.TB) *pgxpool.Pool {
 	t.Helper()
 	db := newIsolatedPostgres(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
@@ -303,7 +305,7 @@ func newMigratedPostgres(t testing.TB) *sql.DB {
 	return db
 }
 
-func newIsolatedPostgres(t testing.TB) *sql.DB {
+func newIsolatedPostgres(t testing.TB) *pgxpool.Pool {
 	t.Helper()
 	resetFixtureHashes()
 	rawURL := strings.TrimSpace(os.Getenv(testDatabaseEnvironment))
@@ -317,19 +319,17 @@ func newIsolatedPostgres(t testing.TB) *sql.DB {
 	}
 	adminConfig.RuntimeParams = cloneRuntimeParams(adminConfig.RuntimeParams)
 	adminConfig.RuntimeParams["application_name"] = "etherview-integration-admin"
-	adminDB := stdlib.OpenDB(*adminConfig)
-	adminDB.SetMaxOpenConns(2)
-	adminDB.SetMaxIdleConns(1)
+	adminDB := testpgx.Pool(t, adminConfig, int32(2))
 
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
-	if err := adminDB.PingContext(ctx); err != nil {
-		_ = adminDB.Close()
+	if err := adminDB.Ping(ctx); err != nil {
+		adminDB.Close()
 		t.Fatalf("connect to %s: %v", testDatabaseEnvironment, err)
 	}
 	schema := integrationSchemaName(t)
-	if _, err := adminDB.ExecContext(ctx, `CREATE SCHEMA `+quoteIdentifier(schema)); err != nil {
-		_ = adminDB.Close()
+	if _, err := adminDB.Exec(ctx, `CREATE SCHEMA `+quoteIdentifier(schema)); err != nil {
+		adminDB.Close()
 		t.Fatalf("create isolated schema %q: %v", schema, err)
 	}
 
@@ -337,28 +337,22 @@ func newIsolatedPostgres(t testing.TB) *sql.DB {
 	testConfig.RuntimeParams = cloneRuntimeParams(testConfig.RuntimeParams)
 	testConfig.RuntimeParams["application_name"] = "etherview-integration-test"
 	testConfig.RuntimeParams["search_path"] = schema
-	db := stdlib.OpenDB(*testConfig)
-	db.SetMaxOpenConns(6)
-	db.SetMaxIdleConns(2)
-	if err := db.PingContext(ctx); err != nil {
-		_ = db.Close()
-		_, _ = adminDB.ExecContext(context.Background(), `DROP SCHEMA `+quoteIdentifier(schema)+` CASCADE`)
-		_ = adminDB.Close()
+	db := testpgx.Pool(t, testConfig, int32(6))
+	if err := db.Ping(ctx); err != nil {
+		db.Close()
+		_, _ = adminDB.Exec(context.Background(), `DROP SCHEMA `+quoteIdentifier(schema)+` CASCADE`)
+		adminDB.Close()
 		t.Fatalf("connect with isolated search_path %q: %v", schema, err)
 	}
 
 	t.Cleanup(func() {
-		if err := db.Close(); err != nil {
-			t.Errorf("close isolated PostgreSQL pool: %v", err)
-		}
+		db.Close()
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cleanupCancel()
-		if _, err := adminDB.ExecContext(cleanupCtx, `DROP SCHEMA `+quoteIdentifier(schema)+` CASCADE`); err != nil {
+		if _, err := adminDB.Exec(cleanupCtx, `DROP SCHEMA `+quoteIdentifier(schema)+` CASCADE`); err != nil {
 			t.Errorf("drop isolated schema %q: %v", schema, err)
 		}
-		if err := adminDB.Close(); err != nil {
-			t.Errorf("close PostgreSQL admin pool: %v", err)
-		}
+		adminDB.Close()
 	})
 	return db
 }

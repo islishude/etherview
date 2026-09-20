@@ -2,7 +2,6 @@ package ens
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"math/big"
@@ -11,7 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
 	dbaccess "github.com/islishude/etherview/internal/db"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -63,12 +62,12 @@ type Observation struct {
 }
 
 type Repository struct {
-	db      *sql.DB
+	db      dbaccess.Database
 	chainID uint64
 	chain   pgtype.Numeric
 }
 
-func NewRepository(db *sql.DB, chainID uint64) (*Repository, error) {
+func NewRepository(db dbaccess.Database, chainID uint64) (*Repository, error) {
 	if db == nil {
 		return nil, errors.New("ENS repository database is nil")
 	}

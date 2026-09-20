@@ -3,7 +3,6 @@ package etherscan
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"math/big"
@@ -11,8 +10,12 @@ import (
 	"strconv"
 	"strings"
 
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
 func (b *PostgresBackend) accountTokenTransfers(ctx context.Context, action string, values url.Values) ([]tokenTransfer, error) {
@@ -42,26 +45,19 @@ func (b *PostgresBackend) accountTokenTransfers(ctx context.Context, action stri
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	tip, err := b.requireCanonicalStageRange(ctx, tx, tokenStage, start, end, ErrTokenUnavailable)
 	if err != nil {
 		return nil, err
 	}
-	var endArgument any
-	if end != nil {
-		endArgument = *end
-	}
-	query := dbgen.EtherscanTokenTransfers
-	arguments := make([]any, 0, 11)
+	queries := dbgen.New(b.db).WithTx(tx)
+	var rows []dbgen.EtherscanTokenTransfersRow
 	if selector.mode == selectorLegacyAddress {
-		_, addressBytes, parseErr := parseAddressParameter(values.Get("address"), "address")
+		_, address, parseErr := parseAddressParameter(values.Get("address"), "address")
 		if parseErr != nil {
 			return nil, parseErr
 		}
-		arguments = append(arguments,
-			b.chain, addressBytes, standard, start, endArgument, contractArgument,
-			page.limit, page.offset, page.direction,
-		)
+		rows, err = queries.EtherscanTokenTransfers(ctx, dbgen.EtherscanTokenTransfersParams{ChainID: b.chain, Address: address, Standard: standard, FromBlock: start, ToBlock: end, ContractAddress: contractArgument, Limit: int64(page.limit), Offset: page.offset, Direction: page.direction})
 	} else {
 		from, parseErr := optionalAddressBytes(values.Get("from"), "from")
 		if parseErr != nil {
@@ -75,41 +71,37 @@ func (b *PostgresBackend) accountTokenTransfers(ctx context.Context, action stri
 		if operator == "" {
 			operator = "AND"
 		}
-		query = dbgen.EtherscanTokenTransfersAdvanced
-		arguments = append(arguments,
-			b.chain, standard, contractArgument, from, to, operator,
-			start, endArgument, page.limit, page.offset, page.direction,
-		)
+		var advanced []dbgen.EtherscanTokenTransfersAdvancedRow
+		advanced, err = queries.EtherscanTokenTransfersAdvanced(ctx, dbgen.EtherscanTokenTransfersAdvancedParams{ChainID: b.chain, Standard: standard, ContractAddress: contractArgument, FromAddress: from, ToAddress: to, Operator: operator, FromBlock: start, ToBlock: end, Limit: int64(page.limit), Offset: page.offset, Direction: page.direction})
+		rows = make([]dbgen.EtherscanTokenTransfersRow, len(advanced))
+		for index, row := range advanced {
+			rows[index] = dbgen.EtherscanTokenTransfersRow(row)
+		}
 	}
-	rows, err := tx.QueryContext(ctx, query, arguments...)
+
 	if err != nil {
 		return nil, fmt.Errorf("query %s token transfers: %w", standard, err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	result := make([]tokenTransfer, 0, page.limit)
-	for rows.Next() {
-		item, scanErr := scanTokenTransfer(rows, standard, tip)
+	for _, storedRow := range rows {
+		item, scanErr := scanTokenTransfer(storedRow, standard, tip)
 		if scanErr != nil {
 			return nil, scanErr
 		}
 		result = append(result, item)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate %s token transfers: %w", standard, err)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, fmt.Errorf("close %s token transfers: %w", standard, err)
-	}
+
 	if len(result) == 0 {
 		return nil, ErrNotFound
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit %s token transfer snapshot: %w", standard, err)
 	}
 	return result, nil
 }
 
-func scanTokenTransfer(scanner rowScanner, expectedStandard, tipText string) (tokenTransfer, error) {
+func scanTokenTransfer(scanner dbgen.EtherscanTokenTransfersRow, expectedStandard, tipText string) (tokenTransfer, error) {
 	var (
 		blockNumberText, standard, eventKind  string
 		blockTimestampText                    string
@@ -117,18 +109,57 @@ func scanTokenTransfer(scanner rowScanner, expectedStandard, tipText string) (to
 		tokenAddressBytes, fromBytes, toBytes []byte
 		transactionJSON, receiptJSON          []byte
 		logIndex, subIndex, transactionIndex  int64
-		tokenID, amount, name, symbol         sql.NullString
-		blockBaseFeeText                      sql.NullString
-		decimals                              sql.NullInt64
+		tokenID, amount, name, symbol         pgtype.Text
+		blockBaseFeeText                      pgtype.Text
+		decimals                              pgtype.Int8
 	)
-	if err := scanner.Scan(
-		&blockNumberText, &blockHashBytes, &logIndex, &subIndex,
-		&transactionHashBytes, &tokenAddressBytes, &standard, &eventKind,
-		&fromBytes, &toBytes, &tokenID, &amount,
-		&transactionJSON, &receiptJSON, &blockTimestampText, &blockBaseFeeText,
-		&transactionIndex,
-		&name, &symbol, &decimals,
-	); err != nil {
+	if err := func() error {
+		blockNumberText = scanner.BlockNumber
+		blockHashBytes = scanner.BlockHash
+		logIndex = scanner.LogIndex
+		subIndex = int64(scanner.SubIndex)
+		transactionHashBytes = scanner.TransactionHash
+		tokenAddressBytes = scanner.TokenAddress
+		standard = scanner.Standard
+		eventKind = scanner.EventKind
+		fromBytes = scanner.FromAddress
+		toBytes = scanner.ToAddress
+		queryValue10, err := dbaccess.NumericText(scanner.TokenID)
+		if err != nil {
+			return err
+		}
+		tokenID = queryValue10
+		queryValue12, err := dbaccess.NumericText(scanner.Amount)
+		if err != nil {
+			return err
+		}
+		amount = queryValue12
+		transactionJSON = scanner.TransactionRaw
+		receiptJSON = scanner.ReceiptRaw
+		blockTimestampText = scanner.BlockTimestamp
+		var queryValue17 pgtype.Text
+		if scanner.BlockBaseFee != nil {
+			queryValue17 = pgtype.Text{String: *scanner.BlockBaseFee, Valid: true}
+		}
+		blockBaseFeeText = queryValue17
+		transactionIndex = scanner.TransactionIndex
+		var queryValue20 pgtype.Text
+		if scanner.Name != nil {
+			queryValue20 = pgtype.Text{String: *scanner.Name, Valid: true}
+		}
+		name = queryValue20
+		var queryValue22 pgtype.Text
+		if scanner.Symbol != nil {
+			queryValue22 = pgtype.Text{String: *scanner.Symbol, Valid: true}
+		}
+		symbol = queryValue22
+		var queryValue24 pgtype.Int8
+		if scanner.Decimals != nil {
+			queryValue24 = pgtype.Int8{Int64: int64(*scanner.Decimals), Valid: true}
+		}
+		decimals = queryValue24
+		return nil
+	}(); err != nil {
 		return tokenTransfer{}, fmt.Errorf("scan token transfer: %w", err)
 	}
 	if standard != expectedStandard {
@@ -280,8 +311,8 @@ func scanTokenTransfer(scanner rowScanner, expectedStandard, tipText string) (to
 type storedTokenContract struct {
 	address, codeHash, observedHash []byte
 	standard, confidence            string
-	name, symbol, totalSupply       sql.NullString
-	decimals                        sql.NullInt64
+	name, symbol, totalSupply       pgtype.Text
+	decimals                        pgtype.Int8
 	metadataState, observedBlock    string
 }
 
@@ -291,12 +322,45 @@ func (b *PostgresBackend) canonicalTokenContract(
 	addressBytes []byte,
 ) (storedTokenContract, error) {
 	var token storedTokenContract
-	err := queryer.QueryRowContext(ctx, dbgen.EtherscanCanonicalTokenContract, b.chain, addressBytes).Scan(
-		&token.address, &token.codeHash, &token.standard, &token.confidence,
-		&token.name, &token.symbol, &token.decimals, &token.totalSupply,
-		&token.metadataState, &token.observedBlock, &token.observedHash,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(b.chain); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(queryer).EtherscanCanonicalTokenContract(ctx, queryValue0, addressBytes)
+		if err != nil {
+			return err
+		}
+		token.address = queryRow.Address
+		token.codeHash = queryRow.CodeHash
+		token.standard = queryRow.Standard
+		token.confidence = queryRow.Confidence
+		var resultValue4 pgtype.Text
+		if queryRow.Name != nil {
+			resultValue4 = pgtype.Text{String: *queryRow.Name, Valid: true}
+		}
+		token.name = resultValue4
+		var resultValue6 pgtype.Text
+		if queryRow.Symbol != nil {
+			resultValue6 = pgtype.Text{String: *queryRow.Symbol, Valid: true}
+		}
+		token.symbol = resultValue6
+		var resultValue8 pgtype.Int8
+		if queryRow.Decimals != nil {
+			resultValue8 = pgtype.Int8{Int64: int64(*queryRow.Decimals), Valid: true}
+		}
+		token.decimals = resultValue8
+		resultValue10, err := dbaccess.NumericText(queryRow.TotalSupply)
+		if err != nil {
+			return err
+		}
+		token.totalSupply = resultValue10
+		token.metadataState = queryRow.MetadataState
+		token.observedBlock = queryRow.TokenObservedBlockNumber
+		token.observedHash = queryRow.ObservedBlockHash
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return storedTokenContract{}, ErrNotFound
 	}
 	if err != nil {
@@ -346,7 +410,7 @@ func (b *PostgresBackend) tokenInformation(ctx context.Context, values url.Value
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	if _, err := b.requireCanonicalStageRange(ctx, tx, tokenStage, "0", nil, ErrTokenUnavailable); err != nil {
 		return nil, err
 	}
@@ -354,7 +418,7 @@ func (b *PostgresBackend) tokenInformation(ctx context.Context, values url.Value
 	if err != nil {
 		return nil, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit token information snapshot: %w", err)
 	}
 	contractAddress, err := checksumAddress(address)
@@ -443,7 +507,7 @@ func (b *PostgresBackend) tokenHolders(ctx context.Context, values url.Values) (
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	tip, err := b.requireCanonicalStageRange(ctx, tx, holderStage, "0", nil, ErrStateUnavailable)
 	if err != nil {
 		return nil, err
@@ -462,20 +526,28 @@ func (b *PostgresBackend) tokenHolders(ctx context.Context, values url.Values) (
 	if err != nil {
 		return nil, err
 	}
-	rows, err := tx.QueryContext(
-		ctx, dbgen.EtherscanHolderPage, page.offset, page.limit,
-		b.chain, tokenAddress, snapshot.blockNumber,
-	)
+	rows, err := func() ([]dbgen.EtherscanHolderPageRow, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(b.chain); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(snapshot.blockNumber); err != nil {
+			return nil, err
+		}
+		return dbgen.New(tx).EtherscanHolderPage(ctx, dbgen.EtherscanHolderPageParams{RowOffset: page.offset, RowLimit: int64(page.limit), ChainID: queryValue0, TokenAddress: tokenAddress, BlockNumber: queryValue1})
+	}()
 	if err != nil {
 		return nil, fmt.Errorf("query token holders: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	result := make([]tokenHolder, 0, page.limit)
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var holderBytes []byte
 		var quantity string
-		if err := rows.Scan(&holderBytes, &quantity); err != nil {
-			return nil, fmt.Errorf("scan token holder: %w", err)
+		{
+			holderBytes = storedRow.HolderAddress
+			quantity = storedRow.LatestBalance
 		}
 		holderAddress, err := addressFromBytes(holderBytes)
 		if err != nil {
@@ -490,13 +562,8 @@ func (b *PostgresBackend) tokenHolders(ctx context.Context, values url.Values) (
 		}
 		result = append(result, tokenHolder{TokenHolderAddress: checksum, TokenHolderQuantity: quantity})
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate token holders: %w", err)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, fmt.Errorf("close token holders: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
+
+	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit token holder snapshot: %w", err)
 	}
 	return result, nil
@@ -511,7 +578,7 @@ func (b *PostgresBackend) tokenHolderCount(ctx context.Context, values url.Value
 	if err != nil {
 		return "", err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	tip, err := b.requireCanonicalStageRange(ctx, tx, holderStage, "0", nil, ErrStateUnavailable)
 	if err != nil {
 		return "", err
@@ -530,7 +597,7 @@ func (b *PostgresBackend) tokenHolderCount(ctx context.Context, values url.Value
 	if err != nil {
 		return "", err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return "", fmt.Errorf("commit token holder count snapshot: %w", err)
 	}
 	return snapshot.holderCount, nil
@@ -549,9 +616,26 @@ func requireEtherscanHolderDependencies(
 	tip string,
 ) error {
 	var configuredStart, holderBlocks, tokenBlocks, proxyBlocks, epoch string
-	if err := queryer.QueryRowContext(ctx, dbgen.CatalogHolderCoverage, tip, chainID).Scan(
-		&configuredStart, &holderBlocks, &tokenBlocks, &proxyBlocks, &epoch,
-	); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(tip); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(chainID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(queryer).CatalogHolderCoverage(ctx, queryValue0, queryValue1)
+		if err != nil {
+			return err
+		}
+		configuredStart = queryRow.ConfigurationConfiguredStart
+		holderBlocks = queryRow.CoveredBlocks
+		tokenBlocks = queryRow.TokenBlocks
+		proxyBlocks = queryRow.ProxyBlocks
+		epoch = queryRow.PublicationEpoch
+		return nil
+	}(); err != nil {
 		return fmt.Errorf("check token holder dependencies: %w", err)
 	}
 	want, err := storedUint256(tip, "holder dependency tip")
@@ -577,13 +661,29 @@ func etherscanHolderSnapshot(
 	tip string,
 ) (etherscanHolderState, error) {
 	var snapshot etherscanHolderState
-	err := queryer.QueryRowContext(
-		ctx, dbgen.CatalogHolderTokenSnapshot, chainID, tokenAddress, tip,
-	).Scan(
-		&snapshot.blockNumber, &snapshot.blockHash, &snapshot.state,
-		&snapshot.holderCount, &snapshot.totalSupply, &snapshot.balanceSum, &snapshot.coherent,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(tip); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(queryer).CatalogHolderTokenSnapshot(ctx, queryValue0, tokenAddress, queryValue1)
+		if err != nil {
+			return err
+		}
+		snapshot.blockNumber = queryRow.SnapshotBlockNumber
+		snapshot.blockHash = queryRow.BlockHash
+		snapshot.state = queryRow.State
+		snapshot.holderCount = queryRow.SnapshotHolderCount
+		snapshot.totalSupply = queryRow.SnapshotTotalSupply
+		snapshot.balanceSum = queryRow.SnapshotReconciledBalanceSum
+		snapshot.coherent = queryRow.Coherent
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return etherscanHolderState{}, ErrStateUnavailable
 	}
 	if err != nil {

@@ -11,31 +11,16 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const MempoolWriteLockMempoolStatement1 = `-- name: MempoolWriteLockMempoolStatement1 :many
+const mempoolWriteLockMempoolStatement1 = `-- name: MempoolWriteLockMempoolStatement1 :exec
 SELECT pg_advisory_xact_lock(hashtext('etherview:mempool:' || $1))
 `
 
-func (q *Queries) MempoolWriteLockMempoolStatement1(ctx context.Context, dollar_1 *string) ([]interface{}, error) {
-	rows, err := q.db.Query(ctx, MempoolWriteLockMempoolStatement1, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []interface{}{}
-	for rows.Next() {
-		var pg_advisory_xact_lock interface{}
-		if err := rows.Scan(&pg_advisory_xact_lock); err != nil {
-			return nil, err
-		}
-		items = append(items, pg_advisory_xact_lock)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) MempoolWriteLockMempoolStatement1(ctx context.Context, chainID *string) error {
+	_, err := q.db.Exec(ctx, mempoolWriteLockMempoolStatement1, chainID)
+	return err
 }
 
-const MempoolWriteStoreFailureStatement1 = `-- name: MempoolWriteStoreFailureStatement1 :exec
+const mempoolWriteStoreFailureStatement1 = `-- name: MempoolWriteStoreFailureStatement1 :exec
 INSERT INTO mempool_status (
 			chain_id, state, endpoint_name, latest_snapshot_id, transaction_count,
 			last_attempt_at, last_success_at, error_code, error_message, updated_at
@@ -51,7 +36,7 @@ INSERT INTO mempool_status (
 `
 
 type MempoolWriteStoreFailureStatement1Params struct {
-	Column1       pgtype.Numeric     `db:"column_1" json:"column_1"`
+	ChainID       pgtype.Numeric     `db:"chain_id" json:"chain_id"`
 	State         string             `db:"state" json:"state"`
 	EndpointName  *string            `db:"endpoint_name" json:"endpoint_name"`
 	LastAttemptAt pgtype.Timestamptz `db:"last_attempt_at" json:"last_attempt_at"`
@@ -60,8 +45,8 @@ type MempoolWriteStoreFailureStatement1Params struct {
 }
 
 func (q *Queries) MempoolWriteStoreFailureStatement1(ctx context.Context, arg MempoolWriteStoreFailureStatement1Params) error {
-	_, err := q.db.Exec(ctx, MempoolWriteStoreFailureStatement1,
-		arg.Column1,
+	_, err := q.db.Exec(ctx, mempoolWriteStoreFailureStatement1,
+		arg.ChainID,
 		arg.State,
 		arg.EndpointName,
 		arg.LastAttemptAt,
@@ -71,7 +56,7 @@ func (q *Queries) MempoolWriteStoreFailureStatement1(ctx context.Context, arg Me
 	return err
 }
 
-const MempoolWriteStoreSnapshotStatement1 = `-- name: MempoolWriteStoreSnapshotStatement1 :many
+const mempoolWriteStoreSnapshotStatement1 = `-- name: MempoolWriteStoreSnapshotStatement1 :one
 INSERT INTO mempool_snapshots (
 			chain_id, endpoint_name, observed_at, expires_at, transaction_count
 		) VALUES ($1::numeric, $2, $3, $4, $5)
@@ -79,40 +64,27 @@ INSERT INTO mempool_snapshots (
 `
 
 type MempoolWriteStoreSnapshotStatement1Params struct {
-	Column1          pgtype.Numeric     `db:"column_1" json:"column_1"`
+	ChainID          pgtype.Numeric     `db:"chain_id" json:"chain_id"`
 	EndpointName     string             `db:"endpoint_name" json:"endpoint_name"`
 	ObservedAt       pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
 	ExpiresAt        pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
 	TransactionCount int32              `db:"transaction_count" json:"transaction_count"`
 }
 
-func (q *Queries) MempoolWriteStoreSnapshotStatement1(ctx context.Context, arg MempoolWriteStoreSnapshotStatement1Params) ([]int64, error) {
-	rows, err := q.db.Query(ctx, MempoolWriteStoreSnapshotStatement1,
-		arg.Column1,
+func (q *Queries) MempoolWriteStoreSnapshotStatement1(ctx context.Context, arg MempoolWriteStoreSnapshotStatement1Params) (int64, error) {
+	row := q.db.QueryRow(ctx, mempoolWriteStoreSnapshotStatement1,
+		arg.ChainID,
 		arg.EndpointName,
 		arg.ObservedAt,
 		arg.ExpiresAt,
 		arg.TransactionCount,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []int64{}
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		items = append(items, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
-const MempoolWriteStoreSnapshotStatement2 = `-- name: MempoolWriteStoreSnapshotStatement2 :exec
+const mempoolWriteStoreSnapshotStatement2 = `-- name: MempoolWriteStoreSnapshotStatement2 :execrows
 INSERT INTO mempool_transactions (
 			chain_id, tx_hash, from_address, to_address, nonce, value, gas,
 			gas_price, max_fee_per_gas, max_priority_fee_per_gas, tx_type,
@@ -142,68 +114,63 @@ INSERT INTO mempool_transactions (
 `
 
 type MempoolWriteStoreSnapshotStatement2Params struct {
-	Column1          pgtype.Numeric     `db:"column_1" json:"column_1"`
-	TxHash           []byte             `db:"tx_hash" json:"tx_hash"`
-	FromAddress      []byte             `db:"from_address" json:"from_address"`
-	ToAddress        []byte             `db:"to_address" json:"to_address"`
-	Column5          pgtype.Numeric     `db:"column_5" json:"column_5"`
-	Column6          pgtype.Numeric     `db:"column_6" json:"column_6"`
-	Column7          pgtype.Numeric     `db:"column_7" json:"column_7"`
-	Column8          pgtype.Numeric     `db:"column_8" json:"column_8"`
-	Column9          pgtype.Numeric     `db:"column_9" json:"column_9"`
-	Column10         pgtype.Numeric     `db:"column_10" json:"column_10"`
-	Column11         pgtype.Numeric     `db:"column_11" json:"column_11"`
-	Input            []byte             `db:"input" json:"input"`
-	Column13         []byte             `db:"column_13" json:"column_13"`
-	FirstSeenAt      pgtype.Timestamptz `db:"first_seen_at" json:"first_seen_at"`
-	LastSeenAt       pgtype.Timestamptz `db:"last_seen_at" json:"last_seen_at"`
-	ExpiresAt        pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-	LastEndpointName string             `db:"last_endpoint_name" json:"last_endpoint_name"`
+	ChainID              pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	TxHash               []byte             `db:"tx_hash" json:"tx_hash"`
+	FromAddress          []byte             `db:"from_address" json:"from_address"`
+	ToAddress            []byte             `db:"to_address" json:"to_address"`
+	Nonce                pgtype.Numeric     `db:"nonce" json:"nonce"`
+	Value                pgtype.Numeric     `db:"value" json:"value"`
+	Gas                  pgtype.Numeric     `db:"gas" json:"gas"`
+	GasPrice             pgtype.Numeric     `db:"gas_price" json:"gas_price"`
+	MaxFeePerGas         pgtype.Numeric     `db:"max_fee_per_gas" json:"max_fee_per_gas"`
+	MaxPriorityFeePerGas pgtype.Numeric     `db:"max_priority_fee_per_gas" json:"max_priority_fee_per_gas"`
+	TxType               pgtype.Numeric     `db:"tx_type" json:"tx_type"`
+	Input                []byte             `db:"input" json:"input"`
+	Raw                  []byte             `db:"raw" json:"raw"`
+	FirstSeenAt          pgtype.Timestamptz `db:"first_seen_at" json:"first_seen_at"`
+	LastSeenAt           pgtype.Timestamptz `db:"last_seen_at" json:"last_seen_at"`
+	ExpiresAt            pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	LastEndpointName     string             `db:"last_endpoint_name" json:"last_endpoint_name"`
 }
 
-func (q *Queries) MempoolWriteStoreSnapshotStatement2(ctx context.Context, arg MempoolWriteStoreSnapshotStatement2Params) error {
-	_, err := q.db.Exec(ctx, MempoolWriteStoreSnapshotStatement2,
-		arg.Column1,
+func (q *Queries) MempoolWriteStoreSnapshotStatement2(ctx context.Context, arg MempoolWriteStoreSnapshotStatement2Params) (int64, error) {
+	result, err := q.db.Exec(ctx, mempoolWriteStoreSnapshotStatement2,
+		arg.ChainID,
 		arg.TxHash,
 		arg.FromAddress,
 		arg.ToAddress,
-		arg.Column5,
-		arg.Column6,
-		arg.Column7,
-		arg.Column8,
-		arg.Column9,
-		arg.Column10,
-		arg.Column11,
+		arg.Nonce,
+		arg.Value,
+		arg.Gas,
+		arg.GasPrice,
+		arg.MaxFeePerGas,
+		arg.MaxPriorityFeePerGas,
+		arg.TxType,
 		arg.Input,
-		arg.Column13,
+		arg.Raw,
 		arg.FirstSeenAt,
 		arg.LastSeenAt,
 		arg.ExpiresAt,
 		arg.LastEndpointName,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const MempoolWriteStoreSnapshotStatement3 = `-- name: MempoolWriteStoreSnapshotStatement3 :exec
+const mempoolWriteStoreSnapshotStatement3 = `-- name: MempoolWriteStoreSnapshotStatement3 :exec
 INSERT INTO mempool_snapshot_transactions (chain_id, snapshot_id, tx_hash)
 			VALUES ($1::numeric, $2, $3)
 `
 
-func (q *Queries) MempoolWriteStoreSnapshotStatement3(ctx context.Context, column1 pgtype.Numeric, snapshotID int64, txHash []byte) error {
-	_, err := q.db.Exec(ctx, MempoolWriteStoreSnapshotStatement3, column1, snapshotID, txHash)
+func (q *Queries) MempoolWriteStoreSnapshotStatement3(ctx context.Context, chainID pgtype.Numeric, snapshotID int64, txHash []byte) error {
+	_, err := q.db.Exec(ctx, mempoolWriteStoreSnapshotStatement3, chainID, snapshotID, txHash)
 	return err
 }
 
-const MempoolWriteStoreSnapshotStatement4 = `-- name: MempoolWriteStoreSnapshotStatement4 :exec
+const mempoolWriteStoreSnapshotStatement4 = `-- name: MempoolWriteStoreSnapshotStatement4 :exec
 WITH previous_slots AS (
-				SELECT pending.from_address, pending.nonce, (array_agg(pending.tx_hash))[1] AS tx_hash
-				FROM mempool_snapshot_transactions AS member
-				JOIN mempool_transactions AS pending
-				  ON pending.chain_id = member.chain_id AND pending.tx_hash = member.tx_hash
-				WHERE member.chain_id = $1::numeric AND member.snapshot_id = $2
-				GROUP BY pending.from_address, pending.nonce
-				HAVING count(*) = 1
-			), current_slots AS (
 				SELECT pending.from_address, pending.nonce, (array_agg(pending.tx_hash))[1] AS tx_hash
 				FROM mempool_snapshot_transactions AS member
 				JOIN mempool_transactions AS pending
@@ -211,11 +178,19 @@ WITH previous_slots AS (
 				WHERE member.chain_id = $1::numeric AND member.snapshot_id = $3
 				GROUP BY pending.from_address, pending.nonce
 				HAVING count(*) = 1
+			), current_slots AS (
+				SELECT pending.from_address, pending.nonce, (array_agg(pending.tx_hash))[1] AS tx_hash
+				FROM mempool_snapshot_transactions AS member
+				JOIN mempool_transactions AS pending
+				  ON pending.chain_id = member.chain_id AND pending.tx_hash = member.tx_hash
+				WHERE member.chain_id = $1::numeric AND member.snapshot_id = $2
+				GROUP BY pending.from_address, pending.nonce
+				HAVING count(*) = 1
 			)
 			INSERT INTO mempool_transaction_replacements (
 				chain_id, snapshot_id, replaced_hash, replacement_hash
 			)
-			SELECT $1::numeric, $3, previous.tx_hash, current.tx_hash
+			SELECT $1::numeric, $2, previous.tx_hash, current.tx_hash
 			FROM previous_slots AS previous
 			JOIN current_slots AS current
 			  ON current.from_address = previous.from_address
@@ -223,27 +198,27 @@ WITH previous_slots AS (
 			WHERE current.tx_hash <> previous.tx_hash
 `
 
-func (q *Queries) MempoolWriteStoreSnapshotStatement4(ctx context.Context, column1 pgtype.Numeric, snapshotID int64, snapshotID_2 int64) error {
-	_, err := q.db.Exec(ctx, MempoolWriteStoreSnapshotStatement4, column1, snapshotID, snapshotID_2)
+func (q *Queries) MempoolWriteStoreSnapshotStatement4(ctx context.Context, chainID pgtype.Numeric, snapshotID2 int64, snapshotID int64) error {
+	_, err := q.db.Exec(ctx, mempoolWriteStoreSnapshotStatement4, chainID, snapshotID2, snapshotID)
 	return err
 }
 
-const MempoolWriteStoreSnapshotStatement5 = `-- name: MempoolWriteStoreSnapshotStatement5 :exec
+const mempoolWriteStoreSnapshotStatement5 = `-- name: MempoolWriteStoreSnapshotStatement5 :exec
 UPDATE mempool_transactions AS pending
-			SET expires_at = GREATEST(pending.expires_at, $3)
+			SET expires_at = GREATEST(pending.expires_at, $1)
 			FROM mempool_transaction_replacements AS replacement
-			WHERE replacement.chain_id = $1::numeric
-			  AND replacement.snapshot_id = $2
+			WHERE replacement.chain_id = $2::numeric
+			  AND replacement.snapshot_id = $3
 			  AND pending.chain_id = replacement.chain_id
 			  AND pending.tx_hash = replacement.replaced_hash
 `
 
-func (q *Queries) MempoolWriteStoreSnapshotStatement5(ctx context.Context, column1 pgtype.Numeric, snapshotID int64, expiresAt pgtype.Timestamptz) error {
-	_, err := q.db.Exec(ctx, MempoolWriteStoreSnapshotStatement5, column1, snapshotID, expiresAt)
+func (q *Queries) MempoolWriteStoreSnapshotStatement5(ctx context.Context, expiresAt pgtype.Timestamptz, chainID pgtype.Numeric, snapshotID int64) error {
+	_, err := q.db.Exec(ctx, mempoolWriteStoreSnapshotStatement5, expiresAt, chainID, snapshotID)
 	return err
 }
 
-const MempoolWriteStoreSnapshotStatement6 = `-- name: MempoolWriteStoreSnapshotStatement6 :exec
+const mempoolWriteStoreSnapshotStatement6 = `-- name: MempoolWriteStoreSnapshotStatement6 :execrows
 INSERT INTO mempool_status (
 			chain_id, state, endpoint_name, latest_snapshot_id, transaction_count,
 			last_attempt_at, last_success_at, error_code, error_message, updated_at
@@ -262,46 +237,52 @@ INSERT INTO mempool_status (
 `
 
 type MempoolWriteStoreSnapshotStatement6Params struct {
-	Column1          pgtype.Numeric     `db:"column_1" json:"column_1"`
+	ChainID          pgtype.Numeric     `db:"chain_id" json:"chain_id"`
 	EndpointName     *string            `db:"endpoint_name" json:"endpoint_name"`
 	LatestSnapshotID *int64             `db:"latest_snapshot_id" json:"latest_snapshot_id"`
 	TransactionCount *int32             `db:"transaction_count" json:"transaction_count"`
 	LastAttemptAt    pgtype.Timestamptz `db:"last_attempt_at" json:"last_attempt_at"`
 }
 
-func (q *Queries) MempoolWriteStoreSnapshotStatement6(ctx context.Context, arg MempoolWriteStoreSnapshotStatement6Params) error {
-	_, err := q.db.Exec(ctx, MempoolWriteStoreSnapshotStatement6,
-		arg.Column1,
+func (q *Queries) MempoolWriteStoreSnapshotStatement6(ctx context.Context, arg MempoolWriteStoreSnapshotStatement6Params) (int64, error) {
+	result, err := q.db.Exec(ctx, mempoolWriteStoreSnapshotStatement6,
+		arg.ChainID,
 		arg.EndpointName,
 		arg.LatestSnapshotID,
 		arg.TransactionCount,
 		arg.LastAttemptAt,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const MempoolWriteStoreSnapshotStatement7 = `-- name: MempoolWriteStoreSnapshotStatement7 :exec
+const mempoolWriteStoreSnapshotStatement7 = `-- name: MempoolWriteStoreSnapshotStatement7 :execrows
 UPDATE mempool_status
-		SET last_snapshot_write_id = $2
-		WHERE chain_id = $1::numeric
+		SET last_snapshot_write_id = $1
+		WHERE chain_id = $2::numeric
 `
 
-func (q *Queries) MempoolWriteStoreSnapshotStatement7(ctx context.Context, column1 pgtype.Numeric, lastSnapshotWriteID *int64) error {
-	_, err := q.db.Exec(ctx, MempoolWriteStoreSnapshotStatement7, column1, lastSnapshotWriteID)
-	return err
+func (q *Queries) MempoolWriteStoreSnapshotStatement7(ctx context.Context, lastSnapshotWriteID *int64, chainID pgtype.Numeric) (int64, error) {
+	result, err := q.db.Exec(ctx, mempoolWriteStoreSnapshotStatement7, lastSnapshotWriteID, chainID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const MempoolWriteStoreSnapshotStatement8 = `-- name: MempoolWriteStoreSnapshotStatement8 :exec
+const mempoolWriteStoreSnapshotStatement8 = `-- name: MempoolWriteStoreSnapshotStatement8 :exec
 DELETE FROM mempool_snapshots
 		WHERE chain_id = $1::numeric AND expires_at <= $2 AND id <> $3
 `
 
-func (q *Queries) MempoolWriteStoreSnapshotStatement8(ctx context.Context, column1 pgtype.Numeric, expiresAt pgtype.Timestamptz, iD int64) error {
-	_, err := q.db.Exec(ctx, MempoolWriteStoreSnapshotStatement8, column1, expiresAt, iD)
+func (q *Queries) MempoolWriteStoreSnapshotStatement8(ctx context.Context, chainID pgtype.Numeric, expiresAt pgtype.Timestamptz, iD int64) error {
+	_, err := q.db.Exec(ctx, mempoolWriteStoreSnapshotStatement8, chainID, expiresAt, iD)
 	return err
 }
 
-const MempoolWriteStoreSnapshotStatement9 = `-- name: MempoolWriteStoreSnapshotStatement9 :exec
+const mempoolWriteStoreSnapshotStatement9 = `-- name: MempoolWriteStoreSnapshotStatement9 :exec
 DELETE FROM mempool_transactions AS pending
 		WHERE pending.chain_id = $1::numeric
 		  AND pending.expires_at <= $2
@@ -311,7 +292,7 @@ DELETE FROM mempool_transactions AS pending
 			  )
 `
 
-func (q *Queries) MempoolWriteStoreSnapshotStatement9(ctx context.Context, column1 pgtype.Numeric, expiresAt pgtype.Timestamptz) error {
-	_, err := q.db.Exec(ctx, MempoolWriteStoreSnapshotStatement9, column1, expiresAt)
+func (q *Queries) MempoolWriteStoreSnapshotStatement9(ctx context.Context, chainID pgtype.Numeric, expiresAt pgtype.Timestamptz) error {
+	_, err := q.db.Exec(ctx, mempoolWriteStoreSnapshotStatement9, chainID, expiresAt)
 	return err
 }

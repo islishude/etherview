@@ -2,12 +2,15 @@ package contractartifact
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strconv"
 
-	"github.com/islishude/etherview/internal/db/gen"
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
 type Resolution string
@@ -29,7 +32,7 @@ type Source struct {
 	Address               []byte
 	CodeHash              []byte
 	ValidFromBlock        string
-	ValidToBlock          sql.NullString
+	ValidToBlock          pgtype.Text
 	VerificationJobID     string
 	RequestDigest         []byte
 	FileName              string
@@ -48,7 +51,7 @@ type Source struct {
 	ConstructorArguments  []byte
 	Libraries             []byte
 	IsBlueprint           bool
-	CreatedAt             sql.NullTime
+	CreatedAt             pgtype.Timestamptz
 }
 
 type Result struct {
@@ -58,10 +61,10 @@ type Result struct {
 }
 
 type Resolver struct {
-	db *sql.DB
+	db dbaccess.Database
 }
 
-func NewResolver(db *sql.DB) (*Resolver, error) {
+func NewResolver(db dbaccess.Database) (*Resolver, error) {
 	if db == nil {
 		return nil, errors.New("contract artifact database is nil")
 	}
@@ -76,21 +79,30 @@ func (resolver *Resolver) ResolveCurrent(
 	if resolver == nil || resolver.db == nil || chainID == "" || len(address) != 20 {
 		return Result{}, false, errors.New("contract artifact identity is invalid")
 	}
-	tx, err := resolver.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	tx, err := resolver.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return Result{}, false, fmt.Errorf("begin contract artifact snapshot: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 
 	result := Result{Target: Target{ChainID: chainID, Address: append([]byte(nil), address...)}}
 	var contextNumber string
-	err = tx.QueryRowContext(ctx, dbgen.ContractArtifactCurrentTarget, chainID, address).Scan(
-		&result.Target.CodeHash,
-		&result.Target.BlockNumber,
-		&result.Target.BlockHash,
-		&contextNumber,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).ContractArtifactCurrentTarget(ctx, queryValue0, address)
+		if err != nil {
+			return err
+		}
+		result.Target.CodeHash = queryRow.CodeHash
+		result.Target.BlockNumber = queryRow.ObservationBlockNumber
+		result.Target.BlockHash = queryRow.BlockHash
+		contextNumber = queryRow.TipNumber
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return Result{}, false, nil
 	}
 	if err != nil {
@@ -115,24 +127,36 @@ func (resolver *Resolver) ResolveAtBlock(
 		len(blockHash) != 32 {
 		return Result{}, false, errors.New("contract artifact block identity is invalid")
 	}
-	tx, err := resolver.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	tx, err := resolver.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return Result{}, false, fmt.Errorf("begin contract artifact snapshot: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	contextNumber := strconv.FormatUint(blockNumber, 10)
 	result := Result{Target: Target{
 		ChainID: chainID, Address: append([]byte(nil), address...),
 	}}
 	var sourceContext string
-	err = tx.QueryRowContext(
-		ctx, dbgen.ContractArtifactTargetAtBlock,
-		chainID, address, contextNumber, blockHash,
-	).Scan(
-		&result.Target.CodeHash, &result.Target.BlockNumber,
-		&result.Target.BlockHash, &sourceContext,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(contextNumber); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).ContractArtifactTargetAtBlock(ctx, dbgen.ContractArtifactTargetAtBlockParams{ChainID: queryValue0, Address: address, Number: queryValue1, BlockHash: blockHash})
+		if err != nil {
+			return err
+		}
+		result.Target.CodeHash = queryRow.CodeHash
+		result.Target.BlockNumber = queryRow.ContextNumber
+		result.Target.BlockHash = queryRow.BlockHash
+		sourceContext = queryRow.ContextNumber_2
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return Result{}, false, nil
 	}
 	if err != nil {
@@ -147,43 +171,60 @@ func (resolver *Resolver) ResolveAtBlock(
 
 func resolveArtifactSourceTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	result Result,
 	contextNumber string,
 ) (Result, bool, error) {
 
 	var exact bool
-	err := tx.QueryRowContext(
-		ctx, dbgen.ContractArtifactArtifactSource,
-		result.Target.ChainID, result.Target.Address, result.Target.CodeHash, contextNumber,
-	).Scan(
-		&exact,
-		&result.Source.Address,
-		&result.Source.CodeHash,
-		&result.Source.ValidFromBlock,
-		&result.Source.ValidToBlock,
-		&result.Source.VerificationJobID,
-		&result.Source.RequestDigest,
-		&result.Source.FileName,
-		&result.Source.ContractName,
-		&result.Source.Language,
-		&result.Source.CompilerVersion,
-		&result.Source.MatchType,
-		&result.Source.ABI,
-		&result.Source.Sources,
-		&result.Source.Settings,
-		&result.Source.CompilationArtifacts,
-		&result.Source.CreationCodeArtifacts,
-		&result.Source.RuntimeCodeArtifacts,
-		&result.Source.CreationMatch,
-		&result.Source.RuntimeMatch,
-		&result.Source.ConstructorArguments,
-		&result.Source.Libraries,
-		&result.Source.IsBlueprint,
-		&result.Source.CreatedAt,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
-		if err := tx.Commit(); err != nil {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(result.Target.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(contextNumber); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).ContractArtifactArtifactSource(ctx, dbgen.ContractArtifactArtifactSourceParams{ChainID: queryValue0, Address: result.Target.Address, CodeHash: result.Target.CodeHash, MaxValidFromBlock: queryValue1})
+		if err != nil {
+			return err
+		}
+		if queryRow.Exact == nil {
+			return errors.New("invalid stored query value")
+		}
+		exact = *queryRow.Exact
+		result.Source.Address = queryRow.Address
+		result.Source.CodeHash = queryRow.CodeHash
+		result.Source.ValidFromBlock = queryRow.VerifiedValidFromBlock
+		resultValue5, err := dbaccess.NumericText(queryRow.ValidToBlock)
+		if err != nil {
+			return err
+		}
+		result.Source.ValidToBlock = resultValue5
+		result.Source.VerificationJobID = queryRow.VerifiedVerificationJobID
+		result.Source.RequestDigest = queryRow.RequestDigest
+		result.Source.FileName = queryRow.FileName
+		result.Source.ContractName = queryRow.ContractName
+		result.Source.Language = queryRow.Language
+		result.Source.CompilerVersion = queryRow.CompilerVersion
+		result.Source.MatchType = queryRow.MatchType
+		result.Source.ABI = queryRow.Abi
+		result.Source.Sources = queryRow.Sources
+		result.Source.Settings = queryRow.Settings
+		result.Source.CompilationArtifacts = queryRow.CompilationArtifacts
+		result.Source.CreationCodeArtifacts = queryRow.CreationCodeArtifacts
+		result.Source.RuntimeCodeArtifacts = queryRow.RuntimeCodeArtifacts
+		result.Source.CreationMatch = queryRow.CreationMatch
+		result.Source.RuntimeMatch = queryRow.RuntimeMatch
+		result.Source.ConstructorArguments = queryRow.ConstructorArguments
+		result.Source.Libraries = queryRow.Libraries
+		result.Source.IsBlueprint = queryRow.IsBlueprint
+		result.Source.CreatedAt = queryRow.CreatedAt
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
+		if err := tx.Commit(ctx); err != nil {
 			return Result{}, false, fmt.Errorf("commit contract artifact snapshot: %w", err)
 		}
 		return result, false, nil
@@ -200,7 +241,7 @@ func resolveArtifactSourceTx(
 	} else {
 		result.Resolution = ResolutionCodeHash
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return Result{}, false, fmt.Errorf("commit contract artifact snapshot: %w", err)
 	}
 	return result, true, nil

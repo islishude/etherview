@@ -2,7 +2,6 @@ package catalog
 
 import (
 	"context"
-	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,39 +28,39 @@ func TestTransactionCalldataUsesFinalEIP7702ExecutionIdentity(t *testing.T) {
 
 	catalog, backend := openCatalog(t,
 		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(4,
-			[]driver.Value{"100", blockHash, int64(3), raw},
+			[]any{"100", blockHash, int64(3), raw},
 		)},
 		catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(2,
-			[]driver.Value{"complete", int64(7)},
+			[]any{"complete", int64(7)},
 		)},
 		catalogQueryStep{
 			contains: "FROM transaction_execution_code_resolutions",
-			check: func(arguments []driver.NamedValue) error {
-				if len(arguments) != 6 || arguments[5].Value != int64(3) {
+			check: func(arguments []any) error {
+				if len(arguments) != 6 || arguments[5] != int64(3) {
 					return fmt.Errorf("effective execution arguments = %+v", arguments)
 				}
 				return nil
 			},
 			rows: catalogRows(5,
-				[]driver.Value{contextAddress[:], delegateB[:], codeHash, "eip7702_delegate", "prestate_tracer"},
+				[]any{contextAddress[:], delegateB[:], codeHash, "eip7702_delegate", "prestate_tracer"},
 			),
 		},
 		catalogQueryStep{
 			contains: "decoding.object_kind = 'transaction_calldata'",
-			check: func(arguments []driver.NamedValue) error {
-				if got, ok := arguments[3].Value.([]byte); !ok || common.BytesToAddress(got) != delegateB {
+			check: func(arguments []any) error {
+				if got, ok := arguments[3].([]byte); !ok || common.BytesToAddress(got) != delegateB {
 					return errors.New("persisted decoding did not use final delegate")
 				}
 				return nil
 			},
-			rows: catalogRows(13, []driver.Value{
+			rows: catalogRows(13, []any{
 				"decoded", "setValue(uint256)", "verified", "verified",
 				arguments, []byte(`[]`), "", delegateB[:], codeHash,
 				delegateB[:], codeHash, "not_applicable", []byte(`[]`),
 			}),
 		},
 		catalogQueryStep{contains: "WITH target_code AS", rows: catalogRows(9,
-			[]driver.Value{codeHash, abiJSON, "verified", "exact_address", delegateB[:], codeHash, make([]byte, 32), "0", nil},
+			[]any{codeHash, abiJSON, "verified", "exact_address", delegateB[:], codeHash, make([]byte, 32), "0", nil},
 		)},
 	)
 
@@ -87,25 +86,25 @@ func TestTransactionCalldataUsesPublishedRootTraceExecutionIdentity(t *testing.T
 	abiJSON := []byte(`[{"type":"receive","stateMutability":"payable"}]`)
 	catalog, backend := openCatalog(t,
 		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(4,
-			[]driver.Value{"100", blockHash, int64(0), raw},
+			[]any{"100", blockHash, int64(0), raw},
 		)},
 		catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(2,
-			[]driver.Value{"complete", int64(8)},
+			[]any{"complete", int64(8)},
 		)},
 		catalogQueryStep{contains: "FROM transaction_execution_code_resolutions", rows: catalogRows(5,
-			[]driver.Value{
+			[]any{
 				contextAddress[:], delegate[:], codeHash, "eip7702_delegate",
 				"root_trace_code_observation",
 			},
 		)},
 		catalogQueryStep{contains: "decoding.object_kind = 'transaction_calldata'", rows: catalogRows(13,
-			[]driver.Value{
+			[]any{
 				"decoded", "receive()", "verified", "verified", []byte(`[]`), []byte(`[]`), "",
 				delegate[:], codeHash, delegate[:], codeHash, "not_applicable", []byte(`[]`),
 			},
 		)},
 		catalogQueryStep{contains: "WITH target_code AS", rows: catalogRows(9,
-			[]driver.Value{
+			[]any{
 				codeHash, abiJSON, "verified", "exact_address", delegate[:], codeHash,
 				make([]byte, 32), "100", "100",
 			},
@@ -132,22 +131,22 @@ func TestTransactionCalldataUsesDelegatedExecutionForTypeTwoCall(t *testing.T) {
 	abiJSON := []byte(`[{"type":"function","name":"value","inputs":[],"outputs":[]}]`)
 	catalog, backend := openCatalog(t,
 		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(4,
-			[]driver.Value{"100", blockHash, int64(0), raw},
+			[]any{"100", blockHash, int64(0), raw},
 		)},
 		catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(2,
-			[]driver.Value{"complete", int64(8)},
+			[]any{"complete", int64(8)},
 		)},
 		catalogQueryStep{contains: "FROM transaction_execution_code_resolutions", rows: catalogRows(5,
-			[]driver.Value{contextAddress[:], delegate[:], codeHash, "eip7702_delegate", "prestate_tracer"},
+			[]any{contextAddress[:], delegate[:], codeHash, "eip7702_delegate", "prestate_tracer"},
 		)},
 		catalogQueryStep{contains: "decoding.object_kind = 'transaction_calldata'", rows: catalogRows(13,
-			[]driver.Value{
+			[]any{
 				"decoded", "value()", "verified", "verified", []byte(`[]`), []byte(`[]`), "",
 				delegate[:], codeHash, delegate[:], codeHash, "not_applicable", []byte(`[]`),
 			},
 		)},
 		catalogQueryStep{contains: "WITH target_code AS", rows: catalogRows(9,
-			[]driver.Value{codeHash, abiJSON, "verified", "exact_address", delegate[:], codeHash, make([]byte, 32), "0", nil},
+			[]any{codeHash, abiJSON, "verified", "exact_address", delegate[:], codeHash, make([]byte, 32), "0", nil},
 		)},
 	)
 	result, err := catalog.TransactionCalldata(context.Background(), "1", wire.Hash().Hex())
@@ -166,13 +165,13 @@ func TestTransactionCalldataClearedBindingHasNoExecutableCode(t *testing.T) {
 	contextAddress := *wire.To()
 	catalog, backend := openCatalog(t,
 		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(4,
-			[]driver.Value{"100", blockHash, int64(3), raw},
+			[]any{"100", blockHash, int64(3), raw},
 		)},
 		catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(2,
-			[]driver.Value{"complete", int64(1)},
+			[]any{"complete", int64(1)},
 		)},
 		catalogQueryStep{contains: "FROM transaction_execution_code_resolutions", rows: catalogRows(5,
-			[]driver.Value{contextAddress[:], nil, nil, "empty", "prestate_tracer"},
+			[]any{contextAddress[:], nil, nil, "empty", "prestate_tracer"},
 		)},
 	)
 	result, err := catalog.TransactionCalldata(context.Background(), "1", wire.Hash().Hex())
@@ -191,7 +190,7 @@ func TestTransactionCalldataRequiresExactStateDiffPublication(t *testing.T) {
 	blockHash := bytesOf(0xaa, common.HashLength)
 	catalog, backend := openCatalog(t,
 		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(4,
-			[]driver.Value{"100", blockHash, int64(0), raw},
+			[]any{"100", blockHash, int64(0), raw},
 		)},
 		catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(2)},
 	)
@@ -209,10 +208,10 @@ func TestTransactionCalldataMissingExecutionResolutionFailsClosed(t *testing.T) 
 	blockHash := bytesOf(0xaa, common.HashLength)
 	catalog, backend := openCatalog(t,
 		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(4,
-			[]driver.Value{"100", blockHash, int64(0), raw},
+			[]any{"100", blockHash, int64(0), raw},
 		)},
 		catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(2,
-			[]driver.Value{"complete", int64(8)},
+			[]any{"complete", int64(8)},
 		)},
 		catalogQueryStep{contains: "FROM transaction_execution_code_resolutions", rows: catalogRows(5)},
 		catalogQueryStep{contains: "FROM verified_function_selector_sets AS indexed", rows: catalogRows(3)},
@@ -238,14 +237,14 @@ func TestTransactionCalldataUsesVerifiedAddressSelectorWhenExecutionResolutionIs
 	abiEntry := []byte(`{"type":"function","name":"setValue","inputs":[{"name":"value","type":"uint256"}],"outputs":[]}`)
 	catalog, backend := openCatalog(t,
 		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(4,
-			[]driver.Value{"100", blockHash, int64(0), raw},
+			[]any{"100", blockHash, int64(0), raw},
 		)},
 		catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(2,
-			[]driver.Value{"complete", int64(8)},
+			[]any{"complete", int64(8)},
 		)},
 		catalogQueryStep{contains: "FROM transaction_execution_code_resolutions", rows: catalogRows(5)},
 		catalogQueryStep{contains: "FROM verified_function_selector_sets AS indexed", rows: catalogRows(3,
-			[]driver.Value{codeHash, "setValue(uint256)", abiEntry},
+			[]any{codeHash, "setValue(uint256)", abiEntry},
 		)},
 	)
 	result, err := catalog.TransactionCalldata(context.Background(), "1", wire.Hash().Hex())
@@ -283,16 +282,16 @@ func TestTransactionCalldataPreservesPublishedDecodingStates(t *testing.T) {
 			codeHash := bytesOf(0xdd, common.HashLength)
 			catalog, backend := openCatalog(t,
 				catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(4,
-					[]driver.Value{"100", blockHash, int64(0), raw},
+					[]any{"100", blockHash, int64(0), raw},
 				)},
 				catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(2,
-					[]driver.Value{"complete", int64(8)},
+					[]any{"complete", int64(8)},
 				)},
 				catalogQueryStep{contains: "FROM transaction_execution_code_resolutions", rows: catalogRows(5,
-					[]driver.Value{contextAddress[:], contextAddress[:], codeHash, "direct", "prestate_tracer"},
+					[]any{contextAddress[:], contextAddress[:], codeHash, "direct", "prestate_tracer"},
 				)},
 				catalogQueryStep{contains: "decoding.object_kind = 'transaction_calldata'", rows: catalogRows(13,
-					[]driver.Value{
+					[]any{
 						test.status, nil, nil, "high", []byte(`[]`), test.candidates, "stable warning",
 						contextAddress[:], codeHash, nil, nil, "not_applicable", []byte(`[]`),
 					},
@@ -324,24 +323,24 @@ func TestTransactionCalldataUsesExactReadTimeABIWhenPublicationIsWeak(t *testing
 	abiJSON := []byte(`[{"type":"function","name":"setValue","inputs":[{"name":"value","type":"uint256"}],"outputs":[]}]`)
 	catalog, backend := openCatalog(t,
 		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(4,
-			[]driver.Value{"100", blockHash, int64(0), raw},
+			[]any{"100", blockHash, int64(0), raw},
 		)},
 		catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(2,
-			[]driver.Value{"complete", int64(8)},
+			[]any{"complete", int64(8)},
 		)},
 		catalogQueryStep{contains: "FROM transaction_execution_code_resolutions", rows: catalogRows(5,
-			[]driver.Value{contextAddress[:], contextAddress[:], codeHash, "direct", "prestate_tracer"},
+			[]any{contextAddress[:], contextAddress[:], codeHash, "direct", "prestate_tracer"},
 		)},
 		catalogQueryStep{contains: "decoding.object_kind = 'transaction_calldata'", rows: catalogRows(13,
-			[]driver.Value{
+			[]any{
 				"decoded", "setValue(uint256)", "signature_database", "guess",
 				[]byte(`[{"name":"value","type":"uint256","value":"42"}]`), []byte(`[]`), "",
 				contextAddress[:], codeHash, nil, nil, "not_applicable", []byte(`[]`),
 			},
 		)},
 		catalogQueryStep{contains: "WITH target_code AS", rows: catalogRows(9,
-			[]driver.Value{codeHash, abiJSON, "verified", "exact_address", contextAddress[:], codeHash, make([]byte, 32), "0", nil},
-			[]driver.Value{codeHash, abiJSON, "signature_database", "signature_database", contextAddress[:], codeHash, make([]byte, 32), "0", nil},
+			[]any{codeHash, abiJSON, "verified", "exact_address", contextAddress[:], codeHash, make([]byte, 32), "0", nil},
+			[]any{codeHash, abiJSON, "signature_database", "signature_database", contextAddress[:], codeHash, make([]byte, 32), "0", nil},
 		)},
 	)
 	result, err := catalog.TransactionCalldata(context.Background(), "1", wire.Hash().Hex())
@@ -377,17 +376,17 @@ func TestTransactionCalldataProjectsExactRecursiveParameterStructure(t *testing.
 	codeHash := bytesOf(0xee, common.HashLength)
 	catalog, backend := openCatalog(t,
 		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(4,
-			[]driver.Value{"100", blockHash, int64(0), raw},
+			[]any{"100", blockHash, int64(0), raw},
 		)},
 		catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(2,
-			[]driver.Value{"complete", int64(8)},
+			[]any{"complete", int64(8)},
 		)},
 		catalogQueryStep{contains: "FROM transaction_execution_code_resolutions", rows: catalogRows(5,
-			[]driver.Value{contextAddress[:], contextAddress[:], codeHash, "direct", "prestate_tracer"},
+			[]any{contextAddress[:], contextAddress[:], codeHash, "direct", "prestate_tracer"},
 		)},
 		catalogQueryStep{contains: "decoding.object_kind = 'transaction_calldata'", rows: catalogRows(13)},
 		catalogQueryStep{contains: "WITH target_code AS", rows: catalogRows(9,
-			[]driver.Value{codeHash, []byte(abiJSON), "verified", "exact_address", contextAddress[:], codeHash, make([]byte, 32), "0", nil},
+			[]any{codeHash, []byte(abiJSON), "verified", "exact_address", contextAddress[:], codeHash, make([]byte, 32), "0", nil},
 		)},
 	)
 	result, err := catalog.TransactionCalldata(context.Background(), "1", wire.Hash().Hex())
@@ -423,14 +422,14 @@ func TestTransactionCalldataSelectorFallbackProjectsStoredABIEntryStructure(t *t
 	codeHash := bytesOf(0xdd, common.HashLength)
 	catalog, backend := openCatalog(t,
 		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(4,
-			[]driver.Value{"100", blockHash, int64(0), raw},
+			[]any{"100", blockHash, int64(0), raw},
 		)},
 		catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(2,
-			[]driver.Value{"complete", int64(8)},
+			[]any{"complete", int64(8)},
 		)},
 		catalogQueryStep{contains: "FROM transaction_execution_code_resolutions", rows: catalogRows(5)},
 		catalogQueryStep{contains: "FROM verified_function_selector_sets AS indexed", rows: catalogRows(3,
-			[]driver.Value{codeHash, "setConfig((uint256,address))", []byte(abiEntry)},
+			[]any{codeHash, "setConfig((uint256,address))", []byte(abiEntry)},
 		)},
 	)
 	result, err := catalog.TransactionCalldata(context.Background(), "1", wire.Hash().Hex())
@@ -455,23 +454,23 @@ func TestTransactionCalldataFailsClosedWhenPersistedDecodeSourceHasNoExactABI(t 
 	codeHash := bytesOf(0xee, common.HashLength)
 	catalog, backend := openCatalog(t,
 		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(4,
-			[]driver.Value{"100", blockHash, int64(0), raw},
+			[]any{"100", blockHash, int64(0), raw},
 		)},
 		catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(2,
-			[]driver.Value{"complete", int64(8)},
+			[]any{"complete", int64(8)},
 		)},
 		catalogQueryStep{contains: "FROM transaction_execution_code_resolutions", rows: catalogRows(5,
-			[]driver.Value{contextAddress[:], contextAddress[:], codeHash, "direct", "prestate_tracer"},
+			[]any{contextAddress[:], contextAddress[:], codeHash, "direct", "prestate_tracer"},
 		)},
 		catalogQueryStep{contains: "decoding.object_kind = 'transaction_calldata'", rows: catalogRows(13,
-			[]driver.Value{
+			[]any{
 				"decoded", "setValue(uint256)", "signature_database", "guess",
 				[]byte(`[{"name":"value","type":"uint256","value":"42"}]`), []byte(`[]`), "",
 				contextAddress[:], codeHash, nil, nil, "not_applicable", []byte(`[]`),
 			},
 		)},
 		catalogQueryStep{contains: "WITH target_code AS", rows: catalogRows(9,
-			[]driver.Value{
+			[]any{
 				codeHash,
 				[]byte(`[{"type":"function","name":"setValue","inputs":[{"name":"value","type":"uint256"}],"outputs":[]}]`),
 				"verified", "exact_address", contextAddress[:], codeHash, make([]byte, 32), "0", nil,
@@ -495,23 +494,23 @@ func TestTransactionCalldataFailsClosedOnSameSourceValueContradiction(t *testing
 	abiJSON := []byte(`[{"type":"function","name":"setValue","inputs":[{"name":"value","type":"uint256"}],"outputs":[]}]`)
 	catalog, backend := openCatalog(t,
 		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(4,
-			[]driver.Value{"100", blockHash, int64(0), raw},
+			[]any{"100", blockHash, int64(0), raw},
 		)},
 		catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(2,
-			[]driver.Value{"complete", int64(8)},
+			[]any{"complete", int64(8)},
 		)},
 		catalogQueryStep{contains: "FROM transaction_execution_code_resolutions", rows: catalogRows(5,
-			[]driver.Value{contextAddress[:], contextAddress[:], codeHash, "direct", "prestate_tracer"},
+			[]any{contextAddress[:], contextAddress[:], codeHash, "direct", "prestate_tracer"},
 		)},
 		catalogQueryStep{contains: "decoding.object_kind = 'transaction_calldata'", rows: catalogRows(13,
-			[]driver.Value{
+			[]any{
 				"decoded", "setValue(uint256)", "verified", "verified",
 				[]byte(`[{"name":"value","type":"uint256","value":"41"}]`), []byte(`[]`), "",
 				contextAddress[:], codeHash, contextAddress[:], codeHash, "not_applicable", []byte(`[]`),
 			},
 		)},
 		catalogQueryStep{contains: "WITH target_code AS", rows: catalogRows(9,
-			[]driver.Value{codeHash, abiJSON, "verified", "exact_address", contextAddress[:], codeHash, make([]byte, 32), "0", nil},
+			[]any{codeHash, abiJSON, "verified", "exact_address", contextAddress[:], codeHash, make([]byte, 32), "0", nil},
 		)},
 	)
 	_, err := catalog.TransactionCalldata(context.Background(), "1", wire.Hash().Hex())
@@ -529,17 +528,17 @@ func TestTransactionCalldataDecodesSelectorlessReceiveFromExactABI(t *testing.T)
 	abiJSON := []byte(`[{"type":"receive","stateMutability":"payable"}]`)
 	catalog, backend := openCatalog(t,
 		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(4,
-			[]driver.Value{"100", blockHash, int64(0), raw},
+			[]any{"100", blockHash, int64(0), raw},
 		)},
 		catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(2,
-			[]driver.Value{"complete", int64(8)},
+			[]any{"complete", int64(8)},
 		)},
 		catalogQueryStep{contains: "FROM transaction_execution_code_resolutions", rows: catalogRows(5,
-			[]driver.Value{contextAddress[:], contextAddress[:], codeHash, "direct", "prestate_tracer"},
+			[]any{contextAddress[:], contextAddress[:], codeHash, "direct", "prestate_tracer"},
 		)},
 		catalogQueryStep{contains: "decoding.object_kind = 'transaction_calldata'", rows: catalogRows(13)},
 		catalogQueryStep{contains: "WITH target_code AS", rows: catalogRows(9,
-			[]driver.Value{codeHash, abiJSON, "verified", "exact_address", contextAddress[:], codeHash, make([]byte, 32), "0", nil},
+			[]any{codeHash, abiJSON, "verified", "exact_address", contextAddress[:], codeHash, make([]byte, 32), "0", nil},
 		)},
 	)
 	result, err := catalog.TransactionCalldata(context.Background(), "1", wire.Hash().Hex())

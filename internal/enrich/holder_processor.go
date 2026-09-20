@@ -2,17 +2,21 @@ package enrich
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"math/big"
 	"strconv"
 	"strings"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/stagecontract"
 )
@@ -27,7 +31,7 @@ var (
 )
 
 type PostgresHolderProcessor struct {
-	db   *sql.DB
+	db   dbaccess.Database
 	pool *ethrpc.Pool
 }
 
@@ -56,7 +60,7 @@ type holderTokenReconciliation struct {
 	state       string
 }
 
-func NewPostgresHolderProcessor(db *sql.DB, pool *ethrpc.Pool) (*PostgresHolderProcessor, error) {
+func NewPostgresHolderProcessor(db dbaccess.Database, pool *ethrpc.Pool) (*PostgresHolderProcessor, error) {
 	if db == nil || pool == nil {
 		return nil, errors.New("holder processor requires PostgreSQL and an RPC pool")
 	}
@@ -88,7 +92,7 @@ func (processor *PostgresHolderProcessor) Process(ctx context.Context, job Job) 
 		return StageResult{}, err
 	}
 	if stale {
-		return runStageTransaction(ctx, processor.db, job, func(context.Context, *sql.Tx) (StageResult, error) {
+		return runStageTransaction(ctx, processor.db, job, func(context.Context, pgx.Tx) (StageResult, error) {
 			return StageResult{State: ResultComplete, Details: map[string]string{"outcome": "stale_canonical_skipped"}}, nil
 		})
 	}
@@ -115,7 +119,7 @@ func (processor *PostgresHolderProcessor) Process(ctx context.Context, job Job) 
 		}
 		processor.pool.ReportSuccess(endpoint.Name)
 	}
-	return runStageTransaction(ctx, processor.db, job, func(ctx context.Context, tx *sql.Tx) (StageResult, error) {
+	return runStageTransaction(ctx, processor.db, job, func(ctx context.Context, tx pgx.Tx) (StageResult, error) {
 		return persistHolderReconciliations(ctx, tx, job, reconciliations)
 	})
 }
@@ -140,11 +144,26 @@ func (processor *PostgresHolderProcessor) readInputs(
 ) ([]holderTokenInput, bool, error) {
 	var configuredStart string
 	var canonical, tokenComplete, proxyTerminal bool
-	err := processor.db.QueryRowContext(
-		ctx, dbgen.HolderSourcePrerequisites, job.ChainID,
-		strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-	).Scan(&configuredStart, &canonical, &tokenComplete, &proxyTerminal)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(processor.db).HolderSourcePrerequisites(ctx, queryValue0, queryValue1, job.BlockHash[:])
+		if err != nil {
+			return err
+		}
+		configuredStart = queryRow.ConfigurationConfiguredStart
+		canonical = queryRow.Canonical
+		tokenComplete = queryRow.TokenComplete
+		proxyTerminal = queryRow.ProxyTerminal
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, false, Permanent(errors.New("holder chain configuration is missing"))
 	}
 	if err != nil {
@@ -159,35 +178,37 @@ func (processor *PostgresHolderProcessor) readInputs(
 	if !tokenComplete || !proxyTerminal {
 		return nil, false, errors.New("holder stage dependencies are not terminal")
 	}
-	rows, err := processor.db.QueryContext(
-		ctx, dbgen.HolderAffectedTokens, job.ChainID,
-		strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-	)
+	rows, err := func() ([]dbgen.HolderAffectedTokensRow, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return nil, err
+		}
+		return dbgen.New(processor.db).HolderAffectedTokens(ctx, queryValue0, queryValue1, job.BlockHash[:])
+	}()
 	if err != nil {
 		return nil, false, fmt.Errorf("query holder affected tokens: %w", err)
 	}
 	var tokens []common.Address
 	var fullReconciliations []bool
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var encoded []byte
 		var full bool
-		if err := rows.Scan(&encoded, &full); err != nil {
-			_ = rows.Close()
-			return nil, false, fmt.Errorf("scan holder affected token: %w", err)
+		{
+			encoded = storedRow.TokenAddress
+			full = storedRow.FullReconciliation
 		}
 		if len(encoded) != common.AddressLength {
-			_ = rows.Close()
+
 			return nil, false, Permanent(errors.New("holder token address has invalid length"))
 		}
 		tokens = append(tokens, common.BytesToAddress(encoded))
 		fullReconciliations = append(fullReconciliations, full)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, false, fmt.Errorf("iterate holder affected tokens: %w", err)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, false, fmt.Errorf("close holder affected tokens: %w", err)
-	}
+
 	inputs := make([]holderTokenInput, 0, len(tokens))
 	for index, token := range tokens {
 		input, err := processor.readTokenInput(ctx, job, token, fullReconciliations[index])
@@ -211,9 +232,23 @@ func (processor *PostgresHolderProcessor) readTokenInput(
 	full bool,
 ) (holderTokenInput, error) {
 	var standard, confidence string
-	err := processor.db.QueryRowContext(
-		ctx, dbgen.HolderTokenIdentity, job.ChainID, token[:], strconv.FormatUint(job.BlockNumber, 10),
-	).Scan(&standard, &confidence)
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(processor.db).HolderTokenIdentity(ctx, queryValue0, token[:], queryValue1)
+		if err != nil {
+			return err
+		}
+		standard = queryRow.Standard
+		confidence = queryRow.Confidence
+		return nil
+	}()
 	if err != nil {
 		return holderTokenInput{}, fmt.Errorf("read holder token identity: %w", err)
 	}
@@ -224,10 +259,27 @@ func (processor *PostgresHolderProcessor) readTokenInput(
 	previousBlock := "0"
 	if !full {
 		var state, countText, totalSupplyText, sumText string
-		err := processor.db.QueryRowContext(
-			ctx, dbgen.HolderPreviousSnapshot, job.ChainID, token[:], strconv.FormatUint(job.BlockNumber, 10),
-		).Scan(&previousBlock, &state, &countText, &totalSupplyText, &sumText)
-		if errors.Is(err, sql.ErrNoRows) || err == nil && state != "complete" {
+		err := func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(job.ChainID); err != nil {
+				return err
+			}
+			var queryValue1 pgtype.Numeric
+			if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+				return err
+			}
+			queryRow, err := dbgen.New(processor.db).HolderPreviousSnapshot(ctx, queryValue0, token[:], queryValue1)
+			if err != nil {
+				return err
+			}
+			previousBlock = queryRow.SnapshotBlockNumber
+			state = queryRow.State
+			countText = queryRow.SnapshotHolderCount
+			totalSupplyText = queryRow.SnapshotTotalSupply
+			sumText = queryRow.SnapshotReconciledBalanceSum
+			return nil
+		}()
+		if errors.Is(err, pgx.ErrNoRows) || err == nil && state != "complete" {
 			full = true
 		} else if err != nil {
 			return holderTokenInput{}, fmt.Errorf("read previous holder snapshot: %w", err)
@@ -240,59 +292,60 @@ func (processor *PostgresHolderProcessor) readTokenInput(
 			}
 			previousCount, previousSum = count, sum
 			var gap bool
-			if err := processor.db.QueryRowContext(
-				ctx, dbgen.HolderHasUnreconciledEvents, job.ChainID, token[:],
-				previousBlock, strconv.FormatUint(job.BlockNumber, 10),
-			).Scan(&gap); err != nil {
+			if err := func() error {
+				var queryValue0 pgtype.Numeric
+				if err := queryValue0.Scan(job.ChainID); err != nil {
+					return err
+				}
+				var queryValue1 pgtype.Numeric
+				if err := queryValue1.Scan(previousBlock); err != nil {
+					return err
+				}
+				var queryValue2 pgtype.Numeric
+				if err := queryValue2.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+					return err
+				}
+				queryRow, err := dbgen.New(processor.db).HolderHasUnreconciledEvents(ctx, dbgen.HolderHasUnreconciledEventsParams{ChainID: queryValue0, TokenAddress: token[:], PreviousBlock: queryValue1, BlockNumber: queryValue2})
+				if err != nil {
+					return err
+				}
+				gap = queryRow
+				return nil
+			}(); err != nil {
 				return holderTokenInput{}, fmt.Errorf("read holder reconciliation gap: %w", err)
 			}
 			full = gap
 		}
 	}
-	query, arguments := dbgen.HolderTouchedCandidates, []any{
-		job.ChainID, token[:], strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-	}
 	if full {
-		query = dbgen.HolderCandidates
-		arguments = []any{job.ChainID, token[:], strconv.FormatUint(job.BlockNumber, 10)}
 		previousSum, previousCount = new(big.Int), 0
 	}
-	rows, err := processor.db.QueryContext(ctx, query, arguments...)
+	holders, err := processor.readHolderCandidates(ctx, job, token, full)
 	if err != nil {
-		return holderTokenInput{}, fmt.Errorf("query holder candidates: %w", err)
+		return holderTokenInput{}, err
 	}
-	holders := make([]common.Address, 0)
-	for rows.Next() {
-		var encoded []byte
-		if err := rows.Scan(&encoded); err != nil {
-			_ = rows.Close()
-			return holderTokenInput{}, fmt.Errorf("scan holder candidate: %w", err)
-		}
-		if len(encoded) != common.AddressLength {
-			_ = rows.Close()
-			return holderTokenInput{}, Permanent(errors.New("holder candidate address has invalid length"))
-		}
-		holder := common.BytesToAddress(encoded)
-		if holder == (common.Address{}) {
-			_ = rows.Close()
-			return holderTokenInput{}, Permanent(errors.New("holder candidate address is zero"))
-		}
-		holders = append(holders, holder)
-	}
-	if err := rows.Err(); err != nil {
-		return holderTokenInput{}, fmt.Errorf("iterate holder candidates: %w", err)
-	}
-	if err := rows.Close(); err != nil {
-		return holderTokenInput{}, fmt.Errorf("close holder candidates: %w", err)
-	}
+
 	previousBalances := make([]*big.Int, len(holders))
 	if !full {
 		for index, holder := range holders {
 			var balanceText string
-			err := processor.db.QueryRowContext(
-				ctx, dbgen.HolderPreviousBalance, job.ChainID, token[:], holder[:], previousBlock,
-			).Scan(&balanceText)
-			if errors.Is(err, sql.ErrNoRows) {
+			err := func() error {
+				var queryValue0 pgtype.Numeric
+				if err := queryValue0.Scan(job.ChainID); err != nil {
+					return err
+				}
+				var queryValue1 pgtype.Numeric
+				if err := queryValue1.Scan(previousBlock); err != nil {
+					return err
+				}
+				queryRow, err := dbgen.New(processor.db).HolderPreviousBalance(ctx, dbgen.HolderPreviousBalanceParams{ChainID: queryValue0, TokenAddress: token[:], HolderAddress: holder[:], BlockNumber: queryValue1})
+				if err != nil {
+					return err
+				}
+				balanceText = queryRow
+				return nil
+			}()
+			if errors.Is(err, pgx.ErrNoRows) {
 				previousBalances[index] = new(big.Int)
 				continue
 			}
@@ -307,9 +360,22 @@ func (processor *PostgresHolderProcessor) readTokenInput(
 		}
 	}
 	var supplyText string
-	if err := processor.db.QueryRowContext(
-		ctx, dbgen.HolderEventSupply, job.ChainID, token[:], strconv.FormatUint(job.BlockNumber, 10),
-	).Scan(&supplyText); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(processor.db).HolderEventSupply(ctx, queryValue0, token[:], queryValue1)
+		if err != nil {
+			return err
+		}
+		supplyText = queryRow
+		return nil
+	}(); err != nil {
 		return holderTokenInput{}, fmt.Errorf("read holder event supply: %w", err)
 	}
 	eventSupply, ok := new(big.Int).SetString(supplyText, 10)
@@ -431,7 +497,7 @@ func callHolderBalanceBatch(
 
 func persistHolderReconciliations(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	reconciliations []holderTokenReconciliation,
 ) (StageResult, error) {
@@ -442,27 +508,62 @@ func persistHolderReconciliations(
 	if !canonical {
 		return StageResult{State: ResultComplete, Details: map[string]string{"outcome": "stale_canonical_skipped"}}, nil
 	}
-	if _, err := tx.ExecContext(
-		ctx, dbgen.HolderDeleteBlockOutput, job.ChainID,
-		strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-	); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		return dbgen.New(tx).HolderDeleteBlockOutput(ctx, queryValue0, queryValue1, job.BlockHash[:])
+	}(); err != nil {
 		return StageResult{}, fmt.Errorf("delete holder replay output: %w", err)
 	}
 	available := 0
 	for _, reconciliation := range reconciliations {
-		if _, err := tx.ExecContext(
-			ctx, dbgen.HolderInsertSnapshot, job.ChainID, reconciliation.token[:],
-			strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:], reconciliation.state,
-			strconv.FormatUint(reconciliation.holderCount, 10), reconciliation.totalSupply.String(),
-			reconciliation.balanceSum.String(),
-		); err != nil {
+		if err := func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(job.ChainID); err != nil {
+				return err
+			}
+			var queryValue1 pgtype.Numeric
+			if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+				return err
+			}
+			var queryValue2 pgtype.Numeric
+			if err := queryValue2.Scan(strconv.FormatUint(reconciliation.holderCount, 10)); err != nil {
+				return err
+			}
+			var queryValue3 pgtype.Numeric
+			if err := queryValue3.Scan(reconciliation.totalSupply.String()); err != nil {
+				return err
+			}
+			var queryValue4 pgtype.Numeric
+			if err := queryValue4.Scan(reconciliation.balanceSum.String()); err != nil {
+				return err
+			}
+			return dbgen.New(tx).HolderInsertSnapshot(ctx, dbgen.HolderInsertSnapshotParams{ChainID: queryValue0, TokenAddress: reconciliation.token[:], BlockNumber: queryValue1, BlockHash: job.BlockHash[:], State: reconciliation.state, HolderCount: queryValue2, TotalSupply: queryValue3, ReconciledBalanceSum: queryValue4})
+		}(); err != nil {
 			return StageResult{}, fmt.Errorf("persist holder snapshot: %w", err)
 		}
 		for _, balance := range reconciliation.balances {
-			if _, err := tx.ExecContext(
-				ctx, dbgen.HolderInsertBalance, job.ChainID, reconciliation.token[:], balance.holder[:],
-				strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:], balance.balance.String(),
-			); err != nil {
+			if err := func() error {
+				var queryValue0 pgtype.Numeric
+				if err := queryValue0.Scan(job.ChainID); err != nil {
+					return err
+				}
+				var queryValue1 pgtype.Numeric
+				if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+					return err
+				}
+				var queryValue2 pgtype.Numeric
+				if err := queryValue2.Scan(balance.balance.String()); err != nil {
+					return err
+				}
+				return dbgen.New(tx).HolderInsertBalance(ctx, dbgen.HolderInsertBalanceParams{ChainID: queryValue0, TokenAddress: reconciliation.token[:], HolderAddress: balance.holder[:], BlockNumber: queryValue1, BlockHash: job.BlockHash[:], Balance: queryValue2})
+			}(); err != nil {
 				return StageResult{}, fmt.Errorf("persist holder balance: %w", err)
 			}
 		}

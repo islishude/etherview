@@ -2,7 +2,6 @@ package maintenance
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -12,7 +11,7 @@ import (
 	"time"
 
 	dbaccess "github.com/islishude/etherview/internal/db"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -28,10 +27,10 @@ type CatalogCleaner interface {
 }
 
 type PostgresCatalogCleaner struct {
-	db *sql.DB
+	db dbaccess.Database
 }
 
-func NewPostgresCatalogCleaner(db *sql.DB) (*PostgresCatalogCleaner, error) {
+func NewPostgresCatalogCleaner(db dbaccess.Database) (*PostgresCatalogCleaner, error) {
 	if db == nil {
 		return nil, errors.New("catalog maintenance database is nil")
 	}

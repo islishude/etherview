@@ -4,13 +4,14 @@ package integration_test
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/url"
 	"strings"
 	"testing"
 	"time"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/islishude/etherview/internal/etherscan"
@@ -168,7 +169,7 @@ func TestEtherscanContractCreationIncludesFactoryTraceFacts(t *testing.T) {
 func insertEtherscanVerifiedContractFixture(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	address, codeHash []byte,
 	validFrom uint64,
 	contractName, abi, sources string,

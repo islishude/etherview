@@ -4,7 +4,6 @@ package integration_test
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"reflect"
@@ -12,6 +11,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/enrich"
@@ -55,7 +57,7 @@ func TestEnrichmentOutboxCrashRecoveryReplayAndIdempotency(t *testing.T) {
 	if err != nil || !found || crashedLease.Job.ID != job.ID || crashedLease.Job.Attempt != 1 {
 		t.Fatalf("crashed lease = %+v, found=%t, err=%v", crashedLease, found, err)
 	}
-	if _, err := db.ExecContext(ctx, `
+	if _, err := db.Exec(ctx, `
 		UPDATE durable_jobs
 		SET lease_expires_at = clock_timestamp() - INTERVAL '1 second'
 		WHERE id = $1`, job.ID); err != nil {
@@ -209,7 +211,7 @@ func TestEnrichmentTerminalOutcomesAndExhaustionAreDurable(t *testing.T) {
 		if err != nil || !found {
 			t.Fatalf("claim crash job = %+v, found=%t, err=%v", lease, found, err)
 		}
-		if _, err := db.ExecContext(ctx, `
+		if _, err := db.Exec(ctx, `
 			UPDATE durable_jobs
 			SET lease_expires_at = clock_timestamp() - INTERVAL '1 second'
 			WHERE id = $1`, enqueued.Job.ID); err != nil {
@@ -255,10 +257,10 @@ func TestEnrichmentTerminalOutcomesAndExhaustionAreDurable(t *testing.T) {
 	})
 }
 
-func readEnrichmentJob(t *testing.T, ctx context.Context, db *sql.DB, stage enrich.StageID, blockHash common.Hash, blockNumber uint64) enrich.Job {
+func readEnrichmentJob(t *testing.T, ctx context.Context, db *pgxpool.Pool, stage enrich.StageID, blockHash common.Hash, blockNumber uint64) enrich.Job {
 	t.Helper()
 	var id, generation int64
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT id, requested_generation
 		FROM durable_jobs
 		WHERE chain_id = 1 AND stage = $1 AND stage_version = $2`, stage.Name, stage.Version).Scan(&id, &generation); err != nil {
@@ -270,7 +272,7 @@ func readEnrichmentJob(t *testing.T, ctx context.Context, db *sql.DB, stage enri
 	}
 }
 
-func assertEnrichmentJobTerminal(t *testing.T, ctx context.Context, db *sql.DB, id, wantStatus string, wantAttempts int) {
+func assertEnrichmentJobTerminal(t *testing.T, ctx context.Context, db *pgxpool.Pool, id, wantStatus string, wantAttempts int) {
 	t.Helper()
 	got := readJobState(t, ctx, db, id)
 	if got.Status != wantStatus || got.Attempts != wantAttempts || got.LeasedBy.Valid || got.LeaseToken.Valid || !got.Result.Valid {
@@ -281,7 +283,7 @@ func assertEnrichmentJobTerminal(t *testing.T, ctx context.Context, db *sql.DB, 
 func assertStageResult(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	job enrich.Job,
 	wantState enrich.ResultState,
 	wantError string,
@@ -290,9 +292,9 @@ func assertStageResult(
 	t.Helper()
 	var state string
 	var details []byte
-	var lastError sql.NullString
-	var durableJobID, jobGeneration sql.NullInt64
-	if err := db.QueryRowContext(ctx, `
+	var lastError pgtype.Text
+	var durableJobID, jobGeneration pgtype.Int8
+	if err := db.QueryRow(ctx, `
 		SELECT state, details, last_error, durable_job_id, job_generation
 		FROM block_stage_results
 		WHERE chain_id = $1::numeric AND block_hash = $2 AND stage = $3 AND stage_version = $4`,
@@ -301,7 +303,7 @@ func assertStageResult(
 		t.Fatalf("read block stage result: %v", err)
 	}
 	var completedGeneration int64
-	if err := db.QueryRowContext(ctx, `SELECT completed_generation FROM durable_jobs WHERE id = $1`, job.ID).Scan(&completedGeneration); err != nil {
+	if err := db.QueryRow(ctx, `SELECT completed_generation FROM durable_jobs WHERE id = $1`, job.ID).Scan(&completedGeneration); err != nil {
 		t.Fatalf("read completed stage generation: %v", err)
 	}
 	var decoded map[string]string

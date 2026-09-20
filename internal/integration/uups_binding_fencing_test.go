@@ -5,7 +5,6 @@ package integration_test
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -13,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -396,7 +397,7 @@ func TestUUPSBindingFencingRejectsOrphanProbeGeneration(t *testing.T) {
 
 type uupsBindingFencingFixture struct {
 	ctx context.Context
-	db  *sql.DB
+	db  *pgxpool.Pool
 
 	core       *store.PostgresRepository
 	initial    chainbundle.Bundle

@@ -2,11 +2,12 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"log/slog"
 	"strings"
 	"time"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/billing"
@@ -138,7 +139,7 @@ func waitForHousekeeping(ctx context.Context, delay time.Duration) error {
 
 func registerAuthBillingHousekeepers(
 	registry *components.Registry,
-	writer *sql.DB,
+	writer *pgxpool.Pool,
 	cfg config.Config,
 	logger *slog.Logger,
 ) error {

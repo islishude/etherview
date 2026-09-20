@@ -1,3 +1,4 @@
+import { chainQueryMeta, statusQueryMeta, userOperationQueryMeta } from "./chainEvents";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { apiClient, requireEnvelope } from "./client";
@@ -33,6 +34,7 @@ const liveRefetchInterval = 2_000;
 export function useChainStatus() {
   return useQuery({
     queryKey: ["status"],
+    meta: statusQueryMeta,
     queryFn: async () => {
       const response = requireEnvelope(await apiClient.GET("/status"));
       return {
@@ -58,6 +60,7 @@ export function usePublicConfig() {
 export function useBlocks(limit = 12, cursor?: string, refreshGeneration = 0) {
   return useQuery({
     queryKey: ["blocks", limit, cursor ?? null, refreshGeneration],
+    meta: chainQueryMeta,
     queryFn: async (): Promise<CursorPage<BlockSummary>> => {
       const response = requireEnvelope(
         await apiClient.GET("/blocks", { params: { query: { limit, cursor } } }),
@@ -96,6 +99,7 @@ export function useGenesisAccounts(limit = 25, cursor?: string, refreshGeneratio
 export function useTransactions(limit = 12, cursor?: string, refreshGeneration = 0) {
   return useQuery({
     queryKey: ["transactions", limit, cursor ?? null, refreshGeneration],
+    meta: chainQueryMeta,
     queryFn: async (): Promise<CursorPage<TransactionSummary>> => {
       const response = requireEnvelope(
         await apiClient.GET("/transactions", { params: { query: { limit, cursor } } }),
@@ -114,6 +118,7 @@ export function useTransactions(limit = 12, cursor?: string, refreshGeneration =
 export function useUserOperations(limit = 25, cursor?: string, refreshGeneration = 0) {
   return useQuery({
     queryKey: ["user-operations", limit, cursor ?? null, refreshGeneration],
+    meta: userOperationQueryMeta,
     queryFn: async (): Promise<CursorPage<UserOperationSummary>> => {
       const response = requireEnvelope(
         await apiClient.GET("/user-operations", { params: { query: { limit, cursor } } }),
@@ -128,6 +133,7 @@ export function useUserOperations(limit = 25, cursor?: string, refreshGeneration
 export function useUserOperation(hash: string, enabled = true) {
   return useQuery({
     queryKey: ["user-operation", hash],
+    meta: userOperationQueryMeta,
     queryFn: async (): Promise<UserOperationDetail> =>
       requireEnvelope(
         await apiClient.GET("/user-operations/{hash}", { params: { path: { hash } } }),
@@ -141,6 +147,7 @@ export function useUserOperation(hash: string, enabled = true) {
 export function useTransactionUserOperations(hash: string, cursor?: string, enabled = true) {
   return useQuery({
     queryKey: ["transaction", hash, "user-operations", cursor ?? null],
+    meta: chainQueryMeta,
     queryFn: async (): Promise<CursorPage<UserOperationSummary>> => {
       const response = requireEnvelope(
         await apiClient.GET("/transactions/{hash}/user-operations", {
@@ -158,6 +165,7 @@ export function useTransactionUserOperations(hash: string, cursor?: string, enab
 export function useAddressUserOperations(address: string, cursor?: string, enabled = true) {
   return useQuery({
     queryKey: ["address", address, "user-operations", cursor ?? null],
+    meta: chainQueryMeta,
     queryFn: async (): Promise<CursorPage<UserOperationSummary>> => {
       const response = requireEnvelope(
         await apiClient.GET("/addresses/{address}/user-operations", {
@@ -180,6 +188,7 @@ export function usePendingTransactions(
 ) {
   return useQuery({
     queryKey: ["pending-transactions", cursor ?? null, limit, refreshGeneration],
+    meta: chainQueryMeta,
     queryFn: async (): Promise<PendingSnapshot> => {
       const response = requireEnvelope(
         await apiClient.GET("/pending", { params: { query: { limit, cursor } } }),
@@ -197,6 +206,7 @@ export function usePendingTransactions(
 export function useBlock(identifier: string, enabled = true) {
   return useQuery({
     queryKey: ["block", identifier],
+    meta: chainQueryMeta,
     queryFn: async () =>
       requireEnvelope(await apiClient.GET("/blocks/{id}", { params: { path: { id: identifier } } }))
         .data,
@@ -209,6 +219,7 @@ export function useBlock(identifier: string, enabled = true) {
 export function useBlockTransactions(identifier: string, cursor?: string, enabled = true) {
   return useQuery({
     queryKey: ["block", identifier, "transactions", cursor ?? null],
+    meta: chainQueryMeta,
     queryFn: async () => {
       const response = requireEnvelope(
         await apiClient.GET("/blocks/{id}/transactions", {
@@ -230,6 +241,7 @@ export function useBlockTransactions(identifier: string, cursor?: string, enable
 export function useTransaction(hash: string, enabled = true) {
   return useQuery({
     queryKey: ["transaction", hash],
+    meta: chainQueryMeta,
     queryFn: async (): Promise<TransactionDetail> =>
       requireEnvelope(await apiClient.GET("/transactions/{hash}", { params: { path: { hash } } }))
         .data,
@@ -250,6 +262,7 @@ export function useTransaction(hash: string, enabled = true) {
 export function useTransactionCalldata(hash: string, enabled = true) {
   return useQuery({
     queryKey: ["transaction", hash, "calldata"],
+    meta: chainQueryMeta,
     queryFn: async () =>
       requireEnvelope(
         await apiClient.GET("/transactions/{hash}/calldata", { params: { path: { hash } } }),
@@ -263,6 +276,7 @@ export function useTransactionCalldata(hash: string, enabled = true) {
 export function useTransactionFailure(hash: string, enabled = true) {
   return useQuery({
     queryKey: ["transaction", hash, "failure"],
+    meta: chainQueryMeta,
     queryFn: async () =>
       requireEnvelope(
         await apiClient.GET("/transactions/{hash}/failure", { params: { path: { hash } } }),
@@ -276,6 +290,7 @@ export function useTransactionFailure(hash: string, enabled = true) {
 export function useTransactionTrace(hash: string, enabled = true) {
   return useQuery({
     queryKey: ["transaction", hash, "trace"],
+    meta: chainQueryMeta,
     queryFn: async () =>
       requireEnvelope(
         await apiClient.GET("/transactions/{hash}/trace", { params: { path: { hash } } }),
@@ -289,6 +304,7 @@ export function useTransactionTrace(hash: string, enabled = true) {
 export function useTransactionAuthorizations(hash: string, cursor?: string, enabled = true) {
   return useQuery({
     queryKey: ["transaction", hash, "authorizations", cursor ?? null],
+    meta: chainQueryMeta,
     queryFn: async () => {
       const response = requireEnvelope(
         await apiClient.GET("/transactions/{hash}/authorizations", {
@@ -306,6 +322,7 @@ export function useTransactionAuthorizations(hash: string, cursor?: string, enab
 export function useTransactionTokenTransfers(hash: string, cursor?: string, enabled = true) {
   return useQuery({
     queryKey: ["transaction", hash, "token-transfers", cursor ?? null],
+    meta: chainQueryMeta,
     queryFn: async () => {
       const response = requireEnvelope(
         await apiClient.GET("/transactions/{hash}/token-transfers", {
@@ -323,6 +340,7 @@ export function useTransactionTokenTransfers(hash: string, cursor?: string, enab
 export function useTransactionInternalTransactions(hash: string, cursor?: string, enabled = true) {
   return useQuery({
     queryKey: ["transaction", hash, "internal-transactions", cursor ?? null],
+    meta: chainQueryMeta,
     queryFn: async () => {
       const response = requireEnvelope(
         await apiClient.GET("/transactions/{hash}/internal-transactions", {
@@ -340,6 +358,7 @@ export function useTransactionInternalTransactions(hash: string, cursor?: string
 export function useTransactionLogs(hash: string, cursor?: string, enabled = true) {
   return useQuery({
     queryKey: ["transaction", hash, "logs", cursor ?? null],
+    meta: chainQueryMeta,
     queryFn: async () => {
       const response = requireEnvelope(
         await apiClient.GET("/transactions/{hash}/logs", {
@@ -357,6 +376,7 @@ export function useTransactionLogs(hash: string, cursor?: string, enabled = true
 export function useTransactionStateChanges(hash: string, cursor?: string, enabled = true) {
   return useQuery({
     queryKey: ["transaction", hash, "state-changes", cursor ?? null],
+    meta: chainQueryMeta,
     queryFn: async () => {
       const response = requireEnvelope(
         await apiClient.GET("/transactions/{hash}/state-changes", {
@@ -374,6 +394,7 @@ export function useTransactionStateChanges(hash: string, cursor?: string, enable
 export function useAddress(address: string, enabled = true) {
   return useQuery({
     queryKey: ["address", address],
+    meta: chainQueryMeta,
     queryFn: async () =>
       requireEnvelope(
         await apiClient.GET("/addresses/{address}", { params: { path: { address } } }),
@@ -393,6 +414,7 @@ export function useAddressTransactions(
 ) {
   return useQuery({
     queryKey: ["address", address, "transactions", cursor ?? null, limit, refreshGeneration],
+    meta: chainQueryMeta,
     queryFn: async (): Promise<CursorPage<TransactionSummary>> => {
       const response = requireEnvelope(
         await apiClient.GET("/addresses/{address}/transactions", {
@@ -420,6 +442,7 @@ export function useAddressWithdrawals(
 ) {
   return useQuery({
     queryKey: ["address", address, "withdrawals", cursor ?? null, limit, refreshGeneration],
+    meta: chainQueryMeta,
     queryFn: async (): Promise<CursorPage<AddressWithdrawal>> => {
       const response = requireEnvelope(
         await apiClient.GET("/addresses/{address}/withdrawals", {
@@ -446,6 +469,7 @@ export function useAddressInternalTransactions(
   enabled = true,
 ) {
   return useQuery({
+    meta: chainQueryMeta,
     queryKey: [
       "address",
       address,
@@ -519,6 +543,7 @@ function useAddressTokenActivity(
 ) {
   return useQuery({
     queryKey: ["address", address, kind, cursor ?? null, limit, refreshGeneration],
+    meta: chainQueryMeta,
     queryFn: async (): Promise<CursorPage<AddressTokenTransfer>> => {
       const response = requireEnvelope(
         path === "/addresses/{address}/erc20-transfers"
@@ -544,6 +569,7 @@ function useAddressTokenActivity(
 export function useTokens(limit = 25, cursor?: string, refreshGeneration = 0) {
   return useQuery({
     queryKey: ["tokens", limit, cursor ?? null, refreshGeneration],
+    meta: chainQueryMeta,
     queryFn: async (): Promise<CursorPage<TokenContract>> => {
       const response = requireEnvelope(
         await apiClient.GET("/tokens", { params: { query: { limit, cursor } } }),
@@ -562,6 +588,7 @@ export function useTokens(limit = 25, cursor?: string, refreshGeneration = 0) {
 export function useToken(address: string, enabled = true) {
   return useQuery({
     queryKey: ["token", address],
+    meta: chainQueryMeta,
     queryFn: async () =>
       requireEnvelope(await apiClient.GET("/tokens/{address}", { params: { path: { address } } }))
         .data,
@@ -580,6 +607,7 @@ export function useTokenTransfers(
 ) {
   return useQuery({
     queryKey: ["token", address, "transfers", limit, cursor ?? null, refreshGeneration],
+    meta: chainQueryMeta,
     queryFn: async (): Promise<CursorPage<TokenEvent>> => {
       const response = requireEnvelope(
         await apiClient.GET("/tokens/{address}/transfers", {
@@ -607,6 +635,7 @@ export function useTokenHolders(
 ) {
   return useQuery({
     queryKey: ["token", address, "holders", limit, cursor ?? null, refreshGeneration],
+    meta: chainQueryMeta,
     queryFn: async (): Promise<TokenHolderPage> => {
       const response = requireEnvelope(
         await apiClient.GET("/tokens/{address}/holders", {
@@ -634,6 +663,7 @@ export function useAddressNFTBalances(
 ) {
   return useQuery({
     queryKey: ["address", address, "nfts", cursor ?? null, limit, refreshGeneration],
+    meta: chainQueryMeta,
     queryFn: async (): Promise<CursorPage<NFTBalance>> => {
       const response = requireEnvelope(
         await apiClient.GET("/addresses/{address}/nfts", {
@@ -661,6 +691,7 @@ export function useAddressERC20Balances(
 ) {
   return useQuery({
     queryKey: ["address", address, "erc20-balances", cursor ?? null, limit, refreshGeneration],
+    meta: chainQueryMeta,
     queryFn: async (): Promise<CursorPage<ERC20Balance>> => {
       const response = requireEnvelope(
         await apiClient.GET("/addresses/{address}/erc20-balances", {
@@ -682,6 +713,7 @@ export function useAddressERC20Balances(
 export function useNFTOwnership(address: string, tokenID: string, enabled = true) {
   return useQuery({
     queryKey: ["nft", address, tokenID],
+    meta: chainQueryMeta,
     queryFn: async () =>
       requireEnvelope(
         await apiClient.GET("/nfts/{address}/{token_id}", {
@@ -697,6 +729,7 @@ export function useNFTOwnership(address: string, tokenID: string, enabled = true
 export function useNFTMetadata(address: string, tokenID: string, enabled = true) {
   return useQuery({
     queryKey: ["nft", address, tokenID, "metadata"],
+    meta: chainQueryMeta,
     queryFn: async (): Promise<NFTMetadata> =>
       requireEnvelope(
         await apiClient.GET("/nfts/{address}/{token_id}/metadata", {
@@ -717,6 +750,7 @@ export function useSearchResults(
 ) {
   return useQuery({
     queryKey: ["search", query, cursor ?? null, limit, refreshGeneration],
+    meta: chainQueryMeta,
     queryFn: async (): Promise<CursorPage<SearchResult>> => {
       const response = requireEnvelope(
         await apiClient.GET("/search", { params: { query: { q: query, cursor, limit } } }),
@@ -736,6 +770,7 @@ export function useSearchResults(
 export function useBlockStats(fromBlock: string, toBlock: string, enabled = true) {
   return useQuery({
     queryKey: ["block-stats", fromBlock, toBlock],
+    meta: chainQueryMeta,
     queryFn: async () =>
       requireEnvelope(
         await apiClient.GET("/stats/blocks", {
@@ -751,6 +786,7 @@ export function useBlockStats(fromBlock: string, toBlock: string, enabled = true
 export function useAggregateStats(fromBlock: string, toBlock: string, enabled = true) {
   return useQuery({
     queryKey: ["aggregate-stats", fromBlock, toBlock],
+    meta: chainQueryMeta,
     queryFn: async (): Promise<AggregateStats> =>
       requireEnvelope(
         await apiClient.GET("/stats/summary", {
@@ -766,6 +802,7 @@ export function useAggregateStats(fromBlock: string, toBlock: string, enabled = 
 export function useChartOverview() {
   return useQuery({
     queryKey: ["chart-overview"],
+    meta: chainQueryMeta,
     queryFn: async (): Promise<ChartOverview> =>
       requireEnvelope(await apiClient.GET("/stats/charts/overview")).data,
     retry: false,
@@ -782,6 +819,7 @@ export function useChartMetric(
 ) {
   return useQuery({
     queryKey: ["chart-metric", metric, fromTime, toTime, interval],
+    meta: chainQueryMeta,
     queryFn: async (): Promise<ChartMetricSeries> =>
       requireEnvelope(
         await apiClient.GET("/stats/charts/{metric}", {

@@ -237,3 +237,25 @@ func waitReady(t *testing.T, lifecycle *Lifecycle) {
 		}
 	}
 }
+
+func TestLifecyclePublishesOneShutdownDeadline(t *testing.T) {
+	t.Parallel()
+	lifecycle := NewLifecycle()
+	if _, ok := lifecycle.ShutdownDeadline(); ok {
+		t.Fatal("shutdown deadline exists before shutdown")
+	}
+	lifecycle.beginShutdown(time.Second)
+	first, ok := lifecycle.ShutdownDeadline()
+	if !ok || first.Before(time.Now()) || first.After(time.Now().Add(time.Second)) {
+		t.Fatal("invalid shutdown deadline")
+	}
+	lifecycle.set(lifecycleStopped)
+	after, ok := lifecycle.ShutdownDeadline()
+	if !ok || after != first {
+		t.Fatal("stopped lifecycle lost original shutdown deadline")
+	}
+	lifecycle.set(lifecycleStarting)
+	if _, ok := lifecycle.ShutdownDeadline(); ok {
+		t.Fatal("new lifecycle run reused an expired deadline")
+	}
+}

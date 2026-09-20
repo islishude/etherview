@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,8 +9,13 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+
 	"github.com/islishude/etherview/internal/chainbundle"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
 func (r *PostgresRepository) ConfigureIndex(ctx context.Context, chainID string, configuredStart uint64) error {
@@ -19,11 +23,11 @@ func (r *PostgresRepository) ConfigureIndex(ctx context.Context, chainID string,
 	if err != nil {
 		return err
 	}
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: chainWriteIsolation})
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: chainWriteIsolation})
 	if err != nil {
 		return fmt.Errorf("begin index configuration: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { dbaccess.Rollback(ctx, tx) }()
 	if err := lockChain(ctx, tx, chainID); err != nil {
 		return err
 	}
@@ -40,7 +44,17 @@ func (r *PostgresRepository) ConfigureIndex(ctx context.Context, chainID string,
 		}
 		return nil
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyConfigureIndexStatement1, chainID, decimal(configuredStart)); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(decimal(configuredStart)); err != nil {
+			return err
+		}
+		return dbgen.New(tx).StoreLegacyConfigureIndexStatement1(ctx, queryValue0, queryValue1)
+	}(); err != nil {
 		return fmt.Errorf("insert index configuration: %w", err)
 	}
 	references, err := queryCanonicalReferencesTx(ctx, tx, chainID, configuredStart)
@@ -66,10 +80,16 @@ func (r *PostgresRepository) ConfigureIndex(ctx context.Context, chainID string,
 		if err := upsertCheckpointTx(ctx, tx, chainID, checkpoint); err != nil {
 			return err
 		}
-	} else if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyConfigureIndexStatement2, chainID, CoreCheckpoint); err != nil {
+	} else if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		return dbgen.New(tx).StoreLegacyConfigureIndexStatement2(ctx, queryValue0, CoreCheckpoint)
+	}(); err != nil {
 		return fmt.Errorf("clear pre-coverage core checkpoint: %w", err)
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit index configuration: %w", err)
 	}
 	return nil
@@ -80,16 +100,16 @@ func (r *PostgresRepository) Coverage(ctx context.Context, chainID string) (Core
 	if err != nil {
 		return CoreCoverage{}, false, err
 	}
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return CoreCoverage{}, false, fmt.Errorf("begin coverage read: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { dbaccess.Rollback(ctx, tx) }()
 	coverage, exists, err := queryCoverageTx(ctx, tx, chainID)
 	if err != nil {
 		return CoreCoverage{}, false, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return CoreCoverage{}, false, fmt.Errorf("commit coverage read: %w", err)
 	}
 	return coverage, exists, nil
@@ -108,11 +128,11 @@ func (r *PostgresRepository) CommitCanonicalSegment(
 	if err != nil {
 		return CoreCoverage{}, err
 	}
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: chainWriteIsolation})
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: chainWriteIsolation})
 	if err != nil {
 		return CoreCoverage{}, fmt.Errorf("begin canonical segment commit: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { dbaccess.Rollback(ctx, tx) }()
 	if err := lockChain(ctx, tx, chainID); err != nil {
 		return CoreCoverage{}, err
 	}
@@ -207,7 +227,7 @@ func (r *PostgresRepository) CommitCanonicalSegment(
 			return CoreCoverage{}, err
 		}
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return CoreCoverage{}, fmt.Errorf("commit canonical segment: %w", err)
 	}
 	r.partitions.add(ensuredPartitions...)
@@ -233,11 +253,11 @@ func (r *PostgresRepository) ReplaceHighestCanonicalSegment(
 	// statement snapshots fresh so setDerivedCanonicalTx sees any derived fact
 	// that committed while the detach was waiting and marks it orphaned in this
 	// same transaction.
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: chainWriteIsolation})
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: chainWriteIsolation})
 	if err != nil {
 		return CoreCoverage{}, fmt.Errorf("begin sparse canonical replacement: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	if err := lockChain(ctx, tx, chainID); err != nil {
 		return CoreCoverage{}, err
 	}
@@ -273,7 +293,22 @@ func (r *PostgresRepository) ReplaceHighestCanonicalSegment(
 	}
 	if replacement.Ancestor != nil {
 		var canonicalAbove int64
-		if err := tx.QueryRowContext(ctx, dbgen.StoreLegacyReplaceHighestCanonicalSegmentStatement1, chainID, decimal(replacement.Ancestor.Number)).Scan(&canonicalAbove); err != nil {
+		if err := func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(chainID); err != nil {
+				return err
+			}
+			var queryValue1 pgtype.Numeric
+			if err := queryValue1.Scan(decimal(replacement.Ancestor.Number)); err != nil {
+				return err
+			}
+			queryRow, err := dbgen.New(tx).StoreLegacyReplaceHighestCanonicalSegmentStatement1(ctx, queryValue0, queryValue1)
+			if err != nil {
+				return err
+			}
+			canonicalAbove = queryRow
+			return nil
+		}(); err != nil {
 			return CoreCoverage{}, fmt.Errorf("count canonical blocks above sparse ancestor: %w", err)
 		}
 		if canonicalAbove != int64(len(replacement.Detached)) {
@@ -371,7 +406,7 @@ func (r *PostgresRepository) ReplaceHighestCanonicalSegment(
 	if err := insertSparseReorgEventsTx(ctx, tx, chainID, tip, replacement, attached); err != nil {
 		return CoreCoverage{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return CoreCoverage{}, fmt.Errorf("commit sparse canonical replacement: %w", err)
 	}
 	r.partitions.add(ensuredPartitions...)
@@ -394,11 +429,11 @@ func (r *PostgresRepository) ClaimBackfillRange(
 		return BackfillLease{}, false, err
 	}
 	now = now.UTC()
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: chainWriteIsolation})
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: chainWriteIsolation})
 	if err != nil {
 		return BackfillLease{}, false, fmt.Errorf("begin backfill range claim: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	if err := lockChain(ctx, tx, chainID); err != nil {
 		return BackfillLease{}, false, err
 	}
@@ -419,21 +454,64 @@ func (r *PostgresRepository) ClaimBackfillRange(
 	if rangeIntersectsCoverage(ranges, target) {
 		return BackfillLease{}, false, nil
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyClaimBackfillRangeStatement1, chainID, now); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		return dbgen.New(tx).StoreLegacyClaimBackfillRangeStatement1(ctx, queryValue0, pgtype.Timestamptz{Time: now, Valid: true})
+	}(); err != nil {
 		return BackfillLease{}, false, fmt.Errorf("delete expired backfill leases: %w", err)
 	}
 	var overlaps bool
-	if err := tx.QueryRowContext(ctx, dbgen.StoreLegacyClaimBackfillRangeStatement2, chainID, now, decimal(target.Start), decimal(target.End)).Scan(&overlaps); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(decimal(target.Start)); err != nil {
+			return err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(decimal(target.End)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).StoreLegacyClaimBackfillRangeStatement2(ctx, dbgen.StoreLegacyClaimBackfillRangeStatement2Params{ChainID: queryValue0, ExpiresAt: pgtype.Timestamptz{Time: now, Valid: true}, MaxRangeEnd: queryValue1, MinRangeStart: queryValue2})
+		if err != nil {
+			return err
+		}
+		overlaps = queryRow
+		return nil
+	}(); err != nil {
 		return BackfillLease{}, false, fmt.Errorf("check overlapping backfill lease: %w", err)
 	}
 	if overlaps {
 		return BackfillLease{}, false, nil
 	}
 	lease := newBackfillLease(chainID, target, owner, now, ttl)
-	if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyClaimBackfillRangeStatement3, chainID, decimal(target.Start), decimal(target.End), lease.Owner, lease.Token, now, lease.ExpiresAt); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(decimal(target.Start)); err != nil {
+			return err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(decimal(target.End)); err != nil {
+			return err
+		}
+		var queryValue3 pgtype.UUID
+		if err := queryValue3.Scan(lease.Token); err != nil {
+			return err
+		}
+		return dbgen.New(tx).StoreLegacyClaimBackfillRangeStatement3(ctx, dbgen.StoreLegacyClaimBackfillRangeStatement3Params{ChainID: queryValue0, RangeStart: queryValue1, RangeEnd: queryValue2, Owner: lease.Owner, LeaseToken: queryValue3, ClaimedAt: pgtype.Timestamptz{Time: now, Valid: true}, ExpiresAt: pgtype.Timestamptz{Time: lease.ExpiresAt, Valid: true}})
+	}(); err != nil {
 		return BackfillLease{}, false, fmt.Errorf("insert backfill lease: %w", err)
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return BackfillLease{}, false, fmt.Errorf("commit backfill range claim: %w", err)
 	}
 	return lease, true, nil
@@ -455,9 +533,37 @@ func (r *PostgresRepository) RenewBackfillRange(
 	now = now.UTC()
 	expiresAt := now.Add(ttl)
 	var storedExpiry time.Time
-	err := r.db.QueryRowContext(ctx, dbgen.StoreLegacyRenewBackfillRangeStatement1, expiresAt, chainID, decimal(lease.Range.Start), decimal(lease.Range.End),
-		lease.Owner, lease.Token, now).Scan(&storedExpiry)
-	if err == sql.ErrNoRows {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(decimal(lease.Range.Start)); err != nil {
+			return err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(decimal(lease.Range.End)); err != nil {
+			return err
+		}
+		var queryValue3 pgtype.UUID
+		if err := queryValue3.Scan(lease.Token); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(r.db).StoreLegacyRenewBackfillRangeStatement1(ctx, dbgen.StoreLegacyRenewBackfillRangeStatement1Params{ExpiresAt: pgtype.Timestamptz{Time: expiresAt, Valid: true}, ChainID: queryValue0, RangeStart: queryValue1, RangeEnd: queryValue2, Owner: lease.Owner, LeaseToken: queryValue3, ExpiresAt2: pgtype.Timestamptz{Time: now, Valid: true}})
+		if err != nil {
+			return err
+		}
+		if !queryRow.Valid {
+			return errors.New("invalid stored query value")
+		}
+		if queryRow.InfinityModifier != pgtype.Finite {
+			return errors.New("invalid stored query value")
+		}
+		storedExpiry = queryRow.Time
+		return nil
+	}()
+	if err == pgx.ErrNoRows {
 		return BackfillLease{}, ErrLeaseLost
 	}
 	if err != nil {
@@ -472,14 +578,29 @@ func (r *PostgresRepository) ReleaseBackfillRange(ctx context.Context, lease Bac
 		return err
 	}
 	chainID, _ := normalizeChainID(lease.ChainID)
-	result, err := r.db.ExecContext(ctx, dbgen.StoreLegacyReleaseBackfillRangeStatement1, chainID, decimal(lease.Range.Start), decimal(lease.Range.End), lease.Owner, lease.Token)
+	result, err := func() (int64, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return 0, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(decimal(lease.Range.Start)); err != nil {
+			return 0, err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(decimal(lease.Range.End)); err != nil {
+			return 0, err
+		}
+		var queryValue3 pgtype.UUID
+		if err := queryValue3.Scan(lease.Token); err != nil {
+			return 0, err
+		}
+		return dbgen.New(r.db).StoreLegacyReleaseBackfillRangeStatement1(ctx, dbgen.StoreLegacyReleaseBackfillRangeStatement1Params{ChainID: queryValue0, RangeStart: queryValue1, RangeEnd: queryValue2, Owner: lease.Owner, LeaseToken: queryValue3})
+	}()
 	if err != nil {
 		return fmt.Errorf("release backfill lease: %w", err)
 	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("read released backfill lease count: %w", err)
-	}
+	affected := result
 	if affected != 1 {
 		return ErrLeaseLost
 	}
@@ -491,18 +612,44 @@ func (r *PostgresRepository) CompleteBackfillRange(ctx context.Context, lease Ba
 		return err
 	}
 	chainID, _ := normalizeChainID(lease.ChainID)
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: chainWriteIsolation})
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: chainWriteIsolation})
 	if err != nil {
 		return fmt.Errorf("begin backfill range completion: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	if err := lockChain(ctx, tx, chainID); err != nil {
 		return err
 	}
-	var expiresAt time.Time
-	err = tx.QueryRowContext(ctx, dbgen.StoreLegacyCompleteBackfillRangeStatement1, chainID, decimal(lease.Range.Start), decimal(lease.Range.End),
-		lease.Owner, lease.Token).Scan(&expiresAt)
-	if err == sql.ErrNoRows {
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(decimal(lease.Range.Start)); err != nil {
+			return err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(decimal(lease.Range.End)); err != nil {
+			return err
+		}
+		var queryValue3 pgtype.UUID
+		if err := queryValue3.Scan(lease.Token); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).StoreLegacyCompleteBackfillRangeStatement1(ctx, dbgen.StoreLegacyCompleteBackfillRangeStatement1Params{ChainID: queryValue0, RangeStart: queryValue1, RangeEnd: queryValue2, Owner: lease.Owner, LeaseToken: queryValue3})
+		if err != nil {
+			return err
+		}
+		if !queryRow.Valid {
+			return errors.New("invalid stored query value")
+		}
+		if queryRow.InfinityModifier != pgtype.Finite {
+			return errors.New("invalid stored query value")
+		}
+		return nil
+	}()
+	if err == pgx.ErrNoRows {
 		return ErrLeaseLost
 	}
 	if err != nil {
@@ -515,11 +662,28 @@ func (r *PostgresRepository) CompleteBackfillRange(ctx context.Context, lease Ba
 	if !rangeCovered(ranges, lease.Range) {
 		return fmt.Errorf("%w: backfill range is not fully covered", ErrConflict)
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyCompleteBackfillRangeStatement2, chainID, decimal(lease.Range.Start),
-		decimal(lease.Range.End), lease.Token); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(decimal(lease.Range.Start)); err != nil {
+			return err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(decimal(lease.Range.End)); err != nil {
+			return err
+		}
+		var queryValue3 pgtype.UUID
+		if err := queryValue3.Scan(lease.Token); err != nil {
+			return err
+		}
+		return dbgen.New(tx).StoreLegacyCompleteBackfillRangeStatement2(ctx, dbgen.StoreLegacyCompleteBackfillRangeStatement2Params{ChainID: queryValue0, RangeStart: queryValue1, RangeEnd: queryValue2, LeaseToken: queryValue3})
+	}(); err != nil {
 		return fmt.Errorf("complete backfill lease: %w", err)
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit backfill range completion: %w", err)
 	}
 	return nil
@@ -527,17 +691,20 @@ func (r *PostgresRepository) CompleteBackfillRange(ctx context.Context, lease Ba
 
 func queryConfiguredStartTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	chainID string,
 	forUpdate bool,
 ) (uint64, bool, error) {
-	query := dbgen.StoreConfiguredStart
-	if forUpdate {
-		query = dbgen.StoreLockConfiguredStart
-	}
+	queries := dbgen.New(tx)
 	var value string
-	err := tx.QueryRowContext(ctx, query, chainID).Scan(&value)
-	if err == sql.ErrNoRows {
+	var err error
+	if forUpdate {
+		value, err = queries.StoreLockConfiguredStart(ctx, chainID)
+	} else {
+		value, err = queries.StoreConfiguredStart(ctx, chainID)
+	}
+
+	if err == pgx.ErrNoRows {
 		return 0, false, nil
 	}
 	if err != nil {
@@ -568,7 +735,7 @@ func validateHighestDisconnectedRange(ranges []BlockRange, configuredStart uint6
 
 func insertSparseReorgEventsTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	chainID string,
 	oldTip BlockRef,
 	replacement SparseCanonicalReplacement,
@@ -597,9 +764,25 @@ func insertSparseReorgEventsTx(
 	} else if boundaryNumber > 0 {
 		boundaryNumber--
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyInsertSparseReorgEventsTxStatement1, chainID, decimal(boundaryNumber), mustHashBytes(boundaryHash),
-		decimal(oldTip.Number), mustHashBytes(oldTip.Hash), decimal(newTip.Number),
-		mustHashBytes(newTip.Hash), detachedJSON, attachedJSON, replacement.Reason); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(decimal(boundaryNumber)); err != nil {
+			return err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(decimal(oldTip.Number)); err != nil {
+			return err
+		}
+		var queryValue3 pgtype.Numeric
+		if err := queryValue3.Scan(decimal(newTip.Number)); err != nil {
+			return err
+		}
+		return dbgen.New(tx).StoreLegacyInsertSparseReorgEventsTxStatement1(ctx, dbgen.StoreLegacyInsertSparseReorgEventsTxStatement1Params{ChainID: queryValue0, AncestorNumber: queryValue1, AncestorHash: mustHashBytes(boundaryHash), OldTipNumber: queryValue2, OldTipHash: mustHashBytes(oldTip.Hash), NewTipNumber: queryValue3, NewTipHash: mustHashBytes(newTip.Hash), Detached: detachedJSON, Attached: attachedJSON, Reason: replacement.Reason})
+	}(); err != nil {
 		return fmt.Errorf("insert sparse reorg audit event: %w", err)
 	}
 	payload := map[string]string{
@@ -617,7 +800,7 @@ func insertSparseReorgEventsTx(
 
 func queryCoverageTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	chainID string,
 ) (CoreCoverage, bool, error) {
 	configuredStart, exists, err := queryConfiguredStartTx(ctx, tx, chainID, false)
@@ -658,30 +841,35 @@ func queryCoverageTx(
 	return coverage, true, nil
 }
 
-func queryCoverageRangesTx(ctx context.Context, tx *sql.Tx, chainID string) ([]BlockRange, error) {
-	rows, err := tx.QueryContext(ctx, dbgen.StoreLegacyQueryCoverageRangesTxStatement1, chainID)
-	if err != nil {
-		return nil, fmt.Errorf("query core coverage ranges: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
+// coverageReadPageSize bounds generated result allocations without changing
+// the caller's repeatable snapshot or chain-locked READ COMMITTED transaction.
+const coverageReadPageSize = 512
+
+func queryCoverageRangesTx(ctx context.Context, tx pgx.Tx, chainID string) ([]BlockRange, error) {
+	queries := dbgen.New(tx)
+	cursor := dbgen.StoreLegacyQueryCoverageRangesTxStatement1Params{ChainID: chainID, AfterStart: "0", PageLimit: coverageReadPageSize}
 	ranges := make([]BlockRange, 0)
-	for rows.Next() {
-		var start, end string
-		if err := rows.Scan(&start, &end); err != nil {
-			return nil, fmt.Errorf("scan core coverage range: %w", err)
-		}
-		parsedStart, err := strconv.ParseUint(start, 10, 64)
+	for {
+		rows, err := queries.StoreLegacyQueryCoverageRangesTxStatement1(ctx, cursor)
 		if err != nil {
-			return nil, fmt.Errorf("decode core coverage range start: %w", err)
+			return nil, fmt.Errorf("query core coverage ranges: %w", err)
 		}
-		parsedEnd, err := strconv.ParseUint(end, 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("decode core coverage range end: %w", err)
+		for _, row := range rows {
+			start, err := strconv.ParseUint(row.RangeStart, 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("decode core coverage range start: %w", err)
+			}
+			end, err := strconv.ParseUint(row.RangeEnd, 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("decode core coverage range end: %w", err)
+			}
+			ranges = append(ranges, BlockRange{Start: start, End: end})
 		}
-		ranges = append(ranges, BlockRange{Start: parsedStart, End: parsedEnd})
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate core coverage ranges: %w", err)
+		if len(rows) < coverageReadPageSize {
+			break
+		}
+		cursor.HasCursor = true
+		cursor.AfterStart = rows[len(rows)-1].RangeStart
 	}
 	if err := validateNormalizedCoverageRanges(ranges); err != nil {
 		return nil, fmt.Errorf("validate core coverage ranges: %w", err)
@@ -689,55 +877,70 @@ func queryCoverageRangesTx(ctx context.Context, tx *sql.Tx, chainID string) ([]B
 	return ranges, nil
 }
 
-func replaceCoverageRangesTx(ctx context.Context, tx *sql.Tx, chainID string, ranges []BlockRange) error {
+func replaceCoverageRangesTx(ctx context.Context, tx pgx.Tx, chainID string, ranges []BlockRange) error {
 	if err := validateNormalizedCoverageRanges(ranges); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyReplaceCoverageRangesTxStatement1, chainID); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		return dbgen.New(tx).StoreLegacyReplaceCoverageRangesTxStatement1(ctx, queryValue0)
+	}(); err != nil {
 		return fmt.Errorf("replace core coverage ranges: %w", err)
 	}
 	for _, blockRange := range ranges {
-		if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyReplaceCoverageRangesTxStatement2, chainID, decimal(blockRange.Start), decimal(blockRange.End)); err != nil {
+		if err := func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(chainID); err != nil {
+				return err
+			}
+			var queryValue1 pgtype.Numeric
+			if err := queryValue1.Scan(decimal(blockRange.Start)); err != nil {
+				return err
+			}
+			var queryValue2 pgtype.Numeric
+			if err := queryValue2.Scan(decimal(blockRange.End)); err != nil {
+				return err
+			}
+			return dbgen.New(tx).StoreLegacyReplaceCoverageRangesTxStatement2(ctx, queryValue0, queryValue1, queryValue2)
+		}(); err != nil {
 			return fmt.Errorf("insert core coverage range %d-%d: %w", blockRange.Start, blockRange.End, err)
 		}
 	}
 	return nil
 }
 
-func queryCanonicalReferencesTx(
-	ctx context.Context,
-	tx *sql.Tx,
-	chainID string,
-	configuredStart uint64,
-) ([]BlockRef, error) {
-	rows, err := tx.QueryContext(ctx, dbgen.StoreLegacyQueryCanonicalReferencesTxStatement1, chainID, decimal(configuredStart))
-	if err != nil {
-		return nil, fmt.Errorf("query canonical blocks for coverage: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
+func queryCanonicalReferencesTx(ctx context.Context, tx pgx.Tx, chainID string, configuredStart uint64) ([]BlockRef, error) {
+	queries := dbgen.New(tx)
+	cursor := dbgen.StoreLegacyQueryCanonicalReferencesTxStatement1Params{ChainID: chainID, ConfiguredStart: decimal(configuredStart), AfterNumber: "0", PageLimit: coverageReadPageSize}
 	references := make([]BlockRef, 0)
-	for rows.Next() {
-		var number string
-		var hashBytes, parentBytes []byte
-		if err := rows.Scan(&number, &hashBytes, &parentBytes); err != nil {
-			return nil, fmt.Errorf("scan canonical block for coverage: %w", err)
-		}
-		parsedNumber, err := strconv.ParseUint(number, 10, 64)
+	for {
+		rows, err := queries.StoreLegacyQueryCanonicalReferencesTxStatement1(ctx, cursor)
 		if err != nil {
-			return nil, fmt.Errorf("decode coverage block number: %w", err)
+			return nil, fmt.Errorf("query canonical blocks for coverage: %w", err)
 		}
-		hash, err := hashFromBytes(hashBytes)
-		if err != nil {
-			return nil, err
+		for _, row := range rows {
+			number, err := strconv.ParseUint(row.Number, 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("decode coverage block number: %w", err)
+			}
+			hash, err := hashFromBytes(row.BlockHash)
+			if err != nil {
+				return nil, err
+			}
+			parent, err := hashFromBytes(row.ParentHash)
+			if err != nil {
+				return nil, err
+			}
+			references = append(references, BlockRef{Number: number, Hash: hash, ParentHash: parent})
 		}
-		parent, err := hashFromBytes(parentBytes)
-		if err != nil {
-			return nil, err
+		if len(rows) < coverageReadPageSize {
+			break
 		}
-		references = append(references, BlockRef{Number: parsedNumber, Hash: hash, ParentHash: parent})
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate canonical blocks for coverage: %w", err)
+		cursor.HasCursor = true
+		cursor.AfterNumber = rows[len(rows)-1].Number
 	}
 	return references, nil
 }

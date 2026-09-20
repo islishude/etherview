@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const StoreDeleteCanonicalBlocksBatch = `-- name: StoreDeleteCanonicalBlocksBatch :execrows
+const storeDeleteCanonicalBlocksBatch = `-- name: StoreDeleteCanonicalBlocksBatch :execrows
 WITH input AS (
     SELECT row.number::numeric AS number, decode(row.hash, 'hex') AS hash
     FROM jsonb_to_recordset($2::jsonb) AS row(number text, hash text)
@@ -23,27 +23,27 @@ WHERE canonical.chain_id = $1::numeric
   AND canonical.block_hash = input.hash
 `
 
-func (q *Queries) StoreDeleteCanonicalBlocksBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte) (int64, error) {
-	result, err := q.db.Exec(ctx, StoreDeleteCanonicalBlocksBatch, column1, column2)
+func (q *Queries) StoreDeleteCanonicalBlocksBatch(ctx context.Context, chainID pgtype.Numeric, rows []byte) (int64, error) {
+	result, err := q.db.Exec(ctx, storeDeleteCanonicalBlocksBatch, chainID, rows)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
 }
 
-const StoreInsertCanonicalBlocksBatch = `-- name: StoreInsertCanonicalBlocksBatch :exec
+const storeInsertCanonicalBlocksBatch = `-- name: StoreInsertCanonicalBlocksBatch :exec
 INSERT INTO canonical_blocks (chain_id, number, block_hash)
 SELECT $1::numeric, row.number::numeric, decode(row.hash, 'hex')
 FROM jsonb_to_recordset($2::jsonb) AS row(number text, hash text)
 ORDER BY row.number::numeric
 `
 
-func (q *Queries) StoreInsertCanonicalBlocksBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte) error {
-	_, err := q.db.Exec(ctx, StoreInsertCanonicalBlocksBatch, column1, column2)
+func (q *Queries) StoreInsertCanonicalBlocksBatch(ctx context.Context, chainID pgtype.Numeric, rows []byte) error {
+	_, err := q.db.Exec(ctx, storeInsertCanonicalBlocksBatch, chainID, rows)
 	return err
 }
 
-const StoreInsertCoreOutboxBatch = `-- name: StoreInsertCoreOutboxBatch :exec
+const storeInsertCoreOutboxBatch = `-- name: StoreInsertCoreOutboxBatch :exec
 WITH decoded AS (
     SELECT item.ordinality,
            item.value->>'topic' AS topic,
@@ -69,12 +69,12 @@ ON CONFLICT (chain_id, topic, message_key) DO UPDATE SET
     last_error = NULL
 `
 
-func (q *Queries) StoreInsertCoreOutboxBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte) error {
-	_, err := q.db.Exec(ctx, StoreInsertCoreOutboxBatch, column1, column2)
+func (q *Queries) StoreInsertCoreOutboxBatch(ctx context.Context, chainID pgtype.Numeric, rows []byte) error {
+	_, err := q.db.Exec(ctx, storeInsertCoreOutboxBatch, chainID, rows)
 	return err
 }
 
-const StorePutBlocksBatch = `-- name: StorePutBlocksBatch :exec
+const storePutBlocksBatch = `-- name: StorePutBlocksBatch :exec
 WITH decoded AS (
     SELECT item.ordinality,
            (item.value->>'number')::numeric AS number,
@@ -98,12 +98,12 @@ ON CONFLICT (chain_id, number, hash) DO UPDATE SET
     raw = EXCLUDED.raw
 `
 
-func (q *Queries) StorePutBlocksBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte) error {
-	_, err := q.db.Exec(ctx, StorePutBlocksBatch, column1, column2)
+func (q *Queries) StorePutBlocksBatch(ctx context.Context, chainID pgtype.Numeric, rows []byte) error {
+	_, err := q.db.Exec(ctx, storePutBlocksBatch, chainID, rows)
 	return err
 }
 
-const StorePutLogsBatch = `-- name: StorePutLogsBatch :exec
+const storePutLogsBatch = `-- name: StorePutLogsBatch :exec
 WITH decoded AS (
     SELECT item.ordinality,
            (item.value->>'block_number')::numeric AS block_number,
@@ -133,12 +133,12 @@ ON CONFLICT (chain_id, block_number, block_hash, log_index)
 DO UPDATE SET raw = EXCLUDED.raw
 `
 
-func (q *Queries) StorePutLogsBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte) error {
-	_, err := q.db.Exec(ctx, StorePutLogsBatch, column1, column2)
+func (q *Queries) StorePutLogsBatch(ctx context.Context, chainID pgtype.Numeric, rows []byte) error {
+	_, err := q.db.Exec(ctx, storePutLogsBatch, chainID, rows)
 	return err
 }
 
-const StorePutReceiptsBatch = `-- name: StorePutReceiptsBatch :exec
+const storePutReceiptsBatch = `-- name: StorePutReceiptsBatch :exec
 WITH decoded AS (
     SELECT item.ordinality,
            (item.value->>'block_number')::numeric AS block_number,
@@ -162,12 +162,12 @@ ON CONFLICT (chain_id, block_number, block_hash, tx_index)
 DO UPDATE SET raw = EXCLUDED.raw
 `
 
-func (q *Queries) StorePutReceiptsBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte) error {
-	_, err := q.db.Exec(ctx, StorePutReceiptsBatch, column1, column2)
+func (q *Queries) StorePutReceiptsBatch(ctx context.Context, chainID pgtype.Numeric, rows []byte) error {
+	_, err := q.db.Exec(ctx, storePutReceiptsBatch, chainID, rows)
 	return err
 }
 
-const StorePutTransactionInclusionsBatch = `-- name: StorePutTransactionInclusionsBatch :exec
+const storePutTransactionInclusionsBatch = `-- name: StorePutTransactionInclusionsBatch :exec
 WITH decoded AS (
     SELECT item.ordinality,
            (item.value->>'block_number')::numeric AS block_number,
@@ -191,12 +191,12 @@ ON CONFLICT (chain_id, block_number, block_hash, tx_index)
 DO UPDATE SET raw = EXCLUDED.raw
 `
 
-func (q *Queries) StorePutTransactionInclusionsBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte) error {
-	_, err := q.db.Exec(ctx, StorePutTransactionInclusionsBatch, column1, column2)
+func (q *Queries) StorePutTransactionInclusionsBatch(ctx context.Context, chainID pgtype.Numeric, rows []byte) error {
+	_, err := q.db.Exec(ctx, storePutTransactionInclusionsBatch, chainID, rows)
 	return err
 }
 
-const StorePutTransactionsBatch = `-- name: StorePutTransactionsBatch :exec
+const storePutTransactionsBatch = `-- name: StorePutTransactionsBatch :exec
 WITH decoded AS (
     SELECT item.ordinality,
            decode(item.value->>'hash', 'hex') AS hash,
@@ -216,12 +216,12 @@ ON CONFLICT (chain_id, hash) DO UPDATE SET
     raw = EXCLUDED.raw
 `
 
-func (q *Queries) StorePutTransactionsBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte) error {
-	_, err := q.db.Exec(ctx, StorePutTransactionsBatch, column1, column2)
+func (q *Queries) StorePutTransactionsBatch(ctx context.Context, chainID pgtype.Numeric, rows []byte) error {
+	_, err := q.db.Exec(ctx, storePutTransactionsBatch, chainID, rows)
 	return err
 }
 
-const StorePutWithdrawalsBatch = `-- name: StorePutWithdrawalsBatch :exec
+const storePutWithdrawalsBatch = `-- name: StorePutWithdrawalsBatch :exec
 WITH decoded AS (
     SELECT item.ordinality,
            (item.value->>'block_number')::numeric AS block_number,
@@ -249,115 +249,115 @@ ON CONFLICT (chain_id, block_number, block_hash, withdrawal_index)
 DO UPDATE SET raw = EXCLUDED.raw
 `
 
-func (q *Queries) StorePutWithdrawalsBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte) error {
-	_, err := q.db.Exec(ctx, StorePutWithdrawalsBatch, column1, column2)
+func (q *Queries) StorePutWithdrawalsBatch(ctx context.Context, chainID pgtype.Numeric, rows []byte) error {
+	_, err := q.db.Exec(ctx, storePutWithdrawalsBatch, chainID, rows)
 	return err
 }
 
-const StoreSetBlockJournalsCanonicalBatch = `-- name: StoreSetBlockJournalsCanonicalBatch :exec
+const storeSetBlockJournalsCanonicalBatch = `-- name: StoreSetBlockJournalsCanonicalBatch :exec
 WITH input AS (
     SELECT decode(value, 'hex') AS hash
-    FROM jsonb_array_elements_text($2::jsonb)
+    FROM jsonb_array_elements_text($3::jsonb)
 )
 UPDATE block_journals AS journal
-SET canonical = $3::boolean
+SET canonical = $1::boolean
 FROM input
-WHERE journal.chain_id = $1::numeric
+WHERE journal.chain_id = $2::numeric
   AND journal.block_hash = input.hash
 `
 
-func (q *Queries) StoreSetBlockJournalsCanonicalBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte, column3 bool) error {
-	_, err := q.db.Exec(ctx, StoreSetBlockJournalsCanonicalBatch, column1, column2, column3)
+func (q *Queries) StoreSetBlockJournalsCanonicalBatch(ctx context.Context, canonical bool, chainID pgtype.Numeric, blockHashes []byte) error {
+	_, err := q.db.Exec(ctx, storeSetBlockJournalsCanonicalBatch, canonical, chainID, blockHashes)
 	return err
 }
 
-const StoreSetDerivedCanonicalBatch = `-- name: StoreSetDerivedCanonicalBatch :exec
+const storeSetDerivedCanonicalBatch = `-- name: StoreSetDerivedCanonicalBatch :exec
 WITH input AS (
     SELECT decode(value, 'hex') AS hash
-    FROM jsonb_array_elements_text($2::jsonb)
+    FROM jsonb_array_elements_text($3::jsonb)
 ), update_contract_code AS (
-    UPDATE contract_code_observations AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE contract_code_observations AS target SET canonical = $1
+    FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
 ), update_proxy AS (
-    UPDATE proxy_observations AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE proxy_observations AS target SET canonical = $1
+    FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
 ), update_beacon AS (
-    UPDATE beacon_implementation_observations AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE beacon_implementation_observations AS target SET canonical = $1
+    FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
 ), update_uups AS (
-    UPDATE uups_implementation_observations AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE uups_implementation_observations AS target SET canonical = $1
+    FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
 ), update_detection AS (
-    UPDATE proxy_detection_evidence AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE proxy_detection_evidence AS target SET canonical = $1
+    FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
 ), update_proxy_upgrades AS (
-    UPDATE proxy_upgrade_events AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE proxy_upgrade_events AS target SET canonical = $1
+    FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
 ), update_proxy_initializations AS (
-    UPDATE proxy_initialization_events AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE proxy_initialization_events AS target SET canonical = $1
+    FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
 ), update_diamond_snapshots AS (
-    UPDATE diamond_loupe_snapshots AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE diamond_loupe_snapshots AS target SET canonical = $1
+    FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
 ), update_diamond_cuts AS (
-    UPDATE diamond_cut_events AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE diamond_cut_events AS target SET canonical = $1
+    FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
 ), update_contract_abis AS (
-    UPDATE contract_abis AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE contract_abis AS target SET canonical = $1
+    FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
 ), update_abi_decodings AS (
-    UPDATE abi_decodings AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE abi_decodings AS target SET canonical = $1
+    FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
 ), update_effective_identities AS (
-    UPDATE transaction_effective_execution_identities AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE transaction_effective_execution_identities AS target SET canonical = $1
+    FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
 ), update_token_events AS (
-    UPDATE token_events AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE token_events AS target SET canonical = $1
+    FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
 ), update_token_deltas AS (
-    UPDATE token_balance_deltas AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE token_balance_deltas AS target SET canonical = $1
+    FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
 ), update_holder_balances AS (
-    UPDATE erc20_holder_balances AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE erc20_holder_balances AS target SET canonical = $1
+    FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
 ), update_holder_snapshots AS (
-    UPDATE erc20_holder_snapshots AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE erc20_holder_snapshots AS target SET canonical = $1
+    FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
 ), update_trace_attributions AS (
-    UPDATE trace_log_attributions AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE trace_log_attributions AS target SET canonical = $1
+    FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
 ), update_traces AS (
-    UPDATE normalized_traces AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE normalized_traces AS target SET canonical = $1
+    FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
 ), update_execution_resolutions AS (
-    UPDATE transaction_execution_code_resolutions AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE transaction_execution_code_resolutions AS target SET canonical = $1
+    FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
 ), update_authorizations AS (
-    UPDATE eip7702_authorizations AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE eip7702_authorizations AS target SET canonical = $1
+    FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
 ), update_state_changes AS (
-    UPDATE transaction_state_changes AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE transaction_state_changes AS target SET canonical = $1
+    FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
 ), update_user_operations AS (
-    UPDATE erc4337_user_operations AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE erc4337_user_operations AS target SET canonical = $1
+    FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
 ), update_user_operation_events AS (
-    UPDATE erc4337_user_operation_events AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE erc4337_user_operation_events AS target SET canonical = $1
+    FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
 ), update_user_operation_participants AS (
-    UPDATE erc4337_user_operation_participants AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE erc4337_user_operation_participants AS target SET canonical = $1
+    FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
 ), update_statistics AS (
-    UPDATE block_statistics AS target SET canonical = $3
-    FROM input WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+    UPDATE block_statistics AS target SET canonical = $1
+    FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
 )
 UPDATE address_activities AS target
-SET canonical = $3
+SET canonical = $1
 FROM input
-WHERE target.chain_id = $1::numeric AND target.block_hash = input.hash
+WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
 `
 
-func (q *Queries) StoreSetDerivedCanonicalBatch(ctx context.Context, column1 pgtype.Numeric, column2 []byte, canonical bool) error {
-	_, err := q.db.Exec(ctx, StoreSetDerivedCanonicalBatch, column1, column2, canonical)
+func (q *Queries) StoreSetDerivedCanonicalBatch(ctx context.Context, canonical bool, chainID pgtype.Numeric, blockHashes []byte) error {
+	_, err := q.db.Exec(ctx, storeSetDerivedCanonicalBatch, canonical, chainID, blockHashes)
 	return err
 }

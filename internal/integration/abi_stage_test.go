@@ -5,7 +5,6 @@ package integration_test
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -16,6 +15,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	gethabi "github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -178,7 +180,7 @@ func TestABIStageIsolatesSameBlockRedelegationsByTransaction(t *testing.T) {
 	})
 
 	publishABIStage(t, ctx, db, processor, reference)
-	rows, err := db.QueryContext(ctx, `
+	rows, err := db.Query(ctx, `
 		SELECT transaction_hash, transaction_index, context_address,
 		       execution_address, execution_code_hash, resolution, evidence_source
 		FROM transaction_effective_execution_identities
@@ -645,7 +647,7 @@ func TestExactCWIAUsesImplementationCodeHashArtifactAcrossABIReads(t *testing.T)
 func insertCWIAABIProxyObservation(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block store.BlockRef,
 	proxy common.Address,
 	proxyCode common.Hash,
@@ -752,7 +754,7 @@ func assertCWIAListedMethod(
 func publishABIStage(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	processor *enrich.PostgresABIProcessor,
 	block store.BlockRef,
 ) {
@@ -843,7 +845,7 @@ func TestTransactionCalldataPersistsValuesAndReprojectsExactCompoundABI(t *testi
 
 	transactionHash := bundle.Block.Transactions()[0].Hash()
 	var persistedArguments []byte
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT arguments
 		FROM abi_decodings
 		WHERE chain_id = 1 AND block_hash = $1 AND transaction_hash = $2
@@ -1187,7 +1189,7 @@ func abiFixtureBundleAt(
 	return block
 }
 
-func insertABICodeObservation(t *testing.T, ctx context.Context, db *sql.DB, block store.BlockRef, address common.Address, codeHash common.Hash) {
+func insertABICodeObservation(t *testing.T, ctx context.Context, db *pgxpool.Pool, block store.BlockRef, address common.Address, codeHash common.Hash) {
 	t.Helper()
 	execFixture(t, ctx, db, `
 		INSERT INTO contract_code_observations (
@@ -1196,7 +1198,7 @@ func insertABICodeObservation(t *testing.T, ctx context.Context, db *sql.DB, blo
 		mustBytes(t, address), fmt.Sprint(block.Number), mustBytes(t, block.Hash), mustBytes(t, codeHash), []byte{0x60, 0x00})
 }
 
-func insertABIVerifiedContract(t *testing.T, ctx context.Context, db *sql.DB, address common.Address, codeHash common.Hash) {
+func insertABIVerifiedContract(t *testing.T, ctx context.Context, db *pgxpool.Pool, address common.Address, codeHash common.Hash) {
 	t.Helper()
 	insertVerifiedContractFixture(
 		t, ctx, db, mustBytes(t, address), mustBytes(t, codeHash), 0, nil,
@@ -1207,7 +1209,7 @@ func insertABIVerifiedContract(t *testing.T, ctx context.Context, db *sql.DB, ad
 func insertABIProxyObservation(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block store.BlockRef,
 	proxy common.Address,
 	proxyCode common.Hash,
@@ -1228,7 +1230,7 @@ func insertABIProxyObservation(
 func publishABIGenericProxy(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block store.BlockRef,
 	proxy common.Address,
 	proxyRuntime []byte,
@@ -1248,12 +1250,12 @@ func publishABIGenericProxy(
 func publishABIProxyStage(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block store.BlockRef,
 	states map[string]proxyContractState,
 ) {
 	t.Helper()
-	result, err := db.ExecContext(ctx, `
+	result, err := db.Exec(ctx, `
 		UPDATE transactional_outbox
 		SET published_at = clock_timestamp()
 		WHERE chain_id = 1 AND topic = 'core.block.canonical'
@@ -1261,8 +1263,8 @@ func publishABIProxyStage(
 	if err != nil {
 		t.Fatalf("publish ABI proxy core outbox: %v", err)
 	}
-	affected, err := result.RowsAffected()
-	if err != nil || affected != 1 {
+	affected := result.RowsAffected()
+	if affected != 1 {
 		t.Fatalf("publish ABI proxy core outbox rows=%d error=%v", affected, err)
 	}
 	var callMu sync.Mutex
@@ -1288,7 +1290,7 @@ func publishABIProxyStage(
 	if err != nil {
 		t.Fatal(err)
 	}
-	rows, err := db.QueryContext(ctx, `
+	rows, err := db.Query(ctx, `
 		SELECT DISTINCT source_verification_job_id::text
 		FROM proxy_replay_targets
 		WHERE chain_id = 1 AND block_number = $1::numeric AND block_hash = $2
@@ -1300,7 +1302,7 @@ func publishABIProxyStage(
 	for rows.Next() {
 		var sourceJobID string
 		if err := rows.Scan(&sourceJobID); err != nil {
-			_ = rows.Close()
+			rows.Close()
 			t.Fatal(err)
 		}
 		enqueued, err = queue.Enqueue(ctx, enrich.EnqueueRequest{
@@ -1308,15 +1310,16 @@ func publishABIProxyStage(
 			Replay: enrich.ReplaySource{Kind: "verification-publication", Key: sourceJobID},
 		})
 		if err != nil {
-			_ = rows.Close()
+			rows.Close()
 			t.Fatal(err)
 		}
 	}
 	if err := rows.Err(); err != nil {
-		_ = rows.Close()
+		rows.Close()
 		t.Fatal(err)
 	}
-	if err := rows.Close(); err != nil {
+	rows.Close()
+	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
 	if enqueued.Job.ID == "" {
@@ -1342,7 +1345,7 @@ func publishABIProxyStage(
 		  AND stage_version = 2 AND state = 'complete'`, 1, enqueued.Job.ID)
 }
 
-func insertABISignatureCandidates(t *testing.T, ctx context.Context, db *sql.DB) {
+func insertABISignatureCandidates(t *testing.T, ctx context.Context, db *pgxpool.Pool) {
 	t.Helper()
 	entries := []struct {
 		kind      string
@@ -1370,7 +1373,7 @@ func insertABISignatureCandidates(t *testing.T, ctx context.Context, db *sql.DB)
 func publishABITrace(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block store.BlockRef,
 	bundle chainbundle.Bundle,
 	target, recipient, caller common.Address,
@@ -1431,7 +1434,7 @@ func publishABITrace(
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := db.ExecContext(ctx, `
+	result, err := db.Exec(ctx, `
 		UPDATE transactional_outbox
 		SET published_at = clock_timestamp()
 		WHERE chain_id = 1 AND topic = 'core.block.canonical'
@@ -1439,8 +1442,8 @@ func publishABITrace(
 	if err != nil {
 		t.Fatal(err)
 	}
-	affected, err := result.RowsAffected()
-	if err != nil || affected != 1 {
+	affected := result.RowsAffected()
+	if affected != 1 {
 		t.Fatalf("publish ABI trace core outbox rows=%d error=%v", affected, err)
 	}
 	queue, err := enrich.NewPostgresJobQueue(db)
@@ -1468,12 +1471,12 @@ func publishABITrace(
 }
 
 type abiStateDiffService struct {
-	db  *sql.DB
+	db  *pgxpool.Pool
 	raw json.RawMessage
 }
 
 type abiStateDiffByTransactionService struct {
-	db  *sql.DB
+	db  *pgxpool.Pool
 	raw map[common.Hash]json.RawMessage
 }
 
@@ -1500,7 +1503,7 @@ func (service *abiStateDiffByTransactionService) TraceBlockByHash(
 func publishABIStateDiffService(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block store.BlockRef,
 	service any,
 ) {
@@ -1546,7 +1549,7 @@ func publishABIStateDiffService(
 func publishABITraceService(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block store.BlockRef,
 	service *traceStageService,
 ) {
@@ -1565,7 +1568,7 @@ func publishABITraceService(
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := db.ExecContext(ctx, `
+	result, err := db.Exec(ctx, `
 		UPDATE transactional_outbox
 		SET published_at = clock_timestamp()
 		WHERE chain_id = 1 AND topic = 'core.block.canonical'
@@ -1573,8 +1576,8 @@ func publishABITraceService(
 	if err != nil {
 		t.Fatal(err)
 	}
-	affected, err := result.RowsAffected()
-	if err != nil || affected != 1 {
+	affected := result.RowsAffected()
+	if affected != 1 {
 		t.Fatalf("publish ABI trace core outbox rows=%d error=%v", affected, err)
 	}
 	queue, err := enrich.NewPostgresJobQueue(db)
@@ -1602,7 +1605,7 @@ func publishABITraceService(
 }
 
 func publishABIStateDiff(
-	t *testing.T, ctx context.Context, db *sql.DB, block store.BlockRef,
+	t *testing.T, ctx context.Context, db *pgxpool.Pool, block store.BlockRef,
 	code map[common.Address][]byte,
 ) {
 	t.Helper()
@@ -1669,7 +1672,7 @@ func abiIntegrationJob(t *testing.T, block store.BlockRef) enrich.Job {
 func assertABIBinding(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block store.BlockRef,
 	target common.Address,
 	codeHash common.Hash,
@@ -1681,7 +1684,7 @@ func assertABIBinding(
 	var gotConfidence, from, to string
 	var gotSourceAddress, gotSourceCodeHash, gotBlockHash []byte
 	var canonical bool
-	err := db.QueryRowContext(ctx, `
+	err := db.QueryRow(ctx, `
 		SELECT confidence, valid_from_block::text, coalesce(valid_to_block::text, ''),
 		       source_address, source_code_hash, block_hash, canonical
 		FROM contract_abis
@@ -1706,9 +1709,9 @@ func assertABIBinding(
 	}
 }
 
-func assertABIDecodingSources(t *testing.T, ctx context.Context, db *sql.DB, block store.BlockRef, want map[string]string) {
+func assertABIDecodingSources(t *testing.T, ctx context.Context, db *pgxpool.Pool, block store.BlockRef, want map[string]string) {
 	t.Helper()
-	rows, err := db.QueryContext(ctx, `
+	rows, err := db.Query(ctx, `
 		SELECT object_kind, object_index, source, confidence, status
 		FROM abi_decodings
 		WHERE chain_id = 1 AND block_hash = $1 AND canonical
@@ -1720,7 +1723,7 @@ func assertABIDecodingSources(t *testing.T, ctx context.Context, db *sql.DB, blo
 	got := make(map[string]string)
 	for rows.Next() {
 		var kind, index, status string
-		var source, confidence sql.NullString
+		var source, confidence pgtype.Text
 		if err := rows.Scan(&kind, &index, &source, &confidence, &status); err != nil {
 			t.Fatal(err)
 		}
@@ -1737,13 +1740,13 @@ func assertABIDecodingSources(t *testing.T, ctx context.Context, db *sql.DB, blo
 func assertSignatureGuessCannotBeVerified(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block store.BlockRef,
 	target common.Address,
 	codeHash common.Hash,
 ) {
 	t.Helper()
-	_, err := db.ExecContext(ctx, `
+	_, err := db.Exec(ctx, `
 		INSERT INTO contract_abis (
 			chain_id, address, code_hash, source, confidence, abi,
 			valid_from_block, valid_to_block, block_number, block_hash,

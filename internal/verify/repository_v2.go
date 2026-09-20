@@ -3,7 +3,6 @@ package verify
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -12,9 +11,13 @@ import (
 	"strings"
 	"time"
 
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/cwiaargs"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/verifiedselector"
 )
 
@@ -32,36 +35,62 @@ func (repository *PostgresRepository) SubmitV2(
 	if err != nil {
 		return VerificationJob{}, false, err
 	}
-	var language, version, platform any
-	var catalogLanguage any
-	var generation any
-	var compilerDigest any
+	var language *string
+	var version *string
+	var platform *string
+	var catalogLanguage *string
+	var generation *int64
+	var compilerDigest []byte
 	if request.Kind != JobSourcify && request.Kind != JobSourcifyFromEtherscan &&
 		request.Kind != JobProxy {
-		language, version = request.Language, request.CompilerVersion
+		language, version = new(string(request.Language)), new(request.CompilerVersion)
 		if request.Language == LanguageSolidity || request.Language == LanguageYul {
-			catalogLanguage = LanguageSolidity
+			catalogLanguage = new(string(LanguageSolidity))
 		}
 		if request.Language == LanguageVyper {
-			catalogLanguage = LanguageVyper
+			catalogLanguage = new(string(LanguageVyper))
 		}
 	}
-	var chainID, address, codeHash, blockHash any
+	var chainID *string
+	var address []byte
+	var codeHash []byte
+	var blockHash []byte
 	if request.Kind == JobAddress || request.Kind == JobProxy {
-		chainID = strconv.FormatUint(request.Target.ChainID, 10)
+		chainID = new(strconv.FormatUint(request.Target.ChainID, 10))
 		address, _ = decodeFixedHex(request.Target.Address, 20)
 		codeHash, _ = decodeFixedHex(request.Target.CodeHash, 32)
 		blockHash, _ = decodeFixedHex(request.Target.AtBlockHash, 32)
 	}
-	job, err := repository.scanV2Job(repository.db.QueryRowContext(ctx, dbgen.VerifyV2SubmitJob,
-		id, request.Kind, language, catalogLanguage, version, platform, generation,
-		compilerDigest,
-		chainID, address, codeHash, blockHash, string(encoded), encoded, digest[:],
-		repository.options.MaxAttempts,
-	))
+	job, err := func() (VerificationJob, error) {
+		var queryValue0 pgtype.UUID
+		if err := queryValue0.Scan(id); err != nil {
+			return VerificationJob{}, err
+		}
+		var queryValue1 pgtype.Numeric
+		if chainID != nil {
+			if err := queryValue1.Scan(*chainID); err != nil {
+				return VerificationJob{}, err
+			}
+		}
+		if repository.options.MaxAttempts < -2147483648 || repository.options.MaxAttempts > 2147483647 {
+			return VerificationJob{}, errors.New("invalid stored query value")
+		}
+		row, err := dbgen.New(repository.db).VerifyV2SubmitJob(ctx, dbgen.VerifyV2SubmitJobParams{ID: queryValue0, Kind: string(request.Kind), Language: language, CatalogLanguage: catalogLanguage, CompilerVersion: version, CompilerPlatform: platform, CatalogGenerationID: generation, CompilerDigest: compilerDigest, ChainID: queryValue1, Address: address, CodeHash: codeHash, BlockHash: blockHash, Request: []byte(string(encoded)), RequestPayload: encoded, RequestDigest: digest[:], MaxAttempts: int32(repository.options.MaxAttempts)})
+		if err != nil {
+			return VerificationJob{}, err
+		}
+		return repository.decodeV2Job(dbgen.VerifyV2GetJobRow(row))
+	}()
 	created := err == nil
-	if errors.Is(err, sql.ErrNoRows) {
-		job, err = repository.scanV2Job(repository.db.QueryRowContext(ctx, dbgen.VerifyV2FindActiveJobByDigest, digest[:]))
+	if errors.Is(err, pgx.ErrNoRows) {
+		job, err = func() (VerificationJob, error) {
+
+			row, err := dbgen.New(repository.db).VerifyV2FindActiveJobByDigest(ctx, digest[:])
+			if err != nil {
+				return VerificationJob{}, err
+			}
+			return repository.decodeV2Job(dbgen.VerifyV2GetJobRow(row))
+		}()
 	}
 	if err != nil {
 		return VerificationJob{}, false, fmt.Errorf("submit v2 verification job: %w", err)
@@ -115,10 +144,15 @@ func (repository *PostgresRepository) claimRunnable(
 	if err != nil {
 		return VerificationLease{}, false, err
 	}
-	job, err := repository.scanV2Job(repository.db.QueryRowContext(ctx, dbgen.VerifyV2ClaimRunnable,
-		workerID, token, microseconds, availability.SolcJS, availability.Geas, availability.Vyper, availability.VyperBound,
-	))
-	if errors.Is(err, sql.ErrNoRows) {
+	job, err := func() (VerificationJob, error) {
+
+		row, err := dbgen.New(repository.db).VerifyV2ClaimRunnable(ctx, dbgen.VerifyV2ClaimRunnableParams{LeasedBy: new(workerID), LeaseToken: new(token), LeaseMicroseconds: microseconds, SolidityEnabled: availability.SolcJS, GeasEnabled: availability.Geas, VyperEnabled: availability.Vyper, VyperPreparedEnabled: availability.VyperBound})
+		if err != nil {
+			return VerificationJob{}, err
+		}
+		return repository.decodeV2Job(dbgen.VerifyV2GetJobRow(row))
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return VerificationLease{}, false, nil
 	}
 	if err != nil {
@@ -150,23 +184,36 @@ func (repository *PostgresRepository) BindCompiler(
 			lease.Job.RequestV2.Language != LanguageYul) {
 		return ErrCompilerProvenanceConflict
 	}
-	var generation any
+	var generation *int64
 	if provenance.CatalogGeneration > 0 {
-		generation = provenance.CatalogGeneration
+		generation = new(provenance.CatalogGeneration)
 	}
-	result, err := repository.db.ExecContext(ctx, dbgen.VerifyInlineBindCompilerStatement1, lease.Job.ID, lease.Token, provenance.Platform,
-		generation, provenance.Digest[:],
-		provenance.ExecutorKind, provenance.ExecutionPolicy,
-		provenance.ExecutorDigest[:])
+	result, err := func() (int64, error) {
+		var queryValue0 pgtype.UUID
+		if err := queryValue0.Scan(lease.Job.ID); err != nil {
+			return 0, err
+		}
+		return dbgen.New(repository.db).VerifyInlineBindCompilerStatement1(ctx, dbgen.VerifyInlineBindCompilerStatement1Params{CompilerPlatform: new(provenance.Platform), CatalogGenerationID: generation, CompilerDigest: provenance.Digest[:], ExecutorKind: new(provenance.ExecutorKind), ExecutionPolicy: new(provenance.ExecutionPolicy), ExecutorDigest: provenance.ExecutorDigest[:], ID: queryValue0, LeaseToken: new(lease.Token)})
+	}()
 	if err != nil {
 		return err
 	}
-	if affected, _ := result.RowsAffected(); affected == 1 {
+	if affected := result; affected == 1 {
 		return nil
 	}
-	var leaseOwned bool
-	err = repository.db.QueryRowContext(ctx, dbgen.VerifyInlineBindCompilerStatement2, lease.Job.ID, lease.Token).Scan(&leaseOwned)
-	if errors.Is(err, sql.ErrNoRows) {
+	err = func() error {
+		var queryValue0 pgtype.UUID
+		if err := queryValue0.Scan(lease.Job.ID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(repository.db).VerifyInlineBindCompilerStatement2(ctx, queryValue0, new(lease.Token))
+		if err != nil {
+			return err
+		}
+		_ = queryRow
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrLeaseLost
 	}
 	if err != nil {
@@ -197,13 +244,23 @@ func (repository *PostgresRepository) CompleteV2(
 		(lease.Job.Kind != JobAddress || outcomeKind != "verification_success")) {
 		return errors.New("v2 authenticated compilation is invalid for outcome")
 	}
-	tx, err := repository.db.BeginTx(ctx, nil)
+	tx, err := repository.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback() //nolint:errcheck
-	job, err := repository.scanV2Job(tx.QueryRowContext(ctx, dbgen.VerifyV2LockRunningJob, lease.Job.ID, lease.Token))
-	if errors.Is(err, sql.ErrNoRows) {
+	defer dbaccess.Rollback(ctx, tx)
+	job, err := func() (VerificationJob, error) {
+		var queryValue0 pgtype.UUID
+		if err := queryValue0.Scan(lease.Job.ID); err != nil {
+			return VerificationJob{}, err
+		}
+		row, err := dbgen.New(tx).VerifyV2LockRunningJob(ctx, queryValue0, new(lease.Token))
+		if err != nil {
+			return VerificationJob{}, err
+		}
+		return repository.decodeV2Job(dbgen.VerifyV2GetJobRow(row))
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrLeaseLost
 	}
 	if err != nil {
@@ -242,10 +299,23 @@ func (repository *PostgresRepository) CompleteV2(
 		publicationCodeHash, _ = decodeFixedHex(job.RequestV2.Target.CodeHash, 32)
 		blockHash, _ := decodeFixedHex(job.RequestV2.Target.AtBlockHash, 32)
 		var actualRuntime []byte
-		runtimeErr := tx.QueryRowContext(ctx, dbgen.VerifyInlineCompleteV2Statement1, strconv.FormatUint(job.RequestV2.Target.ChainID, 10), publicationAddress,
-			strconv.FormatUint(publicationBlockNumber, 10), blockHash, publicationCodeHash,
-		).Scan(&actualRuntime)
-		if runtimeErr != nil && !errors.Is(runtimeErr, sql.ErrNoRows) {
+		runtimeErr := func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(strconv.FormatUint(job.RequestV2.Target.ChainID, 10)); err != nil {
+				return err
+			}
+			var queryValue1 pgtype.Numeric
+			if err := queryValue1.Scan(strconv.FormatUint(publicationBlockNumber, 10)); err != nil {
+				return err
+			}
+			queryRow, err := dbgen.New(tx).VerifyInlineCompleteV2Statement1(ctx, dbgen.VerifyInlineCompleteV2Statement1Params{ChainID: queryValue0, Address: publicationAddress, BlockNumber: queryValue1, BlockHash: blockHash, CodeHash: publicationCodeHash})
+			if err != nil {
+				return err
+			}
+			actualRuntime = queryRow
+			return nil
+		}()
+		if runtimeErr != nil && !errors.Is(runtimeErr, pgx.ErrNoRows) {
 			return fmt.Errorf("load verified runtime for proxy artifact authentication: %w", runtimeErr)
 		}
 		publicationTarget = common.BytesToAddress(publicationAddress)
@@ -261,19 +331,24 @@ func (repository *PostgresRepository) CompleteV2(
 			}
 		}
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.VerifyInlineCompleteV2Statement2, job.ID, lease.Token, outcomeKind, string(outcome)); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.UUID
+		if err := queryValue0.Scan(job.ID); err != nil {
+			return err
+		}
+		return dbgen.New(tx).VerifyInlineCompleteV2Statement2(ctx, dbgen.VerifyInlineCompleteV2Statement2Params{ID: queryValue0, LeaseToken: new(lease.Token), OutcomeKind: new(outcomeKind), Outcome: []byte(string(outcome))})
+	}(); err != nil {
 		return err
 	}
 	artifactKind, artifactVersion, artifactImmutable, artifactManifest :=
 		proxyArtifactAttestationValues(authenticatedArtifact)
-	if _, err := tx.ExecContext(ctx, dbgen.VerifyInlineCompleteV2Statement3, job.ID, job.RequestDigest[:], outcomeKind, string(outcome),
-		resultFields.FileName, resultFields.ContractName, resultFields.Language,
-		resultFields.CompilerVersion, resultFields.MatchType, resultFields.ABI,
-		resultFields.Sources, resultFields.Settings, resultFields.CompilationArtifacts,
-		resultFields.CreationArtifacts, resultFields.RuntimeArtifacts,
-		resultFields.ConstructorArguments, resultFields.Libraries, resultFields.Blueprint,
-		artifactKind, artifactVersion, artifactImmutable, artifactManifest,
-	); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.UUID
+		if err := queryValue0.Scan(job.ID); err != nil {
+			return err
+		}
+		return dbgen.New(tx).VerifyInlineCompleteV2Statement3(ctx, dbgen.VerifyInlineCompleteV2Statement3Params{JobID: queryValue0, RequestDigest: job.RequestDigest[:], OutcomeKind: outcomeKind, Outcome: []byte(string(outcome)), FileName: resultFields.FileName, ContractName: resultFields.ContractName, Language: resultFields.Language, CompilerVersion: resultFields.CompilerVersion, MatchType: resultFields.MatchType, Abi: resultFields.ABI, Sources: resultFields.Sources, Settings: resultFields.Settings, CompilationArtifacts: resultFields.CompilationArtifacts, CreationCodeArtifacts: resultFields.CreationArtifacts, RuntimeCodeArtifacts: resultFields.RuntimeArtifacts, ConstructorArguments: resultFields.ConstructorArguments, Libraries: resultFields.Libraries, IsBlueprint: resultFields.Blueprint, ProxyArtifactKind: artifactKind, ProxyStandardVersion: artifactVersion, ProxyRuntimeImmutableAddress: artifactImmutable, ProxySourceManifestSha256: artifactManifest})
+	}(); err != nil {
 		return err
 	}
 	if job.Kind == JobAddress && outcomeKind == "verification_success" {
@@ -293,33 +368,53 @@ func (repository *PostgresRepository) CompleteV2(
 			}
 			blockHash, _ := decodeFixedHex(job.RequestV2.Target.AtBlockHash, 32)
 			var epochStartText string
-			if err := tx.QueryRowContext(
-				ctx, dbgen.DerivedVerifyCreatorCodeEpochStart,
-				strconv.FormatUint(job.RequestV2.Target.ChainID, 10),
-				publicationAddress, publicationCodeHash,
-				strconv.FormatUint(publicationBlockNumber, 10), blockHash,
-			).Scan(&epochStartText); err != nil {
+			if err := func() error {
+				var queryValue0 pgtype.Numeric
+				if err := queryValue0.Scan(strconv.FormatUint(job.RequestV2.Target.ChainID, 10)); err != nil {
+					return err
+				}
+				var queryValue1 pgtype.Numeric
+				if err := queryValue1.Scan(strconv.FormatUint(publicationBlockNumber, 10)); err != nil {
+					return err
+				}
+				queryRow, err := dbgen.New(tx).DerivedVerifyCreatorCodeEpochStart(ctx, dbgen.DerivedVerifyCreatorCodeEpochStartParams{ChainID: queryValue0, Address: publicationAddress, CodeHash: publicationCodeHash, BlockNumber: queryValue1, BlockHash: blockHash})
+				if err != nil {
+					return err
+				}
+				epochStartText = queryRow
+				return nil
+			}(); err != nil {
 				return fmt.Errorf("resolve derived verification creator code epoch: %w", err)
 			}
 			epochStart, err := strconv.ParseUint(epochStartText, 10, 64)
 			if err != nil || epochStart > publicationBlockNumber {
 				return errors.New("derived verification creator code epoch is invalid")
 			}
-			if _, err := tx.ExecContext(ctx, dbgen.DerivedVerifyEnqueueHistoricalScan,
-				compilationID, strconv.FormatUint(job.RequestV2.Target.ChainID, 10),
-				publicationAddress, publicationCodeHash,
-				strconv.FormatUint(epochStart, 10), nil,
-			); err != nil {
+			if err := func() error {
+				var queryValue0 pgtype.UUID
+				if err := queryValue0.Scan(compilationID); err != nil {
+					return err
+				}
+				var queryValue1 pgtype.Numeric
+				if err := queryValue1.Scan(strconv.FormatUint(job.RequestV2.Target.ChainID, 10)); err != nil {
+					return err
+				}
+				var queryValue2 pgtype.Numeric
+				if err := queryValue2.Scan(strconv.FormatUint(epochStart, 10)); err != nil {
+					return err
+				}
+				return dbgen.New(tx).DerivedVerifyEnqueueHistoricalScan(ctx, dbgen.DerivedVerifyEnqueueHistoricalScanParams{CompilationID: queryValue0, ChainID: queryValue1, CreatorAddress: publicationAddress, CreatorCodeHash: publicationCodeHash, CursorBlockNumber: queryValue2, ValidToBlock: pgtype.Numeric{}})
+			}(); err != nil {
 				return fmt.Errorf("enqueue historical derived verification: %w", err)
 			}
 		}
 	}
-	return tx.Commit()
+	return tx.Commit(ctx)
 }
 
 func (repository *PostgresRepository) persistAuthenticatedCompilationTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job VerificationJob,
 	compilation AuthenticatedCompilation,
 ) (string, error) {
@@ -332,13 +427,22 @@ func (repository *PostgresRepository) persistAuthenticatedCompilationTx(
 		return "", errors.New("authenticated compilation compiler provenance is unavailable")
 	}
 	storedID := ""
-	err = tx.QueryRowContext(ctx, dbgen.VerifyInlineCompleteV2Statement6,
-		id, job.ID, job.RequestDigest[:], job.RequestV2.Language,
-		job.RequestV2.CompilerVersion, compiler.Platform,
-		compiler.CatalogGeneration, compiler.Digest[:], compiler.ExecutorKind,
-		compiler.ExecutionPolicy, compiler.ExecutorDigest[:],
-		string(compilation.StandardJSON), []byte(compilation.StandardJSON),
-	).Scan(&storedID)
+	err = func() error {
+		var queryValue0 pgtype.UUID
+		if err := queryValue0.Scan(id); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.UUID
+		if err := queryValue1.Scan(job.ID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).VerifyInlineCompleteV2Statement6(ctx, dbgen.VerifyInlineCompleteV2Statement6Params{ID: queryValue0, SourceJobID: queryValue1, RequestDigest: job.RequestDigest[:], Language: string(job.RequestV2.Language), CompilerVersion: job.RequestV2.CompilerVersion, CompilerPlatform: compiler.Platform, CatalogGenerationID: compiler.CatalogGeneration, CompilerSha256: compiler.Digest[:], ExecutorKind: compiler.ExecutorKind, ExecutionPolicy: compiler.ExecutionPolicy, ExecutorSha256: compiler.ExecutorDigest[:], StandardJson: []byte(string(compilation.StandardJSON)), StandardJsonPayload: []byte(compilation.StandardJSON)})
+		if err != nil {
+			return err
+		}
+		storedID = queryRow
+		return nil
+	}()
 	if err != nil {
 		return "", fmt.Errorf("persist authenticated compilation unit: %w", err)
 	}
@@ -348,11 +452,13 @@ func (repository *PostgresRepository) persistAuthenticatedCompilationTx(
 	for _, candidate := range compilation.Candidates {
 		creation, _ := decodeBytecode(candidate.CreationBytecode)
 		runtime, _ := decodeBytecode(candidate.RuntimeBytecode)
-		if _, err := tx.ExecContext(ctx, dbgen.VerifyInlineCompleteV2Statement7,
-			id, candidate.FileName, candidate.ContractName, string(candidate.ABI),
-			creation, runtime, string(candidate.CompilationArtifacts),
-			string(candidate.CreationCodeArtifacts), string(candidate.RuntimeCodeArtifacts),
-		); err != nil {
+		if err := func() error {
+			var queryValue0 pgtype.UUID
+			if err := queryValue0.Scan(id); err != nil {
+				return err
+			}
+			return dbgen.New(tx).VerifyInlineCompleteV2Statement7(ctx, dbgen.VerifyInlineCompleteV2Statement7Params{CompilationID: queryValue0, FileName: candidate.FileName, ContractName: candidate.ContractName, Abi: []byte(string(candidate.ABI)), CreationBytecode: creation, RuntimeBytecode: runtime, CompilationArtifacts: []byte(string(candidate.CompilationArtifacts)), CreationCodeArtifacts: []byte(string(candidate.CreationCodeArtifacts)), RuntimeCodeArtifacts: []byte(string(candidate.RuntimeCodeArtifacts))})
+		}(); err != nil {
 			return "", fmt.Errorf("persist authenticated compilation candidate: %w", err)
 		}
 	}
@@ -371,44 +477,54 @@ type verifiedPublication struct {
 
 func (repository *PostgresRepository) publishVerifiedContractTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	publication verifiedPublication,
 ) error {
 	job, fields := publication.Job, publication.Fields
 	chainID := strconv.FormatUint(job.RequestV2.Target.ChainID, 10)
 	blockNumber := strconv.FormatUint(publication.BlockNumber, 10)
-	if _, err := tx.ExecContext(ctx, dbgen.VerifyInlineCompleteV2Statement4,
-		chainID, publication.Address, publication.CodeHash, blockNumber,
-		job.ID, job.RequestDigest[:], fields.FileName, fields.ContractName,
-		fields.Language, fields.CompilerVersion, fields.RuntimeMatch, fields.ABI,
-		fields.Sources, fields.Settings, fields.CompilationArtifacts,
-		fields.CreationArtifacts, fields.RuntimeArtifacts,
-		fields.ConstructorArguments, fields.Libraries, fields.Blueprint,
-	); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(blockNumber); err != nil {
+			return err
+		}
+		var queryValue2 pgtype.UUID
+		if err := queryValue2.Scan(job.ID); err != nil {
+			return err
+		}
+		return dbgen.New(tx).VerifyInlineCompleteV2Statement4(ctx, dbgen.VerifyInlineCompleteV2Statement4Params{ChainID: queryValue0, Address: publication.Address, CodeHash: publication.CodeHash, ValidFromBlock: queryValue1, VerificationJobID: queryValue2, RequestDigest: job.RequestDigest[:], FileName: fields.FileName, ContractName: fields.ContractName, Language: fields.Language, CompilerVersion: fields.CompilerVersion, MatchType: fields.RuntimeMatch, Abi: fields.ABI, Sources: fields.Sources, Settings: fields.Settings, CompilationArtifacts: fields.CompilationArtifacts, CreationCodeArtifacts: fields.CreationArtifacts, RuntimeCodeArtifacts: fields.RuntimeArtifacts, ConstructorArguments: fields.ConstructorArguments, Libraries: fields.Libraries, IsBlueprint: fields.Blueprint})
+	}(); err != nil {
 		return err
 	}
 	if publication.AuthenticatedArtifact != nil {
 		artifact := publication.AuthenticatedArtifact
-		var immutable any
+		var immutable []byte
 		if artifact.RuntimeImmutable != nil {
 			immutable = artifact.RuntimeImmutable[:]
 		}
-		if _, err := tx.ExecContext(ctx, dbgen.VerifyInlineCompleteV2Statement5,
-			chainID, publication.Address, publication.CodeHash, blockNumber,
-			job.ID, job.RequestDigest[:], artifact.Kind,
-			artifact.StandardVersion, immutable, artifact.SourceManifestSHA256[:],
-		); err != nil {
+		if err := func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(chainID); err != nil {
+				return err
+			}
+			var queryValue1 pgtype.Numeric
+			if err := queryValue1.Scan(blockNumber); err != nil {
+				return err
+			}
+			var queryValue2 pgtype.UUID
+			if err := queryValue2.Scan(job.ID); err != nil {
+				return err
+			}
+			return dbgen.New(tx).VerifyInlineCompleteV2Statement5(ctx, dbgen.VerifyInlineCompleteV2Statement5Params{ChainID: queryValue0, Address: publication.Address, CodeHash: publication.CodeHash, ValidFromBlock: queryValue1, VerificationJobID: queryValue2, RequestDigest: job.RequestDigest[:], ArtifactKind: artifact.Kind, StandardVersion: artifact.StandardVersion, RuntimeImmutableAddress: immutable, SourceManifestSha256: artifact.SourceManifestSHA256[:]})
+		}(); err != nil {
 			return fmt.Errorf("publish authenticated OpenZeppelin proxy artifact: %w", err)
 		}
 	}
-	var selectorABI []byte
-	if fields.ABI != nil {
-		encoded, ok := fields.ABI.(string)
-		if !ok {
-			return errors.New("verification ABI selector projection is invalid")
-		}
-		selectorABI = []byte(encoded)
-	}
+	selectorABI := fields.ABI
 	if err := verifiedselector.Persist(ctx, tx, verifiedselector.Identity{
 		JobID: job.ID, RequestDigest: job.RequestDigest[:], ChainID: chainID,
 		Address: publication.Address, CodeHash: publication.CodeHash,
@@ -422,15 +538,15 @@ func (repository *PostgresRepository) publishVerifiedContractTx(
 	)
 }
 
-func proxyArtifactAttestationValues(artifact *recognizedProxyArtifact) (any, any, any, any) {
+func proxyArtifactAttestationValues(artifact *recognizedProxyArtifact) (*string, *string, []byte, []byte) {
 	if artifact == nil {
 		return nil, nil, nil, nil
 	}
-	var immutable any
+	var immutable []byte
 	if artifact.RuntimeImmutable != nil {
 		immutable = artifact.RuntimeImmutable[:]
 	}
-	return artifact.Kind, artifact.StandardVersion, immutable, artifact.SourceManifestSHA256[:]
+	return new(artifact.Kind), new(artifact.StandardVersion), immutable, artifact.SourceManifestSHA256[:]
 }
 
 func (repository *PostgresRepository) Fail(
@@ -441,7 +557,13 @@ func (repository *PostgresRepository) Fail(
 	if !code.valid() {
 		return errors.New("verification failure code is invalid")
 	}
-	result, err := repository.db.ExecContext(ctx, dbgen.VerifyInlineFailStatement1, lease.Job.ID, lease.Token, code)
+	result, err := func() (int64, error) {
+		var queryValue0 pgtype.UUID
+		if err := queryValue0.Scan(lease.Job.ID); err != nil {
+			return 0, err
+		}
+		return dbgen.New(repository.db).VerifyInlineFailStatement1(ctx, new(string(code)), queryValue0, new(lease.Token))
+	}()
 	if err != nil {
 		return err
 	}
@@ -452,8 +574,18 @@ func (repository *PostgresRepository) Job(ctx context.Context, id string) (Verif
 	if !validUUID(id) {
 		return VerificationJob{}, false, errors.New("verification job ID is invalid")
 	}
-	job, err := repository.scanV2Job(repository.db.QueryRowContext(ctx, dbgen.VerifyV2GetJob, id))
-	if errors.Is(err, sql.ErrNoRows) {
+	job, err := func() (VerificationJob, error) {
+		var queryValue0 pgtype.UUID
+		if err := queryValue0.Scan(id); err != nil {
+			return VerificationJob{}, err
+		}
+		row, err := dbgen.New(repository.db).VerifyV2GetJob(ctx, queryValue0)
+		if err != nil {
+			return VerificationJob{}, err
+		}
+		return repository.decodeV2Job(dbgen.VerifyV2GetJobRow(row))
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return VerificationJob{}, false, nil
 	}
 	if err != nil {
@@ -462,30 +594,35 @@ func (repository *PostgresRepository) Job(ctx context.Context, id string) (Verif
 	return job, true, nil
 }
 
-func (repository *PostgresRepository) scanV2Job(row rowScanner) (VerificationJob, error) {
-	var job VerificationJob
-	var payload, digest []byte
-	var outcomeKind, outcome, errorCode sql.NullString
-	var language, version, platform, executorKind, executionPolicy sql.NullString
-	var generation sql.NullInt64
-	var compilerDigest, executorDigest []byte
-	if err := row.Scan(
-		&job.ID, &job.Kind, &language, &version, &platform, &generation,
-		&compilerDigest, &executorKind, &executionPolicy, &executorDigest,
-		&payload, &digest, &job.Status, &outcomeKind, &outcome, &errorCode,
-		&job.AttemptCount, &job.MaxAttempts, &job.CreatedAt, &job.UpdatedAt,
-	); err != nil {
-		return VerificationJob{}, err
+func (repository *PostgresRepository) decodeV2Job(row dbgen.VerifyV2GetJobRow) (VerificationJob, error) {
+	if !row.CreatedAt.Valid || !row.UpdatedAt.Valid || row.CreatedAt.InfinityModifier != pgtype.Finite || row.UpdatedAt.InfinityModifier != pgtype.Finite {
+		return VerificationJob{}, errors.New("stored verification job timestamp is invalid")
 	}
+	job := VerificationJob{ID: row.ID, Kind: JobKind(row.Kind), Status: JobStatus(row.Status), AttemptCount: int(row.AttemptCount), MaxAttempts: int(row.MaxAttempts), CreatedAt: row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time, Outcome: row.Outcome}
+	payload, digest := row.RequestPayload, row.RequestDigest
+	compilerDigest, executorDigest := row.CompilerDigest, row.ExecutorDigest
+	var language, version, platform, executorKind, executionPolicy, errorCode pgtype.Text
+	for _, field := range []struct {
+		source *string
+		target *pgtype.Text
+	}{
+		{row.Language, &language}, {row.CompilerVersion, &version}, {row.CompilerPlatform, &platform}, {row.ExecutorKind, &executorKind}, {row.ExecutionPolicy, &executionPolicy}, {row.ErrorCode, &errorCode},
+	} {
+		if field.source != nil {
+			*field.target = pgtype.Text{String: *field.source, Valid: true}
+		}
+	}
+	var generation pgtype.Int8
+	if row.CatalogGenerationID != nil {
+		generation = pgtype.Int8{Int64: *row.CatalogGenerationID, Valid: true}
+	}
+
 	if len(payload) > repository.options.MaxRequestBytes ||
 		json.Unmarshal(payload, &job.RequestV2) != nil || job.RequestV2 == nil ||
 		len(digest) != sha256.Size {
 		return VerificationJob{}, errors.New("stored v2 verification job is invalid")
 	}
 	copy(job.RequestDigest[:], digest)
-	if outcome.Valid {
-		job.Outcome = json.RawMessage(outcome.String)
-	}
 	if errorCode.Valid {
 		job.ErrorCode = ErrorCode(errorCode.String)
 	}
@@ -646,22 +783,22 @@ func decodeStoredVerificationMatch(value []byte) (*VerificationMatchDetails, err
 }
 
 type v2ResultFields struct {
-	FileName             any
-	ContractName         any
-	Language             any
-	CompilerVersion      any
-	MatchType            any
+	FileName             *string
+	ContractName         *string
+	Language             *string
+	CompilerVersion      *string
+	MatchType            *string
 	CreationMatch        string
 	RuntimeMatch         string
-	ABI                  any
-	Sources              any
-	Settings             any
-	CompilationArtifacts any
-	CreationArtifacts    any
-	RuntimeArtifacts     any
-	ConstructorArguments any
-	Libraries            any
-	Blueprint            any
+	ABI                  []byte
+	Sources              []byte
+	Settings             []byte
+	CompilationArtifacts []byte
+	CreationArtifacts    []byte
+	RuntimeArtifacts     []byte
+	ConstructorArguments []byte
+	Libraries            []byte
+	Blueprint            *bool
 }
 
 func decodeV2ResultFields(kind string, outcome json.RawMessage) (v2ResultFields, error) {
@@ -711,7 +848,7 @@ func decodeV2ResultFields(kind string, outcome json.RawMessage) (v2ResultFields,
 		matchType = success.RuntimeMatch.MatchType
 		runtimeMatch = string(success.RuntimeMatch.MatchType)
 	}
-	var constructor any
+	var constructor []byte
 	if success.Constructor != "" {
 		decoded, err := decodeBytecode(success.Constructor)
 		if err != nil {
@@ -719,22 +856,22 @@ func decodeV2ResultFields(kind string, outcome json.RawMessage) (v2ResultFields,
 		}
 		constructor = decoded
 	}
-	var abi any
+	var abi []byte
 	if len(success.ABI) > 0 {
 		if !jsonArray(success.ABI) {
 			return v2ResultFields{}, errors.New("verification ABI is invalid")
 		}
-		abi = string(success.ABI)
+		abi = success.ABI
 	}
 	return v2ResultFields{
-		FileName: success.FileName, ContractName: success.ContractName,
-		Language: success.Language, CompilerVersion: success.CompilerVersion,
-		MatchType: matchType, CreationMatch: creationMatch, RuntimeMatch: runtimeMatch, ABI: abi,
-		Sources: string(success.Sources), Settings: string(success.Settings),
-		CompilationArtifacts: string(success.Compilation),
-		CreationArtifacts:    string(success.Creation), RuntimeArtifacts: string(success.Runtime),
-		ConstructorArguments: constructor, Libraries: string(success.Libraries),
-		Blueprint: success.Blueprint,
+		FileName: new(success.FileName), ContractName: new(success.ContractName),
+		Language: new(string(success.Language)), CompilerVersion: new(success.CompilerVersion),
+		MatchType: new(string(matchType)), CreationMatch: creationMatch, RuntimeMatch: runtimeMatch, ABI: abi,
+		Sources: success.Sources, Settings: success.Settings,
+		CompilationArtifacts: success.Compilation,
+		CreationArtifacts:    success.Creation, RuntimeArtifacts: success.Runtime,
+		ConstructorArguments: constructor, Libraries: success.Libraries,
+		Blueprint: new(success.Blueprint),
 	}, nil
 }
 
@@ -749,7 +886,7 @@ func validateAddressSuccessEvidence(target *VerificationTarget, fields v2ResultF
 	return nil
 }
 
-func canonicalV2Target(ctx context.Context, tx *sql.Tx, target *VerificationTarget) (uint64, error) {
+func canonicalV2Target(ctx context.Context, tx pgx.Tx, target *VerificationTarget) (uint64, error) {
 	if target == nil {
 		return 0, ErrTargetNotCanonical
 	}
@@ -762,10 +899,32 @@ func canonicalV2Target(ctx context.Context, tx *sql.Tx, target *VerificationTarg
 		if err != nil || len(runtime) == 0 {
 			return 0, ErrTargetNotCanonical
 		}
-		if err := tx.QueryRowContext(ctx, dbgen.VerifyLegacyVerificationCanonicalGenesisTarget, strconv.FormatUint(target.ChainID, 10), address, codeHash, blockHash, runtime).Scan(&blockNumber); err != nil {
+		if err := func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(strconv.FormatUint(target.ChainID, 10)); err != nil {
+				return err
+			}
+			queryRow, err := dbgen.New(tx).VerifyLegacyVerificationCanonicalGenesisTarget(ctx, dbgen.VerifyLegacyVerificationCanonicalGenesisTargetParams{ChainID: queryValue0, Address: address, CodeHash: codeHash, BlockHash: blockHash, Code: runtime})
+			if err != nil {
+				return err
+			}
+			blockNumber = queryRow
+			return nil
+		}(); err != nil {
 			return 0, err
 		}
-	} else if err := tx.QueryRowContext(ctx, dbgen.VerifyLegacyVerificationCanonicalTarget, strconv.FormatUint(target.ChainID, 10), address, codeHash, blockHash).Scan(&blockNumber); err != nil {
+	} else if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(strconv.FormatUint(target.ChainID, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).VerifyLegacyVerificationCanonicalTarget(ctx, dbgen.VerifyLegacyVerificationCanonicalTargetParams{ChainID: queryValue0, Address: address, CodeHash: codeHash, BlockHash: blockHash})
+		if err != nil {
+			return err
+		}
+		blockNumber = queryRow
+		return nil
+	}(); err != nil {
 		return 0, err
 	}
 	value, err := strconv.ParseUint(blockNumber, 10, 64)

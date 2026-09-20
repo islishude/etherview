@@ -2,14 +2,17 @@ package etherscan
 
 import (
 	"context"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/islishude/etherview/internal/db/gen"
 	"net/url"
 	"strconv"
 	"strings"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
 )
 
 func (b *PostgresBackend) internalTransactions(ctx context.Context, values url.Values) ([]internalTransaction, error) {
@@ -17,7 +20,7 @@ func (b *PostgresBackend) internalTransactions(ctx context.Context, values url.V
 	if err != nil {
 		return nil, invalidParameter("%v", err)
 	}
-	var addressBytes any
+	var addressBytes []byte
 	rawAddress := strings.TrimSpace(values.Get("address"))
 	if rawAddress != "" {
 		_, parsed, err := parseAddressParameter(rawAddress, "address")
@@ -26,7 +29,7 @@ func (b *PostgresBackend) internalTransactions(ctx context.Context, values url.V
 		}
 		addressBytes = parsed
 	}
-	var transactionHashBytes any
+	var transactionHashBytes []byte
 	rawHash := strings.TrimSpace(values.Get("txhash"))
 	if rawHash != "" {
 		_, hashBytes, parseErr := parseHashParameter(rawHash, "txhash")
@@ -43,11 +46,11 @@ func (b *PostgresBackend) internalTransactions(ctx context.Context, values url.V
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	var start string
 	var end *string
 	if rawHash != "" {
-		block, err := b.canonicalTransactionBlock(ctx, tx, transactionHashBytes.([]byte))
+		block, err := b.canonicalTransactionBlock(ctx, tx, transactionHashBytes)
 		if errors.Is(err, ErrNotFound) {
 			if _, coverageErr := b.requireCanonicalCoreRange(ctx, tx, "0", nil); coverageErr != nil {
 				return nil, coverageErr
@@ -67,12 +70,8 @@ func (b *PostgresBackend) internalTransactions(ctx context.Context, values url.V
 	if _, err := b.requireCanonicalStageRange(ctx, tx, traceStage, start, end, ErrTraceUnavailable); err != nil {
 		return nil, err
 	}
-	var endArgument any
-	if end != nil {
-		endArgument = *end
-	}
-	query := dbgen.EtherscanInternalTransactions
-	arguments := make([]any, 0, 9)
+	queries := dbgen.New(b.db).WithTx(tx)
+	var rows []dbgen.EtherscanInternalTransactionsRow
 	if selector.mode == selectorDirectional {
 		from, parseErr := optionalAddressBytes(values.Get("from"), "from")
 		if parseErr != nil {
@@ -82,40 +81,33 @@ func (b *PostgresBackend) internalTransactions(ctx context.Context, values url.V
 		if parseErr != nil {
 			return nil, parseErr
 		}
-		query = dbgen.EtherscanInternalTransactionsAdvanced
-		arguments = append(arguments,
-			b.chain, from, to, strings.ToUpper(selector.op), start, endArgument,
-			page.limit, page.offset, page.direction,
-		)
+		var advanced []dbgen.EtherscanInternalTransactionsAdvancedRow
+		advanced, err = queries.EtherscanInternalTransactionsAdvanced(ctx, dbgen.EtherscanInternalTransactionsAdvancedParams{ChainID: b.chain, FromAddress: from, ToAddress: to, Operator: strings.ToUpper(selector.op), FromBlock: start, ToBlock: end, Limit: int64(page.limit), Offset: page.offset, Direction: page.direction})
+		rows = make([]dbgen.EtherscanInternalTransactionsRow, len(advanced))
+		for index, row := range advanced {
+			rows[index] = dbgen.EtherscanInternalTransactionsRow(row)
+		}
 	} else {
-		arguments = append(arguments,
-			b.chain, addressBytes, transactionHashBytes, start, endArgument,
-			page.limit, page.offset, page.direction,
-		)
+		rows, err = queries.EtherscanInternalTransactions(ctx, dbgen.EtherscanInternalTransactionsParams{ChainID: b.chain, Address: addressBytes, TransactionHash: transactionHashBytes, FromBlock: start, ToBlock: end, Limit: int64(page.limit), Offset: page.offset, Direction: page.direction})
 	}
-	rows, err := tx.QueryContext(ctx, query, arguments...)
+
 	if err != nil {
 		return nil, fmt.Errorf("query internal transactions: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	result := make([]internalTransaction, 0, page.limit)
-	for rows.Next() {
-		item, scanErr := scanInternalTransaction(rows)
+	for _, storedRow := range rows {
+		item, scanErr := scanInternalTransaction(storedRow)
 		if scanErr != nil {
 			return nil, scanErr
 		}
 		result = append(result, item)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate internal transactions: %w", err)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, fmt.Errorf("close internal transactions: %w", err)
-	}
+
 	if len(result) == 0 {
 		return nil, ErrNotFound
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit internal transaction snapshot: %w", err)
 	}
 	return result, nil
@@ -127,8 +119,19 @@ func (b *PostgresBackend) canonicalTransactionBlock(
 	hash []byte,
 ) (string, error) {
 	var block string
-	err := queryer.QueryRowContext(ctx, dbgen.EtherscanCanonicalTransactionBlock, b.chain, hash).Scan(&block)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(b.chain); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(queryer).EtherscanCanonicalTransactionBlock(ctx, queryValue0, hash)
+		if err != nil {
+			return err
+		}
+		block = queryRow
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrNotFound
 	}
 	if err != nil {
@@ -140,20 +143,50 @@ func (b *PostgresBackend) canonicalTransactionBlock(
 	return block, nil
 }
 
-func scanInternalTransaction(scanner rowScanner) (internalTransaction, error) {
+func scanInternalTransaction(scanner dbgen.EtherscanInternalTransactionsRow) (internalTransaction, error) {
 	var (
 		blockNumber, timestamp, tracePath, callType string
 		blockHash, transactionHash                  []byte
 		from, to, created, input                    []byte
 		depth                                       int64
-		value, gas, gasUsed, traceError             sql.NullString
+		value, gas, gasUsed, traceError             pgtype.Text
 		reverted                                    bool
 	)
-	if err := scanner.Scan(
-		&blockNumber, &blockHash, &transactionHash, &timestamp,
-		&tracePath, &depth, &callType, &from, &to, &created,
-		&value, &gas, &gasUsed, &input, &traceError, &reverted,
-	); err != nil {
+	if err := func() error {
+		blockNumber = scanner.BlockNumber
+		blockHash = scanner.BlockHash
+		transactionHash = scanner.TransactionHash
+		timestamp = scanner.BlockTimestamp
+		tracePath = scanner.TracePath
+		depth = int64(scanner.Depth)
+		callType = scanner.CallType
+		from = scanner.FromAddress
+		to = scanner.ToAddress
+		created = scanner.CreatedAddress
+		queryValue10, err := dbaccess.NumericText(scanner.Value)
+		if err != nil {
+			return err
+		}
+		value = queryValue10
+		queryValue12, err := dbaccess.NumericText(scanner.Gas)
+		if err != nil {
+			return err
+		}
+		gas = queryValue12
+		queryValue14, err := dbaccess.NumericText(scanner.GasUsed)
+		if err != nil {
+			return err
+		}
+		gasUsed = queryValue14
+		input = scanner.Input
+		var queryValue17 pgtype.Text
+		if scanner.Error != nil {
+			queryValue17 = pgtype.Text{String: *scanner.Error, Valid: true}
+		}
+		traceError = queryValue17
+		reverted = scanner.Reverted
+		return nil
+	}(); err != nil {
 		return internalTransaction{}, fmt.Errorf("scan internal transaction: %w", err)
 	}
 	if _, err := storedUint256(blockNumber, "trace block number"); err != nil {
@@ -208,7 +241,7 @@ func scanInternalTransaction(scanner rowScanner) (internalTransaction, error) {
 	if item.To == "" && item.ContractAddress == "" && item.Type != "selfdestruct" && item.Type != "reward" {
 		return internalTransaction{}, errors.New("stored internal transaction has no recipient")
 	}
-	for name, source := range map[string]sql.NullString{
+	for name, source := range map[string]pgtype.Text{
 		"value": value, "gas": gas, "gas used": gasUsed,
 	} {
 		if !source.Valid {

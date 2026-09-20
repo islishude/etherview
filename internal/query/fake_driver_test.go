@@ -2,33 +2,22 @@ package query
 
 import (
 	"context"
-	"database/sql"
-	"database/sql/driver"
-	"errors"
 	"fmt"
-	"io"
-	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
+
+	"github.com/islishude/etherview/internal/testpgx"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
-
-const fakeDriverName = "etherview-query-test"
-
-var (
-	fakeScripts sync.Map
-	fakeDSN     atomic.Uint64
-)
-
-func init() { sql.Register(fakeDriverName, fakeSQLDriver{}) }
 
 type queryExpectation struct {
 	contains string
 	columns  []string
-	rows     [][]driver.Value
+	rows     [][]any
 	err      error
-	check    func([]driver.NamedValue) error
+	check    func([]any) error
 }
 
 type queryScript struct {
@@ -36,53 +25,47 @@ type queryScript struct {
 	expectations []queryExpectation
 }
 
-func testDatabase(t *testing.T, expectations ...queryExpectation) *sql.DB {
+func testDatabase(t *testing.T, expectations ...queryExpectation) *fakeSQLConn {
 	t.Helper()
-	dsn := strconv.FormatUint(fakeDSN.Add(1), 10)
 	script := &queryScript{expectations: append([]queryExpectation(nil), expectations...)}
-	fakeScripts.Store(dsn, script)
-	db, err := sql.Open(fakeDriverName, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	db.SetMaxOpenConns(1)
 	t.Cleanup(func() {
-		_ = db.Close()
-		fakeScripts.Delete(dsn)
 		script.mu.Lock()
 		defer script.mu.Unlock()
 		if len(script.expectations) != 0 {
 			t.Errorf("%d database expectations were not consumed; next contains %q", len(script.expectations), script.expectations[0].contains)
 		}
 	})
-	return db
+	return &fakeSQLConn{script: script}
 }
 
-type fakeSQLDriver struct{}
+type fakeSQLConn struct {
+	pgx.Tx
+	script *queryScript
+	closed bool
+}
 
-func (fakeSQLDriver) Open(name string) (driver.Conn, error) {
-	value, exists := fakeScripts.Load(name)
-	if !exists {
-		return nil, fmt.Errorf("unknown fake database %q", name)
+func (c *fakeSQLConn) BeginTx(_ context.Context, options pgx.TxOptions) (pgx.Tx, error) {
+
+	return &fakeSQLConn{script: c.script}, nil
+}
+func (c *fakeSQLConn) Commit(context.Context) error {
+	if c.closed {
+		return pgx.ErrTxClosed
 	}
-	return &fakeSQLConn{script: value.(*queryScript)}, nil
+	c.closed = true
+	return nil
 }
-
-type fakeSQLConn struct{ script *queryScript }
-
-func (c *fakeSQLConn) Prepare(string) (driver.Stmt, error) {
-	return nil, errors.New("prepared statements are unsupported by fake query driver")
+func (c *fakeSQLConn) Rollback(context.Context) error {
+	if c.closed {
+		return pgx.ErrTxClosed
+	}
+	c.closed = true
+	return nil
 }
-
-func (c *fakeSQLConn) Close() error { return nil }
-
-func (c *fakeSQLConn) Begin() (driver.Tx, error) { return fakeSQLTx{}, nil }
-
-func (c *fakeSQLConn) BeginTx(context.Context, driver.TxOptions) (driver.Tx, error) {
-	return fakeSQLTx{}, nil
+func (c *fakeSQLConn) QueryRow(ctx context.Context, query string, args ...any) pgx.Row {
+	return testpgx.Row(c.Query(ctx, query, args...))
 }
-
-func (c *fakeSQLConn) QueryContext(_ context.Context, query string, arguments []driver.NamedValue) (driver.Rows, error) {
+func (c *fakeSQLConn) Query(_ context.Context, query string, arguments ...any) (pgx.Rows, error) {
 	c.script.mu.Lock()
 	defer c.script.mu.Unlock()
 	if len(c.script.expectations) == 0 {
@@ -101,40 +84,12 @@ func (c *fakeSQLConn) QueryContext(_ context.Context, query string, arguments []
 	if expectation.err != nil {
 		return nil, expectation.err
 	}
-	return &fakeSQLRows{columns: expectation.columns, rows: expectation.rows}, nil
+	return &testpgx.Rows{ColumnNames: expectation.columns, ValuesList: expectation.rows}, nil
 }
-
-func (c *fakeSQLConn) CheckNamedValue(*driver.NamedValue) error { return nil }
-
-type fakeSQLTx struct{}
-
-func (fakeSQLTx) Commit() error   { return nil }
-func (fakeSQLTx) Rollback() error { return nil }
-
-type fakeSQLRows struct {
-	columns []string
-	rows    [][]driver.Value
-	index   int
+func (c *fakeSQLConn) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
+	return pgconn.CommandTag{}, fmt.Errorf("unexpected exec")
 }
-
-func (r *fakeSQLRows) Columns() []string { return r.columns }
-func (r *fakeSQLRows) Close() error      { return nil }
-
-func (r *fakeSQLRows) Next(destination []driver.Value) error {
-	if r.index >= len(r.rows) {
-		return io.EOF
-	}
-	row := r.rows[r.index]
-	r.index++
-	if len(row) != len(destination) {
-		return fmt.Errorf("fake row has %d values, destination has %d", len(row), len(destination))
-	}
-	copy(destination, row)
-	return nil
-}
-
 func compactSQL(value string) string { return strings.Join(strings.Fields(value), " ") }
-
 func columns(count int) []string {
 	result := make([]string, count)
 	for index := range result {

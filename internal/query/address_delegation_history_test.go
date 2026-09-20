@@ -1,15 +1,14 @@
 package query
 
 import (
-	"database/sql/driver"
 	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/httpapi"
+	"github.com/islishude/etherview/internal/testpgx"
 )
 
 func TestHasAddressDelegationHistoryUsesCanonicalAppliedRowsAtReference(t *testing.T) {
@@ -27,11 +26,11 @@ func TestHasAddressDelegationHistoryUsesCanonicalAppliedRowsAtReference(t *testi
 			db := testDatabase(t, queryExpectation{
 				contains: "FROM eip7702_authorizations AS authz",
 				columns:  columns(2),
-				rows:     [][]driver.Value{{true, test.hasHistory}},
-				check: func(arguments []driver.NamedValue) error {
-					if len(arguments) != 4 || arguments[0].Value != "1" || arguments[1].Value != "12" ||
-						common.BytesToHash(arguments[2].Value.([]byte)) != referenceHash ||
-						common.BytesToAddress(arguments[3].Value.([]byte)) != address {
+				rows:     [][]any{{true, test.hasHistory}},
+				check: func(arguments []any) error {
+					if len(arguments) != 4 || !testpgx.NumericEquals(arguments[0], "1") || !testpgx.NumericEquals(arguments[1], "12") ||
+						common.BytesToHash(arguments[2].([]byte)) != referenceHash ||
+						common.BytesToAddress(arguments[3].([]byte)) != address {
 						return fmt.Errorf("unexpected delegation history arguments: %v", arguments)
 					}
 					return nil
@@ -51,7 +50,7 @@ func TestHasAddressDelegationHistoryUsesCanonicalAppliedRowsAtReference(t *testi
 		})
 	}
 
-	compact := compactSQL(dbgen.GetAddressDelegationHistory)
+	compact := compactSQL(testpgx.Statement("GetAddressDelegationHistory"))
 	for _, fragment := range []string{
 		"authz.application_status = 'applied'",
 		"authz.canonical",
@@ -69,7 +68,7 @@ func TestHasAddressDelegationHistoryRejectsNonCanonicalReference(t *testing.T) {
 	db := testDatabase(t, queryExpectation{
 		contains: "FROM eip7702_authorizations AS authz",
 		columns:  columns(2),
-		rows:     [][]driver.Value{{false, true}},
+		rows:     [][]any{{false, true}},
 	})
 	reader, err := NewPostgresReader(db, Options{ChainID: 1})
 	if err != nil {

@@ -2,18 +2,21 @@ package query
 
 import (
 	"context"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strconv"
+
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/islishude/etherview/internal/abicalldata"
 	"github.com/islishude/etherview/internal/abicontract"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbaccess "github.com/islishude/etherview/internal/db"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
 const maxSelectorCandidatesPerTransaction = 32
@@ -39,7 +42,7 @@ type transactionSelectorCandidate struct {
 
 func (r *PostgresReader) projectTransactionMethods(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	records []transactionRecord,
 ) error {
 	requests := make([]transactionSelectorRequest, 0, len(records))
@@ -95,27 +98,40 @@ func (r *PostgresReader) projectTransactionMethods(
 	if err != nil {
 		return fmt.Errorf("encode transaction selector requests: %w", err)
 	}
-	rows, err := tx.QueryContext(ctx, dbgen.QueryTransactionSelectorCandidates, r.chainID, encoded,
-		maxSelectorCandidatesPerTransaction+1)
+	rows, err := func() ([]dbgen.QueryTransactionSelectorCandidatesRow, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(r.chainID); err != nil {
+			return nil, err
+		}
+		return dbgen.New(tx).QueryTransactionSelectorCandidates(ctx, int64(maxSelectorCandidatesPerTransaction+1), encoded, queryValue0)
+	}()
 	if err != nil {
 		return fmt.Errorf("query verified transaction selector candidates: %w", err)
 	}
 	candidates := make(map[int][]transactionSelectorCandidate, len(requests))
 	overflowPriority := make(map[int]int)
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var ordinal int
 		var source string
 		var sourceAddress, sourceCodeHash, abiEntry []byte
 		var validFromText string
-		var validToText sql.NullString
+		var validToText pgtype.Text
 		var selectorScoped bool
 		var signature string
-		if err := rows.Scan(
-			&ordinal, &source, &sourceAddress, &sourceCodeHash, &abiEntry,
-			&validFromText, &validToText, &selectorScoped, &signature,
-		); err != nil {
-			_ = rows.Close()
-			return fmt.Errorf("scan verified transaction selector candidate: %w", err)
+		{
+			ordinal = int(storedRow.Ordinal)
+			source = storedRow.Source
+			sourceAddress = storedRow.SourceAddress
+			sourceCodeHash = storedRow.SourceCodeHash
+			abiEntry = storedRow.AbiEntry
+			validFromText = storedRow.RankedValidFromBlock
+			var decodeErr error
+			validToText, decodeErr = dbaccess.NumericText(storedRow.RankedValidToBlock)
+			if decodeErr != nil {
+				return decodeErr
+			}
+			selectorScoped = storedRow.SelectorScoped
+			signature = storedRow.Signature
 		}
 		if len(candidates[ordinal]) >= maxSelectorCandidatesPerTransaction {
 			priority := transactionSelectorSourcePriority(abicontract.Source(source))
@@ -132,13 +148,6 @@ func (r *PostgresReader) projectTransactionMethods(
 			candidates[ordinal] = append(candidates[ordinal], candidate)
 		}
 	}
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
-		return fmt.Errorf("iterate verified transaction selector candidates: %w", err)
-	}
-	if err := rows.Close(); err != nil {
-		return fmt.Errorf("close verified transaction selector candidates: %w", err)
-	}
 
 	for ordinal, recordIndex := range requestRecords {
 		record := &records[recordIndex]
@@ -148,7 +157,7 @@ func (r *PostgresReader) projectTransactionMethods(
 		if indexedSignature.Valid {
 			projectTransactionMethod(&record.Model, record.method.executionResolution, indexedSignature)
 		} else if ambiguous {
-			projectTransactionMethod(&record.Model, record.method.executionResolution, sql.NullString{})
+			projectTransactionMethod(&record.Model, record.method.executionResolution, pgtype.Text{})
 		} else {
 			projectTransactionMethod(
 				&record.Model, record.method.executionResolution, record.method.decodedSignature,
@@ -171,7 +180,7 @@ func parseTransactionSelectorCandidate(
 	source string,
 	addressBytes, codeHashBytes, abiEntry []byte,
 	validFromText string,
-	validToText sql.NullString,
+	validToText pgtype.Text,
 	_ bool,
 	signature string,
 ) (transactionSelectorCandidate, bool) {
@@ -218,13 +227,13 @@ func decodeTransactionSelector(
 	record *transactionRecord,
 	candidates []transactionSelectorCandidate,
 	overflowPriority int,
-) (sql.NullString, bool) {
+) (pgtype.Text, bool) {
 	if record == nil || len(candidates) == 0 {
-		return sql.NullString{}, overflowPriority > 0
+		return pgtype.Text{}, overflowPriority > 0
 	}
 	input, err := hexutil.Decode(record.Model.Input)
 	if err != nil || len(input) < 4 {
-		return sql.NullString{}, false
+		return pgtype.Text{}, false
 	}
 	for priority := 1; priority <= 3; priority++ {
 		matches := make(map[string]string)
@@ -238,19 +247,19 @@ func decodeTransactionSelector(
 			}
 		}
 		if overflowPriority == priority {
-			return sql.NullString{}, true
+			return pgtype.Text{}, true
 		}
 		if len(matches) == 0 {
 			continue
 		}
 		if len(matches) > 1 {
-			return sql.NullString{}, true
+			return pgtype.Text{}, true
 		}
 		for _, signature := range matches {
-			return sql.NullString{String: signature, Valid: true}, false
+			return pgtype.Text{String: signature, Valid: true}, false
 		}
 	}
-	return sql.NullString{}, false
+	return pgtype.Text{}, false
 }
 
 // The input page is bounded to 101 rows. Candidate sets are joined by exact

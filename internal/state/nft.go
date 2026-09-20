@@ -2,18 +2,22 @@ package state
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"math/big"
 	"strconv"
 	"strings"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/catalog"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/publicquery"
 	"github.com/islishude/etherview/internal/query"
@@ -35,7 +39,7 @@ var (
 // by that hash and can therefore be reused without treating an orphan as
 // current after a reorg.
 type NFTReconciler struct {
-	db        *sql.DB
+	db        dbaccess.Database
 	pool      *ethrpc.Pool
 	canonical CanonicalSource
 }
@@ -54,7 +58,7 @@ type nftBalanceBatchResult struct {
 
 var _ catalog.NFTStateReconciler = (*NFTReconciler)(nil)
 
-func NewNFTReconciler(db *sql.DB, pool *ethrpc.Pool, canonical CanonicalSource) (*NFTReconciler, error) {
+func NewNFTReconciler(db dbaccess.Database, pool *ethrpc.Pool, canonical CanonicalSource) (*NFTReconciler, error) {
 	if db == nil {
 		return nil, errors.New("NFT reconciler requires PostgreSQL")
 	}
@@ -480,10 +484,29 @@ func (reconciler *NFTReconciler) cachedOwner(
 	hashBytes := reference.Hash.Bytes()
 	var state, confidence string
 	var ownerBytes []byte
-	err := reconciler.db.QueryRowContext(ctx, dbgen.StateERC721OwnerObservation,
-		chainID, contractBytes, tokenID.String(), strconv.FormatUint(reference.Number, 10), hashBytes,
-	).Scan(&state, &ownerBytes, &confidence)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(tokenID.String()); err != nil {
+			return err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(strconv.FormatUint(reference.Number, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(reconciler.db).StateERC721OwnerObservation(ctx, dbgen.StateERC721OwnerObservationParams{ChainID: queryValue0, TokenAddress: contractBytes, TokenID: queryValue1, BlockNumber: queryValue2, BlockHash: hashBytes})
+		if err != nil {
+			return err
+		}
+		state = queryRow.State
+		ownerBytes = queryRow.OwnerAddress
+		confidence = queryRow.Confidence
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return catalog.NFTOwnerObservation{}, false, nil
 	}
 	if err != nil {
@@ -548,11 +571,28 @@ func (reconciler *NFTReconciler) cachedBalance(
 	ownerBytes := owner.Bytes()
 	hashBytes := reference.Hash.Bytes()
 	var balance, confidence string
-	err := reconciler.db.QueryRowContext(ctx, dbgen.StateERC1155BalanceObservation,
-		chainID, contractBytes, candidate.tokenID.String(), ownerBytes,
-		strconv.FormatUint(reference.Number, 10), hashBytes,
-	).Scan(&balance, &confidence)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(candidate.tokenID.String()); err != nil {
+			return err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(strconv.FormatUint(reference.Number, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(reconciler.db).StateERC1155BalanceObservation(ctx, dbgen.StateERC1155BalanceObservationParams{ChainID: queryValue0, TokenAddress: contractBytes, TokenID: queryValue1, OwnerAddress: ownerBytes, BlockNumber: queryValue2, BlockHash: hashBytes})
+		if err != nil {
+			return err
+		}
+		balance = queryRow.ObservationBalance
+		confidence = queryRow.Confidence
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return catalog.NFTBalanceObservation{}, false, nil
 	}
 	if err != nil {
@@ -572,15 +612,15 @@ func (reconciler *NFTReconciler) persistOwner(
 	reference CanonicalRef,
 	observation catalog.NFTOwnerObservation,
 ) error {
-	tx, err := reconciler.db.BeginTx(ctx, nil)
+	tx, err := reconciler.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("begin ERC-721 observation transaction: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	if err := insertOwnerObservation(ctx, tx, chainID, contract, tokenID, reference, observation); err != nil {
 		return err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit ERC-721 observation: %w", err)
 	}
 	return nil
@@ -596,11 +636,11 @@ func (reconciler *NFTReconciler) persistBalances(
 	owners map[int]catalog.NFTOwnerObservation,
 	reference CanonicalRef,
 ) error {
-	tx, err := reconciler.db.BeginTx(ctx, nil)
+	tx, err := reconciler.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("begin NFT balance observation transaction: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	for _, index := range missing {
 		candidate := parsed[index]
 		if candidate.standard == standardERC721 {
@@ -613,16 +653,13 @@ func (reconciler *NFTReconciler) persistBalances(
 			return err
 		}
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit NFT balance observations: %w", err)
 	}
 	return nil
 }
 
-type sqlExecutor interface {
-	ExecContext(context.Context, string, ...any) (sql.Result, error)
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-}
+type sqlExecutor = dbgen.DBTX
 
 func insertOwnerObservation(
 	ctx context.Context,
@@ -648,16 +685,25 @@ func insertOwnerObservation(
 		ownerBytes = owner.Bytes()
 		state = "owned"
 	}
-	result, err := executor.ExecContext(ctx, dbgen.StateWriteInsertOwnerObservationStatement1, chainID, contractBytes, tokenID.String(), strconv.FormatUint(reference.Number, 10), hashBytes,
-		state, ownerBytes,
-	)
+	result, err := func() (int64, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return 0, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(tokenID.String()); err != nil {
+			return 0, err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(strconv.FormatUint(reference.Number, 10)); err != nil {
+			return 0, err
+		}
+		return dbgen.New(executor).StateWriteInsertOwnerObservationStatement1(ctx, dbgen.StateWriteInsertOwnerObservationStatement1Params{ChainID: queryValue0, TokenAddress: contractBytes, TokenID: queryValue1, BlockNumber: queryValue2, BlockHash: hashBytes, State: state, OwnerAddress: ownerBytes})
+	}()
 	if err != nil {
 		return fmt.Errorf("persist exact ERC-721 owner observation: %w", err)
 	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("inspect exact ERC-721 owner persistence: %w", err)
-	}
+	rows := result
 	if rows != 1 {
 		return classifyOwnerPersistenceMiss(
 			ctx, executor, chainID, contractBytes, tokenID.String(),
@@ -683,16 +729,29 @@ func insertERC1155Balance(
 	contractBytes := contract.Bytes()
 	ownerBytes := owner.Bytes()
 	hashBytes := reference.Hash.Bytes()
-	result, err := executor.ExecContext(ctx, dbgen.StateWriteInsertERC1155BalanceStatement1, chainID, contractBytes, tokenID.String(), ownerBytes, strconv.FormatUint(reference.Number, 10), hashBytes,
-		observation.Balance,
-	)
+	result, err := func() (int64, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return 0, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(tokenID.String()); err != nil {
+			return 0, err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(strconv.FormatUint(reference.Number, 10)); err != nil {
+			return 0, err
+		}
+		var queryValue3 pgtype.Numeric
+		if err := queryValue3.Scan(observation.Balance); err != nil {
+			return 0, err
+		}
+		return dbgen.New(executor).StateWriteInsertERC1155BalanceStatement1(ctx, dbgen.StateWriteInsertERC1155BalanceStatement1Params{ChainID: queryValue0, TokenAddress: contractBytes, TokenID: queryValue1, OwnerAddress: ownerBytes, BlockNumber: queryValue2, BlockHash: hashBytes, Balance: queryValue3})
+	}()
 	if err != nil {
 		return fmt.Errorf("persist exact ERC-1155 balance observation: %w", err)
 	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("inspect exact ERC-1155 balance persistence: %w", err)
-	}
+	rows := result
 	if rows != 1 {
 		return classifyBalancePersistenceMiss(
 			ctx, executor, chainID, contractBytes, tokenID.String(), ownerBytes,
@@ -712,7 +771,27 @@ func classifyOwnerPersistenceMiss(
 	blockHash []byte,
 ) error {
 	var canonical, stored bool
-	err := executor.QueryRowContext(ctx, dbgen.StateWriteClassifyOwnerPersistenceMissStatement1, chainID, contract, tokenID, blockNumber, blockHash).Scan(&canonical, &stored)
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(tokenID); err != nil {
+			return err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(blockNumber); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(executor).StateWriteClassifyOwnerPersistenceMissStatement1(ctx, dbgen.StateWriteClassifyOwnerPersistenceMissStatement1Params{ChainID: queryValue0, TokenAddress: contract, TokenID: queryValue1, Number: queryValue2, BlockHash: blockHash})
+		if err != nil {
+			return err
+		}
+		canonical = queryRow.Exists
+		stored = queryRow.Exists_2
+		return nil
+	}()
 	if err != nil {
 		return fmt.Errorf("inspect exact ERC-721 owner persistence miss: %w", err)
 	}
@@ -736,7 +815,27 @@ func classifyBalancePersistenceMiss(
 	blockHash []byte,
 ) error {
 	var canonical, stored bool
-	err := executor.QueryRowContext(ctx, dbgen.StateWriteClassifyBalancePersistenceMissStatement1, chainID, contract, tokenID, owner, blockNumber, blockHash).Scan(&canonical, &stored)
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(tokenID); err != nil {
+			return err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(blockNumber); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(executor).StateWriteClassifyBalancePersistenceMissStatement1(ctx, dbgen.StateWriteClassifyBalancePersistenceMissStatement1Params{ChainID: queryValue0, TokenAddress: contract, TokenID: queryValue1, OwnerAddress: owner, Number: queryValue2, BlockHash: blockHash})
+		if err != nil {
+			return err
+		}
+		canonical = queryRow.Exists
+		stored = queryRow.Exists_2
+		return nil
+	}()
 	if err != nil {
 		return fmt.Errorf("inspect exact ERC-1155 balance persistence miss: %w", err)
 	}

@@ -11,41 +11,26 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const EventsWriteRecordStatusStatement1 = `-- name: EventsWriteRecordStatusStatement1 :many
+const eventsWriteRecordStatusStatement1 = `-- name: EventsWriteRecordStatusStatement1 :exec
 SELECT pg_advisory_xact_lock(hashtext('etherview:sync-status:' || $1))
 `
 
-func (q *Queries) EventsWriteRecordStatusStatement1(ctx context.Context, dollar_1 *string) ([]interface{}, error) {
-	rows, err := q.db.Query(ctx, EventsWriteRecordStatusStatement1, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []interface{}{}
-	for rows.Next() {
-		var pg_advisory_xact_lock interface{}
-		if err := rows.Scan(&pg_advisory_xact_lock); err != nil {
-			return nil, err
-		}
-		items = append(items, pg_advisory_xact_lock)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EventsWriteRecordStatusStatement1(ctx context.Context, chainID *string) error {
+	_, err := q.db.Exec(ctx, eventsWriteRecordStatusStatement1, chainID)
+	return err
 }
 
-const EventsWriteRecordStatusStatement2 = `-- name: EventsWriteRecordStatusStatement2 :many
+const eventsWriteRecordStatusStatement2 = `-- name: EventsWriteRecordStatusStatement2 :one
 INSERT INTO sync_runtime_status_writer_leases (
 			chain_id, reporter_id,
 			observed_latest_number, observed_latest_known, safety_halt,
 			expires_at, updated_at
 		) VALUES (
 			$1::numeric, $2,
-			$6::numeric, $5, $7,
+			$3::numeric, $4, $5,
 			CASE
-				WHEN $4 <> '' AND NOT $7 THEN clock_timestamp()
-				ELSE clock_timestamp() + ($3 * interval '1 millisecond')
+				WHEN $6::text <> '' AND NOT $5 THEN clock_timestamp()
+				ELSE clock_timestamp() + ($7::bigint * interval '1 millisecond')
 			END,
 			clock_timestamp()
 		)
@@ -60,62 +45,49 @@ INSERT INTO sync_runtime_status_writer_leases (
 				sync_runtime_status_writer_leases.reporter_id = EXCLUDED.reporter_id
 				AND (
 					NOT sync_runtime_status_writer_leases.safety_halt
-					OR $7
+					OR $5
 				)
 		   )
 		   OR sync_runtime_status_writer_leases.expires_at <= clock_timestamp()
-		   OR ($7 AND NOT sync_runtime_status_writer_leases.safety_halt)
+		   OR ($5 AND NOT sync_runtime_status_writer_leases.safety_halt)
 		   OR (
 				NOT sync_runtime_status_writer_leases.safety_halt
-				AND $4 = ''
-				AND $5
+				AND $6::text = ''
+				AND $4
 				AND (
 					NOT sync_runtime_status_writer_leases.observed_latest_known
-					OR sync_runtime_status_writer_leases.observed_latest_number < $6::numeric
+					OR sync_runtime_status_writer_leases.observed_latest_number < $3::numeric
 				)
 		   )
 		RETURNING reporter_id
 `
 
 type EventsWriteRecordStatusStatement2Params struct {
-	Column1             pgtype.Numeric `db:"column_1" json:"column_1"`
-	ReporterID          string         `db:"reporter_id" json:"reporter_id"`
-	Column3             interface{}    `db:"column_3" json:"column_3"`
-	Column4             interface{}    `db:"column_4" json:"column_4"`
-	ObservedLatestKnown bool           `db:"observed_latest_known" json:"observed_latest_known"`
-	Column6             pgtype.Numeric `db:"column_6" json:"column_6"`
-	SafetyHalt          bool           `db:"safety_halt" json:"safety_halt"`
+	ChainID              pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	ReporterID           string         `db:"reporter_id" json:"reporter_id"`
+	ObservedLatestNumber pgtype.Numeric `db:"observed_latest_number" json:"observed_latest_number"`
+	ObservedLatestKnown  bool           `db:"observed_latest_known" json:"observed_latest_known"`
+	SafetyHalt           bool           `db:"safety_halt" json:"safety_halt"`
+	LastError            string         `db:"last_error" json:"last_error"`
+	LeaseMilliseconds    int64          `db:"lease_milliseconds" json:"lease_milliseconds"`
 }
 
-func (q *Queries) EventsWriteRecordStatusStatement2(ctx context.Context, arg EventsWriteRecordStatusStatement2Params) ([]string, error) {
-	rows, err := q.db.Query(ctx, EventsWriteRecordStatusStatement2,
-		arg.Column1,
+func (q *Queries) EventsWriteRecordStatusStatement2(ctx context.Context, arg EventsWriteRecordStatusStatement2Params) (string, error) {
+	row := q.db.QueryRow(ctx, eventsWriteRecordStatusStatement2,
+		arg.ChainID,
 		arg.ReporterID,
-		arg.Column3,
-		arg.Column4,
+		arg.ObservedLatestNumber,
 		arg.ObservedLatestKnown,
-		arg.Column6,
 		arg.SafetyHalt,
+		arg.LastError,
+		arg.LeaseMilliseconds,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []string{}
-	for rows.Next() {
-		var reporter_id string
-		if err := rows.Scan(&reporter_id); err != nil {
-			return nil, err
-		}
-		items = append(items, reporter_id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var reporter_id string
+	err := row.Scan(&reporter_id)
+	return reporter_id, err
 }
 
-const EventsWriteRecordStatusStatement3 = `-- name: EventsWriteRecordStatusStatement3 :exec
+const eventsWriteRecordStatusStatement3 = `-- name: EventsWriteRecordStatusStatement3 :exec
 INSERT INTO sync_runtime_status (
 			chain_id, latest_number, indexed_number, highest_covered_number,
 			backfill_complete, ready,
@@ -133,22 +105,22 @@ INSERT INTO sync_runtime_status (
 `
 
 type EventsWriteRecordStatusStatement3Params struct {
-	Column1          pgtype.Numeric     `db:"column_1" json:"column_1"`
-	Column2          pgtype.Numeric     `db:"column_2" json:"column_2"`
-	Column3          pgtype.Numeric     `db:"column_3" json:"column_3"`
-	Column4          pgtype.Numeric     `db:"column_4" json:"column_4"`
-	BackfillComplete bool               `db:"backfill_complete" json:"backfill_complete"`
-	Ready            bool               `db:"ready" json:"ready"`
-	LastPollAt       pgtype.Timestamptz `db:"last_poll_at" json:"last_poll_at"`
-	LastErrorCode    string             `db:"last_error_code" json:"last_error_code"`
+	ChainID              pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	LatestNumber         pgtype.Numeric     `db:"latest_number" json:"latest_number"`
+	IndexedNumber        pgtype.Numeric     `db:"indexed_number" json:"indexed_number"`
+	HighestCoveredNumber pgtype.Numeric     `db:"highest_covered_number" json:"highest_covered_number"`
+	BackfillComplete     bool               `db:"backfill_complete" json:"backfill_complete"`
+	Ready                bool               `db:"ready" json:"ready"`
+	LastPollAt           pgtype.Timestamptz `db:"last_poll_at" json:"last_poll_at"`
+	LastErrorCode        string             `db:"last_error_code" json:"last_error_code"`
 }
 
 func (q *Queries) EventsWriteRecordStatusStatement3(ctx context.Context, arg EventsWriteRecordStatusStatement3Params) error {
-	_, err := q.db.Exec(ctx, EventsWriteRecordStatusStatement3,
-		arg.Column1,
-		arg.Column2,
-		arg.Column3,
-		arg.Column4,
+	_, err := q.db.Exec(ctx, eventsWriteRecordStatusStatement3,
+		arg.ChainID,
+		arg.LatestNumber,
+		arg.IndexedNumber,
+		arg.HighestCoveredNumber,
 		arg.BackfillComplete,
 		arg.Ready,
 		arg.LastPollAt,
@@ -157,7 +129,7 @@ func (q *Queries) EventsWriteRecordStatusStatement3(ctx context.Context, arg Eve
 	return err
 }
 
-const EventsWriteRecordStatusStatement4 = `-- name: EventsWriteRecordStatusStatement4 :many
+const eventsWriteRecordStatusStatement4 = `-- name: EventsWriteRecordStatusStatement4 :one
 INSERT INTO runtime_events (chain_id, event_type, payload)
 		VALUES ($1::numeric, 'status', $2::jsonb)
 		RETURNING id, created_at
@@ -168,27 +140,14 @@ type EventsWriteRecordStatusStatement4Row struct {
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
-func (q *Queries) EventsWriteRecordStatusStatement4(ctx context.Context, column1 pgtype.Numeric, column2 []byte) ([]EventsWriteRecordStatusStatement4Row, error) {
-	rows, err := q.db.Query(ctx, EventsWriteRecordStatusStatement4, column1, column2)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EventsWriteRecordStatusStatement4Row{}
-	for rows.Next() {
-		var i EventsWriteRecordStatusStatement4Row
-		if err := rows.Scan(&i.ID, &i.CreatedAt); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) EventsWriteRecordStatusStatement4(ctx context.Context, chainID pgtype.Numeric, payload []byte) (EventsWriteRecordStatusStatement4Row, error) {
+	row := q.db.QueryRow(ctx, eventsWriteRecordStatusStatement4, chainID, payload)
+	var i EventsWriteRecordStatusStatement4Row
+	err := row.Scan(&i.ID, &i.CreatedAt)
+	return i, err
 }
 
-const EventsWriteRecordStatusStatement5 = `-- name: EventsWriteRecordStatusStatement5 :exec
+const eventsWriteRecordStatusStatement5 = `-- name: EventsWriteRecordStatusStatement5 :exec
 DELETE FROM runtime_events
 		WHERE chain_id = $1::numeric
 		  AND id < COALESCE((
@@ -200,7 +159,7 @@ DELETE FROM runtime_events
 			  ), 0)
 `
 
-func (q *Queries) EventsWriteRecordStatusStatement5(ctx context.Context, column1 pgtype.Numeric, offset int32) error {
-	_, err := q.db.Exec(ctx, EventsWriteRecordStatusStatement5, column1, offset)
+func (q *Queries) EventsWriteRecordStatusStatement5(ctx context.Context, chainID pgtype.Numeric, offset int32) error {
+	_, err := q.db.Exec(ctx, eventsWriteRecordStatusStatement5, chainID, offset)
 	return err
 }

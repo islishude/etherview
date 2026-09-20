@@ -11,16 +11,16 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const GenesisWriteCompletedRemoteImportStatement1 = `-- name: GenesisWriteCompletedRemoteImportStatement1 :many
+const genesisWriteCompletedRemoteImportStatement1 = `-- name: GenesisWriteCompletedRemoteImportStatement1 :one
 SELECT
-		    imported.xmin::text,
-		    imported.state,
-		    imported.block_hash,
-		    imported.state_root,
-		    imported.document_sha256,
-		    canonical.block_hash IS NOT NULL,
-		    block.raw
-		FROM genesis_state_imports AS imported
+imported.xmin::text,
+imported.state,
+imported.block_hash,
+imported.state_root,
+imported.document_sha256,
+(canonical.block_hash IS NOT NULL)::boolean AS canonical,
+block.raw
+FROM genesis_state_imports AS imported
 		LEFT JOIN canonical_blocks AS canonical
 		  ON canonical.chain_id = imported.chain_id
 		 AND canonical.number = 0
@@ -33,68 +33,40 @@ SELECT
 `
 
 type GenesisWriteCompletedRemoteImportStatement1Row struct {
-	ImportedXmin   string      `db:"imported_xmin" json:"imported_xmin"`
-	State          string      `db:"state" json:"state"`
-	BlockHash      []byte      `db:"block_hash" json:"block_hash"`
-	StateRoot      []byte      `db:"state_root" json:"state_root"`
-	DocumentSha256 []byte      `db:"document_sha256" json:"document_sha256"`
-	Column6        interface{} `db:"column_6" json:"column_6"`
-	Raw            []byte      `db:"raw" json:"raw"`
+	ImportedXmin   string `db:"imported_xmin" json:"imported_xmin"`
+	State          string `db:"state" json:"state"`
+	BlockHash      []byte `db:"block_hash" json:"block_hash"`
+	StateRoot      []byte `db:"state_root" json:"state_root"`
+	DocumentSha256 []byte `db:"document_sha256" json:"document_sha256"`
+	Canonical      bool   `db:"canonical" json:"canonical"`
+	Raw            []byte `db:"raw" json:"raw"`
 }
 
-func (q *Queries) GenesisWriteCompletedRemoteImportStatement1(ctx context.Context, dollar_1 pgtype.Numeric) ([]GenesisWriteCompletedRemoteImportStatement1Row, error) {
-	rows, err := q.db.Query(ctx, GenesisWriteCompletedRemoteImportStatement1, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []GenesisWriteCompletedRemoteImportStatement1Row{}
-	for rows.Next() {
-		var i GenesisWriteCompletedRemoteImportStatement1Row
-		if err := rows.Scan(
-			&i.ImportedXmin,
-			&i.State,
-			&i.BlockHash,
-			&i.StateRoot,
-			&i.DocumentSha256,
-			&i.Column6,
-			&i.Raw,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) GenesisWriteCompletedRemoteImportStatement1(ctx context.Context, chainID pgtype.Numeric) (GenesisWriteCompletedRemoteImportStatement1Row, error) {
+	row := q.db.QueryRow(ctx, genesisWriteCompletedRemoteImportStatement1, chainID)
+	var i GenesisWriteCompletedRemoteImportStatement1Row
+	err := row.Scan(
+		&i.ImportedXmin,
+		&i.State,
+		&i.BlockHash,
+		&i.StateRoot,
+		&i.DocumentSha256,
+		&i.Canonical,
+		&i.Raw,
+	)
+	return i, err
 }
 
-const GenesisWriteImportOnceUsingStatement1 = `-- name: GenesisWriteImportOnceUsingStatement1 :many
+const genesisWriteImportOnceUsingStatement1 = `-- name: GenesisWriteImportOnceUsingStatement1 :exec
 SELECT pg_advisory_xact_lock(hashtext('etherview:genesis-state'), hashtext($1))
 `
 
-func (q *Queries) GenesisWriteImportOnceUsingStatement1(ctx context.Context, hashtext string) ([]interface{}, error) {
-	rows, err := q.db.Query(ctx, GenesisWriteImportOnceUsingStatement1, hashtext)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []interface{}{}
-	for rows.Next() {
-		var pg_advisory_xact_lock interface{}
-		if err := rows.Scan(&pg_advisory_xact_lock); err != nil {
-			return nil, err
-		}
-		items = append(items, pg_advisory_xact_lock)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) GenesisWriteImportOnceUsingStatement1(ctx context.Context, hashtext string) error {
+	_, err := q.db.Exec(ctx, genesisWriteImportOnceUsingStatement1, hashtext)
+	return err
 }
 
-const GenesisWriteImportOnceUsingStatement2 = `-- name: GenesisWriteImportOnceUsingStatement2 :many
+const genesisWriteImportOnceUsingStatement2 = `-- name: GenesisWriteImportOnceUsingStatement2 :one
 SELECT block.hash, block.raw
 		FROM canonical_blocks AS canonical
 		JOIN blocks AS block
@@ -109,27 +81,14 @@ type GenesisWriteImportOnceUsingStatement2Row struct {
 	Raw  []byte `db:"raw" json:"raw"`
 }
 
-func (q *Queries) GenesisWriteImportOnceUsingStatement2(ctx context.Context, dollar_1 pgtype.Numeric) ([]GenesisWriteImportOnceUsingStatement2Row, error) {
-	rows, err := q.db.Query(ctx, GenesisWriteImportOnceUsingStatement2, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []GenesisWriteImportOnceUsingStatement2Row{}
-	for rows.Next() {
-		var i GenesisWriteImportOnceUsingStatement2Row
-		if err := rows.Scan(&i.Hash, &i.Raw); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) GenesisWriteImportOnceUsingStatement2(ctx context.Context, chainID pgtype.Numeric) (GenesisWriteImportOnceUsingStatement2Row, error) {
+	row := q.db.QueryRow(ctx, genesisWriteImportOnceUsingStatement2, chainID)
+	var i GenesisWriteImportOnceUsingStatement2Row
+	err := row.Scan(&i.Hash, &i.Raw)
+	return i, err
 }
 
-const GenesisWriteImportOnceUsingStatement3 = `-- name: GenesisWriteImportOnceUsingStatement3 :many
+const genesisWriteImportOnceUsingStatement3 = `-- name: GenesisWriteImportOnceUsingStatement3 :one
 SELECT state, block_hash, state_root, document_sha256
 		FROM genesis_state_imports
 		WHERE chain_id = $1::numeric
@@ -143,32 +102,19 @@ type GenesisWriteImportOnceUsingStatement3Row struct {
 	DocumentSha256 []byte `db:"document_sha256" json:"document_sha256"`
 }
 
-func (q *Queries) GenesisWriteImportOnceUsingStatement3(ctx context.Context, dollar_1 pgtype.Numeric) ([]GenesisWriteImportOnceUsingStatement3Row, error) {
-	rows, err := q.db.Query(ctx, GenesisWriteImportOnceUsingStatement3, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []GenesisWriteImportOnceUsingStatement3Row{}
-	for rows.Next() {
-		var i GenesisWriteImportOnceUsingStatement3Row
-		if err := rows.Scan(
-			&i.State,
-			&i.BlockHash,
-			&i.StateRoot,
-			&i.DocumentSha256,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) GenesisWriteImportOnceUsingStatement3(ctx context.Context, chainID pgtype.Numeric) (GenesisWriteImportOnceUsingStatement3Row, error) {
+	row := q.db.QueryRow(ctx, genesisWriteImportOnceUsingStatement3, chainID)
+	var i GenesisWriteImportOnceUsingStatement3Row
+	err := row.Scan(
+		&i.State,
+		&i.BlockHash,
+		&i.StateRoot,
+		&i.DocumentSha256,
+	)
+	return i, err
 }
 
-const GenesisWriteImportOnceUsingStatement4 = `-- name: GenesisWriteImportOnceUsingStatement4 :exec
+const genesisWriteImportOnceUsingStatement4 = `-- name: GenesisWriteImportOnceUsingStatement4 :exec
 INSERT INTO genesis_state_imports (
 		    chain_id, block_hash, state_root, document_sha256, state,
 		    account_count, last_error_code, imported_at, updated_at
@@ -189,25 +135,25 @@ INSERT INTO genesis_state_imports (
 `
 
 type GenesisWriteImportOnceUsingStatement4Params struct {
-	Column1        pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID        pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	BlockHash      []byte         `db:"block_hash" json:"block_hash"`
 	StateRoot      []byte         `db:"state_root" json:"state_root"`
 	DocumentSha256 []byte         `db:"document_sha256" json:"document_sha256"`
-	Column5        pgtype.Numeric `db:"column_5" json:"column_5"`
+	AccountCount   pgtype.Numeric `db:"account_count" json:"account_count"`
 }
 
 func (q *Queries) GenesisWriteImportOnceUsingStatement4(ctx context.Context, arg GenesisWriteImportOnceUsingStatement4Params) error {
-	_, err := q.db.Exec(ctx, GenesisWriteImportOnceUsingStatement4,
-		arg.Column1,
+	_, err := q.db.Exec(ctx, genesisWriteImportOnceUsingStatement4,
+		arg.ChainID,
 		arg.BlockHash,
 		arg.StateRoot,
 		arg.DocumentSha256,
-		arg.Column5,
+		arg.AccountCount,
 	)
 	return err
 }
 
-const GenesisWriteImportOnceUsingStatement5 = `-- name: GenesisWriteImportOnceUsingStatement5 :exec
+const genesisWriteImportOnceUsingStatement5 = `-- name: GenesisWriteImportOnceUsingStatement5 :exec
 INSERT INTO genesis_account_observations (
 			    chain_id, address, block_hash, balance, nonce,
 			    code_hash, code, storage_root
@@ -217,23 +163,23 @@ INSERT INTO genesis_account_observations (
 `
 
 type GenesisWriteImportOnceUsingStatement5Params struct {
-	Column1     pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	Address     []byte         `db:"address" json:"address"`
 	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
-	Column4     pgtype.Numeric `db:"column_4" json:"column_4"`
-	Column5     pgtype.Numeric `db:"column_5" json:"column_5"`
+	Balance     pgtype.Numeric `db:"balance" json:"balance"`
+	Nonce       pgtype.Numeric `db:"nonce" json:"nonce"`
 	CodeHash    []byte         `db:"code_hash" json:"code_hash"`
 	Code        []byte         `db:"code" json:"code"`
 	StorageRoot []byte         `db:"storage_root" json:"storage_root"`
 }
 
 func (q *Queries) GenesisWriteImportOnceUsingStatement5(ctx context.Context, arg GenesisWriteImportOnceUsingStatement5Params) error {
-	_, err := q.db.Exec(ctx, GenesisWriteImportOnceUsingStatement5,
-		arg.Column1,
+	_, err := q.db.Exec(ctx, genesisWriteImportOnceUsingStatement5,
+		arg.ChainID,
 		arg.Address,
 		arg.BlockHash,
-		arg.Column4,
-		arg.Column5,
+		arg.Balance,
+		arg.Nonce,
 		arg.CodeHash,
 		arg.Code,
 		arg.StorageRoot,
@@ -241,7 +187,7 @@ func (q *Queries) GenesisWriteImportOnceUsingStatement5(ctx context.Context, arg
 	return err
 }
 
-const GenesisWriteImportOnceUsingStatement6 = `-- name: GenesisWriteImportOnceUsingStatement6 :exec
+const genesisWriteImportOnceUsingStatement6 = `-- name: GenesisWriteImportOnceUsingStatement6 :execrows
 INSERT INTO contract_code_observations AS current (
 				    chain_id, address, block_number, block_hash,
 				    code_hash, code, canonical
@@ -254,25 +200,28 @@ INSERT INTO contract_code_observations AS current (
 `
 
 type GenesisWriteImportOnceUsingStatement6Params struct {
-	Column1   pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID   pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	Address   []byte         `db:"address" json:"address"`
 	BlockHash []byte         `db:"block_hash" json:"block_hash"`
 	CodeHash  []byte         `db:"code_hash" json:"code_hash"`
 	Code      []byte         `db:"code" json:"code"`
 }
 
-func (q *Queries) GenesisWriteImportOnceUsingStatement6(ctx context.Context, arg GenesisWriteImportOnceUsingStatement6Params) error {
-	_, err := q.db.Exec(ctx, GenesisWriteImportOnceUsingStatement6,
-		arg.Column1,
+func (q *Queries) GenesisWriteImportOnceUsingStatement6(ctx context.Context, arg GenesisWriteImportOnceUsingStatement6Params) (int64, error) {
+	result, err := q.db.Exec(ctx, genesisWriteImportOnceUsingStatement6,
+		arg.ChainID,
 		arg.Address,
 		arg.BlockHash,
 		arg.CodeHash,
 		arg.Code,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const GenesisWriteMarkUnavailableStatement1 = `-- name: GenesisWriteMarkUnavailableStatement1 :exec
+const genesisWriteMarkUnavailableStatement1 = `-- name: GenesisWriteMarkUnavailableStatement1 :exec
 INSERT INTO genesis_state_imports (chain_id, state, last_error_code)
 		VALUES ($1::numeric, 'unavailable', 'genesis_file_not_configured')
 		ON CONFLICT (chain_id) DO UPDATE SET
@@ -287,12 +236,12 @@ INSERT INTO genesis_state_imports (chain_id, state, last_error_code)
 		WHERE genesis_state_imports.state <> 'complete'
 `
 
-func (q *Queries) GenesisWriteMarkUnavailableStatement1(ctx context.Context, dollar_1 pgtype.Numeric) error {
-	_, err := q.db.Exec(ctx, GenesisWriteMarkUnavailableStatement1, dollar_1)
+func (q *Queries) GenesisWriteMarkUnavailableStatement1(ctx context.Context, chainID pgtype.Numeric) error {
+	_, err := q.db.Exec(ctx, genesisWriteMarkUnavailableStatement1, chainID)
 	return err
 }
 
-const GenesisWriteRecordRemoteFailureStatement1 = `-- name: GenesisWriteRecordRemoteFailureStatement1 :exec
+const genesisWriteRecordRemoteFailureStatement1 = `-- name: GenesisWriteRecordRemoteFailureStatement1 :exec
 INSERT INTO genesis_state_imports (chain_id, state, last_error_code)
 		VALUES ($1::numeric, $2, $3)
 		ON CONFLICT (chain_id) DO UPDATE SET
@@ -307,12 +256,12 @@ INSERT INTO genesis_state_imports (chain_id, state, last_error_code)
 		WHERE genesis_state_imports.state <> 'complete'
 `
 
-func (q *Queries) GenesisWriteRecordRemoteFailureStatement1(ctx context.Context, column1 pgtype.Numeric, state string, lastErrorCode *string) error {
-	_, err := q.db.Exec(ctx, GenesisWriteRecordRemoteFailureStatement1, column1, state, lastErrorCode)
+func (q *Queries) GenesisWriteRecordRemoteFailureStatement1(ctx context.Context, chainID pgtype.Numeric, state string, lastErrorCode *string) error {
+	_, err := q.db.Exec(ctx, genesisWriteRecordRemoteFailureStatement1, chainID, state, lastErrorCode)
 	return err
 }
 
-const GenesisWriteWaitForCanonicalBlockZeroStatement1 = `-- name: GenesisWriteWaitForCanonicalBlockZeroStatement1 :many
+const genesisWriteWaitForCanonicalBlockZeroStatement1 = `-- name: GenesisWriteWaitForCanonicalBlockZeroStatement1 :one
 SELECT EXISTS (
 				    SELECT 1
 				    FROM canonical_blocks
@@ -320,76 +269,37 @@ SELECT EXISTS (
 				)
 `
 
-func (q *Queries) GenesisWriteWaitForCanonicalBlockZeroStatement1(ctx context.Context, dollar_1 pgtype.Numeric) ([]bool, error) {
-	rows, err := q.db.Query(ctx, GenesisWriteWaitForCanonicalBlockZeroStatement1, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var exists bool
-		if err := rows.Scan(&exists); err != nil {
-			return nil, err
-		}
-		items = append(items, exists)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) GenesisWriteWaitForCanonicalBlockZeroStatement1(ctx context.Context, chainID pgtype.Numeric) (bool, error) {
+	row := q.db.QueryRow(ctx, genesisWriteWaitForCanonicalBlockZeroStatement1, chainID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
-const GenesisWriteWithRemoteSourceLockStatement1 = `-- name: GenesisWriteWithRemoteSourceLockStatement1 :many
+const genesisWriteWithRemoteSourceLockStatement1 = `-- name: GenesisWriteWithRemoteSourceLockStatement1 :one
 SELECT pg_advisory_unlock(
 				    hashtext('etherview:genesis-remote-source'),
 				    hashtext($1)
 				)
 `
 
-func (q *Queries) GenesisWriteWithRemoteSourceLockStatement1(ctx context.Context, hashtext string) ([]bool, error) {
-	rows, err := q.db.Query(ctx, GenesisWriteWithRemoteSourceLockStatement1, hashtext)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var pg_advisory_unlock bool
-		if err := rows.Scan(&pg_advisory_unlock); err != nil {
-			return nil, err
-		}
-		items = append(items, pg_advisory_unlock)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) GenesisWriteWithRemoteSourceLockStatement1(ctx context.Context, hashtext string) (bool, error) {
+	row := q.db.QueryRow(ctx, genesisWriteWithRemoteSourceLockStatement1, hashtext)
+	var pg_advisory_unlock bool
+	err := row.Scan(&pg_advisory_unlock)
+	return pg_advisory_unlock, err
 }
 
-const GenesisWriteWithRemoteSourceLockStatement2 = `-- name: GenesisWriteWithRemoteSourceLockStatement2 :many
+const genesisWriteWithRemoteSourceLockStatement2 = `-- name: GenesisWriteWithRemoteSourceLockStatement2 :one
 SELECT pg_try_advisory_lock(
 			    hashtext('etherview:genesis-remote-source'),
 			    hashtext($1)
 			)
 `
 
-func (q *Queries) GenesisWriteWithRemoteSourceLockStatement2(ctx context.Context, hashtext string) ([]bool, error) {
-	rows, err := q.db.Query(ctx, GenesisWriteWithRemoteSourceLockStatement2, hashtext)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var pg_try_advisory_lock bool
-		if err := rows.Scan(&pg_try_advisory_lock); err != nil {
-			return nil, err
-		}
-		items = append(items, pg_try_advisory_lock)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) GenesisWriteWithRemoteSourceLockStatement2(ctx context.Context, hashtext string) (bool, error) {
+	row := q.db.QueryRow(ctx, genesisWriteWithRemoteSourceLockStatement2, hashtext)
+	var pg_try_advisory_lock bool
+	err := row.Scan(&pg_try_advisory_lock)
+	return pg_try_advisory_lock, err
 }

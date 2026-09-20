@@ -2,7 +2,6 @@ package enrich
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,9 +9,14 @@ import (
 	"math/big"
 	"strconv"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/chainbundle"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/erc4337"
 	"github.com/islishude/etherview/internal/stagecontract"
 )
@@ -20,11 +24,11 @@ import (
 var UserOperationStage = stagecontract.UserOperation
 
 type PostgresUserOperationProcessor struct {
-	db       *sql.DB
+	db       dbaccess.Database
 	registry erc4337.Registry
 }
 
-func NewPostgresUserOperationProcessor(db *sql.DB, registry erc4337.Registry) (*PostgresUserOperationProcessor, error) {
+func NewPostgresUserOperationProcessor(db dbaccess.Database, registry erc4337.Registry) (*PostgresUserOperationProcessor, error) {
 	if db == nil || len(registry.Entries()) == 0 {
 		return nil, errors.New("UserOperation processor requires a database and EntryPoint registry")
 	}
@@ -63,37 +67,60 @@ func (processor *PostgresUserOperationProcessor) Process(ctx context.Context, jo
 	if err != nil {
 		return StageResult{}, Permanent(err)
 	}
-	return runStageTransaction(ctx, processor.db, job, func(ctx context.Context, tx *sql.Tx) (StageResult, error) {
+	return runStageTransaction(ctx, processor.db, job, func(ctx context.Context, tx pgx.Tx) (StageResult, error) {
 		return processor.persistBlock(ctx, tx, job, operations)
 	})
 }
 
-func loadUserOperationBundle(ctx context.Context, db *sql.DB, job Job) (chainbundle.Bundle, error) {
+func loadUserOperationBundle(ctx context.Context, db dbaccess.Database, job Job) (chainbundle.Bundle, error) {
 	var rawBlock []byte
 	blockNumber := strconv.FormatUint(job.BlockNumber, 10)
-	if err := db.QueryRowContext(ctx, dbgen.ERC4337SourceBlock, job.ChainID, blockNumber, job.BlockHash[:]).Scan(&rawBlock); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(blockNumber); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(db).ERC4337SourceBlock(ctx, queryValue0, queryValue1, job.BlockHash[:])
+		if err != nil {
+			return err
+		}
+		rawBlock = queryRow
+		return nil
+	}(); err != nil {
 		return chainbundle.Bundle{}, fmt.Errorf("query UserOperation source block: %w", err)
 	}
 	bundle, err := chainbundle.DecodeStoredBlock(json.RawMessage(rawBlock))
 	if err != nil {
 		return chainbundle.Bundle{}, Permanent(fmt.Errorf("decode UserOperation source block: %w", err))
 	}
-	rows, err := db.QueryContext(ctx, dbgen.ERC4337SourceReceipts, job.ChainID, blockNumber, job.BlockHash[:])
+	rows, err := func() ([][]byte, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(blockNumber); err != nil {
+			return nil, err
+		}
+		return dbgen.New(db).ERC4337SourceReceipts(ctx, queryValue0, queryValue1, job.BlockHash[:])
+	}()
 	if err != nil {
 		return chainbundle.Bundle{}, fmt.Errorf("query UserOperation source receipts: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	rawReceipts := make([]json.RawMessage, 0, len(bundle.Block.Transactions()))
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var raw []byte
-		if err := rows.Scan(&raw); err != nil {
-			return chainbundle.Bundle{}, fmt.Errorf("scan UserOperation source receipt: %w", err)
+		{
+			raw = storedRow
 		}
 		rawReceipts = append(rawReceipts, json.RawMessage(raw))
 	}
-	if err := rows.Err(); err != nil {
-		return chainbundle.Bundle{}, fmt.Errorf("iterate UserOperation source receipts: %w", err)
-	}
+
 	bundle, err = bundle.WithStoredReceipts(rawReceipts)
 	if err != nil {
 		return chainbundle.Bundle{}, Permanent(fmt.Errorf("decode UserOperation source receipts: %w", err))
@@ -106,7 +133,7 @@ func loadUserOperationBundle(ctx context.Context, db *sql.DB, job Job) (chainbun
 
 func (processor *PostgresUserOperationProcessor) persistBlock(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	operations []erc4337.Operation,
 ) (StageResult, error) {
@@ -119,11 +146,36 @@ func (processor *PostgresUserOperationProcessor) persistBlock(
 	}
 	digest := processor.registry.Digest()
 	blockNumber := strconv.FormatUint(job.BlockNumber, 10)
-	var removed bool
-	if err := tx.QueryRowContext(ctx, dbgen.ERC4337RemoveCoveredBlock, job.ChainID, digest[:], blockNumber).Scan(&removed); err != nil {
+
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(blockNumber); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).ERC4337RemoveCoveredBlock(ctx, queryValue0, digest[:], queryValue1)
+		if err != nil {
+			return err
+		}
+		_ = queryRow
+		return nil
+	}(); err != nil {
 		return StageResult{}, fmt.Errorf("remove prior UserOperation coverage: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.ERC4337DeleteBlockOutput, job.ChainID, digest[:], blockNumber, job.BlockHash[:]); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(blockNumber); err != nil {
+			return err
+		}
+		return dbgen.New(tx).ERC4337DeleteBlockOutput(ctx, dbgen.ERC4337DeleteBlockOutputParams{ChainID: queryValue0, ConfigurationDigest: digest[:], BlockNumber: queryValue1, BlockHash: job.BlockHash[:]})
+	}(); err != nil {
 		return StageResult{}, fmt.Errorf("delete prior UserOperation block output: %w", err)
 	}
 	for _, operation := range operations {
@@ -136,11 +188,23 @@ func (processor *PostgresUserOperationProcessor) persistBlock(
 		if err != nil {
 			return StageResult{}, err
 		}
-		var added bool
-		if err := tx.QueryRowContext(
-			ctx, dbgen.ERC4337AddCoveredBlock,
-			job.ChainID, digest[:], blockNumber, job.BlockHash[:], identity.jobID, identity.generation,
-		).Scan(&added); err != nil {
+
+		if err := func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(job.ChainID); err != nil {
+				return err
+			}
+			var queryValue1 pgtype.Numeric
+			if err := queryValue1.Scan(blockNumber); err != nil {
+				return err
+			}
+			queryRow, err := dbgen.New(tx).ERC4337AddCoveredBlock(ctx, dbgen.ERC4337AddCoveredBlockParams{ChainID: queryValue0, ConfigurationDigest: digest[:], BlockNumber: queryValue1, BlockHash: job.BlockHash[:], DurableJobID: identity.jobID, JobGeneration: identity.generation})
+			if err != nil {
+				return err
+			}
+			_ = queryRow
+			return nil
+		}(); err != nil {
 			return StageResult{}, fmt.Errorf("publish UserOperation coverage: %w", err)
 		}
 	}
@@ -152,7 +216,7 @@ func (processor *PostgresUserOperationProcessor) persistBlock(
 
 func persistUserOperation(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	digest []byte,
 	operation erc4337.Operation,
@@ -163,25 +227,21 @@ func persistUserOperation(
 	}
 	nonceKey := new(big.Int).Rsh(new(big.Int).Set(operation.Request.Nonce), 64)
 	nonceSequence := new(big.Int).And(new(big.Int).Set(operation.Request.Nonce), new(big.Int).SetUint64(math.MaxUint64))
-	args := []any{
-		job.ChainID, digest, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-		operation.TransactionHash[:], int64(operation.TransactionIndex), int64(operation.OperationIndex),
-		int64(operation.EventLogIndex), operation.Hash[:],
-		operation.EntryPoint[:], string(operation.Version), operation.Request.Sender[:],
-		operation.Request.Nonce.String(), nonceKey.String(), nonceSequence.String(),
-		operation.Bundler[:], operation.Beneficiary[:], string(operation.Request.InitKind),
-		addressBytes(operation.Request.Factory), addressBytes(operation.Request.Paymaster), addressBytes(operation.Request.Aggregator),
-		operation.Success, operation.ActualGasCost.String(), operation.ActualGasUsed.String(),
-		operation.Request.CallGasLimit.String(), operation.Request.VerificationGasLimit.String(),
-		operation.Request.PreVerificationGas.String(), operation.Request.MaxFeePerGas.String(),
-		operation.Request.MaxPriorityFeePerGas.String(), optionalBigString(operation.Request.PaymasterVerificationGasLimit),
-		optionalBigString(operation.Request.PaymasterPostOpGasLimit), nonNilBytes(operation.Request.InitCode),
-		nonNilBytes(operation.Request.FactoryData), nonNilBytes(operation.Request.CallData), nonNilBytes(operation.Request.PaymasterAndData),
-		nonNilBytes(operation.Request.PaymasterData), nonNilBytes(operation.Request.PaymasterSignature), nonNilBytes(operation.Request.Signature),
-		nilIfEmpty(operation.Request.AccountGasLimits), nilIfEmpty(operation.Request.GasFees),
-		nonNilBytes(operation.Request.AggregatedSignature),
+	var chain pgtype.Numeric
+	if err := chain.Scan(job.ChainID); err != nil {
+		return err
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.ERC4337InsertUserOperation, args...); err != nil {
+	params := dbgen.ERC4337InsertUserOperationParams{
+		ChainID: chain, ConfigurationDigest: digest, BlockNumber: userOperationNumeric(new(big.Int).SetUint64(job.BlockNumber)), BlockHash: job.BlockHash[:],
+		TransactionHash: operation.TransactionHash[:], TransactionIndex: int64(operation.TransactionIndex), OperationIndex: int64(operation.OperationIndex), EventLogIndex: int64(operation.EventLogIndex), UserOpHash: operation.Hash[:],
+		EntryPoint: operation.EntryPoint[:], EntryPointVersion: string(operation.Version), Sender: operation.Request.Sender[:],
+		Nonce: userOperationNumeric(operation.Request.Nonce), NonceKey: userOperationNumeric(nonceKey), NonceSequence: userOperationNumeric(nonceSequence),
+		Bundler: operation.Bundler[:], Beneficiary: operation.Beneficiary[:], InitKind: string(operation.Request.InitKind), Factory: addressBytes(operation.Request.Factory), Paymaster: addressBytes(operation.Request.Paymaster), Aggregator: addressBytes(operation.Request.Aggregator),
+		Success: operation.Success, ActualGasCost: userOperationNumeric(operation.ActualGasCost), ActualGasUsed: userOperationNumeric(operation.ActualGasUsed), CallGasLimit: userOperationNumeric(operation.Request.CallGasLimit), VerificationGasLimit: userOperationNumeric(operation.Request.VerificationGasLimit), PreVerificationGas: userOperationNumeric(operation.Request.PreVerificationGas), MaxFeePerGas: userOperationNumeric(operation.Request.MaxFeePerGas), MaxPriorityFeePerGas: userOperationNumeric(operation.Request.MaxPriorityFeePerGas),
+		PaymasterVerificationGasLimit: optionalBigString(operation.Request.PaymasterVerificationGasLimit), PaymasterPostOpGasLimit: optionalBigString(operation.Request.PaymasterPostOpGasLimit),
+		InitCode: nonNilBytes(operation.Request.InitCode), FactoryData: nonNilBytes(operation.Request.FactoryData), CallData: nonNilBytes(operation.Request.CallData), PaymasterAndData: nonNilBytes(operation.Request.PaymasterAndData), PaymasterData: nonNilBytes(operation.Request.PaymasterData), PaymasterSignature: nonNilBytes(operation.Request.PaymasterSignature), Signature: nonNilBytes(operation.Request.Signature), AccountGasLimits: nilIfEmpty(operation.Request.AccountGasLimits), GasFees: nilIfEmpty(operation.Request.GasFees), AggregatedSignature: nonNilBytes(operation.Request.AggregatedSignature),
+	}
+	if err := dbgen.New(tx).ERC4337InsertUserOperation(ctx, params); err != nil {
 		return fmt.Errorf("persist UserOperation %s: %w", operation.Hash, err)
 	}
 	for _, event := range operation.Events {
@@ -190,11 +250,17 @@ func persistUserOperation(
 		}
 	}
 	for _, participant := range operationParticipants(operation) {
-		if _, err := tx.ExecContext(
-			ctx, dbgen.ERC4337InsertUserOperationParticipant,
-			job.ChainID, digest, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-			operation.TransactionHash[:], int64(operation.OperationIndex), participant.address[:], participant.role,
-		); err != nil {
+		if err := func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(job.ChainID); err != nil {
+				return err
+			}
+			var queryValue1 pgtype.Numeric
+			if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+				return err
+			}
+			return dbgen.New(tx).ERC4337InsertUserOperationParticipant(ctx, dbgen.ERC4337InsertUserOperationParticipantParams{ChainID: queryValue0, ConfigurationDigest: digest, BlockNumber: queryValue1, BlockHash: job.BlockHash[:], TransactionHash: operation.TransactionHash[:], OperationIndex: int64(operation.OperationIndex), Address: participant.address[:], Role: participant.role})
+		}(); err != nil {
 			return fmt.Errorf("persist UserOperation participant: %w", err)
 		}
 	}
@@ -203,7 +269,7 @@ func persistUserOperation(
 
 func persistUserOperationEvent(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	digest []byte,
 	operation erc4337.Operation,
@@ -212,13 +278,17 @@ func persistUserOperationEvent(
 	if event.LogIndex > math.MaxInt64 {
 		return Permanent(errors.New("UserOperation event index exceeds PostgreSQL BIGINT"))
 	}
-	_, err := tx.ExecContext(
-		ctx, dbgen.ERC4337InsertUserOperationEvent,
-		job.ChainID, digest, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-		operation.TransactionHash[:], int64(operation.OperationIndex), int64(event.LogIndex), string(event.Kind),
-		event.Sender[:], optionalBigString(event.Nonce), addressBytes(event.RelatedAddress), addressBytes(event.Paymaster),
-		nonNilBytes(event.RawData), event.Reason, optionalBigString(event.PanicCode),
-	)
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		return dbgen.New(tx).ERC4337InsertUserOperationEvent(ctx, dbgen.ERC4337InsertUserOperationEventParams{ChainID: queryValue0, ConfigurationDigest: digest, BlockNumber: queryValue1, BlockHash: job.BlockHash[:], TransactionHash: operation.TransactionHash[:], OperationIndex: int64(operation.OperationIndex), LogIndex: int64(event.LogIndex), EventKind: string(event.Kind), Sender: event.Sender[:], Nonce: optionalBigString(event.Nonce), RelatedAddress: addressBytes(event.RelatedAddress), Paymaster: addressBytes(event.Paymaster), RawData: nonNilBytes(event.RawData), Reason: event.Reason, PanicCode: optionalBigString(event.PanicCode)})
+	}()
 	if err != nil {
 		return fmt.Errorf("persist UserOperation protocol event: %w", err)
 	}
@@ -264,7 +334,7 @@ func operationParticipants(operation erc4337.Operation) []userOperationParticipa
 	return participants
 }
 
-func addressBytes(value *common.Address) any {
+func addressBytes(value *common.Address) []byte {
 	if value == nil {
 		return nil
 	}
@@ -278,7 +348,7 @@ func optionalBigString(value *big.Int) string {
 	return value.String()
 }
 
-func nilIfEmpty(value []byte) any {
+func nilIfEmpty(value []byte) []byte {
 	if len(value) == 0 {
 		return nil
 	}
@@ -290,4 +360,11 @@ func nonNilBytes(value []byte) []byte {
 		return []byte{}
 	}
 	return value
+}
+
+func userOperationNumeric(value *big.Int) pgtype.Numeric {
+	if value == nil {
+		return pgtype.Numeric{}
+	}
+	return pgtype.Numeric{Int: value, Valid: true}
 }

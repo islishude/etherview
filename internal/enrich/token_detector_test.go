@@ -3,7 +3,6 @@ package enrich
 import (
 	"bytes"
 	"context"
-	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +11,10 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	testpgx "github.com/islishude/etherview/internal/testpgx"
+	pgx "github.com/jackc/pgx/v5"
+	pgconn "github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -484,7 +487,7 @@ func TestPostgresTokenProcessorDetectsAddressOnceAndPersistsUnknown(t *testing.T
 	contract := testAddress(0x77)
 	from, to := testAddress(1), testAddress(2)
 	firstHash, secondHash := uintWord(771), uintWord(772)
-	rows := [][]driver.Value{
+	rows := [][]any{
 		storedERC20Transfer(job, contract, from, to, firstHash, 0, 5),
 		storedERC20Transfer(job, contract, from, to, secondHash, 1, 7),
 	}
@@ -492,22 +495,22 @@ func TestPostgresTokenProcessorDetectsAddressOnceAndPersistsUnknown(t *testing.T
 	logQueries, detectorCalls, contractWrites, eventWrites, deltaWrites, stageWrites, journalWrites := 0, 0, 0, 0, 0, 0, 0
 	detectionCodeHash := uintWord(7700)
 	backend := &fakeSQLBackend{
-		query: func(query string, _ []driver.NamedValue) (driver.Rows, error) {
+		query: func(query string, _ []any) (pgx.Rows, error) {
 			mu.Lock()
 			defer mu.Unlock()
 			switch {
 			case strings.Contains(query, "SELECT EXISTS"):
-				return &fakeSQLRows{columns: []string{"exists"}, values: [][]driver.Value{{true}}}, nil
+				return &testpgx.Rows{ColumnNames: []string{"exists"}, ValuesList: [][]any{{true}}}, nil
 			case strings.Contains(query, "FOR KEY SHARE"):
-				return &fakeSQLRows{columns: []string{"one"}, values: [][]driver.Value{{int64(1)}}}, nil
+				return &testpgx.Rows{ColumnNames: []string{"one"}, ValuesList: [][]any{{int64(1)}}}, nil
 			case strings.Contains(query, "FROM logs"):
 				logQueries++
-				return &fakeSQLRows{columns: []string{"log_index", "tx_hash", "address", "raw"}, values: rows}, nil
+				return &testpgx.Rows{ColumnNames: []string{"log_index", "tx_hash", "address", "raw"}, ValuesList: rows}, nil
 			default:
 				return nil, fmt.Errorf("unexpected query: %s", query)
 			}
 		},
-		exec: func(query string, arguments []driver.NamedValue) (driver.Result, error) {
+		exec: func(query string, arguments []any) (pgconn.CommandTag, error) {
 			mu.Lock()
 			defer mu.Unlock()
 			switch {
@@ -516,10 +519,10 @@ func TestPostgresTokenProcessorDetectsAddressOnceAndPersistsUnknown(t *testing.T
 				if !strings.Contains(query, "ELSE current.confidence") || !strings.Contains(query, "current.standard = 'unknown'") {
 					t.Errorf("token upsert can downgrade confidence or cannot upgrade unknown:\n%s", query)
 				}
-				if arguments[0].Value != job.ChainID || !bytes.Equal(arguments[1].Value.([]byte), contract[:]) ||
-					!bytes.Equal(arguments[2].Value.([]byte), detectionCodeHash[:]) || arguments[3].Value != string(TokenStandardUnknown) ||
-					arguments[4].Value != string(ConfidenceGuess) || arguments[10].Value != "77" ||
-					!bytes.Equal(arguments[11].Value.([]byte), job.BlockHash[:]) {
+				if !testpgx.NumericEquals(arguments[0], job.ChainID) || !bytes.Equal(arguments[1].([]byte), contract[:]) ||
+					!bytes.Equal(arguments[2].([]byte), detectionCodeHash[:]) || arguments[3] != string(TokenStandardUnknown) ||
+					arguments[4] != string(ConfidenceGuess) || !testpgx.NumericEquals(arguments[10], "77") ||
+					!bytes.Equal(arguments[11].([]byte), job.BlockHash[:]) {
 					t.Errorf("token contract arguments=%+v", arguments)
 				}
 			case strings.Contains(query, "INSERT INTO token_events"):
@@ -531,9 +534,9 @@ func TestPostgresTokenProcessorDetectsAddressOnceAndPersistsUnknown(t *testing.T
 			case strings.Contains(query, "INSERT INTO block_journals"):
 				journalWrites++
 			default:
-				return nil, fmt.Errorf("unexpected exec: %s", query)
+				return pgconn.CommandTag{}, fmt.Errorf("unexpected exec: %s", query)
 			}
-			return driver.RowsAffected(1), nil
+			return testpgx.Affected(1), nil
 		},
 	}
 	detector := TokenDetectorFunc(func(_ context.Context, request TokenDetectionRequest) (TokenDetection, error) {
@@ -574,14 +577,14 @@ func TestPostgresTokenProcessorDoesNotOpenTransactionOnDetectorTransportError(t 
 	retryable := errors.New("token RPC timed out")
 	var begins atomic.Int64
 	backend := &fakeSQLBackend{
-		query: func(query string, _ []driver.NamedValue) (driver.Rows, error) {
+		query: func(query string, _ []any) (pgx.Rows, error) {
 			switch {
 			case strings.Contains(query, "SELECT EXISTS"):
-				return &fakeSQLRows{columns: []string{"exists"}, values: [][]driver.Value{{true}}}, nil
+				return &testpgx.Rows{ColumnNames: []string{"exists"}, ValuesList: [][]any{{true}}}, nil
 			case strings.Contains(query, "FROM logs"):
-				return &fakeSQLRows{
-					columns: []string{"log_index", "tx_hash", "address", "raw"},
-					values: [][]driver.Value{storedERC20Transfer(
+				return &testpgx.Rows{
+					ColumnNames: []string{"log_index", "tx_hash", "address", "raw"},
+					ValuesList: [][]any{storedERC20Transfer(
 						job, contract, testAddress(1), testAddress(2), transactionHash, 0, 1,
 					)},
 				}, nil
@@ -589,7 +592,9 @@ func TestPostgresTokenProcessorDoesNotOpenTransactionOnDetectorTransportError(t 
 				return nil, fmt.Errorf("unexpected query: %s", query)
 			}
 		},
-		exec:  func(string, []driver.NamedValue) (driver.Result, error) { return nil, errors.New("unexpected exec") },
+		exec: func(string, []any) (pgconn.CommandTag, error) {
+			return pgconn.CommandTag{}, errors.New("unexpected exec")
+		},
 		begin: func() { begins.Add(1) },
 	}
 	processor, err := NewPostgresTokenProcessorWithDetector(openFakeSQLDB(t, backend), TokenDetectorFunc(
@@ -606,7 +611,7 @@ func TestPostgresTokenProcessorDoesNotOpenTransactionOnDetectorTransportError(t 
 	}
 }
 
-func storedERC20Transfer(job Job, contract, from, to common.Address, transactionHash common.Hash, logIndex, amount uint64) []driver.Value {
+func storedERC20Transfer(job Job, contract, from, to common.Address, transactionHash common.Hash, logIndex, amount uint64) []any {
 	raw := fmt.Sprintf(`{
 		"removed":false,"logIndex":"0x%x","transactionIndex":"0x%x",
 		"transactionHash":%q,"blockHash":%q,"blockNumber":"0x%x",
@@ -615,5 +620,5 @@ func storedERC20Transfer(job Job, contract, from, to common.Address, transaction
 		logIndex, logIndex, transactionHash.String(), job.BlockHash.String(), job.BlockNumber,
 		contract.String(), uintWord(amount).String(), topicTransfer.String(), addressWord(from).String(), addressWord(to).String(),
 	)
-	return []driver.Value{int64(logIndex), transactionHash[:], contract[:], []byte(raw)}
+	return []any{int64(logIndex), transactionHash[:], contract[:], []byte(raw)}
 }

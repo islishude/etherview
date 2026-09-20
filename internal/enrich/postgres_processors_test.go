@@ -2,12 +2,17 @@ package enrich
 
 import (
 	"context"
-	"database/sql/driver"
 	"encoding/hex"
 	"fmt"
 	"strings"
 	"sync"
 	"testing"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	testpgx "github.com/islishude/etherview/internal/testpgx"
+	pgx "github.com/jackc/pgx/v5"
+	pgconn "github.com/jackc/pgx/v5/pgconn"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
 )
 
 func TestPostgresTokenProcessorPersistsGuessAndBalancedDeltas(t *testing.T) {
@@ -29,41 +34,45 @@ func TestPostgresTokenProcessorPersistsGuessAndBalancedDeltas(t *testing.T) {
 	deltas := make(map[string]string)
 	stageWritten, journalWritten := false, false
 	backend := &fakeSQLBackend{
-		query: func(query string, _ []driver.NamedValue) (driver.Rows, error) {
+		query: func(query string, _ []any) (pgx.Rows, error) {
 			mu.Lock()
 			defer mu.Unlock()
 			queryCount++
 			switch {
 			case strings.Contains(query, "FROM canonical_blocks"):
-				return &fakeSQLRows{columns: []string{"one"}, values: [][]driver.Value{{int64(1)}}}, nil
+				return &testpgx.Rows{ColumnNames: []string{"one"}, ValuesList: [][]any{{int64(1)}}}, nil
 			case strings.Contains(query, "FROM logs"):
-				return &fakeSQLRows{
-					columns: []string{"log_index", "tx_hash", "address", "raw"},
-					values:  [][]driver.Value{{int64(0), transactionHash[:], contract[:], []byte(raw)}},
+				return &testpgx.Rows{
+					ColumnNames: []string{"log_index", "tx_hash", "address", "raw"},
+					ValuesList:  [][]any{{int64(0), transactionHash[:], contract[:], []byte(raw)}},
 				}, nil
 			case strings.Contains(query, "FROM token_contracts"):
-				return &fakeSQLRows{columns: []string{"standard", "confidence"}}, nil
+				return &testpgx.Rows{ColumnNames: []string{"standard", "confidence"}}, nil
 			default:
 				return nil, fmt.Errorf("unexpected query: %s", query)
 			}
 		},
-		exec: func(query string, arguments []driver.NamedValue) (driver.Result, error) {
+		exec: func(query string, arguments []any) (pgconn.CommandTag, error) {
 			mu.Lock()
 			defer mu.Unlock()
 			switch {
 			case strings.Contains(query, "INSERT INTO token_events"):
-				eventConfidence = arguments[14].Value.(string)
+				eventConfidence = arguments[14].(string)
 			case strings.Contains(query, "INSERT INTO token_balance_deltas"):
-				owner := hex.EncodeToString(arguments[6].Value.([]byte))
-				deltas[owner] = arguments[8].Value.(string)
+				owner := hex.EncodeToString(arguments[6].([]byte))
+				stored, err := dbaccess.NumericText(arguments[8].(pgtype.Numeric))
+				if err != nil {
+					return pgconn.CommandTag{}, err
+				}
+				deltas[owner] = stored.String
 			case strings.Contains(query, "INSERT INTO block_stage_results"):
 				stageWritten = true
 			case strings.Contains(query, "INSERT INTO block_journals"):
 				journalWritten = true
 			default:
-				return nil, fmt.Errorf("unexpected exec: %s", query)
+				return pgconn.CommandTag{}, fmt.Errorf("unexpected exec: %s", query)
 			}
-			return driver.RowsAffected(1), nil
+			return testpgx.Affected(1), nil
 		},
 	}
 	processor, err := NewPostgresTokenProcessor(openFakeSQLDB(t, backend))
@@ -87,22 +96,22 @@ func TestPostgresTokenProcessorSkipsStaleCanonicalJob(t *testing.T) {
 	job := Job{ID: "9", Stage: TokenStage, ChainID: "1", BlockHash: uintWord(900), BlockNumber: 9}
 	stageWritten, journalWritten := false, false
 	backend := &fakeSQLBackend{
-		query: func(query string, _ []driver.NamedValue) (driver.Rows, error) {
+		query: func(query string, _ []any) (pgx.Rows, error) {
 			if !strings.Contains(query, "FROM canonical_blocks") {
 				return nil, fmt.Errorf("unexpected query: %s", query)
 			}
-			return &fakeSQLRows{columns: []string{"one"}}, nil
+			return &testpgx.Rows{ColumnNames: []string{"one"}}, nil
 		},
-		exec: func(query string, _ []driver.NamedValue) (driver.Result, error) {
+		exec: func(query string, _ []any) (pgconn.CommandTag, error) {
 			switch {
 			case strings.Contains(query, "INSERT INTO block_stage_results"):
 				stageWritten = true
 			case strings.Contains(query, "INSERT INTO block_journals"):
 				journalWritten = true
 			default:
-				return nil, fmt.Errorf("unexpected exec: %s", query)
+				return pgconn.CommandTag{}, fmt.Errorf("unexpected exec: %s", query)
 			}
-			return driver.RowsAffected(1), nil
+			return testpgx.Affected(1), nil
 		},
 	}
 	processor, _ := NewPostgresTokenProcessor(openFakeSQLDB(t, backend))

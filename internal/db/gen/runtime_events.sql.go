@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const GetRuntimeEventReplayBounds = `-- name: GetRuntimeEventReplayBounds :one
+const getRuntimeEventReplayBounds = `-- name: GetRuntimeEventReplayBounds :one
 SELECT COALESCE(MIN(id), 0)::bigint AS minimum_id,
        COALESCE(MAX(id), 0)::bigint AS maximum_id
 FROM runtime_events
@@ -24,13 +24,13 @@ type GetRuntimeEventReplayBoundsRow struct {
 }
 
 func (q *Queries) GetRuntimeEventReplayBounds(ctx context.Context, chainID pgtype.Numeric) (GetRuntimeEventReplayBoundsRow, error) {
-	row := q.db.QueryRow(ctx, GetRuntimeEventReplayBounds, chainID)
+	row := q.db.QueryRow(ctx, getRuntimeEventReplayBounds, chainID)
 	var i GetRuntimeEventReplayBoundsRow
 	err := row.Scan(&i.MinimumID, &i.MaximumID)
 	return i, err
 }
 
-const GetSyncRuntimeStatus = `-- name: GetSyncRuntimeStatus :one
+const getSyncRuntimeStatus = `-- name: GetSyncRuntimeStatus :one
 SELECT COALESCE(latest_number::text, '')::text AS latest_number,
        COALESCE(indexed_number::text, '')::text AS indexed_number,
        COALESCE(highest_covered_number::text, '')::text AS highest_covered_number,
@@ -53,7 +53,7 @@ type GetSyncRuntimeStatusRow struct {
 }
 
 func (q *Queries) GetSyncRuntimeStatus(ctx context.Context, chainID pgtype.Numeric) (GetSyncRuntimeStatusRow, error) {
-	row := q.db.QueryRow(ctx, GetSyncRuntimeStatus, chainID)
+	row := q.db.QueryRow(ctx, getSyncRuntimeStatus, chainID)
 	var i GetSyncRuntimeStatusRow
 	err := row.Scan(
 		&i.LatestNumber,
@@ -67,7 +67,7 @@ func (q *Queries) GetSyncRuntimeStatus(ctx context.Context, chainID pgtype.Numer
 	return i, err
 }
 
-const ListRuntimeEvents = `-- name: ListRuntimeEvents :many
+const listRuntimeEvents = `-- name: ListRuntimeEvents :many
 WITH selected AS (
     SELECT id, event_type, payload, created_at
     FROM runtime_events
@@ -98,7 +98,7 @@ type ListRuntimeEventsRow struct {
 }
 
 func (q *Queries) ListRuntimeEvents(ctx context.Context, arg ListRuntimeEventsParams) ([]ListRuntimeEventsRow, error) {
-	rows, err := q.db.Query(ctx, ListRuntimeEvents,
+	rows, err := q.db.Query(ctx, listRuntimeEvents,
 		arg.ChainID,
 		arg.HasAfter,
 		arg.AfterID,

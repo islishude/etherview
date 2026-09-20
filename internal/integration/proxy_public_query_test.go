@@ -4,12 +4,13 @@ package integration_test
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"net/url"
 	"sync"
 	"testing"
 	"time"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -291,7 +292,7 @@ func TestProxyPublicQueryHistoryCursorReplacementAndClone(t *testing.T) {
 		t, ctx, db, cloneImplementation, cloneImplementationHash, "CloneImplementation",
 	)
 	var cloneInteractionCovered bool
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT proxy_interaction_coverage_contains(1, 5, $1, 5, $1)`,
 		blockFiveRef.Hash.Bytes(),
 	).Scan(&cloneInteractionCovered); err != nil {
@@ -346,7 +347,7 @@ func TestProxyPublicQueryHistoryCursorReplacementAndClone(t *testing.T) {
 func bindCloneProxy(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	clone common.Address,
 	implementation common.Address,
 ) string {

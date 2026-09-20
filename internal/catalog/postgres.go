@@ -2,14 +2,18 @@ package catalog
 
 import (
 	"context"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+
 	"github.com/islishude/etherview/internal/accelerator"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
 type Options struct {
@@ -47,7 +51,7 @@ func (options *Options) defaults() {
 }
 
 type Postgres struct {
-	db         *sql.DB
+	db         dbaccess.Database
 	options    Options
 	nftState   NFTStateReconciler
 	erc20State ERC20StateReconciler
@@ -55,7 +59,7 @@ type Postgres struct {
 	logger     *slog.Logger
 }
 
-func NewPostgres(db *sql.DB, options Options) (*Postgres, error) {
+func NewPostgres(db dbaccess.Database, options Options) (*Postgres, error) {
 	if db == nil {
 		return nil, errors.New("catalog requires a PostgreSQL database")
 	}
@@ -74,11 +78,11 @@ func NewPostgres(db *sql.DB, options Options) (*Postgres, error) {
 	}, nil
 }
 
-func (catalog *Postgres) beginRead(ctx context.Context) (*sql.Tx, error) {
+func (catalog *Postgres) beginRead(ctx context.Context) (pgx.Tx, error) {
 	if catalog == nil || catalog.db == nil {
 		return nil, errors.New("catalog database is nil")
 	}
-	tx, err := catalog.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	tx, err := catalog.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return nil, fmt.Errorf("begin catalog snapshot: %w", err)
 	}
@@ -105,11 +109,23 @@ func (catalog *Postgres) pageLimit(requested int) (int, error) {
 	return requested, nil
 }
 
-func readCanonicalSnapshot(ctx context.Context, tx *sql.Tx, chainID string) (Snapshot, error) {
+func readCanonicalSnapshot(ctx context.Context, tx pgx.Tx, chainID string) (Snapshot, error) {
 	var number string
 	var hash []byte
-	err := tx.QueryRowContext(ctx, dbgen.CatalogCanonicalSnapshot, chainID).Scan(&number, &hash)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).CatalogCanonicalSnapshot(ctx, queryValue0)
+		if err != nil {
+			return err
+		}
+		number = queryRow.Number
+		hash = queryRow.BlockHash
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return Snapshot{}, StageUnavailableError{Stage: StageCore, State: StageMissing}
 	}
 	if err != nil {
@@ -125,7 +141,7 @@ func readCanonicalSnapshot(ctx context.Context, tx *sql.Tx, chainID string) (Sna
 	return Snapshot{ChainID: chainID, BlockNumber: number, BlockHash: encodedHash}, nil
 }
 
-func validateCanonicalSnapshot(ctx context.Context, tx *sql.Tx, snapshot Snapshot) error {
+func validateCanonicalSnapshot(ctx context.Context, tx pgx.Tx, snapshot Snapshot) error {
 	if err := validateChainID(snapshot.ChainID); err != nil || !canonicalUint256(snapshot.BlockNumber) {
 		return ErrInvalidCursor
 	}
@@ -134,7 +150,22 @@ func validateCanonicalSnapshot(ctx context.Context, tx *sql.Tx, snapshot Snapsho
 		return ErrInvalidCursor
 	}
 	var exists bool
-	if err := tx.QueryRowContext(ctx, dbgen.CatalogValidateCanonicalSnapshot, snapshot.ChainID, snapshot.BlockNumber, hash).Scan(&exists); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(snapshot.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(snapshot.BlockNumber); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).CatalogValidateCanonicalSnapshot(ctx, queryValue0, queryValue1, hash)
+		if err != nil {
+			return err
+		}
+		exists = queryRow
+		return nil
+	}(); err != nil {
 		return fmt.Errorf("validate catalog cursor snapshot: %w", err)
 	}
 	if !exists {
@@ -143,14 +174,35 @@ func validateCanonicalSnapshot(ctx context.Context, tx *sql.Tx, snapshot Snapsho
 	return nil
 }
 
-func requireStage(ctx context.Context, tx *sql.Tx, snapshot Snapshot, stage Stage) error {
+func requireStage(ctx context.Context, tx pgx.Tx, snapshot Snapshot, stage Stage) error {
 	hash, err := decodeFixedHex(snapshot.BlockHash, 32)
 	if err != nil {
 		return ErrCorruptData
 	}
 	var state string
-	err = tx.QueryRowContext(ctx, dbgen.CatalogLatestStage, snapshot.ChainID, snapshot.BlockNumber, hash, string(stage), stage.Version()).Scan(&state)
-	if errors.Is(err, sql.ErrNoRows) {
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(snapshot.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(snapshot.BlockNumber); err != nil {
+			return err
+		}
+		if stage.Version() < -2147483648 || stage.Version() > 2147483647 {
+			return errors.New("invalid stored query value")
+		}
+		queryRow, err := dbgen.New(tx).CatalogLatestStage(ctx, dbgen.CatalogLatestStageParams{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: hash, Stage: string(stage), StageVersion: int32(stage.Version())})
+		if err != nil {
+			return err
+		}
+		if !queryRow.Valid {
+			return errors.New("invalid stored query value")
+		}
+		state = queryRow.String
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return StageUnavailableError{
 			Stage: stage, State: StageMissing, BlockNumber: snapshot.BlockNumber, BlockHash: snapshot.BlockHash,
 		}
@@ -170,8 +222,8 @@ func requireStage(ctx context.Context, tx *sql.Tx, snapshot Snapshot, stage Stag
 	}
 }
 
-func commitRead(tx *sql.Tx) error {
-	if err := tx.Commit(); err != nil {
+func commitRead(ctx context.Context, tx pgx.Tx) error {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit catalog snapshot: %w", err)
 	}
 	return nil

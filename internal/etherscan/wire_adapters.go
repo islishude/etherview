@@ -1,12 +1,13 @@
 package etherscan
 
 import (
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
 	"strings"
+
+	pgtype "github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -22,7 +23,7 @@ type storedBlockContext struct {
 
 func decodeStoredBlockContext(
 	timestampText string,
-	baseFeeText sql.NullString,
+	baseFeeText pgtype.Text,
 ) (storedBlockContext, error) {
 	timestamp, err := storedUint256(timestampText, "block timestamp")
 	if err != nil || !timestamp.IsUint64() {
@@ -38,7 +39,7 @@ func decodeStoredBlockContext(
 	return context, nil
 }
 
-func decodeStoredBlockMiner(value sql.NullString) (common.Address, error) {
+func decodeStoredBlockMiner(value pgtype.Text) (common.Address, error) {
 	if !value.Valid {
 		return common.Address{}, errors.New("stored block miner is missing")
 	}

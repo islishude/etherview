@@ -3,18 +3,20 @@ package enrich
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
+
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
 const (
@@ -59,39 +61,66 @@ type effectiveTransactionExecutionInput struct {
 	storedContext    []byte
 	storedExecution  []byte
 	storedCodeHash   []byte
-	storedResolution sql.NullString
-	storedSource     sql.NullString
+	storedResolution pgtype.Text
+	storedSource     pgtype.Text
 	rootContext      []byte
 	rootExecution    []byte
 	rootCodeHash     []byte
-	rootResolution   sql.NullString
+	rootResolution   pgtype.Text
 	rootInput        []byte
 }
 
 func loadEffectiveTransactionExecutions(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 ) ([]effectiveTransactionExecution, error) {
-	rows, err := tx.QueryContext(ctx, dbgen.EnrichInlineLoadEffectiveTransactionExecutionsStatement1, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-		StateDiffStage.Name, StateDiffStage.Version, TraceStage.Name, TraceStage.Version,
-	)
+	rows, err := func() ([]dbgen.EnrichInlineLoadEffectiveTransactionExecutionsStatement1Row, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return nil, err
+		}
+		if StateDiffStage.Version > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		if TraceStage.Version > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).EnrichInlineLoadEffectiveTransactionExecutionsStatement1(ctx, dbgen.EnrichInlineLoadEffectiveTransactionExecutionsStatement1Params{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: job.BlockHash[:], Stage: StateDiffStage.Name, StageVersion: int32(StateDiffStage.Version), Stage2: TraceStage.Name, StageVersion2: int32(TraceStage.Version)})
+	}()
 	if err != nil {
 		return nil, fmt.Errorf("query effective transaction execution inputs: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
 
 	var inputs []effectiveTransactionExecutionInput
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var input effectiveTransactionExecutionInput
-		if err := rows.Scan(
-			&input.transactionHash, &input.transactionIndex, &input.raw,
-			&input.storedContext, &input.storedExecution, &input.storedCodeHash,
-			&input.storedResolution, &input.storedSource,
-			&input.rootContext, &input.rootExecution, &input.rootCodeHash,
-			&input.rootResolution, &input.rootInput,
-		); err != nil {
-			return nil, fmt.Errorf("scan effective transaction execution input: %w", err)
+		{
+			input.transactionHash = storedRow.TxHash
+			input.transactionIndex = storedRow.TxIndex
+			input.raw = storedRow.Raw
+			input.storedContext = storedRow.ContextAddress
+			input.storedExecution = storedRow.ExecutionAddress
+			input.storedCodeHash = storedRow.ExecutionCodeHash
+			input.storedResolution = storedRow.Resolution
+			var queryValue7 pgtype.Text
+			if storedRow.EvidenceSource != nil {
+				queryValue7 = pgtype.Text{String: *storedRow.EvidenceSource, Valid: true}
+			}
+			input.storedSource = queryValue7
+			input.rootContext = storedRow.ToAddress
+			input.rootExecution = storedRow.ExecutionAddress_2
+			input.rootCodeHash = storedRow.ExecutionCodeHash_2
+			var queryValue12 pgtype.Text
+			if storedRow.ExecutionResolution != nil {
+				queryValue12 = pgtype.Text{String: *storedRow.ExecutionResolution, Valid: true}
+			}
+			input.rootResolution = queryValue12
+			input.rootInput = storedRow.Input
 		}
 		input.transactionHash = common.CopyBytes(input.transactionHash)
 		input.raw = common.CopyBytes(input.raw)
@@ -103,12 +132,6 @@ func loadEffectiveTransactionExecutions(
 		input.rootCodeHash = common.CopyBytes(input.rootCodeHash)
 		input.rootInput = common.CopyBytes(input.rootInput)
 		inputs = append(inputs, input)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate effective transaction execution inputs: %w", err)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, fmt.Errorf("close effective transaction execution inputs: %w", err)
 	}
 
 	result := make([]effectiveTransactionExecution, 0, len(inputs))
@@ -301,7 +324,7 @@ func parseStoredEffectiveExecution(
 func parseTransactionRootWitness(
 	contextAddress common.Address,
 	input, rootContext, rootExecution, rootCodeHash []byte,
-	rootResolution sql.NullString,
+	rootResolution pgtype.Text,
 	rootInput []byte,
 ) (transactionRootWitness, bool, error) {
 	if !rootResolution.Valid {
@@ -351,45 +374,57 @@ func parseTransactionRootWitness(
 
 func resolveTransactionStartCode(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	address common.Address,
 	transactionIndex uint64,
 ) (transactionStartCode, bool, error) {
-	rows, err := tx.QueryContext(ctx, dbgen.EnrichInlineResolveTransactionStartCodeStatement1, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:], address[:])
+	rows, err := func() ([]dbgen.EnrichInlineResolveTransactionStartCodeStatement1Row, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return nil, err
+		}
+		return dbgen.New(tx).EnrichInlineResolveTransactionStartCodeStatement1(ctx, dbgen.EnrichInlineResolveTransactionStartCodeStatement1Params{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: job.BlockHash[:], Address: address[:]})
+	}()
 	if err != nil {
 		return transactionStartCode{}, false, fmt.Errorf("query transaction-position code changes: %w", err)
 	}
 	var changes []transactionCodeChange
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var index int64
-		var beforeText, afterText sql.NullString
-		if err := rows.Scan(&index, &beforeText, &afterText); err != nil {
-			_ = rows.Close()
-			return transactionStartCode{}, false, fmt.Errorf("scan transaction-position code change: %w", err)
+		var beforeText, afterText pgtype.Text
+		{
+			index = storedRow.TransactionIndex
+			var queryValue1 pgtype.Text
+			if storedRow.BeforeValue != nil {
+				queryValue1 = pgtype.Text{String: *storedRow.BeforeValue, Valid: true}
+			}
+			beforeText = queryValue1
+			var queryValue3 pgtype.Text
+			if storedRow.AfterValue != nil {
+				queryValue3 = pgtype.Text{String: *storedRow.AfterValue, Valid: true}
+			}
+			afterText = queryValue3
 		}
 		if index < 0 {
-			_ = rows.Close()
+
 			return transactionStartCode{}, false, Permanent(errors.New("transaction-position code change index is invalid"))
 		}
 		before, err := decodeHistoricalCode(beforeText)
 		if err != nil {
-			_ = rows.Close()
+
 			return transactionStartCode{}, false, Permanent(err)
 		}
 		after, err := decodeHistoricalCode(afterText)
 		if err != nil {
-			_ = rows.Close()
+
 			return transactionStartCode{}, false, Permanent(err)
 		}
 		changes = append(changes, transactionCodeChange{index: uint64(index), before: before, after: after})
-	}
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
-		return transactionStartCode{}, false, fmt.Errorf("iterate transaction-position code changes: %w", err)
-	}
-	if err := rows.Close(); err != nil {
-		return transactionStartCode{}, false, fmt.Errorf("close transaction-position code changes: %w", err)
 	}
 
 	if len(changes) != 0 {
@@ -398,8 +433,24 @@ func resolveTransactionStartCode(
 			return transactionStartCode{}, false, Permanent(err)
 		}
 		var priorHashBytes, priorCode []byte
-		priorErr := tx.QueryRowContext(ctx, dbgen.EnrichInlineResolveTransactionStartCodeStatement2, job.ChainID, address[:], strconv.FormatUint(job.BlockNumber, 10)).Scan(&priorHashBytes, &priorCode)
-		if priorErr != nil && !errors.Is(priorErr, sql.ErrNoRows) {
+		priorErr := func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(job.ChainID); err != nil {
+				return err
+			}
+			var queryValue1 pgtype.Numeric
+			if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+				return err
+			}
+			queryRow, err := dbgen.New(tx).EnrichInlineResolveTransactionStartCodeStatement2(ctx, queryValue0, address[:], queryValue1)
+			if err != nil {
+				return err
+			}
+			priorHashBytes = queryRow.CodeHash
+			priorCode = queryRow.Code
+			return nil
+		}()
+		if priorErr != nil && !errors.Is(priorErr, pgx.ErrNoRows) {
 			return transactionStartCode{}, false, fmt.Errorf("query prior canonical code observation: %w", priorErr)
 		}
 		if priorErr == nil {
@@ -415,8 +466,24 @@ func resolveTransactionStartCode(
 	}
 
 	var codeHashBytes, code []byte
-	err = tx.QueryRowContext(ctx, dbgen.EnrichInlineResolveTransactionStartCodeStatement3, job.ChainID, address[:], strconv.FormatUint(job.BlockNumber, 10)).Scan(&codeHashBytes, &code)
-	if errors.Is(err, sql.ErrNoRows) {
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).EnrichInlineResolveTransactionStartCodeStatement3(ctx, queryValue0, address[:], queryValue1)
+		if err != nil {
+			return err
+		}
+		codeHashBytes = queryRow.CodeHash
+		code = queryRow.Code
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return transactionStartCode{}, false, nil
 	}
 	if err != nil {
@@ -456,7 +523,7 @@ func codeAtTransactionStart(
 	return atTransactionStart, nil
 }
 
-func decodeHistoricalCode(value sql.NullString) ([]byte, error) {
+func decodeHistoricalCode(value pgtype.Text) ([]byte, error) {
 	if !value.Valid {
 		return []byte{}, nil
 	}
@@ -469,15 +536,27 @@ func decodeHistoricalCode(value sql.NullString) ([]byte, error) {
 
 func persistEffectiveTransactionExecutions(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	job Job,
 	executions []effectiveTransactionExecution,
 ) error {
-	if _, err := tx.ExecContext(ctx, dbgen.EnrichInlinePersistEffectiveTransactionExecutionsStatement1, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(job.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+			return err
+		}
+		return dbgen.New(tx).EnrichInlinePersistEffectiveTransactionExecutionsStatement1(ctx, queryValue0, queryValue1, job.BlockHash[:])
+	}(); err != nil {
 		return fmt.Errorf("clear effective transaction execution identities: %w", err)
 	}
 	for _, execution := range executions {
-		var executionAddress, executionCodeHash, rootTracePath any
+		var executionAddress []byte
+		var executionCodeHash []byte
+		var rootTracePath *string
 		if execution.executionAddress != nil {
 			executionAddress = execution.executionAddress[:]
 		}
@@ -485,13 +564,22 @@ func persistEffectiveTransactionExecutions(
 			executionCodeHash = execution.executionCodeHash[:]
 		}
 		if execution.rootTracePath != nil {
-			rootTracePath = *execution.rootTracePath
+			rootTracePath = new(*execution.rootTracePath)
 		}
-		if _, err := tx.ExecContext(ctx, dbgen.EnrichInlinePersistEffectiveTransactionExecutionsStatement2, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-			execution.transactionHash[:], execution.transactionIndex,
-			execution.contextAddress[:], executionAddress, executionCodeHash,
-			execution.resolution, execution.evidenceSource, rootTracePath,
-		); err != nil {
+		if err := func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(job.ChainID); err != nil {
+				return err
+			}
+			var queryValue1 pgtype.Numeric
+			if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
+				return err
+			}
+			if execution.transactionIndex > 9223372036854775807 {
+				return errors.New("invalid stored query value")
+			}
+			return dbgen.New(tx).EnrichInlinePersistEffectiveTransactionExecutionsStatement2(ctx, dbgen.EnrichInlinePersistEffectiveTransactionExecutionsStatement2Params{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: job.BlockHash[:], TransactionHash: execution.transactionHash[:], TransactionIndex: int64(execution.transactionIndex), ContextAddress: execution.contextAddress[:], ExecutionAddress: executionAddress, ExecutionCodeHash: executionCodeHash, Resolution: pgtype.Text{String: execution.resolution, Valid: true}, EvidenceSource: execution.evidenceSource, RootTracePath: rootTracePath})
+		}(); err != nil {
 			return fmt.Errorf("persist effective transaction execution identity: %w", err)
 		}
 	}

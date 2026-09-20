@@ -37,7 +37,7 @@ Use `--profile distributed` for one process per role; add
 ### Full-stack Preview
 
 Preview includes a local Geth development chain, all six application roles,
-public contract verification, and NFT metadata:
+public contract verification, and a local Kubo HTTPS gateway for NFT metadata:
 
 ```sh
 make preview-cert
@@ -52,7 +52,9 @@ permission-restricted Node 26.9.0 SEA subprocess.
 Use `make recreate-preview` to rebuild application roles while preserving data
 and the compiler cache. **`make stop-preview` deletes Preview and all its
 volumes.** See [Preview setup and lifecycle](deploy/README.md#full-stack-preview)
-for prerequisites, compiler details, and endpoint overrides.
+for prerequisites, compiler details, and endpoint overrides. The
+[IPFS file tool](docs/operations.md#ipfs-file-tool) uploads and downloads single
+files through the loopback Kubo API.
 
 ## Development
 

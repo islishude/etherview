@@ -1,12 +1,12 @@
--- name: EnrichInlineAuthenticateCloneCreationStatement1 :many
+-- name: EnrichInlineAuthenticateCloneCreationStatement1 :one
 SELECT trace.input, trace.output
 		FROM normalized_traces AS trace
 		JOIN canonical_blocks AS canonical
 		  ON canonical.chain_id = trace.chain_id
 		 AND canonical.number = trace.block_number
 		 AND canonical.block_hash = trace.block_hash
-		WHERE trace.chain_id = $1::numeric
-		  AND trace.created_address = $2
+		WHERE trace.chain_id = sqlc.arg('chain_id')::numeric
+		  AND trace.created_address = sqlc.arg('created_address')
 		  AND trace.call_type IN ('CREATE', 'CREATE2')
 		  AND NOT trace.reverted
 		  AND trace.canonical
@@ -15,16 +15,16 @@ SELECT trace.input, trace.output
 		      FROM published_block_stage_results AS published
 		      WHERE published.chain_id = trace.chain_id
 		        AND published.block_hash = trace.block_hash
-		        AND published.stage = $4
-		        AND published.stage_version = $5
+		        AND published.stage = sqlc.arg('stage')
+		        AND published.stage_version = sqlc.arg('stage_version')
 		        AND published.state = 'complete'
 		  )
-		  AND trace.block_number <= $3::numeric
+		  AND trace.block_number <= sqlc.arg('max_block_number')::numeric
 		ORDER BY trace.block_number DESC, trace.transaction_index DESC,
 		         trace.trace_path DESC
 		LIMIT 1;
 
--- name: EnrichInlineDiamondHistoryCoverageCompleteStatement1 :many
+-- name: EnrichInlineDiamondHistoryCoverageCompleteStatement1 :one
 WITH first_cut AS (
 		    SELECT event.block_number, event.block_hash
 		    FROM diamond_cut_events AS event
@@ -32,13 +32,13 @@ WITH first_cut AS (
 		      ON canonical.chain_id = event.chain_id
 		     AND canonical.number = event.block_number
 		     AND canonical.block_hash = event.block_hash
-		    WHERE event.chain_id = $1::numeric
-		      AND event.diamond_address = $2
-		      AND event.block_number <= $3::numeric
-		      AND event.stage_version = $5
+		    WHERE event.chain_id = sqlc.arg('chain_id')::numeric
+		      AND event.diamond_address = sqlc.arg('diamond_address')
+		      AND event.block_number <= sqlc.arg('max_block_number')::numeric
+		      AND event.stage_version = sqlc.arg('stage_version')
 		      AND event.canonical
 		      AND (
-		          event.block_hash = $4 OR EXISTS (
+		          event.block_hash = sqlc.arg('target_end_hash') OR EXISTS (
 		              SELECT 1
 		              FROM published_block_stage_results AS published
 		              WHERE published.chain_id = event.chain_id
@@ -55,11 +55,11 @@ WITH first_cut AS (
 		    SELECT EXISTS (
 		        SELECT 1
 		        FROM receipts AS receipt
-		        WHERE receipt.chain_id = $1::numeric
+		        WHERE receipt.chain_id = sqlc.arg('chain_id')::numeric
 		          AND receipt.block_number = first_cut.block_number
 		          AND receipt.block_hash = first_cut.block_hash
 		          AND lower(receipt.raw->>'contractAddress') =
-		              lower('0x' || encode($2, 'hex'))
+		              lower('0x' || encode(sqlc.arg('diamond_address'), 'hex'))
 		        UNION ALL
 		        SELECT 1
 		        FROM normalized_traces AS trace
@@ -70,26 +70,27 @@ WITH first_cut AS (
 		         AND published.stage = 'trace'
 		         AND published.stage_version = 2
 		         AND published.state = 'complete'
-		        WHERE trace.chain_id = $1::numeric
+		        WHERE trace.chain_id = sqlc.arg('chain_id')::numeric
 		          AND trace.block_number = first_cut.block_number
 		          AND trace.block_hash = first_cut.block_hash
-		          AND trace.created_address = $2
+		          AND trace.created_address = sqlc.arg('diamond_address')
 		          AND trace.call_type IN ('CREATE', 'CREATE2')
 		          AND NOT trace.reverted
 		          AND trace.canonical
 		    ) AS at_first_cut
 		    FROM first_cut
 		)
-		SELECT COALESCE(
+		SELECT
+(COALESCE(
 		    created.at_first_cut AND proxy_interaction_coverage_contains(
-		        $1::numeric, first_cut.block_number, first_cut.block_hash,
-		        $3::numeric, $4
+		        sqlc.arg('chain_id')::numeric, first_cut.block_number, first_cut.block_hash,
+		        sqlc.arg('max_block_number')::numeric, sqlc.arg('target_end_hash')
 		    ), FALSE
-		)
-		FROM first_cut
+		))::boolean AS complete
+FROM first_cut
 		JOIN created ON TRUE;
 
--- name: EnrichInlineHasCanonicalCodeHistoryStatement1 :many
+-- name: EnrichInlineHasCanonicalCodeHistoryStatement1 :one
 SELECT EXISTS (
 		    SELECT 1
 		    FROM contract_code_observations AS code
@@ -97,19 +98,19 @@ SELECT EXISTS (
 		      ON canonical.chain_id = code.chain_id
 		     AND canonical.number = code.block_number
 		     AND canonical.block_hash = code.block_hash
-		    WHERE code.chain_id = $1::numeric AND code.address = $2
-		      AND code.block_number <= $3::numeric AND code.canonical
+		    WHERE code.chain_id = sqlc.arg('chain_id')::numeric AND code.address = sqlc.arg('address')
+		      AND code.block_number <= sqlc.arg('max_block_number')::numeric AND code.canonical
 		);
 
--- name: EnrichInlineHasVerifiedDiamondLoupeABIStatement1 :many
+-- name: EnrichInlineHasVerifiedDiamondLoupeABIStatement1 :one
 SELECT EXISTS (
 			SELECT 1
 			FROM verified_contracts AS verified
-			WHERE verified.chain_id = $1::numeric
-			  AND verified.address = $2
+			WHERE verified.chain_id = sqlc.arg('chain_id')::numeric
+			  AND verified.address = sqlc.arg('address')
 			  AND verified.abi IS NOT NULL
-			  AND verified.valid_from_block <= $3::numeric
-			  AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= $3::numeric)
+			  AND verified.valid_from_block <= sqlc.arg('max_valid_from_block')::numeric
+			  AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= sqlc.arg('max_valid_from_block')::numeric)
 			  AND verified.abi @> '[{"type":"function","name":"facets","inputs":[]}]'::jsonb
 			  AND verified.abi @> '[{"type":"function","name":"facetAddresses","inputs":[]}]'::jsonb
 			  AND verified.abi @> '[{"type":"function","name":"facetFunctionSelectors","inputs":[{"type":"address"}]}]'::jsonb
@@ -140,9 +141,9 @@ SELECT DISTINCT ON (trace.transaction_hash, trace.trace_path)
 		 AND result.request_digest = verified.request_digest
 		 AND result.outcome_kind = 'verification_success'
 		 AND result.outcome->'creation_match'->>'match_type' = 'full'
-		WHERE trace.chain_id = $1::numeric
-		  AND trace.block_number = $2::numeric
-		  AND trace.block_hash = $3
+		WHERE trace.chain_id = sqlc.arg('chain_id')::numeric
+		  AND trace.block_number = sqlc.arg('block_number')::numeric
+		  AND trace.block_hash = sqlc.arg('block_hash')
 		  AND trace.call_type IN ('CREATE', 'CREATE2')
 		  AND trace.created_address IS NOT NULL
 		  AND NOT trace.reverted
@@ -165,20 +166,20 @@ SELECT log.log_index, log.tx_hash, log.address, log.raw,
 		     FROM published_block_stage_results AS published
 		     WHERE published.chain_id = attribution.chain_id
 		       AND published.block_hash = attribution.block_hash
-		       AND published.stage = $4
-		       AND published.stage_version = $5
+		       AND published.stage = sqlc.arg('stage')
+		       AND published.stage_version = sqlc.arg('stage_version')
 		       AND published.state = 'complete'
 		 )
-		WHERE log.chain_id = $1::numeric AND log.block_number = $2::numeric AND log.block_hash = $3
+		WHERE log.chain_id = sqlc.arg('chain_id')::numeric AND log.block_number = sqlc.arg('block_number')::numeric AND log.block_hash = sqlc.arg('block_hash')
 		ORDER BY log.log_index;
 
 -- name: EnrichInlineLoadABITracesStatement1 :many
 SELECT transaction_hash, transaction_index, trace_path, execution_address,
 		       execution_code_hash, input, output, direct_reverted
 		FROM normalized_traces AS trace
-		WHERE trace.chain_id = $1::numeric
-		  AND trace.block_number = $2::numeric
-		  AND trace.block_hash = $3
+		WHERE trace.chain_id = sqlc.arg('chain_id')::numeric
+		  AND trace.block_number = sqlc.arg('block_number')::numeric
+		  AND trace.block_hash = sqlc.arg('block_hash')
 		  AND trace.canonical
 		  AND trace.execution_address IS NOT NULL
 		  AND trace.execution_resolution IN ('direct', 'eip7702_delegate', 'unavailable')
@@ -187,8 +188,8 @@ SELECT transaction_hash, transaction_index, trace_path, execution_address,
 		      FROM published_block_stage_results AS published
 		      WHERE published.chain_id = trace.chain_id
 		        AND published.block_hash = trace.block_hash
-		        AND published.stage = $4
-		        AND published.stage_version = $5
+		        AND published.stage = sqlc.arg('stage')
+		        AND published.stage_version = sqlc.arg('stage_version')
 		        AND published.state = 'complete'
 		  )
 		ORDER BY transaction_index, trace_path;
@@ -205,13 +206,13 @@ SELECT change.selector, change.action, change.facet_address
 		  ON canonical.chain_id = event.chain_id
 		 AND canonical.number = event.block_number
 		 AND canonical.block_hash = event.block_hash
-		WHERE event.chain_id = $1::numeric
-		  AND event.diamond_address = $2
-		  AND event.block_number <= $3::numeric
+		WHERE event.chain_id = sqlc.arg('chain_id')::numeric
+		  AND event.diamond_address = sqlc.arg('diamond_address')
+		  AND event.block_number <= sqlc.arg('max_block_number')::numeric
 		  AND event.canonical
-		  AND event.stage_version = $5
+		  AND event.stage_version = sqlc.arg('stage_version')
 		  AND (
-		      event.block_hash = $4 OR EXISTS (
+		      event.block_hash = sqlc.arg('block_hash') OR EXISTS (
 		          SELECT 1
 		          FROM published_block_stage_results AS published
 		          WHERE published.chain_id = event.chain_id
@@ -224,7 +225,7 @@ SELECT change.selector, change.action, change.facet_address
 		  )
 		ORDER BY event.block_number, event.transaction_index, event.log_index,
 		         change.cut_index, change.selector_index
-		LIMIT $6;
+		LIMIT sqlc.arg('limit');
 
 -- name: EnrichInlineLoadDiamondAuxiliaryABIBindingsStatement1 :many
 WITH selected_snapshots AS (
@@ -234,9 +235,9 @@ WITH selected_snapshots AS (
 		       ON canonical.chain_id = snapshot.chain_id
 		      AND canonical.number = snapshot.block_number
 		      AND canonical.block_hash = snapshot.block_hash
-		     WHERE snapshot.chain_id = $1::numeric
-		       AND snapshot.diamond_address = $2
-		       AND snapshot.block_number <= $3::numeric
+		     WHERE snapshot.chain_id = sqlc.arg('chain_id')::numeric
+		       AND snapshot.diamond_address = sqlc.arg('diamond_address')
+		       AND snapshot.block_number <= sqlc.arg('max_block_number')::numeric
 		       AND snapshot.detection_state = 'confirmed'
 		       AND snapshot.completeness = 'complete'
 		       AND snapshot.canonical
@@ -249,9 +250,9 @@ WITH selected_snapshots AS (
 		       ON canonical.chain_id = snapshot.chain_id
 		      AND canonical.number = snapshot.block_number
 		      AND canonical.block_hash = snapshot.block_hash
-		     WHERE snapshot.chain_id = $1::numeric
-		       AND snapshot.diamond_address = $2
-		       AND snapshot.block_number < $3::numeric
+		     WHERE snapshot.chain_id = sqlc.arg('chain_id')::numeric
+		       AND snapshot.diamond_address = sqlc.arg('diamond_address')
+		       AND snapshot.block_number < sqlc.arg('max_block_number')::numeric
 		       AND snapshot.detection_state = 'confirmed'
 		       AND snapshot.completeness = 'complete'
 		       AND snapshot.canonical
@@ -272,20 +273,20 @@ WITH selected_snapshots AS (
 		     AND change.block_hash = event.block_hash
 		     AND change.log_index = event.log_index
 		     AND change.stage_version = event.stage_version
-		    WHERE event.chain_id = $1::numeric
-		      AND event.block_hash = $4
-		      AND event.diamond_address = $2
+		    WHERE event.chain_id = sqlc.arg('chain_id')::numeric
+		      AND event.block_hash = sqlc.arg('block_hash')
+		      AND event.diamond_address = sqlc.arg('diamond_address')
 		      AND event.canonical
-		      AND event.stage_version = $5
+		      AND event.stage_version = sqlc.arg('stage_version')
 		      AND change.action IN (0, 1)
 		      AND change.facet_address <> decode(repeat('00', 20), 'hex')
 		)
 		SELECT facet_address
 		FROM candidates
 		ORDER BY facet_address
-		LIMIT $6;
+		LIMIT sqlc.arg('limit');
 
--- name: EnrichInlineLoadDiamondFacetCodeHashStatement1 :many
+-- name: EnrichInlineLoadDiamondFacetCodeHashStatement1 :one
 SELECT facet.code_hash
 		FROM published_diamond_loupe_snapshots AS snapshot
 		JOIN canonical_blocks AS canonical
@@ -294,12 +295,12 @@ SELECT facet.code_hash
 		 AND canonical.block_hash = snapshot.block_hash
 		JOIN diamond_loupe_facets AS facet
 		  ON facet.snapshot_id = snapshot.id
-		WHERE snapshot.chain_id = $1::numeric
-		  AND snapshot.diamond_address = $2
-		  AND snapshot.block_number <= $3::numeric
+		WHERE snapshot.chain_id = sqlc.arg('chain_id')::numeric
+		  AND snapshot.diamond_address = sqlc.arg('diamond_address')
+		  AND snapshot.block_number <= sqlc.arg('max_block_number')::numeric
 		  AND snapshot.detection_state = 'confirmed'
 		  AND snapshot.canonical
-		  AND facet.facet_address = $4
+		  AND facet.facet_address = sqlc.arg('facet_address')
 		  AND facet.facet_kind = 'facet'
 		  AND facet.code_exists
 		  AND facet.code_hash IS NOT NULL
@@ -328,8 +329,8 @@ SELECT inclusion.tx_hash, inclusion.tx_index, inclusion.raw,
 		     WHERE published.chain_id = resolution.chain_id
 		       AND published.block_number = resolution.block_number
 		       AND published.block_hash = resolution.block_hash
-		       AND published.stage = $4
-		       AND published.stage_version = $5
+		       AND published.stage = sqlc.arg('stage')
+		       AND published.stage_version = sqlc.arg('stage_version')
 		       AND published.state = 'complete'
 		 )
 		LEFT JOIN normalized_traces AS root
@@ -345,13 +346,13 @@ SELECT inclusion.tx_hash, inclusion.tx_index, inclusion.raw,
 		     WHERE published.chain_id = root.chain_id
 		       AND published.block_number = root.block_number
 		       AND published.block_hash = root.block_hash
-		       AND published.stage = $6
-		       AND published.stage_version = $7
+		       AND published.stage = sqlc.arg('stage_2')
+		       AND published.stage_version = sqlc.arg('stage_version_2')
 		       AND published.state = 'complete'
 		 )
-		WHERE inclusion.chain_id = $1::numeric
-		  AND inclusion.block_number = $2::numeric
-		  AND inclusion.block_hash = $3
+		WHERE inclusion.chain_id = sqlc.arg('chain_id')::numeric
+		  AND inclusion.block_number = sqlc.arg('block_number')::numeric
+		  AND inclusion.block_hash = sqlc.arg('block_hash')
 		ORDER BY inclusion.tx_index;
 
 -- name: EnrichInlineLoadGenesisCandidatesStatement1 :many
@@ -361,18 +362,20 @@ SELECT account.address
 		  ON imported.chain_id = account.chain_id
 		 AND imported.block_hash = account.block_hash
 		 AND imported.state = 'complete'
-		WHERE account.chain_id = $1::numeric
-		  AND account.block_hash = $2
+		WHERE account.chain_id = sqlc.arg('chain_id')::text::numeric
+		  AND account.block_hash = sqlc.arg('block_hash')::bytea
 		  AND octet_length(account.code) > 0
-		ORDER BY account.address;
+AND (NOT sqlc.arg('has_cursor')::boolean OR account.address > sqlc.arg('after_address')::bytea)
+ORDER BY account.address
+LIMIT sqlc.arg('page_limit')::integer;
 
 -- name: EnrichInlineLoadLogCandidatesStatement1 :many
 SELECT log_index, tx_hash, address, topic0, raw
 		FROM logs
-		WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
+		WHERE chain_id = sqlc.arg('chain_id')::numeric AND block_number = sqlc.arg('block_number')::numeric AND block_hash = sqlc.arg('block_hash')
 		ORDER BY log_index;
 
--- name: EnrichInlineLoadProxyABIBindingStatement1 :many
+-- name: EnrichInlineLoadProxyABIBindingStatement1 :one
 WITH published_proxy_candidates AS (
 		    SELECT observation.*, generation.id AS observation_generation_id,
 		           generation.durable_job_id, generation.job_generation
@@ -394,13 +397,13 @@ WITH published_proxy_candidates AS (
 		     AND published.durable_job_id = generation.durable_job_id
 		     AND published.job_generation = generation.job_generation
 		     AND published.state = 'complete'
-		    WHERE observation.chain_id = $1::numeric
-			      AND observation.proxy_address = $2::bytea
-			      AND observation.proxy_code_hash = $3::bytea
-		      AND observation.stage_version = $6
+		    WHERE observation.chain_id = sqlc.arg('chain_id')::numeric
+			      AND observation.proxy_address = sqlc.arg('proxy_address')::bytea
+			      AND observation.proxy_code_hash = sqlc.arg('proxy_code_hash')::bytea
+		      AND observation.stage_version = sqlc.arg('stage_version')
 		      AND observation.canonical
 		      AND observation.confidence IN ('verified', 'high')
-		      AND observation.block_number <= $4::numeric
+		      AND observation.block_number <= sqlc.arg('max_block_number')::numeric
 		), resolved_candidates AS (
 		    SELECT raw.*, resolution.id AS artifact_resolution_id,
 		           resolution.proxy_kind AS resolved_kind,
@@ -440,7 +443,7 @@ WITH published_proxy_candidates AS (
 		        resolution.id IS NOT NULL
 		        AND (
 		            resolution.proxy_pattern = 'beacon'
-			            OR (raw.block_number = $4::numeric AND raw.block_hash = $5::bytea)
+			            OR (raw.block_number = sqlc.arg('max_block_number')::numeric AND raw.block_hash = sqlc.arg('block_hash')::bytea)
 		        )
 		    ) OR (
 		        resolution.id IS NULL
@@ -449,8 +452,8 @@ WITH published_proxy_candidates AS (
 		        AND raw.evidence_state = 'generic'
 		        AND raw.beacon_address IS NULL
 		        AND raw.beacon_code_hash IS NULL
-		        AND raw.block_number = $4::numeric
-			        AND raw.block_hash = $5::bytea
+		        AND raw.block_number = sqlc.arg('max_block_number')::numeric
+			        AND raw.block_hash = sqlc.arg('block_hash')::bytea
 		        AND raw.implementation_address IS NOT NULL
 		        AND raw.implementation_code_hash IS NOT NULL
 		    )
@@ -496,29 +499,30 @@ WITH published_proxy_candidates AS (
 		     AND published.job_generation = generation.job_generation
 		     AND published.state = 'complete'
 		    WHERE proxy.effective_pattern = 'beacon'
-		      AND observation.stage_version = $6
+		      AND observation.stage_version = sqlc.arg('stage_version')
 		      AND observation.canonical
 		      AND observation.confidence IN ('verified', 'high')
-		      AND observation.block_number <= $4::numeric
+		      AND observation.block_number <= sqlc.arg('max_block_number')::numeric
 		    ORDER BY observation.block_number DESC, generation.id DESC
 		    LIMIT 1
 		)
-		SELECT CASE WHEN proxy.effective_pattern = 'beacon'
+		SELECT
+(CASE WHEN proxy.effective_pattern = 'beacon'
 		                   THEN beacon.implementation_address
-		                   ELSE proxy.effective_implementation END,
-		       CASE WHEN proxy.effective_pattern = 'beacon'
+		                   ELSE proxy.effective_implementation END)::bytea AS implementation_address,
+(CASE WHEN proxy.effective_pattern = 'beacon'
 		                   THEN beacon.implementation_code_hash
-		                   ELSE proxy.effective_implementation_hash END,
-		       (proxy.proxy_kind = 'cwia'
+		                   ELSE proxy.effective_implementation_hash END)::bytea AS implementation_code_hash,
+(proxy.proxy_kind = 'cwia'
 		        AND proxy.effective_pattern = 'clone'
-		        AND proxy.evidence_state = 'exact')::boolean
-		FROM selected_proxy AS proxy
+		        AND proxy.evidence_state = 'exact')::boolean AS exact_cwia_evidence
+FROM selected_proxy AS proxy
 		LEFT JOIN published_beacon AS beacon
 		  ON proxy.effective_pattern = 'beacon'
 		WHERE proxy.effective_pattern <> 'beacon'
 		   OR beacon.implementation_address IS NOT NULL;
 
--- name: EnrichInlineLoadProxyArtifactStatement1 :many
+-- name: EnrichInlineLoadProxyArtifactStatement1 :one
 SELECT artifact.artifact_kind, artifact.standard_version,
 		       artifact.runtime_immutable_address,
 		       artifact.verification_job_id::text
@@ -530,86 +534,86 @@ SELECT artifact.artifact_kind, artifact.standard_version,
 		 AND verified.valid_from_block = artifact.valid_from_block
 		 AND verified.verification_job_id = artifact.verification_job_id
 		 AND verified.request_digest = artifact.request_digest
-		WHERE artifact.chain_id = $1::numeric
-		  AND artifact.address = $2
-		  AND artifact.code_hash = $3
-		  AND artifact.valid_from_block <= $4::numeric
-		  AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= $4::numeric)
+		WHERE artifact.chain_id = sqlc.arg('chain_id')::numeric
+		  AND artifact.address = sqlc.arg('address')
+		  AND artifact.code_hash = sqlc.arg('code_hash')
+		  AND artifact.valid_from_block <= sqlc.arg('max_valid_from_block')::numeric
+		  AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= sqlc.arg('max_valid_from_block')::numeric)
 		ORDER BY artifact.valid_from_block DESC, artifact.verification_job_id
 		LIMIT 1;
 
 -- name: EnrichInlineLoadProxyCoverageDetailsStatement1 :many
 SELECT stage, stage_version, state, durable_job_id, job_generation
 		FROM published_block_stage_results
-		WHERE chain_id = $1::numeric
-		  AND block_hash = $2
-		  AND ((stage = $3 AND stage_version = $4) OR
-		       (stage = $5 AND stage_version = $6))
+		WHERE chain_id = sqlc.arg('chain_id')::numeric
+		  AND block_hash = sqlc.arg('block_hash')
+		  AND ((stage = sqlc.arg('stage') AND stage_version = sqlc.arg('stage_version')) OR
+		       (stage = sqlc.arg('stage_2') AND stage_version = sqlc.arg('stage_version_2')))
 		ORDER BY stage, stage_version;
 
 -- name: EnrichInlineLoadReceiptCandidatesStatement1 :many
 SELECT tx_index, tx_hash, raw
 		FROM receipts
-		WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
+		WHERE chain_id = sqlc.arg('chain_id')::numeric AND block_number = sqlc.arg('block_number')::numeric AND block_hash = sqlc.arg('block_hash')
 		ORDER BY tx_index;
 
--- name: EnrichInlineLoadSameCodeABIBindingStatement1 :many
+-- name: EnrichInlineLoadSameCodeABIBindingStatement1 :one
 SELECT address, abi
 		FROM verified_contracts
-		WHERE chain_id = $1::numeric
-		  AND code_hash = $2
+		WHERE chain_id = sqlc.arg('chain_id')::numeric
+		  AND code_hash = sqlc.arg('code_hash')
 		  AND abi IS NOT NULL
-		  AND (address <> $3 OR valid_from_block > $4::numeric OR
-		       (valid_to_block IS NOT NULL AND valid_to_block < $4::numeric))
-		ORDER BY (match_type = 'full') DESC, (address = $3) DESC, created_at DESC,
+		  AND (address <> sqlc.arg('address') OR valid_from_block > sqlc.arg('min_valid_from_block')::numeric OR
+		       (valid_to_block IS NOT NULL AND valid_to_block < sqlc.arg('min_valid_from_block')::numeric))
+		ORDER BY (match_type = 'full') DESC, (address = sqlc.arg('address')) DESC, created_at DESC,
 		         request_digest ASC, verification_job_id ASC, address
 		LIMIT 1;
 
 -- name: EnrichInlineLoadSignatureABIBindingStatement1 :many
 SELECT signature, abi_entry
 			FROM abi_signature_candidates
-			WHERE kind = $1 AND identifier = $2
-			  AND octet_length(signature) <= $3
-			  AND octet_length(abi_entry::text) <= $4
+			WHERE kind = sqlc.arg('kind') AND identifier = sqlc.arg('identifier')
+			  AND octet_length(signature) <= sqlc.arg('max_signature_bytes')::integer
+			  AND octet_length(abi_entry::text) <= sqlc.arg('max_abi_bytes')::integer
 			ORDER BY signature
-			LIMIT $5;
+			LIMIT sqlc.arg('limit');
 
 -- name: EnrichInlineLoadStateDiffCandidatesStatement1 :many
 SELECT DISTINCT address
 		FROM transaction_state_changes AS change
-		WHERE change.chain_id = $1::numeric
-		  AND change.block_number = $2::numeric
-		  AND change.block_hash = $3
+		WHERE change.chain_id = sqlc.arg('chain_id')::numeric
+		  AND change.block_number = sqlc.arg('block_number')::numeric
+		  AND change.block_hash = sqlc.arg('block_hash')
 		  AND change.canonical
 		  AND EXISTS (
 		      SELECT 1
 		      FROM published_block_stage_results AS published
 		      WHERE published.chain_id = change.chain_id
 		        AND published.block_hash = change.block_hash
-		        AND published.stage = $7
-		        AND published.stage_version = $8
+		        AND published.stage = sqlc.arg('stage')
+		        AND published.stage_version = sqlc.arg('stage_version')
 		        AND published.state = 'complete'
 		  )
 		  AND (
 		      change.field_kind = 'code'
-		      OR (change.field_kind = 'storage' AND change.storage_key IN ($4, $5, $6))
+		      OR (change.field_kind = 'storage' AND change.storage_key IN (sqlc.arg('storage_key'), sqlc.arg('storage_key_2'), sqlc.arg('storage_key_3')))
 		  )
 		ORDER BY change.address;
 
 -- name: EnrichInlineLoadTraceCandidatesStatement1 :many
 SELECT call_type, from_address, to_address, created_address, reverted
 		FROM normalized_traces AS trace
-		WHERE trace.chain_id = $1::numeric
-		  AND trace.block_number = $2::numeric
-		  AND trace.block_hash = $3
+		WHERE trace.chain_id = sqlc.arg('chain_id')::numeric
+		  AND trace.block_number = sqlc.arg('block_number')::numeric
+		  AND trace.block_hash = sqlc.arg('block_hash')
 		  AND trace.canonical
 		  AND EXISTS (
 		      SELECT 1
 		      FROM published_block_stage_results AS published
 		      WHERE published.chain_id = trace.chain_id
 		        AND published.block_hash = trace.block_hash
-		        AND published.stage = $4
-		        AND published.stage_version = $5
+		        AND published.stage = sqlc.arg('stage')
+		        AND published.stage_version = sqlc.arg('stage_version')
 		        AND published.state = 'complete'
 		  )
 		ORDER BY transaction_index, trace_path;
@@ -617,16 +621,16 @@ SELECT call_type, from_address, to_address, created_address, reverted
 -- name: EnrichInlineLoadTransactionCandidatesStatement1 :many
 SELECT tx_hash, raw
 		FROM transaction_inclusions
-		WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
+		WHERE chain_id = sqlc.arg('chain_id')::numeric AND block_number = sqlc.arg('block_number')::numeric AND block_hash = sqlc.arg('block_hash')
 		ORDER BY tx_index;
 
--- name: EnrichInlineLoadVerifiedABIBindingStatement1 :many
-SELECT abi, valid_from_block::text, valid_to_block::text
+-- name: EnrichInlineLoadVerifiedABIBindingStatement1 :one
+SELECT abi, valid_from_block::text, valid_to_block
 		FROM verified_contracts
-		WHERE chain_id = $1::numeric AND address = $2 AND code_hash = $3
+		WHERE chain_id = sqlc.arg('chain_id')::numeric AND address = sqlc.arg('address') AND code_hash = sqlc.arg('code_hash')
 		  AND abi IS NOT NULL
-		  AND valid_from_block <= $4::numeric
-		  AND (valid_to_block IS NULL OR valid_to_block >= $4::numeric)
+		  AND valid_from_block <= sqlc.arg('max_valid_from_block')::numeric
+		  AND (valid_to_block IS NULL OR valid_to_block >= sqlc.arg('max_valid_from_block')::numeric)
 		ORDER BY (match_type = 'full') DESC, valid_from_block DESC,
 		         request_digest ASC, verification_job_id ASC
 		LIMIT 1;
@@ -637,8 +641,8 @@ INSERT INTO contract_abis (
 			valid_from_block, valid_to_block, block_number, block_hash,
 			source_address, source_code_hash, selector_scope, canonical
 		) VALUES (
-			$1::numeric, $2, $3, $4, $5, $6::jsonb,
-			$7::numeric, $8::numeric, $9::numeric, $10, $11, $12, $13, TRUE
+			sqlc.arg('chain_id')::numeric, sqlc.arg('address'), sqlc.arg('code_hash'), sqlc.arg('source'), sqlc.arg('confidence'), sqlc.arg('abi')::jsonb,
+			sqlc.arg('valid_from_block')::numeric, sqlc.narg('valid_to_block')::numeric, sqlc.arg('block_number')::numeric, sqlc.arg('block_hash'), sqlc.arg('source_address'), sqlc.arg('source_code_hash'), sqlc.arg('selector_scope'), TRUE
 		)
 		ON CONFLICT (
 			chain_id, address, code_hash, source, source_address,
@@ -661,23 +665,23 @@ INSERT INTO abi_decodings (
 			arguments, candidates, warning, return_status, return_arguments,
 			decoding_kind, canonical
 		) VALUES (
-			$1::numeric, $2::numeric, $3, $4, $5, $6, $7, $8, $9, $10,
-			$11, $12, $13, $14, $15, $16::jsonb, $17::jsonb, $18,
-			$19, $20::jsonb, $21, TRUE
+			sqlc.arg('chain_id')::numeric, sqlc.arg('block_number')::numeric, sqlc.arg('block_hash'), sqlc.arg('object_kind'), sqlc.arg('transaction_hash'), sqlc.arg('object_index'), sqlc.arg('target_address'), sqlc.arg('target_code_hash'), sqlc.arg('abi_kind'), sqlc.arg('status'),
+			sqlc.narg('signature'), sqlc.narg('source'), sqlc.narg('confidence'), sqlc.arg('source_address'), sqlc.arg('source_code_hash'), sqlc.arg('arguments')::jsonb, sqlc.arg('candidates')::jsonb, sqlc.arg('warning'),
+			sqlc.arg('return_status'), sqlc.arg('return_arguments')::jsonb, sqlc.arg('decoding_kind'), TRUE
 		);
 
--- name: EnrichInlinePersistDiamondCutRecordStatement1 :exec
+-- name: EnrichInlinePersistDiamondCutRecordStatement1 :execrows
 INSERT INTO diamond_cut_events AS current (
 		    chain_id, block_number, block_hash, transaction_hash,
 		    transaction_index, log_index, diamond_address, init_address,
 		    init_calldata, cuts, stage_version, canonical
 		)
-		SELECT $1::numeric, $2::numeric, $3, $4, $5::bigint, $6::bigint,
-		       $7, $8, $9, $10::jsonb, $11,
+		SELECT sqlc.arg('chain_id')::numeric, sqlc.arg('block_number')::numeric, sqlc.arg('block_hash'), sqlc.arg('transaction_hash'), sqlc.arg('transaction_index')::bigint, sqlc.arg('log_index')::bigint,
+		       sqlc.arg('diamond_address'), sqlc.arg('init_address'), sqlc.arg('init_calldata'), sqlc.arg('cuts')::jsonb, sqlc.arg('stage_version'),
 		       EXISTS (
 		           SELECT 1 FROM canonical_blocks
-		           WHERE chain_id = $1::numeric AND number = $2::numeric
-		             AND block_hash = $3
+		           WHERE chain_id = sqlc.arg('chain_id')::numeric AND number = sqlc.arg('block_number')::numeric
+		             AND block_hash = sqlc.arg('block_hash')
 		       )
 		ON CONFLICT (chain_id, block_hash, log_index, stage_version)
 		DO UPDATE SET canonical = EXCLUDED.canonical
@@ -689,12 +693,12 @@ INSERT INTO diamond_cut_events AS current (
 		  AND current.init_calldata = EXCLUDED.init_calldata
 		  AND current.cuts = EXCLUDED.cuts;
 
--- name: EnrichInlinePersistDiamondCutRecordStatement2 :exec
+-- name: EnrichInlinePersistDiamondCutRecordStatement2 :execrows
 INSERT INTO diamond_selector_changes AS current (
 				    chain_id, block_hash, log_index, stage_version,
 				    cut_index, selector_index, selector, action, facet_address
 				) VALUES (
-				    $1::numeric, $2, $3::bigint, $4, $5, $6, $7, $8, $9
+				    sqlc.arg('chain_id')::numeric, sqlc.arg('block_hash'), sqlc.arg('log_index')::bigint, sqlc.arg('stage_version'), sqlc.arg('cut_index'), sqlc.arg('selector_index'), sqlc.arg('selector'), sqlc.arg('action'), sqlc.arg('facet_address')
 				)
 				ON CONFLICT (
 				    chain_id, block_hash, log_index, stage_version,
@@ -704,21 +708,21 @@ INSERT INTO diamond_selector_changes AS current (
 				  AND current.action = EXCLUDED.action
 				  AND current.facet_address = EXCLUDED.facet_address;
 
--- name: EnrichInlinePersistDiamondDetectionSnapshotStatement1 :many
+-- name: EnrichInlinePersistDiamondDetectionSnapshotStatement1 :one
 INSERT INTO diamond_loupe_snapshots AS current (
 		    chain_id, diamond_address, block_number, block_hash, stage_version,
 		    detection_state, completeness, validation, standard_diamond_cut,
 		    standard_diamond_cut_facet, loupe_interface_reported, truncated,
 		    truncation_reason, warnings, canonical, durable_job_id, job_generation
 		)
-		SELECT $1::numeric, $2, $3::numeric, $4, $5, $6, $7, $8, $9,
-		       $10, $11, $12, $13, $14::jsonb,
+		SELECT sqlc.arg('chain_id')::numeric, sqlc.arg('diamond_address'), sqlc.arg('block_number')::numeric, sqlc.arg('block_hash'), sqlc.arg('stage_version'), sqlc.arg('detection_state'), sqlc.arg('completeness'), sqlc.arg('validation'), sqlc.arg('standard_diamond_cut'),
+		       sqlc.arg('standard_diamond_cut_facet'), sqlc.narg('loupe_interface_reported'), sqlc.arg('truncated'), sqlc.narg('truncation_reason'), sqlc.arg('warnings')::jsonb,
 		       EXISTS (
 		           SELECT 1 FROM canonical_blocks
-		           WHERE chain_id = $1::numeric AND number = $3::numeric
-		             AND block_hash = $4
+		           WHERE chain_id = sqlc.arg('chain_id')::numeric AND number = sqlc.arg('block_number')::numeric
+		             AND block_hash = sqlc.arg('block_hash')
 		       ),
-		       $15, $16::bigint
+		       sqlc.narg('durable_job_id'), sqlc.narg('job_generation')::bigint
 		ON CONFLICT (
 		    chain_id, diamond_address, block_hash, stage_version,
 		    durable_job_id, job_generation
@@ -738,7 +742,7 @@ INSERT INTO diamond_loupe_snapshots AS current (
 		  AND current.warnings = EXCLUDED.warnings
 		RETURNING id;
 
--- name: EnrichInlinePersistDiamondDetectionSnapshotStatement2 :exec
+-- name: EnrichInlinePersistDiamondDetectionSnapshotStatement2 :execrows
 INSERT INTO diamond_loupe_facets AS current (
 			    snapshot_id, facet_address, facet_kind, code_exists, code_hash
 			) VALUES ($1, $2, $3, $4, $5)
@@ -748,7 +752,7 @@ INSERT INTO diamond_loupe_facets AS current (
 			  AND current.code_exists = EXCLUDED.code_exists
 			  AND current.code_hash IS NOT DISTINCT FROM EXCLUDED.code_hash;
 
--- name: EnrichInlinePersistDiamondDetectionSnapshotStatement3 :exec
+-- name: EnrichInlinePersistDiamondDetectionSnapshotStatement3 :execrows
 INSERT INTO diamond_loupe_selectors AS current (
 				    snapshot_id, selector, facet_address
 				) VALUES ($1, $2, $3)
@@ -758,7 +762,7 @@ INSERT INTO diamond_loupe_selectors AS current (
 
 -- name: EnrichInlinePersistEffectiveTransactionExecutionsStatement1 :exec
 DELETE FROM transaction_effective_execution_identities
-		WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3;
+		WHERE chain_id = sqlc.arg('chain_id')::numeric AND block_number = sqlc.arg('block_number')::numeric AND block_hash = sqlc.arg('block_hash');
 
 -- name: EnrichInlinePersistEffectiveTransactionExecutionsStatement2 :exec
 INSERT INTO transaction_effective_execution_identities (
@@ -767,25 +771,25 @@ INSERT INTO transaction_effective_execution_identities (
 			    execution_code_hash, resolution, evidence_source,
 			    root_trace_path, canonical
 			) VALUES (
-			    $1::numeric, $2::numeric, $3, $4, $5, $6, $7, $8,
-			    $9, $10, $11, TRUE
+			    sqlc.arg('chain_id')::numeric, sqlc.arg('block_number')::numeric, sqlc.arg('block_hash'), sqlc.arg('transaction_hash'), sqlc.arg('transaction_index'), sqlc.arg('context_address'), sqlc.arg('execution_address'), sqlc.arg('execution_code_hash'),
+			    sqlc.arg('resolution'), sqlc.arg('evidence_source'), sqlc.narg('root_trace_path'), TRUE
 			);
 
 -- name: EnrichInlineProcessTxStatement1 :exec
 DELETE FROM abi_decodings
-		WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3;
+		WHERE chain_id = sqlc.arg('chain_id')::numeric AND block_number = sqlc.arg('block_number')::numeric AND block_hash = sqlc.arg('block_hash');
 
 -- name: EnrichInlineProcessTxStatement2 :exec
 DELETE FROM contract_abis
-		WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3;
+		WHERE chain_id = sqlc.arg('chain_id')::numeric AND block_number = sqlc.arg('block_number')::numeric AND block_hash = sqlc.arg('block_hash');
 
--- name: EnrichInlineProxyDependencyStateStatement1 :many
+-- name: EnrichInlineProxyDependencyStateStatement1 :one
 SELECT state
 		FROM published_block_stage_results
-		WHERE chain_id = $1::numeric AND block_hash = $2
-		  AND stage = $3 AND stage_version = $4;
+		WHERE chain_id = sqlc.arg('chain_id')::numeric AND block_hash = sqlc.arg('block_hash')
+		  AND stage = sqlc.arg('stage') AND stage_version = sqlc.arg('stage_version');
 
--- name: EnrichInlineProxyOrBeaconHistoryStatement1 :many
+-- name: EnrichInlineProxyOrBeaconHistoryStatement1 :one
 SELECT
 		    EXISTS (
 		        SELECT 1
@@ -794,9 +798,9 @@ SELECT
 		          ON canonical.chain_id = observation.chain_id
 		         AND canonical.number = observation.block_number
 		         AND canonical.block_hash = observation.block_hash
-		        WHERE observation.chain_id = $1::numeric
-			          AND observation.proxy_address = $2::bytea
-		          AND observation.block_number <= $3::numeric
+		        WHERE observation.chain_id = sqlc.arg('chain_id')::numeric
+			          AND observation.proxy_address = sqlc.arg('proxy_address')::bytea
+		          AND observation.block_number <= sqlc.arg('max_block_number')::numeric
 		          AND observation.canonical
 		        UNION ALL
 		        SELECT 1
@@ -805,9 +809,9 @@ SELECT
 		          ON canonical.chain_id = snapshot.chain_id
 		         AND canonical.number = snapshot.block_number
 		         AND canonical.block_hash = snapshot.block_hash
-		        WHERE snapshot.chain_id = $1::numeric
-			          AND snapshot.diamond_address = $2::bytea
-		          AND snapshot.block_number <= $3::numeric
+		        WHERE snapshot.chain_id = sqlc.arg('chain_id')::numeric
+			          AND snapshot.diamond_address = sqlc.arg('proxy_address')::bytea
+		          AND snapshot.block_number <= sqlc.arg('max_block_number')::numeric
 		          AND snapshot.canonical
 		    ),
 		    EXISTS (
@@ -817,9 +821,9 @@ SELECT
 		          ON canonical.chain_id = observation.chain_id
 		         AND canonical.number = observation.block_number
 		         AND canonical.block_hash = observation.block_hash
-		        WHERE observation.chain_id = $1::numeric
-			          AND observation.beacon_address = $2::bytea
-		          AND observation.block_number <= $3::numeric
+		        WHERE observation.chain_id = sqlc.arg('chain_id')::numeric
+			          AND observation.beacon_address = sqlc.arg('proxy_address')::bytea
+		          AND observation.block_number <= sqlc.arg('max_block_number')::numeric
 		          AND observation.canonical
 		        UNION ALL
 		        SELECT 1
@@ -828,27 +832,27 @@ SELECT
 		          ON canonical.chain_id = observation.chain_id
 		         AND canonical.number = observation.block_number
 		         AND canonical.block_hash = observation.block_hash
-		        WHERE observation.chain_id = $1::numeric
-		          AND observation.beacon_address = $2
-		          AND observation.block_number <= $3::numeric
+		        WHERE observation.chain_id = sqlc.arg('chain_id')::numeric
+		          AND observation.beacon_address = sqlc.arg('proxy_address')
+		          AND observation.block_number <= sqlc.arg('max_block_number')::numeric
 		          AND observation.canonical
 		    );
 
--- name: EnrichInlineResolveABICodeIdentityStatement1 :many
+-- name: EnrichInlineResolveABICodeIdentityStatement1 :one
 SELECT observation.block_number::text, observation.code_hash
 		FROM contract_code_observations AS observation
-		WHERE observation.chain_id = $1::numeric AND observation.address = $2 AND observation.canonical
-		  AND observation.block_number <= $3::numeric
+		WHERE observation.chain_id = sqlc.arg('chain_id')::numeric AND observation.address = sqlc.arg('address') AND observation.canonical
+		  AND observation.block_number <= sqlc.arg('max_block_number')::numeric
 		ORDER BY observation.block_number DESC, observation.observed_at DESC
 		LIMIT 1;
 
--- name: EnrichInlineResolveABICodeIdentityStatement2 :many
-SELECT min(block_number)::text
+-- name: EnrichInlineResolveABICodeIdentityStatement2 :one
+SELECT min(block_number)::numeric AS next_block_number
 		FROM contract_code_observations
-		WHERE chain_id = $1::numeric AND address = $2 AND canonical
-		  AND block_number > $3::numeric AND code_hash <> $4;
+		WHERE chain_id = sqlc.arg('chain_id')::numeric AND address = sqlc.arg('address') AND canonical
+		  AND block_number > sqlc.arg('min_block_number')::numeric AND code_hash <> sqlc.arg('code_hash');
 
--- name: EnrichInlineResolveDiamondABIRouteStatement1 :many
+-- name: EnrichInlineResolveDiamondABIRouteStatement1 :one
 SELECT EXISTS (
 		    SELECT 1
 		    FROM published_diamond_loupe_snapshots AS snapshot
@@ -856,26 +860,26 @@ SELECT EXISTS (
 		      ON canonical.chain_id = snapshot.chain_id
 		     AND canonical.number = snapshot.block_number
 		     AND canonical.block_hash = snapshot.block_hash
-		    WHERE snapshot.chain_id = $1::numeric
-		      AND snapshot.diamond_address = $2
-		      AND snapshot.block_number <= $3::numeric
+		    WHERE snapshot.chain_id = sqlc.arg('chain_id')::numeric
+		      AND snapshot.diamond_address = sqlc.arg('diamond_address')
+		      AND snapshot.block_number <= sqlc.arg('max_block_number')::numeric
 		      AND snapshot.detection_state = 'confirmed'
 		      AND snapshot.canonical
 		);
 
--- name: EnrichInlineResolveDiamondABIRouteStatement2 :many
+-- name: EnrichInlineResolveDiamondABIRouteStatement2 :one
 SELECT EXISTS (
 			    SELECT 1
 			    FROM diamond_cut_events AS event
-			    WHERE event.chain_id = $1::numeric
-			      AND event.block_hash = $2
-			      AND event.diamond_address = $3
-			      AND event.transaction_index = $4::bigint
+			    WHERE event.chain_id = sqlc.arg('chain_id')::numeric
+			      AND event.block_hash = sqlc.arg('block_hash')
+			      AND event.diamond_address = sqlc.arg('diamond_address')
+			      AND event.transaction_index = sqlc.arg('transaction_index')::bigint
 			      AND event.canonical
-			      AND event.stage_version = $5
+			      AND event.stage_version = sqlc.arg('stage_version')
 			);
 
--- name: EnrichInlineResolveDiamondABIRouteStatement3 :many
+-- name: EnrichInlineResolveDiamondABIRouteStatement3 :one
 SELECT change.action, change.facet_address
 		FROM diamond_cut_events AS event
 		JOIN diamond_selector_changes AS change
@@ -894,31 +898,31 @@ SELECT change.action, change.facet_address
 		 AND published.stage = 'proxy'
 		 AND published.stage_version = event.stage_version
 		 AND published.state = 'complete'
-		WHERE event.chain_id = $1::numeric
-		  AND event.diamond_address = $2
-		  AND change.selector = $3
+		WHERE event.chain_id = sqlc.arg('chain_id')::numeric
+		  AND event.diamond_address = sqlc.arg('diamond_address')
+		  AND change.selector = sqlc.arg('selector')
 		  AND event.canonical
 		  AND (
-		      event.block_number < $4::numeric OR
-		      (event.block_number = $4::numeric AND
-		       event.transaction_index < $5::bigint)
+		      event.block_number < sqlc.arg('max_block_number')::numeric OR
+		      (event.block_number = sqlc.arg('max_block_number')::numeric AND
+		       event.transaction_index < sqlc.arg('max_transaction_index')::bigint)
 		  )
 		ORDER BY event.block_number DESC, event.transaction_index DESC,
 		         event.log_index DESC, change.cut_index DESC,
 		         change.selector_index DESC
 		LIMIT 1;
 
--- name: EnrichInlineResolveDiamondABIRouteStatement4 :many
+-- name: EnrichInlineResolveDiamondABIRouteStatement4 :one
 SELECT EXISTS (
 		    SELECT 1 FROM diamond_cut_events AS event
-		    WHERE event.chain_id = $1::numeric
-		      AND event.block_hash = $2
-		      AND event.diamond_address = $3
+		    WHERE event.chain_id = sqlc.arg('chain_id')::numeric
+		      AND event.block_hash = sqlc.arg('block_hash')
+		      AND event.diamond_address = sqlc.arg('diamond_address')
 		      AND event.canonical
-		      AND event.stage_version = $4
+		      AND event.stage_version = sqlc.arg('stage_version')
 		);
 
--- name: EnrichInlineResolveDiamondABIRouteStatement5 :many
+-- name: EnrichInlineResolveDiamondABIRouteStatement5 :one
 SELECT snapshot.completeness, selector.facet_address
 		FROM published_diamond_loupe_snapshots AS snapshot
 		JOIN canonical_blocks AS canonical
@@ -926,10 +930,10 @@ SELECT snapshot.completeness, selector.facet_address
 		 AND canonical.number = snapshot.block_number
 		 AND canonical.block_hash = snapshot.block_hash
 		LEFT JOIN diamond_loupe_selectors AS selector
-		  ON selector.snapshot_id = snapshot.id AND selector.selector = $3
-		WHERE snapshot.chain_id = $1::numeric
-		  AND snapshot.diamond_address = $2
-		  AND snapshot.block_number <= $4::numeric
+		  ON selector.snapshot_id = snapshot.id AND selector.selector = sqlc.arg('selector')
+		WHERE snapshot.chain_id = sqlc.arg('chain_id')::numeric
+		  AND snapshot.diamond_address = sqlc.arg('diamond_address')
+		  AND snapshot.block_number <= sqlc.arg('max_block_number')::numeric
 		  AND snapshot.detection_state = 'confirmed'
 		  AND snapshot.canonical
 		ORDER BY snapshot.block_number DESC, snapshot.id DESC
@@ -938,39 +942,39 @@ SELECT snapshot.completeness, selector.facet_address
 -- name: EnrichInlineResolveTransactionStartCodeStatement1 :many
 SELECT transaction_index, before_value, after_value
 		FROM transaction_state_changes
-		WHERE chain_id = $1::numeric
-		  AND block_number = $2::numeric
-		  AND block_hash = $3
-		  AND address = $4
+		WHERE chain_id = sqlc.arg('chain_id')::numeric
+		  AND block_number = sqlc.arg('block_number')::numeric
+		  AND block_hash = sqlc.arg('block_hash')
+		  AND address = sqlc.arg('address')
 		  AND field_kind = 'code'
 		  AND canonical
 		ORDER BY transaction_index;
 
--- name: EnrichInlineResolveTransactionStartCodeStatement2 :many
+-- name: EnrichInlineResolveTransactionStartCodeStatement2 :one
 SELECT observation.code_hash, observation.code
 			FROM contract_code_observations AS observation
 			JOIN canonical_blocks AS canonical
 			  ON canonical.chain_id = observation.chain_id
 			 AND canonical.number = observation.block_number
 			 AND canonical.block_hash = observation.block_hash
-			WHERE observation.chain_id = $1::numeric
-			  AND observation.address = $2
-			  AND observation.block_number < $3::numeric
+			WHERE observation.chain_id = sqlc.arg('chain_id')::numeric
+			  AND observation.address = sqlc.arg('address')
+			  AND observation.block_number < sqlc.arg('max_block_number')::numeric
 			  AND observation.canonical
 			ORDER BY observation.block_number DESC, observation.observed_at DESC,
 			         observation.code_hash DESC
 			LIMIT 1;
 
--- name: EnrichInlineResolveTransactionStartCodeStatement3 :many
+-- name: EnrichInlineResolveTransactionStartCodeStatement3 :one
 SELECT observation.code_hash, observation.code
 		FROM contract_code_observations AS observation
 		JOIN canonical_blocks AS canonical
 		  ON canonical.chain_id = observation.chain_id
 		 AND canonical.number = observation.block_number
 		 AND canonical.block_hash = observation.block_hash
-		WHERE observation.chain_id = $1::numeric
-		  AND observation.address = $2
-		  AND observation.block_number < $3::numeric
+		WHERE observation.chain_id = sqlc.arg('chain_id')::numeric
+		  AND observation.address = sqlc.arg('address')
+		  AND observation.block_number < sqlc.arg('max_block_number')::numeric
 		  AND observation.canonical
 		ORDER BY observation.block_number DESC, observation.observed_at DESC,
 		         observation.code_hash DESC

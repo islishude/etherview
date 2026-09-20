@@ -2,10 +2,15 @@ package etherscan
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 
-	"github.com/islishude/etherview/internal/db/gen"
+	"github.com/jackc/pgx/v5/pgtype"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
 func (b *PostgresBackend) beaconWithdrawals(ctx context.Context, values url.Values) ([]beaconWithdrawal, error) {
@@ -25,30 +30,49 @@ func (b *PostgresBackend) beaconWithdrawals(ctx context.Context, values url.Valu
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	if _, err := b.requireCanonicalCoreRange(ctx, tx, start, end); err != nil {
 		return nil, err
 	}
-	var endArgument any
-	if end != nil {
-		endArgument = *end
-	}
-	rows, err := tx.QueryContext(ctx, dbgen.EtherscanBeaconWithdrawals,
-		b.chain, address, start, endArgument, page.limit, page.offset, page.direction,
-	)
+	endArgument := end
+	rows, err := func() ([]dbgen.EtherscanBeaconWithdrawalsRow, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(b.chain); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(start); err != nil {
+			return nil, err
+		}
+		var queryValue2 pgtype.Numeric
+		if endArgument != nil {
+			if err := queryValue2.Scan(*endArgument); err != nil {
+				return nil, err
+			}
+		}
+		if page.limit < -2147483648 || page.limit > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		if page.offset < -2147483648 || page.offset > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).EtherscanBeaconWithdrawals(ctx, dbgen.EtherscanBeaconWithdrawalsParams{ChainID: queryValue0, Address: address, MinBlockNumber: queryValue1, MaxBlockNumber: queryValue2, Limit: int32(page.limit), Offset: int32(page.offset), SortOrder: page.direction})
+	}()
 	if err != nil {
 		return nil, fmt.Errorf("query beacon withdrawals: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	result := make([]beaconWithdrawal, 0, page.limit)
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var item beaconWithdrawal
 		var addressBytes []byte
-		if err := rows.Scan(
-			&item.WithdrawalIndex, &item.ValidatorIndex, &addressBytes,
-			&item.Amount, &item.BlockNumber, &item.Timestamp,
-		); err != nil {
-			return nil, fmt.Errorf("scan beacon withdrawal: %w", err)
+		{
+			item.WithdrawalIndex = storedRow.WithdrawalWithdrawalIndex
+			item.ValidatorIndex = storedRow.WithdrawalValidatorIndex
+			addressBytes = storedRow.Address
+			item.Amount = storedRow.WithdrawalAmount
+			item.BlockNumber = storedRow.WithdrawalBlockNumber
+			item.Timestamp = storedRow.BlockTimestamp
 		}
 		for name, value := range map[string]string{
 			"withdrawal index":  item.WithdrawalIndex,
@@ -71,16 +95,11 @@ func (b *PostgresBackend) beaconWithdrawals(ctx context.Context, values url.Valu
 		}
 		result = append(result, item)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate beacon withdrawals: %w", err)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, fmt.Errorf("close beacon withdrawals: %w", err)
-	}
+
 	if len(result) == 0 {
 		return nil, ErrNotFound
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit beacon withdrawal snapshot: %w", err)
 	}
 	return result, nil

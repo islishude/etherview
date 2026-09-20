@@ -2,7 +2,6 @@ package userauth
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"math/big"
@@ -14,7 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
 	dbaccess "github.com/islishude/etherview/internal/db"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -22,12 +21,12 @@ import (
 var errConcurrentUserVisibility = errors.New("concurrent user insert is not visible")
 
 type PostgresRepository struct {
-	db      *sql.DB
+	db      dbaccess.Database
 	chainID uint64
 	numeric pgtype.Numeric
 }
 
-func NewPostgresRepository(db *sql.DB, chainID uint64) (*PostgresRepository, error) {
+func NewPostgresRepository(db dbaccess.Database, chainID uint64) (*PostgresRepository, error) {
 	if db == nil {
 		return nil, errors.New("user authentication repository database is nil")
 	}
@@ -505,7 +504,7 @@ func (repository *PostgresRepository) UpdateUser(
 				return queryErr
 			}
 			result.RevokedSessions = uint64(count)
-			if _, queryErr = queries.RevokeAllUserAPIKeys(
+			if queryErr = queries.RevokeAllUserAPIKeys(
 				ctx, postgresTime(updatedAt), identifier,
 			); queryErr != nil {
 				return queryErr

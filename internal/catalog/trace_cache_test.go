@@ -2,7 +2,6 @@ package catalog
 
 import (
 	"context"
-	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"io"
@@ -50,13 +49,13 @@ func cachedTraceFixture() TransactionTrace {
 func traceStageGenerationStep(generation int64) catalogQueryStep {
 	return catalogQueryStep{
 		contains: "FROM published_block_stage_results",
-		rows:     catalogRows(3, []driver.Value{"complete", int64(42), generation}),
+		rows:     catalogRows(3, []any{"complete", int64(42), generation}),
 	}
 }
 
 func traceIdentitySteps(generation int64) []catalogQueryStep {
 	return []catalogQueryStep{
-		{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3, []driver.Value{"100", bytesOf(0xaa, 32), "0"})},
+		{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3, []any{"100", bytesOf(0xaa, 32), "0"})},
 		traceStageGenerationStep(generation),
 	}
 }
@@ -130,7 +129,7 @@ func TestTransactionTraceReplayGenerationNeverServesStaleS3Object(t *testing.T) 
 func traceExecutionProjectionStep() catalogQueryStep {
 	return catalogQueryStep{
 		contains: "COALESCE(to_address, created_address, from_address)",
-		rows: catalogRows(5, []driver.Value{
+		rows: catalogRows(5, []any{
 			"", bytesOf(0x22, 20), bytesOf(0x22, 20), bytesOf(0x33, 32), "direct",
 		}),
 	}

@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const MetadataAnyNFTMetadata = `-- name: MetadataAnyNFTMetadata :many
+const metadataAnyNFTMetadata = `-- name: MetadataAnyNFTMetadata :one
 SELECT EXISTS (
     SELECT 1 FROM external_metadata AS metadata
     WHERE metadata.chain_id = $1::numeric AND metadata.resource_kind = 'nft'
@@ -52,30 +52,17 @@ SELECT EXISTS (
               )
           )
       )
-)
+) AS present
 `
 
-func (q *Queries) MetadataAnyNFTMetadata(ctx context.Context, column1 pgtype.Numeric, tokenAddress []byte, column3 pgtype.Numeric) ([]*bool, error) {
-	rows, err := q.db.Query(ctx, MetadataAnyNFTMetadata, column1, tokenAddress, column3)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []*bool{}
-	for rows.Next() {
-		var column_1 *bool
-		if err := rows.Scan(&column_1); err != nil {
-			return nil, err
-		}
-		items = append(items, column_1)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) MetadataAnyNFTMetadata(ctx context.Context, chainID pgtype.Numeric, tokenAddress []byte, tokenID pgtype.Numeric) (*bool, error) {
+	row := q.db.QueryRow(ctx, metadataAnyNFTMetadata, chainID, tokenAddress, tokenID)
+	var present *bool
+	err := row.Scan(&present)
+	return present, err
 }
 
-const MetadataCanonicalNFTContract = `-- name: MetadataCanonicalNFTContract :many
+const metadataCanonicalNFTContract = `-- name: MetadataCanonicalNFTContract :one
 SELECT EXISTS (
     SELECT 1
     FROM token_contracts AS token
@@ -89,54 +76,28 @@ SELECT EXISTS (
 )
 `
 
-func (q *Queries) MetadataCanonicalNFTContract(ctx context.Context, column1 pgtype.Numeric, address []byte) ([]bool, error) {
-	rows, err := q.db.Query(ctx, MetadataCanonicalNFTContract, column1, address)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var exists bool
-		if err := rows.Scan(&exists); err != nil {
-			return nil, err
-		}
-		items = append(items, exists)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) MetadataCanonicalNFTContract(ctx context.Context, chainID pgtype.Numeric, address []byte) (bool, error) {
+	row := q.db.QueryRow(ctx, metadataCanonicalNFTContract, chainID, address)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
-const MetadataCanonicalObservation = `-- name: MetadataCanonicalObservation :many
+const metadataCanonicalObservation = `-- name: MetadataCanonicalObservation :one
 SELECT EXISTS (
     SELECT 1 FROM canonical_blocks
     WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3
 )
 `
 
-func (q *Queries) MetadataCanonicalObservation(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]bool, error) {
-	rows, err := q.db.Query(ctx, MetadataCanonicalObservation, column1, column2, blockHash)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var exists bool
-		if err := rows.Scan(&exists); err != nil {
-			return nil, err
-		}
-		items = append(items, exists)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) MetadataCanonicalObservation(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, blockHash []byte) (bool, error) {
+	row := q.db.QueryRow(ctx, metadataCanonicalObservation, chainID, number, blockHash)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
-const MetadataClaimMetadataJob = `-- name: MetadataClaimMetadataJob :many
+const metadataClaimMetadataJob = `-- name: MetadataClaimMetadataJob :one
 WITH candidate AS (
     SELECT id FROM durable_jobs
     WHERE kind = 'metadata'
@@ -152,7 +113,7 @@ WITH candidate AS (
 UPDATE durable_jobs AS job
 SET status = 'leased', attempts = job.attempts + 1,
     leased_by = $1, lease_token = $2,
-    lease_expires_at = clock_timestamp() + ($3 * INTERVAL '1 microsecond'),
+    lease_expires_at = clock_timestamp() + ($3::bigint * INTERVAL '1 microsecond'),
     result = NULL, updated_at = clock_timestamp()
 FROM candidate
 WHERE job.id = candidate.id
@@ -160,10 +121,10 @@ RETURNING job.id, job.chain_id::text, job.attempts, job.max_attempts, job.payloa
 `
 
 type MetadataClaimMetadataJobParams struct {
-	LeasedBy   *string        `db:"leased_by" json:"leased_by"`
-	LeaseToken *string        `db:"lease_token" json:"lease_token"`
-	Column3    interface{}    `db:"column_3" json:"column_3"`
-	Column4    pgtype.Numeric `db:"column_4" json:"column_4"`
+	LeasedBy          *string        `db:"leased_by" json:"leased_by"`
+	LeaseToken        *string        `db:"lease_token" json:"lease_token"`
+	LeaseMicroseconds int64          `db:"lease_microseconds" json:"lease_microseconds"`
+	ChainID           pgtype.Numeric `db:"chain_id" json:"chain_id"`
 }
 
 type MetadataClaimMetadataJobRow struct {
@@ -174,61 +135,48 @@ type MetadataClaimMetadataJobRow struct {
 	Payload     []byte `db:"payload" json:"payload"`
 }
 
-func (q *Queries) MetadataClaimMetadataJob(ctx context.Context, arg MetadataClaimMetadataJobParams) ([]MetadataClaimMetadataJobRow, error) {
-	rows, err := q.db.Query(ctx, MetadataClaimMetadataJob,
+func (q *Queries) MetadataClaimMetadataJob(ctx context.Context, arg MetadataClaimMetadataJobParams) (MetadataClaimMetadataJobRow, error) {
+	row := q.db.QueryRow(ctx, metadataClaimMetadataJob,
 		arg.LeasedBy,
 		arg.LeaseToken,
-		arg.Column3,
-		arg.Column4,
+		arg.LeaseMicroseconds,
+		arg.ChainID,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []MetadataClaimMetadataJobRow{}
-	for rows.Next() {
-		var i MetadataClaimMetadataJobRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.JobChainID,
-			&i.Attempts,
-			&i.MaxAttempts,
-			&i.Payload,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i MetadataClaimMetadataJobRow
+	err := row.Scan(
+		&i.ID,
+		&i.JobChainID,
+		&i.Attempts,
+		&i.MaxAttempts,
+		&i.Payload,
+	)
+	return i, err
 }
 
-const MetadataCurrentMetadataResource = `-- name: MetadataCurrentMetadataResource :many
+const metadataCurrentMetadataResource = `-- name: MetadataCurrentMetadataResource :one
 SELECT
     EXISTS (
         SELECT 1 FROM external_metadata
         WHERE chain_id = $1::numeric AND resource_kind = 'nft' AND resource_key = $2
-          AND identity_hash = $6
-          AND token_address = $3 AND token_id = $4::numeric
-          AND observed_block_number = $5::numeric AND observed_block_hash = $6
+          AND identity_hash = $3
+          AND token_address = $4 AND token_id = $5::numeric
+          AND observed_block_number = $6::numeric AND observed_block_hash = $3
           AND source_uri = $7
     ),
     EXISTS (
         SELECT 1 FROM canonical_blocks
-        WHERE chain_id = $1::numeric AND number = $5::numeric AND block_hash = $6
+        WHERE chain_id = $1::numeric AND number = $6::numeric AND block_hash = $3
     )
 `
 
 type MetadataCurrentMetadataResourceParams struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
-	ResourceKey  string         `db:"resource_key" json:"resource_key"`
-	TokenAddress []byte         `db:"token_address" json:"token_address"`
-	Column4      pgtype.Numeric `db:"column_4" json:"column_4"`
-	Column5      pgtype.Numeric `db:"column_5" json:"column_5"`
-	IdentityHash []byte         `db:"identity_hash" json:"identity_hash"`
-	SourceUri    string         `db:"source_uri" json:"source_uri"`
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	ResourceKey         string         `db:"resource_key" json:"resource_key"`
+	IdentityHash        []byte         `db:"identity_hash" json:"identity_hash"`
+	TokenAddress        []byte         `db:"token_address" json:"token_address"`
+	TokenID             pgtype.Numeric `db:"token_id" json:"token_id"`
+	ObservedBlockNumber pgtype.Numeric `db:"observed_block_number" json:"observed_block_number"`
+	SourceUri           string         `db:"source_uri" json:"source_uri"`
 }
 
 type MetadataCurrentMetadataResourceRow struct {
@@ -236,35 +184,22 @@ type MetadataCurrentMetadataResourceRow struct {
 	Exists_2 bool `db:"exists_2" json:"exists_2"`
 }
 
-func (q *Queries) MetadataCurrentMetadataResource(ctx context.Context, arg MetadataCurrentMetadataResourceParams) ([]MetadataCurrentMetadataResourceRow, error) {
-	rows, err := q.db.Query(ctx, MetadataCurrentMetadataResource,
-		arg.Column1,
+func (q *Queries) MetadataCurrentMetadataResource(ctx context.Context, arg MetadataCurrentMetadataResourceParams) (MetadataCurrentMetadataResourceRow, error) {
+	row := q.db.QueryRow(ctx, metadataCurrentMetadataResource,
+		arg.ChainID,
 		arg.ResourceKey,
-		arg.TokenAddress,
-		arg.Column4,
-		arg.Column5,
 		arg.IdentityHash,
+		arg.TokenAddress,
+		arg.TokenID,
+		arg.ObservedBlockNumber,
 		arg.SourceUri,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []MetadataCurrentMetadataResourceRow{}
-	for rows.Next() {
-		var i MetadataCurrentMetadataResourceRow
-		if err := rows.Scan(&i.Exists, &i.Exists_2); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i MetadataCurrentMetadataResourceRow
+	err := row.Scan(&i.Exists, &i.Exists_2)
+	return i, err
 }
 
-const MetadataCurrentNFTImage = `-- name: MetadataCurrentNFTImage :many
+const metadataCurrentNFTImage = `-- name: MetadataCurrentNFTImage :one
 SELECT EXISTS (
     SELECT 1
     FROM external_metadata AS metadata
@@ -298,42 +233,29 @@ SELECT EXISTS (
 `
 
 type MetadataCurrentNFTImageParams struct {
-	Column1           pgtype.Numeric `db:"column_1" json:"column_1"`
-	TokenAddress      []byte         `db:"token_address" json:"token_address"`
-	Column3           pgtype.Numeric `db:"column_3" json:"column_3"`
-	Column4           pgtype.Numeric `db:"column_4" json:"column_4"`
-	ObservedBlockHash []byte         `db:"observed_block_hash" json:"observed_block_hash"`
-	Document          []byte         `db:"document" json:"document"`
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	TokenAddress        []byte         `db:"token_address" json:"token_address"`
+	TokenID             pgtype.Numeric `db:"token_id" json:"token_id"`
+	ObservedBlockNumber pgtype.Numeric `db:"observed_block_number" json:"observed_block_number"`
+	ObservedBlockHash   []byte         `db:"observed_block_hash" json:"observed_block_hash"`
+	Document            []byte         `db:"document" json:"document"`
 }
 
-func (q *Queries) MetadataCurrentNFTImage(ctx context.Context, arg MetadataCurrentNFTImageParams) ([]bool, error) {
-	rows, err := q.db.Query(ctx, MetadataCurrentNFTImage,
-		arg.Column1,
+func (q *Queries) MetadataCurrentNFTImage(ctx context.Context, arg MetadataCurrentNFTImageParams) (bool, error) {
+	row := q.db.QueryRow(ctx, metadataCurrentNFTImage,
+		arg.ChainID,
 		arg.TokenAddress,
-		arg.Column3,
-		arg.Column4,
+		arg.TokenID,
+		arg.ObservedBlockNumber,
 		arg.ObservedBlockHash,
 		arg.Document,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var exists bool
-		if err := rows.Scan(&exists); err != nil {
-			return nil, err
-		}
-		items = append(items, exists)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
-const MetadataExhaustMetadataJobs = `-- name: MetadataExhaustMetadataJobs :exec
+const metadataExhaustMetadataJobs = `-- name: MetadataExhaustMetadataJobs :exec
 WITH exhausted AS (
     UPDATE durable_jobs
     SET status = 'failed',
@@ -374,37 +296,24 @@ FROM updated
 ON CONFLICT (durable_job_id, attempt) DO NOTHING
 `
 
-func (q *Queries) MetadataExhaustMetadataJobs(ctx context.Context, dollar_1 pgtype.Numeric) error {
-	_, err := q.db.Exec(ctx, MetadataExhaustMetadataJobs, dollar_1)
+func (q *Queries) MetadataExhaustMetadataJobs(ctx context.Context, chainID pgtype.Numeric) error {
+	_, err := q.db.Exec(ctx, metadataExhaustMetadataJobs, chainID)
 	return err
 }
 
-const MetadataExistingMetadataJob = `-- name: MetadataExistingMetadataJob :many
+const metadataExistingMetadataJob = `-- name: MetadataExistingMetadataJob :one
 SELECT id FROM durable_jobs
 WHERE chain_id = $1::numeric AND kind = 'metadata' AND idempotency_key = $2
 `
 
-func (q *Queries) MetadataExistingMetadataJob(ctx context.Context, column1 pgtype.Numeric, idempotencyKey string) ([]int64, error) {
-	rows, err := q.db.Query(ctx, MetadataExistingMetadataJob, column1, idempotencyKey)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []int64{}
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		items = append(items, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) MetadataExistingMetadataJob(ctx context.Context, chainID pgtype.Numeric, idempotencyKey string) (int64, error) {
+	row := q.db.QueryRow(ctx, metadataExistingMetadataJob, chainID, idempotencyKey)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
-const MetadataExistingMetadataResource = `-- name: MetadataExistingMetadataResource :many
+const metadataExistingMetadataResource = `-- name: MetadataExistingMetadataResource :one
 SELECT resource_key, source_uri, token_address, token_id::text,
        observed_block_number::text, observed_block_hash
 FROM external_metadata
@@ -414,9 +323,9 @@ FOR UPDATE
 `
 
 type MetadataExistingMetadataResourceParams struct {
-	Column1           pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID           pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	TokenAddress      []byte         `db:"token_address" json:"token_address"`
-	Column3           pgtype.Numeric `db:"column_3" json:"column_3"`
+	TokenID           pgtype.Numeric `db:"token_id" json:"token_id"`
 	ObservedBlockHash []byte         `db:"observed_block_hash" json:"observed_block_hash"`
 }
 
@@ -429,39 +338,26 @@ type MetadataExistingMetadataResourceRow struct {
 	ObservedBlockHash   []byte `db:"observed_block_hash" json:"observed_block_hash"`
 }
 
-func (q *Queries) MetadataExistingMetadataResource(ctx context.Context, arg MetadataExistingMetadataResourceParams) ([]MetadataExistingMetadataResourceRow, error) {
-	rows, err := q.db.Query(ctx, MetadataExistingMetadataResource,
-		arg.Column1,
+func (q *Queries) MetadataExistingMetadataResource(ctx context.Context, arg MetadataExistingMetadataResourceParams) (MetadataExistingMetadataResourceRow, error) {
+	row := q.db.QueryRow(ctx, metadataExistingMetadataResource,
+		arg.ChainID,
 		arg.TokenAddress,
-		arg.Column3,
+		arg.TokenID,
 		arg.ObservedBlockHash,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []MetadataExistingMetadataResourceRow{}
-	for rows.Next() {
-		var i MetadataExistingMetadataResourceRow
-		if err := rows.Scan(
-			&i.ResourceKey,
-			&i.SourceUri,
-			&i.TokenAddress,
-			&i.TokenID,
-			&i.ObservedBlockNumber,
-			&i.ObservedBlockHash,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i MetadataExistingMetadataResourceRow
+	err := row.Scan(
+		&i.ResourceKey,
+		&i.SourceUri,
+		&i.TokenAddress,
+		&i.TokenID,
+		&i.ObservedBlockNumber,
+		&i.ObservedBlockHash,
+	)
+	return i, err
 }
 
-const MetadataExistingNFTSource = `-- name: MetadataExistingNFTSource :many
+const metadataExistingNFTSource = `-- name: MetadataExistingNFTSource :one
 SELECT token_address, token_id::text, block_number::text, block_hash,
        standard, state, source_uri, error_code
 FROM nft_metadata_source_observations
@@ -470,9 +366,9 @@ WHERE chain_id = $1::numeric AND token_address = $2
 `
 
 type MetadataExistingNFTSourceParams struct {
-	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	TokenAddress []byte         `db:"token_address" json:"token_address"`
-	Column3      pgtype.Numeric `db:"column_3" json:"column_3"`
+	TokenID      pgtype.Numeric `db:"token_id" json:"token_id"`
 	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
 }
 
@@ -487,156 +383,125 @@ type MetadataExistingNFTSourceRow struct {
 	ErrorCode    *string `db:"error_code" json:"error_code"`
 }
 
-func (q *Queries) MetadataExistingNFTSource(ctx context.Context, arg MetadataExistingNFTSourceParams) ([]MetadataExistingNFTSourceRow, error) {
-	rows, err := q.db.Query(ctx, MetadataExistingNFTSource,
-		arg.Column1,
+func (q *Queries) MetadataExistingNFTSource(ctx context.Context, arg MetadataExistingNFTSourceParams) (MetadataExistingNFTSourceRow, error) {
+	row := q.db.QueryRow(ctx, metadataExistingNFTSource,
+		arg.ChainID,
 		arg.TokenAddress,
-		arg.Column3,
+		arg.TokenID,
 		arg.BlockHash,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []MetadataExistingNFTSourceRow{}
-	for rows.Next() {
-		var i MetadataExistingNFTSourceRow
-		if err := rows.Scan(
-			&i.TokenAddress,
-			&i.TokenID,
-			&i.BlockNumber,
-			&i.BlockHash,
-			&i.Standard,
-			&i.State,
-			&i.SourceUri,
-			&i.ErrorCode,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i MetadataExistingNFTSourceRow
+	err := row.Scan(
+		&i.TokenAddress,
+		&i.TokenID,
+		&i.BlockNumber,
+		&i.BlockHash,
+		&i.Standard,
+		&i.State,
+		&i.SourceUri,
+		&i.ErrorCode,
+	)
+	return i, err
 }
 
-const MetadataExistingNFTUpdateObservation = `-- name: MetadataExistingNFTUpdateObservation :many
-SELECT block_number::text, block_hash, log_index, token_address,
-       standard, event_kind, state,
-       COALESCE(from_token_id::text, ''), COALESCE(to_token_id::text, ''), error_code
+const metadataExistingNFTUpdateObservation = `-- name: MetadataExistingNFTUpdateObservation :one
+SELECT
+block_number::text,
+block_hash,
+log_index,
+token_address,
+standard,
+event_kind,
+state,
+(COALESCE(from_token_id::text, ''))::text AS from_token_id,
+(COALESCE(to_token_id::text, ''))::text AS to_token_id,
+error_code
 FROM nft_metadata_update_observations
 WHERE chain_id = $1::numeric AND block_number = $2::numeric
   AND block_hash = $3 AND log_index = $4
 `
 
 type MetadataExistingNFTUpdateObservationParams struct {
-	Column1   pgtype.Numeric `db:"column_1" json:"column_1"`
-	Column2   pgtype.Numeric `db:"column_2" json:"column_2"`
-	BlockHash []byte         `db:"block_hash" json:"block_hash"`
-	LogIndex  int64          `db:"log_index" json:"log_index"`
+	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
+	LogIndex    int64          `db:"log_index" json:"log_index"`
 }
 
 type MetadataExistingNFTUpdateObservationRow struct {
-	BlockNumber  string      `db:"block_number" json:"block_number"`
-	BlockHash    []byte      `db:"block_hash" json:"block_hash"`
-	LogIndex     int64       `db:"log_index" json:"log_index"`
-	TokenAddress []byte      `db:"token_address" json:"token_address"`
-	Standard     string      `db:"standard" json:"standard"`
-	EventKind    string      `db:"event_kind" json:"event_kind"`
-	State        string      `db:"state" json:"state"`
-	Coalesce     interface{} `db:"coalesce" json:"coalesce"`
-	Coalesce_2   interface{} `db:"coalesce_2" json:"coalesce_2"`
-	ErrorCode    *string     `db:"error_code" json:"error_code"`
+	BlockNumber  string  `db:"block_number" json:"block_number"`
+	BlockHash    []byte  `db:"block_hash" json:"block_hash"`
+	LogIndex     int64   `db:"log_index" json:"log_index"`
+	TokenAddress []byte  `db:"token_address" json:"token_address"`
+	Standard     string  `db:"standard" json:"standard"`
+	EventKind    string  `db:"event_kind" json:"event_kind"`
+	State        string  `db:"state" json:"state"`
+	FromTokenID  string  `db:"from_token_id" json:"from_token_id"`
+	ToTokenID    string  `db:"to_token_id" json:"to_token_id"`
+	ErrorCode    *string `db:"error_code" json:"error_code"`
 }
 
-func (q *Queries) MetadataExistingNFTUpdateObservation(ctx context.Context, arg MetadataExistingNFTUpdateObservationParams) ([]MetadataExistingNFTUpdateObservationRow, error) {
-	rows, err := q.db.Query(ctx, MetadataExistingNFTUpdateObservation,
-		arg.Column1,
-		arg.Column2,
+func (q *Queries) MetadataExistingNFTUpdateObservation(ctx context.Context, arg MetadataExistingNFTUpdateObservationParams) (MetadataExistingNFTUpdateObservationRow, error) {
+	row := q.db.QueryRow(ctx, metadataExistingNFTUpdateObservation,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
 		arg.LogIndex,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []MetadataExistingNFTUpdateObservationRow{}
-	for rows.Next() {
-		var i MetadataExistingNFTUpdateObservationRow
-		if err := rows.Scan(
-			&i.BlockNumber,
-			&i.BlockHash,
-			&i.LogIndex,
-			&i.TokenAddress,
-			&i.Standard,
-			&i.EventKind,
-			&i.State,
-			&i.Coalesce,
-			&i.Coalesce_2,
-			&i.ErrorCode,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i MetadataExistingNFTUpdateObservationRow
+	err := row.Scan(
+		&i.BlockNumber,
+		&i.BlockHash,
+		&i.LogIndex,
+		&i.TokenAddress,
+		&i.Standard,
+		&i.EventKind,
+		&i.State,
+		&i.FromTokenID,
+		&i.ToTokenID,
+		&i.ErrorCode,
+	)
+	return i, err
 }
 
-const MetadataLockMetadataResource = `-- name: MetadataLockMetadataResource :many
-SELECT token_address = $3
-   AND token_id = $4::numeric
-   AND observed_block_number = $5::numeric
-   AND observed_block_hash = $6
-   AND source_uri = $7
+const metadataLockMetadataResource = `-- name: MetadataLockMetadataResource :one
+SELECT token_address = $1
+   AND token_id = $2::numeric
+   AND observed_block_number = $3::numeric
+   AND observed_block_hash = $4
+   AND source_uri = $5 AS locked
 FROM external_metadata
-WHERE chain_id = $1::numeric AND resource_kind = 'nft' AND resource_key = $2
-  AND identity_hash = $6
+WHERE chain_id = $6::numeric AND resource_kind = 'nft' AND resource_key = $7
+  AND identity_hash = $4
 FOR UPDATE
 `
 
 type MetadataLockMetadataResourceParams struct {
-	Column1           pgtype.Numeric `db:"column_1" json:"column_1"`
-	ResourceKey       string         `db:"resource_key" json:"resource_key"`
-	TokenAddress      []byte         `db:"token_address" json:"token_address"`
-	Column4           pgtype.Numeric `db:"column_4" json:"column_4"`
-	Column5           pgtype.Numeric `db:"column_5" json:"column_5"`
-	ObservedBlockHash []byte         `db:"observed_block_hash" json:"observed_block_hash"`
-	SourceUri         string         `db:"source_uri" json:"source_uri"`
+	TokenAddress        []byte         `db:"token_address" json:"token_address"`
+	TokenID             pgtype.Numeric `db:"token_id" json:"token_id"`
+	ObservedBlockNumber pgtype.Numeric `db:"observed_block_number" json:"observed_block_number"`
+	ObservedBlockHash   []byte         `db:"observed_block_hash" json:"observed_block_hash"`
+	SourceUri           string         `db:"source_uri" json:"source_uri"`
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	ResourceKey         string         `db:"resource_key" json:"resource_key"`
 }
 
-func (q *Queries) MetadataLockMetadataResource(ctx context.Context, arg MetadataLockMetadataResourceParams) ([]*bool, error) {
-	rows, err := q.db.Query(ctx, MetadataLockMetadataResource,
-		arg.Column1,
-		arg.ResourceKey,
+func (q *Queries) MetadataLockMetadataResource(ctx context.Context, arg MetadataLockMetadataResourceParams) (*bool, error) {
+	row := q.db.QueryRow(ctx, metadataLockMetadataResource,
 		arg.TokenAddress,
-		arg.Column4,
-		arg.Column5,
+		arg.TokenID,
+		arg.ObservedBlockNumber,
 		arg.ObservedBlockHash,
 		arg.SourceUri,
+		arg.ChainID,
+		arg.ResourceKey,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []*bool{}
-	for rows.Next() {
-		var column_1 *bool
-		if err := rows.Scan(&column_1); err != nil {
-			return nil, err
-		}
-		items = append(items, column_1)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var locked *bool
+	err := row.Scan(&locked)
+	return locked, err
 }
 
-const MetadataLockOwnedMetadataJob = `-- name: MetadataLockOwnedMetadataJob :many
+const metadataLockOwnedMetadataJob = `-- name: MetadataLockOwnedMetadataJob :one
 SELECT chain_id::text, payload, max_attempts
 FROM durable_jobs
 WHERE id = $1 AND kind = 'metadata' AND status = 'leased'
@@ -650,27 +515,14 @@ type MetadataLockOwnedMetadataJobRow struct {
 	MaxAttempts int32  `db:"max_attempts" json:"max_attempts"`
 }
 
-func (q *Queries) MetadataLockOwnedMetadataJob(ctx context.Context, iD int64, leaseToken *string) ([]MetadataLockOwnedMetadataJobRow, error) {
-	rows, err := q.db.Query(ctx, MetadataLockOwnedMetadataJob, iD, leaseToken)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []MetadataLockOwnedMetadataJobRow{}
-	for rows.Next() {
-		var i MetadataLockOwnedMetadataJobRow
-		if err := rows.Scan(&i.ChainID, &i.Payload, &i.MaxAttempts); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) MetadataLockOwnedMetadataJob(ctx context.Context, iD int64, leaseToken *string) (MetadataLockOwnedMetadataJobRow, error) {
+	row := q.db.QueryRow(ctx, metadataLockOwnedMetadataJob, iD, leaseToken)
+	var i MetadataLockOwnedMetadataJobRow
+	err := row.Scan(&i.ChainID, &i.Payload, &i.MaxAttempts)
+	return i, err
 }
 
-const MetadataNextNFTSource = `-- name: MetadataNextNFTSource :many
+const metadataNextNFTSource = `-- name: MetadataNextNFTSource :one
 WITH known_ids AS (
     SELECT event.chain_id, event.token_address, event.token_id,
            event.standard, event.block_number, event.block_hash
@@ -778,33 +630,20 @@ type MetadataNextNFTSourceRow struct {
 	Standard           string `db:"standard" json:"standard"`
 }
 
-func (q *Queries) MetadataNextNFTSource(ctx context.Context, dollar_1 pgtype.Numeric) ([]MetadataNextNFTSourceRow, error) {
-	rows, err := q.db.Query(ctx, MetadataNextNFTSource, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []MetadataNextNFTSourceRow{}
-	for rows.Next() {
-		var i MetadataNextNFTSourceRow
-		if err := rows.Scan(
-			&i.TokenAddress,
-			&i.PendingTokenID,
-			&i.PendingBlockNumber,
-			&i.BlockHash,
-			&i.Standard,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) MetadataNextNFTSource(ctx context.Context, chainID pgtype.Numeric) (MetadataNextNFTSourceRow, error) {
+	row := q.db.QueryRow(ctx, metadataNextNFTSource, chainID)
+	var i MetadataNextNFTSourceRow
+	err := row.Scan(
+		&i.TokenAddress,
+		&i.PendingTokenID,
+		&i.PendingBlockNumber,
+		&i.BlockHash,
+		&i.Standard,
+	)
+	return i, err
 }
 
-const MetadataNextNFTUpdateLog = `-- name: MetadataNextNFTUpdateLog :many
+const metadataNextNFTUpdateLog = `-- name: MetadataNextNFTUpdateLog :one
 SELECT log.block_number::text, log.block_hash, log.log_index,
        log.tx_hash, log.address, log.raw, token.standard
 FROM logs AS log
@@ -842,10 +681,10 @@ LIMIT 1
 `
 
 type MetadataNextNFTUpdateLogParams struct {
-	Column1  pgtype.Numeric `db:"column_1" json:"column_1"`
-	Topic0   []byte         `db:"topic0" json:"topic0"`
-	Topic0_2 []byte         `db:"topic0_2" json:"topic0_2"`
-	Topic0_3 []byte         `db:"topic0_3" json:"topic0_3"`
+	ChainID pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Topic0  []byte         `db:"topic0" json:"topic0"`
+	Topic02 []byte         `db:"topic0_2" json:"topic0_2"`
+	Topic03 []byte         `db:"topic0_3" json:"topic0_3"`
 }
 
 type MetadataNextNFTUpdateLogRow struct {
@@ -858,48 +697,41 @@ type MetadataNextNFTUpdateLogRow struct {
 	Standard       string `db:"standard" json:"standard"`
 }
 
-func (q *Queries) MetadataNextNFTUpdateLog(ctx context.Context, arg MetadataNextNFTUpdateLogParams) ([]MetadataNextNFTUpdateLogRow, error) {
-	rows, err := q.db.Query(ctx, MetadataNextNFTUpdateLog,
-		arg.Column1,
+func (q *Queries) MetadataNextNFTUpdateLog(ctx context.Context, arg MetadataNextNFTUpdateLogParams) (MetadataNextNFTUpdateLogRow, error) {
+	row := q.db.QueryRow(ctx, metadataNextNFTUpdateLog,
+		arg.ChainID,
 		arg.Topic0,
-		arg.Topic0_2,
-		arg.Topic0_3,
+		arg.Topic02,
+		arg.Topic03,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []MetadataNextNFTUpdateLogRow{}
-	for rows.Next() {
-		var i MetadataNextNFTUpdateLogRow
-		if err := rows.Scan(
-			&i.LogBlockNumber,
-			&i.BlockHash,
-			&i.LogIndex,
-			&i.TxHash,
-			&i.Address,
-			&i.Raw,
-			&i.Standard,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i MetadataNextNFTUpdateLogRow
+	err := row.Scan(
+		&i.LogBlockNumber,
+		&i.BlockHash,
+		&i.LogIndex,
+		&i.TxHash,
+		&i.Address,
+		&i.Raw,
+		&i.Standard,
+	)
+	return i, err
 }
 
-const MetadataSelectCanonicalNFTImage = `-- name: MetadataSelectCanonicalNFTImage :many
-SELECT metadata.state,
-       CASE
+const metadataSelectCanonicalNFTImage = `-- name: MetadataSelectCanonicalNFTImage :one
+SELECT
+metadata.state,
+COALESCE((CASE
            WHEN jsonb_typeof(metadata.document -> 'image') = 'string'
            THEN metadata.document ->> 'image'
            ELSE NULL
-       END,
-       metadata.observed_block_number::text,
-       metadata.observed_block_hash
+       END),'')::text AS image,
+metadata.observed_block_number::text,
+metadata.observed_block_hash,
+(CASE
+           WHEN jsonb_typeof(metadata.document -> 'image') = 'string'
+           THEN metadata.document ->> 'image'
+           ELSE NULL
+       END IS NOT NULL)::boolean AS image_present
 FROM external_metadata AS metadata
 JOIN canonical_blocks AS canonical
   ON canonical.chain_id = metadata.chain_id
@@ -914,38 +746,27 @@ LIMIT 1
 `
 
 type MetadataSelectCanonicalNFTImageRow struct {
-	State                       string      `db:"state" json:"state"`
-	Column2                     interface{} `db:"column_2" json:"column_2"`
-	MetadataObservedBlockNumber string      `db:"metadata_observed_block_number" json:"metadata_observed_block_number"`
-	ObservedBlockHash           []byte      `db:"observed_block_hash" json:"observed_block_hash"`
+	State                       string `db:"state" json:"state"`
+	Image                       string `db:"image" json:"image"`
+	MetadataObservedBlockNumber string `db:"metadata_observed_block_number" json:"metadata_observed_block_number"`
+	ObservedBlockHash           []byte `db:"observed_block_hash" json:"observed_block_hash"`
+	ImagePresent                bool   `db:"image_present" json:"image_present"`
 }
 
-func (q *Queries) MetadataSelectCanonicalNFTImage(ctx context.Context, column1 pgtype.Numeric, tokenAddress []byte, column3 pgtype.Numeric) ([]MetadataSelectCanonicalNFTImageRow, error) {
-	rows, err := q.db.Query(ctx, MetadataSelectCanonicalNFTImage, column1, tokenAddress, column3)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []MetadataSelectCanonicalNFTImageRow{}
-	for rows.Next() {
-		var i MetadataSelectCanonicalNFTImageRow
-		if err := rows.Scan(
-			&i.State,
-			&i.Column2,
-			&i.MetadataObservedBlockNumber,
-			&i.ObservedBlockHash,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) MetadataSelectCanonicalNFTImage(ctx context.Context, chainID pgtype.Numeric, tokenAddress []byte, tokenID pgtype.Numeric) (MetadataSelectCanonicalNFTImageRow, error) {
+	row := q.db.QueryRow(ctx, metadataSelectCanonicalNFTImage, chainID, tokenAddress, tokenID)
+	var i MetadataSelectCanonicalNFTImageRow
+	err := row.Scan(
+		&i.State,
+		&i.Image,
+		&i.MetadataObservedBlockNumber,
+		&i.ObservedBlockHash,
+		&i.ImagePresent,
+	)
+	return i, err
 }
 
-const MetadataSelectCanonicalNFTMetadata = `-- name: MetadataSelectCanonicalNFTMetadata :many
+const metadataSelectCanonicalNFTMetadata = `-- name: MetadataSelectCanonicalNFTMetadata :one
 WITH signals AS (
     SELECT metadata.state,
            metadata.observed_block_number AS block_number,
@@ -1046,44 +867,31 @@ SELECT latest_signal.state,
        latest_signal.block_number::text,
        latest_signal.block_hash,
        content.document,
-       content.block_number::text,
+       content.block_number,
        content.block_hash
 FROM latest_signal
 LEFT JOIN content ON TRUE
 `
 
 type MetadataSelectCanonicalNFTMetadataRow struct {
-	State                   string `db:"state" json:"state"`
-	LatestSignalBlockNumber string `db:"latest_signal_block_number" json:"latest_signal_block_number"`
-	BlockHash               []byte `db:"block_hash" json:"block_hash"`
-	Document                []byte `db:"document" json:"document"`
-	ContentBlockNumber      string `db:"content_block_number" json:"content_block_number"`
-	BlockHash_2             []byte `db:"block_hash_2" json:"block_hash_2"`
+	State                   string         `db:"state" json:"state"`
+	LatestSignalBlockNumber string         `db:"latest_signal_block_number" json:"latest_signal_block_number"`
+	BlockHash               []byte         `db:"block_hash" json:"block_hash"`
+	Document                []byte         `db:"document" json:"document"`
+	BlockNumber             pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash_2             []byte         `db:"block_hash_2" json:"block_hash_2"`
 }
 
-func (q *Queries) MetadataSelectCanonicalNFTMetadata(ctx context.Context, column1 pgtype.Numeric, tokenAddress []byte, column3 pgtype.Numeric) ([]MetadataSelectCanonicalNFTMetadataRow, error) {
-	rows, err := q.db.Query(ctx, MetadataSelectCanonicalNFTMetadata, column1, tokenAddress, column3)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []MetadataSelectCanonicalNFTMetadataRow{}
-	for rows.Next() {
-		var i MetadataSelectCanonicalNFTMetadataRow
-		if err := rows.Scan(
-			&i.State,
-			&i.LatestSignalBlockNumber,
-			&i.BlockHash,
-			&i.Document,
-			&i.ContentBlockNumber,
-			&i.BlockHash_2,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) MetadataSelectCanonicalNFTMetadata(ctx context.Context, chainID pgtype.Numeric, tokenAddress []byte, tokenID pgtype.Numeric) (MetadataSelectCanonicalNFTMetadataRow, error) {
+	row := q.db.QueryRow(ctx, metadataSelectCanonicalNFTMetadata, chainID, tokenAddress, tokenID)
+	var i MetadataSelectCanonicalNFTMetadataRow
+	err := row.Scan(
+		&i.State,
+		&i.LatestSignalBlockNumber,
+		&i.BlockHash,
+		&i.Document,
+		&i.BlockNumber,
+		&i.BlockHash_2,
+	)
+	return i, err
 }

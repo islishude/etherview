@@ -11,17 +11,17 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const VerifyLegacyProxyVerificationCurrentTarget = `-- name: VerifyLegacyProxyVerificationCurrentTarget :many
+const verifyLegacyProxyVerificationCurrentTarget = `-- name: VerifyLegacyProxyVerificationCurrentTarget :one
 WITH submission_context AS (
     SELECT number, block_hash
     FROM canonical_blocks
-    WHERE chain_id = $1::numeric
-      AND number = $20::numeric
-      AND block_hash = $21::bytea
+    WHERE chain_id = $16::numeric
+      AND number = $21::numeric
+      AND block_hash = $22::bytea
 ), canonical_tip AS (
     SELECT number, block_hash
     FROM canonical_blocks
-    WHERE chain_id = $1::numeric
+    WHERE chain_id = $16::numeric
     ORDER BY number DESC
     LIMIT 1
 ), latest_raw AS (
@@ -35,8 +35,8 @@ WITH submission_context AS (
           ON canonical.chain_id = observation.chain_id
          AND canonical.number = observation.block_number
          AND canonical.block_hash = observation.block_hash
-        WHERE observation.chain_id = $1::numeric
-          AND observation.proxy_address = $2::bytea
+        WHERE observation.chain_id = $16::numeric
+          AND observation.proxy_address = $20::bytea
           AND observation.canonical = TRUE
           AND observation.stage_version = 2
           AND observation.confidence IN ('verified', 'high')
@@ -420,11 +420,11 @@ WITH submission_context AS (
      AND beacon.beacon_address = proxy.effective_beacon
     WHERE proxy.current_pattern <> 'beacon' OR beacon.beacon_generation_id IS NOT NULL
 ), identity_candidates(address, code_hash, context_number) AS (
-    SELECT $2::bytea, $3::bytea, context_number FROM current_proxy
-    UNION ALL SELECT $6::bytea, $7::bytea, context_number FROM current_proxy
+    SELECT $20::bytea, $1::bytea, context_number FROM current_proxy
+    UNION ALL SELECT $4::bytea, $5::bytea, context_number FROM current_proxy
+    UNION ALL SELECT $8::bytea, $9::bytea, context_number FROM current_proxy
     UNION ALL SELECT $10::bytea, $11::bytea, context_number FROM current_proxy
-    UNION ALL SELECT $12::bytea, $13::bytea, context_number FROM current_proxy
-    UNION ALL SELECT $15::bytea, $16::bytea, context_number FROM current_proxy
+    UNION ALL SELECT $18::bytea, $19::bytea, context_number FROM current_proxy
 ), expected_identity(address, code_hash, epoch_block) AS (
     SELECT DISTINCT identity.address, identity.code_hash,
            COALESCE(code_epoch.block_number, 0::numeric)
@@ -436,7 +436,7 @@ WITH submission_context AS (
           ON canonical.chain_id = change.chain_id
          AND canonical.number = change.block_number
          AND canonical.block_hash = change.block_hash
-        WHERE change.chain_id = $1::numeric
+        WHERE change.chain_id = $16::numeric
           AND change.address = identity.address
           AND change.field_kind = 'code'
           AND change.canonical = TRUE
@@ -457,7 +457,7 @@ WITH submission_context AS (
           ON canonical.chain_id = observation.chain_id
          AND canonical.number = observation.block_number
          AND canonical.block_hash = observation.block_hash
-        WHERE observation.chain_id = $1::numeric
+        WHERE observation.chain_id = $16::numeric
           AND observation.address = expected.address
           AND observation.canonical = TRUE
           AND observation.block_number <= tip.number
@@ -467,10 +467,10 @@ WITH submission_context AS (
         LIMIT 1
     ) AS current_code ON TRUE
 ), publication_candidates AS (
-    SELECT $2::bytea AS address, $3::bytea AS code_hash,
-           $8::text <> 'clone' AS required
-    UNION ALL SELECT $6::bytea, $7::bytea, TRUE
-    UNION ALL SELECT $15::bytea, $16::bytea, $14::text <> 'none'
+    SELECT $20::bytea AS address, $1::bytea AS code_hash,
+           $6::text <> 'clone' AS required
+    UNION ALL SELECT $4::bytea, $5::bytea, TRUE
+    UNION ALL SELECT $18::bytea, $19::bytea, $17::text <> 'none'
 ), required_publication(address, code_hash, epoch_block) AS (
     SELECT publication.address, publication.code_hash, identity.epoch_block
     FROM publication_candidates AS publication
@@ -479,38 +479,40 @@ WITH submission_context AS (
      AND identity.code_hash = publication.code_hash
     WHERE publication.required
 )
-SELECT current_proxy.block_number::text
-     , current_proxy.observation_generation_id
-     , current_proxy.artifact_resolution_id
-     , current_proxy.beacon_generation_id
-     , current_proxy.uups_generation_id
-     , current_proxy.context_number::text
-     , current_proxy.context_hash
+SELECT
+current_proxy.block_number::text,
+current_proxy.observation_generation_id,
+COALESCE((current_proxy.artifact_resolution_id),0)::bigint AS artifact_resolution_id,
+current_proxy.beacon_generation_id,
+current_proxy.uups_generation_id,
+current_proxy.context_number::text,
+current_proxy.context_hash,
+(current_proxy.artifact_resolution_id IS NOT NULL)::boolean AS artifact_resolution_present
 FROM current_proxy AS current_proxy
 CROSS JOIN submission_context
-WHERE current_proxy.proxy_code_hash = $3::bytea
-  AND current_proxy.block_hash = $4::bytea
-  AND current_proxy.proxy_kind = $5::text
-  AND current_proxy.implementation_address = $6::bytea
-  AND current_proxy.implementation_code_hash = $7::bytea
-  AND current_proxy.proxy_pattern = $8::text
-  AND current_proxy.standard_version IS NOT DISTINCT FROM $9::text
-  AND current_proxy.admin_address IS NOT DISTINCT FROM $10::bytea
-  AND current_proxy.admin_code_hash IS NOT DISTINCT FROM $11::bytea
-  AND current_proxy.beacon_address IS NOT DISTINCT FROM $12::bytea
-  AND current_proxy.beacon_code_hash IS NOT DISTINCT FROM $13::bytea
-  AND current_proxy.observation_generation_id = $17::bigint
-  AND current_proxy.artifact_resolution_id IS NOT DISTINCT FROM $18::bigint
-  AND current_proxy.beacon_generation_id IS NOT DISTINCT FROM $19::bigint
-  AND current_proxy.uups_generation_id IS NOT DISTINCT FROM $22::bigint
+WHERE current_proxy.proxy_code_hash = $1::bytea
+  AND current_proxy.block_hash = $2::bytea
+  AND current_proxy.proxy_kind = $3::text
+  AND current_proxy.implementation_address = $4::bytea
+  AND current_proxy.implementation_code_hash = $5::bytea
+  AND current_proxy.proxy_pattern = $6::text
+  AND current_proxy.standard_version IS NOT DISTINCT FROM $7::text
+  AND current_proxy.admin_address IS NOT DISTINCT FROM $8::bytea
+  AND current_proxy.admin_code_hash IS NOT DISTINCT FROM $9::bytea
+  AND current_proxy.beacon_address IS NOT DISTINCT FROM $10::bytea
+  AND current_proxy.beacon_code_hash IS NOT DISTINCT FROM $11::bytea
+  AND current_proxy.observation_generation_id = $12::bigint
+  AND current_proxy.artifact_resolution_id IS NOT DISTINCT FROM $13::bigint
+  AND current_proxy.beacon_generation_id IS NOT DISTINCT FROM $14::bigint
+  AND current_proxy.uups_generation_id IS NOT DISTINCT FROM $15::bigint
   AND current_proxy.block_number <= submission_context.number
   AND proxy_interaction_coverage_contains(
-      $1::numeric,
+      $16::numeric,
       current_proxy.block_number, current_proxy.block_hash,
       current_proxy.context_number, current_proxy.context_hash
   )
   AND (
-      $14::text = 'none' OR EXISTS (
+      $17::text = 'none' OR EXISTS (
           SELECT 1
           FROM verified_contract_proxy_artifacts AS artifact
           JOIN verified_contracts AS verified
@@ -523,11 +525,11 @@ WHERE current_proxy.proxy_code_hash = $3::bytea
           JOIN expected_identity AS identity
             ON identity.address = artifact.address
            AND identity.code_hash = artifact.code_hash
-          WHERE artifact.chain_id = $1::numeric
-            AND artifact.address = $15
-            AND artifact.code_hash = $16
+          WHERE artifact.chain_id = $16::numeric
+            AND artifact.address = $18
+            AND artifact.code_hash = $19
             AND artifact.standard_version = '5.6.1'
-            AND artifact.artifact_kind = CASE $14::text
+            AND artifact.artifact_kind = CASE $17::text
                 WHEN 'proxy_admin' THEN 'proxy_admin'
                 WHEN 'upgradeable_beacon' THEN 'upgradeable_beacon'
             END
@@ -552,9 +554,9 @@ WHERE current_proxy.proxy_code_hash = $3::bytea
             ON identity.address = artifact.address
            AND identity.code_hash = artifact.code_hash
           WHERE artifact.verification_job_id = current_proxy.proxy_artifact_job_id
-            AND artifact.chain_id = $1::numeric
-            AND artifact.address = $2
-            AND artifact.code_hash = $3
+            AND artifact.chain_id = $16::numeric
+            AND artifact.address = $20
+            AND artifact.code_hash = $1
             AND artifact.standard_version = '5.6.1'
             AND artifact.artifact_kind = CASE current_proxy.proxy_pattern
                 WHEN 'erc1967' THEN 'erc1967_proxy'
@@ -584,9 +586,9 @@ WHERE current_proxy.proxy_code_hash = $3::bytea
            AND identity.code_hash = artifact.code_hash
           WHERE artifact.verification_job_id =
                 current_proxy.implementation_artifact_job_id
-            AND artifact.chain_id = $1::numeric
-            AND artifact.address = $6
-            AND artifact.code_hash = $7
+            AND artifact.chain_id = $16::numeric
+            AND artifact.address = $4
+            AND artifact.code_hash = $5
             AND artifact.standard_version = '5.6.1'
             AND artifact.artifact_kind = 'uups_implementation'
             AND artifact.valid_from_block >= identity.epoch_block
@@ -604,7 +606,7 @@ WHERE current_proxy.proxy_code_hash = $3::bytea
       SELECT 1
       FROM expected_identity AS identity
       JOIN contract_code_observations AS observation
-        ON observation.chain_id = $1::numeric
+        ON observation.chain_id = $16::numeric
        AND observation.address = identity.address
        AND observation.canonical = TRUE
       JOIN canonical_blocks AS canonical
@@ -619,7 +621,7 @@ WHERE current_proxy.proxy_code_hash = $3::bytea
       SELECT 1
       FROM expected_identity AS identity
       JOIN transaction_state_changes AS change
-        ON change.chain_id = $1::numeric
+        ON change.chain_id = $16::numeric
        AND change.address = identity.address
        AND change.field_kind = 'code'
        AND change.canonical = TRUE
@@ -638,7 +640,7 @@ WHERE current_proxy.proxy_code_hash = $3::bytea
       WHERE NOT EXISTS (
           SELECT 1
           FROM verified_contracts AS verified
-          WHERE verified.chain_id = $1::numeric
+          WHERE verified.chain_id = $16::numeric
             AND verified.address = publication.address
             AND verified.code_hash = publication.code_hash
             AND verified.valid_from_block >= publication.epoch_block
@@ -650,28 +652,28 @@ WHERE current_proxy.proxy_code_hash = $3::bytea
 `
 
 type VerifyLegacyProxyVerificationCurrentTargetParams struct {
-	Column1   pgtype.Numeric `db:"column_1" json:"column_1"`
-	Address   []byte         `db:"address" json:"address"`
-	Column3   []byte         `db:"column_3" json:"column_3"`
-	Column4   []byte         `db:"column_4" json:"column_4"`
-	Column5   string         `db:"column_5" json:"column_5"`
-	Column6   []byte         `db:"column_6" json:"column_6"`
-	Column7   []byte         `db:"column_7" json:"column_7"`
-	Column8   string         `db:"column_8" json:"column_8"`
-	Column9   string         `db:"column_9" json:"column_9"`
-	Column10  []byte         `db:"column_10" json:"column_10"`
-	Column11  []byte         `db:"column_11" json:"column_11"`
-	Column12  []byte         `db:"column_12" json:"column_12"`
-	Column13  []byte         `db:"column_13" json:"column_13"`
-	Column14  string         `db:"column_14" json:"column_14"`
-	Address_2 []byte         `db:"address_2" json:"address_2"`
-	CodeHash  []byte         `db:"code_hash" json:"code_hash"`
-	Column17  int64          `db:"column_17" json:"column_17"`
-	Column18  int64          `db:"column_18" json:"column_18"`
-	Column19  int64          `db:"column_19" json:"column_19"`
-	Column20  pgtype.Numeric `db:"column_20" json:"column_20"`
-	Column21  []byte         `db:"column_21" json:"column_21"`
-	Column22  int64          `db:"column_22" json:"column_22"`
+	CodeHash                []byte         `db:"code_hash" json:"code_hash"`
+	BlockHash               []byte         `db:"block_hash" json:"block_hash"`
+	ProxyKind               string         `db:"proxy_kind" json:"proxy_kind"`
+	ImplementationAddress   []byte         `db:"implementation_address" json:"implementation_address"`
+	ImplementationCodeHash  []byte         `db:"implementation_code_hash" json:"implementation_code_hash"`
+	ProxyPattern            string         `db:"proxy_pattern" json:"proxy_pattern"`
+	StandardVersion         *string        `db:"standard_version" json:"standard_version"`
+	AdminAddress            []byte         `db:"admin_address" json:"admin_address"`
+	AdminCodeHash           []byte         `db:"admin_code_hash" json:"admin_code_hash"`
+	BeaconAddress           []byte         `db:"beacon_address" json:"beacon_address"`
+	BeaconCodeHash          []byte         `db:"beacon_code_hash" json:"beacon_code_hash"`
+	ObservationGenerationID int64          `db:"observation_generation_id" json:"observation_generation_id"`
+	ArtifactResolutionID    *int64         `db:"artifact_resolution_id" json:"artifact_resolution_id"`
+	BeaconGenerationID      *int64         `db:"beacon_generation_id" json:"beacon_generation_id"`
+	UupsGenerationID        *int64         `db:"uups_generation_id" json:"uups_generation_id"`
+	ChainID                 pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	ManagementKind          string         `db:"management_kind" json:"management_kind"`
+	ManagementAddress       []byte         `db:"management_address" json:"management_address"`
+	ManagementCodeHash      []byte         `db:"management_code_hash" json:"management_code_hash"`
+	ProxyAddress            []byte         `db:"proxy_address" json:"proxy_address"`
+	SubmissionBlockNumber   pgtype.Numeric `db:"submission_block_number" json:"submission_block_number"`
+	SubmissionBlockHash     []byte         `db:"submission_block_hash" json:"submission_block_hash"`
 }
 
 type VerifyLegacyProxyVerificationCurrentTargetRow struct {
@@ -682,127 +684,93 @@ type VerifyLegacyProxyVerificationCurrentTargetRow struct {
 	UupsGenerationID          *int64 `db:"uups_generation_id" json:"uups_generation_id"`
 	CurrentProxyContextNumber string `db:"current_proxy_context_number" json:"current_proxy_context_number"`
 	ContextHash               []byte `db:"context_hash" json:"context_hash"`
+	ArtifactResolutionPresent bool   `db:"artifact_resolution_present" json:"artifact_resolution_present"`
 }
 
-func (q *Queries) VerifyLegacyProxyVerificationCurrentTarget(ctx context.Context, arg VerifyLegacyProxyVerificationCurrentTargetParams) ([]VerifyLegacyProxyVerificationCurrentTargetRow, error) {
-	rows, err := q.db.Query(ctx, VerifyLegacyProxyVerificationCurrentTarget,
-		arg.Column1,
-		arg.Address,
-		arg.Column3,
-		arg.Column4,
-		arg.Column5,
-		arg.Column6,
-		arg.Column7,
-		arg.Column8,
-		arg.Column9,
-		arg.Column10,
-		arg.Column11,
-		arg.Column12,
-		arg.Column13,
-		arg.Column14,
-		arg.Address_2,
+func (q *Queries) VerifyLegacyProxyVerificationCurrentTarget(ctx context.Context, arg VerifyLegacyProxyVerificationCurrentTargetParams) (VerifyLegacyProxyVerificationCurrentTargetRow, error) {
+	row := q.db.QueryRow(ctx, verifyLegacyProxyVerificationCurrentTarget,
 		arg.CodeHash,
-		arg.Column17,
-		arg.Column18,
-		arg.Column19,
-		arg.Column20,
-		arg.Column21,
-		arg.Column22,
+		arg.BlockHash,
+		arg.ProxyKind,
+		arg.ImplementationAddress,
+		arg.ImplementationCodeHash,
+		arg.ProxyPattern,
+		arg.StandardVersion,
+		arg.AdminAddress,
+		arg.AdminCodeHash,
+		arg.BeaconAddress,
+		arg.BeaconCodeHash,
+		arg.ObservationGenerationID,
+		arg.ArtifactResolutionID,
+		arg.BeaconGenerationID,
+		arg.UupsGenerationID,
+		arg.ChainID,
+		arg.ManagementKind,
+		arg.ManagementAddress,
+		arg.ManagementCodeHash,
+		arg.ProxyAddress,
+		arg.SubmissionBlockNumber,
+		arg.SubmissionBlockHash,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []VerifyLegacyProxyVerificationCurrentTargetRow{}
-	for rows.Next() {
-		var i VerifyLegacyProxyVerificationCurrentTargetRow
-		if err := rows.Scan(
-			&i.CurrentProxyBlockNumber,
-			&i.ObservationGenerationID,
-			&i.ArtifactResolutionID,
-			&i.BeaconGenerationID,
-			&i.UupsGenerationID,
-			&i.CurrentProxyContextNumber,
-			&i.ContextHash,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var i VerifyLegacyProxyVerificationCurrentTargetRow
+	err := row.Scan(
+		&i.CurrentProxyBlockNumber,
+		&i.ObservationGenerationID,
+		&i.ArtifactResolutionID,
+		&i.BeaconGenerationID,
+		&i.UupsGenerationID,
+		&i.CurrentProxyContextNumber,
+		&i.ContextHash,
+		&i.ArtifactResolutionPresent,
+	)
+	return i, err
 }
 
-const VerifyLegacyRenewVerification = `-- name: VerifyLegacyRenewVerification :exec
+const verifyLegacyRenewVerification = `-- name: VerifyLegacyRenewVerification :execrows
 UPDATE verification_jobs
-SET lease_expires_at = clock_timestamp() + ($3 * INTERVAL '1 microsecond'),
+SET lease_expires_at = clock_timestamp() + ($1::bigint * INTERVAL '1 microsecond'),
     updated_at = clock_timestamp()
-WHERE id = $1::uuid
+WHERE id = $2::uuid
   AND status = 'running'
-	  AND lease_token = $2
+	  AND lease_token = $3
 	  AND lease_expires_at > clock_timestamp()
 `
 
-func (q *Queries) VerifyLegacyRenewVerification(ctx context.Context, column1 pgtype.UUID, leaseToken *string, column3 interface{}) error {
-	_, err := q.db.Exec(ctx, VerifyLegacyRenewVerification, column1, leaseToken, column3)
-	return err
+func (q *Queries) VerifyLegacyRenewVerification(ctx context.Context, leaseMicroseconds int64, iD pgtype.UUID, leaseToken *string) (int64, error) {
+	result, err := q.db.Exec(ctx, verifyLegacyRenewVerification, leaseMicroseconds, iD, leaseToken)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const VerifyLegacyTryCompilerCacheInstallLock = `-- name: VerifyLegacyTryCompilerCacheInstallLock :many
+const verifyLegacyTryCompilerCacheInstallLock = `-- name: VerifyLegacyTryCompilerCacheInstallLock :one
 SELECT pg_try_advisory_lock(
     hashtextextended('etherview:compiler-cache:' || $1::text, 0)
 )
 `
 
-func (q *Queries) VerifyLegacyTryCompilerCacheInstallLock(ctx context.Context, dollar_1 string) ([]bool, error) {
-	rows, err := q.db.Query(ctx, VerifyLegacyTryCompilerCacheInstallLock, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var pg_try_advisory_lock bool
-		if err := rows.Scan(&pg_try_advisory_lock); err != nil {
-			return nil, err
-		}
-		items = append(items, pg_try_advisory_lock)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) VerifyLegacyTryCompilerCacheInstallLock(ctx context.Context, platform string) (bool, error) {
+	row := q.db.QueryRow(ctx, verifyLegacyTryCompilerCacheInstallLock, platform)
+	var pg_try_advisory_lock bool
+	err := row.Scan(&pg_try_advisory_lock)
+	return pg_try_advisory_lock, err
 }
 
-const VerifyLegacyUnlockCompilerCacheInstall = `-- name: VerifyLegacyUnlockCompilerCacheInstall :many
+const verifyLegacyUnlockCompilerCacheInstall = `-- name: VerifyLegacyUnlockCompilerCacheInstall :one
 SELECT pg_advisory_unlock(
     hashtextextended('etherview:compiler-cache:' || $1::text, 0)
 )
 `
 
-func (q *Queries) VerifyLegacyUnlockCompilerCacheInstall(ctx context.Context, dollar_1 string) ([]bool, error) {
-	rows, err := q.db.Query(ctx, VerifyLegacyUnlockCompilerCacheInstall, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []bool{}
-	for rows.Next() {
-		var pg_advisory_unlock bool
-		if err := rows.Scan(&pg_advisory_unlock); err != nil {
-			return nil, err
-		}
-		items = append(items, pg_advisory_unlock)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) VerifyLegacyUnlockCompilerCacheInstall(ctx context.Context, platform string) (bool, error) {
+	row := q.db.QueryRow(ctx, verifyLegacyUnlockCompilerCacheInstall, platform)
+	var pg_advisory_unlock bool
+	err := row.Scan(&pg_advisory_unlock)
+	return pg_advisory_unlock, err
 }
 
-const VerifyLegacyVerificationCanonicalGenesisTarget = `-- name: VerifyLegacyVerificationCanonicalGenesisTarget :many
+const verifyLegacyVerificationCanonicalGenesisTarget = `-- name: VerifyLegacyVerificationCanonicalGenesisTarget :one
 SELECT observation.block_number::text
 FROM contract_code_observations AS observation
 JOIN canonical_blocks AS canonical
@@ -833,40 +801,27 @@ FOR SHARE OF observation, canonical, imported, genesis_canonical, account
 `
 
 type VerifyLegacyVerificationCanonicalGenesisTargetParams struct {
-	Column1   pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID   pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	Address   []byte         `db:"address" json:"address"`
 	CodeHash  []byte         `db:"code_hash" json:"code_hash"`
 	BlockHash []byte         `db:"block_hash" json:"block_hash"`
 	Code      []byte         `db:"code" json:"code"`
 }
 
-func (q *Queries) VerifyLegacyVerificationCanonicalGenesisTarget(ctx context.Context, arg VerifyLegacyVerificationCanonicalGenesisTargetParams) ([]string, error) {
-	rows, err := q.db.Query(ctx, VerifyLegacyVerificationCanonicalGenesisTarget,
-		arg.Column1,
+func (q *Queries) VerifyLegacyVerificationCanonicalGenesisTarget(ctx context.Context, arg VerifyLegacyVerificationCanonicalGenesisTargetParams) (string, error) {
+	row := q.db.QueryRow(ctx, verifyLegacyVerificationCanonicalGenesisTarget,
+		arg.ChainID,
 		arg.Address,
 		arg.CodeHash,
 		arg.BlockHash,
 		arg.Code,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []string{}
-	for rows.Next() {
-		var observation_block_number string
-		if err := rows.Scan(&observation_block_number); err != nil {
-			return nil, err
-		}
-		items = append(items, observation_block_number)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var observation_block_number string
+	err := row.Scan(&observation_block_number)
+	return observation_block_number, err
 }
 
-const VerifyLegacyVerificationCanonicalTarget = `-- name: VerifyLegacyVerificationCanonicalTarget :many
+const verifyLegacyVerificationCanonicalTarget = `-- name: VerifyLegacyVerificationCanonicalTarget :one
 SELECT observation.block_number::text
 FROM contract_code_observations AS observation
 JOIN canonical_blocks AS canonical
@@ -882,65 +837,52 @@ FOR SHARE OF observation, canonical
 `
 
 type VerifyLegacyVerificationCanonicalTargetParams struct {
-	Column1   pgtype.Numeric `db:"column_1" json:"column_1"`
+	ChainID   pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	Address   []byte         `db:"address" json:"address"`
 	CodeHash  []byte         `db:"code_hash" json:"code_hash"`
 	BlockHash []byte         `db:"block_hash" json:"block_hash"`
 }
 
-func (q *Queries) VerifyLegacyVerificationCanonicalTarget(ctx context.Context, arg VerifyLegacyVerificationCanonicalTargetParams) ([]string, error) {
-	rows, err := q.db.Query(ctx, VerifyLegacyVerificationCanonicalTarget,
-		arg.Column1,
+func (q *Queries) VerifyLegacyVerificationCanonicalTarget(ctx context.Context, arg VerifyLegacyVerificationCanonicalTargetParams) (string, error) {
+	row := q.db.QueryRow(ctx, verifyLegacyVerificationCanonicalTarget,
+		arg.ChainID,
 		arg.Address,
 		arg.CodeHash,
 		arg.BlockHash,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []string{}
-	for rows.Next() {
-		var observation_block_number string
-		if err := rows.Scan(&observation_block_number); err != nil {
-			return nil, err
-		}
-		items = append(items, observation_block_number)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	var observation_block_number string
+	err := row.Scan(&observation_block_number)
+	return observation_block_number, err
 }
 
-const VerifyLegacyVerificationProxyReplayTarget = `-- name: VerifyLegacyVerificationProxyReplayTarget :exec
+const verifyLegacyVerificationProxyReplayTarget = `-- name: VerifyLegacyVerificationProxyReplayTarget :exec
 INSERT INTO proxy_replay_targets (
     chain_id, block_number, block_hash, address, target_kind,
     source_kind, source_verification_job_id
 ) VALUES (
-    $1::numeric, $3::numeric, $4, $2, $5,
+    $1::numeric, $2::numeric, $3, $4, $5,
     'verification_publication', $6::uuid
 )
 ON CONFLICT DO NOTHING
 `
 
 type VerifyLegacyVerificationProxyReplayTargetParams struct {
-	Column1    pgtype.Numeric `db:"column_1" json:"column_1"`
-	Address    []byte         `db:"address" json:"address"`
-	Column3    pgtype.Numeric `db:"column_3" json:"column_3"`
-	BlockHash  []byte         `db:"block_hash" json:"block_hash"`
-	TargetKind string         `db:"target_kind" json:"target_kind"`
-	Column6    pgtype.UUID    `db:"column_6" json:"column_6"`
+	ChainID                 pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber             pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash               []byte         `db:"block_hash" json:"block_hash"`
+	Address                 []byte         `db:"address" json:"address"`
+	TargetKind              string         `db:"target_kind" json:"target_kind"`
+	SourceVerificationJobID pgtype.UUID    `db:"source_verification_job_id" json:"source_verification_job_id"`
 }
 
 func (q *Queries) VerifyLegacyVerificationProxyReplayTarget(ctx context.Context, arg VerifyLegacyVerificationProxyReplayTargetParams) error {
-	_, err := q.db.Exec(ctx, VerifyLegacyVerificationProxyReplayTarget,
-		arg.Column1,
-		arg.Address,
-		arg.Column3,
+	_, err := q.db.Exec(ctx, verifyLegacyVerificationProxyReplayTarget,
+		arg.ChainID,
+		arg.BlockNumber,
 		arg.BlockHash,
+		arg.Address,
 		arg.TargetKind,
-		arg.Column6,
+		arg.SourceVerificationJobID,
 	)
 	return err
 }

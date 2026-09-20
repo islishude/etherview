@@ -3,16 +3,19 @@ package query
 
 import (
 	"context"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/api/gen"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	ensresolver "github.com/islishude/etherview/internal/ens"
 	"github.com/islishude/etherview/internal/erc4337"
 	"github.com/islishude/etherview/internal/ethrpc"
@@ -51,7 +54,7 @@ type Options struct {
 }
 
 type PostgresReader struct {
-	db                  *sql.DB
+	db                  dbaccess.Database
 	chainID             string
 	startBlock          uint64
 	latestBlock         LatestBlockFunc
@@ -65,7 +68,7 @@ type PostgresReader struct {
 
 var _ publicquery.Reader = (*PostgresReader)(nil)
 
-func NewPostgresReader(db *sql.DB, options Options) (*PostgresReader, error) {
+func NewPostgresReader(db dbaccess.Database, options Options) (*PostgresReader, error) {
 	if db == nil {
 		return nil, errors.New("query database is nil")
 	}
@@ -122,17 +125,54 @@ func (r *PostgresReader) status(
 		CoverageEnd:   r.startBlock,
 		Completeness:  r.completeness,
 	}
-	var configuredStart, contiguousEnd, checkpointHeight, highestEnd sql.NullString
+	var configuredStart, contiguousEnd, checkpointHeight, highestEnd pgtype.Text
 	var contiguousHash, checkpointHash, highestHash []byte
-	var safeHeight, finalizedHeight, traceState sql.NullString
-	if err := queryer.QueryRowContext(ctx, dbgen.QueryStatusState, r.chainID).Scan(
-		&configuredStart,
-		&contiguousEnd, &contiguousHash,
-		&checkpointHeight, &checkpointHash,
-		&highestEnd, &highestHash,
-		&safeHeight, &finalizedHeight,
-		&traceState,
-	); err != nil {
+	var safeHeight, finalizedHeight, traceState pgtype.Text
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(r.chainID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(queryer).QueryStatusState(ctx, queryValue0)
+		if err != nil {
+			return err
+		}
+		resultValue0, err := dbaccess.NumericText(queryRow.ConfiguredStart)
+		if err != nil {
+			return err
+		}
+		configuredStart = resultValue0
+		resultValue2, err := dbaccess.NumericText(queryRow.ContiguousRangeEnd)
+		if err != nil {
+			return err
+		}
+		contiguousEnd = resultValue2
+		contiguousHash = queryRow.ContiguousBlockHash
+		resultValue5, err := dbaccess.NumericText(queryRow.CheckpointNumber)
+		if err != nil {
+			return err
+		}
+		checkpointHeight = resultValue5
+		checkpointHash = queryRow.CheckpointHash
+		resultValue8, err := dbaccess.NumericText(queryRow.HighestRangeEnd)
+		if err != nil {
+			return err
+		}
+		highestEnd = resultValue8
+		highestHash = queryRow.HighestBlockHash
+		resultValue11, err := dbaccess.NumericText(queryRow.SafeNumber)
+		if err != nil {
+			return err
+		}
+		safeHeight = resultValue11
+		resultValue13, err := dbaccess.NumericText(queryRow.FinalizedNumber)
+		if err != nil {
+			return err
+		}
+		finalizedHeight = resultValue13
+		traceState = queryRow.State
+		return nil
+	}(); err != nil {
 		return publicquery.StatusSnapshot{}, fmt.Errorf("query index status: %w", err)
 	}
 	configured := configuredStart.Valid
@@ -208,12 +248,25 @@ func (r *PostgresReader) status(
 	if snapshot.Completeness.UserOperations == gen.StageStatePending && r.userOperations {
 		var coveredNumber string
 		var coveredHash []byte
-		err = queryer.QueryRowContext(
-			ctx, dbgen.ERC4337CurrentSnapshot,
-			strconv.FormatUint(r.userOperationStart, 10), r.chainID, r.userOperationDigest,
-		).Scan(&coveredNumber, &coveredHash)
+		err = func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(strconv.FormatUint(r.userOperationStart, 10)); err != nil {
+				return err
+			}
+			var queryValue1 pgtype.Numeric
+			if err := queryValue1.Scan(r.chainID); err != nil {
+				return err
+			}
+			queryRow, err := dbgen.New(queryer).ERC4337CurrentSnapshot(ctx, queryValue0, queryValue1, r.userOperationDigest)
+			if err != nil {
+				return err
+			}
+			coveredNumber = queryRow.SnapshotNumber
+			coveredHash = queryRow.SnapshotHash
+			return nil
+		}()
 		switch {
-		case errors.Is(err, sql.ErrNoRows):
+		case errors.Is(err, pgx.ErrNoRows):
 			// No continuous configured-digest range is published yet.
 		case err != nil:
 			return publicquery.StatusSnapshot{}, fmt.Errorf("read UserOperation status coverage: %w", err)
@@ -269,11 +322,11 @@ func (r *PostgresReader) Blocks(ctx context.Context, encodedCursor string, limit
 	if limit <= 0 || limit > 100 {
 		return nil, "", fmt.Errorf("block limit %d is outside 1..100", limit)
 	}
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return nil, "", fmt.Errorf("begin stable block query: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 
 	var snapshot blockCursor
 	if encodedCursor == "" {
@@ -290,29 +343,35 @@ func (r *PostgresReader) Blocks(ctx context.Context, encodedCursor string, limit
 		}
 	}
 
-	pageSQL := dbgen.QueryListBlocks
-	boundary := snapshot.BeforeNumber
-	if encodedCursor == "" {
-		pageSQL = dbgen.QueryListBlocksFirst
-		boundary = snapshot.SnapshotNumber
+	chain, err := r.chainNumeric()
+	if err != nil {
+		return nil, "", err
 	}
-	rows, err := tx.QueryContext(ctx, pageSQL, r.chainID, strconv.FormatUint(boundary, 10), limit+1)
+	queries := dbgen.New(r.db).WithTx(tx)
+	var rows []dbgen.QueryListBlocksFirstRow
+	if encodedCursor == "" {
+		rows, err = queries.QueryListBlocksFirst(ctx, chain, numericUint64(snapshot.SnapshotNumber), int32(limit+1))
+	} else {
+		var page []dbgen.QueryListBlocksRow
+		page, err = queries.QueryListBlocks(ctx, chain, numericUint64(snapshot.BeforeNumber), int32(limit+1))
+		rows = make([]dbgen.QueryListBlocksFirstRow, len(page))
+		for index, row := range page {
+			rows[index] = dbgen.QueryListBlocksFirstRow(row)
+		}
+	}
 	if err != nil {
 		return nil, "", fmt.Errorf("query canonical block page: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
-	records := make([]blockRecord, 0, limit+1)
-	for rows.Next() {
-		record, err := r.scanBlock(rows, true)
+	records := make([]blockRecord, 0, len(rows))
+	for _, row := range rows {
+		record, err := r.decodeBlock(row, true)
 		if err != nil {
 			return nil, "", err
 		}
 		records = append(records, record)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, "", fmt.Errorf("iterate canonical block page: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
+
+	if err := tx.Commit(ctx); err != nil {
 		return nil, "", fmt.Errorf("commit stable block query: %w", err)
 	}
 
@@ -342,42 +401,40 @@ func (r *PostgresReader) Blocks(ctx context.Context, encodedCursor string, limit
 }
 
 func (r *PostgresReader) Block(ctx context.Context, identifier string) (gen.Block, error) {
+	chain, err := r.chainNumeric()
+	if err != nil {
+		return gen.Block{}, err
+	}
+	queries := dbgen.New(r.db)
+	var stored dbgen.QueryListBlocksFirstRow
+	forceCanonical := true
 	if hash, isHash, err := parseHashIdentifier(identifier); err != nil {
 		return gen.Block{}, err
 	} else if isHash {
-		rows, err := r.db.QueryContext(ctx, dbgen.QueryBlockByHash, r.chainID, hash.Bytes())
+		row, err := queries.QueryBlockByHash(ctx, chain, hash.Bytes())
+		if errors.Is(err, pgx.ErrNoRows) {
+			return gen.Block{}, publicquery.ErrNotFound
+		}
 		if err != nil {
 			return gen.Block{}, fmt.Errorf("query block by hash: %w", err)
 		}
-		defer rows.Close() //nolint:errcheck
-		if !rows.Next() {
-			if err := rows.Err(); err != nil {
-				return gen.Block{}, fmt.Errorf("query block by hash: %w", err)
-			}
-			return gen.Block{}, publicquery.ErrNotFound
-		}
-		record, err := r.scanBlock(rows, false)
+		stored = dbgen.QueryListBlocksFirstRow(row)
+		forceCanonical = false
+	} else {
+		height, err := parseBlockNumber(identifier)
 		if err != nil {
 			return gen.Block{}, err
 		}
-		return record.Model, nil
-	}
-	height, err := parseBlockNumber(identifier)
-	if err != nil {
-		return gen.Block{}, err
-	}
-	rows, err := r.db.QueryContext(ctx, dbgen.QueryBlockByNumber, r.chainID, strconv.FormatUint(height, 10))
-	if err != nil {
-		return gen.Block{}, fmt.Errorf("query block by number: %w", err)
-	}
-	defer rows.Close() //nolint:errcheck
-	if !rows.Next() {
-		if err := rows.Err(); err != nil {
+		row, err := queries.QueryBlockByNumber(ctx, chain, numericUint64(height))
+		if errors.Is(err, pgx.ErrNoRows) {
+			return gen.Block{}, publicquery.ErrNotFound
+		}
+		if err != nil {
 			return gen.Block{}, fmt.Errorf("query block by number: %w", err)
 		}
-		return gen.Block{}, publicquery.ErrNotFound
+		stored = dbgen.QueryListBlocksFirstRow(row)
 	}
-	record, err := r.scanBlock(rows, true)
+	record, err := r.decodeBlock(stored, forceCanonical)
 	if err != nil {
 		return gen.Block{}, err
 	}
@@ -389,31 +446,31 @@ func (r *PostgresReader) Transaction(ctx context.Context, value string) (gen.Tra
 	if err != nil {
 		return gen.Transaction{}, fmt.Errorf("invalid transaction hash: %w", err)
 	}
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return gen.Transaction{}, fmt.Errorf("begin stable transaction query: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	snapshot, err := r.currentBlockCursor(ctx, tx)
 	if err != nil {
 		return gen.Transaction{}, err
 	}
-	rows, err := tx.QueryContext(ctx, dbgen.QueryTransactionByHash, r.chainID, hash.Bytes())
-	if err != nil {
-		return gen.Transaction{}, fmt.Errorf("query transaction: %w", err)
-	}
-	defer rows.Close() //nolint:errcheck
-	if !rows.Next() {
-		if err := rows.Err(); err != nil {
-			return gen.Transaction{}, fmt.Errorf("query transaction: %w", err)
-		}
-		return gen.Transaction{}, publicquery.ErrNotFound
-	}
-	record, err := r.scanTransaction(rows, snapshot.SnapshotNumber)
+	chain, err := r.chainNumeric()
 	if err != nil {
 		return gen.Transaction{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	row, err := dbgen.New(r.db).WithTx(tx).QueryTransactionByHash(ctx, chain, hash.Bytes())
+	if errors.Is(err, pgx.ErrNoRows) {
+		return gen.Transaction{}, publicquery.ErrNotFound
+	}
+	if err != nil {
+		return gen.Transaction{}, fmt.Errorf("query transaction: %w", err)
+	}
+	record, err := r.decodeTransaction(dbgen.ListBlockTransactionsRow(row), snapshot.SnapshotNumber)
+	if err != nil {
+		return gen.Transaction{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return gen.Transaction{}, fmt.Errorf("commit stable transaction query: %w", err)
 	}
 	return record.Model, nil
@@ -485,17 +542,29 @@ func (r *PostgresReader) search(
 	limit int,
 	gate resolvedNameGate,
 ) ([]gen.SearchResult, string, error) {
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return nil, "", fmt.Errorf("begin stable search: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	snapshot, err := r.currentBlockCursor(ctx, tx)
 	if err != nil {
 		return nil, "", err
 	}
 	var generation, minGeneration int64
-	if err := tx.QueryRowContext(ctx, dbgen.GetCurrentSearchGeneration, r.chainID).Scan(&generation, &minGeneration); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(r.chainID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).GetCurrentSearchGeneration(ctx, queryValue0)
+		if err != nil {
+			return err
+		}
+		generation = queryRow.Generation
+		minGeneration = queryRow.MinGeneration
+		return nil
+	}(); err != nil {
 		return nil, "", fmt.Errorf("read search catalog generation: %w", err)
 	}
 	if generation < 0 || minGeneration < 0 || minGeneration > generation {
@@ -581,7 +650,7 @@ func (r *PostgresReader) search(
 			results = mergeSearchResults(results, extra, limit+2)
 		}
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return nil, "", fmt.Errorf("commit stable search: %w", err)
 	}
 	if boundary != nil {
@@ -625,7 +694,7 @@ func (r *PostgresReader) search(
 
 func (r *PostgresReader) currentSearchUserOperationSnapshot(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 ) (userOperationSearchSnapshot, error) {
 	if !r.userOperations {
 		return userOperationSearchSnapshot{}, nil
@@ -699,7 +768,7 @@ func normalizeOptionalStage(state gen.StageState) (gen.StageState, error) {
 	return state, nil
 }
 
-func currentTraceCompleteness(indexed bool, state sql.NullString) (gen.StageState, error) {
+func currentTraceCompleteness(indexed bool, state pgtype.Text) (gen.StageState, error) {
 	if !indexed || !state.Valid {
 		return gen.StageStatePending, nil
 	}

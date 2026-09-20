@@ -4,35 +4,35 @@ WITH candidates AS (
     FROM (
         SELECT block_number, block_hash, tx_index, tx_hash
         FROM transaction_inclusions
-        WHERE chain_id = $1::numeric
-          AND (block_number < $2::numeric OR (block_number = $2::numeric AND tx_index < $3::bigint))
-          AND lower(raw->>'from') = $4::text
+        WHERE chain_id = sqlc.arg('chain_id')::numeric
+          AND (block_number < sqlc.arg('max_block_number')::numeric OR (block_number = sqlc.arg('max_block_number')::numeric AND tx_index < sqlc.arg('max_tx_index')::bigint))
+          AND lower(raw->>'from') = sqlc.arg('address_hex')::text
         UNION
         SELECT block_number, block_hash, tx_index, tx_hash
         FROM transaction_inclusions
-        WHERE chain_id = $1::numeric
-          AND (block_number < $2::numeric OR (block_number = $2::numeric AND tx_index < $3::bigint))
-          AND lower(raw->>'to') = $4::text
+        WHERE chain_id = sqlc.arg('chain_id')::numeric
+          AND (block_number < sqlc.arg('max_block_number')::numeric OR (block_number = sqlc.arg('max_block_number')::numeric AND tx_index < sqlc.arg('max_tx_index')::bigint))
+          AND lower(raw->>'to') = sqlc.arg('address_hex')::text
         UNION
         SELECT block_number, block_hash, tx_index, tx_hash
         FROM receipts
-        WHERE chain_id = $1::numeric
-          AND (block_number < $2::numeric OR (block_number = $2::numeric AND tx_index < $3::bigint))
-          AND lower(raw->>'contractAddress') = $4::text
+        WHERE chain_id = sqlc.arg('chain_id')::numeric
+          AND (block_number < sqlc.arg('max_block_number')::numeric OR (block_number = sqlc.arg('max_block_number')::numeric AND tx_index < sqlc.arg('max_tx_index')::bigint))
+          AND lower(raw->>'contractAddress') = sqlc.arg('address_hex')::text
     ) AS candidate)
 SELECT
-    inclusion.raw,
-    receipt.raw,
-    inclusion.block_number::text,
-    inclusion.block_hash,
-    inclusion.tx_index,
-    inclusion.tx_hash,
-    TRUE,
-    finality.safe_number::text,
-    finality.finalized_number::text,
-	block.timestamp::text,
-	block.base_fee_per_gas_quantity,
-	EXISTS (
+    inclusion.raw AS raw,
+    receipt.raw AS receipt_raw,
+    inclusion.block_number::text AS block_number,
+    inclusion.block_hash AS block_hash,
+    inclusion.tx_index AS tx_index,
+    inclusion.tx_hash AS tx_hash,
+    (TRUE)::boolean AS canonical,
+    finality.safe_number AS safe_number,
+    finality.finalized_number AS finalized_number,
+    block.timestamp::text AS block_timestamp,
+    block.base_fee_per_gas_quantity AS block_base_fee_per_gas,
+    EXISTS (
 	    SELECT 1
 	    FROM published_block_stage_results AS published_state_diff
 	    WHERE published_state_diff.chain_id = inclusion.chain_id
@@ -42,15 +42,15 @@ SELECT
 	      AND published_state_diff.stage_version = 3
 	      AND published_state_diff.state = 'complete'
 	),
-	execution.resolution,
-	execution.execution_address,
-	execution.execution_code_hash,
-	decoding.signature,
-	decoding.source,
-	decoding.confidence
+    execution.resolution,
+    execution.execution_address,
+    execution.execution_code_hash,
+    decoding.signature,
+    decoding.source,
+    decoding.confidence
 FROM candidates
 JOIN transaction_inclusions AS inclusion
-  ON inclusion.chain_id = $1::numeric
+  ON inclusion.chain_id = sqlc.arg('chain_id')::numeric
  AND inclusion.block_number = candidates.block_number
  AND inclusion.block_hash = candidates.block_hash
  AND inclusion.tx_index = candidates.tx_index
@@ -150,7 +150,7 @@ LEFT JOIN abi_decodings AS decoding
        AND published_abi.state = 'complete'
  )
 ORDER BY inclusion.block_number DESC, inclusion.tx_index DESC, inclusion.tx_hash DESC
-LIMIT $5;
+LIMIT sqlc.arg('limit');
 
 -- name: QueryListAddressTransactionsFirst :many
 WITH candidates AS (
@@ -158,35 +158,35 @@ WITH candidates AS (
     FROM (
         SELECT block_number, block_hash, tx_index, tx_hash
         FROM transaction_inclusions
-        WHERE chain_id = $1::numeric
-          AND block_number <= $2::numeric
-          AND lower(raw->>'from') = $3::text
+        WHERE chain_id = sqlc.arg('chain_id')::numeric
+          AND block_number <= sqlc.arg('max_block_number')::numeric
+          AND lower(raw->>'from') = sqlc.arg('address_hex')::text
         UNION
         SELECT block_number, block_hash, tx_index, tx_hash
         FROM transaction_inclusions
-        WHERE chain_id = $1::numeric
-          AND block_number <= $2::numeric
-          AND lower(raw->>'to') = $3::text
+        WHERE chain_id = sqlc.arg('chain_id')::numeric
+          AND block_number <= sqlc.arg('max_block_number')::numeric
+          AND lower(raw->>'to') = sqlc.arg('address_hex')::text
         UNION
         SELECT block_number, block_hash, tx_index, tx_hash
         FROM receipts
-        WHERE chain_id = $1::numeric
-          AND block_number <= $2::numeric
-          AND lower(raw->>'contractAddress') = $3::text
+        WHERE chain_id = sqlc.arg('chain_id')::numeric
+          AND block_number <= sqlc.arg('max_block_number')::numeric
+          AND lower(raw->>'contractAddress') = sqlc.arg('address_hex')::text
     ) AS candidate)
 SELECT
-    inclusion.raw,
-    receipt.raw,
-    inclusion.block_number::text,
-    inclusion.block_hash,
-    inclusion.tx_index,
-    inclusion.tx_hash,
-    TRUE,
-    finality.safe_number::text,
-    finality.finalized_number::text,
-	block.timestamp::text,
-	block.base_fee_per_gas_quantity,
-	EXISTS (
+    inclusion.raw AS raw,
+    receipt.raw AS receipt_raw,
+    inclusion.block_number::text AS block_number,
+    inclusion.block_hash AS block_hash,
+    inclusion.tx_index AS tx_index,
+    inclusion.tx_hash AS tx_hash,
+    (TRUE)::boolean AS canonical,
+    finality.safe_number AS safe_number,
+    finality.finalized_number AS finalized_number,
+    block.timestamp::text AS block_timestamp,
+    block.base_fee_per_gas_quantity AS block_base_fee_per_gas,
+    EXISTS (
 	    SELECT 1
 	    FROM published_block_stage_results AS published_state_diff
 	    WHERE published_state_diff.chain_id = inclusion.chain_id
@@ -196,15 +196,15 @@ SELECT
 	      AND published_state_diff.stage_version = 3
 	      AND published_state_diff.state = 'complete'
 	),
-	execution.resolution,
-	execution.execution_address,
-	execution.execution_code_hash,
-	decoding.signature,
-	decoding.source,
-	decoding.confidence
+    execution.resolution,
+    execution.execution_address,
+    execution.execution_code_hash,
+    decoding.signature,
+    decoding.source,
+    decoding.confidence
 FROM candidates
 JOIN transaction_inclusions AS inclusion
-  ON inclusion.chain_id = $1::numeric
+  ON inclusion.chain_id = sqlc.arg('chain_id')::numeric
  AND inclusion.block_number = candidates.block_number
  AND inclusion.block_hash = candidates.block_hash
  AND inclusion.tx_index = candidates.tx_index
@@ -304,4 +304,4 @@ LEFT JOIN abi_decodings AS decoding
        AND published_abi.state = 'complete'
  )
 ORDER BY inclusion.block_number DESC, inclusion.tx_index DESC, inclusion.tx_hash DESC
-LIMIT $4;
+LIMIT sqlc.arg('limit');

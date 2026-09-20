@@ -2,12 +2,15 @@ package query
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/islishude/etherview/internal/api/gen"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/publicquery"
 )
 
@@ -16,11 +19,11 @@ const homeSnapshotLimit = 6
 var _ publicquery.HomeSnapshotReader = (*PostgresReader)(nil)
 
 func (r *PostgresReader) HomeSnapshot(ctx context.Context) (publicquery.HomeSnapshotState, error) {
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return publicquery.HomeSnapshotState{}, fmt.Errorf("begin home snapshot: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 
 	eventID, err := r.homeEventID(ctx, tx)
 	if err != nil {
@@ -34,7 +37,7 @@ func (r *PostgresReader) HomeSnapshot(ctx context.Context) (publicquery.HomeSnap
 	if err != nil {
 		return publicquery.HomeSnapshotState{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return publicquery.HomeSnapshotState{}, fmt.Errorf("commit home snapshot: %w", err)
 	}
 	return publicquery.HomeSnapshotState{
@@ -43,28 +46,64 @@ func (r *PostgresReader) HomeSnapshot(ctx context.Context) (publicquery.HomeSnap
 	}, nil
 }
 
-func (r *PostgresReader) homeEventID(ctx context.Context, tx *sql.Tx) (uint64, error) {
-	var id sql.NullInt64
-	if err := tx.QueryRowContext(ctx, dbgen.GetHomeRuntimeEventID, r.chainID).Scan(&id); err != nil {
+func (r *PostgresReader) homeEventID(ctx context.Context, tx pgx.Tx) (uint64, error) {
+	var id pgtype.Int8
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(r.chainID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).GetHomeRuntimeEventID(ctx, queryValue0)
+		if err != nil {
+			return err
+		}
+		id = pgtype.Int8{Int64: queryRow, Valid: true}
+		return nil
+	}(); err != nil {
 		return 0, fmt.Errorf("query home runtime event identity: %w", err)
 	}
 	if !id.Valid {
 		return 0, nil
 	}
-	if id.Int64 <= 0 {
+	if id.Int64 < 0 {
 		return 0, errors.New("home runtime event identity is invalid")
 	}
 	return uint64(id.Int64), nil
 }
 
-func (r *PostgresReader) transactionRuntimeStatus(tx *sql.Tx) RuntimeStatusFunc {
+func (r *PostgresReader) transactionRuntimeStatus(tx pgx.Tx) RuntimeStatusFunc {
 	return func(ctx context.Context) (RuntimeStatus, bool, error) {
-		var latest, indexed, highest sql.NullString
+		var latest, indexed, highest pgtype.Text
 		var status RuntimeStatus
-		err := tx.QueryRowContext(ctx, dbgen.GetHomeRuntimeStatus, r.chainID).Scan(
-			&latest, &indexed, &highest, &status.BackfillComplete, &status.Ready,
-		)
-		if errors.Is(err, sql.ErrNoRows) {
+		err := func() error {
+			var queryValue0 pgtype.Numeric
+			if err := queryValue0.Scan(r.chainID); err != nil {
+				return err
+			}
+			queryRow, err := dbgen.New(tx).GetHomeRuntimeStatus(ctx, queryValue0)
+			if err != nil {
+				return err
+			}
+			resultValue0, err := dbaccess.NumericText(queryRow.LatestNumber)
+			if err != nil {
+				return err
+			}
+			latest = resultValue0
+			resultValue2, err := dbaccess.NumericText(queryRow.IndexedNumber)
+			if err != nil {
+				return err
+			}
+			indexed = resultValue2
+			resultValue4, err := dbaccess.NumericText(queryRow.HighestCoveredNumber)
+			if err != nil {
+				return err
+			}
+			highest = resultValue4
+			status.BackfillComplete = queryRow.BackfillComplete
+			status.Ready = queryRow.Ready
+			return nil
+		}()
+		if errors.Is(err, pgx.ErrNoRows) {
 			return RuntimeStatus{}, false, nil
 		}
 		if err != nil {
@@ -87,7 +126,7 @@ func (r *PostgresReader) transactionRuntimeStatus(tx *sql.Tx) RuntimeStatusFunc 
 	}
 }
 
-func nullableRuntimeQuantity(value sql.NullString) (uint64, bool, error) {
+func nullableRuntimeQuantity(value pgtype.Text) (uint64, bool, error) {
 	if !value.Valid {
 		return 0, false, nil
 	}
@@ -100,12 +139,24 @@ func nullableRuntimeQuantity(value sql.NullString) (uint64, bool, error) {
 
 func (r *PostgresReader) homeActivity(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 ) ([]gen.Block, []gen.Transaction, error) {
 	var tipNumberText string
 	var tipHash []byte
-	err := tx.QueryRowContext(ctx, dbgen.GetCurrentQueryTip, r.chainID).Scan(&tipNumberText, &tipHash)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(r.chainID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).GetCurrentQueryTip(ctx, queryValue0)
+		if err != nil {
+			return err
+		}
+		tipNumberText = queryRow.CanonicalNumber
+		tipHash = queryRow.BlockHash
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return []gen.Block{}, []gen.Transaction{}, nil
 	}
 	if err != nil {
@@ -119,39 +170,54 @@ func (r *PostgresReader) homeActivity(
 		return nil, nil, fmt.Errorf("decode home canonical tip: %w", err)
 	}
 
-	blockRows, err := tx.QueryContext(
-		ctx, dbgen.QueryListBlocksFirst, r.chainID, tipNumberText, homeSnapshotLimit,
-	)
+	blockRows, err := func() ([]dbgen.QueryListBlocksFirstRow, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(r.chainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(tipNumberText); err != nil {
+			return nil, err
+		}
+		if homeSnapshotLimit < -2147483648 || homeSnapshotLimit > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).QueryListBlocksFirst(ctx, queryValue0, queryValue1, int32(homeSnapshotLimit))
+	}()
 	if err != nil {
 		return nil, nil, fmt.Errorf("query home blocks: %w", err)
 	}
 	blocks := make([]gen.Block, 0, homeSnapshotLimit)
-	for blockRows.Next() {
-		record, scanErr := r.scanBlock(blockRows, true)
+	for _, storedRow := range blockRows {
+		record, scanErr := r.decodeBlock(dbgen.QueryListBlocksFirstRow(storedRow), true)
 		if scanErr != nil {
-			_ = blockRows.Close()
+
 			return nil, nil, scanErr
 		}
 		blocks = append(blocks, record.Model)
 	}
-	if err := blockRows.Err(); err != nil {
-		_ = blockRows.Close()
-		return nil, nil, fmt.Errorf("iterate home blocks: %w", err)
-	}
-	if err := blockRows.Close(); err != nil {
-		return nil, nil, fmt.Errorf("close home blocks: %w", err)
-	}
 
-	transactionRows, err := tx.QueryContext(
-		ctx, dbgen.QueryListTransactionsFirst, r.chainID, tipNumberText, homeSnapshotLimit,
-	)
+	transactionRows, err := func() ([]dbgen.QueryListTransactionsFirstRow, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(r.chainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(tipNumberText); err != nil {
+			return nil, err
+		}
+		if homeSnapshotLimit < -2147483648 || homeSnapshotLimit > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).QueryListTransactionsFirst(ctx, queryValue0, queryValue1, int32(homeSnapshotLimit))
+	}()
 	if err != nil {
 		return nil, nil, fmt.Errorf("query home transactions: %w", err)
 	}
-	defer transactionRows.Close() //nolint:errcheck
+
 	transactions := make([]gen.Transaction, 0, homeSnapshotLimit)
-	for transactionRows.Next() {
-		record, scanErr := r.scanTransaction(transactionRows, tipNumber)
+	for _, storedRow := range transactionRows {
+		record, scanErr := r.decodeTransaction(dbgen.ListBlockTransactionsRow(storedRow), tipNumber)
 		if scanErr != nil {
 			return nil, nil, scanErr
 		}
@@ -160,8 +226,6 @@ func (r *PostgresReader) homeActivity(
 		}
 		transactions = append(transactions, record.Model)
 	}
-	if err := transactionRows.Err(); err != nil {
-		return nil, nil, fmt.Errorf("iterate home transactions: %w", err)
-	}
+
 	return blocks, transactions, nil
 }

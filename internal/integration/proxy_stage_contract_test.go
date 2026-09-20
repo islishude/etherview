@@ -5,7 +5,6 @@ package integration_test
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -14,6 +13,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -612,7 +614,7 @@ func TestProxyStagePersistsExactSoladyLegacyCWIA(t *testing.T) {
 		t.Fatalf("CWIA proxy result=%+v err=%v", result, err)
 	}
 	var kind, pattern, storedArgs, runtimeKind string
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT proxy_kind, proxy_pattern,
 		       '0x' || encode(immutable_args, 'hex'),
 		       details->>'cwia_runtime'
@@ -628,7 +630,7 @@ func TestProxyStagePersistsExactSoladyLegacyCWIA(t *testing.T) {
 		t.Fatalf("CWIA observation kind=%s pattern=%s args=%s runtime=%s", kind, pattern, storedArgs, runtimeKind)
 	}
 	var family, variant, detector string
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT details->'primary'->>'family', details->'primary'->>'variant',
 		       details->'primary'->>'detector'
 		FROM proxy_detection_evidence
@@ -731,7 +733,7 @@ func TestSoladyLegacyCWIAReplayReorgAndRestartRetainExactForks(t *testing.T) {
 func assertCWIAObservation(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block chainbundle.Bundle,
 	proxy, implementation common.Address,
 	args []byte,
@@ -740,7 +742,7 @@ func assertCWIAObservation(
 	t.Helper()
 	var gotImplementation, gotArgs []byte
 	var gotCanonical bool
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT implementation_address, immutable_args, canonical
 		FROM proxy_observations
 		WHERE chain_id = 1 AND proxy_address = $1 AND block_hash = $2
@@ -869,13 +871,13 @@ type proxyTimelineEvent struct {
 func assertProxyOrderedTimeline(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block chainbundle.Bundle,
 	contract common.Address,
 	want []proxyTimelineEvent,
 ) {
 	t.Helper()
-	rows, err := db.QueryContext(ctx, `
+	rows, err := db.Query(ctx, `
 		SELECT kind, log_index, target_address, version, transaction_hash
 		FROM (
 			SELECT 'upgrade'::text AS kind, log_index, target_address,
@@ -901,7 +903,7 @@ func assertProxyOrderedTimeline(
 		var kind string
 		var logIndex int64
 		var target, transactionHash []byte
-		var version sql.NullString
+		var version pgtype.Text
 		if err := rows.Scan(&kind, &logIndex, &target, &version, &transactionHash); err != nil {
 			t.Fatalf("scan proxy event timeline: %v", err)
 		}
@@ -937,13 +939,13 @@ type proxyInitializationImplementation struct {
 func assertProxyInitializationImplementations(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block chainbundle.Bundle,
 	contract common.Address,
 	want []proxyInitializationImplementation,
 ) {
 	t.Helper()
-	rows, err := db.QueryContext(ctx, `
+	rows, err := db.Query(ctx, `
 		SELECT initialization.version::text, initialization.log_index,
 		       preceding_upgrade.target_address,
 		       initialization.transaction_hash, preceding_upgrade.transaction_hash
@@ -1012,7 +1014,7 @@ func assertProxyInitializationImplementations(
 func assertProxyUpgradeEvent(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block chainbundle.Bundle,
 	emitter, implementation common.Address,
 	canonical bool,
@@ -1030,7 +1032,7 @@ func assertProxyUpgradeEvent(
 func assertProxyInitializationEvent(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block chainbundle.Bundle,
 	contract common.Address,
 	version uint64,
@@ -1058,7 +1060,7 @@ func initializedVersionWord(version uint64) []byte {
 func runDurableProxyBlock(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	queue *enrich.PostgresJobQueue,
 	worker *enrich.Worker,
 	block chainbundle.Bundle,
@@ -1091,7 +1093,7 @@ func runDurableProxyBlock(
 func assertPublishedProxyObservationGeneration(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block chainbundle.Bundle,
 	proxy common.Address,
 	jobID string,
@@ -1144,7 +1146,7 @@ func assertProxyProcessComplete(t *testing.T, ctx context.Context, processor *en
 func assertCanonicalProxyImplementation(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	block chainbundle.Bundle,
 	proxy, implementation common.Address,
 	kind string,
@@ -1153,7 +1155,7 @@ func assertCanonicalProxyImplementation(
 	t.Helper()
 	var gotImplementation, gotBeacon []byte
 	var gotKind string
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT implementation_address, beacon_address, proxy_kind
 		FROM proxy_observations
 		WHERE chain_id = 1 AND proxy_address = $1 AND block_hash = $2 AND canonical`,
@@ -1195,11 +1197,11 @@ func processOne(t *testing.T, ctx context.Context, worker *enrich.Worker) {
 	}
 }
 
-func assertJobStatus(t *testing.T, ctx context.Context, db *sql.DB, id, want string) {
+func assertJobStatus(t *testing.T, ctx context.Context, db *pgxpool.Pool, id, want string) {
 	t.Helper()
 	var got string
-	var lastError sql.NullString
-	if err := db.QueryRowContext(ctx, `SELECT status, last_error FROM durable_jobs WHERE id = $1`, id).Scan(&got, &lastError); err != nil {
+	var lastError pgtype.Text
+	if err := db.QueryRow(ctx, `SELECT status, last_error FROM durable_jobs WHERE id = $1`, id).Scan(&got, &lastError); err != nil {
 		t.Fatal(err)
 	}
 	if got != want {
@@ -1207,10 +1209,10 @@ func assertJobStatus(t *testing.T, ctx context.Context, db *sql.DB, id, want str
 	}
 }
 
-func assertStageDetail(t *testing.T, ctx context.Context, db *sql.DB, block common.Hash, stage, key, want string) {
+func assertStageDetail(t *testing.T, ctx context.Context, db *pgxpool.Pool, block common.Hash, stage, key, want string) {
 	t.Helper()
 	var got string
-	if err := db.QueryRowContext(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT details->>$3
 		FROM block_stage_results
 		WHERE chain_id = 1 AND block_hash = $1 AND stage = $2`, block[:], stage, key).Scan(&got); err != nil {

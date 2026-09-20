@@ -2,12 +2,16 @@ package etherscan
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"net/url"
 
-	"github.com/islishude/etherview/internal/db/gen"
+	"github.com/jackc/pgx/v5/pgtype"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
 func (b *PostgresBackend) blockTransactionCounts(ctx context.Context, values url.Values) (blockTransactionCounts, error) {
@@ -20,7 +24,7 @@ func (b *PostgresBackend) blockTransactionCounts(ctx context.Context, values url
 	if err != nil {
 		return blockTransactionCounts{}, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	if _, err := b.requireCanonicalStageRange(ctx, tx, traceStage, blockText, &blockText, ErrTraceUnavailable); err != nil {
 		return blockTransactionCounts{}, err
 	}
@@ -28,11 +32,28 @@ func (b *PostgresBackend) blockTransactionCounts(ctx context.Context, values url
 		return blockTransactionCounts{}, err
 	}
 	var result blockTransactionCounts
-	err = tx.QueryRowContext(ctx, dbgen.EtherscanBlockTransactionCounts, b.chain, blockText).Scan(
-		&result.Block, &result.Transactions, &result.Internal,
-		&result.ERC20Transfers, &result.ERC721Transfers, &result.ERC1155Transfers,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(b.chain); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(blockText); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).EtherscanBlockTransactionCounts(ctx, queryValue0, queryValue1)
+		if err != nil {
+			return err
+		}
+		result.Block = queryRow.CanonicalNumber
+		result.Transactions = queryRow.TransactionCount
+		result.Internal = queryRow.InternalCount
+		result.ERC20Transfers = queryRow.Erc20Count
+		result.ERC721Transfers = queryRow.Erc721Count
+		result.ERC1155Transfers = queryRow.Erc1155Count
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return blockTransactionCounts{}, ErrNotFound
 	}
 	if err != nil {
@@ -47,7 +68,7 @@ func (b *PostgresBackend) blockTransactionCounts(ctx context.Context, values url
 			return blockTransactionCounts{}, err
 		}
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return blockTransactionCounts{}, fmt.Errorf("commit block transaction count snapshot: %w", err)
 	}
 	return result, nil

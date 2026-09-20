@@ -1,6 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
+import { eventWatermark, observeEvent, statusQueryMeta, validEventID } from "./chainEvents";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { apiClient, requireEnvelope } from "./client";
+import { ApiError, apiClient, requireEnvelope } from "./client";
 import type { BlockSummary, ChainStatus, HomeSnapshotResponse, TransactionSummary } from "./types";
 
 const MAX_HOME_SNAPSHOT_BYTES = 2 * 1024 * 1024;
@@ -29,11 +30,26 @@ export interface HomeStreamState {
 }
 
 export function useHomeSnapshot(): HomeStreamState {
+  const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ["home"],
-    queryFn: async () => {
-      const envelope = requireEnvelope(await apiClient.GET("/home"));
+    meta: statusQueryMeta,
+    queryFn: async ({ signal }) => {
+      const envelope = requireEnvelope(
+        await apiClient.GET("/home", {
+          params: { query: { min_event_id: eventWatermark(queryClient) } },
+          signal,
+        }),
+      );
+      signal.throwIfAborted();
       const response = parseHomeSnapshot(JSON.stringify(envelope));
+      if (BigInt(response.event_id) < BigInt(eventWatermark(queryClient))) {
+        throw new ApiError(503, undefined, {
+          code: "home_snapshot_unavailable",
+          message: "Home snapshot is behind its event",
+        });
+      }
+      observeEvent(queryClient, response.event_id);
       return {
         status: {
           ...response.data.status,
@@ -44,7 +60,12 @@ export function useHomeSnapshot(): HomeStreamState {
         transactions: response.data.transactions,
       };
     },
-    retry: false,
+    retry: (attempt, error) =>
+      attempt < 3 &&
+      error instanceof ApiError &&
+      error.status === 503 &&
+      error.code === "home_snapshot_unavailable",
+    retryDelay: (attempt) => Math.min(250 * 2 ** attempt, 2_000),
     staleTime: Number.POSITIVE_INFINITY,
   });
   return {
@@ -62,7 +83,13 @@ export function parseHomeSnapshot(raw: string): HomeSnapshotResponse {
     throw new Error("Home snapshot exceeds its size limit");
   }
   const parsed: unknown = JSON.parse(raw);
-  const response = objectWithKeys(parsed, ["data", "meta"], ["data", "meta"]);
+  const response = objectWithKeys(
+    parsed,
+    ["data", "meta", "event_id"],
+    ["data", "meta", "event_id"],
+  );
+  if (typeof response.event_id !== "string" || !validEventID(response.event_id))
+    throw new Error("Invalid home event ID");
   const data = objectWithKeys(
     response.data,
     ["status", "blocks", "transactions"],

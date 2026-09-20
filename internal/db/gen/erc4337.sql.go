@@ -11,15 +11,16 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const ERC4337AddCoveredBlock = `-- name: ERC4337AddCoveredBlock :one
-SELECT erc4337_add_covered_block(
+const eRC4337AddCoveredBlock = `-- name: ERC4337AddCoveredBlock :one
+SELECT
+(erc4337_add_covered_block(
     $1::numeric,
     $2::bytea,
     $3::numeric,
     $4::bytea,
     $5::bigint,
     $6::bigint
-) IS NULL AS added
+) IS NULL)::boolean AS added
 `
 
 type ERC4337AddCoveredBlockParams struct {
@@ -31,8 +32,8 @@ type ERC4337AddCoveredBlockParams struct {
 	JobGeneration       int64          `db:"job_generation" json:"job_generation"`
 }
 
-func (q *Queries) ERC4337AddCoveredBlock(ctx context.Context, arg ERC4337AddCoveredBlockParams) (interface{}, error) {
-	row := q.db.QueryRow(ctx, ERC4337AddCoveredBlock,
+func (q *Queries) ERC4337AddCoveredBlock(ctx context.Context, arg ERC4337AddCoveredBlockParams) (bool, error) {
+	row := q.db.QueryRow(ctx, eRC4337AddCoveredBlock,
 		arg.ChainID,
 		arg.ConfigurationDigest,
 		arg.BlockNumber,
@@ -40,12 +41,12 @@ func (q *Queries) ERC4337AddCoveredBlock(ctx context.Context, arg ERC4337AddCove
 		arg.DurableJobID,
 		arg.JobGeneration,
 	)
-	var added interface{}
+	var added bool
 	err := row.Scan(&added)
 	return added, err
 }
 
-const ERC4337CanonicalTransactionBlock = `-- name: ERC4337CanonicalTransactionBlock :one
+const eRC4337CanonicalTransactionBlock = `-- name: ERC4337CanonicalTransactionBlock :one
 SELECT inclusion.block_number::text, inclusion.block_hash
 FROM transaction_inclusions AS inclusion
 JOIN canonical_blocks AS canonical
@@ -62,13 +63,13 @@ type ERC4337CanonicalTransactionBlockRow struct {
 }
 
 func (q *Queries) ERC4337CanonicalTransactionBlock(ctx context.Context, chainID pgtype.Numeric, transactionHash []byte) (ERC4337CanonicalTransactionBlockRow, error) {
-	row := q.db.QueryRow(ctx, ERC4337CanonicalTransactionBlock, chainID, transactionHash)
+	row := q.db.QueryRow(ctx, eRC4337CanonicalTransactionBlock, chainID, transactionHash)
 	var i ERC4337CanonicalTransactionBlockRow
 	err := row.Scan(&i.InclusionBlockNumber, &i.BlockHash)
 	return i, err
 }
 
-const ERC4337ClearReplayOutputs = `-- name: ERC4337ClearReplayOutputs :exec
+const eRC4337ClearReplayOutputs = `-- name: ERC4337ClearReplayOutputs :exec
 WITH delete_events AS (
     DELETE FROM erc4337_user_operation_events
     WHERE chain_id = $1::numeric
@@ -87,11 +88,11 @@ WHERE chain_id = $1::numeric
 `
 
 func (q *Queries) ERC4337ClearReplayOutputs(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error {
-	_, err := q.db.Exec(ctx, ERC4337ClearReplayOutputs, chainID, blockNumber, blockHash)
+	_, err := q.db.Exec(ctx, eRC4337ClearReplayOutputs, chainID, blockNumber, blockHash)
 	return err
 }
 
-const ERC4337CurrentSnapshot = `-- name: ERC4337CurrentSnapshot :one
+const eRC4337CurrentSnapshot = `-- name: ERC4337CurrentSnapshot :one
 SELECT coverage.end_block::text AS snapshot_number,
        coverage.end_block_hash AS snapshot_hash
 FROM erc4337_coverage_ranges AS coverage
@@ -132,13 +133,13 @@ type ERC4337CurrentSnapshotRow struct {
 }
 
 func (q *Queries) ERC4337CurrentSnapshot(ctx context.Context, indexStart pgtype.Numeric, chainID pgtype.Numeric, configurationDigest []byte) (ERC4337CurrentSnapshotRow, error) {
-	row := q.db.QueryRow(ctx, ERC4337CurrentSnapshot, indexStart, chainID, configurationDigest)
+	row := q.db.QueryRow(ctx, eRC4337CurrentSnapshot, indexStart, chainID, configurationDigest)
 	var i ERC4337CurrentSnapshotRow
 	err := row.Scan(&i.SnapshotNumber, &i.SnapshotHash)
 	return i, err
 }
 
-const ERC4337DeleteBlockOutput = `-- name: ERC4337DeleteBlockOutput :exec
+const eRC4337DeleteBlockOutput = `-- name: ERC4337DeleteBlockOutput :exec
 WITH delete_events AS (
     DELETE FROM erc4337_user_operation_events
     WHERE chain_id = $1::numeric
@@ -167,7 +168,7 @@ type ERC4337DeleteBlockOutputParams struct {
 }
 
 func (q *Queries) ERC4337DeleteBlockOutput(ctx context.Context, arg ERC4337DeleteBlockOutputParams) error {
-	_, err := q.db.Exec(ctx, ERC4337DeleteBlockOutput,
+	_, err := q.db.Exec(ctx, eRC4337DeleteBlockOutput,
 		arg.ChainID,
 		arg.ConfigurationDigest,
 		arg.BlockNumber,
@@ -176,31 +177,51 @@ func (q *Queries) ERC4337DeleteBlockOutput(ctx context.Context, arg ERC4337Delet
 	return err
 }
 
-const ERC4337GetUserOperation = `-- name: ERC4337GetUserOperation :one
-SELECT operation.user_op_hash, operation.entry_point,
-       operation.entry_point_version, operation.sender,
-       operation.nonce::text, operation.nonce_key::text,
-       operation.nonce_sequence::text, operation.success,
-       operation.actual_gas_cost::text, operation.actual_gas_used::text,
-       operation.transaction_hash, operation.transaction_index,
-       operation.operation_index, operation.event_log_index, operation.block_number::text,
-       operation.block_hash, operation.block_timestamp::text,
-       COALESCE(operation.safe_number::text, ''), COALESCE(operation.finalized_number::text, ''),
-       operation.bundler, operation.beneficiary, operation.init_kind,
-       operation.factory, operation.paymaster, operation.aggregator,
-       '[]'::jsonb AS participating_roles,
-       operation.call_gas_limit::text,
-       operation.verification_gas_limit::text,
-       operation.pre_verification_gas::text,
-       operation.max_fee_per_gas::text,
-       operation.max_priority_fee_per_gas::text,
-       COALESCE(operation.paymaster_verification_gas_limit::text, ''),
-       COALESCE(operation.paymaster_post_op_gas_limit::text, ''),
-       operation.init_code, operation.factory_data, operation.call_data,
-       operation.paymaster_and_data, operation.paymaster_data,
-       operation.paymaster_signature, operation.signature,
-       operation.account_gas_limits, operation.gas_fees,
-       operation.aggregated_signature
+const eRC4337GetUserOperation = `-- name: ERC4337GetUserOperation :one
+SELECT
+operation.user_op_hash AS user_op_hash,
+operation.entry_point AS entry_point,
+operation.entry_point_version AS entry_point_version,
+operation.sender AS sender,
+operation.nonce::text AS nonce,
+operation.nonce_key::text AS nonce_key,
+operation.nonce_sequence::text AS nonce_sequence,
+operation.success AS success,
+operation.actual_gas_cost::text AS actual_gas_cost,
+operation.actual_gas_used::text AS actual_gas_used,
+operation.transaction_hash AS transaction_hash,
+operation.transaction_index AS transaction_index,
+operation.operation_index AS operation_index,
+operation.event_log_index AS event_log_index,
+operation.block_number::text AS block_number,
+operation.block_hash AS block_hash,
+operation.block_timestamp::text AS block_timestamp,
+COALESCE(operation.safe_number::text, '')::text AS safe_number,
+COALESCE(operation.finalized_number::text, '')::text AS finalized_number,
+operation.bundler AS bundler,
+operation.beneficiary AS beneficiary,
+operation.init_kind AS init_kind,
+operation.factory AS factory,
+operation.paymaster AS paymaster,
+operation.aggregator AS aggregator,
+'[]'::jsonb AS participating_roles,
+operation.call_gas_limit::text AS call_gas_limit,
+operation.verification_gas_limit::text AS verification_gas_limit,
+operation.pre_verification_gas::text AS pre_verification_gas,
+operation.max_fee_per_gas::text AS max_fee_per_gas,
+operation.max_priority_fee_per_gas::text AS max_priority_fee_per_gas,
+COALESCE(operation.paymaster_verification_gas_limit::text, '')::text AS paymaster_verification_gas_limit,
+COALESCE(operation.paymaster_post_op_gas_limit::text, '')::text AS paymaster_post_op_gas_limit,
+operation.init_code AS init_code,
+operation.factory_data AS factory_data,
+operation.call_data AS call_data,
+operation.paymaster_and_data AS paymaster_and_data,
+operation.paymaster_data AS paymaster_data,
+operation.paymaster_signature AS paymaster_signature,
+operation.signature AS signature,
+operation.account_gas_limits AS account_gas_limits,
+operation.gas_fees AS gas_fees,
+operation.aggregated_signature AS aggregated_signature
 FROM published_erc4337_user_operations AS operation
 WHERE operation.chain_id = $1::numeric
   AND operation.configuration_digest = $2::bytea
@@ -208,74 +229,74 @@ WHERE operation.chain_id = $1::numeric
 `
 
 type ERC4337GetUserOperationRow struct {
-	UserOpHash                    []byte      `db:"user_op_hash" json:"user_op_hash"`
-	EntryPoint                    []byte      `db:"entry_point" json:"entry_point"`
-	EntryPointVersion             string      `db:"entry_point_version" json:"entry_point_version"`
-	Sender                        []byte      `db:"sender" json:"sender"`
-	OperationNonce                string      `db:"operation_nonce" json:"operation_nonce"`
-	OperationNonceKey             string      `db:"operation_nonce_key" json:"operation_nonce_key"`
-	OperationNonceSequence        string      `db:"operation_nonce_sequence" json:"operation_nonce_sequence"`
-	Success                       bool        `db:"success" json:"success"`
-	OperationActualGasCost        string      `db:"operation_actual_gas_cost" json:"operation_actual_gas_cost"`
-	OperationActualGasUsed        string      `db:"operation_actual_gas_used" json:"operation_actual_gas_used"`
-	TransactionHash               []byte      `db:"transaction_hash" json:"transaction_hash"`
-	TransactionIndex              int64       `db:"transaction_index" json:"transaction_index"`
-	OperationIndex                int64       `db:"operation_index" json:"operation_index"`
-	EventLogIndex                 int64       `db:"event_log_index" json:"event_log_index"`
-	OperationBlockNumber          string      `db:"operation_block_number" json:"operation_block_number"`
-	BlockHash                     []byte      `db:"block_hash" json:"block_hash"`
-	OperationBlockTimestamp       string      `db:"operation_block_timestamp" json:"operation_block_timestamp"`
-	Coalesce                      interface{} `db:"coalesce" json:"coalesce"`
-	Coalesce_2                    interface{} `db:"coalesce_2" json:"coalesce_2"`
-	Bundler                       []byte      `db:"bundler" json:"bundler"`
-	Beneficiary                   []byte      `db:"beneficiary" json:"beneficiary"`
-	InitKind                      string      `db:"init_kind" json:"init_kind"`
-	Factory                       []byte      `db:"factory" json:"factory"`
-	Paymaster                     []byte      `db:"paymaster" json:"paymaster"`
-	Aggregator                    []byte      `db:"aggregator" json:"aggregator"`
-	ParticipatingRoles            []byte      `db:"participating_roles" json:"participating_roles"`
-	OperationCallGasLimit         string      `db:"operation_call_gas_limit" json:"operation_call_gas_limit"`
-	OperationVerificationGasLimit string      `db:"operation_verification_gas_limit" json:"operation_verification_gas_limit"`
-	OperationPreVerificationGas   string      `db:"operation_pre_verification_gas" json:"operation_pre_verification_gas"`
-	OperationMaxFeePerGas         string      `db:"operation_max_fee_per_gas" json:"operation_max_fee_per_gas"`
-	OperationMaxPriorityFeePerGas string      `db:"operation_max_priority_fee_per_gas" json:"operation_max_priority_fee_per_gas"`
-	Coalesce_3                    interface{} `db:"coalesce_3" json:"coalesce_3"`
-	Coalesce_4                    interface{} `db:"coalesce_4" json:"coalesce_4"`
-	InitCode                      []byte      `db:"init_code" json:"init_code"`
-	FactoryData                   []byte      `db:"factory_data" json:"factory_data"`
-	CallData                      []byte      `db:"call_data" json:"call_data"`
-	PaymasterAndData              []byte      `db:"paymaster_and_data" json:"paymaster_and_data"`
-	PaymasterData                 []byte      `db:"paymaster_data" json:"paymaster_data"`
-	PaymasterSignature            []byte      `db:"paymaster_signature" json:"paymaster_signature"`
-	Signature                     []byte      `db:"signature" json:"signature"`
-	AccountGasLimits              []byte      `db:"account_gas_limits" json:"account_gas_limits"`
-	GasFees                       []byte      `db:"gas_fees" json:"gas_fees"`
-	AggregatedSignature           []byte      `db:"aggregated_signature" json:"aggregated_signature"`
+	UserOpHash                    []byte `db:"user_op_hash" json:"user_op_hash"`
+	EntryPoint                    []byte `db:"entry_point" json:"entry_point"`
+	EntryPointVersion             string `db:"entry_point_version" json:"entry_point_version"`
+	Sender                        []byte `db:"sender" json:"sender"`
+	Nonce                         string `db:"nonce" json:"nonce"`
+	NonceKey                      string `db:"nonce_key" json:"nonce_key"`
+	NonceSequence                 string `db:"nonce_sequence" json:"nonce_sequence"`
+	Success                       bool   `db:"success" json:"success"`
+	ActualGasCost                 string `db:"actual_gas_cost" json:"actual_gas_cost"`
+	ActualGasUsed                 string `db:"actual_gas_used" json:"actual_gas_used"`
+	TransactionHash               []byte `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex              int64  `db:"transaction_index" json:"transaction_index"`
+	OperationIndex                int64  `db:"operation_index" json:"operation_index"`
+	EventLogIndex                 int64  `db:"event_log_index" json:"event_log_index"`
+	BlockNumber                   string `db:"block_number" json:"block_number"`
+	BlockHash                     []byte `db:"block_hash" json:"block_hash"`
+	BlockTimestamp                string `db:"block_timestamp" json:"block_timestamp"`
+	SafeNumber                    string `db:"safe_number" json:"safe_number"`
+	FinalizedNumber               string `db:"finalized_number" json:"finalized_number"`
+	Bundler                       []byte `db:"bundler" json:"bundler"`
+	Beneficiary                   []byte `db:"beneficiary" json:"beneficiary"`
+	InitKind                      string `db:"init_kind" json:"init_kind"`
+	Factory                       []byte `db:"factory" json:"factory"`
+	Paymaster                     []byte `db:"paymaster" json:"paymaster"`
+	Aggregator                    []byte `db:"aggregator" json:"aggregator"`
+	ParticipatingRoles            []byte `db:"participating_roles" json:"participating_roles"`
+	CallGasLimit                  string `db:"call_gas_limit" json:"call_gas_limit"`
+	VerificationGasLimit          string `db:"verification_gas_limit" json:"verification_gas_limit"`
+	PreVerificationGas            string `db:"pre_verification_gas" json:"pre_verification_gas"`
+	MaxFeePerGas                  string `db:"max_fee_per_gas" json:"max_fee_per_gas"`
+	MaxPriorityFeePerGas          string `db:"max_priority_fee_per_gas" json:"max_priority_fee_per_gas"`
+	PaymasterVerificationGasLimit string `db:"paymaster_verification_gas_limit" json:"paymaster_verification_gas_limit"`
+	PaymasterPostOpGasLimit       string `db:"paymaster_post_op_gas_limit" json:"paymaster_post_op_gas_limit"`
+	InitCode                      []byte `db:"init_code" json:"init_code"`
+	FactoryData                   []byte `db:"factory_data" json:"factory_data"`
+	CallData                      []byte `db:"call_data" json:"call_data"`
+	PaymasterAndData              []byte `db:"paymaster_and_data" json:"paymaster_and_data"`
+	PaymasterData                 []byte `db:"paymaster_data" json:"paymaster_data"`
+	PaymasterSignature            []byte `db:"paymaster_signature" json:"paymaster_signature"`
+	Signature                     []byte `db:"signature" json:"signature"`
+	AccountGasLimits              []byte `db:"account_gas_limits" json:"account_gas_limits"`
+	GasFees                       []byte `db:"gas_fees" json:"gas_fees"`
+	AggregatedSignature           []byte `db:"aggregated_signature" json:"aggregated_signature"`
 }
 
 func (q *Queries) ERC4337GetUserOperation(ctx context.Context, chainID pgtype.Numeric, configurationDigest []byte, userOpHash []byte) (ERC4337GetUserOperationRow, error) {
-	row := q.db.QueryRow(ctx, ERC4337GetUserOperation, chainID, configurationDigest, userOpHash)
+	row := q.db.QueryRow(ctx, eRC4337GetUserOperation, chainID, configurationDigest, userOpHash)
 	var i ERC4337GetUserOperationRow
 	err := row.Scan(
 		&i.UserOpHash,
 		&i.EntryPoint,
 		&i.EntryPointVersion,
 		&i.Sender,
-		&i.OperationNonce,
-		&i.OperationNonceKey,
-		&i.OperationNonceSequence,
+		&i.Nonce,
+		&i.NonceKey,
+		&i.NonceSequence,
 		&i.Success,
-		&i.OperationActualGasCost,
-		&i.OperationActualGasUsed,
+		&i.ActualGasCost,
+		&i.ActualGasUsed,
 		&i.TransactionHash,
 		&i.TransactionIndex,
 		&i.OperationIndex,
 		&i.EventLogIndex,
-		&i.OperationBlockNumber,
+		&i.BlockNumber,
 		&i.BlockHash,
-		&i.OperationBlockTimestamp,
-		&i.Coalesce,
-		&i.Coalesce_2,
+		&i.BlockTimestamp,
+		&i.SafeNumber,
+		&i.FinalizedNumber,
 		&i.Bundler,
 		&i.Beneficiary,
 		&i.InitKind,
@@ -283,13 +304,13 @@ func (q *Queries) ERC4337GetUserOperation(ctx context.Context, chainID pgtype.Nu
 		&i.Paymaster,
 		&i.Aggregator,
 		&i.ParticipatingRoles,
-		&i.OperationCallGasLimit,
-		&i.OperationVerificationGasLimit,
-		&i.OperationPreVerificationGas,
-		&i.OperationMaxFeePerGas,
-		&i.OperationMaxPriorityFeePerGas,
-		&i.Coalesce_3,
-		&i.Coalesce_4,
+		&i.CallGasLimit,
+		&i.VerificationGasLimit,
+		&i.PreVerificationGas,
+		&i.MaxFeePerGas,
+		&i.MaxPriorityFeePerGas,
+		&i.PaymasterVerificationGasLimit,
+		&i.PaymasterPostOpGasLimit,
 		&i.InitCode,
 		&i.FactoryData,
 		&i.CallData,
@@ -304,7 +325,7 @@ func (q *Queries) ERC4337GetUserOperation(ctx context.Context, chainID pgtype.Nu
 	return i, err
 }
 
-const ERC4337InsertUserOperation = `-- name: ERC4337InsertUserOperation :exec
+const eRC4337InsertUserOperation = `-- name: ERC4337InsertUserOperation :exec
 INSERT INTO erc4337_user_operations (
     chain_id, configuration_digest, block_number, block_hash,
     transaction_hash, transaction_index, operation_index, event_log_index, user_op_hash,
@@ -408,7 +429,7 @@ type ERC4337InsertUserOperationParams struct {
 }
 
 func (q *Queries) ERC4337InsertUserOperation(ctx context.Context, arg ERC4337InsertUserOperationParams) error {
-	_, err := q.db.Exec(ctx, ERC4337InsertUserOperation,
+	_, err := q.db.Exec(ctx, eRC4337InsertUserOperation,
 		arg.ChainID,
 		arg.ConfigurationDigest,
 		arg.BlockNumber,
@@ -454,7 +475,7 @@ func (q *Queries) ERC4337InsertUserOperation(ctx context.Context, arg ERC4337Ins
 	return err
 }
 
-const ERC4337InsertUserOperationEvent = `-- name: ERC4337InsertUserOperationEvent :exec
+const eRC4337InsertUserOperationEvent = `-- name: ERC4337InsertUserOperationEvent :exec
 INSERT INTO erc4337_user_operation_events (
     chain_id, configuration_digest, block_number, block_hash,
     transaction_hash, operation_index, log_index, event_kind,
@@ -499,7 +520,7 @@ type ERC4337InsertUserOperationEventParams struct {
 }
 
 func (q *Queries) ERC4337InsertUserOperationEvent(ctx context.Context, arg ERC4337InsertUserOperationEventParams) error {
-	_, err := q.db.Exec(ctx, ERC4337InsertUserOperationEvent,
+	_, err := q.db.Exec(ctx, eRC4337InsertUserOperationEvent,
 		arg.ChainID,
 		arg.ConfigurationDigest,
 		arg.BlockNumber,
@@ -519,7 +540,7 @@ func (q *Queries) ERC4337InsertUserOperationEvent(ctx context.Context, arg ERC43
 	return err
 }
 
-const ERC4337InsertUserOperationParticipant = `-- name: ERC4337InsertUserOperationParticipant :exec
+const eRC4337InsertUserOperationParticipant = `-- name: ERC4337InsertUserOperationParticipant :exec
 INSERT INTO erc4337_user_operation_participants (
     chain_id, configuration_digest, block_number, block_hash,
     transaction_hash, operation_index, address, role, canonical
@@ -548,7 +569,7 @@ type ERC4337InsertUserOperationParticipantParams struct {
 }
 
 func (q *Queries) ERC4337InsertUserOperationParticipant(ctx context.Context, arg ERC4337InsertUserOperationParticipantParams) error {
-	_, err := q.db.Exec(ctx, ERC4337InsertUserOperationParticipant,
+	_, err := q.db.Exec(ctx, eRC4337InsertUserOperationParticipant,
 		arg.ChainID,
 		arg.ConfigurationDigest,
 		arg.BlockNumber,
@@ -561,19 +582,34 @@ func (q *Queries) ERC4337InsertUserOperationParticipant(ctx context.Context, arg
 	return err
 }
 
-const ERC4337ListAddressUserOperations = `-- name: ERC4337ListAddressUserOperations :many
-SELECT operation.user_op_hash, operation.entry_point,
-       operation.entry_point_version, operation.sender,
-       operation.nonce::text, operation.nonce_key::text,
-       operation.nonce_sequence::text, operation.success,
-       operation.actual_gas_cost::text, operation.actual_gas_used::text,
-       operation.transaction_hash, operation.transaction_index,
-       operation.operation_index, operation.event_log_index, operation.block_number::text,
-       operation.block_hash, operation.block_timestamp::text,
-       COALESCE(operation.safe_number::text, ''), COALESCE(operation.finalized_number::text, ''),
-       operation.bundler, operation.beneficiary, operation.init_kind,
-       operation.factory, operation.paymaster, operation.aggregator,
-       roles.participating_roles
+const eRC4337ListAddressUserOperations = `-- name: ERC4337ListAddressUserOperations :many
+SELECT
+operation.user_op_hash AS user_op_hash,
+operation.entry_point AS entry_point,
+operation.entry_point_version AS entry_point_version,
+operation.sender AS sender,
+operation.nonce::text AS nonce,
+operation.nonce_key::text AS nonce_key,
+operation.nonce_sequence::text AS nonce_sequence,
+operation.success AS success,
+operation.actual_gas_cost::text AS actual_gas_cost,
+operation.actual_gas_used::text AS actual_gas_used,
+operation.transaction_hash AS transaction_hash,
+operation.transaction_index AS transaction_index,
+operation.operation_index AS operation_index,
+operation.event_log_index AS event_log_index,
+operation.block_number::text AS block_number,
+operation.block_hash AS block_hash,
+operation.block_timestamp::text AS block_timestamp,
+COALESCE(operation.safe_number::text, '')::text AS safe_number,
+COALESCE(operation.finalized_number::text, '')::text AS finalized_number,
+operation.bundler AS bundler,
+operation.beneficiary AS beneficiary,
+operation.init_kind AS init_kind,
+operation.factory AS factory,
+operation.paymaster AS paymaster,
+operation.aggregator AS aggregator,
+roles.participating_roles AS participating_roles
 FROM published_erc4337_user_operations AS operation
 JOIN LATERAL (
     SELECT jsonb_agg(participant.role ORDER BY CASE participant.role
@@ -624,36 +660,36 @@ type ERC4337ListAddressUserOperationsParams struct {
 }
 
 type ERC4337ListAddressUserOperationsRow struct {
-	UserOpHash              []byte      `db:"user_op_hash" json:"user_op_hash"`
-	EntryPoint              []byte      `db:"entry_point" json:"entry_point"`
-	EntryPointVersion       string      `db:"entry_point_version" json:"entry_point_version"`
-	Sender                  []byte      `db:"sender" json:"sender"`
-	OperationNonce          string      `db:"operation_nonce" json:"operation_nonce"`
-	OperationNonceKey       string      `db:"operation_nonce_key" json:"operation_nonce_key"`
-	OperationNonceSequence  string      `db:"operation_nonce_sequence" json:"operation_nonce_sequence"`
-	Success                 bool        `db:"success" json:"success"`
-	OperationActualGasCost  string      `db:"operation_actual_gas_cost" json:"operation_actual_gas_cost"`
-	OperationActualGasUsed  string      `db:"operation_actual_gas_used" json:"operation_actual_gas_used"`
-	TransactionHash         []byte      `db:"transaction_hash" json:"transaction_hash"`
-	TransactionIndex        int64       `db:"transaction_index" json:"transaction_index"`
-	OperationIndex          int64       `db:"operation_index" json:"operation_index"`
-	EventLogIndex           int64       `db:"event_log_index" json:"event_log_index"`
-	OperationBlockNumber    string      `db:"operation_block_number" json:"operation_block_number"`
-	BlockHash               []byte      `db:"block_hash" json:"block_hash"`
-	OperationBlockTimestamp string      `db:"operation_block_timestamp" json:"operation_block_timestamp"`
-	Coalesce                interface{} `db:"coalesce" json:"coalesce"`
-	Coalesce_2              interface{} `db:"coalesce_2" json:"coalesce_2"`
-	Bundler                 []byte      `db:"bundler" json:"bundler"`
-	Beneficiary             []byte      `db:"beneficiary" json:"beneficiary"`
-	InitKind                string      `db:"init_kind" json:"init_kind"`
-	Factory                 []byte      `db:"factory" json:"factory"`
-	Paymaster               []byte      `db:"paymaster" json:"paymaster"`
-	Aggregator              []byte      `db:"aggregator" json:"aggregator"`
-	ParticipatingRoles      []byte      `db:"participating_roles" json:"participating_roles"`
+	UserOpHash         []byte `db:"user_op_hash" json:"user_op_hash"`
+	EntryPoint         []byte `db:"entry_point" json:"entry_point"`
+	EntryPointVersion  string `db:"entry_point_version" json:"entry_point_version"`
+	Sender             []byte `db:"sender" json:"sender"`
+	Nonce              string `db:"nonce" json:"nonce"`
+	NonceKey           string `db:"nonce_key" json:"nonce_key"`
+	NonceSequence      string `db:"nonce_sequence" json:"nonce_sequence"`
+	Success            bool   `db:"success" json:"success"`
+	ActualGasCost      string `db:"actual_gas_cost" json:"actual_gas_cost"`
+	ActualGasUsed      string `db:"actual_gas_used" json:"actual_gas_used"`
+	TransactionHash    []byte `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex   int64  `db:"transaction_index" json:"transaction_index"`
+	OperationIndex     int64  `db:"operation_index" json:"operation_index"`
+	EventLogIndex      int64  `db:"event_log_index" json:"event_log_index"`
+	BlockNumber        string `db:"block_number" json:"block_number"`
+	BlockHash          []byte `db:"block_hash" json:"block_hash"`
+	BlockTimestamp     string `db:"block_timestamp" json:"block_timestamp"`
+	SafeNumber         string `db:"safe_number" json:"safe_number"`
+	FinalizedNumber    string `db:"finalized_number" json:"finalized_number"`
+	Bundler            []byte `db:"bundler" json:"bundler"`
+	Beneficiary        []byte `db:"beneficiary" json:"beneficiary"`
+	InitKind           string `db:"init_kind" json:"init_kind"`
+	Factory            []byte `db:"factory" json:"factory"`
+	Paymaster          []byte `db:"paymaster" json:"paymaster"`
+	Aggregator         []byte `db:"aggregator" json:"aggregator"`
+	ParticipatingRoles []byte `db:"participating_roles" json:"participating_roles"`
 }
 
 func (q *Queries) ERC4337ListAddressUserOperations(ctx context.Context, arg ERC4337ListAddressUserOperationsParams) ([]ERC4337ListAddressUserOperationsRow, error) {
-	rows, err := q.db.Query(ctx, ERC4337ListAddressUserOperations,
+	rows, err := q.db.Query(ctx, eRC4337ListAddressUserOperations,
 		arg.Address,
 		arg.ChainID,
 		arg.ConfigurationDigest,
@@ -678,21 +714,21 @@ func (q *Queries) ERC4337ListAddressUserOperations(ctx context.Context, arg ERC4
 			&i.EntryPoint,
 			&i.EntryPointVersion,
 			&i.Sender,
-			&i.OperationNonce,
-			&i.OperationNonceKey,
-			&i.OperationNonceSequence,
+			&i.Nonce,
+			&i.NonceKey,
+			&i.NonceSequence,
 			&i.Success,
-			&i.OperationActualGasCost,
-			&i.OperationActualGasUsed,
+			&i.ActualGasCost,
+			&i.ActualGasUsed,
 			&i.TransactionHash,
 			&i.TransactionIndex,
 			&i.OperationIndex,
 			&i.EventLogIndex,
-			&i.OperationBlockNumber,
+			&i.BlockNumber,
 			&i.BlockHash,
-			&i.OperationBlockTimestamp,
-			&i.Coalesce,
-			&i.Coalesce_2,
+			&i.BlockTimestamp,
+			&i.SafeNumber,
+			&i.FinalizedNumber,
 			&i.Bundler,
 			&i.Beneficiary,
 			&i.InitKind,
@@ -711,19 +747,34 @@ func (q *Queries) ERC4337ListAddressUserOperations(ctx context.Context, arg ERC4
 	return items, nil
 }
 
-const ERC4337ListTransactionUserOperations = `-- name: ERC4337ListTransactionUserOperations :many
-SELECT operation.user_op_hash, operation.entry_point,
-       operation.entry_point_version, operation.sender,
-       operation.nonce::text, operation.nonce_key::text,
-       operation.nonce_sequence::text, operation.success,
-       operation.actual_gas_cost::text, operation.actual_gas_used::text,
-       operation.transaction_hash, operation.transaction_index,
-       operation.operation_index, operation.event_log_index, operation.block_number::text,
-       operation.block_hash, operation.block_timestamp::text,
-       COALESCE(operation.safe_number::text, ''), COALESCE(operation.finalized_number::text, ''),
-       operation.bundler, operation.beneficiary, operation.init_kind,
-       operation.factory, operation.paymaster, operation.aggregator,
-       '[]'::jsonb AS participating_roles
+const eRC4337ListTransactionUserOperations = `-- name: ERC4337ListTransactionUserOperations :many
+SELECT
+operation.user_op_hash AS user_op_hash,
+operation.entry_point AS entry_point,
+operation.entry_point_version AS entry_point_version,
+operation.sender AS sender,
+operation.nonce::text AS nonce,
+operation.nonce_key::text AS nonce_key,
+operation.nonce_sequence::text AS nonce_sequence,
+operation.success AS success,
+operation.actual_gas_cost::text AS actual_gas_cost,
+operation.actual_gas_used::text AS actual_gas_used,
+operation.transaction_hash AS transaction_hash,
+operation.transaction_index AS transaction_index,
+operation.operation_index AS operation_index,
+operation.event_log_index AS event_log_index,
+operation.block_number::text AS block_number,
+operation.block_hash AS block_hash,
+operation.block_timestamp::text AS block_timestamp,
+COALESCE(operation.safe_number::text, '')::text AS safe_number,
+COALESCE(operation.finalized_number::text, '')::text AS finalized_number,
+operation.bundler AS bundler,
+operation.beneficiary AS beneficiary,
+operation.init_kind AS init_kind,
+operation.factory AS factory,
+operation.paymaster AS paymaster,
+operation.aggregator AS aggregator,
+'[]'::jsonb AS participating_roles
 FROM published_erc4337_user_operations AS operation
 WHERE operation.chain_id = $1::numeric
   AND operation.configuration_digest = $2::bytea
@@ -748,36 +799,36 @@ type ERC4337ListTransactionUserOperationsParams struct {
 }
 
 type ERC4337ListTransactionUserOperationsRow struct {
-	UserOpHash              []byte      `db:"user_op_hash" json:"user_op_hash"`
-	EntryPoint              []byte      `db:"entry_point" json:"entry_point"`
-	EntryPointVersion       string      `db:"entry_point_version" json:"entry_point_version"`
-	Sender                  []byte      `db:"sender" json:"sender"`
-	OperationNonce          string      `db:"operation_nonce" json:"operation_nonce"`
-	OperationNonceKey       string      `db:"operation_nonce_key" json:"operation_nonce_key"`
-	OperationNonceSequence  string      `db:"operation_nonce_sequence" json:"operation_nonce_sequence"`
-	Success                 bool        `db:"success" json:"success"`
-	OperationActualGasCost  string      `db:"operation_actual_gas_cost" json:"operation_actual_gas_cost"`
-	OperationActualGasUsed  string      `db:"operation_actual_gas_used" json:"operation_actual_gas_used"`
-	TransactionHash         []byte      `db:"transaction_hash" json:"transaction_hash"`
-	TransactionIndex        int64       `db:"transaction_index" json:"transaction_index"`
-	OperationIndex          int64       `db:"operation_index" json:"operation_index"`
-	EventLogIndex           int64       `db:"event_log_index" json:"event_log_index"`
-	OperationBlockNumber    string      `db:"operation_block_number" json:"operation_block_number"`
-	BlockHash               []byte      `db:"block_hash" json:"block_hash"`
-	OperationBlockTimestamp string      `db:"operation_block_timestamp" json:"operation_block_timestamp"`
-	Coalesce                interface{} `db:"coalesce" json:"coalesce"`
-	Coalesce_2              interface{} `db:"coalesce_2" json:"coalesce_2"`
-	Bundler                 []byte      `db:"bundler" json:"bundler"`
-	Beneficiary             []byte      `db:"beneficiary" json:"beneficiary"`
-	InitKind                string      `db:"init_kind" json:"init_kind"`
-	Factory                 []byte      `db:"factory" json:"factory"`
-	Paymaster               []byte      `db:"paymaster" json:"paymaster"`
-	Aggregator              []byte      `db:"aggregator" json:"aggregator"`
-	ParticipatingRoles      []byte      `db:"participating_roles" json:"participating_roles"`
+	UserOpHash         []byte `db:"user_op_hash" json:"user_op_hash"`
+	EntryPoint         []byte `db:"entry_point" json:"entry_point"`
+	EntryPointVersion  string `db:"entry_point_version" json:"entry_point_version"`
+	Sender             []byte `db:"sender" json:"sender"`
+	Nonce              string `db:"nonce" json:"nonce"`
+	NonceKey           string `db:"nonce_key" json:"nonce_key"`
+	NonceSequence      string `db:"nonce_sequence" json:"nonce_sequence"`
+	Success            bool   `db:"success" json:"success"`
+	ActualGasCost      string `db:"actual_gas_cost" json:"actual_gas_cost"`
+	ActualGasUsed      string `db:"actual_gas_used" json:"actual_gas_used"`
+	TransactionHash    []byte `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex   int64  `db:"transaction_index" json:"transaction_index"`
+	OperationIndex     int64  `db:"operation_index" json:"operation_index"`
+	EventLogIndex      int64  `db:"event_log_index" json:"event_log_index"`
+	BlockNumber        string `db:"block_number" json:"block_number"`
+	BlockHash          []byte `db:"block_hash" json:"block_hash"`
+	BlockTimestamp     string `db:"block_timestamp" json:"block_timestamp"`
+	SafeNumber         string `db:"safe_number" json:"safe_number"`
+	FinalizedNumber    string `db:"finalized_number" json:"finalized_number"`
+	Bundler            []byte `db:"bundler" json:"bundler"`
+	Beneficiary        []byte `db:"beneficiary" json:"beneficiary"`
+	InitKind           string `db:"init_kind" json:"init_kind"`
+	Factory            []byte `db:"factory" json:"factory"`
+	Paymaster          []byte `db:"paymaster" json:"paymaster"`
+	Aggregator         []byte `db:"aggregator" json:"aggregator"`
+	ParticipatingRoles []byte `db:"participating_roles" json:"participating_roles"`
 }
 
 func (q *Queries) ERC4337ListTransactionUserOperations(ctx context.Context, arg ERC4337ListTransactionUserOperationsParams) ([]ERC4337ListTransactionUserOperationsRow, error) {
-	rows, err := q.db.Query(ctx, ERC4337ListTransactionUserOperations,
+	rows, err := q.db.Query(ctx, eRC4337ListTransactionUserOperations,
 		arg.ChainID,
 		arg.ConfigurationDigest,
 		arg.TransactionHash,
@@ -799,21 +850,21 @@ func (q *Queries) ERC4337ListTransactionUserOperations(ctx context.Context, arg 
 			&i.EntryPoint,
 			&i.EntryPointVersion,
 			&i.Sender,
-			&i.OperationNonce,
-			&i.OperationNonceKey,
-			&i.OperationNonceSequence,
+			&i.Nonce,
+			&i.NonceKey,
+			&i.NonceSequence,
 			&i.Success,
-			&i.OperationActualGasCost,
-			&i.OperationActualGasUsed,
+			&i.ActualGasCost,
+			&i.ActualGasUsed,
 			&i.TransactionHash,
 			&i.TransactionIndex,
 			&i.OperationIndex,
 			&i.EventLogIndex,
-			&i.OperationBlockNumber,
+			&i.BlockNumber,
 			&i.BlockHash,
-			&i.OperationBlockTimestamp,
-			&i.Coalesce,
-			&i.Coalesce_2,
+			&i.BlockTimestamp,
+			&i.SafeNumber,
+			&i.FinalizedNumber,
 			&i.Bundler,
 			&i.Beneficiary,
 			&i.InitKind,
@@ -832,10 +883,17 @@ func (q *Queries) ERC4337ListTransactionUserOperations(ctx context.Context, arg 
 	return items, nil
 }
 
-const ERC4337ListUserOperationEvents = `-- name: ERC4337ListUserOperationEvents :many
-SELECT event.event_kind, event.log_index, event.sender, COALESCE(event.nonce::text, ''),
-       event.related_address, event.paymaster, event.raw_data,
-       event.reason, COALESCE(event.panic_code::text, '')
+const eRC4337ListUserOperationEvents = `-- name: ERC4337ListUserOperationEvents :many
+SELECT
+event.event_kind AS event_kind,
+event.log_index AS log_index,
+event.sender AS sender,
+COALESCE(event.nonce::text, '')::text AS nonce,
+event.related_address AS related_address,
+event.paymaster AS paymaster,
+event.raw_data AS raw_data,
+event.reason AS reason,
+COALESCE(event.panic_code::text, '')::text AS panic_code
 FROM erc4337_user_operation_events AS event
 JOIN published_erc4337_user_operations AS operation
   ON operation.chain_id = event.chain_id
@@ -864,19 +922,19 @@ type ERC4337ListUserOperationEventsParams struct {
 }
 
 type ERC4337ListUserOperationEventsRow struct {
-	EventKind      string      `db:"event_kind" json:"event_kind"`
-	LogIndex       int64       `db:"log_index" json:"log_index"`
-	Sender         []byte      `db:"sender" json:"sender"`
-	Coalesce       interface{} `db:"coalesce" json:"coalesce"`
-	RelatedAddress []byte      `db:"related_address" json:"related_address"`
-	Paymaster      []byte      `db:"paymaster" json:"paymaster"`
-	RawData        []byte      `db:"raw_data" json:"raw_data"`
-	Reason         *string     `db:"reason" json:"reason"`
-	Coalesce_2     interface{} `db:"coalesce_2" json:"coalesce_2"`
+	EventKind      string  `db:"event_kind" json:"event_kind"`
+	LogIndex       int64   `db:"log_index" json:"log_index"`
+	Sender         []byte  `db:"sender" json:"sender"`
+	Nonce          string  `db:"nonce" json:"nonce"`
+	RelatedAddress []byte  `db:"related_address" json:"related_address"`
+	Paymaster      []byte  `db:"paymaster" json:"paymaster"`
+	RawData        []byte  `db:"raw_data" json:"raw_data"`
+	Reason         *string `db:"reason" json:"reason"`
+	PanicCode      string  `db:"panic_code" json:"panic_code"`
 }
 
 func (q *Queries) ERC4337ListUserOperationEvents(ctx context.Context, arg ERC4337ListUserOperationEventsParams) ([]ERC4337ListUserOperationEventsRow, error) {
-	rows, err := q.db.Query(ctx, ERC4337ListUserOperationEvents,
+	rows, err := q.db.Query(ctx, eRC4337ListUserOperationEvents,
 		arg.ChainID,
 		arg.ConfigurationDigest,
 		arg.BlockNumber,
@@ -895,12 +953,12 @@ func (q *Queries) ERC4337ListUserOperationEvents(ctx context.Context, arg ERC433
 			&i.EventKind,
 			&i.LogIndex,
 			&i.Sender,
-			&i.Coalesce,
+			&i.Nonce,
 			&i.RelatedAddress,
 			&i.Paymaster,
 			&i.RawData,
 			&i.Reason,
-			&i.Coalesce_2,
+			&i.PanicCode,
 		); err != nil {
 			return nil, err
 		}
@@ -912,19 +970,34 @@ func (q *Queries) ERC4337ListUserOperationEvents(ctx context.Context, arg ERC433
 	return items, nil
 }
 
-const ERC4337ListUserOperations = `-- name: ERC4337ListUserOperations :many
-SELECT operation.user_op_hash, operation.entry_point,
-       operation.entry_point_version, operation.sender,
-       operation.nonce::text, operation.nonce_key::text,
-       operation.nonce_sequence::text, operation.success,
-       operation.actual_gas_cost::text, operation.actual_gas_used::text,
-       operation.transaction_hash, operation.transaction_index,
-       operation.operation_index, operation.event_log_index, operation.block_number::text,
-       operation.block_hash, operation.block_timestamp::text,
-       COALESCE(operation.safe_number::text, ''), COALESCE(operation.finalized_number::text, ''),
-       operation.bundler, operation.beneficiary, operation.init_kind,
-       operation.factory, operation.paymaster, operation.aggregator,
-       '[]'::jsonb AS participating_roles
+const eRC4337ListUserOperations = `-- name: ERC4337ListUserOperations :many
+SELECT
+operation.user_op_hash AS user_op_hash,
+operation.entry_point AS entry_point,
+operation.entry_point_version AS entry_point_version,
+operation.sender AS sender,
+operation.nonce::text AS nonce,
+operation.nonce_key::text AS nonce_key,
+operation.nonce_sequence::text AS nonce_sequence,
+operation.success AS success,
+operation.actual_gas_cost::text AS actual_gas_cost,
+operation.actual_gas_used::text AS actual_gas_used,
+operation.transaction_hash AS transaction_hash,
+operation.transaction_index AS transaction_index,
+operation.operation_index AS operation_index,
+operation.event_log_index AS event_log_index,
+operation.block_number::text AS block_number,
+operation.block_hash AS block_hash,
+operation.block_timestamp::text AS block_timestamp,
+COALESCE(operation.safe_number::text, '')::text AS safe_number,
+COALESCE(operation.finalized_number::text, '')::text AS finalized_number,
+operation.bundler AS bundler,
+operation.beneficiary AS beneficiary,
+operation.init_kind AS init_kind,
+operation.factory AS factory,
+operation.paymaster AS paymaster,
+operation.aggregator AS aggregator,
+'[]'::jsonb AS participating_roles
 FROM published_erc4337_user_operations AS operation
 WHERE operation.chain_id = $1::numeric
   AND operation.configuration_digest = $2::bytea
@@ -958,36 +1031,36 @@ type ERC4337ListUserOperationsParams struct {
 }
 
 type ERC4337ListUserOperationsRow struct {
-	UserOpHash              []byte      `db:"user_op_hash" json:"user_op_hash"`
-	EntryPoint              []byte      `db:"entry_point" json:"entry_point"`
-	EntryPointVersion       string      `db:"entry_point_version" json:"entry_point_version"`
-	Sender                  []byte      `db:"sender" json:"sender"`
-	OperationNonce          string      `db:"operation_nonce" json:"operation_nonce"`
-	OperationNonceKey       string      `db:"operation_nonce_key" json:"operation_nonce_key"`
-	OperationNonceSequence  string      `db:"operation_nonce_sequence" json:"operation_nonce_sequence"`
-	Success                 bool        `db:"success" json:"success"`
-	OperationActualGasCost  string      `db:"operation_actual_gas_cost" json:"operation_actual_gas_cost"`
-	OperationActualGasUsed  string      `db:"operation_actual_gas_used" json:"operation_actual_gas_used"`
-	TransactionHash         []byte      `db:"transaction_hash" json:"transaction_hash"`
-	TransactionIndex        int64       `db:"transaction_index" json:"transaction_index"`
-	OperationIndex          int64       `db:"operation_index" json:"operation_index"`
-	EventLogIndex           int64       `db:"event_log_index" json:"event_log_index"`
-	OperationBlockNumber    string      `db:"operation_block_number" json:"operation_block_number"`
-	BlockHash               []byte      `db:"block_hash" json:"block_hash"`
-	OperationBlockTimestamp string      `db:"operation_block_timestamp" json:"operation_block_timestamp"`
-	Coalesce                interface{} `db:"coalesce" json:"coalesce"`
-	Coalesce_2              interface{} `db:"coalesce_2" json:"coalesce_2"`
-	Bundler                 []byte      `db:"bundler" json:"bundler"`
-	Beneficiary             []byte      `db:"beneficiary" json:"beneficiary"`
-	InitKind                string      `db:"init_kind" json:"init_kind"`
-	Factory                 []byte      `db:"factory" json:"factory"`
-	Paymaster               []byte      `db:"paymaster" json:"paymaster"`
-	Aggregator              []byte      `db:"aggregator" json:"aggregator"`
-	ParticipatingRoles      []byte      `db:"participating_roles" json:"participating_roles"`
+	UserOpHash         []byte `db:"user_op_hash" json:"user_op_hash"`
+	EntryPoint         []byte `db:"entry_point" json:"entry_point"`
+	EntryPointVersion  string `db:"entry_point_version" json:"entry_point_version"`
+	Sender             []byte `db:"sender" json:"sender"`
+	Nonce              string `db:"nonce" json:"nonce"`
+	NonceKey           string `db:"nonce_key" json:"nonce_key"`
+	NonceSequence      string `db:"nonce_sequence" json:"nonce_sequence"`
+	Success            bool   `db:"success" json:"success"`
+	ActualGasCost      string `db:"actual_gas_cost" json:"actual_gas_cost"`
+	ActualGasUsed      string `db:"actual_gas_used" json:"actual_gas_used"`
+	TransactionHash    []byte `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex   int64  `db:"transaction_index" json:"transaction_index"`
+	OperationIndex     int64  `db:"operation_index" json:"operation_index"`
+	EventLogIndex      int64  `db:"event_log_index" json:"event_log_index"`
+	BlockNumber        string `db:"block_number" json:"block_number"`
+	BlockHash          []byte `db:"block_hash" json:"block_hash"`
+	BlockTimestamp     string `db:"block_timestamp" json:"block_timestamp"`
+	SafeNumber         string `db:"safe_number" json:"safe_number"`
+	FinalizedNumber    string `db:"finalized_number" json:"finalized_number"`
+	Bundler            []byte `db:"bundler" json:"bundler"`
+	Beneficiary        []byte `db:"beneficiary" json:"beneficiary"`
+	InitKind           string `db:"init_kind" json:"init_kind"`
+	Factory            []byte `db:"factory" json:"factory"`
+	Paymaster          []byte `db:"paymaster" json:"paymaster"`
+	Aggregator         []byte `db:"aggregator" json:"aggregator"`
+	ParticipatingRoles []byte `db:"participating_roles" json:"participating_roles"`
 }
 
 func (q *Queries) ERC4337ListUserOperations(ctx context.Context, arg ERC4337ListUserOperationsParams) ([]ERC4337ListUserOperationsRow, error) {
-	rows, err := q.db.Query(ctx, ERC4337ListUserOperations,
+	rows, err := q.db.Query(ctx, eRC4337ListUserOperations,
 		arg.ChainID,
 		arg.ConfigurationDigest,
 		arg.IndexStart,
@@ -1011,21 +1084,21 @@ func (q *Queries) ERC4337ListUserOperations(ctx context.Context, arg ERC4337List
 			&i.EntryPoint,
 			&i.EntryPointVersion,
 			&i.Sender,
-			&i.OperationNonce,
-			&i.OperationNonceKey,
-			&i.OperationNonceSequence,
+			&i.Nonce,
+			&i.NonceKey,
+			&i.NonceSequence,
 			&i.Success,
-			&i.OperationActualGasCost,
-			&i.OperationActualGasUsed,
+			&i.ActualGasCost,
+			&i.ActualGasUsed,
 			&i.TransactionHash,
 			&i.TransactionIndex,
 			&i.OperationIndex,
 			&i.EventLogIndex,
-			&i.OperationBlockNumber,
+			&i.BlockNumber,
 			&i.BlockHash,
-			&i.OperationBlockTimestamp,
-			&i.Coalesce,
-			&i.Coalesce_2,
+			&i.BlockTimestamp,
+			&i.SafeNumber,
+			&i.FinalizedNumber,
 			&i.Bundler,
 			&i.Beneficiary,
 			&i.InitKind,
@@ -1044,7 +1117,7 @@ func (q *Queries) ERC4337ListUserOperations(ctx context.Context, arg ERC4337List
 	return items, nil
 }
 
-const ERC4337RemoveBlockCoverage = `-- name: ERC4337RemoveBlockCoverage :one
+const eRC4337RemoveBlockCoverage = `-- name: ERC4337RemoveBlockCoverage :one
 SELECT erc4337_remove_block_coverage(
     $1::numeric,
     $2::numeric,
@@ -1053,28 +1126,29 @@ SELECT erc4337_remove_block_coverage(
 `
 
 func (q *Queries) ERC4337RemoveBlockCoverage(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) (int32, error) {
-	row := q.db.QueryRow(ctx, ERC4337RemoveBlockCoverage, chainID, blockNumber, blockHash)
+	row := q.db.QueryRow(ctx, eRC4337RemoveBlockCoverage, chainID, blockNumber, blockHash)
 	var erc4337_remove_block_coverage int32
 	err := row.Scan(&erc4337_remove_block_coverage)
 	return erc4337_remove_block_coverage, err
 }
 
-const ERC4337RemoveCoveredBlock = `-- name: ERC4337RemoveCoveredBlock :one
-SELECT erc4337_remove_covered_block(
+const eRC4337RemoveCoveredBlock = `-- name: ERC4337RemoveCoveredBlock :one
+SELECT
+(erc4337_remove_covered_block(
     $1::numeric,
     $2::bytea,
     $3::numeric
-) IS NULL AS removed
+) IS NULL)::boolean AS removed
 `
 
-func (q *Queries) ERC4337RemoveCoveredBlock(ctx context.Context, chainID pgtype.Numeric, configurationDigest []byte, blockNumber pgtype.Numeric) (interface{}, error) {
-	row := q.db.QueryRow(ctx, ERC4337RemoveCoveredBlock, chainID, configurationDigest, blockNumber)
-	var removed interface{}
+func (q *Queries) ERC4337RemoveCoveredBlock(ctx context.Context, chainID pgtype.Numeric, configurationDigest []byte, blockNumber pgtype.Numeric) (bool, error) {
+	row := q.db.QueryRow(ctx, eRC4337RemoveCoveredBlock, chainID, configurationDigest, blockNumber)
+	var removed bool
 	err := row.Scan(&removed)
 	return removed, err
 }
 
-const ERC4337SearchUserOperation = `-- name: ERC4337SearchUserOperation :one
+const eRC4337SearchUserOperation = `-- name: ERC4337SearchUserOperation :one
 SELECT operation.user_op_hash, operation.sender
 FROM published_erc4337_user_operations AS operation
 WHERE operation.chain_id = $1::numeric
@@ -1096,7 +1170,7 @@ type ERC4337SearchUserOperationRow struct {
 }
 
 func (q *Queries) ERC4337SearchUserOperation(ctx context.Context, arg ERC4337SearchUserOperationParams) (ERC4337SearchUserOperationRow, error) {
-	row := q.db.QueryRow(ctx, ERC4337SearchUserOperation,
+	row := q.db.QueryRow(ctx, eRC4337SearchUserOperation,
 		arg.ChainID,
 		arg.ConfigurationDigest,
 		arg.UserOpHash,
@@ -1107,7 +1181,7 @@ func (q *Queries) ERC4337SearchUserOperation(ctx context.Context, arg ERC4337Sea
 	return i, err
 }
 
-const ERC4337SourceBlock = `-- name: ERC4337SourceBlock :one
+const eRC4337SourceBlock = `-- name: ERC4337SourceBlock :one
 SELECT block.raw
 FROM blocks AS block
 WHERE block.chain_id = $1::numeric
@@ -1116,13 +1190,13 @@ WHERE block.chain_id = $1::numeric
 `
 
 func (q *Queries) ERC4337SourceBlock(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([]byte, error) {
-	row := q.db.QueryRow(ctx, ERC4337SourceBlock, chainID, blockNumber, blockHash)
+	row := q.db.QueryRow(ctx, eRC4337SourceBlock, chainID, blockNumber, blockHash)
 	var raw []byte
 	err := row.Scan(&raw)
 	return raw, err
 }
 
-const ERC4337SourceReceipts = `-- name: ERC4337SourceReceipts :many
+const eRC4337SourceReceipts = `-- name: ERC4337SourceReceipts :many
 SELECT receipt.raw
 FROM receipts AS receipt
 WHERE receipt.chain_id = $1::numeric
@@ -1132,7 +1206,7 @@ ORDER BY receipt.tx_index
 `
 
 func (q *Queries) ERC4337SourceReceipts(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, ERC4337SourceReceipts, chainID, blockNumber, blockHash)
+	rows, err := q.db.Query(ctx, eRC4337SourceReceipts, chainID, blockNumber, blockHash)
 	if err != nil {
 		return nil, err
 	}
@@ -1151,7 +1225,7 @@ func (q *Queries) ERC4337SourceReceipts(ctx context.Context, chainID pgtype.Nume
 	return items, nil
 }
 
-const ERC4337ValidateSnapshot = `-- name: ERC4337ValidateSnapshot :one
+const eRC4337ValidateSnapshot = `-- name: ERC4337ValidateSnapshot :one
 SELECT EXISTS (
     SELECT 1
     FROM erc4337_coverage_ranges AS coverage
@@ -1194,7 +1268,7 @@ type ERC4337ValidateSnapshotParams struct {
 }
 
 func (q *Queries) ERC4337ValidateSnapshot(ctx context.Context, arg ERC4337ValidateSnapshotParams) (bool, error) {
-	row := q.db.QueryRow(ctx, ERC4337ValidateSnapshot,
+	row := q.db.QueryRow(ctx, eRC4337ValidateSnapshot,
 		arg.IndexStart,
 		arg.SnapshotNumber,
 		arg.SnapshotHash,

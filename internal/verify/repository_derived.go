@@ -3,7 +3,6 @@ package verify
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -11,9 +10,13 @@ import (
 	"maps"
 	"strconv"
 
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/contractartifact"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
 func (repository *PostgresRepository) loadDerivedArtifactDetails(
@@ -26,10 +29,19 @@ func (repository *PostgresRepository) loadDerivedArtifactDetails(
 	}
 	contract.VerificationOrigin = VerificationOriginSubmitted
 	var kind JobKind
-	err := repository.db.QueryRowContext(
-		ctx, dbgen.DerivedVerifyArtifactJobKind, resolved.Source.VerificationJobID,
-	).Scan(&kind)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	err := func() error {
+		var queryValue0 pgtype.UUID
+		if err := queryValue0.Scan(resolved.Source.VerificationJobID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(repository.db).DerivedVerifyArtifactJobKind(ctx, queryValue0)
+		if err != nil {
+			return err
+		}
+		kind = JobKind(queryRow)
+		return nil
+	}()
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
 	if kind == JobSourcify || kind == JobSourcifyFromEtherscan {
@@ -45,17 +57,30 @@ func (repository *PostgresRepository) loadDerivedArtifactDetails(
 
 	var creator, created, transaction, blockHash []byte
 	var tracePath, callType, blockNumber, parentFile, parentContract string
-	err = repository.db.QueryRowContext(
-		ctx, dbgen.DerivedVerifyArtifactProvenance,
-		resolved.Source.VerificationJobID,
-	).Scan(
-		&creator, &created, &transaction, &tracePath, &callType,
-		&blockNumber, &blockHash, &parentFile, &parentContract,
-	)
-	if errors.Is(err, sql.ErrNoRows) && kind == JobDerived {
+	err = func() error {
+		var queryValue0 pgtype.UUID
+		if err := queryValue0.Scan(resolved.Source.VerificationJobID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(repository.db).DerivedVerifyArtifactProvenance(ctx, queryValue0)
+		if err != nil {
+			return err
+		}
+		creator = queryRow.CreatorAddress
+		created = queryRow.CreatedAddress
+		transaction = queryRow.TransactionHash
+		tracePath = queryRow.TracePath
+		callType = queryRow.CallType
+		blockNumber = queryRow.ExactBlockNumber
+		blockHash = queryRow.BlockHash
+		parentFile = queryRow.FileName
+		parentContract = queryRow.ContractName
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) && kind == JobDerived {
 		return ErrDerivedEvidenceStale
 	}
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("load derived verification provenance: %w", err)
 	}
 	if err == nil {
@@ -73,27 +98,49 @@ func (repository *PostgresRepository) loadDerivedArtifactDetails(
 			ParentFileName: parentFile, ParentContractName: parentContract,
 		}
 	}
-	rows, err := repository.db.QueryContext(
-		ctx, dbgen.DerivedVerifyCreatedContracts,
-		resolved.Target.ChainID, resolved.Target.Address,
-		resolved.Source.CodeHash, resolved.Source.VerificationJobID,
-		resolved.Target.BlockNumber,
-	)
+	rows, err := func() ([]dbgen.DerivedVerifyCreatedContractsRow, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(resolved.Target.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.UUID
+		if err := queryValue1.Scan(resolved.Source.VerificationJobID); err != nil {
+			return nil, err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(resolved.Target.BlockNumber); err != nil {
+			return nil, err
+		}
+		return dbgen.New(repository.db).DerivedVerifyCreatedContracts(ctx, dbgen.DerivedVerifyCreatedContractsParams{ChainID: queryValue0, CreatorAddress: resolved.Target.Address, CreatorCodeHash: resolved.Source.CodeHash, SourceJobID: queryValue1, MaxBlockNumber: queryValue2})
+	}()
 	if err != nil {
 		return err
 	}
-	defer rows.Close() //nolint:errcheck
-	for rows.Next() {
+
+	for _, storedRow := range rows {
 		var child DerivedContract
 		var address, transaction, blockHash []byte
 		var blockNumber string
-		var fileName, contractName sql.NullString
-		if err := rows.Scan(
-			&address, &transaction, &child.TracePath, &child.CallType,
-			&blockNumber, &blockHash, &child.Status, &fileName,
-			&contractName, &child.AutoVerified,
-		); err != nil {
-			return err
+		var fileName, contractName pgtype.Text
+		{
+			address = storedRow.CreatedAddress
+			transaction = storedRow.TransactionHash
+			child.TracePath = storedRow.TracePath
+			child.CallType = storedRow.CallType
+			blockNumber = storedRow.AttemptBlockNumber
+			blockHash = storedRow.BlockHash
+			child.Status = storedRow.Status
+			var queryValue7 pgtype.Text
+			if storedRow.FileName != nil {
+				queryValue7 = pgtype.Text{String: *storedRow.FileName, Valid: true}
+			}
+			fileName = queryValue7
+			var queryValue9 pgtype.Text
+			if storedRow.ContractName != nil {
+				queryValue9 = pgtype.Text{String: *storedRow.ContractName, Valid: true}
+			}
+			contractName = queryValue9
+			child.AutoVerified = storedRow.AutoVerified
 		}
 		child.BlockNumber, err = strconv.ParseUint(blockNumber, 10, 64)
 		if err != nil || len(address) != 20 || len(transaction) != 32 || len(blockHash) != 32 {
@@ -105,7 +152,8 @@ func (repository *PostgresRepository) loadDerivedArtifactDetails(
 		child.FileName, child.ContractName = fileName.String, contractName.String
 		contract.DerivedChildren = append(contract.DerivedChildren, child)
 	}
-	return rows.Err()
+
+	return nil
 }
 
 var (
@@ -227,13 +275,13 @@ func (repository *PostgresRepository) CompleteDerived(
 		!prepared.valid() {
 		return "", errors.New("derived verification trace identity is invalid")
 	}
-	tx, err := repository.db.BeginTx(ctx, nil)
+	tx, err := repository.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return "", err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	evidence, err := loadDerivedPublicationEvidence(ctx, tx, identity)
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrDerivedEvidenceStale
 	}
 	if err != nil {
@@ -252,16 +300,32 @@ func (repository *PostgresRepository) CompleteDerived(
 	if err != nil {
 		return "", err
 	}
-	if _, err := tx.ExecContext(
-		ctx, dbgen.DerivedVerifyLockTarget, evidence.ChainID, evidence.CreatedAddress,
-	); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(evidence.ChainID); err != nil {
+			return err
+		}
+		return dbgen.New(tx).DerivedVerifyLockTarget(ctx, queryValue0, evidence.CreatedAddress)
+	}(); err != nil {
 		return "", fmt.Errorf("lock derived verification target: %w", err)
 	}
 	var existingJobID string
-	err = tx.QueryRowContext(ctx, dbgen.DerivedVerifyExistingPublication,
-		evidence.ChainID, evidence.CreatedAddress, evidence.RuntimeCodeHash,
-		strconv.FormatUint(evidence.BlockNumber, 10),
-	).Scan(&existingJobID)
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(evidence.ChainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(evidence.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).DerivedVerifyExistingPublication(ctx, dbgen.DerivedVerifyExistingPublicationParams{ChainID: queryValue0, Address: evidence.CreatedAddress, CodeHash: evidence.RuntimeCodeHash, ValidFromBlock: queryValue1})
+		if err != nil {
+			return err
+		}
+		existingJobID = queryRow
+		return nil
+	}()
 	if err == nil {
 		if err := enqueueDerivedTargetTx(ctx, tx, identity.CompilationID, evidence); err != nil {
 			return "", err
@@ -271,12 +335,12 @@ func (repository *PostgresRepository) CompleteDerived(
 		); err != nil {
 			return "", err
 		}
-		if err := tx.Commit(); err != nil {
+		if err := tx.Commit(ctx); err != nil {
 			return "", err
 		}
 		return existingJobID, nil
 	}
-	if !errors.Is(err, sql.ErrNoRows) {
+	if !errors.Is(err, pgx.ErrNoRows) {
 		return "", err
 	}
 	jobID, err := randomUUID(repository.random)
@@ -326,25 +390,26 @@ func (repository *PostgresRepository) CompleteDerived(
 	}
 	artifactKind, artifactVersion, artifactImmutable, artifactManifest :=
 		proxyArtifactAttestationValues(authenticatedArtifact)
-	if _, err := tx.ExecContext(ctx, dbgen.DerivedVerifyInsertJob,
-		jobID, evidence.CompilerVersion, evidence.CompilerPlatform,
-		evidence.CatalogGenerationID, evidence.CompilerDigest,
-		evidence.ExecutorKind, evidence.ExecutionPolicy, evidence.ExecutorDigest,
-		evidence.ChainID, evidence.CreatedAddress, evidence.RuntimeCodeHash,
-		evidence.BlockHash, string(requestPayload), requestPayload,
-		requestDigest[:], string(outcome),
-	); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.UUID
+		if err := queryValue0.Scan(jobID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(evidence.ChainID); err != nil {
+			return err
+		}
+		return dbgen.New(tx).DerivedVerifyInsertJob(ctx, dbgen.DerivedVerifyInsertJobParams{ID: queryValue0, CompilerVersion: new(evidence.CompilerVersion), CompilerPlatform: new(evidence.CompilerPlatform), CatalogGenerationID: evidence.CatalogGenerationID, CompilerDigest: evidence.CompilerDigest, ExecutorKind: new(evidence.ExecutorKind), ExecutionPolicy: new(evidence.ExecutionPolicy), ExecutorDigest: evidence.ExecutorDigest, ChainID: queryValue1, Address: evidence.CreatedAddress, CodeHash: evidence.RuntimeCodeHash, BlockHash: evidence.BlockHash, Request: []byte(string(requestPayload)), RequestPayload: requestPayload, RequestDigest: requestDigest[:], Outcome: []byte(string(outcome))})
+	}(); err != nil {
 		return "", fmt.Errorf("insert derived verification job: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.VerifyInlineCompleteV2Statement3,
-		jobID, requestDigest[:], "verification_success", string(outcome),
-		fields.FileName, fields.ContractName, fields.Language,
-		fields.CompilerVersion, fields.MatchType, fields.ABI,
-		fields.Sources, fields.Settings, fields.CompilationArtifacts,
-		fields.CreationArtifacts, fields.RuntimeArtifacts,
-		fields.ConstructorArguments, fields.Libraries, fields.Blueprint,
-		artifactKind, artifactVersion, artifactImmutable, artifactManifest,
-	); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.UUID
+		if err := queryValue0.Scan(jobID); err != nil {
+			return err
+		}
+		return dbgen.New(tx).VerifyInlineCompleteV2Statement3(ctx, dbgen.VerifyInlineCompleteV2Statement3Params{JobID: queryValue0, RequestDigest: requestDigest[:], OutcomeKind: "verification_success", Outcome: []byte(string(outcome)), FileName: fields.FileName, ContractName: fields.ContractName, Language: fields.Language, CompilerVersion: fields.CompilerVersion, MatchType: fields.MatchType, Abi: fields.ABI, Sources: fields.Sources, Settings: fields.Settings, CompilationArtifacts: fields.CompilationArtifacts, CreationCodeArtifacts: fields.CreationArtifacts, RuntimeCodeArtifacts: fields.RuntimeArtifacts, ConstructorArguments: fields.ConstructorArguments, Libraries: fields.Libraries, IsBlueprint: fields.Blueprint, ProxyArtifactKind: artifactKind, ProxyStandardVersion: artifactVersion, ProxyRuntimeImmutableAddress: artifactImmutable, ProxySourceManifestSha256: artifactManifest})
+	}(); err != nil {
 		return "", fmt.Errorf("insert derived verification result: %w", err)
 	}
 	job := VerificationJob{
@@ -373,7 +438,7 @@ func (repository *PostgresRepository) CompleteDerived(
 	); err != nil {
 		return "", err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return "", err
 	}
 	return jobID, nil
@@ -381,14 +446,25 @@ func (repository *PostgresRepository) CompleteDerived(
 
 func enqueueDerivedTargetTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	compilationID string,
 	evidence derivedPublicationEvidence,
 ) error {
-	if _, err := tx.ExecContext(ctx, dbgen.DerivedVerifyEnqueueHistoricalScan,
-		compilationID, evidence.ChainID, evidence.CreatedAddress,
-		evidence.RuntimeCodeHash, strconv.FormatUint(evidence.BlockNumber, 10), nil,
-	); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.UUID
+		if err := queryValue0.Scan(compilationID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(evidence.ChainID); err != nil {
+			return err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(strconv.FormatUint(evidence.BlockNumber, 10)); err != nil {
+			return err
+		}
+		return dbgen.New(tx).DerivedVerifyEnqueueHistoricalScan(ctx, dbgen.DerivedVerifyEnqueueHistoricalScanParams{CompilationID: queryValue0, ChainID: queryValue1, CreatorAddress: evidence.CreatedAddress, CreatorCodeHash: evidence.RuntimeCodeHash, CursorBlockNumber: queryValue2, ValidToBlock: pgtype.Numeric{}})
+	}(); err != nil {
 		return fmt.Errorf("enqueue transitive derived verification: %w", err)
 	}
 	return nil
@@ -396,7 +472,7 @@ func enqueueDerivedTargetTx(
 
 func (repository *PostgresRepository) recordDerivedMatchTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	compilationID string,
 	evidence derivedPublicationEvidence,
 	match CandidateMatch,
@@ -414,13 +490,29 @@ func (repository *PostgresRepository) recordDerivedMatchTx(
 	if err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, dbgen.DerivedVerifyMatchAttempt,
-		attemptID, evidence.ChainID, strconv.FormatUint(evidence.BlockNumber, 10),
-		evidence.BlockHash, evidence.TransactionHash, evidence.TracePath,
-		evidence.CreatorAddress, evidence.CreatedAddress, evidence.CallType,
-		compilationID, match.Candidate.FileName, match.Candidate.ContractName,
-		string(creationMatch), string(runtimeMatch), jobID,
-	); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.UUID
+		if err := queryValue0.Scan(attemptID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(evidence.ChainID); err != nil {
+			return err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(strconv.FormatUint(evidence.BlockNumber, 10)); err != nil {
+			return err
+		}
+		var queryValue3 pgtype.UUID
+		if err := queryValue3.Scan(compilationID); err != nil {
+			return err
+		}
+		var queryValue4 pgtype.UUID
+		if err := queryValue4.Scan(jobID); err != nil {
+			return err
+		}
+		return dbgen.New(tx).DerivedVerifyMatchAttempt(ctx, dbgen.DerivedVerifyMatchAttemptParams{ID: queryValue0, ChainID: queryValue1, BlockNumber: queryValue2, BlockHash: evidence.BlockHash, TransactionHash: evidence.TransactionHash, TracePath: evidence.TracePath, CreatorAddress: evidence.CreatorAddress, CreatedAddress: evidence.CreatedAddress, CallType: evidence.CallType, CompilationID: queryValue3, FileName: new(match.Candidate.FileName), ContractName: new(match.Candidate.ContractName), CreationMatch: []byte(string(creationMatch)), RuntimeMatch: []byte(string(runtimeMatch)), VerificationJobID: queryValue4})
+	}(); err != nil {
 		return fmt.Errorf("record derived verification match: %w", err)
 	}
 	return nil
@@ -428,25 +520,48 @@ func (repository *PostgresRepository) recordDerivedMatchTx(
 
 func loadDerivedPublicationEvidence(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	identity DerivedTraceIdentity,
 ) (derivedPublicationEvidence, error) {
 	var evidence derivedPublicationEvidence
 	var blockNumber string
-	err := tx.QueryRowContext(ctx, dbgen.DerivedVerifyPublicationEvidence,
-		identity.CompilationID, strconv.FormatUint(identity.BlockNumber, 10),
-		identity.BlockHash, identity.Transaction, identity.TracePath,
-	).Scan(
-		&evidence.ChainID, &blockNumber, &evidence.BlockHash,
-		&evidence.TransactionHash, &evidence.TracePath, &evidence.CallType,
-		&evidence.CreatorAddress, &evidence.CreatedAddress,
-		&evidence.CreationCode, &evidence.RuntimeCode, &evidence.RuntimeCodeHash,
-		&evidence.SourceRequestDigest, &evidence.Language,
-		&evidence.CompilerVersion, &evidence.CompilerPlatform,
-		&evidence.CatalogGenerationID, &evidence.CompilerDigest,
-		&evidence.ExecutorKind, &evidence.ExecutionPolicy, &evidence.ExecutorDigest,
-		&evidence.StandardJSON, &evidence.ParentVerificationID,
-	)
+	err := func() error {
+		var queryValue0 pgtype.UUID
+		if err := queryValue0.Scan(identity.CompilationID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(identity.BlockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).DerivedVerifyPublicationEvidence(ctx, dbgen.DerivedVerifyPublicationEvidenceParams{ID: queryValue0, BlockNumber: queryValue1, BlockHash: identity.BlockHash, TransactionHash: identity.Transaction, TracePath: identity.TracePath})
+		if err != nil {
+			return err
+		}
+		evidence.ChainID = queryRow.TraceChainID
+		blockNumber = queryRow.TraceBlockNumber
+		evidence.BlockHash = queryRow.BlockHash
+		evidence.TransactionHash = queryRow.TransactionHash
+		evidence.TracePath = queryRow.TracePath
+		evidence.CallType = queryRow.CallType
+		evidence.CreatorAddress = queryRow.FromAddress
+		evidence.CreatedAddress = queryRow.CreatedAddress
+		evidence.CreationCode = queryRow.Input
+		evidence.RuntimeCode = queryRow.Code
+		evidence.RuntimeCodeHash = queryRow.CodeHash
+		evidence.SourceRequestDigest = queryRow.RequestDigest
+		evidence.Language = Language(queryRow.Language)
+		evidence.CompilerVersion = queryRow.CompilerVersion
+		evidence.CompilerPlatform = queryRow.CompilerPlatform
+		evidence.CatalogGenerationID = queryRow.CatalogGenerationID
+		evidence.CompilerDigest = queryRow.CompilerSha256
+		evidence.ExecutorKind = queryRow.ExecutorKind
+		evidence.ExecutionPolicy = queryRow.ExecutionPolicy
+		evidence.ExecutorDigest = queryRow.ExecutorSha256
+		evidence.StandardJSON = json.RawMessage(queryRow.StandardJsonPayload)
+		evidence.ParentVerificationID = queryRow.ParentVerificationJobID
+		return nil
+	}()
 	if err != nil {
 		return derivedPublicationEvidence{}, err
 	}

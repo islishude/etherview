@@ -3,7 +3,6 @@ package billing
 import (
 	"context"
 	"crypto/subtle"
-	"database/sql"
 	"encoding/base32"
 	"errors"
 	"fmt"
@@ -17,7 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/islishude/etherview/internal/apiops"
 	dbaccess "github.com/islishude/etherview/internal/db"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -35,14 +34,14 @@ var (
 )
 
 type PostgresLedger struct {
-	db             *sql.DB
+	db             dbaccess.Database
 	chainID        uint64
 	chainNumeric   pgtype.Numeric
 	reservationTTL time.Duration
 }
 
 func NewPostgresLedger(
-	db *sql.DB,
+	db dbaccess.Database,
 	chainID uint64,
 	reservationTTL time.Duration,
 ) (*PostgresLedger, error) {

@@ -1,10 +1,16 @@
 package enrich
 
 import (
-	"database/sql/driver"
+	"context"
 	"fmt"
 	"strings"
 	"testing"
+	"uuid"
+
+	testpgx "github.com/islishude/etherview/internal/testpgx"
+	pgx "github.com/jackc/pgx/v5"
+	pgconn "github.com/jackc/pgx/v5/pgconn"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -162,38 +168,38 @@ func TestPersistUUPSImplementationProbeWritesObservationAndLeaseWitness(t *testi
 		proxiableUUID: EIP1967ImplementationSlot, upgradeInterface: "5.0.0",
 	}
 	writes := 0
-	backend := &fakeSQLBackend{exec: func(query string, arguments []driver.NamedValue) (driver.Result, error) {
+	backend := &fakeSQLBackend{exec: func(query string, arguments []any) (pgconn.CommandTag, error) {
 		writes++
 		switch writes {
 		case 1:
 			if !strings.Contains(query, "INSERT INTO uups_implementation_observations") || len(arguments) != 12 {
-				return nil, fmt.Errorf("unexpected UUPS observation write: %s args=%+v", query, arguments)
+				return pgconn.CommandTag{}, fmt.Errorf("unexpected UUPS observation write: %s args=%+v", query, arguments)
 			}
-			if arguments[0].Value != job.ChainID || arguments[5].Value != result.target.verificationJobID ||
-				arguments[8].Value != string(uupsProbeCompatible) || arguments[9].Value != nil ||
-				arguments[11].Value != "5.0.0" {
-				return nil, fmt.Errorf("UUPS observation arguments=%+v", arguments)
+			if !testpgx.NumericEquals(arguments[0], job.ChainID) || uuid.UUID(arguments[5].(pgtype.UUID).Bytes).String() != result.target.verificationJobID ||
+				arguments[8] != string(uupsProbeCompatible) || arguments[9] != (*string)(nil) ||
+				!testpgx.TextPointerEquals(arguments[11], "5.0.0") {
+				return pgconn.CommandTag{}, fmt.Errorf("UUPS observation arguments=%+v", arguments)
 			}
 		case 2:
 			if !strings.Contains(query, "INSERT INTO uups_implementation_observation_generations") ||
-				len(arguments) != 7 || arguments[5].Value != int64(47) || arguments[6].Value != int64(6) {
-				return nil, fmt.Errorf("unexpected UUPS witness write: %s args=%+v", query, arguments)
+				len(arguments) != 7 || arguments[5] != int64(47) || arguments[6] != int64(6) {
+				return pgconn.CommandTag{}, fmt.Errorf("unexpected UUPS witness write: %s args=%+v", query, arguments)
 			}
 		default:
-			return nil, fmt.Errorf("unexpected extra write: %s", query)
+			return pgconn.CommandTag{}, fmt.Errorf("unexpected extra write: %s", query)
 		}
-		return driver.RowsAffected(1), nil
+		return testpgx.Affected(1), nil
 	}}
 	db := openFakeSQLDB(t, backend)
-	tx, err := db.BeginTx(t.Context(), nil)
+	tx, err := db.BeginTx(t.Context(), pgx.TxOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { _ = tx.Rollback(context.Background()) }()
 	if err := persistUUPSImplementationProbe(t.Context(), tx, job, result); err != nil {
 		t.Fatal(err)
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if writes != 2 {

@@ -51,7 +51,8 @@ const (
 // every split role. Readiness is published only after every selected service
 // has entered Run, and is withdrawn before their contexts are canceled.
 type Lifecycle struct {
-	state atomic.Uint32
+	state            atomic.Uint32
+	shutdownDeadline atomic.Pointer[time.Time]
 }
 
 func NewLifecycle() *Lifecycle { return &Lifecycle{} }
@@ -65,8 +66,30 @@ func (l *Lifecycle) Ready() bool {
 
 func (l *Lifecycle) set(state uint32) {
 	if l != nil {
+		if state == lifecycleStarting {
+			l.shutdownDeadline.Store(nil)
+		}
 		l.state.Store(state)
 	}
+}
+
+// ShutdownDeadline lets resource owners finish teardown within the same budget
+// as the service drain. It is absent before shutdown begins.
+func (l *Lifecycle) ShutdownDeadline() (time.Time, bool) {
+	if l == nil {
+		return time.Time{}, false
+	}
+	deadline := l.shutdownDeadline.Load()
+	if deadline == nil {
+		return time.Time{}, false
+	}
+	return *deadline, true
+}
+
+func (l *Lifecycle) beginShutdown(timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	l.shutdownDeadline.Store(&deadline)
+	l.set(lifecycleStopping)
 }
 
 type RunOptions struct {
@@ -253,7 +276,7 @@ func RunWithOptions(ctx context.Context, services []Service, options RunOptions)
 			return
 		}
 		stopping = true
-		lifecycle.set(lifecycleStopping)
+		lifecycle.beginShutdown(shutdownTimeout)
 		cancel()
 		parentDone = nil
 		timeout = time.NewTimer(shutdownTimeout)

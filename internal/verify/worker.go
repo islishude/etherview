@@ -72,12 +72,12 @@ func (options *WorkerOptions) defaults() {
 }
 
 type Worker struct {
-	repository Repository
+	repository WorkerRepository
 	compiler   Compiler
 	options    WorkerOptions
 }
 
-func NewWorker(repository Repository, compiler Compiler, options WorkerOptions) (*Worker, error) {
+func NewWorker(repository WorkerRepository, compiler Compiler, options WorkerOptions) (*Worker, error) {
 	if repository == nil {
 		return nil, errors.New("verification worker requires a repository")
 	}
@@ -115,10 +115,11 @@ func (worker *Worker) Run(ctx context.Context) error {
 			return err
 		}
 		found, err := worker.processOneRunnable(ctx, worker.compilerAvailability(ctx))
-		if err != nil {
+		leaseLost := recoverableVerificationLeaseLoss(err)
+		if err != nil && !leaseLost {
 			return err
 		}
-		if !found {
+		if !found || leaseLost {
 			if err := waitForContext(ctx, worker.options.PollInterval); err != nil {
 				return err
 			}
@@ -130,9 +131,18 @@ func (worker *Worker) ProcessOne(ctx context.Context) (bool, error) {
 	return worker.processOneRunnable(ctx, CompilerAvailability{SolcJS: true, Geas: true, Vyper: true})
 }
 
-type runnableVerificationClaimer interface {
+// WorkerRepository expresses every durable capability required before work is claimed.
+// Read-only service queries deliberately belong to a separate interface.
+type WorkerRepository interface {
 	ClaimRunnable(context.Context, string, time.Duration, CompilerAvailability) (VerificationLease, bool, error)
+	Renew(context.Context, VerificationLease, time.Duration) error
+	BindCompiler(context.Context, VerificationLease, CompilerProvenance) error
+	Fail(context.Context, VerificationLease, ErrorCode) error
+	CompleteV2(context.Context, VerificationLease, string, json.RawMessage, ...AuthenticatedCompilation) error
+	CompleteProxyV2(context.Context, VerificationLease) error
 }
+
+var _ WorkerRepository = (*PostgresRepository)(nil)
 
 func (worker *Worker) compilerAvailability(ctx context.Context) CompilerAvailability {
 	if runtime, ok := worker.compiler.(interface {
@@ -163,21 +173,9 @@ func (worker *Worker) processOneRunnable(
 		observer.RecordVerificationCompiler(string(CompilerFamilyGeas), availability.Geas)
 		observer.RecordVerificationCompiler(string(CompilerFamilyVyper), availability.Vyper)
 	}
-	var lease VerificationLease
-	var found bool
-	var err error
-	if repository, ok := worker.repository.(runnableVerificationClaimer); ok {
-		lease, found, err = repository.ClaimRunnable(
-			ctx, worker.options.WorkerID, worker.options.LeaseDuration, availability,
-		)
-	} else {
-		if !availability.SolcJS && !availability.Geas && !availability.Vyper {
-			return false, nil
-		}
-		lease, found, err = worker.repository.Claim(
-			ctx, worker.options.WorkerID, worker.options.LeaseDuration,
-		)
-	}
+	lease, found, err := worker.repository.ClaimRunnable(
+		ctx, worker.options.WorkerID, worker.options.LeaseDuration, availability,
+	)
 	if err != nil || !found {
 		return found, err
 	}
@@ -197,30 +195,11 @@ func (worker *Worker) processLease(ctx context.Context, lease VerificationLease)
 	return worker.processLeaseV2(ctx, lease)
 }
 
-type v2CompletionRepository interface {
-	CompleteV2(
-		context.Context,
-		VerificationLease,
-		string,
-		json.RawMessage,
-		...AuthenticatedCompilation,
-	) error
-}
-
 func (worker *Worker) processLeaseV2(ctx context.Context, lease VerificationLease) error {
-	repository, ok := worker.repository.(v2CompletionRepository)
-	if !ok {
-		return errors.New("verification v2 completion repository is unavailable")
-	}
+	repository := worker.repository
 	request := lease.Job.RequestV2
 	if request.Kind == JobProxy {
-		proxyRepository, ok := worker.repository.(interface {
-			CompleteProxyV2(context.Context, VerificationLease) error
-		})
-		if !ok {
-			return errors.New("proxy verification completion repository is unavailable")
-		}
-		if err := proxyRepository.CompleteProxyV2(ctx, lease); err != nil {
+		if err := repository.CompleteProxyV2(ctx, lease); err != nil {
 			if errors.Is(err, ErrTargetNotCanonical) {
 				return worker.failLease(ctx, lease, ErrorTargetNotCanonical)
 			}
@@ -251,7 +230,7 @@ func (worker *Worker) processLeaseV2(ctx context.Context, lease VerificationLeas
 		if errors.Is(err, ErrCompilerVersionUnavailable) {
 			return worker.failLease(ctx, lease, ErrorCompilerUnavailable)
 		}
-		if transientCompilerError(err) || errors.Is(err, context.Canceled) {
+		if fatalCompilerError(err) || errors.Is(err, ErrLeaseLost) || transientCompilerError(err) || errors.Is(err, context.Canceled) {
 			return err
 		}
 		return worker.failLease(ctx, lease, ErrorCompilerUnavailable)
@@ -261,6 +240,9 @@ func (worker *Worker) processLeaseV2(ctx context.Context, lease VerificationLeas
 		return worker.failLease(ctx, lease, ErrorCompilerProvenanceMismatch)
 	}
 	if err := worker.repository.BindCompiler(ctx, lease, provenance); err != nil {
+		if errors.Is(err, ErrLeaseLost) {
+			return err
+		}
 		return worker.failLease(ctx, lease, ErrorCompilerProvenanceMismatch)
 	}
 	if request.Language == LanguageGeas {
@@ -277,10 +259,10 @@ func (worker *Worker) processLeaseV2(ctx context.Context, lease VerificationLeas
 			ctx, lease, request, provenance, input, modified,
 		)
 		if err != nil {
-			if errors.Is(err, ErrCompilerCleanup) || errors.Is(err, ErrCompilerRuntime) {
+			if fatalCompilerError(err) || errors.Is(err, ErrLeaseLost) {
 				return err
 			}
-			if transientCompilerError(err) || errors.Is(err, context.Canceled) {
+			if fatalCompilerError(err) || errors.Is(err, ErrLeaseLost) || transientCompilerError(err) || errors.Is(err, context.Canceled) {
 				return err
 			}
 			// Compiler-process, cache, sandbox, timeout, cancellation, and
@@ -373,7 +355,7 @@ type geasEntrypointCompiler interface {
 
 func (worker *Worker) processGeasV2(
 	ctx context.Context,
-	repository v2CompletionRepository,
+	repository WorkerRepository,
 	lease VerificationLease,
 	provenance CompilerProvenance,
 ) error {
@@ -482,7 +464,7 @@ func (worker *Worker) handleGeasCompilerError(
 	lease VerificationLease,
 	err error,
 ) error {
-	if errors.Is(err, ErrCompilerCleanup) || errors.Is(err, ErrCompilerRuntime) {
+	if fatalCompilerError(err) || errors.Is(err, ErrLeaseLost) {
 		return err
 	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil {
@@ -645,7 +627,7 @@ func runWithLeaseHeartbeat[T any](
 	value, err := operation(operationContext)
 	cancel()
 	if renewalErr := <-renewed; renewalErr != nil {
-		return zero, renewalErr
+		return zero, errors.Join(renewalErr, err)
 	}
 	return value, err
 }
@@ -700,7 +682,7 @@ func verificationSuccessOutcome(
 
 func (worker *Worker) completeOutcomeV2(
 	ctx context.Context,
-	repository v2CompletionRepository,
+	repository WorkerRepository,
 	lease VerificationLease,
 	kind string,
 	value any,
@@ -762,4 +744,33 @@ func waitForContext(ctx context.Context, duration time.Duration) error {
 	case <-timer.C:
 		return nil
 	}
+}
+
+func fatalCompilerError(err error) bool {
+	return errors.Is(err, ErrCompilerCleanup) || errors.Is(err, ErrCompilerRuntime)
+}
+
+func recoverableVerificationLeaseLoss(err error) bool {
+	if !errors.Is(err, ErrLeaseLost) {
+		return false
+	}
+	var onlyOwnershipOrCancellation func(error) bool
+	onlyOwnershipOrCancellation = func(value error) bool {
+		if value == ErrLeaseLost || value == context.Canceled {
+			return true
+		}
+		if joined, ok := value.(interface{ Unwrap() []error }); ok {
+			for _, child := range joined.Unwrap() {
+				if !onlyOwnershipOrCancellation(child) {
+					return false
+				}
+			}
+			return true
+		}
+		if wrapped := errors.Unwrap(value); wrapped != nil {
+			return onlyOwnershipOrCancellation(wrapped)
+		}
+		return false
+	}
+	return onlyOwnershipOrCancellation(err)
 }

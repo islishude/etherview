@@ -12,7 +12,7 @@ x-etherview-app-env: &etherview-app-env
   ETHERVIEW_LOG_FORMAT: text
   ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL:
   # A value-less override preserves the checked-in gateway unless the caller
-  # explicitly selects another SSRF-validated public HTTPS endpoint.
+  # explicitly selects another HTTPS endpoint.
   ETHERVIEW_METADATA_IPFS_GATEWAY:
 
 x-etherview-api-env: &etherview-api-env
@@ -52,6 +52,46 @@ x-etherview-runtime-depends-on: &etherview-runtime-depends-on
     condition: service_started
 
 services:
+  ipfs:
+    image: ipfs/kubo:v0.43.1
+    command: ["daemon", "--migrate=false"]
+    environment:
+      IPFS_PROFILE: server
+      IPFS_GATEWAY_NO_FETCH: "false"
+    volumes:
+      - ipfs-data:/data/ipfs
+      - ./deploy/ipfs/init.sh:/container-init.d/010-preview.sh:ro
+      - ./e2e/previewmetadata/testdata/metadata.json:/fixtures/metadata.json:ro
+    ports:
+      - "127.0.0.1:${IPFS_API_PORT:-5001}:5001"
+    healthcheck:
+      test: ["CMD-SHELL", "ipfs --timeout=5s cat /ipfs/bafybeibnsoufr2renqzsh347nrx54wcubt5lgkeivez63xvivplfwhtpym/metadata.json >/dev/null"]
+      interval: 5s
+      timeout: 6s
+      retries: 20
+    restart: unless-stopped
+
+  ipfs-gateway:
+    image: nginx:1.28.0-alpine
+    volumes:
+      - ./deploy/ipfs/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./.local/preview-tls/ipfs.crt:/run/ipfs-tls/tls.crt:ro
+      - ./.local/preview-tls/ipfs.key:/run/ipfs-tls/tls.key:ro
+    ports:
+      - "127.0.0.1:${IPFS_GATEWAY_PORT:-8443}:8443"
+    networks:
+      default:
+        aliases: [ipfs.preview.test]
+    depends_on:
+      ipfs:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
   postgres:
     image: postgres:18-alpine
     environment:
@@ -162,10 +202,18 @@ services:
     environment:
       <<: *etherview-app-env
       ETHERVIEW_ROLES: metadata
-      # Docker Desktop may map this public IPFS gateway to 198.18/15. Keep the
-      # explicit unsafe exception scoped to this Preview metadata worker only.
+      # The controlled local HTTPS gateway is reachable only by this worker's
+      # explicit development-only private-network exception.
       ETHERVIEW_METADATA_UNSAFE_ALLOW_PRIVATE_NETWORKS: "true"
-    depends_on: *etherview-runtime-depends-on
+      SSL_CERT_FILE: /run/ipfs-ca/rootCA.pem
+    volumes:
+      - ${ETHERVIEW_CONFIG_FILE:-./deploy/preview.config.yaml}:/etc/etherview/config.yaml:ro
+      - ${ETHERVIEW_GENESIS_FILE:-./deploy/preview.genesis.json}:/config/genesis.json:ro
+      - ./.local/preview-tls/rootCA.pem:/run/ipfs-ca/rootCA.pem:ro
+    depends_on:
+      <<: *etherview-runtime-depends-on
+      ipfs-gateway:
+        condition: service_healthy
     healthcheck: *etherview-healthcheck
     restart: unless-stopped
 
@@ -181,6 +229,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  ipfs-data:
   postgres-data:
   geth-data:
   compiler-cache:

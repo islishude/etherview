@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"flag"
@@ -11,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
@@ -74,7 +75,7 @@ type adminBillingEventOutput struct {
 
 func (b *Backend) adminBilling(
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	cfg config.Config,
 	action string,
 	args []string,

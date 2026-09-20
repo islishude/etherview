@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const AppendBillingPaymentEvent = `-- name: AppendBillingPaymentEvent :exec
+const appendBillingPaymentEvent = `-- name: AppendBillingPaymentEvent :exec
 INSERT INTO billing_payment_events (
     payment_id,
     from_state,
@@ -42,7 +42,7 @@ type AppendBillingPaymentEventParams struct {
 }
 
 func (q *Queries) AppendBillingPaymentEvent(ctx context.Context, arg AppendBillingPaymentEventParams) error {
-	_, err := q.db.Exec(ctx, AppendBillingPaymentEvent,
+	_, err := q.db.Exec(ctx, appendBillingPaymentEvent,
 		arg.PaymentID,
 		arg.FromState,
 		arg.ToState,
@@ -54,7 +54,7 @@ func (q *Queries) AppendBillingPaymentEvent(ctx context.Context, arg AppendBilli
 	return err
 }
 
-const ExpireBillingPayments = `-- name: ExpireBillingPayments :one
+const expireBillingPayments = `-- name: ExpireBillingPayments :one
 WITH candidates AS (
     SELECT payment.id
     FROM billing_payments AS payment
@@ -91,13 +91,13 @@ FROM updated
 `
 
 func (q *Queries) ExpireBillingPayments(ctx context.Context, chainID pgtype.Numeric, observedAt pgtype.Timestamptz, expireLimit int32) (int64, error) {
-	row := q.db.QueryRow(ctx, ExpireBillingPayments, chainID, observedAt, expireLimit)
+	row := q.db.QueryRow(ctx, expireBillingPayments, chainID, observedAt, expireLimit)
 	var expired_count int64
 	err := row.Scan(&expired_count)
 	return expired_count, err
 }
 
-const FindX402TestnetBillingPayments = `-- name: FindX402TestnetBillingPayments :many
+const findX402TestnetBillingPayments = `-- name: FindX402TestnetBillingPayments :many
 SELECT id
 FROM billing_payments
 WHERE chain_id = $1::numeric
@@ -131,7 +131,7 @@ type FindX402TestnetBillingPaymentsParams struct {
 }
 
 func (q *Queries) FindX402TestnetBillingPayments(ctx context.Context, arg FindX402TestnetBillingPaymentsParams) ([]pgtype.UUID, error) {
-	rows, err := q.db.Query(ctx, FindX402TestnetBillingPayments,
+	rows, err := q.db.Query(ctx, findX402TestnetBillingPayments,
 		arg.ChainID,
 		arg.Operation,
 		arg.ResourceDigest,
@@ -161,14 +161,14 @@ func (q *Queries) FindX402TestnetBillingPayments(ctx context.Context, arg FindX4
 	return items, nil
 }
 
-const GetBillingPaymentByFingerprint = `-- name: GetBillingPaymentByFingerprint :one
+const getBillingPaymentByFingerprint = `-- name: GetBillingPaymentByFingerprint :one
 SELECT id, chain_id, fingerprint, reservation_owner, method, operation, resource_digest, requirement_digest, protocol_version, scheme, network, asset, amount_atomic, recipient, payer, user_id, api_key_prefix, facilitator_digest, transaction_hash, state, failure_code, reservation_expires_at, handler_started_at, verified_at, settling_at, settled_at, failed_at, expired_at, created_at, updated_at, purpose, asset_transfer_method, payment_flow, fingerprint_version, topup_intent_id
 FROM billing_payments
 WHERE fingerprint = $1
 `
 
 func (q *Queries) GetBillingPaymentByFingerprint(ctx context.Context, fingerprint []byte) (BillingPayment, error) {
-	row := q.db.QueryRow(ctx, GetBillingPaymentByFingerprint, fingerprint)
+	row := q.db.QueryRow(ctx, getBillingPaymentByFingerprint, fingerprint)
 	var i BillingPayment
 	err := row.Scan(
 		&i.ID,
@@ -210,7 +210,7 @@ func (q *Queries) GetBillingPaymentByFingerprint(ctx context.Context, fingerprin
 	return i, err
 }
 
-const GetBillingPaymentByID = `-- name: GetBillingPaymentByID :one
+const getBillingPaymentByID = `-- name: GetBillingPaymentByID :one
 SELECT id, chain_id, fingerprint, reservation_owner, method, operation, resource_digest, requirement_digest, protocol_version, scheme, network, asset, amount_atomic, recipient, payer, user_id, api_key_prefix, facilitator_digest, transaction_hash, state, failure_code, reservation_expires_at, handler_started_at, verified_at, settling_at, settled_at, failed_at, expired_at, created_at, updated_at, purpose, asset_transfer_method, payment_flow, fingerprint_version, topup_intent_id
 FROM billing_payments
 WHERE id = $1::uuid
@@ -218,7 +218,7 @@ WHERE id = $1::uuid
 `
 
 func (q *Queries) GetBillingPaymentByID(ctx context.Context, iD pgtype.UUID, chainID pgtype.Numeric) (BillingPayment, error) {
-	row := q.db.QueryRow(ctx, GetBillingPaymentByID, iD, chainID)
+	row := q.db.QueryRow(ctx, getBillingPaymentByID, iD, chainID)
 	var i BillingPayment
 	err := row.Scan(
 		&i.ID,
@@ -260,7 +260,7 @@ func (q *Queries) GetBillingPaymentByID(ctx context.Context, iD pgtype.UUID, cha
 	return i, err
 }
 
-const GetBillingPaymentForInspection = `-- name: GetBillingPaymentForInspection :one
+const getBillingPaymentForInspection = `-- name: GetBillingPaymentForInspection :one
 SELECT id, chain_id, fingerprint, reservation_owner, method, operation, resource_digest, requirement_digest, protocol_version, scheme, network, asset, amount_atomic, recipient, payer, user_id, api_key_prefix, facilitator_digest, transaction_hash, state, failure_code, reservation_expires_at, handler_started_at, verified_at, settling_at, settled_at, failed_at, expired_at, created_at, updated_at, purpose, asset_transfer_method, payment_flow, fingerprint_version, topup_intent_id
 FROM billing_payments
 WHERE id = $1::uuid
@@ -269,7 +269,7 @@ FOR SHARE
 `
 
 func (q *Queries) GetBillingPaymentForInspection(ctx context.Context, iD pgtype.UUID, chainID pgtype.Numeric) (BillingPayment, error) {
-	row := q.db.QueryRow(ctx, GetBillingPaymentForInspection, iD, chainID)
+	row := q.db.QueryRow(ctx, getBillingPaymentForInspection, iD, chainID)
 	var i BillingPayment
 	err := row.Scan(
 		&i.ID,
@@ -311,7 +311,7 @@ func (q *Queries) GetBillingPaymentForInspection(ctx context.Context, iD pgtype.
 	return i, err
 }
 
-const GetX402TestnetWriterFence = `-- name: GetX402TestnetWriterFence :one
+const getX402TestnetWriterFence = `-- name: GetX402TestnetWriterFence :one
 SELECT
     pg_is_in_recovery() AS in_recovery,
     current_setting('transaction_read_only')::text AS transaction_read_only,
@@ -325,13 +325,13 @@ type GetX402TestnetWriterFenceRow struct {
 }
 
 func (q *Queries) GetX402TestnetWriterFence(ctx context.Context) (GetX402TestnetWriterFenceRow, error) {
-	row := q.db.QueryRow(ctx, GetX402TestnetWriterFence)
+	row := q.db.QueryRow(ctx, getX402TestnetWriterFence)
 	var i GetX402TestnetWriterFenceRow
 	err := row.Scan(&i.InRecovery, &i.TransactionReadOnly, &i.CreatedAtFence)
 	return i, err
 }
 
-const InsertBillingPayment = `-- name: InsertBillingPayment :one
+const insertBillingPayment = `-- name: InsertBillingPayment :one
 INSERT INTO billing_payments (
     id,
     chain_id,
@@ -416,7 +416,7 @@ type InsertBillingPaymentParams struct {
 }
 
 func (q *Queries) InsertBillingPayment(ctx context.Context, arg InsertBillingPaymentParams) (BillingPayment, error) {
-	row := q.db.QueryRow(ctx, InsertBillingPayment,
+	row := q.db.QueryRow(ctx, insertBillingPayment,
 		arg.ID,
 		arg.ChainID,
 		arg.Fingerprint,
@@ -480,7 +480,7 @@ func (q *Queries) InsertBillingPayment(ctx context.Context, arg InsertBillingPay
 	return i, err
 }
 
-const ListAdminBillingPayments = `-- name: ListAdminBillingPayments :many
+const listAdminBillingPayments = `-- name: ListAdminBillingPayments :many
 SELECT id, chain_id, fingerprint, reservation_owner, method, operation, resource_digest, requirement_digest, protocol_version, scheme, network, asset, amount_atomic, recipient, payer, user_id, api_key_prefix, facilitator_digest, transaction_hash, state, failure_code, reservation_expires_at, handler_started_at, verified_at, settling_at, settled_at, failed_at, expired_at, created_at, updated_at, purpose, asset_transfer_method, payment_flow, fingerprint_version, topup_intent_id
 FROM billing_payments
 WHERE chain_id = $1::numeric
@@ -533,7 +533,7 @@ type ListAdminBillingPaymentsParams struct {
 }
 
 func (q *Queries) ListAdminBillingPayments(ctx context.Context, arg ListAdminBillingPaymentsParams) ([]BillingPayment, error) {
-	rows, err := q.db.Query(ctx, ListAdminBillingPayments,
+	rows, err := q.db.Query(ctx, listAdminBillingPayments,
 		arg.ChainID,
 		arg.State,
 		arg.Operation,
@@ -599,7 +599,7 @@ func (q *Queries) ListAdminBillingPayments(ctx context.Context, arg ListAdminBil
 	return items, nil
 }
 
-const ListBillingPaymentEvents = `-- name: ListBillingPaymentEvents :many
+const listBillingPaymentEvents = `-- name: ListBillingPaymentEvents :many
 SELECT id, payment_id, from_state, to_state, code, actor, transaction_hash, occurred_at
 FROM billing_payment_events
 WHERE payment_id = $1::uuid
@@ -607,7 +607,7 @@ ORDER BY id
 `
 
 func (q *Queries) ListBillingPaymentEvents(ctx context.Context, paymentID pgtype.UUID) ([]BillingPaymentEvent, error) {
-	rows, err := q.db.Query(ctx, ListBillingPaymentEvents, paymentID)
+	rows, err := q.db.Query(ctx, listBillingPaymentEvents, paymentID)
 	if err != nil {
 		return nil, err
 	}
@@ -635,7 +635,7 @@ func (q *Queries) ListBillingPaymentEvents(ctx context.Context, paymentID pgtype
 	return items, nil
 }
 
-const ListUserBillingPayments = `-- name: ListUserBillingPayments :many
+const listUserBillingPayments = `-- name: ListUserBillingPayments :many
 SELECT id, chain_id, fingerprint, reservation_owner, method, operation, resource_digest, requirement_digest, protocol_version, scheme, network, asset, amount_atomic, recipient, payer, user_id, api_key_prefix, facilitator_digest, transaction_hash, state, failure_code, reservation_expires_at, handler_started_at, verified_at, settling_at, settled_at, failed_at, expired_at, created_at, updated_at, purpose, asset_transfer_method, payment_flow, fingerprint_version, topup_intent_id
 FROM billing_payments
 WHERE chain_id = $1::numeric
@@ -660,7 +660,7 @@ type ListUserBillingPaymentsParams struct {
 }
 
 func (q *Queries) ListUserBillingPayments(ctx context.Context, arg ListUserBillingPaymentsParams) ([]BillingPayment, error) {
-	rows, err := q.db.Query(ctx, ListUserBillingPayments,
+	rows, err := q.db.Query(ctx, listUserBillingPayments,
 		arg.ChainID,
 		arg.UserID,
 		arg.BeforeCreatedAt,
@@ -721,7 +721,7 @@ func (q *Queries) ListUserBillingPayments(ctx context.Context, arg ListUserBilli
 	return items, nil
 }
 
-const MarkBillingPaymentFailed = `-- name: MarkBillingPaymentFailed :one
+const markBillingPaymentFailed = `-- name: MarkBillingPaymentFailed :one
 WITH updated AS (
     UPDATE billing_payments
     SET state = 'failed',
@@ -769,7 +769,7 @@ type MarkBillingPaymentFailedParams struct {
 }
 
 func (q *Queries) MarkBillingPaymentFailed(ctx context.Context, arg MarkBillingPaymentFailedParams) (pgtype.UUID, error) {
-	row := q.db.QueryRow(ctx, MarkBillingPaymentFailed,
+	row := q.db.QueryRow(ctx, markBillingPaymentFailed,
 		arg.FailureCode,
 		arg.TransitionedAt,
 		arg.ID,
@@ -780,7 +780,7 @@ func (q *Queries) MarkBillingPaymentFailed(ctx context.Context, arg MarkBillingP
 	return id, err
 }
 
-const MarkBillingPaymentSettled = `-- name: MarkBillingPaymentSettled :one
+const markBillingPaymentSettled = `-- name: MarkBillingPaymentSettled :one
 WITH updated AS (
     UPDATE billing_payments
     SET state = 'settled',
@@ -824,7 +824,7 @@ type MarkBillingPaymentSettledParams struct {
 }
 
 func (q *Queries) MarkBillingPaymentSettled(ctx context.Context, arg MarkBillingPaymentSettledParams) (pgtype.UUID, error) {
-	row := q.db.QueryRow(ctx, MarkBillingPaymentSettled,
+	row := q.db.QueryRow(ctx, markBillingPaymentSettled,
 		arg.TransactionHash,
 		arg.TransitionedAt,
 		arg.ID,
@@ -835,7 +835,7 @@ func (q *Queries) MarkBillingPaymentSettled(ctx context.Context, arg MarkBilling
 	return id, err
 }
 
-const MarkBillingPaymentSettlementPending = `-- name: MarkBillingPaymentSettlementPending :one
+const markBillingPaymentSettlementPending = `-- name: MarkBillingPaymentSettlementPending :one
 WITH updated AS (
     UPDATE billing_payments
     SET failure_code = 'settlement_pending',
@@ -867,7 +867,7 @@ type MarkBillingPaymentSettlementPendingParams struct {
 }
 
 func (q *Queries) MarkBillingPaymentSettlementPending(ctx context.Context, arg MarkBillingPaymentSettlementPendingParams) (pgtype.UUID, error) {
-	row := q.db.QueryRow(ctx, MarkBillingPaymentSettlementPending,
+	row := q.db.QueryRow(ctx, markBillingPaymentSettlementPending,
 		arg.TransactionHash,
 		arg.TransitionedAt,
 		arg.ID,
@@ -878,7 +878,7 @@ func (q *Queries) MarkBillingPaymentSettlementPending(ctx context.Context, arg M
 	return id, err
 }
 
-const MarkBillingPaymentSettlementUnknown = `-- name: MarkBillingPaymentSettlementUnknown :one
+const markBillingPaymentSettlementUnknown = `-- name: MarkBillingPaymentSettlementUnknown :one
 WITH updated AS (
     UPDATE billing_payments
     SET failure_code = 'settlement_unknown',
@@ -901,13 +901,13 @@ SELECT id FROM updated
 `
 
 func (q *Queries) MarkBillingPaymentSettlementUnknown(ctx context.Context, transitionedAt pgtype.Timestamptz, iD pgtype.UUID, reservationOwner pgtype.UUID) (pgtype.UUID, error) {
-	row := q.db.QueryRow(ctx, MarkBillingPaymentSettlementUnknown, transitionedAt, iD, reservationOwner)
+	row := q.db.QueryRow(ctx, markBillingPaymentSettlementUnknown, transitionedAt, iD, reservationOwner)
 	var id pgtype.UUID
 	err := row.Scan(&id)
 	return id, err
 }
 
-const MarkBillingPaymentSettling = `-- name: MarkBillingPaymentSettling :one
+const markBillingPaymentSettling = `-- name: MarkBillingPaymentSettling :one
 WITH updated AS (
     UPDATE billing_payments
     SET state = 'settling',
@@ -932,13 +932,13 @@ SELECT id FROM updated
 `
 
 func (q *Queries) MarkBillingPaymentSettling(ctx context.Context, transitionedAt pgtype.Timestamptz, iD pgtype.UUID, reservationOwner pgtype.UUID) (pgtype.UUID, error) {
-	row := q.db.QueryRow(ctx, MarkBillingPaymentSettling, transitionedAt, iD, reservationOwner)
+	row := q.db.QueryRow(ctx, markBillingPaymentSettling, transitionedAt, iD, reservationOwner)
 	var id pgtype.UUID
 	err := row.Scan(&id)
 	return id, err
 }
 
-const MarkBillingPaymentVerified = `-- name: MarkBillingPaymentVerified :one
+const markBillingPaymentVerified = `-- name: MarkBillingPaymentVerified :one
 WITH updated AS (
     UPDATE billing_payments AS payment
     SET state = 'verified',
@@ -986,7 +986,7 @@ type MarkBillingPaymentVerifiedParams struct {
 }
 
 func (q *Queries) MarkBillingPaymentVerified(ctx context.Context, arg MarkBillingPaymentVerifiedParams) (pgtype.UUID, error) {
-	row := q.db.QueryRow(ctx, MarkBillingPaymentVerified,
+	row := q.db.QueryRow(ctx, markBillingPaymentVerified,
 		arg.Payer,
 		arg.UserID,
 		arg.ApiKeyPrefix,
@@ -999,7 +999,7 @@ func (q *Queries) MarkBillingPaymentVerified(ctx context.Context, arg MarkBillin
 	return id, err
 }
 
-const ReconcileBillingPaymentFailed = `-- name: ReconcileBillingPaymentFailed :one
+const reconcileBillingPaymentFailed = `-- name: ReconcileBillingPaymentFailed :one
 WITH candidate AS (
     SELECT id, failure_code, transaction_hash
     FROM billing_payments
@@ -1055,7 +1055,7 @@ type ReconcileBillingPaymentFailedParams struct {
 }
 
 func (q *Queries) ReconcileBillingPaymentFailed(ctx context.Context, arg ReconcileBillingPaymentFailedParams) (pgtype.UUID, error) {
-	row := q.db.QueryRow(ctx, ReconcileBillingPaymentFailed,
+	row := q.db.QueryRow(ctx, reconcileBillingPaymentFailed,
 		arg.ID,
 		arg.ChainID,
 		arg.TransitionedAt,
@@ -1066,7 +1066,7 @@ func (q *Queries) ReconcileBillingPaymentFailed(ctx context.Context, arg Reconci
 	return id, err
 }
 
-const ReconcileBillingPaymentSettled = `-- name: ReconcileBillingPaymentSettled :one
+const reconcileBillingPaymentSettled = `-- name: ReconcileBillingPaymentSettled :one
 WITH candidate AS (
     SELECT id, failure_code, transaction_hash
     FROM billing_payments
@@ -1131,7 +1131,7 @@ type ReconcileBillingPaymentSettledParams struct {
 }
 
 func (q *Queries) ReconcileBillingPaymentSettled(ctx context.Context, arg ReconcileBillingPaymentSettledParams) (pgtype.UUID, error) {
-	row := q.db.QueryRow(ctx, ReconcileBillingPaymentSettled,
+	row := q.db.QueryRow(ctx, reconcileBillingPaymentSettled,
 		arg.ID,
 		arg.ChainID,
 		arg.TransitionedAt,
@@ -1143,7 +1143,7 @@ func (q *Queries) ReconcileBillingPaymentSettled(ctx context.Context, arg Reconc
 	return id, err
 }
 
-const StartBillingPaymentHandler = `-- name: StartBillingPaymentHandler :one
+const startBillingPaymentHandler = `-- name: StartBillingPaymentHandler :one
 WITH updated AS (
     UPDATE billing_payments
     SET handler_started_at = $1,
@@ -1167,13 +1167,13 @@ SELECT id FROM updated
 `
 
 func (q *Queries) StartBillingPaymentHandler(ctx context.Context, transitionedAt pgtype.Timestamptz, iD pgtype.UUID, reservationOwner pgtype.UUID) (pgtype.UUID, error) {
-	row := q.db.QueryRow(ctx, StartBillingPaymentHandler, transitionedAt, iD, reservationOwner)
+	row := q.db.QueryRow(ctx, startBillingPaymentHandler, transitionedAt, iD, reservationOwner)
 	var id pgtype.UUID
 	err := row.Scan(&id)
 	return id, err
 }
 
-const SummarizeBillingPayments = `-- name: SummarizeBillingPayments :many
+const summarizeBillingPayments = `-- name: SummarizeBillingPayments :many
 SELECT
     state,
     operation,
@@ -1225,7 +1225,7 @@ type SummarizeBillingPaymentsRow struct {
 }
 
 func (q *Queries) SummarizeBillingPayments(ctx context.Context, arg SummarizeBillingPaymentsParams) ([]SummarizeBillingPaymentsRow, error) {
-	rows, err := q.db.Query(ctx, SummarizeBillingPayments,
+	rows, err := q.db.Query(ctx, summarizeBillingPayments,
 		arg.ChainID,
 		arg.FromTime,
 		arg.ToTime,

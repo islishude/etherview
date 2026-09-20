@@ -2,7 +2,6 @@ package query
 
 import (
 	"context"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -13,10 +12,14 @@ import (
 	"strings"
 	"time"
 
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/islishude/etherview/internal/api/gen"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/publicquery"
 )
@@ -82,25 +85,24 @@ func (r *PostgresReader) UserOperations(
 	if err := r.validateUserOperationRequest(limit); err != nil {
 		return publicquery.UserOperationPage{}, err
 	}
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return publicquery.UserOperationPage{}, fmt.Errorf("begin UserOperation page: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	cursor, err := r.prepareUserOperationCursor(ctx, tx, "global", "", "", encodedCursor)
 	if err != nil {
 		return publicquery.UserOperationPage{}, err
 	}
-	rows, err := tx.QueryContext(ctx, dbgen.ERC4337ListUserOperations,
-		r.chainID, r.userOperationDigest, strconv.FormatUint(cursor.IndexStart, 10),
-		strconv.FormatUint(cursor.SnapshotNumber, 10), encodedCursor != "",
-		strconv.FormatUint(cursor.BeforeBlockNumber, 10), int64(cursor.BeforeTransactionIndex),
-		int64(cursor.BeforeOperationIndex), cursorBoundaryHash(cursor.BeforeUserOpHash), limit+1,
-	)
+	chain, err := r.chainNumeric()
+	if err != nil {
+		return publicquery.UserOperationPage{}, err
+	}
+	rows, err := dbgen.New(r.db).WithTx(tx).ERC4337ListUserOperations(ctx, dbgen.ERC4337ListUserOperationsParams{ChainID: chain, ConfigurationDigest: r.userOperationDigest, IndexStart: numericUint64(cursor.IndexStart), SnapshotNumber: numericUint64(cursor.SnapshotNumber), HasBoundary: encodedCursor != "", PageLimit: int32(limit + 1), BeforeBlockNumber: numericUint64(cursor.BeforeBlockNumber), BeforeTransactionIndex: int64(cursor.BeforeTransactionIndex), BeforeOperationIndex: int64(cursor.BeforeOperationIndex), BeforeUserOpHash: cursorBoundaryHash(cursor.BeforeUserOpHash)})
 	if err != nil {
 		return publicquery.UserOperationPage{}, fmt.Errorf("query UserOperations: %w", err)
 	}
-	items, boundaries, err := scanUserOperationRows(rows)
+	items, boundaries, err := decodeUserOperationRows(rows)
 	if err != nil {
 		return publicquery.UserOperationPage{}, err
 	}
@@ -108,7 +110,7 @@ func (r *PostgresReader) UserOperations(
 	if err != nil {
 		return publicquery.UserOperationPage{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return publicquery.UserOperationPage{}, fmt.Errorf("commit UserOperation page: %w", err)
 	}
 	return page, nil
@@ -126,25 +128,24 @@ func (r *PostgresReader) AddressUserOperations(
 	if err != nil {
 		return publicquery.UserOperationPage{}, fmt.Errorf("%w: invalid UserOperation participant address", publicquery.ErrInvalidInput)
 	}
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return publicquery.UserOperationPage{}, fmt.Errorf("begin address UserOperation page: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	cursor, err := r.prepareUserOperationCursor(ctx, tx, "address", address.Hex(), "", encodedCursor)
 	if err != nil {
 		return publicquery.UserOperationPage{}, err
 	}
-	rows, err := tx.QueryContext(ctx, dbgen.ERC4337ListAddressUserOperations,
-		address.Bytes(), r.chainID, r.userOperationDigest, strconv.FormatUint(cursor.IndexStart, 10),
-		strconv.FormatUint(cursor.SnapshotNumber, 10), encodedCursor != "",
-		strconv.FormatUint(cursor.BeforeBlockNumber, 10), int64(cursor.BeforeTransactionIndex),
-		int64(cursor.BeforeOperationIndex), cursorBoundaryHash(cursor.BeforeUserOpHash), limit+1,
-	)
+	chain, err := r.chainNumeric()
+	if err != nil {
+		return publicquery.UserOperationPage{}, err
+	}
+	rows, err := dbgen.New(r.db).WithTx(tx).ERC4337ListAddressUserOperations(ctx, dbgen.ERC4337ListAddressUserOperationsParams{ChainID: chain, ConfigurationDigest: r.userOperationDigest, IndexStart: numericUint64(cursor.IndexStart), SnapshotNumber: numericUint64(cursor.SnapshotNumber), HasBoundary: encodedCursor != "", PageLimit: int32(limit + 1), BeforeBlockNumber: numericUint64(cursor.BeforeBlockNumber), BeforeTransactionIndex: int64(cursor.BeforeTransactionIndex), BeforeOperationIndex: int64(cursor.BeforeOperationIndex), BeforeUserOpHash: cursorBoundaryHash(cursor.BeforeUserOpHash), Address: address.Bytes()})
 	if err != nil {
 		return publicquery.UserOperationPage{}, fmt.Errorf("query address UserOperations: %w", err)
 	}
-	items, boundaries, err := scanUserOperationRows(rows)
+	items, boundaries, err := decodeUserOperationRows(rows)
 	if err != nil {
 		return publicquery.UserOperationPage{}, err
 	}
@@ -152,7 +153,7 @@ func (r *PostgresReader) AddressUserOperations(
 	if err != nil {
 		return publicquery.UserOperationPage{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return publicquery.UserOperationPage{}, fmt.Errorf("commit address UserOperation page: %w", err)
 	}
 	return page, nil
@@ -170,21 +171,31 @@ func (r *PostgresReader) TransactionUserOperations(
 	if err != nil {
 		return publicquery.UserOperationPage{}, fmt.Errorf("%w: invalid UserOperation bundle transaction hash", publicquery.ErrInvalidInput)
 	}
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return publicquery.UserOperationPage{}, fmt.Errorf("begin transaction UserOperation page: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	cursor, err := r.prepareUserOperationCursor(ctx, tx, "transaction", "", strings.ToLower(hash.Hex()), encodedCursor)
 	if err != nil {
 		return publicquery.UserOperationPage{}, err
 	}
 	var transactionBlock string
 	var transactionBlockHash []byte
-	if err := tx.QueryRowContext(ctx, dbgen.ERC4337CanonicalTransactionBlock, r.chainID, hash[:]).Scan(
-		&transactionBlock, &transactionBlockHash,
-	); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(r.chainID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).ERC4337CanonicalTransactionBlock(ctx, queryValue0, hash[:])
+		if err != nil {
+			return err
+		}
+		transactionBlock = queryRow.InclusionBlockNumber
+		transactionBlockHash = queryRow.BlockHash
+		return nil
+	}(); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return publicquery.UserOperationPage{}, publicquery.ErrNotFound
 		}
 		return publicquery.UserOperationPage{}, fmt.Errorf("query UserOperation bundle transaction: %w", err)
@@ -196,15 +207,15 @@ func (r *PostgresReader) TransactionUserOperations(
 	if blockNumber >= cursor.IndexStart && blockNumber > cursor.SnapshotNumber {
 		return publicquery.UserOperationPage{}, publicquery.ErrNotReady
 	}
-	rows, err := tx.QueryContext(ctx, dbgen.ERC4337ListTransactionUserOperations,
-		r.chainID, r.userOperationDigest, hash[:], strconv.FormatUint(cursor.IndexStart, 10),
-		strconv.FormatUint(cursor.SnapshotNumber, 10), encodedCursor != "",
-		int64(cursor.AfterOperationIndex), limit+1,
-	)
+	chain, err := r.chainNumeric()
+	if err != nil {
+		return publicquery.UserOperationPage{}, err
+	}
+	rows, err := dbgen.New(r.db).WithTx(tx).ERC4337ListTransactionUserOperations(ctx, dbgen.ERC4337ListTransactionUserOperationsParams{ChainID: chain, ConfigurationDigest: r.userOperationDigest, IndexStart: numericUint64(cursor.IndexStart), SnapshotNumber: numericUint64(cursor.SnapshotNumber), HasBoundary: encodedCursor != "", PageLimit: int32(limit + 1), TransactionHash: hash[:], AfterOperationIndex: int64(cursor.AfterOperationIndex)})
 	if err != nil {
 		return publicquery.UserOperationPage{}, fmt.Errorf("query transaction UserOperations: %w", err)
 	}
-	items, boundaries, err := scanUserOperationRows(rows)
+	items, boundaries, err := decodeUserOperationRows(rows)
 	if err != nil {
 		return publicquery.UserOperationPage{}, err
 	}
@@ -212,7 +223,7 @@ func (r *PostgresReader) TransactionUserOperations(
 	if err != nil {
 		return publicquery.UserOperationPage{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return publicquery.UserOperationPage{}, fmt.Errorf("commit transaction UserOperation page: %w", err)
 	}
 	return page, nil
@@ -226,23 +237,17 @@ func (r *PostgresReader) UserOperation(ctx context.Context, rawHash string) (gen
 	if err != nil {
 		return gen.UserOperationDetail{}, fmt.Errorf("%w: invalid userOpHash", publicquery.ErrInvalidInput)
 	}
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return gen.UserOperationDetail{}, fmt.Errorf("begin UserOperation detail: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
-	row := userOperationDetailRow{}
-	targets := userOperationSummaryTargets(&row.summary)
-	targets = append(targets,
-		&row.callGasLimit, &row.verificationGasLimit, &row.preVerificationGas,
-		&row.maxFeePerGas, &row.maxPriorityFeePerGas,
-		&row.paymasterVerificationGasLimit, &row.paymasterPostOpGasLimit,
-		&row.initCode, &row.factoryData, &row.callData, &row.paymasterAndData,
-		&row.paymasterData, &row.paymasterSignature, &row.signature,
-		&row.accountGasLimits, &row.gasFees, &row.aggregatedSignature,
-	)
-	err = tx.QueryRowContext(ctx, dbgen.ERC4337GetUserOperation, r.chainID, r.userOperationDigest, hash[:]).Scan(targets...)
-	if errors.Is(err, sql.ErrNoRows) {
+	defer dbaccess.Rollback(ctx, tx)
+	chain, err := r.chainNumeric()
+	if err != nil {
+		return gen.UserOperationDetail{}, err
+	}
+	stored, err := dbgen.New(r.db).WithTx(tx).ERC4337GetUserOperation(ctx, chain, r.userOperationDigest, hash[:])
+	if errors.Is(err, pgx.ErrNoRows) {
 		snapshot, snapshotErr := r.currentUserOperationSnapshot(ctx, tx)
 		if snapshotErr != nil {
 			return gen.UserOperationDetail{}, snapshotErr
@@ -259,6 +264,8 @@ func (r *PostgresReader) UserOperation(ctx context.Context, rawHash string) (gen
 	if err != nil {
 		return gen.UserOperationDetail{}, fmt.Errorf("query UserOperation detail: %w", err)
 	}
+	row := userOperationDetailRow{summary: userOperationSummaryRow{userOpHash: stored.UserOpHash, entryPoint: stored.EntryPoint, entryPointVersion: stored.EntryPointVersion, sender: stored.Sender, nonce: stored.Nonce, nonceKey: stored.NonceKey, nonceSequence: stored.NonceSequence, success: stored.Success, actualGasCost: stored.ActualGasCost, actualGasUsed: stored.ActualGasUsed, transactionHash: stored.TransactionHash, transactionIndex: stored.TransactionIndex, operationIndex: stored.OperationIndex, eventLogIndex: stored.EventLogIndex, blockNumber: stored.BlockNumber, blockHash: stored.BlockHash, blockTimestamp: stored.BlockTimestamp, safeNumber: stored.SafeNumber, finalizedNumber: stored.FinalizedNumber, bundler: stored.Bundler, beneficiary: stored.Beneficiary, initKind: stored.InitKind, factory: stored.Factory, paymaster: stored.Paymaster, aggregator: stored.Aggregator, participatingRoles: stored.ParticipatingRoles}, callGasLimit: stored.CallGasLimit, verificationGasLimit: stored.VerificationGasLimit, preVerificationGas: stored.PreVerificationGas, maxFeePerGas: stored.MaxFeePerGas, maxPriorityFeePerGas: stored.MaxPriorityFeePerGas, paymasterVerificationGasLimit: stored.PaymasterVerificationGasLimit, paymasterPostOpGasLimit: stored.PaymasterPostOpGasLimit, initCode: stored.InitCode, factoryData: stored.FactoryData, callData: stored.CallData, paymasterAndData: stored.PaymasterAndData, paymasterData: stored.PaymasterData, paymasterSignature: stored.PaymasterSignature, signature: stored.Signature, accountGasLimits: stored.AccountGasLimits, gasFees: stored.GasFees, aggregatedSignature: stored.AggregatedSignature}
+
 	summary, _, err := userOperationSummaryModel(row.summary)
 	if err != nil {
 		return gen.UserOperationDetail{}, err
@@ -267,10 +274,11 @@ func (r *PostgresReader) UserOperation(ctx context.Context, rawHash string) (gen
 	if err != nil {
 		return gen.UserOperationDetail{}, err
 	}
-	eventRows, err := tx.QueryContext(ctx, dbgen.ERC4337ListUserOperationEvents,
-		r.chainID, r.userOperationDigest, row.summary.blockNumber, row.summary.blockHash,
-		row.summary.transactionHash, row.summary.operationIndex,
-	)
+	var blockNumber pgtype.Numeric
+	if err := blockNumber.Scan(row.summary.blockNumber); err != nil {
+		return gen.UserOperationDetail{}, err
+	}
+	eventRows, err := dbgen.New(r.db).WithTx(tx).ERC4337ListUserOperationEvents(ctx, dbgen.ERC4337ListUserOperationEventsParams{ChainID: chain, ConfigurationDigest: r.userOperationDigest, BlockNumber: blockNumber, BlockHash: row.summary.blockHash, TransactionHash: row.summary.transactionHash, OperationIndex: row.summary.operationIndex})
 	if err != nil {
 		return gen.UserOperationDetail{}, fmt.Errorf("query UserOperation events: %w", err)
 	}
@@ -278,7 +286,7 @@ func (r *PostgresReader) UserOperation(ctx context.Context, rawHash string) (gen
 	if err != nil {
 		return gen.UserOperationDetail{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return gen.UserOperationDetail{}, fmt.Errorf("commit UserOperation detail: %w", err)
 	}
 	return detail, nil
@@ -303,7 +311,7 @@ func (r *PostgresReader) requireUserOperations() error {
 
 func (r *PostgresReader) prepareUserOperationCursor(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	kind, address, transactionHash, encoded string,
 ) (userOperationCursor, error) {
 	if encoded == "" {
@@ -328,10 +336,26 @@ func (r *PostgresReader) prepareUserOperationCursor(
 		return userOperationCursor{}, publicquery.ErrInvalidCursor
 	}
 	var valid bool
-	if err := tx.QueryRowContext(ctx, dbgen.ERC4337ValidateSnapshot,
-		strconv.FormatUint(cursor.IndexStart, 10), strconv.FormatUint(cursor.SnapshotNumber, 10),
-		snapshotHash[:], r.chainID, r.userOperationDigest,
-	).Scan(&valid); err != nil {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(strconv.FormatUint(cursor.IndexStart, 10)); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(cursor.SnapshotNumber, 10)); err != nil {
+			return err
+		}
+		var queryValue2 pgtype.Numeric
+		if err := queryValue2.Scan(r.chainID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).ERC4337ValidateSnapshot(ctx, dbgen.ERC4337ValidateSnapshotParams{IndexStart: queryValue0, SnapshotNumber: queryValue1, SnapshotHash: snapshotHash[:], ChainID: queryValue2, ConfigurationDigest: r.userOperationDigest})
+		if err != nil {
+			return err
+		}
+		valid = queryRow
+		return nil
+	}(); err != nil {
 		return userOperationCursor{}, fmt.Errorf("validate UserOperation snapshot: %w", err)
 	}
 	if !valid {
@@ -351,13 +375,27 @@ func (r *PostgresReader) prepareUserOperationCursor(
 	return cursor, nil
 }
 
-func (r *PostgresReader) currentUserOperationSnapshot(ctx context.Context, tx *sql.Tx) (userOperationCursor, error) {
+func (r *PostgresReader) currentUserOperationSnapshot(ctx context.Context, tx pgx.Tx) (userOperationCursor, error) {
 	var number string
 	var hash []byte
-	if err := tx.QueryRowContext(ctx, dbgen.ERC4337CurrentSnapshot,
-		strconv.FormatUint(r.userOperationStart, 10), r.chainID, r.userOperationDigest,
-	).Scan(&number, &hash); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(strconv.FormatUint(r.userOperationStart, 10)); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(r.chainID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).ERC4337CurrentSnapshot(ctx, queryValue0, queryValue1, r.userOperationDigest)
+		if err != nil {
+			return err
+		}
+		number = queryRow.SnapshotNumber
+		hash = queryRow.SnapshotHash
+		return nil
+	}(); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return userOperationCursor{}, publicquery.ErrNotReady
 		}
 		return userOperationCursor{}, fmt.Errorf("read UserOperation coverage snapshot: %w", err)
@@ -373,37 +411,24 @@ func (r *PostgresReader) currentUserOperationSnapshot(ctx context.Context, tx *s
 	}, nil
 }
 
-func scanUserOperationRows(rows *sql.Rows) ([]gen.UserOperationSummary, []userOperationCursor, error) {
-	defer rows.Close() //nolint:errcheck
+type userOperationProjection interface {
+	dbgen.ERC4337ListUserOperationsRow | dbgen.ERC4337ListAddressUserOperationsRow | dbgen.ERC4337ListTransactionUserOperationsRow
+}
+
+func decodeUserOperationRows[T userOperationProjection](rows []T) ([]gen.UserOperationSummary, []userOperationCursor, error) {
 	var items []gen.UserOperationSummary
 	var boundaries []userOperationCursor
-	for rows.Next() {
-		row := userOperationSummaryRow{}
-		if err := rows.Scan(userOperationSummaryTargets(&row)...); err != nil {
-			return nil, nil, fmt.Errorf("scan UserOperation summary: %w", err)
-		}
+	for _, stored := range rows {
+		value := dbgen.ERC4337ListUserOperationsRow(stored)
+		row := userOperationSummaryRow{userOpHash: value.UserOpHash, entryPoint: value.EntryPoint, entryPointVersion: value.EntryPointVersion, sender: value.Sender, nonce: value.Nonce, nonceKey: value.NonceKey, nonceSequence: value.NonceSequence, success: value.Success, actualGasCost: value.ActualGasCost, actualGasUsed: value.ActualGasUsed, transactionHash: value.TransactionHash, transactionIndex: value.TransactionIndex, operationIndex: value.OperationIndex, eventLogIndex: value.EventLogIndex, blockNumber: value.BlockNumber, blockHash: value.BlockHash, blockTimestamp: value.BlockTimestamp, safeNumber: value.SafeNumber, finalizedNumber: value.FinalizedNumber, bundler: value.Bundler, beneficiary: value.Beneficiary, initKind: value.InitKind, factory: value.Factory, paymaster: value.Paymaster, aggregator: value.Aggregator, participatingRoles: value.ParticipatingRoles}
 		item, boundary, err := userOperationSummaryModel(row)
 		if err != nil {
 			return nil, nil, err
 		}
-		items, boundaries = append(items, item), append(boundaries, boundary)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, nil, fmt.Errorf("iterate UserOperation summaries: %w", err)
+		items = append(items, item)
+		boundaries = append(boundaries, boundary)
 	}
 	return items, boundaries, nil
-}
-
-func userOperationSummaryTargets(row *userOperationSummaryRow) []any {
-	return []any{
-		&row.userOpHash, &row.entryPoint, &row.entryPointVersion, &row.sender,
-		&row.nonce, &row.nonceKey, &row.nonceSequence, &row.success,
-		&row.actualGasCost, &row.actualGasUsed, &row.transactionHash,
-		&row.transactionIndex, &row.operationIndex, &row.eventLogIndex, &row.blockNumber,
-		&row.blockHash, &row.blockTimestamp, &row.safeNumber, &row.finalizedNumber,
-		&row.bundler, &row.beneficiary, &row.initKind, &row.factory,
-		&row.paymaster, &row.aggregator, &row.participatingRoles,
-	}
 }
 
 func userOperationSummaryModel(row userOperationSummaryRow) (gen.UserOperationSummary, userOperationCursor, error) {
@@ -436,8 +461,8 @@ func userOperationSummaryModel(row userOperationSummaryRow) (gen.UserOperationSu
 		return gen.UserOperationSummary{}, userOperationCursor{}, errors.New("stored UserOperation timestamp is invalid")
 	}
 	finality, err := classifyFinality(true, blockNumber,
-		sql.NullString{String: row.safeNumber, Valid: row.safeNumber != ""},
-		sql.NullString{String: row.finalizedNumber, Valid: row.finalizedNumber != ""},
+		pgtype.Text{String: row.safeNumber, Valid: row.safeNumber != ""},
+		pgtype.Text{String: row.finalizedNumber, Valid: row.finalizedNumber != ""},
 	)
 	if err != nil {
 		return gen.UserOperationSummary{}, userOperationCursor{}, err
@@ -571,17 +596,10 @@ func userOperationDetailModel(summary gen.UserOperationSummary, row userOperatio
 	}, nil
 }
 
-func scanUserOperationEvents(rows *sql.Rows) ([]gen.UserOperationProtocolEvent, error) {
-	defer rows.Close() //nolint:errcheck
-	events := make([]gen.UserOperationProtocolEvent, 0)
-	for rows.Next() {
-		row := userOperationEventRow{}
-		if err := rows.Scan(
-			&row.kind, &row.logIndex, &row.sender, &row.nonce, &row.relatedAddress,
-			&row.paymaster, &row.rawData, &row.reason, &row.panicCode,
-		); err != nil {
-			return nil, fmt.Errorf("scan UserOperation event: %w", err)
-		}
+func scanUserOperationEvents(rows []dbgen.ERC4337ListUserOperationEventsRow) ([]gen.UserOperationProtocolEvent, error) {
+	events := make([]gen.UserOperationProtocolEvent, 0, len(rows))
+	for _, stored := range rows {
+		row := userOperationEventRow{kind: stored.EventKind, logIndex: stored.LogIndex, sender: stored.Sender, nonce: stored.Nonce, relatedAddress: stored.RelatedAddress, paymaster: stored.Paymaster, rawData: stored.RawData, reason: stored.Reason, panicCode: stored.PanicCode}
 		kind := gen.UserOperationEventKind(row.kind)
 		if !kind.Valid() || row.logIndex < 0 || row.logIndex > math.MaxInt || len(row.sender) != common.AddressLength {
 			return nil, errors.New("stored UserOperation event identity is invalid")
@@ -601,9 +619,6 @@ func scanUserOperationEvents(rows *sql.Rows) ([]gen.UserOperationProtocolEvent, 
 			Nonce: optionalQuantity(row.nonce), PanicCode: optionalQuantity(row.panicCode),
 		}
 		events = append(events, event)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate UserOperation events: %w", err)
 	}
 	return events, nil
 }

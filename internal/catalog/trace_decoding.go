@@ -3,13 +3,16 @@ package catalog
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
 
 	gethabi "github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -25,8 +28,8 @@ const (
 type persistedTraceDecoding struct {
 	objectKind                        string
 	path                              string
-	status, signature, source         sql.NullString
-	confidence, warning, returnStatus sql.NullString
+	status, signature, source         pgtype.Text
+	confidence, warning, returnStatus pgtype.Text
 	arguments, candidates, returns    []byte
 	targetAddress, targetCodeHash     []byte
 	sourceAddress, sourceCodeHash     []byte
@@ -41,7 +44,7 @@ func (catalog *Postgres) decorateCachedTrace(
 	if err != nil {
 		return TransactionTrace{}, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	current, _, err := catalog.resolveTraceIdentity(ctx, tx, identity.ChainID, mustDecodeHash(identity.TransactionHash))
 	if err != nil || current != identity {
 		if err != nil {
@@ -52,7 +55,7 @@ func (catalog *Postgres) decorateCachedTrace(
 	if err := catalog.decorateTraceFrames(ctx, tx, identity, &trace); err != nil {
 		return TransactionTrace{}, err
 	}
-	if err := commitRead(tx); err != nil {
+	if err := commitRead(ctx, tx); err != nil {
 		return TransactionTrace{}, err
 	}
 	return trace, nil
@@ -65,7 +68,7 @@ func mustDecodeHash(value string) []byte {
 
 func (catalog *Postgres) decorateTraceFrames(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	identity traceIdentity,
 	trace *TransactionTrace,
 ) error {
@@ -120,7 +123,7 @@ func (catalog *Postgres) decorateTraceFrames(
 
 func (catalog *Postgres) decorateTraceFrame(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	identity traceIdentity,
 	frame *TraceFrame,
 	blockNumber uint64,
@@ -256,7 +259,7 @@ func (catalog *Postgres) decorateTraceFrame(
 	return nil
 }
 func (catalog *Postgres) decorateConstructorFrame(
-	ctx context.Context, tx *sql.Tx, identity traceIdentity, frame *TraceFrame,
+	ctx context.Context, tx pgx.Tx, identity traceIdentity, frame *TraceFrame,
 	persisted map[string]*persistedTraceDecoding,
 ) error {
 	frame.Decoding = &TraceCallDecoding{
@@ -328,14 +331,37 @@ func (catalog *Postgres) decorateConstructorFrame(
 }
 
 func loadExactConstructorRegistry(
-	ctx context.Context, tx *sql.Tx, chainID string, blockNumber uint64,
+	ctx context.Context, tx pgx.Tx, chainID string, blockNumber uint64,
 	blockHash []byte, address common.Address, initcode string,
 ) (*enrich.ABIRegistry, enrich.ABIIdentity, []byte, string, error) {
 	var codeHash, abiJSON, arguments []byte
 	var validFromText string
-	var validTo sql.NullString
-	err := tx.QueryRowContext(ctx, dbgen.CatalogExactConstructorArtifact, chainID, strconv.FormatUint(blockNumber, 10), blockHash, address[:]).Scan(&codeHash, &abiJSON, &arguments, &validFromText, &validTo)
-	if errors.Is(err, sql.ErrNoRows) {
+	var validTo pgtype.Text
+	err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(strconv.FormatUint(blockNumber, 10)); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).CatalogExactConstructorArtifact(ctx, dbgen.CatalogExactConstructorArtifactParams{ChainID: queryValue0, MaxValidFromBlock: queryValue1, BlockHash: blockHash, Address: address[:]})
+		if err != nil {
+			return err
+		}
+		codeHash = queryRow.CodeHash
+		abiJSON = queryRow.Abi
+		arguments = queryRow.ConstructorArguments
+		validFromText = queryRow.VerifiedValidFromBlock
+		resultValue4, err := dbaccess.NumericText(queryRow.ValidToBlock)
+		if err != nil {
+			return err
+		}
+		validTo = resultValue4
+		return nil
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, enrich.ABIIdentity{}, nil, "", nil
 	}
 	if err != nil {
@@ -417,7 +443,7 @@ func publicTraceConstructor(decoded enrich.DecodeResult) *TraceCallDecoding {
 }
 
 func (catalog *Postgres) attachTraceExecutions(
-	ctx context.Context, tx *sql.Tx, identity traceIdentity, trace *TransactionTrace,
+	ctx context.Context, tx pgx.Tx, identity traceIdentity, trace *TransactionTrace,
 ) error {
 	needsProjection := false
 	for index := range trace.Frames {
@@ -429,19 +455,34 @@ func (catalog *Postgres) attachTraceExecutions(
 	if !needsProjection {
 		return nil
 	}
-	rows, err := tx.QueryContext(ctx, dbgen.CatalogTransactionTraceExecution, identity.ChainID, identity.BlockNumber, mustDecodeHash(identity.BlockHash),
-		mustDecodeHash(identity.TransactionHash), catalog.options.MaxTraceFrames+1,
-	)
+	rows, err := func() ([]dbgen.CatalogTransactionTraceExecutionRow, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(identity.ChainID); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(identity.BlockNumber); err != nil {
+			return nil, err
+		}
+		if catalog.options.MaxTraceFrames+1 < -2147483648 || catalog.options.MaxTraceFrames+1 > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).CatalogTransactionTraceExecution(ctx, dbgen.CatalogTransactionTraceExecutionParams{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: mustDecodeHash(identity.BlockHash), TransactionHash: mustDecodeHash(identity.TransactionHash), Limit: int32(catalog.options.MaxTraceFrames + 1)})
+	}()
 	if err != nil {
 		return fmt.Errorf("query trace execution projections: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	byPath := make(map[string]*TraceExecution)
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var path, resolution string
 		var contextAddress, executionAddress, codeHash []byte
-		if err := rows.Scan(&path, &contextAddress, &executionAddress, &codeHash, &resolution); err != nil {
-			return fmt.Errorf("scan trace execution projection: %w", err)
+		{
+			path = storedRow.TracePath
+			contextAddress = storedRow.ToAddress
+			executionAddress = storedRow.ExecutionAddress
+			codeHash = storedRow.ExecutionCodeHash
+			resolution = storedRow.ExecutionResolution
 		}
 		context, err := optionalChecksumAddress(contextAddress)
 		if err != nil || context == nil {
@@ -466,9 +507,7 @@ func (catalog *Postgres) attachTraceExecutions(
 		}
 		byPath[path] = item
 	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate trace execution projections: %w", err)
-	}
+
 	for index := range trace.Frames {
 		path := tracePathText(trace.Frames[index].Path)
 		item, exists := byPath[path]
@@ -515,7 +554,7 @@ func directVerifiedAddressTraceFallback(frame *TraceFrame) bool {
 
 func decodeVerifiedAddressSelectorTraceCall(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	chainID string,
 	blockNumber uint64,
 	blockHash []byte,
@@ -578,7 +617,7 @@ type traceRegistryResult struct {
 
 func loadTraceRegistry(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	chainID string,
 	blockNumber uint64,
 	blockHash []byte,
@@ -606,7 +645,7 @@ func loadTraceRegistry(
 
 func loadTraceRegistryForCodeHash(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	chainID string,
 	blockNumber uint64,
 	blockHash []byte,
@@ -665,25 +704,52 @@ func traceRegistryForCandidates(
 
 func loadPersistedTraceDecodings(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx pgx.Tx,
 	chainID string,
 	blockHash, transactionHash []byte,
 ) (map[string]*persistedTraceDecoding, error) {
-	rows, err := tx.QueryContext(ctx, dbgen.CatalogTransactionTraceDecodings, chainID, blockHash, transactionHash)
+	rows, err := func() ([]dbgen.CatalogTransactionTraceDecodingsRow, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(chainID); err != nil {
+			return nil, err
+		}
+		return dbgen.New(tx).CatalogTransactionTraceDecodings(ctx, queryValue0, blockHash, transactionHash)
+	}()
 	if err != nil {
 		return nil, fmt.Errorf("query transaction trace ABI decodings: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	result := make(map[string]*persistedTraceDecoding)
-	for rows.Next() {
+	for _, storedRow := range rows {
 		item := &persistedTraceDecoding{}
-		if err := rows.Scan(
-			&item.objectKind, &item.path, &item.status, &item.signature,
-			&item.source, &item.confidence, &item.arguments, &item.candidates,
-			&item.warning, &item.targetAddress, &item.targetCodeHash,
-			&item.sourceAddress, &item.sourceCodeHash, &item.returnStatus, &item.returns,
-		); err != nil {
-			return nil, fmt.Errorf("scan transaction trace ABI decoding: %w", err)
+		{
+			item.objectKind = storedRow.ObjectKind
+			item.path = storedRow.ObjectIndex
+			item.status = pgtype.Text{String: storedRow.Status, Valid: true}
+			var queryValue3 pgtype.Text
+			if storedRow.Signature != nil {
+				queryValue3 = pgtype.Text{String: *storedRow.Signature, Valid: true}
+			}
+			item.signature = queryValue3
+			var queryValue5 pgtype.Text
+			if storedRow.Source != nil {
+				queryValue5 = pgtype.Text{String: *storedRow.Source, Valid: true}
+			}
+			item.source = queryValue5
+			var queryValue7 pgtype.Text
+			if storedRow.Confidence != nil {
+				queryValue7 = pgtype.Text{String: *storedRow.Confidence, Valid: true}
+			}
+			item.confidence = queryValue7
+			item.arguments = storedRow.Arguments
+			item.candidates = storedRow.Candidates
+			item.warning = pgtype.Text{String: storedRow.Warning, Valid: true}
+			item.targetAddress = storedRow.TargetAddress
+			item.targetCodeHash = storedRow.TargetCodeHash
+			item.sourceAddress = storedRow.SourceAddress
+			item.sourceCodeHash = storedRow.SourceCodeHash
+			item.returnStatus = pgtype.Text{String: storedRow.ReturnStatus, Valid: true}
+			item.returns = storedRow.ReturnArguments
 		}
 		key := item.path + "\x00" + item.objectKind
 		if _, duplicate := result[key]; duplicate {
@@ -691,9 +757,7 @@ func loadPersistedTraceDecodings(
 		}
 		result[key] = item
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate transaction trace ABI decodings: %w", err)
-	}
+
 	return result, nil
 }
 

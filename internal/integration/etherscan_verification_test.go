@@ -4,13 +4,14 @@ package integration_test
 
 import (
 	"context"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"net/url"
 	"strings"
 	"testing"
 	"time"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -237,7 +238,7 @@ func TestGenesisPredeployTargetRejectsDifferentCurrentRuntime(t *testing.T) {
 func insertAuthenticatedGenesisPredeploy(
 	t *testing.T,
 	ctx context.Context,
-	db *sql.DB,
+	db *pgxpool.Pool,
 	blockHash common.Hash,
 	stateRoot common.Hash,
 	address []byte,

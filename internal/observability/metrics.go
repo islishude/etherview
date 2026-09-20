@@ -1,7 +1,6 @@
 package observability
 
 import (
-	"database/sql"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/islishude/etherview/internal/apiops"
 	"github.com/islishude/etherview/internal/etherscanops"
@@ -67,7 +68,7 @@ type Registry struct {
 	proxyDetectionInconsistent    uint64
 	safeProxyFingerprintMatches   uint64
 	safeProxyCompatibleCandidates uint64
-	databasePools                 map[string]*sql.DB
+	databasePools                 map[string]*pgxpool.Pool
 }
 
 type requestKey struct {
@@ -132,15 +133,15 @@ func NewRegistry(version, role string) *Registry {
 		proxyDetectionRPCCalls:        make(map[string]uint64),
 		proxyDetectionRPCErrors:       make(map[string]uint64),
 		proxyDetectionResults:         make(map[proxyDetectionResultKey]uint64),
-		databasePools:                 make(map[string]*sql.DB),
+		databasePools:                 make(map[string]*pgxpool.Pool),
 	}
 }
 
-// RegisterDatabasePool adds one process-local database/sql pool to the bounded
+// RegisterDatabasePool adds one process-local pgxpool pool to the bounded
 // operational metric set. Only the architectural writer and optional reader
 // identities are accepted; connection strings and endpoint details never
 // become labels.
-func (registry *Registry) RegisterDatabasePool(name string, database *sql.DB) error {
+func (registry *Registry) RegisterDatabasePool(name string, database *pgxpool.Pool) error {
 	if registry == nil {
 		return fmt.Errorf("register database pool: nil registry")
 	}
@@ -555,38 +556,37 @@ func writeRuntimeMetrics(output *strings.Builder) {
 	fmt.Fprintf(output, "etherview_go_gc_pause_seconds_total %s\n", formatFloat(float64(memory.PauseTotalNs)/float64(time.Second)))
 }
 
-func writeDatabaseMetrics(output *strings.Builder, pools map[string]*sql.DB) {
+func writeDatabaseMetrics(output *strings.Builder, pools map[string]*pgxpool.Pool) {
 	if len(pools) == 0 {
 		return
 	}
-	writeHelp(output, "etherview_database_max_open_connections", "Configured database/sql maximum open connections.", "gauge")
-	writeHelp(output, "etherview_database_connections", "Current database/sql connections grouped by state.", "gauge")
-	writeHelp(output, "etherview_database_wait_count_total", "database/sql connection waits.", "counter")
-	writeHelp(output, "etherview_database_wait_duration_seconds_total", "Cumulative database/sql connection wait duration.", "counter")
-	writeHelp(output, "etherview_database_connections_closed_total", "database/sql connections closed by bounded lifecycle policy.", "counter")
+	writeHelp(output, "etherview_database_max_open_connections", "Configured pgxpool maximum open connections.", "gauge")
+	writeHelp(output, "etherview_database_connections", "Current pgxpool connections grouped by state.", "gauge")
+	writeHelp(output, "etherview_database_empty_acquire_count_total", "Pool acquisitions that found no idle connection.", "counter")
+	writeHelp(output, "etherview_database_empty_acquire_wait_seconds_total", "Cumulative wait for successful acquisitions that found no idle connection.", "counter")
+	writeHelp(output, "etherview_database_connections_closed_total", "pgxpool connections closed by bounded lifecycle policy.", "counter")
 	for _, name := range sortedKeys(pools) {
-		stats := pools[name].Stats()
+		stats := pools[name].Stat()
 		pool := quote(name)
-		fmt.Fprintf(output, "etherview_database_max_open_connections{pool=%s} %d\n", pool, stats.MaxOpenConnections)
+		fmt.Fprintf(output, "etherview_database_max_open_connections{pool=%s} %d\n", pool, stats.MaxConns())
 		for _, state := range []struct {
 			name  string
-			value int
+			value int32
 		}{
-			{name: "open", value: stats.OpenConnections},
-			{name: "in_use", value: stats.InUse},
-			{name: "idle", value: stats.Idle},
+			{name: "open", value: stats.TotalConns()},
+			{name: "in_use", value: stats.AcquiredConns()},
+			{name: "idle", value: stats.IdleConns()},
 		} {
 			fmt.Fprintf(output, "etherview_database_connections{pool=%s,state=%s} %d\n", pool, quote(state.name), state.value)
 		}
-		fmt.Fprintf(output, "etherview_database_wait_count_total{pool=%s} %d\n", pool, stats.WaitCount)
-		fmt.Fprintf(output, "etherview_database_wait_duration_seconds_total{pool=%s} %s\n", pool, formatFloat(stats.WaitDuration.Seconds()))
+		fmt.Fprintf(output, "etherview_database_empty_acquire_count_total{pool=%s} %d\n", pool, stats.EmptyAcquireCount())
+		fmt.Fprintf(output, "etherview_database_empty_acquire_wait_seconds_total{pool=%s} %s\n", pool, formatFloat(stats.EmptyAcquireWaitTime().Seconds()))
 		for _, closed := range []struct {
 			reason string
 			value  int64
 		}{
-			{reason: "idle_limit", value: stats.MaxIdleClosed},
-			{reason: "idle_time", value: stats.MaxIdleTimeClosed},
-			{reason: "lifetime", value: stats.MaxLifetimeClosed},
+			{reason: "idle_time", value: stats.MaxIdleDestroyCount()},
+			{reason: "lifetime", value: stats.MaxLifetimeDestroyCount()},
 		} {
 			fmt.Fprintf(output, "etherview_database_connections_closed_total{pool=%s,reason=%s} %d\n", pool, quote(closed.reason), closed.value)
 		}

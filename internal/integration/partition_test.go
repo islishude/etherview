@@ -4,13 +4,16 @@ package integration_test
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	pgx "github.com/jackc/pgx/v5"
+
+	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/store"
@@ -169,7 +172,7 @@ func TestPostgresPartitionLifecycleReportsRecoverablePartialState(t *testing.T) 
 	)
 }
 
-func insertDefaultPartitionFixtures(t *testing.T, ctx context.Context, db *sql.DB, number uint64) {
+func insertDefaultPartitionFixtures(t *testing.T, ctx context.Context, db *pgxpool.Pool, number uint64) {
 	t.Helper()
 	blockHash := mustBytes(t, testHash(60_000))
 	parentHash := mustBytes(t, testHash(59_999))
@@ -282,7 +285,7 @@ func assertAttachedPartition(
 ) {
 	t.Helper()
 	var bound string
-	err := db.QueryRowContext(ctx, `
+	err := db.QueryRow(ctx, `
 		SELECT pg_get_expr(child.relpartbound, child.oid)
 		FROM pg_inherits inheritance
 		JOIN pg_class parent ON parent.oid = inheritance.inhparent
@@ -301,7 +304,7 @@ func assertAttachedPartition(
 }
 
 type queryRowContext interface {
-	QueryRowContext(context.Context, string, ...any) *sql.Row
+	QueryRow(context.Context, string, ...any) pgx.Row
 }
 
 func assertPartitionRangeCount(
@@ -317,7 +320,7 @@ func assertPartitionRangeCount(
 		quoteIdentifier(table),
 	)
 	var got int
-	if err := db.QueryRowContext(ctx, query, fmt.Sprint(testPartitionLower), fmt.Sprint(testPartitionUpper)).Scan(&got); err != nil {
+	if err := db.QueryRow(ctx, query, fmt.Sprint(testPartitionLower), fmt.Sprint(testPartitionUpper)).Scan(&got); err != nil {
 		t.Fatalf("count partition range in %s: %v", table, err)
 	}
 	if got != want {

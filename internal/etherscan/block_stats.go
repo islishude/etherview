@@ -2,13 +2,17 @@ package etherscan
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/islishude/etherview/internal/db/gen"
 	"math/big"
 	"net/url"
 	"strings"
+
+	"github.com/jackc/pgx/v5/pgtype"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
+	pgx "github.com/jackc/pgx/v5"
 )
 
 func (b *PostgresBackend) blockNumberByTime(ctx context.Context, values url.Values) (string, error) {
@@ -24,20 +28,24 @@ func (b *PostgresBackend) blockNumberByTime(ctx context.Context, values url.Valu
 	if err != nil {
 		return "", err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	if _, err := b.requireCanonicalCoreRange(ctx, tx, "0", nil); err != nil {
 		return "", err
 	}
 	var numberText, timestampText string
 	var hashBytes []byte
-	query := dbgen.EtherscanBlockNumberByTimeBefore
+	queries := dbgen.New(b.db).WithTx(tx)
 	if closest == "after" {
-		query = dbgen.EtherscanBlockNumberByTimeAfter
+		row, queryErr := queries.EtherscanBlockNumberByTimeAfter(ctx, b.chain, timestamp.String())
+		err = queryErr
+		numberText, hashBytes, timestampText = row.BlockNumber, row.BlockHash, row.BlockTimestamp
+	} else {
+		row, queryErr := queries.EtherscanBlockNumberByTimeBefore(ctx, b.chain, timestamp.String())
+		err = queryErr
+		numberText, hashBytes, timestampText = row.BlockNumber, row.BlockHash, row.BlockTimestamp
 	}
-	err = tx.QueryRowContext(ctx, query, b.chain, timestamp.String()).Scan(
-		&numberText, &hashBytes, &timestampText,
-	)
-	if err == sql.ErrNoRows {
+
+	if err == pgx.ErrNoRows {
 		return "", ErrNotFound
 	}
 	if err != nil {
@@ -57,7 +65,7 @@ func (b *PostgresBackend) blockNumberByTime(ctx context.Context, values url.Valu
 	if closest == "before" && indexedTimestamp.Cmp(timestamp) > 0 || closest == "after" && indexedTimestamp.Cmp(timestamp) < 0 {
 		return "", errors.New("block-by-time query returned a block outside the requested bound")
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return "", fmt.Errorf("commit block-by-time snapshot: %w", err)
 	}
 	return number.String(), nil
@@ -72,16 +80,31 @@ func (b *PostgresBackend) blockCountdown(ctx context.Context, values url.Values)
 	if err != nil {
 		return blockCountdown{}, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer dbaccess.Rollback(ctx, tx)
 	var (
 		currentText, currentTimestampText, anchorText, anchorTimestampText string
 		sampleCountText, configuredStartText, rangeStartText, rangeEndText string
 	)
-	err = tx.QueryRowContext(ctx, dbgen.EtherscanBlockCountdown, b.chain).Scan(
-		&currentText, &currentTimestampText, &anchorText, &anchorTimestampText,
-		&sampleCountText, &configuredStartText, &rangeStartText, &rangeEndText,
-	)
-	if err == sql.ErrNoRows {
+	err = func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(b.chain); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).EtherscanBlockCountdown(ctx, queryValue0)
+		if err != nil {
+			return err
+		}
+		currentText = queryRow.CurrentSampleNumber
+		currentTimestampText = queryRow.CurrentSampleTimestamp
+		anchorText = queryRow.AnchorNumber
+		anchorTimestampText = queryRow.AnchorTimestamp
+		sampleCountText = queryRow.SampleCountValue
+		configuredStartText = queryRow.CoverageConfiguredStart
+		rangeStartText = queryRow.CoverageRangeStart
+		rangeEndText = queryRow.CoverageRangeEnd
+		return nil
+	}()
+	if err == pgx.ErrNoRows {
 		return blockCountdown{}, ErrCoreUnavailable
 	}
 	if err != nil {
@@ -145,7 +168,7 @@ func (b *PostgresBackend) blockCountdown(ctx context.Context, values url.Values)
 	numerator := new(big.Int).Mul(remaining, timeSpan)
 	numerator.Add(numerator, new(big.Int).Sub(blockSpan, big.NewInt(1)))
 	result.EstimateTimeInSec = numerator.Div(numerator, blockSpan).String()
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return blockCountdown{}, fmt.Errorf("commit block countdown snapshot: %w", err)
 	}
 	return result, nil

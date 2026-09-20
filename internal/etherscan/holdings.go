@@ -3,14 +3,17 @@ package etherscan
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
 
+	dbaccess "github.com/islishude/etherview/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/islishude/etherview/internal/catalog"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
 const (
@@ -239,21 +242,47 @@ func (b *PostgresBackend) erc20HoldingCandidates(
 	if err != nil {
 		return catalog.Snapshot{}, nil, false, err
 	}
-	defer tx.Rollback() //nolint:errcheck
-	rows, err := tx.QueryContext(ctx, dbgen.EtherscanERC20HoldingCandidates,
-		b.chain, snapshot.BlockNumber, owner, maxHoldingCandidates+1,
-	)
+	defer dbaccess.Rollback(ctx, tx)
+	rows, err := func() ([]dbgen.EtherscanERC20HoldingCandidatesRow, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(b.chain); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(snapshot.BlockNumber); err != nil {
+			return nil, err
+		}
+		if maxHoldingCandidates+1 < -2147483648 || maxHoldingCandidates+1 > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).EtherscanERC20HoldingCandidates(ctx, dbgen.EtherscanERC20HoldingCandidatesParams{ChainID: queryValue0, MaxBlockNumber: queryValue1, OwnerAddress: owner, Limit: int32(maxHoldingCandidates + 1)})
+	}()
 	if err != nil {
 		return catalog.Snapshot{}, nil, false, fmt.Errorf("query ERC-20 holding candidates: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	candidates := make([]erc20HoldingCandidate, 0, maxHoldingCandidates+1)
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var candidate erc20HoldingCandidate
-		var name, symbol sql.NullString
-		var decimals sql.NullInt64
-		if err := rows.Scan(&candidate.address, &name, &symbol, &decimals); err != nil {
-			return catalog.Snapshot{}, nil, false, fmt.Errorf("scan ERC-20 holding candidate: %w", err)
+		var name, symbol pgtype.Text
+		var decimals pgtype.Int8
+		{
+			candidate.address = storedRow.TokenAddress
+			var queryValue1 pgtype.Text
+			if storedRow.Name != nil {
+				queryValue1 = pgtype.Text{String: *storedRow.Name, Valid: true}
+			}
+			name = queryValue1
+			var queryValue3 pgtype.Text
+			if storedRow.Symbol != nil {
+				queryValue3 = pgtype.Text{String: *storedRow.Symbol, Valid: true}
+			}
+			symbol = queryValue3
+			var queryValue5 pgtype.Int8
+			if storedRow.Decimals != nil {
+				queryValue5 = pgtype.Int8{Int64: int64(*storedRow.Decimals), Valid: true}
+			}
+			decimals = queryValue5
 		}
 		address, err := addressFromBytes(candidate.address)
 		if err != nil {
@@ -280,17 +309,12 @@ func (b *PostgresBackend) erc20HoldingCandidates(
 		}
 		candidates = append(candidates, candidate)
 	}
-	if err := rows.Err(); err != nil {
-		return catalog.Snapshot{}, nil, false, fmt.Errorf("iterate ERC-20 holding candidates: %w", err)
-	}
-	if err := rows.Close(); err != nil {
-		return catalog.Snapshot{}, nil, false, fmt.Errorf("close ERC-20 holding candidates: %w", err)
-	}
+
 	hasMore := len(candidates) > maxHoldingCandidates
 	if hasMore {
 		candidates = candidates[:maxHoldingCandidates]
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return catalog.Snapshot{}, nil, false, fmt.Errorf("commit ERC-20 holding candidate snapshot: %w", err)
 	}
 	return snapshot, candidates, hasMore, nil
@@ -304,24 +328,46 @@ func (b *PostgresBackend) erc721HoldingCandidates(
 	if err != nil {
 		return catalog.Snapshot{}, nil, false, nil, err
 	}
-	defer tx.Rollback() //nolint:errcheck
-	var contractArgument any
+	defer dbaccess.Rollback(ctx, tx)
+	var contractArgument []byte
 	if contract != nil {
 		contractArgument = contract
 	}
-	rows, err := tx.QueryContext(ctx, dbgen.EtherscanERC721HoldingCandidates,
-		b.chain, snapshot.BlockNumber, owner, contractArgument, maxHoldingCandidates+1,
-	)
+	rows, err := func() ([]dbgen.EtherscanERC721HoldingCandidatesRow, error) {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(b.chain); err != nil {
+			return nil, err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(snapshot.BlockNumber); err != nil {
+			return nil, err
+		}
+		if maxHoldingCandidates+1 < -2147483648 || maxHoldingCandidates+1 > 2147483647 {
+			return nil, errors.New("invalid stored query value")
+		}
+		return dbgen.New(tx).EtherscanERC721HoldingCandidates(ctx, dbgen.EtherscanERC721HoldingCandidatesParams{ChainID: queryValue0, MaxBlockNumber: queryValue1, OwnerAddress: owner, TokenAddress: contractArgument, Limit: int32(maxHoldingCandidates + 1)})
+	}()
 	if err != nil {
 		return catalog.Snapshot{}, nil, false, nil, fmt.Errorf("query ERC-721 holding candidates: %w", err)
 	}
-	defer rows.Close() //nolint:errcheck
+
 	candidates := make([]erc721HoldingCandidate, 0, maxHoldingCandidates+1)
-	for rows.Next() {
+	for _, storedRow := range rows {
 		var candidate erc721HoldingCandidate
-		var name, symbol sql.NullString
-		if err := rows.Scan(&candidate.address, &candidate.tokenID, &name, &symbol); err != nil {
-			return catalog.Snapshot{}, nil, false, nil, fmt.Errorf("scan ERC-721 holding candidate: %w", err)
+		var name, symbol pgtype.Text
+		{
+			candidate.address = storedRow.TokenAddress
+			candidate.tokenID = storedRow.CandidatesTokenID
+			var queryValue2 pgtype.Text
+			if storedRow.Name != nil {
+				queryValue2 = pgtype.Text{String: *storedRow.Name, Valid: true}
+			}
+			name = queryValue2
+			var queryValue4 pgtype.Text
+			if storedRow.Symbol != nil {
+				queryValue4 = pgtype.Text{String: *storedRow.Symbol, Valid: true}
+			}
+			symbol = queryValue4
 		}
 		if _, err := storedUint256(candidate.tokenID, "ERC-721 token ID"); err != nil {
 			return catalog.Snapshot{}, nil, false, nil, err
@@ -345,47 +391,54 @@ func (b *PostgresBackend) erc721HoldingCandidates(
 		}
 		candidates = append(candidates, candidate)
 	}
-	if err := rows.Err(); err != nil {
-		return catalog.Snapshot{}, nil, false, nil, fmt.Errorf("iterate ERC-721 holding candidates: %w", err)
-	}
-	if err := rows.Close(); err != nil {
-		return catalog.Snapshot{}, nil, false, nil, fmt.Errorf("close ERC-721 holding candidates: %w", err)
-	}
+
 	hasMore := len(candidates) > maxHoldingCandidates
 	var nextAddress []byte
 	if hasMore {
 		nextAddress = append([]byte(nil), candidates[maxHoldingCandidates].address...)
 		candidates = candidates[:maxHoldingCandidates]
 	}
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return catalog.Snapshot{}, nil, false, nil, fmt.Errorf("commit ERC-721 holding candidate snapshot: %w", err)
 	}
 	return snapshot, candidates, hasMore, nextAddress, nil
 }
 
-func (b *PostgresBackend) beginHoldingSnapshot(ctx context.Context) (*sql.Tx, catalog.Snapshot, error) {
+func (b *PostgresBackend) beginHoldingSnapshot(ctx context.Context) (pgx.Tx, catalog.Snapshot, error) {
 	tx, err := b.beginEnrichmentSnapshot(ctx)
 	if err != nil {
 		return nil, catalog.Snapshot{}, err
 	}
 	tip, err := b.requireCanonicalStageRange(ctx, tx, tokenStage, "0", nil, ErrTokenUnavailable)
 	if err != nil {
-		tx.Rollback() //nolint:errcheck
+		dbaccess.Rollback(ctx, tx) //nolint:errcheck
 		return nil, catalog.Snapshot{}, err
 	}
 	var number string
 	var hashBytes []byte
-	if err := tx.QueryRowContext(ctx, dbgen.EtherscanCanonicalSnapshot, b.chain).Scan(&number, &hashBytes); err != nil {
-		tx.Rollback() //nolint:errcheck
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(b.chain); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).EtherscanCanonicalSnapshot(ctx, queryValue0)
+		if err != nil {
+			return err
+		}
+		number = queryRow.Number
+		hashBytes = queryRow.BlockHash
+		return nil
+	}(); err != nil {
+		dbaccess.Rollback(ctx, tx) //nolint:errcheck
 		return nil, catalog.Snapshot{}, fmt.Errorf("read holding snapshot: %w", err)
 	}
 	if number != tip {
-		tx.Rollback() //nolint:errcheck
+		dbaccess.Rollback(ctx, tx) //nolint:errcheck
 		return nil, catalog.Snapshot{}, errors.New("holding snapshot and coverage tips differ")
 	}
 	hash, err := hashFromBytes(hashBytes)
 	if err != nil {
-		tx.Rollback() //nolint:errcheck
+		dbaccess.Rollback(ctx, tx) //nolint:errcheck
 		return nil, catalog.Snapshot{}, err
 	}
 	return tx, catalog.Snapshot{

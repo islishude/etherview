@@ -2,7 +2,6 @@ package enrich
 
 import (
 	"context"
-	"database/sql/driver"
 	"errors"
 	"fmt"
 	"reflect"
@@ -10,32 +9,34 @@ import (
 	"sync"
 	"testing"
 
+	testpgx "github.com/islishude/etherview/internal/testpgx"
+	pgx "github.com/jackc/pgx/v5"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/islishude/etherview/internal/db/gen"
 )
 
 func TestProxyReplayCandidatesLoadOnlyGenerationFencedVerificationTargets(t *testing.T) {
 	t.Parallel()
-	query := strings.Join(strings.Fields(dbgen.EnrichLegacyProxyReplayCandidates), " ")
+	query := strings.Join(strings.Fields(testpgx.Statement("EnrichLegacyProxyReplayCandidates")), " ")
 	for _, required := range []string{
 		"FROM proxy_replay_targets AS target",
 		"SELECT target.address, target.target_kind",
 		"JOIN durable_job_replay_requests AS replay_request",
-		"replay_request.job_id = $6::bigint",
+		"replay_request.job_id = $2::bigint",
 		"target.source_verification_job_id::text = replay_request.source_key",
 		"JOIN durable_jobs AS replay_job",
 		"replay_job.status = 'leased'",
-		"replay_job.claimed_generation = $7::bigint",
-		"replay_job.leased_generation = $7::bigint",
+		"replay_job.claimed_generation = $4::bigint",
+		"replay_job.leased_generation = $4::bigint",
 		"LEFT JOIN verified_contract_proxy_artifacts AS artifact",
 		"artifact.artifact_kind = 'uups_implementation'",
 		"artifact.runtime_immutable_address = target.address",
 		"LEFT JOIN verified_contracts AS verified",
 		"verified.valid_to_block IS NULL OR verified.valid_to_block >= target.block_number",
 		"replay_request.requested_generation > replay_job.completed_generation",
-		"replay_request.requested_generation <= $7::bigint",
+		"replay_request.requested_generation <= $4::bigint",
 	} {
 		if !strings.Contains(query, strings.Join(strings.Fields(required), " ")) {
 			t.Fatalf("proxy replay candidate query lacks %q: %s", required, query)
@@ -75,16 +76,16 @@ func TestProxyReplayCandidatesKeepUUPSTargetsOutOfProxyDetector(t *testing.T) {
 	proxy, beacon, implementation := testAddress(24), testAddress(25), testAddress(26)
 	implementationCodeHash := uintWord(27)
 	verificationJob := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
-	backend := &fakeSQLBackend{query: func(query string, arguments []driver.NamedValue) (driver.Rows, error) {
+	backend := &fakeSQLBackend{query: func(query string, arguments []any) (pgx.Rows, error) {
 		if !strings.Contains(query, "FROM proxy_replay_targets AS target") {
 			return nil, fmt.Errorf("unexpected query: %s", query)
 		}
-		if len(arguments) != 7 || arguments[5].Value != "81" || arguments[6].Value != "4" {
+		if len(arguments) != 7 || arguments[1] != int64(81) || arguments[3] != int64(4) {
 			return nil, fmt.Errorf("replay arguments=%+v", arguments)
 		}
-		return &fakeSQLRows{
-			columns: []string{"address", "target_kind", "source", "code_hash", "verification_job_id"},
-			values: [][]driver.Value{
+		return &testpgx.Rows{
+			ColumnNames: []string{"address", "target_kind", "source", "code_hash", "verification_job_id"},
+			ValuesList: [][]any{
 				{proxy[:], "proxy", proxySourceVerification, nil, nil},
 				{beacon[:], "beacon", proxySourceVerification, nil, nil},
 				{implementation[:], "uups", proxySourceVerification, implementationCodeHash[:], verificationJob},
@@ -172,10 +173,10 @@ func TestProbeUUPSReplayTargetsCallsOncePerImplementationCodeEpoch(t *testing.T)
 
 func TestProxyGenerationCarryForwardExcludesEveryRedetectedAddress(t *testing.T) {
 	t.Parallel()
-	query := strings.Join(strings.Fields(dbgen.EnrichLegacyCarryForwardProxyGeneration), " ")
+	query := strings.Join(strings.Fields(testpgx.Statement("EnrichLegacyCarryForwardProxyGeneration")), " ")
 	for _, required := range []string{
 		"FROM durable_stage_publications AS publication",
-		"publication.job_generation < $6::bigint",
+		"publication.job_generation < $2::bigint",
 		"publication.state = 'complete'",
 		"ORDER BY publication.job_generation DESC LIMIT 1",
 		"SELECT generation.proxy_address AS address FROM proxy_observation_generations AS generation",
@@ -205,17 +206,17 @@ func TestPostgresProxyProcessorLoadsGenesisPredeployCandidatesOnlyAtBlockZero(t 
 	t.Parallel()
 	address := testAddress(30)
 	queries := 0
-	backend := &fakeSQLBackend{query: func(query string, arguments []driver.NamedValue) (driver.Rows, error) {
+	backend := &fakeSQLBackend{query: func(query string, arguments []any) (pgx.Rows, error) {
 		if !strings.Contains(query, "FROM genesis_account_observations") {
 			return nil, fmt.Errorf("unexpected query: %s", query)
 		}
 		queries++
-		if len(arguments) != 2 || arguments[0].Value != "777" {
+		if len(arguments) != 5 || arguments[0] != "777" || arguments[2] != false || arguments[4] != int32(512) {
 			t.Fatalf("genesis candidate arguments = %+v", arguments)
 		}
-		return &fakeSQLRows{
-			columns: []string{"address"},
-			values:  [][]driver.Value{{address[:]}},
+		return &testpgx.Rows{
+			ColumnNames: []string{"address"},
+			ValuesList:  [][]any{{address[:]}},
 		}, nil
 	}}
 	processor := &PostgresProxyProcessor{db: openFakeSQLDB(t, backend)}
