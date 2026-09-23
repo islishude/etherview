@@ -19,7 +19,7 @@ an exact, generated ELF dependency closure.
 
 ## Decision
 
-- The production solc-js executor is a Node 26.9.0 SEA containing one bundled
+- The production solc-js executor is a Node 26.10.0 SEA containing one bundled
   CommonJS entrypoint and the exact-lockfile `solc@0.8.37` wrapper. The bundle
   imports `solc/wrapper`, not the package root, and does not contain a default
   soljson compiler. Exact checksum-authenticated official

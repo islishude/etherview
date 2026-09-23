@@ -7,7 +7,7 @@ license.
 
 ## Node SEA and solc-js runtime
 
-- Runtime: Node.js 26.9.0 Single Executable Application
+- Runtime: Node.js 26.10.0 Single Executable Application
 - Bundled protocol dependency: `solc@0.8.37`
 - Build-only bundler: `esbuild@0.28.2`
 - Upstreams: <https://nodejs.org/>, <https://github.com/ethereum/solc-js>, and
