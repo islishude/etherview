@@ -399,6 +399,12 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 	)
 	project.Profiles = []string{mode}
 	project.Env = runtimeEnvironment(root, baseTimestamp, true)
+	project.Env["ETHERVIEW_RUNTIME_WATCHLIST"] = "true"
+	watchPepper := make([]byte, 32)
+	if _, err := rand.Read(watchPepper); err != nil {
+		t.Fatal(err)
+	}
+	project.Env["ETHERVIEW_RUNTIME_SESSION_PEPPER"] = hex.EncodeToString(watchPepper)
 	h := &harness{
 		t: t, root: root, mode: mode, project: project,
 		apiService: map[string]string{"monolith": "etherview", "distributed": "api"}[mode],
@@ -447,6 +453,8 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		}
 	}
 
+	watchSession := h.startRuntimeWatch(ctx)
+
 	h.enterPhase("pending API exact hash")
 	{
 		h.waitPending(ctx, h.fixture.pendingHash)
@@ -478,6 +486,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		}
 		h.assertCurrentDelegation(ctx, h.fixture.delegateA)
 		firstRollup = h.waitRollup(ctx, 2, "")
+		h.assertRuntimeWatch(ctx, watchSession, h.fixture.pendingReplacementHash, true)
 	}
 
 	h.enterPhase("competing-hash reorg and contract")
@@ -647,6 +656,8 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 	}
 	h.assertOperationalLogs(ctx)
 	h.assertENS(ctx)
+	h.assertRuntimeWatch(ctx, watchSession, h.fixture.pendingReplacementHash, false)
+	h.assertRuntimeCSV(ctx, watchSession)
 
 	result := modeResult{
 		durable: h.captureDurable(ctx),

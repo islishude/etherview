@@ -18,6 +18,7 @@ import (
 	"github.com/islishude/etherview/internal/query"
 	"github.com/islishude/etherview/internal/state"
 	"github.com/islishude/etherview/internal/userauth"
+	"github.com/islishude/etherview/internal/watchlist"
 	webui "github.com/islishude/etherview/web"
 )
 
@@ -226,6 +227,10 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			userAPIKeys        httpapi.UserAPIKeyAdministration
 			userRepository     *userauth.PostgresRepository
 		)
+		watchService, err := watchlist.New(db, cfg.Chain.ID)
+		if err != nil {
+			return err
+		}
 		if cfg.Features.UserAuth {
 			userRepository, err = userauth.NewPostgresRepository(db, cfg.Chain.ID)
 			if err != nil {
@@ -302,6 +307,7 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			NFTMediaSource:      mediaSource, NFTMediaProxy: mediaProxy,
 			UserAuth: userAuthenticator, UserAdministration: userAdministration,
 			UserAPIKeys:         userAPIKeys,
+			Watchlist:           watchService,
 			BillingReader:       billingReader,
 			PrepaidBilling:      prepaidLedger,
 			TopupBilling:        topupDispatcher,
@@ -309,7 +315,8 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			Metrics:             registry.Handler(), Logger: logger, RuntimeReady: lifecycle.Ready,
 			ReadinessStatus: readinessStatus,
 			Requirements: httpapi.CapabilityRequirements{
-				Native: true, Catalog: true, Analytics: true,
+				Watchlist: true,
+				Native:    true, Catalog: true, Analytics: true,
 				Compatibility: true, Events: true, HomeSnapshots: true,
 				Metadata: true, Proxy: true, Verification: true, Web: true,
 			},

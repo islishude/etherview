@@ -60,6 +60,48 @@ func (e APIKeyScope) Valid() bool {
 	}
 }
 
+// Defines values for AddressExportRequestDirection.
+const (
+	AddressExportRequestDirectionBoth AddressExportRequestDirection = "both"
+	AddressExportRequestDirectionIn   AddressExportRequestDirection = "in"
+	AddressExportRequestDirectionOut  AddressExportRequestDirection = "out"
+)
+
+// Valid indicates whether the value is a known member of the AddressExportRequestDirection enum.
+func (e AddressExportRequestDirection) Valid() bool {
+	switch e {
+	case AddressExportRequestDirectionBoth:
+		return true
+	case AddressExportRequestDirectionIn:
+		return true
+	case AddressExportRequestDirectionOut:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AddressExportRequestKind.
+const (
+	AddressExportRequestKindErc20       AddressExportRequestKind = "erc20"
+	AddressExportRequestKindNft         AddressExportRequestKind = "nft"
+	AddressExportRequestKindTransaction AddressExportRequestKind = "transaction"
+)
+
+// Valid indicates whether the value is a known member of the AddressExportRequestKind enum.
+func (e AddressExportRequestKind) Valid() bool {
+	switch e {
+	case AddressExportRequestKindErc20:
+		return true
+	case AddressExportRequestKindNft:
+		return true
+	case AddressExportRequestKindTransaction:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AddressNameLookupState.
 const (
 	AddressNameLookupStateNotFound    AddressNameLookupState = "not_found"
@@ -231,6 +273,51 @@ func (e AddressVerificationSubmissionOptimizationMode) Valid() bool {
 	case AddressVerificationSubmissionOptimizationModeGas:
 		return true
 	case AddressVerificationSubmissionOptimizationModeNone:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AddressWatchDirection.
+const (
+	AddressWatchDirectionBoth AddressWatchDirection = "both"
+	AddressWatchDirectionIn   AddressWatchDirection = "in"
+	AddressWatchDirectionOut  AddressWatchDirection = "out"
+)
+
+// Valid indicates whether the value is a known member of the AddressWatchDirection enum.
+func (e AddressWatchDirection) Valid() bool {
+	switch e {
+	case AddressWatchDirectionBoth:
+		return true
+	case AddressWatchDirectionIn:
+		return true
+	case AddressWatchDirectionOut:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AddressWatchKinds.
+const (
+	AddressWatchKindsErc1155     AddressWatchKinds = "erc1155"
+	AddressWatchKindsErc20       AddressWatchKinds = "erc20"
+	AddressWatchKindsErc721      AddressWatchKinds = "erc721"
+	AddressWatchKindsTransaction AddressWatchKinds = "transaction"
+)
+
+// Valid indicates whether the value is a known member of the AddressWatchKinds enum.
+func (e AddressWatchKinds) Valid() bool {
+	switch e {
+	case AddressWatchKindsErc1155:
+		return true
+	case AddressWatchKindsErc20:
+		return true
+	case AddressWatchKindsErc721:
+		return true
+	case AddressWatchKindsTransaction:
 		return true
 	default:
 		return false
@@ -3165,6 +3252,51 @@ func (e VyperMultipartRequestOptimizationMode) Valid() bool {
 	}
 }
 
+// Defines values for WatchInputDirection.
+const (
+	WatchInputDirectionBoth WatchInputDirection = "both"
+	WatchInputDirectionIn   WatchInputDirection = "in"
+	WatchInputDirectionOut  WatchInputDirection = "out"
+)
+
+// Valid indicates whether the value is a known member of the WatchInputDirection enum.
+func (e WatchInputDirection) Valid() bool {
+	switch e {
+	case WatchInputDirectionBoth:
+		return true
+	case WatchInputDirectionIn:
+		return true
+	case WatchInputDirectionOut:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WatchInputKinds.
+const (
+	WatchInputKindsErc1155     WatchInputKinds = "erc1155"
+	WatchInputKindsErc20       WatchInputKinds = "erc20"
+	WatchInputKindsErc721      WatchInputKinds = "erc721"
+	WatchInputKindsTransaction WatchInputKinds = "transaction"
+)
+
+// Valid indicates whether the value is a known member of the WatchInputKinds enum.
+func (e WatchInputKinds) Valid() bool {
+	switch e {
+	case WatchInputKindsErc1155:
+		return true
+	case WatchInputKindsErc20:
+		return true
+	case WatchInputKindsErc721:
+		return true
+	case WatchInputKindsTransaction:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetChartMetricParamsInterval.
 const (
 	GetChartMetricParamsIntervalAuto  GetChartMetricParamsInterval = "auto"
@@ -3227,6 +3359,22 @@ type APIKeyScope string
 
 // Address A 20-byte address; responses use the EIP-55 checksum form.
 type Address = string
+
+// AddressExportRequest defines model for AddressExportRequest.
+type AddressExportRequest struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address   Address                       `json:"address"`
+	Direction AddressExportRequestDirection `json:"direction"`
+	From      time.Time                     `json:"from"`
+	Kind      AddressExportRequestKind      `json:"kind"`
+	To        time.Time                     `json:"to"`
+}
+
+// AddressExportRequestDirection defines model for AddressExportRequest.Direction.
+type AddressExportRequestDirection string
+
+// AddressExportRequestKind defines model for AddressExportRequest.Kind.
+type AddressExportRequestKind string
 
 // AddressInternalTransaction defines model for AddressInternalTransaction.
 type AddressInternalTransaction struct {
@@ -3445,6 +3593,29 @@ type AddressVerificationSubmissionInputKind string
 
 // AddressVerificationSubmissionOptimizationMode Vyper multipart optimization mode; omit to use the selected compiler default.
 type AddressVerificationSubmissionOptimizationMode string
+
+// AddressWatch defines model for AddressWatch.
+type AddressWatch struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address   Address               `json:"address"`
+	Direction AddressWatchDirection `json:"direction"`
+	Enabled   bool                  `json:"enabled"`
+	Id        string                `json:"id"`
+	Kinds     []AddressWatchKinds   `json:"kinds"`
+	Label     string                `json:"label"`
+
+	// StartHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	StartHash Hash `json:"start_hash"`
+
+	// StartNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	StartNumber Quantity `json:"start_number"`
+}
+
+// AddressWatchDirection defines model for AddressWatch.Direction.
+type AddressWatchDirection string
+
+// AddressWatchKinds defines model for AddressWatch.Kinds.
+type AddressWatchKinds string
 
 // AddressWithdrawal defines model for AddressWithdrawal.
 type AddressWithdrawal struct {
@@ -6695,6 +6866,121 @@ type WalletNativeCurrency struct {
 	Symbol   string `json:"symbol"`
 }
 
+// WatchActivity defines model for WatchActivity.
+type WatchActivity struct {
+	// Amount A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Amount *Quantity `json:"amount,omitempty"`
+
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber Quantity `json:"block_number"`
+	Decimals    *string  `json:"decimals,omitempty"`
+	Direction   string   `json:"direction"`
+	EventKind   *string  `json:"event_kind,omitempty"`
+
+	// From A 20-byte address; responses use the EIP-55 checksum form.
+	From *Address `json:"from,omitempty"`
+	Kind string   `json:"kind"`
+
+	// LogIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	LogIndex *Quantity `json:"log_index,omitempty"`
+	Status   *string   `json:"status,omitempty"`
+
+	// SubIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	SubIndex *Quantity `json:"sub_index,omitempty"`
+
+	// Timestamp A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Timestamp Quantity `json:"timestamp"`
+
+	// To A 20-byte address; responses use the EIP-55 checksum form.
+	To *Address `json:"to,omitempty"`
+
+	// TokenAddress A 20-byte address; responses use the EIP-55 checksum form.
+	TokenAddress *Address `json:"token_address,omitempty"`
+
+	// TokenId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	TokenId *Quantity `json:"token_id,omitempty"`
+
+	// TransactionHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	TransactionHash Hash `json:"transaction_hash"`
+
+	// TransactionIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	TransactionIndex Quantity `json:"transaction_index"`
+
+	// Value A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Value *Quantity `json:"value,omitempty"`
+}
+
+// WatchInput defines model for WatchInput.
+type WatchInput struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address   Address             `json:"address"`
+	Direction WatchInputDirection `json:"direction"`
+	Enabled   bool                `json:"enabled"`
+	Kinds     []WatchInputKinds   `json:"kinds"`
+	Label     string              `json:"label"`
+}
+
+// WatchInputDirection defines model for WatchInput.Direction.
+type WatchInputDirection string
+
+// WatchInputKinds defines model for WatchInput.Kinds.
+type WatchInputKinds string
+
+// WatchListResponse defines model for WatchListResponse.
+type WatchListResponse struct {
+	Data []AddressWatch `json:"data"`
+	Meta Meta           `json:"meta"`
+}
+
+// WatchNotification defines model for WatchNotification.
+type WatchNotification struct {
+	Activity WatchActivity `json:"activity"`
+
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address   Address `json:"address"`
+	Canonical bool    `json:"canonical"`
+
+	// Id A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Id        Quantity `json:"id"`
+	Label     string   `json:"label"`
+	Published bool     `json:"published"`
+	Read      bool     `json:"read"`
+	WatchId   string   `json:"watch_id"`
+}
+
+// WatchNotificationPage defines model for WatchNotificationPage.
+type WatchNotificationPage struct {
+	Items      []WatchNotification `json:"items"`
+	NextCursor string              `json:"next_cursor"`
+
+	// UnreadCount A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	UnreadCount Quantity `json:"unread_count"`
+
+	// Watermark A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Watermark Quantity `json:"watermark"`
+}
+
+// WatchNotificationsResponse defines model for WatchNotificationsResponse.
+type WatchNotificationsResponse struct {
+	Data WatchNotificationPage `json:"data"`
+	Meta Meta                  `json:"meta"`
+}
+
+// WatchReadThrough defines model for WatchReadThrough.
+type WatchReadThrough struct {
+	// ThroughId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ThroughId Quantity `json:"through_id"`
+}
+
+// WatchResponse defines model for WatchResponse.
+type WatchResponse struct {
+	Data AddressWatch `json:"data"`
+	Meta Meta         `json:"meta"`
+}
+
 // APIKeyPrefix defines model for APIKeyPrefix.
 type APIKeyPrefix = string
 
@@ -7097,6 +7383,42 @@ type RotateCurrentUserAPIKeyParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 }
 
+// ExportCurrentUserAddressActivityParams defines parameters for ExportCurrentUserAddressActivity.
+type ExportCurrentUserAddressActivityParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// ListCurrentUserNotificationsParams defines parameters for ListCurrentUserNotifications.
+type ListCurrentUserNotificationsParams struct {
+	Cursor     *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	UnreadOnly *bool   `form:"unread_only,omitempty" json:"unread_only,omitempty"`
+}
+
+// ReadCurrentUserNotificationsThroughParams defines parameters for ReadCurrentUserNotificationsThrough.
+type ReadCurrentUserNotificationsThroughParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// ReadCurrentUserNotificationParams defines parameters for ReadCurrentUserNotification.
+type ReadCurrentUserNotificationParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// CreateCurrentUserWatchParams defines parameters for CreateCurrentUserWatch.
+type CreateCurrentUserWatchParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// DeleteCurrentUserWatchParams defines parameters for DeleteCurrentUserWatch.
+type DeleteCurrentUserWatchParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// UpdateCurrentUserWatchParams defines parameters for UpdateCurrentUserWatch.
+type UpdateCurrentUserWatchParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
 // ListVerifierCompilersParams defines parameters for ListVerifierCompilers.
 type ListVerifierCompilersParams struct {
 	Language VerifierLanguage `form:"language" json:"language"`
@@ -7125,6 +7447,18 @@ type UpdateCurrentUserJSONRequestBody = UserProfileUpdate
 
 // CreateCurrentUserAPIKeyJSONRequestBody defines body for CreateCurrentUserAPIKey for application/json ContentType.
 type CreateCurrentUserAPIKeyJSONRequestBody = UserAPIKeyCreateRequest
+
+// ExportCurrentUserAddressActivityJSONRequestBody defines body for ExportCurrentUserAddressActivity for application/json ContentType.
+type ExportCurrentUserAddressActivityJSONRequestBody = AddressExportRequest
+
+// ReadCurrentUserNotificationsThroughJSONRequestBody defines body for ReadCurrentUserNotificationsThrough for application/json ContentType.
+type ReadCurrentUserNotificationsThroughJSONRequestBody = WatchReadThrough
+
+// CreateCurrentUserWatchJSONRequestBody defines body for CreateCurrentUserWatch for application/json ContentType.
+type CreateCurrentUserWatchJSONRequestBody = WatchInput
+
+// UpdateCurrentUserWatchJSONRequestBody defines body for UpdateCurrentUserWatch for application/json ContentType.
+type UpdateCurrentUserWatchJSONRequestBody = WatchInput
 
 // LookupVerifierMethodsJSONRequestBody defines body for LookupVerifierMethods for application/json ContentType.
 type LookupVerifierMethodsJSONRequestBody = LookupMethodsRequest

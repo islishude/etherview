@@ -1789,6 +1789,212 @@ paths:
           $ref: "#/components/responses/VerificationAccepted"
         default:
           $ref: "#/components/responses/Error"
+  /users/me/watchlist:
+    "get":
+      "operationId": "listCurrentUserWatches"
+      "tags":
+        - "users"
+      "security":
+        -
+          "UserSession": []
+      "parameters": []
+      "responses":
+        "200":
+          "description": "Successful account operation."
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/WatchListResponse"
+        "default":
+          "$ref": "#/components/responses/Error"
+    "post":
+      "operationId": "createCurrentUserWatch"
+      "tags":
+        - "users"
+      "security":
+        -
+          "UserSession": []
+      "parameters":
+        -
+          "$ref": "#/components/parameters/CSRFToken"
+      "responses":
+        "201":
+          "description": "Successful account operation."
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/WatchResponse"
+        "default":
+          "$ref": "#/components/responses/Error"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/WatchInput"
+  /users/me/watchlist/{id}:
+    "patch":
+      "operationId": "updateCurrentUserWatch"
+      "tags":
+        - "users"
+      "security":
+        -
+          "UserSession": []
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+            "maxLength": 64
+        -
+          "$ref": "#/components/parameters/CSRFToken"
+      "responses":
+        "200":
+          "description": "Successful account operation."
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/WatchResponse"
+        "default":
+          "$ref": "#/components/responses/Error"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/WatchInput"
+    "delete":
+      "operationId": "deleteCurrentUserWatch"
+      "tags":
+        - "users"
+      "security":
+        -
+          "UserSession": []
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+            "maxLength": 64
+        -
+          "$ref": "#/components/parameters/CSRFToken"
+      "responses":
+        "204":
+          "description": "Successful account operation."
+        "default":
+          "$ref": "#/components/responses/Error"
+  /users/me/notifications:
+    "get":
+      "operationId": "listCurrentUserNotifications"
+      "tags":
+        - "users"
+      "security":
+        -
+          "UserSession": []
+      "parameters":
+        -
+          "$ref": "#/components/parameters/Cursor"
+        -
+          "name": "unread_only"
+          "in": "query"
+          "schema":
+            "type": "boolean"
+      "responses":
+        "200":
+          "description": "Successful account operation."
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/WatchNotificationsResponse"
+        "default":
+          "$ref": "#/components/responses/Error"
+  /users/me/notifications/{id}/read:
+    "post":
+      "operationId": "readCurrentUserNotification"
+      "tags":
+        - "users"
+      "security":
+        -
+          "UserSession": []
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+            "maxLength": 64
+        -
+          "$ref": "#/components/parameters/CSRFToken"
+      "responses":
+        "204":
+          "description": "Successful account operation."
+        "default":
+          "$ref": "#/components/responses/Error"
+  /users/me/notifications/read-through:
+    "post":
+      "operationId": "readCurrentUserNotificationsThrough"
+      "tags":
+        - "users"
+      "security":
+        -
+          "UserSession": []
+      "parameters":
+        -
+          "$ref": "#/components/parameters/CSRFToken"
+      "responses":
+        "204":
+          "description": "Successful account operation."
+        "default":
+          "$ref": "#/components/responses/Error"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/WatchReadThrough"
+  /users/me/exports/address-activity:
+    "post":
+      "operationId": "exportCurrentUserAddressActivity"
+      "tags":
+        - "users"
+      "security":
+        -
+          "UserSession": []
+      "parameters":
+        -
+          "$ref": "#/components/parameters/CSRFToken"
+      "responses":
+        "200":
+          "description": "Complete UTF-8 CSV; at most 31 days, 10000 rows and 16 MiB. Exact canonical snapshot columns are repeated on every data row; empty exports expose snapshot response headers."
+          "headers":
+            "Content-Disposition":
+              "schema":
+                "type": "string"
+            "X-Snapshot-Block-Number":
+              "schema":
+                "$ref": "#/components/schemas/Quantity"
+            "X-Snapshot-Block-Hash":
+              "schema":
+                "$ref": "#/components/schemas/Hash"
+          "content":
+            "text/csv":
+              "schema":
+                "type": "string"
+                "format": "binary"
+        "default":
+          "$ref": "#/components/responses/Error"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/AddressExportRequest"
+
 components:
   securitySchemes:
     APIKey:
@@ -1967,6 +2173,215 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
   schemas:
+    WatchInput:
+      "type": "object"
+      "additionalProperties": false
+      "required":
+        - "address"
+        - "label"
+        - "kinds"
+        - "direction"
+        - "enabled"
+      "properties":
+        "address":
+          "$ref": "#/components/schemas/Address"
+        "label":
+          "type": "string"
+          "maxLength": 64
+        "kinds":
+          "type": "array"
+          "minItems": 1
+          "maxItems": 4
+          "uniqueItems": true
+          "items":
+            "type": "string"
+            "enum":
+              - "transaction"
+              - "erc20"
+              - "erc721"
+              - "erc1155"
+        "direction":
+          "type": "string"
+          "enum":
+            - "in"
+            - "out"
+            - "both"
+        "enabled":
+          "type": "boolean"
+    AddressWatch:
+      "type": "object"
+      "additionalProperties": false
+      "required":
+        - "id"
+        - "address"
+        - "label"
+        - "kinds"
+        - "direction"
+        - "enabled"
+        - "start_number"
+        - "start_hash"
+      "properties":
+        "id":
+          "type": "string"
+        "address":
+          "$ref": "#/components/schemas/Address"
+        "label":
+          "type": "string"
+          "maxLength": 64
+        "kinds":
+          "type": "array"
+          "minItems": 1
+          "maxItems": 4
+          "uniqueItems": true
+          "items":
+            "type": "string"
+            "enum":
+              - "transaction"
+              - "erc20"
+              - "erc721"
+              - "erc1155"
+        "direction":
+          "type": "string"
+          "enum":
+            - "in"
+            - "out"
+            - "both"
+        "enabled":
+          "type": "boolean"
+        "start_number":
+          "$ref": "#/components/schemas/Quantity"
+        "start_hash":
+          "$ref": "#/components/schemas/Hash"
+    WatchActivity:
+      "type": "object"
+      "additionalProperties": false
+      "required":
+        - "block_number"
+        - "block_hash"
+        - "timestamp"
+        - "transaction_hash"
+        - "transaction_index"
+        - "kind"
+        - "direction"
+      "properties":
+        "block_number":
+          "$ref": "#/components/schemas/Quantity"
+        "block_hash":
+          "$ref": "#/components/schemas/Hash"
+        "timestamp":
+          "$ref": "#/components/schemas/Quantity"
+        "transaction_hash":
+          "$ref": "#/components/schemas/Hash"
+        "transaction_index":
+          "$ref": "#/components/schemas/Quantity"
+        "kind":
+          "type": "string"
+        "from":
+          "$ref": "#/components/schemas/Address"
+        "to":
+          "$ref": "#/components/schemas/Address"
+        "value":
+          "$ref": "#/components/schemas/Quantity"
+        "status":
+          "type": "string"
+        "token_address":
+          "$ref": "#/components/schemas/Address"
+        "event_kind":
+          "type": "string"
+        "log_index":
+          "$ref": "#/components/schemas/Quantity"
+        "sub_index":
+          "$ref": "#/components/schemas/Quantity"
+        "token_id":
+          "$ref": "#/components/schemas/Quantity"
+        "amount":
+          "$ref": "#/components/schemas/Quantity"
+        "decimals":
+          "type": "string"
+        "direction":
+          "type": "string"
+    WatchNotification:
+      "type": "object"
+      "additionalProperties": false
+      "required":
+        - "id"
+        - "watch_id"
+        - "address"
+        - "label"
+        - "canonical"
+        - "published"
+        - "read"
+        - "activity"
+      "properties":
+        "id":
+          "$ref": "#/components/schemas/Quantity"
+        "watch_id":
+          "type": "string"
+        "address":
+          "$ref": "#/components/schemas/Address"
+        "label":
+          "type": "string"
+        "canonical":
+          "type": "boolean"
+        "published":
+          "type": "boolean"
+        "read":
+          "type": "boolean"
+        "activity":
+          "$ref": "#/components/schemas/WatchActivity"
+    WatchNotificationPage:
+      "type": "object"
+      "additionalProperties": false
+      "required":
+        - "items"
+        - "unread_count"
+        - "watermark"
+        - "next_cursor"
+      "properties":
+        "items":
+          "type": "array"
+          "items":
+            "$ref": "#/components/schemas/WatchNotification"
+        "unread_count":
+          "$ref": "#/components/schemas/Quantity"
+        "watermark":
+          "$ref": "#/components/schemas/Quantity"
+        "next_cursor":
+          "type": "string"
+    WatchReadThrough: {"type": "object", "additionalProperties": false, "required": ["through_id"], "properties": {"through_id": {"$ref": "#/components/schemas/Quantity"}}}
+    AddressExportRequest:
+      "type": "object"
+      "additionalProperties": false
+      "required":
+        - "address"
+        - "kind"
+        - "from"
+        - "to"
+        - "direction"
+      "properties":
+        "address":
+          "$ref": "#/components/schemas/Address"
+        "kind":
+          "type": "string"
+          "enum":
+            - "transaction"
+            - "erc20"
+            - "nft"
+        "from":
+          "type": "string"
+          "format": "date-time"
+        "to":
+          "type": "string"
+          "format": "date-time"
+        "direction":
+          "type": "string"
+          "enum":
+            - "in"
+            - "out"
+            - "both"
+    WatchListResponse: {"type": "object", "additionalProperties": false, "required": ["data", "meta"], "properties": {"data": {"type": "array", "items": {"$ref": "#/components/schemas/AddressWatch"}}, "meta": {"$ref": "#/components/schemas/Meta"}}}
+    WatchResponse: {"type": "object", "additionalProperties": false, "required": ["data", "meta"], "properties": {"data": {"$ref": "#/components/schemas/AddressWatch"}, "meta": {"$ref": "#/components/schemas/Meta"}}}
+    WatchNotificationsResponse: {"type": "object", "additionalProperties": false, "required": ["data", "meta"], "properties": {"data": {"$ref": "#/components/schemas/WatchNotificationPage"}, "meta": {"$ref": "#/components/schemas/Meta"}}}
     Hash:
       type: string
       pattern: '^0x[0-9a-fA-F]{64}$'

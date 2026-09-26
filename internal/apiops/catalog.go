@@ -19,6 +19,7 @@ const (
 type ParameterType string
 
 const (
+	ParameterBoolean         ParameterType = "boolean"
 	ParameterAddress         ParameterType = "address"
 	ParameterBillingState    ParameterType = "billing_state"
 	ParameterBlockIdentifier ParameterType = "block_identifier"
@@ -81,6 +82,14 @@ var catalog = []Spec{
 	spec("getAuthSession", "GET", "/auth/session", false),
 	spec("logoutAuthSession", "POST", "/auth/logout", false),
 	spec("updateCurrentUser", "PATCH", "/users/me", false),
+	spec("listCurrentUserWatches", "GET", "/users/me/watchlist", false),
+	spec("createCurrentUserWatch", "POST", "/users/me/watchlist", false),
+	spec("updateCurrentUserWatch", "PATCH", "/users/me/watchlist/{id}", false, watchResourceIDParameter()),
+	spec("deleteCurrentUserWatch", "DELETE", "/users/me/watchlist/{id}", false, watchResourceIDParameter()),
+	spec("listCurrentUserNotifications", "GET", "/users/me/notifications", false, cursorParameter(), queryParameter("unread_only", ParameterBoolean)),
+	spec("readCurrentUserNotification", "POST", "/users/me/notifications/{id}/read", false, watchResourceIDParameter()),
+	spec("readCurrentUserNotificationsThrough", "POST", "/users/me/notifications/read-through", false),
+	spec("exportCurrentUserAddressActivity", "POST", "/users/me/exports/address-activity", false),
 	spec("listCurrentUserAPIKeys", "GET", "/users/me/api-keys", false,
 		cursorParameter(), limitParameter("25")),
 	spec("createCurrentUserAPIKey", "POST", "/users/me/api-keys", false),
@@ -403,4 +412,10 @@ func EligibleIDs() []string {
 		}
 	}
 	return result
+}
+
+func watchResourceIDParameter() ParameterSpec {
+	p := pathParameter("id", ParameterText)
+	p.MaximumBytes = 64
+	return p
 }

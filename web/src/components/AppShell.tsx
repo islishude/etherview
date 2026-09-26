@@ -1,3 +1,4 @@
+import { NotificationBadge } from "./NotificationBadge";
 import { FormEvent, useState } from "react";
 import { Link, Outlet, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -131,6 +132,7 @@ export function AppShell() {
                 {t("nav.account")}
               </Link>
             )}
+            <NotificationBadge />
             {auth.session.authenticated && auth.session.user?.role === "admin" && (
               <>
                 <Link activeProps={{ className: "active" }} to="/admin/users">

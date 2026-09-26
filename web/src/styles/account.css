@@ -606,3 +606,42 @@
   color: var(--text);
   background: var(--surface-strong);
 }
+
+.watchlist-panel {
+  display: grid;
+  gap: 1rem;
+  margin-block: 1rem;
+  min-width: 0;
+}
+.watchlist-panel label {
+  display: block;
+}
+.watchlist-panel input:not([type="checkbox"]),
+.watchlist-panel select {
+  display: block;
+  max-width: 100%;
+  width: 100%;
+}
+.watchlist-panel fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+.watchlist-items {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+}
+.watchlist-items li {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.watchlist-items code {
+  overflow-wrap: anywhere;
+}
+.watchlist-panel .button {
+  margin: 0.25rem;
+}

@@ -1,3 +1,4 @@
+import { AddressAccountActions } from "@/components/AddressAccountActions";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -193,6 +194,7 @@ export function AddressDetailPage({ address, tab }: { address: string; tab: stri
       mono
     >
       <QueryNotice loading={account.isPending} error={account.error} />
+      {account.data && <AddressAccountActions address={address} />}
       {account.data && (
         <>
           <DetailList label={t("detail.addressSummary")}>

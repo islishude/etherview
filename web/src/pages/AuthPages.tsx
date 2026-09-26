@@ -1,3 +1,5 @@
+import { WatchlistPanel, NotificationsPanel } from "./WatchlistPages";
+import { usePrivateIdentity } from "@/api/privateAccount";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -26,7 +28,12 @@ import { Page } from "./pages";
 
 const ADMIN_PAGE_SIZE = 25;
 
-export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" }) {
+export function AccountPage({
+  tab,
+}: {
+  tab: "overview" | "api-keys" | "billing" | "watchlist" | "notifications";
+}) {
+  const privateIdentity = usePrivateIdentity();
   const { i18n, t } = useTranslation();
   const auth = useAuth();
   const wallet = useWallet();
@@ -165,6 +172,20 @@ export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" 
           {auth.session.authenticated && sessionUser && (
             <nav className="account-tabs" aria-label={t("auth.account.sections")}>
               <Link
+                to="/account"
+                search={{ tab: "watchlist" }}
+                aria-current={activeTab === "watchlist" ? "page" : undefined}
+              >
+                {t("watchlist.title")}
+              </Link>
+              <Link
+                to="/account"
+                search={{ tab: "notifications" }}
+                aria-current={activeTab === "notifications" ? "page" : undefined}
+              >
+                {t("watchlist.notifications")}
+              </Link>
+              <Link
                 aria-current={activeTab === "overview" ? "page" : undefined}
                 search={{ tab: "overview" }}
                 to="/account"
@@ -190,6 +211,10 @@ export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" 
             </nav>
           )}
 
+          {privateIdentity && activeTab === "watchlist" && <WatchlistPanel key={privateIdentity} />}
+          {privateIdentity && activeTab === "notifications" && (
+            <NotificationsPanel key={privateIdentity} />
+          )}
           {auth.session.authenticated && sessionUser && activeTab === "overview" && (
             <div className="account-layout" data-account-tab="overview">
               <section className="panel profile-panel" aria-labelledby="profile-title">
