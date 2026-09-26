@@ -59,6 +59,8 @@ merging distinct invariants.
 - [ADR-0045 — Canonical ERC-4337 UserOperation Index](ADR-0045-erc4337-useroperation-index.md)
 - [ADR-0046 — Authoritative ERC-20 Holder Reconciliation](ADR-0046-authoritative-erc20-holder-reconciliation.md)
 
+- [ADR-0051 — Watchlist, Notifications and CSV](ADR-0051-watchlist-notifications-csv.md)
+
 ## Retired decisions
 
 - ADR-0014 — durable verification identity and publication: replaced by the

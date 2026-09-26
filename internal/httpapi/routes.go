@@ -11,6 +11,7 @@ import (
 // capability disabled; an enabled capability always fails construction when
 // any required dependency is absent.
 type CapabilityRequirements struct {
+	Watchlist     bool
 	Native        bool
 	Catalog       bool
 	Analytics     bool
@@ -55,6 +56,9 @@ func (h *Handler) validateOperationalCapability() error { return nil }
 
 func (h *Handler) validateIdentityBillingCapability() error {
 	var errs []error
+	if h.requirements.Watchlist && h.cfg.Features.UserAuth && h.watchlist == nil {
+		errs = append(errs, errors.New("enabled watchlist requires a writer service"))
+	}
 	if h.cfg.Features.UserAuth && (h.userAuth == nil || h.userAdministration == nil) {
 		errs = append(errs, errors.New("enabled user authentication requires writer services"))
 	}

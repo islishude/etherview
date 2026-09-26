@@ -963,3 +963,22 @@ silently infer the downstream range an operator intends to rebuild. See
 - `docs/testing.md` and Makefile: stable validation commands.
 - `docs/operations.md`: telemetry interpretation and operator repair/admin
   procedures.
+
+## Private watchlists and bounded exports
+
+[ADR-0051](../decisions/ADR-0051-watchlist-notifications-csv.md) owns SIWE-only
+watch and notification resources plus the authenticated CSV response exception.
+Writer transactions serialize per-user watch limits and bind enrollment to an
+exact canonical tip. Core outbox generations and Token job publication/replay
+transitions atomically dirty an independent block-scoped notification queue.
+The maintenance role uses expiring leases, fenced keyset progress and idempotent
+notification identities; no public replay retention or process-local cursor
+controls delivery. API reads recheck canonical and exact Token-generation
+witnesses before exposing a notification as current.
+
+The SPA retains one public EventSource and separately polls private state only
+while authenticated and visible. Private query identities are session-scoped;
+logout/account changes cancel outstanding requests and remove cached data.
+CSV generation uses a single writer repeatable-read snapshot, verifies coverage,
+checks all size/work limits, and closes that snapshot before returning bytes.
+Admission and crash recovery are PostgreSQL facts, independent of API replicas.

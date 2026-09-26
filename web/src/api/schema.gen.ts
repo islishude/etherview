@@ -1263,6 +1263,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users/me/exports/address-activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["exportCurrentUserAddressActivity"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/me/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listCurrentUserNotifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/me/notifications/{id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["readCurrentUserNotification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/me/notifications/read-through": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["readCurrentUserNotificationsThrough"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/me/watchlist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listCurrentUserWatches"];
+        put?: never;
+        post: operations["createCurrentUserWatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/me/watchlist/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["deleteCurrentUserWatch"];
+        options?: never;
+        head?: never;
+        patch: operations["updateCurrentUserWatch"];
+        trace?: never;
+    };
     "/verifier/compilers": {
         parameters: {
             query?: never;
@@ -1456,6 +1552,17 @@ export interface components {
         };
         /** @description A 20-byte address; responses use the EIP-55 checksum form. */
         Address: string;
+        AddressExportRequest: {
+            address: components["schemas"]["Address"];
+            /** @enum {string} */
+            direction: "in" | "out" | "both";
+            /** Format: date-time */
+            from: string;
+            /** @enum {string} */
+            kind: "transaction" | "erc20" | "nft";
+            /** Format: date-time */
+            to: string;
+        };
         AddressInternalTransaction: {
             block_hash: components["schemas"]["Hash"];
             block_number: components["schemas"]["Quantity"];
@@ -1583,6 +1690,17 @@ export interface components {
             };
             /** @description Required Vyper target .vy file in the inline source bundle. */
             target_file?: string;
+        };
+        AddressWatch: {
+            address: components["schemas"]["Address"];
+            /** @enum {string} */
+            direction: "in" | "out" | "both";
+            enabled: boolean;
+            id: string;
+            kinds: ("transaction" | "erc20" | "erc721" | "erc1155")[];
+            label: string;
+            start_hash: components["schemas"]["Hash"];
+            start_number: components["schemas"]["Quantity"];
         };
         AddressWithdrawal: {
             address: components["schemas"]["Address"];
@@ -3507,6 +3625,65 @@ export interface components {
             decimals: number;
             name: string;
             symbol: string;
+        };
+        WatchActivity: {
+            amount?: components["schemas"]["Quantity"];
+            block_hash: components["schemas"]["Hash"];
+            block_number: components["schemas"]["Quantity"];
+            decimals?: string;
+            direction: string;
+            event_kind?: string;
+            from?: components["schemas"]["Address"];
+            kind: string;
+            log_index?: components["schemas"]["Quantity"];
+            status?: string;
+            sub_index?: components["schemas"]["Quantity"];
+            timestamp: components["schemas"]["Quantity"];
+            to?: components["schemas"]["Address"];
+            token_address?: components["schemas"]["Address"];
+            token_id?: components["schemas"]["Quantity"];
+            transaction_hash: components["schemas"]["Hash"];
+            transaction_index: components["schemas"]["Quantity"];
+            value?: components["schemas"]["Quantity"];
+        };
+        WatchInput: {
+            address: components["schemas"]["Address"];
+            /** @enum {string} */
+            direction: "in" | "out" | "both";
+            enabled: boolean;
+            kinds: ("transaction" | "erc20" | "erc721" | "erc1155")[];
+            label: string;
+        };
+        WatchListResponse: {
+            data: components["schemas"]["AddressWatch"][];
+            meta: components["schemas"]["Meta"];
+        };
+        WatchNotification: {
+            activity: components["schemas"]["WatchActivity"];
+            address: components["schemas"]["Address"];
+            canonical: boolean;
+            id: components["schemas"]["Quantity"];
+            label: string;
+            published: boolean;
+            read: boolean;
+            watch_id: string;
+        };
+        WatchNotificationPage: {
+            items: components["schemas"]["WatchNotification"][];
+            next_cursor: string;
+            unread_count: components["schemas"]["Quantity"];
+            watermark: components["schemas"]["Quantity"];
+        };
+        WatchNotificationsResponse: {
+            data: components["schemas"]["WatchNotificationPage"];
+            meta: components["schemas"]["Meta"];
+        };
+        WatchReadThrough: {
+            through_id: components["schemas"]["Quantity"];
+        };
+        WatchResponse: {
+            data: components["schemas"]["AddressWatch"];
+            meta: components["schemas"]["Meta"];
         };
     };
     responses: {
@@ -5595,6 +5772,208 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserAPIKeyIssuedResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    exportCurrentUserAddressActivity: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddressExportRequest"];
+            };
+        };
+        responses: {
+            /** @description Complete UTF-8 CSV; at most 31 days, 10000 rows and 16 MiB. Exact canonical snapshot columns are repeated on every data row; empty exports expose snapshot response headers. */
+            200: {
+                headers: {
+                    "Content-Disposition"?: string;
+                    "X-Snapshot-Block-Hash"?: components["schemas"]["Hash"];
+                    "X-Snapshot-Block-Number"?: components["schemas"]["Quantity"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listCurrentUserNotifications: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                unread_only?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful account operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchNotificationsResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    readCurrentUserNotification: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful account operation. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    readCurrentUserNotificationsThrough: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WatchReadThrough"];
+            };
+        };
+        responses: {
+            /** @description Successful account operation. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listCurrentUserWatches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful account operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchListResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createCurrentUserWatch: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WatchInput"];
+            };
+        };
+        responses: {
+            /** @description Successful account operation. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteCurrentUserWatch: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful account operation. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateCurrentUserWatch: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WatchInput"];
+            };
+        };
+        responses: {
+            /** @description Successful account operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchResponse"];
                 };
             };
             default: components["responses"]["Error"];
