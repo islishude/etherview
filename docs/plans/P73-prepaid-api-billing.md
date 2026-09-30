@@ -33,6 +33,8 @@ retain an audited quota-controlled bypass.
 | P73-T08 | blocked | P73-T07 | One-shot live EIP-3009 and Permit2 top-up plus API-debit conformance | testnet transactions and writer/chain/credit/usage reports |
 | P73-T09 | done | P73-T06, P73-T07 | Serialize the production-runtime and x402-local Docker E2E packages so their independent load/topology gates do not contend in CI | Makefile command regression and `test-runtime-e2e-prebuilt` |
 
+| P73-T10 | in_progress | P73-T06 | Adapt the x402 v2.27 local payment client to the explicit payload context without enabling payment extensions | tagged compilation, billing regressions, and full PR CI |
+
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
 ## Acceptance
@@ -86,3 +88,13 @@ the deployed image/build digest. Local Anvil evidence cannot close it.
   miss its unchanged thresholds. The prebuilt target now runs package tests
   with `-p=1`; the complete target passes runtime monolith/distributed in
   83.282 seconds, followed by x402 monolith/distributed in 37.837 seconds.
+
+### P73-T10 — x402 v2.27 client context (2026-10-01)
+
+- Reproduced PR #99's tagged E2E compilation failure: the SDK now requires
+  `PaymentPayloadContext`. The fixture passes an empty context, retaining its
+  exact EIP-3009/Permit2 flow without advertising gas-sponsoring extensions.
+- `go test -tags=runtimee2e ./e2e/x402local -run '^$'`,
+  `go test -race ./internal/billing/...`, `make docs-check plan-check`, and
+  `git diff --check` pass locally. Full production-topology PR CI remains
+  required before completion; P73-T08's live-payment blocker is unchanged.
