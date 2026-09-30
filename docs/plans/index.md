@@ -25,6 +25,8 @@ dependencies. This catalog groups the child plans by responsibility.
 - [P76 — ERC-4337 UserOperation Browsing](P76-erc4337-user-operations.md)
 - [P77 — Authoritative ERC-20 Token Holders](P77-authoritative-erc20-token-holders.md)
 
+- [P78 — Watchlist, Notifications and CSV](P78-watchlist-notifications-csv.md)
+
 ## Identity and billing
 
 - [P65 — User Authentication](P65-user-auth.md)

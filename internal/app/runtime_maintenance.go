@@ -5,6 +5,7 @@ import (
 	"github.com/islishude/etherview/internal/components"
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/maintenance"
+	"github.com/islishude/etherview/internal/watchlist"
 )
 
 func (assembly runtimeAssembly) registerMaintenanceComponents() error {
@@ -20,6 +21,15 @@ func (assembly runtimeAssembly) registerMaintenanceComponents() error {
 	componentRegistry := assembly.componentRegistry
 	chainID := assembly.chainID
 	if roleSet[components.RoleMaintenance] {
+		if cfg.Features.UserAuth {
+			service, err := watchlist.New(db, cfg.Chain.ID)
+			if err != nil {
+				return err
+			}
+			if err := componentRegistry.Register(components.RoleMaintenance, "43-watchlist-notifications", func() (components.Service, error) { return service, nil }); err != nil {
+				return err
+			}
+		}
 		rollupWorker, err := analytics.NewRollupWorker(db, analytics.RollupWorkerOptions{
 			ChainID: cfg.Chain.ID, PollInterval: cfg.Runtime.PollInterval,
 			Logger: logger, Observer: registry,

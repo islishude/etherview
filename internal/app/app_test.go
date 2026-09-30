@@ -255,7 +255,7 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 			},
 			want: []string{
 				"00-operations-http", "02-durable-metrics",
-				"44-historical-analytics-rollup",
+				"43-watchlist-notifications", "44-historical-analytics-rollup",
 				"45-maintenance-01", "45-maintenance-02",
 				"45-maintenance-03", "45-maintenance-04",
 				"46-search-catalog-maintenance",
@@ -287,7 +287,7 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 			},
 			want: []string{
 				"00-operations-http", "02-durable-metrics",
-				"44-historical-analytics-rollup",
+				"43-watchlist-notifications", "44-historical-analytics-rollup",
 				"45-maintenance-01", "45-maintenance-02",
 				"45-maintenance-03", "45-maintenance-04",
 				"46-search-catalog-maintenance",

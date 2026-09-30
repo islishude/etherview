@@ -596,3 +596,28 @@ PostgreSQL integration tests cover durable binding/publication and reorg
 rejection. Signature, catalogue expiry, unsafe archives and runtime identity
 regressions remain passing release gates. Runtime or permission failures must be
 fixed, never converted to expected failures or unrestricted execution.
+
+## Watchlist, notification and CSV acceptance
+
+P78 extends the existing gates rather than introducing a weaker test mode.
+Focused HTTP tests prove Cookie/Origin/CSRF ownership and JSON-before-CSV error
+handling. Watchlist integration cases use fresh PostgreSQL migrations, real core
+commits/reorgs and Token lease-fenced publication to prove delayed delivery,
+ERC-20/721/1155 batch identities, replay, retained orphan history, lease recovery,
+concurrent watch limits, read watermarks, exact CSV values and export admission.
+A concurrent committed reorg between snapshot establishment and export reads must
+leave the file entirely on its original canonical snapshot. Resource regressions
+exercise the independent 16 MiB encoder boundary, expired generation contexts,
+missing Core coverage and JSON-only failure responses.
+Matching regressions drain 2,000 transactions against 40,000 unrelated watches
+within the per-page worker deadline, resume through ineligible and popular-address
+followers, and repair existing Token generations while their account is disabled.
+The export row-limit fixture synthesizes normalized SQL rows solely to exercise
+10,000/10,001 boundaries; it is not ingestion or RPC conformance evidence.
+
+`make test-e2e` includes the embedded watch/notification/download workflow,
+bilingual and 390px accessibility checks. `make test-runtime-e2e` enables SIWE
+with an ephemeral API-only pepper, creates a real authenticated watch before
+new activity, verifies delivery/reorg history after API restart, and downloads a
+canonical CSV in both production topology layouts. Browser API fixtures do not
+replace that production PostgreSQL/maintenance acceptance.

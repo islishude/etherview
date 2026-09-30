@@ -162,6 +162,7 @@ type Options struct {
 	UserAuth              UserAuthenticator
 	UserAdministration    UserAdministration
 	UserAPIKeys           UserAPIKeyAdministration
+	Watchlist             WatchlistService
 	BillingReader         BillingReader
 	PrepaidBilling        *billing.PrepaidLedger
 	TopupBilling          *billing.TopupDispatcher
@@ -205,6 +206,7 @@ type Handler struct {
 	userAuth              UserAuthenticator
 	userAdministration    UserAdministration
 	userAPIKeys           UserAPIKeyAdministration
+	watchlist             WatchlistService
 	billingReader         BillingReader
 	prepaidBilling        *billing.PrepaidLedger
 	topupBilling          *billing.TopupDispatcher
@@ -268,6 +270,7 @@ func New(options Options) (*Handler, error) {
 		userAuth:              options.UserAuth,
 		userAdministration:    options.UserAdministration,
 		userAPIKeys:           options.UserAPIKeys,
+		watchlist:             options.Watchlist,
 		billingReader:         options.BillingReader,
 		prepaidBilling:        options.PrepaidBilling,
 		topupBilling:          options.TopupBilling,

@@ -26,12 +26,13 @@ batch semantics are not core v1 scope.
 | P65 | [User Authentication](docs/plans/P65-user-auth.md) | done | P40, P50 | SIWE wallet login, revocable sessions, profiles, administration, and scoped user API keys |
 | P67 | [ENS Primary Names](docs/plans/P67-ens-primary-names.md) | done | P20, P30, P40, P50 | Snapshot-stable official and custom ENS forward resolution plus verified primary-name display |
 | P68 | [Runtime and Architecture Hardening](docs/plans/P68-runtime-architecture-hardening.md) | done | P00, P30, P40, P50 | Explicit SQL, runtime, HTTP, Web, and quality boundaries |
-| P70 | [Release](docs/plans/P70-release.md) | blocked | P10, P20, P30, P40, P50, P64, P65, P67, P68, P73, P74, P75, P77 | Security, conformance, performance, E2E, documentation, and v1 release |
+| P70 | [Release](docs/plans/P70-release.md) | blocked | P10, P20, P30, P40, P50, P64, P65, P67, P68, P73, P74, P75, P77, P78 | Security, conformance, performance, E2E, documentation, and v1 release |
 | P73 | [Prepaid API Billing](docs/plans/P73-prepaid-api-billing.md) | blocked | P30, P40, P65 | x402 account top-ups and PostgreSQL prepaid credit for bounded Etherscan V2 reads |
 | P74 | [Etherscan V2 Read Expansion](docs/plans/P74-etherscan-v2-read-expansion.md) | done | P20, P40, P65 | Authoritative withdrawals, holdings, funding, block counts, and advanced compatibility filters |
 | P75 | [Runtime and Performance Hardening](docs/plans/P75-runtime-performance-hardening.md) | done | P10, P30, P68, P73, P74 | Bounded traversal/backfill, efficient persistence/projections, compatibility reads, and lean SPA delivery |
 | P76 | [ERC-4337 UserOperation Browsing](docs/plans/P76-erc4337-user-operations.md) | done | P10, P20, P30, P40, P50, P68, P75 | Canonical EntryPoint v0.6-v0.9 UserOperation indexing, APIs, search, and bilingual Web browsing |
 | P77 | [Authoritative ERC-20 Token Holders](docs/plans/P77-authoritative-erc20-token-holders.md) | done | P20, P30, P40, P50, P68, P74, P75 | Genesis-covered, exact-state-reconciled ERC-20 holder snapshots, APIs, compatibility, and Web browsing |
+| P78 | [Watchlist, Notifications and CSV](docs/plans/P78-watchlist-notifications-csv.md) | done | P10, P20, P40, P50, P65 | Private watches, durable in-app notifications and bounded address exports |
 
 Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 `superseded`.
@@ -141,3 +142,16 @@ P30-T116 fixes S3 credential redirects and isolates complete explicit
 credentials/region from unrelated AWS profiles. Local regressions, race,
 RustFS, lint, security, docs and plan gates pass; P30 remains done and the
 P70/P73 external release blockers are unchanged.
+
+P78 completes private SIWE Watchlists, durable reorg-aware in-app notifications
+and bounded snapshot CSV exports under ADR-0051. Local aggregate, PostgreSQL
+integration/race, browser, fresh-schema and monolith/split runtime gates pass;
+[P78 evidence](docs/plans/P78-watchlist-notifications-csv.md) records the limits.
+Remote CI and production acceptance remain unclaimed; P70/P73 external release
+blockers are unchanged.
+
+P78-T06 closes the notification review findings with bounded indexed matching,
+persisted source/follower progress and disabled-owner historical repair. Local
+scale/pagination/replay regressions, full PostgreSQL integration/race, aggregate
+checks and fresh-schema/production runtime acceptance pass. P70/P73 external
+release blockers remain unchanged.

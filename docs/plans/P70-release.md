@@ -29,11 +29,11 @@ and user/operator evidence sufficient for a production public release.
 
 | ID | Status | Depends on | Deliverable | Verification |
 |---|---|---|---|---|
-| P70-T01 | blocked | P10, P20, P30, P40, P50, P64, P65, P67, P68, P73, P74, P75, P77 | Execution/API/token/holder/proxy/verification/authentication/billing conformance matrix | conformance suite |
-| P70-T02 | blocked | P10, P20, P30, P40, P50, P64, P65, P67, P68, P73, P74, P75, P77 | Threat model, security audit, dependency, compiler, session, holder reconciliation, and payment supply-chain review | security gates |
-| P70-T03 | blocked | P10, P20, P30, P40, P50, P64, P65, P67, P68, P73, P74, P75, P77 | Monolith/split E2E, migration/rollback, outage, reorg, holder, payment, and soak suite | release CI |
+| P70-T01 | blocked | P10, P20, P30, P40, P50, P64, P65, P67, P68, P73, P74, P75, P77, P78 | Execution/API/token/holder/proxy/verification/authentication/billing conformance matrix | conformance suite |
+| P70-T02 | blocked | P10, P20, P30, P40, P50, P64, P65, P67, P68, P73, P74, P75, P77, P78 | Threat model, security audit, dependency, compiler, session, holder reconciliation, and payment supply-chain review | security gates |
+| P70-T03 | blocked | P10, P20, P30, P40, P50, P64, P65, P67, P68, P73, P74, P75, P77, P78 | Monolith/split E2E, migration/rollback, outage, reorg, holder, payment, and soak suite | release CI |
 | P70-T04 | blocked | P30, P75, P77 | 500 RPS reference capacity report including holder reads and concurrent reconciliation, plus tuning guide | load report |
-| P70-T05 | blocked | P00, P10, P20, P30, P40, P50, P64, P65, P67, P68, P73, P74, P75, P77 | User/operator/API/authentication/billing/holder/runbook/upgrade documentation | doc review and link check |
+| P70-T05 | blocked | P00, P10, P20, P30, P40, P50, P64, P65, P67, P68, P73, P74, P75, P77, P78 | User/operator/API/authentication/billing/holder/runbook/upgrade documentation | doc review and link check |
 | P70-T06 | todo | P70-T01–P70-T05, P70-T08, P70-T09 | SBOM, checksums, signed multi-arch artifacts and v1.0.0 release | release verification |
 | P70-T07 | done | P30 | Database read/write pool split configuration, deployment wiring, and capacity guidance | helm config/schema tests |
 | P70-T08 | done | P10, P20, P30-T07, P40, P50, P30 | Authenticated local/remote genesis account state, predeploy enrichment, native API, and block-zero UI | root, persistence, API, browser, security, and split-role tests |
@@ -78,7 +78,7 @@ and user/operator evidence sufficient for a production public release.
 
 ## Acceptance
 
-- [ ] Every required root plan through P77 and every root release gate is complete with evidence.
+- [ ] Every required root plan through P78 and every root release gate is complete with evidence.
 - [ ] Clean deployment, upgrade, rollback, backup/restore, and repair procedures
       are independently reproducible.
 - [ ] Security findings have no unresolved critical/high issue.
@@ -1322,3 +1322,9 @@ those gates.
   `env GOCACHE=/tmp/etherview-codex-go-build go test ./internal/observability
   -count=1` passes regressions for both health routes, a non-OK readiness
   response, preserved health metrics, and retained ordinary API access logs.
+
+P78 adds [private watches, notifications and CSV exports](P78-watchlist-notifications-csv.md)
+to release conformance. Include SIWE isolation, durable maintenance recovery,
+Token replay/reorg behavior, bounded export admission, generated-client downloads
+and monolith/split parity in T01/T03/T05 acceptance. P78 local evidence does not
+clear the existing live-payment or reference-capacity blockers.

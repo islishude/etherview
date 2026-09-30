@@ -1,6 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 
+import { PrivateAccountCleanup } from "./api/privateAccount";
+
 import { router } from "./router";
 import { ChainEventInvalidation } from "./api/eventInvalidation";
 import { AuthProvider } from "./auth/AuthProvider";
@@ -23,6 +25,7 @@ export function App() {
       <ThemeProvider>
         <WalletProvider>
           <AuthProvider>
+            <PrivateAccountCleanup />
             <RouterProvider router={router} />
           </AuthProvider>
         </WalletProvider>

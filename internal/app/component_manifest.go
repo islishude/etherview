@@ -79,6 +79,7 @@ func productionComponentKeys(cfg config.Config, roles []components.Role, wakeEna
 			add("46-search-catalog-maintenance")
 			if cfg.Features.UserAuth {
 				add("47-user-auth-cleanup")
+				add("43-watchlist-notifications")
 			}
 			if cfg.Features.APIBilling {
 				add("48-x402-billing-expiry")

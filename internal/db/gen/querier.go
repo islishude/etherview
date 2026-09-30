@@ -303,6 +303,12 @@ type Querier interface {
 	ExpireBillingTopupPayments(ctx context.Context, chainID pgtype.Numeric, observedAt pgtype.Timestamptz, expireLimit int32) (int64, error)
 	ExpireBillingUsageReservations(ctx context.Context, arg ExpireBillingUsageReservationsParams) (int64, error)
 	ExpireOpenBillingTopupIntents(ctx context.Context, arg ExpireOpenBillingTopupIntentsParams) (int64, error)
+	ExportActivity(ctx context.Context, arg ExportActivityParams) ([][]byte, error)
+	ExportAdmit(ctx context.Context, token pgtype.UUID, userID pgtype.UUID) (int64, error)
+	ExportCleanup(ctx context.Context) error
+	ExportCoverage(ctx context.Context, arg ExportCoverageParams) (ExportCoverageRow, error)
+	ExportLock(ctx context.Context) error
+	ExportRelease(ctx context.Context, token pgtype.UUID) error
 	FailBillingTopupPayment(ctx context.Context, arg FailBillingTopupPaymentParams) (pgtype.UUID, error)
 	FailBillingTopupSettlement(ctx context.Context, arg FailBillingTopupSettlementParams) (pgtype.UUID, error)
 	FindX402TestnetBillingPayments(ctx context.Context, arg FindX402TestnetBillingPaymentsParams) ([]pgtype.UUID, error)
@@ -622,6 +628,25 @@ type Querier interface {
 	VerifyV2SubmitJob(ctx context.Context, arg VerifyV2SubmitJobParams) (VerifyV2SubmitJobRow, error)
 	VerifyVyperPersistRuntime(ctx context.Context, arg VerifyVyperPersistRuntimeParams) error
 	VerifyVyperRuntime(ctx context.Context, generationID int64, version string) (VerifyVyperRuntimeRow, error)
+	WatchClaimWork(ctx context.Context, leaseToken pgtype.UUID, chainID pgtype.Numeric) (WatchNotificationWork, error)
+	WatchCleanupDeleted(ctx context.Context) error
+	WatchCleanupNotifications(ctx context.Context) error
+	WatchCleanupWork(ctx context.Context) error
+	WatchCount(ctx context.Context, userID pgtype.UUID) (int64, error)
+	WatchCreate(ctx context.Context, arg WatchCreateParams) (AddressWatch, error)
+	WatchDelete(ctx context.Context, iD pgtype.UUID, userID pgtype.UUID) (int64, error)
+	WatchFinishPage(ctx context.Context, arg WatchFinishPageParams) (int64, error)
+	WatchList(ctx context.Context, userID pgtype.UUID, chainID pgtype.Numeric) ([]AddressWatch, error)
+	WatchLockOwner(ctx context.Context, userID pgtype.UUID, chainID pgtype.Numeric) (pgtype.UUID, error)
+	WatchLockWork(ctx context.Context, chainID pgtype.Numeric, blockHash []byte, leaseToken pgtype.UUID) (WatchNotificationWork, error)
+	WatchNotificationList(ctx context.Context, arg WatchNotificationListParams) ([]WatchNotificationListRow, error)
+	WatchNotificationSummary(ctx context.Context, userID pgtype.UUID) (WatchNotificationSummaryRow, error)
+	WatchPublishNotification(ctx context.Context, arg WatchPublishNotificationParams) error
+	WatchReadNotification(ctx context.Context, userID pgtype.UUID, iD int64) (int64, error)
+	WatchReadThrough(ctx context.Context, userID pgtype.UUID, throughID int64) error
+	WatchTip(ctx context.Context, chainID pgtype.Numeric) (WatchTipRow, error)
+	WatchUpdate(ctx context.Context, arg WatchUpdateParams) (AddressWatch, error)
+	WatchWorkPage(ctx context.Context, arg WatchWorkPageParams) ([]WatchWorkPageRow, error)
 }
 
 var _ Querier = (*Queries)(nil)

@@ -1240,3 +1240,45 @@ Size API memory resources for the shared verification worker count plus the
 API itself. The Python audit guard is defense in depth for trusted compiler
 code; it is not a sandbox for arbitrary Python or native code. Source imports
 resolve only from the submitted bundle and pinned built-ins.
+
+## Private watches, notifications and CSV exports
+
+With `features.user_auth` enabled, authenticated users can manage Watchlist and
+Notifications tabs in `/account`; each address page also offers watch and CSV
+actions. Labels and notification records are private to the SIWE user. The
+maintenance role runs `43-watchlist-notifications` with writer access and no
+session pepper; only API/all receives that existing secret. No email, Webhook,
+browser push, Redis, NATS or object-store setup is required.
+
+Monitoring starts strictly after the canonical tip recorded on enrollment or
+re-enablement. Each account has at most 100 active watch entries, including
+entries with notifications paused. Removing a watch preserves existing
+notifications. Failed transactions and token mint/burn events are included;
+Token notifications await exact published enrichment. Orphaned events remain
+visible as invalidated, while a token replay temporarily marks its old output
+as unpublished. Notifications are retained for 90 days; activity delayed beyond
+90 days is not newly delivered. Cleanup runs in bounded maintenance batches.
+
+A stopped maintenance role delays notifications without losing its durable
+work. Restore the role and PostgreSQL connectivity to resume automatically;
+expired 30-second leases are reclaimable. The stable operational warning code
+`watchlist_processing_unavailable` indicates a retried processing/cleanup
+failure. Check maintenance logs and Token stage health when delivery is late.
+The public SSE stream is unrelated to private delivery and contains no watch
+addresses, labels, account IDs or notifications.
+
+CSV downloads require SIWE and CSRF and do not debit API credit. Choose one
+address, transaction/ERC-20/NFT type, direction and UTC `[from,to)` range. Files
+are as of the returned canonical snapshot: `X-Snapshot-Block-Number` and
+`X-Snapshot-Block-Hash` are also set for an empty file. Nonempty rows repeat the
+snapshot identity. Amounts remain raw exact decimal integers; import numeric
+columns as text in spreadsheet programs to avoid their precision coercion.
+
+Limits are 31 days, 10,000 rows, 16 MiB, 15 seconds of generation, five starts per
+rolling minute per account, one active generation per account and four per
+deployment. `export_limit` requires a smaller interval; `export_rate_limit`
+returns HTTP 429 with `Retry-After: 60`. `activity_unavailable` means the required
+Core coverage/Token publication or writer is unavailable; retry after recovery.
+Failures return JSON before any CSV bytes. Files are generated in memory and
+not retained. Crash reservations expire after 20 seconds and maintenance prunes
+old admission records. Existing HTTP write limits still bound file delivery.

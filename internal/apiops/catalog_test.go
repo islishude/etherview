@@ -310,6 +310,8 @@ func openAPIParameterType(
 		return ParameterUint256, nil
 	}
 	switch {
+	case schema.Type == "boolean":
+		return ParameterBoolean, nil
 	case schema.Type == "integer":
 		return ParameterInteger, nil
 	case schema.Type == "string" && schema.Format == "block-identifier":
