@@ -52,6 +52,7 @@ keys, and the fresh-database schema remain unchanged.
 | P68-T25 | done | P68-T23 | Local Kubo Preview gateway and streaming single-file IPFS CLI | CLI unit/race, Compose/TLS isolation, offline Kubo roundtrip and full Preview acceptance |
 | P68-T26 | done | P68-T25 | Correct IPFS filename and URI encoding; consolidate native pgx acceptance into the development guide | Filename/URI unit and race regressions, lint, docs and plan checks |
 | P68-T27 | done | P68-T26 | Rewrite native pgx acceptance around engineering invariants, validation coverage and benchmark limits without Git or PR history | Documentation and plan checks |
+| P68-T28 | done | P68-T24 | Make the enrichment heartbeat completion regression deterministic under CI scheduling | Repeated focused race tests, enrichment race suite, lint, docs and plan gates |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
@@ -423,3 +424,16 @@ historical public-gateway gate; P70/P73 external release gates remain separate.
   durable attempt, 205 bytes, the fixed SHA-256, public-network policy, and
   restart-stable persistence. The aggregate `make check`, `make plan-check`,
   and `git diff --check` pass on the completed tree.
+
+### P68-T28 — Deterministic enrichment heartbeat test (2026-10-01)
+
+- PR #99 CI run 36791571282 reproduced `TestWorkerRenewsAndCompletes`
+  completing with zero renewals under the race detector. The processor's
+  18 ms real sleep raced the worker's 10 ms heartbeat on a loaded runner.
+- Run the unchanged heartbeat/finish assertions inside `testing/synctest`,
+  so virtual time advances only while goroutines are blocked. Production
+  worker, lease duration, heartbeat interval and renewal checks are unchanged.
+- `go test -race ./internal/enrich -run '^TestWorkerRenewsAndCompletes$'
+  -count=100`, `go test -race ./internal/enrich`, `make lint-go docs-check
+  plan-check`, and `git diff --check` pass locally. Full PR CI will rerun
+  before merge; this test-only fix adds no production runtime claim.

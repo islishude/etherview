@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -120,26 +121,28 @@ func TestDurableWorkerWakeIsOnlyALatencyHint(t *testing.T) {
 
 func TestWorkerRenewsAndCompletes(t *testing.T) {
 	t.Parallel()
-	stage := StageID{Name: "trace", Version: 1}
-	ctx, cancel := context.WithCancel(context.Background())
-	queue := &testJobQueue{cancel: cancel, lease: Lease{
-		Job: Job{ID: "job-1", Stage: stage, ChainID: "1", BlockHash: uintWord(1), Attempt: 1}, Token: "lease-1",
-	}}
-	worker, err := NewWorker(queue, []Processor{ProcessorFunc{ID: stage, Fn: func(context.Context, Job) (StageResult, error) {
-		time.Sleep(18 * time.Millisecond)
-		return StageResult{Details: map[string]string{"frames": "2"}}, nil
-	}}}, WorkerOptions{ID: "worker-1", LeaseDuration: 30 * time.Millisecond, PollInterval: time.Millisecond})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := worker.Run(ctx); !errors.Is(err, context.Canceled) {
-		t.Fatalf("run err=%v", err)
-	}
-	queue.mu.Lock()
-	defer queue.mu.Unlock()
-	if queue.finished == nil || queue.finished.State != ResultComplete || queue.finished.Details["frames"] != "2" || queue.renewed == 0 {
-		t.Fatalf("finished=%+v renewed=%d", queue.finished, queue.renewed)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		stage := StageID{Name: "trace", Version: 1}
+		ctx, cancel := context.WithCancel(context.Background())
+		queue := &testJobQueue{cancel: cancel, lease: Lease{
+			Job: Job{ID: "job-1", Stage: stage, ChainID: "1", BlockHash: uintWord(1), Attempt: 1}, Token: "lease-1",
+		}}
+		worker, err := NewWorker(queue, []Processor{ProcessorFunc{ID: stage, Fn: func(context.Context, Job) (StageResult, error) {
+			time.Sleep(18 * time.Millisecond)
+			return StageResult{Details: map[string]string{"frames": "2"}}, nil
+		}}}, WorkerOptions{ID: "worker-1", LeaseDuration: 30 * time.Millisecond, PollInterval: time.Millisecond})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := worker.Run(ctx); !errors.Is(err, context.Canceled) {
+			t.Fatalf("run err=%v", err)
+		}
+		queue.mu.Lock()
+		defer queue.mu.Unlock()
+		if queue.finished == nil || queue.finished.State != ResultComplete || queue.finished.Details["frames"] != "2" || queue.renewed == 0 {
+			t.Fatalf("finished=%+v renewed=%d", queue.finished, queue.renewed)
+		}
+	})
 }
 
 func TestWorkerObservesOnlyDurableJobOutcome(t *testing.T) {

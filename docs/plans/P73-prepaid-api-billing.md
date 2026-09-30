@@ -32,8 +32,7 @@ retain an audited quota-controlled bypass.
 | P73-T07 | done | P73-T04, P73-T05 | Metrics, alerts, role-scoped deployment, runbook, administrator adjustment control, reconciliation CLI, and rollback | deployment, security, operations, and common gates |
 | P73-T08 | blocked | P73-T07 | One-shot live EIP-3009 and Permit2 top-up plus API-debit conformance | testnet transactions and writer/chain/credit/usage reports |
 | P73-T09 | done | P73-T06, P73-T07 | Serialize the production-runtime and x402-local Docker E2E packages so their independent load/topology gates do not contend in CI | Makefile command regression and `test-runtime-e2e-prebuilt` |
-
-| P73-T10 | in_progress | P73-T06 | Adapt the x402 v2.27 local payment client to the explicit payload context without enabling payment extensions | tagged compilation, billing regressions, and full PR CI |
+| P73-T10 | done | P73-T06 | Adapt the x402 v2.27 local payment client to the explicit payload context without enabling payment extensions | tagged compilation, billing regressions, and production runtime CI |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
@@ -96,5 +95,11 @@ the deployed image/build digest. Local Anvil evidence cannot close it.
   exact EIP-3009/Permit2 flow without advertising gas-sponsoring extensions.
 - `go test -tags=runtimee2e ./e2e/x402local -run '^$'`,
   `go test -race ./internal/billing/...`, `make docs-check plan-check`, and
-  `git diff --check` pass locally. Full production-topology PR CI remains
-  required before completion; P73-T08's live-payment blocker is unchanged.
+  `git diff --check` pass locally. `make lint-go` also passes.
+- [CI run 36791571282](https://github.com/islishude/etherview/actions/runs/36791571282)
+  at `e2225b40e77c624768161299781c5f744dfb3bc9` passes the production
+  Container/Compose/Helm gate, including monolith/split EIP-3009 and Permit2
+  runtime acceptance. The local image build stopped at an unrelated module
+  download TLS timeout. P68-T28 fixes the same CI run's independent heartbeat
+  test failure; remaining PR checks must pass before merge. P73-T08's live
+  payment blocker remains unchanged.
