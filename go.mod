@@ -11,7 +11,7 @@ require (
 	github.com/aws/smithy-go v1.28.2
 	github.com/coder/websocket v1.8.15
 	github.com/ensdomains/go-ens/v4 v4.0.0
-	github.com/ethereum/go-ethereum v1.17.5
+	github.com/ethereum/go-ethereum v1.17.6
 	github.com/fjl/geas v0.3.3
 	github.com/fxamacker/cbor/v2 v2.9.4
 	github.com/google/uuid v1.6.0
