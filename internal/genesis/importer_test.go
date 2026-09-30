@@ -120,12 +120,20 @@ func TestParseDocumentAuthenticatesAmsterdamGenesisHeader(t *testing.T) {
     "2000000000000000000000000000000000000002":{"balance":"1000000000000000000","nonce":"0x3","code":"0x6001600055","storage":{"0x00":"0x07","0x02":"0x09"}}
   }
 }`
-	_, block, err := parseDocument([]byte(document), 777)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got, want := block.Hash().Hex(), "0x06605f26223eccad00fdc765bad60cf03842307d81bb0d13f3870e81ebc27194"; got != want {
-		t.Fatalf("Amsterdam block hash = %s, want %s", got, want)
+	for _, slotNumber := range []string{`7`, `"7"`, `"0x7"`} {
+		t.Run(slotNumber, func(t *testing.T) {
+			encoded := strings.Replace(document, `"slotNumber":7`, `"slotNumber":`+slotNumber, 1)
+			spec, block, err := parseDocument([]byte(encoded), 777)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if spec.SlotNumber == nil || *spec.SlotNumber != 7 {
+				t.Fatalf("slot number = %v, want 7", spec.SlotNumber)
+			}
+			if got, want := block.Hash().Hex(), "0x06605f26223eccad00fdc765bad60cf03842307d81bb0d13f3870e81ebc27194"; got != want {
+				t.Fatalf("Amsterdam block hash = %s, want %s", got, want)
+			}
+		})
 	}
 }
 
@@ -284,8 +292,18 @@ func TestParseDocumentUsesCoreGenesisJSONAuthority(t *testing.T) {
 				`"gasLimit":"0x1","difficulty":"0x1","alloc":{}}`,
 		},
 		{
-			name: "quoted slot number",
-			document: `{"config":{"chainId":777},"slotNumber":"0x7",` +
+			name: "malformed slot number",
+			document: `{"config":{"chainId":777},"slotNumber":"0xgg",` +
+				`"gasLimit":"0x1","difficulty":"0x1","alloc":{}}`,
+		},
+		{
+			name: "overflowing slot number",
+			document: `{"config":{"chainId":777},"slotNumber":"0x10000000000000000",` +
+				`"gasLimit":"0x1","difficulty":"0x1","alloc":{}}`,
+		},
+		{
+			name: "negative slot number",
+			document: `{"config":{"chainId":777},"slotNumber":"-1",` +
 				`"gasLimit":"0x1","difficulty":"0x1","alloc":{}}`,
 		},
 		{
