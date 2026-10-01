@@ -165,3 +165,8 @@ PR CI remains required before merge. P70/P73 external blockers are unchanged.
 P00-T14 disables automatic Dependabot updates for the pinned Python Docker
 image after closing PR #112. YAML policy, docs and plan checks pass; Python
 upgrades require a coordinated Vyper runtime update. P00 remains done.
+
+P68-T29 makes the home replica-switch regression deterministic by waiting for
+consumption of its initial snapshot. Repeated HTTP race tests, Go lint,
+generation, Web unit/tooling, docs and plan gates pass locally. P68 remains
+done; remote PR CI is required before merge and P70/P73 blockers are unchanged.

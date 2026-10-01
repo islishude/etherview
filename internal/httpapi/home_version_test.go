@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/islishude/etherview/internal/config"
@@ -139,64 +140,63 @@ func TestHomeVersionCancellationRemovesSubscription(t *testing.T) {
 
 func TestHomeVersionFenceSurvivesReplicaSwitch(t *testing.T) {
 	t.Parallel()
-	cfg := config.Default()
-	cfg.Chain.ID = 1
-	newReplica := func(version uint64) (*Handler, *HomeFeed) {
-		feed, err := NewHomeFeed(&homeSnapshotReaderFixture{}, events.NewBroker(8), HomeFeedOptions{ChainID: 1})
-		if err != nil {
-			t.Fatal(err)
+	synctest.Test(t, func(t *testing.T) {
+		cfg := config.Default()
+		cfg.Chain.ID = 1
+		newReplica := func(version uint64) (*Handler, *HomeFeed) {
+			feed, err := NewHomeFeed(&homeSnapshotReaderFixture{}, events.NewBroker(8), HomeFeedOptions{ChainID: 1})
+			if err != nil {
+				t.Fatal(err)
+			}
+			feed.publish(HomePublication{EventID: version})
+			handler, err := New(Options{Config: cfg, Reader: fakeReader{}, HomeSnapshots: feed})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return handler, feed
 		}
-		feed.publish(HomePublication{EventID: version})
-		handler, err := New(Options{Config: cfg, Reader: fakeReader{}, HomeSnapshots: feed})
-		if err != nil {
-			t.Fatal(err)
+		fresh, _ := newReplica(11)
+		lagging, feed := newReplica(10)
+		current := httptest.NewRecorder()
+		fresh.ServeHTTP(current, httptest.NewRequest(http.MethodGet, "/api/v1/home?min_event_id=11", nil))
+		if current.Code != http.StatusOK {
+			t.Fatalf("fresh replica: %s", current.Body)
 		}
-		return handler, feed
-	}
-	fresh, _ := newReplica(11)
-	lagging, feed := newReplica(10)
-	current := httptest.NewRecorder()
-	fresh.ServeHTTP(current, httptest.NewRequest(http.MethodGet, "/api/v1/home?min_event_id=11", nil))
-	if current.Code != http.StatusOK {
-		t.Fatalf("fresh replica: %s", current.Body)
-	}
-	result := make(chan *httptest.ResponseRecorder, 1)
-	go func() {
-		rec := httptest.NewRecorder()
-		lagging.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/home?min_event_id=11", nil))
-		result <- rec
-	}()
-	deadline := time.Now().Add(time.Second)
-	for {
+		result := make(chan *httptest.ResponseRecorder, 1)
+		go func() {
+			rec := httptest.NewRecorder()
+			lagging.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/home?min_event_id=11", nil))
+			result <- rec
+		}()
+		// Registration happens before Subscribe returns its buffered snapshot.
+		// Wait until the handler has consumed version 10 and is blocked awaiting
+		// version 11, so publishing does not exercise slow-subscriber eviction.
+		synctest.Wait()
 		feed.mu.Lock()
-		subscribed := len(feed.subscribers) == 1
+		subscribers := len(feed.subscribers)
 		feed.mu.Unlock()
-		if subscribed {
-			break
+		if subscribers != 1 {
+			t.Fatalf("lagging replica subscribers = %d, want 1", subscribers)
 		}
-		if time.Now().After(deadline) {
-			t.Fatal("lagging replica did not subscribe")
+		select {
+		case rec := <-result:
+			t.Fatalf("replica switch returned snapshot 10: %s", rec.Body)
+		default:
 		}
-		time.Sleep(time.Millisecond)
-	}
-	select {
-	case rec := <-result:
-		t.Fatalf("replica switch returned snapshot 10: %s", rec.Body)
-	default:
-	}
-	feed.publish(HomePublication{EventID: 11})
-	select {
-	case rec := <-result:
-		var envelope struct {
-			EventID string `json:"event_id"`
+		feed.publish(HomePublication{EventID: 11})
+		select {
+		case rec := <-result:
+			var envelope struct {
+				EventID string `json:"event_id"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+				t.Fatal(err)
+			}
+			if rec.Code != http.StatusOK || envelope.EventID != "11" {
+				t.Fatalf("lagging replica response=%s", rec.Body)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("replica publication did not wake request")
 		}
-		if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
-			t.Fatal(err)
-		}
-		if rec.Code != http.StatusOK || envelope.EventID != "11" {
-			t.Fatalf("lagging replica response=%s", rec.Body)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("replica publication did not wake request")
-	}
+	})
 }
