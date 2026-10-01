@@ -53,10 +53,15 @@ keys, and the fresh-database schema remain unchanged.
 | P68-T26 | done | P68-T25 | Correct IPFS filename and URI encoding; consolidate native pgx acceptance into the development guide | Filename/URI unit and race regressions, lint, docs and plan checks |
 | P68-T27 | done | P68-T26 | Rewrite native pgx acceptance around engineering invariants, validation coverage and benchmark limits without Git or PR history | Documentation and plan checks |
 | P68-T28 | done | P68-T24 | Make the enrichment heartbeat completion regression deterministic under CI scheduling | Repeated focused race tests, enrichment race suite, lint, docs and plan gates |
+| P68-T29 | done | P68-T13 | Synchronize the home replica-switch regression after consumption of the initial snapshot | Repeated focused race tests, HTTP API race suite, lint, docs and plan gates |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
 ## Acceptance
+
+- [x] P68-T29: the replica-switch regression waits for the initial snapshot to
+      be consumed before publishing the required version; stale-response and
+      slow-subscriber assertions remain enforced.
 
 - [x] P68-T27: native pgx acceptance explains implementation boundaries,
       validation coverage and benchmark limits without Git or PR history;
@@ -437,3 +442,22 @@ historical public-gateway gate; P70/P73 external release gates remain separate.
   -count=100`, `go test -race ./internal/enrich`, `make lint-go docs-check
   plan-check`, and `git diff --check` pass locally. Full PR CI will rerun
   before merge; this test-only fix adds no production runtime claim.
+
+### P68-T29 — Deterministic home replica-switch test (2026-10-01)
+
+- [PR #114 CI run 36795051256](https://github.com/islishude/etherview/actions/runs/36795051256)
+  failed `TestHomeVersionFenceSurvivesReplicaSwitch` with an immediate 503 under
+  the race detector. Subscriber registration precedes consumption of the
+  buffered initial snapshot; publishing at registration can trigger the
+  intentional slow-subscriber disconnect. The unchanged local test passed
+  1,000 repetitions, so the failure evidence is the remote run.
+- `testing/synctest` now waits until the handler consumes version 10 and blocks
+  awaiting version 11 before publication. The test still rejects a premature
+  response and requires HTTP 200 with event 11. Production feed behavior,
+  buffer capacity, timeouts and slow-subscriber coverage are unchanged.
+- `go test -race ./internal/httpapi -run
+  '^TestHomeVersionFenceSurvivesReplicaSwitch$' -count=1000`,
+  `go test -race ./internal/httpapi`, `make lint-go docs-check plan-check`,
+  `make generate-check web-lint web-test`, and `git diff --check` pass locally.
+  The combined dependency updates pass all 376 Web tests and eight tooling
+  tests. Full remote PR CI remains required before merge.
