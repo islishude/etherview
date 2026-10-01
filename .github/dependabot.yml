@@ -86,6 +86,9 @@ updates:
       time: "03:30"
       timezone: Asia/Shanghai
     open-pull-requests-limit: 10
+    # Python changes require coordinated Vyper runtime and lock updates (ADR-0047).
+    ignore:
+      - dependency-name: "python"
     groups:
       container-images:
         patterns: ["*"]

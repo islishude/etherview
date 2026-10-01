@@ -32,6 +32,7 @@ and API contracts, and a deterministic embedded-SPA build.
 | P00-T11 | done | P00-T07, P00-T08 | Raise the repository Go baseline to 1.27.0 and pin golangci-lint 2.13.1 across development and production build inputs | toolchain regressions, lint configuration, common gates, and production image validation |
 | P00-T12 | done | P00-T01 | Compact repository instruction entry point with routed development, architecture, testing, and operations guidance | documentation review, `make plan-check`, and `git diff --check` |
 | P00-T13 | done | P00-T12 | Streamline README and repository instructions while preserving startup guidance, mandatory boundaries, and authoritative document routing | `make docs-check`, `make plan-check`, local-link review, and `git diff --check` |
+| P00-T14 | done | P00-T02 | Ignore automatic Python Docker image updates while the Vyper runtime remains explicitly pinned | YAML policy inspection, docs and plan checks |
 
 ## Acceptance
 
@@ -128,3 +129,14 @@ None.
   `make helm-check` pass; BuildKit resolves the versioned Go/Node/distroless bases
   and reports no Dockerfile warnings. A preceding transient Docker Hub TLS
   timeout cleared on the recorded retry.
+
+### P00-T14 — Disable automatic Python image updates (2026-10-01)
+
+- Closed Dependabot PR #112 at the user's request and added a Docker
+  `ignore` entry for `python`, without version or update-type restrictions.
+  Python upgrades now require an explicit coordinated Vyper runtime change;
+  the pinned image and ADR-0047 runtime contract remain unchanged.
+- Ruby YAML parsing verifies the exact Python-only rule and confirms that
+  every other Dependabot setting matches the preceding commit.
+  `make docs-check plan-check` and `git diff --check` pass. This configuration
+  and governance change does not change application code or runtime images.

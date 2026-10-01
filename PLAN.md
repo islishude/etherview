@@ -161,3 +161,7 @@ payload context, with billing race tests and production runtime CI passing.
 P68-T28 makes its independent enrichment heartbeat regression deterministic
 under the race detector. Focused tests, lint, docs and plan checks pass; final
 PR CI remains required before merge. P70/P73 external blockers are unchanged.
+
+P00-T14 disables automatic Dependabot updates for the pinned Python Docker
+image after closing PR #112. YAML policy, docs and plan checks pass; Python
+upgrades require a coordinated Vyper runtime update. P00 remains done.
