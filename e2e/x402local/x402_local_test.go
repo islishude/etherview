@@ -298,7 +298,9 @@ func topup(
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload, err := exactclient.NewExactEvmScheme(signer, nil).CreatePaymentPayload(t.Context(), selected.SDK())
+	payload, err := exactclient.NewExactEvmScheme(signer, nil).CreatePaymentPayload(
+		t.Context(), selected.SDK(), x402.PaymentPayloadContext{},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

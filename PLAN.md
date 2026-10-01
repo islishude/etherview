@@ -155,3 +155,9 @@ persisted source/follower progress and disabled-owner historical repair. Local
 scale/pagination/replay regressions, full PostgreSQL integration/race, aggregate
 checks and fresh-schema/production runtime acceptance pass. P70/P73 external
 release blockers remain unchanged.
+
+P73-T10 adapts the local EIP-3009/Permit2 fixture to x402 v2.27's explicit
+payload context, with billing race tests and production runtime CI passing.
+P68-T28 makes its independent enrichment heartbeat regression deterministic
+under the race detector. Focused tests, lint, docs and plan checks pass; final
+PR CI remains required before merge. P70/P73 external blockers are unchanged.
