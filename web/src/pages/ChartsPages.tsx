@@ -1,3 +1,4 @@
+import { PageHeading } from "@/components/DesignPrimitives";
 import { FormEvent, lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -436,8 +437,8 @@ function ExactChartTable({
           <tr>
             <th>{t("charts.bucketStart")}</th>
             <th>{t("charts.bucketEnd")}</th>
-            <th>{label}</th>
-            <th>{t("charts.exactValue")}</th>
+            <th className="numeric">{label}</th>
+            <th className="numeric">{t("charts.exactValue")}</th>
             <th>{t("charts.partial")}</th>
             <th>{t("charts.blockRange")}</th>
           </tr>
@@ -453,8 +454,8 @@ function ExactChartTable({
               <td>
                 <time dateTime={point.bucket_end}>{formatTimestamp(point.bucket_end, locale)}</time>
               </td>
-              <td>{display(point.value)}</td>
-              <td>
+              <td className="numeric">{display(point.value)}</td>
+              <td className="numeric">
                 <code>{point.value}</code>
               </td>
               <td>{point.partial ? t("common.yes") : t("common.no")}</td>
@@ -482,11 +483,7 @@ function ChartsPageFrame({
 }) {
   return (
     <div className="page-stack inner-page charts-page">
-      <header className="page-header charts-page-header">
-        <span className="eyebrow">Etherview Analytics</span>
-        <h1>{title}</h1>
-        <p>{description}</p>
-      </header>
+      <PageHeading title={title} description={description} />
       {children}
     </div>
   );

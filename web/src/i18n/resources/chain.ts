@@ -1,6 +1,7 @@
 export const chainResources = {
   en: {
     home: {
+      description: "Explore blocks, transactions and activity on your network.",
       metrics: "Chain metrics",
       indexed: "Indexed block",
       highestCovered: "Highest covered block",
@@ -173,6 +174,7 @@ export const chainResources = {
   },
   zh: {
     home: {
+      description: "浏览网络中的区块、交易与链上活动。",
       metrics: "链指标",
       indexed: "已索引区块",
       highestCovered: "最高已覆盖区块",

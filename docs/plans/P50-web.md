@@ -88,6 +88,11 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T61 | done | P50-T60 | Keep Address Transactions status and finality badges in a consistent vertical layout | focused stylesheet, frontend, and embedded browser regressions |
 | P50-T62 | done | P50-T18, P50-T60 | Authorize CodeMirror runtime styles with a per-SPA-shell CSP nonce | Go handler, frontend, embedded Chromium, and common gates |
 | P50-T63 | done | P50-T62 | Move Address Transactions Finality into an independent final column without changing other activity tables | focused frontend, responsive, accessibility, embedded browser, and common gates |
+| P50-T64 | done | P50-T63 | Neutral light/dark design tokens, blue brand and accessible grouped responsive navigation | focused navigation/theme tests, frontend and embedded browser gates |
+| P50-T65 | done | P50-T64 | Unified home, explorer lists and entity detail hierarchy | core page, deep-link, responsive and accessibility regressions |
+| P50-T66 | done | P50-T65 | Consistent contract, analytics, account, notification and administration surfaces | capability/account/wallet regressions and frontend gates |
+| P50-T67 | done | P50-T66 | Full redesign browser acceptance, screenshots and maintained design documentation | complete frontend, embedded browser, generation, docs and plan gates |
+| P50-T68 | done | P50-T67 | Apply the document theme before chart effects sample shared palette tokens | initial-theme and bidirectional chart regressions, frontend and embedded browser gates |
 
 ## Acceptance
 
@@ -117,6 +122,12 @@ injected EIP-1193 wallet for all contract reads and writes.
       tables and transaction surfaces remain unchanged.
 - [x] Address activity tables render the Direction heading through the English
       and Chinese catalogs instead of exposing an untranslated resource key.
+
+- [x] Neutral/blue light and dark styles, grouped top navigation, compact summaries,
+      shared page/tab/form/table patterns and responsive controls cover the site.
+- [x] The redesign matrix checks seven representative routes at 390/768/1440px,
+      both languages/themes, WCAG 2.1 AA, keyboard behavior, overflow, CSP and
+      external-resource isolation, with screenshots inspected locally.
 
 ## Current Blockers
 
@@ -964,3 +975,77 @@ None.
   Focused CorePages/styles tests pass 60/60, TypeScript lint and production
   build pass, `make generate-check`, `make plan-check`, and `git diff --check`
   pass, and host-authorized `make test-e2e` passes all 22 browser flows.
+
+- P50-T64 introduces neutral/blue light and dark tokens, local shell SVG icons,
+  grouped top navigation, a separate account disclosure, compact locale controls
+  and responsive explorer navigation. Outside interaction, Escape, native Tab
+  order, focus restoration and feature gating have focused regressions.
+- P50-T64 validation: 378 frontend tests and tooling tests, `make web-lint`,
+  `make generate-check`, `make docs-check`, `make plan-check` and all 31 canonical
+  `make test-e2e` flows pass locally. Initial assets remain within the unchanged
+  budget (980,022 raw bytes, 304,540 gzip bytes). Browser inspection also fixed
+  Chinese search-button wrapping and authenticated narrow-header overflow.
+
+- P50-T65 extracts the domain-owned Home page and shared PageHeading, compacts
+  snapshot metrics/coverage, removes ordinary panel shadows, aligns numeric
+  table cells and replaces filled entity tabs with blue underlines. Transaction
+  action evidence precedes the overview tabs without changing lazy queries.
+- P50-T65 validation: all 378 frontend tests, tooling tests, `make web-lint`,
+  `make generate-check`, `make docs-check`, `make plan-check` and all 31
+  `make test-e2e` browser flows pass locally. Initial assets remain below the
+  unchanged limits (981,910 raw bytes, 304,979 gzip bytes).
+
+- P50-T66 applies the shared title, tab, form, numeric-table and semantic-status
+  styles to contract/verification workspaces, charts, account/API keys, Watchlist,
+  notifications and billing/admin. Wallet connection and account authentication
+  remain distinct; exact call targets, feature gates and private-cache boundaries
+  are unchanged. Cold-start language initialization now sets the document language
+  before rendering, with a regression independent of retained i18n listeners.
+- P50-T66 validation: 378 frontend tests and tooling tests, `make web-lint`,
+  `make web-build`, `make generate-check`, `make docs-check` and `make plan-check`
+  pass locally. The existing embedded browser scenarios pass, including SIWE,
+  API keys, billing/admin, exact wallet targets and wrong-chain restrictions.
+  P50-T67 is claimed for final screenshot inspection and acceptance evidence.
+
+- P50-T67 final local acceptance (2026-10-03): `make web-lint`, `make web-test`
+  (42 files / 378 tests plus tooling tests), `make web-build`, `make test-e2e`
+  (44/44 embedded Go/Chromium scenarios), `make generate-check`, `make docs-check`,
+  `make plan-check` and `git diff --check` pass. Initial assets use 981,862 raw
+  bytes / 304,938 gzip bytes within the unchanged budget; no dependencies,
+  public API/schema, authentication, payment or wallet protocols changed.
+- P50-T67 saves 84 matrix screenshots for home, transactions, transaction detail,
+  address, verified contract, charts and account capability state at 390/768/1440px
+  × English/Chinese × light/dark, plus four authenticated account, billing-admin
+  and notification screenshots (88 total). Representative desktop/mobile,
+  light/dark, Chinese/English, contract, transaction, address, charts, account
+  and notification images were inspected. A focused Watchlist browser rerun
+  also passes after moving its mobile capture past the resize/layout check.
+  The mobile coverage summary was
+  compacted following this inspection without hiding readiness warnings.
+- P50-T67 artifacts are reproducible with `make test-e2e` under the ignored
+  `web/test-results/` directory. Representative files include
+  `redesign-visual-acceptance-1440px-en-light-chromium/home-1440-en-light.png`,
+  `redesign-visual-acceptance-390px-zh-dark-chromium/transactions-390-zh-dark.png`
+  and `redesign-visual-acceptance-768px-zh-dark-chromium/contract-768-zh-dark.png`.
+  Each matrix route passes axe WCAG 2.1 AA, whole-page overflow, document language,
+  theme, runtime-error, CSP and same-origin-resource assertions. Keyboard tests
+  exercise native Tab order, Enter, Escape, focus restoration and mobile links.
+- P50-T67 regression coverage retains deep links/lazy panels, full identifiers,
+  exact large quantities, empty versus typed unavailable states, coverage gaps
+  and sync lag, disabled capabilities, private-cache isolation, one public event
+  stream, wallet-chain mismatch and provenance-bound contract calls. Maintained
+  style documentation records tokens, shared primitives, responsive breakpoints
+  and screenshot reproduction. P50-T64–T67 are done; this evidence is local
+  implementation/acceptance only, with no deployment or release performed.
+
+- P50-T68 applies the document theme in a layout effect before child chart
+  passive effects read CSS palette tokens, while preference persistence remains
+  in a passive effect. A real-CSS/React regression with mocked ECharts options
+  reproduces stale colors before the fix and verifies initial light/dark themes
+  plus both toggle directions after it. Existing theme persistence tests remain
+  green; no palette duplication or chart data/API changes are introduced.
+- P50-T68 validation: focused chart/theme tests pass 4/4; `make web-lint`,
+  `make web-test` (43 files / 380 tests plus tooling), `make web-build`,
+  `make generate-check`, `make test-e2e` (44/44 embedded browser scenarios),
+  `make docs-check`, `make plan-check` and `git diff --check` pass locally.
+  Initial assets remain within budget at 981,895 raw / 304,941 gzip bytes.

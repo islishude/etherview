@@ -44,6 +44,7 @@ import {
   MempoolTransactionOverview,
   resolveTransactionActionEvidence,
   TransactionOverviewPanel,
+  TransactionActionCard,
 } from "./TransactionOverview";
 export { TransactionStatusBadge, IncludedTransactionStatus } from "./TransactionOverview";
 
@@ -252,6 +253,16 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
           {!transaction.data.canonical && (
             <ReorgContext kind="transaction" hash={transaction.data.hash} />
           )}
+          {activeTab === "overview" && (
+            <TransactionActionCard
+              transaction={transaction.data}
+              evidence={transactionActionEvidence}
+              tokenCount={tokenIdentityCurrent ? (tokenTransfers.data?.items.length ?? 0) : 0}
+              locale={locale}
+              nativeDecimals={nativeDecimals}
+              nativeSymbol={nativeSymbol}
+            />
+          )}
           <nav
             className="transaction-tabs"
             role="tablist"
@@ -300,9 +311,6 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
           {activeTab === "overview" && (
             <TransactionOverviewPanel
               transaction={{ data: transaction.data }}
-              transactionActionEvidence={transactionActionEvidence}
-              tokenIdentityCurrent={tokenIdentityCurrent}
-              tokenTransfers={tokenTransfers}
               failure={failure}
               failureIdentityCurrent={failureIdentityCurrent}
               failureIdentityRetryPending={failureIdentityRetryPending}

@@ -319,7 +319,7 @@ export function TransactionInternalTransactionsPanel({
                 <th>{t("detail.callType")}</th>
                 <th>{t("table.from")}</th>
                 <th>{t("table.to")}</th>
-                <th>{t("table.value", { symbol: nativeSymbol })}</th>
+                <th className="numeric">{t("table.value", { symbol: nativeSymbol })}</th>
               </tr>
             </thead>
             <tbody>
@@ -343,7 +343,7 @@ export function TransactionInternalTransactionsPanel({
                         "—"
                       )}
                     </td>
-                    <td>
+                    <td className="numeric">
                       <code>{formatNativeAmount(item.value, locale, nativeDecimals)}</code>
                       {nativeSymbol ? ` ${nativeSymbol}` : ""}
                     </td>
@@ -426,7 +426,7 @@ export function TransactionTokenTransfersPanel({
                     <td>
                       <code>{event.to ? shorten(event.to) : "—"}</code>
                     </td>
-                    <td>
+                    <td className="numeric">
                       <span className="table-primary">
                         {event.amount !== undefined ? (
                           <code>{formatTokenEventAmount(event, locale)}</code>

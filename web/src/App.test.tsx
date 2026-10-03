@@ -231,7 +231,7 @@ describe("embedded explorer shell", () => {
     });
     expect(AppEventSource.current()?.url).toBe("/api/v1/events");
     expect(await screen.findByText("#12")).toBeVisible();
-    expect(await screen.findByText("Testnet")).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "Testnet", level: 1 })).toBeVisible();
     expect(screen.getByText("0xcdcdcd…cdcdcd")).toBeVisible();
     expect(screen.getByText("1 minute ago")).toBeVisible();
     expect(document.querySelector(".hero")).not.toBeInTheDocument();

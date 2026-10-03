@@ -36,7 +36,13 @@ export function MetricChart({
       return;
     }
 
+    const tokens = getComputedStyle(document.documentElement);
     const option: EChartsCoreOption = {
+      color: [tokens.getPropertyValue("--brand").trim()],
+      textStyle: {
+        color: tokens.getPropertyValue("--text-soft").trim(),
+        fontFamily: tokens.fontFamily,
+      },
       animation: !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches,
       backgroundColor: "transparent",
       grid: { top: 24, right: 24, bottom: 76, left: 44, containLabel: true },

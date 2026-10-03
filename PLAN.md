@@ -170,3 +170,20 @@ P68-T29 makes the home replica-switch regression deterministic by waiting for
 consumption of its initial snapshot. Repeated HTTP race tests, Go lint,
 generation, Web unit/tooling, docs and plan gates pass locally. P68 remains
 done; remote PR CI is required before merge and P70/P73 blockers are unchanged.
+
+P50-T64–T67 complete the full Web visual redesign: neutral surfaces, blue accents,
+grouped top navigation and consistent page hierarchy. All 378 frontend tests,
+44 embedded browser scenarios and applicable lint/build/generation/docs/plan
+gates pass locally; 88 screenshots record bilingual, theme and responsive
+acceptance. P50 remains done; P70/P73 external release blockers are unchanged.
+
+P50-T68 fixes chart palettes reading the previous document theme. Initial-theme
+and bidirectional regressions, all 380 frontend tests, 44 embedded browser
+scenarios and applicable gates pass locally. P50 remains done; release blockers
+are unchanged.
+
+P00-T15 temporarily makes all four npm audits informational at the user's
+request for the reported unpatched http-cache-semantics vulnerability. Isolated
+recipe checks verify npm audit failures are ignored and other security failures
+remain blocking; docs and plan checks pass. Restore blocking audits when the
+upstream fix is adopted. P00 remains done.

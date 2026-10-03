@@ -1,10 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import {
-  useTransactionCalldata,
-  useTransactionFailure,
-  useTransactionTokenTransfers,
-} from "@/api/hooks";
+import { useTransactionCalldata, useTransactionFailure } from "@/api/hooks";
 import type {
   TransactionDetail,
   TransactionCalldata as TransactionCalldataResource,
@@ -347,9 +343,6 @@ function transactionActionLabel(
 
 export function TransactionOverviewPanel({
   transaction,
-  transactionActionEvidence,
-  tokenIdentityCurrent,
-  tokenTransfers,
   failure,
   failureIdentityCurrent,
   failureIdentityRetryPending,
@@ -361,9 +354,6 @@ export function TransactionOverviewPanel({
   t,
 }: {
   transaction: { data: Extract<TransactionDetail, { kind: "included" }>["transaction"] };
-  transactionActionEvidence: TransactionActionEvidence;
-  tokenIdentityCurrent: boolean;
-  tokenTransfers: ReturnType<typeof useTransactionTokenTransfers>;
   failure: ReturnType<typeof useTransactionFailure>;
   failureIdentityCurrent: boolean;
   failureIdentityRetryPending: boolean;
@@ -376,36 +366,6 @@ export function TransactionOverviewPanel({
 }) {
   return (
     <div className="transaction-overview" role="tabpanel">
-      <section className="panel transaction-action-card" aria-labelledby="transaction-action-title">
-        <div className="transaction-action-icon" aria-hidden="true">
-          ↗
-        </div>
-        <div>
-          <span id="transaction-action-title">{t("detail.transactionAction")}</span>
-          <strong aria-live="polite">
-            {transactionActionLabel(transaction.data, transactionActionEvidence, t)}
-          </strong>
-          <p>
-            {formatNativeAmount(transaction.data.value, locale, nativeDecimals)} {nativeSymbol}
-            {transaction.data.to ? (
-              <>
-                {" "}
-                · <AddressIdentity address={transaction.data.to} />
-              </>
-            ) : null}
-            {tokenIdentityCurrent && (tokenTransfers.data?.items.length ?? 0) > 0 ? (
-              <>
-                {" "}
-                ·{" "}
-                {t("detail.actionTokenEvents", {
-                  count: tokenTransfers.data?.items.length ?? 0,
-                })}
-              </>
-            ) : null}
-          </p>
-        </div>
-      </section>
-
       <section
         className="panel transaction-detail-card"
         aria-label={t("detail.transactionSummary")}
@@ -551,5 +511,52 @@ export function TransactionOverviewPanel({
         </details>
       </section>
     </div>
+  );
+}
+
+export function TransactionActionCard({
+  transaction,
+  evidence,
+  tokenCount,
+  locale,
+  nativeDecimals,
+  nativeSymbol,
+}: {
+  transaction: TransactionSummary;
+  evidence: TransactionActionEvidence;
+  tokenCount: number;
+  locale: string;
+  nativeDecimals: number;
+  nativeSymbol: string;
+}) {
+  const { t } = useTranslation();
+  return (
+    <section className="panel transaction-action-card" aria-labelledby="transaction-action-title">
+      <div className="transaction-action-icon" aria-hidden="true">
+        ↗
+      </div>
+      <div>
+        <span id="transaction-action-title">{t("detail.transactionAction")}</span>
+        <strong aria-live="polite">{transactionActionLabel(transaction, evidence, t)}</strong>
+        <p>
+          {formatNativeAmount(transaction.value, locale, nativeDecimals)} {nativeSymbol}
+          {transaction.to ? (
+            <>
+              {" "}
+              · <AddressIdentity address={transaction.to} />
+            </>
+          ) : null}
+          {tokenCount > 0 ? (
+            <>
+              {" "}
+              ·{" "}
+              {t("detail.actionTokenEvents", {
+                count: tokenCount,
+              })}
+            </>
+          ) : null}
+        </p>
+      </div>
+    </section>
   );
 }

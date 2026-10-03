@@ -209,8 +209,8 @@ function PendingTable({
             <th>{t("table.status")}</th>
             <th>{t("table.from")}</th>
             <th>{t("table.to")}</th>
-            <th>{t("detail.nonce")}</th>
-            <th>{t("table.value", { symbol: nativeSymbol })}</th>
+            <th className="numeric">{t("detail.nonce")}</th>
+            <th className="numeric">{t("table.value", { symbol: nativeSymbol })}</th>
             <th>{t("pending.fees")}</th>
             <th>{t("pending.firstSeen")}</th>
             <th>{t("pending.lastSeen")}</th>
@@ -241,10 +241,10 @@ function PendingTable({
                   t("common.contractCreation")
                 )}
               </td>
-              <td>
+              <td className="numeric">
                 <code>{formatInteger(transaction.nonce, locale)}</code>
               </td>
-              <td>
+              <td className="numeric">
                 <code>{formatNativeAmount(transaction.value, locale, nativeDecimals)}</code>
               </td>
               <td>

@@ -718,7 +718,7 @@ function AddressTransactions({
                   created={!transaction.to && Boolean(destination)}
                   currentAddress={address}
                 />
-                <td>
+                <td className="numeric">
                   <code>{formatNativeAmount(transaction.value, locale, nativeDecimals)}</code>
                 </td>
                 <td>
@@ -801,7 +801,7 @@ function AddressInternalTransactions({
                   created={Boolean(transaction.created_address)}
                   currentAddress={address}
                 />
-                <td>
+                <td className="numeric">
                   <code>{formatNativeAmount(transaction.value, locale, nativeDecimals)}</code>
                 </td>
               </tr>
@@ -842,29 +842,29 @@ function AddressWithdrawals({
             <caption className="sr-only">{title}</caption>
             <thead>
               <tr>
-                <th>{t("detail.withdrawalIndex")}</th>
-                <th>{t("detail.validatorIndex")}</th>
-                <th>{t("table.block")}</th>
+                <th className="numeric">{t("detail.withdrawalIndex")}</th>
+                <th className="numeric">{t("detail.validatorIndex")}</th>
+                <th className="numeric">{t("table.block")}</th>
                 <th>{t("table.age")}</th>
-                <th>{t("detail.withdrawalAmount")}</th>
+                <th className="numeric">{t("detail.withdrawalAmount")}</th>
               </tr>
             </thead>
             <tbody>
               {items.map((withdrawal) => (
                 <tr key={`${withdrawal.block_hash}:${withdrawal.index}`}>
-                  <td>
+                  <td className="numeric">
                     <code>{formatInteger(withdrawal.index, locale)}</code>
                   </td>
-                  <td>
+                  <td className="numeric">
                     <code>{formatInteger(withdrawal.validator_index, locale)}</code>
                   </td>
-                  <td>
+                  <td className="numeric">
                     <Link to="/blocks/$blockID" params={{ blockID: withdrawal.block_hash }}>
                       {formatInteger(withdrawal.block_number, locale)}
                     </Link>
                   </td>
                   <td>{formatRelativeTimestamp(withdrawal.block_timestamp, locale)}</td>
-                  <td>
+                  <td className="numeric">
                     <code>{formatEtherFromGwei(withdrawal.amount, locale)} Ether</code>
                   </td>
                 </tr>
@@ -947,7 +947,7 @@ function AddressTokenTransfers({
               <AddressCell address={transfer.from} currentAddress={address} />
               <DirectionCell direction={addressDirection(address, transfer.from, transfer.to)} />
               <AddressCell address={transfer.to} currentAddress={address} />
-              <td>
+              <td className="numeric">
                 <span className="table-primary">
                   {transfer.amount !== undefined ? (
                     <code>{formatTokenEventAmount(transfer, locale)}</code>
@@ -1054,7 +1054,7 @@ function AddressActivityTable({
           <tr>
             <th>{t("table.hash")}</th>
             {method ? <th>{t("table.method")}</th> : null}
-            <th>{t("table.block")}</th>
+            <th className="numeric">{t("table.block")}</th>
             <th>{t("table.age")}</th>
             {status ? <th>{t("table.status")}</th> : null}
             {action ? <th>{t("table.action")}</th> : null}
@@ -1099,7 +1099,7 @@ function ActivityIdentity({
         </Link>
       </td>
       {method ? <TransactionMethodCell method={method.value} signature={method.signature} /> : null}
-      <td>
+      <td className="numeric">
         {blockNumber ? (
           <Link to="/blocks/$blockID" params={{ blockID: blockNumber }}>
             {formatInteger(blockNumber, locale)}
@@ -1232,7 +1232,7 @@ function AddressERC20Balances({
             <thead>
               <tr>
                 <th>{t("table.token")}</th>
-                <th>{t("detail.balance")}</th>
+                <th className="numeric">{t("detail.balance")}</th>
                 <th>{t("table.confidence")}</th>
               </tr>
             </thead>
@@ -1336,7 +1336,7 @@ function AddressNFTBalances({
               <tr>
                 <th>{t("table.token")}</th>
                 <th>{t("detail.tokenID")}</th>
-                <th>{t("detail.balance")}</th>
+                <th className="numeric">{t("detail.balance")}</th>
                 <th>{t("table.confidence")}</th>
               </tr>
             </thead>

@@ -196,8 +196,8 @@ function TokenHolders({
             <thead>
               <tr>
                 <th>{t("tokenHolder.address")}</th>
-                <th>{t("detail.amount")}</th>
-                <th>{t("detail.observedBlock")}</th>
+                <th className="numeric">{t("detail.amount")}</th>
+                <th className="numeric">{t("detail.observedBlock")}</th>
               </tr>
             </thead>
             <tbody>
@@ -206,8 +206,8 @@ function TokenHolders({
                   <td>
                     <AddressIdentity address={holder.holder_address} />
                   </td>
-                  <td>{formatTokenAmount(holder.balance, decimals, locale)}</td>
-                  <td>
+                  <td className="numeric">{formatTokenAmount(holder.balance, decimals, locale)}</td>
+                  <td className="numeric">
                     <Link to="/blocks/$blockID" params={{ blockID: holder.observed_block_hash }}>
                       {formatInteger(holder.observed_block_number, locale)}
                     </Link>
@@ -272,14 +272,14 @@ function TokenTransfers({
             <caption className="sr-only">{t("detail.tokenEventHistory")}</caption>
             <thead>
               <tr>
-                <th>{t("table.block")}</th>
+                <th className="numeric">{t("table.block")}</th>
                 <th>{t("table.hash")}</th>
                 <th>{t("detail.event")}</th>
                 <th>{t("table.from")}</th>
                 <th>{t("table.to")}</th>
                 <th>{t("detail.operator")}</th>
                 <th>{t("detail.tokenID")}</th>
-                <th>{t("detail.amount")}</th>
+                <th className="numeric">{t("detail.amount")}</th>
                 <th>{t("table.standard")}</th>
                 <th>{t("table.confidence")}</th>
               </tr>
@@ -287,7 +287,7 @@ function TokenTransfers({
             <tbody>
               {events.map((event) => (
                 <tr key={`${event.block_hash}:${event.log_index}:${event.sub_index}`}>
-                  <td>
+                  <td className="numeric">
                     <span className="table-primary">
                       <Link to="/blocks/$blockID" params={{ blockID: event.block_hash }}>
                         {formatInteger(event.block_number, locale)}
@@ -320,7 +320,7 @@ function TokenTransfers({
                       <code>{event.token_id ?? "—"}</code>
                     )}
                   </td>
-                  <td>
+                  <td className="numeric">
                     <code>{formatTokenEventAmount(event, locale)}</code>
                   </td>
                   <td>{tokenStandardLabel(event.standard, t)}</td>

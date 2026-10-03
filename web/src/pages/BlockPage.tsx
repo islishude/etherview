@@ -51,25 +51,25 @@ function BlockWithdrawalsPanel({
             <caption className="sr-only">{t("detail.withdrawals")}</caption>
             <thead>
               <tr>
-                <th>{t("detail.withdrawalIndex")}</th>
-                <th>{t("detail.validatorIndex")}</th>
+                <th className="numeric">{t("detail.withdrawalIndex")}</th>
+                <th className="numeric">{t("detail.validatorIndex")}</th>
                 <th>{t("table.address")}</th>
-                <th>{t("detail.withdrawalAmount")}</th>
+                <th className="numeric">{t("detail.withdrawalAmount")}</th>
               </tr>
             </thead>
             <tbody>
               {withdrawals.map((withdrawal) => (
                 <tr key={withdrawal.index}>
-                  <td>
+                  <td className="numeric">
                     <code>{formatInteger(withdrawal.index, locale)}</code>
                   </td>
-                  <td>
+                  <td className="numeric">
                     <code>{formatInteger(withdrawal.validator_index, locale)}</code>
                   </td>
                   <td>
                     <AddressIdentity address={withdrawal.address} compact={false} />
                   </td>
-                  <td>
+                  <td className="numeric">
                     <code>{formatEtherFromGwei(withdrawal.amount, locale)} Ether</code>
                   </td>
                 </tr>
@@ -133,7 +133,7 @@ function BlockTransactionsPanel({
                 <th>{t("table.status")}</th>
                 <th>{t("table.from")}</th>
                 <th>{t("table.to")}</th>
-                <th>{t("table.value", { symbol: nativeSymbol })}</th>
+                <th className="numeric">{t("table.value", { symbol: nativeSymbol })}</th>
                 <th>{t("detail.gasUsed")}</th>
                 <th>{t("table.finality")}</th>
               </tr>
@@ -152,7 +152,7 @@ function BlockTransactionsPanel({
                       <code>{shorten(transaction.hash)}</code>
                     </Link>
                   </td>
-                  <td>
+                  <td className="numeric">
                     <code>
                       {transaction.transaction_index == null
                         ? "—"
@@ -172,10 +172,10 @@ function BlockTransactionsPanel({
                       t("common.contractCreation")
                     )}
                   </td>
-                  <td>
+                  <td className="numeric">
                     <code>{formatNativeAmount(transaction.value, locale, nativeDecimals)}</code>
                   </td>
-                  <td>
+                  <td className="numeric">
                     <code>
                       {transaction.gas_used ? formatInteger(transaction.gas_used, locale) : "—"}
                     </code>
