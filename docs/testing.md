@@ -259,12 +259,15 @@ branch; scheduled start times may be delayed by runner load.
   (`standard`, `modernize`, and `unparam`) across ordinary tests plus tagged
   integration, Hardhat, Foundry, and runtime E2E source, and TypeScript type
   checking.
-- `make security-check`: `govulncheck`, API-generator, frontend, and Hardhat 3
-  fixture dependency audits, secret scan, and security-focused tests. All
-  three npm dependency trees must report zero high-severity vulnerabilities;
-  the API generator's
-  transitive parser and glob dependencies are constrained by audited
-  overrides.
+- `make security-check`: `govulncheck`, API-generator, frontend, compiler and
+  Hardhat 3 fixture npm audits, Vyper dependency audit, secret scans, and
+  security-focused tests. Under the temporary P00-T15 exception requested for
+  the reported unpatched `http-cache-semantics` vulnerability, all four npm
+  audits still run and print findings, but their nonzero exit statuses do not
+  fail the target. This also covers npm audit service/transport errors. Restore
+  blocking npm audits after the upstream fix is adopted. Go/Vyper audits,
+  secret scans, security-focused tests and the separate license gate remain
+  blocking. The API generator's audited dependency overrides remain in place.
 - `make license-check`: Go and production frontend dependency license policy.
 - `make deployment-check`: Docker build checks, Compose profile validation,
   and Helm lint/render checks. The render regression proves x402 secrets are

@@ -181,3 +181,9 @@ P50-T68 fixes chart palettes reading the previous document theme. Initial-theme
 and bidirectional regressions, all 380 frontend tests, 44 embedded browser
 scenarios and applicable gates pass locally. P50 remains done; release blockers
 are unchanged.
+
+P00-T15 temporarily makes all four npm audits informational at the user's
+request for the reported unpatched http-cache-semantics vulnerability. Isolated
+recipe checks verify npm audit failures are ignored and other security failures
+remain blocking; docs and plan checks pass. Restore blocking audits when the
+upstream fix is adopted. P00 remains done.

@@ -33,6 +33,7 @@ and API contracts, and a deterministic embedded-SPA build.
 | P00-T12 | done | P00-T01 | Compact repository instruction entry point with routed development, architecture, testing, and operations guidance | documentation review, `make plan-check`, and `git diff --check` |
 | P00-T13 | done | P00-T12 | Streamline README and repository instructions while preserving startup guidance, mandatory boundaries, and authoritative document routing | `make docs-check`, `make plan-check`, local-link review, and `git diff --check` |
 | P00-T14 | done | P00-T02 | Ignore automatic Python Docker image updates while the Vyper runtime remains explicitly pinned | YAML policy inspection, docs and plan checks |
+| P00-T15 | done | P00-T14 | Temporarily make npm audits informational at user request while an upstream http-cache-semantics fix is unavailable | audit exit-status isolation, docs and plan checks |
 
 ## Acceptance
 
@@ -140,3 +141,18 @@ None.
   every other Dependabot setting matches the preceding commit.
   `make docs-check plan-check` and `git diff --check` pass. This configuration
   and governance change does not change application code or runtime images.
+
+### P00-T15 — Temporary informational npm audits (2026-10-03)
+
+- At the user's request for the reported unpatched `http-cache-semantics`
+  vulnerability, the four npm audits in `make security-check` continue to print
+  results but ignore nonzero exit statuses. Go vulnerability checks, secret
+  scans, Vyper audits, security-focused tests and license checks remain blocking.
+  Remove the four recipe error-ignore prefixes when the upstream fix is adopted;
+  this is an audit-gate exception, not a vulnerability remediation.
+- An isolated Make harness using the exact security-check recipe verifies that
+  all four failing npm audits permit the remaining commands to execute, while
+  failures in govulncheck, the Vyper audit or security-focused Go tests still fail
+  the target. `make docs-check plan-check` and `git diff --check` pass. Full
+  vulnerability/license scans and application suites were not rerun for this
+  recipe-policy change; no new remote CI pass is claimed.
