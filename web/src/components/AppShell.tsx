@@ -1,14 +1,13 @@
-import { NotificationBadge } from "./NotificationBadge";
+import { AppNavigation } from "./AppNavigation";
 import { FormEvent, useState } from "react";
 import { Link, Outlet, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { normalize as normalizeENSName } from "viem/ens";
 
 import { usePublicConfig } from "@/api/hooks";
-import { useAuth } from "@/auth/AuthProvider";
 import etherviewMark from "@/assets/etherview-mark.svg";
 import { useTheme } from "@/theme/ThemeProvider";
-import { AppFrame } from "./DesignPrimitives";
+import { AppFrame, ShellIcon } from "./DesignPrimitives";
 import { WalletMenu } from "./WalletMenu";
 import { AddressNamesProvider } from "@/ens/AddressNamesProvider";
 
@@ -19,7 +18,6 @@ export function AppShell() {
   const [query, setQuery] = useState("");
   const [searchError, setSearchError] = useState("");
   const publicConfig = usePublicConfig();
-  const auth = useAuth();
 
   const submitSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -91,61 +89,21 @@ export function AppShell() {
                 onClick={toggleTheme}
                 type="button"
               >
-                <span aria-hidden="true">{theme === "dark" ? "☾" : "☼"}</span>
+                <ShellIcon name={theme === "dark" ? "moon" : "sun"} />
               </button>
-              <button className="control language-control" onClick={toggleLanguage} type="button">
-                {t("actions.toggleLanguage")}
+              <button
+                aria-label={t("actions.toggleLanguage")}
+                className="control language-control"
+                onClick={toggleLanguage}
+                type="button"
+              >
+                {i18n.resolvedLanguage?.startsWith("zh") ? "EN" : "中文"}
               </button>
               <WalletMenu />
             </div>
           </div>
 
-          <nav className="site-nav shell-width" aria-label={t("nav.primary")}>
-            <Link activeProps={{ className: "active" }} activeOptions={{ exact: true }} to="/">
-              {t("nav.home")}
-            </Link>
-            <Link activeProps={{ className: "active" }} to="/blocks">
-              {t("nav.blocks")}
-            </Link>
-            <Link activeProps={{ className: "active" }} to="/transactions">
-              {t("nav.transactions")}
-            </Link>
-            {publicConfig.data?.features.user_operations === true && (
-              <Link activeProps={{ className: "active" }} to="/user-operations">
-                {t("nav.userOperations")}
-              </Link>
-            )}
-            <Link activeProps={{ className: "active" }} to="/tokens">
-              {t("nav.tokens")}
-            </Link>
-            <Link activeProps={{ className: "active" }} to="/charts">
-              {t("nav.charts")}
-            </Link>
-            <Link activeProps={{ className: "active" }} to="/pending">
-              {t("nav.pending")}
-            </Link>
-            <Link activeProps={{ className: "active" }} to="/status">
-              {t("nav.status")}
-            </Link>
-            {auth.enabled && (
-              <Link activeProps={{ className: "active" }} to="/account">
-                {t("nav.account")}
-              </Link>
-            )}
-            <NotificationBadge />
-            {auth.session.authenticated && auth.session.user?.role === "admin" && (
-              <>
-                <Link activeProps={{ className: "active" }} to="/admin/users">
-                  {t("nav.adminUsers")}
-                </Link>
-                {publicConfig.data?.features.api_billing === true && (
-                  <Link activeProps={{ className: "active" }} to="/admin/billing">
-                    {t("nav.adminBilling")}
-                  </Link>
-                )}
-              </>
-            )}
-          </nav>
+          <AppNavigation />
         </header>
 
         <main id="main-content" className="shell-width site-main" tabIndex={-1}>

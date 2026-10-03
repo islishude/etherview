@@ -20,10 +20,10 @@ export function UserOperationTable({ items }: { items: UserOperationSummary[] })
             <th>{t("userOperation.hash")}</th>
             <th>{t("table.status")}</th>
             <th>{t("userOperation.sender")}</th>
-            <th>{t("table.block")}</th>
+            <th className="numeric">{t("table.block")}</th>
             <th>{t("userOperation.bundler")}</th>
             <th>{t("userOperation.paymaster")}</th>
-            <th>{t("userOperation.gasCost")}</th>
+            <th className="numeric">{t("userOperation.gasCost")}</th>
             <th>{t("table.finality")}</th>
           </tr>
         </thead>
@@ -52,7 +52,7 @@ export function UserOperationTable({ items }: { items: UserOperationSummary[] })
                   </small>
                 ) : null}
               </td>
-              <td>
+              <td className="numeric">
                 <Link to="/blocks/$blockID" params={{ blockID: operation.block_hash }}>
                   {formatInteger(operation.block_number, locale)}
                 </Link>
@@ -63,7 +63,7 @@ export function UserOperationTable({ items }: { items: UserOperationSummary[] })
               <td>
                 {operation.paymaster ? <AddressIdentity address={operation.paymaster} /> : "—"}
               </td>
-              <td>
+              <td className="numeric">
                 <code>{formatNativeAmount(operation.actual_gas_cost, locale, nativeDecimals)}</code>
               </td>
               <td>

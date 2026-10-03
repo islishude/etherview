@@ -115,8 +115,8 @@
 }
 
 .job-status.succeeded {
-  color: var(--brand-strong);
-  background: var(--brand-soft);
+  color: var(--success);
+  background: var(--success-soft);
 }
 
 .job-status.failed,
@@ -131,40 +131,6 @@
 .delegated-interaction-stack {
   display: grid;
   gap: 1rem;
-}
-
-.contract-tabs {
-  display: flex;
-  min-width: 0;
-  gap: 0.4rem;
-  padding: 0.35rem;
-  overflow-x: auto;
-  background: var(--surface-raised);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  scrollbar-width: thin;
-}
-
-.contract-tab {
-  flex: 0 0 auto;
-  min-height: 2.55rem;
-  padding: 0.55rem 0.8rem;
-  color: var(--muted);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  font: inherit;
-  font-size: 0.82rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.contract-tab:hover,
-.contract-tab:focus-visible,
-.contract-tab.active {
-  color: var(--text);
-  background: var(--surface);
-  border-color: var(--line-strong);
 }
 
 .contract-tab-panel,

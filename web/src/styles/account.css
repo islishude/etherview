@@ -7,32 +7,6 @@
   align-items: start;
 }
 
-.account-tabs {
-  display: flex;
-  gap: 0.3rem;
-  padding: 0.3rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface-soft);
-}
-
-.account-tabs a {
-  flex: 1 1 0;
-  padding: 0.65rem 0.8rem;
-  border-radius: calc(var(--radius) - 0.25rem);
-  color: var(--text-soft);
-  font-size: 0.82rem;
-  font-weight: 800;
-  text-align: center;
-  text-decoration: none;
-}
-
-.account-tabs a[aria-current="page"] {
-  color: var(--text);
-  background: var(--surface-raised);
-  box-shadow: 0 0.25rem 1rem rgb(0 0 0 / 0.08);
-}
-
 .api-key-workspace {
   display: grid;
   gap: 1rem;
@@ -192,7 +166,7 @@
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
   background: var(--surface-raised);
-  box-shadow: 0 1.5rem 4rem rgb(0 0 0 / 0.28);
+  box-shadow: var(--shadow);
 }
 
 .api-key-issued-dialog .button {
@@ -513,8 +487,8 @@
 
 .billing-state.settled,
 .billing-state.verified {
-  color: var(--brand-strong);
-  background: var(--brand-soft);
+  color: var(--success);
+  background: var(--success-soft);
 }
 
 .billing-state.failed,
@@ -608,9 +582,10 @@
 }
 
 .watchlist-panel {
+  padding: clamp(1rem, 3vw, 1.4rem);
   display: grid;
   gap: 1rem;
-  margin-block: 1rem;
+  margin-block: 0;
   min-width: 0;
 }
 .watchlist-panel label {
@@ -634,6 +609,10 @@
   gap: 1rem;
 }
 .watchlist-items li {
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
   display: grid;
   gap: 0.5rem;
   min-width: 0;
@@ -644,4 +623,48 @@
 }
 .watchlist-panel .button {
   margin: 0.25rem;
+}
+
+.watchlist-panel > h2,
+.watchlist-panel > p {
+  margin: 0;
+}
+.watchlist-panel > h2 {
+  font-size: 1.1rem;
+}
+.watchlist-panel > p {
+  color: var(--text-soft);
+}
+.watchlist-panel label {
+  color: var(--text-soft);
+  font-size: 0.875rem;
+}
+.watchlist-panel fieldset {
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+.watchlist-panel fieldset label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.watchlist-panel input[type="checkbox"] {
+  accent-color: var(--brand);
+}
+.watchlist-panel > .button,
+.watchlist-items .button {
+  justify-self: start;
+}
+.watchlist-items {
+  margin: 0;
+}
+.watchlist-items li[data-read="false"] {
+  border-inline-start: 3px solid var(--brand);
+}
+.notification-warning {
+  color: var(--warning);
+}
+td.billing-quantity {
+  text-align: right;
 }

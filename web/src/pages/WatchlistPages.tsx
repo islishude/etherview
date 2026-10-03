@@ -257,7 +257,7 @@ export function NotificationsPanel() {
       {query.isPending && <p role="status">{t("watchlist.loading")}</p>}
       <ul className="watchlist-items">
         {query.data?.items.map((n) => (
-          <li key={n.id}>
+          <li key={n.id} data-read={n.read}>
             <strong>{n.label || n.address}</strong>
             <span>
               {t(`watchlist.${n.activity.direction}`)} ·{" "}
@@ -278,7 +278,9 @@ export function NotificationsPanel() {
                 : (n.activity.amount ?? n.activity.token_id)}
             </span>
             {(!n.canonical || !n.published) && (
-              <strong>{t(!n.canonical ? "watchlist.orphaned" : "watchlist.unpublished")}</strong>
+              <strong className="notification-warning">
+                {t(!n.canonical ? "watchlist.orphaned" : "watchlist.unpublished")}
+              </strong>
             )}
             {!n.read && (
               <button

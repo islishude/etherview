@@ -3,6 +3,7 @@ import {
   type PropsWithChildren,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useState,
 } from "react";
@@ -33,8 +34,12 @@ export function resolveInitialTheme(): Theme {
 export function ThemeProvider({ children }: PropsWithChildren) {
   const [theme, setTheme] = useState<Theme>(resolveInitialTheme);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    // Passive consumers such as charts must read tokens from the current theme.
     document.documentElement.dataset.theme = theme;
+  }, [theme]);
+
+  useEffect(() => {
     try {
       window.localStorage?.setItem("etherview.theme", theme);
     } catch {

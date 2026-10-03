@@ -34,13 +34,13 @@ describe("shared button layout", () => {
     expect(rule?.groups?.body).toMatch(/\bjustify-content:\s*center;/u);
   });
 
-  it("keeps inactive tabs transparent and active tabs branded", () => {
+  it("keeps tabs transparent with a blue underline on the active tab", () => {
     const stylesheet = readStylesheet("styles/explorer.css");
     const inactiveRule = stylesheet.match(/\.transaction-tab\s*\{(?<body>[^}]*)\}/u);
     const activeRule = stylesheet.match(/\.transaction-tab\.active\s*\{(?<body>[^}]*)\}/u);
 
     expect(inactiveRule?.groups?.body).toMatch(/\bbackground:\s*transparent;/u);
-    expect(activeRule?.groups?.body).toMatch(/\bbackground:\s*var\(--brand\);/u);
+    expect(activeRule?.groups?.body).toMatch(/\bborder-bottom-color:\s*var\(--brand\);/u);
   });
 
   it("normalizes address tab entries before applying the active state", () => {
@@ -53,9 +53,7 @@ describe("shared button layout", () => {
     );
 
     expect(addressRule?.groups?.body).toMatch(/\bmargin-inline-start:\s*0;/u);
-    expect(addressRule?.groups?.body).toMatch(/\bborder:\s*0;/u);
-    expect(addressRule?.groups?.body).toMatch(/\bbackground:\s*transparent;/u);
-    expect(addressActiveRule?.groups?.body).toMatch(/\bbackground:\s*var\(--brand\);/u);
+    expect(addressActiveRule?.groups?.body).toMatch(/\bborder-bottom-color:\s*var\(--brand\);/u);
   });
 
   it("soft-wraps read-only raw calldata inside its textarea", () => {

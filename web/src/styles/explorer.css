@@ -2,7 +2,7 @@
 
 .page-stack {
   display: grid;
-  gap: 1.4rem;
+  gap: 1.25rem;
 }
 
 .eyebrow {
@@ -17,8 +17,8 @@
 
 .page-header h1 {
   margin: 0;
-  letter-spacing: -0.048em;
-  line-height: 1.02;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
 }
 
 .metrics-grid {
@@ -28,10 +28,11 @@
 }
 
 .metric-card {
-  min-height: 116px;
+  min-height: 98px;
   display: grid;
-  align-content: space-between;
-  padding: 1.15rem;
+  align-content: center;
+  gap: 0.5rem;
+  padding: 1rem 1.15rem;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
@@ -51,14 +52,14 @@
 }
 
 .metric-card strong.positive {
-  color: var(--brand);
+  color: var(--success);
 }
 
 .panel {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  box-shadow: 0 10px 35px rgb(28 54 39 / 4%);
+  box-shadow: none;
 }
 
 .activity-grid {
@@ -189,8 +190,8 @@
 .finality-badge.finalized,
 .transaction-status.success,
 .availability.yes {
-  color: var(--brand-strong);
-  background: var(--brand-soft);
+  color: var(--success);
+  background: var(--success-soft);
 }
 
 .transaction-status.reverted,
@@ -287,8 +288,8 @@
 }
 
 .status-dot.success {
-  background: var(--brand);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 14%, transparent);
+  background: var(--success);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 14%, transparent);
 }
 
 .status-dot.warning {
@@ -306,16 +307,16 @@
 }
 
 .page-header {
-  padding: 1rem 0 0.25rem;
+  padding: 0.25rem 0;
 }
 
 .page-header h1 {
-  font-size: clamp(2rem, 4vw, 3.4rem);
+  font-size: clamp(1.5rem, 3vw, 2rem);
 }
 
 .page-description {
   max-width: 780px;
-  margin: 0.75rem 0 0;
+  margin: 0.5rem 0 0;
   color: var(--text-soft);
   line-height: 1.65;
 }
@@ -330,7 +331,7 @@
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow);
+  box-shadow: none;
 }
 
 .transaction-method-cell {
@@ -353,7 +354,7 @@ table {
 
 th,
 td {
-  padding: 0.92rem 1rem;
+  padding: 0.85rem 1rem;
   text-align: left;
   border-bottom: 1px solid var(--line);
 }
@@ -361,13 +362,13 @@ td {
 th {
   color: var(--text-soft);
   background: var(--surface-raised);
-  font-size: 0.68rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 td {
-  font-size: 0.84rem;
+  font-size: 0.875rem;
 }
 
 tbody tr:last-child td {
@@ -375,7 +376,7 @@ tbody tr:last-child td {
 }
 
 tbody tr:hover {
-  background: color-mix(in srgb, var(--brand-soft) 32%, transparent);
+  background: var(--surface-raised);
 }
 
 .table-primary {
@@ -692,11 +693,7 @@ tbody tr:hover {
 }
 
 .capability-panel {
-  background: linear-gradient(
-    145deg,
-    var(--surface),
-    color-mix(in srgb, var(--brand-soft) 28%, var(--surface))
-  );
+  background: var(--surface);
 }
 
 .capability-panel h2 {
@@ -1088,56 +1085,56 @@ tbody tr:hover {
   margin-bottom: 0;
 }
 
+.account-tabs,
+.contract-tabs,
 .transaction-tabs {
   display: flex;
-  gap: 0.35rem;
+  min-width: 0;
+  gap: 0.75rem;
   overflow-x: auto;
-  padding: 0.3rem;
-  background: var(--surface-strong);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  padding: 0.25rem 0;
+  background: transparent;
+  border-bottom: 1px solid var(--line);
   scrollbar-width: thin;
 }
-
+.account-tabs a,
+.contract-tab,
 .transaction-tab {
   flex: 0 0 auto;
-  padding: 0.62rem 0.9rem;
-  color: var(--text-soft);
-  background: transparent;
-  border-radius: calc(var(--radius-sm) - 2px);
-  font-size: 0.82rem;
-  font-weight: 750;
-  text-decoration: none;
-}
-
-.transaction-tab:hover {
-  color: var(--text);
-  background: var(--surface-raised);
-}
-
-.transaction-tab.active {
-  color: var(--on-brand);
-  background: var(--brand);
-  box-shadow: 0 5px 14px color-mix(in srgb, var(--brand) 22%, transparent);
-}
-
-/* Address entries must keep the shared tab state even with stale markup. */
-.transaction-tabs > .transaction-tab {
-  margin-inline-start: 0;
+  padding: 0.7rem 0.5rem;
   color: var(--text-soft);
   background: transparent;
   border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
 }
-
-.transaction-tabs > .transaction-tab:hover {
-  color: var(--text);
+.account-tabs a:hover,
+.contract-tab:hover,
+.transaction-tab:hover {
+  color: var(--brand);
   background: var(--surface-raised);
 }
-
+.account-tabs a[aria-current="page"],
+.contract-tab.active,
+.transaction-tab.active {
+  color: var(--brand);
+  background: transparent;
+  border-bottom-color: var(--brand);
+}
+/* Address, Contract and Delegation entries share one visual selection state. */
+.transaction-tabs > .transaction-tab {
+  margin-inline-start: 0;
+}
 .transaction-tabs > .transaction-tab.active {
-  color: var(--on-brand);
-  background: var(--brand);
-  box-shadow: 0 5px 14px color-mix(in srgb, var(--brand) 22%, transparent);
+  color: var(--brand);
+  background: transparent;
+  border-bottom-color: var(--brand);
 }
 
 .address-activity {
@@ -1318,9 +1315,9 @@ tbody tr:hover {
 }
 
 .transaction-status.success {
-  color: var(--brand-strong);
-  background: var(--brand-soft);
-  border-color: color-mix(in srgb, var(--brand) 35%, var(--line));
+  color: var(--success);
+  background: var(--success-soft);
+  border-color: color-mix(in srgb, var(--success) 35%, var(--line));
 }
 
 .transaction-status.failed,
@@ -2365,4 +2362,41 @@ tbody tr:hover {
 .transaction-trace-raw dd {
   min-width: 0;
   margin: 0;
+}
+
+/* Shared density and numeric alignment for explorer lists. */
+th.numeric,
+td.numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.chain-context .chain-context-grid {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+.chain-context .chain-context-grid > div {
+  padding: 0.25rem 0;
+  background: transparent;
+}
+.chain-context .chain-context-heading .eyebrow {
+  display: none;
+}
+.chain-context .chain-context-heading {
+  min-height: 48px;
+}
+.chain-context .chain-context-heading h2 {
+  font-size: 0.875rem;
+}
+@media (max-width: 1023px) {
+  .chain-context .chain-context-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 767px) {
+  .chain-context .chain-context-grid {
+    grid-template-columns: 1fr;
+  }
+  .chain-context .chain-context-grid > div {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.75rem;
+  }
 }
