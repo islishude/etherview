@@ -1,6 +1,6 @@
 # P68 — Runtime and Architecture Hardening
 
-Status: `in_progress`
+Status: `done`
 
 ## Outcome
 
@@ -55,13 +55,13 @@ keys, and the fresh-database schema remain unchanged.
 | P68-T28 | done | P68-T24 | Make the enrichment heartbeat completion regression deterministic under CI scheduling | Repeated focused race tests, enrichment race suite, lint, docs and plan gates |
 | P68-T29 | done | P68-T13 | Synchronize the home replica-switch regression after consumption of the initial snapshot | Repeated focused race tests, HTTP API race suite, lint, docs and plan gates |
 | P68-T30 | done | P68-T25 | Replace Preview nginx with an independent Go HTTPS IPFS gateway | Gateway unit/race, lint, Compose/docs/plan and real-Kubo Preview acceptance |
-| P68-T31 | in_progress | P68-T30 | Run full Preview metadata acceptance in CI with ephemeral TLS and retained diagnostics | Workflow validation, docs/plan checks and remote Preview job |
+| P68-T31 | done | P68-T30 | Run full Preview metadata acceptance in CI with ephemeral TLS and retained diagnostics | Workflow validation, docs/plan checks and remote Preview job |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
 ## Acceptance
 
-- [ ] P68-T31: the independent CI Preview job passes the full offline-Kubo
+- [x] P68-T31: the independent CI Preview job passes the full offline-Kubo
       target with ephemeral TLS and retained acceptance/diagnostic artifacts.
 
 - [x] P68-T30: real-Kubo Preview acceptance and daily startup/recreation pass
@@ -540,4 +540,10 @@ by the follow-up evidence below. P70/P73 external release gates remain separate.
   certificate preflight. The gateway key stays 0600; local operator files are
   unchanged.
 - Local actionlint 1.7.7, `make docs-check`, `make plan-check` and
-  `git diff --check` pass. Remote execution of the new job remains pending.
+  `git diff --check` pass.
+- [PR #136 CI run 37638823425](https://github.com/islishude/etherview/actions/runs/37638823425)
+  passes all 12 jobs at `e1b8bda0a1b45c38d510e04a86f415168be30ae1`, including
+  `Preview IPFS metadata E2E` and its evidence upload. This closes remote
+  acceptance for P68-T30/P68-T31. Amsterdam activation is reverted; the exact
+  local `make test-preview-metadata` also passed after that rollback (54.14s).
+  P68 returns to done; P70/P73 external release blockers are unchanged.
