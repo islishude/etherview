@@ -75,9 +75,6 @@ and user/operator evidence sufficient for a production public release.
 | P70-T44 | done | P70-T19, P70-T27 | Remove every disposable Compose project resource during Go-owned test teardown, including volumes referenced only by inactive one-off client profiles | focused command regression and Hardhat project cleanup inspection |
 | P70-T45 | done | P70-T42, P70-T44, P76 | Reconcile maintained deployment and operations documentation with the current Makefile, Compose, runtime, and public capability contracts | focused source/doc audit, plan/link/whitespace checks, and applicable common gates |
 | P70-T46 | done | P70-T45 | Run the complete existing CI workflow daily on the default branch | workflow syntax, schedule/concurrency inspection, documentation and plan checks |
-| P70-T47 | done | P70-T31, P70-T43 | Upgrade Foundry, Anvil and x402 fixtures to 1.8.3, align identity checks and close receipt/runtime CI regressions | native AMD64/ARM64 verification, runtime/x402 parity, common and deployment gates |
-| P70-T48 | superseded | P70-T31 | Consolidated into P70-T47: accept complete Anvil receipts without requiring an upstream defect | receipt normalization regressions retained under P70-T47 |
-| P70-T49 | superseded | P70-T48 | Consolidated into P70-T47: keep receipt regressions within the source-size limit | source-check and Go lint retained under P70-T47 |
 
 ## Acceptance
 
@@ -1332,12 +1329,10 @@ Token replay/reorg behavior, bounded export admission, generated-client download
 and monolith/split parity in T01/T03/T05 acceptance. P78 local evidence does not
 clear the existing live-payment or reference-capacity blockers.
 
-### P70-T47 — Foundry 1.8.3 upgrade and CI acceptance (2026-10-07)
+### P70-T31/P70-T43 — Foundry 1.8.3 acceptance update (2026-10-07)
 
 - Completed the Foundry/Anvil/x402 image upgrade to `v1.8.3` and aligned Forge
   identity checks with upstream commit `cae51ad458f6abb64852b7709eb784352429825d`.
-  P70-T48 and P70-T49 are superseded by P70-T47; their implementation and
-  acceptance evidence are consolidated here, with both IDs retained for audit.
 - Removed the runtime assertion that required an orphan blob-fee observation;
   valid complete receipts now pass without triggering the fixture normalizer.
   The regression covers incomplete, ordinary and complete receipts and lives
@@ -1348,7 +1343,7 @@ clear the existing live-payment or reference-capacity blockers.
   Docker registry/daemon failures and the earlier
   [receipt assertion](https://github.com/islishude/etherview/actions/runs/37576543339/job/112646606351)
   and [file-size failure](https://github.com/islishude/etherview/actions/runs/37577953599/job/112650958696)
-  are historical; the final remote acceptance clears this item's blockers.
+  are historical; the final remote acceptance clears the upgrade validation blockers.
 - [PR #118 CI run 37579816722](https://github.com/islishude/etherview/actions/runs/37579816722)
   passes all 11 jobs at `243792a391b2927ee5d5840627159ed83f175a9a`: common
   generation/lint/unit/race gates, PostgreSQL, browser, security/licenses,

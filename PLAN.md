@@ -182,8 +182,8 @@ and bidirectional regressions, all 380 frontend tests, 44 embedded browser
 scenarios and applicable gates pass locally. P50 remains done; release blockers
 are unchanged.
 
-P70-T47 completes the Foundry/Anvil/x402 1.8.3 upgrade and absorbs the
-P70-T48/P70-T49 CI repairs, whose IDs remain as superseded audit entries.
+P70-T31/P70-T43 now include the Foundry/Anvil/x402 1.8.3 upgrade and its
+receipt regression fixes in their existing acceptance evidence.
 [PR #118 CI run 37579816722](https://github.com/islishude/etherview/actions/runs/37579816722)
 passes all 11 jobs at `243792a391b2927ee5d5840627159ed83f175a9a`, including
 native AMD64/ARM64 verification and production runtime/x402 parity. The local
