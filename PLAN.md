@@ -188,13 +188,3 @@ receipt regression fixes in their existing acceptance evidence.
 passes all 11 jobs at `243792a391b2927ee5d5840627159ed83f175a9a`, including
 native AMD64/ARM64 verification and production runtime/x402 parity. The local
 Foundry validation blocker is cleared; P70/P73 external release blockers remain.
-
-P70-T47 updates Foundry/Anvil/x402 fixtures and identity assertions to 1.8.5.
-Local receipt/race, tagged compilation, Compose, source, docs and plan checks
-pass. Container acceptance is blocked by an unresponsive local Docker daemon;
-[P70 evidence](docs/plans/P70-release.md#p70-t47--foundry-185-update-2026-10-07)
-records the remaining gates. P70/P73 external release blockers remain unchanged.
-
-P70-T48 updates Preview nginx/Geth and optional NATS/RustFS images and their
-existing assertions. Compose, docs and plan checks pass; container acceptance
-remains blocked by the local Docker daemon. P70/P73 release blockers persist.
