@@ -72,9 +72,11 @@ services:
     restart: unless-stopped
 
   ipfs-gateway:
-    image: nginx:1.31.0-alpine
+    image: ${IPFS_GATEWAY_IMAGE:-etherview-ipfs-gateway:local}
+    build:
+      context: .
+      dockerfile: deploy/ipfs/Dockerfile
     volumes:
-      - ./deploy/ipfs/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./.local/preview-tls/ipfs.crt:/run/ipfs-tls/tls.crt:ro
       - ./.local/preview-tls/ipfs.key:/run/ipfs-tls/tls.key:ro
     ports:
@@ -86,7 +88,7 @@ services:
       ipfs:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/health"]
+      test: ["CMD", "/ipfs-gateway", "healthcheck"]
       interval: 5s
       timeout: 3s
       retries: 20

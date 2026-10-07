@@ -372,13 +372,20 @@ branch; scheduled start times may be delayed by runner load.
   holdings/inventory, source/document/job history, and restart-stable database
   persistence. Every connected/resolved IP must belong to the owned gateway;
   `policy_bypassed=true` is mandatory. A reused connection may omit new DNS
-  results. Reports record application/Kubo/proxy image identities, offline mode,
+  results. Reports record application/Kubo/Go-gateway image identities, offline mode,
   CID, content digest and network evidence. Success and failure artifacts are
   retained and their directory is printed. Run `make preview-cert` first (also
   after upgrading a Preview that lacks the dedicated IPFS certificate).
-  This explicit Docker gate is not included in `make check` or CI and does not
-  establish public IPFS availability. Image pulls/builds still require their
-  normal registry/toolchain prerequisites.
+  CI runs this complete target in the independent `Preview IPFS metadata E2E`
+  job on Ubuntu AMD64 for pull requests, main pushes and the daily schedule.
+  The job installs pinned mkcert 1.4.4 and uses `make preview-cert` with an
+  ephemeral runner-local CA and system trust. The temporary API key grants
+  read access to container group 65532 (0640) for Linux bind mounts; the gateway
+  key remains 0600, and only its owning service mounts each key. It builds both images through
+  the canonical target and uploads reports/diagnostics on success or failure
+  for seven days; certificate and CA private keys are never uploaded.
+  This gate remains outside `make check` and does not establish public IPFS
+  availability. Image pulls/builds require normal registry/toolchain access.
 - `go test -race ./cmd/ipfs`: streaming upload/download regressions for binary
   and empty files, Kubo multipart filename encoding, literal and URI-encoded
   paths, encoded traversal rejection, input type, RPC and stream errors,
@@ -623,3 +630,18 @@ with an ephemeral API-only pepper, creates a real authenticated watch before
 new activity, verifies delivery/reorg history after API restart, and downloads a
 canonical CSV in both production topology layouts. Browser API fixtures do not
 replace that production PostgreSQL/maintenance acceptance.
+
+### Preview gateway regressions
+
+`go test -race ./cmd/ipfs-gateway` covers the independent HTTPS proxy, TLS trust,
+path/method restrictions, streaming, cancellation, timeout and lifecycle behavior.
+`make preview-gateway-build` builds its standalone scratch image. The Preview
+metadata gate builds both current application and gateway images before running
+its real offline-Kubo acceptance; the gateway is not a production application
+role. `make compose-check` validates the image/build/healthcheck and key isolation.
+
+`go test ./e2e/previewmetadata -run TestPreviewGenesisSystemContracts` checks
+the Preview template against the pinned Geth system contract allocations in the
+ordinary Go test suite. Receipt polling retries only null results and Geth's
+specific transaction-indexing RPC error within the existing three-minute wait;
+other RPC/transport failures and mismatched transaction hashes remain fatal.

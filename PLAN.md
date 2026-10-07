@@ -188,3 +188,18 @@ receipt regression fixes in their existing acceptance evidence.
 passes all 11 jobs at `243792a391b2927ee5d5840627159ed83f175a9a`, including
 native AMD64/ARM64 verification and production runtime/x402 parity. The local
 Foundry validation blocker is cleared; P70/P73 external release blockers remain.
+
+P68-T30 completes the independent Go HTTPS Preview gateway replacing nginx.
+Gateway regressions, lint, Compose/docs/plan checks, real offline-Kubo metadata
+acceptance and isolated daily startup/recreation pass. The acceptance follow-up
+adds missing Geth system-contract genesis allocations and bounded handling of
+receipt-indexing progress. PR #136 CI passed all 11 jobs at `472034f`; the
+follow-up requires fresh CI. See [P68 evidence](docs/plans/P68-runtime-architecture-hardening.md#evidence).
+P68 returns to done; P70/P73 external release blockers remain unchanged.
+
+P68-T31 adds the full Preview metadata acceptance target as an independent CI
+job with ephemeral TLS and seven-day diagnostic artifacts. Local workflow,
+documentation and plan validation pass. [PR #136 CI run 37638823425](https://github.com/islishude/etherview/actions/runs/37638823425)
+passes all 12 jobs at `e1b8bda`, including the full Preview gate and artifact
+upload. P68-T30/P68-T31 and P68 are done; Amsterdam activation is reverted.
+P70/P73 external release blockers remain unchanged.

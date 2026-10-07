@@ -16,9 +16,7 @@ node_modules
 /.env
 /.env.*
 !/.env.example
-/.local/preview-tls/
-/.local/preview-genesis.json
-/.local/preview-compiler/
+/.local
 /data/
 *.log
 
