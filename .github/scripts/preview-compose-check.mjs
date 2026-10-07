@@ -50,7 +50,7 @@ for (const key of ["derived_enabled", "derived_backfill_enabled", "derived_forwa
 }
 
 const geth = requireService("geth");
-assert.equal(geth.image, "ethereum/client-go:v1.17.5", "Preview Geth image");
+assert.equal(geth.image, "ethereum/client-go:v1.17.7", "Preview Geth image");
 assert.deepEqual(
   geth.entrypoint,
   ["/bin/sh", "/usr/local/bin/etherview-geth-entrypoint.sh"],
@@ -174,7 +174,7 @@ const api = requireService("api");
 const ipfs = requireService("ipfs");
 const gateway = requireService("ipfs-gateway");
 assert.equal(ipfs.image, "ipfs/kubo:v0.43.1", "pinned Kubo image");
-assert.equal(gateway.image, "nginx:1.28.0-alpine", "pinned gateway proxy image");
+assert.equal(gateway.image, "nginx:1.31.0-alpine", "pinned gateway proxy image");
 assert.equal(ipfs.environment.IPFS_GATEWAY_NO_FETCH, "false", "daily Preview retrieval");
 assert.ok(!ipfs.command.includes("--offline"), "daily Preview must be online");
 assert.equal(ipfs.ports.length, 1, "only Kubo RPC is published");

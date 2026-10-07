@@ -357,7 +357,7 @@ or SPA protocol change.
 
 ## RustFS trace-cache deployment
 
-The optional `accelerators` Compose profile uses `rustfs/rustfs:1.0.0` as
+The optional `accelerators` Compose profile uses `rustfs/rustfs:1.0.1` as
 `object-storage`. S3 listens on container port 9000 and the console on 9001;
 production Compose publishes neither port. RustFS runs as the image's default
 non-root user, with a new `rustfs-data` named volume. The `/health/ready` probe
@@ -1190,7 +1190,7 @@ publication rather than at the creator code epoch.
 ### Runtime smoke verification fixture (development only)
 
 The runtime parity smoke target defaults `ETHERVIEW_RUNTIME_FIXTURE_IMAGE` to
-Foundry `v1.8.3` and starts anvil on the Prague hard fork as its deterministic
+Foundry `v1.8.5` and starts anvil on the Prague hard fork as its deterministic
 chain fixture source. Its Go harness generates temporary EIP-7702 keys and raw
 transactions, funds them through `anvil_setBalance`, and does not require host
 `cast` or reusable private keys. Do not rely on hardcoded chain, block, or
