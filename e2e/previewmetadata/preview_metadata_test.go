@@ -409,19 +409,47 @@ func (h *harness) deployNFT(ctx context.Context) rpcReceipt {
 	if hash == (common.Hash{}) {
 		h.t.Fatal("Preview NFT deployment returned an empty transaction hash")
 	}
-	var receipt rpcReceipt
-	waitFor(h.t, ctx, "Preview NFT deployment receipt", func() (bool, string, error) {
-		err := h.rpc.CallContext(ctx, &receipt, "eth_getTransactionReceipt", hash)
-		if err != nil {
-			return false, err.Error(), err
-		}
-		return receipt.TransactionHash != (common.Hash{}), receipt.TransactionHash.Hex(), nil
-	})
+	receipt := h.waitReceipt(ctx, "Preview NFT deployment receipt", hash)
 	if uint64(receipt.Status) != 1 || receipt.ContractAddress == nil || *receipt.ContractAddress == (common.Address{}) ||
 		receipt.BlockHash == (common.Hash{}) || uint64(receipt.BlockNumber) == 0 {
 		h.t.Fatalf("Preview NFT deployment receipt = %#v", receipt)
 	}
 	return receipt
+}
+
+func (h *harness) waitReceipt(ctx context.Context, description string, hash common.Hash) rpcReceipt {
+	h.t.Helper()
+	var receipt *rpcReceipt
+	waitFor(h.t, ctx, description, func() (bool, string, error) {
+		var err error
+		receipt, err = probeReceipt(ctx, h.rpc, hash)
+		if err != nil {
+			return false, "receipt query failed", err
+		}
+		if receipt == nil {
+			return false, "receipt pending or transaction indexing", nil
+		}
+		return true, receipt.TransactionHash.Hex(), nil
+	})
+	return *receipt
+}
+
+// Geth may temporarily reject receipt lookup while its transaction index catches
+// up. Only its specific typed RPC error is pending; other failures stay fatal.
+func probeReceipt(ctx context.Context, client *rpc.Client, hash common.Hash) (*rpcReceipt, error) {
+	var receipt *rpcReceipt
+	err := client.CallContext(ctx, &receipt, "eth_getTransactionReceipt", hash)
+	if err != nil {
+		var rpcErr rpc.Error
+		if errors.As(err, &rpcErr) && rpcErr.ErrorCode() == -32000 && rpcErr.Error() == "transaction indexing is in progress" {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if receipt != nil && receipt.TransactionHash != hash {
+		return nil, errors.New("receipt transaction hash mismatch")
+	}
+	return receipt, nil
 }
 
 func (h *harness) updateMetadataURI(ctx context.Context, contract common.Address) rpcReceipt {
@@ -435,14 +463,7 @@ func (h *harness) updateMetadataURI(ctx context.Context, contract common.Address
 	if hash == (common.Hash{}) {
 		h.t.Fatal("Preview metadata update returned an empty transaction hash")
 	}
-	var receipt rpcReceipt
-	waitFor(h.t, ctx, "Preview NFT metadata update receipt", func() (bool, string, error) {
-		err := h.rpc.CallContext(ctx, &receipt, "eth_getTransactionReceipt", hash)
-		if err != nil {
-			return false, err.Error(), err
-		}
-		return receipt.TransactionHash != (common.Hash{}), receipt.TransactionHash.Hex(), nil
-	})
+	receipt := h.waitReceipt(ctx, "Preview NFT metadata update receipt", hash)
 	metadataUpdateTopic := gethcrypto.Keccak256Hash([]byte("MetadataUpdate(uint256)"))
 	if uint64(receipt.Status) != 1 || receipt.BlockHash == (common.Hash{}) ||
 		uint64(receipt.BlockNumber) == 0 || receipt.ContractAddress != nil ||

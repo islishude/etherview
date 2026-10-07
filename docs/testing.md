@@ -632,3 +632,9 @@ path/method restrictions, streaming, cancellation, timeout and lifecycle behavio
 metadata gate builds both current application and gateway images before running
 its real offline-Kubo acceptance; the gateway is not a production application
 role. `make compose-check` validates the image/build/healthcheck and key isolation.
+
+`go test ./e2e/previewmetadata -run TestPreviewGenesisSystemContracts` checks
+the Preview template against the pinned Geth system contract allocations in the
+ordinary Go test suite. Receipt polling retries only null results and Geth's
+specific transaction-indexing RPC error within the existing three-minute wait;
+other RPC/transport failures and mismatched transaction hashes remain fatal.

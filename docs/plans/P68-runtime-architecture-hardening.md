@@ -1,6 +1,6 @@
 # P68 — Runtime and Architecture Hardening
 
-Status: `blocked`
+Status: `done`
 
 ## Outcome
 
@@ -54,15 +54,15 @@ keys, and the fresh-database schema remain unchanged.
 | P68-T27 | done | P68-T26 | Rewrite native pgx acceptance around engineering invariants, validation coverage and benchmark limits without Git or PR history | Documentation and plan checks |
 | P68-T28 | done | P68-T24 | Make the enrichment heartbeat completion regression deterministic under CI scheduling | Repeated focused race tests, enrichment race suite, lint, docs and plan gates |
 | P68-T29 | done | P68-T13 | Synchronize the home replica-switch regression after consumption of the initial snapshot | Repeated focused race tests, HTTP API race suite, lint, docs and plan gates |
-| P68-T30 | blocked | P68-T25 | Replace Preview nginx with an independent Go HTTPS IPFS gateway | Gateway unit/race, lint, Compose/docs/plan and real-Kubo Preview acceptance |
+| P68-T30 | done | P68-T25 | Replace Preview nginx with an independent Go HTTPS IPFS gateway | Gateway unit/race, lint, Compose/docs/plan and real-Kubo Preview acceptance |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
 ## Acceptance
 
-- [ ] P68-T30: real-Kubo Preview acceptance and daily startup/recreation pass
-      with the independently built Go gateway; blocked by Docker daemon
-      unavailability on the current host.
+- [x] P68-T30: real-Kubo Preview acceptance and daily startup/recreation pass
+      with the independently built Go gateway; the Preview Genesis includes
+      pinned Geth system contracts and receipt polling handles indexing progress.
 
 - [x] P68-T29: the replica-switch regression waits for the initial snapshot to
       be consumed before publishing the required version; stale-response and
@@ -112,13 +112,8 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
 ## Current Blockers
 
-P68-T30 is blocked on the local Docker Desktop daemon: its Unix-socket
-`/_ping` returns no bytes within five seconds and the production image build
-cannot connect. Clear this blocker by restoring Docker responsiveness and
-passing `make test-preview-metadata`, `make start-preview`, and
-`make recreate-preview` with the Go gateway. Preserve any existing daily
-Preview data while validating startup/recreation. P70/P73 release gates remain
-separate; P68-T25 historical evidence does not validate this replacement.
+None for P68. P68-T30's Docker and Preview acceptance blockers are cleared
+by the follow-up evidence below. P70/P73 external release gates remain separate.
 
 ## Evidence
 
@@ -494,3 +489,36 @@ separate; P68-T25 historical evidence does not validate this replacement.
   timed out without a response. The task-owned blocked build was terminated.
   The gateway container image, real offline Kubo acceptance and daily Preview
   startup/recreation remain unverified. No remote CI or production claim.
+
+#### P68-T30 acceptance follow-up (2026-10-07)
+
+- PR #136 [CI run 37623474559](https://github.com/islishude/etherview/actions/runs/37623474559)
+  passed all 11 jobs at `472034f2c740425ed6408fd99372c366c7691d3f`.
+  That run predates this follow-up and does not establish Preview acceptance.
+- Docker recovered. The user-provided failure diagnostics and a local retry
+  show Geth cannot build blocks because the Preview template lacks the
+  withdrawal queue system contract. Retrying receipts alone still times out.
+  Added the missing withdrawal/consolidation and builder queue allocations
+  from pinned Geth, preserving existing allocations and fork configuration.
+- The ordinary Go suite now compares Preview system contract code, nonce and
+  balance with `core.SystemContractAllocs()`. Both receipt waits share bounded
+  polling of null responses and only Geth's exact -32000 indexing error;
+  other RPC/transport errors, cancellation and mismatched hashes fail.
+- `go test -race -tags=previewmetadatae2e ./e2e/previewmetadata -run
+  'TestReceiptProbe|TestPreviewGenesisSystemContracts'`, `make lint-go`,
+  `make compose-check`, `make docs-check` and `make plan-check` pass.
+- `make test-preview-metadata
+  PREVIEW_GENESIS_TEMPLATE=/tmp/etherview-preview-genesis-pr136.json` passes
+  (53.54 seconds), including real offline Kubo, trusted TLS, both metadata
+  versions, single attempts and restart persistence. The temporary template is
+  the proposed committed fixture; the user's pre-existing, unstaged Amsterdam
+  activation was excluded from this acceptance input and preserved in place.
+  Diagnostics: `etherview-preview-metadata-1474254446` under the host temp root.
+- `make start-preview` and `make recreate-preview` pass with the same template,
+  `PREVIEW_GENESIS_RUNTIME=.local/preview-gateway-lifecycle-genesis.json`,
+  random loopback ports and isolated project
+  `etherview-gateway-lifecycle-1791382347`. Newly uploaded Kubo content survives
+  recreation and the genesis hash remains identical. Only that owned project's
+  containers, network and volumes were removed afterward.
+- P68-T30 is done. The follow-up requires its own remote PR CI; P70/P73
+  release blockers remain unchanged. Existing chain volumes are not migrated.

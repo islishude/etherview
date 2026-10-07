@@ -1297,3 +1297,11 @@ The executable accepts `serve --listen :8443 --upstream http://ipfs:8080
 defaults). Its `healthcheck` command checks only the container-local readiness
 listener. TLS certificates load at startup; recreate the gateway after rotation.
 Invalid certificates fail startup, and upstream failures return a redacted 502.
+
+Preview genesis predeploys the system contracts from the pinned Geth developer
+allocation, including withdrawal, consolidation and builder request queues.
+Activating a fork without its contracts can prevent Geth from building any
+blocks. Changes to these allocations change the genesis hash: use a fresh
+Compose project for validation, and do not initialize existing chain volumes
+with a different genesis. `recreate-preview` preserves the same runtime genesis
+and volumes; it is not a genesis migration procedure.
