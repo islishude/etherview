@@ -675,7 +675,7 @@ func (h *harness) assertOperationalLogs(ctx context.Context) {
 func runtimeEnvironment(root string, baseTimestamp uint64, userOperations bool) map[string]string {
 	return map[string]string{
 		"ETHERVIEW_IMAGE":                 valueOrDefault("IMAGE", "etherview:local"),
-		"ETHERVIEW_RUNTIME_FIXTURE_IMAGE": valueOrDefault("ETHERVIEW_RUNTIME_FIXTURE_IMAGE", "ghcr.io/foundry-rs/foundry:v1.8.3"),
+		"ETHERVIEW_RUNTIME_FIXTURE_IMAGE": valueOrDefault("ETHERVIEW_RUNTIME_FIXTURE_IMAGE", "ghcr.io/foundry-rs/foundry:v1.8.5"),
 		"ANVIL_ARGS": valueOrDefault(
 			"ANVIL_ARGS",
 			fmt.Sprintf(

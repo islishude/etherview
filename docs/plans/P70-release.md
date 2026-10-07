@@ -75,6 +75,8 @@ and user/operator evidence sufficient for a production public release.
 | P70-T44 | done | P70-T19, P70-T27 | Remove every disposable Compose project resource during Go-owned test teardown, including volumes referenced only by inactive one-off client profiles | focused command regression and Hardhat project cleanup inspection |
 | P70-T45 | done | P70-T42, P70-T44, P76 | Reconcile maintained deployment and operations documentation with the current Makefile, Compose, runtime, and public capability contracts | focused source/doc audit, plan/link/whitespace checks, and applicable common gates |
 | P70-T46 | done | P70-T45 | Run the complete existing CI workflow daily on the default branch | workflow syntax, schedule/concurrency inspection, documentation and plan checks |
+| P70-T47 | blocked | P70-T31, P70-T43 | Upgrade Foundry, Anvil and x402 fixtures to 1.8.5 with matching Forge identity assertions | tagged regressions, Compose, docs/plan and production E2E gates |
+| P70-T48 | blocked | P70-T45 | Update Preview nginx/Geth and optional NATS/RustFS image versions | Compose, docs/plan checks and container acceptance |
 
 ## Acceptance
 
@@ -302,6 +304,13 @@ and user/operator evidence sufficient for a production public release.
       adapters.
 
 ## Current Blockers
+
+- P70-T48: Docker daemon is unresponsive. Restore Docker and verify the updated
+  Preview and accelerator containers, including `make test-rustfs` and
+  `make test-preview-metadata`.
+
+- P70-T47: local Docker daemon is unresponsive. Restore Docker and pass the
+  rebuilt Foundry, runtime/x402, and Hardhat production E2E gates below.
 
 The superseded accountless request-payment path is replaced by P73. P73-T08
 still needs operator-provided testnet funding, payer credentials, a compatible staging facilitator and top-up
@@ -1351,3 +1360,34 @@ clear the existing live-payment or reference-capacity blockers.
   Hardhat and Vyper acceptance. The separate Dependabot configuration check
   also passes. This documentation consolidation passes `make docs-check
   plan-check` and `git diff --check`; it adds no runtime changes.
+
+### P70-T47 — Foundry 1.8.5 update (2026-10-07)
+
+- Updated Foundry client, shared Anvil runtime, and x402 image tags to `v1.8.5`.
+  Docker build and Go acceptance identity checks require upstream tag commit
+  `51a52c59cffd940f76eddd0b4bb1791aa4b5ac7f`, verified with `git ls-remote`.
+  Maintained compatibility, testing, and operations documentation is aligned.
+- Passed `go test -count=1 -tags='runtimee2e foundrye2e' ./e2e/runtime
+  -run 'Receipt|FoundryVerificationCounts'`, the receipt regression with `-race`,
+  and `go test -tags=runtimee2e ./e2e/x402local -run '^$'` (compile only).
+  `make docs-check plan-check compose-check source-check` and
+  `git diff --check` pass.
+- Blocker: the local Docker daemon does not answer `_ping` within 10 seconds;
+  `make foundry-client-image-build` also stalls without build progress.
+  Clear by restoring Docker and passing `make test-foundry-e2e`,
+  `make test-runtime-e2e`, and `make test-hardhat3-e2e` against rebuilt current
+  images. Container execution and native AMD64/ARM64 CI remain unverified for
+  this upgrade; the prior 1.8.3 acceptance does not cover it.
+
+### P70-T48 — Preview and accelerator image updates (2026-10-07)
+
+- Updated nginx `1.28.0-alpine` to `1.31.0-alpine`, Geth `v1.17.5` to
+  `v1.17.7`, NATS `2.12-alpine` to `2.15-alpine`, and RustFS `1.0.0` to
+  `1.0.1`. Updated existing Preview/RustFS image assertions and the maintained
+  RustFS operations reference. Historical acceptance evidence is retained.
+- `make compose-check docs-check plan-check` and `git diff --check` pass,
+  including the five Preview Genesis regressions and profile render assertions.
+- Container acceptance is blocked: the Docker socket `_ping` probe times out
+  after five seconds. Restore Docker, verify Preview nginx/Geth and NATS
+  startup, and run `make test-rustfs` and `make test-preview-metadata` before
+  closing this item. No image-pull, container-runtime or remote CI pass is claimed.
