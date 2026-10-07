@@ -68,7 +68,7 @@ Geth imports and unlocks its built-in ephemeral development account; local
 the tracked template's block-zero identity once and remains strictly a
 development boundary.
 
-Preview includes Kubo `v0.43.1` and an HTTPS gateway at
+Preview includes Kubo `v0.43.1` and an independent Go HTTPS gateway at
 `https://ipfs.preview.test:8443`. Add `127.0.0.1 ipfs.preview.test` to the local
 hosts file to open gateway links in a browser; containers resolve the same name
 through a Compose network alias. `make preview-cert` also creates the separate
@@ -1282,3 +1282,18 @@ Core coverage/Token publication or writer is unavailable; retry after recovery.
 Failures return JSON before any CSV bytes. Files are generated in memory and
 not retained. Crash reservations expire after 20 seconds and maintenance prunes
 old admission records. Existing HTTP write limits still bound file delivery.
+
+### Preview Go gateway
+
+`make start-preview`, `make recreate-preview`, and `make test-preview-metadata`
+build the independent gateway from current source before their `--no-build`
+Compose startup. `make preview-gateway-build` builds it separately;
+`IPFS_GATEWAY_IMAGE` overrides its default `etherview-ipfs-gateway:local` tag.
+The image contains only the Go executable and runs as root to read the existing
+0600 certificate key bind mount. Keep the key permissions unchanged.
+
+The executable accepts `serve --listen :8443 --upstream http://ipfs:8080
+--tls-cert /run/ipfs-tls/tls.crt --tls-key /run/ipfs-tls/tls.key` (these are the
+defaults). Its `healthcheck` command checks only the container-local readiness
+listener. TLS certificates load at startup; recreate the gateway after rotation.
+Invalid certificates fail startup, and upstream failures return a redacted 502.

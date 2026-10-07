@@ -120,3 +120,19 @@ tracking content despite the syntactic link policy. The mandatory confirmation,
 target disclosure, no-referrer navigation, and lack of automatic loading make
 that user-directed risk explicit without granting the server anonymous outbound
 fetch authority.
+
+### Preview gateway implementation
+
+Preview uses the independent standard-library Go `ipfs-gateway` executable and
+scratch image. It proxies only GET/HEAD `/ipfs/` reads to the configured Kubo
+HTTP origin, rejects traversal/encoded separator paths, and preserves streaming.
+Its dedicated certificate is loaded before either listener opens; TLS 1.2/1.3
+and HTTP/2 are supported. Certificate rotation requires restart. Only the gateway
+mounts the private key; its image runs as root to read the existing owner-only
+0600 bind mount without widening key permissions.
+
+The loopback HTTP health listener reports HTTPS serving readiness. SIGTERM
+withdraws readiness and drains requests for at most ten seconds. Upstream
+connects are bounded to five seconds; response headers and stream inactivity to
+thirty seconds. Proxy failures use stable redacted errors. This helper is not
+an application role and does not alter the monolith/split component manifest.

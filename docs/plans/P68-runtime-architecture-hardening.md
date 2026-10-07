@@ -1,6 +1,6 @@
 # P68 — Runtime and Architecture Hardening
 
-Status: `done`
+Status: `blocked`
 
 ## Outcome
 
@@ -54,10 +54,15 @@ keys, and the fresh-database schema remain unchanged.
 | P68-T27 | done | P68-T26 | Rewrite native pgx acceptance around engineering invariants, validation coverage and benchmark limits without Git or PR history | Documentation and plan checks |
 | P68-T28 | done | P68-T24 | Make the enrichment heartbeat completion regression deterministic under CI scheduling | Repeated focused race tests, enrichment race suite, lint, docs and plan gates |
 | P68-T29 | done | P68-T13 | Synchronize the home replica-switch regression after consumption of the initial snapshot | Repeated focused race tests, HTTP API race suite, lint, docs and plan gates |
+| P68-T30 | blocked | P68-T25 | Replace Preview nginx with an independent Go HTTPS IPFS gateway | Gateway unit/race, lint, Compose/docs/plan and real-Kubo Preview acceptance |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
 ## Acceptance
+
+- [ ] P68-T30: real-Kubo Preview acceptance and daily startup/recreation pass
+      with the independently built Go gateway; blocked by Docker daemon
+      unavailability on the current host.
 
 - [x] P68-T29: the replica-switch regression waits for the initial snapshot to
       be consumed before publishing the required version; stale-response and
@@ -107,8 +112,13 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
 ## Current Blockers
 
-None for P68. The user-approved P68-T25 local Kubo contract replaces the
-historical public-gateway gate; P70/P73 external release gates remain separate.
+P68-T30 is blocked on the local Docker Desktop daemon: its Unix-socket
+`/_ping` returns no bytes within five seconds and the production image build
+cannot connect. Clear this blocker by restoring Docker responsiveness and
+passing `make test-preview-metadata`, `make start-preview`, and
+`make recreate-preview` with the Go gateway. Preserve any existing daily
+Preview data while validating startup/recreation. P70/P73 release gates remain
+separate; P68-T25 historical evidence does not validate this replacement.
 
 ## Evidence
 
@@ -461,3 +471,26 @@ historical public-gateway gate; P70/P73 external release gates remain separate.
   `make generate-check web-lint web-test`, and `git diff --check` pass locally.
   The combined dependency updates pass all 376 Web tests and eight tooling
   tests. Full remote PR CI remains required before merge.
+
+### P68-T30 — Independent Go Preview HTTPS gateway (2026-10-07)
+
+- Replaced the nginx service/config with a standard-library Go reverse proxy
+  and standalone scratch-image build. Compose preserves the Kubo node, HTTPS
+  origin, loopback ports, dedicated certificate mounts and role-scoped CA.
+  Preview start/recreate/metadata targets build the current gateway source;
+  reports retain the container image ID and identify the Go implementation.
+- `go test -race ./cmd/ipfs-gateway` passes: read-only routing, encoded paths
+  and queries, traversal/management denial, upstream and downstream idle
+  deadlines, cancellation, redacted errors, TLS trust/hostname/version/HTTP2,
+  certificate failures before bind, and graceful in-flight draining.
+- `make lint-go`, `make compose-check`, `make docs-check`, and `make plan-check`
+  pass locally. Standalone `CGO_ENABLED=0` Linux ARM64 and AMD64 builds pass
+  using only go.mod and the gateway source, with GOPROXY disabled.
+- A host smoke using the existing mkcert pair passes actual `serve` startup,
+  the CLI `healthcheck`, trusted HTTPS forwarding and SIGTERM exit. This is
+  host-level evidence, not container acceptance.
+- `make test-preview-metadata` was attempted but blocked before image build:
+  Docker Desktop's Unix-socket `/_ping` hung; a separate five-second ping
+  timed out without a response. The task-owned blocked build was terminated.
+  The gateway container image, real offline Kubo acceptance and daily Preview
+  startup/recreation remain unverified. No remote CI or production claim.

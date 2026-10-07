@@ -931,7 +931,9 @@ size alone is not sufficient justification to weaken those invariants.
   available document only with explicit latest/content observations and a
   stale marker; reorg automatically removes orphan update influence.
 
-Preview uses a pinned local Kubo node behind a dedicated HTTPS proxy. Its
+Preview uses a pinned local Kubo node behind the independent standard-library
+Go `ipfs-gateway` HTTPS proxy and scratch image. The proxy serves only GET/HEAD
+`/ipfs/` reads and is not an application runtime role. Its
 metadata-only worker trusts the local public CA and explicitly permits the
 owned private gateway; the API media fetch policy remains strict. Daily Preview
 can retrieve IPFS content, while its acceptance topology seeds the same CID and

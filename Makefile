@@ -39,6 +39,7 @@ GENERATED_PATHS := \
 IMAGE ?= etherview:local
 HARDHAT3_IMAGE ?= etherview-hardhat3:local
 FOUNDRY_IMAGE ?= etherview-foundry:local
+IPFS_GATEWAY_IMAGE ?= etherview-ipfs-gateway:local
 HELM_CHART ?= deploy/helm/etherview
 PREVIEW_APP_SERVICES := api sync enrich trace metadata maintenance
 PREVIEW_RUNTIME_SERVICES := ipfs ipfs-gateway migration $(PREVIEW_APP_SERVICES)
@@ -330,6 +331,11 @@ docker-build:
 	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "docker-build: docker is required"; exit 1; }
 	DOCKER="$(DOCKER)" $(BUILDX) build --load --target production --tag "$(IMAGE)" .
 
+preview-gateway-build:
+	DOCKER="$(DOCKER)" $(BUILDX) build --load --file deploy/ipfs/Dockerfile --tag "$(IPFS_GATEWAY_IMAGE)" .
+
+.PHONY: preview-gateway-build
+
 docker-image-check:
 	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "docker-image-check: docker is required"; exit 1; }
 	DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" deploy/check-image.sh
@@ -444,8 +450,8 @@ test-runtime-e2e-prebuilt:
 	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
 		$(GO) test -p=1 -count=1 -v -tags=runtimee2e ./e2e/runtime ./e2e/x402local
 
-test-preview-metadata: preview-cert-check preview-genesis-refresh docker-build
-	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
+test-preview-metadata: preview-cert-check preview-genesis-refresh docker-build preview-gateway-build
+	@IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
 		$(GO) test -count=1 -v -tags=previewmetadatae2e ./e2e/previewmetadata
 
 helm-check:
@@ -496,10 +502,10 @@ preview-genesis-refresh:
 	@$(NODE) .github/scripts/update-preview-genesis-timestamp.mjs \
 		"$(PREVIEW_GENESIS_TEMPLATE)" "$(PREVIEW_GENESIS_RUNTIME)"
 
-start-preview: preview-cert-check preview-genesis-refresh docker-build
+start-preview: preview-cert-check preview-genesis-refresh docker-build preview-gateway-build
 	@ETHERVIEW_GENESIS_FILE="$${ETHERVIEW_GENESIS_FILE:-$(PREVIEW_GENESIS_RUNTIME)}" \
 		GETH_GENESIS_FILE="$${GETH_GENESIS_FILE:-$(PREVIEW_GENESIS_RUNTIME)}" \
-		ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
+		IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
 		up --no-build --wait --wait-timeout 180 --remove-orphans
 
 stop-preview:
@@ -512,14 +518,14 @@ preview-genesis-runtime:
 		exit 1; \
 	fi
 
-recreate-preview: preview-cert-check preview-genesis-runtime docker-build
+recreate-preview: preview-cert-check preview-genesis-runtime docker-build preview-gateway-build
 	@ETHERVIEW_GENESIS_FILE="$${ETHERVIEW_GENESIS_FILE:-$(PREVIEW_GENESIS_RUNTIME)}" \
 		GETH_GENESIS_FILE="$${GETH_GENESIS_FILE:-$(PREVIEW_GENESIS_RUNTIME)}" \
-		ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
+		IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
 		rm -fs $(PREVIEW_RUNTIME_SERVICES)
 	@ETHERVIEW_GENESIS_FILE="$${ETHERVIEW_GENESIS_FILE:-$(PREVIEW_GENESIS_RUNTIME)}" \
 		GETH_GENESIS_FILE="$${GETH_GENESIS_FILE:-$(PREVIEW_GENESIS_RUNTIME)}" \
-		ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
+		IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
 		up -d --no-build --wait --wait-timeout 180 --remove-orphans $(PREVIEW_RUNTIME_SERVICES)
 
 start-x402-local: docker-build

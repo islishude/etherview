@@ -372,7 +372,7 @@ branch; scheduled start times may be delayed by runner load.
   holdings/inventory, source/document/job history, and restart-stable database
   persistence. Every connected/resolved IP must belong to the owned gateway;
   `policy_bypassed=true` is mandatory. A reused connection may omit new DNS
-  results. Reports record application/Kubo/proxy image identities, offline mode,
+  results. Reports record application/Kubo/Go-gateway image identities, offline mode,
   CID, content digest and network evidence. Success and failure artifacts are
   retained and their directory is printed. Run `make preview-cert` first (also
   after upgrading a Preview that lacks the dedicated IPFS certificate).
@@ -623,3 +623,12 @@ with an ephemeral API-only pepper, creates a real authenticated watch before
 new activity, verifies delivery/reorg history after API restart, and downloads a
 canonical CSV in both production topology layouts. Browser API fixtures do not
 replace that production PostgreSQL/maintenance acceptance.
+
+### Preview gateway regressions
+
+`go test -race ./cmd/ipfs-gateway` covers the independent HTTPS proxy, TLS trust,
+path/method restrictions, streaming, cancellation, timeout and lifecycle behavior.
+`make preview-gateway-build` builds its standalone scratch image. The Preview
+metadata gate builds both current application and gateway images before running
+its real offline-Kubo acceptance; the gateway is not a production application
+role. `make compose-check` validates the image/build/healthcheck and key isolation.
