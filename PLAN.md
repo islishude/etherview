@@ -25,7 +25,7 @@ batch semantics are not core v1 scope.
 | P64 | [NFT Metadata Web](docs/plans/P64-nft-metadata-web.md) | done | P20, P30, P40, P50 | Canonical NFT metadata projection, standard-event refresh, and guarded external-image navigation |
 | P65 | [User Authentication](docs/plans/P65-user-auth.md) | done | P40, P50 | SIWE wallet login, revocable sessions, profiles, administration, and scoped user API keys |
 | P67 | [ENS Primary Names](docs/plans/P67-ens-primary-names.md) | done | P20, P30, P40, P50 | Snapshot-stable official and custom ENS forward resolution plus verified primary-name display |
-| P68 | [Runtime and Architecture Hardening](docs/plans/P68-runtime-architecture-hardening.md) | done | P00, P30, P40, P50 | Explicit SQL, runtime, HTTP, Web, and quality boundaries |
+| P68 | [Runtime and Architecture Hardening](docs/plans/P68-runtime-architecture-hardening.md) | in_progress | P00, P30, P40, P50 | Explicit SQL, runtime, HTTP, Web, and quality boundaries |
 | P70 | [Release](docs/plans/P70-release.md) | blocked | P10, P20, P30, P40, P50, P64, P65, P67, P68, P73, P74, P75, P77, P78 | Security, conformance, performance, E2E, documentation, and v1 release |
 | P73 | [Prepaid API Billing](docs/plans/P73-prepaid-api-billing.md) | blocked | P30, P40, P65 | x402 account top-ups and PostgreSQL prepaid credit for bounded Etherscan V2 reads |
 | P74 | [Etherscan V2 Read Expansion](docs/plans/P74-etherscan-v2-read-expansion.md) | done | P20, P40, P65 | Authoritative withdrawals, holdings, funding, block counts, and advanced compatibility filters |
@@ -196,3 +196,8 @@ adds missing Geth system-contract genesis allocations and bounded handling of
 receipt-indexing progress. PR #136 CI passed all 11 jobs at `472034f`; the
 follow-up requires fresh CI. See [P68 evidence](docs/plans/P68-runtime-architecture-hardening.md#evidence).
 P68 returns to done; P70/P73 external release blockers remain unchanged.
+
+P68-T31 adds the full Preview metadata acceptance target as an independent CI
+job with ephemeral TLS and seven-day diagnostic artifacts. Local workflow,
+documentation and plan validation pass; P68 is in progress pending the new
+remote job. P70/P73 external release blockers remain unchanged.

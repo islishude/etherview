@@ -331,3 +331,38 @@ jobs:
           path: ${{ runner.temp }}/etherview-runtime-e2e-*
           if-no-files-found: warn
           retention-days: 7
+
+  preview-metadata:
+    name: Preview IPFS metadata E2E
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Install pinned local certificate tool
+        run: go install filippo.io/mkcert@v1.4.4
+      - name: Create ephemeral Preview certificates
+        env:
+          CAROOT: ${{ runner.temp }}/preview-ca
+          TRUST_STORES: system
+        run: make preview-cert
+      - name: Run full Preview metadata acceptance
+        id: preview-metadata
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: make test-preview-metadata
+      - name: Upload Preview metadata evidence and diagnostics
+        if: ${{ always() && steps.preview-metadata.outcome != 'skipped' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: preview-metadata-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/etherview-preview-metadata-*
+          if-no-files-found: warn
+          retention-days: 7

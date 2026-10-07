@@ -376,9 +376,14 @@ branch; scheduled start times may be delayed by runner load.
   CID, content digest and network evidence. Success and failure artifacts are
   retained and their directory is printed. Run `make preview-cert` first (also
   after upgrading a Preview that lacks the dedicated IPFS certificate).
-  This explicit Docker gate is not included in `make check` or CI and does not
-  establish public IPFS availability. Image pulls/builds still require their
-  normal registry/toolchain prerequisites.
+  CI runs this complete target in the independent `Preview IPFS metadata E2E`
+  job on Ubuntu AMD64 for pull requests, main pushes and the daily schedule.
+  The job installs pinned mkcert 1.4.4 and uses `make preview-cert` with an
+  ephemeral runner-local CA and system trust. It builds both images through
+  the canonical target and uploads reports/diagnostics on success or failure
+  for seven days; certificate and CA private keys are never uploaded.
+  This gate remains outside `make check` and does not establish public IPFS
+  availability. Image pulls/builds require normal registry/toolchain access.
 - `go test -race ./cmd/ipfs`: streaming upload/download regressions for binary
   and empty files, Kubo multipart filename encoding, literal and URI-encoded
   paths, encoded traversal rejection, input type, RPC and stream errors,

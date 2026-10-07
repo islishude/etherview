@@ -1305,3 +1305,9 @@ blocks. Changes to these allocations change the genesis hash: use a fresh
 Compose project for validation, and do not initialize existing chain volumes
 with a different genesis. `recreate-preview` preserves the same runtime genesis
 and volumes; it is not a genesis migration procedure.
+
+The CI `Preview IPFS metadata E2E` job runs the full offline-Kubo acceptance
+on pull requests, main pushes and the daily schedule. It creates a temporary
+runner CA and dedicated API/gateway certificates through `make preview-cert`;
+no operator certificates or secrets are required. Its seven-day artifact
+contains only acceptance reports and diagnostic logs, not certificate keys.

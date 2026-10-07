@@ -1,6 +1,6 @@
 # P68 — Runtime and Architecture Hardening
 
-Status: `done`
+Status: `in_progress`
 
 ## Outcome
 
@@ -55,10 +55,14 @@ keys, and the fresh-database schema remain unchanged.
 | P68-T28 | done | P68-T24 | Make the enrichment heartbeat completion regression deterministic under CI scheduling | Repeated focused race tests, enrichment race suite, lint, docs and plan gates |
 | P68-T29 | done | P68-T13 | Synchronize the home replica-switch regression after consumption of the initial snapshot | Repeated focused race tests, HTTP API race suite, lint, docs and plan gates |
 | P68-T30 | done | P68-T25 | Replace Preview nginx with an independent Go HTTPS IPFS gateway | Gateway unit/race, lint, Compose/docs/plan and real-Kubo Preview acceptance |
+| P68-T31 | in_progress | P68-T30 | Run full Preview metadata acceptance in CI with ephemeral TLS and retained diagnostics | Workflow validation, docs/plan checks and remote Preview job |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
 ## Acceptance
+
+- [ ] P68-T31: the independent CI Preview job passes the full offline-Kubo
+      target with ephemeral TLS and retained acceptance/diagnostic artifacts.
 
 - [x] P68-T30: real-Kubo Preview acceptance and daily startup/recreation pass
       with the independently built Go gateway; the Preview Genesis includes
@@ -522,3 +526,14 @@ by the follow-up evidence below. P70/P73 external release gates remain separate.
   containers, network and volumes were removed afterward.
 - P68-T30 is done. The follow-up requires its own remote PR CI; P70/P73
   release blockers remain unchanged. Existing chain volumes are not migrated.
+
+### P68-T31 — Full Preview metadata CI gate (2026-10-07)
+
+- Adds the independent Ubuntu AMD64 `Preview IPFS metadata E2E` job to every
+  existing CI trigger, with a 45-minute budget and Go/Node/Buildx setup.
+- Pins mkcert 1.4.4, creates a runner-local CA with system trust through
+  `make preview-cert`, then runs the exact `make test-preview-metadata` target
+  including both image builds. Success/failure reports and logs are retained
+  for seven days; certificate directories and CA keys are excluded.
+- Local actionlint 1.7.7, `make docs-check`, `make plan-check` and
+  `git diff --check` pass. Remote execution of the new job remains pending.
