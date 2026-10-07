@@ -337,7 +337,9 @@ branch; scheduled start times may be delayed by runner load.
   canonical code observations. Both monolith and the six-role topology assert that the
   adapter observed `debug_traceBlockByHash` and no `debug_traceTransaction`
   calls. Complete provider observations pass through unchanged, so production
-  receipt and trace validation remain strict.
+  receipt and trace validation remain strict. The runtime gate does not require
+  an orphan blob fee field to occur; synthetic receipt regressions cover both
+  normalization and unchanged complete observations.
   Successful Compose lifecycle output is captured rather than streamed, so the
   terminal shows only the current mode and phase. A failure prints the exact Go
   assertion followed by one bounded summary containing the mode, phase,

@@ -76,6 +76,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T45 | done | P70-T42, P70-T44, P76 | Reconcile maintained deployment and operations documentation with the current Makefile, Compose, runtime, and public capability contracts | focused source/doc audit, plan/link/whitespace checks, and applicable common gates |
 | P70-T46 | done | P70-T45 | Run the complete existing CI workflow daily on the default branch | workflow syntax, schedule/concurrency inspection, documentation and plan checks |
 | P70-T47 | blocked | P70-T31, P70-T43 | Upgrade Foundry, Anvil and x402 fixture images to 1.8.3 and align executable identity checks | image identity, offline compilation, Foundry/runtime E2E, Compose, docs and plan gates |
+| P70-T48 | done | P70-T31 | Accept complete Anvil receipt observations without requiring an upstream fixture defect | receipt normalization regressions, tagged runtime compilation, docs and plan checks |
 
 ## Acceptance
 
@@ -1352,3 +1353,19 @@ clear the existing live-payment or reference-capacity blockers.
   compilation. Clear by restoring registry access and passing that command,
   `make test-foundry-e2e`, and `make test-runtime-e2e` (including x402).
   No container execution or native AMD64/ARM64 acceptance is claimed.
+
+### P70-T48 — Anvil complete-receipt CI repair (2026-10-07)
+
+- [PR #118 container job](https://github.com/islishude/etherview/actions/runs/37576543339/job/112646606351)
+  failed only because the runtime fixture required at least one orphan blob-fee
+  normalization. The v1.8.3 fixture reached canonical readiness without needing
+  that repair. Removed the defect-occurrence assertion and its unused counter;
+  retained bounded normalization and all production receipt validation.
+- Extended the receipt regression to preserve an ordinary receipt without blob
+  fields and require zero changes on complete observations. `go test -race
+  -tags='runtimee2e foundrye2e' ./e2e/runtime -run '^TestNormalizeAnvil'
+  -count=1`, `make docs-check plan-check`, and `git diff --check` pass.
+- The preceding CI revision passed both architectures of Foundry and Hardhat,
+  plus x402 monolith/split. Those results do not cover this repair. Local Docker
+  daemon inspection timed out; the new PR CI must confirm full runtime parity.
+  P70-T47 remains blocked pending that acceptance.

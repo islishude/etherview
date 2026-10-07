@@ -234,6 +234,9 @@ func TestNormalizeAnvilReceipts(t *testing.T) {
 				"blobGasPrice":    "0x1",
 			},
 			map[string]any{
+				"transactionHash": "0x03",
+			},
+			map[string]any{
 				"transactionHash": "0x02",
 				"blobGasPrice":    "0x2",
 				"blobGasUsed":     "0x3",
@@ -248,9 +251,16 @@ func TestNormalizeAnvilReceipts(t *testing.T) {
 	if _, present := first["blobGasPrice"]; present {
 		t.Fatal("orphan blobGasPrice was not removed")
 	}
-	second := receipts[1].(map[string]any)
+	ordinary := receipts[1].(map[string]any)
+	if !reflect.DeepEqual(ordinary, map[string]any{"transactionHash": "0x03"}) {
+		t.Fatalf("ordinary receipt changed: %#v", ordinary)
+	}
+	second := receipts[2].(map[string]any)
 	if second["blobGasPrice"] != "0x2" || second["blobGasUsed"] != "0x3" {
 		t.Fatalf("complete blob fee observation changed: %#v", second)
+	}
+	if got := normalizeAnvilReceipts(payload); got != 0 {
+		t.Fatalf("complete receipts required normalization: %d", got)
 	}
 }
 
@@ -444,9 +454,6 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		h.waitReady(ctx)
 		h.waitCanonical(ctx, 1, h.fixture.blockOneHash)
 		h.assertUserOperation(ctx)
-		if h.rpcProxy.normalized.Load() == 0 {
-			t.Fatal("RPC fixture adapter did not normalize Anvil's incomplete blob fee observation")
-		}
 		if mode == "distributed" {
 			h.stopOneWorkerReplica(ctx, "sync")
 			h.stopOneWorkerReplica(ctx, "enrich")
@@ -1685,7 +1692,6 @@ type receiptProxy struct {
 	listener          net.Listener
 	server            *http.Server
 	client            *http.Client
-	normalized        atomic.Uint64
 	clearedDelegation atomic.Uint64
 	blockTraceCalls   atomic.Uint64
 	transactionTraces atomic.Uint64
@@ -1781,7 +1787,7 @@ func (p *receiptProxy) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 		http.Error(writer, "invalid upstream JSON-RPC response", http.StatusBadGateway)
 		return
 	}
-	p.normalized.Add(normalizeAnvilReceipts(payload))
+	normalizeAnvilReceipts(payload)
 	p.clearedDelegation.Add(normalizeAnvilClearedDelegations(payload))
 	encoded, err := json.Marshal(payload)
 	if err != nil {
