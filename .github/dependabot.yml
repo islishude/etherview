@@ -41,6 +41,8 @@ updates:
         patterns: ["@types/*"]
       vitejs:
         patterns: ["vite", "vitest", "@vitejs/*"]
+      oxc:
+        patterns: ["oxlint", "oxfmt"]
 
   - package-ecosystem: npm
     directory: /api
