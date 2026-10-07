@@ -61,8 +61,8 @@
 }
 
 .artifact-match.full {
-  color: var(--brand-strong);
-  background: var(--brand-soft);
+  color: var(--success);
+  background: var(--success-soft);
 }
 
 .artifact-match.partial {

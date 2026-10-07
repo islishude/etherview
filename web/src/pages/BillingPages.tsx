@@ -754,8 +754,12 @@ function BillingSummaryView({
                 <th scope="col">{t("billing.fields.state")}</th>
                 <th scope="col">{t("billing.fields.network")}</th>
                 <th scope="col">{t("billing.fields.asset")}</th>
-                <th scope="col">{t("billing.fields.paymentCount")}</th>
-                <th scope="col">{t("billing.fields.amountAtomic")}</th>
+                <th scope="col" className="numeric">
+                  {t("billing.fields.paymentCount")}
+                </th>
+                <th scope="col" className="numeric">
+                  {t("billing.fields.amountAtomic")}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -807,7 +811,9 @@ function PaymentLedgerTable({
           <tr>
             <th scope="col">{t("billing.fields.operation")}</th>
             <th scope="col">{t("billing.fields.state")}</th>
-            <th scope="col">{t("billing.fields.amountAtomic")}</th>
+            <th scope="col" className="numeric">
+              {t("billing.fields.amountAtomic")}
+            </th>
             <th scope="col">{t("billing.fields.network")}</th>
             <th scope="col">{t("billing.fields.asset")}</th>
             <th scope="col">{t("billing.fields.payer")}</th>

@@ -117,6 +117,7 @@ describe("authentication pages", () => {
     expect(await screen.findByRole("heading", { name: "Wallet connection" })).toBeVisible();
     expect(screen.getByText("Wallet connected", { exact: true })).toBeVisible();
     expect(screen.getAllByText("User authenticated", { exact: true })).toHaveLength(2);
+    await user.click(screen.getByRole("button", { name: /^Account$/ }));
     expect(screen.getByRole("link", { name: "User admin" })).toBeVisible();
     expect(document.body).not.toHaveTextContent(csrfToken);
     expect([...storageValues()]).not.toContain(csrfToken);

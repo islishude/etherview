@@ -282,7 +282,7 @@
   padding: 0.65rem 1rem;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  font-weight: 750;
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -368,8 +368,8 @@
 .form-success {
   padding: 0.8rem;
   margin: 0;
-  color: var(--brand-strong);
-  background: var(--brand-soft);
+  color: var(--success);
+  background: var(--success-soft);
   border-radius: var(--radius-sm);
   font-size: 0.8rem;
   line-height: 1.5;
@@ -450,4 +450,12 @@
 .auth-action-panel .siwe-login-control {
   flex: 0 1 22rem;
   width: min(100%, 22rem);
+}
+
+.button.primary:hover:not(:disabled) {
+  background: var(--brand);
+}
+.button.secondary:hover:not(:disabled) {
+  background: var(--surface-strong);
+  border-color: var(--line-strong);
 }

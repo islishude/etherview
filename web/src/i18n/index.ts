@@ -43,14 +43,6 @@ function initialLanguage(): "en" | "zh" {
   return window.navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en";
 }
 
-void i18n.use(initReactI18next).init({
-  resources,
-  lng: initialLanguage(),
-  fallbackLng: "en",
-  interpolation: { escapeValue: false },
-  returnNull: false,
-});
-
 i18n.on("languageChanged", (language) => {
   if (typeof document !== "undefined") {
     document.documentElement.lang = language.startsWith("zh") ? "zh-CN" : "en";
@@ -58,6 +50,14 @@ i18n.on("languageChanged", (language) => {
   if (typeof window !== "undefined") {
     writePreference("etherview.language", language.startsWith("zh") ? "zh" : "en");
   }
+});
+
+void i18n.use(initReactI18next).init({
+  resources,
+  lng: initialLanguage(),
+  fallbackLng: "en",
+  interpolation: { escapeValue: false },
+  returnNull: false,
 });
 
 function readPreference(key: string): string | null {

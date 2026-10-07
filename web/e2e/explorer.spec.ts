@@ -2532,6 +2532,9 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
   await expect(page.getByRole("heading", { name: "API Keys" })).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await assertA11yAndNoOverflow(page, "account API keys in English narrow mode");
+  const openWallet = page.locator(".wallet-menu[open] > summary");
+  if (await openWallet.count()) await openWallet.click();
+  await page.screenshot({ path: test.info().outputPath("account-api-keys-mobile.png") });
   await activateInView(page.getByRole("button", { name: "切换到中文" }));
   await expect(page.getByText(/最小权限凭据/)).toBeVisible();
   await assertA11yAndNoOverflow(page, "account API keys in Chinese narrow mode");
@@ -2599,11 +2602,8 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
   expect(profileRequest?.headers["x-csrf-token"]).toBe(authCSRFToken);
   expect(profileRequest?.headers.origin).toBe("http://127.0.0.1:4173");
 
-  await activateInView(
-    page
-      .getByRole("navigation", { name: "Primary navigation" })
-      .getByRole("link", { name: "User admin" }),
-  );
+  await page.getByRole("button", { name: "Account", exact: true }).click();
+  await activateInView(page.getByRole("link", { name: "User admin" }));
   await expect(page.getByRole("heading", { name: "User administration" })).toBeVisible();
   await expect(page.getByText(address, { exact: true })).toBeVisible();
   await page.getByRole("combobox", { name: `Role for ${address}` }).selectOption("admin");
@@ -2637,12 +2637,10 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
   });
   expect(cursorRequest).toBeDefined();
 
-  await activateInView(
-    page
-      .getByRole("navigation", { name: "Primary navigation" })
-      .getByRole("link", { name: "Billing admin" }),
-  );
+  await page.getByRole("button", { name: "Account", exact: true }).click();
+  await activateInView(page.getByRole("link", { name: "Billing admin" }));
   await expect(page.getByRole("heading", { name: "Billing administration" })).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath("billing-admin-desktop.png") });
   await expect(page.getByText("Settlement unknown", { exact: true })).toBeVisible();
   await expect(page.getByText(billingAdminUserID, { exact: true })).toBeVisible();
   await expect(page.getByText(billingAPIKeyPrefix, { exact: true })).toBeVisible();

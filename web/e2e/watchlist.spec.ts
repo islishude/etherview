@@ -120,12 +120,22 @@ test("private watches, notification reads and CSV download use the embedded gene
   await expect(page.getByText("Successful transaction", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Mark all as read", exact: true }).click();
   await expect(page.getByRole("button", { name: "Mark all as read", exact: true })).toBeDisabled();
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
+  await page.screenshot({
+    path: test.info().outputPath("notifications-desktop.png"),
+    fullPage: true,
+  });
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect(
     (await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze())
       .violations,
   ).toEqual([]);
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
+  await page.screenshot({
+    path: test.info().outputPath("notifications-mobile.png"),
+    fullPage: true,
+  });
   await page.getByRole("button", { name: "切换到中文" }).click();
   await expect(page.getByRole("heading", { name: "通知", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Switch to English" }).click();

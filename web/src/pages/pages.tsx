@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
@@ -11,23 +11,16 @@ import {
   useTokens,
   useTransactions,
 } from "@/api/hooks";
-import { useHomeSnapshot } from "@/api/homeStream";
-import type {
-  BlockSummary,
-  ChainStatus,
-  SearchResult,
-  TransactionSummary,
-  VerificationJob,
-} from "@/api/types";
+import type { ChainStatus, SearchResult, VerificationJob } from "@/api/types";
 import {
   formatInteger,
   formatNativeAmount,
-  formatRelativeTimestamp,
   formatTokenAmount,
   formatTimestamp,
   shorten,
 } from "@/components/format";
 import { AddressIdentity } from "@/ens/AddressIdentity";
+import { PageHeading } from "@/components/DesignPrimitives";
 import { QueryNotice } from "@/components/QueryNotice";
 import { TransactionMethodCell } from "./AddressPage";
 import { IncludedTransactionStatus } from "./TransactionPage";
@@ -111,154 +104,6 @@ export function useCursorHistory(identity: string) {
   };
 }
 
-export function HomePage() {
-  const { i18n, t } = useTranslation();
-  const snapshot = useHomeSnapshot();
-  const [relativeNow, setRelativeNow] = useState(() => Date.now());
-  const locale = i18n.resolvedLanguage ?? "en";
-
-  useEffect(() => {
-    const intervalID = window.setInterval(() => setRelativeNow(Date.now()), 1_000);
-    return () => window.clearInterval(intervalID);
-  }, []);
-
-  return (
-    <div className="page-stack">
-      <QueryNotice
-        loading={snapshot.isPending}
-        error={snapshot.data ? undefined : snapshot.error}
-      />
-
-      <section className="metrics-grid" aria-label={t("home.metrics")}>
-        <Metric
-          label={t("home.indexed")}
-          value={formatInteger(snapshot.data?.status.indexed_block, locale)}
-        />
-        <Metric
-          label={t("home.networkHead")}
-          value={formatInteger(snapshot.data?.status.latest_block, locale)}
-        />
-        <Metric
-          label={t("home.finality")}
-          value={formatInteger(snapshot.data?.status.finalized_block, locale)}
-        />
-        <Metric
-          label={t("home.lag")}
-          value={
-            snapshot.data
-              ? snapshot.data.status.core_ready && snapshot.data.status.lag === "0"
-                ? t("home.caughtUp")
-                : t("home.syncing")
-              : "—"
-          }
-          accent={snapshot.data?.status.core_ready && snapshot.data.status.lag === "0"}
-        />
-      </section>
-
-      {snapshot.data && <ChainContextPanel status={snapshot.data.status} />}
-
-      <div className="activity-grid">
-        <section className="panel activity-panel" aria-labelledby="recent-blocks-title">
-          <PanelHeading id="recent-blocks-title" title={t("home.recentBlocks")} to="/blocks" />
-          {snapshot.data?.blocks.length === 0 && (
-            <p className="empty-result compact-empty">{t("state.noBlocks")}</p>
-          )}
-          {snapshot.data?.blocks.map((block) => (
-            <BlockRow block={block} key={block.hash} locale={locale} now={relativeNow} />
-          ))}
-        </section>
-        <section className="panel activity-panel" aria-labelledby="recent-transactions-title">
-          <PanelHeading
-            id="recent-transactions-title"
-            title={t("home.recentTransactions")}
-            to="/transactions"
-          />
-          {snapshot.data?.transactions.length === 0 && (
-            <p className="empty-result compact-empty">{t("state.noTransactions")}</p>
-          )}
-          {snapshot.data?.transactions.map((transaction) => (
-            <TransactionRow key={transaction.hash} transaction={transaction} />
-          ))}
-        </section>
-      </div>
-    </div>
-  );
-}
-
-function Metric({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <article className="metric-card">
-      <span>{label}</span>
-      <strong className={accent ? "positive" : undefined}>{value}</strong>
-    </article>
-  );
-}
-
-function PanelHeading({
-  id,
-  title,
-  to,
-}: {
-  id: string;
-  title: string;
-  to: "/blocks" | "/transactions";
-}) {
-  return (
-    <header className="panel-heading">
-      <h2 id={id}>{title}</h2>
-      <Link to={to} aria-label={title}>
-        <span aria-hidden="true">→</span>
-      </Link>
-    </header>
-  );
-}
-
-function BlockRow({ block, locale, now }: { block: BlockSummary; locale: string; now: number }) {
-  const { t } = useTranslation();
-  return (
-    <div className="activity-row">
-      <span className="block-cube" aria-hidden="true">
-        B
-      </span>
-      <span className="activity-primary">
-        <Link to="/blocks/$blockID" params={{ blockID: block.hash }}>
-          #{formatInteger(block.number, locale)}
-        </Link>
-        <small>
-          <time dateTime={block.timestamp}>
-            {formatRelativeTimestamp(block.timestamp, locale, now)}
-          </time>
-        </small>
-      </span>
-      <span className="activity-meta">
-        <strong>{formatInteger(block.transaction_count, locale)}</strong>
-        <small>{t("common.transactionsShort")}</small>
-      </span>
-      <FinalityBadge finality={block.finality} />
-    </div>
-  );
-}
-
-function TransactionRow({ transaction }: { transaction: TransactionSummary }) {
-  return (
-    <div className="activity-row transaction-row">
-      <span className="tx-mark" aria-hidden="true">
-        ↗
-      </span>
-      <span className="activity-primary">
-        <Link to="/tx/$hash" params={{ hash: transaction.hash }} search={{ tab: "overview" }}>
-          {shorten(transaction.hash)}
-        </Link>
-        <small>
-          <AddressIdentity address={transaction.from} /> →{" "}
-          {transaction.to ? <AddressIdentity address={transaction.to} /> : "∅"}
-        </small>
-      </span>
-      <IncludedTransactionStatus transaction={transaction} />
-    </div>
-  );
-}
-
 export function FinalityBadge({ finality }: { finality: string }) {
   const { t } = useTranslation();
   return <span className={`finality-badge ${finality}`}>{finalityLabel(finality, t)}</span>;
@@ -289,17 +134,17 @@ export function BlocksPage() {
             <caption className="sr-only">{t("context.canonicalBlocksOnly")}</caption>
             <thead>
               <tr>
-                <th>{t("table.block")}</th>
+                <th className="numeric">{t("table.block")}</th>
                 <th>{t("table.age")}</th>
-                <th>{t("table.transactions")}</th>
-                <th>{t("table.gas")}</th>
+                <th className="numeric">{t("table.transactions")}</th>
+                <th className="numeric">{t("table.gas")}</th>
                 <th>{t("table.finality")}</th>
               </tr>
             </thead>
             <tbody>
               {blocks.data.items.map((block) => (
                 <tr key={block.hash}>
-                  <td>
+                  <td className="numeric">
                     <Link to="/blocks/$blockID" params={{ blockID: block.hash }}>
                       {formatInteger(block.number, locale)}
                     </Link>
@@ -308,8 +153,8 @@ export function BlocksPage() {
                     </code>
                   </td>
                   <td>{formatTimestamp(block.timestamp, locale)}</td>
-                  <td>{formatInteger(block.transaction_count, locale)}</td>
-                  <td>{formatInteger(block.gas_used, locale)}</td>
+                  <td className="numeric">{formatInteger(block.transaction_count, locale)}</td>
+                  <td className="numeric">{formatInteger(block.gas_used, locale)}</td>
                   <td>
                     <FinalityBadge finality={block.finality} />
                   </td>
@@ -361,8 +206,8 @@ export function GenesisPage() {
               <tr>
                 <th>{t("table.address")}</th>
                 <th>{t("detail.type")}</th>
-                <th>{t("table.balance", { symbol: nativeSymbol })}</th>
-                <th>{t("detail.nonce")}</th>
+                <th className="numeric">{t("table.balance", { symbol: nativeSymbol })}</th>
+                <th className="numeric">{t("detail.nonce")}</th>
                 <th>{t("detail.codeHash")}</th>
                 <th>{t("detail.storageRoot")}</th>
               </tr>
@@ -374,8 +219,10 @@ export function GenesisPage() {
                     <AddressIdentity address={account.address} />
                   </td>
                   <td>{t(`accountType.${account.type}`)}</td>
-                  <td>{formatNativeAmount(account.balance, locale, nativeDecimals)}</td>
-                  <td>{formatInteger(account.nonce, locale)}</td>
+                  <td className="numeric">
+                    {formatNativeAmount(account.balance, locale, nativeDecimals)}
+                  </td>
+                  <td className="numeric">{formatInteger(account.nonce, locale)}</td>
                   <td>
                     <code title={account.code_hash}>{shorten(account.code_hash)}</code>
                   </td>
@@ -437,11 +284,11 @@ export function TransactionsPage() {
               <tr>
                 <th>{t("table.hash")}</th>
                 <th>{t("table.method")}</th>
-                <th>{t("table.block")}</th>
+                <th className="numeric">{t("table.block")}</th>
                 <th>{t("table.status")}</th>
                 <th>{t("table.from")}</th>
                 <th>{t("table.to")}</th>
-                <th>{t("table.value", { symbol: nativeSymbol })}</th>
+                <th className="numeric">{t("table.value", { symbol: nativeSymbol })}</th>
                 <th>{t("table.finality")}</th>
               </tr>
             </thead>
@@ -461,7 +308,7 @@ export function TransactionsPage() {
                     method={transaction.method}
                     signature={transaction.method_signature}
                   />
-                  <td>
+                  <td className="numeric">
                     {transaction.block_hash ? (
                       <Link to="/blocks/$blockID" params={{ blockID: transaction.block_hash }}>
                         {formatInteger(transaction.block_number, locale)}
@@ -483,7 +330,7 @@ export function TransactionsPage() {
                       t("common.contractCreation")
                     )}
                   </td>
-                  <td>
+                  <td className="numeric">
                     <code>{formatNativeAmount(transaction.value, locale, nativeDecimals)}</code>
                   </td>
                   <td>
@@ -533,7 +380,7 @@ export function TokensPage() {
                 <th>{t("table.token")}</th>
                 <th>{t("table.standard")}</th>
                 <th>{t("table.confidence")}</th>
-                <th>{t("table.supply")}</th>
+                <th className="numeric">{t("table.supply")}</th>
                 <th>{t("table.metadata")}</th>
               </tr>
             </thead>
@@ -552,7 +399,7 @@ export function TokensPage() {
                     <span className="result-kind">{tokenStandardLabel(token.standard, t)}</span>
                   </td>
                   <td>{confidenceLabel(token.confidence, t)}</td>
-                  <td>
+                  <td className="numeric">
                     <code>{formatInteger(token.total_supply, locale)}</code>
                   </td>
                   <td>{stageStateLabel(token.metadata_state, t)}</td>
@@ -1454,12 +1301,7 @@ export function Page({
 }) {
   return (
     <div className="page-stack inner-page">
-      <header className="page-header">
-        <h1>{title}</h1>
-        <div className={mono ? "page-description mono-wrap" : "page-description"}>
-          {description}
-        </div>
-      </header>
+      <PageHeading title={title} description={description} mono={mono} />
       {children}
     </div>
   );

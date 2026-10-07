@@ -6,6 +6,8 @@ describe("bilingual preference", () => {
   it("applies a stored language to the document during first initialization", async () => {
     window.localStorage.setItem("etherview.language", "zh");
     document.documentElement.lang = "en";
+    // Remove listeners from the shared i18next singleton to model a cold browser load.
+    i18n.off("languageChanged");
     vi.resetModules();
 
     const fresh = await import("./index");

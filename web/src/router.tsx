@@ -10,7 +10,7 @@ import { getAddress, isAddress } from "viem";
 import { AppShell } from "@/components/AppShell";
 import { isChartMetric, type ChartSearch } from "@/pages/chartRoute";
 
-const HomePage = lazyRouteComponent(() => import("@/pages/pages"), "HomePage");
+const HomePage = lazyRouteComponent(() => import("@/pages/HomePage"), "HomePage");
 const BlocksPage = lazyRouteComponent(() => import("@/pages/pages"), "BlocksPage");
 const GenesisPage = lazyRouteComponent(() => import("@/pages/pages"), "GenesisPage");
 const NotFoundPage = lazyRouteComponent(() => import("@/pages/pages"), "NotFoundPage");
