@@ -77,6 +77,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T46 | done | P70-T45 | Run the complete existing CI workflow daily on the default branch | workflow syntax, schedule/concurrency inspection, documentation and plan checks |
 | P70-T47 | blocked | P70-T31, P70-T43 | Upgrade Foundry, Anvil and x402 fixture images to 1.8.3 and align executable identity checks | image identity, offline compilation, Foundry/runtime E2E, Compose, docs and plan gates |
 | P70-T48 | done | P70-T31 | Accept complete Anvil receipt observations without requiring an upstream fixture defect | receipt normalization regressions, tagged runtime compilation, docs and plan checks |
+| P70-T49 | done | P70-T48 | Keep receipt regressions in a focused test file within the source-size limit | source-check, Go lint, receipt race regressions, docs and plan gates |
 
 ## Acceptance
 
@@ -1369,3 +1370,18 @@ clear the existing live-payment or reference-capacity blockers.
   plus x402 monolith/split. Those results do not cover this repair. Local Docker
   daemon inspection timed out; the new PR CI must confirm full runtime parity.
   P70-T47 remains blocked pending that acceptance.
+
+### P70-T49 — Receipt test file-size CI repair (2026-10-07)
+
+- [PR #118 common-gate job](https://github.com/islishude/etherview/actions/runs/37577953599/job/112650958696)
+  stopped at source-check: the added receipt regression grew `runtime_test.go`
+  to 2,504 lines, over its 2,500-line limit. Moved only
+  `TestNormalizeAnvilReceipts` unchanged into `runtime_receipts_test.go`, with
+  the same runtime E2E build tag; the original file now has 2,465 lines.
+- `make lint-go` (including source-check, formatting, vet and golangci-lint),
+  `go test -race -tags='runtimee2e foundrye2e' ./e2e/runtime
+  -run '^TestNormalizeAnvil' -count=1`, `make docs-check plan-check`, and
+  `git diff --check` pass. The moved test body is identical to its prior version.
+- CI at `2992cea` passed the container/runtime gate, both native Foundry and
+  Hardhat jobs and all remaining jobs except the common gate above. The new
+  revision still requires its own remote CI result.
