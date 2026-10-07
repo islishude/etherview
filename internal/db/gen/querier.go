@@ -475,6 +475,15 @@ type Querier interface {
 	MetadataWriteRecordMetadataRetry(ctx context.Context, arg MetadataWriteRecordMetadataRetryParams) (int64, error)
 	MetadataWriteRenewMetadataJob(ctx context.Context, leaseMicroseconds int64, iD int64, leaseToken *string) (int64, error)
 	MetadataWriteRetryMetadataJob(ctx context.Context, arg MetadataWriteRetryMetadataJobParams) (int64, error)
+	NativeTransferActivation(ctx context.Context, chainID pgtype.Numeric, indexStart pgtype.Numeric, snapshotNumber pgtype.Numeric) (string, error)
+	NativeTransferClear(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error
+	NativeTransferCoverage(ctx context.Context, chainID pgtype.Numeric, startNumber pgtype.Numeric, endNumber pgtype.Numeric) (bool, error)
+	NativeTransferInsert(ctx context.Context, arg NativeTransferInsertParams) error
+	NativeTransferList(ctx context.Context, arg NativeTransferListParams) ([]NativeTransferListRow, error)
+	NativeTransferSourceBlock(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([]byte, error)
+	NativeTransferSourceReceipts(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([][]byte, error)
+	NativeTransferTransactionBlock(ctx context.Context, chainID pgtype.Numeric, transactionHash []byte, snapshotNumber pgtype.Numeric) (NativeTransferTransactionBlockRow, error)
+	NativeTransferValidateSnapshot(ctx context.Context, chainID pgtype.Numeric, snapshotNumber pgtype.Numeric, snapshotHash []byte) (bool, error)
 	OperationalMetricSnapshot(ctx context.Context, chainID pgtype.Numeric, settlementCrashDelayMicroseconds int64) ([]OperationalMetricSnapshotRow, error)
 	PruneSearchCatalog(ctx context.Context, chainID pgtype.Numeric, retentionGenerations int64) (int64, error)
 	QueryAddressOriginCoverage(ctx context.Context, minRangeEnd pgtype.Numeric, chainID pgtype.Numeric) (*bool, error)

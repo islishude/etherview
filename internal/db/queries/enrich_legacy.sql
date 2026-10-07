@@ -940,7 +940,7 @@ WHERE resolution.chain_id = sqlc.arg('chain_id')::numeric
 ORDER BY resolution.transaction_index, resolution.context_address;
 
 -- name: EnrichLegacyTraceReceiptLogs :many
-SELECT log_index, raw
+SELECT log_index, raw, EXISTS (SELECT 1 FROM blocks b WHERE b.chain_id=logs.chain_id AND b.hash=logs.block_hash AND b.slot_number_raw IS NOT NULL AND b.slot_number_raw <> 'null'::jsonb) AS amsterdam
 FROM logs
 WHERE chain_id = sqlc.arg('chain_id')::numeric
   AND block_number = sqlc.arg('block_number')::numeric

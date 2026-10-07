@@ -737,18 +737,20 @@ func boundedJobStage(value string) string {
 	switch strings.TrimSpace(value) {
 	case "proxy", "proxy@1", "proxy@2":
 		return "proxy"
-	case "abi", "abi@1", "abi@2", "abi@3", "abi@4":
+	case "abi", "abi@1", "abi@2", "abi@3", "abi@4", "abi@5":
 		return "abi"
-	case "token", "token@1":
+	case "token", "token@1", "token@2":
 		return "token"
 	case "holder", "holder@1":
 		return "holder"
-	case "stats", "stats@2", "stats@3":
+	case "stats", "stats@2", "stats@3", "stats@4":
 		return "stats"
-	case "trace", "trace@1", "trace@2", "trace@3":
+	case "trace", "trace@1", "trace@2", "trace@3", "trace@4":
 		return "trace"
 	case "state_diff", "state_diff@1", "state_diff@2", "state_diff@3":
 		return "state_diff"
+	case "native_transfer", "native_transfer@1":
+		return "native_transfer"
 	case "userop", "userop@1":
 		return "userop"
 	case "nft-metadata", "verification":

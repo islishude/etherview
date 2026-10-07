@@ -79,7 +79,11 @@ func (assembly runtimeAssembly) registerEnrichComponents() error {
 		if err != nil {
 			return err
 		}
-		processors := []enrich.Processor{proxyProcessor, abiProcessor, tokenProcessor, holderProcessor, statsProcessor}
+		nativeProcessor, err := enrich.NewPostgresNativeTransferProcessor(db)
+		if err != nil {
+			return err
+		}
+		processors := []enrich.Processor{nativeProcessor, proxyProcessor, abiProcessor, tokenProcessor, holderProcessor, statsProcessor}
 		if cfg.Features.UserOperations {
 			userRegistry, registryErr := erc4337.NewRegistry(cfg.ERC4337)
 			if registryErr != nil {

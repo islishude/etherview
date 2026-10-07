@@ -384,7 +384,7 @@ WITH exhausted AS (
      AND publication.block_hash = event.block_hash
      AND publication.stage = event.source_stage
      AND publication.state = 'complete'
-     AND ((publication.stage = 'trace' AND publication.stage_version = 3) OR
+     AND ((publication.stage = 'trace' AND publication.stage_version = 4) OR
           (publication.stage = 'proxy' AND publication.stage_version = 2))
     WHERE (event.status = 'queued' OR
            (event.status = 'running' AND event.lease_expires_at <= clock_timestamp()))

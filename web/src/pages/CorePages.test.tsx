@@ -155,6 +155,45 @@ describe("core explorer pages", () => {
     expect(screen.getByText("孤链", { exact: true })).toBeVisible();
   });
 
+  it.each([undefined, "0", "18446744073709551615"])(
+    "renders the optional block slot exactly: %s",
+    async (slot) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL) => {
+          const url = requestURL(input);
+          if (url.pathname === "/api/v1/config") return configResponse();
+          if (url.pathname === `/api/v1/blocks/${canonicalHash}`) {
+            return envelope({
+              ...block("12", canonicalHash),
+              slot_number: slot,
+              block_access_list_hash: slot === undefined ? undefined : olderHash,
+            });
+          }
+          return envelope([]);
+        }),
+      );
+      renderExplorer(`/blocks/${canonicalHash}`);
+      await screen.findByText("Block summary");
+      if (slot === undefined) {
+        expect(screen.queryByText("Slot number")).not.toBeInTheDocument();
+      } else {
+        expect(screen.getByText("Slot number")).toBeVisible();
+        expect(screen.getByText("Block access list hash")).toBeVisible();
+        expect(screen.getByText(olderHash, { exact: true })).toBeVisible();
+        expect(screen.getByText(BigInt(slot).toLocaleString("en"), { exact: true })).toBeVisible();
+      }
+      await act(async () => {
+        await i18n.changeLanguage("zh");
+      });
+      if (slot === undefined) {
+        expect(screen.queryByText("时隙编号")).not.toBeInTheDocument();
+      } else {
+        expect(screen.getByText("时隙编号")).toBeVisible();
+      }
+    },
+  );
+
   it("deep-links block tabs, renders withdrawals, and loads block transactions lazily", async () => {
     const requested: string[] = [];
     vi.stubGlobal(
@@ -1207,6 +1246,52 @@ describe("transaction navigation and calldata", () => {
     expect(screen.getByText("Execution evidence unavailable", { exact: true })).toBeVisible();
   });
 });
+
+it.each([true, false])(
+  "shows independent native transfer coverage (applicable=%s)",
+  async (applicable) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = requestURL(input);
+        if (url.pathname === "/api/v1/config") return configResponse();
+        if (url.pathname === `/api/v1/addresses/${address}/native-transfers`) {
+          return Response.json({
+            applicable,
+            data: applicable
+              ? [
+                  {
+                    block_number: "12",
+                    block_hash: canonicalHash,
+                    transaction_hash: transactionHash,
+                    transaction_index: "0",
+                    log_index: "0",
+                    from: address,
+                    to: `0x${"55".repeat(20)}`,
+                    amount: "9007199254740993",
+                    timestamp: "2026-01-01T00:00:00Z",
+                  },
+                ]
+              : [],
+            meta: { request_id: "native", chain_id: "1", coverage_start: "12", coverage_end: "12" },
+          });
+        }
+        if (url.pathname === `/api/v1/addresses/${address}`)
+          return envelope({ address, balance: "0", nonce: "0", type: "eoa" });
+        return envelope([]);
+      }),
+    );
+    renderExplorer(`/address/${address}?tab=native-transfers`);
+    expect(await screen.findByRole("heading", { name: "Native transfers" })).toBeVisible();
+    if (applicable)
+      expect(await screen.findByText("9,007,199,254,740,993", { exact: true })).toBeVisible();
+    else expect(await screen.findByText("Not applicable before Amsterdam.")).toBeVisible();
+    await act(async () => {
+      await i18n.changeLanguage("zh");
+    });
+    expect(screen.getByRole("heading", { name: "原生币转账" })).toBeVisible();
+  },
+);
 
 function block(number: string, hash: string, canonical = true) {
   return {

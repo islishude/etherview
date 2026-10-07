@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/islishude/etherview/internal/nativetransfer"
 	"strconv"
 	"strings"
 
@@ -729,6 +730,7 @@ func loadTraceLogAttributions(
 	}
 
 	expected := make(map[uint64]types.Log)
+	protocolLogs := make(map[uint64]bool)
 	for _, storedRow := range rows {
 		var index int64
 		var raw []byte
@@ -747,6 +749,13 @@ func loadTraceLogAttributions(
 			decoded.BlockHash != job.BlockHash || decoded.BlockNumber != job.BlockNumber {
 			return nil, 0, Permanent(errors.New("stored receipt log identity is inconsistent"))
 		}
+		if storedRow.Amsterdam {
+			_, protocol, parseErr := nativetransfer.Parse(&decoded)
+			if parseErr != nil {
+				return nil, 0, Permanent(parseErr)
+			}
+			protocolLogs[uint64(index)] = protocol
+		}
 		expected[uint64(index)] = decoded
 	}
 
@@ -757,18 +766,13 @@ func loadTraceLogAttributions(
 	if captured == 0 {
 		return nil, len(expected), nil
 	}
-	if captured != len(expected) {
-		return nil, 0, Permanent(errors.New("callTracer returned a partial receipt-log set"))
-	}
+
 	result := make([]traceLogAttribution, 0, captured)
 	fallback := 0
 	seen := make(map[uint64]struct{}, captured)
 	for _, frame := range transaction.trace.Frames {
 		if len(frame.Logs) == 0 {
 			continue
-		}
-		if frame.Type == "STATICCALL" || frame.Type == "SELFDESTRUCT" || frame.To == nil {
-			return nil, 0, Permanent(errors.New("callTracer attached a log to an invalid execution frame"))
 		}
 		for _, traced := range frame.Logs {
 			if _, duplicate := seen[traced.Index]; duplicate {
@@ -784,6 +788,12 @@ func loadTraceLogAttributions(
 				if stored.Topics[index] != traced.Topics[index] {
 					return nil, 0, Permanent(errors.New("callTracer log topics do not match the canonical receipt"))
 				}
+			}
+			if protocolLogs[traced.Index] {
+				continue
+			}
+			if frame.Type == "STATICCALL" || frame.Type == "SELFDESTRUCT" || frame.To == nil {
+				return nil, 0, Permanent(errors.New("callTracer attached a log to an invalid execution frame"))
 			}
 			if frame.To == nil || stored.Address != *frame.To {
 				return nil, 0, Permanent(errors.New("callTracer log emitter does not match the execution context"))
@@ -806,6 +816,12 @@ func loadTraceLogAttributions(
 			})
 		}
 	}
+	for index := range expected {
+		if _, matched := seen[index]; !matched && !protocolLogs[index] {
+			return nil, 0, Permanent(errors.New("callTracer returned a partial receipt-log set"))
+		}
+	}
+
 	return result, fallback, nil
 }
 

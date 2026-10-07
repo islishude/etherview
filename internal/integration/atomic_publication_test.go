@@ -40,7 +40,7 @@ func TestAllDerivedStagesUseOneLeaseFencedPublicationProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, stage := range []enrich.StageID{
-		enrich.ProxyStage, enrich.ABIStage, enrich.TokenStage, enrich.StatsStage, enrich.TraceStage,
+		enrich.NativeTransferStage, enrich.ProxyStage, enrich.ABIStage, enrich.TokenStage, enrich.StatsStage, enrich.TraceStage,
 	} {
 		if _, err := queue.Enqueue(ctx, enrich.EnqueueRequest{
 			Stage: stage, ChainID: "1", BlockHash: word, BlockNumber: reference.Number, MaxAttempts: 3,
@@ -54,8 +54,12 @@ func TestAllDerivedStagesUseOneLeaseFencedPublicationProtocol(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	native, err := enrich.NewPostgresNativeTransferProcessor(db)
+	if err != nil {
+		t.Fatal(err)
+	}
 	worker, err := enrich.NewWorker(queue, []enrich.Processor{
-		proxy, abi, derived.token, derived.stats, derived.trace,
+		native, proxy, abi, derived.token, derived.stats, derived.trace,
 	}, enrich.WorkerOptions{ID: "atomic-all-stages", LeaseDuration: 2 * time.Second})
 	if err != nil {
 		t.Fatal(err)
@@ -70,15 +74,15 @@ func TestAllDerivedStagesUseOneLeaseFencedPublicationProtocol(t *testing.T) {
 			break
 		}
 	}
-	if processed < 5 || processed == 12 {
-		t.Fatalf("processed derived attempts=%d, want a quiescent queue after at least five", processed)
+	if processed < 6 || processed == 12 {
+		t.Fatalf("processed derived attempts=%d, want a quiescent queue after at least six", processed)
 	}
 	assertRowCount(t, ctx, db, `
 		SELECT count(*)
 		FROM published_block_stage_results
 		WHERE chain_id = 1 AND block_hash = $1
-		  AND stage IN ('proxy', 'abi', 'token', 'stats', 'trace')
-		  AND state = 'complete'`, 5, mustBytes(t, reference.Hash))
+		  AND stage IN ('native_transfer', 'proxy', 'abi', 'token', 'stats', 'trace')
+		  AND state = 'complete'`, 6, mustBytes(t, reference.Hash))
 	assertRowCount(t, ctx, db, `
 		SELECT count(*)
 		FROM block_stage_results AS result
@@ -87,12 +91,12 @@ func TestAllDerivedStagesUseOneLeaseFencedPublicationProtocol(t *testing.T) {
 		 AND journal.job_generation = result.job_generation
 		WHERE result.chain_id = 1 AND result.block_hash = $1
 		  AND result.durable_job_id IS NOT NULL
-		  AND result.job_generation IS NOT NULL`, 5, mustBytes(t, reference.Hash))
+		  AND result.job_generation IS NOT NULL`, 6, mustBytes(t, reference.Hash))
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM durable_jobs
 		WHERE chain_id = 1 AND payload->>'block_hash' = $1 AND status = 'succeeded'
 		  AND requested_generation = claimed_generation
-		  AND claimed_generation = completed_generation`, 5, reference.Hash.String())
+		  AND claimed_generation = completed_generation`, 6, reference.Hash.String())
 }
 
 func TestExpiredWriterCannotPublishAfterReplacementLease(t *testing.T) {
@@ -277,7 +281,7 @@ func TestAtomicPublicationRollsBackDerivedOutputOnJournalFailure(t *testing.T) {
 		CREATE FUNCTION reject_atomic_stats_journal() RETURNS trigger
 		LANGUAGE plpgsql AS $$
 		BEGIN
-			IF NEW.stage = 'stats@3' THEN
+			IF NEW.stage = 'stats@4' THEN
 				RAISE EXCEPTION 'reject atomic stats journal';
 			END IF;
 			RETURN NEW;

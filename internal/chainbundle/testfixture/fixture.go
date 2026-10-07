@@ -148,7 +148,7 @@ func New(options Options) (chainbundle.Bundle, error) {
 		Bloom:         types.MergeBloom(receipts),
 		Difficulty:    big.NewInt(0),
 		Number:        new(big.Int).SetUint64(options.Number),
-		GasLimit:      30_000_000,
+		GasLimit:      max(30_000_000, cumulativeGas),
 		GasUsed:       cumulativeGas,
 		Time:          options.Timestamp,
 		Extra:         common.CopyBytes(options.ExtraData),

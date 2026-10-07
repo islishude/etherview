@@ -116,6 +116,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/addresses/{address}/native-transfers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAddressNativeTransfers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/addresses/{address}/nft-transfers": {
         parameters: {
             query?: never;
@@ -1103,6 +1119,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/transactions/{hash}/native-transfers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listTransactionNativeTransfers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/transactions/{hash}/state-changes": {
         parameters: {
             query?: never;
@@ -1991,6 +2023,7 @@ export interface components {
         BillingUsageState: "reserved" | "committed" | "released" | "expired";
         Block: {
             base_fee_per_gas?: components["schemas"]["Quantity"];
+            block_access_list_hash?: components["schemas"]["Hash"];
             canonical: boolean;
             completeness: components["schemas"]["Completeness"];
             finality: components["schemas"]["Finality"];
@@ -2000,6 +2033,8 @@ export interface components {
             miner?: components["schemas"]["Address"];
             number: components["schemas"]["Quantity"];
             parent_hash: components["schemas"]["Hash"];
+            /** @description Execution-header slot number as an exact decimal string; omitted when absent from the header. */
+            slot_number?: components["schemas"]["Quantity"];
             /** Format: date-time */
             timestamp: string;
             transaction_count: number;
@@ -2431,6 +2466,24 @@ export interface components {
             offset: number;
             selector: string;
             signature: string;
+        };
+        NativeTransfer: {
+            amount: components["schemas"]["Quantity"];
+            block_hash: components["schemas"]["Hash"];
+            block_number: components["schemas"]["Quantity"];
+            from: components["schemas"]["Address"];
+            log_index: components["schemas"]["Quantity"];
+            /** Format: date-time */
+            timestamp: string;
+            to: components["schemas"]["Address"];
+            transaction_hash: components["schemas"]["Hash"];
+            transaction_index: components["schemas"]["Quantity"];
+        };
+        NativeTransferListResponse: {
+            /** @description False when the indexed snapshot or transaction predates Amsterdam. True responses require complete protocol-log coverage in the requested range. */
+            applicable: boolean;
+            data: components["schemas"]["NativeTransfer"][];
+            meta: components["schemas"]["Meta"];
         };
         NFTBalance: {
             balance: components["schemas"]["Quantity"];
@@ -3921,6 +3974,32 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AddressInternalTransactionListResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAddressNativeTransfers: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                address: components["parameters"]["Address"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Canonical EIP-7708 ETH transfers, newest first. Protocol-log coverage only; pre-Amsterdam history is not applicable. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NativeTransferListResponse"];
                 };
             };
             default: components["responses"]["Error"];
@@ -5498,6 +5577,32 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TransactionLogResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listTransactionNativeTransfers: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                hash: components["parameters"]["TransactionHash"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Canonical EIP-7708 ETH transfers, newest first. Protocol-log coverage only; pre-Amsterdam history is not applicable. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NativeTransferListResponse"];
                 };
             };
             default: components["responses"]["Error"];

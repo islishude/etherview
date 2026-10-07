@@ -93,7 +93,7 @@ WITH boundary AS (
 SELECT EXISTS(SELECT 1 FROM core_coverage_ranges AS coverage, boundary WHERE coverage.chain_id=$1 AND coverage.range_start<=boundary.number AND coverage.range_end>=$2) AS core_complete,
  NOT EXISTS(SELECT 1 FROM canonical_blocks AS canonical JOIN blocks AS block ON block.chain_id=canonical.chain_id AND block.number=canonical.number AND block.hash=canonical.block_hash
  WHERE canonical.chain_id=$1 AND canonical.number<=$2 AND block.timestamp>=$3 AND block.timestamp<$4::numeric
- AND NOT EXISTS(SELECT 1 FROM published_block_stage_results AS publication WHERE publication.chain_id=canonical.chain_id AND publication.block_hash=canonical.block_hash AND publication.stage='token' AND publication.stage_version=1 AND publication.state='complete')) AS token_complete
+ AND NOT EXISTS(SELECT 1 FROM published_block_stage_results AS publication WHERE publication.chain_id=canonical.chain_id AND publication.block_hash=canonical.block_hash AND publication.stage='token' AND publication.stage_version=2 AND publication.state='complete')) AS token_complete
 `
 
 type ExportCoverageParams struct {
@@ -372,7 +372,7 @@ const watchNotificationList = `-- name: WatchNotificationList :many
 SELECT notification.id, notification.watch_id, notification.user_id, notification.chain_id, notification.block_number, notification.block_hash, notification.source_key, notification.source_kind, notification.source_generation, notification.activity, notification.created_at, notification.read_at, watch.address, watch.label,
  EXISTS(SELECT 1 FROM canonical_blocks AS canonical WHERE canonical.chain_id=notification.chain_id AND canonical.number=notification.block_number AND canonical.block_hash=notification.block_hash) AS canonical,
  (notification.source_kind='transaction' OR EXISTS(SELECT 1 FROM published_block_stage_results AS publication
- WHERE publication.chain_id=notification.chain_id AND publication.block_hash=notification.block_hash AND publication.stage='token' AND publication.stage_version=1 AND publication.state='complete' AND publication.job_generation=notification.source_generation)) AS published
+ WHERE publication.chain_id=notification.chain_id AND publication.block_hash=notification.block_hash AND publication.stage='token' AND publication.stage_version=2 AND publication.state='complete' AND publication.job_generation=notification.source_generation)) AS published
 FROM watch_notifications AS notification JOIN address_watches AS watch ON watch.id=notification.watch_id
 WHERE notification.user_id=$1::uuid AND notification.created_at > now()-interval '90 days'
  AND ($2::bigint=0 OR notification.id < $2)

@@ -213,7 +213,7 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 	if err := db.QueryRow(ctx, `
 		INSERT INTO durable_jobs (
 			chain_id, kind, stage, stage_version, idempotency_key, payload
-		) VALUES (1, 'enrichment', 'trace', 3, 'derived-forward-fixture',
+		) VALUES (1, 'enrichment', 'trace', 4, 'derived-forward-fixture',
 			jsonb_build_object('block_number', '4', 'block_hash', $1::text))
 		RETURNING id`, forwardBlock.Block.Hash().Hex()).Scan(&traceJobID); err != nil {
 		t.Fatal(err)
@@ -222,7 +222,7 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		INSERT INTO durable_stage_publications (
 			job_id, job_generation, chain_id, block_number, block_hash,
 			stage, stage_version, state, details
-		) VALUES ($1, 1, 1, 4, $2, 'trace', 3, 'complete', '{"frames":1}')`,
+		) VALUES ($1, 1, 1, 4, $2, 'trace', 4, 'complete', '{"frames":1}')`,
 		traceJobID, forwardBlock.Block.Hash().Bytes(),
 	)
 	forwardWorker, err := derivedverify.NewForwardWorker(db, derivedverify.ForwardOptions{
@@ -269,7 +269,7 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		INSERT INTO durable_stage_publications (
 			job_id, job_generation, chain_id, block_number, block_hash,
 			stage, stage_version, state, details
-		) VALUES ($1, 2, 1, 4, $2, 'trace', 3, 'complete', '{"frames":1}')`,
+		) VALUES ($1, 2, 1, 4, $2, 'trace', 4, 'complete', '{"frames":1}')`,
 		traceJobID, forwardBlock.Block.Hash().Bytes(),
 	)
 	processed, err = forwardWorker.ProcessOne(ctx)
@@ -291,7 +291,7 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		INSERT INTO durable_stage_publications (
 			job_id, job_generation, chain_id, block_number, block_hash,
 			stage, stage_version, state, details
-		) VALUES ($1, 2, 1, 4, $2, 'trace', 3, 'complete', '{"frames":1}')
+		) VALUES ($1, 2, 1, 4, $2, 'trace', 4, 'complete', '{"frames":1}')
 		ON CONFLICT DO NOTHING`, traceJobID, forwardBlock.Block.Hash().Bytes())
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM derived_verification_forward_blocks
@@ -346,7 +346,7 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		INSERT INTO durable_stage_publications (
 			job_id, job_generation, chain_id, block_number, block_hash,
 			stage, stage_version, state, details
-		) VALUES ($1, 3, 1, 4, $2, 'trace', 3, 'complete', '{"frames":2}')`,
+		) VALUES ($1, 3, 1, 4, $2, 'trace', 4, 'complete', '{"frames":2}')`,
 		traceJobID, forwardBlock.Block.Hash().Bytes())
 	processed, err = forwardWorker.ProcessOne(ctx)
 	if err != nil || !processed {

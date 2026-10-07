@@ -18,6 +18,44 @@ import (
 	"github.com/islishude/etherview/internal/store"
 )
 
+// This tests stored projection boundaries, not execution-header authentication.
+func TestCoreBlockSlotProjection(t *testing.T) {
+	db, reader, bundle := coreProjectionFixture(t)
+	for _, value := range []struct{ raw, want string }{
+		{`null`, ""}, {`"0x0"`, "0"}, {`"0xffffffffffffffff"`, "18446744073709551615"},
+	} {
+		if _, err := db.Exec(t.Context(), `UPDATE blocks SET raw = jsonb_set(raw, '{slotNumber}', $1::jsonb) WHERE chain_id = 1 AND hash = $2`, value.raw, bundle.Block.Hash().Bytes()); err != nil {
+			t.Fatal(err)
+		}
+		for _, id := range []string{"0", bundle.Block.Hash().Hex()} {
+			block, err := reader.Block(t.Context(), id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if value.want == "" {
+				if block.SlotNumber != nil {
+					t.Fatal("null slot must be omitted")
+				}
+			} else if block.SlotNumber == nil || *block.SlotNumber != value.want {
+				t.Fatalf("slot = %v, want %s", block.SlotNumber, value.want)
+			}
+		}
+		blocks, _, err := reader.Blocks(t.Context(), "", 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if value.want != "" && (len(blocks) != 1 || blocks[0].SlotNumber == nil || *blocks[0].SlotNumber != value.want) {
+			t.Fatalf("block list = %+v", blocks)
+		}
+	}
+	if _, err := db.Exec(t.Context(), `UPDATE blocks SET raw = jsonb_set(raw, '{slotNumber}', '42'::jsonb) WHERE chain_id = 1 AND hash = $1`, bundle.Block.Hash().Bytes()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reader.Block(t.Context(), "0"); err == nil {
+		t.Fatal("numeric slot accepted")
+	}
+}
+
 func TestCorePublicProjectionUsesNormalizedRowsAndFailsClosedOnDrift(t *testing.T) {
 	t.Run("projects exact block and transaction fields", func(t *testing.T) {
 		db, reader, bundle := coreProjectionFixture(t)

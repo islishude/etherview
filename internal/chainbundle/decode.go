@@ -24,7 +24,7 @@ var (
 	headerHashFields = []string{
 		"hash", "parentHash", "sha3Uncles", "transactionsRoot", "stateRoot",
 		"receiptsRoot", "mixHash", "withdrawalsRoot", "parentBeaconBlockRoot",
-		"requestsHash",
+		"requestsHash", "blockAccessListHash",
 	}
 	headerQuantityFields = []string{
 		"number", "difficulty", "totalDifficulty", "size", "gasLimit", "gasUsed",
@@ -78,6 +78,9 @@ func DecodeHeader(raw json.RawMessage) (*types.Header, error) {
 	}
 	if err := header.SanityCheck(); err != nil {
 		return nil, fmt.Errorf("%w: header failed sanity check: %v", ErrInvalidWireValue, err)
+	}
+	if (header.SlotNumber == nil) != (header.BlockAccessListHash == nil) {
+		return nil, validation("header", "incomplete Amsterdam fields")
 	}
 	if computed := header.Hash(); computed != wireHash {
 		return nil, validation("header.hash", "does not match the go-ethereum header hash")
@@ -262,11 +265,8 @@ func (b Bundle) withReceipts(
 		nextLogIndex = next
 		previousCumulativeGasUsed = receipt.CumulativeGasUsed
 	}
-	if previousCumulativeGasUsed != b.Block.GasUsed() {
-		return Bundle{}, validation(
-			"block.gasUsed",
-			"does not match the final receipt cumulativeGasUsed",
-		)
+	if err := ValidateBlockGas(b.Block.Header(), previousCumulativeGasUsed); err != nil {
+		return Bundle{}, err
 	}
 	if root := types.DeriveSha(receipts, trie.NewStackTrie(nil)); root != b.Block.ReceiptHash() {
 		return Bundle{}, validation("block.receiptsRoot", "does not match decoded receipts")
@@ -704,6 +704,9 @@ func decodeReceipt(
 		options.legacyStoredShape,
 	); err != nil {
 		return nil, nil, nextLogIndex, err
+	}
+	if receipt.GasUsed > transaction.Gas() {
+		return nil, nil, nextLogIndex, validation(path+".gasUsed", "exceeds transaction gas limit")
 	}
 	if receipt.GasUsed > receipt.CumulativeGasUsed {
 		return nil, nil, nextLogIndex, validation(

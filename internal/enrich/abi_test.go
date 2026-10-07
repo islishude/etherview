@@ -397,7 +397,7 @@ func TestABIRegistryRetainsValidatedCalldataParameterStructure(t *testing.T) {
 		t.Fatal(err)
 	}
 	if bytes.Contains(stored, []byte("internalType")) || bytes.Contains(stored, []byte("components")) {
-		t.Fatalf("abi@4 persisted value shape changed: %s", stored)
+		t.Fatalf("abi@5 persisted value shape changed: %s", stored)
 	}
 }
 

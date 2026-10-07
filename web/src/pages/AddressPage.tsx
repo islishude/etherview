@@ -1,3 +1,4 @@
+import { NativeTransfersPanel } from "./NativeTransfersPanel";
 import { AddressAccountActions } from "@/components/AddressAccountActions";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
@@ -59,6 +60,7 @@ import {
 import { TransactionStatusBadge } from "./TransactionPage";
 
 type AddressTab =
+  | "native-transfers"
   | "transactions"
   | "internal-transactions"
   | "withdrawals"
@@ -214,6 +216,7 @@ export function AddressDetailPage({ address, tab }: { address: string; tab: stri
         {(
           [
             ["transactions", t("addressTab.transactions")],
+            ["native-transfers", t("nativeTransfer.title")],
             ["internal-transactions", t("addressTab.internalTransactions")],
             ["withdrawals", t("addressTab.withdrawals")],
             ["erc20-transfers", t("addressTab.erc20Transfers")],
@@ -383,6 +386,9 @@ export function AddressDetailPage({ address, tab }: { address: string; tab: stri
             hasPrevious={nftPager.hasPrevious}
           />
         </div>
+      )}
+      {activeTab === "native-transfers" && (
+        <NativeTransfersPanel kind="address" identity={address} />
       )}
       {activeTab === "user-operations" && (
         <section
@@ -623,6 +629,7 @@ function AddressOriginDetails({ origin }: { origin?: AddressSummary["origin"] })
 
 function isAddressTab(tab: string): tab is AddressTab {
   return [
+    "native-transfers",
     "transactions",
     "internal-transactions",
     "withdrawals",

@@ -582,7 +582,7 @@ func deriveYulRuntime(
 	creation []byte,
 	links map[string]map[string][]bytecodeRange,
 ) ([]byte, error) {
-	if len(creation) == 0 || len(creation) > params.MaxInitCodeSize ||
+	if len(creation) == 0 || len(creation) > params.MaxInitCodeSizeAmsterdam ||
 		len(links) != 0 {
 		return nil, errCompiledCodeMalformed
 	}

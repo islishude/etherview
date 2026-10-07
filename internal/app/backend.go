@@ -377,7 +377,7 @@ func (b *Backend) Repair(ctx context.Context, cfg config.Config, operation strin
 	}
 	normalizedStage := strings.ToLower(strings.TrimSpace(*stage))
 	if operation == "reindex" && !seen["stage"] {
-		return errors.New("reindex requires --stage proxy, abi, token, stats, trace, or state_diff")
+		return errors.New("reindex requires --stage native_transfer, proxy, abi, token, holder, stats, trace, state_diff, or userop")
 	}
 	if err := validateMaintenanceOperationStage(operation, normalizedStage); err != nil {
 		return err

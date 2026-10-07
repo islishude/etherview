@@ -2340,7 +2340,7 @@ func (q *Queries) EnrichLegacyTraceExecutionResolutions(ctx context.Context, arg
 }
 
 const enrichLegacyTraceReceiptLogs = `-- name: EnrichLegacyTraceReceiptLogs :many
-SELECT log_index, raw
+SELECT log_index, raw, EXISTS (SELECT 1 FROM blocks b WHERE b.chain_id=logs.chain_id AND b.hash=logs.block_hash AND b.slot_number_raw IS NOT NULL AND b.slot_number_raw <> 'null'::jsonb) AS amsterdam
 FROM logs
 WHERE chain_id = $1::numeric
   AND block_number = $2::numeric
@@ -2357,8 +2357,9 @@ type EnrichLegacyTraceReceiptLogsParams struct {
 }
 
 type EnrichLegacyTraceReceiptLogsRow struct {
-	LogIndex int64  `db:"log_index" json:"log_index"`
-	Raw      []byte `db:"raw" json:"raw"`
+	LogIndex  int64  `db:"log_index" json:"log_index"`
+	Raw       []byte `db:"raw" json:"raw"`
+	Amsterdam bool   `db:"amsterdam" json:"amsterdam"`
 }
 
 func (q *Queries) EnrichLegacyTraceReceiptLogs(ctx context.Context, arg EnrichLegacyTraceReceiptLogsParams) ([]EnrichLegacyTraceReceiptLogsRow, error) {
@@ -2375,7 +2376,7 @@ func (q *Queries) EnrichLegacyTraceReceiptLogs(ctx context.Context, arg EnrichLe
 	items := []EnrichLegacyTraceReceiptLogsRow{}
 	for rows.Next() {
 		var i EnrichLegacyTraceReceiptLogsRow
-		if err := rows.Scan(&i.LogIndex, &i.Raw); err != nil {
+		if err := rows.Scan(&i.LogIndex, &i.Raw, &i.Amsterdam); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

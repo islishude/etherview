@@ -711,6 +711,40 @@ paths:
                 $ref: "#/components/schemas/TransactionTraceResponse"
         default:
           $ref: "#/components/responses/Error"
+  /transactions/{hash}/native-transfers:
+    get:
+      operationId: listTransactionNativeTransfers
+      tags: [transactions]
+      parameters:
+        - $ref: "#/components/parameters/TransactionHash"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Canonical EIP-7708 ETH transfers, newest first. Protocol-log coverage only; pre-Amsterdam history is not applicable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NativeTransferListResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /addresses/{address}/native-transfers:
+    get:
+      operationId: listAddressNativeTransfers
+      tags: [addresses]
+      parameters:
+        - $ref: "#/components/parameters/Address"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Canonical EIP-7708 ETH transfers, newest first. Protocol-log coverage only; pre-Amsterdam history is not applicable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NativeTransferListResponse"
+        default:
+          $ref: "#/components/responses/Error"
   /transactions/{hash}/user-operations:
     get:
       operationId: listTransactionUserOperations
@@ -3182,6 +3216,12 @@ components:
           $ref: "#/components/schemas/Quantity"
         base_fee_per_gas:
           $ref: "#/components/schemas/Quantity"
+        block_access_list_hash:
+          $ref: "#/components/schemas/Hash"
+        slot_number:
+          allOf:
+            - $ref: "#/components/schemas/Quantity"
+          description: Execution-header slot number as an exact decimal string; omitted when absent from the header.
         withdrawals:
           type: array
           items:
@@ -6967,6 +7007,44 @@ components:
           $ref: "#/components/schemas/UserOperationDetail"
         meta:
           $ref: "#/components/schemas/Meta"
+    NativeTransfer:
+      type: object
+      additionalProperties: false
+      required: [block_number, block_hash, transaction_hash, transaction_index, log_index, from, to, amount, timestamp]
+      properties:
+        block_number:
+          $ref: "#/components/schemas/Quantity"
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+        transaction_hash:
+          $ref: "#/components/schemas/Hash"
+        transaction_index:
+          $ref: "#/components/schemas/Quantity"
+        log_index:
+          $ref: "#/components/schemas/Quantity"
+        from:
+          $ref: "#/components/schemas/Address"
+        to:
+          $ref: "#/components/schemas/Address"
+        amount:
+          $ref: "#/components/schemas/Quantity"
+        timestamp:
+          type: string
+          format: date-time
+    NativeTransferListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta, applicable]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/NativeTransfer"
+        meta:
+          $ref: "#/components/schemas/Meta"
+        applicable:
+          type: boolean
+          description: False when the indexed snapshot or transaction predates Amsterdam. True responses require complete protocol-log coverage in the requested range.
     UserOperationListResponse:
       type: object
       additionalProperties: false

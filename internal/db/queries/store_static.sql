@@ -107,6 +107,8 @@ WITH delete_stage_results AS (
     DELETE FROM erc4337_user_operation_events WHERE chain_id = sqlc.arg('chain_id')::numeric AND block_number = sqlc.arg('block_number')::numeric AND block_hash = sqlc.arg('block_hash')::bytea
 ), delete_user_operation_participants AS (
     DELETE FROM erc4337_user_operation_participants WHERE chain_id = sqlc.arg('chain_id')::numeric AND block_number = sqlc.arg('block_number')::numeric AND block_hash = sqlc.arg('block_hash')::bytea
+), delete_native_transfers AS (
+ DELETE FROM native_transfers WHERE chain_id=sqlc.arg(chain_id)::numeric AND block_number=sqlc.arg(block_number)::numeric AND block_hash=sqlc.arg(block_hash)::bytea
 ), delete_user_operations AS (
     DELETE FROM erc4337_user_operations WHERE chain_id = sqlc.arg('chain_id')::numeric AND block_number = sqlc.arg('block_number')::numeric AND block_hash = sqlc.arg('block_hash')::bytea
 ), delete_user_operation_coverage AS (

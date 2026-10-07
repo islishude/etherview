@@ -1148,7 +1148,7 @@ WHERE decoding.chain_id = $1::numeric
         AND published.block_number = decoding.block_number
         AND published.block_hash = decoding.block_hash
         AND published.stage = 'abi'
-        AND published.stage_version = 4
+        AND published.stage_version = 5
         AND published.state = 'complete'
   )
 `
@@ -1212,7 +1212,7 @@ WITH published_abi AS (
       AND published.block_number = $2::numeric
       AND published.block_hash = $3::bytea
       AND published.stage = 'abi'
-      AND published.stage_version = 4
+      AND published.stage_version = 5
       AND published.state = 'complete'
 ), selected AS (
     SELECT effective.context_address, effective.execution_address,
@@ -1701,7 +1701,7 @@ LEFT JOIN trace_log_attributions AS attribution
      WHERE published.chain_id = attribution.chain_id
        AND published.block_hash = attribution.block_hash
        AND published.stage = 'trace'
-       AND published.stage_version = 3
+       AND published.stage_version = 4
        AND published.state = 'complete'
  )
 WHERE log.chain_id = $1::numeric AND log.block_hash = $2 AND log.tx_hash = $3
@@ -2129,7 +2129,7 @@ WHERE decoding.chain_id = $1::numeric
       WHERE published.chain_id = decoding.chain_id
         AND published.block_hash = decoding.block_hash
         AND published.stage = 'abi'
-        AND published.stage_version = 4
+        AND published.stage_version = 5
         AND published.state = 'complete'
   )
 ORDER BY decoding.object_index, decoding.object_kind

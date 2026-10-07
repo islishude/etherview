@@ -6,6 +6,7 @@ package catalog
 import (
 	"context"
 	"errors"
+	"github.com/islishude/etherview/internal/stagecontract"
 	"time"
 )
 
@@ -33,12 +34,14 @@ const (
 func (stage Stage) Version() int {
 	switch stage {
 	case StageStats:
-		return 3
+		return int(stagecontract.Stats.Version)
 	case StageTrace:
-		return 3
+		return int(stagecontract.Trace.Version)
 	case StageStateDiff:
-		return 3
-	case StageCore, StageToken, StageHolder:
+		return int(stagecontract.StateDiff.Version)
+	case StageToken:
+		return int(stagecontract.Token.Version)
+	case StageCore, StageHolder:
 		return 1
 	default:
 		return 0

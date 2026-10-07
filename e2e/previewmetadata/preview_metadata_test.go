@@ -212,6 +212,7 @@ func (h *harness) run(ctx context.Context) {
 	h.assertLocalGateway(ctx)
 	h.assertPublicConfig(ctx)
 	initialReceipt := h.deployNFT(ctx)
+	h.assertAmsterdam(ctx, "0x1234")
 	contract := *initialReceipt.ContractAddress
 	h.waitTokenContract(ctx, initialReceipt)
 	h.assertCompatibilityHoldings(ctx, contract)
@@ -233,6 +234,7 @@ func (h *harness) run(ctx context.Context) {
 	h.restartMetadataAndAssertPersistence(ctx, updatedReceipt, contract, updatedMetadata, updatedJob)
 	h.assertVersionHistory(ctx, contract, initialReceipt, updatedReceipt, initialJob, updatedJob)
 	h.writeReport(ctx, initialReceipt, updatedReceipt, updatedMetadata, updatedJob, initialTransition, updatedTransition)
+	h.assertAmsterdamMonolith(ctx)
 }
 
 func (h *harness) assertCompatibilityHoldings(ctx context.Context, contract common.Address) {

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/islishude/etherview/internal/nativetransfer"
 	"math"
 	"strconv"
 	"strings"
@@ -548,6 +549,15 @@ func loadABILogs(ctx context.Context, tx pgx.Tx, job Job) ([]abiObservation, err
 		}
 		if err := validateABILogIdentity(wire, job, uint64(logIndex), transactionHash, emitter); err != nil {
 			return nil, Permanent(err)
+		}
+		if storedRow.Amsterdam {
+			_, protocol, err := nativetransfer.Parse(&wire)
+			if err != nil {
+				return nil, Permanent(err)
+			}
+			if protocol {
+				continue
+			} // Protocol decoding belongs to native_transfer, not contract ABI provenance.
 		}
 		data := common.CopyBytes(wire.Data)
 		topics := append([]common.Hash(nil), wire.Topics...)

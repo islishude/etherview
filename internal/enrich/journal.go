@@ -32,6 +32,8 @@ type derivedJournalTransition struct {
 func encodeDerivedJournal(stage StageID) ([]byte, error) {
 	var relations []string
 	switch stage {
+	case NativeTransferStage:
+		relations = []string{"native_transfers"}
 	case ProxyStage:
 		relations = []string{
 			"contract_code_observations",

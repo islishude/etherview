@@ -655,7 +655,7 @@ func (h *harness) assertOperationalLogs(ctx context.Context) {
 		`"event":"runtime_ready"`,
 		`"event":"enrichment_job_transitioned"`,
 		`"job":{"id":`,
-		`"stage":{"name":"trace","version":3}`,
+		fmt.Sprintf(`"stage":{"name":"trace","version":%d}`, enrich.TraceStage.Version),
 		`"stage":{"name":"state_diff","version":3}`,
 		`"stage":{"name":"userop","version":1}`,
 		`"block":{"number":"` + strconv.FormatUint(h.fixture.finalHeight, 10) + `","hash":"` + strings.ToLower(h.fixture.finalHash) + `"}`,
@@ -1007,14 +1007,14 @@ func (h *harness) waitCanonical(ctx context.Context, height uint64, hash string)
 				(SELECT count(*) FROM published_block_stage_results
 					WHERE chain_id = 1 AND block_number = $1 AND block_hash = decode($2, 'hex')
 					  AND state = 'complete' AND (stage, stage_version) IN (
-					    ('proxy',$3::integer),('abi',$4::integer),('token',1),('holder',1),
-					    ('stats',3),('trace',$5::integer),('state_diff',$6::integer),('userop',1))),
+					    ('proxy',$3::integer),('abi',$4::integer),('token',2),('holder',1),
+					    ('stats',4),('native_transfer',1),('trace',$5::integer),('state_diff',$6::integer),('userop',1))),
 				(SELECT count(*) FROM durable_jobs WHERE status IN ('queued','leased')),
 				(SELECT count(*) FROM published_block_stage_results
 					WHERE chain_id = 1 AND block_number = $1 AND block_hash = decode($2, 'hex')
 					  AND state <> 'complete' AND (stage, stage_version) IN (
-					    ('proxy',$3::integer),('abi',$4::integer),('token',1),('holder',1),
-					    ('stats',3),('trace',$5::integer),('state_diff',$6::integer),('userop',1))),
+					    ('proxy',$3::integer),('abi',$4::integer),('token',2),('holder',1),
+					    ('stats',4),('native_transfer',1),('trace',$5::integer),('state_diff',$6::integer),('userop',1))),
 				(SELECT count(*) FROM transactional_outbox WHERE published_at IS NULL),
 				COALESCE((SELECT string_agg(stage || ':' || left(last_error, 512), ';' ORDER BY stage)
 					FROM published_block_stage_results

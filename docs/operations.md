@@ -743,11 +743,11 @@ etherview reindex --config /etc/etherview/config.yaml \
 
 etherview reindex --config /etc/etherview/config.yaml \
   --from 0 --to 12000010 --stage abi \
-  --reason "publish ABI v4 after trace v3 and proxy v2 are complete"
+  --reason "publish ABI v5 after trace v4 and proxy v2 are complete"
 
 etherview reindex --config /etc/etherview/config.yaml \
   --from 0 --to 12000010 --stage trace \
-  --reason "publish trace v3 execution identities and constructor decoding"
+  --reason "publish trace v4 execution identities and constructor decoding"
 
 etherview reindex --config /etc/etherview/config.yaml \
   --from 0 --to 12000010 --stage state_diff \
@@ -766,14 +766,14 @@ holding the chain lock. It cannot move canonicality or checkpoints. A range at
 or below finalized height requires `--allow-finalized` plus the recorded
 reason; this permits only a same-identity refresh.
 
-`reindex --stage proxy|abi|token|stats|trace|state_diff|userop|holder` queues work for
+`reindex --stage native_transfer|proxy|abi|token|stats|trace|state_diff|userop|holder` queues work for
 the currently canonical block hash. It does not steal queued work or an active
 lease. Repair deliberately does not infer a downstream rebuild range; schedule
 each required derived stage explicitly and wait for its durable publication
 result. After the
 OpenZeppelin proxy cutover, schedule `proxy` before `abi`; the ABI worker also
 refuses to claim a block until the current `proxy@2` result is published.
-`holder@1` also waits for the exact block's `token@1` result and terminal
+`holder@1` also waits for the exact block's `token@2` result and terminal
 `proxy@2` result. Authoritative holder reads require a bounded sequence of
 Holder reindex requests starting at block zero and continuing through the
 current canonical tip; neither migration nor startup schedules this history.
@@ -781,9 +781,9 @@ Each request must retain its operator reason. The enrich role uses its
 state-purpose endpoint for exact EIP-1898 `balanceOf` and `totalSupply` calls;
 missing historical state leaves the affected Holder block unavailable rather
 than publishing event-derived balances.
-The `trace@3` cutover is an explicit bounded reindex, never a migration-time
+The `trace@4` cutover is an explicit bounded reindex, never a migration-time
 historical enqueue. Each completed Trace generation requests the existing
-`proxy@2` replay and then `abi@4`; wait for those publications before treating
+`proxy@2` replay and then `abi@5`; wait for those publications before treating
 the range as proxy-interaction complete. Nodes that reject `withLog` with
 `-32602` still publish the call tree, but their logs remain visibly on the
 conservative address fallback path.
@@ -793,16 +793,16 @@ Migration `0040` originally introduced the transaction execution-code rows and
 changes the public witness to `state_diff@3` and clears proxy-interaction
 coverage that depended on the superseded version, but it never enqueues
 history. Run `reindex --stage state_diff` for the chosen canonical range and
-wait for `state_diff@3`. Its completion requests `trace@3`; after Trace
-publishes, wait for `proxy@2` and then `abi@4`, then rebuild and verify the
+wait for `state_diff@3`. Its completion requests `trace@4`; after Trace
+publishes, wait for `proxy@2` and then `abi@5`, then rebuild and verify the
 affected coverage range. Operators must not substitute block-end or `latest`
 code for unavailable transaction prestate.
 
 Migration `0048` adds the partitioned ABI-owned effective execution identity
-and advances the ABI witness to `abi@4`; it never backfills or queues history.
+and advances the ABI witness to `abi@5`; it never backfills or queues history.
 For a bounded historical or Preview range, first ensure its canonical
-`state_diff@3` and `trace@3` publications exist, replay `proxy@2`, then run
-`reindex --stage abi` and wait for `abi@4`. The replay uses only stored exact
+`state_diff@3` and `trace@4` publications exist, replay `proxy@2`, then run
+`reindex --stage abi` and wait for `abi@5`. The replay uses only stored exact
 block evidence. Do not derive an identity from block-end state, `latest`, or
 the last delegation observed for an address in the block.
 
@@ -1101,7 +1101,7 @@ automatically.
 ### Factory-derived verification rollout and backfill
 
 Factory-derived verification consumes only PostgreSQL-persisted authenticated
-compilation units, canonical `trace@3` CREATE/CREATE2 frames, and canonical code
+compilation units, canonical `trace@4` CREATE/CREATE2 frames, and canonical code
 observations. It does not require archive/debug RPC and never inherits a
 submitter's Sourcify consent. Roll out in this order on every `all`/`api`
 replica:
@@ -1114,11 +1114,11 @@ replica:
    ambiguity, runtime mismatch, stale evidence, or backlog growth, then set
    `DERIVED_VERIFY_BACKFILL_ENABLED=true` to publish historical unique matches.
 4. Set `DERIVED_VERIFY_FORWARD_ENABLED=true` only after backfill is enabled.
-   The post-`trace@3` dispatcher then schedules future and transitive work
+   The post-`trace@4` dispatcher then schedules future and transitive work
    without running the matcher in the trace transaction.
 
 Migration `0057` replaces the block-keyed forward queue with immutable
-`trace@3`/`proxy@2` publication-generation events. If derived verification is
+`trace@4`/`proxy@2` publication-generation events. If derived verification is
 already enabled, stop or replace every `all`/`api` replica as one rollout; do
 not let an older worker run against the generation-aware queue. The migration
 preserves compilation units, attempts, publications, and scans. It converts an
@@ -1311,3 +1311,25 @@ on pull requests, main pushes and the daily schedule. It creates a temporary
 runner CA and dedicated API/gateway certificates through `make preview-cert`;
 no operator certificates or secrets are required. Its seven-day artifact
 contains only acceptance reports and diagnostic logs, not certificate keys.
+
+## Amsterdam protocol data
+
+Amsterdam block responses expose exact decimal `slot_number` and
+`block_access_list_hash` when present in the authenticated execution header.
+Pre-upgrade blocks omit them. BAL bodies are not fetched or indexed.
+Block gas utilization uses the maximum of the execution/state dimensions;
+execution fees and base-fee burn use
+receipt charged gas. The active enrichment versions are stats@4, token@2,
+abi@5 and trace@4.
+
+The always-on native_transfer@1 stage indexes only EIP-7708 protocol ETH logs.
+Transaction and address native-transfer tabs expose this separate history,
+including exact wei amounts and indexed coverage. Fees, withdrawals and
+historical trace transfers are excluded. Missing publication returns unavailable;
+replay and reorg revoke coverage until the current generation is published.
+An operator may explicitly reindex `--stage native_transfer` for a reviewed
+canonical range. No startup reindex or legacy data adapter is installed.
+
+New disposable Preview networks activate Amsterdam at genesis. Existing Preview
+volumes retain their genesis identity; do not replace their runtime genesis or
+remove their volumes as part of an application update.

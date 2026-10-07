@@ -21,7 +21,7 @@ WITH core_complete AS (
               AND result.block_number = canonical.number
               AND result.block_hash = canonical.block_hash
               AND result.stage = 'trace'
-              AND result.stage_version = 3
+              AND result.stage_version = 4
             LIMIT 1
         ) AS latest ON TRUE
         WHERE canonical.chain_id = sqlc.arg('chain_id')::numeric
@@ -51,6 +51,8 @@ SELECT
     block.gas_used_quantity AS gas_used_quantity,
     block.gas_limit_quantity AS gas_limit_quantity,
     block.base_fee_per_gas_quantity AS base_fee_per_gas_quantity,
+    block.slot_number_raw AS slot_number_raw,
+    block.block_access_list_hash_raw AS block_access_list_hash_raw,
     block.transaction_count AS transaction_count,
     (SELECT COUNT(*) FROM transaction_inclusions AS inclusion
      WHERE inclusion.chain_id = block.chain_id
@@ -92,6 +94,8 @@ SELECT
     block.gas_used_quantity AS gas_used_quantity,
     block.gas_limit_quantity AS gas_limit_quantity,
     block.base_fee_per_gas_quantity AS base_fee_per_gas_quantity,
+    block.slot_number_raw AS slot_number_raw,
+    block.block_access_list_hash_raw AS block_access_list_hash_raw,
     block.transaction_count AS transaction_count,
     (SELECT COUNT(*) FROM transaction_inclusions AS inclusion
      WHERE inclusion.chain_id = block.chain_id
@@ -278,6 +282,8 @@ SELECT
     block.gas_used_quantity AS gas_used_quantity,
     block.gas_limit_quantity AS gas_limit_quantity,
     block.base_fee_per_gas_quantity AS base_fee_per_gas_quantity,
+    block.slot_number_raw AS slot_number_raw,
+    block.block_access_list_hash_raw AS block_access_list_hash_raw,
     block.transaction_count AS transaction_count,
     (SELECT COUNT(*) FROM transaction_inclusions AS inclusion
      WHERE inclusion.chain_id = block.chain_id
@@ -321,6 +327,8 @@ SELECT
     block.gas_used_quantity AS gas_used_quantity,
     block.gas_limit_quantity AS gas_limit_quantity,
     block.base_fee_per_gas_quantity AS base_fee_per_gas_quantity,
+    block.slot_number_raw AS slot_number_raw,
+    block.block_access_list_hash_raw AS block_access_list_hash_raw,
     block.transaction_count AS transaction_count,
     (SELECT COUNT(*) FROM transaction_inclusions AS inclusion
      WHERE inclusion.chain_id = block.chain_id
@@ -453,7 +461,7 @@ LEFT JOIN LATERAL (
                 AND published_abi.block_number = effective.block_number
                 AND published_abi.block_hash = effective.block_hash
                 AND published_abi.stage = 'abi'
-                AND published_abi.stage_version = 4
+                AND published_abi.stage_version = 5
                 AND published_abi.state = 'complete'
           )
         UNION ALL
@@ -475,7 +483,7 @@ LEFT JOIN LATERAL (
                 AND published_abi.block_number = raw.block_number
                 AND published_abi.block_hash = raw.block_hash
                 AND published_abi.stage = 'abi'
-                AND published_abi.stage_version = 4
+                AND published_abi.stage_version = 5
                 AND published_abi.state = 'complete'
           )
           AND EXISTS (
@@ -510,7 +518,7 @@ LEFT JOIN abi_decodings AS decoding
        AND published_abi.block_number = decoding.block_number
        AND published_abi.block_hash = decoding.block_hash
        AND published_abi.stage = 'abi'
-       AND published_abi.stage_version = 4
+       AND published_abi.stage_version = 5
        AND published_abi.state = 'complete'
  )
 WHERE inclusion.chain_id = sqlc.arg('chain_id')::numeric
@@ -587,7 +595,7 @@ LEFT JOIN LATERAL (
                 AND published_abi.block_number = effective.block_number
                 AND published_abi.block_hash = effective.block_hash
                 AND published_abi.stage = 'abi'
-                AND published_abi.stage_version = 4
+                AND published_abi.stage_version = 5
                 AND published_abi.state = 'complete'
           )
         UNION ALL
@@ -609,7 +617,7 @@ LEFT JOIN LATERAL (
                 AND published_abi.block_number = raw.block_number
                 AND published_abi.block_hash = raw.block_hash
                 AND published_abi.stage = 'abi'
-                AND published_abi.stage_version = 4
+                AND published_abi.stage_version = 5
                 AND published_abi.state = 'complete'
           )
           AND EXISTS (
@@ -644,7 +652,7 @@ LEFT JOIN abi_decodings AS decoding
        AND published_abi.block_number = decoding.block_number
        AND published_abi.block_hash = decoding.block_hash
        AND published_abi.stage = 'abi'
-       AND published_abi.stage_version = 4
+       AND published_abi.stage_version = 5
        AND published_abi.state = 'complete'
  )
 WHERE inclusion.chain_id = sqlc.arg('chain_id')::numeric
@@ -920,7 +928,7 @@ LEFT JOIN published_block_stage_results AS trace_result
  AND trace_result.block_number = contiguous.range_end
  AND trace_result.block_hash = contiguous_block.block_hash
  AND trace_result.stage = 'trace'
- AND trace_result.stage_version = 3;
+ AND trace_result.stage_version = 4;
 
 -- name: QueryTransactionByHash :one
 SELECT

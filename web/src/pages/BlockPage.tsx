@@ -272,7 +272,20 @@ export function BlockDetailPage({ identifier, tab }: { identifier: string; tab: 
             <>
               <DetailList label={t("detail.blockSummary")}>
                 <Detail label={t("table.block")} value={formatInteger(block.data.number, locale)} />
+                {block.data.slot_number !== undefined && (
+                  <Detail
+                    label={t("detail.slotNumber")}
+                    value={formatInteger(block.data.slot_number, locale)}
+                  />
+                )}
                 <Detail label={t("table.hash")} value={block.data.hash} mono />
+                {block.data.block_access_list_hash !== undefined && (
+                  <Detail
+                    label={t("detail.blockAccessListHash")}
+                    value={block.data.block_access_list_hash}
+                    mono
+                  />
+                )}
                 <Detail
                   label={t("detail.parentHash")}
                   mono

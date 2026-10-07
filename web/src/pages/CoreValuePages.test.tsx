@@ -813,10 +813,11 @@ describe("core value and address pages", () => {
     expect(
       within(addressTabs)
         .getAllByRole("link")
-        .slice(0, 6)
+        .slice(0, 7)
         .map((link) => link.textContent),
     ).toEqual([
       "Transactions",
+      "Native transfers",
       "Internal Transactions",
       "Withdrawals",
       "ERC-20 Transfers",

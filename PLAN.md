@@ -203,3 +203,14 @@ documentation and plan validation pass. [PR #136 CI run 37638823425](https://git
 passes all 12 jobs at `e1b8bda`, including the full Preview gate and artifact
 upload. P68-T30/P68-T31 and P68 are done; Amsterdam activation is reverted.
 P70/P73 external release blockers remain unchanged.
+
+P70-T47–T50 are done: execution-header slot display, Amsterdam gas and
+protocol-log compatibility, native ETH transfer browsing and local runtime
+acceptance. Preview, schema, runtime/x402, Hardhat and Foundry pass in their
+applicable production layouts. BAL contents remain out of scope; only the header commitment is
+exposed. P70/P73 external release blockers remain unchanged.
+
+P70-T51 is done: heartbeat-only updates no longer acquire the native transfer
+coverage lock during atomic publication. The regression reproduces the original
+timeout and passes after the fix; the full PostgreSQL race suite, generation,
+lint and governance checks pass. Existing external release blockers remain unchanged.
