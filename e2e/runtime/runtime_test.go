@@ -225,35 +225,6 @@ func TestProductionComposeRuntimeE2E(t *testing.T) {
 	}
 }
 
-func TestNormalizeAnvilReceipts(t *testing.T) {
-	payload := map[string]any{
-		"jsonrpc": "2.0",
-		"result": []any{
-			map[string]any{
-				"transactionHash": "0x01",
-				"blobGasPrice":    "0x1",
-			},
-			map[string]any{
-				"transactionHash": "0x02",
-				"blobGasPrice":    "0x2",
-				"blobGasUsed":     "0x3",
-			},
-		},
-	}
-	if got := normalizeAnvilReceipts(payload); got != 1 {
-		t.Fatalf("normalized receipts = %d, want 1", got)
-	}
-	receipts := payload["result"].([]any)
-	first := receipts[0].(map[string]any)
-	if _, present := first["blobGasPrice"]; present {
-		t.Fatal("orphan blobGasPrice was not removed")
-	}
-	second := receipts[1].(map[string]any)
-	if second["blobGasPrice"] != "0x2" || second["blobGasUsed"] != "0x3" {
-		t.Fatalf("complete blob fee observation changed: %#v", second)
-	}
-}
-
 func TestNormalizeAnvilClearedDelegations(t *testing.T) {
 	payload := map[string]any{
 		"jsonrpc": "2.0",
@@ -444,9 +415,6 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		h.waitReady(ctx)
 		h.waitCanonical(ctx, 1, h.fixture.blockOneHash)
 		h.assertUserOperation(ctx)
-		if h.rpcProxy.normalized.Load() == 0 {
-			t.Fatal("RPC fixture adapter did not normalize Anvil's incomplete blob fee observation")
-		}
 		if mode == "distributed" {
 			h.stopOneWorkerReplica(ctx, "sync")
 			h.stopOneWorkerReplica(ctx, "enrich")
@@ -707,7 +675,7 @@ func (h *harness) assertOperationalLogs(ctx context.Context) {
 func runtimeEnvironment(root string, baseTimestamp uint64, userOperations bool) map[string]string {
 	return map[string]string{
 		"ETHERVIEW_IMAGE":                 valueOrDefault("IMAGE", "etherview:local"),
-		"ETHERVIEW_RUNTIME_FIXTURE_IMAGE": valueOrDefault("ETHERVIEW_RUNTIME_FIXTURE_IMAGE", "ghcr.io/foundry-rs/foundry:v1.7.1"),
+		"ETHERVIEW_RUNTIME_FIXTURE_IMAGE": valueOrDefault("ETHERVIEW_RUNTIME_FIXTURE_IMAGE", "ghcr.io/foundry-rs/foundry:v1.8.3"),
 		"ANVIL_ARGS": valueOrDefault(
 			"ANVIL_ARGS",
 			fmt.Sprintf(
@@ -1685,7 +1653,6 @@ type receiptProxy struct {
 	listener          net.Listener
 	server            *http.Server
 	client            *http.Client
-	normalized        atomic.Uint64
 	clearedDelegation atomic.Uint64
 	blockTraceCalls   atomic.Uint64
 	transactionTraces atomic.Uint64
@@ -1781,7 +1748,7 @@ func (p *receiptProxy) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 		http.Error(writer, "invalid upstream JSON-RPC response", http.StatusBadGateway)
 		return
 	}
-	p.normalized.Add(normalizeAnvilReceipts(payload))
+	normalizeAnvilReceipts(payload)
 	p.clearedDelegation.Add(normalizeAnvilClearedDelegations(payload))
 	encoded, err := json.Marshal(payload)
 	if err != nil {
@@ -2003,7 +1970,7 @@ func normalizeAnvilClearedDelegations(value any) uint64 {
 				_, postHasNonce := postAccount["nonce"]
 				if preOK && postOK && hasCode && strings.HasPrefix(strings.ToLower(code), "0xef0100") &&
 					!postHasCode && postHasNonce {
-					// Anvil v1.7.1 omits code when a Prague authorization clears
+					// Anvil can omit code when a Prague authorization clears
 					// delegation. geth's diffMode contract uses an explicit empty
 					// value for a changed scalar, so normalize only this fixture gap.
 					postAccount["code"] = "0x"

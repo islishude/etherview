@@ -256,7 +256,7 @@ configuration and request behavior are not supported.
 
 ### Foundry
 
-Foundry v1.7.1 can use the same strict compatibility boundary through its
+Foundry v1.8.3 can use the same strict compatibility boundary through its
 custom Etherscan-compatible verifier. Keep the API key only in the
 `VERIFIER_API_KEY` process environment and include the mandatory deployment
 chain in both the API URL and Forge chain selector:

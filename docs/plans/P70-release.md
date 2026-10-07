@@ -1328,3 +1328,26 @@ to release conformance. Include SIWE isolation, durable maintenance recovery,
 Token replay/reorg behavior, bounded export admission, generated-client downloads
 and monolith/split parity in T01/T03/T05 acceptance. P78 local evidence does not
 clear the existing live-payment or reference-capacity blockers.
+
+### P70-T31/P70-T43 — Foundry 1.8.3 acceptance update (2026-10-07)
+
+- Completed the Foundry/Anvil/x402 image upgrade to `v1.8.3` and aligned Forge
+  identity checks with upstream commit `cae51ad458f6abb64852b7709eb784352429825d`.
+- Removed the runtime assertion that required an orphan blob-fee observation;
+  valid complete receipts now pass without triggering the fixture normalizer.
+  The regression covers incomplete, ordinary and complete receipts and lives
+  unchanged in `runtime_receipts_test.go`, keeping the runtime harness below
+  the 2,500-line limit. Production receipt validation remains unchanged.
+- Local receipt race regressions, tagged runtime/x402 compilation, Go lint,
+  source, Compose, docs, plan and whitespace checks passed. Initial local
+  Docker registry/daemon failures and the earlier
+  [receipt assertion](https://github.com/islishude/etherview/actions/runs/37576543339/job/112646606351)
+  and [file-size failure](https://github.com/islishude/etherview/actions/runs/37577953599/job/112650958696)
+  are historical; the final remote acceptance clears the upgrade validation blockers.
+- [PR #118 CI run 37579816722](https://github.com/islishude/etherview/actions/runs/37579816722)
+  passes all 11 jobs at `243792a391b2927ee5d5840627159ed83f175a9a`: common
+  generation/lint/unit/race gates, PostgreSQL, browser, security/licenses,
+  container/schema/runtime/x402 parity, and native AMD64/ARM64 Foundry,
+  Hardhat and Vyper acceptance. The separate Dependabot configuration check
+  also passes. This documentation consolidation passes `make docs-check
+  plan-check` and `git diff --check`; it adds no runtime changes.
