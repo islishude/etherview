@@ -535,5 +535,9 @@ by the follow-up evidence below. P70/P73 external release gates remain separate.
   `make preview-cert`, then runs the exact `make test-preview-metadata` target
   including both image builds. Success/failure reports and logs are retained
   for seven days; certificate directories and CA keys are excluded.
+- Linux CI grants the ephemeral API key group 65532 read access (0640) so
+  its nonroot container can read the bind mount while the runner still passes
+  certificate preflight. The gateway key stays 0600; local operator files are
+  unchanged.
 - Local actionlint 1.7.7, `make docs-check`, `make plan-check` and
   `git diff --check` pass. Remote execution of the new job remains pending.

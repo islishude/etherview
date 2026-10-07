@@ -379,7 +379,9 @@ branch; scheduled start times may be delayed by runner load.
   CI runs this complete target in the independent `Preview IPFS metadata E2E`
   job on Ubuntu AMD64 for pull requests, main pushes and the daily schedule.
   The job installs pinned mkcert 1.4.4 and uses `make preview-cert` with an
-  ephemeral runner-local CA and system trust. It builds both images through
+  ephemeral runner-local CA and system trust. The temporary API key grants
+  read access to container group 65532 (0640) for Linux bind mounts; the gateway
+  key remains 0600, and only its owning service mounts each key. It builds both images through
   the canonical target and uploads reports/diagnostics on success or failure
   for seven days; certificate and CA private keys are never uploaded.
   This gate remains outside `make check` and does not establish public IPFS
