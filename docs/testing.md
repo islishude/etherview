@@ -208,7 +208,7 @@ branch; scheduled start times may be delayed by runner load.
   checksum-validates the official catalog artifact through the application;
   only the independent client's fixture compilation is offline.
 - `make test-foundry-offline-compile`: run the manifest-digest-pinned Foundry
-  v1.7.1 client image with no network and force a Solidity 0.8.30 rebuild. The
+  v1.8.3 client image with no network and force a Solidity 0.8.30 rebuild. The
   image build already compiles once online and once offline, while this target
   independently proves the loaded client contains the complete compiler cache.
   Foundry's disposable project build cache is disabled: each Compose command
@@ -290,7 +290,7 @@ branch; scheduled start times may be delayed by runner load.
 - `make test-runtime-e2e`: rebuild the current working tree's production image
   and run the build-tagged Go E2E suite against the production Compose file in
   monolith and all-six-application-role layouts. Each layout gets a
-  deterministic Prague chain from the default Foundry `v1.7.1` image and a
+  deterministic Prague chain from the default Foundry `v1.8.3` image and a
   fresh PostgreSQL volume. The Go harness derives deterministic temporary
   keys, funds them with `anvil_setBalance`, signs authorization tuples and raw
   type-4 transactions with go-ethereum, and deploys two delegate contracts; it
@@ -328,8 +328,8 @@ branch; scheduled start times may be delayed by runner load.
   without exposing the key to worker roles or depending on the local mkcert
   trust store.
   A bounded test-only Go RPC adapter removes the orphan `blobGasPrice` field
-  emitted by the pinned Anvil fixture when `blobGasUsed` is absent. Anvil
-  `v1.7.1` also omits geth-style prestate fields for cleared delegation code,
+  emitted by Anvil when `blobGasUsed` is absent. Anvil
+  can also omit geth-style prestate fields for cleared delegation code,
   implicit delegated authority code, and the executed delegate account. The
   adapter normalizes only the explicit clearing post-state gap; it deliberately
   does not add authority or delegate code to transaction prestate. The runtime

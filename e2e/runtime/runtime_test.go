@@ -707,7 +707,7 @@ func (h *harness) assertOperationalLogs(ctx context.Context) {
 func runtimeEnvironment(root string, baseTimestamp uint64, userOperations bool) map[string]string {
 	return map[string]string{
 		"ETHERVIEW_IMAGE":                 valueOrDefault("IMAGE", "etherview:local"),
-		"ETHERVIEW_RUNTIME_FIXTURE_IMAGE": valueOrDefault("ETHERVIEW_RUNTIME_FIXTURE_IMAGE", "ghcr.io/foundry-rs/foundry:v1.7.1"),
+		"ETHERVIEW_RUNTIME_FIXTURE_IMAGE": valueOrDefault("ETHERVIEW_RUNTIME_FIXTURE_IMAGE", "ghcr.io/foundry-rs/foundry:v1.8.3"),
 		"ANVIL_ARGS": valueOrDefault(
 			"ANVIL_ARGS",
 			fmt.Sprintf(
@@ -2003,7 +2003,7 @@ func normalizeAnvilClearedDelegations(value any) uint64 {
 				_, postHasNonce := postAccount["nonce"]
 				if preOK && postOK && hasCode && strings.HasPrefix(strings.ToLower(code), "0xef0100") &&
 					!postHasCode && postHasNonce {
-					// Anvil v1.7.1 omits code when a Prague authorization clears
+					// Anvil can omit code when a Prague authorization clears
 					// delegation. geth's diffMode contract uses an explicit empty
 					// value for a changed scalar, so normalize only this fixture gap.
 					postAccount["code"] = "0x"

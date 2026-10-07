@@ -75,6 +75,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T44 | done | P70-T19, P70-T27 | Remove every disposable Compose project resource during Go-owned test teardown, including volumes referenced only by inactive one-off client profiles | focused command regression and Hardhat project cleanup inspection |
 | P70-T45 | done | P70-T42, P70-T44, P76 | Reconcile maintained deployment and operations documentation with the current Makefile, Compose, runtime, and public capability contracts | focused source/doc audit, plan/link/whitespace checks, and applicable common gates |
 | P70-T46 | done | P70-T45 | Run the complete existing CI workflow daily on the default branch | workflow syntax, schedule/concurrency inspection, documentation and plan checks |
+| P70-T47 | blocked | P70-T31, P70-T43 | Upgrade Foundry, Anvil and x402 fixture images to 1.8.3 and align executable identity checks | image identity, offline compilation, Foundry/runtime E2E, Compose, docs and plan gates |
 
 ## Acceptance
 
@@ -302,6 +303,10 @@ and user/operator evidence sufficient for a production public release.
       adapters.
 
 ## Current Blockers
+
+- P70-T47: Docker registry downloads fail through the host proxy. Restore
+  registry access and pass the Foundry image/offline build and Foundry/runtime
+  E2E targets, including x402, to clear this validation blocker.
 
 The superseded accountless request-payment path is replaced by P73. P73-T08
 still needs operator-provided testnet funding, payer credentials, a compatible staging facilitator and top-up
@@ -1328,3 +1333,22 @@ to release conformance. Include SIWE isolation, durable maintenance recovery,
 Token replay/reorg behavior, bounded export admission, generated-client downloads
 and monolith/split parity in T01/T03/T05 acceptance. P78 local evidence does not
 clear the existing live-payment or reference-capacity blockers.
+
+### P70-T47 — Foundry image upgrade (2026-10-07)
+
+- Updated every Foundry/Anvil image default to `v1.8.3`, including the x402
+  fixture, and aligned Forge version/revision checks with the
+  [official release](https://github.com/foundry-rs/foundry/releases/tag/v1.8.3)
+  commit `cae51ad458f6abb64852b7709eb784352429825d`. Maintained testing,
+  compatibility and operator documentation follows the new version.
+- `make docs-check plan-check compose-check` passes. Focused
+  `go test -tags='runtimee2e foundrye2e' ./e2e/runtime -run
+  'TestNormalizeAnvil|TestFoundryJSONObject' -count=1` passes the existing Anvil
+  normalization tests and compiles the Foundry harness; x402 tagged compilation
+  (`go test -tags=runtimee2e ./e2e/x402local -run '^$'`) also passes.
+- Blocker: Docker registry access fails (initial GHCR layer download EOF,
+  then the repository Foundry build reports a proxy connection timeout).
+  `make foundry-client-image-build test-foundry-offline-compile` cannot reach
+  compilation. Clear by restoring registry access and passing that command,
+  `make test-foundry-e2e`, and `make test-runtime-e2e` (including x402).
+  No container execution or native AMD64/ARM64 acceptance is claimed.
