@@ -75,9 +75,9 @@ and user/operator evidence sufficient for a production public release.
 | P70-T44 | done | P70-T19, P70-T27 | Remove every disposable Compose project resource during Go-owned test teardown, including volumes referenced only by inactive one-off client profiles | focused command regression and Hardhat project cleanup inspection |
 | P70-T45 | done | P70-T42, P70-T44, P76 | Reconcile maintained deployment and operations documentation with the current Makefile, Compose, runtime, and public capability contracts | focused source/doc audit, plan/link/whitespace checks, and applicable common gates |
 | P70-T46 | done | P70-T45 | Run the complete existing CI workflow daily on the default branch | workflow syntax, schedule/concurrency inspection, documentation and plan checks |
-| P70-T47 | blocked | P70-T31, P70-T43 | Upgrade Foundry, Anvil and x402 fixture images to 1.8.3 and align executable identity checks | image identity, offline compilation, Foundry/runtime E2E, Compose, docs and plan gates |
-| P70-T48 | done | P70-T31 | Accept complete Anvil receipt observations without requiring an upstream fixture defect | receipt normalization regressions, tagged runtime compilation, docs and plan checks |
-| P70-T49 | done | P70-T48 | Keep receipt regressions in a focused test file within the source-size limit | source-check, Go lint, receipt race regressions, docs and plan gates |
+| P70-T47 | done | P70-T31, P70-T43 | Upgrade Foundry, Anvil and x402 fixtures to 1.8.3, align identity checks and close receipt/runtime CI regressions | native AMD64/ARM64 verification, runtime/x402 parity, common and deployment gates |
+| P70-T48 | superseded | P70-T31 | Consolidated into P70-T47: accept complete Anvil receipts without requiring an upstream defect | receipt normalization regressions retained under P70-T47 |
+| P70-T49 | superseded | P70-T48 | Consolidated into P70-T47: keep receipt regressions within the source-size limit | source-check and Go lint retained under P70-T47 |
 
 ## Acceptance
 
@@ -305,10 +305,6 @@ and user/operator evidence sufficient for a production public release.
       adapters.
 
 ## Current Blockers
-
-- P70-T47: Docker registry downloads fail through the host proxy. Restore
-  registry access and pass the Foundry image/offline build and Foundry/runtime
-  E2E targets, including x402, to clear this validation blocker.
 
 The superseded accountless request-payment path is replaced by P73. P73-T08
 still needs operator-provided testnet funding, payer credentials, a compatible staging facilitator and top-up
@@ -1336,52 +1332,27 @@ Token replay/reorg behavior, bounded export admission, generated-client download
 and monolith/split parity in T01/T03/T05 acceptance. P78 local evidence does not
 clear the existing live-payment or reference-capacity blockers.
 
-### P70-T47 — Foundry image upgrade (2026-10-07)
+### P70-T47 — Foundry 1.8.3 upgrade and CI acceptance (2026-10-07)
 
-- Updated every Foundry/Anvil image default to `v1.8.3`, including the x402
-  fixture, and aligned Forge version/revision checks with the
-  [official release](https://github.com/foundry-rs/foundry/releases/tag/v1.8.3)
-  commit `cae51ad458f6abb64852b7709eb784352429825d`. Maintained testing,
-  compatibility and operator documentation follows the new version.
-- `make docs-check plan-check compose-check` passes. Focused
-  `go test -tags='runtimee2e foundrye2e' ./e2e/runtime -run
-  'TestNormalizeAnvil|TestFoundryJSONObject' -count=1` passes the existing Anvil
-  normalization tests and compiles the Foundry harness; x402 tagged compilation
-  (`go test -tags=runtimee2e ./e2e/x402local -run '^$'`) also passes.
-- Blocker: Docker registry access fails (initial GHCR layer download EOF,
-  then the repository Foundry build reports a proxy connection timeout).
-  `make foundry-client-image-build test-foundry-offline-compile` cannot reach
-  compilation. Clear by restoring registry access and passing that command,
-  `make test-foundry-e2e`, and `make test-runtime-e2e` (including x402).
-  No container execution or native AMD64/ARM64 acceptance is claimed.
-
-### P70-T48 — Anvil complete-receipt CI repair (2026-10-07)
-
-- [PR #118 container job](https://github.com/islishude/etherview/actions/runs/37576543339/job/112646606351)
-  failed only because the runtime fixture required at least one orphan blob-fee
-  normalization. The v1.8.3 fixture reached canonical readiness without needing
-  that repair. Removed the defect-occurrence assertion and its unused counter;
-  retained bounded normalization and all production receipt validation.
-- Extended the receipt regression to preserve an ordinary receipt without blob
-  fields and require zero changes on complete observations. `go test -race
-  -tags='runtimee2e foundrye2e' ./e2e/runtime -run '^TestNormalizeAnvil'
-  -count=1`, `make docs-check plan-check`, and `git diff --check` pass.
-- The preceding CI revision passed both architectures of Foundry and Hardhat,
-  plus x402 monolith/split. Those results do not cover this repair. Local Docker
-  daemon inspection timed out; the new PR CI must confirm full runtime parity.
-  P70-T47 remains blocked pending that acceptance.
-
-### P70-T49 — Receipt test file-size CI repair (2026-10-07)
-
-- [PR #118 common-gate job](https://github.com/islishude/etherview/actions/runs/37577953599/job/112650958696)
-  stopped at source-check: the added receipt regression grew `runtime_test.go`
-  to 2,504 lines, over its 2,500-line limit. Moved only
-  `TestNormalizeAnvilReceipts` unchanged into `runtime_receipts_test.go`, with
-  the same runtime E2E build tag; the original file now has 2,465 lines.
-- `make lint-go` (including source-check, formatting, vet and golangci-lint),
-  `go test -race -tags='runtimee2e foundrye2e' ./e2e/runtime
-  -run '^TestNormalizeAnvil' -count=1`, `make docs-check plan-check`, and
-  `git diff --check` pass. The moved test body is identical to its prior version.
-- CI at `2992cea` passed the container/runtime gate, both native Foundry and
-  Hardhat jobs and all remaining jobs except the common gate above. The new
-  revision still requires its own remote CI result.
+- Completed the Foundry/Anvil/x402 image upgrade to `v1.8.3` and aligned Forge
+  identity checks with upstream commit `cae51ad458f6abb64852b7709eb784352429825d`.
+  P70-T48 and P70-T49 are superseded by P70-T47; their implementation and
+  acceptance evidence are consolidated here, with both IDs retained for audit.
+- Removed the runtime assertion that required an orphan blob-fee observation;
+  valid complete receipts now pass without triggering the fixture normalizer.
+  The regression covers incomplete, ordinary and complete receipts and lives
+  unchanged in `runtime_receipts_test.go`, keeping the runtime harness below
+  the 2,500-line limit. Production receipt validation remains unchanged.
+- Local receipt race regressions, tagged runtime/x402 compilation, Go lint,
+  source, Compose, docs, plan and whitespace checks passed. Initial local
+  Docker registry/daemon failures and the earlier
+  [receipt assertion](https://github.com/islishude/etherview/actions/runs/37576543339/job/112646606351)
+  and [file-size failure](https://github.com/islishude/etherview/actions/runs/37577953599/job/112650958696)
+  are historical; the final remote acceptance clears this item's blockers.
+- [PR #118 CI run 37579816722](https://github.com/islishude/etherview/actions/runs/37579816722)
+  passes all 11 jobs at `243792a391b2927ee5d5840627159ed83f175a9a`: common
+  generation/lint/unit/race gates, PostgreSQL, browser, security/licenses,
+  container/schema/runtime/x402 parity, and native AMD64/ARM64 Foundry,
+  Hardhat and Vyper acceptance. The separate Dependabot configuration check
+  also passes. This documentation consolidation passes `make docs-check
+  plan-check` and `git diff --check`; it adds no runtime changes.
