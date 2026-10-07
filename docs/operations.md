@@ -49,7 +49,9 @@ ignored pair for `etherview.localhost`, `localhost`, `127.0.0.1`, and `::1`.
 Preview mounts that API pair read-only only into the API service. Its public
 listener is `https://etherview.localhost:8080`, while
 `http://localhost:9090` remains the plain HTTP operations listener. The start
-target renders an ignored `.local/preview-genesis.json` runtime copy from the
+target prints the browser URL after successful startup, using `ETHERVIEW_PORT`
+when set (default `8080`). It renders an ignored `.local/preview-genesis.json`
+runtime copy from the
 checked-in `deploy/preview.genesis.json` template at the beginning of the
 target, before the Docker build and Compose startup. Only the runtime copy gets
 the current Unix-seconds timestamp; the template is never modified by Preview
