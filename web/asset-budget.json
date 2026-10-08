@@ -13,6 +13,7 @@
     "AuthPages-",
     "BillingPages-",
     "echarts-vendor",
+    "zrender-vendor",
     "x402-vendor"
   ]
 }

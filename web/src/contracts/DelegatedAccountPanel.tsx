@@ -1,14 +1,25 @@
-import { useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useMemo,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
 import { QueryNotice } from "@/components/QueryNotice";
 import { AbiFunctionExplorer } from "@/contracts/AbiFunctionForm";
-import { ContractArtifactPanel } from "@/contracts/ContractArtifactPanel";
 import { AddressIdentity } from "@/ens/AddressIdentity";
 import { useAddressDelegation, useAddressDelegationHistory } from "@/contracts/delegation";
 import { useVerifiedContractArtifact, verifiedArtifactMatchesIdentity } from "@/contracts/proxy";
 import { buildDelegatedEOAInteractionTarget } from "@/contracts/targets";
+
+const ContractArtifactPanel = lazy(async () => {
+  const module = await import("@/contracts/ContractArtifactPanel");
+  return { default: module.ContractArtifactPanel };
+});
 
 export type DelegatedAccountTab = "code" | "read-contract" | "write-contract" | "history";
 
@@ -361,7 +372,11 @@ function DelegatedCodePanel({
           <h2 id="delegation-artifact-title">{t("contracts.verifiedArtifact")}</h2>
           <p className="quiet">{t("contracts.readIndependent")}</p>
           <QueryNotice loading={artifactLoading} error={artifactError} />
-          {artifact ? <ContractArtifactPanel artifact={artifact} /> : null}
+          {artifact ? (
+            <Suspense fallback={<QueryNotice loading error={null} />}>
+              <ContractArtifactPanel artifact={artifact} />
+            </Suspense>
+          ) : null}
         </section>
       ) : null}
     </div>

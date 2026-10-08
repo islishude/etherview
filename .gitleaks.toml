@@ -24,9 +24,12 @@ paths = [
 ]
 
 [[allowlists]]
-description = "Public block access list commitment in the authenticated Geth Amsterdam fixture"
+description = "Public block access list commitment in Geth Amsterdam fixture and local probe JSON"
 condition = "AND"
 targetRules = ["generic-api-key"]
-paths = ['''^internal/chainbundle/testdata/amsterdam-block\.json$''']
+paths = [
+  '''^internal/chainbundle/testdata/amsterdam-block\.json$''',
+  '''^\.local/amsterdam-probe/block-(?:0x0|0x1|latest|tx)\.json$'''
+]
 regexTarget = "match"
-regexes = ['''^blockAccessListHash":"0x[0-9a-f]{64}"$''']
+regexes = ['''^blockAccessListHash"[ \t]*:[ \t]*"0x[0-9a-f]{64}"$''']

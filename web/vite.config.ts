@@ -66,8 +66,15 @@ export default defineConfig({
             },
 
             {
+              name: "zrender-vendor",
+              test: /node_modules[\\/]zrender(?:[\\/]|$)/,
+              priority: 45,
+              includeDependenciesRecursively: false,
+            },
+
+            {
               name: "echarts-vendor",
-              test: /node_modules[\\/](?:echarts|zrender)(?:[\\/]|$)/,
+              test: /node_modules[\\/]echarts(?:[\\/]|$)/,
               priority: 40,
             },
 

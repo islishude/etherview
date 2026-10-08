@@ -285,6 +285,7 @@ security-tool-check:
 
 security-check: security-tool-check web-build compiler-install
 	$(GOVULNCHECK) $(GO_PACKAGES)
+	GITLEAKS="$(GITLEAKS)" $(NODE) --test .github/scripts/gitleaks-check.test.mjs
 	$(GITLEAKS) dir --no-banner --redact .
 	@if git rev-parse --verify HEAD >/dev/null 2>&1; then \
 		$(GITLEAKS) git --no-banner --redact --log-opts="--all" .; \
