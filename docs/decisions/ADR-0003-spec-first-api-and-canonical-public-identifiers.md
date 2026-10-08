@@ -212,6 +212,11 @@ authoritative empty result.
   row, so concurrent rotations cannot leave two active successors or revoke a
   key without a durable replacement.
 
+The block read model exposes optional `slot_number` directly from the accepted
+execution header. It is an exact decimal uint64 string, including zero, and is
+omitted when the header has no slot. Readers never infer a slot from block height
+or timestamp. The block overview displays it in both supported languages.
+
 ## Consequences
 
 Public API changes start with the OpenAPI specification and this decision must

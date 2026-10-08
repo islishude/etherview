@@ -1,3 +1,4 @@
+import { NativeTransfersPanel } from "./NativeTransfersPanel";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -56,6 +57,7 @@ const TRANSACTION_TABS = [
   "user-operations",
   "internal-transactions",
   "token-transfers",
+  "native-transfers",
   "logs",
   "trace",
   "state-changes",
@@ -69,7 +71,14 @@ function transactionTabsForType(type?: string, userOperations = false): Transact
   if (type === "3") tabs.push("blob");
   if (type === "4") tabs.push("authorizations");
   if (userOperations) tabs.push("user-operations");
-  tabs.push("internal-transactions", "token-transfers", "logs", "trace", "state-changes");
+  tabs.push(
+    "native-transfers",
+    "internal-transactions",
+    "token-transfers",
+    "logs",
+    "trace",
+    "state-changes",
+  );
   return tabs;
 }
 
@@ -352,6 +361,9 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
             />
           )}
 
+          {activeTab === "native-transfers" && (
+            <NativeTransfersPanel kind="transaction" identity={hash} />
+          )}
           {activeTab === "user-operations" && (
             <TransactionUserOperationsPanel blockHash={transaction.data.block_hash} hash={hash} />
           )}

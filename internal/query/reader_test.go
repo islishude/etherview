@@ -259,7 +259,7 @@ func TestBlocksUseSnapshotBoundOpaqueCursor(t *testing.T) {
 		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]any{{"2", testHashBytes(3)}}},
 		queryExpectation{
 			contains: "canonical.number <= $2::numeric",
-			columns:  columns(16),
+			columns:  columns(18),
 			rows: [][]any{
 				testBlockProjectionRow(2, 3, 2, 2, true, "1", "0"),
 				testBlockProjectionRow(1, 2, 1, 1, true, "1", "0"),
@@ -267,7 +267,7 @@ func TestBlocksUseSnapshotBoundOpaqueCursor(t *testing.T) {
 			},
 		},
 		queryExpectation{contains: "SELECT EXISTS", columns: columns(1), rows: [][]any{{true}}},
-		queryExpectation{contains: "canonical.number < $2::numeric", columns: columns(16), rows: [][]any{
+		queryExpectation{contains: "canonical.number < $2::numeric", columns: columns(18), rows: [][]any{
 			testBlockProjectionRow(0, 1, 0, 0, true, "1", "0"),
 		}},
 	)
@@ -486,7 +486,7 @@ func TestBlockTransactionsUseExactBlockIdentityAndStableIndexCursor(t *testing.T
 func TestBlockHashLookupCanReturnRetainedOrphan(t *testing.T) {
 	t.Parallel()
 	db := testDatabase(t, queryExpectation{
-		contains: "block.hash = $2", columns: columns(16),
+		contains: "block.hash = $2", columns: columns(18),
 		rows: [][]any{testBlockProjectionRow(2, 3, 2, 0, false, "5", "4")},
 	})
 	reader := testReader(t, db, Options{ChainID: 1})
@@ -502,9 +502,9 @@ func TestBlockHashLookupCanReturnRetainedOrphan(t *testing.T) {
 func TestBlockRejectsNormalizedTransactionCountMismatch(t *testing.T) {
 	t.Parallel()
 	row := testBlockProjectionRow(2, 3, 2, 0, true, nil, nil)
-	row[9] = int64(1)
+	row[11] = int64(1)
 	db := testDatabase(t, queryExpectation{
-		contains: "canonical.number = $2::numeric", columns: columns(16),
+		contains: "canonical.number = $2::numeric", columns: columns(18),
 		rows: [][]any{row},
 	})
 	reader := testReader(t, db, Options{ChainID: 1})
@@ -1016,7 +1016,7 @@ func testBlockProjectionRow(
 	return []any{
 		strconv.FormatUint(number, 10), testHashBytes(hash), testHashBytes(parent), "100",
 		"0x52908400098527886e0f7030069857d2e4169ee7",
-		"0x5208", "0x1c9c380", "0x3b9aca00",
+		"0x5208", "0x1c9c380", "0x3b9aca00", []byte(nil), []byte(nil),
 		transactionCount, transactionCount,
 		false, nil, []byte("[]"), canonical, safe, finalized,
 	}

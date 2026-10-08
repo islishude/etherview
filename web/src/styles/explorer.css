@@ -379,6 +379,11 @@ tbody tr:hover {
   background: var(--surface-raised);
 }
 
+.blocks-table th:last-child,
+.blocks-table td:last-child {
+  text-align: right;
+}
+
 .table-primary {
   min-width: 0;
   display: grid;

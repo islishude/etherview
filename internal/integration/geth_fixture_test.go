@@ -33,6 +33,9 @@ type integrationTransactionOptions struct {
 }
 
 type integrationBundleOptions struct {
+	BaseFee       *big.Int
+	Amsterdam     bool
+	GrossGasExtra uint64
 	Number        uint64
 	ParentHash    common.Hash
 	Timestamp     uint64
@@ -102,6 +105,7 @@ func newIntegrationBundle(options integrationBundleOptions) (chainbundle.Bundle,
 		receipts[index] = receipt
 	}
 	header := &types.Header{
+		BaseFee:       options.BaseFee,
 		ParentHash:    options.ParentHash,
 		UncleHash:     types.EmptyUncleHash,
 		Coinbase:      options.Coinbase,
@@ -117,6 +121,13 @@ func newIntegrationBundle(options integrationBundleOptions) (chainbundle.Bundle,
 		Extra:         common.CopyBytes(options.ExtraData),
 		BlobGasUsed:   cloneIntegrationUint64(options.BlobGasUsed),
 		ExcessBlobGas: cloneIntegrationUint64(options.ExcessBlobGas),
+	}
+	if options.Amsterdam {
+		slot := options.Number
+		bal := common.Hash{}
+		header.SlotNumber = &slot
+		header.BlockAccessListHash = &bal
+		header.GasUsed += options.GrossGasExtra
 	}
 	withdrawals := cloneIntegrationWithdrawals(options.Withdrawals)
 	if options.Withdrawals != nil {

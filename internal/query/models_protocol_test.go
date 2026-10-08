@@ -141,3 +141,79 @@ func projectedBlockRow(t *testing.T, bundle chainbundle.Bundle) dbgen.QueryListB
 		WithdrawalsPresent: new(withdrawalsPresent), WithdrawalCount: withdrawalCount, Withdrawals: withdrawalsJSON, Canonical: true,
 	}
 }
+
+func TestBlockSlotNumberProjection(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name    string
+		raw     string
+		want    *string
+		invalid bool
+	}{
+		{name: "absent"},
+		{name: "null", raw: "null"},
+		{name: "zero", raw: `"0x0"`, want: new("0")},
+		{name: "ordinary", raw: `"0x2a"`, want: new("42")},
+		{name: "uint64 maximum", raw: `"0xffffffffffffffff"`, want: new("18446744073709551615")},
+		{name: "overflow", raw: `"0x10000000000000000"`, invalid: true},
+		{name: "number", raw: "42", invalid: true},
+		{name: "decimal string", raw: `"42"`, invalid: true},
+		{name: "leading zero", raw: `"0x00"`, invalid: true},
+		{name: "malformed", raw: `"0xgg"`, invalid: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			row := testBlockProjectionRow(2, 3, 2, 0, true, nil, nil)
+			row[8] = []byte(test.raw)
+			db := testDatabase(t, queryExpectation{
+				contains: "canonical.number = $2::numeric", columns: columns(18), rows: [][]any{row},
+			})
+			reader := testReader(t, db, Options{ChainID: 1})
+			model, err := reader.Block(t.Context(), "2")
+			if test.invalid {
+				if err == nil {
+					t.Fatal("invalid slot accepted")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if (model.SlotNumber == nil) != (test.want == nil) || test.want != nil && *model.SlotNumber != *test.want {
+				t.Fatalf("slot number = %v, want %v", model.SlotNumber, test.want)
+			}
+			encoded, err := json.Marshal(model)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(encoded, &fields); err != nil {
+				t.Fatal(err)
+			}
+			if test.want == nil {
+				if _, exists := fields["slot_number"]; exists {
+					t.Fatal("absent slot was serialized")
+				}
+			} else if string(fields["slot_number"]) != strconv.Quote(*test.want) {
+				t.Fatalf("serialized slot = %s", fields["slot_number"])
+			}
+		})
+	}
+}
+
+func TestBlockAccessListHashProjection(t *testing.T) {
+	for _, raw := range []string{`null`, `"0x0000000000000000000000000000000000000000000000000000000000000000"`, `42`, `"0x1234"`} {
+		t.Run(raw, func(t *testing.T) {
+			row := testBlockProjectionRow(2, 3, 2, 0, true, nil, nil)
+			row[9] = []byte(raw)
+			db := testDatabase(t, queryExpectation{contains: "canonical.number = $2::numeric", columns: columns(18), rows: [][]any{row}})
+			model, err := testReader(t, db, Options{ChainID: 1}).Block(t.Context(), "2")
+			valid := raw == `null` || len(raw) == 68
+			if (err == nil) != valid {
+				t.Fatalf("err=%v", err)
+			}
+			if valid && raw != `null` && (model.BlockAccessListHash == nil || strconv.Quote(*model.BlockAccessListHash) != raw) {
+				t.Fatalf("hash=%v", model.BlockAccessListHash)
+			}
+		})
+	}
+}

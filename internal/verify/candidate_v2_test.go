@@ -246,7 +246,7 @@ func TestYulRuntimeDerivationRejectsUnusableCompilerOutput(t *testing.T) {
 		}
 	})
 	t.Run("oversized Yul initcode", func(t *testing.T) {
-		if _, err := deriveYulRuntime(make([]byte, params.MaxInitCodeSize+1), nil); err == nil {
+		if _, err := deriveYulRuntime(make([]byte, params.MaxInitCodeSizeAmsterdam+1), nil); err == nil {
 			t.Fatal("expected oversized Yul initcode to fail")
 		}
 	})
@@ -351,4 +351,14 @@ func yulCompilerOutput(t *testing.T, creation []byte) json.RawMessage {
 		t.Fatal(err)
 	}
 	return encoded
+}
+
+func TestYulAmsterdamLargeRuntimeWrapper(t *testing.T) {
+	const size = 60000
+	creation := []byte{0x61, byte(size >> 8), byte(size & 255), 0x80, 0x61, 0, 16, 0x60, 0, 0x39, 0x80, 0x60, 0, 0xf3, 0x50, 0xfe}
+	creation = append(creation, make([]byte, size)...)
+	runtime, err := deriveYulRuntime(creation, nil)
+	if err != nil || len(runtime) != size {
+		t.Fatalf("runtime length=%d err=%v", len(runtime), err)
+	}
 }

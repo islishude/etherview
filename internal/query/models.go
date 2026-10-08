@@ -109,6 +109,29 @@ func (r *PostgresReader) decodeBlock(scanner dbgen.QueryListBlocksFirstRow, forc
 	if err != nil {
 		return blockRecord{}, err
 	}
+	var slotNumber *string
+	if len(scanner.SlotNumberRaw) != 0 {
+		if err := json.Unmarshal(scanner.SlotNumberRaw, &slotNumber); err != nil {
+			return blockRecord{}, errors.New("decode block slot number: invalid quantity")
+		}
+	}
+	model.SlotNumber, err = blockUint64Quantity(slotNumber, "slot number")
+	if err != nil {
+		return blockRecord{}, err
+	}
+	var accessListHash *string
+	if len(scanner.BlockAccessListHashRaw) != 0 {
+		if err := json.Unmarshal(scanner.BlockAccessListHashRaw, &accessListHash); err != nil {
+			return blockRecord{}, errors.New("invalid stored block access list hash")
+		}
+	}
+	if accessListHash != nil {
+		hash, err := ethrpc.ParseHash(*accessListHash)
+		if err != nil {
+			return blockRecord{}, errors.New("invalid stored block access list hash")
+		}
+		model.BlockAccessListHash = new(hash.Hex())
+	}
 	withdrawals, err := decodeStoredWithdrawals(
 		scanner.Withdrawals, scanner.WithdrawalsPresent, scanner.WithdrawalCount,
 	)

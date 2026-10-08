@@ -315,20 +315,22 @@ type BillingUsageCharge struct {
 }
 
 type Block struct {
-	ChainID               pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	Number                pgtype.Numeric     `db:"number" json:"number"`
-	Hash                  []byte             `db:"hash" json:"hash"`
-	ParentHash            []byte             `db:"parent_hash" json:"parent_hash"`
-	Timestamp             pgtype.Numeric     `db:"timestamp" json:"timestamp"`
-	Raw                   []byte             `db:"raw" json:"raw"`
-	InsertedAt            pgtype.Timestamptz `db:"inserted_at" json:"inserted_at"`
-	MinerText             *string            `db:"miner_text" json:"miner_text"`
-	GasUsedQuantity       *string            `db:"gas_used_quantity" json:"gas_used_quantity"`
-	GasLimitQuantity      *string            `db:"gas_limit_quantity" json:"gas_limit_quantity"`
-	BaseFeePerGasQuantity *string            `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
-	TransactionCount      *int64             `db:"transaction_count" json:"transaction_count"`
-	WithdrawalsPresent    *bool              `db:"withdrawals_present" json:"withdrawals_present"`
-	WithdrawalCount       *int64             `db:"withdrawal_count" json:"withdrawal_count"`
+	ChainID                pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	Number                 pgtype.Numeric     `db:"number" json:"number"`
+	Hash                   []byte             `db:"hash" json:"hash"`
+	ParentHash             []byte             `db:"parent_hash" json:"parent_hash"`
+	Timestamp              pgtype.Numeric     `db:"timestamp" json:"timestamp"`
+	Raw                    []byte             `db:"raw" json:"raw"`
+	InsertedAt             pgtype.Timestamptz `db:"inserted_at" json:"inserted_at"`
+	MinerText              *string            `db:"miner_text" json:"miner_text"`
+	GasUsedQuantity        *string            `db:"gas_used_quantity" json:"gas_used_quantity"`
+	GasLimitQuantity       *string            `db:"gas_limit_quantity" json:"gas_limit_quantity"`
+	BaseFeePerGasQuantity  *string            `db:"base_fee_per_gas_quantity" json:"base_fee_per_gas_quantity"`
+	TransactionCount       *int64             `db:"transaction_count" json:"transaction_count"`
+	WithdrawalsPresent     *bool              `db:"withdrawals_present" json:"withdrawals_present"`
+	WithdrawalCount        *int64             `db:"withdrawal_count" json:"withdrawal_count"`
+	SlotNumberRaw          []byte             `db:"slot_number_raw" json:"slot_number_raw"`
+	BlockAccessListHashRaw []byte             `db:"block_access_list_hash_raw" json:"block_access_list_hash_raw"`
 }
 
 type BlockJournal struct {
@@ -1402,6 +1404,50 @@ type MempoolTransactionReplacement struct {
 
 type Migration0031VyperJob struct {
 	ID pgtype.UUID `db:"id" json:"id"`
+}
+
+type NativeTransfer struct {
+	ChainID          pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber      pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash        []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash  []byte         `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex int64          `db:"transaction_index" json:"transaction_index"`
+	LogIndex         int64          `db:"log_index" json:"log_index"`
+	FromAddress      []byte         `db:"from_address" json:"from_address"`
+	ToAddress        []byte         `db:"to_address" json:"to_address"`
+	Amount           pgtype.Numeric `db:"amount" json:"amount"`
+	Canonical        bool           `db:"canonical" json:"canonical"`
+}
+
+type NativeTransferCoverage struct {
+	ChainID pgtype.Numeric                                  `db:"chain_id" json:"chain_id"`
+	Covered pgtype.Multirange[pgtype.Range[pgtype.Numeric]] `db:"covered" json:"covered"`
+}
+
+type NativeTransfersDefault struct {
+	ChainID          pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber      pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash        []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash  []byte         `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex int64          `db:"transaction_index" json:"transaction_index"`
+	LogIndex         int64          `db:"log_index" json:"log_index"`
+	FromAddress      []byte         `db:"from_address" json:"from_address"`
+	ToAddress        []byte         `db:"to_address" json:"to_address"`
+	Amount           pgtype.Numeric `db:"amount" json:"amount"`
+	Canonical        bool           `db:"canonical" json:"canonical"`
+}
+
+type NativeTransfersP01000000 struct {
+	ChainID          pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber      pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash        []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash  []byte         `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex int64          `db:"transaction_index" json:"transaction_index"`
+	LogIndex         int64          `db:"log_index" json:"log_index"`
+	FromAddress      []byte         `db:"from_address" json:"from_address"`
+	ToAddress        []byte         `db:"to_address" json:"to_address"`
+	Amount           pgtype.Numeric `db:"amount" json:"amount"`
+	Canonical        bool           `db:"canonical" json:"canonical"`
 }
 
 type NftMetadataSourceObservation struct {

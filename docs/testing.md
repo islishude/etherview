@@ -130,7 +130,7 @@ branch; scheduled start times may be delayed by runner load.
   drives the durable `userop@1` outbox/worker path, verifies all native reads,
   search and completeness, then replaces the block and requires canonical
   withdrawal with retained orphan evidence.
-  The authoritative ERC-20 Holder regression publishes `proxy@2`, `token@1`,
+  The authoritative ERC-20 Holder regression publishes `proxy@2`, `token@2`,
   and `holder@1` through the durable worker path, performs exact EIP-1898
   supply/balance calls, verifies native and Etherscan list/count parity, rejects
   direct balance mutation, and requires a reorged snapshot to become
@@ -298,7 +298,7 @@ branch; scheduled start times may be delayed by runner load.
   underpriced same-sender/nonce transaction followed by its signed fee-bumped
   replacement, verifies the old hash as `replaced` and the new hash as
   `pending`, then mines and verifies the new hash as included `success`. It
-  also verifies contract creation and a failed call, all seven enabled stage
+  also verifies contract creation and a failed call, all eight enabled stage
   publications, a distinct competing-hash reorg with orphan/journal retention
   and changed hourly analytics, an orphaned delegation followed by canonical
   delegation, redelegation, ordinary delegated execution, and clearing, plus
@@ -333,7 +333,7 @@ branch; scheduled start times may be delayed by runner load.
   implicit delegated authority code, and the executed delegate account. The
   adapter normalizes only the explicit clearing post-state gap; it deliberately
   does not add authority or delegate code to transaction prestate. The runtime
-  therefore exercises `abi@4` recovery from the exact root Trace and prior
+  therefore exercises `abi@5` recovery from the exact root Trace and prior
   canonical code observations. Both monolith and the six-role topology assert that the
   adapter observed `debug_traceBlockByHash` and no `debug_traceTransaction`
   calls. Complete provider observations pass through unchanged, so production
@@ -474,7 +474,7 @@ correctness checks:
 | Failure signal | Meaning and required response |
 | --- | --- |
 | `features.<name> requires ...` while a verification service repeatedly restarts | A shared overlay enabled a feature without its companion configuration. Inspect the fully rendered environment for every application service; restore default-off isolation and explicit owner opt-in. |
-| Canonical wait reports six complete stages while the harness requires seven, or the reverse | The topology started, but a shared assertion encoded one feature set globally. Derive the expected count from the harness's explicit effective feature state. |
+| Canonical wait reports eight complete stages while the harness requires nine, or the reverse | The topology started, but a shared assertion encoded one feature set globally. Derive the expected count from the harness's explicit effective feature state. |
 | `panic: test timed out after 10m0s` after migrations succeeded | The managed integration runner did not apply its explicit package timeout. Confirm the emitted command contains `-timeout=15m0s`; do not drop packages, tests, tags, or concurrency to make CI green. |
 | `compiler_unavailable` after the bounded external download deadline | This is an external compiler-artifact boundary, not proof of a Compose feature regression. Retain diagnostics and rerun the unchanged exact target once; repeated failure requires source/network diagnosis rather than weaker verification. |
 
@@ -645,3 +645,18 @@ the Preview template against the pinned Geth system contract allocations in the
 ordinary Go test suite. Receipt polling retries only null results and Geth's
 specific transaction-indexing RPC error within the existing three-minute wait;
 other RPC/transport failures and mismatched transaction hashes remain fatal.
+
+## Amsterdam acceptance
+
+`make test-preview-metadata` also sends a real EIP-7708 ETH transfer on the
+pinned Geth Amsterdam Preview chain and checks exact transaction/address API
+amounts above JavaScript's safe integer range. It then stops the split workers
+in its disposable project, recreates the API as `serve --roles=all`, and checks
+newly mined transfers through the same contracts. The normal production runtime,
+Hardhat and Foundry suites continue to cover their pinned Prague fixtures.
+
+The chainbundle test retains a real Geth contract-creation block whose charged
+receipt gas exceeds the header's maximum execution/state dimension. Integration
+regressions cover receipt-based fees, native-transfer publication fences, replay,
+canonical detach/reattach and scope-bound cursors. Browser tests cover exact
+slot values, optional header fields and bilingual native-transfer tabs.

@@ -156,6 +156,8 @@ function validateBlock(value: unknown): void {
       "gas_used",
       "gas_limit",
       "base_fee_per_gas",
+      "slot_number",
+      "block_access_list_hash",
       "withdrawals",
       "canonical",
       "finality",
@@ -181,6 +183,8 @@ function validateBlock(value: unknown): void {
   optional(record, "gas_used", quantity);
   optional(record, "gas_limit", quantity);
   optional(record, "base_fee_per_gas", quantity);
+  optional(record, "slot_number", quantity);
+  optional(record, "block_access_list_hash", hash);
   optional(record, "withdrawals", validateWithdrawals);
   boolean(record.canonical, "block.canonical");
   enumeration(record.finality, finalityStates, "block.finality");

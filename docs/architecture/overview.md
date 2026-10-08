@@ -346,7 +346,7 @@ snapshot or chain-lock boundary. P68 tracks production-image acceptance.
   hash that was detached, terminally skipped as stale, and reattached receives
   a new enrichment generation. A delayed orphan wake for the now-canonical
   hash is acknowledged as stale rather than retried forever.
-- `stats@3` derives intervals only from the exact canonical parent. The exact
+- `stats@4` derives intervals only from the exact canonical parent. The exact
   configured indexing start has null interval and TPS; every later block
   requires a positive timestamp delta. Aggregate TPS divides transactions by
   total known interval rather than averaging block rates. A block without blob
@@ -375,7 +375,7 @@ snapshot or chain-lock boundary. P68 tracks production-image acceptance.
   budgets apply independently to each transaction and cumulatively to the
   complete block response and attempt. Work and payload consumed before the
   log-config retry or parity fallback remain charged to that block budget.
-- `trace@3` retains direct frame failure separately from ancestor rollback. It
+- `trace@4` retains direct frame failure separately from ancestor rollback. It
   validates every returned callTracer log against the persisted receipt log's
   global index, emitter, topics, and data before recording a trace path and
   execution code address. `DELEGATECALL` and `CALLCODE` expose frame `to` as the
@@ -505,7 +505,7 @@ snapshot or chain-lock boundary. P68 tracks production-image acceptance.
   and `Panic(uint256)` remain decoder-local rather than signature-database
   bindings; see
   [ADR-0009](../decisions/ADR-0009-block-bound-abi-provenance.md).
-- Transaction logs prefer a published `trace@3` attribution and decode against
+- Transaction logs prefer a published `trace@4` attribution and decode against
   its execution code address while preserving the original emitter and raw
   receipt bytes. Without exact attribution they use only the emitter,
   published historical proxy observations, and same-code verified artifacts.
@@ -528,16 +528,16 @@ snapshot or chain-lock boundary. P68 tracks production-image acceptance.
   nonce/code evidence fails permanently rather than consulting block-end or
   latest state. See
   [ADR-0034](../decisions/ADR-0034-eip7702-execution-identity-and-constructor-decoding.md).
-- `abi@4` first materializes each transaction root's effective execution
+- `abi@5` first materializes each transaction root's effective execution
   identity without changing `state_diff@3`. Exact raw identities are retained;
   only a known first-hop delegate with a missing code hash may be recovered
-  from the matching `trace@3` root plus canonical code history strictly before
+  from the matching `trace@4` root plus canonical code history strictly before
   that transaction. Code changes are replayed by transaction index, so current
   and later changes cannot flow backward. The identity, its evidence source,
-  ABI decoding, journal, and publication commit atomically. Until `abi@4` is
+  ABI decoding, journal, and publication commit atomically. Until `abi@5` is
   published, public readers retain raw state-diff semantics and ignore old ABI
   generations.
-- `abi@4` consumes existing canonical code and proxy observations. PostgreSQL
+- `abi@5` consumes existing canonical code and proxy observations. PostgreSQL
   claim selection and the production processor both require the exact
   same-version `proxy@2` result first. Complete proxy facts permit decoding;
   unavailable proxy state makes ABI unavailable instead of terminal `unbound`,
@@ -772,7 +772,7 @@ size alone is not sufficient justification to weaken those invariants.
 - Successful Solidity address verification also retains one immutable bounded
   compilation unit. Factory-derived scans match its complete candidate set
   against canonical non-reverted CREATE/CREATE2 input and exact child runtime
-  observations without RPC or recompilation. Each successful `trace@3` or
+  observations without RPC or recompilation. Each successful `trace@4` or
   `proxy@2` publication generation creates one durable forward event; events
   merge a fork-aware rescan floor, proxy publication wakes pending-runtime
   attempts, and successful pages reset rather than consume the failure budget.
@@ -984,3 +984,15 @@ logout/account changes cancel outstanding requests and remove cached data.
 CSV generation uses a single writer repeatable-read snapshot, verifies coverage,
 checks all size/work limits, and closes that snapshot before returning bytes.
 Admission and crash recovery are PostgreSQL facts, independent of API replicas.
+
+## Amsterdam protocol projections
+
+[ADR-0052](../decisions/ADR-0052-amsterdam-explorer-support.md) defines the
+paired execution slot/BAL-hash projection, EIP-7778/EIP-8037 gas accounting and
+native_transfer@1. No BAL body or Engine API connection is required. The
+native-transfer processor reads authenticated stored receipts and publishes
+rows, its journal and its lease generation atomically. PostgreSQL multirange
+coverage follows canonical/outbox changes and exact publication state; it never
+infers readiness from output rows alone. API reads use the writer snapshot to
+avoid replica-lagged publication or reorg visibility. Address and transaction
+panels keep protocol ETH transfers separate from traces, fees and withdrawals.

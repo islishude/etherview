@@ -307,7 +307,7 @@ func insertRefreshFixtures(t *testing.T, ctx context.Context, db *pgxpool.Pool, 
 	execFixture(t, ctx, db, `
 		INSERT INTO block_stage_results (
 			chain_id, block_number, block_hash, stage, stage_version, state, details
-		) VALUES (1, $1, $2, 'token', 1, 'complete', '{"events":1}')`, reference.Number, blockHash)
+		) VALUES (1, $1, $2, 'token', 2, 'complete', '{"events":1}')`, reference.Number, blockHash)
 	execFixture(t, ctx, db, `
 		INSERT INTO token_events (
 			chain_id, block_number, block_hash, log_index, sub_index,

@@ -22,3 +22,14 @@ paths = [
   '''^e2e/x402local/compose\.yaml$''',
   '''^e2e/x402local/x402_local_test\.go$'''
 ]
+
+[[allowlists]]
+description = "Public block access list commitment in Geth Amsterdam fixture and local probe JSON"
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = [
+  '''^internal/chainbundle/testdata/amsterdam-block\.json$''',
+  '''^\.local/amsterdam-probe/block-(?:0x0|0x1|latest|tx)\.json$'''
+]
+regexTarget = "match"
+regexes = ['''^blockAccessListHash"[ \t]*:[ \t]*"0x[0-9a-f]{64}"$''']

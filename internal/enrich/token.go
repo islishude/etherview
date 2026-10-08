@@ -6,6 +6,7 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/params"
 )
 
 type TokenStandard string
@@ -79,7 +80,7 @@ var (
 // ParseTokenLog recognizes only exact standard layouts. Recognized topics with
 // malformed values return TokenMalformed and no partial state changes.
 func ParseTokenLog(log TokenLog) TokenParseResult {
-	if len(log.Topics) == 0 {
+	if log.Contract == params.SystemAddress || len(log.Topics) == 0 {
 		return TokenParseResult{Status: TokenUnknown}
 	}
 	switch log.Topics[0] {

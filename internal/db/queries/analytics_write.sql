@@ -37,14 +37,14 @@ WITH source AS (
      AND stats_result.block_number = canonical.number
      AND stats_result.block_hash = canonical.block_hash
      AND stats_result.stage = 'stats'
-     AND stats_result.stage_version = 3
+     AND stats_result.stage_version = 4
      AND stats_result.state = 'complete'
     JOIN published_block_stage_results AS token_result
       ON token_result.chain_id = canonical.chain_id
      AND token_result.block_number = canonical.number
      AND token_result.block_hash = canonical.block_hash
      AND token_result.stage = 'token'
-     AND token_result.stage_version = 1
+     AND token_result.stage_version = 2
      AND token_result.state = 'complete'
     WHERE canonical.chain_id = sqlc.arg('chain_id')::numeric
       AND block.timestamp >= extract(epoch FROM sqlc.arg('bucket_start')::timestamptz)::numeric
@@ -136,7 +136,7 @@ SELECT sqlc.arg('chain_id')::numeric,
                      WHERE result.chain_id = canonical.chain_id
                        AND result.block_number = canonical.number
                        AND result.block_hash = canonical.block_hash
-                       AND result.stage = 'stats' AND result.stage_version = 3
+                       AND result.stage = 'stats' AND result.stage_version = 4
                        AND result.state = 'complete'
                  )
                  OR NOT EXISTS (
@@ -144,7 +144,7 @@ SELECT sqlc.arg('chain_id')::numeric,
                      WHERE result.chain_id = canonical.chain_id
                        AND result.block_number = canonical.number
                        AND result.block_hash = canonical.block_hash
-                       AND result.stage = 'token' AND result.stage_version = 1
+                       AND result.stage = 'token' AND result.stage_version = 2
                        AND result.state = 'complete'
                  )
              )
@@ -159,7 +159,7 @@ SELECT sqlc.arg('chain_id')::numeric,
                  WHERE result.chain_id = canonical.chain_id
                    AND result.block_number = canonical.number
                    AND result.block_hash = canonical.block_hash
-                   AND result.stage = 'stats' AND result.stage_version = 3
+                   AND result.stage = 'stats' AND result.stage_version = 4
                    AND result.state = 'complete'
              )
              AND EXISTS (
@@ -167,7 +167,7 @@ SELECT sqlc.arg('chain_id')::numeric,
                  WHERE result.chain_id = canonical.chain_id
                    AND result.block_number = canonical.number
                    AND result.block_hash = canonical.block_hash
-                   AND result.stage = 'token' AND result.stage_version = 1
+                   AND result.stage = 'token' AND result.stage_version = 2
                    AND result.state = 'complete'
              )
        ),
@@ -182,7 +182,7 @@ SELECT sqlc.arg('chain_id')::numeric,
                      WHERE result.chain_id = canonical.chain_id
                        AND result.block_number = canonical.number
                        AND result.block_hash = canonical.block_hash
-                       AND result.stage = 'stats' AND result.stage_version = 3
+                       AND result.stage = 'stats' AND result.stage_version = 4
                        AND result.state = 'complete'
                  )
                  OR NOT EXISTS (
@@ -190,7 +190,7 @@ SELECT sqlc.arg('chain_id')::numeric,
                      WHERE result.chain_id = canonical.chain_id
                        AND result.block_number = canonical.number
                        AND result.block_hash = canonical.block_hash
-                       AND result.stage = 'token' AND result.stage_version = 1
+                       AND result.stage = 'token' AND result.stage_version = 2
                        AND result.state = 'complete'
                  )
              )
@@ -244,13 +244,13 @@ WITH source AS (
      AND stats_result.block_number = canonical.number
      AND stats_result.block_hash = canonical.block_hash
      AND stats_result.stage = 'stats'
-     AND stats_result.stage_version = 3
+     AND stats_result.stage_version = 4
     LEFT JOIN published_block_stage_results AS token_result
       ON token_result.chain_id = canonical.chain_id
      AND token_result.block_number = canonical.number
      AND token_result.block_hash = canonical.block_hash
      AND token_result.stage = 'token'
-     AND token_result.stage_version = 1
+     AND token_result.stage_version = 2
     WHERE canonical.chain_id = sqlc.arg('chain_id')::numeric
       AND block.timestamp >= extract(epoch FROM sqlc.arg('bucket_start')::timestamptz)::numeric
       AND block.timestamp < extract(epoch FROM (sqlc.arg('bucket_start')::timestamptz + interval '1 hour'))::numeric

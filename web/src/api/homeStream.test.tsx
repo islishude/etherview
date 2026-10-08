@@ -119,6 +119,25 @@ describe("home snapshot query", () => {
     expect(() => parseHomeSnapshot(" ".repeat(2 * 1024 * 1024 + 1))).toThrow();
   });
 
+  it.each(["0", "18446744073709551615"])("preserves block slot %s in home snapshots", (slot) => {
+    const valid = snapshot("10", ["10"]);
+    const raw = {
+      ...valid,
+      data: { ...valid.data, blocks: [{ ...valid.data.blocks[0], slot_number: slot }] },
+    };
+    expect(parseHomeSnapshot(JSON.stringify(raw)).data.blocks[0]?.slot_number).toBe(slot);
+    for (const invalid of [0, null, "0x1", "-1", "01"]) {
+      expect(() =>
+        parseHomeSnapshot(
+          JSON.stringify({
+            ...raw,
+            data: { ...raw.data, blocks: [{ ...raw.data.blocks[0], slot_number: invalid }] },
+          }),
+        ),
+      ).toThrow();
+    }
+  });
+
   it("accepts protocol block and typed-transaction fields", () => {
     const valid = snapshot("10", ["10"]);
     const completeness = valid.data.status.completeness;

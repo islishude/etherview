@@ -75,6 +75,11 @@ and user/operator evidence sufficient for a production public release.
 | P70-T44 | done | P70-T19, P70-T27 | Remove every disposable Compose project resource during Go-owned test teardown, including volumes referenced only by inactive one-off client profiles | focused command regression and Hardhat project cleanup inspection |
 | P70-T45 | done | P70-T42, P70-T44, P76 | Reconcile maintained deployment and operations documentation with the current Makefile, Compose, runtime, and public capability contracts | focused source/doc audit, plan/link/whitespace checks, and applicable common gates |
 | P70-T46 | done | P70-T45 | Run the complete existing CI workflow daily on the default branch | workflow syntax, schedule/concurrency inspection, documentation and plan checks |
+| P70-T47 | done | P70-T09, P50-T68 | Expose exact optional execution-header slot number in block API and bilingual block overview | query boundary, frontend, generation, browser and common gates |
+| P70-T48 | done | P70-T09 | Amsterdam header, gas accounting, protocol log and contract-size compatibility with versioned enrichment | protocol, PostgreSQL, race and common gates |
+| P70-T49 | done | P70-T09 | Lease-fenced EIP-7708 native transfer index with snapshot-paginated transaction/address APIs and bilingual browsing | publication, reorg, API, browser and runtime parity |
+| P70-T50 | done | P70-T09 | Restore Amsterdam Preview and prove production topology and deployment acceptance | Preview, schema, runtime, Hardhat, Foundry and common gates |
+| P70-T51 | done | P70-T49 | Prevent native-transfer coverage refresh from blocking heartbeat renewal during atomic publication | concurrent PostgreSQL publication/renewal regression, replay/reorg and common gates |
 
 ## Acceptance
 
@@ -1351,3 +1356,66 @@ clear the existing live-payment or reference-capacity blockers.
   Hardhat and Vyper acceptance. The separate Dependabot configuration check
   also passes. This documentation consolidation passes `make docs-check
   plan-check` and `git diff --check`; it adds no runtime changes.
+
+
+### P70-T47–P70-T50 — Amsterdam explorer support (2026-10-08)
+
+- P70-T47 exposes optional authenticated `slot_number` as an exact decimal string
+  in the block API, streamed home model and bilingual block page; zero, absence
+  and maximum uint64 are covered. The paired BAL commitment is exposed as a
+  hash only. No BAL body fetch, parsing, storage or Engine API is introduced.
+- P70-T48 follows [ADR-0052](../decisions/ADR-0052-amsterdam-explorer-support.md):
+  EIP-7778/EIP-8037 gas accounting uses header utilization and receipt-based
+  fees, with overflow-safe bounds and a retained real Geth creation fixture.
+  Protocol ETH logs remain separate from token and ABI/trace provenance.
+  Amsterdam initcode limits and token@2/stats@4/abi@5/trace@4 consumers,
+  publication triggers and current coverage are aligned.
+- P70-T49 adds native_transfer@1 atomic publication, orphan retention, replay and
+  canonical coverage, scope/snapshot-bound transaction/address APIs, and lazy
+  bilingual browser panels. Public wei amounts remain exact decimal strings.
+  Publication-fence, direct-write, gap, detach/reattach, replay, pagination and
+  malformed protocol-log regressions pass. The API uses its writer snapshot
+  reader in both monolith and split roles.
+- Current local passes: all Go unit and race tests; 43 frontend files / 387
+  tests; 45 Playwright tests; the full six-package PostgreSQL integration and
+  integration-race suites; schema E2E; runtime and x402 monolith/split E2E;
+  Foundry production E2E in both layouts; and the real Geth Preview metadata
+  gate including Amsterdam native transfers above JavaScript's safe range in
+  both layouts. Preview uses disposable projects and preserves operator volumes.
+- Common validation passes include toolchain, Vyper catalog tests, frontend
+  lint, source, documentation, plan, deployment and license gates. Generation
+  uses the installed sqlc 1.31.1 through a temporary Go-tool wrapper because
+  this host's `go tool sqlc` dependency build fails; no dependency is changed.
+  Go lint and security pass against a source-identical non-ignored snapshot:
+  pre-existing ignored `.local/amsterdam-probe` files have unrelated formatting
+  and generic-secret findings and are preserved. The new public BAL fixture
+  has a narrowly scoped gitleaks allowance; repository Git history scans clean.
+- P70-T50 completes local acceptance: Hardhat offline compilation and full
+  production E2E pass in monolith and split layouts (320 seconds). The missing
+  Linux ARM64 Vyper artifacts were built in a native ARM64 Linux container:
+  all 26 locked versions pass compiler reference comparisons and runtime
+  self-tests before addition to the ignored local release cache. Existing
+  artifacts were preserved. Current local Preview, schema, runtime, x402,
+  Hardhat and Foundry gates all pass. No remote CI or cross-architecture
+  release acceptance is claimed; P70/P73 external release blockers remain.
+
+
+### P70-T51 — Heartbeat-safe native transfer coverage (2026-10-08)
+
+- The job coverage trigger now ignores updates that leave publication-view
+  inputs unchanged. Lease expiry is compared by nullness, so renewal cannot
+  wait on the publisher's coverage row while holding the heartbeat guard;
+  terminal publication, replay generations and lease clearing still refresh
+  coverage. This preserves ADR-0012 without changing worker lock ordering.
+- `TestNativeTransferHeartbeatDuringPublication` schedules a real queue renewal
+  on a second PostgreSQL connection after the production result INSERT has
+  acquired the coverage lock, before the publisher's final CAS. The unmodified
+  trigger fails with a renewal deadline; the fix completes renewal and publishes
+  the result and coverage. No SQL/transaction/lock behavior is mocked.
+- Focused PostgreSQL race regressions for native transfers, replay/reorg,
+  all-stage atomic publication and exact terminal identity pass (8.753 seconds).
+  Integration-tagged golangci-lint reports zero issues. Generation passes with
+  the same installed-sqlc wrapper recorded in T47–T50; docs, plan, source and
+  whitespace checks pass. Full `make test-integration-race` passes all six
+  packages, including the integration package in 361.177 seconds. Final
+  `make docs-check plan-check source-check` and `git diff --check` pass.

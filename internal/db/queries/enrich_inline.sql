@@ -152,7 +152,7 @@ SELECT DISTINCT ON (trace.transaction_hash, trace.trace_path)
 
 -- name: EnrichInlineLoadABILogsStatement1 :many
 SELECT log.log_index, log.tx_hash, log.address, log.raw,
-		       attribution.execution_address
+		       attribution.execution_address, EXISTS (SELECT 1 FROM blocks b WHERE b.chain_id=log.chain_id AND b.hash=log.block_hash AND b.slot_number_raw IS NOT NULL AND b.slot_number_raw <> 'null'::jsonb) AS amsterdam
 		FROM logs AS log
 		LEFT JOIN trace_log_attributions AS attribution
 		  ON attribution.chain_id = log.chain_id

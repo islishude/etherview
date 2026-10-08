@@ -726,7 +726,6 @@ func (processor *PostgresStatsProcessor) processStatsTx(ctx context.Context, tx 
 	var blobBurned *string
 	if value := block.BaseFee(); value != nil {
 		baseFee = new(value.String())
-		burned = new(new(big.Int).Mul(value, gasUsed).String())
 	}
 	header := block.Header()
 	if (header.BlobGasUsed == nil) != (header.ExcessBlobGas == nil) {
@@ -751,7 +750,7 @@ func (processor *PostgresStatsProcessor) processStatsTx(ctx context.Context, tx 
 			return StageResult{}, Permanent(errors.New("receipt blob gas does not match the block header"))
 		}
 	}
-	if receiptFacts.GasUsed.Cmp(gasUsed) != 0 {
+	if !receiptFacts.GasUsed.IsUint64() || chainbundle.ValidateBlockGas(header, receiptFacts.GasUsed.Uint64()) != nil {
 		return StageResult{}, Permanent(errors.New("receipt gas used does not match the block header"))
 	}
 	if receiptFacts.BlobGasPrice != nil {
@@ -763,6 +762,7 @@ func (processor *PostgresStatsProcessor) processStatsTx(ctx context.Context, tx 
 	baseFeeBurn := new(big.Int)
 	if block.BaseFee() != nil {
 		baseFeeBurn.Mul(block.BaseFee(), receiptFacts.GasUsed)
+		burned = new(baseFeeBurn.String())
 	}
 	priorityFee := new(big.Int).Sub(new(big.Int).Set(receiptFacts.ExecutionFee), baseFeeBurn)
 	if priorityFee.Sign() < 0 {
@@ -853,7 +853,7 @@ func (processor *PostgresStatsProcessor) processStatsTx(ctx context.Context, tx 
 }
 
 // decimalRatio returns a canonical, bounded fixed-point decimal without using
-// float64. PostgreSQL NUMERIC(78,18) is the persisted boundary for stats@3.
+// float64. PostgreSQL NUMERIC(78,18) is the persisted boundary for stats@4.
 func decimalRatio(numerator, denominator *big.Int, scale int) string {
 	if numerator == nil || denominator == nil || denominator.Sign() <= 0 || scale < 0 {
 		return "0"

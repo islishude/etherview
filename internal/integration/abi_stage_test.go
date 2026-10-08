@@ -465,7 +465,7 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 	}
 	if len(unpublished) == 0 || unpublished[0].Method == nil || *unpublished[0].Method != "transfer" ||
 		unpublished[0].MethodSignature == nil || *unpublished[0].MethodSignature != "transfer(address,uint256)" {
-		t.Fatalf("verified selector method projection before abi@4 publication = %+v", unpublished)
+		t.Fatalf("verified selector method projection before abi@5 publication = %+v", unpublished)
 	}
 	txHashText := txHash.String()
 	assertProjectedLog := func(label string) {
@@ -507,7 +507,7 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 		0, mustBytes(t, reference.Hash))
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM block_journals
-		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi@4' AND canonical`, 1, mustBytes(t, reference.Hash))
+		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi@5' AND canonical`, 1, mustBytes(t, reference.Hash))
 
 	assertSignatureGuessCannotBeVerified(t, ctx, db, reference, direct, directCode)
 	publishABIStage(t, ctx, db, processor, reference)
@@ -856,7 +856,7 @@ func TestTransactionCalldataPersistsValuesAndReprojectsExactCompoundABI(t *testi
 	}
 	if bytes.Contains(persistedArguments, []byte("components")) ||
 		bytes.Contains(persistedArguments, []byte("internalType")) {
-		t.Fatalf("abi@4 arguments unexpectedly contain projection shape: %s", persistedArguments)
+		t.Fatalf("abi@5 arguments unexpectedly contain projection shape: %s", persistedArguments)
 	}
 
 	catalogReader, err := catalog.NewPostgres(db, catalog.Options{})

@@ -20,6 +20,9 @@ func TestPreviewGenesisSystemContracts(t *testing.T) {
 	if err := json.Unmarshal(data, &genesis); err != nil {
 		t.Fatal(err)
 	}
+	if genesis.Config.AmsterdamTime == nil || *genesis.Config.AmsterdamTime != 0 {
+		t.Fatal("Preview must activate Amsterdam at genesis")
+	}
 	for address, want := range core.SystemContractAllocs() {
 		got, ok := genesis.Alloc[address]
 		if !ok {

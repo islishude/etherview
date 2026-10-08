@@ -11,7 +11,7 @@ SELECT configuration.configured_start::text,
            WHERE published.chain_id = sqlc.arg('chain_id')::numeric
              AND published.block_number = sqlc.arg('block_number')::numeric
              AND published.block_hash = sqlc.arg('block_hash')::bytea
-             AND published.stage = 'token' AND published.stage_version = 1
+             AND published.stage = 'token' AND published.stage_version = 2
              AND published.state = 'complete'
        ) AS token_complete,
        EXISTS (
@@ -289,7 +289,7 @@ LEFT JOIN published_block_stage_results AS token_publication
  AND token_publication.block_number = canonical.number
  AND token_publication.block_hash = canonical.block_hash
  AND token_publication.stage = 'token'
- AND token_publication.stage_version = 1
+ AND token_publication.stage_version = 2
  AND token_publication.state = 'complete'
 LEFT JOIN published_block_stage_results AS proxy_publication
   ON proxy_publication.chain_id = canonical.chain_id
@@ -324,7 +324,7 @@ SELECT snapshot.block_number::text, snapshot.block_hash, snapshot.state,
                  WHERE source_publication.chain_id = snapshot.chain_id
                    AND source_publication.block_number <= snapshot.block_number
                    AND (
-                       (source_publication.stage = 'token' AND source_publication.stage_version = 1 AND source_publication.state = 'complete') OR
+                       (source_publication.stage = 'token' AND source_publication.stage_version = 2 AND source_publication.state = 'complete') OR
                        (source_publication.stage = 'proxy' AND source_publication.stage_version = 2 AND source_publication.state IN ('complete', 'unavailable'))
                    )
                    AND source_publication.completed_at > holder_publication.completed_at

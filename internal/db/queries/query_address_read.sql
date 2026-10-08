@@ -90,7 +90,7 @@ LEFT JOIN LATERAL (
                 AND published_abi.block_number = effective.block_number
                 AND published_abi.block_hash = effective.block_hash
                 AND published_abi.stage = 'abi'
-                AND published_abi.stage_version = 4
+                AND published_abi.stage_version = 5
                 AND published_abi.state = 'complete'
           )
         UNION ALL
@@ -111,7 +111,7 @@ LEFT JOIN LATERAL (
                 AND published_abi.block_number = raw.block_number
                 AND published_abi.block_hash = raw.block_hash
                 AND published_abi.stage = 'abi'
-                AND published_abi.stage_version = 4
+                AND published_abi.stage_version = 5
                 AND published_abi.state = 'complete'
           )
           AND EXISTS (
@@ -146,7 +146,7 @@ LEFT JOIN abi_decodings AS decoding
        AND published_abi.block_number = decoding.block_number
        AND published_abi.block_hash = decoding.block_hash
        AND published_abi.stage = 'abi'
-       AND published_abi.stage_version = 4
+       AND published_abi.stage_version = 5
        AND published_abi.state = 'complete'
  )
 ORDER BY inclusion.block_number DESC, inclusion.tx_index DESC, inclusion.tx_hash DESC
@@ -244,7 +244,7 @@ LEFT JOIN LATERAL (
                 AND published_abi.block_number = effective.block_number
                 AND published_abi.block_hash = effective.block_hash
                 AND published_abi.stage = 'abi'
-                AND published_abi.stage_version = 4
+                AND published_abi.stage_version = 5
                 AND published_abi.state = 'complete'
           )
         UNION ALL
@@ -265,7 +265,7 @@ LEFT JOIN LATERAL (
                 AND published_abi.block_number = raw.block_number
                 AND published_abi.block_hash = raw.block_hash
                 AND published_abi.stage = 'abi'
-                AND published_abi.stage_version = 4
+                AND published_abi.stage_version = 5
                 AND published_abi.state = 'complete'
           )
           AND EXISTS (
@@ -300,7 +300,7 @@ LEFT JOIN abi_decodings AS decoding
        AND published_abi.block_number = decoding.block_number
        AND published_abi.block_hash = decoding.block_hash
        AND published_abi.stage = 'abi'
-       AND published_abi.stage_version = 4
+       AND published_abi.stage_version = 5
        AND published_abi.state = 'complete'
  )
 ORDER BY inclusion.block_number DESC, inclusion.tx_index DESC, inclusion.tx_hash DESC

@@ -106,11 +106,12 @@ const stages = [...stageSource.matchAll(/Name:\s*"([a-z0-9_-]+)",\s*Version:\s*(
 check(stages.length > 0, "current stage identities are not discoverable");
 const stagePattern = stages.map((stage) => stage.name).join("|");
 contains("docs/operations.md", `reindex --stage ${stagePattern}`);
+const traceStage = stages.find((stage) => stage.name === "trace");
 const abiStage = stages.find((stage) => stage.name === "abi");
 check(abiStage !== undefined, "current ABI stage is missing");
 contains(
   "docs/operations.md",
-  `--reason "publish ABI v${abiStage?.version} after trace v3 and proxy v2 are complete"`,
+  `--reason "publish ABI v${abiStage?.version} after trace v${traceStage?.version} and proxy v2 are complete"`,
 );
 contains("docs/operations.md", "`verification.worker_count` independently controls");
 forbid("docs/operations.md", "runtime.worker_count` controls durable enrichment, trace, verification");

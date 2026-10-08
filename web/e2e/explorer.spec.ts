@@ -115,12 +115,15 @@ test("embedded SPA deep links, language, theme, and keyboard entry remain functi
   expect(response?.status()).toBe(200);
   await expect(page.getByRole("heading", { name: "Block", exact: true })).toBeVisible();
   await expect(page.getByText("Finalized", { exact: true })).toBeVisible();
+  await expect(page.getByText("Slot number", { exact: true })).toBeVisible();
+  await expect(page.getByText("18,446,744,073,709,551,615", { exact: true })).toBeVisible();
 
   await activateInView(page.getByRole("button", { name: "Switch color theme" }));
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 
   await activateInView(page.getByRole("button", { name: "切换到中文" }));
   await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
+  await expect(page.getByText("时隙编号", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("navigation", { name: "主导航" }).getByText("区块", { exact: true }),
   ).toBeVisible();
@@ -3151,3 +3154,18 @@ async function fulfillAPIEnvelope(route: import("@playwright/test").Route, data:
     }),
   });
 }
+
+test("native transfer tabs preserve exact amounts and bilingual protocol scope", async ({
+  page,
+}) => {
+  await page.goto(`/tx/${decodedTransactionHash}?tab=native-transfers`);
+  await expect(page.getByRole("heading", { name: "Native transfers", exact: true })).toBeVisible();
+  await expect(page.getByText("9,007,199,254,740,993", { exact: true })).toBeVisible();
+  await expect(page.getByText("Indexed blocks 2–2", { exact: true })).toBeVisible();
+  await page.goto(`/address/${address}?tab=native-transfers`);
+  await expect(page.getByRole("heading", { name: "Native transfers", exact: true })).toBeVisible();
+  await expect(page.getByText("9,007,199,254,740,993", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "切换到中文" }).click();
+  await expect(page.getByRole("heading", { name: "原生币转账", exact: true })).toBeVisible();
+  await expect(page.getByText("已索引区块 2–2", { exact: true })).toBeVisible();
+});

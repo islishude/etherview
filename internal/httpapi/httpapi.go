@@ -142,6 +142,7 @@ type Options struct {
 	DelegationHistory     DelegationHistoryReader
 	Genesis               GenesisReader
 	Catalog               catalog.Reader
+	NativeTransfers       publicquery.NativeTransferReader
 	UserOperations        UserOperationReader
 	Analytics             AnalyticsReader
 	Web                   http.Handler
@@ -186,6 +187,7 @@ type Handler struct {
 	delegationHistory     DelegationHistoryReader
 	genesis               GenesisReader
 	catalog               catalog.Reader
+	nativeTransfersReader publicquery.NativeTransferReader
 	userOperations        UserOperationReader
 	analytics             AnalyticsReader
 	web                   http.Handler
@@ -251,6 +253,7 @@ func New(options Options) (*Handler, error) {
 		genesis:               options.Genesis,
 		catalog:               options.Catalog,
 		userOperations:        options.UserOperations,
+		nativeTransfersReader: options.NativeTransfers,
 		analytics:             options.Analytics,
 		web:                   options.Web,
 		webRoutePattern:       options.WebRoutePattern,

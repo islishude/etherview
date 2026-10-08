@@ -271,7 +271,7 @@ func (q *Queries) EnrichInlineLoadABIConstructorsStatement1(ctx context.Context,
 
 const enrichInlineLoadABILogsStatement1 = `-- name: EnrichInlineLoadABILogsStatement1 :many
 SELECT log.log_index, log.tx_hash, log.address, log.raw,
-		       attribution.execution_address
+		       attribution.execution_address, EXISTS (SELECT 1 FROM blocks b WHERE b.chain_id=log.chain_id AND b.hash=log.block_hash AND b.slot_number_raw IS NOT NULL AND b.slot_number_raw <> 'null'::jsonb) AS amsterdam
 		FROM logs AS log
 		LEFT JOIN trace_log_attributions AS attribution
 		  ON attribution.chain_id = log.chain_id
@@ -307,6 +307,7 @@ type EnrichInlineLoadABILogsStatement1Row struct {
 	Address          []byte `db:"address" json:"address"`
 	Raw              []byte `db:"raw" json:"raw"`
 	ExecutionAddress []byte `db:"execution_address" json:"execution_address"`
+	Amsterdam        bool   `db:"amsterdam" json:"amsterdam"`
 }
 
 func (q *Queries) EnrichInlineLoadABILogsStatement1(ctx context.Context, arg EnrichInlineLoadABILogsStatement1Params) ([]EnrichInlineLoadABILogsStatement1Row, error) {
@@ -330,6 +331,7 @@ func (q *Queries) EnrichInlineLoadABILogsStatement1(ctx context.Context, arg Enr
 			&i.Address,
 			&i.Raw,
 			&i.ExecutionAddress,
+			&i.Amsterdam,
 		); err != nil {
 			return nil, err
 		}

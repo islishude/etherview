@@ -36,7 +36,7 @@ func TestHomeSnapshotUsesOneTransactionAndReturnsBoundedCanonicalActivity(t *tes
 		},
 		queryExpectation{
 			contains: "canonical.number <= $2::numeric",
-			columns:  columns(16),
+			columns:  columns(18),
 			rows:     [][]any{testBlockProjectionRow(2, 3, 1, 1, true, "1", "0")},
 			check:    checkLimit,
 		},

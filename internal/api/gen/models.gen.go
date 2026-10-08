@@ -4048,10 +4048,13 @@ type BillingUsageState string
 // Block defines model for Block.
 type Block struct {
 	// BaseFeePerGas A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	BaseFeePerGas *Quantity    `json:"base_fee_per_gas,omitempty"`
-	Canonical     bool         `json:"canonical"`
-	Completeness  Completeness `json:"completeness"`
-	Finality      Finality     `json:"finality"`
+	BaseFeePerGas *Quantity `json:"base_fee_per_gas,omitempty"`
+
+	// BlockAccessListHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockAccessListHash *Hash        `json:"block_access_list_hash,omitempty"`
+	Canonical           bool         `json:"canonical"`
+	Completeness        Completeness `json:"completeness"`
+	Finality            Finality     `json:"finality"`
 
 	// GasLimit A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
 	GasLimit *Quantity `json:"gas_limit,omitempty"`
@@ -4069,7 +4072,10 @@ type Block struct {
 	Number Quantity `json:"number"`
 
 	// ParentHash A 32-byte hash; responses use normalized lowercase hexadecimal.
-	ParentHash       Hash               `json:"parent_hash"`
+	ParentHash Hash `json:"parent_hash"`
+
+	// SlotNumber Execution-header slot number as an exact decimal string; omitted when absent from the header.
+	SlotNumber       *Quantity          `json:"slot_number,omitempty"`
 	Timestamp        time.Time          `json:"timestamp"`
 	TransactionCount int                `json:"transaction_count"`
 	Withdrawals      *[]BlockWithdrawal `json:"withdrawals,omitempty"`
@@ -4934,6 +4940,42 @@ type NFTOwnership struct {
 type NFTOwnershipResponse struct {
 	Data NFTOwnership `json:"data"`
 	Meta Meta         `json:"meta"`
+}
+
+// NativeTransfer defines model for NativeTransfer.
+type NativeTransfer struct {
+	// Amount A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Amount Quantity `json:"amount"`
+
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber Quantity `json:"block_number"`
+
+	// From A 20-byte address; responses use the EIP-55 checksum form.
+	From Address `json:"from"`
+
+	// LogIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	LogIndex  Quantity  `json:"log_index"`
+	Timestamp time.Time `json:"timestamp"`
+
+	// To A 20-byte address; responses use the EIP-55 checksum form.
+	To Address `json:"to"`
+
+	// TransactionHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	TransactionHash Hash `json:"transaction_hash"`
+
+	// TransactionIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	TransactionIndex Quantity `json:"transaction_index"`
+}
+
+// NativeTransferListResponse defines model for NativeTransferListResponse.
+type NativeTransferListResponse struct {
+	// Applicable False when the indexed snapshot or transaction predates Amsterdam. True responses require complete protocol-log coverage in the requested range.
+	Applicable bool             `json:"applicable"`
+	Data       []NativeTransfer `json:"data"`
+	Meta       Meta             `json:"meta"`
 }
 
 // OpaqueCursor A bounded server-issued traversal token that clients must not decode or construct.
@@ -7074,6 +7116,12 @@ type ListAddressInternalTransactionsParams struct {
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ListAddressNativeTransfersParams defines parameters for ListAddressNativeTransfers.
+type ListAddressNativeTransfersParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ListAddressNFTTransfersParams defines parameters for ListAddressNFTTransfers.
 type ListAddressNFTTransfersParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
@@ -7329,6 +7377,12 @@ type ListTransactionInternalTransactionsParams struct {
 
 // ListTransactionLogsParams defines parameters for ListTransactionLogs.
 type ListTransactionLogsParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListTransactionNativeTransfersParams defines parameters for ListTransactionNativeTransfers.
+type ListTransactionNativeTransfersParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
 }

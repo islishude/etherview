@@ -95,6 +95,7 @@ const transactionRoute = createRoute({
         "blob",
         "authorizations",
         "user-operations",
+        "native-transfers",
         "internal-transactions",
         "token-transfers",
         "logs",
@@ -114,6 +115,7 @@ const addressRoute = createRoute({
     const tab = typeof search.tab === "string" ? search.tab : "transactions";
     if (tab === "transactions") return {};
     return [
+      "native-transfers",
       "internal-transactions",
       "withdrawals",
       "erc20-transfers",

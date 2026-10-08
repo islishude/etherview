@@ -1,5 +1,14 @@
 export const transactionsResources = {
   en: {
+    nativeTransfer: {
+      title: "Native transfers",
+      source:
+        "Protocol ETH transfer logs after Amsterdam. Excludes fees, withdrawals and historical trace transfers.",
+      unavailable: "Not applicable before Amsterdam.",
+      empty: "No native transfers in this indexed range.",
+      coverage: "Indexed blocks {{start}}–{{end}}",
+      amount: "Amount (wei)",
+    },
     transactionStatus: {
       pending: "Pending",
       success: "Success",
@@ -226,6 +235,8 @@ export const transactionsResources = {
       fundingTransaction: "Funding transaction",
       addressQRCode: "Address QR code",
       parentHash: "Parent hash",
+      slotNumber: "Slot number",
+      blockAccessListHash: "Block access list hash",
       blockHash: "Block hash",
       gasLimit: "Gas limit",
       gasLimitAndUsage: "Gas Limit & Usage by Txn",
@@ -280,6 +291,7 @@ export const transactionsResources = {
       blob: "Blob",
       authorizations: "Authorizations",
       "user-operations": "User Operations",
+      "native-transfers": "Native transfers",
       "internal-transactions": "Internal Transactions",
       "token-transfers": "Token transfers",
       logs: "Logs",
@@ -293,6 +305,14 @@ export const transactionsResources = {
     },
   },
   zh: {
+    nativeTransfer: {
+      title: "原生币转账",
+      source: "Amsterdam 后的协议 ETH 转账日志，不包含手续费、提款和历史 trace 转账。",
+      unavailable: "Amsterdam 升级前不适用。",
+      empty: "此索引范围内没有原生币转账。",
+      coverage: "已索引区块 {{start}}–{{end}}",
+      amount: "金额（wei）",
+    },
     transactionStatus: {
       pending: "待处理",
       success: "成功",
@@ -513,6 +533,8 @@ export const transactionsResources = {
       fundingTransaction: "入金交易",
       addressQRCode: "地址二维码",
       parentHash: "父区块哈希",
+      slotNumber: "时隙编号",
+      blockAccessListHash: "区块访问列表哈希",
       blockHash: "区块哈希",
       gasLimit: "Gas 上限",
       gasLimitAndUsage: "Gas 上限及本交易用量",
@@ -567,6 +589,7 @@ export const transactionsResources = {
       blob: "Blob",
       authorizations: "授权",
       "user-operations": "User Operations",
+      "native-transfers": "原生币转账",
       "internal-transactions": "内部交易",
       "token-transfers": "代币转账",
       logs: "日志",

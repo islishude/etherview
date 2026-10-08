@@ -20,7 +20,7 @@ func TestTransactionMethodProjectionUsesPublishedTransactionScopedEffectiveIdent
 		"effective.transaction_hash = inclusion.tx_hash",
 		"effective.transaction_index = inclusion.tx_index",
 		"effective.context_address",
-		"stage_version = 4",
+		"stage_version = 5",
 		"NOT EXISTS (",
 		"published_block_stage_results AS published_abi",
 	} {

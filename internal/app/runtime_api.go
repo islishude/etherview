@@ -294,7 +294,7 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			Config: cfg, Reader: publicReader, TransactionReader: transactionReader, AddressActivities: reader,
 			AddressEnrichment: catalogReader, AddressNames: addressNames,
 			DelegationBindings: delegationBindings, DelegationHistory: catalogReader,
-			Genesis: reader, Catalog: catalogReader, UserOperations: reader, Web: webHandler,
+			Genesis: reader, Catalog: catalogReader, UserOperations: reader, NativeTransfers: writerReader, Web: webHandler,
 			WebRoutePattern: webHandler.RoutePattern,
 			Analytics:       analyticsReader,
 			ProxyReader:     proxyReader,

@@ -500,7 +500,7 @@ func assertDerivedBlockState(t *testing.T, ctx context.Context, db *pgxpool.Pool
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	for _, stage := range []string{"token@1", "stats@3", "trace@3"} {
+	for _, stage := range []string{"token@2", "stats@4", "trace@4"} {
 		if !seen[stage] {
 			t.Fatalf("missing journal %s; seen=%v", stage, seen)
 		}

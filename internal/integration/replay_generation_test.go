@@ -105,7 +105,7 @@ func TestDurableReplayGenerationMigrationBackfillsExistingQueueRows(t *testing.T
 		INSERT INTO durable_jobs (
 			chain_id, kind, stage, stage_version, idempotency_key, payload,
 			status, attempts, max_attempts
-		) VALUES (1, 'enrichment', 'token', 1, 'legacy-queued', '{}'::jsonb,
+		) VALUES (1, 'enrichment', 'token', 2, 'legacy-queued', '{}'::jsonb,
 			'queued', 0, 10)`)
 	execFixture(t, ctx, db, `
 		INSERT INTO durable_jobs (
@@ -233,7 +233,7 @@ func TestCanonicalSameHashReattachReplaysTerminalStaleGeneration(t *testing.T) {
 	})
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM block_stage_results
-		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'token' AND stage_version = 1`,
+		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'token' AND stage_version = 2`,
 		0, mustBytes(t, originalRef.Hash))
 
 	processOne(t, ctx, worker)
@@ -244,7 +244,7 @@ func TestCanonicalSameHashReattachReplaysTerminalStaleGeneration(t *testing.T) {
 	if err := db.QueryRow(ctx, `
 		SELECT COALESCE(details->>'outcome' = 'stale_canonical_skipped', FALSE)
 		FROM block_stage_results
-		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'token' AND stage_version = 1`,
+		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'token' AND stage_version = 2`,
 		mustBytes(t, originalRef.Hash),
 	).Scan(&stale); err != nil {
 		t.Fatalf("read reattached token result: %v", err)
@@ -373,7 +373,7 @@ func TestLateTraceReplayRacingActiveABILeaseIsConsumedByNextGeneration(t *testin
 	})
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM block_stage_results
-		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi' AND stage_version = 4`,
+		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi' AND stage_version = 5`,
 		0, mustBytes(t, reference.Hash))
 
 	proxyLease, found, err = queue.Claim(ctx, "proxy-generation-two", []enrich.StageID{enrich.ProxyStage}, time.Minute)
@@ -469,7 +469,7 @@ func TestExpiredABILeaseReclaimAtomicallyClearsPersistedPreviousGeneration(t *te
 		t.Fatalf("publish crash fixture proxy: %v", err)
 	}
 	// The proxy stage sees exact code history and therefore has no RPC candidate.
-	// Keep a later raw observation in the fixture to prove abi@4 does not consume
+	// Keep a later raw observation in the fixture to prove abi@5 does not consume
 	// evidence that is outside the published proxy generation.
 	insertABIProxyObservation(t, ctx, db, reference, proxy, proxyCode, implementation, implementationCode)
 	abiLease, found, err := queue.Claim(ctx, "crash-abi-generation-one", []enrich.StageID{enrich.ABIStage}, time.Minute)
@@ -495,11 +495,11 @@ func TestExpiredABILeaseReclaimAtomicallyClearsPersistedPreviousGeneration(t *te
 	}
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM block_stage_results
-		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi' AND stage_version = 4`,
+		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi' AND stage_version = 5`,
 		1, mustBytes(t, reference.Hash))
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM block_journals
-		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi@4'`,
+		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi@5'`,
 		1, mustBytes(t, reference.Hash))
 
 	// Model a late Trace/Proxy completion through the public enqueue contract:
@@ -540,11 +540,11 @@ func TestExpiredABILeaseReclaimAtomicallyClearsPersistedPreviousGeneration(t *te
 	}
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM block_stage_results
-		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi' AND stage_version = 4`,
+		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi' AND stage_version = 5`,
 		0, mustBytes(t, reference.Hash))
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM block_journals
-		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi@4'`,
+		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi@5'`,
 		0, mustBytes(t, reference.Hash))
 	if err := queue.Finish(ctx, abiLease, enrich.StageResult{State: enrich.ResultFailed, Error: "expired writer"}); !errors.Is(err, enrich.ErrLeaseLost) {
 		t.Fatalf("expired generation-one terminal write err=%v, want ErrLeaseLost", err)

@@ -17,7 +17,9 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/islishude/etherview/internal/nativetransfer"
 )
 
 type traceRPCInvocation struct {
@@ -175,7 +177,7 @@ func TestTraceRPCProcessorUsesOneEndpointAndPersistsNormalizedFrames(t *testing.
 			case strings.Contains(query, "FROM transaction_execution_code_resolutions"):
 				return emptyExecutionResolutionRows(), nil
 			case strings.Contains(query, "FROM logs"):
-				return &testpgx.Rows{ColumnNames: []string{"log_index", "raw"}}, nil
+				return &testpgx.Rows{ColumnNames: []string{"log_index", "raw", "amsterdam"}}, nil
 			case strings.Contains(query, "FOR KEY SHARE"):
 				return &testpgx.Rows{ColumnNames: []string{"one"}, ValuesList: [][]any{{int64(1)}}}, nil
 			case strings.Contains(query, "FROM durable_jobs"):
@@ -375,12 +377,12 @@ func TestTraceLogAttributionUsesExecutionFrameAndRejectsContradictions(t *testin
 				}
 				rows := [][]any{}
 				if test.expected >= 1 {
-					rows = append(rows, []any{int64(stored.Index), raw})
+					rows = append(rows, []any{int64(stored.Index), raw, false})
 				}
 				if test.expected >= 2 {
-					rows = append(rows, []any{int64(storedSecond.Index), rawSecond})
+					rows = append(rows, []any{int64(storedSecond.Index), rawSecond, false})
 				}
-				return &testpgx.Rows{ColumnNames: []string{"log_index", "raw"}, ValuesList: rows}, nil
+				return &testpgx.Rows{ColumnNames: []string{"log_index", "raw", "amsterdam"}, ValuesList: rows}, nil
 			}}
 			db := openFakeSQLDB(t, backend)
 			tx, err := db.BeginTx(context.Background(), pgx.TxOptions{})
@@ -432,8 +434,8 @@ func TestABILogsUseAttributedEIP7702ExecutionAddressWithoutStoredCodeHash(t *tes
 			return nil, fmt.Errorf("unexpected query: %s", query)
 		}
 		return &testpgx.Rows{
-			ColumnNames: []string{"log_index", "tx_hash", "address", "raw", "execution_address"},
-			ValuesList:  [][]any{{int64(9), transactionHash[:], emitter[:], raw, delegate[:]}},
+			ColumnNames: []string{"log_index", "tx_hash", "address", "raw", "execution_address", "amsterdam"},
+			ValuesList:  [][]any{{int64(9), transactionHash[:], emitter[:], raw, delegate[:], false}},
 		}, nil
 	}}
 	db := openFakeSQLDB(t, backend)
@@ -863,7 +865,7 @@ func successfulTraceBackend(t *testing.T, txHash common.Hash) *fakeSQLBackend {
 				return emptyReplayTargetRows(), nil
 			}
 			if strings.Contains(query, "FROM logs") {
-				return &testpgx.Rows{ColumnNames: []string{"log_index", "raw"}}, nil
+				return &testpgx.Rows{ColumnNames: []string{"log_index", "raw", "amsterdam"}}, nil
 			}
 			return original(query, arguments)
 		}
@@ -883,4 +885,45 @@ func successfulTraceBackend(t *testing.T, txHash common.Hash) *fakeSQLBackend {
 		}
 	}
 	return backend
+}
+
+func TestAmsterdamProtocolLogsNeverAcquireEVMProvenance(t *testing.T) {
+	job := Job{ID: "protocol", Stage: TraceStage, ChainID: "1", BlockHash: uintWord(901), BlockNumber: 1}
+	txHash := uintWord(902)
+	emitter := testAddress(1)
+	protocol := types.Log{Address: params.SystemAddress, Topics: []common.Hash{nativetransfer.Topic, uintWord(1), uintWord(2)}, Data: common.LeftPadBytes([]byte{1}, 32), BlockNumber: 1, BlockHash: job.BlockHash, TxHash: txHash, Index: 1}
+	ordinary := protocol
+	ordinary.Address = emitter
+	ordinary.Index = 0
+	ordinary.Topics = []common.Hash{uintWord(5)}
+	for _, includeProtocol := range []bool{false, true} {
+		t.Run(strconv.FormatBool(includeProtocol), func(t *testing.T) {
+			backend := &fakeSQLBackend{query: func(_ string, _ []any) (pgx.Rows, error) {
+				var rows [][]any
+				for _, log := range []types.Log{ordinary, protocol} {
+					raw, err := json.Marshal(log)
+					if err != nil {
+						return nil, err
+					}
+					rows = append(rows, []any{int64(log.Index), raw, true})
+				}
+				return &testpgx.Rows{ColumnNames: []string{"log_index", "raw", "amsterdam"}, ValuesList: rows}, nil
+			}}
+			db := openFakeSQLDB(t, backend)
+			tx, err := db.BeginTx(t.Context(), pgx.TxOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback(t.Context()) //nolint:errcheck
+			codeHash := uintWord(44)
+			frame := CallFrame{Type: "CALL", To: &emitter, ExecutionAddress: &emitter, ExecutionCodeHash: &codeHash, ExecutionResolution: "direct", Logs: []TraceLog{{Address: ordinary.Address, Topics: ordinary.Topics, Data: ordinary.Data, Index: 0}}}
+			if includeProtocol {
+				frame.Logs = append(frame.Logs, TraceLog{Address: protocol.Address, Topics: protocol.Topics, Data: protocol.Data, Index: 1})
+			}
+			rows, fallback, err := loadTraceLogAttributions(t.Context(), tx, job, traceTransaction{hash: txHash, trace: NormalizedTrace{Frames: []CallFrame{frame}}})
+			if err != nil || len(rows) != 1 || fallback != 0 {
+				t.Fatalf("attributions=%+v fallback=%d err=%v", rows, fallback, err)
+			}
+		})
+	}
 }

@@ -6,6 +6,8 @@ merging distinct invariants.
 
 ## Core chain, persistence, and runtime correctness
 
+- [ADR-0052 — Amsterdam Explorer Support](ADR-0052-amsterdam-explorer-support.md)
+
 - [ADR-0050 — Native pgx and Typed Queries](ADR-0050-native-pgx-and-typed-queries.md)
 
 - [ADR-0001 — Modular Roles and PostgreSQL Truth](ADR-0001-modular-roles-and-postgresql-truth.md)

@@ -170,7 +170,7 @@ type DecodedArgument struct {
 
 // DecodedParameter is the validated recursive ABI shape selected for a
 // decoded value. It is intentionally excluded from persisted DecodedArgument
-// JSON so abi@4 storage remains value-only; exact readers rebuild this shape
+// JSON so abi@5 storage remains value-only; exact readers rebuild this shape
 // from the block-bound ABI candidate that decoded the calldata.
 type DecodedParameter struct {
 	Name         string
