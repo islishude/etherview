@@ -214,3 +214,9 @@ P70-T51 is done: heartbeat-only updates no longer acquire the native transfer
 coverage lock during atomic publication. The regression reproduces the original
 timeout and passes after the fix; the full PostgreSQL race suite, generation,
 lint and governance checks pass. Existing external release blockers remain unchanged.
+
+P70-T52 completes EIP-7708 transaction-log decoding from published native transfer
+identities and bilingual system-address labels. Local protocol/API/race,
+PostgreSQL integration, browser and generation/governance gates pass; the child
+plan records the clean-copy lint validation and untouched local probe file.
+P70/P73 external release blockers remain unchanged.

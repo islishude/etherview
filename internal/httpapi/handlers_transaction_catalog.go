@@ -162,6 +162,10 @@ func transactionLogDecodingModel(value catalog.TransactionLogDecoding) gen.Trans
 			Hashed: argument.Hashed, Value: argument.Value,
 		}
 	}
+	if value.Protocol != "" {
+		protocol := gen.TransactionLogDecodingProtocol(value.Protocol)
+		model.Protocol = &protocol
+	}
 	if value.EventName != "" {
 		model.EventName = &value.EventName
 	}

@@ -3218,7 +3218,7 @@ export interface components {
         TransactionLogAttribution: {
             execution_address?: components["schemas"]["Address"];
             /** @enum {string} */
-            mode: "exact_trace" | "address_fallback";
+            mode: "exact_trace" | "address_fallback" | "protocol";
             trace_path: number[];
         };
         TransactionLogDecoding: {
@@ -3229,6 +3229,11 @@ export interface components {
             /** @enum {string} */
             confidence?: "verified" | "high" | "guess";
             event_name?: string;
+            /**
+             * @description Authenticated protocol event identity, independent of contract ABI provenance.
+             * @enum {string}
+             */
+            protocol?: "eip7708";
             signature?: string;
             /** @enum {string} */
             status: "decoded" | "ambiguous" | "unknown" | "malformed" | "unavailable";

@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
@@ -22,6 +23,8 @@ export function AddressIdentity({
   suffix?: ReactNode;
 }) {
   const primary = usePrimaryName(address);
+  const { t } = useTranslation();
+  const system = address.toLowerCase() === "0xfffffffffffffffffffffffffffffffffffffffe";
   const content = (
     <span className={`address-identity${primary ? " has-primary-name" : ""}`}>
       {primary ? (
@@ -37,14 +40,19 @@ export function AddressIdentity({
       <code className="address-identity-value" title={address}>
         {compact ? shortenAddress(address) : address}
       </code>
+      {system && <small className="system-address-badge">{t("detail.systemAddress")}</small>}
       {suffix}
     </span>
   );
   const linked = link ? (
     <Link
-      aria-label={
-        primary ? `${primary.name}, ${address}` : compact ? shortenAddress(address) : address
-      }
+      aria-label={[
+        primary?.name,
+        system ? t("detail.systemAddress") : undefined,
+        primary || !compact ? address : shortenAddress(address),
+      ]
+        .filter(Boolean)
+        .join(", ")}
       hash={contract ? "code" : undefined}
       params={{ address }}
       search={contract ? {} : activity ? { tab: "transactions" } : {}}

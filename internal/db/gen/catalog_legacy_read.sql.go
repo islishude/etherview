@@ -1679,8 +1679,23 @@ SELECT log.log_index, log.raw, decoding.status, decoding.signature,
        decoding.candidates, decoding.warning,
        decoding.target_address, decoding.target_code_hash,
        decoding.source_address, decoding.source_code_hash,
-       attribution.trace_path, attribution.execution_address
+       attribution.trace_path, attribution.execution_address,
+       (b.slot_number_raw IS NOT NULL AND b.slot_number_raw <> 'null'::jsonb)::boolean AS amsterdam,
+       (native_stage.block_hash IS NOT NULL)::boolean AS native_published,
+       native.from_address AS native_from, native.to_address AS native_to,
+       COALESCE(native.amount::text, '')::text AS native_amount
 FROM logs AS log
+JOIN blocks b ON b.chain_id=log.chain_id AND b.number=log.block_number AND b.hash=log.block_hash
+LEFT JOIN published_block_stage_results native_stage
+  ON native_stage.chain_id=log.chain_id AND native_stage.block_number=log.block_number
+ AND native_stage.block_hash=log.block_hash AND native_stage.stage='native_transfer'
+ AND native_stage.stage_version=1 AND native_stage.state='complete'
+ AND EXISTS (SELECT 1 FROM canonical_blocks c WHERE c.chain_id=log.chain_id
+             AND c.number=log.block_number AND c.block_hash=log.block_hash)
+LEFT JOIN native_transfers native
+  ON native.chain_id=log.chain_id AND native.block_number=log.block_number
+ AND native.block_hash=log.block_hash AND native.transaction_hash=log.tx_hash
+ AND native.log_index=log.log_index AND native.canonical
 LEFT JOIN abi_decodings AS decoding
   ON decoding.chain_id = log.chain_id
  AND decoding.block_hash = log.block_hash
@@ -1733,6 +1748,11 @@ type CatalogTransactionLogsRow struct {
 	SourceCodeHash   []byte  `db:"source_code_hash" json:"source_code_hash"`
 	TracePath        *string `db:"trace_path" json:"trace_path"`
 	ExecutionAddress []byte  `db:"execution_address" json:"execution_address"`
+	Amsterdam        bool    `db:"amsterdam" json:"amsterdam"`
+	NativePublished  bool    `db:"native_published" json:"native_published"`
+	NativeFrom       []byte  `db:"native_from" json:"native_from"`
+	NativeTo         []byte  `db:"native_to" json:"native_to"`
+	NativeAmount     string  `db:"native_amount" json:"native_amount"`
 }
 
 func (q *Queries) CatalogTransactionLogs(ctx context.Context, arg CatalogTransactionLogsParams) ([]CatalogTransactionLogsRow, error) {
@@ -1766,6 +1786,11 @@ func (q *Queries) CatalogTransactionLogs(ctx context.Context, arg CatalogTransac
 			&i.SourceCodeHash,
 			&i.TracePath,
 			&i.ExecutionAddress,
+			&i.Amsterdam,
+			&i.NativePublished,
+			&i.NativeFrom,
+			&i.NativeTo,
+			&i.NativeAmount,
 		); err != nil {
 			return nil, err
 		}

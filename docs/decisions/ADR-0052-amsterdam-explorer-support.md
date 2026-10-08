@@ -22,6 +22,13 @@ base-fee burn. The current stage becomes stats@4.
 Only authenticated post-Amsterdam receipt logs with the EIP-7708 system emitter,
 exact Transfer topic and canonical address/value layout are protocol ETH
 transfers. Token@2 excludes them. ABI@5 excludes them from contract ABI provenance; the native transfer index supplies their protocol decoding.
+Transaction Logs project protocol decoding from the exact published native transfer
+row in the same read snapshot. The public decoding has `protocol: eip7708` and
+`attribution.mode: protocol`, without contract ABI source or execution identity.
+Unpublished protocol transfers remain unavailable without ABI fallback; malformed
+protocol logs or published rows inconsistent with receipts fail as corrupt data.
+The Web labels the exact system address independently of stage availability.
+
 Trace@4 distinguishes protocol logs from EVM logs: ordinary logs retain exact
 matching and provenance checks; protocol logs never acquire a fabricated ABI
 execution identity. Existing trace browsing remains independent.

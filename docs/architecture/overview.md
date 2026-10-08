@@ -996,3 +996,9 @@ coverage follows canonical/outbox changes and exact publication state; it never
 infers readiness from output rows alone. API reads use the writer snapshot to
 avoid replica-lagged publication or reorg visibility. Address and transaction
 panels keep protocol ETH transfers separate from traces, fees and withdrawals.
+
+Transaction Logs join the exact published native transfer identity in their read
+snapshot and expose EIP-7708 protocol arguments without ABI or trace provenance.
+Missing publication preserves raw logs with unavailable decoding. The shared Web
+address identity labels `0xfffffffffffffffffffffffffffffffffffffffe` as System
+Address in both locales while retaining the address, navigation and copying.

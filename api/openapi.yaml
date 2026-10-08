@@ -5070,6 +5070,10 @@ components:
         status:
           type: string
           enum: [decoded, ambiguous, unknown, malformed, unavailable]
+        protocol:
+          type: string
+          enum: [eip7708]
+          description: Authenticated protocol event identity, independent of contract ABI provenance.
         event_name:
           type: string
           maxLength: 4096
@@ -5119,7 +5123,7 @@ components:
       properties:
         mode:
           type: string
-          enum: [exact_trace, address_fallback]
+          enum: [exact_trace, address_fallback, protocol]
         trace_path:
           type: array
           items:

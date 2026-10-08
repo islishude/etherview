@@ -4,6 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 
+import i18n from "@/i18n";
+import { I18nextProvider } from "react-i18next";
 import { AddressIdentity } from "./AddressIdentity";
 import { AddressNamesProvider } from "./AddressNamesProvider";
 
@@ -94,3 +96,28 @@ function jsonResponse(body: unknown, status = 200): Response {
     headers: { "Content-Type": "application/json" },
   });
 }
+
+it.each(["en", "zh"])(
+  "labels the exact system address in %s and copies the address",
+  async (language) => {
+    await i18n.changeLanguage(language);
+    const user = userEvent.setup();
+    const system = "0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE";
+    const { rerender } = render(
+      <I18nextProvider i18n={i18n}>
+        <AddressIdentity address={system} link={false} copy compact={false} />
+      </I18nextProvider>,
+    );
+    expect(screen.getByText(language === "en" ? "System Address" : "系统地址")).toBeVisible();
+    expect(screen.getByTitle(system)).toBeVisible();
+    await user.click(screen.getByRole("button"));
+    expect(await navigator.clipboard.readText()).toBe(system);
+    rerender(
+      <I18nextProvider i18n={i18n}>
+        <AddressIdentity address="0xffffffffffffffffffffffffffffffffffffffff" link={false} />
+      </I18nextProvider>,
+    );
+    expect(screen.queryByText(language === "en" ? "System Address" : "系统地址")).toBeNull();
+    await i18n.changeLanguage("en");
+  },
+);

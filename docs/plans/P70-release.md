@@ -80,6 +80,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T49 | done | P70-T09 | Lease-fenced EIP-7708 native transfer index with snapshot-paginated transaction/address APIs and bilingual browsing | publication, reorg, API, browser and runtime parity |
 | P70-T50 | done | P70-T09 | Restore Amsterdam Preview and prove production topology and deployment acceptance | Preview, schema, runtime, Hardhat, Foundry and common gates |
 | P70-T51 | done | P70-T49 | Prevent native-transfer coverage refresh from blocking heartbeat renewal during atomic publication | concurrent PostgreSQL publication/renewal regression, replay/reorg and common gates |
+| P70-T52 | done | P70-T49, P70-T51 | Decode EIP-7708 transaction logs from published native transfers and label the system address throughout the Web | protocol, PostgreSQL, API, bilingual browser and common gates |
 
 ## Acceptance
 
@@ -1419,3 +1420,31 @@ clear the existing live-payment or reference-capacity blockers.
   whitespace checks pass. Full `make test-integration-race` passes all six
   packages, including the integration package in 361.177 seconds. Final
   `make docs-check plan-check source-check` and `git diff --check` pass.
+
+- P70-T52 projects EIP-7708 transaction-log arguments from exact, canonical,
+  published native-transfer identities in the same read snapshot. Protocol logs
+  bypass ABI/Trace resolution; unpublished output remains unavailable and
+  receipt/index mismatches return corrupt-data errors. OpenAPI exposes protocol
+  provenance without fabricating contract identity. The shared address component
+  labels the system address in English/Chinese while preserving navigation,
+  ENS identity, copying and full-address accessibility.
+- P70-T52 focused validation: native/parser/catalog/HTTP unit and race tests,
+  PostgreSQL publication/pagination/replay/reorg/corruption race regression,
+  all 391 Web tests and all 49 embedded browser scenarios pass locally.
+  The browser regression covers narrow bilingual protocol logs, exact uint256
+  amounts, raw data, system-address navigation and the address-page label.
+- P70-T52 host evidence: the original `make lint` stopped on the pre-existing,
+  ignored `.local/amsterdam-probe/main.go` formatting issue. That file was left
+  unchanged. The exact `make lint` target passes in a clean temporary copy of
+  repository sources plus this change and built assets. SQL generation used
+  a fresh task-specific Go build cache after recovering incomplete module-cache
+  contents; no dependency versions or gate definitions changed.
+
+- P70-T52 final local acceptance: `make test-integration` passes all six package
+  suites; the final publication/pagination/replay/reorg/corruption regression also
+  passes with `-race`. `make generate-check`, `make web-test`, `make web-lint`,
+  `make docs-check`, `make plan-check`, `make source-check` and `git diff --check`
+  pass. The final embedded build passes the focused protocol/ENS browser rerun
+  (2/2), following the full browser pass above. No migration, dependency upgrade,
+  remote CI, deployment or release is claimed. P70-T52 is done; existing P70/P73
+  external release blockers remain unchanged.

@@ -2623,6 +2623,7 @@ func (e TransactionInternalTransactionsState) Valid() bool {
 const (
 	AddressFallback TransactionLogAttributionMode = "address_fallback"
 	ExactTrace      TransactionLogAttributionMode = "exact_trace"
+	Protocol        TransactionLogAttributionMode = "protocol"
 )
 
 // Valid indicates whether the value is a known member of the TransactionLogAttributionMode enum.
@@ -2631,6 +2632,8 @@ func (e TransactionLogAttributionMode) Valid() bool {
 	case AddressFallback:
 		return true
 	case ExactTrace:
+		return true
+	case Protocol:
 		return true
 	default:
 		return false
@@ -2652,6 +2655,21 @@ func (e TransactionLogDecodingConfidence) Valid() bool {
 	case TransactionLogDecodingConfidenceHigh:
 		return true
 	case TransactionLogDecodingConfidenceVerified:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransactionLogDecodingProtocol.
+const (
+	Eip7708 TransactionLogDecodingProtocol = "eip7708"
+)
+
+// Valid indicates whether the value is a known member of the TransactionLogDecodingProtocol enum.
+func (e TransactionLogDecodingProtocol) Valid() bool {
+	switch e {
+	case Eip7708:
 		return true
 	default:
 		return false
@@ -6176,13 +6194,19 @@ type TransactionLogDecoding struct {
 	Candidates  []string                          `json:"candidates"`
 	Confidence  *TransactionLogDecodingConfidence `json:"confidence,omitempty"`
 	EventName   *string                           `json:"event_name,omitempty"`
-	Signature   *string                           `json:"signature,omitempty"`
-	Status      TransactionLogDecodingStatus      `json:"status"`
-	Warning     *string                           `json:"warning,omitempty"`
+
+	// Protocol Authenticated protocol event identity, independent of contract ABI provenance.
+	Protocol  *TransactionLogDecodingProtocol `json:"protocol,omitempty"`
+	Signature *string                         `json:"signature,omitempty"`
+	Status    TransactionLogDecodingStatus    `json:"status"`
+	Warning   *string                         `json:"warning,omitempty"`
 }
 
 // TransactionLogDecodingConfidence defines model for TransactionLogDecoding.Confidence.
 type TransactionLogDecodingConfidence string
+
+// TransactionLogDecodingProtocol Authenticated protocol event identity, independent of contract ABI provenance.
+type TransactionLogDecodingProtocol string
 
 // TransactionLogDecodingStatus defines model for TransactionLogDecoding.Status.
 type TransactionLogDecodingStatus string

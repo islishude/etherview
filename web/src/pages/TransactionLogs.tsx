@@ -41,7 +41,9 @@ export function TransactionLogCard({ log, locale }: { log: TransactionLog; local
     <article className="transaction-log">
       <header className="transaction-log-header">
         <div className="transaction-log-heading">
-          <strong>{signature}</strong>
+          <strong>
+            {log.decoding.protocol === "eip7708" ? t("detail.protocolETHTransfer") : signature}
+          </strong>
           {!decoded && (
             <small className="transaction-log-status">
               {t(logDecodingKey(log.decoding.status))}
@@ -146,6 +148,15 @@ function TransactionLogArgumentRow({ row }: { row: LogArgumentRow }) {
 
 function TransactionLogProvenance({ log }: { log: TransactionLog }) {
   const { t } = useTranslation();
+  if (log.decoding.protocol === "eip7708") {
+    return (
+      <section className="transaction-log-provenance" aria-label={t("detail.protocolSource")}>
+        <h3>{t("detail.protocolSource")}</h3>
+        <p>{t("detail.protocolETHTransfer")}</p>
+        <code>{log.decoding.signature ?? "Transfer(address,address,uint256)"}</code>
+      </section>
+    );
+  }
   const source = log.decoding.abi_source;
   const attribution = log.decoding.attribution;
   return (

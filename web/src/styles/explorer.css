@@ -2405,3 +2405,9 @@ td.numeric {
     gap: 0.75rem;
   }
 }
+
+.system-address-badge {
+  color: var(--text-soft);
+  font-size: 0.75rem;
+  font-weight: 500;
+}

@@ -539,6 +539,7 @@ type TransactionLog struct {
 }
 
 type TransactionLogDecoding struct {
+	Protocol    string
 	Status      string
 	EventName   string
 	Signature   string

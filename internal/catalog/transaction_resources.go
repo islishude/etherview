@@ -216,6 +216,7 @@ func (catalog *Postgres) TransactionLogs(
 	}
 
 	type rawLog struct {
+		protocol         protocolLogEvidence
 		index            int64
 		raw              []byte
 		persisted        persistedLogDecoding
@@ -275,6 +276,7 @@ func (catalog *Postgres) TransactionLogs(
 		}
 		rawLogs = append(rawLogs, rawLog{
 			index: logIndex, raw: raw, persisted: persisted,
+			protocol:  protocolLogEvidence{amsterdam: storedRow.Amsterdam, published: storedRow.NativePublished, from: storedRow.NativeFrom, to: storedRow.NativeTo, amount: storedRow.NativeAmount},
 			tracePath: storedTracePath, executionAddress: executionAddress,
 		})
 	}
@@ -294,6 +296,14 @@ func (catalog *Postgres) TransactionLogs(
 		topics := make([]string, len(decoded.Topics))
 		for index := range decoded.Topics {
 			topics[index] = decoded.Topics[index].Hex()
+		}
+		protocol, recognized, protocolErr := decodeProtocolLog(decoded, stored.protocol)
+		if protocolErr != nil {
+			return TransactionLogPage{}, protocolErr
+		}
+		if recognized {
+			page.Items = append(page.Items, TransactionLog{Address: decoded.Address.Hex(), LogIndex: strconv.FormatInt(stored.index, 10), Topics: topics, Data: "0x" + hex.EncodeToString(decoded.Data), Decoding: protocol})
+			continue
 		}
 		decodeAddress := decoded.Address
 		attribution := TransactionLogAttribution{Mode: "address_fallback", TracePath: []uint32{}}

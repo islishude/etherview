@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/islishude/etherview/internal/catalog"
 	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/nativetransfer"
@@ -55,6 +56,27 @@ func TestNativeTransferPublicationPaginationAndReorg(t *testing.T) {
 	if _, err := repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{block}); err != nil {
 		t.Fatal(err)
 	}
+	logReader, err := catalog.NewPostgres(db, catalog.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	logRequest := catalog.TransactionResourceRequest{ChainID: "1", TransactionHash: block.Block.Transactions()[0].Hash().Hex(), Limit: 1}
+	assertLogs := func(status string) catalog.TransactionLogPage {
+		t.Helper()
+		page, err := logReader.TransactionLogs(ctx, logRequest)
+		if err != nil || len(page.Items) != 1 {
+			t.Fatalf("logs=%+v err=%v", page, err)
+		}
+		decoded := page.Items[0].Decoding
+		if decoded.Status != status || decoded.Protocol != "eip7708" || decoded.Attribution.Mode != "protocol" || decoded.ABISource != nil {
+			t.Fatalf("decoding=%+v", decoded)
+		}
+		if status == "decoded" && decoded.Arguments[2].Value != max.String() {
+			t.Fatalf("amount=%+v", decoded)
+		}
+		return page
+	}
+	assertLogs("unavailable")
 	request := publicquery.NativeTransferRequest{Address: from.Hex(), Limit: 1}
 	if _, err := reader.NativeTransfers(ctx, request); err == nil {
 		t.Fatal("unpublished transfer coverage was readable")
@@ -85,6 +107,23 @@ func TestNativeTransferPublicationPaginationAndReorg(t *testing.T) {
 		t.Fatal("database accepted unfenced native terminal publication")
 	}
 	publish(block, "initial")
+	firstLogs := assertLogs("decoded")
+	if firstLogs.NextCursor == "" || firstLogs.Items[0].LogIndex != "0" {
+		t.Fatalf("first logs=%+v", firstLogs)
+	}
+	logRequest.Cursor = firstLogs.NextCursor
+	lastLogs := assertLogs("decoded")
+	if lastLogs.NextCursor != "" || lastLogs.Items[0].LogIndex != "1" {
+		t.Fatalf("last logs=%+v", lastLogs)
+	}
+	logRequest.Cursor = ""
+	execFixture(t, ctx, db, `UPDATE native_transfers SET amount=1 WHERE log_index=0`)
+	if _, err := logReader.TransactionLogs(ctx, logRequest); !errors.Is(err, catalog.ErrCorruptData) {
+		t.Fatalf("inconsistent publication: %v", err)
+	}
+	if _, err := db.Exec(ctx, `UPDATE native_transfers SET amount=$1::numeric WHERE log_index=0`, max.String()); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := processor.Process(ctx, queued.Job); !errors.Is(err, enrich.ErrAtomicPublicationRequired) {
 		t.Fatalf("unleased process=%v", err)
 	}
@@ -118,6 +157,7 @@ func TestNativeTransferPublicationPaginationAndReorg(t *testing.T) {
 	if _, err := queue.Enqueue(ctx, enrich.EnqueueRequest{Stage: enrich.NativeTransferStage, ChainID: "1", BlockHash: word, BlockNumber: 1, Replay: enrich.ReplaySource{Kind: "native-test", Key: "replay"}}); err != nil {
 		t.Fatal(err)
 	}
+	assertLogs("unavailable")
 	request.Cursor = ""
 	request.Address = from.Hex()
 	if _, err := reader.NativeTransfers(ctx, request); err == nil {
@@ -130,6 +170,11 @@ func TestNativeTransferPublicationPaginationAndReorg(t *testing.T) {
 	replacement := makeBlock("native-replacement", false)
 	applyDerivedReorg(t, ctx, repository, genesis, []chainbundle.Bundle{block}, []chainbundle.Bundle{replacement}, "native replacement")
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM native_transfers WHERE canonical`, 0)
+	logRequest.Cursor = firstLogs.NextCursor
+	if _, err := logReader.TransactionLogs(ctx, logRequest); !errors.Is(err, catalog.ErrInvalidCursor) {
+		t.Fatalf("reorg log cursor: %v", err)
+	}
+	logRequest.Cursor = ""
 	request.Cursor = originalCursor
 	if _, err := reader.NativeTransfers(ctx, request); !errors.Is(err, publicquery.ErrInvalidCursor) {
 		t.Fatalf("reorg cursor=%v", err)
@@ -145,6 +190,7 @@ func TestNativeTransferPublicationPaginationAndReorg(t *testing.T) {
 		t.Fatal("reattach reused stale publication")
 	}
 	publish(block, "reattach")
+	assertLogs("decoded")
 	page, err = reader.NativeTransfers(ctx, request)
 	if err != nil || len(page.Items) != 1 {
 		t.Fatalf("reattached=%+v err=%v", page, err)
