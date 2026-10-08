@@ -508,6 +508,7 @@ start-preview: preview-cert-check preview-genesis-refresh docker-build preview-g
 		GETH_GENESIS_FILE="$${GETH_GENESIS_FILE:-$(PREVIEW_GENESIS_RUNTIME)}" \
 		IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
 		up --no-build --wait --wait-timeout 180 --remove-orphans
+	@printf '\nPreview: https://etherview.localhost:%s\n' "$${ETHERVIEW_PORT:-8080}"
 
 stop-preview:
 	@DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml down --volumes --remove-orphans
