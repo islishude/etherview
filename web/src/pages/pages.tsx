@@ -130,11 +130,11 @@ export function BlocksPage() {
       )}
       {blocks.data && blocks.data.items.length > 0 && (
         <div className="table-scroll" tabIndex={0} aria-label={t("page.blocks")}>
-          <table>
+          <table className="blocks-table">
             <caption className="sr-only">{t("context.canonicalBlocksOnly")}</caption>
             <thead>
               <tr>
-                <th className="numeric">{t("table.block")}</th>
+                <th>{t("table.block")}</th>
                 <th>{t("table.age")}</th>
                 <th className="numeric">{t("table.transactions")}</th>
                 <th className="numeric">{t("table.gas")}</th>
@@ -144,7 +144,7 @@ export function BlocksPage() {
             <tbody>
               {blocks.data.items.map((block) => (
                 <tr key={block.hash}>
-                  <td className="numeric">
+                  <td>
                     <Link to="/blocks/$blockID" params={{ blockID: block.hash }}>
                       {formatInteger(block.number, locale)}
                     </Link>
