@@ -635,3 +635,37 @@
 .api-key-note {
   margin: 0.55rem 0 0;
 }
+
+@media (max-width: 767px) {
+  .write-form {
+    grid-template-columns: 1fr;
+  }
+
+  .proxy-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .history-card-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .abi-function-card > summary,
+  .abi-scalar-input {
+    grid-template-columns: 1fr;
+  }
+
+  .abi-function-card > summary .function-index {
+    display: none;
+  }
+
+  .abi-function-form > .button,
+  .abi-array-item > .button,
+  .abi-array-input > .button {
+    width: 100%;
+  }
+
+  .write-form label {
+    grid-column: auto;
+  }
+}

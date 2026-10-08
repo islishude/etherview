@@ -97,6 +97,17 @@ same npm scripts used by CI. Keep generated API types under the API generator;
 do not format them manually. The [testing guide](testing.md) owns exact limits,
 formatting scope, and tool-policy regression coverage.
 
+### Stylesheet ownership
+
+The [stylesheet guide](../web/src/styles/README.md) owns module responsibilities
+and cascade order. Keep common layout in existing Tailwind utilities and
+`DesignPrimitives`, complex page rules in their owning CSS module, and shared
+theme values in foundation tokens. Colocate self-contained responsive rules
+with their owner; retain cross-module overrides in the final responsive module.
+Preserve selectors, media conditions, and declaration order during structural
+moves, and verify computed layout at the affected breakpoints. Do not add a
+preprocessor or bulk-convert existing components for a stylesheet split.
+
 ## Completion checklist
 
 - Add regressions for malformed inputs and, where relevant, reorgs,

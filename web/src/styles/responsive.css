@@ -1,4 +1,8 @@
-/* Footer, network picker, shared animations, and cross-feature responsive rules. */
+/*
+ * Footer, network picker, shared animations, and cross-feature responsive rules.
+ * Keep shell rules, generic controls, and cross-domain selector lists after all
+ * feature modules. Feature-only breakpoints live with their owners.
+ */
 
 .site-footer {
   border-top: 1px solid var(--line);
@@ -156,18 +160,6 @@
 }
 
 @media (max-width: 980px) {
-  .metrics-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .pending-snapshot-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .chain-context-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .activity-grid,
   .status-layout,
   .contract-layout,
@@ -175,23 +167,6 @@
   .verification-read-layout,
   .account-layout {
     grid-template-columns: 1fr;
-  }
-
-  .api-key-summary-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .billing-summary-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .admin-user-card {
-    grid-template-columns: minmax(0, 1fr) minmax(250px, 0.7fr);
-  }
-
-  .admin-user-actions {
-    grid-column: 1 / -1;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .aggregate-stats-grid {
@@ -204,20 +179,6 @@
 
   .range-form .button {
     grid-column: 1 / -1;
-  }
-
-  .detail-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .detail-item,
-  .detail-item:nth-child(odd) {
-    grid-column: auto;
-    border-right: 0;
-  }
-
-  .completeness-card ul {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -240,43 +201,6 @@
   .transaction-state-account dl > div {
     grid-template-columns: 1fr;
     gap: 0.35rem;
-  }
-
-  .transaction-topic-convertible {
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: start;
-  }
-
-  .transaction-topic-convertible .topic-mode-select,
-  .transaction-topic-convertible > .copyable-field {
-    grid-column: 2;
-  }
-
-  .transaction-topic-convertible .topic-mode-select {
-    width: max-content;
-  }
-
-  .transaction-trace-frame {
-    margin-left: min(calc(var(--trace-depth) * 0.55rem), 2rem);
-  }
-
-  .transaction-trace-summary,
-  .transaction-trace-values dl > div,
-  .transaction-trace-raw > div {
-    grid-template-columns: 1fr;
-    gap: 0.35rem;
-  }
-
-  .transaction-log-provenance-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .transaction-log-arguments-scroll {
-    margin-inline: -0.25rem;
-  }
-
-  .transaction-action-card {
-    align-items: start;
   }
 
   .header-controls {
@@ -303,50 +227,8 @@
     padding-block: 1rem 3rem;
   }
 
-  .metrics-grid {
-    grid-template-columns: 1fr;
-    gap: 0.55rem;
-  }
-
-  .metric-card {
-    min-height: 64px;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    align-items: center;
-    padding: 0.75rem 0.9rem;
-  }
-
-  .metric-card strong {
-    text-align: right;
-    overflow-wrap: anywhere;
-  }
-
-  .pending-snapshot-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .pending-pagination {
-    justify-content: space-between;
-  }
-
   .cursor-pagination {
     justify-content: space-between;
-  }
-
-  .chain-context-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .activity-grid {
-    gap: 0.75rem;
-  }
-
-  .activity-row {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-  }
-
-  .activity-meta {
-    grid-column: 2;
-    text-align: left;
   }
 
   .search-result {
@@ -362,151 +244,10 @@
     padding-inline: 0.35rem;
   }
 
-  .write-form {
-    grid-template-columns: 1fr;
-  }
-
   .range-form,
   .contract-query-form,
   .form-grid {
     grid-template-columns: 1fr;
-  }
-
-  .proxy-facts {
-    grid-template-columns: 1fr;
-  }
-
-  .artifact-hero,
-  .artifact-section-heading {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .artifact-badges {
-    justify-content: flex-start;
-  }
-
-  .artifact-summary-grid,
-  .compiler-settings-grid,
-  .compiler-setting-group dl {
-    grid-template-columns: 1fr;
-  }
-
-  .artifact-summary-grid > .wide {
-    grid-column: auto;
-  }
-
-  .source-workspace {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(9rem, auto) minmax(32rem, 1fr);
-  }
-
-  .source-file-list {
-    max-height: 15rem;
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-  }
-
-  .source-file-tree {
-    max-height: 11rem;
-  }
-
-  .source-editor-toolbar {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .source-editor-toolbar > div {
-    min-width: 0;
-    flex-wrap: wrap;
-  }
-
-  .history-card-heading {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .abi-function-card > summary,
-  .abi-scalar-input {
-    grid-template-columns: 1fr;
-  }
-
-  .abi-function-card > summary .function-index {
-    display: none;
-  }
-
-  .abi-function-form > .button,
-  .abi-array-item > .button,
-  .abi-array-input > .button {
-    width: 100%;
-  }
-
-  .identity-grid,
-  .profile-details,
-  .admin-user-card,
-  .admin-user-card dl,
-  .admin-user-controls,
-  .billing-filter-grid,
-  .billing-summary-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .api-key-policy-card dl,
-  .api-key-card dl {
-    grid-template-columns: 1fr;
-  }
-
-  .account-tabs {
-    overflow-x: auto;
-  }
-
-  .api-key-card-heading,
-  .api-key-actions,
-  .api-key-token {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .api-key-actions .button,
-  .api-key-issued-dialog .button {
-    width: 100%;
-  }
-
-  .auth-action-panel {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .auth-action-panel .button {
-    width: 100%;
-  }
-
-  .auth-action-panel .siwe-login-control {
-    width: 100%;
-  }
-
-  .admin-user-actions {
-    grid-column: auto;
-  }
-
-  .admin-toolbar,
-  .billing-section-heading {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .admin-toolbar-actions,
-  .billing-filter-actions,
-  .billing-ledger-actions {
-    justify-content: stretch;
-  }
-
-  .admin-toolbar-actions > *,
-  .billing-filter-actions > *,
-  .billing-ledger-actions > .button,
-  .billing-section-heading > .button {
-    flex: 1 1 auto;
-    justify-content: center;
   }
 
   .range-form label,
@@ -524,17 +265,12 @@
     grid-template-columns: 1fr;
   }
 
-  .write-form label {
-    grid-column: auto;
-  }
-
+  /*
+ Transaction rows also carry detail-item: keep this after the shared transaction/log/state row override.
+ */
   .detail-item {
     grid-template-columns: 1fr;
     gap: 0.3rem;
-  }
-
-  .completeness-card ul {
-    grid-template-columns: 1fr;
   }
 }
 

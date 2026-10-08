@@ -1,0 +1,193 @@
+/* Shared page layout, panels, status badges, and availability notices. */
+
+.page-stack {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.eyebrow {
+  display: inline-block;
+  margin-bottom: 0.7rem;
+  color: var(--brand);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.page-header h1 {
+  margin: 0;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+
+.finality-badge,
+.transaction-status,
+.orphan-label,
+.availability,
+.result-kind {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  padding: 0.25rem 0.5rem;
+  color: var(--text-soft);
+  background: var(--surface-strong);
+  border-radius: 999px;
+  font-size: 0.63rem;
+  font-weight: 800;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.transaction-status {
+  gap: 0.3rem;
+}
+
+.transaction-status-icon {
+  flex: 0 0 auto;
+}
+
+.finality-badge.finalized,
+.transaction-status.success,
+.availability.yes {
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.transaction-status.reverted,
+.transaction-status.failed,
+.availability.no,
+.orphan-label {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.transaction-status.pending {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 12%, var(--surface));
+  border-color: color-mix(in srgb, var(--warning) 38%, var(--line));
+}
+
+.transaction-status.replaced {
+  color: var(--replaced);
+  background: color-mix(in srgb, var(--replaced) 12%, var(--surface));
+  border-color: color-mix(in srgb, var(--replaced) 38%, var(--line));
+}
+
+.orphan-label {
+  margin-left: 0.45rem;
+}
+
+.query-notice {
+  min-height: 74px;
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 1rem 1.1rem;
+  color: var(--text-soft);
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.query-notice.compact {
+  min-height: 58px;
+  margin-block: 0.4rem;
+  padding: 0.75rem;
+  border: 0;
+}
+
+.query-notice.degraded {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 8%, var(--surface));
+  border-color: color-mix(in srgb, var(--warning) 30%, var(--line));
+}
+
+.query-notice > span:last-child {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.query-notice strong {
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.query-notice small {
+  font-size: 0.76rem;
+}
+
+.query-notice .notice-diagnostic {
+  margin-top: 0.15rem;
+}
+
+.notice-diagnostic code {
+  color: var(--text);
+}
+
+.notice-action {
+  width: max-content;
+  padding: 0.3rem 0;
+  color: var(--brand-strong);
+  background: transparent;
+  border: 0;
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+}
+
+.status-dot,
+.pulse-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  flex: 0 0 auto;
+  background: var(--text-soft);
+  border-radius: 50%;
+}
+
+.status-dot.success {
+  background: var(--success);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 14%, transparent);
+}
+
+.status-dot.warning {
+  background: var(--warning);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--warning) 14%, transparent);
+}
+
+.pulse-dot {
+  background: var(--brand);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.inner-page {
+  gap: 1.6rem;
+}
+
+.page-header {
+  padding: 0.25rem 0;
+}
+
+.page-header h1 {
+  font-size: clamp(1.5rem, 3vw, 2rem);
+}
+
+.page-description {
+  max-width: 780px;
+  margin: 0.5rem 0 0;
+  color: var(--text-soft);
+  line-height: 1.65;
+}
+
+.mono-wrap {
+  overflow-wrap: anywhere;
+}

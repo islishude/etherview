@@ -26,6 +26,27 @@ describe("shared button layout", () => {
     ]);
   });
 
+  it("loads shared explorer rules before transaction and execution overrides", () => {
+    const stylesheet = readStylesheet("styles/explorer.css");
+    const imports = Array.from(
+      stylesheet.matchAll(/@import\s+"\.\/explorer\/(?<name>[^"]+)";/gu),
+      (match) => match.groups?.name,
+    );
+
+    expect(imports).toEqual([
+      "shared.css",
+      "home.css",
+      "tables.css",
+      "chain.css",
+      "pending.css",
+      "entities.css",
+      "transaction.css",
+      "calldata.css",
+      "logs.css",
+      "traces.css",
+    ]);
+  });
+
   it("centers full-width inline actions", () => {
     const stylesheet = readStylesheet("styles/wallet.css");
     const rule = stylesheet.match(/\.inline-button\.full\s*\{(?<body>[^}]*)\}/u);
@@ -35,7 +56,7 @@ describe("shared button layout", () => {
   });
 
   it("keeps tabs transparent with a blue underline on the active tab", () => {
-    const stylesheet = readStylesheet("styles/explorer.css");
+    const stylesheet = readStylesheet("styles/explorer/entities.css");
     const inactiveRule = stylesheet.match(/\.transaction-tab\s*\{(?<body>[^}]*)\}/u);
     const activeRule = stylesheet.match(/\.transaction-tab\.active\s*\{(?<body>[^}]*)\}/u);
 
@@ -44,7 +65,7 @@ describe("shared button layout", () => {
   });
 
   it("normalizes address tab entries before applying the active state", () => {
-    const stylesheet = readStylesheet("styles/explorer.css");
+    const stylesheet = readStylesheet("styles/explorer/entities.css");
     const addressRule = stylesheet.match(
       /\.transaction-tabs\s*>\s*\.transaction-tab\s*\{(?<body>[^}]*)\}/u,
     );
@@ -57,7 +78,7 @@ describe("shared button layout", () => {
   });
 
   it("soft-wraps read-only raw calldata inside its textarea", () => {
-    const stylesheet = readStylesheet("styles/explorer.css");
+    const stylesheet = readStylesheet("styles/explorer/calldata.css");
     const rawCalldataRule = stylesheet.match(
       /\.transaction-calldata-raw-value\s*\{(?<body>[^}]*)\}/u,
     );

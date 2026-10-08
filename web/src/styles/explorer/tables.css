@@ -1,0 +1,151 @@
+/* Explorer tables, address identity cells, and contextual list notes. */
+
+.table-scroll {
+  min-width: 0;
+  overflow-x: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+
+.transaction-method-cell {
+  max-width: 12rem;
+}
+
+.transaction-method {
+  display: block;
+  max-width: 12rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 0.85rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+
+th {
+  color: var(--text-soft);
+  background: var(--surface-raised);
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+td {
+  font-size: 0.875rem;
+}
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+tbody tr:hover {
+  background: var(--surface-raised);
+}
+
+.blocks-table th:last-child,
+.blocks-table td:last-child {
+  text-align: right;
+}
+
+.table-primary {
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.table-primary code {
+  color: var(--text-soft);
+  font-size: 0.72rem;
+}
+
+.address-identity {
+  min-width: 0;
+  display: inline-grid;
+  gap: 0.12rem;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.address-primary-name-row {
+  min-width: 0;
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.address-primary-name {
+  max-width: 14rem;
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  unicode-bidi: isolate;
+}
+
+.address-identity-value {
+  color: var(--text-soft);
+  font-size: 0.72rem;
+}
+
+.address-identity:not(.has-primary-name) .address-identity-value {
+  color: inherit;
+  font-size: inherit;
+}
+
+.custom-ens-badge {
+  flex: none;
+  padding: 0.08rem 0.28rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-soft);
+  font-size: 0.58rem;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.table-secondary {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--text-soft);
+  font-size: 0.7rem;
+}
+
+.context-note {
+  padding: 0.85rem 1rem;
+  margin: 0;
+  color: var(--text-soft);
+  background: var(--surface-raised);
+  border-left: 4px solid var(--brand);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.compact-empty {
+  padding: 0.75rem 0;
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+th.numeric,
+td.numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.system-address-badge {
+  color: var(--text-soft);
+  font-size: 0.75rem;
+  font-weight: 500;
+}

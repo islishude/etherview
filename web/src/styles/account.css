@@ -668,3 +668,92 @@
 td.billing-quantity {
   text-align: right;
 }
+
+@media (max-width: 980px) {
+  .api-key-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .billing-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-user-card {
+    grid-template-columns: minmax(0, 1fr) minmax(250px, 0.7fr);
+  }
+
+  .admin-user-actions {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767px) {
+  .identity-grid,
+  .profile-details,
+  .admin-user-card,
+  .admin-user-card dl,
+  .admin-user-controls,
+  .billing-filter-grid,
+  .billing-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .api-key-policy-card dl,
+  .api-key-card dl {
+    grid-template-columns: 1fr;
+  }
+
+  .account-tabs {
+    overflow-x: auto;
+  }
+
+  .api-key-card-heading,
+  .api-key-actions,
+  .api-key-token {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .api-key-actions .button,
+  .api-key-issued-dialog .button {
+    width: 100%;
+  }
+
+  .auth-action-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .auth-action-panel .button {
+    width: 100%;
+  }
+
+  .auth-action-panel .siwe-login-control {
+    width: 100%;
+  }
+
+  .admin-user-actions {
+    grid-column: auto;
+  }
+
+  .admin-toolbar,
+  .billing-section-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-toolbar-actions,
+  .billing-filter-actions,
+  .billing-ledger-actions {
+    justify-content: stretch;
+  }
+
+  .admin-toolbar-actions > *,
+  .billing-filter-actions > *,
+  .billing-ledger-actions > .button,
+  .billing-section-heading > .button {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+}

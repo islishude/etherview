@@ -1,0 +1,201 @@
+/* Transaction overview, fees, status, and shared transaction value presentation. */
+
+.transaction-overview {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.transaction-action-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.9rem;
+  align-items: center;
+  padding: 1rem 1.2rem;
+}
+
+.transaction-action-icon {
+  width: 2.7rem;
+  height: 2.7rem;
+  display: grid;
+  place-items: center;
+  color: var(--brand-strong);
+  background: var(--brand-soft);
+  border-radius: 50%;
+  font-size: 1.25rem;
+  font-weight: 900;
+}
+
+.transaction-action-card > div:last-child {
+  min-width: 0;
+  display: grid;
+  gap: 0.18rem;
+}
+
+.transaction-action-card span {
+  color: var(--text-soft);
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.transaction-action-card strong {
+  font-size: 0.98rem;
+}
+
+.transaction-action-card p {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.82rem;
+}
+
+.transaction-detail-card,
+.transaction-tab-panel {
+  padding: clamp(1rem, 3vw, 1.35rem);
+}
+
+.transaction-detail-list {
+  display: grid;
+  margin: 0;
+}
+
+.transaction-detail-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(9.5rem, 0.26fr) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: center;
+  padding: 0.82rem 0.25rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.transaction-detail-row:last-child {
+  border-bottom: 0;
+}
+
+.transaction-detail-row dt {
+  color: var(--text-soft);
+  font-size: 0.77rem;
+  font-weight: 720;
+}
+
+.transaction-detail-row dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.86rem;
+}
+
+.transaction-detail-row.wide {
+  align-items: start;
+}
+
+.transaction-inline-values {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.transaction-fee-values,
+.transaction-fee-value {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+
+.transaction-fee-values {
+  gap: 0.35rem 0.5rem;
+}
+
+.transaction-fee-value {
+  gap: 0.5rem;
+}
+
+.transaction-fee-label {
+  color: var(--text-soft);
+  font-weight: 700;
+}
+
+.transaction-fee-separator {
+  color: var(--line-strong);
+}
+
+.transaction-confirmations,
+.transaction-creation-label,
+.transaction-status,
+.transaction-trace-kind {
+  display: inline-flex;
+  width: max-content;
+  align-items: center;
+  padding: 0.28rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.transaction-status-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.transaction-status.success {
+  color: var(--success);
+  background: var(--success-soft);
+  border-color: color-mix(in srgb, var(--success) 35%, var(--line));
+}
+
+.transaction-status.failed,
+.transaction-status.orphan,
+.transaction-trace-frame.reverted {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  border-color: color-mix(in srgb, var(--danger) 28%, var(--line));
+}
+
+.transaction-status.pending {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 8%, var(--surface));
+  border-color: color-mix(in srgb, var(--warning) 32%, var(--line));
+}
+
+.transaction-status.replaced {
+  color: var(--replaced);
+  background: color-mix(in srgb, var(--replaced) 8%, var(--surface));
+  border-color: color-mix(in srgb, var(--replaced) 32%, var(--line));
+}
+
+.transaction-more-details {
+  margin-top: 0.5rem;
+}
+
+.transaction-more-details > summary {
+  width: max-content;
+  padding: 0.55rem 0.7rem;
+  color: var(--brand);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.transaction-more-details > summary:hover {
+  background: var(--brand-soft);
+}
+
+.transaction-data,
+.transaction-log code,
+.transaction-state-account code {
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+@media (max-width: 767px) {
+  .transaction-action-card {
+    align-items: start;
+  }
+}

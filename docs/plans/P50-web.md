@@ -93,6 +93,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T66 | done | P50-T65 | Consistent contract, analytics, account, notification and administration surfaces | capability/account/wallet regressions and frontend gates |
 | P50-T67 | done | P50-T66 | Full redesign browser acceptance, screenshots and maintained design documentation | complete frontend, embedded browser, generation, docs and plan gates |
 | P50-T68 | done | P50-T67 | Apply the document theme before chart effects sample shared palette tokens | initial-theme and bidirectional chart regressions, frontend and embedded browser gates |
+| P50-T69 | done | P50-T68 | Split explorer styles by responsibility and colocate safe responsive rules without visual changes | stylesheet, responsive browser, frontend, generation, docs and plan gates |
 
 ## Acceptance
 
@@ -1049,3 +1050,35 @@ None.
   `make generate-check`, `make test-e2e` (44/44 embedded browser scenarios),
   `make docs-check`, `make plan-check` and `git diff --check` pass locally.
   Initial assets remain within budget at 981,895 raw / 304,941 gzip bytes.
+
+- P50-T69 splits the explorer stylesheet into ten responsibility-owned modules
+  behind the existing import entry, and colocates 56 feature-only responsive
+  rules with their owners. Cross-module selector lists and the final mobile
+  `detail-item` gap stay in `responsive.css`; the transaction-row overlap is
+  covered by a browser regression. No selectors, declarations, breakpoints,
+  theme tokens, component APIs, dependencies, or public contracts change.
+- P50-T69 local verification (2026-10-08): focused style/primitives/chart tests
+  pass 9/9; `make web-lint`, `make web-test` (44 files / 392 tests plus tooling),
+  `make web-build`, `make test-e2e` (50/50 embedded Chrome scenarios), and
+  `make generate-check` pass. Generation required an isolated module cache:
+  `GOMODCACHE=/tmp/etherview-css-go-mod
+  GOPROXY=file:///Users/sudoless/go/pkg/mod/cache/download,https://proxy.golang.org
+  make generate-check`; the default cache could not resolve doubleclick packages.
+  Module versions and generated outputs remain unchanged. Initial assets use
+  983,581 raw / 305,164 gzip bytes within the unchanged budget (baseline:
+  983,062 raw / 305,314 gzip).
+- P50-T69 baseline comparison preserves all 997 selector/media declaration
+  groups and their per-selector order. A one-time Chrome comparison of the
+  baseline and final compiled CSS on the same DOM passes 132 route/viewport/
+  locale/theme scenarios with no differences in the sampled computed layout,
+  typography, color, border, and visibility properties. It includes breakpoint
+  edges and expanded log details. Both sheets are rendered before sampling.
+- P50-T69 screenshot comparison covers 87 distinct existing browser artifacts:
+  79 are pixel-identical; the other eight differ at only 1-60 pixels per image,
+  with every channel delta at most 10/255 and no image dimension changes.
+  Representative mobile dark/Chinese and desktop light/English views were
+  inspected. Diagnostic summaries are saved under the ignored
+  `web/test-results/css-refactor/`; ordinary screenshots remain reproducible
+  through `make test-e2e`. `make docs-check`, `make plan-check`, and
+  `git diff --check` pass. P50-T69 is done; evidence is local only, with no
+  remote CI, deployment, or release claimed.

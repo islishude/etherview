@@ -220,3 +220,8 @@ identities and bilingual system-address labels. Local protocol/API/race,
 PostgreSQL integration, browser and generation/governance gates pass; the child
 plan records the clean-copy lint validation and untouched local probe file.
 P70/P73 external release blockers remain unchanged.
+
+P50-T69 is complete: explorer styles are split by responsibility, with safe
+responsive rules colocated and shared late overrides preserved. Local frontend,
+50-scenario embedded browser, baseline style comparison, generation and
+governance checks pass; P50 remains done and release blockers are unchanged.

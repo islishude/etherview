@@ -1,0 +1,399 @@
+/* Decoded/raw calldata, ABI provenance, and transaction failure details. */
+
+.transaction-calldata {
+  display: grid;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.transaction-calldata-raw,
+.transaction-calldata-decoded {
+  display: grid;
+  gap: 0.65rem;
+  min-width: 0;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.transaction-calldata-heading {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 0.84rem;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.transaction-calldata-heading code {
+  font-size: 0.82rem;
+}
+
+.calldata-abi-sources {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.calldata-abi-source {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: center;
+  min-width: 0;
+  color: var(--text-soft);
+  font-size: 0.75rem;
+}
+
+.calldata-abi-source .copyable-field,
+.calldata-abi-source code {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.calldata-value-tree {
+  display: grid;
+  gap: 0.55rem;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface-raised) 70%, var(--surface));
+}
+
+.calldata-table-scroll {
+  max-width: 100%;
+  max-height: min(44rem, 70vh);
+  overflow: auto;
+  scrollbar-color: var(--line-strong) var(--surface-raised);
+  scrollbar-width: thin;
+}
+
+.calldata-table {
+  min-width: 46rem;
+  font-family: var(--font-mono);
+}
+
+.calldata-table-row {
+  display: grid;
+  grid-template-columns: 3.5rem minmax(18rem, 1fr) minmax(9rem, 0.45fr) minmax(24rem, 1.6fr);
+  align-items: center;
+  min-width: 46rem;
+  min-height: 2.7rem;
+  padding: 0.35rem 0.8rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  direction: ltr;
+}
+
+.calldata-table-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  min-height: 2.5rem;
+  background: var(--surface-raised);
+  box-shadow: 0 1px 0 var(--line);
+  font-family: var(--font-sans);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.calldata-table-row:last-child,
+.calldata-composite:last-child,
+.calldata-tree-children .calldata-table-row:last-child {
+  border-bottom: 0;
+}
+
+.calldata-table-row > * {
+  min-width: 0;
+  padding: 0 0.2rem;
+  line-height: 1.45;
+}
+
+.calldata-row-index {
+  color: var(--text-soft);
+  text-align: center;
+  user-select: none;
+}
+
+.calldata-row-name {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-weight: 650;
+  user-select: text;
+}
+
+.calldata-row-type {
+  overflow-wrap: anywhere;
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-weight: 500;
+  user-select: none;
+}
+
+.calldata-row-data {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 600;
+  user-select: text;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.calldata-scalar {
+  background: color-mix(in srgb, var(--surface-raised) 55%, var(--surface));
+}
+
+.calldata-scalar:hover,
+.calldata-composite > .calldata-node-summary:hover,
+.calldata-composite[open] > .calldata-node-summary {
+  background: color-mix(in srgb, var(--brand-soft) 25%, var(--surface));
+}
+
+.calldata-composite {
+  display: block;
+  min-width: 46rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+}
+
+.calldata-node-summary {
+  cursor: pointer;
+  list-style-position: outside;
+  background: var(--surface);
+}
+
+.calldata-node-summary::marker,
+.calldata-composite > summary::-webkit-details-marker {
+  color: var(--brand);
+}
+
+.calldata-item-count {
+  color: var(--text-soft);
+  font-size: 0.74rem;
+  font-weight: 500;
+}
+
+.calldata-tree-children {
+  display: grid;
+  min-width: 46rem;
+  overflow: visible;
+  padding-left: 1.1rem;
+  border-left: 2px solid color-mix(in srgb, var(--brand) 28%, var(--line));
+  background: color-mix(in srgb, var(--brand-soft) 10%, var(--surface));
+}
+
+.calldata-tree-children .calldata-table-row {
+  min-width: 44.9rem;
+  border-bottom-color: color-mix(in srgb, var(--line) 58%, transparent);
+}
+
+.calldata-value-tree .calldata-row-data:empty::after,
+.calldata-value-tree .calldata-row-index:empty::after {
+  content: "\00a0";
+}
+
+.calldata-value-tree .calldata-row-data:empty,
+.calldata-value-tree .calldata-row-index:empty {
+  color: transparent;
+}
+
+.calldata-node-summary:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+}
+
+.transaction-calldata-raw-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.8rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.transaction-calldata-raw-actions {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.transaction-calldata-mode-link {
+  min-height: 1.75rem;
+  padding: 0.2rem 0.35rem;
+  border: 0;
+  border-radius: 0.3rem;
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 650;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 50%, transparent);
+  text-underline-offset: 0.18em;
+}
+
+.transaction-calldata-mode-link:hover {
+  color: var(--brand);
+}
+
+.transaction-calldata-raw-status {
+  margin: 0;
+}
+
+.transaction-calldata-raw-value {
+  display: block;
+  width: 100%;
+  min-height: 6.5rem;
+  max-height: min(24rem, 55vh);
+  margin: 0;
+  padding: 0.7rem 0.75rem;
+  resize: vertical;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  outline: 0;
+  background: var(--surface-raised);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.55;
+  scrollbar-color: var(--line-strong) var(--surface-raised);
+  scrollbar-width: thin;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.transaction-calldata-raw-value:focus {
+  border-color: var(--brand);
+  outline: 2px solid color-mix(in srgb, var(--brand) 30%, transparent);
+  outline-offset: 1px;
+}
+
+.calldata-table-scroll::-webkit-scrollbar,
+.transaction-calldata-raw-value::-webkit-scrollbar {
+  height: 0.55rem;
+  width: 0.55rem;
+}
+
+.calldata-table-scroll::-webkit-scrollbar-thumb,
+.transaction-calldata-raw-value::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--line-strong);
+}
+
+.calldata-table-scroll::-webkit-scrollbar-track,
+.transaction-calldata-raw-value::-webkit-scrollbar-track {
+  background: var(--surface-raised);
+}
+
+@media (max-width: 700px) {
+  .calldata-table,
+  .calldata-table-row,
+  .calldata-composite,
+  .calldata-tree-children {
+    min-width: 38rem;
+  }
+
+  .calldata-table-row,
+  .calldata-tree-children .calldata-table-row {
+    grid-template-columns: 2.5rem minmax(12rem, 1fr) minmax(7rem, 0.45fr) minmax(18rem, 1.6fr);
+  }
+}
+
+.transaction-failure {
+  display: grid;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.transaction-failure-signature,
+.transaction-failure-signature code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.transaction-failure-table-scroll {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.transaction-failure-table-scroll:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--brand) 45%, transparent);
+  outline-offset: 2px;
+}
+
+.transaction-failure-table {
+  min-width: 42rem;
+  color: var(--text);
+  font-size: 0.78rem;
+}
+
+.transaction-failure-row {
+  display: grid;
+  grid-template-columns: minmax(13rem, 1fr) minmax(9rem, 0.7fr) minmax(20rem, 1.55fr);
+  min-height: 2.45rem;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
+
+.transaction-failure-row:last-child {
+  border-bottom: 0;
+}
+
+.transaction-failure-header {
+  min-height: 2.15rem;
+  background: var(--surface-raised);
+  color: var(--text-soft);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.transaction-failure-row > [role="cell"],
+.transaction-failure-row > [role="columnheader"] {
+  min-width: 0;
+  padding: 0.48rem 0.65rem;
+}
+
+.transaction-failure-name,
+.transaction-failure-type,
+.transaction-failure-data code {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.transaction-failure-type {
+  color: var(--text-soft);
+}
+
+.transaction-failure-data {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.transaction-failure-data .copyable-field {
+  max-width: 100%;
+}
+
+.transaction-failure-warning {
+  margin: 0;
+}
+
+.transaction-failure-raw {
+  margin-top: 0;
+}
+
+.transaction-failure-raw .copyable-field,
+.transaction-failure-raw code {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}

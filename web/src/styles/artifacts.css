@@ -666,3 +666,50 @@
   line-height: 1.55;
   tab-size: 2;
 }
+
+@media (max-width: 767px) {
+  .artifact-hero,
+  .artifact-section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .artifact-badges {
+    justify-content: flex-start;
+  }
+
+  .artifact-summary-grid,
+  .compiler-settings-grid,
+  .compiler-setting-group dl {
+    grid-template-columns: 1fr;
+  }
+
+  .artifact-summary-grid > .wide {
+    grid-column: auto;
+  }
+
+  .source-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(9rem, auto) minmax(32rem, 1fr);
+  }
+
+  .source-file-list {
+    max-height: 15rem;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .source-file-tree {
+    max-height: 11rem;
+  }
+
+  .source-editor-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .source-editor-toolbar > div {
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+}
