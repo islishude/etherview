@@ -124,17 +124,64 @@ func TestVyperDynamicRuntimeMatrix(t *testing.T) {
 			if err := compiler.ValidateRuntime(t.Context()); err != nil {
 				t.Fatal(err)
 			}
-			input, err := os.ReadFile(filepath.Join("testdata/compiler/vyper/versions", version, "plain.input.json"))
-			if err != nil {
-				t.Fatal(err)
+			fixtures := filepath.Join("testdata/compiler/vyper/versions", version)
+			files, err := filepath.Glob(filepath.Join(fixtures, "*.input.json"))
+			if err != nil || len(files) < 3 {
+				t.Fatalf("incomplete matrix: %v", err)
 			}
-			if _, err := compiler.run(t.Context(), []string{"--compile", "5242880", "33554432"}, input); err != nil {
-				t.Fatal(err)
+			for _, file := range files {
+				name := strings.TrimSuffix(file, ".input.json")
+				for _, variant := range []struct{ input, output string }{{"input", "output"}, {"modified", "modified_output"}} {
+					t.Run(filepath.Base(name)+"/"+variant.input, func(t *testing.T) {
+						input, err := os.ReadFile(name + "." + variant.input + ".json")
+						if err != nil {
+							t.Fatal(err)
+						}
+						actual, err := compiler.Compile(t.Context(), LanguageVyper, version, input)
+						if err != nil {
+							t.Fatal(err)
+						}
+						expected, err := os.ReadFile(name + "." + variant.output + ".json")
+						if err != nil {
+							t.Fatal(err)
+						}
+						assertVyperReference(t, actual, expected, strings.HasPrefix(filepath.Base(name), "invalid"))
+					})
+				}
 			}
 			compiler.ManifestDigest[0] ^= 1
-			if _, err := compiler.run(t.Context(), []string{"--compile", "5242880", "33554432"}, input); err == nil {
+			if _, err := compiler.run(t.Context(), []string{"--compile", "5242880", "33554432"}, []byte("{}")); err == nil {
 				t.Fatal("executed changed runtime identity")
 			}
 		})
 	}
+}
+
+func assertVyperReference(t *testing.T, actual, expected []byte, invalid bool) {
+	t.Helper()
+	type result struct {
+		Contracts json.RawMessage `json:"contracts"`
+		Errors    []struct {
+			Severity string `json:"severity"`
+			Type     string `json:"type"`
+		} `json:"errors"`
+	}
+	var got, want result
+	if json.Unmarshal(actual, &got) != nil || json.Unmarshal(expected, &want) != nil {
+		t.Fatal("invalid compiler result")
+	}
+	if !invalid {
+		if !equalJSONValue(got.Contracts, want.Contracts) {
+			t.Fatal("compiler contracts differ from official reference")
+		}
+		return
+	}
+	for _, actualError := range got.Errors {
+		for _, expectedError := range want.Errors {
+			if actualError.Severity == "error" && actualError.Type == expectedError.Type {
+				return
+			}
+		}
+	}
+	t.Fatal("compiler diagnostics differ from official reference")
 }

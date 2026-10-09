@@ -91,8 +91,12 @@ path formats. Local Web unit/browser, generation, deployment, docs, and plan
 gates pass; remote CI has not been rerun with this fix.
 
 P30-T117–T119 reopen P30 for the approved full-version Python WASM migration.
-The complete 26-version unchanged-reference matrix gates runtime replacement;
-production remains on the native executor until the gate and migration pass.
+P30-T117/T118 are complete locally: the shared SEA execution boundary, signed
+package binding and drain migration pass the 26-version, 362-case reference
+matrix and applicable regression gates. P30 remains in progress for T119's
+production packaging, release/security inventory, performance and native
+AMD64/ARM64 monolith/split evidence; no production rollout is authorized by
+these local results.
 
 ## Global Release Gates
 

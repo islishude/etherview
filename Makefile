@@ -27,7 +27,7 @@ GOLANGCI_LINT ?= golangci-lint
 GOVULNCHECK_VERSION ?= v1.6.0
 GITLEAKS_VERSION ?= v8.30.1
 GO_LICENSES_VERSION ?= v2.0.1
-GOLANGCI_LINT_VERSION ?= v2.13.1
+GOLANGCI_LINT_VERSION ?= v2.14.0
 WEB_LICENSE_CHECKER_VERSION ?= 5.0.1
 
 GENERATED_PATHS := \
@@ -256,7 +256,7 @@ web-build: web-generate
 	$(NPM) --prefix web run build
 
 lint-go: lint-tool-check source-check
-	@unformatted="$$(find . \( -path './.git' -o -path './vendor' -o -path './web/node_modules' \) -prune -o -type f -name '*.go' -exec gofmt -l {} +)"; \
+	@unformatted="$$(find . \( -path './.git' -o -path './.local' -o -path './vendor' -o -path './web/node_modules' \) -prune -o -type f -name '*.go' -exec gofmt -l {} +)"; \
 	if [ -n "$$unformatted" ]; then \
 		echo "gofmt is required for:"; \
 		echo "$$unformatted"; \

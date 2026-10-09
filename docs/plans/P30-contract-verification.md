@@ -194,12 +194,20 @@ credential-scoped operational boundaries.
 | P30-T113 | done | P30-T112 | Align strict Hardhat persistence totals with the expanded Vyper version/protocol matrix | Replay CI totals, reject missing/duplicate jobs and results, preserve provenance and topology parity checks |
 
 | P30-T117 | done | P30-T110 | Gate the shared Pyodide runtime against all 26 official Vyper reference matrices | authenticated packages, unchanged original/modified fixtures and bounded WASM execution |
-| P30-T118 | in_progress | P30-T117 | Replace native Vyper helpers with the shared Node SEA and signed architecture-neutral compiler packages | isolation, identity, cache, migration and publication regressions |
+| P30-T118 | done | P30-T117 | Replace native Vyper helpers with the shared Node SEA and signed architecture-neutral compiler packages | isolation, identity, cache, migration and publication regressions |
 | P30-T119 | todo | P30-T118 | Complete WASM deployment, release tooling and acceptance | common gates, performance and native AMD64/ARM64 production parity |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
 ## Acceptance
+
+- [x] P30-T118: startup and per-invocation identity fences, signed package
+      installation, fixed SEA isolation and immutable database binding pass
+      local full-reference, race, PostgreSQL, generation, lint, security/license,
+      source/docs/plan gates. Production release acceptance remains P30-T119.
+- [ ] P30-T119: shared production packaging, release signing tools, complete
+      WASM dependency/license inventory, performance and native Linux
+      AMD64/ARM64 monolith/split evidence; local checks cannot close this gate.
 
 - [x] P30-T116: credential redirects are rejected and complete explicit S3
       credentials/region bypass unrelated AWS profiles, with local regression,
@@ -818,3 +826,40 @@ closure below supplies the missing evidence.
   release/signing-tool integration, security/license gates and remaining
   production acceptance are not yet complete; no production catalog was signed
   or published and no deployment was performed.
+
+
+### P30-T118 — Execution and persistence acceptance (2026-10-10)
+
+- Startup publishes readiness only after permission/memory self-tests succeed.
+  Dynamic resolution verifies the installed package before binding and rejects
+  replacement of the startup host, even when the replacement is internally
+  consistent. Each original/modified compilation starts one fresh SEA process;
+  complete host/shared/package identities are verified before and after it.
+- The real SEA/Go matrix now compares **all 362 original/modified cases across
+  26 versions** with unchanged official references, including diagnostic types.
+  It passed locally on macOS ARM64 in 634 seconds. No timeout or input limit
+  was relaxed and no reference output or compiler implementation was changed.
+- Real TLS signed-catalog integration covers authenticated download, PostgreSQL
+  cache locks, rejection of an executor outside its signed generation, binding,
+  original/modified SEA compilation, offline bound retry, and missing-package
+  failure without fallback. Migration tests preserve terminal native catalog
+  provenance byte-for-byte and prevent historical bound jobs becoming runnable.
+  Isolation regressions reject expanded permissions, memory-cap changes, host
+  source paths, missing shared dependencies and failed startup readiness.
+- Passed: `go test ./...`; `go test -race ./internal/verify ./internal/app
+  ./internal/store -count=1`; PostgreSQL Vyper/cache-lock tests with `-race`
+  through `cmd/testintegration`; `make lint-go` with the pinned lint tool;
+  `make security-check`; `make license-check`; `make generate-check`; and
+  source/docs/plan/toolchain checks. Generation used the verified isolated module
+  cache. License checks were rerun successfully after rebuilding go-licenses
+  with Go 1.27.2. Existing audit corrections and license allowlists are unchanged.
+- Security gate findings required Go 1.27.2 and x/net v0.60.0; the minimum version
+  check and Go image builder now agree. golangci-lint v2.14.0 supports the current
+  Go export format. Formatting excludes ignored `.local` build/probe outputs,
+  consistently with Go package discovery; tracked source checks remain enabled.
+- T118 is done within its execution/persistence scope. T119 retains production
+  images/configuration, signed release tooling, the complete WASM dependency and
+  license inventory, exact-runtime performance, and native dual-architecture
+  monolith/split acceptance. Existing repository security/license gate success
+  is not proof of that new release inventory. No new remote CI success, production
+  signing, publishing, deployment or overall migration completion is claimed.

@@ -37,7 +37,10 @@ concatenation of the host SEA manifest, shared runtime manifest and package
 manifest digests. Each signed package entry includes executor_digests for both
 Linux host architectures, binding those composite identities to the same
 package. PostgreSQL validates the chosen executor digest against that signed
-entry. None may change during binding, retry or compilation.
+entry. Startup readiness requires successful permission and memory self-tests.
+Binding authenticates the installed package; invocation revalidates all three
+identities before and after compilation. A running parent never adopts a new
+host identity. None may change during binding, retry or compilation.
 
 Upgrade drains queued/running Vyper jobs before migration. Terminal provenance
 is preserved without rebinding, backfill or a legacy executor. New jobs require

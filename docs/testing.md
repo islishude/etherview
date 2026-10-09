@@ -59,7 +59,7 @@ matrices. Event-specific concurrency groups prevent a push from cancelling the
 daily run. GitHub activates the schedule after the workflow reaches the default
 branch; scheduled start times may be delayed by runner load.
 
-- `make toolchain-check`: require at least Go 1.27.0, Node 24.18.0, and npm
+- `make toolchain-check`: require at least Go 1.27.2, Node 24.18.0, and npm
   11.16.0 before generating or validating artifacts. Compatible newer stable
   versions are supported; older, malformed, and prerelease versions fail.
 - `make plan-check`: validate plan links, IDs, statuses, dependencies, evidence,

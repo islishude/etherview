@@ -57,7 +57,7 @@ RUN python build.py /opt/etherview/vyper /target-rootfs \
     && mkdir /vyper-runtime-copy \
     && cp -a /opt/etherview/vyper /vyper-runtime-copy/
 
-FROM golang:1.27.1 AS go-builder
+FROM golang:1.27.2 AS go-builder
 WORKDIR /src
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git \

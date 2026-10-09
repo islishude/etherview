@@ -149,3 +149,19 @@ func (compiler *VyperCompiler) validateHelper() (vyperRuntimeIdentity, error) {
 	}
 	return vyperRuntimeIdentity{compiler: compiler.CompilerDigest, executor: vyperExecutorDigest(host, shared, digest)}, nil
 }
+
+// Revalidation never adopts a different host after startup, even if a newly
+// fetched catalog happens to authorize that host's digest.
+func (compiler *VyperCompiler) checkedHostIdentity() ([sha256.Size]byte, [sha256.Size]byte, error) {
+	var zero [sha256.Size]byte
+	expected, ready := compiler.runtimeIdentity()
+	if !ready {
+		return zero, zero, ErrVyperRuntimeUnavailable
+	}
+	host, shared, err := compiler.hostIdentity()
+	if err != nil || expected.compiler != zero || expected.executor != vyperExecutorDigest(host, shared, zero) {
+		compiler.markUnavailable()
+		return zero, zero, ErrVyperRuntimeUnavailable
+	}
+	return host, shared, nil
+}

@@ -46,38 +46,38 @@ func (compiler *VyperCompiler) ValidateRuntime(ctx context.Context) error {
 	if compiler == nil {
 		return errors.New("vyper compiler is nil")
 	}
+	compiler.markUnavailable()
 	if compiler.Catalog != nil {
-		if compiler.Cache == nil || compiler.Cache.InstallLocker == nil {
+		if compiler.PackagePath != "" || compiler.Cache == nil || compiler.Cache.InstallLocker == nil {
 			return ErrVyperRuntimeUnavailable
 		}
 		if err := secureCompilerCacheRoot(compiler.Cache.Root); err != nil {
 			return err
 		}
 	}
-	compiler.markUnavailable()
 	identity, err := compiler.validateHelper()
 	if err != nil {
 		return err
 	}
-	compiler.mu.Lock()
-	compiler.identity = &identity
-	compiler.mu.Unlock()
-	output, err := compiler.run(ctx, []string{"--self-test"}, nil)
+	output, err := compiler.runExpected(ctx, []string{"--self-test"}, nil, identity)
 	if err != nil {
 		compiler.markUnavailable()
 		return errors.New("vyper helper self-test failed")
 	}
 	var response struct {
 		Schema       string `json:"schema"`
-		Version      string `json:"version"`
+		Pyodide      string `json:"pyodide"`
 		Python       string `json:"python"`
 		AccessDenied bool   `json:"access_denied"`
 		Limits       bool   `json:"limits"`
 	}
-	if json.Unmarshal(output, &response) != nil || response.Schema != "etherview-vyper-wasm-self-test-v1" || response.Python != "3.13.2" || !response.AccessDenied || !response.Limits {
+	if json.Unmarshal(output, &response) != nil || response.Schema != "etherview-vyper-wasm-self-test-v1" || response.Python != "3.13.2" || response.Pyodide != "0.29.3" || !response.AccessDenied || !response.Limits {
 		compiler.markUnavailable()
 		return errors.New("vyper helper self-test response is invalid")
 	}
+	compiler.mu.Lock()
+	compiler.identity = &identity
+	compiler.mu.Unlock()
 	return nil
 }
 func (compiler *VyperCompiler) markUnavailable() {
@@ -180,14 +180,21 @@ func (compiler *VyperCompiler) run(
 	arguments []string,
 	input []byte,
 ) ([]byte, error) {
+	expected, ready := compiler.runtimeIdentity()
+	if !ready {
+		return nil, ErrVyperRuntimeUnavailable
+	}
+	return compiler.runExpected(ctx, arguments, input, expected)
+}
+
+func (compiler *VyperCompiler) runExpected(ctx context.Context, arguments []string, input []byte, expected vyperRuntimeIdentity) ([]byte, error) {
 	if len(input) > compiler.maxInputBytes() {
 		return nil, errors.New("vyper compiler input exceeds size limit")
 	}
-	expected, ready := compiler.runtimeIdentity()
 	current, err := compiler.validateHelper()
-	if !ready || err != nil || current != expected {
+	if err != nil || current != expected {
 		compiler.markUnavailable()
-		return nil, errors.New("vyper helper identity changed")
+		return nil, ErrVyperRuntimeUnavailable
 	}
 	temporaryDirectory, err := os.MkdirTemp("", "etherview-vyper-*")
 	if err != nil {
@@ -249,7 +256,7 @@ func (compiler *VyperCompiler) run(
 	current, identityErr := compiler.validateHelper()
 	if identityErr != nil || current != expected {
 		compiler.markUnavailable()
-		return nil, errors.New("vyper helper identity changed")
+		return nil, ErrVyperRuntimeUnavailable
 	}
 	if runErr != nil || lingering {
 		if errors.Is(runErr, exec.ErrWaitDelay) {
@@ -283,6 +290,10 @@ func (compiler *VyperCompiler) resolveDynamic(ctx context.Context, language Lang
 	if language != LanguageVyper || !stableVyperVersion(normalizeCompilerVersion(version)) {
 		return CompilerProvenance{}, ErrCompilerVersionUnavailable
 	}
+	host, shared, err := compiler.checkedHostIdentity()
+	if err != nil {
+		return CompilerProvenance{}, err
+	}
 	entry, err := compiler.Catalog.Lookup(ctx, LanguageVyper, version)
 	if err != nil {
 		return CompilerProvenance{}, err
@@ -295,13 +306,20 @@ func (compiler *VyperCompiler) resolveDynamic(ctx context.Context, language Lang
 	if err != nil {
 		return CompilerProvenance{}, err
 	}
-	host, shared, err := compiler.hostIdentity()
-	if err != nil {
-		return CompilerProvenance{}, err
-	}
 	executor := vyperExecutorDigest(host, shared, pkg)
 	if artifact.ExecutorDigests[runtime.GOOS+"-"+runtime.GOARCH] != hex.EncodeToString(executor[:]) {
 		return CompilerProvenance{}, ErrCompilerProvenanceConflict
+	}
+	child, err := compiler.ensureRuntime(ctx, entry.Version, entry, artifact)
+	if err != nil {
+		return CompilerProvenance{}, err
+	}
+	identity, err := child.validateHelper()
+	if err != nil || identity.executor != executor || identity.compiler != entry.ArtifactSHA256 {
+		return CompilerProvenance{}, ErrCompilerProvenanceConflict
+	}
+	if _, _, err := compiler.checkedHostIdentity(); err != nil {
+		return CompilerProvenance{}, err
 	}
 	return CompilerProvenance{Kind: CompilerVyper, Digest: entry.ArtifactSHA256, ExecutorDigest: executor, ExecutorKind: VyperDynamicExecutorKind, ExecutionPolicy: TrustedSubprocessPolicy, Platform: CompilerPlatformPythonWheel, CatalogGeneration: entry.GenerationID}, nil
 }
@@ -309,15 +327,15 @@ func (compiler *VyperCompiler) compileDynamic(ctx context.Context, language Lang
 	if language != LanguageVyper || !provenance.valid() || provenance.ExecutorKind != VyperDynamicExecutorKind {
 		return nil, ErrCompilerProvenanceConflict
 	}
+	host, shared, err := compiler.checkedHostIdentity()
+	if err != nil {
+		return nil, err
+	}
 	entry, artifact, err := compiler.Catalog.vyperArtifact(ctx, provenance.CatalogGeneration, normalizeCompilerVersion(version))
 	if err != nil {
 		return nil, err
 	}
 	pkg, _ := decodeCatalogDigest(artifact.ManifestSHA256)
-	host, shared, err := compiler.hostIdentity()
-	if err != nil {
-		return nil, err
-	}
 	executor := vyperExecutorDigest(host, shared, pkg)
 	if entry.ArtifactSHA256 != provenance.Digest || executor != provenance.ExecutorDigest || artifact.ExecutorDigests[runtime.GOOS+"-"+runtime.GOARCH] != hex.EncodeToString(executor[:]) {
 		return nil, ErrCompilerProvenanceConflict
@@ -326,10 +344,14 @@ func (compiler *VyperCompiler) compileDynamic(ctx context.Context, language Lang
 	if err != nil {
 		return nil, err
 	}
-	if err := child.ValidateRuntime(ctx); err != nil {
+	// The shared host passed startup self-tests. Each compilation needs one
+	// fresh process; its package and complete identity are verified on both sides.
+	expected := vyperRuntimeIdentity{compiler: provenance.Digest, executor: provenance.ExecutorDigest}
+	output, compileErr := child.runExpected(ctx, []string{"--compile", strconv.Itoa(child.maxInputBytes()), strconv.Itoa(child.maxOutputBytes())}, input, expected)
+	if _, _, err := compiler.checkedHostIdentity(); err != nil {
 		return nil, err
 	}
-	return child.run(ctx, []string{"--compile", strconv.Itoa(child.maxInputBytes()), strconv.Itoa(child.maxOutputBytes())}, input)
+	return output, compileErr
 }
 
 func (compiler *VyperCompiler) wasmArguments(arguments []string) ([]string, error) {

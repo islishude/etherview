@@ -251,7 +251,7 @@ func TestVyperRuntimeHonorsConfiguredInputLimit(t *testing.T) {
 		t.Fatal("input beyond configured boundary was accepted")
 	}
 	// A configured ceiling is not an allocation request: this exceeds the
-	// Linux helper's address-space limit but the actual input is tiny.
+	// WASM linear-memory limit but the actual input is tiny.
 	compiler.MaxInputBytes = 1 << 30
 	small, err := os.ReadFile("testdata/compiler/vyper/plain.input.json")
 	if err != nil {

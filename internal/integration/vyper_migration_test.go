@@ -125,3 +125,59 @@ VALUES ('00000000-0000-4000-8000-000000072000', 'vyper_standard_json', 'vyper', 
 		})
 	}
 }
+
+func TestVyperWASMMigrationPreservesNativeCatalogProvenance(t *testing.T) {
+	db := newIsolatedPostgres(t)
+	ctx := t.Context()
+	if _, err := db.Exec(ctx, `CREATE TABLE etherview_schema_migrations (version TEXT PRIMARY KEY, checksum TEXT NOT NULL, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`); err != nil {
+		t.Fatal(err)
+	}
+	applyMigrationsThrough(t, ctx, db, "0071_native_transfers")
+	generation := seedVyperRuntime(t, db)
+	executor := sha256.Sum256([]byte("fixture-vyper-runtime"))
+	runtimes := fmt.Sprintf(`[{"protocol":"etherview-vyper-runtime-v3","manifest_sha256":"%x"}]`, executor)
+	if _, err := db.Exec(ctx, `UPDATE compiler_catalog_entries SET vyper_runtimes=$1 WHERE generation_id=$2`, runtimes, generation); err != nil {
+		t.Fatal(err)
+	}
+	repository, err := verify.NewPostgresRepository(db, verify.RepositoryOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := []byte(`{"language":"Vyper","sources":{"A.vy":{"content":"@external\ndef value() -> uint256:\n    return 42\n"}},"settings":{}}`)
+	job, _, err := repository.SubmitV2(ctx, verify.SubmissionV2{Kind: verify.JobVyperStandardJSON, Language: verify.LanguageVyper, CompilerVersion: "0.4.3", TargetFile: "A.vy", StandardJSON: input, Bytecodes: []verify.BytecodePair{{Runtime: "0x6000"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, found, err := repository.Claim(ctx, "native-catalog", time.Minute)
+	if err != nil || !found {
+		t.Fatalf("claim: %t %v", found, err)
+	}
+	compiler := &vyperFixtureCompiler{generation: generation}
+	provenance, err := compiler.Provenance(verify.LanguageVyper, "0.4.3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provenance.ExecutorKind = "etherview_vyper_v3"
+	if err := repository.BindCompiler(ctx, lease, provenance); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `UPDATE verification_jobs SET status='cancelled',leased_by=NULL,lease_token=NULL,lease_expires_at=NULL WHERE id=$1::uuid`, job.ID); err != nil {
+		t.Fatal(err)
+	}
+	var before, after string
+	if err := db.QueryRow(ctx, `SELECT row_to_json(j)::text FROM verification_jobs j WHERE id=$1::uuid`, job.ID).Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RunMigrations(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(ctx, `SELECT row_to_json(j)::text FROM verification_jobs j WHERE id=$1::uuid`, job.ID).Scan(&after); err != nil {
+		t.Fatal(err)
+	}
+	if before != after {
+		t.Fatal("native catalog provenance changed during migration")
+	}
+	if _, err := db.Exec(ctx, `UPDATE verification_jobs SET status='queued' WHERE id=$1::uuid`, job.ID); err == nil {
+		t.Fatal("legacy bound job became runnable after migration")
+	}
+}
