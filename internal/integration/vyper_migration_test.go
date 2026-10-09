@@ -85,3 +85,43 @@ func TestVyperMigrationPreservesCancelledJobs(t *testing.T) {
 		t.Fatalf("cancelled jobs became runnable: found=%t error=%v", found, err)
 	}
 }
+
+func TestVyperWASMMigrationRequiresDrainedQueue(t *testing.T) {
+	for _, status := range []string{"queued", "running"} {
+		t.Run(status, func(t *testing.T) {
+			db := newIsolatedPostgres(t)
+			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+			defer cancel()
+			if _, err := db.Exec(ctx, `CREATE TABLE etherview_schema_migrations (version TEXT PRIMARY KEY, checksum TEXT NOT NULL, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`); err != nil {
+				t.Fatal(err)
+			}
+			applyMigrationsThrough(t, ctx, db, "0071_native_transfers")
+			payload := []byte(`{"kind":"vyper_standard_json","language":"vyper","compiler_version":"0.4.3","target_file":"A.vy","standard_json":{"language":"Vyper","sources":{"A.vy":{"content":""}},"settings":{}}}`)
+			digest := sha256.Sum256(payload)
+			_, err := db.Exec(ctx, `INSERT INTO verification_jobs
+(id, kind, language, compiler_version, catalog_language, request, request_payload, request_digest, status)
+VALUES ('00000000-0000-4000-8000-000000072000', 'vyper_standard_json', 'vyper', '0.4.3', 'vyper', $1::jsonb, $2, $3, 'queued')`, string(payload), payload, digest[:])
+			if err != nil {
+				t.Fatal(err)
+			}
+			if status == "running" {
+				repository, err := verify.NewPostgresRepository(db, verify.RepositoryOptions{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, found, err := repository.Claim(ctx, "drain-regression", time.Minute); err != nil || !found {
+					t.Fatalf("claim: found=%t error=%v", found, err)
+				}
+			}
+			if err := store.RunMigrations(ctx, db); err == nil {
+				t.Fatal("migration accepted an undrained Vyper queue")
+			}
+			if _, err := db.Exec(ctx, `UPDATE verification_jobs SET status='cancelled', leased_by=NULL, lease_token=NULL, lease_expires_at=NULL`); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.RunMigrations(ctx, db); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}

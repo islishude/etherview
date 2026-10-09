@@ -577,17 +577,19 @@ them on any external network.
 
 ## Vyper verification gates
 
-`make compiler-install` builds the pinned 0.4.3 regression helper. `make
+`make compiler-install` builds the shared Python WASM runtime, Node SEA and
+pinned 0.4.3 regression package. `make
 security-check` and `make license-check` retain their dependency and license
 checks. `make test-go` and `make test-race` exercise real compilation, manifest,
 input-limit, cancellation and cleanup regressions. The checked-in 26-version
 reference matrix covers normal code, constructors, invalid source and supported
 immutables, with ABI/bytecode comparisons against the official compiler.
 
-`make test-vyper-matrix` requires uv 0.12.12 and builds all hash-locked versions
-using their exact Python versions, then tests the frozen helpers and Go execution
-boundary. Outputs go to `.local/vyper-releases/`. CI runs this independently on
-native Linux AMD64 and ARM64 and collects both sets before production E2E.
+`make test-vyper-matrix` builds authenticated architecture-neutral packages and
+runs all original/modified fixtures with Pyodide 0.29.3, then tests every version
+through the SEA/Go execution boundary. Candidate outputs go to
+`.local/vyper-wasm/`. Linux AMD64 and ARM64 production acceptance remains a
+separate release requirement; the local matrix does not satisfy it.
 `compiler/vyper/fixtures_versions.py` explicitly regenerates reference fixtures
 from installed locked build environments; acceptance never rewrites references.
 
@@ -660,3 +662,14 @@ receipt gas exceeds the header's maximum execution/state dimension. Integration
 regressions cover receipt-based fees, native-transfer publication fences, replay,
 canonical detach/reattach and scope-bound cursors. Browser tests cover exact
 slot values, optional header fields and bilingual native-transfer tabs.
+
+### Vyper WASM migration prerequisite
+
+`make test-vyper-wasm-candidate` builds all 26 compiler packages from the existing
+hash-locked upstream archives and tests Pyodide 0.29.3 / Python 3.13.2 against
+unchanged original/modified reference fixtures. Node denies network, writes,
+addons and subprocesses during the differential run; its old-generation heap
+is limited to 128 MiB and each WASM memory to 384 MiB. These limits are not a
+process RSS limit. Results and digest-bound package manifests are written below
+`.local/vyper-wasm/`. This candidate gate does not replace the required Linux
+matrix, production image checks or native AMD64/ARM64 acceptance.

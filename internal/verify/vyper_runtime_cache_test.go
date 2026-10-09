@@ -12,7 +12,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -62,8 +61,8 @@ func TestVyperArchiveRejectsUnsafeEntries(t *testing.T) {
 
 func TestVyperRuntimeCacheAuthenticatesAndRepairs(t *testing.T) {
 	compiler := newVyperTestCompiler(t)
-	root := filepath.Dir(compiler.Path)
-	raw, err := os.ReadFile(filepath.Join(root, "runtime-manifest.json"))
+	root := compiler.PackagePath
+	raw, err := os.ReadFile(filepath.Join(root, "package-manifest.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +70,7 @@ func TestVyperRuntimeCacheAuthenticatesAndRepairs(t *testing.T) {
 	if err := json.Unmarshal(raw, &manifest); err != nil {
 		t.Fatal(err)
 	}
-	manifest["schema"], manifest["platform"] = vyperDynamicSchema, runtime.GOOS+"-"+runtime.GOARCH
+	manifest["schema"] = vyperDynamicSchema
 	encoded, err := json.Marshal(manifest)
 	if err != nil {
 		t.Fatal(err)
@@ -94,7 +93,7 @@ func TestVyperRuntimeCacheAuthenticatesAndRepairs(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if relative == "runtime-manifest.json" {
+		if relative == "package-manifest.json" {
 			contents = encoded
 		}
 		info, err := entry.Info()
@@ -124,15 +123,15 @@ func TestVyperRuntimeCacheAuthenticatesAndRepairs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	artifact := VyperRuntimeArtifact{Platform: runtime.GOOS + "-" + runtime.GOARCH, URL: server.URL, SHA256: hex.EncodeToString(archiveDigest[:]), ManifestSHA256: hex.EncodeToString(manifestDigest[:]), MaxBytes: int64(buffer.Len()), Protocol: vyperDynamicSchema}
+	artifact := VyperRuntimeArtifact{Platform: CompilerPlatformEmscriptenWASM32, SharedSHA256: vyperSharedManifestSHA256, URL: server.URL, SHA256: hex.EncodeToString(archiveDigest[:]), ManifestSHA256: hex.EncodeToString(manifestDigest[:]), MaxBytes: int64(buffer.Len()), Protocol: vyperDynamicSchema}
 	cacheRoot := t.TempDir()
-	parent := &VyperCompiler{Cache: &CompilerCache{Root: cacheRoot, InstallLocker: testCompilerCacheInstallLocker, unsafeHTTPClient: server.Client(), unsafeAllowHTTP: true}}
+	parent := &VyperCompiler{Path: compiler.Path, SharedPath: compiler.SharedPath, Cache: &CompilerCache{Root: cacheRoot, InstallLocker: testCompilerCacheInstallLocker, unsafeHTTPClient: server.Client(), unsafeAllowHTTP: true}}
 	entry := CatalogEntry{Version: VyperCompilerVersion, ArtifactSHA256: compilerDigest}
 	child, err := parent.ensureRuntime(t.Context(), VyperCompilerVersion, entry, artifact)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = removeVyperStaging(filepath.Dir(child.Path)) })
+	t.Cleanup(func() { _ = removeVyperStaging(child.PackagePath) })
 	if err := child.ValidateRuntime(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -142,10 +141,10 @@ func TestVyperRuntimeCacheAuthenticatesAndRepairs(t *testing.T) {
 	if downloads.Load() != 1 {
 		t.Fatal("cache hit downloaded again")
 	}
-	if err := os.Chmod(child.Path, 0o755); err != nil {
+	if err := os.Chmod(filepath.Join(child.PackagePath, "packages.zip"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(child.Path, []byte("corrupt executable"), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(child.PackagePath, "packages.zip"), []byte("corrupt executable"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := child.validateHelper(); err == nil {

@@ -1,6 +1,6 @@
 # P30 — Contract Platform & Runtime Operations
 
-Status: `done`
+Status: `in_progress`
 
 This is the canonical plan for contract verification, contract intelligence,
 and the shared runtime/operations platform. Its current work items use the P30
@@ -73,6 +73,7 @@ credential-scoped operational boundaries.
 - [ADR-0040](../decisions/ADR-0040-sea-packaged-solcjs-executor.md)
 - [ADR-0042](../decisions/ADR-0042-solady-legacy-cwia-identity.md)
 - [ADR-0043](../decisions/ADR-0043-factory-derived-verification-provenance.md)
+- [ADR-0053](../decisions/ADR-0053-vyper-wasm-distribution.md)
 - [ADR-0047](../decisions/ADR-0047-pinned-vyper-executor.md)
 - [Testing](../testing.md)
 
@@ -191,6 +192,10 @@ credential-scoped operational boundaries.
 | P30-T112 | done | P30-T111 | Restore signed Vyper catalog environment loading at the production startup boundary | Config loading for API/all, rejection of invalid trust settings, and Hardhat startup regression checks |
 
 | P30-T113 | done | P30-T112 | Align strict Hardhat persistence totals with the expanded Vyper version/protocol matrix | Replay CI totals, reject missing/duplicate jobs and results, preserve provenance and topology parity checks |
+
+| P30-T117 | done | P30-T110 | Gate the shared Pyodide runtime against all 26 official Vyper reference matrices | authenticated packages, unchanged original/modified fixtures and bounded WASM execution |
+| P30-T118 | in_progress | P30-T117 | Replace native Vyper helpers with the shared Node SEA and signed architecture-neutral compiler packages | isolation, identity, cache, migration and publication regressions |
+| P30-T119 | todo | P30-T118 | Complete WASM deployment, release tooling and acceptance | common gates, performance and native AMD64/ARM64 production parity |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
@@ -770,3 +775,46 @@ closure below supplies the missing evidence.
   Hardhat dependency notices recorded in P30-T115; no new dependency was added.
   ADR-0015 and operations guidance describe the credential boundaries. No
   remote CI or additional production-topology acceptance is claimed.
+
+### P30-T117 — Authenticated WASM compatibility prerequisite (2026-10-09)
+
+- `make test-vyper-wasm-candidate` passes on macOS ARM64: all 26 versions and
+  362 original/modified compilations match unchanged reference contracts or
+  diagnostic types. Packages originate in digest-checked official archives,
+  not installed virtual environments. Five archive/integrity regressions pass.
+- Compilation runs with Node permissions, no network or writes, a 128 MiB V8
+  old-generation limit and a 384 MiB per-WASM-memory cap. Emscripten NODEFS
+  initialization receives only public `fs.constants` instead of the forbidden
+  private constants binding; other private bindings remain denied.
+- The existing valid source exceeding 5 MiB also compiles under those limits.
+  `make docs-check plan-check` passes. These are local candidate results, not
+  SEA, native Linux or production-topology acceptance. P30-T118/T119 retain
+  those implementation and release obligations.
+
+### P30-T118 — WASM execution and persistence progress (2026-10-09)
+
+- Replaced native helper invocation with the fixed SEA Vyper protocol, shared
+  runtime/package digest validation and composite executor identity. Signed
+  catalog v2 entries require both Linux host executor identities for one common
+  package. Package cache extraction accepts only the two fixed package files;
+  deterministic tar/gzip construction removes host/time-dependent archive bytes.
+- Added migration 0072: reject queued/running Vyper jobs, retain terminal
+  provenance, and bind new executor identities through the signed catalog.
+  Changed SQL sources and regenerated sqlc output without editing history.
+- Local checks passed: `go test ./internal/verify -run TestVyper -count=1`,
+  the equivalent `-race` suite, six package-builder tests, signed-catalog
+  rejection tests, and PostgreSQL Vyper integration tests through
+  `go run ./cmd/testintegration -root . -packages ./internal/integration -run Vyper`.
+  PostgreSQL coverage includes undrained queued/running migration rejection,
+  terminal preservation and bound retry without a fresh catalog.
+- The actual SEA/Go runtime matrix passed all 26 versions, including
+  per-version identity-tamper rejection. Full `internal/verify`, `internal/app`
+  and `internal/store` package tests passed; compiler production npm audit
+  reported zero vulnerabilities (not a substitute for the full security gate).
+- `make compiler-install` now builds the WASM candidate and SEA; macOS SEA
+  builds receive the required ad-hoc signature. `make generate-check` passed
+  with an isolated module cache after retrying dependency-download failures.
+  `make source-check docs-check plan-check` passed. T118 remains in progress:
+  release/signing-tool integration, security/license gates and remaining
+  production acceptance are not yet complete; no production catalog was signed
+  or published and no deployment was performed.

@@ -7,13 +7,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"io/fs"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 )
@@ -23,8 +20,6 @@ const (
 	VyperExecutorKind           = "etherview_vyper_v1"
 	CompilerPlatformPythonWheel = "python-wheel"
 	VyperCompilerSHA256         = "3b9671727c888363740dc678e60336759871487d0e4e9fdd973048fa9635c4fd"
-	vyperDependencyLockSHA256   = "554dc6f7797a99df3d66f0d42a628bc1e48f11fd15231e1349f5948dccdb99d2"
-	vyperRuntimeSchema          = "etherview-vyper-runtime-v2"
 )
 
 // A bundled helper cannot recover through a remote catalog refresh.
@@ -36,6 +31,8 @@ type VyperCompiler struct {
 	Version        string
 	CompilerDigest [sha256.Size]byte
 	ManifestDigest [sha256.Size]byte
+	PackagePath    string
+	SharedPath     string
 	Path           string
 	Timeout        time.Duration
 	MaxInputBytes  int
@@ -44,20 +41,6 @@ type VyperCompiler struct {
 	identity       *vyperRuntimeIdentity
 }
 type vyperRuntimeIdentity struct{ compiler, executor [sha256.Size]byte }
-type vyperRuntimeManifest struct {
-	Schema         string            `json:"schema"`
-	Python         string            `json:"python"`
-	Vyper          string            `json:"vyper"`
-	PyInstaller    string            `json:"pyinstaller"`
-	Platform       string            `json:"platform"`
-	CompilerSHA256 string            `json:"compiler_sha256"`
-	LockSHA256     string            `json:"lock_sha256"`
-	Dependencies   map[string]string `json:"dependencies"`
-	Files          []struct {
-		Path   string `json:"path"`
-		SHA256 string `json:"sha256"`
-	} `json:"files"`
-}
 
 func (compiler *VyperCompiler) ValidateRuntime(ctx context.Context) error {
 	if compiler == nil {
@@ -67,7 +50,9 @@ func (compiler *VyperCompiler) ValidateRuntime(ctx context.Context) error {
 		if compiler.Cache == nil || compiler.Cache.InstallLocker == nil {
 			return ErrVyperRuntimeUnavailable
 		}
-		return secureCompilerCacheRoot(compiler.Cache.Root)
+		if err := secureCompilerCacheRoot(compiler.Cache.Root); err != nil {
+			return err
+		}
 	}
 	compiler.markUnavailable()
 	identity, err := compiler.validateHelper()
@@ -89,7 +74,7 @@ func (compiler *VyperCompiler) ValidateRuntime(ctx context.Context) error {
 		AccessDenied bool   `json:"access_denied"`
 		Limits       bool   `json:"limits"`
 	}
-	if json.Unmarshal(output, &response) != nil || response.Schema != compiler.schema() || response.Version != compiler.version() || response.Python == "" || !response.AccessDenied || (runtime.GOOS == "linux" && !response.Limits) {
+	if json.Unmarshal(output, &response) != nil || response.Schema != "etherview-vyper-wasm-self-test-v1" || response.Python != "3.13.2" || !response.AccessDenied || !response.Limits {
 		compiler.markUnavailable()
 		return errors.New("vyper helper self-test response is invalid")
 	}
@@ -105,7 +90,8 @@ func (compiler *VyperCompiler) Ready() bool {
 		return false
 	}
 	if compiler.Catalog != nil {
-		return compiler.Cache != nil && compiler.Cache.InstallLocker != nil
+		_, ready := compiler.runtimeIdentity()
+		return ready && compiler.Cache != nil && compiler.Cache.InstallLocker != nil
 	}
 	_, ready := compiler.runtimeIdentity()
 	return ready
@@ -139,7 +125,7 @@ func (compiler *VyperCompiler) Resolve(ctx context.Context, language Language, v
 	if !ready {
 		return CompilerProvenance{}, ErrVyperRuntimeUnavailable
 	}
-	return CompilerProvenance{Kind: CompilerVyper, Digest: identity.compiler, ExecutorDigest: identity.executor, ExecutorKind: VyperExecutorKind, ExecutionPolicy: TrustedSubprocessPolicy, Platform: CompilerPlatformPythonWheel}, nil
+	return CompilerProvenance{Kind: CompilerVyper, Digest: identity.compiler, ExecutorDigest: identity.executor, ExecutorKind: VyperDynamicExecutorKind, ExecutionPolicy: TrustedSubprocessPolicy, Platform: CompilerPlatformPythonWheel}, nil
 }
 func (compiler *VyperCompiler) Provenance(language Language, version string) (CompilerProvenance, error) {
 	return compiler.Resolve(context.Background(), language, version)
@@ -159,7 +145,10 @@ func (compiler *VyperCompiler) CompilePinned(ctx context.Context, language Langu
 	if err != nil {
 		return nil, err
 	}
-	if !provenance.valid() || provenance != expected {
+	// Catalog-free compilers are used for local differential verification. Their
+	// exact runtime identity is required, but they cannot create durable jobs
+	// because persistent provenance requires a signed catalog generation.
+	if provenance != expected {
 		return nil, ErrCompilerProvenanceConflict
 	}
 	return compiler.run(ctx, []string{
@@ -184,98 +173,6 @@ func (compiler *VyperCompiler) maxOutputBytes() int {
 		return compiler.MaxOutputBytes
 	}
 	return defaultCompilerOutputBytes
-}
-
-func validateVyperHelper(path string) (vyperRuntimeIdentity, error) {
-	return validateVyperTree(path, VyperCompilerVersion, VyperCompilerSHA256, [sha256.Size]byte{})
-}
-func validateVyperTree(path, version, compilerSHA string, expectedManifest [sha256.Size]byte) (vyperRuntimeIdentity, error) {
-	var identity vyperRuntimeIdentity
-	invalid := errors.New("vyper runtime manifest is invalid")
-	if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path || filepath.Base(path) != "etherview-vyper" {
-		return identity, invalid
-	}
-	root := filepath.Dir(path)
-	manifestPath := filepath.Join(root, "runtime-manifest.json")
-	info, err := os.Lstat(manifestPath)
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o222 != 0 || info.Size() > maxRuntimeManifestBytes {
-		return identity, invalid
-	}
-	encoded, err := os.ReadFile(manifestPath)
-	if err != nil {
-		return identity, invalid
-	}
-	var manifest vyperRuntimeManifest
-	if validateUniqueJSON(encoded) != nil || json.Unmarshal(encoded, &manifest) != nil || manifest.Vyper != version || manifest.CompilerSHA256 != compilerSHA || len(manifest.Files) == 0 || len(manifest.Files) > maxRuntimeManifestFiles {
-		return identity, invalid
-	}
-	if expectedManifest != [sha256.Size]byte{} {
-		if sha256.Sum256(encoded) != expectedManifest || manifest.Schema != vyperDynamicSchema || manifest.Platform != runtime.GOOS+"-"+runtime.GOARCH || !validVyperExecutable(path) {
-			return identity, invalid
-		}
-	} else if manifest.Schema != vyperRuntimeSchema || manifest.Python != "3.13.15" || manifest.PyInstaller != "6.22.2" || manifest.LockSHA256 != vyperDependencyLockSHA256 {
-		return identity, invalid
-	}
-	expected := map[string]string{}
-	for _, file := range manifest.Files {
-		if !fs.ValidPath(file.Path) || strings.Contains(file.Path, "\\") || file.Path == "runtime-manifest.json" || expected[file.Path] != "" || len(file.SHA256) != 64 {
-			return identity, invalid
-		}
-		expected[file.Path] = file.SHA256
-	}
-	if expected["etherview-vyper"] == "" {
-		return identity, invalid
-	}
-	var total int64
-	seen := 0
-	err = filepath.WalkDir(root, func(current string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return invalid
-		}
-		if entry.IsDir() {
-			info, err := entry.Info()
-			if err != nil || info.Mode().Perm()&0o222 != 0 {
-				return invalid
-			}
-			return nil
-		}
-		relative, relErr := filepath.Rel(root, current)
-		if relErr != nil {
-			return invalid
-		}
-		relative = filepath.ToSlash(relative)
-		if relative == "runtime-manifest.json" {
-			return nil
-		}
-		stat, statErr := entry.Info()
-		if statErr != nil || !stat.Mode().IsRegular() || stat.Mode().Perm()&0o222 != 0 || stat.Size() > maxRuntimeFileBytes || expected[relative] == "" {
-			return invalid
-		}
-		if relative == "etherview-vyper" && stat.Mode().Perm()&0o111 == 0 {
-			return invalid
-		}
-		total += stat.Size()
-		if total > maxRuntimeTotalBytes {
-			return invalid
-		}
-		contents, readErr := os.ReadFile(current)
-		if readErr != nil {
-			return invalid
-		}
-		hash := sha256.Sum256(contents)
-		if hex.EncodeToString(hash[:]) != expected[relative] {
-			return invalid
-		}
-		seen++
-		return nil
-	})
-	if err != nil || seen != len(expected) {
-		return identity, invalid
-	}
-	compilerDigest, _ := hex.DecodeString(compilerSHA)
-	copy(identity.compiler[:], compilerDigest)
-	identity.executor = sha256.Sum256(encoded)
-	return identity, nil
 }
 
 func (compiler *VyperCompiler) run(
@@ -308,7 +205,12 @@ func (compiler *VyperCompiler) run(
 	}
 	runContext, cancel := context.WithTimeout(ctx, compiler.timeout())
 	defer cancel()
-	command := exec.CommandContext(runContext, compiler.Path, arguments...)
+	nodeArguments, err := compiler.wasmArguments(arguments)
+	if err != nil {
+		_ = cleanup()
+		return nil, err
+	}
+	command := exec.CommandContext(runContext, compiler.Path, nodeArguments...)
 	command.Dir = temporaryDirectory
 	command.Env = []string{
 		"HOME=/nonexistent",
@@ -377,13 +279,6 @@ func (compiler *VyperCompiler) version() string {
 	}
 	return VyperCompilerVersion
 }
-func (compiler *VyperCompiler) schema() string {
-	if compiler.Version != "" {
-		return vyperDynamicSchema
-	}
-	return vyperRuntimeSchema
-}
-
 func (compiler *VyperCompiler) resolveDynamic(ctx context.Context, language Language, version string) (CompilerProvenance, error) {
 	if language != LanguageVyper || !stableVyperVersion(normalizeCompilerVersion(version)) {
 		return CompilerProvenance{}, ErrCompilerVersionUnavailable
@@ -396,9 +291,17 @@ func (compiler *VyperCompiler) resolveDynamic(ctx context.Context, language Lang
 	if err != nil {
 		return CompilerProvenance{}, err
 	}
-	executor, err := decodeCatalogDigest(artifact.ManifestSHA256)
+	pkg, err := decodeCatalogDigest(artifact.ManifestSHA256)
 	if err != nil {
 		return CompilerProvenance{}, err
+	}
+	host, shared, err := compiler.hostIdentity()
+	if err != nil {
+		return CompilerProvenance{}, err
+	}
+	executor := vyperExecutorDigest(host, shared, pkg)
+	if artifact.ExecutorDigests[runtime.GOOS+"-"+runtime.GOARCH] != hex.EncodeToString(executor[:]) {
+		return CompilerProvenance{}, ErrCompilerProvenanceConflict
 	}
 	return CompilerProvenance{Kind: CompilerVyper, Digest: entry.ArtifactSHA256, ExecutorDigest: executor, ExecutorKind: VyperDynamicExecutorKind, ExecutionPolicy: TrustedSubprocessPolicy, Platform: CompilerPlatformPythonWheel, CatalogGeneration: entry.GenerationID}, nil
 }
@@ -410,8 +313,13 @@ func (compiler *VyperCompiler) compileDynamic(ctx context.Context, language Lang
 	if err != nil {
 		return nil, err
 	}
-	executor, _ := decodeCatalogDigest(artifact.ManifestSHA256)
-	if entry.ArtifactSHA256 != provenance.Digest || executor != provenance.ExecutorDigest {
+	pkg, _ := decodeCatalogDigest(artifact.ManifestSHA256)
+	host, shared, err := compiler.hostIdentity()
+	if err != nil {
+		return nil, err
+	}
+	executor := vyperExecutorDigest(host, shared, pkg)
+	if entry.ArtifactSHA256 != provenance.Digest || executor != provenance.ExecutorDigest || artifact.ExecutorDigests[runtime.GOOS+"-"+runtime.GOARCH] != hex.EncodeToString(executor[:]) {
 		return nil, ErrCompilerProvenanceConflict
 	}
 	child, err := compiler.ensureRuntime(ctx, entry.Version, entry, artifact)
@@ -422,4 +330,24 @@ func (compiler *VyperCompiler) compileDynamic(ctx context.Context, language Lang
 		return nil, err
 	}
 	return child.run(ctx, []string{"--compile", strconv.Itoa(child.maxInputBytes()), strconv.Itoa(child.maxOutputBytes())}, input)
+}
+
+func (compiler *VyperCompiler) wasmArguments(arguments []string) ([]string, error) {
+	shared, err := solcJSArtifactNodeOptions(compiler.sharedPath())
+	if err != nil {
+		return nil, err
+	}
+	options := "--node-options=--max-old-space-size=128 --wasm-max-mem-pages=6144 " + shared[len("--node-options="):]
+	if len(arguments) == 1 && arguments[0] == "--self-test" {
+		return []string{options, "--vyper-self-test", compiler.sharedPath()}, nil
+	}
+	if len(arguments) != 3 || arguments[0] != "--compile" || compiler.PackagePath == "" {
+		return nil, ErrCompilerRuntime
+	}
+	pkg, err := solcJSArtifactNodeOptions(compiler.PackagePath)
+	if err != nil {
+		return nil, err
+	}
+	options += " " + pkg[len("--node-options="):]
+	return []string{options, "--vyper-compile", compiler.sharedPath(), compiler.PackagePath, compiler.version(), arguments[1], arguments[2]}, nil
 }

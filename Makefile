@@ -239,7 +239,9 @@ web-install:
 
 compiler-install:
 	$(NPM) --prefix compiler ci --ignore-scripts
-	$(PYTHON) compiler/vyper/install.py
+	$(NODE) compiler/vyper/wasm/prepare.mjs
+	$(PYTHON) compiler/vyper/wasm/packages.py --version 0.4.3
+	$(NPM) --prefix compiler run build:sea -- "$(CURDIR)/.local/vyper-wasm/sea/etherview-solcjs"
 
 web-generate: web-install
 	$(NPM) --prefix api run generate:api
@@ -544,11 +546,16 @@ stop-x402-local:
 recreate-x402-local: stop-x402-local start-x402-local
 
 .PHONY: test-vyper-matrix
-test-vyper-matrix:
-	python3 compiler/vyper/matrix.py
-	ETHERVIEW_TEST_VYPER_MATRIX_ROOT="$(CURDIR)/.local/vyper-builds" $(GO) test ./internal/verify -run '^TestVyper(DynamicRuntimeMatrix|StableVersionMatrix)$$' -count=1 -timeout=30m
+test-vyper-matrix: compiler-install test-vyper-wasm-candidate
+	ETHERVIEW_TEST_VYPER_MATRIX_ROOT="$(CURDIR)/.local/vyper-wasm/packages" $(GO) test ./internal/verify -run '^TestVyper(DynamicRuntimeMatrix|StableVersionMatrix)$$' -count=1 -timeout=30m
 
 .PHONY: test-vyper-release
 test: test-vyper-release
 test-vyper-release:
 	$(NODE) --test compiler/vyper/catalog.test.mjs
+
+.PHONY: test-vyper-wasm-candidate
+test-vyper-wasm-candidate:
+	$(NPM) --prefix compiler ci --ignore-scripts
+	python3 -m unittest discover -s compiler/vyper/wasm -p 'test_*.py'
+	python3 compiler/vyper/wasm/check.py

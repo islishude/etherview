@@ -5,8 +5,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"io"
 	"io/fs"
@@ -27,7 +25,7 @@ func (compiler *VyperCompiler) ensureRuntime(ctx context.Context, version string
 		return nil, err
 	}
 	target := filepath.Join(compiler.Cache.Root, "vyper-runtime-"+artifact.ManifestSHA256)
-	child := &VyperCompiler{Path: filepath.Join(target, "etherview-vyper"), Version: version, CompilerDigest: entry.ArtifactSHA256, ManifestDigest: digest, Timeout: compiler.Timeout, MaxInputBytes: compiler.MaxInputBytes, MaxOutputBytes: compiler.MaxOutputBytes}
+	child := &VyperCompiler{Path: compiler.Path, SharedPath: compiler.sharedPath(), PackagePath: target, Version: version, CompilerDigest: entry.ArtifactSHA256, ManifestDigest: digest, Timeout: compiler.Timeout, MaxInputBytes: compiler.MaxInputBytes, MaxOutputBytes: compiler.MaxOutputBytes}
 	if _, err := child.validateHelper(); err == nil {
 		return child, nil
 	}
@@ -47,7 +45,7 @@ func (compiler *VyperCompiler) ensureRuntime(ctx context.Context, version string
 	if err := extractVyperArchive(archive, temporary); err != nil {
 		return nil, err
 	}
-	staged := &VyperCompiler{Path: filepath.Join(temporary, "etherview-vyper"), Version: version, CompilerDigest: entry.ArtifactSHA256, ManifestDigest: digest}
+	staged := &VyperCompiler{Path: compiler.Path, SharedPath: compiler.sharedPath(), PackagePath: temporary, Version: version, CompilerDigest: entry.ArtifactSHA256, ManifestDigest: digest}
 	if _, err := staged.validateHelper(); err != nil {
 		return nil, err
 	}
@@ -125,7 +123,7 @@ func extractVyperArchive(archive, target string) error {
 	if err != nil || len(padding) >= recordBytes || len(padding)%512 != 0 || len(bytes.Trim(padding, "\x00")) != 0 {
 		return invalid
 	}
-	if !seen["runtime-manifest.json"] || !seen["etherview-vyper"] {
+	if len(seen) != 2 || !seen["package-manifest.json"] || !seen["packages.zip"] {
 		return invalid
 	}
 	return filepath.WalkDir(target, func(path string, entry fs.DirEntry, err error) error {
@@ -147,16 +145,4 @@ func removeVyperStaging(path string) error {
 		return err
 	})
 	return os.RemoveAll(path)
-}
-
-func (compiler *VyperCompiler) validateHelper() (vyperRuntimeIdentity, error) {
-	if compiler.Version == "" {
-		return validateVyperHelper(compiler.Path)
-	}
-	identity, err := validateVyperHelperIdentity(compiler.Path, compiler.Version, compiler.CompilerDigest, compiler.ManifestDigest)
-	return identity, err
-}
-
-func validateVyperHelperIdentity(path, version string, digest, manifest [sha256.Size]byte) (vyperRuntimeIdentity, error) {
-	return validateVyperTree(path, version, hex.EncodeToString(digest[:]), manifest)
 }

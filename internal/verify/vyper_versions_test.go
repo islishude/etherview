@@ -95,7 +95,7 @@ func TestVyperVersionSettings(t *testing.T) {
 func TestVyperDynamicRuntimeMatrix(t *testing.T) {
 	root := os.Getenv("ETHERVIEW_TEST_VYPER_MATRIX_ROOT")
 	if root == "" {
-		t.Skip("run make test-vyper-matrix for the native runtime matrix")
+		t.Skip("run make test-vyper-matrix for the WASM runtime matrix")
 	}
 	var profiles map[string]VyperCapabilities
 	if err := json.Unmarshal(vyperCapabilitiesJSON, &profiles); err != nil {
@@ -103,12 +103,12 @@ func TestVyperDynamicRuntimeMatrix(t *testing.T) {
 	}
 	for version := range profiles {
 		t.Run(version, func(t *testing.T) {
-			runtimePath := filepath.Join(root, version, "runtime")
-			raw, err := os.ReadFile(filepath.Join(runtimePath, "runtime-manifest.json"))
+			runtimePath := filepath.Join(root, version)
+			raw, err := os.ReadFile(filepath.Join(runtimePath, "package-manifest.json"))
 			if err != nil {
 				t.Fatal(err)
 			}
-			var manifest vyperRuntimeManifest
+			var manifest vyperWASMManifest
 			if err := json.Unmarshal(raw, &manifest); err != nil {
 				t.Fatal(err)
 			}
@@ -116,7 +116,11 @@ func TestVyperDynamicRuntimeMatrix(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			compiler := &VyperCompiler{Path: filepath.Join(runtimePath, "etherview-vyper"), Version: version, CompilerDigest: digest, ManifestDigest: sha256.Sum256(raw)}
+			compiler := newVyperTestCompiler(t)
+			compiler.PackagePath = copyWASMTestTree(t, runtimePath)
+			compiler.Version = version
+			compiler.CompilerDigest = digest
+			compiler.ManifestDigest = sha256.Sum256(raw)
 			if err := compiler.ValidateRuntime(t.Context()); err != nil {
 				t.Fatal(err)
 			}
