@@ -93,9 +93,10 @@ gates pass; remote CI has not been rerun with this fix.
 P30-T117–T119 reopen P30 for the approved full-version Python WASM migration.
 P30-T117/T118 are complete locally: the shared SEA execution boundary, signed
 package binding and drain migration pass the 26-version, 362-case reference
-matrix and applicable regression gates. P30 remains in progress for T119's
+matrix and applicable regression gates. P30-T119 is in progress for
 production packaging, release/security inventory, performance and native
-AMD64/ARM64 monolith/split evidence; no production rollout is authorized by
+AMD64/ARM64 monolith/split evidence. Common package builds are reproducible and
+the v2 signing tool rejects incomplete architecture/matrix evidence; no production rollout is authorized by
 these local results.
 
 ## Global Release Gates

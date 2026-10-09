@@ -195,7 +195,7 @@ credential-scoped operational boundaries.
 
 | P30-T117 | done | P30-T110 | Gate the shared Pyodide runtime against all 26 official Vyper reference matrices | authenticated packages, unchanged original/modified fixtures and bounded WASM execution |
 | P30-T118 | done | P30-T117 | Replace native Vyper helpers with the shared Node SEA and signed architecture-neutral compiler packages | isolation, identity, cache, migration and publication regressions |
-| P30-T119 | todo | P30-T118 | Complete WASM deployment, release tooling and acceptance | common gates, performance and native AMD64/ARM64 production parity |
+| P30-T119 | in_progress | P30-T118 | Complete WASM deployment, release tooling and acceptance | common gates, performance and native AMD64/ARM64 production parity |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
@@ -863,3 +863,18 @@ closure below supplies the missing evidence.
   monolith/split acceptance. Existing repository security/license gate success
   is not proof of that new release inventory. No new remote CI success, production
   signing, publishing, deployment or overall migration completion is claimed.
+
+### P30-T119 — Common package release tooling (2026-10-10)
+
+- Claimed after T118. Added an atomic architecture-neutral release builder;
+  all 26 actual archives and descriptors are byte-identical across two local
+  builds. It verifies shared/package identities and never emits acceptance.
+- Catalog v2 signing now requires both Linux host identities, exact full-matrix
+  fixture counts/content digests, matching package/shared/executor digests and
+  monolith/split evidence. Missing/stale evidence prevents signing.
+- `make test-vyper-release docs-check plan-check` passes (7 Python tests,
+  9 signing tests); `git diff --check` passes. No production key was used.
+- T119 remains in progress: production image and native evidence producers,
+  complete WASM security/license inventory, performance, deployment parity and
+  remote AMD64/ARM64 acceptance are still outstanding. The signing-tool unit
+  fixtures are synthetic and do not constitute native acceptance.

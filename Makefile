@@ -552,6 +552,7 @@ test-vyper-matrix: compiler-install test-vyper-wasm-candidate
 .PHONY: test-vyper-release
 test: test-vyper-release
 test-vyper-release:
+	$(PYTHON) -m unittest discover -s compiler/vyper/wasm -p 'test_*.py'
 	$(NODE) --test compiler/vyper/catalog.test.mjs
 
 .PHONY: test-vyper-wasm-candidate

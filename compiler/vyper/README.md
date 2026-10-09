@@ -1,23 +1,46 @@
-# Vyper runtime builds
+# Vyper WASM distribution
 
-Dynamic distribution is defined by ADR-0049 and P30-T107–P30-T110. The existing
-0.4.3 installer remains the ordinary local regression fixture. Production uses
-configured signed catalogs and never falls back to that bundled executable.
+[ADR-0053](../../docs/decisions/ADR-0053-vyper-wasm-distribution.md) replaces
+native runtime distribution with Pyodide 0.29.3 / CPython 3.13.2 and one
+architecture-neutral compiler package per supported version. Node SEA remains
+host-native. Production deployment and native release acceptance are tracked
+by P30-T119; the local matrix is not production release evidence.
 
-`versions/index.json` locks the official compiler artifact and Python version;
-per-version `.lock` files lock compiler/build dependencies. 0.2.0 is built from
-its pinned official Git source because PyPI has no artifact. Only the generated
-upstream git-version packaging file is supplied; compiler implementation bytes
-are not patched. Historical helper adapters expose compiler-computed layouts.
+`versions/index.json` authenticates the official compiler artifact; per-version
+`.lock` files authenticate dependencies. Version 0.2.0 uses its pinned upstream
+source archive. Compiler implementation bytes and reference fixtures remain
+unchanged. Historical native Python tooling is retained for reference generation.
 
-Run `make test-vyper-matrix` with uv 0.12.12 to create native runtime archives and
-descriptors in `.local/vyper-releases/`. Every helper must pass reference fixture
-comparisons and Go runtime identity checks. CI builds Linux AMD64/ARM64 separately
-and gathers both artifact sets for production monolith/split E2E. The production
-E2E records bind acceptance to the exact descriptor digests. Merge the two
-acceptance JSON objects into one file without changing their contents.
+`make compiler-install` prepares the shared WASM runtime, the 0.4.3 package and
+Node SEA for ordinary local regressions. `make test-vyper-matrix` builds all 26
+packages and compares original and modified fixtures using fresh SEA processes.
+`make test-vyper-wasm-candidate` runs the warm candidate comparison. Outputs live
+under `.local/vyper-wasm/`.
 
-After native gates pass, assemble a local signed catalog with:
+After building the packages, create the common release transports once:
+
+```sh
+python3 compiler/vyper/wasm/release.py --output .local/vyper-releases
+```
+
+The output directory must not already exist. The builder validates package and
+shared identities and atomically publishes the complete set of 26 deterministic
+archives and unsigned descriptors. Native AMD64 and ARM64 consumers must use
+these same archive bytes. Building transports does not assert matrix or
+production acceptance.
+
+The catalog signer requires one acceptance record per Linux architecture with
+`monolith`, `split`, the production `host_sha256`, pinned `shared_sha256`, and
+`descriptors` mapping filenames to their SHA-256 digests. Each record's `matrix`
+maps all 26 versions to `cases`, `fixtures_sha256`, `package_sha256`,
+`shared_sha256` and `executor_sha256`. The signer checks the exact repository
+fixture counts and contents and recomputes each composite executor identity.
+`wasm/release.mjs` defines these identities. Only native acceptance jobs may
+produce these records after passing the corresponding tests; never synthesize
+acceptance from descriptor presence or local candidate results.
+
+Once both native acceptance records are available, merge their architecture
+objects without modifying their contents and assemble a signed catalog:
 
 ```sh
 node compiler/vyper/catalog.mjs --artifacts .local/vyper-releases \
@@ -26,47 +49,17 @@ node compiler/vyper/catalog.mjs --artifacts .local/vyper-releases \
   --output catalog.json
 ```
 
-Choose a future expiry. The tool refuses missing versions, missing architectures,
-stale acceptance, artifact digest changes and non-Ed25519 keys. Publish archives
-before their signed catalog only under explicit release authorization. Keep old
-artifacts for bound retries. No production signing key is stored in this repo.
-
-## Existing 0.4.3 audit policy
-
-# Pinned Vyper runtime
-
-ADR-0047 owns the boundary. `make compiler-install` builds a dedicated
-CPython 3.13.15 / PyInstaller 6.22.2 / Vyper 0.4.3 directory in
-`.local/vyper/runtime`. `requirements.lock` pins all compiler/build dependencies
-and hashes; `--only-binary` selects authenticated wheels. The Docker stage uses the
-`python:3.13.15-slim-trixie` version tag, resolves every ELF against
-the final distroless root and tests the helper there as the production user.
-
-The helper accepts `--self-test` or
-`--compile <max-input-bytes> <max-output-bytes>` with Standard JSON on stdin.
-The Go parent supplies effective configured limits as positive canonical decimal
-arguments; source JSON cannot override them. Runtime schema v2 rejects older
-helpers during startup, so rebuild the complete runtime and drain bound jobs
-when upgrading.
-It has no Python CLI or package installer. Compiler sources and interfaces are
-in memory. The read-only runtime manifest covers every installed file; Go
-validates that tree before startup and every execution. Linux self-test proves
-the 512 MiB address-space limit refuses an oversized allocation as well as
-file-write, unrelated-read, socket and child-process denial. Audit hooks are
-defense in depth for trusted Python/native compiler dependencies.
-
-Real compiler fixtures can be regenerated after `make compiler-install`:
-
-```sh
-python3.13 compiler/vyper/fixtures.py \
-  .local/vyper/runtime/etherview-vyper internal/verify/testdata/compiler/vyper
-```
+Choose a future expiry. The v2 signer refuses missing versions or architectures,
+incomplete/stale matrices, stale production evidence, digest changes and
+non-Ed25519 keys. It never overwrites an existing output. Publish archives before
+their signed catalog only under explicit release authorization. Keep artifacts
+needed by bound retries. No production signing key is stored in this repository.
 
 ## Dependency audit corrections
 
 `make security-check` runs `audit.py` using its separate hash-locked pip-audit
-environment. It scans every compiler/build dependency and fails on unknown
-advisories, skipped packages or audit-service failure. Its retained raw report
+environment. It currently scans the retained native reference dependency lock and fails on unknown
+advisories, skipped packages or audit-service failure. The complete WASM dependency inventory remains a P30-T119 release gate. Its retained raw report
 is `.local/vyper/audit/report.json`.
 
 Two database records incorrectly include the exact official Vyper 0.4.3 wheel
