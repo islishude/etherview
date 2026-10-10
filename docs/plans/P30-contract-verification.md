@@ -920,3 +920,15 @@ closure below supplies the missing evidence.
   with exact named metric values; the existing chain-scoped repair age bound
   remains. The focused owned-PostgreSQL regression with `-race` and
   source/docs/plan gates pass. Full remote acceptance remains pending.
+
+### P30-T119 — Final native CI timeout diagnosis (2026-10-11)
+
+- Run 38051710841 at `335e9f9` passes 12 of 13 jobs, including PostgreSQL,
+  both native matrices and Foundry topologies, and ARM64 Hardhat production
+  acceptance. Local complete `make test-integration` and lint also pass.
+- AMD64 Hardhat passes monolith and reaches distributed proxy rebinding before
+  Go's implicit 10-minute package alarm terminates it. The harness already
+  defines a 30-minute E2E context. Its Makefile invocation now explicitly uses
+  that existing duration; production compilation/download deadlines, input
+  limits, all fixtures and the CI job deadline remain unchanged. Remote
+  current-head completion is still required.

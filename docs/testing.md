@@ -196,7 +196,10 @@ branch; scheduled start times may be delayed by runner load.
   fails when the official catalog or compiler cannot be downloaded. CI builds
   and exercises the native production image independently on AMD64 and ARM64;
   no deployment or test field fixes a container platform. CI uses
-  `make test-hardhat3-e2e-prebuilt` after loading both images. Redacted
+  `make test-hardhat3-e2e-prebuilt` after loading both images. Its explicit Go
+  package timeout matches the existing 30-minute E2E context, rather than Go's
+  default 10-minute alarm. Production compiler deadlines and input limits are
+  unchanged. Redacted
   Hardhat output, Compose state/logs, and proxy summaries are retained on
   failure. The E2E-only API environment permits Docker fake-IP download
   networks while retaining the exact HTTPS origin, TLS, size, and SHA-256
