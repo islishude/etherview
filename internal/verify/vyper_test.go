@@ -331,3 +331,39 @@ func TestVyperHelperRejectsInvalidLimits(t *testing.T) {
 		})
 	}
 }
+
+func TestVyperSubprocessUsesPrivateLibraryDirectory(t *testing.T) {
+	t.Setenv("LD_LIBRARY_PATH", "/untrusted-parent-libraries")
+	t.Setenv("ETHERVIEW_TEST_SECRET", "parent-only")
+	executor, root := writeTestSolcJSRuntime(t)
+	marker := filepath.Join(t.TempDir(), "environment")
+	makeRuntimeWritable(t, root)
+	if err := os.Chmod(executor, 0755); err != nil {
+		t.Fatal(err)
+	}
+	script := "#!/bin/sh\nprintf '%s\\n%s' \"$LD_LIBRARY_PATH\" \"${ETHERVIEW_TEST_SECRET-unset}\" > " + shellQuote(marker) + "\nprintf '{}'\n"
+	if err := os.WriteFile(executor, []byte(script), 0555); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(executor, 0555); err != nil {
+		t.Fatal(err)
+	}
+	mutateTestManifest(t, root, func(manifest *solcJSRuntimeManifest) {
+		manifest.Files[0] = testManifestFile(t, root, executor, "executor", "")
+	})
+	compiler := &VyperCompiler{Path: executor, SharedPath: copyWASMTestTree(t, "../../.local/vyper-wasm/shared")}
+	identity, err := compiler.validateHelper()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := compiler.runExpected(t.Context(), []string{"--self-test"}, nil, identity); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != filepath.Join(root, "lib")+"\nunset" {
+		t.Fatal("Vyper subprocess did not isolate its library path and environment")
+	}
+}

@@ -904,3 +904,12 @@ closure below supplies the missing evidence.
   SEA compilation, timeout recovery, isolation and cache repair. The image gate
   additionally validates every shared file and core license against pinned
   digests. Package license tests reject missing vendored notices and tampering.
+- Run 38032516945 passes quality, security/licenses, SPA and both native Linux
+  Vyper matrices. Remaining failures exposed missing compiler-install
+  prerequisites for PostgreSQL, outdated Go builders in the Preview gateway
+  and local x402 facilitator, and missing private ELF search paths in Vyper
+  subprocesses. Added the prerequisites, aligned both builders to Go 1.27.2,
+  and set only the authenticated SEA's private library directory in the clean
+  child environment. A focused regression rejects inherited parent paths or
+  secrets. Targeted macOS and real Linux ARM64 subprocess tests and lint pass;
+  production and gateway images rebuild successfully.

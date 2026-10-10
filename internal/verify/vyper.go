@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"sync"
@@ -222,6 +223,7 @@ func (compiler *VyperCompiler) runExpected(ctx context.Context, arguments []stri
 	command.Env = []string{
 		"HOME=/nonexistent",
 		"TMPDIR=" + temporaryDirectory,
+		"LD_LIBRARY_PATH=" + filepath.Join(filepath.Dir(compiler.Path), "lib"),
 		"LANG=C",
 		"LC_ALL=C",
 	}
