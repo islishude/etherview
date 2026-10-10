@@ -913,3 +913,10 @@ closure below supplies the missing evidence.
   child environment. A focused regression rejects inherited parent paths or
   secrets. Targeted macOS and real Linux ARM64 subprocess tests and lint pass;
   production and gateway images rebuild successfully.
+- Run 38050312836 passes both native Vyper matrices, both Foundry production
+  jobs, quality, security/licenses, deployment, Preview and SPA checks. Its
+  PostgreSQL failure is a metric-test false positive: a global substring search
+  for the other chain's age `3600` matched heap bytes `7360016`. Replaced it
+  with exact named metric values; the existing chain-scoped repair age bound
+  remains. The focused owned-PostgreSQL regression with `-race` and
+  source/docs/plan gates pass. Full remote acceptance remains pending.
