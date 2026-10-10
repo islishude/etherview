@@ -899,3 +899,8 @@ closure below supplies the missing evidence.
   runtime/isolation/lifecycle regressions pass. Release-tool regressions and
   docs/plan checks pass. Full production matrix and remote CI are pending;
   this does not complete T119 or authorize promotion.
+- Additional local checks: PostgreSQL Vyper/cache integration with `-race`
+  passes and cleans its owned database; Linux ARM64 container tests cover real
+  SEA compilation, timeout recovery, isolation and cache repair. The image gate
+  additionally validates every shared file and core license against pinned
+  digests. Package license tests reject missing vendored notices and tampering.

@@ -112,6 +112,12 @@ node .github/scripts/solcjs-runtime-image-check.mjs \
     "$temporary_directory/rootfs.txt" \
     "$temporary_directory/licenses/solcjs-runtime"
 
+tar -xf "$temporary_directory/rootfs.tar" -C "$temporary_directory" \
+    opt/etherview/python-wasm licenses/python-wasm
+node .github/scripts/wasm-runtime-image-check.mjs \
+    "$temporary_directory/opt/etherview/python-wasm" \
+    "$temporary_directory/licenses/python-wasm"
+
 for required_path in \
     LICENSE \
     THIRD_PARTY_NOTICES.md \
