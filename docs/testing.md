@@ -280,8 +280,8 @@ branch; scheduled start times may be delayed by runner load.
   discovered private libraries missing from the final base rootfs, and the
   read-only Geas v0.3.3 helper, but no general Node executable, wrapper source,
   package metadata, `node_modules`, npm, npx, corepack, shell, Go toolchain,
-  native solc, or general Python/Vyper CLI. The separate read-only Vyper helper
-  directory contains its pinned interpreter, dependency closure and manifest.
+  native solc, or general Python/Vyper CLI. The read-only shared Python WASM
+  directory contains the pinned runtime, crypto wheel and manifest.
   It also validates the non-root-owned mode-0750 compiler cache seed directory
   used when Docker initializes the persistent named volume.
 - `make test-schema-e2e`: use Go orchestration to migrate a fresh PostgreSQL 18
@@ -594,9 +594,12 @@ separate release requirement; the local matrix does not satisfy it.
 from installed locked build environments; acceptance never rewrites references.
 
 `make test-hardhat3-e2e` also runs the strict persistence-count regression, with
-Vyper expectations derived from the version/protocol matrix. It requires both
-Linux artifact sets in
-`.local/vyper-releases/`. An ephemeral signed HTTPS fixture exercises real cold
+Vyper expectations derived from the version/protocol matrix. It requires the
+common WASM packages in `.local/vyper-wasm/packages/`, transport descriptors in
+`.local/vyper-releases/`, and a current production-image matrix record. Run
+`node compiler/vyper/wasm/production-matrix.mjs` after building the production
+image; it checks all original/modified fixtures in fresh network-disabled
+containers. Local non-Linux records are diagnostic and rejected by signing. An ephemeral signed HTTPS fixture exercises real cold
 runtime downloads. It deploys contracts from six protocol families through
 native REST and Etherscan in both monolith and split layouts, verifies constructor
 and immutable values, ABI/source reads and catalog-bound provenance. Successful

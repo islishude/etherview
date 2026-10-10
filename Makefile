@@ -307,6 +307,8 @@ license-tool-check:
 		echo "license-check: frontend checker must be pinned at $(WEB_LICENSE_CHECKER_VERSION)"; exit 1; }
 
 license-check: license-tool-check web-install compiler-install
+	$(PYTHON) compiler/vyper/wasm/packages.py
+	$(NODE) compiler/vyper/wasm/licenses.mjs
 	$(PYTHON) compiler/vyper/licenses.py
 	@test -f LICENSE || { echo "license-check: root LICENSE is missing"; exit 1; }
 	@grep -q "Apache License" LICENSE || { echo "license-check: root LICENSE is not Apache-2.0"; exit 1; }

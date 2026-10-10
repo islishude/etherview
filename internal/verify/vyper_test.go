@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -105,7 +106,42 @@ func newVyperTestCompiler(t *testing.T) *VyperCompiler {
 	if err := os.Chmod(executor, 0555); err != nil {
 		t.Fatal(err)
 	}
-	mutateTestManifest(t, root, func(m *solcJSRuntimeManifest) { m.Files[0] = testManifestFile(t, root, executor, "executor", "") })
+	// The identity-only fixture contains a dummy libatomic. A real Linux SEA
+	// loads that SONAME, so give this execution fixture the actual host library.
+	if runtime.GOOS == "linux" {
+		output, err := exec.CommandContext(t.Context(), "ldd", path).Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var library string
+		for line := range strings.SplitSeq(string(output), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) >= 3 && fields[0] == "libatomic.so.1" && filepath.IsAbs(fields[2]) {
+				library = fields[2]
+			}
+		}
+		if library == "" {
+			t.Fatal("real Linux Vyper execution fixture requires libatomic")
+		}
+		data, err := os.ReadFile(library)
+		if err != nil {
+			t.Fatal(err)
+		}
+		target := filepath.Join(root, "lib", "libatomic.so.1")
+		if err := os.Chmod(target, 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(target, data, 0444); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(target, 0444); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mutateTestManifest(t, root, func(m *solcJSRuntimeManifest) {
+		m.Files[0] = testManifestFile(t, root, executor, "executor", "")
+		m.Files[1] = testManifestFile(t, root, filepath.Join(root, "lib", "libatomic.so.1"), "library", "libatomic.so.1")
+	})
 	makeRuntimeReadOnly(t, root)
 	shared := copyWASMTestTree(t, "../../.local/vyper-wasm/shared")
 	pkg := copyWASMTestTree(t, "../../.local/vyper-wasm/packages/0.4.3")

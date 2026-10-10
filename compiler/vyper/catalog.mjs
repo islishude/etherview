@@ -20,7 +20,7 @@ if (!Number.isFinite(expiry.getTime()) || expiry <= new Date()) throw new Error(
 const index = JSON.parse(readFileSync(new URL('./versions/index.json', import.meta.url))).versions;
 const acceptance = JSON.parse(readFileSync(values.acceptance));
 const runtimes = new Map();
-for (const filename of readdirSync(values.artifacts).filter((name) => name.endsWith('.json'))) {
+for (const filename of readdirSync(values.artifacts).filter((name) => /^vyper-.*\.json$/.test(name))) {
   const descriptorPath = resolve(values.artifacts, filename);
   const descriptorStat = lstatSync(descriptorPath);
   if (!descriptorStat.isFile() || descriptorStat.size > 1024 * 1024) throw new Error('invalid descriptor file');
@@ -47,7 +47,7 @@ for (const filename of readdirSync(values.artifacts).filter((name) => name.endsW
   const executor_digests = {};
   for (const platform of platforms) {
     const evidence = acceptance[platform];
-    if (!evidence || evidence.monolith !== true || evidence.split !== true ||
+    if (!evidence || evidence.native_linux !== true || evidence.monolith !== true || evidence.split !== true ||
         evidence.shared_sha256 !== sharedSHA256 ||
         evidence.descriptors?.[filename] !== sha256(raw)) throw new Error('native production acceptance is missing or stale');
     const executor = executorDigest(evidence.host_sha256, sharedSHA256, artifact.manifest_sha256);

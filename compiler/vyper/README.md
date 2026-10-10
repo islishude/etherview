@@ -30,12 +30,15 @@ these same archive bytes. Building transports does not assert matrix or
 production acceptance.
 
 The catalog signer requires one acceptance record per Linux architecture with
-`monolith`, `split`, the production `host_sha256`, pinned `shared_sha256`, and
+`native_linux`, `monolith`, `split`, the production `host_sha256`, pinned `shared_sha256`, and
 `descriptors` mapping filenames to their SHA-256 digests. Each record's `matrix`
 maps all 26 versions to `cases`, `fixtures_sha256`, `package_sha256`,
 `shared_sha256` and `executor_sha256`. The signer checks the exact repository
 fixture counts and contents and recomputes each composite executor identity.
-`wasm/release.mjs` defines these identities. Only native acceptance jobs may
+`wasm/release.mjs` defines these identities. Run
+`node compiler/vyper/wasm/production-matrix.mjs` against the built production
+image to emit a matrix record; successful Hardhat monolith/split tests add the
+production acceptance flags. Non-Linux records remain diagnostic. Only native acceptance jobs may
 produce these records after passing the corresponding tests; never synthesize
 acceptance from descriptor presence or local candidate results.
 

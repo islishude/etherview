@@ -1,0 +1,22 @@
+[
+  {
+    "path": "pyodide-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/pyodide/pyodide/0.29.3/LICENSE",
+    "sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5"
+  },
+  {
+    "path": "Python-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/python/cpython/v3.13.2/LICENSE",
+    "sha256": "78b12c3a81360b357002334f0e70ea0e92eebf7a9b358805c03c48484945f3bb"
+  },
+  {
+    "path": "emscripten-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/emscripten-core/emscripten/4.0.9/LICENSE",
+    "sha256": "620a78084fc7ca97c0b5dea9abf891f3ffcadfdbf305276f099c9c4e12fc1d86"
+  },
+  {
+    "path": "pycryptodome-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/Legrandin/pycryptodome/v3.21.0/LICENSE.rst",
+    "sha256": "4e04660d77c1c64e89d79537919fb8240fa21484a7e3db29f358b2c7f84ea073"
+  }
+]

@@ -404,7 +404,7 @@ func captureHardhatProxySnapshot(
  count(*) FILTER (WHERE language='vyper' AND kind='address' AND status='succeeded'
    AND compiler_platform='python-wheel'
    AND catalog_language='vyper' AND catalog_generation_id IS NOT NULL
-   AND executor_kind='etherview_vyper_v3' AND execution_policy='trusted_subprocess'
+   AND executor_kind='node_vyper_wasm_v1' AND execution_policy='trusted_subprocess'
    AND octet_length(executor_digest)=32)=$1
  FROM verification_jobs`, vyperProductionJobCount).Scan(&result.VyperJobs, &result.VyperProvenance); err != nil {
 		t.Fatal(err)

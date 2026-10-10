@@ -878,3 +878,24 @@ closure below supplies the missing evidence.
   complete WASM security/license inventory, performance, deployment parity and
   remote AMD64/ARM64 acceptance are still outstanding. The signing-tool unit
   fixtures are synthetic and do not constitute native acceptance.
+
+### P30-T119 — Clean-runner CI repair (2026-10-10)
+
+- CI run 38004738560 exposed a Linux-only duplicate map key, an unpinned Node
+  runtime in matrix jobs, missing WASM source in Docker, and a license check
+  reading the removed native runtime. Fixed each root cause; real Linux SEA
+  test fixtures also use the actual libatomic rather than the identity-only
+  dummy library.
+- Production now ships the shared read-only WASM runtime and authenticated
+  upstream core notices. Package licensing checks all 26 packages and their
+  vendored dist-info distributions. Native Python/PyInstaller image stages are
+  removed. Image checks exercise the WASM self-test with networking disabled.
+- CI builds common packages once, installs pinned Node on both consumers, and
+  tests their production images against every original/modified fixture before
+  Hardhat v2 catalog and monolith/split acceptance. Records bind the image,
+  package, shared runtime and fixtures; non-Linux records cannot authorize
+  signing. Hardhat retains its strict provenance/count assertions.
+- Local production ARM64 image build/check and real Linux-container Vyper
+  runtime/isolation/lifecycle regressions pass. Release-tool regressions and
+  docs/plan checks pass. Full production matrix and remote CI are pending;
+  this does not complete T119 or authorize promotion.

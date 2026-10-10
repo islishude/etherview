@@ -10,7 +10,7 @@ import { executorDigest, fixtureIdentity, sharedSHA256 } from './wasm/release.mj
 const script = fileURLToPath(new URL('./catalog.mjs', import.meta.url));
 const versions = JSON.parse(readFileSync(new URL('./versions/index.json', import.meta.url))).versions;
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
-for (const failure of ['', 'missing-architecture', 'stale-acceptance', 'corrupt-archive', 'missing-matrix', 'partial-matrix', 'stale-fixtures', 'wrong-host', 'wrong-shared']) {
+for (const failure of ['', 'missing-architecture', 'stale-acceptance', 'corrupt-archive', 'missing-matrix', 'partial-matrix', 'stale-fixtures', 'wrong-host', 'wrong-shared', 'non-native']) {
   test(`signed catalog ${failure || 'round trip'}`, () => {
     const root = mkdtempSync(join(tmpdir(), 'vyper-catalog-'));
     try {
@@ -19,7 +19,7 @@ for (const failure of ['', 'missing-architecture', 'stale-acceptance', 'corrupt-
       const acceptance = {};
       for (const platform of ['linux-amd64', 'linux-arm64']) {
         if (failure === 'missing-architecture' && platform === 'linux-arm64') continue;
-        acceptance[platform] = { monolith: true, split: true, descriptors: {}, matrix: {},
+        acceptance[platform] = { native_linux: true, monolith: true, split: true, descriptors: {}, matrix: {},
           shared_sha256: sharedSHA256, host_sha256: sha(platform) };
       }
       for (const entry of versions) {
@@ -41,8 +41,10 @@ for (const failure of ['', 'missing-architecture', 'stale-acceptance', 'corrupt-
           if (failure === 'stale-fixtures') evidence.matrix[entry.version].fixtures_sha256 = '2'.repeat(64);
         }
       }
+      if (failure === 'non-native') acceptance['linux-arm64'].native_linux = false;
       if (failure === 'wrong-host') acceptance['linux-arm64'].host_sha256 = '3'.repeat(64);
       if (failure === 'wrong-shared') acceptance['linux-arm64'].shared_sha256 = '3'.repeat(64);
+      writeFileSync(join(root, 'matrix-arm64.json'), JSON.stringify({ unrelated: 'evidence file' }));
       writeFileSync(join(root, 'acceptance.txt'), JSON.stringify(acceptance));
       const result = spawnSync(process.execPath, [script, '--artifacts', root, '--origin', 'https://compilers.example/vyper/',
         '--acceptance', join(root, 'acceptance.txt'), '--key-file', join(root, 'key.pem'),
