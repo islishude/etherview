@@ -17,18 +17,15 @@ func TestVyperArchivePythonProducerRoundTrip(t *testing.T) {
 	if err := os.Mkdir(source, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	files := map[string]string{"etherview-vyper": "fixture helper\n", "runtime-manifest.json": "{}\n"}
+	files := map[string]string{"packages.zip": "fixture helper\n", "package-manifest.json": "{}\n"}
 	for name, contents := range files {
 		mode := os.FileMode(0o444)
-		if name == "etherview-vyper" {
-			mode = 0o555
-		}
 		if err := os.WriteFile(filepath.Join(source, name), []byte(contents), mode); err != nil {
 			t.Fatal(err)
 		}
 	}
 	archive := filepath.Join(root, "runtime.tar.gz")
-	producer, err := filepath.Abs("../../compiler/vyper/matrix.py")
+	producer, err := filepath.Abs("../../compiler/vyper/wasm/packages.py")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,9 +63,6 @@ module.pack_runtime(pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3]))
 			t.Fatal(err)
 		}
 		mode := os.FileMode(0o444)
-		if name == "etherview-vyper" {
-			mode = 0o555
-		}
 		if info.Mode().Perm() != mode {
 			t.Fatalf("file %s: mode=%o", name, info.Mode().Perm())
 		}
@@ -78,7 +72,7 @@ module.pack_runtime(pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3]))
 func TestVyperArchivePaddingAndGzipIntegrity(t *testing.T) {
 	var raw bytes.Buffer
 	writer := tar.NewWriter(&raw)
-	for _, name := range []string{"etherview-vyper", "runtime-manifest.json"} {
+	for _, name := range []string{"packages.zip", "package-manifest.json"} {
 		if err := writer.WriteHeader(&tar.Header{Name: name, Typeflag: tar.TypeReg, Mode: 0o444, Size: 1}); err != nil {
 			t.Fatal(err)
 		}

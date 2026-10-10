@@ -1204,7 +1204,7 @@ defaults) and keep these test-only overrides out of production runbooks.
 
 ## Signed Vyper runtime catalog
 
-API/all processes obtain dedicated Vyper runtimes from the configured signed
+API/all processes obtain architecture-neutral Vyper packages from the configured signed
 catalog. Set `verification.vyper_catalog_url` and
 `verification.vyper_catalog_public_key` (base64-encoded 32-byte Ed25519 public
 key), and add the catalog and artifact HTTPS origins to
@@ -1220,28 +1220,31 @@ without a fresh catalog, or at signed expiry. Previously bound jobs retain their
 exact compiler and executor identity; refreshing or withdrawing a release never
 rebinds a retry. Keep old published packages available for those jobs.
 
-Runtime archives share the existing disposable compiler cache volume. Downloads
-are authenticated before bounded extraction and atomic installation. Every
-execution rechecks the complete read-only manifest and files. Runtime schema v3
-passes the configured input/output limits through server-owned arguments; no
-pip, source build or general-purpose Python CLI runs in application processes.
-The older bundled helper is retained as a local regression fixture; production
-catalog execution does not fall back to it.
+Compiler archives share the existing disposable compiler cache volume. Downloads
+are authenticated before bounded extraction and atomic installation. The image
+contains the common read-only Pyodide runtime at `/opt/etherview/python-wasm`
+and the host Node SEA. Every invocation checks their manifests and the selected
+package. Catalog v2 binds all three identities and the official compiler digest.
+There is no native Python fallback or runtime dependency installation.
+
+Before applying migration 0072, stop accepting new Vyper jobs and drain all
+queued/running Vyper work. The migration refuses an undrained queue and preserves
+terminal provenance. New jobs bind only the WASM catalog. Existing tasks are
+never rebound to a replacement executor. Both API/all topologies use the same
+image, catalog trust configuration and compiler cache persistence.
 
 Run API-capable replicas in one deployment on the same architecture; drain bound
-work before moving that deployment to another architecture. Before applying
-migration 0067, drain all queued/running Vyper jobs. The migration
-refuses an undrained queue and never changes terminal provenance. Missing,
-changed, wrong-platform or writable runtimes fail closed. Restore an authentic
-runtime or distribution service instead of editing persisted job provenance.
-The cache can be rebuilt; stop all cache owners before operator cleanup.
+work before moving that deployment to another architecture. Missing, changed or
+writable runtime components fail closed. Restore authentic image/package bytes
+instead of editing job provenance. Stop all cache owners before cache cleanup.
 
-Linux compilation uses a 512 MiB per-process address-space limit, 64 file
-descriptors, no core dump and the configured verification timeout/I/O bounds.
-Size API memory resources for the shared verification worker count plus the
-API itself. The Python audit guard is defense in depth for trusted compiler
-code; it is not a sandbox for arbitrary Python or native code. Source imports
-resolve only from the submitted bundle and pinned built-ins.
+Each compilation uses a fresh SEA process with V8 old-generation memory capped
+at 128 MiB and each WASM linear memory capped at 384 MiB, plus configured timeout
+and I/O bounds. These are not total RSS or the former 512 MiB address-space limit.
+Size API memory for the worker count and measured RSS. Imports resolve only from
+the submitted bundle and authenticated built-ins. Promote signed catalogs only
+after matching native AMD64/ARM64 matrix and monolith/split acceptance; local
+Docker checks do not replace that evidence.
 
 ## Private watches, notifications and CSV exports
 

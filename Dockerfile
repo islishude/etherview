@@ -22,6 +22,7 @@ COPY compiler/package.json compiler/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --ignore-scripts --no-audit --no-fund
 COPY compiler/compile.mjs compiler/build-sea.mjs compiler/build-runtime.mjs compiler/elf-runtime.mjs compiler/test-elf-runtime.mjs compiler/test-sea.mjs ./
+COPY compiler/vyper/wasm ./vyper/wasm/
 COPY --from=production-base / /target-rootfs/
 RUN node build-sea.mjs /opt/etherview/solcjs/etherview-solcjs \
     && install -d -m 0755 /opt/etherview/licenses/solcjs-runtime \
@@ -39,25 +40,13 @@ RUN node build-sea.mjs /opt/etherview/solcjs/etherview-solcjs \
     && node test-sea.mjs /target-rootfs node_modules/solc/soljson.js \
     && install -d -m 0755 /solcjs-runtime-copy \
     && cp -a /opt/etherview/solcjs /solcjs-runtime-copy/ \
+    && node vyper/wasm/prepare.mjs /solcjs-runtime-copy/python-wasm \
+    && node vyper/wasm/licenses.mjs /opt/etherview/licenses/python-wasm \
+    && chmod 0555 /solcjs-runtime-copy/python-wasm \
+    && chmod 0444 /solcjs-runtime-copy/python-wasm/* \
     && install -d -m 0750 /var/lib/etherview/compilers/cache
 
-FROM python:3.13.15-slim-trixie AS vyper-builder
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends binutils pax-utils \
-    && rm -rf /var/lib/apt/lists/*
-WORKDIR /src/vyper
-COPY compiler/vyper/requirements.lock ./
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --disable-pip-version-check --require-hashes --only-binary=:all: -r requirements.lock
-COPY compiler/vyper/helper.py compiler/vyper/adapter.py compiler/vyper/build.py compiler/vyper/linux_runtime.py ./
-COPY --from=production-base / /target-rootfs/
-RUN python build.py /opt/etherview/vyper /target-rootfs \
-    && cp /opt/etherview/vyper/runtime-manifest.json /target-rootfs/opt/etherview/vyper/runtime-manifest.json \
-    && chroot --userspec=65532:65532 /target-rootfs /opt/etherview/vyper/etherview-vyper --self-test \
-    && mkdir /vyper-runtime-copy \
-    && cp -a /opt/etherview/vyper /vyper-runtime-copy/
-
-FROM golang:1.27.1 AS go-builder
+FROM golang:1.27.2 AS go-builder
 WORKDIR /src
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git \
@@ -92,7 +81,7 @@ ARG CREATED=unknown
 LABEL org.opencontainers.image.title="Etherview" \
     org.opencontainers.image.description="Ethereum execution-layer explorer" \
     org.opencontainers.image.source="https://github.com/islishude/etherview" \
-    org.opencontainers.image.licenses="Apache-2.0 AND LGPL-3.0-or-later AND LGPL-3.0-only AND BSD-3-Clause AND BSD-2-Clause-FreeBSD AND MIT AND PSF-2.0 AND (GPL-2.0-or-later WITH Bootloader-exception)" \
+    org.opencontainers.image.licenses="Apache-2.0 AND LGPL-3.0-or-later AND LGPL-3.0-only AND BSD-3-Clause AND BSD-2-Clause-FreeBSD AND MIT AND PSF-2.0 AND MPL-2.0" \
     org.opencontainers.image.version="${VERSION}" \
     org.opencontainers.image.revision="${REVISION}" \
     org.opencontainers.image.created="${CREATED}"
@@ -103,8 +92,8 @@ COPY --chown=nonroot:nonroot licenses /licenses
 COPY --from=go-builder --chown=nonroot:nonroot /go/bin/etherview /etherview
 COPY --from=go-builder --chown=nonroot:nonroot --chmod=0555 /go/bin/etherview-geas-compiler /usr/local/bin/etherview-geas-compiler
 COPY --from=compiler-builder --chown=nonroot:nonroot /solcjs-runtime-copy /opt/etherview
-COPY --from=vyper-builder --chown=nonroot:nonroot /vyper-runtime-copy /opt/etherview
 COPY --from=compiler-builder --chown=nonroot:nonroot /opt/etherview/licenses/solcjs-runtime /licenses/solcjs-runtime
+COPY --from=compiler-builder --chown=nonroot:nonroot /opt/etherview/licenses/python-wasm /licenses/python-wasm
 COPY --from=compiler-builder --chown=nonroot:nonroot --chmod=0750 /var/lib/etherview/compilers /var/lib/etherview/compilers
 USER 65532:65532
 EXPOSE 8080 9090

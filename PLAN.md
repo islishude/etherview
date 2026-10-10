@@ -19,7 +19,7 @@ batch semantics are not core v1 scope.
 | P00 | [Foundation](docs/plans/P00-foundation.md) | done | — | Governance, toolchain, config, CLI, migrations, CI, and embedded SPA skeleton |
 | P10 | [Indexing](docs/plans/P10-indexing.md) | done | P00 | Full-history core indexing, canonicality, finality, reorgs, and repair |
 | P20 | [Enrichment](docs/plans/P20-enrichment.md) | done | P10 | Tokens, NFTs, ABI/proxy decoding, traces, balances, and statistics |
-| P30 | [Contract Platform & Runtime Operations](docs/plans/P30-contract-verification.md) | done | P00, P10, P20 | Consolidated verification, contract intelligence, runtime, deployment, telemetry, and optional accelerators |
+| P30 | [Contract Platform & Runtime Operations](docs/plans/P30-contract-verification.md) | in_progress | P00, P10, P20 | Consolidated verification, contract intelligence, runtime, deployment, telemetry, and optional accelerators |
 | P40 | [API](docs/plans/P40-api.md) | done | P10; incremental P20/P30 | Native REST, search, API keys, SSE, and Etherscan V2 compatibility |
 | P50 | [Web](docs/plans/P50-web.md) | done | P40; incremental P20/P30 | Bilingual embedded SPA and injected-wallet contract interaction |
 | P64 | [NFT Metadata Web](docs/plans/P64-nft-metadata-web.md) | done | P20, P30, P40, P50 | Canonical NFT metadata projection, standard-event refresh, and guarded external-image navigation |
@@ -89,6 +89,15 @@ P68-T11 is complete: PR #86's cold billing-page test awaits asynchronous
 React rendering, and the egress rejection assertion accepts Helm 3/4 schema
 path formats. Local Web unit/browser, generation, deployment, docs, and plan
 gates pass; remote CI has not been rerun with this fix.
+
+P30-T117–T119 reopen P30 for the approved full-version Python WASM migration.
+P30-T117/T118 are complete locally: the shared SEA execution boundary, signed
+package binding and drain migration pass the 26-version, 362-case reference
+matrix and applicable regression gates. P30-T119 is in progress for
+production packaging, release/security inventory, performance and native
+AMD64/ARM64 monolith/split evidence. Common package builds are reproducible and
+the v2 signing tool rejects incomplete architecture/matrix evidence; no production rollout is authorized by
+these local results.
 
 ## Global Release Gates
 

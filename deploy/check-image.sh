@@ -74,8 +74,10 @@ fi
 
 "$docker_command" run --rm --network none --read-only --cap-drop ALL \
     --security-opt no-new-privileges \
-    --entrypoint /opt/etherview/vyper/etherview-vyper \
-    "$image" --self-test >/dev/null
+    --env LD_LIBRARY_PATH=/opt/etherview/solcjs/lib \
+    --entrypoint /opt/etherview/solcjs/etherview-solcjs \
+    "$image" "--node-options=--max-old-space-size=128 --wasm-max-mem-pages=6144 --allow-fs-read=/opt/etherview/python-wasm" \
+    --vyper-self-test /opt/etherview/python-wasm >/dev/null
 
 normalize_architecture() {
     case "$1" in
@@ -110,6 +112,12 @@ node .github/scripts/solcjs-runtime-image-check.mjs \
     "$temporary_directory/rootfs.txt" \
     "$temporary_directory/licenses/solcjs-runtime"
 
+tar -xf "$temporary_directory/rootfs.tar" -C "$temporary_directory" \
+    opt/etherview/python-wasm licenses/python-wasm
+node .github/scripts/wasm-runtime-image-check.mjs \
+    "$temporary_directory/opt/etherview/python-wasm" \
+    "$temporary_directory/licenses/python-wasm"
+
 for required_path in \
     LICENSE \
     THIRD_PARTY_NOTICES.md \
@@ -117,8 +125,12 @@ for required_path in \
     usr/local/bin/etherview-geas-compiler \
     opt/etherview/solcjs/etherview-solcjs \
     opt/etherview/solcjs/runtime-manifest.json \
-    opt/etherview/vyper/etherview-vyper \
-    opt/etherview/vyper/runtime-manifest.json \
+    opt/etherview/python-wasm/shared-manifest.json \
+    opt/etherview/python-wasm/pyodide.asm.wasm \
+    licenses/python-wasm/pyodide-LICENSE.txt \
+    licenses/python-wasm/Python-LICENSE.txt \
+    licenses/python-wasm/emscripten-LICENSE.txt \
+    licenses/python-wasm/pycryptodome-LICENSE.txt \
     licenses/solcjs-runtime/node-LICENSE.txt \
     licenses/solcjs-runtime/solc-LICENSE \
     licenses/solcjs-runtime/esbuild-LICENSE.md \
@@ -137,7 +149,7 @@ do
     fi
 done
 
-grep -Ev '^opt/etherview/(solcjs|vyper)(/|$)' \
+grep -Ev '^opt/etherview/(solcjs|python-wasm)(/|$)' \
     "$temporary_directory/rootfs.txt" >"$temporary_directory/non-compiler-rootfs.txt"
 forbidden_pattern='(^|/)(node|nodejs|npm|npx|corepack|pnpm|yarn|go|gofmt|solc|solcjs|vyper|vyper-json|docker|podman|containerd|nerdctl|runc)(/|$)|(^|/)node_modules(/|$)|(^|/)(package.json|package-lock.json|yarn.lock|pnpm-lock.yaml)$|(^|/)(sh|bash|ash|dash|zsh|ksh|csh|tcsh|fish|busybox)$'
 if grep -E -i "$forbidden_pattern" "$temporary_directory/non-compiler-rootfs.txt" >"$temporary_directory/forbidden.txt"; then
@@ -194,10 +206,10 @@ if grep -Ei '(^|/)(python([0-9]+([.][0-9]+)*)?|pip([0-9]+([.][0-9]+)*)?|uv|vyper
     echo "docker-image-check: general Python/package CLI in production image" >&2
     exit 1
 fi
-if awk '$1 ~ /^[-d]/ && $1 ~ /w/ && $NF ~ /^opt\/etherview\/vyper(\/|$)/ { found = 1 } END { exit !found }' \
+if awk '$1 ~ /^[-d]/ && $1 ~ /w/ && $NF ~ /^opt\/etherview\/python-wasm(\/|$)/ { found = 1 } END { exit !found }' \
     "$temporary_directory/rootfs-verbose.txt"; then
     echo "docker-image-check: writable Vyper runtime file" >&2
     exit 1
 fi
 
-echo "docker-image-check: PASS (user=$configured_user, architecture=$image_architecture, SEA=Node-v26.10.0, Geas=0.3.3, Vyper=0.4.3, hardened rootfs)"
+echo "docker-image-check: PASS (user=$configured_user, architecture=$image_architecture, SEA=Node-v26.10.0, Geas=0.3.3, Pyodide=0.29.3, hardened rootfs)"

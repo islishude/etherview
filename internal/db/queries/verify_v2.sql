@@ -42,7 +42,7 @@ WITH exhausted AS (
                OR (sqlc.arg('solidity_enabled')::boolean AND language IN ('solidity', 'yul'))
                OR (sqlc.arg('geas_enabled')::boolean AND language = 'geas')
                OR (sqlc.arg('vyper_enabled')::boolean AND language = 'vyper')
-               OR (sqlc.arg('vyper_prepared_enabled')::boolean AND language = 'vyper' AND compiler_digest IS NOT NULL AND executor_kind = 'etherview_vyper_v3'))
+               OR (sqlc.arg('vyper_prepared_enabled')::boolean AND language = 'vyper' AND compiler_digest IS NOT NULL AND executor_kind = 'node_vyper_wasm_v1'))
           AND attempt_count >= max_attempts
         ORDER BY created_at, id FOR UPDATE SKIP LOCKED LIMIT 1
     )
@@ -54,7 +54,7 @@ WITH exhausted AS (
            OR (sqlc.arg('solidity_enabled')::boolean AND language IN ('solidity', 'yul'))
            OR (sqlc.arg('geas_enabled')::boolean AND language = 'geas')
                OR (sqlc.arg('vyper_enabled')::boolean AND language = 'vyper')
-               OR (sqlc.arg('vyper_prepared_enabled')::boolean AND language = 'vyper' AND compiler_digest IS NOT NULL AND executor_kind = 'etherview_vyper_v3'))
+               OR (sqlc.arg('vyper_prepared_enabled')::boolean AND language = 'vyper' AND compiler_digest IS NOT NULL AND executor_kind = 'node_vyper_wasm_v1'))
       AND attempt_count < max_attempts
       AND NOT EXISTS (SELECT 1 FROM exhausted WHERE exhausted.id = verification_jobs.id)
     ORDER BY created_at, id FOR UPDATE SKIP LOCKED LIMIT 1
