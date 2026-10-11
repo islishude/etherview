@@ -55,3 +55,11 @@ Compiler distribution no longer multiplies Python runtime builds by CPU
 architecture. Node and its ELF closure remain host-native. Cold compilation is
 slower and memory consumption differs; performance evidence must use the exact
 selected runtime. Local candidate tests never substitute for Linux acceptance.
+
+Security review inventories actual compiler bundles (including vendors) and
+the pinned WASM core, with live advisory queries and exact-artifact applicability
+dispositions. Unknown or changed findings fail the gate. Historical EVM compiler
+bugs remain reproducible; verification is not contract safety certification.
+Reachable pathological normalization remains bounded by subprocess cancellation,
+not claimed fixed. See the [security and performance review](../reviews/P30-wasm-security-performance.md)
+for measured startup/RSS costs and the accepted execution boundary.

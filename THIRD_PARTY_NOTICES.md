@@ -117,7 +117,12 @@ The shared runtime contains Pyodide 0.29.3 (MPL-2.0), CPython 3.13.2
 (PSF license), Emscripten 4.0.9 runtime components and PyCryptodome 3.21.0.
 Authenticated upstream notices and source URLs are installed under
 `/licenses/python-wasm`; `compiler/vyper/wasm/licenses.lock.json` pins their
-identities. The source URLs identify the exact upstream release tags.
+identities. The source URLs identify exact upstream releases or commits.
+The notices also cover zlib 1.3.1, the Emscripten bzip2 1.0.6 port, Expat
+2.6.4, libffi, hiwire, musl 1.2.5, LLVM compiler-rt/libc++/libc++abi,
+HACL* and CPython third-party components including libmpdec 2.5.1.
+The source commit inventory and vulnerability dispositions are recorded in
+`compiler/vyper/wasm/audit-review.json`.
 
 Each separately distributed compiler package includes official Vyper source,
 its pure Python dependencies and their upstream notices, including setuptools

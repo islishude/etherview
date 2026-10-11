@@ -61,9 +61,30 @@ needed by bound retries. No production signing key is stored in this repository.
 ## Dependency audit corrections
 
 `make security-check` runs `audit.py` using its separate hash-locked pip-audit
-environment. It currently scans the retained native reference dependency lock and fails on unknown
-advisories, skipped packages or audit-service failure. The complete WASM dependency inventory remains a P30-T119 release gate. Its retained raw report
-is `.local/vyper/audit/report.json`.
+environment for the retained native reference lock. Its raw report is
+`.local/vyper/audit/report.json`. The same gate builds all 26 WASM packages and
+runs `wasm/audit.py` against their actual metadata (including vendored packages),
+PyCryptodome and the pinned core source commits. PyPI and OSV are queried live;
+service failure, missing coverage, changed inventory or unreviewed/changed
+advisories fail the gate. Raw findings, inventory and the result are retained
+in `.local/vyper-wasm/audit/` and uploaded by CI.
+
+`wasm/audit-review.json` binds explicit applicability dispositions to exact
+artifact and execution-boundary digests. A passing audit is not a zero-CVE
+claim: historical compiler bytecode defects remain for faithful verification,
+unreachable library interfaces remain distributed, and normalization CPU work
+is bounded by subprocess cancellation. See the [security and performance
+review](../../docs/reviews/P30-wasm-security-performance.md). Do not regenerate
+dispositions merely to silence a failing gate.
+
+`make benchmark-vyper-wasm` measures all versions with the actual restricted
+SEA: one first pair and three repeated pairs, every compilation in a fresh
+process. It also checks a 17-file workload against an official native output
+digest. The first pair is process-cold; OS page caches are not evicted.
+Optional `--native-python /absolute/path/to/venv/bin/python` records a 0.4.3
+native reference comparison. Reports are written to
+`.local/vyper-wasm/benchmark.json`; RSS uses per-child `wait4` high-water marks,
+not a cumulative child-process maximum.
 
 Two database records incorrectly include the exact official Vyper 0.4.3 wheel
 in an open-ended affected range. Corrections are restricted to package `vyper`,

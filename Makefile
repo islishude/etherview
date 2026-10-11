@@ -298,6 +298,8 @@ security-check: security-tool-check web-build compiler-install
 	$(NPM) --prefix web audit --audit-level=high
 	$(NPM) --prefix compiler audit --audit-level=high
 	$(PYTHON) compiler/vyper/audit.py
+	$(PYTHON) compiler/vyper/wasm/packages.py
+	$(PYTHON) compiler/vyper/wasm/audit.py
 	$(NPM) --prefix e2e/hardhat3 audit --audit-level=high
 	$(GO) test ./internal/app ./internal/auth ./internal/billing/... ./internal/cli ./internal/config ./internal/httpapi ./internal/jsonstrict ./internal/metadata ./internal/observability ./internal/userauth ./internal/verify ./web
 
@@ -562,3 +564,8 @@ test-vyper-wasm-candidate:
 	$(NPM) --prefix compiler ci --ignore-scripts
 	python3 -m unittest discover -s compiler/vyper/wasm -p 'test_*.py'
 	python3 compiler/vyper/wasm/check.py
+
+.PHONY: benchmark-vyper-wasm
+benchmark-vyper-wasm: compiler-install
+	$(PYTHON) compiler/vyper/wasm/packages.py
+	$(PYTHON) compiler/vyper/wasm/benchmark.py

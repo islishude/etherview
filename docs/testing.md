@@ -263,12 +263,21 @@ branch; scheduled start times may be delayed by runner load.
   integration, Hardhat, Foundry, and runtime E2E source, and TypeScript type
   checking.
 - `make security-check`: `govulncheck`, API-generator, frontend, and Hardhat 3
-  fixture dependency audits, secret scan, and security-focused tests. All
-  three npm dependency trees must report zero high-severity vulnerabilities;
+  fixture and compiler dependency audits, secret scan, and security-focused tests.
+  The WASM gate inventories actual packages including vendors and queries pinned
+  core source commits. Exact artifact/advisory dispositions are reviewed in
+  [P30 security evidence](reviews/P30-wasm-security-performance.md); missing
+  coverage, service errors and new/changed findings fail. All four npm
+  dependency trees must report zero high-severity vulnerabilities;
   the API generator's
   transitive parser and glob dependencies are constrained by audited
   overrides.
-- `make license-check`: Go and production frontend dependency license policy.
+- `make license-check`: Go, production frontend/compiler, all Vyper package
+  and pinned shared WASM component notice checks.
+- `make benchmark-vyper-wasm`: actual SEA first/repeated dual compilation,
+  per-process peak RSS and a native-reference-checked 17-file workload. Every
+  sample uses a fresh process. OS caches are not evicted; this local experiment
+  does not establish Linux capacity or throughput under concurrency.
 - `make deployment-check`: Docker build checks, Compose profile validation,
   and Helm lint/render checks. The render regression proves x402 secrets are
   absent while disabled, are injected only into `all`/`api` while enabled, and

@@ -90,14 +90,12 @@ React rendering, and the egress rejection assertion accepts Helm 3/4 schema
 path formats. Local Web unit/browser, generation, deployment, docs, and plan
 gates pass; remote CI has not been rerun with this fix.
 
-P30-T117–T119 reopen P30 for the approved full-version Python WASM migration.
-P30-T117/T118 are complete locally: the shared SEA execution boundary, signed
-package binding and drain migration pass the 26-version, 362-case reference
-matrix and applicable regression gates. P30-T119 is in progress for
-production packaging, release/security inventory, performance and native
-AMD64/ARM64 monolith/split evidence. Common package builds are reproducible and
-the v2 signing tool rejects incomplete architecture/matrix evidence; no production rollout is authorized by
-these local results.
+P30-T117/T118 are complete. P30-T119 now has native AMD64/ARM64
+production acceptance from run 38095397791 and completes actual-distribution
+security inventory, nested vendor/license coverage and selected-runtime
+performance evidence. The final audit follow-up is awaiting current-head CI
+before closure. No production catalog publication or deployment is authorized
+by these results.
 
 ## Global Release Gates
 

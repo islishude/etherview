@@ -6,6 +6,7 @@ import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / 'wasm'))
 from packages import ROOT, HERE, digest, locked_packages
+from audit import vendored_metadata
 
 
 def check_package(item, package):
@@ -33,7 +34,8 @@ def check_package(item, package):
                 raise ValueError('missing distribution license: ' + root)
         if len(roots) < len(manifest['dependencies']) + 1:
             raise ValueError('missing distribution metadata')
-    return len(roots)
+        vendors = vendored_metadata(archive, item['version'])
+    return len(roots) + len(vendors)
 
 
 def main():

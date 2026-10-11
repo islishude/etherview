@@ -3,12 +3,14 @@ package verify
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestVyperDynamicRequiresValidatedStartup(t *testing.T) {
@@ -20,6 +22,42 @@ func TestVyperDynamicRequiresValidatedStartup(t *testing.T) {
 	provenance := CompilerProvenance{Kind: CompilerVyper, Digest: digest, ExecutorDigest: digest, ExecutorKind: VyperDynamicExecutorKind, ExecutionPolicy: TrustedSubprocessPolicy, CatalogGeneration: 1, Platform: CompilerPlatformPythonWheel}
 	if _, err := compiler.CompilePinned(t.Context(), LanguageVyper, "0.4.3", provenance, nil); !errors.Is(err, ErrVyperRuntimeUnavailable) {
 		t.Fatalf("compiled before startup: %v", err)
+	}
+}
+
+func TestVyperUnicodeNormalizationWorkIsBounded(t *testing.T) {
+	compiler := newVyperTestCompiler(t)
+	raw, err := os.ReadFile("testdata/compiler/vyper/plain.input.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var input map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &input); err != nil {
+		t.Fatal(err)
+	}
+	// CVE-2026-3276: alternating canonical combining classes can cause
+	// quadratic normalization when the Python parser reads an identifier.
+	input["sources"], err = json.Marshal(map[string]any{"A.vy": map[string]string{
+		"content": "a" + strings.Repeat("\u0315\u0300", 131072) + ": uint256\n",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostile, err := json.Marshal(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiler.Timeout = 2 * time.Second
+	started := time.Now()
+	if _, err := compiler.Compile(t.Context(), LanguageVyper, "0.4.3", hostile); err == nil {
+		t.Fatal("pathological identifier was accepted")
+	}
+	if time.Since(started) > compiler.Timeout+5*time.Second {
+		t.Fatal("pathological compiler work exceeded cancellation/cleanup bound")
+	}
+	compiler.Timeout = 10 * time.Second
+	if _, err := compiler.Compile(t.Context(), LanguageVyper, "0.4.3", raw); err != nil {
+		t.Fatalf("compile after pathological input cleanup: %v", err)
 	}
 }
 

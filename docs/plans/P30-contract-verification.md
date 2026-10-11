@@ -932,3 +932,27 @@ closure below supplies the missing evidence.
   that existing duration; production compilation/download deadlines, input
   limits, all fixtures and the CI job deadline remain unchanged. Remote
   current-head completion is still required.
+
+
+### P30-T119 — WASM security and performance follow-up (2026-10-11)
+
+- Confirmed run [38095397791](https://github.com/islishude/etherview/actions/runs/38095397791)
+  passed all 13 jobs at `df12098600f5aaf72ff9d8baa89591dd8da3b13a`, including
+  both native full matrices and Hardhat/Foundry monolith/split acceptance.
+- Added the [security/performance review](../reviews/P30-wasm-security-performance.md)
+  and reproducible actual-SEA benchmark. All 26 versions and the 17-file larger
+  input match official output (216 fresh compilations). The larger workload is
+  about 4.14 s per pair / 258 MiB peak on local M3 Max. Native comparison and
+  substantial startup/RSS costs are recorded; OS caches were not evicted.
+- Security now inventories 590 distribution occurrences / 73 Python versions
+  plus 11 core source commits, including 14 nested packaging copies without
+  dist-info. Exact inventories and advisory content bind explicit applicability
+  dispositions. Missing/changed coverage or new findings fail. Retained historical
+  EVM defects and bounded Unicode CPU work are not described as fixed or CVE-free.
+- Added eleven missing core notices and nested-vendor notice validation. The
+  production ARM64 image identity/license/hardening check and focused Unicode,
+  permission, identity and cleanup race regressions pass. Updated audit/signing
+  tests and docs/plan gates pass. Full `make security-check license-check`,
+  `make lint-go deployment-check`, production image checks and focused race
+  checks pass locally. Current-head remote CI is required before marking T119
+  done or promoting PR.
