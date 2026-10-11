@@ -267,3 +267,7 @@ P30-T125 changes Hardhat's dependency to `vyper-packages`, allowing it to run
 alongside the native WASM matrix after package construction. Both tests and
 architectures remain intact; workflow structural validation and docs/plan gates
 pass. Remote scheduling remains unverified; P30 stays in progress for T120.
+
+P30-T126 is in progress: bind temporary CI artifacts to their producer run with
+short retention and parallelize production topology acceptance without losing
+monolith/distributed parity or Vyper image identity.

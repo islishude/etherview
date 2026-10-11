@@ -61,7 +61,10 @@ branch; scheduled start times may be delayed by runner load.
 
 The native Vyper WASM matrix and Hardhat production jobs both depend directly
 on `vyper-packages`, whose artifact they consume. They run independently after
-package construction; both architecture matrices remain required verification
+package construction. The producer uploads a run/attempt/job-qualified artifact
+with a one-day retention period; consumers use its exact artifact ID from the
+producer job output, including when only failed jobs are rerun. Both architecture
+matrices remain required verification
 coverage, without making Hardhat wait for native matrix completion.
 
 Host Python setup is required by quality/integration (`compiler-install`),

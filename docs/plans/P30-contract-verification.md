@@ -209,6 +209,8 @@ credential-scoped operational boundaries.
 
 | P30-T125 | done | P30-T119 | Run native WASM and Hardhat jobs independently after common package construction | workflow dependency and unchanged-job validation, docs/plan gates |
 
+| P30-T126 | in_progress | P30-T125 | Scope transient CI artifacts to their producer and parallelize production topology acceptance | artifact identity/retention, topology parity and native acceptance |
+
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
 ## Acceptance
@@ -1121,3 +1123,18 @@ closure below supplies the missing evidence.
 - `make docs-check plan-check` and `git diff --check` pass. T125 is done for
   this scheduling change; actual concurrent scheduling awaits remote CI.
   P30 remains in progress for T120's remaining acceptance evidence.
+
+### P30-T126 — Transient artifacts and topology concurrency (2026-10-11)
+
+- Common packages now have a run/attempt/producer-qualified artifact name and
+  one-day retention. Both consumers download the exact uploaded artifact ID
+  from the producer output, preserving extraction into `.local/` and avoiding
+  name reconstruction when only downstream failed jobs are rerun.
+- Workflow parsing verifies the upload's retention/name, producer output and
+  both exact-ID downloads. `make docs-check plan-check` and `git diff --check`
+  pass. These are local configuration checks, not remote artifact evidence.
+- Topology parallelization remains in progress. Separate matrix runners need
+  shared image/evidence transfer to retain the current same-image acceptance
+  and full snapshot parity comparison; this conflicts with the earlier request
+  to avoid cross-job image transfer. The user has been asked to select that
+  matrix design or same-runner parallel topology execution before implementation.

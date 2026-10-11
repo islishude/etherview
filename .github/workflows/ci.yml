@@ -70,6 +70,8 @@ jobs:
 
   vyper-packages:
     name: Build common Vyper WASM packages
+    outputs:
+      artifact-id: ${{ steps.packages.outputs.artifact-id }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -87,8 +89,10 @@ jobs:
           python compiler/vyper/wasm/packages.py
           python compiler/vyper/wasm/release.py --output .local/vyper-releases
       - uses: actions/upload-artifact@v7
+        id: packages
         with:
-          name: vyper-common-packages
+          name: vyper-packages-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+          retention-days: 1
           path: |
             .local/vyper-wasm/packages/
             .local/vyper-releases/
@@ -118,7 +122,8 @@ jobs:
           node-version-file: .nvmrc
       - uses: actions/download-artifact@v8
         with:
-          name: vyper-common-packages
+          artifact-ids: ${{ needs.vyper-packages.outputs.artifact-id }}
+          merge-multiple: true
           path: .local/
       - name: Build native SEA and verify the common packages
         run: |
@@ -144,7 +149,8 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
-          name: vyper-common-packages
+          artifact-ids: ${{ needs.vyper-packages.outputs.artifact-id }}
+          merge-multiple: true
           path: .local/
       - uses: docker/setup-buildx-action@v4
       - uses: actions/setup-go@v7
