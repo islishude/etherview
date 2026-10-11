@@ -1,6 +1,6 @@
 # P30 — Contract Platform & Runtime Operations
 
-Status: `in_progress`
+Status: `done`
 
 This is the canonical plan for contract verification, contract intelligence,
 and the shared runtime/operations platform. Its current work items use the P30
@@ -195,7 +195,7 @@ credential-scoped operational boundaries.
 
 | P30-T117 | done | P30-T110 | Gate the shared Pyodide runtime against all 26 official Vyper reference matrices | authenticated packages, unchanged original/modified fixtures and bounded WASM execution |
 | P30-T118 | done | P30-T117 | Replace native Vyper helpers with the shared Node SEA and signed architecture-neutral compiler packages | isolation, identity, cache, migration and publication regressions |
-| P30-T119 | in_progress | P30-T118 | Complete WASM deployment, release tooling and acceptance | common gates, performance and native AMD64/ARM64 production parity |
+| P30-T119 | done | P30-T118 | Complete WASM deployment, release tooling and acceptance | common gates, performance and native AMD64/ARM64 production parity |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
@@ -205,7 +205,7 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
       installation, fixed SEA isolation and immutable database binding pass
       local full-reference, race, PostgreSQL, generation, lint, security/license,
       source/docs/plan gates. Production release acceptance remains P30-T119.
-- [ ] P30-T119: shared production packaging, release signing tools, complete
+- [x] P30-T119: shared production packaging, release signing tools, complete
       WASM dependency/license inventory, performance and native Linux
       AMD64/ARM64 monolith/split evidence; local checks cannot close this gate.
 
@@ -942,7 +942,7 @@ closure below supplies the missing evidence.
 - Added the [security/performance review](../reviews/P30-wasm-security-performance.md)
   and reproducible actual-SEA benchmark. All 26 versions and the 17-file larger
   input match official output (216 fresh compilations). The larger workload is
-  about 4.14 s per pair / 258 MiB peak on local M3 Max. Native comparison and
+  about 4.48 s per repeated pair / 277 MiB peak on local M3 Max. Native comparison and
   substantial startup/RSS costs are recorded; OS caches were not evicted.
 - Security now inventories 590 distribution occurrences / 73 Python versions
   plus 11 core source commits, including 14 nested packaging copies without
@@ -954,5 +954,39 @@ closure below supplies the missing evidence.
   permission, identity and cleanup race regressions pass. Updated audit/signing
   tests and docs/plan gates pass. Full `make security-check license-check`,
   `make lint-go deployment-check`, production image checks and focused race
-  checks pass locally. Current-head remote CI is required before marking T119
-  done or promoting PR.
+  checks pass locally. The closure below supplies current implementation CI
+  evidence and completes T119.
+
+
+### P30-T119 — Audit and performance acceptance closure (2026-10-11)
+
+- [Run 38119209326](https://github.com/islishude/etherview/actions/runs/38119209326)
+  passes all 13 jobs on its first attempt at implementation commit
+  `b52deabeb32a90582caab093cff0f7cef5a4d138`: both native full matrices,
+  both production-image matrices and Hardhat/Foundry monolith/split topologies,
+  quality/race, PostgreSQL, browser, security/licenses and deployment checks.
+- Downloaded both native acceptance records and verified all 26 package and
+  descriptor digests, 362 fixture compilations per architecture, native host
+  and composite executor identities, and monolith/split success. Both consume
+  identical common archives. All 52 archives/descriptors also match the prior
+  accepted CI build byte-for-byte. The real catalog tool consumes these records
+  and produces a valid Ed25519 envelope with a temporary test key; the key and
+  test catalog were removed without publication.
+- Downloaded CI's actual-distribution security evidence. Its 590 occurrences,
+  84 queried components and 1,636 reviewed findings match the local audit.
+  The inventory digest is
+  `e109859dc8590cfc2adab648a0f7d159fcd28d7043254f3b83ef2f1f7afc68fb`;
+  raw advisory and review digests also agree. This is exact-artifact
+  applicability acceptance, not a claim that historical vulnerabilities were
+  patched or that compiler verification certifies contract safety.
+- The final actual-SEA performance run retains all 216 successful samples and
+  matches its recorded binary digest. Repeated dual medians span 2.607–3.024 s
+  for all 26 plain inputs; the 17-file input measures 4.477 s / 277.2 MiB peak
+  process RSS. The official native 0.4.3 comparison and substantial latency/RSS
+  costs are recorded in the review. Process-cold measurements do not evict OS
+  caches; local serial timings do not establish Linux production capacity.
+- This closure updates only plans and measured evidence after implementation
+  acceptance. Its local documentation and plan gates pass. P30-T119 and P30
+  return to done. Production catalog signing/publication, deployment and
+  P70/P73 external release blockers remain separate and are not authorized by
+  this acceptance.

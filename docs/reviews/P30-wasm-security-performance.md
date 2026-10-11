@@ -103,8 +103,8 @@ the sum, of the pair's RSS.
 
 | Workload | First dual compilation | Repeated dual median | Maximum process RSS |
 | --- | ---: | ---: | ---: |
-| All 26 versions, unchanged plain fixtures | 2.432–2.746 s | 2.426–2.754 s | 228.1–257.1 MiB |
-| 0.4.3, 17 files / 128 functions / 155.8 KB JSON | 4.137 s | 4.138 s | 258.4 MiB |
+| All 26 versions, unchanged plain fixtures | 2.539–4.221 s | 2.607–3.024 s | 243.7–264.7 MiB |
+| 0.4.3, 17 files / 128 functions / 155.8 KB JSON | 4.791 s | 4.477 s | 277.2 MiB |
 
 All 216 compilations match official reference outputs. The larger generated
 input uses 16 imported modules and 128 public functions; its original and
@@ -116,15 +116,18 @@ uses CPython 3.13.16; its Vyper implementation files match the pinned official
 wheel byte-for-byte. This is a current local reference comparison, not a replay
 of the old production image's complete environment.
 
-A separate serial 0.4.3 comparison measured repeated dual medians of 2.818 s
-(WASM) versus 0.215 s (native) for plain input, and 4.194 s versus 0.996 s for
-the larger input. Native peak RSS was 34.7/58.7 MiB versus 264.0/258.0 MiB for
-WASM. Thus the distribution simplification has a substantial startup and
-memory cost: roughly 13x/4.2x dual latency in these two workloads. This is
-accepted evidence of the selected architecture's cost, not a performance
-improvement claim. Every measured process stays within the unchanged deadline;
-the larger input produces the same contract output. These local samples do
-not establish Linux capacity, concurrent throughput, or a total-RSS guarantee.
+The serial 0.4.3 native reference pairs measured repeated dual medians of
+2.883 s (WASM) versus 0.231 s (native) for plain input, and 4.477 s versus
+1.041 s for the larger input. Native peak RSS was 34.7/59.8 MiB versus
+260.2/277.2 MiB for WASM. Thus the distribution simplification has a substantial
+startup and memory cost: roughly 12.5x/4.3x dual latency in these two workloads.
+This records the selected architecture's cost, not a performance improvement.
+Every measured process stays within the unchanged deadline; the larger input
+produces the same contract output. These local samples do not establish Linux
+capacity, concurrent throughput, or a total-RSS guarantee. The first measured
+pair can be slower after a SEA rebuild; all raw samples are retained rather
+than dropping that cost. The final report's SEA digest matches the actual
+locally built binary used for this run.
 
 Reproduce with `make benchmark-vyper-wasm`. To add a native comparison, run
 `python3 compiler/vyper/wasm/benchmark.py --version 0.4.3 --native-python
@@ -133,6 +136,13 @@ official 0.4.3 compiler. Failed runs cannot retain a stale completion marker.
 
 ## Acceptance record
 
-Current local and remote gate outcomes are recorded in
-[P30-T119](../plans/P30-contract-verification.md#evidence). Source delivery,
-catalog signing/publication and production deployment are separate actions.
+Implementation commit `b52deabeb32a90582caab093cff0f7cef5a4d138` passes all 13
+jobs in [run 38119209326](https://github.com/islishude/etherview/actions/runs/38119209326).
+Downloaded security evidence matches the local inventory and advisory/review
+hashes. Both native production records authenticate all 26 packages and 362
+fixture compilations per architecture plus monolith/split results; the real
+catalog tool consumes them and verifies with a temporary Ed25519 key.
+[P30-T119](../plans/P30-contract-verification.md#evidence) records the complete
+closure. The following documentation-only update records final benchmark samples
+and plan status; documentation/plan gates pass locally. Source delivery,
+production catalog signing/publication and deployment remain separate actions.
