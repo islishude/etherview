@@ -1004,7 +1004,8 @@
     },
     "core/cpython/CVE-2026-82049": {
       "sha256": [
-        "cc4aa5be2e5ca4bb822d0d74d844ac72b188b23fee00eeedfe7a1ce8066518a8"
+        "cc4aa5be2e5ca4bb822d0d74d844ac72b188b23fee00eeedfe7a1ce8066518a8",
+        "383c542b740deda53c3d0ab723abd2898e84d7fcdadd5e2f09d6ce9689018393"
       ],
       "reason": "authenticated-archives"
     },

@@ -19,7 +19,7 @@ batch semantics are not core v1 scope.
 | P00 | [Foundation](docs/plans/P00-foundation.md) | done | — | Governance, toolchain, config, CLI, migrations, CI, and embedded SPA skeleton |
 | P10 | [Indexing](docs/plans/P10-indexing.md) | done | P00 | Full-history core indexing, canonicality, finality, reorgs, and repair |
 | P20 | [Enrichment](docs/plans/P20-enrichment.md) | done | P10 | Tokens, NFTs, ABI/proxy decoding, traces, balances, and statistics |
-| P30 | [Contract Platform & Runtime Operations](docs/plans/P30-contract-verification.md) | done | P00, P10, P20 | Consolidated verification, contract intelligence, runtime, deployment, telemetry, and optional accelerators |
+| P30 | [Contract Platform & Runtime Operations](docs/plans/P30-contract-verification.md) | in_progress | P00, P10, P20 | Consolidated verification, contract intelligence, runtime, deployment, telemetry, and optional accelerators |
 | P40 | [API](docs/plans/P40-api.md) | done | P10; incremental P20/P30 | Native REST, search, API keys, SSE, and Etherscan V2 compatibility |
 | P50 | [Web](docs/plans/P50-web.md) | done | P40; incremental P20/P30 | Bilingual embedded SPA and injected-wallet contract interaction |
 | P64 | [NFT Metadata Web](docs/plans/P64-nft-metadata-web.md) | done | P20, P30, P40, P50 | Canonical NFT metadata projection, standard-event refresh, and guarded external-image navigation |
@@ -233,3 +233,12 @@ P50-T69 is complete: explorer styles are split by responsibility, with safe
 responsive rules colocated and shared late overrides preserved. Local frontend,
 50-scenario embedded browser, baseline style comparison, generation and
 governance checks pass; P50 remains done and release blockers are unchanged.
+
+P30-T120 is in progress: split production Vyper fixtures into four parallel steps
+per native architecture, preserving complete evidence and Hardhat acceptance.
+Native CI timing and acceptance remain pending.
+
+P30-T121 is complete locally: the changed CPython CVE-2026-82049 advisory was
+re-reviewed, exact CI evidence replay and the live WASM audit pass, and regression
+checks retain rejection of unknown changes. A new remote security job remains
+unverified; P30 stays in progress for T120.

@@ -618,6 +618,27 @@ and immutable values, ABI/source reads and catalog-bound provenance. Successful
 runs write descriptor-bound acceptance records used by the release catalog tool.
 A macOS run or emulated architecture never substitutes for native Linux gates.
 
+CI retains the native AMD64/ARM64 Hardhat jobs and runs four production fixture
+shards in each job with `steps.parallel`, sharing its already built image and
+read-only packages. Each command uses `--shard-index 0` (through `3`) and
+`--shard-count 4` with `production-matrix.mjs`. Versions are assigned by descending
+fixture compilation count to the least-loaded shard, with numeric version and
+shard-index tie breakers. Each shard writes a distinct record and uses unique
+container names. Every original/modified input still gets a fresh restricted
+container with the existing 30-second deadline; failures and cancellation remove
+that invocation's container.
+
+After all four steps pass, `node compiler/vyper/wasm/merge-production-matrix.mjs
+--shard-count 4` rechecks the current image, runtime, packages and fixture hashes,
+rejects missing/extra/duplicate or inconsistent evidence, and writes the existing
+`matrix-{arch}.json` consumed by Hardhat. No partial shard is release acceptance.
+The no-argument production command remains the sequential local option; use a
+clean evidence directory for a new run because evidence files are exclusive-create.
+`make test-vyper-release` covers partition/merge and subprocess failure handling.
+Compare parallel-group wall time against the sequential baseline on native CI;
+record resource contention and any compilation timeout without relaxing limits.
+
+
 PostgreSQL integration tests cover durable binding/publication and reorg
 rejection. Signature, catalogue expiry, unsafe archives and runtime identity
 regressions remain passing release gates. Runtime or permission failures must be

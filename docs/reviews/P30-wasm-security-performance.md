@@ -83,6 +83,31 @@ Existing regression suites exercise those boundaries; the new audit tests
 reject omitted vendors, ambiguous metadata, missing/duplicate reports,
 changed inventories and new/changed advisories.
 
+## CPython advisory re-review (2026-10-11)
+
+[CI run 38135537853](https://github.com/islishude/etherview/actions/runs/38135537853/job/114458516156)
+correctly rejected an unreviewed revision of
+[CVE-2026-82049 / PSF-2026-41](https://github.com/psf/advisory-database/blob/main/advisories/python/PSF-2026-41.json).
+Compared with the accepted snapshot, OSV removed generated Vanir signatures,
+reduced its affected-version list from 238 to 213 entries and added a fix
+reference. The vulnerability description, severity and Git range events are
+unchanged; CPython 3.13.2 remains listed as affected. The failed-CI finding and
+the live OSV response have the same substantive digest:
+`383c542b740deda53c3d0ab723abd2898e84d7fcdadd5e2f09d6ce9689018393`.
+
+The existing authenticated-archives disposition still applies: this vulnerability
+requires tarfile extraction of a crafted hard link to a symbolic link. Runtime
+`execute.mjs` unpacks authenticated ZIP packages, while the Go runtime cache
+extractor rejects all non-regular TAR entries, including hard/symbolic links.
+Build-time `packages.py` reads digest-checked source archives with `extractfile`
+after rejecting links; it does not call `extract`/`extractall` or the affected
+extraction filters. This is an applicability review, not a CPython patch.
+
+The review now pins both explicitly reviewed snapshots. The checked-in regression
+fixture reproduces the rejected CI record and proves that removing its new hash
+fails again; further changes to details, affected ranges, references or database
+metadata still fail. No hash fields or security gates were relaxed.
+
 ## License correction
 
 The four prior core notices did not include all linked component notices.

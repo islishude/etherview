@@ -1,6 +1,6 @@
 # P30 — Contract Platform & Runtime Operations
 
-Status: `done`
+Status: `in_progress`
 
 This is the canonical plan for contract verification, contract intelligence,
 and the shared runtime/operations platform. Its current work items use the P30
@@ -196,6 +196,10 @@ credential-scoped operational boundaries.
 | P30-T117 | done | P30-T110 | Gate the shared Pyodide runtime against all 26 official Vyper reference matrices | authenticated packages, unchanged original/modified fixtures and bounded WASM execution |
 | P30-T118 | done | P30-T117 | Replace native Vyper helpers with the shared Node SEA and signed architecture-neutral compiler packages | isolation, identity, cache, migration and publication regressions |
 | P30-T119 | done | P30-T118 | Complete WASM deployment, release tooling and acceptance | common gates, performance and native AMD64/ARM64 production parity |
+
+| P30-T120 | in_progress | P30-T119 | Parallel production Vyper fixture shards in the existing native CI jobs | deterministic partitioning, strict evidence merge, native AMD64/ARM64 timing and acceptance |
+
+| P30-T121 | done | P30-T119 | Re-review changed CPython CVE-2026-82049 advisory evidence | failed-CI artifact replay, exact-advisory regression and live WASM audit |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
@@ -990,3 +994,53 @@ closure below supplies the missing evidence.
   return to done. Production catalog signing/publication, deployment and
   P70/P73 external release blockers remain separate and are not authorized by
   this acceptance.
+
+### P30-T120 — Parallel production fixture implementation (2026-10-11)
+
+- Claimed after T119. Existing AMD64/ARM64 Hardhat jobs now use four
+  `steps.parallel` fixture steps against the same locally built image; no image
+  transfer or extra build job is introduced. Deterministic whole-version
+  allocation covers 26 versions and 362 compilations in loads of 86/94/94/88.
+- Shards write separate evidence. The merge revalidates the current image,
+  shared/host manifests, archive/package bytes and fixture identities before
+  producing the unchanged full matrix consumed by Hardhat and release signing.
+  Missing, duplicate, extra or stale evidence fails closed.
+- Fresh containers, network restrictions, memory bounds and the 30-second
+  compilation deadline remain. Async subprocess execution handles cancellation;
+  unique invocation names isolate cleanup and filesystem writes between shards.
+- Local `make test-vyper-release` passes 12 Python and 17 Node tests, including
+  partition/merge regressions and actual subprocess failure/timeout/abort cleanup
+  through a fake Docker executable. `make docs-check plan-check`, Node syntax
+  checks, workflow YAML parsing/shard-sequence checks and `git diff --check` pass.
+  All 26 existing local package/descriptor byte validations also pass; this is
+  not production execution or native acceptance.
+- T120 remains in progress. Native AMD64/ARM64 CI must still verify GitHub's
+  parallel-step execution/failure propagation, full production fixtures, Hardhat
+  monolith/split acceptance, wall-time improvement and resource contention under
+  unchanged deadlines. No new remote CI, Docker E2E or performance result is
+  claimed by this local implementation.
+
+### P30-T121 — CPython advisory revision behind CI failure (2026-10-11)
+
+- [Security job 114458516156](https://github.com/islishude/etherview/actions/runs/38135537853/job/114458516156)
+  failed at the WASM audit with `core/cpython/CVE-2026-82049`. Downloaded the
+  actual `vyper-wasm-security` artifact; its finding matches the live OSV digest.
+  Re-reviewed changed version metadata, removed Vanir signatures and added fix
+  reference against the unchanged tarfile vulnerability and local execution
+  boundaries. The applicability reasoning is recorded in the
+  [security review](../reviews/P30-wasm-security-performance.md#cpython-advisory-re-review-2026-10-11).
+- Added only this explicitly reviewed digest; retained the old reviewed snapshot,
+  complete-inventory requirement and rejection of all unknown/changed findings.
+  The exact CI finding is a regression fixture. Removing its new review hash
+  reproduces the failure; subsequent substantive edits still fail closed.
+- Local failed-CI artifact replay passes all 1,636 findings. `make
+  test-vyper-release` passes 13 Python and 17 Node tests. `go test
+  ./internal/verify -run '^TestVyperArchiveRejectsUnsafeEntries$' -count=1`
+  passes, including hard/symbolic-link rejection. `make docs-check plan-check`
+  and `git diff --check` pass. The full Security and licenses job has not been
+  rerun remotely; no new remote CI result is claimed.
+- Live `python3.13 compiler/vyper/wasm/audit.py` passes on retry: 84 components
+  and 1,636 explicitly reviewed findings. The first attempt received truncated
+  PyPI JSON and left the report incomplete; no fallback or gate weakening was
+  introduced. T121 is done for this narrowly scoped audit-review correction;
+  P30 remains in progress for T120 native parallel-matrix CI acceptance.
