@@ -1107,8 +1107,7 @@ None.
   tests without the conditional-use diagnostic. Frontend lint/type/format checks
   and `make generate-check` pass.
 - `make test-e2e` passes all 50 embedded-browser tests. `make docs-check
-  plan-check` and `git diff --check` pass. P50-T70 is done locally; remote CI
-  has not been rerun for this correction.
+  plan-check` and `git diff --check` pass. P50-T70 is done; remote confirmation is recorded below.
 
 ### P50-T71 — EventSource recovery CI readiness race (2026-10-11)
 
@@ -1127,5 +1126,11 @@ None.
   Frontend type/lint/format checks pass. This changes test synchronization only;
   production event handling, retry bounds and timeouts are unchanged.
 - `make test-e2e` passes all 50 tests (2.5 minutes). `make docs-check
-  plan-check` and `git diff --check` pass. T71 is complete locally; the
-  new commit still requires remote browser CI confirmation.
+  plan-check` and `git diff --check` pass. T71 is done; remote confirmation is recorded below.
+
+### P50-T70/T71 — Remote CI closure (2026-10-12)
+
+- [Run 38181494214](https://github.com/islishude/etherview/actions/runs/38181494214)
+  passes all 13 jobs at `b3d46ba`, including Generate, lint, and test and
+  Embedded SPA browser E2E. This closes both corrections' remote confirmation;
+  P50 remains done. Documentation cleanup passes `make docs-check plan-check`.

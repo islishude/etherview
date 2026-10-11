@@ -197,7 +197,7 @@ credential-scoped operational boundaries.
 | P30-T118 | done | P30-T117 | Replace native Vyper helpers with the shared Node SEA and signed architecture-neutral compiler packages | isolation, identity, cache, migration and publication regressions |
 | P30-T119 | done | P30-T118 | Complete WASM deployment, release tooling and acceptance | common gates, performance and native AMD64/ARM64 production parity |
 
-| P30-T120 | in_progress | P30-T119 | Parallel production Vyper fixture shards in the existing native CI jobs | deterministic partitioning, strict evidence merge, native AMD64/ARM64 timing and acceptance |
+| P30-T120 | in_progress | P30-T119 | Parallel production Vyper fixture shards in the existing native CI jobs | Functional CI accepted; remaining controlled timing/resource and native failure-propagation evidence |
 
 | P30-T121 | done | P30-T119 | Re-review changed CPython CVE-2026-82049 advisory evidence | failed-CI artifact replay, exact-advisory regression and live WASM audit |
 
@@ -209,8 +209,8 @@ credential-scoped operational boundaries.
 
 | P30-T125 | done | P30-T119 | Run native WASM and Hardhat jobs independently after common package construction | workflow dependency and unchanged-job validation, docs/plan gates |
 
-| P30-T127 | done | P30-T125 | Retain producer-scoped package artifacts with one-day retention | Workflow structural comparison and release/docs/plan gates |
 | P30-T126 | dropped | P30-T125 | Parallelize production topology acceptance | Reverted at user request; retained artifact scope is tracked by P30-T127 |
+| P30-T127 | done | P30-T125 | Retain producer-scoped package artifacts with one-day retention | Exact-ID consumers and one-day artifact retention accepted by CI run 38181494214 |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
@@ -1025,11 +1025,10 @@ closure below supplies the missing evidence.
   checks, workflow YAML parsing/shard-sequence checks and `git diff --check` pass.
   All 26 existing local package/descriptor byte validations also pass; this is
   not production execution or native acceptance.
-- T120 remains in progress. Native AMD64/ARM64 CI must still verify GitHub's
-  parallel-step execution/failure propagation, full production fixtures, Hardhat
-  monolith/split acceptance, wall-time improvement and resource contention under
-  unchanged deadlines. No new remote CI, Docker E2E or performance result is
-  claimed by this local implementation.
+- Native functional acceptance is now confirmed by the consolidated CI evidence
+  below. T120 remains in progress only for controlled serial comparison, peak
+  resource measurements and native failure propagation; local subprocess
+  failure/timeout/abort regressions do not prove GitHub runner behavior.
 
 ### P30-T121 — CPython advisory revision behind CI failure (2026-10-11)
 
@@ -1143,3 +1142,24 @@ closure below supplies the missing evidence.
   implementation files match it as well. `make test-vyper-release docs-check
   plan-check` passes (15 Python and 17 Node tests). Remote CI is not rerun
   locally; P30 remains in progress for T120 acceptance evidence.
+
+### PR #141 — Consolidated CI acceptance (2026-10-12)
+
+- [Run 38181494214](https://github.com/islishude/etherview/actions/runs/38181494214)
+  passes all 13 jobs at `b3d46ba083bbb0ac1e6a86d1809e9cf9ce39e5c9`.
+  This supersedes earlier pending-remote notes for T121–T125/T127 and the
+  functional portion of T120. Security, Python-consuming jobs, both native
+  Vyper matrices, both Hardhat/Foundry architectures and browser E2E pass.
+- All four production fixture shards start together per architecture. AMD64
+  runs 22:46:58–22:57:55 UTC (10m57s); ARM64 runs 22:45:57–22:53:31 UTC
+  (7m34s). Both strict merges and final acceptance uploads succeed. This is
+  observed elapsed time, not a controlled speedup or peak-memory measurement.
+- Both Hardhat jobs start alongside native Vyper after package construction,
+  confirming T125. Both package consumers successfully use the producer's
+  artifact ID. T127 retains the workflow's run/attempt/job-qualified name and
+  one-day retention. No topology matrix or native sharding work remains planned:
+  T126 is dropped, with retained artifact scope consolidated into T127.
+- Existing IDs remain for traceability; no duplicate closure work item is added.
+  P30 remains in progress solely for T120's remaining evidence. P70/P73 release
+  blockers are unchanged. Documentation-only cleanup passes `make docs-check
+  plan-check` and `git diff --check`.

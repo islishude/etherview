@@ -234,41 +234,17 @@ responsive rules colocated and shared late overrides preserved. Local frontend,
 50-scenario embedded browser, baseline style comparison, generation and
 governance checks pass; P50 remains done and release blockers are unchanged.
 
-P30-T120 is in progress: split production Vyper fixtures into four parallel steps
-per native architecture, preserving complete evidence and Hardhat acceptance.
-Native CI timing and acceptance remain pending.
+PR #141 [CI run 38181494214](https://github.com/islishude/etherview/actions/runs/38181494214)
+passes all 13 jobs at `b3d46ba`: native AMD64/ARM64 Vyper matrices, production
+Hardhat/Foundry acceptance, browser, security and common gates. This confirms
+P30-T121–T125/T127 and P50-T70/T71; their earlier pending-CI notes are resolved.
+Package artifacts retain producer-specific names, exact-ID downloads and one-day
+retention. Hardhat runs alongside native Vyper after package construction.
 
-P30-T121 is complete locally: the changed CPython CVE-2026-82049 advisory was
-re-reviewed, exact CI evidence replay and the live WASM audit pass, and regression
-checks retain rejection of unknown changes. A new remote security job remains
-unverified; P30 stays in progress for T120.
-
-P30-T122 removes unused host Python setup from runtime, Hardhat and browser CI
-jobs; four Python-consuming jobs retain it. Workflow/docs/plan checks pass
-locally. P30 remains in progress for T120 native CI acceptance.
-
-P30-T123 upgrades the four remaining CI host Python jobs to 3.13.16; local
-release/package and docs/plan checks pass. Production WASM identity is unchanged.
-
-P50-T70 fixes React 19.3 suspended-route retry diagnostics while preserving lazy
-loading and router preloading. Five new regressions, full frontend tests/lint,
-generation and 50 embedded-browser checks pass locally; remote CI is pending.
-
-P30-T124 re-reviews the changed Expat CVE-2026-77214 finding behind the sole
-failure in CI run 38142676727. The other 12 jobs pass, including both native
-production jobs and React/browser regressions. P30 remains in progress.
-
-P50-T71 fixes the EventSource recovery browser test readiness race in run
-38148365813. Six repeated focused executions, all 50 browser tests and frontend
-lint pass locally; remote confirmation remains pending. Security passes on d3b942f, closing the remote
-audit blocker for P30-T124.
-
-P30-T125 changes Hardhat's dependency to `vyper-packages`, allowing it to run
-alongside the native WASM matrix after package construction. Both tests and
-architectures remain intact; workflow structural validation and docs/plan gates
-pass. Remote scheduling remains unverified; P30 stays in progress for T120.
-
-P30-T126 is dropped at the user's request: topology matrices and native Vyper
-sharding are reverted. P30-T127 retains producer-scoped package artifacts with
-one-day retention and exact-ID downloads. P30-T127 is done: workflow comparison,
-15 Python and 17 Node tests, and docs/plan gates pass. T120 remains in progress.
+P30-T126 is dropped: topology matrices and native Vyper sharding were reverted
+at the user's request; retained artifact work is covered by completed T127.
+P30-T120's implementation and native functional acceptance pass. Its parallel
+fixture groups take 10m57s on AMD64 and 7m34s on ARM64 in this run. T120 and P30
+remain in progress only for controlled serial comparison, resource measurements
+and native failure-propagation evidence; successful CI does not establish these.
+P70/P73 external release blockers remain unchanged.
