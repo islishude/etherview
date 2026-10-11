@@ -101,10 +101,12 @@ jobs:
 
   vyper-runtimes:
     needs: vyper-packages
-    name: Vyper native WASM matrix (${{ matrix.arch }})
+    name: Vyper native WASM matrix (${{ matrix.arch }}, shard ${{ matrix.shard }})
     strategy:
       fail-fast: false
       matrix:
+        arch: [amd64, arm64]
+        shard: [0, 1, 2, 3]
         include:
           - runner: ubuntu-24.04
             arch: amd64
@@ -130,14 +132,16 @@ jobs:
           npm --prefix compiler ci --ignore-scripts
           node compiler/vyper/wasm/prepare.mjs
           npm --prefix compiler run build:sea -- "$PWD/.local/vyper-wasm/sea/etherview-solcjs"
-          ETHERVIEW_TEST_VYPER_MATRIX_ROOT="$PWD/.local/vyper-wasm/packages" go test ./internal/verify -run '^TestVyper(DynamicRuntimeMatrix|StableVersionMatrix)$' -count=1 -timeout=30m
+          ETHERVIEW_TEST_VYPER_MATRIX_ROOT="$PWD/.local/vyper-wasm/packages" node compiler/vyper/wasm/native-matrix.mjs --shard-index ${{ matrix.shard }} --shard-count 4
 
   hardhat3:
     needs: vyper-packages
-    name: Hardhat 3 production verification E2E (${{ matrix.arch }})
+    name: Hardhat 3 production verification E2E (${{ matrix.arch }}, ${{ matrix.topology }})
     strategy:
       fail-fast: false
       matrix:
+        arch: [amd64, arm64]
+        topology: [monolith, distributed]
         include:
           - runner: ubuntu-24.04
             arch: amd64
@@ -170,8 +174,10 @@ jobs:
           push: false
           load: true
           tags: etherview:local
-          cache-from: type=gha,scope=hardhat3-production-${{ runner.os }}-${{ runner.arch }}
-          cache-to: type=gha,mode=max,scope=hardhat3-production-${{ runner.os }}-${{ runner.arch }},ignore-error=true
+          cache-from: |
+            type=gha,scope=hardhat3-production-${{ runner.os }}-${{ runner.arch }}-${{ matrix.topology }}
+            type=gha,scope=hardhat3-production-${{ runner.os }}-${{ runner.arch }}
+          cache-to: type=gha,mode=max,scope=hardhat3-production-${{ runner.os }}-${{ runner.arch }}-${{ matrix.topology }},ignore-error=true
       - name: Build the Hardhat test client
         uses: docker/build-push-action@v7
         with:
@@ -179,8 +185,10 @@ jobs:
           push: false
           load: true
           tags: etherview-hardhat3:local
-          cache-from: type=gha,scope=hardhat3-client-${{ runner.os }}-${{ runner.arch }}
-          cache-to: type=gha,mode=max,scope=hardhat3-client-${{ runner.os }}-${{ runner.arch }},ignore-error=true
+          cache-from: |
+            type=gha,scope=hardhat3-client-${{ runner.os }}-${{ runner.arch }}-${{ matrix.topology }}
+            type=gha,scope=hardhat3-client-${{ runner.os }}-${{ runner.arch }}
+          cache-to: type=gha,mode=max,scope=hardhat3-client-${{ runner.os }}-${{ runner.arch }}-${{ matrix.topology }},ignore-error=true
       - name: Verify the host-native production image boundary
         run: make docker-image-check
       - parallel:
@@ -199,30 +207,35 @@ jobs:
       - name: Run production Hardhat 3 and proxy verification E2E
         id: hardhat3-e2e
         env:
+          RUNTIME_E2E_TOPOLOGY: ${{ matrix.topology }}
           RUNTIME_E2E_KEEP_ARTIFACTS: "true"
           TMPDIR: ${{ runner.temp }}
         run: make test-hardhat3-e2e-prebuilt
-      - name: Upload native Vyper production acceptance
+      - name: Upload topology evidence
         uses: actions/upload-artifact@v7
         with:
-          name: vyper-acceptance-${{ matrix.arch }}
-          path: .local/vyper-releases/acceptance-*.json
+          name: topology-${{ github.run_id }}-hardhat3-${{ matrix.arch }}-${{ matrix.topology }}
+          path: .local/topology-results/hardhat3-${{ matrix.arch }}-${{ matrix.topology }}.json
           include-hidden-files: true
           if-no-files-found: error
+          retention-days: 1
+          overwrite: true
       - name: Upload Hardhat 3 E2E failure diagnostics
         if: ${{ always() && steps.hardhat3-e2e.outcome == 'failure' }}
         uses: actions/upload-artifact@v7
         with:
-          name: hardhat3-e2e-diagnostics-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: hardhat3-e2e-diagnostics-${{ matrix.arch }}-${{ matrix.topology }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/etherview-hardhat3-e2e-*
           if-no-files-found: warn
           retention-days: 7
 
   foundry:
-    name: Foundry production verification E2E (${{ matrix.arch }})
+    name: Foundry production verification E2E (${{ matrix.arch }}, ${{ matrix.topology }})
     strategy:
       fail-fast: false
       matrix:
+        arch: [amd64, arm64]
+        topology: [monolith, distributed]
         include:
           - runner: ubuntu-24.04
             arch: amd64
@@ -245,8 +258,10 @@ jobs:
           push: false
           load: true
           tags: etherview:local
-          cache-from: type=gha,scope=foundry-production-${{ runner.os }}-${{ runner.arch }}
-          cache-to: type=gha,mode=max,scope=foundry-production-${{ runner.os }}-${{ runner.arch }},ignore-error=true
+          cache-from: |
+            type=gha,scope=foundry-production-${{ runner.os }}-${{ runner.arch }}-${{ matrix.topology }}
+            type=gha,scope=foundry-production-${{ runner.os }}-${{ runner.arch }}
+          cache-to: type=gha,mode=max,scope=foundry-production-${{ runner.os }}-${{ runner.arch }}-${{ matrix.topology }},ignore-error=true
       - name: Build the Foundry test client
         uses: docker/build-push-action@v7
         with:
@@ -254,24 +269,91 @@ jobs:
           push: false
           load: true
           tags: etherview-foundry:local
-          cache-from: type=gha,scope=foundry-client-${{ runner.os }}-${{ runner.arch }}
-          cache-to: type=gha,mode=max,scope=foundry-client-${{ runner.os }}-${{ runner.arch }},ignore-error=true
+          cache-from: |
+            type=gha,scope=foundry-client-${{ runner.os }}-${{ runner.arch }}-${{ matrix.topology }}
+            type=gha,scope=foundry-client-${{ runner.os }}-${{ runner.arch }}
+          cache-to: type=gha,mode=max,scope=foundry-client-${{ runner.os }}-${{ runner.arch }}-${{ matrix.topology }},ignore-error=true
       - name: Verify the host-native production image boundary
         run: make docker-image-check
       - name: Run production Foundry source verification E2E
         id: foundry-e2e
         env:
+          RUNTIME_E2E_TOPOLOGY: ${{ matrix.topology }}
           RUNTIME_E2E_KEEP_ARTIFACTS: "true"
           TMPDIR: ${{ runner.temp }}
         run: make test-foundry-e2e-prebuilt
+      - name: Upload topology evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: topology-${{ github.run_id }}-foundry-${{ matrix.arch }}-${{ matrix.topology }}
+          path: .local/topology-results/foundry-${{ matrix.arch }}-${{ matrix.topology }}.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
       - name: Upload Foundry E2E failure diagnostics
         if: ${{ always() && steps.foundry-e2e.outcome == 'failure' }}
         uses: actions/upload-artifact@v7
         with:
-          name: foundry-e2e-diagnostics-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: foundry-e2e-diagnostics-${{ matrix.arch }}-${{ matrix.topology }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/etherview-foundry-e2e-*
           if-no-files-found: warn
           retention-days: 7
+
+  production-acceptance:
+    needs: [vyper-packages, hardhat3, foundry]
+    name: Production topology parity and acceptance (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ needs.vyper-packages.outputs.artifact-id }}
+          merge-multiple: true
+          path: .local/
+      - uses: actions/download-artifact@v8
+        with:
+          name: topology-${{ github.run_id }}-hardhat3-${{ matrix.arch }}-monolith
+          path: .local/topology-results/
+      - uses: actions/download-artifact@v8
+        with:
+          name: topology-${{ github.run_id }}-hardhat3-${{ matrix.arch }}-distributed
+          path: .local/topology-results/
+      - uses: actions/download-artifact@v8
+        with:
+          name: topology-${{ github.run_id }}-foundry-${{ matrix.arch }}-monolith
+          path: .local/topology-results/
+      - uses: actions/download-artifact@v8
+        with:
+          name: topology-${{ github.run_id }}-foundry-${{ matrix.arch }}-distributed
+          path: .local/topology-results/
+      - name: Require complete topology parity and generate acceptance
+        run: make test-production-topology-merge
+      - name: Upload native Vyper production acceptance
+        uses: actions/upload-artifact@v7
+        with:
+          name: vyper-acceptance-${{ matrix.arch }}-${{ github.run_id }}
+          path: .local/vyper-releases/acceptance-*.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
 
   browser:
     name: Embedded SPA browser E2E

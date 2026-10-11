@@ -135,18 +135,23 @@ type foundryEtherscanEnvelope struct {
 }
 
 func TestFoundryProductionVerificationE2E(t *testing.T) {
+	modes := topologyModes(t)
 	ctx, cancel := context.WithTimeout(t.Context(), foundryE2ETimeout)
 	defer cancel()
 	root := repositoryRoot(t)
 	runtime := prepareFoundryRuntime(t, ctx)
 
 	results := make(map[string]foundryVerificationSnapshot, 2)
-	for _, mode := range []string{"monolith", "distributed"} {
+	for _, mode := range modes {
 		if !t.Run(mode, func(t *testing.T) {
 			results[mode] = runFoundryMode(t, ctx, root, mode, runtime)
 		}) {
 			return
 		}
+	}
+	if len(modes) == 1 {
+		writeTopologyEvidence(t, root, "foundry", modes[0], results[modes[0]], nil)
+		return
 	}
 	if !reflect.DeepEqual(results["monolith"], results["distributed"]) {
 		t.Fatalf("Foundry topology parity mismatch\nmonolith: %#v\ndistributed: %#v",

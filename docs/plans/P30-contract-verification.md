@@ -209,7 +209,7 @@ credential-scoped operational boundaries.
 
 | P30-T125 | done | P30-T119 | Run native WASM and Hardhat jobs independently after common package construction | workflow dependency and unchanged-job validation, docs/plan gates |
 
-| P30-T126 | in_progress | P30-T125 | Scope transient CI artifacts to their producer and parallelize production topology acceptance | artifact identity/retention, topology parity and native acceptance |
+| P30-T126 | in_progress | P30-T125 | Scope transient CI artifacts, parallelize topology acceptance and shard native Vyper matrices | artifact identity/retention, topology parity and native acceptance |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
@@ -1124,17 +1124,39 @@ closure below supplies the missing evidence.
   this scheduling change; actual concurrent scheduling awaits remote CI.
   P30 remains in progress for T120's remaining acceptance evidence.
 
-### P30-T126 — Transient artifacts and topology concurrency (2026-10-11)
+### P30-T126 — Scoped artifacts and parallel CI acceptance (2026-10-11)
 
-- Common packages now have a run/attempt/producer-qualified artifact name and
-  one-day retention. Both consumers download the exact uploaded artifact ID
-  from the producer output, preserving extraction into `.local/` and avoiding
-  name reconstruction when only downstream failed jobs are rerun.
-- Workflow parsing verifies the upload's retention/name, producer output and
-  both exact-ID downloads. `make docs-check plan-check` and `git diff --check`
-  pass. These are local configuration checks, not remote artifact evidence.
-- Topology parallelization remains in progress. Separate matrix runners need
-  shared image/evidence transfer to retain the current same-image acceptance
-  and full snapshot parity comparison; this conflicts with the earlier request
-  to avoid cross-job image transfer. The user has been asked to select that
-  matrix design or same-runner parallel topology execution before implementation.
+- Common packages use a run/attempt/producer-qualified name, one-day retention
+  and exact artifact-ID downloads. Downstream-only retries retain the original
+  successful producer output. Local YAML validation and docs/plan checks pass.
+- Per the final requested design, each Hardhat/Foundry architecture/topology
+  matrix builds its own images; there is no image transfer job. Topology cache
+  writers are isolated. Result artifacts are scoped to run/suite/architecture/
+  topology, expire in one day and replace only the rerun producer's result.
+- Selected topology runs emit their complete typed snapshot and image identities,
+  never dual-topology acceptance. The collector requires exactly four records,
+  checks run/revision/architecture and per-suite snapshot parity, and verifies
+  both Hardhat matrices against current packages/fixtures. Independently built
+  image IDs are retained; host/shared/compiler/fixture identities must agree.
+  ADR-0053 records this evidence boundary; final acceptance format is unchanged.
+- Native Go matrices now use four balanced version shards per architecture,
+  keeping original/modified inputs and both tests together for each version.
+  Parsed Go JSON results reject missing, duplicate, skipped or extra versions.
+  No-argument wrapper and ordinary local E2E retain full-matrix/two-topology
+  behavior. Compiler process isolation and per-invocation deadlines are unchanged.
+- Local Foundry single-topology runs pass independently (monolith 48.20 s,
+  distributed 46.40 s); their full snapshots and identities match. These runs
+  use existing local ARM64 production/client images, not fresh native Linux
+  CI images. Go evidence regressions, focused lint and release/docs/plan gates
+  pass. Native shard 0 passes six versions and both tests in 148.821 s.
+- T126 stays in progress pending full new native CI matrix and collector
+  acceptance. Local runtime results do not establish remote scheduling or speedup.
+
+- All four native shards now pass locally: 6/7/7/6 versions, with exact union
+  and no duplicates across both Go matrix tests (all 26 versions). Dynamic
+  compilation time is 148.11/171.82/172.43/157.72 s; shards 1–3 ran concurrently
+  on this local macOS ARM64 host, so these are not Linux CI speedup figures.
+  `make test-vyper-release` passes 15 Python and 20 Node tests plus Go topology
+  evidence regressions; focused Go race tests and `golangci-lint run
+  ./e2e/runtime` pass. YAML structure verifies eight native shards, eight
+  independent topology jobs, exact collector inputs and no image transfer.

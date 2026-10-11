@@ -189,18 +189,23 @@ type hardhatCompilerCacheFile struct {
 }
 
 func TestHardhat3ProductionE2E(t *testing.T) {
+	modes := topologyModes(t)
 	ctx, cancel := context.WithTimeout(t.Context(), hardhat3E2ETimeout)
 	defer cancel()
 	root := repositoryRoot(t)
 	runtime := prepareHardhatRuntime(t, ctx)
 
 	results := make(map[string]hardhatProxySnapshot, 2)
-	for _, mode := range []string{"monolith", "distributed"} {
+	for _, mode := range modes {
 		if !t.Run(mode, func(t *testing.T) {
 			results[mode] = runHardhat3Mode(t, ctx, root, mode, runtime)
 		}) {
 			return
 		}
+	}
+	if len(modes) == 1 {
+		writeTopologyEvidence(t, root, "hardhat3", modes[0], results[modes[0]], readVyperMatrixEvidence(t, root))
+		return
 	}
 	if !reflect.DeepEqual(results["monolith"], results["distributed"]) {
 		t.Fatalf("Hardhat 3 topology parity mismatch\nmonolith: %#v\ndistributed: %#v",

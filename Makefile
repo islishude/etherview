@@ -557,7 +557,7 @@ test-vyper-matrix: compiler-install test-vyper-wasm-candidate
 test: test-vyper-release
 test-vyper-release:
 	$(PYTHON) -m unittest discover -s compiler/vyper/wasm -p 'test_*.py'
-	$(NODE) --test compiler/vyper/catalog.test.mjs compiler/vyper/wasm/production-shards.test.mjs
+	$(NODE) --test compiler/vyper/catalog.test.mjs compiler/vyper/wasm/production-shards.test.mjs compiler/vyper/wasm/native-matrix.test.mjs compiler/vyper/wasm/topology-matrix.test.mjs
 
 .PHONY: test-vyper-wasm-candidate
 test-vyper-wasm-candidate:
@@ -569,3 +569,13 @@ test-vyper-wasm-candidate:
 benchmark-vyper-wasm: compiler-install
 	$(PYTHON) compiler/vyper/wasm/packages.py
 	$(PYTHON) compiler/vyper/wasm/benchmark.py
+
+.PHONY: test-production-topology-merge test-production-topology-evidence
+test-production-topology-merge:
+	$(NODE) compiler/vyper/wasm/topology-matrix.mjs
+	$(GO) test -count=1 -v -tags='runtimee2e hardhat3e2e foundrye2e' -run '^TestProductionTopologyMerge$$' ./e2e/runtime
+
+test-production-topology-evidence:
+	$(GO) test -count=1 -tags='runtimee2e hardhat3e2e foundrye2e' -run '^TestTopologyEvidence' ./e2e/runtime
+
+test-vyper-release: test-production-topology-evidence

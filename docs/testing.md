@@ -59,13 +59,31 @@ matrices. Event-specific concurrency groups prevent a push from cancelling the
 daily run. GitHub activates the schedule after the workflow reaches the default
 branch; scheduled start times may be delayed by runner load.
 
-The native Vyper WASM matrix and Hardhat production jobs both depend directly
-on `vyper-packages`, whose artifact they consume. They run independently after
-package construction. The producer uploads a run/attempt/job-qualified artifact
-with a one-day retention period; consumers use its exact artifact ID from the
-producer job output, including when only failed jobs are rerun. Both architecture
-matrices remain required verification
-coverage, without making Hardhat wait for native matrix completion.
+The native Vyper WASM matrix and Hardhat production jobs depend directly on
+`vyper-packages`. Its artifact name includes the run, attempt and producer job;
+consumers download its exact output ID with one-day retention. The native
+matrix uses four balanced version shards per architecture. Both Go matrix tests
+run on every selected version; parsed Go JSON results reject skipped, missing,
+duplicate or extra versions. No shard options in the wrapper runs all versions.
+
+Hardhat and Foundry each run an architecture × topology matrix (AMD64/ARM64 ×
+monolith/distributed). Each job builds its own production and client images;
+no image artifact is transferred. `RUNTIME_E2E_TOPOLOGY` selects exactly one
+mode and emits a typed snapshot, run/revision/architecture and image IDs. Without
+this variable, local E2E still runs both modes and compares them in-process.
+The per-run/suite/architecture/topology result artifacts expire after one day;
+rerunning a producer replaces only its own result. Diagnostic artifacts retain
+the existing seven-day lifetime and include topology in their names.
+
+`make test-production-topology-merge` requires all four topology records for an
+architecture and compares each suite's complete snapshots. Both Hardhat matrix
+records must bind to their own image and have identical host/shared/compiler
+and fixture identities, checked again against local packages and fixtures.
+The unchanged acceptance format references the monolith image; the same-run
+topology artifacts retain both independently built image IDs. Only a successful
+collector uploads acceptance. `make test-production-topology-evidence` tests
+selection and rejection of incomplete, stale or inconsistent evidence and is
+included in `make test-vyper-release`.
 
 Host Python setup is required by quality/integration (`compiler-install`),
 common Vyper package construction, and security/license auditing. Native WASM
