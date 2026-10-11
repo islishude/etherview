@@ -205,7 +205,7 @@ credential-scoped operational boundaries.
 
 | P30-T123 | done | P30-T122 | Upgrade remaining CI host Python setup to 3.13.16 | setup distribution availability, Python release tests and docs/plan gates |
 
-| P30-T124 | in_progress | P30-T121 | Re-review changed Expat and CPython advisory revisions | exact CI artifact replay, substantive-change regressions and live audit |
+| P30-T124 | done | P30-T121 | Re-review changed Expat and CPython advisory revisions | exact CI artifact replay, substantive-change regressions and live audit |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
@@ -1103,3 +1103,7 @@ closure below supplies the missing evidence.
   PyPI with TLS EOF after retries and leaves the report incomplete. T124 stays
   in progress pending a successful live audit/security job on the fixed commit;
   replay success is not reported as a fresh online pass.
+
+- Remote closure: Security and licenses passes on `d3b942f` in
+  [run 38148365813](https://github.com/islishude/etherview/actions/runs/38148365813/job/114496395388).
+  This closes T124; P30 remains in progress for T120 acceptance evidence.

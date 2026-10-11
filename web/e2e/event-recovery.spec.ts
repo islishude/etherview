@@ -51,19 +51,36 @@ test("native EventSource recovers from an expired cursor without duplicate insta
       });
     }
   });
-  await page.goto("/blocks");
+  // The app-level stream can open before the lazy page has any query observers.
+  // Force that order rather than depending on the runner's chunk-loading speed.
+  let releasePage = () => {};
+  const pageReady = new Promise<void>((resolve) => {
+    releasePage = resolve;
+  });
+  await page.route("**/assets/pages-*.js", async (route) => {
+    await pageReady;
+    await route.continue();
+  });
+  await page.goto("/blocks", { waitUntil: "domcontentloaded" });
   await expect
     .poll(() => page.evaluate(() => Reflect.get(window, "eventSourceProbe").opened))
     .toBe(1);
+  expect(blockReads).toBe(0);
+  releasePage();
+  await expect(page.getByRole("table").getByRole("link", { name: "2", exact: true })).toBeVisible();
+  // Stop interception before checking native reconnect request headers.
+  await page.unroute("**/assets/pages-*.js");
+  const beforeHead = blockReads;
   await page.evaluate(() => fetch("/__e2e/home/head", { method: "POST" }));
-  await expect.poll(() => blockReads).toBeGreaterThan(1);
+  await expect.poll(() => blockReads).toBeGreaterThan(beforeHead);
+  const beforeRecovery = blockReads;
   await page.evaluate(() => fetch("/__e2e/events/expire", { method: "POST" }));
   await expect.poll(() => cursors.length, { timeout: 10000 }).toBe(3);
   await expect.poll(() => cursors).toEqual([undefined, "2", undefined]);
   await expect
     .poll(() => page.evaluate(() => Reflect.get(window, "eventSourceProbe").opened))
     .toBe(2);
-  await expect.poll(() => blockReads).toBeGreaterThan(1);
+  await expect.poll(() => blockReads).toBeGreaterThan(beforeRecovery);
   const probe = await page.evaluate(() => Reflect.get(window, "eventSourceProbe"));
   expect(probe.created).toBe(2);
   expect(probe.maximum).toBe(1);

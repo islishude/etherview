@@ -724,3 +724,9 @@ with the browser scheduler, where React 19.3 diagnoses a library that calls
 suspension to React.lazy while retaining TanStack preload/retry/error behavior.
 The regression observes console errors without suppressing them; full browser
 acceptance continues through `make test-e2e` against the embedded Go server.
+
+The native EventSource recovery regression holds the lazy blocks-page chunk
+until the app stream opens, then waits for populated route data before sending
+a head event. It removes interception before observing native reconnect headers
+and checks fresh requests separately after the head and cursor recovery. SSE
+readiness alone does not establish that a lazy page has query observers.

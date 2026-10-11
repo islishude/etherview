@@ -97,6 +97,8 @@ injected EIP-1193 wallet for all contract reads and writes.
 
 | P50-T70 | done | P50-T69 | Fix React 19.3 suspended route retry diagnostics | delayed import regression, frontend and generation gates |
 
+| P50-T71 | done | P50-T70 | Synchronize EventSource recovery E2E with lazy-route readiness | controlled cold-route ordering, head/reconnect refresh assertions and browser gates |
+
 ## Acceptance
 
 - [x] No frontend runtime service or external CDN is required.
@@ -1107,3 +1109,23 @@ None.
 - `make test-e2e` passes all 50 embedded-browser tests. `make docs-check
   plan-check` and `git diff --check` pass. P50-T70 is done locally; remote CI
   has not been rerun for this correction.
+
+### P50-T71 — EventSource recovery CI readiness race (2026-10-11)
+
+- [Run 38148365813](https://github.com/islishude/etherview/actions/runs/38148365813/job/114496395320)
+  fails the recovery test in all three attempts: only one blocks request is
+  observed after sending the head event. The root stream can open before the
+  dynamically imported blocks page mounts its query; stream readiness was not
+  a route-readiness barrier.
+- The test now holds the blocks-page chunk until SSE opens, explicitly proves
+  there are no block reads yet, then releases it and waits for populated route
+  data before publishing a head. Interception is removed before checking native
+  reconnect headers. Separate request baselines verify both head refresh and
+  expired-cursor recovery; the old recovery assertion could reuse the head's
+  request count. Native cursor and single-instance assertions remain intact.
+- Focused browser tests pass six executions with two workers and three repeats.
+  Frontend type/lint/format checks pass. This changes test synchronization only;
+  production event handling, retry bounds and timeouts are unchanged.
+- `make test-e2e` passes all 50 tests (2.5 minutes). `make docs-check
+  plan-check` and `git diff --check` pass. T71 is complete locally; the
+  new commit still requires remote browser CI confirmation.

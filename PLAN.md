@@ -257,3 +257,8 @@ generation and 50 embedded-browser checks pass locally; remote CI is pending.
 P30-T124 re-reviews the changed Expat CVE-2026-77214 finding behind the sole
 failure in CI run 38142676727. The other 12 jobs pass, including both native
 production jobs and React/browser regressions. P30 remains in progress.
+
+P50-T71 fixes the EventSource recovery browser test readiness race in run
+38148365813. Six repeated focused executions, all 50 browser tests and frontend
+lint pass locally; remote confirmation remains pending. Security passes on d3b942f, closing the remote
+audit blocker for P30-T124.
