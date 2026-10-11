@@ -268,8 +268,7 @@ alongside the native WASM matrix after package construction. Both tests and
 architectures remain intact; workflow structural validation and docs/plan gates
 pass. Remote scheduling remains unverified; P30 stays in progress for T120.
 
-P30-T126 is in progress: artifacts are scoped to their producer run with one-day
-retention, Hardhat/Foundry independently build each topology matrix image, and
-native Vyper tests use four balanced version shards per architecture. A separate
-collector requires complete topology parity and matching compiler/fixture
-identities before acceptance. Native CI validation remains pending.
+P30-T126 is dropped at the user's request: topology matrices and native Vyper
+sharding are reverted. P30-T127 retains producer-scoped package artifacts with
+one-day retention and exact-ID downloads. P30-T127 is done: workflow comparison,
+15 Python and 17 Node tests, and docs/plan gates pass. T120 remains in progress.

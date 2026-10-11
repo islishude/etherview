@@ -182,13 +182,9 @@ func readVyperMatrixEvidence(t *testing.T, root string) vyperMatrixEvidence {
 
 func writeVyperReleaseAcceptance(t *testing.T, root string) {
 	t.Helper()
-	writeVyperAcceptanceEvidence(t, root, readVyperMatrixEvidence(t, root))
-}
-
-func writeVyperAcceptanceEvidence(t *testing.T, root string, evidence vyperMatrixEvidence) {
-	t.Helper()
 	directory := filepath.Join(root, ".local/vyper-releases")
 	platform := "linux-" + runtime.GOARCH
+	evidence := readVyperMatrixEvidence(t, root)
 	for name, expected := range evidence.Descriptors {
 		raw, err := os.ReadFile(filepath.Join(directory, name))
 		if err != nil {

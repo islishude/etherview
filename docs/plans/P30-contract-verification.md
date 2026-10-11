@@ -209,7 +209,8 @@ credential-scoped operational boundaries.
 
 | P30-T125 | done | P30-T119 | Run native WASM and Hardhat jobs independently after common package construction | workflow dependency and unchanged-job validation, docs/plan gates |
 
-| P30-T126 | in_progress | P30-T125 | Scope transient CI artifacts, parallelize topology acceptance and shard native Vyper matrices | artifact identity/retention, topology parity and native acceptance |
+| P30-T127 | done | P30-T125 | Retain producer-scoped package artifacts with one-day retention | Workflow structural comparison and release/docs/plan gates |
+| P30-T126 | dropped | P30-T125 | Parallelize production topology acceptance | Reverted at user request; retained artifact scope is tracked by P30-T127 |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
@@ -1124,39 +1125,21 @@ closure below supplies the missing evidence.
   this scheduling change; actual concurrent scheduling awaits remote CI.
   P30 remains in progress for T120's remaining acceptance evidence.
 
-### P30-T126 — Scoped artifacts and parallel CI acceptance (2026-10-11)
+### P30-T126 — Topology concurrency withdrawn (2026-10-12)
 
-- Common packages use a run/attempt/producer-qualified name, one-day retention
-  and exact artifact-ID downloads. Downstream-only retries retain the original
-  successful producer output. Local YAML validation and docs/plan checks pass.
-- Per the final requested design, each Hardhat/Foundry architecture/topology
-  matrix builds its own images; there is no image transfer job. Topology cache
-  writers are isolated. Result artifacts are scoped to run/suite/architecture/
-  topology, expire in one day and replace only the rerun producer's result.
-- Selected topology runs emit their complete typed snapshot and image identities,
-  never dual-topology acceptance. The collector requires exactly four records,
-  checks run/revision/architecture and per-suite snapshot parity, and verifies
-  both Hardhat matrices against current packages/fixtures. Independently built
-  image IDs are retained; host/shared/compiler/fixture identities must agree.
-  ADR-0053 records this evidence boundary; final acceptance format is unchanged.
-- Native Go matrices now use four balanced version shards per architecture,
-  keeping original/modified inputs and both tests together for each version.
-  Parsed Go JSON results reject missing, duplicate, skipped or extra versions.
-  No-argument wrapper and ordinary local E2E retain full-matrix/two-topology
-  behavior. Compiler process isolation and per-invocation deadlines are unchanged.
-- Local Foundry single-topology runs pass independently (monolith 48.20 s,
-  distributed 46.40 s); their full snapshots and identities match. These runs
-  use existing local ARM64 production/client images, not fresh native Linux
-  CI images. Go evidence regressions, focused lint and release/docs/plan gates
-  pass. Native shard 0 passes six versions and both tests in 148.821 s.
-- T126 stays in progress pending full new native CI matrix and collector
-  acceptance. Local runtime results do not establish remote scheduling or speedup.
+- At the user's request, reverted architecture/topology matrices, native Vyper
+  sharding, separate topology evidence and collection, and the associated ADR
+  change from `ee24b34`. Both topology tests and the original native version
+  matrices remain. The earlier Hardhat dependency change remains intact.
+- This item is dropped; artifact-only work is retained under P30-T127.
 
-- All four native shards now pass locally: 6/7/7/6 versions, with exact union
-  and no duplicates across both Go matrix tests (all 26 versions). Dynamic
-  compilation time is 148.11/171.82/172.43/157.72 s; shards 1–3 ran concurrently
-  on this local macOS ARM64 host, so these are not Linux CI speedup figures.
-  `make test-vyper-release` passes 15 Python and 20 Node tests plus Go topology
-  evidence regressions; focused Go race tests and `golangci-lint run
-  ./e2e/runtime` pass. YAML structure verifies eight native shards, eight
-  independent topology jobs, exact collector inputs and no image transfer.
+### P30-T127 — Retain scoped temporary package artifacts (2026-10-12)
+
+- Claimed after the user narrowed the scope to artifact naming and expiration.
+- Common packages retain a run/attempt/producer-qualified name and one-day
+  retention. Both consumers use the producer's exact artifact ID, including
+  downstream-only reruns, and preserve extraction into `.local/`.
+- Workflow YAML matches artifact-only commit `4b35570` exactly; all other
+  implementation files match it as well. `make test-vyper-release docs-check
+  plan-check` passes (15 Python and 17 Node tests). Remote CI is not rerun
+  locally; P30 remains in progress for T120 acceptance evidence.

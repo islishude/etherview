@@ -49,15 +49,6 @@ matching and publication semantics are unchanged. Both Linux architectures
 consume the same package bytes and must independently pass the full matrix and
 monolith/split production acceptance before catalog promotion.
 
-CI may build images independently for each topology. Each topology retains its
-own image ID and complete typed result; its fixture matrix must bind to that
-image. A separate collector requires the same run/revision/architecture,
-identical topology results and identical host/shared/compiler/fixture identities.
-It rechecks current packages and fixtures before emitting acceptance. Packaging
-image IDs may differ; the existing acceptance image field references monolith,
-with both topology records retained as artifacts of the same workflow run. A single topology must never
-assert that both monolith and split passed.
-
 ## Consequences
 
 Compiler distribution no longer multiplies Python runtime builds by CPU
