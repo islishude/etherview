@@ -8,8 +8,11 @@ penetration-test certification or a claim that old upstream vulnerabilities
 have been patched.
 
 The measurements and pass results below remain historical Node 26.10.0
-evidence. P30-T120 updates the runtime pin and security inventory metadata to
-Node 26.11.1; its live audit and runtime acceptance are pending CI.
+evidence. The Node 26.11.1 upgrade passes all 13 jobs in
+[PR #140 CI run 38126174828](https://github.com/islishude/etherview/actions/runs/38126174828)
+at `d66cd4d8c92d933f3caa982c57819f157d5438ea`, including security and native
+AMD64/ARM64 production acceptance. This does not update the historical
+performance measurements below.
 
 ## Artifact and advisory coverage
 

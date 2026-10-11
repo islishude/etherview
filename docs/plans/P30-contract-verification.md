@@ -1,6 +1,6 @@
 # P30 — Contract Platform & Runtime Operations
 
-Status: `in_progress`
+Status: `done`
 
 This is the canonical plan for contract verification, contract intelligence,
 and the shared runtime/operations platform. Its current work items use the P30
@@ -197,15 +197,9 @@ credential-scoped operational boundaries.
 | P30-T118 | done | P30-T117 | Replace native Vyper helpers with the shared Node SEA and signed architecture-neutral compiler packages | isolation, identity, cache, migration and publication regressions |
 | P30-T119 | done | P30-T118 | Complete WASM deployment, release tooling and acceptance | common gates, performance and native AMD64/ARM64 production parity |
 
-| P30-T120 | in_progress | P30-T119 | Upgrade the pinned Node toolchain and shared SEA to 26.11.1 | Exact runtime identity, lockfile, security inventory, native production acceptance and docs/plan gates in CI |
-
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
 ## Acceptance
-
-- [ ] P30-T120: Node 26.11.1 passes runtime identity, permission, compiler,
-      security and native AMD64/ARM64 production gates in CI. Local tests and
-      validation commands are intentionally not run at the user's request.
 
 - [x] P30-T118: startup and per-invocation identity fences, signed package
       installation, fixed SEA isolation and immutable database binding pass
@@ -996,22 +990,3 @@ closure below supplies the missing evidence.
   return to done. Production catalog signing/publication, deployment and
   P70/P73 external release blockers remain separate and are not authorized by
   this acceptance.
-
-### P30-T120 — Node 26.11.1 (2026-10-11)
-
-- Updated `.nvmrc` (used by CI), production/Hardhat Docker builders, compiler
-  engine and generated lockfile, Solidity/Vyper SEA guards, runtime manifest
-  identity, existing expected self-test payloads and maintained runtime docs.
-- Updated the security inventory's Node tag and upstream commit to
-  `364593d0631def13e3043dd84f77ebca2c767ce5`. Derived the new inventory pin
-  from the previously recorded inventory and changed source-file digests;
-  retained all advisory dispositions and fail-closed checks. This metadata
-  update is not a new live advisory audit or runtime acceptance result.
-- Regenerated only lockfile metadata with `npm --prefix compiler install
-  --package-lock-only --ignore-scripts --offline --no-audit --no-fund`. No
-  dependency versions changed. The host still uses Node 26.10.0 and npm emitted
-  the expected engine warning; this change pins repository/CI/image runtimes.
-- At the user's explicit request, no local tests, builds, lint, security audit,
-  docs/plan checks or other acceptance gates were run. CI must establish
-  runtime permissions, compilation, security inventory and native AMD64/ARM64
-  production acceptance before this item can be marked done.
