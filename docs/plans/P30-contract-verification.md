@@ -203,6 +203,8 @@ credential-scoped operational boundaries.
 
 | P30-T122 | done | P30-T119 | Remove unused host Python setup from runtime and browser CI jobs | workflow dependency inspection, YAML and docs/plan checks |
 
+| P30-T123 | done | P30-T122 | Upgrade remaining CI host Python setup to 3.13.16 | setup distribution availability, Python release tests and docs/plan gates |
+
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
 ## Acceptance
@@ -1061,3 +1063,14 @@ closure below supplies the missing evidence.
   `make docs-check plan-check` and `git diff --check` pass. This is a workflow
   setup deletion; native/browser CI runs have not been rerun locally. T122 is
   done; T120 still owns native parallel-matrix CI acceptance.
+
+### P30-T123 — CI host Python 3.13.16 (2026-10-11)
+
+- Updated all four remaining setup-python jobs from 3.13.15 to 3.13.16.
+  The official actions/python-versions manifest lists stable 3.13.16 Linux
+  Ubuntu 24.04 x64/arm64 distributions. Production Pyodide's CPython 3.13.2
+  and historical compiler reference metadata are separate identities.
+- Local Python reports 3.13.16. `make test-vyper-release` passes 13 Python and
+  17 Node tests; `python3.13 compiler/vyper/wasm/packages.py --version 0.4.3`
+  passes. `make docs-check plan-check` and `git diff --check` pass. Remote
+  execution of the updated setup-python jobs remains unverified.

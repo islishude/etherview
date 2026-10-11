@@ -246,3 +246,6 @@ unverified; P30 stays in progress for T120.
 P30-T122 removes unused host Python setup from runtime, Hardhat and browser CI
 jobs; four Python-consuming jobs retain it. Workflow/docs/plan checks pass
 locally. P30 remains in progress for T120 native CI acceptance.
+
+P30-T123 upgrades the four remaining CI host Python jobs to 3.13.16; local
+release/package and docs/plan checks pass. Production WASM identity is unchanged.
