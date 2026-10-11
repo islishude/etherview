@@ -207,6 +207,8 @@ credential-scoped operational boundaries.
 
 | P30-T124 | done | P30-T121 | Re-review changed Expat and CPython advisory revisions | exact CI artifact replay, substantive-change regressions and live audit |
 
+| P30-T125 | done | P30-T119 | Run native WASM and Hardhat jobs independently after common package construction | workflow dependency and unchanged-job validation, docs/plan gates |
+
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
 ## Acceptance
@@ -1107,3 +1109,15 @@ closure below supplies the missing evidence.
 - Remote closure: Security and licenses passes on `d3b942f` in
   [run 38148365813](https://github.com/islishude/etherview/actions/runs/38148365813/job/114496395388).
   This closes T124; P30 remains in progress for T120 acceptance evidence.
+
+### P30-T125 — Remove unnecessary Hardhat scheduling dependency (2026-10-11)
+
+- Hardhat now depends directly on `vyper-packages`, matching its actual
+  artifact consumption. The native WASM matrix keeps the same dependency;
+  both AMD64/ARM64 matrices, commands and acceptance uploads are retained.
+- Parsed the workflow with the installed js-yaml and compared it structurally
+  against HEAD: the sole execution change is Hardhat's dependency edge.
+  Explicit assertions verify both architecture matrices and artifact downloads.
+- `make docs-check plan-check` and `git diff --check` pass. T125 is done for
+  this scheduling change; actual concurrent scheduling awaits remote CI.
+  P30 remains in progress for T120's remaining acceptance evidence.

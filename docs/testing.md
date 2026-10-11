@@ -59,6 +59,11 @@ matrices. Event-specific concurrency groups prevent a push from cancelling the
 daily run. GitHub activates the schedule after the workflow reaches the default
 branch; scheduled start times may be delayed by runner load.
 
+The native Vyper WASM matrix and Hardhat production jobs both depend directly
+on `vyper-packages`, whose artifact they consume. They run independently after
+package construction; both architecture matrices remain required verification
+coverage, without making Hardhat wait for native matrix completion.
+
 Host Python setup is required by quality/integration (`compiler-install`),
 common Vyper package construction, and security/license auditing. Native WASM
 runtime tests, prebuilt Hardhat E2E and browser E2E use Node/Go/Docker without

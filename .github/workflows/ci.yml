@@ -128,7 +128,7 @@ jobs:
           ETHERVIEW_TEST_VYPER_MATRIX_ROOT="$PWD/.local/vyper-wasm/packages" go test ./internal/verify -run '^TestVyper(DynamicRuntimeMatrix|StableVersionMatrix)$' -count=1 -timeout=30m
 
   hardhat3:
-    needs: vyper-runtimes
+    needs: vyper-packages
     name: Hardhat 3 production verification E2E (${{ matrix.arch }})
     strategy:
       fail-fast: false

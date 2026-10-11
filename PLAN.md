@@ -262,3 +262,8 @@ P50-T71 fixes the EventSource recovery browser test readiness race in run
 38148365813. Six repeated focused executions, all 50 browser tests and frontend
 lint pass locally; remote confirmation remains pending. Security passes on d3b942f, closing the remote
 audit blocker for P30-T124.
+
+P30-T125 changes Hardhat's dependency to `vyper-packages`, allowing it to run
+alongside the native WASM matrix after package construction. Both tests and
+architectures remain intact; workflow structural validation and docs/plan gates
+pass. Remote scheduling remains unverified; P30 stays in progress for T120.
