@@ -249,3 +249,7 @@ locally. P30 remains in progress for T120 native CI acceptance.
 
 P30-T123 upgrades the four remaining CI host Python jobs to 3.13.16; local
 release/package and docs/plan checks pass. Production WASM identity is unchanged.
+
+P50-T70 fixes React 19.3 suspended-route retry diagnostics while preserving lazy
+loading and router preloading. Five new regressions, full frontend tests/lint,
+generation and 50 embedded-browser checks pass locally; remote CI is pending.

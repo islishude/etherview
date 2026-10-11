@@ -715,3 +715,12 @@ is limited to 128 MiB and each WASM memory to 384 MiB. These limits are not a
 process RSS limit. Results and digest-bound package manifests are written below
 `.local/vyper-wasm/`. This candidate gate does not replace the required Linux
 matrix, production image checks or native AMD64/ARM64 acceptance.
+
+## Suspended route imports
+
+`web/src/router-lazy.test.tsx` exercises delayed imports both within `act` and
+with the browser scheduler, where React 19.3 diagnoses a library that calls
+`use(promise)` only before the import settles. The route adapter delegates
+suspension to React.lazy while retaining TanStack preload/retry/error behavior.
+The regression observes console errors without suppressing them; full browser
+acceptance continues through `make test-e2e` against the embedded Go server.

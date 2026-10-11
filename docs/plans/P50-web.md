@@ -95,6 +95,8 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T68 | done | P50-T67 | Apply the document theme before chart effects sample shared palette tokens | initial-theme and bidirectional chart regressions, frontend and embedded browser gates |
 | P50-T69 | done | P50-T68 | Split explorer styles by responsibility and colocate safe responsive rules without visual changes | stylesheet, responsive browser, frontend, generation, docs and plan gates |
 
+| P50-T70 | done | P50-T69 | Fix React 19.3 suspended route retry diagnostics | delayed import regression, frontend and generation gates |
+
 ## Acceptance
 
 - [x] No frontend runtime service or external CDN is required.
@@ -1082,3 +1084,26 @@ None.
   through `make test-e2e`. `make docs-check`, `make plan-check`, and
   `git diff --check` pass. P50-T69 is done; evidence is local only, with no
   remote CI, deployment, or release claimed.
+
+### P50-T70 — React 19.3 suspended-route retry (2026-10-11)
+
+- Full initial Vitest run passed, but a cold delayed-import regression using the
+  browser scheduler reproduces the exact conditional-use error in TanStack
+  Router 1.170.40's `lazyRouteComponent`. Its unresolved render calls
+  `use(promise)` and its completed render skips it. An `act`-only test hides
+  this timing-dependent diagnostic. Inspected 1.170.42; it retains that path.
+- Route loading now wraps TanStack's component with React.lazy and waits for
+  its importer before rendering it. TanStack still owns import-error handling,
+  failed-preload retries and stale-chunk reload behavior; its preload property
+  remains live through the adapter. No eager imports or console filtering.
+- Five focused regressions pass: delayed imports under act and browser
+  scheduling, preloading/prop forwarding without duplicate imports, retry after
+  a failed preload, and delivery of import errors to the boundary. The browser
+  scheduler test fails against the original TanStack helper with the reported
+  error and passes against the adapter.
+- `npm --prefix web run test` passes 397 Vitest tests plus 8 asset/tool-policy
+  tests without the conditional-use diagnostic. Frontend lint/type/format checks
+  and `make generate-check` pass.
+- `make test-e2e` passes all 50 embedded-browser tests. `make docs-check
+  plan-check` and `git diff --check` pass. P50-T70 is done locally; remote CI
+  has not been rerun for this correction.

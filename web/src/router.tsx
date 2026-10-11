@@ -2,10 +2,11 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
-  lazyRouteComponent,
   type RouterHistory,
 } from "@tanstack/react-router";
 import { getAddress, isAddress } from "viem";
+
+import { lazyRouteComponent } from "@/lazyRouteComponent";
 
 import { AppShell } from "@/components/AppShell";
 import { isChartMetric, type ChartSearch } from "@/pages/chartRoute";
