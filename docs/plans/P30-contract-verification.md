@@ -1170,3 +1170,9 @@ closure below supplies the missing evidence.
   measurements and real runner failure propagation. A separate measurement
   workflow preserves ordinary CI duration and the production acceptance format.
 - Evidence remains pending until both native jobs and failure probes complete.
+- Real Docker timeout probing found that SIGTERM could remain forwarded to an
+  unresponsive container, preventing callback cleanup. The CLI is now killed
+  with SIGKILL on timeout/abort before the existing named-container removal.
+  The ignored-SIGTERM regression fails against the original implementation and
+  passes after the fix; local real Docker failure/timeout/cancellation probes
+  pass. The 30-second production deadline is unchanged.

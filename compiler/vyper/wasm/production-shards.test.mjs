@@ -96,7 +96,7 @@ import { appendFileSync, writeFileSync } from 'node:fs';
 const args = process.argv.slice(2);
 if (args[0] === 'rm') { appendFileSync(${JSON.stringify(log)}, args[2] + '\\n'); }
 else if (args.includes('fail')) { process.exitCode = 9; }
-else if (args.includes('wait')) { writeFileSync(${JSON.stringify(ready)}, 'ready'); setInterval(() => {}, 1000); }
+else if (args.includes('wait')) { process.on('SIGTERM', () => {}); setTimeout(() => process.exit(0), 2000); writeFileSync(${JSON.stringify(ready)}, 'ready'); setInterval(() => {}, 1000); }
 else { process.stdin.pipe(process.stdout); }
 `, { mode: 0o755 });
     // .mjs extension makes the fixture independent of the host's default module mode.
@@ -106,7 +106,7 @@ else { process.stdin.pipe(process.stdout); }
     assert.equal(success.stdout, 'input');
     assert(!existsSync(log));
     await assert.rejects(compile(executable, ['run', '--name', 'failure', 'fail'], '', undefined));
-    await assert.rejects(compile(executable, ['run', '--name', 'timeout', 'wait'], '', undefined, 100));
+    await assert.rejects(compile(executable, ['run', '--name', 'timeout', 'wait'], '', undefined, 100), { signal: 'SIGKILL' });
     rmSync(ready, { force: true });
     const abort = new AbortController();
     const cancelled = compile(executable, ['run', '--name', 'cancelled', 'wait'], '', abort.signal);

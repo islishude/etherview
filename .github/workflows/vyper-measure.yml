@@ -6,6 +6,7 @@ name: Vyper fixture measurements
       - .github/workflows/vyper-measure.yml
       - .github/scripts/vyper-measure.mjs
       - .github/scripts/vyper-native-cleanup.mjs
+      - compiler/vyper/wasm/production-process.mjs
 permissions:
   contents: read
 concurrency:
