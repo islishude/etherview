@@ -1,7 +1,7 @@
 {
   "schema": "etherview-wasm-security-review-v1",
   "reviewed_at": "2026-10-11",
-  "inventory_sha256": "e109859dc8590cfc2adab648a0f7d159fcd28d7043254f3b83ef2f1f7afc68fb",
+  "inventory_sha256": "041bc04996e0f6de89abebce301cee7be82668b22e46ac8c83440d87a064682e",
   "core": [
     {
       "name": "bzip2",
@@ -58,8 +58,8 @@
     {
       "name": "node",
       "repo": "https://github.com/nodejs/node",
-      "ref": "v26.10.0",
-      "commit": "151845ab90d3926ceb36eedf1eade09619c3adc9"
+      "ref": "v26.11.1",
+      "commit": "364593d0631def13e3043dd84f77ebca2c767ce5"
     },
     {
       "name": "pyodide",

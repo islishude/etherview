@@ -7,6 +7,13 @@ engineering applicability review and regression audit, not an independent
 penetration-test certification or a claim that old upstream vulnerabilities
 have been patched.
 
+The measurements and pass results below remain historical Node 26.10.0
+evidence. The Node 26.11.1 upgrade passes all 13 jobs in
+[PR #140 CI run 38126174828](https://github.com/islishude/etherview/actions/runs/38126174828)
+at `d66cd4d8c92d933f3caa982c57819f157d5438ea`, including security and native
+AMD64/ARM64 production acceptance. This does not update the historical
+performance measurements below.
+
 ## Artifact and advisory coverage
 
 The previous `audit.py` inspected only the retained native 0.4.3 reference
