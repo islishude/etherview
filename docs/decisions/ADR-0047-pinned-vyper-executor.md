@@ -5,6 +5,10 @@ Status: accepted
 [ADR-0049](ADR-0049-dynamic-vyper-runtimes.md) supersedes the fixed-version and
 bundled-only distribution decision. The subprocess and publication boundaries remain.
 
+The native Python execution and per-architecture distribution decisions below
+are superseded by [ADR-0053](ADR-0053-vyper-wasm-distribution.md). Other
+verification, publication and immutable provenance boundaries remain in force.
+
 ## Context
 
 Vyper 0.4.3 publishes an architecture-independent Python wheel. A dedicated

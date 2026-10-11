@@ -2,6 +2,10 @@
 
 Status: accepted
 
+The native Python execution and per-architecture distribution decisions below
+are superseded by [ADR-0053](ADR-0053-vyper-wasm-distribution.md). Other
+verification, publication and immutable provenance boundaries remain in force.
+
 ## Decision
 
 P30-T107–P30-T110 extend ADR-0047 to non-withdrawn official stable releases.

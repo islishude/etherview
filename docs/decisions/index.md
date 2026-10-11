@@ -28,6 +28,7 @@ merging distinct invariants.
 
 ## Contract verification and intelligence
 
+- [ADR-0053 — Shared Python WASM Vyper Distribution](ADR-0053-vyper-wasm-distribution.md)
 - [ADR-0049 — Signed Dynamic Vyper Runtimes](ADR-0049-dynamic-vyper-runtimes.md)
 
 - [ADR-0047 — Pinned Python Vyper Executor](ADR-0047-pinned-vyper-executor.md)

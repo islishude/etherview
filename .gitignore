@@ -32,4 +32,4 @@ node_modules
 /.local/vyper-matrix/
 /.local/vyper-builds/
 /.local/vyper-releases/
-/compiler/vyper/__pycache__/
+/compiler/vyper/**/__pycache__/

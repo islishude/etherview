@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -151,7 +150,7 @@ func seedVyperRuntime(t *testing.T, db *pgxpool.Pool) int64 {
 		t.Fatal(err)
 	}
 	executor := sha256.Sum256([]byte("fixture-vyper-runtime"))
-	artifacts, _ := json.Marshal([]map[string]any{{"platform": runtime.GOOS + "-" + runtime.GOARCH, "manifest_sha256": hex.EncodeToString(executor[:]), "protocol": "etherview-vyper-runtime-v3"}})
+	artifacts, _ := json.Marshal([]map[string]any{{"platform": "emscripten-wasm32", "executor_digests": map[string]string{"linux-amd64": hex.EncodeToString(executor[:]), "linux-arm64": hex.EncodeToString(executor[:])}, "protocol": "etherview-vyper-wasm-package-v1"}})
 	if _, err := db.Exec(context.Background(), `INSERT INTO compiler_catalog_entries (generation_id, language, version, platform, artifact_url, artifact_sha256, max_bytes, vyper_runtimes) VALUES ($1, 'vyper', '0.4.3', 'python-wheel', 'https://compilers.example/catalog.json', decode($2,'hex'), 1024, $3)`, generation, verify.VyperCompilerSHA256, artifacts); err != nil {
 		t.Fatal(err)
 	}

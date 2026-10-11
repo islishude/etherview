@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -17,62 +18,145 @@ import (
 
 func TestVyperManifestIntegrity(t *testing.T) {
 	root := t.TempDir()
-	t.Cleanup(func() { _ = os.Chmod(root, 0o700) })
-	helper := filepath.Join(root, "etherview-vyper")
-	data := []byte("fixture helper bytes")
-	if err := os.WriteFile(helper, data, 0o555); err != nil {
+	t.Cleanup(func() { _ = os.Chmod(root, 0700) })
+	file := filepath.Join(root, "packages.zip")
+	raw := []byte("package fixture")
+	if err := os.WriteFile(file, raw, 0444); err != nil {
 		t.Fatal(err)
 	}
-	digest := sha256.Sum256(data)
-	manifest := map[string]any{"schema": vyperRuntimeSchema, "python": "3.13.15", "vyper": VyperCompilerVersion, "pyinstaller": "6.22.2", "compiler_sha256": VyperCompilerSHA256, "lock_sha256": vyperDependencyLockSHA256, "files": []map[string]string{{"path": "etherview-vyper", "sha256": hex.EncodeToString(digest[:])}}}
-	encoded, err := json.Marshal(manifest)
-	if err != nil {
+	sum := sha256.Sum256(raw)
+	m := vyperWASMManifest{Schema: vyperPackageSchema, Pyodide: "0.29.3", Python: "3.13.2", Files: []vyperWASMFile{{Path: "packages.zip", SHA256: hex.EncodeToString(sum[:])}}}
+	encoded, _ := json.Marshal(m)
+	digest := sha256.Sum256(encoded)
+	if err := os.WriteFile(filepath.Join(root, "package-manifest.json"), encoded, 0444); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "runtime-manifest.json"), encoded, 0o444); err != nil {
+	if err := os.Chmod(root, 0555); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(root, 0o555); err != nil {
+	if _, _, err := validateVyperWASMTree(root, "package-manifest.json", digest); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := validateVyperHelper(helper); err != nil {
+	if err := os.Chmod(file, 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(helper, 0o444); err != nil {
+	if _, _, err := validateVyperWASMTree(root, "package-manifest.json", digest); err == nil {
+		t.Fatal("accepted writable package")
+	}
+	if err := os.WriteFile(file, []byte("tampered"), 0444); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := validateVyperHelper(helper); err == nil {
-		t.Fatal("accepted non-executable helper")
-	}
-	if err := os.Chmod(helper, 0o755); err != nil {
+	if err := os.Chmod(file, 0444); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := validateVyperHelper(helper); err == nil {
-		t.Fatal("accepted writable executable")
-	}
-	if err := os.WriteFile(helper, []byte("changed helper bytes"), 0o555); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(helper, 0o555); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := validateVyperHelper(helper); err == nil {
-		t.Fatal("accepted changed helper bytes")
+	if _, _, err := validateVyperWASMTree(root, "package-manifest.json", digest); err == nil {
+		t.Fatal("accepted tampered package")
 	}
 }
 
+func copyWASMTestTree(t *testing.T, source string) string {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.CopyFS(root, os.DirFS(source)); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = filepath.WalkDir(root, func(p string, e os.DirEntry, err error) error {
+			if err == nil && e.IsDir() {
+				return os.Chmod(p, 0700)
+			}
+			return err
+		})
+	})
+	if err := filepath.WalkDir(root, func(p string, e os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if e.IsDir() {
+			return os.Chmod(p, 0555)
+		}
+		return os.Chmod(p, 0444)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resolved
+}
 func newVyperTestCompiler(t *testing.T) *VyperCompiler {
 	t.Helper()
 	path := os.Getenv("VYPER_EXECUTOR_TEST_PATH")
 	if path == "" {
-		path, _ = filepath.Abs("../../.local/vyper/runtime/etherview-vyper")
-		if _, err := os.Stat(path); err != nil {
-			t.Skip("built Vyper runtime required; run make compiler-install")
+		path, _ = filepath.Abs("../../.local/vyper-wasm/sea/etherview-solcjs")
+	}
+	binary, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal("built WASM SEA required; run make compiler-install: ", err)
+	}
+	executor, root := writeTestSolcJSRuntime(t)
+	makeRuntimeWritable(t, root)
+	if err := os.Chmod(executor, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(executor, binary, 0555); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(executor, 0555); err != nil {
+		t.Fatal(err)
+	}
+	// The identity-only fixture contains a dummy libatomic. A real Linux SEA
+	// loads that SONAME, so give this execution fixture the actual host library.
+	if runtime.GOOS == "linux" {
+		output, err := exec.CommandContext(t.Context(), "ldd", path).Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var library string
+		for line := range strings.SplitSeq(string(output), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) >= 3 && fields[0] == "libatomic.so.1" && filepath.IsAbs(fields[2]) {
+				library = fields[2]
+			}
+		}
+		if library == "" {
+			t.Fatal("real Linux Vyper execution fixture requires libatomic")
+		}
+		data, err := os.ReadFile(library)
+		if err != nil {
+			t.Fatal(err)
+		}
+		target := filepath.Join(root, "lib", "libatomic.so.1")
+		if err := os.Chmod(target, 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(target, data, 0444); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(target, 0444); err != nil {
+			t.Fatal(err)
 		}
 	}
-	compiler := &VyperCompiler{Path: path, Timeout: 10 * time.Second}
-	if err := compiler.ValidateRuntime(context.Background()); err != nil {
+	mutateTestManifest(t, root, func(m *solcJSRuntimeManifest) {
+		m.Files[0] = testManifestFile(t, root, executor, "executor", "")
+		m.Files[1] = testManifestFile(t, root, filepath.Join(root, "lib", "libatomic.so.1"), "library", "libatomic.so.1")
+	})
+	makeRuntimeReadOnly(t, root)
+	shared := copyWASMTestTree(t, "../../.local/vyper-wasm/shared")
+	pkg := copyWASMTestTree(t, "../../.local/vyper-wasm/packages/0.4.3")
+	raw, err := os.ReadFile(filepath.Join(pkg, "package-manifest.json"))
+	if err != nil {
 		t.Fatal(err)
+	}
+	digest, _ := decodeCatalogDigest(VyperCompilerSHA256)
+	compiler := &VyperCompiler{Path: executor, SharedPath: shared, PackagePath: pkg, Version: VyperCompilerVersion, CompilerDigest: digest, ManifestDigest: sha256.Sum256(raw), Timeout: 10 * time.Second}
+	if err := compiler.ValidateRuntime(t.Context()); err != nil {
+		args, _ := compiler.wasmArguments([]string{"--self-test"})
+		cmd := exec.CommandContext(t.Context(), compiler.Path, args...)
+		cmd.Env = []string{}
+		out, e := cmd.CombinedOutput()
+		t.Fatalf("%v; direct=%v %s; args=%q", err, e, out, args)
 	}
 	return compiler
 }
@@ -122,7 +206,7 @@ func TestVyperRuntime(t *testing.T) {
 
 func TestVyperManifestRejectsUnsafeInputs(t *testing.T) {
 	for _, path := range []string{"", "relative/etherview-vyper", filepath.Join(t.TempDir(), "etherview-vyper")} {
-		if _, err := validateVyperHelper(path); err == nil {
+		if _, _, err := validateVyperWASMTree(path, "package-manifest.json", [sha256.Size]byte{}); err == nil {
 			t.Fatalf("accepted %q", path)
 		}
 	}
@@ -203,7 +287,7 @@ func TestVyperRuntimeHonorsConfiguredInputLimit(t *testing.T) {
 		t.Fatal("input beyond configured boundary was accepted")
 	}
 	// A configured ceiling is not an allocation request: this exceeds the
-	// Linux helper's address-space limit but the actual input is tiny.
+	// WASM linear-memory limit but the actual input is tiny.
 	compiler.MaxInputBytes = 1 << 30
 	small, err := os.ReadFile("testdata/compiler/vyper/plain.input.json")
 	if err != nil {
@@ -233,7 +317,11 @@ func TestVyperHelperRejectsInvalidLimits(t *testing.T) {
 		t.Run(strings.Join(args, "_"), func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
-			command := exec.CommandContext(ctx, compiler.Path, args...)
+			arguments, argErr := compiler.wasmArguments(args)
+			if argErr != nil {
+				return
+			}
+			command := exec.CommandContext(ctx, compiler.Path, arguments...)
 			command.Env = []string{}
 			command.Stdin = strings.NewReader(string(input))
 			output, err := command.CombinedOutput()
@@ -241,5 +329,41 @@ func TestVyperHelperRejectsInvalidLimits(t *testing.T) {
 				t.Fatalf("invalid/ exceeded limits: error=%v output=%s", err, output)
 			}
 		})
+	}
+}
+
+func TestVyperSubprocessUsesPrivateLibraryDirectory(t *testing.T) {
+	t.Setenv("LD_LIBRARY_PATH", "/untrusted-parent-libraries")
+	t.Setenv("ETHERVIEW_TEST_SECRET", "parent-only")
+	executor, root := writeTestSolcJSRuntime(t)
+	marker := filepath.Join(t.TempDir(), "environment")
+	makeRuntimeWritable(t, root)
+	if err := os.Chmod(executor, 0755); err != nil {
+		t.Fatal(err)
+	}
+	script := "#!/bin/sh\nprintf '%s\\n%s' \"$LD_LIBRARY_PATH\" \"${ETHERVIEW_TEST_SECRET-unset}\" > " + shellQuote(marker) + "\nprintf '{}'\n"
+	if err := os.WriteFile(executor, []byte(script), 0555); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(executor, 0555); err != nil {
+		t.Fatal(err)
+	}
+	mutateTestManifest(t, root, func(manifest *solcJSRuntimeManifest) {
+		manifest.Files[0] = testManifestFile(t, root, executor, "executor", "")
+	})
+	compiler := &VyperCompiler{Path: executor, SharedPath: copyWASMTestTree(t, "../../.local/vyper-wasm/shared")}
+	identity, err := compiler.validateHelper()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := compiler.runExpected(t.Context(), []string{"--self-test"}, nil, identity); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != filepath.Join(root, "lib")+"\nunset" {
+		t.Fatal("Vyper subprocess did not isolate its library path and environment")
 	}
 }

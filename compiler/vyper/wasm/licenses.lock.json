@@ -1,0 +1,77 @@
+[
+  {
+    "path": "pyodide-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/pyodide/pyodide/0.29.3/LICENSE",
+    "sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5"
+  },
+  {
+    "path": "Python-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/python/cpython/v3.13.2/LICENSE",
+    "sha256": "78b12c3a81360b357002334f0e70ea0e92eebf7a9b358805c03c48484945f3bb"
+  },
+  {
+    "path": "emscripten-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/emscripten-core/emscripten/4.0.9/LICENSE",
+    "sha256": "620a78084fc7ca97c0b5dea9abf891f3ffcadfdbf305276f099c9c4e12fc1d86"
+  },
+  {
+    "path": "pycryptodome-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/Legrandin/pycryptodome/v3.21.0/LICENSE.rst",
+    "sha256": "4e04660d77c1c64e89d79537919fb8240fa21484a7e3db29f358b2c7f84ea073"
+  },
+  {
+    "path": "zlib-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/madler/zlib/v1.3.1/LICENSE",
+    "sha256": "845efc77857d485d91fb3e0b884aaa929368c717ae8186b66fe1ed2495753243"
+  },
+  {
+    "path": "bzip2-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/emscripten-ports/bzip2/1.0.6/LICENSE",
+    "sha256": "4919cfb14a73cd64fcef67b107613970cf1659a09aa675dba31314f373bc7204"
+  },
+  {
+    "path": "expat-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/libexpat/libexpat/R_2_6_4/expat/COPYING",
+    "sha256": "122f2c27000472a201d337b9b31f7eb2b52d091b02857061a8880371612d9534"
+  },
+  {
+    "path": "libffi-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/libffi/libffi/f08493d249d2067c8b3207ba46693dd858f95db3/LICENSE",
+    "sha256": "2c9c2acb9743e6b007b91350475308aee44691d96aa20eacef8e199988c8c388"
+  },
+  {
+    "path": "hiwire-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/pyodide/hiwire/6a1e67280a15d929ebeceee54a6358c9c8d5f697/LICENSE",
+    "sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5"
+  },
+  {
+    "path": "musl-COPYRIGHT.txt",
+    "url": "https://raw.githubusercontent.com/emscripten-core/emscripten/4.0.9/system/lib/libc/musl/COPYRIGHT",
+    "sha256": "f9bc4423732350eb0b3f7ed7e91d530298476f8fec0c6c427a1c04ade22655af"
+  },
+  {
+    "path": "compiler-rt-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/emscripten-core/emscripten/4.0.9/system/lib/compiler-rt/LICENSE.TXT",
+    "sha256": "1a8f1058753f1ba890de984e48f0242a3a5c29a6a8f2ed9fd813f36985387e8d"
+  },
+  {
+    "path": "libcxx-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/emscripten-core/emscripten/4.0.9/system/lib/libcxx/LICENSE.TXT",
+    "sha256": "539dd7aed86e8a4f12cbdd0e6c50c189c7d74847e4fecc64ce2c6ee3a01da38b"
+  },
+  {
+    "path": "libcxxabi-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/emscripten-core/emscripten/4.0.9/system/lib/libcxxabi/LICENSE.TXT",
+    "sha256": "e2b35be49f7284a45b7baca8fc7b3ab7440e7902392b2528a457816b5bb2a15c"
+  },
+  {
+    "path": "Python-third-party-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/python/cpython/v3.13.2/Doc/license.rst",
+    "sha256": "62f2c9c2c75d511170eb464ad5f83b78cc1f37eb2eb49c2846c9aa6c4557ee99"
+  },
+  {
+    "path": "HACL-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/hacl-star/hacl-star/bb3d0dc8d9d15a5cd51094d5b69e70aa09005ff0/LICENSE",
+    "sha256": "c5accbbd8546e94c34aed24afe689a617627d18eed5a6c48277e48db57c23851"
+  }
+]

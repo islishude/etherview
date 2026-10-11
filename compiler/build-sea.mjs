@@ -24,6 +24,7 @@ try {
     outfile: bundle,
     bundle: true,
     platform: "node",
+    loader: { ".py": "text" },
     target: "node26",
     format: "cjs",
     sourcemap: false,
@@ -69,6 +70,9 @@ try {
   );
 
   execFileSync(process.execPath, ["--build-sea", config], { stdio: "inherit" });
+  if (process.platform === "darwin") {
+    execFileSync("codesign", ["--force", "--sign", "-", output], { stdio: "inherit" });
+  }
 } finally {
   rmSync(buildDirectory, { recursive: true, force: true });
 }

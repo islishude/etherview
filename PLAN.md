@@ -90,6 +90,14 @@ React rendering, and the egress rejection assertion accepts Helm 3/4 schema
 path formats. Local Web unit/browser, generation, deployment, docs, and plan
 gates pass; remote CI has not been rerun with this fix.
 
+P30-T117–T119 are complete. Implementation commit `b52deab` passes all 13
+jobs in [run 38119209326](https://github.com/islishude/etherview/actions/runs/38119209326),
+including native AMD64/ARM64 matrices and production parity. Actual-distribution
+security inventory, nested vendor/license checks, final fresh-process performance
+measurements and consumption of both native acceptance records by the real
+signing tool complete T119. P30 returns to done; P70/P73 external blockers remain.
+No production catalog publication or deployment is authorized by these results.
+
 ## Global Release Gates
 
 - [ ] Every plan required by P70 is `done` or explicitly `superseded` with reviewable evidence.

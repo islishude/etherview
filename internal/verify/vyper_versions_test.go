@@ -95,7 +95,7 @@ func TestVyperVersionSettings(t *testing.T) {
 func TestVyperDynamicRuntimeMatrix(t *testing.T) {
 	root := os.Getenv("ETHERVIEW_TEST_VYPER_MATRIX_ROOT")
 	if root == "" {
-		t.Skip("run make test-vyper-matrix for the native runtime matrix")
+		t.Skip("run make test-vyper-matrix for the WASM runtime matrix")
 	}
 	var profiles map[string]VyperCapabilities
 	if err := json.Unmarshal(vyperCapabilitiesJSON, &profiles); err != nil {
@@ -103,12 +103,12 @@ func TestVyperDynamicRuntimeMatrix(t *testing.T) {
 	}
 	for version := range profiles {
 		t.Run(version, func(t *testing.T) {
-			runtimePath := filepath.Join(root, version, "runtime")
-			raw, err := os.ReadFile(filepath.Join(runtimePath, "runtime-manifest.json"))
+			runtimePath := filepath.Join(root, version)
+			raw, err := os.ReadFile(filepath.Join(runtimePath, "package-manifest.json"))
 			if err != nil {
 				t.Fatal(err)
 			}
-			var manifest vyperRuntimeManifest
+			var manifest vyperWASMManifest
 			if err := json.Unmarshal(raw, &manifest); err != nil {
 				t.Fatal(err)
 			}
@@ -116,21 +116,72 @@ func TestVyperDynamicRuntimeMatrix(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			compiler := &VyperCompiler{Path: filepath.Join(runtimePath, "etherview-vyper"), Version: version, CompilerDigest: digest, ManifestDigest: sha256.Sum256(raw)}
+			compiler := newVyperTestCompiler(t)
+			compiler.PackagePath = copyWASMTestTree(t, runtimePath)
+			compiler.Version = version
+			compiler.CompilerDigest = digest
+			compiler.ManifestDigest = sha256.Sum256(raw)
 			if err := compiler.ValidateRuntime(t.Context()); err != nil {
 				t.Fatal(err)
 			}
-			input, err := os.ReadFile(filepath.Join("testdata/compiler/vyper/versions", version, "plain.input.json"))
-			if err != nil {
-				t.Fatal(err)
+			fixtures := filepath.Join("testdata/compiler/vyper/versions", version)
+			files, err := filepath.Glob(filepath.Join(fixtures, "*.input.json"))
+			if err != nil || len(files) < 3 {
+				t.Fatalf("incomplete matrix: %v", err)
 			}
-			if _, err := compiler.run(t.Context(), []string{"--compile", "5242880", "33554432"}, input); err != nil {
-				t.Fatal(err)
+			for _, file := range files {
+				name := strings.TrimSuffix(file, ".input.json")
+				for _, variant := range []struct{ input, output string }{{"input", "output"}, {"modified", "modified_output"}} {
+					t.Run(filepath.Base(name)+"/"+variant.input, func(t *testing.T) {
+						input, err := os.ReadFile(name + "." + variant.input + ".json")
+						if err != nil {
+							t.Fatal(err)
+						}
+						actual, err := compiler.Compile(t.Context(), LanguageVyper, version, input)
+						if err != nil {
+							t.Fatal(err)
+						}
+						expected, err := os.ReadFile(name + "." + variant.output + ".json")
+						if err != nil {
+							t.Fatal(err)
+						}
+						assertVyperReference(t, actual, expected, strings.HasPrefix(filepath.Base(name), "invalid"))
+					})
+				}
 			}
 			compiler.ManifestDigest[0] ^= 1
-			if _, err := compiler.run(t.Context(), []string{"--compile", "5242880", "33554432"}, input); err == nil {
+			if _, err := compiler.run(t.Context(), []string{"--compile", "5242880", "33554432"}, []byte("{}")); err == nil {
 				t.Fatal("executed changed runtime identity")
 			}
 		})
 	}
+}
+
+func assertVyperReference(t *testing.T, actual, expected []byte, invalid bool) {
+	t.Helper()
+	type result struct {
+		Contracts json.RawMessage `json:"contracts"`
+		Errors    []struct {
+			Severity string `json:"severity"`
+			Type     string `json:"type"`
+		} `json:"errors"`
+	}
+	var got, want result
+	if json.Unmarshal(actual, &got) != nil || json.Unmarshal(expected, &want) != nil {
+		t.Fatal("invalid compiler result")
+	}
+	if !invalid {
+		if !equalJSONValue(got.Contracts, want.Contracts) {
+			t.Fatal("compiler contracts differ from official reference")
+		}
+		return
+	}
+	for _, actualError := range got.Errors {
+		for _, expectedError := range want.Errors {
+			if actualError.Severity == "error" && actualError.Type == expectedError.Type {
+				return
+			}
+		}
+	}
+	t.Fatal("compiler diagnostics differ from official reference")
 }

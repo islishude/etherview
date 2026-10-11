@@ -86,7 +86,7 @@ func (provenance CompilerProvenance) valid() bool {
 			provenance.ExecutionPolicy == TrustedSubprocessPolicy &&
 			provenance.Platform == CompilerPlatformEmscriptenWASM32
 	case CompilerVyper:
-		if provenance.ExecutorKind == VyperDynamicExecutorKind {
+		if provenance.ExecutorKind == VyperDynamicExecutorKind || provenance.ExecutorKind == "etherview_vyper_v3" {
 			return provenance.CatalogGeneration > 0 && provenance.ExecutorDigest != [sha256.Size]byte{} && provenance.ExecutionPolicy == TrustedSubprocessPolicy && provenance.Platform == CompilerPlatformPythonWheel
 		}
 		return hex.EncodeToString(provenance.Digest[:]) == VyperCompilerSHA256 && provenance.CatalogGeneration == 0 && provenance.CatalogDigest == [sha256.Size]byte{} && provenance.CatalogSource == "" && provenance.CatalogEntryCount == 0 && provenance.ArtifactURL == "" && provenance.ArtifactMaxBytes == 0 && provenance.ExecutorDigest != [sha256.Size]byte{} && provenance.ExecutorKind == VyperExecutorKind && provenance.ExecutionPolicy == TrustedSubprocessPolicy && provenance.Platform == CompilerPlatformPythonWheel

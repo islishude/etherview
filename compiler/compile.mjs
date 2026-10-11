@@ -1,3 +1,4 @@
+import { executeVyper } from "./vyper/wasm/execute.mjs";
 import { writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { isSea } from "node:sea";
@@ -79,6 +80,10 @@ async function networkIsDenied() {
 
 async function main() {
   const invocationArguments = process.argv.slice(2);
+  if (invocationArguments[0]?.startsWith("--vyper-")) {
+    await executeVyper(invocationArguments);
+    return;
+  }
   const [mode, artifactPath, expectedVersion] = invocationArguments;
 
   if (mode === "--self-test") {

@@ -183,21 +183,26 @@ func TestPostgresMetricSnapshotIsChainScopedAndRetainedAfterRefreshFailure(t *te
 		}
 	})
 
+	activeMetrics := []string{
+		`etherview_durable_jobs{stage="trace",status="queued"}`,
+		`etherview_durable_jobs{stage="trace",status="leased"}`,
+		`etherview_durable_jobs{stage="other",status="queued"}`,
+		`etherview_verification_jobs{status="queued"}`,
+		`etherview_verification_jobs{status="running"}`,
+		`etherview_repair_requests{operation="repair",status="queued"}`,
+		`etherview_repair_requests{operation="reindex",status="running"}`,
+	}
 	initial := waitForMetrics(t, registry, func(metrics string) bool {
-		return strings.Contains(metrics, `etherview_durable_jobs{stage="trace",status="queued"} 1`) &&
-			strings.Contains(metrics, `etherview_durable_jobs{stage="trace",status="leased"} 1`) &&
-			strings.Contains(metrics, `etherview_durable_jobs{stage="other",status="queued"} 1`) &&
-			strings.Contains(metrics, `etherview_verification_jobs{status="queued"} 1`) &&
-			strings.Contains(metrics, `etherview_verification_jobs{status="running"} 1`) &&
-			strings.Contains(metrics, `etherview_repair_requests{operation="repair",status="queued"} 1`) &&
-			strings.Contains(metrics, `etherview_repair_requests{operation="reindex",status="running"} 1`)
+		for _, name := range activeMetrics {
+			if scalarMetricValue(metrics, name) != 1 {
+				return false
+			}
+		}
+		return true
 	})
 	oldest := scalarMetric(t, initial, "etherview_repair_oldest_queued_seconds")
 	if oldest < 100 || oldest > 300 {
 		t.Fatalf("oldest chain-1 repair age=%v; chain scope or fixture age is wrong\n%s", oldest, initial)
-	}
-	if strings.Contains(initial, `status="queued"} 2`) || strings.Contains(initial, "3600") {
-		t.Fatalf("chain-2 control-plane state leaked into chain-1 metrics:\n%s", initial)
 	}
 	for _, terminal := range []string{
 		`etherview_durable_jobs{stage="trace",status="cancelled"}`,

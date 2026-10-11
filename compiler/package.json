@@ -10,6 +10,7 @@
     "build:sea": "node build-sea.mjs"
   },
   "dependencies": {
+    "pyodide": "0.29.3",
     "solc": "0.8.37"
   },
   "devDependencies": {

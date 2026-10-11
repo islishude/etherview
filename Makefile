@@ -27,7 +27,7 @@ GOLANGCI_LINT ?= golangci-lint
 GOVULNCHECK_VERSION ?= v1.6.0
 GITLEAKS_VERSION ?= v8.30.1
 GO_LICENSES_VERSION ?= v2.0.1
-GOLANGCI_LINT_VERSION ?= v2.13.1
+GOLANGCI_LINT_VERSION ?= v2.14.0
 WEB_LICENSE_CHECKER_VERSION ?= 5.0.1
 
 GENERATED_PATHS := \
@@ -162,7 +162,7 @@ test-hardhat3-e2e-prebuilt: test-hardhat3-offline-compile
 	}
 	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" NODE="$(NODE)" \
 		ETHERVIEW_HARDHAT3_IMAGE="$(HARDHAT3_IMAGE)" \
-		$(GO) test -count=1 -v -tags='runtimee2e hardhat3e2e' \
+		$(GO) test -count=1 -v -timeout=30m -tags='runtimee2e hardhat3e2e' \
 		-run '^TestHardhat3(ProductionE2E|VerificationCounts)$$' ./e2e/runtime
 
 foundry-client-image-build:
@@ -198,12 +198,12 @@ test-foundry-e2e-prebuilt: test-foundry-offline-compile
 # Without INTEGRATION_DATABASE_URL the Go runner owns a fresh PostgreSQL 18
 # Compose project. Supplying a URL remains useful for an explicitly disposable
 # external database.
-test-integration: web-build
+test-integration: web-build compiler-install
 	@INTEGRATION_DATABASE_URL="$(INTEGRATION_DATABASE_URL)" COMPOSE="$(COMPOSE)" \
 		DOCKER="$(DOCKER)" GO="$(GO)" \
 		$(GO) run ./cmd/testintegration -root . -packages "$(INTEGRATION_GO_PACKAGES)"
 
-test-integration-race: web-build
+test-integration-race: web-build compiler-install
 	@INTEGRATION_DATABASE_URL="$(INTEGRATION_DATABASE_URL)" COMPOSE="$(COMPOSE)" \
 		DOCKER="$(DOCKER)" GO="$(GO)" \
 		$(GO) run ./cmd/testintegration -root . -packages "$(INTEGRATION_GO_PACKAGES)" -race
@@ -239,7 +239,9 @@ web-install:
 
 compiler-install:
 	$(NPM) --prefix compiler ci --ignore-scripts
-	$(PYTHON) compiler/vyper/install.py
+	$(NODE) compiler/vyper/wasm/prepare.mjs
+	$(PYTHON) compiler/vyper/wasm/packages.py --version 0.4.3
+	$(NPM) --prefix compiler run build:sea -- "$(CURDIR)/.local/vyper-wasm/sea/etherview-solcjs"
 
 web-generate: web-install
 	$(NPM) --prefix api run generate:api
@@ -254,7 +256,7 @@ web-build: web-generate
 	$(NPM) --prefix web run build
 
 lint-go: lint-tool-check source-check
-	@unformatted="$$(find . \( -path './.git' -o -path './vendor' -o -path './web/node_modules' \) -prune -o -type f -name '*.go' -exec gofmt -l {} +)"; \
+	@unformatted="$$(find . \( -path './.git' -o -path './.local' -o -path './vendor' -o -path './web/node_modules' \) -prune -o -type f -name '*.go' -exec gofmt -l {} +)"; \
 	if [ -n "$$unformatted" ]; then \
 		echo "gofmt is required for:"; \
 		echo "$$unformatted"; \
@@ -296,6 +298,8 @@ security-check: security-tool-check web-build compiler-install
 	$(NPM) --prefix web audit --audit-level=high
 	$(NPM) --prefix compiler audit --audit-level=high
 	$(PYTHON) compiler/vyper/audit.py
+	$(PYTHON) compiler/vyper/wasm/packages.py
+	$(PYTHON) compiler/vyper/wasm/audit.py
 	$(NPM) --prefix e2e/hardhat3 audit --audit-level=high
 	$(GO) test ./internal/app ./internal/auth ./internal/billing/... ./internal/cli ./internal/config ./internal/httpapi ./internal/jsonstrict ./internal/metadata ./internal/observability ./internal/userauth ./internal/verify ./web
 
@@ -305,6 +309,8 @@ license-tool-check:
 		echo "license-check: frontend checker must be pinned at $(WEB_LICENSE_CHECKER_VERSION)"; exit 1; }
 
 license-check: license-tool-check web-install compiler-install
+	$(PYTHON) compiler/vyper/wasm/packages.py
+	$(NODE) compiler/vyper/wasm/licenses.mjs
 	$(PYTHON) compiler/vyper/licenses.py
 	@test -f LICENSE || { echo "license-check: root LICENSE is missing"; exit 1; }
 	@grep -q "Apache License" LICENSE || { echo "license-check: root LICENSE is not Apache-2.0"; exit 1; }
@@ -544,11 +550,22 @@ stop-x402-local:
 recreate-x402-local: stop-x402-local start-x402-local
 
 .PHONY: test-vyper-matrix
-test-vyper-matrix:
-	python3 compiler/vyper/matrix.py
-	ETHERVIEW_TEST_VYPER_MATRIX_ROOT="$(CURDIR)/.local/vyper-builds" $(GO) test ./internal/verify -run '^TestVyper(DynamicRuntimeMatrix|StableVersionMatrix)$$' -count=1 -timeout=30m
+test-vyper-matrix: compiler-install test-vyper-wasm-candidate
+	ETHERVIEW_TEST_VYPER_MATRIX_ROOT="$(CURDIR)/.local/vyper-wasm/packages" $(GO) test ./internal/verify -run '^TestVyper(DynamicRuntimeMatrix|StableVersionMatrix)$$' -count=1 -timeout=30m
 
 .PHONY: test-vyper-release
 test: test-vyper-release
 test-vyper-release:
+	$(PYTHON) -m unittest discover -s compiler/vyper/wasm -p 'test_*.py'
 	$(NODE) --test compiler/vyper/catalog.test.mjs
+
+.PHONY: test-vyper-wasm-candidate
+test-vyper-wasm-candidate:
+	$(NPM) --prefix compiler ci --ignore-scripts
+	python3 -m unittest discover -s compiler/vyper/wasm -p 'test_*.py'
+	python3 compiler/vyper/wasm/check.py
+
+.PHONY: benchmark-vyper-wasm
+benchmark-vyper-wasm: compiler-install
+	$(PYTHON) compiler/vyper/wasm/packages.py
+	$(PYTHON) compiler/vyper/wasm/benchmark.py

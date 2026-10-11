@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
-	"runtime"
 	"strings"
 	"time"
 
@@ -19,18 +18,20 @@ import (
 	"golang.org/x/mod/semver"
 )
 
-const VyperDynamicExecutorKind = "etherview_vyper_v3"
-const vyperDynamicSchema = "etherview-vyper-runtime-v3"
+const VyperDynamicExecutorKind = "node_vyper_wasm_v1"
+const vyperDynamicSchema = vyperPackageSchema
 
-// VyperRuntimeArtifact binds a complete, platform-specific executable tree.
-// SHA256 authenticates the transport archive; ManifestSHA256 is executor identity.
+// VyperRuntimeArtifact binds a complete, architecture-neutral compiler package.
+// SHA256 authenticates transport; manifest and shared digests bind execution.
 type VyperRuntimeArtifact struct {
-	Platform       string `json:"platform"`
-	URL            string `json:"url"`
-	SHA256         string `json:"sha256"`
-	ManifestSHA256 string `json:"manifest_sha256"`
-	MaxBytes       int64  `json:"max_bytes"`
-	Protocol       string `json:"protocol"`
+	ExecutorDigests map[string]string `json:"executor_digests"`
+	SharedSHA256    string            `json:"shared_sha256"`
+	Platform        string            `json:"platform"`
+	URL             string            `json:"url"`
+	SHA256          string            `json:"sha256"`
+	ManifestSHA256  string            `json:"manifest_sha256"`
+	MaxBytes        int64             `json:"max_bytes"`
+	Protocol        string            `json:"protocol"`
 }
 
 type vyperCatalogBuild struct {
@@ -69,7 +70,7 @@ func (catalog *CompilerCatalog) parseVyper(source string, raw []byte) ([]Catalog
 		return nil, invalid
 	}
 	var document vyperCatalogDocument
-	if strictVyperJSON(payload, &document) != nil || document.Schema != "etherview-vyper-catalog-v1" || !document.ExpiresAt.After(time.Now()) || len(document.Builds) == 0 || len(document.Builds) > catalog.options.MaxEntries {
+	if strictVyperJSON(payload, &document) != nil || document.Schema != "etherview-vyper-catalog-v2" || !document.ExpiresAt.After(time.Now()) || len(document.Builds) == 0 || len(document.Builds) > catalog.options.MaxEntries {
 		return nil, invalid
 	}
 	entries := make([]CatalogEntry, 0, len(document.Builds))
@@ -91,7 +92,7 @@ func (catalog *CompilerCatalog) parseVyper(source string, raw []byte) ([]Catalog
 			}
 			platforms[artifact.Platform] = true
 		}
-		if !platforms["linux-amd64"] || !platforms["linux-arm64"] {
+		if len(build.Runtimes) != 1 || !platforms[CompilerPlatformEmscriptenWASM32] {
 			return nil, invalid
 		}
 		if build.Withdrawn {
@@ -120,7 +121,7 @@ func strictVyperJSON(raw []byte, target any) error {
 
 func (catalog *CompilerCatalog) validateVyperArtifact(artifact VyperRuntimeArtifact) error {
 	invalid := errors.New("invalid Vyper runtime artifact")
-	if artifact.Platform != "linux-amd64" && artifact.Platform != "linux-arm64" && artifact.Platform != "darwin-arm64" && artifact.Platform != "darwin-amd64" {
+	if artifact.Platform != CompilerPlatformEmscriptenWASM32 || artifact.SharedSHA256 != vyperSharedManifestSHA256 {
 		return invalid
 	}
 	if artifact.Protocol != vyperDynamicSchema || artifact.MaxBytes <= 0 || artifact.MaxBytes > catalog.options.MaxArtifactBytes {
@@ -131,6 +132,19 @@ func (catalog *CompilerCatalog) validateVyperArtifact(artifact VyperRuntimeArtif
 	}
 	if _, err := decodeCatalogDigest(artifact.ManifestSHA256); err != nil {
 		return invalid
+	}
+	for _, platform := range []string{"linux-amd64", "linux-arm64"} {
+		if _, err := decodeCatalogDigest(artifact.ExecutorDigests[platform]); err != nil {
+			return invalid
+		}
+	}
+	for platform, digest := range artifact.ExecutorDigests {
+		if platform != "linux-amd64" && platform != "linux-arm64" && platform != "darwin-amd64" && platform != "darwin-arm64" {
+			return invalid
+		}
+		if _, err := decodeCatalogDigest(digest); err != nil {
+			return invalid
+		}
 	}
 	u, err := url.Parse(artifact.URL)
 	if err != nil || u.User != nil || u.RawQuery != "" || u.Fragment != "" || len(artifact.URL) > 4096 {
@@ -177,7 +191,7 @@ func (catalog *CompilerCatalog) vyperArtifact(ctx context.Context, generation in
 		return entry, VyperRuntimeArtifact{}, ErrCompilerProvenanceConflict
 	}
 	for _, artifact := range artifacts {
-		if artifact.Platform == runtime.GOOS+"-"+runtime.GOARCH {
+		if artifact.Platform == CompilerPlatformEmscriptenWASM32 {
 			if catalog.validateVyperArtifact(artifact) != nil {
 				return entry, artifact, ErrCompilerProvenanceConflict
 			}
@@ -202,7 +216,7 @@ func vyperHostSupported(raw []byte) bool {
 		return false
 	}
 	for _, artifact := range artifacts {
-		if artifact.Platform == runtime.GOOS+"-"+runtime.GOARCH {
+		if artifact.Platform == CompilerPlatformEmscriptenWASM32 {
 			return true
 		}
 	}

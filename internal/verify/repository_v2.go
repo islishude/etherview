@@ -660,7 +660,7 @@ func (repository *PostgresRepository) decodeV2Job(row dbgen.VerifyV2GetJobRow) (
 			switch executorKind.String {
 			case SolcJSExecutorKind:
 				provenance.Kind = CompilerSolcJS
-			case VyperExecutorKind, VyperDynamicExecutorKind:
+			case VyperExecutorKind, VyperDynamicExecutorKind, "etherview_vyper_v3":
 				provenance.Kind = CompilerVyper
 			case GeasExecutorKind:
 				provenance.Kind = CompilerGeas

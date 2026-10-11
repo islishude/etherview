@@ -16,9 +16,8 @@ func TestSignedVyperCatalog(t *testing.T) {
 		t.Fatal(err)
 	}
 	parser := &CompilerCatalog{options: CompilerCatalogOptions{VyperPublicKey: public, MaxEntries: 4096, MaxArtifactBytes: defaultCompilerArtifactMB}, origins: map[string]struct{}{"https://compilers.example": {}}}
-	base := vyperCatalogDocument{Schema: "etherview-vyper-catalog-v1", ExpiresAt: time.Now().Add(time.Hour), Builds: []vyperCatalogBuild{{Version: "0.4.3", CompilerSHA256: strings.Repeat("a", 64), Runtimes: []VyperRuntimeArtifact{
-		{Platform: "linux-amd64", URL: "https://compilers.example/amd64.tar.gz", SHA256: strings.Repeat("b", 64), ManifestSHA256: strings.Repeat("c", 64), MaxBytes: 1024, Protocol: vyperDynamicSchema},
-		{Platform: "linux-arm64", URL: "https://compilers.example/arm64.tar.gz", SHA256: strings.Repeat("d", 64), ManifestSHA256: strings.Repeat("e", 64), MaxBytes: 1024, Protocol: vyperDynamicSchema},
+	base := vyperCatalogDocument{Schema: "etherview-vyper-catalog-v2", ExpiresAt: time.Now().Add(time.Hour), Builds: []vyperCatalogBuild{{Version: "0.4.3", CompilerSHA256: strings.Repeat("a", 64), Runtimes: []VyperRuntimeArtifact{
+		{Platform: CompilerPlatformEmscriptenWASM32, URL: "https://compilers.example/package.tar.gz", SHA256: strings.Repeat("b", 64), ManifestSHA256: strings.Repeat("c", 64), SharedSHA256: vyperSharedManifestSHA256, ExecutorDigests: map[string]string{"linux-amd64": strings.Repeat("d", 64), "linux-arm64": strings.Repeat("e", 64)}, MaxBytes: 1024, Protocol: vyperDynamicSchema},
 	}}}}
 	cases := []struct {
 		name   string
@@ -30,9 +29,18 @@ func TestSignedVyperCatalog(t *testing.T) {
 		{"prerelease", func(d *vyperCatalogDocument) { d.Builds[0].Version = "0.4.3rc1" }, false},
 		{"build metadata", func(d *vyperCatalogDocument) { d.Builds[0].Version = "0.4.3+abc" }, false},
 		{"withdrawn", func(d *vyperCatalogDocument) { d.Builds[0].Withdrawn = true }, false},
-		{"missing architecture", func(d *vyperCatalogDocument) { d.Builds[0].Runtimes = d.Builds[0].Runtimes[:1] }, false},
-		{"duplicate architecture", func(d *vyperCatalogDocument) { d.Builds[0].Runtimes[1] = d.Builds[0].Runtimes[0] }, false},
+		{"missing architecture", func(d *vyperCatalogDocument) { delete(d.Builds[0].Runtimes[0].ExecutorDigests, "linux-arm64") }, false},
+		{"duplicate architecture", func(d *vyperCatalogDocument) {
+			d.Builds[0].Runtimes = append(d.Builds[0].Runtimes, d.Builds[0].Runtimes[0])
+		}, false},
 		{"untrusted origin", func(d *vyperCatalogDocument) { d.Builds[0].Runtimes[0].URL = "https://attacker.example/runtime" }, false},
+		{"wrong shared runtime", func(d *vyperCatalogDocument) { d.Builds[0].Runtimes[0].SharedSHA256 = strings.Repeat("f", 64) }, false},
+		{"unknown host", func(d *vyperCatalogDocument) {
+			d.Builds[0].Runtimes[0].ExecutorDigests["linux-riscv64"] = strings.Repeat("f", 64)
+		}, false},
+		{"zero executor", func(d *vyperCatalogDocument) {
+			d.Builds[0].Runtimes[0].ExecutorDigests["linux-amd64"] = strings.Repeat("0", 64)
+		}, false},
 		{"wrong protocol", func(d *vyperCatalogDocument) { d.Builds[0].Runtimes[0].Protocol = "unrestricted" }, false},
 		{"zero digest", func(d *vyperCatalogDocument) { d.Builds[0].Runtimes[0].SHA256 = strings.Repeat("0", 64) }, false},
 		{"oversize", func(d *vyperCatalogDocument) { d.Builds[0].Runtimes[0].MaxBytes = defaultCompilerArtifactMB + 1 }, false},

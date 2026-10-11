@@ -5,7 +5,7 @@ set -eu
 GO_BIN="${GO:-go}"
 NODE_BIN="${NODE:-node}"
 NPM_BIN="${NPM:-npm}"
-MINIMUM_GO="go1.27.0"
+MINIMUM_GO="go1.27.2"
 MINIMUM_NODE="v24.18.0"
 MINIMUM_NPM="11.16.0"
 
