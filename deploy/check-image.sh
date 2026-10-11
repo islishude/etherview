@@ -56,7 +56,7 @@ sea_self_test=$("$docker_command" run --rm \
     --entrypoint /opt/etherview/solcjs/etherview-solcjs \
     "$image" \
     --self-test)
-if [ "$sea_self_test" != '{"schema":"etherview-solcjs-sea-self-test-v1","sea":true,"node_version":"v26.10.0","wrapper_package":"solc@0.8.37","exec_argv":["--permission","--disable-sigusr1","--no-addons","--no-global-search-paths","--max-old-space-size=384"],"permissions":"restricted","write_denied":true}' ]; then
+if [ "$sea_self_test" != '{"schema":"etherview-solcjs-sea-self-test-v1","sea":true,"node_version":"v26.11.1","wrapper_package":"solc@0.8.37","exec_argv":["--permission","--disable-sigusr1","--no-addons","--no-global-search-paths","--max-old-space-size=384"],"permissions":"restricted","write_denied":true}' ]; then
     echo "docker-image-check: unexpected solc-js SEA self-test: $sea_self_test" >&2
     exit 1
 fi
@@ -212,4 +212,4 @@ if awk '$1 ~ /^[-d]/ && $1 ~ /w/ && $NF ~ /^opt\/etherview\/python-wasm(\/|$)/ {
     exit 1
 fi
 
-echo "docker-image-check: PASS (user=$configured_user, architecture=$image_architecture, SEA=Node-v26.10.0, Geas=0.3.3, Pyodide=0.29.3, hardened rootfs)"
+echo "docker-image-check: PASS (user=$configured_user, architecture=$image_architecture, SEA=Node-v26.11.1, Geas=0.3.3, Pyodide=0.29.3, hardened rootfs)"

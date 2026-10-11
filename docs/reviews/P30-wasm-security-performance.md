@@ -7,6 +7,10 @@ engineering applicability review and regression audit, not an independent
 penetration-test certification or a claim that old upstream vulnerabilities
 have been patched.
 
+The measurements and pass results below remain historical Node 26.10.0
+evidence. P30-T120 updates the runtime pin and security inventory metadata to
+Node 26.11.1; its live audit and runtime acceptance are pending CI.
+
 ## Artifact and advisory coverage
 
 The previous `audit.py` inspected only the retained native 0.4.3 reference
