@@ -205,6 +205,8 @@ credential-scoped operational boundaries.
 
 | P30-T123 | done | P30-T122 | Upgrade remaining CI host Python setup to 3.13.16 | setup distribution availability, Python release tests and docs/plan gates |
 
+| P30-T124 | in_progress | P30-T121 | Re-review changed Expat and CPython advisory revisions | exact CI artifact replay, substantive-change regressions and live audit |
+
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
 ## Acceptance
@@ -1074,3 +1076,30 @@ closure below supplies the missing evidence.
   17 Node tests; `python3.13 compiler/vyper/wasm/packages.py --version 0.4.3`
   passes. `make docs-check plan-check` and `git diff --check` pass. Remote
   execution of the updated setup-python jobs remains unverified.
+
+### P30-T124 — Expat advisory revision behind CI failure (2026-10-11)
+
+- [Run 38142676727](https://github.com/islishude/etherview/actions/runs/38142676727)
+  passes 12 of 13 jobs, including quality, browser, both native WASM matrices
+  and both production Hardhat jobs. Only security fails: the Expat advisory
+  adds an openSUSE related-advisory identifier. The exact failed-CI finding
+  matches live OSV; unchanged applicability and the reviewed digests are
+  recorded in the [security review](../reviews/P30-wasm-security-performance.md#expat-advisory-re-review-2026-10-11).
+- Added the exact reviewed digest and CI fixture. Regressions require the new
+  review and reject later substantive changes; full artifact replay passes
+  all 1,636 findings. No audit gate or vulnerability boundary was weakened.
+- AMD64 parallel production fixture steps all start at 13:44:32 UTC and finish
+  by 13:54:52 UTC (10m20s). ARM64 runs 13:43:23–13:50:59 UTC
+  (7m36s); both strict merges succeed. This establishes actual
+  concurrent execution, not a controlled serial speedup or peak-memory result.
+  T120 retains its remaining acceptance/evidence work.
+
+- The subsequent live audit caught CPython CVE-2026-82049 reintroducing
+  Vanir signature metadata. Reviewed the exact diff against T121: all impact
+  and affected-version data is unchanged. Added a separate reviewed snapshot
+  and regression; complete live-response replay passes all 1,636 findings.
+- `make test-vyper-release docs-check plan-check` passes (15 Python, 17 Node
+  tests), as does `git diff --check`. A fresh full live rerun fails fetching
+  PyPI with TLS EOF after retries and leaves the report incomplete. T124 stays
+  in progress pending a successful live audit/security job on the fixed commit;
+  replay success is not reported as a fresh online pass.

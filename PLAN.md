@@ -253,3 +253,7 @@ release/package and docs/plan checks pass. Production WASM identity is unchanged
 P50-T70 fixes React 19.3 suspended-route retry diagnostics while preserving lazy
 loading and router preloading. Five new regressions, full frontend tests/lint,
 generation and 50 embedded-browser checks pass locally; remote CI is pending.
+
+P30-T124 re-reviews the changed Expat CVE-2026-77214 finding behind the sole
+failure in CI run 38142676727. The other 12 jobs pass, including both native
+production jobs and React/browser regressions. P30 remains in progress.

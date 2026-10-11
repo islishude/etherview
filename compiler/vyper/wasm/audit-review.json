@@ -1005,7 +1005,8 @@
     "core/cpython/CVE-2026-82049": {
       "sha256": [
         "cc4aa5be2e5ca4bb822d0d74d844ac72b188b23fee00eeedfe7a1ce8066518a8",
-        "383c542b740deda53c3d0ab723abd2898e84d7fcdadd5e2f09d6ce9689018393"
+        "383c542b740deda53c3d0ab723abd2898e84d7fcdadd5e2f09d6ce9689018393",
+        "48d4aa043e5555c02a4b4d53fac9a3ff81db2471c935f1161dca2ba0f2305ee1"
       ],
       "reason": "authenticated-archives"
     },
@@ -1527,7 +1528,8 @@
     },
     "core/expat/CVE-2026-77214": {
       "sha256": [
-        "2b57dde0fe3f7dc2f86fed118c20c4426f896cc2f67096598ebadca3b02abe18"
+        "2b57dde0fe3f7dc2f86fed118c20c4426f896cc2f67096598ebadca3b02abe18",
+        "e4922c1ec54e2292df10d405556089ff0560a616525d575bc805b3ec807aecb8"
       ],
       "reason": "no-xml"
     },
