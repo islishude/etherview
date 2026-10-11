@@ -242,3 +242,7 @@ P30-T121 is complete locally: the changed CPython CVE-2026-82049 advisory was
 re-reviewed, exact CI evidence replay and the live WASM audit pass, and regression
 checks retain rejection of unknown changes. A new remote security job remains
 unverified; P30 stays in progress for T120.
+
+P30-T122 removes unused host Python setup from runtime, Hardhat and browser CI
+jobs; four Python-consuming jobs retain it. Workflow/docs/plan checks pass
+locally. P30 remains in progress for T120 native CI acceptance.

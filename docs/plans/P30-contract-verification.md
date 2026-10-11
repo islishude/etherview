@@ -201,6 +201,8 @@ credential-scoped operational boundaries.
 
 | P30-T121 | done | P30-T119 | Re-review changed CPython CVE-2026-82049 advisory evidence | failed-CI artifact replay, exact-advisory regression and live WASM audit |
 
+| P30-T122 | done | P30-T119 | Remove unused host Python setup from runtime and browser CI jobs | workflow dependency inspection, YAML and docs/plan checks |
+
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
 ## Acceptance
@@ -1044,3 +1046,18 @@ closure below supplies the missing evidence.
   PyPI JSON and left the report incomplete; no fallback or gate weakening was
   introduced. T121 is done for this narrowly scoped audit-review correction;
   P30 remains in progress for T120 native parallel-matrix CI acceptance.
+
+### P30-T122 — Remove unused host Python CI setup (2026-10-11)
+
+- Removed `actions/setup-python` from native Vyper runtime, Hardhat and browser
+  jobs after tracing their Node/Go/Docker entrypoints. Native runtime tests
+  consume downloaded packages and a Node-built SEA; Hardhat uses the prebuilt
+  production image; browser E2E builds its Go server and frontend only.
+- Retained setup in quality/integration for `compiler-install` and Python tests,
+  in `vyper-packages` for package/release builders, and in security for package,
+  advisory and license scripts. Container build-time Python is independent of
+  runner setup and unchanged.
+- YAML inspection confirms exactly those four jobs retain Python setup.
+  `make docs-check plan-check` and `git diff --check` pass. This is a workflow
+  setup deletion; native/browser CI runs have not been rerun locally. T122 is
+  done; T120 still owns native parallel-matrix CI acceptance.

@@ -113,9 +113,6 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: stable
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.13.15"
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -154,9 +151,6 @@ jobs:
         with:
           go-version: stable
           cache: true
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.13.15"
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -286,9 +280,6 @@ jobs:
           go-version: stable
           cache: true
 
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.13.15"
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc

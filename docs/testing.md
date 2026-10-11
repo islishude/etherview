@@ -59,6 +59,12 @@ matrices. Event-specific concurrency groups prevent a push from cancelling the
 daily run. GitHub activates the schedule after the workflow reaches the default
 branch; scheduled start times may be delayed by runner load.
 
+Host Python setup is required by quality/integration (`compiler-install`),
+common Vyper package construction, and security/license auditing. Native WASM
+runtime tests, prebuilt Hardhat E2E and browser E2E use Node/Go/Docker without
+host Python setup; the compiler interpreter is bundled Python WASM.
+
+
 - `make toolchain-check`: require at least Go 1.27.2, Node 24.18.0, and npm
   11.16.0 before generating or validating artifacts. Compatible newer stable
   versions are supported; older, malformed, and prerelease versions fail.
