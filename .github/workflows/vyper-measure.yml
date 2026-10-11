@@ -1,0 +1,183 @@
+name: Vyper fixture measurements
+'on':
+  workflow_dispatch: {}
+  pull_request:
+    paths:
+      - .github/workflows/vyper-measure.yml
+      - .github/scripts/vyper-measure.mjs
+      - .github/scripts/vyper-native-cleanup.mjs
+permissions:
+  contents: read
+concurrency:
+  group: vyper-measure-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  packages:
+    name: Build common Vyper WASM packages
+    outputs:
+      artifact-id: ${{ steps.packages.outputs.artifact-id }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: 3.13.16
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Build authenticated packages once for both architectures
+        run: |
+          npm --prefix compiler ci --ignore-scripts
+          node compiler/vyper/wasm/prepare.mjs
+          python compiler/vyper/wasm/packages.py
+          python compiler/vyper/wasm/release.py --output .local/vyper-releases
+      - uses: actions/upload-artifact@v7
+        id: packages
+        with:
+          name: vyper-packages-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+          retention-days: 1
+          path: |
+            .local/vyper-wasm/packages/
+            .local/vyper-releases/
+          include-hidden-files: true
+          if-no-files-found: error
+  measure:
+    name: Serial and parallel measurements (${{ matrix.arch }})
+    needs: packages
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ needs.packages.outputs.artifact-id }}
+          merge-multiple: true
+          path: .local/
+      - uses: docker/setup-buildx-action@v4
+      - name: Build the production image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: production
+          push: false
+          load: true
+          tags: etherview:local
+          cache-from: type=gha,scope=hardhat3-production-${{ runner.os }}-${{ runner.arch }}
+          cache-to: type=gha,mode=max,scope=hardhat3-production-${{ runner.os }}-${{ runner.arch }},ignore-error=true
+      - name: Start serial resource accounting
+        run: node .github/scripts/vyper-measure.mjs start serial
+      - name: Complete unchanged serial matrix
+        env:
+          DOCKER: ${{ github.workspace }}/.local/vyper-measure/docker-serial
+        run: node compiler/vyper/wasm/production-matrix.mjs
+      - name: Record serial evidence
+        run: node .github/scripts/vyper-measure.mjs end serial
+      - name: Start parallel resource accounting
+        run: node .github/scripts/vyper-measure.mjs start parallel
+      - parallel:
+          - name: Measure shard 1/4
+            env:
+              DOCKER: ${{ github.workspace }}/.local/vyper-measure/docker-parallel
+            run: node compiler/vyper/wasm/production-matrix.mjs --shard-index 0 --shard-count 4
+          - name: Measure shard 2/4
+            env:
+              DOCKER: ${{ github.workspace }}/.local/vyper-measure/docker-parallel
+            run: node compiler/vyper/wasm/production-matrix.mjs --shard-index 1 --shard-count 4
+          - name: Measure shard 3/4
+            env:
+              DOCKER: ${{ github.workspace }}/.local/vyper-measure/docker-parallel
+            run: node compiler/vyper/wasm/production-matrix.mjs --shard-index 2 --shard-count 4
+          - name: Measure shard 4/4
+            env:
+              DOCKER: ${{ github.workspace }}/.local/vyper-measure/docker-parallel
+            run: node compiler/vyper/wasm/production-matrix.mjs --shard-index 3 --shard-count 4
+      - name: Merge and compare identical full matrices
+        run: |-
+          node compiler/vyper/wasm/merge-production-matrix.mjs --shard-count 4
+          node .github/scripts/vyper-measure.mjs end parallel
+          node .github/scripts/vyper-measure.mjs compare
+      - name: Upload measurement evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: vyper-measure-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ matrix.arch }}
+          retention-days: 1
+          path: .local/vyper-measure/*.json
+          include-hidden-files: true
+          if-no-files-found: error
+  failure-probe:
+    name: Expected parallel failure (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 5
+    continue-on-error: true
+    outputs:
+      amd64: ${{ steps.proof.outputs.amd64 }}
+      arm64: ${{ steps.proof.outputs.arm64 }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Exercise real Docker failure timeout and cancellation cleanup
+        run: |-
+          docker pull busybox:1.37
+          node .github/scripts/vyper-native-cleanup.mjs
+      - parallel:
+          - name: Expected injected failure
+            id: injected
+            run: exit 37
+          - name: Successful sibling 0
+            run: sleep 1
+          - name: Successful sibling 1
+            run: sleep 1
+          - name: Successful sibling 2
+            run: sleep 1
+      - name: Must skip acceptance after failure
+        id: acceptance
+        run: exit 0
+      - name: Assert failed group skipped acceptance
+        id: proof
+        if: ${{ always() }}
+        env:
+          FAILED: ${{ steps.injected.outcome }}
+          ACCEPTANCE: ${{ steps.acceptance.outcome }}
+        run: |-
+          test "$FAILED" = failure
+          test "$ACCEPTANCE" = skipped
+          echo "${{ matrix.arch }}=verified" >> "$GITHUB_OUTPUT"
+  verify:
+    name: Verify measurement and failure evidence
+    needs:
+      - measure
+      - failure-probe
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - env:
+          MEASURE: ${{ needs.measure.result }}
+          AMD64: ${{ needs.failure-probe.outputs.amd64 }}
+          ARM64: ${{ needs.failure-probe.outputs.arm64 }}
+        run: |-
+          test "$MEASURE" = success
+          test "$AMD64" = verified
+          test "$ARM64" = verified

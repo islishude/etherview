@@ -1163,3 +1163,10 @@ closure below supplies the missing evidence.
   P30 remains in progress solely for T120's remaining evidence. P70/P73 release
   blockers are unchanged. Documentation-only cleanup passes `make docs-check
   plan-check` and `git diff --check`.
+
+### P30-T120 — Remaining evidence execution (2026-10-12)
+
+- Resumed the existing in-progress item to run controlled native serial/parallel
+  measurements and real runner failure propagation. A separate measurement
+  workflow preserves ordinary CI duration and the production acceptance format.
+- Evidence remains pending until both native jobs and failure probes complete.

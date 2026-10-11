@@ -651,6 +651,19 @@ clean evidence directory for a new run because evidence files are exclusive-crea
 `make test-vyper-release` covers partition/merge and subprocess failure handling.
 Compare parallel-group wall time against the sequential baseline on native CI;
 record resource contention and any compilation timeout without relaxing limits.
+The separate [fixture measurement workflow](../.github/workflows/vyper-measure.yml)
+runs when its measurement tooling changes, or manually after it reaches the
+default branch. Each native architecture builds once, runs all 362 inputs
+serially and then through the same four parallel steps, and compares full matrix
+records. Linux cgroup v2 `memory.peak` records aggregate compiler-container memory
+(including charged cache and an idle slice keeper), excluding the Docker daemon
+and host CLI. CPU accounting and OOM counters accompany wall time. One ordered
+pair is an observation, not a statistically controlled benchmark; serial-first
+cache effects remain explicit. Measurement artifacts expire after one day.
+Separate expected-failure jobs exercise real Docker cleanup and assert that a
+failed parallel group skips acceptance. A final verifier requires both native
+proof outputs, so an unexpected probe failure cannot silently pass.
+
 
 
 PostgreSQL integration tests cover durable binding/publication and reorg
