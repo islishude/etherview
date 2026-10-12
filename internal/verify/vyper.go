@@ -72,7 +72,7 @@ func (compiler *VyperCompiler) ValidateRuntime(ctx context.Context) error {
 		AccessDenied bool   `json:"access_denied"`
 		Limits       bool   `json:"limits"`
 	}
-	if json.Unmarshal(output, &response) != nil || response.Schema != "etherview-vyper-wasm-self-test-v1" || response.Python != "3.13.2" || response.Pyodide != "0.29.3" || !response.AccessDenied || !response.Limits {
+	if json.Unmarshal(output, &response) != nil || response.Schema != "etherview-vyper-wasm-self-test-v1" || response.Python != "3.13.2" || response.Pyodide != "0.29.5" || !response.AccessDenied || !response.Limits {
 		compiler.markUnavailable()
 		return errors.New("vyper helper self-test response is invalid")
 	}

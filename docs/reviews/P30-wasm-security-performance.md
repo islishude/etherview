@@ -14,11 +14,15 @@ at `d66cd4d8c92d933f3caa982c57819f157d5438ea`, including security and native
 AMD64/ARM64 production acceptance. This does not update the historical
 performance measurements below.
 
+The current Pyodide 0.29.5 artifact review is recorded in the
+[upgrade review](#pyodide-0295-upgrade-review-2026-10-12). Earlier runtime and
+performance results retain their original artifact identities.
+
 ## Artifact and advisory coverage
 
 The previous `audit.py` inspected only the retained native 0.4.3 reference
 lock. It missed historical compiler packages and setuptools vendors. The new
-[`wasm/audit.py`](../../compiler/vyper/wasm/audit.py) inventories the actual
+[`wasm/audit.mjs`](../../compiler/vyper/wasm/audit.mjs) inventories the actual
 authenticated payloads: 590 distribution occurrences, 73 distinct Python
 name/version pairs, plus 11 core source commits. All package metadata,
 including nested `.dist-info` and `vendor.txt`, is included. The latter
@@ -99,7 +103,8 @@ The existing authenticated-archives disposition still applies: this vulnerabilit
 requires tarfile extraction of a crafted hard link to a symbolic link. Runtime
 `execute.mjs` unpacks authenticated ZIP packages, while the Go runtime cache
 extractor rejects all non-regular TAR entries, including hard/symbolic links.
-Build-time `packages.py` reads digest-checked source archives with `extractfile`
+Build-time `packages.mjs` reads digest-checked source archives through bounded
+Node archive parsers
 after rejecting links; it does not call `extract`/`extractall` or the affected
 extraction filters. This is an applicability review, not a CPython patch.
 
@@ -211,3 +216,72 @@ applies. Explicitly accept digest
 `48d4aa043e5555c02a4b4d53fac9a3ff81db2471c935f1161dca2ba0f2305ee1`
 and retain this separate live snapshot as a regression fixture. Signature
 metadata remains inside the digest; no fields were newly excluded.
+
+## Node producer inventory review (2026-10-12)
+
+P30-T122 replaces host Python packaging/audit orchestration with Node. An
+independent ZIP comparison of all 26 old/new packages found all 17,326 member
+names and uncompressed contents identical, including compiler implementations,
+adapter bytes, metadata, licenses and vendored distributions. Compiler source
+and selected dependency identities are unchanged. The new ZIP compression and
+USTAR producers use pinned build-only adm-zip 0.6.1 and tar-stream 3.2.2; their
+modules are absent from the production SEA dependency graph. Two full release
+builds produced identical 26 archives and 26 descriptors.
+
+The reviewed inventory delta consists only of 26 package-manifest digests and
+`compiler/package-lock.json`, which adds those build dependencies. Distribution
+records remain exactly equal (590 occurrences). The inventory digest changes
+from `041bc04996e0f6de89abebce301cee7be82668b22e46ac8c83440d87a064682e`
+to `80dcd370bd3d9b6cdaf78bfef7cc78dd1168fb1a55a5b6573abd1e854b833ff3`.
+No advisory digest, reason or applicability disposition changes. The Node audit
+passes live PyPI/OSV queries for 84 components and 1,636 reviewed findings.
+The native 0.4.3 reference audit independently passes nine remaining packages
+with the same two exact-wheel range corrections; its installer no longer
+installs PyInstaller or its packaging-only dependencies.
+
+This is local tool-migration evidence. New compressed package bytes invalidate
+old package-bound native acceptance and catalog signatures. Neither this
+review nor the local matrix promotes packages or asserts new native
+AMD64/ARM64 production acceptance.
+
+## Pyodide 0.29.5 upgrade review (2026-10-12)
+
+The [upstream comparison](https://github.com/pyodide/pyodide/compare/0.29.3...0.29.5)
+retains CPython 3.13.2, Emscripten 4.0.9 and ABI 2025_0. The intervening
+0.29.4 release adds `pyemscripten` wheel tags; 0.29.5 fixes the upstream Python
+CLI's Node 26 compatibility. The Pyodide source identity now resolves to
+`05804b32e55628ad2269655f3c5a097fb4a966ee`. Other reviewed core source pins
+remain unchanged. Upstream core license bytes pass their existing digest locks.
+
+The shared manifest is
+`b20a6b86d20d7902197560577f920885d7049e580c10c374b82e1b0725ea4d7b`.
+PyCryptodome remains 3.21.0, but its renamed wheel has SHA-256
+`13ca0f73475b40696b4a628b6e4424572d4c9f56f3b5d69a97b4622fb4dec961`.
+Its rebuilt WASM extensions, WHEEL and RECORD differ; Python source and package
+metadata bytes are unchanged. All 26 compiler ZIPs remain byte-identical to the
+Node producer's pre-upgrade artifacts. Package manifests now name 0.29.5;
+fixture references, compiler sources and adapter/protocol code are unchanged.
+
+The new inventory digest is
+`22aceb7fdb0e66e7c4c119b34c7bd23d72a71a2635e4dd75dcc10352e940b75b`.
+Inventory changes comprise the shared runtime, package manifests, npm lock,
+version/digest checks, core license URL and shared wheel origin name. The live
+PyPI/OSV audit covers the same 590 distributions and 84 components, with 1,636
+findings accepted by the existing exact-content dispositions. No advisory hash,
+reason or exemption was added. This patch does not fix the retained CPython
+advisories or establish zero vulnerabilities.
+
+Local candidate/SEA, isolation, performance and common-gate evidence is owned
+by [P30-T123](../plans/P30-contract-verification.md#p30-t123--pyodide-0295-upgrade-2026-10-12).
+Previous native Linux acceptance cannot authorize promotion of these new
+artifacts: both architectures and production topologies must pass again.
+
+The isolated macOS ARM64 0.4.3 benchmark ran one first pair and three warm
+pairs for each workload, always in fresh restricted SEA processes. Plain
+compilation measured 3.728 s for the first pair and 2.722 s warm median, with
+245.6 MiB peak child RSS. The larger 17-file workload measured 4.179 s first
+and 4.178 s warm median, with 259.1 MiB peak RSS. Both match their unchanged
+official native reference outputs. These are local samples, not an OS-cache
+cold experiment or evidence of a performance improvement. Raw output is at
+`.local/pyodide-0295-candidate/benchmark.json`; the old published measurements
+remain unchanged.

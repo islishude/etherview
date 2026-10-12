@@ -50,7 +50,7 @@ export async function executeVyper(args){
    let network=false;try{await fetch('http://127.0.0.1:65534');}catch(e){network=e?.cause?.code==='ERR_ACCESS_DENIED';}
    const access=network&&denied(()=>readFileSync('/etc/passwd'))&&denied(()=>writeFileSync(join(process.cwd(),'denied'),'x'))&&denied(()=>loader('node:child_process').spawnSync(process.execPath,['--version']));
    if(!memory||!access)throw new Error('self-test failed');
-   process.stdout.write(JSON.stringify({schema:'etherview-vyper-wasm-self-test-v1',python:'3.13.2',pyodide:'0.29.3',access_denied:true,limits:true}));
+   process.stdout.write(JSON.stringify({schema:'etherview-vyper-wasm-self-test-v1',python:'3.13.2',pyodide:'0.29.5',access_denied:true,limits:true}));
    return;
   }
   if(!/^\d+\.\d+\.\d+$/.test(version))throw new Error('invalid version');

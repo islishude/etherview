@@ -1,4 +1,4 @@
-"""Regenerate pinned compiler fixtures with the built, guarded helper."""
+"""Regenerate pinned fixtures with the locked official native reference interpreter."""
 import copy
 import hashlib
 import json
@@ -12,7 +12,9 @@ IMMUTABLE = "owner: immutable(address)\n@deploy\ndef __init__(who: address):\n  
 
 
 def main():
-    helper, output = sys.argv[1:]
+    python, output = sys.argv[1:]
+    adapter = str(Path(__file__).resolve().parent)
+    program = "import sys,json,vyper;assert vyper.__version__ == '0.4.3';sys.path.insert(0,sys.argv[1]);from adapter import compile_input;print(json.dumps(compile_input(json.load(sys.stdin)),default=str))"
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     cases = {
@@ -57,7 +59,7 @@ def main():
                         if "content" in source:
                             source["content"] += " "
             encoded = json.dumps(current, sort_keys=True)
-            response = subprocess.run([helper, "--compile", str(5 << 20), str(64 << 20)], input=encoded, env={}, text=True, capture_output=True, timeout=15, check=True)
+            response = subprocess.run([python, "-I", "-c", program, adapter], input=encoded, env={}, text=True, capture_output=True, timeout=15, check=True)
             data = json.loads(response.stdout)
             if any(e["severity"] == "error" for e in data.get("errors", [])):
                 raise RuntimeError(data)

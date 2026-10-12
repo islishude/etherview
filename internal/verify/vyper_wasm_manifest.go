@@ -12,7 +12,7 @@ import (
 
 const vyperSharedSchema = "etherview-python-wasm-v1"
 const vyperPackageSchema = "etherview-vyper-wasm-package-v1"
-const vyperSharedManifestSHA256 = "b87574439230ec442792386f2ccd82fa020f735769d55770492b9da727502d24"
+const vyperSharedManifestSHA256 = "b20a6b86d20d7902197560577f920885d7049e580c10c374b82e1b0725ea4d7b"
 
 type vyperWASMFile struct {
 	Path   string `json:"path"`
@@ -54,7 +54,7 @@ func validateVyperWASMTree(root, name string, expected [sha256.Size]byte) (vyper
 	if expected != zero && digest != expected {
 		return manifest, zero, invalid
 	}
-	if manifest.Pyodide != "0.29.3" || manifest.Python != "3.13.2" || len(manifest.Files) == 0 || len(manifest.Files) > maxRuntimeManifestFiles {
+	if manifest.Pyodide != "0.29.5" || manifest.Python != "3.13.2" || len(manifest.Files) == 0 || len(manifest.Files) > maxRuntimeManifestFiles {
 		return manifest, zero, invalid
 	}
 	listed := map[string]bool{manifestPath: true}

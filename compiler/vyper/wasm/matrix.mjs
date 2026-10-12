@@ -10,7 +10,7 @@ const shared=resolve(sharedArg),packages=resolve(packagesArg),fixtures=resolve(f
 const hash=b=>createHash('sha256').update(b).digest('hex');
 function manifest(root,name){const m=JSON.parse(readFileSync(join(root,name)));for(const f of m.files)assert.equal(hash(readFileSync(join(root,f.path))),f.sha256);return m;}
 const rt=manifest(shared,'shared-manifest.json');const pkg=manifest(packages,'package-manifest.json');
-assert.equal(rt.pyodide,'0.29.3');assert.equal(rt.python,'3.13.2');assert.equal(pkg.version,version);
+assert.equal(rt.pyodide,'0.29.5');assert.equal(rt.python,'3.13.2');assert.equal(pkg.version,version);
 const require=createRequire(import.meta.url);
 const {loadPyodide}=require(join(shared,'pyodide.js'));
 // Emscripten's NODEFS initialization asks for fs constants through an obsolete

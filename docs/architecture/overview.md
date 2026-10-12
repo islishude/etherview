@@ -804,7 +804,7 @@ size alone is not sufficient justification to weaken those invariants.
   [ADR-0037](../decisions/ADR-0037-persistent-solcjs-artifact-cache.md).
 - Vyper execution uses signed catalog v2 entries containing one architecture-neutral
   compiler package and host-specific composite executor digests. The Node SEA
-  loads the pinned Pyodide 0.29.3 / CPython 3.13.2 runtime and selected package
+  loads the pinned Pyodide 0.29.5 / CPython 3.13.2 runtime and selected package
   with read-only permissions. Startup self-tests finish before readiness; binding
   verifies installed package identity, and every fresh compilation revalidates
   the host, shared runtime and package before and after execution. A changed host

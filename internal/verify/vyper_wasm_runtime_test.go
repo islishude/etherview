@@ -151,7 +151,7 @@ func TestVyperMissingSharedDependencyFailsClosed(t *testing.T) {
 	if err := os.Chmod(compiler.SharedPath, 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Remove(filepath.Join(compiler.SharedPath, "pycryptodome-3.21.0-cp36-abi3-pyodide_2025_0_wasm32.whl")); err != nil {
+	if err := os.Remove(filepath.Join(compiler.SharedPath, "pycryptodome-3.21.0-cp36-abi3-pyemscripten_2025_0_wasm32.whl")); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chmod(compiler.SharedPath, 0555); err != nil {

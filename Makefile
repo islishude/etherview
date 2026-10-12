@@ -240,7 +240,7 @@ web-install:
 compiler-install:
 	$(NPM) --prefix compiler ci --ignore-scripts
 	$(NODE) compiler/vyper/wasm/prepare.mjs
-	$(PYTHON) compiler/vyper/wasm/packages.py --version 0.4.3
+	$(NODE) compiler/vyper/wasm/packages.mjs --version 0.4.3
 	$(NPM) --prefix compiler run build:sea -- "$(CURDIR)/.local/vyper-wasm/sea/etherview-solcjs"
 
 web-generate: web-install
@@ -297,9 +297,9 @@ security-check: security-tool-check web-build compiler-install
 	$(NPM) --prefix api audit --audit-level=high
 	$(NPM) --prefix web audit --audit-level=high
 	$(NPM) --prefix compiler audit --audit-level=high
-	$(PYTHON) compiler/vyper/audit.py
-	$(PYTHON) compiler/vyper/wasm/packages.py
-	$(PYTHON) compiler/vyper/wasm/audit.py
+	$(NODE) compiler/vyper/audit.mjs
+	$(NODE) compiler/vyper/wasm/packages.mjs
+	$(NODE) compiler/vyper/wasm/audit.mjs
 	$(NPM) --prefix e2e/hardhat3 audit --audit-level=high
 	$(GO) test ./internal/app ./internal/auth ./internal/billing/... ./internal/cli ./internal/config ./internal/httpapi ./internal/jsonstrict ./internal/metadata ./internal/observability ./internal/userauth ./internal/verify ./web
 
@@ -309,9 +309,9 @@ license-tool-check:
 		echo "license-check: frontend checker must be pinned at $(WEB_LICENSE_CHECKER_VERSION)"; exit 1; }
 
 license-check: license-tool-check web-install compiler-install
-	$(PYTHON) compiler/vyper/wasm/packages.py
+	$(NODE) compiler/vyper/wasm/packages.mjs
 	$(NODE) compiler/vyper/wasm/licenses.mjs
-	$(PYTHON) compiler/vyper/licenses.py
+	$(NODE) compiler/vyper/wasm/package-licenses.mjs
 	@test -f LICENSE || { echo "license-check: root LICENSE is missing"; exit 1; }
 	@grep -q "Apache License" LICENSE || { echo "license-check: root LICENSE is not Apache-2.0"; exit 1; }
 	@grep -Eq '^COPY .*LICENSE /LICENSE$$' Dockerfile || { echo "license-check: production image must include /LICENSE"; exit 1; }
@@ -556,16 +556,17 @@ test-vyper-matrix: compiler-install test-vyper-wasm-candidate
 .PHONY: test-vyper-release
 test: test-vyper-release
 test-vyper-release:
-	$(PYTHON) -m unittest discover -s compiler/vyper/wasm -p 'test_*.py'
+	$(NPM) --prefix compiler ci --ignore-scripts
+	$(NODE) --test compiler/vyper/wasm/tooling.test.mjs
 	$(NODE) --test compiler/vyper/catalog.test.mjs compiler/vyper/wasm/production-shards.test.mjs
 
 .PHONY: test-vyper-wasm-candidate
 test-vyper-wasm-candidate:
 	$(NPM) --prefix compiler ci --ignore-scripts
-	python3 -m unittest discover -s compiler/vyper/wasm -p 'test_*.py'
-	python3 compiler/vyper/wasm/check.py
+	$(NODE) --test compiler/vyper/wasm/tooling.test.mjs
+	$(NODE) compiler/vyper/wasm/check.mjs
 
 .PHONY: benchmark-vyper-wasm
 benchmark-vyper-wasm: compiler-install
-	$(PYTHON) compiler/vyper/wasm/packages.py
+	$(NODE) compiler/vyper/wasm/packages.mjs
 	$(PYTHON) compiler/vyper/wasm/benchmark.py

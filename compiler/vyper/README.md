@@ -1,7 +1,7 @@
 # Vyper WASM distribution
 
 [ADR-0053](../../docs/decisions/ADR-0053-vyper-wasm-distribution.md) replaces
-native runtime distribution with Pyodide 0.29.3 / CPython 3.13.2 and one
+native runtime distribution with Pyodide 0.29.5 / CPython 3.13.2 and one
 architecture-neutral compiler package per supported version. Node SEA remains
 host-native. Production deployment and native release acceptance are tracked
 by P30-T119; the local matrix is not production release evidence.
@@ -9,7 +9,8 @@ by P30-T119; the local matrix is not production release evidence.
 `versions/index.json` authenticates the official compiler artifact; per-version
 `.lock` files authenticate dependencies. Version 0.2.0 uses its pinned upstream
 source archive. Compiler implementation bytes and reference fixtures remain
-unchanged. Historical native Python tooling is retained for reference generation.
+unchanged. Node owns build, release, audit and regression orchestration. Native Python is
+retained only for official reference generation and per-child RSS benchmarks.
 
 `make compiler-install` prepares the shared WASM runtime, the 0.4.3 package and
 Node SEA for ordinary local regressions. `make test-vyper-matrix` builds all 26
@@ -20,7 +21,7 @@ under `.local/vyper-wasm/`.
 After building the packages, create the common release transports once:
 
 ```sh
-python3 compiler/vyper/wasm/release.py --output .local/vyper-releases
+node compiler/vyper/wasm/build-release.mjs --output .local/vyper-releases
 ```
 
 The output directory must not already exist. The builder validates package and
@@ -60,10 +61,11 @@ needed by bound retries. No production signing key is stored in this repository.
 
 ## Dependency audit corrections
 
-`make security-check` runs `audit.py` using its separate hash-locked pip-audit
-environment for the retained native reference lock. Its raw report is
-`.local/vyper/audit/report.json`. The same gate builds all 26 WASM packages and
-runs `wasm/audit.py` against their actual metadata (including vendored packages),
+`make security-check` runs `audit.mjs` against the retained native 0.4.3
+reference dependencies using live PyPI advisories. Retired PyInstaller tools
+are excluded because reference preparation no longer installs them. Its raw
+report is `.local/vyper/audit/raw.json`. The same gate builds all 26 WASM packages
+and runs `wasm/audit.mjs` against their actual metadata (including vendored packages),
 PyCryptodome and the pinned core source commits. PyPI and OSV are queried live;
 service failure, missing coverage, changed inventory or unreviewed/changed
 advisories fail the gate. Raw findings, inventory and the result are retained
@@ -98,3 +100,30 @@ version `0.4.3`, the pinned wheel SHA-256 and these exact advisory IDs:
 These are version-range corrections, not acceptance of vulnerable compilation
 or general advisory suppressions. Changing compiler version or adding another
 advisory requires a new review; the raw findings remain available.
+
+## Optional native reference tools
+
+Install Node dependencies with `npm --prefix compiler ci --ignore-scripts`.
+`node compiler/vyper/reference.mjs --version 0.4.3` prepares the locked official
+reference environment using uv 0.12.24 and the version index's exact Python.
+Omit `--version` to prepare all 26 environments. Historical version locks remain
+frozen source/dependency evidence; the preparer excludes PyInstaller and its
+packaging-only dependencies. No native helper, ELF closure or native release
+archive is built. Reference environments are developer tools, never production
+fallbacks, and must not execute untrusted Python.
+
+`python3 compiler/vyper/fixtures.py /absolute/path/to/build-venv/bin/python
+/absolute/path/to/output` regenerates the 0.4.3 specialized fixtures directly
+with the official compiler. `python3 compiler/vyper/fixtures_versions.py`
+regenerates all version fixtures and capability profiles from the prepared
+environments. These are deliberate reference-writing commands; acceptance
+never rewrites checked-in fixtures.
+
+The Node ZIP/USTAR producers preserve upstream file contents, fixed timestamps,
+permissions and deterministic output. Compression and archive headers can differ
+from the retired Python producers, so transport and package digests change.
+Old acceptance records cannot promote the new bytes: rebuild the inventory,
+review its exact identity changes, and rerun native release acceptance before
+signing. `make test-vyper-release` checks hostile archives, audit coverage,
+reviewed advisory revisions and atomic complete-set publication. The Go archive
+roundtrip invokes the actual Node producer.

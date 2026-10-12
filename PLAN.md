@@ -249,3 +249,20 @@ probes confirm cleanup and skipped acceptance after a parallel-group failure.
 The child plan retains raw identity/resource evidence and single-pair/cache-order
 limitations. The temporary measurement workflow and its dedicated scripts have
 been removed after acceptance; routine CI does not repeat serial baselines. P70/P73 external release blockers remain unchanged.
+
+
+P30-T122 retires native Vyper packaging and moves build, release, audit and
+regression orchestration to Node. Python compiler/reference cores and benchmark
+measurement remain. Payload/reference equivalence, both full-version local
+matrices, benchmark smoke and `make check` pass; details are in
+[P30 evidence](docs/plans/P30-contract-verification.md#p30-t122--node-buildaudit-tooling-and-native-packaging-retirement-2026-10-12).
+New compressed bytes require fresh native acceptance before catalog promotion;
+no new remote CI, signing or deployment is claimed. P30 remains done and the
+P70/P73 external release blockers remain unchanged.
+
+P30-T123 upgrades Pyodide to 0.29.5 with the same CPython/Emscripten
+generation and unchanged compiler bytes. Both 26-version / 362-compilation
+matrices, isolation/race, benchmark, live audit/license and `make check` pass.
+P30 is done; native Linux AMD64/ARM64 production acceptance remains required
+for the new artifact identities before catalog promotion. No signing, push or
+deployment is claimed.

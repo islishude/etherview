@@ -113,7 +113,7 @@ production image at
 
 ## Shared Python WASM Vyper executor
 
-The shared runtime contains Pyodide 0.29.3 (MPL-2.0), CPython 3.13.2
+The shared runtime contains Pyodide 0.29.5 (MPL-2.0), CPython 3.13.2
 (PSF license), Emscripten 4.0.9 runtime components and PyCryptodome 3.21.0.
 Authenticated upstream notices and source URLs are installed under
 `/licenses/python-wasm`; `compiler/vyper/wasm/licenses.lock.json` pins their
