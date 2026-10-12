@@ -247,5 +247,5 @@ ARM64 1067.324 → 430.015 seconds (2.48x). Parallel compiler-container peak
 memory is 651.6 / 692.5 MiB, with no OOM or compilation timeout. Native failure
 probes confirm cleanup and skipped acceptance after a parallel-group failure.
 The child plan retains raw identity/resource evidence and single-pair/cache-order
-limitations. Measurements are manual-only; routine CI does not repeat serial
-baselines. P70/P73 external release blockers remain unchanged.
+limitations. The temporary measurement workflow and its dedicated scripts have
+been removed after acceptance; routine CI does not repeat serial baselines. P70/P73 external release blockers remain unchanged.

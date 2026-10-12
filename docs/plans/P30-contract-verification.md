@@ -1054,15 +1054,15 @@ closure below supplies the missing evidence.
   not establish statistical repeatability or remove cache/order effects.
 - Both native injected-failure probes demonstrate failed implicit parallel
   waits and skipped downstream acceptance, while their final assertions pass.
-  Expected-failure jobs are allowed only inside this isolated probe workflow;
-  the final verifier requires both proof outputs. Production CI remains strict.
+  Expected-failure jobs were isolated to the temporary probe workflow; its
+  final verifier required both proof outputs. Production CI remains strict.
 - [Ordinary CI run 38184481874](https://github.com/islishude/etherview/actions/runs/38184481874)
   passes all 13 jobs on the same source, including both native version matrices,
   both Hardhat/Foundry architectures, browser and security checks.
-- Measurement is retained as a manual workflow; the temporary PR trigger is
-  removed so routine PRs do not repeat serial baselines. Optional Docker build
-  record upload is disabled; measurement artifacts retain one-day expiry.
-  These final workflow-only changes preserve the measured job commands.
+- The temporary measurement workflow and its dedicated resource/cleanup probe
+  scripts were removed after acceptance. The recorded run and durable raw
+  evidence remain; production fixture sharding, timeout cleanup and regressions
+  are retained. No measurement workflow remains to run in routine or manual CI.
 - `make test-vyper-release` passes 15 Python / 17 Node tests; the ignored-SIGTERM
   regression fails with the original code and passes with the fix. Final
   workflow structural checks, `make docs-check plan-check` and `git diff --check`
