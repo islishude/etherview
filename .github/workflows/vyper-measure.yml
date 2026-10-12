@@ -1,12 +1,6 @@
 name: Vyper fixture measurements
 'on':
   workflow_dispatch: {}
-  pull_request:
-    paths:
-      - .github/workflows/vyper-measure.yml
-      - .github/scripts/vyper-measure.mjs
-      - .github/scripts/vyper-native-cleanup.mjs
-      - compiler/vyper/wasm/production-process.mjs
 permissions:
   contents: read
 concurrency:
@@ -77,6 +71,8 @@ jobs:
           tags: etherview:local
           cache-from: type=gha,scope=hardhat3-production-${{ runner.os }}-${{ runner.arch }}
           cache-to: type=gha,mode=max,scope=hardhat3-production-${{ runner.os }}-${{ runner.arch }},ignore-error=true
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: 'false'
       - name: Start serial resource accounting
         run: node .github/scripts/vyper-measure.mjs start serial
       - name: Complete unchanged serial matrix

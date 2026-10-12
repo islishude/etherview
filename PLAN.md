@@ -19,7 +19,7 @@ batch semantics are not core v1 scope.
 | P00 | [Foundation](docs/plans/P00-foundation.md) | done | — | Governance, toolchain, config, CLI, migrations, CI, and embedded SPA skeleton |
 | P10 | [Indexing](docs/plans/P10-indexing.md) | done | P00 | Full-history core indexing, canonicality, finality, reorgs, and repair |
 | P20 | [Enrichment](docs/plans/P20-enrichment.md) | done | P10 | Tokens, NFTs, ABI/proxy decoding, traces, balances, and statistics |
-| P30 | [Contract Platform & Runtime Operations](docs/plans/P30-contract-verification.md) | in_progress | P00, P10, P20 | Consolidated verification, contract intelligence, runtime, deployment, telemetry, and optional accelerators |
+| P30 | [Contract Platform & Runtime Operations](docs/plans/P30-contract-verification.md) | done | P00, P10, P20 | Consolidated verification, contract intelligence, runtime, deployment, telemetry, and optional accelerators |
 | P40 | [API](docs/plans/P40-api.md) | done | P10; incremental P20/P30 | Native REST, search, API keys, SSE, and Etherscan V2 compatibility |
 | P50 | [Web](docs/plans/P50-web.md) | done | P40; incremental P20/P30 | Bilingual embedded SPA and injected-wallet contract interaction |
 | P64 | [NFT Metadata Web](docs/plans/P64-nft-metadata-web.md) | done | P20, P30, P40, P50 | Canonical NFT metadata projection, standard-event refresh, and guarded external-image navigation |
@@ -243,8 +243,14 @@ retention. Hardhat runs alongside native Vyper after package construction.
 
 P30-T126 is dropped: topology matrices and native Vyper sharding were reverted
 at the user's request; retained artifact work is covered by completed T127.
-P30-T120's implementation and native functional acceptance pass. Its parallel
-fixture groups take 10m57s on AMD64 and 7m34s on ARM64 in this run. T120 and P30
-remain in progress only for controlled serial comparison, resource measurements
-and native failure-propagation evidence; successful CI does not establish these.
-P70/P73 external release blockers remain unchanged.
+P30-T120 and P30 are done. Native paired measurements in
+[run 38184481846](https://github.com/islishude/etherview/actions/runs/38184481846)
+verify identical complete matrices: AMD64 1156.844 → 696.358 seconds (1.66x),
+ARM64 1067.324 → 430.015 seconds (2.48x). Parallel compiler-container peak
+memory is 651.6 / 692.5 MiB, with no OOM or compilation timeout. Native failure
+probes confirm cleanup and skipped acceptance after a parallel-group failure.
+The discovered Docker CLI SIGTERM timeout hang is fixed and regression-tested.
+Raw identity/resource evidence is retained in the child plan; single-pair and
+cache-order limitations remain explicit. Ordinary CI run 38184481874 passes all
+13 jobs. Measurements are now manual-only, keeping serial baselines out of
+routine CI. P70/P73 external release blockers remain unchanged.

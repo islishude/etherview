@@ -1,6 +1,6 @@
 # P30 — Contract Platform & Runtime Operations
 
-Status: `in_progress`
+Status: `done`
 
 This is the canonical plan for contract verification, contract intelligence,
 and the shared runtime/operations platform. Its current work items use the P30
@@ -197,7 +197,7 @@ credential-scoped operational boundaries.
 | P30-T118 | done | P30-T117 | Replace native Vyper helpers with the shared Node SEA and signed architecture-neutral compiler packages | isolation, identity, cache, migration and publication regressions |
 | P30-T119 | done | P30-T118 | Complete WASM deployment, release tooling and acceptance | common gates, performance and native AMD64/ARM64 production parity |
 
-| P30-T120 | in_progress | P30-T119 | Parallel production Vyper fixture shards in the existing native CI jobs | Functional CI accepted; remaining controlled timing/resource and native failure-propagation evidence |
+| P30-T120 | done | P30-T119 | Parallel production Vyper fixture shards in the existing native CI jobs | Native paired timing/resource and failure-propagation evidence accepted in run 38184481846 |
 
 | P30-T121 | done | P30-T119 | Re-review changed CPython CVE-2026-82049 advisory evidence | failed-CI artifact replay, exact-advisory regression and live WASM audit |
 
@@ -1176,3 +1176,53 @@ closure below supplies the missing evidence.
   The ignored-SIGTERM regression fails against the original implementation and
   passes after the fix; local real Docker failure/timeout/cancellation probes
   pass. The 30-second production deadline is unchanged.
+- Native failure probes on both architectures in
+  [run 38184481846](https://github.com/islishude/etherview/actions/runs/38184481846)
+  pass real Docker failure/timeout/cancel cleanup. An injected exit 37 makes the
+  implicit parallel wait fail while all three siblings finish successfully;
+  the default-condition acceptance step is skipped and the explicit assertion
+  passes. These intentionally failing probe jobs are isolated from normal CI.
+
+### P30-T120 — Native timing, resource and failure acceptance closure (2026-10-12)
+
+- [Measurement run 38184481846](https://github.com/islishude/etherview/actions/runs/38184481846)
+  passes both native measurement jobs and the final verifier at source head
+  `2fb8f68` (tested PR merge `3d676a25c81c4b68c21200a086e0b570dd3abd90`).
+  Each architecture runs serial and four-way parallel on the same runner and
+  immutable image, checking all 26 versions / 362 fresh-container compilations.
+  Full matrix records compare equal, including fixture/package/runtime identity.
+- [Durable raw evidence](../reviews/P30-vyper-ci-measurements.json) preserves
+  image identity, complete matrices, canonical matrix digests, kernel counters,
+  runner capacity and failure-probe outcomes after one-day artifacts expire.
+
+| Architecture | Serial | Parallel | Speedup | Serial / parallel peak memory | Serial / parallel average CPU cores |
+| --- | --- | --- | --- | --- | --- |
+| amd64 | 1156.844 s | 696.358 s | 1.66x | 185.0 / 651.6 MiB | 1.47 / 3.71 |
+| arm64 | 1067.324 s | 430.015 s | 2.48x | 205.3 / 692.5 MiB | 1.51 / 3.72 |
+
+- Both runners have four logical CPUs and about 16 GiB RAM. Memory is kernel
+  cgroup v2 aggregate `memory.peak` for compiler containers plus an idle keeper,
+  including charged cache; Docker daemon and host CLI memory are excluded.
+  All memory OOM and CPU quota-throttling counters are zero. All compilations
+  finish under the unchanged 30-second deadline. The real timeout/cancellation
+  probes separately verify cleanup, including the repaired SIGTERM hang.
+- Parallel average compiler CPU use reaches about 3.71 cores on both runners.
+  AMD64 compiler CPU time rises from 1,701.5 to 2,581.2 seconds; ARM64 remains
+  near 1,608.5 / 1,597.8 seconds. This records the CPU cost of concurrency rather
+  than promising fourfold speedup. One serial-first pair per architecture does
+  not establish statistical repeatability or remove cache/order effects.
+- Both native injected-failure probes demonstrate failed implicit parallel
+  waits and skipped downstream acceptance, while their final assertions pass.
+  Expected-failure jobs are allowed only inside this isolated probe workflow;
+  the final verifier requires both proof outputs. Production CI remains strict.
+- [Ordinary CI run 38184481874](https://github.com/islishude/etherview/actions/runs/38184481874)
+  passes all 13 jobs on the same source, including both native version matrices,
+  both Hardhat/Foundry architectures, browser and security checks.
+- Measurement is retained as a manual workflow; the temporary PR trigger is
+  removed so routine PRs do not repeat serial baselines. Optional Docker build
+  record upload is disabled; measurement artifacts retain one-day expiry.
+  These final workflow-only changes preserve the measured job commands.
+- `make test-vyper-release` passes 15 Python / 17 Node tests; the ignored-SIGTERM
+  regression fails with the original code and passes with the fix. Final
+  workflow structural checks, `make docs-check plan-check` and `git diff --check`
+  pass. T120 and P30 are done; P70/P73 external release blockers remain unchanged.
