@@ -234,23 +234,18 @@ responsive rules colocated and shared late overrides preserved. Local frontend,
 50-scenario embedded browser, baseline style comparison, generation and
 governance checks pass; P50 remains done and release blockers are unchanged.
 
-PR #141 [CI run 38181494214](https://github.com/islishude/etherview/actions/runs/38181494214)
-passes all 13 jobs at `b3d46ba`: native AMD64/ARM64 Vyper matrices, production
-Hardhat/Foundry acceptance, browser, security and common gates. This confirms
-P30-T121–T125/T127 and P50-T70/T71; their earlier pending-CI notes are resolved.
-Package artifacts retain producer-specific names, exact-ID downloads and one-day
-retention. Hardhat runs alongside native Vyper after package construction.
+P30-T120 and P30 are done.
+It covers four production fixture shards with strict evidence merging, bounded
+container cleanup, advisory re-reviews, required host Python 3.13.16 setup,
+independent Hardhat scheduling and producer-scoped one-day package artifacts.
 
-P30-T126 is dropped: topology matrices and native Vyper sharding were reverted
-at the user's request; retained artifact work is covered by completed T127.
-P30-T120 and P30 are done. Native paired measurements in
-[run 38184481846](https://github.com/islishude/etherview/actions/runs/38184481846)
-verify identical complete matrices: AMD64 1156.844 → 696.358 seconds (1.66x),
+[Ordinary CI run 38184481874](https://github.com/islishude/etherview/actions/runs/38184481874)
+passes all 13 jobs, including the P50-T70/T71 browser corrections.
+[Native measurement run 38184481846](https://github.com/islishude/etherview/actions/runs/38184481846)
+verifies identical complete matrices: AMD64 1156.844 → 696.358 seconds (1.66x),
 ARM64 1067.324 → 430.015 seconds (2.48x). Parallel compiler-container peak
 memory is 651.6 / 692.5 MiB, with no OOM or compilation timeout. Native failure
 probes confirm cleanup and skipped acceptance after a parallel-group failure.
-The discovered Docker CLI SIGTERM timeout hang is fixed and regression-tested.
-Raw identity/resource evidence is retained in the child plan; single-pair and
-cache-order limitations remain explicit. Ordinary CI run 38184481874 passes all
-13 jobs. Measurements are now manual-only, keeping serial baselines out of
-routine CI. P70/P73 external release blockers remain unchanged.
+The child plan retains raw identity/resource evidence and single-pair/cache-order
+limitations. Measurements are manual-only; routine CI does not repeat serial
+baselines. P70/P73 external release blockers remain unchanged.

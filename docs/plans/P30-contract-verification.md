@@ -197,20 +197,7 @@ credential-scoped operational boundaries.
 | P30-T118 | done | P30-T117 | Replace native Vyper helpers with the shared Node SEA and signed architecture-neutral compiler packages | isolation, identity, cache, migration and publication regressions |
 | P30-T119 | done | P30-T118 | Complete WASM deployment, release tooling and acceptance | common gates, performance and native AMD64/ARM64 production parity |
 
-| P30-T120 | done | P30-T119 | Parallel production Vyper fixture shards in the existing native CI jobs | Native paired timing/resource and failure-propagation evidence accepted in run 38184481846 |
-
-| P30-T121 | done | P30-T119 | Re-review changed CPython CVE-2026-82049 advisory evidence | failed-CI artifact replay, exact-advisory regression and live WASM audit |
-
-| P30-T122 | done | P30-T119 | Remove unused host Python setup from runtime and browser CI jobs | workflow dependency inspection, YAML and docs/plan checks |
-
-| P30-T123 | done | P30-T122 | Upgrade remaining CI host Python setup to 3.13.16 | setup distribution availability, Python release tests and docs/plan gates |
-
-| P30-T124 | done | P30-T121 | Re-review changed Expat and CPython advisory revisions | exact CI artifact replay, substantive-change regressions and live audit |
-
-| P30-T125 | done | P30-T119 | Run native WASM and Hardhat jobs independently after common package construction | workflow dependency and unchanged-job validation, docs/plan gates |
-
-| P30-T126 | dropped | P30-T125 | Parallelize production topology acceptance | Reverted at user request; retained artifact scope is tracked by P30-T127 |
-| P30-T127 | done | P30-T125 | Retain producer-scoped package artifacts with one-day retention | Exact-ID consumers and one-day artifact retention accepted by CI run 38181494214 |
+| P30-T120 | done | P30-T119 | Complete Vyper CI parallelization, audit corrections, host Python setup and producer-scoped artifacts | Full native CI, strict matrix parity, measured timing/resources and failure/timeout/cancellation acceptance |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
@@ -1006,184 +993,38 @@ closure below supplies the missing evidence.
   P70/P73 external release blockers remain separate and are not authorized by
   this acceptance.
 
-### P30-T120 — Parallel production fixture implementation (2026-10-11)
+### P30-T120 — Vyper CI optimization and acceptance (2026-10-12)
 
-- Claimed after T119. Existing AMD64/ARM64 Hardhat jobs now use four
-  `steps.parallel` fixture steps against the same locally built image; no image
-  transfer or extra build job is introduced. Deterministic whole-version
-  allocation covers 26 versions and 362 compilations in loads of 86/94/94/88.
-- Shards write separate evidence. The merge revalidates the current image,
-  shared/host manifests, archive/package bytes and fixture identities before
-  producing the unchanged full matrix consumed by Hardhat and release signing.
-  Missing, duplicate, extra or stale evidence fails closed.
-- Fresh containers, network restrictions, memory bounds and the 30-second
-  compilation deadline remain. Async subprocess execution handles cancellation;
-  unique invocation names isolate cleanup and filesystem writes between shards.
-- Local `make test-vyper-release` passes 12 Python and 17 Node tests, including
-  partition/merge regressions and actual subprocess failure/timeout/abort cleanup
-  through a fake Docker executable. `make docs-check plan-check`, Node syntax
-  checks, workflow YAML parsing/shard-sequence checks and `git diff --check` pass.
-  All 26 existing local package/descriptor byte validations also pass; this is
-  not production execution or native acceptance.
-- Native functional acceptance is now confirmed by the consolidated CI evidence
-  below. T120 remains in progress only for controlled serial comparison, peak
-  resource measurements and native failure propagation; local subprocess
-  failure/timeout/abort regressions do not prove GitHub runner behavior.
+#### Delivered scope
 
-### P30-T121 — CPython advisory revision behind CI failure (2026-10-11)
+- Existing AMD64/ARM64 Hardhat jobs run four `steps.parallel` fixture shards
+  against their locally built production image. Deterministic whole-version
+  allocation covers 26 versions / 362 compilations with loads of 86/94/94/88.
+  Shard evidence, container names and temporary directories are isolated.
+  Strict merging rejects missing, duplicate, extra or stale evidence and
+  revalidates image, runtime, descriptors, packages and fixture identities before
+  emitting the unchanged full matrix used by Hardhat and release signing.
+- Each input retains a fresh network-disabled, read-only container and the
+  existing memory bounds and 30-second deadline. Timeout/abort kills the Docker
+  CLI with SIGKILL before removing its named container, fixing the SIGTERM hang.
+  The ignored-SIGTERM regression fails with the original implementation.
+- CPython CVE-2026-82049 and Expat CVE-2026-77214 metadata revisions were
+  explicitly re-reviewed; exact failed-CI findings remain regression fixtures.
+  Unknown or substantively changed findings still fail closed. Full replay
+  accepts 1,636 reviewed findings; the live audit covers 84 components.
+  Applicability and individual revisions remain in the
+  [CPython review](../reviews/P30-wasm-security-performance.md#cpython-advisory-re-review-2026-10-11)
+  and [Expat review](../reviews/P30-wasm-security-performance.md#expat-advisory-re-review-2026-10-11).
+- Only quality, integration, package-building and security jobs retain host
+  Python setup, pinned to 3.13.16. Native runtime, Hardhat and browser jobs do
+  not need it. The production Pyodide/CPython WASM identity is unchanged.
+- Hardhat and native Vyper both depend directly on `vyper-packages`. Common
+  package artifacts use run/attempt/producer-qualified names, one-day retention
+  and exact producer artifact-ID downloads, including downstream-only reruns.
+  Both topology tests and the original native version matrices remain; topology
+  matrix jobs, native version sharding and cross-job image transfer are absent.
 
-- [Security job 114458516156](https://github.com/islishude/etherview/actions/runs/38135537853/job/114458516156)
-  failed at the WASM audit with `core/cpython/CVE-2026-82049`. Downloaded the
-  actual `vyper-wasm-security` artifact; its finding matches the live OSV digest.
-  Re-reviewed changed version metadata, removed Vanir signatures and added fix
-  reference against the unchanged tarfile vulnerability and local execution
-  boundaries. The applicability reasoning is recorded in the
-  [security review](../reviews/P30-wasm-security-performance.md#cpython-advisory-re-review-2026-10-11).
-- Added only this explicitly reviewed digest; retained the old reviewed snapshot,
-  complete-inventory requirement and rejection of all unknown/changed findings.
-  The exact CI finding is a regression fixture. Removing its new review hash
-  reproduces the failure; subsequent substantive edits still fail closed.
-- Local failed-CI artifact replay passes all 1,636 findings. `make
-  test-vyper-release` passes 13 Python and 17 Node tests. `go test
-  ./internal/verify -run '^TestVyperArchiveRejectsUnsafeEntries$' -count=1`
-  passes, including hard/symbolic-link rejection. `make docs-check plan-check`
-  and `git diff --check` pass. The full Security and licenses job has not been
-  rerun remotely; no new remote CI result is claimed.
-- Live `python3.13 compiler/vyper/wasm/audit.py` passes on retry: 84 components
-  and 1,636 explicitly reviewed findings. The first attempt received truncated
-  PyPI JSON and left the report incomplete; no fallback or gate weakening was
-  introduced. T121 is done for this narrowly scoped audit-review correction;
-  P30 remains in progress for T120 native parallel-matrix CI acceptance.
-
-### P30-T122 — Remove unused host Python CI setup (2026-10-11)
-
-- Removed `actions/setup-python` from native Vyper runtime, Hardhat and browser
-  jobs after tracing their Node/Go/Docker entrypoints. Native runtime tests
-  consume downloaded packages and a Node-built SEA; Hardhat uses the prebuilt
-  production image; browser E2E builds its Go server and frontend only.
-- Retained setup in quality/integration for `compiler-install` and Python tests,
-  in `vyper-packages` for package/release builders, and in security for package,
-  advisory and license scripts. Container build-time Python is independent of
-  runner setup and unchanged.
-- YAML inspection confirms exactly those four jobs retain Python setup.
-  `make docs-check plan-check` and `git diff --check` pass. This is a workflow
-  setup deletion; native/browser CI runs have not been rerun locally. T122 is
-  done; T120 still owns native parallel-matrix CI acceptance.
-
-### P30-T123 — CI host Python 3.13.16 (2026-10-11)
-
-- Updated all four remaining setup-python jobs from 3.13.15 to 3.13.16.
-  The official actions/python-versions manifest lists stable 3.13.16 Linux
-  Ubuntu 24.04 x64/arm64 distributions. Production Pyodide's CPython 3.13.2
-  and historical compiler reference metadata are separate identities.
-- Local Python reports 3.13.16. `make test-vyper-release` passes 13 Python and
-  17 Node tests; `python3.13 compiler/vyper/wasm/packages.py --version 0.4.3`
-  passes. `make docs-check plan-check` and `git diff --check` pass. Remote
-  execution of the updated setup-python jobs remains unverified.
-
-### P30-T124 — Expat advisory revision behind CI failure (2026-10-11)
-
-- [Run 38142676727](https://github.com/islishude/etherview/actions/runs/38142676727)
-  passes 12 of 13 jobs, including quality, browser, both native WASM matrices
-  and both production Hardhat jobs. Only security fails: the Expat advisory
-  adds an openSUSE related-advisory identifier. The exact failed-CI finding
-  matches live OSV; unchanged applicability and the reviewed digests are
-  recorded in the [security review](../reviews/P30-wasm-security-performance.md#expat-advisory-re-review-2026-10-11).
-- Added the exact reviewed digest and CI fixture. Regressions require the new
-  review and reject later substantive changes; full artifact replay passes
-  all 1,636 findings. No audit gate or vulnerability boundary was weakened.
-- AMD64 parallel production fixture steps all start at 13:44:32 UTC and finish
-  by 13:54:52 UTC (10m20s). ARM64 runs 13:43:23–13:50:59 UTC
-  (7m36s); both strict merges succeed. This establishes actual
-  concurrent execution, not a controlled serial speedup or peak-memory result.
-  T120 retains its remaining acceptance/evidence work.
-
-- The subsequent live audit caught CPython CVE-2026-82049 reintroducing
-  Vanir signature metadata. Reviewed the exact diff against T121: all impact
-  and affected-version data is unchanged. Added a separate reviewed snapshot
-  and regression; complete live-response replay passes all 1,636 findings.
-- `make test-vyper-release docs-check plan-check` passes (15 Python, 17 Node
-  tests), as does `git diff --check`. A fresh full live rerun fails fetching
-  PyPI with TLS EOF after retries and leaves the report incomplete. T124 stays
-  in progress pending a successful live audit/security job on the fixed commit;
-  replay success is not reported as a fresh online pass.
-
-- Remote closure: Security and licenses passes on `d3b942f` in
-  [run 38148365813](https://github.com/islishude/etherview/actions/runs/38148365813/job/114496395388).
-  This closes T124; P30 remains in progress for T120 acceptance evidence.
-
-### P30-T125 — Remove unnecessary Hardhat scheduling dependency (2026-10-11)
-
-- Hardhat now depends directly on `vyper-packages`, matching its actual
-  artifact consumption. The native WASM matrix keeps the same dependency;
-  both AMD64/ARM64 matrices, commands and acceptance uploads are retained.
-- Parsed the workflow with the installed js-yaml and compared it structurally
-  against HEAD: the sole execution change is Hardhat's dependency edge.
-  Explicit assertions verify both architecture matrices and artifact downloads.
-- `make docs-check plan-check` and `git diff --check` pass. T125 is done for
-  this scheduling change; actual concurrent scheduling awaits remote CI.
-  P30 remains in progress for T120's remaining acceptance evidence.
-
-### P30-T126 — Topology concurrency withdrawn (2026-10-12)
-
-- At the user's request, reverted architecture/topology matrices, native Vyper
-  sharding, separate topology evidence and collection, and the associated ADR
-  change from `ee24b34`. Both topology tests and the original native version
-  matrices remain. The earlier Hardhat dependency change remains intact.
-- This item is dropped; artifact-only work is retained under P30-T127.
-
-### P30-T127 — Retain scoped temporary package artifacts (2026-10-12)
-
-- Claimed after the user narrowed the scope to artifact naming and expiration.
-- Common packages retain a run/attempt/producer-qualified name and one-day
-  retention. Both consumers use the producer's exact artifact ID, including
-  downstream-only reruns, and preserve extraction into `.local/`.
-- Workflow YAML matches artifact-only commit `4b35570` exactly; all other
-  implementation files match it as well. `make test-vyper-release docs-check
-  plan-check` passes (15 Python and 17 Node tests). Remote CI is not rerun
-  locally; P30 remains in progress for T120 acceptance evidence.
-
-### PR #141 — Consolidated CI acceptance (2026-10-12)
-
-- [Run 38181494214](https://github.com/islishude/etherview/actions/runs/38181494214)
-  passes all 13 jobs at `b3d46ba083bbb0ac1e6a86d1809e9cf9ce39e5c9`.
-  This supersedes earlier pending-remote notes for T121–T125/T127 and the
-  functional portion of T120. Security, Python-consuming jobs, both native
-  Vyper matrices, both Hardhat/Foundry architectures and browser E2E pass.
-- All four production fixture shards start together per architecture. AMD64
-  runs 22:46:58–22:57:55 UTC (10m57s); ARM64 runs 22:45:57–22:53:31 UTC
-  (7m34s). Both strict merges and final acceptance uploads succeed. This is
-  observed elapsed time, not a controlled speedup or peak-memory measurement.
-- Both Hardhat jobs start alongside native Vyper after package construction,
-  confirming T125. Both package consumers successfully use the producer's
-  artifact ID. T127 retains the workflow's run/attempt/job-qualified name and
-  one-day retention. No topology matrix or native sharding work remains planned:
-  T126 is dropped, with retained artifact scope consolidated into T127.
-- Existing IDs remain for traceability; no duplicate closure work item is added.
-  P30 remains in progress solely for T120's remaining evidence. P70/P73 release
-  blockers are unchanged. Documentation-only cleanup passes `make docs-check
-  plan-check` and `git diff --check`.
-
-### P30-T120 — Remaining evidence execution (2026-10-12)
-
-- Resumed the existing in-progress item to run controlled native serial/parallel
-  measurements and real runner failure propagation. A separate measurement
-  workflow preserves ordinary CI duration and the production acceptance format.
-- Evidence remains pending until both native jobs and failure probes complete.
-- Real Docker timeout probing found that SIGTERM could remain forwarded to an
-  unresponsive container, preventing callback cleanup. The CLI is now killed
-  with SIGKILL on timeout/abort before the existing named-container removal.
-  The ignored-SIGTERM regression fails against the original implementation and
-  passes after the fix; local real Docker failure/timeout/cancellation probes
-  pass. The 30-second production deadline is unchanged.
-- Native failure probes on both architectures in
-  [run 38184481846](https://github.com/islishude/etherview/actions/runs/38184481846)
-  pass real Docker failure/timeout/cancel cleanup. An injected exit 37 makes the
-  implicit parallel wait fail while all three siblings finish successfully;
-  the default-condition acceptance step is skipped and the explicit assertion
-  passes. These intentionally failing probe jobs are isolated from normal CI.
-
-### P30-T120 — Native timing, resource and failure acceptance closure (2026-10-12)
+#### Acceptance evidence
 
 - [Measurement run 38184481846](https://github.com/islishude/etherview/actions/runs/38184481846)
   passes both native measurement jobs and the final verifier at source head
