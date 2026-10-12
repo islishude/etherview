@@ -67,10 +67,11 @@ producer job output, including when only failed jobs are rerun. Both architectur
 matrices remain required verification
 coverage, without making Hardhat wait for native matrix completion.
 
-Host Python setup is required by quality/integration (`compiler-install`),
-common Vyper package construction, and security/license auditing. Native WASM
-runtime tests, prebuilt Hardhat E2E and browser E2E use Node/Go/Docker without
-host Python setup; the compiler interpreter is bundled Python WASM.
+Common CI gates, Vyper package construction, security/license auditing and the
+Go archive producer regression use Node without host Python setup. The compiler
+interpreter remains bundled Python WASM. Host Python is needed only for optional
+official reference generation and `make benchmark-vyper-wasm`; reference
+environments are prepared by `node compiler/vyper/reference.mjs` with uv 0.12.24.
 
 
 - `make toolchain-check`: require at least Go 1.27.2, Node 24.18.0, and npm
@@ -612,12 +613,12 @@ reference matrix covers normal code, constructors, invalid source and supported
 immutables, with ABI/bytecode comparisons against the official compiler.
 
 `make test-vyper-matrix` builds authenticated architecture-neutral packages and
-runs all original/modified fixtures with Pyodide 0.29.3, then tests every version
+runs all original/modified fixtures with Pyodide 0.29.5, then tests every version
 through the SEA/Go execution boundary. Candidate outputs go to
 `.local/vyper-wasm/`. Linux AMD64 and ARM64 production acceptance remains a
 separate release requirement; the local matrix does not satisfy it.
 `compiler/vyper/fixtures_versions.py` explicitly regenerates reference fixtures
-from installed locked build environments; acceptance never rewrites references.
+from locked environments prepared by `node compiler/vyper/reference.mjs`; acceptance never rewrites references.
 
 `make test-hardhat3-e2e` also runs the strict persistence-count regression, with
 Vyper expectations derived from the version/protocol matrix. It requires the
@@ -648,7 +649,9 @@ rejects missing/extra/duplicate or inconsistent evidence, and writes the existin
 `matrix-{arch}.json` consumed by Hardhat. No partial shard is release acceptance.
 The no-argument production command remains the sequential local option; use a
 clean evidence directory for a new run because evidence files are exclusive-create.
-`make test-vyper-release` covers partition/merge and subprocess failure handling.
+`make test-vyper-release` covers Node package/release/audit/license regressions,
+partition/merge and subprocess failure handling. The Go archive roundtrip calls
+the same Node producer consumed by release builds.
 Compare parallel-group wall time against the sequential baseline on native CI;
 record resource contention and any compilation timeout without relaxing limits.
 The completed native serial/parallel comparison and failure-propagation evidence
@@ -717,7 +720,7 @@ slot values, optional header fields and bilingual native-transfer tabs.
 ### Vyper WASM migration prerequisite
 
 `make test-vyper-wasm-candidate` builds all 26 compiler packages from the existing
-hash-locked upstream archives and tests Pyodide 0.29.3 / Python 3.13.2 against
+hash-locked upstream archives and tests Pyodide 0.29.5 / Python 3.13.2 against
 unchanged original/modified reference fixtures. Node denies network, writes,
 addons and subprocesses during the differential run; its old-generation heap
 is limited to 128 MiB and each WASM memory to 384 MiB. These limits are not a

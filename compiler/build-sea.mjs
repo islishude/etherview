@@ -43,6 +43,9 @@ try {
   ) {
     throw new Error("SEA bundle must contain solc/wrapper without a default soljson");
   }
+  if (bundleInputs.some((path) => /node_modules\/(adm-zip|tar-stream)\//.test(path))) {
+    throw new Error("SEA bundle must not contain build-only archive tooling");
+  }
 
   writeFileSync(
     config,

@@ -26,9 +26,6 @@ jobs:
         with:
           go-version: stable
           cache: true
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.13.16"
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -55,9 +52,6 @@ jobs:
           go-version: stable
           cache: true
 
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.13.16"
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -76,9 +70,6 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.13.16"
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -86,8 +77,8 @@ jobs:
         run: |
           npm --prefix compiler ci --ignore-scripts
           node compiler/vyper/wasm/prepare.mjs
-          python compiler/vyper/wasm/packages.py
-          python compiler/vyper/wasm/release.py --output .local/vyper-releases
+          node compiler/vyper/wasm/packages.mjs
+          node compiler/vyper/wasm/build-release.mjs --output .local/vyper-releases
       - uses: actions/upload-artifact@v7
         id: packages
         with:
@@ -314,9 +305,6 @@ jobs:
           go-version: stable
           cache: true
 
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.13.16"
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc

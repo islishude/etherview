@@ -16,7 +16,13 @@ import subprocess
 import zipfile
 from pathlib import Path
 
-from packages import ROOT, HERE, digest
+import hashlib
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parents[2]
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
 
 
 def measure(command, value, cwd, timeout=30):

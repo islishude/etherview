@@ -25,7 +25,7 @@ func TestVyperManifestIntegrity(t *testing.T) {
 		t.Fatal(err)
 	}
 	sum := sha256.Sum256(raw)
-	m := vyperWASMManifest{Schema: vyperPackageSchema, Pyodide: "0.29.3", Python: "3.13.2", Files: []vyperWASMFile{{Path: "packages.zip", SHA256: hex.EncodeToString(sum[:])}}}
+	m := vyperWASMManifest{Schema: vyperPackageSchema, Pyodide: "0.29.5", Python: "3.13.2", Files: []vyperWASMFile{{Path: "packages.zip", SHA256: hex.EncodeToString(sum[:])}}}
 	encoded, _ := json.Marshal(m)
 	digest := sha256.Sum256(encoded)
 	if err := os.WriteFile(filepath.Join(root, "package-manifest.json"), encoded, 0444); err != nil {

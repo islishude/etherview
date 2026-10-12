@@ -8,7 +8,7 @@ P30-T117–T119 replace ADR-0047/ADR-0049's native Python execution and
 platform-specific archive distribution. Their canonical publication, signed
 catalog, immutable binding and fresh-process boundaries remain mandatory.
 
-The existing Node SEA gains a Vyper-only protocol. Pyodide 0.29.3 / CPython
+The existing Node SEA gains a Vyper-only protocol. Pyodide 0.29.5 / CPython
 3.13.2 and its authenticated WASM PyCryptodome form one image-local read-only
 runtime. All 26 existing official compiler releases use architecture-neutral,
 digest-authenticated packages. Pure Python cbor2/immutables implementations
@@ -63,3 +63,25 @@ bugs remain reproducible; verification is not contract safety certification.
 Reachable pathological normalization remains bounded by subprocess cancellation,
 not claimed fixed. See the [security and performance review](../reviews/P30-wasm-security-performance.md)
 for measured startup/RSS costs and the accepted execution boundary.
+
+## Build and reference tooling
+
+Node owns authenticated package construction, unsigned release transports,
+actual-distribution audit/license checks and their regressions. Archive parsers
+are pinned build-only npm dependencies; they are not bundled in the SEA.
+Production Python adapter/protocol code and the benchmark's per-child `wait4`
+measurement remain Python. Official native reference environments are prepared
+independently with locked source/dependency bytes; PyInstaller, frozen native
+helpers and ELF-closure packaging are retired. Historical version locks remain
+authenticated inputs, with retired packaging tools excluded from installation.
+
+The native 0.4.3 reference audit queries live PyPI metadata directly, checks
+complete identity coverage and retains the two existing exact-wheel advisory
+range corrections. It no longer needs a host pip-audit environment. The separate
+WASM audit retains live PyPI/OSV queries, nested vendor coverage, core commit
+queries and exact-content dispositions. Neither audit substitutes for the other.
+
+Producer-language changes can alter compressed bytes without altering compiler
+sources. All archive and manifest hashes remain authoritative: changed package
+bytes require a new inventory review and fresh native acceptance before catalog
+promotion. No acceptance record or bound provenance is rebound to new bytes.

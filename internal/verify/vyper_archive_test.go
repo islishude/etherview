@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-func TestVyperArchivePythonProducerRoundTrip(t *testing.T) {
+func TestVyperArchiveNodeProducerRoundTrip(t *testing.T) {
 	root := t.TempDir()
 	source := filepath.Join(root, "source")
 	if err := os.Mkdir(source, 0o700); err != nil {
@@ -25,24 +25,22 @@ func TestVyperArchivePythonProducerRoundTrip(t *testing.T) {
 		}
 	}
 	archive := filepath.Join(root, "runtime.tar.gz")
-	producer, err := filepath.Abs("../../compiler/vyper/wasm/packages.py")
+	producer, err := filepath.Abs("../../compiler/vyper/wasm/packages.mjs")
 	if err != nil {
 		t.Fatal(err)
 	}
-	python := os.Getenv("PYTHON")
-	if python == "" {
-		python = "python3"
+	node := os.Getenv("NODE")
+	if node == "" {
+		node = "node"
 	}
-	const script = `import importlib.util, pathlib, sys
-spec = importlib.util.spec_from_file_location("vyper_matrix", sys.argv[1])
-module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(module)
-module.pack_runtime(pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3]))
-`
-	output, err := exec.CommandContext(t.Context(), python, "-B", "-c", script, producer, source, archive).CombinedOutput()
+	const script = `import {pathToFileURL} from 'node:url';
+const {packRuntime} = await import(pathToFileURL(process.argv[1]));
+await packRuntime(process.argv[2], process.argv[3]);`
+	output, err := exec.CommandContext(t.Context(), node, "--input-type=module", "-e", script, producer, source, archive).CombinedOutput()
 	if err != nil {
-		t.Fatalf("Python release producer: %v\n%s", err, output)
+		t.Fatalf("Node release producer: %v\n%s", err, output)
 	}
+
 	target := t.TempDir()
 	t.Cleanup(func() {
 		if err := removeVyperStaging(target); err != nil {

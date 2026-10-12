@@ -1,7 +1,7 @@
 {
   "schema": "etherview-wasm-security-review-v1",
-  "reviewed_at": "2026-10-11",
-  "inventory_sha256": "041bc04996e0f6de89abebce301cee7be82668b22e46ac8c83440d87a064682e",
+  "reviewed_at": "2026-10-12",
+  "inventory_sha256": "22aceb7fdb0e66e7c4c119b34c7bd23d72a71a2635e4dd75dcc10352e940b75b",
   "core": [
     {
       "name": "bzip2",
@@ -64,8 +64,8 @@
     {
       "name": "pyodide",
       "repo": "pyodide/pyodide",
-      "ref": "0.29.3",
-      "commit": "72e3c78d53a32a76e0aca7443ad24e5cae1042d3"
+      "ref": "0.29.5",
+      "commit": "05804b32e55628ad2269655f3c5a097fb4a966ee"
     },
     {
       "name": "zlib",

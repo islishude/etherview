@@ -212,4 +212,4 @@ if awk '$1 ~ /^[-d]/ && $1 ~ /w/ && $NF ~ /^opt\/etherview\/python-wasm(\/|$)/ {
     exit 1
 fi
 
-echo "docker-image-check: PASS (user=$configured_user, architecture=$image_architecture, SEA=Node-v26.11.1, Geas=0.3.3, Pyodide=0.29.3, hardened rootfs)"
+echo "docker-image-check: PASS (user=$configured_user, architecture=$image_architecture, SEA=Node-v26.11.1, Geas=0.3.3, Pyodide=0.29.5, hardened rootfs)"

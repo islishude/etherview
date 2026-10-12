@@ -198,10 +198,19 @@ credential-scoped operational boundaries.
 | P30-T119 | done | P30-T118 | Complete WASM deployment, release tooling and acceptance | common gates, performance and native AMD64/ARM64 production parity |
 
 | P30-T120 | done | P30-T119 | Complete Vyper CI parallelization, audit corrections, host Python setup and producer-scoped artifacts | Full native CI, strict matrix parity, measured timing/resources and failure/timeout/cancellation acceptance |
+| P30-T122 | done | P30-T120 | Retire native Vyper packaging and migrate build, audit and regression orchestration to Node while retaining Python compiler/reference and benchmark cores | Producer equivalence, full matrix, security/license and governance gates |
+| P30-T123 | done | P30-T122 | Upgrade the pinned Pyodide runtime to 0.29.5 with authenticated identities and unchanged compiler references | Full matrix, isolation, live audit/license and common local gates; native release acceptance remains separate |
+
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
 ## Acceptance
+
+- [x] P30-T122: retired native packaging is removed; Node package/release/audit
+      tools preserve upstream payloads, fail-closed checks and reproducibility.
+      Both full-version local matrices, reference regeneration, benchmark
+      smoke, common gates and governance checks pass. New compressed bytes
+      still require fresh native acceptance before any catalog promotion.
 
 - [x] P30-T118: startup and per-invocation identity fences, signed package
       installation, fixed SEA isolation and immutable database binding pass
@@ -1067,3 +1076,81 @@ closure below supplies the missing evidence.
   regression fails with the original code and passes with the fix. Final
   workflow structural checks, `make docs-check plan-check` and `git diff --check`
   pass. T120 and P30 are done; P70/P73 external release blockers remain unchanged.
+
+### P30-T122 — Node build/audit tooling and native packaging retirement (2026-10-12)
+
+- Removed native installation, PyInstaller build/helper, ELF closure and native
+  release-matrix scripts, plus duplicate native/pip-audit environment locks.
+  Node now owns authenticated packages, unsigned release transports, candidate
+  orchestration, native-reference and actual-WASM audits, package licenses and
+  tool regressions. CI no longer installs host Python. Python adapter/protocol,
+  official fixture generation and the benchmark's `wait4` measurement remain.
+- `node compiler/vyper/reference.mjs` prepares all 26 locked official native
+  environments with uv 0.12.24, including the source-only 0.2.0 release, without
+  PyInstaller. Independent execution of the existing fixture generator's
+  compiler program reproduces all 724 fixture documents and capability profiles
+  without writing checked-in references. `fixtures.py` uses the official 0.4.3
+  interpreter directly; its 44 generated documents are byte-identical to the
+  checked-in specialized fixtures.
+- Independent old/new ZIP comparison passes for all 26 packages and 17,326
+  byte-identical members. Dependency/source identities and all 590 distribution
+  records remain equal. Two `node compiler/vyper/wasm/build-release.mjs` runs
+  produce identical 26 archives and 26 descriptors. The reviewed inventory
+  changes only for compressed packages and the build-only npm lock; no advisory
+  disposition or digest was relaxed. The
+  [inventory review](../reviews/P30-wasm-security-performance.md#node-producer-inventory-review-2026-10-12)
+  records exact before/after identities and release limits.
+- `make test-vyper-matrix` passes both the 26-version candidate comparison and
+  362 fresh SEA/Go compilations against unchanged original/modified references
+  (the Go matrix takes 613.452 seconds on local macOS ARM64). The real Node
+  producer passes Go extraction/permission regressions. `go test ./...` and
+  `go test -race ./internal/verify -count=1` pass.
+- `make check` passes generation, lint, Go/Web unit and full Go race, security,
+  license, source, docs/plan and deployment gates. Its Node release tests pass
+  33 cases, including archive tampering/paths/links/duplicates/limits,
+  reproducibility, atomic complete-set publication, nested licenses/vendors,
+  service pagination/identity, coverage and changed advisory rejection. Live
+  audits pass nine native reference packages and 84 WASM/core components with
+  1,636 explicitly reviewed findings; package license checks cover 589 records.
+  The SEA build rejects accidental inclusion of the new archive libraries.
+- `python3 compiler/vyper/wasm/benchmark.py --version 0.4.3 --samples 3
+  --native-python <locked-reference-python> --output <ignored-report>` passes
+  normal and large multi-file workloads with native reference comparisons.
+  The final run is isolated from the other validation commands. This checks
+  benchmark functionality, not a performance-improvement claim or a repeated
+  all-version performance study.
+- Final `make docs-check plan-check` and `git diff --check` pass. Evidence logs
+  and producer comparison artifacts are under ignored
+  `.local/node-tooling-baseline/`. Remote CI, new native Linux AMD64/ARM64
+  production acceptance, catalog signing/publication and deployment were not
+  performed. Old package-bound acceptance cannot authorize these new bytes.
+  P30 returns to done; P70/P73 external release blockers remain unchanged.
+
+### P30-T123 — Pyodide 0.29.5 upgrade (2026-10-12)
+
+- Claimed after T122. Updated npm lock, producer/runtime checks, shared digest,
+  package manifests, Pyodide source review and maintained documentation to
+  0.29.5; CPython 3.13.2 and Emscripten 4.0.9 remain pinned.
+- All 26 compiler ZIPs are byte-identical to the pre-upgrade Node artifacts.
+  Compiler source, adapter/protocol and original/modified references remain
+  unchanged. The renamed upstream PyCryptodome wheel is digest-authenticated;
+  build preparation retires only unchanged, previously listed obsolete files.
+  Unknown payloads remain visible to the audit rejection check.
+- Candidate matrix passes all 26 versions / 362 original/modified compilations.
+  Core notices, 34 Node tooling/catalog/shard regressions, release transport
+  generation and the live 590-distribution / 84-component audit pass with the
+  existing 1,636 exact-content dispositions. See the
+  [artifact review](../reviews/P30-wasm-security-performance.md#pyodide-0295-upgrade-review-2026-10-12).
+- `make test-vyper-matrix` passes the candidate and real SEA/Go 26-version /
+  362-compilation matrices; the Go phase takes 632.549 s. Focused isolation,
+  identity, cancellation and missing-dependency race regressions pass. Full Go
+  unit/race, 397 Web tests, lint and generation/source/docs/plan gates pass.
+- Repeated generation produces byte-identical release archives/descriptors.
+  An isolated 0.4.3 benchmark with three warm pairs and the locked official
+  native interpreter passes both plain and 17-file reference comparisons:
+  warm dual medians 2.722 s / 4.178 s, peak child RSS 245.6 / 259.1 MiB.
+  This is local performance evidence, not an improvement or Linux claim.
+- Final `make check` passes all common gates, including full security/license
+  and deployment configuration checks. P30-T123 and P30 return to done.
+  Native Linux AMD64/ARM64 image and monolith/split acceptance must be rerun
+  before signing or catalog promotion; historical acceptance is not rebound.
