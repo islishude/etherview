@@ -95,6 +95,10 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T68 | done | P50-T67 | Apply the document theme before chart effects sample shared palette tokens | initial-theme and bidirectional chart regressions, frontend and embedded browser gates |
 | P50-T69 | done | P50-T68 | Split explorer styles by responsibility and colocate safe responsive rules without visual changes | stylesheet, responsive browser, frontend, generation, docs and plan gates |
 
+| P50-T70 | done | P50-T69 | Fix React 19.3 suspended route retry diagnostics | delayed import regression, frontend and generation gates |
+
+| P50-T71 | done | P50-T70 | Synchronize EventSource recovery E2E with lazy-route readiness | controlled cold-route ordering, head/reconnect refresh assertions and browser gates |
+
 ## Acceptance
 
 - [x] No frontend runtime service or external CDN is required.
@@ -1082,3 +1086,51 @@ None.
   through `make test-e2e`. `make docs-check`, `make plan-check`, and
   `git diff --check` pass. P50-T69 is done; evidence is local only, with no
   remote CI, deployment, or release claimed.
+
+### P50-T70 — React 19.3 suspended-route retry (2026-10-11)
+
+- Full initial Vitest run passed, but a cold delayed-import regression using the
+  browser scheduler reproduces the exact conditional-use error in TanStack
+  Router 1.170.40's `lazyRouteComponent`. Its unresolved render calls
+  `use(promise)` and its completed render skips it. An `act`-only test hides
+  this timing-dependent diagnostic. Inspected 1.170.42; it retains that path.
+- Route loading now wraps TanStack's component with React.lazy and waits for
+  its importer before rendering it. TanStack still owns import-error handling,
+  failed-preload retries and stale-chunk reload behavior; its preload property
+  remains live through the adapter. No eager imports or console filtering.
+- Five focused regressions pass: delayed imports under act and browser
+  scheduling, preloading/prop forwarding without duplicate imports, retry after
+  a failed preload, and delivery of import errors to the boundary. The browser
+  scheduler test fails against the original TanStack helper with the reported
+  error and passes against the adapter.
+- `npm --prefix web run test` passes 397 Vitest tests plus 8 asset/tool-policy
+  tests without the conditional-use diagnostic. Frontend lint/type/format checks
+  and `make generate-check` pass.
+- `make test-e2e` passes all 50 embedded-browser tests. `make docs-check
+  plan-check` and `git diff --check` pass. P50-T70 is done; remote confirmation is recorded below.
+
+### P50-T71 — EventSource recovery CI readiness race (2026-10-11)
+
+- [Run 38148365813](https://github.com/islishude/etherview/actions/runs/38148365813/job/114496395320)
+  fails the recovery test in all three attempts: only one blocks request is
+  observed after sending the head event. The root stream can open before the
+  dynamically imported blocks page mounts its query; stream readiness was not
+  a route-readiness barrier.
+- The test now holds the blocks-page chunk until SSE opens, explicitly proves
+  there are no block reads yet, then releases it and waits for populated route
+  data before publishing a head. Interception is removed before checking native
+  reconnect headers. Separate request baselines verify both head refresh and
+  expired-cursor recovery; the old recovery assertion could reuse the head's
+  request count. Native cursor and single-instance assertions remain intact.
+- Focused browser tests pass six executions with two workers and three repeats.
+  Frontend type/lint/format checks pass. This changes test synchronization only;
+  production event handling, retry bounds and timeouts are unchanged.
+- `make test-e2e` passes all 50 tests (2.5 minutes). `make docs-check
+  plan-check` and `git diff --check` pass. T71 is done; remote confirmation is recorded below.
+
+### P50-T70/T71 — Remote CI closure (2026-10-12)
+
+- [Run 38181494214](https://github.com/islishude/etherview/actions/runs/38181494214)
+  passes all 13 jobs at `b3d46ba`, including Generate, lint, and test and
+  Embedded SPA browser E2E. This closes both corrections' remote confirmation;
+  P50 remains done. Documentation cleanup passes `make docs-check plan-check`.

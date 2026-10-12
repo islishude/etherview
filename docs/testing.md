@@ -59,6 +59,20 @@ matrices. Event-specific concurrency groups prevent a push from cancelling the
 daily run. GitHub activates the schedule after the workflow reaches the default
 branch; scheduled start times may be delayed by runner load.
 
+The native Vyper WASM matrix and Hardhat production jobs both depend directly
+on `vyper-packages`, whose artifact they consume. They run independently after
+package construction. The producer uploads a run/attempt/job-qualified artifact
+with a one-day retention period; consumers use its exact artifact ID from the
+producer job output, including when only failed jobs are rerun. Both architecture
+matrices remain required verification
+coverage, without making Hardhat wait for native matrix completion.
+
+Host Python setup is required by quality/integration (`compiler-install`),
+common Vyper package construction, and security/license auditing. Native WASM
+runtime tests, prebuilt Hardhat E2E and browser E2E use Node/Go/Docker without
+host Python setup; the compiler interpreter is bundled Python WASM.
+
+
 - `make toolchain-check`: require at least Go 1.27.2, Node 24.18.0, and npm
   11.16.0 before generating or validating artifacts. Compatible newer stable
   versions are supported; older, malformed, and prerelease versions fail.
@@ -618,6 +632,28 @@ and immutable values, ABI/source reads and catalog-bound provenance. Successful
 runs write descriptor-bound acceptance records used by the release catalog tool.
 A macOS run or emulated architecture never substitutes for native Linux gates.
 
+CI retains the native AMD64/ARM64 Hardhat jobs and runs four production fixture
+shards in each job with `steps.parallel`, sharing its already built image and
+read-only packages. Each command uses `--shard-index 0` (through `3`) and
+`--shard-count 4` with `production-matrix.mjs`. Versions are assigned by descending
+fixture compilation count to the least-loaded shard, with numeric version and
+shard-index tie breakers. Each shard writes a distinct record and uses unique
+container names. Every original/modified input still gets a fresh restricted
+container with the existing 30-second deadline; failures and cancellation remove
+that invocation's container.
+
+After all four steps pass, `node compiler/vyper/wasm/merge-production-matrix.mjs
+--shard-count 4` rechecks the current image, runtime, packages and fixture hashes,
+rejects missing/extra/duplicate or inconsistent evidence, and writes the existing
+`matrix-{arch}.json` consumed by Hardhat. No partial shard is release acceptance.
+The no-argument production command remains the sequential local option; use a
+clean evidence directory for a new run because evidence files are exclusive-create.
+`make test-vyper-release` covers partition/merge and subprocess failure handling.
+Compare parallel-group wall time against the sequential baseline on native CI;
+record resource contention and any compilation timeout without relaxing limits.
+The completed native serial/parallel comparison and failure-propagation evidence
+are retained in [P30 acceptance](plans/P30-contract-verification.md#p30-t120--vyper-ci-optimization-and-acceptance).
+
 PostgreSQL integration tests cover durable binding/publication and reorg
 rejection. Signature, catalogue expiry, unsafe archives and runtime identity
 regressions remain passing release gates. Runtime or permission failures must be
@@ -688,3 +724,18 @@ is limited to 128 MiB and each WASM memory to 384 MiB. These limits are not a
 process RSS limit. Results and digest-bound package manifests are written below
 `.local/vyper-wasm/`. This candidate gate does not replace the required Linux
 matrix, production image checks or native AMD64/ARM64 acceptance.
+
+## Suspended route imports
+
+`web/src/router-lazy.test.tsx` exercises delayed imports both within `act` and
+with the browser scheduler, where React 19.3 diagnoses a library that calls
+`use(promise)` only before the import settles. The route adapter delegates
+suspension to React.lazy while retaining TanStack preload/retry/error behavior.
+The regression observes console errors without suppressing them; full browser
+acceptance continues through `make test-e2e` against the embedded Go server.
+
+The native EventSource recovery regression holds the lazy blocks-page chunk
+until the app stream opens, then waits for populated route data before sending
+a head event. It removes interception before observing native reconnect headers
+and checks fresh requests separately after the head and cursor recovery. SSE
+readiness alone does not establish that a lazy page has query observers.

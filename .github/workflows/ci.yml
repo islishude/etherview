@@ -28,7 +28,7 @@ jobs:
           cache: true
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.13.15"
+          python-version: "3.13.16"
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -57,7 +57,7 @@ jobs:
 
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.13.15"
+          python-version: "3.13.16"
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -70,13 +70,15 @@ jobs:
 
   vyper-packages:
     name: Build common Vyper WASM packages
+    outputs:
+      artifact-id: ${{ steps.packages.outputs.artifact-id }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.13.15"
+          python-version: "3.13.16"
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -87,8 +89,10 @@ jobs:
           python compiler/vyper/wasm/packages.py
           python compiler/vyper/wasm/release.py --output .local/vyper-releases
       - uses: actions/upload-artifact@v7
+        id: packages
         with:
-          name: vyper-common-packages
+          name: vyper-packages-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+          retention-days: 1
           path: |
             .local/vyper-wasm/packages/
             .local/vyper-releases/
@@ -113,15 +117,13 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: stable
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.13.15"
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
       - uses: actions/download-artifact@v8
         with:
-          name: vyper-common-packages
+          artifact-ids: ${{ needs.vyper-packages.outputs.artifact-id }}
+          merge-multiple: true
           path: .local/
       - name: Build native SEA and verify the common packages
         run: |
@@ -131,7 +133,7 @@ jobs:
           ETHERVIEW_TEST_VYPER_MATRIX_ROOT="$PWD/.local/vyper-wasm/packages" go test ./internal/verify -run '^TestVyper(DynamicRuntimeMatrix|StableVersionMatrix)$' -count=1 -timeout=30m
 
   hardhat3:
-    needs: vyper-runtimes
+    needs: vyper-packages
     name: Hardhat 3 production verification E2E (${{ matrix.arch }})
     strategy:
       fail-fast: false
@@ -147,16 +149,14 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
-          name: vyper-common-packages
+          artifact-ids: ${{ needs.vyper-packages.outputs.artifact-id }}
+          merge-multiple: true
           path: .local/
       - uses: docker/setup-buildx-action@v4
       - uses: actions/setup-go@v7
         with:
           go-version: stable
           cache: true
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.13.15"
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -183,8 +183,17 @@ jobs:
           cache-to: type=gha,mode=max,scope=hardhat3-client-${{ runner.os }}-${{ runner.arch }},ignore-error=true
       - name: Verify the host-native production image boundary
         run: make docker-image-check
-      - name: Verify all Vyper fixtures in the production image
-        run: node compiler/vyper/wasm/production-matrix.mjs
+      - parallel:
+          - name: Verify production Vyper fixtures (shard 1/4)
+            run: node compiler/vyper/wasm/production-matrix.mjs --shard-index 0 --shard-count 4
+          - name: Verify production Vyper fixtures (shard 2/4)
+            run: node compiler/vyper/wasm/production-matrix.mjs --shard-index 1 --shard-count 4
+          - name: Verify production Vyper fixtures (shard 3/4)
+            run: node compiler/vyper/wasm/production-matrix.mjs --shard-index 2 --shard-count 4
+          - name: Verify production Vyper fixtures (shard 4/4)
+            run: node compiler/vyper/wasm/production-matrix.mjs --shard-index 3 --shard-count 4
+      - name: Merge production Vyper fixture evidence
+        run: node compiler/vyper/wasm/merge-production-matrix.mjs --shard-count 4
       - name: Run provider compatibility regression
         run: make toolchain-check test-hardhat3-provider-compat
       - name: Run production Hardhat 3 and proxy verification E2E
@@ -277,9 +286,6 @@ jobs:
           go-version: stable
           cache: true
 
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.13.15"
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -310,7 +316,7 @@ jobs:
 
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.13.15"
+          python-version: "3.13.16"
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc

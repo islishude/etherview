@@ -83,6 +83,31 @@ Existing regression suites exercise those boundaries; the new audit tests
 reject omitted vendors, ambiguous metadata, missing/duplicate reports,
 changed inventories and new/changed advisories.
 
+## CPython advisory re-review (2026-10-11)
+
+[CI run 38135537853](https://github.com/islishude/etherview/actions/runs/38135537853/job/114458516156)
+correctly rejected an unreviewed revision of
+[CVE-2026-82049 / PSF-2026-41](https://github.com/psf/advisory-database/blob/main/advisories/python/PSF-2026-41.json).
+Compared with the accepted snapshot, OSV removed generated Vanir signatures,
+reduced its affected-version list from 238 to 213 entries and added a fix
+reference. The vulnerability description, severity and Git range events are
+unchanged; CPython 3.13.2 remains listed as affected. The failed-CI finding and
+the live OSV response have the same substantive digest:
+`383c542b740deda53c3d0ab723abd2898e84d7fcdadd5e2f09d6ce9689018393`.
+
+The existing authenticated-archives disposition still applies: this vulnerability
+requires tarfile extraction of a crafted hard link to a symbolic link. Runtime
+`execute.mjs` unpacks authenticated ZIP packages, while the Go runtime cache
+extractor rejects all non-regular TAR entries, including hard/symbolic links.
+Build-time `packages.py` reads digest-checked source archives with `extractfile`
+after rejecting links; it does not call `extract`/`extractall` or the affected
+extraction filters. This is an applicability review, not a CPython patch.
+
+The review now pins both explicitly reviewed snapshots. The checked-in regression
+fixture reproduces the rejected CI record and proves that removing its new hash
+fails again; further changes to details, affected ranges, references or database
+metadata still fail. No hash fields or security gates were relaxed.
+
 ## License correction
 
 The four prior core notices did not include all linked component notices.
@@ -153,3 +178,36 @@ catalog tool consumes them and verifies with a temporary Ed25519 key.
 closure. The following documentation-only update records final benchmark samples
 and plan status; documentation/plan gates pass locally. Source delivery,
 production catalog signing/publication and deployment remain separate actions.
+
+## Expat advisory re-review (2026-10-11)
+
+CI run 38142676727 failed on `core/expat/CVE-2026-77214`. Its retained
+finding and the live OSV response agree: relative to reviewed digest
+`2b57dde0fe3f7dc2f86fed118c20c4426f896cc2f67096598ebadca3b02abe18`,
+the only substantive JSON addition is `related: [openSUSE-SU-2026:12100-1]`.
+The description, affected versions/ranges, severity and fix reference are
+unchanged. The new explicitly reviewed digest is
+`e4922c1ec54e2292df10d405556089ff0560a616525d575bc805b3ec807aecb8`.
+
+[Upstream's fix](https://github.com/libexpat/libexpat/pull/1393) validates the
+caller-supplied length against internal buffer capacity in `XML_ParseBuffer`.
+The pinned Expat 2.6.4 remains affected; this review does not claim an upstream
+patch. The fixed JSON compiler entrypoints in `protocol.py` and `adapter.py`
+do not parse user XML or invoke Expat. The existing `no-xml` disposition still
+applies. Keep both exact reviewed snapshots; new or changed substantive content,
+including related advisories, continues to require review. The failed-CI finding
+is retained as a regression fixture, including rejection when its new digest
+is removed and when its impact, affected range, references or severity changes.
+
+The subsequent live audit also received a new CVE-2026-82049 revision at
+13:07:11 UTC. It adds only `vanir_signatures` and
+`vanir_signatures_modified` under `affected[0].database_specific`, plus the
+excluded top-level modification timestamp. The signatures target CPython
+link/symlink/rename implementations at commit
+`5a57248b22ad3b9aafcaaadae2c304a1923daeca`; the prior description, affected
+ranges, versions, severity and references are unchanged. The authenticated
+archive/no-untrusted-extraction reasoning in the CPython review above still
+applies. Explicitly accept digest
+`48d4aa043e5555c02a4b4d53fac9a3ff81db2471c935f1161dca2ba0f2305ee1`
+and retain this separate live snapshot as a regression fixture. Signature
+metadata remains inside the digest; no fields were newly excluded.

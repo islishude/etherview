@@ -233,3 +233,19 @@ P50-T69 is complete: explorer styles are split by responsibility, with safe
 responsive rules colocated and shared late overrides preserved. Local frontend,
 50-scenario embedded browser, baseline style comparison, generation and
 governance checks pass; P50 remains done and release blockers are unchanged.
+
+P30-T120 and P30 are done.
+It covers four production fixture shards with strict evidence merging, bounded
+container cleanup, advisory re-reviews, required host Python 3.13.16 setup,
+independent Hardhat scheduling and producer-scoped one-day package artifacts.
+
+[Ordinary CI run 38184481874](https://github.com/islishude/etherview/actions/runs/38184481874)
+passes all 13 jobs, including the P50-T70/T71 browser corrections.
+[Native measurement run 38184481846](https://github.com/islishude/etherview/actions/runs/38184481846)
+verifies identical complete matrices: AMD64 1156.844 → 696.358 seconds (1.66x),
+ARM64 1067.324 → 430.015 seconds (2.48x). Parallel compiler-container peak
+memory is 651.6 / 692.5 MiB, with no OOM or compilation timeout. Native failure
+probes confirm cleanup and skipped acceptance after a parallel-group failure.
+The child plan retains raw identity/resource evidence and single-pair/cache-order
+limitations. The temporary measurement workflow and its dedicated scripts have
+been removed after acceptance; routine CI does not repeat serial baselines. P70/P73 external release blockers remain unchanged.

@@ -1,8 +1,10 @@
 """Security gates reject incomplete coverage and stale advisory dispositions."""
 import copy
 import io
+import json
 import unittest
 import zipfile
+from pathlib import Path
 
 import audit
 
@@ -55,6 +57,39 @@ class AuditTests(unittest.TestCase):
         stale['distributions'][0]['version'] = '2'
         with self.assertRaisesRegex(ValueError, 'inventory changed'):
             audit.evaluate(stale, report, review)
+
+    def assert_reviewed_revision(self, component, identifier, suffix=""):
+        # Retained CI/live findings, never fetched live by this regression.
+        here = Path(__file__).parent
+        finding = json.loads((here / f'testdata/{identifier}{suffix}.json').read_bytes())
+        production = json.loads((here / 'audit-review.json').read_bytes())
+        actual = {'distributions': []}
+        review = dict(production, core=[{'name': component}],
+                      inventory_sha256=audit.digest(audit.canonical(actual)))
+
+        def evaluate(value):
+            return audit.evaluate(actual, [{'component': f'core/{component}', 'findings': [value]}], review)
+
+        self.assertEqual(evaluate(finding), 1)
+        self.assertEqual(evaluate(dict(finding, modified='timestamp-only change')), 1)
+        previous = copy.deepcopy(review)
+        previous['findings'][f'core/{component}/{identifier}']['sha256'].remove(audit.finding_digest(finding))
+        with self.assertRaisesRegex(ValueError, f'core/{component}/{identifier}'):
+            audit.evaluate(actual, [{'component': f'core/{component}', 'findings': [finding]}], previous)
+        for field in ('details', 'affected', 'references', 'database_specific', 'related', 'severity'):
+            changed = copy.deepcopy(finding)
+            changed[field] = 'unreviewed revision'
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, 'unreviewed or changed'):
+                evaluate(changed)
+
+    def test_reviewed_cpython_tarfile_advisory_revision(self):
+        self.assert_reviewed_revision('cpython', 'CVE-2026-82049')
+
+    def test_reviewed_cpython_vanir_revision(self):
+        self.assert_reviewed_revision('cpython', 'CVE-2026-82049', '-vanir')
+
+    def test_reviewed_expat_advisory_revision(self):
+        self.assert_reviewed_revision('expat', 'CVE-2026-77214')
 
 
 if __name__ == '__main__':
