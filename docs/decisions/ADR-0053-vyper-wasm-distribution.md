@@ -58,11 +58,49 @@ selected runtime. Local candidate tests never substitute for Linux acceptance.
 
 Security review inventories actual compiler bundles (including vendors) and
 the pinned WASM core, with live advisory queries and exact-artifact applicability
-dispositions. Unknown or changed findings fail the gate. Historical EVM compiler
+dispositions. Unknown or changed findings fail the gate except for the explicit
+auxiliary-only policy below. Historical EVM compiler
 bugs remain reproducible; verification is not contract safety certification.
 Reachable pathological normalization remains bounded by subprocess cancellation,
 not claimed fixed. See the [security and performance review](../reviews/P30-wasm-security-performance.md)
 for measured startup/RSS costs and the accepted execution boundary.
+
+## Auxiliary advisory metadata policy
+
+`osv-cpython-vanir-v1` permits only changes at
+`affected[].database_specific.vanir_signatures` and
+`affected[].database_specific.vanir_signatures_modified` for explicitly opted-in
+OSV `core/cpython` findings. The core must remain `python/cpython`; a PyPI
+response, another component or a finding without its own opt-in remains strict.
+Currently only CVE-2026-82049 is enabled. The audit does not run Vanir or use its
+generated signatures to determine applicability. Introducing such a dependency
+requires revisiting this decision before continuing to use the exception.
+
+Each opt-in names one repository baseline whose existing advisory digest must
+already appear in that finding's reviewed hashes, with a valid disposition.
+The baseline is read-only; live responses never update it or add approved hashes.
+An unknown policy, missing/changed baseline, identity mismatch or invalid baseline
+fails. Previously reviewed exact hashes remain valid under the existing rule.
+
+For a changed finding, validate the known Vanir v1 Function/Line signature
+structure and UTC generation timestamp before removing those two paths from a
+copy. Preserve parent objects, every other field, all array ordering and unknown
+keys. Unknown signature fields/versions and malformed values require review.
+The existing top-level `modified`/`published` exclusions remain; no other field
+is excluded. Compare the remainder exactly against the authenticated baseline.
+New findings, descriptions, severity, references, aliases, related/upstream
+records, credits, withdrawal state, versions, Git ranges/fix commits and unknown
+fields continue to block. Mixed auxiliary/substantive changes also block.
+
+Full raw responses remain in the CI artifact. Auxiliary changes record the
+policy, baseline/current full-content and decision digests, and changed JSON
+pointers (at most 64; raw evidence remains complete). They produce
+`pass-with-auxiliary-changes`, not a claim that the new full text was reviewed.
+Rejected changes retain a failed classification report before the command exits
+nonzero. Query failures retain the existing incomplete report and fail; inventory,
+coverage, duplicate finding and full-content cross-query consistency checks are
+unchanged. CI summaries expose only fixed status labels/counts, never untrusted
+advisory text as workflow commands.
 
 ## Build and reference tooling
 

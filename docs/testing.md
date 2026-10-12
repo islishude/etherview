@@ -282,7 +282,13 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv 0.12.24
   The WASM gate inventories actual packages including vendors and queries pinned
   core source commits. Exact artifact/advisory dispositions are reviewed in
   [P30 security evidence](reviews/P30-wasm-security-performance.md); missing
-  coverage, service errors and new/changed findings fail. All four npm
+  coverage, service errors and new/changed findings fail, except for explicitly
+  opted-in OSV CPython Vanir-only changes under
+  [ADR-0053](decisions/ADR-0053-vyper-wasm-distribution.md#auxiliary-advisory-metadata-policy).
+  `make test-vyper-release` includes exact-field, authenticated-baseline,
+  mixed-change, source/component and failure-report regressions. Auxiliary
+  changes remain in raw evidence and classified reports; Git ranges, related
+  advisories and unknown fields still block. All four npm
   dependency trees must report zero high-severity vulnerabilities;
   the API generator's
   transitive parser and glob dependencies are constrained by audited

@@ -266,3 +266,14 @@ matrices, isolation/race, benchmark, live audit/license and `make check` pass.
 P30 is done; native Linux AMD64/ARM64 production acceptance remains required
 for the new artifact identities before catalog promotion. No signing, push or
 deployment is claimed.
+
+P30-T124 re-reviews the CPython advisory revision rejected by run 38198556844.
+The exact failed-CI fixture, strict advisory rejection regressions, archive
+regressions, live security/license and docs/plan gates pass locally. P30 remains
+done; remote CI has not been rerun and P70/P73 external blockers are unchanged.
+
+P30-T125 permits only explicitly opted-in OSV CPython Vanir metadata changes,
+with authenticated baselines, complete evidence and continued blocking for all
+other changes. Local audit/release regressions, live security/license and
+docs/plan gates pass. P30 remains done; no remote CI or deployment is claimed,
+and P70/P73 external blockers are unchanged.

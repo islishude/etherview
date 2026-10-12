@@ -241,6 +241,7 @@ test("changed advisory, inventory, missing/duplicate reports fail closed", () =>
 for (const [component, identifier, suffix] of [
   ["cpython", "CVE-2026-82049", ""],
   ["cpython", "CVE-2026-82049", "-vanir"],
+  ["cpython", "CVE-2026-82049", "-fix-range"],
   ["expat", "CVE-2026-77214", ""],
 ]) {
   test("retained reviewed advisory " + identifier + suffix, () => {
@@ -248,7 +249,17 @@ for (const [component, identifier, suffix] of [
     const actual = { distributions: [] },
       review = {
         ...readJSON(join(HERE, "audit-review.json")),
-        core: [{ name: component }],
+        core: [
+          {
+            name: component,
+            repo: component === "cpython" ? "python/cpython" : "libexpat/libexpat",
+          },
+        ],
+        findings: Object.fromEntries(
+          Object.entries(readJSON(join(HERE, "audit-review.json")).findings).filter(([key]) =>
+            key.startsWith("core/" + component + "/"),
+          ),
+        ),
         inventory_sha256: digest(canonical(actual)),
       };
     const run = (f) =>

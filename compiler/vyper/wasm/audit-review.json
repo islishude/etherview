@@ -1006,9 +1006,14 @@
       "sha256": [
         "cc4aa5be2e5ca4bb822d0d74d844ac72b188b23fee00eeedfe7a1ce8066518a8",
         "383c542b740deda53c3d0ab723abd2898e84d7fcdadd5e2f09d6ce9689018393",
-        "48d4aa043e5555c02a4b4d53fac9a3ff81db2471c935f1161dca2ba0f2305ee1"
+        "48d4aa043e5555c02a4b4d53fac9a3ff81db2471c935f1161dca2ba0f2305ee1",
+        "066932ef10f754870a25881e1e277dcf8b3c57999d13a9020288a96fa6edc248"
       ],
-      "reason": "authenticated-archives"
+      "reason": "authenticated-archives",
+      "auxiliary": {
+        "policy": "osv-cpython-vanir-v1",
+        "baseline": "CVE-2026-82049.json"
+      }
     },
     "core/cpython/CVE-2026-8328": {
       "sha256": [

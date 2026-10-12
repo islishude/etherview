@@ -285,3 +285,46 @@ official native reference outputs. These are local samples, not an OS-cache
 cold experiment or evidence of a performance improvement. Raw output is at
 `.local/pyodide-0295-candidate/benchmark.json`; the old published measurements
 remain unchanged.
+
+## CPython fix-range re-review (2026-10-12)
+
+[CI run 38198556844](https://github.com/islishude/etherview/actions/runs/38198556844/job/114646592435)
+rejected the OSV revision modified at 02:32:56 UTC. Its saved finding and the
+[live OSV record](https://api.osv.dev/v1/vulns/CVE-2026-82049) have the same digest:
+`066932ef10f754870a25881e1e277dcf8b3c57999d13a9020288a96fa6edc248`.
+Compared with the retained October 11 non-Vanir fixture, the only substantive
+addition is Git range fix `cccc7ec30212dba2abef53ce4a2bed112ddb690c`.
+Relative to the Vanir snapshot, generated signature metadata is also removed.
+The description, severity, affected versions, aliases and references are unchanged.
+
+The [added upstream commit](https://github.com/python/cpython/commit/cccc7ec30212dba2abef53ce4a2bed112ddb690c)
+is the Python 3.15 backport of the same tarfile hard-link/symlink fix, touching
+`Lib/tarfile.py` and its tests. CPython 3.13.2 remains affected. The existing
+`authenticated-archives` disposition remains applicable: the runtime loads
+authenticated ZIP packages; the Go TAR cache extractor rejects non-regular
+entries, and the Node build parser rejects links. This review does not patch
+CPython or expand accepted inputs.
+
+Retain the failed-CI record as `CVE-2026-82049-fix-range.json` and accept only
+its exact digest in addition to previously reviewed snapshots. Regression tests
+prove that removing this digest reproduces the rejection and that changed
+impact, affected ranges, references, metadata, related findings or severity
+still fail. No additional fields are excluded from advisory hashing.
+
+## Narrow Vanir auxiliary policy (2026-10-12)
+
+The [ADR-0053 policy](../decisions/ADR-0053-vyper-wasm-distribution.md#auxiliary-advisory-metadata-policy)
+now permits only the two validated Vanir fields for an explicitly opted-in
+OSV CPython finding. CVE-2026-82049 uses the previously reviewed fix-range
+snapshot (`066932ef10f754870a25881e1e277dcf8b3c57999d13a9020288a96fa6edc248`)
+as its authenticated baseline. The archive applicability disposition is unchanged.
+Other findings and PyPI records retain exact-content matching.
+
+The historical non-Vanir and Vanir snapshots have identical decision content;
+the fix-range revision does not. Thus pure generated-signature changes can pass
+with evidence, while the original CI failure's added Git range would still
+require review against the older baseline. Full advisory hashes and cross-query
+consistency remain strict. No new reference, related advisory, affected version,
+range, severity, credit or unknown metadata field is automatically accepted.
+This policy changes audit classification only; it does not patch CPython or
+change compiler packages, runtime execution or public contracts.

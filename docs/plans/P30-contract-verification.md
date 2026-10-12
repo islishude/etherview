@@ -179,32 +179,29 @@ credential-scoped operational boundaries.
 | P30-T116 | done | P30-T115 | Reject credential redirects and isolate complete explicit S3 credentials from ambient AWS profiles | Redirect and explicit-credential regressions, S3 race, RustFS, lint, docs and plan gates |
 | P30-T115 | done | P30-T42, P30-T36 | Replace MinIO with RustFS and AWS SDK S3 transport, with isolated real-service acceptance | S3 unit/race, RustFS, deployment, security/license, docs and plan gates |
 | P30-T114 | done | P30-T99 | Upgrade the pinned Node SEA to 26.9.0 and solc wrapper to 0.8.37 | Exact lockfile, runtime identity, real SEA compilation and permission regressions, Go verifier tests, docs and plan gates |
-
 | P30-T100 | done | P30-T99 | Serialize Compose stdout/stderr capture and streaming to prevent concurrent buffer corruption | real-process output and failure regressions under the race detector; Foundry E2E; docs/plan checks |
-
 | P30-T107 | done | P30-T100 | Signed dynamic Vyper runtime catalogs, immutable provenance and authenticated cache | signature, persistence, download, cache and subprocess regressions |
 | P30-T108 | done | P30-T107 | All non-withdrawn stable Vyper build locks and version-aware input/output and matching | official compiler differential matrix on native AMD64/ARM64 |
 | P30-T109 | done | P30-T108 | Vyper capability API, generated client and bilingual Web | API, Etherscan and browser regressions |
 | P30-T110 | done | P30-T109 | Runtime release pipeline, deployment parity and complete acceptance | common gates, PostgreSQL, and native AMD64/ARM64 monolith/split production E2E |
-
 | P30-T111 | done | P30-T100 | Fix Vyper release archive padding and preserve cancelled legacy jobs during migration | Python producer/Go extractor regressions, gzip integrity and padding bounds, PostgreSQL migration preservation and maintained gates |
-
 | P30-T112 | done | P30-T111 | Restore signed Vyper catalog environment loading at the production startup boundary | Config loading for API/all, rejection of invalid trust settings, and Hardhat startup regression checks |
-
 | P30-T113 | done | P30-T112 | Align strict Hardhat persistence totals with the expanded Vyper version/protocol matrix | Replay CI totals, reject missing/duplicate jobs and results, preserve provenance and topology parity checks |
-
 | P30-T117 | done | P30-T110 | Gate the shared Pyodide runtime against all 26 official Vyper reference matrices | authenticated packages, unchanged original/modified fixtures and bounded WASM execution |
 | P30-T118 | done | P30-T117 | Replace native Vyper helpers with the shared Node SEA and signed architecture-neutral compiler packages | isolation, identity, cache, migration and publication regressions |
 | P30-T119 | done | P30-T118 | Complete WASM deployment, release tooling and acceptance | common gates, performance and native AMD64/ARM64 production parity |
-
 | P30-T120 | done | P30-T119 | Complete Vyper CI parallelization, audit corrections, host Python setup and producer-scoped artifacts | Full native CI, strict matrix parity, measured timing/resources and failure/timeout/cancellation acceptance |
 | P30-T122 | done | P30-T120 | Retire native Vyper packaging and migrate build, audit and regression orchestration to Node while retaining Python compiler/reference and benchmark cores | Producer equivalence, full matrix, security/license and governance gates |
 | P30-T123 | done | P30-T122 | Upgrade the pinned Pyodide runtime to 0.29.5 with authenticated identities and unchanged compiler references | Full matrix, isolation, live audit/license and common local gates; native release acceptance remains separate |
-
+| P30-T124 | done | P30-T123 | Re-review the CPython advisory revision rejected by CI run 38198556844 | Exact failed-CI fixture, rejection regressions, live security and governance gates |
+| P30-T125 | done | P30-T124 | Classify only explicitly reviewed OSV CPython Vanir metadata changes as auxiliary | Scoped baseline authentication, strict rejection regressions, live audit and governance gates |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
 ## Acceptance
+
+- [x] P30-T125: only opted-in OSV CPython Vanir fields can pass as auxiliary;
+      all other changes and audit completeness checks remain blocking.
 
 - [x] P30-T122: retired native packaging is removed; Node package/release/audit
       tools preserve upstream payloads, fail-closed checks and reproducibility.
@@ -680,6 +677,9 @@ closure below supplies the missing evidence.
 
 ### P30-T107–P30-T113 — Remote acceptance closure (2026-09-12)
 
+- P30-T108 and P30-T109 share the historical full-matrix, API/Web and browser
+  acceptance recorded below; this explicit ID mapping adds no new CI evidence.
+
 - [PR #63](https://github.com/islishude/etherview/pull/63) head and the local
   code commit are `dc2d689c0edda6173a77e257889b60e13fa8c9c5`.
   [CI run 34694346465](https://github.com/islishude/etherview/actions/runs/34694346465)
@@ -1154,3 +1154,53 @@ closure below supplies the missing evidence.
   and deployment configuration checks. P30-T123 and P30 return to done.
   Native Linux AMD64/ARM64 image and monolith/split acceptance must be rerun
   before signing or catalog promotion; historical acceptance is not rebound.
+
+### P30-T124 — CPython advisory fix-range review (2026-10-12)
+
+- Reproduced [failed job 114646592435](https://github.com/islishude/etherview/actions/runs/38198556844/job/114646592435)
+  using its saved CVE-2026-82049 record. Compared the exact CI/live OSV payload
+  and upstream fix; recorded the unchanged archive applicability in the
+  [security review](../reviews/P30-wasm-security-performance.md#cpython-fix-range-re-review-2026-10-12).
+- Added only the reviewed advisory digest and a retained regression fixture.
+  No audit hash exclusions, runtime artifacts or applicability reasons change.
+  The fixture fails before the review update and passes afterward; removing
+  its digest or changing substantive fields continues to fail.
+- `node --test compiler/vyper/wasm/tooling.test.mjs` passes all 18 tests;
+  replaying the failed CI inventory/raw artifacts passes all 1,636 reviewed
+  findings. `go test ./internal/verify -run 'TestVyperArchive' -count=1` passes.
+- `make security-check license-check` passes, including the live audit of
+  590 distribution occurrences / 84 components / 1,636 explicitly reviewed
+  findings. This is not a zero-vulnerability claim.
+- `make docs-check plan-check` and `git diff --check` pass. P30-T124 and P30
+  are done. No remote CI rerun, commit, push or deployment is claimed.
+
+### P30-T125 — Narrow Vanir auxiliary classification (2026-10-12)
+
+- Claimed after T124. Implemented the
+  [ADR-0053 auxiliary policy](../decisions/ADR-0053-vyper-wasm-distribution.md#auxiliary-advisory-metadata-policy)
+  with one explicit CVE-2026-82049 opt-in. Its repository baseline is
+  authenticated against an existing reviewed hash and reason. Other findings,
+  sources and components retain strict matching; live data never changes review
+  files. No runtime, dependency or compiler identity changes.
+- Validate the two exact Vanir fields before projecting them out; unknown
+  nested fields/versions, malformed values, changed parents and every other
+  advisory field remain blocking. Existing inventory, coverage, duplicate,
+  live-query and full-content cross-query checks are preserved.
+- Reports retain raw evidence, baseline/current full-content and decision
+  digests, policy and bounded JSON-pointer differences. Auxiliary success is
+  separate from exact review; failures retain classified evidence before the
+  command exits nonzero. CI summaries contain fixed labels/counts only.
+- `make test-vyper-release` passes 61 audit/tooling and 17 catalog/shard tests.
+  Complete 84-component / 1,636-finding replay passes with one synthetic
+  Vanir-only change, then rejects an added fix-range event in the same finding.
+  Historical non-Vanir/Vanir projections agree; the later fix-range does not.
+- Restored the P30 work table's continuity so the checker includes the newer
+  work items, and made T108/T109's existing historical evidence mapping explicit.
+  No historical acceptance was rerun or reclassified.
+- `make security-check license-check` passes, including the live 590-distribution /
+  84-component / 1,636-finding audit with zero auxiliary changes in that response.
+  This is not a zero-vulnerability claim. `make docs-check plan-check` and
+  `git diff --check` pass; plan-check now includes all 382 work items.
+- P30-T125 and P30 are done. The pre-existing Git index is byte-identical;
+  earlier staged and unstaged work is retained. No remote CI, commit, push,
+  signing or deployment is claimed.

@@ -1,5 +1,5 @@
 // Audit actual distributions, vendors and pinned WASM core. Unknown changes fail.
-import { mkdirSync, writeFileSync, rmSync, readdirSync, lstatSync } from "node:fs";
+import { appendFileSync, mkdirSync, writeFileSync, rmSync, readdirSync, lstatSync } from "node:fs";
 import { join } from "node:path";
 import {
   ROOT,
@@ -15,6 +15,7 @@ import {
 } from "./tooling.mjs";
 import { metadata, normalized } from "./metadata.mjs";
 import { sharedSHA256 } from "./release.mjs";
+import { loadAuxiliaryBaselines, classifyAuxiliary } from "./audit-auxiliary.mjs";
 export { metadata, vendoredMetadata } from "./metadata.mjs";
 export const OUTPUT = join(ROOT, ".local/vyper-wasm/audit");
 export function inventory() {
@@ -129,7 +130,7 @@ export async function queryCore(component, fetcher = fetchJSON) {
       throw new Error("inconsistent core advisory");
     findings.set(identifier, finding);
   }
-  return { component: "core/" + component.name, findings: [...findings.values()] };
+  return { component: "core/" + component.name, source: "osv", findings: [...findings.values()] };
 }
 export function findingDigest(finding) {
   return digest(
@@ -140,7 +141,7 @@ export function findingDigest(finding) {
     ),
   );
 }
-export function evaluate(actual, reports, review) {
+export function evaluate(actual, reports, review, changes = []) {
   if (digest(canonical(actual)) !== review.inventory_sha256)
     throw new Error("WASM distribution inventory changed; review required");
   const expected = new Set([
@@ -153,6 +154,7 @@ export function evaluate(actual, reports, review) {
     reports.some((r) => !expected.has(r.component))
   )
     throw new Error("audit coverage is incomplete or duplicated");
+  const baselines = loadAuxiliaryBaselines(review, findingDigest);
   const problems = [];
   let count = 0;
   for (const report of reports) {
@@ -166,17 +168,50 @@ export function evaluate(actual, reports, review) {
         : report.component;
       const key = scope + "/" + finding.id,
         disposition = review.findings[key];
-      if (
-        !disposition ||
-        !disposition.sha256.includes(findingDigest(finding)) ||
-        !Object.hasOwn(review.reasons, disposition.reason)
-      )
+      if (!disposition || !Object.hasOwn(review.reasons, disposition.reason)) {
         problems.push(key);
+        changes.push({
+          classification: "review-required",
+          component: report.component,
+          id: finding.id,
+        });
+      } else if (!disposition.sha256.includes(findingDigest(finding))) {
+        const baseline = baselines.get(key);
+        const change = baseline
+          ? classifyAuxiliary(report, finding, baseline)
+          : { classification: "review-required", component: report.component, id: finding.id };
+        changes.push(change);
+        if (change.classification !== "auxiliary-only") problems.push(key);
+      }
       count++;
     }
   }
   if (problems.length) throw new Error("unreviewed or changed advisories: " + problems.join(", "));
   return count;
+}
+
+export function evaluateReport(actual, reports, review) {
+  const changes = [];
+  const result = {
+    status: "failed",
+    queried_at: new Date().toISOString(),
+    inventory_sha256: digest(canonical(actual)),
+    raw_sha256: digest(canonical(reports)),
+    review_sha256: digest(canonical(review)),
+    distributions: actual.distributions.length,
+    components: reports.length,
+    changes,
+  };
+  try {
+    result.findings = evaluate(actual, reports, review, changes);
+    result.auxiliary_changes = changes.filter((c) => c.classification === "auxiliary-only").length;
+    result.status = result.auxiliary_changes
+      ? "pass-with-auxiliary-changes"
+      : "pass-with-reviewed-findings";
+  } catch (error) {
+    result.error = error.message;
+  }
+  return result;
 }
 export async function main() {
   mkdirSync(OUTPUT, { recursive: true });
@@ -194,20 +229,17 @@ export async function main() {
     ...(await mapConcurrent(review.core, queryCore)),
   ];
   writeFileSync(join(OUTPUT, "raw.json"), canonical(reports) + "\n");
-  const count = evaluate(actual, reports, review);
-  const result = {
-    status: "pass-with-reviewed-findings",
-    queried_at: new Date().toISOString(),
-    inventory_sha256: digest(canonical(actual)),
-    raw_sha256: digest(canonical(reports)),
-    review_sha256: digest(regularFile(join(HERE, "audit-review.json"))),
-    distributions: actual.distributions.length,
-    components: reports.length,
-    findings: count,
-  };
+  const result = evaluateReport(actual, reports, review);
+  result.review_sha256 = digest(regularFile(join(HERE, "audit-review.json")));
   writeFileSync(reportPath, JSON.stringify(result, null, 2) + "\n");
+  if (process.env.GITHUB_STEP_SUMMARY)
+    appendFileSync(
+      process.env.GITHUB_STEP_SUMMARY,
+      `\nWASM audit: ${result.status}. Auxiliary-only changes: ${result.changes.filter((c) => c.classification === "auxiliary-only").length}; review-required changes: ${result.changes.filter((c) => c.classification === "review-required").length}. See the audit artifact for exact paths and digests.\n`,
+    );
+  if (result.status === "failed") throw new Error(result.error);
   console.log(
-    `WASM security audit: PASS (${reports.length} components, ${count} explicitly reviewed findings; not zero vulnerabilities)`,
+    `WASM security audit: PASS (${reports.length} components, ${result.findings} findings, ${result.auxiliary_changes} auxiliary-only changes; not zero vulnerabilities)`,
   );
 }
 if (import.meta.main) await main();
