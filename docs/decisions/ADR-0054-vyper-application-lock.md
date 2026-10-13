@@ -58,8 +58,8 @@ Native AMD64/ARM64 full supported-version differential matrices and monolith/spl
 production acceptance remain required. The former signing gate becomes an
 application release acceptance check; local transport archives are CI evidence
 only and are never runtime download inputs. Local or emulated results cannot
-replace missing native evidence. Audits and notices cover actual assembled
-contents and both runtime cores.
+replace missing native evidence. Integrity and license checks cover actual assembled contents and both runtime
+cores. ADR-0053 retires the custom vulnerability-advisory queries.
 
 Application image/binary provenance now authorizes the lock. Deploy exact image
 digests; there is no independent signing key, catalog hosting or renewal. Adding,
@@ -81,6 +81,7 @@ Vyper 0.2.0 remains unsupported; historical terminal provenance is retained.
 Updates are prepared without repository write credentials in an isolated tree.
 Only complete data/generated-code patches that pass the candidate comparison
 reach a separate, path-restricted publication job. GITHUB_TOKEN creates the PR;
-a maintainer approves CI and reviews the changed security inventory. Automation
-cannot change audit approvals, adapters, runtime cores or workflows. Full native
+a maintainer approves CI and reviews the locked dependencies and archive
+identities. Automation cannot change integrity checks, adapters, runtime cores
+or workflows. Full native
 architecture and topology acceptance remains mandatory before application release.

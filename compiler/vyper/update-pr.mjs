@@ -98,6 +98,7 @@ export async function main() {
     report.version !== version ||
     !/^[a-f0-9]{40}$/.test(report.base) ||
     report.candidate !== "passed" ||
+    report.integrity !== "passed" ||
     patch.length > 32 << 20 ||
     digest(patch) !== report.patch_sha256
   )
@@ -153,7 +154,7 @@ export async function main() {
       },
     );
   }
-  const body = `Adds Vyper ${version} with exact PyPI archive URLs and SHA-256, a locked dependency set, modern-runtime routing and official reference fixtures. Existing versions are unchanged.\n\nThe isolated candidate differential matrix passed. Full native AMD64/ARM64 and monolith/split CI acceptance is still required. Approve workflows to start PR CI.\n\nSecurity inventory changed: a maintainer must review the attached audit evidence and explicitly update the approved inventory if appropriate. This automation never updates audit approvals.\n\nEvidence: ${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}\n\nArchive identities:\n${report.archives.map((a) => `- ${a.name}==${a.version}: ${a.sha256}`).join("\n")}\n`;
+  const body = `Adds Vyper ${version} with exact PyPI archive URLs and SHA-256, a locked dependency set, modern-runtime routing and official reference fixtures. Existing versions are unchanged.\n\nThe isolated candidate differential matrix passed. Full native AMD64/ARM64 and monolith/split CI acceptance is still required. Approve workflows to start PR CI.\n\nPackage integrity checks passed. A maintainer must review the locked dependencies and archive identities.\n\nEvidence: ${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}\n\nArchive identities:\n${report.archives.map((a) => `- ${a.name}==${a.version}: ${a.sha256}`).join("\n")}\n`;
   const url = gh([
     "pr",
     "create",
@@ -169,7 +170,7 @@ export async function main() {
   if (process.env.GITHUB_STEP_SUMMARY)
     appendFileSync(
       process.env.GITHUB_STEP_SUMMARY,
-      `\nCreated ${url}. Approve PR workflows and review the new audit inventory.\n`,
+      `\nCreated ${url}. Approve PR workflows and review the locked dependencies and archive identities.\n`,
     );
   console.log(url);
 }

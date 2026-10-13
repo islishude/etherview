@@ -299,9 +299,8 @@ security-check: security-tool-check web-build compiler-install
 	$(NPM) --prefix api audit --audit-level=high
 	$(NPM) --prefix web audit --audit-level=high
 	$(NPM) --prefix compiler audit --audit-level=high
-	$(NODE) compiler/vyper/audit.mjs
 	$(NODE) compiler/vyper/wasm/packages.mjs
-	$(NODE) compiler/vyper/wasm/audit.mjs
+	$(NODE) compiler/vyper/wasm/check-integrity.mjs
 	$(NPM) --prefix e2e/hardhat3 audit --audit-level=high
 	$(GO) test ./internal/app ./internal/auth ./internal/billing/... ./internal/cli ./internal/config ./internal/httpapi ./internal/jsonstrict ./internal/metadata ./internal/observability ./internal/userauth ./internal/verify ./web
 
@@ -559,13 +558,13 @@ test-vyper-matrix: compiler-install test-vyper-wasm-candidate
 test: test-vyper-release
 test-vyper-release: test-vyper-update
 	$(GO) test -tags='runtimee2e hardhat3e2e' ./e2e/runtime -run '^(TestHardhat3VerificationCounts|TestVyperProductionFixtureCoverage)$$' -count=1
-	$(NODE) --test compiler/vyper/wasm/tooling.test.mjs compiler/vyper/wasm/audit-auxiliary.test.mjs
+	$(NODE) --test compiler/vyper/wasm/tooling.test.mjs
 	$(NODE) --test compiler/vyper/acceptance.test.mjs compiler/vyper/wasm/production-shards.test.mjs
 
 .PHONY: test-vyper-wasm-candidate
 test-vyper-wasm-candidate:
 	$(NPM) --prefix compiler ci --ignore-scripts
-	$(NODE) --test compiler/vyper/wasm/tooling.test.mjs compiler/vyper/wasm/audit-auxiliary.test.mjs
+	$(NODE) --test compiler/vyper/wasm/tooling.test.mjs
 	$(NODE) compiler/vyper/wasm/check.mjs
 
 # Diagnostic only. The output directory must not already exist.

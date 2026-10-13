@@ -316,3 +316,24 @@ See the [P30 child plan](docs/plans/P30-contract-verification.md#p30-t130t132--r
 for closure evidence and the remaining operator rollout steps. Actions PR
 creation still needs repository configuration; no application deployment is
 claimed.
+
+
+P30-T133 classifies authenticated additive SUSE/openSUSE related-advisory links
+for both CPython runtimes under ADR-0053, without adding approved hashes.
+Exact failed-CI replay, strict regressions, Vyper release tests, live security,
+license and governance gates pass locally. P30 remains done; remote CI has not
+run for this change and P70/P73 external release blockers remain unchanged.
+
+
+P30-T134 removes custom native-reference and WASM PyPI/OSV advisory queries,
+CVE snapshots/approvals and CI/updater audit plumbing, superseding T133's
+classifier. Both-runtime local integrity, licenses, isolation and Go/npm scans
+remain. Release/updater/workflow regressions, security/license and governance
+checks pass locally; remote CI has not run. P30 remains done and P70/P73 external
+blockers are unchanged.
+
+
+P30-T135 upgrades build/reference uv to 0.13.0; CI reads the shared project pin.
+Locked tooling, all 25 reference environments with exact Python identities,
+release/updater/workflow regressions and docs/plan checks pass locally. Runtime
+and dependency locks are unchanged. P30 remains done; remote CI has not run.

@@ -20,9 +20,9 @@ import { canonical, digest, HERE, safeMember, readJSON } from "./tooling.mjs";
 import { makeZip, zipEntries } from "./archives.mjs";
 import { download, packRuntime } from "./packages.mjs";
 import { descriptor, buildRelease } from "./build-release.mjs";
-import { metadata, evaluate, findingDigest, osv, queryPackage, queryCore } from "./audit.mjs";
+import { metadata } from "./metadata.mjs";
+import { inventory } from "./check-integrity.mjs";
 import { checkPackage } from "./package-licenses.mjs";
-import { evaluateReference } from "../audit.mjs";
 import { referencePackages, RETIRED } from "../reference.mjs";
 function temporary(t) {
   const path = mkdtempSync(join(tmpdir(), "vyper-tools-"));
@@ -72,7 +72,7 @@ test("cached bytes are authenticated again", async (t) => {
     /cached artifact identity/,
   );
 });
-test("audit archive paths, symlinks and oversized members", () => {
+test("reject unsafe archive paths, symlinks and oversized members", () => {
   for (const name of ["../file.py", "/file.py", "a/../file.py", "a\\file.py", "a//b", "a/./b"])
     assert.throws(() => safeMember(name), /unsafe/);
   const archive = new AdmZip();
@@ -192,135 +192,9 @@ test("licenses cover nested distributions, authentic dependency hashes and paylo
   writeFileSync(join(path, "packages.zip"), "changed");
   assert.throws(() => checkPackage(item, path), /package digest mismatch/);
 });
-test("changed advisory, inventory, missing/duplicate reports fail closed", () => {
-  const actual = { distributions: [{ name: "x", version: "1" }] },
-    finding = { id: "CVE-test", details: "reviewed prerequisite" };
-  const reports = [{ component: "PyPI/x/1", findings: [finding] }];
-  const review = {
-    inventory_sha256: digest(canonical(actual)),
-    core: [],
-    reasons: { unreachable: "specific prerequisite absent" },
-    findings: { "PyPI/x/CVE-test": { sha256: [findingDigest(finding)], reason: "unreachable" } },
-  };
-  assert.equal(evaluate(actual, reports, review), 1);
-  for (const rs of [[], [...reports, ...reports]])
-    assert.throws(() => evaluate(actual, rs, review), /coverage/);
-  for (const changed of [
-    { id: "CVE-new" },
-    { ...finding, details: "new impact" },
-    { ...finding, severity: "critical" },
-  ])
-    assert.throws(
-      () => evaluate(actual, [{ ...reports[0], findings: [changed] }], review),
-      /unreviewed or changed/,
-    );
-  assert.throws(
-    () => evaluate({ distributions: [{ name: "x", version: "2" }] }, reports, review),
-    /inventory changed/,
-  );
-  assert.throws(
-    () => evaluate(actual, [{ ...reports[0], findings: [finding, finding] }], review),
-    /duplicate/,
-  );
-});
-for (const [component, identifier, suffix] of [
-  ["cpython", "CVE-2026-82049", ""],
-  ["cpython", "CVE-2026-82049", "-vanir"],
-  ["cpython", "CVE-2026-82049", "-fix-range"],
-  ["expat", "CVE-2026-77214", ""],
-]) {
-  test("retained reviewed advisory " + identifier + suffix, () => {
-    const finding = readJSON(join(HERE, "testdata", identifier + suffix + ".json"));
-    const actual = { distributions: [] },
-      review = {
-        ...readJSON(join(HERE, "audit-review.json")),
-        core: [
-          {
-            name: component,
-            repo: component === "cpython" ? "python/cpython" : "libexpat/libexpat",
-          },
-        ],
-        findings: Object.fromEntries(
-          Object.entries(readJSON(join(HERE, "audit-review.json")).findings).filter(([key]) =>
-            key.startsWith("core/" + component + "/"),
-          ),
-        ),
-        inventory_sha256: digest(canonical(actual)),
-      };
-    const run = (f) =>
-      evaluate(actual, [{ component: "core/" + component, findings: [f] }], review);
-    assert.equal(run(finding), 1);
-    assert.equal(run({ ...finding, modified: "timestamp-only change" }), 1);
-    const previous = structuredClone(review);
-    previous.findings[`core/${component}/${identifier}`].sha256 = previous.findings[
-      `core/${component}/${identifier}`
-    ].sha256.filter((h) => h !== findingDigest(finding));
-    assert.throws(
-      () => evaluate(actual, [{ component: "core/" + component, findings: [finding] }], previous),
-      /unreviewed/,
-    );
-    for (const field of [
-      "details",
-      "affected",
-      "references",
-      "database_specific",
-      "related",
-      "severity",
-    ])
-      assert.throws(
-        () => run({ ...finding, [field]: "unreviewed revision" }),
-        /unreviewed or changed/,
-      );
-  });
-}
-test("OSV pagination and service identity fail closed", async () => {
-  let requests = 0;
-  const fetcher = async (_url, query) => {
-    requests++;
-    return query.page_token
-      ? { vulns: [{ id: "second" }] }
-      : { vulns: [{ id: "first" }], next_page_token: "next" };
-  };
-  assert.deepEqual(
-    (await osv({}, fetcher)).map((f) => f.id),
-    ["first", "second"],
-  );
-  assert.equal(requests, 2);
-  await assert.rejects(
-    osv({}, async () => ({ next_page_token: "same" })),
-    /repeated/,
-  );
-  await assert.rejects(
-    osv({}, async () => ({ vulns: {} })),
-    /invalid/,
-  );
-  await assert.rejects(
-    queryPackage(["x", "1"], async () => ({
-      info: { name: "y", version: "1" },
-      vulnerabilities: [],
-    })),
-    /identity/,
-  );
-  await assert.rejects(
-    queryCore({ name: "x", commit: "a", advisories: ["CVE-x"] }, async (url) =>
-      url.endsWith("/query") ? {} : { id: "CVE-y" },
-    ),
-    /identity/,
-  );
-});
-test("reference environment excludes retired packaging; audit corrections stay exactly scoped", () => {
+test("reference environment excludes retired packaging", () => {
   const pins = referencePackages("0.4.3");
   for (const name of RETIRED) assert.equal(pins.has(name), false);
-  const hash = "3b9671727c888363740dc678e60336759871487d0e4e9fdd973048fa9635c4fd";
-  const selected = new Map([["vyper", pins.get("vyper")]]);
-  const reports = [{ component: "PyPI/vyper/0.4.3", findings: [{ id: "PYSEC-2023-142" }] }];
-  assert.deepEqual(evaluateReference(selected, reports, hash), ["PYSEC-2023-142"]);
-  assert.throws(() => evaluateReference(selected, reports, "0".repeat(64)), /unresolved/);
-  assert.throws(() => evaluateReference(selected, [], hash), /coverage/);
-  assert.throws(
-    () => evaluateReference(selected, [{ ...reports[0], findings: [{ id: "new" }] }], hash),
-    /unresolved/,
-  );
 });
 
 test("ZIP rejects duplicate paths and corrupt contents before use", () => {
@@ -361,9 +235,13 @@ test("source archive rejects links, traversal and duplicate files", async () => 
 
 test("runtime upgrade retires only unchanged listed payloads and retains unknown files", (t) => {
   const root = temporary(t);
-  for (const name of ["old.whl", "current.whl", "unknown.whl"]) writeFileSync(join(root, name), "payload");
-  const previous = {schema: "etherview-python-wasm-v1", files: [{path: "old.whl", sha256: digest("payload")}]};
-  retirePreviousFiles(root, previous, [{path: "current.whl"}]);
+  for (const name of ["old.whl", "current.whl", "unknown.whl"])
+    writeFileSync(join(root, name), "payload");
+  const previous = {
+    schema: "etherview-python-wasm-v1",
+    files: [{ path: "old.whl", sha256: digest("payload") }],
+  };
+  retirePreviousFiles(root, previous, [{ path: "current.whl" }]);
   assert.deepEqual(readdirSync(root).sort(), ["current.whl", "unknown.whl"]);
   writeFileSync(join(root, "old.whl"), "changed");
   assert.throws(() => retirePreviousFiles(root, previous, []), /payload changed/);
@@ -373,10 +251,11 @@ test("runtime upgrade retires only unchanged listed payloads and retains unknown
 });
 
 test("runtime policy covers the exact supported set and rejects incomplete evidence", async () => {
-  const { runtimeFor, runtimeByID, runtimePolicy, sharedRuntimes, validateRuntimeSet } = await import("./runtime-policy.mjs");
+  const { runtimeFor, runtimeByID, runtimePolicy, sharedRuntimes, validateRuntimeSet } =
+    await import("./runtime-policy.mjs");
   const index = readJSON(join(HERE, "../versions/index.json")).versions;
-  const mapped = Object.values(runtimePolicy).flatMap(p => p.versions);
-  assert.deepEqual([...mapped].sort(), index.map(v => v.version).sort());
+  const mapped = Object.values(runtimePolicy).flatMap((p) => p.versions);
+  assert.deepEqual([...mapped].sort(), index.map((v) => v.version).sort());
   assert.equal(new Set(mapped).size, index.length);
   assert(runtimePolicy.modern.versions.length >= 4);
   assert.equal(runtimePolicy.legacy.versions.length, 21);
@@ -385,8 +264,109 @@ test("runtime policy covers the exact supported set and rejects incomplete evide
     assert.equal(runtimeFor(item.version).id, expected);
     assert.equal(runtimeByID(expected).shared_sha256, sharedRuntimes[expected]);
   }
-  for (const value of ["0.2.0", "0.3.5", "latest", "../legacy", "__proto__"]) assert.throws(() => runtimeFor(value));
+  for (const value of ["0.2.0", "0.3.5", "latest", "../legacy", "__proto__"])
+    assert.throws(() => runtimeFor(value));
   assert.throws(() => runtimeByID("__proto__"));
   assert(validateRuntimeSet({ ...sharedRuntimes }));
-  for (const value of [null, {}, { modern: sharedRuntimes.modern }, { ...sharedRuntimes, extra: "x" }, { modern: sharedRuntimes.legacy, legacy: sharedRuntimes.modern }]) assert(!validateRuntimeSet(value));
+  for (const value of [
+    null,
+    {},
+    { modern: sharedRuntimes.modern },
+    { ...sharedRuntimes, extra: "x" },
+    { modern: sharedRuntimes.legacy, legacy: sharedRuntimes.modern },
+  ])
+    assert(!validateRuntimeSet(value));
 });
+
+function integrityFixture(t) {
+  const root = temporary(t),
+    runtimes = {},
+    items = [];
+  for (const [runtime, version, pyodide, python] of [
+    ["legacy", "0.3.10", "0.29.5", "3.13.2"],
+    ["modern", "0.4.3", "314.0.7", "3.14.2"],
+  ]) {
+    const shared = join(root, ".local/vyper-wasm/shared", runtime);
+    mkdirSync(shared, { recursive: true });
+    const payload = Buffer.from("authenticated WASM " + runtime);
+    writeFileSync(join(shared, "python.wasm"), payload);
+    const raw = canonical({ files: [{ path: "python.wasm", sha256: digest(payload) }] });
+    writeFileSync(join(shared, "shared-manifest.json"), raw);
+    runtimes[runtime] = digest(raw);
+    const path = join(root, ".local/vyper-wasm/packages", version);
+    mkdirSync(path, { recursive: true });
+    const data = zip({
+      [`vyper-${version}.dist-info/METADATA`]: `Name: vyper\nVersion: ${version}\n`,
+    });
+    const entry = { version, compiler_sha256: "a".repeat(64) };
+    items.push(entry);
+    writeFileSync(join(path, "packages.zip"), data);
+    writeFileSync(
+      join(path, "package-manifest.json"),
+      canonical({
+        ...entry,
+        pyodide,
+        python,
+        dependencies: [],
+        files: [{ path: "packages.zip", sha256: digest(data) }],
+      }),
+    );
+  }
+  return { root, runtimes, items, check: () => inventory(root, runtimes, items) };
+}
+
+test("local integrity validates both runtimes and all selected compiler metadata without advisory data", (t) => {
+  const { check } = integrityFixture(t);
+  assert.deepEqual(
+    check()
+      .distributions.map((d) => d.version)
+      .sort(),
+    ["0.3.10", "0.4.3"],
+  );
+});
+for (const runtime of ["legacy", "modern"]) {
+  for (const scenario of [
+    "changed-manifest",
+    "changed-payload",
+    "extra-file",
+    "missing-file",
+    "extra-runtime",
+    "symlink",
+  ]) {
+    test(`${runtime} integrity rejects ${scenario}`, (t) => {
+      const { root, check } = integrityFixture(t);
+      const shared = join(root, ".local/vyper-wasm/shared", runtime);
+      if (scenario === "changed-manifest")
+        writeFileSync(join(shared, "shared-manifest.json"), "{}");
+      if (scenario === "changed-payload") writeFileSync(join(shared, "python.wasm"), "tampered");
+      if (scenario === "extra-file") writeFileSync(join(shared, "extra"), "unlisted");
+      if (scenario === "missing-file") rmSync(join(shared, "python.wasm"));
+      if (scenario === "extra-runtime") mkdirSync(join(shared, "..", "unexpected"));
+      if (scenario === "symlink") {
+        rmSync(join(shared, "python.wasm"));
+        symlinkSync("shared-manifest.json", join(shared, "python.wasm"));
+      }
+      assert.throws(check);
+    });
+  }
+}
+for (const version of ["0.3.10", "0.4.3"]) {
+  for (const scenario of ["payload", "runtime", "source", "metadata", "extra-file"]) {
+    test(`${version} integrity rejects changed ${scenario}`, (t) => {
+      const { root, check } = integrityFixture(t);
+      const path = join(root, ".local/vyper-wasm/packages", version);
+      const manifest = readJSON(join(path, "package-manifest.json"));
+      if (scenario === "payload") writeFileSync(join(path, "packages.zip"), "tampered");
+      if (scenario === "runtime") manifest.python = "wrong-python";
+      if (scenario === "source") manifest.compiler_sha256 = "b".repeat(64);
+      if (scenario === "metadata") {
+        const raw = zip({ [`vyper-${version}.dist-info/METADATA`]: "Name: other\nVersion: 1\n" });
+        writeFileSync(join(path, "packages.zip"), raw);
+        manifest.files[0].sha256 = digest(raw);
+      }
+      if (scenario === "extra-file") writeFileSync(join(path, "extra"), "unlisted");
+      writeFileSync(join(path, "package-manifest.json"), canonical(manifest));
+      assert.throws(check);
+    });
+  }
+}

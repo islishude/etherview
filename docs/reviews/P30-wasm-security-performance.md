@@ -1,5 +1,10 @@
 # P30-T119 WASM security and performance review
 
+Historical evidence: P30-T134 retired the custom advisory queries, approval
+records and CVE fixtures described below. Current validation is defined by
+[ADR-0053](../decisions/ADR-0053-vyper-wasm-distribution.md#security-validation).
+These historical audit passes do not describe the current CI gate.
+
 Review date: 2026-10-11. Scope: the exact Pyodide 0.29.3 / CPython 3.13.2
 runtime, all 26 architecture-neutral Vyper packages, and Node 26.10.0 SEA under
 [ADR-0053](../decisions/ADR-0053-vyper-wasm-distribution.md). This is an
@@ -22,7 +27,7 @@ performance results retain their original artifact identities.
 
 The previous `audit.py` inspected only the retained native 0.4.3 reference
 lock. It missed historical compiler packages and setuptools vendors. The new
-[`wasm/audit.mjs`](../../compiler/vyper/wasm/audit.mjs) inventories the actual
+`wasm/audit.mjs` (now retired) inventories the actual
 authenticated payloads: 590 distribution occurrences, 73 distinct Python
 name/version pairs, plus 11 core source commits. All package metadata,
 including nested `.dist-info` and `vendor.txt`, is included. The latter
@@ -43,7 +48,7 @@ has no undisclosed or unindexed vulnerabilities.
 
 The live run reviewed 1,636 version-specific findings, represented by 234
 distinct component/advisory dispositions. Raw findings are retained, not
-discarded. [`audit-review.json`](../../compiler/vyper/wasm/audit-review.json)
+discarded. `audit-review.json` (now retired)
 records the exact inventory, source commits, advisory content hashes and
 applicability reasons. A new version, changed boundary, missing report,
 service failure, new advisory or changed substantive advisory fails the gate.
@@ -313,18 +318,18 @@ still fail. No additional fields are excluded from advisory hashing.
 
 ## Narrow Vanir auxiliary policy (2026-10-12)
 
-The [ADR-0053 policy](../decisions/ADR-0053-vyper-wasm-distribution.md#auxiliary-advisory-metadata-policy)
-now permits only the two validated Vanir fields for an explicitly opted-in
-OSV CPython finding. CVE-2026-82049 uses the previously reviewed fix-range
+The [ADR-0053 policy](../decisions/ADR-0053-vyper-wasm-distribution.md#security-validation)
+introduced an exception for only the two validated Vanir fields for an
+explicitly opted-in OSV CPython finding. CVE-2026-82049 uses the previously reviewed fix-range
 snapshot (`066932ef10f754870a25881e1e277dcf8b3c57999d13a9020288a96fa6edc248`)
 as its authenticated baseline. The archive applicability disposition is unchanged.
-Other findings and PyPI records retain exact-content matching.
+At that revision, other findings and PyPI records retained exact-content matching.
 
 The historical non-Vanir and Vanir snapshots have identical decision content;
 the fix-range revision does not. Thus pure generated-signature changes can pass
 with evidence, while the original CI failure's added Git range would still
 require review against the older baseline. Full advisory hashes and cross-query
-consistency remain strict. No new reference, related advisory, affected version,
-range, severity, credit or unknown metadata field is automatically accepted.
+consistency remain strict. That policy accepts no new reference, related
+advisory, affected version, range, severity, credit or unknown metadata field.
 This policy changes audit classification only; it does not patch CPython or
 change compiler packages, runtime execution or public contracts.

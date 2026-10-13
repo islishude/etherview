@@ -1241,7 +1241,7 @@ snapshot and has no remote expiry; Solidity catalog freshness is unchanged.
 
 Release validation uses `compiler/vyper/acceptance.mjs` with both native
 acceptance records. It does not sign or publish a catalog. Retain current
-assembly/audit/license evidence. Application releases own recipe changes and
+assembly/integrity/license evidence. Application releases own recipe changes and
 version withdrawal; live upstream metadata never changes an in-flight job.
 
 ## Private watches, notifications and CSV exports
@@ -1343,7 +1343,7 @@ The `Vyper compiler updates` GitHub workflow checks PyPI daily at 09:37
 Asia/Shanghai. See the [compiler maintenance guide](../compiler/vyper/README.md#proposed-updates-from-pypi)
 for manual discovery/generation, pinned tooling and PR lifecycle rules. Enable
 Actions PR creation in repository settings; approve the generated PR's CI runs.
-A maintainer must review changed audit identities before merging, and native
+A maintainer must review changed dependency and archive identities before merging, and native
 AMD64/ARM64 plus monolith/split acceptance remains mandatory before release.
 
 Vyper 0.2.0 is no longer listed or accepted by the new application. Stop new

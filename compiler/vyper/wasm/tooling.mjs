@@ -45,14 +45,13 @@ export function safeMember(name) {
   }
   return name.split("/");
 }
-export async function readURL(url, limit, payload) {
+export async function readURL(url, limit) {
   if (!url.startsWith("https://")) throw new Error("HTTPS required");
   for (let attempt = 0; ; attempt++) {
     try {
       const response = await fetch(url, {
         signal: AbortSignal.timeout(60000),
-        headers: { "Content-Type": "application/json", "User-Agent": "etherview-wasm-audit" },
-        ...(payload === undefined ? {} : { method: "POST", body: canonical(payload) }),
+        headers: { "User-Agent": "etherview-wasm-packages" },
       });
       if (!response.ok) {
         await response.body?.cancel();

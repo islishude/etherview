@@ -75,56 +75,37 @@ architecture. Node and its ELF closure remain host-native. Cold compilation is
 slower and memory consumption differs; performance evidence must use the exact
 selected runtime. Local candidate tests never substitute for Linux acceptance.
 
-Security review inventories actual compiler bundles (including vendors) and
-the pinned WASM core, with live advisory queries and exact-artifact applicability
-dispositions. Unknown or changed findings fail the gate except for the explicit
-auxiliary-only policy below. Historical EVM compiler
-bugs remain reproducible; verification is not contract safety certification.
-Reachable pathological normalization remains bounded by subprocess cancellation,
-not claimed fixed. See the [security and performance review](../reviews/P30-wasm-security-performance.md)
-for measured startup/RSS costs and the accepted execution boundary.
+## Security validation
 
-## Auxiliary advisory metadata policy
+P30-T134 removes the custom live PyPI/OSV vulnerability queries for native
+reference dependencies, historical Vyper packages and both Pyodide runtime
+cores. CVE dispositions, advisory-content hashes, metadata exceptions and
+stored advisory snapshots are retired. CI and automatic compiler proposals do
+not query these feeds or require advisory approval records. This supersedes
+the previous exact-content and auxiliary-advisory policies; it does not repair
+upstream vulnerabilities or establish that the distributed runtime has none.
 
-`osv-cpython-vanir-v1` permits only changes at
-`affected[].database_specific.vanir_signatures` and
-`affected[].database_specific.vanir_signatures_modified` for explicitly opted-in
-OSV `core/cpython` findings. The core must remain `python/cpython`; a PyPI
-response, another component or a finding without its own opt-in remains strict.
-Currently only CVE-2026-82049 is enabled. The audit does not run Vanir or use its
-generated signatures to determine applicability. Introducing such a dependency
-requires revisiting this decision before continuing to use the exception.
+Historical compiler implementations must remain reproducible. Bundled CPython
+updates depend on compatible Pyodide builds and complete runtime acceptance.
+Blocking every build on upstream advisory metadata drift does not enforce such
+an upgrade, so that custom gate is removed at the user's explicit direction.
 
-Each opt-in names one repository baseline whose existing advisory digest must
-already appear in that finding's reviewed hashes, with a valid disposition.
-The baseline is read-only; live responses never update it or add approved hashes.
-An unknown policy, missing/changed baseline, identity mismatch or invalid baseline
-fails. Previously reviewed exact hashes remain valid under the existing rule.
+`wasm/check-integrity.mjs` retains local manifest and payload authentication,
+exact runtime directory coverage, compiler/runtime identity and actual package
+metadata checks for both runtimes. Official archive/lock checks, nested vendor
+licenses, fresh-process isolation, resource/cancellation regressions and native
+acceptance remain mandatory. Go vulnerability checks, npm dependency audits
+and secret scanning are unchanged. There is no replacement CVE allowlist.
 
-For a changed finding, validate the known Vanir v1 Function/Line signature
-structure and UTC generation timestamp before removing those two paths from a
-copy. Preserve parent objects, every other field, all array ordering and unknown
-keys. Unknown signature fields/versions and malformed values require review.
-The existing top-level `modified`/`published` exclusions remain; no other field
-is excluded. Compare the remainder exactly against the authenticated baseline.
-New findings, descriptions, severity, references, aliases, related/upstream
-records, credits, withdrawal state, versions, Git ranges/fix commits and unknown
-fields continue to block. Mixed auxiliary/substantive changes also block.
-
-Full raw responses remain in the CI artifact. Auxiliary changes record the
-policy, baseline/current full-content and decision digests, and changed JSON
-pointers (at most 64; raw evidence remains complete). They produce
-`pass-with-auxiliary-changes`, not a claim that the new full text was reviewed.
-Rejected changes retain a failed classification report before the command exits
-nonzero. Query failures retain the existing incomplete report and fail; inventory,
-coverage, duplicate finding and full-content cross-query consistency checks are
-unchanged. CI summaries expose only fixed status labels/counts, never untrusted
-advisory text as workflow commands.
+Verification is not contract safety certification. Historical EVM compiler
+bugs remain reproducible, and bounded pathological input is not an upstream
+vulnerability fix. The [historical security and performance review](../reviews/P30-wasm-security-performance.md)
+retains measured startup/RSS evidence and the original threat analysis.
 
 ## Build and reference tooling
 
 Node owns authenticated package construction, unsigned release transports,
-actual-distribution audit/license checks and their regressions. Archive parsers
+local distribution integrity/license checks and their regressions. Archive parsers
 are pinned build-only npm dependencies; they are not bundled in the SEA.
 Production Python adapter/protocol code and the benchmark's per-child `wait4`
 measurement remain Python. Official native reference environments are prepared
@@ -132,13 +113,7 @@ independently with locked source/dependency bytes; PyInstaller, frozen native
 helpers and ELF-closure packaging are retired. Historical version locks remain
 authenticated inputs, with retired packaging tools excluded from installation.
 
-The native 0.4.3 reference audit queries live PyPI metadata directly, checks
-complete identity coverage and retains the two existing exact-wheel advisory
-range corrections. It no longer needs a host pip-audit environment. The separate
-WASM audit retains live PyPI/OSV queries, nested vendor coverage, core commit
-queries and exact-content dispositions. Neither audit substitutes for the other.
-
 Producer-language changes can alter compressed bytes without altering compiler
 sources. All archive and manifest hashes remain authoritative: changed package
-bytes require a new inventory review and fresh native acceptance before catalog
+bytes require application-lock review and fresh native acceptance before catalog
 promotion. No acceptance record or bound provenance is rebound to new bytes.

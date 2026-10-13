@@ -1,6 +1,6 @@
 // P30-T130: reviewed build-time updates only. Never imported by production.
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import {
   mkdtempSync,
   mkdirSync,
@@ -232,20 +232,7 @@ export async function generate(version, output, services = {}) {
       env: { ...process.env, ETHERVIEW_VYPER_CHECK_VERSION: version },
     });
     execute(tree, process.execPath, ["compiler/vyper/wasm/packages.mjs"]);
-    // Inventory changes deliberately remain review-required; capture, never approve.
-    const audit = spawnSync(process.execPath, ["compiler/vyper/wasm/audit.mjs"], {
-      cwd: tree,
-      stdio: "inherit",
-      timeout: 900000,
-    });
-    if (audit.error) throw audit.error;
-    if (audit.signal || audit.status === null) throw new Error("audit collection interrupted");
-    const auditReport = readJSON(join(tree, ".local/vyper-wasm/audit/report.json"));
-    if (
-      auditReport.status === "incomplete" ||
-      !existsSync(join(tree, ".local/vyper-wasm/audit/raw.json"))
-    )
-      throw new Error("audit collection incomplete; retry required");
+    execute(tree, process.execPath, ["compiler/vyper/wasm/check-integrity.mjs"]);
     execute(tree, "git", ["add", "."]);
     const names = execFileSync("git", ["diff", "--cached", "--name-only"], {
       cwd: tree,
@@ -268,13 +255,9 @@ export async function generate(version, output, services = {}) {
       files: names,
       archives: resolved.archives,
       candidate: "passed",
-      audit: auditReport.status,
+      integrity: "passed",
       base: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
     });
-    for (const name of ["inventory.json", "raw.json", "report.json"]) {
-      const source = join(tree, ".local/vyper-wasm/audit", name);
-      if (existsSync(source)) copyFileSync(source, join(proposal, `audit-${name}`));
-    }
     mkdirSync(dirname(output), { recursive: true });
     renameSync(proposal, output);
   } finally {

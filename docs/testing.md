@@ -71,7 +71,7 @@ Common CI gates, Vyper package construction, security/license auditing and the
 bounded Go assembler regressions use Node and Go without host Python setup. The compiler
 interpreter remains bundled Python WASM. Host Python is needed only for optional
 official reference generation and `make benchmark-vyper-wasm`; reference
-environments are prepared by `node compiler/vyper/reference.mjs` with uv 0.12.24.
+environments are prepared by `node compiler/vyper/reference.mjs` with uv 0.13.0.
 
 
 - `make test-workflow-scripts`: exercise extracted workflow helpers with temporary
@@ -282,16 +282,12 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv 0.12.24
   checking.
 - `make security-check`: `govulncheck`, API-generator, frontend, and Hardhat 3
   fixture and compiler dependency audits, secret scan, and security-focused tests.
-  The WASM gate inventories actual packages including vendors and queries pinned
-  core source commits. Exact artifact/advisory dispositions are reviewed in
-  [P30 security evidence](reviews/P30-wasm-security-performance.md); missing
-  coverage, service errors and new/changed findings fail, except for explicitly
-  opted-in OSV CPython Vanir-only changes under
-  [ADR-0053](decisions/ADR-0053-vyper-wasm-distribution.md#auxiliary-advisory-metadata-policy).
-  `make test-vyper-release` includes exact-field, authenticated-baseline,
-  mixed-change, source/component and failure-report regressions. Auxiliary
-  changes remain in raw evidence and classified reports; Git ranges, related
-  advisories and unknown fields still block. All four npm
+  The WASM gate performs local runtime/manifest/payload and actual-distribution
+  integrity checks, including nested vendors. Both runtimes retain tampering,
+  unexpected/missing file, symlink, compiler identity and metadata regressions.
+  Custom PyPI/OSV advisory queries and approval records are retired under
+  [ADR-0053](decisions/ADR-0053-vyper-wasm-distribution.md#security-validation).
+  All four npm
   dependency trees must report zero high-severity vulnerabilities;
   the API generator's
   transitive parser and glob dependencies are constrained by audited
@@ -658,7 +654,7 @@ rejects missing/extra/duplicate or inconsistent evidence, and writes the existin
 `matrix-{arch}.json` consumed by Hardhat. No partial shard is release acceptance.
 The no-argument production command remains the sequential local option; use a
 clean evidence directory for a new run because evidence files are exclusive-create.
-`make test-vyper-release` covers Node package/release/audit/license regressions,
+`make test-vyper-release` covers Node package/release/integrity/license regressions,
 partition/merge and subprocess failure handling. Go tests authenticate and
 reproduce the locked package with the same assembler used by workers.
 Compare parallel-group wall time against the sequential baseline on native CI;
@@ -789,15 +785,15 @@ acceptance changes under ADR-0053.
 
 `make test-vyper-update` runs complete version-set checks, publication allowlist
 and PR lifecycle tests, and offline PyPI metadata regressions. It requires uv;
-CI installs 0.12.24 with `astral-sh/setup-uv`, reading the required version from
+CI installs 0.13.0 with `astral-sh/setup-uv`, reading the required version from
 `compiler/vyper/pyproject.toml`. Metadata tests and update scripts share the
 committed tooling `uv.lock` through `uv run --locked`; no pip bootstrap is needed.
-Update recipe generation also requires uv 0.12.24. `make test-vyper-release` includes these
+Update recipe generation also requires uv 0.13.0. `make test-vyper-release` includes these
 checks, including tagged production-fixture/count regressions without starting
 Docker. Fixtures cover PEP 440 ordering, prerelease/yanked exclusion, wheel
 compatibility, digest mismatch, network failures and unchanged prior recipes.
 
 The updater only generates reference fixtures for the requested new version.
 Its isolated candidate comparison does not replace the full native Linux matrix
-or production topology gates. New audit inventories must remain review-required
-until reviewed by a maintainer; the workflow cannot rewrite approval records.
+or production topology gates. Proposals must pass local package integrity checks; maintainers review locked
+dependencies and archive identities. The workflow cannot rewrite integrity checks.

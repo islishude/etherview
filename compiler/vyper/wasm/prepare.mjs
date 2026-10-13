@@ -7,7 +7,7 @@ import {runtimePolicy} from './runtime-policy.mjs';
 const hash=b=>createHash('sha256').update(b).digest('hex');
 export function retirePreviousFiles(output,previous,files){
 // Retire only digest-checked entries from the previous generated manifest.
-// Unlisted files remain visible to the audit's exact-directory check.
+// Unlisted files remain visible to the local integrity check.
 if(previous?.schema==='etherview-python-wasm-v1'){
  for(const entry of previous.files??[]){
   if(typeof entry.path!=='string'||!/^[a-zA-Z0-9_.-]+$/.test(entry.path)||entry.path==='.'||entry.path==='..')throw new Error('invalid previous runtime path');

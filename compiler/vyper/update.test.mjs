@@ -60,7 +60,7 @@ test("publication accepts only regular additive compiler data for the requested 
   for (const path of [
     ".github/workflows/ci.yml",
     "compiler/vyper/adapter.py",
-    "compiler/vyper/wasm/audit-review.json",
+    "compiler/vyper/wasm/check-integrity.mjs",
     "compiler/vyper/versions/0.4.3.lock",
     "internal/verify/testdata/compiler/vyper/versions/0.4.4/../evil.input.json",
   ])
@@ -156,7 +156,7 @@ test("failed generation leaves existing files unchanged and emits no partial pat
   assert.deepEqual(readFileSync(join(ROOT, "compiler/vyper/application-lock.json")), manifest);
 });
 
-test("publisher applies a complete patch, pushes once, and refuses protected-path or stale-base proposals", async (t) => {
+test("publisher requires successful integrity evidence and refuses protected-path or stale-base proposals", async (t) => {
   const { execFileSync } = await import("node:child_process");
   const { mkdirSync, chmodSync } = await import("node:fs");
   const { digest } = await import("./wasm/tooling.mjs");
@@ -178,7 +178,7 @@ fi
 `,
   );
   chmodSync(fakeGH, 0o755);
-  for (const scenario of ["valid", "protected", "stale"]) {
+  for (const scenario of ["valid", "protected", "stale", "missing-integrity", "failed-integrity"]) {
     const repo = join(root, scenario),
       remote = join(root, scenario + "-remote"),
       artifact = join(root, scenario + "-artifact");
@@ -216,6 +216,7 @@ fi
         version: future,
         base: scenario === "stale" ? "a".repeat(40) : base,
         candidate: "passed",
+        integrity: scenario === "missing-integrity" ? undefined : scenario === "failed-integrity" ? "failed" : "passed",
         files: [path],
         patch_sha256: digest(patch),
         archives: [],

@@ -204,16 +204,28 @@ credential-scoped operational boundaries.
 | P30-T131 | done | P30-T129 | Extract maintained workflow scripts | Preserve job boundaries and command behavior; local script regressions and governance checks |
 | P30-T132 | done | P30-T131 | Re-review exact advisory revisions rejected by PR 144 CI | Replay failed audit artifact, preserve existing reasons and rejection policy, live audit and governance checks |
 
+| P30-T133 | done | P30-T132 | Classify authenticated SUSE related-advisory additions for both CPython runtimes | Failed-CI replay, strict negative regressions, live audit and governance gates |
+
+| P30-T134 | done | P30-T133 | Remove custom Vyper and WASM vulnerability advisory gates and stored approvals | Integrity regressions, updater/release tests, security/license and governance gates |
+
+| P30-T135 | done | P30-T134 | Upgrade pinned uv build/reference tooling to 0.13.0 | Locked tooling, reference preparation, update/release and governance checks |
+
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
 ## Acceptance
+
+- [x] P30-T134: custom vulnerability advisory queries and stored approvals are
+      removed; local integrity, license and execution-boundary checks remain.
+
+- [x] P30-T133: both CPython runtimes classify authenticated additive SUSE links;
+      substantive revisions and unreviewed findings still block.
 
 - [x] P30-T128: all 26 application-locked packages pass native Linux AMD64/ARM64
       full matrices and monolith/split acceptance in CI run 38331342142; the
       downloaded native records pass `compiler/vyper/acceptance.mjs`.
 
 - [x] P30-T125: only opted-in OSV CPython Vanir fields can pass as auxiliary;
-      all other changes and audit completeness checks remain blocking.
+      that policy keeps all other changes and audit completeness checks blocking.
 
 - [x] P30-T122: retired native packaging is removed; Node package/release/audit
       tools preserve upstream payloads, fail-closed checks and reproducibility.
@@ -1195,7 +1207,7 @@ closure below supplies the missing evidence.
 ### P30-T125 — Narrow Vanir auxiliary classification (2026-10-12)
 
 - Claimed after T124. Implemented the
-  [ADR-0053 auxiliary policy](../decisions/ADR-0053-vyper-wasm-distribution.md#auxiliary-advisory-metadata-policy)
+  [ADR-0053 auxiliary policy](../decisions/ADR-0053-vyper-wasm-distribution.md#security-validation)
   with one explicit CVE-2026-82049 opt-in. Its repository baseline is
   authenticated against an existing reviewed hash and reason. Other findings,
   sources and components retain strict matching; live data never changes review
@@ -1524,3 +1536,80 @@ closure below supplies the missing evidence.
 - Repository permission enablement, the first real scheduled update proposal,
   submission draining and application rollout remain operational steps. No
   production deployment, database cleanup or auto-merge authorization is implied.
+
+### P30-T133 — additive SUSE related-advisory classification (2026-10-14)
+
+- Added the scoped `osv-cpython-suse-related-v1` policy under ADR-0053 for both
+  `core/cpython` and `core/cpython-modern`. Five authenticated prior findings
+  per component opt in; no approved hash, applicability reason, core identity
+  or inventory digest changed. Unknown findings and substantive revisions
+  remain blocking. Full raw/decision digests and changed paths remain evidence.
+- Baselines come from successful run 38422689050. The retained failed-run
+  fixture contains all ten changed findings from run 38478463785; apart from
+  excluded timestamps each adds only `SUSE-SU-2026:4633-1`. Full artifact replay
+  passes with 92 components, 1,685 findings and ten auxiliary-only changes.
+- PASS: 87 focused auxiliary tests; 106 combined tooling/auxiliary tests;
+  `uv run --no-project --with uv==0.12.24 make test-vyper-release` (including
+  updater, metadata, Go fixture/count and acceptance/shard tests); live
+  `node compiler/vyper/wasm/audit.mjs` (92 components, 1,685 findings, ten
+  auxiliary-only changes). The initial release command rejected host uv
+  0.13.0; the successful rerun uses the repository-required 0.12.24 without
+  changing the toolchain requirement.
+- Regression coverage includes both runtime identities, future SUSE/openSUSE
+  additions, immutable evidence, no-opt-in rejection, removal/reordering,
+  replacement/duplicates, malformed/unknown IDs, bounded arrays, mixed
+  descriptions/ranges/versions/severity/references and unknown fields,
+  baseline authentication, source/repository scope, duplicate findings and
+  coverage failures. Existing Vanir regressions still pass.
+- PASS: `make security-check`, `env GOROOT="$(go env GOROOT)" make
+  license-check`, `make docs-check plan-check` and `git diff --check`.
+  The initial combined security/license command passed security but failed in
+  go-licenses standard-library discovery; explicit current GOROOT resolved
+  that host path issue and the unchanged full license target passed.
+  P30-T133 and P30 are done. Remote CI has not run for this change; existing
+  P70/P73 external release blockers remain unchanged.
+
+
+### P30-T134 — retire custom vulnerability advisory gates (2026-10-14)
+
+- Explicit user decision supersedes P30-T133's uncommitted auxiliary classifier.
+  Removed custom native-reference and WASM PyPI/OSV queries, approval records,
+  all advisory snapshots/fixtures, auxiliary policies/tests, CI audit artifacts
+  and updater advisory collection/approval prompts. No CVE allowlist replaces them.
+- Retained local package/runtime integrity as `wasm/check-integrity.mjs`, with
+  both-runtime regressions. Archive authentication, licenses, runtime isolation,
+  Go/npm vulnerability scans and secret scans remain active. ADR-0053/0054 and
+  maintained guides describe the narrower gate without claiming CVE remediation.
+- PASS: 36 package/tooling tests, including 23 new local integrity cases;
+  `uv run --no-project --with uv==0.12.24 make test-vyper-release
+  test-workflow-scripts` (updater/metadata, Go count/fixture, 19 acceptance/shard
+  and four workflow tests). A follow-up `make test-vyper-update` under the same
+  pinned uv validates missing/failed integrity evidence rejection by publication.
+- PASS: local real-package integrity (566 distribution occurrences), CI YAML
+  parsing, `make docs-check plan-check` and `git diff --check`. Runtime policy,
+  compiler bytes and application-lock identities are unchanged.
+- PASS: `env GOROOT="$(go env GOROOT)" make security-check license-check`,
+  including Go/npm scans, secret scans, local integrity, verifier regressions
+  and all license checks. P30-T134 and P30 are done. No commit, push, remote CI
+  or new native release acceptance is claimed; P70/P73 blockers are unchanged.
+
+
+### P30-T135 — uv 0.13.0 tooling upgrade (2026-10-14)
+
+- Verified upstream latest stable release 0.13.0 (released 2026-10-09). The
+  host already has Homebrew uv 0.13.0. Updated the tooling required-version,
+  reference/resolver version guards and maintained docs. All three CI setup-uv
+  steps inherit the pin through pyproject.toml; the action revision is unchanged.
+- PASS: `uv lock --project compiler/vyper --check`, `uv sync --project
+  compiler/vyper --locked`, `make test-vyper-release test-workflow-scripts`,
+  `node compiler/vyper/reference.mjs` for all 25 versions, and explicit checks
+  that each environment retains its version-index Python. uv.lock and compiler,
+  runtime and application-lock identities are unchanged; no Python 3.15 drift.
+- PASS: uv 0.13.0 `pip compile` with hashes, binary-only policy and Linux target
+  against the 0.4.3 prepared reference lock and its pinned Python 3.13.15.
+  An initial diagnostic used Python 3.14.2 with that historical lock and was
+  correctly rejected because immutables 0.21 has no compatible wheel; no
+  dependency or runtime pin was relaxed.
+- PASS: docs/plan and whitespace checks. Pre-existing non-target worktree diffs
+  and the index are unchanged. P30-T135/P30 are done; remote CI and new native
+  production acceptance were not run for this build-tool-only change.
