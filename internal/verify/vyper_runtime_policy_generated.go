@@ -5,7 +5,7 @@ type vyperRuntimeSpec struct{ ID, Pyodide, Python, Pycryptodome, SharedSHA256, V
 
 var vyperRuntimeSpecs = map[string]vyperRuntimeSpec{
 	"modern": {"modern", "314.0.7", "3.14.2", "3.23.0", "801ef9f10ac6814d786d4cdae7e4bd10f400b3ba22ff371d764ff4ce6c5d5555", "0.4.0"},
-	"legacy": {"legacy", "0.29.5", "3.13.2", "3.21.0", "b20a6b86d20d7902197560577f920885d7049e580c10c374b82e1b0725ea4d7b", "0.2.0"},
+	"legacy": {"legacy", "0.29.5", "3.13.2", "3.21.0", "b20a6b86d20d7902197560577f920885d7049e580c10c374b82e1b0725ea4d7b", "0.2.1"},
 }
 
 var vyperVersionRuntime = map[string]string{
@@ -13,7 +13,6 @@ var vyperVersionRuntime = map[string]string{
 	"0.4.1":  "modern",
 	"0.4.2":  "modern",
 	"0.4.3":  "modern",
-	"0.2.0":  "legacy",
 	"0.2.1":  "legacy",
 	"0.2.2":  "legacy",
 	"0.2.3":  "legacy",

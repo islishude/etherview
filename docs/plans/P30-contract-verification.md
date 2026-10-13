@@ -200,6 +200,9 @@ credential-scoped operational boundaries.
 | P30-T127 | done | P30-T126 | Implement dual Pyodide runtime selection and authenticated release tooling | CI run 38326160375 at 81cd913 passes all 13 checks, including both native architectures and monolith/split Hardhat acceptance |
 | P30-T128 | done | P30-T126 | Replace hosted Vyper packages and signed catalogs with application-locked PyPI assembly; embed 0.2.0 source and retain 26-version provenance/isolation | Local gates and CI run 38331342142 at 9d37872 pass; both native architectures and monolith/split records pass the application acceptance validator |
 | P30-T129 | done | P30-T128 | Preserve cancellation during locked Vyper package assembly | Cancellation/deadline and lease-heartbeat regressions; verifier tests and governance gates |
+| P30-T130 | done | P30-T129 | Retire Vyper 0.2.0 and generate reviewed PyPI update PRs daily | CI run 38422689050 at ed2d01c passes all 13 checks, including security/licenses and native AMD64/ARM64 production acceptance |
+| P30-T131 | done | P30-T129 | Extract maintained workflow scripts | Preserve job boundaries and command behavior; local script regressions and governance checks |
+| P30-T132 | done | P30-T131 | Re-review exact advisory revisions rejected by PR 144 CI | Replay failed audit artifact, preserve existing reasons and rejection policy, live audit and governance checks |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
@@ -281,8 +284,11 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
 ## Current Blockers
 
-None within P30. P30-T128 native acceptance is complete; the evidence below
-binds both architectures to the application-locked outputs.
+No implementation or acceptance blockers remain in P30. CI run 38422689050
+at ed2d01c passes all 13 checks, clearing T130's security and native acceptance
+conditions. Actions PR creation was last observed disabled and must be enabled
+before using the updater; live scheduled execution and application deployment
+remain operator rollout steps, not completed deployment evidence.
 
 P30-T114's remote acceptance below clears its earlier local Docker
 validation blocker. P70 capacity and P73 live-testnet evidence remain owned
@@ -1359,3 +1365,162 @@ closure below supplies the missing evidence.
   including native Linux AMD64/ARM64 full Vyper matrices, both architectures'
   monolith/split Hardhat acceptance, PostgreSQL integration and common gates.
   This remote result covers the cancellation fix; no deployment is claimed.
+
+### P30-T130 — reviewed Vyper update proposals and 0.2.0 retirement
+
+- Removed 0.2.0's recipe, index/lock/input, reference fixtures, embedded source,
+  source assembler/reference exception and dedicated license. Legacy startup
+  probes now use 0.2.1. No database migration, historical-record deletion,
+  cache cleanup or old-executor fallback was introduced.
+- The remaining 25 baseline package manifests and distribution contents are
+  unchanged. Compared the previous authenticated audit inventory with the new
+  one: only 0.2.0 distributions and its two identity entries were removed;
+  five assembly/policy/lock identities changed. Rebound the reviewed inventory
+  digest after that comparison without changing advisory dispositions.
+- Follow-up: CI installs uv through pinned `astral-sh/setup-uv`, with the uv
+  version read from the tooling project. A shared `uv.lock` and `uv run --locked`
+  manage discovery, fixture orchestration and test dependencies; no pip bootstrap
+  remains. Compiler resolution and hash-locked reference sync continue using uv.
+  Follow-up checks pass: six updater tests, four metadata tests, live discovery
+  (no candidates), `uv lock --check`, stale-lock rejection with unchanged lock
+  bytes, docs/plan checks, and actionlint on the updater workflow. actionlint
+  v1.7.12 rejects the main CI's existing `parallel` step on both HEAD and the
+  working tree; that unsupported syntax predates this change. Hosted Actions
+  installation and cache execution still require remote CI evidence.
+- Added PEP 440 discovery, pinned uv resolution, pure-wheel authentication,
+  isolated append-only generation and per-version native reference generation.
+  Complete patches require a passing candidate differential matrix. Changed
+  audit inventories stay review-required; automation cannot approve them.
+- Review follow-up: extracted discovery, exact-version retry filtering and Actions
+  output handling into `.github/scripts/vyper-discover.mjs`; the workflow now
+  invokes one command. Added empty/multiple-candidate, exact-retry and invalid
+  input regressions, including preservation of outputs on rejected input.
+- Added daily 09:37 Asia/Shanghai and manual workflows, one branch/PR per new
+  stable version, immutable open-PR inputs and explicit closed-PR retry.
+  Preparation has read-only permissions; publication validates regular-file
+  paths and uses GITHUB_TOKEN without executing proposed code or forcing refs.
+- Local updater regressions cover withdrawn/prerelease filtering, version order,
+  incompatible wheels, bad digests, bounded retries, unchanged prior recipes,
+  rollback on assembly failure, and publication through a temporary bare Git
+  remote with a fake GitHub API. No real branch or PR was published by the tests.
+- Current-source discovery returned no newer stable PyPI version. The repository
+  workflow-permissions API reports `can_approve_pull_request_reviews=false`;
+  enabling Actions PR creation and live scheduled-workflow verification remain
+  deployment/setup steps, not proven by local tests.
+- PASS: `make test-vyper-matrix`: all 25 versions / 352 original and modified
+  candidate inputs, followed by the complete SEA/Go matrix (749.537 seconds).
+  The 0.2.1 wrong-modern-runtime negative control also rejects compilation.
+- PASS: updater discovery/authentication/rollback/publication tests;
+  `make test-vyper-release` including tagged production-fixture/count regressions;
+  `make generate-check`, `make lint`, `make web-test`, Go unit and race tests,
+  `make deployment-check`, `make docs-check`, `make plan-check`, and actionlint
+  v1.7.12 on the new workflow. Production E2E now uses 0.2.1 and compares exact
+  application version sets rather than requiring 26 versions.
+- PASS: `make docker-build docker-image-check` on native Linux ARM64 Docker:
+  both runtime identities, upstream notices and hardened production rootfs.
+  This is an image check, not full native production acceptance.
+- PASS: `GOROOT="$(go env GOROOT)" make license-check`, including all 25 packages
+  and 564 distributions with vendors. The explicit GOROOT corrects the local
+  scanner's standard-library classification without changing its policy.
+- `make check` reaches and fails the live WASM security audit. An unmodified
+  `git archive HEAD` source tree at `bc162dd9f0138dd50eda572984a74743ab01435a`,
+  using the same authenticated cached packages
+  and fresh upstream queries, rejects exactly the same 68 component/advisory
+  changes. No advisory approval was widened. Diagnostic records are retained
+  in `.local/vyper-update-audit-differential.json` and the corresponding current
+  and baseline audit reports. This establishes an upstream baseline blocker,
+  not a regression introduced by retirement or update automation.
+- Native Linux AMD64/ARM64 full matrix and monolith/split production evidence
+  must still be regenerated in CI. No real update PR, remote workflow run or
+  application deployment was performed. The item stays `blocked` until its
+  security and native-acceptance clearing conditions are met.
+
+
+### P30-T131 — maintained workflow script extraction
+
+- Reviewed all three workflows. Extracted Docker image metadata, digest export
+  and manifest merging; Vyper package/native command groups; Preview certificate
+  permissions; and shared Vyper PR argument handling into `.github/scripts/`.
+  Retained simple installation, command invocation and status-writing steps.
+- The Docker merge job now checks out the workflow revision without persisted
+  credentials so it can execute repository scripts. Metadata and digest values
+  cross the workflow boundary through environment variables. Manifest assembly
+  preserves argument boundaries and rejects empty/invalid digest artifacts.
+- PASS: `make test-workflow-scripts` (four tests using temporary repositories and
+  stub executables), shell syntax checks, `make docs-check`, `make plan-check`,
+  `git diff --check`, and actionlint v1.7.12 for Docker and updater workflows.
+  Tests cover tag/commit metadata, manifest arguments, manual PR flags, command
+  sequencing and failure propagation; no real image or PR was published.
+- The main CI's pre-existing `parallel` syntax remains outside actionlint
+  v1.7.12 support, as recorded under T130. Native CI, registry publication and
+  Preview acceptance were not rerun for this extraction. P30 remains blocked by
+  T130's separate security/native acceptance requirements.
+
+- T131 review follow-up: split the native Go matrix into its own CI step after
+  SEA construction. Preserved test selection, uncached execution, 30-minute
+  timeout and absolute package-root environment; the build helper only builds.
+  Workflow-helper regressions and docs/plan checks pass. Native CI was not rerun.
+
+- T131 parallel-step follow-up: native dynamic-runtime and stable-version matrix
+  tests now run as separately named `parallel` steps after SEA construction,
+  using exact test names and retaining `-count=1 -timeout=30m`. Only the dynamic
+  test needs the package-root environment. Source review confirms the stable
+  test reads fixtures and the dynamic test uses private temporary runtime copies.
+  Docs/plan and whitespace checks pass; remote parallel execution remains unrun,
+  and actionlint v1.7.12 still cannot validate this workflow's `parallel` syntax.
+
+- T131 review rollback: restored the Docker workflow's manifest creation and
+  subsequent image inspection steps verbatim from HEAD; removed the unused
+  manifest helper and its tests. Earlier workflow edits remain. Digest-export
+  coverage stays in place; workflow-helper and docs/plan checks pass. This
+  supersedes the manifest-extraction portion of the T131 evidence above.
+
+
+### P30-T132 — PR 144 security advisory revision review
+
+- Diagnosed [CI run 38417883868](https://github.com/islishude/etherview/actions/runs/38417883868)
+  and failed security job 115367079091 at a789057. All twelve other jobs passed,
+  including native AMD64/ARM64 matrix and production acceptance. Security failed
+  at the exact-content WASM review gate after Go, npm and native reference audits
+  passed; the license stage had not run.
+- Downloaded the run's `vyper-wasm-security` artifact. Canonical raw SHA-256:
+  `086ff0537aa95d6f3017ed22c7dd5532161971876cb4d00f0f90980b996e61fc`;
+  inventory SHA-256:
+  `647405fe05268317d94234b75413326e16bb94931b6e75bd1697acf24b4b9f5b`.
+  All 68 rejected component/advisory pairs already had dispositions, covering
+  36 distinct CVEs. Read the current descriptions and retained their existing
+  applicability reasons; append only these exact payload digests.
+- Expat findings, including CVE-2026-102633's 32-bit allocation overflow, require
+  XML parsing. `protocol.py` and `adapter.py` pass bounded inline JSON/source to
+  compile_json, not XML parsers. CPython CVE-2026-15806/17084/19445/19553/7210
+  concern HTTP credentials, IDNA/stringprep, TLS contexts or XML hashing; these
+  interfaces are outside that input path. CVE-2026-15310 concerns non-DEFLATE
+  ZIP members and CVE-2026-82049 concerns TAR extraction: `bundle.go` verifies
+  archive size/hash, `archive.go` emits DEFLATE package ZIPs, and `execute.mjs`
+  unpacks authenticated packages before passing source through the fixed adapter.
+  No user-provided archive enters Python extraction.
+- Changed no reason, component, inventory, auxiliary classification policy or
+  audit implementation. Unknown findings and subsequent substantive revisions
+  still fail. This is an explicit review of observed revisions, not a wildcard
+  exemption, runtime vulnerability fix or automatic approval path.
+- PASS: replay of the exact failed CI artifact (failed before, passed after),
+  rejection after mutating a reviewed finding's details, 62 audit/auxiliary/release
+  tooling tests, and live `node compiler/vyper/wasm/audit.mjs` (92 components,
+  1,685 findings, zero auxiliary changes). Docs/plan and whitespace checks pass.
+  Complete security/license acceptance remains subject to the pushed CI rerun.
+
+
+### P30-T130–T132 — remote acceptance closure
+
+- On 2026-10-14, verified [CI run 38422689050](https://github.com/islishude/etherview/actions/runs/38422689050)
+  completed successfully for `ed2d01cc3276acc8b7aa6052876a3dbaedeb7c04`.
+  All 13 checks pass: common generation/lint/tests, PostgreSQL integration,
+  authenticated package construction, native AMD64/ARM64 Vyper matrices,
+  Hardhat and Foundry production E2E on both architectures, security/licenses,
+  browser E2E, deployment/topology checks and Preview metadata acceptance.
+- This supersedes the earlier security/native blockers and pending rerun notes.
+  T130, T131, T132 and P30 are done. Root status stays blocked by other plans.
+  This closure update changes plan text only; local docs/plan checks pass.
+- Repository permission enablement, the first real scheduled update proposal,
+  submission draining and application rollout remain operational steps. No
+  production deployment, database cleanup or auto-merge authorization is implied.

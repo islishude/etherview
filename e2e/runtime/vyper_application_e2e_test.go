@@ -53,8 +53,17 @@ func readVyperMatrixEvidence(t *testing.T, root string) vyperMatrixEvidence {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.TrimSpace(string(image)) != evidence.ImageID || len(evidence.Descriptors) != 26 || len(evidence.Matrix) != 26 {
+	versions := applicationVyperVersions(t)
+	if strings.TrimSpace(string(image)) != evidence.ImageID || len(evidence.Descriptors) != len(versions) || len(evidence.Matrix) != len(versions) {
 		t.Fatal("incomplete or stale production Vyper matrix")
+	}
+	for _, version := range versions {
+		if _, ok := evidence.Matrix[version]; !ok {
+			t.Fatalf("missing Vyper matrix version %s", version)
+		}
+		if evidence.Descriptors["vyper-"+version+"-emscripten-wasm32.json"] == "" {
+			t.Fatalf("missing Vyper descriptor %s", version)
+		}
 	}
 	validateVyperRuntimeEvidence(t, root, evidence)
 	return evidence

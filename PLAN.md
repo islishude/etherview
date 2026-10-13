@@ -306,3 +306,13 @@ recoverable. Focused race regressions, verifier/assembler suites, lint and
 governance gates pass locally. [CI run 38347889563](https://github.com/islishude/etherview/actions/runs/38347889563)
 passes all 13 checks at `a885a15`, including both native architecture matrices
 and monolith/split Hardhat acceptance. P30 remains done.
+
+P30-T130–T132 are complete: Vyper 0.2.0 retirement, reviewed daily update
+proposals, workflow extraction and exact advisory re-review pass all 13 checks
+in [CI run 38422689050](https://github.com/islishude/etherview/actions/runs/38422689050)
+at `ed2d01c`, including security/licenses and native AMD64/ARM64 production
+acceptance. P30 returns to done; P70/P73 external blockers remain unchanged.
+See the [P30 child plan](docs/plans/P30-contract-verification.md#p30-t130t132--remote-acceptance-closure)
+for closure evidence and the remaining operator rollout steps. Actions PR
+creation still needs repository configuration; no application deployment is
+claimed.

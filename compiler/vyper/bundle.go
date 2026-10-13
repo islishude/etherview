@@ -18,9 +18,6 @@ const MaxArchive = 200 << 20
 //go:embed application-lock.json
 var lockJSON []byte
 
-//go:embed versions/vyper-0.2.0.tar.gz
-var source020 []byte
-
 //go:embed adapter.py
 var adapter []byte
 
@@ -59,8 +56,15 @@ func (r Recipe) Digest() string {
 
 func Recipes() ([]Recipe, error) {
 	var lock Lock
-	if json.Unmarshal(lockJSON, &lock) != nil || lock.Schema != "etherview-vyper-lock-v1" || len(lock.Recipes) != 26 {
+	if json.Unmarshal(lockJSON, &lock) != nil || lock.Schema != "etherview-vyper-lock-v1" || len(lock.Recipes) == 0 {
 		return nil, errors.New("invalid embedded Vyper lock")
+	}
+	seen := make(map[string]bool)
+	for _, recipe := range lock.Recipes {
+		if recipe.Version == "" || seen[recipe.Version] || recipe.Version == "0.2.0" {
+			return nil, errors.New("invalid embedded Vyper version")
+		}
+		seen[recipe.Version] = true
 	}
 	return lock.Recipes, nil
 }
@@ -78,20 +82,10 @@ func Lookup(version string) (Recipe, error) {
 	return Recipe{}, errors.New("unknown locked Vyper version")
 }
 
-func EmbeddedSource(a Archive) ([]byte, bool) {
-	if a.Name == "vyper" && a.Version == "0.2.0" && a.URL == "" && a.SHA256 == Digest(source020) {
-		return append([]byte(nil), source020...), true
-	}
-	return nil, false
-}
-
 func ValidateArchive(a Archive) error {
 	digest, err := hex.DecodeString(a.SHA256)
 	if err != nil || len(digest) != sha256.Size || a.Size <= 0 || a.Size > MaxArchive {
 		return errors.New("invalid locked Vyper archive")
-	}
-	if _, ok := EmbeddedSource(a); ok {
-		return nil
 	}
 	u, err := url.Parse(a.URL)
 	if err != nil || u.Scheme != "https" || u.Host != "files.pythonhosted.org" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
@@ -116,13 +110,9 @@ func Build(ctx context.Context, r Recipe, read ReadArchive) ([]byte, []byte, err
 		if err := ValidateArchive(a); err != nil {
 			return nil, nil, err
 		}
-		raw, embedded := EmbeddedSource(a)
-		if !embedded {
-			var err error
-			raw, err = read(ctx, a)
-			if err != nil {
-				return nil, nil, err
-			}
+		raw, err := read(ctx, a)
+		if err != nil {
+			return nil, nil, err
 		}
 		if int64(len(raw)) != a.Size || Digest(raw) != a.SHA256 {
 			return nil, nil, errors.New("vyper archive identity mismatch")
@@ -135,12 +125,7 @@ func Build(ctx context.Context, r Recipe, read ReadArchive) ([]byte, []byte, err
 		} else {
 			dependencies = append(dependencies, map[string]string{"name": a.Name, "version": a.Version, "filename": a.Filename, "sha256": a.SHA256})
 		}
-		var err error
-		if embedded {
-			err = unpackSource(ctx, raw, files)
-		} else {
-			err = unpackWheel(ctx, raw, files)
-		}
+		err = unpackWheel(ctx, raw, files)
 		if err != nil {
 			return nil, nil, fmt.Errorf("unpack %s: %w", a.Name, err)
 		}

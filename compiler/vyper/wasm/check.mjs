@@ -11,7 +11,9 @@ const outputBase = resolve(process.argv[2] ?? join(ROOT, ".local/vyper-wasm"));
 mkdirSync(outputBase, { recursive: true });
 execFileSync(process.execPath, [join(HERE, "prepare.mjs"), join(outputBase, "shared")], { cwd: ROOT, stdio: "inherit" });
 const reports = [];
-for (const item of versions()) {
+const selected = process.env.ETHERVIEW_VYPER_CHECK_VERSION;
+if (selected && !versions().some(v => v.version === selected)) throw new Error("unknown candidate version");
+for (const item of versions().filter(v => !selected || v.version === selected)) {
   const destination = join(outputBase, "packages", item.version);
   const fixtureRoot = join(ROOT, "internal/verify/testdata/compiler/vyper/versions", item.version);
   const identity = fixtureIdentity(item.version);

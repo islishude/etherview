@@ -2,13 +2,6 @@
   "schema": "etherview-vyper-builds-v1",
   "versions": [
     {
-      "version": "0.2.0",
-      "source_url": "https://github.com/vyperlang/vyper/archive/d2c0c87a50dcfca115cb68a96d4063a7576e3dfa.tar.gz",
-      "compiler_sha256": "5f5f7d0133927b26f58c5c6c5eceff29f04ab1be48d4a82def4aab263ac3a945",
-      "python_family": "3.9",
-      "python": "3.9.25"
-    },
-    {
       "version": "0.2.1",
       "source_url": "https://files.pythonhosted.org/packages/e6/1c/663cf311df3254398b7696e5f66f4155d2301331b921c3a45c06414ff831/vyper-0.2.1-py3-none-any.whl",
       "compiler_sha256": "1f9c288d01716f69b026a835086e1b3a3adbd6fc7b43e629a11903901048b5bf",

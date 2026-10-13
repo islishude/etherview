@@ -1,0 +1,158 @@
+name: Vyper compiler updates
+
+on:
+  schedule:
+    # Daily at 09:37 Asia/Shanghai (01:37 UTC).
+    - cron: "37 1 * * *"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Optional exact new stable version; also allows reopening its closed bot PR"
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vyper-compiler-updates
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      versions: ${{ steps.discover.outputs.versions }}
+      base: ${{ steps.discover.outputs.base }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Install pinned reference tooling
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version-file: compiler/vyper/pyproject.toml
+          enable-cache: true
+          cache-dependency-glob: |
+            compiler/vyper/pyproject.toml
+            compiler/vyper/uv.lock
+            compiler/vyper/versions/*.lock
+      - id: discover
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: node .github/scripts/vyper-discover.mjs
+
+  prepare:
+    needs: discover
+    if: needs.discover.outputs.versions != '[]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      pull-requests: read
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        version: ${{ fromJSON(needs.discover.outputs.versions) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.discover.outputs.base }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Inspect existing PR
+        id: inspect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ matrix.version }}
+          MANUAL: ${{ github.event_name == 'workflow_dispatch' }}
+        run: bash .github/scripts/vyper-update-pr.sh inspect
+      - uses: actions/setup-go@v7
+        if: steps.inspect.outputs.action == 'create'
+        with:
+          go-version: stable
+          cache: true
+      - name: Install pinned reference tooling
+        if: steps.inspect.outputs.action == 'create'
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version-file: compiler/vyper/pyproject.toml
+          enable-cache: true
+          cache-dependency-glob: |
+            compiler/vyper/pyproject.toml
+            compiler/vyper/uv.lock
+            compiler/vyper/versions/*.lock
+      - name: Generate isolated update
+        if: steps.inspect.outputs.action == 'create'
+        env:
+          VERSION: ${{ matrix.version }}
+        run: |
+          npm --prefix compiler ci --ignore-scripts
+          node compiler/vyper/update.mjs --version "$VERSION" --output "$RUNNER_TEMP/vyper-update"
+      - name: Record lifecycle action
+        if: success()
+        env:
+          ACTION: ${{ steps.inspect.outputs.action }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/vyper-update"
+          echo "$ACTION" > "$RUNNER_TEMP/vyper-update/action.txt"
+      - uses: actions/upload-artifact@v7
+        if: success()
+        with:
+          name: vyper-update-${{ matrix.version }}
+          path: ${{ runner.temp }}/vyper-update/
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: vyper-update-failure-${{ matrix.version }}
+          path: ${{ runner.temp }}/vyper-update/failure.json
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Report generation failure
+        if: failure()
+        env:
+          VERSION: ${{ matrix.version }}
+        run: |
+          echo "Vyper $VERSION update preparation failed. No partial update is published. See job logs for the failing stage." >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    needs: [discover, prepare]
+    if: always() && needs.discover.result == 'success' && needs.discover.outputs.versions != '[]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        version: ${{ fromJSON(needs.discover.outputs.versions) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.discover.outputs.base }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/download-artifact@v8
+        with:
+          name: vyper-update-${{ matrix.version }}
+          path: ${{ runner.temp }}/vyper-update
+      - name: Publish or retain the reviewed update PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ matrix.version }}
+          MANUAL: ${{ github.event_name == 'workflow_dispatch' }}
+        run: bash .github/scripts/vyper-update-pr.sh publish

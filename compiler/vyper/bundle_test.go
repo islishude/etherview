@@ -77,9 +77,11 @@ func TestLockedBuildRejectsTamperingAndCancellation(t *testing.T) {
 		t.Fatal("cancellation lost")
 	}
 	a := r.Archives[0]
-	a.URL = "https://evil.example/p.whl"
-	if ValidateArchive(a) == nil {
-		t.Fatal("unapproved origin accepted")
+	for _, url := range []string{"https://evil.example/p.whl", ""} {
+		a.URL = url
+		if ValidateArchive(a) == nil {
+			t.Fatal("unapproved or retired embedded origin accepted")
+		}
 	}
 }
 
@@ -105,7 +107,6 @@ func TestEmbeddedLockCoverage(t *testing.T) {
 		t.Fatal(err)
 	}
 	seen := map[string]bool{}
-	embedded := 0
 	for _, r := range recipes {
 		if seen[r.Version] {
 			t.Fatal("duplicate version")
@@ -115,16 +116,11 @@ func TestEmbeddedLockCoverage(t *testing.T) {
 			if err := ValidateArchive(a); err != nil {
 				t.Fatal(r.Version, err)
 			}
-			if raw, ok := EmbeddedSource(a); ok {
-				embedded++
-				if int64(len(raw)) != a.Size {
-					t.Fatal("embedded size mismatch")
-				}
-			}
+
 		}
 	}
-	if len(seen) != 26 || embedded != 1 {
-		t.Fatalf("coverage %d/%d", len(seen), embedded)
+	if len(seen) < 25 || seen["0.2.0"] {
+		t.Fatalf("coverage %d", len(seen))
 	}
 }
 func TestLockedPackageReproduction(t *testing.T) {
@@ -148,5 +144,20 @@ func TestLockedPackageReproduction(t *testing.T) {
 	}
 	if !bytes.Equal(bytes.TrimSpace(manifest), recipeManifest.Bytes()) {
 		t.Fatal("manifest differs from application lock")
+	}
+}
+
+func TestRecipesRejectInvalidSets(t *testing.T) {
+	original := lockJSON
+	t.Cleanup(func() { lockJSON = original })
+	for _, recipes := range [][]Recipe{nil, {{Version: "0.2.0"}}, {{Version: ""}}, {{Version: "0.4.3"}, {Version: "0.4.3"}}} {
+		var err error
+		lockJSON, err = json.Marshal(Lock{Schema: "etherview-vyper-lock-v1", Recipes: recipes})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Recipes(); err == nil {
+			t.Fatal("invalid version set accepted")
+		}
 	}
 }

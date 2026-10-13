@@ -1,12 +1,10 @@
 // Optional official native reference environments. Never builds an executable or release.
 import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { ROOT, versions, safeMember } from "./wasm/tooling.mjs";
-import { lockedPackages, download } from "./wasm/packages.mjs";
-import { sourceEntries } from "./wasm/archives.mjs";
+import { ROOT, versions } from "./wasm/tooling.mjs";
+import { lockedPackages } from "./wasm/packages.mjs";
 export const RETIRED = new Set([
   "pyinstaller",
   "pyinstaller-hooks-contrib",
@@ -37,31 +35,6 @@ export async function prepareReference(item) {
   const run = (args) => execFileSync("uv", args, { stdio: "inherit" });
   run(["venv", "--allow-existing", "--python", item.python, venv]);
   run(["pip", "sync", "--python", python, "--require-hashes", "--only-binary=:all:", lock]);
-  if (item.version === "0.2.0") {
-    const temporary = mkdtempSync(join(tmpdir(), "vyper-reference-"));
-    try {
-      const entries = await sourceEntries(await download(item.source_url, item.compiler_sha256));
-      const roots = new Set();
-      for (const [name, bytes] of entries) {
-        roots.add(safeMember(name)[0]);
-        const path = join(temporary, name);
-        mkdirSync(dirname(path), { recursive: true });
-        writeFileSync(path, bytes);
-      }
-      if (roots.size !== 1) throw new Error("invalid upstream source root");
-      const tree = join(temporary, [...roots][0]);
-      writeFileSync(
-        join(tree, "vyper/vyper_git_version.txt"),
-        item.source_url
-          .split("/")
-          .at(-1)
-          .replace(/\.tar\.gz$/, ""),
-      );
-      run(["pip", "install", "--python", python, "--no-deps", "--no-build-isolation", tree]);
-    } finally {
-      rmSync(temporary, { recursive: true, force: true });
-    }
-  }
   run(["pip", "check", "--python", python]);
   console.log("official reference ready", item.version, python);
 }

@@ -17,10 +17,11 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	vyper "github.com/islishude/etherview/compiler/vyper"
 	"github.com/islishude/etherview/internal/api/gen"
 )
 
-var vyperProductionVersions = [...]string{"0.2.0", "0.3.1", "0.3.4", "0.3.10", "0.4.0", "0.4.3"}
+var vyperProductionVersions = [...]string{"0.2.1", "0.3.1", "0.3.4", "0.3.10", "0.4.0", "0.4.3"}
 var vyperProductionProtocols = [...]string{"native", "etherscan"}
 
 const vyperProductionJobCount = int64(len(vyperProductionVersions) * len(vyperProductionProtocols))
@@ -36,7 +37,7 @@ func verifyVyperProductionCase(t *testing.T, ctx context.Context, h *harness, ke
 	h.enterPhase("Vyper native and Etherscan source verification")
 	root := filepath.Join(h.root, "internal/verify/testdata/compiler/vyper/versions", version)
 	fixture := "immutable"
-	if version == "0.2.0" {
+	if version == "0.2.1" {
 		fixture = "constructor"
 	}
 	expectedCreation := gen.VerificationMatchTypePartial
@@ -66,7 +67,8 @@ func verifyVyperProductionCase(t *testing.T, ctx context.Context, h *harness, ke
 	creation := compiled.Contracts["A.vy"]["A"].EVM.Bytecode.Object
 	var catalog gen.CompilerCatalogResponse
 	h.mustGetJSON(ctx, "/api/v1/verifier/compilers?language=vyper", &catalog)
-	if len(catalog.Data.Versions) != 26 || !slices.Contains(catalog.Data.Versions, "0.4.3") {
+	slices.Sort(catalog.Data.Versions)
+	if !slices.Equal(catalog.Data.Versions, applicationVyperVersions(t)) {
 		t.Fatalf("Vyper catalog=%+v", catalog.Data)
 	}
 	for _, protocol := range vyperProductionProtocols {
@@ -154,5 +156,40 @@ func vyperNativeRequest(t *testing.T, ctx context.Context, h *harness, key, meth
 	}
 	if err := json.NewDecoder(io.LimitReader(response.Body, 2<<20)).Decode(result); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func applicationVyperVersions(t *testing.T) []string {
+	t.Helper()
+	recipes, err := vyper.Recipes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	versions := make([]string, 0, len(recipes))
+	for _, recipe := range recipes {
+		versions = append(versions, recipe.Version)
+	}
+	slices.Sort(versions)
+	return versions
+}
+
+func TestVyperProductionFixtureCoverage(t *testing.T) {
+	versions := applicationVyperVersions(t)
+	if slices.Contains(versions, "0.2.0") {
+		t.Fatal("retired compiler in production catalog")
+	}
+	for _, version := range vyperProductionVersions {
+		if !slices.Contains(versions, version) {
+			t.Fatalf("production fixture uses unsupported compiler %s", version)
+		}
+		name := "immutable"
+		if version == "0.2.1" {
+			name = "constructor"
+		}
+		for _, suffix := range []string{"input", "output"} {
+			if _, err := os.ReadFile(filepath.Join("../../internal/verify/testdata/compiler/vyper/versions", version, name+"."+suffix+".json")); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 }

@@ -1,10 +1,8 @@
 package vyper
 
 import (
-	"archive/tar"
 	"archive/zip"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"errors"
 	"io"
@@ -89,67 +87,6 @@ func unpackWheel(ctx context.Context, raw []byte, files map[string][]byte) error
 			}
 		}
 	}
-	return nil
-}
-
-func unpackSource(ctx context.Context, raw []byte, files map[string][]byte) error {
-	compressed, err := gzip.NewReader(bytes.NewReader(raw))
-	if err != nil {
-		return errArchive
-	}
-	defer compressed.Close() //nolint:errcheck
-	data, err := io.ReadAll(io.LimitReader(compressed, MaxArchive+1))
-	if err != nil || len(data) > MaxArchive {
-		return errArchive
-	}
-	reader := tar.NewReader(bytes.NewReader(data))
-	seen := make(map[string]bool)
-	for {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		header, err := reader.Next()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return errArchive
-		}
-		if header.Typeflag == tar.TypeXGlobalHeader {
-			if len(header.PAXRecords) != 1 || header.PAXRecords["comment"] != "d2c0c87a50dcfca115cb68a96d4063a7576e3dfa" {
-				return errArchive
-			}
-			continue
-		}
-		name := strings.TrimSuffix(header.Name, "/")
-		if !safePath(name) || seen[name] || len(seen) >= maxFiles {
-			return errArchive
-		}
-		seen[name] = true
-		if header.Typeflag == tar.TypeDir {
-			continue
-		}
-		if header.Typeflag != tar.TypeReg || header.Size < 0 || header.Size > MaxArchive {
-			return errArchive
-		}
-		_, relative, ok := strings.Cut(name, "/")
-		if !ok {
-			return errArchive
-		}
-		base := strings.ToLower(path.Base(relative))
-		if !strings.HasPrefix(relative, "vyper/") && !strings.HasPrefix(base, "license") && !strings.HasPrefix(base, "copying") {
-			continue
-		}
-		value, err := io.ReadAll(io.LimitReader(reader, MaxArchive+1))
-		if err != nil || len(value) > MaxArchive {
-			return errArchive
-		}
-		if err := putFile(files, relative, value); err != nil {
-			return err
-		}
-	}
-	files["vyper/vyper_git_version.txt"] = []byte("d2c0c87a50dcfca115cb68a96d4063a7576e3dfa")
-	files["vyper-0.2.0.dist-info/METADATA"] = []byte("Metadata-Version: 2.1\nName: vyper\nVersion: 0.2.0\n")
 	return nil
 }
 

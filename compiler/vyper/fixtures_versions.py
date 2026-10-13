@@ -1,5 +1,5 @@
 """Regenerate version fixtures from installed locked native compilers."""
-import json,pathlib,subprocess
+import argparse,json,pathlib,subprocess
 root=pathlib.Path(__file__).resolve().parents[2]; versions=json.loads((root/'compiler/vyper/versions/index.json').read_text())['versions']; output=root/'internal/verify/testdata/compiler/vyper/versions';output.mkdir(exist_ok=True)
 program=r'''
 import json,sys,inspect,copy
@@ -48,9 +48,16 @@ for name,source in sources.items():
  fixtures[name]={'input':r,'output':o,'modified':changed,'modified_output':second}
 print(json.dumps({'profile':profile,'fixtures':fixtures},default=str))
 '''
-profiles={}
+parser=argparse.ArgumentParser()
+parser.add_argument('--version')
+args=parser.parse_args()
+if args.version and args.version not in {item['version'] for item in versions}:
+ raise ValueError('unknown locked version')
+profiles=json.loads((root/'internal/verify/vyper_capabilities.json').read_text()) if args.version else {}
 for item in versions:
- version=item['version'];python=root/'.local/vyper-builds'/version/'build-venv/bin/python'
+ version=item['version']
+ if args.version and version != args.version:continue
+ python=root/'.local/vyper-builds'/version/'build-venv/bin/python'
  r=subprocess.run([str(python),'-c',program,str(root/'compiler/vyper')],capture_output=True,text=True)
  if r.returncode:raise RuntimeError(version+' official fixture generation failed: '+r.stderr[-1000:])
  d=json.loads(r.stdout);profiles[version]=d['profile'];vdir=output/version;vdir.mkdir(exist_ok=True)

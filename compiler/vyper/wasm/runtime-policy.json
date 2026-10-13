@@ -21,7 +21,6 @@
     "loader": "pyodide.asm.js",
     "shared_sha256": "b20a6b86d20d7902197560577f920885d7049e580c10c374b82e1b0725ea4d7b",
     "versions": [
-      "0.2.0",
       "0.2.1",
       "0.2.2",
       "0.2.3",

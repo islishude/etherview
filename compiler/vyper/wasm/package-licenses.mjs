@@ -26,8 +26,7 @@ export function checkPackage(item, path) {
   for (const root of roots) {
     const notices = entries.filter(
       (e) =>
-        (e.entryName.startsWith(root) ||
-          (root === "vyper-0.2.0.dist-info/" && !e.entryName.includes("/"))) &&
+        e.entryName.startsWith(root) &&
         /^(license|copying)/i.test(basename(e.entryName)),
     );
     if (!notices.length || notices.some((e) => !e.getData().toString("utf8").trim()))
