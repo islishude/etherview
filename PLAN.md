@@ -303,5 +303,6 @@ and P30 are done; P70/P73 external blockers remain unchanged.
 
 P30-T129 preserves assembly cancellation sentinels so lease loss remains
 recoverable. Focused race regressions, verifier/assembler suites, lint and
-governance gates pass locally. P30 remains done; prior remote acceptance is
-attributed to its original commit.
+governance gates pass locally. [CI run 38347889563](https://github.com/islishude/etherview/actions/runs/38347889563)
+passes all 13 checks at `a885a15`, including both native architecture matrices
+and monolith/split Hardhat acceptance. P30 remains done.

@@ -1354,5 +1354,8 @@ closure below supplies the missing evidence.
   pass under the race detector, including existing worker continuation tests.
 - `go test ./internal/verify ./compiler/vyper/...` passes (verifier 140.843s).
   `make lint-go docs-check plan-check` and `git diff --check` pass. P30 remains
-  done. This follow-up has local validation; T128's earlier remote acceptance
-  remains attributed to its recorded commit, not this fix.
+  done. [CI run 38347889563](https://github.com/islishude/etherview/actions/runs/38347889563)
+  passes all 13 checks at `a885a1553fbd833a3f7b107960acb673143ea027`,
+  including native Linux AMD64/ARM64 full Vyper matrices, both architectures'
+  monolith/split Hardhat acceptance, PostgreSQL integration and common gates.
+  This remote result covers the cancellation fix; no deployment is claimed.
