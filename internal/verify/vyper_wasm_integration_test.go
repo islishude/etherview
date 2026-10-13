@@ -96,7 +96,7 @@ func packageVyperWASMFixture(t *testing.T, compiler *VyperCompiler) ([]byte, Vyp
 	executors[runtime.GOOS+"-"+runtime.GOARCH] = executor
 	return buffer.Bytes(), VyperRuntimeArtifact{
 		Platform: CompilerPlatformEmscriptenWASM32, SHA256: hex.EncodeToString(sum[:]), ManifestSHA256: hex.EncodeToString(compiler.ManifestDigest[:]),
-		SharedSHA256: vyperSharedManifestSHA256, Protocol: vyperPackageSchema, MaxBytes: int64(buffer.Len()),
+		SharedSHA256: vyperRuntimeSpecs["modern"].SharedSHA256, Protocol: vyperPackageSchema, MaxBytes: int64(buffer.Len()),
 		ExecutorDigests: executors,
 	}
 }

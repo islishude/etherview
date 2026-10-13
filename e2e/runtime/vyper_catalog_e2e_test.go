@@ -150,14 +150,14 @@ type vyperMatrixCase struct {
 }
 
 type vyperMatrixEvidence struct {
-	NativeLinux  bool                       `json:"native_linux"`
-	ImageID      string                     `json:"image_id"`
-	HostSHA256   string                     `json:"host_sha256"`
-	SharedSHA256 string                     `json:"shared_sha256"`
-	Descriptors  map[string]string          `json:"descriptors"`
-	Matrix       map[string]vyperMatrixCase `json:"matrix"`
-	Monolith     bool                       `json:"monolith"`
-	Split        bool                       `json:"split"`
+	NativeLinux    bool                       `json:"native_linux"`
+	ImageID        string                     `json:"image_id"`
+	HostSHA256     string                     `json:"host_sha256"`
+	SharedRuntimes map[string]string          `json:"shared_runtimes"`
+	Descriptors    map[string]string          `json:"descriptors"`
+	Matrix         map[string]vyperMatrixCase `json:"matrix"`
+	Monolith       bool                       `json:"monolith"`
+	Split          bool                       `json:"split"`
 }
 
 func readVyperMatrixEvidence(t *testing.T, root string) vyperMatrixEvidence {
@@ -177,7 +177,41 @@ func readVyperMatrixEvidence(t *testing.T, root string) vyperMatrixEvidence {
 	if strings.TrimSpace(string(image)) != evidence.ImageID || len(evidence.Descriptors) != 26 || len(evidence.Matrix) != 26 {
 		t.Fatal("incomplete or stale production Vyper matrix")
 	}
+	validateVyperRuntimeEvidence(t, root, evidence)
 	return evidence
+}
+
+func validateVyperRuntimeEvidence(t *testing.T, root string, evidence vyperMatrixEvidence) {
+	t.Helper()
+	var policy map[string]struct {
+		SharedSHA256 string   `json:"shared_sha256"`
+		Versions     []string `json:"versions"`
+	}
+	raw, err := os.ReadFile(filepath.Join(root, "compiler/vyper/wasm/runtime-policy.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(raw, &policy); err != nil {
+		t.Fatal(err)
+	}
+	if len(policy) != 2 || len(evidence.SharedRuntimes) != len(policy) {
+		t.Fatal("incomplete shared runtime evidence")
+	}
+	count := 0
+	for id, spec := range policy {
+		if evidence.SharedRuntimes[id] != spec.SharedSHA256 {
+			t.Fatal("stale shared runtime evidence")
+		}
+		for _, version := range spec.Versions {
+			if evidence.Matrix[version].SharedSHA256 != spec.SharedSHA256 {
+				t.Fatalf("incorrect runtime evidence for %s", version)
+			}
+			count++
+		}
+	}
+	if count != len(evidence.Matrix) {
+		t.Fatal("incomplete runtime version evidence")
+	}
 }
 
 func writeVyperReleaseAcceptance(t *testing.T, root string) {
@@ -195,6 +229,8 @@ func writeVyperReleaseAcceptance(t *testing.T, root string) {
 			t.Fatal("Vyper descriptor changed during E2E")
 		}
 	}
+	// A native matrix alone cannot make a macOS-orchestrated E2E run native.
+	evidence.NativeLinux = evidence.NativeLinux && runtime.GOOS == "linux"
 	evidence.Monolith, evidence.Split = true, true
 	raw, err := json.Marshal(map[string]vyperMatrixEvidence{platform: evidence})
 	if err != nil {

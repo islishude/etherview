@@ -103,7 +103,8 @@ def main():
     args = parser.parse_args()
     if args.samples < 3:
         parser.error('at least three warm pairs are required')
-    shared = ROOT / '.local/vyper-wasm/shared'
+    shared_root = ROOT / '.local/vyper-wasm/shared'
+    policy = json.loads((HERE / 'runtime-policy.json').read_bytes())
     exe = ROOT / '.local/vyper-wasm/sea/etherview-solcjs'
     versions = [x['version'] for x in json.loads((HERE.parent / 'versions/index.json').read_bytes())['versions']]
     if args.version and not set(args.version) <= set(versions):
@@ -114,7 +115,7 @@ def main():
     report = {'schema': 'etherview-vyper-wasm-benchmark-v1', 'system': platform.platform(),
               'machine': platform.machine(), 'cpu': platform.processor(),
               'sea_sha256': digest(exe.read_bytes()),
-              'shared_sha256': digest((shared / 'shared-manifest.json').read_bytes()),
+              'shared_runtimes': {key:digest((shared_root / key / 'shared-manifest.json').read_bytes()) for key in policy},
               'method': 'first fresh-process pair then repeated fresh-process pairs; OS caches not evicted; no concurrent workload',
               'limits': {'timeout_seconds': 30, 'v8_old_mib': 128, 'wasm_mib': 384}, 'complete': False, 'workloads': []}
     if args.native_python:
@@ -122,6 +123,7 @@ def main():
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + '\n')
     for version, workload in workloads:
+        shared = shared_root / next(key for key, spec in policy.items() if version in spec["versions"])
         package = ROOT / '.local/vyper-wasm/packages' / version
         fixtures = ROOT / 'internal/verify/testdata/compiler/vyper/versions' / version
         if workload == 'plain':

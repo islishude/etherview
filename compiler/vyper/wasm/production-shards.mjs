@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
-import { executorDigest, fixtureIdentity, sha256, sharedSHA256 } from './release.mjs';
+import { executorDigest, fixtureIdentity, sha256, runtimeFor } from './release.mjs';
 
 export const versions = JSON.parse(readFileSync(new URL('../versions/index.json', import.meta.url))).versions;
 
@@ -45,6 +45,7 @@ export function shardFile(architecture, index, count) {
 }
 
 export function versionEvidence(item, root, packages, hostSHA256) {
+  const sharedSHA256=runtimeFor(item.version).shared_sha256;
   const name = `vyper-${item.version}-emscripten-wasm32.json`;
   const raw = readFileSync(join(root, name));
   const descriptor = JSON.parse(raw);
@@ -76,7 +77,7 @@ export function mergeEvidence(records, groups, architecture, identity, expected)
     assert.equal(shard.architecture, architecture);
     assert(!seen.has(shard.index), 'duplicate shard');
     seen.add(shard.index);
-    for (const [key, value] of Object.entries(identity)) assert.equal(record[key], value, `mismatched ${key}`);
+    for (const [key, value] of Object.entries(identity)) assert.deepEqual(record[key], value, `mismatched ${key}`);
     const selected = groups[shard.index];
     assert.deepEqual(Object.keys(record.matrix).sort(), [...selected].sort(), 'incorrect shard versions');
     assert.deepEqual(Object.keys(record.descriptors).sort(), selected.map(version => expected[version].name).sort(), 'incorrect shard descriptors');

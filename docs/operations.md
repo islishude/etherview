@@ -1222,9 +1222,12 @@ rebinds a retry. Keep old published packages available for those jobs.
 
 Compiler archives share the existing disposable compiler cache volume. Downloads
 are authenticated before bounded extraction and atomic installation. The image
-contains the common read-only Pyodide runtime at `/opt/etherview/python-wasm`
-and the host Node SEA. Every invocation checks their manifests and the selected
-package. Catalog v2 binds all three identities and the official compiler digest.
+contains two read-only runtimes at `/opt/etherview/python-wasm/modern` and
+`/opt/etherview/python-wasm/legacy`, plus the host Node SEA. The runtime policy
+routes Vyper 0.4.0–0.4.3 to Pyodide 314.0.7 / Python 3.14.2 and the other 22
+versions to the exact 0.29.5 npm alias / Python 3.13.2. Both must pass startup
+checks. Every invocation checks the host, selected runtime and compiler package;
+identity changes disable the executor and never trigger a fallback. Catalog v2 binds all three identities and the official compiler digest.
 There is no native Python fallback or runtime dependency installation.
 
 Before applying migration 0072, stop accepting new Vyper jobs and drain all
@@ -1232,6 +1235,14 @@ queued/running Vyper work. The migration refuses an undrained queue and preserve
 terminal provenance. New jobs bind only the WASM catalog. Existing tasks are
 never rebound to a replacement executor. Both API/all topologies use the same
 image, catalog trust configuration and compiler cache persistence.
+
+For the dual-runtime deployment, first stop new Vyper submissions and wait for
+all queued/running Vyper jobs to finish; do not rebind or backfill existing jobs.
+Retain terminal provenance and old release artifacts. Deploy only an image and
+catalog with new native acceptance evidence for both architectures, then verify
+both runtime startup self-tests and readiness before resuming submissions. The
+change requires no schema migration. Acceptance records must contain the exact
+`shared_runtimes` map; older single-runtime evidence cannot authorize promotion.
 
 Run API-capable replicas in one deployment on the same architecture; drain bound
 work before moving that deployment to another architecture. Missing, changed or

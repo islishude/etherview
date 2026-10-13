@@ -8,16 +8,24 @@ P30-T117–T119 replace ADR-0047/ADR-0049's native Python execution and
 platform-specific archive distribution. Their canonical publication, signed
 catalog, immutable binding and fresh-process boundaries remain mandatory.
 
-The existing Node SEA gains a Vyper-only protocol. Pyodide 0.29.5 / CPython
-3.13.2 and its authenticated WASM PyCryptodome form one image-local read-only
-runtime. All 26 existing official compiler releases use architecture-neutral,
+The existing Node SEA gains a Vyper-only protocol. P30-T127 selects two exact,
+image-local read-only runtimes: `pyodide@314.0.7` / CPython 3.14.2 /
+PyCryptodome 3.23.0 for Vyper 0.4.0–0.4.3, and the npm alias
+`pyodide-legacy@npm:pyodide@0.29.5` / CPython 3.13.2 / PyCryptodome 3.21.0
+for the remaining 22 supported releases. `compiler/vyper/wasm/runtime-policy.json`
+owns the explicit version mapping and authenticated shared-manifest digests.
+Node tools consume it directly; generated Go definitions are checked by
+`make generate-check`. Unknown versions fail; compilation errors never switch
+runtimes. The directories are `python-wasm/modern` and `python-wasm/legacy`.
+All 26 existing official compiler releases use architecture-neutral,
 digest-authenticated packages. Pure Python cbor2/immutables implementations
 remain upstream bytes. No Vyper compiler implementation patch is permitted.
 Native Python is a build/reference tool only; production has no native Python,
 PyInstaller, package installer, general Node CLI or native Vyper fallback.
 
 One fresh restricted process compiles each original or perturbed input. The
-parent grants read access only to the shared runtime and selected package,
+parent grants read access only to the selected runtime and compiler package,
+including denial of reads from the sibling runtime,
 passes a secret-free environment, bounds I/O and wall time, and verifies
 process-group termination and cleanup before accepting output. No host source
 filesystem is mounted into Python. Emscripten's obsolete private fs constants
@@ -37,12 +45,18 @@ concatenation of the host SEA manifest, shared runtime manifest and package
 manifest digests. Each signed package entry includes executor_digests for both
 Linux host architectures, binding those composite identities to the same
 package. PostgreSQL validates the chosen executor digest against that signed
-entry. Startup readiness requires successful permission and memory self-tests.
+entry. Startup validates both shared manifests and requires successful permission,
+Python identity and memory self-tests for both runtimes before readiness.
 Binding authenticates the installed package; invocation revalidates all three
-identities before and after compilation. A running parent never adopts a new
-host identity. None may change during binding, retry or compilation.
+identities before and after compilation. A running parent freezes the host and both runtime identities and never adopts
+a replacement. A changed identity makes the executor unavailable. None may
+change during binding, retry or compilation. The catalog v2 format and executor
+digest formula remain unchanged: each version uses its selected shared digest.
+Internal acceptance records carry `shared_runtimes` with both digests, while
+each matrix entry retains the actual `shared_sha256`.
 
-Upgrade drains queued/running Vyper jobs before migration. Terminal provenance
+Every runtime upgrade drains queued/running Vyper jobs before deployment.
+This dual-runtime change adds no database migration or compatibility adapter. Terminal provenance
 is preserved without rebinding, backfill or a legacy executor. New jobs require
 the new catalog and complete installed runtime. Public verification inputs,
 matching and publication semantics are unchanged. Both Linux architectures

@@ -1,10 +1,13 @@
 # Vyper WASM distribution
 
 [ADR-0053](../../docs/decisions/ADR-0053-vyper-wasm-distribution.md) replaces
-native runtime distribution with Pyodide 0.29.5 / CPython 3.13.2 and one
-architecture-neutral compiler package per supported version. Node SEA remains
+native runtime distribution with two read-only runtimes and one
+architecture-neutral compiler package per supported version. The exact policy
+in `wasm/runtime-policy.json` routes Vyper 0.4.0–0.4.3 to Pyodide 314.0.7 /
+CPython 3.14.2 and the other 22 versions to the `pyodide-legacy` npm alias at
+0.29.5 / CPython 3.13.2. Unknown versions fail without fallback. Node SEA remains
 host-native. Production deployment and native release acceptance are tracked
-by P30-T119; the local matrix is not production release evidence.
+by P30-T127; the local matrix is not production release evidence.
 
 `versions/index.json` authenticates the official compiler artifact; per-version
 `.lock` files authenticate dependencies. Version 0.2.0 uses its pinned upstream
@@ -12,10 +15,10 @@ source archive. Compiler implementation bytes and reference fixtures remain
 unchanged. Node owns build, release, audit and regression orchestration. Native Python is
 retained only for official reference generation and per-child RSS benchmarks.
 
-`make compiler-install` prepares the shared WASM runtime, the 0.4.3 package and
+`make compiler-install` prepares both shared WASM runtimes, the 0.4.3 package and
 Node SEA for ordinary local regressions. `make test-vyper-matrix` builds all 26
 packages and compares original and modified fixtures using fresh SEA processes.
-`make test-vyper-wasm-candidate` runs the warm candidate comparison. Outputs live
+`make test-vyper-wasm-candidate` runs the candidate comparison with a new restricted process per input. Outputs live
 under `.local/vyper-wasm/`.
 
 After building the packages, create the common release transports once:
@@ -31,7 +34,7 @@ these same archive bytes. Building transports does not assert matrix or
 production acceptance.
 
 The catalog signer requires one acceptance record per Linux architecture with
-`native_linux`, `monolith`, `split`, the production `host_sha256`, pinned `shared_sha256`, and
+`native_linux`, `monolith`, `split`, the production `host_sha256`, pinned `shared_runtimes` map, and
 `descriptors` mapping filenames to their SHA-256 digests. Each record's `matrix`
 maps all 26 versions to `cases`, `fixtures_sha256`, `package_sha256`,
 `shared_sha256` and `executor_sha256`. The signer checks the exact repository

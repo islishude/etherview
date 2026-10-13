@@ -25,7 +25,7 @@ func (compiler *VyperCompiler) ensureRuntime(ctx context.Context, version string
 		return nil, err
 	}
 	target := filepath.Join(compiler.Cache.Root, "vyper-runtime-"+artifact.ManifestSHA256)
-	child := &VyperCompiler{Path: compiler.Path, SharedPath: compiler.sharedPath(), PackagePath: target, Version: version, CompilerDigest: entry.ArtifactSHA256, ManifestDigest: digest, Timeout: compiler.Timeout, MaxInputBytes: compiler.MaxInputBytes, MaxOutputBytes: compiler.MaxOutputBytes}
+	child := &VyperCompiler{Path: compiler.Path, SharedPath: compiler.sharedRoot(), PackagePath: target, Version: version, CompilerDigest: entry.ArtifactSHA256, ManifestDigest: digest, Timeout: compiler.Timeout, MaxInputBytes: compiler.MaxInputBytes, MaxOutputBytes: compiler.MaxOutputBytes}
 	if _, err := child.validateHelper(); err == nil {
 		return child, nil
 	}
@@ -45,7 +45,7 @@ func (compiler *VyperCompiler) ensureRuntime(ctx context.Context, version string
 	if err := extractVyperArchive(archive, temporary); err != nil {
 		return nil, err
 	}
-	staged := &VyperCompiler{Path: compiler.Path, SharedPath: compiler.sharedPath(), PackagePath: temporary, Version: version, CompilerDigest: entry.ArtifactSHA256, ManifestDigest: digest}
+	staged := &VyperCompiler{Path: compiler.Path, SharedPath: compiler.sharedRoot(), PackagePath: temporary, Version: version, CompilerDigest: entry.ArtifactSHA256, ManifestDigest: digest}
 	if _, err := staged.validateHelper(); err != nil {
 		return nil, err
 	}

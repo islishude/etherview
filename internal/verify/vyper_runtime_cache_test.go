@@ -123,7 +123,7 @@ func TestVyperRuntimeCacheAuthenticatesAndRepairs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	artifact := VyperRuntimeArtifact{Platform: CompilerPlatformEmscriptenWASM32, SharedSHA256: vyperSharedManifestSHA256, URL: server.URL, SHA256: hex.EncodeToString(archiveDigest[:]), ManifestSHA256: hex.EncodeToString(manifestDigest[:]), MaxBytes: int64(buffer.Len()), Protocol: vyperDynamicSchema}
+	artifact := VyperRuntimeArtifact{Platform: CompilerPlatformEmscriptenWASM32, SharedSHA256: vyperRuntimeSpecs["modern"].SharedSHA256, URL: server.URL, SHA256: hex.EncodeToString(archiveDigest[:]), ManifestSHA256: hex.EncodeToString(manifestDigest[:]), MaxBytes: int64(buffer.Len()), Protocol: vyperDynamicSchema}
 	cacheRoot := t.TempDir()
 	parent := &VyperCompiler{Path: compiler.Path, SharedPath: compiler.SharedPath, Cache: &CompilerCache{Root: cacheRoot, InstallLocker: testCompilerCacheInstallLocker, unsafeHTTPClient: server.Client(), unsafeAllowHTTP: true}}
 	entry := CatalogEntry{Version: VyperCompilerVersion, ArtifactSHA256: compilerDigest}

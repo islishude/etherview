@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync, readdirSync, lstatSync } from 'node:fs';
 import { resolve, basename } from 'node:path';
 import { createPrivateKey, sign } from 'node:crypto';
 import { parseArgs } from 'node:util';
-import { executorDigest, fixtureIdentity, platforms, sha256, sharedSHA256 } from './wasm/release.mjs';
+import { executorDigest, fixtureIdentity, platforms, sha256, runtimeFor, validateRuntimeSet } from './wasm/release.mjs';
 const { values } = parseArgs({ options: {
   artifacts: { type: 'string' }, origin: { type: 'string' },
   acceptance: { type: 'string' }, 'key-file': { type: 'string' },
@@ -27,6 +27,7 @@ for (const filename of readdirSync(values.artifacts).filter((name) => /^vyper-.*
   const raw = readFileSync(descriptorPath);
   const artifact = JSON.parse(raw);
   const locked = index.find((entry) => entry.version === artifact.version);
+  const sharedSHA256 = locked ? runtimeFor(locked.version).shared_sha256 : '';
   if (!locked || artifact.platform !== 'emscripten-wasm32' ||
       locked.compiler_sha256 !== artifact.compiler_sha256 ||
       artifact.shared_sha256 !== sharedSHA256 ||
@@ -48,7 +49,7 @@ for (const filename of readdirSync(values.artifacts).filter((name) => /^vyper-.*
   for (const platform of platforms) {
     const evidence = acceptance[platform];
     if (!evidence || evidence.native_linux !== true || evidence.monolith !== true || evidence.split !== true ||
-        evidence.shared_sha256 !== sharedSHA256 ||
+        !validateRuntimeSet(evidence.shared_runtimes) ||
         evidence.descriptors?.[filename] !== sha256(raw)) throw new Error('native production acceptance is missing or stale');
     const executor = executorDigest(evidence.host_sha256, sharedSHA256, artifact.manifest_sha256);
     const matrix = evidence.matrix?.[artifact.version];

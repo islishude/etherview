@@ -11,9 +11,9 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { ROOT, canonical, digest, regularFile, versions } from "./tooling.mjs";
-import { sharedSHA256 } from "./release.mjs";
+import { runtimeFor } from "./release.mjs";
 import { packRuntime } from "./packages.mjs";
-export async function descriptor(item, packagePath, shared, output, sharedDigest = sharedSHA256) {
+export async function descriptor(item, packagePath, shared, output, sharedDigest = runtimeFor(item.version).shared_sha256) {
   if (digest(regularFile(shared)) !== sharedDigest)
     throw new Error("shared runtime identity mismatch");
   if (!lstatSync(packagePath).isDirectory()) throw new Error("invalid package directory");
@@ -23,8 +23,8 @@ export async function descriptor(item, packagePath, shared, output, sharedDigest
     schema: "etherview-vyper-wasm-package-v1",
     version: item.version,
     compiler_sha256: item.compiler_sha256,
-    pyodide: "0.29.5",
-    python: "3.13.2",
+    pyodide: runtimeFor(item.version).pyodide,
+    python: runtimeFor(item.version).python,
   };
   if (Object.entries(expected).some(([k, v]) => manifest[k] !== v))
     throw new Error("compiler package identity mismatch");
@@ -54,7 +54,7 @@ export async function buildRelease(
   shared,
   output,
   items = versions(),
-  sharedDigest = sharedSHA256,
+  sharedDigest,
 ) {
   if (existsSync(output)) throw new Error("release output must not already exist");
   mkdirSync(dirname(output), { recursive: true });
@@ -63,7 +63,7 @@ export async function buildRelease(
     const staging = join(temporary, "release");
     mkdirSync(staging);
     for (const item of items)
-      await descriptor(item, join(packages, item.version), shared, staging, sharedDigest);
+      await descriptor(item, join(packages, item.version), sharedDigest ? shared : join(shared, runtimeFor(item.version).id, "shared-manifest.json"), staging, sharedDigest);
     if (existsSync(output)) throw new Error("release output must not already exist");
     renameSync(staging, output);
   } finally {
@@ -76,7 +76,7 @@ if (import.meta.main) {
       packages: { type: "string", default: join(ROOT, ".local/vyper-wasm/packages") },
       shared: {
         type: "string",
-        default: join(ROOT, ".local/vyper-wasm/shared/shared-manifest.json"),
+        default: join(ROOT, ".local/vyper-wasm/shared"),
       },
       output: { type: "string" },
     },

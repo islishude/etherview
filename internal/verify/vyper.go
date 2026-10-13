@@ -60,21 +60,33 @@ func (compiler *VyperCompiler) ValidateRuntime(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	output, err := compiler.runExpected(ctx, []string{"--self-test"}, nil, identity)
-	if err != nil {
-		compiler.markUnavailable()
-		return errors.New("vyper helper self-test failed")
+	for _, id := range []string{"modern", "legacy"} {
+		spec := vyperRuntimeSpecs[id]
+		probe := &VyperCompiler{Path: compiler.Path, SharedPath: compiler.sharedRoot(), Version: spec.Version, Timeout: compiler.Timeout, MaxInputBytes: compiler.MaxInputBytes, MaxOutputBytes: compiler.MaxOutputBytes}
+		probeIdentity, err := probe.validateHelper()
+		if err != nil {
+			return err
+		}
+		output, err := probe.runExpected(ctx, []string{"--self-test"}, nil, probeIdentity)
+		if err != nil {
+			compiler.markUnavailable()
+			return errors.New("vyper helper self-test failed")
+		}
+		var response struct {
+			Schema       string `json:"schema"`
+			Pyodide      string `json:"pyodide"`
+			Python       string `json:"python"`
+			AccessDenied bool   `json:"access_denied"`
+			Limits       bool   `json:"limits"`
+		}
+		if json.Unmarshal(output, &response) != nil || response.Schema != "etherview-vyper-wasm-self-test-v1" || response.Python != spec.Python || response.Pyodide != spec.Pyodide || !response.AccessDenied || !response.Limits {
+			compiler.markUnavailable()
+			return errors.New("vyper helper self-test response is invalid")
+		}
 	}
-	var response struct {
-		Schema       string `json:"schema"`
-		Pyodide      string `json:"pyodide"`
-		Python       string `json:"python"`
-		AccessDenied bool   `json:"access_denied"`
-		Limits       bool   `json:"limits"`
-	}
-	if json.Unmarshal(output, &response) != nil || response.Schema != "etherview-vyper-wasm-self-test-v1" || response.Python != "3.13.2" || response.Pyodide != "0.29.5" || !response.AccessDenied || !response.Limits {
-		compiler.markUnavailable()
-		return errors.New("vyper helper self-test response is invalid")
+	current, err := compiler.validateHelper()
+	if err != nil || current != identity {
+		return ErrVyperRuntimeUnavailable
 	}
 	compiler.mu.Lock()
 	compiler.identity = &identity
@@ -292,7 +304,7 @@ func (compiler *VyperCompiler) resolveDynamic(ctx context.Context, language Lang
 	if language != LanguageVyper || !stableVyperVersion(normalizeCompilerVersion(version)) {
 		return CompilerProvenance{}, ErrCompilerVersionUnavailable
 	}
-	host, shared, err := compiler.checkedHostIdentity()
+	host, shared, err := compiler.checkedHostIdentity(version)
 	if err != nil {
 		return CompilerProvenance{}, err
 	}
@@ -320,7 +332,7 @@ func (compiler *VyperCompiler) resolveDynamic(ctx context.Context, language Lang
 	if err != nil || identity.executor != executor || identity.compiler != entry.ArtifactSHA256 {
 		return CompilerProvenance{}, ErrCompilerProvenanceConflict
 	}
-	if _, _, err := compiler.checkedHostIdentity(); err != nil {
+	if _, _, err := compiler.checkedHostIdentity(version); err != nil {
 		return CompilerProvenance{}, err
 	}
 	return CompilerProvenance{Kind: CompilerVyper, Digest: entry.ArtifactSHA256, ExecutorDigest: executor, ExecutorKind: VyperDynamicExecutorKind, ExecutionPolicy: TrustedSubprocessPolicy, Platform: CompilerPlatformPythonWheel, CatalogGeneration: entry.GenerationID}, nil
@@ -329,7 +341,7 @@ func (compiler *VyperCompiler) compileDynamic(ctx context.Context, language Lang
 	if language != LanguageVyper || !provenance.valid() || provenance.ExecutorKind != VyperDynamicExecutorKind {
 		return nil, ErrCompilerProvenanceConflict
 	}
-	host, shared, err := compiler.checkedHostIdentity()
+	host, shared, err := compiler.checkedHostIdentity(version)
 	if err != nil {
 		return nil, err
 	}
@@ -350,7 +362,7 @@ func (compiler *VyperCompiler) compileDynamic(ctx context.Context, language Lang
 	// fresh process; its package and complete identity are verified on both sides.
 	expected := vyperRuntimeIdentity{compiler: provenance.Digest, executor: provenance.ExecutorDigest}
 	output, compileErr := child.runExpected(ctx, []string{"--compile", strconv.Itoa(child.maxInputBytes()), strconv.Itoa(child.maxOutputBytes())}, input, expected)
-	if _, _, err := compiler.checkedHostIdentity(); err != nil {
+	if _, _, err := compiler.checkedHostIdentity(version); err != nil {
 		return nil, err
 	}
 	return output, compileErr

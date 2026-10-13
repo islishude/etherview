@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { createHash, generateKeyPairSync, verify } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { executorDigest, fixtureIdentity, sharedSHA256 } from './wasm/release.mjs';
+import { executorDigest, fixtureIdentity, runtimeFor, sharedRuntimes } from './wasm/release.mjs';
 const script = fileURLToPath(new URL('./catalog.mjs', import.meta.url));
 const versions = JSON.parse(readFileSync(new URL('./versions/index.json', import.meta.url))).versions;
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
@@ -20,9 +20,10 @@ for (const failure of ['', 'missing-architecture', 'stale-acceptance', 'corrupt-
       for (const platform of ['linux-amd64', 'linux-arm64']) {
         if (failure === 'missing-architecture' && platform === 'linux-arm64') continue;
         acceptance[platform] = { native_linux: true, monolith: true, split: true, descriptors: {}, matrix: {},
-          shared_sha256: sharedSHA256, host_sha256: sha(platform) };
+          shared_runtimes: {...sharedRuntimes}, host_sha256: sha(platform) };
       }
       for (const entry of versions) {
+        const sharedSHA256=runtimeFor(entry.version).shared_sha256;
         const name = `vyper-${entry.version}-emscripten-wasm32`;
         const bytes = Buffer.from('test-only archive');
         const descriptor = JSON.stringify({ version: entry.version, compiler_sha256: entry.compiler_sha256,
@@ -43,7 +44,7 @@ for (const failure of ['', 'missing-architecture', 'stale-acceptance', 'corrupt-
       }
       if (failure === 'non-native') acceptance['linux-arm64'].native_linux = false;
       if (failure === 'wrong-host') acceptance['linux-arm64'].host_sha256 = '3'.repeat(64);
-      if (failure === 'wrong-shared') acceptance['linux-arm64'].shared_sha256 = '3'.repeat(64);
+      if (failure === 'wrong-shared') acceptance['linux-arm64'].shared_runtimes.modern = '3'.repeat(64);
       writeFileSync(join(root, 'matrix-arm64.json'), JSON.stringify({ unrelated: 'evidence file' }));
       writeFileSync(join(root, 'acceptance.txt'), JSON.stringify(acceptance));
       const result = spawnSync(process.execPath, [script, '--artifacts', root, '--origin', 'https://compilers.example/vyper/',

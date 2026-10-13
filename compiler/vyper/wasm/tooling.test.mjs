@@ -39,8 +39,8 @@ function packageFixture(root, payload = Buffer.from("authenticated upstream pack
   const manifest = {
     ...item,
     schema: "etherview-vyper-wasm-package-v1",
-    pyodide: "0.29.5",
-    python: "3.13.2",
+    pyodide: "314.0.7",
+    python: "3.14.2",
     dependencies: [],
     files: [{ path: "packages.zip", sha256: digest(payload) }],
   };
@@ -385,4 +385,23 @@ test("runtime upgrade retires only unchanged listed payloads and retains unknown
   assert.equal(readFileSync(join(root, "old.whl"), "utf8"), "changed");
   previous.files[0].path = "../outside.whl";
   assert.throws(() => retirePreviousFiles(root, previous, []), /invalid previous runtime path/);
+});
+
+test("runtime policy covers the exact supported set and rejects incomplete evidence", async () => {
+  const { runtimeFor, runtimeByID, runtimePolicy, sharedRuntimes, validateRuntimeSet } = await import("./runtime-policy.mjs");
+  const index = readJSON(join(HERE, "../versions/index.json")).versions;
+  const mapped = Object.values(runtimePolicy).flatMap(p => p.versions);
+  assert.deepEqual([...mapped].sort(), index.map(v => v.version).sort());
+  assert.equal(new Set(mapped).size, 26);
+  assert.equal(runtimePolicy.modern.versions.length, 4);
+  assert.equal(runtimePolicy.legacy.versions.length, 22);
+  for (const item of index) {
+    const expected = ["0.4.0", "0.4.1", "0.4.2", "0.4.3"].includes(item.version) ? "modern" : "legacy";
+    assert.equal(runtimeFor(item.version).id, expected);
+    assert.equal(runtimeByID(expected).shared_sha256, sharedRuntimes[expected]);
+  }
+  for (const value of ["0.4.4", "0.3.5", "latest", "../legacy", "__proto__"]) assert.throws(() => runtimeFor(value));
+  assert.throws(() => runtimeByID("__proto__"));
+  assert(validateRuntimeSet({ ...sharedRuntimes }));
+  for (const value of [null, {}, { modern: sharedRuntimes.modern }, { ...sharedRuntimes, extra: "x" }, { modern: sharedRuntimes.legacy, legacy: sharedRuntimes.modern }]) assert(!validateRuntimeSet(value));
 });

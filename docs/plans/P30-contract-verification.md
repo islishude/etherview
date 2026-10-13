@@ -1,6 +1,6 @@
 # P30 — Contract Platform & Runtime Operations
 
-Status: `done`
+Status: `blocked`
 
 This is the canonical plan for contract verification, contract intelligence,
 and the shared runtime/operations platform. Its current work items use the P30
@@ -195,6 +195,8 @@ credential-scoped operational boundaries.
 | P30-T123 | done | P30-T122 | Upgrade the pinned Pyodide runtime to 0.29.5 with authenticated identities and unchanged compiler references | Full matrix, isolation, live audit/license and common local gates; native release acceptance remains separate |
 | P30-T124 | done | P30-T123 | Re-review the CPython advisory revision rejected by CI run 38198556844 | Exact failed-CI fixture, rejection regressions, live security and governance gates |
 | P30-T125 | done | P30-T124 | Classify only explicitly reviewed OSV CPython Vanir metadata changes as auxiliary | Scoped baseline authentication, strict rejection regressions, live audit and governance gates |
+| P30-T126 | done | P30-T125 | Evaluate npm-aliased dual Pyodide runtimes with explicit Vyper routing | Full fresh-process matrix, runtime separation and negative controls without production changes |
+| P30-T127 | blocked | P30-T126 | Implement dual Pyodide runtime selection and authenticated release tooling | Local gates pass; requires native AMD64 matrix and both architectures native Linux Hardhat acceptance |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
@@ -272,7 +274,13 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
 ## Current Blockers
 
-None. P30-T114's remote acceptance below clears its earlier local Docker
+P30-T127 requires native Linux AMD64 full production-matrix execution and
+native Linux AMD64/ARM64 monolith/split Hardhat acceptance against the same
+common artifacts. A native ARM64 Linux VM matrix and macOS-orchestrated topology
+tests pass; neither replaces those missing native runs. Clear this blocker with
+new matching native records before signing or promoting the upgraded artifacts.
+
+P30-T114's remote acceptance below clears its earlier local Docker
 validation blocker. P70 capacity and P73 live-testnet evidence remain owned
 by their current plans.
 
@@ -1204,3 +1212,63 @@ closure below supplies the missing evidence.
 - P30-T125 and P30 are done. The pre-existing Git index is byte-identical;
   earlier staged and unstaged work is retained. No remote CI, commit, push,
   signing or deployment is claimed.
+
+
+### P30-T126 — Dual Pyodide npm alias feasibility (2026-10-12)
+
+- Exact isolated dependencies `pyodide@314.0.7` and
+  `pyodide-legacy@npm:pyodide@0.29.5` resolve independently. Only Vyper
+  0.4.0–0.4.3 selects modern Python 3.14.2; the other 22 supported versions
+  select legacy Python 3.13.2. Unknown versions fail without fallback.
+- `node compiler/vyper/wasm/alias-feasibility.mjs
+  .local/pyodide-alias-feasibility-20261012` passes all 362 reference cases:
+  80 modern, 282 legacy. Every original/modified input gets a fresh restricted
+  process, a 30-second deadline, 128 MiB V8 heap and 384 MiB WASM cap, with
+  four concurrent workers. No reference or compiler implementation changed.
+- Both runtimes pass permission/memory, sibling-runtime read rejection,
+  large-input, wrong-Python identity and timeout/forced-cleanup probes. The
+  deliberately misrouted 0.2.0 control reproduces the Python 3.14 AST failure;
+  its proper legacy route passes. All fixture digests and cleanup results
+  were verified after the run.
+- [Assessment and reproduction](../reviews/P30-pyodide-alias-feasibility.md)
+  and [durable summary](../reviews/P30-pyodide-alias-feasibility.json) retain
+  exact aliases, runtime/package identities, all version counts and controls.
+  The repeatable entrypoint is `make test-vyper-alias-feasibility` with a new
+  `VYPER_ALIAS_FEASIBILITY_OUTPUT` directory. Existing stash and production
+  package pins, fixtures, ADR and runtime paths are unchanged.
+- All 81 Node tests in tooling, audit-auxiliary, catalog, production-shards and
+  alias-feasibility suites pass; `make docs-check plan-check`, JS syntax and
+  `git diff --check` pass. This completes local feasibility only. Production
+  routing/identity design, SEA/Go, native Linux architectures, topology and
+  dual-runtime audit/license acceptance remain unimplemented and unclaimed.
+  P30 returns to done; external release blockers remain unchanged.
+
+### P30-T127 — dual-runtime implementation (blocked on native acceptance)
+
+- Claimed before implementation; explicit policy and generated Go mapping retain
+  all 26 versions, immutable compiler/dependency contents and reference fixtures.
+  Both startup probes, frozen identities, selected-runtime permissions, catalog
+  and acceptance-map consumers are implemented under updated ADR-0053.
+- Candidate and actual SEA/Go matrices pass 26 versions / 362 fresh-process
+  compilations each. Runtime policy and both-runtime termination/recovery tests
+  pass. PostgreSQL Vyper integration plus race passes in `internal/integration`
+  and `internal/verify`. Release/signing/cache/shard/tooling tests pass.
+- The ARM64 production image builds and `make docker-image-check` passes with
+  both runtime manifests and complete upstream notices. `make check` passes,
+  including generation, lint, unit/race, live security, license and deployment
+  configuration gates; 83 Node regression tests pass. The current source audit
+  covers 591 distribution records / 93 components / 1,759 findings, with one
+  existing auxiliary-only change. These are reviewed findings, not zero CVEs.
+- The native ARM64 Linux VM production image matrix passes all 26 versions /
+  362 cases. macOS-orchestrated monolith and split Hardhat suites pass with
+  matching results (449.74 s); their record remains `native_linux=false`.
+  The final candidate repeat also passes 362/362 after an incomplete diagnostic
+  invocation, whose partial log is preserved and excluded from acceptance.
+- Blocker and clearing condition: obtain a complete native Linux AMD64 matrix
+  and native Linux AMD64/ARM64 monolith/split Hardhat acceptance consuming the
+  same common artifacts. Current local/ARM64-matrix evidence cannot substitute
+  for those missing runs, so full upgrade acceptance is not marked complete.
+- [Implementation and audit review](../reviews/P30-dual-pyodide-implementation.md)
+  records artifact boundaries, advisory applicability and evidence locations.
+  Existing feasibility work, prior release evidence and the user's stash remain
+  preserved; no commit, push, production signing or deployment is authorized.

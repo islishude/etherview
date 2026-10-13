@@ -17,7 +17,7 @@ func TestSignedVyperCatalog(t *testing.T) {
 	}
 	parser := &CompilerCatalog{options: CompilerCatalogOptions{VyperPublicKey: public, MaxEntries: 4096, MaxArtifactBytes: defaultCompilerArtifactMB}, origins: map[string]struct{}{"https://compilers.example": {}}}
 	base := vyperCatalogDocument{Schema: "etherview-vyper-catalog-v2", ExpiresAt: time.Now().Add(time.Hour), Builds: []vyperCatalogBuild{{Version: "0.4.3", CompilerSHA256: strings.Repeat("a", 64), Runtimes: []VyperRuntimeArtifact{
-		{Platform: CompilerPlatformEmscriptenWASM32, URL: "https://compilers.example/package.tar.gz", SHA256: strings.Repeat("b", 64), ManifestSHA256: strings.Repeat("c", 64), SharedSHA256: vyperSharedManifestSHA256, ExecutorDigests: map[string]string{"linux-amd64": strings.Repeat("d", 64), "linux-arm64": strings.Repeat("e", 64)}, MaxBytes: 1024, Protocol: vyperDynamicSchema},
+		{Platform: CompilerPlatformEmscriptenWASM32, URL: "https://compilers.example/package.tar.gz", SHA256: strings.Repeat("b", 64), ManifestSHA256: strings.Repeat("c", 64), SharedSHA256: vyperRuntimeSpecs["modern"].SharedSHA256, ExecutorDigests: map[string]string{"linux-amd64": strings.Repeat("d", 64), "linux-arm64": strings.Repeat("e", 64)}, MaxBytes: 1024, Protocol: vyperDynamicSchema},
 	}}}}
 	cases := []struct {
 		name   string
@@ -25,6 +25,14 @@ func TestSignedVyperCatalog(t *testing.T) {
 		valid  bool
 	}{
 		{"valid", func(*vyperCatalogDocument) {}, true},
+		{"valid legacy", func(d *vyperCatalogDocument) {
+			d.Builds[0].Version = "0.3.10"
+			d.Builds[0].Runtimes[0].SharedSHA256 = vyperRuntimeSpecs["legacy"].SharedSHA256
+		}, true},
+		{"modern runtime on legacy version", func(d *vyperCatalogDocument) { d.Builds[0].Version = "0.3.10" }, false},
+		{"legacy runtime on modern version", func(d *vyperCatalogDocument) {
+			d.Builds[0].Runtimes[0].SharedSHA256 = vyperRuntimeSpecs["legacy"].SharedSHA256
+		}, false},
 		{"expired", func(d *vyperCatalogDocument) { d.ExpiresAt = time.Now().Add(-time.Second) }, false},
 		{"prerelease", func(d *vyperCatalogDocument) { d.Builds[0].Version = "0.4.3rc1" }, false},
 		{"build metadata", func(d *vyperCatalogDocument) { d.Builds[0].Version = "0.4.3+abc" }, false},

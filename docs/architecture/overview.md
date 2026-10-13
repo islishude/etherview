@@ -804,17 +804,19 @@ size alone is not sufficient justification to weaken those invariants.
   [ADR-0037](../decisions/ADR-0037-persistent-solcjs-artifact-cache.md).
 - Vyper execution uses signed catalog v2 entries containing one architecture-neutral
   compiler package and host-specific composite executor digests. The Node SEA
-  loads the pinned Pyodide 0.29.5 / CPython 3.13.2 runtime and selected package
-  with read-only permissions. Startup self-tests finish before readiness; binding
+  selects Pyodide 314.0.7 / CPython 3.14.2 for Vyper 0.4.0–0.4.3 and
+  Pyodide 0.29.5 / CPython 3.13.2 for the other 22 versions from the shared
+  runtime policy. Each child can read only its selected runtime and package.
+  Both runtime self-tests finish before readiness; binding
   verifies installed package identity, and every fresh compilation revalidates
-  the host, shared runtime and package before and after execution. A changed host
+  the host, shared runtime and package before and after execution. Changed host or runtime identities
   cannot be adopted by a running parent. Missing dependencies never fall back to
   native Python. The fixed 128 MiB V8 old-generation and 384 MiB WASM limits are
   not a total RSS cap. Compiler lists and version adapters preserve existing
   capabilities, upstream settings, inline imports, metadata and immutable layouts;
   missing authenticated metadata remains partial evidence. See
   [ADR-0053](../decisions/ADR-0053-vyper-wasm-distribution.md). Production packaging
-  and cross-architecture release acceptance remain gated by P30-T119.
+  and dual-runtime cross-architecture acceptance remain gated by P30-T127.
 - Native address verification also accepts a bounded inline Geas v0.3.3 source
   filesystem with a required runtime entrypoint and optional creation
   entrypoint. Each entrypoint is assembled twice with stack checking in fresh

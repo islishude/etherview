@@ -73,5 +73,85 @@
     "path": "HACL-LICENSE.txt",
     "url": "https://raw.githubusercontent.com/hacl-star/hacl-star/bb3d0dc8d9d15a5cd51094d5b69e70aa09005ff0/LICENSE",
     "sha256": "c5accbbd8546e94c34aed24afe689a617627d18eed5a6c48277e48db57c23851"
+  },
+  {
+    "path": "pyodide-modern-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/pyodide/pyodide/314.0.7/LICENSE",
+    "sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5"
+  },
+  {
+    "path": "Python-modern-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/python/cpython/v3.14.2/LICENSE",
+    "sha256": "b0e25a78cffb43f4d92de8b61ccfa1f1f98ecbc22330b54b5251e7b6ba010231"
+  },
+  {
+    "path": "Python-modern-third-party-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/python/cpython/v3.14.2/Doc/license.rst",
+    "sha256": "c695d550b135e53e38807e76496d1db17d22c40e461d1f3f354c86188d3305dd"
+  },
+  {
+    "path": "emscripten-modern-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/emscripten-core/emscripten/5.0.3/LICENSE",
+    "sha256": "620a78084fc7ca97c0b5dea9abf891f3ffcadfdbf305276f099c9c4e12fc1d86"
+  },
+  {
+    "path": "pycryptodome-modern-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/Legrandin/pycryptodome/v3.23.0/LICENSE.rst",
+    "sha256": "4e04660d77c1c64e89d79537919fb8240fa21484a7e3db29f358b2c7f84ea073"
+  },
+  {
+    "path": "expat-modern-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/libexpat/libexpat/R_2_7_3/expat/COPYING",
+    "sha256": "31b15de82aa19a845156169a17a5488bf597e561b2c318d159ed583139b25e87"
+  },
+  {
+    "path": "xz-modern-COPYING.txt",
+    "url": "https://raw.githubusercontent.com/tukaani-project/xz/v5.2.2/COPYING",
+    "sha256": "c4f8e14fafe458d84808a4cd8b69f94673ebe2bf8fc992291629a69ac12218f8"
+  },
+  {
+    "path": "xz-modern-COPYING-LGPL.txt",
+    "url": "https://raw.githubusercontent.com/tukaani-project/xz/v5.2.2/COPYING.LGPLv2.1",
+    "sha256": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551"
+  },
+  {
+    "path": "xz-modern-COPYING-GPL.txt",
+    "url": "https://raw.githubusercontent.com/tukaani-project/xz/v5.2.2/COPYING.GPLv2",
+    "sha256": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643"
+  },
+  {
+    "path": "zstd-modern-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/facebook/zstd/v1.5.7/LICENSE",
+    "sha256": "7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8"
+  },
+  {
+    "path": "sqlite-modern-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/sqlite/sqlite/version-3.39.0/LICENSE.md",
+    "sha256": "9c6479123f32a1ed50d9a0af203dfe8972e65035b0cdeef436b5f8d0924517fe"
+  },
+  {
+    "path": "HACL-modern-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/hacl-star/hacl-star/8ba599b2f6c9701b3dc961db895b0856a2210f76/LICENSE",
+    "sha256": "c5accbbd8546e94c34aed24afe689a617627d18eed5a6c48277e48db57c23851"
+  },
+  {
+    "path": "musl-modern-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/emscripten-core/emscripten/5.0.3/system/lib/libc/musl/COPYRIGHT",
+    "sha256": "f9bc4423732350eb0b3f7ed7e91d530298476f8fec0c6c427a1c04ade22655af"
+  },
+  {
+    "path": "compiler-rt-modern-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/emscripten-core/emscripten/5.0.3/system/lib/compiler-rt/LICENSE.TXT",
+    "sha256": "1a8f1058753f1ba890de984e48f0242a3a5c29a6a8f2ed9fd813f36985387e8d"
+  },
+  {
+    "path": "libcxx-modern-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/emscripten-core/emscripten/5.0.3/system/lib/libcxx/LICENSE.TXT",
+    "sha256": "539dd7aed86e8a4f12cbdd0e6c50c189c7d74847e4fecc64ce2c6ee3a01da38b"
+  },
+  {
+    "path": "libcxxabi-modern-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/emscripten-core/emscripten/5.0.3/system/lib/libcxxabi/LICENSE.TXT",
+    "sha256": "e2b35be49f7284a45b7baca8fc7b3ab7440e7902392b2528a457816b5bb2a15c"
   }
 ]

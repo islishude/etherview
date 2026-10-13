@@ -12,7 +12,11 @@ import (
 
 const vyperSharedSchema = "etherview-python-wasm-v1"
 const vyperPackageSchema = "etherview-vyper-wasm-package-v1"
-const vyperSharedManifestSHA256 = "b20a6b86d20d7902197560577f920885d7049e580c10c374b82e1b0725ea4d7b"
+
+func vyperRuntimeFor(version string) (vyperRuntimeSpec, bool) {
+	id, ok := vyperVersionRuntime[version]
+	return vyperRuntimeSpecs[id], ok
+}
 
 type vyperWASMFile struct {
 	Path   string `json:"path"`
@@ -54,7 +58,13 @@ func validateVyperWASMTree(root, name string, expected [sha256.Size]byte) (vyper
 	if expected != zero && digest != expected {
 		return manifest, zero, invalid
 	}
-	if manifest.Pyodide != "0.29.5" || manifest.Python != "3.13.2" || len(manifest.Files) == 0 || len(manifest.Files) > maxRuntimeManifestFiles {
+	validRuntime := false
+	for _, spec := range vyperRuntimeSpecs {
+		if manifest.Pyodide == spec.Pyodide && manifest.Python == spec.Python {
+			validRuntime = true
+		}
+	}
+	if !validRuntime || len(manifest.Files) == 0 || len(manifest.Files) > maxRuntimeManifestFiles {
 		return manifest, zero, invalid
 	}
 	listed := map[string]bool{manifestPath: true}
@@ -107,20 +117,35 @@ func validateVyperWASMTree(root, name string, expected [sha256.Size]byte) (vyper
 	return manifest, digest, nil
 }
 
-func (compiler *VyperCompiler) sharedPath() string {
+func (compiler *VyperCompiler) sharedRoot() string {
 	if compiler.SharedPath != "" {
 		return compiler.SharedPath
 	}
 	return filepath.Join(filepath.Dir(filepath.Dir(compiler.Path)), "python-wasm")
 }
-func (compiler *VyperCompiler) hostIdentity() ([sha256.Size]byte, [sha256.Size]byte, error) {
+func (compiler *VyperCompiler) sharedPath() string {
+	spec, ok := vyperRuntimeFor(compiler.version())
+	if !ok {
+		return ""
+	}
+	return filepath.Join(compiler.sharedRoot(), spec.ID)
+}
+func (compiler *VyperCompiler) hostIdentity(versions ...string) ([sha256.Size]byte, [sha256.Size]byte, error) {
 	host, err := validateSolcJSRuntimeManifest(compiler.Path)
 	if err != nil {
 		return host, [sha256.Size]byte{}, err
 	}
-	want, _ := decodeCatalogDigest(vyperSharedManifestSHA256)
-	m, shared, err := validateVyperWASMTree(compiler.sharedPath(), "shared-manifest.json", want)
-	if err != nil || m.Schema != vyperSharedSchema || m.Pycryptodome != "3.21.0" {
+	version := compiler.version()
+	if len(versions) > 0 {
+		version = normalizeCompilerVersion(versions[0])
+	}
+	spec, ok := vyperRuntimeFor(version)
+	if !ok {
+		return host, [sha256.Size]byte{}, ErrCompilerVersionUnavailable
+	}
+	want, _ := decodeCatalogDigest(spec.SharedSHA256)
+	m, shared, err := validateVyperWASMTree(filepath.Join(compiler.sharedRoot(), spec.ID), "shared-manifest.json", want)
+	if err != nil || m.Schema != vyperSharedSchema || m.Pycryptodome != spec.Pycryptodome || m.Pyodide != spec.Pyodide || m.Python != spec.Python {
 		return host, shared, ErrVyperRuntimeUnavailable
 	}
 	return host, shared, nil
@@ -141,10 +166,23 @@ func (compiler *VyperCompiler) validateHelper() (vyperRuntimeIdentity, error) {
 		return vyperRuntimeIdentity{}, err
 	}
 	if compiler.PackagePath == "" {
-		return vyperRuntimeIdentity{executor: vyperExecutorDigest(host, shared, [sha256.Size]byte{})}, nil
+		// Freeze both installed runtimes for the catalog parent and startup probes.
+		_, modern, err := compiler.hostIdentity(vyperRuntimeSpecs["modern"].Version)
+		if err != nil {
+			return vyperRuntimeIdentity{}, err
+		}
+		_, legacy, err := compiler.hostIdentity(vyperRuntimeSpecs["legacy"].Version)
+		if err != nil {
+			return vyperRuntimeIdentity{}, err
+		}
+		return vyperRuntimeIdentity{executor: vyperExecutorDigest(host, modern, legacy)}, nil
+	}
+	spec, ok := vyperRuntimeFor(compiler.version())
+	if !ok {
+		return vyperRuntimeIdentity{}, ErrCompilerVersionUnavailable
 	}
 	m, digest, err := validateVyperWASMTree(compiler.PackagePath, "package-manifest.json", compiler.ManifestDigest)
-	if err != nil || m.Schema != vyperPackageSchema || m.Version != compiler.version() || m.CompilerSHA256 != hex.EncodeToString(compiler.CompilerDigest[:]) || len(m.Files) != 1 || m.Files[0].Path != "packages.zip" {
+	if err != nil || m.Pyodide != spec.Pyodide || m.Python != spec.Python || m.Schema != vyperPackageSchema || m.Version != compiler.version() || m.CompilerSHA256 != hex.EncodeToString(compiler.CompilerDigest[:]) || len(m.Files) != 1 || m.Files[0].Path != "packages.zip" {
 		return vyperRuntimeIdentity{}, ErrVyperRuntimeUnavailable
 	}
 	return vyperRuntimeIdentity{compiler: compiler.CompilerDigest, executor: vyperExecutorDigest(host, shared, digest)}, nil
@@ -152,16 +190,20 @@ func (compiler *VyperCompiler) validateHelper() (vyperRuntimeIdentity, error) {
 
 // Revalidation never adopts a different host after startup, even if a newly
 // fetched catalog happens to authorize that host's digest.
-func (compiler *VyperCompiler) checkedHostIdentity() ([sha256.Size]byte, [sha256.Size]byte, error) {
+func (compiler *VyperCompiler) checkedHostIdentity(versions ...string) ([sha256.Size]byte, [sha256.Size]byte, error) {
 	var zero [sha256.Size]byte
 	expected, ready := compiler.runtimeIdentity()
 	if !ready {
 		return zero, zero, ErrVyperRuntimeUnavailable
 	}
-	host, shared, err := compiler.hostIdentity()
-	if err != nil || expected.compiler != zero || expected.executor != vyperExecutorDigest(host, shared, zero) {
+	current, err := compiler.validateHelper()
+	if err != nil || current != expected || expected.compiler != zero {
 		compiler.markUnavailable()
 		return zero, zero, ErrVyperRuntimeUnavailable
 	}
-	return host, shared, nil
+	host, shared, err := compiler.hostIdentity(versions...)
+	if err != nil {
+		compiler.markUnavailable()
+	}
+	return host, shared, err
 }

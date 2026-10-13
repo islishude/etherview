@@ -1,8 +1,9 @@
 import {constants,readFileSync,writeFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
-import {isAbsolute,join,normalize} from 'node:path';
+import {isAbsolute,join,normalize,basename} from 'node:path';
 import {isSea} from 'node:sea';
 import protocol from './protocol.py';
+import {runtimeByID,runtimeFor} from './runtime-policy.mjs';
 
 const fixed=['--permission','--disable-sigusr1','--no-addons','--no-global-search-paths','--max-old-space-size=384'];
 const limits=['--max-old-space-size=128','--wasm-max-mem-pages=6144'];
@@ -43,14 +44,17 @@ export async function executeVyper(args){
   for(const permission of ['fs.write','net','child','worker','addons','ffi','wasi','inspector']){
    if(process.permission.has(permission))throw new Error('excess permission');
   }
+  const spec=runtimeByID(basename(shared));
+  if(!selfTest && runtimeFor(version).id!==spec.id)throw new Error('runtime route mismatch');
   const p=await boot(shared);
-  if(p.runPython('import sys; ".".join(map(str,sys.version_info[:3]))')!=='3.13.2')throw new Error('Python identity');
+  if(p.runPython('import sys; ".".join(map(str,sys.version_info[:3]))')!==spec.python)throw new Error('Python identity');
   if(selfTest){
    const memory=p.runPython('try:\n    bytearray(385 << 20)\n    bounded = False\nexcept MemoryError:\n    bounded = True\nbounded');
    let network=false;try{await fetch('http://127.0.0.1:65534');}catch(e){network=e?.cause?.code==='ERR_ACCESS_DENIED';}
-   const access=network&&denied(()=>readFileSync('/etc/passwd'))&&denied(()=>writeFileSync(join(process.cwd(),'denied'),'x'))&&denied(()=>loader('node:child_process').spawnSync(process.execPath,['--version']));
+   const sibling=join(shared,'..',spec.id==='modern'?'legacy':'modern','pyodide.js');
+   const access=denied(()=>readFileSync(sibling))&&network&&denied(()=>readFileSync('/etc/passwd'))&&denied(()=>writeFileSync(join(process.cwd(),'denied'),'x'))&&denied(()=>loader('node:child_process').spawnSync(process.execPath,['--version']));
    if(!memory||!access)throw new Error('self-test failed');
-   process.stdout.write(JSON.stringify({schema:'etherview-vyper-wasm-self-test-v1',python:'3.13.2',pyodide:'0.29.5',access_denied:true,limits:true}));
+   process.stdout.write(JSON.stringify({schema:'etherview-vyper-wasm-self-test-v1',python:spec.python,pyodide:spec.pyodide,access_denied:true,limits:true}));
    return;
   }
   if(!/^\d+\.\d+\.\d+$/.test(version))throw new Error('invalid version');

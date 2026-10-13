@@ -1,3 +1,4 @@
+import {runtimeFor} from "./runtime-policy.mjs";
 // Reproducible pure-Python bundles from authenticated upstream archives.
 import {
   existsSync,
@@ -146,8 +147,8 @@ export async function bundle(item, destination) {
     schema: "etherview-vyper-wasm-package-v1",
     version: item.version,
     compiler_sha256: item.compiler_sha256,
-    pyodide: "0.29.5",
-    python: "3.13.2",
+    pyodide: runtimeFor(item.version).pyodide,
+    python: runtimeFor(item.version).python,
     dependencies: identities,
     files: [{ path: "packages.zip", sha256: digest(raw) }],
   };

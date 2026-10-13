@@ -42,8 +42,8 @@ RUN node build-sea.mjs /opt/etherview/solcjs/etherview-solcjs \
     && cp -a /opt/etherview/solcjs /solcjs-runtime-copy/ \
     && node vyper/wasm/prepare.mjs /solcjs-runtime-copy/python-wasm \
     && node vyper/wasm/licenses.mjs /opt/etherview/licenses/python-wasm \
-    && chmod 0555 /solcjs-runtime-copy/python-wasm \
-    && chmod 0444 /solcjs-runtime-copy/python-wasm/* \
+    && find /solcjs-runtime-copy/python-wasm -type d -exec chmod 0555 {} + \
+    && find /solcjs-runtime-copy/python-wasm -type f -exec chmod 0444 {} + \
     && install -d -m 0750 /var/lib/etherview/compilers/cache
 
 FROM golang:1.27.2 AS go-builder

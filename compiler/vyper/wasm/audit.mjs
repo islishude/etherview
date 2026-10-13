@@ -14,18 +14,21 @@ import {
   mapConcurrent,
 } from "./tooling.mjs";
 import { metadata, normalized } from "./metadata.mjs";
-import { sharedSHA256 } from "./release.mjs";
+import { sharedRuntimes, runtimeFor } from "./release.mjs";
 import { loadAuxiliaryBaselines, classifyAuxiliary } from "./audit-auxiliary.mjs";
 export { metadata, vendoredMetadata } from "./metadata.mjs";
 export const OUTPUT = join(ROOT, ".local/vyper-wasm/audit");
 export function inventory() {
   const records = [],
     identities = {};
-  const shared = join(ROOT, ".local/vyper-wasm/shared");
+  const base=join(ROOT,".local/vyper-wasm/shared");
+  if(canonical(readdirSync(base).sort())!==canonical(Object.keys(sharedRuntimes).sort())) throw new Error("unlisted runtime directory");
+  for(const [runtime,sharedSHA256] of Object.entries(sharedRuntimes)){
+  const shared = join(base,runtime);
   if (!lstatSync(shared).isDirectory()) throw new Error("invalid shared directory");
   const raw = regularFile(join(shared, "shared-manifest.json"));
   if (digest(raw) !== sharedSHA256) throw new Error("unauthenticated shared runtime");
-  identities.shared = digest(raw);
+  identities["shared/"+runtime] = digest(raw);
   const files = JSON.parse(raw).files;
   if (
     canonical(readdirSync(shared).sort()) !==
@@ -36,7 +39,8 @@ export function inventory() {
     safeMember(entry.path);
     const data = regularFile(join(shared, entry.path));
     if (digest(data) !== entry.sha256) throw new Error("shared runtime payload changed");
-    if (/\.(whl|zip)$/.test(entry.path)) records.push(...metadata(data, "shared/" + entry.path));
+    if (/\.(whl|zip)$/.test(entry.path)) records.push(...metadata(data, "shared/" + runtime + "/" + entry.path));
+  }
   }
   for (const item of versions()) {
     const path = join(ROOT, ".local/vyper-wasm/packages", item.version);
@@ -47,7 +51,7 @@ export function inventory() {
       throw new Error("invalid compiler package directory");
     const raw = regularFile(join(path, "package-manifest.json"));
     const manifest = JSON.parse(raw);
-    if (manifest.version !== item.version || manifest.compiler_sha256 !== item.compiler_sha256)
+    if (manifest.version !== item.version || manifest.compiler_sha256 !== item.compiler_sha256 || manifest.pyodide !== runtimeFor(item.version).pyodide || manifest.python !== runtimeFor(item.version).python)
       throw new Error("compiler identity changed");
     const data = regularFile(join(path, "packages.zip"));
     if (canonical(manifest.files) !== canonical([{ path: "packages.zip", sha256: digest(data) }]))
@@ -67,6 +71,9 @@ export function inventory() {
   }
   if (!records.length) throw new Error("empty distribution inventory");
   for (const name of [
+    "compiler/vyper/wasm/runtime-policy.json",
+    "compiler/vyper/wasm/runtime-policy.mjs",
+    "internal/verify/vyper_runtime_policy_generated.go",
     "compiler/vyper/adapter.py",
     "compiler/vyper/wasm/protocol.py",
     "compiler/vyper/wasm/execute.mjs",

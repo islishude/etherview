@@ -1,17 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { assignments, mergeEvidence, partition, shardFile, shardOptions, versions } from './production-shards.mjs';
-import { fixtureIdentity, sha256, sharedSHA256 } from './release.mjs';
+import { fixtureIdentity, sha256, runtimeFor, sharedRuntimes } from './release.mjs';
 import { versionEvidence } from './production-shards.mjs';
 
 const groups = assignments(4);
-const identity = { native_linux: true, image_id: 'sha256:image', host_sha256: 'host', shared_sha256: 'shared' };
+const identity = { native_linux: true, image_id: 'sha256:image', host_sha256: 'host', shared_runtimes: sharedRuntimes };
 const expected = Object.fromEntries(versions.map(({ version }) => [version, {
   name: `vyper-${version}-emscripten-wasm32.json`, digest: `descriptor-${version}`,
-  matrix: { ...fixtureIdentity(version), package_sha256: `package-${version}`, shared_sha256: 'shared', executor_sha256: `executor-${version}` },
+  matrix: { ...fixtureIdentity(version), package_sha256: `package-${version}`, shared_sha256: runtimeFor(version).shared_sha256, executor_sha256: `executor-${version}` },
 }]));
 function records() {
-  return groups.map((selected, index) => ({ ...identity,
+  return groups.map((selected, index) => ({ ...structuredClone(identity),
     shard: { index, count: 4, architecture: 'amd64' },
     descriptors: Object.fromEntries(selected.map(version => [expected[version].name, expected[version].digest])),
     matrix: Object.fromEntries(selected.map(version => [version, structuredClone(expected[version].matrix)])),
@@ -44,7 +44,7 @@ test('partition is deterministic, balanced and covers all current fixtures exact
   assert.notEqual(shardFile('amd64', 0, 4), shardFile('arm64', 0, 4));
 });
 
-test('merge is order independent and preserves the complete legacy evidence shape', () => {
+test('merge is order independent and preserves the complete dual-runtime evidence shape', () => {
   const full = { ...identity, descriptors: {}, matrix: {} };
   for (const [version, entry] of Object.entries(expected)) {
     full.descriptors[entry.name] = entry.digest;
@@ -130,7 +130,7 @@ test('evidence validation rereads archive, manifest and package bytes', () => {
     const archive = Buffer.from('archive');
     const bundle = Buffer.from('bundle');
     const manifest = Buffer.from(JSON.stringify({ files: [{ path: 'packages.zip', sha256: sha256(bundle) }] }));
-    const descriptor = { compiler_sha256: item.compiler_sha256, shared_sha256: sharedSHA256,
+    const descriptor = { compiler_sha256: item.compiler_sha256, shared_sha256: runtimeFor(item.version).shared_sha256,
       archive: 'compiler.tar.gz', sha256: sha256(archive), manifest_sha256: sha256(manifest) };
     writeFileSync(join(directory, 'compiler.tar.gz'), archive);
     writeFileSync(join(pkg, 'packages.zip'), bundle);
@@ -146,4 +146,17 @@ test('evidence validation rereads archive, manifest and package bytes', () => {
     }
     assert.deepEqual(validate().matrix.cases, fixtureIdentity(item.version).cases);
   } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+
+test('merge rejects missing or exchanged runtime-map members', () => {
+  for (const mutate of [
+    map => { delete map.legacy; },
+    map => { map.extra = map.modern; },
+    map => { [map.modern, map.legacy] = [map.legacy, map.modern]; },
+  ]) {
+    const rows = records();
+    mutate(rows[0].shared_runtimes);
+    assert.throws(() => merge(rows));
+  }
 });

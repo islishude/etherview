@@ -87,7 +87,7 @@ func (catalog *CompilerCatalog) parseVyper(source string, raw []byte) ([]Catalog
 		}
 		platforms := map[string]bool{}
 		for _, artifact := range build.Runtimes {
-			if catalog.validateVyperArtifact(artifact) != nil || platforms[artifact.Platform] {
+			if catalog.validateVyperArtifact(build.Version, artifact) != nil || platforms[artifact.Platform] {
 				return nil, invalid
 			}
 			platforms[artifact.Platform] = true
@@ -119,9 +119,10 @@ func strictVyperJSON(raw []byte, target any) error {
 	return decoder.Decode(target)
 }
 
-func (catalog *CompilerCatalog) validateVyperArtifact(artifact VyperRuntimeArtifact) error {
+func (catalog *CompilerCatalog) validateVyperArtifact(version string, artifact VyperRuntimeArtifact) error {
 	invalid := errors.New("invalid Vyper runtime artifact")
-	if artifact.Platform != CompilerPlatformEmscriptenWASM32 || artifact.SharedSHA256 != vyperSharedManifestSHA256 {
+	spec, ok := vyperRuntimeFor(normalizeCompilerVersion(version))
+	if artifact.Platform != CompilerPlatformEmscriptenWASM32 || artifact.SharedSHA256 != spec.SharedSHA256 || !ok {
 		return invalid
 	}
 	if artifact.Protocol != vyperDynamicSchema || artifact.MaxBytes <= 0 || artifact.MaxBytes > catalog.options.MaxArtifactBytes {
@@ -192,7 +193,7 @@ func (catalog *CompilerCatalog) vyperArtifact(ctx context.Context, generation in
 	}
 	for _, artifact := range artifacts {
 		if artifact.Platform == CompilerPlatformEmscriptenWASM32 {
-			if catalog.validateVyperArtifact(artifact) != nil {
+			if catalog.validateVyperArtifact(version, artifact) != nil {
 				return entry, artifact, ErrCompilerProvenanceConflict
 			}
 			return entry, artifact, nil
