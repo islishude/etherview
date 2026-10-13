@@ -202,6 +202,7 @@ credential-scoped operational boundaries.
 | P30-T129 | done | P30-T128 | Preserve cancellation during locked Vyper package assembly | Cancellation/deadline and lease-heartbeat regressions; verifier tests and governance gates |
 | P30-T130 | blocked | P30-T129 | Retire Vyper 0.2.0 and generate reviewed PyPI update PRs daily | Local removal/updater/matrix/race/image checks pass; blocked on upstream advisory re-review and fresh native CI; clear when security and native acceptance pass |
 | P30-T131 | done | P30-T129 | Extract maintained workflow scripts | Preserve job boundaries and command behavior; local script regressions and governance checks |
+| P30-T132 | done | P30-T131 | Re-review exact advisory revisions rejected by PR 144 CI | Replay failed audit artifact, preserve existing reasons and rejection policy, live audit and governance checks |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
@@ -283,10 +284,11 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
 ## Current Blockers
 
-P30-T130 is blocked on the live WASM audit's 68 review-required advisory
-changes and fresh native Linux AMD64/ARM64 plus monolith/split acceptance.
-Clear it after reviewing the upstream revisions without weakening policy,
-passing `make security-check`, and recording native CI for this change.
+P30-T130 awaits the complete security/license CI rerun after T132's exact
+advisory re-review. Run 38417883868 at a789057 passes both native Linux
+AMD64/ARM64 matrices and monolith/split production checks; only security failed.
+T132 passes local failed-artifact replay and the live WASM audit without changing
+policy. Clear the remaining blocker after the security/license rerun passes.
 P30-T128's earlier acceptance does not cover P30-T130. Actions PR creation also
 remains disabled in repository settings and must be enabled before rollout.
 
@@ -1474,3 +1476,37 @@ closure below supplies the missing evidence.
   manifest helper and its tests. Earlier workflow edits remain. Digest-export
   coverage stays in place; workflow-helper and docs/plan checks pass. This
   supersedes the manifest-extraction portion of the T131 evidence above.
+
+
+### P30-T132 — PR 144 security advisory revision review
+
+- Diagnosed [CI run 38417883868](https://github.com/islishude/etherview/actions/runs/38417883868)
+  and failed security job 115367079091 at a789057. All twelve other jobs passed,
+  including native AMD64/ARM64 matrix and production acceptance. Security failed
+  at the exact-content WASM review gate after Go, npm and native reference audits
+  passed; the license stage had not run.
+- Downloaded the run's `vyper-wasm-security` artifact. Canonical raw SHA-256:
+  `086ff0537aa95d6f3017ed22c7dd5532161971876cb4d00f0f90980b996e61fc`;
+  inventory SHA-256:
+  `647405fe05268317d94234b75413326e16bb94931b6e75bd1697acf24b4b9f5b`.
+  All 68 rejected component/advisory pairs already had dispositions, covering
+  36 distinct CVEs. Read the current descriptions and retained their existing
+  applicability reasons; append only these exact payload digests.
+- Expat findings, including CVE-2026-102633's 32-bit allocation overflow, require
+  XML parsing. `protocol.py` and `adapter.py` pass bounded inline JSON/source to
+  compile_json, not XML parsers. CPython CVE-2026-15806/17084/19445/19553/7210
+  concern HTTP credentials, IDNA/stringprep, TLS contexts or XML hashing; these
+  interfaces are outside that input path. CVE-2026-15310 concerns non-DEFLATE
+  ZIP members and CVE-2026-82049 concerns TAR extraction: `bundle.go` verifies
+  archive size/hash, `archive.go` emits DEFLATE package ZIPs, and `execute.mjs`
+  unpacks authenticated packages before passing source through the fixed adapter.
+  No user-provided archive enters Python extraction.
+- Changed no reason, component, inventory, auxiliary classification policy or
+  audit implementation. Unknown findings and subsequent substantive revisions
+  still fail. This is an explicit review of observed revisions, not a wildcard
+  exemption, runtime vulnerability fix or automatic approval path.
+- PASS: replay of the exact failed CI artifact (failed before, passed after),
+  rejection after mutating a reviewed finding's details, 62 audit/auxiliary/release
+  tooling tests, and live `node compiler/vyper/wasm/audit.mjs` (92 components,
+  1,685 findings, zero auxiliary changes). Docs/plan and whitespace checks pass.
+  Complete security/license acceptance remains subject to the pushed CI rerun.

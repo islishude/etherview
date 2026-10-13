@@ -318,3 +318,10 @@ The previous native acceptance records do not certify this change.
 P30-T131 is complete: substantive workflow shell logic now lives in maintained
 scripts, with local command-boundary regressions and docs/plan checks passing.
 Remote workflow execution remains unverified; P30-T130's blockers are unchanged.
+
+
+P30-T132 completes exact re-review of the 68 advisory revisions rejected by
+PR 144. Failed-CI artifact replay, live WASM audit and 62 audit/tooling tests pass
+without changing reasons or policy. Run 38417883868 passes all twelve other
+checks, including native AMD64/ARM64 production acceptance; P30-T130 awaits the
+security/license rerun. Actions PR creation still needs repository configuration.
