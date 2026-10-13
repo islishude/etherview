@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdtempSync, rmSync, readdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { tmpdir, arch, platform } from 'node:os';
-import { sha256, sharedSHA256 } from './release.mjs';
+import { sha256, sharedRuntimes, runtimeFor } from './release.mjs';
 import { assignments, shardOptions, shardFile, versionEvidence, versions } from './production-shards.mjs';
 import { randomUUID } from 'node:crypto';
 import { compile } from './production-process.mjs';
@@ -21,25 +21,29 @@ const image = process.env.IMAGE ?? 'etherview:local';
 const root = resolve('.local/vyper-releases');
 const packages = resolve('.local/vyper-wasm/packages');
 const architecture = arch() === 'x64' ? 'amd64' : arch();
-// Non-Linux local runs are diagnostic and rejected by the release signer.
+// Non-Linux local runs are diagnostic and rejected by release acceptance.
 assert(['amd64', 'arm64'].includes(architecture));
 const imageID = execFileSync(docker, ['image', 'inspect', '--format', '{{.Id}}', image], { encoding: 'utf8' }).trim();
 assert.equal(execFileSync(docker, ['image', 'inspect', '--format', '{{.Architecture}}', imageID], { encoding: 'utf8' }).trim(), architecture);
 const temporary = mkdtempSync(join(tmpdir(), `vyper-production-matrix-${runID}-`));
 const container = `vyper-matrix-inspect-${runID}`;
-const shared = '/opt/etherview/python-wasm';
+
 const exe = '/opt/etherview/solcjs/etherview-solcjs';
-const evidence = { native_linux: platform() === 'linux', image_id: imageID, shared_sha256: sharedSHA256, descriptors: {}, matrix: {} };
+const evidence = { native_linux: platform() === 'linux', image_id: imageID, shared_runtimes: sharedRuntimes, descriptors: {}, matrix: {} };
 try {
   execFileSync(docker, ['create', '--name', container, imageID]);
   execFileSync(docker, ['cp', `${container}:/opt/etherview/solcjs/runtime-manifest.json`, join(temporary, 'host.json')]);
-  execFileSync(docker, ['cp', `${container}:${shared}/shared-manifest.json`, join(temporary, 'shared.json')]);
+
   evidence.host_sha256 = sha256(readFileSync(join(temporary, 'host.json')));
-  assert.equal(sha256(readFileSync(join(temporary, 'shared.json'))), sharedSHA256);
+  for(const [id,digest] of Object.entries(sharedRuntimes)){
+    execFileSync(docker,['cp',`${container}:/opt/etherview/python-wasm/${id}/shared-manifest.json`,join(temporary,id+'.json')]);
+    assert.equal(sha256(readFileSync(join(temporary,id+'.json'))),digest);
+  }
   for (const item of versions) {
     if (selected && !selected.has(item.version)) continue;
     const expectedEvidence = versionEvidence(item, root, packages, evidence.host_sha256);
     const pkg = join(packages, item.version);
+    const shared = '/opt/etherview/python-wasm/'+runtimeFor(item.version).id;
     const fixtureRoot = new URL(`../../../internal/verify/testdata/compiler/vyper/versions/${item.version}/`, import.meta.url);
     let cases = 0;
     for (const file of readdirSync(fixtureRoot).filter(name => name.endsWith('.input.json')).sort()) {

@@ -1,23 +1,19 @@
-// Assemble a signed catalog only from complete native release acceptance.
+import {canonical} from './wasm/tooling.mjs';
+// Validate complete native production acceptance for the application release.
 import { readFileSync, writeFileSync, readdirSync, lstatSync } from 'node:fs';
 import { resolve, basename } from 'node:path';
-import { createPrivateKey, sign } from 'node:crypto';
 import { parseArgs } from 'node:util';
-import { executorDigest, fixtureIdentity, platforms, sha256, sharedSHA256 } from './wasm/release.mjs';
+import { executorDigest, fixtureIdentity, platforms, sha256, runtimeFor, validateRuntimeSet } from './wasm/release.mjs';
 const { values } = parseArgs({ options: {
-  artifacts: { type: 'string' }, origin: { type: 'string' },
-  acceptance: { type: 'string' }, 'key-file': { type: 'string' },
-  'expires-at': { type: 'string' }, output: { type: 'string' },
+  artifacts: { type: 'string' },
+  acceptance: { type: 'string' },
+  output: { type: 'string' },
 }});
-for (const name of ['artifacts', 'origin', 'acceptance', 'key-file', 'expires-at', 'output']) {
+for (const name of ['artifacts', 'acceptance', 'output']) {
   if (!values[name]) throw new Error(`--${name} is required`);
 }
-const origin = new URL(values.origin);
-if (origin.protocol !== 'https:' || origin.username || origin.password || origin.search || origin.hash) throw new Error('HTTPS artifact base required');
-if (!origin.pathname.endsWith('/')) origin.pathname += '/';
-const expiry = new Date(values['expires-at']);
-if (!Number.isFinite(expiry.getTime()) || expiry <= new Date()) throw new Error('future catalog expiry required');
 const index = JSON.parse(readFileSync(new URL('./versions/index.json', import.meta.url))).versions;
+const recipes=JSON.parse(readFileSync(new URL('./application-lock.json',import.meta.url))).recipes;
 const acceptance = JSON.parse(readFileSync(values.acceptance));
 const runtimes = new Map();
 for (const filename of readdirSync(values.artifacts).filter((name) => /^vyper-.*\.json$/.test(name))) {
@@ -27,6 +23,9 @@ for (const filename of readdirSync(values.artifacts).filter((name) => /^vyper-.*
   const raw = readFileSync(descriptorPath);
   const artifact = JSON.parse(raw);
   const locked = index.find((entry) => entry.version === artifact.version);
+  const recipe=recipes.find(r=>r.version===artifact.version);
+  if(!recipe || artifact.manifest_sha256!==sha256(canonical(recipe.manifest)+'\n')) throw new Error('package differs from application lock');
+  const sharedSHA256 = locked ? runtimeFor(locked.version).shared_sha256 : '';
   if (!locked || artifact.platform !== 'emscripten-wasm32' ||
       locked.compiler_sha256 !== artifact.compiler_sha256 ||
       artifact.shared_sha256 !== sharedSHA256 ||
@@ -48,7 +47,7 @@ for (const filename of readdirSync(values.artifacts).filter((name) => /^vyper-.*
   for (const platform of platforms) {
     const evidence = acceptance[platform];
     if (!evidence || evidence.native_linux !== true || evidence.monolith !== true || evidence.split !== true ||
-        evidence.shared_sha256 !== sharedSHA256 ||
+        !validateRuntimeSet(evidence.shared_runtimes) ||
         evidence.descriptors?.[filename] !== sha256(raw)) throw new Error('native production acceptance is missing or stale');
     const executor = executorDigest(evidence.host_sha256, sharedSHA256, artifact.manifest_sha256);
     const matrix = evidence.matrix?.[artifact.version];
@@ -58,7 +57,7 @@ for (const filename of readdirSync(values.artifacts).filter((name) => /^vyper-.*
     executor_digests[platform] = executor;
   }
   runtimes.set(artifact.version, {
-    platform: artifact.platform, url: new URL(artifact.archive, origin).href,
+    platform: artifact.platform,
     sha256: artifact.sha256, manifest_sha256: artifact.manifest_sha256,
     shared_sha256: sharedSHA256, executor_digests,
     max_bytes: artifact.max_bytes, protocol: artifact.protocol,
@@ -69,7 +68,4 @@ const builds = index.map((entry) => {
   if (!artifact) throw new Error(`missing WASM package ${entry.version}`);
   return { version: entry.version, compiler_sha256: entry.compiler_sha256, withdrawn: false, runtimes: [artifact] };
 });
-const key = createPrivateKey(readFileSync(values['key-file']));
-if (key.asymmetricKeyType !== 'ed25519') throw new Error('Ed25519 signing key required');
-const payload = Buffer.from(JSON.stringify({ schema: 'etherview-vyper-catalog-v2', expires_at: expiry.toISOString(), builds }));
-writeFileSync(values.output, JSON.stringify({ payload: payload.toString('base64'), signature: sign(null, payload, key).toString('base64') }) + '\n', { flag: 'wx', mode: 0o644 });
+writeFileSync(values.output, JSON.stringify({schema:'etherview-vyper-release-acceptance-v1',builds})+'\n', {flag:'wx',mode:0o644});

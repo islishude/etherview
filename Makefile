@@ -31,6 +31,7 @@ GOLANGCI_LINT_VERSION ?= v2.14.0
 WEB_LICENSE_CHECKER_VERSION ?= 5.0.1
 
 GENERATED_PATHS := \
+	internal/verify/vyper_runtime_policy_generated.go \
 	internal/api/gen/models.gen.go \
 	internal/db/gen \
 	internal/enrich/manifests/safe-proxy-fingerprints.json \
@@ -91,6 +92,7 @@ toolchain-check:
 	@.github/scripts/toolchain-check.sh
 
 generate-go:
+	$(NODE) compiler/vyper/wasm/generate-policy.mjs
 	$(GO) generate $(GO_PACKAGES)
 	$(GO) tool sqlc generate
 
@@ -558,13 +560,20 @@ test: test-vyper-release
 test-vyper-release:
 	$(NPM) --prefix compiler ci --ignore-scripts
 	$(NODE) --test compiler/vyper/wasm/tooling.test.mjs compiler/vyper/wasm/audit-auxiliary.test.mjs
-	$(NODE) --test compiler/vyper/catalog.test.mjs compiler/vyper/wasm/production-shards.test.mjs
+	$(NODE) --test compiler/vyper/acceptance.test.mjs compiler/vyper/wasm/production-shards.test.mjs
 
 .PHONY: test-vyper-wasm-candidate
 test-vyper-wasm-candidate:
 	$(NPM) --prefix compiler ci --ignore-scripts
 	$(NODE) --test compiler/vyper/wasm/tooling.test.mjs compiler/vyper/wasm/audit-auxiliary.test.mjs
 	$(NODE) compiler/vyper/wasm/check.mjs
+
+# Diagnostic only. The output directory must not already exist.
+VYPER_ALIAS_FEASIBILITY_OUTPUT ?= .local/vyper-alias-feasibility
+.PHONY: test-vyper-alias-feasibility
+test-vyper-alias-feasibility:
+	$(NODE) --test compiler/vyper/wasm/alias-feasibility.test.mjs
+	$(NODE) compiler/vyper/wasm/alias-feasibility.mjs "$(VYPER_ALIAS_FEASIBILITY_OUTPUT)"
 
 .PHONY: benchmark-vyper-wasm
 benchmark-vyper-wasm: compiler-install

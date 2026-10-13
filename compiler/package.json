@@ -10,8 +10,9 @@
     "build:sea": "node build-sea.mjs"
   },
   "dependencies": {
-    "pyodide": "0.29.5",
-    "solc": "0.8.37"
+    "pyodide": "314.0.7",
+    "solc": "0.8.37",
+    "pyodide-legacy": "npm:pyodide@0.29.5"
   },
   "devDependencies": {
     "adm-zip": "0.6.1",

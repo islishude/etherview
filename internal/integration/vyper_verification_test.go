@@ -4,12 +4,11 @@ package integration_test
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	vyper "github.com/islishude/etherview/compiler/vyper"
 	"os"
 	"strings"
 	"testing"
@@ -150,52 +149,15 @@ func seedVyperRuntime(t *testing.T, db *pgxpool.Pool) int64 {
 		t.Fatal(err)
 	}
 	executor := sha256.Sum256([]byte("fixture-vyper-runtime"))
-	artifacts, _ := json.Marshal([]map[string]any{{"platform": "emscripten-wasm32", "executor_digests": map[string]string{"linux-amd64": hex.EncodeToString(executor[:]), "linux-arm64": hex.EncodeToString(executor[:])}, "protocol": "etherview-vyper-wasm-package-v1"}})
-	if _, err := db.Exec(context.Background(), `INSERT INTO compiler_catalog_entries (generation_id, language, version, platform, artifact_url, artifact_sha256, max_bytes, vyper_runtimes) VALUES ($1, 'vyper', '0.4.3', 'python-wheel', 'https://compilers.example/catalog.json', decode($2,'hex'), 1024, $3)`, generation, verify.VyperCompilerSHA256, artifacts); err != nil {
+	recipe, err := vyper.Lookup("0.4.3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifacts, _ := json.Marshal([]map[string]any{{"platform": "emscripten-wasm32", "executor_digests": map[string]string{"linux-amd64": hex.EncodeToString(executor[:]), "linux-arm64": hex.EncodeToString(executor[:])}, "protocol": "etherview-vyper-wasm-package-v1", "recipe_sha256": recipe.Digest()}})
+	if _, err := db.Exec(context.Background(), `INSERT INTO compiler_catalog_entries (generation_id, language, version, platform, artifact_url, artifact_sha256, max_bytes, vyper_runtimes) VALUES ($1, 'vyper', '0.4.3', 'python-wheel', $4, decode($2,'hex'), 1024, $3)`, generation, verify.VyperCompilerSHA256, artifacts, "embedded:vyper/"+recipe.Digest()); err != nil {
 		t.Fatal(err)
 	}
 	return generation
-}
-
-func TestVyperCatalogExpiryAndGenerationRetention(t *testing.T) {
-	db := newMigratedPostgres(t)
-	generation := seedVyperRuntime(t, db)
-	ctx := t.Context()
-	if _, err := db.Exec(ctx, `UPDATE compiler_catalog_entries SET expires_at=now()+interval '30 minutes' WHERE generation_id=$1`, generation); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(ctx, `INSERT INTO compiler_catalog_heads(language,generation_id) VALUES ('vyper',$1)`, generation); err != nil {
-		t.Fatal(err)
-	}
-	public, _, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	catalog, err := verify.NewCompilerCatalog(db, verify.CompilerCatalogOptions{VyperPublicKey: public, Sources: map[verify.Language]string{verify.LanguageSolidity: "https://compilers.example/emscripten-wasm32/list.json", verify.LanguageVyper: "https://compilers.example/catalog.json"}, AllowedOrigins: []string{"https://compilers.example"}, Freshness: time.Hour})
-	if err != nil {
-		t.Fatal(err)
-	}
-	entry, err := catalog.Lookup(ctx, verify.LanguageVyper, "0.4.3")
-	if err != nil || entry.GenerationID != generation {
-		t.Fatalf("fresh short-lived signed generation: %v", err)
-	}
-	versions, err := catalog.Versions(ctx, verify.LanguageVyper)
-	if err != nil || len(versions) != 1 || versions[0] != "0.4.3" {
-		t.Fatalf("versions=%v error=%v", versions, err)
-	}
-	if _, err := db.Exec(ctx, `UPDATE compiler_catalog_entries SET expires_at=now()-interval '1 second' WHERE generation_id=$1`, generation); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := catalog.Lookup(ctx, verify.LanguageVyper, "0.4.3"); !errors.Is(err, verify.ErrCompilerCatalogStale) {
-		t.Fatalf("expired entry: %v", err)
-	}
-	if _, err := catalog.Versions(ctx, verify.LanguageVyper); !errors.Is(err, verify.ErrCompilerCatalogStale) {
-		t.Fatalf("expired versions: %v", err)
-	}
-	var count int
-	if err := db.QueryRow(ctx, `SELECT count(*) FROM compiler_catalog_entries WHERE generation_id=$1`, generation).Scan(&count); err != nil || count != 1 {
-		t.Fatalf("expired generation removed: count=%d error=%v", count, err)
-	}
 }
 
 func TestVyperBoundRetryDoesNotRequireFreshCatalog(t *testing.T) {
@@ -224,6 +186,21 @@ func TestVyperBoundRetryDoesNotRequireFreshCatalog(t *testing.T) {
 	compiler := &vyperFixtureCompiler{generation: generation}
 	provenance, err := compiler.Provenance(verify.LanguageVyper, "0.4.3")
 	if err != nil {
+		t.Fatal(err)
+	}
+	// The database must reject a recipe mismatch even when the executor digest
+	// exists in the application's immutable generation.
+	if _, err := db.Exec(ctx, `UPDATE compiler_catalog_entries SET vyper_runtimes=jsonb_set(vyper_runtimes,'{0,recipe_sha256}','"wrong"') WHERE generation_id=$1`, generation); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.BindCompiler(ctx, bound, provenance); err == nil {
+		t.Fatal("database accepted another recipe")
+	}
+	recipe, err := vyper.Lookup("0.4.3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `UPDATE compiler_catalog_entries SET vyper_runtimes=jsonb_set(vyper_runtimes,'{0,recipe_sha256}',to_jsonb($2::text)) WHERE generation_id=$1`, generation, recipe.Digest()); err != nil {
 		t.Fatal(err)
 	}
 	if err := repository.BindCompiler(ctx, bound, provenance); err != nil {

@@ -72,12 +72,14 @@ fi
     --entrypoint /usr/local/bin/etherview-geas-compiler \
     "$image" --self-test >/dev/null
 
+for wasm_runtime in modern legacy; do
 "$docker_command" run --rm --network none --read-only --cap-drop ALL \
     --security-opt no-new-privileges \
     --env LD_LIBRARY_PATH=/opt/etherview/solcjs/lib \
     --entrypoint /opt/etherview/solcjs/etherview-solcjs \
-    "$image" "--node-options=--max-old-space-size=128 --wasm-max-mem-pages=6144 --allow-fs-read=/opt/etherview/python-wasm" \
-    --vyper-self-test /opt/etherview/python-wasm >/dev/null
+    "$image" "--node-options=--max-old-space-size=128 --wasm-max-mem-pages=6144 --allow-fs-read=/opt/etherview/python-wasm/$wasm_runtime" \
+    --vyper-self-test /opt/etherview/python-wasm/$wasm_runtime >/dev/null
+done
 
 normalize_architecture() {
     case "$1" in
@@ -125,8 +127,10 @@ for required_path in \
     usr/local/bin/etherview-geas-compiler \
     opt/etherview/solcjs/etherview-solcjs \
     opt/etherview/solcjs/runtime-manifest.json \
-    opt/etherview/python-wasm/shared-manifest.json \
-    opt/etherview/python-wasm/pyodide.asm.wasm \
+    opt/etherview/python-wasm/modern/shared-manifest.json \
+    opt/etherview/python-wasm/legacy/shared-manifest.json \
+    opt/etherview/python-wasm/modern/pyodide.asm.wasm \
+    opt/etherview/python-wasm/legacy/pyodide.asm.wasm \
     licenses/python-wasm/pyodide-LICENSE.txt \
     licenses/python-wasm/Python-LICENSE.txt \
     licenses/python-wasm/emscripten-LICENSE.txt \
@@ -140,6 +144,7 @@ for required_path in \
     licenses/go-ethereum-crypto-secp256k1-BSD-3-Clause.txt \
     licenses/go-ethereum-metrics-BSD-2-Clause-FreeBSD.txt \
     licenses/geas-LGPL-3.0.txt \
+    licenses/vyper-0.2.0-LICENSE.txt \
     licenses/holiman-bloomfilter-MIT.txt \
     licenses/libsecp256k1-MIT.txt
 do
@@ -212,4 +217,4 @@ if awk '$1 ~ /^[-d]/ && $1 ~ /w/ && $NF ~ /^opt\/etherview\/python-wasm(\/|$)/ {
     exit 1
 fi
 
-echo "docker-image-check: PASS (user=$configured_user, architecture=$image_architecture, SEA=Node-v26.11.1, Geas=0.3.3, Pyodide=0.29.5, hardened rootfs)"
+echo "docker-image-check: PASS (user=$configured_user, architecture=$image_architecture, SEA=Node-v26.11.1, Geas=0.3.3, Pyodide=314.0.7+0.29.5, hardened rootfs)"

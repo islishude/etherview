@@ -7,6 +7,8 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+
+	vyper "github.com/islishude/etherview/compiler/vyper"
 )
 
 type ServiceErrorCode string
@@ -90,6 +92,11 @@ func (service *Service) prepareV2(_ context.Context, request *SubmissionV2) erro
 		return errors.New("compiler version is invalid")
 	}
 	if request.Language == LanguageVyper {
+		recipe, err := vyper.Lookup(request.CompilerVersion)
+		if err != nil {
+			return ErrCompilerVersionUnavailable
+		}
+		request.VyperLockDigest = recipe.Digest()
 		if !stableVyperVersion(request.CompilerVersion) {
 			return ErrCompilerVersionUnavailable
 		}

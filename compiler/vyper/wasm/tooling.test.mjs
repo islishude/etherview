@@ -18,7 +18,7 @@ import AdmZip from "adm-zip";
 import { gunzipSync } from "node:zlib";
 import { canonical, digest, HERE, safeMember, readJSON } from "./tooling.mjs";
 import { makeZip, zipEntries } from "./archives.mjs";
-import { download, unpackWheel, packRuntime } from "./packages.mjs";
+import { download, packRuntime } from "./packages.mjs";
 import { descriptor, buildRelease } from "./build-release.mjs";
 import { metadata, evaluate, findingDigest, osv, queryPackage, queryCore } from "./audit.mjs";
 import { checkPackage } from "./package-licenses.mjs";
@@ -39,8 +39,8 @@ function packageFixture(root, payload = Buffer.from("authenticated upstream pack
   const manifest = {
     ...item,
     schema: "etherview-vyper-wasm-package-v1",
-    pyodide: "0.29.5",
-    python: "3.13.2",
+    pyodide: "314.0.7",
+    python: "3.14.2",
     dependencies: [],
     files: [{ path: "packages.zip", sha256: digest(payload) }],
   };
@@ -72,28 +72,13 @@ test("cached bytes are authenticated again", async (t) => {
     /cached artifact identity/,
   );
 });
-test("unsafe archive paths, native code, conflicts, symlinks and oversized members", () => {
+test("audit archive paths, symlinks and oversized members", () => {
   for (const name of ["../file.py", "/file.py", "a/../file.py", "a\\file.py", "a//b", "a/./b"])
     assert.throws(() => safeMember(name), /unsafe/);
-  const files = new Map();
-  unpackWheel(
-    zip({
-      "fallback/map.py": "upstream python",
-      "fallback/map.abi3.so": "native",
-      "fallback/__pycache__/map.pyc": "bytecode",
-    }),
-    files,
-  );
-  assert.deepEqual(files, new Map([["fallback/map.py", Buffer.from("upstream python")]]));
-  assert.throws(
-    () =>
-      unpackWheel(zip({ "module.py": "other" }), new Map([["module.py", Buffer.from("original")]])),
-    /conflicting/,
-  );
   const archive = new AdmZip();
   archive.addFile("link", Buffer.from("../escape"));
   archive.getEntry("link").header.attr = 0o120777 * 65536;
-  assert.throws(() => unpackWheel(archive.toBuffer(), new Map()), /unsafe wheel/);
+  assert.throws(() => zipEntries(archive.toBuffer()), /unsafe wheel/);
   const raw = zip({ "x.py": "x" });
   const central = raw.indexOf(Buffer.from("504b0102", "hex"));
   raw.writeUInt32LE(201 << 20, central + 24);
@@ -345,7 +330,7 @@ test("ZIP rejects duplicate paths and corrupt contents before use", () => {
   assert.throws(() => zipEntries(raw), /duplicate/i);
   const corrupt = zip({ "x.py": "source" });
   corrupt[34] ^= 0xff;
-  assert.throws(() => unpackWheel(corrupt, new Map()));
+  assert.throws(() => zipEntries(corrupt)[0].getData());
 });
 test("source archive rejects links, traversal and duplicate files", async () => {
   const { default: tar } = await import("tar-stream");
@@ -385,4 +370,23 @@ test("runtime upgrade retires only unchanged listed payloads and retains unknown
   assert.equal(readFileSync(join(root, "old.whl"), "utf8"), "changed");
   previous.files[0].path = "../outside.whl";
   assert.throws(() => retirePreviousFiles(root, previous, []), /invalid previous runtime path/);
+});
+
+test("runtime policy covers the exact supported set and rejects incomplete evidence", async () => {
+  const { runtimeFor, runtimeByID, runtimePolicy, sharedRuntimes, validateRuntimeSet } = await import("./runtime-policy.mjs");
+  const index = readJSON(join(HERE, "../versions/index.json")).versions;
+  const mapped = Object.values(runtimePolicy).flatMap(p => p.versions);
+  assert.deepEqual([...mapped].sort(), index.map(v => v.version).sort());
+  assert.equal(new Set(mapped).size, 26);
+  assert.equal(runtimePolicy.modern.versions.length, 4);
+  assert.equal(runtimePolicy.legacy.versions.length, 22);
+  for (const item of index) {
+    const expected = ["0.4.0", "0.4.1", "0.4.2", "0.4.3"].includes(item.version) ? "modern" : "legacy";
+    assert.equal(runtimeFor(item.version).id, expected);
+    assert.equal(runtimeByID(expected).shared_sha256, sharedRuntimes[expected]);
+  }
+  for (const value of ["0.4.4", "0.3.5", "latest", "../legacy", "__proto__"]) assert.throws(() => runtimeFor(value));
+  assert.throws(() => runtimeByID("__proto__"));
+  assert(validateRuntimeSet({ ...sharedRuntimes }));
+  for (const value of [null, {}, { modern: sharedRuntimes.modern }, { ...sharedRuntimes, extra: "x" }, { modern: sharedRuntimes.legacy, legacy: sharedRuntimes.modern }]) assert(!validateRuntimeSet(value));
 });

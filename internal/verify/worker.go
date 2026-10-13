@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	vyper "github.com/islishude/etherview/compiler/vyper"
+
 	"github.com/islishude/etherview/internal/geascompiler"
 )
 
@@ -198,6 +200,12 @@ func (worker *Worker) processLease(ctx context.Context, lease VerificationLease)
 func (worker *Worker) processLeaseV2(ctx context.Context, lease VerificationLease) error {
 	repository := worker.repository
 	request := lease.Job.RequestV2
+	if request.Language == LanguageVyper {
+		recipe, err := vyper.Lookup(request.CompilerVersion)
+		if err != nil || request.VyperLockDigest != recipe.Digest() {
+			return worker.failLease(ctx, lease, ErrorCompilerProvenanceMismatch)
+		}
+	}
 	if request.Kind == JobProxy {
 		if err := repository.CompleteProxyV2(ctx, lease); err != nil {
 			if errors.Is(err, ErrTargetNotCanonical) {

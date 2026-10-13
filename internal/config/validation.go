@@ -1,8 +1,6 @@
 package config
 
 import (
-	"crypto/ed25519"
-	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -304,16 +302,6 @@ func validateCompilerCatalogConfig(cfg VerificationConfig) error {
 	}
 	if len(allowed) == 0 {
 		return errors.New("verification.allowed_download_origins is required")
-	}
-	if cfg.VyperCatalogURL != "" || cfg.VyperCatalogPublicKey != "" {
-		key, err := base64.StdEncoding.Strict().DecodeString(cfg.VyperCatalogPublicKey)
-		parsed, urlErr := url.Parse(cfg.VyperCatalogURL)
-		if err != nil || len(key) != ed25519.PublicKeySize || urlErr != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-			return errors.New("vyper catalog requires an HTTPS URL and base64 Ed25519 public key")
-		}
-		if _, ok := allowed[strings.ToLower(parsed.Scheme+"://"+parsed.Host)]; !ok {
-			return errors.New("vyper catalog origin is not allowlisted")
-		}
 	}
 	for language, raw := range cfg.CatalogURLs {
 		if language != "solidity" {

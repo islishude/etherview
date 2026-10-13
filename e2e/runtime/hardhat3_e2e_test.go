@@ -298,7 +298,7 @@ func runHardhat3Mode(
 		phase:      "initialization",
 	}
 	t.Cleanup(func() { h.cleanup() })
-	configureVyperCatalogFixture(t, h)
+	configureVyperApplicationFixture(t, h)
 
 	h.enterPhase("isolated Anvil and production topology")
 	if err := project.Up(ctx, "runtime-fixture"); err != nil {

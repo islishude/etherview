@@ -3,7 +3,6 @@ package verify
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -55,7 +54,6 @@ type CatalogEntry struct {
 }
 
 type CompilerCatalogOptions struct {
-	VyperPublicKey             ed25519.PublicKey
 	Sources                    map[Language]string
 	Platform                   string
 	AllowedOrigins             []string
@@ -77,6 +75,7 @@ type CompilerCatalog struct {
 	options          CompilerCatalogOptions
 	origins          map[string]struct{}
 	automaticSources map[Language]bool
+	vyperEntries     map[string]CatalogEntry
 	sourceMu         sync.RWMutex
 }
 
@@ -93,7 +92,6 @@ func NewCompilerCatalog(db dbaccess.Database, options CompilerCatalogOptions) (*
 }
 
 func newCompilerCatalogParser(options CompilerCatalogOptions) (*CompilerCatalog, error) {
-	options.VyperPublicKey = append(ed25519.PublicKey(nil), options.VyperPublicKey...)
 	if options.MaxCatalogBytes <= 0 {
 		options.MaxCatalogBytes = defaultCatalogBytes
 	}
@@ -140,18 +138,12 @@ func newCompilerCatalogParser(options CompilerCatalogOptions) (*CompilerCatalog,
 	}
 	automaticSources := make(map[Language]bool, len(options.Sources))
 	for language, raw := range options.Sources {
-		if language != LanguageSolidity && language != LanguageVyper {
+		if language != LanguageSolidity {
 			return nil, fmt.Errorf("compiler catalog language %q is unsupported", language)
 		}
 		automaticSources[language] = strings.TrimSpace(raw) == "" ||
 			strings.TrimSpace(raw) == automaticCatalogSource
-		if language == LanguageVyper && len(options.VyperPublicKey) != ed25519.PublicKeySize {
-			return nil, errors.New("vyper catalog signing key is required")
-		}
 		resolved, err := resolveCatalogSource(language, raw, options.Platform)
-		if language == LanguageVyper {
-			resolved, err = raw, nil
-		}
 		raw = resolved
 		if err != nil {
 			return nil, err
@@ -313,9 +305,6 @@ type compilerCatalogDocument struct {
 }
 
 func (catalog *CompilerCatalog) parse(language Language, source string, raw []byte) ([]CatalogEntry, error) {
-	if language == LanguageVyper {
-		return catalog.parseVyper(source, raw)
-	}
 	if err := validateUniqueJSON(raw); err != nil {
 		return nil, fmt.Errorf("invalid compiler catalog JSON: %w", err)
 	}
@@ -453,13 +442,15 @@ func (catalog *CompilerCatalog) persist(
 			return 0, fmt.Errorf("persist compiler catalog entry: %w", err)
 		}
 		if entry.Language == LanguageVyper {
-			if err := dbgen.New(tx).VerifyVyperPersistRuntime(ctx, dbgen.VerifyVyperPersistRuntimeParams{GenerationID: generationID, Version: entry.Version, VyperRuntimes: []byte(entry.VyperRuntimes), ExpiresAt: pgtype.Timestamptz{Time: entry.ExpiresAt, Valid: true}}); err != nil {
+			if err := dbgen.New(tx).VerifyVyperPersistRuntime(ctx, dbgen.VerifyVyperPersistRuntimeParams{GenerationID: generationID, Version: entry.Version, VyperRuntimes: []byte(entry.VyperRuntimes), ExpiresAt: pgtype.Timestamptz{Time: entry.ExpiresAt, Valid: !entry.ExpiresAt.IsZero()}}); err != nil {
 				return 0, errors.New("persist Vyper runtime catalog")
 			}
 		}
 	}
-	if err := dbgen.New(tx).VerifyInlinePersistStatement3(ctx, string(language), generationID); err != nil {
-		return 0, fmt.Errorf("activate compiler catalog generation: %w", err)
+	if language != LanguageVyper {
+		if err := dbgen.New(tx).VerifyInlinePersistStatement3(ctx, string(language), generationID); err != nil {
+			return 0, fmt.Errorf("activate compiler catalog generation: %w", err)
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return 0, fmt.Errorf("commit compiler catalog refresh: %w", err)
@@ -468,8 +459,14 @@ func (catalog *CompilerCatalog) persist(
 }
 
 func (catalog *CompilerCatalog) Lookup(ctx context.Context, language Language, version string) (CatalogEntry, error) {
-	if language == LanguageVyper && !catalog.vyperConfigured() {
-		return CatalogEntry{}, ErrCompilerCatalogUnavailable
+	if language == LanguageVyper {
+		catalog.sourceMu.RLock()
+		defer catalog.sourceMu.RUnlock()
+		entry, ok := catalog.vyperEntries[normalizeCompilerVersion(version)]
+		if !ok {
+			return CatalogEntry{}, ErrCompilerVersionUnavailable
+		}
+		return entry, nil
 	}
 	if language == LanguageYul {
 		language = LanguageSolidity
@@ -537,8 +534,18 @@ func (catalog *CompilerCatalog) Lookup(ctx context.Context, language Language, v
 }
 
 func (catalog *CompilerCatalog) Versions(ctx context.Context, language Language) ([]string, error) {
-	if language == LanguageVyper && !catalog.vyperConfigured() {
-		return nil, ErrCompilerCatalogUnavailable
+	if language == LanguageVyper {
+		catalog.sourceMu.RLock()
+		defer catalog.sourceMu.RUnlock()
+		versions := make([]string, 0, len(catalog.vyperEntries))
+		for version := range catalog.vyperEntries {
+			versions = append(versions, version)
+		}
+		if len(versions) == 0 {
+			return nil, ErrVyperRuntimeUnavailable
+		}
+		sortCompilerVersions(versions)
+		return versions, nil
 	}
 	if language == LanguageYul {
 		language = LanguageSolidity
@@ -552,7 +559,6 @@ func (catalog *CompilerCatalog) Versions(ctx context.Context, language Language)
 	for _, storedRow := range rows {
 		var version string
 		var expires pgtype.Timestamptz
-		var runtimes []byte
 		if err := func() error {
 			version = storedRow.Version
 			if !storedRow.UpdatedAt.Valid {
@@ -563,16 +569,12 @@ func (catalog *CompilerCatalog) Versions(ctx context.Context, language Language)
 			}
 			fetchedAt = storedRow.UpdatedAt.Time
 			expires = storedRow.ExpiresAt
-			runtimes = storedRow.VyperRuntimes
 			return nil
 		}(); err != nil {
 			return nil, fmt.Errorf("scan compiler catalog: %w", err)
 		}
 		if expires.Valid && !expires.Time.After(time.Now()) {
 			return nil, ErrCompilerCatalogStale
-		}
-		if language == LanguageVyper && !vyperHostSupported(runtimes) {
-			continue
 		}
 		versions = append(versions, version)
 	}

@@ -3,6 +3,7 @@ package verify
 import "encoding/json"
 
 type SubmissionV2 struct {
+	VyperLockDigest      string                   `json:"vyper_lock_digest,omitempty"`
 	TargetFile           string                   `json:"target_file,omitempty"`
 	VyperMultipart       *VyperMultipartRequest   `json:"-"`
 	Kind                 JobKind                  `json:"kind"`

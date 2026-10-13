@@ -1,7 +1,7 @@
 {
   "schema": "etherview-wasm-security-review-v1",
-  "reviewed_at": "2026-10-12",
-  "inventory_sha256": "22aceb7fdb0e66e7c4c119b34c7bd23d72a71a2635e4dd75dcc10352e940b75b",
+  "reviewed_at": "2026-10-13",
+  "inventory_sha256": "c3faa25efde58600b4d226278f3b4f5fb0024308f0b9c506e67c226692717e26",
   "core": [
     {
       "name": "bzip2",
@@ -72,11 +72,59 @@
       "repo": "madler/zlib",
       "ref": "v1.3.1",
       "commit": "51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf"
+    },
+    {
+      "name": "cpython-modern",
+      "repo": "python/cpython",
+      "ref": "v3.14.2",
+      "commit": "df793163d5821791d4e7caf88885a2c11a107986"
+    },
+    {
+      "name": "pyodide-modern",
+      "repo": "pyodide/pyodide",
+      "ref": "314.0.7",
+      "commit": "b1e4fcc2488962f6360a97f19b9982d6fdb5d16f"
+    },
+    {
+      "name": "emscripten-modern",
+      "repo": "emscripten-core/emscripten",
+      "ref": "5.0.3",
+      "commit": "285c424dfa9e83b03cf8490c65ceadb7c45f28eb"
+    },
+    {
+      "name": "expat-modern",
+      "repo": "libexpat/libexpat",
+      "ref": "R_2_7_3",
+      "commit": "4575e52f83e0d6d7bd24939eab8952bbc7bc358f"
+    },
+    {
+      "name": "xz-modern",
+      "repo": "tukaani-project/xz",
+      "ref": "v5.2.2",
+      "commit": "9815cdf6987ef91a85493bfcfd1ce2aaf3b47a0a"
+    },
+    {
+      "name": "zstd-modern",
+      "repo": "facebook/zstd",
+      "ref": "v1.5.7",
+      "commit": "f8745da6ff1ad1e7bab384bd1f9d742439278e99"
+    },
+    {
+      "name": "sqlite-modern",
+      "repo": "sqlite/sqlite",
+      "ref": "version-3.39.0",
+      "commit": "47d8c40ca522babfadf3f774d9869cf5f6a5896e"
+    },
+    {
+      "name": "hacl-star-modern",
+      "repo": "hacl-star/hacl-star",
+      "ref": "8ba599b2f6c9701b3dc961db895b0856a2210f76",
+      "commit": "8ba599b2f6c9701b3dc961db895b0856a2210f76"
     }
   ],
   "reasons": {
     "historical-bytecode": "These exact historical Vyper releases are retained solely to reproduce deployed bytecode under ADR-0049/0053. The reviewed advisories concern emitted EVM behavior, not executing Python in the verifier host. Verification asserts bytecode identity, never contract safety; original compiler bytes and upstream bugs must not be patched. Two known open-ended range errors for 0.4.3 remain documented separately.",
-    "packaging-only": "setuptools sdist/MANIFEST generation, jaraco.context.tarball and wheel.cli.unpack are not invoked by the runtime. Historical pkg_resources imports are retained; no package installation/build API accepts user input. Compiler bundles are assembled from authenticated archives by packages.py, never by these entrypoints.",
+    "packaging-only": "setuptools sdist/MANIFEST generation, jaraco.context.tarball and wheel.cli.unpack are not invoked by the runtime. Historical pkg_resources imports are retained; no package installation/build API accepts user input. Compiler bundles are assembled from authenticated archives by packages.mjs, never by these entrypoints.",
     "stdlib-interface": "The fixed compile_request -> adapter -> compile_json path accepts only inline source/interface JSON and does not invoke the advisory-specific HTTP, TLS, email, XML, HTML, plist, CSV, config-writing, URL, IDNA, base64, or browser APIs. No source is executed as Python. The host additionally denies networking, child creation and writes.",
     "authenticated-archives": "The runtime only decompresses digest-authenticated, size-bounded compiler and shared packages. User input is inline JSON, never ZIP/TAR/BZ2/LZMA data. Package ZIPs use DEFLATE. No untrusted extraction or decompressor reuse occurs; host writes are denied.",
     "strict-codec": "CVE-2025-4516 requires unicode_escape with an ignore/replace error handler. Compiler and AST parsing use strict decoding; no host compiler source uses that error-handler combination. Malformed strings fail compilation.",
@@ -85,7 +133,11 @@
     "not-windows": "The distributed target is emscripten-wasm32, not Windows. The affected Windows path/event-loop implementation is absent from execution.",
     "no-xml": "No compiler or adapter parses user-provided XML or invokes Expat; source/interface strings enter the compiler, not XML APIs. xmlwf is not distributed. Findings remain recorded because libexpat is linked into CPython.",
     "zlib-subset": "The runtime uses zlib inflate on authenticated DEFLATE archives. It neither ships untgz or Perl nor calls crc32_combine64/crc32_combine_gen64 or gzwrite/gzclearerr. These advisory prerequisites are absent.",
-    "no-iconv": "CVE-2025-26519 requires libc iconv EUC-KR conversion. Python source arrives as UTF-8 and uses CPython codecs/tokenization, not musl iconv. The affected conversion API is not called by the fixed compiler path."
+    "no-iconv": "CVE-2025-26519 requires libc iconv EUC-KR conversion. Python source arrives as UTF-8 and uses CPython codecs/tokenization, not musl iconv. The affected conversion API is not called by the fixed compiler path.",
+    "no-remote-debugging": "The fixed compiler request path never invokes profiling.sampling or asyncio process introspection, connects to another Python process or accepts a target process identifier. WASM execution has no native process memory/debugging interface; Node denies subprocess creation. User source is compiled, not executed as Python.",
+    "no-tempfile-cleanup": "User inputs do not invoke tempfile.TemporaryDirectory or host directory cleanup. Only authenticated package contents enter the isolated in-memory WASM filesystem; it is not shared with an attacker-controlled concurrent process. Node denies host writes; the Go parent owns its separate bounded cache cleanup.",
+    "no-sqlite": "The compiler and adapter use no SQLite database, SQL statements, changesets, session, FTS or zipfile extension APIs. sqlite3 CLI is not distributed. PostgreSQL access belongs to the Go parent and is unrelated to this linked WASM SQLite component. Findings are retained conservatively even where upstream affected ranges overmatch the pinned source.",
+    "no-xz-tools": "Only liblzma is linked into the Python WASM runtime. xzgrep/zgrep shell utilities are not shipped or invoked, user filenames never enter a shell, and Node denies subprocess creation and host writes."
   },
   "findings": {
     "PyPI/jaraco-context/GHSA-58pv-8j8x-9vj2": {
@@ -1323,7 +1375,8 @@
     },
     "core/cpython/PSF-2026-41": {
       "sha256": [
-        "9d39416c4cbec7f221886a45394e91755deb4f88d7c4a22b6ed2432f5abedfdb"
+        "9d39416c4cbec7f221886a45394e91755deb4f88d7c4a22b6ed2432f5abedfdb",
+        "6319d0e199127fb5aab6c434b8aca7152d3bfbafbc626e8adf3162ae0c0fecc0"
       ],
       "reason": "authenticated-archives"
     },
@@ -1573,6 +1626,744 @@
         "bac272c71ae8c54cb6003f6f45cc0faa49c4443a957d4e1ed71a440b200d8bfa"
       ],
       "reason": "zlib-subset"
+    },
+    "core/cpython-modern/CVE-2025-11468": {
+      "sha256": [
+        "bac20560ad36d1215466f929fadccb57af65d2fdf0194a938000220b8830ede1"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/CVE-2025-12084": {
+      "sha256": [
+        "c9b8876c915124517c770b2f112b7d55116bcdf13de8612cd413d004f6054f27"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/CVE-2025-13462": {
+      "sha256": [
+        "9815c2a46894a60a12689824e169b6f9938f79caf00624e6295424fe99013718"
+      ],
+      "reason": "authenticated-archives"
+    },
+    "core/cpython-modern/CVE-2025-15282": {
+      "sha256": [
+        "09d87c25678268edb24e81364c78042d57231eafb9845d6ce6f7330b5335a810"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/CVE-2025-15366": {
+      "sha256": [
+        "aef54c8de637f444259c900a36858c58f3344c6ac53d5a3703fc780676514c0c"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/CVE-2026-0672": {
+      "sha256": [
+        "b4d4c572839418ec5ae959c0c61491ed09838477d27fed432a18138e9ab0cf85"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/CVE-2026-0864": {
+      "sha256": [
+        "dd43e5c7a440cd4e4d7a0c4951e27fae7e9f35a495849a516675abc9d8402c4c"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/CVE-2026-0865": {
+      "sha256": [
+        "8a2eeed4da821f96ea4fda0d05997f7b8721332ea57239a49681eb8df6668adc"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/CVE-2026-11940": {
+      "sha256": [
+        "4e074045517638cfa85b58e7c9450549fc143a86f5ea8f212e25b2ecdbd39c6b"
+      ],
+      "reason": "authenticated-archives"
+    },
+    "core/cpython-modern/CVE-2026-11972": {
+      "sha256": [
+        "d08cfe70aa92b2f4d4f0dc50811a9b0da3dada4bc2f90f33cebf1be6d13b6274"
+      ],
+      "reason": "authenticated-archives"
+    },
+    "core/cpython-modern/CVE-2026-12003": {
+      "sha256": [
+        "5441ac50587bb0bdb8ca312e33810cf4aa075949b70d44c483548d16b7f334c6"
+      ],
+      "reason": "fixed-loader"
+    },
+    "core/cpython-modern/CVE-2026-12345": {
+      "sha256": [
+        "b79618bdc82cecdd22897c1e07d8d8dde0cf386919d328af8510a014a213f6a7"
+      ],
+      "reason": "no-tempfile-cleanup"
+    },
+    "core/cpython-modern/CVE-2026-1299": {
+      "sha256": [
+        "62bb27f324ea6d1d52393a6c57dcf8157c4371ff4ef62d6eb92bf15e8cd37ce5"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/CVE-2026-1502": {
+      "sha256": [
+        "300b3381b7e2f2e61addcf39c3eb1cac00d679f094593c791eb92c58182d704d"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/CVE-2026-15308": {
+      "sha256": [
+        "e73915f377939093434a59ad1b1090b8e737ba88ee9e6534dd40be34e2a300f3"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/CVE-2026-15310": {
+      "sha256": [
+        "5870fcd56adb9a3df14fcc11e848a5ee5b4b76d6f02c514a23985e9a261b279d"
+      ],
+      "reason": "authenticated-archives"
+    },
+    "core/cpython-modern/CVE-2026-15806": {
+      "sha256": [
+        "80f5597a0673587067bbd0fd3e5ef06b3e7186d2fe1aeef293f063c501d8635f"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/CVE-2026-17084": {
+      "sha256": [
+        "cc44612faba006b2ab94e9deb0d13269f4807763295871252153e9c0777d53f0"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/CVE-2026-18503": {
+      "sha256": [
+        "219b7ee6d6f0272330852bbce0b739aeae8e421c4555562ce47360adf86620e9"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/CVE-2026-19445": {
+      "sha256": [
+        "95ab1d863fa5737314378b80b1b4a83a48febb9825242dc33bae017b46cedc18"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/CVE-2026-19553": {
+      "sha256": [
+        "af85718e454f2516a1138454d99e33a21d46d5628c11a955a86bd6f8dfaabf18"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/CVE-2026-2297": {
+      "sha256": [
+        "dca0fe847341abe04d25754dcecfd0355d28ab834b0f5b1aaee71935fb414b62"
+      ],
+      "reason": "fixed-loader"
+    },
+    "core/cpython-modern/CVE-2026-3087": {
+      "sha256": [
+        "1db88019f6042d2d45f0d3288cf5611d2aadcff12a7c63c5675bf5f3f946674a"
+      ],
+      "reason": "not-windows"
+    },
+    "core/cpython-modern/CVE-2026-3276": {
+      "sha256": [
+        "8b972e7a12ab3e268e60a575707bddd4121717d96d368971ce268412e8649588"
+      ],
+      "reason": "bounded-normalization"
+    },
+    "core/cpython-modern/CVE-2026-3298": {
+      "sha256": [
+        "530d203f0111bc25ea92c6838f5cc4199db8b2a7fa9c2ffedef1c9f640defa51"
+      ],
+      "reason": "not-windows"
+    },
+    "core/cpython-modern/CVE-2026-3446": {
+      "sha256": [
+        "430064dcf16ffb8d5427adcd06699f63d98abab3bbfd90667df39551758b1c01"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/CVE-2026-3479": {
+      "sha256": [
+        "28efdad715d69741344527608b5b5f34384f1efdd5afd3313d44a262a969c947"
+      ],
+      "reason": "fixed-loader"
+    },
+    "core/cpython-modern/CVE-2026-3644": {
+      "sha256": [
+        "c8d0d523e7c36302574184a2abfd6469db953a7f4c655c44005f489c01118b86"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/CVE-2026-4224": {
+      "sha256": [
+        "edda0ff28e3ffe8af249aac7b82f6ff50e47717ab32ca167b280fc54132ec922"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/CVE-2026-4360": {
+      "sha256": [
+        "1d3bdc7bab5b2be8aee7c8b4ddd637f5306a8ddccc6de20c6f1090817ccf9182"
+      ],
+      "reason": "authenticated-archives"
+    },
+    "core/cpython-modern/CVE-2026-4519": {
+      "sha256": [
+        "00b39ac318984028015d778fb4cbfd790ff000aac9db1d04529538168636508e"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/CVE-2026-4786": {
+      "sha256": [
+        "026c096d01e9cb9d60eaa46a36c44caa28d72b6770243e461deb4a343746fd05"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/CVE-2026-5713": {
+      "sha256": [
+        "9e2b38e71529a3a4bc224145d8105be637745cb9e000ab818e5cd62b68b78675"
+      ],
+      "reason": "no-remote-debugging"
+    },
+    "core/cpython-modern/CVE-2026-6019": {
+      "sha256": [
+        "d1f3f29161a3b9a3413c87508b45941feb7e38f768ab2750bae52226c1efa456"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/CVE-2026-6100": {
+      "sha256": [
+        "07cc31253f595c9409fc7b2c02d5ffb913e5d693f59683eb17103858b3a55e1c"
+      ],
+      "reason": "authenticated-archives"
+    },
+    "core/cpython-modern/CVE-2026-6879": {
+      "sha256": [
+        "cce04d7ffcfb5160841df96d2f9e6b84b42fcc3d413d8c55b24eb64ec61d343b"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/CVE-2026-7210": {
+      "sha256": [
+        "5aa1a24a3493f81eef2b3f9c9b5cd3ec56cf904e1a12bb8e773729fad0371db6"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/CVE-2026-7774": {
+      "sha256": [
+        "f20070b755a7653567e90a5fde9a1b35df104ef71bcc4bd3a1514db345dd70a2"
+      ],
+      "reason": "authenticated-archives"
+    },
+    "core/cpython-modern/CVE-2026-8328": {
+      "sha256": [
+        "3a1ef17d9881146aa92dcce30f75e34a56ff474049cdcf85091882ed4267d9ba"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/CVE-2026-87910": {
+      "sha256": [
+        "8702b15e75a431799cd6cc078ee0381335dafe948eba09b245f4e96cfc4372f8"
+      ],
+      "reason": "authenticated-archives"
+    },
+    "core/cpython-modern/CVE-2026-9669": {
+      "sha256": [
+        "10dbd8f3b04a425e10732818bfb9033a630e8bc6b1a63761ea8838af461d0b5b"
+      ],
+      "reason": "authenticated-archives"
+    },
+    "core/cpython-modern/PSF-0000-CVE-2026-3298": {
+      "sha256": [
+        "ff4cb6ba4af74f2c5018e5535e8f0e5c4583fc3e3629b14770a71e619fb98ff8"
+      ],
+      "reason": "not-windows"
+    },
+    "core/cpython-modern/PSF-0000-CVE-2026-6100": {
+      "sha256": [
+        "74c04070b509b2d3015f1f9ab8dba830c90573b80a5653670c222610c5524994"
+      ],
+      "reason": "authenticated-archives"
+    },
+    "core/cpython-modern/PSF-2026-1": {
+      "sha256": [
+        "f0847feddd89ccf82a7afb8bff08cad5d485d0acd82823be0f9f27ba02029eda"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/PSF-2026-10": {
+      "sha256": [
+        "71c7ec19bed1cbe726d0c7913a68fcf59524ef7fcb82e987814e19960a310a20"
+      ],
+      "reason": "authenticated-archives"
+    },
+    "core/cpython-modern/PSF-2026-11": {
+      "sha256": [
+        "66109cd4c702f071aa61a0954ec5dda3b13146f197265d4cf055d53044378f49"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/PSF-2026-12": {
+      "sha256": [
+        "a8c37358a88e0eb92bee67e8e641e9aff1c82b96365f329e2824bc8e7d307128"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/PSF-2026-13": {
+      "sha256": [
+        "4ee3037acbf5b8f5ecbf45eeb9c261c7c43772c3a6414e03abd01a9994a7172f"
+      ],
+      "reason": "fixed-loader"
+    },
+    "core/cpython-modern/PSF-2026-14": {
+      "sha256": [
+        "140b1cf66b9f545cf0322c0bb304e16b0c6b9c12263841e6a3c9e4a73e2ffe02"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/PSF-2026-15": {
+      "sha256": [
+        "dd1cafffb0878808102311bd9c0b2fcb45fbeb20385037d83cee6ea89ea3923d"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/PSF-2026-16": {
+      "sha256": [
+        "eabba5301e4897ef7c6bf3bbfa99feb093c5a948e2556d532e30dad76ba61c7e"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/PSF-2026-17": {
+      "sha256": [
+        "aad56173a1d9748c6e84352b4e11fa785e96fc32591fe5401e2463accaccd066"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/PSF-2026-18": {
+      "sha256": [
+        "1a0458af5fb3fa8156c4c339f33dcf7a23b26910ff15889baaef55c0d5cfe2c6"
+      ],
+      "reason": "authenticated-archives"
+    },
+    "core/cpython-modern/PSF-2026-19": {
+      "sha256": [
+        "fcca4abad3d9b61cbc81fe138c699ff380e671033b473ed2d52a5e68be2ab2ce"
+      ],
+      "reason": "no-remote-debugging"
+    },
+    "core/cpython-modern/PSF-2026-2": {
+      "sha256": [
+        "91694a2be26214686daac0b7deec8e4b580a0839e4f7842872cf6e40619239ed"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/PSF-2026-20": {
+      "sha256": [
+        "bbd480af4780fddc48eec6135975f6f0047c5cacf9058f7baae580765aa86cfe"
+      ],
+      "reason": "not-windows"
+    },
+    "core/cpython-modern/PSF-2026-21": {
+      "sha256": [
+        "b28ba3717e669e74b669fcbc87f92c648331a32d36cbccaaa9821f5fcffcce93"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/PSF-2026-22": {
+      "sha256": [
+        "13613bcb705b552841cf463965331d1696a419e02e76ed020554bc4f85a94421"
+      ],
+      "reason": "not-windows"
+    },
+    "core/cpython-modern/PSF-2026-23": {
+      "sha256": [
+        "9a3c89e0736dd7af263ea0c7c85eddc3727826e02646174f4bfb1661c980747b"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/PSF-2026-24": {
+      "sha256": [
+        "a19141c00efd255c0cb5e3ad2d3f52e081730e62b6a74da040db6f78ac73c179"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/PSF-2026-25": {
+      "sha256": [
+        "268780d2aa9663e1e76bcb93116cfdd77c124d24208e6a45e5676725e012ce13"
+      ],
+      "reason": "bounded-normalization"
+    },
+    "core/cpython-modern/PSF-2026-26": {
+      "sha256": [
+        "5f7e178b02d98aea886e3c325a5de1a05f2cd8d2bdc742c5e71f067674941744"
+      ],
+      "reason": "authenticated-archives"
+    },
+    "core/cpython-modern/PSF-2026-27": {
+      "sha256": [
+        "3f40aee9d5af6f8e9d9c21747f8d2359023f8fb9b563a2a9307d4626569ec478"
+      ],
+      "reason": "authenticated-archives"
+    },
+    "core/cpython-modern/PSF-2026-28": {
+      "sha256": [
+        "6df086afe174092e96d4eb875ea5f8031a9f43e692fbf428d3509a3ba28b95a3"
+      ],
+      "reason": "fixed-loader"
+    },
+    "core/cpython-modern/PSF-2026-29": {
+      "sha256": [
+        "5515d619142533728c97328fd71e32b4ecfcfcca8d8ebdc0b45141260a93cf11"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/PSF-2026-3": {
+      "sha256": [
+        "9d3c22528884bc069137a9c35bb86ae1ecf3945cdcbfea4f14ad7ea86c6c8cda"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/PSF-2026-30": {
+      "sha256": [
+        "19fa21b3735996dba9d44fcb64e7a59c9c4419a8f1aafe98ad8b975159b75408"
+      ],
+      "reason": "authenticated-archives"
+    },
+    "core/cpython-modern/PSF-2026-31": {
+      "sha256": [
+        "e67d34c0bc3865cd60bb9a21f2e096e73d23afefea32844b43e1490bb1943d80"
+      ],
+      "reason": "authenticated-archives"
+    },
+    "core/cpython-modern/PSF-2026-32": {
+      "sha256": [
+        "722db37922e734ac679145c2ba94b62882d8ce453283f6df2362d7191bd4641f"
+      ],
+      "reason": "authenticated-archives"
+    },
+    "core/cpython-modern/PSF-2026-33": {
+      "sha256": [
+        "5be81a7cf3d1a8656927c73b4cffd40c023c949b917a4edc29f3856b4f1e2f14"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/PSF-2026-34": {
+      "sha256": [
+        "4303b7fdf5c3b635921607741ce328cbd3600e11b1dda25040a4529f1d81c9e6"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/PSF-2026-35": {
+      "sha256": [
+        "43a746fabee1cb78a8bc24d6eea8276e72a3b36d4ac3b46bfafca6582e4b11e4"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/PSF-2026-36": {
+      "sha256": [
+        "8ee704e2438ce19d63d6e767146557bcfd280d979b9b2ffc6b72085b883c5239"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/PSF-2026-37": {
+      "sha256": [
+        "a6dd137e761729d6c8e70ce1d629b7f543885ed175969f273ba3916a1bb11b50"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/PSF-2026-38": {
+      "sha256": [
+        "1983adb34cc2a135f473231ace2610d2897e24f7a8cebe5daddf1f0a8d30f078"
+      ],
+      "reason": "authenticated-archives"
+    },
+    "core/cpython-modern/PSF-2026-39": {
+      "sha256": [
+        "02b1a6c57c05225188d3f6a5938e6099ce458c0b0ed0f93b2bb18759ec3c6b86"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/PSF-2026-40": {
+      "sha256": [
+        "5f55f9764a9fdb433fe5d0f34a81e0cdefc1171c548486c489bf4d95e31490ba"
+      ],
+      "reason": "authenticated-archives"
+    },
+    "core/cpython-modern/PSF-2026-42": {
+      "sha256": [
+        "b8f882f058ac1f369131477a3cf245e9e31cad0a78d37b13865cd079823fba8c"
+      ],
+      "reason": "no-tempfile-cleanup"
+    },
+    "core/cpython-modern/PSF-2026-43": {
+      "sha256": [
+        "04246bb3497677b046578b7101395a145928572cb624e7ef1b9785cd455402a2"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/PSF-2026-44": {
+      "sha256": [
+        "6128727f93e16c1413740f065c9425ff2faf18c372f4e415618d3cac097e7aa0"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/PSF-2026-5": {
+      "sha256": [
+        "187e0288fdcf018cae24a7f22b22d428a8b74a9cd3831ae5f95b611dd1cbe08e"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/PSF-2026-6": {
+      "sha256": [
+        "b9b834e2a7aab58371f11025f94b29577dc572b743bcc5871f31e9f971edce17"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/PSF-2026-8": {
+      "sha256": [
+        "d10a7e16fda5bc2c7eeed6f5c0aa48a1aad27f736ddba5d82e14b9175f880cec"
+      ],
+      "reason": "stdlib-interface"
+    },
+    "core/cpython-modern/PSF-2026-9": {
+      "sha256": [
+        "40751404bfc32e56b26b01a07fe0e1f280317e4c02ec8464cbd7c86ccb443155"
+      ],
+      "reason": "fixed-loader"
+    },
+    "core/expat-modern/CVE-2025-66382": {
+      "sha256": [
+        "893a4e21e75c9b93a6eb0aaf2ea73f370211c272cd81b2237e6a39d768402a01"
+      ],
+      "reason": "no-xml"
+    },
+    "core/expat-modern/CVE-2026-102633": {
+      "sha256": [
+        "00d4aa5fcd7f828247d46e98ab5b493f5163de396df3b6a033f19110dc099896"
+      ],
+      "reason": "no-xml"
+    },
+    "core/expat-modern/CVE-2026-24515": {
+      "sha256": [
+        "55bf1e89759549d33a40d100667647634f9d6befb409b3615dda2cfa3902ffbc"
+      ],
+      "reason": "no-xml"
+    },
+    "core/expat-modern/CVE-2026-25210": {
+      "sha256": [
+        "89aefe65a85ee582ee62cef06ebc7423a12063a8b505ccb18931e9bb36a6e319"
+      ],
+      "reason": "no-xml"
+    },
+    "core/expat-modern/CVE-2026-32776": {
+      "sha256": [
+        "5116eaaea4c655074c4297f691f6af8d2f9a2173e0fe444d757881d37988f74e"
+      ],
+      "reason": "no-xml"
+    },
+    "core/expat-modern/CVE-2026-32777": {
+      "sha256": [
+        "e4dde64c6c07433d5b5fc62ad56fb587d93a5e42c13eab84e0eafd6d45d36b02"
+      ],
+      "reason": "no-xml"
+    },
+    "core/expat-modern/CVE-2026-32778": {
+      "sha256": [
+        "c847d04165cb7d562a02ec2d154a5ebed075a930bff18807dd24b3344945f104"
+      ],
+      "reason": "no-xml"
+    },
+    "core/expat-modern/CVE-2026-41080": {
+      "sha256": [
+        "58de2eccb34906b2aa74bae12c78ebb3a8a141f895512e1672a67db0fbdd92cf"
+      ],
+      "reason": "no-xml"
+    },
+    "core/expat-modern/CVE-2026-45186": {
+      "sha256": [
+        "4256072df5dea7d0ac5fe30784f2f97dc6dd8110102e56a3d76e168a5f1f3555"
+      ],
+      "reason": "no-xml"
+    },
+    "core/expat-modern/CVE-2026-50219": {
+      "sha256": [
+        "86a9f6e06b95c193664e89609c90181c0feb685ec9876461800cc84f02fca4c6"
+      ],
+      "reason": "no-xml"
+    },
+    "core/expat-modern/CVE-2026-56131": {
+      "sha256": [
+        "36ccd2bb06a89cfa356b08d6aed23be379da2d718bc5e70d763586f5866d2d93"
+      ],
+      "reason": "no-xml"
+    },
+    "core/expat-modern/CVE-2026-56132": {
+      "sha256": [
+        "051c91bf916af039c0f07b07d631b7927c9f752f358111fa10645ddb89d18811"
+      ],
+      "reason": "no-xml"
+    },
+    "core/expat-modern/CVE-2026-56403": {
+      "sha256": [
+        "5e628c2e3fd1a4512316a530c23062cf11997205d7212ccead702a2c6e003dc7"
+      ],
+      "reason": "no-xml"
+    },
+    "core/expat-modern/CVE-2026-56404": {
+      "sha256": [
+        "1d1c924a375800849491e88eb4549a5797f01f0a6713ae4ed2fc99371daec717"
+      ],
+      "reason": "no-xml"
+    },
+    "core/expat-modern/CVE-2026-56405": {
+      "sha256": [
+        "76470b22718d4020a7c99692aec7c025caa6b5cbe4ad9cc6b028e9d5a8ee88d5"
+      ],
+      "reason": "no-xml"
+    },
+    "core/expat-modern/CVE-2026-56406": {
+      "sha256": [
+        "61c6e1211693abc1f2603ad119fa63641f662ddfb4e98217b883df02b3deafc7"
+      ],
+      "reason": "no-xml"
+    },
+    "core/expat-modern/CVE-2026-56407": {
+      "sha256": [
+        "cd04f2c91f23eae5865cdf0f5e42a1972821975dadb673da29d122b7bbf55d31"
+      ],
+      "reason": "no-xml"
+    },
+    "core/expat-modern/CVE-2026-56408": {
+      "sha256": [
+        "a451475a234f91bc7b5c4577fb6cdce2fdbd53adb9761188d10928f1c02616ea"
+      ],
+      "reason": "no-xml"
+    },
+    "core/expat-modern/CVE-2026-56409": {
+      "sha256": [
+        "b616effb9efa7c49929f564b81949b7e6000ae6665e4ed2aa19ecb00ea089bdb"
+      ],
+      "reason": "no-xml"
+    },
+    "core/expat-modern/CVE-2026-56410": {
+      "sha256": [
+        "d69ae56454bdf91ca6ba6f6a961dbc31fd90004c1bd72082964aeb80f7813496"
+      ],
+      "reason": "no-xml"
+    },
+    "core/expat-modern/CVE-2026-56411": {
+      "sha256": [
+        "838dbb593f7dfafe3d0f5e1c7b0b1502e96d405fd9b493a9b060259e5a728a74"
+      ],
+      "reason": "no-xml"
+    },
+    "core/expat-modern/CVE-2026-56412": {
+      "sha256": [
+        "0008d7a53e0e1cdec2dec80fb3dfbfc32ab0e83ec629d9591a5761a277a4ba30"
+      ],
+      "reason": "no-xml"
+    },
+    "core/expat-modern/CVE-2026-66046": {
+      "sha256": [
+        "4f5184c977f200c0b443991d57817fc8a508d3cb1ee361bd74d529b055d636f2"
+      ],
+      "reason": "no-xml"
+    },
+    "core/expat-modern/CVE-2026-72522": {
+      "sha256": [
+        "e37cbb6d0e32da8e58fdadc1878b82f510e07bc6951aa819e855f0dc4c82606c"
+      ],
+      "reason": "no-xml"
+    },
+    "core/expat-modern/CVE-2026-76641": {
+      "sha256": [
+        "ceaad83397ac770decf00bc32a72a3d378dc0bd33cc20056f692633b62b1b562"
+      ],
+      "reason": "no-xml"
+    },
+    "core/expat-modern/CVE-2026-76957": {
+      "sha256": [
+        "68a62ca9ee6ca6c2b4972ca04aaabdec886284c3bf12cca30bf4eb6ad3dfde7f"
+      ],
+      "reason": "no-xml"
+    },
+    "core/expat-modern/CVE-2026-77214": {
+      "sha256": [
+        "e4922c1ec54e2292df10d405556089ff0560a616525d575bc805b3ec807aecb8"
+      ],
+      "reason": "no-xml"
+    },
+    "core/expat-modern/CVE-2026-93990": {
+      "sha256": [
+        "cec28ac1ae9e076685f4dfd252939a2e4acd58dc5fa401525eefddbb0bf203c7"
+      ],
+      "reason": "no-xml"
+    },
+    "core/xz-modern/CVE-2022-1271": {
+      "sha256": [
+        "19edf928f0a4c6678b831eb443d56ed228144331fbfd2ed207194bd4103a48a9"
+      ],
+      "reason": "no-xz-tools"
+    },
+    "core/sqlite-modern/CVE-2022-35737": {
+      "sha256": [
+        "1497a931cbfe3f2ac09bc5284dd07396464c73829a8610ef5969785a45e172e7"
+      ],
+      "reason": "no-sqlite"
+    },
+    "core/sqlite-modern/CVE-2022-46908": {
+      "sha256": [
+        "a04f1f8628b0ccdb8b96026dba5e788ea795e903dcdd6b52b7ddb5f282650406"
+      ],
+      "reason": "no-sqlite"
+    },
+    "core/sqlite-modern/CVE-2023-7104": {
+      "sha256": [
+        "e507d1385fa981308fb347dc987ae1b59326df5868273dce2d5468c58cfd714a"
+      ],
+      "reason": "no-sqlite"
+    },
+    "core/sqlite-modern/CVE-2025-6965": {
+      "sha256": [
+        "099791c1831278490ebe4b73ac62f972789d22a6ea123667da26ef2bb9d7c190"
+      ],
+      "reason": "no-sqlite"
+    },
+    "core/sqlite-modern/CVE-2025-70873": {
+      "sha256": [
+        "2d269898d1f36c2a12b48b870d808b43ef57cef22e23a86fe23eece32b344219"
+      ],
+      "reason": "no-sqlite"
+    },
+    "core/sqlite-modern/CVE-2026-11822": {
+      "sha256": [
+        "85763f22504499f912926fc5aa15db055ea4b480a90ce36c38c6dcbd17c0c21e"
+      ],
+      "reason": "no-sqlite"
+    },
+    "core/sqlite-modern/CVE-2026-11824": {
+      "sha256": [
+        "d051c9dd82b478ad8e545a853e17d77401f137a59ab7171915d1b3ae8264b9e1"
+      ],
+      "reason": "no-sqlite"
+    },
+    "core/sqlite-modern/CVE-2026-39113": {
+      "sha256": [
+        "59f108e37fcc9461d90ff0b57d5d7a9072e46d0cb7e2eea7decd2d1679969bf4"
+      ],
+      "reason": "no-sqlite"
+    },
+    "core/sqlite-modern/CVE-2026-50812": {
+      "sha256": [
+        "b4e3fdf9711a46c7c89d3e9ec49f39d2449987e1b82a364cf68e9bb67bff2d66"
+      ],
+      "reason": "no-sqlite"
+    },
+    "core/sqlite-modern/CVE-2026-50813": {
+      "sha256": [
+        "bfc6188b50393e8f2397f108b1de896b26319e96e03d03e3d81005f80631735f"
+      ],
+      "reason": "no-sqlite"
     }
   }
 }

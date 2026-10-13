@@ -73,6 +73,7 @@ credential-scoped operational boundaries.
 - [ADR-0040](../decisions/ADR-0040-sea-packaged-solcjs-executor.md)
 - [ADR-0042](../decisions/ADR-0042-solady-legacy-cwia-identity.md)
 - [ADR-0043](../decisions/ADR-0043-factory-derived-verification-provenance.md)
+- [ADR-0054](../decisions/ADR-0054-vyper-application-lock.md)
 - [ADR-0053](../decisions/ADR-0053-vyper-wasm-distribution.md)
 - [ADR-0047](../decisions/ADR-0047-pinned-vyper-executor.md)
 - [Testing](../testing.md)
@@ -195,10 +196,18 @@ credential-scoped operational boundaries.
 | P30-T123 | done | P30-T122 | Upgrade the pinned Pyodide runtime to 0.29.5 with authenticated identities and unchanged compiler references | Full matrix, isolation, live audit/license and common local gates; native release acceptance remains separate |
 | P30-T124 | done | P30-T123 | Re-review the CPython advisory revision rejected by CI run 38198556844 | Exact failed-CI fixture, rejection regressions, live security and governance gates |
 | P30-T125 | done | P30-T124 | Classify only explicitly reviewed OSV CPython Vanir metadata changes as auxiliary | Scoped baseline authentication, strict rejection regressions, live audit and governance gates |
+| P30-T126 | done | P30-T125 | Evaluate npm-aliased dual Pyodide runtimes with explicit Vyper routing | Full fresh-process matrix, runtime separation and negative controls without production changes |
+| P30-T127 | done | P30-T126 | Implement dual Pyodide runtime selection and authenticated release tooling | CI run 38326160375 at 81cd913 passes all 13 checks, including both native architectures and monolith/split Hardhat acceptance |
+| P30-T128 | done | P30-T126 | Replace hosted Vyper packages and signed catalogs with application-locked PyPI assembly; embed 0.2.0 source and retain 26-version provenance/isolation | Local gates and CI run 38331342142 at 9d37872 pass; both native architectures and monolith/split records pass the application acceptance validator |
+| P30-T129 | done | P30-T128 | Preserve cancellation during locked Vyper package assembly | Cancellation/deadline and lease-heartbeat regressions; verifier tests and governance gates |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
 ## Acceptance
+
+- [x] P30-T128: all 26 application-locked packages pass native Linux AMD64/ARM64
+      full matrices and monolith/split acceptance in CI run 38331342142; the
+      downloaded native records pass `compiler/vyper/acceptance.mjs`.
 
 - [x] P30-T125: only opted-in OSV CPython Vanir fields can pass as auxiliary;
       all other changes and audit completeness checks remain blocking.
@@ -272,7 +281,10 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
 ## Current Blockers
 
-None. P30-T114's remote acceptance below clears its earlier local Docker
+None within P30. P30-T128 native acceptance is complete; the evidence below
+binds both architectures to the application-locked outputs.
+
+P30-T114's remote acceptance below clears its earlier local Docker
 validation blocker. P70 capacity and P73 live-testnet evidence remain owned
 by their current plans.
 
@@ -1204,3 +1216,146 @@ closure below supplies the missing evidence.
 - P30-T125 and P30 are done. The pre-existing Git index is byte-identical;
   earlier staged and unstaged work is retained. No remote CI, commit, push,
   signing or deployment is claimed.
+
+
+### P30-T126 — Dual Pyodide npm alias feasibility (2026-10-12)
+
+- Exact isolated dependencies `pyodide@314.0.7` and
+  `pyodide-legacy@npm:pyodide@0.29.5` resolve independently. Only Vyper
+  0.4.0–0.4.3 selects modern Python 3.14.2; the other 22 supported versions
+  select legacy Python 3.13.2. Unknown versions fail without fallback.
+- `node compiler/vyper/wasm/alias-feasibility.mjs
+  .local/pyodide-alias-feasibility-20261012` passes all 362 reference cases:
+  80 modern, 282 legacy. Every original/modified input gets a fresh restricted
+  process, a 30-second deadline, 128 MiB V8 heap and 384 MiB WASM cap, with
+  four concurrent workers. No reference or compiler implementation changed.
+- Both runtimes pass permission/memory, sibling-runtime read rejection,
+  large-input, wrong-Python identity and timeout/forced-cleanup probes. The
+  deliberately misrouted 0.2.0 control reproduces the Python 3.14 AST failure;
+  its proper legacy route passes. All fixture digests and cleanup results
+  were verified after the run.
+- [Assessment and reproduction](../reviews/P30-pyodide-alias-feasibility.md)
+  and [durable summary](../reviews/P30-pyodide-alias-feasibility.json) retain
+  exact aliases, runtime/package identities, all version counts and controls.
+  The repeatable entrypoint is `make test-vyper-alias-feasibility` with a new
+  `VYPER_ALIAS_FEASIBILITY_OUTPUT` directory. Existing stash and production
+  package pins, fixtures, ADR and runtime paths are unchanged.
+- All 81 Node tests in tooling, audit-auxiliary, catalog, production-shards and
+  alias-feasibility suites pass; `make docs-check plan-check`, JS syntax and
+  `git diff --check` pass. This completes local feasibility only. Production
+  routing/identity design, SEA/Go, native Linux architectures, topology and
+  dual-runtime audit/license acceptance remain unimplemented and unclaimed.
+  P30 returns to done; external release blockers remain unchanged.
+
+### P30-T127 — dual-runtime implementation (done; CI verified 2026-10-13)
+
+- Claimed before implementation; explicit policy and generated Go mapping retain
+  all 26 versions, immutable compiler/dependency contents and reference fixtures.
+  Both startup probes, frozen identities, selected-runtime permissions, catalog
+  and acceptance-map consumers are implemented under updated ADR-0053.
+- Candidate and actual SEA/Go matrices pass 26 versions / 362 fresh-process
+  compilations each. Runtime policy and both-runtime termination/recovery tests
+  pass. PostgreSQL Vyper integration plus race passes in `internal/integration`
+  and `internal/verify`. Release/signing/cache/shard/tooling tests pass.
+- The ARM64 production image builds and `make docker-image-check` passes with
+  both runtime manifests and complete upstream notices. `make check` passes,
+  including generation, lint, unit/race, live security, license and deployment
+  configuration gates; 83 Node regression tests pass. The current source audit
+  covers 591 distribution records / 93 components / 1,759 findings, with one
+  existing auxiliary-only change. These are reviewed findings, not zero CVEs.
+- The native ARM64 Linux VM production image matrix passes all 26 versions /
+  362 cases. macOS-orchestrated monolith and split Hardhat suites pass with
+  matching results (449.74 s); their record remains `native_linux=false`.
+  The final candidate repeat also passes 362/362 after an incomplete diagnostic
+  invocation, whose partial log is preserved and excluded from acceptance.
+- Native acceptance is complete: [CI run 38326160375](https://github.com/islishude/etherview/actions/runs/38326160375)
+  at commit `81cd91396f18f8000646f700e6a1f2a7334428ee` on
+  [PR #143](https://github.com/islishude/etherview/pull/143) passes all 13 checks.
+  Both native Linux AMD64/ARM64 full matrices and both architectures'
+  monolith/split Hardhat acceptance pass with the common artifacts. P30-T127
+  is `done`; this evidence does not cover the subsequent T128 package outputs.
+- [Implementation and audit review](../reviews/P30-dual-pyodide-implementation.md)
+  records artifact boundaries, advisory applicability and evidence locations.
+  Existing feasibility work, prior release evidence and the user's stash remain
+  preserved. The PR and green CI establish implementation acceptance; no
+  production deployment is claimed.
+
+### P30-T128 — application-locked PyPI distribution (2026-10-13)
+
+- Claimed after explicit approval. Preserve 26 versions, bundle the locked 0.2.0
+  source, retain immutable job identities and fresh restricted processes.
+- Replace external catalog signing/hosting with application-owned lock data and
+  authenticated local assembly. P30-T127 native acceptance passed at `81cd913`;
+  T128 requires its own native acceptance against the new distribution before
+  release.
+- The bounded Go assembler authenticates exact upstream archives, preserves
+  native-extension filtering, and verifies the expected ZIP/manifest before
+  atomic cache installation. The 0.2.0 source and its Apache-2.0 notice are
+  embedded. Requests include the recipe digest; migration 0073 and the worker
+  reject recipe/executor mismatch without rebinding historical jobs.
+- Compared all 26 new packages against the retained pre-change transports:
+  all 17,326 file contents are identical. All 591 distribution metadata records
+  are identical. The audit inventory moves from
+  `288e222399dee3de137b424bbdb0d7cebefda9075df7e78d37faa5b583891b07` to
+  `c3faa25efde58600b4d226278f3b4f5fb0024308f0b9c506e67c226692717e26`
+  to bind deterministic Go ZIP framing, the lock/source/assembler and local
+  provenance registration. Advisory dispositions and subprocess restrictions
+  are unchanged. Live WASM audit passes with 93 components, 1,759 findings and
+  one authenticated auxiliary-only change; this is not a zero-vulnerability claim.
+- Local checks pass: `go test ./...`, `go test -race ./...`, assembler/cache
+  adversarial tests, 81 release/audit/sharding tests, 397 frontend tests, and
+  `make generate-check lint docs-check plan-check deployment-check`. The rebuilt
+  ARM64 image passes `make docker-image-check`, including the embedded source
+  notice. All 26 versions / 362 inputs pass both the candidate matrix and the
+  production-container matrix; the latter records `native_linux: false`.
+- All current PostgreSQL integration packages pass through `cmd/testintegration
+  -packages './internal/app ./internal/billing ./internal/genesis
+  ./internal/integration ./internal/userauth ./internal/verify'`. Automatic
+  discovery also picked up the retained ignored `.local/pyodide-0295-baseline`
+  snapshot; its missing helper artifacts caused an unrelated first-run failure.
+  Explicit current-package discovery preserves that snapshot without reducing
+  current test coverage. Focused Vyper race runs pass for both verification and
+  integration packages, including recipe mismatch and immutable retry binding.
+- `make test-vyper-matrix` completes the SEA/Go boundary matrix in 789.446s after
+  the candidate pass. `make test-hardhat3-e2e-prebuilt` passes in 514.589s:
+  monolith 282.71s, distributed 230.89s. Both layouts verify six representative
+  compiler versions through native REST and Etherscan using actual locked PyPI downloads
+  and local assembly, including the embedded 0.2.0 source. Existing cache-owner
+  replacement, immutable authority, proxy rebinding and persistence counts pass.
+  Evidence remains in `.local/vyper-wasm/matrix-results.json`,
+  `.local/vyper-releases/matrix-arm64.json` and `acceptance-arm64.json`;
+  the image matrix is macOS-orchestrated diagnostic evidence, not native release
+  acceptance. Previous transports are retained in
+  `.local/vyper-releases-before-t128-20261013`.
+- `make security-check license-check` passes without relaxing audit or license
+  policy; all 26 assembled packages retain their upstream notices. Final
+  `make lint-go docs-check plan-check` and `git diff --check` pass. No upstream
+  compiler payload, reference fixture, historical task or prior acceptance
+  record is rewritten.
+- Native acceptance completed on 2026-10-13: [CI run 38331342142](https://github.com/islishude/etherview/actions/runs/38331342142)
+  at commit `9d37872cf043b16ac1c7934204a68a85d0f8b9c6` on
+  [PR #143](https://github.com/islishude/etherview/pull/143) passes all 13 checks.
+  Downloaded AMD64/ARM64 acceptance records both report `native_linux: true`,
+  monolith/split success and all 26 versions. Merging those records and running
+  `compiler/vyper/acceptance.mjs` against the exact locked transport packages
+  passes descriptor/archive hashes, fixtures and compiler/runtime/executor
+  identity checks. P30-T128 and P30 are `done`; P70/P73 external blockers remain
+  unchanged. No production deployment is claimed.
+
+### P30-T129 — preserve package assembly cancellation (2026-10-13)
+
+- Claimed before implementation. Recover the assembly context's cancellation or
+  deadline sentinel before sanitizing Build failures, including downloads whose
+  transport errors were already redacted. Lease loss therefore remains
+  recoverable without exposing upstream error details.
+- New regressions reproduced cancellation/deadline misclassification and fatal
+  heartbeat lease-loss classification before the fix. All pass afterward;
+  ordinary assembly errors remain sanitized. Focused cancellation/lease tests
+  pass under the race detector, including existing worker continuation tests.
+- `go test ./internal/verify ./compiler/vyper/...` passes (verifier 140.843s).
+  `make lint-go docs-check plan-check` and `git diff --check` pass. P30 remains
+  done. [CI run 38347889563](https://github.com/islishude/etherview/actions/runs/38347889563)
+  passes all 13 checks at `a885a1553fbd833a3f7b107960acb673143ea027`,
+  including native Linux AMD64/ARM64 full Vyper matrices, both architectures'
+  monolith/split Hardhat acceptance, PostgreSQL integration and common gates.
+  This remote result covers the cancellation fix; no deployment is claimed.

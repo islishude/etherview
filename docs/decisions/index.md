@@ -80,3 +80,5 @@ merging distinct invariants.
 Retired ADR identifiers are not reused. The current ADR files remain the
 authoritative decisions; this page is only their navigation and replacement
 register.
+
+- [ADR-0054 — Application-Locked Vyper Distribution](ADR-0054-vyper-application-lock.md)

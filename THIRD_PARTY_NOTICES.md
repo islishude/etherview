@@ -113,19 +113,28 @@ production image at
 
 ## Shared Python WASM Vyper executor
 
-The shared runtime contains Pyodide 0.29.5 (MPL-2.0), CPython 3.13.2
+The modern runtime contains Pyodide 314.0.7 (MPL-2.0), CPython 3.14.2
+(PSF license), Emscripten 5.0.3 runtime components and PyCryptodome 3.23.0.
+The legacy runtime contains Pyodide 0.29.5 (MPL-2.0), CPython 3.13.2
 (PSF license), Emscripten 4.0.9 runtime components and PyCryptodome 3.21.0.
 Authenticated upstream notices and source URLs are installed under
 `/licenses/python-wasm`; `compiler/vyper/wasm/licenses.lock.json` pins their
 identities. The source URLs identify exact upstream releases or commits.
 The notices also cover zlib 1.3.1, the Emscripten bzip2 1.0.6 port, Expat
-2.6.4, libffi, hiwire, musl 1.2.5, LLVM compiler-rt/libc++/libc++abi,
+2.6.4 / 2.7.3, xz/liblzma 5.2.2, zstd 1.5.7, SQLite 3.39.0,
+libffi, hiwire, musl 1.2.5, LLVM compiler-rt/libc++/libc++abi,
 HACL* and CPython third-party components including libmpdec 2.5.1.
 The source commit inventory and vulnerability dispositions are recorded in
 `compiler/vyper/wasm/audit-review.json`.
 
-Each separately distributed compiler package includes official Vyper source,
+Each locally assembled compiler package includes official Vyper source,
 its pure Python dependencies and their upstream notices, including setuptools
 vendored distributions. `compiler/vyper/versions/index.json` and per-version
 lock files bind the official artifacts; the package manifest binds the shipped
 archive. Native Python and PyInstaller are not shipped in the production image.
+
+The application embeds the official Vyper 0.2.0 source at commit
+`d2c0c87a50dcfca115cb68a96d4063a7576e3dfa` under the Apache-2.0 license. Its
+upstream license is included at `/licenses/vyper-0.2.0-LICENSE.txt`. Other
+compiler/dependency archives are fetched by application-locked PyPI digest;
+no independently hosted compiler distribution or signing key is required.

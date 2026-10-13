@@ -5,7 +5,7 @@ import { readFileSync, writeFileSync, mkdtempSync, readdirSync, rmSync } from 'n
 import { resolve, join } from 'node:path';
 import { arch, platform, tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
-import { sha256, sharedSHA256 } from './release.mjs';
+import { sha256, sharedRuntimes, runtimeFor } from './release.mjs';
 import { assignments, mergeEvidence, shardFile, shardOptions, versionEvidence, versions } from './production-shards.mjs';
 
 const { count } = shardOptions(process.argv.slice(2), true);
@@ -24,10 +24,13 @@ const container = `vyper-matrix-merge-${randomUUID()}`;
 try {
   execFileSync(docker, ['create', '--name', container, imageID]);
   execFileSync(docker, ['cp', `${container}:/opt/etherview/solcjs/runtime-manifest.json`, join(temporary, 'host.json')]);
-  execFileSync(docker, ['cp', `${container}:/opt/etherview/python-wasm/shared-manifest.json`, join(temporary, 'shared.json')]);
-  assert.equal(sha256(readFileSync(join(temporary, 'shared.json'))), sharedSHA256);
+
+  for(const [id,digest] of Object.entries(sharedRuntimes)){
+    execFileSync(docker,['cp',`${container}:/opt/etherview/python-wasm/${id}/shared-manifest.json`,join(temporary,id+'.json')]);
+    assert.equal(sha256(readFileSync(join(temporary,id+'.json'))),digest);
+  }
   const identity = { native_linux: platform() === 'linux', image_id: imageID,
-    host_sha256: sha256(readFileSync(join(temporary, 'host.json'))), shared_sha256: sharedSHA256 };
+    host_sha256: sha256(readFileSync(join(temporary, 'host.json'))), shared_runtimes: sharedRuntimes };
   const expected = Object.fromEntries(versions.map(item => [item.version, versionEvidence(item, root, packages, identity.host_sha256)]));
   const evidence = mergeEvidence(names.map(name => JSON.parse(readFileSync(join(root, name)))), assignments(count), architecture, identity, expected);
   writeFileSync(join(root, `matrix-${architecture}.json`), JSON.stringify(evidence) + '\n', { flag: 'wx' });

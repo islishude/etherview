@@ -277,3 +277,32 @@ with authenticated baselines, complete evidence and continued blocking for all
 other changes. Local audit/release regressions, live security/license and
 docs/plan gates pass. P30 remains done; no remote CI or deployment is claimed,
 and P70/P73 external blockers are unchanged.
+
+P30-T126 completes local dual-Pyodide npm alias feasibility: 80 modern and
+282 legacy fresh-process reference cases pass, together with isolation and
+negative controls. Production runtime selection and ADR remain unchanged;
+production adoption and native acceptance are separate work.
+
+P30-T127 implements the explicit dual-Pyodide policy with all 26 versions and
+fresh-process isolation. Candidate, SEA/Go and native ARM64 Linux image matrices
+pass 362 inputs each; `make check`, PostgreSQL Vyper race and local monolith/split
+Hardhat checks pass. P30-T127 is done: [CI run 38326160375](https://github.com/islishude/etherview/actions/runs/38326160375)
+passes all 13 checks at `81cd913`, including native Linux AMD64/ARM64 full
+matrices and both architectures' native monolith/split Hardhat acceptance.
+P70/P73 external blockers are unchanged.
+
+P30-T128 implements application-locked PyPI downloads and local assembly,
+replacing hosted Vyper packages and the independently signed catalog. The image
+embeds 0.2.0 source; all 26 versions and immutable execution identity remain.
+Local full matrices, unit/race/integration, monolith/split Hardhat, image,
+security/license and common gates pass. [CI run 38331342142](https://github.com/islishude/etherview/actions/runs/38331342142)
+passes all 13 checks at `9d37872`, including native Linux AMD64/ARM64 full
+matrices and monolith/split acceptance. Downloaded native records pass the
+application acceptance validator against the exact locked packages. P30-T128
+and P30 are done; P70/P73 external blockers remain unchanged.
+
+P30-T129 preserves assembly cancellation sentinels so lease loss remains
+recoverable. Focused race regressions, verifier/assembler suites, lint and
+governance gates pass locally. [CI run 38347889563](https://github.com/islishude/etherview/actions/runs/38347889563)
+passes all 13 checks at `a885a15`, including both native architecture matrices
+and monolith/split Hardhat acceptance. P30 remains done.

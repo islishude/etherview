@@ -1,7 +1,7 @@
 // Identities used by native acceptance producers and the offline catalog signer.
 import { readFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-export const sharedSHA256 = 'b20a6b86d20d7902197560577f920885d7049e580c10c374b82e1b0725ea4d7b';
+export {runtimeFor,sharedRuntimes,validateRuntimeSet} from './runtime-policy.mjs';
 export const platforms = ['linux-amd64', 'linux-arm64'];
 export const sha256 = (data) => createHash('sha256').update(data).digest('hex');
 export function executorDigest(host, shared, pkg) {

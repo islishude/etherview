@@ -68,7 +68,7 @@ matrices remain required verification
 coverage, without making Hardhat wait for native matrix completion.
 
 Common CI gates, Vyper package construction, security/license auditing and the
-Go archive producer regression use Node without host Python setup. The compiler
+bounded Go assembler regressions use Node and Go without host Python setup. The compiler
 interpreter remains bundled Python WASM. Host Python is needed only for optional
 official reference generation and `make benchmark-vyper-wasm`; reference
 environments are prepared by `node compiler/vyper/reference.mjs` with uv 0.12.24.
@@ -619,7 +619,7 @@ reference matrix covers normal code, constructors, invalid source and supported
 immutables, with ABI/bytecode comparisons against the official compiler.
 
 `make test-vyper-matrix` builds authenticated architecture-neutral packages and
-runs all original/modified fixtures with Pyodide 0.29.5, then tests every version
+runs all original/modified fixtures with the version-selected Pyodide runtime, then tests every version
 through the SEA/Go execution boundary. Candidate outputs go to
 `.local/vyper-wasm/`. Linux AMD64 and ARM64 production acceptance remains a
 separate release requirement; the local matrix does not satisfy it.
@@ -632,11 +632,11 @@ common WASM packages in `.local/vyper-wasm/packages/`, transport descriptors in
 `.local/vyper-releases/`, and a current production-image matrix record. Run
 `node compiler/vyper/wasm/production-matrix.mjs` after building the production
 image; it checks all original/modified fixtures in fresh network-disabled
-containers. Local non-Linux records are diagnostic and rejected by signing. An ephemeral signed HTTPS fixture exercises real cold
-runtime downloads. It deploys contracts from six protocol families through
+containers. Local non-Linux records are diagnostic and rejected by release acceptance. The production E2E exercises exact application-locked PyPI downloads and
+local assembly; in-process transport fixtures cover deterministic download failures. It deploys contracts from six protocol families through
 native REST and Etherscan in both monolith and split layouts, verifies constructor
-and immutable values, ABI/source reads and catalog-bound provenance. Successful
-runs write descriptor-bound acceptance records used by the release catalog tool.
+and immutable values, ABI/source reads and application-bound provenance. Successful
+runs write descriptor-bound acceptance records used by the application release acceptance tool.
 A macOS run or emulated architecture never substitutes for native Linux gates.
 
 CI retains the native AMD64/ARM64 Hardhat jobs and runs four production fixture
@@ -656,15 +656,15 @@ rejects missing/extra/duplicate or inconsistent evidence, and writes the existin
 The no-argument production command remains the sequential local option; use a
 clean evidence directory for a new run because evidence files are exclusive-create.
 `make test-vyper-release` covers Node package/release/audit/license regressions,
-partition/merge and subprocess failure handling. The Go archive roundtrip calls
-the same Node producer consumed by release builds.
+partition/merge and subprocess failure handling. Go tests authenticate and
+reproduce the locked package with the same assembler used by workers.
 Compare parallel-group wall time against the sequential baseline on native CI;
 record resource contention and any compilation timeout without relaxing limits.
 The completed native serial/parallel comparison and failure-propagation evidence
 are retained in [P30 acceptance](plans/P30-contract-verification.md#p30-t120--vyper-ci-optimization-and-acceptance).
 
 PostgreSQL integration tests cover durable binding/publication and reorg
-rejection. Signature, catalogue expiry, unsafe archives and runtime identity
+rejection. Embedded lock integrity, unsafe archives and runtime identity
 regressions remain passing release gates. Runtime or permission failures must be
 fixed, never converted to expected failures or unrestricted execution.
 
@@ -726,8 +726,11 @@ slot values, optional header fields and bilingual native-transfer tabs.
 ### Vyper WASM migration prerequisite
 
 `make test-vyper-wasm-candidate` builds all 26 compiler packages from the existing
-hash-locked upstream archives and tests Pyodide 0.29.5 / Python 3.13.2 against
-unchanged original/modified reference fixtures. Node denies network, writes,
+hash-locked upstream archives and tests the explicit dual-runtime policy:
+Pyodide 314.0.7 / Python 3.14.2 for Vyper 0.4.0–0.4.3, and the exact npm alias
+0.29.5 / Python 3.13.2 for the other 22 versions. Each of the 362 unchanged
+original/modified inputs starts a fresh process; a failed version does not hide
+diagnostics for subsequent versions. Node denies network, writes,
 addons and subprocesses during the differential run; its old-generation heap
 is limited to 128 MiB and each WASM memory to 384 MiB. These limits are not a
 process RSS limit. Results and digest-bound package manifests are written below
@@ -748,3 +751,33 @@ until the app stream opens, then waits for populated route data before sending
 a head event. It removes interception before observing native reconnect headers
 and checks fresh requests separately after the head and cursor recovery. SSE
 readiness alone does not establish that a lazy page has query observers.
+
+### Dual-runtime npm alias feasibility
+
+`make test-vyper-alias-feasibility VYPER_ALIAS_FEASIBILITY_OUTPUT=.local/alias-comparison-new`
+creates a new isolated npm project with exact dependencies `pyodide@314.0.7` and
+`pyodide-legacy@npm:pyodide@0.29.5`. It requires the ordinary compiler tooling
+install, but never changes its dependency pins or existing runtime outputs.
+The new output directory must not already exist. Downloads use the normal
+checksum-verified package builders; original/modified references are read-only.
+
+Only Vyper 0.4.0–0.4.3 selects the modern runtime; the other 22 indexed versions
+select the alias. Unknown versions fail without fallback. All 362 compilations
+use fresh restricted processes with at most four concurrent children, a
+30-second deadline, 128 MiB V8 old-generation heap and 384 MiB WASM cap. Each
+child receives read permission for its selected runtime and package, not the
+sibling runtime. These memory limits do not bound total RSS.
+
+The experiment records npm lock integrity, resolved alias paths, runtime and
+package identities, reference digests and every input's output/command. Both
+runtimes get permission, memory, large-input and timeout/forced-cleanup probes.
+Wrong-Python identity rejection and a deliberately misrouted old compiler are
+negative controls. `report.json` contains the aggregate verdict; `results/`
+contains per-input evidence. Setup or compatibility failures return nonzero.
+
+This diagnostic preserves existing package-manifest production pins and records
+the candidate runtime separately. It does not claim that those manifests can
+be accepted by the current Go/SEA runtime or signed release catalog. Passing
+this test establishes local alias/routing feasibility only; production adoption
+requires explicit runtime selection, digest binding, packaging and native Linux
+acceptance changes under ADR-0053.

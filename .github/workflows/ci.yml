@@ -63,13 +63,17 @@ jobs:
         run: make test-rustfs
 
   vyper-packages:
-    name: Build common Vyper WASM packages
+    name: Build application-locked Vyper packages
     outputs:
       artifact-id: ${{ steps.packages.outputs.artifact-id }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache: true
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc

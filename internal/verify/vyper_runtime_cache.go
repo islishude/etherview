@@ -1,16 +1,16 @@
 package verify
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"context"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
+
+	vyper "github.com/islishude/etherview/compiler/vyper"
 )
 
 func (compiler *VyperCompiler) ensureRuntime(ctx context.Context, version string, entry CatalogEntry, artifact VyperRuntimeArtifact) (result *VyperCompiler, resultErr error) {
@@ -24,14 +24,39 @@ func (compiler *VyperCompiler) ensureRuntime(ctx context.Context, version string
 	if err != nil {
 		return nil, err
 	}
+	recipe, err := vyper.Lookup(version)
+	if err != nil || recipe.Digest() != artifact.RecipeSHA256 {
+		return nil, ErrCompilerProvenanceConflict
+	}
+	var locked bytes.Buffer
+	if json.Compact(&locked, recipe.Manifest) != nil || vyper.Digest(append(locked.Bytes(), '\n')) != artifact.ManifestSHA256 || recipe.CompilerSHA256 != hex.EncodeToString(entry.ArtifactSHA256[:]) {
+		return nil, ErrCompilerProvenanceConflict
+	}
 	target := filepath.Join(compiler.Cache.Root, "vyper-runtime-"+artifact.ManifestSHA256)
-	child := &VyperCompiler{Path: compiler.Path, SharedPath: compiler.sharedPath(), PackagePath: target, Version: version, CompilerDigest: entry.ArtifactSHA256, ManifestDigest: digest, Timeout: compiler.Timeout, MaxInputBytes: compiler.MaxInputBytes, MaxOutputBytes: compiler.MaxOutputBytes}
+	child := &VyperCompiler{Path: compiler.Path, SharedPath: compiler.sharedRoot(), PackagePath: target, Version: version, CompilerDigest: entry.ArtifactSHA256, ManifestDigest: digest, Timeout: compiler.Timeout, MaxInputBytes: compiler.MaxInputBytes, MaxOutputBytes: compiler.MaxOutputBytes}
 	if _, err := child.validateHelper(); err == nil {
 		return child, nil
 	}
-	archive, err := compiler.Cache.ensureArtifact(ctx, LanguageVyper, version, CompilerArtifact{URL: artifact.URL, SHA256: artifact.SHA256, MaxBytes: artifact.MaxBytes}, "vyper-archive-"+artifact.SHA256+".tar.gz")
+	assemblyContext, cancel := context.WithTimeout(ctx, compiler.timeout())
+	defer cancel()
+	payload, manifest, err := vyper.Build(assemblyContext, recipe, func(ctx context.Context, a vyper.Archive) ([]byte, error) {
+		path, err := compiler.Cache.ensureArtifact(ctx, LanguageVyper, version, CompilerArtifact{URL: a.URL, SHA256: a.SHA256, MaxBytes: a.Size}, "pypi-"+a.SHA256+".whl")
+		if err != nil {
+			return nil, err
+		}
+		return os.ReadFile(path)
+	})
 	if err != nil {
-		return nil, err
+		// Downloads sanitize transport errors too, so recover cancellation from
+		// the assembly context before redacting other failures.
+		if contextErr := assemblyContext.Err(); contextErr != nil {
+			return nil, contextErr
+		}
+		return nil, errors.New("assemble locked Vyper package")
+	}
+	var expected bytes.Buffer
+	if json.Compact(&expected, recipe.Manifest) != nil || !bytes.Equal(bytes.TrimSpace(manifest), expected.Bytes()) {
+		return nil, ErrCompilerProvenanceConflict
 	}
 	temporary, err := os.MkdirTemp(compiler.Cache.Root, ".vyper-runtime-*")
 	if err != nil {
@@ -42,10 +67,15 @@ func (compiler *VyperCompiler) ensureRuntime(ctx context.Context, version string
 			result, resultErr = nil, ErrCompilerCleanup
 		}
 	}()
-	if err := extractVyperArchive(archive, temporary); err != nil {
+	for name, data := range map[string][]byte{"packages.zip": payload, "package-manifest.json": manifest} {
+		if err := os.WriteFile(filepath.Join(temporary, name), data, 0o444); err != nil {
+			return nil, err
+		}
+	}
+	if err := os.Chmod(temporary, 0o555); err != nil {
 		return nil, err
 	}
-	staged := &VyperCompiler{Path: compiler.Path, SharedPath: compiler.sharedPath(), PackagePath: temporary, Version: version, CompilerDigest: entry.ArtifactSHA256, ManifestDigest: digest}
+	staged := &VyperCompiler{Path: compiler.Path, SharedPath: compiler.sharedRoot(), PackagePath: temporary, Version: version, CompilerDigest: entry.ArtifactSHA256, ManifestDigest: digest}
 	if _, err := staged.validateHelper(); err != nil {
 		return nil, err
 	}
@@ -66,75 +96,6 @@ func (compiler *VyperCompiler) ensureRuntime(ctx context.Context, version string
 		return nil, err
 	}
 	return child, nil
-}
-
-func extractVyperArchive(archive, target string) error {
-	invalid := errors.New("invalid Vyper runtime archive")
-	file, err := os.Open(archive)
-	if err != nil {
-		return invalid
-	}
-	defer file.Close() //nolint:errcheck
-	compressed, err := gzip.NewReader(file)
-	if err != nil {
-		return invalid
-	}
-	defer compressed.Close() //nolint:errcheck
-	reader := tar.NewReader(io.LimitReader(compressed, maxRuntimeTotalBytes+maxRuntimeManifestFiles*1024+1))
-	seen := map[string]bool{}
-	var total int64
-	for {
-		header, err := reader.Next()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil || header.Typeflag != tar.TypeReg || len(header.PAXRecords) != 0 || !fs.ValidPath(header.Name) || strings.Contains(header.Name, "\\") || seen[header.Name] || len(seen) >= maxRuntimeManifestFiles+1 || header.Size < 0 || header.Size > maxRuntimeFileBytes || header.Mode & ^int64(0o777) != 0 {
-			return invalid
-		}
-		seen[header.Name] = true
-		total += header.Size
-		if total > maxRuntimeTotalBytes {
-			return invalid
-		}
-		path := filepath.Join(target, filepath.FromSlash(header.Name))
-		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-			return invalid
-		}
-		output, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-		if err != nil {
-			return invalid
-		}
-		written, copyErr := io.CopyN(output, reader, header.Size)
-		mode := fs.FileMode(0o444)
-		if header.Mode&0o111 != 0 {
-			mode = 0o555
-		}
-		modeErr, syncErr := output.Chmod(mode), output.Sync()
-		closeErr := output.Close()
-		if written != header.Size || copyErr != nil || modeErr != nil || syncErr != nil || closeErr != nil {
-			return invalid
-		}
-	}
-	// Python tarfile pads the final USTAR record to 20 blocks (10 KiB).
-	// After tar's two EOF blocks, at most 19 zero blocks can remain. Read
-	// through gzip EOF as well so a corrupt or truncated trailer still fails.
-	const recordBytes = 20 * 512
-	padding, err := io.ReadAll(io.LimitReader(compressed, recordBytes+1))
-	if err != nil || len(padding) >= recordBytes || len(padding)%512 != 0 || len(bytes.Trim(padding, "\x00")) != 0 {
-		return invalid
-	}
-	if len(seen) != 2 || !seen["package-manifest.json"] || !seen["packages.zip"] {
-		return invalid
-	}
-	return filepath.WalkDir(target, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return invalid
-		}
-		if entry.IsDir() {
-			return os.Chmod(path, 0o555)
-		}
-		return nil
-	})
 }
 
 func removeVyperStaging(path string) error {

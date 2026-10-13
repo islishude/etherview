@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	vyper "github.com/islishude/etherview/compiler/vyper"
+
 	dbaccess "github.com/islishude/etherview/internal/db"
 	pgx "github.com/jackc/pgx/v5"
 	pgtype "github.com/jackc/pgx/v5/pgtype"
@@ -26,6 +28,16 @@ func (repository *PostgresRepository) SubmitV2(
 	request SubmissionV2,
 ) (VerificationJob, bool, error) {
 	normalizeSolidityAnalysisVersion(&request)
+	if request.Language == LanguageVyper {
+		recipe, err := vyper.Lookup(request.CompilerVersion)
+		if err != nil {
+			return VerificationJob{}, false, ErrCompilerVersionUnavailable
+		}
+		if request.VyperLockDigest != "" && request.VyperLockDigest != recipe.Digest() {
+			return VerificationJob{}, false, ErrCompilerProvenanceConflict
+		}
+		request.VyperLockDigest = recipe.Digest()
+	}
 	encoded, err := json.Marshal(request)
 	if err != nil || len(encoded) > repository.options.MaxRequestBytes {
 		return VerificationJob{}, false, errors.New("v2 verification request exceeds configured bounds")
