@@ -19,7 +19,7 @@ batch semantics are not core v1 scope.
 | P00 | [Foundation](docs/plans/P00-foundation.md) | done | — | Governance, toolchain, config, CLI, migrations, CI, and embedded SPA skeleton |
 | P10 | [Indexing](docs/plans/P10-indexing.md) | done | P00 | Full-history core indexing, canonicality, finality, reorgs, and repair |
 | P20 | [Enrichment](docs/plans/P20-enrichment.md) | done | P10 | Tokens, NFTs, ABI/proxy decoding, traces, balances, and statistics |
-| P30 | [Contract Platform & Runtime Operations](docs/plans/P30-contract-verification.md) | blocked | P00, P10, P20 | Consolidated verification, contract intelligence, runtime, deployment, telemetry, and optional accelerators |
+| P30 | [Contract Platform & Runtime Operations](docs/plans/P30-contract-verification.md) | done | P00, P10, P20 | Consolidated verification, contract intelligence, runtime, deployment, telemetry, and optional accelerators |
 | P40 | [API](docs/plans/P40-api.md) | done | P10; incremental P20/P30 | Native REST, search, API keys, SSE, and Etherscan V2 compatibility |
 | P50 | [Web](docs/plans/P50-web.md) | done | P40; incremental P20/P30 | Bilingual embedded SPA and injected-wallet contract interaction |
 | P64 | [NFT Metadata Web](docs/plans/P64-nft-metadata-web.md) | done | P20, P30, P40, P50 | Canonical NFT metadata projection, standard-event refresh, and guarded external-image navigation |
@@ -307,21 +307,12 @@ governance gates pass locally. [CI run 38347889563](https://github.com/islishude
 passes all 13 checks at `a885a15`, including both native architecture matrices
 and monolith/split Hardhat acceptance. P30 remains done.
 
-P30-T130 implements Vyper 0.2.0 retirement and reviewed daily PyPI update
-proposals. P30 is blocked on an upstream advisory-review failure reproduced on
-unmodified HEAD, plus fresh native CI acceptance. Local implementation and
-validation evidence is recorded in the
-[P30 child plan](docs/plans/P30-contract-verification.md#p30-t130--reviewed-vyper-update-proposals-and-020-retirement).
-The previous native acceptance records do not certify this change.
-
-
-P30-T131 is complete: substantive workflow shell logic now lives in maintained
-scripts, with local command-boundary regressions and docs/plan checks passing.
-Remote workflow execution remains unverified; P30-T130's blockers are unchanged.
-
-
-P30-T132 completes exact re-review of the 68 advisory revisions rejected by
-PR 144. Failed-CI artifact replay, live WASM audit and 62 audit/tooling tests pass
-without changing reasons or policy. Run 38417883868 passes all twelve other
-checks, including native AMD64/ARM64 production acceptance; P30-T130 awaits the
-security/license rerun. Actions PR creation still needs repository configuration.
+P30-T130–T132 are complete: Vyper 0.2.0 retirement, reviewed daily update
+proposals, workflow extraction and exact advisory re-review pass all 13 checks
+in [CI run 38422689050](https://github.com/islishude/etherview/actions/runs/38422689050)
+at `ed2d01c`, including security/licenses and native AMD64/ARM64 production
+acceptance. P30 returns to done; P70/P73 external blockers remain unchanged.
+See the [P30 child plan](docs/plans/P30-contract-verification.md#p30-t130t132--remote-acceptance-closure)
+for closure evidence and the remaining operator rollout steps. Actions PR
+creation still needs repository configuration; no application deployment is
+claimed.

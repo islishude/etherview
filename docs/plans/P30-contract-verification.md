@@ -1,6 +1,6 @@
 # P30 — Contract Platform & Runtime Operations
 
-Status: `blocked`
+Status: `done`
 
 This is the canonical plan for contract verification, contract intelligence,
 and the shared runtime/operations platform. Its current work items use the P30
@@ -200,7 +200,7 @@ credential-scoped operational boundaries.
 | P30-T127 | done | P30-T126 | Implement dual Pyodide runtime selection and authenticated release tooling | CI run 38326160375 at 81cd913 passes all 13 checks, including both native architectures and monolith/split Hardhat acceptance |
 | P30-T128 | done | P30-T126 | Replace hosted Vyper packages and signed catalogs with application-locked PyPI assembly; embed 0.2.0 source and retain 26-version provenance/isolation | Local gates and CI run 38331342142 at 9d37872 pass; both native architectures and monolith/split records pass the application acceptance validator |
 | P30-T129 | done | P30-T128 | Preserve cancellation during locked Vyper package assembly | Cancellation/deadline and lease-heartbeat regressions; verifier tests and governance gates |
-| P30-T130 | blocked | P30-T129 | Retire Vyper 0.2.0 and generate reviewed PyPI update PRs daily | Local removal/updater/matrix/race/image checks pass; blocked on upstream advisory re-review and fresh native CI; clear when security and native acceptance pass |
+| P30-T130 | done | P30-T129 | Retire Vyper 0.2.0 and generate reviewed PyPI update PRs daily | CI run 38422689050 at ed2d01c passes all 13 checks, including security/licenses and native AMD64/ARM64 production acceptance |
 | P30-T131 | done | P30-T129 | Extract maintained workflow scripts | Preserve job boundaries and command behavior; local script regressions and governance checks |
 | P30-T132 | done | P30-T131 | Re-review exact advisory revisions rejected by PR 144 CI | Replay failed audit artifact, preserve existing reasons and rejection policy, live audit and governance checks |
 
@@ -284,13 +284,11 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
 ## Current Blockers
 
-P30-T130 awaits the complete security/license CI rerun after T132's exact
-advisory re-review. Run 38417883868 at a789057 passes both native Linux
-AMD64/ARM64 matrices and monolith/split production checks; only security failed.
-T132 passes local failed-artifact replay and the live WASM audit without changing
-policy. Clear the remaining blocker after the security/license rerun passes.
-P30-T128's earlier acceptance does not cover P30-T130. Actions PR creation also
-remains disabled in repository settings and must be enabled before rollout.
+No implementation or acceptance blockers remain in P30. CI run 38422689050
+at ed2d01c passes all 13 checks, clearing T130's security and native acceptance
+conditions. Actions PR creation was last observed disabled and must be enabled
+before using the updater; live scheduled execution and application deployment
+remain operator rollout steps, not completed deployment evidence.
 
 P30-T114's remote acceptance below clears its earlier local Docker
 validation blocker. P70 capacity and P73 live-testnet evidence remain owned
@@ -1510,3 +1508,19 @@ closure below supplies the missing evidence.
   tooling tests, and live `node compiler/vyper/wasm/audit.mjs` (92 components,
   1,685 findings, zero auxiliary changes). Docs/plan and whitespace checks pass.
   Complete security/license acceptance remains subject to the pushed CI rerun.
+
+
+### P30-T130–T132 — remote acceptance closure
+
+- On 2026-10-14, verified [CI run 38422689050](https://github.com/islishude/etherview/actions/runs/38422689050)
+  completed successfully for `ed2d01cc3276acc8b7aa6052876a3dbaedeb7c04`.
+  All 13 checks pass: common generation/lint/tests, PostgreSQL integration,
+  authenticated package construction, native AMD64/ARM64 Vyper matrices,
+  Hardhat and Foundry production E2E on both architectures, security/licenses,
+  browser E2E, deployment/topology checks and Preview metadata acceptance.
+- This supersedes the earlier security/native blockers and pending rerun notes.
+  T130, T131, T132 and P30 are done. Root status stays blocked by other plans.
+  This closure update changes plan text only; local docs/plan checks pass.
+- Repository permission enablement, the first real scheduled update proposal,
+  submission draining and application rollout remain operational steps. No
+  production deployment, database cleanup or auto-merge authorization is implied.
