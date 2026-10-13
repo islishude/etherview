@@ -199,6 +199,7 @@ credential-scoped operational boundaries.
 | P30-T126 | done | P30-T125 | Evaluate npm-aliased dual Pyodide runtimes with explicit Vyper routing | Full fresh-process matrix, runtime separation and negative controls without production changes |
 | P30-T127 | done | P30-T126 | Implement dual Pyodide runtime selection and authenticated release tooling | CI run 38326160375 at 81cd913 passes all 13 checks, including both native architectures and monolith/split Hardhat acceptance |
 | P30-T128 | done | P30-T126 | Replace hosted Vyper packages and signed catalogs with application-locked PyPI assembly; embed 0.2.0 source and retain 26-version provenance/isolation | Local gates and CI run 38331342142 at 9d37872 pass; both native architectures and monolith/split records pass the application acceptance validator |
+| P30-T129 | done | P30-T128 | Preserve cancellation during locked Vyper package assembly | Cancellation/deadline and lease-heartbeat regressions; verifier tests and governance gates |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
@@ -1340,3 +1341,18 @@ closure below supplies the missing evidence.
   passes descriptor/archive hashes, fixtures and compiler/runtime/executor
   identity checks. P30-T128 and P30 are `done`; P70/P73 external blockers remain
   unchanged. No production deployment is claimed.
+
+### P30-T129 — preserve package assembly cancellation (2026-10-13)
+
+- Claimed before implementation. Recover the assembly context's cancellation or
+  deadline sentinel before sanitizing Build failures, including downloads whose
+  transport errors were already redacted. Lease loss therefore remains
+  recoverable without exposing upstream error details.
+- New regressions reproduced cancellation/deadline misclassification and fatal
+  heartbeat lease-loss classification before the fix. All pass afterward;
+  ordinary assembly errors remain sanitized. Focused cancellation/lease tests
+  pass under the race detector, including existing worker continuation tests.
+- `go test ./internal/verify ./compiler/vyper/...` passes (verifier 140.843s).
+  `make lint-go docs-check plan-check` and `git diff --check` pass. P30 remains
+  done. This follow-up has local validation; T128's earlier remote acceptance
+  remains attributed to its recorded commit, not this fix.

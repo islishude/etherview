@@ -300,3 +300,8 @@ passes all 13 checks at `9d37872`, including native Linux AMD64/ARM64 full
 matrices and monolith/split acceptance. Downloaded native records pass the
 application acceptance validator against the exact locked packages. P30-T128
 and P30 are done; P70/P73 external blockers remain unchanged.
+
+P30-T129 preserves assembly cancellation sentinels so lease loss remains
+recoverable. Focused race regressions, verifier/assembler suites, lint and
+governance gates pass locally. P30 remains done; prior remote acceptance is
+attributed to its original commit.

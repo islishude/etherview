@@ -47,6 +47,11 @@ func (compiler *VyperCompiler) ensureRuntime(ctx context.Context, version string
 		return os.ReadFile(path)
 	})
 	if err != nil {
+		// Downloads sanitize transport errors too, so recover cancellation from
+		// the assembly context before redacting other failures.
+		if contextErr := assemblyContext.Err(); contextErr != nil {
+			return nil, contextErr
+		}
 		return nil, errors.New("assemble locked Vyper package")
 	}
 	var expected bytes.Buffer
