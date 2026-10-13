@@ -78,7 +78,6 @@ export function inventory() {
     "compiler/vyper/application-lock.json",
     "compiler/vyper/bundle.go",
     "compiler/vyper/archive.go",
-    "compiler/vyper/versions/vyper-0.2.0.tar.gz",
     "compiler/vyper/wasm/protocol.py",
     "compiler/vyper/wasm/execute.mjs",
     "compiler/package-lock.json",
@@ -115,16 +114,11 @@ export async function osv(query, fetcher = fetchJSON) {
   }
 }
 export async function queryPackage([name, version], fetcher = fetchJSON) {
-  let findings;
-  if (name === "vyper" && version === "0.2.0")
-    findings = await osv({ package: { ecosystem: "PyPI", name }, version }, fetcher);
-  else {
-    const response = await fetcher(`https://pypi.org/pypi/${name}/${version}/json`);
-    if (normalized(response.info.name) !== name || response.info.version !== version)
-      throw new Error("audit-service identity mismatch");
-    findings = response.vulnerabilities;
-    if (!Array.isArray(findings)) throw new Error("invalid PyPI findings");
-  }
+  const response = await fetcher(`https://pypi.org/pypi/${name}/${version}/json`);
+  if (normalized(response.info.name) !== name || response.info.version !== version)
+    throw new Error("audit-service identity mismatch");
+  const findings = response.vulnerabilities;
+  if (!Array.isArray(findings)) throw new Error("invalid PyPI findings");
   return { component: `PyPI/${name}/${version}`, findings };
 }
 export async function queryCore(component, fetcher = fetchJSON) {

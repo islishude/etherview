@@ -72,7 +72,7 @@ func TestVyperStableVersionMatrix(t *testing.T) {
 
 func TestVyperVersionSettings(t *testing.T) {
 	input := json.RawMessage(`{"language":"Vyper","sources":{"A.vy":{"content":""}},"settings":{"optimize":"none"}}`)
-	if _, err := PrepareVyperStandardJSON(input, "A.vy", "0.2.0", 1<<20); err == nil {
+	if _, err := PrepareVyperStandardJSON(input, "A.vy", "0.2.1", 1<<20); err == nil {
 		t.Fatal("accepted ignored optimization setting")
 	}
 	if _, err := PrepareVyperStandardJSON(input, "A.vy", "0.3.7", 1<<20); err != nil {
@@ -184,4 +184,17 @@ func assertVyperReference(t *testing.T, actual, expected []byte, invalid bool) {
 		}
 	}
 	t.Fatal("compiler diagnostics differ from official reference")
+}
+
+func TestVyperRetiredVersionRejected(t *testing.T) {
+	input := json.RawMessage(`{"language":"Vyper","sources":{"A.vy":{"content":"@external\ndef value() -> uint256:\n    return 42\n"}}}`)
+	if _, err := PrepareVyperStandardJSON(input, "A.vy", "0.2.0", 1<<20); err == nil {
+		t.Fatal("retired compiler accepted")
+	}
+	if _, ok := vyperVersionRuntime["0.2.0"]; ok {
+		t.Fatal("retired compiler has an executor")
+	}
+	if vyperRuntimeSpecs["legacy"].Version != "0.2.1" {
+		t.Fatal("legacy probe uses a retired compiler")
+	}
 }

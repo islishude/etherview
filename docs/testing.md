@@ -74,6 +74,9 @@ official reference generation and `make benchmark-vyper-wasm`; reference
 environments are prepared by `node compiler/vyper/reference.mjs` with uv 0.12.24.
 
 
+- `make test-workflow-scripts`: exercise extracted workflow helpers with temporary
+  Git repositories and stub commands, covering metadata, digest export,
+  PR flags, command order and failure propagation without pushing images or PRs.
 - `make toolchain-check`: require at least Go 1.27.2, Node 24.18.0, and npm
   11.16.0 before generating or validating artifacts. Compatible newer stable
   versions are supported; older, malformed, and prerelease versions fail.
@@ -614,7 +617,7 @@ them on any external network.
 pinned 0.4.3 regression package. `make
 security-check` and `make license-check` retain their dependency and license
 checks. `make test-go` and `make test-race` exercise real compilation, manifest,
-input-limit, cancellation and cleanup regressions. The checked-in 26-version
+input-limit, cancellation and cleanup regressions. The checked-in supported-version
 reference matrix covers normal code, constructors, invalid source and supported
 immutables, with ABI/bytecode comparisons against the official compiler.
 
@@ -725,10 +728,10 @@ slot values, optional header fields and bilingual native-transfer tabs.
 
 ### Vyper WASM migration prerequisite
 
-`make test-vyper-wasm-candidate` builds all 26 compiler packages from the existing
+`make test-vyper-wasm-candidate` builds all supported compiler packages from the existing
 hash-locked upstream archives and tests the explicit dual-runtime policy:
 Pyodide 314.0.7 / Python 3.14.2 for Vyper 0.4.0–0.4.3, and the exact npm alias
-0.29.5 / Python 3.13.2 for the other 22 versions. Each of the 362 unchanged
+0.29.5 / Python 3.13.2 for the other 21 baseline versions. Each of the checked-in
 original/modified inputs starts a fresh process; a failed version does not hide
 diagnostics for subsequent versions. Node denies network, writes,
 addons and subprocesses during the differential run; its old-generation heap
@@ -761,8 +764,8 @@ install, but never changes its dependency pins or existing runtime outputs.
 The new output directory must not already exist. Downloads use the normal
 checksum-verified package builders; original/modified references are read-only.
 
-Only Vyper 0.4.0–0.4.3 selects the modern runtime; the other 22 indexed versions
-select the alias. Unknown versions fail without fallback. All 362 compilations
+Only Vyper 0.4.0–0.4.3 selects the modern runtime; the other 21 baseline versions
+select the alias. Unknown versions fail without fallback. All checked-in compilations
 use fresh restricted processes with at most four concurrent children, a
 30-second deadline, 128 MiB V8 old-generation heap and 384 MiB WASM cap. Each
 child receives read permission for its selected runtime and package, not the
@@ -781,3 +784,20 @@ be accepted by the current Go/SEA runtime or signed release catalog. Passing
 this test establishes local alias/routing feasibility only; production adoption
 requires explicit runtime selection, digest binding, packaging and native Linux
 acceptance changes under ADR-0053.
+
+### Vyper update proposals
+
+`make test-vyper-update` runs complete version-set checks, publication allowlist
+and PR lifecycle tests, and offline PyPI metadata regressions. It requires uv;
+CI installs 0.12.24 with `astral-sh/setup-uv`, reading the required version from
+`compiler/vyper/pyproject.toml`. Metadata tests and update scripts share the
+committed tooling `uv.lock` through `uv run --locked`; no pip bootstrap is needed.
+Update recipe generation also requires uv 0.12.24. `make test-vyper-release` includes these
+checks, including tagged production-fixture/count regressions without starting
+Docker. Fixtures cover PEP 440 ordering, prerelease/yanked exclusion, wheel
+compatibility, digest mismatch, network failures and unchanged prior recipes.
+
+The updater only generates reference fixtures for the requested new version.
+Its isolated candidate comparison does not replace the full native Linux matrix
+or production topology gates. New audit inventories must remain review-required
+until reviewed by a maintainer; the workflow cannot rewrite approval records.

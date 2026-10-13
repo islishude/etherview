@@ -6,7 +6,7 @@ on:
   pull_request:
   schedule:
     # Daily at 08:17 Asia/Shanghai (00:17 UTC).
-    - cron: '17 0 * * *'
+    - cron: "17 0 * * *"
 
 permissions:
   contents: read
@@ -34,6 +34,16 @@ jobs:
             api/package-lock.json
             compiler/package-lock.json
             web/package-lock.json
+
+      - name: Install pinned Vyper update test tooling
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version-file: compiler/vyper/pyproject.toml
+          enable-cache: true
+          cache-dependency-glob: |
+            compiler/vyper/pyproject.toml
+            compiler/vyper/uv.lock
+            compiler/vyper/versions/*.lock
 
       - name: Run deterministic common gates
         run: make install-lint-tools toolchain-check plan-check generate-check lint test test-race
@@ -78,11 +88,7 @@ jobs:
         with:
           node-version-file: .nvmrc
       - name: Build authenticated packages once for both architectures
-        run: |
-          npm --prefix compiler ci --ignore-scripts
-          node compiler/vyper/wasm/prepare.mjs
-          node compiler/vyper/wasm/packages.mjs
-          node compiler/vyper/wasm/build-release.mjs --output .local/vyper-releases
+        run: bash .github/scripts/vyper-ci-packages.sh
       - uses: actions/upload-artifact@v7
         id: packages
         with:
@@ -120,12 +126,15 @@ jobs:
           artifact-ids: ${{ needs.vyper-packages.outputs.artifact-id }}
           merge-multiple: true
           path: .local/
-      - name: Build native SEA and verify the common packages
-        run: |
-          npm --prefix compiler ci --ignore-scripts
-          node compiler/vyper/wasm/prepare.mjs
-          npm --prefix compiler run build:sea -- "$PWD/.local/vyper-wasm/sea/etherview-solcjs"
-          ETHERVIEW_TEST_VYPER_MATRIX_ROOT="$PWD/.local/vyper-wasm/packages" go test ./internal/verify -run '^TestVyper(DynamicRuntimeMatrix|StableVersionMatrix)$' -count=1 -timeout=30m
+      - name: Build native SEA
+        run: bash .github/scripts/vyper-ci-native.sh
+      - parallel:
+          - name: Verify native Vyper runtime matrix
+            env:
+              ETHERVIEW_TEST_VYPER_MATRIX_ROOT: ${{ github.workspace }}/.local/vyper-wasm/packages
+            run: go test ./internal/verify -run '^TestVyperDynamicRuntimeMatrix$' -timeout=30m
+          - name: Verify stable Vyper version matrix
+            run: go test ./internal/verify -run '^TestVyperStableVersionMatrix$' -timeout=30m
 
   hardhat3:
     needs: vyper-packages
@@ -392,12 +401,7 @@ jobs:
         env:
           CAROOT: ${{ runner.temp }}/preview-ca
           TRUST_STORES: system
-        run: |
-          make preview-cert
-          # Linux bind mounts retain host ownership. Permit only the API
-          # container's group to read its ephemeral key; keep gateway key 0600.
-          sudo chgrp 65532 .local/preview-tls/tls.key
-          chmod 0640 .local/preview-tls/tls.key
+        run: bash .github/scripts/preview-ci-certificates.sh
       - name: Run full Preview metadata acceptance
         id: preview-metadata
         env:

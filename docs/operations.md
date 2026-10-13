@@ -1205,9 +1205,9 @@ defaults) and keep these test-only overrides out of production runbooks.
 ## Application-locked Vyper runtimes
 
 API/all use the lock embedded in the application. No Vyper catalog URL, public
-key, signing service or catalog renewal is required. The supported 26 versions
+key, signing service or catalog renewal is required. The supported supported versions
 and their exact dependency choices change only with an application release.
-The official 0.2.0 source is embedded; other locked wheels are downloaded from
+Vyper 0.2.0 is no longer supported. All locked wheels are downloaded from
 `https://files.pythonhosted.org`. No PyPI index lookup, pip installation or
 native Python fallback occurs during verification.
 
@@ -1226,7 +1226,7 @@ must be resolved by restoring exact bytes, never editing the embedded lock.
 
 The image contains read-only runtimes at `/opt/etherview/python-wasm/modern`
 and `/opt/etherview/python-wasm/legacy`, plus the host Node SEA. Vyper
-0.4.0–0.4.3 uses Pyodide 314.0.7 / Python 3.14.2; the other 22 versions use
+0.4.0–0.4.3 uses Pyodide 314.0.7 / Python 3.14.2; the other 21 baseline versions use
 Pyodide 0.29.5 / Python 3.13.2. Both startup probes are required. Every compile
 uses a fresh process with V8 old-generation capped at 128 MiB, WASM memory at
 384 MiB and configured I/O/time limits. These are not total RSS bounds.
@@ -1336,3 +1336,19 @@ canonical range. No startup reindex or legacy data adapter is installed.
 New disposable Preview networks activate Amsterdam at genesis. Existing Preview
 volumes retain their genesis identity; do not replace their runtime genesis or
 remove their volumes as part of an application update.
+
+## Vyper compiler update proposals
+
+The `Vyper compiler updates` GitHub workflow checks PyPI daily at 09:37
+Asia/Shanghai. See the [compiler maintenance guide](../compiler/vyper/README.md#proposed-updates-from-pypi)
+for manual discovery/generation, pinned tooling and PR lifecycle rules. Enable
+Actions PR creation in repository settings; approve the generated PR's CI runs.
+A maintainer must review changed audit identities before merging, and native
+AMD64/ARM64 plus monolith/split acceptance remains mandatory before release.
+
+Vyper 0.2.0 is no longer listed or accepted by the new application. Stop new
+Vyper submissions and drain queued/running jobs before deploying this change,
+then roll all roles to the same application identity and verify both runtime
+probes (legacy uses 0.2.1). Do not rebind jobs, delete historical verification
+records, or clear existing caches as part of this rollout. Historical terminal
+results remain readable. The scheduled workflow does not deploy the application.

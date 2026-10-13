@@ -19,7 +19,7 @@ batch semantics are not core v1 scope.
 | P00 | [Foundation](docs/plans/P00-foundation.md) | done | — | Governance, toolchain, config, CLI, migrations, CI, and embedded SPA skeleton |
 | P10 | [Indexing](docs/plans/P10-indexing.md) | done | P00 | Full-history core indexing, canonicality, finality, reorgs, and repair |
 | P20 | [Enrichment](docs/plans/P20-enrichment.md) | done | P10 | Tokens, NFTs, ABI/proxy decoding, traces, balances, and statistics |
-| P30 | [Contract Platform & Runtime Operations](docs/plans/P30-contract-verification.md) | done | P00, P10, P20 | Consolidated verification, contract intelligence, runtime, deployment, telemetry, and optional accelerators |
+| P30 | [Contract Platform & Runtime Operations](docs/plans/P30-contract-verification.md) | blocked | P00, P10, P20 | Consolidated verification, contract intelligence, runtime, deployment, telemetry, and optional accelerators |
 | P40 | [API](docs/plans/P40-api.md) | done | P10; incremental P20/P30 | Native REST, search, API keys, SSE, and Etherscan V2 compatibility |
 | P50 | [Web](docs/plans/P50-web.md) | done | P40; incremental P20/P30 | Bilingual embedded SPA and injected-wallet contract interaction |
 | P64 | [NFT Metadata Web](docs/plans/P64-nft-metadata-web.md) | done | P20, P30, P40, P50 | Canonical NFT metadata projection, standard-event refresh, and guarded external-image navigation |
@@ -306,3 +306,15 @@ recoverable. Focused race regressions, verifier/assembler suites, lint and
 governance gates pass locally. [CI run 38347889563](https://github.com/islishude/etherview/actions/runs/38347889563)
 passes all 13 checks at `a885a15`, including both native architecture matrices
 and monolith/split Hardhat acceptance. P30 remains done.
+
+P30-T130 implements Vyper 0.2.0 retirement and reviewed daily PyPI update
+proposals. P30 is blocked on an upstream advisory-review failure reproduced on
+unmodified HEAD, plus fresh native CI acceptance. Local implementation and
+validation evidence is recorded in the
+[P30 child plan](docs/plans/P30-contract-verification.md#p30-t130--reviewed-vyper-update-proposals-and-020-retirement).
+The previous native acceptance records do not certify this change.
+
+
+P30-T131 is complete: substantive workflow shell logic now lives in maintained
+scripts, with local command-boundary regressions and docs/plan checks passing.
+Remote workflow execution remains unverified; P30-T130's blockers are unchanged.

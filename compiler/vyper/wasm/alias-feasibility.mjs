@@ -8,7 +8,8 @@ import {platform, arch} from 'node:os';
 import {ROOT, HERE, versions, digest} from './tooling.mjs';
 import {bundle, download} from './packages.mjs';
 
-const modern = new Set(['0.4.0','0.4.1','0.4.2','0.4.3']);
+import {runtimePolicy} from './runtime-policy.mjs';
+const modern = new Set(runtimePolicy.modern.versions);
 const supported = new Set(versions().map(x=>x.version));
 export function selectRuntime(version) {
   if (!supported.has(version)) throw new Error('unsupported compiler version');
@@ -85,7 +86,7 @@ async function main() {
       }
     }
   }
-  assert.equal(Object.keys(packageIdentities).length,26);assert.equal(tasks.length,362);
+  assert.equal(Object.keys(packageIdentities).length,versions().length);assert(tasks.length > 0);
   save(join(root,'packages.json'),packageIdentities);save(join(root,'fixtures.json'),hashes);
   mkdirSync(join(root,'results'));
   const rows=[];
@@ -97,7 +98,7 @@ async function main() {
     result.fixture=task.input.slice(ROOT.length+1);result.alias=task.alias;
     save(join(root,'results',`${task.version}-${task.stem}-${task.suffix}.json`),result);
     rows.push({version:task.version,alias:task.alias,fixture:result.fixture,passed:result.passed,seconds:result.seconds});
-    if(rows.length%30===0) console.log(rows.length,'/362;',rows.filter(x=>x.passed).length,'passed');
+    if(rows.length%30===0) console.log(rows.length,'/' + tasks.length + ';',rows.filter(x=>x.passed).length,'passed');
   }
   // Four workers, but a distinct child for every original/modified input.
   let cursor=0;
@@ -126,7 +127,7 @@ async function main() {
     report.probes[alias]=probes;save(join(root,'report.json'),report);
     console.log(alias,'probes',Object.fromEntries(Object.entries(probes).map(([k,v])=>[k,v.passed])));
   }
-  const wrongRoute=await invoke(runtimes.pyodide.shared,join(root,'packages','0.2.0'),'0.2.0','3.14.2',runtimes['pyodide-legacy'].shared,'compile',readFileSync(join(fixtureRoot,'0.2.0','plain.input.json')));
+  const wrongRoute=await invoke(runtimes.pyodide.shared,join(root,'packages','0.2.1'),'0.2.1','3.14.2',runtimes['pyodide-legacy'].shared,'compile',readFileSync(join(fixtureRoot,'0.2.1','plain.input.json')));
   wrongRoute.passed=wrongRoute.cleaned && !wrongRoute.expired && wrongRoute.result.output?.errors?.some(e=>e.type==='AttributeError' && e.message.includes("has no attribute 'n'"))===true;
   report.wrongRoute=wrongRoute;
   for(const [path,hash] of Object.entries(hashes)) assert.equal(digest(readFileSync(join(ROOT,path))),hash);

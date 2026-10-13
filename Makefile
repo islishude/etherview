@@ -120,7 +120,7 @@ test-rustfs:
 test-go: web-build compiler-install
 	$(GO) test $(GO_TEST_FLAGS) $(GO_PACKAGES)
 
-test: test-go web-test
+test: test-go web-test test-workflow-scripts
 
 test-e2e: web-build
 	@set -eu; \
@@ -557,8 +557,8 @@ test-vyper-matrix: compiler-install test-vyper-wasm-candidate
 
 .PHONY: test-vyper-release
 test: test-vyper-release
-test-vyper-release:
-	$(NPM) --prefix compiler ci --ignore-scripts
+test-vyper-release: test-vyper-update
+	$(GO) test -tags='runtimee2e hardhat3e2e' ./e2e/runtime -run '^(TestHardhat3VerificationCounts|TestVyperProductionFixtureCoverage)$$' -count=1
 	$(NODE) --test compiler/vyper/wasm/tooling.test.mjs compiler/vyper/wasm/audit-auxiliary.test.mjs
 	$(NODE) --test compiler/vyper/acceptance.test.mjs compiler/vyper/wasm/production-shards.test.mjs
 
@@ -579,3 +579,14 @@ test-vyper-alias-feasibility:
 benchmark-vyper-wasm: compiler-install
 	$(NODE) compiler/vyper/wasm/packages.mjs
 	$(PYTHON) compiler/vyper/wasm/benchmark.py
+
+.PHONY: test-vyper-update
+test-vyper-update:
+	$(NPM) --prefix compiler ci --ignore-scripts
+	$(NODE) compiler/vyper/update.mjs --check
+	$(NODE) --test compiler/vyper/update.test.mjs
+	uv run --project compiler/vyper --locked python compiler/vyper/update_metadata_test.py
+
+.PHONY: test-workflow-scripts
+test-workflow-scripts:
+	$(NODE) --test .github/scripts/workflow-scripts.test.mjs

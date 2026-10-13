@@ -133,8 +133,6 @@ vendored distributions. `compiler/vyper/versions/index.json` and per-version
 lock files bind the official artifacts; the package manifest binds the shipped
 archive. Native Python and PyInstaller are not shipped in the production image.
 
-The application embeds the official Vyper 0.2.0 source at commit
-`d2c0c87a50dcfca115cb68a96d4063a7576e3dfa` under the Apache-2.0 license. Its
-upstream license is included at `/licenses/vyper-0.2.0-LICENSE.txt`. Other
-compiler/dependency archives are fetched by application-locked PyPI digest;
-no independently hosted compiler distribution or signing key is required.
+Vyper 0.2.0 and its embedded source archive are no longer distributed.
+Supported compiler/dependency archives are fetched by application-locked PyPI
+digest; no independently hosted compiler distribution or signing key is required.

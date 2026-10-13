@@ -16,12 +16,13 @@ The existing Node SEA gains a Vyper-only protocol. P30-T127 selects two exact,
 image-local read-only runtimes: `pyodide@314.0.7` / CPython 3.14.2 /
 PyCryptodome 3.23.0 for Vyper 0.4.0–0.4.3, and the npm alias
 `pyodide-legacy@npm:pyodide@0.29.5` / CPython 3.13.2 / PyCryptodome 3.21.0
-for the remaining 22 supported releases. `compiler/vyper/wasm/runtime-policy.json`
+for the remaining legacy releases. P30-T130 retires 0.2.0, leaving 21 legacy
+baseline releases; ADR-0054 governs reviewed additions to the modern set. `compiler/vyper/wasm/runtime-policy.json`
 owns the explicit version mapping and authenticated shared-manifest digests.
 Node tools consume it directly; generated Go definitions are checked by
 `make generate-check`. Unknown versions fail; compilation errors never switch
 runtimes. The directories are `python-wasm/modern` and `python-wasm/legacy`.
-All 26 existing official compiler releases use architecture-neutral,
+All supported official compiler releases use architecture-neutral,
 digest-authenticated packages. Pure Python cbor2/immutables implementations
 remain upstream bytes. No Vyper compiler implementation patch is permitted.
 Native Python is a build/reference tool only; production has no native Python,

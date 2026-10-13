@@ -1,18 +1,4 @@
 {
-  "0.2.0": {
-    "optimization_modes": [],
-    "evm_versions": [
-      "byzantium",
-      "constantinople",
-      "petersburg",
-      "istanbul",
-      "atlantis",
-      "agharta"
-    ],
-    "default_evm_version": "istanbul",
-    "bytecode_metadata": false,
-    "enable_decimals": false
-  },
   "0.2.1": {
     "optimization_modes": [],
     "evm_versions": [

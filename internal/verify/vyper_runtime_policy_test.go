@@ -33,10 +33,10 @@ func TestVyperRuntimePolicyCoverage(t *testing.T) {
 			t.Fatal("unknown runtime")
 		}
 	}
-	if modern != 4 || legacy != 22 {
+	if modern < 4 || legacy != 21 {
 		t.Fatalf("coverage %d/%d", modern, legacy)
 	}
-	for _, v := range []string{"0.4.4", "0.5.0", "0.3.5", "latest"} {
+	for _, v := range []string{"0.2.0", "0.3.5", "latest"} {
 		if _, ok := vyperRuntimeFor(v); ok {
 			t.Fatalf("unknown version accepted %s", v)
 		}

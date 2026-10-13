@@ -803,8 +803,8 @@ size alone is not sufficient justification to weaken those invariants.
   catalog freshness or provenance. See
   [ADR-0037](../decisions/ADR-0037-persistent-solcjs-artifact-cache.md).
 - Vyper execution follows [ADR-0054](../decisions/ADR-0054-vyper-application-lock.md):
-  an application-embedded 26-version lock replaces independently signed catalogs
-  and hosted compiler packages. The locked 0.2.0 source is embedded; other exact
+  an application-embedded supported-version lock replaces independently signed catalogs
+  and hosted compiler packages. Vyper 0.2.0 is retired; exact locked
   upstream archives download from PyPI into an authenticated SHA-256 cache.
   The shared bounded Go assembler produces the locked package before atomic
   installation. There is no runtime index lookup, dependency resolution or pip.

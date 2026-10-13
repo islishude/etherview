@@ -33,3 +33,5 @@ node_modules
 /.local/vyper-builds/
 /.local/vyper-releases/
 /compiler/vyper/**/__pycache__/
+
+/compiler/vyper/.venv/

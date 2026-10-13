@@ -5,13 +5,13 @@ Status: accepted
 ## Decision
 
 P30-T128 replaces ADR-0049/ADR-0053's independently signed catalog and hosted
-compiler packages. All 26 compiler versions, the explicit dual-Pyodide policy,
+compiler packages. The complete supported version set, the explicit dual-Pyodide policy,
 fresh restricted SEA processes, exact matching and canonical lease-fenced
 publication remain mandatory.
 
 The application embeds `compiler/vyper/application-lock.json`, the existing
-Python adapter and the authenticated upstream 0.2.0 source archive. PyPI does
-not publish that exact release. Other compiler/dependency archives are fetched
+Python adapter. P30-T130 retires Vyper 0.2.0 and its embedded source archive.
+All supported compiler/dependency archives are fetched
 from exact `files.pythonhosted.org` HTTPS URLs in the lock. Runtime requests do
 not query package indexes, resolve dependencies, invoke pip or execute build
 hooks. User input cannot select URLs, packages, runtime or assembly rules.
@@ -44,7 +44,7 @@ Submission records the per-version recipe digest and includes it in request
 idempotency. The worker rejects requests belonging to another recipe. Binding
 still occurs once under the job lease and authenticates compiler, host SEA,
 shared runtime and package identities against the registered application
-snapshot. PostgreSQL additionally checks the recipe digest and embedded source
+snapshot. PostgreSQL additionally checks the recipe digest and application
 identity. Cache loss cannot change these identities; neither can retries.
 
 Drain queued/running Vyper tasks before switching distribution or runtime
@@ -54,12 +54,12 @@ The target is the current fresh-database schema.
 
 ## Release and validation
 
-Native AMD64/ARM64 full 26-version differential matrices and monolith/split
+Native AMD64/ARM64 full supported-version differential matrices and monolith/split
 production acceptance remain required. The former signing gate becomes an
 application release acceptance check; local transport archives are CI evidence
 only and are never runtime download inputs. Local or emulated results cannot
 replace missing native evidence. Audits and notices cover actual assembled
-contents, embedded source and both runtime cores.
+contents and both runtime cores.
 
 Application image/binary provenance now authorizes the lock. Deploy exact image
 digests; there is no independent signing key, catalog hosting or renewal. Adding,
@@ -68,3 +68,19 @@ is required only for cold cache misses, and upstream deletion can prevent a cold
 rebuild. Cache persistence/prewarming improves availability without becoming a
 correctness authority. Fresh-process initialization and dual compilation costs
 remain unchanged.
+
+## Reviewed automatic updates
+
+P30-T130 allows a daily build-time PyPI check to propose new stable versions
+above the highest supported release. Existing locks and reference outputs are
+immutable to the updater; withdrawn releases do not silently remove support.
+The updater tries only the existing modern runtime. A new Python requirement,
+unavailable pure wheel or adapter incompatibility requires manual engineering.
+Vyper 0.2.0 remains unsupported; historical terminal provenance is retained.
+
+Updates are prepared without repository write credentials in an isolated tree.
+Only complete data/generated-code patches that pass the candidate comparison
+reach a separate, path-restricted publication job. GITHUB_TOKEN creates the PR;
+a maintainer approves CI and reviews the changed security inventory. Automation
+cannot change audit approvals, adapters, runtime cores or workflows. Full native
+architecture and topology acceptance remains mandatory before application release.
