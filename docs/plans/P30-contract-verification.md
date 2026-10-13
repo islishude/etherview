@@ -1,6 +1,6 @@
 # P30 — Contract Platform & Runtime Operations
 
-Status: `blocked`
+Status: `done`
 
 This is the canonical plan for contract verification, contract intelligence,
 and the shared runtime/operations platform. Its current work items use the P30
@@ -198,11 +198,15 @@ credential-scoped operational boundaries.
 | P30-T125 | done | P30-T124 | Classify only explicitly reviewed OSV CPython Vanir metadata changes as auxiliary | Scoped baseline authentication, strict rejection regressions, live audit and governance gates |
 | P30-T126 | done | P30-T125 | Evaluate npm-aliased dual Pyodide runtimes with explicit Vyper routing | Full fresh-process matrix, runtime separation and negative controls without production changes |
 | P30-T127 | done | P30-T126 | Implement dual Pyodide runtime selection and authenticated release tooling | CI run 38326160375 at 81cd913 passes all 13 checks, including both native architectures and monolith/split Hardhat acceptance |
-| P30-T128 | blocked | P30-T126 | Replace hosted Vyper packages and signed catalogs with application-locked PyPI assembly; embed 0.2.0 source and retain 26-version provenance/isolation | Local gates pass; requires fresh native Linux AMD64/ARM64 full matrices and monolith/split acceptance for the locked outputs |
+| P30-T128 | done | P30-T126 | Replace hosted Vyper packages and signed catalogs with application-locked PyPI assembly; embed 0.2.0 source and retain 26-version provenance/isolation | Local gates and CI run 38331342142 at 9d37872 pass; both native architectures and monolith/split records pass the application acceptance validator |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
 ## Acceptance
+
+- [x] P30-T128: all 26 application-locked packages pass native Linux AMD64/ARM64
+      full matrices and monolith/split acceptance in CI run 38331342142; the
+      downloaded native records pass `compiler/vyper/acceptance.mjs`.
 
 - [x] P30-T125: only opted-in OSV CPython Vanir fields can pass as auxiliary;
       all other changes and audit completeness checks remain blocking.
@@ -276,13 +280,8 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`.
 
 ## Current Blockers
 
-P30-T128 requires fresh native Linux AMD64/ARM64 full 26-version
-matrices and monolith/split Hardhat acceptance against the current application-
-locked outputs. Pre-T128 native ARM64 evidence has different package identities
-and is not reused. Current macOS-orchestrated matrix/topology checks pass but do
-not replace native runs. Clear this blocker with matching native records that
-pass `compiler/vyper/acceptance.mjs` before production release. Independent
-catalog signing is retired under ADR-0054.
+None within P30. P30-T128 native acceptance is complete; the evidence below
+binds both architectures to the application-locked outputs.
 
 P30-T114's remote acceptance below clears its earlier local Docker
 validation blocker. P70 capacity and P73 live-testnet evidence remain owned
@@ -1332,10 +1331,12 @@ closure below supplies the missing evidence.
   `make lint-go docs-check plan-check` and `git diff --check` pass. No upstream
   compiler payload, reference fixture, historical task or prior acceptance
   record is rewritten.
-- Implementation and local validation are complete. P30-T128 remains `blocked`
-  until fresh native Linux AMD64 and ARM64 full 26-version matrices plus native
-  monolith/split Hardhat acceptance cover these exact locked outputs and pass
-  `compiler/vyper/acceptance.mjs`. The available macOS host cannot establish
-  that evidence. These changes update PR #143; the earlier green CI run closes
-  T127 only. P30 remains blocked pending CI for T128; no production deployment
-  is claimed.
+- Native acceptance completed on 2026-10-13: [CI run 38331342142](https://github.com/islishude/etherview/actions/runs/38331342142)
+  at commit `9d37872cf043b16ac1c7934204a68a85d0f8b9c6` on
+  [PR #143](https://github.com/islishude/etherview/pull/143) passes all 13 checks.
+  Downloaded AMD64/ARM64 acceptance records both report `native_linux: true`,
+  monolith/split success and all 26 versions. Merging those records and running
+  `compiler/vyper/acceptance.mjs` against the exact locked transport packages
+  passes descriptor/archive hashes, fixtures and compiler/runtime/executor
+  identity checks. P30-T128 and P30 are `done`; P70/P73 external blockers remain
+  unchanged. No production deployment is claimed.
