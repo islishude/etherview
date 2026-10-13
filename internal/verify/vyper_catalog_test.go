@@ -1,78 +1,24 @@
 package verify
 
 import (
-	"crypto/ed25519"
-	"crypto/rand"
-	"encoding/base64"
-	"encoding/json"
-	"strings"
 	"testing"
 	"time"
 )
 
-func TestSignedVyperCatalog(t *testing.T) {
-	public, private, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
+func TestVyperApplicationVersionsIgnoreRemoteFreshness(t *testing.T) {
+	catalog := &CompilerCatalog{vyperEntries: map[string]CatalogEntry{
+		"0.4.3": {Version: "0.4.3", GenerationID: 7, FetchedAt: time.Unix(0, 0)},
+		"0.2.0": {Version: "0.2.0", GenerationID: 7},
+	}}
+	entry, err := catalog.Lookup(t.Context(), LanguageVyper, "0.4.3")
+	if err != nil || entry.GenerationID != 7 {
+		t.Fatalf("local lock lookup: %+v %v", entry, err)
 	}
-	parser := &CompilerCatalog{options: CompilerCatalogOptions{VyperPublicKey: public, MaxEntries: 4096, MaxArtifactBytes: defaultCompilerArtifactMB}, origins: map[string]struct{}{"https://compilers.example": {}}}
-	base := vyperCatalogDocument{Schema: "etherview-vyper-catalog-v2", ExpiresAt: time.Now().Add(time.Hour), Builds: []vyperCatalogBuild{{Version: "0.4.3", CompilerSHA256: strings.Repeat("a", 64), Runtimes: []VyperRuntimeArtifact{
-		{Platform: CompilerPlatformEmscriptenWASM32, URL: "https://compilers.example/package.tar.gz", SHA256: strings.Repeat("b", 64), ManifestSHA256: strings.Repeat("c", 64), SharedSHA256: vyperRuntimeSpecs["modern"].SharedSHA256, ExecutorDigests: map[string]string{"linux-amd64": strings.Repeat("d", 64), "linux-arm64": strings.Repeat("e", 64)}, MaxBytes: 1024, Protocol: vyperDynamicSchema},
-	}}}}
-	cases := []struct {
-		name   string
-		mutate func(*vyperCatalogDocument)
-		valid  bool
-	}{
-		{"valid", func(*vyperCatalogDocument) {}, true},
-		{"valid legacy", func(d *vyperCatalogDocument) {
-			d.Builds[0].Version = "0.3.10"
-			d.Builds[0].Runtimes[0].SharedSHA256 = vyperRuntimeSpecs["legacy"].SharedSHA256
-		}, true},
-		{"modern runtime on legacy version", func(d *vyperCatalogDocument) { d.Builds[0].Version = "0.3.10" }, false},
-		{"legacy runtime on modern version", func(d *vyperCatalogDocument) {
-			d.Builds[0].Runtimes[0].SharedSHA256 = vyperRuntimeSpecs["legacy"].SharedSHA256
-		}, false},
-		{"expired", func(d *vyperCatalogDocument) { d.ExpiresAt = time.Now().Add(-time.Second) }, false},
-		{"prerelease", func(d *vyperCatalogDocument) { d.Builds[0].Version = "0.4.3rc1" }, false},
-		{"build metadata", func(d *vyperCatalogDocument) { d.Builds[0].Version = "0.4.3+abc" }, false},
-		{"withdrawn", func(d *vyperCatalogDocument) { d.Builds[0].Withdrawn = true }, false},
-		{"missing architecture", func(d *vyperCatalogDocument) { delete(d.Builds[0].Runtimes[0].ExecutorDigests, "linux-arm64") }, false},
-		{"duplicate architecture", func(d *vyperCatalogDocument) {
-			d.Builds[0].Runtimes = append(d.Builds[0].Runtimes, d.Builds[0].Runtimes[0])
-		}, false},
-		{"untrusted origin", func(d *vyperCatalogDocument) { d.Builds[0].Runtimes[0].URL = "https://attacker.example/runtime" }, false},
-		{"wrong shared runtime", func(d *vyperCatalogDocument) { d.Builds[0].Runtimes[0].SharedSHA256 = strings.Repeat("f", 64) }, false},
-		{"unknown host", func(d *vyperCatalogDocument) {
-			d.Builds[0].Runtimes[0].ExecutorDigests["linux-riscv64"] = strings.Repeat("f", 64)
-		}, false},
-		{"zero executor", func(d *vyperCatalogDocument) {
-			d.Builds[0].Runtimes[0].ExecutorDigests["linux-amd64"] = strings.Repeat("0", 64)
-		}, false},
-		{"wrong protocol", func(d *vyperCatalogDocument) { d.Builds[0].Runtimes[0].Protocol = "unrestricted" }, false},
-		{"zero digest", func(d *vyperCatalogDocument) { d.Builds[0].Runtimes[0].SHA256 = strings.Repeat("0", 64) }, false},
-		{"oversize", func(d *vyperCatalogDocument) { d.Builds[0].Runtimes[0].MaxBytes = defaultCompilerArtifactMB + 1 }, false},
+	versions, err := catalog.Versions(t.Context(), LanguageVyper)
+	if err != nil || len(versions) != 2 || versions[0] != "0.2.0" {
+		t.Fatalf("versions: %v %v", versions, err)
 	}
-	initial, _ := json.Marshal(base)
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			var d vyperCatalogDocument
-			if err := json.Unmarshal(initial, &d); err != nil {
-				t.Fatal(err)
-			}
-			tc.mutate(&d)
-			payload, _ := json.Marshal(d)
-			signature := ed25519.Sign(private, payload)
-			raw, _ := json.Marshal(map[string]string{"payload": base64.StdEncoding.EncodeToString(payload), "signature": base64.StdEncoding.EncodeToString(signature)})
-			entries, err := parser.parseVyper("https://compilers.example/catalog.json", raw)
-			if (err == nil) != tc.valid {
-				t.Fatalf("entries=%d error=%v", len(entries), err)
-			}
-		})
-	}
-	payload, _ := json.Marshal(base)
-	raw, _ := json.Marshal(map[string]string{"payload": base64.StdEncoding.EncodeToString(payload), "signature": base64.StdEncoding.EncodeToString(make([]byte, ed25519.SignatureSize))})
-	if _, err := parser.parseVyper("https://compilers.example/catalog.json", raw); err == nil {
-		t.Fatal("accepted forged signature")
+	if _, err = catalog.Lookup(t.Context(), LanguageVyper, "0.4.4"); err == nil {
+		t.Fatal("unlocked version accepted")
 	}
 }

@@ -68,7 +68,7 @@ matrices remain required verification
 coverage, without making Hardhat wait for native matrix completion.
 
 Common CI gates, Vyper package construction, security/license auditing and the
-Go archive producer regression use Node without host Python setup. The compiler
+bounded Go assembler regressions use Node and Go without host Python setup. The compiler
 interpreter remains bundled Python WASM. Host Python is needed only for optional
 official reference generation and `make benchmark-vyper-wasm`; reference
 environments are prepared by `node compiler/vyper/reference.mjs` with uv 0.12.24.
@@ -619,7 +619,7 @@ reference matrix covers normal code, constructors, invalid source and supported
 immutables, with ABI/bytecode comparisons against the official compiler.
 
 `make test-vyper-matrix` builds authenticated architecture-neutral packages and
-runs all original/modified fixtures with Pyodide 0.29.5, then tests every version
+runs all original/modified fixtures with the version-selected Pyodide runtime, then tests every version
 through the SEA/Go execution boundary. Candidate outputs go to
 `.local/vyper-wasm/`. Linux AMD64 and ARM64 production acceptance remains a
 separate release requirement; the local matrix does not satisfy it.
@@ -632,11 +632,11 @@ common WASM packages in `.local/vyper-wasm/packages/`, transport descriptors in
 `.local/vyper-releases/`, and a current production-image matrix record. Run
 `node compiler/vyper/wasm/production-matrix.mjs` after building the production
 image; it checks all original/modified fixtures in fresh network-disabled
-containers. Local non-Linux records are diagnostic and rejected by signing. An ephemeral signed HTTPS fixture exercises real cold
-runtime downloads. It deploys contracts from six protocol families through
+containers. Local non-Linux records are diagnostic and rejected by release acceptance. The production E2E exercises exact application-locked PyPI downloads and
+local assembly; in-process transport fixtures cover deterministic download failures. It deploys contracts from six protocol families through
 native REST and Etherscan in both monolith and split layouts, verifies constructor
-and immutable values, ABI/source reads and catalog-bound provenance. Successful
-runs write descriptor-bound acceptance records used by the release catalog tool.
+and immutable values, ABI/source reads and application-bound provenance. Successful
+runs write descriptor-bound acceptance records used by the application release acceptance tool.
 A macOS run or emulated architecture never substitutes for native Linux gates.
 
 CI retains the native AMD64/ARM64 Hardhat jobs and runs four production fixture
@@ -656,15 +656,15 @@ rejects missing/extra/duplicate or inconsistent evidence, and writes the existin
 The no-argument production command remains the sequential local option; use a
 clean evidence directory for a new run because evidence files are exclusive-create.
 `make test-vyper-release` covers Node package/release/audit/license regressions,
-partition/merge and subprocess failure handling. The Go archive roundtrip calls
-the same Node producer consumed by release builds.
+partition/merge and subprocess failure handling. Go tests authenticate and
+reproduce the locked package with the same assembler used by workers.
 Compare parallel-group wall time against the sequential baseline on native CI;
 record resource contention and any compilation timeout without relaxing limits.
 The completed native serial/parallel comparison and failure-propagation evidence
 are retained in [P30 acceptance](plans/P30-contract-verification.md#p30-t120--vyper-ci-optimization-and-acceptance).
 
 PostgreSQL integration tests cover durable binding/publication and reorg
-rejection. Signature, catalogue expiry, unsafe archives and runtime identity
+rejection. Embedded lock integrity, unsafe archives and runtime identity
 regressions remain passing release gates. Runtime or permission failures must be
 fixed, never converted to expected failures or unrestricted execution.
 

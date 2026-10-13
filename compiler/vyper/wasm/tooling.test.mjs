@@ -18,7 +18,7 @@ import AdmZip from "adm-zip";
 import { gunzipSync } from "node:zlib";
 import { canonical, digest, HERE, safeMember, readJSON } from "./tooling.mjs";
 import { makeZip, zipEntries } from "./archives.mjs";
-import { download, unpackWheel, packRuntime } from "./packages.mjs";
+import { download, packRuntime } from "./packages.mjs";
 import { descriptor, buildRelease } from "./build-release.mjs";
 import { metadata, evaluate, findingDigest, osv, queryPackage, queryCore } from "./audit.mjs";
 import { checkPackage } from "./package-licenses.mjs";
@@ -72,28 +72,13 @@ test("cached bytes are authenticated again", async (t) => {
     /cached artifact identity/,
   );
 });
-test("unsafe archive paths, native code, conflicts, symlinks and oversized members", () => {
+test("audit archive paths, symlinks and oversized members", () => {
   for (const name of ["../file.py", "/file.py", "a/../file.py", "a\\file.py", "a//b", "a/./b"])
     assert.throws(() => safeMember(name), /unsafe/);
-  const files = new Map();
-  unpackWheel(
-    zip({
-      "fallback/map.py": "upstream python",
-      "fallback/map.abi3.so": "native",
-      "fallback/__pycache__/map.pyc": "bytecode",
-    }),
-    files,
-  );
-  assert.deepEqual(files, new Map([["fallback/map.py", Buffer.from("upstream python")]]));
-  assert.throws(
-    () =>
-      unpackWheel(zip({ "module.py": "other" }), new Map([["module.py", Buffer.from("original")]])),
-    /conflicting/,
-  );
   const archive = new AdmZip();
   archive.addFile("link", Buffer.from("../escape"));
   archive.getEntry("link").header.attr = 0o120777 * 65536;
-  assert.throws(() => unpackWheel(archive.toBuffer(), new Map()), /unsafe wheel/);
+  assert.throws(() => zipEntries(archive.toBuffer()), /unsafe wheel/);
   const raw = zip({ "x.py": "x" });
   const central = raw.indexOf(Buffer.from("504b0102", "hex"));
   raw.writeUInt32LE(201 << 20, central + 24);
@@ -345,7 +330,7 @@ test("ZIP rejects duplicate paths and corrupt contents before use", () => {
   assert.throws(() => zipEntries(raw), /duplicate/i);
   const corrupt = zip({ "x.py": "source" });
   corrupt[34] ^= 0xff;
-  assert.throws(() => unpackWheel(corrupt, new Map()));
+  assert.throws(() => zipEntries(corrupt)[0].getData());
 });
 test("source archive rejects links, traversal and duplicate files", async () => {
   const { default: tar } = await import("tar-stream");

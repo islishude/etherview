@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
@@ -254,12 +253,8 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 	var compilerCatalog *verify.CompilerCatalog
 	if cfg.Features.Verification && roleSet[components.RoleAPI] {
 		sources := map[verify.Language]string{verify.LanguageSolidity: cfg.Verification.CatalogURLs["solidity"]}
-		key, _ := base64.StdEncoding.Strict().DecodeString(cfg.Verification.VyperCatalogPublicKey)
-		if cfg.Verification.VyperCatalogURL != "" {
-			sources[verify.LanguageVyper] = cfg.Verification.VyperCatalogURL
-		}
 		compilerCatalog, err = verify.NewCompilerCatalog(db, verify.CompilerCatalogOptions{
-			Sources: sources, VyperPublicKey: key,
+			Sources:        sources,
 			Platform:       verify.CompilerPlatformEmscriptenWASM32,
 			AllowedOrigins: cfg.Verification.AllowedDownloadOrigins,
 			Timeout:        cfg.Verification.Timeout, Freshness: cfg.Verification.CatalogMaxStaleness,

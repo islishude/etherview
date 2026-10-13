@@ -1202,60 +1202,47 @@ reuse the captured values.
 Set `ANVIL_ARGS` only for local launch tuning (for example alternate anvil
 defaults) and keep these test-only overrides out of production runbooks.
 
-## Signed Vyper runtime catalog
+## Application-locked Vyper runtimes
 
-API/all processes obtain architecture-neutral Vyper packages from the configured signed
-catalog. Set `verification.vyper_catalog_url` and
-`verification.vyper_catalog_public_key` (base64-encoded 32-byte Ed25519 public
-key), and add the catalog and artifact HTTPS origins to
-`verification.allowed_download_origins`. Compose exposes the corresponding
+API/all use the lock embedded in the application. No Vyper catalog URL, public
+key, signing service or catalog renewal is required. The supported 26 versions
+and their exact dependency choices change only with an application release.
+The official 0.2.0 source is embedded; other locked wheels are downloaded from
+`https://files.pythonhosted.org`. No PyPI index lookup, pip installation or
+native Python fallback occurs during verification.
+
+Remove the retired `verification.vyper_catalog_url` and
+`verification.vyper_catalog_public_key` configuration fields, plus their
 `ETHERVIEW_VERIFICATION_VYPER_CATALOG_URL` and
-`ETHERVIEW_VERIFICATION_VYPER_CATALOG_PUBLIC_KEY` only to API/all. An empty
-configuration leaves Vyper unavailable while other compiler families continue.
-The signing private key must never be installed on application replicas.
+`ETHERVIEW_VERIFICATION_VYPER_CATALOG_PUBLIC_KEY` environment settings, before
+rolling out the new application.
 
-The catalog contains only tested non-withdrawn stable versions. Hourly refresh
-persists immutable generations in PostgreSQL. New bindings stop after 24 hours
-without a fresh catalog, or at signed expiry. Previously bound jobs retain their
-exact compiler and executor identity; refreshing or withdrawing a release never
-rebinds a retry. Keep old published packages available for those jobs.
+Keep outbound HTTPS access to that host for cold cache misses. Existing valid
+raw archives and assembled packages are reused offline. The existing
+`verification.cache_directory` volume is rebuildable performance data: loss can
+require downloading several archives per version, and upstream removal prevents
+cold reconstruction. Stop all cache owners before manual cleanup. Hash failures
+must be resolved by restoring exact bytes, never editing the embedded lock.
 
-Compiler archives share the existing disposable compiler cache volume. Downloads
-are authenticated before bounded extraction and atomic installation. The image
-contains two read-only runtimes at `/opt/etherview/python-wasm/modern` and
-`/opt/etherview/python-wasm/legacy`, plus the host Node SEA. The runtime policy
-routes Vyper 0.4.0–0.4.3 to Pyodide 314.0.7 / Python 3.14.2 and the other 22
-versions to the exact 0.29.5 npm alias / Python 3.13.2. Both must pass startup
-checks. Every invocation checks the host, selected runtime and compiler package;
-identity changes disable the executor and never trigger a fallback. Catalog v2 binds all three identities and the official compiler digest.
-There is no native Python fallback or runtime dependency installation.
+The image contains read-only runtimes at `/opt/etherview/python-wasm/modern`
+and `/opt/etherview/python-wasm/legacy`, plus the host Node SEA. Vyper
+0.4.0–0.4.3 uses Pyodide 314.0.7 / Python 3.14.2; the other 22 versions use
+Pyodide 0.29.5 / Python 3.13.2. Both startup probes are required. Every compile
+uses a fresh process with V8 old-generation capped at 128 MiB, WASM memory at
+384 MiB and configured I/O/time limits. These are not total RSS bounds.
 
-Before applying migration 0072, stop accepting new Vyper jobs and drain all
-queued/running Vyper work. The migration refuses an undrained queue and preserves
-terminal provenance. New jobs bind only the WASM catalog. Existing tasks are
-never rebound to a replacement executor. Both API/all topologies use the same
-image, catalog trust configuration and compiler cache persistence.
+Before migration 0073 or any executor-identity rollout, stop new Vyper
+submissions and drain queued/running jobs. The migration rejects undrained work;
+terminal evidence remains unchanged. Deploy an exact image digest with native
+AMD64/ARM64 matrix and monolith/split acceptance, then check readiness and both
+runtime probes before resuming. Do not mix different bound executor identities
+or rebind jobs. The internal PostgreSQL generation records the application
+snapshot and has no remote expiry; Solidity catalog freshness is unchanged.
 
-For the dual-runtime deployment, first stop new Vyper submissions and wait for
-all queued/running Vyper jobs to finish; do not rebind or backfill existing jobs.
-Retain terminal provenance and old release artifacts. Deploy only an image and
-catalog with new native acceptance evidence for both architectures, then verify
-both runtime startup self-tests and readiness before resuming submissions. The
-change requires no schema migration. Acceptance records must contain the exact
-`shared_runtimes` map; older single-runtime evidence cannot authorize promotion.
-
-Run API-capable replicas in one deployment on the same architecture; drain bound
-work before moving that deployment to another architecture. Missing, changed or
-writable runtime components fail closed. Restore authentic image/package bytes
-instead of editing job provenance. Stop all cache owners before cache cleanup.
-
-Each compilation uses a fresh SEA process with V8 old-generation memory capped
-at 128 MiB and each WASM linear memory capped at 384 MiB, plus configured timeout
-and I/O bounds. These are not total RSS or the former 512 MiB address-space limit.
-Size API memory for the worker count and measured RSS. Imports resolve only from
-the submitted bundle and authenticated built-ins. Promote signed catalogs only
-after matching native AMD64/ARM64 matrix and monolith/split acceptance; local
-Docker checks do not replace that evidence.
+Release validation uses `compiler/vyper/acceptance.mjs` with both native
+acceptance records. It does not sign or publish a catalog. Retain current
+assembly/audit/license evidence. Application releases own recipe changes and
+version withdrawal; live upstream metadata never changes an in-flight job.
 
 ## Private watches, notifications and CSV exports
 

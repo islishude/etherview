@@ -129,8 +129,6 @@ func applyStringEnvironment(cfg *Config, lookup func(string) (string, bool), rea
 	setString(lookup, "COMPILER_CACHE_DIRECTORY", &cfg.Verification.CacheDirectory)
 	setString(lookup, "VERIFICATION_EXECUTOR_PATH", &cfg.Verification.ExecutorPath)
 	setString(lookup, "VERIFICATION_GEAS_PATH", &cfg.Verification.GeasPath)
-	setString(lookup, "VERIFICATION_VYPER_CATALOG_URL", &cfg.Verification.VyperCatalogURL)
-	setString(lookup, "VERIFICATION_VYPER_CATALOG_PUBLIC_KEY", &cfg.Verification.VyperCatalogPublicKey)
 	if value, ok := lookup(envPrefix + "VERIFICATION_SOLIDITY_CATALOG_URL"); ok {
 		if value = strings.TrimSpace(value); value != "" {
 			cfg.Verification.CatalogURLs["solidity"] = value

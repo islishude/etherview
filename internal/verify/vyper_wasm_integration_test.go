@@ -3,22 +3,14 @@
 package verify
 
 import (
-	"archive/tar"
-	"bytes"
-	"compress/gzip"
 	"context"
-	"crypto/ed25519"
 	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"runtime"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -63,82 +55,27 @@ func newVyperWASMDatabase(t *testing.T) *pgxpool.Pool {
 	return db
 }
 
-func packageVyperWASMFixture(t *testing.T, compiler *VyperCompiler) ([]byte, VyperRuntimeArtifact) {
-	t.Helper()
-	var buffer bytes.Buffer
-	compressed := gzip.NewWriter(&buffer)
-	archive := tar.NewWriter(compressed)
-	for _, name := range []string{"package-manifest.json", "packages.zip"} {
-		data, err := os.ReadFile(filepath.Join(compiler.PackagePath, name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := archive.WriteHeader(&tar.Header{Name: name, Typeflag: tar.TypeReg, Mode: 0444, Size: int64(len(data))}); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := archive.Write(data); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := archive.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := compressed.Close(); err != nil {
-		t.Fatal(err)
-	}
-	sum := sha256.Sum256(buffer.Bytes())
-	identity, err := compiler.validateHelper()
-	if err != nil {
-		t.Fatal(err)
-	}
-	executor := hex.EncodeToString(identity.executor[:])
-	executors := map[string]string{"linux-amd64": executor, "linux-arm64": executor}
-	executors[runtime.GOOS+"-"+runtime.GOARCH] = executor
-	return buffer.Bytes(), VyperRuntimeArtifact{
-		Platform: CompilerPlatformEmscriptenWASM32, SHA256: hex.EncodeToString(sum[:]), ManifestSHA256: hex.EncodeToString(compiler.ManifestDigest[:]),
-		SharedSHA256: vyperRuntimeSpecs["modern"].SharedSHA256, Protocol: vyperPackageSchema, MaxBytes: int64(buffer.Len()),
-		ExecutorDigests: executors,
-	}
-}
-
-func TestVyperWASMSignedCatalogToRealCompilation(t *testing.T) {
+func TestVyperApplicationLockToRealCompilation(t *testing.T) {
 	db := newVyperWASMDatabase(t)
 	fixture := newVyperTestCompiler(t)
-	archive, artifact := packageVyperWASMFixture(t, fixture)
-	public, private, err := ed25519.GenerateKey(rand.Reader)
+	catalog, err := NewCompilerCatalog(db, CompilerCatalogOptions{Sources: map[Language]string{LanguageSolidity: "https://binaries.soliditylang.org/wasm/list.json"}, AllowedOrigins: []string{"https://binaries.soliditylang.org"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	var catalogBytes []byte
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/catalog.json":
-			_, _ = w.Write(catalogBytes)
-		case "/package.tar.gz":
-			_, _ = w.Write(archive)
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-	artifact.URL = server.URL + "/package.tar.gz"
-	payload, err := json.Marshal(vyperCatalogDocument{Schema: "etherview-vyper-catalog-v2", ExpiresAt: time.Now().Add(time.Hour), Builds: []vyperCatalogBuild{{Version: "0.4.3", CompilerSHA256: VyperCompilerSHA256, Runtimes: []VyperRuntimeArtifact{artifact}}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	catalogBytes, err = json.Marshal(map[string]string{"payload": base64.StdEncoding.EncodeToString(payload), "signature": base64.StdEncoding.EncodeToString(ed25519.Sign(private, payload))})
-	if err != nil {
-		t.Fatal(err)
-	}
-	catalog, err := NewCompilerCatalog(db, CompilerCatalogOptions{Sources: map[Language]string{LanguageVyper: server.URL + "/catalog.json"}, VyperPublicKey: public, AllowedOrigins: []string{server.URL}, UnsafeAllowPrivateNetworks: true, unsafeHTTPClient: server.Client()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	parent := &VyperCompiler{Catalog: catalog, Path: fixture.Path, SharedPath: fixture.SharedPath, Cache: &CompilerCache{Root: t.TempDir(), InstallLocker: newCompilerCacheLockTestLocker(t, db), unsafeHTTPClient: server.Client()}}
+	var downloads atomic.Int32
+	parent := &VyperCompiler{Catalog: catalog, Path: fixture.Path, SharedPath: fixture.SharedPath, Cache: &CompilerCache{Root: t.TempDir(), InstallLocker: newCompilerCacheLockTestLocker(t, db), unsafeHTTPClient: lockedVyperClient(t, &downloads)}}
 	if err := parent.ValidateRuntime(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	generation, err := catalog.Refresh(t.Context(), LanguageVyper)
+	entry, err := catalog.Lookup(t.Context(), LanguageVyper, "0.4.3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	generation := entry.GenerationID
+	if _, _, err := catalog.vyperArtifact(t.Context(), generation+1, "0.4.3"); !errors.Is(err, ErrCompilerProvenanceConflict) {
+		t.Fatalf("another application generation accepted: %v", err)
+	}
+	_, artifact, err := catalog.vyperArtifact(t.Context(), generation, "0.4.3")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +105,7 @@ func TestVyperWASMSignedCatalogToRealCompilation(t *testing.T) {
 	changed := provenance
 	changed.ExecutorDigest[0] ^= 1
 	if err := repository.BindCompiler(t.Context(), lease, changed); err == nil {
-		t.Fatal("database accepted executor outside signed catalog")
+		t.Fatal("database accepted executor outside application binding")
 	}
 	if err := repository.BindCompiler(t.Context(), lease, provenance); err != nil {
 		t.Fatal(err)
@@ -188,12 +125,12 @@ func TestVyperWASMSignedCatalogToRealCompilation(t *testing.T) {
 		}
 		assertVyperReference(t, actual, expected, false)
 	}
-	server.Close()
+	parent.Cache.unsafeHTTPClient = &http.Client{Transport: vyperTestTransport(func(*http.Request) (*http.Response, error) { return nil, errors.New("offline") })}
 	if _, err := db.Exec(t.Context(), `UPDATE compiler_catalog_entries SET expires_at=now()-interval '1 second' WHERE generation_id=$1`, generation); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := parent.Resolve(t.Context(), LanguageVyper, "0.4.3"); !errors.Is(err, ErrCompilerCatalogStale) {
-		t.Fatalf("expired new binding: %v", err)
+	if _, err := parent.Resolve(t.Context(), LanguageVyper, "0.4.3"); err != nil {
+		t.Fatalf("embedded binding depends on remote expiry: %v", err)
 	}
 	if _, err := parent.CompilePinned(t.Context(), LanguageVyper, "0.4.3", provenance, input); err != nil {
 		t.Fatalf("offline bound compile: %v", err)
@@ -202,7 +139,7 @@ func TestVyperWASMSignedCatalogToRealCompilation(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Also remove the authenticated transport cache: no missing-package fallback.
-	if err := os.Remove(filepath.Join(parent.Cache.Root, "vyper-archive-"+artifact.SHA256+".tar.gz")); err != nil {
+	if err := os.Remove(filepath.Join(parent.Cache.Root, "pypi-"+VyperCompilerSHA256+".whl")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := parent.CompilePinned(t.Context(), LanguageVyper, "0.4.3", provenance, input); err == nil {

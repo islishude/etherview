@@ -2,6 +2,10 @@
 
 Status: accepted
 
+[ADR-0054](ADR-0054-vyper-application-lock.md) supersedes the hosted-package,
+independent signing/catalog and remote freshness decisions below. Runtime
+isolation, immutable provenance, matching and native acceptance remain mandatory.
+
 The native Python execution and per-architecture distribution decisions below
 are superseded by [ADR-0053](ADR-0053-vyper-wasm-distribution.md). Other
 verification, publication and immutable provenance boundaries remain in force.

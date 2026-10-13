@@ -21,7 +21,7 @@ const image = process.env.IMAGE ?? 'etherview:local';
 const root = resolve('.local/vyper-releases');
 const packages = resolve('.local/vyper-wasm/packages');
 const architecture = arch() === 'x64' ? 'amd64' : arch();
-// Non-Linux local runs are diagnostic and rejected by the release signer.
+// Non-Linux local runs are diagnostic and rejected by release acceptance.
 assert(['amd64', 'arm64'].includes(architecture));
 const imageID = execFileSync(docker, ['image', 'inspect', '--format', '{{.Id}}', image], { encoding: 'utf8' }).trim();
 assert.equal(execFileSync(docker, ['image', 'inspect', '--format', '{{.Architecture}}', imageID], { encoding: 'utf8' }).trim(), architecture);

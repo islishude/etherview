@@ -1,7 +1,7 @@
 {
   "schema": "etherview-wasm-security-review-v1",
   "reviewed_at": "2026-10-13",
-  "inventory_sha256": "288e222399dee3de137b424bbdb0d7cebefda9075df7e78d37faa5b583891b07",
+  "inventory_sha256": "c3faa25efde58600b4d226278f3b4f5fb0024308f0b9c506e67c226692717e26",
   "core": [
     {
       "name": "bzip2",

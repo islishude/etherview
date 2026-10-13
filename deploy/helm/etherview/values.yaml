@@ -423,8 +423,6 @@ config:
     executor_path: /opt/etherview/solcjs/etherview-solcjs
     geas_path: /usr/local/bin/etherview-geas-compiler
     # Configure both fields to enable signed dynamic Vyper runtimes.
-    vyper_catalog_url: ""
-    vyper_catalog_public_key: ""
     catalog_urls:
       solidity: auto
     allowed_download_origins:

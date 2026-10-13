@@ -286,6 +286,15 @@ production adoption and native acceptance are separate work.
 P30-T127 implements the explicit dual-Pyodide policy with all 26 versions and
 fresh-process isolation. Candidate, SEA/Go and native ARM64 Linux image matrices
 pass 362 inputs each; `make check`, PostgreSQL Vyper race and local monolith/split
-Hardhat checks pass. P30 is blocked until native Linux AMD64 full-matrix and both
-architectures' native Linux Hardhat acceptance consume the same common artifacts.
-macOS topology records remain diagnostic. P70/P73 external blockers are unchanged.
+Hardhat checks pass. P30-T127 is done: [CI run 38326160375](https://github.com/islishude/etherview/actions/runs/38326160375)
+passes all 13 checks at `81cd913`, including native Linux AMD64/ARM64 full
+matrices and both architectures' native monolith/split Hardhat acceptance.
+P70/P73 external blockers are unchanged.
+
+P30-T128 implements application-locked PyPI downloads and local assembly,
+replacing hosted Vyper packages and the independently signed catalog. The image
+embeds 0.2.0 source; all 26 versions and immutable execution identity remain.
+Local full matrices, unit/race/integration, monolith/split Hardhat, image,
+security/license and common gates pass. P30-T128 and P30 remain blocked until
+fresh native Linux AMD64/ARM64 full matrices and native topology acceptance
+cover these exact locked outputs; macOS evidence is diagnostic only.

@@ -144,6 +144,7 @@ for required_path in \
     licenses/go-ethereum-crypto-secp256k1-BSD-3-Clause.txt \
     licenses/go-ethereum-metrics-BSD-2-Clause-FreeBSD.txt \
     licenses/geas-LGPL-3.0.txt \
+    licenses/vyper-0.2.0-LICENSE.txt \
     licenses/holiman-bloomfilter-MIT.txt \
     licenses/libsecp256k1-MIT.txt
 do

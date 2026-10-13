@@ -1,4 +1,4 @@
-// Unsigned transports only. Native acceptance and signing are separate gates.
+// Local CI transports only. Application release acceptance is a separate gate.
 import {
   existsSync,
   mkdirSync,

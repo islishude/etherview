@@ -802,21 +802,18 @@ size alone is not sufficient justification to weaken those invariants.
   use the same writer database lock domain. Cache persistence never overrides
   catalog freshness or provenance. See
   [ADR-0037](../decisions/ADR-0037-persistent-solcjs-artifact-cache.md).
-- Vyper execution uses signed catalog v2 entries containing one architecture-neutral
-  compiler package and host-specific composite executor digests. The Node SEA
-  selects Pyodide 314.0.7 / CPython 3.14.2 for Vyper 0.4.0–0.4.3 and
-  Pyodide 0.29.5 / CPython 3.13.2 for the other 22 versions from the shared
-  runtime policy. Each child can read only its selected runtime and package.
-  Both runtime self-tests finish before readiness; binding
-  verifies installed package identity, and every fresh compilation revalidates
-  the host, shared runtime and package before and after execution. Changed host or runtime identities
-  cannot be adopted by a running parent. Missing dependencies never fall back to
-  native Python. The fixed 128 MiB V8 old-generation and 384 MiB WASM limits are
-  not a total RSS cap. Compiler lists and version adapters preserve existing
-  capabilities, upstream settings, inline imports, metadata and immutable layouts;
-  missing authenticated metadata remains partial evidence. See
-  [ADR-0053](../decisions/ADR-0053-vyper-wasm-distribution.md). Production packaging
-  and dual-runtime cross-architecture acceptance remain gated by P30-T127.
+- Vyper execution follows [ADR-0054](../decisions/ADR-0054-vyper-application-lock.md):
+  an application-embedded 26-version lock replaces independently signed catalogs
+  and hosted compiler packages. The locked 0.2.0 source is embedded; other exact
+  upstream archives download from PyPI into an authenticated SHA-256 cache.
+  The shared bounded Go assembler produces the locked package before atomic
+  installation. There is no runtime index lookup, dependency resolution or pip.
+  PostgreSQL retains immutable application snapshot generations, recipe-bound
+  requests and compiler/executor bindings; no remote expiry governs Vyper.
+  Each process resolves its own application snapshot, not another replica's head.
+  Dual Pyodide runtime selection, fresh restricted SEA processes, before/after
+  identity validation and native AMD64/ARM64 monolith/split acceptance remain.
+  Solidity's independently refreshed compiler catalog remains unchanged.
 - Native address verification also accepts a bounded inline Geas v0.3.3 source
   filesystem with a required runtime entrypoint and optional creation
   entrypoint. Each entrypoint is assembled twice with stack checking in fresh

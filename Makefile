@@ -560,7 +560,7 @@ test: test-vyper-release
 test-vyper-release:
 	$(NPM) --prefix compiler ci --ignore-scripts
 	$(NODE) --test compiler/vyper/wasm/tooling.test.mjs compiler/vyper/wasm/audit-auxiliary.test.mjs
-	$(NODE) --test compiler/vyper/catalog.test.mjs compiler/vyper/wasm/production-shards.test.mjs
+	$(NODE) --test compiler/vyper/acceptance.test.mjs compiler/vyper/wasm/production-shards.test.mjs
 
 .PHONY: test-vyper-wasm-candidate
 test-vyper-wasm-candidate:

@@ -88,6 +88,11 @@ func (compiler *VyperCompiler) ValidateRuntime(ctx context.Context) error {
 	if err != nil || current != identity {
 		return ErrVyperRuntimeUnavailable
 	}
+	if compiler.Catalog != nil {
+		if err := compiler.Catalog.installVyperLock(ctx, compiler); err != nil {
+			return err
+		}
+	}
 	compiler.mu.Lock()
 	compiler.identity = &identity
 	compiler.mu.Unlock()
@@ -160,7 +165,7 @@ func (compiler *VyperCompiler) CompilePinned(ctx context.Context, language Langu
 	}
 	// Catalog-free compilers are used for local differential verification. Their
 	// exact runtime identity is required, but they cannot create durable jobs
-	// because persistent provenance requires a signed catalog generation.
+	// because persistent provenance requires a registered application generation.
 	if provenance != expected {
 		return nil, ErrCompilerProvenanceConflict
 	}

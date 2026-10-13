@@ -9,10 +9,11 @@ CPython 3.14.2 and the other 22 versions to the `pyodide-legacy` npm alias at
 host-native. Production deployment and native release acceptance are tracked
 by P30-T127; the local matrix is not production release evidence.
 
-`versions/index.json` authenticates the official compiler artifact; per-version
-`.lock` files authenticate dependencies. Version 0.2.0 uses its pinned upstream
-source archive. Compiler implementation bytes and reference fixtures remain
-unchanged. Node owns build, release, audit and regression orchestration. Native Python is
+`application-lock.json` owns runtime recipes. `versions/index.json` and per-version
+`.lock` files retain the upstream pins used by audits and reference generation.
+Version 0.2.0 uses its embedded upstream source archive. Compiler implementation
+bytes and reference fixtures remain unchanged. Go assembles packages; Node owns
+build, release, audit and regression orchestration. Native Python is
 retained only for official reference generation and per-child RSS benchmarks.
 
 `make compiler-install` prepares both shared WASM runtimes, the 0.4.3 package and
@@ -33,34 +34,34 @@ archives and unsigned descriptors. Native AMD64 and ARM64 consumers must use
 these same archive bytes. Building transports does not assert matrix or
 production acceptance.
 
-The catalog signer requires one acceptance record per Linux architecture with
-`native_linux`, `monolith`, `split`, the production `host_sha256`, pinned `shared_runtimes` map, and
-`descriptors` mapping filenames to their SHA-256 digests. Each record's `matrix`
-maps all 26 versions to `cases`, `fixtures_sha256`, `package_sha256`,
-`shared_sha256` and `executor_sha256`. The signer checks the exact repository
-fixture counts and contents and recomputes each composite executor identity.
-`wasm/release.mjs` defines these identities. Run
-`node compiler/vyper/wasm/production-matrix.mjs` against the built production
-image to emit a matrix record; successful Hardhat monolith/split tests add the
-production acceptance flags. Non-Linux records remain diagnostic. Only native acceptance jobs may
-produce these records after passing the corresponding tests; never synthesize
-acceptance from descriptor presence or local candidate results.
+The transports above are local CI evidence only; production never downloads
+these packages. `application-lock.json` is embedded in the Go application.
+`versions/vyper-0.2.0.tar.gz` and `adapter.py` are embedded too. Other compiler and
+dependency wheels are downloaded by exact URL and SHA-256, then assembled by
+`bundle.go` into the same authenticated output used in build checks.
 
-Once both native acceptance records are available, merge their architecture
-objects without modifying their contents and assemble a signed catalog:
+`node compiler/vyper/wasm/packages.mjs` downloads exact locked archives into
+`.local/vyper-wasm/downloads` and invokes the Go assembler. It never chooses a
+new wheel using live metadata. To deliberately update an approved recipe, edit
+its exact inputs, populate the authenticated cache, then run:
 
 ```sh
-node compiler/vyper/catalog.mjs --artifacts .local/vyper-releases \
-  --origin https://compilers.example/vyper/ --acceptance acceptance.json \
-  --key-file /secure/path/vyper-ed25519.pem --expires-at 2026-12-01T00:00:00Z \
-  --output catalog.json
+go run ./compiler/vyper/cmd/bundle --update-lock compiler/vyper/application-lock.json
 ```
 
-Choose a future expiry. The v2 signer refuses missing versions or architectures,
-incomplete/stale matrices, stale production evidence, digest changes and
-non-Ed25519 keys. It never overwrites an existing output. Publish archives before
-their signed catalog only under explicit release authorization. Keep artifacts
-needed by bound retries. No production signing key is stored in this repository.
+Review input and output digest changes and rerun the complete matrix/audit.
+The normal command omits `--update-lock` and rejects output identity changes.
+Native AMD64/ARM64 matrix and monolith/split acceptance remain mandatory:
+
+```sh
+node compiler/vyper/acceptance.mjs --artifacts .local/vyper-releases \
+  --acceptance acceptance.json --output application-acceptance.json
+```
+
+This validates exact descriptors, fixtures, both runtime identities and every
+version on both native Linux architectures. It cannot sign or publish a catalog.
+No production private key or independently hosted distribution is required.
+See [ADR-0054](../../docs/decisions/ADR-0054-vyper-application-lock.md).
 
 ## Dependency audit corrections
 
@@ -127,6 +128,6 @@ permissions and deterministic output. Compression and archive headers can differ
 from the retired Python producers, so transport and package digests change.
 Old acceptance records cannot promote the new bytes: rebuild the inventory,
 review its exact identity changes, and rerun native release acceptance before
-signing. `make test-vyper-release` checks hostile archives, audit coverage,
+application release. `make test-vyper-release` checks hostile archives, audit coverage,
 reviewed advisory revisions and atomic complete-set publication. The Go archive
 roundtrip invokes the actual Node producer.
