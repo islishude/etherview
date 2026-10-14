@@ -1,6 +1,6 @@
 # P30 — Contract Platform & Runtime Operations
 
-Status: `done`
+Status: `in_progress`
 
 This is the canonical plan for contract verification, contract intelligence,
 and the shared runtime/operations platform. P70/P73 release and live-payment blockers remain outside this plan.
@@ -106,6 +106,8 @@ and disposable accelerator boundaries.
 | P30-T127 | done | P30-T88, P30-T97 | Implement dual Pyodide runtime selection and authenticated release tooling | Full fresh-process matrices, authenticated runtime routing and native production parity |
 | P30-T128 | done | P30-T88, P30-T97 | Application-locked PyPI assembly and immutable recipe provenance in place of hosted packages and signed catalogs | Package equivalence, isolation, PostgreSQL and native AMD64/ARM64 application acceptance |
 | P30-T130 | done | P30-T128 | Retire Vyper 0.2.0 and generate reviewed PyPI update PRs daily | Updater integrity, full supported-version matrices and native production acceptance |
+
+| P30-T136 | in_progress | P30-T128, P30-T130 | Parallel native Vyper fixtures, Vyper application and Hardhat acceptance over one image per architecture | Independent parity/count regressions, identity-bound aggregation, two native CI runs and failed-job rerun evidence |
 
 ## Acceptance
 

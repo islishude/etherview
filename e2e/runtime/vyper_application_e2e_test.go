@@ -3,128 +3,102 @@
 package runtimee2e
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"runtime"
-	"strings"
+	"context"
 	"testing"
 )
 
-// Assert production matrix identity before exercising actual locked PyPI downloads.
-func configureVyperApplicationFixture(t *testing.T, h *harness) {
-	t.Helper()
-	_ = readVyperMatrixEvidence(t, h.root)
+type vyperApplicationSnapshot struct {
+	Jobs             int64                  `json:"jobs"`
+	Results          int64                  `json:"results"`
+	SucceededJobs    int64                  `json:"succeeded_jobs"`
+	SucceededResults int64                  `json:"succeeded_results"`
+	Cases            []vyperApplicationCase `json:"cases"`
 }
 
-type vyperMatrixCase struct {
-	Cases          int    `json:"cases"`
-	FixturesSHA256 string `json:"fixtures_sha256"`
-	PackageSHA256  string `json:"package_sha256"`
-	SharedSHA256   string `json:"shared_sha256"`
-	ExecutorSHA256 string `json:"executor_sha256"`
+type vyperApplicationCase struct {
+	Version        string `json:"version"`
+	Protocol       string `json:"protocol"`
+	CompilerDigest string `json:"compiler_digest"`
+	ExecutorDigest string `json:"executor_digest"`
+	ABI            string `json:"abi_sha256"`
+	Sources        string `json:"sources_sha256"`
+	Constructor    string `json:"constructor"`
+	CreationMatch  string `json:"creation_match"`
+	RuntimeMatch   string `json:"runtime_match"`
 }
 
-type vyperMatrixEvidence struct {
-	NativeLinux    bool                       `json:"native_linux"`
-	ImageID        string                     `json:"image_id"`
-	HostSHA256     string                     `json:"host_sha256"`
-	SharedRuntimes map[string]string          `json:"shared_runtimes"`
-	Descriptors    map[string]string          `json:"descriptors"`
-	Matrix         map[string]vyperMatrixCase `json:"matrix"`
-	Monolith       bool                       `json:"monolith"`
-	Split          bool                       `json:"split"`
-}
-
-func readVyperMatrixEvidence(t *testing.T, root string) vyperMatrixEvidence {
-	t.Helper()
-	var evidence vyperMatrixEvidence
-	raw, err := os.ReadFile(filepath.Join(root, ".local/vyper-releases", "matrix-"+runtime.GOARCH+".json"))
-	if err != nil {
-		t.Fatalf("run the production Vyper matrix before E2E: %v", err)
-	}
-	if err := json.Unmarshal(raw, &evidence); err != nil {
-		t.Fatal(err)
-	}
-	image, err := exec.CommandContext(t.Context(), dockerCommand(), "image", "inspect", "--format", "{{.Id}}", valueOrDefault("IMAGE", "etherview:local")).Output()
-	if err != nil {
-		t.Fatal(err)
-	}
-	versions := applicationVyperVersions(t)
-	if strings.TrimSpace(string(image)) != evidence.ImageID || len(evidence.Descriptors) != len(versions) || len(evidence.Matrix) != len(versions) {
-		t.Fatal("incomplete or stale production Vyper matrix")
-	}
-	for _, version := range versions {
-		if _, ok := evidence.Matrix[version]; !ok {
-			t.Fatalf("missing Vyper matrix version %s", version)
-		}
-		if evidence.Descriptors["vyper-"+version+"-emscripten-wasm32.json"] == "" {
-			t.Fatalf("missing Vyper descriptor %s", version)
-		}
-	}
-	validateVyperRuntimeEvidence(t, root, evidence)
-	return evidence
-}
-
-func validateVyperRuntimeEvidence(t *testing.T, root string, evidence vyperMatrixEvidence) {
-	t.Helper()
-	var policy map[string]struct {
-		SharedSHA256 string   `json:"shared_sha256"`
-		Versions     []string `json:"versions"`
-	}
-	raw, err := os.ReadFile(filepath.Join(root, "compiler/vyper/wasm/runtime-policy.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(raw, &policy); err != nil {
-		t.Fatal(err)
-	}
-	if len(policy) != 2 || len(evidence.SharedRuntimes) != len(policy) {
-		t.Fatal("incomplete shared runtime evidence")
-	}
-	count := 0
-	for id, spec := range policy {
-		if evidence.SharedRuntimes[id] != spec.SharedSHA256 {
-			t.Fatal("stale shared runtime evidence")
-		}
-		for _, version := range spec.Versions {
-			if evidence.Matrix[version].SharedSHA256 != spec.SharedSHA256 {
-				t.Fatalf("incorrect runtime evidence for %s", version)
-			}
-			count++
-		}
-	}
-	if count != len(evidence.Matrix) {
-		t.Fatal("incomplete runtime version evidence")
-	}
-}
-
-func writeVyperReleaseAcceptance(t *testing.T, root string) {
-	t.Helper()
-	directory := filepath.Join(root, ".local/vyper-releases")
-	platform := "linux-" + runtime.GOARCH
-	evidence := readVyperMatrixEvidence(t, root)
-	for name, expected := range evidence.Descriptors {
-		raw, err := os.ReadFile(filepath.Join(directory, name))
-		if err != nil {
+func TestVyperProductionE2E(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), hardhat3E2ETimeout)
+	defer cancel()
+	root := repositoryRoot(t)
+	assertNativeImageArchitecture(t, ctx, dockerCommand(), valueOrDefault("IMAGE", "etherview:local"))
+	imageID := verificationImageID(t, ctx)
+	results, ok := runVerificationTopologies(t, ctx, func(t *testing.T, mode string) vyperApplicationSnapshot {
+		h := startVerificationTopology(t, ctx, root, mode, "vyper", "e2e/runtime/vyper.compose.yaml", "")
+		cases := verifyVyperProduction(t, ctx, h, createVerificationAPIKey(t, ctx, h))
+		result := vyperApplicationSnapshot{Cases: cases}
+		if err := h.db.QueryRow(ctx, `SELECT count(*), count(*) FILTER (WHERE language='vyper' AND kind='address' AND status='succeeded') FROM verification_jobs`).Scan(&result.Jobs, &result.SucceededJobs); err != nil {
 			t.Fatal(err)
 		}
-		sum := sha256.Sum256(raw)
-		if hex.EncodeToString(sum[:]) != expected {
-			t.Fatal("Vyper descriptor changed during E2E")
+		if err := h.db.QueryRow(ctx, `SELECT count(*), count(*) FILTER (WHERE language='vyper' AND outcome_kind='verification_success') FROM verification_results`).Scan(&result.Results, &result.SucceededResults); err != nil {
+			t.Fatal(err)
+		}
+		if !result.complete() {
+			t.Fatalf("incomplete Vyper persistence: %#v", result)
+		}
+		return result
+	})
+	if ok {
+		writeApplicationResult(t, ctx, root, "vyper", imageID, results)
+	}
+}
+
+func (s vyperApplicationSnapshot) complete() bool {
+	if s.Jobs != vyperProductionJobCount || s.Results != vyperProductionJobCount || s.SucceededJobs != s.Jobs || s.SucceededResults != s.Results || len(s.Cases) != int(vyperProductionJobCount) {
+		return false
+	}
+	seen := make(map[string]bool)
+	for _, c := range s.Cases {
+		key := c.Version + "/" + c.Protocol
+		if seen[key] {
+			return false
+		}
+		seen[key] = true
+	}
+	for _, version := range vyperProductionVersions {
+		for _, protocol := range vyperProductionProtocols {
+			if !seen[version+"/"+protocol] {
+				return false
+			}
 		}
 	}
-	// A native matrix alone cannot make a macOS-orchestrated E2E run native.
-	evidence.NativeLinux = evidence.NativeLinux && runtime.GOOS == "linux"
-	evidence.Monolith, evidence.Split = true, true
-	raw, err := json.Marshal(map[string]vyperMatrixEvidence{platform: evidence})
-	if err != nil {
-		t.Fatal(err)
+	return true
+}
+
+func TestVyperVerificationCounts(t *testing.T) {
+	complete := vyperApplicationSnapshot{Jobs: vyperProductionJobCount, Results: vyperProductionJobCount, SucceededJobs: vyperProductionJobCount, SucceededResults: vyperProductionJobCount}
+	for _, version := range vyperProductionVersions {
+		for _, protocol := range vyperProductionProtocols {
+			complete.Cases = append(complete.Cases, vyperApplicationCase{Version: version, Protocol: protocol})
+		}
 	}
-	if err := os.WriteFile(filepath.Join(directory, "acceptance-"+runtime.GOARCH+".json"), raw, 0o644); err != nil {
-		t.Fatal(err)
+	if !complete.complete() {
+		t.Fatal("complete Vyper snapshot rejected")
+	}
+	for _, mutate := range []func(*vyperApplicationSnapshot){
+		func(s *vyperApplicationSnapshot) { s.Jobs-- }, func(s *vyperApplicationSnapshot) { s.Jobs++ },
+		func(s *vyperApplicationSnapshot) { s.Results-- }, func(s *vyperApplicationSnapshot) { s.Results++ },
+		func(s *vyperApplicationSnapshot) { s.SucceededJobs-- }, func(s *vyperApplicationSnapshot) { s.SucceededResults-- },
+		func(s *vyperApplicationSnapshot) { s.Cases = s.Cases[:len(s.Cases)-1] },
+		func(s *vyperApplicationSnapshot) { s.Cases[0] = s.Cases[1] },
+		func(s *vyperApplicationSnapshot) { s.Cases[0].Version = "unknown" },
+		func(s *vyperApplicationSnapshot) { s.Cases[0].Protocol = "unknown" },
+	} {
+		value := complete
+		value.Cases = append([]vyperApplicationCase(nil), complete.Cases...)
+		mutate(&value)
+		if value.complete() {
+			t.Fatal("accepted missing, extra, wrong-language or duplicate Vyper results")
+		}
 	}
 }

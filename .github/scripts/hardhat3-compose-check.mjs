@@ -112,6 +112,13 @@ function volumeMounts(service) {
   );
 }
 
+const suite = process.env.ETHERVIEW_VERIFICATION_SUITE ?? "hardhat";
+assert.ok(["hardhat", "vyper"].includes(suite));
+if (suite === "vyper") {
+  assert.equal(config.services.hardhat, undefined, "Vyper must not start a Hardhat client");
+  process.exit(0);
+}
+
 const hardhat = config.services.hardhat;
 assert.ok(hardhat, "Hardhat client service is required");
 assert.equal(hardhat.image, hardhatImage, "Hardhat client image");

@@ -415,15 +415,23 @@ compose-check: preview-genesis-check
 	ETHERVIEW_HARDHAT3_API_SERVICE=etherview \
 	ETHERVIEW_HARDHAT3_ARTIFACT_DIR=/tmp/etherview-hardhat3-compose-check \
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
-		-f e2e/hardhat3/compose.yaml --profile monolith --profile hardhat-client config --format json | \
+		-f e2e/runtime/verification.compose.yaml -f e2e/hardhat3/compose.yaml --profile monolith --profile hardhat-client config --format json | \
 		ETHERVIEW_HARDHAT3_TOPOLOGY=monolith ETHERVIEW_HARDHAT3_IMAGE="$(HARDHAT3_IMAGE)" \
 		$(NODE) .github/scripts/hardhat3-compose-check.mjs
 	ETHERVIEW_HARDHAT3_IMAGE="$(HARDHAT3_IMAGE)" \
 	ETHERVIEW_HARDHAT3_API_SERVICE=api \
 	ETHERVIEW_HARDHAT3_ARTIFACT_DIR=/tmp/etherview-hardhat3-compose-check \
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
-		-f e2e/hardhat3/compose.yaml --profile distributed --profile hardhat-client config --format json | \
+		-f e2e/runtime/verification.compose.yaml -f e2e/hardhat3/compose.yaml --profile distributed --profile hardhat-client config --format json | \
 		ETHERVIEW_HARDHAT3_TOPOLOGY=distributed ETHERVIEW_HARDHAT3_IMAGE="$(HARDHAT3_IMAGE)" \
+		$(NODE) .github/scripts/hardhat3-compose-check.mjs
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
+		-f e2e/runtime/verification.compose.yaml -f e2e/runtime/vyper.compose.yaml --profile monolith config --format json | \
+		ETHERVIEW_HARDHAT3_TOPOLOGY=monolith ETHERVIEW_VERIFICATION_SUITE=vyper \
+		$(NODE) .github/scripts/hardhat3-compose-check.mjs
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
+		-f e2e/runtime/verification.compose.yaml -f e2e/runtime/vyper.compose.yaml --profile distributed config --format json | \
+		ETHERVIEW_HARDHAT3_TOPOLOGY=distributed ETHERVIEW_VERIFICATION_SUITE=vyper \
 		$(NODE) .github/scripts/hardhat3-compose-check.mjs
 	ETHERVIEW_FOUNDRY_IMAGE="$(FOUNDRY_IMAGE)" \
 	ETHERVIEW_FOUNDRY_API_SERVICE=etherview \
@@ -591,4 +599,15 @@ test-vyper-update:
 
 .PHONY: test-workflow-scripts
 test-workflow-scripts:
-	$(NODE) --test .github/scripts/workflow-scripts.test.mjs
+	$(NODE) --test .github/scripts/workflow-scripts.test.mjs .github/scripts/production-evidence.test.mjs
+
+.PHONY: test-vyper-e2e test-vyper-e2e-prebuilt
+test-vyper-e2e: docker-build
+	@$(MAKE) --no-print-directory test-vyper-e2e-prebuilt
+
+test-vyper-e2e-prebuilt:
+	@case "$(HARDHAT3_PARALLEL)" in 1|2) ;; *) echo "HARDHAT3_PARALLEL must be 1 or 2"; exit 1;; esac
+	@$(DOCKER) image inspect "$(IMAGE)" >/dev/null
+	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" NODE="$(NODE)" \
+		$(GO) test -count=1 -v -timeout=30m -tags='runtimee2e hardhat3e2e' \
+		-parallel=$(HARDHAT3_PARALLEL) -run '^TestVyper(ProductionE2E|VerificationCounts|ProductionFixtureCoverage)$$' ./e2e/runtime

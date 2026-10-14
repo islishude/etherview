@@ -60,24 +60,32 @@ matrices. Event-specific concurrency groups prevent a push from cancelling the
 daily run. GitHub activates the schedule after the workflow reaches the default
 branch; scheduled start times may be delayed by runner load.
 
-The native Vyper WASM matrix and both native Vyper production fixture jobs
-consume `vyper-packages` independently. Each production fixture job builds and
-checks its architecture's production image, runs four fixture shards and merges
-their evidence, then uploads the tested image and `matrix-{arch}.json` together.
-The two explicit architecture jobs call a shared workflow and expose separate
-artifact IDs. Hardhat waits for both fixture jobs, downloads its architecture's
-bundle by exact ID, loads the image and checks its Linux architecture and image
-ID against the evidence before running the complete application E2E. It builds
-only its separate Hardhat client image. The native WASM matrix remains independent
-of this chain; provider compatibility runs independently on both architectures.
+Native production images are built once per architecture independently of
+`vyper-packages`. Once both artifacts are ready, the architecture's reusable
+production verification workflow runs three independent jobs: four Vyper fixture
+shards with strict merge, Vyper application E2E, and Hardhat application E2E.
+Each consumer loads the exact image artifact and validates its revision,
+architecture and image ID. Only Hardhat builds a client image. AMD64 and ARM64
+do not wait for one another; native WASM matrix and provider compatibility jobs
+remain independent.
 
-Package and production-bundle artifacts have run/attempt-qualified names and
-one-day retention. Consumers use producer output IDs even when only failed jobs
-are rerun; they never look up a bundle using the consumer's current attempt.
-Missing or expired artifacts fail the job and require rerunning their producers.
-Image identity mismatches also fail without rebuilding or falling back. Full
-monolith/split E2E, cleanup and parity still precede release acceptance. Splitting
-jobs adds image-transfer overhead and does not itself establish a speedup.
+Each application suite owns two isolated monolith/distributed environments and
+performs its own counts, provenance, cleanup and normalized parity. Successful
+application tests write `.local/production-results/{hardhat,vyper}.json`;
+remove old local result files before repeating a suite because writes are
+exclusive-create. Application tests do not require production fixture evidence.
+They retain the `runtimee2e hardhat3e2e` Go build tags for shared harness code;
+Vyper does not require a Hardhat client image or CLI.
+
+All intermediate artifacts carry exact producer IDs and run/attempt-qualified
+names with one-day retention. The final aggregation job waits for all three
+jobs, downloads their exact output IDs and checks source, architecture, image,
+package, lock, runtime and fixture identities before writing the existing
+`acceptance-{arch}.json`. Cleanup failure, missing/duplicate roles, parity failure,
+non-native execution or stale evidence blocks acceptance. Failed-job reruns reuse
+producer output IDs; expired artifacts require rerunning the producer, never an
+image rebuild fallback. Additional isolated environments and artifact transfers
+increase runner usage; total CI speedup must be measured.
 
 Common CI gates, Vyper package construction, security/license auditing and the
 bounded Go assembler regressions use Node and Go without host Python setup. The compiler
@@ -243,7 +251,7 @@ Hardhat topology scheduling uses a waiting subtest group with two independent
 result slots. Each topology keeps its own Compose project, dynamic ports,
 PostgreSQL and compiler-cache volumes, and diagnostic directory. Both children
 and their cleanup must finish successfully before normalized parity is checked
-and release acceptance is written. A failed child does not cancel its sibling;
+and application evidence is written. A failed child does not cancel its sibling;
 the existing shared 30-minute deadline still bounds the run. Cleanup failure,
 missing results, an expired context or a parity mismatch blocks acceptance.
 
@@ -251,7 +259,7 @@ missing results, an expired context or a parity mismatch blocks acceptance.
 performance acceptance. Native AMD64/ARM64 CI explicitly sets
 `HARDHAT3_PARALLEL=2` to run both topologies concurrently. Only `1` and `2` are
 accepted. After building the same
-application/client images and producing the complete Vyper fixture evidence,
+application/client images,
 measure separately with:
 
 ```sh
@@ -260,13 +268,13 @@ make test-hardhat3-e2e-prebuilt HARDHAT3_PARALLEL=2
 ```
 
 Run in the order 1/2/2/1 on each matching native runner. Every invocation creates
-fresh topology data/cache volumes; keep the images and fixture evidence fixed.
+fresh topology data/cache volumes; keep the images fixed and remove the previous application result file before each run.
 Record E2E and per-topology wall time (including cleanup), CPU, peak memory,
 OOM/timeouts, leaked resources, full assertion results and whole CI job time.
 Change the local Makefile default to 2 only when both parallel runs beat both serial runs on
 each architecture without correctness or resource failures. A local ARM64 run
-is diagnostic and cannot establish GitHub or AMD64 performance. Existing four
-Vyper production fixture shards finish and merge before this E2E starts.
+is diagnostic and cannot establish GitHub or AMD64 performance. The four
+Vyper production fixture shards run independently of both application suites.
 
 The Docker-free `TestHardhat3TopologyScheduling` subprocess regression exercises
 both concurrency settings, overlap/completion, either topology failing, missing
@@ -687,18 +695,24 @@ separate release requirement; the local matrix does not satisfy it.
 `compiler/vyper/fixtures_versions.py` explicitly regenerates reference fixtures
 from locked environments prepared by `node compiler/vyper/reference.mjs`; acceptance never rewrites references.
 
-`make test-hardhat3-e2e` also runs the strict persistence-count regression, with
-Vyper expectations derived from the version/protocol matrix. It requires the
-common WASM packages in `.local/vyper-wasm/packages/`, transport descriptors in
-`.local/vyper-releases/`, and a current production-image matrix record. Run
-`node compiler/vyper/wasm/production-matrix.mjs` after building the production
-image; it checks all original/modified fixtures in fresh network-disabled
-containers. Local non-Linux records are diagnostic and rejected by release acceptance. The production E2E exercises exact application-locked PyPI downloads and
-local assembly; in-process transport fixtures cover deterministic download failures. It deploys contracts from six protocol families through
-native REST and Etherscan in both monolith and split layouts, verifies constructor
-and immutable values, ABI/source reads and application-bound provenance. Successful
-runs write descriptor-bound acceptance records used by the application release acceptance tool.
-A macOS run or emulated architecture never substitutes for native Linux gates.
+`make test-hardhat3-e2e` runs Solidity/Yul/proxy E2E and strict persistence
+counts: nine address jobs, eleven compiler results and zero Vyper jobs/results.
+`make test-vyper-e2e` builds the production image and runs the independent Vyper
+application suite; `make test-vyper-e2e-prebuilt` consumes a loaded image. It uses
+`HARDHAT3_PARALLEL=1` locally (CI sets 2), the same 30-minute timeout and both
+monolith/split layouts. Six version families through native REST and Etherscan
+produce exactly twelve successful jobs and results; each case verifies
+constructor/immutable values, ABI/source reads and application-bound provenance.
+Application-locked PyPI downloads and local assembly remain real production paths.
+
+The complete production compiler matrix still requires common WASM packages in
+`.local/vyper-wasm/packages/` and transport descriptors in `.local/vyper-releases/`.
+`node compiler/vyper/wasm/production-matrix.mjs` exercises every original/modified
+input in a fresh network-disabled container. These records are joined with both
+application suites by `.github/scripts/production-evidence.mjs`, using the exact
+image/package IDs and revision from CI. Neither application job alone emits
+release acceptance. A macOS run or emulated architecture never substitutes for
+native Linux gates.
 
 The native SEA/Go matrix schedules versions with `t.Parallel`, capped at four
 active versions even if a direct invocation uses a higher Go `-parallel` value.
@@ -745,7 +759,7 @@ that invocation's container.
 After all four steps pass, `node compiler/vyper/wasm/merge-production-matrix.mjs
 --shard-count 4` rechecks the current image, runtime, packages and fixture hashes,
 rejects missing/extra/duplicate or inconsistent evidence, and writes the existing
-`matrix-{arch}.json` transferred with the exact tested image to Hardhat. No
+`matrix-{arch}.json` consumed by the final three-lane aggregation job. No
 partial shard is release acceptance.
 The no-argument production command remains the sequential local option; use a
 clean evidence directory for a new run because evidence files are exclusive-create.

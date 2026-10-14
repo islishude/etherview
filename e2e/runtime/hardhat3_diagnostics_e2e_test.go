@@ -399,25 +399,19 @@ func captureHardhatProxySnapshot(
 	); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.db.QueryRow(ctx, `
- SELECT count(*) FILTER (WHERE language='vyper' AND kind='address' AND status='succeeded'),
- count(*) FILTER (WHERE language='vyper' AND kind='address' AND status='succeeded'
-   AND compiler_platform='python-wheel'
-   AND catalog_language='vyper' AND catalog_generation_id IS NOT NULL
-   AND executor_kind='node_vyper_wasm_v1' AND execution_policy='trusted_subprocess'
-   AND octet_length(executor_digest)=32)=$1
- FROM verification_jobs`, vyperProductionJobCount).Scan(&result.VyperJobs, &result.VyperProvenance); err != nil {
+	if err := h.db.QueryRow(ctx, `SELECT count(*) FROM verification_jobs WHERE language='vyper'`).Scan(&result.VyperJobs); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.db.QueryRow(ctx, `SELECT count(*) FROM verification_results WHERE language='vyper' AND outcome_kind='verification_success'`).Scan(&result.VyperResults); err != nil {
+	if err := h.db.QueryRow(ctx, `SELECT count(*) FROM verification_results WHERE language='vyper'`).Scan(&result.VyperResults); err != nil {
 		t.Fatal(err)
 	}
-	if !result.hasExpectedVerificationCounts(vyperProductionJobCount) || result.DerivedJobs != 1 || result.ProxyJobs != 11 ||
+
+	if !result.hasExpectedVerificationCounts() || result.DerivedJobs != 1 || result.ProxyJobs != 11 ||
 		result.ProxyResults != 11 ||
 		result.DerivedResults != 1 || result.DerivedPublications != 1 ||
 		result.DerivedAttempts != 1 ||
 		result.ProxyBindings != 11 || result.CatalogEntries == 0 ||
-		!result.ExecutorProvenance || !result.CompilerProvenance || !result.VyperProvenance ||
+		!result.ExecutorProvenance || !result.CompilerProvenance ||
 		result.CurrentProxyKind != "eip1967" ||
 		result.DiamondState != "confirmed" || result.DiamondFacets != 3 ||
 		result.DiamondSelectors != 8 || result.DiamondCuts != 1 ||
@@ -432,11 +426,6 @@ func captureHardhatProxySnapshot(
 	return result
 }
 
-func (result hardhatProxySnapshot) hasExpectedVerificationCounts(vyperJobs int64) bool {
-	// The remaining fixture has nine Solidity address jobs, one standalone
-	// Yul result and one factory-derived result. Keep each family exact so
-	// missing Vyper work cannot be hidden by extra Solidity work (or vice versa).
-	return result.AddressJobs == 9+vyperJobs &&
-		result.CompilerResults == 11+vyperJobs &&
-		result.VyperJobs == vyperJobs && result.VyperResults == vyperJobs
+func (result hardhatProxySnapshot) hasExpectedVerificationCounts() bool {
+	return result.AddressJobs == 9 && result.CompilerResults == 11 && result.VyperJobs == 0 && result.VyperResults == 0
 }

@@ -1,0 +1,53 @@
+name: Native production image
+on:
+  workflow_call:
+    inputs:
+      runner:
+        required: true
+        type: string
+      arch:
+        required: true
+        type: string
+    outputs:
+      artifact-id:
+        value: ${{ jobs.image.outputs.artifact-id }}
+permissions:
+  contents: read
+jobs:
+  image:
+    name: Production image (${{ inputs.arch }})
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 30
+    outputs:
+      artifact-id: ${{ steps.bundle.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Build the production image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: production
+          push: false
+          load: true
+          tags: etherview:local
+          cache-from: type=gha,scope=hardhat3-production-${{ runner.os }}-${{ runner.arch }}
+          cache-to: type=gha,mode=max,scope=hardhat3-production-${{ runner.os }}-${{ runner.arch }},ignore-error=true
+      - name: Verify the host-native production image boundary
+        run: make docker-image-check
+      - name: Export exact production image
+        env:
+          EXPECTED_ARCH: ${{ inputs.arch }}
+          BUNDLE_DIR: ${{ runner.temp }}/production-image
+        run: node .github/scripts/vyper-production-bundle.mjs save "$BUNDLE_DIR" "$EXPECTED_ARCH"
+      - uses: actions/upload-artifact@v7
+        id: bundle
+        with:
+          name: production-image-${{ inputs.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/production-image/
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
