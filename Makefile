@@ -552,7 +552,7 @@ recreate-x402-local: stop-x402-local start-x402-local
 
 .PHONY: test-vyper-matrix
 test-vyper-matrix: compiler-install test-vyper-wasm-candidate
-	ETHERVIEW_TEST_VYPER_MATRIX_ROOT="$(CURDIR)/.local/vyper-wasm/packages" $(GO) test ./internal/verify -run '^TestVyper(DynamicRuntimeMatrix|StableVersionMatrix)$$' -count=1 -timeout=30m
+	ETHERVIEW_TEST_VYPER_MATRIX_ROOT="$(CURDIR)/.local/vyper-wasm/packages" $(GO) test ./internal/verify -run '^TestVyper(DynamicRuntimeMatrix|StableVersionMatrix|MatrixSchedulingFailure)$$' -count=1 -parallel=4 -timeout=30m
 
 .PHONY: test-vyper-release
 test: test-vyper-release

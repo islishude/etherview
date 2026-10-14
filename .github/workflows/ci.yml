@@ -132,9 +132,9 @@ jobs:
           - name: Verify native Vyper runtime matrix
             env:
               ETHERVIEW_TEST_VYPER_MATRIX_ROOT: ${{ github.workspace }}/.local/vyper-wasm/packages
-            run: go test ./internal/verify -run '^TestVyperDynamicRuntimeMatrix$' -timeout=30m
+            run: go test ./internal/verify -run '^TestVyper(DynamicRuntimeMatrix|MatrixSchedulingFailure)$' -count=1 -parallel=4 -v -timeout=30m
           - name: Verify stable Vyper version matrix
-            run: go test ./internal/verify -run '^TestVyperStableVersionMatrix$' -timeout=30m
+            run: go test ./internal/verify -run '^TestVyperStableVersionMatrix$' -count=1 -timeout=30m
 
   hardhat3:
     needs: vyper-packages

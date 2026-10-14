@@ -641,6 +641,32 @@ and immutable values, ABI/source reads and application-bound provenance. Success
 runs write descriptor-bound acceptance records used by the application release acceptance tool.
 A macOS run or emulated architecture never substitutes for native Linux gates.
 
+The native SEA/Go matrix schedules versions with `t.Parallel`, capped at four
+active versions even if a direct invocation uses a higher Go `-parallel` value.
+CI and `make test-vyper-matrix` explicitly use `-parallel=4` and `-count=1`.
+Every supported version retains its own mutable runtime fixture, all checked-in
+original/modified inputs and the final identity-tamper rejection. Inputs within
+one version remain serial, and every compilation still starts a fresh restricted
+SEA process with unchanged time and memory limits. Version timings include
+setup and cleanup and are visible with `-v`. The scheduling regression injects
+missing packages at parallelism 1/2/4/8 and requires every version to report
+failure and the test process to exit nonzero without leaking a concurrency slot.
+
+After preparing the SEA, shared runtimes and full package set, compare scheduling
+on the same native host using the following command with `-parallel=1`, `2`,
+and `4`, running each measurement separately:
+
+```sh
+ETHERVIEW_TEST_VYPER_MATRIX_ROOT="$PWD/.local/vyper-wasm/packages" \
+  go test ./internal/verify -run '^TestVyper(DynamicRuntimeMatrix|StableVersionMatrix)$' \
+  -count=1 -parallel=2 -v -timeout=30m
+```
+
+Check identical passing version/input sets, subprocess concurrency, CPU and
+memory use, and timeout/cleanup behavior alongside wall time. Repeat 2/4 in
+reverse order to expose warm-cache or order effects. Local native ARM64 results
+do not establish GitHub runner performance or native AMD64 acceptance.
+
 CI retains the native AMD64/ARM64 Hardhat jobs and runs four production fixture
 shards in each job with `steps.parallel`, sharing its already built image and
 read-only packages. Each command uses `--shard-index 0` (through `3`) and

@@ -3,10 +3,13 @@ package verify
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestVyperStableVersionMatrix(t *testing.T) {
@@ -101,8 +104,19 @@ func TestVyperDynamicRuntimeMatrix(t *testing.T) {
 	if err := json.Unmarshal(vyperCapabilitiesJSON, &profiles); err != nil {
 		t.Fatal(err)
 	}
-	for version := range profiles {
+	// Respect -parallel for comparisons at 1/2/4, and cap direct invocations
+	// even when Go defaults to a larger GOMAXPROCS. Each version owns its
+	// mutable runtime fixture; inputs within it still run in fresh serial processes.
+	slots := make(chan struct{}, 4)
+	for _, version := range slices.Sorted(maps.Keys(profiles)) {
 		t.Run(version, func(t *testing.T) {
+			t.Parallel()
+			slots <- struct{}{}
+			started := time.Now()
+			t.Cleanup(func() {
+				t.Logf("version %s including setup and cleanup: %s", version, time.Since(started))
+				<-slots
+			})
 			runtimePath := filepath.Join(root, version)
 			raw, err := os.ReadFile(filepath.Join(runtimePath, "package-manifest.json"))
 			if err != nil {
