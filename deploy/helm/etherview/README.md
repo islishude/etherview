@@ -1,10 +1,9 @@
 # Etherview Helm chart
 
-> Verifier migrations `0027` and `0031` are destructive verification-data
-> upgrades. Migration `0031` deletes every Vyper record and dependent proxy
-> publication. Stop old verifier workers and back up PostgreSQL before the
-> single-version cutover; the chart does not provide dual reads or rollback
-> data conversion.
+> The migration Job initializes a fresh database. Earlier development schemas
+> must be recreated; old baseline checksums are rejected. Retain any needed
+> backup and follow the [initialization procedure](../../../docs/operations.md#fresh-database-initialization).
+> The chart does not delete databases or convert historical data.
 
 The chart runs the production image either as one `all` Deployment or as the
 same component graph split into `api`, `sync`, `enrich`, `trace`, `metadata`,

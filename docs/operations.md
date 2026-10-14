@@ -5,6 +5,22 @@ NATS, Redis, and S3 are diagnostic or acceleration surfaces; losing any of
 them must not authorize a state transition or make a healthy database-backed
 request fail.
 
+## Fresh database initialization
+
+Development migrations are consolidated in `0001_core.sql`. Initialize an empty
+PostgreSQL database with `etherview migrate up`, then verify it with
+`etherview migrate status`. Every role uses this same baseline; serving never
+applies migrations implicitly.
+
+Databases initialized with the earlier development migration chain must be
+recreated. Stop all processes using that database, retain a backup if its data
+is needed, and provision a new empty database before running the commands
+above. Update the writer and reader configuration together before restarting
+roles. Reindex or resubmit required application data explicitly. Do not edit
+migration checksums or ledger rows to make an old database appear compatible.
+The migration command does not delete existing databases or Docker volumes,
+and no in-place upgrade, data conversion, or startup backfill is provided.
+
 ## Health and telemetry
 
 Every role exposes `GET /health/live`, `GET /health/ready`, and `GET /metrics`
@@ -790,18 +806,16 @@ the range as proxy-interaction complete. Nodes that reject `withLog` with
 `-32602` still publish the call tree, but their logs remain visibly on the
 conservative address fallback path.
 
-Migration `0040` originally introduced the transaction execution-code rows and
-`state_diff@2`. Migration `0047` is the current explicit bounded cutover: it
-changes the public witness to `state_diff@3` and clears proxy-interaction
-coverage that depended on the superseded version, but it never enqueues
-history. Run `reindex --stage state_diff` for the chosen canonical range and
+The baseline includes transaction execution-code rows and the current
+`state_diff@3` witness. It creates no historical coverage or replay workload.
+Run `reindex --stage state_diff` for the chosen canonical range and
 wait for `state_diff@3`. Its completion requests `trace@4`; after Trace
 publishes, wait for `proxy@2` and then `abi@5`, then rebuild and verify the
 affected coverage range. Operators must not substitute block-end or `latest`
 code for unavailable transaction prestate.
 
-Migration `0048` adds the partitioned ABI-owned effective execution identity
-and advances the ABI witness to `abi@5`; it never backfills or queues history.
+The baseline also includes partitioned ABI-owned effective execution identities
+for `abi@5`; initialization never backfills or queues history.
 For a bounded historical or Preview range, first ensure its canonical
 `state_diff@3` and `trace@4` publications exist, replay `proxy@2`, then run
 `reindex --stage abi` and wait for `abi@5`. The replay uses only stored exact
@@ -816,11 +830,9 @@ authority. This shadow review is a deployment-specific prerequisite for
 setting `proxy_detection_v2_public: true`; it is not a source-code or P30 plan
 completion gate.
 
-1. Require `etherview migrate status` to report the current schema compatible,
-   including migrations `0038_proxy_detection_v2.sql`,
-   `0043_erc2535_diamonds.sql`, and, for CWIA-capable builds,
-   `0050_solady_legacy_cwia_proxy.sql`. Then enable only shadow collection on
-   every `enrich`/`all` process:
+1. Require `etherview migrate status` to report the current baseline compatible.
+   It includes proxy detection, Diamond, and CWIA storage. Then enable only
+   shadow collection on every `enrich`/`all` process:
 
    ```yaml
    features:
@@ -960,8 +972,8 @@ transaction hash, block hash/height, token, or contract identities. Use
 
 ## Wallet-user authentication administration
 
-Wallet authentication is disabled by default. Apply migration
-`0023_user_auth.sql` while the feature remains off, then configure the root
+Wallet authentication is disabled by default. Initialize the current baseline
+while the feature remains off, then configure the root
 public HTTPS origin, enable `features.user_auth`, and inject an independent
 session pepper of at least 32 random bytes only into the `all` or `api` process.
 The migration, sync, enrichment, verification, metadata, and maintenance roles
@@ -1019,10 +1031,10 @@ Cookie, rotate the session pepper as part of the rollback before restarting.
 
 ## Prepaid API billing and x402 top-ups
 
-Apply migration `0060_prepaid_api_billing.sql` with both new features off.
-Historical accountless request-payment rows are retained as `legacy_request`
-audit facts and never
-produce account credit. Configure `features.api_billing`, the CAIP-2 network,
+Initialize the current baseline with both features off. The schema retains
+`legacy_request` as an audit-only payment purpose; such rows never produce
+account credit. The baseline does not import historical accountless payments.
+Configure `features.api_billing`, the CAIP-2 network,
 asset, reservation TTLs, and the explicit
 `billing.operations.<etherscan.module.action>.amount_atomic` catalog first.
 Native `/api/v1` reads remain free regardless of this catalog.
@@ -1108,8 +1120,8 @@ observations. It does not require archive/debug RPC and never inherits a
 submitter's Sourcify consent. Roll out in this order on every `all`/`api`
 replica:
 
-1. Leave all derived flags false while migration `0051` starts retaining new
-   authenticated compilation units.
+1. Initialize the current baseline with all derived flags false. Successful
+   verification starts retaining new authenticated compilation units.
 2. Set `DERIVED_VERIFY_ENABLED=true` only. Workers record bounded dry-run
    attempts but do not publish child verification.
 3. Review `etherview_derived_verification_total{kind,result}` for unexpected
@@ -1119,13 +1131,11 @@ replica:
    The post-`trace@4` dispatcher then schedules future and transitive work
    without running the matcher in the trace transaction.
 
-Migration `0057` replaces the block-keyed forward queue with immutable
-`trace@4`/`proxy@2` publication-generation events. If derived verification is
-already enabled, stop or replace every `all`/`api` replica as one rollout; do
-not let an older worker run against the generation-aware queue. The migration
-preserves compilation units, attempts, publications, and scans. It converts an
-old running redispatch request into a durable rescan floor, but deliberately
-does not queue existing failed scans or `pending_runtime` attempts and does not
+The baseline creates the forward queue with immutable `trace@4`/`proxy@2`
+publication-generation events and durable rescan floors. When changing this
+queue protocol, stop or replace every `all`/`api` replica as one rollout; do
+not mix worker versions with incompatible queue semantics. Initialization and
+startup do not queue failed scans or `pending_runtime` attempts and do not
 create a historical workload.
 
 Before recovering an upgraded Preview deployment, record redacted aggregate
@@ -1231,9 +1241,10 @@ Pyodide 0.29.5 / Python 3.13.2. Both startup probes are required. Every compile
 uses a fresh process with V8 old-generation capped at 128 MiB, WASM memory at
 384 MiB and configured I/O/time limits. These are not total RSS bounds.
 
-Before migration 0073 or any executor-identity rollout, stop new Vyper
-submissions and drain queued/running jobs. The migration rejects undrained work;
-terminal evidence remains unchanged. Deploy an exact image digest with native
+Before any executor-identity rollout, stop new Vyper submissions and drain
+queued/running jobs. This is an operator prerequisite; the fresh-database
+baseline does not perform an upgrade-time queue check. Terminal evidence in
+an already compatible database remains unchanged. Deploy an exact image digest with native
 AMD64/ARM64 matrix and monolith/split acceptance, then check readiness and both
 runtime probes before resuming. Do not mix different bound executor identities
 or rebind jobs. The internal PostgreSQL generation records the application

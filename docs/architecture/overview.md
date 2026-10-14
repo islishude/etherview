@@ -754,10 +754,9 @@ size alone is not sufficient justification to weaken those invariants.
   code observation for the request's chain, address, code hash, and block hash.
   A stale target becomes a stable terminal failure, while successful results are
   immutable provenance rows projected deterministically to the verified
-  contract read model. Publication-guard migrations freeze concurrent DML
-  before replacing guards or validating data by taking write-conflicting
-  relation locks in the production write order: immutable results, verified
-  projections, then terminal job updates. See
+  contract read model. The fresh-database baseline creates the final publication
+  guards directly. Production writes retain the relation order: immutable
+  results, verified projections, then terminal job updates. See
   [ADR-0024](../decisions/ADR-0024-verifier-v2-workflow.md) and
   [ADR-0031](../decisions/ADR-0031-api-owned-solc-js-executor.md).
 - Verification prepares duplicate-key-free, inline-source Solidity and Yul

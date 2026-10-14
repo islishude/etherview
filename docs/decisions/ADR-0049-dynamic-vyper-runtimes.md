@@ -47,8 +47,9 @@ layout, retains dual compilation and never masks undeclared differences.
 Missing authenticated metadata produces partial evidence. Batch, derived and
 Sourcify Vyper verification remain excluded.
 
-The migration requires Vyper queues to drain, preserves terminal provenance and
-does not rebind or restore historical jobs. Runtime releases require native
+Distribution changes require operators to drain Vyper queues and preserve
+terminal provenance without rebinding historical jobs. The current baseline
+initializes a fresh database and does not restore old-schema data. Runtime releases require native
 AMD64/ARM64 differential tests and production monolith/split acceptance before
 catalog promotion. Future releases are never automatically trusted merely
 because they appear upstream.

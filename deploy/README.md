@@ -297,21 +297,15 @@ is rebuilt from the current working tree.
 
 ## Helm
 
-### Verifier v2 upgrade
+### Database baseline
 
-Migration `0027_verifier_v2.sql` intentionally drops all v1 verification jobs,
-results, and published contracts before creating the v2 catalog, job, result,
-and publication contracts. Back up PostgreSQL before upgrading if historical
-verification data may be needed. There is no dual-read period, data rollback
-conversion, or compatibility route for the removed v1 REST API.
-
-Migration `0031_solcjs_executor.sql` is a second irreversible verification-data
-cutover. Stop every old verifier worker, back up PostgreSQL, and deploy the
-migration with the new application as one change; old and new versions cannot
-run together. The migration deletes all Vyper catalogs, jobs, results,
-verified contracts, and dependent proxy publications, and terminates active
-legacy-runner compiler jobs with `executor_migrated`. Vyper data can be
-recovered only by restoring the pre-upgrade backup.
+The migration Job initializes the current fresh-database baseline. Databases
+created with the earlier development migration chain must be recreated; the
+Job rejects their old baseline checksum and does not delete or convert data.
+Stop all connected roles and retain any needed backup before provisioning a
+new empty database. Follow the [initialization procedure](../docs/operations.md#fresh-database-initialization)
+before starting the release. Do not modify migration ledger checksums to bypass
+compatibility checks.
 
 The chart expects an existing Kubernetes Secret (default name `etherview`) with
 `database-url` and optional `database-read-url`, `rpc-urls`, `api-key-pepper`,
