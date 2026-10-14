@@ -136,9 +136,24 @@ jobs:
           - name: Verify stable Vyper version matrix
             run: go test ./internal/verify -run '^TestVyperStableVersionMatrix$' -count=1 -timeout=30m
 
-  hardhat3:
+  vyper-production-amd64:
     needs: vyper-packages
-    name: Hardhat 3 production verification E2E (${{ matrix.arch }})
+    uses: ./.github/workflows/vyper-production.yml
+    with:
+      runner: ubuntu-24.04
+      arch: amd64
+      packages-artifact-id: ${{ needs.vyper-packages.outputs.artifact-id }}
+
+  vyper-production-arm64:
+    needs: vyper-packages
+    uses: ./.github/workflows/vyper-production.yml
+    with:
+      runner: ubuntu-24.04-arm
+      arch: arm64
+      packages-artifact-id: ${{ needs.vyper-packages.outputs.artifact-id }}
+
+  hardhat3-provider-compat:
+    name: Hardhat 3 provider compatibility (${{ matrix.arch }})
     strategy:
       fail-fast: false
       matrix:
@@ -147,6 +162,35 @@ jobs:
             arch: amd64
           - runner: ubuntu-24.04-arm
             arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: e2e/hardhat3/package-lock.json
+      - name: Run provider compatibility regression
+        run: make toolchain-check test-hardhat3-provider-compat
+
+  hardhat3:
+    needs: [vyper-packages, vyper-production-amd64, vyper-production-arm64]
+    name: Hardhat 3 production verification E2E (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+            producer: vyper-production-amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            producer: vyper-production-arm64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     steps:
@@ -166,16 +210,16 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: e2e/hardhat3/package-lock.json
-      - name: Build the production image
-        uses: docker/build-push-action@v7
+      - uses: actions/download-artifact@v8
         with:
-          context: .
-          target: production
-          push: false
-          load: true
-          tags: etherview:local
-          cache-from: type=gha,scope=hardhat3-production-${{ runner.os }}-${{ runner.arch }}
-          cache-to: type=gha,mode=max,scope=hardhat3-production-${{ runner.os }}-${{ runner.arch }},ignore-error=true
+          artifact-ids: ${{ needs[matrix.producer].outputs.artifact-id }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/vyper-production/
+      - name: Load the tested production image and evidence
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+          BUNDLE_DIR: ${{ runner.temp }}/vyper-production
+        run: node .github/scripts/vyper-production-bundle.mjs load "$BUNDLE_DIR" "$EXPECTED_ARCH"
       - name: Build the Hardhat test client
         uses: docker/build-push-action@v7
         with:
@@ -185,21 +229,6 @@ jobs:
           tags: etherview-hardhat3:local
           cache-from: type=gha,scope=hardhat3-client-${{ runner.os }}-${{ runner.arch }}
           cache-to: type=gha,mode=max,scope=hardhat3-client-${{ runner.os }}-${{ runner.arch }},ignore-error=true
-      - name: Verify the host-native production image boundary
-        run: make docker-image-check
-      - parallel:
-          - name: Verify production Vyper fixtures (shard 1/4)
-            run: node compiler/vyper/wasm/production-matrix.mjs --shard-index 0 --shard-count 4
-          - name: Verify production Vyper fixtures (shard 2/4)
-            run: node compiler/vyper/wasm/production-matrix.mjs --shard-index 1 --shard-count 4
-          - name: Verify production Vyper fixtures (shard 3/4)
-            run: node compiler/vyper/wasm/production-matrix.mjs --shard-index 2 --shard-count 4
-          - name: Verify production Vyper fixtures (shard 4/4)
-            run: node compiler/vyper/wasm/production-matrix.mjs --shard-index 3 --shard-count 4
-      - name: Merge production Vyper fixture evidence
-        run: node compiler/vyper/wasm/merge-production-matrix.mjs --shard-count 4
-      - name: Run provider compatibility regression
-        run: make toolchain-check test-hardhat3-provider-compat
       - name: Run production Hardhat 3 and proxy verification E2E
         id: hardhat3-e2e
         env:

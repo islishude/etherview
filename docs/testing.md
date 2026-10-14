@@ -60,13 +60,24 @@ matrices. Event-specific concurrency groups prevent a push from cancelling the
 daily run. GitHub activates the schedule after the workflow reaches the default
 branch; scheduled start times may be delayed by runner load.
 
-The native Vyper WASM matrix and Hardhat production jobs both depend directly
-on `vyper-packages`, whose artifact they consume. They run independently after
-package construction. The producer uploads a run/attempt/job-qualified artifact
-with a one-day retention period; consumers use its exact artifact ID from the
-producer job output, including when only failed jobs are rerun. Both architecture
-matrices remain required verification
-coverage, without making Hardhat wait for native matrix completion.
+The native Vyper WASM matrix and both native Vyper production fixture jobs
+consume `vyper-packages` independently. Each production fixture job builds and
+checks its architecture's production image, runs four fixture shards and merges
+their evidence, then uploads the tested image and `matrix-{arch}.json` together.
+The two explicit architecture jobs call a shared workflow and expose separate
+artifact IDs. Hardhat waits for both fixture jobs, downloads its architecture's
+bundle by exact ID, loads the image and checks its Linux architecture and image
+ID against the evidence before running the complete application E2E. It builds
+only its separate Hardhat client image. The native WASM matrix remains independent
+of this chain; provider compatibility runs independently on both architectures.
+
+Package and production-bundle artifacts have run/attempt-qualified names and
+one-day retention. Consumers use producer output IDs even when only failed jobs
+are rerun; they never look up a bundle using the consumer's current attempt.
+Missing or expired artifacts fail the job and require rerunning their producers.
+Image identity mismatches also fail without rebuilding or falling back. Full
+monolith/split E2E, cleanup and parity still precede release acceptance. Splitting
+jobs adds image-transfer overhead and does not itself establish a speedup.
 
 Common CI gates, Vyper package construction, security/license auditing and the
 bounded Go assembler regressions use Node and Go without host Python setup. The compiler
@@ -77,7 +88,8 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv 0.13.0.
 
 - `make test-workflow-scripts`: exercise extracted workflow helpers with temporary
   Git repositories and stub commands, covering metadata, digest export,
-  PR flags, command order and failure propagation without pushing images or PRs.
+  PR flags, command order, production-image/evidence handoff and failure
+  propagation without pushing images or PRs.
 - `make toolchain-check`: require at least Go 1.27.2, Node 24.18.0, and npm
   11.16.0 before generating or validating artifacts. Compatible newer stable
   versions are supported; older, malformed, and prerelease versions fail.
@@ -719,10 +731,11 @@ memory use, and timeout/cleanup behavior alongside wall time. Repeat 2/4 in
 reverse order to expose warm-cache or order effects. Local native ARM64 results
 do not establish GitHub runner performance or native AMD64 acceptance.
 
-CI retains the native AMD64/ARM64 Hardhat jobs and runs four production fixture
-shards in each job with `steps.parallel`, sharing its already built image and
-read-only packages. Each command uses `--shard-index 0` (through `3`) and
-`--shard-count 4` with `production-matrix.mjs`. Versions are assigned by descending
+CI retains native AMD64/ARM64 coverage and runs four production fixture
+shards in each independent Vyper production job with `steps.parallel`, sharing
+its already built image and read-only packages. Each command uses
+`--shard-index 0` (through `3`) and `--shard-count 4` with
+`production-matrix.mjs`. Versions are assigned by descending
 fixture compilation count to the least-loaded shard, with numeric version and
 shard-index tie breakers. Each shard writes a distinct record and uses unique
 container names. Every original/modified input still gets a fresh restricted
@@ -732,7 +745,8 @@ that invocation's container.
 After all four steps pass, `node compiler/vyper/wasm/merge-production-matrix.mjs
 --shard-count 4` rechecks the current image, runtime, packages and fixture hashes,
 rejects missing/extra/duplicate or inconsistent evidence, and writes the existing
-`matrix-{arch}.json` consumed by Hardhat. No partial shard is release acceptance.
+`matrix-{arch}.json` transferred with the exact tested image to Hardhat. No
+partial shard is release acceptance.
 The no-argument production command remains the sequential local option; use a
 clean evidence directory for a new run because evidence files are exclusive-create.
 `make test-vyper-release` covers Node package/release/integrity/license regressions,

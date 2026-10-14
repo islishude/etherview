@@ -72,3 +72,58 @@ test("CI command groups preserve sequence and stop after the first failure", () 
     assert.equal(commands().length, expected.length + 1);
   });
 });
+
+test("production image handoff preserves evidence and fails closed", () => {
+  for (const architecture of ["amd64", "arm64"]) {
+    for (const mode of ["save", "load"]) {
+      for (const failure of ["", "missing-evidence", "non-native", "invalid-id", "image-id", "architecture", "os", "inspect", mode, "existing-evidence"]) {
+        sandbox(({ dir, env, commands }) => {
+          const work = join(dir, "work"), bundle = join(dir, "bundle");
+          const evidenceDir = join(work, ".local/vyper-releases");
+          mkdirSync(evidenceDir, { recursive: true });
+          mkdirSync(bundle);
+          const name = `matrix-${architecture}.json`;
+          const source = join(mode === "save" ? evidenceDir : bundle, name);
+          const destination = join(mode === "save" ? bundle : evidenceDir, name);
+          const imageID = `sha256:${"a".repeat(64)}`;
+          const evidence = JSON.stringify({
+            native_linux: failure !== "non-native",
+            image_id: failure === "invalid-id" ? "bad" : imageID,
+            matrix: { example: { cases: 2 } },
+          });
+          if (failure !== "missing-evidence") writeFileSync(source, evidence);
+          if (failure === "existing-evidence") writeFileSync(destination, "keep");
+          const identity = [{ Id: failure === "image-id" ? `sha256:${"b".repeat(64)}` : imageID,
+            Architecture: failure === "architecture" ? "wrong" : architecture,
+            Os: failure === "os" ? "windows" : "linux" }];
+          writeFileSync(join(dir, "bin/docker"), `#!${process.execPath}
+import {appendFileSync, writeFileSync} from 'node:fs';
+const args = process.argv.slice(2);
+appendFileSync(process.env.COMMAND_LOG, JSON.stringify({command:'docker',args})+'\\n');
+if (args[1] === ${JSON.stringify(failure)}) process.exit(9);
+if (args[1] === 'inspect') console.log(${JSON.stringify(JSON.stringify(identity))});
+if (args[1] === 'save') writeFileSync(args[3], 'image archive');
+`, { mode: 0o755 });
+          const result = spawnSync(process.execPath,
+            [join(root, ".github/scripts/vyper-production-bundle.mjs"), mode, bundle, architecture],
+            { cwd: work, env, encoding: "utf8" });
+          const label = `${architecture}/${mode}/${failure || "success"}`;
+          if (!failure) {
+            assert.equal(result.status, 0, `${label}: ${result.stderr}`);
+            assert.equal(readFileSync(destination, "utf8"), evidence);
+            assert.deepEqual(commands().map(c => c.args[1]), mode === "save" ? ["inspect", "save"] : ["load", "inspect"]);
+            if (mode === "save") assert(existsSync(join(bundle, "production-image.tar")));
+          } else {
+            assert.notEqual(result.status, 0, label);
+            if (failure === "existing-evidence") assert.equal(readFileSync(destination, "utf8"), "keep");
+            else assert(!existsSync(destination), label);
+            if (["missing-evidence", "non-native", "invalid-id"].includes(failure)) assert.equal(commands().length, 0, label);
+            if (mode === "save" && ["image-id", "architecture", "os", "inspect"].includes(failure))
+              assert(!commands().some(c => c.args[1] === "save"), label);
+            if (mode === "load" && failure === "load") assert.equal(commands().length, 1, label);
+          }
+        });
+      }
+    }
+  }
+});
