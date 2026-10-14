@@ -1,4 +1,4 @@
-//go:build runtimee2e && hardhat3e2e
+//go:build runtimee2e && verificatione2e
 
 package runtimee2e
 
@@ -21,6 +21,8 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/testcompose"
 )
+
+const verificationE2ETimeout = 30 * time.Minute
 
 // The group waits for both parallel children and their cleanups before the
 // caller can compare snapshots or publish acceptance. Each child owns one slot.
@@ -52,7 +54,7 @@ func runVerificationTopologies[T any](t *testing.T, ctx context.Context, run fun
 	return results, true
 }
 
-func startVerificationTopology(t *testing.T, ctx context.Context, root, mode, suite, extraCompose, clientImage string) *harness {
+func startVerificationTopology(t *testing.T, ctx context.Context, root, mode, suite, extraCompose string, configure func(*harness)) *harness {
 	t.Helper()
 	artifacts, err := os.MkdirTemp("", "etherview-"+suite+"-e2e-"+mode+"-")
 	if err != nil {
@@ -68,11 +70,6 @@ func startVerificationTopology(t *testing.T, ctx context.Context, root, mode, su
 	)
 	project.Profiles = []string{mode}
 	project.Env = runtimeEnvironment(root, uint64(time.Now().UTC().Truncate(time.Hour).Unix()), false)
-	project.Env["ETHERVIEW_HARDHAT3_IMAGE"] = clientImage
-	project.Env["ETHERVIEW_HARDHAT3_ARTIFACT_DIR"] = artifacts
-	project.Env["ETHERVIEW_HARDHAT3_API_SERVICE"] = map[string]string{
-		"monolith": "etherview", "distributed": "api",
-	}[mode]
 	h := &harness{
 		t: t, root: root, mode: mode, project: project,
 		apiService: map[string]string{"monolith": "etherview", "distributed": "api"}[mode],
@@ -85,6 +82,10 @@ func startVerificationTopology(t *testing.T, ctx context.Context, root, mode, su
 			t.Error("verification topology failed or cleanup incomplete")
 		}
 	})
+
+	if configure != nil {
+		configure(h)
+	}
 
 	h.enterPhase("isolated Anvil and production topology")
 	if err := project.Up(ctx, "runtime-fixture"); err != nil {
@@ -110,9 +111,6 @@ func startVerificationTopology(t *testing.T, ctx context.Context, root, mode, su
 	project.Env["ETHERVIEW_CHAIN_GENESIS_HASH"] = genesis.Hash
 	h.startTopology(ctx)
 	h.connectDatabase(ctx)
-	if suite == "hardhat3" {
-		t.Cleanup(func() { captureHardhatSQLDiagnostics(h) })
-	}
 	h.resolveAPI(ctx)
 	h.waitReady(ctx)
 	h.waitCanonical(ctx, mustDecodeUint64(t, first.Number), first.Hash)
@@ -124,7 +122,7 @@ func createVerificationAPIKey(t *testing.T, ctx context.Context, h *harness) str
 	t.Helper()
 	output, err := h.project.Run(ctx, "exec", "-T", h.apiService,
 		"/etherview", "admin", "api-key", "create", "--config=/etc/etherview/config.yaml",
-		"--name=hardhat3-e2e", "--rate=100", "--burst=200")
+		"--name=verification-e2e", "--rate=100", "--burst=200")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -11,13 +11,17 @@ on:
       image-artifact-id:
         required: true
         type: string
+      image-identity:
+        required: true
+        type: string
       packages-artifact-id:
         required: true
         type: string
 permissions:
   contents: read
 env:
-  BUNDLE_DIR: ${{ github.workspace }}/.local/production-image
+  PRODUCTION_IMAGE_IDENTITY: ${{ inputs.image-identity }}
+  EXPECTED_ARCH: ${{ inputs.arch }}
   IMAGE_ARTIFACT_ID: ${{ inputs.image-artifact-id }}
   PACKAGES_ARTIFACT_ID: ${{ inputs.packages-artifact-id }}
 jobs:
@@ -29,23 +33,11 @@ jobs:
       artifact-id: ${{ steps.evidence.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: ./.github/actions/prepare-production
         with:
-          node-version-file: .nvmrc
-      - uses: actions/download-artifact@v8
-        with:
-          artifact-ids: ${{ inputs.packages-artifact-id }}
-          merge-multiple: true
-          path: .local/
-      - uses: actions/download-artifact@v8
-        with:
-          artifact-ids: ${{ inputs.image-artifact-id }}
-          merge-multiple: true
-          path: .local/production-image/
-      - name: Load exact production image
-        env:
-          EXPECTED_ARCH: ${{ inputs.arch }}
-        run: node .github/scripts/vyper-production-bundle.mjs load "$BUNDLE_DIR" "$EXPECTED_ARCH"
+          arch: ${{ inputs.arch }}
+          image-artifact-id: ${{ inputs.image-artifact-id }}
+          packages-artifact-id: ${{ inputs.packages-artifact-id }}
       - parallel:
           - name: Verify production Vyper fixtures (shard 1/4)
             run: node compiler/vyper/wasm/production-matrix.mjs --shard-index 0 --shard-count 4
@@ -75,23 +67,11 @@ jobs:
       artifact-id: ${{ steps.evidence.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: ./.github/actions/prepare-production
         with:
-          node-version-file: .nvmrc
-      - uses: actions/download-artifact@v8
-        with:
-          artifact-ids: ${{ inputs.packages-artifact-id }}
-          merge-multiple: true
-          path: .local/
-      - uses: actions/download-artifact@v8
-        with:
-          artifact-ids: ${{ inputs.image-artifact-id }}
-          merge-multiple: true
-          path: .local/production-image/
-      - name: Load exact production image
-        env:
-          EXPECTED_ARCH: ${{ inputs.arch }}
-        run: node .github/scripts/vyper-production-bundle.mjs load "$BUNDLE_DIR" "$EXPECTED_ARCH"
+          arch: ${{ inputs.arch }}
+          image-artifact-id: ${{ inputs.image-artifact-id }}
+          packages-artifact-id: ${{ inputs.packages-artifact-id }}
       - uses: actions/setup-go@v7
         with:
           go-version: stable
@@ -101,7 +81,7 @@ jobs:
         env:
           RUNTIME_E2E_KEEP_ARTIFACTS: "true"
           TMPDIR: ${{ runner.temp }}
-        run: make test-vyper-e2e-prebuilt HARDHAT3_PARALLEL=2
+        run: make test-vyper-e2e-prebuilt VERIFICATION_PARALLEL=2
       - name: Record vyper evidence
         run: node .github/scripts/production-evidence.mjs record vyper
       - uses: actions/upload-artifact@v7
@@ -128,23 +108,11 @@ jobs:
       artifact-id: ${{ steps.evidence.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: ./.github/actions/prepare-production
         with:
-          node-version-file: .nvmrc
-      - uses: actions/download-artifact@v8
-        with:
-          artifact-ids: ${{ inputs.packages-artifact-id }}
-          merge-multiple: true
-          path: .local/
-      - uses: actions/download-artifact@v8
-        with:
-          artifact-ids: ${{ inputs.image-artifact-id }}
-          merge-multiple: true
-          path: .local/production-image/
-      - name: Load exact production image
-        env:
-          EXPECTED_ARCH: ${{ inputs.arch }}
-        run: node .github/scripts/vyper-production-bundle.mjs load "$BUNDLE_DIR" "$EXPECTED_ARCH"
+          arch: ${{ inputs.arch }}
+          image-artifact-id: ${{ inputs.image-artifact-id }}
+          packages-artifact-id: ${{ inputs.packages-artifact-id }}
       - uses: actions/setup-go@v7
         with:
           go-version: stable
@@ -164,7 +132,7 @@ jobs:
         env:
           RUNTIME_E2E_KEEP_ARTIFACTS: "true"
           TMPDIR: ${{ runner.temp }}
-        run: make test-hardhat3-e2e-prebuilt HARDHAT3_PARALLEL=2
+        run: make test-hardhat3-e2e-prebuilt VERIFICATION_PARALLEL=2
       - name: Record hardhat evidence
         run: node .github/scripts/production-evidence.mjs record hardhat
       - uses: actions/upload-artifact@v7
@@ -198,11 +166,6 @@ jobs:
           artifact-ids: ${{ inputs.packages-artifact-id }}
           merge-multiple: true
           path: .local/
-      - uses: actions/download-artifact@v8
-        with:
-          artifact-ids: ${{ inputs.image-artifact-id }}
-          merge-multiple: true
-          path: .local/production-image/
       - uses: actions/download-artifact@v8
         with:
           artifact-ids: ${{ needs.fixtures.outputs.artifact-id }},${{ needs.vyper.outputs.artifact-id }},${{ needs.hardhat.outputs.artifact-id }}

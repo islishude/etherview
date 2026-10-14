@@ -1,4 +1,4 @@
-//go:build runtimee2e && hardhat3e2e
+//go:build runtimee2e && verificatione2e
 
 package runtimee2e
 
@@ -28,7 +28,6 @@ import (
 )
 
 const (
-	hardhat3E2ETimeout      = 30 * time.Minute
 	hardhatCompilerVersion  = "0.8.30+commit.73712a01"
 	hardhatCatalogSource    = "https://binaries.soliditylang.org/emscripten-wasm32/list.json"
 	hardhatCompilerArtifact = "https://binaries.soliditylang.org/emscripten-wasm32/solc-emscripten-wasm32-v0.8.30+commit.73712a01.js"
@@ -185,7 +184,7 @@ type hardhatCompilerCacheFile struct {
 }
 
 func TestHardhat3ProductionE2E(t *testing.T) {
-	ctx, cancel := context.WithTimeout(t.Context(), hardhat3E2ETimeout)
+	ctx, cancel := context.WithTimeout(t.Context(), verificationE2ETimeout)
 	defer cancel()
 	root := repositoryRoot(t)
 	runtime := prepareHardhatRuntime(t, ctx)
@@ -261,7 +260,13 @@ func runHardhat3Mode(
 	runtime hardhatRuntime,
 ) hardhatProxySnapshot {
 	t.Helper()
-	h := startVerificationTopology(t, ctx, root, mode, "hardhat3", "e2e/hardhat3/compose.yaml", runtime.image)
+	h := startVerificationTopology(t, ctx, root, mode, "hardhat3", "e2e/hardhat3/compose.yaml", func(h *harness) {
+		project, artifacts := h.project, h.artifacts
+		t.Cleanup(func() { captureHardhatSQLDiagnostics(h) })
+		project.Env["ETHERVIEW_HARDHAT3_IMAGE"] = runtime.image
+		project.Env["ETHERVIEW_HARDHAT3_ARTIFACT_DIR"] = artifacts
+		project.Env["ETHERVIEW_HARDHAT3_API_SERVICE"] = map[string]string{"monolith": "etherview", "distributed": "api"}[mode]
+	})
 	artifacts := h.artifacts
 
 	h.enterPhase("real Hardhat compile and deployment")

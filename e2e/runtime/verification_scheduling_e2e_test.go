@@ -1,4 +1,4 @@
-//go:build runtimee2e && hardhat3e2e
+//go:build runtimee2e && verificatione2e
 
 package runtimee2e
 
@@ -17,9 +17,9 @@ import (
 
 // Subprocesses let expected testing.T failures exercise the production group
 // without requiring Docker or converting a real E2E failure into a success.
-func TestHardhat3TopologyScheduling(t *testing.T) {
-	if scenario := os.Getenv("ETHERVIEW_HARDHAT_SCHEDULING_PROBE"); scenario != "" {
-		probeHardhatScheduling(t, scenario)
+func TestVerificationTopologyScheduling(t *testing.T) {
+	if scenario := os.Getenv("ETHERVIEW_VERIFICATION_SCHEDULING_PROBE"); scenario != "" {
+		probeVerificationScheduling(t, scenario)
 		return
 	}
 	executable, err := os.Executable()
@@ -32,8 +32,8 @@ func TestHardhat3TopologyScheduling(t *testing.T) {
 				t.Run(suite+"/"+strconv.Itoa(parallel)+"/"+scenario, func(t *testing.T) {
 					ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 					defer cancel()
-					cmd := exec.CommandContext(ctx, executable, "-test.run=^TestHardhat3TopologyScheduling$", "-test.count=1", "-test.v", "-test.parallel="+strconv.Itoa(parallel))
-					cmd.Env = append(os.Environ(), "ETHERVIEW_HARDHAT_SCHEDULING_PROBE="+scenario, "ETHERVIEW_SCHEDULING_SUITE="+suite)
+					cmd := exec.CommandContext(ctx, executable, "-test.run=^TestVerificationTopologyScheduling$", "-test.count=1", "-test.v", "-test.parallel="+strconv.Itoa(parallel))
+					cmd.Env = append(os.Environ(), "ETHERVIEW_VERIFICATION_SCHEDULING_PROBE="+scenario, "ETHERVIEW_SCHEDULING_SUITE="+suite)
 					output, err := cmd.CombinedOutput()
 					wantCode := 1
 					if scenario == "success" {
@@ -56,7 +56,7 @@ func TestHardhat3TopologyScheduling(t *testing.T) {
 	}
 }
 
-func probeHardhatScheduling(t *testing.T, scenario string) {
+func probeVerificationScheduling(t *testing.T, scenario string) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()

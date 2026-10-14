@@ -9,6 +9,8 @@ on:
         required: true
         type: string
     outputs:
+      identity:
+        value: ${{ jobs.image.outputs.identity }}
       artifact-id:
         value: ${{ jobs.image.outputs.artifact-id }}
 permissions:
@@ -19,6 +21,7 @@ jobs:
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 30
     outputs:
+      identity: ${{ steps.export.outputs.identity }}
       artifact-id: ${{ steps.bundle.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@v7
@@ -39,6 +42,7 @@ jobs:
       - name: Verify the host-native production image boundary
         run: make docker-image-check
       - name: Export exact production image
+        id: export
         env:
           EXPECTED_ARCH: ${{ inputs.arch }}
           BUNDLE_DIR: ${{ runner.temp }}/production-image

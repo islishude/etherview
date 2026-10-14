@@ -1,4 +1,4 @@
-//go:build runtimee2e && hardhat3e2e
+//go:build runtimee2e && verificatione2e
 
 package runtimee2e
 
@@ -28,13 +28,13 @@ type vyperApplicationCase struct {
 }
 
 func TestVyperProductionE2E(t *testing.T) {
-	ctx, cancel := context.WithTimeout(t.Context(), hardhat3E2ETimeout)
+	ctx, cancel := context.WithTimeout(t.Context(), verificationE2ETimeout)
 	defer cancel()
 	root := repositoryRoot(t)
 	assertNativeImageArchitecture(t, ctx, dockerCommand(), valueOrDefault("IMAGE", "etherview:local"))
 	imageID := verificationImageID(t, ctx)
 	results, ok := runVerificationTopologies(t, ctx, func(t *testing.T, mode string) vyperApplicationSnapshot {
-		h := startVerificationTopology(t, ctx, root, mode, "vyper", "e2e/runtime/vyper.compose.yaml", "")
+		h := startVerificationTopology(t, ctx, root, mode, "vyper", "e2e/runtime/vyper.compose.yaml", nil)
 		cases := verifyVyperProduction(t, ctx, h, createVerificationAPIKey(t, ctx, h))
 		result := vyperApplicationSnapshot{Cases: cases}
 		if err := h.db.QueryRow(ctx, `SELECT count(*), count(*) FILTER (WHERE language='vyper' AND kind='address' AND status='succeeded') FROM verification_jobs`).Scan(&result.Jobs, &result.SucceededJobs); err != nil {

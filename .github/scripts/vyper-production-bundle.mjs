@@ -1,7 +1,7 @@
 // Image transport is independent of all three acceptance lanes.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 const [mode, directory, architecture, ...extra] = process.argv.slice(2);
@@ -29,9 +29,11 @@ assert.match(actual.Id, /^sha256:[a-f0-9]{64}$/);
 if (mode === 'save') {
   mkdirSync(bundle, { recursive: true });
   docker('image', 'save', '--output', join(bundle, 'production-image.tar'), image);
-  writeFileSync(join(bundle, 'identity.json'), JSON.stringify({
+  const identity = {
     schema: 'etherview-production-image-v1', revision, architecture, image_id: actual.Id,
-  })+'\n', { flag: 'wx' });
+  };
+  writeFileSync(join(bundle, 'identity.json'), JSON.stringify(identity)+'\n', { flag: 'wx' });
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `identity=${JSON.stringify(identity)}\n`);
 } else {
   assert.equal(actual.Id, expected.image_id, 'loaded image identity mismatch');
 }

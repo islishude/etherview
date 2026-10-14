@@ -148,6 +148,7 @@ jobs:
     with:
       runner: ubuntu-24.04
       arch: amd64
+      image-identity: ${{ needs.production-image-amd64.outputs.identity }}
       image-artifact-id: ${{ needs.production-image-amd64.outputs.artifact-id }}
       packages-artifact-id: ${{ needs.vyper-packages.outputs.artifact-id }}
 
@@ -163,6 +164,7 @@ jobs:
     with:
       runner: ubuntu-24.04-arm
       arch: arm64
+      image-identity: ${{ needs.production-image-arm64.outputs.identity }}
       image-artifact-id: ${{ needs.production-image-arm64.outputs.artifact-id }}
       packages-artifact-id: ${{ needs.vyper-packages.outputs.artifact-id }}
 

@@ -61,12 +61,18 @@ export function mergeProductionEvidence(records, identity, expected) {
   return {...matrix, monolith:true, split:true};
 }
 
-function context() {
-  const metadata = JSON.parse(readFileSync(join(process.env.BUNDLE_DIR ?? '.local/production-image', 'identity.json')));
+export function productionIdentity(metadata, revision, architecture) {
+  assert.equal(metadata.revision, revision, 'image source revision mismatch');
+  assert.equal(metadata.architecture, architecture, 'image architecture mismatch');
   assert.equal(metadata.schema, 'etherview-production-image-v1');
-  assert.equal(metadata.revision, process.env.GITHUB_SHA ?? execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim());
-  assert(['amd64','arm64'].includes(metadata.architecture));
+  assert(['amd64', 'arm64'].includes(metadata.architecture));
   assert.match(metadata.image_id, /^sha256:[a-f0-9]{64}$/);
+  return metadata;
+}
+
+function context() {
+  const metadata = productionIdentity(JSON.parse(process.env.PRODUCTION_IMAGE_IDENTITY),
+    process.env.GITHUB_SHA ?? execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(), process.env.EXPECTED_ARCH);
   const identity={...metadata}; delete identity.schema;
   identity.image_artifact_id=process.env.IMAGE_ARTIFACT_ID;
   identity.packages_artifact_id=process.env.PACKAGES_ARTIFACT_ID;

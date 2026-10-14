@@ -91,11 +91,13 @@ if(args[1]===${JSON.stringify(failure)}) process.exit(9);
 if(args[1]==='inspect') console.log(${JSON.stringify(JSON.stringify(identity))});
 if(args[1]==='save') writeFileSync(args[3],'archive');
 `,{mode:0o755});
-        const result=spawnSync(process.execPath,[join(root,".github/scripts/vyper-production-bundle.mjs"),mode,bundle,architecture],{cwd:dir,env:{...env,GITHUB_SHA:revision},encoding:"utf8"});
+        const result=spawnSync(process.execPath,[join(root,".github/scripts/vyper-production-bundle.mjs"),mode,bundle,architecture],{cwd:dir,env:{...env,GITHUB_SHA:revision,GITHUB_OUTPUT:join(dir,"output")},encoding:"utf8"});
         const label=`${architecture}/${mode}/${failure||"success"}`;
         if(!failure) {
           assert.equal(result.status,0,`${label}: ${result.stderr}`);
           assert.deepEqual(JSON.parse(readFileSync(join(bundle,"identity.json"))),metadata);
+          if (mode === "save") assert.equal(readFileSync(join(dir,"output"),"utf8"), `identity=${JSON.stringify(metadata)}\n`);
+          else assert(!existsSync(join(dir,"output")));
           assert.deepEqual(commands().map(c=>c.args[1]), mode==="save"?["inspect","save"]:["load","inspect"]);
         } else {
           assert.notEqual(result.status,0,label);

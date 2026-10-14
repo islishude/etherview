@@ -74,7 +74,7 @@ performs its own counts, provenance, cleanup and normalized parity. Successful
 application tests write `.local/production-results/{hardhat,vyper}.json`;
 remove old local result files before repeating a suite because writes are
 exclusive-create. Application tests do not require production fixture evidence.
-They retain the `runtimee2e hardhat3e2e` Go build tags for shared harness code;
+They retain the `runtimee2e verificatione2e` Go build tags for shared harness code;
 Vyper does not require a Hardhat client image or CLI.
 
 All intermediate artifacts carry exact producer IDs and run/attempt-qualified
@@ -247,7 +247,7 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv 0.13.0.
   failure. The E2E-only API environment permits Docker fake-IP download
   networks while retaining the exact HTTPS origin, TLS, size, and SHA-256
   checks; the base deployment never receives that escape hatch.
-Hardhat topology scheduling uses a waiting subtest group with two independent
+Shared verification topology scheduling uses a waiting subtest group with two independent
 result slots. Each topology keeps its own Compose project, dynamic ports,
 PostgreSQL and compiler-cache volumes, and diagnostic directory. Both children
 and their cleanup must finish successfully before normalized parity is checked
@@ -255,16 +255,16 @@ and application evidence is written. A failed child does not cancel its sibling;
 the existing shared 30-minute deadline still bounds the run. Cleanup failure,
 missing results, an expired context or a parity mismatch blocks acceptance.
 
-`HARDHAT3_PARALLEL=1` remains the Makefile default pending native AMD64/ARM64
+`VERIFICATION_PARALLEL=1` remains the Makefile default pending native AMD64/ARM64
 performance acceptance. Native AMD64/ARM64 CI explicitly sets
-`HARDHAT3_PARALLEL=2` to run both topologies concurrently. Only `1` and `2` are
+`VERIFICATION_PARALLEL=2` to run both topologies concurrently. Only `1` and `2` are
 accepted. After building the same
 application/client images,
 measure separately with:
 
 ```sh
-make test-hardhat3-e2e-prebuilt HARDHAT3_PARALLEL=1
-make test-hardhat3-e2e-prebuilt HARDHAT3_PARALLEL=2
+make test-hardhat3-e2e-prebuilt VERIFICATION_PARALLEL=1
+make test-hardhat3-e2e-prebuilt VERIFICATION_PARALLEL=2
 ```
 
 Run in the order 1/2/2/1 on each matching native runner. Every invocation creates
@@ -276,11 +276,11 @@ each architecture without correctness or resource failures. A local ARM64 run
 is diagnostic and cannot establish GitHub or AMD64 performance. The four
 Vyper production fixture shards run independently of both application suites.
 
-The Docker-free `TestHardhat3TopologyScheduling` subprocess regression exercises
+The Docker-free `TestVerificationTopologyScheduling` subprocess regression exercises
 both concurrency settings, overlap/completion, either topology failing, missing
 results, parity mismatch, deadline expiry and cleanup failure. Run it with
-`go test -race -tags='runtimee2e hardhat3e2e' ./e2e/runtime
--run '^TestHardhat3TopologyScheduling$' -count=1`.
+`go test -race -tags='runtimee2e verificatione2e' ./e2e/runtime
+-run '^TestVerificationTopologyScheduling$' -count=1`.
 
 - `make test-hardhat3-offline-compile`: run the dependency-locked Hardhat
   client image with no network and compile its production fixture through the
@@ -699,7 +699,7 @@ from locked environments prepared by `node compiler/vyper/reference.mjs`; accept
 counts: nine address jobs, eleven compiler results and zero Vyper jobs/results.
 `make test-vyper-e2e` builds the production image and runs the independent Vyper
 application suite; `make test-vyper-e2e-prebuilt` consumes a loaded image. It uses
-`HARDHAT3_PARALLEL=1` locally (CI sets 2), the same 30-minute timeout and both
+`VERIFICATION_PARALLEL=1` locally (CI sets 2), the same 30-minute timeout and both
 monolith/split layouts. Six version families through native REST and Etherscan
 produce exactly twelve successful jobs and results; each case verifies
 constructor/immutable values, ABI/source reads and application-bound provenance.
@@ -710,7 +710,10 @@ The complete production compiler matrix still requires common WASM packages in
 `node compiler/vyper/wasm/production-matrix.mjs` exercises every original/modified
 input in a fresh network-disabled container. These records are joined with both
 application suites by `.github/scripts/production-evidence.mjs`, using the exact
-image/package IDs and revision from CI. Neither application job alone emits
+image/package IDs and revision from CI. The shared local preparation action
+downloads exact artifacts and verifies the loaded image in each lane. The offline
+join receives the image identity directly from the image producer output, so it
+does not download the image archive; failed-job reruns reuse those producer outputs. Neither application job alone emits
 release acceptance. A macOS run or emulated architecture never substitutes for
 native Linux gates.
 

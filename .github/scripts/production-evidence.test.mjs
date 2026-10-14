@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeProductionEvidence, applicationVersions } from './production-evidence.mjs';
+import { mergeProductionEvidence, applicationVersions, productionIdentity } from './production-evidence.mjs';
 import { sharedRuntimes } from '../../compiler/vyper/wasm/release.mjs';
 
 const hash='a'.repeat(64);
@@ -51,4 +51,14 @@ for(const [name,mutate] of Object.entries({
   const independent=structuredClone(expected);
   mutate(records);
   assert.throws(()=>mergeProductionEvidence(records,identity,independent));
+});
+
+// Aggregation trusts only the producer output, checked against this checkout and lane.
+test('producer identity is required and bound to revision and architecture', () => {
+  const identity = {schema:'etherview-production-image-v1',revision:'c'.repeat(40),architecture:'amd64',image_id:'sha256:'+hash};
+  assert.deepEqual(productionIdentity(identity,identity.revision,'amd64'),identity);
+  for (const [key,value] of [['schema','unknown'],['revision','d'.repeat(40)],['architecture','arm64'],['image_id','invalid']]) {
+    assert.throws(() => productionIdentity({...identity,[key]:value},identity.revision,'amd64'));
+  }
+  assert.throws(() => productionIdentity(undefined,identity.revision,'amd64'));
 });
