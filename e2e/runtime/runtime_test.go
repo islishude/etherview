@@ -2320,7 +2320,9 @@ func diagnosticError(err error) string {
 	return message
 }
 
-func (h *harness) cleanup() {
+// cleanup reports whether the test and Compose teardown succeeded. Callers that
+// publish acceptance must check this after retaining diagnostics.
+func (h *harness) cleanup() bool {
 	if h.rpc != nil {
 		h.rpc.Close()
 	}
@@ -2375,11 +2377,12 @@ func (h *harness) cleanup() {
 	}
 	if failed || keepArtifacts {
 		h.t.Logf("runtime E2E artifacts retained at %s", h.artifacts)
-		return
+		return !failed
 	}
 	if err := os.RemoveAll(h.artifacts); err != nil {
 		h.t.Logf("remove runtime E2E artifacts: %v", err)
 	}
+	return true
 }
 
 func waitFor(t *testing.T, ctx context.Context, description string, check func() (bool, string, error)) {

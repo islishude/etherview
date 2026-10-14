@@ -39,6 +39,8 @@ GENERATED_PATHS := \
 
 IMAGE ?= etherview:local
 HARDHAT3_IMAGE ?= etherview-hardhat3:local
+# Enable 2 by default only after matching native AMD64/ARM64 measurements.
+HARDHAT3_PARALLEL ?= 1
 FOUNDRY_IMAGE ?= etherview-foundry:local
 IPFS_GATEWAY_IMAGE ?= etherview-ipfs-gateway:local
 HELM_CHART ?= deploy/helm/etherview
@@ -154,6 +156,7 @@ test-hardhat3-offline-compile:
 		npx hardhat --build-profile production compile
 
 test-hardhat3-e2e-prebuilt: test-hardhat3-offline-compile
+	@case "$(HARDHAT3_PARALLEL)" in 1|2) ;; *) echo "HARDHAT3_PARALLEL must be 1 or 2"; exit 1;; esac
 	@$(DOCKER) image inspect "$(IMAGE)" >/dev/null 2>&1 || { \
 		echo "test-hardhat3-e2e-prebuilt: image $(IMAGE) is not loaded"; \
 		exit 1; \
@@ -165,7 +168,7 @@ test-hardhat3-e2e-prebuilt: test-hardhat3-offline-compile
 	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" NODE="$(NODE)" \
 		ETHERVIEW_HARDHAT3_IMAGE="$(HARDHAT3_IMAGE)" \
 		$(GO) test -count=1 -v -timeout=30m -tags='runtimee2e hardhat3e2e' \
-		-run '^TestHardhat3(ProductionE2E|VerificationCounts)$$' ./e2e/runtime
+		-parallel=$(HARDHAT3_PARALLEL) -run '^TestHardhat3(ProductionE2E|VerificationCounts|TopologyScheduling)$$' ./e2e/runtime
 
 foundry-client-image-build:
 	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "foundry-client-image-build: docker is required"; exit 1; }

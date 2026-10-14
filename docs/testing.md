@@ -223,6 +223,41 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv 0.13.0.
   failure. The E2E-only API environment permits Docker fake-IP download
   networks while retaining the exact HTTPS origin, TLS, size, and SHA-256
   checks; the base deployment never receives that escape hatch.
+Hardhat topology scheduling uses a waiting subtest group with two independent
+result slots. Each topology keeps its own Compose project, dynamic ports,
+PostgreSQL and compiler-cache volumes, and diagnostic directory. Both children
+and their cleanup must finish successfully before normalized parity is checked
+and release acceptance is written. A failed child does not cancel its sibling;
+the existing shared 30-minute deadline still bounds the run. Cleanup failure,
+missing results, an expired context or a parity mismatch blocks acceptance.
+
+`HARDHAT3_PARALLEL=1` remains the Makefile default pending native AMD64/ARM64
+performance acceptance. Native AMD64/ARM64 CI explicitly sets
+`HARDHAT3_PARALLEL=2` to run both topologies concurrently. Only `1` and `2` are
+accepted. After building the same
+application/client images and producing the complete Vyper fixture evidence,
+measure separately with:
+
+```sh
+make test-hardhat3-e2e-prebuilt HARDHAT3_PARALLEL=1
+make test-hardhat3-e2e-prebuilt HARDHAT3_PARALLEL=2
+```
+
+Run in the order 1/2/2/1 on each matching native runner. Every invocation creates
+fresh topology data/cache volumes; keep the images and fixture evidence fixed.
+Record E2E and per-topology wall time (including cleanup), CPU, peak memory,
+OOM/timeouts, leaked resources, full assertion results and whole CI job time.
+Change the local Makefile default to 2 only when both parallel runs beat both serial runs on
+each architecture without correctness or resource failures. A local ARM64 run
+is diagnostic and cannot establish GitHub or AMD64 performance. Existing four
+Vyper production fixture shards finish and merge before this E2E starts.
+
+The Docker-free `TestHardhat3TopologyScheduling` subprocess regression exercises
+both concurrency settings, overlap/completion, either topology failing, missing
+results, parity mismatch, deadline expiry and cleanup failure. Run it with
+`go test -race -tags='runtimee2e hardhat3e2e' ./e2e/runtime
+-run '^TestHardhat3TopologyScheduling$' -count=1`.
+
 - `make test-hardhat3-offline-compile`: run the dependency-locked Hardhat
   client image with no network and compile its production fixture through the
   image's exact `solc@0.8.30` solc-js path. The production verification E2E

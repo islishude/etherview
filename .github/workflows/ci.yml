@@ -205,7 +205,7 @@ jobs:
         env:
           RUNTIME_E2E_KEEP_ARTIFACTS: "true"
           TMPDIR: ${{ runner.temp }}
-        run: make test-hardhat3-e2e-prebuilt
+        run: make test-hardhat3-e2e-prebuilt HARDHAT3_PARALLEL=2
       - name: Upload native Vyper production acceptance
         uses: actions/upload-artifact@v7
         with:

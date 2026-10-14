@@ -194,19 +194,41 @@ func TestHardhat3ProductionE2E(t *testing.T) {
 	root := repositoryRoot(t)
 	runtime := prepareHardhatRuntime(t, ctx)
 
-	results := make(map[string]hardhatProxySnapshot, 2)
-	for _, mode := range []string{"monolith", "distributed"} {
-		if !t.Run(mode, func(t *testing.T) {
-			results[mode] = runHardhat3Mode(t, ctx, root, mode, runtime)
-		}) {
-			return
+	if runHardhatTopologies(t, ctx, func(t *testing.T, mode string) hardhatProxySnapshot {
+		return runHardhat3Mode(t, ctx, root, mode, runtime)
+	}) {
+		writeVyperReleaseAcceptance(t, root)
+	}
+}
+
+// The group waits for both parallel children and their cleanups before the
+// caller can compare snapshots or publish acceptance. Each child owns one slot.
+func runHardhatTopologies(t *testing.T, ctx context.Context, run func(*testing.T, string) hardhatProxySnapshot) bool {
+	t.Helper()
+	var results [2]hardhatProxySnapshot
+	var complete [2]bool
+	if !t.Run("topologies", func(t *testing.T) {
+		for index, mode := range []string{"monolith", "distributed"} {
+			t.Run(mode, func(t *testing.T) {
+				t.Parallel()
+				started := time.Now()
+				t.Cleanup(func() { t.Logf("topology %s including cleanup: %s", mode, time.Since(started)) })
+				results[index] = run(t, mode)
+				complete[index] = true
+			})
 		}
+	}) {
+		return false
 	}
-	if !reflect.DeepEqual(results["monolith"], results["distributed"]) {
-		t.Fatalf("Hardhat 3 topology parity mismatch\nmonolith: %#v\ndistributed: %#v",
-			results["monolith"], results["distributed"])
+	if ctx.Err() != nil || !complete[0] || !complete[1] {
+		t.Errorf("Hardhat 3 topology results incomplete or deadline exceeded")
+		return false
 	}
-	writeVyperReleaseAcceptance(t, root)
+	if !reflect.DeepEqual(results[0], results[1]) {
+		t.Errorf("Hardhat 3 topology parity mismatch\nmonolith: %#v\ndistributed: %#v", results[0], results[1])
+		return false
+	}
+	return true
 }
 
 func prepareHardhatRuntime(t *testing.T, ctx context.Context) hardhatRuntime {
@@ -297,7 +319,11 @@ func runHardhat3Mode(
 		artifacts:  artifacts,
 		phase:      "initialization",
 	}
-	t.Cleanup(func() { h.cleanup() })
+	t.Cleanup(func() {
+		if !h.cleanup() && !t.Failed() {
+			t.Error("Hardhat topology failed or cleanup incomplete")
+		}
+	})
 	configureVyperApplicationFixture(t, h)
 
 	h.enterPhase("isolated Anvil and production topology")
