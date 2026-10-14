@@ -95,6 +95,11 @@ func TestVyperVersionSettings(t *testing.T) {
 	}
 }
 
+// Match the per-input production-container acceptance deadline in
+// compiler/vyper/wasm/production-process.mjs. The ordinary 10-second unit-test
+// fixture budget is too tight for four simultaneous cold WASM processes on CI.
+const vyperMatrixCompileTimeout = 30 * time.Second
+
 func TestVyperDynamicRuntimeMatrix(t *testing.T) {
 	root := os.Getenv("ETHERVIEW_TEST_VYPER_MATRIX_ROOT")
 	if root == "" {
@@ -130,7 +135,7 @@ func TestVyperDynamicRuntimeMatrix(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			compiler := newVyperTestCompiler(t)
+			compiler := newVyperTestCompilerWithTimeout(t, vyperMatrixCompileTimeout)
 			compiler.PackagePath = copyWASMTestTree(t, runtimePath)
 			compiler.Version = version
 			compiler.CompilerDigest = digest
