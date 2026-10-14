@@ -142,7 +142,11 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv 0.13.0.
   every integration-tagged Go test. When `INTEGRATION_DATABASE_URL` is empty,
   the Go runner owns a fresh PostgreSQL 18 Compose project and removes its
   volume afterward. Supplying the variable uses that explicitly disposable
-  external database instead. Each package retains all tests and has an explicit
+  external database instead. The owned database sets
+  `max_locks_per_transaction=1024` for concurrent full-schema creation and
+  teardown; caller-supplied databases need equivalent lock-table capacity.
+  Package discovery excludes `.local` scratch copies alongside dependency and
+  build directories. Each package retains all tests and has an explicit
   15-minute Go timeout so cold CI is bounded above the observed 10-minute
   default-timeout failure; the CI job keeps its independent 20-minute bound.
   The ERC-4337 regression commits exact stored EntryPoint calldata and logs,

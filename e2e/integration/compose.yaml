@@ -1,6 +1,9 @@
 services:
   postgres:
     image: postgres:18-alpine
+    # Parallel packages create/drop complete isolated schemas in transactions.
+    # Size the shared lock table for their tables, indexes and sequences.
+    command: ["postgres", "-c", "max_locks_per_transaction=1024"]
     environment:
       POSTGRES_DB: etherview
       POSTGRES_USER: etherview
