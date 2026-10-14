@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/islishude/etherview/internal/store"
 )
 
@@ -115,5 +117,55 @@ VALUES (1, 'enrichment', 'token', 2, 'baseline-default', '{}'::jsonb) RETURNING 
 leased_by = 'old-worker', lease_token = 'old-token', claimed_generation = 1, leased_generation = 1,
 lease_expires_at = now() + interval '1 minute' WHERE id = $1`, jobID); err == nil || !strings.Contains(err.Error(), "requires publication protocol 2") {
 		t.Fatalf("lease without publication protocol error = %v", err)
+	}
+}
+
+func TestBaselinePreservesExceptionalConstraintCatalog(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx := t.Context()
+	// CREATE TABLE silently validates inline NOT VALID checks and merges
+	// a UNIQUE declaration equivalent to the PRIMARY KEY. Keep both objects.
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM pg_constraint
+WHERE conrelid = 'search_catalog_documents'::regclass
+AND conname = 'search_catalog_documents_name_source_check'
+AND contype = 'c' AND NOT convalidated`, 1)
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM pg_constraint original
+JOIN pg_constraint duplicate ON duplicate.conrelid = original.conrelid
+AND duplicate.conkey = original.conkey AND duplicate.oid <> original.oid
+WHERE original.conrelid = 'verified_contracts'::regclass
+AND original.conname = 'verified_contracts_selector_identity_unique'
+AND original.contype = 'u' AND duplicate.contype = 'p'`, 1)
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM pg_constraint
+WHERE conrelid = 'billing_topup_intents'::regclass
+AND conname = 'billing_topup_intents_active_payment_fk'
+AND confrelid = 'billing_payments'::regclass AND convalidated`, 1)
+}
+
+func TestBaselineSerialAndIdentityDefaults(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx := t.Context()
+	execFixture(t, ctx, db, `INSERT INTO chains (chain_id) VALUES (1)`)
+	for want := int64(1); want <= 2; want++ {
+		var got int64
+		if err := db.QueryRow(ctx, `INSERT INTO external_adapter_observations
+(chain_id, capability, observation_key, state, code, observed_at, expires_at)
+VALUES (1, 'price', 'baseline', 'unavailable', 'unavailable', now(), now() + interval '1 minute')
+RETURNING id`).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Fatalf("sequence default returned %d, want %d", got, want)
+		}
+	}
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM pg_class
+WHERE oid = pg_get_serial_sequence('external_adapter_observations', 'id')::regclass
+AND relname = 'external_adapter_observations_id_seq'`, 1)
+	// ALWAYS identity must keep rejecting explicitly supplied IDs.
+	_, err := db.Exec(ctx, `INSERT INTO durable_jobs
+(id, chain_id, kind, stage, stage_version, idempotency_key, payload)
+VALUES (123, 1, 'enrichment', 'token', 2, 'explicit-id', '{}'::jsonb)`)
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "428C9" {
+		t.Fatalf("explicit identity insert error = %v, want generated_always", err)
 	}
 }

@@ -147,7 +147,7 @@ func discoverIntegrationPackages(root string) ([]string, error) {
 		}
 		if entry.IsDir() {
 			switch entry.Name() {
-			case ".git", "node_modules", "dist":
+			case ".git", ".local", "node_modules", "dist":
 				if path != root {
 					return filepath.SkipDir
 				}

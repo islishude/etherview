@@ -84,6 +84,13 @@ milestone; they do not automatically justify creating a plan item.
   the [runbook](operations.md#fresh-database-initialization). Do not add startup
   data backfills, legacy-schema adapters, or compatibility readiness states
   unless explicitly requested.
+  Keep this baseline declarative: put columns, defaults, identity and constraints
+  in `CREATE TABLE`, use `PARTITION OF` for initial partitions, and declare named
+  child indexes before recursive parent indexes. Retain only documented ALTER
+  exceptions required for dependency completion or exact catalog semantics;
+  `TestBaselineDeclaresFinalObjects` checks their complete statements. When
+  reorganizing the baseline, compare before/after PostgreSQL 18 schema dumps
+  (excluding dump restriction tokens) and retain object names and behavior.
 - Choose the simplest implementation that fully meets current requirements.
   Prefer established, maintained libraries over custom replacements.
 - Make architectural decisions for the long term. Do not introduce a stopgap

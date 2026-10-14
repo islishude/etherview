@@ -17,6 +17,8 @@ func TestDiscoverIntegrationPackages(t *testing.T) {
 	writeTestFile(t, root, "internal/beta/unit_test.go", "package beta\n")
 	writeTestFile(t, root, "web/node_modules/ignored/integration_test.go",
 		"//go:build integration\n\npackage ignored\n")
+	writeTestFile(t, root, ".local/baseline/internal/verify/integration_test.go",
+		"//go:build integration\n\npackage verify\n")
 
 	got, err := discoverIntegrationPackages(root)
 	if err != nil {

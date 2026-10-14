@@ -142,7 +142,11 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv 0.13.0.
   every integration-tagged Go test. When `INTEGRATION_DATABASE_URL` is empty,
   the Go runner owns a fresh PostgreSQL 18 Compose project and removes its
   volume afterward. Supplying the variable uses that explicitly disposable
-  external database instead. Each package retains all tests and has an explicit
+  external database instead. The owned database sets
+  `max_locks_per_transaction=1024` for concurrent full-schema creation and
+  teardown; caller-supplied databases need equivalent lock-table capacity.
+  Package discovery excludes `.local` scratch copies alongside dependency and
+  build directories. Each package retains all tests and has an explicit
   15-minute Go timeout so cold CI is bounded above the observed 10-minute
   default-timeout failure; the CI job keeps its independent 20-minute bound.
   The ERC-4337 regression commits exact stored EntryPoint calldata and logs,
@@ -357,6 +361,10 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   `migrate status`. The consolidated baseline is `0001_core`; integration tests
   additionally cover repeat/concurrent application, checksum and unknown-version
   rejection, transactional DDL rollback, and isolated-schema function bindings.
+  The baseline source guard rejects scattered ALTER definitions outside the
+  explicit dependency/catalog-preservation exceptions. Baseline refactors also
+  compare PostgreSQL 18 schema-only dumps before and after, excluding random
+  dump restriction tokens; object names, definitions and relationships must match.
   Earlier development schemas must be recreated; historical upgrade paths are
   not part of acceptance.
 - `make test-runtime-e2e`: rebuild the current working tree's production image
