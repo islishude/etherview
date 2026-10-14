@@ -61,8 +61,8 @@ without a platform-pinned deployment, Pyodide, or an independent runner.
   ABI-canonical. Runtime without authenticated metadata remains partial.
   Canonical target selection, Genesis provenance, lease fencing, immutable
   results and atomic publication retain ADR-0024 boundaries.
-- The migration adds current Vyper contracts without changing historical
-  migrations, restoring deleted data, or adding old-schema adapters. Product
+- The consolidated baseline includes current Vyper contracts for fresh databases
+  without restoring deleted data or adding old-schema adapters. Product
   images build natively for each supported Linux architecture; native production
   E2E evidence is required independently for AMD64 and ARM64.
 

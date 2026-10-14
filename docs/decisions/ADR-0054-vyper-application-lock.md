@@ -48,9 +48,11 @@ snapshot. PostgreSQL additionally checks the recipe digest and application
 identity. Cache loss cannot change these identities; neither can retries.
 
 Drain queued/running Vyper tasks before switching distribution or runtime
-identity. Migration 0073 refuses undrained work. Historical terminal provenance
-is retained without startup backfill, rebinding or an old execution fallback.
-The target is the current fresh-database schema.
+identity. This remains an operator prerequisite; the consolidated fresh-database
+baseline has no upgrade-time drain check. Within a compatible schema, terminal
+provenance is retained without startup backfill, rebinding or an old execution
+fallback. Earlier development schemas must be recreated; there is no upgrade
+adapter.
 
 ## Release and validation
 

@@ -53,6 +53,11 @@ type AbiDecodingsDefault struct {
 	Warning         string             `db:"warning" json:"warning"`
 	Canonical       bool               `db:"canonical" json:"canonical"`
 	DecodedAt       pgtype.Timestamptz `db:"decoded_at" json:"decoded_at"`
+	SourceAddress   []byte             `db:"source_address" json:"source_address"`
+	SourceCodeHash  []byte             `db:"source_code_hash" json:"source_code_hash"`
+	ReturnStatus    string             `db:"return_status" json:"return_status"`
+	ReturnArguments []byte             `db:"return_arguments" json:"return_arguments"`
+	DecodingKind    string             `db:"decoding_kind" json:"decoding_kind"`
 }
 
 type AbiDecodingsP01000000 struct {
@@ -74,6 +79,11 @@ type AbiDecodingsP01000000 struct {
 	Warning         string             `db:"warning" json:"warning"`
 	Canonical       bool               `db:"canonical" json:"canonical"`
 	DecodedAt       pgtype.Timestamptz `db:"decoded_at" json:"decoded_at"`
+	SourceAddress   []byte             `db:"source_address" json:"source_address"`
+	SourceCodeHash  []byte             `db:"source_code_hash" json:"source_code_hash"`
+	ReturnStatus    string             `db:"return_status" json:"return_status"`
+	ReturnArguments []byte             `db:"return_arguments" json:"return_arguments"`
+	DecodingKind    string             `db:"decoding_kind" json:"decoding_kind"`
 }
 
 type AbiSignatureCandidate struct {
@@ -598,7 +608,7 @@ type DerivedVerificationForwardBlock struct {
 	LastError        *string            `db:"last_error" json:"last_error"`
 	CreatedAt        pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt        pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	ID               *int64             `db:"id" json:"id"`
+	ID               int64              `db:"id" json:"id"`
 	SourceStage      *string            `db:"source_stage" json:"source_stage"`
 	SourceJobID      *int64             `db:"source_job_id" json:"source_job_id"`
 	SourceGeneration *int64             `db:"source_generation" json:"source_generation"`
@@ -623,7 +633,7 @@ type DerivedVerificationScan struct {
 	LastError             *string            `db:"last_error" json:"last_error"`
 	CreatedAt             pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt             pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	ID                    *int64             `db:"id" json:"id"`
+	ID                    int64              `db:"id" json:"id"`
 	RescanFromBlock       pgtype.Numeric     `db:"rescan_from_block" json:"rescan_from_block"`
 }
 
@@ -1402,10 +1412,6 @@ type MempoolTransactionReplacement struct {
 	ReplacementHash []byte         `db:"replacement_hash" json:"replacement_hash"`
 }
 
-type Migration0031VyperJob struct {
-	ID pgtype.UUID `db:"id" json:"id"`
-}
-
 type NativeTransfer struct {
 	ChainID          pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	BlockNumber      pgtype.Numeric `db:"block_number" json:"block_number"`
@@ -1506,49 +1512,57 @@ type NormalizedTrace struct {
 }
 
 type NormalizedTracesDefault struct {
-	ChainID          pgtype.Numeric `db:"chain_id" json:"chain_id"`
-	BlockNumber      pgtype.Numeric `db:"block_number" json:"block_number"`
-	BlockHash        []byte         `db:"block_hash" json:"block_hash"`
-	TransactionHash  []byte         `db:"transaction_hash" json:"transaction_hash"`
-	TransactionIndex int64          `db:"transaction_index" json:"transaction_index"`
-	TracePath        string         `db:"trace_path" json:"trace_path"`
-	ParentPath       *string        `db:"parent_path" json:"parent_path"`
-	Depth            int32          `db:"depth" json:"depth"`
-	CallType         string         `db:"call_type" json:"call_type"`
-	FromAddress      []byte         `db:"from_address" json:"from_address"`
-	ToAddress        []byte         `db:"to_address" json:"to_address"`
-	CreatedAddress   []byte         `db:"created_address" json:"created_address"`
-	Value            pgtype.Numeric `db:"value" json:"value"`
-	Gas              pgtype.Numeric `db:"gas" json:"gas"`
-	GasUsed          pgtype.Numeric `db:"gas_used" json:"gas_used"`
-	Input            []byte         `db:"input" json:"input"`
-	Output           []byte         `db:"output" json:"output"`
-	Error            *string        `db:"error" json:"error"`
-	Reverted         bool           `db:"reverted" json:"reverted"`
-	Canonical        bool           `db:"canonical" json:"canonical"`
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber         pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash           []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash     []byte         `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex    int64          `db:"transaction_index" json:"transaction_index"`
+	TracePath           string         `db:"trace_path" json:"trace_path"`
+	ParentPath          *string        `db:"parent_path" json:"parent_path"`
+	Depth               int32          `db:"depth" json:"depth"`
+	CallType            string         `db:"call_type" json:"call_type"`
+	FromAddress         []byte         `db:"from_address" json:"from_address"`
+	ToAddress           []byte         `db:"to_address" json:"to_address"`
+	CreatedAddress      []byte         `db:"created_address" json:"created_address"`
+	Value               pgtype.Numeric `db:"value" json:"value"`
+	Gas                 pgtype.Numeric `db:"gas" json:"gas"`
+	GasUsed             pgtype.Numeric `db:"gas_used" json:"gas_used"`
+	Input               []byte         `db:"input" json:"input"`
+	Output              []byte         `db:"output" json:"output"`
+	Error               *string        `db:"error" json:"error"`
+	Reverted            bool           `db:"reverted" json:"reverted"`
+	Canonical           bool           `db:"canonical" json:"canonical"`
+	DirectReverted      bool           `db:"direct_reverted" json:"direct_reverted"`
+	ExecutionAddress    []byte         `db:"execution_address" json:"execution_address"`
+	ExecutionCodeHash   []byte         `db:"execution_code_hash" json:"execution_code_hash"`
+	ExecutionResolution string         `db:"execution_resolution" json:"execution_resolution"`
 }
 
 type NormalizedTracesP01000000 struct {
-	ChainID          pgtype.Numeric `db:"chain_id" json:"chain_id"`
-	BlockNumber      pgtype.Numeric `db:"block_number" json:"block_number"`
-	BlockHash        []byte         `db:"block_hash" json:"block_hash"`
-	TransactionHash  []byte         `db:"transaction_hash" json:"transaction_hash"`
-	TransactionIndex int64          `db:"transaction_index" json:"transaction_index"`
-	TracePath        string         `db:"trace_path" json:"trace_path"`
-	ParentPath       *string        `db:"parent_path" json:"parent_path"`
-	Depth            int32          `db:"depth" json:"depth"`
-	CallType         string         `db:"call_type" json:"call_type"`
-	FromAddress      []byte         `db:"from_address" json:"from_address"`
-	ToAddress        []byte         `db:"to_address" json:"to_address"`
-	CreatedAddress   []byte         `db:"created_address" json:"created_address"`
-	Value            pgtype.Numeric `db:"value" json:"value"`
-	Gas              pgtype.Numeric `db:"gas" json:"gas"`
-	GasUsed          pgtype.Numeric `db:"gas_used" json:"gas_used"`
-	Input            []byte         `db:"input" json:"input"`
-	Output           []byte         `db:"output" json:"output"`
-	Error            *string        `db:"error" json:"error"`
-	Reverted         bool           `db:"reverted" json:"reverted"`
-	Canonical        bool           `db:"canonical" json:"canonical"`
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber         pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash           []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash     []byte         `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex    int64          `db:"transaction_index" json:"transaction_index"`
+	TracePath           string         `db:"trace_path" json:"trace_path"`
+	ParentPath          *string        `db:"parent_path" json:"parent_path"`
+	Depth               int32          `db:"depth" json:"depth"`
+	CallType            string         `db:"call_type" json:"call_type"`
+	FromAddress         []byte         `db:"from_address" json:"from_address"`
+	ToAddress           []byte         `db:"to_address" json:"to_address"`
+	CreatedAddress      []byte         `db:"created_address" json:"created_address"`
+	Value               pgtype.Numeric `db:"value" json:"value"`
+	Gas                 pgtype.Numeric `db:"gas" json:"gas"`
+	GasUsed             pgtype.Numeric `db:"gas_used" json:"gas_used"`
+	Input               []byte         `db:"input" json:"input"`
+	Output              []byte         `db:"output" json:"output"`
+	Error               *string        `db:"error" json:"error"`
+	Reverted            bool           `db:"reverted" json:"reverted"`
+	Canonical           bool           `db:"canonical" json:"canonical"`
+	DirectReverted      bool           `db:"direct_reverted" json:"direct_reverted"`
+	ExecutionAddress    []byte         `db:"execution_address" json:"execution_address"`
+	ExecutionCodeHash   []byte         `db:"execution_code_hash" json:"execution_code_hash"`
+	ExecutionResolution string         `db:"execution_resolution" json:"execution_resolution"`
 }
 
 type OperatorLabel struct {

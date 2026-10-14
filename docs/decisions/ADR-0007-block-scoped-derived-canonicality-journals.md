@@ -114,18 +114,17 @@ processor's output transaction with durable lease completion. Fencing that
 publication window, including a worker that continues after lease expiry, is
 the separate P20-T10 consistency boundary.
 
-Migration `0040` extends the `state_diff@2` journal with authorization and
+The `state_diff@2` journal extension introduced authorization and
 transaction execution-code relations; `trace@3` journals normalized frames and
 trace-log attribution. Reorg, replay, refresh, and cleanup therefore move these
 facts with their exact block hash.
 
-Migration `0047` supersedes the current StateDiff witness with
-`state_diff@3`. Its complete-prestate supplement changes only how the same
-versioned authorization and execution-code relations are derived; their
+The current baseline uses the `state_diff@3` StateDiff witness. Its
+complete-prestate supplement changes only how the same versioned authorization and execution-code relations are derived; their
 journal identity, lease fence, reorg behavior, and controlled relation set are
 unchanged.
 
-Migration `0048` advances ABI to `abi@4` and adds
+The `abi@4` journal extension adds
 `transaction_effective_execution_identities` to the ABI journal. Effective
 identities therefore detach, reattach, refresh, cleanup, and replay with the
 same immutable block hash and ABI generation as their decodings; no reader can

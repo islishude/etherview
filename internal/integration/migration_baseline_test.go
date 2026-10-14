@@ -1,0 +1,119 @@
+//go:build integration
+
+package integration_test
+
+import (
+	"errors"
+	"strings"
+	"testing"
+
+	"github.com/islishude/etherview/internal/store"
+)
+
+func TestBaselineRejectsPreviousLedgerWithoutChangingIt(t *testing.T) {
+	db := newIsolatedPostgres(t)
+	ctx := t.Context()
+	execFixture(t, ctx, db, `CREATE TABLE etherview_schema_migrations (
+version TEXT PRIMARY KEY, checksum TEXT NOT NULL, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`)
+	// A previous development database has the same first version but different
+	// bytes. It must fail before any baseline DDL or ledger replacement.
+	execFixture(t, ctx, db, `INSERT INTO etherview_schema_migrations(version, checksum)
+VALUES ('0001_core', repeat('a', 64)), ('0073_vyper_application_lock', repeat('b', 64))`)
+	before := migrationLedger(t, ctx, db)
+	if err := store.RunMigrations(ctx, db); err == nil || !strings.Contains(err.Error(), "checksum changed") {
+		t.Fatalf("old baseline migration error = %v", err)
+	}
+	after := migrationLedger(t, ctx, db)
+	if len(after) != len(before) {
+		t.Fatalf("ledger changed: before=%v after=%v", before, after)
+	}
+	for version, entry := range before {
+		if after[version] != entry {
+			t.Fatalf("old ledger entry changed: %s", version)
+		}
+	}
+	if err := store.CheckSchema(ctx, db); !errors.Is(err, store.ErrSchemaIncompatible) {
+		t.Fatalf("old schema compatibility error = %v", err)
+	}
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM pg_class
+WHERE relnamespace = current_schema()::regnamespace AND relname = 'chains'`, 0)
+}
+
+func TestBaselineFailureRollsBackObjectsAndLedger(t *testing.T) {
+	db := newIsolatedPostgres(t)
+	ctx := t.Context()
+	// A collision late in the baseline must roll back earlier tables, functions,
+	// sequences and the runner-created ledger without touching the existing row.
+	execFixture(t, ctx, db, `CREATE TABLE watch_notifications (marker TEXT)`)
+	execFixture(t, ctx, db, `INSERT INTO watch_notifications VALUES ('keep')`)
+	if err := store.RunMigrations(ctx, db); err == nil {
+		t.Fatal("baseline accepted an existing conflicting table")
+	}
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM watch_notifications WHERE marker = 'keep'`, 1)
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM pg_class
+WHERE relnamespace = current_schema()::regnamespace
+AND relname IN ('chains', 'etherview_schema_migrations', 'durable_jobs_id_seq')`, 0)
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM pg_proc
+WHERE pronamespace = current_schema()::regnamespace`, 0)
+	execFixture(t, ctx, db, `DROP TABLE watch_notifications`)
+	if err := store.RunMigrations(ctx, db); err != nil {
+		t.Fatalf("retry after rollback: %v", err)
+	}
+	if err := store.CheckSchema(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBaselineConcurrentRunnersApplyOnce(t *testing.T) {
+	db := newIsolatedPostgres(t)
+	ctx := t.Context()
+	results := make(chan error, 2)
+	for range 2 {
+		go func() { results <- store.RunMigrations(ctx, db) }()
+	}
+	for range 2 {
+		if err := <-results; err != nil {
+			t.Fatal(err)
+		}
+	}
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM etherview_schema_migrations`, 1)
+	if err := store.CheckSchema(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBaselineRejectsUnknownLedgerVersion(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx := t.Context()
+	execFixture(t, ctx, db, `INSERT INTO etherview_schema_migrations(version, checksum)
+VALUES ('0073_vyper_application_lock', repeat('b', 64))`)
+	if err := store.CheckSchema(ctx, db); !errors.Is(err, store.ErrSchemaIncompatible) {
+		t.Fatalf("unknown migration compatibility error = %v", err)
+	}
+}
+
+func TestBaselineReplayDefaultsAndGenerationGuards(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx := t.Context()
+	execFixture(t, ctx, db, `INSERT INTO chains (chain_id) VALUES (1)`)
+	var jobID string
+	if err := db.QueryRow(ctx, `INSERT INTO durable_jobs
+(chain_id, kind, stage, stage_version, idempotency_key, payload)
+VALUES (1, 'enrichment', 'token', 2, 'baseline-default', '{}'::jsonb) RETURNING id::text`).Scan(&jobID); err != nil {
+		t.Fatal(err)
+	}
+	assertReplayGeneration(t, ctx, db, jobID, replayGenerationState{
+		Status: "queued", Requested: 1, Claimed: 0, Completed: 0,
+	})
+	execFixture(t, ctx, db, `INSERT INTO transactional_outbox
+(chain_id, topic, message_key, payload) VALUES (1, 'core.block.canonical', 'baseline-default', '{}'::jsonb)`)
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM transactional_outbox WHERE generation = 1`, 1)
+	if _, err := db.Exec(ctx, `UPDATE durable_jobs SET requested_generation = 0 WHERE id = $1`, jobID); err == nil {
+		t.Fatal("accepted a zero requested generation")
+	}
+	if _, err := db.Exec(ctx, `UPDATE durable_jobs SET status = 'leased',
+leased_by = 'old-worker', lease_token = 'old-token', claimed_generation = 1, leased_generation = 1,
+lease_expires_at = now() + interval '1 minute' WHERE id = $1`, jobID); err == nil || !strings.Contains(err.Error(), "requires publication protocol 2") {
+		t.Fatalf("lease without publication protocol error = %v", err)
+	}
+}

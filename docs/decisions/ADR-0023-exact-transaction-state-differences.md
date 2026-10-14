@@ -74,7 +74,7 @@ item in the block-level pre/post response proves EIP-7702 tuple application and
 execution-code identity; absent evidence is unavailable and a nonce/code
 contradiction is permanent.
 
-Migration `0047` upgrades the current witness to `state_diff@3` so an unchanged
+The fresh-database baseline uses the current `state_diff@3` witness so an unchanged
 top-level target omitted by diff mode is resolved from exact complete prestate.
 Existing `state_diff@2` output remains historical and requires an explicit
 bounded reindex before it can satisfy current public completeness.

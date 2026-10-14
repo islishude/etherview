@@ -152,10 +152,9 @@ constructor boundary is not recoverable from runtime bytecode equality alone.
 ## Consequences
 
 Historical support requires an explicit bounded `state_diff` reindex, followed
-by `trace`, `proxy`, and `abi` replay. Migration `0040` creates raw storage;
-migration `0047` advances the current witness to `state_diff@3` and invalidates
-superseded proxy-interaction coverage. Migration `0048` creates the
-transaction-scoped effective-identity partition and advances ABI to `abi@4`;
-it does not enqueue or backfill history. Authorization
+by `trace`, `proxy`, and `abi` replay. The fresh-database baseline includes raw
+storage, the `state_diff@3` witness and transaction-scoped effective-identity
+partitions consumed by `abi@4`. Initialization does not enqueue or backfill
+history. Authorization
 creation/signing/revocation, opcode/raw trace persistence, EIP-7851, EIP-8202,
 and proxy authority inferred from arbitrary delegatecall remain out of scope.

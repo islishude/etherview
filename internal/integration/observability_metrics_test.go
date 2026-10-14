@@ -16,12 +16,12 @@ import (
 
 const activeRepairMetricsIndex = "repair_requests_active_metrics_idx"
 
-func TestObservabilityActiveRepairIndexUpgradesWithoutChangingRows(t *testing.T) {
+func TestObservabilityBaselineKeepsActiveRepairIndexAndRows(t *testing.T) {
 	db := newMigratedPostgres(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	if _, err := db.Exec(ctx, `INSERT INTO chains (chain_id) VALUES (1)`); err != nil {
-		t.Fatalf("insert upgrade fixture chain: %v", err)
+		t.Fatalf("insert baseline fixture chain: %v", err)
 	}
 	if _, err := db.Exec(ctx, `
 		INSERT INTO repair_requests (
@@ -31,23 +31,10 @@ func TestObservabilityActiveRepairIndexUpgradesWithoutChangingRows(t *testing.T)
 			(1, 'repair', 'core', 1, 1, 'queued', 'queued', now(), NULL, NULL),
 			(1, 'reindex', 'trace', 2, 2, 'running', 'running', now(), now(), NULL),
 			(1, 'repair', 'core', 3, 3, 'done', 'done', now(), now(), now())`); err != nil {
-		t.Fatalf("insert pre-upgrade repair rows: %v", err)
-	}
-	if _, err := db.Exec(ctx, `DROP INDEX `+activeRepairMetricsIndex); err != nil {
-		t.Fatalf("restore pre-0020 index state: %v", err)
-	}
-	if _, err := db.Exec(ctx, `DELETE FROM etherview_schema_migrations WHERE version = '0020_observability_active_repair_index'`); err != nil {
-		t.Fatalf("restore pre-0020 migration ledger: %v", err)
-	}
-	before, err := store.ReadSchemaStatus(ctx, db)
-	if err != nil {
-		t.Fatalf("read pre-upgrade status: %v", err)
-	}
-	if len(before.Pending) != 1 || before.Pending[0] != "0020_observability_active_repair_index" {
-		t.Fatalf("pre-upgrade pending migrations=%v", before.Pending)
+		t.Fatalf("insert repair rows: %v", err)
 	}
 	if err := store.RunMigrations(ctx, db); err != nil {
-		t.Fatalf("upgrade through observability index migration: %v", err)
+		t.Fatalf("repeat baseline migration: %v", err)
 	}
 	var (
 		valid     bool
@@ -67,10 +54,10 @@ func TestObservabilityActiveRepairIndexUpgradesWithoutChangingRows(t *testing.T)
 	}
 	var count int
 	if err := db.QueryRow(ctx, `SELECT count(*) FROM repair_requests WHERE chain_id = 1`).Scan(&count); err != nil {
-		t.Fatalf("count post-upgrade repair rows: %v", err)
+		t.Fatalf("count retained repair rows: %v", err)
 	}
 	if count != 3 {
-		t.Fatalf("post-upgrade repair row count=%d want=3", count)
+		t.Fatalf("retained repair row count=%d want=3", count)
 	}
 }
 

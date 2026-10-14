@@ -354,7 +354,11 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   used when Docker initializes the persistent named volume.
 - `make test-schema-e2e`: use Go orchestration to migrate a fresh PostgreSQL 18
   volume with the production image and verify exact compatibility through
-  `migrate status`.
+  `migrate status`. The consolidated baseline is `0001_core`; integration tests
+  additionally cover repeat/concurrent application, checksum and unknown-version
+  rejection, transactional DDL rollback, and isolated-schema function bindings.
+  Earlier development schemas must be recreated; historical upgrade paths are
+  not part of acceptance.
 - `make test-runtime-e2e`: rebuild the current working tree's production image
   and run the build-tagged Go E2E suite against the production Compose file in
   monolith and all-six-application-role layouts. Each layout gets a

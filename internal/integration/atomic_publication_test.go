@@ -5,7 +5,6 @@ package integration_test
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -411,7 +410,7 @@ func TestDerivedTerminalMarkersArePublishedWithoutJournals(t *testing.T) {
 	assertPublishedTerminalNoJournal(t, ctx, db, retryJob.Job.ID, 1, enrich.ResultFailed, "trace retry budget exhausted")
 }
 
-func TestPublicationMigrationAndViewRequireExactDurableTerminalIdentity(t *testing.T) {
+func TestPublicationViewRequiresExactDurableTerminalIdentity(t *testing.T) {
 	db := newMigratedPostgres(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
@@ -517,139 +516,6 @@ func TestPublicationMigrationAndViewRequireExactDurableTerminalIdentity(t *testi
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM published_block_stage_results
 		WHERE durable_job_id = $1`, 0, enqueued.Job.ID)
-}
-
-func TestLeaseFencedPublicationMigrationReplaysLegacyTerminalsAndGuardsOldWorkers(t *testing.T) {
-	db := newIsolatedPostgres(t)
-	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
-	defer cancel()
-	migrations, err := store.Migrations()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var publicationMigration string
-	for _, migration := range migrations {
-		if migration.Version == "0014_lease_fenced_stage_publication" {
-			publicationMigration = migration.SQL
-			break
-		}
-		if _, err := db.Exec(ctx, migration.SQL); err != nil {
-			t.Fatalf("apply pre-publication migration %s: %v", migration.Version, err)
-		}
-	}
-	if publicationMigration == "" {
-		t.Fatal("missing lease-fenced publication migration")
-	}
-	repository, _ := store.NewPostgresRepository(db)
-	block := testBundle(0, testHash(116_100), testHash(0), testHash(116_101), "legacy-publication-upgrade")
-	commitCanonical(t, ctx, repository, block)
-	reference := mustBlockRef(t, block)
-	payload := `{"block_hash":"` + reference.Hash.String() + `","block_number":"0"}`
-	insertLegacy := func(key, stage, status string, attempts, claimed, completed int, lease bool) int64 {
-		t.Helper()
-		var id int64
-		var owner, token any
-		var expires any
-		var leasedGeneration any
-		if lease {
-			owner, token = "legacy-worker", "legacy-token-"+key
-			expires = time.Now().Add(time.Minute)
-			leasedGeneration = int64(1)
-		}
-		var result any
-		switch status {
-		case "succeeded":
-			result = `{"state":"complete"}`
-		case "failed":
-			result = `{"state":"failed","error":"legacy failure"}`
-		}
-		if err := db.QueryRow(ctx, `
-			INSERT INTO durable_jobs (
-				chain_id, kind, stage, stage_version, idempotency_key, payload,
-				status, attempts, max_attempts, leased_by, lease_token,
-				lease_expires_at, result, last_error,
-				requested_generation, claimed_generation, leased_generation,
-				completed_generation
-			) VALUES (
-				1, 'enrichment', $1, 1, $2, $3::jsonb,
-				$4, $5, 10, $6, $7, $8, $9::jsonb,
-				CASE WHEN $4 = 'failed' THEN 'legacy failure' ELSE NULL END,
-				1, $10, $11, $12
-			) RETURNING id`,
-			stage, key, payload, status, attempts, owner, token, expires, result,
-			claimed, leasedGeneration, completed,
-		).Scan(&id); err != nil {
-			t.Fatalf("insert legacy job %s: %v", key, err)
-		}
-		return id
-	}
-	succeededID := insertLegacy("legacy-success", "stats", "succeeded", 1, 1, 1, false)
-	failedID := insertLegacy("legacy-failed", "token", "failed", 1, 1, 1, false)
-	queuedID := insertLegacy("legacy-queued", "proxy", "queued", 0, 0, 0, false)
-	leasedID := insertLegacy("legacy-leased", "trace", "leased", 2, 1, 0, true)
-	execFixture(t, ctx, db, `
-		INSERT INTO block_stage_results (
-			chain_id, block_number, block_hash, stage, stage_version, state, details
-		) VALUES
-			(1, 0, $1, 'stats', 1, 'complete', '{}'::jsonb),
-			(1, 0, $1, 'token', 1, 'failed', '{}'::jsonb)`, mustBytes(t, reference.Hash))
-	execFixture(t, ctx, db, `
-		INSERT INTO block_journals (
-			chain_id, block_hash, stage, sequence, payload, canonical
-		) VALUES (1, $1, 'stats@1', 1, '{"version":1,"operations":[]}'::jsonb, TRUE)`,
-		mustBytes(t, reference.Hash))
-
-	for attempt := 1; attempt <= 2; attempt++ {
-		if _, err := db.Exec(ctx, publicationMigration); err != nil {
-			t.Fatalf("apply publication migration attempt %d: %v", attempt, err)
-		}
-	}
-	for _, terminalID := range []int64{succeededID, failedID} {
-		assertReplayGeneration(t, ctx, db, fmt.Sprint(terminalID), replayGenerationState{
-			Status: "queued", Requested: 2, Claimed: 1, Completed: 1,
-		})
-	}
-	assertReplayGeneration(t, ctx, db, fmt.Sprint(queuedID), replayGenerationState{
-		Status: "queued", Requested: 1, Claimed: 0, Completed: 0,
-	})
-	assertReplayGeneration(t, ctx, db, fmt.Sprint(leasedID), replayGenerationState{
-		Status: "leased", Requested: 1, Claimed: 1, Completed: 0, Leased: true,
-	})
-	assertRowCount(t, ctx, db, `
-		SELECT count(*) FROM durable_job_replay_requests
-		WHERE source_kind = 'schema-upgrade'
-		  AND source_key = '0014-lease-fenced-stage-publication'`, 2)
-	assertRowCount(t, ctx, db, `
-		SELECT count(*) FROM block_stage_results
-		WHERE chain_id = 1 AND block_hash = $1 AND stage IN ('stats', 'token')`,
-		0, mustBytes(t, reference.Hash))
-	assertRowCount(t, ctx, db, `SELECT count(*) FROM durable_stage_publications`, 0)
-
-	if _, err := db.Exec(ctx, `
-		UPDATE durable_jobs
-		SET status = 'leased', leased_by = 'old-worker', lease_token = 'old-token',
-			lease_expires_at = clock_timestamp() + INTERVAL '1 minute', leased_generation = 1
-		WHERE id = $1`, queuedID); err == nil {
-		t.Fatal("post-migration old worker acquired a derived lease without protocol 2")
-	}
-	if _, err := db.Exec(ctx, `
-		UPDATE durable_jobs
-		SET status = 'failed', result = '{"state":"failed","error":"old finish"}'::jsonb,
-			last_error = 'old finish', completed_generation = 1,
-			leased_by = NULL, lease_token = NULL, lease_expires_at = NULL, leased_generation = NULL
-		WHERE id = $1`, leasedID); err == nil {
-		t.Fatal("pre-migration lease committed an old two-transaction terminal result")
-	}
-	assertJobStatus(t, ctx, db, fmt.Sprint(leasedID), "leased")
-	execFixture(t, ctx, db, `
-		UPDATE durable_jobs SET lease_expires_at = clock_timestamp() - INTERVAL '1 second'
-		WHERE id = $1`, leasedID)
-	queue, _ := enrich.NewPostgresJobQueue(db)
-	legacyTraceStage := enrich.StageID{Name: enrich.TraceStage.Name, Version: 1}
-	reclaimed, found, err := queue.Claim(ctx, "protocol-two-worker", []enrich.StageID{legacyTraceStage}, time.Minute)
-	if err != nil || !found || reclaimed.Job.ID != fmt.Sprint(leasedID) || reclaimed.Job.Attempt != 3 {
-		t.Fatalf("reclaim legacy lease=%+v found=%t err=%v", reclaimed, found, err)
-	}
 }
 
 func TestOlderExhaustionCannotOverwriteNewerOrForeignPublicationMarker(t *testing.T) {

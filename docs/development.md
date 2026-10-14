@@ -78,10 +78,12 @@ milestone; they do not automatically justify creating a plan item.
 
 ## Implementation policy
 
-- Do not preserve backward compatibility during active development. Migrations
-  target the current fresh-database schema; do not add startup data backfills,
-  legacy-schema adapters, or compatibility readiness states unless explicitly
-  requested.
+- Do not preserve backward compatibility during active development. The current
+  schema is consolidated in `internal/store/migrations/0001_core.sql`; databases
+  created with the earlier development chain must be recreated as described in
+  the [runbook](operations.md#fresh-database-initialization). Do not add startup
+  data backfills, legacy-schema adapters, or compatibility readiness states
+  unless explicitly requested.
 - Choose the simplest implementation that fully meets current requirements.
   Prefer established, maintained libraries over custom replacements.
 - Make architectural decisions for the long term. Do not introduce a stopgap

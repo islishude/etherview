@@ -31,10 +31,10 @@ the platform coupling this decision removes.
 
 ## Decision
 
-- Public verification supports Solidity and Yul. Native Vyper submission,
-  matching, catalog, UI, and compatibility paths are removed. Migration 0031
-  deletes Vyper verification data and publications; the removed behavior is
-  recorded only as a possible future design input.
+- At adoption, public verification supported Solidity and Yul and removed
+  native Vyper submission, matching, catalog, UI, and compatibility paths.
+  Later Vyper decisions supersede that exclusion. The consolidated baseline
+  creates current contracts directly; the historical data cutover remains in Git.
 - `api` and `all` own compiler catalog refresh, checksum-addressed artifact
   caching, job leases, compilation, and publication. There is no
   compiler-runner service, runner protocol, runner image, or compiler-specific
@@ -82,11 +82,10 @@ the platform coupling this decision removes.
   catalog generation, compiler digest, executor kind, execution policy, and
   executor digest transition from entirely empty to entirely complete once.
   A retry must use the same complete identity.
-- Existing terminal Solidity records retain their native compiler platform and
-  legacy executor provenance. Active legacy compiler jobs terminate with
-  `executor_migrated`. Vyper deletion is irreversible without restoring the
-  operator's pre-migration backup, and old and new application versions are
-  not supported concurrently across migration 0031.
+- The schema retains native compiler platforms and legacy executor provenance
+  as terminal audit shapes. The consolidated baseline does not import or
+  terminate old-schema jobs: earlier development databases must be recreated.
+  No old-schema compatibility or verification-data conversion is provided.
 - Application images remain multi-architecture. BuildKit may select artifacts
   for its current target architecture while assembling an image, but Compose,
   Preview, Helm, CI service definitions, and operator configuration never pin

@@ -103,17 +103,17 @@ fail-closed cleanup requirements remain mandatory.
   consent. Sourcify jobs are bounded to three attempts, a 20-second request,
   one-second polling, and 120 polls. Their success is returned as an external
   result only.
-- The v2 migration intentionally deletes the v1 verification jobs, immutable
-  results, and verified-contract projections. There is no dual read, data
-  conversion, or rollback format.
+- The consolidated baseline creates the current verification contracts in a
+  fresh database. Earlier development schemas must be recreated; there is no
+  dual read, data conversion, or rollback format.
 
 ## Consequences
 
 Verification can discover the matching contract and preserve the exact
 transformations needed to reproduce deployed code. Dynamic compiler coverage
-does not permit a retry to change compiler or runner identity. The destructive
-schema reset requires an operator backup before upgrade, and old verification
-records are not available through the new API. Authenticated Genesis
+does not permit a retry to change compiler or runner identity. Operators retain
+any needed backup before recreating an earlier development database; the new
+baseline does not import its verification records. Authenticated Genesis
 predeploys can publish runtime source without inventing a deployment
 transaction, initcode, or constructor arguments; an incomplete or stale
 Genesis proof remains unavailable rather than weakening the creation boundary.

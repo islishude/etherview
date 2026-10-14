@@ -74,8 +74,8 @@ bytecode increase storage use, and the API role gains a separately bounded
 derived-work loop, but neither ingestion correctness nor readiness depends on
 that loop.
 
-Schema migration `0057` changes the derived queue protocol. Environments with
-derived workers enabled replace every `all`/`api` replica together; the
-migration preserves existing scan and attempt state but does not silently
-requeue failed or pending historical work. Recovery remains an audited explicit
-backfill.
+The fresh-database baseline creates the generation-aware derived queue.
+Changes to its protocol require environments with derived workers enabled to
+replace every `all`/`api` replica together. Initialization and startup do not
+silently requeue failed or pending historical work. Recovery remains an audited
+explicit backfill.
