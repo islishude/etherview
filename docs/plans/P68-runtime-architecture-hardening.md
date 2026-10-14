@@ -30,520 +30,55 @@ keys, and the fresh-database schema remain unchanged.
 | P68-T03 | done | P68-T02 | Move correctness/write SQL into sqlc transactions, isolate migration and validated partition DDL as the only raw-SQL executors, and enforce the boundary | generation, source-boundary tests, lease/replay/reorg integration and race |
 | P68-T04 | done | P68-T03 | Split runtime assembly and configuration loading/validation into narrow role and subsystem builders while retaining an independent executable component manifest | config, component graph, monolith/split parity, deployment checks |
 | P68-T05 | done | P68-T04 | Split HTTP routes into explicit capability modules and reject enabled modules with missing dependencies at startup | handler/route/capability tests, generation, browser and runtime gates |
-| P68-T06 | done | P68-T05 | Split core Web pages and language resources by domain and add pinned Biome hook, complexity, function, and file-size linting | TypeScript, Vitest, accessibility, responsive and embedded-browser gates |
-| P68-T07 | done | P68-T06 | Close the selected Go complexity/duplication baseline, wire source and SQL checks into repository gates, and complete full acceptance evidence | lint, common gates, PostgreSQL, browser, production topology, Hardhat, Foundry and Preview suites |
-| P68-T08 | done | P68-T01, P68-T07 | Align runtime E2E ordinary-response write deadlines with its bounded-load request budget while retaining the longer-idle SSE deadline regression | focused runtime tests, Compose validation, and production-topology E2E |
-| P68-T09 | done | P68-T01, P68-T07 | Make the home-feed slow-subscriber race regression wait for the complete fanout operation before inspecting disconnect state | focused repeated race test, HTTP API race tests, and common gates |
-| P68-T10 | done | P68-T06 | Replace Biome with pinned Oxlint/Oxfmt gates, preserve size limits, and refactor formatted Web modules | tooling policy regressions, Web unit/browser tests, generation, docs and plan gates |
-| P68-T11 | done | P68-T10 | Repair PR 86 lazy-route and Helm schema diagnostic regressions without weakening page or egress assertions | focused route regressions, Web unit/browser tests, Helm 3/4 rendering, generation, docs and plan gates |
-| P68-T12 | done | P68-T11 | Explicit verification worker repository and task-local lease-loss recovery with fatal compiler error preservation | worker lifecycle, heartbeat, race, runtime parity |
-| P68-T13 | done | P68-T11 | Version-fenced home snapshot API with bounded cancellation-safe waiting | OpenAPI, HTTP concurrency, generation and browser tests |
-| P68-T14 | done | P68-T11 | Query-local chain event policies, recoverable single SSE connection, and UserOperation reorg refresh | Vitest, browser reconnect and reorg regressions |
-| P68-T15 | dropped | P68-T11 | Standard-library sqlc generation and one typed transaction boundary | generation, numeric/null/array codecs and source boundary tests |
-| P68-T16 | dropped | P68-T11 | All production read paths use typed generated queries with bounded scan memory | reader routing, snapshot, query and PostgreSQL/race tests |
-| P68-T17 | dropped | P68-T11 | All production write paths use typed generated queries and enforce the execution boundary | atomic publication, leases, locks and PostgreSQL/race tests |
-| P68-T18 | dropped | P68-T12, P68-T13, P68-T14, P68-T15, P68-T16, P68-T17 | Aggregate acceptance for all six review fixes and full database migration | common, integration/race, browser, schema, runtime, Hardhat, Foundry and Preview gates |
-| P68-T19 | done | P68-T11 | Native pgx database access ADR, pools, sqlc and transaction infrastructure | pool configuration, cancellation cleanup, generation and routing regressions |
+| P68-T12 | done | P68-T05 | Explicit verification worker repository and task-local lease-loss recovery with fatal compiler error preservation | worker lifecycle, heartbeat, race, runtime parity |
+| P68-T13 | done | P68-T05 | Version-fenced home snapshot API with bounded cancellation-safe waiting | OpenAPI, HTTP concurrency, generation and browser tests |
+| P68-T14 | done | P68-T05 | Query-local chain event policies, recoverable single SSE connection, and UserOperation reorg refresh | Vitest, browser reconnect and reorg regressions |
+| P68-T19 | done | P68-T05 | Native pgx database access ADR, pools, sqlc and transaction infrastructure | pool configuration, cancellation cleanup, generation and routing regressions |
 | P68-T20 | done | P68-T19 | All read paths use typed pgx queries with exact nullable values and bounded keyset scans | reader routing, repeatable snapshots, PostgreSQL and race |
 | P68-T21 | done | P68-T19 | All writes use typed pgx queries with unchanged fencing and commit semantics | lease loss, rollback, reorg and ambiguous commit regressions |
 | P68-T22 | done | P68-T19 | Native session locks, migrations, partition DDL, CLI and startup checks | physical connection disposal, schema, runtime parity |
 | P68-T23 | done | P68-T20, P68-T21, P68-T22 | Native test boundaries, pool metrics, source enforcement and documentation | source, docs, plan and pool telemetry tests |
 | P68-T24 | done | P68-T12, P68-T13, P68-T14, P68-T23, P68-T25 | Aggregate six-fix and full native pgx acceptance | common, integration/race, browser, schema, runtime, Hardhat, Foundry, Preview and benchmarks |
 | P68-T25 | done | P68-T23 | Local Kubo Preview gateway and streaming single-file IPFS CLI | CLI unit/race, Compose/TLS isolation, offline Kubo roundtrip and full Preview acceptance |
-| P68-T26 | done | P68-T25 | Correct IPFS filename and URI encoding; consolidate native pgx acceptance into the development guide | Filename/URI unit and race regressions, lint, docs and plan checks |
-| P68-T27 | done | P68-T26 | Rewrite native pgx acceptance around engineering invariants, validation coverage and benchmark limits without Git or PR history | Documentation and plan checks |
-| P68-T28 | done | P68-T24 | Make the enrichment heartbeat completion regression deterministic under CI scheduling | Repeated focused race tests, enrichment race suite, lint, docs and plan gates |
-| P68-T29 | done | P68-T13 | Synchronize the home replica-switch regression after consumption of the initial snapshot | Repeated focused race tests, HTTP API race suite, lint, docs and plan gates |
 | P68-T30 | done | P68-T25 | Replace Preview nginx with an independent Go HTTPS IPFS gateway | Gateway unit/race, lint, Compose/docs/plan and real-Kubo Preview acceptance |
-| P68-T31 | done | P68-T30 | Run full Preview metadata acceptance in CI with ephemeral TLS and retained diagnostics | Workflow validation, docs/plan checks and remote Preview job |
-
-Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
 ## Acceptance
 
-- [x] P68-T31: the independent CI Preview job passes the full offline-Kubo
-      target with ephemeral TLS and retained acceptance/diagnostic artifacts.
-
-- [x] P68-T30: real-Kubo Preview acceptance and daily startup/recreation pass
-      with the independently built Go gateway; the Preview Genesis includes
-      pinned Geth system contracts and receipt polling handles indexing progress.
-
-- [x] P68-T29: the replica-switch regression waits for the initial snapshot to
-      be consumed before publishing the required version; stale-response and
-      slow-subscriber assertions remain enforced.
-
-- [x] P68-T27: native pgx acceptance explains implementation boundaries,
-      validation coverage and benchmark limits without Git or PR history;
-      Preview evidence links resolve to the owning plan.
-
-- [x] P68-T26: multipart filenames use Kubo query encoding; URI paths decode
-      once per segment with traversal checks; native pgx acceptance is retained
-      in the development guide with all incoming links updated.
-
-- [x] P68-T25: local real-Kubo Preview with trusted HTTPS, offline deterministic
-      acceptance, streaming single-file CLI, and persistent daily lifecycle.
-
-- [x] P68-T12–T14 and P68-T19–T24: all six review fixes and full native pgx migration pass their targeted and aggregate acceptance gates.
-
-- [x] P68-T11: cold billing-page rendering awaits asynchronous React work;
-      Helm 3/4 both enforce the additional-egress schema and template rejection.
-
-- [x] P68-T10: pinned Oxlint/Oxfmt gates replace Biome with unchanged length limits,
-      explicit cyclomatic complexity policy, and passing Web acceptance.
-
-- [x] Idle SSE connections survive longer than `server.write_timeout`, while
-      each individual write and flush remains bounded by that timeout.
-- [x] Active event and home streams close promptly on process cancellation and
-      cannot exhaust the graceful-shutdown budget.
-- [x] Durable replay performs no PostgreSQL or optional-adapter I/O while the
-      fanout mutex is held; replay/live delivery remains ordered and duplicate
-      free under bounded concurrency.
-- [x] Redis loss disables cache reads, suppresses repeated backend calls during
-      backoff, and permits exactly one recovery probe without affecting API
-      correctness or readiness.
-- [x] Mempool RPC, invalid-snapshot, and storage failures use typed
-      classification rather than error-message inspection.
-- [x] Production static SQL originates in `internal/db/queries`; only the
-      migration runner and validated partition-DDL module may execute raw SQL.
-- [x] Runtime roles, HTTP capabilities, and Web pages have explicit modular
-      dependencies with no hidden type assertions or reader fallbacks.
-- [x] No hand-written production Go file exceeds 2,000 lines; selected Go and
-      Web complexity, function-size, duplication, hook, and file-size gates
-      pass without blanket suppressions.
-- [x] OpenAPI, database schema, public routes and response shapes, configuration
-      keys, and monolith/split behavior remained unchanged through P68-T11.
-      P68-T13 subsequently adds the approved home event-version contract.
+- [x] SQL execution and package ownership are enforced at generated boundaries.
+- [x] Runtime builders and capability modules fail closed on incomplete dependencies.
+- [x] SSE, shutdown and worker leases preserve bounded cancellation and recovery.
+- [x] Native pgx retains exact values, snapshots, locks and atomic publication.
+- [x] Home snapshots and browser replay are version-fenced and reorg-aware.
+- [x] Local Kubo, streaming IPFS CLI and the independent HTTPS gateway pass acceptance.
+- [x] Applicable schema, production topology and native architecture gates completed.
 
 ## Current Blockers
 
-None for P68. P68-T30's Docker and Preview acceptance blockers are cleared
-by the follow-up evidence below. P70/P73 external release gates remain separate.
+None. P70/P73 retain independent release blockers.
 
 ## Evidence
 
-- P68-T27 (2026-09-20): rewrote the development-guide acceptance section into
-  implementation invariants, a validation coverage table and the retained local
-  benchmark. Removed branch/stash, commit, PR and CI-run narratives; condensed
-  Preview details into a link to this plan and corrected incoming evidence
-  references. Benchmark fixture sizes were checked against
-  `internal/integration/core_performance_test.go`. `make docs-check plan-check`
-  and `git diff --check` pass. This documentation-only change does not rerun or
-  extend the historical runtime acceptance results.
+Retained completed milestones: P68-T01, P68-T02, P68-T03, P68-T04, P68-T05, P68-T12,
+P68-T13, P68-T14, P68-T19, P68-T20, P68-T21, P68-T22, P68-T23, P68-T24, P68-T25,
+P68-T30.
 
-- P68-T26 (2026-09-20): upload uses query-escaped multipart filenames and
-  download distinguishes literal CID/path inputs from percent-encoded IPFS
-  URIs. `go test -race ./cmd/ipfs` passes, including wrapped/unwrapped uploads
-  and literal/URI downloads for plus signs, percent sequences, spaces, Unicode,
-  question marks and hashes. URI cases reject encoded traversal/separators,
-  malformed escapes, controls, credentials, queries and fragments; double-encoded
-  literal percent names are decoded only once. `make lint-go docs-check plan-check`
-  and `git diff --check` pass. Preview E2E sources compile with
-  `go test -run '^$' -tags=previewmetadatae2e ./e2e/previewmetadata`.
-  Docker's local socket is unavailable, so this follow-up did not rerun the
-  container gate and does not replace P68-T25's recorded runtime evidence.
-  The native pgx acceptance summary and benchmark are maintained in
-  [the development guide](../development.md#native-pgx-acceptance-record);
-  its former standalone document is removed and all incoming links are updated.
+SQL/source ownership, typed runtime builders, HTTP shutdown/SSE, worker
+lease recovery and version-fenced home state passed focused normal/race,
+generation, PostgreSQL and browser gates. Native pgx read/write, cancellation,
+session-lock disposal and topology acceptance passed; the development guide
+retains the bounded benchmark and native pgx acceptance summary.
 
-- P68-T25 (2026-09-20): `go test -race ./cmd/ipfs ./internal/config
-  ./internal/metadata`, `make lint-go`, `make compose-check docs-check plan-check`,
-  and `make security-check license-check` pass locally. CLI regressions include
-  early streaming response headers, cancellation, response trailers/truncation,
-  invalid files/CIDs, and non-overwriting atomic download cleanup.
-- The final exact `make test-preview-metadata` passes on native arm64:
-  `TestPreviewLocalNFTMetadata` completes in 46.95s. Real offline Kubo verifies
-  repeated wrapped imports of the original CID, empty/binary/1-MiB roundtrips,
-  missing-CID failure, gateway restart, trusted/untrusted TLS, and management
-  API isolation. Both canonical metadata versions retain exact 205-byte JSON,
-  SHA-256, one successful attempt, network evidence, and worker-restart history.
-  Application image: `sha256:d905f800d077725da0b40148b0c9adcf955ca168a94e5bd34bfcc24cdb9cd51c`.
-  Report and logs remain in `etherview-preview-metadata-767907377`; all owned
-  Compose resources were removed. Full image identities and network observations
-  are in `report.json`.
-- Daily online Preview passes the exact `make start-preview`,
-  `make recreate-preview`, and `make stop-preview` lifecycle in an isolated
-  project. `Gateway.NoFetch=false`; an extra uploaded CID remains pinned across
-  recreation and downloads byte-for-byte. Stop removes its IPFS volume.
-  Evidence remains in `/tmp/etherview-ipfs-lifecycle.yGcl3Q`.
-- P68-T24 is done using this reviewed replacement gate plus the previously
-  recorded aggregate/CI/benchmark evidence below. No new remote CI run or public
-  IPFS availability is claimed. P68 returns to done; P70/P73 remain independent.
+[PR 92 CI run 35474508539](https://github.com/islishude/etherview/actions/runs/35474508539)
+at `aebb61fee2783e3f6bb8810a81296b05c142bce6` passed all 11 jobs, including
+production schema/runtime and native AMD64/ARM64 Hardhat/Foundry. Later local
+Kubo acceptance replaced the failed public-gateway prerequisite: the exact
+`make test-preview-metadata` passed two canonical metadata versions, one
+attempt each, gateway/worker restart and immutable content checks. That local
+replacement does not establish public-IPFS availability.
 
-- P68-T12 and P68-T22: [PR 92 CI run 35474508539](https://github.com/islishude/etherview/actions/runs/35474508539)
-  succeeds for PR head `aebb61fee2783e3f6bb8810a81296b05c142bce6`. All 11 jobs
-  succeed, including the production-image schema lifecycle and runtime topology
-  parity steps, plus native amd64/arm64 Hardhat and Foundry acceptance. This
-  clears their prior production-image acceptance blockers. P68-T23 is claimed
-  after that dependency clearance for final source/docs/plan evidence review.
-  Preview Metadata is absent from this CI workflow and is not inferred to pass.
-- P68-T23: native fixtures/metrics and source enforcement retain their prior
-  unit/race/PostgreSQL evidence. `make docs-check plan-check source-check` passes
-  after reconciling CI evidence; P68-T23 is done. P68-T24 is claimed after its
-  dependencies clear, to run the remaining live Preview Metadata gate.
-- Historical P68-T24 public-gateway attempt: the exact Preview command builds image
-  `sha256:764e23d149f8944ee59159173acb065b89686da302e5750ac7db230b0dc908c0`
-  and reaches the full Preview topology. `TestPreviewPublicNFTMetadata` fails
-  after 37.66s at the first metadata version; structured transitions identify
-  HTTP fetch failures, followed by exhaustion. The independent fixture GET
-  confirms HTTP 429 and the gateway-change notice. This was an external
-  Preview blocker, distinct from the earlier Docker authentication blocker. No code,
-  retry limit, content assertion, gateway or fixture was changed to pass it.
-  The exact local `make check` passed at that revision, including Docker,
-  Compose and Helm; Preview was the remaining gate before P68-T25.
+The independent Go HTTPS IPFS gateway passed unit/race, Compose and real-Kubo
+Preview checks. Native pgx and gateway evidence are revision-specific; the
+historical CI run above does not cover later gateway changes.
 
-- Earlier local replacement evidence is recorded in [native pgx acceptance](../development.md#native-pgx-acceptance-record).
-  P68-T12/T22 targeted lease, supervisor, native session disposal and pool-close
-  deadline regressions passed while their production runtime/schema gates were
-  still blocked locally; the later CI evidence above clears those gates.
-  P68-T20/T21 remove every manual production query execution outside migration
-  and partition DDL. Exact decimal/NULL contracts, bounded snapshot scans,
-  generated names/cardinalities and native transaction semantics are implemented.
-  Generation, Go/Web lint, unit/race, security/license, Compose and Helm checks
-  pass. The final PostgreSQL ordinary run passes all six packages (core 225.143s);
-  final PostgreSQL race also passes all six packages (core 229.401s).
-  P68-T20/T21 are complete. P68-T13 and P68-T14 also pass all 29 real Chrome tests,
-  including expired-cursor 400 recovery, single-connection ownership and
-  UserOperation head/reorg handling. Home tests cover replica switching, late
-  responses, HTTP-derived version floors and QueryClient isolation. They are done.
-  The local production-image blockers are subsequently cleared by PR CI for
-  its covered gates; live Preview Metadata remains outstanding.
-  Serial core benchmarks and their timing variability are recorded in the linked
-  acceptance document; no reference-capacity or latency-improvement claim is made.
-
-- P68-T21 claimed after P68-T19; generated write contracts must preserve
-  affected-row fences, original transaction scopes and unknown-commit handling.
-  Read/write contracts are now implemented; final acceptance is recorded above.
-
-- P68-T22 claimed after finding that native pool Close waits for borrowed
-  connections. Pool teardown must share the supervisor deadline so a timed-out
-  service cannot hold process exit open after readiness has been withdrawn.
-
-- P68-T19: native pools, transaction cleanup and pgx test fixtures replace the
-  stdlib bridge. `go build ./...`, native database/observability/maintenance
-  race regressions, pool configuration tests, and focused query/catalog/state/
-  store/Etherscan/enrichment unit suites pass. The owned PostgreSQL 18 runner
-  passes migration idempotence, generated identity reads, concurrent role
-  binding and home snapshot/reorg tests; a second run passes single-connection
-  cancellation cleanup, physical lock-session disposal, writer/reader session
-  boundaries, reader startup identity/schema checks and compiler-cache locks.
-  Owned containers and volumes were removed. `make generate-check` and
-  `make source-check docs-check plan-check` pass. This is foundation evidence,
-  not full typed-query or aggregate acceptance.
-- P68-T20 claimed after P68-T19 foundation acceptance. Full read-query migration
-  must preserve native NULL semantics and bound every former streaming scan.
-
-- P68-T19 claimed for the approved native pgx replacement. The previous dirty
-  checkout is preserved unchanged; implementation continues in the isolated
-  `codex/pgx-native` worktree from `a805559556025c3f88699a2fb5bc51d137be4d0a`.
-- P68-T15, P68-T16, P68-T17 and P68-T18 are dropped because their database/sql architecture was rejected.
-  P68-T19–T24 replace them. Earlier targeted results describe the previous
-  checkout only; the replacement must rerun its own acceptance.
-
-- Historical abandoned-attempt note: P68-T15–T17 resumed after the first handoff to repair shared projections and nullable finality mappings. This describes the preserved original checkout, not the native replacement.
-
-- Historical abandoned-attempt note: P68-T12–T14 previously passed targeted worker/home race and four Web suites (26 tests). Those results did not close the old P68-T18; current replacement evidence is recorded above.
-
-- P68-T12 claimed on a clean working tree for the accepted six-issue remediation plan.
-
-- P68-T11 reproduces both failures from [PR 86 CI run 35361562536](https://github.com/islishude/etherview/actions/runs/35361562536)
-  at `d8a21542af677c577fcc981e293e21cf43fd4400`. The first billing-page
-  render suspends while loading the nested Account component; a synchronous
-  Testing Library render leaves React's asynchronous `act` work unawaited and
-  the Account heading times out. Awaiting the render inside asynchronous `act`
-  fixes the original regression without changing dependency versions, page
-  assertions, or timeouts. CI's Helm latest-release lookup failed and selected
-  its v3.18.4 fallback, whose dotted schema paths did not match the Helm 4
-  JSON-pointer assertion. The regression normalizes separators and still
-  requires rejection at the additional-egress port path; the independent
-  template TCP/443 rejection remains required. Focused Vitest passes 21 tests;
-  `make web-lint web-test` passes 39 files / 370 tests and eight script tests.
-  `make helm-check` passes with Helm 3.18.4 and 4.3.0; `make deployment-check`,
-  `make docs-check plan-check`, and `git diff --check` pass locally on macOS.
-  `make generate-check test-e2e` passes generated-contract consistency, asset
-  budgets, and all 27 embedded Chrome tests. Remote CI has not been rerun with
-  these changes.
-
-- P68-T10 replaces Biome with exact `oxlint@1.83.0` and `oxfmt@0.68.0`
-  lockfile pins. `web-lint` retains TypeScript and explicit unused-code/Hook
-  checks, adds a read-only formatting gate, and keeps production file/function
-  limits at 1,400/400 and test limits at 2,500/1,000 (blank lines excluded,
-  comments counted, IIFEs exempt). Classic cyclomatic complexity is capped at
-  150 against the measured pre-refactor maximum of 142, with tests exempt;
-  this is not an equivalence claim for Biome's prior cognitive metric of 75.
-  Transaction presentation and contract proxy facts are split by responsibility;
-  wallet operation callbacks retain their original session fences in an internal
-  Hook. New Hook diagnostics are resolved through stable defaults, precise
-  callback dependencies, captured focus targets, and an explicit ECharts alias.
-  Five executable tooling-policy regressions exercise positive/negative limits,
-  Hook and unused-code failures, test overrides, generated exclusions, and
-  formatting idempotence. The QR regression also asserts restored opener focus.
-  `make web-lint web-test generate-check test-e2e` passes: 39 Vitest files / 370
-  tests, eight Node script tests, generated-contract consistency, production
-  asset budgets, and 27 embedded Chromium tests. `make docs-check plan-check`
-  and `git diff --check` pass. A repeated format leaves tracked Web bytes
-  unchanged, including the lockfile and generated API types. `npm audit
-  --audit-level=high` reports zero vulnerabilities; the maintained production
-  license allowlist passes, and the five newly installed tool/runtime packages
-  have MIT licenses (all added platform-package lock entries also declare MIT).
-  A broader diagnostic scan of all development packages finds the pre-existing
-  `chownr@3.0.0` BlueOak-1.0.0 license outside the production allowlist; no
-  dependency version or license policy was changed to suppress it. Evidence is
-  local macOS validation; remote CI and Linux tool binaries were not rerun.
-
-- P68-T09 diagnoses GitHub Actions run 32549443570 job 96973645743 as a test
-  synchronization race: receiving the active subscriber's update did not prove
-  that the map-ordered fanout had finished processing the still-buffered slow
-  subscriber. The regression now acquires the feed mutex before inspecting the
-  post-fanout subscriber count and closed channel, preserving production
-  semantics while removing the scheduling assumption. Its race-focused case
-  passes 1,000 consecutive runs, the complete HTTP API race package passes 20
-  consecutive runs, and the exact CI command `make install-lint-tools
-  toolchain-check plan-check generate-check lint test test-race` passes with
-  writable repository-specific caches.
-- P68-T08 diagnoses GitHub Actions run 32544852014 job 96961409931 as a
-  runtime-fixture budget conflict: one `listTransactions` request completed on
-  the server in 259ms with status 200 but crossed the test-only 250ms ordinary
-  response write timeout, so the load client observed one transport error in
-  120 requests and correctly failed its zero-error threshold. The fixture now
-  shares one 2-second budget between ordinary response writes and load
-  requests. SSE uses the same production Transport/TLS settings with a
-  context-bounded streaming client, stays idle for three times that write
-  budget, and retains its per-write deadline assertion. Tagged focused tests,
-  `make lint-go plan-check`, `make compose-check`, and the current-baseline
-  production image's full `make test-runtime-e2e-prebuilt` pass; the latter
-  completes monolith in 38.27s and the six-role topology in 48.23s. Two exact
-  `make test-runtime-e2e` rebuild attempts reached no code because Docker timed
-  out reading the same two modules from `proxy.golang.org`; this external
-  download failure is not recorded as rebuilt-image evidence.
-- P68-T01 baseline: current focused event, HTTP, and component tests plus
-  `make lint` pass on `main@a860089`. Review identified production SSE lifetime
-  and shutdown gaps, durable replay I/O under the fanout mutex, repeated Redis
-  invalidation attempts, and string-based mempool failure classification.
-- P68-T01 implementation clears the idle SSE deadline and applies the existing
-  timeout to each write/flush, binds API requests to component cancellation,
-  force-closes a failed drain, provisionally buffers live events while bounded
-  replay and cache invalidation execute outside the fanout mutex, deduplicates
-  only exact completed invalidations, circuit-breaks Redis cache recovery, and
-  uses typed mempool cycle failures. HTTP/1.1 and TLS/HTTP2 streams survive
-  beyond a 50ms write timeout and close on lifecycle cancellation.
-  `go test -race ./internal/events ./internal/accelerator ./internal/mempool
-  ./internal/httpapi ./internal/components -count=1`, `go test ./... -count=1`,
-  tagged runtime compilation, `make lint-go`, `make plan-check`, and
-  `git diff --check` pass. The rebuilt production image's monolith/six-role
-  `make test-runtime-e2e` passes in 74.367s and delivers a durable SSE event
-  after three times its configured 250ms write timeout in both topologies.
-- P68-T02 moves static analytics, query, catalog, Etherscan compatibility,
-  metadata, mempool, state, authentication, contract-artifact, event replay,
-  and finalized-height reads into named sqlc query sources. Exported generated
-  statements retain the existing `database/sql` scan adapters where those
-  adapters encode public projection behavior; event and analytics readers use
-  typed pgx/sqlc rows and explicit read-only repeatable-read transactions.
-  Snapshot identity, cursor predicates, canonical joins, ordering, optional
-  read-pool routing, and compatibility response behavior remain unchanged.
-  `make generate-check`, `make lint-go`, `go test ./... -count=1`, focused
-  query/catalog/Etherscan tests, `make test-hardhat3-provider-compat`,
-  `make test-integration`, `make test-integration-race`, and
-  `git diff --check` pass. Both PostgreSQL targets applied migrations through
-  `0049_ens_primary_names`, exercised all seven integration-tagged packages,
-  and removed their owned PostgreSQL 18 projects and volumes.
-- P68-T03 moves production correctness and write statements for administration,
-  analytics, authentication, enrichment, runtime events, Genesis import,
-  maintenance, mempool, metadata, state reconciliation, canonical storage,
-  verified selectors, and verification into named sqlc sources. Existing
-  correctness transactions retain their lock order and scan adapters while
-  executing only exported generated statements. Dynamic Etherscan ordering,
-  ranges, and topic filters are fixed parameterized queries; topic `AND`/`OR`
-  folding and exact `stage@version` queue selection are exercised against real
-  PostgreSQL. Multi-table canonical cleanup and publication changes use fixed
-  writable CTEs, and generated savepoint statements preserve atomic replay.
-  `make source-check` enforces that only the migration runner and validated
-  partition-DDL module may own raw production SQL and reports 257 checked Go
-  files plus 93 SQL sources. `go test ./... -count=1`, focused Go race tests,
-  `make generate-check`, `make lint-go` (0 issues),
-  `make test-hardhat3-provider-compat`, `make test-integration`, and
-  `make test-integration-race` pass. The full PostgreSQL integration package
-  passes in 147.531s and its race run in 163.075s; an additional real-database
-  fixed-topic regression passes in 133.945s. Every owned PostgreSQL 18 project,
-  network, and volume was removed.
-- P68-T04 replaces the 900-line runtime registration block with typed shared,
-  sync, API, verification, enrich, trace, metadata, maintenance, and disabled
-  role builders. Shared acquisition remains in `serve.go`, typed dependency
-  transport and ordered invocation live in `runtime_assembly.go`, and the
-  independently computed production graph lives in `component_manifest.go`.
-  Configuration now separates model/default/YAML loading, role-scoped
-  environment and secret overrides, typed scalar override groups, global and
-  role validation, and pure subsystem validators without changing keys,
-  defaults, precedence, or secret loading. `go test -race ./internal/app
-  ./internal/config -count=1`, `go test ./... -count=1`, and `make lint-go`
-  pass. `make deployment-check` passes Buildx, all monolith/distributed,
-  accelerator, Preview, Hardhat and Foundry Compose renders, plus every Helm
-  lint/template/render check. The rebuilt production image's
-  `make test-runtime-e2e` passes in 74.387s: monolith in 31.92s and the complete
-  six-role topology in 41.29s, including pending identity, publication, reorg,
-  RPC/PostgreSQL outage recovery, restart, API/SSE/SPA/load, and process TLS.
-- P68-T05 composes the public mux from eight explicit capability modules and
-  validates the production Native, Catalog, Analytics, Compatibility, Events,
-  Home, Metadata, Proxy, Verification, and Web dependency set before any route
-  registration. Catalog/address/delegation/readiness/Web dependencies are now
-  passed directly; capability discovery no longer depends on reader, catalog,
-  or SPA type assertions. Disabled metadata and verification paths retain
-  their stable typed responses. HTTP handlers and models are split by domain,
-  reducing `httpapi.go` from 3,588 to 710 lines without route or response
-  changes. Capability omission and deterministic-error tests, focused race,
-  `go test ./... -count=1`, `make generate-check`, and `make lint-go` pass.
-  The embedded production SPA Playwright gate passes 23/23, including CSP,
-  reserved-route isolation, deep links, accessibility, responsive layouts,
-  SIWE/billing/admin, and wallet boundaries. The rebuilt production
-  `make test-runtime-e2e` passes in 76.329s: monolith in 32.71s and the complete
-  six-role topology in 42.45s through publication, reorg, outages, restart,
-  API/SSE/SPA/load, and process-native TLS.
-- P68-T06 splits the former 5,464-line page locator into Entity, Block,
-  Transaction, Address, Token/NFT, and Verification domains plus a shared
-  explorer module. Every production page file is below 2,000 physical lines;
-  the largest is Transaction at 1,889 lines. The former 2,927-line bilingual
-  resource locator is now a 76-line merger over seven shared English/Chinese
-  domains, each below 711 lines. Exact `@biomejs/biome@2.5.10` is lockfile
-  pinned and part of `web-lint`; it rejects unused imports/variables, invalid
-  hook placement/dependencies, cognitive complexity above 100, functions above
-  600 effective lines, and production files above 2,000 effective lines.
-  Transaction detail complexity drops from 112 to 99 without suppressions.
-  TypeScript, Biome, 346 Vitest cases, the production Vite build,
-  `make generate-check`, and `make lint` pass. The rebuilt embedded-SPA
-  Playwright gate passes 23/23, including bilingual deep links, responsive and
-  WCAG 2.1 AA checks, hashed asset/CSP isolation, SIWE/billing/admin, and wallet
-  boundaries.
-- P68-T07 splits the former 2,291-line proxy processor into orchestration,
-  candidate loading, block-pinned RPC detection, and transactional persistence
-  files, each no larger than 820 lines. Shared catalog address/page parsing
-  removes the selected HTTP duplication without changing validation order or
-  responses. Production Go now enables `dupl` at 150 tokens and `gocognit` at
-  150, with only those two structural checks excluded from test fixtures.
-  `make source-check` also rejects hand-written production Go files above 2,000
-  physical lines while preserving the generated-source and two raw-SQL
-  executor boundaries; it passes over 297 Go files and 93 SQL sources.
-- P68-T07 updates the pinned Go license scanner to the maintained v2 module and
-  its canonical BSD-2-Clause attribution. Focused config, source-boundary,
-  enrichment, and HTTP tests pass ordinarily and under the race detector;
-  `make lint-go` reports zero issues. The owned PostgreSQL 18 integration and
-  integration-race suites pass all seven tagged packages in 146.847s and
-  162.284s. Fresh production-image schema migration passes through
-  `0049_ens_primary_names`; the monolith/six-role runtime gate passes in
-  74.653s; the embedded Chromium suite passes 23/23; real Hardhat 3 and Foundry
-  production gates pass both topologies in 215.587s and 97.303s.
-- The strict Preview metadata gate initially rejected two runs after the public
-  `ipfs.io` request exceeded the checked-in 10-second budget twice before an
-  eventual third-attempt success. Preview alone now permits a bounded
-  30-second cold public-gateway fetch, while defaults and the production
-  example remain at 10 seconds. Its exact rerun passes in 37.704s with one
-  durable attempt, 205 bytes, the fixed SHA-256, public-network policy, and
-  restart-stable persistence. The aggregate `make check`, `make plan-check`,
-  and `git diff --check` pass on the completed tree.
-
-### P68-T28 — Deterministic enrichment heartbeat test (2026-10-01)
-
-- PR #99 CI run 36791571282 reproduced `TestWorkerRenewsAndCompletes`
-  completing with zero renewals under the race detector. The processor's
-  18 ms real sleep raced the worker's 10 ms heartbeat on a loaded runner.
-- Run the unchanged heartbeat/finish assertions inside `testing/synctest`,
-  so virtual time advances only while goroutines are blocked. Production
-  worker, lease duration, heartbeat interval and renewal checks are unchanged.
-- `go test -race ./internal/enrich -run '^TestWorkerRenewsAndCompletes$'
-  -count=100`, `go test -race ./internal/enrich`, `make lint-go docs-check
-  plan-check`, and `git diff --check` pass locally. Full PR CI will rerun
-  before merge; this test-only fix adds no production runtime claim.
-
-### P68-T29 — Deterministic home replica-switch test (2026-10-01)
-
-- [PR #114 CI run 36795051256](https://github.com/islishude/etherview/actions/runs/36795051256)
-  failed `TestHomeVersionFenceSurvivesReplicaSwitch` with an immediate 503 under
-  the race detector. Subscriber registration precedes consumption of the
-  buffered initial snapshot; publishing at registration can trigger the
-  intentional slow-subscriber disconnect. The unchanged local test passed
-  1,000 repetitions, so the failure evidence is the remote run.
-- `testing/synctest` now waits until the handler consumes version 10 and blocks
-  awaiting version 11 before publication. The test still rejects a premature
-  response and requires HTTP 200 with event 11. Production feed behavior,
-  buffer capacity, timeouts and slow-subscriber coverage are unchanged.
-- `go test -race ./internal/httpapi -run
-  '^TestHomeVersionFenceSurvivesReplicaSwitch$' -count=1000`,
-  `go test -race ./internal/httpapi`, `make lint-go docs-check plan-check`,
-  `make generate-check web-lint web-test`, and `git diff --check` pass locally.
-  The combined dependency updates pass all 376 Web tests and eight tooling
-  tests. Full remote PR CI remains required before merge.
-
-### P68-T30 — Independent Go Preview HTTPS gateway (2026-10-07)
-
-- Replaced the nginx service/config with a standard-library Go reverse proxy
-  and standalone scratch-image build. Compose preserves the Kubo node, HTTPS
-  origin, loopback ports, dedicated certificate mounts and role-scoped CA.
-  Preview start/recreate/metadata targets build the current gateway source;
-  reports retain the container image ID and identify the Go implementation.
-- `go test -race ./cmd/ipfs-gateway` passes: read-only routing, encoded paths
-  and queries, traversal/management denial, upstream and downstream idle
-  deadlines, cancellation, redacted errors, TLS trust/hostname/version/HTTP2,
-  certificate failures before bind, and graceful in-flight draining.
-- `make lint-go`, `make compose-check`, `make docs-check`, and `make plan-check`
-  pass locally. Standalone `CGO_ENABLED=0` Linux ARM64 and AMD64 builds pass
-  using only go.mod and the gateway source, with GOPROXY disabled.
-- A host smoke using the existing mkcert pair passes actual `serve` startup,
-  the CLI `healthcheck`, trusted HTTPS forwarding and SIGTERM exit. This is
-  host-level evidence, not container acceptance.
-- `make test-preview-metadata` was attempted but blocked before image build:
-  Docker Desktop's Unix-socket `/_ping` hung; a separate five-second ping
-  timed out without a response. The task-owned blocked build was terminated.
-  The gateway container image, real offline Kubo acceptance and daily Preview
-  startup/recreation remain unverified. No remote CI or production claim.
-
-#### P68-T30 acceptance follow-up (2026-10-07)
-
-- PR #136 [CI run 37623474559](https://github.com/islishude/etherview/actions/runs/37623474559)
-  passed all 11 jobs at `472034f2c740425ed6408fd99372c366c7691d3f`.
-  That run predates this follow-up and does not establish Preview acceptance.
-- Docker recovered. The user-provided failure diagnostics and a local retry
-  show Geth cannot build blocks because the Preview template lacks the
-  withdrawal queue system contract. Retrying receipts alone still times out.
-  Added the missing withdrawal/consolidation and builder queue allocations
-  from pinned Geth, preserving existing allocations and fork configuration.
-- The ordinary Go suite now compares Preview system contract code, nonce and
-  balance with `core.SystemContractAllocs()`. Both receipt waits share bounded
-  polling of null responses and only Geth's exact -32000 indexing error;
-  other RPC/transport errors, cancellation and mismatched hashes fail.
-- `go test -race -tags=previewmetadatae2e ./e2e/previewmetadata -run
-  'TestReceiptProbe|TestPreviewGenesisSystemContracts'`, `make lint-go`,
-  `make compose-check`, `make docs-check` and `make plan-check` pass.
-- `make test-preview-metadata
-  PREVIEW_GENESIS_TEMPLATE=/tmp/etherview-preview-genesis-pr136.json` passes
-  (53.54 seconds), including real offline Kubo, trusted TLS, both metadata
-  versions, single attempts and restart persistence. The temporary template is
-  the proposed committed fixture; the user's pre-existing, unstaged Amsterdam
-  activation was excluded from this acceptance input and preserved in place.
-  Diagnostics: `etherview-preview-metadata-1474254446` under the host temp root.
-- `make start-preview` and `make recreate-preview` pass with the same template,
-  `PREVIEW_GENESIS_RUNTIME=.local/preview-gateway-lifecycle-genesis.json`,
-  random loopback ports and isolated project
-  `etherview-gateway-lifecycle-1791382347`. Newly uploaded Kubo content survives
-  recreation and the genesis hash remains identical. Only that owned project's
-  containers, network and volumes were removed afterward.
-- P68-T30 is done. The follow-up requires its own remote PR CI; P70/P73
-  release blockers remain unchanged. Existing chain volumes are not migrated.
-
-### P68-T31 — Full Preview metadata CI gate (2026-10-07)
-
-- Adds the independent Ubuntu AMD64 `Preview IPFS metadata E2E` job to every
-  existing CI trigger, with a 45-minute budget and Go/Node/Buildx setup.
-- Pins mkcert 1.4.4, creates a runner-local CA with system trust through
-  `make preview-cert`, then runs the exact `make test-preview-metadata` target
-  including both image builds. Success/failure reports and logs are retained
-  for seven days; certificate directories and CA keys are excluded.
-- Linux CI grants the ephemeral API key group 65532 read access (0640) so
-  its nonroot container can read the bind mount while the runner still passes
-  certificate preflight. The gateway key stays 0600; local operator files are
-  unchanged.
-- Local actionlint 1.7.7, `make docs-check`, `make plan-check` and
-  `git diff --check` pass.
-- [PR #136 CI run 37638823425](https://github.com/islishude/etherview/actions/runs/37638823425)
-  passes all 12 jobs at `e1b8bda0a1b45c38d510e04a86f415168be30ae1`, including
-  `Preview IPFS metadata E2E` and its evidence upload. This closes remote
-  acceptance for P68-T30/P68-T31. Amsterdam activation is reverted; the exact
-  local `make test-preview-metadata` also passed after that rollback (54.14s).
-  P68 returns to done; P70/P73 external release blockers are unchanged.
+[Detailed completion record](https://github.com/islishude/etherview/blob/e665a0b9b5dcee02e6d90d3a2224a76031cbda3d/docs/plans/P68-runtime-architecture-hardening.md#evidence).
+These are historical results, not tests rerun by this plan cleanup.

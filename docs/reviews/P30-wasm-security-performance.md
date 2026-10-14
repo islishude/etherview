@@ -277,7 +277,7 @@ reason or exemption was added. This patch does not fix the retained CPython
 advisories or establish zero vulnerabilities.
 
 Local candidate/SEA, isolation, performance and common-gate evidence is owned
-by [P30-T123](../plans/P30-contract-verification.md#p30-t123--pyodide-0295-upgrade-2026-10-12).
+by the [historical P30-T123 record](https://github.com/islishude/etherview/blob/e665a0b9b5dcee02e6d90d3a2224a76031cbda3d/docs/plans/P30-contract-verification.md#p30-t123--pyodide-0295-upgrade-2026-10-12).
 Previous native Linux acceptance cannot authorize promotion of these new
 artifacts: both architectures and production topologies must pass again.
 

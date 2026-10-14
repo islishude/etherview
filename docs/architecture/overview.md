@@ -966,7 +966,8 @@ silently infer the downstream range an operator intends to rebuild. See
 - `docs/development.md`: engineering workflow and change-routing rules.
 - This file: current architecture facts.
 - `docs/decisions/`: why consequential choices were made.
-- `docs/plans/`: pending and completed delivery work.
+- `docs/plans/`: substantial delivery milestones, acceptance and unresolved blockers.
+  Routine changes and detailed execution history belong in PRs and Git.
 - `docs/testing.md` and Makefile: stable validation commands.
 - `docs/operations.md`: telemetry interpretation and operator repair/admin
   procedures.

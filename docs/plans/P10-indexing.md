@@ -27,7 +27,6 @@ enrichment.
 | P10-T04 | done | P10-T03 | Parallel backfill, live-head priority, polling reconciliation, coverage status | restart/gap tests |
 | P10-T05 | done | P10-T03 | Common-ancestor reorg, finality ancestry, orphan retention, rollback journal | single/multi/finalized reorg tests |
 | P10-T06 | done | P10-T04, P10-T05 | Repair/reindex tooling, history-pruning detection, audit records | CLI integration tests |
-| P10-T07 | dropped | P10-T01, P10-T03 | Replace custom Ethereum RPC scalar and wire models with reviewed go-ethereum types | replacement P70-T09 |
 
 ## Acceptance
 
@@ -44,46 +43,17 @@ enrichment.
 
 ## Current Blockers
 
-None.
+None. P70/P73 retain independent release blockers.
 
 ## Evidence
 
-- P10-T07 was dropped before implementation because reopening completed P10
-  invalidates the already completed dependent phases under `make plan-check`.
-  Cross-phase release item P70-T09 owns the same migration without weakening
-  the completed P10 dependency graph.
+Retained completed milestones: P10-T01, P10-T02, P10-T03, P10-T04, P10-T05, P10-T06.
 
-- P10-T01: `go test -race ./internal/ethrpc` passes identity, purpose,
-  capability, pruning, cooldown, sticky endpoint, receipt fallback, malformed
-  batch, throttling, and credential-redaction cases.
-- P10-T02: `go test -race ./internal/store` and PostgreSQL 18 integration pass
-  hash-keyed canonical/orphan facts, configured-start coverage, checkpoints,
-  leases, and concurrent fixed 1,000,000-block partition provisioning with
-  atomic DEFAULT evacuation and typed recovery failures.
-- P10-T03: `go test -race ./internal/indexer ./internal/ethrpc` passes sticky
-  block/receipt acquisition and pre-commit bundle validation. PostgreSQL
-  integration persists transaction types 0–4 plus blob, EIP-7702, validated
-  PoW-uncle, and withdrawal fields; unsupported type 127 and mismatched
-  receipts both reject the whole bundle before a partial write or coverage
-  advance.
-- P10-T04: `go test -race ./internal/syncer ./internal/store` passes independent
-  live/backfill lanes, live priority during blocked history, authoritative poll
-  after missed WebSocket wakes, durable coverage islands, restart-safe leases,
-  moving heads, and gap closure. PostgreSQL coverage/lease restart integration
-  also passes.
-- P10-T05: `go test -race ./internal/indexer ./internal/store ./internal/syncer`
-  and PostgreSQL 18 derived-journal integration pass single/multi-block reorg,
-  orphan retention, stale jobs, atomic failure rollback, continuous finality
-  ancestry, and fatal finalized/depth/source-inconsistency halts. The halt
-  remains Prometheus-visible until operator cancellation.
-- P10-T06: `go test -race ./internal/maintenance ./internal/cli` and PostgreSQL
-  18 `TestCLIMaintenanceWorkerExecutesRepairAndReindex` pass the real CLI to
-  durable request to worker path, terminal audit fields, identity-bound repair,
-  and active-lease-preserving reindex. Pruned history is a typed RPC capability
-  state and repair never invokes ordinary fork-choice `Apply`.
-- P10-T01/P10-T02/P10-T03/P10-T04/P10-T05/P10-T06 commit/PR: none created
-  because the repository has no `HEAD` and this task did not authorize a commit
-  or pull request; evidence is bound to the current working tree.
-- Full PostgreSQL 18 integration passes both normal and race modes:
-  `go test -tags=integration ./internal/integration` and
-  `go test -race -tags=integration ./internal/integration`.
+RPC, indexer, store, syncer and maintenance race tests passed. PostgreSQL 18
+normal/race integration covered atomic hash-keyed ingestion, restart/gap
+recovery, finality and orphan retention, partition provisioning, and the real
+CLI repair/reindex worker path. Hostile receipt/batch inputs reject before
+publication; pruned history remains an explicit capability failure.
+
+[Detailed completion record](https://github.com/islishude/etherview/blob/e665a0b9b5dcee02e6d90d3a2224a76031cbda3d/docs/plans/P10-indexing.md#evidence).
+These are historical results, not tests rerun by this plan cleanup.

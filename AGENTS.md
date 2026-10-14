@@ -2,26 +2,34 @@
 
 ## Before editing
 
-Read [PLAN.md](PLAN.md), the owning [child plan](docs/plans/index.md), the
-[development guide](docs/development.md), relevant [architecture](docs/architecture/overview.md)
-sections and [accepted ADRs](docs/decisions/index.md), and the applicable
-[testing rules](docs/testing.md). Accepted ADRs are mandatory even when omitted
-here; update or add one when its decision changes.
+Read the [development guide](docs/development.md), relevant
+[architecture](docs/architecture/overview.md) sections and
+[accepted ADRs](docs/decisions/index.md), and applicable
+[testing rules](docs/testing.md). Read [PLAN.md](PLAN.md) and the owning
+[child plan](docs/plans/index.md) when the change affects planned scope,
+dependencies, acceptance or blockers. Accepted ADRs remain mandatory; update
+or add one when its decision changes.
 
 The development guide owns detailed workflow and boundary routing. The current
 [Makefile](Makefile) and testing guide own commands; historical plan evidence
 must not revive removed targets. Operator procedures belong in the
-[runbook](docs/operations.md), task status and evidence in plans.
+[runbook](docs/operations.md). Plans retain milestone status and acceptance;
+routine change evidence belongs in the PR or completion report.
 
 ## Workflow
 
-- Review and preserve staged, unstaged, and untracked work. Claim one
-  dependency-ready `todo` item as `in_progress` before implementation.
-- Deliver implementation, regressions, acceptance checks, and concise child-plan
-  evidence together. Synchronize the root plan when child status changes.
-- Never share, delete, or reuse item IDs. Mark abandoned work `dropped` with a
-  reason or `superseded` with its replacement; `blocked` names the blocker and
-  clearing condition. Long-lived code TODOs cite a plan item.
+- Review and preserve staged, unstaged, and untracked work.
+- Plan substantial capabilities, architecture migrations and multi-stage
+  delivery using the [planning threshold](docs/development.md#planning-threshold).
+  Small fixes, refactors, dependency bumps, CI repairs and documentation edits
+  normally need no plan item. Do not add one merely to satisfy workflow.
+- For planned work, update the existing milestone in place and claim a
+  dependency-ready item before implementation. Synchronize the root only when
+  scope, dependencies or overall status changes.
+- Deliver regressions and applicable checks with the change. Keep milestone
+  evidence concise; remove obsolete/routine records once references are resolved.
+  Never reuse or renumber IDs; follow the catalog's allocation watermarks.
+  Preserve unresolved blockers with explicit clearing conditions.
 
 ## Required boundaries
 
@@ -55,8 +63,8 @@ Run targeted regressions, then all applicable gates in [docs/testing.md](docs/te
 - `make plan-check`: plan, ADR-link, or governance changes.
 
 Follow the testing guide's restricted-host matrix without weakening targets or
-acceptance criteria. Mark work `done` only after targeted tests and applicable
-gates pass and the child plan records current evidence.
+acceptance criteria. Report completion only after applicable checks pass;
+for planned work, record concise acceptance evidence before marking it `done`.
 
 Keep this file limited to repository-wide rules and document routing. Add nested
 `AGENTS.md` files only for genuinely different subtree rules.

@@ -45,7 +45,8 @@ Use this failure matrix instead of repeatedly trying unrelated workarounds:
 | Fixed E2E port is already in use | Stop the temporary diagnostic server, confirm the port is free, and rerun the repository target so its own lifecycle remains authoritative. |
 
 An approved sandbox-external run is still a local test run. Record the exact
-canonical target and result in plan evidence; mention the host permission
+canonical target and result in the PR or completion report (and the owning
+milestone for planned work); mention the host permission
 boundary only when it materially affected execution. Read-only inspection in
 the in-app browser is useful for diagnosing a built SPA, but it does not
 replace a required `make test-e2e` pass.
@@ -599,8 +600,10 @@ them on any external network.
 
 ## Evidence Rules
 
-- Record the exact target/command and a concise pass/fail summary in the child
-  plan. Do not paste full logs.
+- Record the exact target/command and a concise pass/fail summary in the PR or
+  completion report. For planned work, retain milestone acceptance in the child
+  plan once, with revision/environment and material limits. Do not paste full
+  logs or create plan items merely to record test execution.
 - A targeted test is required for every fixed regression.
 - Integration tests that require optional local services must be reproducible
   through documented Compose profiles.
@@ -659,8 +662,11 @@ partition/merge and subprocess failure handling. Go tests authenticate and
 reproduce the locked package with the same assembler used by workers.
 Compare parallel-group wall time against the sequential baseline on native CI;
 record resource contention and any compilation timeout without relaxing limits.
-The completed native serial/parallel comparison and failure-propagation evidence
-are retained in [P30 acceptance](plans/P30-contract-verification.md#p30-t120--vyper-ci-optimization-and-acceptance).
+The historical native serial/parallel comparison and failure-propagation evidence
+remain in the [measurement record](reviews/P30-vyper-ci-measurements.json) and
+[measurement run](https://github.com/islishude/etherview/actions/runs/38184481846).
+That run covers its recorded revision and 26-version baseline, before 0.2.0
+retirement; it does not replace acceptance for later runtime changes.
 
 PostgreSQL integration tests cover durable binding/publication and reorg
 rejection. Embedded lock integrity, unsafe archives and runtime identity

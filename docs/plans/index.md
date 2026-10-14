@@ -38,15 +38,44 @@ dependencies. This catalog groups the child plans by responsibility.
 - [P75 — Runtime and Performance Hardening](P75-runtime-performance-hardening.md)
 - [P70 — Release](P70-release.md)
 
-## Retired plans
+## Planning and retention
 
-- P55 — OpenZeppelin Proxy Interaction: superseded by the completed P20/P30/P40/P50
-  implementation chain; P55-T01 maps to P20-T13, P55-T02 to P30-T15/P40-T11,
-  and P55-T03/P55-T04 to P50-T14. No active work remains.
-- P66 — accountless x402 request billing: P66-T01 through P66-T07 are historical
-  accountless implementation work replaced by P73/ADR-0044; P66-T08 is
-  replaced by P73-T08. Historical request-payment rows remain audit-only and
-  never create prepaid credit.
+Follow the [planning threshold](../development.md#planning-threshold). Plans
+track substantial capabilities, architecture migrations and unresolved release
+gates. Completed plans are compact milestone summaries, not maintenance logs.
+Remove obsolete or routine items after resolving incoming dependencies, code
+TODOs and documentation links. Git retains detailed history; do not create an
+archive copy of the deleted ledger. Preserve unresolved blockers and acceptance
+limits. Historical review/ADR identifiers are provenance, not active work.
 
-Retired identifiers are not reused. Historical migration, test, and review
-labels may continue to use their original identifiers as provenance.
+P55 (proxy interaction) was absorbed by P20/P30/P40/P50. P66 (accountless
+request billing) was replaced by P73/ADR-0044. Neither has active work.
+
+## Identifier allocation
+
+Never renumber or reuse an allocated ID, including removed items. Allocate a
+new item only when the planning threshold is met, above both the watermark
+below and every item currently in its plan. Advance the watermark in the same
+change. New plan IDs must exceed P78; gaps and retired prefixes stay reserved.
+
+| Plan | Highest allocated task number |
+|---|---|
+| P00 | 14 |
+| P10 | 7 |
+| P20 | 16 |
+| P30 | 135 |
+| P40 | 19 |
+| P50 | 71 |
+| P64 | 7 |
+| P65 | 9 |
+| P67 | 6 |
+| P68 | 31 |
+| P70 | 52 |
+| P73 | 10 |
+| P74 | 5 |
+| P75 | 12 |
+| P76 | 2 |
+| P77 | 3 |
+| P78 | 6 |
+| P55 (retired) | 4 |
+| P66 (retired) | 8 |

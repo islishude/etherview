@@ -28,9 +28,6 @@ holder enumeration, or a second correctness store.
 | P74-T02 | done | P74-T01 | Withdrawals, block counts, funding origin, and normal/internal/token advanced filters | handler, SQL, PostgreSQL, coverage, and reorg tests |
 | P74-T03 | done | P74-T01 | Dense bounded ERC-20 and ERC-721 holding pages from exact canonical state | state, cache, limit, canonicality, and PostgreSQL tests |
 | P74-T04 | done | P74-T02, P74-T03 | Reader/writer routing, prepaid billing, production runtime parity, documentation, and completion gates | billing, runtime E2E, race, security, and common gates |
-| P74-T05 | done | P74-T04 | Review remediation for latest token classification and candidate-scoped legacy-safe funding proof | focused SQL, PostgreSQL, runtime, race, and common gates |
-
-Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
 ## Acceptance
 
@@ -45,43 +42,18 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
 ## Current Blockers
 
-None.
+None. P70/P73 retain independent release blockers.
 
 ## Evidence
 
-- P74-T01: the explicit registry now contains 34 actions and the prepaid
-  catalog contains 28 bounded reads. The compatibility matrix, ADR-0008,
-  architecture, testing guide, OpenAPI billing bound, Helm operation enum,
-  generated SQL, and root/release plans are synchronized. `make
-  generate-check plan-check source-check` passes.
-- P74-T02: named sqlc queries implement canonical withdrawals, exact-block
-  Core/Trace/Token counts, EOA-only direct/internal funding origin, and
-  mutually exclusive advanced normal/internal/token filters. Handler goldens,
-  canonical resource tests, real PostgreSQL coverage/stage/gap/reorg fixtures,
-  and `make test-hardhat3-provider-compat` pass.
-- P74-T03: address holdings prove genesis-through-tip Core and Token coverage,
-  copy at most 1,001 candidate identities, close the snapshot, and reconcile at
-  most 1,000 candidates in 200-item exact-state batches. Unit limits and real
-  PostgreSQL prove dense positive pages, zero caching, restart reuse, orphan
-  exclusion, and fail-closed windows. Real Anvil ERC-20 and ERC-721 production
-  paths pass in monolith and distributed topologies.
-- P74-T04: reader routing retains writer-fenced state/canonicality, all six new
-  actions are priceable with logical-failure release and operator bypass, and
-  normalized production results agree across topologies. `make
-  test-integration`, `make test-integration-race`, and `make
-  test-runtime-e2e-prebuilt` pass; runtime monolith/distributed completed in
-  83.56 seconds and x402 monolith/distributed in 35.51 seconds. The final
-  `make check` and `git diff --check` pass with no security, lint, generation,
-  license, Compose, or Helm failure.
-- P74-T05: holding candidate SQL now selects the newest canonical token
-  observation before checking ERC-20/ERC-721 standard, so a newer `unknown` or
-  different-standard observation cannot resurrect an older classification.
-  `fundedby` discovers its candidate before proving Trace completeness, proves
-  only through that candidate (or the tip for absence), and uses the normalized
-  non-reverted root Trace instead of the post-Byzantium receipt `status` field.
-  Structural unit tests and real PostgreSQL fixtures cover reclassification,
-  a later unrelated Trace gap, and a legacy root receipt. `make
-  test-integration`, `make test-integration-race`, and the rebuilt `make
-  test-runtime-e2e` pass; runtime monolith/distributed completed in 83.32
-  seconds and x402 monolith/distributed in 34.51 seconds. The final `make
-  check`, `make plan-check`, and `git diff --check` pass.
+Retained completed milestones: P74-T01, P74-T02, P74-T03, P74-T04.
+
+Handler goldens, generated contracts, real PostgreSQL coverage/reorg/query
+fixtures and Hardhat provider compatibility passed. Exact ERC-20/ERC-721
+holdings passed candidate/batch bounds, zero caching, restart reuse and orphan
+exclusion tests. `make check`, integration/race and production runtime/x402
+parity passed; later regressions protect latest token classification and
+candidate-scoped funding provenance.
+
+[Detailed completion record](https://github.com/islishude/etherview/blob/e665a0b9b5dcee02e6d90d3a2224a76031cbda3d/docs/plans/P74-etherscan-v2-read-expansion.md#evidence).
+These are historical results, not tests rerun by this plan cleanup.

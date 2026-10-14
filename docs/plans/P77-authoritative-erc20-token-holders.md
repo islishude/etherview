@@ -30,8 +30,6 @@ token behavior, RPC loss, replay, or reorganization fails closed.
 | P77-T02 | done | P77-T01, P40, P50, P74 | Native holder list/count, Etherscan list/count billing, and bilingual Token-page browsing | OpenAPI, handler, billing, Web, browser, and compatibility tests |
 | P77-T03 | done | P77-T02 | Runtime parity, bounded reindex, observability, operations, capacity workload, and v1 release-gate evidence | schema, runtime, monolith/split, deployment, documentation, license, security, and common gates |
 
-Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
-
 ## Acceptance
 
 - [x] `holder@1` is always scheduled and uses one exact block-hash state RPC endpoint per bounded reconciliation operation.
@@ -49,39 +47,19 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
 ## Current Blockers
 
-None.
+None. P70/P73 retain independent release blockers.
 
 ## Evidence
 
-- P77-T01 adds migration `0064`, always-scheduled `holder@1`, Token/Proxy claim
-  dependencies, exact EIP-1898 supply and balance reconciliation in batches of
-  at most 200, high/verified candidate selection, full-supply equality,
-  first/gap/generation/audit baselines, participant-only forward increments,
-  rotating audits, code/proxy-generation rechecks, lease-fenced atomic
-  publication, partition management, canonical journals, replay coherence,
-  immutable facts, and bounded `reindex --stage holder`. Focused stage/store
-  tests, `make test`, `make test-race`, `make test-integration`, and `make
-  test-integration-race` pass. The PostgreSQL Holder regression exercises the
-  complete durable stage, RPC, native/compatibility read, mutation rejection,
-  incremental burn, immutable historical reconstruction, and reorg-withdrawal
-  path; its final focused integration-race run also passes.
-- P77-T02 adds the generated native list/count contracts, snapshot/epoch-bound
-  address cursor, current-tip fail-closed reads, dedicated unavailable and
-  not-applicable errors, Etherscan list/count wire shapes, fixed ascending
-  order, billable operation identities and Helm/x402 price catalogs. The Token
-  page uses only the generated same-origin client. `make generate-check`,
-  `make lint`, `make security-check`, and the final 39-file/368-test Web suite
-  pass; `make test-e2e` passes all 26 Chromium cases including the bilingual
-  390px Holder accessibility case.
-- P77-T03 runtime and deployment evidence passes: `make test-schema-e2e`,
-  `make test-runtime-e2e-prebuilt`, `make deployment-check`, and the real
-  Hardhat monolith/split production gate. Foundry monolith first passed while
-  split timed out pending; an unchanged retry failed monolith at the external
-  compiler artifact boundary, and the next unchanged retry passed both
-  topologies in 114.41 seconds. Retained diagnostics show `holder@1` succeeded
-  quickly in the failed runs and the failures were verification queue/compiler
-  availability, not Holder. `make docs-check`, `make plan-check`, and `git diff
-  --check` pass. After the scanner compatibility repair, the unchanged `make
-  license-check` passes under Go 1.27.1, including Go attribution checks and
-  both production npm license allowlists; the expected assembly-inspection
-  warnings do not fail the gate. P77-T03 and P77 are complete.
+Retained completed milestones: P77-T01, P77-T02, P77-T03.
+
+Holder unit/race and PostgreSQL normal/race tests passed exact supply and
+balance reconciliation, coverage, immutable facts, publication fences,
+incremental updates, replay and reorg withdrawal. Generated API, billing,
+frontend and all 26 then-current Chromium cases passed. Schema/runtime,
+Hardhat, Foundry, deployment, security/license and common gates completed;
+external compiler download failures required unchanged retries and do not
+establish upstream availability. Reference-capacity evidence remains P70 work.
+
+[Detailed completion record](https://github.com/islishude/etherview/blob/e665a0b9b5dcee02e6d90d3a2224a76031cbda3d/docs/plans/P77-authoritative-erc20-token-holders.md#evidence).
+These are historical results, not tests rerun by this plan cleanup.

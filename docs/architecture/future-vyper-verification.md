@@ -1,10 +1,12 @@
 # Vyper verification
 
-[ADR-0049](../decisions/ADR-0049-dynamic-vyper-runtimes.md) owns the signed dynamic
-runtime catalog and preserves ADR-0047's API-owned subprocess execution.
-[P30-T107–P30-T110](../plans/P30-contract-verification.md) track implementation and
-native acceptance. The version build index includes all 26 currently identified
-non-withdrawn stable versions, including official-source-only 0.2.0.
+[ADR-0054](../decisions/ADR-0054-vyper-application-lock.md) owns application-locked
+PyPI assembly and immutable recipe provenance. It replaces the independently
+signed runtime catalog. [ADR-0053](../decisions/ADR-0053-vyper-wasm-distribution.md)
+owns explicit dual-Pyodide routing and fresh restricted SEA execution.
+[P30](../plans/P30-contract-verification.md) retains the delivery milestones and
+native acceptance. The application lock defines the supported versions; Vyper
+0.2.0 is retired. Historical 26-version reports are not the current version list.
 
 Native REST Standard JSON and multipart, Etherscan `vyper-json`, and the Web use
 one version-aware pipeline. The compiler catalog response includes per-version
@@ -23,4 +25,4 @@ publication retain the common verification boundary. Batch, derived and Sourcify
 Vyper paths remain excluded.
 
 See [testing](../testing.md) for native matrix and production topology gates and
-[operations](../operations.md#signed-vyper-runtime-catalog) for configuration.
+[operations](../operations.md) for configuration and release procedures.
