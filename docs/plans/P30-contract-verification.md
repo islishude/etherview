@@ -1,6 +1,6 @@
 # P30 — Contract Platform & Runtime Operations
 
-Status: `in_progress`
+Status: `done`
 
 This is the canonical plan for contract verification, contract intelligence,
 and the shared runtime/operations platform. P70/P73 release and live-payment blockers remain outside this plan.
@@ -107,7 +107,7 @@ and disposable accelerator boundaries.
 | P30-T128 | done | P30-T88, P30-T97 | Application-locked PyPI assembly and immutable recipe provenance in place of hosted packages and signed catalogs | Package equivalence, isolation, PostgreSQL and native AMD64/ARM64 application acceptance |
 | P30-T130 | done | P30-T128 | Retire Vyper 0.2.0 and generate reviewed PyPI update PRs daily | Updater integrity, full supported-version matrices and native production acceptance |
 
-| P30-T136 | in_progress | P30-T128, P30-T130 | Parallel native Vyper fixtures, Vyper application and Hardhat acceptance over one image per architecture | Independent parity/count regressions, identity-bound aggregation, two native CI runs and failed-job rerun evidence |
+| P30-T136 | done | P30-T128, P30-T130 | Parallel native Vyper fixtures, Vyper application and Hardhat acceptance over one image per architecture | Independent parity/count regressions, identity-bound aggregation, two native CI runs and failed-job rerun evidence |
 
 ## Acceptance
 
@@ -125,6 +125,19 @@ and disposable accelerator boundaries.
 None. P70/P73 retain independent release blockers.
 
 ## Evidence
+
+P30-T136 passed local helper/aggregation regressions, application count/parity race
+tests, provider compatibility, tagged E2E lint, source/docs/plan/deployment checks
+and both local application suites. Native Linux AMD64/ARM64 acceptance passed in
+[run 38539515561 attempt 2](https://github.com/islishude/etherview/actions/runs/38539515561/attempts/2)
+and [attempt 3](https://github.com/islishude/etherview/actions/runs/38539515561/attempts/3),
+including all 25 versions / 352 fixture inputs per architecture and both
+application topologies. Attempt 2 reused attempt-1 image/package artifact IDs
+after cancellation and failed-only rerun; both final bundles passed the existing
+application acceptance tool. PR #148 records timings: recovery 13m50s / 122.27
+runner-minutes, full rerun 16m43s / 125.60 versus baseline 18m40s / 119.18.
+Recovery excludes reused jobs; these samples do not establish a stable speedup.
+
 
 Retained completed milestones: P30-T10, P30-T11, P30-T14, P30-T15, P30-T16, P30-T17,
 P30-T18, P30-T19, P30-T20, P30-T24, P30-T25, P30-T26, P30-T27, P30-T28, P30-T31,
