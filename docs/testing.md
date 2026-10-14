@@ -357,6 +357,10 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   `migrate status`. The consolidated baseline is `0001_core`; integration tests
   additionally cover repeat/concurrent application, checksum and unknown-version
   rejection, transactional DDL rollback, and isolated-schema function bindings.
+  The baseline source guard rejects scattered ALTER definitions outside the
+  explicit dependency/catalog-preservation exceptions. Baseline refactors also
+  compare PostgreSQL 18 schema-only dumps before and after, excluding random
+  dump restriction tokens; object names, definitions and relationships must match.
   Earlier development schemas must be recreated; historical upgrade paths are
   not part of acceptance.
 - `make test-runtime-e2e`: rebuild the current working tree's production image

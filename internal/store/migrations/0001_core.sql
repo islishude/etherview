@@ -1,10 +1,10 @@
 -- Fresh-database baseline. Earlier development schemas must be recreated.
--- Keep object identities and final constraints stable; Git retains migration history.
--- Functions and tables have circular dependencies. PostgreSQL validates function
--- bodies when first called; this transaction-local setting permits their creation.
+-- Declare final objects directly; Git retains migration history.
+-- Functions referenced by CHECK constraints precede tables. Their PL/pgSQL
+-- bodies resolve table dependencies when first called.
 SET LOCAL check_function_bodies = false;
 
--- Function: check_vyper_runtime_binding()
+-- Functions
 
 CREATE FUNCTION check_vyper_runtime_binding() RETURNS trigger
     LANGUAGE plpgsql
@@ -24,8 +24,6 @@ BEGIN
  ) THEN RAISE EXCEPTION 'Vyper executor does not match application lock binding'; END IF;
  RETURN NEW;
 END $$;
-
--- Function: enforce_enrichment_terminal_publication()
 
 CREATE FUNCTION enforce_enrichment_terminal_publication() RETURNS trigger
     LANGUAGE plpgsql
@@ -116,8 +114,6 @@ BEGIN
 END
 $$;
 
--- Function: enforce_erc4337_canonical_user_op_hash()
-
 CREATE FUNCTION enforce_erc4337_canonical_user_op_hash() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -149,8 +145,6 @@ BEGIN
     RETURN NEW;
 END
 $$;
-
--- Function: enforce_proxy_artifact_resolution()
 
 CREATE FUNCTION enforce_proxy_artifact_resolution() RETURNS trigger
     LANGUAGE plpgsql
@@ -210,8 +204,6 @@ BEGIN
 END
 $$;
 
--- Function: enforce_proxy_detection_generation()
-
 CREATE FUNCTION enforce_proxy_detection_generation() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -234,8 +226,6 @@ BEGIN
 END
 $$;
 
--- Function: enforce_proxy_observation_generation()
-
 CREATE FUNCTION enforce_proxy_observation_generation() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -257,8 +247,6 @@ BEGIN
     RETURN NEW;
 END
 $$;
-
--- Function: enforce_unbound_verification_job_insert()
 
 CREATE FUNCTION enforce_unbound_verification_job_insert() RETURNS trigger
     LANGUAGE plpgsql
@@ -297,8 +285,6 @@ BEGIN
     RETURN NEW;
 END
 $$;
-
--- Function: enforce_uups_implementation_observation()
 
 CREATE FUNCTION enforce_uups_implementation_observation() RETURNS trigger
     LANGUAGE plpgsql
@@ -343,8 +329,6 @@ BEGIN
 END
 $$;
 
--- Function: enforce_uups_implementation_observation_mutation()
-
 CREATE FUNCTION enforce_uups_implementation_observation_mutation() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -357,8 +341,6 @@ BEGIN
     RETURN NEW;
 END
 $$;
-
--- Function: enforce_uups_implementation_observation_witness()
 
 CREATE FUNCTION enforce_uups_implementation_observation_witness() RETURNS trigger
     LANGUAGE plpgsql
@@ -378,8 +360,6 @@ BEGIN
     RETURN NEW;
 END
 $$;
-
--- Function: enforce_verification_compiler_provenance()
 
 CREATE FUNCTION enforce_verification_compiler_provenance() RETURNS trigger
     LANGUAGE plpgsql
@@ -438,8 +418,6 @@ BEGIN
 END
 $$;
 
--- Function: enforce_verified_contract_proxy_artifact()
-
 CREATE FUNCTION enforce_verified_contract_proxy_artifact() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -496,8 +474,6 @@ BEGIN
     RETURN NEW;
 END
 $$;
-
--- Function: enforce_verified_proxy_binding()
 
 CREATE FUNCTION enforce_verified_proxy_binding() RETURNS trigger
     LANGUAGE plpgsql
@@ -1023,8 +999,6 @@ BEGIN
 END
 $$;
 
--- Function: enforce_verifier_v2_publication()
-
 CREATE FUNCTION enforce_verifier_v2_publication() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -1061,8 +1035,6 @@ BEGIN
     RETURN NEW;
 END
 $$;
-
--- Function: enforce_verifier_v2_result_job()
 
 CREATE FUNCTION enforce_verifier_v2_result_job() RETURNS trigger
     LANGUAGE plpgsql
@@ -1146,8 +1118,6 @@ BEGIN
 END
 $$;
 
--- Function: enqueue_derived_forward_event_after_stage_publication()
-
 CREATE FUNCTION enqueue_derived_forward_event_after_stage_publication() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -1167,8 +1137,6 @@ BEGIN
     RETURN NEW;
 END
 $$;
-
--- Function: erc4337_add_covered_block(numeric, bytea, numeric, bytea, bigint, bigint)
 
 CREATE FUNCTION erc4337_add_covered_block(target_chain_id numeric, target_configuration_digest bytea, target_block_number numeric, target_block_hash bytea, target_durable_job_id bigint, target_job_generation bigint) RETURNS void
     LANGUAGE plpgsql
@@ -1249,8 +1217,6 @@ BEGIN
 END
 $$;
 
--- Function: erc4337_remove_block_coverage(numeric, numeric, bytea)
-
 CREATE FUNCTION erc4337_remove_block_coverage(target_chain_id numeric, target_block_number numeric, target_block_hash bytea) RETURNS integer
     LANGUAGE plpgsql
     AS $$
@@ -1273,8 +1239,6 @@ BEGIN
     RETURN removed;
 END
 $$;
-
--- Function: erc4337_remove_covered_block(numeric, bytea, numeric)
 
 CREATE FUNCTION erc4337_remove_covered_block(target_chain_id numeric, target_configuration_digest bytea, target_block_number numeric) RETURNS void
     LANGUAGE plpgsql
@@ -1376,8 +1340,6 @@ BEGIN
 END
 $$;
 
--- Function: erc4337_remove_detached_coverage()
-
 CREATE FUNCTION erc4337_remove_detached_coverage() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -1401,8 +1363,6 @@ BEGIN
 END
 $$;
 
--- Function: etherview_guard_completed_genesis_import()
-
 CREATE FUNCTION etherview_guard_completed_genesis_import() RETURNS trigger
     LANGUAGE plpgsql
     SET search_path TO 'pg_catalog'
@@ -1416,8 +1376,6 @@ BEGIN
 END;
 $$;
 
--- Function: etherview_guard_erc20_balance_reconciliation()
-
 CREATE FUNCTION etherview_guard_erc20_balance_reconciliation() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -1430,8 +1388,6 @@ BEGIN
 END
 $$;
 
--- Function: etherview_guard_erc20_holder_fact()
-
 CREATE FUNCTION etherview_guard_erc20_holder_fact() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -1443,8 +1399,6 @@ BEGIN
     RETURN NEW;
 END
 $$;
-
--- Function: etherview_guard_exact_nft_metadata()
 
 CREATE FUNCTION etherview_guard_exact_nft_metadata() RETURNS trigger
     LANGUAGE plpgsql
@@ -1479,8 +1433,6 @@ BEGIN
 END;
 $$;
 
--- Function: etherview_guard_genesis_account_observation()
-
 CREATE FUNCTION etherview_guard_genesis_account_observation() RETURNS trigger
     LANGUAGE plpgsql
     SET search_path TO 'pg_catalog'
@@ -1493,8 +1445,6 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-
--- Function: etherview_guard_nft_metadata_source()
 
 CREATE FUNCTION etherview_guard_nft_metadata_source() RETURNS trigger
     LANGUAGE plpgsql
@@ -1509,8 +1459,6 @@ BEGIN
 END;
 $$;
 
--- Function: etherview_guard_nft_metadata_update_observation()
-
 CREATE FUNCTION etherview_guard_nft_metadata_update_observation() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -1523,8 +1471,6 @@ BEGIN
 END
 $$;
 
--- Function: guard_billing_account_entry_mutation()
-
 CREATE FUNCTION guard_billing_account_entry_mutation() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -1533,8 +1479,6 @@ BEGIN
 END;
 $$;
 
--- Function: guard_billing_payment_event_mutation()
-
 CREATE FUNCTION guard_billing_payment_event_mutation() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -1542,8 +1486,6 @@ BEGIN
     RAISE EXCEPTION 'billing payment events are append-only';
 END;
 $$;
-
--- Function: guard_billing_payment_mutation()
 
 CREATE FUNCTION guard_billing_payment_mutation() RETURNS trigger
     LANGUAGE plpgsql
@@ -1604,8 +1546,6 @@ BEGIN
 END;
 $$;
 
--- Function: guard_billing_topup_intent_mutation()
-
 CREATE FUNCTION guard_billing_topup_intent_mutation() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -1648,8 +1588,6 @@ BEGIN
 END;
 $$;
 
--- Function: guard_billing_usage_charge_mutation()
-
 CREATE FUNCTION guard_billing_usage_charge_mutation() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -1680,8 +1618,6 @@ BEGIN
 END;
 $$;
 
--- Function: invalidate_watch_block(numeric, numeric, bytea)
-
 CREATE FUNCTION invalidate_watch_block(p_chain numeric, p_number numeric, p_hash bytea) RETURNS void
     LANGUAGE plpgsql
     AS $$
@@ -1697,8 +1633,6 @@ BEGIN
         after_watch = '00000000-0000-0000-0000-000000000000', after_source = '';
 END
 $$;
-
--- Function: mark_canonical_chart_rollup_dirty()
 
 CREATE FUNCTION mark_canonical_chart_rollup_dirty() RETURNS trigger
     LANGUAGE plpgsql
@@ -1741,8 +1675,6 @@ BEGIN
 END
 $$;
 
--- Function: mark_chart_rollup_dirty()
-
 CREATE FUNCTION mark_chart_rollup_dirty() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -1784,8 +1716,6 @@ BEGIN
 END
 $$;
 
--- Function: mark_chart_rollup_dirty_for_block(numeric, numeric, bytea)
-
 CREATE FUNCTION mark_chart_rollup_dirty_for_block(source_chain numeric, source_number numeric, source_hash bytea) RETURNS void
     LANGUAGE plpgsql
     AS $$
@@ -1812,8 +1742,6 @@ BEGIN
 END
 $$;
 
--- Function: mark_chart_rollup_dirty_from_job()
-
 CREATE FUNCTION mark_chart_rollup_dirty_from_job() RETURNS trigger
     LANGUAGE plpgsql
     AS $_$
@@ -1837,8 +1765,6 @@ BEGIN
 END
 $_$;
 
--- Function: native_transfer_canonical_coverage()
-
 CREATE FUNCTION native_transfer_canonical_coverage() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -1848,8 +1774,6 @@ BEGIN
  END IF;
  PERFORM refresh_native_transfer_coverage(NEW.chain_id,NEW.number); RETURN NEW;
 END $$;
-
--- Function: native_transfer_job_coverage()
 
 CREATE FUNCTION native_transfer_job_coverage() RETURNS trigger
     LANGUAGE plpgsql
@@ -1877,8 +1801,6 @@ BEGIN
  RETURN NEW;
 END $_$;
 
--- Function: native_transfer_outbox_coverage()
-
 CREATE FUNCTION native_transfer_outbox_coverage() RETURNS trigger
     LANGUAGE plpgsql
     AS $_$
@@ -1897,8 +1819,6 @@ BEGIN
  RETURN NEW;
 END $_$;
 
--- Function: native_transfer_result_coverage()
-
 CREATE FUNCTION native_transfer_result_coverage() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -1910,8 +1830,6 @@ BEGIN
  IF NEW.stage='native_transfer' THEN PERFORM refresh_native_transfer_coverage(NEW.chain_id,NEW.block_number); END IF;
  RETURN NEW;
 END $$;
-
--- Function: proxy_interaction_coverage_contains(numeric, numeric, bytea, numeric, bytea)
 
 CREATE FUNCTION proxy_interaction_coverage_contains(target_chain_id numeric, target_start_block numeric, target_start_hash bytea, target_end_block numeric, target_end_hash bytea) RETURNS boolean
     LANGUAGE sql STABLE STRICT PARALLEL SAFE
@@ -1946,8 +1864,6 @@ CREATE FUNCTION proxy_interaction_coverage_contains(target_chain_id numeric, tar
           AND target_start_block <= target_end_block
     )
 $$;
-
--- Function: prune_search_catalog(numeric, bigint)
 
 CREATE FUNCTION prune_search_catalog(requested_chain_id numeric, requested_retention_generations bigint DEFAULT 100000) RETURNS bigint
     LANGUAGE plpgsql
@@ -2008,8 +1924,6 @@ BEGIN
     RETURN cleanup_min_generation;
 END
 $$;
-
--- Function: record_ens_name_search_document()
 
 CREATE FUNCTION record_ens_name_search_document() RETURNS trigger
     LANGUAGE plpgsql
@@ -2074,8 +1988,6 @@ BEGIN
 END
 $$;
 
--- Function: record_proxy_history_job_epoch()
-
 CREATE FUNCTION record_proxy_history_job_epoch() RETURNS trigger
     LANGUAGE plpgsql
     AS $_$
@@ -2107,8 +2019,6 @@ BEGIN
 END
 $_$;
 
--- Function: record_proxy_history_publication_epoch()
-
 CREATE FUNCTION record_proxy_history_publication_epoch() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -2126,8 +2036,6 @@ BEGIN
     RETURN NEW;
 END
 $$;
-
--- Function: record_search_catalog_document()
 
 CREATE FUNCTION record_search_catalog_document() RETURNS trigger
     LANGUAGE plpgsql
@@ -2282,8 +2190,6 @@ BEGIN
 END
 $$;
 
--- Function: record_verified_contract_search_catalog_document()
-
 CREATE FUNCTION record_verified_contract_search_catalog_document() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -2372,8 +2278,6 @@ BEGIN
 END
 $$;
 
--- Function: refresh_native_transfer_coverage(numeric, numeric)
-
 CREATE FUNCTION refresh_native_transfer_coverage(p_chain numeric, p_number numeric) RETURNS void
     LANGUAGE plpgsql
     AS $$
@@ -2388,8 +2292,6 @@ BEGIN
  AND s.stage_version=1 AND s.state='complete') INTO ready;
  UPDATE native_transfer_coverage SET covered=CASE WHEN ready THEN covered+segment ELSE covered-segment END WHERE chain_id=p_chain;
 END $$;
-
--- Function: refresh_proxy_interaction_coverage_block(numeric, numeric)
 
 CREATE FUNCTION refresh_proxy_interaction_coverage_block(target_chain_id numeric, target_block_number numeric) RETURNS void
     LANGUAGE plpgsql
@@ -2628,8 +2530,6 @@ BEGIN
 END
 $$;
 
--- Function: refresh_proxy_interaction_coverage_from_canonical()
-
 CREATE FUNCTION refresh_proxy_interaction_coverage_from_canonical() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -2652,8 +2552,6 @@ BEGIN
     RETURN NULL;
 END
 $$;
-
--- Function: refresh_proxy_interaction_coverage_from_job()
 
 CREATE FUNCTION refresh_proxy_interaction_coverage_from_job() RETURNS trigger
     LANGUAGE plpgsql
@@ -2732,8 +2630,6 @@ BEGIN
 END
 $_$;
 
--- Function: refresh_proxy_interaction_coverage_from_journal()
-
 CREATE FUNCTION refresh_proxy_interaction_coverage_from_journal() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -2780,8 +2676,6 @@ BEGIN
     RETURN NULL;
 END
 $$;
-
--- Function: refresh_proxy_interaction_coverage_from_outbox()
 
 CREATE FUNCTION refresh_proxy_interaction_coverage_from_outbox() RETURNS trigger
     LANGUAGE plpgsql
@@ -2843,8 +2737,6 @@ BEGIN
 END
 $_$;
 
--- Function: refresh_proxy_interaction_coverage_from_stage_result()
-
 CREATE FUNCTION refresh_proxy_interaction_coverage_from_stage_result() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -2880,8 +2772,6 @@ BEGIN
 END
 $$;
 
--- Function: reject_durable_stage_publication_mutation()
-
 CREATE FUNCTION reject_durable_stage_publication_mutation() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -2890,8 +2780,6 @@ BEGIN
         USING ERRCODE = 'integrity_constraint_violation';
 END
 $$;
-
--- Function: reject_exact_nft_observation_mutation()
 
 CREATE FUNCTION reject_exact_nft_observation_mutation() RETURNS trigger
     LANGUAGE plpgsql
@@ -2905,8 +2793,6 @@ BEGIN
 END
 $$;
 
--- Function: reject_proxy_history_epoch_mutation()
-
 CREATE FUNCTION reject_proxy_history_epoch_mutation() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -2914,8 +2800,6 @@ BEGIN
     RAISE EXCEPTION 'proxy history epochs are append-only';
 END
 $$;
-
--- Function: reject_proxy_v2_evidence_mutation()
 
 CREATE FUNCTION reject_proxy_v2_evidence_mutation() RETURNS trigger
     LANGUAGE plpgsql
@@ -2925,8 +2809,6 @@ BEGIN
 END
 $$;
 
--- Function: reject_verification_compilation_mutation()
-
 CREATE FUNCTION reject_verification_compilation_mutation() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -2934,8 +2816,6 @@ BEGIN
     RAISE EXCEPTION 'authenticated verification compilation units are immutable';
 END
 $$;
-
--- Function: reject_verified_proxy_binding_mutation()
 
 CREATE FUNCTION reject_verified_proxy_binding_mutation() RETURNS trigger
     LANGUAGE plpgsql
@@ -2945,8 +2825,6 @@ BEGIN
 END
 $$;
 
--- Function: reject_verifier_v2_result_mutation()
-
 CREATE FUNCTION reject_verifier_v2_result_mutation() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -2954,8 +2832,6 @@ BEGIN
     RAISE EXCEPTION 'verifier v2 results are immutable';
 END
 $$;
-
--- Function: require_enrichment_publication_protocol()
 
 CREATE FUNCTION require_enrichment_publication_protocol() RETURNS trigger
     LANGUAGE plpgsql
@@ -2976,8 +2852,6 @@ BEGIN
     RETURN NEW;
 END
 $$;
-
--- Function: synchronize_derived_attempt_trace_canonicality()
 
 CREATE FUNCTION synchronize_derived_attempt_trace_canonicality() RETURNS trigger
     LANGUAGE plpgsql
@@ -3014,8 +2888,6 @@ BEGIN
 END
 $$;
 
--- Function: valid_geas_verification_sources(jsonb)
-
 CREATE FUNCTION valid_geas_verification_sources(candidate jsonb) RETURNS boolean
     LANGUAGE plpgsql IMMUTABLE STRICT PARALLEL SAFE
     SET search_path TO 'pg_catalog'
@@ -3038,8 +2910,6 @@ BEGIN
 END
 $$;
 
--- Function: watch_core_change()
-
 CREATE FUNCTION watch_core_change() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -3048,8 +2918,6 @@ BEGIN
     RETURN NULL;
 END
 $$;
-
--- Function: watch_token_change()
 
 CREATE FUNCTION watch_token_change() RETURNS trigger
     LANGUAGE plpgsql
@@ -3060,7 +2928,102 @@ BEGIN
 END
 $$;
 
--- Table: abi_decodings
+-- Sequences
+
+CREATE SEQUENCE beacon_observation_generations_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+CREATE SEQUENCE diamond_loupe_snapshots_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+CREATE SEQUENCE external_adapter_observations_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+CREATE SEQUENCE proxy_artifact_resolutions_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+CREATE SEQUENCE proxy_detection_evidence_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+CREATE SEQUENCE proxy_observation_generations_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+CREATE SEQUENCE uups_implementation_observation_generations_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+-- Tables (dependency order; constraints declared inline)
+
+CREATE TABLE chains (
+    chain_id numeric(78,0) NOT NULL,
+    genesis_hash bytea,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT chains_chain_id_check CHECK ((chain_id >= (0)::numeric)),
+    CONSTRAINT chains_genesis_hash_check CHECK (((genesis_hash IS NULL) OR (octet_length(genesis_hash) = 32))),
+    CONSTRAINT chains_pkey PRIMARY KEY (chain_id)
+);
+
+CREATE TABLE blocks (
+    chain_id numeric(78,0) NOT NULL,
+    number numeric(78,0) NOT NULL,
+    hash bytea NOT NULL,
+    parent_hash bytea NOT NULL,
+    "timestamp" numeric(78,0) NOT NULL,
+    raw jsonb NOT NULL,
+    inserted_at timestamp with time zone DEFAULT now() NOT NULL,
+    miner_text text GENERATED ALWAYS AS ((raw ->> 'miner'::text)) STORED,
+    gas_used_quantity text GENERATED ALWAYS AS ((raw ->> 'gasUsed'::text)) STORED,
+    gas_limit_quantity text GENERATED ALWAYS AS ((raw ->> 'gasLimit'::text)) STORED,
+    base_fee_per_gas_quantity text GENERATED ALWAYS AS ((raw ->> 'baseFeePerGas'::text)) STORED,
+    transaction_count bigint GENERATED ALWAYS AS (
+CASE
+    WHEN (jsonb_typeof((raw -> 'transactions'::text)) = 'array'::text) THEN (jsonb_array_length((raw -> 'transactions'::text)))::bigint
+    ELSE NULL::bigint
+END) STORED,
+    withdrawals_present boolean GENERATED ALWAYS AS (((raw ? 'withdrawals'::text) AND ((raw -> 'withdrawals'::text) <> 'null'::jsonb))) STORED,
+    withdrawal_count bigint GENERATED ALWAYS AS (
+CASE
+    WHEN (jsonb_typeof((raw -> 'withdrawals'::text)) = 'array'::text) THEN (jsonb_array_length((raw -> 'withdrawals'::text)))::bigint
+    ELSE NULL::bigint
+END) STORED,
+    slot_number_raw jsonb GENERATED ALWAYS AS ((raw -> 'slotNumber'::text)) STORED,
+    block_access_list_hash_raw jsonb GENERATED ALWAYS AS ((raw -> 'blockAccessListHash'::text)) STORED,
+    CONSTRAINT blocks_hash_check CHECK ((octet_length(hash) = 32)),
+    CONSTRAINT blocks_number_check CHECK ((number >= (0)::numeric)),
+    CONSTRAINT blocks_parent_hash_check CHECK ((octet_length(parent_hash) = 32)),
+    CONSTRAINT blocks_timestamp_check CHECK (("timestamp" >= (0)::numeric)),
+    CONSTRAINT blocks_pkey PRIMARY KEY (chain_id, number, hash),
+    CONSTRAINT blocks_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
+);
+
+CREATE UNIQUE INDEX blocks_chain_hash_uq ON blocks USING btree (chain_id, hash);
 
 CREATE TABLE abi_decodings (
     chain_id numeric(78,0) NOT NULL,
@@ -3100,97 +3063,15 @@ CREATE TABLE abi_decodings (
     CONSTRAINT abi_decodings_status_check CHECK ((status = ANY (ARRAY['decoded'::text, 'unknown'::text, 'malformed'::text, 'ambiguous'::text]))),
     CONSTRAINT abi_decodings_target_address_check CHECK ((octet_length(target_address) = 20)),
     CONSTRAINT abi_decodings_target_code_hash_check CHECK ((octet_length(target_code_hash) = 32)),
-    CONSTRAINT abi_decodings_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32))
+    CONSTRAINT abi_decodings_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
+    CONSTRAINT abi_decodings_pkey PRIMARY KEY (chain_id, block_number, block_hash, object_kind, transaction_hash, object_index),
+    CONSTRAINT abi_decodings_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash)
 )
 PARTITION BY RANGE (block_number);
 
--- Table: abi_decodings_default
+CREATE TABLE abi_decodings_default PARTITION OF abi_decodings DEFAULT;
 
-CREATE TABLE abi_decodings_default (
-    chain_id numeric(78,0) CONSTRAINT abi_decodings_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT abi_decodings_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT abi_decodings_block_hash_not_null NOT NULL,
-    object_kind text CONSTRAINT abi_decodings_object_kind_not_null NOT NULL,
-    transaction_hash bytea CONSTRAINT abi_decodings_transaction_hash_not_null NOT NULL,
-    object_index text CONSTRAINT abi_decodings_object_index_not_null NOT NULL,
-    target_address bytea CONSTRAINT abi_decodings_target_address_not_null NOT NULL,
-    target_code_hash bytea CONSTRAINT abi_decodings_target_code_hash_not_null NOT NULL,
-    abi_kind text CONSTRAINT abi_decodings_abi_kind_not_null NOT NULL,
-    status text CONSTRAINT abi_decodings_status_not_null NOT NULL,
-    signature text,
-    source text,
-    confidence text,
-    arguments jsonb DEFAULT '[]'::jsonb CONSTRAINT abi_decodings_arguments_not_null NOT NULL,
-    candidates jsonb DEFAULT '[]'::jsonb CONSTRAINT abi_decodings_candidates_not_null NOT NULL,
-    warning text DEFAULT ''::text CONSTRAINT abi_decodings_warning_not_null NOT NULL,
-    canonical boolean CONSTRAINT abi_decodings_canonical_not_null NOT NULL,
-    decoded_at timestamp with time zone DEFAULT now() CONSTRAINT abi_decodings_decoded_at_not_null NOT NULL,
-    source_address bytea,
-    source_code_hash bytea,
-    return_status text DEFAULT 'not_applicable'::text CONSTRAINT abi_decodings_return_status_not_null NOT NULL,
-    return_arguments jsonb DEFAULT '[]'::jsonb CONSTRAINT abi_decodings_return_arguments_not_null NOT NULL,
-    decoding_kind text DEFAULT 'function'::text CONSTRAINT abi_decodings_decoding_kind_not_null NOT NULL,
-    CONSTRAINT abi_decodings_abi_kind_v3_check CHECK ((abi_kind = ANY (ARRAY['function'::text, 'constructor'::text, 'event'::text, 'error'::text]))),
-    CONSTRAINT abi_decodings_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT abi_decodings_check1 CHECK (((status = ANY (ARRAY['decoded'::text, 'ambiguous'::text])) OR (signature IS NULL))),
-    CONSTRAINT abi_decodings_decoding_kind_check CHECK ((decoding_kind = ANY (ARRAY['function'::text, 'constructor'::text, 'event'::text, 'error'::text]))),
-    CONSTRAINT abi_decodings_object_kind_v3_check CHECK ((object_kind = ANY (ARRAY['transaction_calldata'::text, 'log'::text, 'trace_calldata'::text, 'trace_constructor'::text, 'trace_revert'::text]))),
-    CONSTRAINT abi_decodings_return_arguments_array_check CHECK ((jsonb_typeof(return_arguments) = 'array'::text)),
-    CONSTRAINT abi_decodings_return_status_check CHECK ((return_status = ANY (ARRAY['decoded'::text, 'empty'::text, 'unknown'::text, 'malformed'::text, 'unavailable'::text, 'not_applicable'::text]))),
-    CONSTRAINT abi_decodings_source_address_length_check CHECK (((source_address IS NULL) OR (octet_length(source_address) = 20))),
-    CONSTRAINT abi_decodings_source_code_hash_length_check CHECK (((source_code_hash IS NULL) OR (octet_length(source_code_hash) = 32))),
-    CONSTRAINT abi_decodings_source_confidence_v3_check CHECK ((((source IS NULL) AND (confidence IS NULL)) OR ((source = 'verified'::text) AND (confidence = 'verified'::text)) OR ((source = ANY (ARRAY['code_hash'::text, 'proxy_implementation'::text, 'diamond_facet'::text, 'builtin'::text])) AND (confidence = 'high'::text)) OR ((source = 'signature_database'::text) AND (confidence = 'guess'::text)))),
-    CONSTRAINT abi_decodings_source_identity_pair_check CHECK (((source_address IS NULL) = (source_code_hash IS NULL))),
-    CONSTRAINT abi_decodings_status_check CHECK ((status = ANY (ARRAY['decoded'::text, 'unknown'::text, 'malformed'::text, 'ambiguous'::text]))),
-    CONSTRAINT abi_decodings_target_address_check CHECK ((octet_length(target_address) = 20)),
-    CONSTRAINT abi_decodings_target_code_hash_check CHECK ((octet_length(target_code_hash) = 32)),
-    CONSTRAINT abi_decodings_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32))
-);
-
--- Table: abi_decodings_p_0_1000000
-
-CREATE TABLE abi_decodings_p_0_1000000 (
-    chain_id numeric(78,0) CONSTRAINT abi_decodings_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT abi_decodings_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT abi_decodings_block_hash_not_null NOT NULL,
-    object_kind text CONSTRAINT abi_decodings_object_kind_not_null NOT NULL,
-    transaction_hash bytea CONSTRAINT abi_decodings_transaction_hash_not_null NOT NULL,
-    object_index text CONSTRAINT abi_decodings_object_index_not_null NOT NULL,
-    target_address bytea CONSTRAINT abi_decodings_target_address_not_null NOT NULL,
-    target_code_hash bytea CONSTRAINT abi_decodings_target_code_hash_not_null NOT NULL,
-    abi_kind text CONSTRAINT abi_decodings_abi_kind_not_null NOT NULL,
-    status text CONSTRAINT abi_decodings_status_not_null NOT NULL,
-    signature text,
-    source text,
-    confidence text,
-    arguments jsonb DEFAULT '[]'::jsonb CONSTRAINT abi_decodings_arguments_not_null NOT NULL,
-    candidates jsonb DEFAULT '[]'::jsonb CONSTRAINT abi_decodings_candidates_not_null NOT NULL,
-    warning text DEFAULT ''::text CONSTRAINT abi_decodings_warning_not_null NOT NULL,
-    canonical boolean CONSTRAINT abi_decodings_canonical_not_null NOT NULL,
-    decoded_at timestamp with time zone DEFAULT now() CONSTRAINT abi_decodings_decoded_at_not_null NOT NULL,
-    source_address bytea,
-    source_code_hash bytea,
-    return_status text DEFAULT 'not_applicable'::text CONSTRAINT abi_decodings_return_status_not_null NOT NULL,
-    return_arguments jsonb DEFAULT '[]'::jsonb CONSTRAINT abi_decodings_return_arguments_not_null NOT NULL,
-    decoding_kind text DEFAULT 'function'::text CONSTRAINT abi_decodings_decoding_kind_not_null NOT NULL,
-    CONSTRAINT abi_decodings_abi_kind_v3_check CHECK ((abi_kind = ANY (ARRAY['function'::text, 'constructor'::text, 'event'::text, 'error'::text]))),
-    CONSTRAINT abi_decodings_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT abi_decodings_check1 CHECK (((status = ANY (ARRAY['decoded'::text, 'ambiguous'::text])) OR (signature IS NULL))),
-    CONSTRAINT abi_decodings_decoding_kind_check CHECK ((decoding_kind = ANY (ARRAY['function'::text, 'constructor'::text, 'event'::text, 'error'::text]))),
-    CONSTRAINT abi_decodings_object_kind_v3_check CHECK ((object_kind = ANY (ARRAY['transaction_calldata'::text, 'log'::text, 'trace_calldata'::text, 'trace_constructor'::text, 'trace_revert'::text]))),
-    CONSTRAINT abi_decodings_return_arguments_array_check CHECK ((jsonb_typeof(return_arguments) = 'array'::text)),
-    CONSTRAINT abi_decodings_return_status_check CHECK ((return_status = ANY (ARRAY['decoded'::text, 'empty'::text, 'unknown'::text, 'malformed'::text, 'unavailable'::text, 'not_applicable'::text]))),
-    CONSTRAINT abi_decodings_source_address_length_check CHECK (((source_address IS NULL) OR (octet_length(source_address) = 20))),
-    CONSTRAINT abi_decodings_source_code_hash_length_check CHECK (((source_code_hash IS NULL) OR (octet_length(source_code_hash) = 32))),
-    CONSTRAINT abi_decodings_source_confidence_v3_check CHECK ((((source IS NULL) AND (confidence IS NULL)) OR ((source = 'verified'::text) AND (confidence = 'verified'::text)) OR ((source = ANY (ARRAY['code_hash'::text, 'proxy_implementation'::text, 'diamond_facet'::text, 'builtin'::text])) AND (confidence = 'high'::text)) OR ((source = 'signature_database'::text) AND (confidence = 'guess'::text)))),
-    CONSTRAINT abi_decodings_source_identity_pair_check CHECK (((source_address IS NULL) = (source_code_hash IS NULL))),
-    CONSTRAINT abi_decodings_status_check CHECK ((status = ANY (ARRAY['decoded'::text, 'unknown'::text, 'malformed'::text, 'ambiguous'::text]))),
-    CONSTRAINT abi_decodings_target_address_check CHECK ((octet_length(target_address) = 20)),
-    CONSTRAINT abi_decodings_target_code_hash_check CHECK ((octet_length(target_code_hash) = 32)),
-    CONSTRAINT abi_decodings_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32))
-);
-
--- Table: abi_signature_candidates
+CREATE TABLE abi_decodings_p_0_1000000 PARTITION OF abi_decodings FOR VALUES FROM ('0') TO ('1000000');
 
 CREATE TABLE abi_signature_candidates (
     kind text NOT NULL,
@@ -3201,10 +3082,20 @@ CREATE TABLE abi_signature_candidates (
     CONSTRAINT abi_signature_candidates_abi_entry_check CHECK ((jsonb_typeof(abi_entry) = 'object'::text)),
     CONSTRAINT abi_signature_candidates_check CHECK ((((kind = ANY (ARRAY['function'::text, 'error'::text])) AND (octet_length(identifier) = 4)) OR ((kind = 'event'::text) AND (octet_length(identifier) = 32)))),
     CONSTRAINT abi_signature_candidates_kind_check CHECK ((kind = ANY (ARRAY['function'::text, 'event'::text, 'error'::text]))),
-    CONSTRAINT abi_signature_candidates_signature_check CHECK ((signature <> ''::text))
+    CONSTRAINT abi_signature_candidates_signature_check CHECK ((signature <> ''::text)),
+    CONSTRAINT abi_signature_candidates_pkey PRIMARY KEY (kind, identifier, signature)
 );
 
--- Table: address_activities
+CREATE TABLE transactions (
+    chain_id numeric(78,0) NOT NULL,
+    hash bytea NOT NULL,
+    tx_type numeric(78,0),
+    raw jsonb NOT NULL,
+    inserted_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT transactions_hash_check CHECK ((octet_length(hash) = 32)),
+    CONSTRAINT transactions_pkey PRIMARY KEY (chain_id, hash),
+    CONSTRAINT transactions_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
+);
 
 CREATE TABLE address_activities (
     chain_id numeric(78,0) NOT NULL,
@@ -3220,59 +3111,44 @@ CREATE TABLE address_activities (
     CONSTRAINT address_activities_activity_kind_check CHECK ((activity_kind = ANY (ARRAY['transaction'::text, 'token'::text, 'trace'::text, 'contract_creation'::text]))),
     CONSTRAINT address_activities_address_check CHECK ((octet_length(address) = 20)),
     CONSTRAINT address_activities_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT address_activities_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32))
+    CONSTRAINT address_activities_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
+    CONSTRAINT address_activities_pkey PRIMARY KEY (chain_id, block_number, block_hash, transaction_hash, activity_index, address),
+    CONSTRAINT address_activities_chain_id_transaction_hash_fkey FOREIGN KEY (chain_id, transaction_hash) REFERENCES transactions(chain_id, hash)
 )
 PARTITION BY RANGE (block_number);
 
--- Table: address_activities_default
+CREATE TABLE address_activities_default PARTITION OF address_activities DEFAULT;
 
-CREATE TABLE address_activities_default (
-    chain_id numeric(78,0) CONSTRAINT address_activities_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT address_activities_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT address_activities_block_hash_not_null NOT NULL,
-    transaction_hash bytea CONSTRAINT address_activities_transaction_hash_not_null NOT NULL,
-    activity_index integer CONSTRAINT address_activities_activity_index_not_null NOT NULL,
-    address bytea CONSTRAINT address_activities_address_not_null NOT NULL,
-    activity_kind text CONSTRAINT address_activities_activity_kind_not_null NOT NULL,
-    canonical boolean CONSTRAINT address_activities_canonical_not_null NOT NULL,
-    details jsonb DEFAULT '{}'::jsonb CONSTRAINT address_activities_details_not_null NOT NULL,
-    CONSTRAINT address_activities_activity_index_check CHECK ((activity_index >= 0)),
-    CONSTRAINT address_activities_activity_kind_check CHECK ((activity_kind = ANY (ARRAY['transaction'::text, 'token'::text, 'trace'::text, 'contract_creation'::text]))),
-    CONSTRAINT address_activities_address_check CHECK ((octet_length(address) = 20)),
-    CONSTRAINT address_activities_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT address_activities_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32))
+CREATE TABLE address_activities_p_0_1000000 PARTITION OF address_activities FOR VALUES FROM ('0') TO ('1000000');
+
+CREATE TABLE users (
+    id uuid NOT NULL,
+    chain_id numeric(78,0) NOT NULL,
+    address bytea NOT NULL,
+    display_name text,
+    role text DEFAULT 'user'::text NOT NULL,
+    status text DEFAULT 'active'::text NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    last_login_at timestamp with time zone,
+    CONSTRAINT users_address_check CHECK ((octet_length(address) = 20)),
+    CONSTRAINT users_display_name_check CHECK (((display_name IS NULL) OR ((char_length(display_name) BETWEEN 1 AND 64) AND (octet_length(display_name) <= 256) AND (display_name !~ '[[:cntrl:]]'::text)))),
+    CONSTRAINT users_role_check CHECK ((role = ANY (ARRAY['user'::text, 'admin'::text]))),
+    CONSTRAINT users_status_check CHECK ((status = ANY (ARRAY['active'::text, 'disabled'::text]))),
+    CONSTRAINT users_chain_id_address_key UNIQUE (chain_id, address),
+    CONSTRAINT users_pkey PRIMARY KEY (id),
+    CONSTRAINT users_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
-
--- Table: address_activities_p_0_1000000
-
-CREATE TABLE address_activities_p_0_1000000 (
-    chain_id numeric(78,0) CONSTRAINT address_activities_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT address_activities_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT address_activities_block_hash_not_null NOT NULL,
-    transaction_hash bytea CONSTRAINT address_activities_transaction_hash_not_null NOT NULL,
-    activity_index integer CONSTRAINT address_activities_activity_index_not_null NOT NULL,
-    address bytea CONSTRAINT address_activities_address_not_null NOT NULL,
-    activity_kind text CONSTRAINT address_activities_activity_kind_not_null NOT NULL,
-    canonical boolean CONSTRAINT address_activities_canonical_not_null NOT NULL,
-    details jsonb DEFAULT '{}'::jsonb CONSTRAINT address_activities_details_not_null NOT NULL,
-    CONSTRAINT address_activities_activity_index_check CHECK ((activity_index >= 0)),
-    CONSTRAINT address_activities_activity_kind_check CHECK ((activity_kind = ANY (ARRAY['transaction'::text, 'token'::text, 'trace'::text, 'contract_creation'::text]))),
-    CONSTRAINT address_activities_address_check CHECK ((octet_length(address) = 20)),
-    CONSTRAINT address_activities_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT address_activities_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32))
-);
-
--- Table: address_export_admissions
 
 CREATE TABLE address_export_admissions (
     token uuid NOT NULL,
     user_id uuid NOT NULL,
     started_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
     expires_at timestamp with time zone DEFAULT (clock_timestamp() + '00:00:20'::interval) NOT NULL,
-    released boolean DEFAULT false NOT NULL
+    released boolean DEFAULT false NOT NULL,
+    CONSTRAINT address_export_admissions_pkey PRIMARY KEY (token),
+    CONSTRAINT address_export_admissions_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id)
 );
-
--- Table: address_watches
 
 CREATE TABLE address_watches (
     id uuid NOT NULL,
@@ -3291,10 +3167,11 @@ CREATE TABLE address_watches (
     CONSTRAINT address_watches_direction_check CHECK ((direction = ANY (ARRAY['in'::text, 'out'::text, 'both'::text]))),
     CONSTRAINT address_watches_kinds_check CHECK (((cardinality(kinds) BETWEEN 1 AND 4) AND (kinds <@ ARRAY['transaction'::text, 'erc20'::text, 'erc721'::text, 'erc1155'::text]))),
     CONSTRAINT address_watches_label_check CHECK (((char_length(label) <= 64) AND (label !~ '[[:cntrl:]]'::text))),
-    CONSTRAINT address_watches_start_hash_check CHECK ((octet_length(start_hash) = 32))
+    CONSTRAINT address_watches_start_hash_check CHECK ((octet_length(start_hash) = 32)),
+    CONSTRAINT address_watches_pkey PRIMARY KEY (id),
+    CONSTRAINT address_watches_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id),
+    CONSTRAINT address_watches_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id)
 );
-
--- Table: api_keys
 
 CREATE TABLE api_keys (
     prefix text NOT NULL,
@@ -3310,10 +3187,10 @@ CREATE TABLE api_keys (
     CONSTRAINT api_keys_digest_check CHECK ((octet_length(digest) = 32)),
     CONSTRAINT api_keys_prefix_check CHECK ((length(prefix) = 10)),
     CONSTRAINT api_keys_rate_per_second_check CHECK ((rate_per_second > 0)),
-    CONSTRAINT api_keys_scopes_check CHECK (((scopes = ARRAY['api:read'::text]) OR (scopes = ARRAY['contract:verify'::text]) OR (scopes = ARRAY['api:read'::text, 'contract:verify'::text])))
+    CONSTRAINT api_keys_scopes_check CHECK (((scopes = ARRAY['api:read'::text]) OR (scopes = ARRAY['contract:verify'::text]) OR (scopes = ARRAY['api:read'::text, 'contract:verify'::text]))),
+    CONSTRAINT api_keys_pkey PRIMARY KEY (prefix),
+    CONSTRAINT api_keys_owner_user_id_fkey FOREIGN KEY (owner_user_id) REFERENCES users(id)
 );
-
--- Table: auth_challenges
 
 CREATE TABLE auth_challenges (
     id uuid NOT NULL,
@@ -3329,10 +3206,11 @@ CREATE TABLE auth_challenges (
     CONSTRAINT auth_challenges_check1 CHECK (((consumed_at IS NULL) OR (consumed_at >= issued_at))),
     CONSTRAINT auth_challenges_message_check CHECK (((octet_length(message) >= 1) AND (octet_length(message) <= 4096))),
     CONSTRAINT auth_challenges_nonce_check CHECK (((char_length(nonce) >= 8) AND (char_length(nonce) <= 64))),
-    CONSTRAINT auth_challenges_nonce_check1 CHECK ((nonce ~ '^[A-Za-z0-9]+$'::text))
+    CONSTRAINT auth_challenges_nonce_check1 CHECK ((nonce ~ '^[A-Za-z0-9]+$'::text)),
+    CONSTRAINT auth_challenges_chain_id_nonce_key UNIQUE (chain_id, nonce),
+    CONSTRAINT auth_challenges_pkey PRIMARY KEY (id),
+    CONSTRAINT auth_challenges_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
-
--- Table: beacon_implementation_observations
 
 CREATE TABLE beacon_implementation_observations (
     chain_id numeric(78,0) NOT NULL,
@@ -3354,13 +3232,58 @@ CREATE TABLE beacon_implementation_observations (
     CONSTRAINT beacon_implementation_observations_confidence_check CHECK ((confidence = ANY (ARRAY['verified'::text, 'high'::text, 'inferred'::text, 'guess'::text]))),
     CONSTRAINT beacon_implementation_observations_details_check CHECK ((jsonb_typeof(details) = 'object'::text)),
     CONSTRAINT beacon_implementation_observations_implementation_address_check CHECK ((octet_length(implementation_address) = 20)),
-    CONSTRAINT beacon_implementation_observations_stage_version_check CHECK ((stage_version = 2))
+    CONSTRAINT beacon_implementation_observations_stage_version_check CHECK ((stage_version = 2)),
+    CONSTRAINT beacon_implementation_observations_pkey PRIMARY KEY (chain_id, beacon_address, block_hash, stage_version),
+    CONSTRAINT beacon_implementation_observa_chain_id_block_number_block__fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash),
+    CONSTRAINT beacon_implementation_observations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
 
--- Table: beacon_observation_generations
+CREATE TABLE durable_jobs (
+    id bigint NOT NULL GENERATED ALWAYS AS IDENTITY (
+        SEQUENCE NAME durable_jobs_id_seq
+        START WITH 1
+        INCREMENT BY 1
+        NO MINVALUE
+        NO MAXVALUE
+        CACHE 1
+    ),
+    chain_id numeric(78,0) NOT NULL,
+    kind text NOT NULL,
+    stage text NOT NULL,
+    stage_version integer DEFAULT 1 NOT NULL,
+    idempotency_key text NOT NULL,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL,
+    priority integer DEFAULT 0 NOT NULL,
+    status text DEFAULT 'queued'::text NOT NULL,
+    attempts integer DEFAULT 0 NOT NULL,
+    max_attempts integer DEFAULT 10 NOT NULL,
+    available_at timestamp with time zone DEFAULT now() NOT NULL,
+    leased_by text,
+    lease_token text,
+    lease_expires_at timestamp with time zone,
+    result jsonb,
+    last_error text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    requested_generation bigint DEFAULT 1 NOT NULL,
+    claimed_generation bigint DEFAULT 0 NOT NULL,
+    leased_generation bigint,
+    completed_generation bigint DEFAULT 0 NOT NULL,
+    CONSTRAINT durable_jobs_check CHECK (((attempts >= 0) AND (max_attempts > 0))),
+    CONSTRAINT durable_jobs_check1 CHECK (((leased_by IS NULL) = (lease_expires_at IS NULL))),
+    CONSTRAINT durable_jobs_check2 CHECK (((leased_by IS NULL) = (lease_token IS NULL))),
+    CONSTRAINT durable_jobs_generation_check CHECK (((requested_generation > 0) AND ((claimed_generation >= 0) AND (claimed_generation <= requested_generation)) AND ((completed_generation >= 0) AND (completed_generation <= requested_generation)) AND ((leased_generation IS NULL) OR ((leased_generation >= 1) AND (leased_generation <= requested_generation))))),
+    CONSTRAINT durable_jobs_metadata_payload_size_check CHECK (((kind <> 'metadata'::text) OR (octet_length((payload)::text) <= 8192))),
+    CONSTRAINT durable_jobs_metadata_stage_check CHECK (((kind <> 'metadata'::text) OR ((stage = 'nft-metadata'::text) AND (stage_version = 1)))),
+    CONSTRAINT durable_jobs_stage_version_check CHECK ((stage_version > 0)),
+    CONSTRAINT durable_jobs_status_check CHECK ((status = ANY (ARRAY['queued'::text, 'leased'::text, 'succeeded'::text, 'failed'::text, 'cancelled'::text]))),
+    CONSTRAINT durable_jobs_chain_id_kind_idempotency_key_key UNIQUE (chain_id, kind, idempotency_key),
+    CONSTRAINT durable_jobs_pkey PRIMARY KEY (id),
+    CONSTRAINT durable_jobs_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
+);
 
 CREATE TABLE beacon_observation_generations (
-    id bigint NOT NULL,
+    id bigint NOT NULL DEFAULT nextval('beacon_observation_generations_id_seq'::regclass),
     chain_id numeric(78,0) NOT NULL,
     beacon_address bytea NOT NULL,
     observation_block_hash bytea NOT NULL,
@@ -3369,43 +3292,13 @@ CREATE TABLE beacon_observation_generations (
     job_generation bigint,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT beacon_observation_generations_check CHECK ((((durable_job_id IS NULL) AND (job_generation IS NULL)) OR ((durable_job_id IS NOT NULL) AND (job_generation > 0)))),
-    CONSTRAINT beacon_observation_generations_observation_stage_version_check CHECK ((observation_stage_version = 2))
+    CONSTRAINT beacon_observation_generations_observation_stage_version_check CHECK ((observation_stage_version = 2)),
+    CONSTRAINT beacon_observation_generation_chain_id_beacon_address_obser_key UNIQUE NULLS NOT DISTINCT (chain_id, beacon_address, observation_block_hash, observation_stage_version, durable_job_id, job_generation),
+    CONSTRAINT beacon_observation_generations_pkey PRIMARY KEY (id),
+    CONSTRAINT beacon_observation_generation_chain_id_beacon_address_obse_fkey FOREIGN KEY (chain_id, beacon_address, observation_block_hash, observation_stage_version) REFERENCES beacon_implementation_observations(chain_id, beacon_address, block_hash, stage_version) ON DELETE RESTRICT,
+    CONSTRAINT beacon_observation_generations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id),
+    CONSTRAINT beacon_observation_generations_durable_job_id_fkey FOREIGN KEY (durable_job_id) REFERENCES durable_jobs(id)
 );
-
--- Sequence: beacon_observation_generations_id_seq
-
-CREATE SEQUENCE beacon_observation_generations_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
--- Sequence Owned By: beacon_observation_generations_id_seq
-
-ALTER SEQUENCE beacon_observation_generations_id_seq OWNED BY beacon_observation_generations.id;
-
--- Table: billing_account_entries
-
-CREATE TABLE billing_account_entries (
-    id uuid NOT NULL,
-    user_id uuid NOT NULL,
-    chain_id numeric(78,0) NOT NULL,
-    network text NOT NULL,
-    asset bytea NOT NULL,
-    direction text NOT NULL,
-    kind text NOT NULL,
-    amount_atomic numeric(78,0) NOT NULL,
-    source_id uuid NOT NULL,
-    reason text,
-    occurred_at timestamp with time zone NOT NULL,
-    CONSTRAINT billing_account_entries_amount_atomic_check CHECK ((amount_atomic > (0)::numeric)),
-    CONSTRAINT billing_account_entries_check CHECK ((((kind = 'adjustment'::text) AND (reason IS NOT NULL) AND ((length(reason) >= 1) AND (length(reason) <= 256))) OR ((kind <> 'adjustment'::text) AND (reason IS NULL)))),
-    CONSTRAINT billing_account_entries_direction_check CHECK ((direction = ANY (ARRAY['credit'::text, 'debit'::text]))),
-    CONSTRAINT billing_account_entries_kind_check CHECK ((kind = ANY (ARRAY['topup'::text, 'usage'::text, 'adjustment'::text])))
-);
-
--- Table: billing_accounts
 
 CREATE TABLE billing_accounts (
     user_id uuid NOT NULL,
@@ -3423,39 +3316,69 @@ CREATE TABLE billing_accounts (
     CONSTRAINT billing_accounts_network_check CHECK (((network ~ '^eip155:[1-9][0-9]*$'::text) AND (length(network) <= 96))),
     CONSTRAINT billing_accounts_reserved_atomic_check CHECK ((reserved_atomic >= (0)::numeric)),
     CONSTRAINT billing_accounts_total_credit_atomic_check CHECK ((total_credit_atomic >= (0)::numeric)),
-    CONSTRAINT billing_accounts_total_debit_atomic_check CHECK ((total_debit_atomic >= (0)::numeric))
+    CONSTRAINT billing_accounts_total_debit_atomic_check CHECK ((total_debit_atomic >= (0)::numeric)),
+    CONSTRAINT billing_accounts_pkey PRIMARY KEY (user_id, chain_id, network, asset),
+    CONSTRAINT billing_accounts_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id),
+    CONSTRAINT billing_accounts_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
--- Table: billing_payment_events
-
-CREATE TABLE billing_payment_events (
-    id bigint NOT NULL,
-    payment_id uuid NOT NULL,
-    from_state text,
-    to_state text NOT NULL,
-    code text NOT NULL,
-    actor text NOT NULL,
-    transaction_hash bytea,
+CREATE TABLE billing_account_entries (
+    id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    chain_id numeric(78,0) NOT NULL,
+    network text NOT NULL,
+    asset bytea NOT NULL,
+    direction text NOT NULL,
+    kind text NOT NULL,
+    amount_atomic numeric(78,0) NOT NULL,
+    source_id uuid NOT NULL,
+    reason text,
     occurred_at timestamp with time zone NOT NULL,
-    CONSTRAINT billing_payment_events_actor_check CHECK ((actor = ANY (ARRAY['runtime'::text, 'operator'::text]))),
-    CONSTRAINT billing_payment_events_code_check CHECK (((length(code) >= 1) AND (length(code) <= 128))),
-    CONSTRAINT billing_payment_events_from_state_check CHECK (((from_state IS NULL) OR (from_state = ANY (ARRAY['reserved'::text, 'verified'::text, 'settling'::text, 'settled'::text, 'failed'::text, 'expired'::text])))),
-    CONSTRAINT billing_payment_events_to_state_check CHECK ((to_state = ANY (ARRAY['reserved'::text, 'verified'::text, 'settling'::text, 'settled'::text, 'failed'::text, 'expired'::text]))),
-    CONSTRAINT billing_payment_events_transaction_hash_check CHECK (((transaction_hash IS NULL) OR (octet_length(transaction_hash) = 32)))
+    CONSTRAINT billing_account_entries_amount_atomic_check CHECK ((amount_atomic > (0)::numeric)),
+    CONSTRAINT billing_account_entries_check CHECK ((((kind = 'adjustment'::text) AND (reason IS NOT NULL) AND ((length(reason) >= 1) AND (length(reason) <= 256))) OR ((kind <> 'adjustment'::text) AND (reason IS NULL)))),
+    CONSTRAINT billing_account_entries_direction_check CHECK ((direction = ANY (ARRAY['credit'::text, 'debit'::text]))),
+    CONSTRAINT billing_account_entries_kind_check CHECK ((kind = ANY (ARRAY['topup'::text, 'usage'::text, 'adjustment'::text]))),
+    CONSTRAINT billing_account_entries_pkey PRIMARY KEY (id),
+    CONSTRAINT billing_account_entries_source_id_key UNIQUE (source_id),
+    CONSTRAINT billing_account_entries_user_id_chain_id_network_asset_fkey FOREIGN KEY (user_id, chain_id, network, asset) REFERENCES billing_accounts(user_id, chain_id, network, asset)
 );
 
--- Sequence: billing_payment_events_id_seq
-
-ALTER TABLE billing_payment_events ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME billing_payment_events_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
+CREATE TABLE billing_topup_intents (
+    id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    chain_id numeric(78,0) NOT NULL,
+    network text NOT NULL,
+    asset bytea NOT NULL,
+    amount_atomic numeric(78,0) NOT NULL,
+    recipient bytea NOT NULL,
+    payer bytea NOT NULL,
+    state text NOT NULL,
+    active_payment_id uuid,
+    transaction_hash bytea,
+    failure_code text,
+    expires_at timestamp with time zone NOT NULL,
+    processing_at timestamp with time zone,
+    settling_at timestamp with time zone,
+    credited_at timestamp with time zone,
+    failed_at timestamp with time zone,
+    expired_at timestamp with time zone,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    CONSTRAINT billing_topup_intents_amount_atomic_check CHECK (((amount_atomic > (0)::numeric) AND (amount_atomic <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'::numeric))),
+    CONSTRAINT billing_topup_intents_asset_check CHECK ((octet_length(asset) = 20)),
+    CONSTRAINT billing_topup_intents_check CHECK ((expires_at > created_at)),
+    CONSTRAINT billing_topup_intents_check1 CHECK ((updated_at >= created_at)),
+    CONSTRAINT billing_topup_intents_check2 CHECK ((((state = 'open'::text) AND (active_payment_id IS NULL) AND (transaction_hash IS NULL) AND (processing_at IS NULL) AND (settling_at IS NULL) AND (credited_at IS NULL) AND (failed_at IS NULL) AND (expired_at IS NULL) AND (failure_code IS NULL)) OR ((state = 'processing'::text) AND (active_payment_id IS NOT NULL) AND (transaction_hash IS NULL) AND (processing_at IS NOT NULL) AND (settling_at IS NULL) AND (credited_at IS NULL) AND (failed_at IS NULL) AND (expired_at IS NULL) AND (failure_code IS NULL)) OR ((state = 'settling'::text) AND (active_payment_id IS NOT NULL) AND (processing_at IS NOT NULL) AND (settling_at IS NOT NULL) AND (credited_at IS NULL) AND (failed_at IS NULL) AND (expired_at IS NULL) AND (((failure_code IS NULL) AND (transaction_hash IS NULL)) OR ((failure_code = 'settlement_unknown'::text) AND (transaction_hash IS NULL)) OR ((failure_code = 'settlement_pending'::text) AND (transaction_hash IS NOT NULL)))) OR ((state = 'credited'::text) AND (active_payment_id IS NOT NULL) AND (transaction_hash IS NOT NULL) AND (processing_at IS NOT NULL) AND (settling_at IS NOT NULL) AND (credited_at IS NOT NULL) AND (failed_at IS NULL) AND (expired_at IS NULL) AND (failure_code IS NULL)) OR ((state = 'failed'::text) AND (active_payment_id IS NOT NULL) AND (failed_at IS NOT NULL) AND (credited_at IS NULL) AND (expired_at IS NULL) AND (failure_code IS NOT NULL)) OR ((state = 'expired'::text) AND (active_payment_id IS NULL) AND (transaction_hash IS NULL) AND (credited_at IS NULL) AND (failed_at IS NULL) AND (expired_at IS NOT NULL) AND (failure_code = 'topup_intent_expired'::text)))),
+    CONSTRAINT billing_topup_intents_failure_code_check CHECK (((failure_code IS NULL) OR ((length(failure_code) >= 1) AND (length(failure_code) <= 128)))),
+    CONSTRAINT billing_topup_intents_network_check CHECK (((network ~ '^eip155:[1-9][0-9]*$'::text) AND (length(network) <= 96))),
+    CONSTRAINT billing_topup_intents_payer_check CHECK ((octet_length(payer) = 20)),
+    CONSTRAINT billing_topup_intents_recipient_check CHECK ((octet_length(recipient) = 20)),
+    CONSTRAINT billing_topup_intents_state_check CHECK ((state = ANY (ARRAY['open'::text, 'processing'::text, 'settling'::text, 'credited'::text, 'failed'::text, 'expired'::text]))),
+    CONSTRAINT billing_topup_intents_transaction_hash_check CHECK (((transaction_hash IS NULL) OR (octet_length(transaction_hash) = 32))),
+    CONSTRAINT billing_topup_intents_pkey PRIMARY KEY (id),
+    CONSTRAINT billing_topup_intents_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id),
+    CONSTRAINT billing_topup_intents_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id)
 );
-
--- Table: billing_payments
 
 CREATE TABLE billing_payments (
     id uuid NOT NULL,
@@ -3522,46 +3445,39 @@ CREATE TABLE billing_payments (
     CONSTRAINT billing_payments_state_facts_v2_check CHECK ((((state = 'reserved'::text) AND (verified_at IS NULL) AND (handler_started_at IS NULL) AND (settling_at IS NULL) AND (settled_at IS NULL) AND (failed_at IS NULL) AND (expired_at IS NULL) AND (transaction_hash IS NULL) AND (failure_code IS NULL)) OR ((state = 'verified'::text) AND (verified_at IS NOT NULL) AND (settling_at IS NULL) AND (settled_at IS NULL) AND (failed_at IS NULL) AND (expired_at IS NULL) AND (transaction_hash IS NULL) AND (failure_code IS NULL)) OR ((state = 'settling'::text) AND (verified_at IS NOT NULL) AND (handler_started_at IS NOT NULL) AND (settling_at IS NOT NULL) AND (settled_at IS NULL) AND (failed_at IS NULL) AND (expired_at IS NULL) AND (((failure_code IS NULL) AND (transaction_hash IS NULL)) OR ((failure_code = 'settlement_unknown'::text) AND (transaction_hash IS NULL)) OR ((failure_code = 'settlement_pending'::text) AND (transaction_hash IS NOT NULL)))) OR ((state = 'settled'::text) AND (verified_at IS NOT NULL) AND (handler_started_at IS NOT NULL) AND (settling_at IS NOT NULL) AND (settled_at IS NOT NULL) AND (failed_at IS NULL) AND (expired_at IS NULL) AND (transaction_hash IS NOT NULL) AND (failure_code IS NULL)) OR ((state = 'failed'::text) AND (settled_at IS NULL) AND (failed_at IS NOT NULL) AND (expired_at IS NULL) AND (failure_code IS NOT NULL)) OR ((state = 'expired'::text) AND (settling_at IS NULL) AND (settled_at IS NULL) AND (failed_at IS NULL) AND (expired_at IS NOT NULL) AND (transaction_hash IS NULL) AND (failure_code = 'reservation_expired'::text)))),
     CONSTRAINT billing_payments_topup_binding_check CHECK ((((purpose = 'legacy_request'::text) AND (topup_intent_id IS NULL)) OR ((purpose = 'account_topup'::text) AND (topup_intent_id IS NOT NULL) AND (method = 'POST'::text)))),
     CONSTRAINT billing_payments_transaction_hash_check CHECK (((transaction_hash IS NULL) OR (octet_length(transaction_hash) = 32))),
-    CONSTRAINT billing_payments_transfer_method_check CHECK ((asset_transfer_method = ANY (ARRAY['eip3009'::text, 'permit2'::text])))
+    CONSTRAINT billing_payments_transfer_method_check CHECK ((asset_transfer_method = ANY (ARRAY['eip3009'::text, 'permit2'::text]))),
+    CONSTRAINT billing_payments_fingerprint_key UNIQUE (fingerprint),
+    CONSTRAINT billing_payments_pkey PRIMARY KEY (id),
+    CONSTRAINT billing_payments_api_key_prefix_fkey FOREIGN KEY (api_key_prefix) REFERENCES api_keys(prefix) ON DELETE SET NULL,
+    CONSTRAINT billing_payments_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id),
+    CONSTRAINT billing_payments_topup_intent_id_fkey FOREIGN KEY (topup_intent_id) REFERENCES billing_topup_intents(id),
+    CONSTRAINT billing_payments_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
--- Table: billing_topup_intents
-
-CREATE TABLE billing_topup_intents (
-    id uuid NOT NULL,
-    user_id uuid NOT NULL,
-    chain_id numeric(78,0) NOT NULL,
-    network text NOT NULL,
-    asset bytea NOT NULL,
-    amount_atomic numeric(78,0) NOT NULL,
-    recipient bytea NOT NULL,
-    payer bytea NOT NULL,
-    state text NOT NULL,
-    active_payment_id uuid,
+CREATE TABLE billing_payment_events (
+    id bigint NOT NULL GENERATED ALWAYS AS IDENTITY (
+        SEQUENCE NAME billing_payment_events_id_seq
+        START WITH 1
+        INCREMENT BY 1
+        NO MINVALUE
+        NO MAXVALUE
+        CACHE 1
+    ),
+    payment_id uuid NOT NULL,
+    from_state text,
+    to_state text NOT NULL,
+    code text NOT NULL,
+    actor text NOT NULL,
     transaction_hash bytea,
-    failure_code text,
-    expires_at timestamp with time zone NOT NULL,
-    processing_at timestamp with time zone,
-    settling_at timestamp with time zone,
-    credited_at timestamp with time zone,
-    failed_at timestamp with time zone,
-    expired_at timestamp with time zone,
-    created_at timestamp with time zone NOT NULL,
-    updated_at timestamp with time zone NOT NULL,
-    CONSTRAINT billing_topup_intents_amount_atomic_check CHECK (((amount_atomic > (0)::numeric) AND (amount_atomic <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'::numeric))),
-    CONSTRAINT billing_topup_intents_asset_check CHECK ((octet_length(asset) = 20)),
-    CONSTRAINT billing_topup_intents_check CHECK ((expires_at > created_at)),
-    CONSTRAINT billing_topup_intents_check1 CHECK ((updated_at >= created_at)),
-    CONSTRAINT billing_topup_intents_check2 CHECK ((((state = 'open'::text) AND (active_payment_id IS NULL) AND (transaction_hash IS NULL) AND (processing_at IS NULL) AND (settling_at IS NULL) AND (credited_at IS NULL) AND (failed_at IS NULL) AND (expired_at IS NULL) AND (failure_code IS NULL)) OR ((state = 'processing'::text) AND (active_payment_id IS NOT NULL) AND (transaction_hash IS NULL) AND (processing_at IS NOT NULL) AND (settling_at IS NULL) AND (credited_at IS NULL) AND (failed_at IS NULL) AND (expired_at IS NULL) AND (failure_code IS NULL)) OR ((state = 'settling'::text) AND (active_payment_id IS NOT NULL) AND (processing_at IS NOT NULL) AND (settling_at IS NOT NULL) AND (credited_at IS NULL) AND (failed_at IS NULL) AND (expired_at IS NULL) AND (((failure_code IS NULL) AND (transaction_hash IS NULL)) OR ((failure_code = 'settlement_unknown'::text) AND (transaction_hash IS NULL)) OR ((failure_code = 'settlement_pending'::text) AND (transaction_hash IS NOT NULL)))) OR ((state = 'credited'::text) AND (active_payment_id IS NOT NULL) AND (transaction_hash IS NOT NULL) AND (processing_at IS NOT NULL) AND (settling_at IS NOT NULL) AND (credited_at IS NOT NULL) AND (failed_at IS NULL) AND (expired_at IS NULL) AND (failure_code IS NULL)) OR ((state = 'failed'::text) AND (active_payment_id IS NOT NULL) AND (failed_at IS NOT NULL) AND (credited_at IS NULL) AND (expired_at IS NULL) AND (failure_code IS NOT NULL)) OR ((state = 'expired'::text) AND (active_payment_id IS NULL) AND (transaction_hash IS NULL) AND (credited_at IS NULL) AND (failed_at IS NULL) AND (expired_at IS NOT NULL) AND (failure_code = 'topup_intent_expired'::text)))),
-    CONSTRAINT billing_topup_intents_failure_code_check CHECK (((failure_code IS NULL) OR ((length(failure_code) >= 1) AND (length(failure_code) <= 128)))),
-    CONSTRAINT billing_topup_intents_network_check CHECK (((network ~ '^eip155:[1-9][0-9]*$'::text) AND (length(network) <= 96))),
-    CONSTRAINT billing_topup_intents_payer_check CHECK ((octet_length(payer) = 20)),
-    CONSTRAINT billing_topup_intents_recipient_check CHECK ((octet_length(recipient) = 20)),
-    CONSTRAINT billing_topup_intents_state_check CHECK ((state = ANY (ARRAY['open'::text, 'processing'::text, 'settling'::text, 'credited'::text, 'failed'::text, 'expired'::text]))),
-    CONSTRAINT billing_topup_intents_transaction_hash_check CHECK (((transaction_hash IS NULL) OR (octet_length(transaction_hash) = 32)))
+    occurred_at timestamp with time zone NOT NULL,
+    CONSTRAINT billing_payment_events_actor_check CHECK ((actor = ANY (ARRAY['runtime'::text, 'operator'::text]))),
+    CONSTRAINT billing_payment_events_code_check CHECK (((length(code) >= 1) AND (length(code) <= 128))),
+    CONSTRAINT billing_payment_events_from_state_check CHECK (((from_state IS NULL) OR (from_state = ANY (ARRAY['reserved'::text, 'verified'::text, 'settling'::text, 'settled'::text, 'failed'::text, 'expired'::text])))),
+    CONSTRAINT billing_payment_events_to_state_check CHECK ((to_state = ANY (ARRAY['reserved'::text, 'verified'::text, 'settling'::text, 'settled'::text, 'failed'::text, 'expired'::text]))),
+    CONSTRAINT billing_payment_events_transaction_hash_check CHECK (((transaction_hash IS NULL) OR (octet_length(transaction_hash) = 32))),
+    CONSTRAINT billing_payment_events_pkey PRIMARY KEY (id),
+    CONSTRAINT billing_payment_events_payment_id_fkey FOREIGN KEY (payment_id) REFERENCES billing_payments(id)
 );
-
--- Table: billing_usage_charges
 
 CREATE TABLE billing_usage_charges (
     id uuid NOT NULL,
@@ -3595,10 +3511,11 @@ CREATE TABLE billing_usage_charges (
     CONSTRAINT billing_usage_charges_resource_digest_check CHECK ((octet_length(resource_digest) = 32)),
     CONSTRAINT billing_usage_charges_response_bytes_check CHECK (((response_bytes IS NULL) OR (response_bytes >= 0))),
     CONSTRAINT billing_usage_charges_response_digest_check CHECK (((response_digest IS NULL) OR (octet_length(response_digest) = 32))),
-    CONSTRAINT billing_usage_charges_state_check CHECK ((state = ANY (ARRAY['reserved'::text, 'committed'::text, 'released'::text, 'expired'::text])))
+    CONSTRAINT billing_usage_charges_state_check CHECK ((state = ANY (ARRAY['reserved'::text, 'committed'::text, 'released'::text, 'expired'::text]))),
+    CONSTRAINT billing_usage_charges_pkey PRIMARY KEY (id),
+    CONSTRAINT billing_usage_charges_api_key_prefix_fkey FOREIGN KEY (api_key_prefix) REFERENCES api_keys(prefix),
+    CONSTRAINT billing_usage_charges_user_id_chain_id_network_asset_fkey FOREIGN KEY (user_id, chain_id, network, asset) REFERENCES billing_accounts(user_id, chain_id, network, asset)
 );
-
--- Table: block_journals
 
 CREATE TABLE block_journals (
     chain_id numeric(78,0) NOT NULL,
@@ -3611,10 +3528,11 @@ CREATE TABLE block_journals (
     durable_job_id bigint,
     job_generation bigint,
     CONSTRAINT block_journals_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT block_journals_publication_pair_check CHECK ((((durable_job_id IS NULL) AND (job_generation IS NULL)) OR ((durable_job_id IS NOT NULL) AND (job_generation IS NOT NULL) AND (job_generation > 0))))
+    CONSTRAINT block_journals_publication_pair_check CHECK ((((durable_job_id IS NULL) AND (job_generation IS NULL)) OR ((durable_job_id IS NOT NULL) AND (job_generation IS NOT NULL) AND (job_generation > 0)))),
+    CONSTRAINT block_journals_pkey PRIMARY KEY (chain_id, block_hash, stage, sequence),
+    CONSTRAINT block_journals_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id),
+    CONSTRAINT block_journals_durable_job_fkey FOREIGN KEY (durable_job_id) REFERENCES durable_jobs(id)
 );
-
--- Table: block_stage_results
 
 CREATE TABLE block_stage_results (
     chain_id numeric(78,0) NOT NULL,
@@ -3631,10 +3549,12 @@ CREATE TABLE block_stage_results (
     CONSTRAINT block_stage_results_block_hash_check CHECK ((octet_length(block_hash) = 32)),
     CONSTRAINT block_stage_results_publication_pair_check CHECK ((((durable_job_id IS NULL) AND (job_generation IS NULL)) OR ((durable_job_id IS NOT NULL) AND (job_generation IS NOT NULL) AND (job_generation > 0)))),
     CONSTRAINT block_stage_results_stage_version_check CHECK ((stage_version > 0)),
-    CONSTRAINT block_stage_results_state_check CHECK ((state = ANY (ARRAY['complete'::text, 'unavailable'::text, 'failed'::text])))
+    CONSTRAINT block_stage_results_state_check CHECK ((state = ANY (ARRAY['complete'::text, 'unavailable'::text, 'failed'::text]))),
+    CONSTRAINT block_stage_results_pkey PRIMARY KEY (chain_id, block_hash, stage, stage_version),
+    CONSTRAINT block_stage_results_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash),
+    CONSTRAINT block_stage_results_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id),
+    CONSTRAINT block_stage_results_durable_job_fkey FOREIGN KEY (durable_job_id) REFERENCES durable_jobs(id)
 );
-
--- Table: block_statistics
 
 CREATE TABLE block_statistics (
     chain_id numeric(78,0) NOT NULL,
@@ -3668,219 +3588,21 @@ CREATE TABLE block_statistics (
     CONSTRAINT block_statistics_v2_interval_check CHECK (((block_interval_seconds IS NULL) OR (block_interval_seconds > (0)::numeric))),
     CONSTRAINT block_statistics_v2_nonnegative_check CHECK (((block_timestamp IS NULL) OR (block_timestamp >= (0)::numeric))),
     CONSTRAINT block_statistics_v2_tps_check CHECK (((transactions_per_second IS NULL) OR (transactions_per_second >= (0)::numeric))),
-    CONSTRAINT block_statistics_v3_execution_check CHECK ((((execution_gas_fee_wei IS NULL) OR (execution_gas_fee_wei >= (0)::numeric)) AND ((priority_fee_wei IS NULL) OR (priority_fee_wei >= (0)::numeric)) AND ((failed_transaction_count IS NULL) OR (failed_transaction_count >= 0)) AND ((contract_creation_count IS NULL) OR (contract_creation_count >= 0)) AND ((failed_transaction_count IS NULL) OR (failed_transaction_count <= transaction_count)) AND ((contract_creation_count IS NULL) OR (contract_creation_count <= transaction_count))))
+    CONSTRAINT block_statistics_v3_execution_check CHECK ((((execution_gas_fee_wei IS NULL) OR (execution_gas_fee_wei >= (0)::numeric)) AND ((priority_fee_wei IS NULL) OR (priority_fee_wei >= (0)::numeric)) AND ((failed_transaction_count IS NULL) OR (failed_transaction_count >= 0)) AND ((contract_creation_count IS NULL) OR (contract_creation_count >= 0)) AND ((failed_transaction_count IS NULL) OR (failed_transaction_count <= transaction_count)) AND ((contract_creation_count IS NULL) OR (contract_creation_count <= transaction_count)))),
+    CONSTRAINT block_statistics_pkey PRIMARY KEY (chain_id, block_number, block_hash),
+    CONSTRAINT block_statistics_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash)
 );
-
--- Table: blocks
-
-CREATE TABLE blocks (
-    chain_id numeric(78,0) NOT NULL,
-    number numeric(78,0) NOT NULL,
-    hash bytea NOT NULL,
-    parent_hash bytea NOT NULL,
-    "timestamp" numeric(78,0) NOT NULL,
-    raw jsonb NOT NULL,
-    inserted_at timestamp with time zone DEFAULT now() NOT NULL,
-    miner_text text GENERATED ALWAYS AS ((raw ->> 'miner'::text)) STORED,
-    gas_used_quantity text GENERATED ALWAYS AS ((raw ->> 'gasUsed'::text)) STORED,
-    gas_limit_quantity text GENERATED ALWAYS AS ((raw ->> 'gasLimit'::text)) STORED,
-    base_fee_per_gas_quantity text GENERATED ALWAYS AS ((raw ->> 'baseFeePerGas'::text)) STORED,
-    transaction_count bigint GENERATED ALWAYS AS (
-CASE
-    WHEN (jsonb_typeof((raw -> 'transactions'::text)) = 'array'::text) THEN (jsonb_array_length((raw -> 'transactions'::text)))::bigint
-    ELSE NULL::bigint
-END) STORED,
-    withdrawals_present boolean GENERATED ALWAYS AS (((raw ? 'withdrawals'::text) AND ((raw -> 'withdrawals'::text) <> 'null'::jsonb))) STORED,
-    withdrawal_count bigint GENERATED ALWAYS AS (
-CASE
-    WHEN (jsonb_typeof((raw -> 'withdrawals'::text)) = 'array'::text) THEN (jsonb_array_length((raw -> 'withdrawals'::text)))::bigint
-    ELSE NULL::bigint
-END) STORED,
-    slot_number_raw jsonb GENERATED ALWAYS AS ((raw -> 'slotNumber'::text)) STORED,
-    block_access_list_hash_raw jsonb GENERATED ALWAYS AS ((raw -> 'blockAccessListHash'::text)) STORED,
-    CONSTRAINT blocks_hash_check CHECK ((octet_length(hash) = 32)),
-    CONSTRAINT blocks_number_check CHECK ((number >= (0)::numeric)),
-    CONSTRAINT blocks_parent_hash_check CHECK ((octet_length(parent_hash) = 32)),
-    CONSTRAINT blocks_timestamp_check CHECK (("timestamp" >= (0)::numeric))
-);
-
--- Table: canonical_blocks
 
 CREATE TABLE canonical_blocks (
     chain_id numeric(78,0) NOT NULL,
     number numeric(78,0) NOT NULL,
     block_hash bytea NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
-);
-
--- Table: diamond_cut_events
-
-CREATE TABLE diamond_cut_events (
-    chain_id numeric(78,0) NOT NULL,
-    block_number numeric(78,0) NOT NULL,
-    block_hash bytea NOT NULL,
-    transaction_hash bytea NOT NULL,
-    transaction_index bigint NOT NULL,
-    log_index bigint NOT NULL,
-    diamond_address bytea NOT NULL,
-    init_address bytea NOT NULL,
-    init_calldata bytea NOT NULL,
-    cuts jsonb NOT NULL,
-    stage_version integer DEFAULT 2 NOT NULL,
-    canonical boolean NOT NULL,
-    CONSTRAINT diamond_cut_events_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT diamond_cut_events_cuts_check CHECK ((jsonb_typeof(cuts) = 'array'::text)),
-    CONSTRAINT diamond_cut_events_diamond_address_check CHECK ((octet_length(diamond_address) = 20)),
-    CONSTRAINT diamond_cut_events_init_address_check CHECK ((octet_length(init_address) = 20)),
-    CONSTRAINT diamond_cut_events_log_index_check CHECK ((log_index >= 0)),
-    CONSTRAINT diamond_cut_events_stage_version_check CHECK ((stage_version = 2)),
-    CONSTRAINT diamond_cut_events_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
-    CONSTRAINT diamond_cut_events_transaction_index_check CHECK ((transaction_index >= 0))
-);
-
--- Table: diamond_selector_changes
-
-CREATE TABLE diamond_selector_changes (
-    chain_id numeric(78,0) NOT NULL,
-    block_hash bytea NOT NULL,
-    log_index bigint NOT NULL,
-    stage_version integer DEFAULT 2 NOT NULL,
-    cut_index integer NOT NULL,
-    selector_index integer NOT NULL,
-    selector bytea NOT NULL,
-    action smallint NOT NULL,
-    facet_address bytea NOT NULL,
-    CONSTRAINT diamond_selector_changes_action_check CHECK ((action = ANY (ARRAY[0, 1, 2]))),
-    CONSTRAINT diamond_selector_changes_cut_index_check CHECK ((cut_index >= 0)),
-    CONSTRAINT diamond_selector_changes_facet_address_check CHECK ((octet_length(facet_address) = 20)),
-    CONSTRAINT diamond_selector_changes_selector_check CHECK ((octet_length(selector) = 4)),
-    CONSTRAINT diamond_selector_changes_selector_index_check CHECK ((selector_index >= 0))
-);
-
--- Table: durable_jobs
-
-CREATE TABLE durable_jobs (
-    id bigint NOT NULL,
-    chain_id numeric(78,0) NOT NULL,
-    kind text NOT NULL,
-    stage text NOT NULL,
-    stage_version integer DEFAULT 1 NOT NULL,
-    idempotency_key text NOT NULL,
-    payload jsonb DEFAULT '{}'::jsonb NOT NULL,
-    priority integer DEFAULT 0 NOT NULL,
-    status text DEFAULT 'queued'::text NOT NULL,
-    attempts integer DEFAULT 0 NOT NULL,
-    max_attempts integer DEFAULT 10 NOT NULL,
-    available_at timestamp with time zone DEFAULT now() NOT NULL,
-    leased_by text,
-    lease_token text,
-    lease_expires_at timestamp with time zone,
-    result jsonb,
-    last_error text,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    requested_generation bigint DEFAULT 1 NOT NULL,
-    claimed_generation bigint DEFAULT 0 NOT NULL,
-    leased_generation bigint,
-    completed_generation bigint DEFAULT 0 NOT NULL,
-    CONSTRAINT durable_jobs_check CHECK (((attempts >= 0) AND (max_attempts > 0))),
-    CONSTRAINT durable_jobs_check1 CHECK (((leased_by IS NULL) = (lease_expires_at IS NULL))),
-    CONSTRAINT durable_jobs_check2 CHECK (((leased_by IS NULL) = (lease_token IS NULL))),
-    CONSTRAINT durable_jobs_generation_check CHECK (((requested_generation > 0) AND ((claimed_generation >= 0) AND (claimed_generation <= requested_generation)) AND ((completed_generation >= 0) AND (completed_generation <= requested_generation)) AND ((leased_generation IS NULL) OR ((leased_generation >= 1) AND (leased_generation <= requested_generation))))),
-    CONSTRAINT durable_jobs_metadata_payload_size_check CHECK (((kind <> 'metadata'::text) OR (octet_length((payload)::text) <= 8192))),
-    CONSTRAINT durable_jobs_metadata_stage_check CHECK (((kind <> 'metadata'::text) OR ((stage = 'nft-metadata'::text) AND (stage_version = 1)))),
-    CONSTRAINT durable_jobs_stage_version_check CHECK ((stage_version > 0)),
-    CONSTRAINT durable_jobs_status_check CHECK ((status = ANY (ARRAY['queued'::text, 'leased'::text, 'succeeded'::text, 'failed'::text, 'cancelled'::text])))
+    CONSTRAINT canonical_blocks_pkey PRIMARY KEY (chain_id, number),
+    CONSTRAINT canonical_blocks_chain_id_number_block_hash_fkey FOREIGN KEY (chain_id, number, block_hash) REFERENCES blocks(chain_id, number, hash) DEFERRABLE INITIALLY DEFERRED
 );
 
--- Table: transactional_outbox
-
-CREATE TABLE transactional_outbox (
-    id bigint NOT NULL,
-    chain_id numeric(78,0) NOT NULL,
-    topic text NOT NULL,
-    message_key text NOT NULL,
-    payload jsonb NOT NULL,
-    available_at timestamp with time zone DEFAULT now() NOT NULL,
-    published_at timestamp with time zone,
-    attempts integer DEFAULT 0 NOT NULL,
-    last_error text,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    generation bigint DEFAULT 1 NOT NULL,
-    CONSTRAINT transactional_outbox_attempts_check CHECK ((attempts >= 0)),
-    CONSTRAINT transactional_outbox_generation_check CHECK ((generation > 0))
-);
-
--- View: published_block_stage_results
-
-CREATE VIEW published_block_stage_results AS
- SELECT result.chain_id,
-    result.block_number,
-    result.block_hash,
-    result.stage,
-    result.stage_version,
-    result.state,
-    result.details,
-    result.last_error,
-    result.completed_at,
-    result.durable_job_id,
-    result.job_generation
-   FROM (block_stage_results result
-     JOIN durable_jobs job ON (((job.id = result.durable_job_id) AND (job.chain_id = result.chain_id) AND (job.kind = 'enrichment'::text) AND (job.stage = result.stage) AND (job.stage_version = result.stage_version) AND ((job.payload ->> 'block_hash'::text) = ('0x'::text || encode(result.block_hash, 'hex'::text))) AND ((job.payload ->> 'block_number'::text) = (result.block_number)::text))))
-  WHERE ((result.durable_job_id IS NOT NULL) AND (result.job_generation IS NOT NULL) AND (job.status = ANY (ARRAY['succeeded'::text, 'failed'::text])) AND (job.claimed_generation = result.job_generation) AND (job.completed_generation = result.job_generation) AND (job.requested_generation = result.job_generation) AND (job.leased_generation IS NULL) AND (job.leased_by IS NULL) AND (job.lease_token IS NULL) AND (job.lease_expires_at IS NULL) AND (job.result IS NOT NULL) AND ((job.result ->> 'state'::text) = result.state) AND (COALESCE((result.details ->> 'outcome'::text), ''::text) <> 'stale_canonical_skipped'::text) AND (NOT (EXISTS ( SELECT 1
-           FROM transactional_outbox pending_attach
-          WHERE ((pending_attach.chain_id = result.chain_id) AND (pending_attach.topic = 'core.block.canonical'::text) AND (pending_attach.message_key = ('0x'::text || encode(result.block_hash, 'hex'::text))) AND (pending_attach.published_at IS NULL))))) AND (((job.status = 'succeeded'::text) AND (result.state = 'complete'::text) AND (EXISTS ( SELECT 1
-           FROM block_journals journal
-          WHERE ((journal.chain_id = result.chain_id) AND (journal.block_hash = result.block_hash) AND (journal.stage = ((result.stage || '@'::text) || (result.stage_version)::text)) AND (journal.sequence = (1)::numeric) AND (journal.durable_job_id = result.durable_job_id) AND (journal.job_generation = result.job_generation))))) OR ((job.status = 'failed'::text) AND (result.state = ANY (ARRAY['failed'::text, 'unavailable'::text])))) AND (COALESCE((job.result -> 'details'::text), '{}'::jsonb) = result.details) AND (NOT ((job.result ->> 'error'::text) IS DISTINCT FROM result.last_error)));
-
--- View: canonical_diamond_selector_intervals
-
-CREATE VIEW canonical_diamond_selector_intervals AS
- WITH ordered AS (
-         SELECT event.chain_id,
-            event.diamond_address,
-            change.selector,
-            change.facet_address,
-            change.action,
-            event.block_number AS valid_from_block_number,
-            event.block_hash AS valid_from_block_hash,
-            event.transaction_index AS valid_from_transaction_index,
-            event.log_index AS valid_from_log_index,
-            change.cut_index AS valid_from_cut_index,
-            change.selector_index AS valid_from_selector_index,
-            lead(event.block_number) OVER route AS valid_to_block_number,
-            lead(event.block_hash) OVER route AS valid_to_block_hash,
-            lead(event.transaction_index) OVER route AS valid_to_transaction_index,
-            lead(event.log_index) OVER route AS valid_to_log_index,
-            lead(change.cut_index) OVER route AS valid_to_cut_index,
-            lead(change.selector_index) OVER route AS valid_to_selector_index
-           FROM (((diamond_cut_events event
-             JOIN diamond_selector_changes change ON (((change.chain_id = event.chain_id) AND (change.block_hash = event.block_hash) AND (change.log_index = event.log_index) AND (change.stage_version = event.stage_version))))
-             JOIN canonical_blocks canonical ON (((canonical.chain_id = event.chain_id) AND (canonical.number = event.block_number) AND (canonical.block_hash = event.block_hash))))
-             JOIN published_block_stage_results published ON (((published.chain_id = event.chain_id) AND (published.block_number = event.block_number) AND (published.block_hash = event.block_hash) AND (published.stage = 'proxy'::text) AND (published.stage_version = event.stage_version) AND (published.state = 'complete'::text))))
-          WHERE (event.canonical AND (event.stage_version = 2))
-          WINDOW route AS (PARTITION BY event.chain_id, event.diamond_address, change.selector ORDER BY event.block_number, event.transaction_index, event.log_index, change.cut_index, change.selector_index)
-        )
- SELECT chain_id,
-    diamond_address,
-    selector,
-    facet_address,
-    valid_from_block_number,
-    valid_from_block_hash,
-    valid_from_transaction_index,
-    valid_from_log_index,
-    valid_from_cut_index,
-    valid_from_selector_index,
-    valid_to_block_number,
-    valid_to_block_hash,
-    valid_to_transaction_index,
-    valid_to_log_index,
-    valid_to_cut_index,
-    valid_to_selector_index
-   FROM ordered
-  WHERE (action <> 2);
-
--- Table: chain_finality
+CREATE UNIQUE INDEX canonical_blocks_hash_uq ON canonical_blocks USING btree (chain_id, block_hash);
 
 CREATE TABLE chain_finality (
     chain_id numeric(78,0) NOT NULL,
@@ -3892,20 +3614,10 @@ CREATE TABLE chain_finality (
     CONSTRAINT chain_finality_check CHECK (((safe_number IS NULL) = (safe_hash IS NULL))),
     CONSTRAINT chain_finality_check1 CHECK (((finalized_number IS NULL) = (finalized_hash IS NULL))),
     CONSTRAINT chain_finality_finalized_hash_check CHECK (((finalized_hash IS NULL) OR (octet_length(finalized_hash) = 32))),
-    CONSTRAINT chain_finality_safe_hash_check CHECK (((safe_hash IS NULL) OR (octet_length(safe_hash) = 32)))
+    CONSTRAINT chain_finality_safe_hash_check CHECK (((safe_hash IS NULL) OR (octet_length(safe_hash) = 32))),
+    CONSTRAINT chain_finality_pkey PRIMARY KEY (chain_id),
+    CONSTRAINT chain_finality_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
-
--- Table: chains
-
-CREATE TABLE chains (
-    chain_id numeric(78,0) NOT NULL,
-    genesis_hash bytea,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT chains_chain_id_check CHECK ((chain_id >= (0)::numeric)),
-    CONSTRAINT chains_genesis_hash_check CHECK (((genesis_hash IS NULL) OR (octet_length(genesis_hash) = 32)))
-);
-
--- Table: chart_hourly_rollups
 
 CREATE TABLE chart_hourly_rollups (
     chain_id numeric(78,0) NOT NULL,
@@ -3936,10 +3648,10 @@ CREATE TABLE chart_hourly_rollups (
     CONSTRAINT chart_hourly_rollups_bucket_start_check CHECK ((date_trunc('hour'::text, bucket_start, 'UTC'::text) = bucket_start)),
     CONSTRAINT chart_hourly_rollups_check CHECK (((from_block >= (0)::numeric) AND (to_block >= from_block))),
     CONSTRAINT chart_hourly_rollups_check1 CHECK (((block_count > 0) AND (transaction_count >= (0)::numeric) AND (failed_transaction_count >= (0)::numeric) AND (contract_creation_count >= (0)::numeric) AND (gas_used >= (0)::numeric) AND (gas_limit >= (0)::numeric) AND (block_interval_seconds >= (0)::numeric) AND (block_interval_samples >= 0) AND (base_fee_per_gas_sum >= (0)::numeric) AND (base_fee_samples >= 0) AND (execution_gas_fee_wei >= (0)::numeric) AND (priority_fee_wei >= (0)::numeric) AND (burned_wei >= (0)::numeric) AND (blob_gas_used >= (0)::numeric) AND (blob_base_fee_per_gas_sum >= (0)::numeric) AND (blob_base_fee_samples >= 0) AND (blob_burned_wei >= (0)::numeric) AND (erc20_transfer_count >= (0)::numeric) AND (nft_transfer_count >= (0)::numeric))),
-    CONSTRAINT chart_hourly_rollups_source_generation_check CHECK ((source_generation > 0))
+    CONSTRAINT chart_hourly_rollups_source_generation_check CHECK ((source_generation > 0)),
+    CONSTRAINT chart_hourly_rollups_pkey PRIMARY KEY (chain_id, bucket_start),
+    CONSTRAINT chart_hourly_rollups_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
-
--- Table: chart_rollup_backfill
 
 CREATE TABLE chart_rollup_backfill (
     chain_id numeric(78,0) NOT NULL,
@@ -3955,10 +3667,10 @@ CREATE TABLE chart_rollup_backfill (
     CONSTRAINT chart_rollup_backfill_check1 CHECK (((available_to IS NULL) OR (available_to >= available_from))),
     CONSTRAINT chart_rollup_backfill_check2 CHECK (((completed_blocks >= (0)::numeric) AND (total_blocks >= completed_blocks))),
     CONSTRAINT chart_rollup_backfill_next_block_check CHECK (((next_block IS NULL) OR (next_block >= (0)::numeric))),
-    CONSTRAINT chart_rollup_backfill_target_start_block_check CHECK (((target_start_block IS NULL) OR (target_start_block >= (0)::numeric)))
+    CONSTRAINT chart_rollup_backfill_target_start_block_check CHECK (((target_start_block IS NULL) OR (target_start_block >= (0)::numeric))),
+    CONSTRAINT chart_rollup_backfill_pkey PRIMARY KEY (chain_id),
+    CONSTRAINT chart_rollup_backfill_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
-
--- Table: chart_rollup_dirty_hours
 
 CREATE TABLE chart_rollup_dirty_hours (
     chain_id numeric(78,0) NOT NULL,
@@ -3968,10 +3680,33 @@ CREATE TABLE chart_rollup_dirty_hours (
     next_attempt_at timestamp with time zone DEFAULT now() NOT NULL,
     dirtied_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT chart_rollup_dirty_hours_bucket_start_check CHECK ((date_trunc('hour'::text, bucket_start, 'UTC'::text) = bucket_start)),
-    CONSTRAINT chart_rollup_dirty_hours_check CHECK (((generation > 0) AND (attempts >= 0)))
+    CONSTRAINT chart_rollup_dirty_hours_check CHECK (((generation > 0) AND (attempts >= 0))),
+    CONSTRAINT chart_rollup_dirty_hours_pkey PRIMARY KEY (chain_id, bucket_start),
+    CONSTRAINT chart_rollup_dirty_hours_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
 
--- Table: compiler_catalog_entries
+CREATE TABLE compiler_catalog_generations (
+    id bigint NOT NULL GENERATED ALWAYS AS IDENTITY (
+        SEQUENCE NAME compiler_catalog_generations_id_seq
+        START WITH 1
+        INCREMENT BY 1
+        NO MINVALUE
+        NO MAXVALUE
+        CACHE 1
+    ),
+    language text NOT NULL,
+    source_url text NOT NULL,
+    catalog_digest bytea NOT NULL,
+    fetched_at timestamp with time zone DEFAULT now() NOT NULL,
+    entry_count integer NOT NULL,
+    CONSTRAINT compiler_catalog_generations_count_check CHECK (((entry_count >= 1) AND (entry_count <= 4096))),
+    CONSTRAINT compiler_catalog_generations_digest_check CHECK ((octet_length(catalog_digest) = 32)),
+    CONSTRAINT compiler_catalog_generations_language_check CHECK ((language = ANY (ARRAY['solidity'::text, 'vyper'::text]))),
+    CONSTRAINT compiler_catalog_generations_source_check CHECK (((length(source_url) >= 9) AND (length(source_url) <= 4096))),
+    CONSTRAINT compiler_catalog_generations_id_language_key UNIQUE (id, language),
+    CONSTRAINT compiler_catalog_generations_identity_key UNIQUE (language, catalog_digest),
+    CONSTRAINT compiler_catalog_generations_pkey PRIMARY KEY (id)
+);
 
 CREATE TABLE compiler_catalog_entries (
     generation_id bigint NOT NULL,
@@ -3988,45 +3723,20 @@ CREATE TABLE compiler_catalog_entries (
     CONSTRAINT compiler_catalog_entries_platform_check CHECK ((platform = ANY (ARRAY['bin'::text, 'emscripten-asmjs'::text, 'emscripten-wasm32'::text, 'linux-amd64'::text, 'linux-arm64'::text, 'macosx-amd64'::text, 'wasm'::text, 'windows-amd64'::text, 'python-wheel'::text]))),
     CONSTRAINT compiler_catalog_entries_size_check CHECK (((max_bytes >= 1) AND (max_bytes <= 209715200))),
     CONSTRAINT compiler_catalog_entries_url_check CHECK (((length(artifact_url) >= 9) AND (length(artifact_url) <= 4096))),
-    CONSTRAINT compiler_catalog_entries_version_check CHECK (((length(version) >= 1) AND (length(version) <= 128)))
+    CONSTRAINT compiler_catalog_entries_version_check CHECK (((length(version) >= 1) AND (length(version) <= 128))),
+    CONSTRAINT compiler_catalog_entries_generation_language_key UNIQUE (generation_id, language, version, platform, artifact_sha256),
+    CONSTRAINT compiler_catalog_entries_pkey PRIMARY KEY (generation_id, version),
+    CONSTRAINT compiler_catalog_entries_generation_fk FOREIGN KEY (generation_id, language) REFERENCES compiler_catalog_generations(id, language) ON DELETE RESTRICT
 );
-
--- Table: compiler_catalog_generations
-
-CREATE TABLE compiler_catalog_generations (
-    id bigint NOT NULL,
-    language text NOT NULL,
-    source_url text NOT NULL,
-    catalog_digest bytea NOT NULL,
-    fetched_at timestamp with time zone DEFAULT now() NOT NULL,
-    entry_count integer NOT NULL,
-    CONSTRAINT compiler_catalog_generations_count_check CHECK (((entry_count >= 1) AND (entry_count <= 4096))),
-    CONSTRAINT compiler_catalog_generations_digest_check CHECK ((octet_length(catalog_digest) = 32)),
-    CONSTRAINT compiler_catalog_generations_language_check CHECK ((language = ANY (ARRAY['solidity'::text, 'vyper'::text]))),
-    CONSTRAINT compiler_catalog_generations_source_check CHECK (((length(source_url) >= 9) AND (length(source_url) <= 4096)))
-);
-
--- Sequence: compiler_catalog_generations_id_seq
-
-ALTER TABLE compiler_catalog_generations ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME compiler_catalog_generations_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
-);
-
--- Table: compiler_catalog_heads
 
 CREATE TABLE compiler_catalog_heads (
     language text NOT NULL,
     generation_id bigint NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT compiler_catalog_heads_language_check CHECK ((language = ANY (ARRAY['solidity'::text, 'vyper'::text])))
+    CONSTRAINT compiler_catalog_heads_language_check CHECK ((language = ANY (ARRAY['solidity'::text, 'vyper'::text]))),
+    CONSTRAINT compiler_catalog_heads_pkey PRIMARY KEY (language),
+    CONSTRAINT compiler_catalog_heads_generation_fk FOREIGN KEY (generation_id, language) REFERENCES compiler_catalog_generations(id, language) ON DELETE RESTRICT
 );
-
--- Table: contract_abis
 
 CREATE TABLE contract_abis (
     chain_id numeric(78,0) NOT NULL,
@@ -4056,10 +3766,11 @@ CREATE TABLE contract_abis (
     CONSTRAINT contract_abis_source_code_hash_check CHECK ((octet_length(source_code_hash) = 32)),
     CONSTRAINT contract_abis_source_identity_v3_check CHECK (((source = ANY (ARRAY['code_hash'::text, 'proxy_implementation'::text, 'diamond_facet'::text])) OR ((source_address = address) AND (source_code_hash = code_hash)))),
     CONSTRAINT contract_abis_source_v3_check CHECK ((source = ANY (ARRAY['verified'::text, 'code_hash'::text, 'proxy_implementation'::text, 'diamond_facet'::text, 'signature_database'::text]))),
-    CONSTRAINT contract_abis_valid_from_block_check CHECK ((valid_from_block >= (0)::numeric))
+    CONSTRAINT contract_abis_valid_from_block_check CHECK ((valid_from_block >= (0)::numeric)),
+    CONSTRAINT contract_abis_pkey PRIMARY KEY (chain_id, address, code_hash, source, source_address, source_code_hash, selector_scope, valid_from_block, block_hash),
+    CONSTRAINT contract_abis_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash),
+    CONSTRAINT contract_abis_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
-
--- Table: contract_code_observations
 
 CREATE TABLE contract_code_observations (
     chain_id numeric(78,0) NOT NULL,
@@ -4072,10 +3783,11 @@ CREATE TABLE contract_code_observations (
     observed_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT contract_code_observations_address_check CHECK ((octet_length(address) = 20)),
     CONSTRAINT contract_code_observations_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT contract_code_observations_code_hash_check CHECK ((octet_length(code_hash) = 32))
+    CONSTRAINT contract_code_observations_code_hash_check CHECK ((octet_length(code_hash) = 32)),
+    CONSTRAINT contract_code_observations_pkey PRIMARY KEY (chain_id, address, block_hash),
+    CONSTRAINT contract_code_observations_chain_id_block_number_block_has_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash),
+    CONSTRAINT contract_code_observations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
-
--- Table: core_backfill_leases
 
 CREATE TABLE core_backfill_leases (
     chain_id numeric(78,0) NOT NULL,
@@ -4090,10 +3802,11 @@ CREATE TABLE core_backfill_leases (
     CONSTRAINT core_backfill_leases_check1 CHECK (((range_end - range_start) < (256)::numeric)),
     CONSTRAINT core_backfill_leases_check2 CHECK ((expires_at > claimed_at)),
     CONSTRAINT core_backfill_leases_owner_check CHECK (((length(owner) >= 1) AND (length(owner) <= 128))),
-    CONSTRAINT core_backfill_leases_range_start_check CHECK ((range_start >= (0)::numeric))
+    CONSTRAINT core_backfill_leases_range_start_check CHECK ((range_start >= (0)::numeric)),
+    CONSTRAINT core_backfill_leases_lease_token_key UNIQUE (lease_token),
+    CONSTRAINT core_backfill_leases_pkey PRIMARY KEY (chain_id, range_start, range_end),
+    CONSTRAINT core_backfill_leases_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
-
--- Table: core_coverage_ranges
 
 CREATE TABLE core_coverage_ranges (
     chain_id numeric(78,0) NOT NULL,
@@ -4101,20 +3814,183 @@ CREATE TABLE core_coverage_ranges (
     range_end numeric(78,0) NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT core_coverage_ranges_check CHECK ((range_end >= range_start)),
-    CONSTRAINT core_coverage_ranges_range_start_check CHECK ((range_start >= (0)::numeric))
+    CONSTRAINT core_coverage_ranges_range_start_check CHECK ((range_start >= (0)::numeric)),
+    CONSTRAINT core_coverage_ranges_pkey PRIMARY KEY (chain_id, range_start),
+    CONSTRAINT core_coverage_ranges_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
 
--- Table: core_index_configuration
+CREATE UNIQUE INDEX core_coverage_ranges_end_uq ON core_coverage_ranges USING btree (chain_id, range_end);
 
 CREATE TABLE core_index_configuration (
     chain_id numeric(78,0) NOT NULL,
     configured_start numeric(78,0) NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT core_index_configuration_configured_start_check CHECK ((configured_start >= (0)::numeric))
+    CONSTRAINT core_index_configuration_configured_start_check CHECK ((configured_start >= (0)::numeric)),
+    CONSTRAINT core_index_configuration_pkey PRIMARY KEY (chain_id),
+    CONSTRAINT core_index_configuration_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
 
--- Table: derived_verification_attempts
+CREATE TABLE transaction_inclusions (
+    chain_id numeric(78,0) NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL,
+    tx_index bigint NOT NULL,
+    tx_hash bytea NOT NULL,
+    raw jsonb NOT NULL,
+    CONSTRAINT transaction_inclusions_tx_index_check CHECK ((tx_index >= 0)),
+    CONSTRAINT transaction_inclusions_chain_id_block_number_block_hash_tx__key UNIQUE (chain_id, block_number, block_hash, tx_hash),
+    CONSTRAINT transaction_inclusions_position_hash_key UNIQUE (chain_id, block_number, block_hash, tx_index, tx_hash),
+    CONSTRAINT transaction_inclusions_pkey PRIMARY KEY (chain_id, block_number, block_hash, tx_index),
+    CONSTRAINT transaction_inclusions_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash),
+    CONSTRAINT transaction_inclusions_chain_id_tx_hash_fkey FOREIGN KEY (chain_id, tx_hash) REFERENCES transactions(chain_id, hash)
+)
+PARTITION BY RANGE (block_number);
+
+CREATE TABLE normalized_traces (
+    chain_id numeric(78,0) NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL,
+    transaction_hash bytea NOT NULL,
+    transaction_index bigint NOT NULL,
+    trace_path text NOT NULL,
+    parent_path text,
+    depth integer NOT NULL,
+    call_type text NOT NULL,
+    from_address bytea,
+    to_address bytea,
+    created_address bytea,
+    value numeric(78,0),
+    gas numeric(78,0),
+    gas_used numeric(78,0),
+    input bytea,
+    output bytea,
+    error text,
+    reverted boolean NOT NULL,
+    canonical boolean NOT NULL,
+    direct_reverted boolean DEFAULT false NOT NULL,
+    execution_address bytea,
+    execution_code_hash bytea,
+    execution_resolution text DEFAULT 'unavailable'::text NOT NULL,
+    CONSTRAINT normalized_traces_block_hash_check CHECK ((octet_length(block_hash) = 32)),
+    CONSTRAINT normalized_traces_created_address_check CHECK (((created_address IS NULL) OR (octet_length(created_address) = 20))),
+    CONSTRAINT normalized_traces_depth_check CHECK ((depth >= 0)),
+    CONSTRAINT normalized_traces_execution_address_length_check CHECK (((execution_address IS NULL) OR (octet_length(execution_address) = 20))),
+    CONSTRAINT normalized_traces_execution_code_hash_length_check CHECK (((execution_code_hash IS NULL) OR (octet_length(execution_code_hash) = 32))),
+    CONSTRAINT normalized_traces_execution_identity_check CHECK ((((execution_resolution = ANY (ARRAY['direct'::text, 'eip7702_delegate'::text])) AND (execution_address IS NOT NULL) AND (execution_code_hash IS NOT NULL)) OR ((execution_resolution = ANY (ARRAY['empty'::text, 'not_applicable'::text])) AND (execution_address IS NULL) AND (execution_code_hash IS NULL)) OR ((execution_resolution = 'unavailable'::text) AND (execution_code_hash IS NULL)))),
+    CONSTRAINT normalized_traces_execution_resolution_check CHECK ((execution_resolution = ANY (ARRAY['direct'::text, 'eip7702_delegate'::text, 'empty'::text, 'unavailable'::text, 'not_applicable'::text]))),
+    CONSTRAINT normalized_traces_from_address_check CHECK (((from_address IS NULL) OR (octet_length(from_address) = 20))),
+    CONSTRAINT normalized_traces_gas_check CHECK (((gas IS NULL) OR (gas >= (0)::numeric))),
+    CONSTRAINT normalized_traces_gas_used_check CHECK (((gas_used IS NULL) OR (gas_used >= (0)::numeric))),
+    CONSTRAINT normalized_traces_to_address_check CHECK (((to_address IS NULL) OR (octet_length(to_address) = 20))),
+    CONSTRAINT normalized_traces_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
+    CONSTRAINT normalized_traces_value_check CHECK (((value IS NULL) OR (value >= (0)::numeric))),
+    CONSTRAINT normalized_traces_pkey PRIMARY KEY (chain_id, block_number, block_hash, transaction_hash, trace_path),
+    CONSTRAINT normalized_traces_chain_id_block_number_block_hash_transac_fkey FOREIGN KEY (chain_id, block_number, block_hash, transaction_index) REFERENCES transaction_inclusions(chain_id, block_number, block_hash, tx_index)
+)
+PARTITION BY RANGE (block_number);
+
+CREATE TABLE verification_jobs (
+    id uuid NOT NULL,
+    kind text NOT NULL,
+    language text,
+    catalog_language text,
+    compiler_version text,
+    compiler_platform text,
+    catalog_generation_id bigint,
+    compiler_digest bytea,
+    executor_digest bytea,
+    chain_id numeric(78,0),
+    address bytea,
+    code_hash bytea,
+    block_hash bytea,
+    request jsonb NOT NULL,
+    request_payload bytea NOT NULL,
+    request_digest bytea NOT NULL,
+    status text DEFAULT 'queued'::text NOT NULL,
+    leased_by text,
+    lease_token text,
+    lease_expires_at timestamp with time zone,
+    attempt_count integer DEFAULT 0 NOT NULL,
+    max_attempts integer DEFAULT 3 NOT NULL,
+    outcome_kind text,
+    outcome jsonb,
+    error_code text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    executor_kind text,
+    execution_policy text,
+    CONSTRAINT verification_jobs_attempt_check CHECK (((attempt_count >= 0) AND ((max_attempts >= 1) AND (max_attempts <= 100)) AND (attempt_count <= max_attempts))),
+    CONSTRAINT verification_jobs_catalog_language_check CHECK (((catalog_language IS NULL) OR (catalog_language = ANY (ARRAY['solidity'::text, 'vyper'::text])))),
+    CONSTRAINT verification_jobs_compiler_check CHECK ((((kind = ANY (ARRAY['sourcify'::text, 'sourcify_from_etherscan'::text, 'proxy'::text])) AND (language IS NULL) AND (compiler_version IS NULL) AND (compiler_platform IS NULL) AND (catalog_language IS NULL) AND (catalog_generation_id IS NULL) AND (compiler_digest IS NULL) AND (executor_kind IS NULL) AND (execution_policy IS NULL) AND (executor_digest IS NULL)) OR ((kind <> ALL (ARRAY['sourcify'::text, 'sourcify_from_etherscan'::text, 'proxy'::text])) AND (language = ANY (ARRAY['solidity'::text, 'yul'::text])) AND ((length(compiler_version) >= 1) AND (length(compiler_version) <= 128)) AND (catalog_language = 'solidity'::text) AND (((compiler_platform IS NULL) AND (catalog_generation_id IS NULL) AND (compiler_digest IS NULL) AND (executor_kind IS NULL) AND (execution_policy IS NULL) AND (executor_digest IS NULL) AND (status <> 'succeeded'::text)) OR ((compiler_platform = ANY (ARRAY['bin'::text, 'emscripten-asmjs'::text, 'emscripten-wasm32'::text, 'linux-amd64'::text, 'linux-arm64'::text, 'macosx-amd64'::text, 'wasm'::text, 'windows-amd64'::text])) AND (catalog_generation_id IS NOT NULL) AND (octet_length(compiler_digest) = 32) AND (((executor_kind = 'node_solcjs_v1'::text) AND (execution_policy = 'trusted_subprocess'::text) AND (octet_length(executor_digest) = 32) AND (compiler_platform = 'emscripten-wasm32'::text)) OR ((executor_kind = 'legacy_runner'::text) AND (execution_policy = 'legacy_hard_isolation'::text) AND (octet_length(executor_digest) = 32)) OR ((executor_kind = 'legacy_process'::text) AND (execution_policy = 'legacy_trusted_process'::text) AND (executor_digest IS NULL)))))) OR ((((kind = 'address'::text) AND (language = 'geas'::text) AND (compiler_version = '0.3.3'::text)) OR ((kind = ANY (ARRAY['address'::text, 'vyper_standard_json'::text, 'vyper_multipart'::text])) AND (language = 'vyper'::text) AND (compiler_version = '0.4.3'::text) AND (status = ANY (ARRAY['succeeded'::text, 'failed'::text, 'cancelled'::text])))) AND (catalog_language IS NULL) AND (((compiler_platform IS NULL) AND (catalog_generation_id IS NULL) AND (compiler_digest IS NULL) AND (executor_kind IS NULL) AND (execution_policy IS NULL) AND (executor_digest IS NULL) AND (status <> 'succeeded'::text)) OR ((((language = 'geas'::text) AND (compiler_platform = 'go-module'::text) AND (executor_kind = 'etherview_geas_v1'::text)) OR ((language = 'vyper'::text) AND (compiler_platform = 'python-wheel'::text) AND (executor_kind = 'etherview_vyper_v1'::text) AND (compiler_digest = decode('3b9671727c888363740dc678e60336759871487d0e4e9fdd973048fa9635c4fd'::text, 'hex'::text)))) AND (catalog_generation_id IS NULL) AND (octet_length(compiler_digest) = 32) AND (execution_policy = 'trusted_subprocess'::text) AND (octet_length(executor_digest) = 32)))) OR (((kind = ANY (ARRAY['address'::text, 'vyper_standard_json'::text, 'vyper_multipart'::text])) AND (language = 'vyper'::text) AND (catalog_language = 'vyper'::text) AND (compiler_version ~ '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'::text) AND (((compiler_platform IS NULL) AND (catalog_generation_id IS NULL) AND (compiler_digest IS NULL) AND (executor_kind IS NULL) AND (execution_policy IS NULL) AND (executor_digest IS NULL) AND (status <> 'succeeded'::text)) OR ((compiler_platform = 'python-wheel'::text) AND (catalog_generation_id IS NOT NULL) AND (octet_length(compiler_digest) = 32) AND ((executor_kind = 'node_vyper_wasm_v1'::text) OR ((executor_kind = 'etherview_vyper_v3'::text) AND (status = ANY (ARRAY['succeeded'::text, 'failed'::text, 'cancelled'::text])))) AND (execution_policy = 'trusted_subprocess'::text) AND (octet_length(executor_digest) = 32)))) IS TRUE))),
+    CONSTRAINT verification_jobs_kind_check CHECK ((kind = ANY (ARRAY['address'::text, 'derived'::text, 'proxy'::text, 'sourcify'::text, 'sourcify_from_etherscan'::text, 'solidity_multipart'::text, 'solidity_standard_json'::text, 'solidity_batch_multipart'::text, 'solidity_batch_standard_json'::text, 'vyper_multipart'::text, 'vyper_standard_json'::text]))),
+    CONSTRAINT verification_jobs_language_check CHECK (((language IS NULL) OR (language = ANY (ARRAY['solidity'::text, 'yul'::text, 'geas'::text, 'vyper'::text])))),
+    CONSTRAINT verification_jobs_lease_check CHECK ((((leased_by IS NULL) = (lease_token IS NULL)) AND ((leased_by IS NULL) = (lease_expires_at IS NULL)) AND ((status = 'running'::text) = (leased_by IS NOT NULL)))),
+    CONSTRAINT verification_jobs_request_check CHECK (((jsonb_typeof(request) = 'object'::text) AND ((octet_length(request_payload) >= 2) AND (octet_length(request_payload) <= 67108864)) AND (request = (convert_from(request_payload, 'UTF8'::name))::jsonb) AND (octet_length(request_digest) = 32))),
+    CONSTRAINT verification_jobs_result_size_check CHECK (((outcome IS NULL) OR (octet_length((outcome)::text) <= 268435456))),
+    CONSTRAINT verification_jobs_status_check CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text, 'succeeded'::text, 'failed'::text, 'cancelled'::text]))),
+    CONSTRAINT verification_jobs_target_check CHECK ((((kind = ANY (ARRAY['address'::text, 'proxy'::text, 'derived'::text])) AND (chain_id IS NOT NULL) AND (octet_length(address) = 20) AND (octet_length(code_hash) = 32) AND (octet_length(block_hash) = 32)) OR ((kind <> ALL (ARRAY['address'::text, 'proxy'::text, 'derived'::text])) AND (chain_id IS NULL) AND (address IS NULL) AND (code_hash IS NULL) AND (block_hash IS NULL)))),
+    CONSTRAINT verification_jobs_terminal_check CHECK ((((status = ANY (ARRAY['queued'::text, 'running'::text, 'cancelled'::text])) AND (outcome_kind IS NULL) AND (outcome IS NULL) AND (error_code IS NULL)) OR ((status = 'succeeded'::text) AND (outcome_kind = ANY (ARRAY['compilation_failure'::text, 'verification_failure'::text, 'verification_success'::text, 'batch_results'::text, 'sourcify_success'::text, 'proxy_verification_success'::text])) AND (jsonb_typeof(outcome) = 'object'::text) AND (error_code IS NULL)) OR ((status = 'failed'::text) AND (outcome_kind IS NULL) AND (outcome IS NULL) AND ((length(error_code) >= 1) AND (length(error_code) <= 64))))),
+    CONSTRAINT verification_jobs_vyper_request_check CHECK ((((kind <> ALL (ARRAY['vyper_standard_json'::text, 'vyper_multipart'::text])) OR (language = 'vyper'::text)) AND ((language IS DISTINCT FROM 'vyper'::text) OR ((((request ->> 'target_file'::text) IS NOT NULL) AND ((request #>> '{standard_json,language}'::text[]) = 'Vyper'::text) AND (jsonb_typeof((request #> '{standard_json,sources}'::text[])) = 'object'::text) AND ((request #> '{standard_json,sources}'::text[]) ? (request ->> 'target_file'::text))) IS TRUE)))),
+    CONSTRAINT verification_jobs_pkey PRIMARY KEY (id),
+    CONSTRAINT verification_jobs_catalog_fk FOREIGN KEY (catalog_generation_id, catalog_language, compiler_version, compiler_platform, compiler_digest) REFERENCES compiler_catalog_entries(generation_id, language, version, platform, artifact_sha256) ON DELETE RESTRICT,
+    CONSTRAINT verification_jobs_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
+);
+
+CREATE TABLE verification_results (
+    job_id uuid NOT NULL,
+    request_digest bytea NOT NULL,
+    outcome_kind text NOT NULL,
+    outcome jsonb NOT NULL,
+    file_name text,
+    contract_name text,
+    language text,
+    compiler_version text,
+    match_type text,
+    abi jsonb,
+    sources jsonb,
+    settings jsonb,
+    compilation_artifacts jsonb,
+    creation_code_artifacts jsonb,
+    runtime_code_artifacts jsonb,
+    constructor_arguments bytea,
+    libraries jsonb,
+    is_blueprint boolean,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    proxy_artifact_kind text,
+    proxy_standard_version text,
+    proxy_runtime_immutable_address bytea,
+    proxy_source_manifest_sha256 bytea,
+    CONSTRAINT verification_results_digest_check CHECK ((octet_length(request_digest) = 32)),
+    CONSTRAINT verification_results_outcome_check CHECK (((outcome_kind = ANY (ARRAY['compilation_failure'::text, 'verification_failure'::text, 'verification_success'::text, 'batch_results'::text, 'sourcify_success'::text, 'proxy_verification_success'::text])) AND (jsonb_typeof(outcome) = 'object'::text) AND (octet_length((outcome)::text) <= 268435456))),
+    CONSTRAINT verification_results_proxy_attestation_shape CHECK ((((proxy_artifact_kind IS NULL) AND (proxy_standard_version IS NULL) AND (proxy_runtime_immutable_address IS NULL) AND (proxy_source_manifest_sha256 IS NULL)) OR ((outcome_kind = 'verification_success'::text) AND (proxy_artifact_kind IS NOT NULL) AND (proxy_artifact_kind = ANY (ARRAY['erc1967_proxy'::text, 'transparent_proxy'::text, 'beacon_proxy'::text, 'uups_implementation'::text, 'proxy_admin'::text, 'upgradeable_beacon'::text])) AND (proxy_standard_version = '5.6.1'::text) AND (proxy_source_manifest_sha256 IS NOT NULL) AND (octet_length(proxy_source_manifest_sha256) = 32) AND (proxy_source_manifest_sha256 <> decode(repeat('00'::text, 32), 'hex'::text)) AND (((proxy_artifact_kind = ANY (ARRAY['transparent_proxy'::text, 'beacon_proxy'::text, 'uups_implementation'::text])) AND (proxy_runtime_immutable_address IS NOT NULL) AND (octet_length(proxy_runtime_immutable_address) = 20) AND (proxy_runtime_immutable_address <> decode(repeat('00'::text, 20), 'hex'::text))) OR ((proxy_artifact_kind <> ALL (ARRAY['transparent_proxy'::text, 'beacon_proxy'::text, 'uups_implementation'::text])) AND (proxy_runtime_immutable_address IS NULL)))))),
+    CONSTRAINT verification_results_success_shape_check CHECK ((((outcome_kind <> 'verification_success'::text) AND (file_name IS NULL) AND (contract_name IS NULL) AND (language IS NULL) AND (compiler_version IS NULL) AND (match_type IS NULL) AND (abi IS NULL) AND (sources IS NULL) AND (settings IS NULL) AND (compilation_artifacts IS NULL) AND (creation_code_artifacts IS NULL) AND (runtime_code_artifacts IS NULL) AND (constructor_arguments IS NULL) AND (libraries IS NULL) AND (is_blueprint IS NULL)) OR ((outcome_kind = 'verification_success'::text) AND (length(file_name) BETWEEN 1 AND 512) AND ((length(contract_name) >= 1) AND (length(contract_name) <= 256)) AND (language = ANY (ARRAY['solidity'::text, 'yul'::text, 'geas'::text, 'vyper'::text])) AND ((length(compiler_version) >= 1) AND (length(compiler_version) <= 128)) AND (match_type = ANY (ARRAY['full'::text, 'partial'::text])) AND ((abi IS NULL) OR (jsonb_typeof(abi) = 'array'::text)) AND (jsonb_typeof(sources) = 'object'::text) AND (jsonb_typeof(settings) = 'object'::text) AND (jsonb_typeof(compilation_artifacts) = 'object'::text) AND (jsonb_typeof(creation_code_artifacts) = 'object'::text) AND (jsonb_typeof(runtime_code_artifacts) = 'object'::text) AND (jsonb_typeof(libraries) = 'object'::text) AND (is_blueprint IS NOT NULL) AND ((language <> 'geas'::text) OR (((compiler_version = '0.3.3'::text) AND (match_type = 'full'::text) AND (abi = '[]'::jsonb) AND (compilation_artifacts = '{}'::jsonb) AND (creation_code_artifacts = '{}'::jsonb) AND (runtime_code_artifacts = '{}'::jsonb) AND (libraries = '{}'::jsonb) AND (constructor_arguments IS NULL) AND (is_blueprint = false) AND (jsonb_typeof((settings -> 'runtime_entrypoint'::text)) = 'string'::text) AND ((settings -> 'stack_check'::text) = 'true'::jsonb) AND ((settings - ARRAY['runtime_entrypoint'::text, 'creation_entrypoint'::text, 'stack_check'::text]) = '{}'::jsonb) AND valid_geas_verification_sources(sources) AND ((outcome #>> '{runtime_match,match_type}'::text[]) = 'full'::text) AND ((outcome #> '{runtime_match,transformations}'::text[]) = '[]'::jsonb) AND ((outcome #> '{runtime_match,values}'::text[]) = '{}'::jsonb) AND (((jsonb_typeof((settings -> 'creation_entrypoint'::text)) = 'string'::text) AND ((outcome #>> '{creation_match,match_type}'::text[]) = 'full'::text) AND ((outcome #> '{creation_match,transformations}'::text[]) = '[]'::jsonb) AND ((outcome #> '{creation_match,values}'::text[]) = '{}'::jsonb)) OR ((NOT (settings ? 'creation_entrypoint'::text)) AND ((outcome -> 'creation_match'::text) = 'null'::jsonb)))) IS TRUE))))),
+    CONSTRAINT verification_results_job_digest_key UNIQUE (job_id, request_digest),
+    CONSTRAINT verification_results_pkey PRIMARY KEY (job_id),
+    CONSTRAINT verification_results_job_id_fkey FOREIGN KEY (job_id) REFERENCES verification_jobs(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE verification_compilation_units (
+    id uuid NOT NULL,
+    source_job_id uuid NOT NULL,
+    request_digest bytea NOT NULL,
+    language text NOT NULL,
+    compiler_version text NOT NULL,
+    compiler_platform text NOT NULL,
+    catalog_generation_id bigint NOT NULL,
+    compiler_sha256 bytea NOT NULL,
+    executor_kind text NOT NULL,
+    execution_policy text NOT NULL,
+    executor_sha256 bytea NOT NULL,
+    standard_json jsonb NOT NULL,
+    standard_json_payload bytea NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT verification_compilation_units_shape_check CHECK (((octet_length(request_digest) = 32) AND (language = 'solidity'::text) AND ((length(compiler_version) >= 1) AND (length(compiler_version) <= 128)) AND ((length(compiler_platform) >= 1) AND (length(compiler_platform) <= 64)) AND (catalog_generation_id > 0) AND (octet_length(compiler_sha256) = 32) AND ((length(executor_kind) >= 1) AND (length(executor_kind) <= 64)) AND ((length(execution_policy) >= 1) AND (length(execution_policy) <= 64)) AND (octet_length(executor_sha256) = 32) AND (jsonb_typeof(standard_json) = 'object'::text) AND ((octet_length(standard_json_payload) >= 2) AND (octet_length(standard_json_payload) <= 67108864)) AND (standard_json = (convert_from(standard_json_payload, 'UTF8'::name))::jsonb))),
+    CONSTRAINT verification_compilation_units_pkey PRIMARY KEY (id),
+    CONSTRAINT verification_compilation_units_source_job_id_key UNIQUE (source_job_id),
+    CONSTRAINT verification_compilation_units_job_digest_fk FOREIGN KEY (source_job_id, request_digest) REFERENCES verification_results(job_id, request_digest) ON DELETE RESTRICT,
+    CONSTRAINT verification_compilation_units_source_job_id_fkey FOREIGN KEY (source_job_id) REFERENCES verification_jobs(id) ON DELETE RESTRICT
+);
 
 CREATE TABLE derived_verification_attempts (
     id uuid NOT NULL,
@@ -4138,33 +4014,55 @@ CREATE TABLE derived_verification_attempts (
     stale_from_status text,
     CONSTRAINT derived_verification_attempts_identity_check CHECK (((octet_length(block_hash) = 32) AND (octet_length(transaction_hash) = 32) AND ((length(trace_path) >= 1) AND (length(trace_path) <= 2048)) AND (octet_length(creator_address) = 20) AND (octet_length(created_address) = 20) AND (call_type = ANY (ARRAY['CREATE'::text, 'CREATE2'::text])))),
     CONSTRAINT derived_verification_attempts_outcome_check CHECK ((((status = 'matched'::text) AND (stale_from_status IS NULL) AND (file_name IS NOT NULL) AND (contract_name IS NOT NULL) AND (jsonb_typeof(creation_match) = 'object'::text) AND (jsonb_typeof(runtime_match) = 'object'::text) AND (verification_job_id IS NOT NULL)) OR ((status <> ALL (ARRAY['matched'::text, 'stale'::text])) AND (stale_from_status IS NULL) AND (file_name IS NULL) AND (contract_name IS NULL) AND (creation_match IS NULL) AND (runtime_match IS NULL) AND (verification_job_id IS NULL)) OR ((status = 'stale'::text) AND (stale_from_status IS NULL) AND (file_name IS NULL) AND (contract_name IS NULL) AND (creation_match IS NULL) AND (runtime_match IS NULL) AND (verification_job_id IS NULL)) OR ((status = 'stale'::text) AND (stale_from_status IS NOT NULL) AND (((stale_from_status = 'matched'::text) AND (file_name IS NOT NULL) AND (contract_name IS NOT NULL) AND (jsonb_typeof(creation_match) = 'object'::text) AND (jsonb_typeof(runtime_match) = 'object'::text) AND (verification_job_id IS NOT NULL)) OR ((stale_from_status <> 'matched'::text) AND (file_name IS NULL) AND (contract_name IS NULL) AND (creation_match IS NULL) AND (runtime_match IS NULL) AND (verification_job_id IS NULL)))))),
-    CONSTRAINT derived_verification_attempts_status_check CHECK (((status = ANY (ARRAY['pending_runtime'::text, 'matched'::text, 'ambiguous'::text, 'no_match'::text, 'runtime_mismatch'::text, 'stale'::text])) AND ((stale_from_status IS NULL) OR (stale_from_status = ANY (ARRAY['pending_runtime'::text, 'matched'::text, 'ambiguous'::text, 'no_match'::text, 'runtime_mismatch'::text])))))
+    CONSTRAINT derived_verification_attempts_status_check CHECK (((status = ANY (ARRAY['pending_runtime'::text, 'matched'::text, 'ambiguous'::text, 'no_match'::text, 'runtime_mismatch'::text, 'stale'::text])) AND ((stale_from_status IS NULL) OR (stale_from_status = ANY (ARRAY['pending_runtime'::text, 'matched'::text, 'ambiguous'::text, 'no_match'::text, 'runtime_mismatch'::text]))))),
+    CONSTRAINT derived_verification_attempts_chain_id_block_hash_transacti_key UNIQUE (chain_id, block_hash, transaction_hash, trace_path, compilation_id),
+    CONSTRAINT derived_verification_attempts_pkey PRIMARY KEY (id),
+    CONSTRAINT derived_verification_attempts_compilation_id_fkey FOREIGN KEY (compilation_id) REFERENCES verification_compilation_units(id) ON DELETE RESTRICT,
+    CONSTRAINT derived_verification_attempts_trace_fk FOREIGN KEY (chain_id, block_number, block_hash, transaction_hash, trace_path) REFERENCES normalized_traces(chain_id, block_number, block_hash, transaction_hash, trace_path) ON DELETE RESTRICT,
+    CONSTRAINT derived_verification_attempts_verification_job_id_fkey FOREIGN KEY (verification_job_id) REFERENCES verification_jobs(id) ON DELETE RESTRICT
 );
 
--- Table: derived_verification_backfill_requests
-
 CREATE TABLE derived_verification_backfill_requests (
-    id bigint NOT NULL,
+    id bigint NOT NULL GENERATED ALWAYS AS IDENTITY (
+        SEQUENCE NAME derived_verification_backfill_requests_id_seq
+        START WITH 1
+        INCREMENT BY 1
+        NO MINVALUE
+        NO MAXVALUE
+        CACHE 1
+    ),
     chain_id numeric(78,0) NOT NULL,
     creator_address bytea,
     reason text NOT NULL,
     scan_count integer DEFAULT 0 NOT NULL,
     requested_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT derived_verification_backfill_requests_shape_check CHECK ((((creator_address IS NULL) OR (octet_length(creator_address) = 20)) AND ((length(reason) >= 1) AND (length(reason) <= 512)) AND (scan_count >= 0)))
+    CONSTRAINT derived_verification_backfill_requests_shape_check CHECK ((((creator_address IS NULL) OR (octet_length(creator_address) = 20)) AND ((length(reason) >= 1) AND (length(reason) <= 512)) AND (scan_count >= 0))),
+    CONSTRAINT derived_verification_backfill_requests_pkey PRIMARY KEY (id),
+    CONSTRAINT derived_verification_backfill_requests_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
 
--- Sequence: derived_verification_backfill_requests_id_seq
-
-ALTER TABLE derived_verification_backfill_requests ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME derived_verification_backfill_requests_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
+CREATE TABLE durable_stage_publications (
+    job_id bigint NOT NULL,
+    job_generation bigint NOT NULL,
+    chain_id numeric(78,0) NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL,
+    stage text NOT NULL,
+    stage_version integer NOT NULL,
+    state text NOT NULL,
+    details jsonb DEFAULT '{}'::jsonb NOT NULL,
+    last_error text,
+    committed_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    CONSTRAINT durable_stage_publications_block_hash_check CHECK ((octet_length(block_hash) = 32)),
+    CONSTRAINT durable_stage_publications_check CHECK ((((state = ANY (ARRAY['complete'::text, 'superseded'::text])) AND (last_error IS NULL)) OR ((state = ANY (ARRAY['failed'::text, 'unavailable'::text])) AND (last_error IS NOT NULL)))),
+    CONSTRAINT durable_stage_publications_job_generation_check CHECK ((job_generation > 0)),
+    CONSTRAINT durable_stage_publications_stage_version_check CHECK ((stage_version > 0)),
+    CONSTRAINT durable_stage_publications_state_check CHECK ((state = ANY (ARRAY['complete'::text, 'failed'::text, 'unavailable'::text, 'superseded'::text]))),
+    CONSTRAINT durable_stage_publications_pkey PRIMARY KEY (job_id, job_generation),
+    CONSTRAINT durable_stage_publications_chain_id_block_number_block_has_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash),
+    CONSTRAINT durable_stage_publications_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id),
+    CONSTRAINT durable_stage_publications_job_id_fkey FOREIGN KEY (job_id) REFERENCES durable_jobs(id)
 );
-
--- Table: derived_verification_forward_blocks
 
 CREATE TABLE derived_verification_forward_blocks (
     chain_id numeric(78,0) NOT NULL,
@@ -4179,7 +4077,14 @@ CREATE TABLE derived_verification_forward_blocks (
     last_error text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    id bigint NOT NULL,
+    id bigint NOT NULL GENERATED ALWAYS AS IDENTITY (
+        SEQUENCE NAME derived_verification_forward_blocks_id_seq
+        START WITH 1
+        INCREMENT BY 1
+        NO MINVALUE
+        NO MAXVALUE
+        CACHE 1
+    ),
     source_stage text,
     source_job_id bigint,
     source_generation bigint,
@@ -4187,21 +4092,12 @@ CREATE TABLE derived_verification_forward_blocks (
     CONSTRAINT derived_verification_forward_blocks_identity_check CHECK (((block_number >= (0)::numeric) AND (octet_length(block_hash) = 32))),
     CONSTRAINT derived_verification_forward_blocks_lease_check CHECK ((((leased_by IS NULL) = (lease_token IS NULL)) AND ((leased_by IS NULL) = (lease_expires_at IS NULL)) AND ((status = 'running'::text) = (leased_by IS NOT NULL)))),
     CONSTRAINT derived_verification_forward_blocks_source_check CHECK ((((source_stage = ANY (ARRAY['trace'::text, 'proxy'::text])) AND (source_job_id IS NOT NULL) AND (source_generation IS NOT NULL) AND (source_generation > 0)) OR ((status = 'failed'::text) AND (last_error = 'unbound_source_generation'::text) AND (source_stage IS NULL) AND (source_job_id IS NULL) AND (source_generation IS NULL)))),
-    CONSTRAINT derived_verification_forward_blocks_status_check CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text, 'succeeded'::text, 'failed'::text])))
+    CONSTRAINT derived_verification_forward_blocks_status_check CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text, 'succeeded'::text, 'failed'::text]))),
+    CONSTRAINT derived_verification_forward_blocks_pkey PRIMARY KEY (id),
+    CONSTRAINT derived_verification_forward_blocks_source_unique UNIQUE (source_job_id, source_generation),
+    CONSTRAINT derived_verification_forward__chain_id_block_number_block__fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash) ON DELETE RESTRICT,
+    CONSTRAINT derived_verification_forward_blocks_source_fk FOREIGN KEY (source_job_id, source_generation) REFERENCES durable_stage_publications(job_id, job_generation) ON DELETE RESTRICT
 );
-
--- Sequence: derived_verification_forward_blocks_id_seq
-
-ALTER TABLE derived_verification_forward_blocks ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME derived_verification_forward_blocks_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
-);
-
--- Table: derived_verification_scans
 
 CREATE TABLE derived_verification_scans (
     compilation_id uuid NOT NULL,
@@ -4222,54 +4118,88 @@ CREATE TABLE derived_verification_scans (
     last_error text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    id bigint NOT NULL,
+    id bigint NOT NULL GENERATED ALWAYS AS IDENTITY (
+        SEQUENCE NAME derived_verification_scans_id_seq
+        START WITH 1
+        INCREMENT BY 1
+        NO MINVALUE
+        NO MAXVALUE
+        CACHE 1
+    ),
     rescan_from_block numeric(78,0),
     CONSTRAINT derived_verification_scans_attempt_check CHECK (((attempt_count >= 0) AND ((max_attempts >= 1) AND (max_attempts <= 100)) AND (attempt_count <= max_attempts))),
     CONSTRAINT derived_verification_scans_identity_check CHECK (((octet_length(creator_address) = 20) AND (octet_length(creator_code_hash) = 32) AND (valid_from_block >= (0)::numeric) AND ((valid_to_block IS NULL) OR (valid_to_block >= valid_from_block)) AND (cursor_block_number >= valid_from_block) AND (octet_length(cursor_transaction_hash) = 32) AND (length(cursor_trace_path) <= 2048))),
     CONSTRAINT derived_verification_scans_lease_check CHECK ((((leased_by IS NULL) = (lease_token IS NULL)) AND ((leased_by IS NULL) = (lease_expires_at IS NULL)) AND ((status = 'running'::text) = (leased_by IS NOT NULL)))),
     CONSTRAINT derived_verification_scans_rescan_check CHECK (((rescan_from_block IS NULL) OR ((rescan_from_block >= valid_from_block) AND ((valid_to_block IS NULL) OR (rescan_from_block <= valid_to_block))))),
-    CONSTRAINT derived_verification_scans_status_check CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text, 'succeeded'::text, 'failed'::text])))
+    CONSTRAINT derived_verification_scans_status_check CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text, 'succeeded'::text, 'failed'::text]))),
+    CONSTRAINT derived_verification_scans_pkey PRIMARY KEY (id),
+    CONSTRAINT derived_verification_scans_target_key UNIQUE (compilation_id, creator_address, creator_code_hash, valid_from_block),
+    CONSTRAINT derived_verification_scans_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id),
+    CONSTRAINT derived_verification_scans_compilation_id_fkey FOREIGN KEY (compilation_id) REFERENCES verification_compilation_units(id) ON DELETE RESTRICT
 );
 
--- Sequence: derived_verification_scans_id_seq
+CREATE TABLE receipts (
+    chain_id numeric(78,0) NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL,
+    tx_index bigint NOT NULL,
+    tx_hash bytea NOT NULL,
+    raw jsonb NOT NULL,
+    CONSTRAINT receipts_tx_index_check CHECK ((tx_index >= 0)),
+    CONSTRAINT receipts_chain_id_block_number_block_hash_tx_hash_key UNIQUE (chain_id, block_number, block_hash, tx_hash),
+    CONSTRAINT receipts_pkey PRIMARY KEY (chain_id, block_number, block_hash, tx_index),
+    CONSTRAINT receipts_chain_id_block_number_block_hash_tx_index_fkey FOREIGN KEY (chain_id, block_number, block_hash, tx_index) REFERENCES transaction_inclusions(chain_id, block_number, block_hash, tx_index)
+)
+PARTITION BY RANGE (block_number);
 
-ALTER TABLE derived_verification_scans ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME derived_verification_scans_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
+CREATE TABLE logs (
+    chain_id numeric(78,0) NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL,
+    log_index bigint NOT NULL,
+    tx_index bigint NOT NULL,
+    tx_hash bytea NOT NULL,
+    address bytea NOT NULL,
+    topic0 bytea,
+    raw jsonb NOT NULL,
+    CONSTRAINT logs_address_check CHECK ((octet_length(address) = 20)),
+    CONSTRAINT logs_log_index_check CHECK ((log_index >= 0)),
+    CONSTRAINT logs_topic0_check CHECK (((topic0 IS NULL) OR (octet_length(topic0) = 32))),
+    CONSTRAINT logs_tx_index_check CHECK ((tx_index >= 0)),
+    CONSTRAINT logs_pkey PRIMARY KEY (chain_id, block_number, block_hash, log_index),
+    CONSTRAINT logs_chain_id_block_number_block_hash_tx_index_fkey FOREIGN KEY (chain_id, block_number, block_hash, tx_index) REFERENCES receipts(chain_id, block_number, block_hash, tx_index)
+)
+PARTITION BY RANGE (block_number);
+
+CREATE TABLE diamond_cut_events (
+    chain_id numeric(78,0) NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL,
+    transaction_hash bytea NOT NULL,
+    transaction_index bigint NOT NULL,
+    log_index bigint NOT NULL,
+    diamond_address bytea NOT NULL,
+    init_address bytea NOT NULL,
+    init_calldata bytea NOT NULL,
+    cuts jsonb NOT NULL,
+    stage_version integer DEFAULT 2 NOT NULL,
+    canonical boolean NOT NULL,
+    CONSTRAINT diamond_cut_events_block_hash_check CHECK ((octet_length(block_hash) = 32)),
+    CONSTRAINT diamond_cut_events_cuts_check CHECK ((jsonb_typeof(cuts) = 'array'::text)),
+    CONSTRAINT diamond_cut_events_diamond_address_check CHECK ((octet_length(diamond_address) = 20)),
+    CONSTRAINT diamond_cut_events_init_address_check CHECK ((octet_length(init_address) = 20)),
+    CONSTRAINT diamond_cut_events_log_index_check CHECK ((log_index >= 0)),
+    CONSTRAINT diamond_cut_events_stage_version_check CHECK ((stage_version = 2)),
+    CONSTRAINT diamond_cut_events_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
+    CONSTRAINT diamond_cut_events_transaction_index_check CHECK ((transaction_index >= 0)),
+    CONSTRAINT diamond_cut_events_pkey PRIMARY KEY (chain_id, block_hash, log_index, stage_version),
+    CONSTRAINT diamond_cut_events_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash),
+    CONSTRAINT diamond_cut_events_chain_id_block_number_block_hash_log_in_fkey FOREIGN KEY (chain_id, block_number, block_hash, log_index) REFERENCES logs(chain_id, block_number, block_hash, log_index),
+    CONSTRAINT diamond_cut_events_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
-
--- Table: diamond_loupe_facets
-
-CREATE TABLE diamond_loupe_facets (
-    snapshot_id bigint NOT NULL,
-    facet_address bytea NOT NULL,
-    facet_kind text NOT NULL,
-    code_exists boolean NOT NULL,
-    code_hash bytea,
-    CONSTRAINT diamond_loupe_facets_check CHECK ((((facet_kind = 'facet'::text) AND (code_exists = (code_hash IS NOT NULL))) OR (facet_kind = 'immutable'::text))),
-    CONSTRAINT diamond_loupe_facets_code_hash_check CHECK (((code_hash IS NULL) OR (octet_length(code_hash) = 32))),
-    CONSTRAINT diamond_loupe_facets_facet_address_check CHECK ((octet_length(facet_address) = 20)),
-    CONSTRAINT diamond_loupe_facets_facet_kind_check CHECK ((facet_kind = ANY (ARRAY['facet'::text, 'immutable'::text])))
-);
-
--- Table: diamond_loupe_selectors
-
-CREATE TABLE diamond_loupe_selectors (
-    snapshot_id bigint NOT NULL,
-    selector bytea NOT NULL,
-    facet_address bytea NOT NULL,
-    CONSTRAINT diamond_loupe_selectors_facet_address_check CHECK ((octet_length(facet_address) = 20)),
-    CONSTRAINT diamond_loupe_selectors_selector_check CHECK ((octet_length(selector) = 4))
-);
-
--- Table: diamond_loupe_snapshots
 
 CREATE TABLE diamond_loupe_snapshots (
-    id bigint NOT NULL,
+    id bigint NOT NULL DEFAULT nextval('diamond_loupe_snapshots_id_seq'::regclass),
     chain_id numeric(78,0) NOT NULL,
     diamond_address bytea NOT NULL,
     block_number numeric(78,0) NOT NULL,
@@ -4299,23 +4229,56 @@ CREATE TABLE diamond_loupe_snapshots (
     CONSTRAINT diamond_loupe_snapshots_standard_diamond_cut_check CHECK ((standard_diamond_cut = ANY (ARRAY['present'::text, 'absent'::text, 'unknown'::text]))),
     CONSTRAINT diamond_loupe_snapshots_truncation_reason_check CHECK (((truncation_reason IS NULL) OR (truncation_reason <> ''::text))),
     CONSTRAINT diamond_loupe_snapshots_validation_check CHECK ((validation = ANY (ARRAY['full'::text, 'sampled'::text, 'interface-only'::text]))),
-    CONSTRAINT diamond_loupe_snapshots_warnings_check CHECK ((jsonb_typeof(warnings) = 'array'::text))
+    CONSTRAINT diamond_loupe_snapshots_warnings_check CHECK ((jsonb_typeof(warnings) = 'array'::text)),
+    CONSTRAINT diamond_loupe_snapshots_chain_id_diamond_address_block_hash_key UNIQUE NULLS NOT DISTINCT (chain_id, diamond_address, block_hash, stage_version, durable_job_id, job_generation),
+    CONSTRAINT diamond_loupe_snapshots_pkey PRIMARY KEY (id),
+    CONSTRAINT diamond_loupe_snapshots_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash),
+    CONSTRAINT diamond_loupe_snapshots_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id),
+    CONSTRAINT diamond_loupe_snapshots_durable_job_id_fkey FOREIGN KEY (durable_job_id) REFERENCES durable_jobs(id)
 );
 
--- Sequence: diamond_loupe_snapshots_id_seq
+CREATE TABLE diamond_loupe_facets (
+    snapshot_id bigint NOT NULL,
+    facet_address bytea NOT NULL,
+    facet_kind text NOT NULL,
+    code_exists boolean NOT NULL,
+    code_hash bytea,
+    CONSTRAINT diamond_loupe_facets_check CHECK ((((facet_kind = 'facet'::text) AND (code_exists = (code_hash IS NOT NULL))) OR (facet_kind = 'immutable'::text))),
+    CONSTRAINT diamond_loupe_facets_code_hash_check CHECK (((code_hash IS NULL) OR (octet_length(code_hash) = 32))),
+    CONSTRAINT diamond_loupe_facets_facet_address_check CHECK ((octet_length(facet_address) = 20)),
+    CONSTRAINT diamond_loupe_facets_facet_kind_check CHECK ((facet_kind = ANY (ARRAY['facet'::text, 'immutable'::text]))),
+    CONSTRAINT diamond_loupe_facets_pkey PRIMARY KEY (snapshot_id, facet_address),
+    CONSTRAINT diamond_loupe_facets_snapshot_id_fkey FOREIGN KEY (snapshot_id) REFERENCES diamond_loupe_snapshots(id) ON DELETE CASCADE
+);
 
-CREATE SEQUENCE diamond_loupe_snapshots_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
+CREATE TABLE diamond_loupe_selectors (
+    snapshot_id bigint NOT NULL,
+    selector bytea NOT NULL,
+    facet_address bytea NOT NULL,
+    CONSTRAINT diamond_loupe_selectors_facet_address_check CHECK ((octet_length(facet_address) = 20)),
+    CONSTRAINT diamond_loupe_selectors_selector_check CHECK ((octet_length(selector) = 4)),
+    CONSTRAINT diamond_loupe_selectors_pkey PRIMARY KEY (snapshot_id, selector),
+    CONSTRAINT diamond_loupe_selectors_snapshot_id_facet_address_fkey FOREIGN KEY (snapshot_id, facet_address) REFERENCES diamond_loupe_facets(snapshot_id, facet_address) ON DELETE CASCADE
+);
 
--- Sequence Owned By: diamond_loupe_snapshots_id_seq
-
-ALTER SEQUENCE diamond_loupe_snapshots_id_seq OWNED BY diamond_loupe_snapshots.id;
-
--- Table: durable_job_replay_requests
+CREATE TABLE diamond_selector_changes (
+    chain_id numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL,
+    log_index bigint NOT NULL,
+    stage_version integer DEFAULT 2 NOT NULL,
+    cut_index integer NOT NULL,
+    selector_index integer NOT NULL,
+    selector bytea NOT NULL,
+    action smallint NOT NULL,
+    facet_address bytea NOT NULL,
+    CONSTRAINT diamond_selector_changes_action_check CHECK ((action = ANY (ARRAY[0, 1, 2]))),
+    CONSTRAINT diamond_selector_changes_cut_index_check CHECK ((cut_index >= 0)),
+    CONSTRAINT diamond_selector_changes_facet_address_check CHECK ((octet_length(facet_address) = 20)),
+    CONSTRAINT diamond_selector_changes_selector_check CHECK ((octet_length(selector) = 4)),
+    CONSTRAINT diamond_selector_changes_selector_index_check CHECK ((selector_index >= 0)),
+    CONSTRAINT diamond_selector_changes_pkey PRIMARY KEY (chain_id, block_hash, log_index, stage_version, cut_index, selector_index),
+    CONSTRAINT diamond_selector_changes_chain_id_block_hash_log_index_sta_fkey FOREIGN KEY (chain_id, block_hash, log_index, stage_version) REFERENCES diamond_cut_events(chain_id, block_hash, log_index, stage_version) ON DELETE CASCADE
+);
 
 CREATE TABLE durable_job_replay_requests (
     job_id bigint NOT NULL,
@@ -4325,42 +4288,11 @@ CREATE TABLE durable_job_replay_requests (
     requested_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT durable_job_replay_requests_positive_generation_check CHECK ((requested_generation >= 1)),
     CONSTRAINT durable_job_replay_requests_source_key_check CHECK (((length(source_key) >= 1) AND (length(source_key) <= 256))),
-    CONSTRAINT durable_job_replay_requests_source_kind_check CHECK (((length(source_kind) >= 1) AND (length(source_kind) <= 64)))
+    CONSTRAINT durable_job_replay_requests_source_kind_check CHECK (((length(source_kind) >= 1) AND (length(source_kind) <= 64))),
+    CONSTRAINT durable_job_replay_requests_job_id_requested_generation_key UNIQUE (job_id, requested_generation),
+    CONSTRAINT durable_job_replay_requests_pkey PRIMARY KEY (job_id, source_kind, source_key),
+    CONSTRAINT durable_job_replay_requests_job_id_fkey FOREIGN KEY (job_id) REFERENCES durable_jobs(id) ON DELETE CASCADE
 );
-
--- Sequence: durable_jobs_id_seq
-
-ALTER TABLE durable_jobs ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME durable_jobs_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
-);
-
--- Table: durable_stage_publications
-
-CREATE TABLE durable_stage_publications (
-    job_id bigint NOT NULL,
-    job_generation bigint NOT NULL,
-    chain_id numeric(78,0) NOT NULL,
-    block_number numeric(78,0) NOT NULL,
-    block_hash bytea NOT NULL,
-    stage text NOT NULL,
-    stage_version integer NOT NULL,
-    state text NOT NULL,
-    details jsonb DEFAULT '{}'::jsonb NOT NULL,
-    last_error text,
-    committed_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT durable_stage_publications_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT durable_stage_publications_check CHECK ((((state = ANY (ARRAY['complete'::text, 'superseded'::text])) AND (last_error IS NULL)) OR ((state = ANY (ARRAY['failed'::text, 'unavailable'::text])) AND (last_error IS NOT NULL)))),
-    CONSTRAINT durable_stage_publications_job_generation_check CHECK ((job_generation > 0)),
-    CONSTRAINT durable_stage_publications_stage_version_check CHECK ((stage_version > 0)),
-    CONSTRAINT durable_stage_publications_state_check CHECK ((state = ANY (ARRAY['complete'::text, 'failed'::text, 'unavailable'::text, 'superseded'::text])))
-);
-
--- Table: eip7702_authorizations
 
 CREATE TABLE eip7702_authorizations (
     chain_id numeric(78,0) NOT NULL,
@@ -4394,168 +4326,25 @@ CREATE TABLE eip7702_authorizations (
     CONSTRAINT eip7702_authorizations_signature_status_check CHECK ((signature_status = ANY (ARRAY['valid'::text, 'invalid'::text, 'unavailable'::text]))),
     CONSTRAINT eip7702_authorizations_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
     CONSTRAINT eip7702_authorizations_transaction_index_check CHECK ((transaction_index >= 0)),
-    CONSTRAINT eip7702_authorizations_y_parity_check CHECK ((y_parity = ANY (ARRAY[0, 1])))
+    CONSTRAINT eip7702_authorizations_y_parity_check CHECK ((y_parity = ANY (ARRAY[0, 1]))),
+    CONSTRAINT eip7702_authorizations_pkey PRIMARY KEY (chain_id, block_number, block_hash, transaction_hash, authorization_index),
+    CONSTRAINT eip7702_authorizations_chain_id_block_number_block_hash_tr_fkey FOREIGN KEY (chain_id, block_number, block_hash, transaction_index) REFERENCES transaction_inclusions(chain_id, block_number, block_hash, tx_index)
 )
 PARTITION BY RANGE (block_number);
 
--- Table: eip7702_authorizations_default
+CREATE TABLE eip7702_authorizations_default PARTITION OF eip7702_authorizations DEFAULT;
 
-CREATE TABLE eip7702_authorizations_default (
-    chain_id numeric(78,0) CONSTRAINT eip7702_authorizations_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT eip7702_authorizations_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT eip7702_authorizations_block_hash_not_null NOT NULL,
-    transaction_hash bytea CONSTRAINT eip7702_authorizations_transaction_hash_not_null NOT NULL,
-    transaction_index bigint CONSTRAINT eip7702_authorizations_transaction_index_not_null NOT NULL,
-    authorization_index bigint CONSTRAINT eip7702_authorizations_authorization_index_not_null NOT NULL,
-    authorization_chain_id numeric(78,0) CONSTRAINT eip7702_authorizations_authorization_chain_id_not_null NOT NULL,
-    authorization_nonce numeric(78,0) CONSTRAINT eip7702_authorizations_authorization_nonce_not_null NOT NULL,
-    delegate_address bytea CONSTRAINT eip7702_authorizations_delegate_address_not_null NOT NULL,
-    y_parity smallint CONSTRAINT eip7702_authorizations_y_parity_not_null NOT NULL,
-    r bytea CONSTRAINT eip7702_authorizations_r_not_null NOT NULL,
-    s bytea CONSTRAINT eip7702_authorizations_s_not_null NOT NULL,
-    authority bytea,
-    signature_status text CONSTRAINT eip7702_authorizations_signature_status_not_null NOT NULL,
-    application_status text CONSTRAINT eip7702_authorizations_application_status_not_null NOT NULL,
-    skip_reason text,
-    canonical boolean CONSTRAINT eip7702_authorizations_canonical_not_null NOT NULL,
-    CONSTRAINT eip7702_authorizations_application_status_check CHECK ((application_status = ANY (ARRAY['applied'::text, 'skipped'::text, 'unavailable'::text]))),
-    CONSTRAINT eip7702_authorizations_authority_check CHECK (((authority IS NULL) OR (octet_length(authority) = 20))),
-    CONSTRAINT eip7702_authorizations_authorization_chain_id_check CHECK ((authorization_chain_id >= (0)::numeric)),
-    CONSTRAINT eip7702_authorizations_authorization_index_check CHECK ((authorization_index >= 0)),
-    CONSTRAINT eip7702_authorizations_authorization_nonce_check CHECK ((authorization_nonce >= (0)::numeric)),
-    CONSTRAINT eip7702_authorizations_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT eip7702_authorizations_block_number_check CHECK ((block_number >= (0)::numeric)),
-    CONSTRAINT eip7702_authorizations_check CHECK ((((application_status = 'applied'::text) AND (skip_reason IS NULL) AND (signature_status = 'valid'::text) AND (authority IS NOT NULL)) OR ((application_status <> 'applied'::text) AND (skip_reason IS NOT NULL)))),
-    CONSTRAINT eip7702_authorizations_delegate_address_check CHECK ((octet_length(delegate_address) = 20)),
-    CONSTRAINT eip7702_authorizations_r_check CHECK ((octet_length(r) = 32)),
-    CONSTRAINT eip7702_authorizations_s_check CHECK ((octet_length(s) = 32)),
-    CONSTRAINT eip7702_authorizations_signature_status_check CHECK ((signature_status = ANY (ARRAY['valid'::text, 'invalid'::text, 'unavailable'::text]))),
-    CONSTRAINT eip7702_authorizations_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
-    CONSTRAINT eip7702_authorizations_transaction_index_check CHECK ((transaction_index >= 0)),
-    CONSTRAINT eip7702_authorizations_y_parity_check CHECK ((y_parity = ANY (ARRAY[0, 1])))
-);
-
--- Table: eip7702_authorizations_p_0_1000000
-
-CREATE TABLE eip7702_authorizations_p_0_1000000 (
-    chain_id numeric(78,0) CONSTRAINT eip7702_authorizations_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT eip7702_authorizations_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT eip7702_authorizations_block_hash_not_null NOT NULL,
-    transaction_hash bytea CONSTRAINT eip7702_authorizations_transaction_hash_not_null NOT NULL,
-    transaction_index bigint CONSTRAINT eip7702_authorizations_transaction_index_not_null NOT NULL,
-    authorization_index bigint CONSTRAINT eip7702_authorizations_authorization_index_not_null NOT NULL,
-    authorization_chain_id numeric(78,0) CONSTRAINT eip7702_authorizations_authorization_chain_id_not_null NOT NULL,
-    authorization_nonce numeric(78,0) CONSTRAINT eip7702_authorizations_authorization_nonce_not_null NOT NULL,
-    delegate_address bytea CONSTRAINT eip7702_authorizations_delegate_address_not_null NOT NULL,
-    y_parity smallint CONSTRAINT eip7702_authorizations_y_parity_not_null NOT NULL,
-    r bytea CONSTRAINT eip7702_authorizations_r_not_null NOT NULL,
-    s bytea CONSTRAINT eip7702_authorizations_s_not_null NOT NULL,
-    authority bytea,
-    signature_status text CONSTRAINT eip7702_authorizations_signature_status_not_null NOT NULL,
-    application_status text CONSTRAINT eip7702_authorizations_application_status_not_null NOT NULL,
-    skip_reason text,
-    canonical boolean CONSTRAINT eip7702_authorizations_canonical_not_null NOT NULL,
-    CONSTRAINT eip7702_authorizations_application_status_check CHECK ((application_status = ANY (ARRAY['applied'::text, 'skipped'::text, 'unavailable'::text]))),
-    CONSTRAINT eip7702_authorizations_authority_check CHECK (((authority IS NULL) OR (octet_length(authority) = 20))),
-    CONSTRAINT eip7702_authorizations_authorization_chain_id_check CHECK ((authorization_chain_id >= (0)::numeric)),
-    CONSTRAINT eip7702_authorizations_authorization_index_check CHECK ((authorization_index >= 0)),
-    CONSTRAINT eip7702_authorizations_authorization_nonce_check CHECK ((authorization_nonce >= (0)::numeric)),
-    CONSTRAINT eip7702_authorizations_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT eip7702_authorizations_block_number_check CHECK ((block_number >= (0)::numeric)),
-    CONSTRAINT eip7702_authorizations_check CHECK ((((application_status = 'applied'::text) AND (skip_reason IS NULL) AND (signature_status = 'valid'::text) AND (authority IS NOT NULL)) OR ((application_status <> 'applied'::text) AND (skip_reason IS NOT NULL)))),
-    CONSTRAINT eip7702_authorizations_delegate_address_check CHECK ((octet_length(delegate_address) = 20)),
-    CONSTRAINT eip7702_authorizations_r_check CHECK ((octet_length(r) = 32)),
-    CONSTRAINT eip7702_authorizations_s_check CHECK ((octet_length(s) = 32)),
-    CONSTRAINT eip7702_authorizations_signature_status_check CHECK ((signature_status = ANY (ARRAY['valid'::text, 'invalid'::text, 'unavailable'::text]))),
-    CONSTRAINT eip7702_authorizations_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
-    CONSTRAINT eip7702_authorizations_transaction_index_check CHECK ((transaction_index >= 0)),
-    CONSTRAINT eip7702_authorizations_y_parity_check CHECK ((y_parity = ANY (ARRAY[0, 1])))
-);
-
--- Table: ens_address_name_snapshots
-
-CREATE TABLE ens_address_name_snapshots (
-    id uuid NOT NULL,
-    chain_id numeric(78,0) NOT NULL,
-    generation_id bigint NOT NULL,
-    created_at timestamp with time zone NOT NULL,
-    expires_at timestamp with time zone NOT NULL,
-    CONSTRAINT ens_address_name_snapshots_check CHECK ((expires_at > created_at))
-);
-
--- Table: ens_name_observations
-
-CREATE TABLE ens_name_observations (
-    id bigint NOT NULL,
-    generation_id bigint NOT NULL,
-    chain_id numeric(78,0) NOT NULL,
-    source text NOT NULL,
-    direction text NOT NULL,
-    lookup_key text NOT NULL,
-    outcome text NOT NULL,
-    name text,
-    address bytea,
-    resolver bytea,
-    reverse_resolver bytea,
-    observed_at timestamp with time zone NOT NULL,
-    publication_nonce bigint DEFAULT 0 NOT NULL,
-    CONSTRAINT ens_name_observations_address_check CHECK (((address IS NULL) OR (octet_length(address) = 20))),
-    CONSTRAINT ens_name_observations_check CHECK ((((direction = 'forward'::text) AND (outcome = 'resolved'::text) AND (name IS NOT NULL) AND (address IS NOT NULL) AND (resolver IS NOT NULL) AND (reverse_resolver IS NULL)) OR ((direction = 'forward'::text) AND (outcome = 'not_found'::text) AND (name IS NOT NULL) AND (address IS NULL) AND (resolver IS NULL) AND (reverse_resolver IS NULL)) OR ((direction = 'primary'::text) AND (outcome = 'resolved'::text) AND (name IS NOT NULL) AND (address IS NOT NULL) AND (resolver IS NOT NULL) AND (reverse_resolver IS NOT NULL)) OR ((direction = 'primary'::text) AND (outcome = 'not_found'::text) AND (name IS NULL) AND (address IS NOT NULL) AND (resolver IS NULL) AND (reverse_resolver IS NULL)))),
-    CONSTRAINT ens_name_observations_direction_check CHECK ((direction = ANY (ARRAY['forward'::text, 'primary'::text]))),
-    CONSTRAINT ens_name_observations_lookup_key_check CHECK (((length(lookup_key) >= 1) AND (length(lookup_key) <= 512))),
-    CONSTRAINT ens_name_observations_name_check CHECK (((name IS NULL) OR ((length(name) >= 1) AND (length(name) <= 255)))),
-    CONSTRAINT ens_name_observations_outcome_check CHECK ((outcome = ANY (ARRAY['resolved'::text, 'not_found'::text]))),
-    CONSTRAINT ens_name_observations_publication_nonce_check CHECK ((publication_nonce >= 0)),
-    CONSTRAINT ens_name_observations_resolver_check CHECK (((resolver IS NULL) OR (octet_length(resolver) = 20))),
-    CONSTRAINT ens_name_observations_reverse_resolver_check CHECK (((reverse_resolver IS NULL) OR (octet_length(reverse_resolver) = 20))),
-    CONSTRAINT ens_name_observations_source_check CHECK ((source = ANY (ARRAY['ens'::text, 'custom_ens'::text])))
-);
-
--- Sequence: ens_name_observations_id_seq
-
-ALTER TABLE ens_name_observations ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME ens_name_observations_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
-);
-
--- Table: ens_resolution_failures
-
-CREATE TABLE ens_resolution_failures (
-    id bigint NOT NULL,
-    generation_id bigint NOT NULL,
-    chain_id numeric(78,0) NOT NULL,
-    source text NOT NULL,
-    direction text NOT NULL,
-    lookup_key text NOT NULL,
-    code text NOT NULL,
-    observed_at timestamp with time zone NOT NULL,
-    expires_at timestamp with time zone NOT NULL,
-    CONSTRAINT ens_resolution_failures_check CHECK ((expires_at > observed_at)),
-    CONSTRAINT ens_resolution_failures_code_check CHECK (((length(code) >= 1) AND (length(code) <= 128))),
-    CONSTRAINT ens_resolution_failures_direction_check CHECK ((direction = ANY (ARRAY['forward'::text, 'primary'::text]))),
-    CONSTRAINT ens_resolution_failures_lookup_key_check CHECK (((length(lookup_key) >= 1) AND (length(lookup_key) <= 512))),
-    CONSTRAINT ens_resolution_failures_source_check CHECK ((source = ANY (ARRAY['ens'::text, 'custom_ens'::text])))
-);
-
--- Sequence: ens_resolution_failures_id_seq
-
-ALTER TABLE ens_resolution_failures ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME ens_resolution_failures_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
-);
-
--- Table: ens_resolution_generations
+CREATE TABLE eip7702_authorizations_p_0_1000000 PARTITION OF eip7702_authorizations FOR VALUES FROM ('0') TO ('1000000');
 
 CREATE TABLE ens_resolution_generations (
-    id bigint NOT NULL,
+    id bigint NOT NULL GENERATED ALWAYS AS IDENTITY (
+        SEQUENCE NAME ens_resolution_generations_id_seq
+        START WITH 1
+        INCREMENT BY 1
+        NO MINVALUE
+        NO MAXVALUE
+        CACHE 1
+    ),
     chain_id numeric(78,0) NOT NULL,
     policy_key text NOT NULL,
     coin_type numeric(78,0) NOT NULL,
@@ -4582,21 +4371,87 @@ CREATE TABLE ens_resolution_generations (
     CONSTRAINT ens_resolution_generations_official_block_hash_check CHECK ((octet_length(official_block_hash) = 32)),
     CONSTRAINT ens_resolution_generations_official_block_number_check CHECK ((official_block_number >= (0)::numeric)),
     CONSTRAINT ens_resolution_generations_official_endpoint_check CHECK (((length(official_endpoint) >= 1) AND (length(official_endpoint) <= 128))),
-    CONSTRAINT ens_resolution_generations_policy_key_check CHECK (((length(policy_key) >= 8) AND (length(policy_key) <= 128)))
+    CONSTRAINT ens_resolution_generations_policy_key_check CHECK (((length(policy_key) >= 8) AND (length(policy_key) <= 128))),
+    CONSTRAINT ens_resolution_generations_pkey PRIMARY KEY (id),
+    CONSTRAINT ens_resolution_generations_chain_id_custom_block_number_cu_fkey FOREIGN KEY (chain_id, custom_block_number, custom_block_hash) REFERENCES blocks(chain_id, number, hash),
+    CONSTRAINT ens_resolution_generations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
 
--- Sequence: ens_resolution_generations_id_seq
-
-ALTER TABLE ens_resolution_generations ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME ens_resolution_generations_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
+CREATE TABLE ens_address_name_snapshots (
+    id uuid NOT NULL,
+    chain_id numeric(78,0) NOT NULL,
+    generation_id bigint NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    CONSTRAINT ens_address_name_snapshots_check CHECK ((expires_at > created_at)),
+    CONSTRAINT ens_address_name_snapshots_pkey PRIMARY KEY (id),
+    CONSTRAINT ens_address_name_snapshots_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id),
+    CONSTRAINT ens_address_name_snapshots_generation_id_fkey FOREIGN KEY (generation_id) REFERENCES ens_resolution_generations(id) ON DELETE CASCADE
 );
 
--- Table: erc1155_balance_reconciliations
+CREATE TABLE ens_name_observations (
+    id bigint NOT NULL GENERATED ALWAYS AS IDENTITY (
+        SEQUENCE NAME ens_name_observations_id_seq
+        START WITH 1
+        INCREMENT BY 1
+        NO MINVALUE
+        NO MAXVALUE
+        CACHE 1
+    ),
+    generation_id bigint NOT NULL,
+    chain_id numeric(78,0) NOT NULL,
+    source text NOT NULL,
+    direction text NOT NULL,
+    lookup_key text NOT NULL,
+    outcome text NOT NULL,
+    name text,
+    address bytea,
+    resolver bytea,
+    reverse_resolver bytea,
+    observed_at timestamp with time zone NOT NULL,
+    publication_nonce bigint DEFAULT 0 NOT NULL,
+    CONSTRAINT ens_name_observations_address_check CHECK (((address IS NULL) OR (octet_length(address) = 20))),
+    CONSTRAINT ens_name_observations_check CHECK ((((direction = 'forward'::text) AND (outcome = 'resolved'::text) AND (name IS NOT NULL) AND (address IS NOT NULL) AND (resolver IS NOT NULL) AND (reverse_resolver IS NULL)) OR ((direction = 'forward'::text) AND (outcome = 'not_found'::text) AND (name IS NOT NULL) AND (address IS NULL) AND (resolver IS NULL) AND (reverse_resolver IS NULL)) OR ((direction = 'primary'::text) AND (outcome = 'resolved'::text) AND (name IS NOT NULL) AND (address IS NOT NULL) AND (resolver IS NOT NULL) AND (reverse_resolver IS NOT NULL)) OR ((direction = 'primary'::text) AND (outcome = 'not_found'::text) AND (name IS NULL) AND (address IS NOT NULL) AND (resolver IS NULL) AND (reverse_resolver IS NULL)))),
+    CONSTRAINT ens_name_observations_direction_check CHECK ((direction = ANY (ARRAY['forward'::text, 'primary'::text]))),
+    CONSTRAINT ens_name_observations_lookup_key_check CHECK (((length(lookup_key) >= 1) AND (length(lookup_key) <= 512))),
+    CONSTRAINT ens_name_observations_name_check CHECK (((name IS NULL) OR ((length(name) >= 1) AND (length(name) <= 255)))),
+    CONSTRAINT ens_name_observations_outcome_check CHECK ((outcome = ANY (ARRAY['resolved'::text, 'not_found'::text]))),
+    CONSTRAINT ens_name_observations_publication_nonce_check CHECK ((publication_nonce >= 0)),
+    CONSTRAINT ens_name_observations_resolver_check CHECK (((resolver IS NULL) OR (octet_length(resolver) = 20))),
+    CONSTRAINT ens_name_observations_reverse_resolver_check CHECK (((reverse_resolver IS NULL) OR (octet_length(reverse_resolver) = 20))),
+    CONSTRAINT ens_name_observations_source_check CHECK ((source = ANY (ARRAY['ens'::text, 'custom_ens'::text]))),
+    CONSTRAINT ens_name_observations_generation_id_source_direction_lookup_key UNIQUE (generation_id, source, direction, lookup_key),
+    CONSTRAINT ens_name_observations_pkey PRIMARY KEY (id),
+    CONSTRAINT ens_name_observations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id),
+    CONSTRAINT ens_name_observations_generation_id_fkey FOREIGN KEY (generation_id) REFERENCES ens_resolution_generations(id) ON DELETE CASCADE
+);
+
+CREATE TABLE ens_resolution_failures (
+    id bigint NOT NULL GENERATED ALWAYS AS IDENTITY (
+        SEQUENCE NAME ens_resolution_failures_id_seq
+        START WITH 1
+        INCREMENT BY 1
+        NO MINVALUE
+        NO MAXVALUE
+        CACHE 1
+    ),
+    generation_id bigint NOT NULL,
+    chain_id numeric(78,0) NOT NULL,
+    source text NOT NULL,
+    direction text NOT NULL,
+    lookup_key text NOT NULL,
+    code text NOT NULL,
+    observed_at timestamp with time zone NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    CONSTRAINT ens_resolution_failures_check CHECK ((expires_at > observed_at)),
+    CONSTRAINT ens_resolution_failures_code_check CHECK (((length(code) >= 1) AND (length(code) <= 128))),
+    CONSTRAINT ens_resolution_failures_direction_check CHECK ((direction = ANY (ARRAY['forward'::text, 'primary'::text]))),
+    CONSTRAINT ens_resolution_failures_lookup_key_check CHECK (((length(lookup_key) >= 1) AND (length(lookup_key) <= 512))),
+    CONSTRAINT ens_resolution_failures_source_check CHECK ((source = ANY (ARRAY['ens'::text, 'custom_ens'::text]))),
+    CONSTRAINT ens_resolution_failures_pkey PRIMARY KEY (id),
+    CONSTRAINT ens_resolution_failures_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id),
+    CONSTRAINT ens_resolution_failures_generation_id_fkey FOREIGN KEY (generation_id) REFERENCES ens_resolution_generations(id) ON DELETE CASCADE
+);
 
 CREATE TABLE erc1155_balance_reconciliations (
     chain_id numeric(78,0) NOT NULL,
@@ -4613,10 +4468,11 @@ CREATE TABLE erc1155_balance_reconciliations (
     CONSTRAINT erc1155_balance_reconciliations_confidence_check CHECK ((confidence = 'rpc_exact'::text)),
     CONSTRAINT erc1155_balance_reconciliations_owner_address_check CHECK ((octet_length(owner_address) = 20)),
     CONSTRAINT erc1155_balance_reconciliations_token_address_check CHECK ((octet_length(token_address) = 20)),
-    CONSTRAINT erc1155_balance_reconciliations_token_id_check CHECK ((token_id >= (0)::numeric))
+    CONSTRAINT erc1155_balance_reconciliations_token_id_check CHECK ((token_id >= (0)::numeric)),
+    CONSTRAINT erc1155_balance_reconciliations_pkey PRIMARY KEY (chain_id, token_address, token_id, owner_address, block_hash),
+    CONSTRAINT erc1155_balance_reconciliatio_chain_id_block_number_block__fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash),
+    CONSTRAINT erc1155_balance_reconciliations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
-
--- Table: erc20_balance_reconciliations
 
 CREATE TABLE erc20_balance_reconciliations (
     chain_id numeric(78,0) NOT NULL,
@@ -4631,68 +4487,11 @@ CREATE TABLE erc20_balance_reconciliations (
     CONSTRAINT erc20_balance_reconciliations_block_hash_check CHECK ((octet_length(block_hash) = 32)),
     CONSTRAINT erc20_balance_reconciliations_confidence_check CHECK ((confidence = 'rpc_exact'::text)),
     CONSTRAINT erc20_balance_reconciliations_owner_address_check CHECK ((octet_length(owner_address) = 20)),
-    CONSTRAINT erc20_balance_reconciliations_token_address_check CHECK ((octet_length(token_address) = 20))
+    CONSTRAINT erc20_balance_reconciliations_token_address_check CHECK ((octet_length(token_address) = 20)),
+    CONSTRAINT erc20_balance_reconciliations_pkey PRIMARY KEY (chain_id, token_address, owner_address, block_hash),
+    CONSTRAINT erc20_balance_reconciliations_chain_id_block_number_block__fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash),
+    CONSTRAINT erc20_balance_reconciliations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
-
--- Table: erc20_holder_balances
-
-CREATE TABLE erc20_holder_balances (
-    chain_id numeric(78,0) NOT NULL,
-    token_address bytea NOT NULL,
-    holder_address bytea NOT NULL,
-    block_number numeric(78,0) NOT NULL,
-    block_hash bytea NOT NULL,
-    balance numeric(78,0) NOT NULL,
-    confidence text NOT NULL,
-    canonical boolean NOT NULL,
-    observed_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT erc20_holder_balances_balance_check CHECK ((balance >= (0)::numeric)),
-    CONSTRAINT erc20_holder_balances_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT erc20_holder_balances_confidence_check CHECK ((confidence = 'rpc_exact'::text)),
-    CONSTRAINT erc20_holder_balances_holder_address_check CHECK ((octet_length(holder_address) = 20)),
-    CONSTRAINT erc20_holder_balances_token_address_check CHECK ((octet_length(token_address) = 20))
-)
-PARTITION BY RANGE (block_number);
-
--- Table: erc20_holder_balances_default
-
-CREATE TABLE erc20_holder_balances_default (
-    chain_id numeric(78,0) CONSTRAINT erc20_holder_balances_chain_id_not_null NOT NULL,
-    token_address bytea CONSTRAINT erc20_holder_balances_token_address_not_null NOT NULL,
-    holder_address bytea CONSTRAINT erc20_holder_balances_holder_address_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT erc20_holder_balances_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT erc20_holder_balances_block_hash_not_null NOT NULL,
-    balance numeric(78,0) CONSTRAINT erc20_holder_balances_balance_not_null NOT NULL,
-    confidence text CONSTRAINT erc20_holder_balances_confidence_not_null NOT NULL,
-    canonical boolean CONSTRAINT erc20_holder_balances_canonical_not_null NOT NULL,
-    observed_at timestamp with time zone DEFAULT clock_timestamp() CONSTRAINT erc20_holder_balances_observed_at_not_null NOT NULL,
-    CONSTRAINT erc20_holder_balances_balance_check CHECK ((balance >= (0)::numeric)),
-    CONSTRAINT erc20_holder_balances_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT erc20_holder_balances_confidence_check CHECK ((confidence = 'rpc_exact'::text)),
-    CONSTRAINT erc20_holder_balances_holder_address_check CHECK ((octet_length(holder_address) = 20)),
-    CONSTRAINT erc20_holder_balances_token_address_check CHECK ((octet_length(token_address) = 20))
-);
-
--- Table: erc20_holder_balances_p_0_1000000
-
-CREATE TABLE erc20_holder_balances_p_0_1000000 (
-    chain_id numeric(78,0) CONSTRAINT erc20_holder_balances_chain_id_not_null NOT NULL,
-    token_address bytea CONSTRAINT erc20_holder_balances_token_address_not_null NOT NULL,
-    holder_address bytea CONSTRAINT erc20_holder_balances_holder_address_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT erc20_holder_balances_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT erc20_holder_balances_block_hash_not_null NOT NULL,
-    balance numeric(78,0) CONSTRAINT erc20_holder_balances_balance_not_null NOT NULL,
-    confidence text CONSTRAINT erc20_holder_balances_confidence_not_null NOT NULL,
-    canonical boolean CONSTRAINT erc20_holder_balances_canonical_not_null NOT NULL,
-    observed_at timestamp with time zone DEFAULT clock_timestamp() CONSTRAINT erc20_holder_balances_observed_at_not_null NOT NULL,
-    CONSTRAINT erc20_holder_balances_balance_check CHECK ((balance >= (0)::numeric)),
-    CONSTRAINT erc20_holder_balances_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT erc20_holder_balances_confidence_check CHECK ((confidence = 'rpc_exact'::text)),
-    CONSTRAINT erc20_holder_balances_holder_address_check CHECK ((octet_length(holder_address) = 20)),
-    CONSTRAINT erc20_holder_balances_token_address_check CHECK ((octet_length(token_address) = 20))
-);
-
--- Table: erc20_holder_snapshots
 
 CREATE TABLE erc20_holder_snapshots (
     chain_id numeric(78,0) NOT NULL,
@@ -4711,55 +4510,40 @@ CREATE TABLE erc20_holder_snapshots (
     CONSTRAINT erc20_holder_snapshots_reconciled_balance_sum_check CHECK ((reconciled_balance_sum >= (0)::numeric)),
     CONSTRAINT erc20_holder_snapshots_state_check CHECK ((state = ANY (ARRAY['complete'::text, 'unavailable'::text]))),
     CONSTRAINT erc20_holder_snapshots_token_address_check CHECK ((octet_length(token_address) = 20)),
-    CONSTRAINT erc20_holder_snapshots_total_supply_check CHECK ((total_supply >= (0)::numeric))
+    CONSTRAINT erc20_holder_snapshots_total_supply_check CHECK ((total_supply >= (0)::numeric)),
+    CONSTRAINT erc20_holder_snapshots_pkey PRIMARY KEY (chain_id, token_address, block_number, block_hash),
+    CONSTRAINT erc20_holder_snapshots_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash),
+    CONSTRAINT erc20_holder_snapshots_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 )
 PARTITION BY RANGE (block_number);
 
--- Table: erc20_holder_snapshots_default
+CREATE TABLE erc20_holder_balances (
+    chain_id numeric(78,0) NOT NULL,
+    token_address bytea NOT NULL,
+    holder_address bytea NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL,
+    balance numeric(78,0) NOT NULL,
+    confidence text NOT NULL,
+    canonical boolean NOT NULL,
+    observed_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    CONSTRAINT erc20_holder_balances_balance_check CHECK ((balance >= (0)::numeric)),
+    CONSTRAINT erc20_holder_balances_block_hash_check CHECK ((octet_length(block_hash) = 32)),
+    CONSTRAINT erc20_holder_balances_confidence_check CHECK ((confidence = 'rpc_exact'::text)),
+    CONSTRAINT erc20_holder_balances_holder_address_check CHECK ((octet_length(holder_address) = 20)),
+    CONSTRAINT erc20_holder_balances_token_address_check CHECK ((octet_length(token_address) = 20)),
+    CONSTRAINT erc20_holder_balances_pkey PRIMARY KEY (chain_id, token_address, block_number, block_hash, holder_address),
+    CONSTRAINT erc20_holder_balances_chain_id_token_address_block_number__fkey FOREIGN KEY (chain_id, token_address, block_number, block_hash) REFERENCES erc20_holder_snapshots(chain_id, token_address, block_number, block_hash)
+)
+PARTITION BY RANGE (block_number);
 
-CREATE TABLE erc20_holder_snapshots_default (
-    chain_id numeric(78,0) CONSTRAINT erc20_holder_snapshots_chain_id_not_null NOT NULL,
-    token_address bytea CONSTRAINT erc20_holder_snapshots_token_address_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT erc20_holder_snapshots_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT erc20_holder_snapshots_block_hash_not_null NOT NULL,
-    state text CONSTRAINT erc20_holder_snapshots_state_not_null NOT NULL,
-    holder_count numeric(78,0) CONSTRAINT erc20_holder_snapshots_holder_count_not_null NOT NULL,
-    total_supply numeric(78,0) CONSTRAINT erc20_holder_snapshots_total_supply_not_null NOT NULL,
-    reconciled_balance_sum numeric(78,0) CONSTRAINT erc20_holder_snapshots_reconciled_balance_sum_not_null NOT NULL,
-    canonical boolean CONSTRAINT erc20_holder_snapshots_canonical_not_null NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() CONSTRAINT erc20_holder_snapshots_created_at_not_null NOT NULL,
-    CONSTRAINT erc20_holder_snapshots_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT erc20_holder_snapshots_check CHECK ((((state = 'complete'::text) AND (total_supply = reconciled_balance_sum)) OR (state = 'unavailable'::text))),
-    CONSTRAINT erc20_holder_snapshots_holder_count_check CHECK ((holder_count >= (0)::numeric)),
-    CONSTRAINT erc20_holder_snapshots_reconciled_balance_sum_check CHECK ((reconciled_balance_sum >= (0)::numeric)),
-    CONSTRAINT erc20_holder_snapshots_state_check CHECK ((state = ANY (ARRAY['complete'::text, 'unavailable'::text]))),
-    CONSTRAINT erc20_holder_snapshots_token_address_check CHECK ((octet_length(token_address) = 20)),
-    CONSTRAINT erc20_holder_snapshots_total_supply_check CHECK ((total_supply >= (0)::numeric))
-);
+CREATE TABLE erc20_holder_balances_default PARTITION OF erc20_holder_balances DEFAULT;
 
--- Table: erc20_holder_snapshots_p_0_1000000
+CREATE TABLE erc20_holder_balances_p_0_1000000 PARTITION OF erc20_holder_balances FOR VALUES FROM ('0') TO ('1000000');
 
-CREATE TABLE erc20_holder_snapshots_p_0_1000000 (
-    chain_id numeric(78,0) CONSTRAINT erc20_holder_snapshots_chain_id_not_null NOT NULL,
-    token_address bytea CONSTRAINT erc20_holder_snapshots_token_address_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT erc20_holder_snapshots_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT erc20_holder_snapshots_block_hash_not_null NOT NULL,
-    state text CONSTRAINT erc20_holder_snapshots_state_not_null NOT NULL,
-    holder_count numeric(78,0) CONSTRAINT erc20_holder_snapshots_holder_count_not_null NOT NULL,
-    total_supply numeric(78,0) CONSTRAINT erc20_holder_snapshots_total_supply_not_null NOT NULL,
-    reconciled_balance_sum numeric(78,0) CONSTRAINT erc20_holder_snapshots_reconciled_balance_sum_not_null NOT NULL,
-    canonical boolean CONSTRAINT erc20_holder_snapshots_canonical_not_null NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() CONSTRAINT erc20_holder_snapshots_created_at_not_null NOT NULL,
-    CONSTRAINT erc20_holder_snapshots_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT erc20_holder_snapshots_check CHECK ((((state = 'complete'::text) AND (total_supply = reconciled_balance_sum)) OR (state = 'unavailable'::text))),
-    CONSTRAINT erc20_holder_snapshots_holder_count_check CHECK ((holder_count >= (0)::numeric)),
-    CONSTRAINT erc20_holder_snapshots_reconciled_balance_sum_check CHECK ((reconciled_balance_sum >= (0)::numeric)),
-    CONSTRAINT erc20_holder_snapshots_state_check CHECK ((state = ANY (ARRAY['complete'::text, 'unavailable'::text]))),
-    CONSTRAINT erc20_holder_snapshots_token_address_check CHECK ((octet_length(token_address) = 20)),
-    CONSTRAINT erc20_holder_snapshots_total_supply_check CHECK ((total_supply >= (0)::numeric))
-);
+CREATE TABLE erc20_holder_snapshots_default PARTITION OF erc20_holder_snapshots DEFAULT;
 
--- Table: erc4337_coverage_ranges
+CREATE TABLE erc20_holder_snapshots_p_0_1000000 PARTITION OF erc20_holder_snapshots FOR VALUES FROM ('0') TO ('1000000');
 
 CREATE TABLE erc4337_coverage_ranges (
     chain_id numeric(78,0) NOT NULL,
@@ -4772,10 +4556,11 @@ CREATE TABLE erc4337_coverage_ranges (
     CONSTRAINT erc4337_coverage_ranges_check CHECK (((start_block >= (0)::numeric) AND (end_block >= start_block))),
     CONSTRAINT erc4337_coverage_ranges_configuration_digest_check CHECK ((octet_length(configuration_digest) = 32)),
     CONSTRAINT erc4337_coverage_ranges_end_block_hash_check CHECK ((octet_length(end_block_hash) = 32)),
-    CONSTRAINT erc4337_coverage_ranges_start_block_hash_check CHECK ((octet_length(start_block_hash) = 32))
+    CONSTRAINT erc4337_coverage_ranges_start_block_hash_check CHECK ((octet_length(start_block_hash) = 32)),
+    CONSTRAINT erc4337_coverage_ranges_chain_id_configuration_digest_end_b_key UNIQUE (chain_id, configuration_digest, end_block),
+    CONSTRAINT erc4337_coverage_ranges_pkey PRIMARY KEY (chain_id, configuration_digest, start_block),
+    CONSTRAINT erc4337_coverage_ranges_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
-
--- Table: erc4337_covered_blocks
 
 CREATE TABLE erc4337_covered_blocks (
     chain_id numeric(78,0) NOT NULL,
@@ -4787,165 +4572,11 @@ CREATE TABLE erc4337_covered_blocks (
     updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
     CONSTRAINT erc4337_covered_blocks_block_hash_check CHECK ((octet_length(block_hash) = 32)),
     CONSTRAINT erc4337_covered_blocks_check CHECK (((block_number >= (0)::numeric) AND (durable_job_id > 0) AND (job_generation > 0))),
-    CONSTRAINT erc4337_covered_blocks_configuration_digest_check CHECK ((octet_length(configuration_digest) = 32))
+    CONSTRAINT erc4337_covered_blocks_configuration_digest_check CHECK ((octet_length(configuration_digest) = 32)),
+    CONSTRAINT erc4337_covered_blocks_pkey PRIMARY KEY (chain_id, configuration_digest, block_number),
+    CONSTRAINT erc4337_covered_blocks_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash),
+    CONSTRAINT erc4337_covered_blocks_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
-
--- Table: erc4337_user_operation_events
-
-CREATE TABLE erc4337_user_operation_events (
-    chain_id numeric(78,0) NOT NULL,
-    configuration_digest bytea NOT NULL,
-    block_number numeric(78,0) NOT NULL,
-    block_hash bytea NOT NULL,
-    transaction_hash bytea NOT NULL,
-    operation_index bigint NOT NULL,
-    log_index bigint NOT NULL,
-    event_kind text NOT NULL,
-    sender bytea NOT NULL,
-    nonce numeric(78,0),
-    related_address bytea,
-    paymaster bytea,
-    raw_data bytea NOT NULL,
-    reason text,
-    panic_code numeric(78,0),
-    canonical boolean NOT NULL,
-    CONSTRAINT erc4337_user_operation_events_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT erc4337_user_operation_events_check CHECK (((operation_index >= 0) AND (log_index >= 0))),
-    CONSTRAINT erc4337_user_operation_events_configuration_digest_check CHECK ((octet_length(configuration_digest) = 32)),
-    CONSTRAINT erc4337_user_operation_events_event_kind_check CHECK ((event_kind = ANY (ARRAY['account_deployed'::text, 'ignored_init_code'::text, 'eip7702_initialized'::text, 'execution_revert'::text, 'post_op_revert'::text, 'prefund_too_low'::text]))),
-    CONSTRAINT erc4337_user_operation_events_nonce_check CHECK (((nonce IS NULL) OR (nonce >= (0)::numeric))),
-    CONSTRAINT erc4337_user_operation_events_panic_code_check CHECK (((panic_code IS NULL) OR (panic_code >= (0)::numeric))),
-    CONSTRAINT erc4337_user_operation_events_paymaster_check CHECK (((paymaster IS NULL) OR (octet_length(paymaster) = 20))),
-    CONSTRAINT erc4337_user_operation_events_related_address_check CHECK (((related_address IS NULL) OR (octet_length(related_address) = 20))),
-    CONSTRAINT erc4337_user_operation_events_sender_check CHECK ((octet_length(sender) = 20)),
-    CONSTRAINT erc4337_user_operation_events_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32))
-)
-PARTITION BY RANGE (block_number);
-
--- Table: erc4337_user_operation_events_default
-
-CREATE TABLE erc4337_user_operation_events_default (
-    chain_id numeric(78,0) CONSTRAINT erc4337_user_operation_events_chain_id_not_null NOT NULL,
-    configuration_digest bytea CONSTRAINT erc4337_user_operation_events_configuration_digest_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT erc4337_user_operation_events_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT erc4337_user_operation_events_block_hash_not_null NOT NULL,
-    transaction_hash bytea CONSTRAINT erc4337_user_operation_events_transaction_hash_not_null NOT NULL,
-    operation_index bigint CONSTRAINT erc4337_user_operation_events_operation_index_not_null NOT NULL,
-    log_index bigint CONSTRAINT erc4337_user_operation_events_log_index_not_null NOT NULL,
-    event_kind text CONSTRAINT erc4337_user_operation_events_event_kind_not_null NOT NULL,
-    sender bytea CONSTRAINT erc4337_user_operation_events_sender_not_null NOT NULL,
-    nonce numeric(78,0),
-    related_address bytea,
-    paymaster bytea,
-    raw_data bytea CONSTRAINT erc4337_user_operation_events_raw_data_not_null NOT NULL,
-    reason text,
-    panic_code numeric(78,0),
-    canonical boolean CONSTRAINT erc4337_user_operation_events_canonical_not_null NOT NULL,
-    CONSTRAINT erc4337_user_operation_events_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT erc4337_user_operation_events_check CHECK (((operation_index >= 0) AND (log_index >= 0))),
-    CONSTRAINT erc4337_user_operation_events_configuration_digest_check CHECK ((octet_length(configuration_digest) = 32)),
-    CONSTRAINT erc4337_user_operation_events_event_kind_check CHECK ((event_kind = ANY (ARRAY['account_deployed'::text, 'ignored_init_code'::text, 'eip7702_initialized'::text, 'execution_revert'::text, 'post_op_revert'::text, 'prefund_too_low'::text]))),
-    CONSTRAINT erc4337_user_operation_events_nonce_check CHECK (((nonce IS NULL) OR (nonce >= (0)::numeric))),
-    CONSTRAINT erc4337_user_operation_events_panic_code_check CHECK (((panic_code IS NULL) OR (panic_code >= (0)::numeric))),
-    CONSTRAINT erc4337_user_operation_events_paymaster_check CHECK (((paymaster IS NULL) OR (octet_length(paymaster) = 20))),
-    CONSTRAINT erc4337_user_operation_events_related_address_check CHECK (((related_address IS NULL) OR (octet_length(related_address) = 20))),
-    CONSTRAINT erc4337_user_operation_events_sender_check CHECK ((octet_length(sender) = 20)),
-    CONSTRAINT erc4337_user_operation_events_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32))
-);
-
--- Table: erc4337_user_operation_events_p_0_1000000
-
-CREATE TABLE erc4337_user_operation_events_p_0_1000000 (
-    chain_id numeric(78,0) CONSTRAINT erc4337_user_operation_events_chain_id_not_null NOT NULL,
-    configuration_digest bytea CONSTRAINT erc4337_user_operation_events_configuration_digest_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT erc4337_user_operation_events_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT erc4337_user_operation_events_block_hash_not_null NOT NULL,
-    transaction_hash bytea CONSTRAINT erc4337_user_operation_events_transaction_hash_not_null NOT NULL,
-    operation_index bigint CONSTRAINT erc4337_user_operation_events_operation_index_not_null NOT NULL,
-    log_index bigint CONSTRAINT erc4337_user_operation_events_log_index_not_null NOT NULL,
-    event_kind text CONSTRAINT erc4337_user_operation_events_event_kind_not_null NOT NULL,
-    sender bytea CONSTRAINT erc4337_user_operation_events_sender_not_null NOT NULL,
-    nonce numeric(78,0),
-    related_address bytea,
-    paymaster bytea,
-    raw_data bytea CONSTRAINT erc4337_user_operation_events_raw_data_not_null NOT NULL,
-    reason text,
-    panic_code numeric(78,0),
-    canonical boolean CONSTRAINT erc4337_user_operation_events_canonical_not_null NOT NULL,
-    CONSTRAINT erc4337_user_operation_events_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT erc4337_user_operation_events_check CHECK (((operation_index >= 0) AND (log_index >= 0))),
-    CONSTRAINT erc4337_user_operation_events_configuration_digest_check CHECK ((octet_length(configuration_digest) = 32)),
-    CONSTRAINT erc4337_user_operation_events_event_kind_check CHECK ((event_kind = ANY (ARRAY['account_deployed'::text, 'ignored_init_code'::text, 'eip7702_initialized'::text, 'execution_revert'::text, 'post_op_revert'::text, 'prefund_too_low'::text]))),
-    CONSTRAINT erc4337_user_operation_events_nonce_check CHECK (((nonce IS NULL) OR (nonce >= (0)::numeric))),
-    CONSTRAINT erc4337_user_operation_events_panic_code_check CHECK (((panic_code IS NULL) OR (panic_code >= (0)::numeric))),
-    CONSTRAINT erc4337_user_operation_events_paymaster_check CHECK (((paymaster IS NULL) OR (octet_length(paymaster) = 20))),
-    CONSTRAINT erc4337_user_operation_events_related_address_check CHECK (((related_address IS NULL) OR (octet_length(related_address) = 20))),
-    CONSTRAINT erc4337_user_operation_events_sender_check CHECK ((octet_length(sender) = 20)),
-    CONSTRAINT erc4337_user_operation_events_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32))
-);
-
--- Table: erc4337_user_operation_participants
-
-CREATE TABLE erc4337_user_operation_participants (
-    chain_id numeric(78,0) NOT NULL,
-    configuration_digest bytea CONSTRAINT erc4337_user_operation_participan_configuration_digest_not_null NOT NULL,
-    block_number numeric(78,0) NOT NULL,
-    block_hash bytea NOT NULL,
-    transaction_hash bytea NOT NULL,
-    operation_index bigint NOT NULL,
-    address bytea NOT NULL,
-    role text NOT NULL,
-    canonical boolean NOT NULL,
-    CONSTRAINT erc4337_user_operation_participants_address_check CHECK ((octet_length(address) = 20)),
-    CONSTRAINT erc4337_user_operation_participants_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT erc4337_user_operation_participants_configuration_digest_check CHECK ((octet_length(configuration_digest) = 32)),
-    CONSTRAINT erc4337_user_operation_participants_operation_index_check CHECK ((operation_index >= 0)),
-    CONSTRAINT erc4337_user_operation_participants_role_check CHECK ((role = ANY (ARRAY['sender'::text, 'entry_point'::text, 'bundler'::text, 'beneficiary'::text, 'factory'::text, 'paymaster'::text, 'aggregator'::text, 'eip7702_delegate'::text]))),
-    CONSTRAINT erc4337_user_operation_participants_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32))
-)
-PARTITION BY RANGE (block_number);
-
--- Table: erc4337_user_operation_participants_default
-
-CREATE TABLE erc4337_user_operation_participants_default (
-    chain_id numeric(78,0) CONSTRAINT erc4337_user_operation_participants_chain_id_not_null NOT NULL,
-    configuration_digest bytea CONSTRAINT erc4337_user_operation_participan_configuration_digest_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT erc4337_user_operation_participants_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT erc4337_user_operation_participants_block_hash_not_null NOT NULL,
-    transaction_hash bytea CONSTRAINT erc4337_user_operation_participants_transaction_hash_not_null NOT NULL,
-    operation_index bigint CONSTRAINT erc4337_user_operation_participants_operation_index_not_null NOT NULL,
-    address bytea CONSTRAINT erc4337_user_operation_participants_address_not_null NOT NULL,
-    role text CONSTRAINT erc4337_user_operation_participants_role_not_null NOT NULL,
-    canonical boolean CONSTRAINT erc4337_user_operation_participants_canonical_not_null NOT NULL,
-    CONSTRAINT erc4337_user_operation_participants_address_check CHECK ((octet_length(address) = 20)),
-    CONSTRAINT erc4337_user_operation_participants_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT erc4337_user_operation_participants_configuration_digest_check CHECK ((octet_length(configuration_digest) = 32)),
-    CONSTRAINT erc4337_user_operation_participants_operation_index_check CHECK ((operation_index >= 0)),
-    CONSTRAINT erc4337_user_operation_participants_role_check CHECK ((role = ANY (ARRAY['sender'::text, 'entry_point'::text, 'bundler'::text, 'beneficiary'::text, 'factory'::text, 'paymaster'::text, 'aggregator'::text, 'eip7702_delegate'::text]))),
-    CONSTRAINT erc4337_user_operation_participants_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32))
-);
-
--- Table: erc4337_user_operation_participants_p_0_1000000
-
-CREATE TABLE erc4337_user_operation_participants_p_0_1000000 (
-    chain_id numeric(78,0) CONSTRAINT erc4337_user_operation_participants_chain_id_not_null NOT NULL,
-    configuration_digest bytea CONSTRAINT erc4337_user_operation_participan_configuration_digest_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT erc4337_user_operation_participants_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT erc4337_user_operation_participants_block_hash_not_null NOT NULL,
-    transaction_hash bytea CONSTRAINT erc4337_user_operation_participants_transaction_hash_not_null NOT NULL,
-    operation_index bigint CONSTRAINT erc4337_user_operation_participants_operation_index_not_null NOT NULL,
-    address bytea CONSTRAINT erc4337_user_operation_participants_address_not_null NOT NULL,
-    role text CONSTRAINT erc4337_user_operation_participants_role_not_null NOT NULL,
-    canonical boolean CONSTRAINT erc4337_user_operation_participants_canonical_not_null NOT NULL,
-    CONSTRAINT erc4337_user_operation_participants_address_check CHECK ((octet_length(address) = 20)),
-    CONSTRAINT erc4337_user_operation_participants_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT erc4337_user_operation_participants_configuration_digest_check CHECK ((octet_length(configuration_digest) = 32)),
-    CONSTRAINT erc4337_user_operation_participants_operation_index_check CHECK ((operation_index >= 0)),
-    CONSTRAINT erc4337_user_operation_participants_role_check CHECK ((role = ANY (ARRAY['sender'::text, 'entry_point'::text, 'bundler'::text, 'beneficiary'::text, 'factory'::text, 'paymaster'::text, 'aggregator'::text, 'eip7702_delegate'::text]))),
-    CONSTRAINT erc4337_user_operation_participants_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32))
-);
-
--- Table: erc4337_user_operations
 
 CREATE TABLE erc4337_user_operations (
     chain_id numeric(78,0) NOT NULL,
@@ -5012,151 +4643,77 @@ CREATE TABLE erc4337_user_operations (
     CONSTRAINT erc4337_user_operations_paymaster_verification_gas_limit_check CHECK (((paymaster_verification_gas_limit IS NULL) OR (paymaster_verification_gas_limit >= (0)::numeric))),
     CONSTRAINT erc4337_user_operations_sender_check CHECK ((octet_length(sender) = 20)),
     CONSTRAINT erc4337_user_operations_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
-    CONSTRAINT erc4337_user_operations_user_op_hash_check CHECK ((octet_length(user_op_hash) = 32))
+    CONSTRAINT erc4337_user_operations_user_op_hash_check CHECK ((octet_length(user_op_hash) = 32)),
+    CONSTRAINT erc4337_user_operations_pkey PRIMARY KEY (chain_id, configuration_digest, block_number, block_hash, transaction_hash, operation_index),
+    CONSTRAINT erc4337_user_operations_chain_id_block_number_block_hash_t_fkey FOREIGN KEY (chain_id, block_number, block_hash, transaction_index) REFERENCES transaction_inclusions(chain_id, block_number, block_hash, tx_index),
+    CONSTRAINT erc4337_user_operations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 )
 PARTITION BY RANGE (block_number);
 
--- Table: erc4337_user_operations_default
-
-CREATE TABLE erc4337_user_operations_default (
-    chain_id numeric(78,0) CONSTRAINT erc4337_user_operations_chain_id_not_null NOT NULL,
-    configuration_digest bytea CONSTRAINT erc4337_user_operations_configuration_digest_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT erc4337_user_operations_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT erc4337_user_operations_block_hash_not_null NOT NULL,
-    transaction_hash bytea CONSTRAINT erc4337_user_operations_transaction_hash_not_null NOT NULL,
-    transaction_index bigint CONSTRAINT erc4337_user_operations_transaction_index_not_null NOT NULL,
-    operation_index bigint CONSTRAINT erc4337_user_operations_operation_index_not_null NOT NULL,
-    event_log_index bigint CONSTRAINT erc4337_user_operations_event_log_index_not_null NOT NULL,
-    user_op_hash bytea CONSTRAINT erc4337_user_operations_user_op_hash_not_null NOT NULL,
-    entry_point bytea CONSTRAINT erc4337_user_operations_entry_point_not_null NOT NULL,
-    entry_point_version text CONSTRAINT erc4337_user_operations_entry_point_version_not_null NOT NULL,
-    sender bytea CONSTRAINT erc4337_user_operations_sender_not_null NOT NULL,
-    nonce numeric(78,0) CONSTRAINT erc4337_user_operations_nonce_not_null NOT NULL,
-    nonce_key numeric(78,0) CONSTRAINT erc4337_user_operations_nonce_key_not_null NOT NULL,
-    nonce_sequence numeric(78,0) CONSTRAINT erc4337_user_operations_nonce_sequence_not_null NOT NULL,
-    bundler bytea CONSTRAINT erc4337_user_operations_bundler_not_null NOT NULL,
-    beneficiary bytea CONSTRAINT erc4337_user_operations_beneficiary_not_null NOT NULL,
-    init_kind text CONSTRAINT erc4337_user_operations_init_kind_not_null NOT NULL,
-    factory bytea,
+CREATE TABLE erc4337_user_operation_events (
+    chain_id numeric(78,0) NOT NULL,
+    configuration_digest bytea NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL,
+    transaction_hash bytea NOT NULL,
+    operation_index bigint NOT NULL,
+    log_index bigint NOT NULL,
+    event_kind text NOT NULL,
+    sender bytea NOT NULL,
+    nonce numeric(78,0),
+    related_address bytea,
     paymaster bytea,
-    aggregator bytea,
-    success boolean CONSTRAINT erc4337_user_operations_success_not_null NOT NULL,
-    actual_gas_cost numeric(78,0) CONSTRAINT erc4337_user_operations_actual_gas_cost_not_null NOT NULL,
-    actual_gas_used numeric(78,0) CONSTRAINT erc4337_user_operations_actual_gas_used_not_null NOT NULL,
-    call_gas_limit numeric(78,0) CONSTRAINT erc4337_user_operations_call_gas_limit_not_null NOT NULL,
-    verification_gas_limit numeric(78,0) CONSTRAINT erc4337_user_operations_verification_gas_limit_not_null NOT NULL,
-    pre_verification_gas numeric(78,0) CONSTRAINT erc4337_user_operations_pre_verification_gas_not_null NOT NULL,
-    max_fee_per_gas numeric(78,0) CONSTRAINT erc4337_user_operations_max_fee_per_gas_not_null NOT NULL,
-    max_priority_fee_per_gas numeric(78,0) CONSTRAINT erc4337_user_operations_max_priority_fee_per_gas_not_null NOT NULL,
-    paymaster_verification_gas_limit numeric(78,0),
-    paymaster_post_op_gas_limit numeric(78,0),
-    init_code bytea CONSTRAINT erc4337_user_operations_init_code_not_null NOT NULL,
-    factory_data bytea CONSTRAINT erc4337_user_operations_factory_data_not_null NOT NULL,
-    call_data bytea CONSTRAINT erc4337_user_operations_call_data_not_null NOT NULL,
-    paymaster_and_data bytea CONSTRAINT erc4337_user_operations_paymaster_and_data_not_null NOT NULL,
-    paymaster_data bytea CONSTRAINT erc4337_user_operations_paymaster_data_not_null NOT NULL,
-    paymaster_signature bytea CONSTRAINT erc4337_user_operations_paymaster_signature_not_null NOT NULL,
-    signature bytea CONSTRAINT erc4337_user_operations_signature_not_null NOT NULL,
-    account_gas_limits bytea,
-    gas_fees bytea,
-    aggregated_signature bytea CONSTRAINT erc4337_user_operations_aggregated_signature_not_null NOT NULL,
-    canonical boolean CONSTRAINT erc4337_user_operations_canonical_not_null NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() CONSTRAINT erc4337_user_operations_created_at_not_null NOT NULL,
-    CONSTRAINT erc4337_user_operations_account_gas_limits_check CHECK (((account_gas_limits IS NULL) OR (octet_length(account_gas_limits) = 32))),
-    CONSTRAINT erc4337_user_operations_aggregator_check CHECK (((aggregator IS NULL) OR (octet_length(aggregator) = 20))),
-    CONSTRAINT erc4337_user_operations_beneficiary_check CHECK ((octet_length(beneficiary) = 20)),
-    CONSTRAINT erc4337_user_operations_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT erc4337_user_operations_bundler_check CHECK ((octet_length(bundler) = 20)),
-    CONSTRAINT erc4337_user_operations_check CHECK (((transaction_index >= 0) AND (operation_index >= 0) AND (event_log_index >= 0))),
-    CONSTRAINT erc4337_user_operations_check1 CHECK (((nonce >= (0)::numeric) AND (nonce_key >= (0)::numeric) AND (nonce_sequence >= (0)::numeric))),
-    CONSTRAINT erc4337_user_operations_check2 CHECK (((actual_gas_cost >= (0)::numeric) AND (actual_gas_used >= (0)::numeric))),
-    CONSTRAINT erc4337_user_operations_check3 CHECK (((call_gas_limit >= (0)::numeric) AND (verification_gas_limit >= (0)::numeric))),
-    CONSTRAINT erc4337_user_operations_check4 CHECK (((pre_verification_gas >= (0)::numeric) AND (max_fee_per_gas >= (0)::numeric) AND (max_priority_fee_per_gas >= (0)::numeric))),
-    CONSTRAINT erc4337_user_operations_configuration_digest_check CHECK ((octet_length(configuration_digest) = 32)),
-    CONSTRAINT erc4337_user_operations_entry_point_check CHECK ((octet_length(entry_point) = 20)),
-    CONSTRAINT erc4337_user_operations_entry_point_version_check CHECK ((entry_point_version = ANY (ARRAY['0.6'::text, '0.7'::text, '0.8'::text, '0.9'::text]))),
-    CONSTRAINT erc4337_user_operations_factory_check CHECK (((factory IS NULL) OR (octet_length(factory) = 20))),
-    CONSTRAINT erc4337_user_operations_gas_fees_check CHECK (((gas_fees IS NULL) OR (octet_length(gas_fees) = 32))),
-    CONSTRAINT erc4337_user_operations_init_kind_check CHECK ((init_kind = ANY (ARRAY['none'::text, 'factory'::text, 'eip7702'::text]))),
-    CONSTRAINT erc4337_user_operations_paymaster_check CHECK (((paymaster IS NULL) OR (octet_length(paymaster) = 20))),
-    CONSTRAINT erc4337_user_operations_paymaster_post_op_gas_limit_check CHECK (((paymaster_post_op_gas_limit IS NULL) OR (paymaster_post_op_gas_limit >= (0)::numeric))),
-    CONSTRAINT erc4337_user_operations_paymaster_verification_gas_limit_check CHECK (((paymaster_verification_gas_limit IS NULL) OR (paymaster_verification_gas_limit >= (0)::numeric))),
-    CONSTRAINT erc4337_user_operations_sender_check CHECK ((octet_length(sender) = 20)),
-    CONSTRAINT erc4337_user_operations_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
-    CONSTRAINT erc4337_user_operations_user_op_hash_check CHECK ((octet_length(user_op_hash) = 32))
-);
+    raw_data bytea NOT NULL,
+    reason text,
+    panic_code numeric(78,0),
+    canonical boolean NOT NULL,
+    CONSTRAINT erc4337_user_operation_events_block_hash_check CHECK ((octet_length(block_hash) = 32)),
+    CONSTRAINT erc4337_user_operation_events_check CHECK (((operation_index >= 0) AND (log_index >= 0))),
+    CONSTRAINT erc4337_user_operation_events_configuration_digest_check CHECK ((octet_length(configuration_digest) = 32)),
+    CONSTRAINT erc4337_user_operation_events_event_kind_check CHECK ((event_kind = ANY (ARRAY['account_deployed'::text, 'ignored_init_code'::text, 'eip7702_initialized'::text, 'execution_revert'::text, 'post_op_revert'::text, 'prefund_too_low'::text]))),
+    CONSTRAINT erc4337_user_operation_events_nonce_check CHECK (((nonce IS NULL) OR (nonce >= (0)::numeric))),
+    CONSTRAINT erc4337_user_operation_events_panic_code_check CHECK (((panic_code IS NULL) OR (panic_code >= (0)::numeric))),
+    CONSTRAINT erc4337_user_operation_events_paymaster_check CHECK (((paymaster IS NULL) OR (octet_length(paymaster) = 20))),
+    CONSTRAINT erc4337_user_operation_events_related_address_check CHECK (((related_address IS NULL) OR (octet_length(related_address) = 20))),
+    CONSTRAINT erc4337_user_operation_events_sender_check CHECK ((octet_length(sender) = 20)),
+    CONSTRAINT erc4337_user_operation_events_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
+    CONSTRAINT erc4337_user_operation_events_pkey PRIMARY KEY (chain_id, configuration_digest, block_number, block_hash, transaction_hash, operation_index, log_index),
+    CONSTRAINT erc4337_user_operation_events_chain_id_configuration_diges_fkey FOREIGN KEY (chain_id, configuration_digest, block_number, block_hash, transaction_hash, operation_index) REFERENCES erc4337_user_operations(chain_id, configuration_digest, block_number, block_hash, transaction_hash, operation_index)
+)
+PARTITION BY RANGE (block_number);
 
--- Table: erc4337_user_operations_p_0_1000000
+CREATE TABLE erc4337_user_operation_events_default PARTITION OF erc4337_user_operation_events DEFAULT;
 
-CREATE TABLE erc4337_user_operations_p_0_1000000 (
-    chain_id numeric(78,0) CONSTRAINT erc4337_user_operations_chain_id_not_null NOT NULL,
-    configuration_digest bytea CONSTRAINT erc4337_user_operations_configuration_digest_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT erc4337_user_operations_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT erc4337_user_operations_block_hash_not_null NOT NULL,
-    transaction_hash bytea CONSTRAINT erc4337_user_operations_transaction_hash_not_null NOT NULL,
-    transaction_index bigint CONSTRAINT erc4337_user_operations_transaction_index_not_null NOT NULL,
-    operation_index bigint CONSTRAINT erc4337_user_operations_operation_index_not_null NOT NULL,
-    event_log_index bigint CONSTRAINT erc4337_user_operations_event_log_index_not_null NOT NULL,
-    user_op_hash bytea CONSTRAINT erc4337_user_operations_user_op_hash_not_null NOT NULL,
-    entry_point bytea CONSTRAINT erc4337_user_operations_entry_point_not_null NOT NULL,
-    entry_point_version text CONSTRAINT erc4337_user_operations_entry_point_version_not_null NOT NULL,
-    sender bytea CONSTRAINT erc4337_user_operations_sender_not_null NOT NULL,
-    nonce numeric(78,0) CONSTRAINT erc4337_user_operations_nonce_not_null NOT NULL,
-    nonce_key numeric(78,0) CONSTRAINT erc4337_user_operations_nonce_key_not_null NOT NULL,
-    nonce_sequence numeric(78,0) CONSTRAINT erc4337_user_operations_nonce_sequence_not_null NOT NULL,
-    bundler bytea CONSTRAINT erc4337_user_operations_bundler_not_null NOT NULL,
-    beneficiary bytea CONSTRAINT erc4337_user_operations_beneficiary_not_null NOT NULL,
-    init_kind text CONSTRAINT erc4337_user_operations_init_kind_not_null NOT NULL,
-    factory bytea,
-    paymaster bytea,
-    aggregator bytea,
-    success boolean CONSTRAINT erc4337_user_operations_success_not_null NOT NULL,
-    actual_gas_cost numeric(78,0) CONSTRAINT erc4337_user_operations_actual_gas_cost_not_null NOT NULL,
-    actual_gas_used numeric(78,0) CONSTRAINT erc4337_user_operations_actual_gas_used_not_null NOT NULL,
-    call_gas_limit numeric(78,0) CONSTRAINT erc4337_user_operations_call_gas_limit_not_null NOT NULL,
-    verification_gas_limit numeric(78,0) CONSTRAINT erc4337_user_operations_verification_gas_limit_not_null NOT NULL,
-    pre_verification_gas numeric(78,0) CONSTRAINT erc4337_user_operations_pre_verification_gas_not_null NOT NULL,
-    max_fee_per_gas numeric(78,0) CONSTRAINT erc4337_user_operations_max_fee_per_gas_not_null NOT NULL,
-    max_priority_fee_per_gas numeric(78,0) CONSTRAINT erc4337_user_operations_max_priority_fee_per_gas_not_null NOT NULL,
-    paymaster_verification_gas_limit numeric(78,0),
-    paymaster_post_op_gas_limit numeric(78,0),
-    init_code bytea CONSTRAINT erc4337_user_operations_init_code_not_null NOT NULL,
-    factory_data bytea CONSTRAINT erc4337_user_operations_factory_data_not_null NOT NULL,
-    call_data bytea CONSTRAINT erc4337_user_operations_call_data_not_null NOT NULL,
-    paymaster_and_data bytea CONSTRAINT erc4337_user_operations_paymaster_and_data_not_null NOT NULL,
-    paymaster_data bytea CONSTRAINT erc4337_user_operations_paymaster_data_not_null NOT NULL,
-    paymaster_signature bytea CONSTRAINT erc4337_user_operations_paymaster_signature_not_null NOT NULL,
-    signature bytea CONSTRAINT erc4337_user_operations_signature_not_null NOT NULL,
-    account_gas_limits bytea,
-    gas_fees bytea,
-    aggregated_signature bytea CONSTRAINT erc4337_user_operations_aggregated_signature_not_null NOT NULL,
-    canonical boolean CONSTRAINT erc4337_user_operations_canonical_not_null NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() CONSTRAINT erc4337_user_operations_created_at_not_null NOT NULL,
-    CONSTRAINT erc4337_user_operations_account_gas_limits_check CHECK (((account_gas_limits IS NULL) OR (octet_length(account_gas_limits) = 32))),
-    CONSTRAINT erc4337_user_operations_aggregator_check CHECK (((aggregator IS NULL) OR (octet_length(aggregator) = 20))),
-    CONSTRAINT erc4337_user_operations_beneficiary_check CHECK ((octet_length(beneficiary) = 20)),
-    CONSTRAINT erc4337_user_operations_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT erc4337_user_operations_bundler_check CHECK ((octet_length(bundler) = 20)),
-    CONSTRAINT erc4337_user_operations_check CHECK (((transaction_index >= 0) AND (operation_index >= 0) AND (event_log_index >= 0))),
-    CONSTRAINT erc4337_user_operations_check1 CHECK (((nonce >= (0)::numeric) AND (nonce_key >= (0)::numeric) AND (nonce_sequence >= (0)::numeric))),
-    CONSTRAINT erc4337_user_operations_check2 CHECK (((actual_gas_cost >= (0)::numeric) AND (actual_gas_used >= (0)::numeric))),
-    CONSTRAINT erc4337_user_operations_check3 CHECK (((call_gas_limit >= (0)::numeric) AND (verification_gas_limit >= (0)::numeric))),
-    CONSTRAINT erc4337_user_operations_check4 CHECK (((pre_verification_gas >= (0)::numeric) AND (max_fee_per_gas >= (0)::numeric) AND (max_priority_fee_per_gas >= (0)::numeric))),
-    CONSTRAINT erc4337_user_operations_configuration_digest_check CHECK ((octet_length(configuration_digest) = 32)),
-    CONSTRAINT erc4337_user_operations_entry_point_check CHECK ((octet_length(entry_point) = 20)),
-    CONSTRAINT erc4337_user_operations_entry_point_version_check CHECK ((entry_point_version = ANY (ARRAY['0.6'::text, '0.7'::text, '0.8'::text, '0.9'::text]))),
-    CONSTRAINT erc4337_user_operations_factory_check CHECK (((factory IS NULL) OR (octet_length(factory) = 20))),
-    CONSTRAINT erc4337_user_operations_gas_fees_check CHECK (((gas_fees IS NULL) OR (octet_length(gas_fees) = 32))),
-    CONSTRAINT erc4337_user_operations_init_kind_check CHECK ((init_kind = ANY (ARRAY['none'::text, 'factory'::text, 'eip7702'::text]))),
-    CONSTRAINT erc4337_user_operations_paymaster_check CHECK (((paymaster IS NULL) OR (octet_length(paymaster) = 20))),
-    CONSTRAINT erc4337_user_operations_paymaster_post_op_gas_limit_check CHECK (((paymaster_post_op_gas_limit IS NULL) OR (paymaster_post_op_gas_limit >= (0)::numeric))),
-    CONSTRAINT erc4337_user_operations_paymaster_verification_gas_limit_check CHECK (((paymaster_verification_gas_limit IS NULL) OR (paymaster_verification_gas_limit >= (0)::numeric))),
-    CONSTRAINT erc4337_user_operations_sender_check CHECK ((octet_length(sender) = 20)),
-    CONSTRAINT erc4337_user_operations_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
-    CONSTRAINT erc4337_user_operations_user_op_hash_check CHECK ((octet_length(user_op_hash) = 32))
-);
+CREATE TABLE erc4337_user_operation_events_p_0_1000000 PARTITION OF erc4337_user_operation_events FOR VALUES FROM ('0') TO ('1000000');
 
--- Table: erc721_owner_reconciliations
+CREATE TABLE erc4337_user_operation_participants (
+    chain_id numeric(78,0) NOT NULL,
+    configuration_digest bytea CONSTRAINT erc4337_user_operation_participan_configuration_digest_not_null NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL,
+    transaction_hash bytea NOT NULL,
+    operation_index bigint NOT NULL,
+    address bytea NOT NULL,
+    role text NOT NULL,
+    canonical boolean NOT NULL,
+    CONSTRAINT erc4337_user_operation_participants_address_check CHECK ((octet_length(address) = 20)),
+    CONSTRAINT erc4337_user_operation_participants_block_hash_check CHECK ((octet_length(block_hash) = 32)),
+    CONSTRAINT erc4337_user_operation_participants_configuration_digest_check CHECK ((octet_length(configuration_digest) = 32)),
+    CONSTRAINT erc4337_user_operation_participants_operation_index_check CHECK ((operation_index >= 0)),
+    CONSTRAINT erc4337_user_operation_participants_role_check CHECK ((role = ANY (ARRAY['sender'::text, 'entry_point'::text, 'bundler'::text, 'beneficiary'::text, 'factory'::text, 'paymaster'::text, 'aggregator'::text, 'eip7702_delegate'::text]))),
+    CONSTRAINT erc4337_user_operation_participants_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
+    CONSTRAINT erc4337_user_operation_participants_pkey PRIMARY KEY (chain_id, configuration_digest, block_number, block_hash, transaction_hash, operation_index, address, role),
+    CONSTRAINT erc4337_user_operation_partic_chain_id_configuration_diges_fkey FOREIGN KEY (chain_id, configuration_digest, block_number, block_hash, transaction_hash, operation_index) REFERENCES erc4337_user_operations(chain_id, configuration_digest, block_number, block_hash, transaction_hash, operation_index)
+)
+PARTITION BY RANGE (block_number);
+
+CREATE TABLE erc4337_user_operation_participants_default PARTITION OF erc4337_user_operation_participants DEFAULT;
+
+CREATE TABLE erc4337_user_operation_participants_p_0_1000000 PARTITION OF erc4337_user_operation_participants FOR VALUES FROM ('0') TO ('1000000');
+
+CREATE TABLE erc4337_user_operations_default PARTITION OF erc4337_user_operations DEFAULT;
+
+CREATE TABLE erc4337_user_operations_p_0_1000000 PARTITION OF erc4337_user_operations FOR VALUES FROM ('0') TO ('1000000');
 
 CREATE TABLE erc721_owner_reconciliations (
     chain_id numeric(78,0) NOT NULL,
@@ -5174,10 +4731,11 @@ CREATE TABLE erc721_owner_reconciliations (
     CONSTRAINT erc721_owner_reconciliations_owner_address_check CHECK (((owner_address IS NULL) OR (octet_length(owner_address) = 20))),
     CONSTRAINT erc721_owner_reconciliations_state_check CHECK ((state = ANY (ARRAY['owned'::text, 'not_found'::text]))),
     CONSTRAINT erc721_owner_reconciliations_token_address_check CHECK ((octet_length(token_address) = 20)),
-    CONSTRAINT erc721_owner_reconciliations_token_id_check CHECK ((token_id >= (0)::numeric))
+    CONSTRAINT erc721_owner_reconciliations_token_id_check CHECK ((token_id >= (0)::numeric)),
+    CONSTRAINT erc721_owner_reconciliations_pkey PRIMARY KEY (chain_id, token_address, token_id, block_hash),
+    CONSTRAINT erc721_owner_reconciliations_chain_id_block_number_block_h_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash),
+    CONSTRAINT erc721_owner_reconciliations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
-
--- Table: etherview_schema_migrations
 
 CREATE TABLE IF NOT EXISTS etherview_schema_migrations (
     version text PRIMARY KEY,
@@ -5185,10 +4743,8 @@ CREATE TABLE IF NOT EXISTS etherview_schema_migrations (
     applied_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
--- Table: external_adapter_observations
-
 CREATE TABLE external_adapter_observations (
-    id bigint NOT NULL,
+    id bigint NOT NULL DEFAULT nextval('external_adapter_observations_id_seq'::regclass),
     chain_id numeric(78,0) NOT NULL,
     capability text NOT NULL,
     observation_key text NOT NULL,
@@ -5209,27 +4765,11 @@ CREATE TABLE external_adapter_observations (
     CONSTRAINT external_adapter_observations_code_check CHECK (((code IS NULL) OR ((length(code) >= 1) AND (length(code) <= 128)))),
     CONSTRAINT external_adapter_observations_observation_key_check CHECK (((length(observation_key) >= 1) AND (length(observation_key) <= 512))),
     CONSTRAINT external_adapter_observations_provider_key_check CHECK (((length(provider_key) >= 1) AND (length(provider_key) <= 128))),
-    CONSTRAINT external_adapter_observations_state_check CHECK ((state = ANY (ARRAY['complete'::text, 'unavailable'::text, 'failed'::text])))
+    CONSTRAINT external_adapter_observations_state_check CHECK ((state = ANY (ARRAY['complete'::text, 'unavailable'::text, 'failed'::text]))),
+    CONSTRAINT external_adapter_observations_pkey PRIMARY KEY (id),
+    CONSTRAINT external_adapter_observations_chain_id_block_number_block__fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash),
+    CONSTRAINT external_adapter_observations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
-
--- Comment: COLUMN external_adapter_observations.provider_key
-
-COMMENT ON COLUMN external_adapter_observations.provider_key IS 'Stable non-secret namespace for the configured adapter provider';
-
--- Sequence: external_adapter_observations_id_seq
-
-CREATE SEQUENCE external_adapter_observations_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
--- Sequence Owned By: external_adapter_observations_id_seq
-
-ALTER SEQUENCE external_adapter_observations_id_seq OWNED BY external_adapter_observations.id;
-
--- Table: external_metadata
 
 CREATE TABLE external_metadata (
     chain_id numeric(78,0) NOT NULL,
@@ -5269,13 +4809,21 @@ CREATE TABLE external_metadata (
     CONSTRAINT external_metadata_resource_kind_check CHECK ((resource_kind = ANY (ARRAY['token'::text, 'nft'::text, 'name'::text]))),
     CONSTRAINT external_metadata_state_check CHECK ((state = ANY (ARRAY['pending'::text, 'available'::text, 'unavailable'::text, 'unsafe'::text, 'error'::text]))),
     CONSTRAINT external_metadata_token_address_check CHECK (((token_address IS NULL) OR (octet_length(token_address) = 20))),
-    CONSTRAINT external_metadata_token_id_check CHECK (((token_id IS NULL) OR (token_id >= (0)::numeric)))
+    CONSTRAINT external_metadata_token_id_check CHECK (((token_id IS NULL) OR (token_id >= (0)::numeric))),
+    CONSTRAINT external_metadata_pkey PRIMARY KEY (chain_id, resource_kind, resource_key, identity_hash),
+    CONSTRAINT external_metadata_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id),
+    CONSTRAINT external_metadata_observed_block_fk FOREIGN KEY (chain_id, observed_block_number, observed_block_hash) REFERENCES blocks(chain_id, number, hash)
 );
 
--- Table: external_metadata_attempts
-
 CREATE TABLE external_metadata_attempts (
-    id bigint NOT NULL,
+    id bigint NOT NULL GENERATED ALWAYS AS IDENTITY (
+        SEQUENCE NAME external_metadata_attempts_id_seq
+        START WITH 1
+        INCREMENT BY 1
+        NO MINVALUE
+        NO MAXVALUE
+        CACHE 1
+    ),
     chain_id numeric(78,0) NOT NULL,
     resource_kind text NOT NULL,
     resource_key text NOT NULL,
@@ -5296,41 +4844,12 @@ CREATE TABLE external_metadata_attempts (
     CONSTRAINT external_metadata_attempts_error_code_check CHECK (((error_code IS NULL) OR ((length(error_code) >= 1) AND (length(error_code) <= 64)))),
     CONSTRAINT external_metadata_attempts_error_message_check CHECK (((error_message IS NULL) OR (length(error_message) <= 1024))),
     CONSTRAINT external_metadata_attempts_resource_kind_check CHECK ((resource_kind = ANY (ARRAY['token'::text, 'nft'::text, 'name'::text]))),
-    CONSTRAINT external_metadata_attempts_state_check CHECK ((state = ANY (ARRAY['available'::text, 'unavailable'::text, 'unsafe'::text, 'error'::text])))
+    CONSTRAINT external_metadata_attempts_state_check CHECK ((state = ANY (ARRAY['available'::text, 'unavailable'::text, 'unsafe'::text, 'error'::text]))),
+    CONSTRAINT external_metadata_attempts_durable_job_id_attempt_key UNIQUE (durable_job_id, attempt),
+    CONSTRAINT external_metadata_attempts_pkey PRIMARY KEY (id),
+    CONSTRAINT external_metadata_attempts_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id),
+    CONSTRAINT external_metadata_attempts_durable_job_id_fkey FOREIGN KEY (durable_job_id) REFERENCES durable_jobs(id)
 );
-
--- Sequence: external_metadata_attempts_id_seq
-
-ALTER TABLE external_metadata_attempts ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME external_metadata_attempts_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
-);
-
--- Table: genesis_account_observations
-
-CREATE TABLE genesis_account_observations (
-    chain_id numeric(78,0) NOT NULL,
-    address bytea NOT NULL,
-    block_hash bytea NOT NULL,
-    balance numeric(78,0) NOT NULL,
-    nonce numeric(78,0) NOT NULL,
-    code_hash bytea NOT NULL,
-    code bytea NOT NULL,
-    storage_root bytea NOT NULL,
-    observed_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT genesis_account_observations_address_check CHECK ((octet_length(address) = 20)),
-    CONSTRAINT genesis_account_observations_balance_check CHECK ((balance >= (0)::numeric)),
-    CONSTRAINT genesis_account_observations_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT genesis_account_observations_code_hash_check CHECK ((octet_length(code_hash) = 32)),
-    CONSTRAINT genesis_account_observations_nonce_check CHECK ((nonce >= (0)::numeric)),
-    CONSTRAINT genesis_account_observations_storage_root_check CHECK ((octet_length(storage_root) = 32))
-);
-
--- Table: genesis_state_imports
 
 CREATE TABLE genesis_state_imports (
     chain_id numeric(78,0) NOT NULL,
@@ -5347,10 +4866,32 @@ CREATE TABLE genesis_state_imports (
     CONSTRAINT genesis_state_imports_check CHECK ((((state = 'complete'::text) AND (block_hash IS NOT NULL) AND (state_root IS NOT NULL) AND (document_sha256 IS NOT NULL) AND (account_count IS NOT NULL) AND (imported_at IS NOT NULL) AND (last_error_code IS NULL)) OR ((state <> 'complete'::text) AND (account_count IS NULL) AND (imported_at IS NULL)))),
     CONSTRAINT genesis_state_imports_document_sha256_check CHECK (((document_sha256 IS NULL) OR (octet_length(document_sha256) = 32))),
     CONSTRAINT genesis_state_imports_state_check CHECK ((state = ANY (ARRAY['pending'::text, 'complete'::text, 'unavailable'::text, 'failed'::text]))),
-    CONSTRAINT genesis_state_imports_state_root_check CHECK (((state_root IS NULL) OR (octet_length(state_root) = 32)))
+    CONSTRAINT genesis_state_imports_state_root_check CHECK (((state_root IS NULL) OR (octet_length(state_root) = 32))),
+    CONSTRAINT genesis_state_imports_chain_id_block_hash_key UNIQUE (chain_id, block_hash),
+    CONSTRAINT genesis_state_imports_pkey PRIMARY KEY (chain_id),
+    CONSTRAINT genesis_state_imports_chain_id_block_hash_fkey FOREIGN KEY (chain_id, block_hash) REFERENCES blocks(chain_id, hash),
+    CONSTRAINT genesis_state_imports_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
 
--- Table: index_checkpoints
+CREATE TABLE genesis_account_observations (
+    chain_id numeric(78,0) NOT NULL,
+    address bytea NOT NULL,
+    block_hash bytea NOT NULL,
+    balance numeric(78,0) NOT NULL,
+    nonce numeric(78,0) NOT NULL,
+    code_hash bytea NOT NULL,
+    code bytea NOT NULL,
+    storage_root bytea NOT NULL,
+    observed_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT genesis_account_observations_address_check CHECK ((octet_length(address) = 20)),
+    CONSTRAINT genesis_account_observations_balance_check CHECK ((balance >= (0)::numeric)),
+    CONSTRAINT genesis_account_observations_block_hash_check CHECK ((octet_length(block_hash) = 32)),
+    CONSTRAINT genesis_account_observations_code_hash_check CHECK ((octet_length(code_hash) = 32)),
+    CONSTRAINT genesis_account_observations_nonce_check CHECK ((nonce >= (0)::numeric)),
+    CONSTRAINT genesis_account_observations_storage_root_check CHECK ((octet_length(storage_root) = 32)),
+    CONSTRAINT genesis_account_observations_pkey PRIMARY KEY (chain_id, address, block_hash),
+    CONSTRAINT genesis_account_observations_chain_id_block_hash_fkey FOREIGN KEY (chain_id, block_hash) REFERENCES genesis_state_imports(chain_id, block_hash)
+);
 
 CREATE TABLE index_checkpoints (
     chain_id numeric(78,0) NOT NULL,
@@ -5358,136 +4899,35 @@ CREATE TABLE index_checkpoints (
     contiguous_through numeric(78,0) NOT NULL,
     block_hash bytea NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT index_checkpoints_block_hash_check CHECK ((octet_length(block_hash) = 32))
+    CONSTRAINT index_checkpoints_block_hash_check CHECK ((octet_length(block_hash) = 32)),
+    CONSTRAINT index_checkpoints_pkey PRIMARY KEY (chain_id, stage),
+    CONSTRAINT index_checkpoints_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
 
--- Table: logs
+CREATE TABLE logs_default PARTITION OF logs DEFAULT;
 
-CREATE TABLE logs (
-    chain_id numeric(78,0) NOT NULL,
-    block_number numeric(78,0) NOT NULL,
-    block_hash bytea NOT NULL,
-    log_index bigint NOT NULL,
-    tx_index bigint NOT NULL,
-    tx_hash bytea NOT NULL,
-    address bytea NOT NULL,
-    topic0 bytea,
-    raw jsonb NOT NULL,
-    CONSTRAINT logs_address_check CHECK ((octet_length(address) = 20)),
-    CONSTRAINT logs_log_index_check CHECK ((log_index >= 0)),
-    CONSTRAINT logs_topic0_check CHECK (((topic0 IS NULL) OR (octet_length(topic0) = 32))),
-    CONSTRAINT logs_tx_index_check CHECK ((tx_index >= 0))
-)
-PARTITION BY RANGE (block_number);
-
--- Table: logs_default
-
-CREATE TABLE logs_default (
-    chain_id numeric(78,0) CONSTRAINT logs_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT logs_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT logs_block_hash_not_null NOT NULL,
-    log_index bigint CONSTRAINT logs_log_index_not_null NOT NULL,
-    tx_index bigint CONSTRAINT logs_tx_index_not_null NOT NULL,
-    tx_hash bytea CONSTRAINT logs_tx_hash_not_null NOT NULL,
-    address bytea CONSTRAINT logs_address_not_null NOT NULL,
-    topic0 bytea,
-    raw jsonb CONSTRAINT logs_raw_not_null NOT NULL,
-    CONSTRAINT logs_address_check CHECK ((octet_length(address) = 20)),
-    CONSTRAINT logs_log_index_check CHECK ((log_index >= 0)),
-    CONSTRAINT logs_topic0_check CHECK (((topic0 IS NULL) OR (octet_length(topic0) = 32))),
-    CONSTRAINT logs_tx_index_check CHECK ((tx_index >= 0))
-);
-
--- Table: logs_p_0_1000000
-
-CREATE TABLE logs_p_0_1000000 (
-    chain_id numeric(78,0) CONSTRAINT logs_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT logs_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT logs_block_hash_not_null NOT NULL,
-    log_index bigint CONSTRAINT logs_log_index_not_null NOT NULL,
-    tx_index bigint CONSTRAINT logs_tx_index_not_null NOT NULL,
-    tx_hash bytea CONSTRAINT logs_tx_hash_not_null NOT NULL,
-    address bytea CONSTRAINT logs_address_not_null NOT NULL,
-    topic0 bytea,
-    raw jsonb CONSTRAINT logs_raw_not_null NOT NULL,
-    CONSTRAINT logs_address_check CHECK ((octet_length(address) = 20)),
-    CONSTRAINT logs_log_index_check CHECK ((log_index >= 0)),
-    CONSTRAINT logs_topic0_check CHECK (((topic0 IS NULL) OR (octet_length(topic0) = 32))),
-    CONSTRAINT logs_tx_index_check CHECK ((tx_index >= 0))
-);
-
--- Table: mempool_snapshot_transactions
-
-CREATE TABLE mempool_snapshot_transactions (
-    chain_id numeric(78,0) NOT NULL,
-    snapshot_id bigint NOT NULL,
-    tx_hash bytea NOT NULL,
-    CONSTRAINT mempool_snapshot_transactions_tx_hash_check CHECK ((octet_length(tx_hash) = 32))
-);
-
--- Table: mempool_snapshots
+CREATE TABLE logs_p_0_1000000 PARTITION OF logs FOR VALUES FROM ('0') TO ('1000000');
 
 CREATE TABLE mempool_snapshots (
     chain_id numeric(78,0) NOT NULL,
-    id bigint NOT NULL,
+    id bigint NOT NULL GENERATED ALWAYS AS IDENTITY (
+        SEQUENCE NAME mempool_snapshots_id_seq
+        START WITH 1
+        INCREMENT BY 1
+        NO MINVALUE
+        NO MAXVALUE
+        CACHE 1
+    ),
     endpoint_name text NOT NULL,
     observed_at timestamp with time zone NOT NULL,
     expires_at timestamp with time zone NOT NULL,
     transaction_count integer NOT NULL,
     CONSTRAINT mempool_snapshots_check CHECK ((expires_at > observed_at)),
     CONSTRAINT mempool_snapshots_endpoint_name_check CHECK (((length(endpoint_name) >= 1) AND (length(endpoint_name) <= 128))),
-    CONSTRAINT mempool_snapshots_transaction_count_check CHECK ((transaction_count >= 0))
+    CONSTRAINT mempool_snapshots_transaction_count_check CHECK ((transaction_count >= 0)),
+    CONSTRAINT mempool_snapshots_pkey PRIMARY KEY (chain_id, id),
+    CONSTRAINT mempool_snapshots_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
-
--- Sequence: mempool_snapshots_id_seq
-
-ALTER TABLE mempool_snapshots ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME mempool_snapshots_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
-);
-
--- Table: mempool_status
-
-CREATE TABLE mempool_status (
-    chain_id numeric(78,0) NOT NULL,
-    state text NOT NULL,
-    endpoint_name text,
-    latest_snapshot_id bigint,
-    transaction_count integer,
-    last_attempt_at timestamp with time zone NOT NULL,
-    last_success_at timestamp with time zone,
-    error_code text,
-    error_message text,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    last_snapshot_write_id bigint,
-    CONSTRAINT mempool_status_check CHECK (((latest_snapshot_id IS NULL) = (last_success_at IS NULL))),
-    CONSTRAINT mempool_status_check1 CHECK (((state = ANY (ARRAY['unavailable'::text, 'failed'::text])) = (error_code IS NOT NULL))),
-    CONSTRAINT mempool_status_check2 CHECK (((state = ANY (ARRAY['unavailable'::text, 'failed'::text])) = (error_message IS NOT NULL))),
-    CONSTRAINT mempool_status_endpoint_name_check CHECK (((endpoint_name IS NULL) OR ((length(endpoint_name) >= 1) AND (length(endpoint_name) <= 128)))),
-    CONSTRAINT mempool_status_error_code_check CHECK (((error_code IS NULL) OR ((length(error_code) >= 1) AND (length(error_code) <= 64)))),
-    CONSTRAINT mempool_status_error_message_check CHECK (((error_message IS NULL) OR ((length(error_message) >= 1) AND (length(error_message) <= 1024)))),
-    CONSTRAINT mempool_status_last_snapshot_write_id_positive CHECK (((last_snapshot_write_id IS NULL) OR (last_snapshot_write_id > 0))),
-    CONSTRAINT mempool_status_state_check CHECK ((state = ANY (ARRAY['pending'::text, 'complete'::text, 'unavailable'::text, 'failed'::text]))),
-    CONSTRAINT mempool_status_transaction_count_check CHECK (((transaction_count IS NULL) OR (transaction_count >= 0)))
-);
-
--- Table: mempool_transaction_replacements
-
-CREATE TABLE mempool_transaction_replacements (
-    chain_id numeric(78,0) NOT NULL,
-    snapshot_id bigint NOT NULL,
-    replaced_hash bytea NOT NULL,
-    replacement_hash bytea NOT NULL,
-    CONSTRAINT mempool_transaction_replacements_check CHECK ((replaced_hash <> replacement_hash)),
-    CONSTRAINT mempool_transaction_replacements_replaced_hash_check CHECK ((octet_length(replaced_hash) = 32)),
-    CONSTRAINT mempool_transaction_replacements_replacement_hash_check CHECK ((octet_length(replacement_hash) = 32))
-);
-
--- Table: mempool_transactions
 
 CREATE TABLE mempool_transactions (
     chain_id numeric(78,0) NOT NULL,
@@ -5517,17 +4957,69 @@ CREATE TABLE mempool_transactions (
     CONSTRAINT mempool_transactions_max_priority_fee_per_gas_check CHECK (((max_priority_fee_per_gas IS NULL) OR (max_priority_fee_per_gas >= (0)::numeric))),
     CONSTRAINT mempool_transactions_to_address_check CHECK (((to_address IS NULL) OR (octet_length(to_address) = 20))),
     CONSTRAINT mempool_transactions_tx_hash_check CHECK ((octet_length(tx_hash) = 32)),
-    CONSTRAINT mempool_transactions_tx_type_check CHECK (((tx_type IS NULL) OR (tx_type >= (0)::numeric)))
+    CONSTRAINT mempool_transactions_tx_type_check CHECK (((tx_type IS NULL) OR (tx_type >= (0)::numeric))),
+    CONSTRAINT mempool_transactions_pkey PRIMARY KEY (chain_id, tx_hash),
+    CONSTRAINT mempool_transactions_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
 
--- Table: native_transfer_coverage
+CREATE TABLE mempool_snapshot_transactions (
+    chain_id numeric(78,0) NOT NULL,
+    snapshot_id bigint NOT NULL,
+    tx_hash bytea NOT NULL,
+    CONSTRAINT mempool_snapshot_transactions_tx_hash_check CHECK ((octet_length(tx_hash) = 32)),
+    CONSTRAINT mempool_snapshot_transactions_pkey PRIMARY KEY (chain_id, snapshot_id, tx_hash),
+    CONSTRAINT mempool_snapshot_transactions_chain_id_snapshot_id_fkey FOREIGN KEY (chain_id, snapshot_id) REFERENCES mempool_snapshots(chain_id, id) ON DELETE CASCADE,
+    CONSTRAINT mempool_snapshot_transactions_chain_id_tx_hash_fkey FOREIGN KEY (chain_id, tx_hash) REFERENCES mempool_transactions(chain_id, tx_hash)
+);
+
+CREATE TABLE mempool_status (
+    chain_id numeric(78,0) NOT NULL,
+    state text NOT NULL,
+    endpoint_name text,
+    latest_snapshot_id bigint,
+    transaction_count integer,
+    last_attempt_at timestamp with time zone NOT NULL,
+    last_success_at timestamp with time zone,
+    error_code text,
+    error_message text,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    last_snapshot_write_id bigint,
+    CONSTRAINT mempool_status_check CHECK (((latest_snapshot_id IS NULL) = (last_success_at IS NULL))),
+    CONSTRAINT mempool_status_check1 CHECK (((state = ANY (ARRAY['unavailable'::text, 'failed'::text])) = (error_code IS NOT NULL))),
+    CONSTRAINT mempool_status_check2 CHECK (((state = ANY (ARRAY['unavailable'::text, 'failed'::text])) = (error_message IS NOT NULL))),
+    CONSTRAINT mempool_status_endpoint_name_check CHECK (((endpoint_name IS NULL) OR ((length(endpoint_name) >= 1) AND (length(endpoint_name) <= 128)))),
+    CONSTRAINT mempool_status_error_code_check CHECK (((error_code IS NULL) OR ((length(error_code) >= 1) AND (length(error_code) <= 64)))),
+    CONSTRAINT mempool_status_error_message_check CHECK (((error_message IS NULL) OR ((length(error_message) >= 1) AND (length(error_message) <= 1024)))),
+    CONSTRAINT mempool_status_last_snapshot_write_id_positive CHECK (((last_snapshot_write_id IS NULL) OR (last_snapshot_write_id > 0))),
+    CONSTRAINT mempool_status_state_check CHECK ((state = ANY (ARRAY['pending'::text, 'complete'::text, 'unavailable'::text, 'failed'::text]))),
+    CONSTRAINT mempool_status_transaction_count_check CHECK (((transaction_count IS NULL) OR (transaction_count >= 0))),
+    CONSTRAINT mempool_status_pkey PRIMARY KEY (chain_id),
+    CONSTRAINT mempool_status_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id),
+    CONSTRAINT mempool_status_chain_id_latest_snapshot_id_fkey FOREIGN KEY (chain_id, latest_snapshot_id) REFERENCES mempool_snapshots(chain_id, id)
+);
+
+CREATE TABLE mempool_transaction_replacements (
+    chain_id numeric(78,0) NOT NULL,
+    snapshot_id bigint NOT NULL,
+    replaced_hash bytea NOT NULL,
+    replacement_hash bytea NOT NULL,
+    CONSTRAINT mempool_transaction_replacements_check CHECK ((replaced_hash <> replacement_hash)),
+    CONSTRAINT mempool_transaction_replacements_replaced_hash_check CHECK ((octet_length(replaced_hash) = 32)),
+    CONSTRAINT mempool_transaction_replacements_replacement_hash_check CHECK ((octet_length(replacement_hash) = 32)),
+    CONSTRAINT mempool_transaction_replaceme_chain_id_snapshot_id_replacem_key UNIQUE (chain_id, snapshot_id, replacement_hash),
+    CONSTRAINT mempool_transaction_replacements_pkey PRIMARY KEY (chain_id, snapshot_id, replaced_hash),
+    CONSTRAINT mempool_transaction_replacements_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id),
+    CONSTRAINT mempool_transaction_replacements_chain_id_replaced_hash_fkey FOREIGN KEY (chain_id, replaced_hash) REFERENCES mempool_transactions(chain_id, tx_hash),
+    CONSTRAINT mempool_transaction_replacements_chain_id_replacement_hash_fkey FOREIGN KEY (chain_id, replacement_hash) REFERENCES mempool_transactions(chain_id, tx_hash),
+    CONSTRAINT mempool_transaction_replacements_chain_id_snapshot_id_fkey FOREIGN KEY (chain_id, snapshot_id) REFERENCES mempool_snapshots(chain_id, id) ON DELETE CASCADE
+);
 
 CREATE TABLE native_transfer_coverage (
     chain_id numeric(78,0) NOT NULL,
-    covered nummultirange DEFAULT '{}'::nummultirange NOT NULL
+    covered nummultirange DEFAULT '{}'::nummultirange NOT NULL,
+    CONSTRAINT native_transfer_coverage_pkey PRIMARY KEY (chain_id),
+    CONSTRAINT native_transfer_coverage_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
-
--- Table: native_transfers
 
 CREATE TABLE native_transfers (
     chain_id numeric(78,0) NOT NULL,
@@ -5547,57 +5039,16 @@ CREATE TABLE native_transfers (
     CONSTRAINT native_transfers_log_index_check CHECK ((log_index >= 0)),
     CONSTRAINT native_transfers_to_address_check CHECK ((octet_length(to_address) = 20)),
     CONSTRAINT native_transfers_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
-    CONSTRAINT native_transfers_transaction_index_check CHECK ((transaction_index >= 0))
+    CONSTRAINT native_transfers_transaction_index_check CHECK ((transaction_index >= 0)),
+    CONSTRAINT native_transfers_pkey PRIMARY KEY (chain_id, block_number, block_hash, log_index),
+    CONSTRAINT native_transfers_chain_id_block_number_block_hash_transact_fkey FOREIGN KEY (chain_id, block_number, block_hash, transaction_index, transaction_hash) REFERENCES transaction_inclusions(chain_id, block_number, block_hash, tx_index, tx_hash),
+    CONSTRAINT native_transfers_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 )
 PARTITION BY RANGE (block_number);
 
--- Table: native_transfers_default
+CREATE TABLE native_transfers_default PARTITION OF native_transfers DEFAULT;
 
-CREATE TABLE native_transfers_default (
-    chain_id numeric(78,0) CONSTRAINT native_transfers_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT native_transfers_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT native_transfers_block_hash_not_null NOT NULL,
-    transaction_hash bytea CONSTRAINT native_transfers_transaction_hash_not_null NOT NULL,
-    transaction_index bigint CONSTRAINT native_transfers_transaction_index_not_null NOT NULL,
-    log_index bigint CONSTRAINT native_transfers_log_index_not_null NOT NULL,
-    from_address bytea CONSTRAINT native_transfers_from_address_not_null NOT NULL,
-    to_address bytea CONSTRAINT native_transfers_to_address_not_null NOT NULL,
-    amount numeric(78,0) CONSTRAINT native_transfers_amount_not_null NOT NULL,
-    canonical boolean CONSTRAINT native_transfers_canonical_not_null NOT NULL,
-    CONSTRAINT native_transfers_amount_check CHECK (((amount > (0)::numeric) AND (amount < '115792089237316195423570985008687907853269984665640564039457584007913129639936'::numeric))),
-    CONSTRAINT native_transfers_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT native_transfers_check CHECK ((from_address <> to_address)),
-    CONSTRAINT native_transfers_from_address_check CHECK ((octet_length(from_address) = 20)),
-    CONSTRAINT native_transfers_log_index_check CHECK ((log_index >= 0)),
-    CONSTRAINT native_transfers_to_address_check CHECK ((octet_length(to_address) = 20)),
-    CONSTRAINT native_transfers_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
-    CONSTRAINT native_transfers_transaction_index_check CHECK ((transaction_index >= 0))
-);
-
--- Table: native_transfers_p_0_1000000
-
-CREATE TABLE native_transfers_p_0_1000000 (
-    chain_id numeric(78,0) CONSTRAINT native_transfers_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT native_transfers_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT native_transfers_block_hash_not_null NOT NULL,
-    transaction_hash bytea CONSTRAINT native_transfers_transaction_hash_not_null NOT NULL,
-    transaction_index bigint CONSTRAINT native_transfers_transaction_index_not_null NOT NULL,
-    log_index bigint CONSTRAINT native_transfers_log_index_not_null NOT NULL,
-    from_address bytea CONSTRAINT native_transfers_from_address_not_null NOT NULL,
-    to_address bytea CONSTRAINT native_transfers_to_address_not_null NOT NULL,
-    amount numeric(78,0) CONSTRAINT native_transfers_amount_not_null NOT NULL,
-    canonical boolean CONSTRAINT native_transfers_canonical_not_null NOT NULL,
-    CONSTRAINT native_transfers_amount_check CHECK (((amount > (0)::numeric) AND (amount < '115792089237316195423570985008687907853269984665640564039457584007913129639936'::numeric))),
-    CONSTRAINT native_transfers_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT native_transfers_check CHECK ((from_address <> to_address)),
-    CONSTRAINT native_transfers_from_address_check CHECK ((octet_length(from_address) = 20)),
-    CONSTRAINT native_transfers_log_index_check CHECK ((log_index >= 0)),
-    CONSTRAINT native_transfers_to_address_check CHECK ((octet_length(to_address) = 20)),
-    CONSTRAINT native_transfers_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
-    CONSTRAINT native_transfers_transaction_index_check CHECK ((transaction_index >= 0))
-);
-
--- Table: nft_metadata_source_observations
+CREATE TABLE native_transfers_p_0_1000000 PARTITION OF native_transfers FOR VALUES FROM ('0') TO ('1000000');
 
 CREATE TABLE nft_metadata_source_observations (
     chain_id numeric(78,0) NOT NULL,
@@ -5617,10 +5068,11 @@ CREATE TABLE nft_metadata_source_observations (
     CONSTRAINT nft_metadata_source_observations_standard_check CHECK ((standard = ANY (ARRAY['erc721'::text, 'erc1155'::text]))),
     CONSTRAINT nft_metadata_source_observations_state_check CHECK ((state = ANY (ARRAY['found'::text, 'unavailable'::text]))),
     CONSTRAINT nft_metadata_source_observations_token_address_check CHECK ((octet_length(token_address) = 20)),
-    CONSTRAINT nft_metadata_source_observations_token_id_check CHECK (((token_id >= (0)::numeric) AND (token_id <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'::numeric)))
+    CONSTRAINT nft_metadata_source_observations_token_id_check CHECK (((token_id >= (0)::numeric) AND (token_id <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'::numeric))),
+    CONSTRAINT nft_metadata_source_observations_pkey PRIMARY KEY (chain_id, token_address, token_id, block_hash),
+    CONSTRAINT nft_metadata_source_observati_chain_id_block_number_block__fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash),
+    CONSTRAINT nft_metadata_source_observations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
-
--- Table: nft_metadata_update_observations
 
 CREATE TABLE nft_metadata_update_observations (
     chain_id numeric(78,0) NOT NULL,
@@ -5644,140 +5096,25 @@ CREATE TABLE nft_metadata_update_observations (
     CONSTRAINT nft_metadata_update_observations_standard_check CHECK ((standard = ANY (ARRAY['erc721'::text, 'erc1155'::text]))),
     CONSTRAINT nft_metadata_update_observations_state_check CHECK ((state = ANY (ARRAY['accepted'::text, 'malformed'::text]))),
     CONSTRAINT nft_metadata_update_observations_to_token_id_check CHECK (((to_token_id IS NULL) OR ((to_token_id >= (0)::numeric) AND (to_token_id <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'::numeric)))),
-    CONSTRAINT nft_metadata_update_observations_token_address_check CHECK ((octet_length(token_address) = 20))
+    CONSTRAINT nft_metadata_update_observations_token_address_check CHECK ((octet_length(token_address) = 20)),
+    CONSTRAINT nft_metadata_update_observations_pkey PRIMARY KEY (chain_id, block_number, block_hash, log_index),
+    CONSTRAINT nft_metadata_update_observati_chain_id_block_number_block__fkey FOREIGN KEY (chain_id, block_number, block_hash, log_index) REFERENCES logs(chain_id, block_number, block_hash, log_index),
+    CONSTRAINT nft_metadata_update_observations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
 
--- Table: normalized_traces
+CREATE TABLE normalized_traces_default PARTITION OF normalized_traces DEFAULT;
 
-CREATE TABLE normalized_traces (
-    chain_id numeric(78,0) NOT NULL,
-    block_number numeric(78,0) NOT NULL,
-    block_hash bytea NOT NULL,
-    transaction_hash bytea NOT NULL,
-    transaction_index bigint NOT NULL,
-    trace_path text NOT NULL,
-    parent_path text,
-    depth integer NOT NULL,
-    call_type text NOT NULL,
-    from_address bytea,
-    to_address bytea,
-    created_address bytea,
-    value numeric(78,0),
-    gas numeric(78,0),
-    gas_used numeric(78,0),
-    input bytea,
-    output bytea,
-    error text,
-    reverted boolean NOT NULL,
-    canonical boolean NOT NULL,
-    direct_reverted boolean DEFAULT false NOT NULL,
-    execution_address bytea,
-    execution_code_hash bytea,
-    execution_resolution text DEFAULT 'unavailable'::text NOT NULL,
-    CONSTRAINT normalized_traces_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT normalized_traces_created_address_check CHECK (((created_address IS NULL) OR (octet_length(created_address) = 20))),
-    CONSTRAINT normalized_traces_depth_check CHECK ((depth >= 0)),
-    CONSTRAINT normalized_traces_execution_address_length_check CHECK (((execution_address IS NULL) OR (octet_length(execution_address) = 20))),
-    CONSTRAINT normalized_traces_execution_code_hash_length_check CHECK (((execution_code_hash IS NULL) OR (octet_length(execution_code_hash) = 32))),
-    CONSTRAINT normalized_traces_execution_identity_check CHECK ((((execution_resolution = ANY (ARRAY['direct'::text, 'eip7702_delegate'::text])) AND (execution_address IS NOT NULL) AND (execution_code_hash IS NOT NULL)) OR ((execution_resolution = ANY (ARRAY['empty'::text, 'not_applicable'::text])) AND (execution_address IS NULL) AND (execution_code_hash IS NULL)) OR ((execution_resolution = 'unavailable'::text) AND (execution_code_hash IS NULL)))),
-    CONSTRAINT normalized_traces_execution_resolution_check CHECK ((execution_resolution = ANY (ARRAY['direct'::text, 'eip7702_delegate'::text, 'empty'::text, 'unavailable'::text, 'not_applicable'::text]))),
-    CONSTRAINT normalized_traces_from_address_check CHECK (((from_address IS NULL) OR (octet_length(from_address) = 20))),
-    CONSTRAINT normalized_traces_gas_check CHECK (((gas IS NULL) OR (gas >= (0)::numeric))),
-    CONSTRAINT normalized_traces_gas_used_check CHECK (((gas_used IS NULL) OR (gas_used >= (0)::numeric))),
-    CONSTRAINT normalized_traces_to_address_check CHECK (((to_address IS NULL) OR (octet_length(to_address) = 20))),
-    CONSTRAINT normalized_traces_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
-    CONSTRAINT normalized_traces_value_check CHECK (((value IS NULL) OR (value >= (0)::numeric)))
-)
-PARTITION BY RANGE (block_number);
-
--- Table: normalized_traces_default
-
-CREATE TABLE normalized_traces_default (
-    chain_id numeric(78,0) CONSTRAINT normalized_traces_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT normalized_traces_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT normalized_traces_block_hash_not_null NOT NULL,
-    transaction_hash bytea CONSTRAINT normalized_traces_transaction_hash_not_null NOT NULL,
-    transaction_index bigint CONSTRAINT normalized_traces_transaction_index_not_null NOT NULL,
-    trace_path text CONSTRAINT normalized_traces_trace_path_not_null NOT NULL,
-    parent_path text,
-    depth integer CONSTRAINT normalized_traces_depth_not_null NOT NULL,
-    call_type text CONSTRAINT normalized_traces_call_type_not_null NOT NULL,
-    from_address bytea,
-    to_address bytea,
-    created_address bytea,
-    value numeric(78,0),
-    gas numeric(78,0),
-    gas_used numeric(78,0),
-    input bytea,
-    output bytea,
-    error text,
-    reverted boolean CONSTRAINT normalized_traces_reverted_not_null NOT NULL,
-    canonical boolean CONSTRAINT normalized_traces_canonical_not_null NOT NULL,
-    direct_reverted boolean DEFAULT false CONSTRAINT normalized_traces_direct_reverted_not_null NOT NULL,
-    execution_address bytea,
-    execution_code_hash bytea,
-    execution_resolution text DEFAULT 'unavailable'::text CONSTRAINT normalized_traces_execution_resolution_not_null NOT NULL,
-    CONSTRAINT normalized_traces_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT normalized_traces_created_address_check CHECK (((created_address IS NULL) OR (octet_length(created_address) = 20))),
-    CONSTRAINT normalized_traces_depth_check CHECK ((depth >= 0)),
-    CONSTRAINT normalized_traces_execution_address_length_check CHECK (((execution_address IS NULL) OR (octet_length(execution_address) = 20))),
-    CONSTRAINT normalized_traces_execution_code_hash_length_check CHECK (((execution_code_hash IS NULL) OR (octet_length(execution_code_hash) = 32))),
-    CONSTRAINT normalized_traces_execution_identity_check CHECK ((((execution_resolution = ANY (ARRAY['direct'::text, 'eip7702_delegate'::text])) AND (execution_address IS NOT NULL) AND (execution_code_hash IS NOT NULL)) OR ((execution_resolution = ANY (ARRAY['empty'::text, 'not_applicable'::text])) AND (execution_address IS NULL) AND (execution_code_hash IS NULL)) OR ((execution_resolution = 'unavailable'::text) AND (execution_code_hash IS NULL)))),
-    CONSTRAINT normalized_traces_execution_resolution_check CHECK ((execution_resolution = ANY (ARRAY['direct'::text, 'eip7702_delegate'::text, 'empty'::text, 'unavailable'::text, 'not_applicable'::text]))),
-    CONSTRAINT normalized_traces_from_address_check CHECK (((from_address IS NULL) OR (octet_length(from_address) = 20))),
-    CONSTRAINT normalized_traces_gas_check CHECK (((gas IS NULL) OR (gas >= (0)::numeric))),
-    CONSTRAINT normalized_traces_gas_used_check CHECK (((gas_used IS NULL) OR (gas_used >= (0)::numeric))),
-    CONSTRAINT normalized_traces_to_address_check CHECK (((to_address IS NULL) OR (octet_length(to_address) = 20))),
-    CONSTRAINT normalized_traces_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
-    CONSTRAINT normalized_traces_value_check CHECK (((value IS NULL) OR (value >= (0)::numeric)))
-);
-
--- Table: normalized_traces_p_0_1000000
-
-CREATE TABLE normalized_traces_p_0_1000000 (
-    chain_id numeric(78,0) CONSTRAINT normalized_traces_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT normalized_traces_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT normalized_traces_block_hash_not_null NOT NULL,
-    transaction_hash bytea CONSTRAINT normalized_traces_transaction_hash_not_null NOT NULL,
-    transaction_index bigint CONSTRAINT normalized_traces_transaction_index_not_null NOT NULL,
-    trace_path text CONSTRAINT normalized_traces_trace_path_not_null NOT NULL,
-    parent_path text,
-    depth integer CONSTRAINT normalized_traces_depth_not_null NOT NULL,
-    call_type text CONSTRAINT normalized_traces_call_type_not_null NOT NULL,
-    from_address bytea,
-    to_address bytea,
-    created_address bytea,
-    value numeric(78,0),
-    gas numeric(78,0),
-    gas_used numeric(78,0),
-    input bytea,
-    output bytea,
-    error text,
-    reverted boolean CONSTRAINT normalized_traces_reverted_not_null NOT NULL,
-    canonical boolean CONSTRAINT normalized_traces_canonical_not_null NOT NULL,
-    direct_reverted boolean DEFAULT false CONSTRAINT normalized_traces_direct_reverted_not_null NOT NULL,
-    execution_address bytea,
-    execution_code_hash bytea,
-    execution_resolution text DEFAULT 'unavailable'::text CONSTRAINT normalized_traces_execution_resolution_not_null NOT NULL,
-    CONSTRAINT normalized_traces_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT normalized_traces_created_address_check CHECK (((created_address IS NULL) OR (octet_length(created_address) = 20))),
-    CONSTRAINT normalized_traces_depth_check CHECK ((depth >= 0)),
-    CONSTRAINT normalized_traces_execution_address_length_check CHECK (((execution_address IS NULL) OR (octet_length(execution_address) = 20))),
-    CONSTRAINT normalized_traces_execution_code_hash_length_check CHECK (((execution_code_hash IS NULL) OR (octet_length(execution_code_hash) = 32))),
-    CONSTRAINT normalized_traces_execution_identity_check CHECK ((((execution_resolution = ANY (ARRAY['direct'::text, 'eip7702_delegate'::text])) AND (execution_address IS NOT NULL) AND (execution_code_hash IS NOT NULL)) OR ((execution_resolution = ANY (ARRAY['empty'::text, 'not_applicable'::text])) AND (execution_address IS NULL) AND (execution_code_hash IS NULL)) OR ((execution_resolution = 'unavailable'::text) AND (execution_code_hash IS NULL)))),
-    CONSTRAINT normalized_traces_execution_resolution_check CHECK ((execution_resolution = ANY (ARRAY['direct'::text, 'eip7702_delegate'::text, 'empty'::text, 'unavailable'::text, 'not_applicable'::text]))),
-    CONSTRAINT normalized_traces_from_address_check CHECK (((from_address IS NULL) OR (octet_length(from_address) = 20))),
-    CONSTRAINT normalized_traces_gas_check CHECK (((gas IS NULL) OR (gas >= (0)::numeric))),
-    CONSTRAINT normalized_traces_gas_used_check CHECK (((gas_used IS NULL) OR (gas_used >= (0)::numeric))),
-    CONSTRAINT normalized_traces_to_address_check CHECK (((to_address IS NULL) OR (octet_length(to_address) = 20))),
-    CONSTRAINT normalized_traces_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
-    CONSTRAINT normalized_traces_value_check CHECK (((value IS NULL) OR (value >= (0)::numeric)))
-);
-
--- Table: operator_labels
+CREATE TABLE normalized_traces_p_0_1000000 PARTITION OF normalized_traces FOR VALUES FROM ('0') TO ('1000000');
 
 CREATE TABLE operator_labels (
-    id bigint NOT NULL,
+    id bigint NOT NULL GENERATED ALWAYS AS IDENTITY (
+        SEQUENCE NAME operator_labels_id_seq
+        START WITH 1
+        INCREMENT BY 1
+        NO MINVALUE
+        NO MAXVALUE
+        CACHE 1
+    ),
     chain_id numeric(78,0) NOT NULL,
     object_kind text NOT NULL,
     object_key text NOT NULL,
@@ -5786,217 +5123,11 @@ CREATE TABLE operator_labels (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT operator_labels_label_check CHECK (((length(label) >= 1) AND (length(label) <= 256))),
     CONSTRAINT operator_labels_object_key_check CHECK (((length(object_key) >= 1) AND (length(object_key) <= 256))),
-    CONSTRAINT operator_labels_object_kind_check CHECK ((object_kind = ANY (ARRAY['address'::text, 'block'::text, 'transaction'::text, 'token'::text, 'contract'::text])))
+    CONSTRAINT operator_labels_object_kind_check CHECK ((object_kind = ANY (ARRAY['address'::text, 'block'::text, 'transaction'::text, 'token'::text, 'contract'::text]))),
+    CONSTRAINT operator_labels_chain_id_object_kind_object_key_key UNIQUE (chain_id, object_kind, object_key),
+    CONSTRAINT operator_labels_pkey PRIMARY KEY (id),
+    CONSTRAINT operator_labels_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
-
--- Sequence: operator_labels_id_seq
-
-ALTER TABLE operator_labels ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME operator_labels_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
-);
-
--- Table: proxy_artifact_resolutions
-
-CREATE TABLE proxy_artifact_resolutions (
-    id bigint NOT NULL,
-    chain_id numeric(78,0) NOT NULL,
-    proxy_address bytea NOT NULL,
-    observation_block_hash bytea NOT NULL,
-    observation_stage_version integer NOT NULL,
-    proxy_code_hash bytea NOT NULL,
-    proxy_kind text NOT NULL,
-    proxy_pattern text NOT NULL,
-    standard_version text NOT NULL,
-    implementation_address bytea NOT NULL,
-    implementation_code_hash bytea NOT NULL,
-    admin_address bytea,
-    admin_code_hash bytea,
-    beacon_address bytea,
-    beacon_code_hash bytea,
-    proxy_artifact_job_id uuid NOT NULL,
-    implementation_artifact_job_id uuid,
-    durable_job_id bigint,
-    job_generation bigint,
-    evidence jsonb NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT proxy_artifact_resolutions_check CHECK ((((admin_address IS NULL) AND (admin_code_hash IS NULL)) OR ((octet_length(admin_address) = 20) AND (octet_length(admin_code_hash) = 32)))),
-    CONSTRAINT proxy_artifact_resolutions_check1 CHECK ((((beacon_address IS NULL) AND (beacon_code_hash IS NULL)) OR ((octet_length(beacon_address) = 20) AND (octet_length(beacon_code_hash) = 32)))),
-    CONSTRAINT proxy_artifact_resolutions_check2 CHECK ((((proxy_pattern = 'transparent'::text) AND (admin_address IS NOT NULL) AND (beacon_address IS NULL)) OR ((proxy_pattern = 'beacon'::text) AND (beacon_address IS NOT NULL) AND (admin_address IS NULL)) OR ((proxy_pattern = ANY (ARRAY['erc1967'::text, 'uups'::text])) AND (admin_address IS NULL) AND (beacon_address IS NULL)))),
-    CONSTRAINT proxy_artifact_resolutions_check3 CHECK ((((proxy_pattern = 'uups'::text) AND (implementation_artifact_job_id IS NOT NULL)) OR (proxy_pattern <> 'uups'::text))),
-    CONSTRAINT proxy_artifact_resolutions_check4 CHECK ((((durable_job_id IS NULL) AND (job_generation IS NULL)) OR ((durable_job_id IS NOT NULL) AND (job_generation > 0)))),
-    CONSTRAINT proxy_artifact_resolutions_evidence_check CHECK ((jsonb_typeof(evidence) = 'object'::text)),
-    CONSTRAINT proxy_artifact_resolutions_implementation_address_check CHECK ((octet_length(implementation_address) = 20)),
-    CONSTRAINT proxy_artifact_resolutions_implementation_code_hash_check CHECK ((octet_length(implementation_code_hash) = 32)),
-    CONSTRAINT proxy_artifact_resolutions_observation_stage_version_check CHECK ((observation_stage_version = 2)),
-    CONSTRAINT proxy_artifact_resolutions_proxy_code_hash_check CHECK ((octet_length(proxy_code_hash) = 32)),
-    CONSTRAINT proxy_artifact_resolutions_proxy_kind_check CHECK ((proxy_kind = ANY (ARRAY['eip1967'::text, 'beacon'::text]))),
-    CONSTRAINT proxy_artifact_resolutions_proxy_pattern_check CHECK ((proxy_pattern = ANY (ARRAY['erc1967'::text, 'transparent'::text, 'uups'::text, 'beacon'::text]))),
-    CONSTRAINT proxy_artifact_resolutions_standard_version_check CHECK ((standard_version = '5.6.1'::text))
-);
-
--- Sequence: proxy_artifact_resolutions_id_seq
-
-CREATE SEQUENCE proxy_artifact_resolutions_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
--- Sequence Owned By: proxy_artifact_resolutions_id_seq
-
-ALTER SEQUENCE proxy_artifact_resolutions_id_seq OWNED BY proxy_artifact_resolutions.id;
-
--- Table: proxy_detection_evidence
-
-CREATE TABLE proxy_detection_evidence (
-    id bigint NOT NULL,
-    chain_id numeric(78,0) NOT NULL,
-    address bytea NOT NULL,
-    block_number numeric(78,0) NOT NULL,
-    block_hash bytea NOT NULL,
-    stage_version integer DEFAULT 2 NOT NULL,
-    code_hash bytea NOT NULL,
-    candidate_kind text NOT NULL,
-    detection_state text NOT NULL,
-    reason text NOT NULL,
-    canonical boolean NOT NULL,
-    durable_job_id bigint,
-    job_generation bigint,
-    details jsonb DEFAULT '{}'::jsonb NOT NULL,
-    observed_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT proxy_detection_evidence_address_check CHECK ((octet_length(address) = 20)),
-    CONSTRAINT proxy_detection_evidence_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT proxy_detection_evidence_candidate_kind_check CHECK ((candidate_kind = ANY (ARRAY['proxy'::text, 'beacon'::text, 'proxy_v2'::text]))),
-    CONSTRAINT proxy_detection_evidence_check CHECK ((((durable_job_id IS NULL) AND (job_generation IS NULL)) OR ((durable_job_id IS NOT NULL) AND (job_generation > 0)))),
-    CONSTRAINT proxy_detection_evidence_code_hash_check CHECK ((octet_length(code_hash) = 32)),
-    CONSTRAINT proxy_detection_evidence_details_check CHECK ((jsonb_typeof(details) = 'object'::text)),
-    CONSTRAINT proxy_detection_evidence_detection_state_check CHECK ((detection_state = ANY (ARRAY['not_detected'::text, 'rejected'::text, 'confirmed'::text, 'candidate'::text, 'inconsistent'::text, 'unknown'::text]))),
-    CONSTRAINT proxy_detection_evidence_reason_check CHECK ((reason = ANY (ARRAY['empty_code'::text, 'not_proxy'::text, 'minimal_zero_implementation'::text, 'immutable_args_too_large'::text, 'immutable_args_creation_unverified'::text, 'self_implementation'::text, 'cwia_invalid_length'::text, 'cwia_immutable_args_too_large'::text, 'cwia_zero_implementation'::text, 'cwia_self_implementation'::text, 'implementation_has_no_code'::text, 'invalid_slot_address'::text, 'ambiguous_slots'::text, 'beacon_has_no_code'::text, 'invalid_beacon_implementation'::text, 'resolver'::text]))),
-    CONSTRAINT proxy_detection_evidence_stage_version_check CHECK ((stage_version = 2)),
-    CONSTRAINT proxy_detection_evidence_v2_shape_check CHECK ((((candidate_kind = 'proxy_v2'::text) AND (reason = 'resolver'::text) AND (detection_state = ANY (ARRAY['confirmed'::text, 'candidate'::text, 'inconsistent'::text, 'not_detected'::text, 'unknown'::text]))) OR ((candidate_kind <> 'proxy_v2'::text) AND (reason <> 'resolver'::text) AND (detection_state = ANY (ARRAY['not_detected'::text, 'rejected'::text])))))
-);
-
--- Sequence: proxy_detection_evidence_id_seq
-
-CREATE SEQUENCE proxy_detection_evidence_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
--- Sequence Owned By: proxy_detection_evidence_id_seq
-
-ALTER SEQUENCE proxy_detection_evidence_id_seq OWNED BY proxy_detection_evidence.id;
-
--- Table: proxy_history_epochs
-
-CREATE TABLE proxy_history_epochs (
-    epoch_id bigint NOT NULL,
-    chain_id numeric(78,0) NOT NULL,
-    block_number numeric(78,0) NOT NULL,
-    block_hash bytea NOT NULL,
-    durable_job_id bigint NOT NULL,
-    requested_generation bigint NOT NULL,
-    phase text NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT proxy_history_epochs_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT proxy_history_epochs_block_number_check CHECK ((block_number >= (0)::numeric)),
-    CONSTRAINT proxy_history_epochs_phase_check CHECK ((phase = ANY (ARRAY['requested'::text, 'published'::text]))),
-    CONSTRAINT proxy_history_epochs_requested_generation_check CHECK ((requested_generation > 0))
-);
-
--- Sequence: proxy_history_epochs_epoch_id_seq
-
-ALTER TABLE proxy_history_epochs ALTER COLUMN epoch_id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME proxy_history_epochs_epoch_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
-);
-
--- Table: proxy_initialization_events
-
-CREATE TABLE proxy_initialization_events (
-    chain_id numeric(78,0) NOT NULL,
-    block_number numeric(78,0) NOT NULL,
-    block_hash bytea NOT NULL,
-    log_index bigint NOT NULL,
-    transaction_hash bytea NOT NULL,
-    contract_address bytea NOT NULL,
-    version numeric(20,0) NOT NULL,
-    stage_version integer DEFAULT 2 NOT NULL,
-    canonical boolean NOT NULL,
-    CONSTRAINT proxy_initialization_events_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT proxy_initialization_events_contract_address_check CHECK ((octet_length(contract_address) = 20)),
-    CONSTRAINT proxy_initialization_events_log_index_check CHECK ((log_index >= 0)),
-    CONSTRAINT proxy_initialization_events_stage_version_check CHECK ((stage_version = 2)),
-    CONSTRAINT proxy_initialization_events_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
-    CONSTRAINT proxy_initialization_events_version_check CHECK (((version >= (0)::numeric) AND (version <= '18446744073709551615'::numeric)))
-);
-
--- Table: proxy_interaction_coverage_ranges
-
-CREATE TABLE proxy_interaction_coverage_ranges (
-    chain_id numeric(78,0) NOT NULL,
-    start_block numeric(78,0) NOT NULL,
-    start_block_hash bytea NOT NULL,
-    end_block numeric(78,0) NOT NULL,
-    end_block_hash bytea NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT proxy_interaction_coverage_ranges_check CHECK (((start_block >= (0)::numeric) AND (end_block >= start_block))),
-    CONSTRAINT proxy_interaction_coverage_ranges_end_block_hash_check CHECK ((octet_length(end_block_hash) = 32)),
-    CONSTRAINT proxy_interaction_coverage_ranges_start_block_hash_check CHECK ((octet_length(start_block_hash) = 32))
-);
-
--- Table: proxy_interaction_covered_blocks
-
-CREATE TABLE proxy_interaction_covered_blocks (
-    chain_id numeric(78,0) NOT NULL,
-    block_number numeric(78,0) NOT NULL,
-    block_hash bytea NOT NULL,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT proxy_interaction_covered_blocks_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT proxy_interaction_covered_blocks_block_number_check CHECK ((block_number >= (0)::numeric))
-);
-
--- Table: proxy_observation_generations
-
-CREATE TABLE proxy_observation_generations (
-    id bigint NOT NULL,
-    chain_id numeric(78,0) NOT NULL,
-    proxy_address bytea NOT NULL,
-    observation_block_hash bytea NOT NULL,
-    observation_stage_version integer CONSTRAINT proxy_observation_generation_observation_stage_version_not_null NOT NULL,
-    durable_job_id bigint,
-    job_generation bigint,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT proxy_observation_generations_check CHECK ((((durable_job_id IS NULL) AND (job_generation IS NULL)) OR ((durable_job_id IS NOT NULL) AND (job_generation > 0)))),
-    CONSTRAINT proxy_observation_generations_observation_stage_version_check CHECK ((observation_stage_version = 2))
-);
-
--- Sequence: proxy_observation_generations_id_seq
-
-CREATE SEQUENCE proxy_observation_generations_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
--- Sequence Owned By: proxy_observation_generations_id_seq
-
-ALTER SEQUENCE proxy_observation_generations_id_seq OWNED BY proxy_observation_generations.id;
-
--- Table: proxy_observations
 
 CREATE TABLE proxy_observations (
     chain_id numeric(78,0) NOT NULL,
@@ -6033,10 +5164,239 @@ CREATE TABLE proxy_observations (
     CONSTRAINT proxy_observations_proxy_code_hash_check CHECK ((octet_length(proxy_code_hash) = 32)),
     CONSTRAINT proxy_observations_proxy_kind_check CHECK ((proxy_kind = ANY (ARRAY['eip1167'::text, 'cwia'::text, 'eip1967'::text, 'beacon'::text, 'unknown'::text]))),
     CONSTRAINT proxy_observations_stage_version_check CHECK ((stage_version = ANY (ARRAY[1, 2]))),
-    CONSTRAINT proxy_observations_standard_check CHECK (((standard_version IS NULL) OR (standard_version = '5.6.1'::text)))
+    CONSTRAINT proxy_observations_standard_check CHECK (((standard_version IS NULL) OR (standard_version = '5.6.1'::text))),
+    CONSTRAINT proxy_observations_pkey PRIMARY KEY (chain_id, proxy_address, block_hash, stage_version),
+    CONSTRAINT proxy_observations_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash),
+    CONSTRAINT proxy_observations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
 
--- Table: proxy_replay_targets
+CREATE TABLE verified_contracts (
+    chain_id numeric(78,0) NOT NULL,
+    address bytea NOT NULL,
+    code_hash bytea NOT NULL,
+    valid_from_block numeric(78,0) NOT NULL,
+    valid_to_block numeric(78,0),
+    verification_job_id uuid NOT NULL,
+    request_digest bytea NOT NULL,
+    file_name text NOT NULL,
+    contract_name text NOT NULL,
+    language text NOT NULL,
+    compiler_version text NOT NULL,
+    match_type text NOT NULL,
+    abi jsonb,
+    sources jsonb NOT NULL,
+    settings jsonb NOT NULL,
+    compilation_artifacts jsonb NOT NULL,
+    creation_code_artifacts jsonb NOT NULL,
+    runtime_code_artifacts jsonb NOT NULL,
+    constructor_arguments bytea,
+    libraries jsonb NOT NULL,
+    is_blueprint boolean NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT verified_contracts_artifact_check CHECK (((length(file_name) BETWEEN 1 AND 512) AND ((length(contract_name) >= 1) AND (length(contract_name) <= 256)) AND (language = ANY (ARRAY['solidity'::text, 'yul'::text, 'geas'::text, 'vyper'::text])) AND ((length(compiler_version) >= 1) AND (length(compiler_version) <= 128)) AND (match_type = ANY (ARRAY['full'::text, 'partial'::text])) AND ((abi IS NULL) OR (jsonb_typeof(abi) = 'array'::text)) AND (jsonb_typeof(sources) = 'object'::text) AND (jsonb_typeof(settings) = 'object'::text) AND (jsonb_typeof(compilation_artifacts) = 'object'::text) AND (jsonb_typeof(creation_code_artifacts) = 'object'::text) AND (jsonb_typeof(runtime_code_artifacts) = 'object'::text) AND (jsonb_typeof(libraries) = 'object'::text) AND ((language <> 'geas'::text) OR (((compiler_version = '0.3.3'::text) AND (match_type = 'full'::text) AND (abi = '[]'::jsonb) AND (compilation_artifacts = '{}'::jsonb) AND (creation_code_artifacts = '{}'::jsonb) AND (runtime_code_artifacts = '{}'::jsonb) AND (libraries = '{}'::jsonb) AND (constructor_arguments IS NULL) AND (is_blueprint = false)) IS TRUE)))),
+    CONSTRAINT verified_contracts_identity_check CHECK (((octet_length(address) = 20) AND (octet_length(code_hash) = 32) AND (valid_from_block >= (0)::numeric) AND ((valid_to_block IS NULL) OR (valid_to_block >= valid_from_block)) AND (octet_length(request_digest) = 32))),
+    CONSTRAINT verified_contracts_pkey PRIMARY KEY (chain_id, address, code_hash, valid_from_block, verification_job_id),
+    CONSTRAINT verified_contracts_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id),
+    CONSTRAINT verified_contracts_result_fk FOREIGN KEY (verification_job_id, request_digest) REFERENCES verification_results(job_id, request_digest) ON DELETE RESTRICT
+);
+
+CREATE TABLE verified_contract_proxy_artifacts (
+    chain_id numeric(78,0) NOT NULL,
+    address bytea NOT NULL,
+    code_hash bytea NOT NULL,
+    valid_from_block numeric(78,0) NOT NULL,
+    verification_job_id uuid NOT NULL,
+    request_digest bytea NOT NULL,
+    artifact_kind text NOT NULL,
+    standard_version text NOT NULL,
+    runtime_immutable_address bytea,
+    source_manifest_sha256 bytea CONSTRAINT verified_contract_proxy_artifac_source_manifest_sha256_not_null NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT verified_contract_proxy_artifacts_address_check CHECK ((octet_length(address) = 20)),
+    CONSTRAINT verified_contract_proxy_artifacts_artifact_kind_check CHECK ((artifact_kind = ANY (ARRAY['erc1967_proxy'::text, 'transparent_proxy'::text, 'beacon_proxy'::text, 'uups_implementation'::text, 'proxy_admin'::text, 'upgradeable_beacon'::text]))),
+    CONSTRAINT verified_contract_proxy_artifacts_check CHECK ((((artifact_kind = ANY (ARRAY['transparent_proxy'::text, 'beacon_proxy'::text, 'uups_implementation'::text])) AND (runtime_immutable_address IS NOT NULL) AND (octet_length(runtime_immutable_address) = 20) AND (runtime_immutable_address <> decode(repeat('00'::text, 20), 'hex'::text))) OR ((artifact_kind <> ALL (ARRAY['transparent_proxy'::text, 'beacon_proxy'::text, 'uups_implementation'::text])) AND (runtime_immutable_address IS NULL)))),
+    CONSTRAINT verified_contract_proxy_artifacts_code_hash_check CHECK ((octet_length(code_hash) = 32)),
+    CONSTRAINT verified_contract_proxy_artifacts_request_digest_check CHECK ((octet_length(request_digest) = 32)),
+    CONSTRAINT verified_contract_proxy_artifacts_source_manifest_sha256_check CHECK (((octet_length(source_manifest_sha256) = 32) AND (source_manifest_sha256 <> decode(repeat('00'::text, 32), 'hex'::text)))),
+    CONSTRAINT verified_contract_proxy_artifacts_standard_version_check CHECK ((standard_version = '5.6.1'::text)),
+    CONSTRAINT verified_contract_proxy_artifacts_valid_from_block_check CHECK ((valid_from_block >= (0)::numeric)),
+    CONSTRAINT verified_contract_proxy_artifacts_pkey PRIMARY KEY (chain_id, address, code_hash, valid_from_block, verification_job_id),
+    CONSTRAINT verified_contract_proxy_artifacts_verification_job_id_key UNIQUE (verification_job_id),
+    CONSTRAINT verified_contract_proxy_artif_chain_id_address_code_hash_v_fkey FOREIGN KEY (chain_id, address, code_hash, valid_from_block, verification_job_id) REFERENCES verified_contracts(chain_id, address, code_hash, valid_from_block, verification_job_id) ON DELETE RESTRICT,
+    CONSTRAINT verified_contract_proxy_artif_verification_job_id_request__fkey FOREIGN KEY (verification_job_id, request_digest) REFERENCES verification_results(job_id, request_digest) ON DELETE RESTRICT,
+    CONSTRAINT verified_contract_proxy_artifacts_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
+);
+
+CREATE TABLE proxy_artifact_resolutions (
+    id bigint NOT NULL DEFAULT nextval('proxy_artifact_resolutions_id_seq'::regclass),
+    chain_id numeric(78,0) NOT NULL,
+    proxy_address bytea NOT NULL,
+    observation_block_hash bytea NOT NULL,
+    observation_stage_version integer NOT NULL,
+    proxy_code_hash bytea NOT NULL,
+    proxy_kind text NOT NULL,
+    proxy_pattern text NOT NULL,
+    standard_version text NOT NULL,
+    implementation_address bytea NOT NULL,
+    implementation_code_hash bytea NOT NULL,
+    admin_address bytea,
+    admin_code_hash bytea,
+    beacon_address bytea,
+    beacon_code_hash bytea,
+    proxy_artifact_job_id uuid NOT NULL,
+    implementation_artifact_job_id uuid,
+    durable_job_id bigint,
+    job_generation bigint,
+    evidence jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT proxy_artifact_resolutions_check CHECK ((((admin_address IS NULL) AND (admin_code_hash IS NULL)) OR ((octet_length(admin_address) = 20) AND (octet_length(admin_code_hash) = 32)))),
+    CONSTRAINT proxy_artifact_resolutions_check1 CHECK ((((beacon_address IS NULL) AND (beacon_code_hash IS NULL)) OR ((octet_length(beacon_address) = 20) AND (octet_length(beacon_code_hash) = 32)))),
+    CONSTRAINT proxy_artifact_resolutions_check2 CHECK ((((proxy_pattern = 'transparent'::text) AND (admin_address IS NOT NULL) AND (beacon_address IS NULL)) OR ((proxy_pattern = 'beacon'::text) AND (beacon_address IS NOT NULL) AND (admin_address IS NULL)) OR ((proxy_pattern = ANY (ARRAY['erc1967'::text, 'uups'::text])) AND (admin_address IS NULL) AND (beacon_address IS NULL)))),
+    CONSTRAINT proxy_artifact_resolutions_check3 CHECK ((((proxy_pattern = 'uups'::text) AND (implementation_artifact_job_id IS NOT NULL)) OR (proxy_pattern <> 'uups'::text))),
+    CONSTRAINT proxy_artifact_resolutions_check4 CHECK ((((durable_job_id IS NULL) AND (job_generation IS NULL)) OR ((durable_job_id IS NOT NULL) AND (job_generation > 0)))),
+    CONSTRAINT proxy_artifact_resolutions_evidence_check CHECK ((jsonb_typeof(evidence) = 'object'::text)),
+    CONSTRAINT proxy_artifact_resolutions_implementation_address_check CHECK ((octet_length(implementation_address) = 20)),
+    CONSTRAINT proxy_artifact_resolutions_implementation_code_hash_check CHECK ((octet_length(implementation_code_hash) = 32)),
+    CONSTRAINT proxy_artifact_resolutions_observation_stage_version_check CHECK ((observation_stage_version = 2)),
+    CONSTRAINT proxy_artifact_resolutions_proxy_code_hash_check CHECK ((octet_length(proxy_code_hash) = 32)),
+    CONSTRAINT proxy_artifact_resolutions_proxy_kind_check CHECK ((proxy_kind = ANY (ARRAY['eip1967'::text, 'beacon'::text]))),
+    CONSTRAINT proxy_artifact_resolutions_proxy_pattern_check CHECK ((proxy_pattern = ANY (ARRAY['erc1967'::text, 'transparent'::text, 'uups'::text, 'beacon'::text]))),
+    CONSTRAINT proxy_artifact_resolutions_standard_version_check CHECK ((standard_version = '5.6.1'::text)),
+    CONSTRAINT proxy_artifact_resolutions_chain_id_proxy_address_observati_key UNIQUE NULLS NOT DISTINCT (chain_id, proxy_address, observation_block_hash, observation_stage_version, durable_job_id, job_generation),
+    CONSTRAINT proxy_artifact_resolutions_pkey PRIMARY KEY (id),
+    CONSTRAINT proxy_artifact_resolutions_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id),
+    CONSTRAINT proxy_artifact_resolutions_chain_id_proxy_address_observat_fkey FOREIGN KEY (chain_id, proxy_address, observation_block_hash, observation_stage_version) REFERENCES proxy_observations(chain_id, proxy_address, block_hash, stage_version) ON DELETE RESTRICT,
+    CONSTRAINT proxy_artifact_resolutions_durable_job_id_fkey FOREIGN KEY (durable_job_id) REFERENCES durable_jobs(id),
+    CONSTRAINT proxy_artifact_resolutions_implementation_artifact_job_id_fkey FOREIGN KEY (implementation_artifact_job_id) REFERENCES verified_contract_proxy_artifacts(verification_job_id),
+    CONSTRAINT proxy_artifact_resolutions_proxy_artifact_job_id_fkey FOREIGN KEY (proxy_artifact_job_id) REFERENCES verified_contract_proxy_artifacts(verification_job_id)
+);
+
+CREATE TABLE proxy_detection_evidence (
+    id bigint NOT NULL DEFAULT nextval('proxy_detection_evidence_id_seq'::regclass),
+    chain_id numeric(78,0) NOT NULL,
+    address bytea NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL,
+    stage_version integer DEFAULT 2 NOT NULL,
+    code_hash bytea NOT NULL,
+    candidate_kind text NOT NULL,
+    detection_state text NOT NULL,
+    reason text NOT NULL,
+    canonical boolean NOT NULL,
+    durable_job_id bigint,
+    job_generation bigint,
+    details jsonb DEFAULT '{}'::jsonb NOT NULL,
+    observed_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT proxy_detection_evidence_address_check CHECK ((octet_length(address) = 20)),
+    CONSTRAINT proxy_detection_evidence_block_hash_check CHECK ((octet_length(block_hash) = 32)),
+    CONSTRAINT proxy_detection_evidence_candidate_kind_check CHECK ((candidate_kind = ANY (ARRAY['proxy'::text, 'beacon'::text, 'proxy_v2'::text]))),
+    CONSTRAINT proxy_detection_evidence_check CHECK ((((durable_job_id IS NULL) AND (job_generation IS NULL)) OR ((durable_job_id IS NOT NULL) AND (job_generation > 0)))),
+    CONSTRAINT proxy_detection_evidence_code_hash_check CHECK ((octet_length(code_hash) = 32)),
+    CONSTRAINT proxy_detection_evidence_details_check CHECK ((jsonb_typeof(details) = 'object'::text)),
+    CONSTRAINT proxy_detection_evidence_detection_state_check CHECK ((detection_state = ANY (ARRAY['not_detected'::text, 'rejected'::text, 'confirmed'::text, 'candidate'::text, 'inconsistent'::text, 'unknown'::text]))),
+    CONSTRAINT proxy_detection_evidence_reason_check CHECK ((reason = ANY (ARRAY['empty_code'::text, 'not_proxy'::text, 'minimal_zero_implementation'::text, 'immutable_args_too_large'::text, 'immutable_args_creation_unverified'::text, 'self_implementation'::text, 'cwia_invalid_length'::text, 'cwia_immutable_args_too_large'::text, 'cwia_zero_implementation'::text, 'cwia_self_implementation'::text, 'implementation_has_no_code'::text, 'invalid_slot_address'::text, 'ambiguous_slots'::text, 'beacon_has_no_code'::text, 'invalid_beacon_implementation'::text, 'resolver'::text]))),
+    CONSTRAINT proxy_detection_evidence_stage_version_check CHECK ((stage_version = 2)),
+    CONSTRAINT proxy_detection_evidence_v2_shape_check CHECK ((((candidate_kind = 'proxy_v2'::text) AND (reason = 'resolver'::text) AND (detection_state = ANY (ARRAY['confirmed'::text, 'candidate'::text, 'inconsistent'::text, 'not_detected'::text, 'unknown'::text]))) OR ((candidate_kind <> 'proxy_v2'::text) AND (reason <> 'resolver'::text) AND (detection_state = ANY (ARRAY['not_detected'::text, 'rejected'::text]))))),
+    CONSTRAINT proxy_detection_evidence_chain_id_address_block_hash_stage__key UNIQUE NULLS NOT DISTINCT (chain_id, address, block_hash, stage_version, candidate_kind, durable_job_id, job_generation),
+    CONSTRAINT proxy_detection_evidence_pkey PRIMARY KEY (id),
+    CONSTRAINT proxy_detection_evidence_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash),
+    CONSTRAINT proxy_detection_evidence_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id),
+    CONSTRAINT proxy_detection_evidence_durable_job_id_fkey FOREIGN KEY (durable_job_id) REFERENCES durable_jobs(id)
+);
+
+CREATE TABLE proxy_history_epochs (
+    epoch_id bigint NOT NULL GENERATED ALWAYS AS IDENTITY (
+        SEQUENCE NAME proxy_history_epochs_epoch_id_seq
+        START WITH 1
+        INCREMENT BY 1
+        NO MINVALUE
+        NO MAXVALUE
+        CACHE 1
+    ),
+    chain_id numeric(78,0) NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL,
+    durable_job_id bigint NOT NULL,
+    requested_generation bigint NOT NULL,
+    phase text NOT NULL,
+    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    CONSTRAINT proxy_history_epochs_block_hash_check CHECK ((octet_length(block_hash) = 32)),
+    CONSTRAINT proxy_history_epochs_block_number_check CHECK ((block_number >= (0)::numeric)),
+    CONSTRAINT proxy_history_epochs_phase_check CHECK ((phase = ANY (ARRAY['requested'::text, 'published'::text]))),
+    CONSTRAINT proxy_history_epochs_requested_generation_check CHECK ((requested_generation > 0)),
+    CONSTRAINT proxy_history_epochs_durable_job_id_requested_generation_ph_key UNIQUE (durable_job_id, requested_generation, phase),
+    CONSTRAINT proxy_history_epochs_pkey PRIMARY KEY (epoch_id),
+    CONSTRAINT proxy_history_epochs_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id),
+    CONSTRAINT proxy_history_epochs_durable_job_id_fkey FOREIGN KEY (durable_job_id) REFERENCES durable_jobs(id)
+);
+
+CREATE TABLE proxy_initialization_events (
+    chain_id numeric(78,0) NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL,
+    log_index bigint NOT NULL,
+    transaction_hash bytea NOT NULL,
+    contract_address bytea NOT NULL,
+    version numeric(20,0) NOT NULL,
+    stage_version integer DEFAULT 2 NOT NULL,
+    canonical boolean NOT NULL,
+    CONSTRAINT proxy_initialization_events_block_hash_check CHECK ((octet_length(block_hash) = 32)),
+    CONSTRAINT proxy_initialization_events_contract_address_check CHECK ((octet_length(contract_address) = 20)),
+    CONSTRAINT proxy_initialization_events_log_index_check CHECK ((log_index >= 0)),
+    CONSTRAINT proxy_initialization_events_stage_version_check CHECK ((stage_version = 2)),
+    CONSTRAINT proxy_initialization_events_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
+    CONSTRAINT proxy_initialization_events_version_check CHECK (((version >= (0)::numeric) AND (version <= '18446744073709551615'::numeric))),
+    CONSTRAINT proxy_initialization_events_pkey PRIMARY KEY (chain_id, block_hash, log_index, stage_version),
+    CONSTRAINT proxy_initialization_events_chain_id_block_number_block_h_fkey1 FOREIGN KEY (chain_id, block_number, block_hash, log_index) REFERENCES logs(chain_id, block_number, block_hash, log_index),
+    CONSTRAINT proxy_initialization_events_chain_id_block_number_block_ha_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash),
+    CONSTRAINT proxy_initialization_events_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
+);
+
+CREATE TABLE proxy_interaction_coverage_ranges (
+    chain_id numeric(78,0) NOT NULL,
+    start_block numeric(78,0) NOT NULL,
+    start_block_hash bytea NOT NULL,
+    end_block numeric(78,0) NOT NULL,
+    end_block_hash bytea NOT NULL,
+    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    CONSTRAINT proxy_interaction_coverage_ranges_check CHECK (((start_block >= (0)::numeric) AND (end_block >= start_block))),
+    CONSTRAINT proxy_interaction_coverage_ranges_end_block_hash_check CHECK ((octet_length(end_block_hash) = 32)),
+    CONSTRAINT proxy_interaction_coverage_ranges_start_block_hash_check CHECK ((octet_length(start_block_hash) = 32)),
+    CONSTRAINT proxy_interaction_coverage_ranges_chain_id_end_block_key UNIQUE (chain_id, end_block),
+    CONSTRAINT proxy_interaction_coverage_ranges_pkey PRIMARY KEY (chain_id, start_block),
+    CONSTRAINT proxy_interaction_coverage_ranges_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
+);
+
+CREATE TABLE proxy_interaction_covered_blocks (
+    chain_id numeric(78,0) NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL,
+    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    CONSTRAINT proxy_interaction_covered_blocks_block_hash_check CHECK ((octet_length(block_hash) = 32)),
+    CONSTRAINT proxy_interaction_covered_blocks_block_number_check CHECK ((block_number >= (0)::numeric)),
+    CONSTRAINT proxy_interaction_covered_blo_chain_id_block_number_block_h_key UNIQUE (chain_id, block_number, block_hash),
+    CONSTRAINT proxy_interaction_covered_blocks_pkey PRIMARY KEY (chain_id, block_number),
+    CONSTRAINT proxy_interaction_covered_blo_chain_id_block_number_block__fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash),
+    CONSTRAINT proxy_interaction_covered_blocks_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
+);
+
+CREATE TABLE proxy_observation_generations (
+    id bigint NOT NULL DEFAULT nextval('proxy_observation_generations_id_seq'::regclass),
+    chain_id numeric(78,0) NOT NULL,
+    proxy_address bytea NOT NULL,
+    observation_block_hash bytea NOT NULL,
+    observation_stage_version integer CONSTRAINT proxy_observation_generation_observation_stage_version_not_null NOT NULL,
+    durable_job_id bigint,
+    job_generation bigint,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT proxy_observation_generations_check CHECK ((((durable_job_id IS NULL) AND (job_generation IS NULL)) OR ((durable_job_id IS NOT NULL) AND (job_generation > 0)))),
+    CONSTRAINT proxy_observation_generations_observation_stage_version_check CHECK ((observation_stage_version = 2)),
+    CONSTRAINT proxy_observation_generations_chain_id_proxy_address_observ_key UNIQUE NULLS NOT DISTINCT (chain_id, proxy_address, observation_block_hash, observation_stage_version, durable_job_id, job_generation),
+    CONSTRAINT proxy_observation_generations_pkey PRIMARY KEY (id),
+    CONSTRAINT proxy_observation_generations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id),
+    CONSTRAINT proxy_observation_generations_chain_id_proxy_address_obser_fkey FOREIGN KEY (chain_id, proxy_address, observation_block_hash, observation_stage_version) REFERENCES proxy_observations(chain_id, proxy_address, block_hash, stage_version) ON DELETE RESTRICT,
+    CONSTRAINT proxy_observation_generations_durable_job_id_fkey FOREIGN KEY (durable_job_id) REFERENCES durable_jobs(id)
+);
 
 CREATE TABLE proxy_replay_targets (
     chain_id numeric(78,0) NOT NULL,
@@ -6050,10 +5410,12 @@ CREATE TABLE proxy_replay_targets (
     CONSTRAINT proxy_replay_targets_address_check CHECK ((octet_length(address) = 20)),
     CONSTRAINT proxy_replay_targets_block_hash_check CHECK ((octet_length(block_hash) = 32)),
     CONSTRAINT proxy_replay_targets_source_kind_check CHECK ((source_kind = 'verification_publication'::text)),
-    CONSTRAINT proxy_replay_targets_target_kind_check CHECK ((target_kind = ANY (ARRAY['proxy'::text, 'beacon'::text, 'uups'::text])))
+    CONSTRAINT proxy_replay_targets_target_kind_check CHECK ((target_kind = ANY (ARRAY['proxy'::text, 'beacon'::text, 'uups'::text]))),
+    CONSTRAINT proxy_replay_targets_pkey PRIMARY KEY (chain_id, block_hash, address, target_kind, source_kind, source_verification_job_id),
+    CONSTRAINT proxy_replay_targets_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash),
+    CONSTRAINT proxy_replay_targets_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id),
+    CONSTRAINT proxy_replay_targets_source_verification_job_id_fkey FOREIGN KEY (source_verification_job_id) REFERENCES verification_jobs(id)
 );
-
--- Table: proxy_upgrade_events
 
 CREATE TABLE proxy_upgrade_events (
     chain_id numeric(78,0) NOT NULL,
@@ -6072,10 +5434,1205 @@ CREATE TABLE proxy_upgrade_events (
     CONSTRAINT proxy_upgrade_events_log_index_check CHECK ((log_index >= 0)),
     CONSTRAINT proxy_upgrade_events_stage_version_check CHECK ((stage_version = 2)),
     CONSTRAINT proxy_upgrade_events_target_address_check CHECK ((octet_length(target_address) = 20)),
-    CONSTRAINT proxy_upgrade_events_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32))
+    CONSTRAINT proxy_upgrade_events_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
+    CONSTRAINT proxy_upgrade_events_pkey PRIMARY KEY (chain_id, block_hash, log_index, stage_version),
+    CONSTRAINT proxy_upgrade_events_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash),
+    CONSTRAINT proxy_upgrade_events_chain_id_block_number_block_hash_log__fkey FOREIGN KEY (chain_id, block_number, block_hash, log_index) REFERENCES logs(chain_id, block_number, block_hash, log_index),
+    CONSTRAINT proxy_upgrade_events_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
 
--- View: published_diamond_loupe_snapshots
+CREATE TABLE receipts_default PARTITION OF receipts DEFAULT;
+
+CREATE TABLE receipts_p_0_1000000 PARTITION OF receipts FOR VALUES FROM ('0') TO ('1000000');
+
+CREATE TABLE reorg_events (
+    id bigint NOT NULL GENERATED ALWAYS AS IDENTITY (
+        SEQUENCE NAME reorg_events_id_seq
+        START WITH 1
+        INCREMENT BY 1
+        NO MINVALUE
+        NO MAXVALUE
+        CACHE 1
+    ),
+    chain_id numeric(78,0) NOT NULL,
+    ancestor_number numeric(78,0) NOT NULL,
+    ancestor_hash bytea NOT NULL,
+    old_tip_number numeric(78,0),
+    old_tip_hash bytea,
+    new_tip_number numeric(78,0),
+    new_tip_hash bytea,
+    detached jsonb NOT NULL,
+    attached jsonb NOT NULL,
+    reason text DEFAULT ''::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT reorg_events_pkey PRIMARY KEY (id),
+    CONSTRAINT reorg_events_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
+);
+
+CREATE TABLE repair_requests (
+    id bigint NOT NULL GENERATED ALWAYS AS IDENTITY (
+        SEQUENCE NAME repair_requests_id_seq
+        START WITH 1
+        INCREMENT BY 1
+        NO MINVALUE
+        NO MAXVALUE
+        CACHE 1
+    ),
+    chain_id numeric(78,0) NOT NULL,
+    operation text NOT NULL,
+    stage text NOT NULL,
+    from_block numeric(78,0) NOT NULL,
+    to_block numeric(78,0) NOT NULL,
+    allow_finalized boolean DEFAULT false NOT NULL,
+    reason text NOT NULL,
+    status text DEFAULT 'queued'::text NOT NULL,
+    requested_at timestamp with time zone DEFAULT now() NOT NULL,
+    started_at timestamp with time zone,
+    completed_at timestamp with time zone,
+    last_error text,
+    CONSTRAINT repair_requests_check CHECK (((from_block >= (0)::numeric) AND (to_block >= from_block))),
+    CONSTRAINT repair_requests_operation_check CHECK ((operation = ANY (ARRAY['repair'::text, 'reindex'::text]))),
+    CONSTRAINT repair_requests_reason_check CHECK (((length(reason) >= 1) AND (length(reason) <= 1024))),
+    CONSTRAINT repair_requests_status_check CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text, 'done'::text, 'failed'::text, 'cancelled'::text]))),
+    CONSTRAINT repair_requests_pkey PRIMARY KEY (id),
+    CONSTRAINT repair_requests_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
+);
+
+CREATE TABLE runtime_events (
+    id bigint NOT NULL GENERATED ALWAYS AS IDENTITY (
+        SEQUENCE NAME runtime_events_id_seq
+        START WITH 1
+        INCREMENT BY 1
+        NO MINVALUE
+        NO MAXVALUE
+        CACHE 1
+    ),
+    chain_id numeric(78,0) NOT NULL,
+    event_type text NOT NULL,
+    payload jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT runtime_events_event_type_check CHECK ((event_type = ANY (ARRAY['head'::text, 'reorg'::text, 'status'::text]))),
+    CONSTRAINT runtime_events_payload_check CHECK ((octet_length((payload)::text) <= 8192)),
+    CONSTRAINT runtime_events_pkey PRIMARY KEY (id),
+    CONSTRAINT runtime_events_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
+);
+
+CREATE TABLE search_catalog_documents (
+    id bigint NOT NULL GENERATED ALWAYS AS IDENTITY (
+        SEQUENCE NAME search_catalog_documents_id_seq
+        START WITH 1
+        INCREMENT BY 1
+        NO MINVALUE
+        NO MAXVALUE
+        CACHE 1
+    ),
+    chain_id numeric(78,0) NOT NULL,
+    source_kind text NOT NULL,
+    source_identity text NOT NULL,
+    logical_identity text NOT NULL,
+    valid_from_generation bigint NOT NULL,
+    valid_to_generation bigint,
+    result_kind text,
+    result_key text,
+    result_label text,
+    exact_terms text[] DEFAULT '{}'::text[] NOT NULL,
+    partial_terms text[] DEFAULT '{}'::text[] NOT NULL,
+    block_number numeric(78,0),
+    block_hash bytea,
+    target_address bytea,
+    code_hash bytea,
+    valid_from_block numeric(78,0),
+    valid_to_block numeric(78,0),
+    source_canonical boolean,
+    recorded_at timestamp with time zone DEFAULT now() NOT NULL,
+    verification_match_type text,
+    verification_request_digest bytea,
+    verification_job_id uuid,
+    name_observation_id bigint,
+    name_source text,
+    CONSTRAINT search_catalog_documents_block_hash_check CHECK (((block_hash IS NULL) OR (octet_length(block_hash) = 32))),
+    CONSTRAINT search_catalog_documents_check CHECK (((valid_to_generation IS NULL) OR (valid_to_generation > valid_from_generation))),
+    CONSTRAINT search_catalog_documents_check1 CHECK (((result_kind IS NULL) = (result_key IS NULL))),
+    CONSTRAINT search_catalog_documents_check2 CHECK (((result_kind IS NULL) = (result_label IS NULL))),
+    CONSTRAINT search_catalog_documents_check3 CHECK (((block_number IS NULL) = (block_hash IS NULL))),
+    CONSTRAINT search_catalog_documents_check4 CHECK (((valid_to_block IS NULL) OR (valid_from_block IS NOT NULL))),
+    CONSTRAINT search_catalog_documents_check5 CHECK (((valid_to_block IS NULL) OR (valid_to_block >= valid_from_block))),
+    CONSTRAINT search_catalog_documents_check6 CHECK ((((source_kind = 'code'::text) AND (result_kind IS NULL) AND (target_address IS NOT NULL) AND (code_hash IS NOT NULL)) OR ((source_kind <> 'code'::text) AND (result_kind IS NOT NULL)))),
+    CONSTRAINT search_catalog_documents_code_hash_check CHECK (((code_hash IS NULL) OR (octet_length(code_hash) = 32))),
+    CONSTRAINT search_catalog_documents_logical_identity_check CHECK (((length(logical_identity) >= 1) AND (length(logical_identity) <= 1024))),
+    CONSTRAINT search_catalog_documents_result_key_check CHECK (((result_key IS NULL) OR ((length(result_key) >= 1) AND (length(result_key) <= 256)))),
+    CONSTRAINT search_catalog_documents_result_kind_check CHECK (((result_kind IS NULL) OR (result_kind = ANY (ARRAY['address'::text, 'block'::text, 'transaction'::text, 'token'::text, 'contract'::text])))),
+    CONSTRAINT search_catalog_documents_result_label_check CHECK (((result_label IS NULL) OR ((length(result_label) >= 1) AND (length(result_label) <= 4096)))),
+    CONSTRAINT search_catalog_documents_source_identity_check CHECK (((length(source_identity) >= 1) AND (length(source_identity) <= 1024))),
+    CONSTRAINT search_catalog_documents_source_kind_check CHECK ((source_kind = ANY (ARRAY['label'::text, 'name'::text, 'token'::text, 'verified_contract'::text, 'code'::text]))),
+    CONSTRAINT search_catalog_documents_target_address_check CHECK (((target_address IS NULL) OR (octet_length(target_address) = 20))),
+    CONSTRAINT search_catalog_documents_valid_from_generation_check CHECK ((valid_from_generation >= 1)),
+    CONSTRAINT search_catalog_verified_result_shape CHECK ((((source_kind <> 'verified_contract'::text) AND (verification_match_type IS NULL) AND (verification_request_digest IS NULL) AND (verification_job_id IS NULL)) OR ((source_kind = 'verified_contract'::text) AND (((verification_match_type IS NULL) AND (verification_request_digest IS NULL) AND (verification_job_id IS NULL)) OR ((verification_match_type = ANY (ARRAY['full'::text, 'partial'::text])) AND (octet_length(verification_request_digest) = 32) AND (verification_job_id IS NOT NULL)))))),
+    CONSTRAINT search_catalog_documents_chain_id_source_kind_source_identi_key UNIQUE (chain_id, source_kind, source_identity, valid_from_generation),
+    CONSTRAINT search_catalog_documents_pkey PRIMARY KEY (id),
+    CONSTRAINT search_catalog_documents_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
+);
+
+CREATE TABLE search_catalog_generations (
+    chain_id numeric(78,0) NOT NULL,
+    generation bigint DEFAULT 0 NOT NULL,
+    min_generation bigint DEFAULT 0 NOT NULL,
+    retention_generations bigint DEFAULT 100000 NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT search_catalog_generations_check CHECK (((min_generation >= 0) AND (min_generation <= generation))),
+    CONSTRAINT search_catalog_generations_generation_check CHECK ((generation >= 0)),
+    CONSTRAINT search_catalog_generations_retention_generations_check CHECK (((retention_generations >= 1000) AND (retention_generations <= 10000000))),
+    CONSTRAINT search_catalog_generations_pkey PRIMARY KEY (chain_id),
+    CONSTRAINT search_catalog_generations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
+);
+
+CREATE TABLE sync_runtime_status (
+    chain_id numeric(78,0) NOT NULL,
+    latest_number numeric(78,0),
+    indexed_number numeric(78,0),
+    ready boolean DEFAULT false NOT NULL,
+    last_poll_at timestamp with time zone NOT NULL,
+    last_error_code text DEFAULT ''::text NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    highest_covered_number numeric(78,0),
+    backfill_complete boolean DEFAULT false NOT NULL,
+    CONSTRAINT sync_runtime_status_backfill_complete_check CHECK (((NOT backfill_complete) OR ((latest_number IS NOT NULL) AND (indexed_number IS NOT NULL) AND (highest_covered_number IS NOT NULL) AND (indexed_number >= latest_number) AND (indexed_number <= highest_covered_number)))),
+    CONSTRAINT sync_runtime_status_check CHECK (((NOT ready) OR ((latest_number IS NOT NULL) AND (indexed_number IS NOT NULL) AND (indexed_number >= latest_number)))),
+    CONSTRAINT sync_runtime_status_highest_covered_number_check CHECK (((highest_covered_number IS NULL) OR ((highest_covered_number >= (0)::numeric) AND ((indexed_number IS NULL) OR (indexed_number <= highest_covered_number))))),
+    CONSTRAINT sync_runtime_status_indexed_number_check CHECK (((indexed_number IS NULL) OR (indexed_number >= (0)::numeric))),
+    CONSTRAINT sync_runtime_status_last_error_code_check CHECK ((length(last_error_code) <= 64)),
+    CONSTRAINT sync_runtime_status_last_error_code_check1 CHECK ((last_error_code ~ '^[a-z0-9_]*$'::text)),
+    CONSTRAINT sync_runtime_status_latest_number_check CHECK (((latest_number IS NULL) OR (latest_number >= (0)::numeric))),
+    CONSTRAINT sync_runtime_status_ready_requires_backfill_check CHECK (((NOT ready) OR backfill_complete)),
+    CONSTRAINT sync_runtime_status_pkey PRIMARY KEY (chain_id),
+    CONSTRAINT sync_runtime_status_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
+);
+
+CREATE TABLE sync_runtime_status_writer_leases (
+    chain_id numeric(78,0) NOT NULL,
+    reporter_id text NOT NULL,
+    observed_latest_number numeric(78,0),
+    observed_latest_known boolean CONSTRAINT sync_runtime_status_writer_lease_observed_latest_known_not_null NOT NULL,
+    safety_halt boolean DEFAULT false NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT sync_runtime_status_writer_leases_check CHECK (((observed_latest_known AND (observed_latest_number IS NOT NULL) AND (observed_latest_number >= (0)::numeric)) OR ((NOT observed_latest_known) AND (observed_latest_number IS NULL)))),
+    CONSTRAINT sync_runtime_status_writer_leases_reporter_id_check CHECK (((length(reporter_id) >= 1) AND (length(reporter_id) <= 128))),
+    CONSTRAINT sync_runtime_status_writer_leases_pkey PRIMARY KEY (chain_id),
+    CONSTRAINT sync_runtime_status_writer_leases_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
+);
+
+CREATE TABLE token_events (
+    chain_id numeric(78,0) NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL,
+    log_index bigint NOT NULL,
+    sub_index integer DEFAULT 0 NOT NULL,
+    transaction_hash bytea NOT NULL,
+    token_address bytea NOT NULL,
+    standard text NOT NULL,
+    event_kind text NOT NULL,
+    operator bytea,
+    from_address bytea,
+    to_address bytea,
+    token_id numeric(78,0),
+    amount numeric(78,0),
+    canonical boolean NOT NULL,
+    confidence text NOT NULL,
+    raw jsonb NOT NULL,
+    CONSTRAINT token_events_amount_check CHECK (((amount IS NULL) OR (amount >= (0)::numeric))),
+    CONSTRAINT token_events_block_hash_check CHECK ((octet_length(block_hash) = 32)),
+    CONSTRAINT token_events_check CHECK (((log_index >= 0) AND (sub_index >= 0))),
+    CONSTRAINT token_events_confidence_check CHECK ((confidence = ANY (ARRAY['verified'::text, 'high'::text, 'inferred'::text, 'guess'::text]))),
+    CONSTRAINT token_events_event_kind_check CHECK ((event_kind = ANY (ARRAY['transfer'::text, 'approval'::text, 'approval_for_all'::text, 'mint'::text, 'burn'::text]))),
+    CONSTRAINT token_events_from_address_check CHECK (((from_address IS NULL) OR (octet_length(from_address) = 20))),
+    CONSTRAINT token_events_operator_check CHECK (((operator IS NULL) OR (octet_length(operator) = 20))),
+    CONSTRAINT token_events_standard_check CHECK ((standard = ANY (ARRAY['erc20'::text, 'erc721'::text, 'erc1155'::text]))),
+    CONSTRAINT token_events_to_address_check CHECK (((to_address IS NULL) OR (octet_length(to_address) = 20))),
+    CONSTRAINT token_events_token_address_check CHECK ((octet_length(token_address) = 20)),
+    CONSTRAINT token_events_token_id_check CHECK (((token_id IS NULL) OR (token_id >= (0)::numeric))),
+    CONSTRAINT token_events_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
+    CONSTRAINT token_events_pkey PRIMARY KEY (chain_id, block_number, block_hash, log_index, sub_index),
+    CONSTRAINT token_events_chain_id_block_number_block_hash_log_index_fkey FOREIGN KEY (chain_id, block_number, block_hash, log_index) REFERENCES logs(chain_id, block_number, block_hash, log_index)
+)
+PARTITION BY RANGE (block_number);
+
+CREATE TABLE token_balance_deltas (
+    chain_id numeric(78,0) NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL,
+    log_index bigint NOT NULL,
+    sub_index integer DEFAULT 0 NOT NULL,
+    token_address bytea NOT NULL,
+    owner_address bytea NOT NULL,
+    token_id numeric(78,0),
+    delta numeric(79,0) NOT NULL,
+    canonical boolean NOT NULL,
+    CONSTRAINT token_balance_deltas_block_hash_check CHECK ((octet_length(block_hash) = 32)),
+    CONSTRAINT token_balance_deltas_owner_address_check CHECK ((octet_length(owner_address) = 20)),
+    CONSTRAINT token_balance_deltas_token_address_check CHECK ((octet_length(token_address) = 20)),
+    CONSTRAINT token_balance_deltas_token_id_check CHECK (((token_id IS NULL) OR (token_id >= (0)::numeric))),
+    CONSTRAINT token_balance_deltas_pkey PRIMARY KEY (chain_id, block_number, block_hash, log_index, sub_index, token_address, owner_address),
+    CONSTRAINT token_balance_deltas_chain_id_block_number_block_hash_log__fkey FOREIGN KEY (chain_id, block_number, block_hash, log_index, sub_index) REFERENCES token_events(chain_id, block_number, block_hash, log_index, sub_index)
+)
+PARTITION BY RANGE (block_number);
+
+CREATE TABLE token_balance_deltas_default PARTITION OF token_balance_deltas DEFAULT;
+
+CREATE TABLE token_balance_deltas_p_0_1000000 PARTITION OF token_balance_deltas FOR VALUES FROM ('0') TO ('1000000');
+
+CREATE TABLE token_contracts (
+    chain_id numeric(78,0) NOT NULL,
+    address bytea NOT NULL,
+    code_hash bytea NOT NULL,
+    standard text NOT NULL,
+    confidence text NOT NULL,
+    name text,
+    symbol text,
+    decimals integer,
+    total_supply numeric(78,0),
+    metadata_state text DEFAULT 'pending'::text NOT NULL,
+    observed_block_number numeric(78,0) NOT NULL,
+    observed_block_hash bytea NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT token_contracts_address_check CHECK ((octet_length(address) = 20)),
+    CONSTRAINT token_contracts_code_hash_check CHECK ((octet_length(code_hash) = 32)),
+    CONSTRAINT token_contracts_confidence_check CHECK ((confidence = ANY (ARRAY['verified'::text, 'high'::text, 'inferred'::text, 'guess'::text]))),
+    CONSTRAINT token_contracts_decimals_check CHECK (((decimals IS NULL) OR ((decimals >= 0) AND (decimals <= 255)))),
+    CONSTRAINT token_contracts_metadata_state_check CHECK ((metadata_state = ANY (ARRAY['pending'::text, 'complete'::text, 'unavailable'::text, 'failed'::text]))),
+    CONSTRAINT token_contracts_observed_block_hash_check CHECK ((octet_length(observed_block_hash) = 32)),
+    CONSTRAINT token_contracts_standard_check CHECK ((standard = ANY (ARRAY['erc20'::text, 'erc721'::text, 'erc1155'::text, 'unknown'::text]))),
+    CONSTRAINT token_contracts_total_supply_check CHECK (((total_supply IS NULL) OR (total_supply >= (0)::numeric))),
+    CONSTRAINT token_contracts_pkey PRIMARY KEY (chain_id, address, code_hash, observed_block_hash),
+    CONSTRAINT token_contracts_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id),
+    CONSTRAINT token_contracts_chain_id_observed_block_number_observed_bl_fkey FOREIGN KEY (chain_id, observed_block_number, observed_block_hash) REFERENCES blocks(chain_id, number, hash)
+);
+
+CREATE TABLE token_events_default PARTITION OF token_events DEFAULT;
+
+CREATE TABLE token_events_p_0_1000000 PARTITION OF token_events FOR VALUES FROM ('0') TO ('1000000');
+
+CREATE TABLE trace_log_attributions (
+    chain_id numeric(78,0) NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL,
+    transaction_hash bytea NOT NULL,
+    log_index bigint NOT NULL,
+    trace_path text NOT NULL,
+    call_type text NOT NULL,
+    execution_address bytea NOT NULL,
+    canonical boolean NOT NULL,
+    CONSTRAINT trace_log_attributions_block_hash_check CHECK ((octet_length(block_hash) = 32)),
+    CONSTRAINT trace_log_attributions_call_type_check CHECK ((call_type = ANY (ARRAY['CALL'::text, 'CALLCODE'::text, 'DELEGATECALL'::text, 'STATICCALL'::text, 'CREATE'::text, 'CREATE2'::text]))),
+    CONSTRAINT trace_log_attributions_execution_address_check CHECK ((octet_length(execution_address) = 20)),
+    CONSTRAINT trace_log_attributions_log_index_check CHECK ((log_index >= 0)),
+    CONSTRAINT trace_log_attributions_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
+    CONSTRAINT trace_log_attributions_pkey PRIMARY KEY (chain_id, block_number, block_hash, transaction_hash, log_index),
+    CONSTRAINT trace_log_attributions_chain_id_block_number_block_hash_lo_fkey FOREIGN KEY (chain_id, block_number, block_hash, log_index) REFERENCES logs(chain_id, block_number, block_hash, log_index),
+    CONSTRAINT trace_log_attributions_chain_id_block_number_block_hash_tr_fkey FOREIGN KEY (chain_id, block_number, block_hash, transaction_hash, trace_path) REFERENCES normalized_traces(chain_id, block_number, block_hash, transaction_hash, trace_path)
+)
+PARTITION BY RANGE (block_number);
+
+CREATE TABLE trace_log_attributions_default PARTITION OF trace_log_attributions DEFAULT;
+
+CREATE TABLE trace_log_attributions_p_0_1000000 PARTITION OF trace_log_attributions FOR VALUES FROM ('0') TO ('1000000');
+
+CREATE TABLE transaction_effective_execution_identities (
+    chain_id numeric(78,0) NOT NULL,
+    block_number numeric(78,0) CONSTRAINT transaction_effective_execution_identitie_block_number_not_null NOT NULL,
+    block_hash bytea NOT NULL,
+    transaction_hash bytea CONSTRAINT transaction_effective_execution_ident_transaction_hash_not_null NOT NULL,
+    transaction_index bigint CONSTRAINT transaction_effective_execution_iden_transaction_index_not_null NOT NULL,
+    context_address bytea CONSTRAINT transaction_effective_execution_identi_context_address_not_null NOT NULL,
+    execution_address bytea,
+    execution_code_hash bytea,
+    resolution text NOT NULL,
+    evidence_source text CONSTRAINT transaction_effective_execution_identi_evidence_source_not_null NOT NULL,
+    root_trace_path text,
+    canonical boolean NOT NULL,
+    CONSTRAINT transaction_effective_execution_ident_execution_code_hash_check CHECK (((execution_code_hash IS NULL) OR (octet_length(execution_code_hash) = 32))),
+    CONSTRAINT transaction_effective_execution_identit_execution_address_check CHECK (((execution_address IS NULL) OR (octet_length(execution_address) = 20))),
+    CONSTRAINT transaction_effective_execution_identit_transaction_index_check CHECK ((transaction_index >= 0)),
+    CONSTRAINT transaction_effective_execution_identiti_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
+    CONSTRAINT transaction_effective_execution_identitie_context_address_check CHECK ((octet_length(context_address) = 20)),
+    CONSTRAINT transaction_effective_execution_identitie_evidence_source_check CHECK ((evidence_source = ANY (ARRAY['prestate_tracer'::text, 'root_trace_code_observation'::text, 'unavailable'::text]))),
+    CONSTRAINT transaction_effective_execution_identities_block_hash_check CHECK ((octet_length(block_hash) = 32)),
+    CONSTRAINT transaction_effective_execution_identities_block_number_check CHECK ((block_number >= (0)::numeric)),
+    CONSTRAINT transaction_effective_execution_identities_check CHECK ((((evidence_source = 'root_trace_code_observation'::text) AND (root_trace_path = ''::text)) OR ((evidence_source <> 'root_trace_code_observation'::text) AND (root_trace_path IS NULL)))),
+    CONSTRAINT transaction_effective_execution_identities_check1 CHECK ((((resolution = 'direct'::text) AND (execution_address = context_address) AND (execution_code_hash IS NOT NULL) AND (evidence_source = 'prestate_tracer'::text)) OR ((resolution = 'eip7702_delegate'::text) AND (execution_address IS NOT NULL) AND (execution_code_hash IS NOT NULL) AND (evidence_source = ANY (ARRAY['prestate_tracer'::text, 'root_trace_code_observation'::text]))) OR ((resolution = 'empty'::text) AND (execution_address IS NULL) AND (execution_code_hash IS NULL) AND (evidence_source = ANY (ARRAY['prestate_tracer'::text, 'root_trace_code_observation'::text]))) OR ((resolution = 'unavailable'::text) AND (execution_code_hash IS NULL) AND (evidence_source = 'unavailable'::text)))),
+    CONSTRAINT transaction_effective_execution_identities_resolution_check CHECK ((resolution = ANY (ARRAY['direct'::text, 'eip7702_delegate'::text, 'empty'::text, 'unavailable'::text]))),
+    CONSTRAINT transaction_effective_execution_identities_pkey PRIMARY KEY (chain_id, block_number, block_hash, transaction_hash, context_address),
+    CONSTRAINT transaction_effective_executi_chain_id_block_number_block__fkey FOREIGN KEY (chain_id, block_number, block_hash, transaction_index, transaction_hash) REFERENCES transaction_inclusions(chain_id, block_number, block_hash, tx_index, tx_hash)
+)
+PARTITION BY RANGE (block_number);
+
+CREATE TABLE transaction_effective_execution_identities_default PARTITION OF transaction_effective_execution_identities DEFAULT;
+
+CREATE TABLE transaction_effective_execution_identities_p_0_1000000 PARTITION OF transaction_effective_execution_identities FOR VALUES FROM ('0') TO ('1000000');
+
+CREATE TABLE transaction_execution_code_resolutions (
+    chain_id numeric(78,0) NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL,
+    transaction_hash bytea CONSTRAINT transaction_execution_code_resolution_transaction_hash_not_null NOT NULL,
+    transaction_index bigint CONSTRAINT transaction_execution_code_resolutio_transaction_index_not_null NOT NULL,
+    context_address bytea NOT NULL,
+    execution_address bytea,
+    execution_code_hash bytea,
+    resolution text NOT NULL,
+    evidence_source text NOT NULL,
+    canonical boolean NOT NULL,
+    CONSTRAINT transaction_execution_code_resolution_execution_code_hash_check CHECK (((execution_code_hash IS NULL) OR (octet_length(execution_code_hash) = 32))),
+    CONSTRAINT transaction_execution_code_resolutions_block_hash_check CHECK ((octet_length(block_hash) = 32)),
+    CONSTRAINT transaction_execution_code_resolutions_block_number_check CHECK ((block_number >= (0)::numeric)),
+    CONSTRAINT transaction_execution_code_resolutions_check CHECK ((((resolution = 'direct'::text) AND (execution_address = context_address) AND (execution_code_hash IS NOT NULL) AND (evidence_source = 'prestate_tracer'::text)) OR ((resolution = 'eip7702_delegate'::text) AND (execution_address IS NOT NULL) AND (execution_code_hash IS NOT NULL) AND (evidence_source = 'prestate_tracer'::text)) OR ((resolution = 'empty'::text) AND (execution_address IS NULL) AND (execution_code_hash IS NULL) AND (evidence_source = 'prestate_tracer'::text)) OR ((resolution = 'unavailable'::text) AND (execution_code_hash IS NULL) AND (evidence_source = 'unavailable'::text)))),
+    CONSTRAINT transaction_execution_code_resolutions_context_address_check CHECK ((octet_length(context_address) = 20)),
+    CONSTRAINT transaction_execution_code_resolutions_evidence_source_check CHECK ((evidence_source = ANY (ARRAY['prestate_tracer'::text, 'unavailable'::text]))),
+    CONSTRAINT transaction_execution_code_resolutions_execution_address_check CHECK (((execution_address IS NULL) OR (octet_length(execution_address) = 20))),
+    CONSTRAINT transaction_execution_code_resolutions_resolution_check CHECK ((resolution = ANY (ARRAY['direct'::text, 'eip7702_delegate'::text, 'empty'::text, 'unavailable'::text]))),
+    CONSTRAINT transaction_execution_code_resolutions_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
+    CONSTRAINT transaction_execution_code_resolutions_transaction_index_check CHECK ((transaction_index >= 0)),
+    CONSTRAINT transaction_execution_code_resolutions_pkey PRIMARY KEY (chain_id, block_number, block_hash, transaction_hash, context_address),
+    CONSTRAINT transaction_execution_code_re_chain_id_block_number_block__fkey FOREIGN KEY (chain_id, block_number, block_hash, transaction_index) REFERENCES transaction_inclusions(chain_id, block_number, block_hash, tx_index)
+)
+PARTITION BY RANGE (block_number);
+
+CREATE TABLE transaction_execution_code_resolutions_default PARTITION OF transaction_execution_code_resolutions DEFAULT;
+
+CREATE TABLE transaction_execution_code_resolutions_p_0_1000000 PARTITION OF transaction_execution_code_resolutions FOR VALUES FROM ('0') TO ('1000000');
+
+CREATE TABLE transaction_inclusions_default PARTITION OF transaction_inclusions DEFAULT;
+
+CREATE TABLE transaction_inclusions_p_0_1000000 PARTITION OF transaction_inclusions FOR VALUES FROM ('0') TO ('1000000');
+
+CREATE TABLE transaction_state_changes (
+    chain_id numeric(78,0) NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL,
+    transaction_hash bytea NOT NULL,
+    transaction_index bigint NOT NULL,
+    address bytea NOT NULL,
+    field_kind text NOT NULL,
+    storage_key bytea DEFAULT '\x'::bytea NOT NULL,
+    before_value text,
+    after_value text,
+    canonical boolean NOT NULL,
+    CONSTRAINT transaction_state_changes_address_check CHECK ((octet_length(address) = 20)),
+    CONSTRAINT transaction_state_changes_block_hash_check CHECK ((octet_length(block_hash) = 32)),
+    CONSTRAINT transaction_state_changes_check CHECK ((((field_kind = 'storage'::text) AND (octet_length(storage_key) = 32)) OR ((field_kind <> 'storage'::text) AND (octet_length(storage_key) = 0)))),
+    CONSTRAINT transaction_state_changes_check1 CHECK (((before_value IS NOT NULL) OR (after_value IS NOT NULL))),
+    CONSTRAINT transaction_state_changes_field_kind_check CHECK ((field_kind = ANY (ARRAY['balance'::text, 'nonce'::text, 'code'::text, 'storage'::text]))),
+    CONSTRAINT transaction_state_changes_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
+    CONSTRAINT transaction_state_changes_pkey PRIMARY KEY (chain_id, block_number, block_hash, transaction_hash, address, field_kind, storage_key),
+    CONSTRAINT transaction_state_changes_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash, transaction_index) REFERENCES transaction_inclusions(chain_id, block_number, block_hash, tx_index)
+)
+PARTITION BY RANGE (block_number);
+
+CREATE TABLE transaction_state_changes_default PARTITION OF transaction_state_changes DEFAULT;
+
+CREATE TABLE transaction_state_changes_p_0_1000000 PARTITION OF transaction_state_changes FOR VALUES FROM ('0') TO ('1000000');
+
+CREATE TABLE transactional_outbox (
+    id bigint NOT NULL GENERATED ALWAYS AS IDENTITY (
+        SEQUENCE NAME transactional_outbox_id_seq
+        START WITH 1
+        INCREMENT BY 1
+        NO MINVALUE
+        NO MAXVALUE
+        CACHE 1
+    ),
+    chain_id numeric(78,0) NOT NULL,
+    topic text NOT NULL,
+    message_key text NOT NULL,
+    payload jsonb NOT NULL,
+    available_at timestamp with time zone DEFAULT now() NOT NULL,
+    published_at timestamp with time zone,
+    attempts integer DEFAULT 0 NOT NULL,
+    last_error text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    generation bigint DEFAULT 1 NOT NULL,
+    CONSTRAINT transactional_outbox_attempts_check CHECK ((attempts >= 0)),
+    CONSTRAINT transactional_outbox_generation_check CHECK ((generation > 0)),
+    CONSTRAINT transactional_outbox_chain_id_topic_message_key_key UNIQUE (chain_id, topic, message_key),
+    CONSTRAINT transactional_outbox_pkey PRIMARY KEY (id),
+    CONSTRAINT transactional_outbox_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
+);
+
+CREATE TABLE user_sessions (
+    id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    token_digest bytea NOT NULL,
+    csrf_digest bytea NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    last_used_at timestamp with time zone NOT NULL,
+    revoked_at timestamp with time zone,
+    CONSTRAINT user_sessions_check CHECK ((expires_at > created_at)),
+    CONSTRAINT user_sessions_check1 CHECK ((last_used_at >= created_at)),
+    CONSTRAINT user_sessions_check2 CHECK (((revoked_at IS NULL) OR (revoked_at >= created_at))),
+    CONSTRAINT user_sessions_csrf_digest_check CHECK ((octet_length(csrf_digest) = 32)),
+    CONSTRAINT user_sessions_token_digest_check CHECK ((octet_length(token_digest) = 32)),
+    CONSTRAINT user_sessions_pkey PRIMARY KEY (id),
+    CONSTRAINT user_sessions_token_digest_key UNIQUE (token_digest),
+    CONSTRAINT user_sessions_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE TABLE uups_implementation_observations (
+    chain_id numeric(78,0) NOT NULL,
+    implementation_address bytea CONSTRAINT uups_implementation_observation_implementation_address_not_null NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL,
+    implementation_code_hash bytea CONSTRAINT uups_implementation_observati_implementation_code_hash_not_null NOT NULL,
+    verification_job_id uuid NOT NULL,
+    stage_version integer DEFAULT 2 NOT NULL,
+    standard_version text NOT NULL,
+    probe_state text NOT NULL,
+    rejection_reason text,
+    proxiable_uuid bytea,
+    upgrade_interface_version text,
+    canonical boolean NOT NULL,
+    observed_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT uups_implementation_observations_block_hash_check CHECK ((octet_length(block_hash) = 32)),
+    CONSTRAINT uups_implementation_observations_block_number_check CHECK ((block_number >= (0)::numeric)),
+    CONSTRAINT uups_implementation_observations_exact_probe CHECK ((((probe_state = 'compatible'::text) AND (rejection_reason IS NULL) AND (proxiable_uuid = decode('360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc'::text, 'hex'::text)) AND (upgrade_interface_version = '5.0.0'::text)) OR ((probe_state = 'rejected'::text) AND (rejection_reason IS NOT NULL) AND (proxiable_uuid IS NULL) AND (upgrade_interface_version IS NULL)))),
+    CONSTRAINT uups_implementation_observations_implementation_address_check CHECK (((octet_length(implementation_address) = 20) AND (implementation_address <> decode(repeat('00'::text, 20), 'hex'::text)))),
+    CONSTRAINT uups_implementation_observations_implementation_code_hash_check CHECK ((octet_length(implementation_code_hash) = 32)),
+    CONSTRAINT uups_implementation_observations_probe_state_check CHECK ((probe_state = ANY (ARRAY['compatible'::text, 'rejected'::text]))),
+    CONSTRAINT uups_implementation_observations_rejection_reason_check CHECK (((rejection_reason IS NULL) OR (rejection_reason = ANY (ARRAY['proxiable_uuid_unavailable'::text, 'proxiable_uuid_invalid'::text, 'upgrade_interface_version_unavailable'::text, 'upgrade_interface_version_invalid'::text])))),
+    CONSTRAINT uups_implementation_observations_stage_version_check CHECK ((stage_version = 2)),
+    CONSTRAINT uups_implementation_observations_standard_version_check CHECK ((standard_version = '5.6.1'::text)),
+    CONSTRAINT uups_implementation_observations_pkey PRIMARY KEY (chain_id, implementation_address, block_hash, stage_version, verification_job_id),
+    CONSTRAINT uups_implementation_observati_chain_id_block_number_block__fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash),
+    CONSTRAINT uups_implementation_observations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id),
+    CONSTRAINT uups_implementation_observations_verification_job_id_fkey FOREIGN KEY (verification_job_id) REFERENCES verified_contract_proxy_artifacts(verification_job_id)
+);
+
+CREATE TABLE uups_implementation_observation_generations (
+    id bigint NOT NULL DEFAULT nextval('uups_implementation_observation_generations_id_seq'::regclass),
+    chain_id numeric(78,0) NOT NULL,
+    implementation_address bytea CONSTRAINT uups_implementation_observatio_implementation_address_not_null1 NOT NULL,
+    observation_block_hash bytea CONSTRAINT uups_implementation_observation_observation_block_hash_not_null NOT NULL,
+    observation_stage_version integer CONSTRAINT uups_implementation_observat_observation_stage_version_not_null NOT NULL,
+    verification_job_id uuid CONSTRAINT uups_implementation_observation_ge_verification_job_id_not_null NOT NULL,
+    durable_job_id bigint CONSTRAINT uups_implementation_observation_generat_durable_job_id_not_null NOT NULL,
+    job_generation bigint CONSTRAINT uups_implementation_observation_generat_job_generation_not_null NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT uups_implementation_observation_ge_implementation_address_check CHECK ((octet_length(implementation_address) = 20)),
+    CONSTRAINT uups_implementation_observation_ge_observation_block_hash_check CHECK ((octet_length(observation_block_hash) = 32)),
+    CONSTRAINT uups_implementation_observation_generation_job_generation_check CHECK ((job_generation > 0)),
+    CONSTRAINT uups_implementation_observation_observation_stage_version_check CHECK ((observation_stage_version = 2)),
+    CONSTRAINT uups_implementation_observati_chain_id_implementation_addre_key UNIQUE (chain_id, implementation_address, observation_block_hash, observation_stage_version, verification_job_id, durable_job_id, job_generation),
+    CONSTRAINT uups_implementation_observation_generations_pkey PRIMARY KEY (id),
+    CONSTRAINT uups_implementation_observati_chain_id_implementation_addr_fkey FOREIGN KEY (chain_id, implementation_address, observation_block_hash, observation_stage_version, verification_job_id) REFERENCES uups_implementation_observations(chain_id, implementation_address, block_hash, stage_version, verification_job_id) ON DELETE RESTRICT,
+    CONSTRAINT uups_implementation_observation_generations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id),
+    CONSTRAINT uups_implementation_observation_generations_durable_job_id_fkey FOREIGN KEY (durable_job_id) REFERENCES durable_jobs(id)
+);
+
+CREATE TABLE verification_compilation_contracts (
+    compilation_id uuid NOT NULL,
+    file_name text NOT NULL,
+    contract_name text NOT NULL,
+    abi jsonb NOT NULL,
+    creation_bytecode bytea NOT NULL,
+    runtime_bytecode bytea NOT NULL,
+    compilation_artifacts jsonb CONSTRAINT verification_compilation_contrac_compilation_artifacts_not_null NOT NULL,
+    creation_code_artifacts jsonb CONSTRAINT verification_compilation_contr_creation_code_artifacts_not_null NOT NULL,
+    runtime_code_artifacts jsonb CONSTRAINT verification_compilation_contra_runtime_code_artifacts_not_null NOT NULL,
+    CONSTRAINT verification_compilation_contracts_shape_check CHECK (((length(file_name) BETWEEN 1 AND 384) AND ((length(contract_name) >= 1) AND (length(contract_name) <= 256)) AND (jsonb_typeof(abi) = 'array'::text) AND ((octet_length(creation_bytecode) >= 1) AND (octet_length(creation_bytecode) <= 67108864)) AND ((octet_length(runtime_bytecode) >= 1) AND (octet_length(runtime_bytecode) <= 67108864)) AND (jsonb_typeof(compilation_artifacts) = 'object'::text) AND (jsonb_typeof(creation_code_artifacts) = 'object'::text) AND (jsonb_typeof(runtime_code_artifacts) = 'object'::text))),
+    CONSTRAINT verification_compilation_contracts_pkey PRIMARY KEY (compilation_id, file_name, contract_name),
+    CONSTRAINT verification_compilation_contracts_compilation_id_fkey FOREIGN KEY (compilation_id) REFERENCES verification_compilation_units(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE verified_function_selector_sets (
+    verification_job_id uuid NOT NULL,
+    request_digest bytea NOT NULL,
+    chain_id numeric(78,0) NOT NULL,
+    address bytea NOT NULL,
+    code_hash bytea NOT NULL,
+    valid_from_block numeric(78,0) NOT NULL,
+    status text NOT NULL,
+    function_count integer NOT NULL,
+    warning text DEFAULT ''::text NOT NULL,
+    indexed_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT verified_function_selector_sets_identity_check CHECK (((octet_length(request_digest) = 32) AND (octet_length(address) = 20) AND (octet_length(code_hash) = 32) AND (valid_from_block >= (0)::numeric))),
+    CONSTRAINT verified_function_selector_sets_status_check CHECK (((status = ANY (ARRAY['complete'::text, 'invalid'::text])) AND (function_count >= 0) AND (((status = 'complete'::text) AND (warning = ''::text)) OR ((status = 'invalid'::text) AND (function_count = 0) AND (warning <> ''::text))))),
+    CONSTRAINT verified_function_selector_sets_lookup_identity_unique UNIQUE (verification_job_id, chain_id, address, code_hash),
+    CONSTRAINT verified_function_selector_sets_pkey PRIMARY KEY (verification_job_id),
+    CONSTRAINT verified_function_selector_sets_contract_fk FOREIGN KEY (chain_id, address, code_hash, valid_from_block, verification_job_id) REFERENCES verified_contracts(chain_id, address, code_hash, valid_from_block, verification_job_id) ON DELETE CASCADE,
+    CONSTRAINT verified_function_selector_sets_result_fk FOREIGN KEY (verification_job_id, request_digest) REFERENCES verification_results(job_id, request_digest) ON DELETE RESTRICT
+);
+
+CREATE TABLE verified_function_selectors (
+    verification_job_id uuid NOT NULL,
+    chain_id numeric(78,0) NOT NULL,
+    address bytea NOT NULL,
+    code_hash bytea NOT NULL,
+    selector bytea NOT NULL,
+    signature text NOT NULL,
+    function_name text NOT NULL,
+    abi_entry jsonb NOT NULL,
+    CONSTRAINT verified_function_selectors_shape_check CHECK (((octet_length(address) = 20) AND (octet_length(code_hash) = 32) AND (octet_length(selector) = 4) AND ((length(signature) >= 1) AND (length(signature) <= 4096)) AND ((length(function_name) >= 1) AND (length(function_name) <= 4096)) AND (jsonb_typeof(abi_entry) = 'object'::text) AND ((abi_entry ->> 'type'::text) = 'function'::text))),
+    CONSTRAINT verified_function_selectors_pkey PRIMARY KEY (verification_job_id, selector, signature),
+    CONSTRAINT verified_function_selectors_set_fk FOREIGN KEY (verification_job_id, chain_id, address, code_hash) REFERENCES verified_function_selector_sets(verification_job_id, chain_id, address, code_hash) ON DELETE CASCADE
+);
+
+CREATE TABLE verified_proxy_bindings (
+    chain_id numeric(78,0) NOT NULL,
+    proxy_address bytea NOT NULL,
+    proxy_code_hash bytea NOT NULL,
+    observation_block_number numeric(78,0) NOT NULL,
+    observation_block_hash bytea NOT NULL,
+    observation_stage_version integer NOT NULL,
+    proxy_kind text NOT NULL,
+    proxy_pattern text NOT NULL,
+    standard_version text,
+    implementation_address bytea NOT NULL,
+    implementation_code_hash bytea NOT NULL,
+    admin_address bytea,
+    admin_code_hash bytea,
+    beacon_address bytea,
+    beacon_code_hash bytea,
+    management_kind text NOT NULL,
+    management_address bytea,
+    management_code_hash bytea,
+    observation_generation_id bigint NOT NULL,
+    artifact_resolution_id bigint,
+    beacon_generation_id bigint,
+    context_block_number numeric(78,0) NOT NULL,
+    context_block_hash bytea NOT NULL,
+    verification_job_id uuid NOT NULL,
+    request_digest bytea NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    uups_generation_id bigint,
+    CONSTRAINT verified_proxy_bindings_check CHECK ((((admin_address IS NULL) AND (admin_code_hash IS NULL)) OR ((octet_length(admin_address) = 20) AND (octet_length(admin_code_hash) = 32)))),
+    CONSTRAINT verified_proxy_bindings_check1 CHECK ((((beacon_address IS NULL) AND (beacon_code_hash IS NULL)) OR ((octet_length(beacon_address) = 20) AND (octet_length(beacon_code_hash) = 32)))),
+    CONSTRAINT verified_proxy_bindings_check2 CHECK ((((management_kind = 'none'::text) AND (management_address IS NULL) AND (management_code_hash IS NULL)) OR ((management_kind <> 'none'::text) AND (octet_length(management_address) = 20) AND (octet_length(management_code_hash) = 32)))),
+    CONSTRAINT verified_proxy_bindings_check3 CHECK ((((proxy_pattern = 'clone'::text) AND (artifact_resolution_id IS NULL) AND (standard_version IS NULL)) OR ((proxy_pattern <> 'clone'::text) AND (artifact_resolution_id IS NOT NULL) AND (standard_version = '5.6.1'::text)))),
+    CONSTRAINT verified_proxy_bindings_check4 CHECK ((((proxy_pattern = 'beacon'::text) AND (beacon_generation_id IS NOT NULL)) OR ((proxy_pattern <> 'beacon'::text) AND (beacon_generation_id IS NULL)))),
+    CONSTRAINT verified_proxy_bindings_check5 CHECK ((context_block_number >= observation_block_number)),
+    CONSTRAINT verified_proxy_bindings_context_block_hash_check CHECK ((octet_length(context_block_hash) = 32)),
+    CONSTRAINT verified_proxy_bindings_implementation_address_check CHECK ((octet_length(implementation_address) = 20)),
+    CONSTRAINT verified_proxy_bindings_implementation_code_hash_check CHECK ((octet_length(implementation_code_hash) = 32)),
+    CONSTRAINT verified_proxy_bindings_management_kind_check CHECK ((management_kind = ANY (ARRAY['none'::text, 'proxy_admin'::text, 'upgradeable_beacon'::text]))),
+    CONSTRAINT verified_proxy_bindings_management_semantics CHECK ((((proxy_pattern = 'transparent'::text) AND (proxy_kind = 'eip1967'::text) AND (admin_address IS NOT NULL) AND (admin_code_hash IS NOT NULL) AND (beacon_address IS NULL) AND (beacon_code_hash IS NULL) AND (management_kind = 'proxy_admin'::text) AND (NOT (management_address IS DISTINCT FROM admin_address)) AND (NOT (management_code_hash IS DISTINCT FROM admin_code_hash))) OR ((proxy_pattern = 'beacon'::text) AND (proxy_kind = 'beacon'::text) AND (admin_address IS NULL) AND (admin_code_hash IS NULL) AND (beacon_address IS NOT NULL) AND (beacon_code_hash IS NOT NULL) AND (management_kind = 'upgradeable_beacon'::text) AND (NOT (management_address IS DISTINCT FROM beacon_address)) AND (NOT (management_code_hash IS DISTINCT FROM beacon_code_hash))) OR ((proxy_pattern = 'clone'::text) AND (proxy_kind = ANY (ARRAY['eip1167'::text, 'cwia'::text])) AND (admin_address IS NULL) AND (admin_code_hash IS NULL) AND (beacon_address IS NULL) AND (beacon_code_hash IS NULL) AND (management_kind = 'none'::text)) OR ((proxy_pattern = ANY (ARRAY['erc1967'::text, 'uups'::text])) AND (proxy_kind = 'eip1967'::text) AND (admin_address IS NULL) AND (admin_code_hash IS NULL) AND (beacon_address IS NULL) AND (beacon_code_hash IS NULL) AND (management_kind = 'none'::text)))),
+    CONSTRAINT verified_proxy_bindings_observation_block_hash_check CHECK ((octet_length(observation_block_hash) = 32)),
+    CONSTRAINT verified_proxy_bindings_observation_block_number_check CHECK ((observation_block_number >= (0)::numeric)),
+    CONSTRAINT verified_proxy_bindings_observation_stage_version_check CHECK ((observation_stage_version = 2)),
+    CONSTRAINT verified_proxy_bindings_proxy_address_check CHECK ((octet_length(proxy_address) = 20)),
+    CONSTRAINT verified_proxy_bindings_proxy_code_hash_check CHECK ((octet_length(proxy_code_hash) = 32)),
+    CONSTRAINT verified_proxy_bindings_proxy_kind_check CHECK ((proxy_kind = ANY (ARRAY['eip1167'::text, 'cwia'::text, 'eip1967'::text, 'beacon'::text]))),
+    CONSTRAINT verified_proxy_bindings_proxy_pattern_check CHECK ((proxy_pattern = ANY (ARRAY['clone'::text, 'erc1967'::text, 'transparent'::text, 'uups'::text, 'beacon'::text]))),
+    CONSTRAINT verified_proxy_bindings_request_digest_check CHECK ((octet_length(request_digest) = 32)),
+    CONSTRAINT verified_proxy_bindings_standard_version_check CHECK (((standard_version IS NULL) OR (standard_version = '5.6.1'::text))),
+    CONSTRAINT verified_proxy_bindings_uups_generation_shape CHECK (((proxy_pattern = 'uups'::text) = (uups_generation_id IS NOT NULL))),
+    CONSTRAINT verified_proxy_bindings_pkey PRIMARY KEY (verification_job_id),
+    CONSTRAINT verified_proxy_bindings_artifact_resolution_id_fkey FOREIGN KEY (artifact_resolution_id) REFERENCES proxy_artifact_resolutions(id),
+    CONSTRAINT verified_proxy_bindings_beacon_generation_id_fkey FOREIGN KEY (beacon_generation_id) REFERENCES beacon_observation_generations(id),
+    CONSTRAINT verified_proxy_bindings_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id),
+    CONSTRAINT verified_proxy_bindings_observation_fk FOREIGN KEY (chain_id, proxy_address, observation_block_hash, observation_stage_version) REFERENCES proxy_observations(chain_id, proxy_address, block_hash, stage_version) ON DELETE RESTRICT,
+    CONSTRAINT verified_proxy_bindings_observation_generation_id_fkey FOREIGN KEY (observation_generation_id) REFERENCES proxy_observation_generations(id),
+    CONSTRAINT verified_proxy_bindings_result_fk FOREIGN KEY (verification_job_id, request_digest) REFERENCES verification_results(job_id, request_digest) ON DELETE RESTRICT,
+    CONSTRAINT verified_proxy_bindings_uups_generation_id_fkey FOREIGN KEY (uups_generation_id) REFERENCES uups_implementation_observation_generations(id)
+);
+
+CREATE TABLE watch_notification_work (
+    chain_id numeric(78,0) NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL,
+    generation bigint DEFAULT 1 NOT NULL,
+    done_generation bigint DEFAULT 0 NOT NULL,
+    lease_token uuid,
+    lease_until timestamp with time zone,
+    after_watch uuid DEFAULT '00000000-0000-0000-0000-000000000000'::uuid NOT NULL,
+    after_source text DEFAULT ''::text NOT NULL,
+    CONSTRAINT watch_notification_work_pkey PRIMARY KEY (chain_id, block_hash)
+);
+
+CREATE TABLE watch_notifications (
+    id bigint NOT NULL GENERATED ALWAYS AS IDENTITY (
+        SEQUENCE NAME watch_notifications_id_seq
+        START WITH 1
+        INCREMENT BY 1
+        NO MINVALUE
+        NO MAXVALUE
+        CACHE 1
+    ),
+    watch_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    chain_id numeric(78,0) NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL,
+    source_key text NOT NULL,
+    source_kind text NOT NULL,
+    source_generation bigint NOT NULL,
+    activity jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    read_at timestamp with time zone,
+    CONSTRAINT watch_notifications_block_hash_check CHECK ((octet_length(block_hash) = 32)),
+    CONSTRAINT watch_notifications_pkey PRIMARY KEY (id),
+    CONSTRAINT watch_notifications_watch_id_block_hash_source_key_key UNIQUE (watch_id, block_hash, source_key),
+    CONSTRAINT watch_notifications_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id),
+    CONSTRAINT watch_notifications_watch_id_fkey FOREIGN KEY (watch_id) REFERENCES address_watches(id)
+);
+
+CREATE TABLE withdrawals (
+    chain_id numeric(78,0) NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL,
+    withdrawal_index numeric(78,0) NOT NULL,
+    validator_index numeric(78,0) NOT NULL,
+    address bytea NOT NULL,
+    amount numeric(78,0) NOT NULL,
+    raw jsonb NOT NULL,
+    CONSTRAINT withdrawals_address_check CHECK ((octet_length(address) = 20)),
+    CONSTRAINT withdrawals_pkey PRIMARY KEY (chain_id, block_number, block_hash, withdrawal_index),
+    CONSTRAINT withdrawals_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash)
+)
+PARTITION BY RANGE (block_number);
+
+CREATE TABLE withdrawals_default PARTITION OF withdrawals DEFAULT;
+
+CREATE TABLE withdrawals_p_0_1000000 PARTITION OF withdrawals FOR VALUES FROM ('0') TO ('1000000');
+
+-- Necessary dependency completion
+
+-- Preserve NOT VALID catalog state; inline CHECK is validated by CREATE TABLE.
+ALTER TABLE search_catalog_documents
+    ADD CONSTRAINT search_catalog_documents_name_source_check CHECK ((((source_kind = 'name'::text) AND (name_observation_id IS NOT NULL) AND (name_source = ANY (ARRAY['ens'::text, 'custom_ens'::text]))) OR ((source_kind <> 'name'::text) AND (name_observation_id IS NULL) AND (name_source IS NULL)))) NOT VALID;
+
+-- Preserve the named UNIQUE equivalent to the primary key; CREATE TABLE merges them.
+ALTER TABLE ONLY verified_contracts
+    ADD CONSTRAINT verified_contracts_selector_identity_unique UNIQUE (chain_id, address, code_hash, valid_from_block, verification_job_id);
+
+-- Circular FK: top-up intents precede payments, which reference the intent.
+ALTER TABLE ONLY billing_topup_intents
+    ADD CONSTRAINT billing_topup_intents_active_payment_fk FOREIGN KEY (active_payment_id) REFERENCES billing_payments(id);
+
+-- Explicit sequences precede their default expressions; ownership needs the table.
+ALTER SEQUENCE beacon_observation_generations_id_seq OWNED BY beacon_observation_generations.id;
+ALTER SEQUENCE diamond_loupe_snapshots_id_seq OWNED BY diamond_loupe_snapshots.id;
+ALTER SEQUENCE external_adapter_observations_id_seq OWNED BY external_adapter_observations.id;
+ALTER SEQUENCE proxy_artifact_resolutions_id_seq OWNED BY proxy_artifact_resolutions.id;
+ALTER SEQUENCE proxy_detection_evidence_id_seq OWNED BY proxy_detection_evidence.id;
+ALTER SEQUENCE proxy_observation_generations_id_seq OWNED BY proxy_observation_generations.id;
+ALTER SEQUENCE uups_implementation_observation_generations_id_seq OWNED BY uups_implementation_observation_generations.id;
+
+-- Indexes (named children first; parent indexes adopt them)
+
+CREATE INDEX abi_decodings_default_chain_id_target_address_target_code_h_idx ON abi_decodings_default USING btree (chain_id, target_address, target_code_hash, block_number DESC) WHERE canonical;
+
+CREATE INDEX abi_decodings_default_chain_id_transaction_hash_block_numbe_idx ON abi_decodings_default USING btree (chain_id, transaction_hash, block_number DESC);
+
+CREATE INDEX abi_decodings_p_0_1000000_chain_id_target_address_target_co_idx ON abi_decodings_p_0_1000000 USING btree (chain_id, target_address, target_code_hash, block_number DESC) WHERE canonical;
+
+CREATE INDEX abi_decodings_p_0_1000000_chain_id_transaction_hash_block_n_idx ON abi_decodings_p_0_1000000 USING btree (chain_id, transaction_hash, block_number DESC);
+
+CREATE INDEX address_activities_default_chain_id_address_block_number_ac_idx ON address_activities_default USING btree (chain_id, address, block_number DESC, activity_index DESC) WHERE canonical;
+
+CREATE INDEX address_activities_p_0_100000_chain_id_address_block_number_idx ON address_activities_p_0_1000000 USING btree (chain_id, address, block_number DESC, activity_index DESC) WHERE canonical;
+
+CREATE INDEX eip7702_authorizations_defaul_chain_id_authority_block_numb_idx ON eip7702_authorizations_default USING btree (chain_id, authority, block_number DESC, transaction_index DESC, authorization_index DESC) WHERE (canonical AND (authority IS NOT NULL));
+
+CREATE INDEX eip7702_authorizations_defaul_chain_id_transaction_hash_aut_idx ON eip7702_authorizations_default USING btree (chain_id, transaction_hash, authorization_index);
+
+CREATE INDEX eip7702_authorizations_p_0_10_chain_id_authority_block_numb_idx ON eip7702_authorizations_p_0_1000000 USING btree (chain_id, authority, block_number DESC, transaction_index DESC, authorization_index DESC) WHERE (canonical AND (authority IS NOT NULL));
+
+CREATE INDEX eip7702_authorizations_p_0_10_chain_id_transaction_hash_aut_idx ON eip7702_authorizations_p_0_1000000 USING btree (chain_id, transaction_hash, authorization_index);
+
+CREATE INDEX erc20_holder_balances_default_chain_id_token_address_holder_idx ON erc20_holder_balances_default USING btree (chain_id, token_address, holder_address, block_number DESC, block_hash) WHERE canonical;
+
+CREATE INDEX erc20_holder_balances_p_0_100_chain_id_token_address_holder_idx ON erc20_holder_balances_p_0_1000000 USING btree (chain_id, token_address, holder_address, block_number DESC, block_hash) WHERE canonical;
+
+CREATE INDEX erc20_holder_snapshots_defaul_chain_id_token_address_block__idx ON erc20_holder_snapshots_default USING btree (chain_id, token_address, block_number DESC, block_hash) WHERE canonical;
+
+CREATE INDEX erc20_holder_snapshots_p_0_10_chain_id_token_address_block__idx ON erc20_holder_snapshots_p_0_1000000 USING btree (chain_id, token_address, block_number DESC, block_hash) WHERE canonical;
+
+CREATE INDEX erc4337_user_operation_partic_chain_id_configuration_diges_idx1 ON erc4337_user_operation_participants_default USING btree (chain_id, configuration_digest, address, block_number DESC, operation_index DESC) WHERE canonical;
+
+CREATE INDEX erc4337_user_operation_partic_chain_id_configuration_digest_idx ON erc4337_user_operation_participants_p_0_1000000 USING btree (chain_id, configuration_digest, address, block_number DESC, operation_index DESC) WHERE canonical;
+
+CREATE INDEX erc4337_user_operations_defau_chain_id_configuration_diges_idx1 ON erc4337_user_operations_default USING btree (chain_id, configuration_digest, block_number DESC, transaction_index DESC, operation_index DESC, user_op_hash DESC) WHERE canonical;
+
+CREATE INDEX erc4337_user_operations_defau_chain_id_configuration_diges_idx2 ON erc4337_user_operations_default USING btree (chain_id, configuration_digest, transaction_hash, operation_index) WHERE canonical;
+
+CREATE INDEX erc4337_user_operations_defau_chain_id_configuration_digest_idx ON erc4337_user_operations_default USING btree (chain_id, configuration_digest, user_op_hash) WHERE canonical;
+
+CREATE INDEX erc4337_user_operations_p_0_1_chain_id_configuration_diges_idx1 ON erc4337_user_operations_p_0_1000000 USING btree (chain_id, configuration_digest, block_number DESC, transaction_index DESC, operation_index DESC, user_op_hash DESC) WHERE canonical;
+
+CREATE INDEX erc4337_user_operations_p_0_1_chain_id_configuration_diges_idx2 ON erc4337_user_operations_p_0_1000000 USING btree (chain_id, configuration_digest, transaction_hash, operation_index) WHERE canonical;
+
+CREATE INDEX erc4337_user_operations_p_0_1_chain_id_configuration_digest_idx ON erc4337_user_operations_p_0_1000000 USING btree (chain_id, configuration_digest, user_op_hash) WHERE canonical;
+
+CREATE INDEX logs_default_chain_id_address_block_number_idx ON logs_default USING btree (chain_id, address, block_number DESC);
+
+CREATE INDEX logs_default_chain_id_topic0_block_number_idx ON logs_default USING btree (chain_id, topic0, block_number DESC);
+
+CREATE INDEX logs_p_0_1000000_chain_id_address_block_number_idx ON logs_p_0_1000000 USING btree (chain_id, address, block_number DESC);
+
+CREATE INDEX logs_p_0_1000000_chain_id_topic0_block_number_idx ON logs_p_0_1000000 USING btree (chain_id, topic0, block_number DESC);
+
+CREATE INDEX native_transfers_default_chain_id_from_address_block_number_idx ON native_transfers_default USING btree (chain_id, from_address, block_number DESC, transaction_index DESC, log_index DESC) WHERE canonical;
+
+CREATE INDEX native_transfers_default_chain_id_to_address_block_number_t_idx ON native_transfers_default USING btree (chain_id, to_address, block_number DESC, transaction_index DESC, log_index DESC) WHERE canonical;
+
+CREATE INDEX native_transfers_default_chain_id_transaction_hash_log_inde_idx ON native_transfers_default USING btree (chain_id, transaction_hash, log_index) WHERE canonical;
+
+CREATE INDEX native_transfers_p_0_1000000_chain_id_from_address_block_nu_idx ON native_transfers_p_0_1000000 USING btree (chain_id, from_address, block_number DESC, transaction_index DESC, log_index DESC) WHERE canonical;
+
+CREATE INDEX native_transfers_p_0_1000000_chain_id_to_address_block_numb_idx ON native_transfers_p_0_1000000 USING btree (chain_id, to_address, block_number DESC, transaction_index DESC, log_index DESC) WHERE canonical;
+
+CREATE INDEX native_transfers_p_0_1000000_chain_id_transaction_hash_log__idx ON native_transfers_p_0_1000000 USING btree (chain_id, transaction_hash, log_index) WHERE canonical;
+
+CREATE INDEX normalized_traces_default_chain_id_created_address_block_nu_idx ON normalized_traces_default USING btree (chain_id, created_address, block_number DESC) WHERE (canonical AND (created_address IS NOT NULL));
+
+CREATE INDEX normalized_traces_default_chain_id_from_address_block_numbe_idx ON normalized_traces_default USING btree (chain_id, from_address, block_number DESC) WHERE canonical;
+
+CREATE INDEX normalized_traces_default_chain_id_to_address_block_number_idx ON normalized_traces_default USING btree (chain_id, to_address, block_number DESC) WHERE canonical;
+
+CREATE INDEX normalized_traces_default_chain_id_transaction_hash_trace_p_idx ON normalized_traces_default USING btree (chain_id, transaction_hash, trace_path);
+
+CREATE INDEX normalized_traces_p_0_1000000_chain_id_created_address_bloc_idx ON normalized_traces_p_0_1000000 USING btree (chain_id, created_address, block_number DESC) WHERE (canonical AND (created_address IS NOT NULL));
+
+CREATE INDEX normalized_traces_p_0_1000000_chain_id_from_address_block_n_idx ON normalized_traces_p_0_1000000 USING btree (chain_id, from_address, block_number DESC) WHERE canonical;
+
+CREATE INDEX normalized_traces_p_0_1000000_chain_id_to_address_block_num_idx ON normalized_traces_p_0_1000000 USING btree (chain_id, to_address, block_number DESC) WHERE canonical;
+
+CREATE INDEX normalized_traces_p_0_1000000_chain_id_transaction_hash_tra_idx ON normalized_traces_p_0_1000000 USING btree (chain_id, transaction_hash, trace_path);
+
+CREATE INDEX receipts_default_chain_id_lower_block_number_tx_index_idx ON receipts_default USING btree (chain_id, lower((raw ->> 'contractAddress'::text)), block_number DESC, tx_index DESC) WHERE ((raw ->> 'contractAddress'::text) IS NOT NULL);
+
+CREATE INDEX receipts_p_0_1000000_chain_id_lower_block_number_tx_index_idx ON receipts_p_0_1000000 USING btree (chain_id, lower((raw ->> 'contractAddress'::text)), block_number DESC, tx_index DESC) WHERE ((raw ->> 'contractAddress'::text) IS NOT NULL);
+
+CREATE INDEX token_balance_deltas_default_chain_id_owner_address_token_a_idx ON token_balance_deltas_default USING btree (chain_id, owner_address, token_address, token_id, block_number) WHERE canonical;
+
+CREATE INDEX token_balance_deltas_p_0_1000_chain_id_owner_address_token__idx ON token_balance_deltas_p_0_1000000 USING btree (chain_id, owner_address, token_address, token_id, block_number) WHERE canonical;
+
+CREATE INDEX token_events_default_chain_id_from_address_block_number_idx ON token_events_default USING btree (chain_id, from_address, block_number DESC) WHERE canonical;
+
+CREATE INDEX token_events_default_chain_id_to_address_block_number_idx ON token_events_default USING btree (chain_id, to_address, block_number DESC) WHERE canonical;
+
+CREATE INDEX token_events_default_chain_id_token_address_block_number_lo_idx ON token_events_default USING btree (chain_id, token_address, block_number DESC, log_index DESC);
+
+CREATE INDEX token_events_default_chain_id_token_address_token_id_block__idx ON token_events_default USING btree (chain_id, token_address, token_id, block_number DESC, block_hash) WHERE ((token_id IS NOT NULL) AND (standard = ANY (ARRAY['erc721'::text, 'erc1155'::text])));
+
+CREATE INDEX token_events_p_0_1000000_chain_id_from_address_block_number_idx ON token_events_p_0_1000000 USING btree (chain_id, from_address, block_number DESC) WHERE canonical;
+
+CREATE INDEX token_events_p_0_1000000_chain_id_to_address_block_number_idx ON token_events_p_0_1000000 USING btree (chain_id, to_address, block_number DESC) WHERE canonical;
+
+CREATE INDEX token_events_p_0_1000000_chain_id_token_address_block_numbe_idx ON token_events_p_0_1000000 USING btree (chain_id, token_address, block_number DESC, log_index DESC);
+
+CREATE INDEX token_events_p_0_1000000_chain_id_token_address_token_id_bl_idx ON token_events_p_0_1000000 USING btree (chain_id, token_address, token_id, block_number DESC, block_hash) WHERE ((token_id IS NOT NULL) AND (standard = ANY (ARRAY['erc721'::text, 'erc1155'::text])));
+
+CREATE INDEX trace_log_attributions_defaul_chain_id_transaction_hash_tra_idx ON trace_log_attributions_default USING btree (chain_id, transaction_hash, trace_path, log_index) WHERE canonical;
+
+CREATE INDEX trace_log_attributions_p_0_10_chain_id_transaction_hash_tra_idx ON trace_log_attributions_p_0_1000000 USING btree (chain_id, transaction_hash, trace_path, log_index) WHERE canonical;
+
+CREATE INDEX transaction_effective_executi_chain_id_execution_address_e_idx1 ON transaction_effective_execution_identities_default USING btree (chain_id, execution_address, execution_code_hash, block_number DESC, transaction_index DESC) WHERE (canonical AND (execution_address IS NOT NULL));
+
+CREATE INDEX transaction_effective_executi_chain_id_execution_address_ex_idx ON transaction_effective_execution_identities_p_0_1000000 USING btree (chain_id, execution_address, execution_code_hash, block_number DESC, transaction_index DESC) WHERE (canonical AND (execution_address IS NOT NULL));
+
+CREATE INDEX transaction_effective_executi_chain_id_transaction_hash_co_idx1 ON transaction_effective_execution_identities_default USING btree (chain_id, transaction_hash, context_address) WHERE canonical;
+
+CREATE INDEX transaction_effective_executi_chain_id_transaction_hash_con_idx ON transaction_effective_execution_identities_p_0_1000000 USING btree (chain_id, transaction_hash, context_address) WHERE canonical;
+
+CREATE INDEX transaction_execution_code_re_chain_id_execution_address_b_idx1 ON transaction_execution_code_resolutions_default USING btree (chain_id, execution_address, block_number DESC) WHERE (canonical AND (execution_address IS NOT NULL));
+
+CREATE INDEX transaction_execution_code_re_chain_id_execution_address_bl_idx ON transaction_execution_code_resolutions_p_0_1000000 USING btree (chain_id, execution_address, block_number DESC) WHERE (canonical AND (execution_address IS NOT NULL));
+
+CREATE INDEX transaction_execution_code_re_chain_id_transaction_hash_co_idx1 ON transaction_execution_code_resolutions_default USING btree (chain_id, transaction_hash, context_address) WHERE canonical;
+
+CREATE INDEX transaction_execution_code_re_chain_id_transaction_hash_con_idx ON transaction_execution_code_resolutions_p_0_1000000 USING btree (chain_id, transaction_hash, context_address) WHERE canonical;
+
+CREATE INDEX transaction_inclusions_defaul_chain_id_lower_block_number__idx1 ON transaction_inclusions_default USING btree (chain_id, lower((raw ->> 'to'::text)), block_number DESC, tx_index DESC);
+
+CREATE INDEX transaction_inclusions_defaul_chain_id_lower_block_number_t_idx ON transaction_inclusions_default USING btree (chain_id, lower((raw ->> 'from'::text)), block_number DESC, tx_index DESC);
+
+CREATE INDEX transaction_inclusions_p_0_10_chain_id_lower_block_number__idx1 ON transaction_inclusions_p_0_1000000 USING btree (chain_id, lower((raw ->> 'to'::text)), block_number DESC, tx_index DESC);
+
+CREATE INDEX transaction_inclusions_p_0_10_chain_id_lower_block_number_t_idx ON transaction_inclusions_p_0_1000000 USING btree (chain_id, lower((raw ->> 'from'::text)), block_number DESC, tx_index DESC);
+
+CREATE INDEX transaction_state_changes_def_chain_id_address_block_numbe_idx1 ON transaction_state_changes_default USING btree (chain_id, address, block_number DESC) INCLUDE (block_hash) WHERE (canonical AND (field_kind = 'code'::text));
+
+CREATE INDEX transaction_state_changes_def_chain_id_address_block_number_idx ON transaction_state_changes_default USING btree (chain_id, address, block_number DESC) WHERE canonical;
+
+CREATE INDEX transaction_state_changes_def_chain_id_transaction_hash_blo_idx ON transaction_state_changes_default USING btree (chain_id, transaction_hash, block_number DESC, address, field_kind, storage_key);
+
+CREATE INDEX transaction_state_changes_p_0_chain_id_address_block_numbe_idx1 ON transaction_state_changes_p_0_1000000 USING btree (chain_id, address, block_number DESC) INCLUDE (block_hash) WHERE (canonical AND (field_kind = 'code'::text));
+
+CREATE INDEX transaction_state_changes_p_0_chain_id_address_block_number_idx ON transaction_state_changes_p_0_1000000 USING btree (chain_id, address, block_number DESC) WHERE canonical;
+
+CREATE INDEX transaction_state_changes_p_0_chain_id_transaction_hash_blo_idx ON transaction_state_changes_p_0_1000000 USING btree (chain_id, transaction_hash, block_number DESC, address, field_kind, storage_key);
+
+CREATE INDEX withdrawals_default_chain_id_address_withdrawal_index_idx ON withdrawals_default USING btree (chain_id, address, withdrawal_index DESC);
+
+CREATE INDEX withdrawals_p_0_1000000_chain_id_address_withdrawal_index_idx ON withdrawals_p_0_1000000 USING btree (chain_id, address, withdrawal_index DESC);
+
+CREATE INDEX abi_decodings_target_idx ON abi_decodings USING btree (chain_id, target_address, target_code_hash, block_number DESC) WHERE canonical;
+
+CREATE INDEX abi_decodings_tx_idx ON abi_decodings USING btree (chain_id, transaction_hash, block_number DESC);
+
+CREATE INDEX address_activities_address_idx ON address_activities USING btree (chain_id, address, block_number DESC, activity_index DESC) WHERE canonical;
+
+CREATE INDEX address_export_admissions_active ON address_export_admissions USING btree (expires_at) WHERE (NOT released);
+
+CREATE INDEX address_export_admissions_user ON address_export_admissions USING btree (user_id, started_at);
+
+CREATE INDEX address_watches_match ON address_watches USING btree (chain_id, address, id) WHERE ((deleted_at IS NULL) AND enabled);
+
+CREATE UNIQUE INDEX address_watches_owner_address ON address_watches USING btree (user_id, chain_id, address) WHERE (deleted_at IS NULL);
+
+CREATE INDEX api_keys_owner_active_idx ON api_keys USING btree (owner_user_id, prefix) WHERE ((owner_user_id IS NOT NULL) AND (revoked_at IS NULL));
+
+CREATE INDEX api_keys_owner_page_idx ON api_keys USING btree (owner_user_id, created_at DESC, prefix DESC) WHERE (owner_user_id IS NOT NULL);
+
+CREATE INDEX auth_challenges_active_idx ON auth_challenges USING btree (chain_id, address, expires_at, id) WHERE (consumed_at IS NULL);
+
+CREATE INDEX auth_challenges_cleanup_idx ON auth_challenges USING btree (expires_at, id);
+
+CREATE INDEX beacon_implementation_history_idx ON beacon_implementation_observations USING btree (chain_id, beacon_address, block_number DESC, block_hash DESC) WHERE canonical;
+
+CREATE INDEX billing_account_entries_user_time_idx ON billing_account_entries USING btree (user_id, occurred_at DESC, id DESC);
+
+CREATE INDEX billing_accounts_chain_updated_idx ON billing_accounts USING btree (chain_id, updated_at DESC, user_id);
+
+CREATE INDEX billing_payment_events_payment_idx ON billing_payment_events USING btree (payment_id, id);
+
+CREATE INDEX billing_payments_active_expiry_idx ON billing_payments USING btree (reservation_expires_at, id) WHERE (state = ANY (ARRAY['reserved'::text, 'verified'::text]));
+
+CREATE INDEX billing_payments_admin_filter_idx ON billing_payments USING btree (chain_id, state, operation, network, asset, created_at DESC, id DESC);
+
+CREATE INDEX billing_payments_chain_created_idx ON billing_payments USING btree (chain_id, created_at DESC, id DESC);
+
+CREATE INDEX billing_payments_settling_metrics_idx ON billing_payments USING btree (chain_id, operation, failure_code, settling_at) WHERE (state = 'settling'::text);
+
+CREATE UNIQUE INDEX billing_payments_topup_settled_idx ON billing_payments USING btree (topup_intent_id) WHERE ((purpose = 'account_topup'::text) AND (state = 'settled'::text));
+
+CREATE INDEX billing_payments_user_created_idx ON billing_payments USING btree (user_id, created_at DESC, id DESC) WHERE (user_id IS NOT NULL);
+
+CREATE UNIQUE INDEX billing_topup_intents_active_payment_idx ON billing_topup_intents USING btree (active_payment_id) WHERE (active_payment_id IS NOT NULL);
+
+CREATE INDEX billing_topup_intents_expiry_idx ON billing_topup_intents USING btree (expires_at, id) WHERE (state = 'open'::text);
+
+CREATE INDEX billing_topup_intents_user_created_idx ON billing_topup_intents USING btree (user_id, created_at DESC, id DESC);
+
+CREATE INDEX billing_usage_charges_expiry_idx ON billing_usage_charges USING btree (reservation_expires_at, id) WHERE (state = 'reserved'::text);
+
+CREATE INDEX billing_usage_charges_operation_idx ON billing_usage_charges USING btree (chain_id, operation, state, created_at DESC);
+
+CREATE INDEX billing_usage_charges_user_created_idx ON billing_usage_charges USING btree (user_id, created_at DESC, id DESC);
+
+CREATE INDEX block_journals_canonical_idx ON block_journals USING btree (chain_id, stage, canonical, block_hash);
+
+CREATE UNIQUE INDEX block_journals_job_generation_idx ON block_journals USING btree (durable_job_id, job_generation) WHERE (durable_job_id IS NOT NULL);
+
+CREATE INDEX block_stage_results_height_idx ON block_stage_results USING btree (chain_id, block_number, stage, stage_version);
+
+CREATE UNIQUE INDEX block_stage_results_job_generation_idx ON block_stage_results USING btree (durable_job_id, job_generation) WHERE (durable_job_id IS NOT NULL);
+
+CREATE INDEX blocks_amsterdam_idx ON blocks USING btree (chain_id, number, hash) WHERE ((slot_number_raw IS NOT NULL) AND (slot_number_raw <> 'null'::jsonb));
+
+CREATE INDEX blocks_miner_number_idx ON blocks USING btree (chain_id, lower(miner_text), number DESC, hash DESC);
+
+CREATE INDEX blocks_parent_idx ON blocks USING btree (chain_id, parent_hash);
+
+CREATE INDEX blocks_timestamp_number_idx ON blocks USING btree (chain_id, "timestamp", number, hash);
+
+CREATE INDEX chart_hourly_rollups_range_idx ON chart_hourly_rollups USING btree (chain_id, bucket_start DESC);
+
+CREATE INDEX chart_rollup_dirty_recent_idx ON chart_rollup_dirty_hours USING btree (chain_id, bucket_start DESC);
+
+CREATE INDEX contract_abis_context_idx ON contract_abis USING btree (chain_id, address, code_hash, block_number DESC, source, canonical);
+
+CREATE INDEX contract_code_history_idx ON contract_code_observations USING btree (chain_id, address, block_number DESC) WHERE canonical;
+
+CREATE INDEX core_backfill_leases_expiry_idx ON core_backfill_leases USING btree (chain_id, expires_at, range_start);
+
+CREATE INDEX derived_verification_attempts_created_idx ON derived_verification_attempts USING btree (chain_id, created_address, block_number DESC);
+
+CREATE INDEX derived_verification_attempts_creator_idx ON derived_verification_attempts USING btree (chain_id, creator_address, block_number DESC);
+
+CREATE INDEX derived_verification_forward_blocks_claim_idx ON derived_verification_forward_blocks USING btree (status, updated_at, id) WHERE (status = ANY (ARRAY['queued'::text, 'running'::text]));
+
+CREATE INDEX derived_verification_scans_claim_idx ON derived_verification_scans USING btree (status, updated_at, compilation_id) WHERE (status = ANY (ARRAY['queued'::text, 'running'::text]));
+
+CREATE INDEX diamond_cut_events_history_idx ON diamond_cut_events USING btree (chain_id, diamond_address, block_number, transaction_index, log_index) WHERE (canonical AND (stage_version = 2));
+
+CREATE INDEX diamond_loupe_selectors_facet_idx ON diamond_loupe_selectors USING btree (snapshot_id, facet_address, selector);
+
+CREATE INDEX diamond_loupe_snapshots_current_idx ON diamond_loupe_snapshots USING btree (chain_id, diamond_address, block_number DESC, id DESC) WHERE (canonical AND (stage_version = 2));
+
+CREATE INDEX diamond_selector_changes_selector_idx ON diamond_selector_changes USING btree (chain_id, selector, block_hash, log_index);
+
+CREATE INDEX durable_jobs_claim_idx ON durable_jobs USING btree (chain_id, stage, priority DESC, available_at, id) WHERE (status = ANY (ARRAY['queued'::text, 'leased'::text]));
+
+CREATE INDEX durable_jobs_replay_pending_idx ON durable_jobs USING btree (available_at, id) WHERE ((requested_generation > completed_generation) AND (status = ANY (ARRAY['queued'::text, 'leased'::text])));
+
+CREATE INDEX eip7702_authorizations_authority_idx ON eip7702_authorizations USING btree (chain_id, authority, block_number DESC, transaction_index DESC, authorization_index DESC) WHERE (canonical AND (authority IS NOT NULL));
+
+CREATE INDEX eip7702_authorizations_tx_idx ON eip7702_authorizations USING btree (chain_id, transaction_hash, authorization_index);
+
+CREATE INDEX ens_address_name_snapshots_expiry_idx ON ens_address_name_snapshots USING btree (expires_at, id);
+
+CREATE INDEX ens_name_observations_address_idx ON ens_name_observations USING btree (generation_id, source, direction, address) WHERE (direction = 'primary'::text);
+
+CREATE INDEX ens_resolution_failures_fresh_idx ON ens_resolution_failures USING btree (generation_id, source, direction, lookup_key, expires_at DESC, id DESC);
+
+CREATE INDEX ens_resolution_generations_current_idx ON ens_resolution_generations USING btree (chain_id, policy_key, fresh_until DESC, id DESC);
+
+CREATE INDEX ens_resolution_generations_retention_idx ON ens_resolution_generations USING btree (retain_until, id);
+
+CREATE INDEX erc1155_balance_reconciliations_owner_idx ON erc1155_balance_reconciliations USING btree (chain_id, owner_address, token_address, token_id, block_number DESC);
+
+CREATE INDEX erc20_balance_reconciliations_owner_snapshot_idx ON erc20_balance_reconciliations USING btree (chain_id, owner_address, block_number, block_hash, token_address);
+
+CREATE INDEX erc20_holder_balances_page_idx ON erc20_holder_balances USING btree (chain_id, token_address, holder_address, block_number DESC, block_hash) WHERE canonical;
+
+CREATE INDEX erc20_holder_snapshots_current_idx ON erc20_holder_snapshots USING btree (chain_id, token_address, block_number DESC, block_hash) WHERE canonical;
+
+CREATE INDEX erc4337_coverage_ranges_end_idx ON erc4337_coverage_ranges USING btree (chain_id, configuration_digest, end_block, start_block);
+
+CREATE INDEX erc4337_user_operation_participants_address_idx ON erc4337_user_operation_participants USING btree (chain_id, configuration_digest, address, block_number DESC, operation_index DESC) WHERE canonical;
+
+CREATE INDEX erc4337_user_operations_canonical_hash_idx ON erc4337_user_operations USING btree (chain_id, configuration_digest, user_op_hash) WHERE canonical;
+
+CREATE INDEX erc4337_user_operations_global_idx ON erc4337_user_operations USING btree (chain_id, configuration_digest, block_number DESC, transaction_index DESC, operation_index DESC, user_op_hash DESC) WHERE canonical;
+
+CREATE INDEX erc4337_user_operations_transaction_idx ON erc4337_user_operations USING btree (chain_id, configuration_digest, transaction_hash, operation_index) WHERE canonical;
+
+CREATE INDEX erc721_owner_reconciliations_owner_idx ON erc721_owner_reconciliations USING btree (chain_id, owner_address, token_address, token_id, block_number DESC) WHERE (state = 'owned'::text);
+
+CREATE INDEX external_adapter_observations_expiry_idx ON external_adapter_observations USING btree (expires_at);
+
+CREATE INDEX external_adapter_observations_latest_idx ON external_adapter_observations USING btree (chain_id, capability, provider_key, observation_key, observed_at DESC, id DESC);
+
+CREATE INDEX external_metadata_attempts_resource_idx ON external_metadata_attempts USING btree (chain_id, resource_kind, resource_key, attempted_at DESC);
+
+CREATE INDEX external_metadata_nft_canonical_lookup_idx ON external_metadata USING btree (chain_id, token_address, token_id, observed_block_number DESC, observed_block_hash);
+
+CREATE UNIQUE INDEX external_metadata_nft_identity_uq ON external_metadata USING btree (chain_id, token_address, token_id, observed_block_hash) WHERE ((resource_kind = 'nft'::text) AND (token_address IS NOT NULL) AND (token_id IS NOT NULL) AND (observed_block_hash IS NOT NULL));
+
+CREATE INDEX external_metadata_pending_idx ON external_metadata USING btree (chain_id, updated_at, resource_key) WHERE (state = 'pending'::text);
+
+CREATE INDEX genesis_account_observations_page_idx ON genesis_account_observations USING btree (chain_id, block_hash, address);
+
+CREATE INDEX logs_address_idx ON logs USING btree (chain_id, address, block_number DESC);
+
+CREATE INDEX logs_topic0_idx ON logs USING btree (chain_id, topic0, block_number DESC);
+
+CREATE INDEX mempool_snapshot_transactions_tx_idx ON mempool_snapshot_transactions USING btree (chain_id, tx_hash, snapshot_id);
+
+CREATE INDEX mempool_snapshots_expiry_idx ON mempool_snapshots USING btree (chain_id, expires_at, id);
+
+CREATE INDEX mempool_transaction_replacements_new_idx ON mempool_transaction_replacements USING btree (chain_id, replacement_hash, snapshot_id DESC);
+
+CREATE INDEX mempool_transaction_replacements_old_idx ON mempool_transaction_replacements USING btree (chain_id, replaced_hash, snapshot_id DESC);
+
+CREATE INDEX mempool_transactions_expiry_idx ON mempool_transactions USING btree (chain_id, expires_at, tx_hash);
+
+CREATE INDEX native_transfers_from_idx ON native_transfers USING btree (chain_id, from_address, block_number DESC, transaction_index DESC, log_index DESC) WHERE canonical;
+
+CREATE INDEX native_transfers_to_idx ON native_transfers USING btree (chain_id, to_address, block_number DESC, transaction_index DESC, log_index DESC) WHERE canonical;
+
+CREATE INDEX native_transfers_transaction_idx ON native_transfers USING btree (chain_id, transaction_hash, log_index) WHERE canonical;
+
+CREATE INDEX nft_metadata_source_candidate_idx ON nft_metadata_source_observations USING btree (chain_id, token_address, token_id, block_number DESC, block_hash);
+
+CREATE INDEX nft_metadata_update_candidate_idx ON nft_metadata_update_observations USING btree (chain_id, token_address, block_number DESC, block_hash, from_token_id, to_token_id) WHERE (state = 'accepted'::text);
+
+CREATE INDEX normalized_traces_created_idx ON normalized_traces USING btree (chain_id, created_address, block_number DESC) WHERE (canonical AND (created_address IS NOT NULL));
+
+CREATE INDEX normalized_traces_from_idx ON normalized_traces USING btree (chain_id, from_address, block_number DESC) WHERE canonical;
+
+CREATE INDEX normalized_traces_to_idx ON normalized_traces USING btree (chain_id, to_address, block_number DESC) WHERE canonical;
+
+CREATE INDEX normalized_traces_tx_idx ON normalized_traces USING btree (chain_id, transaction_hash, trace_path);
+
+CREATE INDEX proxy_artifact_resolutions_beacon_idx ON proxy_artifact_resolutions USING btree (chain_id, beacon_address, observation_block_hash, id DESC) WHERE (beacon_address IS NOT NULL);
+
+CREATE INDEX proxy_artifact_resolutions_current_idx ON proxy_artifact_resolutions USING btree (chain_id, proxy_address, id DESC);
+
+CREATE INDEX proxy_detection_evidence_current_idx ON proxy_detection_evidence USING btree (chain_id, address, block_number DESC, block_hash DESC) WHERE (canonical AND (stage_version = 2));
+
+CREATE INDEX proxy_detection_evidence_negative_shadow_idx ON proxy_detection_evidence USING btree (chain_id, address, candidate_kind, code_hash, block_number DESC, block_hash DESC) WHERE (canonical AND (stage_version = 2));
+
+CREATE INDEX proxy_history_epochs_latest_idx ON proxy_history_epochs USING btree (chain_id, epoch_id DESC) INCLUDE (block_number, block_hash);
+
+CREATE INDEX proxy_history_epochs_snapshot_idx ON proxy_history_epochs USING btree (chain_id, block_number, epoch_id DESC);
+
+CREATE INDEX proxy_history_idx ON proxy_observations USING btree (chain_id, proxy_address, block_number DESC) WHERE canonical;
+
+CREATE INDEX proxy_initialization_events_contract_idx ON proxy_initialization_events USING btree (chain_id, contract_address, block_number DESC, log_index DESC) WHERE (canonical AND (stage_version = 2));
+
+CREATE INDEX proxy_interaction_coverage_ranges_end_idx ON proxy_interaction_coverage_ranges USING btree (chain_id, end_block, start_block);
+
+CREATE INDEX proxy_observations_v2_beacon_idx ON proxy_observations USING btree (chain_id, beacon_address, block_number DESC, block_hash DESC) WHERE (canonical AND (stage_version = 2) AND (beacon_address IS NOT NULL));
+
+CREATE INDEX proxy_observations_v2_history_idx ON proxy_observations USING btree (chain_id, proxy_address, block_number DESC, block_hash DESC) WHERE (canonical AND (stage_version = 2));
+
+CREATE INDEX proxy_replay_targets_verification_source_idx ON proxy_replay_targets USING btree (((source_verification_job_id)::text), chain_id, block_hash);
+
+CREATE INDEX proxy_upgrade_events_emitter_idx ON proxy_upgrade_events USING btree (chain_id, emitter_address, block_number DESC, log_index DESC) WHERE (canonical AND (stage_version = 2));
+
+CREATE INDEX receipts_contract_address_idx ON receipts USING btree (chain_id, lower((raw ->> 'contractAddress'::text)), block_number DESC, tx_index DESC) WHERE ((raw ->> 'contractAddress'::text) IS NOT NULL);
+
+CREATE INDEX repair_requests_active_metrics_idx ON repair_requests USING btree (chain_id, operation, status) WHERE (status = ANY (ARRAY['queued'::text, 'running'::text]));
+
+CREATE INDEX repair_requests_pending_idx ON repair_requests USING btree (chain_id, requested_at, id) WHERE (status = 'queued'::text);
+
+CREATE INDEX runtime_events_chain_id_idx ON runtime_events USING btree (chain_id, id);
+
+CREATE INDEX search_catalog_documents_generation_idx ON search_catalog_documents USING btree (chain_id, valid_from_generation, valid_to_generation, source_kind);
+
+CREATE INDEX search_catalog_documents_terms_idx ON search_catalog_documents USING gin (exact_terms);
+
+CREATE INDEX token_balance_deltas_owner_idx ON token_balance_deltas USING btree (chain_id, owner_address, token_address, token_id, block_number) WHERE canonical;
+
+CREATE INDEX token_contracts_canonical_lookup_idx ON token_contracts USING btree (chain_id, address, observed_block_number DESC, observed_block_hash, code_hash);
+
+CREATE INDEX token_events_from_idx ON token_events USING btree (chain_id, from_address, block_number DESC) WHERE canonical;
+
+CREATE INDEX token_events_to_idx ON token_events USING btree (chain_id, to_address, block_number DESC) WHERE canonical;
+
+CREATE INDEX token_events_token_idx ON token_events USING btree (chain_id, token_address, block_number DESC, log_index DESC);
+
+CREATE INDEX token_events_metadata_known_id_idx ON token_events USING btree (chain_id, token_address, token_id, block_number DESC, block_hash) WHERE ((token_id IS NOT NULL) AND (standard = ANY (ARRAY['erc721'::text, 'erc1155'::text])));
+
+CREATE INDEX trace_log_attributions_frame_idx ON trace_log_attributions USING btree (chain_id, transaction_hash, trace_path, log_index) WHERE canonical;
+
+CREATE INDEX transaction_effective_execution_identities_code_idx ON transaction_effective_execution_identities USING btree (chain_id, execution_address, execution_code_hash, block_number DESC, transaction_index DESC) WHERE (canonical AND (execution_address IS NOT NULL));
+
+CREATE INDEX transaction_effective_execution_identities_tx_idx ON transaction_effective_execution_identities USING btree (chain_id, transaction_hash, context_address) WHERE canonical;
+
+CREATE INDEX transaction_execution_code_resolutions_execution_idx ON transaction_execution_code_resolutions USING btree (chain_id, execution_address, block_number DESC) WHERE (canonical AND (execution_address IS NOT NULL));
+
+CREATE INDEX transaction_execution_code_resolutions_tx_idx ON transaction_execution_code_resolutions USING btree (chain_id, transaction_hash, context_address) WHERE canonical;
+
+CREATE INDEX transaction_inclusions_to_address_idx ON transaction_inclusions USING btree (chain_id, lower((raw ->> 'to'::text)), block_number DESC, tx_index DESC);
+
+CREATE INDEX transaction_inclusions_from_address_idx ON transaction_inclusions USING btree (chain_id, lower((raw ->> 'from'::text)), block_number DESC, tx_index DESC);
+
+CREATE INDEX transaction_state_changes_address_idx ON transaction_state_changes USING btree (chain_id, address, block_number DESC) WHERE canonical;
+
+CREATE INDEX transaction_state_changes_code_epoch_idx ON transaction_state_changes USING btree (chain_id, address, block_number DESC) INCLUDE (block_hash) WHERE (canonical AND (field_kind = 'code'::text));
+
+CREATE INDEX transaction_state_changes_tx_idx ON transaction_state_changes USING btree (chain_id, transaction_hash, block_number DESC, address, field_kind, storage_key);
+
+CREATE INDEX transactional_outbox_pending_idx ON transactional_outbox USING btree (available_at, id) WHERE (published_at IS NULL);
+
+CREATE INDEX user_sessions_active_user_idx ON user_sessions USING btree (user_id, expires_at, id) WHERE (revoked_at IS NULL);
+
+CREATE INDEX user_sessions_cleanup_idx ON user_sessions USING btree (expires_at, id);
+
+CREATE INDEX users_chain_created_idx ON users USING btree (chain_id, created_at DESC, id DESC);
+
+CREATE INDEX uups_implementation_observation_generations_job_idx ON uups_implementation_observation_generations USING btree (durable_job_id, job_generation, id);
+
+CREATE INDEX uups_implementation_observations_current_idx ON uups_implementation_observations USING btree (chain_id, implementation_address, implementation_code_hash, block_number DESC, block_hash DESC) WHERE (canonical AND (probe_state = 'compatible'::text));
+
+CREATE INDEX uups_implementation_observations_latest_idx ON uups_implementation_observations USING btree (chain_id, implementation_address, implementation_code_hash, block_number DESC, block_hash DESC) WHERE canonical;
+
+CREATE INDEX uups_implementation_observations_verification_idx ON uups_implementation_observations USING btree (verification_job_id, chain_id, block_hash);
+
+CREATE UNIQUE INDEX verification_jobs_active_request_key ON verification_jobs USING btree (request_digest) WHERE (status = ANY (ARRAY['queued'::text, 'running'::text, 'succeeded'::text]));
+
+CREATE INDEX verification_jobs_claim_idx ON verification_jobs USING btree (status, created_at, id) WHERE (status = ANY (ARRAY['queued'::text, 'running'::text]));
+
+CREATE INDEX verification_jobs_target_idx ON verification_jobs USING btree (chain_id, address, code_hash, created_at DESC) WHERE (kind = 'address'::text);
+
+CREATE INDEX verified_contract_proxy_artifacts_current_idx ON verified_contract_proxy_artifacts USING btree (chain_id, address, valid_from_block DESC, code_hash);
+
+CREATE INDEX verified_contracts_code_hash_artifact_idx ON verified_contracts USING btree (chain_id, code_hash, ((abi IS NOT NULL)) DESC, ((match_type = 'full'::text)) DESC, request_digest, verification_job_id, address, valid_from_block DESC);
+
+CREATE INDEX verified_function_selector_sets_identity_idx ON verified_function_selector_sets USING btree (chain_id, code_hash, address, valid_from_block, verification_job_id);
+
+CREATE INDEX verified_function_selectors_lookup_idx ON verified_function_selectors USING btree (chain_id, code_hash, selector, verification_job_id, signature);
+
+CREATE INDEX verified_proxy_bindings_current_idx ON verified_proxy_bindings USING btree (chain_id, proxy_address, observation_block_number DESC);
+
+CREATE INDEX verified_proxy_bindings_uups_generation_idx ON verified_proxy_bindings USING btree (uups_generation_id) WHERE (uups_generation_id IS NOT NULL);
+
+CREATE INDEX watch_notification_work_pending ON watch_notification_work USING btree (chain_id, block_number, block_hash) WHERE (generation > done_generation);
+
+CREATE INDEX watch_notifications_block ON watch_notifications USING btree (chain_id, block_hash, source_key, watch_id);
+
+CREATE INDEX watch_notifications_expiry ON watch_notifications USING btree (created_at, id);
+
+CREATE INDEX watch_notifications_owner_page ON watch_notifications USING btree (user_id, id DESC);
+
+CREATE INDEX watch_notifications_unread ON watch_notifications USING btree (user_id, id) WHERE (read_at IS NULL);
+
+CREATE INDEX withdrawals_address_index_idx ON withdrawals USING btree (chain_id, address, withdrawal_index DESC);
+
+-- Comments
+
+COMMENT ON COLUMN external_adapter_observations.provider_key IS 'Stable non-secret namespace for the configured adapter provider';
+
+-- Views
+
+CREATE VIEW published_block_stage_results AS
+ SELECT result.chain_id,
+    result.block_number,
+    result.block_hash,
+    result.stage,
+    result.stage_version,
+    result.state,
+    result.details,
+    result.last_error,
+    result.completed_at,
+    result.durable_job_id,
+    result.job_generation
+   FROM (block_stage_results result
+     JOIN durable_jobs job ON (((job.id = result.durable_job_id) AND (job.chain_id = result.chain_id) AND (job.kind = 'enrichment'::text) AND (job.stage = result.stage) AND (job.stage_version = result.stage_version) AND ((job.payload ->> 'block_hash'::text) = ('0x'::text || encode(result.block_hash, 'hex'::text))) AND ((job.payload ->> 'block_number'::text) = (result.block_number)::text))))
+  WHERE ((result.durable_job_id IS NOT NULL) AND (result.job_generation IS NOT NULL) AND (job.status = ANY (ARRAY['succeeded'::text, 'failed'::text])) AND (job.claimed_generation = result.job_generation) AND (job.completed_generation = result.job_generation) AND (job.requested_generation = result.job_generation) AND (job.leased_generation IS NULL) AND (job.leased_by IS NULL) AND (job.lease_token IS NULL) AND (job.lease_expires_at IS NULL) AND (job.result IS NOT NULL) AND ((job.result ->> 'state'::text) = result.state) AND (COALESCE((result.details ->> 'outcome'::text), ''::text) <> 'stale_canonical_skipped'::text) AND (NOT (EXISTS ( SELECT 1
+           FROM transactional_outbox pending_attach
+          WHERE ((pending_attach.chain_id = result.chain_id) AND (pending_attach.topic = 'core.block.canonical'::text) AND (pending_attach.message_key = ('0x'::text || encode(result.block_hash, 'hex'::text))) AND (pending_attach.published_at IS NULL))))) AND (((job.status = 'succeeded'::text) AND (result.state = 'complete'::text) AND (EXISTS ( SELECT 1
+           FROM block_journals journal
+          WHERE ((journal.chain_id = result.chain_id) AND (journal.block_hash = result.block_hash) AND (journal.stage = ((result.stage || '@'::text) || (result.stage_version)::text)) AND (journal.sequence = (1)::numeric) AND (journal.durable_job_id = result.durable_job_id) AND (journal.job_generation = result.job_generation))))) OR ((job.status = 'failed'::text) AND (result.state = ANY (ARRAY['failed'::text, 'unavailable'::text])))) AND (COALESCE((job.result -> 'details'::text), '{}'::jsonb) = result.details) AND (NOT ((job.result ->> 'error'::text) IS DISTINCT FROM result.last_error)));
+
+CREATE VIEW canonical_diamond_selector_intervals AS
+ WITH ordered AS (
+         SELECT event.chain_id,
+            event.diamond_address,
+            change.selector,
+            change.facet_address,
+            change.action,
+            event.block_number AS valid_from_block_number,
+            event.block_hash AS valid_from_block_hash,
+            event.transaction_index AS valid_from_transaction_index,
+            event.log_index AS valid_from_log_index,
+            change.cut_index AS valid_from_cut_index,
+            change.selector_index AS valid_from_selector_index,
+            lead(event.block_number) OVER route AS valid_to_block_number,
+            lead(event.block_hash) OVER route AS valid_to_block_hash,
+            lead(event.transaction_index) OVER route AS valid_to_transaction_index,
+            lead(event.log_index) OVER route AS valid_to_log_index,
+            lead(change.cut_index) OVER route AS valid_to_cut_index,
+            lead(change.selector_index) OVER route AS valid_to_selector_index
+           FROM (((diamond_cut_events event
+             JOIN diamond_selector_changes change ON (((change.chain_id = event.chain_id) AND (change.block_hash = event.block_hash) AND (change.log_index = event.log_index) AND (change.stage_version = event.stage_version))))
+             JOIN canonical_blocks canonical ON (((canonical.chain_id = event.chain_id) AND (canonical.number = event.block_number) AND (canonical.block_hash = event.block_hash))))
+             JOIN published_block_stage_results published ON (((published.chain_id = event.chain_id) AND (published.block_number = event.block_number) AND (published.block_hash = event.block_hash) AND (published.stage = 'proxy'::text) AND (published.stage_version = event.stage_version) AND (published.state = 'complete'::text))))
+          WHERE (event.canonical AND (event.stage_version = 2))
+          WINDOW route AS (PARTITION BY event.chain_id, event.diamond_address, change.selector ORDER BY event.block_number, event.transaction_index, event.log_index, change.cut_index, change.selector_index)
+        )
+ SELECT chain_id,
+    diamond_address,
+    selector,
+    facet_address,
+    valid_from_block_number,
+    valid_from_block_hash,
+    valid_from_transaction_index,
+    valid_from_log_index,
+    valid_from_cut_index,
+    valid_from_selector_index,
+    valid_to_block_number,
+    valid_to_block_hash,
+    valid_to_transaction_index,
+    valid_to_log_index,
+    valid_to_cut_index,
+    valid_to_selector_index
+   FROM ordered
+  WHERE (action <> 2);
 
 CREATE VIEW published_diamond_loupe_snapshots AS
  SELECT snapshot.id,
@@ -6100,8 +6657,6 @@ CREATE VIEW published_diamond_loupe_snapshots AS
    FROM (diamond_loupe_snapshots snapshot
      JOIN published_block_stage_results published ON (((published.chain_id = snapshot.chain_id) AND (published.block_number = snapshot.block_number) AND (published.block_hash = snapshot.block_hash) AND (published.stage = 'proxy'::text) AND (published.stage_version = snapshot.stage_version) AND (published.state = 'complete'::text) AND (published.durable_job_id = snapshot.durable_job_id) AND (published.job_generation = snapshot.job_generation))))
   WHERE snapshot.canonical;
-
--- View: published_erc4337_user_operations
 
 CREATE VIEW published_erc4337_user_operations AS
  SELECT operation.chain_id,
@@ -6160,1117 +6715,6 @@ CREATE VIEW published_erc4337_user_operations AS
      LEFT JOIN chain_finality finality ON ((finality.chain_id = operation.chain_id)))
   WHERE operation.canonical;
 
--- Table: receipts
-
-CREATE TABLE receipts (
-    chain_id numeric(78,0) NOT NULL,
-    block_number numeric(78,0) NOT NULL,
-    block_hash bytea NOT NULL,
-    tx_index bigint NOT NULL,
-    tx_hash bytea NOT NULL,
-    raw jsonb NOT NULL,
-    CONSTRAINT receipts_tx_index_check CHECK ((tx_index >= 0))
-)
-PARTITION BY RANGE (block_number);
-
--- Table: receipts_default
-
-CREATE TABLE receipts_default (
-    chain_id numeric(78,0) CONSTRAINT receipts_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT receipts_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT receipts_block_hash_not_null NOT NULL,
-    tx_index bigint CONSTRAINT receipts_tx_index_not_null NOT NULL,
-    tx_hash bytea CONSTRAINT receipts_tx_hash_not_null NOT NULL,
-    raw jsonb CONSTRAINT receipts_raw_not_null NOT NULL,
-    CONSTRAINT receipts_tx_index_check CHECK ((tx_index >= 0))
-);
-
--- Table: receipts_p_0_1000000
-
-CREATE TABLE receipts_p_0_1000000 (
-    chain_id numeric(78,0) CONSTRAINT receipts_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT receipts_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT receipts_block_hash_not_null NOT NULL,
-    tx_index bigint CONSTRAINT receipts_tx_index_not_null NOT NULL,
-    tx_hash bytea CONSTRAINT receipts_tx_hash_not_null NOT NULL,
-    raw jsonb CONSTRAINT receipts_raw_not_null NOT NULL,
-    CONSTRAINT receipts_tx_index_check CHECK ((tx_index >= 0))
-);
-
--- Table: reorg_events
-
-CREATE TABLE reorg_events (
-    id bigint NOT NULL,
-    chain_id numeric(78,0) NOT NULL,
-    ancestor_number numeric(78,0) NOT NULL,
-    ancestor_hash bytea NOT NULL,
-    old_tip_number numeric(78,0),
-    old_tip_hash bytea,
-    new_tip_number numeric(78,0),
-    new_tip_hash bytea,
-    detached jsonb NOT NULL,
-    attached jsonb NOT NULL,
-    reason text DEFAULT ''::text NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
-);
-
--- Sequence: reorg_events_id_seq
-
-ALTER TABLE reorg_events ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME reorg_events_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
-);
-
--- Table: repair_requests
-
-CREATE TABLE repair_requests (
-    id bigint NOT NULL,
-    chain_id numeric(78,0) NOT NULL,
-    operation text NOT NULL,
-    stage text NOT NULL,
-    from_block numeric(78,0) NOT NULL,
-    to_block numeric(78,0) NOT NULL,
-    allow_finalized boolean DEFAULT false NOT NULL,
-    reason text NOT NULL,
-    status text DEFAULT 'queued'::text NOT NULL,
-    requested_at timestamp with time zone DEFAULT now() NOT NULL,
-    started_at timestamp with time zone,
-    completed_at timestamp with time zone,
-    last_error text,
-    CONSTRAINT repair_requests_check CHECK (((from_block >= (0)::numeric) AND (to_block >= from_block))),
-    CONSTRAINT repair_requests_operation_check CHECK ((operation = ANY (ARRAY['repair'::text, 'reindex'::text]))),
-    CONSTRAINT repair_requests_reason_check CHECK (((length(reason) >= 1) AND (length(reason) <= 1024))),
-    CONSTRAINT repair_requests_status_check CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text, 'done'::text, 'failed'::text, 'cancelled'::text])))
-);
-
--- Sequence: repair_requests_id_seq
-
-ALTER TABLE repair_requests ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME repair_requests_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
-);
-
--- Table: runtime_events
-
-CREATE TABLE runtime_events (
-    id bigint NOT NULL,
-    chain_id numeric(78,0) NOT NULL,
-    event_type text NOT NULL,
-    payload jsonb NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT runtime_events_event_type_check CHECK ((event_type = ANY (ARRAY['head'::text, 'reorg'::text, 'status'::text]))),
-    CONSTRAINT runtime_events_payload_check CHECK ((octet_length((payload)::text) <= 8192))
-);
-
--- Sequence: runtime_events_id_seq
-
-ALTER TABLE runtime_events ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME runtime_events_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
-);
-
--- Table: search_catalog_documents
-
-CREATE TABLE search_catalog_documents (
-    id bigint NOT NULL,
-    chain_id numeric(78,0) NOT NULL,
-    source_kind text NOT NULL,
-    source_identity text NOT NULL,
-    logical_identity text NOT NULL,
-    valid_from_generation bigint NOT NULL,
-    valid_to_generation bigint,
-    result_kind text,
-    result_key text,
-    result_label text,
-    exact_terms text[] DEFAULT '{}'::text[] NOT NULL,
-    partial_terms text[] DEFAULT '{}'::text[] NOT NULL,
-    block_number numeric(78,0),
-    block_hash bytea,
-    target_address bytea,
-    code_hash bytea,
-    valid_from_block numeric(78,0),
-    valid_to_block numeric(78,0),
-    source_canonical boolean,
-    recorded_at timestamp with time zone DEFAULT now() NOT NULL,
-    verification_match_type text,
-    verification_request_digest bytea,
-    verification_job_id uuid,
-    name_observation_id bigint,
-    name_source text,
-    CONSTRAINT search_catalog_documents_block_hash_check CHECK (((block_hash IS NULL) OR (octet_length(block_hash) = 32))),
-    CONSTRAINT search_catalog_documents_check CHECK (((valid_to_generation IS NULL) OR (valid_to_generation > valid_from_generation))),
-    CONSTRAINT search_catalog_documents_check1 CHECK (((result_kind IS NULL) = (result_key IS NULL))),
-    CONSTRAINT search_catalog_documents_check2 CHECK (((result_kind IS NULL) = (result_label IS NULL))),
-    CONSTRAINT search_catalog_documents_check3 CHECK (((block_number IS NULL) = (block_hash IS NULL))),
-    CONSTRAINT search_catalog_documents_check4 CHECK (((valid_to_block IS NULL) OR (valid_from_block IS NOT NULL))),
-    CONSTRAINT search_catalog_documents_check5 CHECK (((valid_to_block IS NULL) OR (valid_to_block >= valid_from_block))),
-    CONSTRAINT search_catalog_documents_check6 CHECK ((((source_kind = 'code'::text) AND (result_kind IS NULL) AND (target_address IS NOT NULL) AND (code_hash IS NOT NULL)) OR ((source_kind <> 'code'::text) AND (result_kind IS NOT NULL)))),
-    CONSTRAINT search_catalog_documents_code_hash_check CHECK (((code_hash IS NULL) OR (octet_length(code_hash) = 32))),
-    CONSTRAINT search_catalog_documents_logical_identity_check CHECK (((length(logical_identity) >= 1) AND (length(logical_identity) <= 1024))),
-    CONSTRAINT search_catalog_documents_result_key_check CHECK (((result_key IS NULL) OR ((length(result_key) >= 1) AND (length(result_key) <= 256)))),
-    CONSTRAINT search_catalog_documents_result_kind_check CHECK (((result_kind IS NULL) OR (result_kind = ANY (ARRAY['address'::text, 'block'::text, 'transaction'::text, 'token'::text, 'contract'::text])))),
-    CONSTRAINT search_catalog_documents_result_label_check CHECK (((result_label IS NULL) OR ((length(result_label) >= 1) AND (length(result_label) <= 4096)))),
-    CONSTRAINT search_catalog_documents_source_identity_check CHECK (((length(source_identity) >= 1) AND (length(source_identity) <= 1024))),
-    CONSTRAINT search_catalog_documents_source_kind_check CHECK ((source_kind = ANY (ARRAY['label'::text, 'name'::text, 'token'::text, 'verified_contract'::text, 'code'::text]))),
-    CONSTRAINT search_catalog_documents_target_address_check CHECK (((target_address IS NULL) OR (octet_length(target_address) = 20))),
-    CONSTRAINT search_catalog_documents_valid_from_generation_check CHECK ((valid_from_generation >= 1)),
-    CONSTRAINT search_catalog_verified_result_shape CHECK ((((source_kind <> 'verified_contract'::text) AND (verification_match_type IS NULL) AND (verification_request_digest IS NULL) AND (verification_job_id IS NULL)) OR ((source_kind = 'verified_contract'::text) AND (((verification_match_type IS NULL) AND (verification_request_digest IS NULL) AND (verification_job_id IS NULL)) OR ((verification_match_type = ANY (ARRAY['full'::text, 'partial'::text])) AND (octet_length(verification_request_digest) = 32) AND (verification_job_id IS NOT NULL))))))
-);
-
--- Sequence: search_catalog_documents_id_seq
-
-ALTER TABLE search_catalog_documents ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME search_catalog_documents_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
-);
-
--- Table: search_catalog_generations
-
-CREATE TABLE search_catalog_generations (
-    chain_id numeric(78,0) NOT NULL,
-    generation bigint DEFAULT 0 NOT NULL,
-    min_generation bigint DEFAULT 0 NOT NULL,
-    retention_generations bigint DEFAULT 100000 NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT search_catalog_generations_check CHECK (((min_generation >= 0) AND (min_generation <= generation))),
-    CONSTRAINT search_catalog_generations_generation_check CHECK ((generation >= 0)),
-    CONSTRAINT search_catalog_generations_retention_generations_check CHECK (((retention_generations >= 1000) AND (retention_generations <= 10000000)))
-);
-
--- Table: sync_runtime_status
-
-CREATE TABLE sync_runtime_status (
-    chain_id numeric(78,0) NOT NULL,
-    latest_number numeric(78,0),
-    indexed_number numeric(78,0),
-    ready boolean DEFAULT false NOT NULL,
-    last_poll_at timestamp with time zone NOT NULL,
-    last_error_code text DEFAULT ''::text NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    highest_covered_number numeric(78,0),
-    backfill_complete boolean DEFAULT false NOT NULL,
-    CONSTRAINT sync_runtime_status_backfill_complete_check CHECK (((NOT backfill_complete) OR ((latest_number IS NOT NULL) AND (indexed_number IS NOT NULL) AND (highest_covered_number IS NOT NULL) AND (indexed_number >= latest_number) AND (indexed_number <= highest_covered_number)))),
-    CONSTRAINT sync_runtime_status_check CHECK (((NOT ready) OR ((latest_number IS NOT NULL) AND (indexed_number IS NOT NULL) AND (indexed_number >= latest_number)))),
-    CONSTRAINT sync_runtime_status_highest_covered_number_check CHECK (((highest_covered_number IS NULL) OR ((highest_covered_number >= (0)::numeric) AND ((indexed_number IS NULL) OR (indexed_number <= highest_covered_number))))),
-    CONSTRAINT sync_runtime_status_indexed_number_check CHECK (((indexed_number IS NULL) OR (indexed_number >= (0)::numeric))),
-    CONSTRAINT sync_runtime_status_last_error_code_check CHECK ((length(last_error_code) <= 64)),
-    CONSTRAINT sync_runtime_status_last_error_code_check1 CHECK ((last_error_code ~ '^[a-z0-9_]*$'::text)),
-    CONSTRAINT sync_runtime_status_latest_number_check CHECK (((latest_number IS NULL) OR (latest_number >= (0)::numeric))),
-    CONSTRAINT sync_runtime_status_ready_requires_backfill_check CHECK (((NOT ready) OR backfill_complete))
-);
-
--- Table: sync_runtime_status_writer_leases
-
-CREATE TABLE sync_runtime_status_writer_leases (
-    chain_id numeric(78,0) NOT NULL,
-    reporter_id text NOT NULL,
-    observed_latest_number numeric(78,0),
-    observed_latest_known boolean CONSTRAINT sync_runtime_status_writer_lease_observed_latest_known_not_null NOT NULL,
-    safety_halt boolean DEFAULT false NOT NULL,
-    expires_at timestamp with time zone NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT sync_runtime_status_writer_leases_check CHECK (((observed_latest_known AND (observed_latest_number IS NOT NULL) AND (observed_latest_number >= (0)::numeric)) OR ((NOT observed_latest_known) AND (observed_latest_number IS NULL)))),
-    CONSTRAINT sync_runtime_status_writer_leases_reporter_id_check CHECK (((length(reporter_id) >= 1) AND (length(reporter_id) <= 128)))
-);
-
--- Table: token_balance_deltas
-
-CREATE TABLE token_balance_deltas (
-    chain_id numeric(78,0) NOT NULL,
-    block_number numeric(78,0) NOT NULL,
-    block_hash bytea NOT NULL,
-    log_index bigint NOT NULL,
-    sub_index integer DEFAULT 0 NOT NULL,
-    token_address bytea NOT NULL,
-    owner_address bytea NOT NULL,
-    token_id numeric(78,0),
-    delta numeric(79,0) NOT NULL,
-    canonical boolean NOT NULL,
-    CONSTRAINT token_balance_deltas_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT token_balance_deltas_owner_address_check CHECK ((octet_length(owner_address) = 20)),
-    CONSTRAINT token_balance_deltas_token_address_check CHECK ((octet_length(token_address) = 20)),
-    CONSTRAINT token_balance_deltas_token_id_check CHECK (((token_id IS NULL) OR (token_id >= (0)::numeric)))
-)
-PARTITION BY RANGE (block_number);
-
--- Table: token_balance_deltas_default
-
-CREATE TABLE token_balance_deltas_default (
-    chain_id numeric(78,0) CONSTRAINT token_balance_deltas_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT token_balance_deltas_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT token_balance_deltas_block_hash_not_null NOT NULL,
-    log_index bigint CONSTRAINT token_balance_deltas_log_index_not_null NOT NULL,
-    sub_index integer DEFAULT 0 CONSTRAINT token_balance_deltas_sub_index_not_null NOT NULL,
-    token_address bytea CONSTRAINT token_balance_deltas_token_address_not_null NOT NULL,
-    owner_address bytea CONSTRAINT token_balance_deltas_owner_address_not_null NOT NULL,
-    token_id numeric(78,0),
-    delta numeric(79,0) CONSTRAINT token_balance_deltas_delta_not_null NOT NULL,
-    canonical boolean CONSTRAINT token_balance_deltas_canonical_not_null NOT NULL,
-    CONSTRAINT token_balance_deltas_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT token_balance_deltas_owner_address_check CHECK ((octet_length(owner_address) = 20)),
-    CONSTRAINT token_balance_deltas_token_address_check CHECK ((octet_length(token_address) = 20)),
-    CONSTRAINT token_balance_deltas_token_id_check CHECK (((token_id IS NULL) OR (token_id >= (0)::numeric)))
-);
-
--- Table: token_balance_deltas_p_0_1000000
-
-CREATE TABLE token_balance_deltas_p_0_1000000 (
-    chain_id numeric(78,0) CONSTRAINT token_balance_deltas_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT token_balance_deltas_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT token_balance_deltas_block_hash_not_null NOT NULL,
-    log_index bigint CONSTRAINT token_balance_deltas_log_index_not_null NOT NULL,
-    sub_index integer DEFAULT 0 CONSTRAINT token_balance_deltas_sub_index_not_null NOT NULL,
-    token_address bytea CONSTRAINT token_balance_deltas_token_address_not_null NOT NULL,
-    owner_address bytea CONSTRAINT token_balance_deltas_owner_address_not_null NOT NULL,
-    token_id numeric(78,0),
-    delta numeric(79,0) CONSTRAINT token_balance_deltas_delta_not_null NOT NULL,
-    canonical boolean CONSTRAINT token_balance_deltas_canonical_not_null NOT NULL,
-    CONSTRAINT token_balance_deltas_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT token_balance_deltas_owner_address_check CHECK ((octet_length(owner_address) = 20)),
-    CONSTRAINT token_balance_deltas_token_address_check CHECK ((octet_length(token_address) = 20)),
-    CONSTRAINT token_balance_deltas_token_id_check CHECK (((token_id IS NULL) OR (token_id >= (0)::numeric)))
-);
-
--- Table: token_contracts
-
-CREATE TABLE token_contracts (
-    chain_id numeric(78,0) NOT NULL,
-    address bytea NOT NULL,
-    code_hash bytea NOT NULL,
-    standard text NOT NULL,
-    confidence text NOT NULL,
-    name text,
-    symbol text,
-    decimals integer,
-    total_supply numeric(78,0),
-    metadata_state text DEFAULT 'pending'::text NOT NULL,
-    observed_block_number numeric(78,0) NOT NULL,
-    observed_block_hash bytea NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT token_contracts_address_check CHECK ((octet_length(address) = 20)),
-    CONSTRAINT token_contracts_code_hash_check CHECK ((octet_length(code_hash) = 32)),
-    CONSTRAINT token_contracts_confidence_check CHECK ((confidence = ANY (ARRAY['verified'::text, 'high'::text, 'inferred'::text, 'guess'::text]))),
-    CONSTRAINT token_contracts_decimals_check CHECK (((decimals IS NULL) OR ((decimals >= 0) AND (decimals <= 255)))),
-    CONSTRAINT token_contracts_metadata_state_check CHECK ((metadata_state = ANY (ARRAY['pending'::text, 'complete'::text, 'unavailable'::text, 'failed'::text]))),
-    CONSTRAINT token_contracts_observed_block_hash_check CHECK ((octet_length(observed_block_hash) = 32)),
-    CONSTRAINT token_contracts_standard_check CHECK ((standard = ANY (ARRAY['erc20'::text, 'erc721'::text, 'erc1155'::text, 'unknown'::text]))),
-    CONSTRAINT token_contracts_total_supply_check CHECK (((total_supply IS NULL) OR (total_supply >= (0)::numeric)))
-);
-
--- Table: token_events
-
-CREATE TABLE token_events (
-    chain_id numeric(78,0) NOT NULL,
-    block_number numeric(78,0) NOT NULL,
-    block_hash bytea NOT NULL,
-    log_index bigint NOT NULL,
-    sub_index integer DEFAULT 0 NOT NULL,
-    transaction_hash bytea NOT NULL,
-    token_address bytea NOT NULL,
-    standard text NOT NULL,
-    event_kind text NOT NULL,
-    operator bytea,
-    from_address bytea,
-    to_address bytea,
-    token_id numeric(78,0),
-    amount numeric(78,0),
-    canonical boolean NOT NULL,
-    confidence text NOT NULL,
-    raw jsonb NOT NULL,
-    CONSTRAINT token_events_amount_check CHECK (((amount IS NULL) OR (amount >= (0)::numeric))),
-    CONSTRAINT token_events_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT token_events_check CHECK (((log_index >= 0) AND (sub_index >= 0))),
-    CONSTRAINT token_events_confidence_check CHECK ((confidence = ANY (ARRAY['verified'::text, 'high'::text, 'inferred'::text, 'guess'::text]))),
-    CONSTRAINT token_events_event_kind_check CHECK ((event_kind = ANY (ARRAY['transfer'::text, 'approval'::text, 'approval_for_all'::text, 'mint'::text, 'burn'::text]))),
-    CONSTRAINT token_events_from_address_check CHECK (((from_address IS NULL) OR (octet_length(from_address) = 20))),
-    CONSTRAINT token_events_operator_check CHECK (((operator IS NULL) OR (octet_length(operator) = 20))),
-    CONSTRAINT token_events_standard_check CHECK ((standard = ANY (ARRAY['erc20'::text, 'erc721'::text, 'erc1155'::text]))),
-    CONSTRAINT token_events_to_address_check CHECK (((to_address IS NULL) OR (octet_length(to_address) = 20))),
-    CONSTRAINT token_events_token_address_check CHECK ((octet_length(token_address) = 20)),
-    CONSTRAINT token_events_token_id_check CHECK (((token_id IS NULL) OR (token_id >= (0)::numeric))),
-    CONSTRAINT token_events_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32))
-)
-PARTITION BY RANGE (block_number);
-
--- Table: token_events_default
-
-CREATE TABLE token_events_default (
-    chain_id numeric(78,0) CONSTRAINT token_events_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT token_events_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT token_events_block_hash_not_null NOT NULL,
-    log_index bigint CONSTRAINT token_events_log_index_not_null NOT NULL,
-    sub_index integer DEFAULT 0 CONSTRAINT token_events_sub_index_not_null NOT NULL,
-    transaction_hash bytea CONSTRAINT token_events_transaction_hash_not_null NOT NULL,
-    token_address bytea CONSTRAINT token_events_token_address_not_null NOT NULL,
-    standard text CONSTRAINT token_events_standard_not_null NOT NULL,
-    event_kind text CONSTRAINT token_events_event_kind_not_null NOT NULL,
-    operator bytea,
-    from_address bytea,
-    to_address bytea,
-    token_id numeric(78,0),
-    amount numeric(78,0),
-    canonical boolean CONSTRAINT token_events_canonical_not_null NOT NULL,
-    confidence text CONSTRAINT token_events_confidence_not_null NOT NULL,
-    raw jsonb CONSTRAINT token_events_raw_not_null NOT NULL,
-    CONSTRAINT token_events_amount_check CHECK (((amount IS NULL) OR (amount >= (0)::numeric))),
-    CONSTRAINT token_events_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT token_events_check CHECK (((log_index >= 0) AND (sub_index >= 0))),
-    CONSTRAINT token_events_confidence_check CHECK ((confidence = ANY (ARRAY['verified'::text, 'high'::text, 'inferred'::text, 'guess'::text]))),
-    CONSTRAINT token_events_event_kind_check CHECK ((event_kind = ANY (ARRAY['transfer'::text, 'approval'::text, 'approval_for_all'::text, 'mint'::text, 'burn'::text]))),
-    CONSTRAINT token_events_from_address_check CHECK (((from_address IS NULL) OR (octet_length(from_address) = 20))),
-    CONSTRAINT token_events_operator_check CHECK (((operator IS NULL) OR (octet_length(operator) = 20))),
-    CONSTRAINT token_events_standard_check CHECK ((standard = ANY (ARRAY['erc20'::text, 'erc721'::text, 'erc1155'::text]))),
-    CONSTRAINT token_events_to_address_check CHECK (((to_address IS NULL) OR (octet_length(to_address) = 20))),
-    CONSTRAINT token_events_token_address_check CHECK ((octet_length(token_address) = 20)),
-    CONSTRAINT token_events_token_id_check CHECK (((token_id IS NULL) OR (token_id >= (0)::numeric))),
-    CONSTRAINT token_events_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32))
-);
-
--- Table: token_events_p_0_1000000
-
-CREATE TABLE token_events_p_0_1000000 (
-    chain_id numeric(78,0) CONSTRAINT token_events_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT token_events_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT token_events_block_hash_not_null NOT NULL,
-    log_index bigint CONSTRAINT token_events_log_index_not_null NOT NULL,
-    sub_index integer DEFAULT 0 CONSTRAINT token_events_sub_index_not_null NOT NULL,
-    transaction_hash bytea CONSTRAINT token_events_transaction_hash_not_null NOT NULL,
-    token_address bytea CONSTRAINT token_events_token_address_not_null NOT NULL,
-    standard text CONSTRAINT token_events_standard_not_null NOT NULL,
-    event_kind text CONSTRAINT token_events_event_kind_not_null NOT NULL,
-    operator bytea,
-    from_address bytea,
-    to_address bytea,
-    token_id numeric(78,0),
-    amount numeric(78,0),
-    canonical boolean CONSTRAINT token_events_canonical_not_null NOT NULL,
-    confidence text CONSTRAINT token_events_confidence_not_null NOT NULL,
-    raw jsonb CONSTRAINT token_events_raw_not_null NOT NULL,
-    CONSTRAINT token_events_amount_check CHECK (((amount IS NULL) OR (amount >= (0)::numeric))),
-    CONSTRAINT token_events_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT token_events_check CHECK (((log_index >= 0) AND (sub_index >= 0))),
-    CONSTRAINT token_events_confidence_check CHECK ((confidence = ANY (ARRAY['verified'::text, 'high'::text, 'inferred'::text, 'guess'::text]))),
-    CONSTRAINT token_events_event_kind_check CHECK ((event_kind = ANY (ARRAY['transfer'::text, 'approval'::text, 'approval_for_all'::text, 'mint'::text, 'burn'::text]))),
-    CONSTRAINT token_events_from_address_check CHECK (((from_address IS NULL) OR (octet_length(from_address) = 20))),
-    CONSTRAINT token_events_operator_check CHECK (((operator IS NULL) OR (octet_length(operator) = 20))),
-    CONSTRAINT token_events_standard_check CHECK ((standard = ANY (ARRAY['erc20'::text, 'erc721'::text, 'erc1155'::text]))),
-    CONSTRAINT token_events_to_address_check CHECK (((to_address IS NULL) OR (octet_length(to_address) = 20))),
-    CONSTRAINT token_events_token_address_check CHECK ((octet_length(token_address) = 20)),
-    CONSTRAINT token_events_token_id_check CHECK (((token_id IS NULL) OR (token_id >= (0)::numeric))),
-    CONSTRAINT token_events_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32))
-);
-
--- Table: trace_log_attributions
-
-CREATE TABLE trace_log_attributions (
-    chain_id numeric(78,0) NOT NULL,
-    block_number numeric(78,0) NOT NULL,
-    block_hash bytea NOT NULL,
-    transaction_hash bytea NOT NULL,
-    log_index bigint NOT NULL,
-    trace_path text NOT NULL,
-    call_type text NOT NULL,
-    execution_address bytea NOT NULL,
-    canonical boolean NOT NULL,
-    CONSTRAINT trace_log_attributions_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT trace_log_attributions_call_type_check CHECK ((call_type = ANY (ARRAY['CALL'::text, 'CALLCODE'::text, 'DELEGATECALL'::text, 'STATICCALL'::text, 'CREATE'::text, 'CREATE2'::text]))),
-    CONSTRAINT trace_log_attributions_execution_address_check CHECK ((octet_length(execution_address) = 20)),
-    CONSTRAINT trace_log_attributions_log_index_check CHECK ((log_index >= 0)),
-    CONSTRAINT trace_log_attributions_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32))
-)
-PARTITION BY RANGE (block_number);
-
--- Table: trace_log_attributions_default
-
-CREATE TABLE trace_log_attributions_default (
-    chain_id numeric(78,0) CONSTRAINT trace_log_attributions_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT trace_log_attributions_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT trace_log_attributions_block_hash_not_null NOT NULL,
-    transaction_hash bytea CONSTRAINT trace_log_attributions_transaction_hash_not_null NOT NULL,
-    log_index bigint CONSTRAINT trace_log_attributions_log_index_not_null NOT NULL,
-    trace_path text CONSTRAINT trace_log_attributions_trace_path_not_null NOT NULL,
-    call_type text CONSTRAINT trace_log_attributions_call_type_not_null NOT NULL,
-    execution_address bytea CONSTRAINT trace_log_attributions_execution_address_not_null NOT NULL,
-    canonical boolean CONSTRAINT trace_log_attributions_canonical_not_null NOT NULL,
-    CONSTRAINT trace_log_attributions_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT trace_log_attributions_call_type_check CHECK ((call_type = ANY (ARRAY['CALL'::text, 'CALLCODE'::text, 'DELEGATECALL'::text, 'STATICCALL'::text, 'CREATE'::text, 'CREATE2'::text]))),
-    CONSTRAINT trace_log_attributions_execution_address_check CHECK ((octet_length(execution_address) = 20)),
-    CONSTRAINT trace_log_attributions_log_index_check CHECK ((log_index >= 0)),
-    CONSTRAINT trace_log_attributions_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32))
-);
-
--- Table: trace_log_attributions_p_0_1000000
-
-CREATE TABLE trace_log_attributions_p_0_1000000 (
-    chain_id numeric(78,0) CONSTRAINT trace_log_attributions_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT trace_log_attributions_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT trace_log_attributions_block_hash_not_null NOT NULL,
-    transaction_hash bytea CONSTRAINT trace_log_attributions_transaction_hash_not_null NOT NULL,
-    log_index bigint CONSTRAINT trace_log_attributions_log_index_not_null NOT NULL,
-    trace_path text CONSTRAINT trace_log_attributions_trace_path_not_null NOT NULL,
-    call_type text CONSTRAINT trace_log_attributions_call_type_not_null NOT NULL,
-    execution_address bytea CONSTRAINT trace_log_attributions_execution_address_not_null NOT NULL,
-    canonical boolean CONSTRAINT trace_log_attributions_canonical_not_null NOT NULL,
-    CONSTRAINT trace_log_attributions_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT trace_log_attributions_call_type_check CHECK ((call_type = ANY (ARRAY['CALL'::text, 'CALLCODE'::text, 'DELEGATECALL'::text, 'STATICCALL'::text, 'CREATE'::text, 'CREATE2'::text]))),
-    CONSTRAINT trace_log_attributions_execution_address_check CHECK ((octet_length(execution_address) = 20)),
-    CONSTRAINT trace_log_attributions_log_index_check CHECK ((log_index >= 0)),
-    CONSTRAINT trace_log_attributions_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32))
-);
-
--- Table: transaction_effective_execution_identities
-
-CREATE TABLE transaction_effective_execution_identities (
-    chain_id numeric(78,0) NOT NULL,
-    block_number numeric(78,0) CONSTRAINT transaction_effective_execution_identitie_block_number_not_null NOT NULL,
-    block_hash bytea NOT NULL,
-    transaction_hash bytea CONSTRAINT transaction_effective_execution_ident_transaction_hash_not_null NOT NULL,
-    transaction_index bigint CONSTRAINT transaction_effective_execution_iden_transaction_index_not_null NOT NULL,
-    context_address bytea CONSTRAINT transaction_effective_execution_identi_context_address_not_null NOT NULL,
-    execution_address bytea,
-    execution_code_hash bytea,
-    resolution text NOT NULL,
-    evidence_source text CONSTRAINT transaction_effective_execution_identi_evidence_source_not_null NOT NULL,
-    root_trace_path text,
-    canonical boolean NOT NULL,
-    CONSTRAINT transaction_effective_execution_ident_execution_code_hash_check CHECK (((execution_code_hash IS NULL) OR (octet_length(execution_code_hash) = 32))),
-    CONSTRAINT transaction_effective_execution_identit_execution_address_check CHECK (((execution_address IS NULL) OR (octet_length(execution_address) = 20))),
-    CONSTRAINT transaction_effective_execution_identit_transaction_index_check CHECK ((transaction_index >= 0)),
-    CONSTRAINT transaction_effective_execution_identiti_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
-    CONSTRAINT transaction_effective_execution_identitie_context_address_check CHECK ((octet_length(context_address) = 20)),
-    CONSTRAINT transaction_effective_execution_identitie_evidence_source_check CHECK ((evidence_source = ANY (ARRAY['prestate_tracer'::text, 'root_trace_code_observation'::text, 'unavailable'::text]))),
-    CONSTRAINT transaction_effective_execution_identities_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT transaction_effective_execution_identities_block_number_check CHECK ((block_number >= (0)::numeric)),
-    CONSTRAINT transaction_effective_execution_identities_check CHECK ((((evidence_source = 'root_trace_code_observation'::text) AND (root_trace_path = ''::text)) OR ((evidence_source <> 'root_trace_code_observation'::text) AND (root_trace_path IS NULL)))),
-    CONSTRAINT transaction_effective_execution_identities_check1 CHECK ((((resolution = 'direct'::text) AND (execution_address = context_address) AND (execution_code_hash IS NOT NULL) AND (evidence_source = 'prestate_tracer'::text)) OR ((resolution = 'eip7702_delegate'::text) AND (execution_address IS NOT NULL) AND (execution_code_hash IS NOT NULL) AND (evidence_source = ANY (ARRAY['prestate_tracer'::text, 'root_trace_code_observation'::text]))) OR ((resolution = 'empty'::text) AND (execution_address IS NULL) AND (execution_code_hash IS NULL) AND (evidence_source = ANY (ARRAY['prestate_tracer'::text, 'root_trace_code_observation'::text]))) OR ((resolution = 'unavailable'::text) AND (execution_code_hash IS NULL) AND (evidence_source = 'unavailable'::text)))),
-    CONSTRAINT transaction_effective_execution_identities_resolution_check CHECK ((resolution = ANY (ARRAY['direct'::text, 'eip7702_delegate'::text, 'empty'::text, 'unavailable'::text])))
-)
-PARTITION BY RANGE (block_number);
-
--- Table: transaction_effective_execution_identities_default
-
-CREATE TABLE transaction_effective_execution_identities_default (
-    chain_id numeric(78,0) CONSTRAINT transaction_effective_execution_identities_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT transaction_effective_execution_identitie_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT transaction_effective_execution_identities_block_hash_not_null NOT NULL,
-    transaction_hash bytea CONSTRAINT transaction_effective_execution_ident_transaction_hash_not_null NOT NULL,
-    transaction_index bigint CONSTRAINT transaction_effective_execution_iden_transaction_index_not_null NOT NULL,
-    context_address bytea CONSTRAINT transaction_effective_execution_identi_context_address_not_null NOT NULL,
-    execution_address bytea,
-    execution_code_hash bytea,
-    resolution text CONSTRAINT transaction_effective_execution_identities_resolution_not_null NOT NULL,
-    evidence_source text CONSTRAINT transaction_effective_execution_identi_evidence_source_not_null NOT NULL,
-    root_trace_path text,
-    canonical boolean CONSTRAINT transaction_effective_execution_identities_canonical_not_null NOT NULL,
-    CONSTRAINT transaction_effective_execution_ident_execution_code_hash_check CHECK (((execution_code_hash IS NULL) OR (octet_length(execution_code_hash) = 32))),
-    CONSTRAINT transaction_effective_execution_identit_execution_address_check CHECK (((execution_address IS NULL) OR (octet_length(execution_address) = 20))),
-    CONSTRAINT transaction_effective_execution_identit_transaction_index_check CHECK ((transaction_index >= 0)),
-    CONSTRAINT transaction_effective_execution_identiti_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
-    CONSTRAINT transaction_effective_execution_identitie_context_address_check CHECK ((octet_length(context_address) = 20)),
-    CONSTRAINT transaction_effective_execution_identitie_evidence_source_check CHECK ((evidence_source = ANY (ARRAY['prestate_tracer'::text, 'root_trace_code_observation'::text, 'unavailable'::text]))),
-    CONSTRAINT transaction_effective_execution_identities_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT transaction_effective_execution_identities_block_number_check CHECK ((block_number >= (0)::numeric)),
-    CONSTRAINT transaction_effective_execution_identities_check CHECK ((((evidence_source = 'root_trace_code_observation'::text) AND (root_trace_path = ''::text)) OR ((evidence_source <> 'root_trace_code_observation'::text) AND (root_trace_path IS NULL)))),
-    CONSTRAINT transaction_effective_execution_identities_check1 CHECK ((((resolution = 'direct'::text) AND (execution_address = context_address) AND (execution_code_hash IS NOT NULL) AND (evidence_source = 'prestate_tracer'::text)) OR ((resolution = 'eip7702_delegate'::text) AND (execution_address IS NOT NULL) AND (execution_code_hash IS NOT NULL) AND (evidence_source = ANY (ARRAY['prestate_tracer'::text, 'root_trace_code_observation'::text]))) OR ((resolution = 'empty'::text) AND (execution_address IS NULL) AND (execution_code_hash IS NULL) AND (evidence_source = ANY (ARRAY['prestate_tracer'::text, 'root_trace_code_observation'::text]))) OR ((resolution = 'unavailable'::text) AND (execution_code_hash IS NULL) AND (evidence_source = 'unavailable'::text)))),
-    CONSTRAINT transaction_effective_execution_identities_resolution_check CHECK ((resolution = ANY (ARRAY['direct'::text, 'eip7702_delegate'::text, 'empty'::text, 'unavailable'::text])))
-);
-
--- Table: transaction_effective_execution_identities_p_0_1000000
-
-CREATE TABLE transaction_effective_execution_identities_p_0_1000000 (
-    chain_id numeric(78,0) CONSTRAINT transaction_effective_execution_identities_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT transaction_effective_execution_identitie_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT transaction_effective_execution_identities_block_hash_not_null NOT NULL,
-    transaction_hash bytea CONSTRAINT transaction_effective_execution_ident_transaction_hash_not_null NOT NULL,
-    transaction_index bigint CONSTRAINT transaction_effective_execution_iden_transaction_index_not_null NOT NULL,
-    context_address bytea CONSTRAINT transaction_effective_execution_identi_context_address_not_null NOT NULL,
-    execution_address bytea,
-    execution_code_hash bytea,
-    resolution text CONSTRAINT transaction_effective_execution_identities_resolution_not_null NOT NULL,
-    evidence_source text CONSTRAINT transaction_effective_execution_identi_evidence_source_not_null NOT NULL,
-    root_trace_path text,
-    canonical boolean CONSTRAINT transaction_effective_execution_identities_canonical_not_null NOT NULL,
-    CONSTRAINT transaction_effective_execution_ident_execution_code_hash_check CHECK (((execution_code_hash IS NULL) OR (octet_length(execution_code_hash) = 32))),
-    CONSTRAINT transaction_effective_execution_identit_execution_address_check CHECK (((execution_address IS NULL) OR (octet_length(execution_address) = 20))),
-    CONSTRAINT transaction_effective_execution_identit_transaction_index_check CHECK ((transaction_index >= 0)),
-    CONSTRAINT transaction_effective_execution_identiti_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
-    CONSTRAINT transaction_effective_execution_identitie_context_address_check CHECK ((octet_length(context_address) = 20)),
-    CONSTRAINT transaction_effective_execution_identitie_evidence_source_check CHECK ((evidence_source = ANY (ARRAY['prestate_tracer'::text, 'root_trace_code_observation'::text, 'unavailable'::text]))),
-    CONSTRAINT transaction_effective_execution_identities_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT transaction_effective_execution_identities_block_number_check CHECK ((block_number >= (0)::numeric)),
-    CONSTRAINT transaction_effective_execution_identities_check CHECK ((((evidence_source = 'root_trace_code_observation'::text) AND (root_trace_path = ''::text)) OR ((evidence_source <> 'root_trace_code_observation'::text) AND (root_trace_path IS NULL)))),
-    CONSTRAINT transaction_effective_execution_identities_check1 CHECK ((((resolution = 'direct'::text) AND (execution_address = context_address) AND (execution_code_hash IS NOT NULL) AND (evidence_source = 'prestate_tracer'::text)) OR ((resolution = 'eip7702_delegate'::text) AND (execution_address IS NOT NULL) AND (execution_code_hash IS NOT NULL) AND (evidence_source = ANY (ARRAY['prestate_tracer'::text, 'root_trace_code_observation'::text]))) OR ((resolution = 'empty'::text) AND (execution_address IS NULL) AND (execution_code_hash IS NULL) AND (evidence_source = ANY (ARRAY['prestate_tracer'::text, 'root_trace_code_observation'::text]))) OR ((resolution = 'unavailable'::text) AND (execution_code_hash IS NULL) AND (evidence_source = 'unavailable'::text)))),
-    CONSTRAINT transaction_effective_execution_identities_resolution_check CHECK ((resolution = ANY (ARRAY['direct'::text, 'eip7702_delegate'::text, 'empty'::text, 'unavailable'::text])))
-);
-
--- Table: transaction_execution_code_resolutions
-
-CREATE TABLE transaction_execution_code_resolutions (
-    chain_id numeric(78,0) NOT NULL,
-    block_number numeric(78,0) NOT NULL,
-    block_hash bytea NOT NULL,
-    transaction_hash bytea CONSTRAINT transaction_execution_code_resolution_transaction_hash_not_null NOT NULL,
-    transaction_index bigint CONSTRAINT transaction_execution_code_resolutio_transaction_index_not_null NOT NULL,
-    context_address bytea NOT NULL,
-    execution_address bytea,
-    execution_code_hash bytea,
-    resolution text NOT NULL,
-    evidence_source text NOT NULL,
-    canonical boolean NOT NULL,
-    CONSTRAINT transaction_execution_code_resolution_execution_code_hash_check CHECK (((execution_code_hash IS NULL) OR (octet_length(execution_code_hash) = 32))),
-    CONSTRAINT transaction_execution_code_resolutions_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT transaction_execution_code_resolutions_block_number_check CHECK ((block_number >= (0)::numeric)),
-    CONSTRAINT transaction_execution_code_resolutions_check CHECK ((((resolution = 'direct'::text) AND (execution_address = context_address) AND (execution_code_hash IS NOT NULL) AND (evidence_source = 'prestate_tracer'::text)) OR ((resolution = 'eip7702_delegate'::text) AND (execution_address IS NOT NULL) AND (execution_code_hash IS NOT NULL) AND (evidence_source = 'prestate_tracer'::text)) OR ((resolution = 'empty'::text) AND (execution_address IS NULL) AND (execution_code_hash IS NULL) AND (evidence_source = 'prestate_tracer'::text)) OR ((resolution = 'unavailable'::text) AND (execution_code_hash IS NULL) AND (evidence_source = 'unavailable'::text)))),
-    CONSTRAINT transaction_execution_code_resolutions_context_address_check CHECK ((octet_length(context_address) = 20)),
-    CONSTRAINT transaction_execution_code_resolutions_evidence_source_check CHECK ((evidence_source = ANY (ARRAY['prestate_tracer'::text, 'unavailable'::text]))),
-    CONSTRAINT transaction_execution_code_resolutions_execution_address_check CHECK (((execution_address IS NULL) OR (octet_length(execution_address) = 20))),
-    CONSTRAINT transaction_execution_code_resolutions_resolution_check CHECK ((resolution = ANY (ARRAY['direct'::text, 'eip7702_delegate'::text, 'empty'::text, 'unavailable'::text]))),
-    CONSTRAINT transaction_execution_code_resolutions_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
-    CONSTRAINT transaction_execution_code_resolutions_transaction_index_check CHECK ((transaction_index >= 0))
-)
-PARTITION BY RANGE (block_number);
-
--- Table: transaction_execution_code_resolutions_default
-
-CREATE TABLE transaction_execution_code_resolutions_default (
-    chain_id numeric(78,0) CONSTRAINT transaction_execution_code_resolutions_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT transaction_execution_code_resolutions_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT transaction_execution_code_resolutions_block_hash_not_null NOT NULL,
-    transaction_hash bytea CONSTRAINT transaction_execution_code_resolution_transaction_hash_not_null NOT NULL,
-    transaction_index bigint CONSTRAINT transaction_execution_code_resolutio_transaction_index_not_null NOT NULL,
-    context_address bytea CONSTRAINT transaction_execution_code_resolutions_context_address_not_null NOT NULL,
-    execution_address bytea,
-    execution_code_hash bytea,
-    resolution text CONSTRAINT transaction_execution_code_resolutions_resolution_not_null NOT NULL,
-    evidence_source text CONSTRAINT transaction_execution_code_resolutions_evidence_source_not_null NOT NULL,
-    canonical boolean CONSTRAINT transaction_execution_code_resolutions_canonical_not_null NOT NULL,
-    CONSTRAINT transaction_execution_code_resolution_execution_code_hash_check CHECK (((execution_code_hash IS NULL) OR (octet_length(execution_code_hash) = 32))),
-    CONSTRAINT transaction_execution_code_resolutions_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT transaction_execution_code_resolutions_block_number_check CHECK ((block_number >= (0)::numeric)),
-    CONSTRAINT transaction_execution_code_resolutions_check CHECK ((((resolution = 'direct'::text) AND (execution_address = context_address) AND (execution_code_hash IS NOT NULL) AND (evidence_source = 'prestate_tracer'::text)) OR ((resolution = 'eip7702_delegate'::text) AND (execution_address IS NOT NULL) AND (execution_code_hash IS NOT NULL) AND (evidence_source = 'prestate_tracer'::text)) OR ((resolution = 'empty'::text) AND (execution_address IS NULL) AND (execution_code_hash IS NULL) AND (evidence_source = 'prestate_tracer'::text)) OR ((resolution = 'unavailable'::text) AND (execution_code_hash IS NULL) AND (evidence_source = 'unavailable'::text)))),
-    CONSTRAINT transaction_execution_code_resolutions_context_address_check CHECK ((octet_length(context_address) = 20)),
-    CONSTRAINT transaction_execution_code_resolutions_evidence_source_check CHECK ((evidence_source = ANY (ARRAY['prestate_tracer'::text, 'unavailable'::text]))),
-    CONSTRAINT transaction_execution_code_resolutions_execution_address_check CHECK (((execution_address IS NULL) OR (octet_length(execution_address) = 20))),
-    CONSTRAINT transaction_execution_code_resolutions_resolution_check CHECK ((resolution = ANY (ARRAY['direct'::text, 'eip7702_delegate'::text, 'empty'::text, 'unavailable'::text]))),
-    CONSTRAINT transaction_execution_code_resolutions_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
-    CONSTRAINT transaction_execution_code_resolutions_transaction_index_check CHECK ((transaction_index >= 0))
-);
-
--- Table: transaction_execution_code_resolutions_p_0_1000000
-
-CREATE TABLE transaction_execution_code_resolutions_p_0_1000000 (
-    chain_id numeric(78,0) CONSTRAINT transaction_execution_code_resolutions_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT transaction_execution_code_resolutions_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT transaction_execution_code_resolutions_block_hash_not_null NOT NULL,
-    transaction_hash bytea CONSTRAINT transaction_execution_code_resolution_transaction_hash_not_null NOT NULL,
-    transaction_index bigint CONSTRAINT transaction_execution_code_resolutio_transaction_index_not_null NOT NULL,
-    context_address bytea CONSTRAINT transaction_execution_code_resolutions_context_address_not_null NOT NULL,
-    execution_address bytea,
-    execution_code_hash bytea,
-    resolution text CONSTRAINT transaction_execution_code_resolutions_resolution_not_null NOT NULL,
-    evidence_source text CONSTRAINT transaction_execution_code_resolutions_evidence_source_not_null NOT NULL,
-    canonical boolean CONSTRAINT transaction_execution_code_resolutions_canonical_not_null NOT NULL,
-    CONSTRAINT transaction_execution_code_resolution_execution_code_hash_check CHECK (((execution_code_hash IS NULL) OR (octet_length(execution_code_hash) = 32))),
-    CONSTRAINT transaction_execution_code_resolutions_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT transaction_execution_code_resolutions_block_number_check CHECK ((block_number >= (0)::numeric)),
-    CONSTRAINT transaction_execution_code_resolutions_check CHECK ((((resolution = 'direct'::text) AND (execution_address = context_address) AND (execution_code_hash IS NOT NULL) AND (evidence_source = 'prestate_tracer'::text)) OR ((resolution = 'eip7702_delegate'::text) AND (execution_address IS NOT NULL) AND (execution_code_hash IS NOT NULL) AND (evidence_source = 'prestate_tracer'::text)) OR ((resolution = 'empty'::text) AND (execution_address IS NULL) AND (execution_code_hash IS NULL) AND (evidence_source = 'prestate_tracer'::text)) OR ((resolution = 'unavailable'::text) AND (execution_code_hash IS NULL) AND (evidence_source = 'unavailable'::text)))),
-    CONSTRAINT transaction_execution_code_resolutions_context_address_check CHECK ((octet_length(context_address) = 20)),
-    CONSTRAINT transaction_execution_code_resolutions_evidence_source_check CHECK ((evidence_source = ANY (ARRAY['prestate_tracer'::text, 'unavailable'::text]))),
-    CONSTRAINT transaction_execution_code_resolutions_execution_address_check CHECK (((execution_address IS NULL) OR (octet_length(execution_address) = 20))),
-    CONSTRAINT transaction_execution_code_resolutions_resolution_check CHECK ((resolution = ANY (ARRAY['direct'::text, 'eip7702_delegate'::text, 'empty'::text, 'unavailable'::text]))),
-    CONSTRAINT transaction_execution_code_resolutions_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
-    CONSTRAINT transaction_execution_code_resolutions_transaction_index_check CHECK ((transaction_index >= 0))
-);
-
--- Table: transaction_inclusions
-
-CREATE TABLE transaction_inclusions (
-    chain_id numeric(78,0) NOT NULL,
-    block_number numeric(78,0) NOT NULL,
-    block_hash bytea NOT NULL,
-    tx_index bigint NOT NULL,
-    tx_hash bytea NOT NULL,
-    raw jsonb NOT NULL,
-    CONSTRAINT transaction_inclusions_tx_index_check CHECK ((tx_index >= 0))
-)
-PARTITION BY RANGE (block_number);
-
--- Table: transaction_inclusions_default
-
-CREATE TABLE transaction_inclusions_default (
-    chain_id numeric(78,0) CONSTRAINT transaction_inclusions_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT transaction_inclusions_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT transaction_inclusions_block_hash_not_null NOT NULL,
-    tx_index bigint CONSTRAINT transaction_inclusions_tx_index_not_null NOT NULL,
-    tx_hash bytea CONSTRAINT transaction_inclusions_tx_hash_not_null NOT NULL,
-    raw jsonb CONSTRAINT transaction_inclusions_raw_not_null NOT NULL,
-    CONSTRAINT transaction_inclusions_tx_index_check CHECK ((tx_index >= 0))
-);
-
--- Table: transaction_inclusions_p_0_1000000
-
-CREATE TABLE transaction_inclusions_p_0_1000000 (
-    chain_id numeric(78,0) CONSTRAINT transaction_inclusions_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT transaction_inclusions_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT transaction_inclusions_block_hash_not_null NOT NULL,
-    tx_index bigint CONSTRAINT transaction_inclusions_tx_index_not_null NOT NULL,
-    tx_hash bytea CONSTRAINT transaction_inclusions_tx_hash_not_null NOT NULL,
-    raw jsonb CONSTRAINT transaction_inclusions_raw_not_null NOT NULL,
-    CONSTRAINT transaction_inclusions_tx_index_check CHECK ((tx_index >= 0))
-);
-
--- Table: transaction_state_changes
-
-CREATE TABLE transaction_state_changes (
-    chain_id numeric(78,0) NOT NULL,
-    block_number numeric(78,0) NOT NULL,
-    block_hash bytea NOT NULL,
-    transaction_hash bytea NOT NULL,
-    transaction_index bigint NOT NULL,
-    address bytea NOT NULL,
-    field_kind text NOT NULL,
-    storage_key bytea DEFAULT '\x'::bytea NOT NULL,
-    before_value text,
-    after_value text,
-    canonical boolean NOT NULL,
-    CONSTRAINT transaction_state_changes_address_check CHECK ((octet_length(address) = 20)),
-    CONSTRAINT transaction_state_changes_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT transaction_state_changes_check CHECK ((((field_kind = 'storage'::text) AND (octet_length(storage_key) = 32)) OR ((field_kind <> 'storage'::text) AND (octet_length(storage_key) = 0)))),
-    CONSTRAINT transaction_state_changes_check1 CHECK (((before_value IS NOT NULL) OR (after_value IS NOT NULL))),
-    CONSTRAINT transaction_state_changes_field_kind_check CHECK ((field_kind = ANY (ARRAY['balance'::text, 'nonce'::text, 'code'::text, 'storage'::text]))),
-    CONSTRAINT transaction_state_changes_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32))
-)
-PARTITION BY RANGE (block_number);
-
--- Table: transaction_state_changes_default
-
-CREATE TABLE transaction_state_changes_default (
-    chain_id numeric(78,0) CONSTRAINT transaction_state_changes_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT transaction_state_changes_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT transaction_state_changes_block_hash_not_null NOT NULL,
-    transaction_hash bytea CONSTRAINT transaction_state_changes_transaction_hash_not_null NOT NULL,
-    transaction_index bigint CONSTRAINT transaction_state_changes_transaction_index_not_null NOT NULL,
-    address bytea CONSTRAINT transaction_state_changes_address_not_null NOT NULL,
-    field_kind text CONSTRAINT transaction_state_changes_field_kind_not_null NOT NULL,
-    storage_key bytea DEFAULT '\x'::bytea CONSTRAINT transaction_state_changes_storage_key_not_null NOT NULL,
-    before_value text,
-    after_value text,
-    canonical boolean CONSTRAINT transaction_state_changes_canonical_not_null NOT NULL,
-    CONSTRAINT transaction_state_changes_address_check CHECK ((octet_length(address) = 20)),
-    CONSTRAINT transaction_state_changes_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT transaction_state_changes_check CHECK ((((field_kind = 'storage'::text) AND (octet_length(storage_key) = 32)) OR ((field_kind <> 'storage'::text) AND (octet_length(storage_key) = 0)))),
-    CONSTRAINT transaction_state_changes_check1 CHECK (((before_value IS NOT NULL) OR (after_value IS NOT NULL))),
-    CONSTRAINT transaction_state_changes_field_kind_check CHECK ((field_kind = ANY (ARRAY['balance'::text, 'nonce'::text, 'code'::text, 'storage'::text]))),
-    CONSTRAINT transaction_state_changes_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32))
-);
-
--- Table: transaction_state_changes_p_0_1000000
-
-CREATE TABLE transaction_state_changes_p_0_1000000 (
-    chain_id numeric(78,0) CONSTRAINT transaction_state_changes_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT transaction_state_changes_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT transaction_state_changes_block_hash_not_null NOT NULL,
-    transaction_hash bytea CONSTRAINT transaction_state_changes_transaction_hash_not_null NOT NULL,
-    transaction_index bigint CONSTRAINT transaction_state_changes_transaction_index_not_null NOT NULL,
-    address bytea CONSTRAINT transaction_state_changes_address_not_null NOT NULL,
-    field_kind text CONSTRAINT transaction_state_changes_field_kind_not_null NOT NULL,
-    storage_key bytea DEFAULT '\x'::bytea CONSTRAINT transaction_state_changes_storage_key_not_null NOT NULL,
-    before_value text,
-    after_value text,
-    canonical boolean CONSTRAINT transaction_state_changes_canonical_not_null NOT NULL,
-    CONSTRAINT transaction_state_changes_address_check CHECK ((octet_length(address) = 20)),
-    CONSTRAINT transaction_state_changes_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT transaction_state_changes_check CHECK ((((field_kind = 'storage'::text) AND (octet_length(storage_key) = 32)) OR ((field_kind <> 'storage'::text) AND (octet_length(storage_key) = 0)))),
-    CONSTRAINT transaction_state_changes_check1 CHECK (((before_value IS NOT NULL) OR (after_value IS NOT NULL))),
-    CONSTRAINT transaction_state_changes_field_kind_check CHECK ((field_kind = ANY (ARRAY['balance'::text, 'nonce'::text, 'code'::text, 'storage'::text]))),
-    CONSTRAINT transaction_state_changes_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32))
-);
-
--- Sequence: transactional_outbox_id_seq
-
-ALTER TABLE transactional_outbox ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME transactional_outbox_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
-);
-
--- Table: transactions
-
-CREATE TABLE transactions (
-    chain_id numeric(78,0) NOT NULL,
-    hash bytea NOT NULL,
-    tx_type numeric(78,0),
-    raw jsonb NOT NULL,
-    inserted_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT transactions_hash_check CHECK ((octet_length(hash) = 32))
-);
-
--- Table: user_sessions
-
-CREATE TABLE user_sessions (
-    id uuid NOT NULL,
-    user_id uuid NOT NULL,
-    token_digest bytea NOT NULL,
-    csrf_digest bytea NOT NULL,
-    created_at timestamp with time zone NOT NULL,
-    expires_at timestamp with time zone NOT NULL,
-    last_used_at timestamp with time zone NOT NULL,
-    revoked_at timestamp with time zone,
-    CONSTRAINT user_sessions_check CHECK ((expires_at > created_at)),
-    CONSTRAINT user_sessions_check1 CHECK ((last_used_at >= created_at)),
-    CONSTRAINT user_sessions_check2 CHECK (((revoked_at IS NULL) OR (revoked_at >= created_at))),
-    CONSTRAINT user_sessions_csrf_digest_check CHECK ((octet_length(csrf_digest) = 32)),
-    CONSTRAINT user_sessions_token_digest_check CHECK ((octet_length(token_digest) = 32))
-);
-
--- Table: users
-
-CREATE TABLE users (
-    id uuid NOT NULL,
-    chain_id numeric(78,0) NOT NULL,
-    address bytea NOT NULL,
-    display_name text,
-    role text DEFAULT 'user'::text NOT NULL,
-    status text DEFAULT 'active'::text NOT NULL,
-    created_at timestamp with time zone NOT NULL,
-    updated_at timestamp with time zone NOT NULL,
-    last_login_at timestamp with time zone,
-    CONSTRAINT users_address_check CHECK ((octet_length(address) = 20)),
-    CONSTRAINT users_display_name_check CHECK (((display_name IS NULL) OR ((char_length(display_name) BETWEEN 1 AND 64) AND (octet_length(display_name) <= 256) AND (display_name !~ '[[:cntrl:]]'::text)))),
-    CONSTRAINT users_role_check CHECK ((role = ANY (ARRAY['user'::text, 'admin'::text]))),
-    CONSTRAINT users_status_check CHECK ((status = ANY (ARRAY['active'::text, 'disabled'::text])))
-);
-
--- Table: uups_implementation_observation_generations
-
-CREATE TABLE uups_implementation_observation_generations (
-    id bigint NOT NULL,
-    chain_id numeric(78,0) NOT NULL,
-    implementation_address bytea CONSTRAINT uups_implementation_observatio_implementation_address_not_null1 NOT NULL,
-    observation_block_hash bytea CONSTRAINT uups_implementation_observation_observation_block_hash_not_null NOT NULL,
-    observation_stage_version integer CONSTRAINT uups_implementation_observat_observation_stage_version_not_null NOT NULL,
-    verification_job_id uuid CONSTRAINT uups_implementation_observation_ge_verification_job_id_not_null NOT NULL,
-    durable_job_id bigint CONSTRAINT uups_implementation_observation_generat_durable_job_id_not_null NOT NULL,
-    job_generation bigint CONSTRAINT uups_implementation_observation_generat_job_generation_not_null NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT uups_implementation_observation_ge_implementation_address_check CHECK ((octet_length(implementation_address) = 20)),
-    CONSTRAINT uups_implementation_observation_ge_observation_block_hash_check CHECK ((octet_length(observation_block_hash) = 32)),
-    CONSTRAINT uups_implementation_observation_generation_job_generation_check CHECK ((job_generation > 0)),
-    CONSTRAINT uups_implementation_observation_observation_stage_version_check CHECK ((observation_stage_version = 2))
-);
-
--- Sequence: uups_implementation_observation_generations_id_seq
-
-CREATE SEQUENCE uups_implementation_observation_generations_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
--- Sequence Owned By: uups_implementation_observation_generations_id_seq
-
-ALTER SEQUENCE uups_implementation_observation_generations_id_seq OWNED BY uups_implementation_observation_generations.id;
-
--- Table: uups_implementation_observations
-
-CREATE TABLE uups_implementation_observations (
-    chain_id numeric(78,0) NOT NULL,
-    implementation_address bytea CONSTRAINT uups_implementation_observation_implementation_address_not_null NOT NULL,
-    block_number numeric(78,0) NOT NULL,
-    block_hash bytea NOT NULL,
-    implementation_code_hash bytea CONSTRAINT uups_implementation_observati_implementation_code_hash_not_null NOT NULL,
-    verification_job_id uuid NOT NULL,
-    stage_version integer DEFAULT 2 NOT NULL,
-    standard_version text NOT NULL,
-    probe_state text NOT NULL,
-    rejection_reason text,
-    proxiable_uuid bytea,
-    upgrade_interface_version text,
-    canonical boolean NOT NULL,
-    observed_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT uups_implementation_observations_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT uups_implementation_observations_block_number_check CHECK ((block_number >= (0)::numeric)),
-    CONSTRAINT uups_implementation_observations_exact_probe CHECK ((((probe_state = 'compatible'::text) AND (rejection_reason IS NULL) AND (proxiable_uuid = decode('360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc'::text, 'hex'::text)) AND (upgrade_interface_version = '5.0.0'::text)) OR ((probe_state = 'rejected'::text) AND (rejection_reason IS NOT NULL) AND (proxiable_uuid IS NULL) AND (upgrade_interface_version IS NULL)))),
-    CONSTRAINT uups_implementation_observations_implementation_address_check CHECK (((octet_length(implementation_address) = 20) AND (implementation_address <> decode(repeat('00'::text, 20), 'hex'::text)))),
-    CONSTRAINT uups_implementation_observations_implementation_code_hash_check CHECK ((octet_length(implementation_code_hash) = 32)),
-    CONSTRAINT uups_implementation_observations_probe_state_check CHECK ((probe_state = ANY (ARRAY['compatible'::text, 'rejected'::text]))),
-    CONSTRAINT uups_implementation_observations_rejection_reason_check CHECK (((rejection_reason IS NULL) OR (rejection_reason = ANY (ARRAY['proxiable_uuid_unavailable'::text, 'proxiable_uuid_invalid'::text, 'upgrade_interface_version_unavailable'::text, 'upgrade_interface_version_invalid'::text])))),
-    CONSTRAINT uups_implementation_observations_stage_version_check CHECK ((stage_version = 2)),
-    CONSTRAINT uups_implementation_observations_standard_version_check CHECK ((standard_version = '5.6.1'::text))
-);
-
--- Table: verification_compilation_contracts
-
-CREATE TABLE verification_compilation_contracts (
-    compilation_id uuid NOT NULL,
-    file_name text NOT NULL,
-    contract_name text NOT NULL,
-    abi jsonb NOT NULL,
-    creation_bytecode bytea NOT NULL,
-    runtime_bytecode bytea NOT NULL,
-    compilation_artifacts jsonb CONSTRAINT verification_compilation_contrac_compilation_artifacts_not_null NOT NULL,
-    creation_code_artifacts jsonb CONSTRAINT verification_compilation_contr_creation_code_artifacts_not_null NOT NULL,
-    runtime_code_artifacts jsonb CONSTRAINT verification_compilation_contra_runtime_code_artifacts_not_null NOT NULL,
-    CONSTRAINT verification_compilation_contracts_shape_check CHECK (((length(file_name) BETWEEN 1 AND 384) AND ((length(contract_name) >= 1) AND (length(contract_name) <= 256)) AND (jsonb_typeof(abi) = 'array'::text) AND ((octet_length(creation_bytecode) >= 1) AND (octet_length(creation_bytecode) <= 67108864)) AND ((octet_length(runtime_bytecode) >= 1) AND (octet_length(runtime_bytecode) <= 67108864)) AND (jsonb_typeof(compilation_artifacts) = 'object'::text) AND (jsonb_typeof(creation_code_artifacts) = 'object'::text) AND (jsonb_typeof(runtime_code_artifacts) = 'object'::text)))
-);
-
--- Table: verification_compilation_units
-
-CREATE TABLE verification_compilation_units (
-    id uuid NOT NULL,
-    source_job_id uuid NOT NULL,
-    request_digest bytea NOT NULL,
-    language text NOT NULL,
-    compiler_version text NOT NULL,
-    compiler_platform text NOT NULL,
-    catalog_generation_id bigint NOT NULL,
-    compiler_sha256 bytea NOT NULL,
-    executor_kind text NOT NULL,
-    execution_policy text NOT NULL,
-    executor_sha256 bytea NOT NULL,
-    standard_json jsonb NOT NULL,
-    standard_json_payload bytea NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT verification_compilation_units_shape_check CHECK (((octet_length(request_digest) = 32) AND (language = 'solidity'::text) AND ((length(compiler_version) >= 1) AND (length(compiler_version) <= 128)) AND ((length(compiler_platform) >= 1) AND (length(compiler_platform) <= 64)) AND (catalog_generation_id > 0) AND (octet_length(compiler_sha256) = 32) AND ((length(executor_kind) >= 1) AND (length(executor_kind) <= 64)) AND ((length(execution_policy) >= 1) AND (length(execution_policy) <= 64)) AND (octet_length(executor_sha256) = 32) AND (jsonb_typeof(standard_json) = 'object'::text) AND ((octet_length(standard_json_payload) >= 2) AND (octet_length(standard_json_payload) <= 67108864)) AND (standard_json = (convert_from(standard_json_payload, 'UTF8'::name))::jsonb)))
-);
-
--- Table: verification_jobs
-
-CREATE TABLE verification_jobs (
-    id uuid NOT NULL,
-    kind text NOT NULL,
-    language text,
-    catalog_language text,
-    compiler_version text,
-    compiler_platform text,
-    catalog_generation_id bigint,
-    compiler_digest bytea,
-    executor_digest bytea,
-    chain_id numeric(78,0),
-    address bytea,
-    code_hash bytea,
-    block_hash bytea,
-    request jsonb NOT NULL,
-    request_payload bytea NOT NULL,
-    request_digest bytea NOT NULL,
-    status text DEFAULT 'queued'::text NOT NULL,
-    leased_by text,
-    lease_token text,
-    lease_expires_at timestamp with time zone,
-    attempt_count integer DEFAULT 0 NOT NULL,
-    max_attempts integer DEFAULT 3 NOT NULL,
-    outcome_kind text,
-    outcome jsonb,
-    error_code text,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    executor_kind text,
-    execution_policy text,
-    CONSTRAINT verification_jobs_attempt_check CHECK (((attempt_count >= 0) AND ((max_attempts >= 1) AND (max_attempts <= 100)) AND (attempt_count <= max_attempts))),
-    CONSTRAINT verification_jobs_catalog_language_check CHECK (((catalog_language IS NULL) OR (catalog_language = ANY (ARRAY['solidity'::text, 'vyper'::text])))),
-    CONSTRAINT verification_jobs_compiler_check CHECK ((((kind = ANY (ARRAY['sourcify'::text, 'sourcify_from_etherscan'::text, 'proxy'::text])) AND (language IS NULL) AND (compiler_version IS NULL) AND (compiler_platform IS NULL) AND (catalog_language IS NULL) AND (catalog_generation_id IS NULL) AND (compiler_digest IS NULL) AND (executor_kind IS NULL) AND (execution_policy IS NULL) AND (executor_digest IS NULL)) OR ((kind <> ALL (ARRAY['sourcify'::text, 'sourcify_from_etherscan'::text, 'proxy'::text])) AND (language = ANY (ARRAY['solidity'::text, 'yul'::text])) AND ((length(compiler_version) >= 1) AND (length(compiler_version) <= 128)) AND (catalog_language = 'solidity'::text) AND (((compiler_platform IS NULL) AND (catalog_generation_id IS NULL) AND (compiler_digest IS NULL) AND (executor_kind IS NULL) AND (execution_policy IS NULL) AND (executor_digest IS NULL) AND (status <> 'succeeded'::text)) OR ((compiler_platform = ANY (ARRAY['bin'::text, 'emscripten-asmjs'::text, 'emscripten-wasm32'::text, 'linux-amd64'::text, 'linux-arm64'::text, 'macosx-amd64'::text, 'wasm'::text, 'windows-amd64'::text])) AND (catalog_generation_id IS NOT NULL) AND (octet_length(compiler_digest) = 32) AND (((executor_kind = 'node_solcjs_v1'::text) AND (execution_policy = 'trusted_subprocess'::text) AND (octet_length(executor_digest) = 32) AND (compiler_platform = 'emscripten-wasm32'::text)) OR ((executor_kind = 'legacy_runner'::text) AND (execution_policy = 'legacy_hard_isolation'::text) AND (octet_length(executor_digest) = 32)) OR ((executor_kind = 'legacy_process'::text) AND (execution_policy = 'legacy_trusted_process'::text) AND (executor_digest IS NULL)))))) OR ((((kind = 'address'::text) AND (language = 'geas'::text) AND (compiler_version = '0.3.3'::text)) OR ((kind = ANY (ARRAY['address'::text, 'vyper_standard_json'::text, 'vyper_multipart'::text])) AND (language = 'vyper'::text) AND (compiler_version = '0.4.3'::text) AND (status = ANY (ARRAY['succeeded'::text, 'failed'::text, 'cancelled'::text])))) AND (catalog_language IS NULL) AND (((compiler_platform IS NULL) AND (catalog_generation_id IS NULL) AND (compiler_digest IS NULL) AND (executor_kind IS NULL) AND (execution_policy IS NULL) AND (executor_digest IS NULL) AND (status <> 'succeeded'::text)) OR ((((language = 'geas'::text) AND (compiler_platform = 'go-module'::text) AND (executor_kind = 'etherview_geas_v1'::text)) OR ((language = 'vyper'::text) AND (compiler_platform = 'python-wheel'::text) AND (executor_kind = 'etherview_vyper_v1'::text) AND (compiler_digest = decode('3b9671727c888363740dc678e60336759871487d0e4e9fdd973048fa9635c4fd'::text, 'hex'::text)))) AND (catalog_generation_id IS NULL) AND (octet_length(compiler_digest) = 32) AND (execution_policy = 'trusted_subprocess'::text) AND (octet_length(executor_digest) = 32)))) OR (((kind = ANY (ARRAY['address'::text, 'vyper_standard_json'::text, 'vyper_multipart'::text])) AND (language = 'vyper'::text) AND (catalog_language = 'vyper'::text) AND (compiler_version ~ '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'::text) AND (((compiler_platform IS NULL) AND (catalog_generation_id IS NULL) AND (compiler_digest IS NULL) AND (executor_kind IS NULL) AND (execution_policy IS NULL) AND (executor_digest IS NULL) AND (status <> 'succeeded'::text)) OR ((compiler_platform = 'python-wheel'::text) AND (catalog_generation_id IS NOT NULL) AND (octet_length(compiler_digest) = 32) AND ((executor_kind = 'node_vyper_wasm_v1'::text) OR ((executor_kind = 'etherview_vyper_v3'::text) AND (status = ANY (ARRAY['succeeded'::text, 'failed'::text, 'cancelled'::text])))) AND (execution_policy = 'trusted_subprocess'::text) AND (octet_length(executor_digest) = 32)))) IS TRUE))),
-    CONSTRAINT verification_jobs_kind_check CHECK ((kind = ANY (ARRAY['address'::text, 'derived'::text, 'proxy'::text, 'sourcify'::text, 'sourcify_from_etherscan'::text, 'solidity_multipart'::text, 'solidity_standard_json'::text, 'solidity_batch_multipart'::text, 'solidity_batch_standard_json'::text, 'vyper_multipart'::text, 'vyper_standard_json'::text]))),
-    CONSTRAINT verification_jobs_language_check CHECK (((language IS NULL) OR (language = ANY (ARRAY['solidity'::text, 'yul'::text, 'geas'::text, 'vyper'::text])))),
-    CONSTRAINT verification_jobs_lease_check CHECK ((((leased_by IS NULL) = (lease_token IS NULL)) AND ((leased_by IS NULL) = (lease_expires_at IS NULL)) AND ((status = 'running'::text) = (leased_by IS NOT NULL)))),
-    CONSTRAINT verification_jobs_request_check CHECK (((jsonb_typeof(request) = 'object'::text) AND ((octet_length(request_payload) >= 2) AND (octet_length(request_payload) <= 67108864)) AND (request = (convert_from(request_payload, 'UTF8'::name))::jsonb) AND (octet_length(request_digest) = 32))),
-    CONSTRAINT verification_jobs_result_size_check CHECK (((outcome IS NULL) OR (octet_length((outcome)::text) <= 268435456))),
-    CONSTRAINT verification_jobs_status_check CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text, 'succeeded'::text, 'failed'::text, 'cancelled'::text]))),
-    CONSTRAINT verification_jobs_target_check CHECK ((((kind = ANY (ARRAY['address'::text, 'proxy'::text, 'derived'::text])) AND (chain_id IS NOT NULL) AND (octet_length(address) = 20) AND (octet_length(code_hash) = 32) AND (octet_length(block_hash) = 32)) OR ((kind <> ALL (ARRAY['address'::text, 'proxy'::text, 'derived'::text])) AND (chain_id IS NULL) AND (address IS NULL) AND (code_hash IS NULL) AND (block_hash IS NULL)))),
-    CONSTRAINT verification_jobs_terminal_check CHECK ((((status = ANY (ARRAY['queued'::text, 'running'::text, 'cancelled'::text])) AND (outcome_kind IS NULL) AND (outcome IS NULL) AND (error_code IS NULL)) OR ((status = 'succeeded'::text) AND (outcome_kind = ANY (ARRAY['compilation_failure'::text, 'verification_failure'::text, 'verification_success'::text, 'batch_results'::text, 'sourcify_success'::text, 'proxy_verification_success'::text])) AND (jsonb_typeof(outcome) = 'object'::text) AND (error_code IS NULL)) OR ((status = 'failed'::text) AND (outcome_kind IS NULL) AND (outcome IS NULL) AND ((length(error_code) >= 1) AND (length(error_code) <= 64))))),
-    CONSTRAINT verification_jobs_vyper_request_check CHECK ((((kind <> ALL (ARRAY['vyper_standard_json'::text, 'vyper_multipart'::text])) OR (language = 'vyper'::text)) AND ((language IS DISTINCT FROM 'vyper'::text) OR ((((request ->> 'target_file'::text) IS NOT NULL) AND ((request #>> '{standard_json,language}'::text[]) = 'Vyper'::text) AND (jsonb_typeof((request #> '{standard_json,sources}'::text[])) = 'object'::text) AND ((request #> '{standard_json,sources}'::text[]) ? (request ->> 'target_file'::text))) IS TRUE))))
-);
-
--- Table: verification_results
-
-CREATE TABLE verification_results (
-    job_id uuid NOT NULL,
-    request_digest bytea NOT NULL,
-    outcome_kind text NOT NULL,
-    outcome jsonb NOT NULL,
-    file_name text,
-    contract_name text,
-    language text,
-    compiler_version text,
-    match_type text,
-    abi jsonb,
-    sources jsonb,
-    settings jsonb,
-    compilation_artifacts jsonb,
-    creation_code_artifacts jsonb,
-    runtime_code_artifacts jsonb,
-    constructor_arguments bytea,
-    libraries jsonb,
-    is_blueprint boolean,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    proxy_artifact_kind text,
-    proxy_standard_version text,
-    proxy_runtime_immutable_address bytea,
-    proxy_source_manifest_sha256 bytea,
-    CONSTRAINT verification_results_digest_check CHECK ((octet_length(request_digest) = 32)),
-    CONSTRAINT verification_results_outcome_check CHECK (((outcome_kind = ANY (ARRAY['compilation_failure'::text, 'verification_failure'::text, 'verification_success'::text, 'batch_results'::text, 'sourcify_success'::text, 'proxy_verification_success'::text])) AND (jsonb_typeof(outcome) = 'object'::text) AND (octet_length((outcome)::text) <= 268435456))),
-    CONSTRAINT verification_results_proxy_attestation_shape CHECK ((((proxy_artifact_kind IS NULL) AND (proxy_standard_version IS NULL) AND (proxy_runtime_immutable_address IS NULL) AND (proxy_source_manifest_sha256 IS NULL)) OR ((outcome_kind = 'verification_success'::text) AND (proxy_artifact_kind IS NOT NULL) AND (proxy_artifact_kind = ANY (ARRAY['erc1967_proxy'::text, 'transparent_proxy'::text, 'beacon_proxy'::text, 'uups_implementation'::text, 'proxy_admin'::text, 'upgradeable_beacon'::text])) AND (proxy_standard_version = '5.6.1'::text) AND (proxy_source_manifest_sha256 IS NOT NULL) AND (octet_length(proxy_source_manifest_sha256) = 32) AND (proxy_source_manifest_sha256 <> decode(repeat('00'::text, 32), 'hex'::text)) AND (((proxy_artifact_kind = ANY (ARRAY['transparent_proxy'::text, 'beacon_proxy'::text, 'uups_implementation'::text])) AND (proxy_runtime_immutable_address IS NOT NULL) AND (octet_length(proxy_runtime_immutable_address) = 20) AND (proxy_runtime_immutable_address <> decode(repeat('00'::text, 20), 'hex'::text))) OR ((proxy_artifact_kind <> ALL (ARRAY['transparent_proxy'::text, 'beacon_proxy'::text, 'uups_implementation'::text])) AND (proxy_runtime_immutable_address IS NULL)))))),
-    CONSTRAINT verification_results_success_shape_check CHECK ((((outcome_kind <> 'verification_success'::text) AND (file_name IS NULL) AND (contract_name IS NULL) AND (language IS NULL) AND (compiler_version IS NULL) AND (match_type IS NULL) AND (abi IS NULL) AND (sources IS NULL) AND (settings IS NULL) AND (compilation_artifacts IS NULL) AND (creation_code_artifacts IS NULL) AND (runtime_code_artifacts IS NULL) AND (constructor_arguments IS NULL) AND (libraries IS NULL) AND (is_blueprint IS NULL)) OR ((outcome_kind = 'verification_success'::text) AND (length(file_name) BETWEEN 1 AND 512) AND ((length(contract_name) >= 1) AND (length(contract_name) <= 256)) AND (language = ANY (ARRAY['solidity'::text, 'yul'::text, 'geas'::text, 'vyper'::text])) AND ((length(compiler_version) >= 1) AND (length(compiler_version) <= 128)) AND (match_type = ANY (ARRAY['full'::text, 'partial'::text])) AND ((abi IS NULL) OR (jsonb_typeof(abi) = 'array'::text)) AND (jsonb_typeof(sources) = 'object'::text) AND (jsonb_typeof(settings) = 'object'::text) AND (jsonb_typeof(compilation_artifacts) = 'object'::text) AND (jsonb_typeof(creation_code_artifacts) = 'object'::text) AND (jsonb_typeof(runtime_code_artifacts) = 'object'::text) AND (jsonb_typeof(libraries) = 'object'::text) AND (is_blueprint IS NOT NULL) AND ((language <> 'geas'::text) OR (((compiler_version = '0.3.3'::text) AND (match_type = 'full'::text) AND (abi = '[]'::jsonb) AND (compilation_artifacts = '{}'::jsonb) AND (creation_code_artifacts = '{}'::jsonb) AND (runtime_code_artifacts = '{}'::jsonb) AND (libraries = '{}'::jsonb) AND (constructor_arguments IS NULL) AND (is_blueprint = false) AND (jsonb_typeof((settings -> 'runtime_entrypoint'::text)) = 'string'::text) AND ((settings -> 'stack_check'::text) = 'true'::jsonb) AND ((settings - ARRAY['runtime_entrypoint'::text, 'creation_entrypoint'::text, 'stack_check'::text]) = '{}'::jsonb) AND valid_geas_verification_sources(sources) AND ((outcome #>> '{runtime_match,match_type}'::text[]) = 'full'::text) AND ((outcome #> '{runtime_match,transformations}'::text[]) = '[]'::jsonb) AND ((outcome #> '{runtime_match,values}'::text[]) = '{}'::jsonb) AND (((jsonb_typeof((settings -> 'creation_entrypoint'::text)) = 'string'::text) AND ((outcome #>> '{creation_match,match_type}'::text[]) = 'full'::text) AND ((outcome #> '{creation_match,transformations}'::text[]) = '[]'::jsonb) AND ((outcome #> '{creation_match,values}'::text[]) = '{}'::jsonb)) OR ((NOT (settings ? 'creation_entrypoint'::text)) AND ((outcome -> 'creation_match'::text) = 'null'::jsonb)))) IS TRUE)))))
-);
-
--- Table: verified_contract_proxy_artifacts
-
-CREATE TABLE verified_contract_proxy_artifacts (
-    chain_id numeric(78,0) NOT NULL,
-    address bytea NOT NULL,
-    code_hash bytea NOT NULL,
-    valid_from_block numeric(78,0) NOT NULL,
-    verification_job_id uuid NOT NULL,
-    request_digest bytea NOT NULL,
-    artifact_kind text NOT NULL,
-    standard_version text NOT NULL,
-    runtime_immutable_address bytea,
-    source_manifest_sha256 bytea CONSTRAINT verified_contract_proxy_artifac_source_manifest_sha256_not_null NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT verified_contract_proxy_artifacts_address_check CHECK ((octet_length(address) = 20)),
-    CONSTRAINT verified_contract_proxy_artifacts_artifact_kind_check CHECK ((artifact_kind = ANY (ARRAY['erc1967_proxy'::text, 'transparent_proxy'::text, 'beacon_proxy'::text, 'uups_implementation'::text, 'proxy_admin'::text, 'upgradeable_beacon'::text]))),
-    CONSTRAINT verified_contract_proxy_artifacts_check CHECK ((((artifact_kind = ANY (ARRAY['transparent_proxy'::text, 'beacon_proxy'::text, 'uups_implementation'::text])) AND (runtime_immutable_address IS NOT NULL) AND (octet_length(runtime_immutable_address) = 20) AND (runtime_immutable_address <> decode(repeat('00'::text, 20), 'hex'::text))) OR ((artifact_kind <> ALL (ARRAY['transparent_proxy'::text, 'beacon_proxy'::text, 'uups_implementation'::text])) AND (runtime_immutable_address IS NULL)))),
-    CONSTRAINT verified_contract_proxy_artifacts_code_hash_check CHECK ((octet_length(code_hash) = 32)),
-    CONSTRAINT verified_contract_proxy_artifacts_request_digest_check CHECK ((octet_length(request_digest) = 32)),
-    CONSTRAINT verified_contract_proxy_artifacts_source_manifest_sha256_check CHECK (((octet_length(source_manifest_sha256) = 32) AND (source_manifest_sha256 <> decode(repeat('00'::text, 32), 'hex'::text)))),
-    CONSTRAINT verified_contract_proxy_artifacts_standard_version_check CHECK ((standard_version = '5.6.1'::text)),
-    CONSTRAINT verified_contract_proxy_artifacts_valid_from_block_check CHECK ((valid_from_block >= (0)::numeric))
-);
-
--- Table: verified_contracts
-
-CREATE TABLE verified_contracts (
-    chain_id numeric(78,0) NOT NULL,
-    address bytea NOT NULL,
-    code_hash bytea NOT NULL,
-    valid_from_block numeric(78,0) NOT NULL,
-    valid_to_block numeric(78,0),
-    verification_job_id uuid NOT NULL,
-    request_digest bytea NOT NULL,
-    file_name text NOT NULL,
-    contract_name text NOT NULL,
-    language text NOT NULL,
-    compiler_version text NOT NULL,
-    match_type text NOT NULL,
-    abi jsonb,
-    sources jsonb NOT NULL,
-    settings jsonb NOT NULL,
-    compilation_artifacts jsonb NOT NULL,
-    creation_code_artifacts jsonb NOT NULL,
-    runtime_code_artifacts jsonb NOT NULL,
-    constructor_arguments bytea,
-    libraries jsonb NOT NULL,
-    is_blueprint boolean NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT verified_contracts_artifact_check CHECK (((length(file_name) BETWEEN 1 AND 512) AND ((length(contract_name) >= 1) AND (length(contract_name) <= 256)) AND (language = ANY (ARRAY['solidity'::text, 'yul'::text, 'geas'::text, 'vyper'::text])) AND ((length(compiler_version) >= 1) AND (length(compiler_version) <= 128)) AND (match_type = ANY (ARRAY['full'::text, 'partial'::text])) AND ((abi IS NULL) OR (jsonb_typeof(abi) = 'array'::text)) AND (jsonb_typeof(sources) = 'object'::text) AND (jsonb_typeof(settings) = 'object'::text) AND (jsonb_typeof(compilation_artifacts) = 'object'::text) AND (jsonb_typeof(creation_code_artifacts) = 'object'::text) AND (jsonb_typeof(runtime_code_artifacts) = 'object'::text) AND (jsonb_typeof(libraries) = 'object'::text) AND ((language <> 'geas'::text) OR (((compiler_version = '0.3.3'::text) AND (match_type = 'full'::text) AND (abi = '[]'::jsonb) AND (compilation_artifacts = '{}'::jsonb) AND (creation_code_artifacts = '{}'::jsonb) AND (runtime_code_artifacts = '{}'::jsonb) AND (libraries = '{}'::jsonb) AND (constructor_arguments IS NULL) AND (is_blueprint = false)) IS TRUE)))),
-    CONSTRAINT verified_contracts_identity_check CHECK (((octet_length(address) = 20) AND (octet_length(code_hash) = 32) AND (valid_from_block >= (0)::numeric) AND ((valid_to_block IS NULL) OR (valid_to_block >= valid_from_block)) AND (octet_length(request_digest) = 32)))
-);
-
--- Table: verified_function_selector_sets
-
-CREATE TABLE verified_function_selector_sets (
-    verification_job_id uuid NOT NULL,
-    request_digest bytea NOT NULL,
-    chain_id numeric(78,0) NOT NULL,
-    address bytea NOT NULL,
-    code_hash bytea NOT NULL,
-    valid_from_block numeric(78,0) NOT NULL,
-    status text NOT NULL,
-    function_count integer NOT NULL,
-    warning text DEFAULT ''::text NOT NULL,
-    indexed_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT verified_function_selector_sets_identity_check CHECK (((octet_length(request_digest) = 32) AND (octet_length(address) = 20) AND (octet_length(code_hash) = 32) AND (valid_from_block >= (0)::numeric))),
-    CONSTRAINT verified_function_selector_sets_status_check CHECK (((status = ANY (ARRAY['complete'::text, 'invalid'::text])) AND (function_count >= 0) AND (((status = 'complete'::text) AND (warning = ''::text)) OR ((status = 'invalid'::text) AND (function_count = 0) AND (warning <> ''::text)))))
-);
-
--- Table: verified_function_selectors
-
-CREATE TABLE verified_function_selectors (
-    verification_job_id uuid NOT NULL,
-    chain_id numeric(78,0) NOT NULL,
-    address bytea NOT NULL,
-    code_hash bytea NOT NULL,
-    selector bytea NOT NULL,
-    signature text NOT NULL,
-    function_name text NOT NULL,
-    abi_entry jsonb NOT NULL,
-    CONSTRAINT verified_function_selectors_shape_check CHECK (((octet_length(address) = 20) AND (octet_length(code_hash) = 32) AND (octet_length(selector) = 4) AND ((length(signature) >= 1) AND (length(signature) <= 4096)) AND ((length(function_name) >= 1) AND (length(function_name) <= 4096)) AND (jsonb_typeof(abi_entry) = 'object'::text) AND ((abi_entry ->> 'type'::text) = 'function'::text)))
-);
-
--- Table: verified_proxy_bindings
-
-CREATE TABLE verified_proxy_bindings (
-    chain_id numeric(78,0) NOT NULL,
-    proxy_address bytea NOT NULL,
-    proxy_code_hash bytea NOT NULL,
-    observation_block_number numeric(78,0) NOT NULL,
-    observation_block_hash bytea NOT NULL,
-    observation_stage_version integer NOT NULL,
-    proxy_kind text NOT NULL,
-    proxy_pattern text NOT NULL,
-    standard_version text,
-    implementation_address bytea NOT NULL,
-    implementation_code_hash bytea NOT NULL,
-    admin_address bytea,
-    admin_code_hash bytea,
-    beacon_address bytea,
-    beacon_code_hash bytea,
-    management_kind text NOT NULL,
-    management_address bytea,
-    management_code_hash bytea,
-    observation_generation_id bigint NOT NULL,
-    artifact_resolution_id bigint,
-    beacon_generation_id bigint,
-    context_block_number numeric(78,0) NOT NULL,
-    context_block_hash bytea NOT NULL,
-    verification_job_id uuid NOT NULL,
-    request_digest bytea NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    uups_generation_id bigint,
-    CONSTRAINT verified_proxy_bindings_check CHECK ((((admin_address IS NULL) AND (admin_code_hash IS NULL)) OR ((octet_length(admin_address) = 20) AND (octet_length(admin_code_hash) = 32)))),
-    CONSTRAINT verified_proxy_bindings_check1 CHECK ((((beacon_address IS NULL) AND (beacon_code_hash IS NULL)) OR ((octet_length(beacon_address) = 20) AND (octet_length(beacon_code_hash) = 32)))),
-    CONSTRAINT verified_proxy_bindings_check2 CHECK ((((management_kind = 'none'::text) AND (management_address IS NULL) AND (management_code_hash IS NULL)) OR ((management_kind <> 'none'::text) AND (octet_length(management_address) = 20) AND (octet_length(management_code_hash) = 32)))),
-    CONSTRAINT verified_proxy_bindings_check3 CHECK ((((proxy_pattern = 'clone'::text) AND (artifact_resolution_id IS NULL) AND (standard_version IS NULL)) OR ((proxy_pattern <> 'clone'::text) AND (artifact_resolution_id IS NOT NULL) AND (standard_version = '5.6.1'::text)))),
-    CONSTRAINT verified_proxy_bindings_check4 CHECK ((((proxy_pattern = 'beacon'::text) AND (beacon_generation_id IS NOT NULL)) OR ((proxy_pattern <> 'beacon'::text) AND (beacon_generation_id IS NULL)))),
-    CONSTRAINT verified_proxy_bindings_check5 CHECK ((context_block_number >= observation_block_number)),
-    CONSTRAINT verified_proxy_bindings_context_block_hash_check CHECK ((octet_length(context_block_hash) = 32)),
-    CONSTRAINT verified_proxy_bindings_implementation_address_check CHECK ((octet_length(implementation_address) = 20)),
-    CONSTRAINT verified_proxy_bindings_implementation_code_hash_check CHECK ((octet_length(implementation_code_hash) = 32)),
-    CONSTRAINT verified_proxy_bindings_management_kind_check CHECK ((management_kind = ANY (ARRAY['none'::text, 'proxy_admin'::text, 'upgradeable_beacon'::text]))),
-    CONSTRAINT verified_proxy_bindings_management_semantics CHECK ((((proxy_pattern = 'transparent'::text) AND (proxy_kind = 'eip1967'::text) AND (admin_address IS NOT NULL) AND (admin_code_hash IS NOT NULL) AND (beacon_address IS NULL) AND (beacon_code_hash IS NULL) AND (management_kind = 'proxy_admin'::text) AND (NOT (management_address IS DISTINCT FROM admin_address)) AND (NOT (management_code_hash IS DISTINCT FROM admin_code_hash))) OR ((proxy_pattern = 'beacon'::text) AND (proxy_kind = 'beacon'::text) AND (admin_address IS NULL) AND (admin_code_hash IS NULL) AND (beacon_address IS NOT NULL) AND (beacon_code_hash IS NOT NULL) AND (management_kind = 'upgradeable_beacon'::text) AND (NOT (management_address IS DISTINCT FROM beacon_address)) AND (NOT (management_code_hash IS DISTINCT FROM beacon_code_hash))) OR ((proxy_pattern = 'clone'::text) AND (proxy_kind = ANY (ARRAY['eip1167'::text, 'cwia'::text])) AND (admin_address IS NULL) AND (admin_code_hash IS NULL) AND (beacon_address IS NULL) AND (beacon_code_hash IS NULL) AND (management_kind = 'none'::text)) OR ((proxy_pattern = ANY (ARRAY['erc1967'::text, 'uups'::text])) AND (proxy_kind = 'eip1967'::text) AND (admin_address IS NULL) AND (admin_code_hash IS NULL) AND (beacon_address IS NULL) AND (beacon_code_hash IS NULL) AND (management_kind = 'none'::text)))),
-    CONSTRAINT verified_proxy_bindings_observation_block_hash_check CHECK ((octet_length(observation_block_hash) = 32)),
-    CONSTRAINT verified_proxy_bindings_observation_block_number_check CHECK ((observation_block_number >= (0)::numeric)),
-    CONSTRAINT verified_proxy_bindings_observation_stage_version_check CHECK ((observation_stage_version = 2)),
-    CONSTRAINT verified_proxy_bindings_proxy_address_check CHECK ((octet_length(proxy_address) = 20)),
-    CONSTRAINT verified_proxy_bindings_proxy_code_hash_check CHECK ((octet_length(proxy_code_hash) = 32)),
-    CONSTRAINT verified_proxy_bindings_proxy_kind_check CHECK ((proxy_kind = ANY (ARRAY['eip1167'::text, 'cwia'::text, 'eip1967'::text, 'beacon'::text]))),
-    CONSTRAINT verified_proxy_bindings_proxy_pattern_check CHECK ((proxy_pattern = ANY (ARRAY['clone'::text, 'erc1967'::text, 'transparent'::text, 'uups'::text, 'beacon'::text]))),
-    CONSTRAINT verified_proxy_bindings_request_digest_check CHECK ((octet_length(request_digest) = 32)),
-    CONSTRAINT verified_proxy_bindings_standard_version_check CHECK (((standard_version IS NULL) OR (standard_version = '5.6.1'::text))),
-    CONSTRAINT verified_proxy_bindings_uups_generation_shape CHECK (((proxy_pattern = 'uups'::text) = (uups_generation_id IS NOT NULL)))
-);
-
--- View: watch_activity_sources
-
 CREATE VIEW watch_activity_sources AS
  SELECT inclusion.chain_id,
     inclusion.block_number,
@@ -7311,4017 +6755,159 @@ UNION ALL
          LIMIT 1) metadata ON ((event.standard = 'erc20'::text)))
   WHERE (event.canonical AND (event.event_kind = ANY (ARRAY['transfer'::text, 'mint'::text, 'burn'::text])));
 
--- Table: watch_notification_work
-
-CREATE TABLE watch_notification_work (
-    chain_id numeric(78,0) NOT NULL,
-    block_number numeric(78,0) NOT NULL,
-    block_hash bytea NOT NULL,
-    generation bigint DEFAULT 1 NOT NULL,
-    done_generation bigint DEFAULT 0 NOT NULL,
-    lease_token uuid,
-    lease_until timestamp with time zone,
-    after_watch uuid DEFAULT '00000000-0000-0000-0000-000000000000'::uuid NOT NULL,
-    after_source text DEFAULT ''::text NOT NULL
-);
-
--- Table: watch_notifications
-
-CREATE TABLE watch_notifications (
-    id bigint NOT NULL,
-    watch_id uuid NOT NULL,
-    user_id uuid NOT NULL,
-    chain_id numeric(78,0) NOT NULL,
-    block_number numeric(78,0) NOT NULL,
-    block_hash bytea NOT NULL,
-    source_key text NOT NULL,
-    source_kind text NOT NULL,
-    source_generation bigint NOT NULL,
-    activity jsonb NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    read_at timestamp with time zone,
-    CONSTRAINT watch_notifications_block_hash_check CHECK ((octet_length(block_hash) = 32))
-);
-
--- Sequence: watch_notifications_id_seq
-
-ALTER TABLE watch_notifications ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME watch_notifications_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
-);
-
--- Table: withdrawals
-
-CREATE TABLE withdrawals (
-    chain_id numeric(78,0) NOT NULL,
-    block_number numeric(78,0) NOT NULL,
-    block_hash bytea NOT NULL,
-    withdrawal_index numeric(78,0) NOT NULL,
-    validator_index numeric(78,0) NOT NULL,
-    address bytea NOT NULL,
-    amount numeric(78,0) NOT NULL,
-    raw jsonb NOT NULL,
-    CONSTRAINT withdrawals_address_check CHECK ((octet_length(address) = 20))
-)
-PARTITION BY RANGE (block_number);
-
--- Table: withdrawals_default
-
-CREATE TABLE withdrawals_default (
-    chain_id numeric(78,0) CONSTRAINT withdrawals_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT withdrawals_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT withdrawals_block_hash_not_null NOT NULL,
-    withdrawal_index numeric(78,0) CONSTRAINT withdrawals_withdrawal_index_not_null NOT NULL,
-    validator_index numeric(78,0) CONSTRAINT withdrawals_validator_index_not_null NOT NULL,
-    address bytea CONSTRAINT withdrawals_address_not_null NOT NULL,
-    amount numeric(78,0) CONSTRAINT withdrawals_amount_not_null NOT NULL,
-    raw jsonb CONSTRAINT withdrawals_raw_not_null NOT NULL,
-    CONSTRAINT withdrawals_address_check CHECK ((octet_length(address) = 20))
-);
-
--- Table: withdrawals_p_0_1000000
-
-CREATE TABLE withdrawals_p_0_1000000 (
-    chain_id numeric(78,0) CONSTRAINT withdrawals_chain_id_not_null NOT NULL,
-    block_number numeric(78,0) CONSTRAINT withdrawals_block_number_not_null NOT NULL,
-    block_hash bytea CONSTRAINT withdrawals_block_hash_not_null NOT NULL,
-    withdrawal_index numeric(78,0) CONSTRAINT withdrawals_withdrawal_index_not_null NOT NULL,
-    validator_index numeric(78,0) CONSTRAINT withdrawals_validator_index_not_null NOT NULL,
-    address bytea CONSTRAINT withdrawals_address_not_null NOT NULL,
-    amount numeric(78,0) CONSTRAINT withdrawals_amount_not_null NOT NULL,
-    raw jsonb CONSTRAINT withdrawals_raw_not_null NOT NULL,
-    CONSTRAINT withdrawals_address_check CHECK ((octet_length(address) = 20))
-);
-
--- Table Attach: abi_decodings_default
-
-ALTER TABLE ONLY abi_decodings ATTACH PARTITION abi_decodings_default DEFAULT;
-
--- Table Attach: abi_decodings_p_0_1000000
-
-ALTER TABLE ONLY abi_decodings ATTACH PARTITION abi_decodings_p_0_1000000 FOR VALUES FROM ('0') TO ('1000000');
-
--- Table Attach: address_activities_default
-
-ALTER TABLE ONLY address_activities ATTACH PARTITION address_activities_default DEFAULT;
-
--- Table Attach: address_activities_p_0_1000000
-
-ALTER TABLE ONLY address_activities ATTACH PARTITION address_activities_p_0_1000000 FOR VALUES FROM ('0') TO ('1000000');
-
--- Table Attach: eip7702_authorizations_default
-
-ALTER TABLE ONLY eip7702_authorizations ATTACH PARTITION eip7702_authorizations_default DEFAULT;
-
--- Table Attach: eip7702_authorizations_p_0_1000000
-
-ALTER TABLE ONLY eip7702_authorizations ATTACH PARTITION eip7702_authorizations_p_0_1000000 FOR VALUES FROM ('0') TO ('1000000');
-
--- Table Attach: erc20_holder_balances_default
-
-ALTER TABLE ONLY erc20_holder_balances ATTACH PARTITION erc20_holder_balances_default DEFAULT;
-
--- Table Attach: erc20_holder_balances_p_0_1000000
-
-ALTER TABLE ONLY erc20_holder_balances ATTACH PARTITION erc20_holder_balances_p_0_1000000 FOR VALUES FROM ('0') TO ('1000000');
-
--- Table Attach: erc20_holder_snapshots_default
-
-ALTER TABLE ONLY erc20_holder_snapshots ATTACH PARTITION erc20_holder_snapshots_default DEFAULT;
-
--- Table Attach: erc20_holder_snapshots_p_0_1000000
-
-ALTER TABLE ONLY erc20_holder_snapshots ATTACH PARTITION erc20_holder_snapshots_p_0_1000000 FOR VALUES FROM ('0') TO ('1000000');
-
--- Table Attach: erc4337_user_operation_events_default
-
-ALTER TABLE ONLY erc4337_user_operation_events ATTACH PARTITION erc4337_user_operation_events_default DEFAULT;
-
--- Table Attach: erc4337_user_operation_events_p_0_1000000
-
-ALTER TABLE ONLY erc4337_user_operation_events ATTACH PARTITION erc4337_user_operation_events_p_0_1000000 FOR VALUES FROM ('0') TO ('1000000');
-
--- Table Attach: erc4337_user_operation_participants_default
-
-ALTER TABLE ONLY erc4337_user_operation_participants ATTACH PARTITION erc4337_user_operation_participants_default DEFAULT;
-
--- Table Attach: erc4337_user_operation_participants_p_0_1000000
-
-ALTER TABLE ONLY erc4337_user_operation_participants ATTACH PARTITION erc4337_user_operation_participants_p_0_1000000 FOR VALUES FROM ('0') TO ('1000000');
-
--- Table Attach: erc4337_user_operations_default
-
-ALTER TABLE ONLY erc4337_user_operations ATTACH PARTITION erc4337_user_operations_default DEFAULT;
-
--- Table Attach: erc4337_user_operations_p_0_1000000
-
-ALTER TABLE ONLY erc4337_user_operations ATTACH PARTITION erc4337_user_operations_p_0_1000000 FOR VALUES FROM ('0') TO ('1000000');
-
--- Table Attach: logs_default
-
-ALTER TABLE ONLY logs ATTACH PARTITION logs_default DEFAULT;
-
--- Table Attach: logs_p_0_1000000
-
-ALTER TABLE ONLY logs ATTACH PARTITION logs_p_0_1000000 FOR VALUES FROM ('0') TO ('1000000');
-
--- Table Attach: native_transfers_default
-
-ALTER TABLE ONLY native_transfers ATTACH PARTITION native_transfers_default DEFAULT;
-
--- Table Attach: native_transfers_p_0_1000000
-
-ALTER TABLE ONLY native_transfers ATTACH PARTITION native_transfers_p_0_1000000 FOR VALUES FROM ('0') TO ('1000000');
-
--- Table Attach: normalized_traces_default
-
-ALTER TABLE ONLY normalized_traces ATTACH PARTITION normalized_traces_default DEFAULT;
-
--- Table Attach: normalized_traces_p_0_1000000
-
-ALTER TABLE ONLY normalized_traces ATTACH PARTITION normalized_traces_p_0_1000000 FOR VALUES FROM ('0') TO ('1000000');
-
--- Table Attach: receipts_default
-
-ALTER TABLE ONLY receipts ATTACH PARTITION receipts_default DEFAULT;
-
--- Table Attach: receipts_p_0_1000000
-
-ALTER TABLE ONLY receipts ATTACH PARTITION receipts_p_0_1000000 FOR VALUES FROM ('0') TO ('1000000');
-
--- Table Attach: token_balance_deltas_default
-
-ALTER TABLE ONLY token_balance_deltas ATTACH PARTITION token_balance_deltas_default DEFAULT;
-
--- Table Attach: token_balance_deltas_p_0_1000000
-
-ALTER TABLE ONLY token_balance_deltas ATTACH PARTITION token_balance_deltas_p_0_1000000 FOR VALUES FROM ('0') TO ('1000000');
-
--- Table Attach: token_events_default
-
-ALTER TABLE ONLY token_events ATTACH PARTITION token_events_default DEFAULT;
-
--- Table Attach: token_events_p_0_1000000
-
-ALTER TABLE ONLY token_events ATTACH PARTITION token_events_p_0_1000000 FOR VALUES FROM ('0') TO ('1000000');
-
--- Table Attach: trace_log_attributions_default
-
-ALTER TABLE ONLY trace_log_attributions ATTACH PARTITION trace_log_attributions_default DEFAULT;
-
--- Table Attach: trace_log_attributions_p_0_1000000
-
-ALTER TABLE ONLY trace_log_attributions ATTACH PARTITION trace_log_attributions_p_0_1000000 FOR VALUES FROM ('0') TO ('1000000');
-
--- Table Attach: transaction_effective_execution_identities_default
-
-ALTER TABLE ONLY transaction_effective_execution_identities ATTACH PARTITION transaction_effective_execution_identities_default DEFAULT;
-
--- Table Attach: transaction_effective_execution_identities_p_0_1000000
-
-ALTER TABLE ONLY transaction_effective_execution_identities ATTACH PARTITION transaction_effective_execution_identities_p_0_1000000 FOR VALUES FROM ('0') TO ('1000000');
-
--- Table Attach: transaction_execution_code_resolutions_default
-
-ALTER TABLE ONLY transaction_execution_code_resolutions ATTACH PARTITION transaction_execution_code_resolutions_default DEFAULT;
-
--- Table Attach: transaction_execution_code_resolutions_p_0_1000000
-
-ALTER TABLE ONLY transaction_execution_code_resolutions ATTACH PARTITION transaction_execution_code_resolutions_p_0_1000000 FOR VALUES FROM ('0') TO ('1000000');
-
--- Table Attach: transaction_inclusions_default
-
-ALTER TABLE ONLY transaction_inclusions ATTACH PARTITION transaction_inclusions_default DEFAULT;
-
--- Table Attach: transaction_inclusions_p_0_1000000
-
-ALTER TABLE ONLY transaction_inclusions ATTACH PARTITION transaction_inclusions_p_0_1000000 FOR VALUES FROM ('0') TO ('1000000');
-
--- Table Attach: transaction_state_changes_default
-
-ALTER TABLE ONLY transaction_state_changes ATTACH PARTITION transaction_state_changes_default DEFAULT;
-
--- Table Attach: transaction_state_changes_p_0_1000000
-
-ALTER TABLE ONLY transaction_state_changes ATTACH PARTITION transaction_state_changes_p_0_1000000 FOR VALUES FROM ('0') TO ('1000000');
-
--- Table Attach: withdrawals_default
-
-ALTER TABLE ONLY withdrawals ATTACH PARTITION withdrawals_default DEFAULT;
-
--- Table Attach: withdrawals_p_0_1000000
-
-ALTER TABLE ONLY withdrawals ATTACH PARTITION withdrawals_p_0_1000000 FOR VALUES FROM ('0') TO ('1000000');
-
--- Default: beacon_observation_generations id
-
-ALTER TABLE ONLY beacon_observation_generations ALTER COLUMN id SET DEFAULT nextval('beacon_observation_generations_id_seq'::regclass);
-
--- Default: diamond_loupe_snapshots id
-
-ALTER TABLE ONLY diamond_loupe_snapshots ALTER COLUMN id SET DEFAULT nextval('diamond_loupe_snapshots_id_seq'::regclass);
-
--- Default: external_adapter_observations id
-
-ALTER TABLE ONLY external_adapter_observations ALTER COLUMN id SET DEFAULT nextval('external_adapter_observations_id_seq'::regclass);
-
--- Default: proxy_artifact_resolutions id
-
-ALTER TABLE ONLY proxy_artifact_resolutions ALTER COLUMN id SET DEFAULT nextval('proxy_artifact_resolutions_id_seq'::regclass);
-
--- Default: proxy_detection_evidence id
-
-ALTER TABLE ONLY proxy_detection_evidence ALTER COLUMN id SET DEFAULT nextval('proxy_detection_evidence_id_seq'::regclass);
-
--- Default: proxy_observation_generations id
-
-ALTER TABLE ONLY proxy_observation_generations ALTER COLUMN id SET DEFAULT nextval('proxy_observation_generations_id_seq'::regclass);
-
--- Default: uups_implementation_observation_generations id
-
-ALTER TABLE ONLY uups_implementation_observation_generations ALTER COLUMN id SET DEFAULT nextval('uups_implementation_observation_generations_id_seq'::regclass);
-
--- Constraint: abi_decodings abi_decodings_pkey
-
-ALTER TABLE ONLY abi_decodings
-    ADD CONSTRAINT abi_decodings_pkey PRIMARY KEY (chain_id, block_number, block_hash, object_kind, transaction_hash, object_index);
-
--- Constraint: abi_decodings_default abi_decodings_default_pkey
-
-ALTER TABLE ONLY abi_decodings_default
-    ADD CONSTRAINT abi_decodings_default_pkey PRIMARY KEY (chain_id, block_number, block_hash, object_kind, transaction_hash, object_index);
-
--- Constraint: abi_decodings_p_0_1000000 abi_decodings_p_0_1000000_pkey
-
-ALTER TABLE ONLY abi_decodings_p_0_1000000
-    ADD CONSTRAINT abi_decodings_p_0_1000000_pkey PRIMARY KEY (chain_id, block_number, block_hash, object_kind, transaction_hash, object_index);
-
--- Constraint: abi_signature_candidates abi_signature_candidates_pkey
-
-ALTER TABLE ONLY abi_signature_candidates
-    ADD CONSTRAINT abi_signature_candidates_pkey PRIMARY KEY (kind, identifier, signature);
-
--- Constraint: address_activities address_activities_pkey
-
-ALTER TABLE ONLY address_activities
-    ADD CONSTRAINT address_activities_pkey PRIMARY KEY (chain_id, block_number, block_hash, transaction_hash, activity_index, address);
-
--- Constraint: address_activities_default address_activities_default_pkey
-
-ALTER TABLE ONLY address_activities_default
-    ADD CONSTRAINT address_activities_default_pkey PRIMARY KEY (chain_id, block_number, block_hash, transaction_hash, activity_index, address);
-
--- Constraint: address_activities_p_0_1000000 address_activities_p_0_1000000_pkey
-
-ALTER TABLE ONLY address_activities_p_0_1000000
-    ADD CONSTRAINT address_activities_p_0_1000000_pkey PRIMARY KEY (chain_id, block_number, block_hash, transaction_hash, activity_index, address);
-
--- Constraint: address_export_admissions address_export_admissions_pkey
-
-ALTER TABLE ONLY address_export_admissions
-    ADD CONSTRAINT address_export_admissions_pkey PRIMARY KEY (token);
-
--- Constraint: address_watches address_watches_pkey
-
-ALTER TABLE ONLY address_watches
-    ADD CONSTRAINT address_watches_pkey PRIMARY KEY (id);
-
--- Constraint: api_keys api_keys_pkey
-
-ALTER TABLE ONLY api_keys
-    ADD CONSTRAINT api_keys_pkey PRIMARY KEY (prefix);
-
--- Constraint: auth_challenges auth_challenges_chain_id_nonce_key
-
-ALTER TABLE ONLY auth_challenges
-    ADD CONSTRAINT auth_challenges_chain_id_nonce_key UNIQUE (chain_id, nonce);
-
--- Constraint: auth_challenges auth_challenges_pkey
-
-ALTER TABLE ONLY auth_challenges
-    ADD CONSTRAINT auth_challenges_pkey PRIMARY KEY (id);
-
--- Constraint: beacon_implementation_observations beacon_implementation_observations_pkey
-
-ALTER TABLE ONLY beacon_implementation_observations
-    ADD CONSTRAINT beacon_implementation_observations_pkey PRIMARY KEY (chain_id, beacon_address, block_hash, stage_version);
-
--- Constraint: beacon_observation_generations beacon_observation_generation_chain_id_beacon_address_obser_key
-
-ALTER TABLE ONLY beacon_observation_generations
-    ADD CONSTRAINT beacon_observation_generation_chain_id_beacon_address_obser_key UNIQUE NULLS NOT DISTINCT (chain_id, beacon_address, observation_block_hash, observation_stage_version, durable_job_id, job_generation);
-
--- Constraint: beacon_observation_generations beacon_observation_generations_pkey
-
-ALTER TABLE ONLY beacon_observation_generations
-    ADD CONSTRAINT beacon_observation_generations_pkey PRIMARY KEY (id);
-
--- Constraint: billing_account_entries billing_account_entries_pkey
-
-ALTER TABLE ONLY billing_account_entries
-    ADD CONSTRAINT billing_account_entries_pkey PRIMARY KEY (id);
-
--- Constraint: billing_account_entries billing_account_entries_source_id_key
-
-ALTER TABLE ONLY billing_account_entries
-    ADD CONSTRAINT billing_account_entries_source_id_key UNIQUE (source_id);
-
--- Constraint: billing_accounts billing_accounts_pkey
-
-ALTER TABLE ONLY billing_accounts
-    ADD CONSTRAINT billing_accounts_pkey PRIMARY KEY (user_id, chain_id, network, asset);
-
--- Constraint: billing_payment_events billing_payment_events_pkey
-
-ALTER TABLE ONLY billing_payment_events
-    ADD CONSTRAINT billing_payment_events_pkey PRIMARY KEY (id);
-
--- Constraint: billing_payments billing_payments_fingerprint_key
-
-ALTER TABLE ONLY billing_payments
-    ADD CONSTRAINT billing_payments_fingerprint_key UNIQUE (fingerprint);
-
--- Constraint: billing_payments billing_payments_pkey
-
-ALTER TABLE ONLY billing_payments
-    ADD CONSTRAINT billing_payments_pkey PRIMARY KEY (id);
-
--- Constraint: billing_topup_intents billing_topup_intents_pkey
-
-ALTER TABLE ONLY billing_topup_intents
-    ADD CONSTRAINT billing_topup_intents_pkey PRIMARY KEY (id);
-
--- Constraint: billing_usage_charges billing_usage_charges_pkey
-
-ALTER TABLE ONLY billing_usage_charges
-    ADD CONSTRAINT billing_usage_charges_pkey PRIMARY KEY (id);
-
--- Constraint: block_journals block_journals_pkey
-
-ALTER TABLE ONLY block_journals
-    ADD CONSTRAINT block_journals_pkey PRIMARY KEY (chain_id, block_hash, stage, sequence);
-
--- Constraint: block_stage_results block_stage_results_pkey
-
-ALTER TABLE ONLY block_stage_results
-    ADD CONSTRAINT block_stage_results_pkey PRIMARY KEY (chain_id, block_hash, stage, stage_version);
-
--- Constraint: block_statistics block_statistics_pkey
-
-ALTER TABLE ONLY block_statistics
-    ADD CONSTRAINT block_statistics_pkey PRIMARY KEY (chain_id, block_number, block_hash);
-
--- Constraint: blocks blocks_pkey
-
-ALTER TABLE ONLY blocks
-    ADD CONSTRAINT blocks_pkey PRIMARY KEY (chain_id, number, hash);
-
--- Constraint: canonical_blocks canonical_blocks_pkey
-
-ALTER TABLE ONLY canonical_blocks
-    ADD CONSTRAINT canonical_blocks_pkey PRIMARY KEY (chain_id, number);
-
--- Constraint: chain_finality chain_finality_pkey
-
-ALTER TABLE ONLY chain_finality
-    ADD CONSTRAINT chain_finality_pkey PRIMARY KEY (chain_id);
-
--- Constraint: chains chains_pkey
-
-ALTER TABLE ONLY chains
-    ADD CONSTRAINT chains_pkey PRIMARY KEY (chain_id);
-
--- Constraint: chart_hourly_rollups chart_hourly_rollups_pkey
-
-ALTER TABLE ONLY chart_hourly_rollups
-    ADD CONSTRAINT chart_hourly_rollups_pkey PRIMARY KEY (chain_id, bucket_start);
-
--- Constraint: chart_rollup_backfill chart_rollup_backfill_pkey
-
-ALTER TABLE ONLY chart_rollup_backfill
-    ADD CONSTRAINT chart_rollup_backfill_pkey PRIMARY KEY (chain_id);
-
--- Constraint: chart_rollup_dirty_hours chart_rollup_dirty_hours_pkey
-
-ALTER TABLE ONLY chart_rollup_dirty_hours
-    ADD CONSTRAINT chart_rollup_dirty_hours_pkey PRIMARY KEY (chain_id, bucket_start);
-
--- Constraint: compiler_catalog_entries compiler_catalog_entries_generation_language_key
-
-ALTER TABLE ONLY compiler_catalog_entries
-    ADD CONSTRAINT compiler_catalog_entries_generation_language_key UNIQUE (generation_id, language, version, platform, artifact_sha256);
-
--- Constraint: compiler_catalog_entries compiler_catalog_entries_pkey
-
-ALTER TABLE ONLY compiler_catalog_entries
-    ADD CONSTRAINT compiler_catalog_entries_pkey PRIMARY KEY (generation_id, version);
-
--- Constraint: compiler_catalog_generations compiler_catalog_generations_id_language_key
-
-ALTER TABLE ONLY compiler_catalog_generations
-    ADD CONSTRAINT compiler_catalog_generations_id_language_key UNIQUE (id, language);
-
--- Constraint: compiler_catalog_generations compiler_catalog_generations_identity_key
-
-ALTER TABLE ONLY compiler_catalog_generations
-    ADD CONSTRAINT compiler_catalog_generations_identity_key UNIQUE (language, catalog_digest);
-
--- Constraint: compiler_catalog_generations compiler_catalog_generations_pkey
-
-ALTER TABLE ONLY compiler_catalog_generations
-    ADD CONSTRAINT compiler_catalog_generations_pkey PRIMARY KEY (id);
-
--- Constraint: compiler_catalog_heads compiler_catalog_heads_pkey
-
-ALTER TABLE ONLY compiler_catalog_heads
-    ADD CONSTRAINT compiler_catalog_heads_pkey PRIMARY KEY (language);
-
--- Constraint: contract_abis contract_abis_pkey
-
-ALTER TABLE ONLY contract_abis
-    ADD CONSTRAINT contract_abis_pkey PRIMARY KEY (chain_id, address, code_hash, source, source_address, source_code_hash, selector_scope, valid_from_block, block_hash);
-
--- Constraint: contract_code_observations contract_code_observations_pkey
-
-ALTER TABLE ONLY contract_code_observations
-    ADD CONSTRAINT contract_code_observations_pkey PRIMARY KEY (chain_id, address, block_hash);
-
--- Constraint: core_backfill_leases core_backfill_leases_lease_token_key
-
-ALTER TABLE ONLY core_backfill_leases
-    ADD CONSTRAINT core_backfill_leases_lease_token_key UNIQUE (lease_token);
-
--- Constraint: core_backfill_leases core_backfill_leases_pkey
-
-ALTER TABLE ONLY core_backfill_leases
-    ADD CONSTRAINT core_backfill_leases_pkey PRIMARY KEY (chain_id, range_start, range_end);
-
--- Constraint: core_coverage_ranges core_coverage_ranges_pkey
-
-ALTER TABLE ONLY core_coverage_ranges
-    ADD CONSTRAINT core_coverage_ranges_pkey PRIMARY KEY (chain_id, range_start);
-
--- Constraint: core_index_configuration core_index_configuration_pkey
-
-ALTER TABLE ONLY core_index_configuration
-    ADD CONSTRAINT core_index_configuration_pkey PRIMARY KEY (chain_id);
-
--- Constraint: derived_verification_attempts derived_verification_attempts_chain_id_block_hash_transacti_key
-
-ALTER TABLE ONLY derived_verification_attempts
-    ADD CONSTRAINT derived_verification_attempts_chain_id_block_hash_transacti_key UNIQUE (chain_id, block_hash, transaction_hash, trace_path, compilation_id);
-
--- Constraint: derived_verification_attempts derived_verification_attempts_pkey
-
-ALTER TABLE ONLY derived_verification_attempts
-    ADD CONSTRAINT derived_verification_attempts_pkey PRIMARY KEY (id);
-
--- Constraint: derived_verification_backfill_requests derived_verification_backfill_requests_pkey
-
-ALTER TABLE ONLY derived_verification_backfill_requests
-    ADD CONSTRAINT derived_verification_backfill_requests_pkey PRIMARY KEY (id);
-
--- Constraint: derived_verification_forward_blocks derived_verification_forward_blocks_pkey
-
-ALTER TABLE ONLY derived_verification_forward_blocks
-    ADD CONSTRAINT derived_verification_forward_blocks_pkey PRIMARY KEY (id);
-
--- Constraint: derived_verification_forward_blocks derived_verification_forward_blocks_source_unique
-
-ALTER TABLE ONLY derived_verification_forward_blocks
-    ADD CONSTRAINT derived_verification_forward_blocks_source_unique UNIQUE (source_job_id, source_generation);
-
--- Constraint: derived_verification_scans derived_verification_scans_pkey
-
-ALTER TABLE ONLY derived_verification_scans
-    ADD CONSTRAINT derived_verification_scans_pkey PRIMARY KEY (id);
-
--- Constraint: derived_verification_scans derived_verification_scans_target_key
-
-ALTER TABLE ONLY derived_verification_scans
-    ADD CONSTRAINT derived_verification_scans_target_key UNIQUE (compilation_id, creator_address, creator_code_hash, valid_from_block);
-
--- Constraint: diamond_cut_events diamond_cut_events_pkey
-
-ALTER TABLE ONLY diamond_cut_events
-    ADD CONSTRAINT diamond_cut_events_pkey PRIMARY KEY (chain_id, block_hash, log_index, stage_version);
-
--- Constraint: diamond_loupe_facets diamond_loupe_facets_pkey
-
-ALTER TABLE ONLY diamond_loupe_facets
-    ADD CONSTRAINT diamond_loupe_facets_pkey PRIMARY KEY (snapshot_id, facet_address);
-
--- Constraint: diamond_loupe_selectors diamond_loupe_selectors_pkey
-
-ALTER TABLE ONLY diamond_loupe_selectors
-    ADD CONSTRAINT diamond_loupe_selectors_pkey PRIMARY KEY (snapshot_id, selector);
-
--- Constraint: diamond_loupe_snapshots diamond_loupe_snapshots_chain_id_diamond_address_block_hash_key
-
-ALTER TABLE ONLY diamond_loupe_snapshots
-    ADD CONSTRAINT diamond_loupe_snapshots_chain_id_diamond_address_block_hash_key UNIQUE NULLS NOT DISTINCT (chain_id, diamond_address, block_hash, stage_version, durable_job_id, job_generation);
-
--- Constraint: diamond_loupe_snapshots diamond_loupe_snapshots_pkey
-
-ALTER TABLE ONLY diamond_loupe_snapshots
-    ADD CONSTRAINT diamond_loupe_snapshots_pkey PRIMARY KEY (id);
-
--- Constraint: diamond_selector_changes diamond_selector_changes_pkey
-
-ALTER TABLE ONLY diamond_selector_changes
-    ADD CONSTRAINT diamond_selector_changes_pkey PRIMARY KEY (chain_id, block_hash, log_index, stage_version, cut_index, selector_index);
-
--- Constraint: durable_job_replay_requests durable_job_replay_requests_job_id_requested_generation_key
-
-ALTER TABLE ONLY durable_job_replay_requests
-    ADD CONSTRAINT durable_job_replay_requests_job_id_requested_generation_key UNIQUE (job_id, requested_generation);
-
--- Constraint: durable_job_replay_requests durable_job_replay_requests_pkey
-
-ALTER TABLE ONLY durable_job_replay_requests
-    ADD CONSTRAINT durable_job_replay_requests_pkey PRIMARY KEY (job_id, source_kind, source_key);
-
--- Constraint: durable_jobs durable_jobs_chain_id_kind_idempotency_key_key
-
-ALTER TABLE ONLY durable_jobs
-    ADD CONSTRAINT durable_jobs_chain_id_kind_idempotency_key_key UNIQUE (chain_id, kind, idempotency_key);
-
--- Constraint: durable_jobs durable_jobs_pkey
-
-ALTER TABLE ONLY durable_jobs
-    ADD CONSTRAINT durable_jobs_pkey PRIMARY KEY (id);
-
--- Constraint: durable_stage_publications durable_stage_publications_pkey
-
-ALTER TABLE ONLY durable_stage_publications
-    ADD CONSTRAINT durable_stage_publications_pkey PRIMARY KEY (job_id, job_generation);
-
--- Constraint: eip7702_authorizations eip7702_authorizations_pkey
-
-ALTER TABLE ONLY eip7702_authorizations
-    ADD CONSTRAINT eip7702_authorizations_pkey PRIMARY KEY (chain_id, block_number, block_hash, transaction_hash, authorization_index);
-
--- Constraint: eip7702_authorizations_default eip7702_authorizations_default_pkey
-
-ALTER TABLE ONLY eip7702_authorizations_default
-    ADD CONSTRAINT eip7702_authorizations_default_pkey PRIMARY KEY (chain_id, block_number, block_hash, transaction_hash, authorization_index);
-
--- Constraint: eip7702_authorizations_p_0_1000000 eip7702_authorizations_p_0_1000000_pkey
-
-ALTER TABLE ONLY eip7702_authorizations_p_0_1000000
-    ADD CONSTRAINT eip7702_authorizations_p_0_1000000_pkey PRIMARY KEY (chain_id, block_number, block_hash, transaction_hash, authorization_index);
-
--- Constraint: ens_address_name_snapshots ens_address_name_snapshots_pkey
-
-ALTER TABLE ONLY ens_address_name_snapshots
-    ADD CONSTRAINT ens_address_name_snapshots_pkey PRIMARY KEY (id);
-
--- Constraint: ens_name_observations ens_name_observations_generation_id_source_direction_lookup_key
-
-ALTER TABLE ONLY ens_name_observations
-    ADD CONSTRAINT ens_name_observations_generation_id_source_direction_lookup_key UNIQUE (generation_id, source, direction, lookup_key);
-
--- Constraint: ens_name_observations ens_name_observations_pkey
-
-ALTER TABLE ONLY ens_name_observations
-    ADD CONSTRAINT ens_name_observations_pkey PRIMARY KEY (id);
-
--- Constraint: ens_resolution_failures ens_resolution_failures_pkey
-
-ALTER TABLE ONLY ens_resolution_failures
-    ADD CONSTRAINT ens_resolution_failures_pkey PRIMARY KEY (id);
-
--- Constraint: ens_resolution_generations ens_resolution_generations_pkey
-
-ALTER TABLE ONLY ens_resolution_generations
-    ADD CONSTRAINT ens_resolution_generations_pkey PRIMARY KEY (id);
-
--- Constraint: erc1155_balance_reconciliations erc1155_balance_reconciliations_pkey
-
-ALTER TABLE ONLY erc1155_balance_reconciliations
-    ADD CONSTRAINT erc1155_balance_reconciliations_pkey PRIMARY KEY (chain_id, token_address, token_id, owner_address, block_hash);
-
--- Constraint: erc20_balance_reconciliations erc20_balance_reconciliations_pkey
-
-ALTER TABLE ONLY erc20_balance_reconciliations
-    ADD CONSTRAINT erc20_balance_reconciliations_pkey PRIMARY KEY (chain_id, token_address, owner_address, block_hash);
-
--- Constraint: erc20_holder_balances erc20_holder_balances_pkey
-
-ALTER TABLE ONLY erc20_holder_balances
-    ADD CONSTRAINT erc20_holder_balances_pkey PRIMARY KEY (chain_id, token_address, block_number, block_hash, holder_address);
-
--- Constraint: erc20_holder_balances_default erc20_holder_balances_default_pkey
-
-ALTER TABLE ONLY erc20_holder_balances_default
-    ADD CONSTRAINT erc20_holder_balances_default_pkey PRIMARY KEY (chain_id, token_address, block_number, block_hash, holder_address);
-
--- Constraint: erc20_holder_balances_p_0_1000000 erc20_holder_balances_p_0_1000000_pkey
-
-ALTER TABLE ONLY erc20_holder_balances_p_0_1000000
-    ADD CONSTRAINT erc20_holder_balances_p_0_1000000_pkey PRIMARY KEY (chain_id, token_address, block_number, block_hash, holder_address);
-
--- Constraint: erc20_holder_snapshots erc20_holder_snapshots_pkey
-
-ALTER TABLE ONLY erc20_holder_snapshots
-    ADD CONSTRAINT erc20_holder_snapshots_pkey PRIMARY KEY (chain_id, token_address, block_number, block_hash);
-
--- Constraint: erc20_holder_snapshots_default erc20_holder_snapshots_default_pkey
-
-ALTER TABLE ONLY erc20_holder_snapshots_default
-    ADD CONSTRAINT erc20_holder_snapshots_default_pkey PRIMARY KEY (chain_id, token_address, block_number, block_hash);
-
--- Constraint: erc20_holder_snapshots_p_0_1000000 erc20_holder_snapshots_p_0_1000000_pkey
-
-ALTER TABLE ONLY erc20_holder_snapshots_p_0_1000000
-    ADD CONSTRAINT erc20_holder_snapshots_p_0_1000000_pkey PRIMARY KEY (chain_id, token_address, block_number, block_hash);
-
--- Constraint: erc4337_coverage_ranges erc4337_coverage_ranges_chain_id_configuration_digest_end_b_key
-
-ALTER TABLE ONLY erc4337_coverage_ranges
-    ADD CONSTRAINT erc4337_coverage_ranges_chain_id_configuration_digest_end_b_key UNIQUE (chain_id, configuration_digest, end_block);
-
--- Constraint: erc4337_coverage_ranges erc4337_coverage_ranges_pkey
-
-ALTER TABLE ONLY erc4337_coverage_ranges
-    ADD CONSTRAINT erc4337_coverage_ranges_pkey PRIMARY KEY (chain_id, configuration_digest, start_block);
-
--- Constraint: erc4337_covered_blocks erc4337_covered_blocks_pkey
-
-ALTER TABLE ONLY erc4337_covered_blocks
-    ADD CONSTRAINT erc4337_covered_blocks_pkey PRIMARY KEY (chain_id, configuration_digest, block_number);
-
--- Constraint: erc4337_user_operation_events erc4337_user_operation_events_pkey
-
-ALTER TABLE ONLY erc4337_user_operation_events
-    ADD CONSTRAINT erc4337_user_operation_events_pkey PRIMARY KEY (chain_id, configuration_digest, block_number, block_hash, transaction_hash, operation_index, log_index);
-
--- Constraint: erc4337_user_operation_events_default erc4337_user_operation_events_default_pkey
-
-ALTER TABLE ONLY erc4337_user_operation_events_default
-    ADD CONSTRAINT erc4337_user_operation_events_default_pkey PRIMARY KEY (chain_id, configuration_digest, block_number, block_hash, transaction_hash, operation_index, log_index);
-
--- Constraint: erc4337_user_operation_events_p_0_1000000 erc4337_user_operation_events_p_0_1000000_pkey
-
-ALTER TABLE ONLY erc4337_user_operation_events_p_0_1000000
-    ADD CONSTRAINT erc4337_user_operation_events_p_0_1000000_pkey PRIMARY KEY (chain_id, configuration_digest, block_number, block_hash, transaction_hash, operation_index, log_index);
-
--- Constraint: erc4337_user_operation_participants erc4337_user_operation_participants_pkey
-
-ALTER TABLE ONLY erc4337_user_operation_participants
-    ADD CONSTRAINT erc4337_user_operation_participants_pkey PRIMARY KEY (chain_id, configuration_digest, block_number, block_hash, transaction_hash, operation_index, address, role);
-
--- Constraint: erc4337_user_operation_participants_default erc4337_user_operation_participants_default_pkey
-
-ALTER TABLE ONLY erc4337_user_operation_participants_default
-    ADD CONSTRAINT erc4337_user_operation_participants_default_pkey PRIMARY KEY (chain_id, configuration_digest, block_number, block_hash, transaction_hash, operation_index, address, role);
-
--- Constraint: erc4337_user_operation_participants_p_0_1000000 erc4337_user_operation_participants_p_0_1000000_pkey
-
-ALTER TABLE ONLY erc4337_user_operation_participants_p_0_1000000
-    ADD CONSTRAINT erc4337_user_operation_participants_p_0_1000000_pkey PRIMARY KEY (chain_id, configuration_digest, block_number, block_hash, transaction_hash, operation_index, address, role);
-
--- Constraint: erc4337_user_operations erc4337_user_operations_pkey
-
-ALTER TABLE ONLY erc4337_user_operations
-    ADD CONSTRAINT erc4337_user_operations_pkey PRIMARY KEY (chain_id, configuration_digest, block_number, block_hash, transaction_hash, operation_index);
-
--- Constraint: erc4337_user_operations_default erc4337_user_operations_default_pkey
-
-ALTER TABLE ONLY erc4337_user_operations_default
-    ADD CONSTRAINT erc4337_user_operations_default_pkey PRIMARY KEY (chain_id, configuration_digest, block_number, block_hash, transaction_hash, operation_index);
-
--- Constraint: erc4337_user_operations_p_0_1000000 erc4337_user_operations_p_0_1000000_pkey
-
-ALTER TABLE ONLY erc4337_user_operations_p_0_1000000
-    ADD CONSTRAINT erc4337_user_operations_p_0_1000000_pkey PRIMARY KEY (chain_id, configuration_digest, block_number, block_hash, transaction_hash, operation_index);
-
--- Constraint: erc721_owner_reconciliations erc721_owner_reconciliations_pkey
-
-ALTER TABLE ONLY erc721_owner_reconciliations
-    ADD CONSTRAINT erc721_owner_reconciliations_pkey PRIMARY KEY (chain_id, token_address, token_id, block_hash);
-
--- Constraint: external_adapter_observations external_adapter_observations_pkey
-
-ALTER TABLE ONLY external_adapter_observations
-    ADD CONSTRAINT external_adapter_observations_pkey PRIMARY KEY (id);
-
--- Constraint: external_metadata_attempts external_metadata_attempts_durable_job_id_attempt_key
-
-ALTER TABLE ONLY external_metadata_attempts
-    ADD CONSTRAINT external_metadata_attempts_durable_job_id_attempt_key UNIQUE (durable_job_id, attempt);
-
--- Constraint: external_metadata_attempts external_metadata_attempts_pkey
-
-ALTER TABLE ONLY external_metadata_attempts
-    ADD CONSTRAINT external_metadata_attempts_pkey PRIMARY KEY (id);
-
--- Constraint: external_metadata external_metadata_pkey
-
-ALTER TABLE ONLY external_metadata
-    ADD CONSTRAINT external_metadata_pkey PRIMARY KEY (chain_id, resource_kind, resource_key, identity_hash);
-
--- Constraint: genesis_account_observations genesis_account_observations_pkey
-
-ALTER TABLE ONLY genesis_account_observations
-    ADD CONSTRAINT genesis_account_observations_pkey PRIMARY KEY (chain_id, address, block_hash);
-
--- Constraint: genesis_state_imports genesis_state_imports_chain_id_block_hash_key
-
-ALTER TABLE ONLY genesis_state_imports
-    ADD CONSTRAINT genesis_state_imports_chain_id_block_hash_key UNIQUE (chain_id, block_hash);
-
--- Constraint: genesis_state_imports genesis_state_imports_pkey
-
-ALTER TABLE ONLY genesis_state_imports
-    ADD CONSTRAINT genesis_state_imports_pkey PRIMARY KEY (chain_id);
-
--- Constraint: index_checkpoints index_checkpoints_pkey
-
-ALTER TABLE ONLY index_checkpoints
-    ADD CONSTRAINT index_checkpoints_pkey PRIMARY KEY (chain_id, stage);
-
--- Constraint: logs logs_pkey
-
-ALTER TABLE ONLY logs
-    ADD CONSTRAINT logs_pkey PRIMARY KEY (chain_id, block_number, block_hash, log_index);
-
--- Constraint: logs_default logs_default_pkey
-
-ALTER TABLE ONLY logs_default
-    ADD CONSTRAINT logs_default_pkey PRIMARY KEY (chain_id, block_number, block_hash, log_index);
-
--- Constraint: logs_p_0_1000000 logs_p_0_1000000_pkey
-
-ALTER TABLE ONLY logs_p_0_1000000
-    ADD CONSTRAINT logs_p_0_1000000_pkey PRIMARY KEY (chain_id, block_number, block_hash, log_index);
-
--- Constraint: mempool_snapshot_transactions mempool_snapshot_transactions_pkey
-
-ALTER TABLE ONLY mempool_snapshot_transactions
-    ADD CONSTRAINT mempool_snapshot_transactions_pkey PRIMARY KEY (chain_id, snapshot_id, tx_hash);
-
--- Constraint: mempool_snapshots mempool_snapshots_pkey
-
-ALTER TABLE ONLY mempool_snapshots
-    ADD CONSTRAINT mempool_snapshots_pkey PRIMARY KEY (chain_id, id);
-
--- Constraint: mempool_status mempool_status_pkey
-
-ALTER TABLE ONLY mempool_status
-    ADD CONSTRAINT mempool_status_pkey PRIMARY KEY (chain_id);
-
--- Constraint: mempool_transaction_replacements mempool_transaction_replaceme_chain_id_snapshot_id_replacem_key
-
-ALTER TABLE ONLY mempool_transaction_replacements
-    ADD CONSTRAINT mempool_transaction_replaceme_chain_id_snapshot_id_replacem_key UNIQUE (chain_id, snapshot_id, replacement_hash);
-
--- Constraint: mempool_transaction_replacements mempool_transaction_replacements_pkey
-
-ALTER TABLE ONLY mempool_transaction_replacements
-    ADD CONSTRAINT mempool_transaction_replacements_pkey PRIMARY KEY (chain_id, snapshot_id, replaced_hash);
-
--- Constraint: mempool_transactions mempool_transactions_pkey
-
-ALTER TABLE ONLY mempool_transactions
-    ADD CONSTRAINT mempool_transactions_pkey PRIMARY KEY (chain_id, tx_hash);
-
--- Constraint: native_transfer_coverage native_transfer_coverage_pkey
-
-ALTER TABLE ONLY native_transfer_coverage
-    ADD CONSTRAINT native_transfer_coverage_pkey PRIMARY KEY (chain_id);
-
--- Constraint: native_transfers native_transfers_pkey
-
-ALTER TABLE ONLY native_transfers
-    ADD CONSTRAINT native_transfers_pkey PRIMARY KEY (chain_id, block_number, block_hash, log_index);
-
--- Constraint: native_transfers_default native_transfers_default_pkey
-
-ALTER TABLE ONLY native_transfers_default
-    ADD CONSTRAINT native_transfers_default_pkey PRIMARY KEY (chain_id, block_number, block_hash, log_index);
-
--- Constraint: native_transfers_p_0_1000000 native_transfers_p_0_1000000_pkey
-
-ALTER TABLE ONLY native_transfers_p_0_1000000
-    ADD CONSTRAINT native_transfers_p_0_1000000_pkey PRIMARY KEY (chain_id, block_number, block_hash, log_index);
-
--- Constraint: nft_metadata_source_observations nft_metadata_source_observations_pkey
-
-ALTER TABLE ONLY nft_metadata_source_observations
-    ADD CONSTRAINT nft_metadata_source_observations_pkey PRIMARY KEY (chain_id, token_address, token_id, block_hash);
-
--- Constraint: nft_metadata_update_observations nft_metadata_update_observations_pkey
-
-ALTER TABLE ONLY nft_metadata_update_observations
-    ADD CONSTRAINT nft_metadata_update_observations_pkey PRIMARY KEY (chain_id, block_number, block_hash, log_index);
-
--- Constraint: normalized_traces normalized_traces_pkey
-
-ALTER TABLE ONLY normalized_traces
-    ADD CONSTRAINT normalized_traces_pkey PRIMARY KEY (chain_id, block_number, block_hash, transaction_hash, trace_path);
-
--- Constraint: normalized_traces_default normalized_traces_default_pkey
-
-ALTER TABLE ONLY normalized_traces_default
-    ADD CONSTRAINT normalized_traces_default_pkey PRIMARY KEY (chain_id, block_number, block_hash, transaction_hash, trace_path);
-
--- Constraint: normalized_traces_p_0_1000000 normalized_traces_p_0_1000000_pkey
-
-ALTER TABLE ONLY normalized_traces_p_0_1000000
-    ADD CONSTRAINT normalized_traces_p_0_1000000_pkey PRIMARY KEY (chain_id, block_number, block_hash, transaction_hash, trace_path);
-
--- Constraint: operator_labels operator_labels_chain_id_object_kind_object_key_key
-
-ALTER TABLE ONLY operator_labels
-    ADD CONSTRAINT operator_labels_chain_id_object_kind_object_key_key UNIQUE (chain_id, object_kind, object_key);
-
--- Constraint: operator_labels operator_labels_pkey
-
-ALTER TABLE ONLY operator_labels
-    ADD CONSTRAINT operator_labels_pkey PRIMARY KEY (id);
-
--- Constraint: proxy_artifact_resolutions proxy_artifact_resolutions_chain_id_proxy_address_observati_key
-
-ALTER TABLE ONLY proxy_artifact_resolutions
-    ADD CONSTRAINT proxy_artifact_resolutions_chain_id_proxy_address_observati_key UNIQUE NULLS NOT DISTINCT (chain_id, proxy_address, observation_block_hash, observation_stage_version, durable_job_id, job_generation);
-
--- Constraint: proxy_artifact_resolutions proxy_artifact_resolutions_pkey
-
-ALTER TABLE ONLY proxy_artifact_resolutions
-    ADD CONSTRAINT proxy_artifact_resolutions_pkey PRIMARY KEY (id);
-
--- Constraint: proxy_detection_evidence proxy_detection_evidence_chain_id_address_block_hash_stage__key
-
-ALTER TABLE ONLY proxy_detection_evidence
-    ADD CONSTRAINT proxy_detection_evidence_chain_id_address_block_hash_stage__key UNIQUE NULLS NOT DISTINCT (chain_id, address, block_hash, stage_version, candidate_kind, durable_job_id, job_generation);
-
--- Constraint: proxy_detection_evidence proxy_detection_evidence_pkey
-
-ALTER TABLE ONLY proxy_detection_evidence
-    ADD CONSTRAINT proxy_detection_evidence_pkey PRIMARY KEY (id);
-
--- Constraint: proxy_history_epochs proxy_history_epochs_durable_job_id_requested_generation_ph_key
-
-ALTER TABLE ONLY proxy_history_epochs
-    ADD CONSTRAINT proxy_history_epochs_durable_job_id_requested_generation_ph_key UNIQUE (durable_job_id, requested_generation, phase);
-
--- Constraint: proxy_history_epochs proxy_history_epochs_pkey
-
-ALTER TABLE ONLY proxy_history_epochs
-    ADD CONSTRAINT proxy_history_epochs_pkey PRIMARY KEY (epoch_id);
-
--- Constraint: proxy_initialization_events proxy_initialization_events_pkey
-
-ALTER TABLE ONLY proxy_initialization_events
-    ADD CONSTRAINT proxy_initialization_events_pkey PRIMARY KEY (chain_id, block_hash, log_index, stage_version);
-
--- Constraint: proxy_interaction_coverage_ranges proxy_interaction_coverage_ranges_chain_id_end_block_key
-
-ALTER TABLE ONLY proxy_interaction_coverage_ranges
-    ADD CONSTRAINT proxy_interaction_coverage_ranges_chain_id_end_block_key UNIQUE (chain_id, end_block);
-
--- Constraint: proxy_interaction_coverage_ranges proxy_interaction_coverage_ranges_pkey
-
-ALTER TABLE ONLY proxy_interaction_coverage_ranges
-    ADD CONSTRAINT proxy_interaction_coverage_ranges_pkey PRIMARY KEY (chain_id, start_block);
-
--- Constraint: proxy_interaction_covered_blocks proxy_interaction_covered_blo_chain_id_block_number_block_h_key
-
-ALTER TABLE ONLY proxy_interaction_covered_blocks
-    ADD CONSTRAINT proxy_interaction_covered_blo_chain_id_block_number_block_h_key UNIQUE (chain_id, block_number, block_hash);
-
--- Constraint: proxy_interaction_covered_blocks proxy_interaction_covered_blocks_pkey
-
-ALTER TABLE ONLY proxy_interaction_covered_blocks
-    ADD CONSTRAINT proxy_interaction_covered_blocks_pkey PRIMARY KEY (chain_id, block_number);
-
--- Constraint: proxy_observation_generations proxy_observation_generations_chain_id_proxy_address_observ_key
-
-ALTER TABLE ONLY proxy_observation_generations
-    ADD CONSTRAINT proxy_observation_generations_chain_id_proxy_address_observ_key UNIQUE NULLS NOT DISTINCT (chain_id, proxy_address, observation_block_hash, observation_stage_version, durable_job_id, job_generation);
-
--- Constraint: proxy_observation_generations proxy_observation_generations_pkey
-
-ALTER TABLE ONLY proxy_observation_generations
-    ADD CONSTRAINT proxy_observation_generations_pkey PRIMARY KEY (id);
-
--- Constraint: proxy_observations proxy_observations_pkey
-
-ALTER TABLE ONLY proxy_observations
-    ADD CONSTRAINT proxy_observations_pkey PRIMARY KEY (chain_id, proxy_address, block_hash, stage_version);
-
--- Constraint: proxy_replay_targets proxy_replay_targets_pkey
-
-ALTER TABLE ONLY proxy_replay_targets
-    ADD CONSTRAINT proxy_replay_targets_pkey PRIMARY KEY (chain_id, block_hash, address, target_kind, source_kind, source_verification_job_id);
-
--- Constraint: proxy_upgrade_events proxy_upgrade_events_pkey
-
-ALTER TABLE ONLY proxy_upgrade_events
-    ADD CONSTRAINT proxy_upgrade_events_pkey PRIMARY KEY (chain_id, block_hash, log_index, stage_version);
-
--- Constraint: receipts receipts_chain_id_block_number_block_hash_tx_hash_key
-
-ALTER TABLE ONLY receipts
-    ADD CONSTRAINT receipts_chain_id_block_number_block_hash_tx_hash_key UNIQUE (chain_id, block_number, block_hash, tx_hash);
-
--- Constraint: receipts_default receipts_default_chain_id_block_number_block_hash_tx_hash_key
-
-ALTER TABLE ONLY receipts_default
-    ADD CONSTRAINT receipts_default_chain_id_block_number_block_hash_tx_hash_key UNIQUE (chain_id, block_number, block_hash, tx_hash);
-
--- Constraint: receipts receipts_pkey
-
-ALTER TABLE ONLY receipts
-    ADD CONSTRAINT receipts_pkey PRIMARY KEY (chain_id, block_number, block_hash, tx_index);
-
--- Constraint: receipts_default receipts_default_pkey
-
-ALTER TABLE ONLY receipts_default
-    ADD CONSTRAINT receipts_default_pkey PRIMARY KEY (chain_id, block_number, block_hash, tx_index);
-
--- Constraint: receipts_p_0_1000000 receipts_p_0_1000000_chain_id_block_number_block_hash_tx_ha_key
-
-ALTER TABLE ONLY receipts_p_0_1000000
-    ADD CONSTRAINT receipts_p_0_1000000_chain_id_block_number_block_hash_tx_ha_key UNIQUE (chain_id, block_number, block_hash, tx_hash);
-
--- Constraint: receipts_p_0_1000000 receipts_p_0_1000000_pkey
-
-ALTER TABLE ONLY receipts_p_0_1000000
-    ADD CONSTRAINT receipts_p_0_1000000_pkey PRIMARY KEY (chain_id, block_number, block_hash, tx_index);
-
--- Constraint: reorg_events reorg_events_pkey
-
-ALTER TABLE ONLY reorg_events
-    ADD CONSTRAINT reorg_events_pkey PRIMARY KEY (id);
-
--- Constraint: repair_requests repair_requests_pkey
-
-ALTER TABLE ONLY repair_requests
-    ADD CONSTRAINT repair_requests_pkey PRIMARY KEY (id);
-
--- Constraint: runtime_events runtime_events_pkey
-
-ALTER TABLE ONLY runtime_events
-    ADD CONSTRAINT runtime_events_pkey PRIMARY KEY (id);
-
--- Constraint: search_catalog_documents search_catalog_documents_chain_id_source_kind_source_identi_key
-
-ALTER TABLE ONLY search_catalog_documents
-    ADD CONSTRAINT search_catalog_documents_chain_id_source_kind_source_identi_key UNIQUE (chain_id, source_kind, source_identity, valid_from_generation);
-
--- Check Constraint: search_catalog_documents search_catalog_documents_name_source_check
-
-ALTER TABLE search_catalog_documents
-    ADD CONSTRAINT search_catalog_documents_name_source_check CHECK ((((source_kind = 'name'::text) AND (name_observation_id IS NOT NULL) AND (name_source = ANY (ARRAY['ens'::text, 'custom_ens'::text]))) OR ((source_kind <> 'name'::text) AND (name_observation_id IS NULL) AND (name_source IS NULL)))) NOT VALID;
-
--- Constraint: search_catalog_documents search_catalog_documents_pkey
-
-ALTER TABLE ONLY search_catalog_documents
-    ADD CONSTRAINT search_catalog_documents_pkey PRIMARY KEY (id);
-
--- Constraint: search_catalog_generations search_catalog_generations_pkey
-
-ALTER TABLE ONLY search_catalog_generations
-    ADD CONSTRAINT search_catalog_generations_pkey PRIMARY KEY (chain_id);
-
--- Constraint: sync_runtime_status sync_runtime_status_pkey
-
-ALTER TABLE ONLY sync_runtime_status
-    ADD CONSTRAINT sync_runtime_status_pkey PRIMARY KEY (chain_id);
-
--- Constraint: sync_runtime_status_writer_leases sync_runtime_status_writer_leases_pkey
-
-ALTER TABLE ONLY sync_runtime_status_writer_leases
-    ADD CONSTRAINT sync_runtime_status_writer_leases_pkey PRIMARY KEY (chain_id);
-
--- Constraint: token_balance_deltas token_balance_deltas_pkey
-
-ALTER TABLE ONLY token_balance_deltas
-    ADD CONSTRAINT token_balance_deltas_pkey PRIMARY KEY (chain_id, block_number, block_hash, log_index, sub_index, token_address, owner_address);
-
--- Constraint: token_balance_deltas_default token_balance_deltas_default_pkey
-
-ALTER TABLE ONLY token_balance_deltas_default
-    ADD CONSTRAINT token_balance_deltas_default_pkey PRIMARY KEY (chain_id, block_number, block_hash, log_index, sub_index, token_address, owner_address);
-
--- Constraint: token_balance_deltas_p_0_1000000 token_balance_deltas_p_0_1000000_pkey
-
-ALTER TABLE ONLY token_balance_deltas_p_0_1000000
-    ADD CONSTRAINT token_balance_deltas_p_0_1000000_pkey PRIMARY KEY (chain_id, block_number, block_hash, log_index, sub_index, token_address, owner_address);
-
--- Constraint: token_contracts token_contracts_pkey
-
-ALTER TABLE ONLY token_contracts
-    ADD CONSTRAINT token_contracts_pkey PRIMARY KEY (chain_id, address, code_hash, observed_block_hash);
-
--- Constraint: token_events token_events_pkey
-
-ALTER TABLE ONLY token_events
-    ADD CONSTRAINT token_events_pkey PRIMARY KEY (chain_id, block_number, block_hash, log_index, sub_index);
-
--- Constraint: token_events_default token_events_default_pkey
-
-ALTER TABLE ONLY token_events_default
-    ADD CONSTRAINT token_events_default_pkey PRIMARY KEY (chain_id, block_number, block_hash, log_index, sub_index);
-
--- Constraint: token_events_p_0_1000000 token_events_p_0_1000000_pkey
-
-ALTER TABLE ONLY token_events_p_0_1000000
-    ADD CONSTRAINT token_events_p_0_1000000_pkey PRIMARY KEY (chain_id, block_number, block_hash, log_index, sub_index);
-
--- Constraint: trace_log_attributions trace_log_attributions_pkey
-
-ALTER TABLE ONLY trace_log_attributions
-    ADD CONSTRAINT trace_log_attributions_pkey PRIMARY KEY (chain_id, block_number, block_hash, transaction_hash, log_index);
-
--- Constraint: trace_log_attributions_default trace_log_attributions_default_pkey
-
-ALTER TABLE ONLY trace_log_attributions_default
-    ADD CONSTRAINT trace_log_attributions_default_pkey PRIMARY KEY (chain_id, block_number, block_hash, transaction_hash, log_index);
-
--- Constraint: trace_log_attributions_p_0_1000000 trace_log_attributions_p_0_1000000_pkey
-
-ALTER TABLE ONLY trace_log_attributions_p_0_1000000
-    ADD CONSTRAINT trace_log_attributions_p_0_1000000_pkey PRIMARY KEY (chain_id, block_number, block_hash, transaction_hash, log_index);
-
--- Constraint: transaction_effective_execution_identities transaction_effective_execution_identities_pkey
-
-ALTER TABLE ONLY transaction_effective_execution_identities
-    ADD CONSTRAINT transaction_effective_execution_identities_pkey PRIMARY KEY (chain_id, block_number, block_hash, transaction_hash, context_address);
-
--- Constraint: transaction_effective_execution_identities_default transaction_effective_execution_identities_default_pkey
-
-ALTER TABLE ONLY transaction_effective_execution_identities_default
-    ADD CONSTRAINT transaction_effective_execution_identities_default_pkey PRIMARY KEY (chain_id, block_number, block_hash, transaction_hash, context_address);
-
--- Constraint: transaction_effective_execution_identities_p_0_1000000 transaction_effective_execution_identities_p_0_1000000_pkey
-
-ALTER TABLE ONLY transaction_effective_execution_identities_p_0_1000000
-    ADD CONSTRAINT transaction_effective_execution_identities_p_0_1000000_pkey PRIMARY KEY (chain_id, block_number, block_hash, transaction_hash, context_address);
-
--- Constraint: transaction_execution_code_resolutions transaction_execution_code_resolutions_pkey
-
-ALTER TABLE ONLY transaction_execution_code_resolutions
-    ADD CONSTRAINT transaction_execution_code_resolutions_pkey PRIMARY KEY (chain_id, block_number, block_hash, transaction_hash, context_address);
-
--- Constraint: transaction_execution_code_resolutions_default transaction_execution_code_resolutions_default_pkey
-
-ALTER TABLE ONLY transaction_execution_code_resolutions_default
-    ADD CONSTRAINT transaction_execution_code_resolutions_default_pkey PRIMARY KEY (chain_id, block_number, block_hash, transaction_hash, context_address);
-
--- Constraint: transaction_execution_code_resolutions_p_0_1000000 transaction_execution_code_resolutions_p_0_1000000_pkey
-
-ALTER TABLE ONLY transaction_execution_code_resolutions_p_0_1000000
-    ADD CONSTRAINT transaction_execution_code_resolutions_p_0_1000000_pkey PRIMARY KEY (chain_id, block_number, block_hash, transaction_hash, context_address);
-
--- Constraint: transaction_inclusions transaction_inclusions_chain_id_block_number_block_hash_tx__key
-
-ALTER TABLE ONLY transaction_inclusions
-    ADD CONSTRAINT transaction_inclusions_chain_id_block_number_block_hash_tx__key UNIQUE (chain_id, block_number, block_hash, tx_hash);
-
--- Constraint: transaction_inclusions transaction_inclusions_position_hash_key
-
-ALTER TABLE ONLY transaction_inclusions
-    ADD CONSTRAINT transaction_inclusions_position_hash_key UNIQUE (chain_id, block_number, block_hash, tx_index, tx_hash);
-
--- Constraint: transaction_inclusions_default transaction_inclusions_defaul_chain_id_block_number_block__key1
-
-ALTER TABLE ONLY transaction_inclusions_default
-    ADD CONSTRAINT transaction_inclusions_defaul_chain_id_block_number_block__key1 UNIQUE (chain_id, block_number, block_hash, tx_index, tx_hash);
-
--- Constraint: transaction_inclusions_default transaction_inclusions_defaul_chain_id_block_number_block_h_key
-
-ALTER TABLE ONLY transaction_inclusions_default
-    ADD CONSTRAINT transaction_inclusions_defaul_chain_id_block_number_block_h_key UNIQUE (chain_id, block_number, block_hash, tx_hash);
-
--- Constraint: transaction_inclusions transaction_inclusions_pkey
-
-ALTER TABLE ONLY transaction_inclusions
-    ADD CONSTRAINT transaction_inclusions_pkey PRIMARY KEY (chain_id, block_number, block_hash, tx_index);
-
--- Constraint: transaction_inclusions_default transaction_inclusions_default_pkey
-
-ALTER TABLE ONLY transaction_inclusions_default
-    ADD CONSTRAINT transaction_inclusions_default_pkey PRIMARY KEY (chain_id, block_number, block_hash, tx_index);
-
--- Constraint: transaction_inclusions_p_0_1000000 transaction_inclusions_p_0_1000000_pkey
-
-ALTER TABLE ONLY transaction_inclusions_p_0_1000000
-    ADD CONSTRAINT transaction_inclusions_p_0_1000000_pkey PRIMARY KEY (chain_id, block_number, block_hash, tx_index);
-
--- Constraint: transaction_inclusions_p_0_1000000 transaction_inclusions_p_0_10_chain_id_block_number_block__key1
-
-ALTER TABLE ONLY transaction_inclusions_p_0_1000000
-    ADD CONSTRAINT transaction_inclusions_p_0_10_chain_id_block_number_block__key1 UNIQUE (chain_id, block_number, block_hash, tx_index, tx_hash);
-
--- Constraint: transaction_inclusions_p_0_1000000 transaction_inclusions_p_0_10_chain_id_block_number_block_h_key
-
-ALTER TABLE ONLY transaction_inclusions_p_0_1000000
-    ADD CONSTRAINT transaction_inclusions_p_0_10_chain_id_block_number_block_h_key UNIQUE (chain_id, block_number, block_hash, tx_hash);
-
--- Constraint: transaction_state_changes transaction_state_changes_pkey
-
-ALTER TABLE ONLY transaction_state_changes
-    ADD CONSTRAINT transaction_state_changes_pkey PRIMARY KEY (chain_id, block_number, block_hash, transaction_hash, address, field_kind, storage_key);
-
--- Constraint: transaction_state_changes_default transaction_state_changes_default_pkey
-
-ALTER TABLE ONLY transaction_state_changes_default
-    ADD CONSTRAINT transaction_state_changes_default_pkey PRIMARY KEY (chain_id, block_number, block_hash, transaction_hash, address, field_kind, storage_key);
-
--- Constraint: transaction_state_changes_p_0_1000000 transaction_state_changes_p_0_1000000_pkey
-
-ALTER TABLE ONLY transaction_state_changes_p_0_1000000
-    ADD CONSTRAINT transaction_state_changes_p_0_1000000_pkey PRIMARY KEY (chain_id, block_number, block_hash, transaction_hash, address, field_kind, storage_key);
-
--- Constraint: transactional_outbox transactional_outbox_chain_id_topic_message_key_key
-
-ALTER TABLE ONLY transactional_outbox
-    ADD CONSTRAINT transactional_outbox_chain_id_topic_message_key_key UNIQUE (chain_id, topic, message_key);
-
--- Constraint: transactional_outbox transactional_outbox_pkey
-
-ALTER TABLE ONLY transactional_outbox
-    ADD CONSTRAINT transactional_outbox_pkey PRIMARY KEY (id);
-
--- Constraint: transactions transactions_pkey
-
-ALTER TABLE ONLY transactions
-    ADD CONSTRAINT transactions_pkey PRIMARY KEY (chain_id, hash);
-
--- Constraint: user_sessions user_sessions_pkey
-
-ALTER TABLE ONLY user_sessions
-    ADD CONSTRAINT user_sessions_pkey PRIMARY KEY (id);
-
--- Constraint: user_sessions user_sessions_token_digest_key
-
-ALTER TABLE ONLY user_sessions
-    ADD CONSTRAINT user_sessions_token_digest_key UNIQUE (token_digest);
-
--- Constraint: users users_chain_id_address_key
-
-ALTER TABLE ONLY users
-    ADD CONSTRAINT users_chain_id_address_key UNIQUE (chain_id, address);
-
--- Constraint: users users_pkey
-
-ALTER TABLE ONLY users
-    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
-
--- Constraint: uups_implementation_observation_generations uups_implementation_observati_chain_id_implementation_addre_key
-
-ALTER TABLE ONLY uups_implementation_observation_generations
-    ADD CONSTRAINT uups_implementation_observati_chain_id_implementation_addre_key UNIQUE (chain_id, implementation_address, observation_block_hash, observation_stage_version, verification_job_id, durable_job_id, job_generation);
-
--- Constraint: uups_implementation_observation_generations uups_implementation_observation_generations_pkey
-
-ALTER TABLE ONLY uups_implementation_observation_generations
-    ADD CONSTRAINT uups_implementation_observation_generations_pkey PRIMARY KEY (id);
-
--- Constraint: uups_implementation_observations uups_implementation_observations_pkey
-
-ALTER TABLE ONLY uups_implementation_observations
-    ADD CONSTRAINT uups_implementation_observations_pkey PRIMARY KEY (chain_id, implementation_address, block_hash, stage_version, verification_job_id);
-
--- Constraint: verification_compilation_contracts verification_compilation_contracts_pkey
-
-ALTER TABLE ONLY verification_compilation_contracts
-    ADD CONSTRAINT verification_compilation_contracts_pkey PRIMARY KEY (compilation_id, file_name, contract_name);
-
--- Constraint: verification_compilation_units verification_compilation_units_pkey
-
-ALTER TABLE ONLY verification_compilation_units
-    ADD CONSTRAINT verification_compilation_units_pkey PRIMARY KEY (id);
-
--- Constraint: verification_compilation_units verification_compilation_units_source_job_id_key
-
-ALTER TABLE ONLY verification_compilation_units
-    ADD CONSTRAINT verification_compilation_units_source_job_id_key UNIQUE (source_job_id);
-
--- Constraint: verification_jobs verification_jobs_pkey
-
-ALTER TABLE ONLY verification_jobs
-    ADD CONSTRAINT verification_jobs_pkey PRIMARY KEY (id);
-
--- Constraint: verification_results verification_results_job_digest_key
-
-ALTER TABLE ONLY verification_results
-    ADD CONSTRAINT verification_results_job_digest_key UNIQUE (job_id, request_digest);
-
--- Constraint: verification_results verification_results_pkey
-
-ALTER TABLE ONLY verification_results
-    ADD CONSTRAINT verification_results_pkey PRIMARY KEY (job_id);
-
--- Constraint: verified_contract_proxy_artifacts verified_contract_proxy_artifacts_pkey
-
-ALTER TABLE ONLY verified_contract_proxy_artifacts
-    ADD CONSTRAINT verified_contract_proxy_artifacts_pkey PRIMARY KEY (chain_id, address, code_hash, valid_from_block, verification_job_id);
-
--- Constraint: verified_contract_proxy_artifacts verified_contract_proxy_artifacts_verification_job_id_key
-
-ALTER TABLE ONLY verified_contract_proxy_artifacts
-    ADD CONSTRAINT verified_contract_proxy_artifacts_verification_job_id_key UNIQUE (verification_job_id);
-
--- Constraint: verified_contracts verified_contracts_pkey
-
-ALTER TABLE ONLY verified_contracts
-    ADD CONSTRAINT verified_contracts_pkey PRIMARY KEY (chain_id, address, code_hash, valid_from_block, verification_job_id);
-
--- Constraint: verified_contracts verified_contracts_selector_identity_unique
-
-ALTER TABLE ONLY verified_contracts
-    ADD CONSTRAINT verified_contracts_selector_identity_unique UNIQUE (chain_id, address, code_hash, valid_from_block, verification_job_id);
-
--- Constraint: verified_function_selector_sets verified_function_selector_sets_lookup_identity_unique
-
-ALTER TABLE ONLY verified_function_selector_sets
-    ADD CONSTRAINT verified_function_selector_sets_lookup_identity_unique UNIQUE (verification_job_id, chain_id, address, code_hash);
-
--- Constraint: verified_function_selector_sets verified_function_selector_sets_pkey
-
-ALTER TABLE ONLY verified_function_selector_sets
-    ADD CONSTRAINT verified_function_selector_sets_pkey PRIMARY KEY (verification_job_id);
-
--- Constraint: verified_function_selectors verified_function_selectors_pkey
-
-ALTER TABLE ONLY verified_function_selectors
-    ADD CONSTRAINT verified_function_selectors_pkey PRIMARY KEY (verification_job_id, selector, signature);
-
--- Constraint: verified_proxy_bindings verified_proxy_bindings_pkey
-
-ALTER TABLE ONLY verified_proxy_bindings
-    ADD CONSTRAINT verified_proxy_bindings_pkey PRIMARY KEY (verification_job_id);
-
--- Constraint: watch_notification_work watch_notification_work_pkey
-
-ALTER TABLE ONLY watch_notification_work
-    ADD CONSTRAINT watch_notification_work_pkey PRIMARY KEY (chain_id, block_hash);
-
--- Constraint: watch_notifications watch_notifications_pkey
-
-ALTER TABLE ONLY watch_notifications
-    ADD CONSTRAINT watch_notifications_pkey PRIMARY KEY (id);
-
--- Constraint: watch_notifications watch_notifications_watch_id_block_hash_source_key_key
-
-ALTER TABLE ONLY watch_notifications
-    ADD CONSTRAINT watch_notifications_watch_id_block_hash_source_key_key UNIQUE (watch_id, block_hash, source_key);
-
--- Constraint: withdrawals withdrawals_pkey
-
-ALTER TABLE ONLY withdrawals
-    ADD CONSTRAINT withdrawals_pkey PRIMARY KEY (chain_id, block_number, block_hash, withdrawal_index);
-
--- Constraint: withdrawals_default withdrawals_default_pkey
-
-ALTER TABLE ONLY withdrawals_default
-    ADD CONSTRAINT withdrawals_default_pkey PRIMARY KEY (chain_id, block_number, block_hash, withdrawal_index);
-
--- Constraint: withdrawals_p_0_1000000 withdrawals_p_0_1000000_pkey
-
-ALTER TABLE ONLY withdrawals_p_0_1000000
-    ADD CONSTRAINT withdrawals_p_0_1000000_pkey PRIMARY KEY (chain_id, block_number, block_hash, withdrawal_index);
-
--- Index: abi_decodings_target_idx
-
-CREATE INDEX abi_decodings_target_idx ON ONLY abi_decodings USING btree (chain_id, target_address, target_code_hash, block_number DESC) WHERE canonical;
-
--- Index: abi_decodings_default_chain_id_target_address_target_code_h_idx
-
-CREATE INDEX abi_decodings_default_chain_id_target_address_target_code_h_idx ON abi_decodings_default USING btree (chain_id, target_address, target_code_hash, block_number DESC) WHERE canonical;
-
--- Index: abi_decodings_tx_idx
-
-CREATE INDEX abi_decodings_tx_idx ON ONLY abi_decodings USING btree (chain_id, transaction_hash, block_number DESC);
-
--- Index: abi_decodings_default_chain_id_transaction_hash_block_numbe_idx
-
-CREATE INDEX abi_decodings_default_chain_id_transaction_hash_block_numbe_idx ON abi_decodings_default USING btree (chain_id, transaction_hash, block_number DESC);
-
--- Index: abi_decodings_p_0_1000000_chain_id_target_address_target_co_idx
-
-CREATE INDEX abi_decodings_p_0_1000000_chain_id_target_address_target_co_idx ON abi_decodings_p_0_1000000 USING btree (chain_id, target_address, target_code_hash, block_number DESC) WHERE canonical;
-
--- Index: abi_decodings_p_0_1000000_chain_id_transaction_hash_block_n_idx
-
-CREATE INDEX abi_decodings_p_0_1000000_chain_id_transaction_hash_block_n_idx ON abi_decodings_p_0_1000000 USING btree (chain_id, transaction_hash, block_number DESC);
-
--- Index: address_activities_address_idx
-
-CREATE INDEX address_activities_address_idx ON ONLY address_activities USING btree (chain_id, address, block_number DESC, activity_index DESC) WHERE canonical;
-
--- Index: address_activities_default_chain_id_address_block_number_ac_idx
-
-CREATE INDEX address_activities_default_chain_id_address_block_number_ac_idx ON address_activities_default USING btree (chain_id, address, block_number DESC, activity_index DESC) WHERE canonical;
-
--- Index: address_activities_p_0_100000_chain_id_address_block_number_idx
-
-CREATE INDEX address_activities_p_0_100000_chain_id_address_block_number_idx ON address_activities_p_0_1000000 USING btree (chain_id, address, block_number DESC, activity_index DESC) WHERE canonical;
-
--- Index: address_export_admissions_active
-
-CREATE INDEX address_export_admissions_active ON address_export_admissions USING btree (expires_at) WHERE (NOT released);
-
--- Index: address_export_admissions_user
-
-CREATE INDEX address_export_admissions_user ON address_export_admissions USING btree (user_id, started_at);
-
--- Index: address_watches_match
-
-CREATE INDEX address_watches_match ON address_watches USING btree (chain_id, address, id) WHERE ((deleted_at IS NULL) AND enabled);
-
--- Index: address_watches_owner_address
-
-CREATE UNIQUE INDEX address_watches_owner_address ON address_watches USING btree (user_id, chain_id, address) WHERE (deleted_at IS NULL);
-
--- Index: api_keys_owner_active_idx
-
-CREATE INDEX api_keys_owner_active_idx ON api_keys USING btree (owner_user_id, prefix) WHERE ((owner_user_id IS NOT NULL) AND (revoked_at IS NULL));
-
--- Index: api_keys_owner_page_idx
-
-CREATE INDEX api_keys_owner_page_idx ON api_keys USING btree (owner_user_id, created_at DESC, prefix DESC) WHERE (owner_user_id IS NOT NULL);
-
--- Index: auth_challenges_active_idx
-
-CREATE INDEX auth_challenges_active_idx ON auth_challenges USING btree (chain_id, address, expires_at, id) WHERE (consumed_at IS NULL);
-
--- Index: auth_challenges_cleanup_idx
-
-CREATE INDEX auth_challenges_cleanup_idx ON auth_challenges USING btree (expires_at, id);
-
--- Index: beacon_implementation_history_idx
-
-CREATE INDEX beacon_implementation_history_idx ON beacon_implementation_observations USING btree (chain_id, beacon_address, block_number DESC, block_hash DESC) WHERE canonical;
-
--- Index: billing_account_entries_user_time_idx
-
-CREATE INDEX billing_account_entries_user_time_idx ON billing_account_entries USING btree (user_id, occurred_at DESC, id DESC);
-
--- Index: billing_accounts_chain_updated_idx
-
-CREATE INDEX billing_accounts_chain_updated_idx ON billing_accounts USING btree (chain_id, updated_at DESC, user_id);
-
--- Index: billing_payment_events_payment_idx
-
-CREATE INDEX billing_payment_events_payment_idx ON billing_payment_events USING btree (payment_id, id);
-
--- Index: billing_payments_active_expiry_idx
-
-CREATE INDEX billing_payments_active_expiry_idx ON billing_payments USING btree (reservation_expires_at, id) WHERE (state = ANY (ARRAY['reserved'::text, 'verified'::text]));
-
--- Index: billing_payments_admin_filter_idx
-
-CREATE INDEX billing_payments_admin_filter_idx ON billing_payments USING btree (chain_id, state, operation, network, asset, created_at DESC, id DESC);
-
--- Index: billing_payments_chain_created_idx
-
-CREATE INDEX billing_payments_chain_created_idx ON billing_payments USING btree (chain_id, created_at DESC, id DESC);
-
--- Index: billing_payments_settling_metrics_idx
-
-CREATE INDEX billing_payments_settling_metrics_idx ON billing_payments USING btree (chain_id, operation, failure_code, settling_at) WHERE (state = 'settling'::text);
-
--- Index: billing_payments_topup_settled_idx
-
-CREATE UNIQUE INDEX billing_payments_topup_settled_idx ON billing_payments USING btree (topup_intent_id) WHERE ((purpose = 'account_topup'::text) AND (state = 'settled'::text));
-
--- Index: billing_payments_user_created_idx
-
-CREATE INDEX billing_payments_user_created_idx ON billing_payments USING btree (user_id, created_at DESC, id DESC) WHERE (user_id IS NOT NULL);
-
--- Index: billing_topup_intents_active_payment_idx
-
-CREATE UNIQUE INDEX billing_topup_intents_active_payment_idx ON billing_topup_intents USING btree (active_payment_id) WHERE (active_payment_id IS NOT NULL);
-
--- Index: billing_topup_intents_expiry_idx
-
-CREATE INDEX billing_topup_intents_expiry_idx ON billing_topup_intents USING btree (expires_at, id) WHERE (state = 'open'::text);
-
--- Index: billing_topup_intents_user_created_idx
-
-CREATE INDEX billing_topup_intents_user_created_idx ON billing_topup_intents USING btree (user_id, created_at DESC, id DESC);
-
--- Index: billing_usage_charges_expiry_idx
-
-CREATE INDEX billing_usage_charges_expiry_idx ON billing_usage_charges USING btree (reservation_expires_at, id) WHERE (state = 'reserved'::text);
-
--- Index: billing_usage_charges_operation_idx
-
-CREATE INDEX billing_usage_charges_operation_idx ON billing_usage_charges USING btree (chain_id, operation, state, created_at DESC);
-
--- Index: billing_usage_charges_user_created_idx
-
-CREATE INDEX billing_usage_charges_user_created_idx ON billing_usage_charges USING btree (user_id, created_at DESC, id DESC);
-
--- Index: block_journals_canonical_idx
-
-CREATE INDEX block_journals_canonical_idx ON block_journals USING btree (chain_id, stage, canonical, block_hash);
-
--- Index: block_journals_job_generation_idx
-
-CREATE UNIQUE INDEX block_journals_job_generation_idx ON block_journals USING btree (durable_job_id, job_generation) WHERE (durable_job_id IS NOT NULL);
-
--- Index: block_stage_results_height_idx
-
-CREATE INDEX block_stage_results_height_idx ON block_stage_results USING btree (chain_id, block_number, stage, stage_version);
-
--- Index: block_stage_results_job_generation_idx
-
-CREATE UNIQUE INDEX block_stage_results_job_generation_idx ON block_stage_results USING btree (durable_job_id, job_generation) WHERE (durable_job_id IS NOT NULL);
-
--- Index: blocks_amsterdam_idx
-
-CREATE INDEX blocks_amsterdam_idx ON blocks USING btree (chain_id, number, hash) WHERE ((slot_number_raw IS NOT NULL) AND (slot_number_raw <> 'null'::jsonb));
-
--- Index: blocks_chain_hash_uq
-
-CREATE UNIQUE INDEX blocks_chain_hash_uq ON blocks USING btree (chain_id, hash);
-
--- Index: blocks_miner_number_idx
-
-CREATE INDEX blocks_miner_number_idx ON blocks USING btree (chain_id, lower(miner_text), number DESC, hash DESC);
-
--- Index: blocks_parent_idx
-
-CREATE INDEX blocks_parent_idx ON blocks USING btree (chain_id, parent_hash);
-
--- Index: blocks_timestamp_number_idx
-
-CREATE INDEX blocks_timestamp_number_idx ON blocks USING btree (chain_id, "timestamp", number, hash);
-
--- Index: canonical_blocks_hash_uq
-
-CREATE UNIQUE INDEX canonical_blocks_hash_uq ON canonical_blocks USING btree (chain_id, block_hash);
-
--- Index: chart_hourly_rollups_range_idx
-
-CREATE INDEX chart_hourly_rollups_range_idx ON chart_hourly_rollups USING btree (chain_id, bucket_start DESC);
-
--- Index: chart_rollup_dirty_recent_idx
-
-CREATE INDEX chart_rollup_dirty_recent_idx ON chart_rollup_dirty_hours USING btree (chain_id, bucket_start DESC);
-
--- Index: contract_abis_context_idx
-
-CREATE INDEX contract_abis_context_idx ON contract_abis USING btree (chain_id, address, code_hash, block_number DESC, source, canonical);
-
--- Index: contract_code_history_idx
-
-CREATE INDEX contract_code_history_idx ON contract_code_observations USING btree (chain_id, address, block_number DESC) WHERE canonical;
-
--- Index: core_backfill_leases_expiry_idx
-
-CREATE INDEX core_backfill_leases_expiry_idx ON core_backfill_leases USING btree (chain_id, expires_at, range_start);
-
--- Index: core_coverage_ranges_end_uq
-
-CREATE UNIQUE INDEX core_coverage_ranges_end_uq ON core_coverage_ranges USING btree (chain_id, range_end);
-
--- Index: derived_verification_attempts_created_idx
-
-CREATE INDEX derived_verification_attempts_created_idx ON derived_verification_attempts USING btree (chain_id, created_address, block_number DESC);
-
--- Index: derived_verification_attempts_creator_idx
-
-CREATE INDEX derived_verification_attempts_creator_idx ON derived_verification_attempts USING btree (chain_id, creator_address, block_number DESC);
-
--- Index: derived_verification_forward_blocks_claim_idx
-
-CREATE INDEX derived_verification_forward_blocks_claim_idx ON derived_verification_forward_blocks USING btree (status, updated_at, id) WHERE (status = ANY (ARRAY['queued'::text, 'running'::text]));
-
--- Index: derived_verification_scans_claim_idx
-
-CREATE INDEX derived_verification_scans_claim_idx ON derived_verification_scans USING btree (status, updated_at, compilation_id) WHERE (status = ANY (ARRAY['queued'::text, 'running'::text]));
-
--- Index: diamond_cut_events_history_idx
-
-CREATE INDEX diamond_cut_events_history_idx ON diamond_cut_events USING btree (chain_id, diamond_address, block_number, transaction_index, log_index) WHERE (canonical AND (stage_version = 2));
-
--- Index: diamond_loupe_selectors_facet_idx
-
-CREATE INDEX diamond_loupe_selectors_facet_idx ON diamond_loupe_selectors USING btree (snapshot_id, facet_address, selector);
-
--- Index: diamond_loupe_snapshots_current_idx
-
-CREATE INDEX diamond_loupe_snapshots_current_idx ON diamond_loupe_snapshots USING btree (chain_id, diamond_address, block_number DESC, id DESC) WHERE (canonical AND (stage_version = 2));
-
--- Index: diamond_selector_changes_selector_idx
-
-CREATE INDEX diamond_selector_changes_selector_idx ON diamond_selector_changes USING btree (chain_id, selector, block_hash, log_index);
-
--- Index: durable_jobs_claim_idx
-
-CREATE INDEX durable_jobs_claim_idx ON durable_jobs USING btree (chain_id, stage, priority DESC, available_at, id) WHERE (status = ANY (ARRAY['queued'::text, 'leased'::text]));
-
--- Index: durable_jobs_replay_pending_idx
-
-CREATE INDEX durable_jobs_replay_pending_idx ON durable_jobs USING btree (available_at, id) WHERE ((requested_generation > completed_generation) AND (status = ANY (ARRAY['queued'::text, 'leased'::text])));
-
--- Index: eip7702_authorizations_authority_idx
-
-CREATE INDEX eip7702_authorizations_authority_idx ON ONLY eip7702_authorizations USING btree (chain_id, authority, block_number DESC, transaction_index DESC, authorization_index DESC) WHERE (canonical AND (authority IS NOT NULL));
-
--- Index: eip7702_authorizations_defaul_chain_id_authority_block_numb_idx
-
-CREATE INDEX eip7702_authorizations_defaul_chain_id_authority_block_numb_idx ON eip7702_authorizations_default USING btree (chain_id, authority, block_number DESC, transaction_index DESC, authorization_index DESC) WHERE (canonical AND (authority IS NOT NULL));
-
--- Index: eip7702_authorizations_tx_idx
-
-CREATE INDEX eip7702_authorizations_tx_idx ON ONLY eip7702_authorizations USING btree (chain_id, transaction_hash, authorization_index);
-
--- Index: eip7702_authorizations_defaul_chain_id_transaction_hash_aut_idx
-
-CREATE INDEX eip7702_authorizations_defaul_chain_id_transaction_hash_aut_idx ON eip7702_authorizations_default USING btree (chain_id, transaction_hash, authorization_index);
-
--- Index: eip7702_authorizations_p_0_10_chain_id_authority_block_numb_idx
-
-CREATE INDEX eip7702_authorizations_p_0_10_chain_id_authority_block_numb_idx ON eip7702_authorizations_p_0_1000000 USING btree (chain_id, authority, block_number DESC, transaction_index DESC, authorization_index DESC) WHERE (canonical AND (authority IS NOT NULL));
-
--- Index: eip7702_authorizations_p_0_10_chain_id_transaction_hash_aut_idx
-
-CREATE INDEX eip7702_authorizations_p_0_10_chain_id_transaction_hash_aut_idx ON eip7702_authorizations_p_0_1000000 USING btree (chain_id, transaction_hash, authorization_index);
-
--- Index: ens_address_name_snapshots_expiry_idx
-
-CREATE INDEX ens_address_name_snapshots_expiry_idx ON ens_address_name_snapshots USING btree (expires_at, id);
-
--- Index: ens_name_observations_address_idx
-
-CREATE INDEX ens_name_observations_address_idx ON ens_name_observations USING btree (generation_id, source, direction, address) WHERE (direction = 'primary'::text);
-
--- Index: ens_resolution_failures_fresh_idx
-
-CREATE INDEX ens_resolution_failures_fresh_idx ON ens_resolution_failures USING btree (generation_id, source, direction, lookup_key, expires_at DESC, id DESC);
-
--- Index: ens_resolution_generations_current_idx
-
-CREATE INDEX ens_resolution_generations_current_idx ON ens_resolution_generations USING btree (chain_id, policy_key, fresh_until DESC, id DESC);
-
--- Index: ens_resolution_generations_retention_idx
-
-CREATE INDEX ens_resolution_generations_retention_idx ON ens_resolution_generations USING btree (retain_until, id);
-
--- Index: erc1155_balance_reconciliations_owner_idx
-
-CREATE INDEX erc1155_balance_reconciliations_owner_idx ON erc1155_balance_reconciliations USING btree (chain_id, owner_address, token_address, token_id, block_number DESC);
-
--- Index: erc20_balance_reconciliations_owner_snapshot_idx
-
-CREATE INDEX erc20_balance_reconciliations_owner_snapshot_idx ON erc20_balance_reconciliations USING btree (chain_id, owner_address, block_number, block_hash, token_address);
-
--- Index: erc20_holder_balances_page_idx
-
-CREATE INDEX erc20_holder_balances_page_idx ON ONLY erc20_holder_balances USING btree (chain_id, token_address, holder_address, block_number DESC, block_hash) WHERE canonical;
-
--- Index: erc20_holder_balances_default_chain_id_token_address_holder_idx
-
-CREATE INDEX erc20_holder_balances_default_chain_id_token_address_holder_idx ON erc20_holder_balances_default USING btree (chain_id, token_address, holder_address, block_number DESC, block_hash) WHERE canonical;
-
--- Index: erc20_holder_balances_p_0_100_chain_id_token_address_holder_idx
-
-CREATE INDEX erc20_holder_balances_p_0_100_chain_id_token_address_holder_idx ON erc20_holder_balances_p_0_1000000 USING btree (chain_id, token_address, holder_address, block_number DESC, block_hash) WHERE canonical;
-
--- Index: erc20_holder_snapshots_current_idx
-
-CREATE INDEX erc20_holder_snapshots_current_idx ON ONLY erc20_holder_snapshots USING btree (chain_id, token_address, block_number DESC, block_hash) WHERE canonical;
-
--- Index: erc20_holder_snapshots_defaul_chain_id_token_address_block__idx
-
-CREATE INDEX erc20_holder_snapshots_defaul_chain_id_token_address_block__idx ON erc20_holder_snapshots_default USING btree (chain_id, token_address, block_number DESC, block_hash) WHERE canonical;
-
--- Index: erc20_holder_snapshots_p_0_10_chain_id_token_address_block__idx
-
-CREATE INDEX erc20_holder_snapshots_p_0_10_chain_id_token_address_block__idx ON erc20_holder_snapshots_p_0_1000000 USING btree (chain_id, token_address, block_number DESC, block_hash) WHERE canonical;
-
--- Index: erc4337_coverage_ranges_end_idx
-
-CREATE INDEX erc4337_coverage_ranges_end_idx ON erc4337_coverage_ranges USING btree (chain_id, configuration_digest, end_block, start_block);
-
--- Index: erc4337_user_operation_participants_address_idx
-
-CREATE INDEX erc4337_user_operation_participants_address_idx ON ONLY erc4337_user_operation_participants USING btree (chain_id, configuration_digest, address, block_number DESC, operation_index DESC) WHERE canonical;
-
--- Index: erc4337_user_operation_partic_chain_id_configuration_diges_idx1
-
-CREATE INDEX erc4337_user_operation_partic_chain_id_configuration_diges_idx1 ON erc4337_user_operation_participants_default USING btree (chain_id, configuration_digest, address, block_number DESC, operation_index DESC) WHERE canonical;
-
--- Index: erc4337_user_operation_partic_chain_id_configuration_digest_idx
-
-CREATE INDEX erc4337_user_operation_partic_chain_id_configuration_digest_idx ON erc4337_user_operation_participants_p_0_1000000 USING btree (chain_id, configuration_digest, address, block_number DESC, operation_index DESC) WHERE canonical;
-
--- Index: erc4337_user_operations_canonical_hash_idx
-
-CREATE INDEX erc4337_user_operations_canonical_hash_idx ON ONLY erc4337_user_operations USING btree (chain_id, configuration_digest, user_op_hash) WHERE canonical;
-
--- Index: erc4337_user_operations_global_idx
-
-CREATE INDEX erc4337_user_operations_global_idx ON ONLY erc4337_user_operations USING btree (chain_id, configuration_digest, block_number DESC, transaction_index DESC, operation_index DESC, user_op_hash DESC) WHERE canonical;
-
--- Index: erc4337_user_operations_defau_chain_id_configuration_diges_idx1
-
-CREATE INDEX erc4337_user_operations_defau_chain_id_configuration_diges_idx1 ON erc4337_user_operations_default USING btree (chain_id, configuration_digest, block_number DESC, transaction_index DESC, operation_index DESC, user_op_hash DESC) WHERE canonical;
-
--- Index: erc4337_user_operations_transaction_idx
-
-CREATE INDEX erc4337_user_operations_transaction_idx ON ONLY erc4337_user_operations USING btree (chain_id, configuration_digest, transaction_hash, operation_index) WHERE canonical;
-
--- Index: erc4337_user_operations_defau_chain_id_configuration_diges_idx2
-
-CREATE INDEX erc4337_user_operations_defau_chain_id_configuration_diges_idx2 ON erc4337_user_operations_default USING btree (chain_id, configuration_digest, transaction_hash, operation_index) WHERE canonical;
-
--- Index: erc4337_user_operations_defau_chain_id_configuration_digest_idx
-
-CREATE INDEX erc4337_user_operations_defau_chain_id_configuration_digest_idx ON erc4337_user_operations_default USING btree (chain_id, configuration_digest, user_op_hash) WHERE canonical;
-
--- Index: erc4337_user_operations_p_0_1_chain_id_configuration_diges_idx1
-
-CREATE INDEX erc4337_user_operations_p_0_1_chain_id_configuration_diges_idx1 ON erc4337_user_operations_p_0_1000000 USING btree (chain_id, configuration_digest, block_number DESC, transaction_index DESC, operation_index DESC, user_op_hash DESC) WHERE canonical;
-
--- Index: erc4337_user_operations_p_0_1_chain_id_configuration_diges_idx2
-
-CREATE INDEX erc4337_user_operations_p_0_1_chain_id_configuration_diges_idx2 ON erc4337_user_operations_p_0_1000000 USING btree (chain_id, configuration_digest, transaction_hash, operation_index) WHERE canonical;
-
--- Index: erc4337_user_operations_p_0_1_chain_id_configuration_digest_idx
-
-CREATE INDEX erc4337_user_operations_p_0_1_chain_id_configuration_digest_idx ON erc4337_user_operations_p_0_1000000 USING btree (chain_id, configuration_digest, user_op_hash) WHERE canonical;
-
--- Index: erc721_owner_reconciliations_owner_idx
-
-CREATE INDEX erc721_owner_reconciliations_owner_idx ON erc721_owner_reconciliations USING btree (chain_id, owner_address, token_address, token_id, block_number DESC) WHERE (state = 'owned'::text);
-
--- Index: external_adapter_observations_expiry_idx
-
-CREATE INDEX external_adapter_observations_expiry_idx ON external_adapter_observations USING btree (expires_at);
-
--- Index: external_adapter_observations_latest_idx
-
-CREATE INDEX external_adapter_observations_latest_idx ON external_adapter_observations USING btree (chain_id, capability, provider_key, observation_key, observed_at DESC, id DESC);
-
--- Index: external_metadata_attempts_resource_idx
-
-CREATE INDEX external_metadata_attempts_resource_idx ON external_metadata_attempts USING btree (chain_id, resource_kind, resource_key, attempted_at DESC);
-
--- Index: external_metadata_nft_canonical_lookup_idx
-
-CREATE INDEX external_metadata_nft_canonical_lookup_idx ON external_metadata USING btree (chain_id, token_address, token_id, observed_block_number DESC, observed_block_hash);
-
--- Index: external_metadata_nft_identity_uq
-
-CREATE UNIQUE INDEX external_metadata_nft_identity_uq ON external_metadata USING btree (chain_id, token_address, token_id, observed_block_hash) WHERE ((resource_kind = 'nft'::text) AND (token_address IS NOT NULL) AND (token_id IS NOT NULL) AND (observed_block_hash IS NOT NULL));
-
--- Index: external_metadata_pending_idx
-
-CREATE INDEX external_metadata_pending_idx ON external_metadata USING btree (chain_id, updated_at, resource_key) WHERE (state = 'pending'::text);
-
--- Index: genesis_account_observations_page_idx
-
-CREATE INDEX genesis_account_observations_page_idx ON genesis_account_observations USING btree (chain_id, block_hash, address);
-
--- Index: logs_address_idx
-
-CREATE INDEX logs_address_idx ON ONLY logs USING btree (chain_id, address, block_number DESC);
-
--- Index: logs_default_chain_id_address_block_number_idx
-
-CREATE INDEX logs_default_chain_id_address_block_number_idx ON logs_default USING btree (chain_id, address, block_number DESC);
-
--- Index: logs_topic0_idx
-
-CREATE INDEX logs_topic0_idx ON ONLY logs USING btree (chain_id, topic0, block_number DESC);
-
--- Index: logs_default_chain_id_topic0_block_number_idx
-
-CREATE INDEX logs_default_chain_id_topic0_block_number_idx ON logs_default USING btree (chain_id, topic0, block_number DESC);
-
--- Index: logs_p_0_1000000_chain_id_address_block_number_idx
-
-CREATE INDEX logs_p_0_1000000_chain_id_address_block_number_idx ON logs_p_0_1000000 USING btree (chain_id, address, block_number DESC);
-
--- Index: logs_p_0_1000000_chain_id_topic0_block_number_idx
-
-CREATE INDEX logs_p_0_1000000_chain_id_topic0_block_number_idx ON logs_p_0_1000000 USING btree (chain_id, topic0, block_number DESC);
-
--- Index: mempool_snapshot_transactions_tx_idx
-
-CREATE INDEX mempool_snapshot_transactions_tx_idx ON mempool_snapshot_transactions USING btree (chain_id, tx_hash, snapshot_id);
-
--- Index: mempool_snapshots_expiry_idx
-
-CREATE INDEX mempool_snapshots_expiry_idx ON mempool_snapshots USING btree (chain_id, expires_at, id);
-
--- Index: mempool_transaction_replacements_new_idx
-
-CREATE INDEX mempool_transaction_replacements_new_idx ON mempool_transaction_replacements USING btree (chain_id, replacement_hash, snapshot_id DESC);
-
--- Index: mempool_transaction_replacements_old_idx
-
-CREATE INDEX mempool_transaction_replacements_old_idx ON mempool_transaction_replacements USING btree (chain_id, replaced_hash, snapshot_id DESC);
-
--- Index: mempool_transactions_expiry_idx
-
-CREATE INDEX mempool_transactions_expiry_idx ON mempool_transactions USING btree (chain_id, expires_at, tx_hash);
-
--- Index: native_transfers_from_idx
-
-CREATE INDEX native_transfers_from_idx ON ONLY native_transfers USING btree (chain_id, from_address, block_number DESC, transaction_index DESC, log_index DESC) WHERE canonical;
-
--- Index: native_transfers_default_chain_id_from_address_block_number_idx
-
-CREATE INDEX native_transfers_default_chain_id_from_address_block_number_idx ON native_transfers_default USING btree (chain_id, from_address, block_number DESC, transaction_index DESC, log_index DESC) WHERE canonical;
-
--- Index: native_transfers_to_idx
-
-CREATE INDEX native_transfers_to_idx ON ONLY native_transfers USING btree (chain_id, to_address, block_number DESC, transaction_index DESC, log_index DESC) WHERE canonical;
-
--- Index: native_transfers_default_chain_id_to_address_block_number_t_idx
-
-CREATE INDEX native_transfers_default_chain_id_to_address_block_number_t_idx ON native_transfers_default USING btree (chain_id, to_address, block_number DESC, transaction_index DESC, log_index DESC) WHERE canonical;
-
--- Index: native_transfers_transaction_idx
-
-CREATE INDEX native_transfers_transaction_idx ON ONLY native_transfers USING btree (chain_id, transaction_hash, log_index) WHERE canonical;
-
--- Index: native_transfers_default_chain_id_transaction_hash_log_inde_idx
-
-CREATE INDEX native_transfers_default_chain_id_transaction_hash_log_inde_idx ON native_transfers_default USING btree (chain_id, transaction_hash, log_index) WHERE canonical;
-
--- Index: native_transfers_p_0_1000000_chain_id_from_address_block_nu_idx
-
-CREATE INDEX native_transfers_p_0_1000000_chain_id_from_address_block_nu_idx ON native_transfers_p_0_1000000 USING btree (chain_id, from_address, block_number DESC, transaction_index DESC, log_index DESC) WHERE canonical;
-
--- Index: native_transfers_p_0_1000000_chain_id_to_address_block_numb_idx
-
-CREATE INDEX native_transfers_p_0_1000000_chain_id_to_address_block_numb_idx ON native_transfers_p_0_1000000 USING btree (chain_id, to_address, block_number DESC, transaction_index DESC, log_index DESC) WHERE canonical;
-
--- Index: native_transfers_p_0_1000000_chain_id_transaction_hash_log__idx
-
-CREATE INDEX native_transfers_p_0_1000000_chain_id_transaction_hash_log__idx ON native_transfers_p_0_1000000 USING btree (chain_id, transaction_hash, log_index) WHERE canonical;
-
--- Index: nft_metadata_source_candidate_idx
-
-CREATE INDEX nft_metadata_source_candidate_idx ON nft_metadata_source_observations USING btree (chain_id, token_address, token_id, block_number DESC, block_hash);
-
--- Index: nft_metadata_update_candidate_idx
-
-CREATE INDEX nft_metadata_update_candidate_idx ON nft_metadata_update_observations USING btree (chain_id, token_address, block_number DESC, block_hash, from_token_id, to_token_id) WHERE (state = 'accepted'::text);
-
--- Index: normalized_traces_created_idx
-
-CREATE INDEX normalized_traces_created_idx ON ONLY normalized_traces USING btree (chain_id, created_address, block_number DESC) WHERE (canonical AND (created_address IS NOT NULL));
-
--- Index: normalized_traces_default_chain_id_created_address_block_nu_idx
-
-CREATE INDEX normalized_traces_default_chain_id_created_address_block_nu_idx ON normalized_traces_default USING btree (chain_id, created_address, block_number DESC) WHERE (canonical AND (created_address IS NOT NULL));
-
--- Index: normalized_traces_from_idx
-
-CREATE INDEX normalized_traces_from_idx ON ONLY normalized_traces USING btree (chain_id, from_address, block_number DESC) WHERE canonical;
-
--- Index: normalized_traces_default_chain_id_from_address_block_numbe_idx
-
-CREATE INDEX normalized_traces_default_chain_id_from_address_block_numbe_idx ON normalized_traces_default USING btree (chain_id, from_address, block_number DESC) WHERE canonical;
-
--- Index: normalized_traces_to_idx
-
-CREATE INDEX normalized_traces_to_idx ON ONLY normalized_traces USING btree (chain_id, to_address, block_number DESC) WHERE canonical;
-
--- Index: normalized_traces_default_chain_id_to_address_block_number_idx
-
-CREATE INDEX normalized_traces_default_chain_id_to_address_block_number_idx ON normalized_traces_default USING btree (chain_id, to_address, block_number DESC) WHERE canonical;
-
--- Index: normalized_traces_tx_idx
-
-CREATE INDEX normalized_traces_tx_idx ON ONLY normalized_traces USING btree (chain_id, transaction_hash, trace_path);
-
--- Index: normalized_traces_default_chain_id_transaction_hash_trace_p_idx
-
-CREATE INDEX normalized_traces_default_chain_id_transaction_hash_trace_p_idx ON normalized_traces_default USING btree (chain_id, transaction_hash, trace_path);
-
--- Index: normalized_traces_p_0_1000000_chain_id_created_address_bloc_idx
-
-CREATE INDEX normalized_traces_p_0_1000000_chain_id_created_address_bloc_idx ON normalized_traces_p_0_1000000 USING btree (chain_id, created_address, block_number DESC) WHERE (canonical AND (created_address IS NOT NULL));
-
--- Index: normalized_traces_p_0_1000000_chain_id_from_address_block_n_idx
-
-CREATE INDEX normalized_traces_p_0_1000000_chain_id_from_address_block_n_idx ON normalized_traces_p_0_1000000 USING btree (chain_id, from_address, block_number DESC) WHERE canonical;
-
--- Index: normalized_traces_p_0_1000000_chain_id_to_address_block_num_idx
-
-CREATE INDEX normalized_traces_p_0_1000000_chain_id_to_address_block_num_idx ON normalized_traces_p_0_1000000 USING btree (chain_id, to_address, block_number DESC) WHERE canonical;
-
--- Index: normalized_traces_p_0_1000000_chain_id_transaction_hash_tra_idx
-
-CREATE INDEX normalized_traces_p_0_1000000_chain_id_transaction_hash_tra_idx ON normalized_traces_p_0_1000000 USING btree (chain_id, transaction_hash, trace_path);
-
--- Index: proxy_artifact_resolutions_beacon_idx
-
-CREATE INDEX proxy_artifact_resolutions_beacon_idx ON proxy_artifact_resolutions USING btree (chain_id, beacon_address, observation_block_hash, id DESC) WHERE (beacon_address IS NOT NULL);
-
--- Index: proxy_artifact_resolutions_current_idx
-
-CREATE INDEX proxy_artifact_resolutions_current_idx ON proxy_artifact_resolutions USING btree (chain_id, proxy_address, id DESC);
-
--- Index: proxy_detection_evidence_current_idx
-
-CREATE INDEX proxy_detection_evidence_current_idx ON proxy_detection_evidence USING btree (chain_id, address, block_number DESC, block_hash DESC) WHERE (canonical AND (stage_version = 2));
-
--- Index: proxy_detection_evidence_negative_shadow_idx
-
-CREATE INDEX proxy_detection_evidence_negative_shadow_idx ON proxy_detection_evidence USING btree (chain_id, address, candidate_kind, code_hash, block_number DESC, block_hash DESC) WHERE (canonical AND (stage_version = 2));
-
--- Index: proxy_history_epochs_latest_idx
-
-CREATE INDEX proxy_history_epochs_latest_idx ON proxy_history_epochs USING btree (chain_id, epoch_id DESC) INCLUDE (block_number, block_hash);
-
--- Index: proxy_history_epochs_snapshot_idx
-
-CREATE INDEX proxy_history_epochs_snapshot_idx ON proxy_history_epochs USING btree (chain_id, block_number, epoch_id DESC);
-
--- Index: proxy_history_idx
-
-CREATE INDEX proxy_history_idx ON proxy_observations USING btree (chain_id, proxy_address, block_number DESC) WHERE canonical;
-
--- Index: proxy_initialization_events_contract_idx
-
-CREATE INDEX proxy_initialization_events_contract_idx ON proxy_initialization_events USING btree (chain_id, contract_address, block_number DESC, log_index DESC) WHERE (canonical AND (stage_version = 2));
-
--- Index: proxy_interaction_coverage_ranges_end_idx
-
-CREATE INDEX proxy_interaction_coverage_ranges_end_idx ON proxy_interaction_coverage_ranges USING btree (chain_id, end_block, start_block);
-
--- Index: proxy_observations_v2_beacon_idx
-
-CREATE INDEX proxy_observations_v2_beacon_idx ON proxy_observations USING btree (chain_id, beacon_address, block_number DESC, block_hash DESC) WHERE (canonical AND (stage_version = 2) AND (beacon_address IS NOT NULL));
-
--- Index: proxy_observations_v2_history_idx
-
-CREATE INDEX proxy_observations_v2_history_idx ON proxy_observations USING btree (chain_id, proxy_address, block_number DESC, block_hash DESC) WHERE (canonical AND (stage_version = 2));
-
--- Index: proxy_replay_targets_verification_source_idx
-
-CREATE INDEX proxy_replay_targets_verification_source_idx ON proxy_replay_targets USING btree (((source_verification_job_id)::text), chain_id, block_hash);
-
--- Index: proxy_upgrade_events_emitter_idx
-
-CREATE INDEX proxy_upgrade_events_emitter_idx ON proxy_upgrade_events USING btree (chain_id, emitter_address, block_number DESC, log_index DESC) WHERE (canonical AND (stage_version = 2));
-
--- Index: receipts_contract_address_idx
-
-CREATE INDEX receipts_contract_address_idx ON ONLY receipts USING btree (chain_id, lower((raw ->> 'contractAddress'::text)), block_number DESC, tx_index DESC) WHERE ((raw ->> 'contractAddress'::text) IS NOT NULL);
-
--- Index: receipts_default_chain_id_lower_block_number_tx_index_idx
-
-CREATE INDEX receipts_default_chain_id_lower_block_number_tx_index_idx ON receipts_default USING btree (chain_id, lower((raw ->> 'contractAddress'::text)), block_number DESC, tx_index DESC) WHERE ((raw ->> 'contractAddress'::text) IS NOT NULL);
-
--- Index: receipts_p_0_1000000_chain_id_lower_block_number_tx_index_idx
-
-CREATE INDEX receipts_p_0_1000000_chain_id_lower_block_number_tx_index_idx ON receipts_p_0_1000000 USING btree (chain_id, lower((raw ->> 'contractAddress'::text)), block_number DESC, tx_index DESC) WHERE ((raw ->> 'contractAddress'::text) IS NOT NULL);
-
--- Index: repair_requests_active_metrics_idx
-
-CREATE INDEX repair_requests_active_metrics_idx ON repair_requests USING btree (chain_id, operation, status) WHERE (status = ANY (ARRAY['queued'::text, 'running'::text]));
-
--- Index: repair_requests_pending_idx
-
-CREATE INDEX repair_requests_pending_idx ON repair_requests USING btree (chain_id, requested_at, id) WHERE (status = 'queued'::text);
-
--- Index: runtime_events_chain_id_idx
-
-CREATE INDEX runtime_events_chain_id_idx ON runtime_events USING btree (chain_id, id);
-
--- Index: search_catalog_documents_generation_idx
-
-CREATE INDEX search_catalog_documents_generation_idx ON search_catalog_documents USING btree (chain_id, valid_from_generation, valid_to_generation, source_kind);
-
--- Index: search_catalog_documents_terms_idx
-
-CREATE INDEX search_catalog_documents_terms_idx ON search_catalog_documents USING gin (exact_terms);
-
--- Index: token_balance_deltas_owner_idx
-
-CREATE INDEX token_balance_deltas_owner_idx ON ONLY token_balance_deltas USING btree (chain_id, owner_address, token_address, token_id, block_number) WHERE canonical;
-
--- Index: token_balance_deltas_default_chain_id_owner_address_token_a_idx
-
-CREATE INDEX token_balance_deltas_default_chain_id_owner_address_token_a_idx ON token_balance_deltas_default USING btree (chain_id, owner_address, token_address, token_id, block_number) WHERE canonical;
-
--- Index: token_balance_deltas_p_0_1000_chain_id_owner_address_token__idx
-
-CREATE INDEX token_balance_deltas_p_0_1000_chain_id_owner_address_token__idx ON token_balance_deltas_p_0_1000000 USING btree (chain_id, owner_address, token_address, token_id, block_number) WHERE canonical;
-
--- Index: token_contracts_canonical_lookup_idx
-
-CREATE INDEX token_contracts_canonical_lookup_idx ON token_contracts USING btree (chain_id, address, observed_block_number DESC, observed_block_hash, code_hash);
-
--- Index: token_events_from_idx
-
-CREATE INDEX token_events_from_idx ON ONLY token_events USING btree (chain_id, from_address, block_number DESC) WHERE canonical;
-
--- Index: token_events_default_chain_id_from_address_block_number_idx
-
-CREATE INDEX token_events_default_chain_id_from_address_block_number_idx ON token_events_default USING btree (chain_id, from_address, block_number DESC) WHERE canonical;
-
--- Index: token_events_to_idx
-
-CREATE INDEX token_events_to_idx ON ONLY token_events USING btree (chain_id, to_address, block_number DESC) WHERE canonical;
-
--- Index: token_events_default_chain_id_to_address_block_number_idx
-
-CREATE INDEX token_events_default_chain_id_to_address_block_number_idx ON token_events_default USING btree (chain_id, to_address, block_number DESC) WHERE canonical;
-
--- Index: token_events_token_idx
-
-CREATE INDEX token_events_token_idx ON ONLY token_events USING btree (chain_id, token_address, block_number DESC, log_index DESC);
-
--- Index: token_events_default_chain_id_token_address_block_number_lo_idx
-
-CREATE INDEX token_events_default_chain_id_token_address_block_number_lo_idx ON token_events_default USING btree (chain_id, token_address, block_number DESC, log_index DESC);
-
--- Index: token_events_metadata_known_id_idx
-
-CREATE INDEX token_events_metadata_known_id_idx ON ONLY token_events USING btree (chain_id, token_address, token_id, block_number DESC, block_hash) WHERE ((token_id IS NOT NULL) AND (standard = ANY (ARRAY['erc721'::text, 'erc1155'::text])));
-
--- Index: token_events_default_chain_id_token_address_token_id_block__idx
-
-CREATE INDEX token_events_default_chain_id_token_address_token_id_block__idx ON token_events_default USING btree (chain_id, token_address, token_id, block_number DESC, block_hash) WHERE ((token_id IS NOT NULL) AND (standard = ANY (ARRAY['erc721'::text, 'erc1155'::text])));
-
--- Index: token_events_p_0_1000000_chain_id_from_address_block_number_idx
-
-CREATE INDEX token_events_p_0_1000000_chain_id_from_address_block_number_idx ON token_events_p_0_1000000 USING btree (chain_id, from_address, block_number DESC) WHERE canonical;
-
--- Index: token_events_p_0_1000000_chain_id_to_address_block_number_idx
-
-CREATE INDEX token_events_p_0_1000000_chain_id_to_address_block_number_idx ON token_events_p_0_1000000 USING btree (chain_id, to_address, block_number DESC) WHERE canonical;
-
--- Index: token_events_p_0_1000000_chain_id_token_address_block_numbe_idx
-
-CREATE INDEX token_events_p_0_1000000_chain_id_token_address_block_numbe_idx ON token_events_p_0_1000000 USING btree (chain_id, token_address, block_number DESC, log_index DESC);
-
--- Index: token_events_p_0_1000000_chain_id_token_address_token_id_bl_idx
-
-CREATE INDEX token_events_p_0_1000000_chain_id_token_address_token_id_bl_idx ON token_events_p_0_1000000 USING btree (chain_id, token_address, token_id, block_number DESC, block_hash) WHERE ((token_id IS NOT NULL) AND (standard = ANY (ARRAY['erc721'::text, 'erc1155'::text])));
-
--- Index: trace_log_attributions_frame_idx
-
-CREATE INDEX trace_log_attributions_frame_idx ON ONLY trace_log_attributions USING btree (chain_id, transaction_hash, trace_path, log_index) WHERE canonical;
-
--- Index: trace_log_attributions_defaul_chain_id_transaction_hash_tra_idx
-
-CREATE INDEX trace_log_attributions_defaul_chain_id_transaction_hash_tra_idx ON trace_log_attributions_default USING btree (chain_id, transaction_hash, trace_path, log_index) WHERE canonical;
-
--- Index: trace_log_attributions_p_0_10_chain_id_transaction_hash_tra_idx
-
-CREATE INDEX trace_log_attributions_p_0_10_chain_id_transaction_hash_tra_idx ON trace_log_attributions_p_0_1000000 USING btree (chain_id, transaction_hash, trace_path, log_index) WHERE canonical;
-
--- Index: transaction_effective_execution_identities_code_idx
-
-CREATE INDEX transaction_effective_execution_identities_code_idx ON ONLY transaction_effective_execution_identities USING btree (chain_id, execution_address, execution_code_hash, block_number DESC, transaction_index DESC) WHERE (canonical AND (execution_address IS NOT NULL));
-
--- Index: transaction_effective_executi_chain_id_execution_address_e_idx1
-
-CREATE INDEX transaction_effective_executi_chain_id_execution_address_e_idx1 ON transaction_effective_execution_identities_default USING btree (chain_id, execution_address, execution_code_hash, block_number DESC, transaction_index DESC) WHERE (canonical AND (execution_address IS NOT NULL));
-
--- Index: transaction_effective_executi_chain_id_execution_address_ex_idx
-
-CREATE INDEX transaction_effective_executi_chain_id_execution_address_ex_idx ON transaction_effective_execution_identities_p_0_1000000 USING btree (chain_id, execution_address, execution_code_hash, block_number DESC, transaction_index DESC) WHERE (canonical AND (execution_address IS NOT NULL));
-
--- Index: transaction_effective_execution_identities_tx_idx
-
-CREATE INDEX transaction_effective_execution_identities_tx_idx ON ONLY transaction_effective_execution_identities USING btree (chain_id, transaction_hash, context_address) WHERE canonical;
-
--- Index: transaction_effective_executi_chain_id_transaction_hash_co_idx1
-
-CREATE INDEX transaction_effective_executi_chain_id_transaction_hash_co_idx1 ON transaction_effective_execution_identities_default USING btree (chain_id, transaction_hash, context_address) WHERE canonical;
-
--- Index: transaction_effective_executi_chain_id_transaction_hash_con_idx
-
-CREATE INDEX transaction_effective_executi_chain_id_transaction_hash_con_idx ON transaction_effective_execution_identities_p_0_1000000 USING btree (chain_id, transaction_hash, context_address) WHERE canonical;
-
--- Index: transaction_execution_code_resolutions_execution_idx
-
-CREATE INDEX transaction_execution_code_resolutions_execution_idx ON ONLY transaction_execution_code_resolutions USING btree (chain_id, execution_address, block_number DESC) WHERE (canonical AND (execution_address IS NOT NULL));
-
--- Index: transaction_execution_code_re_chain_id_execution_address_b_idx1
-
-CREATE INDEX transaction_execution_code_re_chain_id_execution_address_b_idx1 ON transaction_execution_code_resolutions_default USING btree (chain_id, execution_address, block_number DESC) WHERE (canonical AND (execution_address IS NOT NULL));
-
--- Index: transaction_execution_code_re_chain_id_execution_address_bl_idx
-
-CREATE INDEX transaction_execution_code_re_chain_id_execution_address_bl_idx ON transaction_execution_code_resolutions_p_0_1000000 USING btree (chain_id, execution_address, block_number DESC) WHERE (canonical AND (execution_address IS NOT NULL));
-
--- Index: transaction_execution_code_resolutions_tx_idx
-
-CREATE INDEX transaction_execution_code_resolutions_tx_idx ON ONLY transaction_execution_code_resolutions USING btree (chain_id, transaction_hash, context_address) WHERE canonical;
-
--- Index: transaction_execution_code_re_chain_id_transaction_hash_co_idx1
-
-CREATE INDEX transaction_execution_code_re_chain_id_transaction_hash_co_idx1 ON transaction_execution_code_resolutions_default USING btree (chain_id, transaction_hash, context_address) WHERE canonical;
-
--- Index: transaction_execution_code_re_chain_id_transaction_hash_con_idx
-
-CREATE INDEX transaction_execution_code_re_chain_id_transaction_hash_con_idx ON transaction_execution_code_resolutions_p_0_1000000 USING btree (chain_id, transaction_hash, context_address) WHERE canonical;
-
--- Index: transaction_inclusions_to_address_idx
-
-CREATE INDEX transaction_inclusions_to_address_idx ON ONLY transaction_inclusions USING btree (chain_id, lower((raw ->> 'to'::text)), block_number DESC, tx_index DESC);
-
--- Index: transaction_inclusions_defaul_chain_id_lower_block_number__idx1
-
-CREATE INDEX transaction_inclusions_defaul_chain_id_lower_block_number__idx1 ON transaction_inclusions_default USING btree (chain_id, lower((raw ->> 'to'::text)), block_number DESC, tx_index DESC);
-
--- Index: transaction_inclusions_from_address_idx
-
-CREATE INDEX transaction_inclusions_from_address_idx ON ONLY transaction_inclusions USING btree (chain_id, lower((raw ->> 'from'::text)), block_number DESC, tx_index DESC);
-
--- Index: transaction_inclusions_defaul_chain_id_lower_block_number_t_idx
-
-CREATE INDEX transaction_inclusions_defaul_chain_id_lower_block_number_t_idx ON transaction_inclusions_default USING btree (chain_id, lower((raw ->> 'from'::text)), block_number DESC, tx_index DESC);
-
--- Index: transaction_inclusions_p_0_10_chain_id_lower_block_number__idx1
-
-CREATE INDEX transaction_inclusions_p_0_10_chain_id_lower_block_number__idx1 ON transaction_inclusions_p_0_1000000 USING btree (chain_id, lower((raw ->> 'to'::text)), block_number DESC, tx_index DESC);
-
--- Index: transaction_inclusions_p_0_10_chain_id_lower_block_number_t_idx
-
-CREATE INDEX transaction_inclusions_p_0_10_chain_id_lower_block_number_t_idx ON transaction_inclusions_p_0_1000000 USING btree (chain_id, lower((raw ->> 'from'::text)), block_number DESC, tx_index DESC);
-
--- Index: transaction_state_changes_address_idx
-
-CREATE INDEX transaction_state_changes_address_idx ON ONLY transaction_state_changes USING btree (chain_id, address, block_number DESC) WHERE canonical;
-
--- Index: transaction_state_changes_code_epoch_idx
-
-CREATE INDEX transaction_state_changes_code_epoch_idx ON ONLY transaction_state_changes USING btree (chain_id, address, block_number DESC) INCLUDE (block_hash) WHERE (canonical AND (field_kind = 'code'::text));
-
--- Index: transaction_state_changes_def_chain_id_address_block_numbe_idx1
-
-CREATE INDEX transaction_state_changes_def_chain_id_address_block_numbe_idx1 ON transaction_state_changes_default USING btree (chain_id, address, block_number DESC) INCLUDE (block_hash) WHERE (canonical AND (field_kind = 'code'::text));
-
--- Index: transaction_state_changes_def_chain_id_address_block_number_idx
-
-CREATE INDEX transaction_state_changes_def_chain_id_address_block_number_idx ON transaction_state_changes_default USING btree (chain_id, address, block_number DESC) WHERE canonical;
-
--- Index: transaction_state_changes_tx_idx
-
-CREATE INDEX transaction_state_changes_tx_idx ON ONLY transaction_state_changes USING btree (chain_id, transaction_hash, block_number DESC, address, field_kind, storage_key);
-
--- Index: transaction_state_changes_def_chain_id_transaction_hash_blo_idx
-
-CREATE INDEX transaction_state_changes_def_chain_id_transaction_hash_blo_idx ON transaction_state_changes_default USING btree (chain_id, transaction_hash, block_number DESC, address, field_kind, storage_key);
-
--- Index: transaction_state_changes_p_0_chain_id_address_block_numbe_idx1
-
-CREATE INDEX transaction_state_changes_p_0_chain_id_address_block_numbe_idx1 ON transaction_state_changes_p_0_1000000 USING btree (chain_id, address, block_number DESC) INCLUDE (block_hash) WHERE (canonical AND (field_kind = 'code'::text));
-
--- Index: transaction_state_changes_p_0_chain_id_address_block_number_idx
-
-CREATE INDEX transaction_state_changes_p_0_chain_id_address_block_number_idx ON transaction_state_changes_p_0_1000000 USING btree (chain_id, address, block_number DESC) WHERE canonical;
-
--- Index: transaction_state_changes_p_0_chain_id_transaction_hash_blo_idx
-
-CREATE INDEX transaction_state_changes_p_0_chain_id_transaction_hash_blo_idx ON transaction_state_changes_p_0_1000000 USING btree (chain_id, transaction_hash, block_number DESC, address, field_kind, storage_key);
-
--- Index: transactional_outbox_pending_idx
-
-CREATE INDEX transactional_outbox_pending_idx ON transactional_outbox USING btree (available_at, id) WHERE (published_at IS NULL);
-
--- Index: user_sessions_active_user_idx
-
-CREATE INDEX user_sessions_active_user_idx ON user_sessions USING btree (user_id, expires_at, id) WHERE (revoked_at IS NULL);
-
--- Index: user_sessions_cleanup_idx
-
-CREATE INDEX user_sessions_cleanup_idx ON user_sessions USING btree (expires_at, id);
-
--- Index: users_chain_created_idx
-
-CREATE INDEX users_chain_created_idx ON users USING btree (chain_id, created_at DESC, id DESC);
-
--- Index: uups_implementation_observation_generations_job_idx
-
-CREATE INDEX uups_implementation_observation_generations_job_idx ON uups_implementation_observation_generations USING btree (durable_job_id, job_generation, id);
-
--- Index: uups_implementation_observations_current_idx
-
-CREATE INDEX uups_implementation_observations_current_idx ON uups_implementation_observations USING btree (chain_id, implementation_address, implementation_code_hash, block_number DESC, block_hash DESC) WHERE (canonical AND (probe_state = 'compatible'::text));
-
--- Index: uups_implementation_observations_latest_idx
-
-CREATE INDEX uups_implementation_observations_latest_idx ON uups_implementation_observations USING btree (chain_id, implementation_address, implementation_code_hash, block_number DESC, block_hash DESC) WHERE canonical;
-
--- Index: uups_implementation_observations_verification_idx
-
-CREATE INDEX uups_implementation_observations_verification_idx ON uups_implementation_observations USING btree (verification_job_id, chain_id, block_hash);
-
--- Index: verification_jobs_active_request_key
-
-CREATE UNIQUE INDEX verification_jobs_active_request_key ON verification_jobs USING btree (request_digest) WHERE (status = ANY (ARRAY['queued'::text, 'running'::text, 'succeeded'::text]));
-
--- Index: verification_jobs_claim_idx
-
-CREATE INDEX verification_jobs_claim_idx ON verification_jobs USING btree (status, created_at, id) WHERE (status = ANY (ARRAY['queued'::text, 'running'::text]));
-
--- Index: verification_jobs_target_idx
-
-CREATE INDEX verification_jobs_target_idx ON verification_jobs USING btree (chain_id, address, code_hash, created_at DESC) WHERE (kind = 'address'::text);
-
--- Index: verified_contract_proxy_artifacts_current_idx
-
-CREATE INDEX verified_contract_proxy_artifacts_current_idx ON verified_contract_proxy_artifacts USING btree (chain_id, address, valid_from_block DESC, code_hash);
-
--- Index: verified_contracts_code_hash_artifact_idx
-
-CREATE INDEX verified_contracts_code_hash_artifact_idx ON verified_contracts USING btree (chain_id, code_hash, ((abi IS NOT NULL)) DESC, ((match_type = 'full'::text)) DESC, request_digest, verification_job_id, address, valid_from_block DESC);
-
--- Index: verified_function_selector_sets_identity_idx
-
-CREATE INDEX verified_function_selector_sets_identity_idx ON verified_function_selector_sets USING btree (chain_id, code_hash, address, valid_from_block, verification_job_id);
-
--- Index: verified_function_selectors_lookup_idx
-
-CREATE INDEX verified_function_selectors_lookup_idx ON verified_function_selectors USING btree (chain_id, code_hash, selector, verification_job_id, signature);
-
--- Index: verified_proxy_bindings_current_idx
-
-CREATE INDEX verified_proxy_bindings_current_idx ON verified_proxy_bindings USING btree (chain_id, proxy_address, observation_block_number DESC);
-
--- Index: verified_proxy_bindings_uups_generation_idx
-
-CREATE INDEX verified_proxy_bindings_uups_generation_idx ON verified_proxy_bindings USING btree (uups_generation_id) WHERE (uups_generation_id IS NOT NULL);
-
--- Index: watch_notification_work_pending
-
-CREATE INDEX watch_notification_work_pending ON watch_notification_work USING btree (chain_id, block_number, block_hash) WHERE (generation > done_generation);
-
--- Index: watch_notifications_block
-
-CREATE INDEX watch_notifications_block ON watch_notifications USING btree (chain_id, block_hash, source_key, watch_id);
-
--- Index: watch_notifications_expiry
-
-CREATE INDEX watch_notifications_expiry ON watch_notifications USING btree (created_at, id);
-
--- Index: watch_notifications_owner_page
-
-CREATE INDEX watch_notifications_owner_page ON watch_notifications USING btree (user_id, id DESC);
-
--- Index: watch_notifications_unread
-
-CREATE INDEX watch_notifications_unread ON watch_notifications USING btree (user_id, id) WHERE (read_at IS NULL);
-
--- Index: withdrawals_address_index_idx
-
-CREATE INDEX withdrawals_address_index_idx ON ONLY withdrawals USING btree (chain_id, address, withdrawal_index DESC);
-
--- Index: withdrawals_default_chain_id_address_withdrawal_index_idx
-
-CREATE INDEX withdrawals_default_chain_id_address_withdrawal_index_idx ON withdrawals_default USING btree (chain_id, address, withdrawal_index DESC);
-
--- Index: withdrawals_p_0_1000000_chain_id_address_withdrawal_index_idx
-
-CREATE INDEX withdrawals_p_0_1000000_chain_id_address_withdrawal_index_idx ON withdrawals_p_0_1000000 USING btree (chain_id, address, withdrawal_index DESC);
-
--- Index Attach: abi_decodings_default_chain_id_target_address_target_code_h_idx
-
-ALTER INDEX abi_decodings_target_idx ATTACH PARTITION abi_decodings_default_chain_id_target_address_target_code_h_idx;
-
--- Index Attach: abi_decodings_default_chain_id_transaction_hash_block_numbe_idx
-
-ALTER INDEX abi_decodings_tx_idx ATTACH PARTITION abi_decodings_default_chain_id_transaction_hash_block_numbe_idx;
-
--- Index Attach: abi_decodings_default_pkey
-
-ALTER INDEX abi_decodings_pkey ATTACH PARTITION abi_decodings_default_pkey;
-
--- Index Attach: abi_decodings_p_0_1000000_chain_id_target_address_target_co_idx
-
-ALTER INDEX abi_decodings_target_idx ATTACH PARTITION abi_decodings_p_0_1000000_chain_id_target_address_target_co_idx;
-
--- Index Attach: abi_decodings_p_0_1000000_chain_id_transaction_hash_block_n_idx
-
-ALTER INDEX abi_decodings_tx_idx ATTACH PARTITION abi_decodings_p_0_1000000_chain_id_transaction_hash_block_n_idx;
-
--- Index Attach: abi_decodings_p_0_1000000_pkey
-
-ALTER INDEX abi_decodings_pkey ATTACH PARTITION abi_decodings_p_0_1000000_pkey;
-
--- Index Attach: address_activities_default_chain_id_address_block_number_ac_idx
-
-ALTER INDEX address_activities_address_idx ATTACH PARTITION address_activities_default_chain_id_address_block_number_ac_idx;
-
--- Index Attach: address_activities_default_pkey
-
-ALTER INDEX address_activities_pkey ATTACH PARTITION address_activities_default_pkey;
-
--- Index Attach: address_activities_p_0_1000000_pkey
-
-ALTER INDEX address_activities_pkey ATTACH PARTITION address_activities_p_0_1000000_pkey;
-
--- Index Attach: address_activities_p_0_100000_chain_id_address_block_number_idx
-
-ALTER INDEX address_activities_address_idx ATTACH PARTITION address_activities_p_0_100000_chain_id_address_block_number_idx;
-
--- Index Attach: eip7702_authorizations_defaul_chain_id_authority_block_numb_idx
-
-ALTER INDEX eip7702_authorizations_authority_idx ATTACH PARTITION eip7702_authorizations_defaul_chain_id_authority_block_numb_idx;
-
--- Index Attach: eip7702_authorizations_defaul_chain_id_transaction_hash_aut_idx
-
-ALTER INDEX eip7702_authorizations_tx_idx ATTACH PARTITION eip7702_authorizations_defaul_chain_id_transaction_hash_aut_idx;
-
--- Index Attach: eip7702_authorizations_default_pkey
-
-ALTER INDEX eip7702_authorizations_pkey ATTACH PARTITION eip7702_authorizations_default_pkey;
-
--- Index Attach: eip7702_authorizations_p_0_1000000_pkey
-
-ALTER INDEX eip7702_authorizations_pkey ATTACH PARTITION eip7702_authorizations_p_0_1000000_pkey;
-
--- Index Attach: eip7702_authorizations_p_0_10_chain_id_authority_block_numb_idx
-
-ALTER INDEX eip7702_authorizations_authority_idx ATTACH PARTITION eip7702_authorizations_p_0_10_chain_id_authority_block_numb_idx;
-
--- Index Attach: eip7702_authorizations_p_0_10_chain_id_transaction_hash_aut_idx
-
-ALTER INDEX eip7702_authorizations_tx_idx ATTACH PARTITION eip7702_authorizations_p_0_10_chain_id_transaction_hash_aut_idx;
-
--- Index Attach: erc20_holder_balances_default_chain_id_token_address_holder_idx
-
-ALTER INDEX erc20_holder_balances_page_idx ATTACH PARTITION erc20_holder_balances_default_chain_id_token_address_holder_idx;
-
--- Index Attach: erc20_holder_balances_default_pkey
-
-ALTER INDEX erc20_holder_balances_pkey ATTACH PARTITION erc20_holder_balances_default_pkey;
-
--- Index Attach: erc20_holder_balances_p_0_1000000_pkey
-
-ALTER INDEX erc20_holder_balances_pkey ATTACH PARTITION erc20_holder_balances_p_0_1000000_pkey;
-
--- Index Attach: erc20_holder_balances_p_0_100_chain_id_token_address_holder_idx
-
-ALTER INDEX erc20_holder_balances_page_idx ATTACH PARTITION erc20_holder_balances_p_0_100_chain_id_token_address_holder_idx;
-
--- Index Attach: erc20_holder_snapshots_defaul_chain_id_token_address_block__idx
-
-ALTER INDEX erc20_holder_snapshots_current_idx ATTACH PARTITION erc20_holder_snapshots_defaul_chain_id_token_address_block__idx;
-
--- Index Attach: erc20_holder_snapshots_default_pkey
-
-ALTER INDEX erc20_holder_snapshots_pkey ATTACH PARTITION erc20_holder_snapshots_default_pkey;
-
--- Index Attach: erc20_holder_snapshots_p_0_1000000_pkey
-
-ALTER INDEX erc20_holder_snapshots_pkey ATTACH PARTITION erc20_holder_snapshots_p_0_1000000_pkey;
-
--- Index Attach: erc20_holder_snapshots_p_0_10_chain_id_token_address_block__idx
-
-ALTER INDEX erc20_holder_snapshots_current_idx ATTACH PARTITION erc20_holder_snapshots_p_0_10_chain_id_token_address_block__idx;
-
--- Index Attach: erc4337_user_operation_events_default_pkey
-
-ALTER INDEX erc4337_user_operation_events_pkey ATTACH PARTITION erc4337_user_operation_events_default_pkey;
-
--- Index Attach: erc4337_user_operation_events_p_0_1000000_pkey
-
-ALTER INDEX erc4337_user_operation_events_pkey ATTACH PARTITION erc4337_user_operation_events_p_0_1000000_pkey;
-
--- Index Attach: erc4337_user_operation_partic_chain_id_configuration_diges_idx1
-
-ALTER INDEX erc4337_user_operation_participants_address_idx ATTACH PARTITION erc4337_user_operation_partic_chain_id_configuration_diges_idx1;
-
--- Index Attach: erc4337_user_operation_partic_chain_id_configuration_digest_idx
-
-ALTER INDEX erc4337_user_operation_participants_address_idx ATTACH PARTITION erc4337_user_operation_partic_chain_id_configuration_digest_idx;
-
--- Index Attach: erc4337_user_operation_participants_default_pkey
-
-ALTER INDEX erc4337_user_operation_participants_pkey ATTACH PARTITION erc4337_user_operation_participants_default_pkey;
-
--- Index Attach: erc4337_user_operation_participants_p_0_1000000_pkey
-
-ALTER INDEX erc4337_user_operation_participants_pkey ATTACH PARTITION erc4337_user_operation_participants_p_0_1000000_pkey;
-
--- Index Attach: erc4337_user_operations_defau_chain_id_configuration_diges_idx1
-
-ALTER INDEX erc4337_user_operations_global_idx ATTACH PARTITION erc4337_user_operations_defau_chain_id_configuration_diges_idx1;
-
--- Index Attach: erc4337_user_operations_defau_chain_id_configuration_diges_idx2
-
-ALTER INDEX erc4337_user_operations_transaction_idx ATTACH PARTITION erc4337_user_operations_defau_chain_id_configuration_diges_idx2;
-
--- Index Attach: erc4337_user_operations_defau_chain_id_configuration_digest_idx
-
-ALTER INDEX erc4337_user_operations_canonical_hash_idx ATTACH PARTITION erc4337_user_operations_defau_chain_id_configuration_digest_idx;
-
--- Index Attach: erc4337_user_operations_default_pkey
-
-ALTER INDEX erc4337_user_operations_pkey ATTACH PARTITION erc4337_user_operations_default_pkey;
-
--- Index Attach: erc4337_user_operations_p_0_1000000_pkey
-
-ALTER INDEX erc4337_user_operations_pkey ATTACH PARTITION erc4337_user_operations_p_0_1000000_pkey;
-
--- Index Attach: erc4337_user_operations_p_0_1_chain_id_configuration_diges_idx1
-
-ALTER INDEX erc4337_user_operations_global_idx ATTACH PARTITION erc4337_user_operations_p_0_1_chain_id_configuration_diges_idx1;
-
--- Index Attach: erc4337_user_operations_p_0_1_chain_id_configuration_diges_idx2
-
-ALTER INDEX erc4337_user_operations_transaction_idx ATTACH PARTITION erc4337_user_operations_p_0_1_chain_id_configuration_diges_idx2;
-
--- Index Attach: erc4337_user_operations_p_0_1_chain_id_configuration_digest_idx
-
-ALTER INDEX erc4337_user_operations_canonical_hash_idx ATTACH PARTITION erc4337_user_operations_p_0_1_chain_id_configuration_digest_idx;
-
--- Index Attach: logs_default_chain_id_address_block_number_idx
-
-ALTER INDEX logs_address_idx ATTACH PARTITION logs_default_chain_id_address_block_number_idx;
-
--- Index Attach: logs_default_chain_id_topic0_block_number_idx
-
-ALTER INDEX logs_topic0_idx ATTACH PARTITION logs_default_chain_id_topic0_block_number_idx;
-
--- Index Attach: logs_default_pkey
-
-ALTER INDEX logs_pkey ATTACH PARTITION logs_default_pkey;
-
--- Index Attach: logs_p_0_1000000_chain_id_address_block_number_idx
-
-ALTER INDEX logs_address_idx ATTACH PARTITION logs_p_0_1000000_chain_id_address_block_number_idx;
-
--- Index Attach: logs_p_0_1000000_chain_id_topic0_block_number_idx
-
-ALTER INDEX logs_topic0_idx ATTACH PARTITION logs_p_0_1000000_chain_id_topic0_block_number_idx;
-
--- Index Attach: logs_p_0_1000000_pkey
-
-ALTER INDEX logs_pkey ATTACH PARTITION logs_p_0_1000000_pkey;
-
--- Index Attach: native_transfers_default_chain_id_from_address_block_number_idx
-
-ALTER INDEX native_transfers_from_idx ATTACH PARTITION native_transfers_default_chain_id_from_address_block_number_idx;
-
--- Index Attach: native_transfers_default_chain_id_to_address_block_number_t_idx
-
-ALTER INDEX native_transfers_to_idx ATTACH PARTITION native_transfers_default_chain_id_to_address_block_number_t_idx;
-
--- Index Attach: native_transfers_default_chain_id_transaction_hash_log_inde_idx
-
-ALTER INDEX native_transfers_transaction_idx ATTACH PARTITION native_transfers_default_chain_id_transaction_hash_log_inde_idx;
-
--- Index Attach: native_transfers_default_pkey
-
-ALTER INDEX native_transfers_pkey ATTACH PARTITION native_transfers_default_pkey;
-
--- Index Attach: native_transfers_p_0_1000000_chain_id_from_address_block_nu_idx
-
-ALTER INDEX native_transfers_from_idx ATTACH PARTITION native_transfers_p_0_1000000_chain_id_from_address_block_nu_idx;
-
--- Index Attach: native_transfers_p_0_1000000_chain_id_to_address_block_numb_idx
-
-ALTER INDEX native_transfers_to_idx ATTACH PARTITION native_transfers_p_0_1000000_chain_id_to_address_block_numb_idx;
-
--- Index Attach: native_transfers_p_0_1000000_chain_id_transaction_hash_log__idx
-
-ALTER INDEX native_transfers_transaction_idx ATTACH PARTITION native_transfers_p_0_1000000_chain_id_transaction_hash_log__idx;
-
--- Index Attach: native_transfers_p_0_1000000_pkey
-
-ALTER INDEX native_transfers_pkey ATTACH PARTITION native_transfers_p_0_1000000_pkey;
-
--- Index Attach: normalized_traces_default_chain_id_created_address_block_nu_idx
-
-ALTER INDEX normalized_traces_created_idx ATTACH PARTITION normalized_traces_default_chain_id_created_address_block_nu_idx;
-
--- Index Attach: normalized_traces_default_chain_id_from_address_block_numbe_idx
-
-ALTER INDEX normalized_traces_from_idx ATTACH PARTITION normalized_traces_default_chain_id_from_address_block_numbe_idx;
-
--- Index Attach: normalized_traces_default_chain_id_to_address_block_number_idx
-
-ALTER INDEX normalized_traces_to_idx ATTACH PARTITION normalized_traces_default_chain_id_to_address_block_number_idx;
-
--- Index Attach: normalized_traces_default_chain_id_transaction_hash_trace_p_idx
-
-ALTER INDEX normalized_traces_tx_idx ATTACH PARTITION normalized_traces_default_chain_id_transaction_hash_trace_p_idx;
-
--- Index Attach: normalized_traces_default_pkey
-
-ALTER INDEX normalized_traces_pkey ATTACH PARTITION normalized_traces_default_pkey;
-
--- Index Attach: normalized_traces_p_0_1000000_chain_id_created_address_bloc_idx
-
-ALTER INDEX normalized_traces_created_idx ATTACH PARTITION normalized_traces_p_0_1000000_chain_id_created_address_bloc_idx;
-
--- Index Attach: normalized_traces_p_0_1000000_chain_id_from_address_block_n_idx
-
-ALTER INDEX normalized_traces_from_idx ATTACH PARTITION normalized_traces_p_0_1000000_chain_id_from_address_block_n_idx;
-
--- Index Attach: normalized_traces_p_0_1000000_chain_id_to_address_block_num_idx
-
-ALTER INDEX normalized_traces_to_idx ATTACH PARTITION normalized_traces_p_0_1000000_chain_id_to_address_block_num_idx;
-
--- Index Attach: normalized_traces_p_0_1000000_chain_id_transaction_hash_tra_idx
-
-ALTER INDEX normalized_traces_tx_idx ATTACH PARTITION normalized_traces_p_0_1000000_chain_id_transaction_hash_tra_idx;
-
--- Index Attach: normalized_traces_p_0_1000000_pkey
-
-ALTER INDEX normalized_traces_pkey ATTACH PARTITION normalized_traces_p_0_1000000_pkey;
-
--- Index Attach: receipts_default_chain_id_block_number_block_hash_tx_hash_key
-
-ALTER INDEX receipts_chain_id_block_number_block_hash_tx_hash_key ATTACH PARTITION receipts_default_chain_id_block_number_block_hash_tx_hash_key;
-
--- Index Attach: receipts_default_chain_id_lower_block_number_tx_index_idx
-
-ALTER INDEX receipts_contract_address_idx ATTACH PARTITION receipts_default_chain_id_lower_block_number_tx_index_idx;
-
--- Index Attach: receipts_default_pkey
-
-ALTER INDEX receipts_pkey ATTACH PARTITION receipts_default_pkey;
-
--- Index Attach: receipts_p_0_1000000_chain_id_block_number_block_hash_tx_ha_key
-
-ALTER INDEX receipts_chain_id_block_number_block_hash_tx_hash_key ATTACH PARTITION receipts_p_0_1000000_chain_id_block_number_block_hash_tx_ha_key;
-
--- Index Attach: receipts_p_0_1000000_chain_id_lower_block_number_tx_index_idx
-
-ALTER INDEX receipts_contract_address_idx ATTACH PARTITION receipts_p_0_1000000_chain_id_lower_block_number_tx_index_idx;
-
--- Index Attach: receipts_p_0_1000000_pkey
-
-ALTER INDEX receipts_pkey ATTACH PARTITION receipts_p_0_1000000_pkey;
-
--- Index Attach: token_balance_deltas_default_chain_id_owner_address_token_a_idx
-
-ALTER INDEX token_balance_deltas_owner_idx ATTACH PARTITION token_balance_deltas_default_chain_id_owner_address_token_a_idx;
-
--- Index Attach: token_balance_deltas_default_pkey
-
-ALTER INDEX token_balance_deltas_pkey ATTACH PARTITION token_balance_deltas_default_pkey;
-
--- Index Attach: token_balance_deltas_p_0_1000000_pkey
-
-ALTER INDEX token_balance_deltas_pkey ATTACH PARTITION token_balance_deltas_p_0_1000000_pkey;
-
--- Index Attach: token_balance_deltas_p_0_1000_chain_id_owner_address_token__idx
-
-ALTER INDEX token_balance_deltas_owner_idx ATTACH PARTITION token_balance_deltas_p_0_1000_chain_id_owner_address_token__idx;
-
--- Index Attach: token_events_default_chain_id_from_address_block_number_idx
-
-ALTER INDEX token_events_from_idx ATTACH PARTITION token_events_default_chain_id_from_address_block_number_idx;
-
--- Index Attach: token_events_default_chain_id_to_address_block_number_idx
-
-ALTER INDEX token_events_to_idx ATTACH PARTITION token_events_default_chain_id_to_address_block_number_idx;
-
--- Index Attach: token_events_default_chain_id_token_address_block_number_lo_idx
-
-ALTER INDEX token_events_token_idx ATTACH PARTITION token_events_default_chain_id_token_address_block_number_lo_idx;
-
--- Index Attach: token_events_default_chain_id_token_address_token_id_block__idx
-
-ALTER INDEX token_events_metadata_known_id_idx ATTACH PARTITION token_events_default_chain_id_token_address_token_id_block__idx;
-
--- Index Attach: token_events_default_pkey
-
-ALTER INDEX token_events_pkey ATTACH PARTITION token_events_default_pkey;
-
--- Index Attach: token_events_p_0_1000000_chain_id_from_address_block_number_idx
-
-ALTER INDEX token_events_from_idx ATTACH PARTITION token_events_p_0_1000000_chain_id_from_address_block_number_idx;
-
--- Index Attach: token_events_p_0_1000000_chain_id_to_address_block_number_idx
-
-ALTER INDEX token_events_to_idx ATTACH PARTITION token_events_p_0_1000000_chain_id_to_address_block_number_idx;
-
--- Index Attach: token_events_p_0_1000000_chain_id_token_address_block_numbe_idx
-
-ALTER INDEX token_events_token_idx ATTACH PARTITION token_events_p_0_1000000_chain_id_token_address_block_numbe_idx;
-
--- Index Attach: token_events_p_0_1000000_chain_id_token_address_token_id_bl_idx
-
-ALTER INDEX token_events_metadata_known_id_idx ATTACH PARTITION token_events_p_0_1000000_chain_id_token_address_token_id_bl_idx;
-
--- Index Attach: token_events_p_0_1000000_pkey
-
-ALTER INDEX token_events_pkey ATTACH PARTITION token_events_p_0_1000000_pkey;
-
--- Index Attach: trace_log_attributions_defaul_chain_id_transaction_hash_tra_idx
-
-ALTER INDEX trace_log_attributions_frame_idx ATTACH PARTITION trace_log_attributions_defaul_chain_id_transaction_hash_tra_idx;
-
--- Index Attach: trace_log_attributions_default_pkey
-
-ALTER INDEX trace_log_attributions_pkey ATTACH PARTITION trace_log_attributions_default_pkey;
-
--- Index Attach: trace_log_attributions_p_0_1000000_pkey
-
-ALTER INDEX trace_log_attributions_pkey ATTACH PARTITION trace_log_attributions_p_0_1000000_pkey;
-
--- Index Attach: trace_log_attributions_p_0_10_chain_id_transaction_hash_tra_idx
-
-ALTER INDEX trace_log_attributions_frame_idx ATTACH PARTITION trace_log_attributions_p_0_10_chain_id_transaction_hash_tra_idx;
-
--- Index Attach: transaction_effective_executi_chain_id_execution_address_e_idx1
-
-ALTER INDEX transaction_effective_execution_identities_code_idx ATTACH PARTITION transaction_effective_executi_chain_id_execution_address_e_idx1;
-
--- Index Attach: transaction_effective_executi_chain_id_execution_address_ex_idx
-
-ALTER INDEX transaction_effective_execution_identities_code_idx ATTACH PARTITION transaction_effective_executi_chain_id_execution_address_ex_idx;
-
--- Index Attach: transaction_effective_executi_chain_id_transaction_hash_co_idx1
-
-ALTER INDEX transaction_effective_execution_identities_tx_idx ATTACH PARTITION transaction_effective_executi_chain_id_transaction_hash_co_idx1;
-
--- Index Attach: transaction_effective_executi_chain_id_transaction_hash_con_idx
-
-ALTER INDEX transaction_effective_execution_identities_tx_idx ATTACH PARTITION transaction_effective_executi_chain_id_transaction_hash_con_idx;
-
--- Index Attach: transaction_effective_execution_identities_default_pkey
-
-ALTER INDEX transaction_effective_execution_identities_pkey ATTACH PARTITION transaction_effective_execution_identities_default_pkey;
-
--- Index Attach: transaction_effective_execution_identities_p_0_1000000_pkey
-
-ALTER INDEX transaction_effective_execution_identities_pkey ATTACH PARTITION transaction_effective_execution_identities_p_0_1000000_pkey;
-
--- Index Attach: transaction_execution_code_re_chain_id_execution_address_b_idx1
-
-ALTER INDEX transaction_execution_code_resolutions_execution_idx ATTACH PARTITION transaction_execution_code_re_chain_id_execution_address_b_idx1;
-
--- Index Attach: transaction_execution_code_re_chain_id_execution_address_bl_idx
-
-ALTER INDEX transaction_execution_code_resolutions_execution_idx ATTACH PARTITION transaction_execution_code_re_chain_id_execution_address_bl_idx;
-
--- Index Attach: transaction_execution_code_re_chain_id_transaction_hash_co_idx1
-
-ALTER INDEX transaction_execution_code_resolutions_tx_idx ATTACH PARTITION transaction_execution_code_re_chain_id_transaction_hash_co_idx1;
-
--- Index Attach: transaction_execution_code_re_chain_id_transaction_hash_con_idx
-
-ALTER INDEX transaction_execution_code_resolutions_tx_idx ATTACH PARTITION transaction_execution_code_re_chain_id_transaction_hash_con_idx;
-
--- Index Attach: transaction_execution_code_resolutions_default_pkey
-
-ALTER INDEX transaction_execution_code_resolutions_pkey ATTACH PARTITION transaction_execution_code_resolutions_default_pkey;
-
--- Index Attach: transaction_execution_code_resolutions_p_0_1000000_pkey
-
-ALTER INDEX transaction_execution_code_resolutions_pkey ATTACH PARTITION transaction_execution_code_resolutions_p_0_1000000_pkey;
-
--- Index Attach: transaction_inclusions_defaul_chain_id_block_number_block__key1
-
-ALTER INDEX transaction_inclusions_position_hash_key ATTACH PARTITION transaction_inclusions_defaul_chain_id_block_number_block__key1;
-
--- Index Attach: transaction_inclusions_defaul_chain_id_block_number_block_h_key
-
-ALTER INDEX transaction_inclusions_chain_id_block_number_block_hash_tx__key ATTACH PARTITION transaction_inclusions_defaul_chain_id_block_number_block_h_key;
-
--- Index Attach: transaction_inclusions_defaul_chain_id_lower_block_number__idx1
-
-ALTER INDEX transaction_inclusions_to_address_idx ATTACH PARTITION transaction_inclusions_defaul_chain_id_lower_block_number__idx1;
-
--- Index Attach: transaction_inclusions_defaul_chain_id_lower_block_number_t_idx
-
-ALTER INDEX transaction_inclusions_from_address_idx ATTACH PARTITION transaction_inclusions_defaul_chain_id_lower_block_number_t_idx;
-
--- Index Attach: transaction_inclusions_default_pkey
-
-ALTER INDEX transaction_inclusions_pkey ATTACH PARTITION transaction_inclusions_default_pkey;
-
--- Index Attach: transaction_inclusions_p_0_1000000_pkey
-
-ALTER INDEX transaction_inclusions_pkey ATTACH PARTITION transaction_inclusions_p_0_1000000_pkey;
-
--- Index Attach: transaction_inclusions_p_0_10_chain_id_block_number_block__key1
-
-ALTER INDEX transaction_inclusions_position_hash_key ATTACH PARTITION transaction_inclusions_p_0_10_chain_id_block_number_block__key1;
-
--- Index Attach: transaction_inclusions_p_0_10_chain_id_block_number_block_h_key
-
-ALTER INDEX transaction_inclusions_chain_id_block_number_block_hash_tx__key ATTACH PARTITION transaction_inclusions_p_0_10_chain_id_block_number_block_h_key;
-
--- Index Attach: transaction_inclusions_p_0_10_chain_id_lower_block_number__idx1
-
-ALTER INDEX transaction_inclusions_to_address_idx ATTACH PARTITION transaction_inclusions_p_0_10_chain_id_lower_block_number__idx1;
-
--- Index Attach: transaction_inclusions_p_0_10_chain_id_lower_block_number_t_idx
-
-ALTER INDEX transaction_inclusions_from_address_idx ATTACH PARTITION transaction_inclusions_p_0_10_chain_id_lower_block_number_t_idx;
-
--- Index Attach: transaction_state_changes_def_chain_id_address_block_numbe_idx1
-
-ALTER INDEX transaction_state_changes_code_epoch_idx ATTACH PARTITION transaction_state_changes_def_chain_id_address_block_numbe_idx1;
-
--- Index Attach: transaction_state_changes_def_chain_id_address_block_number_idx
-
-ALTER INDEX transaction_state_changes_address_idx ATTACH PARTITION transaction_state_changes_def_chain_id_address_block_number_idx;
-
--- Index Attach: transaction_state_changes_def_chain_id_transaction_hash_blo_idx
-
-ALTER INDEX transaction_state_changes_tx_idx ATTACH PARTITION transaction_state_changes_def_chain_id_transaction_hash_blo_idx;
-
--- Index Attach: transaction_state_changes_default_pkey
-
-ALTER INDEX transaction_state_changes_pkey ATTACH PARTITION transaction_state_changes_default_pkey;
-
--- Index Attach: transaction_state_changes_p_0_1000000_pkey
-
-ALTER INDEX transaction_state_changes_pkey ATTACH PARTITION transaction_state_changes_p_0_1000000_pkey;
-
--- Index Attach: transaction_state_changes_p_0_chain_id_address_block_numbe_idx1
-
-ALTER INDEX transaction_state_changes_code_epoch_idx ATTACH PARTITION transaction_state_changes_p_0_chain_id_address_block_numbe_idx1;
-
--- Index Attach: transaction_state_changes_p_0_chain_id_address_block_number_idx
-
-ALTER INDEX transaction_state_changes_address_idx ATTACH PARTITION transaction_state_changes_p_0_chain_id_address_block_number_idx;
-
--- Index Attach: transaction_state_changes_p_0_chain_id_transaction_hash_blo_idx
-
-ALTER INDEX transaction_state_changes_tx_idx ATTACH PARTITION transaction_state_changes_p_0_chain_id_transaction_hash_blo_idx;
-
--- Index Attach: withdrawals_default_chain_id_address_withdrawal_index_idx
-
-ALTER INDEX withdrawals_address_index_idx ATTACH PARTITION withdrawals_default_chain_id_address_withdrawal_index_idx;
-
--- Index Attach: withdrawals_default_pkey
-
-ALTER INDEX withdrawals_pkey ATTACH PARTITION withdrawals_default_pkey;
-
--- Index Attach: withdrawals_p_0_1000000_chain_id_address_withdrawal_index_idx
-
-ALTER INDEX withdrawals_address_index_idx ATTACH PARTITION withdrawals_p_0_1000000_chain_id_address_withdrawal_index_idx;
-
--- Index Attach: withdrawals_p_0_1000000_pkey
-
-ALTER INDEX withdrawals_pkey ATTACH PARTITION withdrawals_p_0_1000000_pkey;
-
--- Trigger: beacon_observation_generations beacon_observation_generations_immutable
+-- Triggers
 
 CREATE TRIGGER beacon_observation_generations_immutable BEFORE DELETE OR UPDATE ON beacon_observation_generations FOR EACH ROW EXECUTE FUNCTION reject_proxy_v2_evidence_mutation();
 
--- Trigger: beacon_observation_generations beacon_observation_generations_source_guard
-
 CREATE TRIGGER beacon_observation_generations_source_guard BEFORE INSERT ON beacon_observation_generations FOR EACH ROW EXECUTE FUNCTION enforce_proxy_observation_generation();
-
--- Trigger: billing_account_entries billing_account_entries_guard
 
 CREATE TRIGGER billing_account_entries_guard BEFORE DELETE OR UPDATE ON billing_account_entries FOR EACH ROW EXECUTE FUNCTION guard_billing_account_entry_mutation();
 
--- Trigger: billing_payment_events billing_payment_events_guard
-
 CREATE TRIGGER billing_payment_events_guard BEFORE DELETE OR UPDATE ON billing_payment_events FOR EACH ROW EXECUTE FUNCTION guard_billing_payment_event_mutation();
-
--- Trigger: billing_payments billing_payments_guard
 
 CREATE TRIGGER billing_payments_guard BEFORE DELETE OR UPDATE ON billing_payments FOR EACH ROW EXECUTE FUNCTION guard_billing_payment_mutation();
 
--- Trigger: billing_topup_intents billing_topup_intents_guard
-
 CREATE TRIGGER billing_topup_intents_guard BEFORE DELETE OR UPDATE ON billing_topup_intents FOR EACH ROW EXECUTE FUNCTION guard_billing_topup_intent_mutation();
-
--- Trigger: billing_usage_charges billing_usage_charges_guard
 
 CREATE TRIGGER billing_usage_charges_guard BEFORE DELETE OR UPDATE ON billing_usage_charges FOR EACH ROW EXECUTE FUNCTION guard_billing_usage_charge_mutation();
 
--- Trigger: block_stage_results block_stage_results_chart_dirty_delete_trigger
-
 CREATE TRIGGER block_stage_results_chart_dirty_delete_trigger AFTER DELETE ON block_stage_results FOR EACH ROW WHEN ((((old.stage = 'stats'::text) AND (old.stage_version = 4)) OR ((old.stage = 'token'::text) AND (old.stage_version = 2)))) EXECUTE FUNCTION mark_chart_rollup_dirty();
-
--- Trigger: block_stage_results block_stage_results_chart_dirty_insert_trigger
 
 CREATE TRIGGER block_stage_results_chart_dirty_insert_trigger AFTER INSERT ON block_stage_results FOR EACH ROW WHEN ((((new.stage = 'stats'::text) AND (new.stage_version = 4)) OR ((new.stage = 'token'::text) AND (new.stage_version = 2)))) EXECUTE FUNCTION mark_chart_rollup_dirty();
 
--- Trigger: block_stage_results block_stage_results_chart_dirty_update_trigger
-
 CREATE TRIGGER block_stage_results_chart_dirty_update_trigger AFTER UPDATE ON block_stage_results FOR EACH ROW WHEN ((((new.stage = 'stats'::text) AND (new.stage_version = 4)) OR ((new.stage = 'token'::text) AND (new.stage_version = 2)) OR ((old.stage = 'stats'::text) AND (old.stage_version = 4)) OR ((old.stage = 'token'::text) AND (old.stage_version = 2)))) EXECUTE FUNCTION mark_chart_rollup_dirty();
-
--- Trigger: block_stage_results block_stage_results_proxy_history_epoch
 
 CREATE TRIGGER block_stage_results_proxy_history_epoch AFTER INSERT OR UPDATE ON block_stage_results FOR EACH ROW EXECUTE FUNCTION record_proxy_history_publication_epoch();
 
--- Trigger: block_statistics block_statistics_chart_dirty_trigger
-
 CREATE TRIGGER block_statistics_chart_dirty_trigger AFTER INSERT OR DELETE OR UPDATE ON block_statistics FOR EACH ROW EXECUTE FUNCTION mark_chart_rollup_dirty();
-
--- Trigger: canonical_blocks canonical_blocks_chart_dirty_trigger
 
 CREATE TRIGGER canonical_blocks_chart_dirty_trigger AFTER INSERT OR DELETE OR UPDATE ON canonical_blocks FOR EACH ROW EXECUTE FUNCTION mark_canonical_chart_rollup_dirty();
 
--- Trigger: contract_code_observations contract_code_observations_search_catalog_trigger
-
 CREATE TRIGGER contract_code_observations_search_catalog_trigger AFTER INSERT OR DELETE OR UPDATE ON contract_code_observations FOR EACH ROW EXECUTE FUNCTION record_search_catalog_document('code');
-
--- Trigger: diamond_loupe_snapshots diamond_loupe_snapshots_source_guard
 
 CREATE TRIGGER diamond_loupe_snapshots_source_guard BEFORE INSERT ON diamond_loupe_snapshots FOR EACH ROW EXECUTE FUNCTION enforce_proxy_detection_generation();
 
--- Trigger: durable_jobs durable_jobs_chart_dirty_trigger
-
 CREATE TRIGGER durable_jobs_chart_dirty_trigger AFTER INSERT OR UPDATE OF status, requested_generation, claimed_generation, completed_generation, leased_generation, result ON durable_jobs FOR EACH ROW EXECUTE FUNCTION mark_chart_rollup_dirty_from_job();
-
--- Trigger: durable_jobs durable_jobs_proxy_history_epoch
 
 CREATE TRIGGER durable_jobs_proxy_history_epoch AFTER INSERT OR UPDATE ON durable_jobs FOR EACH ROW EXECUTE FUNCTION record_proxy_history_job_epoch();
 
--- Trigger: durable_jobs durable_jobs_publication_protocol
-
 CREATE TRIGGER durable_jobs_publication_protocol BEFORE UPDATE ON durable_jobs FOR EACH ROW EXECUTE FUNCTION require_enrichment_publication_protocol();
-
--- Trigger: durable_jobs durable_jobs_terminal_publication
 
 CREATE CONSTRAINT TRIGGER durable_jobs_terminal_publication AFTER INSERT OR UPDATE ON durable_jobs DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION enforce_enrichment_terminal_publication();
 
--- Trigger: durable_stage_publications durable_stage_publications_append_only
-
 CREATE TRIGGER durable_stage_publications_append_only BEFORE DELETE OR UPDATE ON durable_stage_publications FOR EACH ROW EXECUTE FUNCTION reject_durable_stage_publication_mutation();
-
--- Trigger: durable_stage_publications durable_stage_publications_derived_forward_enqueue
 
 CREATE TRIGGER durable_stage_publications_derived_forward_enqueue AFTER INSERT ON durable_stage_publications FOR EACH ROW EXECUTE FUNCTION enqueue_derived_forward_event_after_stage_publication();
 
--- Trigger: ens_name_observations ens_name_observations_search_catalog_trigger
-
 CREATE TRIGGER ens_name_observations_search_catalog_trigger AFTER INSERT OR UPDATE OF publication_nonce ON ens_name_observations FOR EACH ROW EXECUTE FUNCTION record_ens_name_search_document();
-
--- Trigger: erc1155_balance_reconciliations erc1155_balance_reconciliations_immutable_trigger
 
 CREATE TRIGGER erc1155_balance_reconciliations_immutable_trigger BEFORE UPDATE ON erc1155_balance_reconciliations FOR EACH ROW EXECUTE FUNCTION reject_exact_nft_observation_mutation();
 
--- Trigger: erc20_balance_reconciliations erc20_balance_reconciliation_immutable
-
 CREATE TRIGGER erc20_balance_reconciliation_immutable BEFORE UPDATE ON erc20_balance_reconciliations FOR EACH ROW EXECUTE FUNCTION etherview_guard_erc20_balance_reconciliation();
-
--- Trigger: erc20_holder_balances erc20_holder_balances_immutable
 
 CREATE TRIGGER erc20_holder_balances_immutable BEFORE UPDATE ON erc20_holder_balances FOR EACH ROW EXECUTE FUNCTION etherview_guard_erc20_holder_fact();
 
--- Trigger: erc20_holder_snapshots erc20_holder_snapshots_immutable
-
 CREATE TRIGGER erc20_holder_snapshots_immutable BEFORE UPDATE ON erc20_holder_snapshots FOR EACH ROW EXECUTE FUNCTION etherview_guard_erc20_holder_fact();
-
--- Trigger: erc4337_user_operations erc4337_canonical_user_op_hash_trigger
 
 CREATE TRIGGER erc4337_canonical_user_op_hash_trigger BEFORE INSERT OR UPDATE OF canonical ON erc4337_user_operations FOR EACH ROW EXECUTE FUNCTION enforce_erc4337_canonical_user_op_hash();
 
--- Trigger: canonical_blocks erc4337_coverage_canonical_detach_trigger
-
 CREATE TRIGGER erc4337_coverage_canonical_detach_trigger AFTER DELETE OR UPDATE ON canonical_blocks FOR EACH ROW EXECUTE FUNCTION erc4337_remove_detached_coverage();
-
--- Trigger: erc721_owner_reconciliations erc721_owner_reconciliations_immutable_trigger
 
 CREATE TRIGGER erc721_owner_reconciliations_immutable_trigger BEFORE UPDATE ON erc721_owner_reconciliations FOR EACH ROW EXECUTE FUNCTION reject_exact_nft_observation_mutation();
 
--- Trigger: external_metadata external_metadata_exact_nft_immutable
-
 CREATE TRIGGER external_metadata_exact_nft_immutable BEFORE UPDATE ON external_metadata FOR EACH ROW EXECUTE FUNCTION etherview_guard_exact_nft_metadata();
-
--- Trigger: genesis_account_observations genesis_account_observation_immutable
 
 CREATE TRIGGER genesis_account_observation_immutable BEFORE UPDATE ON genesis_account_observations FOR EACH ROW EXECUTE FUNCTION etherview_guard_genesis_account_observation();
 
--- Trigger: genesis_state_imports genesis_state_import_complete_immutable
-
 CREATE TRIGGER genesis_state_import_complete_immutable BEFORE UPDATE ON genesis_state_imports FOR EACH ROW EXECUTE FUNCTION etherview_guard_completed_genesis_import();
-
--- Trigger: canonical_blocks native_transfer_canonical_coverage_trigger
 
 CREATE TRIGGER native_transfer_canonical_coverage_trigger AFTER INSERT OR DELETE OR UPDATE ON canonical_blocks FOR EACH ROW EXECUTE FUNCTION native_transfer_canonical_coverage();
 
--- Trigger: durable_jobs native_transfer_job_coverage_trigger
-
 CREATE TRIGGER native_transfer_job_coverage_trigger AFTER INSERT OR UPDATE ON durable_jobs FOR EACH ROW WHEN ((new.stage = 'native_transfer'::text)) EXECUTE FUNCTION native_transfer_job_coverage();
-
--- Trigger: transactional_outbox native_transfer_outbox_coverage_trigger
 
 CREATE TRIGGER native_transfer_outbox_coverage_trigger AFTER INSERT OR DELETE OR UPDATE ON transactional_outbox FOR EACH ROW EXECUTE FUNCTION native_transfer_outbox_coverage();
 
--- Trigger: block_stage_results native_transfer_result_coverage_trigger
-
 CREATE TRIGGER native_transfer_result_coverage_trigger AFTER INSERT OR DELETE OR UPDATE ON block_stage_results FOR EACH ROW EXECUTE FUNCTION native_transfer_result_coverage();
-
--- Trigger: nft_metadata_source_observations nft_metadata_source_observation_immutable
 
 CREATE TRIGGER nft_metadata_source_observation_immutable BEFORE UPDATE ON nft_metadata_source_observations FOR EACH ROW EXECUTE FUNCTION etherview_guard_nft_metadata_source();
 
--- Trigger: nft_metadata_update_observations nft_metadata_update_observation_immutable
-
 CREATE TRIGGER nft_metadata_update_observation_immutable BEFORE UPDATE ON nft_metadata_update_observations FOR EACH ROW EXECUTE FUNCTION etherview_guard_nft_metadata_update_observation();
-
--- Trigger: normalized_traces normalized_traces_derived_attempt_canonicality
 
 CREATE TRIGGER normalized_traces_derived_attempt_canonicality AFTER UPDATE OF canonical ON normalized_traces FOR EACH ROW EXECUTE FUNCTION synchronize_derived_attempt_trace_canonicality();
 
--- Trigger: operator_labels operator_labels_search_catalog_trigger
-
 CREATE TRIGGER operator_labels_search_catalog_trigger AFTER INSERT OR DELETE OR UPDATE ON operator_labels FOR EACH ROW EXECUTE FUNCTION record_search_catalog_document('label');
-
--- Trigger: proxy_artifact_resolutions proxy_artifact_resolutions_immutable
 
 CREATE TRIGGER proxy_artifact_resolutions_immutable BEFORE DELETE OR UPDATE ON proxy_artifact_resolutions FOR EACH ROW EXECUTE FUNCTION reject_proxy_v2_evidence_mutation();
 
--- Trigger: proxy_artifact_resolutions proxy_artifact_resolutions_source_guard
-
 CREATE TRIGGER proxy_artifact_resolutions_source_guard BEFORE INSERT ON proxy_artifact_resolutions FOR EACH ROW EXECUTE FUNCTION enforce_proxy_artifact_resolution();
-
--- Trigger: proxy_detection_evidence proxy_detection_evidence_source_guard
 
 CREATE TRIGGER proxy_detection_evidence_source_guard BEFORE INSERT ON proxy_detection_evidence FOR EACH ROW EXECUTE FUNCTION enforce_proxy_detection_generation();
 
--- Trigger: proxy_history_epochs proxy_history_epochs_append_only
-
 CREATE TRIGGER proxy_history_epochs_append_only BEFORE DELETE OR UPDATE ON proxy_history_epochs FOR EACH ROW EXECUTE FUNCTION reject_proxy_history_epoch_mutation();
-
--- Trigger: canonical_blocks proxy_interaction_coverage_canonical_trigger
 
 CREATE TRIGGER proxy_interaction_coverage_canonical_trigger AFTER INSERT OR DELETE OR UPDATE ON canonical_blocks FOR EACH ROW EXECUTE FUNCTION refresh_proxy_interaction_coverage_from_canonical();
 
--- Trigger: durable_jobs proxy_interaction_coverage_job_trigger
-
 CREATE TRIGGER proxy_interaction_coverage_job_trigger AFTER INSERT OR DELETE OR UPDATE ON durable_jobs FOR EACH ROW EXECUTE FUNCTION refresh_proxy_interaction_coverage_from_job();
-
--- Trigger: transactional_outbox proxy_interaction_coverage_outbox_trigger
 
 CREATE TRIGGER proxy_interaction_coverage_outbox_trigger AFTER INSERT OR DELETE OR UPDATE ON transactional_outbox FOR EACH ROW EXECUTE FUNCTION refresh_proxy_interaction_coverage_from_outbox();
 
--- Trigger: proxy_observation_generations proxy_observation_generations_immutable
-
 CREATE TRIGGER proxy_observation_generations_immutable BEFORE DELETE OR UPDATE ON proxy_observation_generations FOR EACH ROW EXECUTE FUNCTION reject_proxy_v2_evidence_mutation();
-
--- Trigger: proxy_observation_generations proxy_observation_generations_source_guard
 
 CREATE TRIGGER proxy_observation_generations_source_guard BEFORE INSERT ON proxy_observation_generations FOR EACH ROW EXECUTE FUNCTION enforce_proxy_observation_generation();
 
--- Trigger: proxy_replay_targets proxy_replay_targets_immutable
-
 CREATE TRIGGER proxy_replay_targets_immutable BEFORE DELETE OR UPDATE ON proxy_replay_targets FOR EACH ROW EXECUTE FUNCTION reject_proxy_v2_evidence_mutation();
-
--- Trigger: token_contracts token_contracts_search_catalog_trigger
 
 CREATE TRIGGER token_contracts_search_catalog_trigger AFTER INSERT OR DELETE OR UPDATE ON token_contracts FOR EACH ROW EXECUTE FUNCTION record_search_catalog_document('token');
 
--- Trigger: token_events token_events_chart_dirty_trigger
-
 CREATE TRIGGER token_events_chart_dirty_trigger AFTER INSERT OR DELETE OR UPDATE ON token_events FOR EACH ROW EXECUTE FUNCTION mark_chart_rollup_dirty();
-
--- Trigger: uups_implementation_observation_generations uups_implementation_observation_generations_immutable
 
 CREATE TRIGGER uups_implementation_observation_generations_immutable BEFORE DELETE OR UPDATE ON uups_implementation_observation_generations FOR EACH ROW EXECUTE FUNCTION reject_proxy_v2_evidence_mutation();
 
--- Trigger: uups_implementation_observation_generations uups_implementation_observation_generations_source_guard
-
 CREATE TRIGGER uups_implementation_observation_generations_source_guard BEFORE INSERT ON uups_implementation_observation_generations FOR EACH ROW EXECUTE FUNCTION enforce_proxy_observation_generation();
-
--- Trigger: uups_implementation_observations uups_implementation_observations_immutable
 
 CREATE TRIGGER uups_implementation_observations_immutable BEFORE DELETE OR UPDATE ON uups_implementation_observations FOR EACH ROW EXECUTE FUNCTION enforce_uups_implementation_observation_mutation();
 
--- Trigger: uups_implementation_observations uups_implementation_observations_source_guard
-
 CREATE TRIGGER uups_implementation_observations_source_guard BEFORE INSERT ON uups_implementation_observations FOR EACH ROW EXECUTE FUNCTION enforce_uups_implementation_observation();
-
--- Trigger: uups_implementation_observations uups_implementation_observations_witness_guard
 
 CREATE CONSTRAINT TRIGGER uups_implementation_observations_witness_guard AFTER INSERT ON uups_implementation_observations DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION enforce_uups_implementation_observation_witness();
 
--- Trigger: verification_compilation_contracts verification_compilation_contracts_immutable
-
 CREATE TRIGGER verification_compilation_contracts_immutable BEFORE DELETE OR UPDATE ON verification_compilation_contracts FOR EACH ROW EXECUTE FUNCTION reject_verification_compilation_mutation();
-
--- Trigger: verification_compilation_units verification_compilation_units_immutable
 
 CREATE TRIGGER verification_compilation_units_immutable BEFORE DELETE OR UPDATE ON verification_compilation_units FOR EACH ROW EXECUTE FUNCTION reject_verification_compilation_mutation();
 
--- Trigger: verification_jobs verification_jobs_compiler_provenance
-
 CREATE TRIGGER verification_jobs_compiler_provenance BEFORE UPDATE OF compiler_platform, catalog_generation_id, compiler_digest, executor_kind, execution_policy, executor_digest ON verification_jobs FOR EACH ROW EXECUTE FUNCTION enforce_verification_compiler_provenance();
-
--- Trigger: verification_jobs verification_jobs_unbound_compiler_insert
 
 CREATE TRIGGER verification_jobs_unbound_compiler_insert BEFORE INSERT ON verification_jobs FOR EACH ROW EXECUTE FUNCTION enforce_unbound_verification_job_insert();
 
--- Trigger: verification_jobs verification_jobs_v2_result_insert
-
 CREATE CONSTRAINT TRIGGER verification_jobs_v2_result_insert AFTER INSERT ON verification_jobs DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION enforce_verifier_v2_result_job();
-
--- Trigger: verification_jobs verification_jobs_v2_result_update
 
 CREATE CONSTRAINT TRIGGER verification_jobs_v2_result_update AFTER UPDATE OF status, outcome_kind, outcome, error_code ON verification_jobs DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION enforce_verifier_v2_result_job();
 
--- Trigger: verification_jobs verification_jobs_vyper_runtime_binding
-
 CREATE TRIGGER verification_jobs_vyper_runtime_binding BEFORE INSERT OR UPDATE ON verification_jobs FOR EACH ROW EXECUTE FUNCTION check_vyper_runtime_binding();
-
--- Trigger: verification_results verification_results_v2_immutable
 
 CREATE TRIGGER verification_results_v2_immutable BEFORE DELETE OR UPDATE ON verification_results FOR EACH ROW EXECUTE FUNCTION reject_verifier_v2_result_mutation();
 
--- Trigger: verification_results verification_results_v2_terminal_job
-
 CREATE CONSTRAINT TRIGGER verification_results_v2_terminal_job AFTER INSERT ON verification_results DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION enforce_verifier_v2_result_job();
-
--- Trigger: verified_contract_proxy_artifacts verified_contract_proxy_artifacts_immutable
 
 CREATE TRIGGER verified_contract_proxy_artifacts_immutable BEFORE DELETE OR UPDATE ON verified_contract_proxy_artifacts FOR EACH ROW EXECUTE FUNCTION reject_proxy_v2_evidence_mutation();
 
--- Trigger: verified_contract_proxy_artifacts verified_contract_proxy_artifacts_source_guard
-
 CREATE TRIGGER verified_contract_proxy_artifacts_source_guard BEFORE INSERT ON verified_contract_proxy_artifacts FOR EACH ROW EXECUTE FUNCTION enforce_verified_contract_proxy_artifact();
-
--- Trigger: verified_contracts verified_contracts_search_catalog_trigger
 
 CREATE TRIGGER verified_contracts_search_catalog_trigger AFTER INSERT OR DELETE OR UPDATE ON verified_contracts FOR EACH ROW EXECUTE FUNCTION record_verified_contract_search_catalog_document();
 
--- Trigger: verified_contracts verified_contracts_v2_source_guard
-
 CREATE TRIGGER verified_contracts_v2_source_guard BEFORE INSERT OR UPDATE ON verified_contracts FOR EACH ROW EXECUTE FUNCTION enforce_verifier_v2_publication();
-
--- Trigger: verified_proxy_bindings verified_proxy_bindings_immutable
 
 CREATE TRIGGER verified_proxy_bindings_immutable BEFORE DELETE OR UPDATE ON verified_proxy_bindings FOR EACH ROW EXECUTE FUNCTION reject_verified_proxy_binding_mutation();
 
--- Trigger: verified_proxy_bindings verified_proxy_bindings_source_guard
-
 CREATE TRIGGER verified_proxy_bindings_source_guard BEFORE INSERT ON verified_proxy_bindings FOR EACH ROW EXECUTE FUNCTION enforce_verified_proxy_binding();
-
--- Trigger: transactional_outbox watch_core_change
 
 CREATE TRIGGER watch_core_change AFTER INSERT OR UPDATE OF generation ON transactional_outbox FOR EACH ROW WHEN ((new.topic = ANY (ARRAY['core.block.canonical'::text, 'core.block.orphaned'::text]))) EXECUTE FUNCTION watch_core_change();
 
--- Trigger: durable_jobs watch_token_change
-
 CREATE TRIGGER watch_token_change AFTER INSERT OR UPDATE OF requested_generation, completed_generation, status ON durable_jobs FOR EACH ROW WHEN (((new.kind = 'enrichment'::text) AND (new.stage = 'token'::text) AND (new.stage_version = 2))) EXECUTE FUNCTION watch_token_change();
 
--- Fk Constraint: abi_decodings abi_decodings_chain_id_block_number_block_hash_fkey
+-- Function schema bindings
 
-ALTER TABLE abi_decodings
-    ADD CONSTRAINT abi_decodings_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash);
-
--- Fk Constraint: address_activities address_activities_chain_id_transaction_hash_fkey
-
-ALTER TABLE address_activities
-    ADD CONSTRAINT address_activities_chain_id_transaction_hash_fkey FOREIGN KEY (chain_id, transaction_hash) REFERENCES transactions(chain_id, hash);
-
--- Fk Constraint: address_export_admissions address_export_admissions_user_id_fkey
-
-ALTER TABLE ONLY address_export_admissions
-    ADD CONSTRAINT address_export_admissions_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id);
-
--- Fk Constraint: address_watches address_watches_chain_id_fkey
-
-ALTER TABLE ONLY address_watches
-    ADD CONSTRAINT address_watches_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: address_watches address_watches_user_id_fkey
-
-ALTER TABLE ONLY address_watches
-    ADD CONSTRAINT address_watches_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id);
-
--- Fk Constraint: api_keys api_keys_owner_user_id_fkey
-
-ALTER TABLE ONLY api_keys
-    ADD CONSTRAINT api_keys_owner_user_id_fkey FOREIGN KEY (owner_user_id) REFERENCES users(id);
-
--- Fk Constraint: auth_challenges auth_challenges_chain_id_fkey
-
-ALTER TABLE ONLY auth_challenges
-    ADD CONSTRAINT auth_challenges_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: beacon_implementation_observations beacon_implementation_observa_chain_id_block_number_block__fkey
-
-ALTER TABLE ONLY beacon_implementation_observations
-    ADD CONSTRAINT beacon_implementation_observa_chain_id_block_number_block__fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash);
-
--- Fk Constraint: beacon_implementation_observations beacon_implementation_observations_chain_id_fkey
-
-ALTER TABLE ONLY beacon_implementation_observations
-    ADD CONSTRAINT beacon_implementation_observations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: beacon_observation_generations beacon_observation_generation_chain_id_beacon_address_obse_fkey
-
-ALTER TABLE ONLY beacon_observation_generations
-    ADD CONSTRAINT beacon_observation_generation_chain_id_beacon_address_obse_fkey FOREIGN KEY (chain_id, beacon_address, observation_block_hash, observation_stage_version) REFERENCES beacon_implementation_observations(chain_id, beacon_address, block_hash, stage_version) ON DELETE RESTRICT;
-
--- Fk Constraint: beacon_observation_generations beacon_observation_generations_chain_id_fkey
-
-ALTER TABLE ONLY beacon_observation_generations
-    ADD CONSTRAINT beacon_observation_generations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: beacon_observation_generations beacon_observation_generations_durable_job_id_fkey
-
-ALTER TABLE ONLY beacon_observation_generations
-    ADD CONSTRAINT beacon_observation_generations_durable_job_id_fkey FOREIGN KEY (durable_job_id) REFERENCES durable_jobs(id);
-
--- Fk Constraint: billing_account_entries billing_account_entries_user_id_chain_id_network_asset_fkey
-
-ALTER TABLE ONLY billing_account_entries
-    ADD CONSTRAINT billing_account_entries_user_id_chain_id_network_asset_fkey FOREIGN KEY (user_id, chain_id, network, asset) REFERENCES billing_accounts(user_id, chain_id, network, asset);
-
--- Fk Constraint: billing_accounts billing_accounts_chain_id_fkey
-
-ALTER TABLE ONLY billing_accounts
-    ADD CONSTRAINT billing_accounts_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: billing_accounts billing_accounts_user_id_fkey
-
-ALTER TABLE ONLY billing_accounts
-    ADD CONSTRAINT billing_accounts_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id);
-
--- Fk Constraint: billing_payment_events billing_payment_events_payment_id_fkey
-
-ALTER TABLE ONLY billing_payment_events
-    ADD CONSTRAINT billing_payment_events_payment_id_fkey FOREIGN KEY (payment_id) REFERENCES billing_payments(id);
-
--- Fk Constraint: billing_payments billing_payments_api_key_prefix_fkey
-
-ALTER TABLE ONLY billing_payments
-    ADD CONSTRAINT billing_payments_api_key_prefix_fkey FOREIGN KEY (api_key_prefix) REFERENCES api_keys(prefix) ON DELETE SET NULL;
-
--- Fk Constraint: billing_payments billing_payments_chain_id_fkey
-
-ALTER TABLE ONLY billing_payments
-    ADD CONSTRAINT billing_payments_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: billing_payments billing_payments_topup_intent_id_fkey
-
-ALTER TABLE ONLY billing_payments
-    ADD CONSTRAINT billing_payments_topup_intent_id_fkey FOREIGN KEY (topup_intent_id) REFERENCES billing_topup_intents(id);
-
--- Fk Constraint: billing_payments billing_payments_user_id_fkey
-
-ALTER TABLE ONLY billing_payments
-    ADD CONSTRAINT billing_payments_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
-
--- Fk Constraint: billing_topup_intents billing_topup_intents_active_payment_fk
-
-ALTER TABLE ONLY billing_topup_intents
-    ADD CONSTRAINT billing_topup_intents_active_payment_fk FOREIGN KEY (active_payment_id) REFERENCES billing_payments(id);
-
--- Fk Constraint: billing_topup_intents billing_topup_intents_chain_id_fkey
-
-ALTER TABLE ONLY billing_topup_intents
-    ADD CONSTRAINT billing_topup_intents_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: billing_topup_intents billing_topup_intents_user_id_fkey
-
-ALTER TABLE ONLY billing_topup_intents
-    ADD CONSTRAINT billing_topup_intents_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id);
-
--- Fk Constraint: billing_usage_charges billing_usage_charges_api_key_prefix_fkey
-
-ALTER TABLE ONLY billing_usage_charges
-    ADD CONSTRAINT billing_usage_charges_api_key_prefix_fkey FOREIGN KEY (api_key_prefix) REFERENCES api_keys(prefix);
-
--- Fk Constraint: billing_usage_charges billing_usage_charges_user_id_chain_id_network_asset_fkey
-
-ALTER TABLE ONLY billing_usage_charges
-    ADD CONSTRAINT billing_usage_charges_user_id_chain_id_network_asset_fkey FOREIGN KEY (user_id, chain_id, network, asset) REFERENCES billing_accounts(user_id, chain_id, network, asset);
-
--- Fk Constraint: block_journals block_journals_chain_id_fkey
-
-ALTER TABLE ONLY block_journals
-    ADD CONSTRAINT block_journals_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: block_journals block_journals_durable_job_fkey
-
-ALTER TABLE ONLY block_journals
-    ADD CONSTRAINT block_journals_durable_job_fkey FOREIGN KEY (durable_job_id) REFERENCES durable_jobs(id);
-
--- Fk Constraint: block_stage_results block_stage_results_chain_id_block_number_block_hash_fkey
-
-ALTER TABLE ONLY block_stage_results
-    ADD CONSTRAINT block_stage_results_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash);
-
--- Fk Constraint: block_stage_results block_stage_results_chain_id_fkey
-
-ALTER TABLE ONLY block_stage_results
-    ADD CONSTRAINT block_stage_results_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: block_stage_results block_stage_results_durable_job_fkey
-
-ALTER TABLE ONLY block_stage_results
-    ADD CONSTRAINT block_stage_results_durable_job_fkey FOREIGN KEY (durable_job_id) REFERENCES durable_jobs(id);
-
--- Fk Constraint: block_statistics block_statistics_chain_id_block_number_block_hash_fkey
-
-ALTER TABLE ONLY block_statistics
-    ADD CONSTRAINT block_statistics_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash);
-
--- Fk Constraint: blocks blocks_chain_id_fkey
-
-ALTER TABLE ONLY blocks
-    ADD CONSTRAINT blocks_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: canonical_blocks canonical_blocks_chain_id_number_block_hash_fkey
-
-ALTER TABLE ONLY canonical_blocks
-    ADD CONSTRAINT canonical_blocks_chain_id_number_block_hash_fkey FOREIGN KEY (chain_id, number, block_hash) REFERENCES blocks(chain_id, number, hash) DEFERRABLE INITIALLY DEFERRED;
-
--- Fk Constraint: chain_finality chain_finality_chain_id_fkey
-
-ALTER TABLE ONLY chain_finality
-    ADD CONSTRAINT chain_finality_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: chart_hourly_rollups chart_hourly_rollups_chain_id_fkey
-
-ALTER TABLE ONLY chart_hourly_rollups
-    ADD CONSTRAINT chart_hourly_rollups_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: chart_rollup_backfill chart_rollup_backfill_chain_id_fkey
-
-ALTER TABLE ONLY chart_rollup_backfill
-    ADD CONSTRAINT chart_rollup_backfill_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: chart_rollup_dirty_hours chart_rollup_dirty_hours_chain_id_fkey
-
-ALTER TABLE ONLY chart_rollup_dirty_hours
-    ADD CONSTRAINT chart_rollup_dirty_hours_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: compiler_catalog_entries compiler_catalog_entries_generation_fk
-
-ALTER TABLE ONLY compiler_catalog_entries
-    ADD CONSTRAINT compiler_catalog_entries_generation_fk FOREIGN KEY (generation_id, language) REFERENCES compiler_catalog_generations(id, language) ON DELETE RESTRICT;
-
--- Fk Constraint: compiler_catalog_heads compiler_catalog_heads_generation_fk
-
-ALTER TABLE ONLY compiler_catalog_heads
-    ADD CONSTRAINT compiler_catalog_heads_generation_fk FOREIGN KEY (generation_id, language) REFERENCES compiler_catalog_generations(id, language) ON DELETE RESTRICT;
-
--- Fk Constraint: contract_abis contract_abis_chain_id_block_number_block_hash_fkey
-
-ALTER TABLE ONLY contract_abis
-    ADD CONSTRAINT contract_abis_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash);
-
--- Fk Constraint: contract_abis contract_abis_chain_id_fkey
-
-ALTER TABLE ONLY contract_abis
-    ADD CONSTRAINT contract_abis_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: contract_code_observations contract_code_observations_chain_id_block_number_block_has_fkey
-
-ALTER TABLE ONLY contract_code_observations
-    ADD CONSTRAINT contract_code_observations_chain_id_block_number_block_has_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash);
-
--- Fk Constraint: contract_code_observations contract_code_observations_chain_id_fkey
-
-ALTER TABLE ONLY contract_code_observations
-    ADD CONSTRAINT contract_code_observations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: core_backfill_leases core_backfill_leases_chain_id_fkey
-
-ALTER TABLE ONLY core_backfill_leases
-    ADD CONSTRAINT core_backfill_leases_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: core_coverage_ranges core_coverage_ranges_chain_id_fkey
-
-ALTER TABLE ONLY core_coverage_ranges
-    ADD CONSTRAINT core_coverage_ranges_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: core_index_configuration core_index_configuration_chain_id_fkey
-
-ALTER TABLE ONLY core_index_configuration
-    ADD CONSTRAINT core_index_configuration_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: derived_verification_attempts derived_verification_attempts_compilation_id_fkey
-
-ALTER TABLE ONLY derived_verification_attempts
-    ADD CONSTRAINT derived_verification_attempts_compilation_id_fkey FOREIGN KEY (compilation_id) REFERENCES verification_compilation_units(id) ON DELETE RESTRICT;
-
--- Fk Constraint: derived_verification_attempts derived_verification_attempts_trace_fk
-
-ALTER TABLE ONLY derived_verification_attempts
-    ADD CONSTRAINT derived_verification_attempts_trace_fk FOREIGN KEY (chain_id, block_number, block_hash, transaction_hash, trace_path) REFERENCES normalized_traces(chain_id, block_number, block_hash, transaction_hash, trace_path) ON DELETE RESTRICT;
-
--- Fk Constraint: derived_verification_attempts derived_verification_attempts_verification_job_id_fkey
-
-ALTER TABLE ONLY derived_verification_attempts
-    ADD CONSTRAINT derived_verification_attempts_verification_job_id_fkey FOREIGN KEY (verification_job_id) REFERENCES verification_jobs(id) ON DELETE RESTRICT;
-
--- Fk Constraint: derived_verification_backfill_requests derived_verification_backfill_requests_chain_id_fkey
-
-ALTER TABLE ONLY derived_verification_backfill_requests
-    ADD CONSTRAINT derived_verification_backfill_requests_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: derived_verification_forward_blocks derived_verification_forward__chain_id_block_number_block__fkey
-
-ALTER TABLE ONLY derived_verification_forward_blocks
-    ADD CONSTRAINT derived_verification_forward__chain_id_block_number_block__fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash) ON DELETE RESTRICT;
-
--- Fk Constraint: derived_verification_forward_blocks derived_verification_forward_blocks_source_fk
-
-ALTER TABLE ONLY derived_verification_forward_blocks
-    ADD CONSTRAINT derived_verification_forward_blocks_source_fk FOREIGN KEY (source_job_id, source_generation) REFERENCES durable_stage_publications(job_id, job_generation) ON DELETE RESTRICT;
-
--- Fk Constraint: derived_verification_scans derived_verification_scans_chain_id_fkey
-
-ALTER TABLE ONLY derived_verification_scans
-    ADD CONSTRAINT derived_verification_scans_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: derived_verification_scans derived_verification_scans_compilation_id_fkey
-
-ALTER TABLE ONLY derived_verification_scans
-    ADD CONSTRAINT derived_verification_scans_compilation_id_fkey FOREIGN KEY (compilation_id) REFERENCES verification_compilation_units(id) ON DELETE RESTRICT;
-
--- Fk Constraint: diamond_cut_events diamond_cut_events_chain_id_block_number_block_hash_fkey
-
-ALTER TABLE ONLY diamond_cut_events
-    ADD CONSTRAINT diamond_cut_events_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash);
-
--- Fk Constraint: diamond_cut_events diamond_cut_events_chain_id_block_number_block_hash_log_in_fkey
-
-ALTER TABLE ONLY diamond_cut_events
-    ADD CONSTRAINT diamond_cut_events_chain_id_block_number_block_hash_log_in_fkey FOREIGN KEY (chain_id, block_number, block_hash, log_index) REFERENCES logs(chain_id, block_number, block_hash, log_index);
-
--- Fk Constraint: diamond_cut_events diamond_cut_events_chain_id_fkey
-
-ALTER TABLE ONLY diamond_cut_events
-    ADD CONSTRAINT diamond_cut_events_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: diamond_loupe_facets diamond_loupe_facets_snapshot_id_fkey
-
-ALTER TABLE ONLY diamond_loupe_facets
-    ADD CONSTRAINT diamond_loupe_facets_snapshot_id_fkey FOREIGN KEY (snapshot_id) REFERENCES diamond_loupe_snapshots(id) ON DELETE CASCADE;
-
--- Fk Constraint: diamond_loupe_selectors diamond_loupe_selectors_snapshot_id_facet_address_fkey
-
-ALTER TABLE ONLY diamond_loupe_selectors
-    ADD CONSTRAINT diamond_loupe_selectors_snapshot_id_facet_address_fkey FOREIGN KEY (snapshot_id, facet_address) REFERENCES diamond_loupe_facets(snapshot_id, facet_address) ON DELETE CASCADE;
-
--- Fk Constraint: diamond_loupe_snapshots diamond_loupe_snapshots_chain_id_block_number_block_hash_fkey
-
-ALTER TABLE ONLY diamond_loupe_snapshots
-    ADD CONSTRAINT diamond_loupe_snapshots_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash);
-
--- Fk Constraint: diamond_loupe_snapshots diamond_loupe_snapshots_chain_id_fkey
-
-ALTER TABLE ONLY diamond_loupe_snapshots
-    ADD CONSTRAINT diamond_loupe_snapshots_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: diamond_loupe_snapshots diamond_loupe_snapshots_durable_job_id_fkey
-
-ALTER TABLE ONLY diamond_loupe_snapshots
-    ADD CONSTRAINT diamond_loupe_snapshots_durable_job_id_fkey FOREIGN KEY (durable_job_id) REFERENCES durable_jobs(id);
-
--- Fk Constraint: diamond_selector_changes diamond_selector_changes_chain_id_block_hash_log_index_sta_fkey
-
-ALTER TABLE ONLY diamond_selector_changes
-    ADD CONSTRAINT diamond_selector_changes_chain_id_block_hash_log_index_sta_fkey FOREIGN KEY (chain_id, block_hash, log_index, stage_version) REFERENCES diamond_cut_events(chain_id, block_hash, log_index, stage_version) ON DELETE CASCADE;
-
--- Fk Constraint: durable_job_replay_requests durable_job_replay_requests_job_id_fkey
-
-ALTER TABLE ONLY durable_job_replay_requests
-    ADD CONSTRAINT durable_job_replay_requests_job_id_fkey FOREIGN KEY (job_id) REFERENCES durable_jobs(id) ON DELETE CASCADE;
-
--- Fk Constraint: durable_jobs durable_jobs_chain_id_fkey
-
-ALTER TABLE ONLY durable_jobs
-    ADD CONSTRAINT durable_jobs_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: durable_stage_publications durable_stage_publications_chain_id_block_number_block_has_fkey
-
-ALTER TABLE ONLY durable_stage_publications
-    ADD CONSTRAINT durable_stage_publications_chain_id_block_number_block_has_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash);
-
--- Fk Constraint: durable_stage_publications durable_stage_publications_chain_id_fkey
-
-ALTER TABLE ONLY durable_stage_publications
-    ADD CONSTRAINT durable_stage_publications_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: durable_stage_publications durable_stage_publications_job_id_fkey
-
-ALTER TABLE ONLY durable_stage_publications
-    ADD CONSTRAINT durable_stage_publications_job_id_fkey FOREIGN KEY (job_id) REFERENCES durable_jobs(id);
-
--- Fk Constraint: eip7702_authorizations eip7702_authorizations_chain_id_block_number_block_hash_tr_fkey
-
-ALTER TABLE eip7702_authorizations
-    ADD CONSTRAINT eip7702_authorizations_chain_id_block_number_block_hash_tr_fkey FOREIGN KEY (chain_id, block_number, block_hash, transaction_index) REFERENCES transaction_inclusions(chain_id, block_number, block_hash, tx_index);
-
--- Fk Constraint: ens_address_name_snapshots ens_address_name_snapshots_chain_id_fkey
-
-ALTER TABLE ONLY ens_address_name_snapshots
-    ADD CONSTRAINT ens_address_name_snapshots_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: ens_address_name_snapshots ens_address_name_snapshots_generation_id_fkey
-
-ALTER TABLE ONLY ens_address_name_snapshots
-    ADD CONSTRAINT ens_address_name_snapshots_generation_id_fkey FOREIGN KEY (generation_id) REFERENCES ens_resolution_generations(id) ON DELETE CASCADE;
-
--- Fk Constraint: ens_name_observations ens_name_observations_chain_id_fkey
-
-ALTER TABLE ONLY ens_name_observations
-    ADD CONSTRAINT ens_name_observations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: ens_name_observations ens_name_observations_generation_id_fkey
-
-ALTER TABLE ONLY ens_name_observations
-    ADD CONSTRAINT ens_name_observations_generation_id_fkey FOREIGN KEY (generation_id) REFERENCES ens_resolution_generations(id) ON DELETE CASCADE;
-
--- Fk Constraint: ens_resolution_failures ens_resolution_failures_chain_id_fkey
-
-ALTER TABLE ONLY ens_resolution_failures
-    ADD CONSTRAINT ens_resolution_failures_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: ens_resolution_failures ens_resolution_failures_generation_id_fkey
-
-ALTER TABLE ONLY ens_resolution_failures
-    ADD CONSTRAINT ens_resolution_failures_generation_id_fkey FOREIGN KEY (generation_id) REFERENCES ens_resolution_generations(id) ON DELETE CASCADE;
-
--- Fk Constraint: ens_resolution_generations ens_resolution_generations_chain_id_custom_block_number_cu_fkey
-
-ALTER TABLE ONLY ens_resolution_generations
-    ADD CONSTRAINT ens_resolution_generations_chain_id_custom_block_number_cu_fkey FOREIGN KEY (chain_id, custom_block_number, custom_block_hash) REFERENCES blocks(chain_id, number, hash);
-
--- Fk Constraint: ens_resolution_generations ens_resolution_generations_chain_id_fkey
-
-ALTER TABLE ONLY ens_resolution_generations
-    ADD CONSTRAINT ens_resolution_generations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: erc1155_balance_reconciliations erc1155_balance_reconciliatio_chain_id_block_number_block__fkey
-
-ALTER TABLE ONLY erc1155_balance_reconciliations
-    ADD CONSTRAINT erc1155_balance_reconciliatio_chain_id_block_number_block__fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash);
-
--- Fk Constraint: erc1155_balance_reconciliations erc1155_balance_reconciliations_chain_id_fkey
-
-ALTER TABLE ONLY erc1155_balance_reconciliations
-    ADD CONSTRAINT erc1155_balance_reconciliations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: erc20_balance_reconciliations erc20_balance_reconciliations_chain_id_block_number_block__fkey
-
-ALTER TABLE ONLY erc20_balance_reconciliations
-    ADD CONSTRAINT erc20_balance_reconciliations_chain_id_block_number_block__fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash);
-
--- Fk Constraint: erc20_balance_reconciliations erc20_balance_reconciliations_chain_id_fkey
-
-ALTER TABLE ONLY erc20_balance_reconciliations
-    ADD CONSTRAINT erc20_balance_reconciliations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: erc20_holder_balances erc20_holder_balances_chain_id_token_address_block_number__fkey
-
-ALTER TABLE erc20_holder_balances
-    ADD CONSTRAINT erc20_holder_balances_chain_id_token_address_block_number__fkey FOREIGN KEY (chain_id, token_address, block_number, block_hash) REFERENCES erc20_holder_snapshots(chain_id, token_address, block_number, block_hash);
-
--- Fk Constraint: erc20_holder_snapshots erc20_holder_snapshots_chain_id_block_number_block_hash_fkey
-
-ALTER TABLE erc20_holder_snapshots
-    ADD CONSTRAINT erc20_holder_snapshots_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash);
-
--- Fk Constraint: erc20_holder_snapshots erc20_holder_snapshots_chain_id_fkey
-
-ALTER TABLE erc20_holder_snapshots
-    ADD CONSTRAINT erc20_holder_snapshots_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: erc4337_coverage_ranges erc4337_coverage_ranges_chain_id_fkey
-
-ALTER TABLE ONLY erc4337_coverage_ranges
-    ADD CONSTRAINT erc4337_coverage_ranges_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: erc4337_covered_blocks erc4337_covered_blocks_chain_id_block_number_block_hash_fkey
-
-ALTER TABLE ONLY erc4337_covered_blocks
-    ADD CONSTRAINT erc4337_covered_blocks_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash);
-
--- Fk Constraint: erc4337_covered_blocks erc4337_covered_blocks_chain_id_fkey
-
-ALTER TABLE ONLY erc4337_covered_blocks
-    ADD CONSTRAINT erc4337_covered_blocks_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: erc4337_user_operation_events erc4337_user_operation_events_chain_id_configuration_diges_fkey
-
-ALTER TABLE erc4337_user_operation_events
-    ADD CONSTRAINT erc4337_user_operation_events_chain_id_configuration_diges_fkey FOREIGN KEY (chain_id, configuration_digest, block_number, block_hash, transaction_hash, operation_index) REFERENCES erc4337_user_operations(chain_id, configuration_digest, block_number, block_hash, transaction_hash, operation_index);
-
--- Fk Constraint: erc4337_user_operation_participants erc4337_user_operation_partic_chain_id_configuration_diges_fkey
-
-ALTER TABLE erc4337_user_operation_participants
-    ADD CONSTRAINT erc4337_user_operation_partic_chain_id_configuration_diges_fkey FOREIGN KEY (chain_id, configuration_digest, block_number, block_hash, transaction_hash, operation_index) REFERENCES erc4337_user_operations(chain_id, configuration_digest, block_number, block_hash, transaction_hash, operation_index);
-
--- Fk Constraint: erc4337_user_operations erc4337_user_operations_chain_id_block_number_block_hash_t_fkey
-
-ALTER TABLE erc4337_user_operations
-    ADD CONSTRAINT erc4337_user_operations_chain_id_block_number_block_hash_t_fkey FOREIGN KEY (chain_id, block_number, block_hash, transaction_index) REFERENCES transaction_inclusions(chain_id, block_number, block_hash, tx_index);
-
--- Fk Constraint: erc4337_user_operations erc4337_user_operations_chain_id_fkey
-
-ALTER TABLE erc4337_user_operations
-    ADD CONSTRAINT erc4337_user_operations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: erc721_owner_reconciliations erc721_owner_reconciliations_chain_id_block_number_block_h_fkey
-
-ALTER TABLE ONLY erc721_owner_reconciliations
-    ADD CONSTRAINT erc721_owner_reconciliations_chain_id_block_number_block_h_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash);
-
--- Fk Constraint: erc721_owner_reconciliations erc721_owner_reconciliations_chain_id_fkey
-
-ALTER TABLE ONLY erc721_owner_reconciliations
-    ADD CONSTRAINT erc721_owner_reconciliations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: external_adapter_observations external_adapter_observations_chain_id_block_number_block__fkey
-
-ALTER TABLE ONLY external_adapter_observations
-    ADD CONSTRAINT external_adapter_observations_chain_id_block_number_block__fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash);
-
--- Fk Constraint: external_adapter_observations external_adapter_observations_chain_id_fkey
-
-ALTER TABLE ONLY external_adapter_observations
-    ADD CONSTRAINT external_adapter_observations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: external_metadata_attempts external_metadata_attempts_chain_id_fkey
-
-ALTER TABLE ONLY external_metadata_attempts
-    ADD CONSTRAINT external_metadata_attempts_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: external_metadata_attempts external_metadata_attempts_durable_job_id_fkey
-
-ALTER TABLE ONLY external_metadata_attempts
-    ADD CONSTRAINT external_metadata_attempts_durable_job_id_fkey FOREIGN KEY (durable_job_id) REFERENCES durable_jobs(id);
-
--- Fk Constraint: external_metadata external_metadata_chain_id_fkey
-
-ALTER TABLE ONLY external_metadata
-    ADD CONSTRAINT external_metadata_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: external_metadata external_metadata_observed_block_fk
-
-ALTER TABLE ONLY external_metadata
-    ADD CONSTRAINT external_metadata_observed_block_fk FOREIGN KEY (chain_id, observed_block_number, observed_block_hash) REFERENCES blocks(chain_id, number, hash);
-
--- Fk Constraint: genesis_account_observations genesis_account_observations_chain_id_block_hash_fkey
-
-ALTER TABLE ONLY genesis_account_observations
-    ADD CONSTRAINT genesis_account_observations_chain_id_block_hash_fkey FOREIGN KEY (chain_id, block_hash) REFERENCES genesis_state_imports(chain_id, block_hash);
-
--- Fk Constraint: genesis_state_imports genesis_state_imports_chain_id_block_hash_fkey
-
-ALTER TABLE ONLY genesis_state_imports
-    ADD CONSTRAINT genesis_state_imports_chain_id_block_hash_fkey FOREIGN KEY (chain_id, block_hash) REFERENCES blocks(chain_id, hash);
-
--- Fk Constraint: genesis_state_imports genesis_state_imports_chain_id_fkey
-
-ALTER TABLE ONLY genesis_state_imports
-    ADD CONSTRAINT genesis_state_imports_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: index_checkpoints index_checkpoints_chain_id_fkey
-
-ALTER TABLE ONLY index_checkpoints
-    ADD CONSTRAINT index_checkpoints_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: logs logs_chain_id_block_number_block_hash_tx_index_fkey
-
-ALTER TABLE logs
-    ADD CONSTRAINT logs_chain_id_block_number_block_hash_tx_index_fkey FOREIGN KEY (chain_id, block_number, block_hash, tx_index) REFERENCES receipts(chain_id, block_number, block_hash, tx_index);
-
--- Fk Constraint: mempool_snapshot_transactions mempool_snapshot_transactions_chain_id_snapshot_id_fkey
-
-ALTER TABLE ONLY mempool_snapshot_transactions
-    ADD CONSTRAINT mempool_snapshot_transactions_chain_id_snapshot_id_fkey FOREIGN KEY (chain_id, snapshot_id) REFERENCES mempool_snapshots(chain_id, id) ON DELETE CASCADE;
-
--- Fk Constraint: mempool_snapshot_transactions mempool_snapshot_transactions_chain_id_tx_hash_fkey
-
-ALTER TABLE ONLY mempool_snapshot_transactions
-    ADD CONSTRAINT mempool_snapshot_transactions_chain_id_tx_hash_fkey FOREIGN KEY (chain_id, tx_hash) REFERENCES mempool_transactions(chain_id, tx_hash);
-
--- Fk Constraint: mempool_snapshots mempool_snapshots_chain_id_fkey
-
-ALTER TABLE ONLY mempool_snapshots
-    ADD CONSTRAINT mempool_snapshots_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: mempool_status mempool_status_chain_id_fkey
-
-ALTER TABLE ONLY mempool_status
-    ADD CONSTRAINT mempool_status_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: mempool_status mempool_status_chain_id_latest_snapshot_id_fkey
-
-ALTER TABLE ONLY mempool_status
-    ADD CONSTRAINT mempool_status_chain_id_latest_snapshot_id_fkey FOREIGN KEY (chain_id, latest_snapshot_id) REFERENCES mempool_snapshots(chain_id, id);
-
--- Fk Constraint: mempool_transaction_replacements mempool_transaction_replacements_chain_id_fkey
-
-ALTER TABLE ONLY mempool_transaction_replacements
-    ADD CONSTRAINT mempool_transaction_replacements_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: mempool_transaction_replacements mempool_transaction_replacements_chain_id_replaced_hash_fkey
-
-ALTER TABLE ONLY mempool_transaction_replacements
-    ADD CONSTRAINT mempool_transaction_replacements_chain_id_replaced_hash_fkey FOREIGN KEY (chain_id, replaced_hash) REFERENCES mempool_transactions(chain_id, tx_hash);
-
--- Fk Constraint: mempool_transaction_replacements mempool_transaction_replacements_chain_id_replacement_hash_fkey
-
-ALTER TABLE ONLY mempool_transaction_replacements
-    ADD CONSTRAINT mempool_transaction_replacements_chain_id_replacement_hash_fkey FOREIGN KEY (chain_id, replacement_hash) REFERENCES mempool_transactions(chain_id, tx_hash);
-
--- Fk Constraint: mempool_transaction_replacements mempool_transaction_replacements_chain_id_snapshot_id_fkey
-
-ALTER TABLE ONLY mempool_transaction_replacements
-    ADD CONSTRAINT mempool_transaction_replacements_chain_id_snapshot_id_fkey FOREIGN KEY (chain_id, snapshot_id) REFERENCES mempool_snapshots(chain_id, id) ON DELETE CASCADE;
-
--- Fk Constraint: mempool_transactions mempool_transactions_chain_id_fkey
-
-ALTER TABLE ONLY mempool_transactions
-    ADD CONSTRAINT mempool_transactions_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: native_transfer_coverage native_transfer_coverage_chain_id_fkey
-
-ALTER TABLE ONLY native_transfer_coverage
-    ADD CONSTRAINT native_transfer_coverage_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: native_transfers native_transfers_chain_id_block_number_block_hash_transact_fkey
-
-ALTER TABLE native_transfers
-    ADD CONSTRAINT native_transfers_chain_id_block_number_block_hash_transact_fkey FOREIGN KEY (chain_id, block_number, block_hash, transaction_index, transaction_hash) REFERENCES transaction_inclusions(chain_id, block_number, block_hash, tx_index, tx_hash);
-
--- Fk Constraint: native_transfers native_transfers_chain_id_fkey
-
-ALTER TABLE native_transfers
-    ADD CONSTRAINT native_transfers_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: nft_metadata_source_observations nft_metadata_source_observati_chain_id_block_number_block__fkey
-
-ALTER TABLE ONLY nft_metadata_source_observations
-    ADD CONSTRAINT nft_metadata_source_observati_chain_id_block_number_block__fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash);
-
--- Fk Constraint: nft_metadata_source_observations nft_metadata_source_observations_chain_id_fkey
-
-ALTER TABLE ONLY nft_metadata_source_observations
-    ADD CONSTRAINT nft_metadata_source_observations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: nft_metadata_update_observations nft_metadata_update_observati_chain_id_block_number_block__fkey
-
-ALTER TABLE ONLY nft_metadata_update_observations
-    ADD CONSTRAINT nft_metadata_update_observati_chain_id_block_number_block__fkey FOREIGN KEY (chain_id, block_number, block_hash, log_index) REFERENCES logs(chain_id, block_number, block_hash, log_index);
-
--- Fk Constraint: nft_metadata_update_observations nft_metadata_update_observations_chain_id_fkey
-
-ALTER TABLE ONLY nft_metadata_update_observations
-    ADD CONSTRAINT nft_metadata_update_observations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: normalized_traces normalized_traces_chain_id_block_number_block_hash_transac_fkey
-
-ALTER TABLE normalized_traces
-    ADD CONSTRAINT normalized_traces_chain_id_block_number_block_hash_transac_fkey FOREIGN KEY (chain_id, block_number, block_hash, transaction_index) REFERENCES transaction_inclusions(chain_id, block_number, block_hash, tx_index);
-
--- Fk Constraint: operator_labels operator_labels_chain_id_fkey
-
-ALTER TABLE ONLY operator_labels
-    ADD CONSTRAINT operator_labels_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: proxy_artifact_resolutions proxy_artifact_resolutions_chain_id_fkey
-
-ALTER TABLE ONLY proxy_artifact_resolutions
-    ADD CONSTRAINT proxy_artifact_resolutions_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: proxy_artifact_resolutions proxy_artifact_resolutions_chain_id_proxy_address_observat_fkey
-
-ALTER TABLE ONLY proxy_artifact_resolutions
-    ADD CONSTRAINT proxy_artifact_resolutions_chain_id_proxy_address_observat_fkey FOREIGN KEY (chain_id, proxy_address, observation_block_hash, observation_stage_version) REFERENCES proxy_observations(chain_id, proxy_address, block_hash, stage_version) ON DELETE RESTRICT;
-
--- Fk Constraint: proxy_artifact_resolutions proxy_artifact_resolutions_durable_job_id_fkey
-
-ALTER TABLE ONLY proxy_artifact_resolutions
-    ADD CONSTRAINT proxy_artifact_resolutions_durable_job_id_fkey FOREIGN KEY (durable_job_id) REFERENCES durable_jobs(id);
-
--- Fk Constraint: proxy_artifact_resolutions proxy_artifact_resolutions_implementation_artifact_job_id_fkey
-
-ALTER TABLE ONLY proxy_artifact_resolutions
-    ADD CONSTRAINT proxy_artifact_resolutions_implementation_artifact_job_id_fkey FOREIGN KEY (implementation_artifact_job_id) REFERENCES verified_contract_proxy_artifacts(verification_job_id);
-
--- Fk Constraint: proxy_artifact_resolutions proxy_artifact_resolutions_proxy_artifact_job_id_fkey
-
-ALTER TABLE ONLY proxy_artifact_resolutions
-    ADD CONSTRAINT proxy_artifact_resolutions_proxy_artifact_job_id_fkey FOREIGN KEY (proxy_artifact_job_id) REFERENCES verified_contract_proxy_artifacts(verification_job_id);
-
--- Fk Constraint: proxy_detection_evidence proxy_detection_evidence_chain_id_block_number_block_hash_fkey
-
-ALTER TABLE ONLY proxy_detection_evidence
-    ADD CONSTRAINT proxy_detection_evidence_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash);
-
--- Fk Constraint: proxy_detection_evidence proxy_detection_evidence_chain_id_fkey
-
-ALTER TABLE ONLY proxy_detection_evidence
-    ADD CONSTRAINT proxy_detection_evidence_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: proxy_detection_evidence proxy_detection_evidence_durable_job_id_fkey
-
-ALTER TABLE ONLY proxy_detection_evidence
-    ADD CONSTRAINT proxy_detection_evidence_durable_job_id_fkey FOREIGN KEY (durable_job_id) REFERENCES durable_jobs(id);
-
--- Fk Constraint: proxy_history_epochs proxy_history_epochs_chain_id_fkey
-
-ALTER TABLE ONLY proxy_history_epochs
-    ADD CONSTRAINT proxy_history_epochs_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: proxy_history_epochs proxy_history_epochs_durable_job_id_fkey
-
-ALTER TABLE ONLY proxy_history_epochs
-    ADD CONSTRAINT proxy_history_epochs_durable_job_id_fkey FOREIGN KEY (durable_job_id) REFERENCES durable_jobs(id);
-
--- Fk Constraint: proxy_initialization_events proxy_initialization_events_chain_id_block_number_block_h_fkey1
-
-ALTER TABLE ONLY proxy_initialization_events
-    ADD CONSTRAINT proxy_initialization_events_chain_id_block_number_block_h_fkey1 FOREIGN KEY (chain_id, block_number, block_hash, log_index) REFERENCES logs(chain_id, block_number, block_hash, log_index);
-
--- Fk Constraint: proxy_initialization_events proxy_initialization_events_chain_id_block_number_block_ha_fkey
-
-ALTER TABLE ONLY proxy_initialization_events
-    ADD CONSTRAINT proxy_initialization_events_chain_id_block_number_block_ha_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash);
-
--- Fk Constraint: proxy_initialization_events proxy_initialization_events_chain_id_fkey
-
-ALTER TABLE ONLY proxy_initialization_events
-    ADD CONSTRAINT proxy_initialization_events_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: proxy_interaction_coverage_ranges proxy_interaction_coverage_ranges_chain_id_fkey
-
-ALTER TABLE ONLY proxy_interaction_coverage_ranges
-    ADD CONSTRAINT proxy_interaction_coverage_ranges_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: proxy_interaction_covered_blocks proxy_interaction_covered_blo_chain_id_block_number_block__fkey
-
-ALTER TABLE ONLY proxy_interaction_covered_blocks
-    ADD CONSTRAINT proxy_interaction_covered_blo_chain_id_block_number_block__fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash);
-
--- Fk Constraint: proxy_interaction_covered_blocks proxy_interaction_covered_blocks_chain_id_fkey
-
-ALTER TABLE ONLY proxy_interaction_covered_blocks
-    ADD CONSTRAINT proxy_interaction_covered_blocks_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: proxy_observation_generations proxy_observation_generations_chain_id_fkey
-
-ALTER TABLE ONLY proxy_observation_generations
-    ADD CONSTRAINT proxy_observation_generations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: proxy_observation_generations proxy_observation_generations_chain_id_proxy_address_obser_fkey
-
-ALTER TABLE ONLY proxy_observation_generations
-    ADD CONSTRAINT proxy_observation_generations_chain_id_proxy_address_obser_fkey FOREIGN KEY (chain_id, proxy_address, observation_block_hash, observation_stage_version) REFERENCES proxy_observations(chain_id, proxy_address, block_hash, stage_version) ON DELETE RESTRICT;
-
--- Fk Constraint: proxy_observation_generations proxy_observation_generations_durable_job_id_fkey
-
-ALTER TABLE ONLY proxy_observation_generations
-    ADD CONSTRAINT proxy_observation_generations_durable_job_id_fkey FOREIGN KEY (durable_job_id) REFERENCES durable_jobs(id);
-
--- Fk Constraint: proxy_observations proxy_observations_chain_id_block_number_block_hash_fkey
-
-ALTER TABLE ONLY proxy_observations
-    ADD CONSTRAINT proxy_observations_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash);
-
--- Fk Constraint: proxy_observations proxy_observations_chain_id_fkey
-
-ALTER TABLE ONLY proxy_observations
-    ADD CONSTRAINT proxy_observations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: proxy_replay_targets proxy_replay_targets_chain_id_block_number_block_hash_fkey
-
-ALTER TABLE ONLY proxy_replay_targets
-    ADD CONSTRAINT proxy_replay_targets_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash);
-
--- Fk Constraint: proxy_replay_targets proxy_replay_targets_chain_id_fkey
-
-ALTER TABLE ONLY proxy_replay_targets
-    ADD CONSTRAINT proxy_replay_targets_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: proxy_replay_targets proxy_replay_targets_source_verification_job_id_fkey
-
-ALTER TABLE ONLY proxy_replay_targets
-    ADD CONSTRAINT proxy_replay_targets_source_verification_job_id_fkey FOREIGN KEY (source_verification_job_id) REFERENCES verification_jobs(id);
-
--- Fk Constraint: proxy_upgrade_events proxy_upgrade_events_chain_id_block_number_block_hash_fkey
-
-ALTER TABLE ONLY proxy_upgrade_events
-    ADD CONSTRAINT proxy_upgrade_events_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash);
-
--- Fk Constraint: proxy_upgrade_events proxy_upgrade_events_chain_id_block_number_block_hash_log__fkey
-
-ALTER TABLE ONLY proxy_upgrade_events
-    ADD CONSTRAINT proxy_upgrade_events_chain_id_block_number_block_hash_log__fkey FOREIGN KEY (chain_id, block_number, block_hash, log_index) REFERENCES logs(chain_id, block_number, block_hash, log_index);
-
--- Fk Constraint: proxy_upgrade_events proxy_upgrade_events_chain_id_fkey
-
-ALTER TABLE ONLY proxy_upgrade_events
-    ADD CONSTRAINT proxy_upgrade_events_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: receipts receipts_chain_id_block_number_block_hash_tx_index_fkey
-
-ALTER TABLE receipts
-    ADD CONSTRAINT receipts_chain_id_block_number_block_hash_tx_index_fkey FOREIGN KEY (chain_id, block_number, block_hash, tx_index) REFERENCES transaction_inclusions(chain_id, block_number, block_hash, tx_index);
-
--- Fk Constraint: reorg_events reorg_events_chain_id_fkey
-
-ALTER TABLE ONLY reorg_events
-    ADD CONSTRAINT reorg_events_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: repair_requests repair_requests_chain_id_fkey
-
-ALTER TABLE ONLY repair_requests
-    ADD CONSTRAINT repair_requests_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: runtime_events runtime_events_chain_id_fkey
-
-ALTER TABLE ONLY runtime_events
-    ADD CONSTRAINT runtime_events_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: search_catalog_documents search_catalog_documents_chain_id_fkey
-
-ALTER TABLE ONLY search_catalog_documents
-    ADD CONSTRAINT search_catalog_documents_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: search_catalog_generations search_catalog_generations_chain_id_fkey
-
-ALTER TABLE ONLY search_catalog_generations
-    ADD CONSTRAINT search_catalog_generations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: sync_runtime_status sync_runtime_status_chain_id_fkey
-
-ALTER TABLE ONLY sync_runtime_status
-    ADD CONSTRAINT sync_runtime_status_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: sync_runtime_status_writer_leases sync_runtime_status_writer_leases_chain_id_fkey
-
-ALTER TABLE ONLY sync_runtime_status_writer_leases
-    ADD CONSTRAINT sync_runtime_status_writer_leases_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: token_balance_deltas token_balance_deltas_chain_id_block_number_block_hash_log__fkey
-
-ALTER TABLE token_balance_deltas
-    ADD CONSTRAINT token_balance_deltas_chain_id_block_number_block_hash_log__fkey FOREIGN KEY (chain_id, block_number, block_hash, log_index, sub_index) REFERENCES token_events(chain_id, block_number, block_hash, log_index, sub_index);
-
--- Fk Constraint: token_contracts token_contracts_chain_id_fkey
-
-ALTER TABLE ONLY token_contracts
-    ADD CONSTRAINT token_contracts_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: token_contracts token_contracts_chain_id_observed_block_number_observed_bl_fkey
-
-ALTER TABLE ONLY token_contracts
-    ADD CONSTRAINT token_contracts_chain_id_observed_block_number_observed_bl_fkey FOREIGN KEY (chain_id, observed_block_number, observed_block_hash) REFERENCES blocks(chain_id, number, hash);
-
--- Fk Constraint: token_events token_events_chain_id_block_number_block_hash_log_index_fkey
-
-ALTER TABLE token_events
-    ADD CONSTRAINT token_events_chain_id_block_number_block_hash_log_index_fkey FOREIGN KEY (chain_id, block_number, block_hash, log_index) REFERENCES logs(chain_id, block_number, block_hash, log_index);
-
--- Fk Constraint: trace_log_attributions trace_log_attributions_chain_id_block_number_block_hash_lo_fkey
-
-ALTER TABLE trace_log_attributions
-    ADD CONSTRAINT trace_log_attributions_chain_id_block_number_block_hash_lo_fkey FOREIGN KEY (chain_id, block_number, block_hash, log_index) REFERENCES logs(chain_id, block_number, block_hash, log_index);
-
--- Fk Constraint: trace_log_attributions trace_log_attributions_chain_id_block_number_block_hash_tr_fkey
-
-ALTER TABLE trace_log_attributions
-    ADD CONSTRAINT trace_log_attributions_chain_id_block_number_block_hash_tr_fkey FOREIGN KEY (chain_id, block_number, block_hash, transaction_hash, trace_path) REFERENCES normalized_traces(chain_id, block_number, block_hash, transaction_hash, trace_path);
-
--- Fk Constraint: transaction_effective_execution_identities transaction_effective_executi_chain_id_block_number_block__fkey
-
-ALTER TABLE transaction_effective_execution_identities
-    ADD CONSTRAINT transaction_effective_executi_chain_id_block_number_block__fkey FOREIGN KEY (chain_id, block_number, block_hash, transaction_index, transaction_hash) REFERENCES transaction_inclusions(chain_id, block_number, block_hash, tx_index, tx_hash);
-
--- Fk Constraint: transaction_execution_code_resolutions transaction_execution_code_re_chain_id_block_number_block__fkey
-
-ALTER TABLE transaction_execution_code_resolutions
-    ADD CONSTRAINT transaction_execution_code_re_chain_id_block_number_block__fkey FOREIGN KEY (chain_id, block_number, block_hash, transaction_index) REFERENCES transaction_inclusions(chain_id, block_number, block_hash, tx_index);
-
--- Fk Constraint: transaction_inclusions transaction_inclusions_chain_id_block_number_block_hash_fkey
-
-ALTER TABLE transaction_inclusions
-    ADD CONSTRAINT transaction_inclusions_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash);
-
--- Fk Constraint: transaction_inclusions transaction_inclusions_chain_id_tx_hash_fkey
-
-ALTER TABLE transaction_inclusions
-    ADD CONSTRAINT transaction_inclusions_chain_id_tx_hash_fkey FOREIGN KEY (chain_id, tx_hash) REFERENCES transactions(chain_id, hash);
-
--- Fk Constraint: transaction_state_changes transaction_state_changes_chain_id_block_number_block_hash_fkey
-
-ALTER TABLE transaction_state_changes
-    ADD CONSTRAINT transaction_state_changes_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash, transaction_index) REFERENCES transaction_inclusions(chain_id, block_number, block_hash, tx_index);
-
--- Fk Constraint: transactional_outbox transactional_outbox_chain_id_fkey
-
-ALTER TABLE ONLY transactional_outbox
-    ADD CONSTRAINT transactional_outbox_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: transactions transactions_chain_id_fkey
-
-ALTER TABLE ONLY transactions
-    ADD CONSTRAINT transactions_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: user_sessions user_sessions_user_id_fkey
-
-ALTER TABLE ONLY user_sessions
-    ADD CONSTRAINT user_sessions_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id);
-
--- Fk Constraint: users users_chain_id_fkey
-
-ALTER TABLE ONLY users
-    ADD CONSTRAINT users_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: uups_implementation_observations uups_implementation_observati_chain_id_block_number_block__fkey
-
-ALTER TABLE ONLY uups_implementation_observations
-    ADD CONSTRAINT uups_implementation_observati_chain_id_block_number_block__fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash);
-
--- Fk Constraint: uups_implementation_observation_generations uups_implementation_observati_chain_id_implementation_addr_fkey
-
-ALTER TABLE ONLY uups_implementation_observation_generations
-    ADD CONSTRAINT uups_implementation_observati_chain_id_implementation_addr_fkey FOREIGN KEY (chain_id, implementation_address, observation_block_hash, observation_stage_version, verification_job_id) REFERENCES uups_implementation_observations(chain_id, implementation_address, block_hash, stage_version, verification_job_id) ON DELETE RESTRICT;
-
--- Fk Constraint: uups_implementation_observation_generations uups_implementation_observation_generations_chain_id_fkey
-
-ALTER TABLE ONLY uups_implementation_observation_generations
-    ADD CONSTRAINT uups_implementation_observation_generations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: uups_implementation_observation_generations uups_implementation_observation_generations_durable_job_id_fkey
-
-ALTER TABLE ONLY uups_implementation_observation_generations
-    ADD CONSTRAINT uups_implementation_observation_generations_durable_job_id_fkey FOREIGN KEY (durable_job_id) REFERENCES durable_jobs(id);
-
--- Fk Constraint: uups_implementation_observations uups_implementation_observations_chain_id_fkey
-
-ALTER TABLE ONLY uups_implementation_observations
-    ADD CONSTRAINT uups_implementation_observations_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: uups_implementation_observations uups_implementation_observations_verification_job_id_fkey
-
-ALTER TABLE ONLY uups_implementation_observations
-    ADD CONSTRAINT uups_implementation_observations_verification_job_id_fkey FOREIGN KEY (verification_job_id) REFERENCES verified_contract_proxy_artifacts(verification_job_id);
-
--- Fk Constraint: verification_compilation_contracts verification_compilation_contracts_compilation_id_fkey
-
-ALTER TABLE ONLY verification_compilation_contracts
-    ADD CONSTRAINT verification_compilation_contracts_compilation_id_fkey FOREIGN KEY (compilation_id) REFERENCES verification_compilation_units(id) ON DELETE RESTRICT;
-
--- Fk Constraint: verification_compilation_units verification_compilation_units_job_digest_fk
-
-ALTER TABLE ONLY verification_compilation_units
-    ADD CONSTRAINT verification_compilation_units_job_digest_fk FOREIGN KEY (source_job_id, request_digest) REFERENCES verification_results(job_id, request_digest) ON DELETE RESTRICT;
-
--- Fk Constraint: verification_compilation_units verification_compilation_units_source_job_id_fkey
-
-ALTER TABLE ONLY verification_compilation_units
-    ADD CONSTRAINT verification_compilation_units_source_job_id_fkey FOREIGN KEY (source_job_id) REFERENCES verification_jobs(id) ON DELETE RESTRICT;
-
--- Fk Constraint: verification_jobs verification_jobs_catalog_fk
-
-ALTER TABLE ONLY verification_jobs
-    ADD CONSTRAINT verification_jobs_catalog_fk FOREIGN KEY (catalog_generation_id, catalog_language, compiler_version, compiler_platform, compiler_digest) REFERENCES compiler_catalog_entries(generation_id, language, version, platform, artifact_sha256) ON DELETE RESTRICT;
-
--- Fk Constraint: verification_jobs verification_jobs_chain_id_fkey
-
-ALTER TABLE ONLY verification_jobs
-    ADD CONSTRAINT verification_jobs_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: verification_results verification_results_job_id_fkey
-
-ALTER TABLE ONLY verification_results
-    ADD CONSTRAINT verification_results_job_id_fkey FOREIGN KEY (job_id) REFERENCES verification_jobs(id) ON DELETE RESTRICT;
-
--- Fk Constraint: verified_contract_proxy_artifacts verified_contract_proxy_artif_chain_id_address_code_hash_v_fkey
-
-ALTER TABLE ONLY verified_contract_proxy_artifacts
-    ADD CONSTRAINT verified_contract_proxy_artif_chain_id_address_code_hash_v_fkey FOREIGN KEY (chain_id, address, code_hash, valid_from_block, verification_job_id) REFERENCES verified_contracts(chain_id, address, code_hash, valid_from_block, verification_job_id) ON DELETE RESTRICT;
-
--- Fk Constraint: verified_contract_proxy_artifacts verified_contract_proxy_artif_verification_job_id_request__fkey
-
-ALTER TABLE ONLY verified_contract_proxy_artifacts
-    ADD CONSTRAINT verified_contract_proxy_artif_verification_job_id_request__fkey FOREIGN KEY (verification_job_id, request_digest) REFERENCES verification_results(job_id, request_digest) ON DELETE RESTRICT;
-
--- Fk Constraint: verified_contract_proxy_artifacts verified_contract_proxy_artifacts_chain_id_fkey
-
-ALTER TABLE ONLY verified_contract_proxy_artifacts
-    ADD CONSTRAINT verified_contract_proxy_artifacts_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: verified_contracts verified_contracts_chain_id_fkey
-
-ALTER TABLE ONLY verified_contracts
-    ADD CONSTRAINT verified_contracts_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: verified_contracts verified_contracts_result_fk
-
-ALTER TABLE ONLY verified_contracts
-    ADD CONSTRAINT verified_contracts_result_fk FOREIGN KEY (verification_job_id, request_digest) REFERENCES verification_results(job_id, request_digest) ON DELETE RESTRICT;
-
--- Fk Constraint: verified_function_selector_sets verified_function_selector_sets_contract_fk
-
-ALTER TABLE ONLY verified_function_selector_sets
-    ADD CONSTRAINT verified_function_selector_sets_contract_fk FOREIGN KEY (chain_id, address, code_hash, valid_from_block, verification_job_id) REFERENCES verified_contracts(chain_id, address, code_hash, valid_from_block, verification_job_id) ON DELETE CASCADE;
-
--- Fk Constraint: verified_function_selector_sets verified_function_selector_sets_result_fk
-
-ALTER TABLE ONLY verified_function_selector_sets
-    ADD CONSTRAINT verified_function_selector_sets_result_fk FOREIGN KEY (verification_job_id, request_digest) REFERENCES verification_results(job_id, request_digest) ON DELETE RESTRICT;
-
--- Fk Constraint: verified_function_selectors verified_function_selectors_set_fk
-
-ALTER TABLE ONLY verified_function_selectors
-    ADD CONSTRAINT verified_function_selectors_set_fk FOREIGN KEY (verification_job_id, chain_id, address, code_hash) REFERENCES verified_function_selector_sets(verification_job_id, chain_id, address, code_hash) ON DELETE CASCADE;
-
--- Fk Constraint: verified_proxy_bindings verified_proxy_bindings_artifact_resolution_id_fkey
-
-ALTER TABLE ONLY verified_proxy_bindings
-    ADD CONSTRAINT verified_proxy_bindings_artifact_resolution_id_fkey FOREIGN KEY (artifact_resolution_id) REFERENCES proxy_artifact_resolutions(id);
-
--- Fk Constraint: verified_proxy_bindings verified_proxy_bindings_beacon_generation_id_fkey
-
-ALTER TABLE ONLY verified_proxy_bindings
-    ADD CONSTRAINT verified_proxy_bindings_beacon_generation_id_fkey FOREIGN KEY (beacon_generation_id) REFERENCES beacon_observation_generations(id);
-
--- Fk Constraint: verified_proxy_bindings verified_proxy_bindings_chain_id_fkey
-
-ALTER TABLE ONLY verified_proxy_bindings
-    ADD CONSTRAINT verified_proxy_bindings_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id);
-
--- Fk Constraint: verified_proxy_bindings verified_proxy_bindings_observation_fk
-
-ALTER TABLE ONLY verified_proxy_bindings
-    ADD CONSTRAINT verified_proxy_bindings_observation_fk FOREIGN KEY (chain_id, proxy_address, observation_block_hash, observation_stage_version) REFERENCES proxy_observations(chain_id, proxy_address, block_hash, stage_version) ON DELETE RESTRICT;
-
--- Fk Constraint: verified_proxy_bindings verified_proxy_bindings_observation_generation_id_fkey
-
-ALTER TABLE ONLY verified_proxy_bindings
-    ADD CONSTRAINT verified_proxy_bindings_observation_generation_id_fkey FOREIGN KEY (observation_generation_id) REFERENCES proxy_observation_generations(id);
-
--- Fk Constraint: verified_proxy_bindings verified_proxy_bindings_result_fk
-
-ALTER TABLE ONLY verified_proxy_bindings
-    ADD CONSTRAINT verified_proxy_bindings_result_fk FOREIGN KEY (verification_job_id, request_digest) REFERENCES verification_results(job_id, request_digest) ON DELETE RESTRICT;
-
--- Fk Constraint: verified_proxy_bindings verified_proxy_bindings_uups_generation_id_fkey
-
-ALTER TABLE ONLY verified_proxy_bindings
-    ADD CONSTRAINT verified_proxy_bindings_uups_generation_id_fkey FOREIGN KEY (uups_generation_id) REFERENCES uups_implementation_observation_generations(id);
-
--- Fk Constraint: watch_notifications watch_notifications_user_id_fkey
-
-ALTER TABLE ONLY watch_notifications
-    ADD CONSTRAINT watch_notifications_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id);
-
--- Fk Constraint: watch_notifications watch_notifications_watch_id_fkey
-
-ALTER TABLE ONLY watch_notifications
-    ADD CONSTRAINT watch_notifications_watch_id_fkey FOREIGN KEY (watch_id) REFERENCES address_watches(id);
-
--- Fk Constraint: withdrawals withdrawals_chain_id_block_number_block_hash_fkey
-
-ALTER TABLE withdrawals
-    ADD CONSTRAINT withdrawals_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash);
-
--- Pin function lookup to this migration schema, including isolated test schemas.
+-- Bind to the actual migration schema, including isolated test schemas.
 DO $$
 BEGIN
     EXECUTE format('ALTER FUNCTION %I.enforce_enrichment_terminal_publication() SET search_path = %I, pg_catalog',
