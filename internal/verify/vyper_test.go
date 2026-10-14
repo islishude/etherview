@@ -87,6 +87,11 @@ func copyWASMTestTree(t *testing.T, source string) string {
 }
 func newVyperTestCompiler(t *testing.T) *VyperCompiler {
 	t.Helper()
+	return newVyperTestCompilerWithTimeout(t, 10*time.Second)
+}
+
+func newVyperTestCompilerWithTimeout(t *testing.T, timeout time.Duration) *VyperCompiler {
+	t.Helper()
 	path := os.Getenv("VYPER_EXECUTOR_TEST_PATH")
 	if path == "" {
 		path, _ = filepath.Abs("../../.local/vyper-wasm/sea/etherview-solcjs")
@@ -150,7 +155,7 @@ func newVyperTestCompiler(t *testing.T) *VyperCompiler {
 		t.Fatal(err)
 	}
 	digest, _ := decodeCatalogDigest(VyperCompilerSHA256)
-	compiler := &VyperCompiler{Path: executor, SharedPath: shared, PackagePath: pkg, Version: VyperCompilerVersion, CompilerDigest: digest, ManifestDigest: sha256.Sum256(raw), Timeout: 10 * time.Second}
+	compiler := &VyperCompiler{Path: executor, SharedPath: shared, PackagePath: pkg, Version: VyperCompilerVersion, CompilerDigest: digest, ManifestDigest: sha256.Sum256(raw), Timeout: timeout}
 	if err := compiler.ValidateRuntime(t.Context()); err != nil {
 		args, _ := compiler.wasmArguments([]string{"--self-test"})
 		cmd := exec.CommandContext(t.Context(), compiler.Path, args...)
@@ -221,7 +226,7 @@ func TestVyperUnavailableRuntimeDoesNotRetryCatalog(t *testing.T) {
 }
 
 func TestVyperRuntimeTimeoutCleansProcessAndCanCompileAgain(t *testing.T) {
-	compiler := newVyperTestCompiler(t)
+	compiler := newVyperTestCompilerWithTimeout(t, vyperMatrixCompileTimeout)
 	original, err := os.ReadFile("testdata/compiler/vyper/plain.input.json")
 	if err != nil {
 		t.Fatal(err)
@@ -243,13 +248,25 @@ func TestVyperRuntimeTimeoutCleansProcessAndCanCompileAgain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	compiler.Timeout = 50 * time.Millisecond
-	if _, err := compiler.Compile(context.Background(), LanguageVyper, VyperCompilerVersion, large); !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("bounded compile error=%v", err)
-	}
-	compiler.Timeout = 10 * time.Second
-	if _, err := compiler.Compile(context.Background(), LanguageVyper, VyperCompilerVersion, original); err != nil {
-		t.Fatalf("compile after process cleanup: %v", err)
+	for _, limit := range []string{"compiler", "caller"} {
+		t.Run(limit, func(t *testing.T) {
+			compiler.Timeout = vyperMatrixCompileTimeout
+			ctx := t.Context()
+			if limit == "compiler" {
+				compiler.Timeout = 50 * time.Millisecond
+			} else {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, 50*time.Millisecond)
+				defer cancel()
+			}
+			if _, err := compiler.Compile(ctx, LanguageVyper, VyperCompilerVersion, large); !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("bounded compile error=%v", err)
+			}
+			compiler.Timeout = vyperMatrixCompileTimeout
+			if _, err := compiler.Compile(t.Context(), LanguageVyper, VyperCompilerVersion, original); err != nil {
+				t.Fatalf("compile after process cleanup: %v", err)
+			}
+		})
 	}
 }
 

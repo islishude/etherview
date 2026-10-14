@@ -686,8 +686,13 @@ CI and `make test-vyper-matrix` explicitly use `-parallel=4` and `-count=1`.
 Every supported version retains its own mutable runtime fixture, all checked-in
 original/modified inputs and the final identity-tamper rejection. Inputs within
 one version remain serial, and every compilation still starts a fresh restricted
-SEA process with unchanged time and memory limits. Version timings include
-setup and cleanup and are visible with `-v`. The scheduling regression injects
+SEA process with unchanged memory limits. Matrix setup probes and each compilation
+use the production-container matrix's 30-second per-process deadline, rather
+than the ordinary unit fixture's 10-second budget. This accommodates four cold
+WASM processes sharing a CI runner without retries or skipped fixtures. Shorter
+caller deadlines still win; the timeout regression checks both compiler and
+caller cancellation followed by a successful fresh compilation. Version timings
+include setup and cleanup and are visible with `-v`. The scheduling regression injects
 missing packages at parallelism 1/2/4/8 and requires every version to report
 failure and the test process to exit nonzero without leaking a concurrency slot.
 
