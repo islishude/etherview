@@ -21,8 +21,8 @@ export function referencePackages(version) {
   );
 }
 export async function prepareReference(item) {
-  if (!execFileSync("uv", ["--version"], { encoding: "utf8" }).startsWith("uv 0.13.0 "))
-    throw new Error("uv 0.13.0 required");
+  if (!execFileSync("uv", ["--version"], { encoding: "utf8" }).startsWith("uv 0.13.1 "))
+    throw new Error("uv 0.13.1 required");
   const workspace = join(ROOT, ".local/vyper-builds", item.version);
   mkdirSync(workspace, { recursive: true });
   const venv = join(workspace, "build-venv"),

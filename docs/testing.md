@@ -72,7 +72,7 @@ Common CI gates, Vyper package construction, security/license auditing and the
 bounded Go assembler regressions use Node and Go without host Python setup. The compiler
 interpreter remains bundled Python WASM. Host Python is needed only for optional
 official reference generation and `make benchmark-vyper-wasm`; reference
-environments are prepared by `node compiler/vyper/reference.mjs` with uv 0.13.0.
+environments are prepared by `node compiler/vyper/reference.mjs` with uv 0.13.1.
 
 
 - `make test-workflow-scripts`: exercise extracted workflow helpers with temporary
@@ -348,7 +348,7 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   Docker host architecture, run it with the numeric non-root identity and
   hardened runtime flags, validate the exact SEA/compiler runtime manifest,
   recursive ELF closure, and self-test, and scan its exported root filesystem.
-  The image contains one read-only Node 26.11.1 SEA, only the automatically
+  The image contains one read-only Node 26.12.0 SEA, only the automatically
   discovered private libraries missing from the final base rootfs, and the
   read-only Geas v0.3.3 helper, but no general Node executable, wrapper source,
   package metadata, `node_modules`, npm, npx, corepack, shell, Go toolchain,
@@ -869,10 +869,10 @@ acceptance changes under ADR-0053.
 
 `make test-vyper-update` runs complete version-set checks, publication allowlist
 and PR lifecycle tests, and offline PyPI metadata regressions. It requires uv;
-CI installs 0.13.0 with `astral-sh/setup-uv`, reading the required version from
+CI installs 0.13.1 with `astral-sh/setup-uv`, reading the required version from
 `compiler/vyper/pyproject.toml`. Metadata tests and update scripts share the
 committed tooling `uv.lock` through `uv run --locked`; no pip bootstrap is needed.
-Update recipe generation also requires uv 0.13.0. `make test-vyper-release` includes these
+Update recipe generation also requires uv 0.13.1. `make test-vyper-release` includes these
 checks, including tagged production-fixture/count regressions without starting
 Docker. Fixtures cover PEP 440 ordering, prerelease/yanked exclusion, wheel
 compatibility, digest mismatch, network failures and unchanged prior recipes.

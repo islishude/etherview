@@ -50,7 +50,7 @@ for (const key of ["derived_enabled", "derived_backfill_enabled", "derived_forwa
 }
 
 const geth = requireService("geth");
-assert.equal(geth.image, "ethereum/client-go:v1.17.7", "Preview Geth image");
+assert.equal(geth.image, "ethereum/client-go:v1.17.8", "Preview Geth image");
 assert.deepEqual(
   geth.entrypoint,
   ["/bin/sh", "/usr/local/bin/etherview-geth-entrypoint.sh"],

@@ -110,7 +110,7 @@ services:
       - postgres-data:/var/lib/postgresql
 
   geth:
-    image: ${GETH_IMAGE:-ethereum/client-go:v1.17.7}
+    image: ${GETH_IMAGE:-ethereum/client-go:v1.17.8}
     entrypoint: ["/bin/sh", "/usr/local/bin/etherview-geth-entrypoint.sh"]
     command:
       - --dev

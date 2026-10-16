@@ -69,7 +69,7 @@ async function prepare(root) {
   return runtimes;
 }
 async function main() {
-  assert.equal(process.version,'v26.11.1');
+  assert.equal(process.version,'v26.12.0');
   if(process.argv.length!==3) throw new Error('usage: node alias-feasibility.mjs NEW_OUTPUT_DIRECTORY');
   const root=resolve(process.argv[2]);mkdirSync(root,{recursive:false});
   const runtimes=await prepare(root), fixtureRoot=join(ROOT,'internal/verify/testdata/compiler/vyper/versions');
