@@ -1,0 +1,181 @@
+name: Native production verification
+on:
+  workflow_call:
+    inputs:
+      runner:
+        required: true
+        type: string
+      arch:
+        required: true
+        type: string
+      image-artifact-id:
+        required: true
+        type: string
+      image-identity:
+        required: true
+        type: string
+      packages-artifact-id:
+        required: true
+        type: string
+permissions:
+  contents: read
+env:
+  PRODUCTION_IMAGE_IDENTITY: ${{ inputs.image-identity }}
+  EXPECTED_ARCH: ${{ inputs.arch }}
+  IMAGE_ARTIFACT_ID: ${{ inputs.image-artifact-id }}
+  PACKAGES_ARTIFACT_ID: ${{ inputs.packages-artifact-id }}
+jobs:
+  fixtures:
+    name: Vyper production fixtures (${{ inputs.arch }})
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 45
+    outputs:
+      artifact-id: ${{ steps.evidence.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/prepare-production
+        with:
+          arch: ${{ inputs.arch }}
+          image-artifact-id: ${{ inputs.image-artifact-id }}
+          packages-artifact-id: ${{ inputs.packages-artifact-id }}
+      - parallel:
+          - name: Verify production Vyper fixtures (shard 1/4)
+            run: node compiler/vyper/wasm/production-matrix.mjs --shard-index 0 --shard-count 4
+          - name: Verify production Vyper fixtures (shard 2/4)
+            run: node compiler/vyper/wasm/production-matrix.mjs --shard-index 1 --shard-count 4
+          - name: Verify production Vyper fixtures (shard 3/4)
+            run: node compiler/vyper/wasm/production-matrix.mjs --shard-index 2 --shard-count 4
+          - name: Verify production Vyper fixtures (shard 4/4)
+            run: node compiler/vyper/wasm/production-matrix.mjs --shard-index 3 --shard-count 4
+      - name: Merge production Vyper fixture evidence
+        run: node compiler/vyper/wasm/merge-production-matrix.mjs --shard-count 4
+      - name: Record fixtures evidence
+        run: node .github/scripts/production-evidence.mjs record fixtures
+      - uses: actions/upload-artifact@v7
+        id: evidence
+        with:
+          name: production-fixtures-${{ inputs.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .local/production-evidence/fixtures.json
+          retention-days: 1
+          include-hidden-files: true
+          if-no-files-found: error
+  vyper:
+    name: Vyper application E2E (${{ inputs.arch }})
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 45
+    outputs:
+      artifact-id: ${{ steps.evidence.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/prepare-production
+        with:
+          arch: ${{ inputs.arch }}
+          image-artifact-id: ${{ inputs.image-artifact-id }}
+          packages-artifact-id: ${{ inputs.packages-artifact-id }}
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache: true
+      - name: Run Vyper application E2E
+        id: application
+        env:
+          RUNTIME_E2E_KEEP_ARTIFACTS: "true"
+          TMPDIR: ${{ runner.temp }}
+        run: make test-vyper-e2e-prebuilt VERIFICATION_PARALLEL=2
+      - name: Record vyper evidence
+        run: node .github/scripts/production-evidence.mjs record vyper
+      - uses: actions/upload-artifact@v7
+        id: evidence
+        with:
+          name: production-vyper-${{ inputs.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .local/production-evidence/vyper.json
+          retention-days: 1
+          include-hidden-files: true
+          if-no-files-found: error
+      - name: Upload application failure diagnostics
+        if: ${{ always() && steps.application.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: vyper-e2e-diagnostics-${{ inputs.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/etherview-vyper-e2e-*
+          if-no-files-found: warn
+          retention-days: 7
+  hardhat:
+    name: Hardhat 3 production verification E2E (${{ inputs.arch }})
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 45
+    outputs:
+      artifact-id: ${{ steps.evidence.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/prepare-production
+        with:
+          arch: ${{ inputs.arch }}
+          image-artifact-id: ${{ inputs.image-artifact-id }}
+          packages-artifact-id: ${{ inputs.packages-artifact-id }}
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache: true
+      - uses: docker/setup-buildx-action@v4
+      - name: Build the Hardhat test client
+        uses: docker/build-push-action@v7
+        with:
+          context: e2e/hardhat3
+          push: false
+          load: true
+          tags: etherview-hardhat3:local
+          cache-from: type=gha,scope=hardhat3-client-${{ runner.os }}-${{ runner.arch }}
+          cache-to: type=gha,mode=max,scope=hardhat3-client-${{ runner.os }}-${{ runner.arch }},ignore-error=true
+      - name: Run production Hardhat 3 and proxy verification E2E
+        id: application
+        env:
+          RUNTIME_E2E_KEEP_ARTIFACTS: "true"
+          TMPDIR: ${{ runner.temp }}
+        run: make test-hardhat3-e2e-prebuilt VERIFICATION_PARALLEL=2
+      - name: Record hardhat evidence
+        run: node .github/scripts/production-evidence.mjs record hardhat
+      - uses: actions/upload-artifact@v7
+        id: evidence
+        with:
+          name: production-hardhat-${{ inputs.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .local/production-evidence/hardhat.json
+          retention-days: 1
+          include-hidden-files: true
+          if-no-files-found: error
+      - name: Upload application failure diagnostics
+        if: ${{ always() && steps.application.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: hardhat3-e2e-diagnostics-${{ inputs.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/etherview-hardhat3-e2e-*
+          if-no-files-found: warn
+          retention-days: 7
+  acceptance:
+    name: Production acceptance (${{ inputs.arch }})
+    needs: [fixtures, vyper, hardhat]
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ inputs.packages-artifact-id }}
+          merge-multiple: true
+          path: .local/
+      - uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ needs.fixtures.outputs.artifact-id }},${{ needs.vyper.outputs.artifact-id }},${{ needs.hardhat.outputs.artifact-id }}
+          merge-multiple: true
+          path: .local/production-evidence/
+      - name: Validate all lanes and publish acceptance
+        run: node .github/scripts/production-evidence.mjs merge
+      - uses: actions/upload-artifact@v7
+        with:
+          name: vyper-acceptance-${{ inputs.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .local/vyper-releases/acceptance-${{ inputs.arch }}.json
+          include-hidden-files: true
+          if-no-files-found: error

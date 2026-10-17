@@ -40,7 +40,7 @@ GENERATED_PATHS := \
 IMAGE ?= etherview:local
 HARDHAT3_IMAGE ?= etherview-hardhat3:local
 # Enable 2 by default only after matching native AMD64/ARM64 measurements.
-HARDHAT3_PARALLEL ?= 1
+VERIFICATION_PARALLEL ?= 1
 FOUNDRY_IMAGE ?= etherview-foundry:local
 IPFS_GATEWAY_IMAGE ?= etherview-ipfs-gateway:local
 HELM_CHART ?= deploy/helm/etherview
@@ -156,7 +156,7 @@ test-hardhat3-offline-compile:
 		npx hardhat --build-profile production compile
 
 test-hardhat3-e2e-prebuilt: test-hardhat3-offline-compile
-	@case "$(HARDHAT3_PARALLEL)" in 1|2) ;; *) echo "HARDHAT3_PARALLEL must be 1 or 2"; exit 1;; esac
+	@case "$(VERIFICATION_PARALLEL)" in 1|2) ;; *) echo "VERIFICATION_PARALLEL must be 1 or 2"; exit 1;; esac
 	@$(DOCKER) image inspect "$(IMAGE)" >/dev/null 2>&1 || { \
 		echo "test-hardhat3-e2e-prebuilt: image $(IMAGE) is not loaded"; \
 		exit 1; \
@@ -167,8 +167,8 @@ test-hardhat3-e2e-prebuilt: test-hardhat3-offline-compile
 	}
 	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" NODE="$(NODE)" \
 		ETHERVIEW_HARDHAT3_IMAGE="$(HARDHAT3_IMAGE)" \
-		$(GO) test -count=1 -v -timeout=30m -tags='runtimee2e hardhat3e2e' \
-		-parallel=$(HARDHAT3_PARALLEL) -run '^TestHardhat3(ProductionE2E|VerificationCounts|TopologyScheduling)$$' ./e2e/runtime
+		$(GO) test -count=1 -v -timeout=30m -tags='runtimee2e verificatione2e' \
+		-parallel=$(VERIFICATION_PARALLEL) -run '^(TestHardhat3(ProductionE2E|VerificationCounts)|TestVerificationTopologyScheduling)$$' ./e2e/runtime
 
 foundry-client-image-build:
 	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "foundry-client-image-build: docker is required"; exit 1; }
@@ -415,15 +415,23 @@ compose-check: preview-genesis-check
 	ETHERVIEW_HARDHAT3_API_SERVICE=etherview \
 	ETHERVIEW_HARDHAT3_ARTIFACT_DIR=/tmp/etherview-hardhat3-compose-check \
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
-		-f e2e/hardhat3/compose.yaml --profile monolith --profile hardhat-client config --format json | \
+		-f e2e/runtime/verification.compose.yaml -f e2e/hardhat3/compose.yaml --profile monolith --profile hardhat-client config --format json | \
 		ETHERVIEW_HARDHAT3_TOPOLOGY=monolith ETHERVIEW_HARDHAT3_IMAGE="$(HARDHAT3_IMAGE)" \
 		$(NODE) .github/scripts/hardhat3-compose-check.mjs
 	ETHERVIEW_HARDHAT3_IMAGE="$(HARDHAT3_IMAGE)" \
 	ETHERVIEW_HARDHAT3_API_SERVICE=api \
 	ETHERVIEW_HARDHAT3_ARTIFACT_DIR=/tmp/etherview-hardhat3-compose-check \
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
-		-f e2e/hardhat3/compose.yaml --profile distributed --profile hardhat-client config --format json | \
+		-f e2e/runtime/verification.compose.yaml -f e2e/hardhat3/compose.yaml --profile distributed --profile hardhat-client config --format json | \
 		ETHERVIEW_HARDHAT3_TOPOLOGY=distributed ETHERVIEW_HARDHAT3_IMAGE="$(HARDHAT3_IMAGE)" \
+		$(NODE) .github/scripts/hardhat3-compose-check.mjs
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
+		-f e2e/runtime/verification.compose.yaml -f e2e/runtime/vyper.compose.yaml --profile monolith config --format json | \
+		ETHERVIEW_HARDHAT3_TOPOLOGY=monolith ETHERVIEW_VERIFICATION_SUITE=vyper \
+		$(NODE) .github/scripts/hardhat3-compose-check.mjs
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
+		-f e2e/runtime/verification.compose.yaml -f e2e/runtime/vyper.compose.yaml --profile distributed config --format json | \
+		ETHERVIEW_HARDHAT3_TOPOLOGY=distributed ETHERVIEW_VERIFICATION_SUITE=vyper \
 		$(NODE) .github/scripts/hardhat3-compose-check.mjs
 	ETHERVIEW_FOUNDRY_IMAGE="$(FOUNDRY_IMAGE)" \
 	ETHERVIEW_FOUNDRY_API_SERVICE=etherview \
@@ -560,7 +568,7 @@ test-vyper-matrix: compiler-install test-vyper-wasm-candidate
 .PHONY: test-vyper-release
 test: test-vyper-release
 test-vyper-release: test-vyper-update
-	$(GO) test -tags='runtimee2e hardhat3e2e' ./e2e/runtime -run '^(TestHardhat3VerificationCounts|TestVyperProductionFixtureCoverage)$$' -count=1
+	$(GO) test -tags='runtimee2e verificatione2e' ./e2e/runtime -run '^(TestHardhat3VerificationCounts|TestVyperProductionFixtureCoverage)$$' -count=1
 	$(NODE) --test compiler/vyper/wasm/tooling.test.mjs
 	$(NODE) --test compiler/vyper/acceptance.test.mjs compiler/vyper/wasm/production-shards.test.mjs
 
@@ -591,4 +599,15 @@ test-vyper-update:
 
 .PHONY: test-workflow-scripts
 test-workflow-scripts:
-	$(NODE) --test .github/scripts/workflow-scripts.test.mjs
+	$(NODE) --test .github/scripts/workflow-scripts.test.mjs .github/scripts/production-evidence.test.mjs
+
+.PHONY: test-vyper-e2e test-vyper-e2e-prebuilt
+test-vyper-e2e: docker-build
+	@$(MAKE) --no-print-directory test-vyper-e2e-prebuilt
+
+test-vyper-e2e-prebuilt:
+	@case "$(VERIFICATION_PARALLEL)" in 1|2) ;; *) echo "VERIFICATION_PARALLEL must be 1 or 2"; exit 1;; esac
+	@$(DOCKER) image inspect "$(IMAGE)" >/dev/null
+	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" NODE="$(NODE)" \
+		$(GO) test -count=1 -v -timeout=30m -tags='runtimee2e verificatione2e' \
+		-parallel=$(VERIFICATION_PARALLEL) -run '^TestVyper(ProductionE2E|VerificationCounts|ProductionFixtureCoverage)$$' ./e2e/runtime

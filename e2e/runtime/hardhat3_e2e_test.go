@@ -1,4 +1,4 @@
-//go:build runtimee2e && hardhat3e2e
+//go:build runtimee2e && verificatione2e
 
 package runtimee2e
 
@@ -13,7 +13,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"sort"
 	"strconv"
@@ -23,15 +22,12 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/api/gen"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
-	"github.com/islishude/etherview/internal/testcompose"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const (
-	hardhat3E2ETimeout      = 30 * time.Minute
 	hardhatCompilerVersion  = "0.8.30+commit.73712a01"
 	hardhatCatalogSource    = "https://binaries.soliditylang.org/emscripten-wasm32/list.json"
 	hardhatCompilerArtifact = "https://binaries.soliditylang.org/emscripten-wasm32/solc-emscripten-wasm32-v0.8.30+commit.73712a01.js"
@@ -143,7 +139,6 @@ type hardhatProxySnapshot struct {
 	AddressJobs         int64
 	VyperJobs           int64
 	VyperResults        int64
-	VyperProvenance     bool
 	DerivedJobs         int64
 	YulJobs             int64
 	ProxyJobs           int64
@@ -189,46 +184,17 @@ type hardhatCompilerCacheFile struct {
 }
 
 func TestHardhat3ProductionE2E(t *testing.T) {
-	ctx, cancel := context.WithTimeout(t.Context(), hardhat3E2ETimeout)
+	ctx, cancel := context.WithTimeout(t.Context(), verificationE2ETimeout)
 	defer cancel()
 	root := repositoryRoot(t)
 	runtime := prepareHardhatRuntime(t, ctx)
 
-	if runHardhatTopologies(t, ctx, func(t *testing.T, mode string) hardhatProxySnapshot {
+	imageID := verificationImageID(t, ctx)
+	if results, ok := runVerificationTopologies(t, ctx, func(t *testing.T, mode string) hardhatProxySnapshot {
 		return runHardhat3Mode(t, ctx, root, mode, runtime)
-	}) {
-		writeVyperReleaseAcceptance(t, root)
+	}); ok {
+		writeApplicationResult(t, ctx, root, "hardhat", imageID, results)
 	}
-}
-
-// The group waits for both parallel children and their cleanups before the
-// caller can compare snapshots or publish acceptance. Each child owns one slot.
-func runHardhatTopologies(t *testing.T, ctx context.Context, run func(*testing.T, string) hardhatProxySnapshot) bool {
-	t.Helper()
-	var results [2]hardhatProxySnapshot
-	var complete [2]bool
-	if !t.Run("topologies", func(t *testing.T) {
-		for index, mode := range []string{"monolith", "distributed"} {
-			t.Run(mode, func(t *testing.T) {
-				t.Parallel()
-				started := time.Now()
-				t.Cleanup(func() { t.Logf("topology %s including cleanup: %s", mode, time.Since(started)) })
-				results[index] = run(t, mode)
-				complete[index] = true
-			})
-		}
-	}) {
-		return false
-	}
-	if ctx.Err() != nil || !complete[0] || !complete[1] {
-		t.Errorf("Hardhat 3 topology results incomplete or deadline exceeded")
-		return false
-	}
-	if !reflect.DeepEqual(results[0], results[1]) {
-		t.Errorf("Hardhat 3 topology parity mismatch\nmonolith: %#v\ndistributed: %#v", results[0], results[1])
-		return false
-	}
-	return true
 }
 
 func prepareHardhatRuntime(t *testing.T, ctx context.Context) hardhatRuntime {
@@ -294,66 +260,14 @@ func runHardhat3Mode(
 	runtime hardhatRuntime,
 ) hardhatProxySnapshot {
 	t.Helper()
-	artifacts, err := os.MkdirTemp("", "etherview-hardhat3-e2e-"+mode+"-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	project := testcompose.NewQuiet(
-		root,
-		testcompose.UniqueProjectName("etherview-hardhat3-"+mode),
-		"compose.yaml",
-		"e2e/runtime/compose.yaml",
-		"e2e/hardhat3/compose.yaml",
-	)
-	project.Profiles = []string{mode}
-	project.Env = runtimeEnvironment(root, uint64(time.Now().UTC().Truncate(time.Hour).Unix()), false)
-	project.Env["ETHERVIEW_HARDHAT3_IMAGE"] = runtime.image
-	project.Env["ETHERVIEW_HARDHAT3_ARTIFACT_DIR"] = artifacts
-	project.Env["ETHERVIEW_HARDHAT3_API_SERVICE"] = map[string]string{
-		"monolith": "etherview", "distributed": "api",
-	}[mode]
-	h := &harness{
-		t: t, root: root, mode: mode, project: project,
-		apiService: map[string]string{"monolith": "etherview", "distributed": "api"}[mode],
-		http:       &http.Client{Timeout: 10 * time.Second},
-		artifacts:  artifacts,
-		phase:      "initialization",
-	}
-	t.Cleanup(func() {
-		if !h.cleanup() && !t.Failed() {
-			t.Error("Hardhat topology failed or cleanup incomplete")
-		}
+	h := startVerificationTopology(t, ctx, root, mode, "hardhat3", "e2e/hardhat3/compose.yaml", func(h *harness) {
+		project, artifacts := h.project, h.artifacts
+		t.Cleanup(func() { captureHardhatSQLDiagnostics(h) })
+		project.Env["ETHERVIEW_HARDHAT3_IMAGE"] = runtime.image
+		project.Env["ETHERVIEW_HARDHAT3_ARTIFACT_DIR"] = artifacts
+		project.Env["ETHERVIEW_HARDHAT3_API_SERVICE"] = map[string]string{"monolith": "etherview", "distributed": "api"}[mode]
 	})
-	configureVyperApplicationFixture(t, h)
-
-	h.enterPhase("isolated Anvil and production topology")
-	if err := project.Up(ctx, "runtime-fixture"); err != nil {
-		t.Fatal(err)
-	}
-	binding, err := project.Port(ctx, "runtime-fixture", 8545)
-	if err != nil {
-		t.Fatal(err)
-	}
-	hostRPC := "http://" + binding
-	h.rpc, err = rpc.DialContext(ctx, hostRPC)
-	if err != nil {
-		t.Fatal(err)
-	}
-	h.rpcProxy = startReceiptProxy(t, hostRPC)
-	project.Env["ETHERVIEW_RUNTIME_RPC_URL"] = h.rpcProxy.containerURL()
-	var genesis rpcBlock
-	h.rpcCall(ctx, &genesis, "eth_getBlockByNumber", "0x0", false)
-	h.fixture.genesisHash = genesis.Hash
-	h.rpcCall(ctx, &h.fixture.accounts, "eth_accounts")
-	h.mine(ctx, uint64(time.Now().Unix()))
-	first := h.latestBlock(ctx)
-	project.Env["ETHERVIEW_CHAIN_GENESIS_HASH"] = genesis.Hash
-	h.startTopology(ctx)
-	h.connectDatabase(ctx)
-	t.Cleanup(func() { captureHardhatSQLDiagnostics(h) })
-	h.resolveAPI(ctx)
-	h.waitReady(ctx)
-	h.waitCanonical(ctx, mustDecodeUint64(t, first.Number), first.Hash)
+	artifacts := h.artifacts
 
 	h.enterPhase("real Hardhat compile and deployment")
 	deploymentFile := filepath.Join(artifacts, "deployment.json")
@@ -447,7 +361,7 @@ func runHardhat3Mode(
 			t.Fatalf("deployment transaction %s = %#v", name, transaction)
 		}
 	}
-	waitHardhatCanonicalTip(t, ctx, h)
+	waitVerificationCanonicalTip(t, ctx, h)
 	waitHardhatProxyObservation(t, ctx, h, deployment.Proxy, deployment.Implementation)
 	waitHardhatProxyObservation(t, ctx, h, deployment.Transparent.Proxy, deployment.Implementation)
 	for _, proxy := range deployment.Beacon.Proxies {
@@ -478,7 +392,7 @@ func runHardhat3Mode(
 		deployment.CWIA.Implementation, deployment.CWIA.Account,
 		deployment.Safe.Factory, deployment.Safe.Singleton, deployment.Safe.Proxy,
 	} {
-		waitHardhatContractCode(t, ctx, h, address)
+		waitVerificationContractCode(t, ctx, h, address)
 	}
 
 	h.enterPhase("runtime immutable authority over compatibility slots")
@@ -494,7 +408,7 @@ func runHardhat3Mode(
 		t.Fatalf("decode Hardhat slot-tamper report: %v", err)
 	}
 	assertHardhatSlotTamperReport(t, deployment, tamper)
-	waitHardhatCanonicalTip(t, ctx, h)
+	waitVerificationCanonicalTip(t, ctx, h)
 
 	h.enterPhase("production CLI API key and first real compiler")
 	cloneInitialization := deployment.Transactions["standardCloneInitialization"]
@@ -505,9 +419,8 @@ func runHardhat3Mode(
 		initializeSelector, "",
 	)
 	waitHardhatCompilerCatalog(t, ctx, h)
-	apiKey := createHardhatAPIKey(t, ctx, h)
+	apiKey := createVerificationAPIKey(t, ctx, h)
 	submitAndWaitHardhatYul(t, ctx, h, apiKey)
-	verifyVyperProduction(t, ctx, h, apiKey)
 	cacheBefore := inspectHardhatCompilerCache(t, ctx, h)
 
 	h.enterPhase("persistent compiler cache across owner replacement")
@@ -640,7 +553,7 @@ func runHardhat3Mode(
 		t.Fatalf("decode Hardhat upgrade report: %v", err)
 	}
 	assertHardhatUpgradeReport(t, deployment, upgrade)
-	waitHardhatCanonicalTip(t, ctx, h)
+	waitVerificationCanonicalTip(t, ctx, h)
 	waitHardhatProxyObservation(t, ctx, h, deployment.Proxy, deployment.ImplementationV2)
 	waitHardhatProxyObservation(t, ctx, h, deployment.Transparent.Proxy, deployment.ImplementationV2)
 	waitHardhatBeaconImplementation(t, ctx, h, deployment.Beacon.Beacon, deployment.ImplementationV2)
@@ -770,23 +683,6 @@ func recreateHardhatCompilerOwner(
 	}
 	h.resolveAPI(ctx)
 	h.waitReady(ctx)
-}
-
-func createHardhatAPIKey(t *testing.T, ctx context.Context, h *harness) string {
-	t.Helper()
-	output, err := h.project.Run(ctx, "exec", "-T", h.apiService,
-		"/etherview", "admin", "api-key", "create", "--config=/etc/etherview/config.yaml",
-		"--name=hardhat3-e2e", "--rate=100", "--burst=200")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var response struct {
-		Token string `json:"token"`
-	}
-	if err := json.Unmarshal(output, &response); err != nil || response.Token == "" {
-		t.Fatalf("decode production API-key output: %v", err)
-	}
-	return response.Token
 }
 
 func waitHardhatCompilerCatalog(t *testing.T, ctx context.Context, h *harness) {
@@ -1124,57 +1020,6 @@ var (
 	errHardhatProxyTargetUnavailable   = errors.New("proxy verification target unavailable")
 )
 
-func hardhatEtherscanRequest(
-	t *testing.T,
-	ctx context.Context,
-	h *harness,
-	apiKey, method string,
-	values url.Values,
-) (json.RawMessage, error) {
-	t.Helper()
-	values.Set("chainid", "1")
-	values.Set("module", "contract")
-	var request *http.Request
-	var err error
-	if method == http.MethodPost {
-		request, err = http.NewRequestWithContext(ctx, method, h.baseURL+"/v2/api", strings.NewReader(values.Encode()))
-		if err == nil {
-			request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		}
-	} else {
-		request, err = http.NewRequestWithContext(ctx, method, h.baseURL+"/v2/api?"+values.Encode(), nil)
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	request.Header.Set("X-API-Key", apiKey)
-	response, err := h.http.Do(request)
-	if err != nil {
-		return nil, err
-	}
-	defer response.Body.Close() //nolint:errcheck
-	var envelope etherscanEnvelope
-	if err := json.NewDecoder(response.Body).Decode(&envelope); err != nil {
-		return nil, err
-	}
-	var result string
-	if response.StatusCode != http.StatusOK || envelope.Status != "1" {
-		if err := json.Unmarshal(envelope.Result, &result); err != nil {
-			return nil, fmt.Errorf("decode Etherscan error result: %w", err)
-		}
-		switch result {
-		case "proxy implementation source code not verified":
-			return nil, errHardhatImplementationUnverified
-		case "proxy verification target unavailable":
-			return nil, errHardhatProxyTargetUnavailable
-		default:
-			return nil, fmt.Errorf("Etherscan %s: status=%s message=%s result=%s",
-				values.Get("action"), envelope.Status, envelope.Message, result)
-		}
-	}
-	return envelope.Result, nil
-}
-
 func submitHardhatProxy(
 	t *testing.T,
 	ctx context.Context,
@@ -1182,7 +1027,7 @@ func submitHardhatProxy(
 	apiKey, proxy, expected string,
 ) (string, error) {
 	t.Helper()
-	raw, err := hardhatEtherscanRequest(t, ctx, h, apiKey, http.MethodPost, url.Values{
+	raw, err := verificationEtherscanRequest(t, ctx, h, apiKey, http.MethodPost, url.Values{
 		"action":                 {"verifyproxycontract"},
 		"address":                {proxy},
 		"expectedimplementation": {expected},
@@ -1201,7 +1046,7 @@ func waitHardhatProxyStatus(t *testing.T, ctx context.Context, h *harness, apiKe
 	t.Helper()
 	sawPending := false
 	waitFor(t, ctx, "proxy verification "+guid, func() (bool, string, error) {
-		raw, err := hardhatEtherscanRequest(t, ctx, h, apiKey, http.MethodGet, url.Values{
+		raw, err := verificationEtherscanRequest(t, ctx, h, apiKey, http.MethodGet, url.Values{
 			"action": {"checkproxyverification"}, "guid": {guid},
 		})
 		if err != nil {
@@ -1225,7 +1070,7 @@ func waitHardhatProxyStatus(t *testing.T, ctx context.Context, h *harness, apiKe
 func waitHardhatSource(t *testing.T, ctx context.Context, h *harness, apiKey, address string) {
 	t.Helper()
 	waitFor(t, ctx, "verified source "+address, func() (bool, string, error) {
-		result, err := hardhatEtherscanRequest(t, ctx, h, apiKey, http.MethodGet, url.Values{
+		result, err := verificationEtherscanRequest(t, ctx, h, apiKey, http.MethodGet, url.Values{
 			"action": {"getsourcecode"}, "address": {address},
 		})
 		return err == nil && bytes.Contains(result, []byte(`"ContractName"`)), string(result), err
@@ -1324,7 +1169,7 @@ func assertHardhatProxySource(
 	wantBound bool,
 ) {
 	t.Helper()
-	result, err := hardhatEtherscanRequest(t, ctx, h, apiKey, http.MethodGet, url.Values{
+	result, err := verificationEtherscanRequest(t, ctx, h, apiKey, http.MethodGet, url.Values{
 		"action": {"getsourcecode"}, "address": {proxy},
 	})
 	if err != nil {
@@ -1346,12 +1191,6 @@ func assertHardhatProxySource(
 	if rows[0].Proxy != "0" || rows[0].Implementation != "" {
 		t.Fatalf("stale proxy binding remained public: %#v", rows[0])
 	}
-}
-
-func waitHardhatCanonicalTip(t *testing.T, ctx context.Context, h *harness) {
-	t.Helper()
-	latest := h.latestBlock(ctx)
-	h.waitCanonical(ctx, mustDecodeUint64(t, latest.Number), latest.Hash)
 }
 
 func waitHardhatProxyObservation(
@@ -1554,25 +1393,6 @@ func waitHardhatVerifiedProxyBinding(
 				LIMIT 1
 			), '{}'::jsonb)::text`, common.HexToAddress(proxy).Bytes()).Scan(&diagnostic)
 		return false, fmt.Sprintf("bindings=%d diagnostic=%s", count, diagnostic), diagnosticErr
-	})
-}
-
-func waitHardhatContractCode(t *testing.T, ctx context.Context, h *harness, address string) {
-	t.Helper()
-	waitFor(t, ctx, "canonical contract code "+address, func() (bool, string, error) {
-		var count int64
-		err := h.db.QueryRow(ctx, `
-			SELECT count(*)
-			FROM contract_code_observations AS observation
-			JOIN canonical_blocks AS canonical
-			  ON canonical.chain_id = observation.chain_id
-			 AND canonical.number = observation.block_number
-			 AND canonical.block_hash = observation.block_hash
-			WHERE observation.chain_id = 1
-			  AND observation.address = $1
-			  AND observation.canonical
-			  AND octet_length(observation.code) > 0`, common.HexToAddress(address).Bytes()).Scan(&count)
-		return err == nil && count > 0, fmt.Sprintf("observations=%d", count), err
 	})
 }
 

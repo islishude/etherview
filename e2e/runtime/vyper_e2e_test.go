@@ -1,11 +1,13 @@
-//go:build runtimee2e && hardhat3e2e
+//go:build runtimee2e && verificatione2e
 
 package runtimee2e
 
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -26,13 +28,16 @@ var vyperProductionProtocols = [...]string{"native", "etherscan"}
 
 const vyperProductionJobCount = int64(len(vyperProductionVersions) * len(vyperProductionProtocols))
 
-func verifyVyperProduction(t *testing.T, ctx context.Context, h *harness, key string) {
+func verifyVyperProduction(t *testing.T, ctx context.Context, h *harness, key string) []vyperApplicationCase {
+	var results []vyperApplicationCase
 	for _, version := range vyperProductionVersions {
-		verifyVyperProductionCase(t, ctx, h, key, version)
+		results = append(results, verifyVyperProductionCase(t, ctx, h, key, version)...)
 	}
+	return results
 }
 
-func verifyVyperProductionCase(t *testing.T, ctx context.Context, h *harness, key, version string) {
+func verifyVyperProductionCase(t *testing.T, ctx context.Context, h *harness, key, version string) []vyperApplicationCase {
+	var results []vyperApplicationCase
 	t.Helper()
 	h.enterPhase("Vyper native and Etherscan source verification")
 	root := filepath.Join(h.root, "internal/verify/testdata/compiler/vyper/versions", version)
@@ -81,8 +86,8 @@ func verifyVyperProductionCase(t *testing.T, ctx context.Context, h *harness, ke
 			t.Fatalf("Vyper deploy failed: %+v", receipt)
 		}
 		address := strings.ToLower(receipt.ContractAddress)
-		waitHardhatCanonicalTip(t, ctx, h)
-		waitHardhatContractCode(t, ctx, h, address)
+		waitVerificationCanonicalTip(t, ctx, h)
+		waitVerificationContractCode(t, ctx, h, address)
 		var actual string
 		selector := "0x" + common.Bytes2Hex(crypto.Keccak256([]byte("value()"))[:4])
 		h.rpcCall(ctx, &actual, "eth_call", map[string]string{"to": address, "data": selector}, "latest")
@@ -100,7 +105,7 @@ func verifyVyperProductionCase(t *testing.T, ctx context.Context, h *harness, ke
 			})
 		} else {
 			values := url.Values{"action": {"verifysourcecode"}, "contractaddress": {address}, "codeformat": {"vyper-json"}, "compilerversion": {"vyper:" + version}, "contractname": {"A.vy:A"}, "sourceCode": {string(input)}, "optimizationUsed": {"1"}}
-			result, err := hardhatEtherscanRequest(t, ctx, h, key, http.MethodPost, values)
+			result, err := verificationEtherscanRequest(t, ctx, h, key, http.MethodPost, values)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -109,7 +114,7 @@ func verifyVyperProductionCase(t *testing.T, ctx context.Context, h *harness, ke
 				t.Fatalf("Vyper GUID=%s", result)
 			}
 			waitFor(t, ctx, "Vyper Etherscan verification", func() (bool, string, error) {
-				result, err := hardhatEtherscanRequest(t, ctx, h, key, http.MethodGet, url.Values{"action": {"checkverifystatus"}, "guid": {guid}})
+				result, err := verificationEtherscanRequest(t, ctx, h, key, http.MethodGet, url.Values{"action": {"checkverifystatus"}, "guid": {guid}})
 				return err == nil && bytes.Contains(result, []byte("Pass - Verified")), string(result), nil
 			})
 		}
@@ -124,18 +129,34 @@ func verifyVyperProductionCase(t *testing.T, ctx context.Context, h *harness, ke
 			!bytes.Contains(abiBytes, []byte("value")) || len(artifact.Data.Sources) != 1 {
 			t.Fatalf("Vyper artifact=%+v", artifact.Data)
 		}
-		source, err := hardhatEtherscanRequest(t, ctx, h, key, http.MethodGet, url.Values{"action": {"getsourcecode"}, "address": {address}})
+		source, err := verificationEtherscanRequest(t, ctx, h, key, http.MethodGet, url.Values{"action": {"getsourcecode"}, "address": {address}})
 		if err != nil {
 			t.Fatal(err)
 		}
 		if !bytes.Contains(source, []byte(`"CompilerType":"vyper"`)) || !bytes.Contains(source, []byte(`"CompilerVersion":"vyper:`+version+`"`)) {
 			t.Fatalf("Vyper source=%s", source)
 		}
-		abi, err := hardhatEtherscanRequest(t, ctx, h, key, http.MethodGet, url.Values{"action": {"getabi"}, "address": {address}})
+		abi, err := verificationEtherscanRequest(t, ctx, h, key, http.MethodGet, url.Values{"action": {"getabi"}, "address": {address}})
 		if err != nil || !bytes.Contains(abi, []byte("value")) {
 			t.Fatalf("Vyper ABI=%s err=%v", abi, err)
 		}
+		entry := vyperApplicationCase{Version: version, Protocol: protocol, Constructor: *artifact.Data.ConstructorArguments, CreationMatch: string(artifact.Data.CreationMatch.MatchType), RuntimeMatch: string(artifact.Data.RuntimeMatch.MatchType)}
+		entry.ABI = fmt.Sprintf("%x", sha256.Sum256(abiBytes))
+		sourceBytes, err := json.Marshal(artifact.Data.Sources)
+		if err != nil {
+			t.Fatal(err)
+		}
+		entry.Sources = fmt.Sprintf("%x", sha256.Sum256(sourceBytes))
+		if err := h.db.QueryRow(ctx, `SELECT encode(compiler_digest,'hex'), encode(executor_digest,'hex') FROM verification_jobs
+    WHERE address=$1 AND compiler_version=$2 AND language='vyper' AND kind='address' AND status='succeeded'
+    AND compiler_platform='python-wheel' AND catalog_language='vyper' AND catalog_generation_id IS NOT NULL
+    AND executor_kind='node_vyper_wasm_v1' AND execution_policy='trusted_subprocess'
+    AND octet_length(compiler_digest)=32 AND octet_length(executor_digest)=32`, common.HexToAddress(address).Bytes(), version).Scan(&entry.CompilerDigest, &entry.ExecutorDigest); err != nil {
+			t.Fatal(err)
+		}
+		results = append(results, entry)
 	}
+	return results
 }
 
 func vyperNativeRequest(t *testing.T, ctx context.Context, h *harness, key, method, path string, payload []byte, result any, status int) {

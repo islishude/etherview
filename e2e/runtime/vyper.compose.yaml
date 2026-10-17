@@ -1,0 +1,2 @@
+# No client container: Vyper deployments and requests use the Go harness.
+services: {}

@@ -72,3 +72,40 @@ test("CI command groups preserve sequence and stop after the first failure", () 
     assert.equal(commands().length, expected.length + 1);
   });
 });
+
+test("production image handoff checks revision, architecture, identity and failures", () => {
+  for (const architecture of ["amd64", "arm64"]) for (const mode of ["save", "load"]) {
+    for (const failure of ["", "missing", "revision", "image-id", "architecture", "os", "inspect", mode]) {
+      if (mode === "save" && ["missing", "revision", "image-id"].includes(failure)) continue;
+      sandbox(({ dir, env, commands }) => {
+        const bundle=join(dir,"bundle"); mkdirSync(bundle);
+        const imageID=`sha256:${"a".repeat(64)}`, revision="c".repeat(40);
+        const metadata={schema:"etherview-production-image-v1",revision:failure==="revision"?"d".repeat(40):revision,architecture,image_id:imageID};
+        if(mode==="load" && failure!=="missing") writeFileSync(join(bundle,"identity.json"),JSON.stringify(metadata));
+        const identity=[{Id:failure==="image-id"?`sha256:${"b".repeat(64)}`:imageID,Architecture:failure==="architecture"?"wrong":architecture,Os:failure==="os"?"windows":"linux"}];
+        writeFileSync(join(dir,"bin/docker"), `#!${process.execPath}
+import {appendFileSync,writeFileSync} from 'node:fs';
+const args=process.argv.slice(2);
+appendFileSync(process.env.COMMAND_LOG,JSON.stringify({command:'docker',args})+'\\n');
+if(args[1]===${JSON.stringify(failure)}) process.exit(9);
+if(args[1]==='inspect') console.log(${JSON.stringify(JSON.stringify(identity))});
+if(args[1]==='save') writeFileSync(args[3],'archive');
+`,{mode:0o755});
+        const result=spawnSync(process.execPath,[join(root,".github/scripts/vyper-production-bundle.mjs"),mode,bundle,architecture],{cwd:dir,env:{...env,GITHUB_SHA:revision,GITHUB_OUTPUT:join(dir,"output")},encoding:"utf8"});
+        const label=`${architecture}/${mode}/${failure||"success"}`;
+        if(!failure) {
+          assert.equal(result.status,0,`${label}: ${result.stderr}`);
+          assert.deepEqual(JSON.parse(readFileSync(join(bundle,"identity.json"))),metadata);
+          if (mode === "save") assert.equal(readFileSync(join(dir,"output"),"utf8"), `identity=${JSON.stringify(metadata)}\n`);
+          else assert(!existsSync(join(dir,"output")));
+          assert.deepEqual(commands().map(c=>c.args[1]), mode==="save"?["inspect","save"]:["load","inspect"]);
+        } else {
+          assert.notEqual(result.status,0,label);
+          if(mode==="save") assert(!existsSync(join(bundle,"identity.json")),label);
+          if(["missing","revision"].includes(failure)) assert.equal(commands().length,0,label);
+          if(mode==="load" && failure==="load") assert.equal(commands().length,1,label);
+        }
+      });
+    }
+  }
+});

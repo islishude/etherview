@@ -71,6 +71,17 @@ rebuild. Cache persistence/prewarming improves availability without becoming a
 correctness authority. Fresh-process initialization and dual compilation costs
 remain unchanged.
 
+P30-T136 separates native production acceptance into three independent lanes
+per architecture: the complete compiler fixture matrix, Vyper application E2E,
+and Hardhat Solidity/Yul/proxy E2E. Both application suites retain independent
+monolith/split data, cleanup and parity, but no longer mix languages in one
+database. One checked image is built per architecture before these lanes run;
+image and package artifact IDs, source revision and current lock/runtime/fixture
+identities bind all evidence. Only the offline join of all three successful
+lanes writes the existing final acceptance format. Missing, failed, skipped,
+non-native or inconsistent evidence cannot publish acceptance. Artifact expiry
+requires rerunning its producer; consumers never rebuild a replacement image.
+
 ## Reviewed automatic updates
 
 P30-T130 allows a daily build-time PyPI check to propose new stable versions
