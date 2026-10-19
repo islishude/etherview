@@ -7,16 +7,21 @@ request fail.
 
 ## Fresh database initialization
 
-Development migrations are consolidated in `0001_core.sql`. Initialize an empty
-PostgreSQL database with `etherview migrate up`, then verify it with
-`etherview migrate status`. Every role uses this same baseline; serving never
-applies migrations implicitly.
+The fresh-database baseline consists of numbered domain migrations from
+`0001_core.sql` through `0017_schema_bindings.sql` in
+`internal/store/migrations/`. Initialize an empty PostgreSQL database with
+`etherview migrate up`, then verify it with `etherview migrate status`. The
+runner applies all pending files in one transaction under an advisory lock;
+status reports the complete version set and verifies each file's checksum.
+Every role uses this same baseline; serving never applies migrations implicitly.
 
-Databases initialized with the earlier development migration chain must be
-recreated. Stop all processes using that database, retain a backup if its data
-is needed, and provision a new empty database before running the commands
-above. Update the writer and reader configuration together before restarting
-roles. Reindex or resubmit required application data explicitly. Do not edit
+Databases initialized with the earlier development migration chain or the
+previous single-file `0001_core.sql` baseline must be recreated. The retained
+`0001_core` version has a different checksum, so the old baseline is rejected
+before new DDL is applied. Stop all processes using that database, retain a
+backup if its data is needed, and provision a new empty database before running
+the commands above. Update the writer and reader configuration together before
+restarting roles. Reindex or resubmit required application data explicitly. Do not edit
 migration checksums or ledger rows to make an old database appear compatible.
 The migration command does not delete existing databases or Docker volumes,
 and no in-place upgrade, data conversion, or startup backfill is provided.

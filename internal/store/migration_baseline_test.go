@@ -33,11 +33,10 @@ func TestBaselineDeclaresFinalObjects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(migrations) != 1 || migrations[0].Version != "0001_core" {
-		t.Fatalf("expected one fresh baseline: %v", migrations)
-	}
-	for _, statement := range unexpectedBaselineAlters(migrations[0].SQL) {
-		t.Errorf("declare the final object directly or document a necessary exception: %s", statement)
+	for _, migration := range migrations {
+		for _, statement := range unexpectedBaselineAlters(migration.SQL) {
+			t.Errorf("%s: declare the final object directly or document a necessary exception: %s", migration.Version, statement)
+		}
 	}
 }
 
