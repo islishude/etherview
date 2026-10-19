@@ -38,10 +38,10 @@ derive access offsets without retaining the complete AST or parsing source text.
 - Migration and startup never reinterpret or replay existing history. Blocks
   first processed after deployment use the new detector; any future historical
   coverage requires a separately approved bounded reindex.
-- Register an independent V2 detector with family `cwia` and variant
-  `solady-legacy-libcwia`. The OpenZeppelin adapter must not claim a CWIA
-  outcome. V2 storage and public exposure retain their independent existing
-  flags, and public V2 stays disabled until its production gate completes.
+- Register an independent detector with family `cwia` and variant
+  `solady-legacy-libcwia`. The standard detector must not claim a CWIA outcome.
+  The unified framework publishes both its authoritative clone relation and
+  structured detection evidence under ADR-0032. Neither requires a feature gate.
 - Raw immutable arguments remain authoritative and are always preserved. The
   verifier derives an optional bounded schema only when reachable `_getArg*`
   calls resolve through `referencedDeclaration` to a linearized base source
@@ -143,8 +143,8 @@ CWIA contracts reuse the current proxy, verification, ABI, and interaction
 lifecycle without being mislabeled as ERC-1167. Typed values are
 source-authenticated but remain visibly subordinate to the exact raw bytes.
 Unsupported variants and ambiguous layouts fail closed, existing proxy facts
-and bindings remain current, and production proxy-V2 promotion remains a
-separate operator decision. Existing verification artifacts are not backfilled;
+and bindings remain current, and production deployment acceptance remains a
+separate operator decision under ADR-0032. Existing verification artifacts are not backfilled;
 resubmission under the new analysis version derives the schema. Existing
 same-code artifacts become immediately useful for read-only current
 implementation presentation without rewriting verification history or

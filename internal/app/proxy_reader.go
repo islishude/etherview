@@ -27,15 +27,13 @@ type proxyQueryReader interface {
 // repository-local values so malformed persisted identities cannot leak into
 // the generated OpenAPI response types.
 type proxyReaderAdapter struct {
-	reader            proxyQueryReader
-	chainID           string
-	publicDetectionV2 bool
+	reader  proxyQueryReader
+	chainID string
 }
 
-func newProxyReaderAdapter(reader proxyQueryReader, chainID uint64, publicDetectionV2 bool) proxyReaderAdapter {
+func newProxyReaderAdapter(reader proxyQueryReader, chainID uint64) proxyReaderAdapter {
 	return proxyReaderAdapter{
 		reader: reader, chainID: strconv.FormatUint(chainID, 10),
-		publicDetectionV2: publicDetectionV2,
 	}
 }
 
@@ -144,22 +142,22 @@ func (adapter proxyReaderAdapter) proxyDetails(detail query.ProxyDetail) (gen.Pr
 		Snapshot: snapshot,
 		Evidence: make([]gen.ProxyRecognitionEvidence, len(detail.Evidence)),
 	}
-	if adapter.publicDetectionV2 && len(detail.DetectionV2) != 0 {
-		if len(detail.DetectionV2) > 4<<20 {
-			return gen.ProxyDetails{}, errors.New("proxy detection V2 exceeds the public bound")
+	if len(detail.Detection) != 0 {
+		if len(detail.Detection) > 4<<20 {
+			return gen.ProxyDetails{}, errors.New("proxy detection exceeds the public bound")
 		}
-		var detection gen.ProxyDetectionV2
-		if err := json.Unmarshal(detail.DetectionV2, &detection); err != nil {
-			return gen.ProxyDetails{}, fmt.Errorf("invalid proxy detection V2: %w", err)
+		var detection gen.ProxyDetection
+		if err := json.Unmarshal(detail.Detection, &detection); err != nil {
+			return gen.ProxyDetails{}, fmt.Errorf("invalid proxy detection: %w", err)
 		}
-		if err := adapter.validateProxyDetectionV2(detection, address); err != nil {
+		if err := adapter.validateProxyDetection(detection, address); err != nil {
 			return gen.ProxyDetails{}, err
 		}
-		model.ProxyDetectionV2 = &detection
+		model.ProxyDetection = &detection
 		if model.Status == gen.ProxyDetailStatusNotDetected &&
-			(detection.Status == gen.ProxyDetectionV2StatusConfirmed ||
-				detection.Status == gen.ProxyDetectionV2StatusCandidate ||
-				detection.Status == gen.ProxyDetectionV2StatusInconsistent) {
+			(detection.Status == gen.ProxyDetectionStatusConfirmed ||
+				detection.Status == gen.ProxyDetectionStatusCandidate ||
+				detection.Status == gen.ProxyDetectionStatusInconsistent) {
 			model.Status = gen.ProxyDetailStatusDetectedUnverified
 		}
 		if detection.Primary != nil && detection.Primary.Diamond != nil {
@@ -271,40 +269,40 @@ func (adapter proxyReaderAdapter) proxyDetails(detail query.ProxyDetail) (gen.Pr
 	return model, nil
 }
 
-func (adapter proxyReaderAdapter) validateProxyDetectionV2(
-	detection gen.ProxyDetectionV2,
+func (adapter proxyReaderAdapter) validateProxyDetection(
+	detection gen.ProxyDetection,
 	proxy gen.Address,
 ) error {
 	if !detection.Status.Valid() || len(detection.Outcomes) > 16 || len(detection.Conflicts) > 16 {
-		return errors.New("proxy detection V2 resolution is outside the public contract")
+		return errors.New("proxy detection resolution is outside the public contract")
 	}
-	validate := func(outcome gen.ProxyDetectionV2Outcome) error {
+	validate := func(outcome gen.ProxyDetectionOutcome) error {
 		if outcome.Detector == "" || !outcome.Status.Valid() || !outcome.Confidence.Valid() ||
 			outcome.Proxy != proxy || string(outcome.ChainId) != adapter.chainID ||
 			len(outcome.Evidence) > 64 || len(outcome.Warnings) > 64 ||
 			len(outcome.ImplementationPath) > 8 || len(outcome.Targets) > enrich.DiamondMaxFacets+2 {
-			return errors.New("proxy detection V2 outcome is outside the public contract")
+			return errors.New("proxy detection outcome is outside the public contract")
 		}
 		if outcome.Family != nil && !outcome.Family.Valid() {
-			return errors.New("proxy detection V2 family is invalid")
+			return errors.New("proxy detection family is invalid")
 		}
 		if outcome.ImplementationRole != nil && !outcome.ImplementationRole.Valid() {
-			return errors.New("proxy detection V2 implementation role is invalid")
+			return errors.New("proxy detection implementation role is invalid")
 		}
 		for _, target := range outcome.Targets {
 			if !target.Role.Valid() || len(target.Selectors) > enrich.DiamondMaxSelectorsPerFacet {
-				return errors.New("proxy detection V2 target is invalid")
+				return errors.New("proxy detection target is invalid")
 			}
 			if _, err := proxyAddress(target.Address); err != nil {
-				return errors.New("proxy detection V2 target address is invalid")
+				return errors.New("proxy detection target address is invalid")
 			}
 			for _, selector := range target.Selectors {
 				if !validFunctionSelector(string(selector)) {
-					return errors.New("proxy detection V2 target selector is invalid")
+					return errors.New("proxy detection target selector is invalid")
 				}
 			}
 		}
-		if outcome.Family != nil && *outcome.Family == gen.ProxyDetectionV2FamilyErc2535 {
+		if outcome.Family != nil && *outcome.Family == gen.ProxyDetectionFamilyErc2535 {
 			if outcome.Diamond == nil || outcome.Implementation != nil || outcome.ImplementationRole != nil {
 				return errors.New("ERC-2535 outcome does not use selector-scoped targets")
 			}
@@ -316,7 +314,7 @@ func (adapter proxyReaderAdapter) validateProxyDetectionV2(
 		}
 		for _, evidence := range outcome.Evidence {
 			if !evidence.Kind.Valid() || evidence.Description == "" {
-				return errors.New("proxy detection V2 evidence is invalid")
+				return errors.New("proxy detection evidence is invalid")
 			}
 		}
 		return nil
@@ -353,7 +351,7 @@ func validatePublicDiamond(
 	diamond gen.DiamondDetection,
 	targets []gen.ProxyTarget,
 	proxy gen.Address,
-	status gen.ProxyDetectionV2Status,
+	status gen.ProxyDetectionStatus,
 ) error {
 	if !diamond.Completeness.Valid() || !diamond.Validation.Valid() ||
 		!diamond.StandardDiamondCut.Status.Valid() || len(diamond.Facets) > enrich.DiamondMaxFacets ||
@@ -385,7 +383,7 @@ func validatePublicDiamond(
 			facet.Role == gen.ProxyTargetRoleImmutable && !facet.CodeExists ||
 			facet.Role == gen.ProxyTargetRoleFacet && facet.Address == proxy ||
 			len(facet.Selectors) == 0 ||
-			status == gen.ProxyDetectionV2StatusConfirmed && facet.Role == gen.ProxyTargetRoleFacet &&
+			status == gen.ProxyDetectionStatusConfirmed && facet.Role == gen.ProxyTargetRoleFacet &&
 				(!facet.CodeExists || facet.CodeHash == nil) {
 			return errors.New("diamond facet role is invalid")
 		}

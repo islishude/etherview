@@ -9,16 +9,10 @@ import (
 )
 
 type proxyDetectionResolutionDocument struct {
-	Status     ProxyDetectionStatus             `json:"status"`
-	Primary    *proxyDetectionDocument          `json:"primary,omitempty"`
-	Outcomes   []proxyDetectionDocument         `json:"outcomes"`
-	Conflicts  []string                         `json:"conflicts"`
-	ShadowDiff proxyDetectionShadowDiffDocument `json:"shadow_diff"`
-}
-
-type proxyDetectionShadowDiffDocument struct {
-	Different bool     `json:"different"`
-	Reasons   []string `json:"reasons"`
+	Status    ProxyDetectionStatus     `json:"status"`
+	Primary   *proxyDetectionDocument  `json:"primary,omitempty"`
+	Outcomes  []proxyDetectionDocument `json:"outcomes"`
+	Conflicts []string                 `json:"conflicts"`
 }
 
 type proxyDetectionDocument struct {
@@ -88,16 +82,9 @@ func marshalProxyDetectionResolution(resolution ProxyDetectionResolution) ([]byt
 	document := proxyDetectionResolutionDocument{
 		Status: resolution.Status, Outcomes: make([]proxyDetectionDocument, len(resolution.Outcomes)),
 		Conflicts: append([]string(nil), resolution.Conflicts...),
-		ShadowDiff: proxyDetectionShadowDiffDocument{
-			Different: resolution.LegacyProjectionChanged,
-			Reasons:   append([]string(nil), resolution.LegacyDiffReasons...),
-		},
 	}
 	if document.Conflicts == nil {
 		document.Conflicts = []string{}
-	}
-	if document.ShadowDiff.Reasons == nil {
-		document.ShadowDiff.Reasons = []string{}
 	}
 	for index := range resolution.Outcomes {
 		document.Outcomes[index] = proxyDetectionToDocument(resolution.Outcomes[index])
@@ -109,7 +96,7 @@ func marshalProxyDetectionResolution(resolution ProxyDetectionResolution) ([]byt
 	return json.Marshal(document)
 }
 
-func proxyDetectionToDocument(detection ProxyDetectionV2) proxyDetectionDocument {
+func proxyDetectionToDocument(detection ProxyDetection) proxyDetectionDocument {
 	document := proxyDetectionDocument{
 		Detector: detection.Detector, DetectorVersion: detection.DetectorVersion,
 		Priority: detection.Priority, Family: detection.Family, Variant: detection.Variant,

@@ -1,0 +1,83 @@
+{
+  "ambiguous": {
+    "code": "YAI=",
+    "code_hash": "0xcde7aac41575d8b30bd84f598371d46d266fadb09c9dcfcdd047fd087ef8763e",
+    "exact": false,
+    "rejected": "ambiguous_slots"
+  },
+  "clone": {
+    "code": "Nj09Nz09PTY9cwAAAAAAAAAAAAAAAAAAAAAAAAALWvQ9goA+kD2RYCtX/Vvz",
+    "code_hash": "0x4d615c4d65e6fd24a05755a2624563b19de8037bc69a960b6d50e7ccc0dbc14f",
+    "exact": false,
+    "rejected": "",
+    "relation": {
+      "admin": null,
+      "beacon": null,
+      "evidence_state": "exact",
+      "immutable_args": null,
+      "immutable_args_exact": false,
+      "implementation": "0x000000000000000000000000000000000000000b",
+      "implementation_code": "YAM=",
+      "implementation_hash": "0x124787cd33af4a91148bc5521374b123cb0c5aaa5b0f02ff8d9bf1bb816791b8",
+      "kind": "eip1167",
+      "minimal_exact": true,
+      "pattern": "clone"
+    }
+  },
+  "cwia": {
+    "code": "NmAsVzQ9Un+eSsNPIcYZzvySbIvZO1S/WjnHqyEnqJWvHMBpHX49/1k9oQBbNj09Nz09PT1hAAWAYGI2OTYBPXMAAAAAAAAAAAAAAAAAAAAAAAAAC1r0PT2TgD5gYFf9W/MBAgMABQ==",
+    "code_hash": "0xe050d0aca2ad5e4036ab65abae465c4735bf8e8725c1744f5d8ab34b621bc70c",
+    "exact": false,
+    "rejected": "",
+    "relation": {
+      "admin": null,
+      "beacon": null,
+      "evidence_state": "exact",
+      "immutable_args": "AQID",
+      "immutable_args_exact": true,
+      "implementation": "0x000000000000000000000000000000000000000b",
+      "implementation_code": "YAM=",
+      "implementation_hash": "0x124787cd33af4a91148bc5521374b123cb0c5aaa5b0f02ff8d9bf1bb816791b8",
+      "kind": "cwia",
+      "minimal_exact": false,
+      "pattern": "clone"
+    }
+  },
+  "empty": {
+    "code": "",
+    "code_hash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+    "exact": false,
+    "rejected": ""
+  },
+  "implementation": {
+    "code": "YAI=",
+    "code_hash": "0xcde7aac41575d8b30bd84f598371d46d266fadb09c9dcfcdd047fd087ef8763e",
+    "exact": false,
+    "rejected": "",
+    "relation": {
+      "admin": null,
+      "beacon": null,
+      "evidence_state": "generic",
+      "immutable_args": null,
+      "immutable_args_exact": false,
+      "implementation": "0x000000000000000000000000000000000000000b",
+      "implementation_code": "YAM=",
+      "implementation_hash": "0x124787cd33af4a91148bc5521374b123cb0c5aaa5b0f02ff8d9bf1bb816791b8",
+      "kind": "eip1967",
+      "minimal_exact": false,
+      "pattern": "unknown"
+    }
+  },
+  "ordinary": {
+    "code": "YAE=",
+    "code_hash": "0x309c67890bde4c575dc23d2cc3b5c3a3d599e312e980e9b61b5bc8f3cd87c8bb",
+    "exact": false,
+    "rejected": ""
+  },
+  "safe": {
+    "code": "YIBgQFJz//////////////////////////9gAFQWf6YZSG4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYAA1FBVgUFeAYABSYCBgAPNbNmAAgDdgAIA2YACEWvQ9YACAPmAAgRQVYHBXPWAA/Vs9YADz/qJkaXBmc1giEiAD0UiO5l4I+kHljoiKmGVVTFNfLHcSaoLLTA+RfzFEE2Rzb2xjQwAHBgAz",
+    "code_hash": "0xd7d408ebcd99b2b70be43e20253d6d92a8ea8fab29bd3be7f55b10032331fb4c",
+    "exact": false,
+    "rejected": ""
+  }
+}

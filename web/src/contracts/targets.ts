@@ -704,7 +704,7 @@ function exactBinding(proxy: ProxyDetails | undefined, address: Address) {
 
 function confirmedDiamond(proxy: ProxyDetails | undefined, address: Address) {
   const chainID = normalizeChainID(proxy?.snapshot.chain_id);
-  const outcome = proxy?.proxy_detection_v2?.outcomes.find(
+  const outcome = proxy?.proxy_detection?.outcomes.find(
     (candidate) =>
       candidate.family === "erc2535" &&
       candidate.status === "confirmed" &&

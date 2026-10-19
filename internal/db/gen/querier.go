@@ -356,7 +356,7 @@ type Querier interface {
 	GetHomeRuntimeEventID(ctx context.Context, chainID pgtype.Numeric) (int64, error)
 	GetHomeRuntimeStatus(ctx context.Context, chainID pgtype.Numeric) (GetHomeRuntimeStatusRow, error)
 	GetLatestPublishedProxyDetection(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte) (GetLatestPublishedProxyDetectionRow, error)
-	GetLatestPublishedProxyDetectionV2(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte) ([]byte, error)
+	GetLatestPublishedProxyDetectionSummary(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte) ([]byte, error)
 	GetLatestPublishedProxyNegativeEvidence(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte) (GetLatestPublishedProxyNegativeEvidenceRow, error)
 	GetOrCreateUserForLogin(ctx context.Context, arg GetOrCreateUserForLoginParams) (GetOrCreateUserForLoginRow, error)
 	// Public proxy reads are executed on the PostgreSQL writer inside a

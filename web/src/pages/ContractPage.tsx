@@ -192,7 +192,7 @@ export function ContractPage({ address }: { address: string }) {
   const diamondCutCursors = diamondCutState.identity === address ? diamondCutState.cursors : [""];
   const proxyDetail = proxy.data?.detail;
   const isProxy = proxyDetail?.proxy !== undefined;
-  const diamondOutcome = proxyDetail?.proxy_detection_v2?.outcomes.find(
+  const diamondOutcome = proxyDetail?.proxy_detection?.outcomes.find(
     (outcome) =>
       outcome.family === "erc2535" &&
       outcome.status !== "not-detected" &&
@@ -200,7 +200,7 @@ export function ContractPage({ address }: { address: string }) {
   );
   const diamond = diamondOutcome?.diamond;
   const isDiamond = diamond !== undefined;
-  const showProxySummary = isProxy || proxyDetail?.proxy_detection_v2 !== undefined;
+  const showProxySummary = isProxy || proxyDetail?.proxy_detection !== undefined;
   const clone = proxyDetail?.pattern === "clone";
   const detected = isProxy && proxyDetail?.status !== "not_detected";
   const upgrades = useContractProxyUpgrades(

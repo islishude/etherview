@@ -63,7 +63,7 @@ change. New plan IDs must exceed P78; gaps and retired prefixes stay reserved.
 | P00 | 14 |
 | P10 | 7 |
 | P20 | 16 |
-| P30 | 136 |
+| P30 | 137 |
 | P40 | 19 |
 | P50 | 71 |
 | P64 | 7 |

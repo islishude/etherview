@@ -6088,16 +6088,16 @@ components:
           $ref: "#/components/schemas/ProxyContractIdentity"
         beacon:
           $ref: "#/components/schemas/ProxyContractIdentity"
-    ProxyDetectionV2Status:
+    ProxyDetectionStatus:
       type: string
       enum: [confirmed, candidate, inconsistent, not-detected, unknown]
-    ProxyDetectionV2Confidence:
+    ProxyDetectionConfidence:
       type: string
       enum: [high, medium, low]
-    ProxyDetectionV2Family:
+    ProxyDetectionFamily:
       type: string
       enum: [erc1167, cwia, erc1967, erc2535, safe, custom]
-    ProxyDetectionV2ImplementationRole:
+    ProxyDetectionImplementationRole:
       type: string
       enum: [implementation, singleton]
     CWIAImmutableArgsDecodingStatus:
@@ -6316,7 +6316,7 @@ components:
         truncation_reason:
           type: string
           maxLength: 128
-    ProxyDetectionV2EvidenceKind:
+    ProxyDetectionEvidenceKind:
       type: string
       enum:
         - runtime-bytecode
@@ -6331,13 +6331,13 @@ components:
         - facet-code
         - erc165
         - verified-source
-    ProxyDetectionV2Evidence:
+    ProxyDetectionEvidence:
       type: object
       additionalProperties: false
       required: [kind, description]
       properties:
         kind:
-          $ref: "#/components/schemas/ProxyDetectionV2EvidenceKind"
+          $ref: "#/components/schemas/ProxyDetectionEvidenceKind"
         description:
           type: string
           minLength: 1
@@ -6350,7 +6350,7 @@ components:
           type: string
           pattern: '^0x([0-9a-fA-F]{2})*$'
           maxLength: 4098
-    ProxyDetectionV2Outcome:
+    ProxyDetectionOutcome:
       type: object
       additionalProperties: false
       required:
@@ -6385,20 +6385,20 @@ components:
           minimum: 0
           maximum: 10000
         family:
-          $ref: "#/components/schemas/ProxyDetectionV2Family"
+          $ref: "#/components/schemas/ProxyDetectionFamily"
         variant:
           type: string
           maxLength: 128
         status:
-          $ref: "#/components/schemas/ProxyDetectionV2Status"
+          $ref: "#/components/schemas/ProxyDetectionStatus"
         confidence:
-          $ref: "#/components/schemas/ProxyDetectionV2Confidence"
+          $ref: "#/components/schemas/ProxyDetectionConfidence"
         proxy:
           $ref: "#/components/schemas/Address"
         implementation:
           $ref: "#/components/schemas/Address"
         implementation_role:
-          $ref: "#/components/schemas/ProxyDetectionV2ImplementationRole"
+          $ref: "#/components/schemas/ProxyDetectionImplementationRole"
         targets:
           type: array
           maxItems: 258
@@ -6435,7 +6435,7 @@ components:
           type: array
           maxItems: 64
           items:
-            $ref: "#/components/schemas/ProxyDetectionV2Evidence"
+            $ref: "#/components/schemas/ProxyDetectionEvidence"
         warnings:
           type: array
           maxItems: 64
@@ -6448,39 +6448,26 @@ components:
           $ref: "#/components/schemas/Quantity"
         block_hash:
           $ref: "#/components/schemas/Hash"
-    ProxyDetectionV2:
+    ProxyDetection:
       type: object
       additionalProperties: false
-      required: [status, outcomes, conflicts, shadow_diff]
+      required: [status, outcomes, conflicts]
       properties:
         status:
-          $ref: "#/components/schemas/ProxyDetectionV2Status"
+          $ref: "#/components/schemas/ProxyDetectionStatus"
         primary:
-          $ref: "#/components/schemas/ProxyDetectionV2Outcome"
+          $ref: "#/components/schemas/ProxyDetectionOutcome"
         outcomes:
           type: array
           maxItems: 16
           items:
-            $ref: "#/components/schemas/ProxyDetectionV2Outcome"
+            $ref: "#/components/schemas/ProxyDetectionOutcome"
         conflicts:
           type: array
           maxItems: 16
           items:
             type: string
             maxLength: 256
-        shadow_diff:
-          type: object
-          additionalProperties: false
-          required: [different, reasons]
-          properties:
-            different:
-              type: boolean
-            reasons:
-              type: array
-              maxItems: 16
-              items:
-                type: string
-                maxLength: 128
     ProxyDetails:
       type: object
       additionalProperties: false
@@ -6524,8 +6511,8 @@ components:
           $ref: "#/components/schemas/ProxyManagement"
         implementation_interaction:
           $ref: "#/components/schemas/ProxyImplementationInteraction"
-        proxy_detection_v2:
-          $ref: "#/components/schemas/ProxyDetectionV2"
+        proxy_detection:
+          $ref: "#/components/schemas/ProxyDetection"
         immutable_args:
           type: string
           pattern: '^0x([0-9a-fA-F]{2})*$'

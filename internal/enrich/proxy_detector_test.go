@@ -15,9 +15,9 @@ type testProxyDetector struct {
 	version  string
 	priority int
 	modes    []ProxyDetectionMode
-	result   *ProxyDetectionV2
+	result   *ProxyDetection
 	err      error
-	call     func(context.Context, *ProxyDetectionContext) (*ProxyDetectionV2, error)
+	call     func(context.Context, *ProxyDetectionContext) (*ProxyDetection, error)
 }
 
 func (detector testProxyDetector) ID() string      { return detector.id }
@@ -29,7 +29,7 @@ func (detector testProxyDetector) SupportedModes() []ProxyDetectionMode {
 func (detector testProxyDetector) Detect(
 	ctx context.Context,
 	detectionContext *ProxyDetectionContext,
-) (*ProxyDetectionV2, error) {
+) (*ProxyDetection, error) {
 	if detector.call != nil {
 		return detector.call(ctx, detectionContext)
 	}
@@ -170,14 +170,14 @@ func TestRunProxyDetectorsKeepsAllOutcomesAndResolvesOrderIndependently(t *testi
 	detectors := []ProxyDetector{
 		testProxyDetector{
 			id: "weaker", version: "1", priority: 1, modes: []ProxyDetectionMode{ProxyDetectionBulk},
-			result: &ProxyDetectionV2{
+			result: &ProxyDetection{
 				Family: ProxyFamilyERC1967, Status: ProxyStatusCandidate, Confidence: ProxyConfidenceMedium,
 				Implementation: &firstImplementation,
 			},
 		},
 		testProxyDetector{
 			id: "exact", version: "1", priority: 10, modes: []ProxyDetectionMode{ProxyDetectionBulk},
-			result: &ProxyDetectionV2{
+			result: &ProxyDetection{
 				Family: ProxyFamilySafe, Status: ProxyStatusConfirmed, Confidence: ProxyConfidenceHigh,
 				Implementation: &secondImplementation, ImplementationRole: ProxyRoleSingleton,
 			},
@@ -257,15 +257,14 @@ func TestProxyDetectionContextCachesExecutionRevertAsCallEvidence(t *testing.T) 
 	}
 }
 
-func TestOpenZeppelinAdapterPreservesLegacyAndAddsStructuredShadowResult(t *testing.T) {
+func TestStandardDetectorPreservesRelationsAndPublishesEvidence(t *testing.T) {
 	t.Parallel()
 	proxy, implementation := testAddress(10), testAddress(11)
 	runtime := append(append(append([]byte(nil), minimalProxyPrefix...), implementation[:]...), minimalProxySuffix...)
 	caller := &proxyStateCaller{code: map[common.Address][]byte{proxy: runtime}}
 	detector := rpcProxyDetector{
-		caller:    caller,
-		v2Enabled: true,
-		limits:    ProxyLimits{MaxCandidates: 2, MaxCodeBytes: 4096, MaxDetailsBytes: 512},
+		caller: caller,
+		limits: ProxyLimits{MaxCandidates: 2, MaxCodeBytes: 4096, MaxDetailsBytes: 512},
 	}
 	job := Job{
 		ID: "oz-adapter", Stage: ProxyStage, ChainID: "1",
@@ -277,32 +276,32 @@ func TestOpenZeppelinAdapterPreservesLegacyAndAddsStructuredShadowResult(t *test
 	}
 	if len(detections) != 1 || detections[0].proxy == nil || detections[0].rejected != "" ||
 		detections[0].proxy.kind != ProxyMinimal1167 || !detections[0].proxy.minimalExact {
-		t.Fatalf("legacy detection changed: %+v", detections)
+		t.Fatalf("authoritative detection changed: %+v", detections)
 	}
-	shadow := detections[0].v2
-	if shadow.Status != ProxyStatusInconsistent || shadow.Primary == nil ||
-		shadow.Primary.Detector != "openzeppelin" || shadow.Primary.DetectorVersion != OpenZeppelin561Standard ||
-		shadow.Primary.Family != ProxyFamilyERC1167 || shadow.Primary.Variant != string(ProxyPatternClone) ||
-		shadow.Primary.Implementation == nil || *shadow.Primary.Implementation != implementation ||
-		shadow.Primary.ImplementationRole != ProxyRoleImplementation ||
-		!reflect.DeepEqual(shadow.Primary.Warnings, []string{"implementation_has_no_code"}) {
-		t.Fatalf("shadow detection=%+v", shadow)
+	summary := detections[0].resolution
+	if summary.Status != ProxyStatusInconsistent || summary.Primary == nil ||
+		summary.Primary.Detector != "openzeppelin" || summary.Primary.DetectorVersion != OpenZeppelin561Standard ||
+		summary.Primary.Family != ProxyFamilyERC1167 || summary.Primary.Variant != string(ProxyPatternClone) ||
+		summary.Primary.Implementation == nil || *summary.Primary.Implementation != implementation ||
+		summary.Primary.ImplementationRole != ProxyRoleImplementation ||
+		!reflect.DeepEqual(summary.Primary.Warnings, []string{"implementation_has_no_code"}) {
+		t.Fatalf("summary detection=%+v", summary)
 	}
 	caller.mu.Lock()
 	calls := append([]proxyRPCCall(nil), caller.calls...)
 	caller.mu.Unlock()
 	if len(calls) != 2 || calls[0].method != "eth_getCode" || calls[0].address != proxy.Hex() ||
 		calls[1].method != "eth_getCode" || calls[1].address != implementation.Hex() {
-		t.Fatalf("adapter added or reordered RPC calls: %+v", calls)
+		t.Fatalf("framework added or reordered RPC calls: %+v", calls)
 	}
 	for _, call := range calls {
 		if call.blockHash != job.BlockHash.Hex() {
-			t.Fatalf("adapter mixed block selectors: %+v", calls)
+			t.Fatalf("framework mixed block selectors: %+v", calls)
 		}
 	}
 }
 
-func TestOpenZeppelinAdapterKeepsGenericSlotEvidenceAsCandidate(t *testing.T) {
+func TestStandardDetectorKeepsGenericSlotEvidenceAsCandidate(t *testing.T) {
 	t.Parallel()
 	proxy, implementation := testAddress(12), testAddress(13)
 	caller := &proxyStateCaller{
@@ -312,9 +311,8 @@ func TestOpenZeppelinAdapterKeepsGenericSlotEvidenceAsCandidate(t *testing.T) {
 		},
 	}
 	detector := rpcProxyDetector{
-		caller:    caller,
-		v2Enabled: true,
-		limits:    ProxyLimits{MaxCandidates: 2, MaxCodeBytes: 4096, MaxDetailsBytes: 512},
+		caller: caller,
+		limits: ProxyLimits{MaxCandidates: 2, MaxCodeBytes: 4096, MaxDetailsBytes: 512},
 	}
 	detections, err := detector.detectBlock(t.Context(), Job{
 		ID: "oz-generic-adapter", Stage: ProxyStage, ChainID: "1",
@@ -325,14 +323,14 @@ func TestOpenZeppelinAdapterKeepsGenericSlotEvidenceAsCandidate(t *testing.T) {
 	}
 	if len(detections) != 1 || detections[0].proxy == nil ||
 		detections[0].proxy.kind != ProxyEIP1967 || detections[0].proxy.evidenceState != "generic" {
-		t.Fatalf("legacy detection changed: %+v", detections)
+		t.Fatalf("authoritative detection changed: %+v", detections)
 	}
-	shadow := detections[0].v2
-	if shadow.Status != ProxyStatusCandidate || shadow.Primary == nil ||
-		shadow.Primary.Family != ProxyFamilyERC1967 || shadow.Primary.Status != ProxyStatusCandidate ||
-		shadow.Primary.Confidence != ProxyConfidenceLow || shadow.Primary.Implementation == nil ||
-		*shadow.Primary.Implementation != implementation {
-		t.Fatalf("shadow detection=%+v", shadow)
+	summary := detections[0].resolution
+	if summary.Status != ProxyStatusCandidate || summary.Primary == nil ||
+		summary.Primary.Family != ProxyFamilyERC1967 || summary.Primary.Status != ProxyStatusCandidate ||
+		summary.Primary.Confidence != ProxyConfidenceLow || summary.Primary.Implementation == nil ||
+		*summary.Primary.Implementation != implementation {
+		t.Fatalf("summary detection=%+v", summary)
 	}
 }
 
@@ -349,18 +347,18 @@ func FuzzResolveProxyDetectionsIsRegistrationOrderIndependent(f *testing.F) {
 		if sameFamily {
 			rightFamily = leftFamily
 		}
-		left := ProxyDetectionV2{
+		left := ProxyDetection{
 			Detector: "left", DetectorVersion: "1", Family: leftFamily,
 			Status: statuses[int(leftStatus)%len(statuses)], Confidence: ProxyConfidenceHigh,
 			Proxy: proxy, ChainID: "1", BlockNumber: 50, BlockHash: uintWord(50),
 		}
-		right := ProxyDetectionV2{
+		right := ProxyDetection{
 			Detector: "right", DetectorVersion: "1", Family: rightFamily,
 			Status: statuses[int(rightStatus)%len(statuses)], Confidence: ProxyConfidenceMedium,
 			Proxy: proxy, ChainID: "1", BlockNumber: 50, BlockHash: uintWord(50),
 		}
-		forward, forwardErr := ResolveProxyDetections([]ProxyDetectionV2{left, right})
-		reverse, reverseErr := ResolveProxyDetections([]ProxyDetectionV2{right, left})
+		forward, forwardErr := ResolveProxyDetections([]ProxyDetection{left, right})
+		reverse, reverseErr := ResolveProxyDetections([]ProxyDetection{right, left})
 		if (forwardErr != nil) != (reverseErr != nil) {
 			t.Fatalf("errors differ: forward=%v reverse=%v", forwardErr, reverseErr)
 		}
@@ -379,7 +377,7 @@ func TestProxyDetectionResolutionDocumentUsesPublicQuantitiesAndRoles(t *testing
 	proxy, singleton := testAddress(70), testAddress(71)
 	resolution := ProxyDetectionResolution{
 		Status: ProxyStatusConfirmed,
-		Outcomes: []ProxyDetectionV2{{
+		Outcomes: []ProxyDetection{{
 			Detector: "safe", DetectorVersion: "safe-proxy@1", Priority: 200,
 			Family: ProxyFamilySafe, Variant: "safe-proxy", Status: ProxyStatusConfirmed,
 			Confidence: ProxyConfidenceHigh, Proxy: proxy, Implementation: &singleton,
@@ -415,7 +413,7 @@ func TestDiamondDetectionDocumentKeepsSelectorScopedTargetsWithoutImplementation
 	facetSelector := [4]byte{0xa9, 0x05, 0x9c, 0xbb}
 	facetCodeHash := uintWord(73)
 	implementationAddresses := []common.Address{facet}
-	detection := ProxyDetectionV2{
+	detection := ProxyDetection{
 		Detector: "erc2535", DetectorVersion: "erc2535@1", Priority: 150,
 		Family: ProxyFamilyERC2535, Variant: "diamond", Status: ProxyStatusConfirmed,
 		Confidence: ProxyConfidenceHigh, Proxy: diamond,
@@ -445,7 +443,7 @@ func TestDiamondDetectionDocumentKeepsSelectorScopedTargetsWithoutImplementation
 	}
 	resolution := ProxyDetectionResolution{
 		Status: ProxyStatusConfirmed, Primary: &detection,
-		Outcomes: []ProxyDetectionV2{detection}, Conflicts: []string{},
+		Outcomes: []ProxyDetection{detection}, Conflicts: []string{},
 	}
 	encoded, err := marshalProxyDetectionResolution(resolution)
 	if err != nil {
@@ -470,7 +468,7 @@ func TestDiamondDetectionRejectsSelectorAssignedToTwoFacets(t *testing.T) {
 	t.Parallel()
 	diamond, first, second := testAddress(74), testAddress(75), testAddress(76)
 	selector := [4]byte{1, 2, 3, 4}
-	detection := ProxyDetectionV2{
+	detection := ProxyDetection{
 		Detector: "erc2535", DetectorVersion: "erc2535@1", Family: ProxyFamilyERC2535,
 		Status: ProxyStatusInconsistent, Confidence: ProxyConfidenceHigh,
 		Proxy: diamond, ChainID: "1", BlockNumber: 1, BlockHash: uintWord(1),

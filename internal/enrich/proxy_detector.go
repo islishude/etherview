@@ -155,7 +155,10 @@ type ProxyDetectionEvidence struct {
 	Value       []byte
 }
 
-type ProxyDetectionV2 struct {
+type ProxyDetection struct {
+	// observation is the authoritative standard/CWIA fact, not resolver priority
+	// or public detection confidence. It is consumed separately before publication.
+	observation             *proxyDetection
 	Detector                string
 	DetectorVersion         string
 	Priority                int
@@ -185,7 +188,7 @@ type ProxyDetectionV2 struct {
 	BlockHash               common.Hash
 }
 
-func (detection ProxyDetectionV2) validate() error {
+func (detection ProxyDetection) validate() error {
 	if detection.Detector == "" || detection.DetectorVersion == "" {
 		return errors.New("proxy detection is missing detector identity")
 	}
@@ -396,65 +399,61 @@ type ProxyDetector interface {
 	Version() string
 	Priority() int
 	SupportedModes() []ProxyDetectionMode
-	Detect(context.Context, *ProxyDetectionContext) (*ProxyDetectionV2, error)
+	Detect(context.Context, *ProxyDetectionContext) (*ProxyDetection, error)
 }
 
-type openZeppelinProxyDetectorAdapter struct {
-	legacy       rpcProxyDetector
-	candidate    proxyCandidate
-	legacyResult *proxyDetection
-	err          error
+// requiredProxyObservationError preserves stage failure semantics for the code
+// and standard/CWIA facts required by ABI. Optional family failures remain unknown.
+type requiredProxyObservationError struct{ cause error }
+
+func (err *requiredProxyObservationError) Error() string { return "required proxy observation failed" }
+func (err *requiredProxyObservationError) Unwrap() error { return err.cause }
+
+type standardProxyDetector struct {
+	scanner   rpcProxyDetector
+	candidate proxyCandidate
 }
 
-func (*openZeppelinProxyDetectorAdapter) ID() string      { return "openzeppelin" }
-func (*openZeppelinProxyDetectorAdapter) Version() string { return OpenZeppelin561Standard }
-func (*openZeppelinProxyDetectorAdapter) Priority() int   { return 100 }
-func (*openZeppelinProxyDetectorAdapter) SupportedModes() []ProxyDetectionMode {
+func (*standardProxyDetector) ID() string      { return "openzeppelin" }
+func (*standardProxyDetector) Version() string { return OpenZeppelin561Standard }
+func (*standardProxyDetector) Priority() int   { return 100 }
+func (*standardProxyDetector) SupportedModes() []ProxyDetectionMode {
 	return []ProxyDetectionMode{ProxyDetectionBulk, ProxyDetectionDeep}
 }
-
-func (detector *openZeppelinProxyDetectorAdapter) Detect(
-	ctx context.Context,
-	detectionContext *ProxyDetectionContext,
-) (*ProxyDetectionV2, error) {
+func (detector *standardProxyDetector) Detect(ctx context.Context, detectionContext *ProxyDetectionContext) (*ProxyDetection, error) {
 	code, err := detectionContext.GetCode(ctx, detectionContext.Address())
 	if err != nil {
-		detector.err = err
-		return nil, err
+		return nil, &requiredProxyObservationError{cause: err}
 	}
-	if detector.legacy.codeCache == nil {
-		detector.legacy.codeCache = make(map[common.Address][]byte)
-	}
-	detector.legacy.codeCache[detectionContext.Address()] = common.CopyBytes(code)
 	if _, matched := DetectSoladyLegacyCWIA(code); matched {
-		// The authoritative legacy projection is supplied by the dedicated CWIA
-		// detector. Do not misattribute this non-OpenZeppelin shell.
 		return nil, nil
 	}
-	legacy, err := detector.legacy.detect(ctx, detector.candidate, detectionContext.blockReference())
+	scanner := detector.scanner
+	scanner.detectionContext = detectionContext
+	observation, err := scanner.recognizeStandard(ctx, detector.candidate)
 	if err != nil {
-		detector.err = err
-		return nil, err
+		return nil, &requiredProxyObservationError{cause: err}
 	}
-	detector.legacyResult = &legacy
-	return openZeppelinDetectionV2(legacy), nil
+	outcome := openZeppelinDetection(observation)
+	outcome.observation = &observation
+	return outcome, nil
 }
 
-func openZeppelinDetectionV2(legacy proxyDetection) *ProxyDetectionV2 {
-	result := &ProxyDetectionV2{
+func openZeppelinDetection(observation proxyDetection) *ProxyDetection {
+	result := &ProxyDetection{
 		Status: ProxyStatusNotDetected, Confidence: ProxyConfidenceLow,
 		Evidence: []ProxyDetectionEvidence{{
 			Kind: ProxyEvidenceRuntimeCodeHash, Description: "target runtime code hash",
-			Address: addressCopy(legacy.candidate.address), Value: common.CopyBytes(legacy.codeHash[:]),
+			Address: addressCopy(observation.candidate.address), Value: common.CopyBytes(observation.codeHash[:]),
 		}},
 	}
-	if len(legacy.code) == 0 {
+	if len(observation.code) == 0 {
 		result.Evidence[0].Description = "target has no runtime code"
 		return result
 	}
-	if legacy.rejected != "" {
-		result.Warnings = []string{legacy.rejected}
-		switch legacy.rejected {
+	if observation.rejected != "" {
+		result.Warnings = []string{observation.rejected}
+		switch observation.rejected {
 		case "minimal_zero_implementation", "self_implementation":
 			result.Family = ProxyFamilyERC1167
 			result.Variant = string(ProxyPatternClone)
@@ -478,10 +477,10 @@ func openZeppelinDetectionV2(legacy proxyDetection) *ProxyDetectionV2 {
 		}
 		return result
 	}
-	resolved := legacy.proxy
+	resolved := observation.proxy
 	authenticated := false
-	if legacy.exact != nil {
-		resolved = &legacy.exact.proxyResolution
+	if observation.exact != nil {
+		resolved = &observation.exact.proxyResolution
 		authenticated = true
 	}
 	if resolved == nil {
@@ -492,7 +491,7 @@ func openZeppelinDetectionV2(legacy proxyDetection) *ProxyDetectionV2 {
 	result.Implementation = addressCopy(resolved.implementation)
 	result.ImplementationRole = ProxyRoleImplementation
 	result.ImplementationHasCode = len(resolved.implementationCode) != 0
-	result.ImplementationPath = []common.Address{legacy.candidate.address}
+	result.ImplementationPath = []common.Address{observation.candidate.address}
 	if resolved.beacon != nil {
 		result.Beacon = addressCopy(*resolved.beacon)
 		result.ImplementationPath = append(result.ImplementationPath, *resolved.beacon)
@@ -533,10 +532,10 @@ func openZeppelinDetectionV2(legacy proxyDetection) *ProxyDetectionV2 {
 		result.Evidence = append(result.Evidence, ProxyDetectionEvidence{
 			Kind: ProxyEvidenceDeploymentRecord, Description: "source-authenticated OpenZeppelin artifact",
 		})
-		if value, ok := legacy.exact.evidence["admin_slot_matches"].(bool); ok && !value {
+		if value, ok := observation.exact.evidence["admin_slot_matches"].(bool); ok && !value {
 			result.Warnings = append(result.Warnings, "admin compatibility slot conflicts with runtime immutable")
 		}
-		if value, ok := legacy.exact.evidence["beacon_slot_matches"].(bool); ok && !value {
+		if value, ok := observation.exact.evidence["beacon_slot_matches"].(bool); ok && !value {
 			result.Warnings = append(result.Warnings, "beacon compatibility slot conflicts with runtime immutable")
 		}
 	}
@@ -740,6 +739,9 @@ func (detectionContext *ProxyDetectionContext) GetCode(ctx context.Context, addr
 		return nil, exactStateRPCError(ctx, "eth_getCode", err)
 	}
 	value := []byte(encoded)
+	if value == nil {
+		value = []byte{}
+	}
 	if len(value) > detectionContext.maximumBytes {
 		return nil, Permanent(errors.New("proxy detection code exceeds configured limit"))
 	}
@@ -868,58 +870,27 @@ func (detectionContext *ProxyDetectionContext) blockReference() rpc.BlockNumberO
 }
 
 type ProxyDetectionResolution struct {
-	Status                  ProxyDetectionStatus
-	Primary                 *ProxyDetectionV2
-	Outcomes                []ProxyDetectionV2
-	Conflicts               []string
-	LegacyProjectionChanged bool
-	LegacyDiffReasons       []string
+	observation *proxyDetection
+	Status      ProxyDetectionStatus
+	Primary     *ProxyDetection
+	Outcomes    []ProxyDetection
+	Conflicts   []string
 }
 
-func compareLegacyProxyProjection(legacy proxyDetection, resolution *ProxyDetectionResolution) {
-	if resolution == nil {
-		return
-	}
-	legacyPositive := legacy.proxy != nil || legacy.exact != nil
-	v2Positive := resolution.Primary != nil && (resolution.Status == ProxyStatusConfirmed ||
-		resolution.Status == ProxyStatusCandidate || resolution.Status == ProxyStatusInconsistent)
-	if legacyPositive != v2Positive {
-		resolution.LegacyProjectionChanged = true
-		if v2Positive {
-			resolution.LegacyDiffReasons = append(resolution.LegacyDiffReasons, "v2_positive_legacy_not_detected")
-		} else {
-			resolution.LegacyDiffReasons = append(resolution.LegacyDiffReasons, "legacy_positive_v2_not_detected")
-		}
-		return
-	}
-	if !legacyPositive || resolution.Primary == nil {
-		return
-	}
-	legacyResolution := legacy.proxy
-	if legacy.exact != nil {
-		legacyResolution = &legacy.exact.proxyResolution
-	}
-	if legacyResolution == nil {
-		return
-	}
-	if proxyFamilyForKind(legacyResolution.kind) != resolution.Primary.Family {
-		resolution.LegacyProjectionChanged = true
-		resolution.LegacyDiffReasons = append(resolution.LegacyDiffReasons, "proxy_family_changed")
-	}
-	if resolution.Primary.Implementation != nil &&
-		legacyResolution.implementation != *resolution.Primary.Implementation {
-		resolution.LegacyProjectionChanged = true
-		resolution.LegacyDiffReasons = append(resolution.LegacyDiffReasons, "implementation_changed")
-	}
-}
-
-func ResolveProxyDetections(detections []ProxyDetectionV2) (ProxyDetectionResolution, error) {
+func ResolveProxyDetections(detections []ProxyDetection) (ProxyDetectionResolution, error) {
 	resolved := ProxyDetectionResolution{Status: ProxyStatusNotDetected}
 	if len(detections) == 0 {
 		return resolved, nil
 	}
-	resolved.Outcomes = append([]ProxyDetectionV2(nil), detections...)
+	resolved.Outcomes = append([]ProxyDetection(nil), detections...)
 	for index := range resolved.Outcomes {
+		if observation := resolved.Outcomes[index].observation; observation != nil {
+			if resolved.observation != nil {
+				return ProxyDetectionResolution{}, errors.New("multiple authoritative proxy observations")
+			}
+			resolved.observation = observation
+			resolved.Outcomes[index].observation = nil
+		}
 		if err := resolved.Outcomes[index].validate(); err != nil {
 			return ProxyDetectionResolution{}, fmt.Errorf("validate detector result %d: %w", index, err)
 		}
@@ -965,7 +936,7 @@ func RunProxyDetectors(
 	if detectionContext == nil {
 		return ProxyDetectionResolution{}, errors.New("proxy detection context is nil")
 	}
-	outcomes := make([]ProxyDetectionV2, 0, len(detectors))
+	outcomes := make([]ProxyDetection, 0, len(detectors))
 	seen := make(map[string]struct{}, len(detectors))
 	for _, detector := range detectors {
 		if detector == nil || detector.ID() == "" || detector.Version() == "" {
@@ -981,7 +952,10 @@ func RunProxyDetectors(
 		}
 		outcome, err := detector.Detect(ctx, detectionContext)
 		if err != nil {
-			outcomes = append(outcomes, ProxyDetectionV2{
+			if required, ok := errors.AsType[*requiredProxyObservationError](err); ok {
+				return ProxyDetectionResolution{}, required.cause
+			}
+			outcomes = append(outcomes, ProxyDetection{
 				Detector: detector.ID(), DetectorVersion: detector.Version(), Priority: detector.Priority(),
 				Status: ProxyStatusUnknown, Confidence: ProxyConfidenceLow,
 				Proxy: detectionContext.Address(), ChainID: detectionContext.ChainID(),
@@ -1006,7 +980,7 @@ func RunProxyDetectors(
 	return ResolveProxyDetections(outcomes)
 }
 
-func populateProxyTargets(outcome *ProxyDetectionV2) {
+func populateProxyTargets(outcome *ProxyDetection) {
 	if outcome == nil || len(outcome.Targets) != 0 || outcome.Diamond != nil {
 		return
 	}
@@ -1027,7 +1001,7 @@ func populateProxyTargets(outcome *ProxyDetectionV2) {
 	}
 }
 
-func compareProxyDetections(left, right ProxyDetectionV2) int {
+func compareProxyDetections(left, right ProxyDetection) int {
 	if difference := proxyStatusRank(right.Status) - proxyStatusRank(left.Status); difference != 0 {
 		return difference
 	}
@@ -1073,7 +1047,7 @@ func proxyConfidenceRank(confidence ProxyDetectionConfidence) int {
 	}
 }
 
-func proxyDetectionsConflict(left, right ProxyDetectionV2) bool {
+func proxyDetectionsConflict(left, right ProxyDetection) bool {
 	if left.Family != right.Family {
 		if left.Proxy == right.Proxy && ((left.Family == ProxyFamilyERC1967 && right.Family == ProxyFamilyERC2535) ||
 			(left.Family == ProxyFamilyERC2535 && right.Family == ProxyFamilyERC1967) ||

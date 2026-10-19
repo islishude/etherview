@@ -172,23 +172,21 @@ type MetadataConfig struct {
 }
 
 type FeatureConfig struct {
-	Trace                  bool `yaml:"trace"`
-	Mempool                bool `yaml:"mempool"`
-	HistoricalState        bool `yaml:"historical_state"`
-	Verification           bool `yaml:"verification"`
-	Sourcify               bool `yaml:"sourcify"`
-	NFTMetadata            bool `yaml:"nft_metadata"`
-	Pricing                bool `yaml:"pricing"`
-	ENS                    bool `yaml:"ens"`
-	UserOperations         bool `yaml:"user_operations"`
-	UserAuth               bool `yaml:"user_auth"`
-	UserAPIKeys            bool `yaml:"user_api_keys"`
-	APIBilling             bool `yaml:"api_billing"`
-	X402Topups             bool `yaml:"x402_topups"`
-	ProxyDetectionV2       bool `yaml:"proxy_detection_v2"`
-	SafeProxyDetection     bool `yaml:"safe_proxy_detection"`
-	DiamondProxyDetection  bool `yaml:"diamond_proxy_detection"`
-	ProxyDetectionV2Public bool `yaml:"proxy_detection_v2_public"`
+	Trace                 bool `yaml:"trace"`
+	Mempool               bool `yaml:"mempool"`
+	HistoricalState       bool `yaml:"historical_state"`
+	Verification          bool `yaml:"verification"`
+	Sourcify              bool `yaml:"sourcify"`
+	NFTMetadata           bool `yaml:"nft_metadata"`
+	Pricing               bool `yaml:"pricing"`
+	ENS                   bool `yaml:"ens"`
+	UserOperations        bool `yaml:"user_operations"`
+	UserAuth              bool `yaml:"user_auth"`
+	UserAPIKeys           bool `yaml:"user_api_keys"`
+	APIBilling            bool `yaml:"api_billing"`
+	X402Topups            bool `yaml:"x402_topups"`
+	SafeProxyDetection    bool `yaml:"safe_proxy_detection"`
+	DiamondProxyDetection bool `yaml:"diamond_proxy_detection"`
 }
 
 // ERC4337Config is an explicit chain-local EntryPoint allowlist. Addresses are

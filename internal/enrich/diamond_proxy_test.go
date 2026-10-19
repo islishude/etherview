@@ -426,12 +426,12 @@ func TestERC1967AndDiamondLayersDoNotConflictSolelyByFamily(t *testing.T) {
 		Address: proxy, Role: ProxyTargetImmutable,
 		Selectors: [][4]byte{{1, 2, 3, 4}}, CodeExists: true,
 	}}
-	left := ProxyDetectionV2{
+	left := ProxyDetection{
 		Detector: "openzeppelin", DetectorVersion: "1", Family: ProxyFamilyERC1967,
 		Status: ProxyStatusConfirmed, Confidence: ProxyConfidenceHigh,
 		Proxy: proxy, ChainID: "1", BlockHash: uintWord(1),
 	}
-	right := ProxyDetectionV2{
+	right := ProxyDetection{
 		Detector: "erc2535", DetectorVersion: "1", Family: ProxyFamilyERC2535,
 		Status: ProxyStatusConfirmed, Confidence: ProxyConfidenceHigh,
 		Proxy: proxy, ChainID: "1", BlockHash: uintWord(1),
@@ -444,7 +444,7 @@ func TestERC1967AndDiamondLayersDoNotConflictSolelyByFamily(t *testing.T) {
 			StandardDiamondCut:      DiamondStandardCut{Status: DiamondCutAbsent},
 		},
 	}
-	resolution, err := ResolveProxyDetections([]ProxyDetectionV2{left, right})
+	resolution, err := ResolveProxyDetections([]ProxyDetection{left, right})
 	if err != nil {
 		t.Fatal(err)
 	}

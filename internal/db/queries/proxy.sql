@@ -371,7 +371,7 @@ ORDER BY evidence.block_number DESC, evidence.block_hash DESC,
          evidence.id DESC
 LIMIT 1;
 
--- name: GetLatestPublishedProxyDetectionV2 :one
+-- name: GetLatestPublishedProxyDetectionSummary :one
 SELECT evidence.details
 FROM proxy_detection_evidence AS evidence
 JOIN canonical_blocks AS canonical
@@ -388,7 +388,7 @@ JOIN published_block_stage_results AS published
  AND published.state = 'complete'
 WHERE evidence.chain_id = sqlc.arg('chain_id')::numeric
   AND evidence.address = sqlc.arg('proxy_address')::bytea
-  AND evidence.candidate_kind = 'proxy_v2'
+  AND evidence.candidate_kind = 'proxy_resolution'
   AND evidence.stage_version = 2
   AND evidence.canonical = TRUE
 ORDER BY evidence.block_number DESC, evidence.block_hash DESC,

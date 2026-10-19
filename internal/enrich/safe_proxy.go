@@ -172,7 +172,7 @@ func (*safeProxyDetector) SupportedModes() []ProxyDetectionMode {
 func (detector *safeProxyDetector) Detect(
 	ctx context.Context,
 	detectionContext *ProxyDetectionContext,
-) (*ProxyDetectionV2, error) {
+) (*ProxyDetection, error) {
 	code, err := detectionContext.GetCode(ctx, detectionContext.Address())
 	if err != nil {
 		return nil, err
@@ -199,9 +199,9 @@ func (detector *safeProxyDetector) detectCanonical(
 	ctx context.Context,
 	detectionContext *ProxyDetectionContext,
 	fingerprint safeProxyFingerprint,
-) (*ProxyDetectionV2, error) {
+) (*ProxyDetection, error) {
 	proxy := detectionContext.Address()
-	result := &ProxyDetectionV2{
+	result := &ProxyDetection{
 		Family: ProxyFamilySafe, Variant: fingerprint.Variant,
 		Status: ProxyStatusConfirmed, Confidence: ProxyConfidenceHigh,
 		CanonicalProxyShell: true,
@@ -266,11 +266,11 @@ func (detector *safeProxyDetector) detectCanonical(
 func (detector *safeProxyDetector) detectCompatible(
 	ctx context.Context,
 	detectionContext *ProxyDetectionContext,
-) (*ProxyDetectionV2, error) {
+) (*ProxyDetection, error) {
 	proxy := detectionContext.Address()
 	word, err := detectionContext.GetStorageAt(ctx, proxy, safeSingletonSlot)
 	if err != nil {
-		return &ProxyDetectionV2{
+		return &ProxyDetection{
 			Status: ProxyStatusUnknown, Confidence: ProxyConfidenceLow,
 			Warnings: []string{"slot 0 could not be read at the fixed block"},
 		}, nil
@@ -285,7 +285,7 @@ func (detector *safeProxyDetector) detectCompatible(
 	}}
 	call, err := detectionContext.Call(ctx, ProxyCallInput{To: proxy, Data: safeMasterCopySelector})
 	if err != nil {
-		return &ProxyDetectionV2{
+		return &ProxyDetection{
 			Status: ProxyStatusUnknown, Confidence: ProxyConfidenceLow, Evidence: evidence,
 			Warnings: []string{"masterCopy() could not be called at the fixed block"},
 		}, nil
@@ -295,7 +295,7 @@ func (detector *safeProxyDetector) detectCompatible(
 	}
 	calledSingleton, err := ParseSafeMasterCopy(call.Data)
 	if err != nil || calledSingleton != singleton {
-		return &ProxyDetectionV2{
+		return &ProxyDetection{
 			Status: ProxyStatusNotDetected, Confidence: ProxyConfidenceLow, Evidence: evidence,
 			Warnings: []string{"masterCopy() does not strictly match slot 0"},
 		}, nil
@@ -306,18 +306,18 @@ func (detector *safeProxyDetector) detectCompatible(
 	})
 	code, err := detectionContext.GetCode(ctx, singleton)
 	if err != nil {
-		return &ProxyDetectionV2{
+		return &ProxyDetection{
 			Status: ProxyStatusUnknown, Confidence: ProxyConfidenceLow, Evidence: evidence,
 			Warnings: []string{"singleton code could not be read at the fixed block"},
 		}, nil
 	}
 	if len(code) == 0 {
-		return &ProxyDetectionV2{
+		return &ProxyDetection{
 			Status: ProxyStatusNotDetected, Confidence: ProxyConfidenceLow, Evidence: evidence,
 			Warnings: []string{"masterCopy() and slot 0 target has no code"},
 		}, nil
 	}
-	return &ProxyDetectionV2{
+	return &ProxyDetection{
 		Family: ProxyFamilySafe, Variant: "safe-compatible-proxy",
 		Status: ProxyStatusCandidate, Confidence: ProxyConfidenceMedium,
 		Implementation: addressCopy(singleton), ImplementationRole: ProxyRoleSingleton,
@@ -330,7 +330,7 @@ func (detector *safeProxyDetector) validateMasterCopy(
 	ctx context.Context,
 	detectionContext *ProxyDetectionContext,
 	singleton common.Address,
-	result *ProxyDetectionV2,
+	result *ProxyDetection,
 ) {
 	call, err := detectionContext.Call(ctx, ProxyCallInput{
 		To: detectionContext.Address(), Data: safeMasterCopySelector,
@@ -365,7 +365,7 @@ func (detector *safeProxyDetector) addFactoryProvenance(
 	ctx context.Context,
 	detectionContext *ProxyDetectionContext,
 	currentSingleton common.Address,
-	result *ProxyDetectionV2,
+	result *ProxyDetection,
 ) {
 	if detector.factoryLookup == nil {
 		return

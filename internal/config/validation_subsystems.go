@@ -244,15 +244,6 @@ func validateFeatureSecurityConfig(c Config) error {
 	if c.Security.PublicVerification && !c.Features.Verification {
 		errs = append(errs, errors.New("public verification requires features.verification"))
 	}
-	if c.Features.ProxyDetectionV2Public && !c.Features.ProxyDetectionV2 {
-		errs = append(errs, errors.New("features.proxy_detection_v2_public requires features.proxy_detection_v2"))
-	}
-	if c.Features.SafeProxyDetection && !c.Features.ProxyDetectionV2 {
-		errs = append(errs, errors.New("features.safe_proxy_detection requires features.proxy_detection_v2"))
-	}
-	if c.Features.DiamondProxyDetection && !c.Features.ProxyDetectionV2 {
-		errs = append(errs, errors.New("features.diamond_proxy_detection requires features.proxy_detection_v2"))
-	}
 	if c.Security.PublicVerification && len(c.Security.APIKeyPepper) < 32 {
 		errs = append(errs, errors.New("public verification requires API key authentication"))
 	}

@@ -933,12 +933,11 @@ function diamondProxyDetails({
     snapshot: { chain_id: "31337", block_number: "20", block_hash: BLOCK_HASH },
     implementation_addresses: [activeFacet],
     evidence: [],
-    proxy_detection_v2: {
+    proxy_detection: {
       status: "confirmed",
       primary: outcome,
       outcomes: [outcome],
       conflicts: [],
-      shadow_diff: { different: true, reasons: ["diamond"] },
     },
   };
 }

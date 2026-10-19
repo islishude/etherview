@@ -682,7 +682,7 @@ function installContractAPI({
         safeDetection
           ? {
               ...detail,
-              proxy_detection_v2: safeProxyDetection(),
+              proxy_detection: safeProxyDetection(),
             }
           : detail,
       );
@@ -779,7 +779,6 @@ function safeProxyDetection() {
     primary,
     outcomes: [primary],
     conflicts: [],
-    shadow_diff: { different: true, reasons: ["v2_positive_legacy_not_detected"] },
   };
 }
 
@@ -840,12 +839,11 @@ function diamondProxyDetail() {
     status: "detected_unverified",
     snapshot: snapshot(),
     implementation_addresses: [implementationAddress],
-    proxy_detection_v2: {
+    proxy_detection: {
       status: "confirmed" as const,
       primary,
       outcomes: [primary],
       conflicts: [],
-      shadow_diff: { different: true, reasons: ["v2_positive_legacy_not_detected"] },
     },
     evidence: [],
   };

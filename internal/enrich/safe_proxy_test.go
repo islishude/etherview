@@ -120,7 +120,7 @@ func TestSafeDetectorBulkRecognizesCanonicalShellsWithoutMasterCopyCall(t *testi
 	}
 }
 
-func TestProxyBlockDetectorResolvesSafeWithoutChangingLegacyProjection(t *testing.T) {
+func TestProxyBlockDetectorResolvesSafeWithoutChangingOrdinaryAuthority(t *testing.T) {
 	t.Parallel()
 	proxy, singleton := testAddress(119), testAddress(120)
 	caller := &proxyStateCaller{
@@ -132,12 +132,12 @@ func TestProxyBlockDetectorResolvesSafeWithoutChangingLegacyProjection(t *testin
 		},
 	}
 	detector := rpcProxyDetector{
-		caller:    caller,
-		v2Enabled: true, safeEnabled: true,
-		limits: ProxyLimits{MaxCandidates: 2, MaxCodeBytes: 4096, MaxDetailsBytes: 512},
+		caller:      caller,
+		safeEnabled: true,
+		limits:      ProxyLimits{MaxCandidates: 2, MaxCodeBytes: 4096, MaxDetailsBytes: 512},
 	}
 	job := Job{
-		ID: "safe-shadow", Stage: ProxyStage, ChainID: "1",
+		ID: "safe-summary", Stage: ProxyStage, ChainID: "1",
 		BlockNumber: 1007, BlockHash: uintWord(1007),
 	}
 	detections, err := detector.detectBlock(t.Context(), job, []proxyCandidate{{address: proxy, force: true}})
@@ -145,16 +145,12 @@ func TestProxyBlockDetectorResolvesSafeWithoutChangingLegacyProjection(t *testin
 		t.Fatal(err)
 	}
 	if len(detections) != 1 || detections[0].proxy != nil || detections[0].exact != nil || detections[0].rejected != "" {
-		t.Fatalf("legacy Safe projection changed: %+v", detections)
+		t.Fatalf("ordinary Safe projection changed: %+v", detections)
 	}
-	if detections[0].v2.Status != ProxyStatusConfirmed || detections[0].v2.Primary == nil ||
-		detections[0].v2.Primary.Detector != "safe" || detections[0].v2.Primary.Family != ProxyFamilySafe ||
-		detections[0].v2.Primary.Implementation == nil || *detections[0].v2.Primary.Implementation != singleton {
-		t.Fatalf("Safe shadow result=%+v", detections[0].v2)
-	}
-	if !detections[0].v2.LegacyProjectionChanged ||
-		!reflect.DeepEqual(detections[0].v2.LegacyDiffReasons, []string{"v2_positive_legacy_not_detected"}) {
-		t.Fatalf("Safe shadow diff=%+v", detections[0].v2)
+	if detections[0].resolution.Status != ProxyStatusConfirmed || detections[0].resolution.Primary == nil ||
+		detections[0].resolution.Primary.Detector != "safe" || detections[0].resolution.Primary.Family != ProxyFamilySafe ||
+		detections[0].resolution.Primary.Implementation == nil || *detections[0].resolution.Primary.Implementation != singleton {
+		t.Fatalf("Safe summary result=%+v", detections[0].resolution)
 	}
 	caller.mu.Lock()
 	calls := append([]proxyRPCCall(nil), caller.calls...)
@@ -471,17 +467,17 @@ func cloneSafeManifest(source *safeProxyManifest) *safeProxyManifest {
 func TestSafeDetectorOutcomesAreStable(t *testing.T) {
 	t.Parallel()
 	proxy := testAddress(118)
-	result := ProxyDetectionV2{
+	result := ProxyDetection{
 		Detector: "safe", DetectorVersion: safeProxyDetectorVersion,
 		Family: ProxyFamilySafe, Variant: "safe-compatible-proxy",
 		Status: ProxyStatusCandidate, Confidence: ProxyConfidenceMedium,
 		Proxy: proxy, ChainID: "1", BlockNumber: 1, BlockHash: uintWord(1),
 	}
-	first, err := ResolveProxyDetections([]ProxyDetectionV2{result})
+	first, err := ResolveProxyDetections([]ProxyDetection{result})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := ResolveProxyDetections([]ProxyDetectionV2{result})
+	second, err := ResolveProxyDetections([]ProxyDetection{result})
 	if err != nil {
 		t.Fatal(err)
 	}

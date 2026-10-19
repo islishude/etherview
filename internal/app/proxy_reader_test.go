@@ -113,7 +113,7 @@ func TestProxyReaderAdapterMapsWriterModelsToOpenAPI(t *testing.T) {
 			}},
 		},
 	}
-	adapter := newProxyReaderAdapter(stub, 31337, false)
+	adapter := newProxyReaderAdapter(stub, 31337)
 	detail, err := adapter.Proxy(context.Background(), proxyAddress)
 	if err != nil {
 		t.Fatal(err)
@@ -165,7 +165,7 @@ func TestProxyReaderAdapterPublishesHighConfidenceUnverifiedInteractionWithoutMa
 			ArtifactResolution: "code_hash",
 		},
 	}}
-	detail, err := newProxyReaderAdapter(stub, 31337, false).Proxy(context.Background(), proxyAddress)
+	detail, err := newProxyReaderAdapter(stub, 31337).Proxy(context.Background(), proxyAddress)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func TestProxyReaderAdapterRejectsMalformedPersistedPublicIdentity(t *testing.T)
 			Hash:   "0x" + strings.Repeat("a", 64),
 		},
 	}}
-	if _, err := newProxyReaderAdapter(stub, 1, false).Proxy(context.Background(), stub.detail.Address); err == nil {
+	if _, err := newProxyReaderAdapter(stub, 1).Proxy(context.Background(), stub.detail.Address); err == nil {
 		t.Fatal("malformed persisted proxy status was published")
 	}
 }
@@ -272,14 +272,14 @@ func TestProxyReaderAdapterRejectsCodeHashArtifactsOutsideCurrentImplementation(
 			detail.Implementation = &implementationIdentity
 			mutate(&detail)
 			stub := &appProxyQueryStub{detail: detail}
-			if _, err := newProxyReaderAdapter(stub, 31337, false).Proxy(t.Context(), proxyAddress); err == nil {
+			if _, err := newProxyReaderAdapter(stub, 31337).Proxy(t.Context(), proxyAddress); err == nil {
 				t.Fatal("code-hash artifact escaped the current implementation role")
 			}
 		})
 	}
 }
 
-func TestProxyReaderAdapterGatesSafeDetectionV2PublicProjection(t *testing.T) {
+func TestProxyReaderAdapterPublishesSafeWithoutInteractionAuthority(t *testing.T) {
 	t.Parallel()
 	const proxyAddress = "0x1111111111111111111111111111111111111111"
 	raw := json.RawMessage(`{
@@ -289,25 +289,32 @@ func TestProxyReaderAdapterGatesSafeDetectionV2PublicProjection(t *testing.T) {
 		"conflicts":[]}`)
 	stub := &appProxyQueryStub{detail: query.ProxyDetail{
 		Address: proxyAddress, Status: "not_detected",
-		Snapshot:    query.ProxySnapshot{Number: "42", Hash: "0x" + strings.Repeat("a", 64)},
-		DetectionV2: raw,
+		Snapshot:  query.ProxySnapshot{Number: "42", Hash: "0x" + strings.Repeat("a", 64)},
+		Detection: raw,
 	}}
-	shadow, err := newProxyReaderAdapter(stub, 31337, false).Proxy(context.Background(), proxyAddress)
+	public, err := newProxyReaderAdapter(stub, 31337).Proxy(context.Background(), proxyAddress)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if shadow.ProxyDetectionV2 != nil {
-		t.Fatal("shadow-only V2 leaked through the public API")
+	if public.ProxyDetection == nil || public.ProxyDetection.Primary == nil ||
+		public.ProxyDetection.Primary.Family == nil || *public.ProxyDetection.Primary.Family != "safe" ||
+		public.ProxyDetection.Primary.ImplementationRole == nil ||
+		*public.ProxyDetection.Primary.ImplementationRole != "singleton" {
+		t.Fatalf("public Safe projection=%+v", public.ProxyDetection)
 	}
-	public, err := newProxyReaderAdapter(stub, 31337, true).Proxy(context.Background(), proxyAddress)
+	if public.BindingId != nil || public.ImplementationInteraction != nil || public.Management != nil || public.Implementation != nil {
+		t.Fatal("Safe evidence granted ordinary proxy authority")
+	}
+	encoded, err := json.Marshal(public)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if public.ProxyDetectionV2 == nil || public.ProxyDetectionV2.Primary == nil ||
-		public.ProxyDetectionV2.Primary.Family == nil || *public.ProxyDetectionV2.Primary.Family != "safe" ||
-		public.ProxyDetectionV2.Primary.ImplementationRole == nil ||
-		*public.ProxyDetectionV2.Primary.ImplementationRole != "singleton" {
-		t.Fatalf("public Safe projection=%+v", public.ProxyDetectionV2)
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if fields["proxy_detection"] == nil || fields["proxy_detection_v2"] != nil || strings.Contains(string(encoded), "shadow_diff") {
+		t.Fatalf("unexpected public contract: %s", encoded)
 	}
 }
 
@@ -330,7 +337,7 @@ func TestProxyReaderAdapterPublishesDiamondTargetsAndCutHistoryWithoutSingularIm
 	stub := &appProxyQueryStub{
 		detail: query.ProxyDetail{
 			Address: diamondAddress, Status: "not_detected",
-			Snapshot: query.ProxySnapshot{Number: "42", Hash: blockHash}, DetectionV2: raw,
+			Snapshot: query.ProxySnapshot{Number: "42", Hash: blockHash}, Detection: raw,
 		},
 		diamondCuts: query.DiamondCutPage{
 			DiamondAddress: diamondAddress,
@@ -347,15 +354,15 @@ func TestProxyReaderAdapterPublishesDiamondTargetsAndCutHistoryWithoutSingularIm
 			}},
 		},
 	}
-	adapter := newProxyReaderAdapter(stub, 31337, true)
+	adapter := newProxyReaderAdapter(stub, 31337)
 	detail, err := adapter.Proxy(context.Background(), diamondAddress)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if detail.Status != "detected_unverified" || detail.Implementation != nil ||
 		detail.ImplementationAddresses == nil || len(*detail.ImplementationAddresses) != 1 ||
-		(*detail.ImplementationAddresses)[0] != facetAddress || detail.ProxyDetectionV2 == nil ||
-		detail.ProxyDetectionV2.Primary == nil || detail.ProxyDetectionV2.Primary.Diamond == nil {
+		(*detail.ImplementationAddresses)[0] != facetAddress || detail.ProxyDetection == nil ||
+		detail.ProxyDetection.Primary == nil || detail.ProxyDetection.Primary.Diamond == nil {
 		t.Fatalf("Diamond detail=%+v", detail)
 	}
 	history, _, err := adapter.DiamondCuts(context.Background(), diamondAddress, "", 20)
@@ -393,7 +400,7 @@ func TestProxyReaderAdapterAllowsExactCloneBindingWithoutCloneArtifact(t *testin
 			ArtifactResolution: "exact_address", Verified: true,
 		},
 	}}
-	detail, err := newProxyReaderAdapter(stub, 31337, false).Proxy(context.Background(), cloneAddress)
+	detail, err := newProxyReaderAdapter(stub, 31337).Proxy(context.Background(), cloneAddress)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -447,7 +454,7 @@ func TestProxyReaderAdapterMapsVerifiedCWIAImmutableArguments(t *testing.T) {
 			},
 		},
 	}}
-	detail, err := newProxyReaderAdapter(stub, 31337, false).Proxy(context.Background(), proxyAddress)
+	detail, err := newProxyReaderAdapter(stub, 31337).Proxy(context.Background(), proxyAddress)
 	if err != nil {
 		t.Fatal(err)
 	}

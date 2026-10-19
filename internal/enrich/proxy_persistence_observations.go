@@ -7,7 +7,6 @@ type proxyObservationSet struct {
 	beacons        map[common.Address]proxyBeaconObservation
 	proxies        int
 	rejected       int
-	v2Differences  int
 	uupsCompatible int
 	uupsRejected   int
 }
@@ -19,7 +18,7 @@ func collectProxyObservations(
 ) (proxyObservationSet, error) {
 	codeObservations := make(map[common.Address]proxyCodeObservation)
 	beaconObservations := make(map[common.Address]proxyBeaconObservation)
-	proxyCount, rejectedCount, v2DifferenceCount := 0, 0, 0
+	proxyCount, rejectedCount := 0, 0
 	uupsCompatibleCount, uupsRejectedCount := 0, 0
 	for _, result := range uupsProbes {
 		if err := mergeProxyCodeObservation(
@@ -34,9 +33,6 @@ func collectProxyObservations(
 		}
 	}
 	for _, detection := range detections {
-		if detection.v2Active && detection.v2.LegacyProjectionChanged {
-			v2DifferenceCount++
-		}
 		if err := mergeProxyCodeObservation(codeObservations, detection.candidate.address, detection.codeHash, detection.code); err != nil {
 			return proxyObservationSet{}, Permanent(err)
 		}
@@ -139,7 +135,7 @@ func collectProxyObservations(
 	}
 	return proxyObservationSet{
 		code: codeObservations, beacons: beaconObservations,
-		proxies: proxyCount, rejected: rejectedCount, v2Differences: v2DifferenceCount,
+		proxies: proxyCount, rejected: rejectedCount,
 		uupsCompatible: uupsCompatibleCount, uupsRejected: uupsRejectedCount,
 	}, nil
 }

@@ -939,45 +939,40 @@ func TestSourcifyEnvironmentOverrides(t *testing.T) {
 	}
 }
 
-func TestProxyDetectionV2FeatureDependenciesAndEnvironment(t *testing.T) {
+func TestProxyDetectionFamilyFeaturesAndEnvironment(t *testing.T) {
 	t.Parallel()
 	cfg := Default()
-	if cfg.Features.ProxyDetectionV2 || cfg.Features.SafeProxyDetection || cfg.Features.DiamondProxyDetection || cfg.Features.ProxyDetectionV2Public {
-		t.Fatalf("proxy detection V2 must default off: %#v", cfg.Features)
+	if cfg.Features.SafeProxyDetection || cfg.Features.DiamondProxyDetection {
+		t.Fatal("optional families must default off")
 	}
-	cfg.Features.ProxyDetectionV2Public = true
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "proxy_detection_v2_public requires") {
-		t.Fatalf("public V2 without shadow collection passed: %v", err)
+	for _, family := range []string{"SAFE", "DIAMOND"} {
+		cfg = Default()
+		if err := applyEnvironment(&cfg, func(name string) (string, bool) {
+			if name == "ETHERVIEW_FEATURE_"+family+"_PROXY_DETECTION" {
+				return "true", true
+			}
+			return "", false
+		}, os.ReadFile); err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Features.SafeProxyDetection != (family == "SAFE") || cfg.Features.DiamondProxyDetection != (family == "DIAMOND") {
+			t.Fatalf("families are not independent: %+v", cfg.Features)
+		}
+		if err := cfg.Validate(); err != nil {
+			t.Fatal(err)
+		}
 	}
-	cfg = Default()
-	cfg.Features.SafeProxyDetection = true
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "safe_proxy_detection requires") {
-		t.Fatalf("Safe detector without V2 framework passed: %v", err)
-	}
-	cfg = Default()
-	cfg.Features.DiamondProxyDetection = true
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "diamond_proxy_detection requires") {
-		t.Fatalf("Diamond detector without V2 framework passed: %v", err)
-	}
-	values := map[string]string{
-		"ETHERVIEW_FEATURE_PROXY_DETECTION_V2":        "true",
-		"ETHERVIEW_FEATURE_SAFE_PROXY_DETECTION":      "true",
-		"ETHERVIEW_FEATURE_DIAMOND_PROXY_DETECTION":   "true",
-		"ETHERVIEW_FEATURE_PROXY_DETECTION_V2_PUBLIC": "true",
-	}
-	cfg = Default()
-	if err := applyEnvironment(&cfg, func(name string) (string, bool) {
-		value, ok := values[name]
-		return value, ok
-	}, os.ReadFile); err != nil {
-		t.Fatal(err)
-	}
-	if !cfg.Features.ProxyDetectionV2 || !cfg.Features.SafeProxyDetection || !cfg.Features.DiamondProxyDetection ||
-		!cfg.Features.ProxyDetectionV2Public {
-		t.Fatalf("proxy detection environment was not applied: %#v", cfg.Features)
-	}
-	if err := cfg.Validate(); err != nil {
-		t.Fatalf("valid proxy detection feature pair failed: %v", err)
+}
+
+func TestProxyDetectionRetiredConfigurationIsRejected(t *testing.T) {
+	t.Parallel()
+	for _, key := range []string{"proxy_detection_v2", "proxy_detection_v2_public"} {
+		cfg := Default()
+		decoder := yaml.NewDecoder(strings.NewReader("features:\n  " + key + ": true\n"))
+		decoder.KnownFields(true)
+		if err := decoder.Decode(&cfg); err == nil || !strings.Contains(err.Error(), key) {
+			t.Fatalf("retired %s configuration was accepted: %v", key, err)
+		}
 	}
 }
 

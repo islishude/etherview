@@ -5,7 +5,7 @@ import { AddressIdentity } from "@/ens/AddressIdentity";
 import { type ContractProxyDetails } from "@/contracts/proxy";
 
 export type PublicProxyTarget = NonNullable<
-  NonNullable<ContractProxyDetails["proxy_detection_v2"]>["primary"]
+  NonNullable<ContractProxyDetails["proxy_detection"]>["primary"]
 >["targets"][number];
 
 export function ProxySummary({
@@ -18,21 +18,21 @@ export function ProxySummary({
   error: unknown;
 }) {
   const { t } = useTranslation();
-  const detectionV2 = detail?.proxy_detection_v2;
-  const v2Primary = detectionV2?.primary;
-  const v2Detected = detectionV2 !== undefined && detectionV2.status !== "not-detected";
-  const diamondOutcome = detectionV2?.outcomes.find(
+  const detection = detail?.proxy_detection;
+  const primaryOutcome = detection?.primary;
+  const detected = detection !== undefined && detection.status !== "not-detected";
+  const diamondOutcome = detection?.outcomes.find(
     (outcome) =>
       outcome.family === "erc2535" &&
       outcome.diamond !== undefined &&
       outcome.status !== "not-detected",
   );
   const diamond = diamondOutcome?.diamond;
-  const layers = detectionV2?.outcomes
+  const layers = detection?.outcomes
     .filter((outcome) => outcome.family && outcome.status !== "not-detected")
     .map((outcome) => `${outcome.family}${outcome.variant ? ` (${outcome.variant})` : ""}`)
     .join(" → ");
-  const eyebrow = proxyEyebrow(detail, v2Primary?.family, diamond !== undefined);
+  const eyebrow = proxyEyebrow(detail, primaryOutcome?.family, diamond !== undefined);
   return (
     <details className="panel proxy-summary">
       <summary className="panel-heading">
@@ -43,28 +43,28 @@ export function ProxySummary({
         {detail ? (
           <span
             className={
-              detail.status === "verified" || detectionV2?.status === "confirmed"
+              detail.status === "verified" || detection?.status === "confirmed"
                 ? "availability yes"
                 : "availability no"
             }
           >
-            {detectionV2
-              ? proxyDetectionV2StatusLabel(detectionV2.status, t)
+            {detection
+              ? proxyDetectionStatusLabel(detection.status, t)
               : proxyStatusLabel(detail.status, t)}
           </span>
         ) : null}
       </summary>
       <QueryNotice loading={loading} error={error} />
-      {detail?.status === "not_detected" && !v2Detected ? (
+      {detail?.status === "not_detected" && !detected ? (
         <p className="quiet">{t("contracts.proxy.notDetected")}</p>
       ) : null}
-      {detail && (detail.status !== "not_detected" || v2Detected) ? (
+      {detail && (detail.status !== "not_detected" || detected) ? (
         <dl className="proxy-facts">
           <ProxyDetectionFacts
-            detectionV2={detectionV2}
+            detection={detection}
             diamond={diamond}
             layers={layers}
-            primary={v2Primary}
+            primary={primaryOutcome}
             t={t}
           />
           {detail.pattern ? (
@@ -167,60 +167,60 @@ export function ProxySummary({
   );
 }
 
-type ProxyDetectionV2 = NonNullable<ContractProxyDetails["proxy_detection_v2"]>;
+type ProxyDetection = NonNullable<ContractProxyDetails["proxy_detection"]>;
 
-type ProxyDiamond = NonNullable<ProxyDetectionV2["outcomes"][number]["diamond"]>;
+type ProxyDiamond = NonNullable<ProxyDetection["outcomes"][number]["diamond"]>;
 
 function ProxyDetectionFacts({
-  detectionV2,
+  detection,
   diamond,
   layers,
   primary,
   t,
 }: {
-  detectionV2?: ProxyDetectionV2;
+  detection?: ProxyDetection;
   diamond?: ProxyDiamond;
   layers?: string;
-  primary?: ProxyDetectionV2["primary"];
+  primary?: ProxyDetection["primary"];
   t: Translate;
 }) {
-  if (!detectionV2) return null;
-  const v2Primary = primary;
+  if (!detection) return null;
+  const primaryOutcome = primary;
   return (
     <>
       <Fact
         label={t("contracts.proxy.detectorStatus")}
-        value={proxyDetectionV2StatusLabel(detectionV2.status, t)}
+        value={proxyDetectionStatusLabel(detection.status, t)}
       />
-      <Fact label={t("contracts.proxy.family")} value={v2Primary?.family ?? "—"} />
-      <Fact label={t("contracts.proxy.variant")} value={v2Primary?.variant ?? "—"} />
+      <Fact label={t("contracts.proxy.family")} value={primaryOutcome?.family ?? "—"} />
+      <Fact label={t("contracts.proxy.variant")} value={primaryOutcome?.variant ?? "—"} />
       {layers ? <Fact label={t("contracts.proxy.layers")} value={layers} /> : null}
-      {v2Primary?.implementation ? (
+      {primaryOutcome?.implementation ? (
         <Fact
           label={
-            v2Primary.implementation_role === "singleton"
+            primaryOutcome.implementation_role === "singleton"
               ? t("contracts.proxy.singleton")
               : t("contracts.proxy.implementation")
           }
-          value={v2Primary.implementation}
+          value={primaryOutcome.implementation}
           mono
         />
       ) : null}
-      {v2Primary?.family === "safe" ? (
+      {primaryOutcome?.family === "safe" ? (
         <Fact
           label={t("contracts.proxy.officialSingleton")}
-          value={v2Primary.official_singleton ? t("common.yes") : t("common.no")}
+          value={primaryOutcome.official_singleton ? t("common.yes") : t("common.no")}
         />
       ) : null}
       <Fact
         label={t("contracts.proxy.detectorVersion")}
-        value={v2Primary?.detector_version ?? "—"}
+        value={primaryOutcome?.detector_version ?? "—"}
       />
-      {v2Primary && v2Primary.warnings.length > 0 ? (
-        <Fact label={t("contracts.proxy.warnings")} value={v2Primary.warnings.join(" · ")} />
+      {primaryOutcome && primaryOutcome.warnings.length > 0 ? (
+        <Fact label={t("contracts.proxy.warnings")} value={primaryOutcome.warnings.join(" · ")} />
       ) : null}
-      {detectionV2.conflicts.length > 0 ? (
-        <Fact label={t("contracts.proxy.conflicts")} value={detectionV2.conflicts.join(" · ")} />
+      {detection.conflicts.length > 0 ? (
+        <Fact label={t("contracts.proxy.conflicts")} value={detection.conflicts.join(" · ")} />
       ) : null}
       {diamond ? (
         <>
@@ -597,21 +597,21 @@ function proxyStatusLabel(status: ContractProxyDetails["status"], t: Translate):
   }
 }
 
-function proxyDetectionV2StatusLabel(
-  status: NonNullable<ContractProxyDetails["proxy_detection_v2"]>["status"],
+function proxyDetectionStatusLabel(
+  status: NonNullable<ContractProxyDetails["proxy_detection"]>["status"],
   t: Translate,
 ): string {
   switch (status) {
     case "confirmed":
-      return t("contracts.proxy.v2Status.confirmed");
+      return t("contracts.proxy.detectionStatus.confirmed");
     case "candidate":
-      return t("contracts.proxy.v2Status.candidate");
+      return t("contracts.proxy.detectionStatus.candidate");
     case "inconsistent":
-      return t("contracts.proxy.v2Status.inconsistent");
+      return t("contracts.proxy.detectionStatus.inconsistent");
     case "not-detected":
-      return t("contracts.proxy.v2Status.notDetected");
+      return t("contracts.proxy.detectionStatus.notDetected");
     case "unknown":
-      return t("contracts.proxy.v2Status.unknown");
+      return t("contracts.proxy.detectionStatus.unknown");
   }
 }
 

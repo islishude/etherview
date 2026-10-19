@@ -6,63 +6,41 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/rpc"
 )
 
 type rpcProxyDetector struct {
-	caller                    rpcCaller
-	limits                    ProxyLimits
-	artifact                  func(context.Context, common.Address, common.Hash) (proxyArtifactEvidence, bool, error)
-	cloneCreation             func(context.Context, common.Address, []byte) (bool, error)
-	codeCache                 map[common.Address][]byte
-	beaconImplementationCache map[common.Address]cachedBeaconImplementation
-	v2Enabled                 bool
-	safeEnabled               bool
-	diamondEnabled            bool
-	observer                  ProxyDetectionObserver
-}
-
-type cachedBeaconImplementation struct {
-	address common.Address
-	valid   bool
+	memo             *proxyDetectionRPCMemo
+	detectionContext *ProxyDetectionContext
+	caller           rpcCaller
+	limits           ProxyLimits
+	artifact         func(context.Context, common.Address, common.Hash) (proxyArtifactEvidence, bool, error)
+	cloneCreation    func(context.Context, common.Address, []byte) (bool, error)
+	safeEnabled      bool
+	diamondEnabled   bool
+	observer         ProxyDetectionObserver
 }
 
 func (detector rpcProxyDetector) detectBlock(ctx context.Context, job Job, candidates []proxyCandidate) ([]proxyDetection, error) {
 	if detector.caller == nil {
 		return nil, errors.New("proxy RPC detector is not configured")
 	}
-	if detector.codeCache == nil {
-		detector.codeCache = make(map[common.Address][]byte)
+	if detector.memo == nil {
+		detector.memo = &proxyDetectionRPCMemo{}
 	}
-	if detector.beaconImplementationCache == nil {
-		detector.beaconImplementationCache = make(map[common.Address]cachedBeaconImplementation)
-	}
-	memo := &proxyDetectionRPCMemo{}
 	result := make([]proxyDetection, 0, len(candidates))
 	for _, candidate := range candidates {
-		if !detector.v2Enabled {
-			detection, err := detector.detect(
-				ctx, candidate, rpc.BlockNumberOrHashWithHash(job.BlockHash, true),
-			)
-			if err != nil {
-				return nil, err
-			}
-			result = append(result, detection)
-			continue
-		}
 		started := time.Now()
 		detectionContext, err := newProxyDetectionContext(
 			job.ChainID, candidate.address, job.BlockNumber, job.BlockHash,
-			ProxyDetectionBulk, detector.caller, detector.limits.MaxCodeBytes, memo,
+			ProxyDetectionBulk, detector.caller, detector.limits.MaxCodeBytes, detector.memo,
 		)
 		if err != nil {
 			return nil, err
 		}
 		beforeCounters := detectionContext.Counters()
-		adapter := &openZeppelinProxyDetectorAdapter{legacy: detector, candidate: candidate}
+		standard := &standardProxyDetector{scanner: detector, candidate: candidate}
 		cwiaDetector := &soladyLegacyCWIAProxyDetector{candidate: candidate}
-		detectors := []ProxyDetector{cwiaDetector, adapter}
+		detectors := []ProxyDetector{cwiaDetector, standard}
 		if detector.diamondEnabled {
 			detectors = append(detectors, newDiamondProxyDetector(candidate))
 		}
@@ -73,28 +51,12 @@ func (detector rpcProxyDetector) detectBlock(ctx context.Context, job Job, candi
 		if err != nil {
 			return nil, err
 		}
-		if cwiaDetector.err != nil {
-			// CWIA is part of the authoritative legacy projection. Preserve the
-			// stage-level fixed-block RPC failure contract when its implementation
-			// code cannot be read.
-			return nil, cwiaDetector.err
+		if resolved.observation == nil {
+			return nil, Permanent(errors.New("proxy detector framework omitted its authoritative observation"))
 		}
-		if adapter.err != nil {
-			// The framework runs in compatibility mode until the V2 observation is
-			// persisted. Preserve proxy@2's stage-level RPC failure contract.
-			return nil, adapter.err
-		}
-		legacyResult := adapter.legacyResult
-		if cwiaDetector.legacyResult != nil {
-			legacyResult = cwiaDetector.legacyResult
-		}
-		if legacyResult == nil {
-			return nil, Permanent(errors.New("proxy detector framework omitted its legacy result"))
-		}
-		detection := *legacyResult
-		compareLegacyProxyProjection(detection, &resolved)
-		detection.v2 = resolved
-		detection.v2Active = true
+		detection := *resolved.observation
+		resolved.observation = nil
+		detection.resolution = resolved
 		if detector.observer != nil {
 			counters := detectionContext.Counters().since(beforeCounters)
 			detector.observer.ObserveProxyDetectionRun(
@@ -114,12 +76,11 @@ func (detector rpcProxyDetector) detectBlock(ctx context.Context, job Job, candi
 	return result, nil
 }
 
-func (detector rpcProxyDetector) detect(
+func (detector rpcProxyDetector) recognizeStandard(
 	ctx context.Context,
 	candidate proxyCandidate,
-	blockReference rpc.BlockNumberOrHash,
 ) (proxyDetection, error) {
-	code, err := detector.getCode(ctx, candidate.address, blockReference)
+	code, err := detector.getCode(ctx, candidate.address)
 	if err != nil {
 		return proxyDetection{}, err
 	}
@@ -158,7 +119,7 @@ func (detector rpcProxyDetector) detect(
 				return detection, nil
 			}
 		}
-		implementationCode, err := detector.getCode(ctx, minimal.Implementation, blockReference)
+		implementationCode, err := detector.getCode(ctx, minimal.Implementation)
 		if err != nil {
 			return proxyDetection{}, err
 		}
@@ -171,25 +132,15 @@ func (detector rpcProxyDetector) detect(
 		}
 		return detection, nil
 	}
-	if cwia, matched, cwiaErr := resolveSoladyLegacyCWIA(
-		ctx,
-		candidate,
-		code,
-		func(ctx context.Context, address common.Address) ([]byte, error) {
-			return detector.getCode(ctx, address, blockReference)
-		},
-	); matched {
-		return cwia, cwiaErr
-	}
-	implementationWord, err := detector.getStorage(ctx, candidate.address, EIP1967ImplementationSlot, blockReference)
+	implementationWord, err := detector.getStorage(ctx, candidate.address, EIP1967ImplementationSlot)
 	if err != nil {
 		return proxyDetection{}, err
 	}
-	beaconWord, err := detector.getStorage(ctx, candidate.address, EIP1967BeaconSlot, blockReference)
+	beaconWord, err := detector.getStorage(ctx, candidate.address, EIP1967BeaconSlot)
 	if err != nil {
 		return proxyDetection{}, err
 	}
-	adminWord, err := detector.getStorage(ctx, candidate.address, EIP1967AdminSlot, blockReference)
+	adminWord, err := detector.getStorage(ctx, candidate.address, EIP1967AdminSlot)
 	if err != nil {
 		return proxyDetection{}, err
 	}
@@ -210,7 +161,6 @@ func (detector rpcProxyDetector) detect(
 			ctx, candidate, detection.codeHash, proxyArtifact,
 			implementationSlot, implementationSlotValid,
 			beaconSlot, beaconSlotValid, adminSlot, adminSlotValid,
-			blockReference,
 		)
 		if err != nil {
 			return proxyDetection{}, err
@@ -241,7 +191,7 @@ func (detector rpcProxyDetector) detect(
 	implementation := reference.Target
 	if reference.Kind == ProxyBeacon {
 		beaconAddress := reference.Target
-		beaconCode, codeErr := detector.getCode(ctx, beaconAddress, blockReference)
+		beaconCode, codeErr := detector.getCode(ctx, beaconAddress)
 		if codeErr != nil {
 			return proxyDetection{}, codeErr
 		}
@@ -254,7 +204,7 @@ func (detector rpcProxyDetector) detect(
 			return detection, nil
 		}
 		var valid bool
-		implementation, valid, err = detector.beaconImplementation(ctx, beaconAddress, blockReference)
+		implementation, valid, err = detector.beaconImplementation(ctx, beaconAddress)
 		if err != nil {
 			return proxyDetection{}, err
 		}
@@ -275,7 +225,7 @@ func (detector rpcProxyDetector) detect(
 		detection.rejected = "self_implementation"
 		return detection, nil
 	}
-	implementationCode, err := detector.getCode(ctx, implementation, blockReference)
+	implementationCode, err := detector.getCode(ctx, implementation)
 	if err != nil {
 		return proxyDetection{}, err
 	}
@@ -291,7 +241,7 @@ func (detector rpcProxyDetector) detect(
 	resolution.implementationCode = implementationCode
 	resolution.implementationHash = codeHash(implementationCode)
 	if reference.Kind == ProxyEIP1967 && adminSlotValid && adminSlot != (common.Address{}) {
-		adminCode, codeErr := detector.getCode(ctx, adminSlot, blockReference)
+		adminCode, codeErr := detector.getCode(ctx, adminSlot)
 		if codeErr != nil {
 			return proxyDetection{}, codeErr
 		}
@@ -347,7 +297,6 @@ func (detector rpcProxyDetector) resolveAuthenticatedArtifact(
 	beaconSlotValid bool,
 	adminSlot common.Address,
 	adminSlotValid bool,
-	blockReference rpc.BlockNumberOrHash,
 ) (*proxyArtifactResolution, error) {
 	if artifact.standardVersion != OpenZeppelin561Standard {
 		return nil, Permanent(errors.New("authenticated proxy artifact has an unsupported version"))
@@ -360,7 +309,7 @@ func (detector rpcProxyDetector) resolveAuthenticatedArtifact(
 		if address == (common.Address{}) || address == candidate.address {
 			return false, nil
 		}
-		implementationCode, err := detector.getCode(ctx, address, blockReference)
+		implementationCode, err := detector.getCode(ctx, address)
 		if err != nil {
 			return false, err
 		}
@@ -381,7 +330,7 @@ func (detector rpcProxyDetector) resolveAuthenticatedArtifact(
 		if err != nil || !ok {
 			return nil, err
 		}
-		adminCode, err := detector.getCode(ctx, *artifact.runtimeImmutable, blockReference)
+		adminCode, err := detector.getCode(ctx, *artifact.runtimeImmutable)
 		if err != nil {
 			return nil, err
 		}
@@ -400,14 +349,14 @@ func (detector rpcProxyDetector) resolveAuthenticatedArtifact(
 			return nil, nil
 		}
 		beacon := *artifact.runtimeImmutable
-		beaconCode, err := detector.getCode(ctx, beacon, blockReference)
+		beaconCode, err := detector.getCode(ctx, beacon)
 		if err != nil {
 			return nil, err
 		}
 		if len(beaconCode) == 0 {
 			return nil, nil
 		}
-		implementation, valid, err := detector.beaconImplementation(ctx, beacon, blockReference)
+		implementation, valid, err := detector.beaconImplementation(ctx, beacon)
 		if err != nil || !valid {
 			return nil, err
 		}
@@ -446,16 +395,17 @@ func (detector rpcProxyDetector) detectBeaconBlock(
 	if detector.caller == nil {
 		return nil, errors.New("proxy RPC detector is not configured")
 	}
-	blockReference := rpc.BlockNumberOrHashWithHash(job.BlockHash, true)
-	if detector.codeCache == nil {
-		detector.codeCache = make(map[common.Address][]byte)
-	}
-	if detector.beaconImplementationCache == nil {
-		detector.beaconImplementationCache = make(map[common.Address]cachedBeaconImplementation)
+	if detector.memo == nil {
+		detector.memo = &proxyDetectionRPCMemo{}
 	}
 	result := make([]beaconDetection, 0, len(candidates))
 	for _, candidate := range candidates {
-		detection, err := detector.detectBeacon(ctx, candidate, blockReference)
+		detectionContext, err := newProxyDetectionContext(job.ChainID, candidate.address, job.BlockNumber, job.BlockHash, ProxyDetectionBulk, detector.caller, detector.limits.MaxCodeBytes, detector.memo)
+		if err != nil {
+			return nil, err
+		}
+		detector.detectionContext = detectionContext
+		detection, err := detector.detectBeacon(ctx, candidate)
 		if err != nil {
 			return nil, err
 		}
@@ -467,9 +417,8 @@ func (detector rpcProxyDetector) detectBeaconBlock(
 func (detector rpcProxyDetector) detectBeacon(
 	ctx context.Context,
 	candidate proxyCandidate,
-	blockReference rpc.BlockNumberOrHash,
 ) (beaconDetection, error) {
-	code, err := detector.getCode(ctx, candidate.address, blockReference)
+	code, err := detector.getCode(ctx, candidate.address)
 	if err != nil {
 		return beaconDetection{}, err
 	}
@@ -477,7 +426,7 @@ func (detector rpcProxyDetector) detectBeacon(
 	if len(code) == 0 {
 		return detection, nil
 	}
-	implementation, valid, err := detector.beaconImplementation(ctx, candidate.address, blockReference)
+	implementation, valid, err := detector.beaconImplementation(ctx, candidate.address)
 	if err != nil {
 		return beaconDetection{}, err
 	}
@@ -489,7 +438,7 @@ func (detector rpcProxyDetector) detectBeacon(
 		detection.rejected = "self_implementation"
 		return detection, nil
 	}
-	implementationCode, err := detector.getCode(ctx, implementation, blockReference)
+	implementationCode, err := detector.getCode(ctx, implementation)
 	if err != nil {
 		return beaconDetection{}, err
 	}
@@ -503,92 +452,29 @@ func (detector rpcProxyDetector) detectBeacon(
 	return detection, nil
 }
 
-func (detector rpcProxyDetector) getCode(
-	ctx context.Context,
-	address common.Address,
-	blockReference rpc.BlockNumberOrHash,
-) ([]byte, error) {
-	if cached, exists := detector.codeCache[address]; exists {
-		return common.CopyBytes(cached), nil
-	}
-	var encoded hexutil.Bytes
-	if err := detector.caller.CallContext(
-		ctx, &encoded, "eth_getCode", address, blockReference,
-	); err != nil {
-		return nil, exactStateRPCError(ctx, "eth_getCode", err)
-	}
-	code := []byte(encoded)
-	if len(code) > detector.limits.MaxCodeBytes {
-		return nil, Permanent(errors.New("contract bytecode exceeds proxy detection limit"))
-	}
-	if code == nil {
-		// An exact empty-code observation is different from SQL NULL (code bytes
-		// deliberately omitted). Keep an allocated zero-length slice so the
-		// Keccak(empty) fact can be audited and reused.
-		code = make([]byte, 0)
-	}
-	if detector.codeCache != nil {
-		detector.codeCache[address] = common.CopyBytes(code)
-	}
-	return code, nil
+func (detector rpcProxyDetector) getCode(ctx context.Context, address common.Address) ([]byte, error) {
+	return detector.detectionContext.GetCode(ctx, address)
 }
 
-func (detector rpcProxyDetector) getStorage(
-	ctx context.Context,
-	address common.Address,
-	slot common.Hash,
-	blockReference rpc.BlockNumberOrHash,
-) (common.Hash, error) {
-	var encoded hexutil.Bytes
-	if err := detector.caller.CallContext(
-		ctx, &encoded, "eth_getStorageAt", address, slot, blockReference,
-	); err != nil {
-		return common.Hash{}, exactStateRPCError(ctx, "eth_getStorageAt", err)
-	}
-	value := []byte(encoded)
-	if len(value) != common.HashLength {
-		return common.Hash{}, Permanent(errors.New("eth_getStorageAt returned a non-word value"))
-	}
-	return WordFromBytes(value)
+func (detector rpcProxyDetector) getStorage(ctx context.Context, address common.Address, slot common.Hash) (common.Hash, error) {
+	return detector.detectionContext.GetStorageAt(ctx, address, slot)
 }
 
-func (detector rpcProxyDetector) beaconImplementation(
-	ctx context.Context,
-	beacon common.Address,
-	blockReference rpc.BlockNumberOrHash,
-) (common.Address, bool, error) {
-	if cached, exists := detector.beaconImplementationCache[beacon]; exists {
-		return cached.address, cached.valid, nil
-	}
+func (detector rpcProxyDetector) beaconImplementation(ctx context.Context, beacon common.Address) (common.Address, bool, error) {
 	input, err := packStateProbe("implementation")
 	if err != nil {
 		return common.Address{}, false, Permanent(err)
 	}
-	request := map[string]any{"to": beacon, "data": hexutil.Bytes(input)}
-	var encoded hexutil.Bytes
-	if err := detector.caller.CallContext(
-		ctx, &encoded, "eth_call", request, blockReference,
-	); err != nil {
-		if executionReverted(err) {
-			if detector.beaconImplementationCache != nil {
-				detector.beaconImplementationCache[beacon] = cachedBeaconImplementation{}
-			}
-			return common.Address{}, false, nil
-		}
-		return common.Address{}, false, exactStateRPCError(ctx, "eth_call", err)
-	}
-	value := []byte(encoded)
-	implementation, err := ParseBeaconImplementation(value)
+	result, err := detector.detectionContext.Call(ctx, ProxyCallInput{To: beacon, Data: input, MaxReturnBytes: common.HashLength})
 	if err != nil {
-		if detector.beaconImplementationCache != nil {
-			detector.beaconImplementationCache[beacon] = cachedBeaconImplementation{}
-		}
+		return common.Address{}, false, err
+	}
+	if !result.Success {
 		return common.Address{}, false, nil
 	}
-	if detector.beaconImplementationCache != nil {
-		detector.beaconImplementationCache[beacon] = cachedBeaconImplementation{
-			address: implementation, valid: true,
-		}
+	implementation, err := ParseBeaconImplementation(result.Data)
+	if err != nil {
+		return common.Address{}, false, nil
 	}
 	return implementation, true, nil
 }

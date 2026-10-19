@@ -1,5 +1,11 @@
 # P58 OpenZeppelin Proxy Detection Baseline
 
+Historical baseline review. Its rollout proposals are superseded by the unified
+framework in [ADR-0032](../decisions/ADR-0032-evidence-based-proxy-detection.md).
+Retained findings explain the independently preserved relation/authorization
+boundaries; they are not current feature-gate or deployment instructions.
+
+
 Date: 2026-08-08
 
 Scope: the production `proxy@2` stage and its current OpenZeppelin 5.6.1,

@@ -1566,45 +1566,45 @@ func (e ProxyDetailsStandardVersion) Valid() bool {
 	}
 }
 
-// Defines values for ProxyDetectionV2Confidence.
+// Defines values for ProxyDetectionConfidence.
 const (
-	ProxyDetectionV2ConfidenceHigh   ProxyDetectionV2Confidence = "high"
-	ProxyDetectionV2ConfidenceLow    ProxyDetectionV2Confidence = "low"
-	ProxyDetectionV2ConfidenceMedium ProxyDetectionV2Confidence = "medium"
+	ProxyDetectionConfidenceHigh   ProxyDetectionConfidence = "high"
+	ProxyDetectionConfidenceLow    ProxyDetectionConfidence = "low"
+	ProxyDetectionConfidenceMedium ProxyDetectionConfidence = "medium"
 )
 
-// Valid indicates whether the value is a known member of the ProxyDetectionV2Confidence enum.
-func (e ProxyDetectionV2Confidence) Valid() bool {
+// Valid indicates whether the value is a known member of the ProxyDetectionConfidence enum.
+func (e ProxyDetectionConfidence) Valid() bool {
 	switch e {
-	case ProxyDetectionV2ConfidenceHigh:
+	case ProxyDetectionConfidenceHigh:
 		return true
-	case ProxyDetectionV2ConfidenceLow:
+	case ProxyDetectionConfidenceLow:
 		return true
-	case ProxyDetectionV2ConfidenceMedium:
+	case ProxyDetectionConfidenceMedium:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for ProxyDetectionV2EvidenceKind.
+// Defines values for ProxyDetectionEvidenceKind.
 const (
-	ContractCall       ProxyDetectionV2EvidenceKind = "contract-call"
-	DeploymentRegistry ProxyDetectionV2EvidenceKind = "deployment-registry"
-	DiamondCutEvent    ProxyDetectionV2EvidenceKind = "diamond-cut-event"
-	Erc165             ProxyDetectionV2EvidenceKind = "erc165"
-	ExecutionTrace     ProxyDetectionV2EvidenceKind = "execution-trace"
-	FacetCode          ProxyDetectionV2EvidenceKind = "facet-code"
-	FactoryLog         ProxyDetectionV2EvidenceKind = "factory-log"
-	LoupeCall          ProxyDetectionV2EvidenceKind = "loupe-call"
-	RuntimeBytecode    ProxyDetectionV2EvidenceKind = "runtime-bytecode"
-	RuntimeCodeHash    ProxyDetectionV2EvidenceKind = "runtime-code-hash"
-	StorageSlot        ProxyDetectionV2EvidenceKind = "storage-slot"
-	VerifiedSource     ProxyDetectionV2EvidenceKind = "verified-source"
+	ContractCall       ProxyDetectionEvidenceKind = "contract-call"
+	DeploymentRegistry ProxyDetectionEvidenceKind = "deployment-registry"
+	DiamondCutEvent    ProxyDetectionEvidenceKind = "diamond-cut-event"
+	Erc165             ProxyDetectionEvidenceKind = "erc165"
+	ExecutionTrace     ProxyDetectionEvidenceKind = "execution-trace"
+	FacetCode          ProxyDetectionEvidenceKind = "facet-code"
+	FactoryLog         ProxyDetectionEvidenceKind = "factory-log"
+	LoupeCall          ProxyDetectionEvidenceKind = "loupe-call"
+	RuntimeBytecode    ProxyDetectionEvidenceKind = "runtime-bytecode"
+	RuntimeCodeHash    ProxyDetectionEvidenceKind = "runtime-code-hash"
+	StorageSlot        ProxyDetectionEvidenceKind = "storage-slot"
+	VerifiedSource     ProxyDetectionEvidenceKind = "verified-source"
 )
 
-// Valid indicates whether the value is a known member of the ProxyDetectionV2EvidenceKind enum.
-func (e ProxyDetectionV2EvidenceKind) Valid() bool {
+// Valid indicates whether the value is a known member of the ProxyDetectionEvidenceKind enum.
+func (e ProxyDetectionEvidenceKind) Valid() bool {
 	switch e {
 	case ContractCall:
 		return true
@@ -1635,75 +1635,75 @@ func (e ProxyDetectionV2EvidenceKind) Valid() bool {
 	}
 }
 
-// Defines values for ProxyDetectionV2Family.
+// Defines values for ProxyDetectionFamily.
 const (
-	ProxyDetectionV2FamilyCustom  ProxyDetectionV2Family = "custom"
-	ProxyDetectionV2FamilyCwia    ProxyDetectionV2Family = "cwia"
-	ProxyDetectionV2FamilyErc1167 ProxyDetectionV2Family = "erc1167"
-	ProxyDetectionV2FamilyErc1967 ProxyDetectionV2Family = "erc1967"
-	ProxyDetectionV2FamilyErc2535 ProxyDetectionV2Family = "erc2535"
-	ProxyDetectionV2FamilySafe    ProxyDetectionV2Family = "safe"
+	ProxyDetectionFamilyCustom  ProxyDetectionFamily = "custom"
+	ProxyDetectionFamilyCwia    ProxyDetectionFamily = "cwia"
+	ProxyDetectionFamilyErc1167 ProxyDetectionFamily = "erc1167"
+	ProxyDetectionFamilyErc1967 ProxyDetectionFamily = "erc1967"
+	ProxyDetectionFamilyErc2535 ProxyDetectionFamily = "erc2535"
+	ProxyDetectionFamilySafe    ProxyDetectionFamily = "safe"
 )
 
-// Valid indicates whether the value is a known member of the ProxyDetectionV2Family enum.
-func (e ProxyDetectionV2Family) Valid() bool {
+// Valid indicates whether the value is a known member of the ProxyDetectionFamily enum.
+func (e ProxyDetectionFamily) Valid() bool {
 	switch e {
-	case ProxyDetectionV2FamilyCustom:
+	case ProxyDetectionFamilyCustom:
 		return true
-	case ProxyDetectionV2FamilyCwia:
+	case ProxyDetectionFamilyCwia:
 		return true
-	case ProxyDetectionV2FamilyErc1167:
+	case ProxyDetectionFamilyErc1167:
 		return true
-	case ProxyDetectionV2FamilyErc1967:
+	case ProxyDetectionFamilyErc1967:
 		return true
-	case ProxyDetectionV2FamilyErc2535:
+	case ProxyDetectionFamilyErc2535:
 		return true
-	case ProxyDetectionV2FamilySafe:
+	case ProxyDetectionFamilySafe:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for ProxyDetectionV2ImplementationRole.
+// Defines values for ProxyDetectionImplementationRole.
 const (
-	ProxyDetectionV2ImplementationRoleImplementation ProxyDetectionV2ImplementationRole = "implementation"
-	ProxyDetectionV2ImplementationRoleSingleton      ProxyDetectionV2ImplementationRole = "singleton"
+	ProxyDetectionImplementationRoleImplementation ProxyDetectionImplementationRole = "implementation"
+	ProxyDetectionImplementationRoleSingleton      ProxyDetectionImplementationRole = "singleton"
 )
 
-// Valid indicates whether the value is a known member of the ProxyDetectionV2ImplementationRole enum.
-func (e ProxyDetectionV2ImplementationRole) Valid() bool {
+// Valid indicates whether the value is a known member of the ProxyDetectionImplementationRole enum.
+func (e ProxyDetectionImplementationRole) Valid() bool {
 	switch e {
-	case ProxyDetectionV2ImplementationRoleImplementation:
+	case ProxyDetectionImplementationRoleImplementation:
 		return true
-	case ProxyDetectionV2ImplementationRoleSingleton:
+	case ProxyDetectionImplementationRoleSingleton:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for ProxyDetectionV2Status.
+// Defines values for ProxyDetectionStatus.
 const (
-	ProxyDetectionV2StatusCandidate    ProxyDetectionV2Status = "candidate"
-	ProxyDetectionV2StatusConfirmed    ProxyDetectionV2Status = "confirmed"
-	ProxyDetectionV2StatusInconsistent ProxyDetectionV2Status = "inconsistent"
-	ProxyDetectionV2StatusNotDetected  ProxyDetectionV2Status = "not-detected"
-	ProxyDetectionV2StatusUnknown      ProxyDetectionV2Status = "unknown"
+	ProxyDetectionStatusCandidate    ProxyDetectionStatus = "candidate"
+	ProxyDetectionStatusConfirmed    ProxyDetectionStatus = "confirmed"
+	ProxyDetectionStatusInconsistent ProxyDetectionStatus = "inconsistent"
+	ProxyDetectionStatusNotDetected  ProxyDetectionStatus = "not-detected"
+	ProxyDetectionStatusUnknown      ProxyDetectionStatus = "unknown"
 )
 
-// Valid indicates whether the value is a known member of the ProxyDetectionV2Status enum.
-func (e ProxyDetectionV2Status) Valid() bool {
+// Valid indicates whether the value is a known member of the ProxyDetectionStatus enum.
+func (e ProxyDetectionStatus) Valid() bool {
 	switch e {
-	case ProxyDetectionV2StatusCandidate:
+	case ProxyDetectionStatusCandidate:
 		return true
-	case ProxyDetectionV2StatusConfirmed:
+	case ProxyDetectionStatusConfirmed:
 		return true
-	case ProxyDetectionV2StatusInconsistent:
+	case ProxyDetectionStatusInconsistent:
 		return true
-	case ProxyDetectionV2StatusNotDetected:
+	case ProxyDetectionStatusNotDetected:
 		return true
-	case ProxyDetectionV2StatusUnknown:
+	case ProxyDetectionStatusUnknown:
 		return true
 	default:
 		return false
@@ -5136,7 +5136,7 @@ type ProxyDetails struct {
 	Mechanism                 *ProxyMechanism                 `json:"mechanism,omitempty"`
 	Pattern                   *ProxyPattern                   `json:"pattern,omitempty"`
 	Proxy                     *ProxyContractIdentity          `json:"proxy,omitempty"`
-	ProxyDetectionV2          *ProxyDetectionV2               `json:"proxy_detection_v2,omitempty"`
+	ProxyDetection            *ProxyDetection                 `json:"proxy_detection,omitempty"`
 	Snapshot                  CatalogSnapshot                 `json:"snapshot"`
 	StandardVersion           *ProxyDetailsStandardVersion    `json:"standard_version,omitempty"`
 	Status                    ProxyDetailStatus               `json:"status"`
@@ -5151,44 +5151,40 @@ type ProxyDetailsResponse struct {
 	Meta Meta         `json:"meta"`
 }
 
-// ProxyDetectionV2 defines model for ProxyDetectionV2.
-type ProxyDetectionV2 struct {
-	Conflicts  []string                  `json:"conflicts"`
-	Outcomes   []ProxyDetectionV2Outcome `json:"outcomes"`
-	Primary    *ProxyDetectionV2Outcome  `json:"primary,omitempty"`
-	ShadowDiff struct {
-		Different bool     `json:"different"`
-		Reasons   []string `json:"reasons"`
-	} `json:"shadow_diff"`
-	Status ProxyDetectionV2Status `json:"status"`
+// ProxyDetection defines model for ProxyDetection.
+type ProxyDetection struct {
+	Conflicts []string                `json:"conflicts"`
+	Outcomes  []ProxyDetectionOutcome `json:"outcomes"`
+	Primary   *ProxyDetectionOutcome  `json:"primary,omitempty"`
+	Status    ProxyDetectionStatus    `json:"status"`
 }
 
-// ProxyDetectionV2Confidence defines model for ProxyDetectionV2Confidence.
-type ProxyDetectionV2Confidence string
+// ProxyDetectionConfidence defines model for ProxyDetectionConfidence.
+type ProxyDetectionConfidence string
 
-// ProxyDetectionV2Evidence defines model for ProxyDetectionV2Evidence.
-type ProxyDetectionV2Evidence struct {
+// ProxyDetectionEvidence defines model for ProxyDetectionEvidence.
+type ProxyDetectionEvidence struct {
 	// Address A 20-byte address; responses use the EIP-55 checksum form.
-	Address     *Address                     `json:"address,omitempty"`
-	Description string                       `json:"description"`
-	Kind        ProxyDetectionV2EvidenceKind `json:"kind"`
+	Address     *Address                   `json:"address,omitempty"`
+	Description string                     `json:"description"`
+	Kind        ProxyDetectionEvidenceKind `json:"kind"`
 
 	// Slot A 32-byte hash; responses use normalized lowercase hexadecimal.
 	Slot  *Hash   `json:"slot,omitempty"`
 	Value *string `json:"value,omitempty"`
 }
 
-// ProxyDetectionV2EvidenceKind defines model for ProxyDetectionV2EvidenceKind.
-type ProxyDetectionV2EvidenceKind string
+// ProxyDetectionEvidenceKind defines model for ProxyDetectionEvidenceKind.
+type ProxyDetectionEvidenceKind string
 
-// ProxyDetectionV2Family defines model for ProxyDetectionV2Family.
-type ProxyDetectionV2Family string
+// ProxyDetectionFamily defines model for ProxyDetectionFamily.
+type ProxyDetectionFamily string
 
-// ProxyDetectionV2ImplementationRole defines model for ProxyDetectionV2ImplementationRole.
-type ProxyDetectionV2ImplementationRole string
+// ProxyDetectionImplementationRole defines model for ProxyDetectionImplementationRole.
+type ProxyDetectionImplementationRole string
 
-// ProxyDetectionV2Outcome defines model for ProxyDetectionV2Outcome.
-type ProxyDetectionV2Outcome struct {
+// ProxyDetectionOutcome defines model for ProxyDetectionOutcome.
+type ProxyDetectionOutcome struct {
 	// Admin A 20-byte address; responses use the EIP-55 checksum form.
 	Admin *Address `json:"admin,omitempty"`
 
@@ -5203,19 +5199,19 @@ type ProxyDetectionV2Outcome struct {
 	CanonicalProxyShell bool     `json:"canonical_proxy_shell"`
 
 	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	ChainId         Quantity                   `json:"chain_id"`
-	Confidence      ProxyDetectionV2Confidence `json:"confidence"`
-	Detector        string                     `json:"detector"`
-	DetectorVersion string                     `json:"detector_version"`
-	Diamond         *DiamondDetection          `json:"diamond,omitempty"`
-	Evidence        []ProxyDetectionV2Evidence `json:"evidence"`
-	Family          *ProxyDetectionV2Family    `json:"family,omitempty"`
+	ChainId         Quantity                 `json:"chain_id"`
+	Confidence      ProxyDetectionConfidence `json:"confidence"`
+	Detector        string                   `json:"detector"`
+	DetectorVersion string                   `json:"detector_version"`
+	Diamond         *DiamondDetection        `json:"diamond,omitempty"`
+	Evidence        []ProxyDetectionEvidence `json:"evidence"`
+	Family          *ProxyDetectionFamily    `json:"family,omitempty"`
 
 	// Implementation A 20-byte address; responses use the EIP-55 checksum form.
-	Implementation        *Address                            `json:"implementation,omitempty"`
-	ImplementationHasCode bool                                `json:"implementation_has_code"`
-	ImplementationPath    []Address                           `json:"implementation_path"`
-	ImplementationRole    *ProxyDetectionV2ImplementationRole `json:"implementation_role,omitempty"`
+	Implementation        *Address                          `json:"implementation,omitempty"`
+	ImplementationHasCode bool                              `json:"implementation_has_code"`
+	ImplementationPath    []Address                         `json:"implementation_path"`
+	ImplementationRole    *ProxyDetectionImplementationRole `json:"implementation_role,omitempty"`
 
 	// InitialSingleton A 20-byte address; responses use the EIP-55 checksum form.
 	InitialSingleton  *Address `json:"initial_singleton,omitempty"`
@@ -5223,18 +5219,18 @@ type ProxyDetectionV2Outcome struct {
 	Priority          int      `json:"priority"`
 
 	// Proxy A 20-byte address; responses use the EIP-55 checksum form.
-	Proxy                   Address                `json:"proxy"`
-	SingletonChanged        bool                   `json:"singleton_changed"`
-	SingletonDeploymentType *string                `json:"singleton_deployment_type,omitempty"`
-	SingletonVersion        *string                `json:"singleton_version,omitempty"`
-	Status                  ProxyDetectionV2Status `json:"status"`
-	Targets                 []ProxyTarget          `json:"targets"`
-	Variant                 *string                `json:"variant,omitempty"`
-	Warnings                []string               `json:"warnings"`
+	Proxy                   Address              `json:"proxy"`
+	SingletonChanged        bool                 `json:"singleton_changed"`
+	SingletonDeploymentType *string              `json:"singleton_deployment_type,omitempty"`
+	SingletonVersion        *string              `json:"singleton_version,omitempty"`
+	Status                  ProxyDetectionStatus `json:"status"`
+	Targets                 []ProxyTarget        `json:"targets"`
+	Variant                 *string              `json:"variant,omitempty"`
+	Warnings                []string             `json:"warnings"`
 }
 
-// ProxyDetectionV2Status defines model for ProxyDetectionV2Status.
-type ProxyDetectionV2Status string
+// ProxyDetectionStatus defines model for ProxyDetectionStatus.
+type ProxyDetectionStatus string
 
 // ProxyEvidenceResult defines model for ProxyEvidenceResult.
 type ProxyEvidenceResult string
