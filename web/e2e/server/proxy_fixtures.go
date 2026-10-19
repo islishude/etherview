@@ -298,11 +298,9 @@ func diamondProxyDetail() map[string]any {
 	return map[string]any{
 		"address": diamondAddress, "status": "detected_unverified", "snapshot": contractSnapshot(),
 		"implementation_addresses": []any{diamondWriteFacet, diamondLoupeFacet},
-		"proxy_detection_v2": map[string]any{
+		"proxy_detection": map[string]any{
 			"status": "confirmed", "primary": outcome, "outcomes": []any{outcome},
-			"conflicts": []any{}, "shadow_diff": map[string]any{
-				"different": true, "reasons": []any{"v2_positive_legacy_not_detected"},
-			},
+			"conflicts": []any{},
 		},
 		"evidence": []any{},
 	}

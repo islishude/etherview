@@ -205,7 +205,7 @@ func captureHardhatSQLDiagnostics(h *harness) {
 		      FROM verified_proxy_bindings
 		    ) AS row
 		  ), '[]'::jsonb),
-		  'proxy_detection_v2', COALESCE((
+		  'proxy_detection', COALESCE((
 		    SELECT jsonb_agg(to_jsonb(row) ORDER BY row.block_number DESC, row.job_generation DESC)
 		    FROM (
 		      SELECT evidence.block_number::text AS block_number,
@@ -219,7 +219,7 @@ func captureHardhatSQLDiagnostics(h *harness) {
 			             evidence.details #>> '{primary,implementation}' AS implementation
 		      FROM proxy_detection_evidence AS evidence
 		      WHERE evidence.chain_id = 1
-		        AND evidence.candidate_kind = 'proxy_v2'
+		        AND evidence.candidate_kind = 'proxy_resolution'
 		      ORDER BY evidence.block_number DESC, evidence.job_generation DESC
 		      LIMIT 64
 		    ) AS row
@@ -371,7 +371,7 @@ func captureHardhatProxySnapshot(
 		     AND published.state = 'complete'
 		    WHERE evidence.chain_id = 1
 		      AND evidence.address = $1
-		      AND evidence.candidate_kind = 'proxy_v2'
+		      AND evidence.candidate_kind = 'proxy_resolution'
 		      AND evidence.canonical
 		    ORDER BY evidence.block_number DESC, evidence.job_generation DESC
 		    LIMIT 1

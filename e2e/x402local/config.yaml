@@ -62,10 +62,8 @@ features:
   api_billing: true
   x402_topups: true
   user_operations: false
-  proxy_detection_v2: false
   safe_proxy_detection: false
   diamond_proxy_detection: false
-  proxy_detection_v2_public: false
 
 erc4337:
   entry_points: []

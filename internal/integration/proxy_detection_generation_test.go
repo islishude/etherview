@@ -114,17 +114,15 @@ func TestProxyDetectionGenerationPromotesPublishedImmutableCloneEvidence(t *test
 		  AND detection_state = 'rejected'
 		  AND reason = 'immutable_args_creation_unverified'
 		  AND canonical`, 1, reference.Hash.Bytes(), candidate.Bytes(), enqueued.Job.ID)
-	assertCurrentProxyDetectionGeneration(
-		t, ctx, db, reference, candidate, enqueued.Job.ID, 1,
-	)
+	assertCurrentProxyDetectionGeneration(t, ctx, db, reference, candidate, enqueued.Job.ID, "proxy", 1)
+	assertCurrentProxyDetectionGeneration(t, ctx, db, reference, candidate, enqueued.Job.ID, "proxy_resolution", 1)
 
 	creationTrace := rootImmutableCloneCreationTrace(
 		t, block.Block.Transactions()[0], candidate, runtime,
 	)
 	traceJob := publishCloneTrace(t, ctx, db, queue, reference, creationTrace)
-	assertCurrentProxyDetectionGeneration(
-		t, ctx, db, reference, candidate, enqueued.Job.ID, 0,
-	)
+	assertCurrentProxyDetectionGeneration(t, ctx, db, reference, candidate, enqueued.Job.ID, "proxy", 0)
+	assertCurrentProxyDetectionGeneration(t, ctx, db, reference, candidate, enqueued.Job.ID, "proxy_resolution", 0)
 
 	second, found, err := queue.Claim(
 		ctx, "proxy-detection-generation-two", []enrich.StageID{enrich.ProxyStage}, time.Minute,
@@ -149,9 +147,8 @@ func TestProxyDetectionGenerationPromotesPublishedImmutableCloneEvidence(t *test
 		  AND detection_state = 'rejected'
 		  AND reason = 'immutable_args_creation_unverified'
 		  AND canonical`, 1, reference.Hash.Bytes(), candidate.Bytes(), enqueued.Job.ID)
-	assertCurrentProxyDetectionGeneration(
-		t, ctx, db, reference, candidate, enqueued.Job.ID, 0,
-	)
+	assertCurrentProxyDetectionGeneration(t, ctx, db, reference, candidate, enqueued.Job.ID, "proxy", 0)
+	assertCurrentProxyDetectionGeneration(t, ctx, db, reference, candidate, enqueued.Job.ID, "proxy_resolution", 2)
 	assertRowCount(t, ctx, db, `
 		SELECT count(*)
 		FROM proxy_detection_evidence AS evidence
@@ -612,6 +609,7 @@ func assertCurrentProxyDetectionGeneration(
 	reference store.BlockRef,
 	address common.Address,
 	jobID string,
+	kind string,
 	want int64,
 ) {
 	t.Helper()
@@ -632,7 +630,7 @@ func assertCurrentProxyDetectionGeneration(
 		  AND evidence.block_hash = $1
 		  AND evidence.address = $2
 		  AND evidence.durable_job_id = $3
-		  AND evidence.canonical`, reference.Hash.Bytes(), address.Bytes(), jobID).Scan(
+		  AND evidence.canonical AND evidence.candidate_kind = $4`, reference.Hash.Bytes(), address.Bytes(), jobID, kind).Scan(
 		&count, &generation,
 	)
 	if err != nil {

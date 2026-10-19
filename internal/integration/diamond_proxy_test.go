@@ -266,7 +266,7 @@ func TestDiamondProxyHistoryReorgAndHistoricalABI(t *testing.T) {
 	}
 	processor, err := enrich.NewPostgresProxyProcessorWithOptions(
 		db, pool, enrich.ProxyLimits{}, enrich.ProxyDetectionOptions{
-			Enabled: true, DiamondEnabled: true,
+			DiamondEnabled: true,
 		},
 	)
 	if err != nil {
@@ -316,7 +316,7 @@ func TestDiamondProxyHistoryReorgAndHistoricalABI(t *testing.T) {
 		WHERE chain_id = 1 AND proxy_address = $1`, 0, diamond.Bytes())
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM proxy_detection_evidence
-		WHERE chain_id = 1 AND address = $1 AND candidate_kind = 'proxy_v2'
+		WHERE chain_id = 1 AND address = $1 AND candidate_kind = 'proxy_resolution'
 		  AND detection_state = 'confirmed' AND canonical`, 2, diamond.Bytes())
 
 	ref := mustBlockRef(t, newTwo)

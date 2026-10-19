@@ -232,7 +232,7 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv 0.13.1.
   proxy-identity gate does not turn Safe's ordinary setup delegatecall into
   separate Diamond-router evidence. The gate requires the exact 1.4.1 runtime
   fingerprint, published Trace creation fact, generation-fenced `proxy@2`
-  evidence, singleton-only V2 projection, absence of legacy interaction
+  evidence, singleton-only detection projection, absence of ordinary implementation interaction
   authority, public API projection, and monolith/split parity. Safe execution
   and setup behavior remain outside this detector gate.
   No application or test client receives a Docker socket or CLI. The test
@@ -912,3 +912,22 @@ The updater only generates reference fixtures for the requested new version.
 Its isolated candidate comparison does not replace the full native Linux matrix
 or production topology gates. Proposals must pass local package integrity checks; maintainers review locked
 dependencies and archive identities. The workflow cannot rewrite integrity checks.
+
+## Unified proxy detection acceptance
+
+The immutable `internal/enrich/testdata/proxy-observation-baseline.json` fixture
+was captured from the pre-unification implementation at
+`deebb7a9b0118df12a3c1b89b663d36e067eede7`. Its test independently
+compares authoritative ordinary/clone/CWIA relations, empty code, negative and
+Safe facts; acceptance never regenerates it. Exact OpenZeppelin artifact,
+immutable admin/Beacon authority, error classification, generation/reorg and
+write-fence regressions remain mandatory alongside the unified resolver tests.
+
+Run focused enrich/app/query/config tests, PostgreSQL integration/race,
+`make test-e2e`, `make test-runtime-e2e`, `make test-hardhat3-e2e`, and
+`make test-foundry-e2e` for the cutover. The production suites exercise the
+shared configuration and public contract without framework/visibility flags
+in both monolith and split roles. Run
+`make test-schema-e2e` for the fresh baseline, and generation/source/docs/plan
+and common gates. Preserve independent pre-change evidence, and record current
+local results separately from native CI and deployment review.

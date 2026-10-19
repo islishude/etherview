@@ -195,10 +195,10 @@ func (processor *PostgresProxyProcessor) reconcileDiamondHistory(
 	job Job,
 	detection *proxyDetection,
 ) error {
-	if detection == nil || !detection.v2Active {
+	if detection == nil {
 		return nil
 	}
-	outcomes := append([]ProxyDetectionV2(nil), detection.v2.Outcomes...)
+	outcomes := append([]ProxyDetection(nil), detection.resolution.Outcomes...)
 	changed := false
 	for index := range outcomes {
 		outcome := &outcomes[index]
@@ -242,8 +242,7 @@ func (processor *PostgresProxyProcessor) reconcileDiamondHistory(
 	if err != nil {
 		return Permanent(fmt.Errorf("resolve Diamond history reconciliation: %w", err))
 	}
-	compareLegacyProxyProjection(*detection, &resolved)
-	detection.v2 = resolved
+	detection.resolution = resolved
 	return nil
 }
 
@@ -427,7 +426,7 @@ func persistDiamondDetectionSnapshot(
 	ctx context.Context,
 	tx pgx.Tx,
 	job Job,
-	outcome ProxyDetectionV2,
+	outcome ProxyDetection,
 ) error {
 	if err := outcome.validate(); err != nil {
 		return Permanent(err)

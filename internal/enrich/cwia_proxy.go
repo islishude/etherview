@@ -110,9 +110,7 @@ func resolveSoladyLegacyCWIA(
 }
 
 type soladyLegacyCWIAProxyDetector struct {
-	candidate    proxyCandidate
-	legacyResult *proxyDetection
-	err          error
+	candidate proxyCandidate
 }
 
 func (*soladyLegacyCWIAProxyDetector) ID() string { return "solady-cwia" }
@@ -127,25 +125,23 @@ func (*soladyLegacyCWIAProxyDetector) SupportedModes() []ProxyDetectionMode {
 func (detector *soladyLegacyCWIAProxyDetector) Detect(
 	ctx context.Context,
 	detectionContext *ProxyDetectionContext,
-) (*ProxyDetectionV2, error) {
+) (*ProxyDetection, error) {
 	runtime, err := detectionContext.GetCode(ctx, detectionContext.Address())
 	if err != nil {
-		detector.err = err
-		return nil, err
+		return nil, &requiredProxyObservationError{cause: err}
 	}
-	legacy, matched, err := resolveSoladyLegacyCWIA(
+	observation, matched, err := resolveSoladyLegacyCWIA(
 		ctx,
 		detector.candidate,
 		runtime,
 		detectionContext.GetCode,
 	)
 	if err != nil {
-		detector.err = err
-		return nil, err
+		return nil, &requiredProxyObservationError{cause: err}
 	}
 	if !matched {
 		runtimeHash := codeHash(runtime)
-		return &ProxyDetectionV2{
+		return &ProxyDetection{
 			Status: ProxyStatusNotDetected, Confidence: ProxyConfidenceLow,
 			Evidence: []ProxyDetectionEvidence{{
 				Kind: ProxyEvidenceRuntimeCodeHash, Description: "target runtime is not the Solady legacy LibCWIA shell",
@@ -153,24 +149,25 @@ func (detector *soladyLegacyCWIAProxyDetector) Detect(
 			}},
 		}, nil
 	}
-	detector.legacyResult = &legacy
-	return soladyLegacyCWIADetectionV2(legacy), nil
+	outcome := soladyLegacyCWIADetection(observation)
+	outcome.observation = &observation
+	return outcome, nil
 }
 
-func soladyLegacyCWIADetectionV2(legacy proxyDetection) *ProxyDetectionV2 {
-	result := &ProxyDetectionV2{
+func soladyLegacyCWIADetection(observation proxyDetection) *ProxyDetection {
+	result := &ProxyDetection{
 		Family: ProxyFamilyCWIA, Variant: soladyLegacyCWIAVariant,
 		Status: ProxyStatusConfirmed, Confidence: ProxyConfidenceHigh,
 		CanonicalProxyShell: true,
 		Evidence: []ProxyDetectionEvidence{{
 			Kind: ProxyEvidenceRuntimeBytecode, Description: "exact Solady legacy LibCWIA runtime shell",
-			Address: addressCopy(legacy.candidate.address), Value: common.CopyBytes(legacy.codeHash[:]),
+			Address: addressCopy(observation.candidate.address), Value: common.CopyBytes(observation.codeHash[:]),
 		}},
 	}
-	if legacy.rejected != "" {
-		result.Warnings = []string{legacy.rejected}
+	if observation.rejected != "" {
+		result.Warnings = []string{observation.rejected}
 		result.CanonicalProxyShell = false
-		switch legacy.rejected {
+		switch observation.rejected {
 		case "cwia_immutable_args_too_large":
 			result.Status = ProxyStatusCandidate
 			result.Confidence = ProxyConfidenceMedium
@@ -179,7 +176,7 @@ func soladyLegacyCWIADetectionV2(legacy proxyDetection) *ProxyDetectionV2 {
 		}
 		return result
 	}
-	resolved := legacy.proxy
+	resolved := observation.proxy
 	if resolved == nil {
 		result.Status = ProxyStatusUnknown
 		result.Confidence = ProxyConfidenceLow
@@ -188,7 +185,7 @@ func soladyLegacyCWIADetectionV2(legacy proxyDetection) *ProxyDetectionV2 {
 	}
 	result.Implementation = addressCopy(resolved.implementation)
 	result.ImplementationRole = ProxyRoleImplementation
-	result.ImplementationPath = []common.Address{legacy.candidate.address, resolved.implementation}
+	result.ImplementationPath = []common.Address{observation.candidate.address, resolved.implementation}
 	result.ImplementationHasCode = len(resolved.implementationCode) != 0
 	implementationHash := resolved.implementationHash
 	result.Evidence = append(result.Evidence, ProxyDetectionEvidence{

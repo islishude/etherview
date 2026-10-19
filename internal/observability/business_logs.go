@@ -572,7 +572,7 @@ func boundedEnrichmentSummary(stage string, details map[string]string) []slog.At
 		"diamond_routed": true, "effective_executions": true, "events": true,
 		"execution_resolutions": true, "fallback_logs": true, "frames": true,
 		"initialization_events": true, "invalid_signatures": true, "malformed": true,
-		"malformed_logs": true, "proxies": true, "proxy_detection_v2_differences": true,
+		"malformed_logs": true, "proxies": true,
 		"proxy_relevant_changes": true, "proxy_requeued": false,
 		"recovered_executions": true, "rejected_candidates": true,
 		"rejected_events": true, "trace_requeued": false, "transactions": true,

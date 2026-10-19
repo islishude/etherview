@@ -296,7 +296,7 @@ export const verificationResources = {
           unavailable: "Unavailable",
           failed: "Failed",
         },
-        v2Status: {
+        detectionStatus: {
           confirmed: "Confirmed",
           candidate: "Candidate",
           inconsistent: "Inconsistent",
@@ -711,7 +711,7 @@ export const verificationResources = {
           unavailable: "不可用",
           failed: "失败",
         },
-        v2Status: {
+        detectionStatus: {
           confirmed: "已确认",
           candidate: "候选",
           inconsistent: "证据不一致",

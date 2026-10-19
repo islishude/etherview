@@ -83,7 +83,7 @@ func (*diamondProxyDetector) SupportedModes() []ProxyDetectionMode {
 func (detector *diamondProxyDetector) Detect(
 	ctx context.Context,
 	detectionContext *ProxyDetectionContext,
-) (*ProxyDetectionV2, error) {
+) (*ProxyDetection, error) {
 	if detectionContext.Mode() == ProxyDetectionBulk && len(detector.candidateEvidence) == 0 {
 		return nil, nil
 	}
@@ -156,8 +156,8 @@ func (detector *diamondProxyDetector) Detect(
 	return result, nil
 }
 
-func (detector *diamondProxyDetector) baseResult() *ProxyDetectionV2 {
-	return &ProxyDetectionV2{
+func (detector *diamondProxyDetector) baseResult() *ProxyDetection {
+	return &ProxyDetection{
 		Family: ProxyFamilyERC2535, Variant: "diamond",
 		Status: ProxyStatusCandidate, Confidence: ProxyConfidenceLow,
 		Diamond: &DiamondDetection{
@@ -172,7 +172,7 @@ func (detector *diamondProxyDetector) baseResult() *ProxyDetectionV2 {
 	}
 }
 
-func (detector *diamondProxyDetector) inconsistent(result *ProxyDetectionV2, warning string) *ProxyDetectionV2 {
+func (detector *diamondProxyDetector) inconsistent(result *ProxyDetection, warning string) *ProxyDetection {
 	result.Status = ProxyStatusInconsistent
 	result.Confidence = ProxyConfidenceHigh
 	result.Warnings = append(result.Warnings, warning)
@@ -248,9 +248,9 @@ func readDiamondFacetsFallback(
 func (detector *diamondProxyDetector) interfaceProbe(
 	ctx context.Context,
 	detectionContext *ProxyDetectionContext,
-	result *ProxyDetectionV2,
+	result *ProxyDetection,
 	priorState diamondCallState,
-) (*ProxyDetectionV2, error) {
+) (*ProxyDetection, error) {
 	call, err := callDiamondMethod(ctx, detectionContext, "facetAddress", diamondFacetsSelector)
 	if err != nil {
 		return nil, err
@@ -386,7 +386,7 @@ func normalizeDiamondFacetRows(proxy common.Address, rows []diamondFacetRow) (Di
 func validateDiamondFacetCode(
 	ctx context.Context,
 	detectionContext *ProxyDetectionContext,
-	result *ProxyDetectionV2,
+	result *ProxyDetection,
 ) error {
 	defer func() {
 		result.Targets = append([]ProxyTarget(nil), result.Diamond.Facets...)
@@ -426,7 +426,7 @@ func validateDiamondFacetCode(
 func crossCheckDiamondLoupe(
 	ctx context.Context,
 	detectionContext *ProxyDetectionContext,
-	result *ProxyDetectionV2,
+	result *ProxyDetection,
 ) error {
 	diamond := result.Diamond
 	call, err := callDiamondMethod(ctx, detectionContext, "facetAddresses")
@@ -532,7 +532,7 @@ func crossCheckDiamondLoupe(
 	return nil
 }
 
-func probeDiamondERC165(ctx context.Context, detectionContext *ProxyDetectionContext, result *ProxyDetectionV2) {
+func probeDiamondERC165(ctx context.Context, detectionContext *ProxyDetectionContext, result *ProxyDetection) {
 	call, err := callDiamondMethod(ctx, detectionContext, "supportsInterface", diamondLoupeInterfaceID)
 	if err != nil || !call.Success {
 		result.Warnings = append(result.Warnings, "ERC-165 Loupe interface support was not reported")
@@ -647,7 +647,7 @@ func diamondLimitReason(err error) string {
 	return "limit-exceeded"
 }
 
-func markDiamondInconsistent(result *ProxyDetectionV2, warning string) {
+func markDiamondInconsistent(result *ProxyDetection, warning string) {
 	result.Status = ProxyStatusInconsistent
 	result.Confidence = ProxyConfidenceHigh
 	result.Warnings = append(result.Warnings, warning)

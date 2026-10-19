@@ -19,6 +19,8 @@ const derivedEnvironment = [
   "ETHERVIEW_DERIVED_VERIFY_FORWARD_ENABLED",
 ];
 const removedEnvironment = [
+  "ETHERVIEW_FEATURE_PROXY_DETECTION_V2",
+  "ETHERVIEW_FEATURE_PROXY_DETECTION_V2_PUBLIC",
   "ETHERVIEW_COMPILER_SANDBOX",
   "ETHERVIEW_VERIFICATION_RUNNER_ENDPOINT",
   "ETHERVIEW_VERIFICATION_RUNNER_IMAGE",
@@ -62,19 +64,14 @@ for (const name of appServices) {
     `${name} must not receive an ENS RPC`,
   );
   assert.equal(
-    service.environment?.ETHERVIEW_FEATURE_PROXY_DETECTION_V2,
-    "true",
-    `${name} Hardhat proxy detection V2`,
-  );
-  assert.equal(
     service.environment?.ETHERVIEW_FEATURE_SAFE_PROXY_DETECTION,
     "true",
     `${name} Hardhat Safe proxy detection`,
   );
   assert.equal(
-    service.environment?.ETHERVIEW_FEATURE_PROXY_DETECTION_V2_PUBLIC,
+    service.environment?.ETHERVIEW_FEATURE_DIAMOND_PROXY_DETECTION,
     "true",
-    `${name} Hardhat public proxy detection V2`,
+    `${name} Hardhat Diamond proxy detection`,
   );
   for (const key of removedEnvironment) {
     assert.ok(

@@ -467,19 +467,20 @@ snapshot or chain-lock boundary. P68 tracks production-image acceptance.
   public readiness. A reorg retains orphan observations and events and toggles
   them with the proxy journal; see
   [ADR-0010](../decisions/ADR-0010-block-pinned-proxy-stage-and-abi-dependency.md).
-- Feature-gated proxy detection V2 runs evidence-producing detectors through
-  one exact-block memoized context and retains every resolver outcome. Its Safe
-  detector fingerprints the already-fetched runtime before reading slot 0, so
-  a non-Safe bulk candidate adds no Safe RPC. Canonical Safe shell identity and
-  official singleton identity remain independent. Its dedicated CWIA detector
-  reports the exact legacy shell without attributing it to OpenZeppelin. V2 is generation-fenced
-  additive evidence and cannot authorize legacy proxy interaction; see
+- Proxy detection always runs through one shared exact-block context and
+  evidence resolver. Standard/CWIA detectors return authoritative relations
+  separately from presentation outcomes; priority cannot grant a binding or
+  interaction authority. Required fact failures retain stage error semantics;
+  optional family failures are explicit unknowns. Safe and Diamond remain
+  independently configurable. Public `proxy_detection` exposes published
+  summaries without a second visibility gate. Safe shell and official singleton
+  identities remain independent, and CWIA is not an OpenZeppelin outcome; see
   [ADR-0032](../decisions/ADR-0032-evidence-based-proxy-detection.md).
-  Ambiguous slots, self/empty implementations, and reverting or malformed
-  beacon semantics reject only that candidate after its code observation;
-  they cannot fail the block or prevent valid peers from completing. Transport
-  errors, exact-state capability loss, and malformed RPC wire remain distinct
-  retry, unavailable, and permanent stage outcomes.
+  A non-Safe fingerprint miss adds no Safe RPC. Ambiguous slots, self/empty
+  implementations and reverting or malformed Beacon semantics reject only that
+  candidate after retaining its code observation. Transport errors, exact-state
+  capability loss and malformed RPC wire remain distinct retry, unavailable
+  and permanent stage outcomes.
 - ERC-2535 Diamond identity is selector-scoped: an exact-block Loupe snapshot
   maps each bytes4 selector to an external facet or to an immutable function on
   the Diamond itself. No facet is projected as the singular implementation.

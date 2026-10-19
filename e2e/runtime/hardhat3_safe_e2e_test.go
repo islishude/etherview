@@ -5,7 +5,6 @@ package runtimee2e
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -31,7 +30,7 @@ func waitHardhatSafe(
 		var state, detector, family, variant, confidence, role, implementation string
 		var blockNumber, blockHash string
 		var canonicalShell, official bool
-		var pathLength, legacyRows, bindings, traceCreates, jobID, generation int64
+		var pathLength, relationRows, bindings, traceCreates, jobID, generation int64
 		err := h.db.QueryRow(ctx, `
 			WITH current AS (
 			    SELECT evidence.detection_state, evidence.details,
@@ -52,7 +51,7 @@ func waitHardhatSafe(
 			     AND published.state = 'complete'
 			    WHERE evidence.chain_id = 1
 			      AND evidence.address = $1
-			      AND evidence.candidate_kind = 'proxy_v2'
+			      AND evidence.candidate_kind = 'proxy_resolution'
 			      AND evidence.detection_state = 'confirmed'
 			      AND evidence.reason = 'resolver'
 			      AND evidence.canonical
@@ -98,13 +97,13 @@ func waitHardhatSafe(
 			     ))`, proxy.Bytes(), common.HexToHash(creation.Hash).Bytes()).Scan(
 			&state, &detector, &family, &variant, &confidence, &role, &implementation,
 			&canonicalShell, &official, &pathLength, &blockNumber, &blockHash,
-			&jobID, &generation, &legacyRows, &bindings, &traceCreates,
+			&jobID, &generation, &relationRows, &bindings, &traceCreates,
 		)
 		diagnostic := fmt.Sprintf(
-			"%s/%s/%s/%s/%s/%s implementation=%s shell=%t official=%t path=%d block=%s/%s job=%d/%d legacy=%d bindings=%d create2=%d",
+			"%s/%s/%s/%s/%s/%s implementation=%s shell=%t official=%t path=%d block=%s/%s job=%d/%d relations=%d bindings=%d create2=%d",
 			state, detector, family, variant, confidence, role, implementation,
 			canonicalShell, official, pathLength, blockNumber, blockHash,
-			jobID, generation, legacyRows, bindings, traceCreates,
+			jobID, generation, relationRows, bindings, traceCreates,
 		)
 		return err == nil && state == "confirmed" && detector == "safe" && family == "safe" &&
 			variant == "safe-proxy" && confidence == "high" && role == "singleton" &&
@@ -112,7 +111,7 @@ func waitHardhatSafe(
 			pathLength == 2 && blockNumber == strconv.FormatUint(
 			mustDecodeUint64(t, creation.BlockNumber), 10,
 		) && strings.EqualFold(blockHash, creation.BlockHash) && jobID > 0 && generation > 0 &&
-			legacyRows == 0 && bindings == 0 && traceCreates == 1, diagnostic, err
+			relationRows == 0 && bindings == 0 && traceCreates == 1, diagnostic, err
 	})
 
 	var detail gen.ProxyDetailsResponse
@@ -120,22 +119,21 @@ func waitHardhatSafe(
 	if err := h.getJSON(ctx, path, &detail); err != nil {
 		t.Fatalf("read Safe proxy detail: %v", err)
 	}
-	detection := detail.Data.ProxyDetectionV2
+	detection := detail.Data.ProxyDetection
 	if detail.Data.Status != gen.ProxyDetailStatusDetectedUnverified || detail.Data.Proxy != nil ||
 		detail.Data.Implementation != nil || detail.Data.ImplementationInteraction != nil ||
 		detail.Data.Management != nil || detail.Data.BindingId != nil || detection == nil ||
-		detection.Status != gen.ProxyDetectionV2StatusConfirmed || detection.Primary == nil ||
-		len(detection.Conflicts) != 0 || !detection.ShadowDiff.Different ||
-		!slices.Equal(detection.ShadowDiff.Reasons, []string{"v2_positive_legacy_not_detected"}) {
+		detection.Status != gen.ProxyDetectionStatusConfirmed || detection.Primary == nil ||
+		len(detection.Conflicts) != 0 {
 		t.Fatalf("public Safe proxy detail = %#v", detail.Data)
 	}
 	primary := detection.Primary
 	if primary.Detector != "safe" || primary.Family == nil ||
-		*primary.Family != gen.ProxyDetectionV2FamilySafe || primary.Variant == nil ||
-		*primary.Variant != "safe-proxy" || primary.Status != gen.ProxyDetectionV2StatusConfirmed ||
-		primary.Confidence != gen.ProxyDetectionV2ConfidenceHigh ||
+		*primary.Family != gen.ProxyDetectionFamilySafe || primary.Variant == nil ||
+		*primary.Variant != "safe-proxy" || primary.Status != gen.ProxyDetectionStatusConfirmed ||
+		primary.Confidence != gen.ProxyDetectionConfidenceHigh ||
 		primary.ImplementationRole == nil ||
-		*primary.ImplementationRole != gen.ProxyDetectionV2ImplementationRoleSingleton ||
+		*primary.ImplementationRole != gen.ProxyDetectionImplementationRoleSingleton ||
 		primary.Implementation == nil ||
 		common.HexToAddress(*primary.Implementation) != singleton ||
 		common.HexToAddress(primary.Proxy) != proxy || !primary.CanonicalProxyShell ||
@@ -146,6 +144,6 @@ func waitHardhatSafe(
 		common.HexToAddress(primary.ImplementationPath[1]) != singleton ||
 		primary.BlockNumber != strconv.FormatUint(mustDecodeUint64(t, creation.BlockNumber), 10) ||
 		!strings.EqualFold(primary.BlockHash, creation.BlockHash) {
-		t.Fatalf("public Safe V2 primary = %#v", primary)
+		t.Fatalf("public Safe primary = %#v", primary)
 	}
 }

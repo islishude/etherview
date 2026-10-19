@@ -604,7 +604,7 @@ func TestProxyStagePersistsExactSoladyLegacyCWIA(t *testing.T) {
 		db,
 		pool,
 		enrich.ProxyLimits{},
-		enrich.ProxyDetectionOptions{Enabled: true},
+		enrich.ProxyDetectionOptions{},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -635,7 +635,7 @@ func TestProxyStagePersistsExactSoladyLegacyCWIA(t *testing.T) {
 		       details->'primary'->>'detector'
 		FROM proxy_detection_evidence
 		WHERE chain_id = 1 AND address = $1 AND block_hash = $2
-		  AND candidate_kind = 'proxy_v2' AND reason = 'resolver'`,
+		  AND candidate_kind = 'proxy_resolution' AND reason = 'resolver'`,
 		proxy.Bytes(), block.Block.Hash().Bytes()).Scan(&family, &variant, &detector); err != nil {
 		t.Fatal(err)
 	}
@@ -693,7 +693,7 @@ func TestSoladyLegacyCWIAReplayReorgAndRestartRetainExactForks(t *testing.T) {
 		proxyStateEndpoint(t, "state-cwia-reorg", states, nil, &sync.Mutex{}, make(map[string][]string)),
 	}, ethrpc.PoolOptions{})
 	processor, err := enrich.NewPostgresProxyProcessorWithOptions(
-		db, pool, enrich.ProxyLimits{}, enrich.ProxyDetectionOptions{Enabled: true},
+		db, pool, enrich.ProxyLimits{}, enrich.ProxyDetectionOptions{},
 	)
 	if err != nil {
 		t.Fatal(err)

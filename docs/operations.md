@@ -822,106 +822,73 @@ For a bounded historical or Preview range, first ensure its canonical
 block evidence. Do not derive an identity from block-end state, `latest`, or
 the last delegation observed for an address in the block.
 
-### Proxy detection V2 shadow rollout
+### Proxy detection deployment acceptance
 
-Proxy detection V2 is additive and defaults off. It never replaces the legacy
-OpenZeppelin observation, verified binding, ABI dependency, or browser write
-authority. This shadow review is a deployment-specific prerequisite for
-setting `proxy_detection_v2_public: true`; it is not a source-code or P30 plan
-completion gate.
+Standard and Solady legacy CWIA detection always run. Published evidence is
+returned as `proxy_detection`; there is no separate collection or visibility
+switch. Safe and Diamond remain independent, default-off capabilities:
 
-1. Require `etherview migrate status` to report the current baseline compatible.
-   It includes proxy detection, Diamond, and CWIA storage. Then enable only
-   shadow collection on every `enrich`/`all` process:
+```yaml
+features:
+  safe_proxy_detection: true
+  diamond_proxy_detection: true
+```
 
-   ```yaml
-   features:
-     proxy_detection_v2: true
-     safe_proxy_detection: true
-     diamond_proxy_detection: true
-     proxy_detection_v2_public: false
-   ```
+Use `ETHERVIEW_FEATURE_SAFE_PROXY_DETECTION` and
+`ETHERVIEW_FEATURE_DIAMOND_PROXY_DETECTION` for equivalent environment overrides.
+Apply the selected family settings consistently to all enrichment processes.
 
-   The equivalent environment variables are
-   `ETHERVIEW_FEATURE_PROXY_DETECTION_V2=true` and
-   `ETHERVIEW_FEATURE_SAFE_PROXY_DETECTION=true`,
-   `ETHERVIEW_FEATURE_DIAMOND_PROXY_DETECTION=true`, and
-   `ETHERVIEW_FEATURE_PROXY_DETECTION_V2_PUBLIC=false`.
-2. Select an inclusive finalized range of at most 10,001 blocks from the chain
-   served by this deployment. Prefer a range containing a known positive for
-   every detector family intended for public exposure on that chain. Record
-   the exact chain, range, canonical boundary hashes, deployed revision/image,
-   and operator reason. The maintenance command resolves every number to its
-   current exact block hash and the durable generation fence makes retries
-   idempotent:
+The unified schema and binary are a fresh-baseline cutover. Recreate older
+development databases using [fresh database initialization](#fresh-database-initialization)
+and remove retired configuration keys; strict YAML rejects unknown fields.
+Update external clients to `proxy_detection`. There are no wire aliases,
+startup conversions or automatic historical scans.
 
-   ```sh
-   etherview reindex --config /etc/etherview/config.yaml \
-     --from "$FROM_BLOCK" --to "$TO_BLOCK" --stage proxy \
-     --reason "proxy detection V2 shadow sample for the configured chain" \
-     --allow-finalized
-   ```
+Before serving a new revision to users, run an isolated acceptance deployment
+with the exact image, schema and intended detector configuration. Record its
+chain and a finalized range of at most 10,001 blocks, including known positives
+for each enabled family and 100 deterministic negatives (or the whole smaller
+population). Use the
+[deployment review template](reviews/proxy-detection-deployment-review-template.md).
+Existing regression/CI results do not establish live-chain acceptance.
 
-   `--allow-finalized` is mandatory when the range begins at or below the
-   recorded finalized height and retains the audit reason; it does not relax
-   exact block identity or fork choice. On Ethereum Mainnet, validate an
-   official-Safe provenance claim against the maintained fixed identities
-   (currently block `25711126`) rather than assuming an arbitrary range
-   contains a Safe positive.
+For an explicitly approved bounded historical sample, record canonical boundary
+hashes and the operator reason, then replay Proxy before ABI:
 
-   Reindex `proxy` before `abi` for the same bounded range. Diamond selector
-   history and Loupe snapshots are block-hash keyed and reorg-safe; historical
-   ABI bindings become available only after the exact `proxy@2` generation is
-   published. The migration never performs an unbounded historical scan.
-3. Compare `proxy_detection_evidence` rows whose `candidate_kind` is
-   `proxy_v2` with the published legacy proxy observation from the same durable
-   job generation. Review all `inconsistent` and `unknown` results, all V2/OZ
-   disagreements, confirmed Safe bulk samples, confirmed Diamond snapshots,
-   partial/truncated Diamonds, every CWIA outcome, and exactly 100
-   deterministic negative samples (or the complete smaller negative
-   population). For Diamonds also compare `diamond_cut_events` replay with the
-   latest published `diamond_loupe_snapshots` map. Deep-only
-   `safe-compatible-proxy` remains covered by fixed-block tests and is not
-   claimed by this bulk rollout. `unknown` may be reindexed after the
-   historical RPC is healthy; `not-detected` is terminal evidence and is not
-   automatically retried.
-4. Monitor `etherview_proxy_detection_duration_ms`,
-   `etherview_proxy_detection_rpc_calls_total`,
-   `etherview_proxy_detection_rpc_errors_total`,
-   `etherview_proxy_detection_results_total`, the ambiguous/inconsistent
-   counters, and both `etherview_safe_proxy_*` counters. A non-Safe fingerprint
-   miss must add no Safe-specific storage or call request. Alert on sustained
-   Diamond `inconsistent`, `unknown`, or truncated results and on exact-state
-   RPC errors; do not reinterpret them as negative detection.
-5. Record the review using the
-   [public-promotion template](reviews/proxy-detection-v2-shadow-rollout-template.md).
-   Only a complete `pass` authorizes enabling `proxy_detection_v2_public` on
-   API processes. The contract page then shows the V2 family, evidence status,
-   Safe singleton role, and selector-filtered Diamond facet/current-cut
-   surfaces. This still does not enable implementation-as-proxy writes for
-   Safe, and Diamond calls remain addressed to the Diamond rather than to a
-   facet.
+```sh
+etherview reindex --config /etc/etherview/config.yaml \
+  --from "$FROM_BLOCK" --to "$TO_BLOCK" --stage proxy \
+  --reason "proxy detection deployment acceptance" --allow-finalized
+```
 
-Rollback is a configuration restart: disable `proxy_detection_v2_public`
-first. Disable only `safe_proxy_detection` to stop the Safe detector while
-retaining framework/OZ and Diamond shadow comparisons. Disable only
-`diamond_proxy_detection` to stop new Loupe detection and DiamondCut indexing;
-existing exact-block snapshots and raw canonical/orphan Cut facts remain for
-audit and old public generations remain readable until public V2 is disabled.
-Disable `proxy_detection_v2` to stop the entire V2 suite. Retain the additive
-evidence rows for audit.
-No database rollback or legacy reindex is required because old readers exclude
-the `proxy_v2` candidate kind. Re-enable shadow collection before public
-exposure; validation rejects the inverse configuration.
+Reindex `abi` only after the exact Proxy generations have published. The command
+resolves heights to exact hashes; generation fences make retries idempotent.
+Replaying older history can establish new authoritative CWIA coverage, so the
+range and that effect must be part of the operator's explicit backfill approval.
+Migrations and startup never enqueue that work.
 
-Solady legacy CWIA authority is not controlled by the V2 public flag. Migration
-`0050` only extends the existing `proxy@2` contracts and never enqueues or
-replays history. New blocks first processed after deployment can publish
-`mechanism=cwia`; no historical CWIA coverage is claimed. Use a shadow sample
-range already processed by a CWIA-capable revision. Reindexing older history
-can create authoritative CWIA coverage and therefore requires separate
-operator approval as a bounded CWIA backfill before it can serve as a V2
-public-promotion sample.
+Require complete current publications and independently read back canonical
+standard/CWIA relations, exact bindings, detector evidence and Diamond Loupe/Cut
+maps. Review every unknown, inconsistent and conflicting outcome. Check Safe
+shell/slot-0/official-singleton distinctions; use the maintained fixed-mainnet
+identities for official provenance claims. Bulk acceptance does not cover
+interface-only deep Safe candidates. Confirm that Safe cannot authorize ordinary
+implementation writes and that Diamond calls target the Diamond with selector
+and code identity checks. Public responses must contain the expected evidence
+without changing existing binding and management eligibility.
+
+Compare `etherview_proxy_detection_duration_ms`, RPC call/error counters,
+result/conflict counters, Safe counters, allocation/GC and database write volume
+against the prior revision for the same sample. The standard RPC path is now
+included in the shared context counters; additional summary rows are expected.
+No unexplained unknowns, publication gaps or authority changes qualify as a pass.
+
+Disabling `safe_proxy_detection` stops new Safe detection. Disabling
+`diamond_proxy_detection` stops new Loupe work and DiamondCut indexing. Neither
+removes historical facts or hides already published evidence. There is no global
+hide-results or old-detector fallback: withdraw a failing revision from service
+and deploy a corrected matching binary/schema. Do not point an older binary at
+the new baseline. Keep controlled exports for diagnosis and preserve orphan facts.
 
 The list command is newest-first and bounded to 1–1000 rows. Its default JSON
 output and optional `--format table` both report `failure_present` without

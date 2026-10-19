@@ -2801,11 +2801,11 @@ BEGIN
 END
 $$;
 
-CREATE FUNCTION reject_proxy_v2_evidence_mutation() RETURNS trigger
+CREATE FUNCTION reject_proxy_evidence_mutation() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 BEGIN
-    RAISE EXCEPTION 'proxy v2 evidence is append-only';
+    RAISE EXCEPTION 'proxy evidence is append-only';
 END
 $$;
 
@@ -5289,14 +5289,14 @@ CREATE TABLE proxy_detection_evidence (
     observed_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT proxy_detection_evidence_address_check CHECK ((octet_length(address) = 20)),
     CONSTRAINT proxy_detection_evidence_block_hash_check CHECK ((octet_length(block_hash) = 32)),
-    CONSTRAINT proxy_detection_evidence_candidate_kind_check CHECK ((candidate_kind = ANY (ARRAY['proxy'::text, 'beacon'::text, 'proxy_v2'::text]))),
+    CONSTRAINT proxy_detection_evidence_candidate_kind_check CHECK ((candidate_kind = ANY (ARRAY['proxy'::text, 'beacon'::text, 'proxy_resolution'::text]))),
     CONSTRAINT proxy_detection_evidence_check CHECK ((((durable_job_id IS NULL) AND (job_generation IS NULL)) OR ((durable_job_id IS NOT NULL) AND (job_generation > 0)))),
     CONSTRAINT proxy_detection_evidence_code_hash_check CHECK ((octet_length(code_hash) = 32)),
     CONSTRAINT proxy_detection_evidence_details_check CHECK ((jsonb_typeof(details) = 'object'::text)),
     CONSTRAINT proxy_detection_evidence_detection_state_check CHECK ((detection_state = ANY (ARRAY['not_detected'::text, 'rejected'::text, 'confirmed'::text, 'candidate'::text, 'inconsistent'::text, 'unknown'::text]))),
     CONSTRAINT proxy_detection_evidence_reason_check CHECK ((reason = ANY (ARRAY['empty_code'::text, 'not_proxy'::text, 'minimal_zero_implementation'::text, 'immutable_args_too_large'::text, 'immutable_args_creation_unverified'::text, 'self_implementation'::text, 'cwia_invalid_length'::text, 'cwia_immutable_args_too_large'::text, 'cwia_zero_implementation'::text, 'cwia_self_implementation'::text, 'implementation_has_no_code'::text, 'invalid_slot_address'::text, 'ambiguous_slots'::text, 'beacon_has_no_code'::text, 'invalid_beacon_implementation'::text, 'resolver'::text]))),
     CONSTRAINT proxy_detection_evidence_stage_version_check CHECK ((stage_version = 2)),
-    CONSTRAINT proxy_detection_evidence_v2_shape_check CHECK ((((candidate_kind = 'proxy_v2'::text) AND (reason = 'resolver'::text) AND (detection_state = ANY (ARRAY['confirmed'::text, 'candidate'::text, 'inconsistent'::text, 'not_detected'::text, 'unknown'::text]))) OR ((candidate_kind <> 'proxy_v2'::text) AND (reason <> 'resolver'::text) AND (detection_state = ANY (ARRAY['not_detected'::text, 'rejected'::text]))))),
+    CONSTRAINT proxy_detection_evidence_shape_check CHECK ((((candidate_kind = 'proxy_resolution'::text) AND (reason = 'resolver'::text) AND (detection_state = ANY (ARRAY['confirmed'::text, 'candidate'::text, 'inconsistent'::text, 'not_detected'::text, 'unknown'::text]))) OR ((candidate_kind <> 'proxy_resolution'::text) AND (reason <> 'resolver'::text) AND (detection_state = ANY (ARRAY['not_detected'::text, 'rejected'::text]))))),
     CONSTRAINT proxy_detection_evidence_chain_id_address_block_hash_stage__key UNIQUE NULLS NOT DISTINCT (chain_id, address, block_hash, stage_version, candidate_kind, durable_job_id, job_generation),
     CONSTRAINT proxy_detection_evidence_pkey PRIMARY KEY (id),
     CONSTRAINT proxy_detection_evidence_chain_id_block_number_block_hash_fkey FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash),
@@ -6757,7 +6757,7 @@ UNION ALL
 
 -- Triggers
 
-CREATE TRIGGER beacon_observation_generations_immutable BEFORE DELETE OR UPDATE ON beacon_observation_generations FOR EACH ROW EXECUTE FUNCTION reject_proxy_v2_evidence_mutation();
+CREATE TRIGGER beacon_observation_generations_immutable BEFORE DELETE OR UPDATE ON beacon_observation_generations FOR EACH ROW EXECUTE FUNCTION reject_proxy_evidence_mutation();
 
 CREATE TRIGGER beacon_observation_generations_source_guard BEFORE INSERT ON beacon_observation_generations FOR EACH ROW EXECUTE FUNCTION enforce_proxy_observation_generation();
 
@@ -6837,7 +6837,7 @@ CREATE TRIGGER normalized_traces_derived_attempt_canonicality AFTER UPDATE OF ca
 
 CREATE TRIGGER operator_labels_search_catalog_trigger AFTER INSERT OR DELETE OR UPDATE ON operator_labels FOR EACH ROW EXECUTE FUNCTION record_search_catalog_document('label');
 
-CREATE TRIGGER proxy_artifact_resolutions_immutable BEFORE DELETE OR UPDATE ON proxy_artifact_resolutions FOR EACH ROW EXECUTE FUNCTION reject_proxy_v2_evidence_mutation();
+CREATE TRIGGER proxy_artifact_resolutions_immutable BEFORE DELETE OR UPDATE ON proxy_artifact_resolutions FOR EACH ROW EXECUTE FUNCTION reject_proxy_evidence_mutation();
 
 CREATE TRIGGER proxy_artifact_resolutions_source_guard BEFORE INSERT ON proxy_artifact_resolutions FOR EACH ROW EXECUTE FUNCTION enforce_proxy_artifact_resolution();
 
@@ -6851,17 +6851,17 @@ CREATE TRIGGER proxy_interaction_coverage_job_trigger AFTER INSERT OR DELETE OR 
 
 CREATE TRIGGER proxy_interaction_coverage_outbox_trigger AFTER INSERT OR DELETE OR UPDATE ON transactional_outbox FOR EACH ROW EXECUTE FUNCTION refresh_proxy_interaction_coverage_from_outbox();
 
-CREATE TRIGGER proxy_observation_generations_immutable BEFORE DELETE OR UPDATE ON proxy_observation_generations FOR EACH ROW EXECUTE FUNCTION reject_proxy_v2_evidence_mutation();
+CREATE TRIGGER proxy_observation_generations_immutable BEFORE DELETE OR UPDATE ON proxy_observation_generations FOR EACH ROW EXECUTE FUNCTION reject_proxy_evidence_mutation();
 
 CREATE TRIGGER proxy_observation_generations_source_guard BEFORE INSERT ON proxy_observation_generations FOR EACH ROW EXECUTE FUNCTION enforce_proxy_observation_generation();
 
-CREATE TRIGGER proxy_replay_targets_immutable BEFORE DELETE OR UPDATE ON proxy_replay_targets FOR EACH ROW EXECUTE FUNCTION reject_proxy_v2_evidence_mutation();
+CREATE TRIGGER proxy_replay_targets_immutable BEFORE DELETE OR UPDATE ON proxy_replay_targets FOR EACH ROW EXECUTE FUNCTION reject_proxy_evidence_mutation();
 
 CREATE TRIGGER token_contracts_search_catalog_trigger AFTER INSERT OR DELETE OR UPDATE ON token_contracts FOR EACH ROW EXECUTE FUNCTION record_search_catalog_document('token');
 
 CREATE TRIGGER token_events_chart_dirty_trigger AFTER INSERT OR DELETE OR UPDATE ON token_events FOR EACH ROW EXECUTE FUNCTION mark_chart_rollup_dirty();
 
-CREATE TRIGGER uups_implementation_observation_generations_immutable BEFORE DELETE OR UPDATE ON uups_implementation_observation_generations FOR EACH ROW EXECUTE FUNCTION reject_proxy_v2_evidence_mutation();
+CREATE TRIGGER uups_implementation_observation_generations_immutable BEFORE DELETE OR UPDATE ON uups_implementation_observation_generations FOR EACH ROW EXECUTE FUNCTION reject_proxy_evidence_mutation();
 
 CREATE TRIGGER uups_implementation_observation_generations_source_guard BEFORE INSERT ON uups_implementation_observation_generations FOR EACH ROW EXECUTE FUNCTION enforce_proxy_observation_generation();
 
@@ -6889,7 +6889,7 @@ CREATE TRIGGER verification_results_v2_immutable BEFORE DELETE OR UPDATE ON veri
 
 CREATE CONSTRAINT TRIGGER verification_results_v2_terminal_job AFTER INSERT ON verification_results DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION enforce_verifier_v2_result_job();
 
-CREATE TRIGGER verified_contract_proxy_artifacts_immutable BEFORE DELETE OR UPDATE ON verified_contract_proxy_artifacts FOR EACH ROW EXECUTE FUNCTION reject_proxy_v2_evidence_mutation();
+CREATE TRIGGER verified_contract_proxy_artifacts_immutable BEFORE DELETE OR UPDATE ON verified_contract_proxy_artifacts FOR EACH ROW EXECUTE FUNCTION reject_proxy_evidence_mutation();
 
 CREATE TRIGGER verified_contract_proxy_artifacts_source_guard BEFORE INSERT ON verified_contract_proxy_artifacts FOR EACH ROW EXECUTE FUNCTION enforce_verified_contract_proxy_artifact();
 
@@ -6982,7 +6982,7 @@ BEGIN
         current_schema(), current_schema());
     EXECUTE format('ALTER FUNCTION %I.reject_durable_stage_publication_mutation() SET search_path = %I, pg_catalog',
         current_schema(), current_schema());
-    EXECUTE format('ALTER FUNCTION %I.reject_proxy_v2_evidence_mutation() SET search_path = %I, pg_catalog',
+    EXECUTE format('ALTER FUNCTION %I.reject_proxy_evidence_mutation() SET search_path = %I, pg_catalog',
         current_schema(), current_schema());
     EXECUTE format('ALTER FUNCTION %I.reject_verified_proxy_binding_mutation() SET search_path = %I, pg_catalog',
         current_schema(), current_schema());

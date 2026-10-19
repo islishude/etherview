@@ -166,7 +166,7 @@ func TestProxyPublicQueryHistoryCursorReplacementAndClone(t *testing.T) {
 	}
 	processor, err := enrich.NewPostgresProxyProcessorWithOptions(
 		db, pool, enrich.ProxyLimits{}, enrich.ProxyDetectionOptions{
-			Enabled: true, SafeEnabled: true,
+			SafeEnabled: true,
 		},
 	)
 	if err != nil {
@@ -206,7 +206,7 @@ func TestProxyPublicQueryHistoryCursorReplacementAndClone(t *testing.T) {
 	}
 	if detail.Status != query.ProxyStatusDetectedUnverified || detail.Implementation == nil ||
 		common.HexToAddress(detail.Implementation.Address) != implementationThree ||
-		len(detail.DetectionV2) == 0 {
+		len(detail.Detection) == 0 {
 		t.Fatalf("current positive proxy detail=%+v", detail)
 	}
 
@@ -255,7 +255,7 @@ func TestProxyPublicQueryHistoryCursorReplacementAndClone(t *testing.T) {
 		t.Fatal(err)
 	}
 	if replaced.Status != query.ProxyStatusNotDetected || replaced.Proxy != nil || len(replaced.Evidence) == 0 ||
-		len(replaced.DetectionV2) == 0 {
+		len(replaced.Detection) == 0 {
 		t.Fatalf("proxy detail after code replacement=%+v", replaced)
 	}
 	initializations, err := reader.ProxyInitializations(ctx, proxy.Hex(), "", 20)

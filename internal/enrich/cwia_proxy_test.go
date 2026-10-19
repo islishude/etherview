@@ -114,9 +114,8 @@ func TestRPCProxyDetectorRecognizesSoladyLegacyCWIA(t *testing.T) {
 		proxy: runtime, implementation: {0x60, 0x00},
 	}}
 	detector := rpcProxyDetector{
-		caller:    caller,
-		limits:    ProxyLimits{MaxCandidates: 2, MaxCodeBytes: 1 << 20, MaxDetailsBytes: 1024},
-		v2Enabled: true,
+		caller: caller,
+		limits: ProxyLimits{MaxCandidates: 2, MaxCodeBytes: 1 << 20, MaxDetailsBytes: 1024},
 	}
 	job := Job{ID: "cwia", Stage: ProxyStage, ChainID: "1", BlockHash: uintWord(901), BlockNumber: 901}
 	detections, err := detector.detectBlock(t.Context(), job, []proxyCandidate{{address: proxy, force: true}})
@@ -132,12 +131,12 @@ func TestRPCProxyDetectorRecognizesSoladyLegacyCWIA(t *testing.T) {
 		!reflect.DeepEqual(resolved.immutableArgs, args) || resolved.evidenceState != "exact" {
 		t.Fatalf("resolved=%+v", resolved)
 	}
-	if detections[0].v2.Primary == nil || detections[0].v2.Primary.Detector != "solady-cwia" ||
-		detections[0].v2.Primary.DetectorVersion != soladyLegacyCWIADetectorVersion ||
-		detections[0].v2.Primary.Family != ProxyFamilyCWIA ||
-		detections[0].v2.Primary.Variant != soladyLegacyCWIAVariant ||
-		detections[0].v2.Primary.Status != ProxyStatusConfirmed {
-		t.Fatalf("v2=%+v", detections[0].v2)
+	if detections[0].resolution.Primary == nil || detections[0].resolution.Primary.Detector != "solady-cwia" ||
+		detections[0].resolution.Primary.DetectorVersion != soladyLegacyCWIADetectorVersion ||
+		detections[0].resolution.Primary.Family != ProxyFamilyCWIA ||
+		detections[0].resolution.Primary.Variant != soladyLegacyCWIAVariant ||
+		detections[0].resolution.Primary.Status != ProxyStatusConfirmed {
+		t.Fatalf("resolution=%+v", detections[0].resolution)
 	}
 	caller.mu.Lock()
 	calls := append([]proxyRPCCall(nil), caller.calls...)
@@ -167,9 +166,8 @@ func TestRPCProxyDetectorRejectsInvalidSoladyLegacyCWIAIdentity(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			caller := &proxyStateCaller{code: map[common.Address][]byte{proxy: runtime}}
 			detector := rpcProxyDetector{
-				caller:    caller,
-				limits:    ProxyLimits{MaxCandidates: 2, MaxCodeBytes: 1 << 20, MaxDetailsBytes: 1024},
-				v2Enabled: true,
+				caller: caller,
+				limits: ProxyLimits{MaxCandidates: 2, MaxCodeBytes: 1 << 20, MaxDetailsBytes: 1024},
 			}
 			detections, err := detector.detectBlock(t.Context(), Job{
 				ID: name, Stage: ProxyStage, ChainID: "1", BlockHash: uintWord(902), BlockNumber: 902,
@@ -178,7 +176,7 @@ func TestRPCProxyDetectorRejectsInvalidSoladyLegacyCWIAIdentity(t *testing.T) {
 				t.Fatal(err)
 			}
 			if len(detections) != 1 || detections[0].proxy != nil || detections[0].rejected == "" ||
-				detections[0].v2.Primary == nil || detections[0].v2.Primary.Status != ProxyStatusInconsistent {
+				detections[0].resolution.Primary == nil || detections[0].resolution.Primary.Status != ProxyStatusInconsistent {
 				t.Fatalf("detections=%+v", detections)
 			}
 		})
@@ -188,8 +186,8 @@ func TestRPCProxyDetectorRejectsInvalidSoladyLegacyCWIAIdentity(t *testing.T) {
 func TestCWIAAndDiamondDetectionsAreComposedLayers(t *testing.T) {
 	t.Parallel()
 	proxy := testAddress(0x7a)
-	left := ProxyDetectionV2{Proxy: proxy, Family: ProxyFamilyCWIA}
-	right := ProxyDetectionV2{Proxy: proxy, Family: ProxyFamilyERC2535}
+	left := ProxyDetection{Proxy: proxy, Family: ProxyFamilyCWIA}
+	right := ProxyDetection{Proxy: proxy, Family: ProxyFamilyERC2535}
 	if proxyDetectionsConflict(left, right) || proxyDetectionsConflict(right, left) {
 		t.Fatal("CWIA and Diamond layers were treated as a detector conflict")
 	}

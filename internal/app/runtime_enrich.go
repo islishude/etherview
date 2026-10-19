@@ -59,7 +59,7 @@ func (assembly runtimeAssembly) registerEnrichComponents() error {
 		}
 		proxyProcessor, err := enrich.NewPostgresProxyProcessorWithOptions(
 			db, rpcBuild.Pool, enrich.ProxyLimits{}, enrich.ProxyDetectionOptions{
-				Enabled: cfg.Features.ProxyDetectionV2, SafeEnabled: cfg.Features.SafeProxyDetection,
+				SafeEnabled:    cfg.Features.SafeProxyDetection,
 				DiamondEnabled: cfg.Features.DiamondProxyDetection,
 				Observer:       registry,
 			},

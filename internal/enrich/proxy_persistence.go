@@ -80,7 +80,6 @@ func (processor *PostgresProxyProcessor) persistTx(
 	beaconObservations := collected.beacons
 	proxyCount := collected.proxies
 	rejectedCount := collected.rejected
-	v2DifferenceCount := collected.v2Differences
 	uupsCompatibleCount := collected.uupsCompatible
 	uupsRejectedCount := collected.uupsRejected
 	addresses := make([]common.Address, 0, len(codeObservations))
@@ -107,13 +106,11 @@ func (processor *PostgresProxyProcessor) persistTx(
 				return StageResult{}, err
 			}
 		}
-		if detection.v2Active {
-			if err := processor.persistProxyDetectionV2(ctx, tx, job, detection); err != nil {
-				return StageResult{}, err
-			}
-			if err := persistDiamondDetectionSnapshots(ctx, tx, job, detection.v2); err != nil {
-				return StageResult{}, err
-			}
+		if err := processor.persistProxyDetectionSummary(ctx, tx, job, detection); err != nil {
+			return StageResult{}, err
+		}
+		if err := persistDiamondDetectionSnapshots(ctx, tx, job, detection.resolution); err != nil {
+			return StageResult{}, err
 		}
 	}
 	for _, detection := range beacons {
@@ -199,20 +196,19 @@ func (processor *PostgresProxyProcessor) persistTx(
 	details := map[string]string{
 		"outcome": outcome, "candidates": strconv.Itoa(len(detections) + len(beacons) + len(uupsProbes)),
 		"code_observations": strconv.Itoa(len(codeObservations)), "proxies": strconv.Itoa(proxyCount),
-		"beacons":                        strconv.Itoa(len(beaconObservations)),
-		"uups_probes":                    strconv.Itoa(len(uupsProbes)),
-		"uups_compatible":                strconv.Itoa(uupsCompatibleCount),
-		"uups_rejected":                  strconv.Itoa(uupsRejectedCount),
-		"upgrade_events":                 strconv.Itoa(len(events.upgrades)),
-		"initialization_events":          strconv.Itoa(len(events.initializations)),
-		"diamond_cut_events":             strconv.Itoa(len(events.diamondCuts)),
-		"rejected_events":                strconv.Itoa(events.rejected),
-		"rejected_candidates":            strconv.Itoa(rejectedCount),
-		"proxy_detection_v2_differences": strconv.Itoa(v2DifferenceCount),
-		"carried_proxies":                strconv.FormatInt(carried.proxies, 10),
-		"carried_beacons":                strconv.FormatInt(carried.beacons, 10),
-		"carried_uups":                   strconv.FormatInt(carried.uups, 10),
-		"carried_resolutions":            strconv.FormatInt(carried.resolutions, 10),
+		"beacons":               strconv.Itoa(len(beaconObservations)),
+		"uups_probes":           strconv.Itoa(len(uupsProbes)),
+		"uups_compatible":       strconv.Itoa(uupsCompatibleCount),
+		"uups_rejected":         strconv.Itoa(uupsRejectedCount),
+		"upgrade_events":        strconv.Itoa(len(events.upgrades)),
+		"initialization_events": strconv.Itoa(len(events.initializations)),
+		"diamond_cut_events":    strconv.Itoa(len(events.diamondCuts)),
+		"rejected_events":       strconv.Itoa(events.rejected),
+		"rejected_candidates":   strconv.Itoa(rejectedCount),
+		"carried_proxies":       strconv.FormatInt(carried.proxies, 10),
+		"carried_beacons":       strconv.FormatInt(carried.beacons, 10),
+		"carried_uups":          strconv.FormatInt(carried.uups, 10),
+		"carried_resolutions":   strconv.FormatInt(carried.resolutions, 10),
 		"carried_negative_evidence": strconv.FormatInt(
 			carried.negativeEvidence, 10,
 		),
@@ -392,24 +388,24 @@ func (processor *PostgresProxyProcessor) persistProxyDetectionEvidence(
 	return nil
 }
 
-func (processor *PostgresProxyProcessor) persistProxyDetectionV2(
+func (processor *PostgresProxyProcessor) persistProxyDetectionSummary(
 	ctx context.Context,
 	tx pgx.Tx,
 	job Job,
 	detection proxyDetection,
 ) error {
-	details, err := marshalProxyDetectionResolution(detection.v2)
+	details, err := marshalProxyDetectionResolution(detection.resolution)
 	if err != nil {
-		return fmt.Errorf("encode proxy detection V2 resolution: %w", err)
+		return fmt.Errorf("encode proxy detection resolution: %w", err)
 	}
 	if len(details) > processor.limits.MaxDetailsBytes {
-		return Permanent(errors.New("proxy detection V2 resolution exceeds configured limit"))
+		return Permanent(errors.New("proxy detection resolution exceeds configured limit"))
 	}
 	jobID, generation, err := proxyGenerationSQLIdentity(job)
 	if err != nil {
 		return Permanent(err)
 	}
-	state := strings.ReplaceAll(string(detection.v2.Status), "-", "_")
+	state := strings.ReplaceAll(string(detection.resolution.Status), "-", "_")
 	result, err := func() (int64, error) {
 		var queryValue0 pgtype.Numeric
 		if err := queryValue0.Scan(job.ChainID); err != nil {
@@ -422,14 +418,14 @@ func (processor *PostgresProxyProcessor) persistProxyDetectionV2(
 		if job.Stage.Version > 2147483647 {
 			return 0, errors.New("invalid stored query value")
 		}
-		return dbgen.New(tx).EnrichLegacyUpsertProxyDetectionEvidence(ctx, dbgen.EnrichLegacyUpsertProxyDetectionEvidenceParams{ChainID: queryValue0, Address: detection.candidate.address[:], BlockNumber: queryValue1, BlockHash: job.BlockHash[:], StageVersion: int32(job.Stage.Version), CodeHash: detection.codeHash[:], CandidateKind: "proxy_v2", DetectionState: state, Reason: "resolver", DurableJobID: jobID, JobGeneration: generation, Details: []byte(string(details))})
+		return dbgen.New(tx).EnrichLegacyUpsertProxyDetectionEvidence(ctx, dbgen.EnrichLegacyUpsertProxyDetectionEvidenceParams{ChainID: queryValue0, Address: detection.candidate.address[:], BlockNumber: queryValue1, BlockHash: job.BlockHash[:], StageVersion: int32(job.Stage.Version), CodeHash: detection.codeHash[:], CandidateKind: "proxy_resolution", DetectionState: state, Reason: "resolver", DurableJobID: jobID, JobGeneration: generation, Details: []byte(string(details))})
 	}()
 	if err != nil {
-		return fmt.Errorf("persist proxy detection V2 resolution: %w", err)
+		return fmt.Errorf("persist proxy detection resolution: %w", err)
 	}
 	affected := result
 	if affected != 1 {
-		return Permanent(errors.New("existing proxy detection V2 conflicts with RPC state"))
+		return Permanent(errors.New("existing proxy detection conflicts with RPC state"))
 	}
 	return nil
 }

@@ -2642,7 +2642,7 @@ export interface components {
             mechanism?: components["schemas"]["ProxyMechanism"];
             pattern?: components["schemas"]["ProxyPattern"];
             proxy?: components["schemas"]["ProxyContractIdentity"];
-            proxy_detection_v2?: components["schemas"]["ProxyDetectionV2"];
+            proxy_detection?: components["schemas"]["ProxyDetection"];
             snapshot: components["schemas"]["CatalogSnapshot"];
             /** @enum {string} */
             standard_version?: "5.6.1";
@@ -2654,48 +2654,44 @@ export interface components {
         };
         /** @enum {string} */
         ProxyDetailStatus: "not_detected" | "detected_unverified" | "verified" | "unavailable" | "failed";
-        ProxyDetectionV2: {
+        ProxyDetection: {
             conflicts: string[];
-            outcomes: components["schemas"]["ProxyDetectionV2Outcome"][];
-            primary?: components["schemas"]["ProxyDetectionV2Outcome"];
-            shadow_diff: {
-                different: boolean;
-                reasons: string[];
-            };
-            status: components["schemas"]["ProxyDetectionV2Status"];
+            outcomes: components["schemas"]["ProxyDetectionOutcome"][];
+            primary?: components["schemas"]["ProxyDetectionOutcome"];
+            status: components["schemas"]["ProxyDetectionStatus"];
         };
         /** @enum {string} */
-        ProxyDetectionV2Confidence: "high" | "medium" | "low";
-        ProxyDetectionV2Evidence: {
+        ProxyDetectionConfidence: "high" | "medium" | "low";
+        ProxyDetectionEvidence: {
             address?: components["schemas"]["Address"];
             description: string;
-            kind: components["schemas"]["ProxyDetectionV2EvidenceKind"];
+            kind: components["schemas"]["ProxyDetectionEvidenceKind"];
             slot?: components["schemas"]["Hash"];
             value?: string;
         };
         /** @enum {string} */
-        ProxyDetectionV2EvidenceKind: "runtime-bytecode" | "runtime-code-hash" | "storage-slot" | "contract-call" | "factory-log" | "deployment-registry" | "execution-trace" | "loupe-call" | "diamond-cut-event" | "facet-code" | "erc165" | "verified-source";
+        ProxyDetectionEvidenceKind: "runtime-bytecode" | "runtime-code-hash" | "storage-slot" | "contract-call" | "factory-log" | "deployment-registry" | "execution-trace" | "loupe-call" | "diamond-cut-event" | "facet-code" | "erc165" | "verified-source";
         /** @enum {string} */
-        ProxyDetectionV2Family: "erc1167" | "cwia" | "erc1967" | "erc2535" | "safe" | "custom";
+        ProxyDetectionFamily: "erc1167" | "cwia" | "erc1967" | "erc2535" | "safe" | "custom";
         /** @enum {string} */
-        ProxyDetectionV2ImplementationRole: "implementation" | "singleton";
-        ProxyDetectionV2Outcome: {
+        ProxyDetectionImplementationRole: "implementation" | "singleton";
+        ProxyDetectionOutcome: {
             admin?: components["schemas"]["Address"];
             beacon?: components["schemas"]["Address"];
             block_hash: components["schemas"]["Hash"];
             block_number: components["schemas"]["Quantity"];
             canonical_proxy_shell: boolean;
             chain_id: components["schemas"]["Quantity"];
-            confidence: components["schemas"]["ProxyDetectionV2Confidence"];
+            confidence: components["schemas"]["ProxyDetectionConfidence"];
             detector: string;
             detector_version: string;
             diamond?: components["schemas"]["DiamondDetection"];
-            evidence: components["schemas"]["ProxyDetectionV2Evidence"][];
-            family?: components["schemas"]["ProxyDetectionV2Family"];
+            evidence: components["schemas"]["ProxyDetectionEvidence"][];
+            family?: components["schemas"]["ProxyDetectionFamily"];
             implementation?: components["schemas"]["Address"];
             implementation_has_code: boolean;
             implementation_path: components["schemas"]["Address"][];
-            implementation_role?: components["schemas"]["ProxyDetectionV2ImplementationRole"];
+            implementation_role?: components["schemas"]["ProxyDetectionImplementationRole"];
             initial_singleton?: components["schemas"]["Address"];
             official_singleton: boolean;
             priority: number;
@@ -2703,13 +2699,13 @@ export interface components {
             singleton_changed: boolean;
             singleton_deployment_type?: string;
             singleton_version?: string;
-            status: components["schemas"]["ProxyDetectionV2Status"];
+            status: components["schemas"]["ProxyDetectionStatus"];
             targets: components["schemas"]["ProxyTarget"][];
             variant?: string;
             warnings: string[];
         };
         /** @enum {string} */
-        ProxyDetectionV2Status: "confirmed" | "candidate" | "inconsistent" | "not-detected" | "unknown";
+        ProxyDetectionStatus: "confirmed" | "candidate" | "inconsistent" | "not-detected" | "unknown";
         /** @enum {string} */
         ProxyEvidenceResult: "authoritative" | "corroborating" | "conflicting" | "rejected";
         /** @enum {string} */

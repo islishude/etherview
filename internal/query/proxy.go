@@ -84,7 +84,7 @@ type ProxyDetail struct {
 	Beacon                *ProxyIdentity
 	Management            *ProxyManagement
 	Evidence              []ProxyEvidence
-	DetectionV2           json.RawMessage
+	Detection             json.RawMessage
 }
 
 type ProxyHistoryCoverage struct {
@@ -216,16 +216,16 @@ func (r *PostgresReader) Proxy(ctx context.Context, rawAddress string) (ProxyDet
 		default:
 			return fmt.Errorf("stored proxy stage state %q is invalid", snapshot.StageState)
 		}
-		v2, v2Err := queries.GetLatestPublishedProxyDetectionV2(
+		summary, summaryErr := queries.GetLatestPublishedProxyDetectionSummary(
 			ctx, chainID, address.Bytes(),
 		)
-		if v2Err == nil {
-			if !json.Valid(v2) {
-				return errors.New("stored proxy detection V2 is invalid JSON")
+		if summaryErr == nil {
+			if !json.Valid(summary) {
+				return errors.New("stored proxy detection is invalid JSON")
 			}
-			result.DetectionV2 = append(json.RawMessage(nil), v2...)
-		} else if !errors.Is(v2Err, pgx.ErrNoRows) {
-			return v2Err
+			result.Detection = append(json.RawMessage(nil), summary...)
+		} else if !errors.Is(summaryErr, pgx.ErrNoRows) {
+			return summaryErr
 		}
 
 		detection, detectionErr := queries.GetLatestPublishedProxyDetection(

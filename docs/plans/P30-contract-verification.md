@@ -20,7 +20,7 @@ and disposable accelerator boundaries.
 - [Architecture](../architecture/overview.md)
 - [ADR catalog](../decisions/index.md)
 - [Proxy baseline review](../reviews/P58-oz-proxy-baseline.md)
-- [Proxy shadow rollout template](../reviews/proxy-detection-v2-shadow-rollout-template.md)
+- [Proxy deployment review template](../reviews/proxy-detection-deployment-review-template.md)
 - [ADR-0001](../decisions/ADR-0001-modular-roles-and-postgresql-truth.md)
 - [ADR-0002](../decisions/ADR-0002-identity-bound-repair-and-explicit-reindex.md)
 - [ADR-0003](../decisions/ADR-0003-spec-first-api-and-canonical-public-identifiers.md)
@@ -68,7 +68,7 @@ and disposable accelerator boundaries.
 | P30-T20 | done | P30-T18, P20, P40, P50 | Persisted-first, bounded read-time ABI decoding for transaction logs | codec, catalog, API, frontend, reorg, and PostgreSQL tests |
 | P30-T24 | done | P20-T13 | Shared block-pinned detection context, detector interface, resolver, structured outcomes, and memoized RPC accounting | detector/resolver unit and fuzz tests; existing OZ suite |
 | P30-T25 | done | P30-T24 | Generated Safe runtime/singleton/factory manifests plus bulk and deep Safe detectors, including slot 0 and `masterCopy()` consistency | generated-manifest check; positive, negative, adversarial, and fixed-block integration fixtures |
-| P30-T26 | done | P30-T25 | Additive API/UI persistence, shadow-mode diffing, metrics, feature flag, runbook, rollback, and bounded backfill | OpenAPI generation; integration/race/browser/runtime gates; rollout-control review |
+| P30-T26 | done | P30-T25 | Structured API/UI persistence, metrics, runbook and bounded backfill (rollout controls superseded by P30-T137) | OpenAPI generation; integration/race/browser/runtime gates; rollout-control review |
 | P30-T27 | done | P30-T26 | Add a factory-created SafeProxy 1.4.1 production-path E2E through Trace discovery, generation-fenced persistence, and the public read boundary | pinned artifact checks; Compose rendering; monolith/split Hardhat production E2E; common gates |
 | P30-T28 | done | P20, P40, P50, P30-T19, P30-T20 | `trace@2` log attribution, complete call ABI projection, generated API, compact Web disclosure, migration, rollout, and regression closure | codec, trace, PostgreSQL, generation, browser, runtime, Hardhat, and common gates |
 | P30-T31 | done | P30-T28, P30-T48 | Expose canonical transaction failure decoding and render custom plus Solidity builtin errors in the transaction Overview | codec, catalog, generated API, Web, PostgreSQL, browser, runtime, and common gates |
@@ -89,7 +89,7 @@ and disposable accelerator boundaries.
 | P30-T64 | done | P30-T14, P40, P50, P30-T42 | Pinned v0.3.3 helper subprocess, virtual source filesystem, deterministic exact compilation, runtime identity, and compiler routing | compiler unit/security/process tests, license and image checks |
 | P30-T65 | done | P30-T64 | Language-aware queue claiming, lease-bound Geas provenance, exact runtime/optional creation matching, canonical publication, and per-family availability | worker, repository, PostgreSQL integration and race tests |
 | P30-T66 | done | P30-T65 | Native address API, fixed compiler listing, Etherscan reads, bilingual Web submission and plain-text source workspace | generated clients, Go/Web/API/browser tests |
-| P30-T68 | done | P20-T13, P30-T24 | Exact legacy LibCWIA runtime parser, authoritative `proxy@2` projection, independent V2 detector, and persistent `cwia` mechanism | parser/detector unit and fuzz tests; PostgreSQL constraints; `make source-check` |
+| P30-T68 | done | P20-T13, P30-T24 | Exact legacy LibCWIA runtime parser, authoritative `proxy@2` projection, independent evidence detector, and persistent `cwia` mechanism | parser/detector unit and fuzz tests; PostgreSQL constraints; `make source-check` |
 | P30-T69 | done | P30-T68 | ABI and proxy-verification binding support plus generated native/Etherscan API contracts for raw CWIA arguments | query, verification, API, generation, integration, and reorg tests |
 | P30-T73 | done | P30-T69 | Replace the provisional NatSpec schema with bounded canonical Solady CWIA Solidity-AST derivation, dynamic bytes/array decoding, code-hash read projection, and exact-binding write fencing | verifier/query/API/Web tests; production Hardhat/browser/runtime gates; common gates |
 | P30-T77 | done | P30-T73 | Resolve exact legacy CWIA event, Trace, Method, selector, and calldata ABI from an exact-address implementation artifact first or a same-chain same-code artifact without granting verification or write authority | focused query/ABI tests; PostgreSQL integration/race; production Hardhat monolith/split; common gates |
@@ -109,6 +109,8 @@ and disposable accelerator boundaries.
 
 | P30-T136 | done | P30-T128, P30-T130 | Parallel native Vyper fixtures, Vyper application and Hardhat acceptance over one image per architecture | Independent parity/count regressions, identity-bound aggregation, two native CI runs and failed-job rerun evidence |
 
+| P30-T137 | done | P30-T24, P30-T26, P30-T62, P30-T77 | Unify proxy detection, remove generation feature flags and shadow comparison, publish an unversioned detection contract while preserving exact binding and authorization | Baseline differential fixtures, RPC/error regressions, PostgreSQL/reorg, browser, production topology and generated/schema/governance gates |
+
 ## Acceptance
 
 - [x] Compiler/helper identity, exact runtime matching and canonical publication are authenticated.
@@ -125,6 +127,16 @@ and disposable accelerator boundaries.
 None. P70/P73 retain independent release blockers.
 
 ## Evidence
+
+P30-T137 passed seven immutable pre-change observation fixtures, focused
+detector/authorization/RPC race regressions, the full PostgreSQL integration
+race suite, all 50 browser tests, and fresh-schema acceptance. The current
+production image passed runtime, local x402, Hardhat and Foundry acceptance in
+both monolith and split roles. Generation, source, lint, Go/Web/race, security,
+license, deployment, docs and plan gates passed; the local license scanner
+required an explicit current `GOROOT`. These are local macOS ARM64/Docker
+results, not new native Linux matrix, live-chain or production rollout evidence.
+ADR-0032 owns the fresh-baseline cutover and separate deployment review.
 
 P30-T136 passed local helper/aggregation regressions, application count/parity race
 tests, provider compatibility, tagged E2E lint, source/docs/plan/deployment checks

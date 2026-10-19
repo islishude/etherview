@@ -1283,14 +1283,14 @@ func waitHardhatDiamond(
 	}
 	if detail.Data.Status != gen.ProxyDetailStatusDetectedUnverified ||
 		detail.Data.Implementation != nil || detail.Data.ImplementationAddresses == nil ||
-		len(*detail.Data.ImplementationAddresses) != 2 || detail.Data.ProxyDetectionV2 == nil ||
-		detail.Data.ProxyDetectionV2.Primary == nil ||
-		detail.Data.ProxyDetectionV2.Primary.Family == nil ||
-		*detail.Data.ProxyDetectionV2.Primary.Family != gen.ProxyDetectionV2FamilyErc2535 ||
-		detail.Data.ProxyDetectionV2.Primary.Diamond == nil ||
-		len(detail.Data.ProxyDetectionV2.Primary.Diamond.Facets) != 3 ||
-		len(detail.Data.ProxyDetectionV2.Primary.Diamond.SelectorToFacet) != 8 ||
-		detail.Data.ProxyDetectionV2.Primary.Diamond.StandardDiamondCut.Status != gen.DiamondCutPresenceAbsent {
+		len(*detail.Data.ImplementationAddresses) != 2 || detail.Data.ProxyDetection == nil ||
+		detail.Data.ProxyDetection.Primary == nil ||
+		detail.Data.ProxyDetection.Primary.Family == nil ||
+		*detail.Data.ProxyDetection.Primary.Family != gen.ProxyDetectionFamilyErc2535 ||
+		detail.Data.ProxyDetection.Primary.Diamond == nil ||
+		len(detail.Data.ProxyDetection.Primary.Diamond.Facets) != 3 ||
+		len(detail.Data.ProxyDetection.Primary.Diamond.SelectorToFacet) != 8 ||
+		detail.Data.ProxyDetection.Primary.Diamond.StandardDiamondCut.Status != gen.DiamondCutPresenceAbsent {
 		t.Fatalf("public Diamond proxy detail = %#v", detail)
 	}
 	wantFacets := make(map[common.Address]bool, len(deployment.Diamond.Facets))

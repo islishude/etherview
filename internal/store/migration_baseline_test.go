@@ -108,7 +108,7 @@ ALTER FUNCTION %I.refresh_proxy_interaction_coverage_from_journal() SET search_p
 ALTER FUNCTION %I.refresh_proxy_interaction_coverage_from_outbox() SET search_path = %I, pg_catalog', current_schema(), current_schema());
 ALTER FUNCTION %I.refresh_proxy_interaction_coverage_from_stage_result() SET search_path = %I, pg_catalog', current_schema(), current_schema());
 ALTER FUNCTION %I.reject_durable_stage_publication_mutation() SET search_path = %I, pg_catalog', current_schema(), current_schema());
-ALTER FUNCTION %I.reject_proxy_v2_evidence_mutation() SET search_path = %I, pg_catalog', current_schema(), current_schema());
+ALTER FUNCTION %I.reject_proxy_evidence_mutation() SET search_path = %I, pg_catalog', current_schema(), current_schema());
 ALTER FUNCTION %I.reject_verified_proxy_binding_mutation() SET search_path = %I, pg_catalog', current_schema(), current_schema());
 ALTER FUNCTION %I.reject_verifier_v2_result_mutation() SET search_path = %I, pg_catalog', current_schema(), current_schema());
 ALTER FUNCTION %I.require_enrichment_publication_protocol() SET search_path = %I, pg_catalog', current_schema(), current_schema());

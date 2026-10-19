@@ -132,14 +132,13 @@ type proxyArtifactResolution struct {
 }
 
 type proxyDetection struct {
-	candidate proxyCandidate
-	code      []byte
-	codeHash  common.Hash
-	proxy     *proxyResolution
-	exact     *proxyArtifactResolution
-	rejected  string
-	v2        ProxyDetectionResolution
-	v2Active  bool
+	candidate  proxyCandidate
+	code       []byte
+	codeHash   common.Hash
+	proxy      *proxyResolution
+	exact      *proxyArtifactResolution
+	rejected   string
+	resolution ProxyDetectionResolution
 }
 
 type beaconDetection struct {
@@ -185,7 +184,6 @@ type PostgresProxyProcessor struct {
 }
 
 type ProxyDetectionOptions struct {
-	Enabled        bool
 	SafeEnabled    bool
 	DiamondEnabled bool
 	Observer       ProxyDetectionObserver
@@ -217,12 +215,6 @@ func NewPostgresProxyProcessorWithOptions(
 	limits.defaults()
 	if err := limits.validate(); err != nil {
 		return nil, err
-	}
-	if options.SafeEnabled && !options.Enabled {
-		return nil, errors.New("safe proxy detector requires proxy detection V2")
-	}
-	if options.DiamondEnabled && !options.Enabled {
-		return nil, errors.New("diamond proxy detector requires proxy detection V2")
 	}
 	return &PostgresProxyProcessor{db: db, pool: pool, limits: limits, options: options}, nil
 }
@@ -263,11 +255,10 @@ func (processor *PostgresProxyProcessor) Process(ctx context.Context, job Job) (
 	}
 	detector := rpcProxyDetector{
 		caller: endpoint.Client, limits: processor.limits,
-		v2Enabled: processor.options.Enabled, safeEnabled: processor.options.SafeEnabled,
-		diamondEnabled:            processor.options.DiamondEnabled,
-		observer:                  processor.options.Observer,
-		codeCache:                 make(map[common.Address][]byte),
-		beaconImplementationCache: make(map[common.Address]cachedBeaconImplementation),
+		memo:           &proxyDetectionRPCMemo{code: make(map[proxyCodeCacheKey][]byte)},
+		safeEnabled:    processor.options.SafeEnabled,
+		diamondEnabled: processor.options.DiamondEnabled,
+		observer:       processor.options.Observer,
 		artifact: func(ctx context.Context, address common.Address, hash common.Hash) (proxyArtifactEvidence, bool, error) {
 			return processor.loadProxyArtifact(ctx, job, address, hash)
 		},
@@ -283,7 +274,8 @@ func (processor *PostgresProxyProcessor) Process(ctx context.Context, job Job) (
 		return StageResult{}, err
 	}
 	for _, result := range uupsResults {
-		detector.codeCache[result.target.address] = common.CopyBytes(result.code)
+		identity := ProxyDetectionCacheKey{ChainID: job.ChainID, Address: result.target.address, BlockNumber: job.BlockNumber, BlockHash: job.BlockHash, DetectorVersion: ProxyDetectorFrameworkVersion}
+		detector.memo.code[proxyCodeCacheKey{identity: identity, address: result.target.address}] = common.CopyBytes(result.code)
 	}
 	proxyCandidates := make([]proxyCandidate, 0, len(candidates))
 	beaconCandidates := make([]proxyCandidate, 0, len(candidates))

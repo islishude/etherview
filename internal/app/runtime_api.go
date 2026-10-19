@@ -287,7 +287,7 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			PublicOrigin: cfg.Server.PublicURL, Usage: usageDispatcher,
 		}
 		proxyReader := newProxyReaderAdapter(
-			writerReader, cfg.Chain.ID, cfg.Features.ProxyDetectionV2Public,
+			writerReader, cfg.Chain.ID,
 		)
 		webHandler := webui.NewHandler()
 		handler, err := httpapi.New(httpapi.Options{

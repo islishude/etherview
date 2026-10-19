@@ -51,6 +51,12 @@ for (const name of appServices) {
     [undefined, null, ""].includes(service.environment?.ETHERVIEW_ENS_RPC_URLS),
     `${name} must not receive an ENS RPC`,
   );
+  for (const key of [
+    "ETHERVIEW_FEATURE_PROXY_DETECTION_V2",
+    "ETHERVIEW_FEATURE_PROXY_DETECTION_V2_PUBLIC",
+  ]) {
+    assert.equal(service.environment?.[key], undefined, `${name} retired proxy detection flag ${key}`);
+  }
   const cacheMounts = volumeMounts(service).filter((mount) => mount.target === cachePath);
   const hasCompilerCache = cacheMounts.length === 1 && cacheMounts[0].type === "volume";
   assert.equal(hasCompilerCache, name === compilerOwner, `${name} compiler cache scope`);
