@@ -305,12 +305,28 @@ func TestEmbeddedBaselineIsNamedAndChecksummed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(migrations) != 1 || migrations[0].Version != "0001_core" {
-		t.Fatalf("expected single fresh-schema baseline, got %v", migrations)
+	wantVersions := []string{
+		"0001_core", "0002_runtime", "0003_execution", "0004_auth",
+		"0005_billing", "0006_verification", "0007_derived_verification",
+		"0008_proxy_observations", "0009_proxy_bindings", "0010_proxy_coverage",
+		"0011_tokens_metadata", "0012_ens_search", "0013_erc4337",
+		"0014_transfers_statistics", "0015_mempool", "0016_watchlist",
+		"0017_schema_bindings",
 	}
-	sum := sha256.Sum256([]byte(migrations[0].SQL))
-	if migrations[0].Checksum != hex.EncodeToString(sum[:]) {
-		t.Fatal("baseline checksum does not match embedded SQL")
+	if len(migrations) != len(wantVersions) {
+		t.Fatalf("baseline has %d migrations, want %d", len(migrations), len(wantVersions))
+	}
+	for index, migration := range migrations {
+		if migration.Version != wantVersions[index] {
+			t.Errorf("migration %d = %q, want %q", index, migration.Version, wantVersions[index])
+		}
+		if strings.TrimSpace(migration.SQL) == "" {
+			t.Errorf("migration %s is empty", migration.Version)
+		}
+		sum := sha256.Sum256([]byte(migration.SQL))
+		if migration.Checksum != hex.EncodeToString(sum[:]) {
+			t.Errorf("migration %s checksum does not match embedded SQL", migration.Version)
+		}
 	}
 }
 

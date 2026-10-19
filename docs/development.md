@@ -79,16 +79,25 @@ milestone; they do not automatically justify creating a plan item.
 ## Implementation policy
 
 - Do not preserve backward compatibility during active development. The current
-  schema is consolidated in `internal/store/migrations/0001_core.sql`; databases
-  created with the earlier development chain must be recreated as described in
-  the [runbook](operations.md#fresh-database-initialization). Do not add startup
+  fresh-database baseline is organized by domain in the numbered SQL files under
+  `internal/store/migrations/`, from `0001_core.sql` through
+  `0017_schema_bindings.sql`. Each file has its own version and checksum; the
+  runner applies all pending files in one transaction under an advisory lock.
+  Databases created with the earlier development chain or single-file baseline
+  must be recreated as described in the
+  [runbook](operations.md#fresh-database-initialization). Do not add startup
   data backfills, legacy-schema adapters, or compatibility readiness states
   unless explicitly requested.
   Keep this baseline declarative: put columns, defaults, identity and constraints
   in `CREATE TABLE`, use `PARTITION OF` for initial partitions, and declare named
   child indexes before recursive parent indexes. Retain only documented ALTER
   exceptions required for dependency completion or exact catalog semantics;
-  `TestBaselineDeclaresFinalObjects` checks their complete statements. When
+  `TestBaselineDeclaresFinalObjects` checks their complete statements across
+  every file. Keep domain-owned sequences, tables, initial partitions, indexes,
+  functions and triggers together; cross-domain views and function schema
+  bindings come last. Preserve prerequisite unique indexes before referencing
+  foreign keys and define CHECK functions before their tables. Deferred PL/pgSQL
+  body resolution remains transaction-local to the complete baseline. When
   reorganizing the baseline, compare before/after PostgreSQL 18 schema dumps
   (excluding dump restriction tokens) and retain object names and behavior.
 - Choose the simplest implementation that fully meets current requirements.

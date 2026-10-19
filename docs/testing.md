@@ -378,15 +378,20 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   used when Docker initializes the persistent named volume.
 - `make test-schema-e2e`: use Go orchestration to migrate a fresh PostgreSQL 18
   volume with the production image and verify exact compatibility through
-  `migrate status`. The consolidated baseline is `0001_core`; integration tests
-  additionally cover repeat/concurrent application, checksum and unknown-version
-  rejection, transactional DDL rollback, and isolated-schema function bindings.
-  The baseline source guard rejects scattered ALTER definitions outside the
-  explicit dependency/catalog-preservation exceptions. Baseline refactors also
-  compare PostgreSQL 18 schema-only dumps before and after, excluding random
+  `migrate status`. The domain baseline spans `0001_core` through
+  `0017_schema_bindings`, with one checksummed ledger entry per file. Integration
+  tests additionally cover repeat/concurrent application, later-file checksum
+  and unknown-version rejection, rejection of the previous single-file baseline,
+  and isolated-schema function bindings. A conflict in a late file must roll
+  back earlier files' DDL and ledger entries, including when the ledger already
+  exists; retry succeeds after removing the conflict.
+  The baseline source guard checks every file and rejects scattered ALTER
+  definitions outside the explicit dependency/catalog-preservation exceptions.
+  Baseline refactors also compare PostgreSQL 18 schema-only dumps before and
+  after, excluding random
   dump restriction tokens; object names, definitions and relationships must match.
-  Earlier development schemas must be recreated; historical upgrade paths are
-  not part of acceptance.
+  Earlier development schemas, including the single-file baseline, must be
+  recreated; historical upgrade paths are not part of acceptance.
 - `make test-runtime-e2e`: rebuild the current working tree's production image
   and run the build-tagged Go E2E suite against the production Compose file in
   monolith and all-six-application-role layouts. Each layout gets a
