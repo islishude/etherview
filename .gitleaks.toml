@@ -12,16 +12,8 @@ targetRules = ["generic-api-key"]
 regexes = ['''^x402-facilitator-headers$''']
 
 [[allowlists]]
-description = "Ignored mkcert output for the local HTTPS Preview"
-paths = ['''^\.local/preview-tls/''']
-
-[[allowlists]]
-description = "SHA-256 inventory of ignored local Preview network material"
-targetRules = ["generic-api-key"]
-paths = ['''^\.local/preview-network/manifest\.json$''']
-regexTarget = "match"
-condition = "AND"
-regexes = ['''^(?:voting-keystore|keystore|all-accounts\.keystore|keymanageropts)\.json":[ \t]*"[0-9a-f]{64}"$''']
+description = "Ignored local runtime artifacts"
+paths = ['''^\.local/''']
 
 [[allowlists]]
 description = "Public Hardhat development signing key for the isolated Preview network"
@@ -39,12 +31,9 @@ paths = [
 ]
 
 [[allowlists]]
-description = "Public block access list commitment in Geth Amsterdam fixture and local probe JSON"
+description = "Public block access list commitment in Geth Amsterdam fixture"
 condition = "AND"
 targetRules = ["generic-api-key"]
-paths = [
-  '''^internal/chainbundle/testdata/amsterdam-block\.json$''',
-  '''^\.local/amsterdam-probe/block-(?:0x0|0x1|latest|tx)\.json$'''
-]
+paths = ['''^internal/chainbundle/testdata/amsterdam-block\.json$''']
 regexTarget = "match"
 regexes = ['''^blockAccessListHash"[ \t]*:[ \t]*"0x[0-9a-f]{64}"$''']

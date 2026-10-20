@@ -9,7 +9,7 @@ import test from "node:test";
 // Synthetic public values exercise scanner entropy checks without using credentials.
 const publicHash = createHash("sha256").update("etherview public scanner regression").digest("hex");
 
-test("Amsterdam hash exceptions retain path and field boundaries", () => {
+test("root .local artifacts are ignored while source exceptions retain path and field boundaries", () => {
   const root = mkdtempSync(join(tmpdir(), "etherview-gitleaks-test-"));
   const config = resolve(".gitleaks.toml");
   const write = (path, value, pretty = false) => {
@@ -33,6 +33,9 @@ test("Amsterdam hash exceptions retain path and field boundaries", () => {
     });
     write(".local/preview-network/unrelated.json", { api_key: publicHash });
     write(".local/another-network/manifest.json", { "validator/keys/voting-keystore.json": publicHash });
+    write(".local/new-artifacts/credentials.json", { api_key: publicHash });
+    write(".locality/credentials.json", { api_key: publicHash });
+    write("nested/.local/credentials.json", { api_key: publicHash });
     const result = spawnSync(process.env.GITLEAKS ?? "gitleaks", [
       "dir", "--no-banner", "--redact", "--config", config,
       "--report-format", "json", "--report-path", join(root, "report.json"), ".",
@@ -41,12 +44,10 @@ test("Amsterdam hash exceptions retain path and field boundaries", () => {
     assert.equal(result.status, 1, "scanner must still reject synthetic credential findings");
     const findings = JSON.parse(readFileSync(join(root, "report.json"), "utf8"));
     assert.deepEqual(findings.map(({ File, RuleID }) => `${File}:${RuleID}`).sort(), [
-      ".local/amsterdam-probe/block-latest.json:generic-api-key",
       `${canonical}:generic-api-key`,
       "elsewhere.json:generic-api-key",
-      ".local/preview-network/unrelated.json:generic-api-key",
-      ".local/preview-network/manifest.json:generic-api-key",
-      ".local/another-network/manifest.json:generic-api-key",
+      ".locality/credentials.json:generic-api-key",
+      "nested/.local/credentials.json:generic-api-key",
     ].sort());
     assert.equal(findings.filter(({ Match }) => Match.startsWith("blockAccessListHash")).length, 1);
   } finally {
