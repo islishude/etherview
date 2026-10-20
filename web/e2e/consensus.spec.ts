@@ -67,7 +67,11 @@ test("consensus slots and blob content remain exact, optional and on demand", as
   await page.route("**/api/v1/blocks/*/blobs/0/content", async (route) => {
     reads++;
     expect(route.request().url()).toContain(`/blocks/${blockHash}/`);
-    await route.fulfill({ contentType: "application/octet-stream", body: Buffer.alloc(131072, 7) });
+    await route.fulfill({
+      contentType: "application/octet-stream",
+      headers: { "Content-Disposition": "attachment; filename=blob-1-0.bin" },
+      body: Buffer.alloc(131072, 7),
+    });
   });
   await page.goto("/blocks/1");
   await expect(page.getByText("9,007,199,254,740,993")).toBeVisible();
@@ -83,7 +87,7 @@ test("consensus slots and blob content remain exact, optional and on demand", as
   await expect(page.locator("pre")).toHaveText("07".repeat(1024));
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download blob", exact: true }).click();
-  expect((await download).suggestedFilename()).toBe("blob-0.bin");
+  expect((await download).suggestedFilename()).toBe("blob-1-0.bin");
   expect(reads).toBe(2);
   await page.setViewportSize({ width: 390, height: 900 });
   await expect(page.locator("body")).toHaveJSProperty("scrollWidth", 390);

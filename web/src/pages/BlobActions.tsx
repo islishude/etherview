@@ -17,12 +17,12 @@ export function BlobActions({ hash, index }: { hash: string; index: string }) {
     setBusy(download ? "download" : "preview");
     setFailed(false);
     try {
-      const data = await readBlob(hash, index);
+      const { data, filename } = await readBlob(hash, index);
       if (download) {
         const url = URL.createObjectURL(new Blob([data], { type: "application/octet-stream" }));
         const link = document.createElement("a");
         link.href = url;
-        link.download = `blob-${index}.bin`;
+        link.download = filename;
         link.click();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       } else

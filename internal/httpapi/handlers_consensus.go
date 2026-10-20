@@ -69,13 +69,18 @@ func (h *Handler) blobContent(w http.ResponseWriter, r *http.Request) {
 		h.handleReaderError(w, r, ErrUnavailable)
 		return
 	}
+	block, err := h.reader.Block(r.Context(), hash)
+	if err != nil {
+		h.handleReaderError(w, r, err)
+		return
+	}
 	data, err := reader.BlobContent(r.Context(), hash, index)
 	if err != nil {
 		h.handleReaderError(w, r, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", "attachment; filename=blob-"+raw+".bin")
+	w.Header().Set("Content-Disposition", "attachment; filename=blob-"+block.Number+"-"+raw+".bin")
 	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")

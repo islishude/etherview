@@ -4844,6 +4844,8 @@ export interface operations {
             /** @description Verified raw blob bytes. */
             200: {
                 headers: {
+                    /** @description Attachment filename blob-<block-number>-<blob-index>.bin, using exact decimal integers. */
+                    "Content-Disposition": string;
                     [name: string]: unknown;
                 };
                 content: {

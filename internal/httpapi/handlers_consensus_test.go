@@ -20,6 +20,16 @@ type consensusReaderStub struct {
 	err   error
 }
 
+type blobBlockReader struct {
+	fakeReader
+	blockIDs []string
+}
+
+func (r *blobBlockReader) Block(_ context.Context, id string) (gen.Block, error) {
+	r.blockIDs = append(r.blockIDs, id)
+	return gen.Block{Number: "9007199254740993"}, r.err
+}
+
 func (*consensusReaderStub) BlockConsensus(context.Context, string) (gen.ConsensusSummary, error) {
 	return gen.ConsensusSummary{BlockHash: "0x" + strings.Repeat("11", 32), State: gen.ConsensusStateComplete, Slot: new("9007199254740993")}, nil
 }
@@ -37,7 +47,8 @@ func TestConsensusRoutesAndExactBinaryDownload(t *testing.T) {
 	cfg.Consensus.URL = "http://secret-beacon.internal"
 	cfg.Consensus.Headers = map[string]string{"Authorization": "very-private"}
 	cfg.Consensus.Blobs.Enabled = true
-	handler, err := New(Options{Config: cfg, Reader: fakeReader{}, ConsensusReader: reader})
+	blocks := &blobBlockReader{}
+	handler, err := New(Options{Config: cfg, Reader: blocks, ConsensusReader: reader})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,6 +78,12 @@ func TestConsensusRoutesAndExactBinaryDownload(t *testing.T) {
 	response = request("/blocks/" + hash + "/blobs/0/content")
 	if response.Code != 200 || response.Body.Len() != 131072 || response.Header().Get("Content-Type") != "application/octet-stream" || response.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("download=%d %v", response.Code, response.Header())
+	}
+	if got := response.Header().Get("Content-Disposition"); got != "attachment; filename=blob-9007199254740993-0.bin" {
+		t.Fatalf("download filename=%q", got)
+	}
+	if len(blocks.blockIDs) != 1 || blocks.blockIDs[0] != hash {
+		t.Fatalf("block lookup must use the exact hash: %v", blocks.blockIDs)
 	}
 	reader.err = publicquery.NewCapabilityUnavailableError("blob", "unavailable", "blob_storage_integrity")
 	response = request("/blocks/" + hash + "/blobs/0/content")

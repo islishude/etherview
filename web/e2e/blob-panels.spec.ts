@@ -52,7 +52,11 @@ async function setupBlobs(page: Page, enabled = true, count = 1) {
   );
   await page.route("**/api/v1/blocks/*/blobs/*/content", async (route) => {
     reads.push(new URL(route.request().url()).pathname);
-    await route.fulfill({ contentType: "application/octet-stream", body: Buffer.alloc(131072, 7) });
+    await route.fulfill({
+      contentType: "application/octet-stream",
+      headers: { "Content-Disposition": "attachment; filename=blob-9007199254740993-42.bin" },
+      body: Buffer.alloc(131072, 7),
+    });
   });
   return reads;
 }
@@ -149,7 +153,7 @@ test("transaction preview and download use the exact block blob index and remain
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download blob" }).click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toBe("blob-42.bin");
+  expect(download.suggestedFilename()).toBe("blob-9007199254740993-42.bin");
   const downloadedBytes: Buffer[] = [];
   for await (const chunk of await download.createReadStream()) downloadedBytes.push(chunk);
   expect(Buffer.concat(downloadedBytes).equals(Buffer.alloc(131072, 7))).toBe(true);

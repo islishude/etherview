@@ -73,7 +73,12 @@ function renderBlobs({
       const path = new URL(String(request), "http://etherview.test").pathname;
       if (path.endsWith("/content")) {
         reads.push(path);
-        return content();
+        const response = await content();
+        response.headers.set(
+          "Content-Disposition",
+          "attachment; filename=blob-9007199254740993-42.bin",
+        );
+        return response;
       }
       expect(path).toBe(`/api/v1/blocks/${block}/blobs`);
       return Response.json({ data: metadata, meta: { chain_id: "1", request_id: "blob-test" } });

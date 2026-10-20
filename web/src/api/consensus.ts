@@ -32,5 +32,10 @@ export async function readBlob(hash: string, index: string) {
   });
   if (!result.response.ok || !result.data || result.data.byteLength !== 131072)
     throw new Error("blob_storage_unavailable");
-  return result.data;
+  const disposition = result.response.headers.get("Content-Disposition");
+  const filename = disposition?.match(
+    /^attachment; filename=(blob-(?:0|[1-9][0-9]*)-(?:0|[1-9][0-9]*)\.bin)$/,
+  )?.[1];
+  if (!filename || !filename.endsWith(`-${index}.bin`)) throw new Error("blob_storage_unavailable");
+  return { data: result.data, filename };
 }
