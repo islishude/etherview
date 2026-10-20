@@ -26,12 +26,17 @@ function classes(base: string, extra: string | undefined): string {
 }
 
 // Keep shell icons local so route-only icon chunks remain lazy.
-export function ShellIcon({ name }: { name: "menu" | "close" | "chevron" | "moon" | "sun" }) {
+export function ShellIcon({
+  name,
+}: {
+  name: "menu" | "close" | "chevron" | "moon" | "sun" | "monitor";
+}) {
   const paths = {
     menu: "M4 6h16M4 12h16M4 18h16",
     close: "M6 6l12 12M6 18L18 6",
     chevron: "m6 9 6 6 6-6",
     moon: "M20 14A8 8 0 0 1 10 4a8.5 8.5 0 1 0 10 10Z",
+    monitor: "M3 4h18v13H3ZM12 17v4M8 21h8",
     sun: "M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0",
   };
   return (

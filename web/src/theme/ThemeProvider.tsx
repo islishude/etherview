@@ -6,20 +6,23 @@ import {
   useLayoutEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
 } from "react";
 
 export type Theme = "light" | "dark";
 
 interface ThemeContextValue {
   theme: Theme;
+  followsSystem: boolean;
   setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
+  followSystem: () => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
-export function resolveInitialTheme(): Theme {
-  if (typeof window === "undefined") return "light";
+function readStoredTheme(): Theme | undefined {
+  if (typeof window === "undefined") return undefined;
 
   let stored: string | null = null;
   try {
@@ -28,11 +31,32 @@ export function resolveInitialTheme(): Theme {
     // Storage can be unavailable in privacy-restricted browser contexts.
   }
   if (stored === "light" || stored === "dark") return stored;
+  return undefined;
+}
+
+function readSystemTheme(): Theme {
+  if (typeof window === "undefined") return "light";
   return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
+function subscribeSystemTheme(onChange: () => void) {
+  const media = window.matchMedia?.("(prefers-color-scheme: dark)");
+  media?.addEventListener("change", onChange);
+  return () => media?.removeEventListener("change", onChange);
+}
+
+export function resolveInitialTheme(): Theme {
+  return readStoredTheme() ?? readSystemTheme();
+}
+
 export function ThemeProvider({ children }: PropsWithChildren) {
-  const [theme, setTheme] = useState<Theme>(resolveInitialTheme);
+  const [preference, setPreference] = useState(readStoredTheme);
+  const systemTheme = useSyncExternalStore<Theme>(
+    subscribeSystemTheme,
+    readSystemTheme,
+    () => "light",
+  );
+  const theme = preference ?? systemTheme;
 
   useLayoutEffect(() => {
     // Passive consumers such as charts must read tokens from the current theme.
@@ -41,19 +65,26 @@ export function ThemeProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     try {
-      window.localStorage?.setItem("etherview.theme", theme);
+      if (preference) {
+        window.localStorage?.setItem("etherview.theme", preference);
+      } else {
+        window.localStorage?.removeItem("etherview.theme");
+      }
     } catch {
       // The applied document theme remains functional without persistence.
     }
-  }, [theme]);
+  }, [preference]);
 
   const value = useMemo<ThemeContextValue>(
     () => ({
       theme,
-      setTheme,
-      toggleTheme: () => setTheme((current) => (current === "light" ? "dark" : "light")),
+      followsSystem: preference === undefined,
+      setTheme: setPreference,
+      toggleTheme: () =>
+        setPreference((current) => ((current ?? systemTheme) === "light" ? "dark" : "light")),
+      followSystem: () => setPreference(undefined),
     }),
-    [theme],
+    [theme, preference, systemTheme],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

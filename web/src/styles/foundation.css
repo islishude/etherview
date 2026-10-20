@@ -317,6 +317,11 @@ code {
   border-color: var(--line-strong);
 }
 
+.control[aria-pressed="true"] {
+  color: var(--brand);
+  border-color: var(--brand);
+}
+
 .icon-control {
   width: 2.35rem;
   padding: 0;

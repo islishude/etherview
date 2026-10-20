@@ -274,7 +274,8 @@
   }
 }
 
-@media (max-width: 359px) {
+/* Keep theme, system-mode, language and wallet controls on their own row on narrow screens. */
+@media (max-width: 439px) {
   .header-primary {
     grid-template-columns: minmax(0, 1fr);
     padding-top: 0.55rem;

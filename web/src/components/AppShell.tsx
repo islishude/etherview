@@ -13,7 +13,7 @@ import { AddressNamesProvider } from "@/ens/AddressNamesProvider";
 
 export function AppShell() {
   const { i18n, t } = useTranslation();
-  const { theme, toggleTheme } = useTheme();
+  const { theme, toggleTheme, followsSystem, followSystem } = useTheme();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [searchError, setSearchError] = useState("");
@@ -90,6 +90,16 @@ export function AppShell() {
                 type="button"
               >
                 <ShellIcon name={theme === "dark" ? "moon" : "sun"} />
+              </button>
+              <button
+                aria-label={t("actions.followSystemTheme")}
+                title={t("actions.followSystemTheme")}
+                aria-pressed={followsSystem}
+                className="control icon-control"
+                onClick={followSystem}
+                type="button"
+              >
+                <ShellIcon name="monitor" />
               </button>
               <button
                 aria-label={t("actions.toggleLanguage")}
