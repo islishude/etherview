@@ -45,20 +45,18 @@ FOUNDRY_IMAGE ?= etherview-foundry:local
 IPFS_GATEWAY_IMAGE ?= etherview-ipfs-gateway:local
 HELM_CHART ?= deploy/helm/etherview
 PREVIEW_APP_SERVICES := api sync enrich trace metadata maintenance
-PREVIEW_RUNTIME_SERVICES := ipfs ipfs-gateway migration $(PREVIEW_APP_SERVICES)
+PREVIEW_RUNTIME_SERVICES := geth lighthouse validator object-storage ipfs ipfs-gateway migration $(PREVIEW_APP_SERVICES)
 PREVIEW_TLS_DIR := .local/preview-tls
 PREVIEW_TLS_CERT := $(PREVIEW_TLS_DIR)/tls.crt
 PREVIEW_TLS_KEY := $(PREVIEW_TLS_DIR)/tls.key
 PREVIEW_TLS_CA := $(PREVIEW_TLS_DIR)/rootCA.pem
 PREVIEW_IPFS_CERT := $(PREVIEW_TLS_DIR)/ipfs.crt
 PREVIEW_IPFS_KEY := $(PREVIEW_TLS_DIR)/ipfs.key
-PREVIEW_GENESIS_TEMPLATE := deploy/preview.genesis.json
-PREVIEW_GENESIS_RUNTIME := .local/preview-genesis.json
 X402_LOCAL_COMPOSE := e2e/x402local/compose.yaml
 X402_LOCAL_TOPOLOGY ?= monolith
 
 .DEFAULT_GOAL := check
-.NOTPARALLEL: check generate-check start-preview recreate-preview test-preview-metadata start-x402-local recreate-x402-local
+.NOTPARALLEL: check generate-check start-preview recreate-preview test-preview-metadata test-preview-consensus start-x402-local recreate-x402-local
 
 .PHONY: \
 	benchmark benchmark-integration \
@@ -74,7 +72,7 @@ X402_LOCAL_TOPOLOGY ?= monolith
 	test-foundry-e2e test-foundry-e2e-prebuilt test-foundry-offline-compile foundry-client-image-build \
 	test-preview-metadata test-schema-e2e test-soak \
 	web-build web-generate web-install web-lint web-test preview-cert preview-cert-check \
-	preview-genesis-check preview-genesis-refresh preview-genesis-runtime \
+	preview-network-check preview-network-runtime \
 	start-preview stop-preview recreate-preview \
 	start-x402-local stop-x402-local recreate-x402-local
 
@@ -351,7 +349,7 @@ docker-image-check:
 	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "docker-image-check: docker is required"; exit 1; }
 	DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" deploy/check-image.sh
 
-compose-check: preview-genesis-check
+compose-check: preview-network-check
 	@DOCKER="$(DOCKER)" $(COMPOSE) version >/dev/null 2>&1 || { echo "compose-check: Docker Compose is required"; exit 1; }
 	@command -v "$(NODE)" >/dev/null 2>&1 || { echo "compose-check: Node.js is required for rendered environment checks"; exit 1; }
 	DOCKER="$(DOCKER)" $(COMPOSE) -f e2e/x402local/compose.yaml --profile monolith config --quiet
@@ -395,13 +393,13 @@ compose-check: preview-genesis-check
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml config --quiet
 	@ETHERVIEW_VERIFICATION_EXECUTOR_PATH=/custom/runtime/etherview-solcjs \
 		ETHERVIEW_VERIFICATION_GEAS_PATH=/custom/bin/etherview-geas-compiler \
-		DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml config --format json | \
+		DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml --profile archive-init config --format json | \
 		ETHERVIEW_EXPECT_COMPILER_RUNTIME_PATH_OVERRIDE=true \
 		$(NODE) .github/scripts/preview-compose-check.mjs
 	@ETHERVIEW_METADATA_IPFS_GATEWAY=https://gateway.example.com \
 		DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml config --format json | \
 		$(NODE) -e 'const services = JSON.parse(require("fs").readFileSync(0, "utf8")).services; for (const role of ["api", "sync", "enrich", "trace", "metadata", "maintenance"]) if (services[role].environment.ETHERVIEW_METADATA_IPFS_GATEWAY !== "https://gateway.example.com") throw new Error("Preview metadata gateway override missing from " + role);'
-	@IPFS_API_PORT=0 IPFS_GATEWAY_PORT=0 \
+	@IPFS_API_PORT=0 IPFS_GATEWAY_PORT=0 LIGHTHOUSE_HTTP_PORT=0 \
 		ETHERVIEW_PORT=127.0.0.1:0 ETHERVIEW_METRICS_PORT=127.0.0.1:0 \
 		GETH_HTTP_PORT=127.0.0.1:0 GETH_WS_PORT=127.0.0.1:0 \
 		DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
@@ -469,9 +467,14 @@ test-runtime-e2e-prebuilt:
 	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
 		$(GO) test -p=1 -count=1 -v -tags=runtimee2e ./e2e/runtime ./e2e/x402local
 
-test-preview-metadata: preview-cert-check preview-genesis-refresh docker-build preview-gateway-build
+test-preview-metadata: preview-cert-check docker-build preview-gateway-build preview-images
 	@IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
-		$(GO) test -count=1 -v -tags=previewmetadatae2e ./e2e/previewmetadata
+		$(GO) test -count=1 -v -tags=previewmetadatae2e -run TestPreviewLocalNFTMetadata ./e2e/previewmetadata
+
+.PHONY: test-preview-consensus
+test-preview-consensus: preview-cert-check docker-build preview-gateway-build preview-images
+	@IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
+		$(GO) test -count=1 -v -timeout=25m -tags=previewmetadatae2e -run TestPreviewConsensus ./e2e/previewmetadata
 
 helm-check:
 	@command -v "$(HELM)" >/dev/null 2>&1 || { echo "helm-check: helm is required"; exit 1; }
@@ -513,40 +516,36 @@ preview-cert-check:
 		exit 1; \
 	}
 
-preview-genesis-check:
-	@command -v "$(NODE)" >/dev/null 2>&1 || { echo "preview-genesis-check: Node.js is required"; exit 1; }
-	$(NODE) --test .github/scripts/update-preview-genesis-timestamp.test.mjs
+preview-network-check:
+	$(NODE) --test .github/scripts/preview-network.test.mjs .github/scripts/preview-compose.test.mjs
 
-preview-genesis-refresh:
-	@$(NODE) .github/scripts/update-preview-genesis-timestamp.mjs \
-		"$(PREVIEW_GENESIS_TEMPLATE)" "$(PREVIEW_GENESIS_RUNTIME)"
+preview-network-runtime:
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-network.mjs check
 
-start-preview: preview-cert-check preview-genesis-refresh docker-build preview-gateway-build
-	@ETHERVIEW_GENESIS_FILE="$${ETHERVIEW_GENESIS_FILE:-$(PREVIEW_GENESIS_RUNTIME)}" \
-		GETH_GENESIS_FILE="$${GETH_GENESIS_FILE:-$(PREVIEW_GENESIS_RUNTIME)}" \
-		IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
+.PHONY: preview-images
+preview-images:
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml pull geth lighthouse validator object-storage archive-init ipfs
+	$(DOCKER) pull ethpandaops/ethereum-genesis-generator:6.2.7
+
+start-preview: preview-cert-check docker-build preview-gateway-build preview-images
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-network.mjs prepare
+	IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
 		up --no-build --wait --wait-timeout 180 --remove-orphans
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml run --rm archive-init
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-ready.mjs
 	@printf '\nPreview: https://etherview.localhost:%s\n' "$${ETHERVIEW_PORT:-8080}"
 
 stop-preview:
-	@DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml down --volumes --remove-orphans
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml --profile archive-init down --volumes --remove-orphans
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-network.mjs clean
 
-preview-genesis-runtime:
-	@if { test -z "$${ETHERVIEW_GENESIS_FILE:-}" || test -z "$${GETH_GENESIS_FILE:-}"; } && \
-		! test -r "$(PREVIEW_GENESIS_RUNTIME)"; then \
-		echo "Preview runtime Genesis missing; run 'make start-preview' before 'make recreate-preview'"; \
-		exit 1; \
-	fi
-
-recreate-preview: preview-cert-check preview-genesis-runtime docker-build preview-gateway-build
-	@ETHERVIEW_GENESIS_FILE="$${ETHERVIEW_GENESIS_FILE:-$(PREVIEW_GENESIS_RUNTIME)}" \
-		GETH_GENESIS_FILE="$${GETH_GENESIS_FILE:-$(PREVIEW_GENESIS_RUNTIME)}" \
-		IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
+recreate-preview: preview-cert-check preview-network-runtime docker-build preview-gateway-build
+	IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
 		rm -fs $(PREVIEW_RUNTIME_SERVICES)
-	@ETHERVIEW_GENESIS_FILE="$${ETHERVIEW_GENESIS_FILE:-$(PREVIEW_GENESIS_RUNTIME)}" \
-		GETH_GENESIS_FILE="$${GETH_GENESIS_FILE:-$(PREVIEW_GENESIS_RUNTIME)}" \
-		IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
+	IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
 		up -d --no-build --wait --wait-timeout 180 --remove-orphans $(PREVIEW_RUNTIME_SERVICES)
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml run --rm archive-init
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-ready.mjs
 
 start-x402-local: docker-build
 	@case "$(X402_LOCAL_TOPOLOGY)" in monolith|distributed) ;; *) echo "X402_LOCAL_TOPOLOGY must be monolith or distributed"; exit 1;; esac

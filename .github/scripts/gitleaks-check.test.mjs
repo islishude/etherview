@@ -28,6 +28,11 @@ test("Amsterdam hash exceptions retain path and field boundaries", () => {
       blockAccessListHash: `0x${publicHash}`, api_key: publicHash,
     });
     write("elsewhere.json", { blockAccessListHash: `0x${publicHash}` });
+    write(".local/preview-network/manifest.json", {
+      "validator/keys/voting-keystore.json": publicHash, api_key: publicHash,
+    });
+    write(".local/preview-network/unrelated.json", { api_key: publicHash });
+    write(".local/another-network/manifest.json", { "validator/keys/voting-keystore.json": publicHash });
     const result = spawnSync(process.env.GITLEAKS ?? "gitleaks", [
       "dir", "--no-banner", "--redact", "--config", config,
       "--report-format", "json", "--report-path", join(root, "report.json"), ".",
@@ -39,6 +44,9 @@ test("Amsterdam hash exceptions retain path and field boundaries", () => {
       ".local/amsterdam-probe/block-latest.json:generic-api-key",
       `${canonical}:generic-api-key`,
       "elsewhere.json:generic-api-key",
+      ".local/preview-network/unrelated.json:generic-api-key",
+      ".local/preview-network/manifest.json:generic-api-key",
+      ".local/another-network/manifest.json:generic-api-key",
     ].sort());
     assert.equal(findings.filter(({ Match }) => Match.startsWith("blockAccessListHash")).length, 1);
   } finally {

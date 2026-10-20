@@ -165,9 +165,8 @@ func newHarness(t *testing.T) *harness {
 		t.Fatal(err)
 	}
 	image := valueOrDefault("IMAGE", "etherview:local")
-	genesis := filepath.Join(root, ".local", "preview-genesis.json")
+	network := filepath.Join(artifacts, "network")
 	for _, required := range []string{
-		genesis,
 		filepath.Join(root, ".local", "preview-tls", "tls.crt"),
 		filepath.Join(root, ".local", "preview-tls", "tls.key"),
 		filepath.Join(root, ".local", "preview-tls", "rootCA.pem"),
@@ -187,8 +186,13 @@ func newHarness(t *testing.T) *harness {
 	project.Env = map[string]string{
 		"ETHERVIEW_IMAGE":                 image,
 		"ETHERVIEW_CONFIG_FILE":           filepath.Join(root, "deploy", "preview.config.yaml"),
-		"ETHERVIEW_GENESIS_FILE":          genesis,
-		"GETH_GENESIS_FILE":               genesis,
+		"GETH_IMAGE":                      "ethereum/client-go:v1.17.8",
+		"RUSTFS_ACCESS_KEY":               "etherview",
+		"RUSTFS_SECRET_KEY":               "etherview-dev-only",
+		"PREVIEW_BLOB_READ_SECRET":        "preview-read-dev-only",
+		"PREVIEW_BLOB_WRITE_SECRET":       "preview-write-dev-only",
+		"PREVIEW_NETWORK_DIR":             network,
+		"LIGHTHOUSE_HTTP_PORT":            "0",
 		"ETHERVIEW_METADATA_IPFS_GATEWAY": metadataGateway,
 		"ETHERVIEW_PORT":                  "127.0.0.1:0",
 		"ETHERVIEW_METRICS_PORT":          "127.0.0.1:0",
@@ -203,11 +207,13 @@ func newHarness(t *testing.T) *harness {
 
 func (h *harness) run(ctx context.Context) {
 	h.validateFixture()
+	h.prepareNetwork(ctx)
 	if _, err := h.project.Run(
 		ctx, "up", "-d", "--no-build", "--wait", "--wait-timeout", "180", "--remove-orphans",
 	); err != nil {
 		h.t.Fatal(err)
 	}
+	h.initializeArchive(ctx)
 	h.connect(ctx)
 	h.assertLocalGateway(ctx)
 	h.assertPublicConfig(ctx)
@@ -315,6 +321,15 @@ func (h *harness) validateFixture() {
 
 func (h *harness) connect(ctx context.Context) {
 	h.t.Helper()
+	if h.rpc != nil {
+		h.rpc.Close()
+	}
+	if h.db != nil {
+		h.db.Close()
+	}
+	if h.http != nil {
+		h.http.CloseIdleConnections()
+	}
 	rpcBinding, err := h.project.Port(ctx, "geth", 8545)
 	if err != nil {
 		h.t.Fatal(err)
@@ -391,23 +406,13 @@ func (h *harness) deployNFT(ctx context.Context) rpcReceipt {
 	if chainID != previewChainIDHex {
 		h.t.Fatalf("Preview chain ID = %s, want %s", chainID, previewChainIDHex)
 	}
-	var accounts []common.Address
-	h.rpcCall(ctx, &accounts, "eth_accounts")
-	if len(accounts) == 0 || accounts[0] == (common.Address{}) {
-		h.t.Fatal("Preview Geth exposes no unlocked development account")
-	}
-	developer := accounts[0]
-	h.developer = developer
+	h.developer = common.HexToAddress("0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266")
 	var balance hexutil.Big
-	h.rpcCall(ctx, &balance, "eth_getBalance", developer, "latest")
+	h.rpcCall(ctx, &balance, "eth_getBalance", h.developer, "latest")
 	if (*big.Int)(&balance).Sign() <= 0 {
-		h.t.Fatalf("Preview unlocked account %s has no balance", developer)
+		h.t.Fatal("Preview signing account has no balance")
 	}
-	var hash common.Hash
-	h.rpcCall(ctx, &hash, "eth_sendTransaction", map[string]any{
-		"from": developer, "data": previewNFTCreationBytecode,
-		"gas": "0x2dc6c0", "gasPrice": "0x3b9aca00",
-	})
+	hash := h.sendTransaction(ctx, nil, common.FromHex(previewNFTCreationBytecode), new(big.Int))
 	if hash == (common.Hash{}) {
 		h.t.Fatal("Preview NFT deployment returned an empty transaction hash")
 	}
@@ -457,11 +462,7 @@ func probeReceipt(ctx context.Context, client *rpc.Client, hash common.Hash) (*r
 func (h *harness) updateMetadataURI(ctx context.Context, contract common.Address) rpcReceipt {
 	h.t.Helper()
 	selector := gethcrypto.Keccak256([]byte("updateMetadataURI()"))[:4]
-	var hash common.Hash
-	h.rpcCall(ctx, &hash, "eth_sendTransaction", map[string]any{
-		"from": h.developer, "to": contract, "data": hexutil.Bytes(selector),
-		"gas": "0x493e0", "gasPrice": "0x3b9aca00",
-	})
+	hash := h.sendTransaction(ctx, &contract, selector, new(big.Int))
 	if hash == (common.Hash{}) {
 		h.t.Fatal("Preview metadata update returned an empty transaction hash")
 	}

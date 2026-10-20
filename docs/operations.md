@@ -71,25 +71,75 @@ Preview mounts that API pair read-only only into the API service. Its public
 listener is `https://etherview.localhost:8080`, while
 `http://localhost:9090` remains the plain HTTP operations listener. The start
 target prints the browser URL after successful startup, using `ETHERVIEW_PORT`
-when set (default `8080`). It renders an ignored `.local/preview-genesis.json`
-runtime copy from the
-checked-in `deploy/preview.genesis.json` template at the beginning of the
-target, before the Docker build and Compose startup. Only the runtime copy gets
-the current Unix-seconds timestamp; the template is never modified by Preview
-startup. Because this changes the Genesis block hash, run `make stop-preview`
-before starting a previously created Preview again; the start target does not
-automatically remove its persistent volumes. `make recreate-preview` reuses the
-existing runtime copy without refreshing its timestamp. If the default runtime
-copy is missing, it fails with an instruction to run `make start-preview`; it
-never creates or modifies a Genesis file. Complete custom Genesis-file
-overrides are left unchanged and do not require the default runtime copy. The
-start and recreate targets do not modify the host trust store.
-The template preallocates Geth's upstream development address alongside the
-browser fixture account. Preview leaves the pending fee recipient unset so
-Geth imports and unlocks its built-in ephemeral development account; local
-`eth_sendTransaction` therefore needs no repository-owned key. This changes
-the tracked template's block-zero identity once and remains strictly a
-development boundary.
+when set (default `8080`). After building the application and gateway images,
+it prepares `.local/preview-network/` using the pinned
+`ethpandaops/ethereum-genesis-generator:6.2.7` image. The bundle contains the
+execution genesis, Beacon configuration/state, Engine JWT and 64 development
+validator keys. The checked-in `deploy/preview.genesis.json` template remains
+unchanged. Chain ID is 48815, slots take six seconds, and Amsterdam/Gloas are
+active at genesis. Geth v1.17.8 uses full sync and archive state; Lighthouse
+v8.3.0 runs both the Beacon node and validator client. These clients form an
+isolated local PoS network with no public bootnodes or external builders.
+
+`make start-preview` reuses an intact bundle, validating every file against its
+manifest and the current configuration fingerprint. Partial or changed material
+fails closed. Existing volumes without matching network material require an
+explicit `make stop-preview`; startup never deletes them automatically.
+`make recreate-preview` reuses the existing network bundle without refreshing its timestamp;
+it never creates or modifies a Genesis file. It recreates clients and workers
+while retaining chain state, PostgreSQL, blob objects and validator slashing
+protection. `make stop-preview` destroys all Preview volumes and the default
+generated network directory, but retains TLS certificates. Moving from the old
+Geth dev Preview requires this explicit reset. A complete custom bundle can be
+selected with `PREVIEW_NETWORK_DIR`; individual `ETHERVIEW_GENESIS_FILE` and
+`GETH_GENESIS_FILE` overrides are rejected. Custom bundles are never deleted by
+the stop target and must be reset by their owner.
+
+The template retains its pre-funded development addresses and system contracts.
+Transactions are signed locally with the standard Hardhat development account
+`0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266` (the first account from
+`test test test test test test test test test test test junk`) and submitted
+through `eth_sendRawTransaction`. Geth no longer unlocks accounts or provides
+the `dev` RPC namespace. Never fund these public development keys on external
+networks. The browser wallet flow is unchanged.
+
+Preview enables consensus enrichment and blob archival. Lighthouse runs as a
+supernode with blob pruning disabled. Its Beacon API is published only on
+`127.0.0.1:${LIGHTHOUSE_HTTP_PORT:-5052}`; Engine RPC is internal, with its JWT
+mounted only into Geth and Lighthouse. Validator keys are isolated from
+application roles. Startup waits for successive real execution/Beacon blocks.
+
+RustFS 1.0.1 stores blobs in the persistent `blob-data` volume. The one-shot
+`archive-init` service uses RustFS CLI v0.1.36 to provision the private
+`etherview-preview-blobs` bucket and scoped users idempotently. There is no
+expiry policy or trace-cache bucket reuse. API has GetObject permission;
+enrich has GetObject/PutObject, without deletion rights. Override development
+passwords through `PREVIEW_BLOB_READ_SECRET`, `PREVIEW_BLOB_WRITE_SECRET`, and
+RustFS administrator variables before initialization. Administrator credentials
+are never passed to application roles. RustFS ports are not published by the
+daily stack. The application core healthcheck remains independent of both
+optional services, including during container recreation. `archive-init` is an
+explicit one-shot profile, outside the core dependency graph. Start/recreate
+first bring up the runtime, then run `archive-init` separately and propagate its
+exit status before checking real block production. Initialization failure does
+not prevent already started API/enrich containers from becoming ready.
+After correcting credentials or restoring storage, repeat
+`docker compose -f compose.preview.yaml run --rm archive-init`; this preserves
+existing objects. To recreate application roles during an archive outage, use
+`docker compose -f compose.preview.yaml up -d --no-build --force-recreate --wait api enrich`.
+The full start/recreate targets still report optional service startup failures.
+
+The archive client sends `If-None-Match: *` on writes, but RustFS 1.0.1 cannot
+require that header in IAM policies. Writer credentials can still perform
+unconditional writes. Storage-enforced conditional-write permissions are
+deferred until RustFS 1.0.4 can be evaluated with the upstream policy fix;
+upgrading to 1.0.3 alone does not provide it.
+
+If blocks stop advancing, inspect Geth/Beacon/validator logs and Engine JWT
+identity before changing data. An archive outage affects collection/downloads;
+existing consensus metadata remains queryable. Restart the failed service and
+use the existing `reindex --stage blob` procedure if a job reached an unavailable
+terminal state. The start/recreate targets do not modify the host trust store.
 
 Preview includes Kubo `v0.43.1` and an independent Go HTTPS gateway at
 `https://ipfs.preview.test:8443`. Add `127.0.0.1 ipfs.preview.test` to the local

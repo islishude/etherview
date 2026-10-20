@@ -471,7 +471,8 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   binary file roundtrips, unknown-CID failure, and gateway restart persistence.
   Trusted TLS must pass, an untrusted CA must fail, and the HTTPS gateway must
   not expose the management API. The reviewed solc 0.8.30 ERC-721/ERC-4906
-  creation artifact and Geth unlocked development account remain unchanged.
+  creation artifact remains unchanged; the funded Hardhat development account
+  signs transactions locally for the real Lighthouse PoS network.
   Both the initial version and no-Transfer `MetadataUpdate(1)` version require
   exactly one successful attempt, exact JSON/content type/hash/size, canonical
   holdings/inventory, source/document/job history, and restart-stable database
@@ -960,3 +961,37 @@ endpoints/forks and pre-Merge outcomes, body-root tampering and private presets,
 archive-only replay after upstream pruning, and disabled-period reorg discovery.
 Cursor-generation races must not overwrite core reorg rewinds. These checks do
 not substitute for live-node retention and production backup/restore acceptance.
+
+## Real Lighthouse Preview acceptance
+
+`make test-preview-metadata` now uses the real PoS Preview network and locally
+signed transactions. It preserves the offline Kubo, two-version NFT metadata,
+restart, Amsterdam header and exact native-transfer acceptance in split and
+all-role layouts. Every test owns its generated network bundle, Compose project,
+volumes and ephemeral loopback ports; it never overwrites the daily Preview.
+
+`make test-preview-consensus` runs the fixed Geth v1.17.8 / Lighthouse v8.3.0
+combination with Gloas at genesis and the durable RustFS archive. It checks
+real blob transactions with cell proofs, exact Beacon/execution associations,
+consensus-first slots, independent Beacon/S3/API byte readback, checksum and
+commitment identity, read-only API credentials, client/object-store outages,
+core recreation during archive outages in both role layouts, failed and repeated
+archive initialization, container recreation and monolith publication.
+Writer IAM enforcement of conditional headers remains deferred on RustFS 1.0.1;
+the read-only denial check does not establish that property.
+The test waits for a nonzero
+finalized epoch rather than treating container readiness as consensus acceptance.
+It has a 22-minute scenario budget and a 25-minute test-process deadline.
+Diagnostics and `consensus-report.json` remain in the test's temporary artifacts
+directory. These local private-network results do not prove public historical
+retention, production backup/restore, or native CI execution.
+
+`make preview-network-check` exercises immutable reuse, incomplete material,
+configuration drift, tampering, symlinks and rejected single-file overrides.
+It also checks Compose command strings, executable paths with spaces, literal
+argument preservation, readiness port lookup and initialization failure propagation.
+`make compose-check` checks Engine JWT and validator-key isolation, scoped
+archive credentials, client images/commands, loopback-only Beacon exposure and
+the absence of direct or transitive optional dependencies from core roles.
+Run both Preview gates, `make check`, `make test-rustfs` and
+`make test-runtime-e2e` for changes to this deployment.

@@ -79,6 +79,6 @@ change. New plan IDs must exceed P79; gaps and retired prefixes stay reserved.
 | P76 | 2 |
 | P77 | 3 |
 | P78 | 6 |
-| P79 | 4 |
+| P79 | 5 |
 | P55 (retired) | 4 |
 | P66 (retired) | 8 |

@@ -206,3 +206,22 @@ adapters:
   max_redirects: 2
   price_freshness: 5m
   failure_ttl: "30s"
+
+# Preview runs a real, isolated Beacon network and a durable local archive.
+consensus:
+  enabled: true
+  url: http://lighthouse:5052
+  headers: {}
+  poll_interval: 6s
+  request_timeout: 10s
+  worker_count: 2
+  max_response_bytes: 33554432
+  blobs:
+    enabled: true
+    endpoint: http://object-storage:9000
+    bucket: etherview-preview-blobs
+    region: us-east-1
+    access_key: ""
+    secret_key: ""
+    session_token: ""
+    path_style: true

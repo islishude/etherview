@@ -42,12 +42,12 @@ for (const file of maintained) {
 const makefile = read("Makefile");
 const deployment = read("deploy/README.md");
 check(
-  makefile.includes("recreate-preview: preview-cert-check preview-genesis-runtime docker-build"),
-  "Makefile recreate-preview must require the read-only Preview Genesis prerequisite",
+  makefile.includes("recreate-preview: preview-cert-check preview-network-runtime docker-build"),
+  "Makefile recreate-preview must require the read-only Preview network prerequisite",
 );
 contains(
   "docs/operations.md",
-  "`make recreate-preview` reuses the existing runtime copy without refreshing its timestamp",
+  "`make recreate-preview` reuses the existing network bundle without refreshing its timestamp",
 );
 contains(
   "docs/operations.md",

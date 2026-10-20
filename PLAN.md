@@ -10,6 +10,8 @@ run as a monolith or as independently scalable roles, with PostgreSQL as the
 only mandatory external service.
 
 Consensus enrichment and blob archives are optional extensions tracked in P79.
+Preview writer IAM enforcement remains deferred until RustFS 1.0.4 is evaluated;
+the clearing condition is recorded in P79.
 Validator browsing, MEV accounting and L2-specific batch semantics are not core v1 scope.
 
 ## Plan Index
@@ -33,7 +35,7 @@ Validator browsing, MEV accounting and L2-specific batch semantics are not core 
 | P76 | [ERC-4337 UserOperation Browsing](docs/plans/P76-erc4337-user-operations.md) | done | P10, P20, P30, P40, P50, P68, P75 | Canonical EntryPoint v0.6-v0.9 UserOperation indexing, APIs, search, and bilingual Web browsing |
 | P77 | [Authoritative ERC-20 Token Holders](docs/plans/P77-authoritative-erc20-token-holders.md) | done | P20, P30, P40, P50, P68, P74, P75 | Genesis-covered, exact-state-reconciled ERC-20 holder snapshots, APIs, compatibility, and Web browsing |
 | P78 | [Watchlist, Notifications and CSV](docs/plans/P78-watchlist-notifications-csv.md) | done | P10, P20, P40, P50, P65 | Private watches, durable in-app notifications and bounded address exports |
-| P79 | [Consensus and Blob Archives](docs/plans/P79-consensus-and-blobs.md) | done | P10, P20, P40, P50 | Optional Beacon enrichment, consensus-first slots and immutable blob archives |
+| P79 | [Consensus and Blob Archives](docs/plans/P79-consensus-and-blobs.md) | done | P10, P20, P40, P50 | Optional Beacon enrichment, consensus-first slots, immutable blob archives and real Lighthouse Preview |
 
 Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 `superseded`.

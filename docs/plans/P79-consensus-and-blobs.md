@@ -7,6 +7,7 @@ Status: `done`
 Optional Beacon REST enrichment, consensus-first slot display, durable consensus
 overview, and independently enabled, immutable S3 blob archives. Execution
 canonicality, finality and core readiness remain execution-owned.
+Local Preview enables both capabilities on a real Lighthouse PoS network.
 
 ## References
 
@@ -22,6 +23,7 @@ canonicality, finality and core readiness remain execution-owned.
 | P79-T02 | done | P79-T01 | KZG-authenticated immutable blob archive and replay | object-store, corruption and crash regressions |
 | P79-T03 | done | P79-T01, P79-T02 | Generated API, consensus-first slots and bilingual browsing | generation and browser tests |
 | P79-T04 | done | P79-T03 | Role-scoped deployment, documentation and acceptance | common, integration/race, RustFS, schema and runtime gates |
+| P79-T05 | done | P79-T04 | Real Lighthouse PoS Preview and durable blob archive deployment | Preview consensus/metadata, restart, permission and role-parity gates |
 
 ## Acceptance
 
@@ -33,9 +35,17 @@ canonicality, finality and core readiness remain execution-owned.
 - [x] Monolith and split roles preserve core readiness during upstream outages.
 - [x] Applicable common and production gates pass.
 
+- [x] Real Lighthouse Preview passes both roles, blob readback, recovery and finality.
+
 ## Current Blockers
 
-No remaining implementation blockers. P70/P73 release blockers remain independent.
+Preview storage-enforced conditional-write IAM permissions are deferred by
+operator decision until RustFS 1.0.4 is evaluated. RustFS 1.0.1 and 1.0.3 lack
+the required policy key; application conditional writes and API read-only access
+remain active. Clearing this requires a fixed release containing upstream
+[PR #8615](https://github.com/rustfs/rustfs/pull/8615) and real-container rejection
+of unconditional writes and overwrites.
+P70/P73 release blockers remain independent.
 
 ## Evidence
 
@@ -56,8 +66,15 @@ No remaining implementation blockers. P70/P73 release blockers remain independen
   `make test-schema-e2e` and `make test-runtime-e2e` pass. Production-image
   monolith and split roles preserve core readiness during optional endpoint
   outages and pass restart and dependency-recovery checks.
+- P79-T05: Geth v1.17.8 / Lighthouse v8.3.0 pass real PoS and finalized-epoch
+  advancement, locally signed blob transactions, independent Beacon/S3/API
+  byte and KZG/hash checks, read-only denial, outages, retained network/object
+  identity and split/all-role publication. `make test-preview-metadata`,
+  `make test-preview-consensus`, `make test-rustfs`, `make test-runtime-e2e`
+  and `make check` pass locally. The local license scanner requires an explicit
+  current `GOROOT`; no gate or license rule was relaxed.
 
-These are local simulated-node and container results. No live Beacon-node or
-production backup/restore acceptance is claimed; operators must verify their
-node's historical retention and archive recovery procedure. P70/P73 blockers
-remain unchanged.
+These are local protocol-fixture and container results, including real private
+Beacon-node acceptance in T05. Public-network historical retention and production
+backup/restore are not claimed; operators must verify those procedures.
+P70/P73 blockers remain unchanged.

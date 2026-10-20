@@ -62,3 +62,24 @@ execution correctness or making optional observations a core readiness condition
 Historical availability is explicit, not inferred from a 404 or a scanned range.
 Fulu nodes without full-blob retrieval cannot satisfy archive acquisition; this
 feature does not reconstruct PeerDAS data columns.
+
+## Local Preview topology
+
+Preview enables both optional capabilities against an isolated Geth/Lighthouse
+PoS network. Lighthouse Beacon and validator clients use the same pinned
+version and a paired EL/CL genesis bundle; Geth dev mining is not used. Generated
+JWT/validator material stays outside tracked sources and application mounts.
+Recreation preserves chain identity and slashing protection, and changed or
+incomplete material requires explicit destruction/reinitialization.
+
+The Preview RustFS bucket is durable across container recreation and separate
+from disposable caches. Idempotent provisioning grants API read-only access and
+enrich write/read access; the archive client uses conditional creates.
+RustFS 1.0.1 does not enforce the conditional header through IAM, so storage-side
+enforcement remains deferred pending evaluation of 1.0.4 and the upstream policy
+fix. Administrator credentials stay in the storage and initialization services.
+The one-shot provisioner is outside application startup dependencies; lifecycle
+commands run it explicitly and propagate failures without gating core readiness.
+Public APIs and production defaults are
+unchanged. Acceptance uses real blob transactions and independent object readback,
+not simulated Beacon responses.

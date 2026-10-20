@@ -100,17 +100,17 @@ addresses, overlapping ranges for one address, unknown versions, and more than
 
 ## Full-stack Preview
 
-`compose.preview.yaml` runs the local Geth development chain and all six
-application roles. It enables public
+`compose.preview.yaml` runs a local Geth/Lighthouse PoS chain and all six
+application roles. It enables consensus, blob archives, public
 verification and NFT metadata while leaving Sourcify, pricing, prepaid billing,
 and x402 top-ups disabled. Optional NATS, Redis, and object storage accelerators are not part of
 this deployment.
 
 The Preview Geth container mounts `deploy/geth-entrypoint.sh` and initializes
 the read-only Genesis file into the persistent `geth-data` volume before every
-start, then `exec`s Geth in five-second developer mode. Override the execution
-image, Genesis source, or published ports with `GETH_IMAGE`,
-`GETH_GENESIS_FILE`, `GETH_HTTP_PORT`, and `GETH_WS_PORT`.
+start, then `exec`s Geth with Lighthouse driving block production. Override the
+execution image or published ports with `GETH_IMAGE`, `GETH_HTTP_PORT`, and
+`GETH_WS_PORT`; use a complete network bundle when changing genesis.
 
 ```sh
 make preview-cert
@@ -125,27 +125,27 @@ under `.local/preview-tls/` for `etherview.localhost`, `localhost`,
 `127.0.0.1`, and `::1`. It also
 copies mkcert's public `rootCA.pem` there for deterministic command-line
 verification; it never copies `rootCA-key.pem`.
-`make start-preview` begins by rendering an ignored
-`.local/preview-genesis.json` runtime copy from the checked-in
-`deploy/preview.genesis.json` template before the Docker build and Compose
-startup; the value is the current Unix time in seconds encoded as a lowercase
-hex quantity. The checked-in template is never modified by Preview startup.
-Since that changes the Genesis block hash, run `make stop-preview` before
-starting a previously created Preview again so its persistent Geth and
-PostgreSQL volumes are removed explicitly. The target does not remove those
-volumes for you, and `make recreate-preview` reuses the existing runtime copy
-without refreshing its timestamp. If that default runtime copy is missing,
-`make recreate-preview` fails with an instruction to run `make start-preview`;
-it never creates or modifies a Genesis file. Complete custom Genesis-file
-overrides are left unchanged and do not require the default runtime copy. Both
-targets only check that the three public/certificate assets exist and never
-modify the host trust store.
-The template funds both the browser fixture account and Geth's upstream
-development address `0x71562b71999873db5b286df957af199ec94617f7`.
-Preview does not override `--miner.pending.feeRecipient`, so Geth imports and
-unlocks its built-in ephemeral development account and `eth_sendTransaction`
-works without a repository-owned private key. This account is development-only
-and is not a production signing facility.
+`make start-preview` builds images, then prepares or verifies an ignored
+`.local/preview-network/` bundle. It starts Geth v1.17.8, Lighthouse v8.3.0
+Beacon/validator clients and a scoped RustFS blob archive. Chain ID remains
+48815 with Amsterdam/Gloas at genesis, 64 validators and six-second slots.
+The checked-in genesis template remains unchanged. Network files, Engine JWT
+and validator keys are generated together and verified by a manifest.
+`make recreate-preview` requires an intact bundle and preserves its timestamp,
+chain data, blob objects and slashing protection. `make stop-preview` explicitly
+destroys Preview volumes and the default network bundle while retaining TLS.
+Old Geth dev Preview installations require this reset before the first PoS run.
+`PREVIEW_NETWORK_DIR` selects a complete compatible bundle; individual Genesis
+file overrides are rejected. Custom bundles are never deleted automatically.
+
+Use the pre-funded Hardhat account and local signing with
+`eth_sendRawTransaction`; there is no unlocked Geth account or `dev` namespace.
+The public development mnemonic is documented in the
+[Preview runbook](../docs/operations.md#api-listener-tls).
+Never use these keys on an external network. Beacon HTTP defaults to loopback
+port 5052 (`LIGHTHOUSE_HTTP_PORT` overrides it), while Engine RPC and RustFS
+remain internal. Only API/enrich receive scoped archive credentials. See the
+runbook for lifecycle, credential overrides and failure diagnosis.
 Preview mounts only the certificate pair read-only into the API role. Rotate
 it by rerunning `make preview-cert` and then `make recreate-preview`. The public
 listener is

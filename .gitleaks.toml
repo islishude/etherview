@@ -16,6 +16,21 @@ description = "Ignored mkcert output for the local HTTPS Preview"
 paths = ['''^\.local/preview-tls/''']
 
 [[allowlists]]
+description = "SHA-256 inventory of ignored local Preview network material"
+targetRules = ["generic-api-key"]
+paths = ['''^\.local/preview-network/manifest\.json$''']
+regexTarget = "match"
+condition = "AND"
+regexes = ['''^(?:voting-keystore|keystore|all-accounts\.keystore|keymanageropts)\.json":[ \t]*"[0-9a-f]{64}"$''']
+
+[[allowlists]]
+description = "Public Hardhat development signing key for the isolated Preview network"
+targetRules = ["generic-api-key"]
+paths = ['''^e2e/previewmetadata/network_test\.go$''']
+condition = "AND"
+regexes = ['''^ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80$''']
+
+[[allowlists]]
 description = "Deterministic public Anvil fixture identities used only by P73 local E2E"
 targetRules = ["generic-api-key"]
 paths = [
