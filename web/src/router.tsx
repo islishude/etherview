@@ -11,6 +11,7 @@ import { lazyRouteComponent } from "@/lazyRouteComponent";
 import { AppShell } from "@/components/AppShell";
 import { isChartMetric, type ChartSearch } from "@/pages/chartRoute";
 
+const BlobPage = lazyRouteComponent(() => import("@/pages/BlobPage"), "BlobPage");
 const HomePage = lazyRouteComponent(() => import("@/pages/HomePage"), "HomePage");
 const BlocksPage = lazyRouteComponent(() => import("@/pages/pages"), "BlocksPage");
 const GenesisPage = lazyRouteComponent(() => import("@/pages/pages"), "GenesisPage");
@@ -63,6 +64,11 @@ const blockRoute = createRoute({
         : undefined,
   }),
   component: BlockRoutePage,
+});
+const blobRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/blocks/$blockHash/blobs/$index",
+  component: BlobRoutePage,
 });
 const genesisRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -233,6 +239,7 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   blocksRoute,
   blockRoute,
+  blobRoute,
   genesisRoute,
   transactionsRoute,
   transactionRoute,
@@ -257,6 +264,13 @@ function BlockRoutePage() {
   const { blockID } = blockRoute.useParams();
   const { tab } = blockRoute.useSearch();
   return <EntityPage kind="block" identifier={blockID} blockTab={tab} />;
+}
+
+function BlobRoutePage() {
+  const { blockHash, index } = blobRoute.useParams();
+  if (!/^0x[0-9a-fA-F]{64}$/.test(blockHash) || !/^(0|[1-9][0-9]{0,19})$/.test(index))
+    return <NotFoundPage />;
+  return <BlobPage key={`${blockHash}:${index}`} hash={blockHash} index={index} />;
 }
 
 function TransactionRoutePage() {

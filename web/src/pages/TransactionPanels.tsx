@@ -1,4 +1,4 @@
-import { BlobsPanel } from "./ConsensusPanels";
+import { BlobsPanel, BlobHashList } from "./BlobsPanel";
 import { usePublicConfig } from "@/api/hooks";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -15,8 +15,6 @@ import { QueryNotice } from "@/components/QueryNotice";
 import {
   CapabilityDegraded,
   CursorPagination,
-  Detail,
-  DetailList,
   NFTTokenIDLink,
   formatTokenEventAmount,
   isNFTStandard,
@@ -79,16 +77,22 @@ export function TransactionBlobPanel({
   t: Translate;
 }) {
   const config = usePublicConfig();
+  const archiveEnabled = Boolean(config.data?.features.blobs && transaction.block_hash);
+  const hashes = transaction.blob_versioned_hashes ?? [];
   return (
-    <section className="panel transaction-tab-panel" role="tabpanel">
-      <h2>{t("detail.blobData")}</h2>
-      {config.data?.features.blobs && transaction.block_hash && (
-        <BlobsPanel hash={transaction.block_hash} transaction={transaction.hash} />
-      )}
-      <DetailList label={t("detail.blobData")}>
-        <Detail
-          label={t("detail.blobGasFees")}
-          value={
+    <section
+      className="panel transaction-tab-panel transaction-blob-panel"
+      role="tabpanel"
+      aria-label={t("detail.blobData")}
+    >
+      <dl className="blob-transaction-summary">
+        <div>
+          <dt>{t("detail.blobCount")}</dt>
+          <dd>{formatInteger(hashes.length, locale)}</dd>
+        </div>
+        <div>
+          <dt>{t("detail.blobGasFees")}</dt>
+          <dd>
             <FeeSettings
               locale={locale}
               entries={[
@@ -96,26 +100,13 @@ export function TransactionBlobPanel({
                 { label: t("detail.feeMax"), value: transaction.max_fee_per_blob_gas },
               ]}
             />
-          }
-        />
-        <Detail
-          label={t("detail.blobCount")}
-          value={formatInteger(transaction.blob_versioned_hashes?.length ?? 0, locale)}
-        />
-      </DetailList>
-      {transaction.blob_versioned_hashes?.length ? (
-        <div className="transaction-log-list">
-          {transaction.blob_versioned_hashes.map((hash, index) => (
-            <article className="transaction-log" key={`${index}:${hash}`}>
-              <header>
-                <strong>{t("detail.blobIndex", { index })}</strong>
-              </header>
-              <code className="mono-wrap">{hash}</code>
-            </article>
-          ))}
+          </dd>
         </div>
+      </dl>
+      {archiveEnabled ? (
+        <BlobsPanel hash={transaction.block_hash!} transaction={transaction.hash} hashes={hashes} />
       ) : (
-        <p className="empty-result">{t("state.noBlobHashes")}</p>
+        <BlobHashList hashes={hashes} />
       )}
     </section>
   );

@@ -793,7 +793,8 @@ test("home uses one durable event stream and atomic snapshots without list polli
 
   await page.goto("/");
   await expect(page.getByRole("link", { name: "#2" })).toBeVisible();
-  await expect(page.getByText("0 – 2", { exact: true })).toBeVisible();
+  const finality = page.getByRole("region", { name: "Finality", exact: true });
+  await expect(finality.locator("dd")).toHaveText(["2", "1"]);
   expect(snapshotRequests).toHaveLength(1);
   expect(eventRequests).toHaveLength(1);
   expect(dynamicRequests).toEqual([]);
@@ -804,8 +805,10 @@ test("home uses one durable event stream and atomic snapshots without list polli
   });
   expect(advanced).toBe(true);
   await expect(page.getByRole("link", { name: "#3" })).toBeVisible();
-  await expect(page.getByText("0 – 3", { exact: true })).toBeVisible();
-  await expect(page.locator(".metric-card").filter({ hasText: "Network head" })).toContainText("3");
+  await expect(finality.locator("dd")).toHaveText(["3", "2"]);
+  await expect(
+    page.locator(".home-indexing-summary > div").filter({ hasText: "Network head" }).locator("dd"),
+  ).toHaveText("3");
   await page.waitForTimeout(2_200);
   expect(dynamicRequests).toEqual([]);
   expect(snapshotRequests).toHaveLength(2);
@@ -844,8 +847,13 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   });
 
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Coverage and finality context" })).toBeVisible();
-  await expect(page.getByText("0 – 2", { exact: true })).toBeVisible();
+  const finality = page.getByRole("region", { name: "Finality", exact: true });
+  await expect(finality).toBeVisible();
+  await expect(finality.locator("dt")).toHaveText(["Safe block", "Finalized block"]);
+  await expect(finality.locator("dd")).toHaveText(["2", "1"]);
+  await expect(page.getByText("Finalized block", { exact: true })).toHaveCount(1);
+  await expect(page.locator(".chain-context")).toHaveCount(0);
+  await expect(page.getByText("0 – 2", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "#2" })).toHaveAttribute(
     "href",
     "/blocks/0x2222222222222222222222222222222222222222222222222222222222222222",
@@ -853,7 +861,8 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   await expect(page.getByRole("columnheader", { name: "Method" })).toHaveCount(0);
 
   await page.goto("/blocks");
-  await expect(page.getByRole("note")).toContainText("This list contains canonical blocks only");
+  await expect(page.getByRole("heading", { name: "Coverage and finality context" })).toHaveCount(0);
+  await expect(page.getByRole("note")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "2" })).toBeVisible();
   await activateInView(page.getByRole("button", { name: "Next page" }));
   await expect(page.getByRole("link", { name: "1" })).toBeVisible();
@@ -867,6 +876,7 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   await expect(page.getByText("3.2 Ether", { exact: true })).toBeVisible();
 
   await page.goto("/transactions");
+  await expect(page.locator(".chain-context")).toHaveCount(0);
   await expect(page.getByText("900.719925474099312345", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: /0xaaaaaa…aaaaaa/ })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Method" })).toBeVisible();

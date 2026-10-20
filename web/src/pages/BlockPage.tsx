@@ -1,4 +1,5 @@
-import { ConsensusPanel, BlobsPanel } from "./ConsensusPanels";
+import { ConsensusPanel } from "./ConsensusPanels";
+import { BlobsPanel } from "./BlobsPanel";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 

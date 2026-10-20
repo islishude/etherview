@@ -11,7 +11,7 @@ import {
   useTokens,
   useTransactions,
 } from "@/api/hooks";
-import type { ChainStatus, SearchResult, VerificationJob } from "@/api/types";
+import type { SearchResult, VerificationJob } from "@/api/types";
 import {
   formatInteger,
   formatNativeAmount,
@@ -113,15 +113,9 @@ export function BlocksPage() {
   const { i18n, t } = useTranslation();
   const pager = useCursorHistory("blocks");
   const blocks = useBlocks(CORE_PAGE_SIZE, pager.cursor, pager.refreshGeneration);
-  const status = useChainStatus();
   const locale = i18n.resolvedLanguage ?? "en";
   return (
     <Page title={t("page.blocks")} description={t("page.blocksDescription")}>
-      <QueryNotice loading={status.isPending} error={status.error} />
-      {status.data && <ChainContextPanel status={status.data} />}
-      <p className="context-note" role="note">
-        {t("context.canonicalBlocksOnly")}
-      </p>
       <QueryNotice loading={blocks.isPending} error={blocks.error} onReset={pager.reset} />
       {blocks.data?.items.length === 0 && (
         <p className="empty-result" role="status">
@@ -257,15 +251,9 @@ export function TransactionsPage() {
   const nativeSymbol = publicConfig.data?.native_symbol ?? "";
   const pager = useCursorHistory("transactions");
   const transactions = useTransactions(CORE_PAGE_SIZE, pager.cursor, pager.refreshGeneration);
-  const status = useChainStatus();
   const locale = i18n.resolvedLanguage ?? "en";
   return (
     <Page title={t("page.transactions")} description={t("page.transactionsDescription")}>
-      <QueryNotice loading={status.isPending} error={status.error} />
-      {status.data && <ChainContextPanel status={status.data} />}
-      <p className="context-note" role="note">
-        {t("context.canonicalTransactionsOnly")}
-      </p>
       <QueryNotice
         loading={transactions.isPending}
         error={transactions.error}
@@ -421,67 +409,6 @@ export function TokensPage() {
         />
       )}
     </Page>
-  );
-}
-
-type ChainStatusContext = ChainStatus & {
-  coverage_start?: string;
-  coverage_end?: string;
-};
-
-export function ChainContextPanel({ status }: { status: ChainStatusContext }) {
-  const { i18n, t } = useTranslation();
-  const locale = i18n.resolvedLanguage ?? "en";
-  const coverageStart = status.coverage_start;
-  const coverageEnd = status.coverage_end ?? status.indexed_block;
-
-  return (
-    <section className="panel chain-context" aria-labelledby="chain-context-title">
-      <div className="panel-heading chain-context-heading">
-        <div>
-          <span className="eyebrow">{t("context.canonicalSnapshot")}</span>
-          <h2 id="chain-context-title">{t("context.coverageTitle")}</h2>
-        </div>
-        <span className={status.core_ready ? "availability yes" : "availability no"}>
-          {status.core_ready ? t("context.coreReady") : t("context.coreNotReady")}
-        </span>
-      </div>
-      <dl className="chain-context-grid">
-        <div>
-          <dt>{t("context.contiguousEnd")}</dt>
-          <dd>{formatInteger(status.indexed_block, locale)}</dd>
-        </div>
-        <div>
-          <dt>{t("context.coverageBounds")}</dt>
-          <dd>
-            {formatInteger(coverageStart, locale)} – {formatInteger(coverageEnd, locale)}
-          </dd>
-        </div>
-        <div>
-          <dt>{t("home.highestCovered")}</dt>
-          <dd>{formatInteger(status.highest_covered_block, locale)}</dd>
-        </div>
-        <div>
-          <dt>{t("context.safeBlock")}</dt>
-          <dd>{formatInteger(status.safe_block, locale)}</dd>
-        </div>
-        <div>
-          <dt>{t("home.finality")}</dt>
-          <dd>{formatInteger(status.finalized_block, locale)}</dd>
-        </div>
-        <div>
-          <dt>{t("home.backfill")}</dt>
-          <dd>
-            {status.backfill_complete ? t("home.backfillComplete") : t("home.backfillIncomplete")}
-          </dd>
-        </div>
-      </dl>
-      {!status.backfill_complete && (
-        <p className="coverage-warning" role="status">
-          {t("context.coverageIslandWarning")}
-        </p>
-      )}
-    </section>
   );
 }
 
