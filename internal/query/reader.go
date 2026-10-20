@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/islishude/etherview/internal/config"
+	"github.com/islishude/etherview/internal/consensus"
 	"strconv"
 	"strings"
 
@@ -44,6 +46,8 @@ type NameResolver interface {
 }
 
 type Options struct {
+	Consensus             config.ConsensusConfig
+	BlobArchive           consensus.Archive
 	ChainID               uint64
 	StartBlock            uint64
 	LatestBlock           LatestBlockFunc
@@ -54,6 +58,8 @@ type Options struct {
 }
 
 type PostgresReader struct {
+	consensus           config.ConsensusConfig
+	blobArchive         consensus.Archive
 	db                  dbaccess.Database
 	chainID             string
 	startBlock          uint64
@@ -91,6 +97,7 @@ func NewPostgresReader(db dbaccess.Database, options Options) (*PostgresReader, 
 	}
 	completeness.Core = gen.StageStateComplete
 	reader := &PostgresReader{
+		consensus: options.Consensus, blobArchive: options.BlobArchive,
 		db:            db,
 		chainID:       strconv.FormatUint(options.ChainID, 10),
 		startBlock:    options.StartBlock,
@@ -121,6 +128,7 @@ func (r *PostgresReader) status(
 	latestBlock LatestBlockFunc,
 ) (publicquery.StatusSnapshot, error) {
 	snapshot := publicquery.StatusSnapshot{
+		Consensus:     r.consensusOverview(ctx, queryer),
 		CoverageStart: r.startBlock,
 		CoverageEnd:   r.startBlock,
 		Completeness:  r.completeness,
@@ -371,8 +379,18 @@ func (r *PostgresReader) Blocks(ctx context.Context, encodedCursor string, limit
 		records = append(records, record)
 	}
 
+	models := make([]gen.Block, len(records))
+	for i := range records {
+		models[i] = records[i].Model
+	}
+	if err := r.consensusSlots(ctx, tx, models); err != nil {
+		return nil, "", err
+	}
+	for i := range records {
+		records[i].Model = models[i]
+	}
 	if err := tx.Commit(ctx); err != nil {
-		return nil, "", fmt.Errorf("commit stable block query: %w", err)
+		return nil, "", err
 	}
 
 	hasMore := len(records) > limit
@@ -438,7 +456,11 @@ func (r *PostgresReader) Block(ctx context.Context, identifier string) (gen.Bloc
 	if err != nil {
 		return gen.Block{}, err
 	}
-	return record.Model, nil
+	models := []gen.Block{record.Model}
+	if err := r.consensusSlots(ctx, r.db, models); err != nil {
+		return gen.Block{}, err
+	}
+	return models[0], nil
 }
 
 func (r *PostgresReader) Transaction(ctx context.Context, value string) (gen.Transaction, error) {

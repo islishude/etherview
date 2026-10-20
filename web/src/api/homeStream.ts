@@ -115,6 +115,7 @@ function validateStatus(value: unknown): void {
       "latest_block",
       "indexed_block",
       "highest_covered_block",
+      "consensus",
       "backfill_complete",
       "safe_block",
       "finalized_block",
@@ -141,6 +142,56 @@ function validateStatus(value: unknown): void {
   optional(record, "finalized_block", quantity);
   quantity(record.lag, "status.lag");
   validateCompleteness(record.completeness);
+  optional(record, "consensus", validateConsensusOverview);
+}
+
+function validateConsensusOverview(value: unknown): void {
+  const record = objectWithKeys(
+    value,
+    [
+      "state",
+      "code",
+      "slot",
+      "epoch",
+      "root",
+      "justified",
+      "finalized",
+      "syncing",
+      "execution_optimistic",
+      "observed_at",
+      "stale_at",
+      "stale",
+      "blobs_enabled",
+      "blob_state",
+      "blob_code",
+    ],
+    ["state", "stale", "blobs_enabled", "blob_state"],
+  );
+  const states = new Set([
+    "disabled",
+    "pending",
+    "complete",
+    "not_applicable",
+    "unavailable",
+    "failed",
+  ]);
+  enumeration(record.state, states, "consensus.state");
+  enumeration(record.blob_state, states, "consensus.blob_state");
+  boolean(record.stale, "consensus.stale");
+  boolean(record.blobs_enabled, "consensus.blobs_enabled");
+  for (const key of ["slot", "epoch"]) optional(record, key, quantity);
+  for (const key of ["code", "blob_code"])
+    optional(record, key, (v, label) => stringPattern(v, /^[a-z0-9_]{1,64}$/, label));
+  optional(record, "root", hash);
+  optional(record, "observed_at", timestamp);
+  optional(record, "stale_at", timestamp);
+  for (const key of ["syncing", "execution_optimistic"]) optional(record, key, boolean);
+  for (const key of ["justified", "finalized"])
+    optional(record, key, (v) => {
+      const checkpoint = objectWithKeys(v, ["epoch", "root"], ["epoch", "root"]);
+      quantity(checkpoint.epoch, "checkpoint.epoch");
+      hash(checkpoint.root, "checkpoint.root");
+    });
 }
 
 function validateBlock(value: unknown): void {
@@ -157,6 +208,7 @@ function validateBlock(value: unknown): void {
       "gas_limit",
       "base_fee_per_gas",
       "slot_number",
+      "slot_number_source",
       "block_access_list_hash",
       "withdrawals",
       "canonical",
@@ -184,6 +236,12 @@ function validateBlock(value: unknown): void {
   optional(record, "gas_limit", quantity);
   optional(record, "base_fee_per_gas", quantity);
   optional(record, "slot_number", quantity);
+  if (record.slot_number_source !== undefined)
+    enumeration(
+      record.slot_number_source,
+      new Set(["consensus", "execution"]),
+      "block.slot_number_source",
+    );
   optional(record, "block_access_list_hash", hash);
   optional(record, "withdrawals", validateWithdrawals);
   boolean(record.canonical, "block.canonical");

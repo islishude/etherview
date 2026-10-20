@@ -578,3 +578,55 @@ CREATE INDEX transaction_state_changes_code_epoch_idx ON transaction_state_chang
 CREATE INDEX transaction_state_changes_tx_idx ON transaction_state_changes USING btree (chain_id, transaction_hash, block_number DESC, address, field_kind, storage_key);
 
 CREATE INDEX withdrawals_address_index_idx ON withdrawals USING btree (chain_id, address, withdrawal_index DESC);
+
+-- Optional Beacon observations and immutable blob manifests (ADR-0055).
+CREATE TABLE consensus_networks (
+    chain_id numeric(78,0) PRIMARY KEY REFERENCES chains(chain_id),
+    identity jsonb NOT NULL CHECK (jsonb_typeof(identity) = 'object' AND octet_length(identity::text) <= 4096)
+);
+CREATE TABLE consensus_observations (
+    chain_id numeric(78,0) NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL CHECK (octet_length(block_hash) = 32),
+    slot numeric(20,0) NOT NULL CHECK (slot >= 0),
+    observation jsonb NOT NULL CHECK (jsonb_typeof(observation) = 'object' AND octet_length(observation::text) <= 1048576),
+    canonical boolean NOT NULL,
+    durable_job_id bigint NOT NULL REFERENCES durable_jobs(id),
+    job_generation bigint NOT NULL CHECK (job_generation > 0),
+    PRIMARY KEY (chain_id, block_number, block_hash),
+    FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash)
+);
+CREATE TABLE blob_manifests (
+    chain_id numeric(78,0) NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL CHECK (octet_length(block_hash) = 32),
+    manifest jsonb NOT NULL CHECK (jsonb_typeof(manifest) = 'array' AND jsonb_array_length(manifest) <= 4096 AND octet_length(manifest::text) <= 4194304),
+    canonical boolean NOT NULL,
+    durable_job_id bigint NOT NULL REFERENCES durable_jobs(id),
+    job_generation bigint NOT NULL CHECK (job_generation > 0),
+    PRIMARY KEY (chain_id, block_number, block_hash),
+    FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash)
+);
+CREATE TABLE consensus_overviews (
+    chain_id numeric(78,0) PRIMARY KEY REFERENCES chains(chain_id),
+    generation bigint NOT NULL DEFAULT 0 CHECK (generation >= 0),
+    lease_until timestamptz NOT NULL DEFAULT '-infinity',
+    next_poll_at timestamptz NOT NULL DEFAULT '-infinity',
+    observed_at timestamptz,
+    overview jsonb NOT NULL DEFAULT '{}' CHECK (jsonb_typeof(overview) = 'object' AND octet_length(overview::text) <= 8192),
+    last_error text NOT NULL DEFAULT '' CHECK (last_error ~ '^[a-z0-9_]*$' AND length(last_error) <= 64)
+);
+
+CREATE TABLE consensus_discovery_cursors (
+ chain_id numeric(78,0) NOT NULL REFERENCES chains(chain_id),
+ stage text NOT NULL CHECK (stage IN ('consensus','blob')),
+ generation bigint NOT NULL DEFAULT 0 CHECK (generation >= 0),
+ next_number numeric(20,0) NOT NULL CHECK (next_number >= -1),
+ latest_number numeric(20,0) NOT NULL CHECK (latest_number >= -1),
+ PRIMARY KEY(chain_id,stage)
+);
+
+CREATE INDEX consensus_observations_hash_idx ON consensus_observations(chain_id,block_hash);
+CREATE INDEX blob_manifests_hash_idx ON blob_manifests(chain_id,block_hash);
+CREATE INDEX block_stage_results_consensus_health_idx ON block_stage_results(chain_id,stage,stage_version,block_number DESC)
+WHERE stage IN ('consensus','blob');

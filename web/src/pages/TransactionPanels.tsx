@@ -1,3 +1,5 @@
+import { BlobsPanel } from "./ConsensusPanels";
+import { usePublicConfig } from "@/api/hooks";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import {
@@ -76,9 +78,13 @@ export function TransactionBlobPanel({
   locale: string;
   t: Translate;
 }) {
+  const config = usePublicConfig();
   return (
     <section className="panel transaction-tab-panel" role="tabpanel">
       <h2>{t("detail.blobData")}</h2>
+      {config.data?.features.blobs && transaction.block_hash && (
+        <BlobsPanel hash={transaction.block_hash} transaction={transaction.hash} />
+      )}
       <DetailList label={t("detail.blobData")}>
         <Detail
           label={t("detail.blobGasFees")}
@@ -100,7 +106,7 @@ export function TransactionBlobPanel({
       {transaction.blob_versioned_hashes?.length ? (
         <div className="transaction-log-list">
           {transaction.blob_versioned_hashes.map((hash, index) => (
-            <article className="transaction-log" key={hash}>
+            <article className="transaction-log" key={`${index}:${hash}`}>
               <header>
                 <strong>{t("detail.blobIndex", { index })}</strong>
               </header>

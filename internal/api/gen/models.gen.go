@@ -558,6 +558,24 @@ func (e BillingUsageState) Valid() bool {
 	}
 }
 
+// Defines values for BlockSlotNumberSource.
+const (
+	Consensus BlockSlotNumberSource = "consensus"
+	Execution BlockSlotNumberSource = "execution"
+)
+
+// Valid indicates whether the value is a known member of the BlockSlotNumberSource enum.
+func (e BlockSlotNumberSource) Valid() bool {
+	switch e {
+	case Consensus:
+		return true
+	case Execution:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CWIAImmutableArgFieldRole.
 const (
 	Length CWIAImmutableArgFieldRole = "length"
@@ -987,6 +1005,36 @@ const (
 func (e CompilationFailureOutcomeKind) Valid() bool {
 	switch e {
 	case CompilationFailure:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConsensusState.
+const (
+	ConsensusStateComplete      ConsensusState = "complete"
+	ConsensusStateDisabled      ConsensusState = "disabled"
+	ConsensusStateFailed        ConsensusState = "failed"
+	ConsensusStateNotApplicable ConsensusState = "not_applicable"
+	ConsensusStatePending       ConsensusState = "pending"
+	ConsensusStateUnavailable   ConsensusState = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the ConsensusState enum.
+func (e ConsensusState) Valid() bool {
+	switch e {
+	case ConsensusStateComplete:
+		return true
+	case ConsensusStateDisabled:
+		return true
+	case ConsensusStateFailed:
+		return true
+	case ConsensusStateNotApplicable:
+		return true
+	case ConsensusStatePending:
+		return true
+	case ConsensusStateUnavailable:
 		return true
 	default:
 		return false
@@ -4063,6 +4111,29 @@ type BillingUsageListResponse struct {
 // BillingUsageState defines model for BillingUsageState.
 type BillingUsageState string
 
+// BlobInfo defines model for BlobInfo.
+type BlobInfo struct {
+	Commitment *string `json:"commitment,omitempty"`
+
+	// Index A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Index Quantity `json:"index"`
+
+	// Sha256 A 32-byte hash; responses use normalized lowercase hexadecimal.
+	Sha256 *Hash `json:"sha256,omitempty"`
+
+	// Size A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Size *Quantity `json:"size,omitempty"`
+
+	// TransactionHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	TransactionHash Hash `json:"transaction_hash"`
+
+	// TransactionIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	TransactionIndex Quantity `json:"transaction_index"`
+
+	// VersionedHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	VersionedHash Hash `json:"versioned_hash"`
+}
+
 // Block defines model for Block.
 type Block struct {
 	// BaseFeePerGas A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
@@ -4092,11 +4163,30 @@ type Block struct {
 	// ParentHash A 32-byte hash; responses use normalized lowercase hexadecimal.
 	ParentHash Hash `json:"parent_hash"`
 
-	// SlotNumber Execution-header slot number as an exact decimal string; omitted when absent from the header.
-	SlotNumber       *Quantity          `json:"slot_number,omitempty"`
-	Timestamp        time.Time          `json:"timestamp"`
-	TransactionCount int                `json:"transaction_count"`
-	Withdrawals      *[]BlockWithdrawal `json:"withdrawals,omitempty"`
+	// SlotNumber Exact slot number; associated consensus data takes precedence when enabled, otherwise the execution header is used.
+	SlotNumber       *Quantity              `json:"slot_number,omitempty"`
+	SlotNumberSource *BlockSlotNumberSource `json:"slot_number_source,omitempty"`
+	Timestamp        time.Time              `json:"timestamp"`
+	TransactionCount int                    `json:"transaction_count"`
+	Withdrawals      *[]BlockWithdrawal     `json:"withdrawals,omitempty"`
+}
+
+// BlockSlotNumberSource defines model for Block.SlotNumberSource.
+type BlockSlotNumberSource string
+
+// BlockBlobs defines model for BlockBlobs.
+type BlockBlobs struct {
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash           `json:"block_hash"`
+	Code      *string        `json:"code,omitempty"`
+	Items     []BlobInfo     `json:"items"`
+	State     ConsensusState `json:"state"`
+}
+
+// BlockBlobsResponse defines model for BlockBlobsResponse.
+type BlockBlobsResponse struct {
+	Data BlockBlobs `json:"data"`
+	Meta Meta       `json:"meta"`
 }
 
 // BlockListResponse defines model for BlockListResponse.
@@ -4417,6 +4507,84 @@ type Completeness struct {
 	State          StageState `json:"state"`
 	Trace          StageState `json:"trace"`
 	UserOperations StageState `json:"user_operations"`
+}
+
+// ConsensusCheckpoint defines model for ConsensusCheckpoint.
+type ConsensusCheckpoint struct {
+	// Epoch A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Epoch Quantity `json:"epoch"`
+
+	// Root A 32-byte hash; responses use normalized lowercase hexadecimal.
+	Root Hash `json:"root"`
+}
+
+// ConsensusOverview defines model for ConsensusOverview.
+type ConsensusOverview struct {
+	BlobCode     *string        `json:"blob_code,omitempty"`
+	BlobState    ConsensusState `json:"blob_state"`
+	BlobsEnabled bool           `json:"blobs_enabled"`
+	Code         *string        `json:"code,omitempty"`
+
+	// Epoch A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Epoch               *Quantity            `json:"epoch,omitempty"`
+	ExecutionOptimistic *bool                `json:"execution_optimistic,omitempty"`
+	Finalized           *ConsensusCheckpoint `json:"finalized,omitempty"`
+	Justified           *ConsensusCheckpoint `json:"justified,omitempty"`
+	ObservedAt          *time.Time           `json:"observed_at,omitempty"`
+
+	// Root A 32-byte hash; responses use normalized lowercase hexadecimal.
+	Root *Hash `json:"root,omitempty"`
+
+	// Slot A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Slot  *Quantity `json:"slot,omitempty"`
+	Stale bool      `json:"stale"`
+
+	// StaleAt Freshness deadline, three configured polling intervals after the last successful observation.
+	StaleAt *time.Time     `json:"stale_at,omitempty"`
+	State   ConsensusState `json:"state"`
+	Syncing *bool          `json:"syncing,omitempty"`
+}
+
+// ConsensusResponse defines model for ConsensusResponse.
+type ConsensusResponse struct {
+	Data ConsensusSummary `json:"data"`
+	Meta Meta             `json:"meta"`
+}
+
+// ConsensusState defines model for ConsensusState.
+type ConsensusState string
+
+// ConsensusSummary defines model for ConsensusSummary.
+type ConsensusSummary struct {
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// BodyRoot A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BodyRoot *Hash   `json:"body_root,omitempty"`
+	Code     *string `json:"code,omitempty"`
+
+	// Epoch A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Epoch      *Quantity            `json:"epoch,omitempty"`
+	Fork       *string              `json:"fork,omitempty"`
+	Graffiti   *string              `json:"graffiti,omitempty"`
+	Operations *map[string]Quantity `json:"operations,omitempty"`
+
+	// ParentRoot A 32-byte hash; responses use normalized lowercase hexadecimal.
+	ParentRoot *Hash `json:"parent_root,omitempty"`
+
+	// ProposerIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ProposerIndex *Quantity `json:"proposer_index,omitempty"`
+
+	// Root A 32-byte hash; responses use normalized lowercase hexadecimal.
+	Root *Hash `json:"root,omitempty"`
+
+	// Slot A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Slot         *Quantity      `json:"slot,omitempty"`
+	SlotConflict *bool          `json:"slot_conflict,omitempty"`
+	State        ConsensusState `json:"state"`
+
+	// StateRoot A 32-byte hash; responses use normalized lowercase hexadecimal.
+	StateRoot *Hash `json:"state_root,omitempty"`
 }
 
 // ContractArtifactResolution How the published source artifact was resolved for the requested code identity. exact_address is an independent address verification; code_hash reuses an artifact verified at a different address with the identical runtime code hash and grants no proxy binding or write authority. On ProxyContractIdentity, exact_address accompanies verification_state=verified, while code_hash accompanies verification_state=unverified; the field is omitted when no artifact is available.
@@ -5535,9 +5703,10 @@ type Status struct {
 	BackfillComplete bool `json:"backfill_complete"`
 
 	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	ChainId      Quantity     `json:"chain_id"`
-	Completeness Completeness `json:"completeness"`
-	CoreReady    bool         `json:"core_ready"`
+	ChainId      Quantity           `json:"chain_id"`
+	Completeness Completeness       `json:"completeness"`
+	Consensus    *ConsensusOverview `json:"consensus,omitempty"`
+	CoreReady    bool               `json:"core_ready"`
 
 	// FinalizedBlock A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
 	FinalizedBlock *Quantity `json:"finalized_block,omitempty"`

@@ -3,6 +3,8 @@ package enrich
 import "github.com/islishude/etherview/internal/stagecontract"
 
 var (
+	ConsensusStage      = stagecontract.Consensus
+	BlobStage           = stagecontract.Blob
 	NativeTransferStage = stagecontract.NativeTransfer
 	ProxyStage          = stagecontract.Proxy
 	ABIStage            = stagecontract.ABI

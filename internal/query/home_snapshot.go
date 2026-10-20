@@ -37,6 +37,9 @@ func (r *PostgresReader) HomeSnapshot(ctx context.Context) (publicquery.HomeSnap
 	if err != nil {
 		return publicquery.HomeSnapshotState{}, err
 	}
+	if err := r.consensusSlots(ctx, tx, blocks); err != nil {
+		return publicquery.HomeSnapshotState{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return publicquery.HomeSnapshotState{}, fmt.Errorf("commit home snapshot: %w", err)
 	}

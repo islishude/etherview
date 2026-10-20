@@ -27,6 +27,8 @@ dependencies. This catalog groups the child plans by responsibility.
 
 - [P78 — Watchlist, Notifications and CSV](P78-watchlist-notifications-csv.md)
 
+- [P79 — Consensus and Blob Archives](P79-consensus-and-blobs.md)
+
 ## Identity and billing
 
 - [P65 — User Authentication](P65-user-auth.md)
@@ -56,7 +58,7 @@ request billing) was replaced by P73/ADR-0044. Neither has active work.
 Never renumber or reuse an allocated ID, including removed items. Allocate a
 new item only when the planning threshold is met, above both the watermark
 below and every item currently in its plan. Advance the watermark in the same
-change. New plan IDs must exceed P78; gaps and retired prefixes stay reserved.
+change. New plan IDs must exceed P79; gaps and retired prefixes stay reserved.
 
 | Plan | Highest allocated task number |
 |---|---|
@@ -77,5 +79,6 @@ change. New plan IDs must exceed P78; gaps and retired prefixes stay reserved.
 | P76 | 2 |
 | P77 | 3 |
 | P78 | 6 |
+| P79 | 4 |
 | P55 (retired) | 4 |
 | P66 (retired) | 8 |

@@ -190,6 +190,14 @@ migration:
 # is enabled; reader and accelerator keys are included only when their optional
 # remote-key values below are non-empty.
 secrets:
+  consensusURLKey: consensus-url
+  consensusHeadersKey: consensus-headers
+  blobArchiveReadAccessKey: blob-archive-read-access
+  blobArchiveReadSecretKey: blob-archive-read-secret
+  blobArchiveReadSessionKey: blob-archive-read-session
+  blobArchiveAccessKey: blob-archive-access
+  blobArchiveSecretKey: blob-archive-secret
+  blobArchiveSessionKey: blob-archive-session
   existingSecret: etherview
   databaseURLKey: database-url
   databaseReadURLKey: database-read-url
@@ -208,6 +216,14 @@ secrets:
   otlpTraceHeadersKey: otlp-trace-headers
 
 externalSecret:
+  consensusURLRemoteKey: ""
+  consensusHeadersRemoteKey: ""
+  blobArchiveReadAccessRemoteKey: ""
+  blobArchiveReadSecretRemoteKey: ""
+  blobArchiveReadSessionRemoteKey: ""
+  blobArchiveAccessRemoteKey: ""
+  blobArchiveSecretRemoteKey: ""
+  blobArchiveSessionRemoteKey: ""
   enabled: false
   apiVersion: external-secrets.io/v1beta1
   refreshInterval: 1h
@@ -241,6 +257,23 @@ externalSecret:
   otlpTraceHeadersRemoteKey: ""
 
 config:
+  consensus:
+    enabled: false
+    url: ""
+    headers: {}
+    poll_interval: 12s
+    request_timeout: 10s
+    worker_count: 2
+    max_response_bytes: 33554432
+    blobs:
+      enabled: false
+      endpoint: ""
+      bucket: ""
+      region: ""
+      access_key: ""
+      secret_key: ""
+      session_token: ""
+      path_style: false
   server:
     address: 0.0.0.0:8080
     metrics_address: 0.0.0.0:9090
@@ -492,3 +525,9 @@ affinity: {}
 topologySpreadConstraints: []
 
 terminationGracePeriodSeconds: 30
+
+# Existing workload identities with archive-bucket permissions: api=read, enrich/all=read/write.
+blobArchiveServiceAccounts:
+  api: ""
+  enrich: ""
+  all: ""

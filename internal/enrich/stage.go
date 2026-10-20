@@ -590,7 +590,7 @@ func (worker *Worker) observe(transition JobTransition) {
 
 func isKnownDerivedStage(stage StageID) bool {
 	switch stage.Name {
-	case NativeTransferStage.Name, ProxyStage.Name, ABIStage.Name, TokenStage.Name, StatsStage.Name, TraceStage.Name, StateDiffStage.Name, UserOperationStage.Name, HolderStage.Name:
+	case ConsensusStage.Name, BlobStage.Name, NativeTransferStage.Name, ProxyStage.Name, ABIStage.Name, TokenStage.Name, StatsStage.Name, TraceStage.Name, StateDiffStage.Name, UserOperationStage.Name, HolderStage.Name:
 		return true
 	default:
 		return false

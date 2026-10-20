@@ -116,6 +116,10 @@ func (r *PostgresReader) decodeBlock(scanner dbgen.QueryListBlocksFirstRow, forc
 		}
 	}
 	model.SlotNumber, err = blockUint64Quantity(slotNumber, "slot number")
+	if model.SlotNumber != nil {
+		source := gen.Execution
+		model.SlotNumberSource = &source
+	}
 	if err != nil {
 		return blockRecord{}, err
 	}

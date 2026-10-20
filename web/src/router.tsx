@@ -55,11 +55,11 @@ const blockRoute = createRoute({
   path: "/blocks/$blockID",
   validateSearch: (
     search: Record<string, unknown>,
-  ): { tab?: "overview" | "transactions" | "withdrawals" } => ({
+  ): { tab?: "overview" | "transactions" | "withdrawals" | "consensus" | "blobs" } => ({
     tab:
       typeof search.tab === "string" &&
-      ["overview", "transactions", "withdrawals"].includes(search.tab)
-        ? (search.tab as "overview" | "transactions" | "withdrawals")
+      ["overview", "transactions", "withdrawals", "consensus", "blobs"].includes(search.tab)
+        ? (search.tab as "overview" | "transactions" | "withdrawals" | "consensus" | "blobs")
         : undefined,
   }),
   component: BlockRoutePage,

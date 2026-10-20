@@ -1,0 +1,143 @@
+import { expect, test } from "@playwright/test";
+
+const blockHash = `0x${"1".repeat(64)}`;
+const hash = `0x${"2".repeat(64)}`;
+
+test("consensus slots and blob content remain exact, optional and on demand", async ({ page }) => {
+  let reads = 0;
+  await page.route("**/api/v1/config", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.data.features.consensus = true;
+    body.data.features.blobs = true;
+    await route.fulfill({ response, json: body });
+  });
+  await page.route("**/api/v1/blocks/1", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.data.slot_number = "9007199254740993";
+    body.data.slot_number_source = "consensus";
+    await route.fulfill({ response, json: body });
+  });
+  await page.route("**/api/v1/blocks/*/consensus", (route) =>
+    route.fulfill({
+      json: {
+        data: {
+          block_hash: blockHash,
+          state: "complete",
+          slot: "9007199254740993",
+          epoch: "281474976710656",
+          proposer_index: "9007199254740994",
+          root: hash,
+          parent_root: hash,
+          state_root: hash,
+          body_root: hash,
+          fork: "fulu",
+          graffiti: `0x${"00".repeat(32)}`,
+          slot_conflict: true,
+          operations: { attestations: "2" },
+        },
+        meta: { chain_id: "1", request_id: "consensus-e2e" },
+      },
+    }),
+  );
+  await page.route("**/api/v1/blocks/*/blobs", (route) =>
+    route.fulfill({
+      json: {
+        data: {
+          block_hash: blockHash,
+          state: "complete",
+          items: [
+            {
+              index: "0",
+              transaction_hash: hash,
+              transaction_index: "0",
+              versioned_hash: hash,
+              commitment: `0x${"ab".repeat(48)}`,
+              size: "131072",
+              sha256: hash,
+            },
+          ],
+        },
+        meta: { chain_id: "1", request_id: "consensus-e2e" },
+      },
+    }),
+  );
+  await page.route("**/api/v1/blocks/*/blobs/0/content", async (route) => {
+    reads++;
+    expect(route.request().url()).toContain(`/blocks/${blockHash}/`);
+    await route.fulfill({ contentType: "application/octet-stream", body: Buffer.alloc(131072, 7) });
+  });
+  await page.goto("/blocks/1");
+  await expect(page.getByText("9,007,199,254,740,993")).toBeVisible();
+  await page.getByRole("tab", { name: "Consensus", exact: true }).click();
+  await expect(page.getByRole("tabpanel")).toContainText("9007199254740994");
+  await expect(page.getByRole("tabpanel")).toContainText("Consensus and execution slots differ");
+  await page.getByRole("tab", { name: "Blobs", exact: true }).click();
+  const preview = page.getByRole("button", { name: "Preview first 1 KiB" });
+  await expect(preview).toBeVisible();
+  expect(reads).toBe(0);
+  await preview.click();
+  await expect(page.locator("pre")).toHaveText("07".repeat(1024));
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download blob", exact: true }).click();
+  expect((await download).suggestedFilename()).toBe("blob-0.bin");
+  expect(reads).toBe(2);
+  await page.setViewportSize({ width: 390, height: 900 });
+  await expect(page.locator("body")).toHaveJSProperty("scrollWidth", 390);
+});
+
+test("archive history and capability failures retain metadata without downloads", async ({
+  page,
+}) => {
+  await page.route("**/api/v1/config", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.data.features.consensus = true;
+    body.data.features.blobs = true;
+    await route.fulfill({ response, json: body });
+  });
+  await page.route("**/api/v1/blocks/*/blobs", (route) =>
+    route.fulfill({
+      json: {
+        data: {
+          block_hash: blockHash,
+          state: "unavailable",
+          code: "beacon_not_found",
+          items: [
+            { index: "0", transaction_hash: hash, transaction_index: "0", versioned_hash: hash },
+          ],
+        },
+        meta: { chain_id: "1", request_id: "consensus-e2e" },
+      },
+    }),
+  );
+  await page.goto("/blocks/1?tab=blobs");
+  await expect(page.getByRole("tabpanel")).toContainText(
+    "Historical data is unavailable at this node.",
+  );
+  await expect(page.getByRole("button", { name: "Download blob" })).toHaveCount(0);
+});
+
+test("consensus freshness expires while the last successful snapshot stays visible", async ({
+  page,
+}) => {
+  await page.route("**/api/v1/home?*", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.data.status.consensus = {
+      state: "complete",
+      blob_state: "disabled",
+      blobs_enabled: false,
+      stale: false,
+      stale_at: "2000-01-01T00:00:00Z",
+      observed_at: "1999-12-31T23:59:24Z",
+      slot: "9007199254740993",
+    };
+    await route.fulfill({ response, json: body });
+  });
+  await page.goto("/");
+  await expect(page.getByText("Available · Out of date")).toBeVisible();
+  await expect(page.getByText("9007199254740993", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "#2" })).toBeVisible();
+});

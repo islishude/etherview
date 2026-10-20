@@ -936,3 +936,27 @@ in both monolith and split roles. Run
 `make test-schema-e2e` for the fresh baseline, and generation/source/docs/plan
 and common gates. Preserve independent pre-change evidence, and record current
 local results separately from native CI and deployment review.
+
+## Consensus and blob archive acceptance
+
+P79 covers Beacon transport limits, network identity, root/hash binding,
+Bellatrix through Gloas projections, slot precedence, historical gaps, KZG and
+sidecar validation, independent object readback, immutable conditional writes,
+lease/generation publication, reorg/replay and role parity. Run focused tests
+in `internal/consensus`, `internal/accelerator`, `internal/enrich`,
+`internal/query`, `internal/httpapi`, `internal/config`, and `internal/app`.
+PostgreSQL fixtures belong to `internal/integration`; RustFS exercises the
+archive transport in `make test-rustfs`. Browser coverage exercises disabled,
+pending, unavailable and successful consensus/blob views.
+
+Required aggregate acceptance includes `make check`, `make source-check`,
+`make test-integration-race`, `make test-e2e`, `make test-rustfs`,
+`make test-schema-e2e`, and `make test-runtime-e2e`. Protocol fixtures and local
+object-store tests do not establish real Beacon historical availability or a
+production backup/restore outcome; record live-node evidence separately.
+
+Consensus regressions exercise production PostgreSQL workers for 404, unsupported
+endpoints/forks and pre-Merge outcomes, body-root tampering and private presets,
+archive-only replay after upstream pruning, and disabled-period reorg discovery.
+Cursor-generation races must not overwrite core reorg rewinds. These checks do
+not substitute for live-node retention and production backup/restore acceptance.

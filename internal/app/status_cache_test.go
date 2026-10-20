@@ -2,7 +2,10 @@ package app
 
 import (
 	"context"
+	"encoding/json"
+	"github.com/islishude/etherview/internal/api/gen"
 	"testing"
+	"time"
 
 	"github.com/islishude/etherview/internal/httpapi"
 )
@@ -63,5 +66,20 @@ func TestRedisStatusReaderCorruptCacheFallsBackToPostgreSQL(t *testing.T) {
 	status, err := reader.Status(context.Background())
 	if err != nil || status.LatestBlock != 2 || fallback.calls != 1 || cache.storedAt != 3 {
 		t.Fatalf("status=%+v calls=%d cache=%+v err=%v", status, fallback.calls, cache, err)
+	}
+}
+
+func TestCachedConsensusFreshnessExpiresWithoutCoreReadinessChange(t *testing.T) {
+	deadline := time.Now().Add(-time.Second)
+	snapshot := httpapi.StatusSnapshot{CoreReady: true, Consensus: &gen.ConsensusOverview{State: gen.ConsensusStateComplete, BlobState: gen.ConsensusStateDisabled, StaleAt: &deadline}}
+	raw, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fallback := &appStatusReader{}
+	reader := redisStatusReader{Reader: fallback, cache: &appStatusCache{value: raw}, chainID: 1}
+	got, err := reader.Status(t.Context())
+	if err != nil || !got.CoreReady || got.Consensus == nil || !got.Consensus.Stale || fallback.calls != 0 || snapshot.Consensus.Stale {
+		t.Fatalf("snapshot=%+v err=%v", got, err)
 	}
 }

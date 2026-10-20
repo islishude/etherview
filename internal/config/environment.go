@@ -72,6 +72,7 @@ func applyEnvironmentForRoles(
 		return err
 	}
 	for _, apply := range []func() error{
+		func() error { return applyConsensusEnvironment(cfg, lookup, readFile) },
 		func() error { return applySecretEnvironment(cfg, lookup, readFile, apiRole) },
 		func() error { return applyStringEnvironment(cfg, lookup, readFile, apiRole) },
 		func() error { return applyNumericEnvironment(cfg, lookup) },

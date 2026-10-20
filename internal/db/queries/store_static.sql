@@ -67,7 +67,11 @@ WHERE chain_id = sqlc.arg('chain_id')::text::numeric
 FOR UPDATE;
 
 -- name: StoreDeleteDerivedBlockFacts :exec
-WITH delete_stage_results AS (
+WITH delete_consensus AS (
+ DELETE FROM consensus_observations WHERE chain_id=sqlc.arg(chain_id)::numeric AND block_number=sqlc.arg(block_number)::numeric AND block_hash=sqlc.arg(block_hash)::bytea
+), delete_blob AS (
+ DELETE FROM blob_manifests WHERE chain_id=sqlc.arg(chain_id)::numeric AND block_number=sqlc.arg(block_number)::numeric AND block_hash=sqlc.arg(block_hash)::bytea
+), delete_stage_results AS (
     DELETE FROM block_stage_results WHERE chain_id = sqlc.arg('chain_id')::numeric AND block_number = sqlc.arg('block_number')::numeric AND block_hash = sqlc.arg('block_hash')::bytea
 ), delete_proxy_upgrades AS (
     DELETE FROM proxy_upgrade_events WHERE chain_id = sqlc.arg('chain_id')::numeric AND block_number = sqlc.arg('block_number')::numeric AND block_hash = sqlc.arg('block_hash')::bytea

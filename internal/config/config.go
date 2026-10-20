@@ -32,6 +32,7 @@ const (
 // Config is the complete runtime configuration. A deployment serves exactly
 // one chain, although chain_id remains present in persistent identities.
 type Config struct {
+	Consensus     ConsensusConfig     `yaml:"consensus"`
 	Server        ServerConfig        `yaml:"server"`
 	Chain         ChainConfig         `yaml:"chain"`
 	Wallet        WalletConfig        `yaml:"wallet"`
@@ -353,6 +354,7 @@ type AdapterConfig struct {
 // endpoint are still required before the corresponding roles can run.
 func Default() Config {
 	return Config{
+		Consensus: DefaultConsensusConfig(),
 		Server: ServerConfig{
 			Address:         "127.0.0.1:8080",
 			MetricsAddress:  "127.0.0.1:9090",

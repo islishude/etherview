@@ -34,6 +34,12 @@ func (assembly runtimeAssembly) registerEnrichComponents() error {
 			return err
 		}
 		stages := enrichmentDispatchStages(cfg.Features.Trace, cfg.Features.UserOperations)
+		if cfg.Consensus.Enabled {
+			stages = append(stages, enrich.ConsensusStage)
+		}
+		if cfg.Consensus.Blobs.Enabled {
+			stages = append(stages, enrich.BlobStage)
+		}
 		dispatcher, err := enrich.NewOutboxDispatcher(db, queue, enrich.OutboxDispatcherOptions{
 			PollInterval: cfg.Runtime.PollInterval,
 			Stages:       stages,

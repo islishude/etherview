@@ -1,6 +1,16 @@
 name: etherview
 
 x-app-environment: &app-environment
+  ETHERVIEW_CONSENSUS_ENABLED:
+  ETHERVIEW_CONSENSUS_POLL_INTERVAL:
+  ETHERVIEW_CONSENSUS_REQUEST_TIMEOUT:
+  ETHERVIEW_CONSENSUS_WORKER_COUNT:
+  ETHERVIEW_CONSENSUS_MAX_RESPONSE_BYTES:
+  ETHERVIEW_CONSENSUS_BLOBS_ENABLED:
+  ETHERVIEW_CONSENSUS_BLOBS_ENDPOINT:
+  ETHERVIEW_CONSENSUS_BLOBS_BUCKET:
+  ETHERVIEW_CONSENSUS_BLOBS_REGION:
+  ETHERVIEW_CONSENSUS_BLOBS_PATH_STYLE:
   ETHERVIEW_DATABASE_URL: postgres://etherview:${POSTGRES_PASSWORD:-etherview-dev-only}@postgres:5432/etherview?sslmode=disable
   ETHERVIEW_DATABASE_READ_URL: ${ETHERVIEW_DATABASE_READ_URL:-}
   # Value-less entries are passed through only when the operator sets them.
@@ -49,6 +59,9 @@ x-app-environment: &app-environment
   OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
 
 x-api-environment: &api-environment
+  ETHERVIEW_CONSENSUS_BLOBS_ACCESS_KEY:
+  ETHERVIEW_CONSENSUS_BLOBS_SECRET_KEY:
+  ETHERVIEW_CONSENSUS_BLOBS_SESSION_TOKEN:
   <<: *app-environment
   # Pass this Secret only to API-capable processes when user auth is enabled.
   # When it is absent from the host/.env, Compose leaves it unset.
@@ -148,6 +161,8 @@ services:
     environment:
       <<: *api-environment
       ETHERVIEW_ROLES: all
+      ETHERVIEW_CONSENSUS_URL:
+      ETHERVIEW_CONSENSUS_HEADERS:
     healthcheck: *app-healthcheck
     profiles: ["monolith"]
     tmpfs:
@@ -164,6 +179,9 @@ services:
     command: ["serve", "--roles=api", "--config=/etc/etherview/config.yaml"]
     environment:
       <<: *api-environment
+      ETHERVIEW_CONSENSUS_BLOBS_ACCESS_KEY: ${ETHERVIEW_CONSENSUS_BLOBS_READ_ACCESS_KEY:-}
+      ETHERVIEW_CONSENSUS_BLOBS_SECRET_KEY: ${ETHERVIEW_CONSENSUS_BLOBS_READ_SECRET_KEY:-}
+      ETHERVIEW_CONSENSUS_BLOBS_SESSION_TOKEN: ${ETHERVIEW_CONSENSUS_BLOBS_READ_SESSION_TOKEN:-}
       ETHERVIEW_ROLES: api
     healthcheck: *app-healthcheck
     profiles: ["distributed"]
@@ -191,6 +209,11 @@ services:
     environment:
       <<: *app-environment
       ETHERVIEW_ROLES: enrich
+      ETHERVIEW_CONSENSUS_URL:
+      ETHERVIEW_CONSENSUS_HEADERS:
+      ETHERVIEW_CONSENSUS_BLOBS_ACCESS_KEY:
+      ETHERVIEW_CONSENSUS_BLOBS_SECRET_KEY:
+      ETHERVIEW_CONSENSUS_BLOBS_SESSION_TOKEN:
     healthcheck: *app-healthcheck
     profiles: ["distributed"]
 

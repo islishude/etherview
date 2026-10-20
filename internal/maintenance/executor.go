@@ -173,6 +173,10 @@ func (executor *Executor) validate(request Request, operation Operation) error {
 
 func replayStage(name string) (stagecontract.ID, bool) {
 	switch name {
+	case "consensus":
+		return stagecontract.Consensus, true
+	case "blob":
+		return stagecontract.Blob, true
 	case "native_transfer":
 		return stagecontract.NativeTransfer, true
 	case "proxy":

@@ -217,7 +217,7 @@ func (p Program) runMigrate(ctx context.Context, args []string) error {
 		return errors.New("migrate requires up or status")
 	}
 	action := args[0]
-	cfg, rest, err := loadConfigFlag("migrate", args[1:])
+	cfg, rest, err := loadConfigFlagForRoles("migrate", args[1:], []string{"maintenance"})
 	if err != nil {
 		return err
 	}
@@ -234,7 +234,7 @@ func (p Program) runMigrate(ctx context.Context, args []string) error {
 }
 
 func (p Program) runRepair(ctx context.Context, kind string, args []string) error {
-	cfg, rest, err := loadConfigFlag(kind, args)
+	cfg, rest, err := loadConfigFlagForRoles(kind, args, []string{"maintenance"})
 	if err != nil {
 		return err
 	}

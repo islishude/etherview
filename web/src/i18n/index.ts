@@ -1,3 +1,4 @@
+import { consensusResources } from "./resources/consensus";
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import { shellResources } from "./resources/shell";
@@ -13,6 +14,7 @@ const resources = {
   en: {
     translation: {
       ...shellResources.en,
+      ...consensusResources.en,
       ...chainResources.en,
       ...transactionsResources.en,
       ...addressesResources.en,
@@ -25,6 +27,7 @@ const resources = {
   zh: {
     translation: {
       ...shellResources.zh,
+      ...consensusResources.zh,
       ...chainResources.zh,
       ...transactionsResources.zh,
       ...addressesResources.zh,

@@ -222,6 +222,58 @@ describe("home snapshot query", () => {
   });
 });
 
+it("accepts consensus snapshots and exact slot sources without relaxing unknown fields", () => {
+  const raw = snapshot("10", ["10"]);
+  const consensus = {
+    state: "complete",
+    blob_state: "pending",
+    stale: false,
+    blobs_enabled: true,
+    slot: "9007199254740993",
+    epoch: "281474976710656",
+    root: `0x${"11".repeat(32)}`,
+    justified: { epoch: "1", root: `0x${"11".repeat(32)}` },
+    execution_optimistic: false,
+  };
+  const payload = {
+    ...raw,
+    data: {
+      ...raw.data,
+      status: { ...raw.data.status, consensus },
+      blocks: raw.data.blocks.map((block) => ({
+        ...block,
+        slot_number: "9007199254740993",
+        slot_number_source: "consensus",
+      })),
+    },
+  };
+  const result = parseHomeSnapshot(JSON.stringify(payload));
+  expect(result.data.status.consensus?.slot).toBe("9007199254740993");
+  expect(result.data.blocks[0]?.slot_number_source).toBe("consensus");
+  expect(() =>
+    parseHomeSnapshot(
+      JSON.stringify({
+        ...payload,
+        data: {
+          ...payload.data,
+          status: { ...payload.data.status, consensus: { ...consensus, endpoint: "secret" } },
+        },
+      }),
+    ),
+  ).toThrow();
+  expect(() =>
+    parseHomeSnapshot(
+      JSON.stringify({
+        ...payload,
+        data: {
+          ...payload.data,
+          status: { ...payload.data.status, consensus: { ...consensus, slot: 9007199254740992 } },
+        },
+      }),
+    ),
+  ).toThrow();
+});
+
 function snapshot(latest: string, blockNumbers: string[]) {
   const completeness = {
     core: "complete",

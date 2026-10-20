@@ -118,7 +118,7 @@ func orphanBlock() map[string]any {
 
 func block(number, hash, parent string, canonical bool, finality string) map[string]any {
 	return map[string]any{
-		"hash": hash, "number": number, "slot_number": "18446744073709551615", "block_access_list_hash": secondHash, "parent_hash": parent,
+		"hash": hash, "number": number, "slot_number": "18446744073709551615", "slot_number_source": "execution", "block_access_list_hash": secondHash, "parent_hash": parent,
 		"timestamp": "2026-01-01T00:00:00Z", "miner": testAddress,
 		"transaction_count": 1, "gas_used": "21000", "gas_limit": "30000000",
 		"base_fee_per_gas": "1000000000", "canonical": canonical,

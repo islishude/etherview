@@ -1,3 +1,4 @@
+import { ConsensusOverview } from "./ConsensusPanels";
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -61,6 +62,7 @@ export function HomePage() {
       </section>
 
       {snapshot.data && <ChainContextPanel status={snapshot.data.status} />}
+      <ConsensusOverview data={snapshot.data?.status.consensus} now={relativeNow} />
 
       <div className="activity-grid">
         <section className="panel activity-panel" aria-labelledby="recent-blocks-title">

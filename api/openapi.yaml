@@ -600,6 +600,78 @@ paths:
                 $ref: "#/components/schemas/TransactionListResponse"
         default:
           $ref: "#/components/responses/Error"
+  "/blocks/{id}/consensus":
+    get:
+      operationId: "getBlockConsensus"
+      tags:
+        - "blocks"
+      parameters:
+        -
+          name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "block-identifier"
+      responses:
+        200:
+          description: "Exact-block consensus data."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsensusResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  "/blocks/{id}/blobs":
+    get:
+      operationId: "getBlockBlobs"
+      tags:
+        - "blocks"
+      parameters:
+        -
+          name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "block-identifier"
+      responses:
+        200:
+          description: "Exact-block consensus data."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlockBlobsResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  "/blocks/{hash}/blobs/{index}/content":
+    get:
+      operationId: "getBlobContent"
+      tags:
+        - "blocks"
+      parameters:
+        -
+          name: "hash"
+          in: "path"
+          required: true
+          schema:
+            $ref: "#/components/schemas/Hash"
+        -
+          name: "index"
+          in: "path"
+          required: true
+          schema:
+            $ref: "#/components/schemas/Quantity"
+      responses:
+        200:
+          description: "Verified raw blob bytes."
+          content:
+            application/octet-stream:
+              schema:
+                type: "string"
+                format: "binary"
+        default:
+          $ref: "#/components/responses/Error"
   /genesis/accounts:
     get:
       operationId: listGenesisAccounts
@@ -3100,6 +3172,8 @@ components:
       type: object
       required: [chain_id, core_ready, latest_block, indexed_block, backfill_complete, lag, completeness]
       properties:
+        consensus:
+          $ref: "#/components/schemas/ConsensusOverview"
         chain_id:
           $ref: "#/components/schemas/Quantity"
         core_ready:
@@ -3221,7 +3295,10 @@ components:
         slot_number:
           allOf:
             - $ref: "#/components/schemas/Quantity"
-          description: Execution-header slot number as an exact decimal string; omitted when absent from the header.
+          description: Exact slot number; associated consensus data takes precedence when enabled, otherwise the execution header is used.
+        slot_number_source:
+          type: string
+          enum: [consensus, execution]
         withdrawals:
           type: array
           items:
@@ -7378,3 +7455,166 @@ components:
       properties:
         error:
           $ref: "#/components/schemas/APIError"
+
+    ConsensusState:
+      type: "string"
+      enum:
+        - "disabled"
+        - "pending"
+        - "complete"
+        - "not_applicable"
+        - "unavailable"
+        - "failed"
+    ConsensusCheckpoint:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "epoch"
+        - "root"
+      properties:
+        epoch:
+          $ref: "#/components/schemas/Quantity"
+        root:
+          $ref: "#/components/schemas/Hash"
+    ConsensusSummary:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "state"
+        - "block_hash"
+      properties:
+        state:
+          $ref: "#/components/schemas/ConsensusState"
+        code:
+          type: "string"
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+        slot:
+          $ref: "#/components/schemas/Quantity"
+        epoch:
+          $ref: "#/components/schemas/Quantity"
+        proposer_index:
+          $ref: "#/components/schemas/Quantity"
+        root:
+          $ref: "#/components/schemas/Hash"
+        parent_root:
+          $ref: "#/components/schemas/Hash"
+        state_root:
+          $ref: "#/components/schemas/Hash"
+        body_root:
+          $ref: "#/components/schemas/Hash"
+        fork:
+          type: "string"
+        graffiti:
+          type: "string"
+        slot_conflict:
+          type: "boolean"
+        operations:
+          type: "object"
+          additionalProperties:
+            $ref: "#/components/schemas/Quantity"
+    ConsensusOverview:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "state"
+        - "stale"
+        - "blobs_enabled"
+        - "blob_state"
+      properties:
+        state:
+          $ref: "#/components/schemas/ConsensusState"
+        code:
+          type: "string"
+        slot:
+          $ref: "#/components/schemas/Quantity"
+        epoch:
+          $ref: "#/components/schemas/Quantity"
+        root:
+          $ref: "#/components/schemas/Hash"
+        justified:
+          $ref: "#/components/schemas/ConsensusCheckpoint"
+        finalized:
+          $ref: "#/components/schemas/ConsensusCheckpoint"
+        syncing:
+          type: "boolean"
+        execution_optimistic:
+          type: "boolean"
+        observed_at:
+          type: "string"
+          format: "date-time"
+        stale:
+          type: "boolean"
+        blobs_enabled:
+          type: "boolean"
+        blob_state:
+          $ref: "#/components/schemas/ConsensusState"
+        blob_code:
+          type: "string"
+        stale_at:
+          type: "string"
+          format: "date-time"
+          description: "Freshness deadline, three configured polling intervals after the last successful observation."
+    BlobInfo:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "index"
+        - "transaction_hash"
+        - "transaction_index"
+        - "versioned_hash"
+      properties:
+        index:
+          $ref: "#/components/schemas/Quantity"
+        transaction_hash:
+          $ref: "#/components/schemas/Hash"
+        transaction_index:
+          $ref: "#/components/schemas/Quantity"
+        versioned_hash:
+          $ref: "#/components/schemas/Hash"
+        commitment:
+          type: "string"
+        size:
+          $ref: "#/components/schemas/Quantity"
+        sha256:
+          $ref: "#/components/schemas/Hash"
+    BlockBlobs:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "block_hash"
+        - "state"
+        - "items"
+      properties:
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+        state:
+          $ref: "#/components/schemas/ConsensusState"
+        code:
+          type: "string"
+        items:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/BlobInfo"
+    ConsensusResponse:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "data"
+        - "meta"
+      properties:
+        data:
+          $ref: "#/components/schemas/ConsensusSummary"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    BlockBlobsResponse:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "data"
+        - "meta"
+      properties:
+        data:
+          $ref: "#/components/schemas/BlockBlobs"
+        meta:
+          $ref: "#/components/schemas/Meta"

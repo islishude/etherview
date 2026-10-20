@@ -677,3 +677,19 @@ billing:
 		})
 	}
 }
+
+func TestMigrationAndReindexDoNotOpenConsensusSecrets(t *testing.T) {
+	t.Setenv("ETHERVIEW_CONSENSUS_ENABLED", "true")
+	t.Setenv("ETHERVIEW_CONSENSUS_BLOBS_ENABLED", "true")
+	t.Setenv("ETHERVIEW_CONSENSUS_URL_FILE", "/nonexistent-beacon-secret")
+	t.Setenv("ETHERVIEW_CONSENSUS_BLOBS_ACCESS_KEY_FILE", "/nonexistent-archive-secret")
+	t.Setenv("ETHERVIEW_DATABASE_URL", "postgres://test:test@127.0.0.1/test")
+	for _, args := range [][]string{{"migrate", "status"}, {"reindex", "--stage", "consensus"}} {
+		backend := &fakeBackend{}
+		var output bytes.Buffer
+		program := Program{Backend: backend, Stdout: &output, Stderr: &output}
+		if code := program.Run(t.Context(), args); code != 0 {
+			t.Fatalf("%v code=%d output=%s", args, code, output.String())
+		}
+	}
+}

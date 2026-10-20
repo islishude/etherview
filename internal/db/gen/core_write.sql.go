@@ -15,6 +15,11 @@ const storeDeleteCanonicalBlocksBatch = `-- name: StoreDeleteCanonicalBlocksBatc
 WITH input AS (
     SELECT row.number::numeric AS number, decode(row.hash, 'hex') AS hash
     FROM jsonb_to_recordset($2::jsonb) AS row(number text, hash text)
+), rewind_consensus_discovery AS (
+    UPDATE consensus_discovery_cursors
+    SET next_number=GREATEST(next_number,(SELECT max(number) FROM input)),
+        generation=generation+1
+    WHERE chain_id=$1::numeric AND EXISTS (SELECT 1 FROM input)
 )
 DELETE FROM canonical_blocks AS canonical
 USING input
@@ -348,6 +353,12 @@ WITH input AS (
     FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
 ), update_user_operation_participants AS (
     UPDATE erc4337_user_operation_participants AS target SET canonical = $1
+    FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
+), update_consensus AS (
+    UPDATE consensus_observations AS target SET canonical = $1
+    FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
+), update_blob AS (
+    UPDATE blob_manifests AS target SET canonical = $1
     FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
 ), update_statistics AS (
     UPDATE block_statistics AS target SET canonical = $1

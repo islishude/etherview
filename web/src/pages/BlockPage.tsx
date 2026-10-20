@@ -1,3 +1,4 @@
+import { ConsensusPanel, BlobsPanel } from "./ConsensusPanels";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
@@ -25,11 +26,16 @@ import {
 } from "./pages";
 import { TransactionStatusBadge } from "./TransactionPage";
 
-const BLOCK_TABS = ["overview", "transactions", "withdrawals"] as const;
+const BLOCK_TABS = ["overview", "transactions", "withdrawals", "consensus", "blobs"] as const;
 type BlockTab = (typeof BLOCK_TABS)[number];
 
-function blockTabsForBlock(block?: BlockSummary): BlockTab[] {
-  return BLOCK_TABS.filter((tab) => tab !== "withdrawals" || Boolean(block?.withdrawals));
+function blockTabsForBlock(block?: BlockSummary, consensus = false, blobs = false): BlockTab[] {
+  return BLOCK_TABS.filter(
+    (tab) =>
+      (tab !== "withdrawals" || Boolean(block?.withdrawals)) &&
+      (tab !== "consensus" || consensus) &&
+      (tab !== "blobs" || blobs),
+  );
 }
 
 function BlockWithdrawalsPanel({
@@ -209,7 +215,12 @@ export function BlockDetailPage({ identifier, tab }: { identifier: string; tab: 
   const navigate = useNavigate();
   const block = useBlock(identifier);
   const pager = useCursorHistory(`block-transactions:${block.data?.hash ?? identifier}`);
-  const blockTabs = blockTabsForBlock(block.data);
+  const publicConfig = usePublicConfig();
+  const blockTabs = blockTabsForBlock(
+    block.data,
+    publicConfig.data?.features.consensus,
+    publicConfig.data?.features.blobs,
+  );
   const activeTab: BlockTab = blockTabs.includes(tab as BlockTab) ? (tab as BlockTab) : "overview";
   const transactions = useBlockTransactions(
     identifier,
@@ -217,7 +228,6 @@ export function BlockDetailPage({ identifier, tab }: { identifier: string; tab: 
     activeTab === "transactions" && Boolean(block.data),
   );
   const locale = i18n.resolvedLanguage ?? "en";
-  const publicConfig = usePublicConfig();
   const nativeDecimals = publicConfig.data?.native_decimals ?? 18;
   const nativeSymbol = publicConfig.data?.native_symbol ?? "";
 
@@ -274,7 +284,7 @@ export function BlockDetailPage({ identifier, tab }: { identifier: string; tab: 
                 <Detail label={t("table.block")} value={formatInteger(block.data.number, locale)} />
                 {block.data.slot_number !== undefined && (
                   <Detail
-                    label={t("detail.slotNumber")}
+                    label={`${t("detail.slotNumber")} · ${t(`consensus.sources.${block.data.slot_number_source ?? "execution"}`)}`}
                     value={formatInteger(block.data.slot_number, locale)}
                   />
                 )}
@@ -352,6 +362,8 @@ export function BlockDetailPage({ identifier, tab }: { identifier: string; tab: 
               page={pager.page}
             />
           )}
+          {activeTab === "consensus" && <ConsensusPanel hash={block.data.hash} />}
+          {activeTab === "blobs" && <BlobsPanel hash={block.data.hash} />}
           {activeTab === "withdrawals" && block.data.withdrawals && (
             <BlockWithdrawalsPanel withdrawals={block.data.withdrawals} locale={locale} />
           )}

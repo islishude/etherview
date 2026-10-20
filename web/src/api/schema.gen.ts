@@ -564,6 +564,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/blocks/{hash}/blobs/{index}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getBlobContent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/blocks/{id}": {
         parameters: {
             query?: never;
@@ -572,6 +588,38 @@ export interface paths {
             cookie?: never;
         };
         get: operations["getBlock"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/blocks/{id}/blobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getBlockBlobs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/blocks/{id}/consensus": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getBlockConsensus"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2021,6 +2069,15 @@ export interface components {
         };
         /** @enum {string} */
         BillingUsageState: "reserved" | "committed" | "released" | "expired";
+        BlobInfo: {
+            commitment?: string;
+            index: components["schemas"]["Quantity"];
+            sha256?: components["schemas"]["Hash"];
+            size?: components["schemas"]["Quantity"];
+            transaction_hash: components["schemas"]["Hash"];
+            transaction_index: components["schemas"]["Quantity"];
+            versioned_hash: components["schemas"]["Hash"];
+        };
         Block: {
             base_fee_per_gas?: components["schemas"]["Quantity"];
             block_access_list_hash?: components["schemas"]["Hash"];
@@ -2033,12 +2090,24 @@ export interface components {
             miner?: components["schemas"]["Address"];
             number: components["schemas"]["Quantity"];
             parent_hash: components["schemas"]["Hash"];
-            /** @description Execution-header slot number as an exact decimal string; omitted when absent from the header. */
+            /** @description Exact slot number; associated consensus data takes precedence when enabled, otherwise the execution header is used. */
             slot_number?: components["schemas"]["Quantity"];
+            /** @enum {string} */
+            slot_number_source?: "consensus" | "execution";
             /** Format: date-time */
             timestamp: string;
             transaction_count: number;
             withdrawals?: components["schemas"]["BlockWithdrawal"][];
+        };
+        BlockBlobs: {
+            block_hash: components["schemas"]["Hash"];
+            code?: string;
+            items: components["schemas"]["BlobInfo"][];
+            state: components["schemas"]["ConsensusState"];
+        };
+        BlockBlobsResponse: {
+            data: components["schemas"]["BlockBlobs"];
+            meta: components["schemas"]["Meta"];
         };
         BlockListResponse: {
             data: components["schemas"]["Block"][];
@@ -2181,6 +2250,56 @@ export interface components {
             trace: components["schemas"]["StageState"];
             /** @description Current configured-digest userop@1 coverage through the exact canonical indexed tip. */
             user_operations: components["schemas"]["StageState"];
+        };
+        ConsensusCheckpoint: {
+            epoch: components["schemas"]["Quantity"];
+            root: components["schemas"]["Hash"];
+        };
+        ConsensusOverview: {
+            blob_code?: string;
+            blob_state: components["schemas"]["ConsensusState"];
+            blobs_enabled: boolean;
+            code?: string;
+            epoch?: components["schemas"]["Quantity"];
+            execution_optimistic?: boolean;
+            finalized?: components["schemas"]["ConsensusCheckpoint"];
+            justified?: components["schemas"]["ConsensusCheckpoint"];
+            /** Format: date-time */
+            observed_at?: string;
+            root?: components["schemas"]["Hash"];
+            slot?: components["schemas"]["Quantity"];
+            stale: boolean;
+            /**
+             * Format: date-time
+             * @description Freshness deadline, three configured polling intervals after the last successful observation.
+             */
+            stale_at?: string;
+            state: components["schemas"]["ConsensusState"];
+            syncing?: boolean;
+        };
+        ConsensusResponse: {
+            data: components["schemas"]["ConsensusSummary"];
+            meta: components["schemas"]["Meta"];
+        };
+        /** @enum {string} */
+        ConsensusState: "disabled" | "pending" | "complete" | "not_applicable" | "unavailable" | "failed";
+        ConsensusSummary: {
+            block_hash: components["schemas"]["Hash"];
+            body_root?: components["schemas"]["Hash"];
+            code?: string;
+            epoch?: components["schemas"]["Quantity"];
+            fork?: string;
+            graffiti?: string;
+            operations?: {
+                [key: string]: components["schemas"]["Quantity"];
+            };
+            parent_root?: components["schemas"]["Hash"];
+            proposer_index?: components["schemas"]["Quantity"];
+            root?: components["schemas"]["Hash"];
+            slot?: components["schemas"]["Quantity"];
+            slot_conflict?: boolean;
+            state: components["schemas"]["ConsensusState"];
+            state_root?: components["schemas"]["Hash"];
         };
         /**
          * @description How the published source artifact was resolved for the requested code identity. exact_address is an independent address verification; code_hash reuses an artifact verified at a different address with the identical runtime code hash and grants no proxy binding or write authority. On ProxyContractIdentity, exact_address accompanies verification_state=verified, while code_hash accompanies verification_state=unverified; the field is omitted when no artifact is available.
@@ -2901,6 +3020,7 @@ export interface components {
             backfill_complete: boolean;
             chain_id: components["schemas"]["Quantity"];
             completeness: components["schemas"]["Completeness"];
+            consensus?: components["schemas"]["ConsensusOverview"];
             core_ready: boolean;
             finalized_block?: components["schemas"]["Quantity"];
             /** @description Highest canonical block stored in any coverage range; absent before the first block is stored. */
@@ -4709,6 +4829,30 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    getBlobContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                hash: components["schemas"]["Hash"];
+                index: components["schemas"]["Quantity"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Verified raw blob bytes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     getBlock: {
         parameters: {
             query?: never;
@@ -4728,6 +4872,52 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BlockResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getBlockBlobs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Exact-block consensus data. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlockBlobsResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getBlockConsensus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Exact-block consensus data. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsensusResponse"];
                 };
             };
             default: components["responses"]["Error"];

@@ -277,3 +277,22 @@ adapters:
   max_redirects: 2
   price_freshness: 5m
   failure_ttl: 30s
+
+# Optional Beacon observations; blob archives require a separate durable bucket.
+consensus:
+  enabled: false
+  url: ""
+  headers: {}
+  poll_interval: 12s
+  request_timeout: 10s
+  worker_count: 2
+  max_response_bytes: 33554432
+  blobs:
+    enabled: false
+    endpoint: ""
+    bucket: ""
+    region: ""
+    access_key: ""
+    secret_key: ""
+    session_token: ""
+    path_style: false

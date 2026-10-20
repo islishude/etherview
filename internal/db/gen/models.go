@@ -324,6 +324,16 @@ type BillingUsageCharge struct {
 	UpdatedAt            pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
+type BlobManifest struct {
+	ChainID       pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber   pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash     []byte         `db:"block_hash" json:"block_hash"`
+	Manifest      []byte         `db:"manifest" json:"manifest"`
+	Canonical     bool           `db:"canonical" json:"canonical"`
+	DurableJobID  int64          `db:"durable_job_id" json:"durable_job_id"`
+	JobGeneration int64          `db:"job_generation" json:"job_generation"`
+}
+
 type Block struct {
 	ChainID                pgtype.Numeric     `db:"chain_id" json:"chain_id"`
 	Number                 pgtype.Numeric     `db:"number" json:"number"`
@@ -508,6 +518,40 @@ type CompilerCatalogHead struct {
 	Language     string             `db:"language" json:"language"`
 	GenerationID int64              `db:"generation_id" json:"generation_id"`
 	UpdatedAt    pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type ConsensusDiscoveryCursor struct {
+	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Stage        string         `db:"stage" json:"stage"`
+	Generation   int64          `db:"generation" json:"generation"`
+	NextNumber   pgtype.Numeric `db:"next_number" json:"next_number"`
+	LatestNumber pgtype.Numeric `db:"latest_number" json:"latest_number"`
+}
+
+type ConsensusNetwork struct {
+	ChainID  pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Identity []byte         `db:"identity" json:"identity"`
+}
+
+type ConsensusObservation struct {
+	ChainID       pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber   pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash     []byte         `db:"block_hash" json:"block_hash"`
+	Slot          pgtype.Numeric `db:"slot" json:"slot"`
+	Observation   []byte         `db:"observation" json:"observation"`
+	Canonical     bool           `db:"canonical" json:"canonical"`
+	DurableJobID  int64          `db:"durable_job_id" json:"durable_job_id"`
+	JobGeneration int64          `db:"job_generation" json:"job_generation"`
+}
+
+type ConsensusOverview struct {
+	ChainID    pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	Generation int64              `db:"generation" json:"generation"`
+	LeaseUntil pgtype.Timestamptz `db:"lease_until" json:"lease_until"`
+	NextPollAt pgtype.Timestamptz `db:"next_poll_at" json:"next_poll_at"`
+	ObservedAt pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
+	Overview   []byte             `db:"overview" json:"overview"`
+	LastError  string             `db:"last_error" json:"last_error"`
 }
 
 type ContractAbi struct {

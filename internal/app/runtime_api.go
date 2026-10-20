@@ -8,6 +8,7 @@ import (
 	"github.com/islishude/etherview/internal/auth"
 	"github.com/islishude/etherview/internal/catalog"
 	"github.com/islishude/etherview/internal/components"
+	"github.com/islishude/etherview/internal/config"
 	"github.com/islishude/etherview/internal/contractartifact"
 	"github.com/islishude/etherview/internal/erc4337"
 	"github.com/islishude/etherview/internal/etherscan"
@@ -95,15 +96,16 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			return err
 		}
 		completeness := configuredCompleteness(cfg, rpcBuild)
-		var userOperationRegistry *erc4337.Registry
-		if cfg.Features.UserOperations {
-			configuredRegistry, registryErr := erc4337.NewRegistry(cfg.ERC4337)
-			if registryErr != nil {
-				return registryErr
-			}
-			userOperationRegistry = &configuredRegistry
+		userOperationRegistry, err := apiUserOperationRegistry(cfg)
+		if err != nil {
+			return err
+		}
+		archive, err := consensusArchive(ctx, cfg)
+		if err != nil {
+			return err
 		}
 		queryOptions := query.Options{
+			Consensus: cfg.Consensus, BlobArchive: archive,
 			ChainID: cfg.Chain.ID, StartBlock: cfg.Chain.StartBlock,
 			RuntimeStatus: func(callbackCtx context.Context) (query.RuntimeStatus, bool, error) {
 				status, exists, err := runtimeEvents.Status(callbackCtx)
@@ -291,7 +293,8 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 		)
 		webHandler := webui.NewHandler()
 		handler, err := httpapi.New(httpapi.Options{
-			Config: cfg, Reader: publicReader, TransactionReader: transactionReader, AddressActivities: reader,
+			ConsensusReader: writerReader,
+			Config:          cfg, Reader: publicReader, TransactionReader: transactionReader, AddressActivities: reader,
 			AddressEnrichment: catalogReader, AddressNames: addressNames,
 			DelegationBindings: delegationBindings, DelegationHistory: catalogReader,
 			Genesis: reader, Catalog: catalogReader, UserOperations: reader, NativeTransfers: writerReader, Web: webHandler,
@@ -340,4 +343,15 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 		}
 	}
 	return nil
+}
+
+func apiUserOperationRegistry(cfg config.Config) (*erc4337.Registry, error) {
+	if !cfg.Features.UserOperations {
+		return nil, nil
+	}
+	registry, err := erc4337.NewRegistry(cfg.ERC4337)
+	if err != nil {
+		return nil, err
+	}
+	return &registry, nil
 }

@@ -35,8 +35,9 @@ routine change evidence belongs in the PR or completion report.
 
 - Target the current fresh-database schema. No compatibility adapters, startup
   backfills, or legacy readiness states unless explicitly requested.
-- PostgreSQL is authoritative; Redis, NATS, and object storage are disposable
-  accelerators, never the sole copy of correctness data.
+- PostgreSQL is authoritative for identities and publication; Redis, NATS and
+  trace object caches are disposable accelerators. Optional blob bodies use
+  durable object archives under ADR-0055, with PostgreSQL-owned manifests.
 - Preserve chain/block identity, canonical and orphan history, endpoint pinning,
   and lease-fenced atomic publication. Never fall back from block hash to height
   or `latest`.

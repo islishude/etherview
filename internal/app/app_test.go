@@ -155,6 +155,8 @@ func TestProductionMonolithGraphEqualsUnionOfSplitRoleGraphs(t *testing.T) {
 		{name: "all optional workers enabled with websocket wake", cfg: func() config.Config {
 			cfg := config.Default()
 			cfg.Features.Mempool = true
+			cfg.Consensus.Enabled = true
+			cfg.Consensus.Blobs.Enabled = true
 			cfg.Features.Trace = true
 			cfg.Features.Verification = true
 			cfg.Features.NFTMetadata = true

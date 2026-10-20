@@ -176,9 +176,9 @@ describe("core explorer pages", () => {
       renderExplorer(`/blocks/${canonicalHash}`);
       await screen.findByText("Block summary");
       if (slot === undefined) {
-        expect(screen.queryByText("Slot number")).not.toBeInTheDocument();
+        expect(screen.queryByText("Slot number · Execution header")).not.toBeInTheDocument();
       } else {
-        expect(screen.getByText("Slot number")).toBeVisible();
+        expect(screen.getByText("Slot number · Execution header")).toBeVisible();
         expect(screen.getByText("Block access list hash")).toBeVisible();
         expect(screen.getByText(olderHash, { exact: true })).toBeVisible();
         expect(screen.getByText(BigInt(slot).toLocaleString("en"), { exact: true })).toBeVisible();
@@ -187,9 +187,9 @@ describe("core explorer pages", () => {
         await i18n.changeLanguage("zh");
       });
       if (slot === undefined) {
-        expect(screen.queryByText("时隙编号")).not.toBeInTheDocument();
+        expect(screen.queryByText("时隙编号 · 执行头")).not.toBeInTheDocument();
       } else {
-        expect(screen.getByText("时隙编号")).toBeVisible();
+        expect(screen.getByText("时隙编号 · 执行头")).toBeVisible();
       }
     },
   );

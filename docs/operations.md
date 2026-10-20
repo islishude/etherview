@@ -789,7 +789,7 @@ holding the chain lock. It cannot move canonicality or checkpoints. A range at
 or below finalized height requires `--allow-finalized` plus the recorded
 reason; this permits only a same-identity refresh.
 
-`reindex --stage native_transfer|proxy|abi|token|stats|trace|state_diff|userop|holder` queues work for
+`reindex --stage consensus|blob|native_transfer|proxy|abi|token|stats|trace|state_diff|userop|holder` queues work for
 the currently canonical block hash. It does not steal queued work or an active
 lease. Repair deliberately does not infer a downstream rebuild range; schedule
 each required derived stage explicitly and wait for its durable publication
@@ -1335,3 +1335,74 @@ then roll all roles to the same application identity and verify both runtime
 probes (legacy uses 0.2.1). Do not rebind jobs, delete historical verification
 records, or clear existing caches as part of this rollout. Historical terminal
 results remain readable. The scheduled workflow does not deploy the application.
+
+## Optional consensus and blob archives
+
+Enable `consensus.enabled` to collect Beacon observations through the enrich
+role. Configure `ETHERVIEW_CONSENSUS_URL` and optionally a JSON string-map in
+`ETHERVIEW_CONSENSUS_HEADERS`; their `_FILE` variants accept mounted secrets.
+Only enrich/all reads these credentials. The endpoint may be a controlled
+internal HTTP service; redirects are rejected. API instances read PostgreSQL.
+
+`ETHERVIEW_CONSENSUS_ENABLED`, `ETHERVIEW_CONSENSUS_POLL_INTERVAL` (12s),
+`ETHERVIEW_CONSENSUS_REQUEST_TIMEOUT` (10s), `ETHERVIEW_CONSENSUS_WORKER_COUNT` (2),
+and `ETHERVIEW_CONSENSUS_MAX_RESPONSE_BYTES` (33554432) override YAML.
+Network identity is fixed after matching a local execution block; a different
+Beacon genesis is an error requiring operator investigation, never automatic
+replacement. Header slots remain available when consensus history is missing.
+The collector normalizes `SLOT_DURATION_MS` and older `SECONDS_PER_SLOT`
+parameters to the same network identity; conflicting values are rejected.
+Full Beacon bodies are checked against the pinned SSZ root, including Gloas
+progressive containers. Numeric SSZ preset parameters come from the node spec;
+absent parameters use the protocol types' mainnet defaults. Custom presets must
+provide their overrides. A wrong preset or unsupported structure fails closed.
+
+Blob archival is independently enabled by `ETHERVIEW_CONSENSUS_BLOBS_ENABLED`.
+Provision a dedicated bucket without expiry or cache eviction and configure
+`ETHERVIEW_CONSENSUS_BLOBS_ENDPOINT`, `ETHERVIEW_CONSENSUS_BLOBS_BUCKET`,
+`ETHERVIEW_CONSENSUS_BLOBS_REGION`, and `ETHERVIEW_CONSENSUS_BLOBS_PATH_STYLE`.
+Optional static secrets `ETHERVIEW_CONSENSUS_BLOBS_ACCESS_KEY`,
+`ETHERVIEW_CONSENSUS_BLOBS_SECRET_KEY`, and
+`ETHERVIEW_CONSENSUS_BLOBS_SESSION_TOKEN` also support `_FILE`; absent keys use
+the AWS SDK credential chain. Enrich/all requires conditional PutObject and
+GetObject; API requires GetObject only. Compose uses `ETHERVIEW_CONSENSUS_BLOBS_READ_ACCESS_KEY`,
+`ETHERVIEW_CONSENSUS_BLOBS_READ_SECRET_KEY` and
+`ETHERVIEW_CONSENSUS_BLOBS_READ_SESSION_TOKEN` for the API role; enrich/all
+uses the ordinary archive credential inputs. Helm selects separate
+`secrets.blobArchiveRead*Key` entries for API and `secrets.blobArchive*Key`
+entries for writers. Alternatively, provision workload identities and select
+existing names in `blobArchiveServiceAccounts.api`, `.enrich` and `.all`;
+these override the trace-cache ServiceAccount only on archive roles. For nonstandard Beacon/S3 ports, set the Helm network policy's
+explicit additional egress rules. Never grant archive credentials to sync,
+trace, metadata, maintenance or migration processes.
+
+The archive supports standard full-blob retrieval, and the older sidecar API
+for Deneb/Electra. Fulu may require a supernode or provider that reconstructs
+full blobs. A normal node's missing historical blobs are reported unavailable;
+no client-side data-column reconstruction or fabricated empty result is used.
+New blocks take priority over bounded historical discovery. Separate persistent
+forward and backward cursors also fill blocks indexed while collection was
+disabled, without discarding older scan progress. Reorgs also rewind discovery
+while disabled; generation checks prevent an in-flight scan from losing that
+rewind. Canonical-attach replay identities deduplicate discovery and live dispatch.
+Retry a chosen
+range using `reindex --stage consensus` or `reindex --stage blob` with the
+normal reason and finalized-range safeguards. A 404 does not prove a missed slot.
+
+Back up PostgreSQL and the archive bucket together. Restore the bucket before
+serving blob downloads and validate manifests by replaying the selected range.
+Retained manifest references are independently read back and checked before
+republication; intact objects do not require historical Beacon blob availability.
+Retained consensus observations can also be republished without fetching the
+historical body, after checking the current node's network identity. Only missing
+objects require upstream retrieval. Immutable keys and checksums make retry after
+upload/commit failure safe.
+Corrupt existing objects are never silently overwritten: restore the exact
+object from a known-good backup, or remove the corrupt object under operator
+control and replay while the upstream still retains its bytes. An unavailable
+upstream cannot recover lost archived history. Unreferenced uploads and orphan
+blob objects are retained; there is no automatic archive garbage collection.
+
+`/status` and `/home` expose the last successful consensus observation and its
+freshness. Consensus-node or archive outages affect their own collection and
+read capability without changing execution finality or core readiness.

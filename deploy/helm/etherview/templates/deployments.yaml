@@ -16,6 +16,10 @@
 {{- $apiCapable := or (eq $roleName "all") (eq $roleName "api") }}
 {{- $s3Configured := not (empty ($root.Values.config.adapters.s3_endpoint | trim)) }}
 {{- $s3WorkloadIdentity := and $apiCapable $s3Configured $root.Values.s3ServiceAccount.enabled }}
+{{- $archiveServiceAccount := "" }}
+{{- if $root.Values.config.consensus.blobs.enabled }}
+{{- $archiveServiceAccount = default "" (index $root.Values.blobArchiveServiceAccounts $roleName) }}
+{{- end }}
 {{- $apiTLS := and $root.Values.apiTLS.enabled $apiCapable }}
 {{- $apiPortName := ternary "https" "http" $apiTLS }}
 ---
@@ -54,7 +58,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      serviceAccountName: {{ ternary (include "etherview.s3ServiceAccountName" $root) (include "etherview.serviceAccountName" $root) $s3WorkloadIdentity }}
+      serviceAccountName: {{ default (ternary (include "etherview.s3ServiceAccountName" $root) (include "etherview.serviceAccountName" $root) $s3WorkloadIdentity) $archiveServiceAccount }}
       automountServiceAccountToken: false
       terminationGracePeriodSeconds: {{ $root.Values.terminationGracePeriodSeconds }}
       securityContext:
@@ -138,6 +142,40 @@ spec:
             {{- end }}
             - name: ETHERVIEW_CHAIN_GENESIS_FETCH_TIMEOUT
               value: {{ $root.Values.genesisState.fetchTimeout | quote }}
+            {{- end }}
+            {{- if and $root.Values.config.consensus.enabled (or (eq $roleName "all") (eq $roleName "enrich")) }}
+            - name: ETHERVIEW_CONSENSUS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.secrets.existingSecret | quote }}
+                  key: {{ $root.Values.secrets.consensusURLKey | quote }}
+                  optional: false
+            - name: ETHERVIEW_CONSENSUS_HEADERS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.secrets.existingSecret | quote }}
+                  key: {{ $root.Values.secrets.consensusHeadersKey | quote }}
+                  optional: true
+            {{- end }}
+            {{- if and $root.Values.config.consensus.blobs.enabled (or $apiCapable (eq $roleName "enrich")) }}
+            - name: ETHERVIEW_CONSENSUS_BLOBS_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.secrets.existingSecret | quote }}
+                  key: {{ ternary $root.Values.secrets.blobArchiveReadAccessKey $root.Values.secrets.blobArchiveAccessKey (eq $roleName "api") | quote }}
+                  optional: true
+            - name: ETHERVIEW_CONSENSUS_BLOBS_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.secrets.existingSecret | quote }}
+                  key: {{ ternary $root.Values.secrets.blobArchiveReadSecretKey $root.Values.secrets.blobArchiveSecretKey (eq $roleName "api") | quote }}
+                  optional: true
+            - name: ETHERVIEW_CONSENSUS_BLOBS_SESSION_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.secrets.existingSecret | quote }}
+                  key: {{ ternary $root.Values.secrets.blobArchiveReadSessionKey $root.Values.secrets.blobArchiveSessionKey (eq $roleName "api") | quote }}
+                  optional: true
             {{- end }}
             - name: ETHERVIEW_API_KEY_PEPPER
               valueFrom:

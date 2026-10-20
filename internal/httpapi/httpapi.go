@@ -132,6 +132,7 @@ type UserAPIKeyAdministration interface {
 }
 
 type Options struct {
+	ConsensusReader       publicquery.ConsensusReader
 	Config                config.Config
 	Reader                Reader
 	TransactionReader     TransactionReader
@@ -177,6 +178,7 @@ type Options struct {
 }
 
 type Handler struct {
+	consensusReader       publicquery.ConsensusReader
 	cfg                   config.Config
 	reader                Reader
 	transactionReader     TransactionReader
@@ -242,6 +244,7 @@ func New(options Options) (*Handler, error) {
 		options.RuntimeReady = func() bool { return true }
 	}
 	h := &Handler{
+		consensusReader:       options.ConsensusReader,
 		cfg:                   options.Config,
 		reader:                options.Reader,
 		transactionReader:     options.TransactionReader,
@@ -559,6 +562,12 @@ func (h *Handler) encodeHomeSnapshotResponse(
 	meta.CoverageStart = &publication.CoverageStart
 	meta.CoverageEnd = &publication.CoverageEnd
 	encodedData := publication.EncodedData
+	if observed := publication.Data.Status.Consensus; observed != nil && !observed.Stale && observed.StaleAt != nil && time.Now().After(*observed.StaleAt) {
+		refreshed := *observed
+		refreshed.Stale = true
+		publication.Data.Status.Consensus = &refreshed
+		encodedData = nil
+	}
 	var err error
 	if len(encodedData) == 0 {
 		encodedData, err = json.Marshal(publication.Data)
