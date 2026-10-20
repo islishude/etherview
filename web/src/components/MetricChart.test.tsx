@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThemeProvider, useTheme } from "@/theme/ThemeProvider";
@@ -28,9 +28,14 @@ afterEach(() => {
 });
 
 describe("chart theme palette", () => {
-  it.each(["light", "dark"] as const)(
-    "uses the applied %s palette on mount and after switching both ways",
-    async (initialTheme) => {
+  it.each([
+    { initialTheme: "light", automatic: false },
+    { initialTheme: "dark", automatic: false },
+    { initialTheme: "light", automatic: true },
+    { initialTheme: "dark", automatic: true },
+  ] as const)(
+    "uses the applied $initialTheme palette on mount and after switching both ways (automatic=$automatic)",
+    async ({ initialTheme, automatic }) => {
       // Real CSS selection exposes effect ordering without mocking computed styles.
       stylesheet = document.createElement("style");
       stylesheet.textContent = `
@@ -38,7 +43,22 @@ describe("chart theme palette", () => {
         :root[data-theme="dark"] { --brand: #8bb5ff; --text-soft: #a5afbf; }
       `;
       document.head.append(stylesheet);
-      window.localStorage.setItem("etherview.theme", initialTheme);
+      const events = new EventTarget();
+      let systemDark = initialTheme === "dark";
+      if (automatic) {
+        vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+          matches: query === "(prefers-color-scheme: dark)" && systemDark,
+          media: query,
+          onchange: null,
+          addEventListener: events.addEventListener.bind(events),
+          removeEventListener: events.removeEventListener.bind(events),
+          dispatchEvent: events.dispatchEvent.bind(events),
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+        }));
+      } else {
+        window.localStorage.setItem("etherview.theme", initialTheme);
+      }
       document.documentElement.dataset.theme = initialTheme === "dark" ? "light" : "dark";
       render(
         <ThemeProvider>
@@ -50,7 +70,14 @@ describe("chart theme palette", () => {
       const opposite = initialTheme === "dark" ? "light" : "dark";
       for (const [index, theme] of [initialTheme, opposite, initialTheme].entries()) {
         if (index > 0) {
-          await user.click(screen.getByRole("button", { name: "Toggle theme" }));
+          if (automatic) {
+            act(() => {
+              systemDark = theme === "dark";
+              events.dispatchEvent(new Event("change"));
+            });
+          } else {
+            await user.click(screen.getByRole("button", { name: "Toggle theme" }));
+          }
         }
         expect(setOption).toHaveBeenLastCalledWith(
           expect.objectContaining({
