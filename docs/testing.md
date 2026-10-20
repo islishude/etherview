@@ -993,5 +993,12 @@ argument preservation, readiness port lookup and initialization failure propagat
 `make compose-check` checks Engine JWT and validator-key isolation, scoped
 archive credentials, client images/commands, loopback-only Beacon exposure and
 the absence of direct or transitive optional dependencies from core roles.
+It also checks the default Preview entry point in `compose.yaml` and the
+external-chain template in `deploy/compose.yaml`, including project/volume
+identity and repository-root build and bind-mount resolution. Deployment
+render commands pass `--project-directory .`; the shared Go Compose helper
+anchors tests at the repository root, while the standalone x402 fixture
+explicitly retains its own directory. Runtime, compiler, schema and RustFS
+tests continue to exercise the external-chain template.
 Run both Preview gates, `make check`, `make test-rustfs` and
 `make test-runtime-e2e` for changes to this deployment.

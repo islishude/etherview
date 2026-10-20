@@ -80,7 +80,7 @@ with separate invalidation and content-moderation obligations.
   `api`, mixed roles, or a disabled NFT-metadata feature. The checked-in
   Preview enables it only in the split `metadata` process for its controlled
   local Kubo HTTPS gateway (and Docker Desktop fake-IP routing when an operator
-  explicitly selects a public gateway). API media fetches, base Compose, and
+  explicitly selects a public gateway). API media fetches, `deploy/compose.yaml`, and
   Helm remain strict. URL, TLS, redirect, time, size, content, and
   document validation are unchanged, and a successful non-public connection
   records the bounded `network.policy_bypassed=true` diagnostic. This escape

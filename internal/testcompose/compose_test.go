@@ -23,7 +23,7 @@ func (e *recordingExecutor) Run(_ context.Context, command Command) ([]byte, err
 func TestProjectCommandKeepsFilesProfilesAndEnvironment(t *testing.T) {
 	t.Setenv("COMPOSE", "docker compose")
 	executor := &recordingExecutor{}
-	project := New("/repo", "runtime", "compose.yaml", "/tmp/overlay.yaml")
+	project := New("/repo", "runtime", "deploy/compose.yaml", "/tmp/overlay.yaml")
 	project.Profiles = []string{"distributed"}
 	project.Env = map[string]string{"POSTGRES_PASSWORD": "test-password"}
 	project.Executor = executor
@@ -36,8 +36,8 @@ func TestProjectCommandKeepsFilesProfilesAndEnvironment(t *testing.T) {
 		t.Fatalf("command name = %q, want docker", executor.command.Name)
 	}
 	wantArguments := []string{
-		"compose", "-p", "runtime",
-		"-f", filepath.Join("/repo", "compose.yaml"),
+		"compose", "--project-directory", "/repo", "-p", "runtime",
+		"-f", filepath.Join("/repo", "deploy/compose.yaml"),
 		"-f", "/tmp/overlay.yaml",
 		"--profile", "distributed",
 		"up", "-d", "postgres",
@@ -62,13 +62,30 @@ func TestProjectDownRemovesAllResources(t *testing.T) {
 	}
 
 	wantArguments := []string{
-		"compose", "-p", "runtime",
+		"compose", "--project-directory", "/repo", "-p", "runtime",
 		"-f", filepath.Join("/repo", "compose.yaml"),
 		"--profile", "distributed",
 		"--all-resources", "down", "--volumes", "--remove-orphans",
 	}
 	if !slices.Equal(executor.command.Args, wantArguments) {
 		t.Fatalf("arguments = %#v, want %#v", executor.command.Args, wantArguments)
+	}
+}
+
+func TestProjectCommandPreservesStandaloneFixtureDirectory(t *testing.T) {
+	t.Setenv("COMPOSE", "docker compose")
+	project := New("/repo", "x402", "e2e/x402local/compose.yaml")
+	project.ProjectDirectory = filepath.Join(project.Root, "e2e/x402local")
+	command, err := project.Command("config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"compose", "--project-directory", "/repo/e2e/x402local", "-p", "x402",
+		"-f", "/repo/e2e/x402local/compose.yaml", "config",
+	}
+	if !slices.Equal(command.Args, want) || command.Dir != "/repo" {
+		t.Fatalf("command = %#v, want args %#v and repository working directory", command, want)
 	}
 }
 

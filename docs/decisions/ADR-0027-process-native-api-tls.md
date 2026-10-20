@@ -35,8 +35,9 @@ readiness, and monolith/split-role parity contracts.
   SNI selection, or certificate hot reload.
 - `server.metrics_address` remains plain HTTP. It is an operator-controlled
   operations boundary and never receives the API private key.
-- The base production Compose deployment remains HTTP and ships no TLS
-  overlay. The full-stack Preview is the checked-in local HTTPS workflow: an
+- The production deployment template at `deploy/compose.yaml` remains HTTP
+  and ships no TLS overlay. The repository-root `compose.yaml` selects the
+  full-stack Preview as the checked-in local HTTPS workflow: an
   explicit mkcert target installs local trust and generates an ignored
   localhost pair, which Preview mounts read-only only into `api`. Helm uses an
   independent, pre-existing `apiTLS.existingSecret`, mounts it only into the

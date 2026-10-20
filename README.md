@@ -21,22 +21,9 @@ for current status and remaining gates.
 
 ## Quick start
 
-Docker Compose starts PostgreSQL, applies migrations, builds the current tree,
-and serves the monolith at <http://localhost:8080>:
-
-```sh
-cp deploy/compose.env.example .env
-# Set a local password and a compatible execution RPC endpoint in .env.
-docker compose --profile monolith up --build
-```
-
-Use `--profile distributed` for one process per role; add
-`--profile accelerators` to enable optional infrastructure. See the
-[deployment guide](deploy/README.md) for prerequisites and configuration.
-
 ### Full-stack Preview
 
-Preview includes a local Geth development chain, all six application roles,
+The default `compose.yaml` runs Preview with a local Geth/Lighthouse PoS chain, all six application roles,
 public contract verification, and a local Kubo HTTPS gateway for NFT metadata:
 
 ```sh
@@ -55,6 +42,24 @@ volumes.** See [Preview setup and lifecycle](deploy/README.md#full-stack-preview
 for prerequisites, compiler details, and endpoint overrides. The
 [IPFS file tool](docs/operations.md#ipfs-file-tool) uploads and downloads single
 files through the loopback Kubo API.
+
+### Deploy against an external chain
+
+The maintained deployment template is `deploy/compose.yaml`. From the repository
+root, configure an external execution RPC endpoint and serve the monolith at
+<http://localhost:8080>:
+
+```sh
+cp deploy/compose.env.example .env.deploy
+# Set a password and a compatible execution RPC endpoint in .env.deploy.
+docker compose --project-directory . -f deploy/compose.yaml --env-file .env.deploy --profile monolith up --build
+```
+
+Use `--profile distributed` for one process per role; add
+`--profile accelerators` to enable optional infrastructure. See the
+[deployment guide](deploy/README.md#docker-compose) for prerequisites and migration
+from an existing deployment `.env`. Preview and deployment use separate projects
+and volumes; choose different published ports if running both concurrently.
 
 ## Development
 

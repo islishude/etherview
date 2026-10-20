@@ -31,7 +31,7 @@ func TestRustFS(t *testing.T) {
 	if err := os.WriteFile(overlay, []byte("services:\n  object-storage:\n    ports:\n      - '127.0.0.1::9000'\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	project := testcompose.NewQuiet(root, testcompose.UniqueProjectName("etherview-rustfs"), "compose.yaml", overlay)
+	project := testcompose.NewQuiet(root, testcompose.UniqueProjectName("etherview-rustfs"), "deploy/compose.yaml", overlay)
 	project.Profiles = []string{"accelerators"}
 	access, secret := rand.Text(), rand.Text()
 	project.Env = map[string]string{"RUSTFS_ACCESS_KEY": access, "RUSTFS_SECRET_KEY": secret}

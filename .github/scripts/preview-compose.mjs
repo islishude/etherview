@@ -25,6 +25,6 @@ export function runCompose(
 }
 
 export function composeEndpoint(service, port) {
-  const output = runCompose(["-f", "compose.preview.yaml", "port", service, String(port)]);
+  const output = runCompose(["-f", "compose.yaml", "port", service, String(port)]);
   return `http://${output.trim().replace(/^0\.0\.0\.0:/, "127.0.0.1:")}`;
 }

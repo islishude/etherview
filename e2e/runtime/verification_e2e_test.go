@@ -63,7 +63,7 @@ func startVerificationTopology(t *testing.T, ctx context.Context, root, mode, su
 	project := testcompose.NewQuiet(
 		root,
 		testcompose.UniqueProjectName("etherview-"+suite+"-"+mode),
-		"compose.yaml",
+		"deploy/compose.yaml",
 		"e2e/runtime/compose.yaml",
 		"e2e/runtime/verification.compose.yaml",
 		extraCompose,

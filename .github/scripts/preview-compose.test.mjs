@@ -54,7 +54,7 @@ test("start and recreate propagate explicit archive initialization failures", ()
   for (const target of ["start-preview", "recreate-preview"]) {
     const recipe = makefile.split(`\n${target}:`)[1].split(/\n\S/)[0];
     const up = recipe.indexOf("up ");
-    const initialize = recipe.indexOf("$(COMPOSE) -f compose.preview.yaml run --rm archive-init");
+    const initialize = recipe.indexOf("$(COMPOSE) -f compose.yaml run --rm archive-init");
     assert.ok(up >= 0 && initialize > up, `${target}: initialize after core startup`);
     assert.match(recipe, /\n\tDOCKER=.*run --rm archive-init\n/);
     assert.ok(initialize < recipe.indexOf(".github/scripts/preview-ready.mjs"));

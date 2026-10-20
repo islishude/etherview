@@ -69,22 +69,26 @@ func writerOrDiscard(writer io.Writer) io.Writer {
 }
 
 type Project struct {
-	Root     string
-	Name     string
-	Files    []string
-	Profiles []string
-	Env      map[string]string
-	Compose  string
-	Executor Executor
+	Root string
+	// ProjectDirectory anchors Compose build contexts and bind mounts.
+	// It defaults to Root; standalone fixtures may use their own directory.
+	ProjectDirectory string
+	Name             string
+	Files            []string
+	Profiles         []string
+	Env              map[string]string
+	Compose          string
+	Executor         Executor
 }
 
 func New(root, name string, files ...string) *Project {
 	return &Project{
-		Root:     root,
-		Name:     name,
-		Files:    files,
-		Compose:  composeCommand(root),
-		Executor: OSExecutor{Stdout: os.Stdout, Stderr: os.Stderr},
+		Root:             root,
+		ProjectDirectory: root,
+		Name:             name,
+		Files:            files,
+		Compose:          composeCommand(root),
+		Executor:         OSExecutor{Stdout: os.Stdout, Stderr: os.Stderr},
 	}
 }
 
@@ -121,7 +125,10 @@ func (p *Project) Command(arguments ...string) (Command, error) {
 	if len(command) == 0 {
 		return Command{}, fmt.Errorf("compose command is empty")
 	}
-	args := make([]string, 0, 2+len(p.Files)*2+len(p.Profiles)*2+len(arguments))
+	args := make([]string, 0, 4+len(p.Files)*2+len(p.Profiles)*2+len(arguments))
+	if p.ProjectDirectory != "" {
+		args = append(args, "--project-directory", p.ProjectDirectory)
+	}
 	if p.Name != "" {
 		args = append(args, "-p", p.Name)
 	}

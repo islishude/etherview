@@ -140,7 +140,7 @@ export function composeEnvironment(
 ) {
   // Let Compose resolve .env and interpolation, exactly as it does for mounts
   // and volume ownership. Capture its output without logging credentials.
-  const output = runCompose(["-f", "compose.preview.yaml", "config", "--environment"], {}, compose);
+  const output = runCompose(["-f", "compose.yaml", "config", "--environment"], {}, compose);
   const env = { ...process.env };
   for (const line of output.split("\n")) {
     const equals = line.indexOf("=");

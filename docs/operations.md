@@ -56,7 +56,7 @@ or roll the selected `all`/`api` Deployments. Monitor certificate expiry and
 perform client trust-chain and hostname checks at the public origin; the
 application does not issue, renew, or hot-reload certificates.
 
-The checked-in base Compose deployment remains HTTP and expects production TLS
+The `deploy/compose.yaml` deployment remains HTTP and expects production TLS
 to terminate externally. For a locally trusted process-native HTTPS example,
 initialize and start the full-stack Preview:
 
@@ -64,6 +64,13 @@ initialize and start the full-stack Preview:
 make preview-cert
 make start-preview
 ```
+
+Preview now uses the repository-root `compose.yaml`; deployment commands use
+`--project-directory . -f deploy/compose.yaml --env-file .env.deploy` from the
+repository root. Move existing deployment settings out of `.env` manually as
+described in the [deployment guide](../deploy/README.md#docker-compose).
+The project names and volume identities are unchanged; this file relocation
+does not require stopping, deleting or migrating either environment's data.
 
 The explicit certificate target runs `mkcert -install` and generates an
 ignored pair for `etherview.localhost`, `localhost`, `127.0.0.1`, and `::1`.
@@ -124,9 +131,9 @@ first bring up the runtime, then run `archive-init` separately and propagate its
 exit status before checking real block production. Initialization failure does
 not prevent already started API/enrich containers from becoming ready.
 After correcting credentials or restoring storage, repeat
-`docker compose -f compose.preview.yaml run --rm archive-init`; this preserves
+`docker compose -f compose.yaml run --rm archive-init`; this preserves
 existing objects. To recreate application roles during an archive outage, use
-`docker compose -f compose.preview.yaml up -d --no-build --force-recreate --wait api enrich`.
+`docker compose -f compose.yaml up -d --no-build --force-recreate --wait api enrich`.
 The full start/recreate targets still report optional service startup failures.
 
 The archive client sends `If-None-Match: *` on writes, but RustFS 1.0.1 cannot
@@ -442,7 +449,7 @@ To enable a local trace cache:
    set `RUSTFS_ACCESS_KEY` and `RUSTFS_SECRET_KEY` to your chosen credentials.
    Keep `ETHERVIEW_S3_ENDPOINT` unset until the bucket exists.
 2. Start only the object store through the repository wrapper:
-   `.github/scripts/compose.sh --env-file /absolute/path/to/compose.env --profile accelerators up -d --wait object-storage`.
+   `.github/scripts/compose.sh --project-directory . -f deploy/compose.yaml --env-file /absolute/path/to/compose.env --profile accelerators up -d --wait object-storage`.
 3. Provision `etherview-cache` with an S3 client on the Compose network, or
    temporarily publish the console using this local override:
 
@@ -454,7 +461,8 @@ To enable a local trace cache:
    ```
 
    Save the override outside tracked files and start with both
-   `-f compose.yaml -f /absolute/path/to/rustfs-console.yaml`. Open the local
+   `--project-directory . -f deploy/compose.yaml -f /absolute/path/to/rustfs-console.yaml`,
+   retaining the same `--env-file` and profile arguments. Open the local
    console at `http://127.0.0.1:9001`, sign in with the RustFS credentials, and
    create the bucket. Recreate the service without the override afterward.
 4. Set `ETHERVIEW_S3_ENDPOINT=http://object-storage:9000`,

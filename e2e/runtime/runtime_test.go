@@ -305,7 +305,7 @@ func TestCaptureRuntimeDiagnostics(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			artifacts := t.TempDir()
-			project := testcompose.NewQuiet("/repo", "runtime", "compose.yaml")
+			project := testcompose.NewQuiet("/repo", "runtime", "deploy/compose.yaml")
 			project.Compose = "compose"
 			project.Executor = diagnosticExecutor{
 				psOutput:  []byte("NAME STATUS\napi restarting\n"),
@@ -365,7 +365,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 	project := testcompose.NewQuiet(
 		root,
 		testcompose.UniqueProjectName("etherview-runtime-"+mode),
-		"compose.yaml",
+		"deploy/compose.yaml",
 		"e2e/runtime/compose.yaml",
 	)
 	project.Profiles = []string{mode}
@@ -861,7 +861,7 @@ func (h *harness) validateProcessNativeTLS(ctx context.Context) {
 	project := testcompose.NewQuiet(
 		h.root,
 		h.project.Name,
-		"compose.yaml",
+		"deploy/compose.yaml",
 		"e2e/runtime/compose.yaml",
 		overrideFile,
 	)

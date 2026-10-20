@@ -40,7 +40,7 @@ assert.ok(
   !Object.keys(services).some((name) => name.includes("compiler-runner")),
   "removed Preview compiler-runner service",
 );
-assertNoPlatform(config, "compose.preview.yaml");
+assertNoPlatform(config, "compose.yaml");
 for (const key of ["derived_enabled", "derived_backfill_enabled", "derived_forward_enabled"]) {
   assert.match(previewConfig, new RegExp(`^\\s+${key}: true$`, "m"), `Preview ${key}`);
   assert.match(defaultConfig, new RegExp(`^\\s+${key}: false$`, "m"), `default ${key}`);

@@ -7,13 +7,34 @@ dependencies.
 
 ## Docker Compose
 
-Copy `compose.env.example` to the repository-root `.env`, replace its example
-credentials and RPC endpoint, then select exactly one application profile:
+The repository-root `compose.yaml` runs the local [full-stack Preview](#full-stack-preview).
+Use `make preview-cert` once and `make start-preview` to prepare its certificates,
+network bundle and archive; bare Compose startup does not perform that setup.
+
+`deploy/compose.yaml` is the maintained external-chain deployment template,
+also exercised by the production runtime tests. Run the following commands from
+the repository root. Copy `deploy/compose.env.example` to `.env.deploy`, replace
+its example credentials and RPC endpoint, then select exactly one application
+profile:
 
 ```sh
-docker compose --profile monolith up --build
-docker compose --profile distributed up --build
+cp deploy/compose.env.example .env.deploy
+docker compose --project-directory . -f deploy/compose.yaml --env-file .env.deploy --profile monolith up --build
+docker compose --project-directory . -f deploy/compose.yaml --env-file .env.deploy --profile distributed up --build
 ```
+
+Keep `--project-directory .` on every deployment invocation, including local
+overlays, so build contexts and relative bind mounts resolve from the repository
+root. Use the same file, environment and project-directory arguments for `ps`,
+`logs`, `down` and recreation.
+
+If an existing deployment uses a repository-root `.env`, move its deployment
+settings to `.env.deploy` manually and remove those settings from `.env` before
+starting Preview. In particular, external RPC/config overrides and
+`COMPOSE_PROJECT_NAME` must not redirect Preview into the deployed chain or
+project. Exported shell variables still override environment-file values.
+The project names remain `etherview` for deployment and `etherview-preview` for
+Preview; their existing named volumes remain reusable without a reset or migration.
 
 The `monolith` profile starts PostgreSQL, a migration run, and one
 `serve --roles=all` process. The `distributed` profile starts the same migration
@@ -34,7 +55,7 @@ role credentials. Compose passes standard AWS variables only to API-capable
 services when the operator sets them; file-based sources also need an explicit
 read-only mount. Missing credentials do not enable anonymous writes and degrade
 only the disposable trace cache.
-To route API reads to a replica, set `ETHERVIEW_DATABASE_READ_URL` in `.env`.
+To route API reads to a replica, set `ETHERVIEW_DATABASE_READ_URL` in `.env.deploy`.
 Reader pool sizes default to the mounted YAML file: either edit
 `database.read_max_connections` and `database.read_min_connections` there or
 export the corresponding `ETHERVIEW_DATABASE_READ_*` variables in the shell
@@ -52,7 +73,7 @@ at startup and then at `maintenance.interval`. Its generation window and
 expired-observation delete batch are configured under `maintenance`; the sweep
 uses PostgreSQL only and a retryable failure does not withdraw readiness.
 
-The checked-in base Compose deployment remains HTTP and expects production TLS
+The `deploy/compose.yaml` deployment remains HTTP and expects production TLS
 to terminate externally. The full-stack Preview below is the repository's
 local process-native HTTPS workflow. Custom deployments may still configure
 the application TLS file settings directly, but no separate production
@@ -100,7 +121,7 @@ addresses, overlapping ranges for one address, unknown versions, and more than
 
 ## Full-stack Preview
 
-`compose.preview.yaml` runs a local Geth/Lighthouse PoS chain and all six
+`compose.yaml` runs a local Geth/Lighthouse PoS chain and all six
 application roles. It enables consensus, blob archives, public
 verification and NFT metadata while leaving Sourcify, pricing, prepaid billing,
 and x402 top-ups disabled. Optional NATS, Redis, and object storage accelerators are not part of
@@ -219,7 +240,7 @@ API) are published; override them with `IPFS_GATEWAY_PORT`/`IPFS_API_PORT`.
 `ETHERVIEW_METADATA_IPFS_GATEWAY` still permits an explicit HTTPS override,
 without automatic public-gateway fallback. The metadata-only private-network
 exception permits the controlled local gateway, while API media fetches, other
-roles, base Compose and Helm remain strict. TLS, redirect, content and resource
+roles, deployment Compose and Helm remain strict. TLS, redirect, content and resource
 checks are preserved. The separate API-only compiler-download exception remains
 available for Docker Desktop fake-IP routing. Neither exception is a production
 SSRF policy or permission to contact unrelated private services.
