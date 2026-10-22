@@ -115,7 +115,7 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   directory before regeneration, so it also works before the repository has an
   initial Git `HEAD`.
 - `make format` / `make format-check`: write formatting / check without writing,
-  using locked Oxfmt 0.70.0 from `web`. The root configuration covers
+  using locked Oxfmt 0.70.0 from the root npm workspace. The root configuration covers
   `.js`, `.mjs`, `.cjs`, `.yaml`, `.yml`, and `.md`, including hidden workflow
   and script directories. The existing frontend scope runs separately, using
   its own configuration. `make lint` shares the frontend format prerequisite
@@ -137,7 +137,7 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   is excluded. This is a new metric baseline, not an equivalent conversion of
   the former Biome cognitive complexity threshold of 75. Generated OpenAPI
   types remain the only source exception in `web/.oxlintrc.json`.
-  `npm --prefix web run format` formats hand-written frontend sources, CSS,
+  `npm --workspace web run format` formats hand-written frontend sources, CSS,
   scripts, configuration, HTML, and Playwright tests; `format:check` is read-only.
   `web/.oxfmtrc.json` excludes generated API types, lockfiles, distributions,
   dependencies, browser reports, and Go files. Formatting uses two spaces,
@@ -362,17 +362,19 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   unexpected/missing file, symlink, compiler identity and metadata regressions.
   Custom PyPI/OSV advisory queries and approval records are retired under
   [ADR-0053](decisions/ADR-0053-vyper-wasm-distribution.md#security-validation).
-  All four npm
-  dependency trees must report zero high-severity vulnerabilities;
-  the API generator's
+  All three npm dependency trees (root workspace, compiler, and Hardhat fixture)
+  must report zero high-severity vulnerabilities; the API generator's
   transitive parser and glob dependencies are constrained by audited
   overrides.
   CI disables automatic npm install audits so an advisory endpoint outage
-  does not consume test budgets. The security job retains all four explicit
+  does not consume test budgets. The security job retains all three explicit
   audits, which always enable auditing regardless of the install setting,
   and fails if an audit cannot complete.
 - `make license-check`: Go, production frontend/compiler, all Vyper package
-  and pinned shared WASM component notice checks.
+  and pinned shared WASM component notice checks. The frontend gate resolves
+  its production dependency closure through npm, scans the root installation,
+  and requires a license result for every selected package, including hoisted
+  transitive dependencies.
 - `make benchmark-vyper-wasm`: actual SEA first/repeated dual compilation,
   per-process peak RSS and a native-reference-checked 17-file workload. Every
   sample uses a fresh process. OS caches are not evicted; this local experiment

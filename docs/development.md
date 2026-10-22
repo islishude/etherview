@@ -142,10 +142,16 @@ affected-row condition and `:exec` when only execution errors matter.
 
 Use `make format` to format repository JavaScript, YAML, Markdown, and the
 existing hand-written frontend scope. Use `make format-check` for a read-only
-check; `make lint` and CI include it. Both commands install the existing locked
-web/API dependencies without introducing a root npm project.
+check; `make lint` and CI include it. Both commands install the locked root npm
+workspace. The root `package.json`
+owns Oxlint/Oxfmt, engine requirements, install-script permissions, and dependency
+overrides; `api` and `web` share the root `package-lock.json`. Run `npm ci`
+(or `make npm-install`) at the repository root. Compiler runtime and Hardhat
+fixtures retain their isolated packages and lockfiles.
 
-Use `npm --prefix web run format` for frontend-only edits.
+After installation, `npm run lint`, `npm run format`, and `npm run format:check`
+provide the JavaScript/frontend gates directly. Use
+`npm --workspace web run format` for frontend-only edits.
 `make web-lint` runs TypeScript, Oxlint, and a read-only Oxfmt check through the
 same npm scripts used by CI. Keep generated API types under the API generator;
 do not format them manually. The [testing guide](testing.md) owns exact limits,

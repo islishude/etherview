@@ -4,16 +4,17 @@ FROM gcr.io/distroless/base-debian13:nonroot AS production-base
 
 FROM node:26.12.1-slim AS web-builder
 WORKDIR /src
-COPY web/package.json web/package-lock.json web/.npmrc ./web/
-RUN --mount=type=cache,target=/root/.npm npm --prefix web ci
+COPY package.json package-lock.json ./
+COPY web/package.json ./web/
+COPY api/package.json ./api/
+RUN --mount=type=cache,target=/root/.npm npm ci --engine-strict
 COPY ./api ./api
-RUN --mount=type=cache,target=/root/.npm npm --prefix api ci
 COPY web/index.html web/asset-budget.json web/tsconfig.json web/tsconfig.app.json web/tsconfig.node.json web/vite.config.ts ./web/
 COPY web/scripts ./web/scripts
 COPY web/src ./web/src
 ARG ETHERVIEW_WEB_BRANDING_DIR=web/branding/default
 COPY ["${ETHERVIEW_WEB_BRANDING_DIR}/", "/src/web-branding/"]
-RUN npm --prefix api run generate:api && ETHERVIEW_WEB_BRANDING_DIR=/src/web-branding npm --prefix web run build
+RUN npm --workspace api run generate:api && ETHERVIEW_WEB_BRANDING_DIR=/src/web-branding npm --workspace web run build
 
 FROM node:26.12.1-slim AS compiler-builder
 RUN apt-get update \

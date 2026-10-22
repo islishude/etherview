@@ -75,13 +75,13 @@ make test
 For frontend development, run the backend at <http://localhost:8080>, then:
 
 ```sh
-npm --prefix web install
-npm --prefix web run dev
+npm ci
+npm --workspace web run dev
 ```
 
 Open <http://127.0.0.1:5173>. Vite proxies `/api` to the backend.
-Use `npm --prefix web run build` for the production bundle and
-`npm --prefix web run preview` to inspect it at <http://127.0.0.1:4173>.
+Use `npm --workspace web run build` for the production bundle and
+`npm --workspace web run preview` to inspect it at <http://127.0.0.1:4173>.
 
 `make check` runs the common gates. Service-backed and long-running tests are
 explicit targets documented in the [testing guide](docs/testing.md).

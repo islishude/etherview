@@ -44,8 +44,8 @@ but does not sanitize, resize or convert artwork. Each image is limited to
 characters; name/title/description are limited to 80/160/512 Unicode code points.
 
 ```sh
-ETHERVIEW_WEB_BRANDING_DIR=branding/acme npm --prefix web run dev
-ETHERVIEW_WEB_BRANDING_DIR=branding/acme npm --prefix web run build
+ETHERVIEW_WEB_BRANDING_DIR=branding/acme npm --workspace web run dev
+ETHERVIEW_WEB_BRANDING_DIR=branding/acme npm --workspace web run build
 make go-build ETHERVIEW_WEB_BRANDING_DIR=branding/acme
 make docker-build IMAGE=etherview:acme ETHERVIEW_WEB_BRANDING_DIR=branding/acme
 ```

@@ -1,0 +1,37 @@
+{
+  "name": "@etherview/workspace",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "npm@11.16.0",
+  "engines": {
+    "node": ">= 26.12.1",
+    "npm": ">= 11.16.0"
+  },
+  "workspaces": [
+    "api",
+    "web"
+  ],
+  "scripts": {
+    "lint": "npm run lint:code --workspace web && npm run format:check",
+    "format": "npm run format:repo && npm run format --workspace web",
+    "format:check": "npm run format:repo:check && npm run format:check --workspace web",
+    "format:repo": "oxfmt --config .oxfmtrc.json --disable-nested-config --write '**/*.{js,mjs,cjs,yaml,yml,md}'",
+    "format:repo:check": "oxfmt --config .oxfmtrc.json --disable-nested-config --check '**/*.{js,mjs,cjs,yaml,yml,md}'"
+  },
+  "devDependencies": {
+    "oxfmt": "0.70.0",
+    "oxlint": "1.85.0"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.12",
+    "@redocly/openapi-core": {
+      "js-yaml": "4.3.2",
+      "minimatch": "9.0.9"
+    }
+  },
+  "allowScripts": {
+    "fsevents@2.3.3": true,
+    "fsevents@2.3.2": true
+  }
+}

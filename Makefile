@@ -3,7 +3,6 @@ SHELL := /bin/sh
 GO ?= go
 NODE ?= node
 NPM ?= npm
-REPO_FORMAT_PATHS := '**/*.{js,mjs,cjs,yaml,yml,md}'
 PYTHON ?= python3.13
 DOCKER ?= docker
 BUILDX ?= .github/scripts/buildx.sh
@@ -68,7 +67,7 @@ X402_LOCAL_TOPOLOGY ?= monolith
 	docker-build docker-check docker-image-check \
 	compiler-install go-build generate generate-check generate-go helm-check install-lint-tools install-security-tools \
 	golangci-lint \
-	format format-check repo-format-check web-format-check \
+	format format-check repo-format-check web-format-check npm-install \
 	license-check license-tool-check lint lint-go plan-check security-check source-check \
 	security-tool-check test test-go toolchain-check \
 	test-e2e test-integration test-integration-race test-load test-race test-runtime-e2e \
@@ -113,7 +112,7 @@ generate-check:
 			cp -R "$$path" "$$snapshot/$$path"; \
 		done; \
 		$(MAKE) --no-print-directory generate; \
-		$(NPM) --prefix api run check:api; \
+		$(NPM) --workspace api run check:api; \
 		for path in $(GENERATED_PATHS); do \
 			diff -ru "$$snapshot/$$path" "$$path"; \
 		done
@@ -132,7 +131,7 @@ test-e2e: web-build
 		server_binary="$$(mktemp /tmp/etherview-web-e2e.XXXXXX)"; \
 		trap 'rm -f "$$server_binary"' EXIT INT TERM; \
 		$(GO) build -o "$$server_binary" ./web/e2e/server; \
-		ETHERVIEW_E2E_SERVER_BINARY="$$server_binary" $(NPM) --prefix web run test:e2e
+		ETHERVIEW_E2E_SERVER_BINARY="$$server_binary" $(NPM) --workspace web run test:e2e
 
 test-race: web-build compiler-install
 	$(GO) test -race $(GO_TEST_FLAGS) $(GO_PACKAGES)
@@ -241,9 +240,10 @@ test-soak:
 		ETHERVIEW_LOAD_PROFILE=p70-reference-capacity \
 		$(GO) run ./cmd/loadtest
 
-web-install:
-	$(NPM) --prefix web ci
-	$(NPM) --prefix api ci
+npm-install:
+	$(NPM) ci
+
+web-install: npm-install
 
 compiler-install:
 	$(NPM) --prefix compiler ci --ignore-scripts
@@ -252,31 +252,30 @@ compiler-install:
 	$(NPM) --prefix compiler run build:sea -- "$(CURDIR)/.local/vyper-wasm/sea/etherview-solcjs"
 
 web-generate: web-install
-	$(NPM) --prefix api run generate:api
+	$(NPM) --workspace api run generate:api
 
-format: web-install
-	$(NODE) web/node_modules/oxfmt/bin/oxfmt --config .oxfmtrc.json --disable-nested-config --write $(REPO_FORMAT_PATHS)
-	$(NPM) --prefix web run format
+format: npm-install
+	$(NPM) run format
 
-repo-format-check: web-install
-	$(NODE) web/node_modules/oxfmt/bin/oxfmt --config .oxfmtrc.json --disable-nested-config --check $(REPO_FORMAT_PATHS)
+repo-format-check: npm-install
+	$(NPM) run format:repo:check
 
 web-format-check: web-install
-	$(NPM) --prefix web run format:check
+	$(NPM) --workspace web run format:check
 
 format-check: repo-format-check web-format-check
 
 web-lint: web-install web-format-check
-	$(NPM) --prefix web run lint:code
+	$(NPM) --workspace web run lint:code
 
 web-test: web-install
-	$(NPM) --prefix web run test
+	$(NPM) --workspace web run test
 
 web-build: web-generate
-	$(NPM) --prefix web run build
+	$(NPM) --workspace web run build
 
 lint-go: lint-tool-check source-check
-	@unformatted="$$(find . \( -path './.git' -o -path './.local' -o -path './vendor' -o -path './web/node_modules' \) -prune -o -type f -name '*.go' -exec gofmt -l {} +)"; \
+	@unformatted="$$(find . \( -path './.git' -o -path './.local' -o -path './vendor' -o -name node_modules \) -prune -o -type f -name '*.go' -exec gofmt -l {} +)"; \
 	if [ -n "$$unformatted" ]; then \
 		echo "gofmt is required for:"; \
 		echo "$$unformatted"; \
@@ -314,8 +313,7 @@ security-check: security-tool-check web-build compiler-install
 	else \
 		echo "gitleaks history: SKIP (repository has no commits yet)"; \
 	fi
-	$(NPM) --prefix api audit --audit-level=high
-	$(NPM) --prefix web audit --audit-level=high
+	$(NPM) audit --audit-level=high
 	$(NPM) --prefix compiler audit --audit-level=high
 	$(NODE) compiler/vyper/wasm/packages.mjs
 	$(NODE) compiler/vyper/wasm/check-integrity.mjs
@@ -342,10 +340,8 @@ license-check: license-tool-check web-install compiler-install
 	@grep -Eq '^COPY --from=go-builder .* /licenses /licenses$$' Dockerfile || { echo "license-check: production image must include reviewed geth licenses"; exit 1; }
 	@grep -Eq '^COPY .*licenses /licenses$$' Dockerfile || { echo "license-check: production image must include checked-in third-party licenses"; exit 1; }
 	GO="$(GO)" GO_LICENSES="$(GO_LICENSES)" sh .github/scripts/go-license-check.sh $(GO_PACKAGES)
-	$(NPM) --prefix web exec -- license-checker-rseidelsohn \
-		--start web --production --excludePrivatePackages --summary \
-		--onlyAllow '0BSD;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;MIT;MPL-2.0;Unlicense'
-	$(NPM) --prefix web exec -- license-checker-rseidelsohn \
+	$(NPM) --workspace web run check:licenses
+	$(NPM) exec -- license-checker-rseidelsohn \
 		--start compiler --production --excludePrivatePackages --summary \
 		--onlyAllow '0BSD;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;MIT;MPL-2.0;Unlicense'
 

@@ -24,7 +24,7 @@ function fixture(t, files) {
 function run(root, tool, args) {
   const result = spawnSync(
     process.execPath,
-    [join(web, "node_modules", tool, "bin", tool), ...args],
+    [join(web, "..", "node_modules", tool, "bin", tool), ...args],
     {
       cwd: root,
       encoding: "utf8",
@@ -215,6 +215,7 @@ test("repository formatting preserves excluded fixtures, templates, generated an
     [
       "web/src/example.js",
       "compiler/node_modules/example/index.js",
+      "node_modules/example/index.js",
       "compiler/dist/output.js",
       ".local/output.js",
       "data/config.yaml",
