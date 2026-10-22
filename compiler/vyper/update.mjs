@@ -1,4 +1,4 @@
-// P30-T130: reviewed build-time updates only. Never imported by production.
+// Reviewed build-time updates only. Never imported by production.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {

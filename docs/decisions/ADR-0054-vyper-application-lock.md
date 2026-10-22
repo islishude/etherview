@@ -4,13 +4,15 @@ Status: accepted
 
 ## Decision
 
-P30-T128 replaces ADR-0049/ADR-0053's independently signed catalog and hosted
-compiler packages. The complete supported version set, the explicit dual-Pyodide policy,
+This application lock replaces ADR-0049/ADR-0053's independently signed catalog
+and hosted compiler packages. The complete supported version set, the explicit
+dual-Pyodide policy,
 fresh restricted SEA processes, exact matching and canonical lease-fenced
 publication remain mandatory.
 
 The application embeds `compiler/vyper/application-lock.json`, the existing
-Python adapter. P30-T130 retires Vyper 0.2.0 and its embedded source archive.
+Python adapter. The supported-version policy excludes Vyper 0.2.0 and its
+embedded source archive.
 All supported compiler/dependency archives are fetched
 from exact `files.pythonhosted.org` HTTPS URLs in the lock. Runtime requests do
 not query package indexes, resolve dependencies, invoke pip or execute build
@@ -71,7 +73,7 @@ rebuild. Cache persistence/prewarming improves availability without becoming a
 correctness authority. Fresh-process initialization and dual compilation costs
 remain unchanged.
 
-P30-T136 separates native production acceptance into three independent lanes
+Native production acceptance is separated into three independent lanes
 per architecture: the complete compiler fixture matrix, Vyper application E2E,
 and Hardhat Solidity/Yul/proxy E2E. Both application suites retain independent
 monolith/split data, cleanup and parity, but no longer mix languages in one
@@ -84,7 +86,7 @@ requires rerunning its producer; consumers never rebuild a replacement image.
 
 ## Reviewed automatic updates
 
-P30-T130 allows a daily build-time PyPI check to propose new stable versions
+A daily build-time PyPI check may run to propose new stable versions
 above the highest supported release. Existing locks and reference outputs are
 immutable to the updater; withdrawn releases do not silently remove support.
 The updater tries only the existing modern runtime. A new Python requirement,

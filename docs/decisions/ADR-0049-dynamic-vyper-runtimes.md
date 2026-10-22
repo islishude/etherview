@@ -12,7 +12,7 @@ verification, publication and immutable provenance boundaries remain in force.
 
 ## Decision
 
-P30-T107–P30-T110 extend ADR-0047 to non-withdrawn official stable releases.
+This decision extends ADR-0047 to non-withdrawn official stable releases.
 Etherview builds complete dedicated Python helper trees from locked official
 compiler inputs for native Linux AMD64 and ARM64. Each release records the
 compiler source digest, Python, dependency lock, helper protocol, complete tree

@@ -59,4 +59,5 @@ New tables target the current fresh schema without historical backfills.
 Maintenance and API components use the same builders in all/split deployments.
 Watches, notifications and admission state remain writer-owned; optional Redis,
 NATS and object storage do not participate. Limits do not charge prepaid API
-balances. P78 owns implementation evidence and P70 owns release acceptance.
+balances. P60 owns watch/notification implementation evidence, P40 owns CSV
+exports, P50 owns the private Web workspace, and P70 owns release acceptance.

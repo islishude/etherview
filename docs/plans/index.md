@@ -7,7 +7,7 @@ dependencies. This catalog groups the child plans by responsibility.
 
 - [P00 — Foundation](P00-foundation.md)
 - [P10 — Indexing](P10-indexing.md)
-- [P20 — Enrichment](P20-enrichment.md)
+- [P20 — Enrichment & Durable Archives](P20-enrichment.md)
 
 ## Contract platform and runtime
 
@@ -17,27 +17,15 @@ dependencies. This catalog groups the child plans by responsibility.
 
 ## Public API and Web capabilities
 
-- [P40 — API](P40-api.md)
+- [P40 — API & Data Exports](P40-api.md)
 - [P50 — Embedded Web](P50-web.md)
-- [P64 — NFT Metadata Web](P64-nft-metadata-web.md)
-- [P67 — ENS Primary Names](P67-ens-primary-names.md)
-- [P74 — Etherscan V2 Read Expansion](P74-etherscan-v2-read-expansion.md)
-- [P76 — ERC-4337 UserOperation Browsing](P76-erc4337-user-operations.md)
-- [P77 — Authoritative ERC-20 Token Holders](P77-authoritative-erc20-token-holders.md)
 
-- [P78 — Watchlist, Notifications and CSV](P78-watchlist-notifications-csv.md)
+## User accounts and billing
 
-- [P79 — Consensus and Blob Archives](P79-consensus-and-blobs.md)
+- [P60 — User Accounts, Billing & Personal Tools](P60-user-auth-billing.md)
 
-## Identity and billing
+## Release
 
-- [P65 — User Authentication](P65-user-auth.md)
-- [P73 — Prepaid API Billing and x402 Top-ups](P73-prepaid-api-billing.md)
-
-## Hardening and release
-
-- [P68 — Runtime and Architecture Hardening](P68-runtime-architecture-hardening.md)
-- [P75 — Runtime and Performance Hardening](P75-runtime-performance-hardening.md)
 - [P70 — Release](P70-release.md)
 
 ## Planning and retention
@@ -51,34 +39,24 @@ archive copy of the deleted ledger. Preserve unresolved blockers and acceptance
 limits. Historical review/ADR identifiers are provenance, not active work.
 
 P55 (proxy interaction) was absorbed by P20/P30/P40/P50. P66 (accountless
-request billing) was replaced by P73/ADR-0044. Neither has active work.
+request billing) was replaced by P60/ADR-0044. Neither has active work.
 
 ## Identifier allocation
 
 Never renumber or reuse an allocated ID, including removed items. Allocate a
 new item only when the planning threshold is met, above both the watermark
 below and every item currently in its plan. Advance the watermark in the same
-change. New plan IDs must exceed P79; gaps and retired prefixes stay reserved.
+change. New plan IDs start at P80; all lower gaps and retired prefixes stay reserved.
 
 | Plan | Highest allocated task number |
 |---|---|
 | P00 | 14 |
 | P10 | 7 |
-| P20 | 16 |
-| P30 | 137 |
-| P40 | 19 |
-| P50 | 71 |
-| P64 | 7 |
-| P65 | 9 |
-| P67 | 6 |
-| P68 | 31 |
+| P20 | 20 |
+| P30 | 138 |
+| P40 | 23 |
+| P50 | 75 |
+| P60 | 19 |
 | P70 | 52 |
-| P73 | 10 |
-| P74 | 5 |
-| P75 | 12 |
-| P76 | 2 |
-| P77 | 3 |
-| P78 | 6 |
-| P79 | 5 |
 | P55 (retired) | 4 |
 | P66 (retired) | 8 |

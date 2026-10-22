@@ -183,8 +183,9 @@ local benchmark observations recorded on 2026-09-20. These are historical
 results, not a substitute for validating later changes. Use
 [ADR-0050](decisions/ADR-0050-native-pgx-and-typed-queries.md) for the database
 contract, the [testing guide](testing.md) for current gate requirements, and
-[P68](plans/P68-runtime-architecture-hardening.md) for task status and execution
-evidence.
+[P00](plans/P00-foundation.md) for database/package acceptance and
+[P30](plans/P30-contract-verification.md#production-acceptance-boundaries) for
+production-image evidence.
 
 ### Required implementation boundaries
 
@@ -231,8 +232,8 @@ a partially completed aggregate command must still be recorded as incomplete.
 Preview metadata has its own `make test-preview-metadata` gate. Its accepted
 local Kubo replacement verifies exact content, two canonical metadata versions,
 one attempt per version and restart persistence. The prior public-gateway
-failure and replacement evidence belong to P68-T24/P68-T25 in
-[P68](plans/P68-runtime-architecture-hardening.md#evidence). This gate is separate
+failure and replacement evidence belong to P30-T35 in
+[P30](plans/P30-contract-verification.md#production-acceptance-boundaries). This gate is separate
 from the CI workflow and does not establish public-IPFS availability. Live
 payment and reference-capacity acceptance remain separate release requirements.
 

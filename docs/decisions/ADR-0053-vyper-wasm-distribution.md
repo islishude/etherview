@@ -8,16 +8,17 @@ isolation, immutable provenance, matching and native acceptance remain mandatory
 
 ## Decision
 
-P30-T117–T119 replace ADR-0047/ADR-0049's native Python execution and
+This distribution replaces ADR-0047/ADR-0049's native Python execution and
 platform-specific archive distribution. Their canonical publication, signed
 catalog, immutable binding and fresh-process boundaries remain mandatory.
 
-The existing Node SEA gains a Vyper-only protocol. P30-T127 selects two exact,
+The existing Node SEA gains a Vyper-only protocol. It selects two exact,
 image-local read-only runtimes: `pyodide@314.0.7` / CPython 3.14.2 /
 PyCryptodome 3.23.0 for Vyper 0.4.0–0.4.3, and the npm alias
 `pyodide-legacy@npm:pyodide@0.29.5` / CPython 3.13.2 / PyCryptodome 3.21.0
-for the remaining legacy releases. P30-T130 retires 0.2.0, leaving 21 legacy
-baseline releases; ADR-0054 governs reviewed additions to the modern set. `compiler/vyper/wasm/runtime-policy.json`
+for the remaining legacy releases. The supported-version policy excludes 0.2.0,
+leaving 21 legacy baseline releases; ADR-0054 governs reviewed additions to the
+modern set. `compiler/vyper/wasm/runtime-policy.json`
 owns the explicit version mapping and authenticated shared-manifest digests.
 Node tools consume it directly; generated Go definitions are checked by
 `make generate-check`. Unknown versions fail; compilation errors never switch
@@ -77,7 +78,7 @@ selected runtime. Local candidate tests never substitute for Linux acceptance.
 
 ## Security validation
 
-P30-T134 removes the custom live PyPI/OSV vulnerability queries for native
+Custom live PyPI/OSV vulnerability queries are removed for native
 reference dependencies, historical Vyper packages and both Pyodide runtime
 cores. CVE dispositions, advisory-content hashes, metadata exceptions and
 stored advisory snapshots are retired. CI and automatic compiler proposals do

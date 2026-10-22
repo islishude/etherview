@@ -1,7 +1,11 @@
 # P30 dual Pyodide implementation review
 
-Date: 2026-10-13. Owner: P30-T127. Decision:
+Date: 2026-10-13. Scope: dual-runtime Vyper verification. Decision:
 [ADR-0053](../decisions/ADR-0053-vyper-wasm-distribution.md).
+
+Status statements below describe the recorded review stages. Current completion
+and later native acceptance are maintained in
+[P30](../plans/P30-contract-verification.md#evidence).
 
 ## Artifact and execution boundary
 
@@ -92,9 +96,9 @@ new unsigned transports. The user's stash was not applied or modified.
 Native Linux AMD64 and ARM64 must independently run the complete production
 image matrix and monolith/split Hardhat acceptance against the same public
 artifacts. A local image check, native matrix without topology acceptance, or
-macOS-orchestrated topology test does not complete that requirement. P30-T127
-remains open until its plan records all required current evidence. No production
-signing, commit, push, publication or deployment is part of this implementation.
+macOS-orchestrated topology test does not complete that requirement. At this
+review stage, acceptance remained open pending matching native evidence. No
+production signing, commit, push, publication or deployment is part of this implementation.
 
 ## Reproduction
 
@@ -158,8 +162,9 @@ repeat passed all 362 cases using the same limits and unchanged fixtures.
 The [durable summary](P30-dual-pyodide-implementation.json) retains every
 version, fixture/package/runtime identity, image identity and check-log digest.
 
-P30-T127 is blocked on native Linux AMD64 full-matrix execution and native Linux
-AMD64/ARM64 monolith/split Hardhat acceptance against the same common artifacts.
+At this review stage, acceptance was blocked on native Linux AMD64 full-matrix
+execution and native Linux AMD64/ARM64 monolith/split Hardhat acceptance against
+the same common artifacts.
 The blocker clears only with new matching records from those runs. Local tests,
 the ARM64 matrix alone, macOS topology runs and historical records do not close
 it. No production readiness, signing, publication or deployment is claimed.

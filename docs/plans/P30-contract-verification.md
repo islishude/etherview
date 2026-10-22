@@ -3,7 +3,7 @@
 Status: `done`
 
 This is the canonical plan for contract verification, contract intelligence,
-and the shared runtime/operations platform. P70/P73 release and live-payment blockers remain outside this plan.
+and the shared runtime/operations platform. P60/P70 release and live-payment blockers remain outside this plan.
 
 ## Outcome
 
@@ -15,8 +15,17 @@ failure decoding, EIP-7702 execution identity, factory-derived verification,
 and the PostgreSQL-authoritative monolith/split runtime, deployment, telemetry,
 and disposable accelerator boundaries.
 
+Runtime operations also owns the real Lighthouse PoS Preview and role-scoped
+durable blob archive deployment. Optional Beacon/archive failures remain isolated
+from execution readiness; PostgreSQL owns manifests while the separate archive
+bucket durably stores bodies. Explicit Preview lifecycle commands provision the
+archive outside application startup dependencies. Local Kubo, the independent
+HTTPS gateway and streaming IPFS CLI provide reproducible metadata acceptance.
+
 ## References
 
+- [ADR-0052](../decisions/ADR-0052-amsterdam-explorer-support.md)
+- [ADR-0027](../decisions/ADR-0027-process-native-api-tls.md)
 - [Architecture](../architecture/overview.md)
 - [ADR catalog](../decisions/index.md)
 - [Proxy baseline review](../reviews/P58-oz-proxy-baseline.md)
@@ -51,65 +60,31 @@ and disposable accelerator boundaries.
 - [ADR-0043](../decisions/ADR-0043-factory-derived-verification-provenance.md)
 - [ADR-0054](../decisions/ADR-0054-vyper-application-lock.md)
 - [ADR-0053](../decisions/ADR-0053-vyper-wasm-distribution.md)
+- [ADR-0055](../decisions/ADR-0055-consensus-and-blob-archives.md)
 - [Testing](../testing.md)
 
 ## Work Items
 
 | ID | Status | Depends on | Deliverable | Verification |
 |---|---|---|---|---|
-| P30-T10 | done | P10, P20 | Dual compilation, automatic candidates, transformations, batch, blueprint, and method lookup | compiler and matcher fixtures |
-| P30-T11 | done | P30-T10 | Native asynchronous REST, Etherscan adaptation, and explicit Sourcify workflows | API and integration tests |
-| P30-T14 | done | P30-T11 | Architecture-neutral compiler catalog discovery and exact compiler provenance | catalog/provenance regressions |
-| P30-T15 | done | P20-T13, P30-T14 | Bind verified OpenZeppelin 5.6.1 proxy, implementation, and management artifacts to exact immutable runtime identities and invalidate stale interaction bindings | verifier, PostgreSQL, immutable-source, upgrade/reorg, and Hardhat fixture tests |
-| P30-T16 | done | P30-T14, P30-T66 | Allow authenticated canonical Genesis predeploys to use runtime-only native and Etherscan-compatible address verification without fabricating creation evidence | target-resolution, publication-fence, PostgreSQL, and compatibility regressions |
-| P30-T17 | done | P30-T16, P40-T17 | Persist verified function selector indexes atomically for newly successful verification results | migration, parser, publication, invalid/empty ABI, and PostgreSQL tests |
-| P30-T18 | done | P30-T14, P40 | Writer-authoritative exact/same-code artifact resolution across native and Etherscan reads | repository, API, compatibility, migration, and generation tests |
-| P30-T19 | done | P30-T18, P50 | Standard proxy implementation interaction with fresh identity fencing and verified-only management | proxy API, wallet, frontend, browser, and Hardhat tests |
-| P30-T20 | done | P30-T18, P20, P40, P50 | Persisted-first, bounded read-time ABI decoding for transaction logs | codec, catalog, API, frontend, reorg, and PostgreSQL tests |
-| P30-T24 | done | P20-T13 | Shared block-pinned detection context, detector interface, resolver, structured outcomes, and memoized RPC accounting | detector/resolver unit and fuzz tests; existing OZ suite |
-| P30-T25 | done | P30-T24 | Generated Safe runtime/singleton/factory manifests plus bulk and deep Safe detectors, including slot 0 and `masterCopy()` consistency | generated-manifest check; positive, negative, adversarial, and fixed-block integration fixtures |
-| P30-T26 | done | P30-T25 | Structured API/UI persistence, metrics, runbook and bounded backfill (rollout controls superseded by P30-T137) | OpenAPI generation; integration/race/browser/runtime gates; rollout-control review |
-| P30-T27 | done | P30-T26 | Add a factory-created SafeProxy 1.4.1 production-path E2E through Trace discovery, generation-fenced persistence, and the public read boundary | pinned artifact checks; Compose rendering; monolith/split Hardhat production E2E; common gates |
-| P30-T28 | done | P20, P40, P50, P30-T19, P30-T20 | `trace@2` log attribution, complete call ABI projection, generated API, compact Web disclosure, migration, rollout, and regression closure | codec, trace, PostgreSQL, generation, browser, runtime, Hardhat, and common gates |
-| P30-T31 | done | P30-T28, P30-T48 | Expose canonical transaction failure decoding and render custom plus Solidity builtin errors in the transaction Overview | codec, catalog, generated API, Web, PostgreSQL, browser, runtime, and common gates |
-| P30-T33 | done | P00 | Shared component lifecycle, role graph, readiness, graceful shutdown | lifecycle/parity tests |
-| P30-T34 | done | P20 | PostgreSQL job/outbox plus optional NATS, Redis, and S3 adapters | outage/fallback tests |
-| P30-T35 | done | P00, P10, P40, P50 | Multi-stage non-root image and monolith/distributed Compose profiles | production Compose Go E2E |
+| P30-T10 | done | P10, P20 | Dual compilation, automatic candidates, transformations, batch/blueprint/method lookup, asynchronous REST/Etherscan/Sourcify workflows, and lease-safe verification workers | compiler/matcher fixtures, API/PostgreSQL, heartbeat/lease-loss/fatal-error race and production parity tests |
+| P30-T14 | done | P30-T10 | API-owned architecture-neutral solc-js executor, compiler catalog, checksum-addressed shared cache, Node SEA packaging, and exact provenance | catalog/provenance, cache concurrency/restart, image, and production compiler regressions |
+| P30-T15 | done | P20-T13, P30-T14 | Exact/same-code verified artifacts, atomic selector indexes, immutable proxy/implementation/management binding, and identity-fenced standard proxy interaction | publication/ABI, writer-query, upgrade/reorg, authorization/wallet, PostgreSQL, browser and Hardhat tests |
+| P30-T16 | done | P30-T14, P30-T64 | Allow authenticated canonical Genesis predeploys to use runtime-only native and Etherscan-compatible address verification without fabricating creation evidence | target-resolution, publication-fence, PostgreSQL, and compatibility regressions |
+| P30-T20 | done | P20-T05, P20-T13, P30-T15 | Persisted-first bounded log/call ABI decoding, trace-bound attribution, canonical failure decoding and Solidity/custom errors with generated APIs and Web disclosure | codec/budget, catalog, trace, generation, PostgreSQL/race, browser and production parity tests |
+| P30-T24 | done | P20-T13 | Unified block-pinned proxy detector/resolver, generated Safe manifests and exact evidence, memoized bounded RPC, public projections, metrics/runbook and bounded backfill without generation flags or shadow comparison | baseline differential, unit/fuzz, adversarial exact-block RPC, Safe factory discovery, authorization/reorg, PostgreSQL/race, browser and production gates |
+| P30-T33 | done | P00 | Typed role/subsystem builders, independent executable component manifest, shared lifecycle/readiness, bounded HTTP/pool shutdown, optional native API TLS and fail-closed startup | configuration/graph, HTTP/1.1/HTTP/2 cancellation, stuck-borrower, deployment and monolith/split parity tests |
+| P30-T34 | done | P20, P30-T33 | PostgreSQL job/outbox authority, optional NATS/Redis/S3 accelerators, AWS SDK credential discovery and role-scoped workload identity, and isolated RustFS service acceptance | outage/fallback, credential refresh/redaction/redirect, S3 unit/race, real RustFS and deployment tests |
+| P30-T35 | done | P00, P10, P40, P50 | Non-root production images, native healthchecks and Compose topologies, streaming single-file IPFS CLI, and local Kubo Preview with an independent Go HTTPS gateway | image/schema/runtime, CLI/gateway unit/race, TLS isolation, offline roundtrip, exact metadata/restart and native architecture gates |
 | P30-T36 | done | P30-T33, P30-T34 | Helm role deployments, HPA, migration job, secrets, network policy | Helm lint/render tests |
-| P30-T37 | done | P10, P20, P40 | Structured logs, OpenTelemetry, Prometheus metrics, alerts, admin/repair | observability tests |
-| P30-T38 | done | P10, P20, P40, P50 | Backfill tuning, HA/failover, cache/rate policy, reference capacity profile | soak/load tests |
-| P30-T42 | done | P30-T34, P30-T36 | Add AWS default credential discovery and API-role-scoped workload identity for the S3 trace cache | credential-chain, refresh, redaction, Compose, Helm, and common gates |
-| P30-T43 | done | P20, P30-T14, P40, P50, P30-T28, P30-T42 | `state_diff@2`, `trace@3`, and `abi@3`; exact EIP-7702 and constructor persistence/projection; generated APIs; delegated-account Web interaction; migration, rollout, ADR, and regression closure | codec, state diff, trace, PostgreSQL, generation, browser, integration, runtime, Hardhat, and common gates |
-| P30-T48 | done | P30-T43 | Expose exact transaction-time calldata decoding and render EIP-7702 delegation, redelegation, and clearing semantics in the transaction Overview | catalog, API, generation, Web, integration, browser, runtime, and common gates |
-| P30-T58 | done | P30-T48, P30-T17, P40-T18, P30-T15, P50-T57, P70-T29, P50-T62 | Materialize transaction-scoped effective EIP-7702 execution identities in `abi@4`, preserving raw evidence while fixing same-transaction delegation calls and same-block redelegation isolation | ABI/store/Catalog/API/Web regressions, PostgreSQL reorg and replay, real runtime E2E, Preview, and common gates |
-| P30-T59 | done | P20, P30-T14, P40, P50, P30-T25, P30-T31 | Replace the singular implementation assumption with additive selector-scoped Diamond targets in persistence, query, OpenAPI, generated clients, and compatibility projections | migration, query, OpenAPI generation, model unit and integration tests |
-| P30-T60 | done | P30-T59 | Fixed-block bounded ERC-2535 detector with Loupe fallback, cross-validation, immutable functions, facet code checks, candidate gates, and independent status/completeness/validation | detector unit/fuzz tests, hostile-return limits, exact-block RPC fixtures |
-| P30-T61 | done | P30-T60 | Raw DiamondCut indexing, ordered selector intervals, reorg retention, replay, snapshot reconciliation, and standard DiamondCut presence | PostgreSQL integration/race, add/replace/remove, reorg and same-transaction ordering tests |
-| P30-T62 | done | P30-T61 | Historical selector-bound ABI decoding, selector-filtered Diamond interaction, collision handling, facet/current/history API, bilingual UI, and monolith/split acceptance | generated clients, Vitest, Playwright, runtime E2E, common gates |
-| P30-T64 | done | P30-T14, P40, P50, P30-T42 | Pinned v0.3.3 helper subprocess, virtual source filesystem, deterministic exact compilation, runtime identity, and compiler routing | compiler unit/security/process tests, license and image checks |
-| P30-T65 | done | P30-T64 | Language-aware queue claiming, lease-bound Geas provenance, exact runtime/optional creation matching, canonical publication, and per-family availability | worker, repository, PostgreSQL integration and race tests |
-| P30-T66 | done | P30-T65 | Native address API, fixed compiler listing, Etherscan reads, bilingual Web submission and plain-text source workspace | generated clients, Go/Web/API/browser tests |
-| P30-T68 | done | P20-T13, P30-T24 | Exact legacy LibCWIA runtime parser, authoritative `proxy@2` projection, independent evidence detector, and persistent `cwia` mechanism | parser/detector unit and fuzz tests; PostgreSQL constraints; `make source-check` |
-| P30-T69 | done | P30-T68 | ABI and proxy-verification binding support plus generated native/Etherscan API contracts for raw CWIA arguments | query, verification, API, generation, integration, and reorg tests |
-| P30-T73 | done | P30-T69 | Replace the provisional NatSpec schema with bounded canonical Solady CWIA Solidity-AST derivation, dynamic bytes/array decoding, code-hash read projection, and exact-binding write fencing | verifier/query/API/Web tests; production Hardhat/browser/runtime gates; common gates |
-| P30-T77 | done | P30-T73 | Resolve exact legacy CWIA event, Trace, Method, selector, and calldata ABI from an exact-address implementation artifact first or a same-chain same-code artifact without granting verification or write authority | focused query/ABI tests; PostgreSQL integration/race; production Hardhat monolith/split; common gates |
-| P30-T79 | done | P30-T17 | Fresh-schema authenticated compilation-unit and bounded candidate persistence on successful address verification | codec, digest/provenance, idempotency, migration, and PostgreSQL round-trip tests |
-| P30-T80 | done | P30-T79 | Historical canonical CREATE/CREATE2 scanner, creation/runtime unique matcher, durable attempts, and internal derived publication | Factory-to-child Solidity fixtures and PostgreSQL integration tests |
-| P30-T81 | done | P30-T80 | Historical parent code-epoch resolution, publication-time canonical recheck, stale handling, and retry idempotency | reorg, reattach, code replacement, and duplicate-work tests |
-| P30-T82 | done | P30-T81 | Trace-stage-completion forward enqueue and transitive asynchronous propagation without ingestion-path matching | future-child, nested-factory, retry, and monolith/split tests |
-| P30-T83 | done | P30-T82 | Generated provenance/children API, bilingual Web presentation, bounded configuration, metrics, admin backfill, and operations guidance | generated API, Web, observability, browser, deployment, and common gates |
-| P30-T86 | done | P30-T83 | Generation-bound trace/proxy forward events, fork-aware scan rewind, canonical attempt writes, and success-reset pagination budgets | state-machine unit and PostgreSQL reorg/pagination regressions; generation/source/plan checks |
-| P30-T87 | done | P30-T86 | Heartbeat-fenced scan/event leases plus one prepared match and short canonical publication transaction | lease-contention, slow-match/reorg, stale-publication, integration-race, and runtime parity tests |
-| P30-T88 | done | P30-T87 | Exact-epoch parent/child provenance with additive direct-verification creation provenance and unchanged wire shape | A-to-B-to-A, FQN conflict, direct-child, code-hash, API, Web, and generation checks |
-| P30-T97 | done | P30-T88 | Native API, Etherscan vyper-json and bilingual Web verification | generated contracts, API, Web and browser tests |
-| P30-T115 | done | P30-T42, P30-T36 | Replace MinIO with RustFS and AWS SDK S3 transport, with isolated real-service acceptance | S3 unit/race, RustFS, deployment, security/license, docs and plan gates |
-| P30-T127 | done | P30-T88, P30-T97 | Implement dual Pyodide runtime selection and authenticated release tooling | Full fresh-process matrices, authenticated runtime routing and native production parity |
-| P30-T128 | done | P30-T88, P30-T97 | Application-locked PyPI assembly and immutable recipe provenance in place of hosted packages and signed catalogs | Package equivalence, isolation, PostgreSQL and native AMD64/ARM64 application acceptance |
-| P30-T130 | done | P30-T128 | Retire Vyper 0.2.0 and generate reviewed PyPI update PRs daily | Updater integrity, full supported-version matrices and native production acceptance |
-
-| P30-T136 | done | P30-T128, P30-T130 | Parallel native Vyper fixtures, Vyper application and Hardhat acceptance over one image per architecture | Independent parity/count regressions, identity-bound aggregation, two native CI runs and failed-job rerun evidence |
-
-| P30-T137 | done | P30-T24, P30-T26, P30-T62, P30-T77 | Unify proxy detection, remove generation feature flags and shadow comparison, publish an unversioned detection contract while preserving exact binding and authorization | Baseline differential fixtures, RPC/error regressions, PostgreSQL/reorg, browser, production topology and generated/schema/governance gates |
+| P30-T37 | done | P10, P20, P40 | Configurable structured logs, fenced progress/outcome reporting, OpenTelemetry, bounded Go-runtime/native writer-reader pool metrics, alerts, admin/repair and domain tuning baselines | metric contracts, outage/failover and bounded benchmarks; reference capacity remains P70-T04 |
+| P30-T43 | done | P20-T11, P20-T13, P30-T15, P30-T20 | Exact transaction-time EIP-7702 execution identity, state/trace/ABI and constructor provenance, delegated-account interaction and calldata semantics | same-transaction delegation, same-block redelegation, clearing, immutable raw evidence, reorg/replay, PostgreSQL, browser and real runtime tests |
+| P30-T59 | done | P30-T24, P30-T15, P30-T20 | Selector-scoped Diamond detection, Loupe validation, ordered DiamondCut history, reconciliation, historical ABI, collision-safe facet interaction and API/Web projections | bounded hostile RPC/fuzz, add/replace/remove/reorg ordering, PostgreSQL/race, generation, browser and monolith/split tests |
+| P30-T64 | done | P30-T14 | Pinned Geas v0.3.3 virtual-filesystem helper, exact runtime/optional creation matching, language-aware lease-fenced queue/provenance and native/Etherscan/Web workflows | compiler/process/security, availability, PostgreSQL/race, generation, browser, license and production image tests |
+| P30-T68 | done | P30-T24, P30-T15 | Legacy LibCWIA exact parser/evidence, immutable argument persistence, bounded Solady Solidity-AST decoding and exact-address/same-code ABI reads with separate write authority | parser/fuzz, PostgreSQL/reorg, query/verifier, dynamic bytes/arrays, generation, browser and production Hardhat tests |
+| P30-T79 | done | P30-T15, P30-T20 | Authenticated compilation units and candidates, historical CREATE/CREATE2 unique creation/runtime matching, transitive forward discovery, exact-epoch provenance, bounded backfill and generated API/Web | generation/heartbeat fences, short publication transactions, fork rewind, retry/pagination, A-to-B-to-A and direct-child provenance, PostgreSQL/race and topology tests |
+| P30-T97 | done | P30-T14, P30-T79 | Native/Etherscan/Web Vyper verification, dual Pyodide runtime routing, application-locked PyPI archives/recipe provenance, supported-version policy and reviewed updater | package equivalence/isolation, fresh-process version matrices, PostgreSQL, identity-bound aggregation, native AMD64/ARM64 and monolith/split acceptance |
+| P30-T138 | done | P20-T19, P20-T20, P40-T22, P50-T75, P30-T35, P30-T36, P30-T34 | Real Lighthouse PoS Preview, role-scoped durable archive deployment, explicit initialization, and outage/recovery parity with documented deferred writer IAM enforcement | Preview consensus/metadata, RustFS, schema/runtime, finality, permissions, restart, and common gates |
 
 ## Acceptance
 
@@ -121,16 +96,107 @@ and disposable accelerator boundaries.
 - [x] Shared components preserve monolith/split readiness, shutdown and persistence parity.
 - [x] Optional accelerators preserve PostgreSQL authority and bounded failure behavior.
 - [x] Native architecture and production topology evidence exists for the delivered compiler changes.
+- [x] Go-runtime and writer/reader pool telemetry is bounded and supports
+      reproducible performance baselines without changing readiness authority.
+- [x] API archive credentials are read-only and enrich credentials are read/write;
+      initialization runs explicitly outside core role dependencies. Optional
+      endpoint/object-store outages do not block core recreation or readiness.
+- [x] Real Geth/Lighthouse Preview preserves network/object identity and passes
+      locally signed blob transactions, independent Beacon/S3/API readback,
+      recovery, finalized-epoch advancement, and all/split publication.
+- [x] Public-network retention, production backup/restore, and deferred storage-side
+      writer IAM enforcement are not inferred from local Preview acceptance.
+- [x] Runtime builders and capability modules fail closed on incomplete dependencies.
+- [x] SSE, shutdown and worker leases preserve bounded cancellation and recovery.
+- [x] Local Kubo, streaming IPFS CLI and the independent HTTPS gateway pass acceptance.
+- [x] Applicable schema, production topology and native architecture gates completed.
+- [x] Domain hardening in P10, P30, P40, P50, and the completed P60 billing
+      milestones has aggregate generation, source, security, race, integration,
+      browser, deployment, and monolith/split
+      production acceptance; live-payment and reference-capacity gates remain separate.
+- [x] UserOperation runtime fixtures opt in explicitly; unrelated Hardhat/Foundry
+      overlays remain feature-off with feature-derived readiness. The testing
+      guide owns the shared-overlay defaults, cross-suite sequence, timeout,
+      and failure-signature rules.
+- [x] PostgreSQL integration retains a bounded timeout above observed cold-CI
+      duration without skipped/weakened tests; a fresh remediation-revision CI
+      run passed integration and native AMD64/ARM64 Hardhat/Foundry matrices.
+- [x] UserOperation, holder, and private-tool feature acceptance includes schema,
+      generation, integration/race, browser, and all/split production parity;
+      local evidence does not close live-payment or reference-capacity gates.
+- [x] Hardhat and Foundry verification E2E explicitly disable ENS and do not
+      require or impersonate the ENS Mainnet RPC fixture.
+- [x] ENS resolver configuration, maintenance and metrics belong only to API/all
+      roles. Fixture acceptance retains identical monolith/split semantics and
+      does not imply live Ethereum Mainnet or CCIP gateway availability.
+- [x] Diamond detection cross-validates Loupe and immutable functions, checks
+      facet code and reports status/completeness/validation independently.
+      Ordered add/replace/remove history retains reorg facts; selector-filtered
+      interaction and collision handling preserve exact historical ABI identity.
+- [x] CWIA arguments derive from bounded canonical Solidity AST, including
+      dynamic bytes/arrays. Exact-address then same-chain same-code ABI reads
+      do not grant verification or write authority; writes require exact binding.
+- [x] Factory matches are unique, bind exact parent/child code epochs and keep
+      matching outside ingestion and publication transactions. Generation/lease
+      fences, canonical rechecks, retry idempotency and fork-aware rewind guard
+      historical and transitive forward discovery without losing provenance.
+- [x] Worker lease loss remains task-local while fatal compiler errors retain
+      their classification. Local Kubo metadata acceptance checks two canonical
+      versions, one attempt each and restart persistence; its gateway/CA isolation
+      preserves strict production SSRF rules and proves no public-IPFS availability.
+
+- [x] Optional process-native API TLS validates its certificate/key pair before
+      binding, supports TLS 1.2/1.3 and HTTP/2, and never falls back to HTTP on
+      invalid material. Secrets remain API/all-scoped; rotation uses restart.
+- [x] Native application healthchecks and Compose `--wait` own Preview readiness;
+      explicit lifecycle setup remains required. Configurable JSON/text log levels
+      and reporter-fenced rate-limited progress/outcome logs retain bounded fields.
+- [x] Hardhat provider submission/status polling and durable proxy verification
+      pass production paths; independent Foundry acceptance retains both layouts,
+      exact compiler provenance and native AMD64/ARM64 coverage.
 
 ## Current Blockers
 
-None. P70/P73 retain independent release blockers.
+Preview storage-enforced conditional-write IAM permissions are deferred by
+operator decision until RustFS 1.0.4 is evaluated. RustFS 1.0.1 and 1.0.3 lack
+the required policy key; application conditional writes and API read-only access
+remain active. Clearing this requires a fixed release containing upstream
+[PR #8615](https://github.com/rustfs/rustfs/pull/8615) and real-container rejection
+of unconditional writes and overwrites. This is a retained deployment limitation
+of P30-T138; its completed local acceptance does not establish writer IAM enforcement.
+P60/P70 release blockers remain independent.
 
 ## Evidence
 
-P30-T137 passed seven immutable pre-change observation fixtures, focused
+P30-T33/P30-T35/P30-T37 retain process TLS, certificate deployment, native
+healthcheck/Compose lifecycle and bounded logging acceptance. Historical
+Genesis, analytics and compiler production paths passed their feature gates.
+Amsterdam headers/gas/native transfers passed local Go/race, PostgreSQL/race,
+generation, browser, schema, runtime/x402, Hardhat, Foundry and real-Geth Preview
+acceptance in both layouts. Protocol-log projection additionally passed
+publication/corruption/reorg and bilingual browser regressions. These delivery
+records do not establish a new native CI run, live network or production rollout.
+
+P30-T138 passed `make check`, `make source-check`, `make test-integration-race`,
+`make test-e2e`, `make test-rustfs`, `make test-schema-e2e`, and
+`make test-runtime-e2e` at its delivery revision. Production monolith and split
+roles preserved core readiness through optional endpoint outages, restart,
+and dependency recovery.
+Geth v1.17.8 / Lighthouse v8.3.0 passed real private PoS/finalized-epoch
+advancement, locally signed blob transactions, independent Beacon/S3/API byte
+and KZG/hash checks, read-only denial, outages, retained network/object identity,
+and both publication layouts. `make test-preview-metadata`,
+`make test-preview-consensus`, `make test-rustfs`, `make test-runtime-e2e`, and
+`make check` passed locally; the license scanner required an explicit current
+`GOROOT` without relaxing any gate. These historical local protocol/container
+results do not prove public historical retention, production backup/restore,
+or storage-enforced writer conditional permissions. Operators must verify
+retention and database/archive recovery together; the IAM clearing condition
+remains above.
+
+P30-T24 passed seven immutable pre-change observation fixtures, focused
 detector/authorization/RPC race regressions, the full PostgreSQL integration
-race suite, all 50 browser tests, and fresh-schema acceptance. The current
+race suite, all 50 browser tests, and fresh-schema acceptance. The delivery revision
 production image passed runtime, local x402, Hardhat and Foundry acceptance in
 both monolith and split roles. Generation, source, lint, Go/Web/race, security,
 license, deployment, docs and plan gates passed; the local license scanner
@@ -138,7 +204,7 @@ required an explicit current `GOROOT`. These are local macOS ARM64/Docker
 results, not new native Linux matrix, live-chain or production rollout evidence.
 ADR-0032 owns the fresh-baseline cutover and separate deployment review.
 
-P30-T136 passed local helper/aggregation regressions, application count/parity race
+P30-T97 passed local helper/aggregation regressions, application count/parity race
 tests, provider compatibility, tagged E2E lint, source/docs/plan/deployment checks
 and both local application suites. Native Linux AMD64/ARM64 acceptance passed in
 [run 38539515561 attempt 2](https://github.com/islishude/etherview/actions/runs/38539515561/attempts/2)
@@ -150,13 +216,9 @@ application acceptance tool. PR #148 records timings: recovery 13m50s / 122.27
 runner-minutes, full rerun 16m43s / 125.60 versus baseline 18m40s / 119.18.
 Recovery excludes reused jobs; these samples do not establish a stable speedup.
 
-
-Retained completed milestones: P30-T10, P30-T11, P30-T14, P30-T15, P30-T16, P30-T17,
-P30-T18, P30-T19, P30-T20, P30-T24, P30-T25, P30-T26, P30-T27, P30-T28, P30-T31,
-P30-T33, P30-T34, P30-T35, P30-T36, P30-T37, P30-T38, P30-T42, P30-T43, P30-T48,
-P30-T58, P30-T59, P30-T60, P30-T61, P30-T62, P30-T64, P30-T65, P30-T66, P30-T68,
-P30-T69, P30-T73, P30-T77, P30-T79, P30-T80, P30-T81, P30-T82, P30-T83, P30-T86,
-P30-T87, P30-T88, P30-T97, P30-T115, P30-T127, P30-T128, P30-T130.
+Retained completed milestones: P30-T10, P30-T14, P30-T15, P30-T16, P30-T20, P30-T24,
+P30-T33, P30-T34, P30-T35, P30-T36, P30-T37, P30-T43, P30-T59, P30-T64, P30-T68,
+P30-T79, P30-T97, P30-T138.
 
 Contract matching, compiler provenance, ABI/proxy/trace decoding and
 canonical publication passed focused unit/fuzz/race and PostgreSQL regressions.
@@ -184,5 +246,53 @@ The current distribution and supported-version policy are owned by ADR-0054;
 retired native helpers, hosted catalogs and custom advisory approval work are
 not outstanding delivery tasks.
 
+Go-runtime and writer/reader pool metric contracts passed focused checks and
+common gates. Capacity tuning remains backed by domain benchmarks; local
+measurements do not replace the operator-provisioned P70-T04 capacity report.
+
 [Detailed completion record](https://github.com/islishude/etherview/blob/e665a0b9b5dcee02e6d90d3a2224a76031cbda3d/docs/plans/P30-contract-verification.md#evidence).
 These are historical results, not tests rerun by this plan cleanup.
+
+### Production acceptance boundaries
+
+P30-T35 retains aggregate acceptance for UserOperation, holder, and
+private-tool boundaries. EntryPoint v0.6-v0.9 decoder/configuration,
+PostgreSQL normal/race, generation, and `make check` passed. Fresh-schema and
+production runtime tests exercised a real Anvil packed v0.9 transaction through
+both worker/API layouts with identical durable/public results; unrelated
+feature-off Hardhat/Foundry fixtures retained independent acceptance. The
+recorded overlay/timeout remediation passed fresh CI integration and both
+architectures of Hardhat/Foundry; this is historical, not a new CI run.
+
+Holder checks passed schema/runtime, generation, integration/race, browser,
+Hardhat, Foundry, deployment, security/license, and common gates. Transient
+compiler download failures required unchanged retries and do not establish
+upstream availability. Private watch/notification/export acceptance passed
+local `make check`, integration/race, browser, schema, and production runtime
+on 2026-09-26. P70-T04 still requires high-cardinality holder reads concurrent
+with reconciliation in the operator-provisioned reference environment.
+
+SQL/source ownership, typed runtime builders, HTTP shutdown/SSE, worker
+lease recovery and version-fenced home state passed focused normal/race,
+generation, PostgreSQL and browser gates. Native pgx read/write, cancellation,
+session-lock disposal and topology acceptance passed; the development guide
+retains the bounded benchmark and native pgx acceptance summary.
+
+[PR 92 CI run 35474508539](https://github.com/islishude/etherview/actions/runs/35474508539)
+at `aebb61fee2783e3f6bb8810a81296b05c142bce6` passed all 11 jobs, including
+production schema/runtime and native AMD64/ARM64 Hardhat/Foundry. Later local
+Kubo acceptance replaced the failed public-gateway prerequisite: the exact
+`make test-preview-metadata` passed two canonical metadata versions, one
+attempt each, gateway/worker restart and immutable content checks. That local
+replacement does not establish public-IPFS availability.
+
+The independent Go HTTPS IPFS gateway passed unit/race, Compose and real-Kubo
+Preview checks. Native pgx and gateway evidence are revision-specific; the
+historical CI run above does not cover later gateway changes.
+
+Neutral contracts and production/test decomposition passed import-graph,
+source/lint, focused, and topology checks. Aggregate bounded-runtime acceptance
+passed `make check`, explicit integration/race and browser suites, schema,
+runtime/x402, Hardhat, and Foundry production gates at its delivery revision.
+This covers domain hardening, not P60-T17 live payments or P70-T04 capacity;
+short local benchmarks establish regression coverage only.

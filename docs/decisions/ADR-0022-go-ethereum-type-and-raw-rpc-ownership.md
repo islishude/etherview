@@ -148,9 +148,8 @@ an Etherview public, persistent, or hostile-input contract.
 - Explicit transport and persistence adapters remain necessary; replacing a
   model does not delegate resource limits, redaction, raw-field retention, or
   public-contract ownership to go-ethereum.
-- P70-T09 remains a release dependency until focused compatibility,
-  integration, generation, security, license, and common gates establish these
-  boundaries.
+- Release acceptance requires focused compatibility, integration, generation,
+  security, license, and common gates to establish these boundaries.
 
 `state_diff@3` uses go-ethereum's type-4 transaction and
 `SetCodeAuthorization.Authority` directly. Repository rows preserve raw tuples

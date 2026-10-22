@@ -7,7 +7,8 @@ in `wasm/runtime-policy.json` routes Vyper 0.4.0–0.4.3 to Pyodide 314.0.7 /
 CPython 3.14.2 and the other 21 baseline versions to the `pyodide-legacy` npm alias at
 0.29.5 / CPython 3.13.2. Unknown versions fail without fallback. Node SEA remains
 host-native. Production deployment and native release acceptance are tracked
-by P30-T127; the local matrix is not production release evidence.
+by [P30-T97](../../docs/plans/P30-contract-verification.md); the local matrix
+is not production release evidence.
 
 `application-lock.json` owns runtime recipes. `versions/index.json` and per-version
 `.lock` files retain the upstream pins used by package construction and reference generation.

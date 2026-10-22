@@ -156,7 +156,7 @@ values. Dedicated session locks retain their physical connection until unlock;
 uncertain ownership discards that connection. SQL originates in
 `internal/db/queries`; only migrations and validated partition DDL execute
 handwritten SQL. Large scans use bounded keyset pages within their original
-snapshot or chain-lock boundary. P68 tracks production-image acceptance.
+snapshot or chain-lock boundary. P00 owns database acceptance; P30 tracks production-image acceptance.
 
 ## Chain Correctness
 

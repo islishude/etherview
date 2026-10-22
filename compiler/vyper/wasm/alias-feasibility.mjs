@@ -1,4 +1,4 @@
-// P30-T126 diagnostic only. Does not change production runtime selection.
+// Diagnostic only. Does not change production runtime selection.
 import assert from 'node:assert/strict';
 import {execFileSync, spawn} from 'node:child_process';
 import {createRequire} from 'node:module';

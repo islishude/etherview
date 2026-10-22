@@ -23,7 +23,7 @@ condition = "AND"
 regexes = ['''^ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80$''']
 
 [[allowlists]]
-description = "Deterministic public Anvil fixture identities used only by P73 local E2E"
+description = "Deterministic public Anvil fixture identities used only by local prepaid billing E2E"
 targetRules = ["generic-api-key"]
 paths = [
   '''^e2e/x402local/compose\.yaml$''',

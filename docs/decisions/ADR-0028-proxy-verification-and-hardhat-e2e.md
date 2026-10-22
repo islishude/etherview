@@ -4,8 +4,8 @@ Status: accepted
 
 ## Context
 
-The Hardhat 3 compatibility regression introduced by P70-T21 drives the
-official Etherscan provider against the real HTTP compatibility handler, but
+The Hardhat 3 compatibility regression drives the official Etherscan provider
+against the real HTTP compatibility handler, but
 uses an in-memory API-key repository and a stateful fake compatibility backend.
 It proves the provider wire contract, not deployment, indexing, persistence,
 compiler execution, or publication.

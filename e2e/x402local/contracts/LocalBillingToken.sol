@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
-/// @notice Test-only ERC-20 fixture for the disposable P73 local environment.
+/// @notice Test-only ERC-20 fixture for the disposable local prepaid billing environment.
 /// It implements EIP-3009 and a locally settled Permit2 witness path. It is
 /// never copied into the production Etherview image.
 contract LocalBillingToken {

@@ -8,8 +8,18 @@ A responsive Chinese/English React SPA covers the core explorer workflows,
 communicates only with versioned APIs, is embedded in the Go binary, and uses an
 injected EIP-1193 wallet for all contract reads and writes.
 
+The generated-client explorer includes UserOperation global/detail and bundle
+activity, authoritative Token holder pages, and optional consensus/blob views.
+The account workspace adds private watches, notifications, and CSV downloads
+with session-isolated browser state.
+
 ## References
 
+- [ADR-0052](../decisions/ADR-0052-amsterdam-explorer-support.md)
+- [ADR-0025](../decisions/ADR-0025-historical-execution-analytics.md)
+- [ADR-0019](../decisions/ADR-0019-authenticated-genesis-state-import.md)
+- [ADR-0005](../decisions/ADR-0005-safe-nft-metadata-and-media-boundary.md)
+- [ADR-0041](../decisions/ADR-0041-snapshot-stable-ens-primary-names.md)
 - [Architecture](../architecture/overview.md)
 - [ADR-0003: Spec-first API and canonical public identifiers](../decisions/ADR-0003-spec-first-api-and-canonical-public-identifiers.md)
 - [ADR-0013: Embedded SPA serving and browser security](../decisions/ADR-0013-embedded-spa-serving-and-browser-security.md)
@@ -19,37 +29,30 @@ injected EIP-1193 wallet for all contract reads and writes.
 - [EIP-6963: Multi Injected Provider Discovery](https://eips.ethereum.org/EIPS/eip-6963)
 - [Tailwind CSS with Vite](https://tailwindcss.com/docs/installation/using-vite)
 - [Tailwind Preflight](https://tailwindcss.com/docs/preflight)
+- [ADR-0045](../decisions/ADR-0045-erc4337-useroperation-index.md)
+- [ADR-0046](../decisions/ADR-0046-authoritative-erc20-holder-reconciliation.md)
+- [ADR-0051](../decisions/ADR-0051-watchlist-notifications-csv.md)
+- [ADR-0055](../decisions/ADR-0055-consensus-and-blob-archives.md)
 - [Testing](../testing.md)
 
 ## Work Items
 
 | ID | Status | Depends on | Deliverable | Verification |
 |---|---|---|---|---|
-| P50-T01 | done | P00 | React/Vite routing, generated API client, i18n, theme, design primitives | frontend unit/build tests |
-| P50-T02 | done | P40 | Home, blocks/orphans, transactions, addresses, and search pages | Playwright core flows |
-| P50-T03 | done | P20, P10, P40 | Token/NFT, contract, verify, charts, pending, and sync-status pages | capability UI tests |
+| P50-T01 | done | P00 | Route-lazy React/Vite, on-demand CodeMirror, generated client, i18n, accessible light/dark primitives and consistent responsive navigation/page hierarchy | frontend unit/build, asset budgets, core/capability/account/wallet, deep-link and responsive accessibility tests |
+| P50-T02 | done | P40 | Home, block/orphan, transaction/address/search pages and shared snapshot-stable bilingual ENS display with exact addresses | core Playwright, normalization, snapshot reuse, custom-name distinction, responsive and accessibility tests |
+| P50-T03 | done | P20, P10, P40 | Token/NFT, contract, verify, charts, pending and sync-status pages, inert canonical NFT metadata/traits, stale warnings and per-open media-link confirmation | capability, ERC-721/ERC-1155, generated client, bilingual keyboard/security, embedded browser and Preview tests |
 | P50-T04 | done | P10, P20, P40 | EIP-6963 discovery and wallet-only contract read/write forms | provider/mismatch tests |
-| P50-T05 | done | P50-T01 | Embedded assets, deep-link fallback, cache headers, CSP, accessibility | binary E2E and a11y tests |
-| P50-T06 | done | P40-T07 | Etherscan-inspired tabbed transaction detail system | frontend, embedded E2E, responsive and a11y tests |
-| P50-T10 | done | P40-T08 | Address activity tabs, lazy assets, and contract-address entry | frontend, embedded E2E, and generation checks |
-| P50-T11 | done | P40-T09 | Atomic home snapshot EventSource with no REST polling fallback | frontend, embedded E2E, and generation checks |
-| P50-T12 | done | P40-T10 | Address origins, QR/copy header, ERC-20 assets, configurable native labels, and add-network wallet flow | frontend unit, build, and generation checks |
-| P50-T14 | done | P40-T11, P50-T12 | Etherscan-style verified ABI read/write forms for contracts, implementations through proxies, exact management targets, and proxy histories, with real OpenZeppelin 5.6.1 Preview acceptance | Vitest, generated client, embedded browser, responsive, accessibility, Hardhat 3, monolith/split, and seven-role Preview tests |
-| P50-T16 | done | P50-T14 | Etherscan-inspired verified source workspace, structured compiler settings, and summarized contract artifacts | focused frontend, embedded browser, responsive, accessibility, generation, security, and license gates |
-| P50-T31 | done | P50-T16 | Decode verified constructor arguments into readable ABI parameter rows while retaining raw hex | focused ABI, component, and embedded browser regressions |
-| P50-T32 | done | P50-T16 | Embed Contract beside address activity tabs and support hash-driven contract subpage deep links | focused frontend, embedded browser, accessibility, and generation regressions |
-| P50-T33 | done | P50-T32 | Replace the verified-source flat file list with an accessible expandable directory tree on desktop and narrow layouts | focused tree-model, component, accessibility, responsive, and common frontend gates |
-| P50-T39 | done | P40-T12, P50-T33 | Protocol detail tabs for transactions and blocks, withdrawals, typed transaction fields, and address origin evidence | focused frontend, generated-client, responsive, accessibility, and embedded browser regressions |
-| P50-T41 | done | P50-T39 | Structured ABI provenance and recursive Name/Type/Indexed/Data event log decoding | focused frontend, responsive, accessibility, and common frontend gates |
-| P50-T45 | done | P50-T41 | Separate decoded and raw transaction calldata with compact ABI evidence and read-only raw conversion | focused frontend, bilingual, responsive, accessibility, and embedded browser gates |
-| P50-T49 | done | P40-T13, P50-T45 | Transaction-overview internal ETH transfers and exact-decimal ERC-20 transfer quantities | focused frontend, bilingual, responsive, accessibility, embedded browser, and common gates |
-| P50-T55 | done | P40-T15, P40-T14, P50-T49, P30-T48 | Preview pending and replaced transaction details with automatic transitions and iconized transaction statuses | focused frontend, bilingual, responsive, accessibility, embedded browser, and runtime E2E gates |
-| P50-T56 | done | P40-T16, P50-T55 | Lazy address withdrawal history and exact Ether display for address and block withdrawals | focused frontend, bilingual, responsive, accessibility, embedded browser, and common gates |
-| P50-T57 | done | P40-T17, P50-T56 | Compact transaction-list Method column with full-signature disclosure and exact fallback labels | focused frontend, bilingual, responsive, accessibility, embedded browser, and common gates |
-| P50-T62 | done | P50-T16, P40-T18, P30-T15, P50-T57, P70-T29 | Authorize CodeMirror runtime styles with a per-SPA-shell CSP nonce | Go handler, frontend, embedded Chromium, and common gates |
-| P50-T64 | done | P50-T62 | Neutral light/dark design tokens, blue brand and accessible grouped responsive navigation | focused navigation/theme tests, frontend and embedded browser gates |
-| P50-T65 | done | P50-T64 | Unified home, explorer lists and entity detail hierarchy | core page, deep-link, responsive and accessibility regressions |
-| P50-T66 | done | P50-T65 | Consistent contract, analytics, account, notification and administration surfaces | capability/account/wallet regressions and frontend gates |
+| P50-T05 | done | P50-T01 | Precompressed immutable assets, deep-link fallback, cache headers and per-shell nonce-authorized editor styles under CSP | cache/encoding/ETag/HEAD/fallback, CSP nonce, binary/runtime, asset and accessibility tests |
+| P50-T06 | done | P40-T07, P40-T12, P40-T15, P30-T43 | Tabbed transaction/block protocol details and separate native-transfer panels, structured log ABI provenance, decoded/raw calldata, exact-decimal transfers and automatic pending/replaced transitions | generated client, ABI/failure/identity, bilingual responsive/accessibility, embedded browser and runtime tests |
+| P50-T10 | done | P40-T08, P40-T10, P40-T17 | Address activity/assets/withdrawals/protocol transfers, origins/QR/copy, contract entry, native labels/add-network flow, and compact Method/signature disclosure | snapshot, exact Ether/decimals, wallet provider, generation, bilingual responsive/accessibility and browser tests |
+| P50-T11 | done | P40-T09 | Atomic version-fenced home state, query-local event policies and one recoverable EventSource including UserOperation reorg refresh without list polling | version-floor, reconnect/reorg, frontend, embedded browser, runtime and generation checks |
+| P50-T14 | done | P40-T11, P50-T10 | Etherscan-style verified ABI read/write forms for contracts, implementations through proxies, exact management targets, and proxy histories, with real OpenZeppelin 5.6.1 Preview acceptance | Vitest, generated client, embedded browser, responsive, accessibility, Hardhat 3, monolith/split, and seven-role Preview tests |
+| P50-T16 | done | P50-T14 | Verified source/artifact workspace, compiler settings, decoded constructor arguments with raw hex, contract deep links and accessible source directory tree | ABI/tree-model, generated client, security/license, bilingual responsive/accessibility and embedded browser tests |
+| P50-T72 | done | P40-T20, P50-T02, P50-T03 | Bilingual UserOperation search/list/detail, transaction Bundle activity, and address participant-role activity | generated-client, Vitest, responsive/accessibility, browser, and runtime tests |
+| P50-T73 | done | P40-T21, P50-T03 | Authoritative ERC-20 holder list/count on the bilingual Token page | generated-client, availability, accessibility, 390px browser, and compatibility tests |
+| P50-T74 | done | P60-T19, P40-T23, P60-T05 | Bilingual private watch/notification workspace and bounded CSV download with account-switch cache isolation | browser/session isolation, generated-client, responsive/accessibility, and production parity tests |
+| P50-T75 | done | P40-T22, P50-T06 | Consensus overview, slot provenance, blob archive status, on-demand preview, and exact-hash downloads | generated-client, disabled/unavailable/freshness, mobile, browser, and production parity tests |
 
 ## Acceptance
 
@@ -57,19 +60,79 @@ injected EIP-1193 wallet for all contract reads and writes.
 - [x] Explorer routes, deep links and canonical/snapshot identities remain stable.
 - [x] Wallet-only RPC and signing enforce provider, chain and exact target fences.
 - [x] Verified code, ABI, protocol fields and decoded/raw data retain explicit provenance.
-- [x] One public EventSource drives invalidation and pending/replaced transitions.
+- [x] One durable public EventSource drives live-list invalidation and
+      pending/replaced transitions without periodic list polling.
 - [x] Embedded assets, CSP, theme, responsive layout and accessibility pass browser coverage.
+- [x] The initial asset graph excludes feature pages and CodeMirror; raw and
+      compressed asset budgets protect route-lazy delivery.
+- [x] Embedded delivery negotiates prebuilt compressed assets using precomputed
+      metadata while preserving CSP, ETags, immutable caching, HEAD, and fallback.
+- [x] UserOperation search, global/detail, transaction Bundle, and address-role
+      views cover both locales and responsive layouts without Bundler RPC.
+- [x] Holder list/count is bilingual, accessible, generated-client-only, and
+      responsive at 390px; incomplete state is explicitly unavailable.
+- [x] Account changes cancel private requests and clear cached data. One public
+      EventSource remains; private notification refresh is authenticated/visible.
+      CSV downloads use the generated client and release their object URLs.
+- [x] Consensus/blob views distinguish disabled, pending, unavailable, and ready
+      states, show source/freshness, and load preview/download only on demand.
+- [x] ERC-721 retains exact owner state while ERC-1155 never invents a unique
+      owner, and both standards share the same metadata detail route.
+- [x] The SPA renders no NFT image and performs no media or external request
+      before the user confirms each navigation.
+- [x] Every external navigation is bilingual, keyboard accessible, opener-free,
+      and no-referrer, with the target host visible before confirmation.
+- [x] Browser forward input is normalized with Viem; displayed primary names
+      are reverse-plus-forward verified and reuse the page's name snapshot.
+- [x] Every semantic address display retains an inspectable/copyable exact address and
+      visually distinguishes custom ENS names.
+- [x] Pending/failed NFT refresh keeps prior canonical content with a bilingual
+      stale warning and explicit observation identities; reorg restores the
+      prior version and clears the warning.
+- [x] ENS is a current presentation identity; historical names, registration,
+      avatars/text records and implicit ENS in write forms remain out of scope.
+- [x] Query-local event policy, bounded version floors and one recoverable SSE
+      connection preserve reorg-aware lists and UserOperation views.
+- [x] Global/address Method columns disclose full signatures and retain exact
+      fallback labels. Decoded constructor/calldata views preserve raw hex;
+      source trees and contract subpages remain keyboard accessible and deep-linkable.
+
+- [x] Block-zero allocation and address origins disclose authenticated Genesis
+      provenance. Historical chart overview/detail routes preserve exact tables
+      and bounded API snapshots. Transaction/address protocol-transfer panels
+      stay separate from traces and top-level value; EIP-7708 log decoding and
+      bilingual System Address labels preserve exact address inspection/copying.
 
 ## Current Blockers
 
-None. P70/P73 retain independent release blockers.
+None. P60/P70 retain independent release blockers.
 
 ## Evidence
 
+P50-T02/P50-T03/P50-T06/P50-T10 retain Genesis/block-zero, analytics and
+Amsterdam native-transfer/protocol-log browser acceptance, including bilingual
+system-address labels and exact amounts. These are historical local frontend,
+generation, browser and Preview results, not a new browser run.
+
+P50-T02/P50-T03 retain ENS snapshot reuse and exact-address disclosure, bilingual
+NFT detail/traits, per-open media confirmation and stale-warning browser,
+responsive and accessibility acceptance. Generated contracts and production
+all/split flows passed at delivery revisions. P50-T11 includes version-floor,
+expired-cursor recovery, single-connection reconnect and UserOperation reorg tests.
+
+P50-T72 passed the feature revision's 25 Chromium cases alongside generated
+contracts and common gates. P50-T73 passed frontend and all 26 then-current
+Chromium cases, including bilingual accessible 390px Token browsing.
+P50-T74 passed local browser/session isolation and real SIWE notification/export
+flows in both production role layouts on 2026-09-26.
+P50-T75 passed the feature revision's 54 browser scenarios, including consensus
+slots, archive status, on-demand preview/download, mobile layout, and freshness.
+These historical suite counts describe their individual revisions, not a new
+combined browser run. Aggregate/runtime evidence is retained in P30-T35 and
+P30-T138.
+
 Retained completed milestones: P50-T01, P50-T02, P50-T03, P50-T04, P50-T05, P50-T06,
-P50-T10, P50-T11, P50-T12, P50-T14, P50-T16, P50-T31, P50-T32, P50-T33, P50-T39,
-P50-T41, P50-T45, P50-T49, P50-T55, P50-T56, P50-T57, P50-T62, P50-T64, P50-T65,
-P50-T66.
+P50-T10, P50-T11, P50-T14, P50-T16, P50-T72, P50-T73, P50-T74, P50-T75.
 
 Frontend unit, generated-client, embedded Chromium, responsive and
 accessibility checks passed at the feature revisions. Coverage includes
@@ -82,6 +145,11 @@ The redesign and subsequent theme regressions passed 380 frontend tests and
 Web lint/build, generation and documentation gates. Those counts describe that
 revision, not today's suite. Subsequent small layout, styling and test fixes
 are maintained in tests and Git history without separate roadmap items.
+
+Route-lazy delivery, on-demand CodeMirror, and precompressed assets passed
+asset-graph budgets, reproducible Web asset baselines, handler cache/encoding/CSP,
+Vitest, Playwright, and runtime E2E checks. Shared event-driven invalidation
+passed browser coverage without periodic live-list polling.
 
 [Detailed completion record](https://github.com/islishude/etherview/blob/e665a0b9b5dcee02e6d90d3a2224a76031cbda3d/docs/plans/P50-web.md#evidence).
 These are historical results, not tests rerun by this plan cleanup.

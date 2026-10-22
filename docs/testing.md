@@ -649,7 +649,7 @@ The gate is one-shot and non-retrying. All payer keys, independent RPC URLs,
 and writer URLs are file-only `0600` inputs. The operator must also record the
 staging Facilitator identity and deployed production image digest. Missing
 funds, credentials, staging Facilitator, writer, independent RPC, or image
-digest leaves P73-T08 blocked. Local Anvil evidence never closes this gate.
+digest leaves P60-T17 blocked. Local Anvil evidence never closes this gate.
 After an unknown or incomplete attempt, inspect and reconcile that exact
 payment before authorizing any new attempt.
 
@@ -796,7 +796,8 @@ fixed, never converted to expected failures or unrestricted execution.
 
 ## Watchlist, notification and CSV acceptance
 
-P78 extends the existing gates rather than introducing a weaker test mode.
+Private tools in P60, CSV exports in P40, and their Web surfaces in P50 extend
+the existing gates rather than introducing a weaker test mode.
 Focused HTTP tests prove Cookie/Origin/CSRF ownership and JSON-before-CSV error
 handling. Watchlist integration cases use fresh PostgreSQL migrations, real core
 commits/reorgs and Token lease-fenced publication to prove delayed delivery,
@@ -948,8 +949,9 @@ local results separately from native CI and deployment review.
 
 ## Consensus and blob archive acceptance
 
-P79 covers Beacon transport limits, network identity, root/hash binding,
-Bellatrix through Gloas projections, slot precedence, historical gaps, KZG and
+P20, P30, P40, and P50 cover Beacon transport limits, network identity,
+root/hash binding, Bellatrix through Gloas projections, slot precedence,
+historical gaps, KZG and
 sidecar validation, independent object readback, immutable conditional writes,
 lease/generation publication, reorg/replay and role parity. Run focused tests
 in `internal/consensus`, `internal/accelerator`, `internal/enrich`,

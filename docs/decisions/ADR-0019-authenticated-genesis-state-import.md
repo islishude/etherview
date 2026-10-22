@@ -81,4 +81,4 @@ repair it because the result would no longer describe genesis.
 - Adding the remote bootstrap source and checksum does not alter the persistent
   schema, native API, or embedded SPA protocol.
 - Persistent schema, public API, deployment configuration, proxy replay, and
-  embedded SPA changes are reviewed together under P70-T08.
+  embedded SPA changes are reviewed together under this Genesis import contract.
