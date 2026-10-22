@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -56,5 +56,43 @@ test("rejects size regressions and forbidden initial chunks", () => {
     assert.throws(() => measureInitialAssets(distribution, budget), /exceed/u);
     writeBudget(budget, { forbiddenInitialPatterns: ["index-"] });
     assert.throws(() => measureInitialAssets(distribution, budget), /forbidden/u);
+  });
+});
+
+test("counts identity-only PNG and small SVG images without requiring compression", () => {
+  withFixture(({ distribution, budget }) => {
+    writeBudget(budget);
+    prepareDistribution(distribution);
+    const before = measureInitialAssets(distribution, budget);
+    const indexPath = join(distribution, "index.html");
+    writeFileSync(
+      indexPath,
+      readFileSync(indexPath, "utf8") +
+        '<link rel="icon" href="/assets/tab-12345678.png"><link rel="preload" as="image" href="/assets/logo-12345678.svg">',
+    );
+    writeFileSync(join(distribution, "assets/tab-12345678.png"), Buffer.alloc(1024));
+    writeFileSync(join(distribution, "assets/logo-12345678.svg"), "<svg/>");
+    prepareDistribution(distribution);
+    const after = measureInitialAssets(distribution, budget);
+    assert.ok(after.rawBytes >= before.rawBytes + 1030);
+    assert.ok(after.gzipBytes >= before.gzipBytes + 1030);
+    writeBudget(budget, { maximumInitialGzipBytes: before.gzipBytes + 1029 });
+    assert.throws(() => measureInitialAssets(distribution, budget), /exceed/u);
+  });
+});
+
+test("still requires both compressed script representations and every image identity", () => {
+  withFixture(({ distribution, budget }) => {
+    writeBudget(budget);
+    const manifest = prepareDistribution(distribution);
+    delete manifest.assets["assets/index-12345678.js"].br;
+    writeFileSync(join(distribution, "asset-manifest.json"), JSON.stringify(manifest));
+    assert.throws(() => measureInitialAssets(distribution, budget), /lacks precompressed/u);
+    writeFileSync(
+      join(distribution, "index.html"),
+      '<link rel="icon" href="/assets/tab-12345678.png">',
+    );
+    writeFileSync(join(distribution, "assets/tab-12345678.png"), Buffer.alloc(32));
+    assert.throws(() => measureInitialAssets(distribution, budget), /lacks identity/u);
   });
 });

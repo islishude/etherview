@@ -191,19 +191,19 @@ func TestShellNonceFailuresFailClosed(t *testing.T) {
 	}
 }
 
-func TestEmbeddedSVGBrandIconIsTheFavicon(t *testing.T) {
+func TestEmbeddedBrandIconIsTheFavicon(t *testing.T) {
 	t.Parallel()
 
 	index, err := fs.ReadFile(Assets(), "index.html")
 	if err != nil {
 		t.Fatalf("read embedded index: %v", err)
 	}
-	match := regexp.MustCompile(`<link rel="icon" type="image/svg\+xml" href="([^"]+)"`).FindSubmatch(index)
-	if len(match) != 2 {
-		t.Fatal("embedded index does not declare the SVG brand icon as its favicon")
+	match := regexp.MustCompile(`<link rel="icon" type="(image/(?:svg\+xml|png))" href="([^"]+)"`).FindSubmatch(index)
+	if len(match) != 3 {
+		t.Fatal("embedded index does not declare a supported brand icon as its favicon")
 	}
 
-	assetPath := string(match[1])
+	assetPath := string(match[2])
 	if !strings.HasPrefix(assetPath, "/assets/") ||
 		!isHashedAsset(strings.TrimPrefix(assetPath, "/")) {
 		t.Fatalf("favicon path %q is not a local content-hashed asset", assetPath)
@@ -214,8 +214,8 @@ func TestEmbeddedSVGBrandIconIsTheFavicon(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("favicon status = %d, want %d", response.Code, http.StatusOK)
 	}
-	if got := response.Header().Get("Content-Type"); got != "image/svg+xml" {
-		t.Errorf("favicon Content-Type = %q, want %q", got, "image/svg+xml")
+	if got := response.Header().Get("Content-Type"); got != string(match[1]) {
+		t.Errorf("favicon Content-Type = %q, want %q", got, match[1])
 	}
 	if got := response.Header().Get("Cache-Control"); got != immutableCache {
 		t.Errorf("favicon Cache-Control = %q, want %q", got, immutableCache)

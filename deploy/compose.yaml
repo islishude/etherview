@@ -104,6 +104,8 @@ x-app: &app
   build:
     context: .
     target: production
+    args:
+      ETHERVIEW_WEB_BRANDING_DIR: ${ETHERVIEW_WEB_BRANDING_DIR:-web/branding/default}
   environment: *app-environment
   init: true
   restart: unless-stopped

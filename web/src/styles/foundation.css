@@ -206,7 +206,8 @@ code {
 }
 
 .brand {
-  min-width: max-content;
+  min-width: 0;
+  max-width: 24rem;
   display: inline-flex;
   gap: 0.7rem;
   align-items: center;
@@ -219,6 +220,7 @@ code {
 }
 
 .brand-mark {
+  object-fit: contain;
   width: 2.15rem;
   height: 2.15rem;
   display: block;
@@ -226,6 +228,8 @@ code {
 }
 
 .brand > span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
   display: grid;
 }
 

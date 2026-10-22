@@ -78,26 +78,29 @@ export function measureInitialAssets(distributionPath, budgetPath) {
       continue;
     }
     const metadata = manifest.assets[reference];
-    if (
-      metadata?.identity?.path !== reference ||
-      metadata.identity.bytes !== contents.length ||
-      typeof metadata.gzip?.path !== "string" ||
-      typeof metadata.br?.path !== "string"
-    ) {
+    if (metadata?.identity?.path !== reference || metadata.identity.bytes !== contents.length) {
+      throw new Error(`initial asset lacks identity metadata: ${reference}`);
+    }
+    // PNG is already compressed; small SVGs may also be smaller as identity.
+    // Keep the mandatory script/style precompression gate and count every image.
+    if (!/\.(?:svg|png)$/u.test(reference) && (!metadata.gzip || !metadata.br)) {
       throw new Error(`initial asset lacks precompressed metadata: ${reference}`);
     }
-    const gzipPath = resolve(distribution, metadata.gzip.path);
-    const brotliPath = resolve(distribution, metadata.br.path);
-    if (!inside(distribution, gzipPath) || !inside(distribution, brotliPath)) {
-      throw new Error(`compressed initial asset escapes distribution: ${reference}`);
+    for (const encoding of ["gzip", "br"]) {
+      const representation = metadata[encoding];
+      if (representation === undefined) continue;
+      if (typeof representation?.path !== "string") {
+        throw new Error(`invalid compressed initial asset metadata: ${reference}`);
+      }
+      const compressedPath = resolve(distribution, representation.path);
+      if (!inside(distribution, compressedPath)) {
+        throw new Error(`compressed initial asset escapes distribution: ${reference}`);
+      }
+      if (readFileSync(compressedPath).length !== representation.bytes) {
+        throw new Error(`compressed initial asset metadata differs: ${reference}`);
+      }
     }
-    if (
-      readFileSync(gzipPath).length !== metadata.gzip.bytes ||
-      readFileSync(brotliPath).length !== metadata.br.bytes
-    ) {
-      throw new Error(`compressed initial asset metadata differs: ${reference}`);
-    }
-    gzipBytes += metadata.gzip.bytes;
+    gzipBytes += metadata.gzip?.bytes ?? contents.length;
   }
   if (rawBytes > maximumRaw) {
     throw new Error(`initial raw assets ${rawBytes} exceed ${maximumRaw}`);

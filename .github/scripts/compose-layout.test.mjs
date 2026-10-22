@@ -21,6 +21,20 @@ function assertApplicationPaths(service, config) {
   assert.equal(mounts[0].read_only, true);
 }
 
+test("both Compose entry points pass branding only to the application build", () => {
+  for (const args of [[], ["--project-directory", root, "-f", "deploy/compose.yaml", "--profile", "monolith"]]) {
+    for (const directory of ["", "branding/custom brand"]) {
+      const config = render(args, { ETHERVIEW_WEB_BRANDING_DIR: directory });
+      for (const service of Object.values(config.services)) {
+        assert.equal(service.environment?.ETHERVIEW_WEB_BRANDING_DIR, undefined);
+        if (service.build?.target === "production") {
+          assert.equal(service.build.args.ETHERVIEW_WEB_BRANDING_DIR, directory || "web/branding/default");
+        }
+      }
+    }
+  }
+});
+
 test("default Compose selects Preview and retains its project and volumes", () => {
   assert.equal(fs.existsSync(path.join(root, "compose.preview.yaml")), false);
   const config = render([]);

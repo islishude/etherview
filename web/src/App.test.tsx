@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import i18n from "./i18n";
+import { brand as branding } from "virtual:etherview-branding";
 import { makeRouter } from "./router";
 import { ChainEventInvalidation } from "./api/eventInvalidation";
 import { AuthProvider } from "./auth/AuthProvider";
@@ -239,11 +240,11 @@ describe("embedded explorer shell", () => {
       screen.queryByText("Follow every block, call and asset movement."),
     ).not.toBeInTheDocument();
 
-    const brand = screen.getByRole("link", { name: "Etherview home" });
+    const brand = screen.getByRole("link", { name: `${branding.name} home` });
     const brandMark = brand.querySelector("img.brand-mark");
     expect(brandMark).toHaveAttribute("alt", "");
     expect(brandMark).toHaveAttribute("aria-hidden", "true");
-    expect(brandMark).toHaveAttribute("src", expect.stringMatching(/etherview-mark.*\.svg$/));
+    expect(brandMark).toHaveAttribute("src", branding.logo);
     expect(
       fetchMock.mock.calls.some(([input]) =>
         /^\/api\/v1\/(status|blocks|transactions)(?:\?|$)/.test(String(input)),

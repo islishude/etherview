@@ -16,7 +16,7 @@ export const tokensResources = {
       reviewImageLink: "Review unverified external image target {{target}}",
       dialogTitle: "Open an unverified external link?",
       externalWarning:
-        "This destination is controlled by the NFT author and has not been verified by Etherview. Continuing leaves Etherview and connects your browser directly to a third party, which can observe your IP address and browser information. The response may not be an image and may contain malicious, misleading, or tracking content. Verify the target before opening it.",
+        "This destination is controlled by the NFT author and has not been verified by {{siteName}}. Continuing leaves {{siteName}} and connects your browser directly to a third party, which can observe your IP address and browser information. The response may not be an image and may contain malicious, misleading, or tracking content. Verify the target before opening it.",
       target: "External target",
       cancel: "Cancel",
       openExternal: "Open in new tab",
@@ -93,7 +93,7 @@ export const tokensResources = {
       reviewImageLink: "检查未经验证的外部图片目标 {{target}}",
       dialogTitle: "打开未经验证的外部链接？",
       externalWarning:
-        "该目标由 NFT 创建者控制，Etherview 未验证其内容。继续后将离开 Etherview，并由浏览器直接连接第三方；对方可能获知你的 IP 地址和浏览器信息。返回内容可能不是图片，也可能包含恶意、误导或跟踪内容。请确认目标后再打开。",
+        "该目标由 NFT 创建者控制，{{siteName}} 未验证其内容。继续后将离开 {{siteName}}，并由浏览器直接连接第三方；对方可能获知你的 IP 地址和浏览器信息。返回内容可能不是图片，也可能包含恶意、误导或跟踪内容。请确认目标后再打开。",
       target: "外部目标",
       cancel: "取消",
       openExternal: "在新标签页打开",

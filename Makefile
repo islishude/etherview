@@ -37,6 +37,9 @@ GENERATED_PATHS := \
 	internal/enrich/manifests/safe-proxy-fingerprints.json \
 	web/src/api/schema.gen.ts
 
+ETHERVIEW_WEB_BRANDING_DIR ?= web/branding/default
+export ETHERVIEW_WEB_BRANDING_DIR
+
 IMAGE ?= etherview:local
 HARDHAT3_IMAGE ?= etherview-hardhat3:local
 # Enable 2 by default only after matching native AMD64/ARM64 measurements.
@@ -338,7 +341,8 @@ docker-check:
 
 docker-build:
 	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "docker-build: docker is required"; exit 1; }
-	DOCKER="$(DOCKER)" $(BUILDX) build --load --target production --tag "$(IMAGE)" .
+	DOCKER="$(DOCKER)" $(BUILDX) build --load --target production --tag "$(IMAGE)" \
+		--build-arg "ETHERVIEW_WEB_BRANDING_DIR=$${ETHERVIEW_WEB_BRANDING_DIR:-web/branding/default}" .
 
 preview-gateway-build:
 	DOCKER="$(DOCKER)" $(BUILDX) build --load --file deploy/ipfs/Dockerfile --tag "$(IPFS_GATEWAY_IMAGE)" .

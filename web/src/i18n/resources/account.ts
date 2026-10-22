@@ -74,7 +74,7 @@ export const accountResources = {
       pendingRead: "Confirm or reject the contract read in your wallet.",
       pendingWrite: "Confirm or reject the transaction in your wallet.",
       directNotice:
-        "Calls go directly through your injected wallet. Etherview never receives keys or signs on your behalf.",
+        "Calls go directly through your injected wallet. {{siteName}} never receives keys or signs on your behalf.",
       addNetwork: "Add {{chain}} network",
       addNetworkChoose: "Choose a wallet to add {{chain}}",
       addNetworkPending: "Confirm adding {{chain}} in your wallet.",
@@ -99,7 +99,7 @@ export const accountResources = {
       account: {
         title: "Account",
         description:
-          "Wallet connection and Etherview login are separate states. A wallet identity change ends the local authenticated session.",
+          "Wallet connection and {{siteName}} login are separate states. A wallet identity change ends the local authenticated session.",
         identityStatus: "Wallet and user authentication status",
         open: "Open account",
         sections: "Account sections",
@@ -143,7 +143,7 @@ export const accountResources = {
         issuedEyebrow: "Secret shown once",
         issuedTitle: "Save your API key now",
         issuedWarning:
-          "Copy this token before closing. Etherview stores only its keyed digest and cannot show it again.",
+          "Copy this token before closing. {{siteName}} stores only its keyed digest and cannot show it again.",
         closeIssued: "Close API key dialog",
         savedToken: "I saved the token",
         status: { active: "Active", revoked: "Revoked" },
@@ -171,7 +171,7 @@ export const accountResources = {
           "Sign in below to choose and authorize an injected wallet, or connect one from the header.",
       },
       sessionState: {
-        title: "Etherview user session",
+        title: "{{siteName}} user session",
         checking: "Checking the writer-backed session…",
         authenticated: "User authenticated",
         anonymous: "Not logged in",
@@ -207,7 +207,7 @@ export const accountResources = {
       },
       menu: {
         title: "User session",
-        walletIsNotLogin: "A connected wallet is not an authenticated Etherview user.",
+        walletIsNotLogin: "A connected wallet is not an authenticated {{siteName}} user.",
       },
       admin: {
         title: "User administration",
@@ -297,7 +297,7 @@ export const accountResources = {
         eyebrow: "Cookie-session history",
         title: "Payment history",
         description:
-          "Payments attributed to this authenticated Etherview user are read from the writer-backed ledger.",
+          "Payments attributed to this authenticated {{siteName}} user are read from the writer-backed ledger.",
         sessionBoundary:
           "This view follows the HttpOnly Cookie session, not the currently connected wallet.",
         loading: "Loading your payment history…",
@@ -504,7 +504,7 @@ export const accountResources = {
       invalidValue: "数额必须是以 wei 表示的十进制 uint256。",
       pendingRead: "请在钱包中确认或拒绝合约读取。",
       pendingWrite: "请在钱包中确认或拒绝交易。",
-      directNotice: "调用直接通过注入式钱包发出；Etherview 不接收密钥，也不会代签。",
+      directNotice: "调用直接通过注入式钱包发出；{{siteName}} 不接收密钥，也不会代签。",
       addNetwork: "添加 {{chain}} 网络",
       addNetworkChoose: "选择钱包添加 {{chain}}",
       addNetworkPending: "请在钱包中确认添加 {{chain}}。",
@@ -529,7 +529,7 @@ export const accountResources = {
       account: {
         title: "账户",
         description:
-          "钱包连接与 Etherview 登录是两个独立状态；钱包身份变化会立即结束本地认证会话。",
+          "钱包连接与 {{siteName}} 登录是两个独立状态；钱包身份变化会立即结束本地认证会话。",
         identityStatus: "钱包与用户认证状态",
         open: "打开账户",
         sections: "账户分区",
@@ -570,7 +570,7 @@ export const accountResources = {
         pagination: "API Key 分页",
         issuedEyebrow: "Secret 仅显示一次",
         issuedTitle: "立即保存 API Key",
-        issuedWarning: "关闭前请复制此 token。Etherview 只保存加密摘要，之后无法再次显示。",
+        issuedWarning: "关闭前请复制此 token。{{siteName}} 只保存加密摘要，之后无法再次显示。",
         closeIssued: "关闭 API Key 对话框",
         savedToken: "我已保存 token",
         status: { active: "活动", revoked: "已撤销" },
@@ -596,7 +596,7 @@ export const accountResources = {
         connectHint: "可在下方登录时选择并授权注入式钱包，也可从页头先行连接。",
       },
       sessionState: {
-        title: "Etherview 用户会话",
+        title: "{{siteName}} 用户会话",
         checking: "正在检查 writer 权威会话…",
         authenticated: "用户已登录",
         anonymous: "用户未登录",
@@ -628,7 +628,7 @@ export const accountResources = {
       },
       menu: {
         title: "用户会话",
-        walletIsNotLogin: "钱包已连接并不表示已登录 Etherview 用户。",
+        walletIsNotLogin: "钱包已连接并不表示已登录 {{siteName}} 用户。",
       },
       admin: {
         title: "用户管理",
@@ -714,7 +714,7 @@ export const accountResources = {
       personal: {
         eyebrow: "Cookie 会话历史",
         title: "付款历史",
-        description: "这里展示 writer 权威账本中已关联到当前 Etherview 登录用户的付款。",
+        description: "这里展示 writer 权威账本中已关联到当前 {{siteName}} 登录用户的付款。",
         sessionBoundary: "此视图仅跟随 HttpOnly Cookie 会话，与当前连接的钱包无关。",
         loading: "正在加载你的付款历史…",
         loadFailed: "付款历史不可用",

@@ -5,6 +5,77 @@ NATS, Redis, and S3 are diagnostic or acceleration surfaces; losing any of
 them must not authorize a state transition or make a healthy database-backed
 request fail.
 
+## Web branding at build time
+
+Set `ETHERVIEW_WEB_BRANDING_DIR` to a directory containing `brand.json` and
+the selected images. All local relative directory paths resolve from the
+repository root, including when npm runs from `web/`; local absolute paths
+are also supported. An unset or empty value uses `web/branding/default` and
+preserves the Etherview name and icon.
+
+For example, place these public build inputs in `branding/acme/brand.json`,
+with `mark.svg` and `tab.png` beside it:
+
+```json
+{
+  "name": "Acme Explorer",
+  "title": "Acme Block Explorer",
+  "description": "Explore the Acme network",
+  "icon": "mark.svg",
+  "favicon": "tab.png"
+}
+```
+
+Every field is optional. `name` defaults to `Etherview`; `title` defaults to
+the selected name; `description` defaults to the name followed by
+` execution-layer block explorer`. `icon` supplies both the navigation Logo
+and favicon, while `logo` and `favicon` independently override it. Without
+an applicable image override, that location uses the bundled Etherview SVG.
+Text values are shared across languages; the surrounding interface remains
+Chinese/English. Chain names still come from the existing chain configuration.
+
+Image paths must be relative to the branding directory and stay within it,
+including after resolving symbolic links. Only SVG and PNG are supported;
+remote URLs, absolute image paths, missing files, unknown fields, invalid
+JSON and invalid field types fail the build. Use self-contained images: the
+existing same-origin CSP remains in force. The build checks the image signature,
+but does not sanitize, resize or convert artwork. Each image is limited to
+1 MiB and `brand.json` to 16 KiB. Text must be nonempty without control
+characters; name/title/description are limited to 80/160/512 Unicode code points.
+
+```sh
+ETHERVIEW_WEB_BRANDING_DIR=branding/acme npm --prefix web run dev
+ETHERVIEW_WEB_BRANDING_DIR=branding/acme npm --prefix web run build
+make go-build ETHERVIEW_WEB_BRANDING_DIR=branding/acme
+make docker-build IMAGE=etherview:acme ETHERVIEW_WEB_BRANDING_DIR=branding/acme
+```
+
+Docker accepts the same variable as a build argument. Its directory must be
+inside the repository build context and not excluded by `.dockerignore`;
+in particular, `.local/` is excluded. The Web builder copies only the selected
+branding directory in addition to the normal Web sources. The final image
+receives the compiled Go binary with hashed embedded assets, not the branding
+configuration or source directory. Do not put secrets in these public inputs.
+
+```sh
+.github/scripts/buildx.sh build --load --target production --tag etherview:acme \
+  --build-arg ETHERVIEW_WEB_BRANDING_DIR=branding/acme .
+ETHERVIEW_WEB_BRANDING_DIR=branding/acme .github/scripts/compose.sh build api
+ETHERVIEW_WEB_BRANDING_DIR=branding/acme .github/scripts/compose.sh \
+  --project-directory . -f deploy/compose.yaml --profile monolith build etherview
+```
+
+Both Compose entry points pass this value only to the image build. Normal
+Preview initialization and deployment lifecycle commands still apply.
+Changing a running container's environment cannot change its brand: rebuild
+the binary/image and roll out that artifact. Restart the development server
+after changing branding inputs. A new image produces a new content-hashed
+URL; the existing embedded asset manifest, compression and immutable cache
+policy apply. Theme colors and automatic multi-size icon generation are not
+part of this configuration.
+Both selected images count toward the existing initial asset budgets; the
+per-file input limit does not increase the allowed initial page weight.
+
 ## Fresh database initialization
 
 The fresh-database baseline consists of numbered domain migrations from

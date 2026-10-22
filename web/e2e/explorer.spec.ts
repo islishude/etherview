@@ -2842,9 +2842,7 @@ test("EIP-6963 contract reads and writes stay inside the selected wallet boundar
     page.getByRole("heading", { name: "TransparentUpgradeableProxy", level: 2 }),
   ).toBeVisible();
   await expect(page.getByRole("tab", { name: "Proxy management" })).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Etherview home" }).getByText("Ethereum", { exact: true }),
-  ).toBeVisible();
+  await expect(page.locator("a.brand").getByText("Ethereum", { exact: true })).toBeVisible();
 
   recordWalletBoundary = true;
   await expect(

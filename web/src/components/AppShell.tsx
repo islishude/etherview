@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { normalize as normalizeENSName } from "viem/ens";
 
 import { usePublicConfig } from "@/api/hooks";
-import etherviewMark from "@/assets/etherview-mark.svg";
+import { brand } from "virtual:etherview-branding";
 import { useTheme } from "@/theme/ThemeProvider";
 import { AppFrame, ShellIcon } from "./DesignPrimitives";
 import { WalletMenu } from "./WalletMenu";
@@ -49,10 +49,10 @@ export function AppShell() {
         </a>
         <header className="site-header">
           <div className="header-primary shell-width">
-            <Link className="brand" to="/" aria-label="Etherview home">
-              <img alt="" aria-hidden="true" className="brand-mark" src={etherviewMark} />
+            <Link className="brand" to="/" aria-label={t("app.home")}>
+              <img alt="" aria-hidden="true" className="brand-mark" src={brand.logo} />
               <span>
-                <strong>Etherview</strong>
+                <strong>{brand.name}</strong>
                 <small>{publicConfig.data?.chain_name ?? t("app.tagline")}</small>
               </span>
             </Link>
@@ -122,7 +122,7 @@ export function AppShell() {
 
         <footer className="site-footer">
           <div className="shell-width footer-inner">
-            <span className="footer-brand">Etherview</span>
+            <span className="footer-brand">{brand.name}</span>
             <span>{t("footer.description")}</span>
           </div>
         </footer>

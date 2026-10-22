@@ -1,7 +1,7 @@
 export const shellResources = {
   en: {
     skip: "Skip to content",
-    app: { tagline: "Execution layer, made legible" },
+    app: { tagline: "Execution layer, made legible", home: "{{siteName}} home" },
     nav: {
       primary: "Primary navigation",
       home: "Overview",
@@ -202,7 +202,7 @@ export const shellResources = {
   },
   zh: {
     skip: "跳到主要内容",
-    app: { tagline: "清晰呈现以太坊执行层" },
+    app: { tagline: "清晰呈现以太坊执行层", home: "{{siteName}} 首页" },
     nav: {
       primary: "主导航",
       home: "概览",

@@ -19,6 +19,8 @@
 }
 
 .footer-brand {
+  overflow-wrap: anywhere;
+  min-width: 0;
   color: var(--text);
   font-weight: 850;
 }

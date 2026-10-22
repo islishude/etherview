@@ -3,11 +3,12 @@ import { fileURLToPath, URL } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
+import { brandingPlugin } from "./scripts/branding.ts";
 
 const KiB = 1024;
 
 export default defineConfig({
-  plugins: [tailwindcss(), react()],
+  plugins: [brandingPlugin(), tailwindcss(), react()],
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),

@@ -31,6 +31,8 @@ x-etherview-service: &etherview-service
   build:
     context: .
     target: production
+    args:
+      ETHERVIEW_WEB_BRANDING_DIR: ${ETHERVIEW_WEB_BRANDING_DIR:-web/branding/default}
   environment: *etherview-app-env
   volumes:
     - ${ETHERVIEW_CONFIG_FILE:-./deploy/preview.config.yaml}:/etc/etherview/config.yaml:ro
