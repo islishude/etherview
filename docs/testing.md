@@ -354,9 +354,10 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   the API generator's
   transitive parser and glob dependencies are constrained by audited
   overrides.
-  The common CI job disables automatic npm install audits so an advisory
-  endpoint outage does not consume its test budget. The separate security
-  job retains all four explicit audits and fails if an audit cannot complete.
+  CI disables automatic npm install audits so an advisory endpoint outage
+  does not consume test budgets. The security job retains all four explicit
+  audits, which always enable auditing regardless of the install setting,
+  and fails if an audit cannot complete.
 - `make license-check`: Go, production frontend/compiler, all Vyper package
   and pinned shared WASM component notice checks.
 - `make benchmark-vyper-wasm`: actual SEA first/repeated dual compilation,
