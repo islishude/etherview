@@ -61,18 +61,18 @@ Primary advisory feeds: [PyPI JSON API](https://docs.pypi.org/api/json/),
 
 ## Findings and applicability
 
-| Finding group | Disposition in this exact execution path |
-| --- | --- |
-| Historical Vyper EVM output bugs | Retained to reproduce deployed bytecode using unchanged official compiler bytes. They concern EVM semantics, not execution of Python in the verifier host. Verification is an identity claim, never a claim that the deployed contract is safe. The two existing 0.4.3 advisory range corrections remain documented in the compiler README. |
-| setuptools sdist inclusion, jaraco tarball extraction, vendored wheel unpack | Those build/install APIs never receive runtime input. Historical `pkg_resources` imports remain; compiler packages come from authenticated archives assembled by our builder. |
-| CPython HTTP/TLS, email, HTML/XML, plist, CSV, config, base64 and browser APIs | Not invoked with user input by `compile_request`/`compile_input`. User sources are compiler data, never executed Python. Network, host writes and child processes are additionally denied. |
-| CPython archive/decompressor and bzip2 findings | Runtime archives are authenticated before invocation and use bounded trusted payloads. User input is inline JSON. No hostile archives or reused failed decompressor are accepted. The bzip2recover utility is absent. |
-| CPython `unicode_escape` UAF | Requires ignore/replace error handlers. Compiler/AST decoding is strict; the reviewed compiler source does not use the vulnerable handler combination. |
-| CPython loader, VPATH and audit-hook findings | No user Python/pyc, host source mount or user-controlled interpreter search path. Python audit hooks are not an authorization boundary. |
-| CPython Windows APIs | Production target is emscripten-wasm32. |
-| Expat findings | No XML parsing in the compiler path; xmlwf is absent. The linked library remains inventoried. |
-| zlib findings | Uses inflate for authenticated ZIPs; no untgz, Perl, `crc32_combine64`/`crc32_combine_gen64`, or `gzwrite` recovery path. |
-| musl EUC-KR iconv overflow | Source arrives as UTF-8 through CPython codecs. The compiler path does not call musl iconv. |
+| Finding group                                                                  | Disposition in this exact execution path                                                                                                                                                                                                                                                                                                    |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Historical Vyper EVM output bugs                                               | Retained to reproduce deployed bytecode using unchanged official compiler bytes. They concern EVM semantics, not execution of Python in the verifier host. Verification is an identity claim, never a claim that the deployed contract is safe. The two existing 0.4.3 advisory range corrections remain documented in the compiler README. |
+| setuptools sdist inclusion, jaraco tarball extraction, vendored wheel unpack   | Those build/install APIs never receive runtime input. Historical `pkg_resources` imports remain; compiler packages come from authenticated archives assembled by our builder.                                                                                                                                                               |
+| CPython HTTP/TLS, email, HTML/XML, plist, CSV, config, base64 and browser APIs | Not invoked with user input by `compile_request`/`compile_input`. User sources are compiler data, never executed Python. Network, host writes and child processes are additionally denied.                                                                                                                                                  |
+| CPython archive/decompressor and bzip2 findings                                | Runtime archives are authenticated before invocation and use bounded trusted payloads. User input is inline JSON. No hostile archives or reused failed decompressor are accepted. The bzip2recover utility is absent.                                                                                                                       |
+| CPython `unicode_escape` UAF                                                   | Requires ignore/replace error handlers. Compiler/AST decoding is strict; the reviewed compiler source does not use the vulnerable handler combination.                                                                                                                                                                                      |
+| CPython loader, VPATH and audit-hook findings                                  | No user Python/pyc, host source mount or user-controlled interpreter search path. Python audit hooks are not an authorization boundary.                                                                                                                                                                                                     |
+| CPython Windows APIs                                                           | Production target is emscripten-wasm32.                                                                                                                                                                                                                                                                                                     |
+| Expat findings                                                                 | No XML parsing in the compiler path; xmlwf is absent. The linked library remains inventoried.                                                                                                                                                                                                                                               |
+| zlib findings                                                                  | Uses inflate for authenticated ZIPs; no untgz, Perl, `crc32_combine64`/`crc32_combine_gen64`, or `gzwrite` recovery path.                                                                                                                                                                                                                   |
+| musl EUC-KR iconv overflow                                                     | Source arrives as UTF-8 through CPython codecs. The compiler path does not call musl iconv.                                                                                                                                                                                                                                                 |
 
 The reachable exception is
 [CVE-2026-3276](https://github.com/psf/advisory-database/blob/main/advisories/python/PSF-2026-25.json):
@@ -143,10 +143,10 @@ validation. Peak RSS uses each child's `wait4` high-water mark and accounts
 for the Linux/macOS unit difference. Serial processes use the maximum, not
 the sum, of the pair's RSS.
 
-| Workload | First dual compilation | Repeated dual median | Maximum process RSS |
-| --- | ---: | ---: | ---: |
-| All 26 versions, unchanged plain fixtures | 2.539–4.221 s | 2.607–3.024 s | 243.7–264.7 MiB |
-| 0.4.3, 17 files / 128 functions / 155.8 KB JSON | 4.791 s | 4.477 s | 277.2 MiB |
+| Workload                                        | First dual compilation | Repeated dual median | Maximum process RSS |
+| ----------------------------------------------- | ---------------------: | -------------------: | ------------------: |
+| All 26 versions, unchanged plain fixtures       |          2.539–4.221 s |        2.607–3.024 s |     243.7–264.7 MiB |
+| 0.4.3, 17 files / 128 functions / 155.8 KB JSON |                4.791 s |              4.477 s |           277.2 MiB |
 
 All 216 compilations match official reference outputs. The larger generated
 input uses 16 imported modules and 128 public functions; its original and

@@ -3,6 +3,7 @@ SHELL := /bin/sh
 GO ?= go
 NODE ?= node
 NPM ?= npm
+REPO_FORMAT_PATHS := '**/*.{js,mjs,cjs,yaml,yml,md}'
 PYTHON ?= python3.13
 DOCKER ?= docker
 BUILDX ?= .github/scripts/buildx.sh
@@ -67,6 +68,7 @@ X402_LOCAL_TOPOLOGY ?= monolith
 	docker-build docker-check docker-image-check \
 	compiler-install go-build generate generate-check generate-go helm-check install-lint-tools install-security-tools \
 	golangci-lint \
+	format format-check repo-format-check web-format-check \
 	license-check license-tool-check lint lint-go plan-check security-check source-check \
 	security-tool-check test test-go toolchain-check \
 	test-e2e test-integration test-integration-race test-load test-race test-runtime-e2e \
@@ -252,8 +254,20 @@ compiler-install:
 web-generate: web-install
 	$(NPM) --prefix api run generate:api
 
-web-lint: web-install
-	$(NPM) --prefix web run lint
+format: web-install
+	$(NODE) web/node_modules/oxfmt/bin/oxfmt --config .oxfmtrc.json --disable-nested-config --write $(REPO_FORMAT_PATHS)
+	$(NPM) --prefix web run format
+
+repo-format-check: web-install
+	$(NODE) web/node_modules/oxfmt/bin/oxfmt --config .oxfmtrc.json --disable-nested-config --check $(REPO_FORMAT_PATHS)
+
+web-format-check: web-install
+	$(NPM) --prefix web run format:check
+
+format-check: repo-format-check web-format-check
+
+web-lint: web-install web-format-check
+	$(NPM) --prefix web run lint:code
 
 web-test: web-install
 	$(NPM) --prefix web run test
@@ -274,7 +288,7 @@ lint-go: lint-tool-check source-check
 golangci-lint: lint-tool-check
 	$(GOLANGCI_LINT) run ./...
 
-lint: lint-go web-lint
+lint: lint-go web-lint format-check
 
 install-security-tools:
 	$(GO) install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)

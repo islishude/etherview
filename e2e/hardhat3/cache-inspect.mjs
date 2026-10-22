@@ -12,7 +12,9 @@ process.stdout.write(
     sha256: createHash("sha256").update(readFileSync(path)).digest("hex"),
     size: stat.size.toString(),
     inode: stat.ino.toString(),
-    mode: Number(stat.mode & 0o777n).toString(8).padStart(3, "0"),
+    mode: Number(stat.mode & 0o777n)
+      .toString(8)
+      .padStart(3, "0"),
     modified_ns: stat.mtimeNs.toString(),
     changed_ns: stat.ctimeNs.toString(),
   })}\n`,

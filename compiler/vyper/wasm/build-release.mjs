@@ -13,7 +13,13 @@ import { parseArgs } from "node:util";
 import { ROOT, canonical, digest, regularFile, versions } from "./tooling.mjs";
 import { runtimeFor } from "./release.mjs";
 import { packRuntime } from "./packages.mjs";
-export async function descriptor(item, packagePath, shared, output, sharedDigest = runtimeFor(item.version).shared_sha256) {
+export async function descriptor(
+  item,
+  packagePath,
+  shared,
+  output,
+  sharedDigest = runtimeFor(item.version).shared_sha256,
+) {
   if (digest(regularFile(shared)) !== sharedDigest)
     throw new Error("shared runtime identity mismatch");
   if (!lstatSync(packagePath).isDirectory()) throw new Error("invalid package directory");
@@ -49,13 +55,7 @@ export async function descriptor(item, packagePath, shared, output, sharedDigest
   writeFileSync(join(output, name + ".json"), canonical(record) + "\n", { flag: "wx" });
   return record;
 }
-export async function buildRelease(
-  packages,
-  shared,
-  output,
-  items = versions(),
-  sharedDigest,
-) {
+export async function buildRelease(packages, shared, output, items = versions(), sharedDigest) {
   if (existsSync(output)) throw new Error("release output must not already exist");
   mkdirSync(dirname(output), { recursive: true });
   const temporary = mkdtempSync(join(dirname(output), ".vyper-release-"));
@@ -63,7 +63,13 @@ export async function buildRelease(
     const staging = join(temporary, "release");
     mkdirSync(staging);
     for (const item of items)
-      await descriptor(item, join(packages, item.version), sharedDigest ? shared : join(shared, runtimeFor(item.version).id, "shared-manifest.json"), staging, sharedDigest);
+      await descriptor(
+        item,
+        join(packages, item.version),
+        sharedDigest ? shared : join(shared, runtimeFor(item.version).id, "shared-manifest.json"),
+        staging,
+        sharedDigest,
+      );
     if (existsSync(output)) throw new Error("release output must not already exist");
     renameSync(staging, output);
   } finally {

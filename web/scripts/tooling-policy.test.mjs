@@ -159,3 +159,95 @@ test("format gate covers hand-written frontend files, preserves exclusions, and 
   for (const [name, content] of Object.entries(ignored))
     assert.equal(readFileSync(join(root, name), "utf8"), content);
 });
+
+function repositoryFormat(root, mode) {
+  return run(root, "oxfmt", [
+    "--config",
+    ".oxfmtrc.json",
+    "--disable-nested-config",
+    mode,
+    "**/*.{js,mjs,cjs,yaml,yml,md}",
+  ]);
+}
+
+function repositoryFixture(t, files) {
+  const root = fixture(t, files);
+  copyFileSync(join(web, "..", ".oxfmtrc.json"), join(root, ".oxfmtrc.json"));
+  copyFileSync(join(web, "..", ".gitignore"), join(root, ".gitignore"));
+  return root;
+}
+
+test("repository formatting covers scripts, hidden workflows, YAML and Markdown without writing on check", (t) => {
+  const files = {
+    "script.js": "export const value={name:'value'}",
+    "compiler/script.mjs": "export const value=1",
+    "e2e/script.cjs": "module.exports={value:1}",
+    ".github/scripts/script.mjs": "export const value=1",
+    ".github/workflows/check.yml": "name:   Check\non: [push]\n",
+    "deploy/helm/etherview/values.yaml": "items:   [a,b]\n",
+    "deploy/helm/etherview/Chart.yaml": "name:   example\n",
+    "README.md":
+      "# Heading\n\n*   entry\n\nKeep this\nline break.\n\n```js\nconst value={a:1}\n```\n",
+  };
+  const root = repositoryFixture(t, files);
+  const check = repositoryFormat(root, "--check");
+  assert.equal(check.status, 1, check.output);
+  for (const [name, content] of Object.entries(files)) {
+    assert.ok(check.output.includes(name), check.output);
+    assert.equal(readFileSync(join(root, name), "utf8"), content);
+  }
+  const written = repositoryFormat(root, "--write");
+  assert.equal(written.status, 0, written.output);
+  const snapshot = Object.fromEntries(
+    Object.keys(files).map((name) => [name, readFileSync(join(root, name), "utf8")]),
+  );
+  assert.match(snapshot["README.md"], /Keep this\nline break\./);
+  assert.ok(snapshot["README.md"].includes("```js\nconst value={a:1}\n```"));
+  assert.equal(repositoryFormat(root, "--check").status, 0);
+  assert.equal(repositoryFormat(root, "--write").status, 0);
+  for (const [name, content] of Object.entries(snapshot)) {
+    assert.equal(readFileSync(join(root, name), "utf8"), content);
+  }
+});
+
+test("repository formatting preserves excluded fixtures, templates, generated and local files", (t) => {
+  const ignored = Object.fromEntries(
+    [
+      "web/src/example.js",
+      "compiler/node_modules/example/index.js",
+      "compiler/dist/output.js",
+      ".local/output.js",
+      "data/config.yaml",
+      "vendor/example.js",
+      "coverage/output.js",
+      "playwright-report/output.js",
+      "test-results/output.js",
+      "generated.gen.js",
+      "policy_generated.js",
+      "internal/example/testdata/input.yaml",
+      "deploy/helm/etherview/templates/service.yaml",
+      "licenses/notice.md",
+      "THIRD_PARTY_NOTICES.md",
+    ].map((name) => [name, "deliberately malformed {{{\n"]),
+  );
+  const root = repositoryFixture(t, { ...ignored, "script.js": "export const value = 1;\n" });
+  for (const mode of ["--check", "--write"]) {
+    const result = repositoryFormat(root, mode);
+    assert.equal(result.status, 0, result.output);
+    for (const [name, content] of Object.entries(ignored)) {
+      assert.equal(readFileSync(join(root, name), "utf8"), content);
+    }
+  }
+});
+
+test("repository format check rejects parse errors without modifying input", (t) => {
+  for (const [name, content] of Object.entries({
+    "broken.js": "export const = ;",
+    "broken.yaml": "items: [\n",
+  })) {
+    const root = repositoryFixture(t, { [name]: content });
+    const result = repositoryFormat(root, "--check");
+    assert.notEqual(result.status, 0, result.output);
+    assert.equal(readFileSync(join(root, name), "utf8"), content);
+  }
+});

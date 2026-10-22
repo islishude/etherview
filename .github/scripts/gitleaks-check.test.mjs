@@ -18,37 +18,60 @@ test("root .local artifacts are ignored while source exceptions retain path and 
   };
   try {
     for (const name of ["0x0", "0x1", "latest", "tx"]) {
-      write(`.local/amsterdam-probe/block-${name}.json`, {
-        blockAccessListHash: `0x${publicHash}`,
-      }, name === "tx");
+      write(
+        `.local/amsterdam-probe/block-${name}.json`,
+        {
+          blockAccessListHash: `0x${publicHash}`,
+        },
+        name === "tx",
+      );
     }
     const canonical = "internal/chainbundle/testdata/amsterdam-block.json";
     write(canonical, { blockAccessListHash: `0x${publicHash}`, api_key: publicHash });
     write(".local/amsterdam-probe/block-latest.json", {
-      blockAccessListHash: `0x${publicHash}`, api_key: publicHash,
+      blockAccessListHash: `0x${publicHash}`,
+      api_key: publicHash,
     });
     write("elsewhere.json", { blockAccessListHash: `0x${publicHash}` });
     write(".local/preview-network/manifest.json", {
-      "validator/keys/voting-keystore.json": publicHash, api_key: publicHash,
+      "validator/keys/voting-keystore.json": publicHash,
+      api_key: publicHash,
     });
     write(".local/preview-network/unrelated.json", { api_key: publicHash });
-    write(".local/another-network/manifest.json", { "validator/keys/voting-keystore.json": publicHash });
+    write(".local/another-network/manifest.json", {
+      "validator/keys/voting-keystore.json": publicHash,
+    });
     write(".local/new-artifacts/credentials.json", { api_key: publicHash });
     write(".locality/credentials.json", { api_key: publicHash });
     write("nested/.local/credentials.json", { api_key: publicHash });
-    const result = spawnSync(process.env.GITLEAKS ?? "gitleaks", [
-      "dir", "--no-banner", "--redact", "--config", config,
-      "--report-format", "json", "--report-path", join(root, "report.json"), ".",
-    ], { cwd: root, encoding: "utf8" });
+    const result = spawnSync(
+      process.env.GITLEAKS ?? "gitleaks",
+      [
+        "dir",
+        "--no-banner",
+        "--redact",
+        "--config",
+        config,
+        "--report-format",
+        "json",
+        "--report-path",
+        join(root, "report.json"),
+        ".",
+      ],
+      { cwd: root, encoding: "utf8" },
+    );
     assert.ifError(result.error);
     assert.equal(result.status, 1, "scanner must still reject synthetic credential findings");
     const findings = JSON.parse(readFileSync(join(root, "report.json"), "utf8"));
-    assert.deepEqual(findings.map(({ File, RuleID }) => `${File}:${RuleID}`).sort(), [
-      `${canonical}:generic-api-key`,
-      "elsewhere.json:generic-api-key",
-      ".locality/credentials.json:generic-api-key",
-      "nested/.local/credentials.json:generic-api-key",
-    ].sort());
+    assert.deepEqual(
+      findings.map(({ File, RuleID }) => `${File}:${RuleID}`).sort(),
+      [
+        `${canonical}:generic-api-key`,
+        "elsewhere.json:generic-api-key",
+        ".locality/credentials.json:generic-api-key",
+        "nested/.local/credentials.json:generic-api-key",
+      ].sort(),
+    );
     assert.equal(findings.filter(({ Match }) => Match.startsWith("blockAccessListHash")).length, 1);
   } finally {
     rmSync(root, { recursive: true, force: true });

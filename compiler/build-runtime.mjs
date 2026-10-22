@@ -15,18 +15,11 @@ import {
 } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 
-import {
-  elfSoname,
-  indexELFProviders,
-  validateAssembledRuntime,
-} from "./elf-runtime.mjs";
+import { elfSoname, indexELFProviders, validateAssembledRuntime } from "./elf-runtime.mjs";
 
-const [executorArgument, targetRootArgument, licensesArgument] =
-  process.argv.slice(2);
+const [executorArgument, targetRootArgument, licensesArgument] = process.argv.slice(2);
 if (!executorArgument || !targetRootArgument || !licensesArgument) {
-  throw new Error(
-    "usage: node build-runtime.mjs <executor> <target-root> <licenses>",
-  );
+  throw new Error("usage: node build-runtime.mjs <executor> <target-root> <licenses>");
 }
 
 const executor = resolve(executorArgument);
@@ -130,9 +123,7 @@ function targetPackageIdentity(path) {
   const owners = [];
   for (const entry of readdirSync(statusRoot, { withFileTypes: true })) {
     if (!entry.isFile() || !entry.name.endsWith(".md5sums")) continue;
-    const sums = readFileSync(join(statusRoot, entry.name), "utf8")
-      .split("\n")
-      .filter(Boolean);
+    const sums = readFileSync(join(statusRoot, entry.name), "utf8").split("\n").filter(Boolean);
     for (const line of sums) {
       const match = line.match(/^([0-9a-f]{32})\s+(.+)$/);
       if (!match || match[2].replace(/^\.\//, "") !== relativePath) continue;
@@ -161,10 +152,7 @@ function targetPackageIdentity(path) {
     throw new Error(`base ELF dependency license is unavailable: ${path}`);
   }
   const resolvedCopyright = realpathSync(copyright);
-  if (
-    !pathInside(targetRoot, resolvedCopyright) ||
-    !statSync(resolvedCopyright).isFile()
-  ) {
+  if (!pathInside(targetRoot, resolvedCopyright) || !statSync(resolvedCopyright).isFile()) {
     throw new Error(`base ELF dependency license is unsafe: ${path}`);
   }
   return {
@@ -233,10 +221,7 @@ for (const sourcePath of closure.slice(1)) {
     provider = "runtime";
     identity = builderPackageIdentity(sourcePath);
     const destination = join(privateLibraryRoot, soname);
-    if (
-      runtimeSonames.has(soname) &&
-      runtimeSonames.get(soname) !== sourceDigest
-    ) {
+    if (runtimeSonames.has(soname) && runtimeSonames.get(soname) !== sourceDigest) {
       throw new Error(`conflicting runtime ELF dependency ${soname}`);
     }
     copyFileSync(realpathSync(sourcePath), destination);
@@ -267,14 +252,12 @@ const files = [
     kind: "executor",
     sha256: sha256(executor),
   },
-  ...[...runtimeSonames.keys()]
-    .sort(compareText)
-    .map((soname) => ({
-      path: `lib/${soname}`,
-      kind: "library",
-      soname,
-      sha256: runtimeSonames.get(soname),
-    })),
+  ...[...runtimeSonames.keys()].sort(compareText).map((soname) => ({
+    path: `lib/${soname}`,
+    kind: "library",
+    soname,
+    sha256: runtimeSonames.get(soname),
+  })),
 ];
 const manifest = {
   schema: "etherview-solcjs-sea-runtime-v1",
@@ -317,9 +300,7 @@ const resolvedDependencies = validateAssembledRuntime({
 });
 for (const dependency of dependencies) {
   if (dependency.provider !== "base") continue;
-  const identity = targetPackageIdentity(
-    resolvedDependencies.get(dependency.soname).hostPath,
-  );
+  const identity = targetPackageIdentity(resolvedDependencies.get(dependency.soname).hostPath);
   if (
     identity.package !== dependency.package ||
     identity.package_version !== dependency.package_version ||

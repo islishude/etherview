@@ -12,9 +12,7 @@ async function packageJSON(path) {
 }
 
 test("pins the official Safe 1.4.1 deployment artifacts", async () => {
-  const metadata = await packageJSON(
-    "./node_modules/@safe-global/safe-contracts/package.json",
-  );
+  const metadata = await packageJSON("./node_modules/@safe-global/safe-contracts/package.json");
   assert.equal(metadata.version, SAFE_VERSION);
 
   const safe = await packageJSON(
@@ -28,9 +26,7 @@ test("pins the official Safe 1.4.1 deployment artifacts", async () => {
   );
 
   assert.equal(safe.contractName, "Safe");
-  assert.ok(
-    safe.abi.some((item) => item.type === "function" && item.name === "setup"),
-  );
+  assert.ok(safe.abi.some((item) => item.type === "function" && item.name === "setup"));
   assert.equal(factory.contractName, "SafeProxyFactory");
   const create = factory.abi.find(
     (item) => item.type === "function" && item.name === "createProxyWithNonce",
@@ -39,9 +35,7 @@ test("pins the official Safe 1.4.1 deployment artifacts", async () => {
     create?.inputs.map((input) => input.type),
     ["address", "bytes", "uint256"],
   );
-  const event = factory.abi.find(
-    (item) => item.type === "event" && item.name === "ProxyCreation",
-  );
+  const event = factory.abi.find((item) => item.type === "event" && item.name === "ProxyCreation");
   assert.deepEqual(
     event?.inputs.map((input) => ({ type: input.type, indexed: input.indexed })),
     [
@@ -51,9 +45,7 @@ test("pins the official Safe 1.4.1 deployment artifacts", async () => {
   );
   assert.equal(proxy.contractName, "SafeProxy");
   assert.deepEqual(
-    proxy.abi.find((item) => item.type === "constructor")?.inputs.map(
-      (input) => input.type,
-    ),
+    proxy.abi.find((item) => item.type === "constructor")?.inputs.map((input) => input.type),
     ["address"],
   );
   assert.equal((proxy.deployedBytecode.length - 2) / 2, 171);

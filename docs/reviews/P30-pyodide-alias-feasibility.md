@@ -48,34 +48,34 @@ concurrent workers, a 30-second deadline, 128 MiB V8 old-generation heap and
 384 MiB WASM memory limit. All child groups are reaped; no matrix invocation
 times out. These limits do not establish a total RSS cap.
 
-| Vyper | Runtime alias | Matched cases |
-|---|---|---:|
-| 0.2.0 | `pyodide-legacy` | 10/10 |
-| 0.2.1 | `pyodide-legacy` | 10/10 |
-| 0.2.2 | `pyodide-legacy` | 10/10 |
-| 0.2.3 | `pyodide-legacy` | 10/10 |
-| 0.2.4 | `pyodide-legacy` | 10/10 |
-| 0.2.5 | `pyodide-legacy` | 10/10 |
-| 0.2.7 | `pyodide-legacy` | 10/10 |
-| 0.2.8 | `pyodide-legacy` | 10/10 |
-| 0.2.11 | `pyodide-legacy` | 10/10 |
-| 0.2.12 | `pyodide-legacy` | 10/10 |
-| 0.2.15 | `pyodide-legacy` | 10/10 |
-| 0.2.16 | `pyodide-legacy` | 10/10 |
-| 0.3.0 | `pyodide-legacy` | 10/10 |
-| 0.3.1 | `pyodide-legacy` | 16/16 |
-| 0.3.2 | `pyodide-legacy` | 16/16 |
-| 0.3.3 | `pyodide-legacy` | 16/16 |
-| 0.3.4 | `pyodide-legacy` | 16/16 |
-| 0.3.6 | `pyodide-legacy` | 16/16 |
-| 0.3.7 | `pyodide-legacy` | 16/16 |
-| 0.3.8 | `pyodide-legacy` | 18/18 |
-| 0.3.9 | `pyodide-legacy` | 18/18 |
-| 0.3.10 | `pyodide-legacy` | 20/20 |
-| 0.4.0 | `pyodide` | 20/20 |
-| 0.4.1 | `pyodide` | 20/20 |
-| 0.4.2 | `pyodide` | 20/20 |
-| 0.4.3 | `pyodide` | 20/20 |
+| Vyper  | Runtime alias    | Matched cases |
+| ------ | ---------------- | ------------: |
+| 0.2.0  | `pyodide-legacy` |         10/10 |
+| 0.2.1  | `pyodide-legacy` |         10/10 |
+| 0.2.2  | `pyodide-legacy` |         10/10 |
+| 0.2.3  | `pyodide-legacy` |         10/10 |
+| 0.2.4  | `pyodide-legacy` |         10/10 |
+| 0.2.5  | `pyodide-legacy` |         10/10 |
+| 0.2.7  | `pyodide-legacy` |         10/10 |
+| 0.2.8  | `pyodide-legacy` |         10/10 |
+| 0.2.11 | `pyodide-legacy` |         10/10 |
+| 0.2.12 | `pyodide-legacy` |         10/10 |
+| 0.2.15 | `pyodide-legacy` |         10/10 |
+| 0.2.16 | `pyodide-legacy` |         10/10 |
+| 0.3.0  | `pyodide-legacy` |         10/10 |
+| 0.3.1  | `pyodide-legacy` |         16/16 |
+| 0.3.2  | `pyodide-legacy` |         16/16 |
+| 0.3.3  | `pyodide-legacy` |         16/16 |
+| 0.3.4  | `pyodide-legacy` |         16/16 |
+| 0.3.6  | `pyodide-legacy` |         16/16 |
+| 0.3.7  | `pyodide-legacy` |         16/16 |
+| 0.3.8  | `pyodide-legacy` |         18/18 |
+| 0.3.9  | `pyodide-legacy` |         18/18 |
+| 0.3.10 | `pyodide-legacy` |         20/20 |
+| 0.4.0  | `pyodide`        |         20/20 |
+| 0.4.1  | `pyodide`        |         20/20 |
+| 0.4.2  | `pyodide`        |         20/20 |
+| 0.4.3  | `pyodide`        |         20/20 |
 
 ## Boundary and negative controls
 

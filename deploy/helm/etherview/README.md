@@ -33,22 +33,22 @@ The chart references `secrets.existingSecret`; it never renders credential
 values into a Kubernetes `Secret`. The required database key and optional
 runtime keys are:
 
-| Value | Default Secret key | Use |
-|---|---|---|
-| `databaseURLKey` | `database-url` | PostgreSQL writer URL; required for every role and migration |
-| `databaseReadURLKey` | `database-read-url` | optional PostgreSQL reader URL; injected only into `all` and `api` application containers |
-| `rpcURLsKey` | `rpc-urls` | comma-separated all-purpose URLs or a structured JSON endpoint array |
-| `apiKeyPepperKey` | `api-key-pepper` | API-key digest pepper |
-| `sessionPepperKey` | `session-pepper` | user-session HMAC pepper; auth-enabled `all`/`api` application containers only |
-| `x402FingerprintPepperKey` | `x402-fingerprint-pepper` | payment-authorization fingerprint pepper; billing-enabled `all`/`api` containers only |
-| `x402FacilitatorHeadersKey` | `x402-facilitator-headers` | optional bounded facilitator-header JSON; billing-enabled `all`/`api` containers only |
-| `natsURLKey` | `nats-url` | optional NATS URL |
-| `redisURLKey` | `redis-url` | optional Redis URL |
-| `s3AccessKeyKey` | `s3-access-key` | optional explicit S3 access-key override; `all`/`api` only |
-| `s3SecretKeyKey` | `s3-secret-key` | optional explicit S3 secret-key override; `all`/`api` only |
-| `s3SessionTokenKey` | `s3-session-token` | optional explicit S3 session-token override; `all`/`api` only |
-| `otlpTraceEndpointKey` | `otlp-trace-endpoint` | optional OTLP/HTTP trace collector origin |
-| `otlpTraceHeadersKey` | `otlp-trace-headers` | optional OTLP collector authorization headers |
+| Value                       | Default Secret key         | Use                                                                                       |
+| --------------------------- | -------------------------- | ----------------------------------------------------------------------------------------- |
+| `databaseURLKey`            | `database-url`             | PostgreSQL writer URL; required for every role and migration                              |
+| `databaseReadURLKey`        | `database-read-url`        | optional PostgreSQL reader URL; injected only into `all` and `api` application containers |
+| `rpcURLsKey`                | `rpc-urls`                 | comma-separated all-purpose URLs or a structured JSON endpoint array                      |
+| `apiKeyPepperKey`           | `api-key-pepper`           | API-key digest pepper                                                                     |
+| `sessionPepperKey`          | `session-pepper`           | user-session HMAC pepper; auth-enabled `all`/`api` application containers only            |
+| `x402FingerprintPepperKey`  | `x402-fingerprint-pepper`  | payment-authorization fingerprint pepper; billing-enabled `all`/`api` containers only     |
+| `x402FacilitatorHeadersKey` | `x402-facilitator-headers` | optional bounded facilitator-header JSON; billing-enabled `all`/`api` containers only     |
+| `natsURLKey`                | `nats-url`                 | optional NATS URL                                                                         |
+| `redisURLKey`               | `redis-url`                | optional Redis URL                                                                        |
+| `s3AccessKeyKey`            | `s3-access-key`            | optional explicit S3 access-key override; `all`/`api` only                                |
+| `s3SecretKeyKey`            | `s3-secret-key`            | optional explicit S3 secret-key override; `all`/`api` only                                |
+| `s3SessionTokenKey`         | `s3-session-token`         | optional explicit S3 session-token override; `all`/`api` only                             |
+| `otlpTraceEndpointKey`      | `otlp-trace-endpoint`      | optional OTLP/HTTP trace collector origin                                                 |
+| `otlpTraceHeadersKey`       | `otlp-trace-headers`       | optional OTLP collector authorization headers                                             |
 
 `externalSecret.enabled` can materialize the same target from a SecretStore or
 ClusterSecretStore. Writer database, RPC, and API-key-pepper remote keys are

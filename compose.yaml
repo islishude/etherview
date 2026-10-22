@@ -67,7 +67,11 @@ services:
     ports:
       - "127.0.0.1:${IPFS_API_PORT:-5001}:5001"
     healthcheck:
-      test: ["CMD-SHELL", "ipfs --timeout=5s cat /ipfs/bafybeibnsoufr2renqzsh347nrx54wcubt5lgkeivez63xvivplfwhtpym/metadata.json >/dev/null"]
+      test:
+        [
+          "CMD-SHELL",
+          "ipfs --timeout=5s cat /ipfs/bafybeibnsoufr2renqzsh347nrx54wcubt5lgkeivez63xvivplfwhtpym/metadata.json >/dev/null",
+        ]
       interval: 5s
       timeout: 6s
       retries: 20
@@ -290,8 +294,7 @@ services:
 
   metadata:
     <<: *etherview-service
-    command:
-      ["serve", "--roles=metadata", "--config=/etc/etherview/config.yaml"]
+    command: ["serve", "--roles=metadata", "--config=/etc/etherview/config.yaml"]
     environment:
       <<: *etherview-app-env
       ETHERVIEW_ROLES: metadata
@@ -312,8 +315,7 @@ services:
 
   maintenance:
     <<: *etherview-service
-    command:
-      ["serve", "--roles=maintenance", "--config=/etc/etherview/config.yaml"]
+    command: ["serve", "--roles=maintenance", "--config=/etc/etherview/config.yaml"]
     environment:
       <<: *etherview-app-env
       ETHERVIEW_ROLES: maintenance

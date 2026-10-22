@@ -46,17 +46,17 @@ this matrix and the compatibility golden tests in the same change.
 
 ## Capability Terms
 
-| Term | Required production fact or service |
-|---|---|
-| Core | Canonical PostgreSQL block, transaction, receipt, log, and withdrawal facts. A Core-backed list additionally requires one continuous durable Core coverage range over its tip-clamped request range. |
-| State | A state-purpose RPC endpoint, one exact canonical EIP-1898 block-hash observation, and a successful post-call canonicality recheck. Event-derived balances do not qualify. |
-| Trace | After the Core coverage proof, a `complete` published Trace stage result for every canonical block in the selected range. |
-| Token | After the Core coverage proof, a `complete` published Token stage result for every canonical block in the selected range. |
-| Holdings | Genesis-through-tip Core and Token coverage, followed by bounded ERC-20 `balanceOf` or ERC-721 `ownerOf` observations at one exact canonical block hash. Event deltas only discover candidates. |
-| Verified | The newest canonical code observation for the address and a durable verified artifact for that exact code hash whose validity range covers the canonical tip. |
-| Price | An enabled pricing adapter with a fresh, valid USD/BTC observation. |
-| Public verification | Verification is enabled, `security.public_verification` is enabled, and the durable public verification service is usable. |
-| Supply provider | An explicit authoritative execution-currency supply provider. Ethereum JSON-RPC and Etherview's core index do not provide this fact. |
+| Term                | Required production fact or service                                                                                                                                                                  |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Core                | Canonical PostgreSQL block, transaction, receipt, log, and withdrawal facts. A Core-backed list additionally requires one continuous durable Core coverage range over its tip-clamped request range. |
+| State               | A state-purpose RPC endpoint, one exact canonical EIP-1898 block-hash observation, and a successful post-call canonicality recheck. Event-derived balances do not qualify.                           |
+| Trace               | After the Core coverage proof, a `complete` published Trace stage result for every canonical block in the selected range.                                                                            |
+| Token               | After the Core coverage proof, a `complete` published Token stage result for every canonical block in the selected range.                                                                            |
+| Holdings            | Genesis-through-tip Core and Token coverage, followed by bounded ERC-20 `balanceOf` or ERC-721 `ownerOf` observations at one exact canonical block hash. Event deltas only discover candidates.      |
+| Verified            | The newest canonical code observation for the address and a durable verified artifact for that exact code hash whose validity range covers the canonical tip.                                        |
+| Price               | An enabled pricing adapter with a fresh, valid USD/BTC observation.                                                                                                                                  |
+| Public verification | Verification is enabled, `security.public_verification` is enabled, and the durable public verification service is usable.                                                                           |
+| Supply provider     | An explicit authoritative execution-currency supply provider. Ethereum JSON-RPC and Etherview's core index do not provide this fact.                                                                 |
 
 An unavailable prerequisite produces `status: "0"` with a controlled
 capability message. Before a Core-backed list reads rows, it clamps the
@@ -85,22 +85,22 @@ weaken the raw-first ingestion boundary.
 
 ### `account`
 
-| Action | Methods | Required parameters | Optional parameters | API key | Capability prerequisite |
-|---|---|---|---|---|---|
-| `balance` | `GET`, `POST` | `address` | `tag` | Optional | State |
-| `balancemulti` | `GET`, `POST` | `address` as a comma-separated list of 1 to 20 addresses | `tag` | Optional | State |
-| `txlist` | `GET`, `POST` | `address`, or advanced `from`/`to` mode | Block range; `fromto_opr`; list controls | Optional | Core |
-| `txlistinternal` | `GET`, `POST` | One selector mode described below | `address`, `txhash`, `from`, `to`, `fromto_opr`, block range; list controls | Optional | Trace for the resolved range |
-| `tokentx` | `GET`, `POST` | Legacy `address`, or advanced `contractaddress`/`from`/`to` mode | Block range; `fromto_opr`; list controls | Optional | Token for the selected range, plus Core transaction and receipt facts |
-| `tokennfttx` | `GET`, `POST` | Legacy `address`, or advanced `contractaddress`/`from`/`to` mode | Block range; `fromto_opr`; list controls | Optional | Token for the selected range, plus Core transaction and receipt facts |
-| `token1155tx` | `GET`, `POST` | Legacy `address`, or advanced `contractaddress`/`from`/`to` mode | Block range; `fromto_opr`; list controls | Optional | Token for the selected range, plus Core transaction and receipt facts |
-| `tokenbalance` | `GET`, `POST` | `contractaddress`, `address` | `tag` | Optional | State; the contract is read with ERC-20 `balanceOf` |
-| `getminedblocks` | `GET`, `POST` | `address` | `blocktype` (`blocks` by default); list controls | Optional | Core for `blocks`; `uncles` is intentionally unavailable |
-| `txsBeaconWithdrawal` | `GET`, `POST` | None | `address`; block range; list controls | Optional | Core |
-| `addresstokenbalance` | `GET`, `POST` | `address` | `page`, `offset` | Optional | Holdings for ERC-20 candidates |
-| `addresstokennftbalance` | `GET`, `POST` | `address` | `page`, `offset` | Optional | Holdings for ERC-721 candidates |
-| `addresstokennftinventory` | `GET`, `POST` | `address`, `contractaddress` | `page`, `offset` | Optional | Holdings for one ERC-721 contract |
-| `fundedby` | `GET`, `POST` | `address` | None | Optional | Current exact EOA classification plus genesis-through-tip Core and Trace |
+| Action                     | Methods       | Required parameters                                              | Optional parameters                                                         | API key  | Capability prerequisite                                                  |
+| -------------------------- | ------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------ |
+| `balance`                  | `GET`, `POST` | `address`                                                        | `tag`                                                                       | Optional | State                                                                    |
+| `balancemulti`             | `GET`, `POST` | `address` as a comma-separated list of 1 to 20 addresses         | `tag`                                                                       | Optional | State                                                                    |
+| `txlist`                   | `GET`, `POST` | `address`, or advanced `from`/`to` mode                          | Block range; `fromto_opr`; list controls                                    | Optional | Core                                                                     |
+| `txlistinternal`           | `GET`, `POST` | One selector mode described below                                | `address`, `txhash`, `from`, `to`, `fromto_opr`, block range; list controls | Optional | Trace for the resolved range                                             |
+| `tokentx`                  | `GET`, `POST` | Legacy `address`, or advanced `contractaddress`/`from`/`to` mode | Block range; `fromto_opr`; list controls                                    | Optional | Token for the selected range, plus Core transaction and receipt facts    |
+| `tokennfttx`               | `GET`, `POST` | Legacy `address`, or advanced `contractaddress`/`from`/`to` mode | Block range; `fromto_opr`; list controls                                    | Optional | Token for the selected range, plus Core transaction and receipt facts    |
+| `token1155tx`              | `GET`, `POST` | Legacy `address`, or advanced `contractaddress`/`from`/`to` mode | Block range; `fromto_opr`; list controls                                    | Optional | Token for the selected range, plus Core transaction and receipt facts    |
+| `tokenbalance`             | `GET`, `POST` | `contractaddress`, `address`                                     | `tag`                                                                       | Optional | State; the contract is read with ERC-20 `balanceOf`                      |
+| `getminedblocks`           | `GET`, `POST` | `address`                                                        | `blocktype` (`blocks` by default); list controls                            | Optional | Core for `blocks`; `uncles` is intentionally unavailable                 |
+| `txsBeaconWithdrawal`      | `GET`, `POST` | None                                                             | `address`; block range; list controls                                       | Optional | Core                                                                     |
+| `addresstokenbalance`      | `GET`, `POST` | `address`                                                        | `page`, `offset`                                                            | Optional | Holdings for ERC-20 candidates                                           |
+| `addresstokennftbalance`   | `GET`, `POST` | `address`                                                        | `page`, `offset`                                                            | Optional | Holdings for ERC-721 candidates                                          |
+| `addresstokennftinventory` | `GET`, `POST` | `address`, `contractaddress`                                     | `page`, `offset`                                                            | Optional | Holdings for one ERC-721 contract                                        |
+| `fundedby`                 | `GET`, `POST` | `address`                                                        | None                                                                        | Optional | Current exact EOA classification plus genesis-through-tip Core and Trace |
 
 `txlistinternal` accepts exactly one of these selector modes:
 
@@ -128,28 +128,28 @@ contract accounts do not qualify.
 
 ### `contract`
 
-| Action | Methods | Required parameters | Optional parameters | API key | Capability prerequisite |
-|---|---|---|---|---|---|
-| `getabi` | `GET`, `POST` | `address` | None | Optional | Verified, with a non-null ABI |
-| `getsourcecode` | `GET`, `POST` | `address` | None | Optional | Verified |
-| `getcontractcreation` | `GET`, `POST` | `contractaddresses`, a comma-separated list of 1 to 5 unique addresses | None | Optional | Core; factory `CREATE`/`CREATE2` rows need Trace. A definitive no-match additionally needs indexing from genesis, continuous Core coverage through the tip, and Trace through the tip. |
-| `verifysourcecode` | `POST` | `contractaddress` and the [source-verification form](#source-verification-form) | Form-specific fields below | Required | Public verification plus an exact current canonical code observation and canonical top-level or traced creation input |
-| `checkverifystatus` | `GET`, `POST` | `guid`, a durable verification-job UUID | None | Required | Public verification |
-| `verifyproxycontract` | `POST` | `address` | `expectedimplementation` | Required | Public verification; current complete high-confidence proxy observation and exact source publications for proxy and implementation |
-| `checkproxyverification` | `GET` | `guid` | None | Required | Public verification and a proxy-kind durable verification job |
+| Action                   | Methods       | Required parameters                                                             | Optional parameters        | API key  | Capability prerequisite                                                                                                                                                                |
+| ------------------------ | ------------- | ------------------------------------------------------------------------------- | -------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `getabi`                 | `GET`, `POST` | `address`                                                                       | None                       | Optional | Verified, with a non-null ABI                                                                                                                                                          |
+| `getsourcecode`          | `GET`, `POST` | `address`                                                                       | None                       | Optional | Verified                                                                                                                                                                               |
+| `getcontractcreation`    | `GET`, `POST` | `contractaddresses`, a comma-separated list of 1 to 5 unique addresses          | None                       | Optional | Core; factory `CREATE`/`CREATE2` rows need Trace. A definitive no-match additionally needs indexing from genesis, continuous Core coverage through the tip, and Trace through the tip. |
+| `verifysourcecode`       | `POST`        | `contractaddress` and the [source-verification form](#source-verification-form) | Form-specific fields below | Required | Public verification plus an exact current canonical code observation and canonical top-level or traced creation input                                                                  |
+| `checkverifystatus`      | `GET`, `POST` | `guid`, a durable verification-job UUID                                         | None                       | Required | Public verification                                                                                                                                                                    |
+| `verifyproxycontract`    | `POST`        | `address`                                                                       | `expectedimplementation`   | Required | Public verification; current complete high-confidence proxy observation and exact source publications for proxy and implementation                                                     |
+| `checkproxyverification` | `GET`         | `guid`                                                                          | None                       | Required | Public verification and a proxy-kind durable verification job                                                                                                                          |
 
 ### `transaction`
 
-| Action | Methods | Required parameters | Optional parameters | API key | Capability prerequisite |
-|---|---|---|---|---|---|
-| `getstatus` | `GET`, `POST` | `txhash` | None | Optional | A canonical Core receipt with a status field |
-| `gettxreceiptstatus` | `GET`, `POST` | `txhash` | None | Optional | A canonical Core receipt with a status field |
+| Action               | Methods       | Required parameters | Optional parameters | API key  | Capability prerequisite                      |
+| -------------------- | ------------- | ------------------- | ------------------- | -------- | -------------------------------------------- |
+| `getstatus`          | `GET`, `POST` | `txhash`            | None                | Optional | A canonical Core receipt with a status field |
+| `gettxreceiptstatus` | `GET`, `POST` | `txhash`            | None                | Optional | A canonical Core receipt with a status field |
 
 ### `logs`
 
-| Action | Methods | Required parameters | Optional parameters | API key | Capability prerequisite |
-|---|---|---|---|---|---|
-| `getLogs` | `GET`, `POST` | None | Log range; `address`; `topic0` through `topic3`; topic operators; list controls | Optional | Core |
+| Action    | Methods       | Required parameters | Optional parameters                                                             | API key  | Capability prerequisite |
+| --------- | ------------- | ------------------- | ------------------------------------------------------------------------------- | -------- | ----------------------- |
+| `getLogs` | `GET`, `POST` | None                | Log range; `address`; `topic0` through `topic3`; topic operators; list controls | Optional | Core                    |
 
 Each supplied topic is one 32-byte hash. Operators are named
 `topicN_M_opr`, contain `and` or `or`, and may connect only adjacent supplied
@@ -159,29 +159,29 @@ inputs are canonical uint256 decimal values.
 
 ### `block`
 
-| Action | Methods | Required parameters | Optional parameters | API key | Capability prerequisite |
-|---|---|---|---|---|---|
-| `getblocknobytime` | `GET`, `POST` | `timestamp` as a canonical uint256 decimal; `closest` as `before` or `after` | None | Optional | Core, with one continuous durable coverage range from genesis through the tip |
-| `getblockcountdown` | `GET`, `POST` | `blockno` as a canonical uint256 decimal | None | Optional | The Core interval containing the canonical tip, with a future target and a positive continuous time/block span over at most its latest 128 blocks |
-| `getblocktxnscount` | `GET`, `POST` | `blockno` as a canonical uint256 decimal | None | Optional | Core, Trace, and Token complete for the exact canonical block |
+| Action              | Methods       | Required parameters                                                          | Optional parameters | API key  | Capability prerequisite                                                                                                                           |
+| ------------------- | ------------- | ---------------------------------------------------------------------------- | ------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `getblocknobytime`  | `GET`, `POST` | `timestamp` as a canonical uint256 decimal; `closest` as `before` or `after` | None                | Optional | Core, with one continuous durable coverage range from genesis through the tip                                                                     |
+| `getblockcountdown` | `GET`, `POST` | `blockno` as a canonical uint256 decimal                                     | None                | Optional | The Core interval containing the canonical tip, with a future target and a positive continuous time/block span over at most its latest 128 blocks |
+| `getblocktxnscount` | `GET`, `POST` | `blockno` as a canonical uint256 decimal                                     | None                | Optional | Core, Trace, and Token complete for the exact canonical block                                                                                     |
 
 ### `stats`
 
-| Action | Methods | Required parameters | Optional parameters | API key | Capability prerequisite |
-|---|---|---|---|---|---|
-| `ethsupply` | `GET`, `POST` | None | None | Optional | Supply provider; the shipped runtime does not wire one |
-| `ethprice` | `GET`, `POST` | None | None | Optional | Price |
-| `tokensupply` | `GET`, `POST` | `contractaddress` | None | Optional | State; the contract is read with ERC-20 `totalSupply` |
+| Action        | Methods       | Required parameters | Optional parameters | API key  | Capability prerequisite                                |
+| ------------- | ------------- | ------------------- | ------------------- | -------- | ------------------------------------------------------ |
+| `ethsupply`   | `GET`, `POST` | None                | None                | Optional | Supply provider; the shipped runtime does not wire one |
+| `ethprice`    | `GET`, `POST` | None                | None                | Optional | Price                                                  |
+| `tokensupply` | `GET`, `POST` | `contractaddress`   | None                | Optional | State; the contract is read with ERC-20 `totalSupply`  |
 
 ### `token`
 
-| Action | Methods | Required parameters | Optional parameters | API key | Capability prerequisite |
-|---|---|---|---|---|---|
-| `tokensupply` | `GET`, `POST` | `contractaddress` | None | Optional | State; alias of `stats.tokensupply` |
-| `tokenbalance` | `GET`, `POST` | `contractaddress`, `address` | `tag` | Optional | State; alias of `account.tokenbalance` |
-| `tokeninfo` | `GET`, `POST` | `contractaddress` | None | Optional | Token through the canonical tip and a current canonical token observation. Exact State is optional; without it, ERC-20 `totalSupply` is omitted. |
-| `tokenholderlist` | `GET`, `POST` | `contractaddress` | `page`, `offset`, fixed address-ascending order | Optional | Core, Token, Proxy, and Holder complete from genesis through the canonical tip; latest token holder snapshot is complete |
-| `tokenholdercount` | `GET`, `POST` | `contractaddress` | None | Optional | Same authoritative Holder snapshot as `tokenholderlist` |
+| Action             | Methods       | Required parameters          | Optional parameters                             | API key  | Capability prerequisite                                                                                                                          |
+| ------------------ | ------------- | ---------------------------- | ----------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `tokensupply`      | `GET`, `POST` | `contractaddress`            | None                                            | Optional | State; alias of `stats.tokensupply`                                                                                                              |
+| `tokenbalance`     | `GET`, `POST` | `contractaddress`, `address` | `tag`                                           | Optional | State; alias of `account.tokenbalance`                                                                                                           |
+| `tokeninfo`        | `GET`, `POST` | `contractaddress`            | None                                            | Optional | Token through the canonical tip and a current canonical token observation. Exact State is optional; without it, ERC-20 `totalSupply` is omitted. |
+| `tokenholderlist`  | `GET`, `POST` | `contractaddress`            | `page`, `offset`, fixed address-ascending order | Optional | Core, Token, Proxy, and Holder complete from genesis through the canonical tip; latest token holder snapshot is complete                         |
+| `tokenholdercount` | `GET`, `POST` | `contractaddress`            | None                                            | Optional | Same authoritative Holder snapshot as `tokenholderlist`                                                                                          |
 
 ## Source-Verification Form
 
@@ -189,18 +189,18 @@ inputs are canonical uint256 decimal values.
 parameter and rejects unknown parameters. In addition to the common selectors
 and `contractaddress`, these fields are accepted:
 
-| Parameter | Rule |
-|---|---|
-| `sourceCode` | Required, non-empty, and within the configured verification input limit. It is plain source for `solidity-single-file` and an inline-source Standard JSON object for the JSON formats. Duplicate JSON keys and external source URLs are rejected. |
-| `codeformat` | Required: `solidity-single-file`, `solidity-standard-json-input`, or `vyper-json`. Vyper accepts only 0.4.3, with an exact `contractname` target file and inline sources/interfaces. |
-| `contractname` | Required. It is only a same-quality candidate hint: a single Solidity file may use a bare contract name and Standard JSON uses `source:name`. It can never make a weaker match win. |
-| `compilerversion` | Required and normalized at submission. The API-owned catalog resolves availability asynchronously; an unavailable version produces a terminal verification failure after the GUID is returned. |
-| `optimizationUsed` | Optional `0` or `1`; it must not conflict with Standard JSON settings. |
-| `runs` | Optional canonical integer `0..1000000`, Solidity only; it must not conflict with Standard JSON settings. |
-| `constructorArguments` / `constructorArguements` | Accepted for wire compatibility when it is valid even-length hexadecimal. Verifier v2 ignores the value and instead discovers, ABI-decodes, and re-encodes constructor arguments from canonical creation input. |
-| `evmVersion` / `evmversion` | Optional compiler EVM version; `default` means omitted. Both spellings are accepted only when they do not conflict. |
-| `licenseType` | Optional canonical integer `1..14`; defaults to `1`. It is publication metadata, not a compiler setting. |
-| `libraryname1..10`, `libraryaddress1..10` | Optional paired Solidity library bindings. Multi-file names are source-qualified and every address is validated. |
+| Parameter                                        | Rule                                                                                                                                                                                                                                              |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sourceCode`                                     | Required, non-empty, and within the configured verification input limit. It is plain source for `solidity-single-file` and an inline-source Standard JSON object for the JSON formats. Duplicate JSON keys and external source URLs are rejected. |
+| `codeformat`                                     | Required: `solidity-single-file`, `solidity-standard-json-input`, or `vyper-json`. Vyper accepts only 0.4.3, with an exact `contractname` target file and inline sources/interfaces.                                                              |
+| `contractname`                                   | Required. It is only a same-quality candidate hint: a single Solidity file may use a bare contract name and Standard JSON uses `source:name`. It can never make a weaker match win.                                                               |
+| `compilerversion`                                | Required and normalized at submission. The API-owned catalog resolves availability asynchronously; an unavailable version produces a terminal verification failure after the GUID is returned.                                                    |
+| `optimizationUsed`                               | Optional `0` or `1`; it must not conflict with Standard JSON settings.                                                                                                                                                                            |
+| `runs`                                           | Optional canonical integer `0..1000000`, Solidity only; it must not conflict with Standard JSON settings.                                                                                                                                         |
+| `constructorArguments` / `constructorArguements` | Accepted for wire compatibility when it is valid even-length hexadecimal. Verifier v2 ignores the value and instead discovers, ABI-decodes, and re-encodes constructor arguments from canonical creation input.                                   |
+| `evmVersion` / `evmversion`                      | Optional compiler EVM version; `default` means omitted. Both spellings are accepted only when they do not conflict.                                                                                                                               |
+| `licenseType`                                    | Optional canonical integer `1..14`; defaults to `1`. It is publication metadata, not a compiler setting.                                                                                                                                          |
+| `libraryname1..10`, `libraryaddress1..10`        | Optional paired Solidity library bindings. Multi-file names are source-qualified and every address is validated.                                                                                                                                  |
 
 The server replaces caller output selection with the bounded exact-target
 artifact set, derives chain/address/code hash/block hash/runtime bytecode and
@@ -292,7 +292,7 @@ still derives and persists the exact value from canonical creation input.
   `checkproxyverification` require an authenticated key. Authentication and
   rate limiting happen before action dispatch.
 - Compatibility successes use `{ "status": "1", "message": "OK",
-  "result": ... }`. Ordinary validation, not-found, pending, and capability
+"result": ... }`. Ordinary validation, not-found, pending, and capability
   failures normally retain HTTP 200 with `status: "0"`. Request parsing can
   return 400, non-GET/POST methods return 405, authentication returns
   400/401/413 as applicable, rate limiting returns 429, and unexpected backend

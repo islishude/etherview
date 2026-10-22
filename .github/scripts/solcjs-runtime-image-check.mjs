@@ -44,9 +44,7 @@ assert.equal(
 );
 
 const runtimePrefix = "opt/etherview/solcjs/";
-const manifestFiles = new Set(
-  manifest.files.map((file) => `${runtimePrefix}${file.path}`),
-);
+const manifestFiles = new Set(manifest.files.map((file) => `${runtimePrefix}${file.path}`));
 assert.deepEqual(
   manifest.files.filter((file) => file.kind === "executor").map((file) => file.path),
   ["etherview-solcjs"],
@@ -57,8 +55,10 @@ for (const path of manifestFiles) {
 }
 for (const file of manifest.files) {
   assert.ok(
-    file.path !== "runtime-manifest.json" && !file.path.startsWith("../") &&
-      !file.path.startsWith("/") && posix.normalize(file.path) === file.path,
+    file.path !== "runtime-manifest.json" &&
+      !file.path.startsWith("../") &&
+      !file.path.startsWith("/") &&
+      posix.normalize(file.path) === file.path,
     `unsafe manifest file path ${file.path}`,
   );
   const localPath = join(runtimeRoot, ...file.path.split("/"));
@@ -88,9 +88,7 @@ const privateDependencies = new Map(
     .map((dependency) => [dependency.soname, dependency.path]),
 );
 const privateFiles = new Map(
-  manifest.files
-    .filter((file) => file.kind === "library")
-    .map((file) => [file.soname, file.path]),
+  manifest.files.filter((file) => file.kind === "library").map((file) => [file.soname, file.path]),
 );
 assert.deepEqual(privateFiles, privateDependencies);
 let previousSONAME = "";

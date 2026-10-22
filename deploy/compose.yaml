@@ -230,8 +230,7 @@ services:
 
   metadata:
     <<: *app
-    command:
-      ["serve", "--roles=metadata", "--config=/etc/etherview/config.yaml"]
+    command: ["serve", "--roles=metadata", "--config=/etc/etherview/config.yaml"]
     environment:
       <<: *app-environment
       ETHERVIEW_ROLES: metadata
@@ -240,8 +239,7 @@ services:
 
   maintenance:
     <<: *app
-    command:
-      ["serve", "--roles=maintenance", "--config=/etc/etherview/config.yaml"]
+    command: ["serve", "--roles=maintenance", "--config=/etc/etherview/config.yaml"]
     environment:
       <<: *app-environment
       ETHERVIEW_ROLES: maintenance

@@ -9,7 +9,7 @@ if (!targetRootArgument || !artifactArgument) {
 
 const targetRoot = resolve(targetRootArgument);
 const executor = "/opt/etherview/solcjs/etherview-solcjs";
-const artifact = "/tmp/compiler \"quoted\" \\ fixture/soljson.js";
+const artifact = '/tmp/compiler "quoted" \\ fixture/soljson.js';
 const targetArtifact = join(targetRoot, artifact.slice(1));
 mkdirSync(dirname(targetArtifact), { recursive: true, mode: 0o755 });
 cpSync(resolve(artifactArgument), targetArtifact);
@@ -36,16 +36,12 @@ const environment = {
   LC_ALL: "C",
 };
 function run(args, standardInput = "") {
-  return spawnSync(
-    "/usr/sbin/chroot",
-    ["--userspec=65532:65532", targetRoot, executor, ...args],
-    {
-      encoding: "utf8",
-      env: environment,
-      input: standardInput,
-      maxBuffer: 16 << 20,
-    },
-  );
+  return spawnSync("/usr/sbin/chroot", ["--userspec=65532:65532", targetRoot, executor, ...args], {
+    encoding: "utf8",
+    env: environment,
+    input: standardInput,
+    maxBuffer: 16 << 20,
+  });
 }
 
 const selfTest = run(["--self-test"]);
@@ -62,11 +58,7 @@ if (run(["--self-test", "unexpected"]).status === 0) {
   throw new Error("SEA self-test accepted an extra protocol argument");
 }
 
-for (const permission of [
-  "--allow-net",
-  "--allow-child-process",
-  "--allow-fs-write=*",
-]) {
+for (const permission of ["--allow-net", "--allow-child-process", "--allow-fs-write=*"]) {
   const widenedSelfTest = run([`--node-options=${permission}`, "--self-test"]);
   if (widenedSelfTest.status === 0) {
     throw new Error(`SEA self-test accepted widened permission ${permission}`);
@@ -74,10 +66,7 @@ for (const permission of [
 }
 
 const nodeOptions = `--node-options=--allow-fs-read=${JSON.stringify(artifact)}`;
-const compilation = run(
-  [nodeOptions, "--compile", artifact, "0.8.37+commit.f401782d"],
-  input,
-);
+const compilation = run([nodeOptions, "--compile", artifact, "0.8.37+commit.f401782d"], input);
 if (compilation.status !== 0) {
   throw new Error(`SEA compilation failed: ${compilation.stderr}`);
 }
@@ -86,34 +75,19 @@ if (!output.contracts?.["Contract.sol"]?.Contract) {
   throw new Error("SEA compilation did not return the expected contract");
 }
 if (
-  run(
-    [nodeOptions, "--compile", artifact, "0.8.37+commit.f401782d", "unexpected"],
-    input,
-  ).status === 0
+  run([nodeOptions, "--compile", artifact, "0.8.37+commit.f401782d", "unexpected"], input)
+    .status === 0
 ) {
   throw new Error("SEA compilation accepted an extra protocol argument");
 }
-for (const permission of [
-  "--allow-net",
-  "--allow-child-process",
-  "--allow-fs-write=*",
-]) {
-  const widenedOptions =
-    `--node-options=${permission} --allow-fs-read=${JSON.stringify(artifact)}`;
-  if (
-    run(
-      [widenedOptions, "--compile", artifact, "0.8.37+commit.f401782d"],
-      input,
-    ).status === 0
-  ) {
+for (const permission of ["--allow-net", "--allow-child-process", "--allow-fs-write=*"]) {
+  const widenedOptions = `--node-options=${permission} --allow-fs-read=${JSON.stringify(artifact)}`;
+  if (run([widenedOptions, "--compile", artifact, "0.8.37+commit.f401782d"], input).status === 0) {
     throw new Error(`SEA compilation accepted widened permission ${permission}`);
   }
 }
 
-const mismatch = run(
-  [nodeOptions, "--compile", artifact, "0.8.37+commit.deadbeef"],
-  input,
-);
+const mismatch = run([nodeOptions, "--compile", artifact, "0.8.37+commit.deadbeef"], input);
 if (mismatch.status === 0) {
   throw new Error("SEA accepted a mismatched compiler version");
 }

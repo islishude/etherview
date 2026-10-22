@@ -1,5 +1,5 @@
-import {spawnSync} from 'node:child_process';
-import {dirname} from 'node:path';
+import { spawnSync } from "node:child_process";
+import { dirname } from "node:path";
 // Reproducible pure-Python bundles from authenticated upstream archives.
 import {
   existsSync,
@@ -52,16 +52,29 @@ export function lockedPackages(path) {
   return selected;
 }
 export async function bundle(item, destination) {
-  const lock = readJSON(join(HERE, '../application-lock.json'));
-  const recipe = lock.recipes.find(r => r.version === item.version);
-  if (!recipe || recipe.compiler_sha256 !== item.compiler_sha256) throw new Error('unknown application recipe');
+  const lock = readJSON(join(HERE, "../application-lock.json"));
+  const recipe = lock.recipes.find((r) => r.version === item.version);
+  if (!recipe || recipe.compiler_sha256 !== item.compiler_sha256)
+    throw new Error("unknown application recipe");
   for (const archive of recipe.archives) {
     if (archive.url) await download(archive.url, archive.sha256);
   }
-  const result = spawnSync('go', ['run', './compiler/vyper/cmd/bundle', '--cache', CACHE,
-    '--output', dirname(destination), '--version', item.version], {cwd: ROOT, stdio: 'inherit'});
-  if (result.status !== 0) throw new Error('application package assembly failed');
-  return readJSON(join(destination, 'package-manifest.json'));
+  const result = spawnSync(
+    "go",
+    [
+      "run",
+      "./compiler/vyper/cmd/bundle",
+      "--cache",
+      CACHE,
+      "--output",
+      dirname(destination),
+      "--version",
+      item.version,
+    ],
+    { cwd: ROOT, stdio: "inherit" },
+  );
+  if (result.status !== 0) throw new Error("application package assembly failed");
+  return readJSON(join(destination, "package-manifest.json"));
 }
 export async function packRuntime(runtime, archivePath) {
   const names = ["package-manifest.json", "packages.zip"];

@@ -1,0 +1,35 @@
+{
+  "$schema": "./web/node_modules/oxfmt/configuration_schema.json",
+  "tabWidth": 2,
+  "useTabs": false,
+  "singleQuote": false,
+  "semi": true,
+  "printWidth": 100,
+  "endOfLine": "lf",
+  "trailingComma": "all",
+  "sortImports": false,
+  "sortTailwindcss": false,
+  "sortPackageJson": false,
+  "proseWrap": "preserve",
+  "overrides": [
+    { "files": ["**/*.md"], "options": { "embeddedLanguageFormatting": "off" } }
+  ],
+  "ignorePatterns": [
+    "web/**",
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/coverage/**",
+    "**/playwright-report/**",
+    "**/test-results/**",
+    ".git/**",
+    ".local/**",
+    "data/**",
+    "vendor/**",
+    "**/*.gen.*",
+    "**/*_generated.*",
+    "licenses/**",
+    "THIRD_PARTY_NOTICES.md",
+    "internal/**/testdata/**",
+    "deploy/helm/etherview/templates/**"
+  ]
+}

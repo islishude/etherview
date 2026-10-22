@@ -1,4 +1,12 @@
-import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync } from "node:fs";
+import {
+  appendFileSync,
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 
@@ -27,11 +35,7 @@ const runtimeDependency = manifest.dependencies.find(
 if (!runtimeDependency) {
   throw new Error("ELF regression requires one automatically copied dependency");
 }
-const runtimePath = join(
-  targetRoot,
-  "opt/etherview/solcjs",
-  runtimeDependency.path,
-);
+const runtimePath = join(targetRoot, "opt/etherview/solcjs", runtimeDependency.path);
 const missingPath = `${runtimePath}.missing-test`;
 renameSync(runtimePath, missingPath);
 let missingRejected = false;

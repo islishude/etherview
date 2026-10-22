@@ -8,12 +8,9 @@ assert.ok(topology === "monolith" || topology === "distributed", "invalid topolo
 const foundryImage = process.env.ETHERVIEW_FOUNDRY_IMAGE;
 const apiService = topology === "monolith" ? "etherview" : "api";
 const compilerOwner = apiService;
-const appServices = [
-  "etherview", "api", "sync", "enrich", "trace", "metadata", "maintenance",
-];
+const appServices = ["etherview", "api", "sync", "enrich", "trace", "metadata", "maintenance"];
 const cachePath = "/var/lib/etherview/compilers";
-const unsafeDownloadEnvironment =
-  "ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS";
+const unsafeDownloadEnvironment = "ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS";
 const derivedEnvironment = [
   "ETHERVIEW_DERIVED_VERIFY_ENABLED",
   "ETHERVIEW_DERIVED_VERIFY_BACKFILL_ENABLED",
@@ -26,8 +23,10 @@ for (const name of appServices) {
   if (service === undefined) continue;
   const volumes = service.volumes ?? [];
   assert.equal(
-    volumes.some((volume) => volume.source === "/var/run/docker.sock" ||
-      volume.target === "/var/run/docker.sock"),
+    volumes.some(
+      (volume) =>
+        volume.source === "/var/run/docker.sock" || volume.target === "/var/run/docker.sock",
+    ),
     false,
     `${name} must not mount a Docker socket`,
   );
@@ -55,7 +54,11 @@ for (const name of appServices) {
     "ETHERVIEW_FEATURE_PROXY_DETECTION_V2",
     "ETHERVIEW_FEATURE_PROXY_DETECTION_V2_PUBLIC",
   ]) {
-    assert.equal(service.environment?.[key], undefined, `${name} retired proxy detection flag ${key}`);
+    assert.equal(
+      service.environment?.[key],
+      undefined,
+      `${name} retired proxy detection flag ${key}`,
+    );
   }
   const cacheMounts = volumeMounts(service).filter((mount) => mount.target === cachePath);
   const hasCompilerCache = cacheMounts.length === 1 && cacheMounts[0].type === "volume";
@@ -79,7 +82,7 @@ function volumeMounts(service) {
   return (service.volumes ?? []).map((entry) =>
     typeof entry === "string"
       ? { type: "volume", source: entry.split(":", 1)[0], target: entry.split(":")[1] }
-      : entry
+      : entry,
   );
 }
 
@@ -127,7 +130,7 @@ for (const target of [
 
 function tmpfsTargets(service) {
   return (service.tmpfs ?? []).map((entry) =>
-    typeof entry === "string" ? entry.split(":", 1)[0] : entry?.target
+    typeof entry === "string" ? entry.split(":", 1)[0] : entry?.target,
   );
 }
 

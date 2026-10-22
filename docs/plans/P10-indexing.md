@@ -24,14 +24,14 @@ and retain raw-first input, exact block identity, and atomic publication.
 
 ## Work Items
 
-| ID | Status | Depends on | Deliverable | Verification |
-|---|---|---|---|---|
-| P10-T01 | done | P00 | Purpose-aware RPC pool, chain/genesis/capability probes, and cancellation-safe rate reservations | fake-RPC contracts and deterministic cancellation/rate tests |
-| P10-T02 | done | P00 | Hash-keyed core schema, canonical mapping, range partitions, checkpoints | PostgreSQL integration tests |
-| P10-T03 | done | P10-T01, P10-T02 | Sticky-endpoint ingestion, one owned immutable validated bundle, bounded relation-batch persistence, authenticated Genesis import, protocol compatibility, and atomic checkpointing | hostile wire/storage, source-mutation/race, block fixtures/fallback, generated SQL, conflict/reorg/partition, benchmarks, and runtime parity tests |
-| P10-T04 | done | P10-T03 | Parallel backfill with aggregate raw-byte/row budgets, recoverable subsegments under one range lease, live-head priority, polling reconciliation, and coverage status | restart/gap, cancellation, lease-expiry, partial-progress, race, and PostgreSQL tests |
-| P10-T05 | done | P10-T03 | Bounded common-ancestor reorg, pre-work depth/finality rejection, finality ancestry, orphan retention, and rollback journal | counting-source/repository, single/multi/finalized reorg, race, and PostgreSQL tests |
-| P10-T06 | done | P10-T04, P10-T05 | Repair/reindex tooling, history-pruning detection, audit records | CLI integration tests |
+| ID      | Status | Depends on       | Deliverable                                                                                                                                                                         | Verification                                                                                                                                       |
+| ------- | ------ | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P10-T01 | done   | P00              | Purpose-aware RPC pool, chain/genesis/capability probes, and cancellation-safe rate reservations                                                                                    | fake-RPC contracts and deterministic cancellation/rate tests                                                                                       |
+| P10-T02 | done   | P00              | Hash-keyed core schema, canonical mapping, range partitions, checkpoints                                                                                                            | PostgreSQL integration tests                                                                                                                       |
+| P10-T03 | done   | P10-T01, P10-T02 | Sticky-endpoint ingestion, one owned immutable validated bundle, bounded relation-batch persistence, authenticated Genesis import, protocol compatibility, and atomic checkpointing | hostile wire/storage, source-mutation/race, block fixtures/fallback, generated SQL, conflict/reorg/partition, benchmarks, and runtime parity tests |
+| P10-T04 | done   | P10-T03          | Parallel backfill with aggregate raw-byte/row budgets, recoverable subsegments under one range lease, live-head priority, polling reconciliation, and coverage status               | restart/gap, cancellation, lease-expiry, partial-progress, race, and PostgreSQL tests                                                              |
+| P10-T05 | done   | P10-T03          | Bounded common-ancestor reorg, pre-work depth/finality rejection, finality ancestry, orphan retention, and rollback journal                                                         | counting-source/repository, single/multi/finalized reorg, race, and PostgreSQL tests                                                               |
+| P10-T06 | done   | P10-T04, P10-T05 | Repair/reindex tooling, history-pruning detection, audit records                                                                                                                    | CLI integration tests                                                                                                                              |
 
 ## Acceptance
 

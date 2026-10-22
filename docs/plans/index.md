@@ -48,15 +48,15 @@ new item only when the planning threshold is met, above both the watermark
 below and every item currently in its plan. Advance the watermark in the same
 change. New plan IDs start at P80; all lower gaps and retired prefixes stay reserved.
 
-| Plan | Highest allocated task number |
-|---|---|
-| P00 | 14 |
-| P10 | 7 |
-| P20 | 20 |
-| P30 | 138 |
-| P40 | 23 |
-| P50 | 75 |
-| P60 | 19 |
-| P70 | 52 |
-| P55 (retired) | 4 |
-| P66 (retired) | 8 |
+| Plan          | Highest allocated task number |
+| ------------- | ----------------------------- |
+| P00           | 14                            |
+| P10           | 7                             |
+| P20           | 20                            |
+| P30           | 138                           |
+| P40           | 23                            |
+| P50           | 75                            |
+| P60           | 19                            |
+| P70           | 52                            |
+| P55 (retired) | 4                             |
+| P66 (retired) | 8                             |

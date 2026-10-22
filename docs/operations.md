@@ -536,6 +536,7 @@ To enable a local trace cache:
    retaining the same `--env-file` and profile arguments. Open the local
    console at `http://127.0.0.1:9001`, sign in with the RustFS credentials, and
    create the bucket. Recreate the service without the override afterward.
+
 4. Set `ETHERVIEW_S3_ENDPOINT=http://object-storage:9000`,
    `ETHERVIEW_S3_BUCKET=etherview-cache`, `ETHERVIEW_S3_REGION=us-east-1`, and
    `ETHERVIEW_S3_PATH_STYLE=true`. Set the explicit Etherview access/secret pair

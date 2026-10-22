@@ -6,17 +6,17 @@ the detailed architecture, testing, or operations manuals.
 
 ## Source-of-truth map
 
-| Concern | Authoritative source |
-| --- | --- |
-| Milestone scope, dependencies, status, and acceptance | [Root plan](../PLAN.md), [plan catalog](plans/index.md), and [child plans](plans/) |
-| Routine change rationale and validation | PR description or completion report; Git history |
-| Current system behavior and component boundaries | [Architecture overview](architecture/overview.md) |
-| Accepted consequential decisions and invariants | [ADR catalog](decisions/index.md) and accepted ADR files |
-| Runnable commands, test scope, restricted hosts, and evidence | [Makefile](../Makefile) and [testing guide](testing.md) |
-| Deployment, telemetry, recovery, and administration | [Operations runbook](operations.md) |
-| Public HTTP contract | [OpenAPI source](../api/openapi.yaml) |
-| Historical native pgx acceptance | [Native pgx acceptance record](#native-pgx-acceptance-record) |
-| Production executable SQL | [sqlc query sources](../internal/db/queries/) |
+| Concern                                                       | Authoritative source                                                               |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Milestone scope, dependencies, status, and acceptance         | [Root plan](../PLAN.md), [plan catalog](plans/index.md), and [child plans](plans/) |
+| Routine change rationale and validation                       | PR description or completion report; Git history                                   |
+| Current system behavior and component boundaries              | [Architecture overview](architecture/overview.md)                                  |
+| Accepted consequential decisions and invariants               | [ADR catalog](decisions/index.md) and accepted ADR files                           |
+| Runnable commands, test scope, restricted hosts, and evidence | [Makefile](../Makefile) and [testing guide](testing.md)                            |
+| Deployment, telemetry, recovery, and administration           | [Operations runbook](operations.md)                                                |
+| Public HTTP contract                                          | [OpenAPI source](../api/openapi.yaml)                                              |
+| Historical native pgx acceptance                              | [Native pgx acceptance record](#native-pgx-acceptance-record)                      |
+| Production executable SQL                                     | [sqlc query sources](../internal/db/queries/)                                      |
 
 Accepted ADRs are mandatory. Update or add one when a public API, persistent
 contract, security boundary, external-service boundary, or monolith/split
@@ -114,18 +114,18 @@ milestone; they do not automatically justify creating a plan item.
 Use this table to locate the complete rules before changing a boundary. The
 linked documents, not this summary, define the exact contract.
 
-| Change touches | Required action |
-| --- | --- |
-| Public API or public numeric fields | Start in `api/openapi.yaml`, preserve string encoding beyond JavaScript's safe integer range, regenerate Go and TypeScript contracts, and run `make generate-check`. Consult [ADR-0003](decisions/ADR-0003-spec-first-api-and-canonical-public-identifiers.md). |
-| Database queries, execution boundaries, or package direction | Start executable SQL in `internal/db/queries/`; only the migration runner and validated partition-DDL module may own raw production SQL in Go. Public readers use the neutral public-query, ABI, proxy, and stage contract packages and never import HTTP transport or enrichment worker hubs. Run `make source-check`, plus generation checks when sqlc sources change. |
-| Runtime components or roles | Update the owning typed builder and the independent production component manifest. Verify `roles=all`, split-role registration, readiness, shutdown, and parity. Consult [ADR-0001](decisions/ADR-0001-modular-roles-and-postgresql-truth.md). |
-| Chain facts, RPC reads, or enrichment | Preserve chain plus block-hash identity, orphan facts, one-endpoint exact-state reads, canonical rechecks, and generation/lease-fenced publication. Never infer coverage from a disconnected height or fall back to `latest`. Use go-ethereum exported protocol types as specified by [ADR-0022](decisions/ADR-0022-go-ethereum-type-and-raw-rpc-ownership.md). |
-| RPC, metadata, compiler, facilitator, or other external calls | Copy bounded inputs and close database snapshots before the call, then recheck canonicality or ownership before commit. Enforce size, time, work, redirect, and network limits; return stable typed errors and redact hostile nested details. |
-| Optional infrastructure | Keep PostgreSQL authoritative and readiness-correct. Redis, NATS, and trace object caches remain disposable accelerators with bounded fallback. Optional blob bodies use a separate durable archive with PostgreSQL publication authority. Consult [ADR-0015](decisions/ADR-0015-disposable-runtime-accelerators.md) and [ADR-0055](decisions/ADR-0055-consensus-and-blob-archives.md). |
-| Browser, authentication, or billing | Keep secrets out of logs, URLs, ConfigMaps, the SPA, and image layers. Use the generated same-origin API client, keep wallet RPC inside the injected-provider allowlist, and preserve the separate API-key, SIWE-user, and x402-top-up payer identities. Consult [ADR-0013](decisions/ADR-0013-embedded-spa-serving-and-browser-security.md), [ADR-0020](decisions/ADR-0020-siwe-user-sessions.md), [ADR-0035](decisions/ADR-0035-user-owned-scoped-api-keys.md), and [ADR-0044](decisions/ADR-0044-prepaid-api-billing-and-x402-topups.md). |
-| Verification, proxy, Diamond, EIP-7702, CWIA, or Geas behavior | Read the mechanism's accepted ADR and the relevant architecture section before editing. Preserve exact code/block provenance, current binding fences, compiler/helper identity, and fail-closed publication semantics; do not collapse distinct mechanisms into aliases. |
-| SPA structure | Keep core pages and both locale trees split by domain, use only the generated explorer client outside the injected wallet module, and retain the explicit Oxlint limits and Oxfmt gate in `web-lint` rather than adding blanket suppressions. |
-| Deployment or operator behavior | Update `docs/operations.md` and the relevant Compose/Helm contracts. Keep secrets role-scoped and use repository Compose/Buildx wrappers and supported overrides. |
+| Change touches                                                 | Required action                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Public API or public numeric fields                            | Start in `api/openapi.yaml`, preserve string encoding beyond JavaScript's safe integer range, regenerate Go and TypeScript contracts, and run `make generate-check`. Consult [ADR-0003](decisions/ADR-0003-spec-first-api-and-canonical-public-identifiers.md).                                                                                                                                                                                                                                                                              |
+| Database queries, execution boundaries, or package direction   | Start executable SQL in `internal/db/queries/`; only the migration runner and validated partition-DDL module may own raw production SQL in Go. Public readers use the neutral public-query, ABI, proxy, and stage contract packages and never import HTTP transport or enrichment worker hubs. Run `make source-check`, plus generation checks when sqlc sources change.                                                                                                                                                                     |
+| Runtime components or roles                                    | Update the owning typed builder and the independent production component manifest. Verify `roles=all`, split-role registration, readiness, shutdown, and parity. Consult [ADR-0001](decisions/ADR-0001-modular-roles-and-postgresql-truth.md).                                                                                                                                                                                                                                                                                               |
+| Chain facts, RPC reads, or enrichment                          | Preserve chain plus block-hash identity, orphan facts, one-endpoint exact-state reads, canonical rechecks, and generation/lease-fenced publication. Never infer coverage from a disconnected height or fall back to `latest`. Use go-ethereum exported protocol types as specified by [ADR-0022](decisions/ADR-0022-go-ethereum-type-and-raw-rpc-ownership.md).                                                                                                                                                                              |
+| RPC, metadata, compiler, facilitator, or other external calls  | Copy bounded inputs and close database snapshots before the call, then recheck canonicality or ownership before commit. Enforce size, time, work, redirect, and network limits; return stable typed errors and redact hostile nested details.                                                                                                                                                                                                                                                                                                |
+| Optional infrastructure                                        | Keep PostgreSQL authoritative and readiness-correct. Redis, NATS, and trace object caches remain disposable accelerators with bounded fallback. Optional blob bodies use a separate durable archive with PostgreSQL publication authority. Consult [ADR-0015](decisions/ADR-0015-disposable-runtime-accelerators.md) and [ADR-0055](decisions/ADR-0055-consensus-and-blob-archives.md).                                                                                                                                                      |
+| Browser, authentication, or billing                            | Keep secrets out of logs, URLs, ConfigMaps, the SPA, and image layers. Use the generated same-origin API client, keep wallet RPC inside the injected-provider allowlist, and preserve the separate API-key, SIWE-user, and x402-top-up payer identities. Consult [ADR-0013](decisions/ADR-0013-embedded-spa-serving-and-browser-security.md), [ADR-0020](decisions/ADR-0020-siwe-user-sessions.md), [ADR-0035](decisions/ADR-0035-user-owned-scoped-api-keys.md), and [ADR-0044](decisions/ADR-0044-prepaid-api-billing-and-x402-topups.md). |
+| Verification, proxy, Diamond, EIP-7702, CWIA, or Geas behavior | Read the mechanism's accepted ADR and the relevant architecture section before editing. Preserve exact code/block provenance, current binding fences, compiler/helper identity, and fail-closed publication semantics; do not collapse distinct mechanisms into aliases.                                                                                                                                                                                                                                                                     |
+| SPA structure                                                  | Keep core pages and both locale trees split by domain, use only the generated explorer client outside the injected wallet module, and retain the explicit Oxlint limits and Oxfmt gate in `web-lint` rather than adding blanket suppressions.                                                                                                                                                                                                                                                                                                |
+| Deployment or operator behavior                                | Update `docs/operations.md` and the relevant Compose/Helm contracts. Keep secrets role-scoped and use repository Compose/Buildx wrappers and supported overrides.                                                                                                                                                                                                                                                                                                                                                                            |
 
 ## Database access
 
@@ -138,9 +138,14 @@ bridges, exported-query scans, or compatibility adapters. Name query arguments
 and computed result columns in SQL. Use `:execrows` when callers enforce an
 affected-row condition and `:exec` when only execution errors matter.
 
-## Frontend tooling
+## Formatting and frontend tooling
 
-Use `npm --prefix web run format` after editing hand-written frontend files.
+Use `make format` to format repository JavaScript, YAML, Markdown, and the
+existing hand-written frontend scope. Use `make format-check` for a read-only
+check; `make lint` and CI include it. Both commands install the existing locked
+web/API dependencies without introducing a root npm project.
+
+Use `npm --prefix web run format` for frontend-only edits.
 `make web-lint` runs TypeScript, Oxlint, and a read-only Oxfmt check through the
 same npm scripts used by CI. Keep generated API types under the API generator;
 do not format them manually. The [testing guide](testing.md) owns exact limits,
@@ -215,14 +220,14 @@ these boundaries, rerun the applicable gates against the changed tree and
 record the command, environment, result and any unmet requirement in the PR or
 completion report, and in the owning milestone when this is planned work.
 
-| Area | Checks and recorded coverage |
-| --- | --- |
-| Generated contracts and source ownership | `make generate-check` and `make source-check`: reproducible generation and enforced SQL execution boundaries. |
-| Common quality gates | `make check`: generation, lint, unit/race, security/license and deployment validation. The completed local run passed the full aggregate gate. |
-| PostgreSQL behavior | `make test-integration` and `make test-integration-race`: all six PostgreSQL 18 packages passed, covering typed values, query semantics and persistence invariants. |
-| Worker and home-feed concurrency | Focused race tests covered task-local lease loss, peer liveness, fatal errors, cancellation, home event-version fencing, replica switching and concurrent waiters. |
-| Embedded browser behavior | `make test-e2e`: 29 Chrome tests passed, including expired-cursor recovery, single EventSource ownership, version-floor handling and UserOperation reorg updates. |
-| Production schema and runtime | Production-image schema lifecycle and monolith/split topology parity passed; native Linux AMD64/ARM64 Vyper, Hardhat and Foundry matrices also passed. See the testing guide for each suite's commands and prerequisites. |
+| Area                                     | Checks and recorded coverage                                                                                                                                                                                              |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Generated contracts and source ownership | `make generate-check` and `make source-check`: reproducible generation and enforced SQL execution boundaries.                                                                                                             |
+| Common quality gates                     | `make check`: generation, lint, unit/race, security/license and deployment validation. The completed local run passed the full aggregate gate.                                                                            |
+| PostgreSQL behavior                      | `make test-integration` and `make test-integration-race`: all six PostgreSQL 18 packages passed, covering typed values, query semantics and persistence invariants.                                                       |
+| Worker and home-feed concurrency         | Focused race tests covered task-local lease loss, peer liveness, fatal errors, cancellation, home event-version fencing, replica switching and concurrent waiters.                                                        |
+| Embedded browser behavior                | `make test-e2e`: 29 Chrome tests passed, including expired-cursor recovery, single EventSource ownership, version-floor handling and UserOperation reorg updates.                                                         |
+| Production schema and runtime            | Production-image schema lifecycle and monolith/split topology parity passed; native Linux AMD64/ARM64 Vyper, Hardhat and Foundry matrices also passed. See the testing guide for each suite's commands and prerequisites. |
 
 Compilation alone does not establish runtime acceptance, and rendered Compose
 or Helm validation does not establish production-image behavior. Earlier local
@@ -251,14 +256,14 @@ go run ./cmd/testintegration -root . -packages ./internal/integration -benchmark
 Typical fixtures contain 20 transactions and one log per transaction; large
 fixtures contain 200 transactions and two logs per transaction.
 
-| Case | Baseline → native ms/op | Baseline → native bytes/op | Baseline → native allocs/op |
-|---|---:|---:|---:|
-| typical/idempotent_core_commit | 8.007 → 7.754–7.758 | 1,498,508 → 1,478,811–1,485,492 | 11,663 → 11,572–11,584 |
-| typical/block_page | 0.816 → 0.728–0.745 | 14,713 → 6,458–6,459 | 181 → 123 |
-| typical/transaction_page | 18.860 → 17.914–19.015 | 837,128 → 751,537–752,908 | 13,178 → 12,706–12,718 |
-| large/idempotent_core_commit | 52.085 → 51.441–52.475 | 14,399,008 → 14,599,800–14,600,065 | 132,296 → 132,241–132,252 |
-| large/block_page | 0.877 → 0.811–0.840 | 14,711 → 6,474 | 181 → 123 |
-| large/transaction_page | 20.838 → 20.360–23.415 | 4,607,222 → 4,384,576–4,386,665 | 77,485 → 75,384–75,400 |
+| Case                           | Baseline → native ms/op |         Baseline → native bytes/op | Baseline → native allocs/op |
+| ------------------------------ | ----------------------: | ---------------------------------: | --------------------------: |
+| typical/idempotent_core_commit |     8.007 → 7.754–7.758 |    1,498,508 → 1,478,811–1,485,492 |      11,663 → 11,572–11,584 |
+| typical/block_page             |     0.816 → 0.728–0.745 |               14,713 → 6,458–6,459 |                   181 → 123 |
+| typical/transaction_page       |  18.860 → 17.914–19.015 |          837,128 → 751,537–752,908 |      13,178 → 12,706–12,718 |
+| large/idempotent_core_commit   |  52.085 → 51.441–52.475 | 14,399,008 → 14,599,800–14,600,065 |   132,296 → 132,241–132,252 |
+| large/block_page               |     0.877 → 0.811–0.840 |                     14,711 → 6,474 |                   181 → 123 |
+| large/transaction_page         |  20.838 → 20.360–23.415 |    4,607,222 → 4,384,576–4,386,665 |      77,485 → 75,384–75,400 |
 
 Block reads used fewer allocations; transaction reads used fewer bytes and
 allocations. Large-write time stayed close to the baseline while bytes rose
