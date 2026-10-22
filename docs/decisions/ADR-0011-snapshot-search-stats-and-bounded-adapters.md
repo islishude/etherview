@@ -94,8 +94,11 @@ still expose state-backed capabilities without weakening their error contract.
 - Statistics advance to `stats@3`; the earlier `stats@2` rows remain historical
   and are not used by the current projection. Except for the exact configured
   indexing start, a block requires its exact canonical parent and a strictly
-  positive timestamp interval. The start block has null interval/TPS. Aggregate
-  TPS is `sum(transaction_count) / sum(block_interval_seconds)` over blocks with
+  positive timestamp interval. Sparse canonical blocks wait in the durable queue
+  until their exact canonical parent is indexed, without consuming attempts or
+  becoming exhausted while backfill is pending. The dependency is rechecked at
+  claim; orphan jobs remain claimable for the canonical stale-block skip.
+  The start block has null interval/TPS. Aggregate TPS is `sum(transaction_count) / sum(block_interval_seconds)` over blocks with
   a known interval, and remains null when no such interval exists. Execution
   fees, priority fees, failed transactions, and successful top-level creation
   counts are authenticated from the exact receipt/block facts as defined by

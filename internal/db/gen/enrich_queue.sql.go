@@ -39,6 +39,31 @@ WHERE job.id = $4
   AND (job.attempts < job.max_attempts
        OR job.requested_generation > job.claimed_generation)
   AND $10::jsonb ? (job.stage || '@' || job.stage_version::text)
+  -- Sparse live blocks wait for backfill without spending an attempt. Orphan
+  -- jobs remain claimable so the processor can publish its stale-block skip.
+  AND (
+      job.stage <> 'stats'
+      OR NOT EXISTS (
+          SELECT 1
+          FROM blocks AS block
+          JOIN canonical_blocks AS canonical
+            ON canonical.chain_id = block.chain_id
+           AND canonical.number = block.number AND canonical.block_hash = block.hash
+          JOIN core_index_configuration AS configuration ON configuration.chain_id = block.chain_id
+          WHERE block.chain_id = job.chain_id
+            AND block.number = (job.payload->>'block_number')::numeric
+            AND block.hash = decode(substr(job.payload->>'block_hash', 3), 'hex')
+            AND block.number > configuration.configured_start
+            AND NOT EXISTS (
+                SELECT 1 FROM blocks AS parent
+                JOIN canonical_blocks AS canonical_parent
+                  ON canonical_parent.chain_id = parent.chain_id
+                 AND canonical_parent.number = parent.number AND canonical_parent.block_hash = parent.hash
+                WHERE parent.chain_id = block.chain_id AND parent.hash = block.parent_hash
+                  AND parent.number = block.number - 1
+            )
+      )
+  )
   AND (
       job.stage <> 'abi'
       OR EXISTS (
@@ -144,6 +169,31 @@ WHERE exhausted_job.id = $1
   AND exhausted_job.claimed_generation > exhausted_job.completed_generation
   AND exhausted_job.requested_generation <= exhausted_job.claimed_generation
   AND $2::jsonb ? (exhausted_job.stage || '@' || exhausted_job.stage_version::text)
+  -- Sparse live blocks wait for backfill without spending an attempt. Orphan
+  -- jobs remain claimable so the processor can publish its stale-block skip.
+  AND (
+      exhausted_job.stage <> 'stats'
+      OR NOT EXISTS (
+          SELECT 1
+          FROM blocks AS block
+          JOIN canonical_blocks AS canonical
+            ON canonical.chain_id = block.chain_id
+           AND canonical.number = block.number AND canonical.block_hash = block.hash
+          JOIN core_index_configuration AS configuration ON configuration.chain_id = block.chain_id
+          WHERE block.chain_id = exhausted_job.chain_id
+            AND block.number = (exhausted_job.payload->>'block_number')::numeric
+            AND block.hash = decode(substr(exhausted_job.payload->>'block_hash', 3), 'hex')
+            AND block.number > configuration.configured_start
+            AND NOT EXISTS (
+                SELECT 1 FROM blocks AS parent
+                JOIN canonical_blocks AS canonical_parent
+                  ON canonical_parent.chain_id = parent.chain_id
+                 AND canonical_parent.number = parent.number AND canonical_parent.block_hash = parent.hash
+                WHERE parent.chain_id = block.chain_id AND parent.hash = block.parent_hash
+                  AND parent.number = block.number - 1
+            )
+      )
+  )
   AND (
       exhausted_job.stage <> 'abi'
       OR EXISTS (
@@ -221,6 +271,31 @@ WHERE candidate_job.kind = 'enrichment'
   AND (candidate_job.attempts < candidate_job.max_attempts
        OR candidate_job.requested_generation > candidate_job.claimed_generation)
   AND $1::jsonb ? (candidate_job.stage || '@' || candidate_job.stage_version::text)
+  -- Sparse live blocks wait for backfill without spending an attempt. Orphan
+  -- jobs remain claimable so the processor can publish its stale-block skip.
+  AND (
+      candidate_job.stage <> 'stats'
+      OR NOT EXISTS (
+          SELECT 1
+          FROM blocks AS block
+          JOIN canonical_blocks AS canonical
+            ON canonical.chain_id = block.chain_id
+           AND canonical.number = block.number AND canonical.block_hash = block.hash
+          JOIN core_index_configuration AS configuration ON configuration.chain_id = block.chain_id
+          WHERE block.chain_id = candidate_job.chain_id
+            AND block.number = (candidate_job.payload->>'block_number')::numeric
+            AND block.hash = decode(substr(candidate_job.payload->>'block_hash', 3), 'hex')
+            AND block.number > configuration.configured_start
+            AND NOT EXISTS (
+                SELECT 1 FROM blocks AS parent
+                JOIN canonical_blocks AS canonical_parent
+                  ON canonical_parent.chain_id = parent.chain_id
+                 AND canonical_parent.number = parent.number AND canonical_parent.block_hash = parent.hash
+                WHERE parent.chain_id = block.chain_id AND parent.hash = block.parent_hash
+                  AND parent.number = block.number - 1
+            )
+      )
+  )
   AND (
       candidate_job.stage <> 'abi'
       OR EXISTS (
@@ -296,6 +371,31 @@ WHERE exhausted_job.kind = 'enrichment'
   AND exhausted_job.claimed_generation > exhausted_job.completed_generation
   AND exhausted_job.requested_generation <= exhausted_job.claimed_generation
   AND $1::jsonb ? (exhausted_job.stage || '@' || exhausted_job.stage_version::text)
+  -- Sparse live blocks wait for backfill without spending an attempt. Orphan
+  -- jobs remain claimable so the processor can publish its stale-block skip.
+  AND (
+      exhausted_job.stage <> 'stats'
+      OR NOT EXISTS (
+          SELECT 1
+          FROM blocks AS block
+          JOIN canonical_blocks AS canonical
+            ON canonical.chain_id = block.chain_id
+           AND canonical.number = block.number AND canonical.block_hash = block.hash
+          JOIN core_index_configuration AS configuration ON configuration.chain_id = block.chain_id
+          WHERE block.chain_id = exhausted_job.chain_id
+            AND block.number = (exhausted_job.payload->>'block_number')::numeric
+            AND block.hash = decode(substr(exhausted_job.payload->>'block_hash', 3), 'hex')
+            AND block.number > configuration.configured_start
+            AND NOT EXISTS (
+                SELECT 1 FROM blocks AS parent
+                JOIN canonical_blocks AS canonical_parent
+                  ON canonical_parent.chain_id = parent.chain_id
+                 AND canonical_parent.number = parent.number AND canonical_parent.block_hash = parent.hash
+                WHERE parent.chain_id = block.chain_id AND parent.hash = block.parent_hash
+                  AND parent.number = block.number - 1
+            )
+      )
+  )
   AND (
       exhausted_job.stage <> 'abi'
       OR EXISTS (

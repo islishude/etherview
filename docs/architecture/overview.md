@@ -348,10 +348,13 @@ snapshot or chain-lock boundary. P00 owns database acceptance; P30 tracks produc
   hash is acknowledged as stale rather than retried forever.
 - `stats@4` derives intervals only from the exact canonical parent. The exact
   configured indexing start has null interval and TPS; every later block
-  requires a positive timestamp delta. Aggregate TPS divides transactions by
-  total known interval rather than averaging block rates. A block without blob
-  transactions has null blob base fee and zero blob burn, while receipt blob
-  gas without the required header inputs is a permanent inconsistency; see
+  requires a positive timestamp delta. A sparse live block waits for its exact
+  canonical parent in the durable queue without consuming attempts; the
+  configured start and orphan cleanup remain claimable. Aggregate TPS divides
+  transactions by total known interval rather than averaging block rates.
+  A block without blob transactions has null blob base fee and zero blob burn,
+  while receipt blob gas without the required header inputs is a permanent
+  inconsistency; see
   [ADR-0011](../decisions/ADR-0011-snapshot-search-stats-and-bounded-adapters.md).
 - A trace attempt acquires one trace-purpose RPC endpoint for the entire block
   and calls `debug_traceBlockByHash` once for the exact job block hash with Geth
