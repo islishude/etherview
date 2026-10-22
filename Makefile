@@ -136,15 +136,14 @@ test-e2e: web-build
 test-race: web-build compiler-install
 	$(GO) test -race $(GO_TEST_FLAGS) $(GO_PACKAGES)
 
-test-hardhat3-provider-compat:
-	$(NPM) --prefix e2e/hardhat3 ci --ignore-scripts
+test-hardhat3-provider-compat: npm-install
 	$(NODE) --test e2e/hardhat3/safe-artifact.test.mjs e2e/hardhat3/transaction-sender.test.mjs
 	ETHERVIEW_HARDHAT3_NODE="$(NODE)" $(GO) test -count=1 -tags=hardhat3verify ./e2e/hardhat3
 
 hardhat3-client-image-build:
 	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "hardhat3-client-image-build: docker is required"; exit 1; }
 	DOCKER="$(DOCKER)" $(BUILDX) build --load \
-		--tag "$(HARDHAT3_IMAGE)" e2e/hardhat3
+		--tag "$(HARDHAT3_IMAGE)" -f e2e/hardhat3/Dockerfile .
 
 test-hardhat3-e2e: docker-build hardhat3-client-image-build
 	@$(MAKE) --no-print-directory test-hardhat3-e2e-prebuilt
@@ -245,11 +244,10 @@ npm-install:
 
 web-install: npm-install
 
-compiler-install:
-	$(NPM) --prefix compiler ci --ignore-scripts
+compiler-install: npm-install
 	$(NODE) compiler/vyper/wasm/prepare.mjs
 	$(NODE) compiler/vyper/wasm/packages.mjs --version 0.4.3
-	$(NPM) --prefix compiler run build:sea -- "$(CURDIR)/.local/vyper-wasm/sea/etherview-solcjs"
+	$(NPM) --workspace compiler run build:sea -- "$(CURDIR)/.local/vyper-wasm/sea/etherview-solcjs"
 
 web-generate: web-install
 	$(NPM) --workspace api run generate:api
@@ -314,15 +312,13 @@ security-check: security-tool-check web-build compiler-install
 		echo "gitleaks history: SKIP (repository has no commits yet)"; \
 	fi
 	$(NPM) audit --audit-level=high
-	$(NPM) --prefix compiler audit --audit-level=high
 	$(NODE) compiler/vyper/wasm/packages.mjs
 	$(NODE) compiler/vyper/wasm/check-integrity.mjs
-	$(NPM) --prefix e2e/hardhat3 audit --audit-level=high
 	$(GO) test ./internal/app ./internal/auth ./internal/billing/... ./internal/cli ./internal/config ./internal/httpapi ./internal/jsonstrict ./internal/metadata ./internal/observability ./internal/userauth ./internal/verify ./web
 
 license-tool-check:
 	@command -v "$(GO_LICENSES)" >/dev/null 2>&1 || { echo "license-check: missing $(GO_LICENSES); run 'make install-security-tools'"; exit 1; }
-	@grep -Eq '"license-checker-rseidelsohn": "$(WEB_LICENSE_CHECKER_VERSION)"' web/package.json || { \
+	@grep -Eq '"license-checker-rseidelsohn": "$(WEB_LICENSE_CHECKER_VERSION)"' package.json || { \
 		echo "license-check: frontend checker must be pinned at $(WEB_LICENSE_CHECKER_VERSION)"; exit 1; }
 
 license-check: license-tool-check web-install compiler-install
@@ -340,10 +336,7 @@ license-check: license-tool-check web-install compiler-install
 	@grep -Eq '^COPY --from=go-builder .* /licenses /licenses$$' Dockerfile || { echo "license-check: production image must include reviewed geth licenses"; exit 1; }
 	@grep -Eq '^COPY .*licenses /licenses$$' Dockerfile || { echo "license-check: production image must include checked-in third-party licenses"; exit 1; }
 	GO="$(GO)" GO_LICENSES="$(GO_LICENSES)" sh .github/scripts/go-license-check.sh $(GO_PACKAGES)
-	$(NPM) --workspace web run check:licenses
-	$(NPM) exec -- license-checker-rseidelsohn \
-		--start compiler --production --excludePrivatePackages --summary \
-		--onlyAllow '0BSD;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;MIT;MPL-2.0;Unlicense'
+	$(NPM) run check:licenses
 
 docker-check:
 	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "docker-check: docker is required"; exit 1; }
@@ -587,8 +580,7 @@ test-vyper-release: test-vyper-update
 	$(NODE) --test compiler/vyper/acceptance.test.mjs compiler/vyper/wasm/production-shards.test.mjs
 
 .PHONY: test-vyper-wasm-candidate
-test-vyper-wasm-candidate:
-	$(NPM) --prefix compiler ci --ignore-scripts
+test-vyper-wasm-candidate: npm-install
 	$(NODE) --test compiler/vyper/wasm/tooling.test.mjs
 	$(NODE) compiler/vyper/wasm/check.mjs
 
@@ -605,8 +597,7 @@ benchmark-vyper-wasm: compiler-install
 	$(PYTHON) compiler/vyper/wasm/benchmark.py
 
 .PHONY: test-vyper-update
-test-vyper-update:
-	$(NPM) --prefix compiler ci --ignore-scripts
+test-vyper-update: npm-install
 	$(NODE) compiler/vyper/update.mjs --check
 	$(NODE) --test compiler/vyper/update.test.mjs
 	uv run --project compiler/vyper --locked python compiler/vyper/update_metadata_test.py

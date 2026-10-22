@@ -6,7 +6,7 @@ const rpcURL = process.env.ETHERVIEW_HARDHAT3_RPC_URL ?? "http://127.0.0.1:8545"
 const explorerURL = process.env.ETHERVIEW_HARDHAT3_EXPLORER_URL ?? "http://127.0.0.1:8080";
 const apiURL = process.env.ETHERVIEW_HARDHAT3_API_URL ?? `${explorerURL}/v2/api`;
 const solcPath = fileURLToPath(
-  new URL("./node_modules/solc/soljson.js", import.meta.url),
+  import.meta.resolve("solc/soljson.js"),
 );
 const chainID = Number(process.env.ETHERVIEW_HARDHAT3_CHAIN_ID ?? "1");
 if (!Number.isSafeInteger(chainID) || chainID <= 0) {

@@ -34,9 +34,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-          cache-dependency-path: |
-            compiler/package-lock.json
-            package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install compatible Vyper update test tooling
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
@@ -193,7 +191,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-          cache-dependency-path: e2e/hardhat3/package-lock.json
+          cache-dependency-path: package-lock.json
       - name: Run provider compatibility regression
         run: make toolchain-check test-hardhat3-provider-compat
 
@@ -297,10 +295,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-          cache-dependency-path: |
-            compiler/package-lock.json
-            package-lock.json
-            e2e/hardhat3/package-lock.json
+          cache-dependency-path: package-lock.json
       - name: Install pinned security and license tools
         run: make install-security-tools
       - name: Audit source and dependencies

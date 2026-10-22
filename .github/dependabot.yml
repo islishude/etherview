@@ -44,18 +44,6 @@ updates:
       oxc:
         patterns: ["oxlint", "oxfmt"]
 
-  - package-ecosystem: npm
-    directory: /compiler
-    schedule:
-      interval: monthly
-      day: monday
-      time: "02:30"
-      timezone: Asia/Shanghai
-    open-pull-requests-limit: 10
-    groups:
-      npm:
-        patterns: ["*"]
-
   - package-ecosystem: github-actions
     directory: /
     schedule:

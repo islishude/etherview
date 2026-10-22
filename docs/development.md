@@ -143,11 +143,22 @@ affected-row condition and `:exec` when only execution errors matter.
 Use `make format` to format repository JavaScript, YAML, Markdown, and the
 existing hand-written frontend scope. Use `make format-check` for a read-only
 check; `make lint` and CI include it. Both commands install the locked root npm
-workspace. The root `package.json`
-owns Oxlint/Oxfmt, engine requirements, install-script permissions, and dependency
-overrides; `api` and `web` share the root `package-lock.json`. Run `npm ci`
-(or `make npm-install`) at the repository root. Compiler runtime and Hardhat
-fixtures retain their isolated packages and lockfiles.
+workspace. The root `package.json` owns shared tooling and dependency overrides;
+`api`, `web`, `compiler`, and `e2e/hardhat3` share one root `package-lock.json`.
+Run `npm ci` (or `make npm-install`) at the repository root. Workspace manifests
+retain their runtime constraints: the compiler requires exactly Node 26.12.1
+and solc 0.8.37, while the Hardhat fixture keeps solc 0.8.30.
+
+Root `.npmrc` enforces engines and disables dependency lifecycle scripts.
+It also retains the Safe artifact fixture's `legacy-peer-deps` policy, so its
+unused Ethers v5 peer is not installed; this npm resolution setting applies
+to the whole workspace. Required peers are explicit workspace dependencies,
+including the API generator's TypeScript 5 and the frontend test DOM library. Docker uses
+the same explicit settings and installs only the workspaces needed by each
+build stage. Dedicated compiler CI jobs can use `npm ci --workspace compiler`
+from the repository root; a subsequent full `npm ci` restores all workspaces.
+Resolve package files from the owning module instead of assuming a local
+`node_modules` directory.
 
 After installation, `npm run lint`, `npm run format`, and `npm run format:check`
 provide the JavaScript/frontend gates directly. Use

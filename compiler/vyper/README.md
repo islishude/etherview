@@ -91,7 +91,7 @@ not a cumulative child-process maximum.
 
 ## Optional native reference tools
 
-Install Node dependencies with `npm --prefix compiler ci --ignore-scripts`.
+Install Node dependencies with `npm ci --workspace compiler`.
 `node compiler/vyper/reference.mjs --version 0.4.3` prepares the locked official
 reference environment using uv `>=0.13.4,<1.0.0` and the version index's exact Python.
 Omit `--version` to prepare all supported environments. Historical version locks remain
@@ -145,7 +145,7 @@ Generate a proposed version in an isolated temporary tree, writing only a patch
 and evidence into a new output directory:
 
 ```sh
-npm --prefix compiler ci --ignore-scripts
+npm ci --workspace compiler
 node compiler/vyper/update.mjs --version 0.4.4 --output .local/vyper-update-0.4.4
 ```
 

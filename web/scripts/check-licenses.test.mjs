@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
-import { checkLicenses } from "./check-licenses.mjs";
+import { checkLicenses } from "../../.github/scripts/check-workspace-licenses.mjs";
 
 function fixture(t, license = "MIT") {
   const root = mkdtempSync(join(tmpdir(), "etherview-workspace-licenses-"));
@@ -48,7 +48,8 @@ test("license gate covers hoisted production dependencies and excludes developme
 
 test("license gate rejects a disallowed hoisted transitive license", (t) => {
   const root = fixture(t, "GPL-3.0-only");
-  const moduleURL = new URL("./check-licenses.mjs", import.meta.url).href;
+  const moduleURL = new URL("../../.github/scripts/check-workspace-licenses.mjs", import.meta.url)
+    .href;
   // The pinned checker exits on a disallowed license, so exercise it in a child.
   const result = spawnSync(
     process.execPath,
@@ -68,4 +69,29 @@ test("license gate fails when a required hoisted dependency is missing", async (
   const root = fixture(t);
   rmSync(join(root, "node_modules/transitive"), { recursive: true });
   await assert.rejects(checkLicenses(root), /Command failed/);
+});
+
+test("license gate follows npm aliases to the original package identity", async (t) => {
+  const root = fixture(t);
+  const manifest = join(root, "web/package.json");
+  writeFileSync(
+    manifest,
+    JSON.stringify({
+      name: "@etherview/web",
+      version: "0.0.0",
+      private: true,
+      dependencies: { direct: "npm:original@1.0.0" },
+    }),
+  );
+  writeFileSync(
+    join(root, "node_modules/direct/package.json"),
+    JSON.stringify({
+      name: "original",
+      version: "1.0.0",
+      license: "MIT",
+      dependencies: { transitive: "1.0.0" },
+    }),
+  );
+  const result = await checkLicenses(root);
+  assert.deepEqual(Object.keys(result).sort(), ["original@1.0.0", "transitive@1.0.0"]);
 });

@@ -99,7 +99,9 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   propagation without pushing images or PRs.
 - `make toolchain-check`: require at least Go 1.27.3, Node 26.12.1, and npm
   11.16.0 before generating or validating artifacts. Compatible newer stable
-  versions are supported; older, malformed, and prerelease versions fail.
+  versions are supported by this minimum-version check; older, malformed, and
+  prerelease versions fail. Full npm installation and compiler builds additionally
+  enforce the compiler workspace's exact Node 26.12.1 engine.
 - `make plan-check`: validate plan links, IDs, statuses, dependencies, evidence,
   and parent/child state.
 - `make docs-check`: compare maintained high-risk documentation with current
@@ -362,19 +364,20 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   unexpected/missing file, symlink, compiler identity and metadata regressions.
   Custom PyPI/OSV advisory queries and approval records are retired under
   [ADR-0053](decisions/ADR-0053-vyper-wasm-distribution.md#security-validation).
-  All three npm dependency trees (root workspace, compiler, and Hardhat fixture)
+  The single root npm audit covers all four workspaces and shared tooling and
   must report zero high-severity vulnerabilities; the API generator's
   transitive parser and glob dependencies are constrained by audited
   overrides.
   CI disables automatic npm install audits so an advisory endpoint outage
-  does not consume test budgets. The security job retains all three explicit
-  audits, which always enable auditing regardless of the install setting,
-  and fails if an audit cannot complete.
+  does not consume test budgets. The security job retains an explicit root
+  audit, which always enables auditing regardless of the install setting,
+  and fails if the audit cannot complete.
 - `make license-check`: Go, production frontend/compiler, all Vyper package
-  and pinned shared WASM component notice checks. The frontend gate resolves
-  its production dependency closure through npm, scans the root installation,
-  and requires a license result for every selected package, including hoisted
-  transitive dependencies.
+  and pinned shared WASM component notice checks. The frontend and compiler gates
+  resolve their production dependency closures through npm, scan the root
+  installation, and require a license result for every selected package, including hoisted
+  transitive dependencies and npm aliases. Workspace regressions also execute
+  both distinct solc versions and check the pinned Pyodide and client versions.
 - `make benchmark-vyper-wasm`: actual SEA first/repeated dual compilation,
   per-process peak RSS and a native-reference-checked 17-file workload. Every
   sample uses a fresh process. OS caches are not evicted; this local experiment

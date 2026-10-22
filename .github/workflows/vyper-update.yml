@@ -95,7 +95,7 @@ jobs:
         env:
           VERSION: ${{ matrix.version }}
         run: |
-          npm --prefix compiler ci --ignore-scripts
+          npm ci --workspace compiler
           node compiler/vyper/update.mjs --version "$VERSION" --output "$RUNNER_TEMP/vyper-update"
       - name: Record lifecycle action
         if: success()

@@ -7,7 +7,9 @@ WORKDIR /src
 COPY package.json package-lock.json ./
 COPY web/package.json ./web/
 COPY api/package.json ./api/
-RUN --mount=type=cache,target=/root/.npm npm ci --engine-strict
+COPY compiler/package.json ./compiler/
+COPY e2e/hardhat3/package.json ./e2e/hardhat3/
+RUN --mount=type=cache,target=/root/.npm npm ci --engine-strict --ignore-scripts --legacy-peer-deps --no-audit --no-fund --workspace web --workspace api --include-workspace-root
 COPY ./api ./api
 COPY web/index.html web/asset-budget.json web/tsconfig.json web/tsconfig.app.json web/tsconfig.node.json web/vite.config.ts ./web/
 COPY web/scripts ./web/scripts
@@ -20,10 +22,15 @@ FROM node:26.12.1-slim AS compiler-builder
 RUN apt-get update \
     && apt-get install -y --no-install-recommends binutils pax-utils \
     && rm -rf /var/lib/apt/lists/*
-WORKDIR /src/compiler
-COPY compiler/package.json compiler/package-lock.json ./
+WORKDIR /src
+COPY package.json package-lock.json ./
+COPY web/package.json ./web/
+COPY api/package.json ./api/
+COPY compiler/package.json ./compiler/
+COPY e2e/hardhat3/package.json ./e2e/hardhat3/
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --ignore-scripts --no-audit --no-fund
+    npm ci --engine-strict --ignore-scripts --legacy-peer-deps --no-audit --no-fund --workspace compiler
+WORKDIR /src/compiler
 COPY compiler/compile.mjs compiler/build-sea.mjs compiler/build-runtime.mjs compiler/elf-runtime.mjs compiler/test-elf-runtime.mjs compiler/test-sea.mjs ./
 COPY compiler/vyper/wasm ./vyper/wasm/
 COPY --from=production-base / /target-rootfs/
@@ -31,16 +38,19 @@ RUN node build-sea.mjs /opt/etherview/solcjs/etherview-solcjs \
     && install -d -m 0755 /opt/etherview/licenses/solcjs-runtime \
     && test -f /usr/local/LICENSE \
     && cp /usr/local/LICENSE /opt/etherview/licenses/solcjs-runtime/node-LICENSE.txt \
-    && find node_modules -mindepth 2 -maxdepth 2 -type f \
+    && cp "$(node -p 'require.resolve("solc/LICENSE")')" /opt/etherview/licenses/solcjs-runtime/solc-LICENSE \
+    && cp "$(node -p 'require.resolve("esbuild/LICENSE.md")')" /opt/etherview/licenses/solcjs-runtime/esbuild-LICENSE.md \
+    && install -d /opt/etherview/licenses/solcjs-runtime/dependencies \
+    && find /src -type f -path '*/node_modules/*' \
        \( -iname 'license' -o -iname 'license.*' -o -iname 'copying' -o -iname 'copying.*' \) \
-       -exec sh -c 'package="$(basename "$(dirname "$1")")"; extension="$(basename "$1")"; cp "$1" "/opt/etherview/licenses/solcjs-runtime/${package}-${extension}"' _ {} \; \
+       -exec sh -eu -c 'for path do name=$(printf "%s" "$path" | tr "/" "_"); destination="/opt/etherview/licenses/solcjs-runtime/dependencies/$name"; test ! -e "$destination"; cp "$path" "$destination"; done' _ {} + \
     && node build-runtime.mjs \
        /opt/etherview/solcjs/etherview-solcjs \
        /target-rootfs \
        /opt/etherview/licenses/solcjs-runtime \
     && node test-elf-runtime.mjs /target-rootfs \
     && install -d -m 1777 /target-rootfs/tmp \
-    && node test-sea.mjs /target-rootfs node_modules/solc/soljson.js \
+    && node test-sea.mjs /target-rootfs "$(node -p 'require.resolve("solc/soljson.js")')" \
     && install -d -m 0755 /solcjs-runtime-copy \
     && cp -a /opt/etherview/solcjs /solcjs-runtime-copy/ \
     && node vyper/wasm/prepare.mjs /solcjs-runtime-copy/python-wasm \

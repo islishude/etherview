@@ -121,7 +121,8 @@ jobs:
       - name: Build the Hardhat test client
         uses: docker/build-push-action@v7
         with:
-          context: e2e/hardhat3
+          context: .
+          file: e2e/hardhat3/Dockerfile
           push: false
           load: true
           tags: etherview-hardhat3:local

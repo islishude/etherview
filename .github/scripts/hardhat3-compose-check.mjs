@@ -121,10 +121,12 @@ assert.equal(
   "Hardhat client must not mount a Docker socket",
 );
 const buildVolumes = (hardhat.volumes ?? []).filter((volume) =>
-  ["/workspace/build", "/workspace/artifacts", "/workspace/cache"].includes(volume.target),
+  ["/repo/e2e/hardhat3/build", "/repo/e2e/hardhat3/artifacts", "/repo/e2e/hardhat3/cache"].includes(
+    volume.target,
+  ),
 );
 assert.equal(buildVolumes.length, 1, "Hardhat build state must use one filesystem");
-assert.equal(buildVolumes[0].target, "/workspace/build", "Hardhat build volume");
+assert.equal(buildVolumes[0].target, "/repo/e2e/hardhat3/build", "Hardhat build volume");
 const cacheInspectionMounts = volumeMounts(hardhat).filter((mount) => mount.target === cachePath);
 assert.equal(cacheInspectionMounts.length, 1, "Hardhat compiler cache inspection mount");
 assert.equal(cacheInspectionMounts[0].type, "volume", "Hardhat compiler cache mount type");

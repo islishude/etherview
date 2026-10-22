@@ -145,16 +145,12 @@ const transactionSender = createTransactionSender({
 
 for (const packageName of ["contracts", "contracts-upgradeable"]) {
   const metadata = JSON.parse(
-    await readFile(
-      new URL(`./node_modules/@openzeppelin/${packageName}/package.json`, import.meta.url),
-    ),
+    await readFile(new URL(import.meta.resolve(`@openzeppelin/${packageName}/package.json`))),
   );
   assert.equal(metadata.version, OPENZEPPELIN_VERSION, `@openzeppelin/${packageName} version`);
 }
 const safeMetadata = JSON.parse(
-  await readFile(
-    new URL("./node_modules/@safe-global/safe-contracts/package.json", import.meta.url),
-  ),
+  await readFile(new URL(import.meta.resolve("@safe-global/safe-contracts/package.json"))),
 );
 assert.equal(safeMetadata.version, SAFE_VERSION, "@safe-global/safe-contracts version");
 
@@ -199,13 +195,15 @@ const beaconArtifact = await compilerArtifact(
 );
 const beaconProxyArtifact = await compilerArtifact("/proxy/beacon/BeaconProxy.sol", "BeaconProxy");
 const safeArtifact = await projectArtifact(
-  "./node_modules/@safe-global/safe-contracts/build/artifacts/contracts/Safe.sol/Safe.json",
+  import.meta.resolve("@safe-global/safe-contracts/build/artifacts/contracts/Safe.sol/Safe.json"),
 );
 const safeProxyFactoryArtifact = await projectArtifact(
-  "./node_modules/@safe-global/safe-contracts/build/artifacts/contracts/proxies/SafeProxyFactory.sol/SafeProxyFactory.json",
+  import.meta
+    .resolve("@safe-global/safe-contracts/build/artifacts/contracts/proxies/SafeProxyFactory.sol/SafeProxyFactory.json"),
 );
 const safeProxyArtifact = await projectArtifact(
-  "./node_modules/@safe-global/safe-contracts/build/artifacts/contracts/proxies/SafeProxy.sol/SafeProxy.json",
+  import.meta
+    .resolve("@safe-global/safe-contracts/build/artifacts/contracts/proxies/SafeProxy.sol/SafeProxy.json"),
 );
 assert.equal(
   keccak256(safeProxyArtifact.deployedBytecode),

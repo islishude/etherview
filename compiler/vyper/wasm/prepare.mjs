@@ -9,7 +9,7 @@ import {
   unlinkSync,
 } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { resolve, join } from "node:path";
+import { dirname, resolve, join } from "node:path";
 import { runtimePolicy } from "./runtime-policy.mjs";
 const hash = (b) => createHash("sha256").update(b).digest("hex");
 export function retirePreviousFiles(output, previous, files) {
@@ -35,7 +35,7 @@ export function retirePreviousFiles(output, previous, files) {
   }
 }
 export async function prepareRuntime(base, id, spec) {
-  const source = fileURLToPath(new URL("../../node_modules/" + spec.npm + "/", import.meta.url));
+  const source = dirname(fileURLToPath(import.meta.resolve(`${spec.npm}/package.json`)));
   const output = join(base, id);
   const npm = JSON.parse(readFileSync(join(source, "package.json")));
   if (npm.version !== spec.pyodide) throw new Error("pinned Pyodide required");
