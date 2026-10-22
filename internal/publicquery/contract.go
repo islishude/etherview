@@ -45,6 +45,7 @@ func (err *CapabilityUnavailableError) Valid() bool {
 }
 
 type StatusSnapshot struct {
+	Consensus           *gen.ConsensusOverview
 	LatestBlock         uint64
 	IndexedBlock        uint64
 	HighestCoveredBlock uint64

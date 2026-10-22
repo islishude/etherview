@@ -28,7 +28,7 @@ func main() {
 }
 
 func run(ctx context.Context, root string) error {
-	project := testcompose.New(root, testcompose.UniqueProjectName("etherview-schema"), "compose.yaml")
+	project := testcompose.New(root, testcompose.UniqueProjectName("etherview-schema"), "deploy/compose.yaml")
 	project.Profiles = []string{"distributed"}
 	project.Env = map[string]string{
 		"POSTGRES_PASSWORD":     "etherview-schema-e2e",

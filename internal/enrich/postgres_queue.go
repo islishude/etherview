@@ -493,6 +493,8 @@ func clearStageReplayStateTx(ctx context.Context, tx pgx.Tx, job Job) error {
 func requestInvalidatedEvidenceDependentsTx(ctx context.Context, tx pgx.Tx, source Job) error {
 	var dependents []StageID
 	switch source.Stage {
+	case ConsensusStage:
+		dependents = []StageID{BlobStage}
 	case StateDiffStage:
 		dependents = []StageID{TraceStage}
 	case TraceStage:

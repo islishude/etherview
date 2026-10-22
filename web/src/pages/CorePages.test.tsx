@@ -34,7 +34,7 @@ afterEach(() => {
 });
 
 describe("core explorer pages", () => {
-  it("returns opaque block cursors unchanged and keeps coverage islands distinct", async () => {
+  it("returns opaque block cursors unchanged without fetching chain context", async () => {
     const opaqueCursor = "opaque +/?=:cursor";
     const requestedCursors: Array<string | null> = [];
     vi.stubGlobal(
@@ -42,19 +42,6 @@ describe("core explorer pages", () => {
       vi.fn(async (input: RequestInfo | URL) => {
         const url = requestURL(input);
         if (url.pathname === "/api/v1/config") return configResponse();
-        if (url.pathname === "/api/v1/status") {
-          return statusResponse(
-            {
-              core_ready: false,
-              latest_block: "21",
-              indexed_block: "12",
-              highest_covered_block: "20",
-              backfill_complete: false,
-              lag: "9",
-            },
-            { coverage_start: "10", coverage_end: "12" },
-          );
-        }
         if (url.pathname === "/api/v1/blocks") {
           const cursor = url.searchParams.get("cursor");
           requestedCursors.push(cursor);
@@ -69,9 +56,7 @@ describe("core explorer pages", () => {
 
     renderExplorer("/blocks");
 
-    expect(await screen.findByText("10 – 12")).toBeVisible();
-    expect(screen.getByText(/separate live island/)).toBeVisible();
-    expect(screen.getByRole("link", { name: "12" })).toHaveAttribute(
+    expect(await screen.findByRole("link", { name: "12" })).toHaveAttribute(
       "href",
       `/blocks/${canonicalHash}`,
     );
@@ -85,6 +70,12 @@ describe("core explorer pages", () => {
     await user.click(screen.getByRole("button", { name: "Previous page" }));
     expect(await screen.findByRole("link", { name: "12" })).toBeVisible();
     expect(screen.getByText("Page 1")).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Coverage and finality context" })).toBeNull();
+    expect(
+      vi
+        .mocked(fetch)
+        .mock.calls.some(([input]) => requestURL(input).pathname === "/api/v1/status"),
+    ).toBe(false);
   });
 
   it("restarts an invalid search cursor and opens retained orphans by exact hash", async () => {
@@ -176,9 +167,9 @@ describe("core explorer pages", () => {
       renderExplorer(`/blocks/${canonicalHash}`);
       await screen.findByText("Block summary");
       if (slot === undefined) {
-        expect(screen.queryByText("Slot number")).not.toBeInTheDocument();
+        expect(screen.queryByText("Slot number · Execution header")).not.toBeInTheDocument();
       } else {
-        expect(screen.getByText("Slot number")).toBeVisible();
+        expect(screen.getByText("Slot number · Execution header")).toBeVisible();
         expect(screen.getByText("Block access list hash")).toBeVisible();
         expect(screen.getByText(olderHash, { exact: true })).toBeVisible();
         expect(screen.getByText(BigInt(slot).toLocaleString("en"), { exact: true })).toBeVisible();
@@ -187,9 +178,9 @@ describe("core explorer pages", () => {
         await i18n.changeLanguage("zh");
       });
       if (slot === undefined) {
-        expect(screen.queryByText("时隙编号")).not.toBeInTheDocument();
+        expect(screen.queryByText("时隙编号 · 执行头")).not.toBeInTheDocument();
       } else {
-        expect(screen.getByText("时隙编号")).toBeVisible();
+        expect(screen.getByText("时隙编号 · 执行头")).toBeVisible();
       }
     },
   );
@@ -1308,25 +1299,6 @@ function block(number: string, hash: string, canonical = true) {
     finality: canonical ? "safe" : "orphan",
     completeness: completeness(),
   };
-}
-
-function statusResponse(overrides: Record<string, unknown>, meta: Record<string, unknown> = {}) {
-  return envelope(
-    {
-      chain_id: "1",
-      core_ready: true,
-      latest_block: "12",
-      indexed_block: "12",
-      highest_covered_block: "12",
-      backfill_complete: true,
-      safe_block: "12",
-      finalized_block: "10",
-      lag: "0",
-      completeness: completeness(),
-      ...overrides,
-    },
-    meta,
-  );
 }
 
 function configResponse() {

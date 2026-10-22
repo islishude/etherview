@@ -42,12 +42,12 @@ for (const file of maintained) {
 const makefile = read("Makefile");
 const deployment = read("deploy/README.md");
 check(
-  makefile.includes("recreate-preview: preview-cert-check preview-genesis-runtime docker-build"),
-  "Makefile recreate-preview must require the read-only Preview Genesis prerequisite",
+  makefile.includes("recreate-preview: preview-cert-check preview-network-runtime docker-build"),
+  "Makefile recreate-preview must require the read-only Preview network prerequisite",
 );
 contains(
   "docs/operations.md",
-  "`make recreate-preview` reuses the existing runtime copy without refreshing its timestamp",
+  "`make recreate-preview` reuses the existing network bundle without refreshing its timestamp",
 );
 contains(
   "docs/operations.md",
@@ -59,7 +59,12 @@ contains(
 );
 forbid("docs/operations.md", "creating it once if missing");
 
-const compose = read("compose.yaml");
+const compose = read("deploy/compose.yaml");
+check(/^name: etherview$/m.test(compose), "deployment project identity changed");
+check(/^name: etherview-preview$/m.test(read("compose.yaml")), "Preview project identity changed");
+for (const file of ["README.md", "deploy/README.md", "docs/operations.md"]) {
+  contains(file, "--project-directory . -f deploy/compose.yaml --env-file .env.deploy");
+}
 const profiles = new Set(
   [...compose.matchAll(/profiles:\s*\[([^\]]*)\]/g)].flatMap((match) =>
     match[1]
@@ -69,9 +74,9 @@ const profiles = new Set(
   ),
 );
 for (const profile of ["monolith", "distributed", "accelerators"]) {
-  check(profiles.has(profile), `compose.yaml is missing profile ${profile}`);
+  check(profiles.has(profile), `deploy/compose.yaml is missing profile ${profile}`);
 }
-check(!profiles.has("verification"), "compose.yaml unexpectedly defines a verification profile");
+check(!profiles.has("verification"), "deploy/compose.yaml unexpectedly defines a verification profile");
 check(!deployment.includes("--profile verification"), "deployment guide advertises a removed profile");
 
 const dockerfile = read("Dockerfile");

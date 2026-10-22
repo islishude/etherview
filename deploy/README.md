@@ -7,13 +7,34 @@ dependencies.
 
 ## Docker Compose
 
-Copy `compose.env.example` to the repository-root `.env`, replace its example
-credentials and RPC endpoint, then select exactly one application profile:
+The repository-root `compose.yaml` runs the local [full-stack Preview](#full-stack-preview).
+Use `make preview-cert` once and `make start-preview` to prepare its certificates,
+network bundle and archive; bare Compose startup does not perform that setup.
+
+`deploy/compose.yaml` is the maintained external-chain deployment template,
+also exercised by the production runtime tests. Run the following commands from
+the repository root. Copy `deploy/compose.env.example` to `.env.deploy`, replace
+its example credentials and RPC endpoint, then select exactly one application
+profile:
 
 ```sh
-docker compose --profile monolith up --build
-docker compose --profile distributed up --build
+cp deploy/compose.env.example .env.deploy
+docker compose --project-directory . -f deploy/compose.yaml --env-file .env.deploy --profile monolith up --build
+docker compose --project-directory . -f deploy/compose.yaml --env-file .env.deploy --profile distributed up --build
 ```
+
+Keep `--project-directory .` on every deployment invocation, including local
+overlays, so build contexts and relative bind mounts resolve from the repository
+root. Use the same file, environment and project-directory arguments for `ps`,
+`logs`, `down` and recreation.
+
+If an existing deployment uses a repository-root `.env`, move its deployment
+settings to `.env.deploy` manually and remove those settings from `.env` before
+starting Preview. In particular, external RPC/config overrides and
+`COMPOSE_PROJECT_NAME` must not redirect Preview into the deployed chain or
+project. Exported shell variables still override environment-file values.
+The project names remain `etherview` for deployment and `etherview-preview` for
+Preview; their existing named volumes remain reusable without a reset or migration.
 
 The `monolith` profile starts PostgreSQL, a migration run, and one
 `serve --roles=all` process. The `distributed` profile starts the same migration
@@ -34,7 +55,7 @@ role credentials. Compose passes standard AWS variables only to API-capable
 services when the operator sets them; file-based sources also need an explicit
 read-only mount. Missing credentials do not enable anonymous writes and degrade
 only the disposable trace cache.
-To route API reads to a replica, set `ETHERVIEW_DATABASE_READ_URL` in `.env`.
+To route API reads to a replica, set `ETHERVIEW_DATABASE_READ_URL` in `.env.deploy`.
 Reader pool sizes default to the mounted YAML file: either edit
 `database.read_max_connections` and `database.read_min_connections` there or
 export the corresponding `ETHERVIEW_DATABASE_READ_*` variables in the shell
@@ -52,7 +73,7 @@ at startup and then at `maintenance.interval`. Its generation window and
 expired-observation delete batch are configured under `maintenance`; the sweep
 uses PostgreSQL only and a retryable failure does not withdraw readiness.
 
-The checked-in base Compose deployment remains HTTP and expects production TLS
+The `deploy/compose.yaml` deployment remains HTTP and expects production TLS
 to terminate externally. The full-stack Preview below is the repository's
 local process-native HTTPS workflow. Custom deployments may still configure
 the application TLS file settings directly, but no separate production
@@ -100,17 +121,17 @@ addresses, overlapping ranges for one address, unknown versions, and more than
 
 ## Full-stack Preview
 
-`compose.preview.yaml` runs the local Geth development chain and all six
-application roles. It enables public
+`compose.yaml` runs a local Geth/Lighthouse PoS chain and all six
+application roles. It enables consensus, blob archives, public
 verification and NFT metadata while leaving Sourcify, pricing, prepaid billing,
 and x402 top-ups disabled. Optional NATS, Redis, and object storage accelerators are not part of
 this deployment.
 
 The Preview Geth container mounts `deploy/geth-entrypoint.sh` and initializes
 the read-only Genesis file into the persistent `geth-data` volume before every
-start, then `exec`s Geth in five-second developer mode. Override the execution
-image, Genesis source, or published ports with `GETH_IMAGE`,
-`GETH_GENESIS_FILE`, `GETH_HTTP_PORT`, and `GETH_WS_PORT`.
+start, then `exec`s Geth with Lighthouse driving block production. Override the
+execution image or published ports with `GETH_IMAGE`, `GETH_HTTP_PORT`, and
+`GETH_WS_PORT`; use a complete network bundle when changing genesis.
 
 ```sh
 make preview-cert
@@ -125,27 +146,27 @@ under `.local/preview-tls/` for `etherview.localhost`, `localhost`,
 `127.0.0.1`, and `::1`. It also
 copies mkcert's public `rootCA.pem` there for deterministic command-line
 verification; it never copies `rootCA-key.pem`.
-`make start-preview` begins by rendering an ignored
-`.local/preview-genesis.json` runtime copy from the checked-in
-`deploy/preview.genesis.json` template before the Docker build and Compose
-startup; the value is the current Unix time in seconds encoded as a lowercase
-hex quantity. The checked-in template is never modified by Preview startup.
-Since that changes the Genesis block hash, run `make stop-preview` before
-starting a previously created Preview again so its persistent Geth and
-PostgreSQL volumes are removed explicitly. The target does not remove those
-volumes for you, and `make recreate-preview` reuses the existing runtime copy
-without refreshing its timestamp. If that default runtime copy is missing,
-`make recreate-preview` fails with an instruction to run `make start-preview`;
-it never creates or modifies a Genesis file. Complete custom Genesis-file
-overrides are left unchanged and do not require the default runtime copy. Both
-targets only check that the three public/certificate assets exist and never
-modify the host trust store.
-The template funds both the browser fixture account and Geth's upstream
-development address `0x71562b71999873db5b286df957af199ec94617f7`.
-Preview does not override `--miner.pending.feeRecipient`, so Geth imports and
-unlocks its built-in ephemeral development account and `eth_sendTransaction`
-works without a repository-owned private key. This account is development-only
-and is not a production signing facility.
+`make start-preview` builds images, then prepares or verifies an ignored
+`.local/preview-network/` bundle. It starts Geth v1.17.8, Lighthouse v8.3.0
+Beacon/validator clients and a scoped RustFS blob archive. Chain ID remains
+48815 with Amsterdam/Gloas at genesis, 64 validators and six-second slots.
+The checked-in genesis template remains unchanged. Network files, Engine JWT
+and validator keys are generated together and verified by a manifest.
+`make recreate-preview` requires an intact bundle and preserves its timestamp,
+chain data, blob objects and slashing protection. `make stop-preview` explicitly
+destroys Preview volumes and the default network bundle while retaining TLS.
+Old Geth dev Preview installations require this reset before the first PoS run.
+`PREVIEW_NETWORK_DIR` selects a complete compatible bundle; individual Genesis
+file overrides are rejected. Custom bundles are never deleted automatically.
+
+Use the pre-funded Hardhat account and local signing with
+`eth_sendRawTransaction`; there is no unlocked Geth account or `dev` namespace.
+The public development mnemonic is documented in the
+[Preview runbook](../docs/operations.md#api-listener-tls).
+Never use these keys on an external network. Beacon HTTP defaults to loopback
+port 5052 (`LIGHTHOUSE_HTTP_PORT` overrides it), while Engine RPC and RustFS
+remain internal. Only API/enrich receive scoped archive credentials. See the
+runbook for lifecycle, credential overrides and failure diagnosis.
 Preview mounts only the certificate pair read-only into the API role. Rotate
 it by rerunning `make preview-cert` and then `make recreate-preview`. The public
 listener is
@@ -219,7 +240,7 @@ API) are published; override them with `IPFS_GATEWAY_PORT`/`IPFS_API_PORT`.
 `ETHERVIEW_METADATA_IPFS_GATEWAY` still permits an explicit HTTPS override,
 without automatic public-gateway fallback. The metadata-only private-network
 exception permits the controlled local gateway, while API media fetches, other
-roles, base Compose and Helm remain strict. TLS, redirect, content and resource
+roles, deployment Compose and Helm remain strict. TLS, redirect, content and resource
 checks are preserved. The separate API-only compiler-download exception remains
 available for Docker Desktop fake-IP routing. Neither exception is a production
 SSRF policy or permission to contact unrelated private services.

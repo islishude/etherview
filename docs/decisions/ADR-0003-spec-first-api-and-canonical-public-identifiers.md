@@ -226,3 +226,13 @@ cursor validation. SPA boundary tests reject ungenerated backend calls,
 server-environment injection, and wallet RPC outside the provider module.
 Operator CLI validation prevents new non-canonical label
 keys, while query readers defensively reject malformed historical rows.
+
+## Consensus slot provenance
+
+ADR-0055 changes the public block `slot_number` projection from execution-header
+only to consensus-first when that feature is enabled and an exact associated
+observation is published. `slot_number_source` is `consensus` or `execution`.
+Missing consensus data falls back to the original execution-header value; a
+calculated timestamp slot is never published as observed data. Raw execution
+headers are unchanged. Consensus/blob metadata and exact-hash binary downloads
+start in OpenAPI and expose no node credentials or object-store URLs.

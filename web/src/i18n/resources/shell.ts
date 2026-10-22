@@ -148,16 +148,11 @@ export const shellResources = {
       notFoundDescription: "The requested explorer route does not exist.",
     },
     context: {
-      canonicalSnapshot: "Canonical snapshot",
-      coverageTitle: "Coverage and finality context",
       coreReady: "Core ready",
       coreNotReady: "Core catching up",
       coreReadiness: "Core readiness",
-      contiguousEnd: "Contiguous indexed end",
       coverageBounds: "Reported coverage bounds",
       safeBlock: "Safe block",
-      coverageIslandWarning:
-        "Historical backfill is incomplete. A higher covered block can belong to a separate live island and does not extend the contiguous indexed range.",
       canonicalBlocksOnly:
         "This list contains canonical blocks only. Search an exact block hash to open a retained orphan; height links always resolve the current canonical block.",
       genesisAuthenticated:
@@ -339,16 +334,11 @@ export const shellResources = {
       notFoundDescription: "请求的浏览器路径不存在。",
     },
     context: {
-      canonicalSnapshot: "规范链快照",
-      coverageTitle: "覆盖与最终性上下文",
       coreReady: "核心数据就绪",
       coreNotReady: "核心数据追赶中",
       coreReadiness: "核心数据就绪状态",
-      contiguousEnd: "连续索引终点",
       coverageBounds: "已报告覆盖边界",
       safeBlock: "安全区块",
-      coverageIslandWarning:
-        "历史回填尚未完成。更高的已覆盖区块可能属于独立实时区间，不能扩展连续索引范围。",
       canonicalBlocksOnly:
         "此列表只包含规范区块。可搜索精确区块哈希打开保留孤块；按高度访问始终指向当前规范区块。",
       genesisAuthenticated:

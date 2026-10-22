@@ -76,7 +76,7 @@ func TestPreviewEnablesPublicVerificationAndNFTMetadata(t *testing.T) {
 	}
 }
 
-func TestPreviewGenesisFundsGethUnlockedDeveloperAccount(t *testing.T) {
+func TestPreviewGenesisFundsLocalSigningAccounts(t *testing.T) {
 	t.Parallel()
 	data, err := os.ReadFile("../../deploy/preview.genesis.json")
 	if err != nil {
@@ -98,5 +98,25 @@ func TestPreviewGenesisFundsGethUnlockedDeveloperAccount(t *testing.T) {
 		if !ok || allocation.Balance == "" || allocation.Balance == "0x0" {
 			t.Fatalf("Preview Genesis allocation %s = %#v", address, allocation)
 		}
+	}
+}
+
+func TestPreviewEnablesConsensusAndDurableBlobs(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile("../../deploy/preview.config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var preview struct {
+		Consensus ConsensusConfig `yaml:"consensus"`
+	}
+	if err := yaml.Unmarshal(data, &preview); err != nil {
+		t.Fatal(err)
+	}
+	if !preview.Consensus.Enabled || preview.Consensus.URL != "http://lighthouse:5052" || !preview.Consensus.Blobs.Enabled || preview.Consensus.Blobs.Bucket != "etherview-preview-blobs" || !preview.Consensus.Blobs.PathStyle {
+		t.Fatal("Preview consensus/archive configuration drift")
+	}
+	if preview.Consensus.Blobs.AccessKey != "" || preview.Consensus.Blobs.SecretKey != "" {
+		t.Fatal("shared Preview YAML must not carry archive credentials")
 	}
 }

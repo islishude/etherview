@@ -57,6 +57,13 @@ func productionComponentKeys(cfg config.Config, roles []components.Role, wakeEna
 				add("15-pending-mempool")
 			}
 		case components.RoleEnrich:
+			if cfg.Consensus.Enabled {
+				add("31-consensus-discovery")
+				addWorkerComponentKeys(add, "36-consensus", cfg.Consensus.WorkerCount)
+				if cfg.Consensus.Blobs.Enabled {
+					addWorkerComponentKeys(add, "36-blob", cfg.Consensus.WorkerCount)
+				}
+			}
 			add("30-enrichment-outbox")
 			addWorkerComponentKeys(add, "35-core-enrichment", cfg.Runtime.WorkerCount)
 		case components.RoleTrace:

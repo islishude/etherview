@@ -18,11 +18,13 @@ test("feature styles retain grid transitions on both sides of their breakpoints"
   await page.goto("/");
   for (const width of [1024, 1023, 1022, 981, 980, 979, 768, 767, 766]) {
     await page.setViewportSize({ width, height: 1000 });
-    await expectColumns(page.locator(".metrics-grid"), width > 980 ? 4 : width > 767 ? 2 : 1);
-    await expectColumns(
-      page.locator(".chain-context .chain-context-grid"),
-      width > 1023 ? 6 : width > 767 ? 3 : 1,
-    );
+    const summary = page.locator(".home-indexing-summary");
+    await expect(summary.locator("dd")).toHaveCount(3);
+    const activityBounds = await page.locator(".activity-grid").boundingBox();
+    const summaryBounds = await summary.boundingBox();
+    expect(activityBounds).not.toBeNull();
+    expect(summaryBounds!.y).toBeGreaterThanOrEqual(activityBounds!.y + activityBounds!.height);
+    await expectColumns(page.locator(".consensus-overview-metrics"), width > 767 ? 2 : 1);
   }
 
   await page.goto("/blocks/1");
@@ -72,3 +74,29 @@ test("feature styles retain grid transitions on both sides of their breakpoints"
     ).toBeLessThanOrEqual(1);
   }
 });
+
+for (const route of ["blocks", "transactions"]) {
+  test(`${route} list renders without coverage context or chain status requests`, async ({
+    page,
+  }, testInfo) => {
+    const statusRequests: string[] = [];
+    page.on("request", (request) => {
+      if (new URL(request.url()).pathname === "/api/v1/status") statusRequests.push(request.url());
+    });
+    await page.goto(`/${route}`);
+    await expect(page.getByRole("table")).toBeVisible();
+    for (const width of [390, 768, 1440]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await expect(page.locator(".chain-context")).toHaveCount(0);
+      await expect(page.getByRole("note")).toHaveCount(0);
+      await expect(
+        page.getByRole("heading", { name: "Coverage and finality context" }),
+      ).toHaveCount(0);
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth - innerWidth),
+      ).toBeLessThanOrEqual(1);
+      await page.screenshot({ path: testInfo.outputPath(`${route}-${width}.png`), fullPage: true });
+    }
+    expect(statusRequests).toEqual([]);
+  });
+}

@@ -82,3 +82,5 @@ authoritative decisions; this page is only their navigation and replacement
 register.
 
 - [ADR-0054 — Application-Locked Vyper Distribution](ADR-0054-vyper-application-lock.md)
+
+- [ADR-0055 — Consensus and Blob Archives](ADR-0055-consensus-and-blob-archives.md)

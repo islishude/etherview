@@ -81,6 +81,10 @@ func (assembly runtimeAssembly) registerComponents() error {
 		return err
 	}
 
+	if err := assembly.registerConsensusComponents(); err != nil {
+		return err
+	}
+
 	if err := assembly.registerTraceComponents(); err != nil {
 		return err
 	}

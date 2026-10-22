@@ -1008,3 +1008,31 @@ snapshot and expose EIP-7708 protocol arguments without ABI or trace provenance.
 Missing publication preserves raw logs with unavailable decoding. The shared Web
 address identity labels `0xfffffffffffffffffffffffffffffffffffffffe` as System
 Address in both locales while retaining the address, navigation and copying.
+
+## Optional consensus observations and blob archives
+
+[ADR-0055](../decisions/ADR-0055-consensus-and-blob-archives.md) defines the
+optional Beacon boundary. Independent enrich workers publish `consensus@1`
+observations and `blob@1` manifests through the same generation/lease protocol
+as other stages. Discovery supplements already-published core outbox history.
+A leased overview publisher pins the head and state roots and atomically stores
+its observation with a runtime invalidation event. PostgreSQL remains the
+identity/publication authority; the dedicated blob bucket durably owns raw
+binary bodies. Objects are KZG-bound to authenticated transaction hashes and
+independently read back before their manifest can publish. No object operation
+holds a database snapshot. Reorgs retain immutable content and orphan metadata.
+
+Block models select consensus slots when enabled and published, with explicit
+execution-header fallback and `slot_number_source`. Consensus and blob HTTP
+metadata reads do not contact upstream nodes. Exact-hash downloads recheck the
+published manifest after object retrieval. Core execution readiness and fork
+choice never depend on either optional upstream.
+
+Consensus body decoding verifies the complete fork-specific SSZ root before the
+execution hash can establish an association. Replay may reuse retained authenticated
+observations and manifests, but still rechecks network identity, generation,
+lease and canonicality. Existing archived bytes are independently revalidated;
+upstream pruning does not revoke intact archived history. Core reorgs rewind
+persistent discovery even while the feature is disabled, and a cursor generation
+prevents an older scan from overwriting the rewind. Canonical-attach replay keys
+are shared with the outbox dispatcher.

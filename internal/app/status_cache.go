@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"strconv"
+	"time"
 
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/httpapi"
@@ -55,6 +56,9 @@ func (reader redisStatusReader) Status(ctx context.Context) (httpapi.StatusSnaps
 		if err := decoder.Decode(&snapshot); err == nil {
 			var trailing any
 			if err := decoder.Decode(&trailing); errors.Is(err, io.EOF) {
+				if observed := snapshot.Consensus; observed != nil && observed.StaleAt != nil && time.Now().After(*observed.StaleAt) {
+					observed.Stale = true
+				}
 				return snapshot, nil
 			}
 		}

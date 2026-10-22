@@ -25,6 +25,7 @@ import (
 func (c Config) Validate() error {
 	return errors.Join(
 		validateServerConfig(c),
+		validateConsensusConfig(c),
 		validateChainWalletConfig(c),
 		validateDatabaseRPCConfig(c),
 		validateRuntimeConfig(c),

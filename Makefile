@@ -45,20 +45,18 @@ FOUNDRY_IMAGE ?= etherview-foundry:local
 IPFS_GATEWAY_IMAGE ?= etherview-ipfs-gateway:local
 HELM_CHART ?= deploy/helm/etherview
 PREVIEW_APP_SERVICES := api sync enrich trace metadata maintenance
-PREVIEW_RUNTIME_SERVICES := ipfs ipfs-gateway migration $(PREVIEW_APP_SERVICES)
+PREVIEW_RUNTIME_SERVICES := geth lighthouse validator object-storage ipfs ipfs-gateway migration $(PREVIEW_APP_SERVICES)
 PREVIEW_TLS_DIR := .local/preview-tls
 PREVIEW_TLS_CERT := $(PREVIEW_TLS_DIR)/tls.crt
 PREVIEW_TLS_KEY := $(PREVIEW_TLS_DIR)/tls.key
 PREVIEW_TLS_CA := $(PREVIEW_TLS_DIR)/rootCA.pem
 PREVIEW_IPFS_CERT := $(PREVIEW_TLS_DIR)/ipfs.crt
 PREVIEW_IPFS_KEY := $(PREVIEW_TLS_DIR)/ipfs.key
-PREVIEW_GENESIS_TEMPLATE := deploy/preview.genesis.json
-PREVIEW_GENESIS_RUNTIME := .local/preview-genesis.json
 X402_LOCAL_COMPOSE := e2e/x402local/compose.yaml
 X402_LOCAL_TOPOLOGY ?= monolith
 
 .DEFAULT_GOAL := check
-.NOTPARALLEL: check generate-check start-preview recreate-preview test-preview-metadata start-x402-local recreate-x402-local
+.NOTPARALLEL: check generate-check start-preview recreate-preview test-preview-metadata test-preview-consensus start-x402-local recreate-x402-local
 
 .PHONY: \
 	benchmark benchmark-integration \
@@ -74,7 +72,7 @@ X402_LOCAL_TOPOLOGY ?= monolith
 	test-foundry-e2e test-foundry-e2e-prebuilt test-foundry-offline-compile foundry-client-image-build \
 	test-preview-metadata test-schema-e2e test-soak \
 	web-build web-generate web-install web-lint web-test preview-cert preview-cert-check \
-	preview-genesis-check preview-genesis-refresh preview-genesis-runtime \
+	preview-network-check preview-network-runtime \
 	start-preview stop-preview recreate-preview \
 	start-x402-local stop-x402-local recreate-x402-local
 
@@ -351,14 +349,15 @@ docker-image-check:
 	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "docker-image-check: docker is required"; exit 1; }
 	DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" deploy/check-image.sh
 
-compose-check: preview-genesis-check
+compose-check: preview-network-check
 	@DOCKER="$(DOCKER)" $(COMPOSE) version >/dev/null 2>&1 || { echo "compose-check: Docker Compose is required"; exit 1; }
 	@command -v "$(NODE)" >/dev/null 2>&1 || { echo "compose-check: Node.js is required for rendered environment checks"; exit 1; }
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) --test .github/scripts/compose-layout.test.mjs
 	DOCKER="$(DOCKER)" $(COMPOSE) -f e2e/x402local/compose.yaml --profile monolith config --quiet
 	DOCKER="$(DOCKER)" $(COMPOSE) -f e2e/x402local/compose.yaml --profile distributed config --quiet
 	@test ! -e compose.tls.yaml || { echo "compose-check: compose.tls.yaml must remain removed"; exit 1; }
-	DOCKER="$(DOCKER)" $(COMPOSE) --profile monolith config --quiet
-	DOCKER="$(DOCKER)" $(COMPOSE) --profile distributed config --quiet
+	DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml --profile monolith config --quiet
+	DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml --profile distributed config --quiet
 	@ETHERVIEW_S3_ACCESS_KEY=compose-access \
 		ETHERVIEW_S3_SECRET_KEY=compose-secret \
 		ETHERVIEW_S3_SESSION_TOKEN=compose-session \
@@ -367,7 +366,7 @@ compose-check: preview-genesis-check
 		AWS_SESSION_TOKEN=aws-session \
 		AWS_CONTAINER_CREDENTIALS_FULL_URI=http://169.254.170.23/v1/credentials \
 		AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE=/run/aws/pod-identity-token \
-		DOCKER="$(DOCKER)" $(COMPOSE) --profile monolith --profile accelerators config --format json | \
+		DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml --profile monolith --profile accelerators config --format json | \
 		ETHERVIEW_COMPOSE_TOPOLOGY=monolith $(NODE) .github/scripts/s3-compose-check.mjs
 	@ETHERVIEW_S3_ACCESS_KEY=compose-access \
 		ETHERVIEW_S3_SECRET_KEY=compose-secret \
@@ -377,79 +376,79 @@ compose-check: preview-genesis-check
 		AWS_SESSION_TOKEN=aws-session \
 		AWS_CONTAINER_CREDENTIALS_FULL_URI=http://169.254.170.23/v1/credentials \
 		AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE=/run/aws/pod-identity-token \
-		DOCKER="$(DOCKER)" $(COMPOSE) --profile distributed --profile accelerators config --format json | \
+		DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml --profile distributed --profile accelerators config --format json | \
 		ETHERVIEW_COMPOSE_TOPOLOGY=distributed $(NODE) .github/scripts/s3-compose-check.mjs
-	DOCKER="$(DOCKER)" $(COMPOSE) --profile accelerators config --quiet
+	DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml --profile accelerators config --quiet
 	@ETHERVIEW_VERIFICATION_EXECUTOR_PATH=/custom/runtime/etherview-solcjs \
 		ETHERVIEW_VERIFICATION_GEAS_PATH=/custom/bin/etherview-geas-compiler \
-		DOCKER="$(DOCKER)" $(COMPOSE) --profile monolith config --format json | \
+		DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml --profile monolith config --format json | \
 		ETHERVIEW_COMPOSE_TOPOLOGY=monolith \
 		ETHERVIEW_EXPECT_COMPILER_RUNTIME_PATH_OVERRIDE=true \
 		$(NODE) .github/scripts/compiler-compose-check.mjs
 	@ETHERVIEW_VERIFICATION_EXECUTOR_PATH=/custom/runtime/etherview-solcjs \
 		ETHERVIEW_VERIFICATION_GEAS_PATH=/custom/bin/etherview-geas-compiler \
-		DOCKER="$(DOCKER)" $(COMPOSE) --profile distributed config --format json | \
+		DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml --profile distributed config --format json | \
 		ETHERVIEW_COMPOSE_TOPOLOGY=distributed \
 		ETHERVIEW_EXPECT_COMPILER_RUNTIME_PATH_OVERRIDE=true \
 		$(NODE) .github/scripts/compiler-compose-check.mjs
-	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml config --quiet
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml config --quiet
 	@ETHERVIEW_VERIFICATION_EXECUTOR_PATH=/custom/runtime/etherview-solcjs \
 		ETHERVIEW_VERIFICATION_GEAS_PATH=/custom/bin/etherview-geas-compiler \
-		DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml config --format json | \
+		DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml --profile archive-init config --format json | \
 		ETHERVIEW_EXPECT_COMPILER_RUNTIME_PATH_OVERRIDE=true \
 		$(NODE) .github/scripts/preview-compose-check.mjs
 	@ETHERVIEW_METADATA_IPFS_GATEWAY=https://gateway.example.com \
-		DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml config --format json | \
+		DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml config --format json | \
 		$(NODE) -e 'const services = JSON.parse(require("fs").readFileSync(0, "utf8")).services; for (const role of ["api", "sync", "enrich", "trace", "metadata", "maintenance"]) if (services[role].environment.ETHERVIEW_METADATA_IPFS_GATEWAY !== "https://gateway.example.com") throw new Error("Preview metadata gateway override missing from " + role);'
-	@IPFS_API_PORT=0 IPFS_GATEWAY_PORT=0 \
+	@IPFS_API_PORT=0 IPFS_GATEWAY_PORT=0 LIGHTHOUSE_HTTP_PORT=0 \
 		ETHERVIEW_PORT=127.0.0.1:0 ETHERVIEW_METRICS_PORT=127.0.0.1:0 \
 		GETH_HTTP_PORT=127.0.0.1:0 GETH_WS_PORT=127.0.0.1:0 \
-		DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
+		DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \
 		-f e2e/previewmetadata/compose.yaml config --format json | \
 		$(NODE) .github/scripts/preview-metadata-compose-check.mjs
-	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
+	DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml -f e2e/runtime/compose.yaml \
 		--profile monolith config --quiet
-	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
+	DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml -f e2e/runtime/compose.yaml \
 		--profile distributed config --quiet
 	ETHERVIEW_HARDHAT3_IMAGE="$(HARDHAT3_IMAGE)" \
 	ETHERVIEW_HARDHAT3_API_SERVICE=etherview \
 	ETHERVIEW_HARDHAT3_ARTIFACT_DIR=/tmp/etherview-hardhat3-compose-check \
-	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
+	DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml -f e2e/runtime/compose.yaml \
 		-f e2e/runtime/verification.compose.yaml -f e2e/hardhat3/compose.yaml --profile monolith --profile hardhat-client config --format json | \
 		ETHERVIEW_HARDHAT3_TOPOLOGY=monolith ETHERVIEW_HARDHAT3_IMAGE="$(HARDHAT3_IMAGE)" \
 		$(NODE) .github/scripts/hardhat3-compose-check.mjs
 	ETHERVIEW_HARDHAT3_IMAGE="$(HARDHAT3_IMAGE)" \
 	ETHERVIEW_HARDHAT3_API_SERVICE=api \
 	ETHERVIEW_HARDHAT3_ARTIFACT_DIR=/tmp/etherview-hardhat3-compose-check \
-	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
+	DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml -f e2e/runtime/compose.yaml \
 		-f e2e/runtime/verification.compose.yaml -f e2e/hardhat3/compose.yaml --profile distributed --profile hardhat-client config --format json | \
 		ETHERVIEW_HARDHAT3_TOPOLOGY=distributed ETHERVIEW_HARDHAT3_IMAGE="$(HARDHAT3_IMAGE)" \
 		$(NODE) .github/scripts/hardhat3-compose-check.mjs
-	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
+	DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml -f e2e/runtime/compose.yaml \
 		-f e2e/runtime/verification.compose.yaml -f e2e/runtime/vyper.compose.yaml --profile monolith config --format json | \
 		ETHERVIEW_HARDHAT3_TOPOLOGY=monolith ETHERVIEW_VERIFICATION_SUITE=vyper \
 		$(NODE) .github/scripts/hardhat3-compose-check.mjs
-	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
+	DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml -f e2e/runtime/compose.yaml \
 		-f e2e/runtime/verification.compose.yaml -f e2e/runtime/vyper.compose.yaml --profile distributed config --format json | \
 		ETHERVIEW_HARDHAT3_TOPOLOGY=distributed ETHERVIEW_VERIFICATION_SUITE=vyper \
 		$(NODE) .github/scripts/hardhat3-compose-check.mjs
 	ETHERVIEW_FOUNDRY_IMAGE="$(FOUNDRY_IMAGE)" \
 	ETHERVIEW_FOUNDRY_API_SERVICE=etherview \
-	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
+	DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml -f e2e/runtime/compose.yaml \
 		-f e2e/foundry/compose.yaml --profile monolith --profile foundry-client config --format json | \
 		ETHERVIEW_FOUNDRY_TOPOLOGY=monolith ETHERVIEW_FOUNDRY_IMAGE="$(FOUNDRY_IMAGE)" \
 		$(NODE) .github/scripts/foundry-compose-check.mjs
 	ETHERVIEW_FOUNDRY_IMAGE="$(FOUNDRY_IMAGE)" \
 	ETHERVIEW_FOUNDRY_API_SERVICE=api \
-	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
+	DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml -f e2e/runtime/compose.yaml \
 		-f e2e/foundry/compose.yaml --profile distributed --profile foundry-client config --format json | \
 		ETHERVIEW_FOUNDRY_TOPOLOGY=distributed ETHERVIEW_FOUNDRY_IMAGE="$(FOUNDRY_IMAGE)" \
 		$(NODE) .github/scripts/foundry-compose-check.mjs
 	@unset ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS ETHERVIEW_LOG_LEVEL ETHERVIEW_LOG_FORMAT ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL ETHERVIEW_USER_AUTH_API_KEY_RATE ETHERVIEW_USER_AUTH_API_KEY_BURST ETHERVIEW_USER_AUTH_MAX_ACTIVE_API_KEYS; \
-		DOCKER="$(DOCKER)" $(COMPOSE) --env-file /dev/null --profile monolith config --format json | \
+		DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml --env-file /dev/null --profile monolith config --format json | \
 		$(NODE) -e 'const env = JSON.parse(require("fs").readFileSync(0, "utf8")).services.etherview.environment; for (const key of ["ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS", "ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS", "ETHERVIEW_LOG_LEVEL", "ETHERVIEW_LOG_FORMAT", "ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL", "ETHERVIEW_USER_AUTH_API_KEY_RATE", "ETHERVIEW_USER_AUTH_API_KEY_BURST", "ETHERVIEW_USER_AUTH_MAX_ACTIVE_API_KEYS"]) { if (env[key] !== null) throw new Error(key + " must remain unset when no Compose override is supplied"); }'
 	@ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS=7 ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS=1 ETHERVIEW_LOG_LEVEL=debug ETHERVIEW_LOG_FORMAT=text ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL=45s ETHERVIEW_USER_AUTH_API_KEY_RATE=25 ETHERVIEW_USER_AUTH_API_KEY_BURST=50 ETHERVIEW_USER_AUTH_MAX_ACTIVE_API_KEYS=7 \
-		DOCKER="$(DOCKER)" $(COMPOSE) --env-file /dev/null --profile monolith config --format json | \
+		DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml --env-file /dev/null --profile monolith config --format json | \
 		$(NODE) -e 'const env = JSON.parse(require("fs").readFileSync(0, "utf8")).services.etherview.environment; if (env.ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS !== "7" || env.ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS !== "1") throw new Error("Compose reader-pool overrides were not preserved"); if (env.ETHERVIEW_LOG_LEVEL !== "debug" || env.ETHERVIEW_LOG_FORMAT !== "text" || env.ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL !== "45s") throw new Error("Compose logging overrides were not preserved"); if (env.ETHERVIEW_USER_AUTH_API_KEY_RATE !== "25" || env.ETHERVIEW_USER_AUTH_API_KEY_BURST !== "50" || env.ETHERVIEW_USER_AUTH_MAX_ACTIVE_API_KEYS !== "7") throw new Error("Compose user API-key policy overrides were not preserved");'
 
 test-schema-e2e: docker-build
@@ -469,9 +468,14 @@ test-runtime-e2e-prebuilt:
 	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
 		$(GO) test -p=1 -count=1 -v -tags=runtimee2e ./e2e/runtime ./e2e/x402local
 
-test-preview-metadata: preview-cert-check preview-genesis-refresh docker-build preview-gateway-build
+test-preview-metadata: preview-cert-check docker-build preview-gateway-build preview-images
 	@IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
-		$(GO) test -count=1 -v -tags=previewmetadatae2e ./e2e/previewmetadata
+		$(GO) test -count=1 -v -tags=previewmetadatae2e -run TestPreviewLocalNFTMetadata ./e2e/previewmetadata
+
+.PHONY: test-preview-consensus
+test-preview-consensus: preview-cert-check docker-build preview-gateway-build preview-images
+	@IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
+		$(GO) test -count=1 -v -timeout=25m -tags=previewmetadatae2e -run TestPreviewConsensus ./e2e/previewmetadata
 
 helm-check:
 	@command -v "$(HELM)" >/dev/null 2>&1 || { echo "helm-check: helm is required"; exit 1; }
@@ -513,40 +517,36 @@ preview-cert-check:
 		exit 1; \
 	}
 
-preview-genesis-check:
-	@command -v "$(NODE)" >/dev/null 2>&1 || { echo "preview-genesis-check: Node.js is required"; exit 1; }
-	$(NODE) --test .github/scripts/update-preview-genesis-timestamp.test.mjs
+preview-network-check:
+	$(NODE) --test .github/scripts/preview-network.test.mjs .github/scripts/preview-compose.test.mjs
 
-preview-genesis-refresh:
-	@$(NODE) .github/scripts/update-preview-genesis-timestamp.mjs \
-		"$(PREVIEW_GENESIS_TEMPLATE)" "$(PREVIEW_GENESIS_RUNTIME)"
+preview-network-runtime:
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-network.mjs check
 
-start-preview: preview-cert-check preview-genesis-refresh docker-build preview-gateway-build
-	@ETHERVIEW_GENESIS_FILE="$${ETHERVIEW_GENESIS_FILE:-$(PREVIEW_GENESIS_RUNTIME)}" \
-		GETH_GENESIS_FILE="$${GETH_GENESIS_FILE:-$(PREVIEW_GENESIS_RUNTIME)}" \
-		IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
+.PHONY: preview-images
+preview-images:
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml pull geth lighthouse validator object-storage archive-init ipfs
+	$(DOCKER) pull ethpandaops/ethereum-genesis-generator:6.2.7
+
+start-preview: preview-cert-check docker-build preview-gateway-build preview-images
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-network.mjs prepare
+	IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \
 		up --no-build --wait --wait-timeout 180 --remove-orphans
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml run --rm archive-init
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-ready.mjs
 	@printf '\nPreview: https://etherview.localhost:%s\n' "$${ETHERVIEW_PORT:-8080}"
 
 stop-preview:
-	@DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml down --volumes --remove-orphans
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml --profile archive-init down --volumes --remove-orphans
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-network.mjs clean
 
-preview-genesis-runtime:
-	@if { test -z "$${ETHERVIEW_GENESIS_FILE:-}" || test -z "$${GETH_GENESIS_FILE:-}"; } && \
-		! test -r "$(PREVIEW_GENESIS_RUNTIME)"; then \
-		echo "Preview runtime Genesis missing; run 'make start-preview' before 'make recreate-preview'"; \
-		exit 1; \
-	fi
-
-recreate-preview: preview-cert-check preview-genesis-runtime docker-build preview-gateway-build
-	@ETHERVIEW_GENESIS_FILE="$${ETHERVIEW_GENESIS_FILE:-$(PREVIEW_GENESIS_RUNTIME)}" \
-		GETH_GENESIS_FILE="$${GETH_GENESIS_FILE:-$(PREVIEW_GENESIS_RUNTIME)}" \
-		IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
+recreate-preview: preview-cert-check preview-network-runtime docker-build preview-gateway-build
+	IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \
 		rm -fs $(PREVIEW_RUNTIME_SERVICES)
-	@ETHERVIEW_GENESIS_FILE="$${ETHERVIEW_GENESIS_FILE:-$(PREVIEW_GENESIS_RUNTIME)}" \
-		GETH_GENESIS_FILE="$${GETH_GENESIS_FILE:-$(PREVIEW_GENESIS_RUNTIME)}" \
-		IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
+	IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \
 		up -d --no-build --wait --wait-timeout 180 --remove-orphans $(PREVIEW_RUNTIME_SERVICES)
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml run --rm archive-init
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-ready.mjs
 
 start-x402-local: docker-build
 	@case "$(X402_LOCAL_TOPOLOGY)" in monolith|distributed) ;; *) echo "X402_LOCAL_TOPOLOGY must be monolith or distributed"; exit 1;; esac

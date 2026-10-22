@@ -245,7 +245,7 @@ func runFoundryMode(
 	project := testcompose.NewQuiet(
 		root,
 		testcompose.UniqueProjectName("etherview-foundry-"+mode),
-		"compose.yaml",
+		"deploy/compose.yaml",
 		"e2e/runtime/compose.yaml",
 		"e2e/foundry/compose.yaml",
 	)

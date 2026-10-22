@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -30,7 +31,7 @@ func TestRustFS(t *testing.T) {
 	if err := os.WriteFile(overlay, []byte("services:\n  object-storage:\n    ports:\n      - '127.0.0.1::9000'\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	project := testcompose.NewQuiet(root, testcompose.UniqueProjectName("etherview-rustfs"), "compose.yaml", overlay)
+	project := testcompose.NewQuiet(root, testcompose.UniqueProjectName("etherview-rustfs"), "deploy/compose.yaml", overlay)
 	project.Profiles = []string{"accelerators"}
 	access, secret := rand.Text(), rand.Text()
 	project.Env = map[string]string{"RUSTFS_ACCESS_KEY": access, "RUSTFS_SECRET_KEY": secret}
@@ -66,6 +67,41 @@ func TestRustFS(t *testing.T) {
 	if _, err := store.client.CreateBucket(ctx, &s3.CreateBucketInput{Bucket: aws.String(options.Bucket)}); err != nil {
 		t.Fatal(err)
 	}
+	archiveOptions := options
+	archiveOptions.Bucket = "etherview-durable-blobs"
+	address, err := project.Port(ctx, "object-storage", 9000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive, err := NewBlobArchive(ctx, "http://"+address, archiveOptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := archive.store.client.CreateBucket(ctx, &s3.CreateBucketInput{Bucket: aws.String(archiveOptions.Bucket)}); err != nil {
+		t.Fatal(err)
+	}
+	blob := make([]byte, ArchiveBlobBytes)
+	blob[31] = 7
+	digest, err := archive.Create(ctx, "fixture.bin", blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again, err := archive.Create(ctx, "fixture.bin", blob); err != nil || again != digest {
+		t.Fatalf("conditional reuse=%s err=%v", again, err)
+	}
+	changed := bytes.Clone(blob)
+	changed[31] = 8
+	if _, err := archive.Create(ctx, "fixture.bin", changed); !errors.Is(err, ErrArchiveIntegrity) {
+		t.Fatalf("immutable conflict=%v", err)
+	}
+	verifyArchive := func() {
+		t.Helper()
+		data, err := archive.Read(ctx, "fixture.bin", digest)
+		if err != nil || !bytes.Equal(data, blob) {
+			t.Fatalf("archive restore=%d err=%v", len(data), err)
+		}
+	}
+	verifyArchive()
 	payloads := map[string][]byte{"trace.json": []byte(`{"frames":[]}`), "empty.json": {}}
 	for key, value := range payloads {
 		if err := store.Put(ctx, key, value); err != nil {
@@ -104,6 +140,25 @@ func TestRustFS(t *testing.T) {
 	}
 	store = connect()
 	verify()
+	address, err = project.Port(ctx, "object-storage", 9000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive, err = NewBlobArchive(ctx, "http://"+address, archiveOptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifyArchive()
+	if _, err := archive.store.client.DeleteObject(ctx, &s3.DeleteObjectInput{Bucket: aws.String(archiveOptions.Bucket), Key: aws.String(archiveOptions.Prefix + "/fixture.bin")}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := archive.Read(ctx, "fixture.bin", digest); !errors.Is(err, ErrArchiveUnavailable) {
+		t.Fatalf("missing archive=%v", err)
+	}
+	if _, err := archive.Create(ctx, "fixture.bin", blob); err != nil {
+		t.Fatal(err)
+	}
+	verifyArchive()
 	if _, err := project.Run(ctx, "stop", "object-storage"); err != nil {
 		t.Fatal(err)
 	}

@@ -36,6 +36,8 @@ func (stage ID) Validate() error {
 func (stage ID) String() string { return fmt.Sprintf("%s@%d", stage.Name, stage.Version) }
 
 var (
+	Consensus      = ID{Name: "consensus", Version: 1}
+	Blob           = ID{Name: "blob", Version: 1}
 	NativeTransfer = ID{Name: "native_transfer", Version: 1}
 	Proxy          = ID{Name: "proxy", Version: 2}
 	ABI            = ID{Name: "abi", Version: 5}

@@ -48,6 +48,8 @@ func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) publicConfig(w http.ResponseWriter, r *http.Request) {
 	features := map[string]bool{
+		"consensus":        h.cfg.Consensus.Enabled,
+		"blobs":            h.cfg.Consensus.Blobs.Enabled,
 		"trace":            h.cfg.Features.Trace,
 		"mempool":          h.cfg.Features.Mempool,
 		"historical_state": h.cfg.Features.HistoricalState,

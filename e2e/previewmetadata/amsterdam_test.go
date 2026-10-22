@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -18,8 +19,7 @@ import (
 
 func (h *harness) assertAmsterdam(ctx context.Context, recipient string) {
 	destination := common.HexToAddress(recipient)
-	var hash common.Hash
-	h.rpcCall(ctx, &hash, "eth_sendTransaction", map[string]any{"from": h.developer, "to": destination, "value": "0x20000000000001", "gas": "0x2dc6c0", "gasPrice": "0x3b9aca00"})
+	hash := h.sendTransaction(ctx, &destination, nil, big.NewInt(9007199254740993))
 	receipt := h.waitReceipt(ctx, "Amsterdam native transfer", hash)
 	if uint64(receipt.Status) != 1 {
 		h.t.Fatalf("native transfer failed: %+v", receipt)
@@ -74,6 +74,8 @@ func (h *harness) assertAmsterdamMonolith(ctx context.Context) {
     command: ["serve", "--roles=all", "--config=/etc/etherview/config.yaml"]
     environment:
       ETHERVIEW_ROLES: all
+      ETHERVIEW_CONSENSUS_BLOBS_ACCESS_KEY: preview-writer
+      ETHERVIEW_CONSENSUS_BLOBS_SECRET_KEY: preview-write-dev-only
       ETHERVIEW_METADATA_UNSAFE_ALLOW_PRIVATE_NETWORKS: "false"
       SSL_CERT_FILE: /run/ipfs-ca/rootCA.pem
     volumes:

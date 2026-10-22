@@ -21,6 +21,7 @@ import (
 
 type integrationTransactionOptions struct {
 	Type             uint8
+	BlobHashes       []common.Hash
 	To               *common.Address
 	ContractCreation bool
 	Data             []byte
@@ -33,6 +34,7 @@ type integrationTransactionOptions struct {
 }
 
 type integrationBundleOptions struct {
+	Difficulty    *big.Int
 	BaseFee       *big.Int
 	Amsterdam     bool
 	GrossGasExtra uint64
@@ -121,6 +123,9 @@ func newIntegrationBundle(options integrationBundleOptions) (chainbundle.Bundle,
 		Extra:         common.CopyBytes(options.ExtraData),
 		BlobGasUsed:   cloneIntegrationUint64(options.BlobGasUsed),
 		ExcessBlobGas: cloneIntegrationUint64(options.ExcessBlobGas),
+	}
+	if options.Difficulty != nil {
+		header.Difficulty = new(big.Int).Set(options.Difficulty)
 	}
 	if options.Amsterdam {
 		slot := options.Number
@@ -224,13 +229,17 @@ func newIntegrationTransaction(
 		if to == nil {
 			return nil, fmt.Errorf("blob transaction cannot create a contract")
 		}
+		hashes := options.BlobHashes
+		if hashes == nil {
+			hashes = []common.Hash{{0: 0x01, 31: byte(nonce + 1)}}
+		}
 		return types.NewTx(&types.BlobTx{
 			ChainID: uint256.MustFromBig(chainID), Nonce: nonce,
 			GasTipCap: uint256.NewInt(1), GasFeeCap: uint256.MustFromBig(gasPrice),
 			Gas: 21_000, To: *to, Value: uint256.MustFromBig(value),
 			Data: common.CopyBytes(options.Data), AccessList: types.AccessList{},
 			BlobFeeCap: uint256.NewInt(3),
-			BlobHashes: []common.Hash{{0: 0x01, 31: byte(nonce + 1)}},
+			BlobHashes: hashes,
 		}), nil
 	case types.SetCodeTxType:
 		if to == nil {

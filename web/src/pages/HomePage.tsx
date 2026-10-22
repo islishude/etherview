@@ -1,3 +1,4 @@
+import { ConsensusOverview } from "./ConsensusPanels";
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -9,7 +10,7 @@ import { PageHeading } from "@/components/DesignPrimitives";
 import { QueryNotice } from "@/components/QueryNotice";
 import { AddressIdentity } from "@/ens/AddressIdentity";
 import { IncludedTransactionStatus } from "./TransactionPage";
-import { ChainContextPanel, FinalityBadge } from "./pages";
+import { FinalityBadge } from "./pages";
 
 export function HomePage() {
   const { i18n, t } = useTranslation();
@@ -34,33 +35,14 @@ export function HomePage() {
         error={snapshot.data ? undefined : snapshot.error}
       />
 
-      <section className="metrics-grid" aria-label={t("home.metrics")}>
-        <Metric
-          label={t("home.indexed")}
-          value={formatInteger(snapshot.data?.status.indexed_block, locale)}
+      {snapshot.data && (
+        <ConsensusOverview
+          data={snapshot.data.status.consensus}
+          safeBlock={snapshot.data.status.safe_block}
+          finalizedBlock={snapshot.data.status.finalized_block}
+          now={relativeNow}
         />
-        <Metric
-          label={t("home.networkHead")}
-          value={formatInteger(snapshot.data?.status.latest_block, locale)}
-        />
-        <Metric
-          label={t("home.finality")}
-          value={formatInteger(snapshot.data?.status.finalized_block, locale)}
-        />
-        <Metric
-          label={t("home.lag")}
-          value={
-            snapshot.data
-              ? snapshot.data.status.core_ready && snapshot.data.status.lag === "0"
-                ? t("home.caughtUp")
-                : t("home.syncing")
-              : "—"
-          }
-          accent={snapshot.data?.status.core_ready && snapshot.data.status.lag === "0"}
-        />
-      </section>
-
-      {snapshot.data && <ChainContextPanel status={snapshot.data.status} />}
+      )}
 
       <div className="activity-grid">
         <section className="panel activity-panel" aria-labelledby="recent-blocks-title">
@@ -86,18 +68,27 @@ export function HomePage() {
           ))}
         </section>
       </div>
+      <dl className="home-indexing-summary" aria-label={t("home.metrics")}>
+        <div>
+          <dt>{t("home.indexed")}</dt>
+          <dd>{formatInteger(snapshot.data?.status.indexed_block, locale)}</dd>
+        </div>
+        <div>
+          <dt>{t("home.networkHead")}</dt>
+          <dd>{formatInteger(snapshot.data?.status.latest_block, locale)}</dd>
+        </div>
+        <div>
+          <dt>{t("home.lag")}</dt>
+          <dd>
+            {snapshot.data
+              ? snapshot.data.status.core_ready && snapshot.data.status.lag === "0"
+                ? t("home.caughtUp")
+                : t("home.syncing")
+              : "—"}
+          </dd>
+        </div>
+      </dl>
     </div>
-  );
-}
-
-function Metric({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <article className="metric-card">
-      <span>{label}</span>
-      <strong className={accent ? "positive" : undefined} title={value}>
-        {value}
-      </strong>
-    </article>
   );
 }
 

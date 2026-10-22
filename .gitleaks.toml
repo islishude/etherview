@@ -12,8 +12,15 @@ targetRules = ["generic-api-key"]
 regexes = ['''^x402-facilitator-headers$''']
 
 [[allowlists]]
-description = "Ignored mkcert output for the local HTTPS Preview"
-paths = ['''^\.local/preview-tls/''']
+description = "Ignored local runtime artifacts"
+paths = ['''^\.local/''']
+
+[[allowlists]]
+description = "Public Hardhat development signing key for the isolated Preview network"
+targetRules = ["generic-api-key"]
+paths = ['''^e2e/previewmetadata/network_test\.go$''']
+condition = "AND"
+regexes = ['''^ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80$''']
 
 [[allowlists]]
 description = "Deterministic public Anvil fixture identities used only by P73 local E2E"
@@ -24,12 +31,9 @@ paths = [
 ]
 
 [[allowlists]]
-description = "Public block access list commitment in Geth Amsterdam fixture and local probe JSON"
+description = "Public block access list commitment in Geth Amsterdam fixture"
 condition = "AND"
 targetRules = ["generic-api-key"]
-paths = [
-  '''^internal/chainbundle/testdata/amsterdam-block\.json$''',
-  '''^\.local/amsterdam-probe/block-(?:0x0|0x1|latest|tx)\.json$'''
-]
+paths = ['''^internal/chainbundle/testdata/amsterdam-block\.json$''']
 regexTarget = "match"
 regexes = ['''^blockAccessListHash"[ \t]*:[ \t]*"0x[0-9a-f]{64}"$''']

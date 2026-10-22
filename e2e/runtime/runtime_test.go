@@ -305,7 +305,7 @@ func TestCaptureRuntimeDiagnostics(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			artifacts := t.TempDir()
-			project := testcompose.NewQuiet("/repo", "runtime", "compose.yaml")
+			project := testcompose.NewQuiet("/repo", "runtime", "deploy/compose.yaml")
 			project.Compose = "compose"
 			project.Executor = diagnosticExecutor{
 				psOutput:  []byte("NAME STATUS\napi restarting\n"),
@@ -365,12 +365,23 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 	project := testcompose.NewQuiet(
 		root,
 		testcompose.UniqueProjectName("etherview-runtime-"+mode),
-		"compose.yaml",
+		"deploy/compose.yaml",
 		"e2e/runtime/compose.yaml",
 	)
 	project.Profiles = []string{mode}
 	project.Env = runtimeEnvironment(root, baseTimestamp, true)
 	project.Env["ETHERVIEW_RUNTIME_WATCHLIST"] = "true"
+	// Optional upstream outages must not prevent either production topology from serving execution data.
+	project.Env["ETHERVIEW_CONSENSUS_ENABLED"] = "true"
+	project.Env["ETHERVIEW_CONSENSUS_URL"] = "http://127.0.0.1:1"
+	project.Env["ETHERVIEW_CONSENSUS_BLOBS_ENABLED"] = "true"
+	project.Env["ETHERVIEW_CONSENSUS_BLOBS_ENDPOINT"] = "http://127.0.0.1:1"
+	project.Env["ETHERVIEW_CONSENSUS_BLOBS_BUCKET"] = "runtime-durable-blobs"
+	project.Env["ETHERVIEW_CONSENSUS_BLOBS_REGION"] = "us-east-1"
+	project.Env["ETHERVIEW_CONSENSUS_BLOBS_ACCESS_KEY"] = "runtime-archive-access"
+	project.Env["ETHERVIEW_CONSENSUS_BLOBS_SECRET_KEY"] = "runtime-archive-secret"
+	project.Env["ETHERVIEW_CONSENSUS_BLOBS_READ_ACCESS_KEY"] = "runtime-archive-read-access"
+	project.Env["ETHERVIEW_CONSENSUS_BLOBS_READ_SECRET_KEY"] = "runtime-archive-read-secret"
 	watchPepper := make([]byte, 32)
 	if _, err := rand.Read(watchPepper); err != nil {
 		t.Fatal(err)
@@ -565,6 +576,24 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		t.Logf("reorg rollup changed from %s to %s", firstRollup, changed)
 	}
 
+	h.enterPhase("optional consensus outage isolation")
+	{
+		var publicConfig gen.PublicConfigResponse
+		h.mustGetJSON(ctx, "/api/v1/config", &publicConfig)
+		if !publicConfig.Data.Features["consensus"] || !publicConfig.Data.Features["blobs"] {
+			t.Fatal("consensus features missing")
+		}
+		waitFor(t, ctx, "consensus failure without execution readiness loss", func() (bool, string, error) {
+			var status gen.StatusResponse
+			h.mustGetJSON(ctx, "/api/v1/status", &status)
+			observed := status.Data.Consensus
+			if observed == nil {
+				return false, "missing consensus status", nil
+			}
+			return observed.State == gen.ConsensusStateUnavailable && observed.Code != nil && *observed.Code == "beacon_transport", string(observed.State), nil
+		})
+		h.waitReady(ctx)
+	}
 	h.enterPhase("RPC outage recovery")
 	{
 		before := h.canonicalHash(ctx, h.fixture.finalHeight)
@@ -832,7 +861,7 @@ func (h *harness) validateProcessNativeTLS(ctx context.Context) {
 	project := testcompose.NewQuiet(
 		h.root,
 		h.project.Name,
-		"compose.yaml",
+		"deploy/compose.yaml",
 		"e2e/runtime/compose.yaml",
 		overrideFile,
 	)
@@ -1009,7 +1038,8 @@ func (h *harness) waitCanonical(ctx context.Context, height uint64, hash string)
 					  AND state = 'complete' AND (stage, stage_version) IN (
 					    ('proxy',$3::integer),('abi',$4::integer),('token',2),('holder',1),
 					    ('stats',4),('native_transfer',1),('trace',$5::integer),('state_diff',$6::integer),('userop',1))),
-				(SELECT count(*) FROM durable_jobs WHERE status IN ('queued','leased')),
+				-- Consensus/blob outages are asserted separately; the execution stages must drain.
+                (SELECT count(*) FROM durable_jobs WHERE status IN ('queued','leased') AND stage NOT IN ('consensus','blob')),
 				(SELECT count(*) FROM published_block_stage_results
 					WHERE chain_id = 1 AND block_number = $1 AND block_hash = decode($2, 'hex')
 					  AND state <> 'complete' AND (stage, stage_version) IN (
@@ -1019,7 +1049,7 @@ func (h *harness) waitCanonical(ctx context.Context, height uint64, hash string)
 				COALESCE((SELECT string_agg(stage || ':' || left(last_error, 512), ';' ORDER BY stage)
 					FROM published_block_stage_results
 					WHERE chain_id = 1 AND block_number = $1 AND block_hash = decode($2, 'hex')
-					  AND state <> 'complete'), '')
+					  AND state <> 'complete' AND stage NOT IN ('consensus','blob')), '')
 		`, heightArgument, expected, enrich.ProxyStage.Version, enrich.ABIStage.Version,
 			enrich.TraceStage.Version, enrich.StateDiffStage.Version).
 			Scan(&canonical, &checkpoint, &complete, &active, &failed, &unpublished, &failures)

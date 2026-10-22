@@ -56,7 +56,7 @@ or roll the selected `all`/`api` Deployments. Monitor certificate expiry and
 perform client trust-chain and hostname checks at the public origin; the
 application does not issue, renew, or hot-reload certificates.
 
-The checked-in base Compose deployment remains HTTP and expects production TLS
+The `deploy/compose.yaml` deployment remains HTTP and expects production TLS
 to terminate externally. For a locally trusted process-native HTTPS example,
 initialize and start the full-stack Preview:
 
@@ -65,31 +65,88 @@ make preview-cert
 make start-preview
 ```
 
+Preview now uses the repository-root `compose.yaml`; deployment commands use
+`--project-directory . -f deploy/compose.yaml --env-file .env.deploy` from the
+repository root. Move existing deployment settings out of `.env` manually as
+described in the [deployment guide](../deploy/README.md#docker-compose).
+The project names and volume identities are unchanged; this file relocation
+does not require stopping, deleting or migrating either environment's data.
+
 The explicit certificate target runs `mkcert -install` and generates an
 ignored pair for `etherview.localhost`, `localhost`, `127.0.0.1`, and `::1`.
 Preview mounts that API pair read-only only into the API service. Its public
 listener is `https://etherview.localhost:8080`, while
 `http://localhost:9090` remains the plain HTTP operations listener. The start
 target prints the browser URL after successful startup, using `ETHERVIEW_PORT`
-when set (default `8080`). It renders an ignored `.local/preview-genesis.json`
-runtime copy from the
-checked-in `deploy/preview.genesis.json` template at the beginning of the
-target, before the Docker build and Compose startup. Only the runtime copy gets
-the current Unix-seconds timestamp; the template is never modified by Preview
-startup. Because this changes the Genesis block hash, run `make stop-preview`
-before starting a previously created Preview again; the start target does not
-automatically remove its persistent volumes. `make recreate-preview` reuses the
-existing runtime copy without refreshing its timestamp. If the default runtime
-copy is missing, it fails with an instruction to run `make start-preview`; it
-never creates or modifies a Genesis file. Complete custom Genesis-file
-overrides are left unchanged and do not require the default runtime copy. The
-start and recreate targets do not modify the host trust store.
-The template preallocates Geth's upstream development address alongside the
-browser fixture account. Preview leaves the pending fee recipient unset so
-Geth imports and unlocks its built-in ephemeral development account; local
-`eth_sendTransaction` therefore needs no repository-owned key. This changes
-the tracked template's block-zero identity once and remains strictly a
-development boundary.
+when set (default `8080`). After building the application and gateway images,
+it prepares `.local/preview-network/` using the pinned
+`ethpandaops/ethereum-genesis-generator:6.2.7` image. The bundle contains the
+execution genesis, Beacon configuration/state, Engine JWT and 64 development
+validator keys. The checked-in `deploy/preview.genesis.json` template remains
+unchanged. Chain ID is 48815, slots take six seconds, and Amsterdam/Gloas are
+active at genesis. Geth v1.17.8 uses full sync and archive state; Lighthouse
+v8.3.0 runs both the Beacon node and validator client. These clients form an
+isolated local PoS network with no public bootnodes or external builders.
+
+`make start-preview` reuses an intact bundle, validating every file against its
+manifest and the current configuration fingerprint. Partial or changed material
+fails closed. Existing volumes without matching network material require an
+explicit `make stop-preview`; startup never deletes them automatically.
+`make recreate-preview` reuses the existing network bundle without refreshing its timestamp;
+it never creates or modifies a Genesis file. It recreates clients and workers
+while retaining chain state, PostgreSQL, blob objects and validator slashing
+protection. `make stop-preview` destroys all Preview volumes and the default
+generated network directory, but retains TLS certificates. Moving from the old
+Geth dev Preview requires this explicit reset. A complete custom bundle can be
+selected with `PREVIEW_NETWORK_DIR`; individual `ETHERVIEW_GENESIS_FILE` and
+`GETH_GENESIS_FILE` overrides are rejected. Custom bundles are never deleted by
+the stop target and must be reset by their owner.
+
+The template retains its pre-funded development addresses and system contracts.
+Transactions are signed locally with the standard Hardhat development account
+`0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266` (the first account from
+`test test test test test test test test test test test junk`) and submitted
+through `eth_sendRawTransaction`. Geth no longer unlocks accounts or provides
+the `dev` RPC namespace. Never fund these public development keys on external
+networks. The browser wallet flow is unchanged.
+
+Preview enables consensus enrichment and blob archival. Lighthouse runs as a
+supernode with blob pruning disabled. Its Beacon API is published only on
+`127.0.0.1:${LIGHTHOUSE_HTTP_PORT:-5052}`; Engine RPC is internal, with its JWT
+mounted only into Geth and Lighthouse. Validator keys are isolated from
+application roles. Startup waits for successive real execution/Beacon blocks.
+
+RustFS 1.0.1 stores blobs in the persistent `blob-data` volume. The one-shot
+`archive-init` service uses RustFS CLI v0.1.36 to provision the private
+`etherview-preview-blobs` bucket and scoped users idempotently. There is no
+expiry policy or trace-cache bucket reuse. API has GetObject permission;
+enrich has GetObject/PutObject, without deletion rights. Override development
+passwords through `PREVIEW_BLOB_READ_SECRET`, `PREVIEW_BLOB_WRITE_SECRET`, and
+RustFS administrator variables before initialization. Administrator credentials
+are never passed to application roles. RustFS ports are not published by the
+daily stack. The application core healthcheck remains independent of both
+optional services, including during container recreation. `archive-init` is an
+explicit one-shot profile, outside the core dependency graph. Start/recreate
+first bring up the runtime, then run `archive-init` separately and propagate its
+exit status before checking real block production. Initialization failure does
+not prevent already started API/enrich containers from becoming ready.
+After correcting credentials or restoring storage, repeat
+`docker compose -f compose.yaml run --rm archive-init`; this preserves
+existing objects. To recreate application roles during an archive outage, use
+`docker compose -f compose.yaml up -d --no-build --force-recreate --wait api enrich`.
+The full start/recreate targets still report optional service startup failures.
+
+The archive client sends `If-None-Match: *` on writes, but RustFS 1.0.1 cannot
+require that header in IAM policies. Writer credentials can still perform
+unconditional writes. Storage-enforced conditional-write permissions are
+deferred until RustFS 1.0.4 can be evaluated with the upstream policy fix;
+upgrading to 1.0.3 alone does not provide it.
+
+If blocks stop advancing, inspect Geth/Beacon/validator logs and Engine JWT
+identity before changing data. An archive outage affects collection/downloads;
+existing consensus metadata remains queryable. Restart the failed service and
+use the existing `reindex --stage blob` procedure if a job reached an unavailable
+terminal state. The start/recreate targets do not modify the host trust store.
 
 Preview includes Kubo `v0.43.1` and an independent Go HTTPS gateway at
 `https://ipfs.preview.test:8443`. Add `127.0.0.1 ipfs.preview.test` to the local
@@ -392,7 +449,7 @@ To enable a local trace cache:
    set `RUSTFS_ACCESS_KEY` and `RUSTFS_SECRET_KEY` to your chosen credentials.
    Keep `ETHERVIEW_S3_ENDPOINT` unset until the bucket exists.
 2. Start only the object store through the repository wrapper:
-   `.github/scripts/compose.sh --env-file /absolute/path/to/compose.env --profile accelerators up -d --wait object-storage`.
+   `.github/scripts/compose.sh --project-directory . -f deploy/compose.yaml --env-file /absolute/path/to/compose.env --profile accelerators up -d --wait object-storage`.
 3. Provision `etherview-cache` with an S3 client on the Compose network, or
    temporarily publish the console using this local override:
 
@@ -404,7 +461,8 @@ To enable a local trace cache:
    ```
 
    Save the override outside tracked files and start with both
-   `-f compose.yaml -f /absolute/path/to/rustfs-console.yaml`. Open the local
+   `--project-directory . -f deploy/compose.yaml -f /absolute/path/to/rustfs-console.yaml`,
+   retaining the same `--env-file` and profile arguments. Open the local
    console at `http://127.0.0.1:9001`, sign in with the RustFS credentials, and
    create the bucket. Recreate the service without the override afterward.
 4. Set `ETHERVIEW_S3_ENDPOINT=http://object-storage:9000`,
@@ -789,7 +847,7 @@ holding the chain lock. It cannot move canonicality or checkpoints. A range at
 or below finalized height requires `--allow-finalized` plus the recorded
 reason; this permits only a same-identity refresh.
 
-`reindex --stage native_transfer|proxy|abi|token|stats|trace|state_diff|userop|holder` queues work for
+`reindex --stage consensus|blob|native_transfer|proxy|abi|token|stats|trace|state_diff|userop|holder` queues work for
 the currently canonical block hash. It does not steal queued work or an active
 lease. Repair deliberately does not infer a downstream rebuild range; schedule
 each required derived stage explicitly and wait for its durable publication
@@ -1335,3 +1393,74 @@ then roll all roles to the same application identity and verify both runtime
 probes (legacy uses 0.2.1). Do not rebind jobs, delete historical verification
 records, or clear existing caches as part of this rollout. Historical terminal
 results remain readable. The scheduled workflow does not deploy the application.
+
+## Optional consensus and blob archives
+
+Enable `consensus.enabled` to collect Beacon observations through the enrich
+role. Configure `ETHERVIEW_CONSENSUS_URL` and optionally a JSON string-map in
+`ETHERVIEW_CONSENSUS_HEADERS`; their `_FILE` variants accept mounted secrets.
+Only enrich/all reads these credentials. The endpoint may be a controlled
+internal HTTP service; redirects are rejected. API instances read PostgreSQL.
+
+`ETHERVIEW_CONSENSUS_ENABLED`, `ETHERVIEW_CONSENSUS_POLL_INTERVAL` (12s),
+`ETHERVIEW_CONSENSUS_REQUEST_TIMEOUT` (10s), `ETHERVIEW_CONSENSUS_WORKER_COUNT` (2),
+and `ETHERVIEW_CONSENSUS_MAX_RESPONSE_BYTES` (33554432) override YAML.
+Network identity is fixed after matching a local execution block; a different
+Beacon genesis is an error requiring operator investigation, never automatic
+replacement. Header slots remain available when consensus history is missing.
+The collector normalizes `SLOT_DURATION_MS` and older `SECONDS_PER_SLOT`
+parameters to the same network identity; conflicting values are rejected.
+Full Beacon bodies are checked against the pinned SSZ root, including Gloas
+progressive containers. Numeric SSZ preset parameters come from the node spec;
+absent parameters use the protocol types' mainnet defaults. Custom presets must
+provide their overrides. A wrong preset or unsupported structure fails closed.
+
+Blob archival is independently enabled by `ETHERVIEW_CONSENSUS_BLOBS_ENABLED`.
+Provision a dedicated bucket without expiry or cache eviction and configure
+`ETHERVIEW_CONSENSUS_BLOBS_ENDPOINT`, `ETHERVIEW_CONSENSUS_BLOBS_BUCKET`,
+`ETHERVIEW_CONSENSUS_BLOBS_REGION`, and `ETHERVIEW_CONSENSUS_BLOBS_PATH_STYLE`.
+Optional static secrets `ETHERVIEW_CONSENSUS_BLOBS_ACCESS_KEY`,
+`ETHERVIEW_CONSENSUS_BLOBS_SECRET_KEY`, and
+`ETHERVIEW_CONSENSUS_BLOBS_SESSION_TOKEN` also support `_FILE`; absent keys use
+the AWS SDK credential chain. Enrich/all requires conditional PutObject and
+GetObject; API requires GetObject only. Compose uses `ETHERVIEW_CONSENSUS_BLOBS_READ_ACCESS_KEY`,
+`ETHERVIEW_CONSENSUS_BLOBS_READ_SECRET_KEY` and
+`ETHERVIEW_CONSENSUS_BLOBS_READ_SESSION_TOKEN` for the API role; enrich/all
+uses the ordinary archive credential inputs. Helm selects separate
+`secrets.blobArchiveRead*Key` entries for API and `secrets.blobArchive*Key`
+entries for writers. Alternatively, provision workload identities and select
+existing names in `blobArchiveServiceAccounts.api`, `.enrich` and `.all`;
+these override the trace-cache ServiceAccount only on archive roles. For nonstandard Beacon/S3 ports, set the Helm network policy's
+explicit additional egress rules. Never grant archive credentials to sync,
+trace, metadata, maintenance or migration processes.
+
+The archive supports standard full-blob retrieval, and the older sidecar API
+for Deneb/Electra. Fulu may require a supernode or provider that reconstructs
+full blobs. A normal node's missing historical blobs are reported unavailable;
+no client-side data-column reconstruction or fabricated empty result is used.
+New blocks take priority over bounded historical discovery. Separate persistent
+forward and backward cursors also fill blocks indexed while collection was
+disabled, without discarding older scan progress. Reorgs also rewind discovery
+while disabled; generation checks prevent an in-flight scan from losing that
+rewind. Canonical-attach replay identities deduplicate discovery and live dispatch.
+Retry a chosen
+range using `reindex --stage consensus` or `reindex --stage blob` with the
+normal reason and finalized-range safeguards. A 404 does not prove a missed slot.
+
+Back up PostgreSQL and the archive bucket together. Restore the bucket before
+serving blob downloads and validate manifests by replaying the selected range.
+Retained manifest references are independently read back and checked before
+republication; intact objects do not require historical Beacon blob availability.
+Retained consensus observations can also be republished without fetching the
+historical body, after checking the current node's network identity. Only missing
+objects require upstream retrieval. Immutable keys and checksums make retry after
+upload/commit failure safe.
+Corrupt existing objects are never silently overwritten: restore the exact
+object from a known-good backup, or remove the corrupt object under operator
+control and replay while the upstream still retains its bytes. An unavailable
+upstream cannot recover lost archived history. Unreferenced uploads and orphan
+blob objects are retained; there is no automatic archive garbage collection.
+
+`/status` and `/home` expose the last successful consensus observation and its
+freshness. Consensus-node or archive outages affect their own collection and
+read capability without changing execution finality or core readiness.

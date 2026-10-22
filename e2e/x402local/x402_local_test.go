@@ -16,6 +16,7 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -88,6 +89,8 @@ func runMode(t *testing.T, ctx context.Context, root, mode string) modeResult {
 		testcompose.UniqueProjectName("x402-local-"+mode),
 		"e2e/x402local/compose.yaml",
 	)
+	// This standalone fixture resolves its mounts and builds beside its YAML.
+	project.ProjectDirectory = filepath.Join(root, "e2e/x402local")
 	project.Profiles = []string{mode}
 	project.Env = map[string]string{
 		"ETHERVIEW_IMAGE":          os.Getenv("IMAGE"),

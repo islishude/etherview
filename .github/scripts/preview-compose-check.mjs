@@ -7,10 +7,8 @@ const roles = ["api", "sync", "enrich", "trace", "metadata", "maintenance"];
 const tlsKeys = ["ETHERVIEW_SERVER_TLS_CERT_FILE", "ETHERVIEW_SERVER_TLS_KEY_FILE"];
 const tlsTargets = ["/run/etherview-tls/tls.crt", "/run/etherview-tls/tls.key"];
 const cachePath = "/var/lib/etherview/compilers";
-const unsafeDownloadEnvironment =
-  "ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS";
-const unsafeMetadataEnvironment =
-  "ETHERVIEW_METADATA_UNSAFE_ALLOW_PRIVATE_NETWORKS";
+const unsafeDownloadEnvironment = "ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS";
+const unsafeMetadataEnvironment = "ETHERVIEW_METADATA_UNSAFE_ALLOW_PRIVATE_NETWORKS";
 const runtimePathEnvironment = {
   ETHERVIEW_VERIFICATION_EXECUTOR_PATH: "/custom/runtime/etherview-solcjs",
   ETHERVIEW_VERIFICATION_GEAS_PATH: "/custom/bin/etherview-geas-compiler",
@@ -42,7 +40,7 @@ assert.ok(
   !Object.keys(services).some((name) => name.includes("compiler-runner")),
   "removed Preview compiler-runner service",
 );
-assertNoPlatform(config, "compose.preview.yaml");
+assertNoPlatform(config, "compose.yaml");
 for (const key of ["derived_enabled", "derived_backfill_enabled", "derived_forward_enabled"]) {
   assert.match(previewConfig, new RegExp(`^\\s+${key}: true$`, "m"), `Preview ${key}`);
   assert.match(defaultConfig, new RegExp(`^\\s+${key}: false$`, "m"), `default ${key}`);
@@ -59,19 +57,25 @@ assert.deepEqual(
 assert.deepEqual(
   geth.command,
   [
-    "--dev",
-    "--dev.period=5",
+    "--networkid=48815",
+    "--nodiscover",
+    "--maxpeers=0",
+    "--authrpc.addr=0.0.0.0",
+    "--authrpc.port=8551",
+    "--authrpc.vhosts=geth",
+    "--authrpc.jwtsecret=/run/engine/jwt.hex",
+    "--syncmode=full",
     "--gcmode=archive",
     "--http",
     "--http.addr=0.0.0.0",
     "--http.port=8545",
-    "--http.api=eth,net,web3,debug,txpool,dev",
+    "--http.api=eth,net,web3,debug,txpool",
     "--http.corsdomain=*",
     "--http.vhosts=*",
     "--ws",
     "--ws.addr=0.0.0.0",
     "--ws.port=8546",
-    "--ws.api=eth,net,web3,debug,txpool,dev",
+    "--ws.api=eth,net,web3,debug,txpool",
     "--ws.origins=*",
   ],
   "Preview Geth command",
@@ -84,9 +88,7 @@ assert.ok(
 );
 assert.ok(
   (geth.volumes ?? []).some(
-    (volume) =>
-      volume.target === "/usr/local/bin/etherview-geth-entrypoint.sh" &&
-      volume.read_only,
+    (volume) => volume.target === "/usr/local/bin/etherview-geth-entrypoint.sh" && volume.read_only,
   ),
   "Preview Geth shell entrypoint mount",
 );
@@ -124,7 +126,8 @@ for (const role of roles) {
   assert.equal(service.privileged ?? false, false, `${role} privilege`);
   assert.equal(
     (service.volumes ?? []).some((volume) =>
-      `${volume.source ?? ""}:${volume.target ?? ""}`.includes("docker.sock")),
+      `${volume.source ?? ""}:${volume.target ?? ""}`.includes("docker.sock"),
+    ),
     false,
     `${role} Docker socket`,
   );
@@ -134,9 +137,7 @@ for (const role of roles) {
       `${role} still receives removed ${key}`,
     );
   }
-  const cacheMounts = volumeMounts(service).filter(
-    (mount) => mount.target === cachePath,
-  );
+  const cacheMounts = volumeMounts(service).filter((mount) => mount.target === cachePath);
   const configMounts = volumeMounts(service).filter(
     (mount) => mount.target === "/etc/etherview/config.yaml",
   );
@@ -174,7 +175,11 @@ const api = requireService("api");
 const ipfs = requireService("ipfs");
 const gateway = requireService("ipfs-gateway");
 assert.equal(ipfs.image, "ipfs/kubo:v0.43.1", "pinned Kubo image");
-assert.equal(gateway.image, process.env.IPFS_GATEWAY_IMAGE ?? "etherview-ipfs-gateway:local", "Go gateway image");
+assert.equal(
+  gateway.image,
+  process.env.IPFS_GATEWAY_IMAGE ?? "etherview-ipfs-gateway:local",
+  "Go gateway image",
+);
 assert.equal(gateway.build.dockerfile, "deploy/ipfs/Dockerfile", "standalone gateway build");
 assert.deepEqual(gateway.healthcheck.test, ["CMD", "/ipfs-gateway", "healthcheck"]);
 assert.ok(!(gateway.volumes ?? []).some((mount) => mount.target.includes("nginx")));
@@ -218,8 +223,7 @@ for (const key of tlsKeys) {
 }
 for (const target of tlsTargets) {
   assert.ok(
-    (api.volumes ?? []).some((volume) =>
-      volume.target === target && volume.read_only),
+    (api.volumes ?? []).some((volume) => volume.target === target && volume.read_only),
     `Preview API read-only TLS mount ${target}`,
   );
 }
@@ -258,7 +262,7 @@ function requireService(name) {
 
 function tmpfsTargets(service) {
   return (service.tmpfs ?? []).map((entry) =>
-    typeof entry === "string" ? entry.split(":", 1)[0] : entry?.target
+    typeof entry === "string" ? entry.split(":", 1)[0] : entry?.target,
   );
 }
 
@@ -266,7 +270,7 @@ function volumeMounts(service) {
   return (service.volumes ?? []).map((entry) =>
     typeof entry === "string"
       ? { type: "volume", source: entry.split(":", 1)[0], target: entry.split(":")[1] }
-      : entry
+      : entry,
   );
 }
 
@@ -279,11 +283,7 @@ function assertApplicationHealthcheck(service, name) {
   assert.equal(service.healthcheck.timeout, "3s", `${name} health timeout`);
   assert.equal(service.healthcheck.interval, "5s", `${name} health interval`);
   assert.equal(service.healthcheck.retries, 34, `${name} health retries`);
-  assert.equal(
-    service.healthcheck.start_period,
-    "10s",
-    `${name} health start period`,
-  );
+  assert.equal(service.healthcheck.start_period, "10s", `${name} health start period`);
 }
 
 function assertNoPlatform(value, path) {
@@ -295,5 +295,61 @@ function assertNoPlatform(value, path) {
   for (const [key, child] of Object.entries(value)) {
     assert.notEqual(key, "platform", `${path} contains a platform field`);
     assertNoPlatform(child, `${path}.${key}`);
+  }
+}
+
+const beacon = requireService("lighthouse");
+const validator = requireService("validator");
+assert.equal(beacon.image, "sigp/lighthouse:v8.3.0");
+assert.equal(validator.image, beacon.image);
+assert.ok(beacon.command.includes("--supernode"));
+assert.ok(beacon.command.includes("--prune-blobs=false"));
+assert.ok(beacon.command.includes("--execution-endpoint=http://geth:8551"));
+assert.equal(beacon.ports[0].host_ip, "127.0.0.1");
+assert.ok(!geth.ports.some((port) => port.target === 8551));
+assert.equal((validator.ports ?? []).length, 0);
+assert.equal(requireService("object-storage").image, "rustfs/rustfs:1.0.1");
+assert.equal(requireService("archive-init").image, "rustfs/rc:v0.1.36");
+assert.deepEqual(requireService("archive-init").profiles, ["archive-init"]);
+function assertCoreDependencies(name, visited = new Set()) {
+  if (visited.has(name)) return;
+  visited.add(name);
+  for (const dependency of Object.keys(requireService(name).depends_on ?? {})) {
+    assert.ok(
+      !["lighthouse", "validator", "object-storage", "archive-init"].includes(dependency),
+      `${name} core startup depends on optional ${dependency}`,
+    );
+    assertCoreDependencies(dependency, visited);
+  }
+}
+for (const role of roles) assertCoreDependencies(role);
+for (const [name, service] of Object.entries(services)) {
+  const mounts = service.volumes ?? [];
+  assert.equal(
+    mounts.some((v) => v.target === "/run/engine/jwt.hex"),
+    ["geth", "lighthouse"].includes(name),
+    `${name} Engine JWT scope`,
+  );
+  assert.equal(
+    mounts.some((v) => v.target === "/initial"),
+    name === "validator",
+    `${name} validator keys scope`,
+  );
+  assert.equal(
+    service.environment?.ETHERVIEW_CONSENSUS_BLOBS_ACCESS_KEY,
+    name === "api" ? "preview-reader" : name === "enrich" ? "preview-writer" : undefined,
+    `${name} archive credentials`,
+  );
+  assert.equal(
+    Boolean(service.environment?.RUSTFS_SECRET_KEY),
+    ["object-storage", "archive-init"].includes(name),
+    `${name} admin scope`,
+  );
+  if (roles.includes(name)) {
+    assert.ok(!service.depends_on.lighthouse, `${name} core readiness independent of Beacon`);
+    assert.ok(
+      !service.depends_on["object-storage"],
+      `${name} core readiness independent of archive`,
+    );
   }
 }

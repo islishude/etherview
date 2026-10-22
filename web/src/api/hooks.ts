@@ -60,7 +60,7 @@ export function usePublicConfig() {
 export function useBlocks(limit = 12, cursor?: string, refreshGeneration = 0) {
   return useQuery({
     queryKey: ["blocks", limit, cursor ?? null, refreshGeneration],
-    meta: chainQueryMeta,
+    meta: statusQueryMeta,
     queryFn: async (): Promise<CursorPage<BlockSummary>> => {
       const response = requireEnvelope(
         await apiClient.GET("/blocks", { params: { query: { limit, cursor } } }),
@@ -206,7 +206,7 @@ export function usePendingTransactions(
 export function useBlock(identifier: string, enabled = true) {
   return useQuery({
     queryKey: ["block", identifier],
-    meta: chainQueryMeta,
+    meta: statusQueryMeta,
     queryFn: async () =>
       requireEnvelope(await apiClient.GET("/blocks/{id}", { params: { path: { id: identifier } } }))
         .data,

@@ -280,6 +280,7 @@ func nonNilTransactions(items []gen.Transaction) []gen.Transaction {
 
 func statusModel(chainID uint64, snapshot StatusSnapshot) gen.Status {
 	data := gen.Status{
+		Consensus:        snapshot.Consensus,
 		ChainId:          quantity(chainID),
 		CoreReady:        snapshot.CoreReady,
 		LatestBlock:      quantity(snapshot.LatestBlock),

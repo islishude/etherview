@@ -118,3 +118,14 @@ Trace cache schema v3 still contains only raw normalized frames. EIP-7702
 execution identity, constructor decoding, and ABI projection are attached from
 PostgreSQL on every read, so a stale cache cannot freeze an old delegation or
 verification result.
+
+## Durable blob archive exception
+
+[ADR-0055](ADR-0055-consensus-and-blob-archives.md) supersedes this document's
+object-storage-only-as-cache restriction for explicitly enabled blob archives.
+Trace caching retains every disposable/fallback rule above. Blob bodies use a
+separate durable bucket, with PostgreSQL-owned identities and fenced manifests,
+conditional uploads and independent readback before publication. Enrich/all
+may write and verify archive objects; API/all may read them. Archive credentials
+are role-scoped independently of trace-cache credentials. An archive outage is
+not a core readiness failure, but there is no PostgreSQL body fallback.
