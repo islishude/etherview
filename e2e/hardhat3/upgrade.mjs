@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
-import { Interface } from "ethers";
+import { encodeFunctionData, parseAbi } from "viem";
 import { createTransactionSender } from "./transaction-sender.mjs";
 
-const IMPLEMENTATION_SLOT =
-  "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
+const IMPLEMENTATION_SLOT = "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
 const rpcURL = process.env.ETHERVIEW_HARDHAT3_RPC_URL;
 const deploymentFile = process.env.ETHERVIEW_HARDHAT3_DEPLOYMENT_FILE;
 const outputFile = process.env.ETHERVIEW_HARDHAT3_UPGRADE_FILE;
@@ -84,22 +83,21 @@ const implementationArtifact = await artifact(
 const implementationV2Artifact = await artifact(
   "./build/artifacts/contracts/Implementation.sol/ImplementationV2.json",
 );
-const implementationInterface = new Interface(implementationArtifact.abi);
-const implementationV2Interface = new Interface(implementationV2Artifact.abi);
-const proxyAdminInterface = new Interface([
+const implementationABI = implementationArtifact.abi;
+const implementationV2ABI = implementationV2Artifact.abi;
+const proxyAdminABI = parseAbi([
   "function upgradeAndCall(address proxy,address implementation,bytes data) payable",
 ]);
-const beaconInterface = new Interface([
-  "function upgradeTo(address newImplementation)",
-]);
+const beaconABI = parseAbi(["function upgradeTo(address newImplementation)"]);
 
 // A wrong ERC-1822 UUID must fail and leave the UUPS proxy unchanged.
 const failedBadUUIDUpgrade = await send(
   deployment.uups.proxy,
-  implementationInterface.encodeFunctionData("upgradeToAndCall", [
-    deployment.implementations.badUUID,
-    "0x",
-  ]),
+  encodeFunctionData({
+    abi: implementationABI,
+    functionName: "upgradeToAndCall",
+    args: [deployment.implementations.badUUID, "0x"],
+  }),
   "0x0",
 );
 const afterBadUUID = addressFromStorageWord(
@@ -111,45 +109,52 @@ assert.equal(
   "failed UUID upgrade changed implementation",
 );
 
-const transparentReinitializer = implementationV2Interface.encodeFunctionData(
-  "reinitializeV2",
-  ["transparent-v2"],
-);
+const transparentReinitializer = encodeFunctionData({
+  abi: implementationV2ABI,
+  functionName: "reinitializeV2",
+  args: ["transparent-v2"],
+});
 const transparentUpgrade = await send(
   deployment.transparent.admin,
-  proxyAdminInterface.encodeFunctionData("upgradeAndCall", [
-    deployment.transparent.proxy,
-    deployment.implementations.v2,
-    transparentReinitializer,
-  ]),
+  encodeFunctionData({
+    abi: proxyAdminABI,
+    functionName: "upgradeAndCall",
+    args: [deployment.transparent.proxy, deployment.implementations.v2, transparentReinitializer],
+  }),
 );
 
-const uupsReinitializer = implementationV2Interface.encodeFunctionData(
-  "reinitializeV2",
-  ["uups-v2"],
-);
+const uupsReinitializer = encodeFunctionData({
+  abi: implementationV2ABI,
+  functionName: "reinitializeV2",
+  args: ["uups-v2"],
+});
 const uupsUpgrade = await send(
   deployment.uups.proxy,
-  implementationInterface.encodeFunctionData("upgradeToAndCall", [
-    deployment.implementations.v2,
-    uupsReinitializer,
-  ]),
+  encodeFunctionData({
+    abi: implementationABI,
+    functionName: "upgradeToAndCall",
+    args: [deployment.implementations.v2, uupsReinitializer],
+  }),
 );
 
 const beaconUpgrade = await send(
   deployment.beacon.beacon,
-  beaconInterface.encodeFunctionData("upgradeTo", [
-    deployment.implementations.v2,
-  ]),
+  encodeFunctionData({
+    abi: beaconABI,
+    functionName: "upgradeTo",
+    args: [deployment.implementations.v2],
+  }),
 );
 const beaconReinitializations = [];
 for (const [index, proxy] of deployment.beacon.proxies.entries()) {
   beaconReinitializations.push(
     await send(
       proxy,
-      implementationV2Interface.encodeFunctionData("reinitializeV2", [
-        `beacon-${index + 1}-v2`,
-      ]),
+      encodeFunctionData({
+        abi: implementationV2ABI,
+        functionName: "reinitializeV2",
+        args: [`beacon-${index + 1}-v2`],
+      }),
     ),
   );
 }

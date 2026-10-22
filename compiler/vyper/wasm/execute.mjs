@@ -36,7 +36,7 @@ export async function executeVyper(args){
  try{
   const [mode,shared,packageRoot,version,maxInput,maxOutput]=args;
   const selfTest=mode==='--vyper-self-test';
-  if(!isSea()||process.version!=='v26.12.0'||(selfTest?args.length!==2:mode!=='--vyper-compile'||args.length!==6))throw new Error('invalid invocation');
+  if(!isSea()||process.version!=='v26.12.1'||(selfTest?args.length!==2:mode!=='--vyper-compile'||args.length!==6))throw new Error('invalid invocation');
   path(shared);
   const reads=[shared];if(!selfTest)reads.push(path(packageRoot));
   const expected=[...fixed,...limits,...reads.map(p=>'--allow-fs-read='+p)];

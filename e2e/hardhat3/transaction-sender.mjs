@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
-import { Wallet, getNumber } from "ethers";
+import { hexToNumber } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 
 const DEFAULT_GAS_LIMIT = "0xe4e1c0";
 const LOCAL_SIGNING_GAS_PRICE_FLOOR = 1_000_000_000n;
 
-function localWallet(privateKey) {
+function localAccount(privateKey) {
   if (!privateKey) return undefined;
 
   try {
-    return new Wallet(privateKey);
+    return privateKeyToAccount(privateKey);
   } catch {
     // Do not attach the source error: malformed key errors must never expose
     // the configured secret in CI or Preview diagnostics.
@@ -20,17 +21,12 @@ function localWallet(privateKey) {
  * Return a transaction sender that preserves the unlocked-account RPC path by
  * default and uses local raw signing only when a private key is configured.
  */
-export function createTransactionSender({
-  rpc,
-  from,
-  privateKey,
-  gasLimit = DEFAULT_GAS_LIMIT,
-}) {
+export function createTransactionSender({ rpc, from, privateKey, gasLimit = DEFAULT_GAS_LIMIT }) {
   assert.equal(typeof rpc, "function", "rpc must be a function");
-  const wallet = localWallet(privateKey);
-  if (wallet) {
+  const account = localAccount(privateKey);
+  if (account) {
     assert.equal(
-      wallet.address.toLowerCase(),
+      account.address.toLowerCase(),
       from.toLowerCase(),
       "ETHERVIEW_HARDHAT3_PRIVATE_KEY does not match the transaction owner",
     );
@@ -44,7 +40,7 @@ export function createTransactionSender({
       "transaction from must match the configured owner",
     );
 
-    if (!wallet) {
+    if (!account) {
       return rpc("eth_sendTransaction", [request]);
     }
 
@@ -54,15 +50,17 @@ export function createTransactionSender({
       rpc("eth_gasPrice"),
     ]);
     const suggestedGasPrice = BigInt(gasPrice);
-    const rawTransaction = await wallet.signTransaction({
-      chainId: BigInt(chainID),
-      nonce: getNumber(nonce),
-      gasLimit: BigInt(request.gas),
+    const rawTransaction = await account.signTransaction({
+      type: "legacy",
+      chainId: hexToNumber(chainID),
+      nonce: hexToNumber(nonce),
+      gas: BigInt(request.gas),
       // An empty dev chain may suggest one wei even though its transaction
       // pool still enforces the normal minimum priority fee.
-      gasPrice: suggestedGasPrice > LOCAL_SIGNING_GAS_PRICE_FLOOR
-        ? suggestedGasPrice
-        : LOCAL_SIGNING_GAS_PRICE_FLOOR,
+      gasPrice:
+        suggestedGasPrice > LOCAL_SIGNING_GAS_PRICE_FLOOR
+          ? suggestedGasPrice
+          : LOCAL_SIGNING_GAS_PRICE_FLOOR,
       to: request.to,
       data: request.data ?? "0x",
       value: BigInt(request.value ?? "0x0"),

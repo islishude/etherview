@@ -4,8 +4,8 @@ import { readFile } from "node:fs/promises";
 import { Etherscan } from "./node_modules/@nomicfoundation/hardhat-verify/dist/src/internal/etherscan.js";
 
 const expectedVersions = {
-  hardhat: "3.17.0",
-  "@nomicfoundation/hardhat-verify": "3.1.0",
+  hardhat: "3.20.0",
+  "@nomicfoundation/hardhat-verify": "3.1.3",
 };
 
 for (const [dependency, expected] of Object.entries(expectedVersions)) {

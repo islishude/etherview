@@ -92,7 +92,7 @@ not a cumulative child-process maximum.
 
 Install Node dependencies with `npm --prefix compiler ci --ignore-scripts`.
 `node compiler/vyper/reference.mjs --version 0.4.3` prepares the locked official
-reference environment using uv 0.13.1 and the version index's exact Python.
+reference environment using uv 0.13.4 and the version index's exact Python.
 Omit `--version` to prepare all supported environments. Historical version locks remain
 frozen source/dependency evidence; the preparer excludes PyInstaller and its
 packaging-only dependencies. No native helper, ELF closure or native release
@@ -122,7 +122,7 @@ remaining 25 baseline versions retain their original compiler bytes and fixtures
 The complete version sets in the application lock, version index, runtime policy,
 capabilities and fixtures must agree; `make test-vyper-update` checks this.
 
-Install uv 0.13.1, as required by `pyproject.toml`. CI uses
+Install uv 0.13.4, as required by `pyproject.toml`. CI uses
 [astral-sh/setup-uv](https://github.com/astral-sh/setup-uv) to install that version
 and cache uv downloads. The tooling project's `uv.lock` pins packaging 26.3 and
 its artifact hashes. Discovery, fixture generation and metadata tests use
