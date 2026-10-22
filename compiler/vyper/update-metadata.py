@@ -103,8 +103,8 @@ def resolve(request):
     if not stable(request['version']):
         raise ValueError('unsupported compiler version')
     python = request['python']
-    if not subprocess.check_output(['uv', '--version'], text=True).startswith('uv 0.13.4 '):
-        raise ValueError('uv 0.13.4 required')
+    # Enforce the project version range before the isolated --no-config resolver.
+    subprocess.run(['uv', '--project', str(Path(__file__).resolve().parent), 'cache', 'dir'], check=True, stdout=subprocess.DEVNULL)
     # Pin the shared PyCryptodome version so resolution cannot silently upgrade it.
     with tempfile.TemporaryDirectory(prefix='vyper-resolve-') as temporary:
         source = Path(temporary) / 'requirements.in'

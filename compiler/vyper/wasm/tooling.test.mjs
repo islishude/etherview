@@ -16,14 +16,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import AdmZip from "adm-zip";
 import { gunzipSync } from "node:zlib";
-import { canonical, digest, HERE, safeMember, readJSON } from "./tooling.mjs";
+import { canonical, digest, HERE, ROOT, safeMember, readJSON } from "./tooling.mjs";
 import { makeZip, zipEntries } from "./archives.mjs";
 import { download, packRuntime } from "./packages.mjs";
 import { descriptor, buildRelease } from "./build-release.mjs";
 import { metadata } from "./metadata.mjs";
 import { inventory } from "./check-integrity.mjs";
 import { checkPackage } from "./package-licenses.mjs";
-import { referencePackages, RETIRED } from "../reference.mjs";
+import { prepareReference, referencePackages, RETIRED } from "../reference.mjs";
 function temporary(t) {
   const path = mkdtempSync(join(tmpdir(), "vyper-tools-"));
   t.after(() => rmSync(path, { recursive: true, force: true }));
@@ -192,6 +192,26 @@ test("licenses cover nested distributions, authentic dependency hashes and paylo
   writeFileSync(join(path, "packages.zip"), "changed");
   assert.throws(() => checkPackage(item, path), /package digest mismatch/);
 });
+test("reference preparation checks uv project policy before writing", async (t) => {
+  const root = temporary(t);
+  const command = join(root, "uv");
+  writeFileSync(command, '#!/bin/sh\nprintf "%s\\n" "$@"\nexit 42\n');
+  chmodSync(command, 0o755);
+  const previousPath = process.env.PATH;
+  process.env.PATH = root;
+  try {
+    await assert.rejects(prepareReference({ version: "not-a-compiler" }), (error) => {
+      assert.equal(error.status, 42);
+      const args = error.stdout.toString().trim().split("\n");
+      assert.deepEqual(args, ["--project", join(ROOT, "compiler/vyper"), "cache", "dir"]);
+      return true;
+    });
+  } finally {
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+  }
+});
+
 test("reference environment excludes retired packaging", () => {
   const pins = referencePackages("0.4.3");
   for (const name of RETIRED) assert.equal(pins.has(name), false);

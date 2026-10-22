@@ -21,8 +21,8 @@ export function referencePackages(version) {
   );
 }
 export async function prepareReference(item) {
-  if (!execFileSync("uv", ["--version"], { encoding: "utf8" }).startsWith("uv 0.13.4 "))
-    throw new Error("uv 0.13.4 required");
+  // This read-only command lets uv enforce the project version range before writes.
+  execFileSync("uv", ["--project", join(ROOT, "compiler/vyper"), "cache", "dir"]);
   const workspace = join(ROOT, ".local/vyper-builds", item.version);
   mkdirSync(workspace, { recursive: true });
   const venv = join(workspace, "build-venv"),

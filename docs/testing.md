@@ -91,7 +91,7 @@ Common CI gates, Vyper package construction, security/license auditing and the
 bounded Go assembler regressions use Node and Go without host Python setup. The compiler
 interpreter remains bundled Python WASM. Host Python is needed only for optional
 official reference generation and `make benchmark-vyper-wasm`; reference
-environments are prepared by `node compiler/vyper/reference.mjs` with uv 0.13.4.
+environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13.4,<1.0.0`.
 
 
 - `make test-workflow-scripts`: exercise extracted workflow helpers with temporary
@@ -908,11 +908,13 @@ acceptance changes under ADR-0053.
 
 `make test-vyper-update` runs complete version-set checks, publication allowlist
 and PR lifecycle tests, and offline PyPI metadata regressions. It requires uv;
-CI installs 0.13.4 with `astral-sh/setup-uv`, reading the required version from
-`compiler/vyper/pyproject.toml`. Metadata tests and update scripts share the
+CI installs the latest uv in `>=0.13.4,<1.0.0` with `astral-sh/setup-uv`, reading
+the required range from `compiler/vyper/pyproject.toml`. Metadata tests and
+update scripts share the
 committed tooling `uv.lock` through `uv run --locked`; no pip bootstrap is needed.
-Update recipe generation also requires uv 0.13.4. `make test-vyper-release` includes these
-checks, including tagged production-fixture/count regressions without starting
+Update recipe generation enforces the same range before invoking its isolated
+resolver. `make test-vyper-release` includes these checks, including tagged
+production-fixture/count regressions without starting
 Docker. Fixtures cover PEP 440 ordering, prerelease/yanked exclusion, wheel
 compatibility, digest mismatch, network failures and unchanged prior recipes.
 
