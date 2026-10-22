@@ -304,6 +304,7 @@ paths:
           $ref: "#/components/responses/Error"
     post:
       operationId: createBillingTopupIntent
+      description: Returns topup_payment_unavailable (503) when x402 top-ups are disabled.
       tags: [billing]
       security:
         - UserSession: []
@@ -344,6 +345,7 @@ paths:
   /billing/topup-intents/{id}/pay:
     post:
       operationId: payBillingTopupIntent
+      description: Returns topup_payment_unavailable (503) when x402 top-ups are disabled.
       tags: [billing]
       security:
         - UserSession: []
@@ -1518,7 +1520,8 @@ paths:
         replay from the durable PostgreSQL event ledger. Last-Event-ID resumes
         within the retained durable range; malformed, expired, and future cursor
         values return a typed 400 error, while replay backend failures return a
-        typed 503 error.
+        typed 503 error. Both SSE routes share per-client and per-process active
+        subscription limits; admission failure returns 429 with Retry-After.
       parameters:
         - name: Last-Event-ID
           in: header
@@ -1532,6 +1535,8 @@ paths:
               schema:
                 type: string
         "400":
+          $ref: "#/components/responses/Error"
+        "429":
           $ref: "#/components/responses/Error"
         "503":
           $ref: "#/components/responses/Error"
@@ -1572,7 +1577,8 @@ paths:
         snapshot after committed head, reorganization, or sync-status events.
         Each snapshot event uses the durable runtime-event ID as its SSE id;
         reconnects receive the current snapshot rather than intermediate
-        historical snapshots.
+        historical snapshots. Both SSE routes share per-client and per-process
+        active subscription limits; admission failure returns 429 with Retry-After.
       responses:
         "200":
           description: >-
@@ -1582,6 +1588,8 @@ paths:
             text/event-stream:
               schema:
                 $ref: "#/components/schemas/HomeSnapshotResponse"
+        "429":
+          $ref: "#/components/responses/Error"
         "503":
           $ref: "#/components/responses/Error"
         default:
@@ -1852,6 +1860,10 @@ paths:
   /verifier/lookup-methods:
     post:
       operationId: lookupVerifierMethods
+      description: >-
+        ABI parsing is limited to 1024 entries, 16 type nesting levels,
+        256 bytes per type name and 16384 expanded type nodes. Over-budget
+        input returns invalid_method_lookup (400).
       tags: [verification]
       requestBody:
         required: true

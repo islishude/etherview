@@ -79,6 +79,10 @@ security:
   public_verification: false
   # High anonymous limits are appropriate only on an isolated benchmark
   # ingress. A production-like test should use an API key with a named quota.
+  ingress_rate: 1000
+  ingress_burst: 2000
+  sse_max_connections: 1024
+  sse_max_connections_per_client: 16
   anonymous_rate: 1000
   anonymous_burst: 2000
   trusted_proxies: []

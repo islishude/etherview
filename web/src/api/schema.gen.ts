@@ -493,6 +493,7 @@ export interface paths {
         };
         get: operations["listCurrentBillingTopupIntents"];
         put?: never;
+        /** @description Returns topup_payment_unavailable (503) when x402 top-ups are disabled. */
         post: operations["createBillingTopupIntent"];
         delete?: never;
         options?: never;
@@ -525,6 +526,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** @description Returns topup_payment_unavailable (503) when x402 top-ups are disabled. */
         post: operations["payBillingTopupIntent"];
         delete?: never;
         options?: never;
@@ -751,7 +753,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Server-sent head, reorganization, and sync status events with bounded replay from the durable PostgreSQL event ledger. Last-Event-ID resumes within the retained durable range; malformed, expired, and future cursor values return a typed 400 error, while replay backend failures return a typed 503 error. */
+        /** @description Server-sent head, reorganization, and sync status events with bounded replay from the durable PostgreSQL event ledger. Last-Event-ID resumes within the retained durable range; malformed, expired, and future cursor values return a typed 400 error, while replay backend failures return a typed 503 error. Both SSE routes share per-client and per-process active subscription limits; admission failure returns 429 with Retry-After. */
         get: operations["streamHeadEvents"];
         put?: never;
         post?: never;
@@ -802,7 +804,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Server-sent complete home-page snapshots. A subscriber receives the current writer-authoritative snapshot immediately and a replacement snapshot after committed head, reorganization, or sync-status events. Each snapshot event uses the durable runtime-event ID as its SSE id; reconnects receive the current snapshot rather than intermediate historical snapshots. */
+        /** @description Server-sent complete home-page snapshots. A subscriber receives the current writer-authoritative snapshot immediately and a replacement snapshot after committed head, reorganization, or sync-status events. Each snapshot event uses the durable runtime-event ID as its SSE id; reconnects receive the current snapshot rather than intermediate historical snapshots. Both SSE routes share per-client and per-process active subscription limits; admission failure returns 429 with Retry-After. */
         get: operations["streamHomeSnapshots"];
         put?: never;
         post?: never;
@@ -1480,6 +1482,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** @description ABI parsing is limited to 1024 entries, 16 type nesting levels, 256 bytes per type name and 16384 expanded type nodes. Over-budget input returns invalid_method_lookup (400). */
         post: operations["lookupVerifierMethods"];
         delete?: never;
         options?: never;
@@ -5145,6 +5148,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["Error"];
+            429: components["responses"]["Error"];
             503: components["responses"]["Error"];
             default: components["responses"]["Error"];
         };
@@ -5216,6 +5220,7 @@ export interface operations {
                     "text/event-stream": components["schemas"]["HomeSnapshotResponse"];
                 };
             };
+            429: components["responses"]["Error"];
             503: components["responses"]["Error"];
             default: components["responses"]["Error"];
         };

@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/islishude/etherview/internal/abibounds"
 )
 
 type MethodLookupRequest struct {
@@ -48,7 +48,7 @@ func LookupMethods(request MethodLookupRequest) ([]MethodSource, error) {
 	if len(request.SourceMap) > 16<<20 || len(request.FileIDs) > 4096 || !jsonArray(request.ABI) {
 		return nil, errors.New("method lookup input exceeds configured bounds")
 	}
-	parsedABI, err := abi.JSON(strings.NewReader(string(request.ABI)))
+	parsedABI, err := abibounds.Parse(request.ABI)
 	if err != nil {
 		return nil, errors.New("method lookup ABI is invalid")
 	}

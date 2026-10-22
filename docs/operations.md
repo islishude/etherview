@@ -743,6 +743,23 @@ Endpoint limits are per process. For a shared upstream, the sum of every
 replica's configured limit must remain within the provider budget. URLs stay in
 the Secret even when they do not currently contain credentials.
 
+When API-key authentication is configured, `security.ingress_rate` and
+`security.ingress_burst` bound all native/compatibility requests per client IP
+before credential parsing or writer lookups (defaults: 1000 requests/second,
+2000 burst). This budget is independent of the existing anonymous/key quota;
+a valid key still consumes its own quota after authentication. Size this
+aggregate ingress budget for legitimate clients sharing a NAT. Environment
+overrides are `ETHERVIEW_INGRESS_RATE` and `ETHERVIEW_INGRESS_BURST`.
+
+Both SSE routes share `security.sse_max_connections` (default 1024 per API
+process) and `security.sse_max_connections_per_client` (default 16 per client
+IP). Excess streams return `429 stream_limit_exceeded` and `Retry-After: 1`
+before replay or subscription allocation. Disconnect, cancellation, replay
+failure and write failure release admission. Limits apply equally to keyed
+and anonymous callers. The corresponding environment overrides are
+`ETHERVIEW_SSE_MAX_CONNECTIONS` and `ETHERVIEW_SSE_MAX_CONNECTIONS_PER_CLIENT`.
+These connection limits are per replica even when rate buckets use Redis.
+
 Anonymous rate limiting uses the direct peer unless it matches one of the
 canonical IPs or CIDRs in `security.trusted_proxies`. Only a trusted peer may
 supply a bounded `X-Forwarded-For` chain, which is resolved from right to left

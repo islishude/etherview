@@ -105,6 +105,12 @@ public view.
   browsers and unmanaged intermediaries; an explicitly configured server-side
   cache remains behind the event invalidator. The SSE stream itself uses
   `no-cache, no-transform` and reconnects by durable ID.
+- Both public SSE routes share bounded per-process and per-client active
+  admission before replay or subscription allocation. Identity uses the same
+  trusted-proxy resolution as anonymous request quotas. Every handler exit
+  cancels its subscription and releases admission; a full pool returns a typed
+  429 response with Retry-After. Replay concurrency and request-rate limits
+  remain independent budgets.
 - `server.write_timeout` bounds each SSE header/frame write and flush, not the
   idle lifetime of the stream. The write deadline is cleared between frames.
   API request contexts inherit the component lifecycle, so shutdown cancels

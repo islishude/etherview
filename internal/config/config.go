@@ -229,12 +229,16 @@ type ENSCustomConfig struct {
 }
 
 type SecurityConfig struct {
-	PublicVerification bool     `yaml:"public_verification"`
-	APIKeyPepper       string   `yaml:"api_key_pepper"`
-	AnonymousRate      int      `yaml:"anonymous_rate"`
-	AnonymousBurst     int      `yaml:"anonymous_burst"`
-	AllowedOrigins     []string `yaml:"allowed_origins"`
-	TrustedProxies     []string `yaml:"trusted_proxies"`
+	PublicVerification         bool     `yaml:"public_verification"`
+	APIKeyPepper               string   `yaml:"api_key_pepper"`
+	IngressRate                int      `yaml:"ingress_rate"`
+	IngressBurst               int      `yaml:"ingress_burst"`
+	SSEMaxConnections          int      `yaml:"sse_max_connections"`
+	SSEMaxConnectionsPerClient int      `yaml:"sse_max_connections_per_client"`
+	AnonymousRate              int      `yaml:"anonymous_rate"`
+	AnonymousBurst             int      `yaml:"anonymous_burst"`
+	AllowedOrigins             []string `yaml:"allowed_origins"`
+	TrustedProxies             []string `yaml:"trusted_proxies"`
 }
 
 // VerificationConfig describes reproducible, checksum-bound solc-js
@@ -434,8 +438,12 @@ func Default() Config {
 			PriceFreshness: 5 * time.Minute, FailureTTL: 30 * time.Second,
 		},
 		Security: SecurityConfig{
-			AnonymousRate:  5,
-			AnonymousBurst: 20,
+			IngressRate:                1000,
+			IngressBurst:               2000,
+			SSEMaxConnections:          1024,
+			SSEMaxConnectionsPerClient: 16,
+			AnonymousRate:              5,
+			AnonymousBurst:             20,
 		},
 		Verification: VerificationConfig{
 			MaxInputBytes:           5 << 20,

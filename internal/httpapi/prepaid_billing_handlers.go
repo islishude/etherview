@@ -19,6 +19,17 @@ func (h *Handler) prepaidBillingAvailable(w http.ResponseWriter, r *http.Request
 	return false
 }
 
+func (h *Handler) topupsAvailable(w http.ResponseWriter, r *http.Request) bool {
+	if !h.prepaidBillingAvailable(w, r) {
+		return false
+	}
+	if !h.cfg.Features.X402Topups {
+		writeError(w, r, http.StatusServiceUnavailable, "topup_payment_unavailable", "x402 top-up payment is unavailable", nil)
+		return false
+	}
+	return true
+}
+
 func (h *Handler) currentBillingAccount(w http.ResponseWriter, r *http.Request) {
 	if !h.prepaidBillingAvailable(w, r) {
 		return
@@ -43,7 +54,7 @@ func (h *Handler) currentBillingAccount(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *Handler) createBillingTopupIntent(w http.ResponseWriter, r *http.Request) {
-	if !h.prepaidBillingAvailable(w, r) || !h.cfg.Features.X402Topups ||
+	if !h.topupsAvailable(w, r) ||
 		!h.requireAuthOrigin(w, r) {
 		return
 	}
@@ -126,7 +137,7 @@ func (h *Handler) getBillingTopupIntent(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *Handler) payBillingTopupIntent(w http.ResponseWriter, r *http.Request) {
-	if !h.prepaidBillingAvailable(w, r) || !h.cfg.Features.X402Topups ||
+	if !h.topupsAvailable(w, r) ||
 		!h.requireAuthOrigin(w, r) {
 		return
 	}

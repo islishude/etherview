@@ -273,6 +273,7 @@ func (set TrustedProxySet) contains(address netip.Addr) bool {
 }
 
 type RateMiddleware struct {
+	Ingress        Limit
 	Limiter        Limiter
 	Anonymous      Limit
 	Observer       RateObserver
@@ -288,28 +289,52 @@ func (m RateMiddleware) Wrap(next http.Handler) http.Handler {
 			key = "key:" + identity.Prefix
 			limit = Limit{Rate: identity.Rate, Burst: identity.Burst}
 		}
-		allowed, retry := m.Limiter.Allow(r.Context(), key, limit)
-		if m.Observer != nil {
-			decision := "allowed"
-			if !allowed {
-				decision = "rejected"
-			}
-			m.Observer.RecordRateLimit(decision)
-		}
-		if !allowed {
-			seconds := max(int(math.Ceil(retry.Seconds())), 1)
-			w.Header().Set("Retry-After", strconv.Itoa(seconds))
-			writeAuthError(w, r, http.StatusTooManyRequests, "rate_limit_exceeded")
+		if !m.allow(w, r, key, limit) {
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
 }
 
+// WrapWithAuthentication bounds credential parsing and writer lookups before
+// authentication, then applies the independent anonymous or authenticated quota.
+func (m RateMiddleware) WrapWithAuthentication(manager Manager, next http.Handler) http.Handler {
+	authenticated := manager.Middleware(false, m.Wrap(next))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !m.allow(w, r, "anonymous:ingress:"+m.anonymousIdentity(r), m.Ingress) {
+			return
+		}
+		authenticated.ServeHTTP(w, r)
+	})
+}
+
+func (m RateMiddleware) allow(w http.ResponseWriter, r *http.Request, key string, limit Limit) bool {
+	allowed, retry := m.Limiter.Allow(r.Context(), key, limit)
+	if m.Observer != nil {
+		decision := "allowed"
+		if !allowed {
+			decision = "rejected"
+		}
+		m.Observer.RecordRateLimit(decision)
+	}
+	if !allowed {
+		seconds := max(int(math.Ceil(retry.Seconds())), 1)
+		w.Header().Set("Retry-After", strconv.Itoa(seconds))
+		writeAuthError(w, r, http.StatusTooManyRequests, "rate_limit_exceeded")
+		return false
+	}
+	return true
+}
+
 func (m RateMiddleware) anonymousIdentity(request *http.Request) string {
+	return m.TrustedProxies.ClientIdentity(request)
+}
+
+// ClientIdentity resolves one bounded, trusted-proxy-aware client IP.
+func (set TrustedProxySet) ClientIdentity(request *http.Request) string {
 	directAddress, validDirect := parseDirectPeer(request.RemoteAddr)
 	directIdentity := remoteIP(request.RemoteAddr)
-	if !validDirect || !m.TrustedProxies.contains(directAddress) {
+	if !validDirect || !set.contains(directAddress) {
 		return directIdentity
 	}
 	forwarded, ok := parseForwardedFor(request.Header.Values("X-Forwarded-For"))
@@ -317,7 +342,7 @@ func (m RateMiddleware) anonymousIdentity(request *http.Request) string {
 		return directIdentity
 	}
 	for _, f := range slices.Backward(forwarded) {
-		if !m.TrustedProxies.contains(f) {
+		if !set.contains(f) {
 			return f.String()
 		}
 	}

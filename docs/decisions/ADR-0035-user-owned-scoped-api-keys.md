@@ -40,6 +40,11 @@ All owner, status, scope, quota, and mutation decisions use the writer, never a
 read pool or process cache. Existing operator keys receive both scopes during
 migration, and the CLI remains the deployment-wide administration boundary.
 
+Credential handling has an independent trusted-proxy-aware per-client ingress
+budget before parsing compatibility bodies or performing writer lookups. Invalid
+credentials cannot bypass it. The authenticated per-key quota remains a separate
+post-authentication decision; no authentication result is cached.
+
 ## Consequences
 
 - The browser route remains `/account`; `/users/me/api-keys` is only a native

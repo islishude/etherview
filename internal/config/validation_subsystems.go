@@ -250,6 +250,12 @@ func validateFeatureSecurityConfig(c Config) error {
 	if c.Security.APIKeyPepper != "" && len(c.Security.APIKeyPepper) < 32 {
 		errs = append(errs, errors.New("security.api_key_pepper must contain at least 32 bytes"))
 	}
+	if c.Security.IngressRate <= 0 || c.Security.IngressBurst < c.Security.IngressRate {
+		errs = append(errs, errors.New("security ingress rate must be positive and burst must be at least rate"))
+	}
+	if c.Security.SSEMaxConnections <= 0 || c.Security.SSEMaxConnectionsPerClient <= 0 || c.Security.SSEMaxConnectionsPerClient > c.Security.SSEMaxConnections {
+		errs = append(errs, errors.New("security SSE limits must be positive and per-client limit must not exceed total"))
+	}
 	if c.Security.AnonymousRate <= 0 || c.Security.AnonymousBurst < c.Security.AnonymousRate {
 		errs = append(errs, errors.New("security anonymous rate must be positive and burst must be at least rate"))
 	}

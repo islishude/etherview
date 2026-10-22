@@ -354,13 +354,15 @@ func (b *Backend) protectPublicAPI(db *pgxpool.Pool, cfg config.Config, observer
 		return nil, fmt.Errorf("configure trusted proxies: %w", err)
 	}
 	protected := next
-	protected = auth.RateMiddleware{
+	rates := auth.RateMiddleware{
+		Ingress: auth.Limit{Rate: cfg.Security.IngressRate, Burst: cfg.Security.IngressBurst},
 		Limiter: limiter,
 		Anonymous: auth.Limit{
 			Rate: cfg.Security.AnonymousRate, Burst: cfg.Security.AnonymousBurst,
 		},
 		Observer: observer, TrustedProxies: trustedProxies,
-	}.Wrap(protected)
+	}
+	protected = rates.Wrap(protected)
 	if cfg.Security.APIKeyPepper != "" {
 		repository, err := auth.NewPostgresRepository(db)
 		if err != nil {
@@ -370,7 +372,7 @@ func (b *Backend) protectPublicAPI(db *pgxpool.Pool, cfg config.Config, observer
 			Repository: repository, Pepper: []byte(cfg.Security.APIKeyPepper),
 			MaxCompatibilityFormBodyBytes: int64(cfg.Verification.MaxInputBytes) + 1<<20,
 		}
-		protected = manager.Middleware(false, protected)
+		protected = rates.WrapWithAuthentication(manager, next)
 	}
 	return httpapi.NFTMediaSecurityMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/v2/api" {

@@ -106,6 +106,10 @@ config:
     # This high anonymous budget is only for an isolated benchmark ingress.
     # Production capacity tests should create an API key with an explicit
     # quota and keep the normal anonymous policy.
+    ingress_rate: 1000
+    ingress_burst: 2000
+    sse_max_connections: 1024
+    sse_max_connections_per_client: 16
     anonymous_rate: 1000
     anonymous_burst: 2000
     trusted_proxies: []

@@ -384,6 +384,10 @@ config:
   security:
     public_verification: false
     api_key_pepper: ""
+    ingress_rate: 1000
+    ingress_burst: 2000
+    sse_max_connections: 1024
+    sse_max_connections_per_client: 16
     anonymous_rate: 5
     anonymous_burst: 20
     allowed_origins: []

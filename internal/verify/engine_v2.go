@@ -8,9 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strings"
 
-	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/islishude/etherview/internal/abibounds"
 )
 
 type VerificationMatchType string
@@ -350,7 +349,7 @@ func validateConstructorArguments(rawABI json.RawMessage, arguments []byte) erro
 		}
 		return errors.New("constructor arguments exist without an ABI")
 	}
-	parsed, err := abi.JSON(strings.NewReader(string(rawABI)))
+	parsed, err := abibounds.Parse(rawABI)
 	if err != nil {
 		return errors.New("compiled contract ABI is invalid")
 	}
@@ -359,6 +358,9 @@ func validateConstructorArguments(rawABI json.RawMessage, arguments []byte) erro
 			return nil
 		}
 		return errors.New("constructor arguments exist without a constructor")
+	}
+	if err := abibounds.CheckValues(parsed.Constructor.Inputs, arguments); err != nil {
+		return errors.New("constructor arguments exceed decoding bounds")
 	}
 	values, err := parsed.Constructor.Inputs.Unpack(arguments)
 	if err != nil {

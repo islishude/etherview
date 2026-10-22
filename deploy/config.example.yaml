@@ -139,6 +139,10 @@ security:
   # Supply ETHERVIEW_API_KEY_PEPPER or ETHERVIEW_API_KEY_PEPPER_FILE. The
   # value must contain at least 32 bytes and is never returned by the API.
   api_key_pepper: ""
+  ingress_rate: 1000
+  ingress_burst: 2000
+  sse_max_connections: 1024
+  sse_max_connections_per_client: 16
   anonymous_rate: 5
   anonymous_burst: 20
   allowed_origins: []

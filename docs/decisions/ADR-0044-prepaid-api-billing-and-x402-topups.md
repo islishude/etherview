@@ -23,6 +23,10 @@ It requires SIWE user authentication and user-owned API keys. A separately
 controlled `features.x402_topups` enables account funding and is the only
 feature that constructs a facilitator client or reads x402 Secrets.
 
+When top-ups are disabled, intent creation and payment return the typed
+`503 topup_payment_unavailable` response; balance and history remain available
+while prepaid billing is enabled.
+
 All native explorer reads under `/api/v1` are free and reject payment headers.
 The native billing endpoints are a free control plane for configuration,
 balances, top-up intents, top-up/payment history, usage history, and

@@ -178,6 +178,7 @@ type Options struct {
 }
 
 type Handler struct {
+	streamAdmission       *streamAdmission
 	consensusReader       publicquery.ConsensusReader
 	cfg                   config.Config
 	reader                Reader
@@ -290,6 +291,11 @@ func New(options Options) (*Handler, error) {
 		requirements:          options.Requirements,
 		mux:                   http.NewServeMux(),
 	}
+	trustedProxies, err := auth.NewTrustedProxySet(h.cfg.Security.TrustedProxies)
+	if err != nil {
+		return nil, err
+	}
+	h.streamAdmission = newStreamAdmission(h.cfg.Security, trustedProxies)
 	if h.readinessStatus == nil {
 		h.readinessStatus = h.reader.Status
 	}
@@ -368,6 +374,17 @@ func (h *Handler) preflight(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) eventStream(w http.ResponseWriter, r *http.Request) {
+	release, ok := h.streamAdmission.acquire(r)
+	if !ok {
+		w.Header().Set("Retry-After", "1")
+		writeError(w, r, http.StatusTooManyRequests, "stream_limit_exceeded", "active stream limit exceeded", nil)
+		return
+	}
+	defer release()
+	subscriptionContext, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	r = r.WithContext(subscriptionContext)
+
 	// Clear the whole-response deadline before durable replay. Replay is bounded,
 	// but it must not consume the stream's future write budget before headers are
 	// committed.
@@ -494,6 +511,17 @@ func (h *Handler) homeSnapshot(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) homeSnapshotStream(w http.ResponseWriter, r *http.Request) {
+	release, ok := h.streamAdmission.acquire(r)
+	if !ok {
+		w.Header().Set("Retry-After", "1")
+		writeError(w, r, http.StatusTooManyRequests, "stream_limit_exceeded", "active stream limit exceeded", nil)
+		return
+	}
+	defer release()
+	subscriptionContext, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	r = r.WithContext(subscriptionContext)
+
 	if h.homeSnapshots == nil {
 		writeError(
 			w, r, http.StatusServiceUnavailable,

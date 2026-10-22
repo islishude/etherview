@@ -307,6 +307,18 @@ func applyNumericEnvironment(cfg *Config, lookup func(string) (string, bool)) er
 	if err := setInt64(lookup, "S3_MAX_OBJECT_BYTES", &cfg.Adapters.S3MaxObjectBytes); err != nil {
 		return err
 	}
+	if err := setInt(lookup, "INGRESS_RATE", &cfg.Security.IngressRate); err != nil {
+		return err
+	}
+	if err := setInt(lookup, "INGRESS_BURST", &cfg.Security.IngressBurst); err != nil {
+		return err
+	}
+	if err := setInt(lookup, "SSE_MAX_CONNECTIONS", &cfg.Security.SSEMaxConnections); err != nil {
+		return err
+	}
+	if err := setInt(lookup, "SSE_MAX_CONNECTIONS_PER_CLIENT", &cfg.Security.SSEMaxConnectionsPerClient); err != nil {
+		return err
+	}
 	if err := setInt(lookup, "ANONYMOUS_RATE", &cfg.Security.AnonymousRate); err != nil {
 		return err
 	}

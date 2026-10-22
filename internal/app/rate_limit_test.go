@@ -4,8 +4,11 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/islishude/etherview/internal/auth"
 	"github.com/islishude/etherview/internal/config"
@@ -107,5 +110,44 @@ func TestProtectPublicAPIRejectsInvalidTrustedProxyWithoutServing(t *testing.T) 
 	handler, err := (&Backend{}).protectPublicAPI(nil, cfg, nil, &appCaptureLimiter{}, http.NotFoundHandler())
 	if err == nil || handler != nil {
 		t.Fatalf("handler=%v error=%v", handler, err)
+	}
+}
+
+type rejectIngressLimiter struct {
+	calls int
+	key   string
+	limit auth.Limit
+}
+
+func (l *rejectIngressLimiter) Allow(_ context.Context, key string, limit auth.Limit) (bool, time.Duration) {
+	l.calls++
+	l.key = key
+	l.limit = limit
+	return false, time.Second
+}
+
+func TestProtectPublicAPIRejectsBeforeCredentialDatabaseLookup(t *testing.T) {
+	cfg := config.Default()
+	cfg.Security.APIKeyPepper = strings.Repeat("p", 32)
+	limiter := &rejectIngressLimiter{}
+	// A disconnected pool is enough: admission must reject without acquiring it.
+	pool, err := pgxpool.New(t.Context(), "postgres://localhost:1/unused?connect_timeout=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	h, err := (&Backend{}).protectPublicAPI(pool, cfg, nil, limiter, http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Fatal("request reached application") }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest("GET", "/api/v1/blocks", nil)
+	r.Header.Set("X-API-Key", "evk_aaaaaaaaaa_"+strings.Repeat("A", 43))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 429 || limiter.calls != 1 || !strings.HasPrefix(limiter.key, "anonymous:ingress:") || limiter.limit.Rate != cfg.Security.IngressRate {
+		t.Fatalf("status=%d limiter=%+v", w.Code, limiter)
+	}
+	if pool.Stat().AcquireCount() != 0 {
+		t.Fatal("authentication acquired database before admission")
 	}
 }

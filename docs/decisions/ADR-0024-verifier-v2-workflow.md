@@ -53,6 +53,12 @@ fail-closed cleanup requirements remain mandatory.
   canonical constructor arguments. Runtime matching may replace CBOR auxdata,
   libraries, and compiler-declared immutables. Values repeated under one
   identifier must agree.
+- ABI parsing, including method lookup, bounds document bytes, type depth,
+  type-name length and expanded fixed-array/tuple shape before reflection-type
+  construction. Constructor matching preflights decoded node and byte budgets
+  before Unpack/Pack, counting aliased offsets on every visit. Canonical
+  re-encoding remains mandatory after this preflight. The Go matching process
+  does not rely on the compiler subprocess's heap limit for protection.
 - A match is `full` only when authenticated metadata is present and unchanged
   after deployment transformations. An auxdata replacement or absence of
   authenticated metadata is `partial`. Undeclared differences never match.
