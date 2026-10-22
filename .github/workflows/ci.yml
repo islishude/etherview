@@ -20,6 +20,9 @@ jobs:
     name: Generate, lint, and test
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      # The security job owns dependency audits; installs must not repeat them.
+      npm_config_audit: "false"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
