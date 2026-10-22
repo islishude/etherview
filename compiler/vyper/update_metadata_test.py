@@ -2,6 +2,7 @@
 import importlib.util
 from pathlib import Path
 import unittest
+import tomllib
 from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('update_metadata', Path(__file__).with_name('update-metadata.py'))
@@ -10,6 +11,23 @@ spec.loader.exec_module(m)
 
 
 class MetadataTests(unittest.TestCase):
+    def test_uv_range_allows_minor_and_patch_updates(self):
+        config = tomllib.loads(Path(__file__).with_name('pyproject.toml').read_text())
+        supported = m.SpecifierSet(config['tool']['uv']['required-version'])
+        for version in ['0.13.4', '0.13.5', '0.14.0', '0.99.0']:
+            self.assertTrue(supported.contains(version), version)
+        for version in ['0.13.3', '0.12.99', '1.0.0', '2.0.0']:
+            self.assertFalse(supported.contains(version), version)
+
+    def test_resolver_checks_project_policy_before_resolution(self):
+        with patch.object(m.subprocess, 'run', side_effect=m.subprocess.CalledProcessError(2, 'uv')) as run, patch.object(m, 'fetch') as fetch:
+            with self.assertRaises(m.subprocess.CalledProcessError):
+                m.resolve({'version': '0.4.4', 'python': '3.14.2'})
+            run.assert_called_once_with(
+                ['uv', '--project', str(Path(m.__file__).resolve().parent), 'cache', 'dir'],
+                check=True, stdout=m.subprocess.DEVNULL)
+            fetch.assert_not_called()
+
     def test_pep440_and_yanked(self):
         wheel = {'packagetype': 'bdist_wheel', 'yanked': False}
         releases = {v: [wheel] for v in ['0.4.3', '0.4.4', '0.10.0', '0.5.0rc1', '0.5.0.dev1', '0.5.0+local', '0.5.0.post1', 'bad']}

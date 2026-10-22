@@ -1,22 +1,26 @@
 import assert from "node:assert/strict";
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import {
-  AbiCoder,
-  Interface,
+  decodeEventLog,
+  decodeFunctionResult,
+  encodeAbiParameters,
+  encodeFunctionData,
+  encodePacked,
   keccak256,
-  solidityPacked,
-  toUtf8Bytes,
-} from "ethers";
+  parseAbi,
+  parseAbiParameters,
+  size,
+  stringToHex,
+  toEventSelector,
+} from "viem";
 import { createTransactionSender } from "./transaction-sender.mjs";
 
 const OPENZEPPELIN_VERSION = "5.6.1";
 const SAFE_VERSION = "1.4.1";
 const SAFE_PROXY_RUNTIME_HASH =
   "0xd7d408ebcd99b2b70be43e20253d6d92a8ea8fab29bd3be7f55b10032331fb4c";
-const ADMIN_SLOT =
-  "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103";
-const IMPLEMENTATION_SLOT =
-  "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
+const ADMIN_SLOT = "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103";
+const IMPLEMENTATION_SLOT = "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
 
 const rpcURL = process.env.ETHERVIEW_HARDHAT3_RPC_URL;
 const outputFile = process.env.ETHERVIEW_HARDHAT3_DEPLOYMENT_FILE;
@@ -46,9 +50,7 @@ async function compilerArtifact(sourceSuffix, contractName) {
   for (const name of await readdir(directory)) {
     if (!name.endsWith(".output.json")) continue;
     const build = JSON.parse(await readFile(new URL(name, directory)));
-    for (const [sourceName, contracts] of Object.entries(
-      build.output?.contracts ?? {},
-    )) {
+    for (const [sourceName, contracts] of Object.entries(build.output?.contracts ?? {})) {
       if (!sourceName.endsWith(sourceSuffix) || !(contractName in contracts)) {
         continue;
       }
@@ -97,16 +99,11 @@ async function sendTransaction(from, transaction, expectedStatus = "0x1") {
   return receiptSummary(receipt);
 }
 
-const coder = AbiCoder.defaultAbiCoder();
-
 function constructorData(contract, values) {
   const constructor = contract.abi.find((item) => item.type === "constructor");
   const inputs = constructor?.inputs ?? [];
   assert.equal(inputs.length, values.length, "constructor argument count");
-  const argumentsData = coder.encode(
-    inputs.map((input) => input.type),
-    values,
-  );
+  const argumentsData = encodeAbiParameters(inputs, values);
   return {
     arguments: values,
     encoded: argumentsData,
@@ -126,10 +123,10 @@ async function deploy(from, contract, values = []) {
   };
 }
 
-async function call(to, iface, functionName, values = []) {
-  const data = iface.encodeFunctionData(functionName, values);
+async function call(to, abi, functionName, values = []) {
+  const data = encodeFunctionData({ abi, functionName, args: values });
   const result = await rpc("eth_call", [{ to, data }, "latest"]);
-  return iface.decodeFunctionResult(functionName, result);
+  return decodeFunctionResult({ abi, functionName, data: result });
 }
 
 function addressFromStorageWord(value) {
@@ -152,11 +149,7 @@ for (const packageName of ["contracts", "contracts-upgradeable"]) {
       new URL(`./node_modules/@openzeppelin/${packageName}/package.json`, import.meta.url),
     ),
   );
-  assert.equal(
-    metadata.version,
-    OPENZEPPELIN_VERSION,
-    `@openzeppelin/${packageName} version`,
-  );
+  assert.equal(metadata.version, OPENZEPPELIN_VERSION, `@openzeppelin/${packageName} version`);
 }
 const safeMetadata = JSON.parse(
   await readFile(
@@ -204,10 +197,7 @@ const beaconArtifact = await compilerArtifact(
   "/proxy/beacon/UpgradeableBeacon.sol",
   "UpgradeableBeacon",
 );
-const beaconProxyArtifact = await compilerArtifact(
-  "/proxy/beacon/BeaconProxy.sol",
-  "BeaconProxy",
-);
+const beaconProxyArtifact = await compilerArtifact("/proxy/beacon/BeaconProxy.sol", "BeaconProxy");
 const safeArtifact = await projectArtifact(
   "./node_modules/@safe-global/safe-contracts/build/artifacts/contracts/Safe.sol/Safe.json",
 );
@@ -227,9 +217,13 @@ const implementationDeployment = await deploy(owner, implementationArtifact);
 const implementationV2Deployment = await deploy(owner, implementationV2Artifact);
 const badUUIDDeployment = await deploy(owner, badUUIDArtifact);
 
-const implementationInterface = new Interface(implementationArtifact.abi);
+const implementationABI = implementationArtifact.abi;
 const initializeData = (initialValue) =>
-  implementationInterface.encodeFunctionData("initialize", [owner, initialValue]);
+  encodeFunctionData({
+    abi: implementationABI,
+    functionName: "initialize",
+    args: [owner, initialValue],
+  });
 
 const transparentDeployment = await deploy(owner, transparentProxyArtifact, [
   implementationDeployment.address,
@@ -260,27 +254,30 @@ const beaconProxyBDeployment = await deploy(owner, beaconProxyArtifact, [
 
 const safeSingletonDeployment = await deploy(owner, safeArtifact);
 const safeProxyFactoryDeployment = await deploy(owner, safeProxyFactoryArtifact);
-const safeProxyFactoryInterface = new Interface(safeProxyFactoryArtifact.abi);
+const safeProxyFactoryABI = safeProxyFactoryArtifact.abi;
 const safeCreateTransaction = await sendTransaction(owner, {
   to: safeProxyFactoryDeployment.address,
-  data: safeProxyFactoryInterface.encodeFunctionData("createProxyWithNonce", [
-    safeSingletonDeployment.address,
-    "0x",
-    141n,
-  ]),
+  data: encodeFunctionData({
+    abi: safeProxyFactoryABI,
+    functionName: "createProxyWithNonce",
+    args: [safeSingletonDeployment.address, "0x", 141n],
+  }),
 });
-const safeCreateReceipt = await rpc("eth_getTransactionReceipt", [
-  safeCreateTransaction.hash,
-]);
+const safeCreateReceipt = await rpc("eth_getTransactionReceipt", [safeCreateTransaction.hash]);
 assert.ok(safeCreateReceipt, "Safe proxy creation receipt");
-const proxyCreationEvent = safeProxyFactoryInterface.getEvent("ProxyCreation");
+const proxyCreationTopic = toEventSelector("ProxyCreation(address,address)");
 const proxyCreationLog = safeCreateReceipt.logs.find(
   (log) =>
     log.address.toLowerCase() === safeProxyFactoryDeployment.address.toLowerCase() &&
-    log.topics[0] === proxyCreationEvent.topicHash,
+    log.topics[0] === proxyCreationTopic,
 );
 assert.ok(proxyCreationLog, "Safe ProxyCreation event");
-const proxyCreation = safeProxyFactoryInterface.parseLog(proxyCreationLog);
+const proxyCreation = decodeEventLog({
+  abi: safeProxyFactoryABI,
+  eventName: "ProxyCreation",
+  data: proxyCreationLog.data,
+  topics: proxyCreationLog.topics,
+});
 assert.ok(proxyCreation, "decoded Safe ProxyCreation event");
 const safeProxy = proxyCreation.args.proxy;
 assert.equal(
@@ -288,14 +285,8 @@ assert.equal(
   safeSingletonDeployment.address.toLowerCase(),
   "Safe ProxyCreation singleton",
 );
-const safeProxyInterface = new Interface([
-  "function masterCopy() view returns (address)",
-]);
-const [safeMasterCopy] = await call(
-  safeProxy,
-  safeProxyInterface,
-  "masterCopy",
-);
+const safeProxyABI = parseAbi(["function masterCopy() view returns (address)"]);
+const safeMasterCopy = await call(safeProxy, safeProxyABI, "masterCopy");
 assert.equal(
   safeMasterCopy.toLowerCase(),
   safeSingletonDeployment.address.toLowerCase(),
@@ -306,42 +297,42 @@ assert.equal((safeProxyRuntime.length - 2) / 2, 171, "SafeProxy runtime bytes");
 assert.equal(keccak256(safeProxyRuntime), SAFE_PROXY_RUNTIME_HASH, "SafeProxy runtime hash");
 
 const cloneFactoryDeployment = await deploy(owner, cloneFactoryArtifact);
-const cloneFactoryInterface = new Interface(cloneFactoryArtifact.abi);
+const cloneFactoryABI = cloneFactoryArtifact.abi;
 const standardCloneTransaction = await sendTransaction(owner, {
   to: cloneFactoryDeployment.address,
-  data: cloneFactoryInterface.encodeFunctionData("deployStandard", [
-    implementationDeployment.address,
-  ]),
+  data: encodeFunctionData({
+    abi: cloneFactoryABI,
+    functionName: "deployStandard",
+    args: [implementationDeployment.address],
+  }),
 });
-const [standardClone] = await call(
-  cloneFactoryDeployment.address,
-  cloneFactoryInterface,
-  "standardClone",
-);
+const standardClone = await call(cloneFactoryDeployment.address, cloneFactoryABI, "standardClone");
 const standardCloneInitialization = await sendTransaction(owner, {
   to: standardClone,
   data: initializeData(41n),
 });
 
-const immutableArgs = coder.encode(
-  ["address", "uint256", "bytes32"],
-  [owner, 561n, keccak256(toUtf8Bytes("openzeppelin-5.6.1"))],
-);
+const immutableArgs = encodeAbiParameters(parseAbiParameters("address, uint256, bytes32"), [
+  owner,
+  561n,
+  keccak256(stringToHex("openzeppelin-5.6.1")),
+]);
 const immutableCloneTransaction = await sendTransaction(owner, {
   to: cloneFactoryDeployment.address,
-  data: cloneFactoryInterface.encodeFunctionData("deployWithImmutableArgs", [
-    implementationDeployment.address,
-    immutableArgs,
-  ]),
+  data: encodeFunctionData({
+    abi: cloneFactoryABI,
+    functionName: "deployWithImmutableArgs",
+    args: [implementationDeployment.address, immutableArgs],
+  }),
 });
-const [immutableArgsClone] = await call(
+const immutableArgsClone = await call(
   cloneFactoryDeployment.address,
-  cloneFactoryInterface,
+  cloneFactoryABI,
   "immutableArgsClone",
 );
-const [observedImmutableArgs] = await call(
+const observedImmutableArgs = await call(
   cloneFactoryDeployment.address,
-  cloneFactoryInterface,
+  cloneFactoryABI,
   "immutableArgs",
   [immutableArgsClone],
 );
@@ -353,43 +344,42 @@ const immutableCloneInitialization = await sendTransaction(owner, {
 
 const cwiaArtifactDeployment = await deploy(owner, myAccountArtifact);
 const cwiaFactoryDeployment = await deploy(owner, myAccountFactoryArtifact);
-const cwiaFactoryInterface = new Interface(myAccountFactoryArtifact.abi);
-const myAccountInterface = new Interface(myAccountArtifact.abi);
-const [cwiaImplementation] = await call(
+const cwiaFactoryABI = myAccountFactoryArtifact.abi;
+const myAccountABI = myAccountArtifact.abi;
+const cwiaImplementation = await call(
   cwiaFactoryDeployment.address,
-  cwiaFactoryInterface,
+  cwiaFactoryABI,
   "implementation",
 );
 const cwiaNumber = (1n << 200n) + 42n;
-const cwiaData = toUtf8Bytes("hello,world");
-const cwiaDataHex = solidityPacked(["bytes"], [cwiaData]);
+const cwiaData = stringToHex("hello,world");
 const cwiaCreateTransaction = await sendTransaction(owner, {
   to: cwiaFactoryDeployment.address,
-  data: cwiaFactoryInterface.encodeFunctionData("create", [owner, cwiaNumber, cwiaData]),
+  data: encodeFunctionData({
+    abi: cwiaFactoryABI,
+    functionName: "create",
+    args: [owner, cwiaNumber, cwiaData],
+  }),
 });
-const [cwiaAccount] = await call(
-  cwiaFactoryDeployment.address,
-  cwiaFactoryInterface,
-  "account",
-);
-const [observedCWIAOwner] = await call(cwiaAccount, myAccountInterface, "owner");
-const [observedCWIANumber] = await call(cwiaAccount, myAccountInterface, "number");
-const [observedCWIAData] = await call(cwiaAccount, myAccountInterface, "data");
-const [infoOwner, infoNumber] = await call(cwiaAccount, myAccountInterface, "getInfo");
+const cwiaAccount = await call(cwiaFactoryDeployment.address, cwiaFactoryABI, "account");
+const observedCWIAOwner = await call(cwiaAccount, myAccountABI, "owner");
+const observedCWIANumber = await call(cwiaAccount, myAccountABI, "number");
+const observedCWIAData = await call(cwiaAccount, myAccountABI, "data");
+const [infoOwner, infoNumber] = await call(cwiaAccount, myAccountABI, "getInfo");
 assert.equal(observedCWIAOwner.toLowerCase(), owner.toLowerCase(), "CWIA owner");
 assert.equal(observedCWIANumber, cwiaNumber, "CWIA number");
-assert.equal(observedCWIAData, cwiaDataHex, "CWIA data");
+assert.equal(observedCWIAData, cwiaData, "CWIA data");
 assert.equal(infoOwner.toLowerCase(), owner.toLowerCase(), "CWIA info owner");
 assert.equal(infoNumber, cwiaNumber, "CWIA info number");
 const cwiaSetStoredTransaction = await sendTransaction(owner, {
   to: cwiaAccount,
-  data: myAccountInterface.encodeFunctionData("setStored", [777n]),
+  data: encodeFunctionData({ abi: myAccountABI, functionName: "setStored", args: [777n] }),
 });
-const [cwiaStored] = await call(cwiaAccount, myAccountInterface, "stored");
+const cwiaStored = await call(cwiaAccount, myAccountABI, "stored");
 assert.equal(cwiaStored, 777n, "CWIA delegated storage write");
-const cwiaImmutableArgs = solidityPacked(
+const cwiaImmutableArgs = encodePacked(
   ["address", "uint256", "uint16", "bytes"],
-  [owner, cwiaNumber, cwiaData.length, cwiaData],
+  [owner, cwiaNumber, size(cwiaData), cwiaData],
 );
 
 const valueFacetDeployment = await deploy(owner, valueFacetArtifact);
@@ -398,26 +388,13 @@ const diamondDeployment = await deploy(owner, diamondArtifact, [
   valueFacetDeployment.address,
   mathFacetDeployment.address,
 ]);
-const diamondInterface = new Interface([
-  ...diamondArtifact.abi,
-  ...valueFacetArtifact.abi,
-  ...mathFacetArtifact.abi,
-]);
+const diamondABI = [...diamondArtifact.abi, ...valueFacetArtifact.abi, ...mathFacetArtifact.abi];
 const diamondSetValue = await sendTransaction(owner, {
   to: diamondDeployment.address,
-  data: diamondInterface.encodeFunctionData("setValue", [2535n]),
+  data: encodeFunctionData({ abi: diamondABI, functionName: "setValue", args: [2535n] }),
 });
-const [diamondValue] = await call(
-  diamondDeployment.address,
-  diamondInterface,
-  "value",
-);
-const [diamondDouble] = await call(
-  diamondDeployment.address,
-  diamondInterface,
-  "double",
-  [21n],
-);
+const diamondValue = await call(diamondDeployment.address, diamondABI, "value");
+const diamondDouble = await call(diamondDeployment.address, diamondABI, "double", [21n]);
 assert.equal(diamondValue, 2535n, "Diamond delegated storage value");
 assert.equal(diamondDouble, 42n, "Diamond delegated pure call");
 
@@ -472,7 +449,7 @@ const output = {
     account: cwiaAccount,
     owner,
     number: cwiaNumber.toString(),
-    data: cwiaDataHex,
+    data: cwiaData,
     immutableArgs: cwiaImmutableArgs,
     stored: cwiaStored.toString(),
   },

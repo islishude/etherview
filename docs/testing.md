@@ -91,14 +91,14 @@ Common CI gates, Vyper package construction, security/license auditing and the
 bounded Go assembler regressions use Node and Go without host Python setup. The compiler
 interpreter remains bundled Python WASM. Host Python is needed only for optional
 official reference generation and `make benchmark-vyper-wasm`; reference
-environments are prepared by `node compiler/vyper/reference.mjs` with uv 0.13.1.
+environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13.4,<1.0.0`.
 
 
 - `make test-workflow-scripts`: exercise extracted workflow helpers with temporary
   Git repositories and stub commands, covering metadata, digest export,
   PR flags, command order, production-image/evidence handoff and failure
   propagation without pushing images or PRs.
-- `make toolchain-check`: require at least Go 1.27.2, Node 24.18.0, and npm
+- `make toolchain-check`: require at least Go 1.27.3, Node 26.12.1, and npm
   11.16.0 before generating or validating artifacts. Compatible newer stable
   versions are supported; older, malformed, and prerelease versions fail.
 - `make plan-check`: validate plan links, IDs, statuses, dependencies, evidence,
@@ -193,7 +193,9 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv 0.13.1.
   Hardhat 3 fixture and run its Etherscan-provider flow against a Go-owned real
   compatibility handler with in-memory authentication and a stateful fake
   backend. This is the fast provider-wire regression only; it has no chain,
-  database, compiler, or production process.
+  database, compiler, or production process. The fixture uses viem for ABI
+  encoding/decoding and local EIP-155 signing; its Node regressions also check
+  raw transaction recovery, gas pricing, numeric bounds, and key-error redaction.
 - `make test-hardhat3-e2e`: rebuild the host-native production application and
   independent Hardhat client images, then run the real Hardhat CLI against independent
   Anvil/PostgreSQL datasets in monolith and complete six-application-role
@@ -352,6 +354,10 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   the API generator's
   transitive parser and glob dependencies are constrained by audited
   overrides.
+  CI disables automatic npm install audits so an advisory endpoint outage
+  does not consume test budgets. The security job retains all four explicit
+  audits, which always enable auditing regardless of the install setting,
+  and fails if an audit cannot complete.
 - `make license-check`: Go, production frontend/compiler, all Vyper package
   and pinned shared WASM component notice checks.
 - `make benchmark-vyper-wasm`: actual SEA first/repeated dual compilation,
@@ -368,7 +374,7 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   Docker host architecture, run it with the numeric non-root identity and
   hardened runtime flags, validate the exact SEA/compiler runtime manifest,
   recursive ELF closure, and self-test, and scan its exported root filesystem.
-  The image contains one read-only Node 26.12.0 SEA, only the automatically
+  The image contains one read-only Node 26.12.1 SEA, only the automatically
   discovered private libraries missing from the final base rootfs, and the
   read-only Geas v0.3.3 helper, but no general Node executable, wrapper source,
   package metadata, `node_modules`, npm, npx, corepack, shell, Go toolchain,
@@ -906,11 +912,13 @@ acceptance changes under ADR-0053.
 
 `make test-vyper-update` runs complete version-set checks, publication allowlist
 and PR lifecycle tests, and offline PyPI metadata regressions. It requires uv;
-CI installs 0.13.1 with `astral-sh/setup-uv`, reading the required version from
-`compiler/vyper/pyproject.toml`. Metadata tests and update scripts share the
+CI installs the latest uv in `>=0.13.4,<1.0.0` with `astral-sh/setup-uv`, reading
+the required range from `compiler/vyper/pyproject.toml`. Metadata tests and
+update scripts share the
 committed tooling `uv.lock` through `uv run --locked`; no pip bootstrap is needed.
-Update recipe generation also requires uv 0.13.1. `make test-vyper-release` includes these
-checks, including tagged production-fixture/count regressions without starting
+Update recipe generation enforces the same range before invoking its isolated
+resolver. `make test-vyper-release` includes these checks, including tagged
+production-fixture/count regressions without starting
 Docker. Fixtures cover PEP 440 ordering, prerelease/yanked exclusion, wheel
 compatibility, digest mismatch, network failures and unchanged prior recipes.
 
