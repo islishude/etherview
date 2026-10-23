@@ -22,7 +22,7 @@ require (
 	github.com/nats-io/nats.go v1.54.0
 	github.com/oapi-codegen/runtime v1.6.0
 	github.com/pk910/dynamic-ssz v1.4.0
-	github.com/redis/go-redis/v9 v9.21.0
+	github.com/redis/go-redis/v9 v9.23.0
 	github.com/signinwithethereum/siwe-go v1.0.0
 	github.com/x402-foundation/x402/go/v2 v2.27.0
 	go.opentelemetry.io/otel v1.47.0
@@ -95,7 +95,7 @@ require (
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/kilic/bls12-381 v0.1.0 // indirect
 	github.com/klauspost/compress v1.20.0 // indirect
-	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
+	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/minio/sha256-simd v1.0.1 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/mr-tron/base58 v1.3.0 // indirect
@@ -146,7 +146,7 @@ require (
 	go.opentelemetry.io/otel/log v1.47.0 // indirect
 	go.opentelemetry.io/otel/metric v1.47.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.11.0 // indirect
-	go.uber.org/atomic v1.11.0 // indirect
+	go.uber.org/atomic v1.12.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
