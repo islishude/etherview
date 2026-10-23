@@ -1,8 +1,10 @@
-FROM node:26.12.1-slim
+FROM node:26.12.1
 
 ENV PNPM_HOME=/pnpm
 ENV PATH="${PNPM_HOME}/bin:${PATH}"
-RUN env ENV=/root/.shrc SHELL=/bin/sh npx --yes get-pnpm@0.0.5 12.15.0 \
+RUN curl -fsSL https://get.pnpm.io/install.sh -o /tmp/install-pnpm.sh \
+    && env PNPM_VERSION=12.15.0 ENV=/root/.shrc SHELL=/bin/sh sh /tmp/install-pnpm.sh \
+    && rm /tmp/install-pnpm.sh \
     && test "$(pnpm --version)" = "12.15.0"
 WORKDIR /repo
 

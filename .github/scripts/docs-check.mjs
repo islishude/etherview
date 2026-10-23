@@ -78,9 +78,7 @@ check(
 
 const dockerfile = read("Dockerfile");
 const nodeVersions = new Set(
-  [...dockerfile.matchAll(/^FROM node:([0-9]+\.[0-9]+\.[0-9]+)-slim AS /gm)].map(
-    (match) => match[1],
-  ),
+  [...dockerfile.matchAll(/^FROM node:([0-9]+\.[0-9]+\.[0-9]+) AS /gm)].map((match) => match[1]),
 );
 check(nodeVersions.size === 1, "Dockerfile Node builder versions must agree");
 const nodeVersion = [...nodeVersions][0];

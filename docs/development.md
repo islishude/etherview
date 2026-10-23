@@ -157,8 +157,9 @@ The workspace policy enforces engines and disables dependency lifecycle scripts.
 Automatic peer installation is disabled, so the artifact-only Safe fixture's
 unused Ethers v5 peer is not installed. Required peers are explicit workspace
 dependencies, including the API generator's TypeScript 5 and the frontend test
-DOM library. Docker uses the [official npm-based installer](https://pnpm.io/installation#using-npm)
-via `npx --yes get-pnpm@0.0.5 12.15.0`, with an explicit shell and `PNPM_HOME` on `PATH`, then
+DOM library. Docker uses the `node:26.12.1` image's curl to download the
+[official standalone installer](https://pnpm.io/installation#using-a-standalone-script),
+with `PNPM_VERSION=12.15.0`, an explicit shell and `PNPM_HOME/bin` on `PATH`, then
 uses the same workspace policy with frozen, filtered installs. CI pins
 `pnpm/action-setup@v6.1.0`. Dedicated compiler
 CI jobs use `pnpm --filter ./compiler install --frozen-lockfile`; a full
