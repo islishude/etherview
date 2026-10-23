@@ -45,7 +45,11 @@ updates:
         patterns: ["oxlint", "oxfmt"]
 
   - package-ecosystem: github-actions
-    directory: /
+    directories:
+      - /
+      - /.github/actions/setup-toolchain
+      - /.github/actions/load-production-image
+      - /.github/actions/prepare-production
     schedule:
       interval: monthly
       day: monday
