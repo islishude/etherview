@@ -73,7 +73,7 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			return err
 		}
 		if rpcBuild != nil && len(rpcBuild.Pool.Names(ethrpc.PurposeState)) > 0 {
-			stateReconciler, stateErr := state.NewNFTReconciler(db, rpcBuild.Pool, canonicalState)
+			stateReconciler, stateErr := state.NewTokenReconciler(db, rpcBuild.Pool, canonicalState)
 			if stateErr != nil {
 				return stateErr
 			}

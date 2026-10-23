@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/islishude/etherview/internal/abibounds"
+	"github.com/islishude/etherview/internal/abicalldata"
 )
 
 type VerificationMatchType string
@@ -349,28 +349,22 @@ func validateConstructorArguments(rawABI json.RawMessage, arguments []byte) erro
 		}
 		return errors.New("constructor arguments exist without an ABI")
 	}
-	parsed, err := abibounds.Parse(rawABI)
-	if err != nil {
+	switch err := abicalldata.ValidateConstructor(rawABI, arguments); err {
+	case nil:
+		return nil
+	case abicalldata.ErrInvalidABI:
 		return errors.New("compiled contract ABI is invalid")
-	}
-	if parsed.Constructor.Inputs == nil {
-		if len(arguments) == 0 {
-			return nil
-		}
+	case abicalldata.ErrMissingConstructor:
 		return errors.New("constructor arguments exist without a constructor")
-	}
-	if err := abibounds.CheckValues(parsed.Constructor.Inputs, arguments); err != nil {
+	case abicalldata.ErrArgumentLimit:
 		return errors.New("constructor arguments exceed decoding bounds")
-	}
-	values, err := parsed.Constructor.Inputs.Unpack(arguments)
-	if err != nil {
+	case abicalldata.ErrInvalidArguments:
 		return errors.New("constructor arguments do not decode")
-	}
-	encoded, err := parsed.Constructor.Inputs.Pack(values...)
-	if err != nil || !bytes.Equal(encoded, arguments) {
+	case abicalldata.ErrNonCanonical:
 		return errors.New("constructor arguments are not canonically encoded")
+	default:
+		return err
 	}
-	return nil
 }
 
 func sortedAuxdataIDs(values map[string]AuxdataValue) []string {

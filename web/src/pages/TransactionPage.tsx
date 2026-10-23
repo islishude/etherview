@@ -1,5 +1,7 @@
+import { useCursorHistory } from "@/api/pagination";
 import { NativeTransfersPanel } from "./NativeTransfersPanel";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useIdentityRecovery } from "@/api/identityRecovery";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import {
@@ -23,13 +25,7 @@ import type {
 import { shorten } from "@/components/format";
 import { AddressIdentity } from "@/ens/AddressIdentity";
 import { QueryNotice } from "@/components/QueryNotice";
-import {
-  CapabilityDegraded,
-  CursorPagination,
-  Page,
-  ReorgContext,
-  useCursorHistory,
-} from "./pages";
+import { CapabilityDegraded, CursorPagination, Page, ReorgContext } from "./pages";
 import {
   TransactionAccessListPanel,
   TransactionBlobPanel,
@@ -124,30 +120,29 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
   const authorizationPager = useCursorHistory(`transaction-authorizations:${hash}`);
   const tokenTransfers = useTransactionTokenTransfers(
     hash,
-    tokenPager.cursor,
+    tokenPager.request,
     included && (activeTab === "overview" || activeTab === "token-transfers"),
   );
   const internalTransactions = useTransactionInternalTransactions(
     hash,
-    internalPager.cursor,
+    internalPager.request,
     included && activeTab === "internal-transactions",
   );
-  const logs = useTransactionLogs(hash, logPager.cursor, included && activeTab === "logs");
+  const logs = useTransactionLogs(hash, logPager.request, included && activeTab === "logs");
   const trace = useTransactionTrace(hash, included && activeTab === "trace");
   const authorizations = useTransactionAuthorizations(
     hash,
-    authorizationPager.cursor,
+    authorizationPager.request,
     included && activeTab === "authorizations",
   );
   const stateChanges = useTransactionStateChanges(
     hash,
-    statePager.cursor,
+    statePager.request,
     included && activeTab === "state-changes",
   );
   const nativeDecimals = publicConfig.data?.native_decimals ?? 18;
   const nativeSymbol = publicConfig.data?.native_symbol ?? "";
   const locale = i18n.resolvedLanguage ?? "en";
-  const lastIdentityRetry = useRef("");
   const tokenIdentityCurrent = matchingBlockIdentity(
     transaction.data?.block_hash,
     tokenTransfers.data?.block_hash,
@@ -164,9 +159,12 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
     !calldataIdentityCurrent && transaction.data && calldata.data
       ? transactionCalldataRetryKey(transaction.data, calldata.data)
       : undefined;
-  const calldataIdentityRetryPending =
-    calldataIdentityRetryKey !== undefined &&
-    lastIdentityRetry.current !== calldataIdentityRetryKey;
+  const calldataIdentityRetryPending = useIdentityRecovery(
+    calldataIdentityRetryKey,
+    calldataEnabled,
+    transaction.refetch,
+    calldata.refetch,
+  );
   const failureIdentityCurrent =
     failure.data === undefined ||
     transaction.data === undefined ||
@@ -175,8 +173,12 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
     !failureIdentityCurrent && transaction.data && failure.data
       ? transactionFailureRetryKey(transaction.data, failure.data)
       : undefined;
-  const failureIdentityRetryPending =
-    failureIdentityRetryKey !== undefined && lastIdentityRetry.current !== failureIdentityRetryKey;
+  const failureIdentityRetryPending = useIdentityRecovery(
+    failureIdentityRetryKey,
+    failureEnabled,
+    transaction.refetch,
+    failure.refetch,
+  );
   const transactionActionEvidence = resolveTransactionActionEvidence(
     Boolean(transaction.data?.to),
     calldata.isPending,
@@ -202,32 +204,31 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
     transaction.data?.block_hash,
     authorizations.data?.block_hash,
   );
-  useTransactionResourceIdentityRefresh(
-    activeTab,
-    lastIdentityRetry,
+  useBlockResourceRecovery(
+    "token-transfers",
     transaction,
     tokenTransfers,
+    included && (activeTab === "overview" || activeTab === "token-transfers"),
+  );
+  useBlockResourceRecovery(
+    "internal-transactions",
+    transaction,
     internalTransactions,
-    logs,
-    trace,
+    included && activeTab === "internal-transactions",
+  );
+  useBlockResourceRecovery("logs", transaction, logs, included && activeTab === "logs");
+  useBlockResourceRecovery("trace", transaction, trace, included && activeTab === "trace");
+  useBlockResourceRecovery(
+    "authorizations",
+    transaction,
     authorizations,
+    included && activeTab === "authorizations",
+  );
+  useBlockResourceRecovery(
+    "state-changes",
+    transaction,
     stateChanges,
-  );
-  usePairedIdentityRefresh(
-    calldataEnabled,
-    calldataIdentityCurrent,
-    calldataIdentityRetryKey,
-    lastIdentityRetry,
-    transaction.refetch,
-    calldata.refetch,
-  );
-  usePairedIdentityRefresh(
-    failureEnabled,
-    failureIdentityCurrent,
-    failureIdentityRetryKey,
-    lastIdentityRetry,
-    transaction.refetch,
-    failure.refetch,
+    included && activeTab === "state-changes",
   );
   const stateGroups = useMemo(() => {
     const groups = new Map<string, NonNullable<typeof stateChanges.data>["items"]>();
@@ -479,7 +480,7 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
 }
 
 type RefetchableBlockResource = {
-  data?: { block_hash?: string };
+  data?: { hash?: string; block_hash?: string };
   refetch: () => Promise<unknown>;
 };
 
@@ -504,65 +505,19 @@ function useMempoolDetailExpiry(observedExpiry: number): boolean {
   return expired || (Number.isFinite(observedExpiry) && observedExpiry <= Date.now());
 }
 
-function useTransactionResourceIdentityRefresh(
-  activeTab: TransactionTab,
-  lastRetry: { current: string },
+function useBlockResourceRecovery(
+  kind: string,
   transaction: RefetchableBlockResource,
-  tokenTransfers: RefetchableBlockResource,
-  internalTransactions: RefetchableBlockResource,
-  logs: RefetchableBlockResource,
-  trace: RefetchableBlockResource,
-  authorizations: RefetchableBlockResource,
-  stateChanges: RefetchableBlockResource,
-): void {
-  useEffect(() => {
-    if (activeTab === "access-list" || activeTab === "blob") return;
-    const resource =
-      activeTab === "token-transfers" || activeTab === "overview"
-        ? tokenTransfers
-        : activeTab === "internal-transactions"
-          ? internalTransactions
-          : activeTab === "logs"
-            ? logs
-            : activeTab === "trace"
-              ? trace
-              : activeTab === "authorizations"
-                ? authorizations
-                : stateChanges;
-    const resourceBlockHash = resource.data?.block_hash;
-    const overviewBlockHash = transaction.data?.block_hash;
-    if (!resourceBlockHash || !overviewBlockHash || resourceBlockHash === overviewBlockHash) return;
-    const retryKey = `${activeTab}:${overviewBlockHash}:${resourceBlockHash}`;
-    if (lastRetry.current === retryKey) return;
-    lastRetry.current = retryKey;
-    void Promise.all([transaction.refetch(), resource.refetch()]);
-  }, [
-    activeTab,
-    authorizations,
-    internalTransactions,
-    lastRetry,
-    logs,
-    stateChanges,
-    tokenTransfers,
-    trace,
-    transaction,
-  ]);
-}
-
-function usePairedIdentityRefresh(
+  resource: RefetchableBlockResource,
   enabled: boolean,
-  identityCurrent: boolean,
-  retryKey: string | undefined,
-  lastRetry: { current: string },
-  refetchOverview: () => Promise<unknown>,
-  refetchResource: () => Promise<unknown>,
 ): void {
-  useEffect(() => {
-    if (!enabled || identityCurrent || retryKey === undefined || lastRetry.current === retryKey)
-      return;
-    lastRetry.current = retryKey;
-    void Promise.all([refetchOverview(), refetchResource()]);
-  }, [enabled, identityCurrent, lastRetry, refetchOverview, refetchResource, retryKey]);
+  const overviewHash = transaction.data?.block_hash;
+  const resourceHash = resource.data?.block_hash;
+  const mismatch =
+    overviewHash && resourceHash && overviewHash !== resourceHash
+      ? `${kind}:${transaction.data?.hash}:${overviewHash}:${resourceHash}`
+      : undefined;
+  useIdentityRecovery(mismatch, enabled, transaction.refetch, resource.refetch);
 }
 
 function transactionCalldataIdentityMatches(

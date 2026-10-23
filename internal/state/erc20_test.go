@@ -24,7 +24,7 @@ func TestERC20BalancesUseOneExactEndpointAndBlockHash(t *testing.T) {
 	service := &testStateRPC{callResult: result}
 	contract := common.HexToAddress("0x1111111111111111111111111111111111111111")
 	owner := common.HexToAddress("0x2222222222222222222222222222222222222222")
-	reconciler := &NFTReconciler{
+	reconciler := &TokenReconciler{
 		db: stateTestDatabase(t,
 			erc20CacheQueryExpectation(nil),
 			erc20InsertExpectation(contract, owner, maximumUint256.String()),
@@ -57,7 +57,7 @@ func TestERC20BalancesUseExactCacheWithoutRPC(t *testing.T) {
 	contract := common.HexToAddress("0x1111111111111111111111111111111111111111")
 	owner := common.HexToAddress("0x2222222222222222222222222222222222222222")
 	service := &testStateRPC{err: errors.New("RPC must not be called for an exact cache hit")}
-	reconciler := &NFTReconciler{
+	reconciler := &TokenReconciler{
 		db: stateTestDatabase(t, erc20CacheQueryExpectation([][]any{{
 			contract.Bytes(), "0", catalog.NFTStateConfidenceRPCExact,
 		}})),
@@ -100,7 +100,7 @@ func TestERC20BalancesBatchOnlyCacheMissesAndPreserveOrder(t *testing.T) {
 		return hexutil.Bytes(result), nil
 	}}
 	observer := &nftBatchObserver{}
-	reconciler := &NFTReconciler{
+	reconciler := &TokenReconciler{
 		db: stateTestDatabase(t,
 			erc20CacheQueryExpectationWithCheck([][]any{{
 				contracts[1].Bytes(), "2", catalog.NFTStateConfidenceRPCExact,
@@ -156,7 +156,7 @@ func TestERC20BalancesRejectMalformedCacheWithoutRPC(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			service := &testStateRPC{err: errors.New("RPC must not run for corrupt cache data")}
-			reconciler := &NFTReconciler{
+			reconciler := &TokenReconciler{
 				db: stateTestDatabase(t, erc20CacheQueryExpectation([][]any{{
 					test.address, test.balance, test.confidence,
 				}})),
@@ -188,7 +188,7 @@ func TestERC20BalancesRejectMalformedRPCAndCanonicalChange(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			service := &testStateRPC{callResult: test.result, err: test.rpcErr}
-			reconciler := &NFTReconciler{
+			reconciler := &TokenReconciler{
 				db:        stateTestDatabase(t, erc20CacheQueryExpectation(nil)),
 				pool:      newERC20TestPool(t, service, nil),
 				canonical: testCanonical{canonical: test.canonical},
@@ -212,7 +212,7 @@ func TestERC20BalancePersistenceRejectsConcurrentConflict(t *testing.T) {
 	owner := common.HexToAddress("0x2222222222222222222222222222222222222222")
 	result := make([]byte, 32)
 	big.NewInt(9).FillBytes(result)
-	reconciler := &NFTReconciler{
+	reconciler := &TokenReconciler{
 		db: stateTestDatabase(t,
 			erc20CacheQueryExpectation(nil),
 			stateSQLExpectation{

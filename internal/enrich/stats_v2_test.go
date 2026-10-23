@@ -19,49 +19,39 @@ import (
 	"github.com/islishude/etherview/internal/chainbundle/testfixture"
 )
 
-func TestStatsV2AllowsExactNonZeroConfiguredStartWithoutParent(t *testing.T) {
+func TestStatsV2ConfiguredStartDoesNotDeriveParentStatistics(t *testing.T) {
 	t.Parallel()
-	job, raw := statsTestJobAndRaw(t, "stats-start", 7, 100, nil, nil)
-	var statsArguments []any
-	backend := statsBackend(t, raw, nil, nil, false, nil, func(query string, arguments []any) {
-		if strings.Contains(query, "INSERT INTO block_statistics") {
-			statsArguments = append([]any(nil), arguments...)
-		}
-	})
-	processor, err := NewPostgresStatsProcessor(openFakeSQLDB(t, backend))
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := processor.Process(context.Background(), job)
-	if err != nil || result.State != ResultComplete {
-		t.Fatalf("result=%+v error=%v", result, err)
-	}
-	if len(statsArguments) != 19 || !testpgx.NumericNull(statsArguments[10]) || !testpgx.NumericNull(statsArguments[11]) ||
-		!testpgx.NumericNull(statsArguments[13]) || !testpgx.NumericEquals(statsArguments[14], "0") ||
-		!testpgx.NumericEquals(statsArguments[15], "0") || !testpgx.NumericEquals(statsArguments[16], "0") {
-		t.Fatalf("stats arguments=%+v", statsArguments)
-	}
-}
-
-func TestStatsV2ConfiguredStartIgnoresRetainedCanonicalParent(t *testing.T) {
-	t.Parallel()
-	job, raw := statsTestJobAndRaw(t, "stats-start-parent", 7, 100, nil, nil)
-	var statsArguments []any
-	backend := statsBackend(t, raw, "6", "99", true, nil, func(query string, arguments []any) {
-		if strings.Contains(query, "INSERT INTO block_statistics") {
-			statsArguments = append([]any(nil), arguments...)
-		}
-	})
-	processor, err := NewPostgresStatsProcessor(openFakeSQLDB(t, backend))
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := processor.Process(context.Background(), job)
-	if err != nil || result.State != ResultComplete {
-		t.Fatalf("result=%+v error=%v", result, err)
-	}
-	if len(statsArguments) != 19 || !testpgx.NumericNull(statsArguments[10]) || !testpgx.NumericNull(statsArguments[11]) {
-		t.Fatalf("stats arguments=%+v", statsArguments)
+	for _, test := range []struct {
+		name                          string
+		parentNumber, parentTimestamp any
+		canonicalParent               bool
+	}{
+		{name: "missing parent"},
+		{name: "retained canonical parent", parentNumber: "6", parentTimestamp: "99", canonicalParent: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			job, raw := statsTestJobAndRaw(t, "stats-start", 7, 100, nil, nil)
+			var statsArguments []any
+			backend := statsBackend(t, raw, test.parentNumber, test.parentTimestamp, test.canonicalParent, nil, func(query string, arguments []any) {
+				if strings.Contains(query, "INSERT INTO block_statistics") {
+					statsArguments = append([]any(nil), arguments...)
+				}
+			})
+			processor, err := NewPostgresStatsProcessor(openFakeSQLDB(t, backend))
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := processor.Process(context.Background(), job)
+			if err != nil || result.State != ResultComplete {
+				t.Fatalf("result=%+v error=%v", result, err)
+			}
+			if len(statsArguments) != 19 || !testpgx.NumericNull(statsArguments[10]) || !testpgx.NumericNull(statsArguments[11]) ||
+				!testpgx.NumericNull(statsArguments[13]) || !testpgx.NumericEquals(statsArguments[14], "0") ||
+				!testpgx.NumericEquals(statsArguments[15], "0") || !testpgx.NumericEquals(statsArguments[16], "0") {
+				t.Fatalf("stats arguments=%+v", statsArguments)
+			}
+		})
 	}
 }
 

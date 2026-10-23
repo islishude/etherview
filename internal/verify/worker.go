@@ -256,7 +256,7 @@ func (worker *Worker) processLeaseV2(ctx context.Context, lease VerificationLeas
 	if request.Language == LanguageGeas {
 		return worker.processGeasV2(ctx, repository, lease, provenance)
 	}
-	var compiledVariants [][]CandidateArtifact
+	var compiledVariants []compiledVariant
 	var sawCompilationFailure bool
 	for _, input := range request.StandardJSONVariants {
 		modified, err := PerturbVerifierSources(input, worker.options.MaxOutputBytes)
@@ -267,9 +267,6 @@ func (worker *Worker) processLeaseV2(ctx context.Context, lease VerificationLeas
 			ctx, lease, request, provenance, input, modified,
 		)
 		if err != nil {
-			if fatalCompilerError(err) || errors.Is(err, ErrLeaseLost) {
-				return err
-			}
 			if fatalCompilerError(err) || errors.Is(err, ErrLeaseLost) || transientCompilerError(err) || errors.Is(err, context.Canceled) {
 				return err
 			}
@@ -291,7 +288,7 @@ func (worker *Worker) processLeaseV2(ctx context.Context, lease VerificationLeas
 			}
 			return worker.failLease(ctx, lease, ErrorCompilerOutput)
 		}
-		compiledVariants = append(compiledVariants, candidates)
+		compiledVariants = append(compiledVariants, compiledVariant{input: input, candidates: candidates})
 	}
 	if len(compiledVariants) == 0 {
 		if sawCompilationFailure {
@@ -304,31 +301,23 @@ func (worker *Worker) processLeaseV2(ctx context.Context, lease VerificationLeas
 	results := make([]any, 0, len(request.Bytecodes))
 	var authenticatedCompilation *AuthenticatedCompilation
 	for _, bytecodes := range request.Bytecodes {
-		var selected *CandidateVerification
-		for variantIndex, candidates := range compiledVariants {
-			matches, err := VerifyCandidateArtifacts(
-				candidates, bytecodes, request.ContractNameHint, request.Kind == JobAddress,
-			)
-			if err != nil {
-				return worker.failLease(ctx, lease, ErrorMatchFailed)
-			}
-			if len(matches) > 0 {
-				candidate := matches[0]
-				selected = &candidate
-				if request.Kind == JobAddress && request.Language == LanguageSolidity {
-					authenticatedCompilation = &AuthenticatedCompilation{
-						StandardJSON: request.StandardJSONVariants[variantIndex],
-						Candidates:   candidates,
-					}
-				}
-				break
-			}
+		selected, found, err := selectCompiledVariant(
+			compiledVariants, bytecodes, request.ContractNameHint, request.Kind == JobAddress,
+		)
+		if err != nil {
+			return worker.failLease(ctx, lease, ErrorMatchFailed)
 		}
-		if selected == nil {
+		if !found {
 			results = append(results, map[string]any{"kind": "verification_failure"})
 			continue
 		}
-		results = append(results, verificationSuccessOutcome(*selected, request))
+		if request.Kind == JobAddress && request.Language == LanguageSolidity {
+			authenticatedCompilation = &AuthenticatedCompilation{
+				StandardJSON: selected.compilation.input,
+				Candidates:   selected.compilation.candidates,
+			}
+		}
+		results = append(results, verificationSuccessOutcome(selected))
 	}
 	if request.Kind == JobSolidityBatchMultipart || request.Kind == JobSolidityBatchStandardJSON {
 		return worker.completeOutcomeV2(ctx, repository, lease, "batch_results", map[string]any{
@@ -349,6 +338,36 @@ func (worker *Worker) processLeaseV2(ctx context.Context, lease VerificationLeas
 		)
 	}
 	return worker.completeOutcomeV2(ctx, repository, lease, "verification_success", results[0])
+}
+
+// A candidate set remains paired with the exact input that produced it, even
+// when earlier variants fail compilation or do not match the target bytecode.
+type compiledVariant struct {
+	input      json.RawMessage
+	candidates []CandidateArtifact
+}
+
+type verifiedVariant struct {
+	compilation compiledVariant
+	candidate   CandidateVerification
+}
+
+func selectCompiledVariant(
+	variants []compiledVariant,
+	bytecodes BytecodePair,
+	contractNameHint string,
+	requireRuntime bool,
+) (verifiedVariant, bool, error) {
+	for _, variant := range variants {
+		matches, err := VerifyCandidateArtifacts(variant.candidates, bytecodes, contractNameHint, requireRuntime)
+		if err != nil {
+			return verifiedVariant{}, false, err
+		}
+		if len(matches) != 0 {
+			return verifiedVariant{compilation: variant, candidate: matches[0]}, true, nil
+		}
+	}
+	return verifiedVariant{}, false, nil
 }
 
 type geasEntrypointCompiler interface {
@@ -640,10 +659,8 @@ func runWithLeaseHeartbeat[T any](
 	return value, err
 }
 
-func verificationSuccessOutcome(
-	result CandidateVerification,
-	request *SubmissionV2,
-) map[string]any {
+func verificationSuccessOutcome(selected verifiedVariant) map[string]any {
+	result := selected.candidate
 	var sources map[string]any
 	var settings map[string]any
 	var document struct {
@@ -651,9 +668,9 @@ func verificationSuccessOutcome(
 		Interfaces map[string]any `json:"interfaces"`
 		Settings   map[string]any `json:"settings"`
 	}
-	_ = json.Unmarshal(request.StandardJSON, &document)
+	_ = json.Unmarshal(selected.compilation.input, &document)
 	sources, settings = document.Sources, document.Settings
-	if request.Language == LanguageVyper {
+	if result.Candidate.Language == LanguageVyper {
 		maps.Copy(sources, document.Interfaces)
 	}
 	libraries := make(map[string]string)

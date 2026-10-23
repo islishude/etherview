@@ -1,6 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
+import { appearanceCases, configureAppearance, collectBrowserErrors } from "./appearance";
+
 const blockHash = `0x${"1".repeat(64)}`;
 const transactionHash = `0x${"a".repeat(64)}`;
 const versionedHash = `0x01${"bc".repeat(31)}`;
@@ -61,76 +63,60 @@ async function setupBlobs(page: Page, enabled = true, count = 1) {
   return reads;
 }
 
-for (const width of [390, 768, 1440]) {
-  for (const language of ["en", "zh"] as const) {
-    for (const theme of ["light", "dark"] as const) {
-      test(`blob panels ${width}px ${language} ${theme}`, async ({ page }, testInfo) => {
-        await page.setViewportSize({ width, height: 1000 });
-        await page.addInitScript(
-          ({ language, theme }) => {
-            localStorage.setItem("etherview.language", language);
-            localStorage.setItem("etherview.theme", theme);
-          },
-          { language, theme },
-        );
-        const reads = await setupBlobs(page, true, 3);
-        const errors: string[] = [];
-        page.on("pageerror", (error) => errors.push(error.message));
-        page.on("console", (message) => {
-          if (/content security policy|violates.*directive/i.test(message.text()))
-            errors.push(message.text());
-        });
-        for (const [kind, url] of [
-          ["block", "/blocks/1?tab=blobs"],
-          ["transaction", `/tx/${transactionHash}?tab=blob`],
-        ]) {
-          await page.goto(url!);
-          const panel = page.getByRole("tabpanel");
-          const details = panel.getByRole("link", {
-            name: language === "en" ? "View Blob 42" : "查看 Blob 42",
-          });
-          await expect(details).toBeVisible();
-          await expect(panel.locator(".blob-list-row")).toHaveCount(3);
-          await expect(details).toHaveAttribute("href", `/blocks/${blockHash}/blobs/42`);
-          await expect(panel.getByRole("button")).toHaveCount(0);
-          await expect(panel.getByText(versionedHash, { exact: true })).toHaveCount(0);
-          await expect(panel.getByText(commitment, { exact: true })).toHaveCount(0);
-          await expect(page.locator("body")).toHaveJSProperty("scrollWidth", width);
-          const scan = await new AxeBuilder({ page })
-            .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
-            .analyze();
-          expect(scan.violations).toEqual([]);
-          const screenshot = testInfo.outputPath(`${kind}-blobs.png`);
-          await page.screenshot({ path: screenshot, fullPage: true });
-          await testInfo.attach(`${kind} blobs`, { path: screenshot, contentType: "image/png" });
-        }
-        await page
-          .getByRole("link", { name: language === "en" ? "View Blob 42" : "查看 Blob 42" })
-          .click();
-        await expect(page).toHaveURL(`/blocks/${blockHash}/blobs/42`);
-        await expect(
-          page.getByRole("heading", {
-            level: 1,
-            name: language === "en" ? "Blob details" : "Blob 详情",
-            exact: true,
-          }),
-        ).toBeVisible();
-        await expect(page.getByText(versionedHash, { exact: true })).toBeVisible();
-        await expect(page.getByText(commitment, { exact: true })).toBeVisible();
-        await expect(
-          page.getByRole("button", { name: language === "en" ? "Download blob" : "下载 Blob" }),
-        ).toBeVisible();
-        await expect(page.locator("body")).toHaveJSProperty("scrollWidth", width);
-        const detailScan = await new AxeBuilder({ page })
-          .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
-          .analyze();
-        expect(detailScan.violations).toEqual([]);
-        await page.screenshot({ path: testInfo.outputPath("blob-detail.png"), fullPage: true });
-        expect(reads).toEqual([]);
-        expect(errors).toEqual([]);
+for (const { width, language, theme } of appearanceCases) {
+  test(`blob panels ${width}px ${language} ${theme}`, async ({ page }, testInfo) => {
+    await configureAppearance(page, { width, language, theme });
+    const reads = await setupBlobs(page, true, 3);
+    const errors = collectBrowserErrors(page);
+    for (const [kind, url] of [
+      ["block", "/blocks/1?tab=blobs"],
+      ["transaction", `/tx/${transactionHash}?tab=blob`],
+    ]) {
+      await page.goto(url!);
+      const panel = page.getByRole("tabpanel");
+      const details = panel.getByRole("link", {
+        name: language === "en" ? "View Blob 42" : "查看 Blob 42",
       });
+      await expect(details).toBeVisible();
+      await expect(panel.locator(".blob-list-row")).toHaveCount(3);
+      await expect(details).toHaveAttribute("href", `/blocks/${blockHash}/blobs/42`);
+      await expect(panel.getByRole("button")).toHaveCount(0);
+      await expect(panel.getByText(versionedHash, { exact: true })).toHaveCount(0);
+      await expect(panel.getByText(commitment, { exact: true })).toHaveCount(0);
+      await expect(page.locator("body")).toHaveJSProperty("scrollWidth", width);
+      const scan = await new AxeBuilder({ page })
+        .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+        .analyze();
+      expect(scan.violations).toEqual([]);
+      const screenshot = testInfo.outputPath(`${kind}-blobs.png`);
+      await page.screenshot({ path: screenshot, fullPage: true });
+      await testInfo.attach(`${kind} blobs`, { path: screenshot, contentType: "image/png" });
     }
-  }
+    await page
+      .getByRole("link", { name: language === "en" ? "View Blob 42" : "查看 Blob 42" })
+      .click();
+    await expect(page).toHaveURL(`/blocks/${blockHash}/blobs/42`);
+    await expect(
+      page.getByRole("heading", {
+        level: 1,
+        name: language === "en" ? "Blob details" : "Blob 详情",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(page.getByText(versionedHash, { exact: true })).toBeVisible();
+    await expect(page.getByText(commitment, { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: language === "en" ? "Download blob" : "下载 Blob" }),
+    ).toBeVisible();
+    await expect(page.locator("body")).toHaveJSProperty("scrollWidth", width);
+    const detailScan = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+      .analyze();
+    expect(detailScan.violations).toEqual([]);
+    await page.screenshot({ path: testInfo.outputPath("blob-detail.png"), fullPage: true });
+    expect(reads).toEqual([]);
+    expect(errors).toEqual([]);
+  });
 }
 
 test("transaction preview and download use the exact block blob index and remain on demand", async ({

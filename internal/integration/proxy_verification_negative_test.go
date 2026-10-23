@@ -102,20 +102,7 @@ func TestPublishedNegativeDetectionShadowsCurrentProxyBindings(t *testing.T) {
 			}
 			publishAuthenticatedProxyState(t, ctx, db, blockOneRef, states)
 
-			repository, err := verify.NewPostgresRepository(db, verify.RepositoryOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			service, err := verify.NewService(repository, 1<<20)
-			if err != nil {
-				t.Fatal(err)
-			}
-			backend, err := etherscan.NewPostgresBackend(db, etherscan.PostgresOptions{
-				ChainID: 1, Verification: service,
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
+			repository, backend := newProxyVerificationBackend(t, db)
 			result, err := backend.Execute(ctx, etherscan.Request{
 				Module: "contract", Action: "verifyproxycontract",
 				Values: url.Values{

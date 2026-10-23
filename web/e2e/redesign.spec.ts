@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
+import { appearanceCases, configureAppearance } from "./appearance";
+
 test("grouped navigation supports keyboard, responsive disclosure and capability gating", async ({
   page,
 }) => {
@@ -77,60 +79,49 @@ const visualRoutes = [
   { name: "account", path: "/account", ready: ".auth-gate" },
 ];
 
-for (const width of [390, 768, 1440]) {
-  for (const language of ["en", "zh"] as const) {
-    for (const theme of ["light", "dark"] as const) {
-      test(`visual acceptance ${width}px ${language} ${theme}`, async ({ page }, testInfo) => {
-        test.setTimeout(120_000);
-        await page.setViewportSize({ width, height: 1000 });
-        await page.emulateMedia({ reducedMotion: "reduce" });
-        await page.addInitScript(
-          ({ language, theme }) => {
-            localStorage.setItem("etherview.language", language);
-            localStorage.setItem("etherview.theme", theme);
-          },
-          { language, theme },
-        );
-        const pageErrors: string[] = [];
-        const externalRequests: string[] = [];
-        const cspErrors: string[] = [];
-        page.on("pageerror", (error) => pageErrors.push(error.message));
-        page.on("console", (message) => {
-          if (/content security policy|violates.*directive/i.test(message.text()))
-            cspErrors.push(message.text());
-        });
-        page.on("request", (request) => {
-          if (new URL(request.url()).origin !== "http://127.0.0.1:4173")
-            externalRequests.push(request.url());
-        });
-        for (const route of visualRoutes) {
-          await page.goto(route.path);
-          await expect(page.locator("main h1")).toBeVisible();
-          await expect(page.locator(route.ready).first()).toBeVisible();
-          await expect(page.locator(".query-notice .pulse-dot")).toHaveCount(0);
-          await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-          await expect(page.locator("html")).toHaveAttribute(
-            "lang",
-            language === "zh" ? "zh-CN" : "en",
-          );
-          expect(
-            await page.evaluate(() => document.documentElement.scrollWidth - innerWidth),
-            route.name,
-          ).toBeLessThanOrEqual(1);
-          const scan = await new AxeBuilder({ page })
-            .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
-            .analyze();
-          expect(scan.violations, `${route.name}: ${JSON.stringify(scan.violations)}`).toEqual([]);
-          const screenshot = testInfo.outputPath(`${route.name}-${width}-${language}-${theme}.png`);
-          await page.screenshot({ path: screenshot, fullPage: route.name === "home" });
-          await testInfo.attach(route.name, { path: screenshot, contentType: "image/png" });
-        }
-        expect(pageErrors).toEqual([]);
-        expect(cspErrors).toEqual([]);
-        expect(externalRequests).toEqual([]);
-      });
+for (const { width, language, theme } of appearanceCases) {
+  test(`visual acceptance ${width}px ${language} ${theme}`, async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    await configureAppearance(page, { width, language, theme });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const pageErrors: string[] = [];
+    const externalRequests: string[] = [];
+    const cspErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    page.on("console", (message) => {
+      if (/content security policy|violates.*directive/i.test(message.text()))
+        cspErrors.push(message.text());
+    });
+    page.on("request", (request) => {
+      if (new URL(request.url()).origin !== "http://127.0.0.1:4173")
+        externalRequests.push(request.url());
+    });
+    for (const route of visualRoutes) {
+      await page.goto(route.path);
+      await expect(page.locator("main h1")).toBeVisible();
+      await expect(page.locator(route.ready).first()).toBeVisible();
+      await expect(page.locator(".query-notice .pulse-dot")).toHaveCount(0);
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      await expect(page.locator("html")).toHaveAttribute(
+        "lang",
+        language === "zh" ? "zh-CN" : "en",
+      );
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth - innerWidth),
+        route.name,
+      ).toBeLessThanOrEqual(1);
+      const scan = await new AxeBuilder({ page })
+        .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+        .analyze();
+      expect(scan.violations, `${route.name}: ${JSON.stringify(scan.violations)}`).toEqual([]);
+      const screenshot = testInfo.outputPath(`${route.name}-${width}-${language}-${theme}.png`);
+      await page.screenshot({ path: screenshot, fullPage: route.name === "home" });
+      await testInfo.attach(route.name, { path: screenshot, contentType: "image/png" });
     }
-  }
+    expect(pageErrors).toEqual([]);
+    expect(cspErrors).toEqual([]);
+    expect(externalRequests).toEqual([]);
+  });
 }
 
 test("long quantities and empty/error states stay readable in narrow explorer lists", async ({

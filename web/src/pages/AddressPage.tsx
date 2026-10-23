@@ -1,3 +1,4 @@
+import { useCursorHistory } from "@/api/pagination";
 import { NativeTransfersPanel } from "./NativeTransfersPanel";
 import { AddressAccountActions } from "@/components/AddressAccountActions";
 import { useEffect, useRef, useState } from "react";
@@ -55,7 +56,6 @@ import {
   formatTokenEventAmount,
   isNFTStandard,
   tokenStandardLabel,
-  useCursorHistory,
 } from "./pages";
 import { TransactionStatusBadge } from "./TransactionPage";
 
@@ -104,56 +104,49 @@ export function AddressDetailPage({ address, tab }: { address: string; tab: stri
           : "transactions";
   const transactions = useAddressTransactions(
     address,
-    transactionPager.cursor,
-    CORE_PAGE_SIZE,
-    transactionPager.refreshGeneration,
+    transactionPager.request,
     activeTab === "transactions" && isAddress(address),
+    CORE_PAGE_SIZE,
   );
   const internalTransactions = useAddressInternalTransactions(
     address,
-    internalPager.cursor,
-    CORE_PAGE_SIZE,
-    internalPager.refreshGeneration,
+    internalPager.request,
     activeTab === "internal-transactions" && isAddress(address),
+    CORE_PAGE_SIZE,
   );
   const withdrawals = useAddressWithdrawals(
     address,
-    withdrawalPager.cursor,
-    CORE_PAGE_SIZE,
-    withdrawalPager.refreshGeneration,
+    withdrawalPager.request,
     activeTab === "withdrawals" && isAddress(address),
+    CORE_PAGE_SIZE,
   );
   const erc20Transfers = useAddressERC20Transfers(
     address,
-    erc20Pager.cursor,
-    CORE_PAGE_SIZE,
-    erc20Pager.refreshGeneration,
+    erc20Pager.request,
     activeTab === "erc20-transfers" && isAddress(address),
+    CORE_PAGE_SIZE,
   );
   const nftTransfers = useAddressNFTTransfers(
     address,
-    nftTransferPager.cursor,
-    CORE_PAGE_SIZE,
-    nftTransferPager.refreshGeneration,
+    nftTransferPager.request,
     activeTab === "nft-transfers" && isAddress(address),
+    CORE_PAGE_SIZE,
   );
   const nfts = useAddressNFTBalances(
     address,
-    nftPager.cursor,
-    CORE_PAGE_SIZE,
-    nftPager.refreshGeneration,
+    nftPager.request,
     activeTab === "assets" && isAddress(address),
+    CORE_PAGE_SIZE,
   );
   const erc20Balances = useAddressERC20Balances(
     address,
-    erc20BalancePager.cursor,
-    CORE_PAGE_SIZE,
-    erc20BalancePager.refreshGeneration,
+    erc20BalancePager.request,
     activeTab === "assets" && isAddress(address),
+    CORE_PAGE_SIZE,
   );
   const userOperations = useAddressUserOperations(
     address,
-    userOperationPager.cursor,
+    userOperationPager.request,
     activeTab === "user-operations" && isAddress(address) && userOperationsEnabled,
   );
   const nativeDecimals = publicConfig.data?.native_decimals ?? 18;

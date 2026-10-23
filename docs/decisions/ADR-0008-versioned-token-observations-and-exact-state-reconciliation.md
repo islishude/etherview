@@ -45,7 +45,11 @@ be retained under the same write-once trust boundary as NFT state.
   hash. A later API replica may reuse a cached observation only for that exact
   still-canonical snapshot. A missing RPC capability or missing exact
   reconciliation returns a typed unavailable state rather than an event-derived
-  value.
+  value. NFT balance reconciliation validates the entire batch before I/O and
+  admits at most 256 candidates, matching the ERC-20 reconciliation bound.
+  Each standard uses one bulk cache query over paired contract/token-ID keys;
+  only misses enter the endpoint-pinned RPC batch. Mixed-standard results retain
+  request order without using database row order as identity.
 - Address-holdings ERC-20 balances, including zero, are persisted by chain,
   owner, token, and block hash after an exact `balanceOf` call. A bounded page
   bulk-reads its canonical cache entries and batches only the misses on one

@@ -30,37 +30,32 @@ func TestDiscoverIntegrationPackages(t *testing.T) {
 	}
 }
 
-func TestIntegrationTestArgumentsSetExplicitPackageTimeout(t *testing.T) {
+func TestIntegrationTestArguments(t *testing.T) {
 	t.Parallel()
-	arguments, err := integrationTestArguments(options{}, []string{"./internal/integration"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, required := range []string{
-		"-count=1",
-		"-timeout=" + integrationPackageTimeout.String(),
-		"-tags=integration",
-		"./internal/integration",
-	} {
-		if !slices.Contains(arguments, required) {
-			t.Fatalf("integration arguments %q omit %q", arguments, required)
-		}
-	}
 	if integrationPackageTimeout != 15*time.Minute {
 		t.Fatalf("integration package timeout = %s", integrationPackageTimeout)
 	}
-}
-
-func TestIntegrationTestArgumentsPreserveFocusedAndRaceModes(t *testing.T) {
-	t.Parallel()
-	arguments, err := integrationTestArguments(options{race: true, run: "^TestFocused$"}, []string{"./internal/integration"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, required := range []string{"-race", "-run", "^TestFocused$"} {
-		if !slices.Contains(arguments, required) {
-			t.Fatalf("integration arguments %q omit %q", arguments, required)
-		}
+	for _, test := range []struct {
+		name  string
+		opts  options
+		extra []string
+	}{
+		{name: "default"},
+		{name: "focused race", opts: options{race: true, run: "^TestFocused$"}, extra: []string{"-race", "-run", "^TestFocused$"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			arguments, err := integrationTestArguments(test.opts, []string{"./internal/integration"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := []string{"test", "-count=1", "-timeout=15m0s", "-tags=integration"}
+			want = append(want, test.extra...)
+			want = append(want, "./internal/integration")
+			if !slices.Equal(arguments, want) {
+				t.Fatalf("integration arguments = %q, want %q", arguments, want)
+			}
+		})
 	}
 }
 

@@ -100,20 +100,7 @@ func TestProxyVerificationIsDurableIdempotentAndCodeChangeSafe(t *testing.T) {
 	insertProxyVerificationSource(t, ctx, db, proxy, proxyHashOne, "Proxy")
 	insertProxyVerificationSource(t, ctx, db, implementationOne, implementationHashOne, "Implementation")
 
-	repository, err := verify.NewPostgresRepository(db, verify.RepositoryOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	service, err := verify.NewService(repository, 1<<20)
-	if err != nil {
-		t.Fatal(err)
-	}
-	backend, err := etherscan.NewPostgresBackend(db, etherscan.PostgresOptions{
-		ChainID: 1, Verification: service,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	repository, backend := newProxyVerificationBackend(t, db)
 
 	submit := func(expected common.Address) (string, error) {
 		result, executeErr := backend.Execute(ctx, etherscan.Request{
@@ -312,18 +299,7 @@ func TestSoladyLegacyCWIAVerificationBindingAndRawArguments(t *testing.T) {
 		`{"optimizer":{"enabled":false,"runs":200}}`, string(compilationArtifacts),
 	)
 
-	repository, err := verify.NewPostgresRepository(db, verify.RepositoryOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	service, err := verify.NewService(repository, 1<<20)
-	if err != nil {
-		t.Fatal(err)
-	}
-	backend, err := etherscan.NewPostgresBackend(db, etherscan.PostgresOptions{ChainID: 1, Verification: service})
-	if err != nil {
-		t.Fatal(err)
-	}
+	repository, backend := newProxyVerificationBackend(t, db)
 	result, err := backend.Execute(ctx, etherscan.Request{
 		Module: "contract", Action: "verifyproxycontract",
 		Values: url.Values{
@@ -399,20 +375,7 @@ func TestProxyVerificationAtoBtoACreatesFreshBindingIdentity(t *testing.T) {
 		proxy, proxyCodeHash, proxyCode, "erc1967_proxy", nil,
 	)
 
-	repository, err := verify.NewPostgresRepository(db, verify.RepositoryOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	service, err := verify.NewService(repository, 1<<20)
-	if err != nil {
-		t.Fatal(err)
-	}
-	backend, err := etherscan.NewPostgresBackend(db, etherscan.PostgresOptions{
-		ChainID: 1, Verification: service,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	repository, backend := newProxyVerificationBackend(t, db)
 	submitAndComplete := func(
 		block store.BlockRef,
 		implementation common.Address,
@@ -642,20 +605,7 @@ func TestProxyVerificationManagementCodeEpochRejectsAtoBtoA(t *testing.T) {
 				1, proxy.Bytes(), blockARef.Hash.Bytes(),
 			)
 
-			repository, err := verify.NewPostgresRepository(db, verify.RepositoryOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			service, err := verify.NewService(repository, 1<<20)
-			if err != nil {
-				t.Fatal(err)
-			}
-			backend, err := etherscan.NewPostgresBackend(db, etherscan.PostgresOptions{
-				ChainID: 1, Verification: service,
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
+			repository, backend := newProxyVerificationBackend(t, db)
 			result, err := backend.Execute(ctx, etherscan.Request{
 				Module: "contract", Action: "verifyproxycontract",
 				Values: url.Values{
@@ -1224,20 +1174,7 @@ func TestProxyVerificationManagementRequiresOpenZeppelinAttestation(t *testing.T
 				0, management.Bytes(), managementCodeHash.Bytes(),
 			)
 
-			repository, err := verify.NewPostgresRepository(db, verify.RepositoryOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			service, err := verify.NewService(repository, 1<<20)
-			if err != nil {
-				t.Fatal(err)
-			}
-			backend, err := etherscan.NewPostgresBackend(db, etherscan.PostgresOptions{
-				ChainID: 1, Verification: service,
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
+			repository, backend := newProxyVerificationBackend(t, db)
 			before := proxyVerificationJobCount(t, ctx, db)
 			if _, err := backend.Execute(ctx, etherscan.Request{
 				Module: "contract", Action: "verifyproxycontract",
@@ -1508,20 +1445,7 @@ func TestBadUUPSUUIDPersistsERC1967AndCannotFormUUPSBinding(t *testing.T) {
 		2, implementation.Bytes(), blockRef.Hash.Bytes(), uupsArtifactJob,
 	)
 
-	repository, err := verify.NewPostgresRepository(db, verify.RepositoryOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	service, err := verify.NewService(repository, 1<<20)
-	if err != nil {
-		t.Fatal(err)
-	}
-	backend, err := etherscan.NewPostgresBackend(db, etherscan.PostgresOptions{
-		ChainID: 1, Verification: service,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	repository, backend := newProxyVerificationBackend(t, db)
 	result, err := backend.Execute(ctx, etherscan.Request{
 		Module: "contract", Action: "verifyproxycontract",
 		Values: url.Values{

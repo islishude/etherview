@@ -1,3 +1,4 @@
+import { useCursorHistory } from "@/api/pagination";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -6,7 +7,7 @@ import { chainQueryMeta } from "@/api/chainEvents";
 import { AddressIdentity } from "@/ens/AddressIdentity";
 import { QueryNotice } from "@/components/QueryNotice";
 import { formatInteger, shorten } from "@/components/format";
-import { CORE_PAGE_SIZE, CursorPagination, useCursorHistory } from "./pages";
+import { CORE_PAGE_SIZE, CursorPagination } from "./pages";
 
 export function NativeTransfersPanel({
   kind,
@@ -19,19 +20,27 @@ export function NativeTransfersPanel({
   const pager = useCursorHistory(`native-transfers:${kind}:${identity}`);
   const locale = i18n.resolvedLanguage ?? "en";
   const transfers = useQuery({
-    queryKey: ["native-transfers", kind, identity, pager.cursor, pager.refreshGeneration],
+    queryKey: [
+      "native-transfers",
+      kind,
+      identity,
+      pager.request.cursor,
+      pager.request.refreshGeneration,
+    ],
     meta: chainQueryMeta,
     retry: false,
-    queryFn: async () => {
-      const query = { cursor: pager.cursor, limit: CORE_PAGE_SIZE };
+    queryFn: async ({ signal }) => {
+      const query = { cursor: pager.request.cursor, limit: CORE_PAGE_SIZE };
       return kind === "address"
         ? requireEnvelope(
             await apiClient.GET("/addresses/{address}/native-transfers", {
+              signal,
               params: { path: { address: identity }, query },
             }),
           )
         : requireEnvelope(
             await apiClient.GET("/transactions/{hash}/native-transfers", {
+              signal,
               params: { path: { hash: identity }, query },
             }),
           );

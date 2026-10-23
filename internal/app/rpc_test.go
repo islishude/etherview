@@ -22,38 +22,7 @@ import (
 
 func TestBuildRPCCollectsOptionalWebSocketWakeEndpointsWithoutLoggingCredentials(t *testing.T) {
 	t.Parallel()
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		var envelope struct {
-			JSONRPC string            `json:"jsonrpc"`
-			ID      uint64            `json:"id"`
-			Method  string            `json:"method"`
-			Params  []json.RawMessage `json:"params"`
-		}
-		if err := json.NewDecoder(request.Body).Decode(&envelope); err != nil {
-			t.Error(err)
-			writer.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		var result any
-		switch envelope.Method {
-		case "eth_chainId":
-			result = "0x1"
-		case "eth_getBlockByNumber":
-			result = probeHeaderJSON(t, 0)
-		case "eth_getBlockReceipts":
-			result = []any{}
-		case "eth_getBalance":
-			result = "0x0"
-		default:
-			t.Errorf("unexpected RPC method %q", envelope.Method)
-			writer.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		_ = json.NewEncoder(writer).Encode(map[string]any{
-			"jsonrpc": "2.0", "id": envelope.ID, "result": result,
-		})
-	}))
-	defer server.Close()
+	server := newHistoryProbeServer(t, false)
 
 	wakeURLs := []string{
 		"wss://operator:first-secret@wake-one.example/ws?key=first-secret",
@@ -198,6 +167,11 @@ func TestBuildRPCAcceptsAPIOnlyStateEndpointWithoutHistoryPurpose(t *testing.T) 
 
 func newHistoryProbeServer(t *testing.T, historyAvailable bool) *httptest.Server {
 	t.Helper()
+	return newProbeServer(t, historyAvailable, nil)
+}
+
+func newProbeServer(t *testing.T, historyAvailable bool, modules map[string]string) *httptest.Server {
+	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		var envelope struct {
 			JSONRPC string            `json:"jsonrpc"`
@@ -239,6 +213,13 @@ func newHistoryProbeServer(t *testing.T, historyAvailable bool) *httptest.Server
 			result = []any{}
 		case "eth_getBalance":
 			result = "0x0"
+		case "rpc_modules":
+			if modules == nil {
+				t.Error("unexpected RPC module probe")
+				writer.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			result = modules
 		default:
 			t.Errorf("unexpected RPC method %q", envelope.Method)
 			writer.WriteHeader(http.StatusBadRequest)
@@ -254,60 +235,11 @@ func newHistoryProbeServer(t *testing.T, historyAvailable bool) *httptest.Server
 
 func newTxpoolProbeServer(t *testing.T, hasTxPool bool) *httptest.Server {
 	t.Helper()
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		var envelope struct {
-			JSONRPC string            `json:"jsonrpc"`
-			ID      uint64            `json:"id"`
-			Method  string            `json:"method"`
-			Params  []json.RawMessage `json:"params"`
-		}
-		if err := json.NewDecoder(request.Body).Decode(&envelope); err != nil {
-			t.Error(err)
-			writer.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		var result any
-		switch envelope.Method {
-		case "eth_chainId":
-			result = "0x1"
-		case "eth_getBlockByNumber":
-			var tag string
-			if len(envelope.Params) == 0 || json.Unmarshal(envelope.Params[0], &tag) != nil {
-				t.Errorf("invalid block tag params: %s", envelope.Params)
-				writer.WriteHeader(http.StatusBadRequest)
-				return
-			}
-			switch tag {
-			case "0x0", "safe", "finalized":
-				result = probeHeaderJSON(t, 0)
-			case "0x40":
-				result = probeHeaderJSON(t, 64)
-			default:
-				t.Errorf("unexpected block tag %q", tag)
-				writer.WriteHeader(http.StatusBadRequest)
-				return
-			}
-		case "eth_getBlockReceipts":
-			result = []any{}
-		case "eth_getBalance":
-			result = "0x0"
-		case "rpc_modules":
-			modules := map[string]string{"debug": "debug"}
-			if hasTxPool {
-				modules["txpool"] = "txpool"
-			}
-			result = modules
-		default:
-			t.Errorf("unexpected RPC method %q", envelope.Method)
-			writer.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		_ = json.NewEncoder(writer).Encode(map[string]any{
-			"jsonrpc": "2.0", "id": envelope.ID, "result": result,
-		})
-	}))
-	t.Cleanup(server.Close)
-	return server
+	modules := map[string]string{"debug": "debug"}
+	if hasTxPool {
+		modules["txpool"] = "txpool"
+	}
+	return newProbeServer(t, true, modules)
 }
 
 func probeHeaderJSON(t *testing.T, number uint64) json.RawMessage {

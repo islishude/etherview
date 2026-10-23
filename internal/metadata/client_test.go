@@ -81,36 +81,29 @@ func TestFetchJSONLimitsSizeAndMIME(t *testing.T) {
 	}
 }
 
-func TestImageRejectsSVG(t *testing.T) {
+func TestImageRejectsActiveContent(t *testing.T) {
 	t.Parallel()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "image/svg+xml")
-		_, _ = w.Write([]byte(`<svg/>`))
-	}))
-	defer server.Close()
-	client, err := New(Policy{AllowHTTP: true, UnsafeAllowPrivateNetworks: true}, net.DefaultResolver)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = client.Fetch(context.Background(), server.URL, KindImage)
-	if err == nil || !strings.Contains(err.Error(), "not allowed") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestImageRejectsHTMLDisguisedAsPNG(t *testing.T) {
-	t.Parallel()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "image/png")
-		_, _ = w.Write([]byte(`<html><script>bad()</script></html>`))
-	}))
-	defer server.Close()
-	client, err := New(Policy{AllowHTTP: true, UnsafeAllowPrivateNetworks: true}, net.DefaultResolver)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := client.Fetch(context.Background(), server.URL, KindImage); err == nil || !strings.Contains(err.Error(), "do not match") {
-		t.Fatalf("unexpected error: %v", err)
+	for _, test := range []struct {
+		name, contentType, body, wantError string
+	}{
+		{"SVG", "image/svg+xml", `<svg/>`, "not allowed"},
+		{"HTML disguised as PNG", "image/png", `<html><script>bad()</script></html>`, "do not match"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", test.contentType)
+				_, _ = w.Write([]byte(test.body))
+			}))
+			t.Cleanup(server.Close)
+			client, err := New(Policy{AllowHTTP: true, UnsafeAllowPrivateNetworks: true}, net.DefaultResolver)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := client.Fetch(context.Background(), server.URL, KindImage); err == nil || !strings.Contains(err.Error(), test.wantError) {
+				t.Fatalf("error=%v, want %q", err, test.wantError)
+			}
+		})
 	}
 }
 

@@ -10,22 +10,27 @@ import (
 // allocating its values. Repeated offsets consume the budget on every visit.
 // It is a preflight only: callers still enforce ABI validity and canonicality.
 func CheckValues(arguments abi.Arguments, data []byte) error {
-	if len(data) > maxDocumentBytes {
+	return CheckValuesWithLimits(arguments, data, DefaultLimits())
+}
+
+func CheckValuesWithLimits(arguments abi.Arguments, data []byte, limits Limits) error {
+	if !limits.valid() || len(data) > limits.MaxDataBytes || len(arguments) > limits.MaxArguments {
 		return ErrLimit
 	}
 	shapes := make([]*shape, 0, len(arguments))
-	nodes := maxNodes
+	nodes := limits.MaxNodes
 	for _, argument := range arguments {
 		if argument.Indexed {
 			continue
 		}
-		s, ok := makeShape(&argument.Type, 0, &nodes)
+		s, ok := makeShape(&argument.Type, 0, &nodes, limits)
 		if !ok {
 			return ErrLimit
 		}
 		shapes = append(shapes, s)
 	}
-	v := valueBudget{data: data, nodes: maxNodes, bytes: maxValueBytes}
+	v := valueBudget{data: data, nodes: limits.MaxNodes, bytes: limits.MaxValueBytes,
+		dynamicBytes: limits.MaxDynamicBytes, arrayElements: limits.MaxArrayElements}
 	if !v.tuple(shapes, 0) {
 		return ErrLimit
 	}
@@ -41,8 +46,8 @@ type shape struct {
 	fields  []*shape
 }
 
-func makeShape(t *abi.Type, depth int, nodes *int) (*shape, bool) {
-	if t == nil || depth > maxDepth || *nodes <= 0 {
+func makeShape(t *abi.Type, depth int, nodes *int, limits Limits) (*shape, bool) {
+	if t == nil || depth > limits.MaxDepth || *nodes <= 0 {
 		return nil, false
 	}
 	*nodes--
@@ -52,22 +57,25 @@ func makeShape(t *abi.Type, depth int, nodes *int) (*shape, bool) {
 		s.dynamic = true
 	case abi.ArrayTy, abi.SliceTy:
 		var ok bool
-		s.elem, ok = makeShape(t.Elem, depth+1, nodes)
-		if !ok || t.Size < 0 || t.Size > maxNodes {
+		s.elem, ok = makeShape(t.Elem, depth+1, nodes, limits)
+		if !ok || t.Size < 0 || t.Size > limits.MaxArrayElements {
 			return nil, false
 		}
 		s.dynamic = t.T == abi.SliceTy || s.elem.dynamic
 		if !s.dynamic {
-			if s.elem.head > maxValueBytes/max(1, t.Size) {
+			if s.elem.head > limits.MaxValueBytes/max(1, t.Size) {
 				return nil, false
 			}
 			s.head = t.Size * s.elem.head
 		}
 	case abi.TupleTy:
+		if len(t.TupleElems) > limits.MaxArguments {
+			return nil, false
+		}
 		total := 0
 		for _, field := range t.TupleElems {
-			child, ok := makeShape(field, depth+1, nodes)
-			if !ok || child.head > maxValueBytes-total {
+			child, ok := makeShape(field, depth+1, nodes, limits)
+			if !ok || child.head > limits.MaxValueBytes-total {
 				return nil, false
 			}
 			s.fields = append(s.fields, child)
@@ -82,8 +90,9 @@ func makeShape(t *abi.Type, depth int, nodes *int) (*shape, bool) {
 }
 
 type valueBudget struct {
-	data         []byte
-	nodes, bytes int
+	data                        []byte
+	nodes, bytes                int
+	dynamicBytes, arrayElements int
 }
 
 func (v *valueBudget) word(position int) (int, bool) {
@@ -136,7 +145,7 @@ func (v *valueBudget) value(s *shape, position int) bool {
 	switch s.kind {
 	case abi.StringTy, abi.BytesTy:
 		size, ok := v.word(position)
-		if !ok || size > len(v.data)-position-32 || size > v.bytes {
+		if !ok || size > len(v.data)-position-32 || size > v.bytes || size > v.dynamicBytes {
 			return false
 		}
 		v.bytes -= size
@@ -150,7 +159,7 @@ func (v *valueBudget) value(s *shape, position int) bool {
 			}
 			position += 32
 		}
-		if count > v.nodes || position > len(v.data) || (s.elem.head > 0 && count > (len(v.data)-position)/s.elem.head) {
+		if count > v.nodes || count > v.arrayElements || position > len(v.data) || (s.elem.head > 0 && count > (len(v.data)-position)/s.elem.head) {
 			return false
 		}
 		for i := 0; i < count; i++ {

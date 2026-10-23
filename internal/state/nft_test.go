@@ -92,7 +92,7 @@ func TestNFTStateRejectsMalformedResultsAndNonCanonicalSnapshot(t *testing.T) {
 	if _, err := callERC1155Balance(t.Context(), newTestStateEndpoint(t, malformed), CanonicalRef{Number: 1, Hash: testStateHash(1)}, contract, owner, big.NewInt(1)); !errors.Is(err, httpapi.ErrUnavailable) {
 		t.Fatalf("malformed result error=%v", err)
 	}
-	if _, _, err := validateNFTSnapshot(catalog.Snapshot{
+	if _, _, err := validateTokenSnapshot(catalog.Snapshot{
 		ChainID: "1", BlockNumber: "01", BlockHash: testStateHash(1).String(),
 	}); err == nil {
 		t.Fatal("non-canonical block number was accepted")

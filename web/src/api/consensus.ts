@@ -7,9 +7,10 @@ export function useBlockConsensus(id: string, enabled = true) {
     queryKey: ["block-consensus", id],
     meta: statusQueryMeta,
     enabled,
-    queryFn: async () =>
-      requireEnvelope(await apiClient.GET("/blocks/{id}/consensus", { params: { path: { id } } }))
-        .data,
+    queryFn: async ({ signal }) =>
+      requireEnvelope(
+        await apiClient.GET("/blocks/{id}/consensus", { signal, params: { path: { id } } }),
+      ).data,
     refetchInterval: 12000,
     retry: false,
   });
@@ -19,8 +20,10 @@ export function useBlockBlobs(id: string, enabled = true) {
     queryKey: ["block-blobs", id],
     meta: statusQueryMeta,
     enabled,
-    queryFn: async () =>
-      requireEnvelope(await apiClient.GET("/blocks/{id}/blobs", { params: { path: { id } } })).data,
+    queryFn: async ({ signal }) =>
+      requireEnvelope(
+        await apiClient.GET("/blocks/{id}/blobs", { signal, params: { path: { id } } }),
+      ).data,
     refetchInterval: 12000,
     retry: false,
   });

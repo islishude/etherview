@@ -350,7 +350,6 @@ for (const runtime of ["legacy", "modern"]) {
     "changed-payload",
     "extra-file",
     "missing-file",
-    "extra-runtime",
     "symlink",
   ]) {
     test(`${runtime} integrity rejects ${scenario}`, (t) => {
@@ -361,7 +360,6 @@ for (const runtime of ["legacy", "modern"]) {
       if (scenario === "changed-payload") writeFileSync(join(shared, "python.wasm"), "tampered");
       if (scenario === "extra-file") writeFileSync(join(shared, "extra"), "unlisted");
       if (scenario === "missing-file") rmSync(join(shared, "python.wasm"));
-      if (scenario === "extra-runtime") mkdirSync(join(shared, "..", "unexpected"));
       if (scenario === "symlink") {
         rmSync(join(shared, "python.wasm"));
         symlinkSync("shared-manifest.json", join(shared, "python.wasm"));
@@ -370,6 +368,11 @@ for (const runtime of ["legacy", "modern"]) {
     });
   }
 }
+test("local integrity rejects an unlisted runtime", (t) => {
+  const { root, check } = integrityFixture(t);
+  mkdirSync(join(root, ".local/vyper-wasm/shared/unexpected"));
+  assert.throws(check);
+});
 for (const version of ["0.3.10", "0.4.3"]) {
   for (const scenario of ["payload", "runtime", "source", "metadata", "extra-file"]) {
     test(`${version} integrity rejects changed ${scenario}`, (t) => {

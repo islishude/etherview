@@ -1,3 +1,4 @@
+import { useCursorHistory } from "@/api/pagination";
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -15,14 +16,13 @@ const PAGE_SIZE = 25;
 
 export function PendingPage() {
   const { i18n, t } = useTranslation();
-  const [cursorHistory, setCursorHistory] = useState<string[]>([""]);
-  const [refreshGeneration, setRefreshGeneration] = useState(0);
+  const pager = useCursorHistory("pending-transactions");
+  const { reset } = pager;
   const [expiredSnapshot, setExpiredSnapshot] = useState(false);
   const publicConfig = usePublicConfig();
   const mempoolEnabled = publicConfig.data?.features.mempool !== false;
   const canLoadPending = publicConfig.isSuccess && mempoolEnabled;
-  const cursor = cursorHistory.at(-1) || undefined;
-  const pending = usePendingTransactions(cursor, canLoadPending, PAGE_SIZE, refreshGeneration);
+  const pending = usePendingTransactions(pager.request, canLoadPending, PAGE_SIZE);
   const locale = i18n.resolvedLanguage ?? "en";
   const nativeDecimals = publicConfig.data?.native_decimals ?? 18;
   const nativeSymbol = publicConfig.data?.native_symbol ?? "";
@@ -47,26 +47,14 @@ export function PendingPage() {
     const delay = Math.min(Math.max(0, expiry - Date.now()), maximumDelay);
     const timer = window.setTimeout(() => {
       setExpiredSnapshot(true);
-      setCursorHistory([""]);
-      setRefreshGeneration((current) => current + 1);
+      reset();
     }, delay);
     return () => window.clearTimeout(timer);
-  }, [pending.data]);
+  }, [pending.data, reset]);
 
   const resetPagination = () => {
     setExpiredSnapshot(false);
-    setCursorHistory([""]);
-    setRefreshGeneration((current) => current + 1);
-  };
-
-  const goToNextPage = () => {
-    const nextCursor = snapshot?.meta.next_cursor;
-    if (!nextCursor) return;
-    setCursorHistory((history) => [...history, nextCursor]);
-  };
-
-  const goToPreviousPage = () => {
-    setCursorHistory((history) => (history.length > 1 ? history.slice(0, -1) : history));
+    reset();
   };
 
   return (
@@ -125,19 +113,19 @@ export function PendingPage() {
           <nav className="pending-pagination" aria-label={t("pending.pagination")}>
             <button
               className="button secondary"
-              disabled={cursorHistory.length === 1}
-              onClick={goToPreviousPage}
+              disabled={!pager.hasPrevious}
+              onClick={pager.previous}
               type="button"
             >
               {t("pending.previousPage")}
             </button>
             <span aria-live="polite">
-              {t("pending.pageNumber", { page: formatInteger(cursorHistory.length, locale) })}
+              {t("pending.pageNumber", { page: formatInteger(pager.page, locale) })}
             </span>
             <button
               className="button secondary"
               disabled={!snapshot.meta.next_cursor}
-              onClick={goToNextPage}
+              onClick={() => pager.next(snapshot.meta.next_cursor)}
               type="button"
             >
               {t("pending.nextPage")}

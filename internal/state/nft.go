@@ -26,23 +26,12 @@ import (
 var (
 	erc721OwnerOfSelector    = []byte{0x63, 0x52, 0x21, 0x1e}
 	erc1155BalanceOfSelector = []byte{0x00, 0xfd, 0xd5, 0x8e}
-	maximumUint256           = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1))
 
 	// ErrExactNFTObservationConflict means two exact block-hash RPC reads
 	// disagreed for the same immutable NFT fact. The first durable observation
 	// remains authoritative and is never overwritten.
 	ErrExactNFTObservationConflict = errors.New("exact NFT state observation conflicts with persisted block fact")
 )
-
-// NFTReconciler turns event-derived NFT candidates into exact state
-// observations at one canonical block hash. Persisted observations are keyed
-// by that hash and can therefore be reused without treating an orphan as
-// current after a reorg.
-type NFTReconciler struct {
-	db        dbaccess.Database
-	pool      *ethrpc.Pool
-	canonical CanonicalSource
-}
 
 type parsedNFTCandidate struct {
 	standard catalogStandard
@@ -56,22 +45,7 @@ type nftBalanceBatchResult struct {
 	ownerObservation *catalog.NFTOwnerObservation
 }
 
-var _ catalog.NFTStateReconciler = (*NFTReconciler)(nil)
-
-func NewNFTReconciler(db dbaccess.Database, pool *ethrpc.Pool, canonical CanonicalSource) (*NFTReconciler, error) {
-	if db == nil {
-		return nil, errors.New("NFT reconciler requires PostgreSQL")
-	}
-	if pool == nil {
-		return nil, errors.New("NFT reconciler requires a state RPC pool")
-	}
-	if canonical == nil {
-		return nil, errors.New("NFT reconciler requires a canonical source")
-	}
-	return &NFTReconciler{db: db, pool: pool, canonical: canonical}, nil
-}
-
-func (reconciler *NFTReconciler) Owner(
+func (reconciler *TokenReconciler) Owner(
 	ctx context.Context,
 	snapshot catalog.Snapshot,
 	tokenAddressText string,
@@ -112,7 +86,7 @@ func (reconciler *NFTReconciler) Owner(
 	return observation, nil
 }
 
-func (reconciler *NFTReconciler) Balances(
+func (reconciler *TokenReconciler) Balances(
 	ctx context.Context,
 	snapshot catalog.Snapshot,
 	ownerAddressText string,
@@ -121,10 +95,13 @@ func (reconciler *NFTReconciler) Balances(
 	if reconciler == nil || reconciler.db == nil || reconciler.pool == nil || reconciler.canonical == nil {
 		return nil, nftRPCUnavailable()
 	}
+	if len(candidates) > maxBalanceCandidates {
+		return nil, errors.New("too many NFT balance candidates")
+	}
 	if len(candidates) == 0 {
 		return []catalog.NFTBalanceObservation{}, nil
 	}
-	reference, chainID, err := validateNFTSnapshot(snapshot)
+	reference, chainID, err := validateTokenSnapshot(snapshot)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +113,7 @@ func (reconciler *NFTReconciler) Balances(
 	parsed := make([]parsedNFTCandidate, len(candidates))
 	results := make([]catalog.NFTBalanceObservation, len(candidates))
 	missing := make([]int, 0, len(candidates))
-	seen := make(map[string]struct{}, len(candidates))
+	seen := make(map[nftCandidateKey]struct{}, len(candidates))
 	for index, candidate := range candidates {
 		standard, err := parseCatalogStandard(candidate.Standard)
 		if err != nil {
@@ -150,19 +127,21 @@ func (reconciler *NFTReconciler) Balances(
 		if err != nil {
 			return nil, fmt.Errorf("invalid NFT candidate token ID %d", index)
 		}
-		key := standard.String() + ":" + strings.ToLower(address.String()) + ":" + tokenID.String()
+		parsed[index] = parsedNFTCandidate{standard: standard, address: address, tokenID: tokenID}
+		key := parsed[index].key()
 		if _, duplicate := seen[key]; duplicate {
 			return nil, errors.New("duplicate NFT balance candidate")
 		}
 		seen[key] = struct{}{}
-		parsed[index] = parsedNFTCandidate{standard: standard, address: address, tokenID: tokenID}
-
-		cached, found, err := reconciler.cachedBalance(ctx, chainID, ownerAddress, parsed[index], reference)
-		if err != nil {
-			return nil, err
-		}
+	}
+	cached, err := reconciler.cachedNFTBalances(ctx, chainID, ownerAddress, parsed, reference)
+	if err != nil {
+		return nil, err
+	}
+	for index := range parsed {
+		observation, found := cached[index]
 		if found {
-			results[index] = cached
+			results[index] = observation
 			continue
 		}
 		missing = append(missing, index)
@@ -210,13 +189,6 @@ const (
 	standardERC1155
 )
 
-func (standard catalogStandard) String() string {
-	if standard == standardERC721 {
-		return "erc721"
-	}
-	return "erc1155"
-}
-
 func parseCatalogStandard(value string) (catalogStandard, error) {
 	switch value {
 	case "erc721":
@@ -233,7 +205,7 @@ func validateNFTRequest(
 	tokenAddressText string,
 	tokenIDText string,
 ) (CanonicalRef, string, common.Address, *big.Int, error) {
-	reference, chainID, err := validateNFTSnapshot(snapshot)
+	reference, chainID, err := validateTokenSnapshot(snapshot)
 	if err != nil {
 		return CanonicalRef{}, "", common.Address{}, nil, err
 	}
@@ -246,38 +218,6 @@ func validateNFTRequest(
 		return CanonicalRef{}, "", common.Address{}, nil, errors.New("invalid NFT token ID")
 	}
 	return reference, chainID, tokenAddress, tokenID, nil
-}
-
-func validateNFTSnapshot(snapshot catalog.Snapshot) (CanonicalRef, string, error) {
-	chainID, err := parseUint256(snapshot.ChainID)
-	if err != nil || chainID.Sign() == 0 {
-		return CanonicalRef{}, "", errors.New("invalid NFT state chain ID")
-	}
-	blockNumber, err := strconv.ParseUint(snapshot.BlockNumber, 10, 64)
-	if err != nil || strconv.FormatUint(blockNumber, 10) != snapshot.BlockNumber {
-		return CanonicalRef{}, "", errors.New("invalid NFT state block number")
-	}
-	blockHash, err := ethrpc.ParseHash(snapshot.BlockHash)
-	if err != nil {
-		return CanonicalRef{}, "", errors.New("invalid NFT state block hash")
-	}
-	return CanonicalRef{Number: blockNumber, Hash: blockHash}, chainID.String(), nil
-}
-
-func parseUint256(value string) (*big.Int, error) {
-	if value == "" || len(value) > 1 && value[0] == '0' {
-		return nil, errors.New("uint256 is not canonical decimal")
-	}
-	for _, character := range value {
-		if character < '0' || character > '9' {
-			return nil, errors.New("uint256 contains a non-decimal digit")
-		}
-	}
-	parsed, ok := new(big.Int).SetString(value, 10)
-	if !ok || parsed.Sign() < 0 || parsed.Cmp(maximumUint256) > 0 {
-		return nil, errors.New("uint256 is out of range")
-	}
-	return parsed, nil
 }
 
 func callERC721Owner(
@@ -462,7 +402,7 @@ func exactNFTBalance(balance string) catalog.NFTBalanceObservation {
 	return catalog.NFTBalanceObservation{Balance: balance, Confidence: catalog.NFTStateConfidenceRPCExact}
 }
 
-func (reconciler *NFTReconciler) requireCanonical(ctx context.Context, reference CanonicalRef) error {
+func (reconciler *TokenReconciler) requireCanonical(ctx context.Context, reference CanonicalRef) error {
 	canonical, err := reconciler.canonical.IsCanonical(ctx, reference)
 	if err != nil {
 		return fmt.Errorf("recheck exact NFT state block: %w", err)
@@ -473,7 +413,7 @@ func (reconciler *NFTReconciler) requireCanonical(ctx context.Context, reference
 	return nil
 }
 
-func (reconciler *NFTReconciler) cachedOwner(
+func (reconciler *TokenReconciler) cachedOwner(
 	ctx context.Context,
 	chainID string,
 	contract common.Address,
@@ -543,68 +483,7 @@ func decodeOwnerObservation(state string, ownerBytes []byte, confidence string) 
 	}
 }
 
-func (reconciler *NFTReconciler) cachedBalance(
-	ctx context.Context,
-	chainID string,
-	owner common.Address,
-	candidate parsedNFTCandidate,
-	reference CanonicalRef,
-) (catalog.NFTBalanceObservation, bool, error) {
-	if candidate.standard == standardERC721 {
-		observation, found, err := reconciler.cachedOwner(ctx, chainID, candidate.address, candidate.tokenID, reference)
-		if err != nil || !found {
-			return catalog.NFTBalanceObservation{}, found, err
-		}
-		balance := "0"
-		if observation.Exists {
-			observedOwner, parseErr := ethrpc.ParseAddress(observation.Owner)
-			if parseErr != nil {
-				return catalog.NFTBalanceObservation{}, false, errors.New("invalid cached ERC-721 owner")
-			}
-			if observedOwner == owner {
-				balance = "1"
-			}
-		}
-		return exactNFTBalance(balance), true, nil
-	}
-	contractBytes := candidate.address.Bytes()
-	ownerBytes := owner.Bytes()
-	hashBytes := reference.Hash.Bytes()
-	var balance, confidence string
-	err := func() error {
-		var queryValue0 pgtype.Numeric
-		if err := queryValue0.Scan(chainID); err != nil {
-			return err
-		}
-		var queryValue1 pgtype.Numeric
-		if err := queryValue1.Scan(candidate.tokenID.String()); err != nil {
-			return err
-		}
-		var queryValue2 pgtype.Numeric
-		if err := queryValue2.Scan(strconv.FormatUint(reference.Number, 10)); err != nil {
-			return err
-		}
-		queryRow, err := dbgen.New(reconciler.db).StateERC1155BalanceObservation(ctx, dbgen.StateERC1155BalanceObservationParams{ChainID: queryValue0, TokenAddress: contractBytes, TokenID: queryValue1, OwnerAddress: ownerBytes, BlockNumber: queryValue2, BlockHash: hashBytes})
-		if err != nil {
-			return err
-		}
-		balance = queryRow.ObservationBalance
-		confidence = queryRow.Confidence
-		return nil
-	}()
-	if errors.Is(err, pgx.ErrNoRows) {
-		return catalog.NFTBalanceObservation{}, false, nil
-	}
-	if err != nil {
-		return catalog.NFTBalanceObservation{}, false, fmt.Errorf("read exact ERC-1155 balance observation: %w", err)
-	}
-	if _, err := parseUint256(balance); err != nil || confidence != catalog.NFTStateConfidenceRPCExact {
-		return catalog.NFTBalanceObservation{}, false, errors.New("invalid ERC-1155 balance observation")
-	}
-	return exactNFTBalance(balance), true, nil
-}
-
-func (reconciler *NFTReconciler) persistOwner(
+func (reconciler *TokenReconciler) persistOwner(
 	ctx context.Context,
 	chainID string,
 	contract common.Address,
@@ -626,7 +505,7 @@ func (reconciler *NFTReconciler) persistOwner(
 	return nil
 }
 
-func (reconciler *NFTReconciler) persistBalances(
+func (reconciler *TokenReconciler) persistBalances(
 	ctx context.Context,
 	chainID string,
 	owner common.Address,

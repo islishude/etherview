@@ -126,6 +126,12 @@ returning `home_snapshot_unavailable`. Typed query metadata selects events, and
 a closed EventSource recovers with one cursor-free connection and bounded
 backoff as specified in [ADR-0004](../decisions/ADR-0004-durable-runtime-status-and-events.md).
 
+Public query functions pass React Query cancellation signals to the HTTP client.
+Cursor requests include the restart generation in their cache identity, so
+recovery from an expired cursor obtains a fresh first page. Block-dependent
+lists use the resolved block hash. Transaction decoding resources each retain
+their own bounded identity-recovery state for the complete transaction identity.
+
 Optional accelerator behavior is intentionally asymmetric: NATS carries only
 coalesced poll hints, Redis shares rate buckets and caches only the durable
 runtime-status model behind an event generation, and S3-compatible storage
@@ -554,7 +560,10 @@ snapshot or chain-lock boundary. P00 owns database acceptance; P30 tracks produc
   replacement, records one source-deduplicated Proxy replay request first and
   then an ABI replay request. Exact successful creation matches may also decode
   constructor arguments after byte-for-byte re-encoding; runtime equality alone
-  is insufficient. Evidence withdrawal uses a distinct
+  is insufficient. Constructor validation in enrichment, catalog reads and
+  verification shares one bounded canonical ABI decoder; resource admission
+  precedes unpacking and preserves each caller's error classification.
+  Evidence withdrawal uses a distinct
   `stage-invalidation` identity; successful replacement publication uses
   `stage-completion`, so the latter cannot be suppressed by the former. The ABI
   dependency prevents the new ABI generation from publishing before the
@@ -771,7 +780,10 @@ size alone is not sufficient justification to weaken those invariants.
   Verifier Alliance-style auxdata, library, constructor, and immutable
   transformations and are classified as full or partial. Address publication
   requires a canonical runtime match and the exact immutable job result; a
-  creation-only result is never address publication evidence.
+  creation-only result is never address publication evidence. Every compiled
+  variant retains its exact Standard JSON input alongside its full candidate
+  set. Selection carries both through compilation-unit authentication and result
+  settings, including when an earlier variant failed compilation.
 - Successful Solidity address verification also retains one immutable bounded
   compilation unit. Factory-derived scans match its complete candidate set
   against canonical non-reverted CREATE/CREATE2 input and exact child runtime

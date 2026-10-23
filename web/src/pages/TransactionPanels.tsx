@@ -1,3 +1,4 @@
+import { useCursorHistory } from "@/api/pagination";
 import { BlobsPanel, BlobHashList } from "./BlobsPanel";
 import { usePublicConfig } from "@/api/hooks";
 import { Link } from "@tanstack/react-router";
@@ -19,7 +20,6 @@ import {
   formatTokenEventAmount,
   isNFTStandard,
   type Translate,
-  useCursorHistory,
 } from "./pages";
 import { UserOperationTable } from "@/components/UserOperationTable";
 import { FeeSettings } from "./TransactionOverview";
@@ -232,7 +232,7 @@ export function TransactionUserOperationsPanel({
 }) {
   const { t } = useTranslation();
   const pager = useCursorHistory(`transaction-user-operations:${hash}`);
-  const operations = useTransactionUserOperations(hash, pager.cursor);
+  const operations = useTransactionUserOperations(hash, pager.request);
   const identityCurrent =
     !blockHash ||
     (operations.data?.items ?? []).every((operation) => operation.block_hash === blockHash);

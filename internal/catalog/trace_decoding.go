@@ -14,8 +14,8 @@ import (
 	pgx "github.com/jackc/pgx/v5"
 	pgtype "github.com/jackc/pgx/v5/pgtype"
 
-	gethabi "github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/abicalldata"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/enrich"
 )
@@ -408,22 +408,7 @@ func loadExactConstructorRegistry(
 }
 
 func validateReadTimeConstructorArguments(document, arguments []byte) error {
-	parsed, err := gethabi.JSON(strings.NewReader(string(document)))
-	if err != nil {
-		return err
-	}
-	values, err := parsed.Constructor.Inputs.Unpack(arguments)
-	if err != nil {
-		return err
-	}
-	reencoded, err := parsed.Constructor.Inputs.Pack(values...)
-	if err != nil {
-		return err
-	}
-	if !bytes.Equal(reencoded, arguments) {
-		return errors.New("constructor argument round trip mismatch")
-	}
-	return nil
+	return abicalldata.ValidateConstructor(document, arguments)
 }
 
 func publicTraceConstructor(decoded enrich.DecodeResult) *TraceCallDecoding {

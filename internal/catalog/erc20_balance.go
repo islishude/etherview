@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"math/big"
 
 	"github.com/jackc/pgx/v5/pgtype"
 
@@ -144,12 +143,10 @@ func (catalog *Postgres) ERC20Balances(
 	}
 	items := make([]ERC20Balance, 0, len(candidates))
 	for index, observation := range observations {
-		balance, ok := new(big.Int).SetString(observation.Balance, 10)
-		if !ok || balance.Sign() < 0 || balance.BitLen() > 256 ||
-			observation.Confidence != NFTStateConfidenceRPCExact {
+		if !canonicalUint256(observation.Balance) || observation.Confidence != NFTStateConfidenceRPCExact {
 			return ERC20BalancePage{}, ErrCorruptData
 		}
-		if balance.Sign() == 0 {
+		if observation.Balance == "0" {
 			continue
 		}
 		contract := candidates[index].contract

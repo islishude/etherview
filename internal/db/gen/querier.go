@@ -543,9 +543,12 @@ type Querier interface {
 	RevokeUserSessionByDigest(ctx context.Context, revokedAt pgtype.Timestamptz, tokenDigest []byte) (int64, error)
 	StartBillingPaymentHandler(ctx context.Context, transitionedAt pgtype.Timestamptz, iD pgtype.UUID, reservationOwner pgtype.UUID) (pgtype.UUID, error)
 	StateCanonicalTip(ctx context.Context, chainID pgtype.Numeric) (StateCanonicalTipRow, error)
-	StateERC1155BalanceObservation(ctx context.Context, arg StateERC1155BalanceObservationParams) (StateERC1155BalanceObservationRow, error)
+	// Parallel set-returning expressions pair equal-length arrays by position.
+	StateERC1155BalanceObservations(ctx context.Context, arg StateERC1155BalanceObservationsParams) ([]StateERC1155BalanceObservationsRow, error)
 	StateERC20BalanceObservations(ctx context.Context, arg StateERC20BalanceObservationsParams) ([]StateERC20BalanceObservationsRow, error)
 	StateERC721OwnerObservation(ctx context.Context, arg StateERC721OwnerObservationParams) (StateERC721OwnerObservationRow, error)
+	// Parallel set-returning expressions pair equal-length arrays by position.
+	StateERC721OwnerObservations(ctx context.Context, arg StateERC721OwnerObservationsParams) ([]StateERC721OwnerObservationsRow, error)
 	StateIsCanonical(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, blockHash []byte) (bool, error)
 	StateWriteClassifyBalancePersistenceMissStatement1(ctx context.Context, arg StateWriteClassifyBalancePersistenceMissStatement1Params) (StateWriteClassifyBalancePersistenceMissStatement1Row, error)
 	StateWriteClassifyERC20BalancePersistenceMiss(ctx context.Context, arg StateWriteClassifyERC20BalancePersistenceMissParams) (StateWriteClassifyERC20BalancePersistenceMissRow, error)

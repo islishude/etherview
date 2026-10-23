@@ -1,15 +1,17 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import i18n from "@/i18n";
+import {
+  configResponse,
+  completeness,
+  envelope,
+  notFound,
+  requestURL,
+  renderExplorer,
+} from "@/test/corePageFixtures";
 import { shorten } from "@/components/format";
-import { makeRouter } from "@/router";
-import { AuthProvider } from "@/auth/AuthProvider";
-import { ThemeProvider } from "@/theme/ThemeProvider";
-import { WalletProvider } from "@/wallet/WalletProvider";
 
 const canonicalHash = `0x${"11".repeat(32)}`;
 const olderHash = `0x${"22".repeat(32)}`;
@@ -18,11 +20,6 @@ const parentHash = `0x${"00".repeat(32)}`;
 const address = `0x${"44".repeat(20)}`;
 const transactionHash = `0x${"aa".repeat(32)}`;
 const delegatedAddress = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
-const _clearedDelegationAddress = `0x${"77".repeat(20)}`;
-const _delegateAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
-const _delegateCodeHash = `0x${"55".repeat(32)}`;
-const _delegationBlockHash = `0x${"66".repeat(32)}`;
-const _delegationTransactionHash = `0x${"bb".repeat(32)}`;
 
 beforeEach(async () => {
   await i18n.changeLanguage("en");
@@ -1301,27 +1298,6 @@ function block(number: string, hash: string, canonical = true) {
   };
 }
 
-function configResponse() {
-  return envelope({
-    chain_id: "1",
-    chain_name: "Core Testnet",
-    native_symbol: "ETH",
-    native_name: "Ether",
-    native_decimals: 18,
-    features: {},
-  });
-}
-
-function completeness() {
-  return {
-    core: "complete",
-    trace: "unavailable",
-    metadata: "pending",
-    state: "complete",
-    user_operations: "unavailable",
-  };
-}
-
 function mempoolTransaction(hash: string, overrides: Record<string, unknown> = {}) {
   return {
     hash,
@@ -1339,59 +1315,4 @@ function mempoolTransaction(hash: string, overrides: Record<string, unknown> = {
     endpoint: "pending-primary",
     ...overrides,
   };
-}
-
-function envelope(data: unknown, meta: Record<string, unknown> = {}) {
-  const responseData = includedTransactionFixture(data)
-    ? { kind: "included", transaction: data }
-    : data;
-  return Response.json({
-    data: responseData,
-    meta: { request_id: "core-pages-test", chain_id: "1", ...meta },
-  });
-}
-
-function includedTransactionFixture(data: unknown): data is Record<string, unknown> {
-  if (!data || Array.isArray(data) || typeof data !== "object") return false;
-  const candidate = data as Record<string, unknown>;
-  return (
-    typeof candidate.hash === "string" &&
-    typeof candidate.from === "string" &&
-    typeof candidate.nonce === "string" &&
-    typeof candidate.gas === "string" &&
-    typeof candidate.input === "string" &&
-    typeof candidate.canonical === "boolean" &&
-    typeof candidate.finality === "string"
-  );
-}
-
-function notFound() {
-  return Response.json(
-    {
-      error: { code: "not_found", message: "not found", request_id: "core-pages-test" },
-    },
-    { status: 404 },
-  );
-}
-
-function requestURL(input: RequestInfo | URL) {
-  return new URL(String(input), "http://etherview.test");
-}
-
-function renderExplorer(path: string) {
-  const router = makeRouter(createMemoryHistory({ initialEntries: [path] }));
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
-  });
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <WalletProvider>
-          <AuthProvider>
-            <RouterProvider router={router} />
-          </AuthProvider>
-        </WalletProvider>
-      </ThemeProvider>
-    </QueryClientProvider>,
-  );
 }
