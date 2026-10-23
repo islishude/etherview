@@ -12,7 +12,9 @@ import (
 )
 
 const pushActivity = `-- name: PushActivity :many
-SELECT source_key::text AS source_key,source_generation,source_kind,activity,from_address,to_address FROM watch_activity_sources
+SELECT source_key::text AS source_key,source_generation,source_kind,activity,
+decode(substr(from_address,3),'hex')::bytea AS from_address,
+decode(substr(to_address,3),'hex')::bytea AS to_address FROM watch_activity_sources
 WHERE chain_id=$1::numeric AND block_hash=$2::bytea
 AND source_key>$3::text AND (($4::boolean AND source_kind<>'transaction') OR (NOT $4::boolean AND source_kind='transaction'))
 ORDER BY source_key LIMIT 100
@@ -30,8 +32,8 @@ type PushActivityRow struct {
 	SourceGeneration int64  `db:"source_generation" json:"source_generation"`
 	SourceKind       string `db:"source_kind" json:"source_kind"`
 	Activity         []byte `db:"activity" json:"activity"`
-	FromAddress      string `db:"from_address" json:"from_address"`
-	ToAddress        string `db:"to_address" json:"to_address"`
+	FromAddress      []byte `db:"from_address" json:"from_address"`
+	ToAddress        []byte `db:"to_address" json:"to_address"`
 }
 
 func (q *Queries) PushActivity(ctx context.Context, arg PushActivityParams) ([]PushActivityRow, error) {

@@ -22,6 +22,9 @@ vi.mock("@/auth/AuthProvider", () => ({
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en" } }),
 }));
+vi.mock("@/api/auth", () => ({
+  getAuthSession: vi.fn().mockResolvedValue({ authenticated: true, csrf_token: "csrf" }),
+}));
 vi.mock("@/api/watchlist", () => ({
   listPushSubscriptions: vi.fn(),
   savePushSubscription: vi.fn(),

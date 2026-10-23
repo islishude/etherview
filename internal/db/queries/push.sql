@@ -46,7 +46,9 @@ AND NOT EXISTS(SELECT 1 FROM durable_stage_publications older WHERE older.job_id
 ORDER BY p.committed_at,p.job_id,p.job_generation LIMIT 100;
 
 -- name: PushActivity :many
-SELECT source_key::text AS source_key,source_generation,source_kind,activity,from_address,to_address FROM watch_activity_sources
+SELECT source_key::text AS source_key,source_generation,source_kind,activity,
+decode(substr(from_address,3),'hex')::bytea AS from_address,
+decode(substr(to_address,3),'hex')::bytea AS to_address FROM watch_activity_sources
 WHERE chain_id=sqlc.arg(chain_id)::numeric AND block_hash=sqlc.arg(block_hash)::bytea
 AND source_key>sqlc.arg(after_source)::text AND ((sqlc.arg(token)::boolean AND source_kind<>'transaction') OR (NOT sqlc.arg(token)::boolean AND source_kind='transaction'))
 ORDER BY source_key LIMIT 100;

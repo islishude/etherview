@@ -23,7 +23,7 @@ export function BrowserPushPanel() {
   const auth = useAuth();
   const identity = usePrivateIdentity();
   const getSignal = usePrivateLifetime();
-  const expired = usePushSessionExpired();
+  const expired = usePushSessionExpired(auth.session.expires_at);
   const supported = browserPushSupported();
   const [current, setCurrent] = useState("");
   const [pending, setPending] = useState(false);
@@ -159,7 +159,7 @@ export function BrowserPushPanel() {
     setError(false);
     try {
       await deletePushSubscription(current, auth.session.csrf_token, getSignal());
-      await clearBrowserPush();
+      await clearBrowserPush(auth.session.csrf_token);
       setCurrent("");
       if (!getSignal().aborted) await query.refetch();
     } catch {

@@ -156,7 +156,7 @@ func (w *PushWorker) deliver(parent context.Context, blockNumber string, hash []
 		}
 		for _, source := range sources {
 			after = source.SourceKey
-			from, to := common.HexToAddress(source.FromAddress).Bytes(), common.HexToAddress(source.ToAddress).Bytes()
+			from, to := source.FromAddress, source.ToAddress
 			cursor := pgtype.UUID{Valid: true}
 			for page := range 64 {
 				followers, e := q.PushFollowers(ctx, dbgen.PushFollowersParams{ChainID: w.service.numeric, FromAddress: from, ToAddress: to, AfterWatch: cursor})
