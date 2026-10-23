@@ -1333,7 +1333,7 @@ publication rather than at the creator code epoch.
 ### Runtime smoke verification fixture (development only)
 
 The runtime parity smoke target defaults `ETHERVIEW_RUNTIME_FIXTURE_IMAGE` to
-Foundry `v1.8.5` and starts anvil on the Prague hard fork as its deterministic
+Foundry `v1.8.6` and starts anvil on the Prague hard fork as its deterministic
 chain fixture source. Its Go harness generates temporary EIP-7702 keys and raw
 transactions, funds them through `anvil_setBalance`, and does not require host
 `cast` or reusable private keys. Do not rely on hardcoded chain, block, or
