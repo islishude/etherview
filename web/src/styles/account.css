@@ -14,7 +14,7 @@
 
 .api-key-summary-grid {
   display: grid;
-  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
   align-items: start;
 }
@@ -37,6 +37,97 @@
 .api-key-policy-card {
   display: grid;
   gap: 0.75rem;
+}
+
+.account-action {
+  justify-self: start;
+  max-width: 100%;
+  justify-content: center;
+  text-align: center;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+
+.account-action:hover:not(:disabled) {
+  background: var(--surface);
+  border-color: var(--brand);
+}
+
+.browser-push-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem 1.25rem;
+  align-items: center;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.browser-push-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.browser-push-icon {
+  display: inline-flex;
+  color: var(--text-soft);
+}
+
+.browser-push-panel h3 {
+  font-size: 0.95rem;
+}
+
+.browser-push-badge {
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-soft);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.browser-push-badge.is-active {
+  color: var(--brand-strong);
+  background: var(--brand-soft);
+  border-color: var(--brand);
+}
+
+.browser-push-panel .browser-push-action {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  margin: 0;
+}
+
+.browser-push-panel > p {
+  grid-column: 1;
+}
+
+@media (max-width: 640px) {
+  .browser-push-panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .browser-push-panel .browser-push-action {
+    grid-column: 1;
+    grid-row: auto;
+    margin-top: 0.25rem;
+  }
+}
+
+.browser-push-panel h3,
+.browser-push-panel p {
+  margin: 0;
+}
+
+.browser-push-panel p {
+  color: var(--text-soft);
+  font-size: 0.875rem;
 }
 
 .api-key-policy-card p {
@@ -83,6 +174,27 @@
 
 .api-key-create-form .button {
   justify-self: start;
+}
+
+.account-create-form {
+  width: min(100%, 36rem);
+  min-width: 0;
+  justify-self: start;
+}
+
+.account-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  padding-top: 0.25rem;
+}
+
+.account-form-actions .button {
+  margin: 0;
+  min-width: 6rem;
+  font-size: 0.875rem;
+  line-height: 1.4;
 }
 
 .api-key-scopes {
@@ -591,8 +703,7 @@
 .watchlist-panel label {
   display: block;
 }
-.watchlist-panel input:not([type="checkbox"]),
-.watchlist-panel select {
+.watchlist-panel input:not([type="checkbox"]):not([type="radio"]) {
   display: block;
   max-width: 100%;
   width: 100%;
@@ -625,6 +736,11 @@
   margin: 0.25rem;
 }
 
+.watchlist-panel .account-action,
+.watchlist-panel .account-form-actions .button {
+  margin: 0;
+}
+
 .watchlist-panel > h2,
 .watchlist-panel > p {
   margin: 0;
@@ -652,18 +768,70 @@
 .watchlist-panel input[type="checkbox"] {
   accent-color: var(--brand);
 }
+
+.watchlist-panel .watch-direction {
+  display: block;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.watch-direction legend {
+  margin-bottom: 0.45rem;
+  color: var(--text-soft);
+  font-size: 0.875rem;
+}
+
+.watch-direction-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.watch-direction-options label {
+  position: relative;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.watch-direction-options span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.35rem;
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius-sm) - 4px);
+  text-align: center;
+  line-height: 1.35;
+}
+
+.watch-direction-options label:hover span {
+  background: var(--surface-raised);
+}
+
+.watch-direction-options input:checked + span {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.watch-direction-options input:focus-visible + span {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
 .watchlist-panel > .button,
 .watchlist-items .button {
   justify-self: start;
 }
 .watchlist-items {
   margin: 0;
-}
-.watchlist-items li[data-read="false"] {
-  border-inline-start: 3px solid var(--brand);
-}
-.notification-warning {
-  color: var(--warning);
 }
 td.billing-quantity {
   text-align: right;

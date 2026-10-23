@@ -991,17 +991,18 @@ silently infer the downstream range an operator intends to rebuild. See
 
 [ADR-0051](../decisions/ADR-0051-watchlist-notifications-csv.md) owns SIWE-only
 watch and notification resources plus the authenticated CSV response exception.
-Writer transactions serialize per-user watch limits and bind enrollment to an
-exact canonical tip. Core outbox generations and Token job publication/replay
-transitions atomically dirty an independent block-scoped notification queue.
-The maintenance role uses expiring leases, fenced keyset progress and idempotent
-notification identities; no public replay retention or process-local cursor
-controls delivery. API reads recheck canonical and exact Token-generation
-witnesses before exposing a notification as current.
+Writer transactions serialize per-user watch and browser-subscription limits and
+bind enrollment to an exact canonical tip. Session-bound Web Push subscriptions
+are private writer-owned state. A single maintenance sender per chain tails
+first-canonical Core and first successful Token publications with volatile
+cursors; startup and recovery discard backlog. Each candidate rechecks session,
+watch, canonical block and exact publication, closes database state, then sends
+once with TTL 0. No notification history, read state or retry queue exists.
 
-The SPA retains one public EventSource and separately polls private state only
-while authenticated and visible. Private query identities are session-scoped;
-logout/account changes cancel outstanding requests and remove cached data.
+The SPA retains its public EventSource. Browser notifications use a same-origin
+Service Worker and explicit permission/subscribe controls in Watchlist. Session
+expiry, logout, revocation and disabled accounts stop new sends. The worker has
+no offline cache; notification clicks open a validated transaction path.
 CSV generation uses a single writer repeatable-read snapshot, verifies coverage,
 checks all size/work limits, and closes that snapshot before returning bytes.
 Admission and crash recovery are PostgreSQL facts, independent of API replicas.

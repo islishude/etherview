@@ -1361,49 +1361,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/users/me/notifications": {
+    "/users/me/push-subscriptions": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["listCurrentUserNotifications"];
+        get: operations["listCurrentUserPushSubscriptions"];
+        put?: never;
+        post: operations["saveCurrentUserPushSubscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/me/push-subscriptions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/users/me/notifications/{id}/read": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["readCurrentUserNotification"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/users/me/notifications/read-through": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["readCurrentUserNotificationsThrough"];
-        delete?: never;
+        delete: operations["deleteCurrentUserPushSubscription"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2152,6 +2136,13 @@ export interface components {
             amount: components["schemas"]["Quantity"];
             index: components["schemas"]["Quantity"];
             validator_index: components["schemas"]["Quantity"];
+        };
+        BrowserPushSubscription: {
+            endpoint_hash: string;
+            /** Format: date-time */
+            expires_at: string;
+            id: string;
+            language: string;
         };
         CatalogSnapshot: {
             block_hash: components["schemas"]["Hash"];
@@ -2952,6 +2943,26 @@ export interface components {
         };
         PublicConfigResponse: {
             data: components["schemas"]["PublicConfig"];
+            meta: components["schemas"]["Meta"];
+        };
+        PushSubscriptionInput: {
+            auth: string;
+            endpoint: string;
+            /** @enum {string} */
+            language: "en" | "zh";
+            p256dh: string;
+        };
+        PushSubscriptionResponse: {
+            data: components["schemas"]["BrowserPushSubscription"];
+            meta: components["schemas"]["Meta"];
+        };
+        PushSubscriptions: {
+            enabled: boolean;
+            items: components["schemas"]["BrowserPushSubscription"][];
+            public_key: string;
+        };
+        PushSubscriptionsResponse: {
+            data: components["schemas"]["PushSubscriptions"];
             meta: components["schemas"]["Meta"];
         };
         /** @description A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string. */
@@ -3803,26 +3814,6 @@ export interface components {
             name: string;
             symbol: string;
         };
-        WatchActivity: {
-            amount?: components["schemas"]["Quantity"];
-            block_hash: components["schemas"]["Hash"];
-            block_number: components["schemas"]["Quantity"];
-            decimals?: string;
-            direction: string;
-            event_kind?: string;
-            from?: components["schemas"]["Address"];
-            kind: string;
-            log_index?: components["schemas"]["Quantity"];
-            status?: string;
-            sub_index?: components["schemas"]["Quantity"];
-            timestamp: components["schemas"]["Quantity"];
-            to?: components["schemas"]["Address"];
-            token_address?: components["schemas"]["Address"];
-            token_id?: components["schemas"]["Quantity"];
-            transaction_hash: components["schemas"]["Hash"];
-            transaction_index: components["schemas"]["Quantity"];
-            value?: components["schemas"]["Quantity"];
-        };
         WatchInput: {
             address: components["schemas"]["Address"];
             /** @enum {string} */
@@ -3834,29 +3825,6 @@ export interface components {
         WatchListResponse: {
             data: components["schemas"]["AddressWatch"][];
             meta: components["schemas"]["Meta"];
-        };
-        WatchNotification: {
-            activity: components["schemas"]["WatchActivity"];
-            address: components["schemas"]["Address"];
-            canonical: boolean;
-            id: components["schemas"]["Quantity"];
-            label: string;
-            published: boolean;
-            read: boolean;
-            watch_id: string;
-        };
-        WatchNotificationPage: {
-            items: components["schemas"]["WatchNotification"][];
-            next_cursor: string;
-            unread_count: components["schemas"]["Quantity"];
-            watermark: components["schemas"]["Quantity"];
-        };
-        WatchNotificationsResponse: {
-            data: components["schemas"]["WatchNotificationPage"];
-            meta: components["schemas"]["Meta"];
-        };
-        WatchReadThrough: {
-            through_id: components["schemas"]["Quantity"];
         };
         WatchResponse: {
             data: components["schemas"]["AddressWatch"];
@@ -6110,31 +6078,55 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
-    listCurrentUserNotifications: {
+    listCurrentUserPushSubscriptions: {
         parameters: {
-            query?: {
-                cursor?: components["parameters"]["Cursor"];
-                unread_only?: boolean;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Successful account operation. */
+            /** @description Current session subscriptions and browser push capability. No notification history is retained. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["WatchNotificationsResponse"];
+                    "application/json": components["schemas"]["PushSubscriptionsResponse"];
                 };
             };
             default: components["responses"]["Error"];
         };
     };
-    readCurrentUserNotification: {
+    saveCurrentUserPushSubscription: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushSubscriptionInput"];
+            };
+        };
+        responses: {
+            /** @description Idempotently bind this browser endpoint to the current session. At most 10 active subscriptions per account. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushSubscriptionResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteCurrentUserPushSubscription: {
         parameters: {
             query?: never;
             header: {
@@ -6147,32 +6139,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful account operation. */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            default: components["responses"]["Error"];
-        };
-    };
-    readCurrentUserNotificationsThrough: {
-        parameters: {
-            query?: never;
-            header: {
-                "X-CSRF-Token": components["parameters"]["CSRFToken"];
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["WatchReadThrough"];
-            };
-        };
-        responses: {
-            /** @description Successful account operation. */
+            /** @description Subscription removed. */
             204: {
                 headers: {
                     [name: string]: unknown;

@@ -449,6 +449,7 @@ func TestVerificationWorkflowUsesVerificationScope(t *testing.T) {
 	for _, operation := range []string{
 		"getAuthSession", "listCurrentUserAPIKeys", "listAdminUsers",
 		"listCurrentUserBillingPayments",
+		"listCurrentUserPushSubscriptions", "saveCurrentUserPushSubscription", "deleteCurrentUserPushSubscription",
 	} {
 		if operationUsesAPIKeyScope(operation) {
 			t.Fatalf("account operation %s accepts API-key scope authorization", operation)

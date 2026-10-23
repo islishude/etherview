@@ -2547,12 +2547,20 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
   await assertA11yAndNoOverflow(page, "account API keys in English narrow mode");
   const openWallet = page.locator(".wallet-menu[open] > summary");
   if (await openWallet.count()) await openWallet.click();
-  await page.screenshot({ path: test.info().outputPath("account-api-keys-mobile.png") });
+  await page.screenshot({
+    path: test.info().outputPath("account-api-keys-mobile.png"),
+    fullPage: true,
+  });
   await activateInView(page.getByRole("button", { name: "切换到中文" }));
   await expect(page.getByText(/最小权限凭据/)).toBeVisible();
   await assertA11yAndNoOverflow(page, "account API keys in Chinese narrow mode");
   await activateInView(page.getByRole("button", { name: "Switch to English" }));
   await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(page.getByRole("textbox", { name: "Key name" })).toHaveCount(0);
+  await activateInView(page.getByRole("button", { name: "Add API key" }));
+  await page
+    .locator(".account-create-form")
+    .screenshot({ path: test.info().outputPath("api-key-create-desktop.png") });
   await page.getByRole("textbox", { name: "Key name" }).fill("Production verifier");
   await page.getByRole("checkbox", { name: /Contract verification/ }).check();
   await activateInView(page.getByRole("button", { name: "Create key" }));

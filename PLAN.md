@@ -25,7 +25,7 @@ Validator browsing, MEV accounting and L2-specific batch semantics are not core 
 | P30 | [Contract Platform & Runtime Operations](docs/plans/P30-contract-verification.md) | done    | P00, P10, P20                | Consolidated verification, contract intelligence, runtime, deployment, bounded telemetry, optional accelerators, Kubo/HTTPS and Lighthouse/archive Preview        |
 | P40 | [API & Data Exports](docs/plans/P40-api.md)                                       | done    | P10; incremental P20/P30     | Native REST/search/SSE, canonical NFT metadata/ENS snapshots, Etherscan V2, UserOperation/holder queries, consensus/blob downloads, CSV, and bounded quotas       |
 | P50 | [Web](docs/plans/P50-web.md)                                                      | done    | P40; incremental P20/P30     | Bilingual route-lazy embedded SPA, precompressed assets, event-driven explorer/personal tools, guarded NFT links, ENS display, and injected-wallet interaction    |
-| P60 | [User Accounts, Billing & Personal Tools](docs/plans/P60-user-auth-billing.md)    | blocked | P10, P20, P30, P40, P50      | SIWE sessions, profiles, administration, scoped user API keys, prepaid API credit, x402 top-ups, private watches, and durable notifications                       |
+| P60 | [User Accounts, Billing & Personal Tools](docs/plans/P60-user-auth-billing.md)    | blocked | P10, P20, P30, P40, P50      | SIWE sessions, profiles, administration, scoped user API keys, prepaid API credit, x402 top-ups, private watches, and one-shot browser push                       |
 | P70 | [Release](docs/plans/P70-release.md)                                              | blocked | P10, P20, P30, P40, P50, P60 | Security, conformance, performance, E2E, documentation, and v1 release                                                                                            |
 
 Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
@@ -34,7 +34,8 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 ## Current Work
 
 P60-T17 remains blocked on live EIP-3009/Permit2 payment and writer/chain
-reconciliation. P70-T04 remains blocked on the operator-provisioned reference
+reconciliation. P60-T20 awaits operator Preview verification of browser-provider
+delivery with all site tabs closed. P70-T04 remains blocked on the operator-provisioned reference
 capacity environment. P70-T01, P70-T02, P70-T03 and P70-T05 await P60 closure;
 P70-T06 is dependency-gated. Their child plans own clearing conditions.
 

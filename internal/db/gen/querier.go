@@ -507,6 +507,23 @@ type Querier interface {
 	NativeTransferValidateSnapshot(ctx context.Context, chainID pgtype.Numeric, snapshotNumber pgtype.Numeric, snapshotHash []byte) (bool, error)
 	OperationalMetricSnapshot(ctx context.Context, chainID pgtype.Numeric, settlementCrashDelayMicroseconds int64) ([]OperationalMetricSnapshotRow, error)
 	PruneSearchCatalog(ctx context.Context, chainID pgtype.Numeric, retentionGenerations int64) (int64, error)
+	PushActivity(ctx context.Context, arg PushActivityParams) ([]PushActivityRow, error)
+	PushBoundary(ctx context.Context, chainID pgtype.Numeric) (PushBoundaryRow, error)
+	PushCleanup(ctx context.Context) error
+	PushCoreSources(ctx context.Context, chainID pgtype.Numeric, afterID int64) ([]PushCoreSourcesRow, error)
+	PushCount(ctx context.Context, userID pgtype.UUID, endpoint string) (int64, error)
+	PushDelete(ctx context.Context, iD pgtype.UUID, userID pgtype.UUID, sessionID pgtype.UUID) (int64, error)
+	PushDeleteExpiredEndpoint(ctx context.Context, arg PushDeleteExpiredEndpointParams) error
+	PushFollowers(ctx context.Context, arg PushFollowersParams) ([]PushFollowersRow, error)
+	PushLeaderLock(ctx context.Context, chainID string) (bool, error)
+	PushLeaderUnlock(ctx context.Context, chainID string) (bool, error)
+	PushList(ctx context.Context, userID pgtype.UUID, sessionID pgtype.UUID) ([]PushListRow, error)
+	PushLockSubscriptions(ctx context.Context) error
+	PushRecipients(ctx context.Context, userID pgtype.UUID, blockNumber pgtype.Numeric) ([]PushSubscription, error)
+	PushSave(ctx context.Context, arg PushSaveParams) (PushSaveRow, error)
+	PushSession(ctx context.Context, sessionID pgtype.UUID, userID pgtype.UUID, chainID pgtype.Numeric) (pgtype.Timestamptz, error)
+	PushTokenSources(ctx context.Context, arg PushTokenSourcesParams) ([]PushTokenSourcesRow, error)
+	PushValidateDelivery(ctx context.Context, arg PushValidateDeliveryParams) (bool, error)
 	QueryAddressOriginCoverage(ctx context.Context, minRangeEnd pgtype.Numeric, chainID pgtype.Numeric) (*bool, error)
 	QueryAddressOriginReference(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, blockHash []byte) (bool, error)
 	QueryBlockByHash(ctx context.Context, chainID pgtype.Numeric, hash []byte) (QueryBlockByHashRow, error)
@@ -661,25 +678,13 @@ type Querier interface {
 	VerifyV2SubmitJob(ctx context.Context, arg VerifyV2SubmitJobParams) (VerifyV2SubmitJobRow, error)
 	VerifyVyperPersistRuntime(ctx context.Context, arg VerifyVyperPersistRuntimeParams) error
 	VerifyVyperRuntime(ctx context.Context, generationID int64, version string) (VerifyVyperRuntimeRow, error)
-	WatchClaimWork(ctx context.Context, leaseToken pgtype.UUID, chainID pgtype.Numeric) (WatchNotificationWork, error)
-	WatchCleanupDeleted(ctx context.Context) error
-	WatchCleanupNotifications(ctx context.Context) error
-	WatchCleanupWork(ctx context.Context) error
 	WatchCount(ctx context.Context, userID pgtype.UUID) (int64, error)
 	WatchCreate(ctx context.Context, arg WatchCreateParams) (AddressWatch, error)
 	WatchDelete(ctx context.Context, iD pgtype.UUID, userID pgtype.UUID) (int64, error)
-	WatchFinishPage(ctx context.Context, arg WatchFinishPageParams) (int64, error)
 	WatchList(ctx context.Context, userID pgtype.UUID, chainID pgtype.Numeric) ([]AddressWatch, error)
 	WatchLockOwner(ctx context.Context, userID pgtype.UUID, chainID pgtype.Numeric) (pgtype.UUID, error)
-	WatchLockWork(ctx context.Context, chainID pgtype.Numeric, blockHash []byte, leaseToken pgtype.UUID) (WatchNotificationWork, error)
-	WatchNotificationList(ctx context.Context, arg WatchNotificationListParams) ([]WatchNotificationListRow, error)
-	WatchNotificationSummary(ctx context.Context, userID pgtype.UUID) (WatchNotificationSummaryRow, error)
-	WatchPublishNotification(ctx context.Context, arg WatchPublishNotificationParams) error
-	WatchReadNotification(ctx context.Context, userID pgtype.UUID, iD int64) (int64, error)
-	WatchReadThrough(ctx context.Context, userID pgtype.UUID, throughID int64) error
 	WatchTip(ctx context.Context, chainID pgtype.Numeric) (WatchTipRow, error)
 	WatchUpdate(ctx context.Context, arg WatchUpdateParams) (AddressWatch, error)
-	WatchWorkPage(ctx context.Context, arg WatchWorkPageParams) ([]WatchWorkPageRow, error)
 }
 
 var _ Querier = (*Queries)(nil)

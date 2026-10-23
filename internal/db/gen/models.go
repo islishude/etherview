@@ -150,7 +150,6 @@ type AddressWatch struct {
 	StartNumber pgtype.Numeric     `db:"start_number" json:"start_number"`
 	StartHash   []byte             `db:"start_hash" json:"start_hash"`
 	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	DeletedAt   pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
 }
 
 type ApiKey struct {
@@ -1845,6 +1844,20 @@ type PublishedErc4337UserOperation struct {
 	JobGeneration                 int64              `db:"job_generation" json:"job_generation"`
 }
 
+type PushSubscription struct {
+	ID           pgtype.UUID        `db:"id" json:"id"`
+	UserID       pgtype.UUID        `db:"user_id" json:"user_id"`
+	SessionID    pgtype.UUID        `db:"session_id" json:"session_id"`
+	Endpoint     string             `db:"endpoint" json:"endpoint"`
+	EndpointHash string             `db:"endpoint_hash" json:"endpoint_hash"`
+	P256dh       string             `db:"p256dh" json:"p256dh"`
+	Auth         string             `db:"auth" json:"auth"`
+	Language     string             `db:"language" json:"language"`
+	StartNumber  pgtype.Numeric     `db:"start_number" json:"start_number"`
+	StartHash    []byte             `db:"start_hash" json:"start_hash"`
+	CreatedAt    pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type Receipt struct {
 	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
@@ -2542,33 +2555,6 @@ type WatchActivitySource struct {
 	FromAddress      string         `db:"from_address" json:"from_address"`
 	ToAddress        string         `db:"to_address" json:"to_address"`
 	Activity         []byte         `db:"activity" json:"activity"`
-}
-
-type WatchNotification struct {
-	ID               int64              `db:"id" json:"id"`
-	WatchID          pgtype.UUID        `db:"watch_id" json:"watch_id"`
-	UserID           pgtype.UUID        `db:"user_id" json:"user_id"`
-	ChainID          pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	BlockNumber      pgtype.Numeric     `db:"block_number" json:"block_number"`
-	BlockHash        []byte             `db:"block_hash" json:"block_hash"`
-	SourceKey        string             `db:"source_key" json:"source_key"`
-	SourceKind       string             `db:"source_kind" json:"source_kind"`
-	SourceGeneration int64              `db:"source_generation" json:"source_generation"`
-	Activity         []byte             `db:"activity" json:"activity"`
-	CreatedAt        pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	ReadAt           pgtype.Timestamptz `db:"read_at" json:"read_at"`
-}
-
-type WatchNotificationWork struct {
-	ChainID        pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	BlockNumber    pgtype.Numeric     `db:"block_number" json:"block_number"`
-	BlockHash      []byte             `db:"block_hash" json:"block_hash"`
-	Generation     int64              `db:"generation" json:"generation"`
-	DoneGeneration int64              `db:"done_generation" json:"done_generation"`
-	LeaseToken     pgtype.UUID        `db:"lease_token" json:"lease_token"`
-	LeaseUntil     pgtype.Timestamptz `db:"lease_until" json:"lease_until"`
-	AfterWatch     pgtype.UUID        `db:"after_watch" json:"after_watch"`
-	AfterSource    string             `db:"after_source" json:"after_source"`
 }
 
 type Withdrawal struct {

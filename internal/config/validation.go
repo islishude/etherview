@@ -38,6 +38,7 @@ func (c Config) Validate() error {
 		validateFeatureSecurityConfig(c),
 		validateVerificationConfig(c),
 		validateUserAuthConfig(c),
+		validatePushConfig(c),
 		validateBillingConfig(c),
 		validateAdapterConfig(c),
 	)

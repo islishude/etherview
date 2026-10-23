@@ -1,6 +1,9 @@
 name: etherview-preview
 
 x-etherview-app-env: &etherview-app-env
+  ETHERVIEW_PUSH_ENABLED:
+  ETHERVIEW_PUSH_PUBLIC_KEY:
+  ETHERVIEW_PUSH_CONTACT:
   ETHERVIEW_DATABASE_URL: postgres://etherview:${POSTGRES_PASSWORD:-etherview-dev-only}@postgres:5432/etherview?sslmode=disable
   ETHERVIEW_DATABASE_READ_URL: ${ETHERVIEW_DATABASE_READ_URL:-}
   # Keep authoritative HTTP polling and add a newHeads wake hint so locally
@@ -316,6 +319,9 @@ services:
   maintenance:
     <<: *etherview-service
     command: ["serve", "--roles=maintenance", "--config=/etc/etherview/config.yaml"]
+    env_file:
+      - path: ${ETHERVIEW_PREVIEW_PUSH_ENV_FILE:-./.local/preview-push.env}
+        required: false
     environment:
       <<: *etherview-app-env
       ETHERVIEW_ROLES: maintenance

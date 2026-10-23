@@ -201,3 +201,12 @@
 {{- if gt $effectiveReadMin $effectiveReadMax }}
 {{- fail "config.database effective reader min_connections must not exceed effective max_connections" }}
 {{- end }}
+
+{{- if .Values.config.push.enabled }}
+{{- if or (not .Values.config.features.user_auth) (empty .Values.config.push.public_key) (empty .Values.config.push.contact) }}
+{{- fail "config.push requires user_auth, public_key and contact" }}
+{{- end }}
+{{- if and .Values.externalSecret.enabled (empty .Values.externalSecret.pushPrivateKeyRemoteKey) }}
+{{- fail "browser push requires externalSecret.pushPrivateKeyRemoteKey" }}
+{{- end }}
+{{- end }}

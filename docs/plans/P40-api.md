@@ -2,6 +2,9 @@
 
 Status: `done`
 
+Browser subscription API and all/split delivery acceptance are being migrated
+under P60-T20; notifications have no persisted history or replay.
+
 ## Outcome
 
 The explorer exposes a versioned spec-first native REST API, cursor-stable

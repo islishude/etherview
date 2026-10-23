@@ -1,4 +1,4 @@
-# ADR-0051: Private Watchlists, Durable Notifications and Bounded CSV
+# ADR-0051: Private Watchlists, One-shot Browser Push and Bounded CSV
 
 Status: accepted
 
@@ -6,36 +6,51 @@ Status: accepted
 
 SIWE sessions on the PostgreSQL writer own all watch, notification and export
 operations. API keys do not authorize these operations; writes require the
-existing exact Origin and CSRF checks. No additional external service is needed.
+existing exact Origin and CSRF checks. Delivery uses the browser vendor's Web
+Push service; no application-owned notification broker is needed.
 
-Each user can watch 100 distinct addresses with a private label of up to 64
+Each user can watch 5 distinct addresses with a private label of up to 64
 characters, transaction/ERC-20/ERC-721/ERC-1155 selectors and in/out/both direction.
 Enrollment and notification re-enablement record the exact current canonical
-tip under the chain lock; only later block numbers qualify. Deleting a watch
-retains its notifications. Failed top-level transactions and mint/burn transfers
+tip under the chain lock; only later block numbers qualify. Deleting a watch stops future matching. Failed top-level transactions and mint/burn transfers
 are included; self-transfers occur once. Internal calls and UserOperations are
 outside this feature.
 
-Core canonical/outbox changes and Token publication/replay changes atomically
-invalidate block-scoped notification work in PostgreSQL. Independent durable
-work generations, leases and keyset progress protect the maintenance consumer;
-the bounded public runtime-event ledger is never its correctness source.
-Delivery scans at most 100 source events per page, probes bounded indexed
-address/watch-ID ranges, and commits at most 200 progress rows. Ineligible
-followers still advance the cursor; a source-end marker prevents skipping
-followers of popular addresses. Existing notification generations are repaired
-even while their owner is disabled; only new delivery requires an active owner.
-Publication requires a current canonical block and the exact published Token
-generation. Reads recheck these witnesses so reorgs and invalidation are visible
-before background reconciliation. Reattachment updates existing notifications
-without resetting read state. Notifications expire after 90 days; work and
-cleanup use bounded batches. Long-delayed activity older than that retention
-window is not newly delivered. Public events contain no private user data.
+Browser notifications use Web Push with VAPID and an embedded same-origin
+Service Worker. Only watches and session-bound browser subscriptions persist;
+notification history, read state, delivery queues and delivery receipts do not.
+Subscription endpoints are unique, limited to ten active subscriptions per user,
+and stored with browser encryption keys, locale and the exact enrollment tip.
+They cannot authorize API operations. Logout, expiry, revocation and disabled
+users stop subsequent sends; in-flight external deliveries cannot be recalled.
 
-The SPA retains one public EventSource. Authenticated visible clients refresh
-private notification state every 15 seconds and on focus. Identity changes
-cancel requests and discard private state. Read-all is bounded by the response's
-notification ID watermark, preserving concurrent arrivals.
+The maintenance role elects one sender per chain with a PostgreSQL session lock.
+It tails existing first-canonical outbox records and first successful Token
+publications using bounded queries and volatile cursors. Startup, takeover and
+database recovery establish a new boundary and discard backlog. Token replay
+and block reattachment never repair or resend history. Delayed first Token
+publication can notify only for blocks after both watch and subscription tips.
+Each delivery rechecks current session, watch, canonicality and exact Token
+publication before releasing database state and performing HTTP. The sender
+uses eight slots, bounded source/follower pages and a ten-second block budget.
+Overload, uncertainty and errors lose notifications rather than replaying them.
+This is best-effort one-shot delivery, not an exactly-once guarantee.
+
+Push requests use TTL 0 and are never retried. A push provider discards messages
+when the device is unreachable. HTTP 404/410 removes the matching subscription;
+other failures are redacted and counted. Endpoint URLs are HTTPS-only on port
+443, have no credentials or fragments, reject redirects, and resolve exclusively
+to public addresses which are pinned when dialing. No private data enters SSE.
+VAPID private keys belong only to maintenance/all; API receives the public key.
+Provider failure does not withdraw core readiness or block indexing.
+
+The browser asks permission only after a user gesture. One origin-scoped
+subscription is shared across tabs and explicitly rebound after a new login.
+The Service Worker handles push and same-origin transaction navigation only;
+it has no fetch handler, offline cache or notification history. Visible alerts
+contain a label or abbreviated address, activity kind and direction, never an
+amount. Logout/account changes unsubscribe and close displayed notifications.
+Browser support and OS delivery remain external capabilities. CSV is unchanged.
 
 CSV is a documented exception to ADR-0003's successful JSON envelope: the
 spec-first authenticated POST returns text/csv on success and the ordinary JSON
@@ -57,7 +72,7 @@ uses its generated same-origin client and releases download object URLs.
 
 New tables target the current fresh schema without historical backfills.
 Maintenance and API components use the same builders in all/split deployments.
-Watches, notifications and admission state remain writer-owned; optional Redis,
+Watches, browser subscriptions and admission state remain writer-owned; optional Redis,
 NATS and object storage do not participate. Limits do not charge prepaid API
 balances. P60 owns watch/notification implementation evidence, P40 owns CSV
 exports, P50 owns the private Web workspace, and P70 owns release acceptance.

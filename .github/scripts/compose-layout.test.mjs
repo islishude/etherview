@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { runCompose } from "./preview-compose.mjs";
@@ -8,6 +9,8 @@ const root = path.resolve(import.meta.dirname, "../..");
 
 function render(args, overrides = {}) {
   const env = { ...process.env, ...overrides };
+  if (!Object.hasOwn(overrides, "ETHERVIEW_PREVIEW_PUSH_ENV_FILE"))
+    env.ETHERVIEW_PREVIEW_PUSH_ENV_FILE = "/dev/null";
   for (const key of ["COMPOSE_FILE", "COMPOSE_PROFILES", "COMPOSE_PROJECT_NAME"]) delete env[key];
   if (!Object.hasOwn(overrides, "ETHERVIEW_CONFIG_FILE")) delete env.ETHERVIEW_CONFIG_FILE;
   return JSON.parse(
@@ -22,6 +25,51 @@ function assertApplicationPaths(service, config) {
   assert.equal(mounts[0].source, path.join(root, config));
   assert.equal(mounts[0].read_only, true);
 }
+
+test("push private keys reach only the sending role in Preview and deployment", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "etherview-push-compose-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const file = path.join(directory, "push.env");
+  fs.writeFileSync(
+    file,
+    "ETHERVIEW_PUSH_PRIVATE_KEY=private-fixture\nETHERVIEW_PUSH_PRIVATE_KEY_FILE=/run/push-key\n",
+  );
+  for (const args of [
+    [],
+    ...["monolith", "distributed"].map((mode) => [
+      "--project-directory",
+      root,
+      "-f",
+      "deploy/compose.yaml",
+      "--profile",
+      mode,
+    ]),
+  ]) {
+    const config = render(args, {
+      ETHERVIEW_PUSH_ENABLED: "true",
+      ETHERVIEW_PUSH_PUBLIC_KEY: "public-fixture",
+      ETHERVIEW_PUSH_CONTACT: "mailto:operator@example.com",
+      ETHERVIEW_PUSH_PRIVATE_KEY: "private-fixture",
+      ETHERVIEW_PUSH_PRIVATE_KEY_FILE: "/run/push-key",
+      ETHERVIEW_PREVIEW_PUSH_ENV_FILE: file,
+    });
+    for (const [role, service] of Object.entries(config.services)) {
+      const sender = role === "etherview" || role === "maintenance";
+      assert.equal(
+        service.environment?.ETHERVIEW_PUSH_PRIVATE_KEY,
+        sender ? "private-fixture" : undefined,
+        role,
+      );
+      assert.equal(
+        service.environment?.ETHERVIEW_PUSH_PRIVATE_KEY_FILE,
+        sender ? "/run/push-key" : undefined,
+        role,
+      );
+      if (role === "api" || sender)
+        assert.equal(service.environment.ETHERVIEW_PUSH_PUBLIC_KEY, "public-fixture");
+    }
+  }
+});
 
 test("both Compose entry points pass branding only to the application build", () => {
   for (const args of [

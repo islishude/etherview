@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 
+import { BrowserPushLifetime } from "./api/browserPush";
 import { PrivateAccountCleanup } from "./api/privateAccount";
 
 import { router } from "./router";
@@ -26,6 +27,7 @@ export function App() {
         <WalletProvider>
           <AuthProvider>
             <PrivateAccountCleanup />
+            <BrowserPushLifetime />
             <RouterProvider router={router} />
           </AuthProvider>
         </WalletProvider>

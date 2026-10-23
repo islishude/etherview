@@ -183,6 +183,13 @@ spec:
                   name: {{ $root.Values.secrets.existingSecret | quote }}
                   key: {{ $root.Values.secrets.apiKeyPepperKey | quote }}
                   optional: true
+            {{- if and $root.Values.config.push.enabled (or (eq $roleName "all") (eq $roleName "maintenance")) }}
+            - name: ETHERVIEW_PUSH_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.secrets.existingSecret | quote }}
+                  key: {{ $root.Values.secrets.pushPrivateKeyKey | quote }}
+            {{- end }}
             {{- if and $root.Values.config.features.user_auth (or (eq $roleName "all") (eq $roleName "api")) }}
             - name: ETHERVIEW_SESSION_PEPPER
               valueFrom:

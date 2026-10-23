@@ -64,6 +64,13 @@ worker dependencies.
   accessibility checks; Playwright runs the full WCAG 2.1 A/AA scan against
   the built distribution served by the Go harness.
 
+The browser-push worker is the explicit same-origin worker exception:
+`worker-src 'self'` permits `/push-sw.js`, served as JavaScript with revalidation.
+It never intercepts fetches or caches private responses. No external script or
+connect origin is added. Push permission requires a user gesture, and notification
+clicks accept only same-origin transaction paths. The embedded build includes
+the worker and tests its MIME, cache, CSP and missing-file behavior.
+
 ## Consequences
 
 Adding an inline bootstrap, external resource, worker, iframe, or new browser

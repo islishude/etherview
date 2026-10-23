@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { PrivateAccountCleanup, useNotifications } from "./privateAccount";
-import { listNotifications } from "./watchlist";
+import { PrivateAccountCleanup, useWatches } from "./privateAccount";
+import { listWatches } from "./watchlist";
 
 const fixture = vi.hoisted(() => ({ user: "alice", authenticated: true }));
 vi.mock("@/auth/AuthProvider", () => ({
@@ -14,13 +14,13 @@ vi.mock("@/auth/AuthProvider", () => ({
     },
   }),
 }));
-vi.mock("./watchlist", () => ({ listNotifications: vi.fn(), listWatches: vi.fn() }));
+vi.mock("./watchlist", () => ({ listWatches: vi.fn() }));
 function PrivateView() {
-  const result = useNotifications();
+  const result = useWatches();
   return (
     <>
       <PrivateAccountCleanup />
-      <span>{result.data?.items[0]?.label ?? "empty"}</span>
+      <span>{result.data?.[0]?.label ?? "empty"}</span>
     </>
   );
 }
@@ -29,19 +29,14 @@ describe("private account lifecycle", () => {
     fixture.user = "alice";
     fixture.authenticated = true;
     let oldSignal: AbortSignal | undefined;
-    let resolveOld: ((value: Awaited<ReturnType<typeof listNotifications>>) => void) | undefined;
-    vi.mocked(listNotifications).mockImplementationOnce((_cursor, _unread, signal) => {
+    let resolveOld: ((value: Awaited<ReturnType<typeof listWatches>>) => void) | undefined;
+    vi.mocked(listWatches).mockImplementationOnce((signal) => {
       oldSignal = signal;
       return new Promise((resolve) => {
         resolveOld = resolve;
       });
     });
-    vi.mocked(listNotifications).mockResolvedValue({
-      items: [],
-      next_cursor: "",
-      watermark: "0",
-      unread_count: "0",
-    });
+    vi.mocked(listWatches).mockResolvedValue([]);
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const view = () => (
       <QueryClientProvider client={client}>
@@ -54,12 +49,7 @@ describe("private account lifecycle", () => {
     rendered.rerender(view());
     await waitFor(() => expect(oldSignal?.aborted).toBe(true));
     await act(async () => {
-      resolveOld?.({
-        items: [{ label: "Alice private label" } as never],
-        next_cursor: "",
-        watermark: "1",
-        unread_count: "1",
-      });
+      resolveOld?.([{ label: "Alice private label" } as never]);
     });
     expect(screen.queryByText("Alice private label")).toBeNull();
     expect(client.getQueriesData({ queryKey: ["private-account", "alice:2099-01-01"] })).toEqual(

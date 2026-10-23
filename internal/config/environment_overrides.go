@@ -51,6 +51,19 @@ func applyRoleEnvironment(cfg *Config, lookup func(string) (string, bool), force
 }
 
 func applySecretEnvironment(cfg *Config, lookup func(string) (string, bool), readFile func(string) ([]byte, error), apiRole bool) error {
+	if err := setBool(lookup, "PUSH_ENABLED", &cfg.Push.Enabled); err != nil {
+		return err
+	}
+	setString(lookup, "PUSH_PUBLIC_KEY", &cfg.Push.PublicKey)
+	setString(lookup, "PUSH_CONTACT", &cfg.Push.Contact)
+	roles, _ := NormalizeRoles(cfg.Runtime.Roles)
+	if cfg.Push.Enabled && slices.Contains(roles, "maintenance") {
+		key, err := lookupValueOrFile("PUSH_PRIVATE_KEY", lookup, readFile)
+		if err != nil {
+			return err
+		}
+		cfg.Push.PrivateKey = key
+	}
 	secret, err := lookupValueOrFile("DATABASE_URL", lookup, readFile)
 	if err != nil {
 		return err

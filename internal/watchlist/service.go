@@ -17,7 +17,6 @@ import (
 	dbaccess "github.com/islishude/etherview/internal/db"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
-	"github.com/islishude/etherview/internal/publicquery"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -37,13 +36,18 @@ type Service struct {
 	db      dbaccess.Database
 	chain   string
 	numeric pgtype.Numeric
+	push    PushOptions
 }
 
-func New(db dbaccess.Database, chainID uint64) (*Service, error) {
+func New(db dbaccess.Database, chainID uint64, options ...PushOptions) (*Service, error) {
 	if db == nil || chainID == 0 {
 		return nil, ErrInvalid
 	}
-	return &Service{db: db, chain: strconv.FormatUint(chainID, 10), numeric: pgtype.Numeric{Int: new(big.Int).SetUint64(chainID), Valid: true}}, nil
+	var push PushOptions
+	if len(options) > 0 {
+		push = options[0]
+	}
+	return &Service{push: push, db: db, chain: strconv.FormatUint(chainID, 10), numeric: pgtype.Numeric{Int: new(big.Int).SetUint64(chainID), Valid: true}}, nil
 }
 func uid(s string) (pgtype.UUID, error) {
 	id, err := uuid.Parse(s)
@@ -148,7 +152,7 @@ func (s *Service) Save(ctx context.Context, user, id string, input gen.WatchInpu
 			if e != nil {
 				return e
 			}
-			if count >= 100 {
+			if count >= 5 {
 				return ErrLimit
 			}
 			row, e = q.WatchCreate(ctx, dbgen.WatchCreateParams{ID: identifier, UserID: owner, ChainID: s.numeric, Address: address.Bytes(), Label: input.Label, Kinds: kinds, Direction: string(input.Direction), Enabled: input.Enabled, StartNumber: number(tip.BlockNumber), StartHash: tip.BlockHash})
@@ -196,72 +200,4 @@ func (s *Service) Delete(ctx context.Context, user, id string) error {
 		}
 		return e
 	}))
-}
-
-type notificationCursor struct {
-	User   string `json:"u"`
-	Before int64  `json:"b"`
-	Unread bool   `json:"r"`
-}
-
-func (s *Service) Notifications(ctx context.Context, user, cursor string, unread bool) (gen.WatchNotificationPage, error) {
-	owner, err := uid(user)
-	if err != nil {
-		return gen.WatchNotificationPage{}, err
-	}
-	after := notificationCursor{User: user, Unread: unread}
-	if cursor != "" {
-		if publicquery.DecodeCursor(cursor, &after) != nil || after.User != user || after.Before <= 0 || after.Unread != unread {
-			return gen.WatchNotificationPage{}, ErrInvalid
-		}
-	}
-	page := gen.WatchNotificationPage{Items: []gen.WatchNotification{}}
-	err = dbaccess.WithTransactionOptions(ctx, s.db, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(q *dbgen.Queries) error {
-		summary, e := q.WatchNotificationSummary(ctx, owner)
-		if e != nil {
-			return e
-		}
-		page.UnreadCount = summary.UnreadCount
-		page.Watermark = summary.Watermark
-		rows, e := q.WatchNotificationList(ctx, dbgen.WatchNotificationListParams{UserID: owner, BeforeID: after.Before, UnreadOnly: unread, PageLimit: 51})
-		if e != nil {
-			return e
-		}
-		if len(rows) > 50 {
-			rows = rows[:50]
-			page.NextCursor, e = publicquery.EncodeCursor(notificationCursor{User: user, Before: rows[49].ID, Unread: unread})
-			if e != nil {
-				return e
-			}
-		}
-		for _, row := range rows {
-			address := common.BytesToAddress(row.Address).Hex()
-			activity, e := decodeActivity(row.Activity, address)
-			if e != nil {
-				return e
-			}
-			page.Items = append(page.Items, gen.WatchNotification{Id: strconv.FormatInt(row.ID, 10), WatchId: uuidText(row.WatchID), Address: address, Label: row.Label, Canonical: row.Canonical, Published: row.Published != nil && *row.Published, Read: row.ReadAt.Valid, Activity: activity})
-		}
-		return nil
-	})
-	return page, err
-}
-func (s *Service) Read(ctx context.Context, user, id string, through bool) error {
-	owner, err := uid(user)
-	if err != nil {
-		return err
-	}
-	value, err := strconv.ParseInt(id, 10, 64)
-	if err != nil || value < 0 || strconv.FormatInt(value, 10) != id {
-		return ErrInvalid
-	}
-	q := dbgen.New(s.db)
-	if through {
-		return q.WatchReadThrough(ctx, owner, value)
-	}
-	count, err := q.WatchReadNotification(ctx, owner, value)
-	if err == nil && count == 0 {
-		return ErrNotFound
-	}
-	return err
 }

@@ -83,6 +83,11 @@ metadata:
   # only in the metadata worker process for the controlled local gateway.
   unsafe_allow_private_networks: false
 
+push:
+  enabled: false
+  public_key: ""
+  contact: ""
+
 features:
   trace: true
   mempool: true

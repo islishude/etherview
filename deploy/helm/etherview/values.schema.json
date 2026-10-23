@@ -344,6 +344,7 @@
         "ensRPCURLsKey": {"$ref": "#/$defs/secretKey"},
         "apiKeyPepperKey": {"$ref": "#/$defs/secretKey"},
         "sessionPepperKey": {"$ref": "#/$defs/secretKey"},
+        "pushPrivateKeyKey": {"type": "string", "minLength": 1},
         "x402FingerprintPepperKey": {"$ref": "#/$defs/secretKey"},
         "x402FacilitatorHeadersKey": {"$ref": "#/$defs/secretKey"},
         "natsURLKey": {"$ref": "#/$defs/secretKey"},
@@ -407,6 +408,7 @@
         "ensRPCURLsRemoteKey": {"type": "string"},
         "apiKeyPepperRemoteKey": {"type": "string", "minLength": 1},
         "sessionPepperRemoteKey": {"type": "string"},
+        "pushPrivateKeyRemoteKey": {"type": "string"},
         "x402FingerprintPepperRemoteKey": {"type": "string"},
         "x402FacilitatorHeadersRemoteKey": {"type": "string"},
         "natsURLRemoteKey": {"type": "string"},
@@ -439,6 +441,16 @@
         "adapters"
       ],
       "properties": {
+        "push": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "public_key", "contact"],
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "public_key": {"type": "string"},
+            "contact": {"type": "string"}
+          }
+        },
         "consensus": {"type": "object", "additionalProperties": false, "properties": {"enabled": {"type": "boolean"}, "url": {"const": ""}, "headers": {"type": "object", "maxProperties": 0}, "poll_interval": {"type": "string"}, "request_timeout": {"type": "string"}, "worker_count": {"type": "integer", "minimum": 1, "maximum": 16}, "max_response_bytes": {"type": "integer", "minimum": 1048576, "maximum": 134217728}, "blobs": {"type": "object", "additionalProperties": false, "properties": {"enabled": {"type": "boolean"}, "endpoint": {"type": "string"}, "bucket": {"type": "string"}, "region": {"type": "string"}, "access_key": {"const": ""}, "secret_key": {"const": ""}, "session_token": {"const": ""}, "path_style": {"type": "boolean"}}}}},
         "server": {
           "type": "object",

@@ -1150,10 +1150,13 @@ environment Secret-file loading. Their runtime operation uses only the
 PostgreSQL writer, and configuration loading never opens session, x402
 fingerprint, or facilitator-header Secret files.
 
-Rotating `ETHERVIEW_SESSION_PEPPER` invalidates every session without changing
+Rotating `ETHERVIEW_SESSION_PEPPER` invalidates every session Cookie without changing
 user, role, or audit rows. Roll all `all`/`api` replicas promptly so replicas do
 not temporarily disagree about Cookies, then require every user to sign in
-again. Never reuse the API-key or x402 fingerprint pepper.
+again. Push senders do not hold that pepper: when revoking browser push as part
+of rotation, revoke the affected users' sessions with `admin user revoke-sessions`
+or disable push on maintenance/all before rotation. Never reuse the API-key or
+x402 fingerprint pepper.
 
 For rollback, disable `features.user_auth` and restart the API processes; keep
 the additive tables for audit and a later retry. The feature flag alone does
@@ -1388,29 +1391,61 @@ version withdrawal; live upstream metadata never changes an in-flight job.
 
 ## Private watches, notifications and CSV exports
 
-With `features.user_auth` enabled, authenticated users can manage Watchlist and
-Notifications tabs in `/account`; each address page also offers watch and CSV
-actions. Labels and notification records are private to the SIWE user. The
-maintenance role runs `43-watchlist-notifications` with writer access and no
-session pepper; only API/all receives that existing secret. No email, Webhook,
-browser push, Redis, NATS or object-store setup is required.
+With `features.user_auth` enabled, users manage Watchlist in `/account` and on
+address pages. Watches remain private and durable, with a 5-address limit
+including paused entries. Enrollment/re-enablement starts after the current
+canonical tip. CSV export remains available without browser push.
 
-Monitoring starts strictly after the canonical tip recorded on enrollment or
-re-enablement. Each account has at most 100 active watch entries, including
-entries with notifications paused. Removing a watch preserves existing
-notifications. Failed transactions and token mint/burn events are included;
-Token notifications await exact published enrichment. Orphaned events remain
-visible as invalidated, while a token replay temporarily marks its old output
-as unpublished. Notifications are retained for 90 days; activity delayed beyond
-90 days is not newly delivered. Cleanup runs in bounded maintenance batches.
+Browser push is optional and disabled by default. Set `push.enabled`,
+`push.public_key` and `push.contact` (mailto or HTTPS operator contact), or
+`ETHERVIEW_PUSH_ENABLED`, `ETHERVIEW_PUSH_PUBLIC_KEY`, `ETHERVIEW_PUSH_CONTACT`.
+Generate and retain a standard P-256 VAPID key pair; supply its unpadded base64url
+private key with `ETHERVIEW_PUSH_PRIVATE_KEY` or `_FILE` only to maintenance/all.
+The public key is the uncompressed P-256 point in unpadded base64url. Changing the
+key pair requires browsers to disable and re-enable their subscriptions. Helm
+uses `secrets.pushPrivateKeyKey`; ExternalSecret deployments additionally set
+`externalSecret.pushPrivateKeyRemoteKey`. File-based secrets require an explicit
+read-only mount. Local and Docker builds embed the same `/push-sw.js` artifact.
+Migration and offline administration neither load the private key nor start a
+sender, even when the shared configuration enables push.
 
-A stopped maintenance role delays notifications without losing its durable
-work. Restore the role and PostgreSQL connectivity to resume automatically;
-expired 30-second leases are reclaimable. The stable operational warning code
-`watchlist_processing_unavailable` indicates a retried processing/cleanup
-failure. Check maintenance logs and Token stage health when delivery is late.
-The public SSE stream is unrelated to private delivery and contains no watch
-addresses, labels, account IDs or notifications.
+Use HTTPS and the Watchlist button to grant permission and enable this browser.
+There are at most ten active subscriptions per account. Subscriptions are bound
+to the current login and stop on logout, session expiry/revocation or user
+disablement. Closing the page does not end the login. Unsupported browsers and
+permission denial are shown in the UI; this does not provide email or Webhooks.
+
+For Preview at `https://etherview.localhost:8080`, the root Compose entry point
+accepts enabled, public key and contact through the same `ETHERVIEW_PUSH_*`
+values in the ignored root `.env`. Put `ETHERVIEW_PUSH_PRIVATE_KEY` in the ignored
+`.local/preview-push.env` (mode 0600); only maintenance loads this optional env file.
+`ETHERVIEW_PREVIEW_PUSH_ENV_FILE` can select another file. Use a trusted Preview
+TLS certificate. Existing databases from before this schema change must be
+recreated under the [fresh-database policy](#fresh-database-initialization);
+`make recreate-preview` replaces runtime containers but does not reset an old
+database. After fresh initialization, sign in, add a watch, enable this browser,
+then close all site tabs while leaving the browser/system able to receive push.
+Create a new matching transaction only after enabling. Verify the summary has
+no amount and opens the correct transaction, then verify logout stops subsequent
+alerts. Record browser/OS versions, notification permission, deployed build and
+the observed result. Offline delivery is deliberately not an acceptance goal:
+TTL 0 drops messages instead of storing them for later delivery.
+
+Maintenance runs `43-browser-push` only when enabled. One PostgreSQL session lock
+per chain selects the sender. It uses first-canonical and first successful Token
+publications, volatile cursors and bounded work. Restart/recovery discards backlog;
+replay and reattachment do not resend. Failed top-level transactions and token
+mint/burn are included, self-transfers once. Token activity waits for publication.
+
+Every message is attempted once with TTL 0; offline devices, provider failures,
+timeouts and overload lose that alert. There is no history, unread count, retry
+queue or delivery guarantee. An already sent system notification cannot be
+retracted after a reorg. HTTP 404/410 removes expired endpoints. Inspect
+`etherview_browser_push_total{result="sent|failed|dropped|expired"}` and the stable
+`browser_push_unavailable` warning; no endpoint, credentials or activity payload
+is logged. Public SSE carries no private watch data. Provider failures do not
+withdraw core readiness. Normal authentication housekeeping removes invalid
+subscriptions and export admissions even when browser push is disabled.
 
 CSV downloads require SIWE and CSRF and do not debit API credit. Choose one
 address, transaction/ERC-20/NFT type, direction and UTC `[from,to)` range. Files
