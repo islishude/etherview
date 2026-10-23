@@ -1,10 +1,8 @@
 import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 
-const ADMIN_SLOT =
-  "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103";
-const BEACON_SLOT =
-  "0xa3f0ad74e5423aebfd80d3ef4346578335a9a72aeaee59ff6cb3582b35133d50";
+const ADMIN_SLOT = "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103";
+const BEACON_SLOT = "0xa3f0ad74e5423aebfd80d3ef4346578335a9a72aeaee59ff6cb3582b35133d50";
 
 const rpcURL = process.env.ETHERVIEW_HARDHAT3_RPC_URL;
 const deploymentFile = process.env.ETHERVIEW_HARDHAT3_DEPLOYMENT_FILE;
@@ -73,13 +71,15 @@ await rpc("evm_mine");
 // the immutable authority plus compatibility slots at their exact block hash.
 const pendingCandidates = [];
 for (const to of [deployment.transparent.proxy, ...deployment.beacon.proxies]) {
-  const hash = await rpc("eth_sendTransaction", [{
-    from: deployment.owner,
-    to,
-    data: "0xffffffff",
-    value: "0x0",
-    gas: "0x30d40",
-  }]);
+  const hash = await rpc("eth_sendTransaction", [
+    {
+      from: deployment.owner,
+      to,
+      data: "0xffffffff",
+      value: "0x0",
+      gas: "0x30d40",
+    },
+  ]);
   pendingCandidates.push({ hash, to });
 }
 const candidateParent = await rpc("eth_getBlockByNumber", ["latest", false]);

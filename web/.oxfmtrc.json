@@ -1,5 +1,5 @@
 {
-  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "$schema": "../node_modules/oxfmt/configuration_schema.json",
   "tabWidth": 2,
   "useTabs": false,
   "singleQuote": false,
@@ -10,9 +10,11 @@
   "sortImports": false,
   "sortTailwindcss": false,
   "sortPackageJson": false,
+  "proseWrap": "preserve",
+  "overrides": [{ "files": ["**/*.md"], "options": { "embeddedLanguageFormatting": "off" } }],
   "ignorePatterns": [
     "src/api/schema.gen.ts",
-    "package-lock.json",
+    "pnpm-lock.yaml",
     "dist/**",
     "node_modules/**",
     "**/*.go",

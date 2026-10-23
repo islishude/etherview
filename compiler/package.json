@@ -18,8 +18,5 @@
     "adm-zip": "0.6.1",
     "esbuild": "0.28.2",
     "tar-stream": "3.2.2"
-  },
-  "overrides": {
-    "tmp": "0.2.7"
   }
 }

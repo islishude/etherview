@@ -2,27 +2,43 @@
 
 FROM gcr.io/distroless/base-debian13:nonroot AS production-base
 
-FROM node:26.12.1-slim AS web-builder
+FROM node:26.12.1 AS node-builder
+ENV PNPM_HOME=/pnpm
+ENV PATH="${PNPM_HOME}/bin:${PATH}"
+RUN curl -fsSL https://get.pnpm.io/install.sh -o /tmp/install-pnpm.sh \
+    && env PNPM_VERSION=12.15.0 ENV=/root/.shrc SHELL=/bin/sh sh /tmp/install-pnpm.sh \
+    && rm /tmp/install-pnpm.sh \
+    && test "$(pnpm --version)" = "12.15.0"
+
+FROM node-builder AS web-builder
 WORKDIR /src
-COPY web/package.json web/package-lock.json web/.npmrc ./web/
-RUN --mount=type=cache,target=/root/.npm npm --prefix web ci
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY web/package.json ./web/
+COPY api/package.json ./api/
+COPY compiler/package.json ./compiler/
+COPY e2e/hardhat3/package.json ./e2e/hardhat3/
+RUN --mount=type=cache,id=etherview-pnpm,target=/pnpm/store pnpm --filter . --filter ./web --filter ./api install --frozen-lockfile --store-dir=/pnpm/store
 COPY ./api ./api
-RUN --mount=type=cache,target=/root/.npm npm --prefix api ci
 COPY web/index.html web/asset-budget.json web/tsconfig.json web/tsconfig.app.json web/tsconfig.node.json web/vite.config.ts ./web/
 COPY web/scripts ./web/scripts
 COPY web/src ./web/src
 ARG ETHERVIEW_WEB_BRANDING_DIR=web/branding/default
 COPY ["${ETHERVIEW_WEB_BRANDING_DIR}/", "/src/web-branding/"]
-RUN npm --prefix api run generate:api && ETHERVIEW_WEB_BRANDING_DIR=/src/web-branding npm --prefix web run build
+RUN pnpm --dir api run generate:api && ETHERVIEW_WEB_BRANDING_DIR=/src/web-branding pnpm --dir web run build
 
-FROM node:26.12.1-slim AS compiler-builder
+FROM node-builder AS compiler-builder
 RUN apt-get update \
     && apt-get install -y --no-install-recommends binutils pax-utils \
     && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY web/package.json ./web/
+COPY api/package.json ./api/
+COPY compiler/package.json ./compiler/
+COPY e2e/hardhat3/package.json ./e2e/hardhat3/
+RUN --mount=type=cache,id=etherview-pnpm,target=/pnpm/store \
+    pnpm --filter ./compiler install --frozen-lockfile --store-dir=/pnpm/store
 WORKDIR /src/compiler
-COPY compiler/package.json compiler/package-lock.json ./
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci --ignore-scripts --no-audit --no-fund
 COPY compiler/compile.mjs compiler/build-sea.mjs compiler/build-runtime.mjs compiler/elf-runtime.mjs compiler/test-elf-runtime.mjs compiler/test-sea.mjs ./
 COPY compiler/vyper/wasm ./vyper/wasm/
 COPY --from=production-base / /target-rootfs/
@@ -30,16 +46,19 @@ RUN node build-sea.mjs /opt/etherview/solcjs/etherview-solcjs \
     && install -d -m 0755 /opt/etherview/licenses/solcjs-runtime \
     && test -f /usr/local/LICENSE \
     && cp /usr/local/LICENSE /opt/etherview/licenses/solcjs-runtime/node-LICENSE.txt \
-    && find node_modules -mindepth 2 -maxdepth 2 -type f \
+    && cp "$(node -p 'require.resolve("solc/LICENSE")')" /opt/etherview/licenses/solcjs-runtime/solc-LICENSE \
+    && cp "$(node -p 'require.resolve("esbuild/LICENSE.md")')" /opt/etherview/licenses/solcjs-runtime/esbuild-LICENSE.md \
+    && install -d /opt/etherview/licenses/solcjs-runtime/dependencies \
+    && find /src -type f -path '*/node_modules/*' \
        \( -iname 'license' -o -iname 'license.*' -o -iname 'copying' -o -iname 'copying.*' \) \
-       -exec sh -c 'package="$(basename "$(dirname "$1")")"; extension="$(basename "$1")"; cp "$1" "/opt/etherview/licenses/solcjs-runtime/${package}-${extension}"' _ {} \; \
+       -exec sh -eu -c 'for path do name=$(printf "%s" "$path" | tr "/" "_"); destination="/opt/etherview/licenses/solcjs-runtime/dependencies/$name"; test ! -e "$destination"; cp "$path" "$destination"; done' _ {} + \
     && node build-runtime.mjs \
        /opt/etherview/solcjs/etherview-solcjs \
        /target-rootfs \
        /opt/etherview/licenses/solcjs-runtime \
     && node test-elf-runtime.mjs /target-rootfs \
     && install -d -m 1777 /target-rootfs/tmp \
-    && node test-sea.mjs /target-rootfs node_modules/solc/soljson.js \
+    && node test-sea.mjs /target-rootfs "$(node -p 'require.resolve("solc/soljson.js")')" \
     && install -d -m 0755 /solcjs-runtime-copy \
     && cp -a /opt/etherview/solcjs /solcjs-runtime-copy/ \
     && node vyper/wasm/prepare.mjs /solcjs-runtime-copy/python-wasm \

@@ -1,12 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-  lstatSync,
-  readFileSync,
-  readdirSync,
-  realpathSync,
-  statSync,
-} from "node:fs";
+import { lstatSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 
 function output(command, args, options = {}) {
@@ -105,10 +99,7 @@ export function validateAssembledRuntime({
     },
   });
   const closurePaths = closure.split("\n").filter(Boolean);
-  if (
-    closurePaths.length < 2 ||
-    closurePaths.some((path) => /not found|\bNone\b/i.test(path))
-  ) {
+  if (closurePaths.length < 2 || closurePaths.some((path) => /not found|\bNone\b/i.test(path))) {
     throw new Error("assembled target root has unresolved SEA dependencies");
   }
 
@@ -116,9 +107,10 @@ export function validateAssembledRuntime({
     if (!path.startsWith("/")) {
       throw new Error(`assembled target root returned an unsafe path: ${path}`);
     }
-    const hostPath = path === targetRoot || path.startsWith(`${targetRoot}${sep}`)
-      ? resolve(path)
-      : join(targetRoot, path.slice(1));
+    const hostPath =
+      path === targetRoot || path.startsWith(`${targetRoot}${sep}`)
+        ? resolve(path)
+        : join(targetRoot, path.slice(1));
     if (!pathInside(targetRoot, hostPath)) {
       throw new Error(`assembled target dependency escapes root: ${path}`);
     }
@@ -132,9 +124,7 @@ export function validateAssembledRuntime({
   if (targetEntry.hostPath !== targetExecutor) {
     throw new Error("assembled target root resolved the wrong SEA executable");
   }
-  const expected = new Map(
-    dependencies.map((dependency) => [dependency.soname, dependency]),
-  );
+  const expected = new Map(dependencies.map((dependency) => [dependency.soname, dependency]));
   if (expected.size !== dependencies.length) {
     throw new Error("assembled target dependency inventory is duplicated");
   }
@@ -167,10 +157,7 @@ export function validateAssembledRuntime({
       if (target.runtimePath !== `${runtimeRoot}/${dependency.path}`) {
         throw new Error(`assembled target root bypassed private dependency ${soname}`);
       }
-    } else if (
-      dependency.provider !== "base" ||
-      target.runtimePath !== dependency.path
-    ) {
+    } else if (dependency.provider !== "base" || target.runtimePath !== dependency.path) {
       throw new Error(`assembled target root resolved unexpected base dependency ${soname}`);
     }
     resolved.set(soname, { ...target, digest });

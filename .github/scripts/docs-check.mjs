@@ -11,10 +11,7 @@ function check(condition, message) {
 
 function contains(file, fragment) {
   const normalized = (value) => value.replace(/\s+/gu, " ").trim();
-  check(
-    normalized(read(file)).includes(normalized(fragment)),
-    `${file} is missing: ${fragment}`,
-  );
+  check(normalized(read(file)).includes(normalized(fragment)), `${file} is missing: ${fragment}`);
 }
 
 function forbid(file, fragment) {
@@ -49,14 +46,8 @@ contains(
   "docs/operations.md",
   "`make recreate-preview` reuses the existing network bundle without refreshing its timestamp",
 );
-contains(
-  "docs/operations.md",
-  "it never creates or modifies a Genesis file",
-);
-contains(
-  "deploy/README.md",
-  "Public verification is configured in the mounted YAML through",
-);
+contains("docs/operations.md", "it never creates or modifies a Genesis file");
+contains("deploy/README.md", "Public verification is configured in the mounted YAML through");
 forbid("docs/operations.md", "creating it once if missing");
 
 const compose = read("deploy/compose.yaml");
@@ -76,14 +67,18 @@ const profiles = new Set(
 for (const profile of ["monolith", "distributed", "accelerators"]) {
   check(profiles.has(profile), `deploy/compose.yaml is missing profile ${profile}`);
 }
-check(!profiles.has("verification"), "deploy/compose.yaml unexpectedly defines a verification profile");
-check(!deployment.includes("--profile verification"), "deployment guide advertises a removed profile");
+check(
+  !profiles.has("verification"),
+  "deploy/compose.yaml unexpectedly defines a verification profile",
+);
+check(
+  !deployment.includes("--profile verification"),
+  "deployment guide advertises a removed profile",
+);
 
 const dockerfile = read("Dockerfile");
 const nodeVersions = new Set(
-  [...dockerfile.matchAll(/^FROM node:([0-9]+\.[0-9]+\.[0-9]+)-slim AS /gm)].map(
-    (match) => match[1],
-  ),
+  [...dockerfile.matchAll(/^FROM node:([0-9]+\.[0-9]+\.[0-9]+) AS /gm)].map((match) => match[1]),
 );
 check(nodeVersions.size === 1, "Dockerfile Node builder versions must agree");
 const nodeVersion = [...nodeVersions][0];
@@ -119,12 +114,18 @@ contains(
   `--reason "publish ABI v${abiStage?.version} after trace v${traceStage?.version} and proxy v2 are complete"`,
 );
 contains("docs/operations.md", "`verification.worker_count` independently controls");
-forbid("docs/operations.md", "runtime.worker_count` controls durable enrichment, trace, verification");
+forbid(
+  "docs/operations.md",
+  "runtime.worker_count` controls durable enrichment, trace, verification",
+);
 
 const handlerSource = read("internal/etherscan/handler.go");
 const supportedStart = handlerSource.indexOf("var supported =");
 const supportedEnd = handlerSource.indexOf("\ntype actionSpec", supportedStart);
-check(supportedStart >= 0 && supportedEnd > supportedStart, "Etherscan action map is not discoverable");
+check(
+  supportedStart >= 0 && supportedEnd > supportedStart,
+  "Etherscan action map is not discoverable",
+);
 const supported = handlerSource.slice(supportedStart, supportedEnd);
 const sourceActions = new Set();
 for (const moduleMatch of supported.matchAll(/^\t"([^"]+)": \{\n([\s\S]*?)^\t\},/gmu)) {
@@ -140,7 +141,7 @@ for (const line of matrix.split("\n")) {
   if (/^## /u.test(line) && !line.startsWith("### ")) currentModule = "";
   const heading = line.match(/^### `([^`]+)`$/u);
   if (heading) currentModule = heading[1];
-  const row = line.match(/^\| `([^`]+)` \|/u);
+  const row = line.match(/^\|\s*`([^`]+)`\s*\|/u);
   if (row && sourceModules.has(currentModule)) {
     documentedActions.add(`${currentModule}.${row[1]}`);
   }

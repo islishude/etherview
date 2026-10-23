@@ -216,7 +216,12 @@ fi
         version: future,
         base: scenario === "stale" ? "a".repeat(40) : base,
         candidate: "passed",
-        integrity: scenario === "missing-integrity" ? undefined : scenario === "failed-integrity" ? "failed" : "passed",
+        integrity:
+          scenario === "missing-integrity"
+            ? undefined
+            : scenario === "failed-integrity"
+              ? "failed"
+              : "passed",
         files: [path],
         patch_sha256: digest(patch),
         archives: [],
@@ -258,7 +263,6 @@ fi
   }
 });
 
-
 test("discovery publishes all candidates, an exact retry, or an empty matrix", () => {
   const directory = mkdtempSync(join(tmpdir(), "vyper-discovery-"));
   try {
@@ -267,21 +271,31 @@ test("discovery publishes all candidates, an exact retry, or an empty matrix", (
       [["1.0.0", "1.1.0"], "1.1.0", ["1.1.0"]],
       [[], "", []],
     ]) {
-      const output = join(directory, "output"), summary = join(directory, "summary");
+      const output = join(directory, "output"),
+        summary = join(directory, "summary");
       writeFileSync(output, "existing=value\n");
       writeFileSync(summary, "");
       const base = "a".repeat(40);
       publishDiscovery({ versions, requested, base, output, summary });
-      assert.equal(readFileSync(output, "utf8"), `existing=value\nversions=${JSON.stringify(expected)}\nbase=${base}\n`);
-      assert.equal(readFileSync(summary, "utf8"), `New stable versions: ${expected.join(", ") || "none"}.\n`);
+      assert.equal(
+        readFileSync(output, "utf8"),
+        `existing=value\nversions=${JSON.stringify(expected)}\nbase=${base}\n`,
+      );
+      assert.equal(
+        readFileSync(summary, "utf8"),
+        `New stable versions: ${expected.join(", ") || "none"}.\n`,
+      );
     }
-  } finally { rmSync(directory, { recursive: true, force: true }); }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("discovery rejects invalid retries and malformed inputs before publishing outputs", () => {
   const directory = mkdtempSync(join(tmpdir(), "vyper-discovery-"));
   try {
-    const output = join(directory, "output"), summary = join(directory, "summary");
+    const output = join(directory, "output"),
+      summary = join(directory, "summary");
     writeFileSync(output, "unchanged");
     writeFileSync(summary, "unchanged");
     for (const overrides of [
@@ -291,9 +305,19 @@ test("discovery rejects invalid retries and malformed inputs before publishing o
       { versions: null },
       { base: "bad\nversions=[]" },
     ]) {
-      assert.throws(() => publishDiscovery({ versions: ["1.0.0"], base: "a".repeat(40), output, summary, ...overrides }));
+      assert.throws(() =>
+        publishDiscovery({
+          versions: ["1.0.0"],
+          base: "a".repeat(40),
+          output,
+          summary,
+          ...overrides,
+        }),
+      );
       assert.equal(readFileSync(output, "utf8"), "unchanged");
       assert.equal(readFileSync(summary, "utf8"), "unchanged");
     }
-  } finally { rmSync(directory, { recursive: true, force: true }); }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

@@ -4,10 +4,10 @@ set -eu
 
 GO_BIN="${GO:-go}"
 NODE_BIN="${NODE:-node}"
-NPM_BIN="${NPM:-npm}"
+PNPM_BIN="${PNPM:-pnpm}"
 MINIMUM_GO="go1.27.3"
 MINIMUM_NODE="v26.12.1"
-MINIMUM_NPM="11.16.0"
+MINIMUM_PNPM="12.15.0"
 
 normalize_version() {
   local raw="$1"
@@ -87,4 +87,4 @@ check_tool() {
 
 check_tool "Go" "$GO_BIN" "$MINIMUM_GO" "go" env GOVERSION
 check_tool "Node" "$NODE_BIN" "$MINIMUM_NODE" "v" --version
-check_tool "npm" "$NPM_BIN" "$MINIMUM_NPM" "" --version
+check_tool "pnpm" "$PNPM_BIN" "$MINIMUM_PNPM" "" --version

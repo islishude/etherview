@@ -5,7 +5,6 @@ framework in [ADR-0032](../decisions/ADR-0032-evidence-based-proxy-detection.md)
 Retained findings explain the independently preserved relation/authorization
 boundaries; they are not current feature-gate or deployment instructions.
 
-
 Date: 2026-08-08
 
 Scope: the production `proxy@2` stage and its current OpenZeppelin 5.6.1,
@@ -64,24 +63,24 @@ comparison before any V2 result becomes authoritative.
 The focused suite uses immutable `Job.BlockHash` selectors and fixed block
 numbers. Its maintained cases include:
 
-| Case | Current expected behavior | Regression location |
-|---|---|---|
-| Standard ERC-1167 | exact clone; implementation bytes 10 through 29 | `internal/enrich/proxy_test.go` |
-| ERC-1167 trailing bytes | rejected until exact OZ initcode/trace evidence exists | `internal/enrich/proxy_test.go`, `proxy_processor_test.go` |
-| Oversized immutable args | bounded rejection | `internal/enrich/proxy_test.go`, `proxy_processor_test.go` |
-| Canonical clone with empty implementation code | exact clone with empty implementation code hash | `proxy_processor_test.go` block 313 |
-| ERC-1967 implementation | generic high-confidence relation when target has code | `proxy_processor_test.go` block 400 |
-| Beacon proxy | partial proxy -> beacon -> implementation relation | `proxy_processor_test.go` block 400 |
-| Implementation and beacon slots both set | `ambiguous_slots` rejection unless exact artifact evidence can retain a generic shell | `proxy_processor_test.go` |
-| Dirty high bytes in a storage word | invalid address rejection | `proxy_processor_test.go` |
-| Implementation or beacon with no code | explicit negative evidence unless an exact artifact proves only the shell | `proxy_processor_test.go` |
-| Admin slot on an unverified runtime | compatibility evidence only; pattern remains unknown | `proxy_processor_test.go` |
-| OZ 5.6.1 Transparent | authenticated runtime immutable is admin authority; slot disagreement is evidence | `proxy_processor_test.go` block 451 |
-| OZ 5.6.1 BeaconProxy | authenticated runtime immutable is beacon authority; slot disagreement is evidence | `proxy_processor_test.go` block 452 |
-| UUPS implementation | direct fixed-block implementation probes require exact UUID and 5.0.0 interface response | `proxy_test.go`, `proxy_processor_test.go`, `uups_probe_test.go` |
-| Malformed/reverting beacon or UUPS calls | strict rejection or negative compatibility evidence; transport failures fail the stage | `proxy_processor_test.go`, `uups_probe_test.go` |
-| Changed implementation over history | append-only block-range transition | `proxy_test.go` |
-| Reorg/replay/generation fencing | orphan output retained but cannot shadow the published canonical generation | `internal/integration/proxy_*_test.go` |
+| Case                                           | Current expected behavior                                                                | Regression location                                              |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Standard ERC-1167                              | exact clone; implementation bytes 10 through 29                                          | `internal/enrich/proxy_test.go`                                  |
+| ERC-1167 trailing bytes                        | rejected until exact OZ initcode/trace evidence exists                                   | `internal/enrich/proxy_test.go`, `proxy_processor_test.go`       |
+| Oversized immutable args                       | bounded rejection                                                                        | `internal/enrich/proxy_test.go`, `proxy_processor_test.go`       |
+| Canonical clone with empty implementation code | exact clone with empty implementation code hash                                          | `proxy_processor_test.go` block 313                              |
+| ERC-1967 implementation                        | generic high-confidence relation when target has code                                    | `proxy_processor_test.go` block 400                              |
+| Beacon proxy                                   | partial proxy -> beacon -> implementation relation                                       | `proxy_processor_test.go` block 400                              |
+| Implementation and beacon slots both set       | `ambiguous_slots` rejection unless exact artifact evidence can retain a generic shell    | `proxy_processor_test.go`                                        |
+| Dirty high bytes in a storage word             | invalid address rejection                                                                | `proxy_processor_test.go`                                        |
+| Implementation or beacon with no code          | explicit negative evidence unless an exact artifact proves only the shell                | `proxy_processor_test.go`                                        |
+| Admin slot on an unverified runtime            | compatibility evidence only; pattern remains unknown                                     | `proxy_processor_test.go`                                        |
+| OZ 5.6.1 Transparent                           | authenticated runtime immutable is admin authority; slot disagreement is evidence        | `proxy_processor_test.go` block 451                              |
+| OZ 5.6.1 BeaconProxy                           | authenticated runtime immutable is beacon authority; slot disagreement is evidence       | `proxy_processor_test.go` block 452                              |
+| UUPS implementation                            | direct fixed-block implementation probes require exact UUID and 5.0.0 interface response | `proxy_test.go`, `proxy_processor_test.go`, `uups_probe_test.go` |
+| Malformed/reverting beacon or UUPS calls       | strict rejection or negative compatibility evidence; transport failures fail the stage   | `proxy_processor_test.go`, `uups_probe_test.go`                  |
+| Changed implementation over history            | append-only block-range transition                                                       | `proxy_test.go`                                                  |
+| Reorg/replay/generation fencing                | orphan output retained but cannot shadow the published canonical generation              | `internal/integration/proxy_*_test.go`                           |
 
 Baseline command on 2026-08-08:
 
@@ -135,8 +134,7 @@ Finding ID: P58-OZ-003
 Severity: medium  
 Location: `internal/enrich/proxy_processor.go`, exact ERC-1167 branch  
 Observed behavior: an exact ERC-1167 runtime remains exact even when its current
-implementation has no code. This behavior is intentionally asserted at block
-313.  
+implementation has no code. This behavior is intentionally asserted at block 313.<br>
 Expected behavior: the shell evidence and implementation liveness are distinct;
 the result should retain a confirmed shell and a warning or inconsistent state
 without pretending the implementation is healthy.  

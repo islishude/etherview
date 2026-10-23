@@ -8,18 +8,19 @@ until the Makefile target exists.
 
 Codex and other filesystem-restricted automation should preserve the exact
 Makefile target and change only host execution plumbing. A writable cache
-prefix avoids repeated failures from npm, the Go build cache, and
+prefix avoids repeated failures from pnpm, the Go build cache, and
 golangci-lint trying to update user-owned directories:
 
 ```sh
 env \
   GOCACHE=/tmp/etherview-codex-go-build \
   GOLANGCI_LINT_CACHE=/tmp/etherview-codex-golangci-lint \
-  npm_config_cache=/tmp/etherview-codex-npm \
+  pnpm_config_cache_dir=/tmp/etherview-codex-pnpm-cache \
+  pnpm_config_store_dir=/tmp/etherview-codex-pnpm-store \
   make check
 ```
 
-Use the same prefix with focused `go`, npm, or Makefile commands as needed.
+Use the same prefix with focused `go`, pnpm, or Makefile commands as needed.
 Do not set `GOMODCACHE` merely because Go cannot update its optional module
 download stat cache: retaining read access to the warmed shared module cache is
 faster and supports offline work. Relocate it only when a command proves that
@@ -36,13 +37,13 @@ required.
 
 Use this failure matrix instead of repeatedly trying unrelated workarounds:
 
-| Failure signal | Required response |
-| --- | --- |
-| npm cache `EPERM`, Go build-cache `operation not permitted`, or golangci-lint cache warnings | Retry the same command with the writable cache prefix above. |
-| Chromium `MachPortRendezvousServer`, `bootstrap_check_in`, `SIGABRT`, or `kill EPERM` on macOS | Request sandbox-external execution and rerun the exact browser target. If approval is unavailable, the bundled single-process fallback below is diagnostic evidence, not an automatic substitute for the canonical gate. |
-| Docker socket/config denial or Buildx activity/config write failure | Request sandbox-external execution and rerun the exact Docker-backed target. Keep `.github/scripts/compose.sh` and `.github/scripts/buildx.sh`; do not point Docker at an empty temporary configuration or bypass repository wrappers. |
-| Browser launches but the app is blank, the root is missing, or locators fail across unrelated routes | Inspect the first browser console error and the built asset graph. This is a runtime/build regression until evidence proves otherwise. |
-| Fixed E2E port is already in use | Stop the temporary diagnostic server, confirm the port is free, and rerun the repository target so its own lifecycle remains authoritative. |
+| Failure signal                                                                                       | Required response                                                                                                                                                                                                                      |
+| ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| pnpm cache `EPERM`, Go build-cache `operation not permitted`, or golangci-lint cache warnings        | Retry the same command with the writable cache prefix above.                                                                                                                                                                           |
+| Chromium `MachPortRendezvousServer`, `bootstrap_check_in`, `SIGABRT`, or `kill EPERM` on macOS       | Request sandbox-external execution and rerun the exact browser target. If approval is unavailable, the bundled single-process fallback below is diagnostic evidence, not an automatic substitute for the canonical gate.               |
+| Docker socket/config denial or Buildx activity/config write failure                                  | Request sandbox-external execution and rerun the exact Docker-backed target. Keep `.github/scripts/compose.sh` and `.github/scripts/buildx.sh`; do not point Docker at an empty temporary configuration or bypass repository wrappers. |
+| Browser launches but the app is blank, the root is missing, or locators fail across unrelated routes | Inspect the first browser console error and the built asset graph. This is a runtime/build regression until evidence proves otherwise.                                                                                                 |
+| Fixed E2E port is already in use                                                                     | Stop the temporary diagnostic server, confirm the port is free, and rerun the repository target so its own lifecycle remains authoritative.                                                                                            |
 
 An approved sandbox-external run is still a local test run. Record the exact
 canonical target and result in the PR or completion report (and the owning
@@ -93,14 +94,15 @@ interpreter remains bundled Python WASM. Host Python is needed only for optional
 official reference generation and `make benchmark-vyper-wasm`; reference
 environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13.4,<1.0.0`.
 
-
 - `make test-workflow-scripts`: exercise extracted workflow helpers with temporary
   Git repositories and stub commands, covering metadata, digest export,
   PR flags, command order, production-image/evidence handoff and failure
   propagation without pushing images or PRs.
-- `make toolchain-check`: require at least Go 1.27.3, Node 26.12.1, and npm
-  11.16.0 before generating or validating artifacts. Compatible newer stable
-  versions are supported; older, malformed, and prerelease versions fail.
+- `make toolchain-check`: require at least Go 1.27.3, Node 26.12.1, and pnpm
+  12.15.0 before generating or validating artifacts. Compatible newer stable
+  versions are supported by this minimum-version check; older, malformed, and
+  prerelease versions fail. Full pnpm installation and compiler builds additionally
+  enforce the compiler workspace's exact Node 26.12.1 engine.
 - `make plan-check`: validate plan links, IDs, statuses, dependencies, evidence,
   and parent/child state.
 - `make docs-check`: compare maintained high-risk documentation with current
@@ -115,8 +117,22 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   and fail on a diff. It snapshots the checked-in baseline in a temporary
   directory before regeneration, so it also works before the repository has an
   initial Git `HEAD`.
-- `make web-lint`: run TypeScript project checking, pinned Oxlint 1.83.0, and
-  Oxfmt 0.68.0 format checking. Oxlint checks hand-written `src` TS/TSX for
+- `make format` / `make format-check`: write formatting / check without writing,
+  using locked Oxfmt 0.70.0 from the root pnpm workspace. The root configuration covers
+  `.js`, `.mjs`, `.cjs`, `.yaml`, `.yml`, and `.md`, including hidden workflow
+  and script directories. The existing frontend scope runs separately, using
+  its own configuration. `make lint` shares the frontend format prerequisite
+  with `make format-check`, so CI checks it once.
+  Root exclusions cover dependencies, build outputs, local runtime files,
+  generated `*.gen.*` / `*_generated.*` files, third-party license texts,
+  `internal/**/testdata/**`, and Helm `templates/**`; ordinary Helm values and
+  Chart YAML remain included. Git-ignored files are also excluded.
+  Markdown preserves prose wrapping and leaves fenced code untouched. Both
+  configurations retain two spaces, double quotes, semicolons, 100 columns,
+  LF, trailing commas, and disabled sorting. Tooling-policy regressions cover
+  selection, exclusions, read-only failure, parse errors, and idempotence.
+- `make web-lint`: run TypeScript project checking, pinned Oxlint 1.85.0, and
+  Oxfmt 0.70.0 format checking. Oxlint checks hand-written `src` TS/TSX for
   unused code, hook placement/dependencies, and size. Production files/functions
   are capped at 1,400/400 lines; test files/functions at 2,500/1,000. Blank lines
   are excluded, comments count, and IIFEs are exempt from function length.
@@ -124,7 +140,7 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   is excluded. This is a new metric baseline, not an equivalent conversion of
   the former Biome cognitive complexity threshold of 75. Generated OpenAPI
   types remain the only source exception in `web/.oxlintrc.json`.
-  `npm --prefix web run format` formats hand-written frontend sources, CSS,
+  `pnpm --dir web run format` formats hand-written frontend sources, CSS,
   scripts, configuration, HTML, and Playwright tests; `format:check` is read-only.
   `web/.oxfmtrc.json` excludes generated API types, lockfiles, distributions,
   dependencies, browser reports, and Go files. Formatting uses two spaces,
@@ -249,13 +265,13 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   failure. The E2E-only API environment permits Docker fake-IP download
   networks while retaining the exact HTTPS origin, TLS, size, and SHA-256
   checks; the base deployment never receives that escape hatch.
-Shared verification topology scheduling uses a waiting subtest group with two independent
-result slots. Each topology keeps its own Compose project, dynamic ports,
-PostgreSQL and compiler-cache volumes, and diagnostic directory. Both children
-and their cleanup must finish successfully before normalized parity is checked
-and application evidence is written. A failed child does not cancel its sibling;
-the existing shared 30-minute deadline still bounds the run. Cleanup failure,
-missing results, an expired context or a parity mismatch blocks acceptance.
+  Shared verification topology scheduling uses a waiting subtest group with two independent
+  result slots. Each topology keeps its own Compose project, dynamic ports,
+  PostgreSQL and compiler-cache volumes, and diagnostic directory. Both children
+  and their cleanup must finish successfully before normalized parity is checked
+  and application evidence is written. A failed child does not cancel its sibling;
+  the existing shared 30-minute deadline still bounds the run. Cleanup failure,
+  missing results, an expired context or a parity mismatch blocks acceptance.
 
 `VERIFICATION_PARALLEL=1` remains the Makefile default pending native AMD64/ARM64
 performance acceptance. Native AMD64/ARM64 CI explicitly sets
@@ -341,7 +357,7 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
 - `make lint`: Go formatting/vet, the repository's golangci-lint v2 policy
   (`standard`, `modernize`, and `unparam`) across ordinary tests plus tagged
   integration, Hardhat, Foundry, and runtime E2E source, and TypeScript type
-  checking.
+  checking, Oxlint, and repository/frontend format checking.
 - `make security-check`: `govulncheck`, API-generator, frontend, and Hardhat 3
   fixture and compiler dependency audits, secret scan, and security-focused tests.
   The WASM gate performs local runtime/manifest/payload and actual-distribution
@@ -349,17 +365,19 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   unexpected/missing file, symlink, compiler identity and metadata regressions.
   Custom PyPI/OSV advisory queries and approval records are retired under
   [ADR-0053](decisions/ADR-0053-vyper-wasm-distribution.md#security-validation).
-  All four npm
-  dependency trees must report zero high-severity vulnerabilities;
-  the API generator's
+  The single root pnpm audit covers all four workspaces and shared tooling and
+  must report zero high-severity vulnerabilities; the API generator's
   transitive parser and glob dependencies are constrained by audited
   overrides.
-  CI disables automatic npm install audits so an advisory endpoint outage
-  does not consume test budgets. The security job retains all four explicit
-  audits, which always enable auditing regardless of the install setting,
-  and fails if an audit cannot complete.
+  pnpm installs do not run automatic audits. The security job runs the explicit
+  root audit and fails if the audit cannot complete.
 - `make license-check`: Go, production frontend/compiler, all Vyper package
-  and pinned shared WASM component notice checks.
+  and pinned shared WASM component notice checks. The frontend and compiler gates
+  resolve their installed production dependency closures from each owning module,
+  follow pnpm symlinks, and require a license result for every selected package,
+  including transitive dependencies and npm aliases. Missing required dependencies
+  fail closed. Workspace regressions also execute
+  both distinct solc versions and check the pinned Pyodide and client versions.
 - `make benchmark-vyper-wasm`: actual SEA first/repeated dual compilation,
   per-process peak RSS and a native-reference-checked 17-file workload. Every
   sample uses a fresh process. OS caches are not evicted; this local experiment
@@ -583,12 +601,12 @@ older loaded image as evidence for a harness or Compose change.
 Use these failure signatures to route diagnosis before changing product
 correctness checks:
 
-| Failure signal | Meaning and required response |
-| --- | --- |
-| `features.<name> requires ...` while a verification service repeatedly restarts | A shared overlay enabled a feature without its companion configuration. Inspect the fully rendered environment for every application service; restore default-off isolation and explicit owner opt-in. |
-| Canonical wait reports eight complete stages while the harness requires nine, or the reverse | The topology started, but a shared assertion encoded one feature set globally. Derive the expected count from the harness's explicit effective feature state. |
-| `panic: test timed out after 10m0s` after migrations succeeded | The managed integration runner did not apply its explicit package timeout. Confirm the emitted command contains `-timeout=15m0s`; do not drop packages, tests, tags, or concurrency to make CI green. |
-| `compiler_unavailable` after the bounded external download deadline | This is an external compiler-artifact boundary, not proof of a Compose feature regression. Retain diagnostics and rerun the unchanged exact target once; repeated failure requires source/network diagnosis rather than weaker verification. |
+| Failure signal                                                                               | Meaning and required response                                                                                                                                                                                                                |
+| -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `features.<name> requires ...` while a verification service repeatedly restarts              | A shared overlay enabled a feature without its companion configuration. Inspect the fully rendered environment for every application service; restore default-off isolation and explicit owner opt-in.                                       |
+| Canonical wait reports eight complete stages while the harness requires nine, or the reverse | The topology started, but a shared assertion encoded one feature set globally. Derive the expected count from the harness's explicit effective feature state.                                                                                |
+| `panic: test timed out after 10m0s` after migrations succeeded                               | The managed integration runner did not apply its explicit package timeout. Confirm the emitted command contains `-timeout=15m0s`; do not drop packages, tests, tags, or concurrency to make CI green.                                        |
+| `compiler_unavailable` after the bounded external download deadline                          | This is an external compiler-artifact boundary, not proof of a Compose feature regression. Retain diagnostics and rerun the unchanged exact target once; repeated failure requires source/network diagnosis rather than weaker verification. |
 
 `cmd/testintegration` owns the PostgreSQL integration invocation. Its
 15-minute timeout applies independently to each Go package and remains below
@@ -882,7 +900,7 @@ readiness alone does not establish that a lazy page has query observers.
 ### Dual-runtime npm alias feasibility
 
 `make test-vyper-alias-feasibility VYPER_ALIAS_FEASIBILITY_OUTPUT=.local/alias-comparison-new`
-creates a new isolated npm project with exact dependencies `pyodide@314.0.7` and
+creates a new isolated pnpm project with exact dependencies `pyodide@314.0.7` and
 `pyodide-legacy@npm:pyodide@0.29.5`. It requires the ordinary compiler tooling
 install, but never changes its dependency pins or existing runtime outputs.
 The new output directory must not already exist. Downloads use the normal
@@ -895,7 +913,7 @@ use fresh restricted processes with at most four concurrent children, a
 child receives read permission for its selected runtime and package, not the
 sibling runtime. These memory limits do not bound total RSS.
 
-The experiment records npm lock integrity, resolved alias paths, runtime and
+The experiment records the pnpm lockfile, resolved alias paths, runtime and
 package identities, reference digests and every input's output/command. Both
 runtimes get permission, memory, large-input and timeout/forced-cleanup probes.
 Wrong-Python identity rejection and a deliberately misrouted old compiler are

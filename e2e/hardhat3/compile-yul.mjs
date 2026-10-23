@@ -4,8 +4,7 @@ import { writeFileSync } from "node:fs";
 const require = createRequire(import.meta.url);
 const solc = require("solc");
 const outputPath =
-  process.env.ETHERVIEW_HARDHAT3_YUL_SUBMISSION_FILE ??
-  "/e2e-output/yul-submission.json";
+  process.env.ETHERVIEW_HARDHAT3_YUL_SUBMISSION_FILE ?? "/e2e-output/yul-submission.json";
 
 const input = {
   language: "Yul",
@@ -37,9 +36,7 @@ const input = {
 };
 
 const output = JSON.parse(solc.compile(JSON.stringify(input)));
-const errors = (output.errors ?? []).filter(
-  (diagnostic) => diagnostic.severity === "error",
-);
+const errors = (output.errors ?? []).filter((diagnostic) => diagnostic.severity === "error");
 if (errors.length > 0) {
   throw new Error(`Yul fixture compilation failed: ${JSON.stringify(errors)}`);
 }

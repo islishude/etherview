@@ -63,8 +63,8 @@ and volumes; choose different published ports if running both concurrently.
 
 ## Development
 
-Minimum toolchains: Go 1.27.3, Node.js 26.12.1, and npm 11.16.0. Compatible newer
-stable releases are supported.
+Toolchains: Go >=1.27.3, Node.js 26.12.1, and pnpm 12.15.0 (pinned in
+`package.json`). The compiler workspace requires exactly Node.js 26.12.1.
 
 ```sh
 make toolchain-check
@@ -75,13 +75,13 @@ make test
 For frontend development, run the backend at <http://localhost:8080>, then:
 
 ```sh
-npm --prefix web install
-npm --prefix web run dev
+pnpm install --frozen-lockfile
+pnpm --dir web run dev
 ```
 
 Open <http://127.0.0.1:5173>. Vite proxies `/api` to the backend.
-Use `npm --prefix web run build` for the production bundle and
-`npm --prefix web run preview` to inspect it at <http://127.0.0.1:4173>.
+Use `pnpm --dir web run build` for the production bundle and
+`pnpm --dir web run preview` to inspect it at <http://127.0.0.1:4173>.
 
 `make check` runs the common gates. Service-backed and long-running tests are
 explicit targets documented in the [testing guide](docs/testing.md).

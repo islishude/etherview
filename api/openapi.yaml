@@ -608,8 +608,7 @@ paths:
       tags:
         - "blocks"
       parameters:
-        -
-          name: "id"
+        - name: "id"
           in: "path"
           required: true
           schema:
@@ -630,8 +629,7 @@ paths:
       tags:
         - "blocks"
       parameters:
-        -
-          name: "id"
+        - name: "id"
           in: "path"
           required: true
           schema:
@@ -652,14 +650,12 @@ paths:
       tags:
         - "blocks"
       parameters:
-        -
-          name: "hash"
+        - name: "hash"
           in: "path"
           required: true
           schema:
             $ref: "#/components/schemas/Hash"
-        -
-          name: "index"
+        - name: "index"
           in: "path"
           required: true
           schema:
@@ -970,7 +966,7 @@ paths:
             type: string
             minLength: 42
             maxLength: 4299
-            pattern: '^0x[0-9a-fA-F]{40}(,0x[0-9a-fA-F]{40}){0,99}$'
+            pattern: "^0x[0-9a-fA-F]{40}(,0x[0-9a-fA-F]{40}){0,99}$"
         - name: snapshot
           in: query
           required: false
@@ -1920,8 +1916,7 @@ paths:
       "tags":
         - "users"
       "security":
-        -
-          "UserSession": []
+        - "UserSession": []
       "parameters": []
       "responses":
         "200":
@@ -1937,11 +1932,9 @@ paths:
       "tags":
         - "users"
       "security":
-        -
-          "UserSession": []
+        - "UserSession": []
       "parameters":
-        -
-          "$ref": "#/components/parameters/CSRFToken"
+        - "$ref": "#/components/parameters/CSRFToken"
       "responses":
         "201":
           "description": "Successful account operation."
@@ -1963,18 +1956,15 @@ paths:
       "tags":
         - "users"
       "security":
-        -
-          "UserSession": []
+        - "UserSession": []
       "parameters":
-        -
-          "name": "id"
+        - "name": "id"
           "in": "path"
           "required": true
           "schema":
             "type": "string"
             "maxLength": 64
-        -
-          "$ref": "#/components/parameters/CSRFToken"
+        - "$ref": "#/components/parameters/CSRFToken"
       "responses":
         "200":
           "description": "Successful account operation."
@@ -1995,18 +1985,15 @@ paths:
       "tags":
         - "users"
       "security":
-        -
-          "UserSession": []
+        - "UserSession": []
       "parameters":
-        -
-          "name": "id"
+        - "name": "id"
           "in": "path"
           "required": true
           "schema":
             "type": "string"
             "maxLength": 64
-        -
-          "$ref": "#/components/parameters/CSRFToken"
+        - "$ref": "#/components/parameters/CSRFToken"
       "responses":
         "204":
           "description": "Successful account operation."
@@ -2018,13 +2005,10 @@ paths:
       "tags":
         - "users"
       "security":
-        -
-          "UserSession": []
+        - "UserSession": []
       "parameters":
-        -
-          "$ref": "#/components/parameters/Cursor"
-        -
-          "name": "unread_only"
+        - "$ref": "#/components/parameters/Cursor"
+        - "name": "unread_only"
           "in": "query"
           "schema":
             "type": "boolean"
@@ -2043,18 +2027,15 @@ paths:
       "tags":
         - "users"
       "security":
-        -
-          "UserSession": []
+        - "UserSession": []
       "parameters":
-        -
-          "name": "id"
+        - "name": "id"
           "in": "path"
           "required": true
           "schema":
             "type": "string"
             "maxLength": 64
-        -
-          "$ref": "#/components/parameters/CSRFToken"
+        - "$ref": "#/components/parameters/CSRFToken"
       "responses":
         "204":
           "description": "Successful account operation."
@@ -2066,11 +2047,9 @@ paths:
       "tags":
         - "users"
       "security":
-        -
-          "UserSession": []
+        - "UserSession": []
       "parameters":
-        -
-          "$ref": "#/components/parameters/CSRFToken"
+        - "$ref": "#/components/parameters/CSRFToken"
       "responses":
         "204":
           "description": "Successful account operation."
@@ -2088,11 +2067,9 @@ paths:
       "tags":
         - "users"
       "security":
-        -
-          "UserSession": []
+        - "UserSession": []
       "parameters":
-        -
-          "$ref": "#/components/parameters/CSRFToken"
+        - "$ref": "#/components/parameters/CSRFToken"
       "responses":
         "200":
           "description": "Complete UTF-8 CSV; at most 31 days, 10000 rows and 16 MiB. Exact canonical snapshot columns are repeated on every data row; empty exports expose snapshot response headers."
@@ -2199,7 +2176,7 @@ components:
       required: true
       schema:
         type: string
-        pattern: '^[a-z2-7]{10}$'
+        pattern: "^[a-z2-7]{10}$"
     BillingTopupIntentID:
       name: id
       in: path
@@ -2240,7 +2217,7 @@ components:
       in: query
       schema:
         type: string
-        pattern: '^eip155:[1-9][0-9]*$'
+        pattern: "^eip155:[1-9][0-9]*$"
         maxLength: 96
     BillingAssetFilter:
       name: asset
@@ -2473,7 +2450,13 @@ components:
           "$ref": "#/components/schemas/Quantity"
         "next_cursor":
           "type": "string"
-    WatchReadThrough: {"type": "object", "additionalProperties": false, "required": ["through_id"], "properties": {"through_id": {"$ref": "#/components/schemas/Quantity"}}}
+    WatchReadThrough:
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["through_id"],
+        "properties": { "through_id": { "$ref": "#/components/schemas/Quantity" } },
+      }
     AddressExportRequest:
       "type": "object"
       "additionalProperties": false
@@ -2504,25 +2487,55 @@ components:
             - "in"
             - "out"
             - "both"
-    WatchListResponse: {"type": "object", "additionalProperties": false, "required": ["data", "meta"], "properties": {"data": {"type": "array", "items": {"$ref": "#/components/schemas/AddressWatch"}}, "meta": {"$ref": "#/components/schemas/Meta"}}}
-    WatchResponse: {"type": "object", "additionalProperties": false, "required": ["data", "meta"], "properties": {"data": {"$ref": "#/components/schemas/AddressWatch"}, "meta": {"$ref": "#/components/schemas/Meta"}}}
-    WatchNotificationsResponse: {"type": "object", "additionalProperties": false, "required": ["data", "meta"], "properties": {"data": {"$ref": "#/components/schemas/WatchNotificationPage"}, "meta": {"$ref": "#/components/schemas/Meta"}}}
+    WatchListResponse:
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data", "meta"],
+        "properties":
+          {
+            "data": { "type": "array", "items": { "$ref": "#/components/schemas/AddressWatch" } },
+            "meta": { "$ref": "#/components/schemas/Meta" },
+          },
+      }
+    WatchResponse:
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data", "meta"],
+        "properties":
+          {
+            "data": { "$ref": "#/components/schemas/AddressWatch" },
+            "meta": { "$ref": "#/components/schemas/Meta" },
+          },
+      }
+    WatchNotificationsResponse:
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data", "meta"],
+        "properties":
+          {
+            "data": { "$ref": "#/components/schemas/WatchNotificationPage" },
+            "meta": { "$ref": "#/components/schemas/Meta" },
+          },
+      }
     Hash:
       type: string
-      pattern: '^0x[0-9a-fA-F]{64}$'
+      pattern: "^0x[0-9a-fA-F]{64}$"
       description: A 32-byte hash; responses use normalized lowercase hexadecimal.
     Address:
       type: string
-      pattern: '^0x[0-9a-fA-F]{40}$'
+      pattern: "^0x[0-9a-fA-F]{40}$"
       description: A 20-byte address; responses use the EIP-55 checksum form.
     Quantity:
       type: string
-      pattern: '^(0|[1-9][0-9]*)$'
+      pattern: "^(0|[1-9][0-9]*)$"
       maxLength: 78
       description: A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
     BillingAggregateQuantity:
       type: string
-      pattern: '^(0|[1-9][0-9]*)$'
+      pattern: "^(0|[1-9][0-9]*)$"
       maxLength: 97
       description: A canonical non-negative decimal integer used for billing sums and counts that may exceed one uint256.
     Decimal:
@@ -2599,7 +2612,7 @@ components:
           format: uuid
         signature:
           type: string
-          pattern: '^0x[0-9a-fA-F]{130}$'
+          pattern: "^0x[0-9a-fA-F]{130}$"
     AuthChallenge:
       type: object
       required: [challenge_id, message, expires_at]
@@ -2651,7 +2664,7 @@ components:
       properties:
         prefix:
           type: string
-          pattern: '^[a-z2-7]{10}$'
+          pattern: "^[a-z2-7]{10}$"
         name:
           type: string
           minLength: 1
@@ -2736,7 +2749,7 @@ components:
       properties:
         token:
           type: string
-          pattern: '^evk_[a-z2-7]{10}_[A-Za-z0-9_-]{43}$'
+          pattern: "^evk_[a-z2-7]{10}_[A-Za-z0-9_-]{43}$"
         key:
           $ref: "#/components/schemas/UserAPIKey"
     AdminUserUpdate:
@@ -2795,7 +2808,7 @@ components:
           x-enum-varnames: [BillingConfigSchemeExact]
         network:
           type: string
-          pattern: '^eip155:[1-9][0-9]*$'
+          pattern: "^eip155:[1-9][0-9]*$"
           maxLength: 96
         asset:
           $ref: "#/components/schemas/Address"
@@ -2851,7 +2864,7 @@ components:
           format: uuid
         network:
           type: string
-          pattern: '^eip155:[1-9][0-9]*$'
+          pattern: "^eip155:[1-9][0-9]*$"
         asset:
           $ref: "#/components/schemas/Address"
         total_credit_atomic:
@@ -2975,7 +2988,7 @@ components:
           format: uuid
         api_key_prefix:
           type: string
-          pattern: '^[a-z2-7]{10}$'
+          pattern: "^[a-z2-7]{10}$"
         method:
           type: string
           enum: [GET, POST]
@@ -3069,7 +3082,7 @@ components:
           $ref: "#/components/schemas/BillingPaymentState"
         network:
           type: string
-          pattern: '^eip155:[1-9][0-9]*$'
+          pattern: "^eip155:[1-9][0-9]*$"
           maxLength: 96
         asset:
           $ref: "#/components/schemas/Address"
@@ -3122,7 +3135,7 @@ components:
           maxLength: 128
         network:
           type: string
-          pattern: '^eip155:[1-9][0-9]*$'
+          pattern: "^eip155:[1-9][0-9]*$"
           maxLength: 96
         asset:
           $ref: "#/components/schemas/Address"
@@ -3189,7 +3202,8 @@ components:
           $ref: "#/components/schemas/Quantity"
     Status:
       type: object
-      required: [chain_id, core_ready, latest_block, indexed_block, backfill_complete, lag, completeness]
+      required:
+        [chain_id, core_ready, latest_block, indexed_block, backfill_complete, lag, completeness]
       properties:
         consensus:
           $ref: "#/components/schemas/ConsensusOverview"
@@ -3287,7 +3301,8 @@ components:
             format: uri
     Block:
       type: object
-      required: [hash, number, parent_hash, timestamp, transaction_count, canonical, finality, completeness]
+      required:
+        [hash, number, parent_hash, timestamp, transaction_count, canonical, finality, completeness]
       properties:
         hash:
           $ref: "#/components/schemas/Hash"
@@ -3336,10 +3351,28 @@ components:
       enum: [none, factory, eip7702]
     UserOperationRole:
       type: string
-      enum: [sender, entry_point, bundler, beneficiary, factory, paymaster, aggregator, eip7702_delegate]
+      enum:
+        [
+          sender,
+          entry_point,
+          bundler,
+          beneficiary,
+          factory,
+          paymaster,
+          aggregator,
+          eip7702_delegate,
+        ]
     UserOperationEventKind:
       type: string
-      enum: [account_deployed, ignored_init_code, eip7702_initialized, execution_revert, post_op_revert, prefund_too_low]
+      enum:
+        [
+          account_deployed,
+          ignored_init_code,
+          eip7702_initialized,
+          execution_revert,
+          post_op_revert,
+          prefund_too_low,
+        ]
     UserOperationSummary:
       type: object
       additionalProperties: false
@@ -3463,32 +3496,32 @@ components:
           $ref: "#/components/schemas/Quantity"
         init_code:
           type: string
-          pattern: '^0x[0-9a-fA-F]*$'
+          pattern: "^0x[0-9a-fA-F]*$"
         factory_data:
           type: string
-          pattern: '^0x[0-9a-fA-F]*$'
+          pattern: "^0x[0-9a-fA-F]*$"
         call_data:
           type: string
-          pattern: '^0x[0-9a-fA-F]*$'
+          pattern: "^0x[0-9a-fA-F]*$"
         paymaster_and_data:
           type: string
-          pattern: '^0x[0-9a-fA-F]*$'
+          pattern: "^0x[0-9a-fA-F]*$"
         paymaster_data:
           type: string
-          pattern: '^0x[0-9a-fA-F]*$'
+          pattern: "^0x[0-9a-fA-F]*$"
         paymaster_signature:
           type: string
-          pattern: '^0x[0-9a-fA-F]*$'
+          pattern: "^0x[0-9a-fA-F]*$"
         signature:
           type: string
-          pattern: '^0x[0-9a-fA-F]*$'
+          pattern: "^0x[0-9a-fA-F]*$"
         account_gas_limits:
           $ref: "#/components/schemas/Hash"
         gas_fees:
           $ref: "#/components/schemas/Hash"
         aggregated_signature:
           type: string
-          pattern: '^0x[0-9a-fA-F]*$'
+          pattern: "^0x[0-9a-fA-F]*$"
     UserOperationProtocolEvent:
       type: object
       additionalProperties: false
@@ -3509,7 +3542,7 @@ components:
           $ref: "#/components/schemas/Address"
         raw_data:
           type: string
-          pattern: '^0x[0-9a-fA-F]*$'
+          pattern: "^0x[0-9a-fA-F]*$"
         reason:
           type: string
           maxLength: 4096
@@ -3681,7 +3714,7 @@ components:
           type: string
         input:
           type: string
-          pattern: '^0x[0-9a-fA-F]*$'
+          pattern: "^0x[0-9a-fA-F]*$"
         method:
           type: string
           maxLength: 4096
@@ -3741,7 +3774,7 @@ components:
           $ref: "#/components/schemas/Quantity"
         input:
           type: string
-          pattern: '^0x[0-9a-fA-F]*$'
+          pattern: "^0x[0-9a-fA-F]*$"
         first_seen_at:
           type: string
           format: date-time
@@ -3901,8 +3934,16 @@ components:
       type: object
       additionalProperties: false
       required:
-        [authority, kind, delegate, block_number, block_hash, transaction_hash,
-         transaction_index, authorization_index]
+        [
+          authority,
+          kind,
+          delegate,
+          block_number,
+          block_hash,
+          transaction_hash,
+          transaction_index,
+          authorization_index,
+        ]
       properties:
         authority:
           $ref: "#/components/schemas/Address"
@@ -4640,10 +4681,10 @@ components:
           $ref: "#/components/schemas/Quantity"
         input:
           type: string
-          pattern: '^0x[0-9a-fA-F]*$'
+          pattern: "^0x[0-9a-fA-F]*$"
         output:
           type: string
-          pattern: '^0x[0-9a-fA-F]*$'
+          pattern: "^0x[0-9a-fA-F]*$"
         error:
           type: string
         direct_reverted:
@@ -4743,7 +4784,15 @@ components:
       properties:
         kind:
           type: string
-          enum: [exact_address, code_hash, proxy_implementation, diamond_facet, signature_database, builtin]
+          enum:
+            [
+              exact_address,
+              code_hash,
+              proxy_implementation,
+              diamond_facet,
+              signature_database,
+              builtin,
+            ]
         address:
           $ref: "#/components/schemas/Address"
         code_hash:
@@ -4875,7 +4924,7 @@ components:
           $ref: "#/components/schemas/Quantity"
         input:
           type: string
-          pattern: '^0x[0-9a-fA-F]*$'
+          pattern: "^0x[0-9a-fA-F]*$"
         error:
           type: string
         reverted:
@@ -5032,7 +5081,7 @@ components:
           properties:
             input:
               type: string
-              pattern: '^0x[0-9a-fA-F]*$'
+              pattern: "^0x[0-9a-fA-F]*$"
             execution:
               $ref: "#/components/schemas/TransactionExecution"
             decoding:
@@ -5083,7 +5132,7 @@ components:
               maxLength: 4096
             revert_data:
               type: string
-              pattern: '^0x[0-9a-fA-F]*$'
+              pattern: "^0x[0-9a-fA-F]*$"
               maxLength: 8388610
             execution:
               $ref: "#/components/schemas/TraceExecution"
@@ -5155,7 +5204,7 @@ components:
             $ref: "#/components/schemas/Hash"
         data:
           type: string
-          pattern: '^0x[0-9a-fA-F]*$'
+          pattern: "^0x[0-9a-fA-F]*$"
           maxLength: 8388610
         decoding:
           $ref: "#/components/schemas/TransactionLogDecoding"
@@ -5268,8 +5317,7 @@ components:
       type: object
       additionalProperties: false
       required:
-        [index, chain_id, nonce, delegate, y_parity, r, s,
-         signature_status, application_status]
+        [index, chain_id, nonce, delegate, y_parity, r, s, signature_status, application_status]
       properties:
         index:
           $ref: "#/components/schemas/Quantity"
@@ -5298,8 +5346,14 @@ components:
         skip_reason:
           type: string
           enum:
-            [wrong_chain_id, nonce_overflow, invalid_signature,
-             authority_has_code, nonce_mismatch, state_unavailable]
+            [
+              wrong_chain_id,
+              nonce_overflow,
+              invalid_signature,
+              authority_has_code,
+              nonce_mismatch,
+              state_unavailable,
+            ]
     TransactionAuthorizations:
       allOf:
         - $ref: "#/components/schemas/TransactionSubresourceIdentity"
@@ -5380,10 +5434,10 @@ components:
       properties:
         creation_bytecode:
           type: string
-          pattern: '^(0x)?[0-9a-fA-F]*$'
+          pattern: "^(0x)?[0-9a-fA-F]*$"
         runtime_bytecode:
           type: string
-          pattern: '^(0x)?[0-9a-fA-F]*$'
+          pattern: "^(0x)?[0-9a-fA-F]*$"
       description: At least one creation or runtime bytecode must be non-empty.
     VyperStandardJSONRequest:
       type: object
@@ -5857,7 +5911,8 @@ components:
     VyperCompilerCapabilities:
       type: object
       additionalProperties: false
-      required: [optimization_modes, evm_versions, default_evm_version, bytecode_metadata, enable_decimals]
+      required:
+        [optimization_modes, evm_versions, default_evm_version, bytecode_metadata, enable_decimals]
       properties:
         optimization_modes:
           type: array
@@ -5881,7 +5936,7 @@ components:
       properties:
         bytecode:
           type: string
-          pattern: '^(0x)?[0-9a-fA-F]+$'
+          pattern: "^(0x)?[0-9a-fA-F]+$"
         abi:
           type: array
           items:
@@ -5899,7 +5954,7 @@ components:
       properties:
         selector:
           type: string
-          pattern: '^0x[0-9a-f]{8}$'
+          pattern: "^0x[0-9a-f]{8}$"
         signature:
           type: string
         file_name:
@@ -6213,7 +6268,46 @@ components:
         - noncanonical_value
     CWIAImmutableArgType:
       type: string
-      enum: [address, uint8, uint16, uint24, uint32, uint40, uint48, uint56, uint64, uint72, uint80, uint88, uint96, uint104, uint112, uint120, uint128, uint136, uint144, uint152, uint160, uint168, uint176, uint184, uint192, uint200, uint208, uint216, uint224, uint232, uint240, uint248, uint256, bytes32, bytes, 'uint256[]', 'bytes32[]']
+      enum:
+        [
+          address,
+          uint8,
+          uint16,
+          uint24,
+          uint32,
+          uint40,
+          uint48,
+          uint56,
+          uint64,
+          uint72,
+          uint80,
+          uint88,
+          uint96,
+          uint104,
+          uint112,
+          uint120,
+          uint128,
+          uint136,
+          uint144,
+          uint152,
+          uint160,
+          uint168,
+          uint176,
+          uint184,
+          uint192,
+          uint200,
+          uint208,
+          uint216,
+          uint224,
+          uint232,
+          uint240,
+          uint248,
+          uint256,
+          bytes32,
+          bytes,
+          "uint256[]",
+          "bytes32[]",
+        ]
     CWIAImmutableArgFieldRole:
       type: string
       enum: [value, length]
@@ -6233,7 +6327,7 @@ components:
           type: string
           minLength: 1
           maxLength: 64
-          pattern: '^[A-Za-z_][A-Za-z0-9_]*$'
+          pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
         multiplier:
           type: integer
           enum: [1, 32]
@@ -6246,7 +6340,7 @@ components:
           type: string
           minLength: 1
           maxLength: 64
-          pattern: '^[A-Za-z_][A-Za-z0-9_]*$'
+          pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
         type:
           $ref: "#/components/schemas/CWIAImmutableArgType"
         offset:
@@ -6297,7 +6391,7 @@ components:
           type: string
           minLength: 1
           maxLength: 64
-          pattern: '^[A-Za-z_][A-Za-z0-9_]*$'
+          pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
         type:
           $ref: "#/components/schemas/CWIAImmutableArgType"
         offset:
@@ -6335,7 +6429,7 @@ components:
       enum: [implementation, singleton, beacon, facet, immutable]
     FunctionSelector:
       type: string
-      pattern: '^0x[0-9a-fA-F]{8}$'
+      pattern: "^0x[0-9a-fA-F]{8}$"
     ProxyTarget:
       type: object
       additionalProperties: false
@@ -6444,7 +6538,7 @@ components:
           $ref: "#/components/schemas/Hash"
         value:
           type: string
-          pattern: '^0x([0-9a-fA-F]{2})*$'
+          pattern: "^0x([0-9a-fA-F]{2})*$"
           maxLength: 4098
     ProxyDetectionOutcome:
       type: object
@@ -6611,7 +6705,7 @@ components:
           $ref: "#/components/schemas/ProxyDetection"
         immutable_args:
           type: string
-          pattern: '^0x([0-9a-fA-F]{2})*$'
+          pattern: "^0x([0-9a-fA-F]{2})*$"
           maxLength: 49064
         immutable_args_decoding:
           $ref: "#/components/schemas/CWIAImmutableArgsDecoding"
@@ -6814,7 +6908,7 @@ components:
           $ref: "#/components/schemas/Address"
         init_calldata:
           type: string
-          pattern: '^0x([0-9a-fA-F]{2})*$'
+          pattern: "^0x([0-9a-fA-F]{2})*$"
           maxLength: 4194306
         cuts:
           type: array
@@ -6881,7 +6975,7 @@ components:
             $ref: "#/components/schemas/Transaction"
     RuntimeEventID:
       type: string
-      pattern: '^(0|[1-9][0-9]{0,18})$'
+      pattern: "^(0|[1-9][0-9]{0,18})$"
       maxLength: 19
       description: Canonical decimal durable event ID from 0 through 9223372036854775807.
     HomeSnapshotResponse:
@@ -7097,7 +7191,18 @@ components:
     NativeTransfer:
       type: object
       additionalProperties: false
-      required: [block_number, block_hash, transaction_hash, transaction_index, log_index, from, to, amount, timestamp]
+      required:
+        [
+          block_number,
+          block_hash,
+          transaction_hash,
+          transaction_index,
+          log_index,
+          from,
+          to,
+          amount,
+          timestamp,
+        ]
       properties:
         block_number:
           $ref: "#/components/schemas/Quantity"

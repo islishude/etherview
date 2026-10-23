@@ -1,0 +1,19 @@
+packages:
+  - api
+  - web
+  - compiler
+  - e2e/hardhat3
+
+engineStrict: true
+ignoreScripts: true
+# Required peers are explicit dependencies. Safe is used only for artifacts,
+# so its unused Ethers v5 peer must not be installed.
+autoInstallPeers: false
+strictPeerDependencies: false
+
+overrides:
+  brace-expansion: 5.0.12
+  "@redocly/openapi-core>js-yaml": 4.3.2
+  "@redocly/openapi-core>minimatch": 9.0.9
+  tmp: 0.2.7
+  adm-zip: 0.6.1

@@ -18,11 +18,11 @@ persistence, typed SQL, neutral package and API contracts, and a deterministic e
 
 ## Work Items
 
-| ID | Status | Depends on | Deliverable | Verification |
-|---|---|---|---|---|
-| P00-T03 | done | — | Single CLI, role model, YAML/env config, validation, doctor command | Go unit tests and CLI smoke tests |
-| P00-T04 | done | — | Native pgx pools, typed sqlc read/write and transaction boundaries, migrations/session locks, OpenAPI generation, and enforced neutral package contracts | generation/source/import-graph, exact codec, routing/snapshot, cancellation/lock/commit, PostgreSQL/race, schema and production parity tests |
-| P00-T05 | done | — | React/Vite shell and deterministic `go:embed` asset serving | frontend build and deep-link test |
+| ID      | Status | Depends on | Deliverable                                                                                                                                              | Verification                                                                                                                                 |
+| ------- | ------ | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| P00-T03 | done   | —          | Single CLI, role model, YAML/env config, validation, doctor command                                                                                      | Go unit tests and CLI smoke tests                                                                                                            |
+| P00-T04 | done   | —          | Native pgx pools, typed sqlc read/write and transaction boundaries, migrations/session locks, OpenAPI generation, and enforced neutral package contracts | generation/source/import-graph, exact codec, routing/snapshot, cancellation/lock/commit, PostgreSQL/race, schema and production parity tests |
+| P00-T05 | done   | —          | React/Vite shell and deterministic `go:embed` asset serving                                                                                              | frontend build and deep-link test                                                                                                            |
 
 ## Acceptance
 

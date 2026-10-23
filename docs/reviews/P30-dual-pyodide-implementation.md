@@ -175,31 +175,31 @@ All three matrices pass below: candidate, actual SEA/Go, and the native ARM64
 Linux production image. Counts include original and modified inputs. Hardhat
 topology coverage and missing native acceptance are scoped separately above.
 
-| Vyper | Runtime | Inputs | Candidate / SEA-Go / Linux ARM64 |
-| --- | --- | ---: | --- |
-| 0.2.0 | legacy | 10 | pass / pass / pass |
-| 0.2.1 | legacy | 10 | pass / pass / pass |
-| 0.2.2 | legacy | 10 | pass / pass / pass |
-| 0.2.3 | legacy | 10 | pass / pass / pass |
-| 0.2.4 | legacy | 10 | pass / pass / pass |
-| 0.2.5 | legacy | 10 | pass / pass / pass |
-| 0.2.7 | legacy | 10 | pass / pass / pass |
-| 0.2.8 | legacy | 10 | pass / pass / pass |
-| 0.2.11 | legacy | 10 | pass / pass / pass |
-| 0.2.12 | legacy | 10 | pass / pass / pass |
-| 0.2.15 | legacy | 10 | pass / pass / pass |
-| 0.2.16 | legacy | 10 | pass / pass / pass |
-| 0.3.0 | legacy | 10 | pass / pass / pass |
-| 0.3.1 | legacy | 16 | pass / pass / pass |
-| 0.3.2 | legacy | 16 | pass / pass / pass |
-| 0.3.3 | legacy | 16 | pass / pass / pass |
-| 0.3.4 | legacy | 16 | pass / pass / pass |
-| 0.3.6 | legacy | 16 | pass / pass / pass |
-| 0.3.7 | legacy | 16 | pass / pass / pass |
-| 0.3.8 | legacy | 18 | pass / pass / pass |
-| 0.3.9 | legacy | 18 | pass / pass / pass |
-| 0.3.10 | legacy | 20 | pass / pass / pass |
-| 0.4.0 | modern | 20 | pass / pass / pass |
-| 0.4.1 | modern | 20 | pass / pass / pass |
-| 0.4.2 | modern | 20 | pass / pass / pass |
-| 0.4.3 | modern | 20 | pass / pass / pass |
+| Vyper  | Runtime | Inputs | Candidate / SEA-Go / Linux ARM64 |
+| ------ | ------- | -----: | -------------------------------- |
+| 0.2.0  | legacy  |     10 | pass / pass / pass               |
+| 0.2.1  | legacy  |     10 | pass / pass / pass               |
+| 0.2.2  | legacy  |     10 | pass / pass / pass               |
+| 0.2.3  | legacy  |     10 | pass / pass / pass               |
+| 0.2.4  | legacy  |     10 | pass / pass / pass               |
+| 0.2.5  | legacy  |     10 | pass / pass / pass               |
+| 0.2.7  | legacy  |     10 | pass / pass / pass               |
+| 0.2.8  | legacy  |     10 | pass / pass / pass               |
+| 0.2.11 | legacy  |     10 | pass / pass / pass               |
+| 0.2.12 | legacy  |     10 | pass / pass / pass               |
+| 0.2.15 | legacy  |     10 | pass / pass / pass               |
+| 0.2.16 | legacy  |     10 | pass / pass / pass               |
+| 0.3.0  | legacy  |     10 | pass / pass / pass               |
+| 0.3.1  | legacy  |     16 | pass / pass / pass               |
+| 0.3.2  | legacy  |     16 | pass / pass / pass               |
+| 0.3.3  | legacy  |     16 | pass / pass / pass               |
+| 0.3.4  | legacy  |     16 | pass / pass / pass               |
+| 0.3.6  | legacy  |     16 | pass / pass / pass               |
+| 0.3.7  | legacy  |     16 | pass / pass / pass               |
+| 0.3.8  | legacy  |     18 | pass / pass / pass               |
+| 0.3.9  | legacy  |     18 | pass / pass / pass               |
+| 0.3.10 | legacy  |     20 | pass / pass / pass               |
+| 0.4.0  | modern  |     20 | pass / pass / pass               |
+| 0.4.1  | modern  |     20 | pass / pass / pass               |
+| 0.4.2  | modern  |     20 | pass / pass / pass               |
+| 0.4.3  | modern  |     20 | pass / pass / pass               |

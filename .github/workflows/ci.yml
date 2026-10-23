@@ -15,10 +15,6 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  # The security job runs explicit audits; dependency installs must not repeat them.
-  npm_config_audit: "false"
-
 jobs:
   quality:
     name: Generate, lint, and test
@@ -30,14 +26,12 @@ jobs:
         with:
           go-version: stable
           cache: true
+      - uses: pnpm/action-setup@v6.1.0
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
-          cache: npm
-          cache-dependency-path: |
-            api/package-lock.json
-            compiler/package-lock.json
-            web/package-lock.json
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install compatible Vyper update test tooling
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
@@ -66,11 +60,12 @@ jobs:
           go-version: stable
           cache: true
 
+      - uses: pnpm/action-setup@v6.1.0
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
-          cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
       - name: Run owned PostgreSQL migrations and integration tests
         run: make test-integration
       - name: Verify RustFS S3 transport and persistence
@@ -88,6 +83,7 @@ jobs:
         with:
           go-version: stable
           cache: true
+      - uses: pnpm/action-setup@v6.1.0
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -122,6 +118,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: stable
+      - uses: pnpm/action-setup@v6.1.0
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -190,11 +187,12 @@ jobs:
         with:
           go-version: stable
           cache: true
+      - uses: pnpm/action-setup@v6.1.0
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
-          cache: npm
-          cache-dependency-path: e2e/hardhat3/package-lock.json
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
       - name: Run provider compatibility regression
         run: make toolchain-check test-hardhat3-provider-compat
 
@@ -266,16 +264,17 @@ jobs:
           go-version: stable
           cache: true
 
+      - uses: pnpm/action-setup@v6.1.0
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
-          cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install frontend and browser
         run: |
-          npm --prefix web ci
-          npm --prefix web exec -- playwright install --with-deps chromium
+          pnpm install --frozen-lockfile
+          pnpm --dir web exec playwright install --with-deps chromium
       - name: Build frontend assets
         run: make web-build
       - name: Run embedded-binary browser flows
@@ -294,15 +293,12 @@ jobs:
           go-version: stable
           cache: true
 
+      - uses: pnpm/action-setup@v6.1.0
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
-          cache: npm
-          cache-dependency-path: |
-            api/package-lock.json
-            compiler/package-lock.json
-            web/package-lock.json
-            e2e/hardhat3/package-lock.json
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
       - name: Install pinned security and license tools
         run: make install-security-tools
       - name: Audit source and dependencies
@@ -358,6 +354,7 @@ jobs:
         with:
           go-version: stable
           cache: true
+      - uses: pnpm/action-setup@v6.1.0
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc

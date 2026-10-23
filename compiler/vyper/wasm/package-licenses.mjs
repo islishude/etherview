@@ -25,9 +25,7 @@ export function checkPackage(item, path) {
   );
   for (const root of roots) {
     const notices = entries.filter(
-      (e) =>
-        e.entryName.startsWith(root) &&
-        /^(license|copying)/i.test(basename(e.entryName)),
+      (e) => e.entryName.startsWith(root) && /^(license|copying)/i.test(basename(e.entryName)),
     );
     if (!notices.length || notices.some((e) => !e.getData().toString("utf8").trim()))
       throw new Error("missing distribution license: " + root);

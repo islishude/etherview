@@ -13,10 +13,8 @@ const applicationServices =
     ? ["etherview"]
     : ["api", "sync", "enrich", "trace", "metadata", "maintenance"];
 const cachePath = "/var/lib/etherview/compilers";
-const unsafeDownloadEnvironment =
-  "ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS";
-const unsafeMetadataEnvironment =
-  "ETHERVIEW_METADATA_UNSAFE_ALLOW_PRIVATE_NETWORKS";
+const unsafeDownloadEnvironment = "ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS";
+const unsafeMetadataEnvironment = "ETHERVIEW_METADATA_UNSAFE_ALLOW_PRIVATE_NETWORKS";
 const runtimePathEnvironment = {
   ETHERVIEW_VERIFICATION_EXECUTOR_PATH: "/custom/runtime/etherview-solcjs",
   ETHERVIEW_VERIFICATION_GEAS_PATH: "/custom/bin/etherview-geas-compiler",
@@ -75,9 +73,7 @@ for (const name of applicationServices) {
   const service = config.services[name];
   assert.ok(service, `missing application service ${name}`);
   assertApplicationHealthcheck(service, name);
-  const cacheMounts = volumeMounts(service).filter(
-    (mount) => mount.target === cachePath,
-  );
+  const cacheMounts = volumeMounts(service).filter((mount) => mount.target === cachePath);
   if (name === compilerOwner) {
     assert.equal(
       cacheMounts.length,
@@ -92,23 +88,13 @@ for (const name of applicationServices) {
       `${name} compiler cache must not be tmpfs`,
     );
     assert.ok(
-      Object.hasOwn(
-        service.environment ?? {},
-        "ETHERVIEW_VERIFICATION_WORKER_COUNT",
-      ),
+      Object.hasOwn(service.environment ?? {}, "ETHERVIEW_VERIFICATION_WORKER_COUNT"),
       `${name} must own verification workers`,
     );
   } else {
-    assert.equal(
-      cacheMounts.length,
-      0,
-      `${name} must not receive the compiler cache`,
-    );
+    assert.equal(cacheMounts.length, 0, `${name} must not receive the compiler cache`);
     assert.ok(
-      !Object.hasOwn(
-        service.environment ?? {},
-        "ETHERVIEW_VERIFICATION_WORKER_COUNT",
-      ),
+      !Object.hasOwn(service.environment ?? {}, "ETHERVIEW_VERIFICATION_WORKER_COUNT"),
       `${name} must not own verification workers`,
     );
   }
@@ -118,7 +104,7 @@ function volumeMounts(service) {
   return (service.volumes ?? []).map((entry) =>
     typeof entry === "string"
       ? { type: "volume", source: entry.split(":", 1)[0], target: entry.split(":")[1] }
-      : entry
+      : entry,
   );
 }
 
@@ -140,11 +126,7 @@ function assertApplicationHealthcheck(service, name) {
   assert.equal(service.healthcheck.timeout, "3s", `${name} health timeout`);
   assert.equal(service.healthcheck.interval, "5s", `${name} health interval`);
   assert.equal(service.healthcheck.retries, 34, `${name} health retries`);
-  assert.equal(
-    service.healthcheck.start_period,
-    "10s",
-    `${name} health start period`,
-  );
+  assert.equal(service.healthcheck.start_period, "10s", `${name} health start period`);
 }
 
 function assertNoPlatform(value, path) {

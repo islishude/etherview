@@ -7,12 +7,9 @@ assert.ok(topology === "monolith" || topology === "distributed", "invalid topolo
 
 const hardhatImage = process.env.ETHERVIEW_HARDHAT3_IMAGE;
 const compilerOwner = topology === "monolith" ? "etherview" : "api";
-const appServices = [
-  "etherview", "api", "sync", "enrich", "trace", "metadata", "maintenance",
-];
+const appServices = ["etherview", "api", "sync", "enrich", "trace", "metadata", "maintenance"];
 const cachePath = "/var/lib/etherview/compilers";
-const unsafeDownloadEnvironment =
-  "ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS";
+const unsafeDownloadEnvironment = "ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS";
 const derivedEnvironment = [
   "ETHERVIEW_DERIVED_VERIFY_ENABLED",
   "ETHERVIEW_DERIVED_VERIFY_BACKFILL_ENABLED",
@@ -38,8 +35,10 @@ for (const name of appServices) {
   if (service === undefined) continue;
   const volumes = service.volumes ?? [];
   assert.equal(
-    volumes.some((volume) => volume.source === "/var/run/docker.sock" ||
-      volume.target === "/var/run/docker.sock"),
+    volumes.some(
+      (volume) =>
+        volume.source === "/var/run/docker.sock" || volume.target === "/var/run/docker.sock",
+    ),
     false,
     `${name} must not mount a Docker socket`,
   );
@@ -81,11 +80,7 @@ for (const name of appServices) {
   }
   const cacheMounts = volumeMounts(service).filter((mount) => mount.target === cachePath);
   const hasCompilerCache = cacheMounts.length === 1 && cacheMounts[0].type === "volume";
-  assert.equal(
-    hasCompilerCache,
-    name === compilerOwner,
-    `${name} compiler cache scope`,
-  );
+  assert.equal(hasCompilerCache, name === compilerOwner, `${name} compiler cache scope`);
   assert.equal(tmpfsTargets(service).includes(cachePath), false, `${name} compiler cache tmpfs`);
   assert.equal(
     service.environment?.[unsafeDownloadEnvironment],
@@ -105,7 +100,7 @@ function volumeMounts(service) {
   return (service.volumes ?? []).map((entry) =>
     typeof entry === "string"
       ? { type: "volume", source: entry.split(":", 1)[0], target: entry.split(":")[1] }
-      : entry
+      : entry,
   );
 }
 
@@ -126,13 +121,13 @@ assert.equal(
   "Hardhat client must not mount a Docker socket",
 );
 const buildVolumes = (hardhat.volumes ?? []).filter((volume) =>
-  ["/workspace/build", "/workspace/artifacts", "/workspace/cache"].includes(volume.target)
+  ["/repo/e2e/hardhat3/build", "/repo/e2e/hardhat3/artifacts", "/repo/e2e/hardhat3/cache"].includes(
+    volume.target,
+  ),
 );
 assert.equal(buildVolumes.length, 1, "Hardhat build state must use one filesystem");
-assert.equal(buildVolumes[0].target, "/workspace/build", "Hardhat build volume");
-const cacheInspectionMounts = volumeMounts(hardhat).filter(
-  (mount) => mount.target === cachePath,
-);
+assert.equal(buildVolumes[0].target, "/repo/e2e/hardhat3/build", "Hardhat build volume");
+const cacheInspectionMounts = volumeMounts(hardhat).filter((mount) => mount.target === cachePath);
 assert.equal(cacheInspectionMounts.length, 1, "Hardhat compiler cache inspection mount");
 assert.equal(cacheInspectionMounts[0].type, "volume", "Hardhat compiler cache mount type");
 assert.equal(cacheInspectionMounts[0].source, "compiler-cache", "Hardhat compiler cache source");
@@ -144,7 +139,7 @@ assert.equal(
 
 function tmpfsTargets(service) {
   return (service.tmpfs ?? []).map((entry) =>
-    typeof entry === "string" ? entry.split(":", 1)[0] : entry?.target
+    typeof entry === "string" ? entry.split(":", 1)[0] : entry?.target,
   );
 }
 

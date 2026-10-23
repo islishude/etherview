@@ -5,11 +5,23 @@ NATS, Redis, and S3 are diagnostic or acceleration surfaces; losing any of
 them must not authorize a state transition or make a healthy database-backed
 request fail.
 
+## Repository build dependencies
+
+Run `pnpm install --frozen-lockfile` at the repository root to install all four pnpm workspaces from
+one lockfile. The compiler workspace requires Node 26.12.1; root pnpm policy
+enforces engines and disables dependency lifecycle scripts. Production and
+Hardhat Docker builds use the same lock and install only their selected
+workspaces. Build the Hardhat client with `make hardhat3-client-image-build`;
+its Docker context is the repository root and its project directory is
+`/repo/e2e/hardhat3`, including the shared build-state volume. Production still
+contains the packaged SEA and authenticated WASM runtimes, without npm or a
+Node dependency tree.
+
 ## Web branding at build time
 
 Set `ETHERVIEW_WEB_BRANDING_DIR` to a directory containing `brand.json` and
 the selected images. All local relative directory paths resolve from the
-repository root, including when npm runs from `web/`; local absolute paths
+repository root, including when pnpm runs from `web/`; local absolute paths
 are also supported. An unset or empty value uses `web/branding/default` and
 preserves the Etherview name and icon.
 
@@ -44,8 +56,8 @@ but does not sanitize, resize or convert artwork. Each image is limited to
 characters; name/title/description are limited to 80/160/512 Unicode code points.
 
 ```sh
-ETHERVIEW_WEB_BRANDING_DIR=branding/acme npm --prefix web run dev
-ETHERVIEW_WEB_BRANDING_DIR=branding/acme npm --prefix web run build
+ETHERVIEW_WEB_BRANDING_DIR=branding/acme pnpm --dir web run dev
+ETHERVIEW_WEB_BRANDING_DIR=branding/acme pnpm --dir web run build
 make go-build ETHERVIEW_WEB_BRANDING_DIR=branding/acme
 make docker-build IMAGE=etherview:acme ETHERVIEW_WEB_BRANDING_DIR=branding/acme
 ```
@@ -536,6 +548,7 @@ To enable a local trace cache:
    retaining the same `--env-file` and profile arguments. Open the local
    console at `http://127.0.0.1:9001`, sign in with the RustFS credentials, and
    create the bucket. Recreate the service without the override afterward.
+
 4. Set `ETHERVIEW_S3_ENDPOINT=http://object-storage:9000`,
    `ETHERVIEW_S3_BUCKET=etherview-cache`, `ETHERVIEW_S3_REGION=us-east-1`, and
    `ETHERVIEW_S3_PATH_STYLE=true`. Set the explicit Etherview access/secret pair

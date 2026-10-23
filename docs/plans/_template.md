@@ -18,9 +18,9 @@ State the observable capability and explicit non-goals.
 
 ## Work Items
 
-| ID | Status | Depends on | Deliverable | Verification |
-|---|---|---|---|---|
-| PXX-T01 | todo | — | Independently verifiable capability or migration | Named acceptance gate |
+| ID      | Status | Depends on | Deliverable                                      | Verification          |
+| ------- | ------ | ---------- | ------------------------------------------------ | --------------------- |
+| PXX-T01 | todo   | —          | Independently verifiable capability or migration | Named acceptance gate |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, `dropped`,
 and `superseded`. Implementation, regressions and acceptance belong to the same
@@ -42,4 +42,3 @@ Record concise commands, results, revision/environment and material limits for
 the milestone. Link a commit or PR when one exists. Replace stale progress
 notes; do not append a maintenance log. After completion, keep the capability
 and meaningful acceptance summary, resolving references before pruning records.
-

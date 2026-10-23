@@ -12,14 +12,8 @@
   "author": "",
   "license": "ISC",
   "type": "module",
-  "overrides": {
-    "brace-expansion": "5.0.12",
-    "@redocly/openapi-core": {
-      "js-yaml": "4.3.2",
-      "minimatch": "9.0.9"
-    }
-  },
   "dependencies": {
-    "openapi-typescript": "^7.13.0"
+    "openapi-typescript": "^7.13.0",
+    "typescript": "5.9.3"
   }
 }

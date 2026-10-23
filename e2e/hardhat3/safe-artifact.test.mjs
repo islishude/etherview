@@ -8,29 +8,25 @@ const SAFE_PROXY_RUNTIME_HASH =
   "0xd7d408ebcd99b2b70be43e20253d6d92a8ea8fab29bd3be7f55b10032331fb4c";
 
 async function packageJSON(path) {
-  return JSON.parse(await readFile(new URL(path, import.meta.url)));
+  return JSON.parse(await readFile(new URL(import.meta.resolve(path))));
 }
 
 test("pins the official Safe 1.4.1 deployment artifacts", async () => {
-  const metadata = await packageJSON(
-    "./node_modules/@safe-global/safe-contracts/package.json",
-  );
+  const metadata = await packageJSON("@safe-global/safe-contracts/package.json");
   assert.equal(metadata.version, SAFE_VERSION);
 
   const safe = await packageJSON(
-    "./node_modules/@safe-global/safe-contracts/build/artifacts/contracts/Safe.sol/Safe.json",
+    "@safe-global/safe-contracts/build/artifacts/contracts/Safe.sol/Safe.json",
   );
   const factory = await packageJSON(
-    "./node_modules/@safe-global/safe-contracts/build/artifacts/contracts/proxies/SafeProxyFactory.sol/SafeProxyFactory.json",
+    "@safe-global/safe-contracts/build/artifacts/contracts/proxies/SafeProxyFactory.sol/SafeProxyFactory.json",
   );
   const proxy = await packageJSON(
-    "./node_modules/@safe-global/safe-contracts/build/artifacts/contracts/proxies/SafeProxy.sol/SafeProxy.json",
+    "@safe-global/safe-contracts/build/artifacts/contracts/proxies/SafeProxy.sol/SafeProxy.json",
   );
 
   assert.equal(safe.contractName, "Safe");
-  assert.ok(
-    safe.abi.some((item) => item.type === "function" && item.name === "setup"),
-  );
+  assert.ok(safe.abi.some((item) => item.type === "function" && item.name === "setup"));
   assert.equal(factory.contractName, "SafeProxyFactory");
   const create = factory.abi.find(
     (item) => item.type === "function" && item.name === "createProxyWithNonce",
@@ -39,9 +35,7 @@ test("pins the official Safe 1.4.1 deployment artifacts", async () => {
     create?.inputs.map((input) => input.type),
     ["address", "bytes", "uint256"],
   );
-  const event = factory.abi.find(
-    (item) => item.type === "event" && item.name === "ProxyCreation",
-  );
+  const event = factory.abi.find((item) => item.type === "event" && item.name === "ProxyCreation");
   assert.deepEqual(
     event?.inputs.map((input) => ({ type: input.type, indexed: input.indexed })),
     [
@@ -51,9 +45,7 @@ test("pins the official Safe 1.4.1 deployment artifacts", async () => {
   );
   assert.equal(proxy.contractName, "SafeProxy");
   assert.deepEqual(
-    proxy.abi.find((item) => item.type === "constructor")?.inputs.map(
-      (input) => input.type,
-    ),
+    proxy.abi.find((item) => item.type === "constructor")?.inputs.map((input) => input.type),
     ["address"],
   );
   assert.equal((proxy.deployedBytecode.length - 2) / 2, 171);

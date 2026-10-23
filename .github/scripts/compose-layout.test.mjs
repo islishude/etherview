@@ -10,7 +10,9 @@ function render(args, overrides = {}) {
   const env = { ...process.env, ...overrides };
   for (const key of ["COMPOSE_FILE", "COMPOSE_PROFILES", "COMPOSE_PROJECT_NAME"]) delete env[key];
   if (!Object.hasOwn(overrides, "ETHERVIEW_CONFIG_FILE")) delete env.ETHERVIEW_CONFIG_FILE;
-  return JSON.parse(runCompose(["--env-file", "/dev/null", ...args, "config", "--format", "json"], { env }));
+  return JSON.parse(
+    runCompose(["--env-file", "/dev/null", ...args, "config", "--format", "json"], { env }),
+  );
 }
 
 function assertApplicationPaths(service, config) {
@@ -22,13 +24,19 @@ function assertApplicationPaths(service, config) {
 }
 
 test("both Compose entry points pass branding only to the application build", () => {
-  for (const args of [[], ["--project-directory", root, "-f", "deploy/compose.yaml", "--profile", "monolith"]]) {
+  for (const args of [
+    [],
+    ["--project-directory", root, "-f", "deploy/compose.yaml", "--profile", "monolith"],
+  ]) {
     for (const directory of ["", "branding/custom brand"]) {
       const config = render(args, { ETHERVIEW_WEB_BRANDING_DIR: directory });
       for (const service of Object.values(config.services)) {
         assert.equal(service.environment?.ETHERVIEW_WEB_BRANDING_DIR, undefined);
         if (service.build?.target === "production") {
-          assert.equal(service.build.args.ETHERVIEW_WEB_BRANDING_DIR, directory || "web/branding/default");
+          assert.equal(
+            service.build.args.ETHERVIEW_WEB_BRANDING_DIR,
+            directory || "web/branding/default",
+          );
         }
       }
     }
@@ -44,7 +52,15 @@ test("default Compose selects Preview and retains its project and volumes", () =
     assertApplicationPaths(config.services[role], "deploy/preview.config.yaml");
     assert.equal(config.services[role].profiles, undefined);
   }
-  for (const name of ["postgres-data", "compiler-cache", "geth-data", "lighthouse-data", "validator-data", "blob-data", "ipfs-data"]) {
+  for (const name of [
+    "postgres-data",
+    "compiler-cache",
+    "geth-data",
+    "lighthouse-data",
+    "validator-data",
+    "blob-data",
+    "ipfs-data",
+  ]) {
     assert.equal(config.volumes[name].name, `etherview-preview_${name}`);
   }
 });
@@ -54,11 +70,21 @@ for (const mode of ["monolith", "distributed"]) {
     const args = ["--project-directory", root, "-f", "deploy/compose.yaml", "--profile", mode];
     const config = render(args);
     assert.equal(config.name, "etherview");
-    const roles = mode === "monolith" ? ["etherview"] : ["api", "sync", "enrich", "trace", "metadata", "maintenance"];
+    const roles =
+      mode === "monolith"
+        ? ["etherview"]
+        : ["api", "sync", "enrich", "trace", "metadata", "maintenance"];
     for (const role of [...roles, "migration"]) {
       assertApplicationPaths(config.services[role], "deploy/config.example.yaml");
     }
-    for (const name of ["geth", "lighthouse", "validator", "ipfs", "ipfs-gateway", "archive-init"]) {
+    for (const name of [
+      "geth",
+      "lighthouse",
+      "validator",
+      "ipfs",
+      "ipfs-gateway",
+      "archive-init",
+    ]) {
       assert.equal(config.services[name], undefined);
     }
     for (const name of ["postgres-data", "compiler-cache"]) {
@@ -70,10 +96,19 @@ for (const mode of ["monolith", "distributed"]) {
 }
 
 test("deployment overlays keep repository-root build contexts and mounts", () => {
-  const config = render([
-    "--project-directory", root, "-f", "deploy/compose.yaml",
-    "-f", "e2e/runtime/compose.yaml", "--profile", "distributed",
-  ], { ANVIL_ARGS: "" });
+  const config = render(
+    [
+      "--project-directory",
+      root,
+      "-f",
+      "deploy/compose.yaml",
+      "-f",
+      "e2e/runtime/compose.yaml",
+      "--profile",
+      "distributed",
+    ],
+    { ANVIL_ARGS: "" },
+  );
   assertApplicationPaths(config.services.api, "deploy/config.example.yaml");
   assert.ok(config.services["runtime-fixture"]);
 });

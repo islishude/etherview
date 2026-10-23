@@ -19,7 +19,7 @@ updates:
           - "golang.org/*"
 
   - package-ecosystem: npm
-    directory: /web
+    directory: /
     schedule:
       interval: monthly
       day: monday
@@ -43,30 +43,6 @@ updates:
         patterns: ["vite", "vitest", "@vitejs/*"]
       oxc:
         patterns: ["oxlint", "oxfmt"]
-
-  - package-ecosystem: npm
-    directory: /api
-    schedule:
-      interval: monthly
-      day: monday
-      time: "02:30"
-      timezone: Asia/Shanghai
-    open-pull-requests-limit: 10
-    groups:
-      npm:
-        patterns: ["*"]
-
-  - package-ecosystem: npm
-    directory: /compiler
-    schedule:
-      interval: monthly
-      day: monday
-      time: "02:30"
-      timezone: Asia/Shanghai
-    open-pull-requests-limit: 10
-    groups:
-      npm:
-        patterns: ["*"]
 
   - package-ecosystem: github-actions
     directory: /

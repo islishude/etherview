@@ -21,14 +21,14 @@ release acceptance and publication only.
 
 ## Work Items
 
-| ID | Status | Depends on | Deliverable | Verification |
-|---|---|---|---|---|
-| P70-T01 | blocked | P10, P20, P30, P40, P50, P60 | Execution/API/token/holder/proxy/verification/authentication/billing conformance matrix | conformance suite |
-| P70-T02 | blocked | P10, P20, P30, P40, P50, P60 | Threat model, security audit, dependency, compiler, session, holder reconciliation, and payment supply-chain review | security gates |
-| P70-T03 | blocked | P10, P20, P30, P40, P50, P60 | Monolith/split E2E, migration/rollback, outage, reorg, holder, payment, and soak suite | release CI |
-| P70-T04 | blocked | P10, P20, P30, P40, P50 | 500 RPS reference capacity report including holder reads and concurrent reconciliation, plus tuning guide | load report |
-| P70-T05 | blocked | P00, P10, P20, P30, P40, P50, P60 | User/operator/API/authentication/billing/holder/runbook/upgrade documentation | doc review and link check |
-| P70-T06 | todo | P70-T01, P70-T02, P70-T03, P70-T04, P70-T05 | SBOM, checksums, signed multi-arch artifacts and v1.0.0 release | release verification |
+| ID      | Status  | Depends on                                  | Deliverable                                                                                                         | Verification              |
+| ------- | ------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| P70-T01 | blocked | P10, P20, P30, P40, P50, P60                | Execution/API/token/holder/proxy/verification/authentication/billing conformance matrix                             | conformance suite         |
+| P70-T02 | blocked | P10, P20, P30, P40, P50, P60                | Threat model, security audit, dependency, compiler, session, holder reconciliation, and payment supply-chain review | security gates            |
+| P70-T03 | blocked | P10, P20, P30, P40, P50, P60                | Monolith/split E2E, migration/rollback, outage, reorg, holder, payment, and soak suite                              | release CI                |
+| P70-T04 | blocked | P10, P20, P30, P40, P50                     | 500 RPS reference capacity report including holder reads and concurrent reconciliation, plus tuning guide           | load report               |
+| P70-T05 | blocked | P00, P10, P20, P30, P40, P50, P60           | User/operator/API/authentication/billing/holder/runbook/upgrade documentation                                       | doc review and link check |
+| P70-T06 | todo    | P70-T01, P70-T02, P70-T03, P70-T04, P70-T05 | SBOM, checksums, signed multi-arch artifacts and v1.0.0 release                                                     | release verification      |
 
 ## Acceptance
 

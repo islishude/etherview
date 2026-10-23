@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-import { Etherscan } from "./node_modules/@nomicfoundation/hardhat-verify/dist/src/internal/etherscan.js";
+const { Etherscan } = await import(
+  new URL(
+    "./dist/src/internal/etherscan.js",
+    import.meta.resolve("@nomicfoundation/hardhat-verify/package.json"),
+  )
+);
 
 const expectedVersions = {
   hardhat: "3.20.0",
@@ -10,7 +15,7 @@ const expectedVersions = {
 
 for (const [dependency, expected] of Object.entries(expectedVersions)) {
   const manifest = JSON.parse(
-    await readFile(new URL(`./node_modules/${dependency}/package.json`, import.meta.url)),
+    await readFile(new URL(import.meta.resolve(`${dependency}/package.json`))),
   );
   assert.equal(manifest.version, expected, `${dependency} version drifted`);
 }

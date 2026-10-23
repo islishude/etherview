@@ -24,6 +24,7 @@ bin
 etherview
 *.log
 *.out
+node_modules
 web/node_modules
 api/node_modules
 compiler/node_modules

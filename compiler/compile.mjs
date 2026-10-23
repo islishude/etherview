@@ -32,7 +32,10 @@ function fail(message) {
 }
 
 function normalizeVersion(value) {
-  return value.trim().replace(/^v/, "").replace(/\.Emscripten\.clang$/, "");
+  return value
+    .trim()
+    .replace(/^v/, "")
+    .replace(/\.Emscripten\.clang$/, "");
 }
 
 async function readStandardInput() {
@@ -44,10 +47,7 @@ async function readStandardInput() {
 }
 
 function sameStrings(left, right) {
-  return (
-    left.length === right.length &&
-    left.every((value, index) => value === right[index])
-  );
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function writeIsDenied() {
@@ -122,10 +122,7 @@ async function main() {
     !expectedVersion ||
     !artifactPath.startsWith("/") ||
     typeof process.permission?.has !== "function" ||
-    !sameStrings(process.execArgv, [
-      ...fixedExecArgv,
-      `--allow-fs-read=${artifactPath}`,
-    ]) ||
+    !sameStrings(process.execArgv, [...fixedExecArgv, `--allow-fs-read=${artifactPath}`]) ||
     !process.permission.has("fs.read", artifactPath)
   ) {
     fail("invalid solc-js SEA invocation");
