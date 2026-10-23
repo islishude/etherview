@@ -21,7 +21,9 @@ import (
 	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/store"
 	"github.com/islishude/etherview/internal/watchlist"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestPushSubscriptionsOwnershipLimitAndExpiry(t *testing.T) {
@@ -231,7 +233,15 @@ func TestPushLosingLeaderCancelsSendWithoutSnapshot(t *testing.T) {
 		close(cancelled)
 		return ctx.Err()
 	}
-	runPushWorker(t, db, sender)
+	workerConfig := db.Config()
+	workerName := "push-snapshot-" + uuid.NewString()
+	workerConfig.ConnConfig.RuntimeParams["application_name"] = workerName
+	workerDB, err := pgxpool.NewWithConfig(ctx, workerConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(workerDB.Close)
+	runPushWorker(t, workerDB, sender)
 	block, _ := testfixture.New(testfixture.Options{Number: 1, ParentHash: genesis.Block.Hash(), TransactionTypes: []uint8{types.LegacyTxType}})
 	commitCanonical(t, ctx, repo, block)
 	select {
@@ -239,9 +249,34 @@ func TestPushLosingLeaderCancelsSendWithoutSnapshot(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("send did not start")
 	}
-	assertRowCount(t, ctx, db, `SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND (state='idle in transaction' OR backend_xmin IS NOT NULL)`, 0)
+	// Other packages share this database with isolated schemas. Hold an unrelated
+	// snapshot to prove that it cannot contaminate the worker-only assertion.
+	unrelated, err := db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unrelated.Rollback(ctx)
+	if _, err := unrelated.Exec(ctx, `SELECT count(*) FROM users`); err != nil {
+		t.Fatal(err)
+	}
+	const snapshots = `SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND application_name=$1 AND (state='idle in transaction' OR backend_xmin IS NOT NULL)`
+	assertRowCount(t, ctx, db, snapshots, 0, workerName)
+	// A snapshot owned by the worker pool must still be detected.
+	owned, err := workerDB.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owned.Rollback(ctx)
+	if _, err := owned.Exec(ctx, `SELECT count(*) FROM users`); err != nil {
+		t.Fatal(err)
+	}
+	assertRowCount(t, ctx, db, snapshots, 1, workerName)
+	if err := owned.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	assertRowCount(t, ctx, db, snapshots, 0, workerName)
 	var terminated bool
-	if e := db.QueryRow(ctx, `SELECT pg_terminate_backend(pid) FROM pg_locks WHERE locktype='advisory' AND classid=hashtext('etherview:browser-push')::oid AND objid=hashtext('1')::oid AND granted`).Scan(&terminated); e != nil || !terminated {
+	if e := db.QueryRow(ctx, `SELECT pg_terminate_backend(l.pid) FROM pg_locks l JOIN pg_stat_activity a ON a.pid=l.pid WHERE a.application_name=$1 AND locktype='advisory' AND classid=hashtext('etherview:browser-push')::oid AND objid=hashtext('1')::oid AND granted`, workerName).Scan(&terminated); e != nil || !terminated {
 		t.Fatal("terminate leader", e)
 	}
 	select {

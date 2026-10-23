@@ -17,3 +17,4 @@ overrides:
   "@redocly/openapi-core>minimatch": 9.0.9
   tmp: 0.2.7
   adm-zip: 0.6.1
+  zod: 4.6.6
