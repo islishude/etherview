@@ -61,14 +61,37 @@ matrices. Event-specific concurrency groups prevent a push from cancelling the
 daily run. GitHub activates the schedule after the workflow reaches the default
 branch; scheduled start times may be delayed by runner load.
 
+The entry workflow owns triggers, concurrency, Vyper package production and the
+native WASM matrix, plus explicit image-to-consumer dependencies. The reusable
+[checks workflow](../.github/workflows/ci-checks.yml) runs independent quality,
+PostgreSQL/RustFS, browser, security/license, native provider compatibility and
+deployment-static jobs. Quality includes `make docs-check`; the browser target
+owns its frontend build. Shared Go/Node/pnpm setup lives in a fixed local action;
+checkout and specialized tooling remain visible in their owning jobs.
+
 Native production images are built once per architecture independently of
 `vyper-packages`. Once both artifacts are ready, the architecture's reusable
-production verification workflow runs three independent jobs: four Vyper fixture
-shards with strict merge, Vyper application E2E, and Hardhat application E2E.
-Each consumer loads the exact image artifact and validates its revision,
-architecture and image ID. Only Hardhat builds a client image. AMD64 and ARM64
-do not wait for one another; native WASM matrix and provider compatibility jobs
+production verification workflow runs four independent jobs: four Vyper fixture
+shards with strict merge, Vyper application E2E, Hardhat application E2E, and
+Foundry E2E. Hardhat and Foundry build only their own client images. The existing
+Vyper acceptance join still requires exactly fixtures, Vyper and Hardhat;
+Foundry is separately required for a successful workflow. AMD64 and ARM64 do
+not wait for one another; native WASM matrix and provider compatibility jobs
 remain independent.
+
+The reusable [runtime workflow](../.github/workflows/ci-runtime.yml) consumes
+only the AMD64 image, without waiting for compiler packages or verification.
+Its schema/runtime job uses the prebuilt targets. Its Preview job prepares
+certificates, the gateway image and external images once, then runs metadata
+and consensus/blob acceptance in separate sequential steps. All image consumers
+use the common load action with an exact producer artifact ID and validate
+source revision, architecture and image ID; none rebuilds a missing image.
+
+Checks now appear under `Checks / ...`, and schema/runtime and Preview under
+`Runtime acceptance / ...` in GitHub. Foundry appears under each architecture's
+production verification call. Required-check integrations must use these new
+paths if configured. Docker publication and automatic Vyper updates retain
+their separate triggers and permissions.
 
 Each application suite owns two isolated monolith/distributed environments and
 performs its own counts, provenance, cleanup and normalized parity. Successful
@@ -96,8 +119,8 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
 
 - `make test-workflow-scripts`: exercise extracted workflow helpers with temporary
   Git repositories and stub commands, covering metadata, digest export,
-  PR flags, command order, production-image/evidence handoff and failure
-  propagation without pushing images or PRs.
+  PR flags, command order, prebuilt entry points, production-image/evidence
+  handoff and failure propagation without pushing images or PRs.
 - `make toolchain-check`: require at least Go 1.27.3, Node 26.12.1, and pnpm
   12.15.0 before generating or validating artifacts. Compatible newer stable
   versions are supported by this minimum-version check; older, malformed, and
@@ -506,8 +529,9 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   CID, content digest and network evidence. Success and failure artifacts are
   retained and their directory is printed. Run `make preview-cert` first (also
   after upgrading a Preview that lacks the dedicated IPFS certificate).
-  CI runs this complete target in the independent `Preview IPFS metadata E2E`
-  job on Ubuntu AMD64 for pull requests, main pushes and the daily schedule.
+  CI runs the same test through `make test-preview-metadata-prebuilt` in the
+  independent `Preview metadata, consensus, and blobs E2E` job on Ubuntu AMD64
+  for pull requests, main pushes and the daily schedule.
   The job installs pinned mkcert 1.4.4 and uses `make preview-cert` with an
   ephemeral runner-local CA and system trust. The temporary API key grants
   read access to container group 65532 (0640) for Linux bind mounts; the gateway
@@ -593,6 +617,15 @@ make test-runtime-e2e
 make test-hardhat3-e2e
 make test-foundry-e2e
 ```
+
+`make test-schema-e2e-prebuilt` requires the loaded production image.
+`make test-preview-metadata-prebuilt` and `make test-preview-consensus-prebuilt`
+require the loaded production/gateway images and readable Preview certificates.
+They check these prerequisites without building images or creating certificates.
+Prepare external Preview images once with `make preview-images`. The ordinary
+schema and Preview targets continue to build/prepare before invoking the same
+prebuilt test recipes. Preview network generation and archive initialization
+remain owned by each isolated test harness.
 
 The `*-prebuilt` variants are CI-equivalent only after the exact working tree's
 production and client images have been built and inspected. Do not use an

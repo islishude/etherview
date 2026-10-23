@@ -13,21 +13,12 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/setup-node@v7
-      with:
-        node-version-file: .nvmrc
     - uses: actions/download-artifact@v8
       with:
         artifact-ids: ${{ inputs.packages-artifact-id }}
         merge-multiple: true
         path: .local/
-    - uses: actions/download-artifact@v8
+    - uses: ./.github/actions/load-production-image
       with:
-        artifact-ids: ${{ inputs.image-artifact-id }}
-        merge-multiple: true
-        path: .local/production-image/
-    - name: Load exact production image
-      shell: bash
-      env:
-        EXPECTED_ARCH: ${{ inputs.arch }}
-      run: node .github/scripts/vyper-production-bundle.mjs load ".local/production-image" "$EXPECTED_ARCH"
+        arch: ${{ inputs.arch }}
+        image-artifact-id: ${{ inputs.image-artifact-id }}

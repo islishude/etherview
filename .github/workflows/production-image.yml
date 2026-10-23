@@ -37,8 +37,8 @@ jobs:
           push: false
           load: true
           tags: etherview:local
-          cache-from: type=gha,scope=hardhat3-production-${{ runner.os }}-${{ runner.arch }}
-          cache-to: type=gha,mode=max,scope=hardhat3-production-${{ runner.os }}-${{ runner.arch }},ignore-error=true
+          cache-from: type=gha,scope=production-${{ runner.os }}-${{ runner.arch }}
+          cache-to: type=gha,mode=max,scope=production-${{ runner.os }}-${{ runner.arch }},ignore-error=true
       - name: Verify the host-native production image boundary
         run: make docker-image-check
       - name: Export exact production image
@@ -46,7 +46,7 @@ jobs:
         env:
           EXPECTED_ARCH: ${{ inputs.arch }}
           BUNDLE_DIR: ${{ runner.temp }}/production-image
-        run: node .github/scripts/vyper-production-bundle.mjs save "$BUNDLE_DIR" "$EXPECTED_ARCH"
+        run: node .github/scripts/production-image-bundle.mjs save "$BUNDLE_DIR" "$EXPECTED_ARCH"
       - uses: actions/upload-artifact@v7
         id: bundle
         with:

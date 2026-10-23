@@ -1,0 +1,15 @@
+name: Set up Go and JavaScript toolchains
+description: Install the repository Go, Node, and pnpm toolchains with dependency caches
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v7
+      with:
+        go-version: stable
+        cache: true
+    - uses: pnpm/action-setup@v6.1.0
+    - uses: actions/setup-node@v7
+      with:
+        node-version-file: .nvmrc
+        cache: pnpm
+        cache-dependency-path: pnpm-lock.yaml

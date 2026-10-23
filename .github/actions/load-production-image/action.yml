@@ -1,0 +1,34 @@
+name: Load production image
+description: Download an exact image artifact and verify its source, native architecture, and image ID
+inputs:
+  arch:
+    required: true
+    description: Native architecture
+  image-artifact-id:
+    required: true
+    description: Exact production image artifact ID
+runs:
+  using: composite
+  steps:
+    - name: Require an exact image artifact
+      shell: bash
+      env:
+        IMAGE_ARTIFACT_ID: ${{ inputs.image-artifact-id }}
+      run: |
+        [[ "$IMAGE_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]] || {
+          echo "An exact production image artifact ID is required" >&2
+          exit 1
+        }
+    - uses: actions/setup-node@v7
+      with:
+        node-version-file: .nvmrc
+    - uses: actions/download-artifact@v8
+      with:
+        artifact-ids: ${{ inputs.image-artifact-id }}
+        merge-multiple: true
+        path: .local/production-image/
+    - name: Load exact production image
+      shell: bash
+      env:
+        EXPECTED_ARCH: ${{ inputs.arch }}
+      run: node .github/scripts/production-image-bundle.mjs load ".local/production-image" "$EXPECTED_ARCH"
