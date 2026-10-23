@@ -185,7 +185,7 @@ if(args[1]==='save') writeFileSync(args[3],'archive');
           );
           const result = spawnSync(
             process.execPath,
-            [join(root, ".github/scripts/vyper-production-bundle.mjs"), mode, bundle, architecture],
+            [join(root, ".github/scripts/production-image-bundle.mjs"), mode, bundle, architecture],
             {
               cwd: dir,
               env: { ...env, GITHUB_SHA: revision, GITHUB_OUTPUT: join(dir, "output") },

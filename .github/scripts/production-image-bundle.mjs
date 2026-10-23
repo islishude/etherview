@@ -1,4 +1,4 @@
-// Image transport is independent of all three acceptance lanes.
+// Image transport is shared by all native production-image consumers.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 const [mode, directory, architecture, ...extra] = process.argv.slice(2);
 assert(
   ["save", "load"].includes(mode) && directory && extra.length === 0,
-  "usage: vyper-production-bundle.mjs save|load DIRECTORY amd64|arm64",
+  "usage: production-image-bundle.mjs save|load DIRECTORY amd64|arm64",
 );
 assert(["amd64", "arm64"].includes(architecture), "unsupported architecture");
 const bundle = resolve(directory);

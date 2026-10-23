@@ -74,7 +74,8 @@ X402_LOCAL_TOPOLOGY ?= monolith
 	test-runtime-e2e-prebuilt test-hardhat3-provider-compat test-hardhat3-e2e \
 	test-hardhat3-e2e-prebuilt test-hardhat3-offline-compile hardhat3-client-image-build \
 	test-foundry-e2e test-foundry-e2e-prebuilt test-foundry-offline-compile foundry-client-image-build \
-	test-preview-metadata test-schema-e2e test-soak \
+	test-preview-metadata test-preview-metadata-prebuilt test-preview-consensus-prebuilt preview-e2e-check \
+	test-schema-e2e test-schema-e2e-prebuilt test-soak \
 	web-build web-generate web-install web-lint web-test preview-cert preview-cert-check \
 	preview-network-check preview-network-runtime \
 	start-preview stop-preview recreate-preview \
@@ -459,6 +460,13 @@ compose-check: preview-network-check
 		$(NODE) -e 'const env = JSON.parse(require("fs").readFileSync(0, "utf8")).services.etherview.environment; if (env.ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS !== "7" || env.ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS !== "1") throw new Error("Compose reader-pool overrides were not preserved"); if (env.ETHERVIEW_LOG_LEVEL !== "debug" || env.ETHERVIEW_LOG_FORMAT !== "text" || env.ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL !== "45s") throw new Error("Compose logging overrides were not preserved"); if (env.ETHERVIEW_USER_AUTH_API_KEY_RATE !== "25" || env.ETHERVIEW_USER_AUTH_API_KEY_BURST !== "50" || env.ETHERVIEW_USER_AUTH_MAX_ACTIVE_API_KEYS !== "7") throw new Error("Compose user API-key policy overrides were not preserved");'
 
 test-schema-e2e: docker-build
+	@$(MAKE) --no-print-directory test-schema-e2e-prebuilt
+
+test-schema-e2e-prebuilt:
+	@$(DOCKER) image inspect "$(IMAGE)" >/dev/null 2>&1 || { \
+		echo "test-schema-e2e-prebuilt: image $(IMAGE) is not loaded; run 'make docker-build' first"; \
+		exit 1; \
+	}
 	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
 		$(GO) run ./cmd/testschemae2e -root .
 
@@ -476,11 +484,25 @@ test-runtime-e2e-prebuilt:
 		$(GO) test -p=1 -count=1 -v -tags=runtimee2e ./e2e/runtime ./e2e/x402local
 
 test-preview-metadata: preview-cert-check docker-build preview-gateway-build preview-images
+	@$(MAKE) --no-print-directory test-preview-metadata-prebuilt
+
+preview-e2e-check: preview-cert-check
+	@for image in "$(IMAGE)" "$(IPFS_GATEWAY_IMAGE)"; do \
+		$(DOCKER) image inspect "$$image" >/dev/null 2>&1 || { \
+			echo "Preview image $$image is not loaded; run 'make docker-build preview-gateway-build' first"; \
+			exit 1; \
+		}; \
+	done
+
+test-preview-metadata-prebuilt: preview-e2e-check
 	@IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
 		$(GO) test -count=1 -v -tags=previewmetadatae2e -run TestPreviewLocalNFTMetadata ./e2e/previewmetadata
 
 .PHONY: test-preview-consensus
 test-preview-consensus: preview-cert-check docker-build preview-gateway-build preview-images
+	@$(MAKE) --no-print-directory test-preview-consensus-prebuilt
+
+test-preview-consensus-prebuilt: preview-e2e-check
 	@IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
 		$(GO) test -count=1 -v -timeout=25m -tags=previewmetadatae2e -run TestPreviewConsensus ./e2e/previewmetadata
 
@@ -604,7 +626,7 @@ test-vyper-update: pnpm-install
 
 .PHONY: test-workflow-scripts
 test-workflow-scripts:
-	$(NODE) --test .github/scripts/workflow-scripts.test.mjs .github/scripts/production-evidence.test.mjs
+	$(NODE) --test .github/scripts/workflow-scripts.test.mjs .github/scripts/production-evidence.test.mjs .github/scripts/prebuilt-targets.test.mjs
 
 .PHONY: test-vyper-e2e test-vyper-e2e-prebuilt
 test-vyper-e2e: docker-build
