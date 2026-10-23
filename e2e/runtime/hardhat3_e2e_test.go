@@ -949,7 +949,7 @@ func runHardhatCommand(
 ) {
 	t.Helper()
 	runHardhatContainerCommand(t, ctx, h, secret, artifact,
-		environment, append([]string{"npx", "hardhat"}, arguments...)...)
+		environment, append([]string{"pnpm", "exec", "hardhat"}, arguments...)...)
 }
 
 func runNodeCommand(

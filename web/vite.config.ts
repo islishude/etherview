@@ -70,7 +70,8 @@ export default defineConfig({
               name: "zrender-vendor",
               test: /node_modules[\\/]zrender(?:[\\/]|$)/,
               priority: 45,
-              includeDependenciesRecursively: false,
+              // Keep shared tslib helpers here so zrender never imports ECharts.
+              includeDependenciesRecursively: true,
             },
 
             {

@@ -2,7 +2,14 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { createRequire } from "node:module";
-import { mkdirSync, readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
+import {
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+  readdirSync,
+  statSync,
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { platform, arch } from "node:os";
 import { ROOT, HERE, versions, digest } from "./tooling.mjs";
@@ -137,13 +144,12 @@ export async function invoke(
 async function prepare(root) {
   save(join(root, "package.json"), {
     private: true,
+    packageManager: json(join(ROOT, "package.json")).packageManager,
     dependencies: { pyodide: "314.0.7", "pyodide-legacy": "npm:pyodide@0.29.5" },
   });
-  execFileSync(
-    "npm",
-    ["install", "--prefix", root, "--ignore-scripts", "--no-audit", "--no-fund"],
-    { stdio: "inherit" },
-  );
+  execFileSync("pnpm", ["--dir", root, "install", "--ignore-scripts", "--ignore-workspace"], {
+    stdio: "inherit",
+  });
   const loader = createRequire(join(root, "package.json"));
   const runtimes = {};
   for (const [alias, version] of Object.entries({
@@ -151,7 +157,7 @@ async function prepare(root) {
     "pyodide-legacy": "0.29.5",
   })) {
     const shared = dirname(loader.resolve(alias));
-    assert.equal(shared, join(root, "node_modules", alias));
+    assert.equal(shared, realpathSync(join(root, "node_modules", alias)));
     assert.equal(json(join(shared, "package.json")).version, version);
     const lock = json(join(shared, "pyodide-lock.json")),
       crypto = lock.packages.pycryptodome;
@@ -261,7 +267,7 @@ async function main() {
     node: process.version,
     runtimes,
     packages: packageIdentities,
-    npm_lock: json(join(root, "package-lock.json")),
+    pnpm_lock: readFileSync(join(root, "pnpm-lock.yaml"), "utf8"),
     fixtures_sha256: digest(readFileSync(join(root, "fixtures.json"))),
     matrix: rows,
     probes: {},

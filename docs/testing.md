@@ -8,18 +8,19 @@ until the Makefile target exists.
 
 Codex and other filesystem-restricted automation should preserve the exact
 Makefile target and change only host execution plumbing. A writable cache
-prefix avoids repeated failures from npm, the Go build cache, and
+prefix avoids repeated failures from pnpm, the Go build cache, and
 golangci-lint trying to update user-owned directories:
 
 ```sh
 env \
   GOCACHE=/tmp/etherview-codex-go-build \
   GOLANGCI_LINT_CACHE=/tmp/etherview-codex-golangci-lint \
-  npm_config_cache=/tmp/etherview-codex-npm \
+  pnpm_config_cache_dir=/tmp/etherview-codex-pnpm-cache \
+  pnpm_config_store_dir=/tmp/etherview-codex-pnpm-store \
   make check
 ```
 
-Use the same prefix with focused `go`, npm, or Makefile commands as needed.
+Use the same prefix with focused `go`, pnpm, or Makefile commands as needed.
 Do not set `GOMODCACHE` merely because Go cannot update its optional module
 download stat cache: retaining read access to the warmed shared module cache is
 faster and supports offline work. Relocate it only when a command proves that
@@ -38,7 +39,7 @@ Use this failure matrix instead of repeatedly trying unrelated workarounds:
 
 | Failure signal                                                                                       | Required response                                                                                                                                                                                                                      |
 | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| npm cache `EPERM`, Go build-cache `operation not permitted`, or golangci-lint cache warnings         | Retry the same command with the writable cache prefix above.                                                                                                                                                                           |
+| pnpm cache `EPERM`, Go build-cache `operation not permitted`, or golangci-lint cache warnings        | Retry the same command with the writable cache prefix above.                                                                                                                                                                           |
 | Chromium `MachPortRendezvousServer`, `bootstrap_check_in`, `SIGABRT`, or `kill EPERM` on macOS       | Request sandbox-external execution and rerun the exact browser target. If approval is unavailable, the bundled single-process fallback below is diagnostic evidence, not an automatic substitute for the canonical gate.               |
 | Docker socket/config denial or Buildx activity/config write failure                                  | Request sandbox-external execution and rerun the exact Docker-backed target. Keep `.github/scripts/compose.sh` and `.github/scripts/buildx.sh`; do not point Docker at an empty temporary configuration or bypass repository wrappers. |
 | Browser launches but the app is blank, the root is missing, or locators fail across unrelated routes | Inspect the first browser console error and the built asset graph. This is a runtime/build regression until evidence proves otherwise.                                                                                                 |
@@ -97,10 +98,10 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   Git repositories and stub commands, covering metadata, digest export,
   PR flags, command order, production-image/evidence handoff and failure
   propagation without pushing images or PRs.
-- `make toolchain-check`: require at least Go 1.27.3, Node 26.12.1, and npm
-  11.16.0 before generating or validating artifacts. Compatible newer stable
+- `make toolchain-check`: require at least Go 1.27.3, Node 26.12.1, and pnpm
+  12.15.0 before generating or validating artifacts. Compatible newer stable
   versions are supported by this minimum-version check; older, malformed, and
-  prerelease versions fail. Full npm installation and compiler builds additionally
+  prerelease versions fail. Full pnpm installation and compiler builds additionally
   enforce the compiler workspace's exact Node 26.12.1 engine.
 - `make plan-check`: validate plan links, IDs, statuses, dependencies, evidence,
   and parent/child state.
@@ -117,7 +118,7 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   directory before regeneration, so it also works before the repository has an
   initial Git `HEAD`.
 - `make format` / `make format-check`: write formatting / check without writing,
-  using locked Oxfmt 0.70.0 from the root npm workspace. The root configuration covers
+  using locked Oxfmt 0.70.0 from the root pnpm workspace. The root configuration covers
   `.js`, `.mjs`, `.cjs`, `.yaml`, `.yml`, and `.md`, including hidden workflow
   and script directories. The existing frontend scope runs separately, using
   its own configuration. `make lint` shares the frontend format prerequisite
@@ -139,7 +140,7 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   is excluded. This is a new metric baseline, not an equivalent conversion of
   the former Biome cognitive complexity threshold of 75. Generated OpenAPI
   types remain the only source exception in `web/.oxlintrc.json`.
-  `npm --workspace web run format` formats hand-written frontend sources, CSS,
+  `pnpm --dir web run format` formats hand-written frontend sources, CSS,
   scripts, configuration, HTML, and Playwright tests; `format:check` is read-only.
   `web/.oxfmtrc.json` excludes generated API types, lockfiles, distributions,
   dependencies, browser reports, and Go files. Formatting uses two spaces,
@@ -364,19 +365,18 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   unexpected/missing file, symlink, compiler identity and metadata regressions.
   Custom PyPI/OSV advisory queries and approval records are retired under
   [ADR-0053](decisions/ADR-0053-vyper-wasm-distribution.md#security-validation).
-  The single root npm audit covers all four workspaces and shared tooling and
+  The single root pnpm audit covers all four workspaces and shared tooling and
   must report zero high-severity vulnerabilities; the API generator's
   transitive parser and glob dependencies are constrained by audited
   overrides.
-  CI disables automatic npm install audits so an advisory endpoint outage
-  does not consume test budgets. The security job retains an explicit root
-  audit, which always enables auditing regardless of the install setting,
-  and fails if the audit cannot complete.
+  pnpm installs do not run automatic audits. The security job runs the explicit
+  root audit and fails if the audit cannot complete.
 - `make license-check`: Go, production frontend/compiler, all Vyper package
   and pinned shared WASM component notice checks. The frontend and compiler gates
-  resolve their production dependency closures through npm, scan the root
-  installation, and require a license result for every selected package, including hoisted
-  transitive dependencies and npm aliases. Workspace regressions also execute
+  resolve their installed production dependency closures from each owning module,
+  follow pnpm symlinks, and require a license result for every selected package,
+  including transitive dependencies and npm aliases. Missing required dependencies
+  fail closed. Workspace regressions also execute
   both distinct solc versions and check the pinned Pyodide and client versions.
 - `make benchmark-vyper-wasm`: actual SEA first/repeated dual compilation,
   per-process peak RSS and a native-reference-checked 17-file workload. Every
@@ -900,7 +900,7 @@ readiness alone does not establish that a lazy page has query observers.
 ### Dual-runtime npm alias feasibility
 
 `make test-vyper-alias-feasibility VYPER_ALIAS_FEASIBILITY_OUTPUT=.local/alias-comparison-new`
-creates a new isolated npm project with exact dependencies `pyodide@314.0.7` and
+creates a new isolated pnpm project with exact dependencies `pyodide@314.0.7` and
 `pyodide-legacy@npm:pyodide@0.29.5`. It requires the ordinary compiler tooling
 install, but never changes its dependency pins or existing runtime outputs.
 The new output directory must not already exist. Downloads use the normal
@@ -913,7 +913,7 @@ use fresh restricted processes with at most four concurrent children, a
 child receives read permission for its selected runtime and package, not the
 sibling runtime. These memory limits do not bound total RSS.
 
-The experiment records npm lock integrity, resolved alias paths, runtime and
+The experiment records the pnpm lockfile, resolved alias paths, runtime and
 package identities, reference digests and every input's output/command. Both
 runtimes get permission, memory, large-input and timeout/forced-cleanup probes.
 Wrong-Python identity rejection and a deliberately misrouted old compiler are

@@ -121,8 +121,8 @@ test("Vyper PR wrapper retains manual flag and paths with spaces", () =>
 
 test("CI command groups preserve sequence and stop after the first failure", () => {
   for (const [script, expected] of [
-    ["vyper-ci-packages.sh", ["npm", "node", "node", "node"]],
-    ["vyper-ci-native.sh", ["npm", "node", "npm"]],
+    ["vyper-ci-packages.sh", ["pnpm", "node", "node", "node"]],
+    ["vyper-ci-native.sh", ["pnpm", "node", "pnpm"]],
     ["preview-ci-certificates.sh", ["make", "sudo", "chmod"]],
   ])
     sandbox(({ fake, run, commands }) => {

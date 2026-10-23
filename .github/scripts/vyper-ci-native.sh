@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-npm ci --workspace compiler
+pnpm --filter ./compiler install --frozen-lockfile
 node compiler/vyper/wasm/prepare.mjs
-npm --workspace compiler run build:sea -- "$PWD/.local/vyper-wasm/sea/etherview-solcjs"
+pnpm --dir compiler run build:sea "$PWD/.local/vyper-wasm/sea/etherview-solcjs"

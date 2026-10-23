@@ -7,8 +7,8 @@ request fail.
 
 ## Repository build dependencies
 
-Run `npm ci` at the repository root to install all four npm workspaces from
-one lockfile. The compiler workspace requires Node 26.12.1; root npm policy
+Run `pnpm install --frozen-lockfile` at the repository root to install all four pnpm workspaces from
+one lockfile. The compiler workspace requires Node 26.12.1; root pnpm policy
 enforces engines and disables dependency lifecycle scripts. Production and
 Hardhat Docker builds use the same lock and install only their selected
 workspaces. Build the Hardhat client with `make hardhat3-client-image-build`;
@@ -21,7 +21,7 @@ Node dependency tree.
 
 Set `ETHERVIEW_WEB_BRANDING_DIR` to a directory containing `brand.json` and
 the selected images. All local relative directory paths resolve from the
-repository root, including when npm runs from `web/`; local absolute paths
+repository root, including when pnpm runs from `web/`; local absolute paths
 are also supported. An unset or empty value uses `web/branding/default` and
 preserves the Etherview name and icon.
 
@@ -56,8 +56,8 @@ but does not sanitize, resize or convert artwork. Each image is limited to
 characters; name/title/description are limited to 80/160/512 Unicode code points.
 
 ```sh
-ETHERVIEW_WEB_BRANDING_DIR=branding/acme npm --workspace web run dev
-ETHERVIEW_WEB_BRANDING_DIR=branding/acme npm --workspace web run build
+ETHERVIEW_WEB_BRANDING_DIR=branding/acme pnpm --dir web run dev
+ETHERVIEW_WEB_BRANDING_DIR=branding/acme pnpm --dir web run build
 make go-build ETHERVIEW_WEB_BRANDING_DIR=branding/acme
 make docker-build IMAGE=etherview:acme ETHERVIEW_WEB_BRANDING_DIR=branding/acme
 ```

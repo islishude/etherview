@@ -16,6 +16,7 @@
   ],
   "ignorePatterns": [
     "web/**",
+    "pnpm-lock.yaml",
     "**/node_modules/**",
     "**/dist/**",
     "**/coverage/**",

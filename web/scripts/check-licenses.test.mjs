@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -68,7 +68,7 @@ test("license gate rejects a disallowed hoisted transitive license", (t) => {
 test("license gate fails when a required hoisted dependency is missing", async (t) => {
   const root = fixture(t);
   rmSync(join(root, "node_modules/transitive"), { recursive: true });
-  await assert.rejects(checkLicenses(root), /Command failed/);
+  await assert.rejects(checkLicenses(root), /missing required dependency transitive/);
 });
 
 test("license gate follows npm aliases to the original package identity", async (t) => {
@@ -94,4 +94,50 @@ test("license gate follows npm aliases to the original package identity", async 
   );
   const result = await checkLicenses(root);
   assert.deepEqual(Object.keys(result).sort(), ["original@1.0.0", "transitive@1.0.0"]);
+});
+
+function virtualStoreFixture(t, license = "MIT") {
+  const root = fixture(t, license);
+  const store = join(root, "node_modules/.pnpm");
+  mkdirSync(join(store, "direct@1.0.0/node_modules"), { recursive: true });
+  mkdirSync(join(store, "transitive@1.0.0/node_modules"), { recursive: true });
+  renameSync(join(root, "node_modules/direct"), join(store, "direct@1.0.0/node_modules/direct"));
+  renameSync(
+    join(root, "node_modules/transitive"),
+    join(store, "transitive@1.0.0/node_modules/transitive"),
+  );
+  mkdirSync(join(root, "web/node_modules"));
+  symlinkSync(
+    "../../node_modules/.pnpm/direct@1.0.0/node_modules/direct",
+    join(root, "web/node_modules/direct"),
+  );
+  symlinkSync(
+    "../../transitive@1.0.0/node_modules/transitive",
+    join(store, "direct@1.0.0/node_modules/transitive"),
+  );
+  return root;
+}
+
+test("license gate follows pnpm's isolated symlink graph and installed optional peers", async (t) => {
+  const root = virtualStoreFixture(t);
+  const direct = join(root, "node_modules/.pnpm/direct@1.0.0/node_modules/direct/package.json");
+  writeFileSync(
+    direct,
+    JSON.stringify({
+      name: "direct",
+      version: "1.0.0",
+      license: "MIT",
+      peerDependencies: { transitive: "1.0.0" },
+      peerDependenciesMeta: { transitive: { optional: true } },
+      optionalDependencies: { unavailable: "1.0.0" },
+    }),
+  );
+  const result = await checkLicenses(root);
+  assert.deepEqual(Object.keys(result).sort(), ["direct@1.0.0", "transitive@1.0.0"]);
+});
+
+test("license gate rejects a missing required pnpm symlink target", async (t) => {
+  const root = virtualStoreFixture(t);
+  rmSync(join(root, "node_modules/.pnpm/transitive@1.0.0"), { recursive: true });
+  await assert.rejects(checkLicenses(root), /missing required dependency transitive/);
 });

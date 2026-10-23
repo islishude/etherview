@@ -2,34 +2,40 @@
 
 FROM gcr.io/distroless/base-debian13:nonroot AS production-base
 
-FROM node:26.12.1-slim AS web-builder
+FROM node:26.12.1-slim AS node-builder
+ENV PNPM_HOME=/pnpm
+ENV PATH="${PNPM_HOME}/bin:${PATH}"
+RUN env ENV=/root/.shrc SHELL=/bin/sh npx --yes get-pnpm@0.0.5 12.15.0 \
+    && test "$(pnpm --version)" = "12.15.0"
+
+FROM node-builder AS web-builder
 WORKDIR /src
-COPY package.json package-lock.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY web/package.json ./web/
 COPY api/package.json ./api/
 COPY compiler/package.json ./compiler/
 COPY e2e/hardhat3/package.json ./e2e/hardhat3/
-RUN --mount=type=cache,target=/root/.npm npm ci --engine-strict --ignore-scripts --legacy-peer-deps --no-audit --no-fund --workspace web --workspace api --include-workspace-root
+RUN --mount=type=cache,id=etherview-pnpm,target=/pnpm/store pnpm --filter . --filter ./web --filter ./api install --frozen-lockfile --store-dir=/pnpm/store
 COPY ./api ./api
 COPY web/index.html web/asset-budget.json web/tsconfig.json web/tsconfig.app.json web/tsconfig.node.json web/vite.config.ts ./web/
 COPY web/scripts ./web/scripts
 COPY web/src ./web/src
 ARG ETHERVIEW_WEB_BRANDING_DIR=web/branding/default
 COPY ["${ETHERVIEW_WEB_BRANDING_DIR}/", "/src/web-branding/"]
-RUN npm --workspace api run generate:api && ETHERVIEW_WEB_BRANDING_DIR=/src/web-branding npm --workspace web run build
+RUN pnpm --dir api run generate:api && ETHERVIEW_WEB_BRANDING_DIR=/src/web-branding pnpm --dir web run build
 
-FROM node:26.12.1-slim AS compiler-builder
+FROM node-builder AS compiler-builder
 RUN apt-get update \
     && apt-get install -y --no-install-recommends binutils pax-utils \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
-COPY package.json package-lock.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY web/package.json ./web/
 COPY api/package.json ./api/
 COPY compiler/package.json ./compiler/
 COPY e2e/hardhat3/package.json ./e2e/hardhat3/
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci --engine-strict --ignore-scripts --legacy-peer-deps --no-audit --no-fund --workspace compiler
+RUN --mount=type=cache,id=etherview-pnpm,target=/pnpm/store \
+    pnpm --filter ./compiler install --frozen-lockfile --store-dir=/pnpm/store
 WORKDIR /src/compiler
 COPY compiler/compile.mjs compiler/build-sea.mjs compiler/build-runtime.mjs compiler/elf-runtime.mjs compiler/test-elf-runtime.mjs compiler/test-sea.mjs ./
 COPY compiler/vyper/wasm ./vyper/wasm/

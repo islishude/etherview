@@ -75,7 +75,7 @@ checks upstream notices and nested vendor licenses.
 Custom PyPI/OSV advisory queries for Vyper, native reference dependencies and
 bundled runtime cores have been removed, along with their approval records and
 CVE snapshots. There is no advisory allowlist or raw-advisory CI artifact.
-Go/npm vulnerability checks and secret scanning remain active. Passing these
+Go/pnpm vulnerability checks and secret scanning remain active. Passing these
 checks is not a zero-vulnerability claim. Runtime upgrades still require full
 compatibility and isolation acceptance under
 [ADR-0053](../../docs/decisions/ADR-0053-vyper-wasm-distribution.md).
@@ -91,7 +91,7 @@ not a cumulative child-process maximum.
 
 ## Optional native reference tools
 
-Install Node dependencies with `npm ci --workspace compiler`.
+Install Node dependencies with `pnpm --filter ./compiler install --frozen-lockfile`.
 `node compiler/vyper/reference.mjs --version 0.4.3` prepares the locked official
 reference environment using uv `>=0.13.4,<1.0.0` and the version index's exact Python.
 Omit `--version` to prepare all supported environments. Historical version locks remain
@@ -145,7 +145,7 @@ Generate a proposed version in an isolated temporary tree, writing only a patch
 and evidence into a new output directory:
 
 ```sh
-npm ci --workspace compiler
+pnpm --filter ./compiler install --frozen-lockfile
 node compiler/vyper/update.mjs --version 0.4.4 --output .local/vyper-update-0.4.4
 ```
 

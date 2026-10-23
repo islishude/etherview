@@ -142,29 +142,34 @@ affected-row condition and `:exec` when only execution errors matter.
 
 Use `make format` to format repository JavaScript, YAML, Markdown, and the
 existing hand-written frontend scope. Use `make format-check` for a read-only
-check; `make lint` and CI include it. Both commands install the locked root npm
-workspace. The root `package.json` owns shared tooling and dependency overrides;
-`api`, `web`, `compiler`, and `e2e/hardhat3` share one root `package-lock.json`.
-Run `npm ci` (or `make npm-install`) at the repository root. Workspace manifests
-retain their runtime constraints: the compiler requires exactly Node 26.12.1
-and solc 0.8.37, while the Hardhat fixture keeps solc 0.8.30.
+check; `make lint` and CI include it. Both commands install the locked root pnpm
+workspace. `pnpm-workspace.yaml` owns the workspace list, install policy and
+dependency overrides; `api`, `web`, `compiler`, and `e2e/hardhat3` share one root
+`pnpm-lock.yaml`. Install pnpm 12.15.0 (pinned by `packageManager`), then run
+`pnpm install --frozen-lockfile` (or `make pnpm-install`) at the repository root.
+When switching an existing checkout from npm, remove the generated root and
+workspace `node_modules` directories before installing. Dependency changes use
+`pnpm add` in the owning workspace and commit the updated shared lockfile.
+Workspace manifests retain their runtime constraints: the compiler requires
+exactly Node 26.12.1 and solc 0.8.37, while the Hardhat fixture keeps solc 0.8.30.
 
-Root `.npmrc` enforces engines and disables dependency lifecycle scripts.
-It also retains the Safe artifact fixture's `legacy-peer-deps` policy, so its
-unused Ethers v5 peer is not installed; this npm resolution setting applies
-to the whole workspace. Required peers are explicit workspace dependencies,
-including the API generator's TypeScript 5 and the frontend test DOM library. Docker uses
-the same explicit settings and installs only the workspaces needed by each
-build stage. Dedicated compiler CI jobs can use `npm ci --workspace compiler`
-from the repository root; a subsequent full `npm ci` restores all workspaces.
-Resolve package files from the owning module instead of assuming a local
-`node_modules` directory.
+The workspace policy enforces engines and disables dependency lifecycle scripts.
+Automatic peer installation is disabled, so the artifact-only Safe fixture's
+unused Ethers v5 peer is not installed. Required peers are explicit workspace
+dependencies, including the API generator's TypeScript 5 and the frontend test
+DOM library. Docker uses the [official npm-based installer](https://pnpm.io/installation#using-npm)
+via `npx --yes get-pnpm@0.0.5 12.15.0`, with an explicit shell and `PNPM_HOME` on `PATH`, then
+uses the same workspace policy with frozen, filtered installs. CI pins
+`pnpm/action-setup@v6.1.0`. Dedicated compiler
+CI jobs use `pnpm --filter ./compiler install --frozen-lockfile`; a full
+`pnpm install --frozen-lockfile` installs all workspaces. Resolve package files
+from the owning module instead of assuming a hoisted `node_modules` directory.
 
-After installation, `npm run lint`, `npm run format`, and `npm run format:check`
+After installation, `pnpm run lint`, `pnpm run format`, and `pnpm run format:check`
 provide the JavaScript/frontend gates directly. Use
-`npm --workspace web run format` for frontend-only edits.
+`pnpm --dir web run format` for frontend-only edits.
 `make web-lint` runs TypeScript, Oxlint, and a read-only Oxfmt check through the
-same npm scripts used by CI. Keep generated API types under the API generator;
+same pnpm scripts used by CI. Keep generated API types under the API generator;
 do not format them manually. The [testing guide](testing.md) owns exact limits,
 formatting scope, and tool-policy regression coverage.
 

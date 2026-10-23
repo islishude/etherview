@@ -132,7 +132,7 @@ test("file size enforces production/test limits and excludes generated API types
 test("format gate covers hand-written frontend files, preserves exclusions, and is idempotent", (t) => {
   const ignored = {
     "src/api/schema.gen.ts": "export type Generated={value:string}",
-    "package-lock.json": '{"lockfileVersion":3}',
+    "pnpm-lock.yaml": "lockfileVersion:   '9.0'",
     "dist/output.js": "const x=1",
     "e2e/server/main.go": "package main",
   };
@@ -213,6 +213,7 @@ test("repository formatting covers scripts, hidden workflows, YAML and Markdown 
 test("repository formatting preserves excluded fixtures, templates, generated and local files", (t) => {
   const ignored = Object.fromEntries(
     [
+      "pnpm-lock.yaml",
       "web/src/example.js",
       "compiler/node_modules/example/index.js",
       "node_modules/example/index.js",

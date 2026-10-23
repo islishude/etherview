@@ -14,7 +14,7 @@
   "overrides": [{ "files": ["**/*.md"], "options": { "embeddedLanguageFormatting": "off" } }],
   "ignorePatterns": [
     "src/api/schema.gen.ts",
-    "package-lock.json",
+    "pnpm-lock.yaml",
     "dist/**",
     "node_modules/**",
     "**/*.go",

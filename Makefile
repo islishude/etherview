@@ -2,7 +2,7 @@ SHELL := /bin/sh
 
 GO ?= go
 NODE ?= node
-NPM ?= npm
+PNPM ?= pnpm
 PYTHON ?= python3.13
 DOCKER ?= docker
 BUILDX ?= .github/scripts/buildx.sh
@@ -67,7 +67,7 @@ X402_LOCAL_TOPOLOGY ?= monolith
 	docker-build docker-check docker-image-check \
 	compiler-install go-build generate generate-check generate-go helm-check install-lint-tools install-security-tools \
 	golangci-lint \
-	format format-check repo-format-check web-format-check npm-install \
+	format format-check repo-format-check web-format-check pnpm-install \
 	license-check license-tool-check lint lint-go plan-check security-check source-check \
 	security-tool-check test test-go toolchain-check \
 	test-e2e test-integration test-integration-race test-load test-race test-runtime-e2e \
@@ -112,7 +112,7 @@ generate-check:
 			cp -R "$$path" "$$snapshot/$$path"; \
 		done; \
 		$(MAKE) --no-print-directory generate; \
-		$(NPM) --workspace api run check:api; \
+		$(PNPM) --dir api run check:api; \
 		for path in $(GENERATED_PATHS); do \
 			diff -ru "$$snapshot/$$path" "$$path"; \
 		done
@@ -131,12 +131,12 @@ test-e2e: web-build
 		server_binary="$$(mktemp /tmp/etherview-web-e2e.XXXXXX)"; \
 		trap 'rm -f "$$server_binary"' EXIT INT TERM; \
 		$(GO) build -o "$$server_binary" ./web/e2e/server; \
-		ETHERVIEW_E2E_SERVER_BINARY="$$server_binary" $(NPM) --workspace web run test:e2e
+		ETHERVIEW_E2E_SERVER_BINARY="$$server_binary" $(PNPM) --dir web run test:e2e
 
 test-race: web-build compiler-install
 	$(GO) test -race $(GO_TEST_FLAGS) $(GO_PACKAGES)
 
-test-hardhat3-provider-compat: npm-install
+test-hardhat3-provider-compat: pnpm-install
 	$(NODE) --test e2e/hardhat3/safe-artifact.test.mjs e2e/hardhat3/transaction-sender.test.mjs
 	ETHERVIEW_HARDHAT3_NODE="$(NODE)" $(GO) test -count=1 -tags=hardhat3verify ./e2e/hardhat3
 
@@ -154,7 +154,7 @@ test-hardhat3-offline-compile:
 		exit 1; \
 	}
 	@$(DOCKER) run --rm --network none "$(HARDHAT3_IMAGE)" \
-		npx hardhat --build-profile production compile
+		pnpm exec hardhat --build-profile production compile
 
 test-hardhat3-e2e-prebuilt: test-hardhat3-offline-compile
 	@case "$(VERIFICATION_PARALLEL)" in 1|2) ;; *) echo "VERIFICATION_PARALLEL must be 1 or 2"; exit 1;; esac
@@ -239,38 +239,38 @@ test-soak:
 		ETHERVIEW_LOAD_PROFILE=p70-reference-capacity \
 		$(GO) run ./cmd/loadtest
 
-npm-install:
-	$(NPM) ci
+pnpm-install:
+	$(PNPM) install --frozen-lockfile
 
-web-install: npm-install
+web-install: pnpm-install
 
-compiler-install: npm-install
+compiler-install: pnpm-install
 	$(NODE) compiler/vyper/wasm/prepare.mjs
 	$(NODE) compiler/vyper/wasm/packages.mjs --version 0.4.3
-	$(NPM) --workspace compiler run build:sea -- "$(CURDIR)/.local/vyper-wasm/sea/etherview-solcjs"
+	$(PNPM) --dir compiler run build:sea "$(CURDIR)/.local/vyper-wasm/sea/etherview-solcjs"
 
 web-generate: web-install
-	$(NPM) --workspace api run generate:api
+	$(PNPM) --dir api run generate:api
 
-format: npm-install
-	$(NPM) run format
+format: pnpm-install
+	$(PNPM) run format
 
-repo-format-check: npm-install
-	$(NPM) run format:repo:check
+repo-format-check: pnpm-install
+	$(PNPM) run format:repo:check
 
 web-format-check: web-install
-	$(NPM) --workspace web run format:check
+	$(PNPM) --dir web run format:check
 
 format-check: repo-format-check web-format-check
 
 web-lint: web-install web-format-check
-	$(NPM) --workspace web run lint:code
+	$(PNPM) --dir web run lint:code
 
 web-test: web-install
-	$(NPM) --workspace web run test
+	$(PNPM) --dir web run test
 
 web-build: web-generate
-	$(NPM) --workspace web run build
+	$(PNPM) --dir web run build
 
 lint-go: lint-tool-check source-check
 	@unformatted="$$(find . \( -path './.git' -o -path './.local' -o -path './vendor' -o -name node_modules \) -prune -o -type f -name '*.go' -exec gofmt -l {} +)"; \
@@ -311,7 +311,7 @@ security-check: security-tool-check web-build compiler-install
 	else \
 		echo "gitleaks history: SKIP (repository has no commits yet)"; \
 	fi
-	$(NPM) audit --audit-level=high
+	$(PNPM) audit --audit-level=high
 	$(NODE) compiler/vyper/wasm/packages.mjs
 	$(NODE) compiler/vyper/wasm/check-integrity.mjs
 	$(GO) test ./internal/app ./internal/auth ./internal/billing/... ./internal/cli ./internal/config ./internal/httpapi ./internal/jsonstrict ./internal/metadata ./internal/observability ./internal/userauth ./internal/verify ./web
@@ -336,7 +336,7 @@ license-check: license-tool-check web-install compiler-install
 	@grep -Eq '^COPY --from=go-builder .* /licenses /licenses$$' Dockerfile || { echo "license-check: production image must include reviewed geth licenses"; exit 1; }
 	@grep -Eq '^COPY .*licenses /licenses$$' Dockerfile || { echo "license-check: production image must include checked-in third-party licenses"; exit 1; }
 	GO="$(GO)" GO_LICENSES="$(GO_LICENSES)" sh .github/scripts/go-license-check.sh $(GO_PACKAGES)
-	$(NPM) run check:licenses
+	$(PNPM) run check:licenses
 
 docker-check:
 	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "docker-check: docker is required"; exit 1; }
@@ -580,7 +580,7 @@ test-vyper-release: test-vyper-update
 	$(NODE) --test compiler/vyper/acceptance.test.mjs compiler/vyper/wasm/production-shards.test.mjs
 
 .PHONY: test-vyper-wasm-candidate
-test-vyper-wasm-candidate: npm-install
+test-vyper-wasm-candidate: pnpm-install
 	$(NODE) --test compiler/vyper/wasm/tooling.test.mjs
 	$(NODE) compiler/vyper/wasm/check.mjs
 
@@ -597,7 +597,7 @@ benchmark-vyper-wasm: compiler-install
 	$(PYTHON) compiler/vyper/wasm/benchmark.py
 
 .PHONY: test-vyper-update
-test-vyper-update: npm-install
+test-vyper-update: pnpm-install
 	$(NODE) compiler/vyper/update.mjs --check
 	$(NODE) --test compiler/vyper/update.test.mjs
 	uv run --project compiler/vyper --locked python compiler/vyper/update_metadata_test.py

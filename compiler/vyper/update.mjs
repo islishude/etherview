@@ -214,7 +214,7 @@ export async function generate(version, output, services = {}) {
       "compiler/vyper/application-lock.json",
     ]);
     execute(tree, process.execPath, ["compiler/vyper/wasm/generate-policy.mjs"]);
-    execute(tree, "npm", ["--prefix", "compiler", "ci", "--ignore-scripts"]);
+    execute(tree, "pnpm", ["--filter", "./compiler", "install", "--frozen-lockfile"]);
     execute(tree, process.execPath, ["compiler/vyper/reference.mjs", "--version", version]);
     execute(tree, "uv", [
       "run",
