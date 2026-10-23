@@ -1,5 +1,9 @@
 import { expect, test } from "@playwright/test";
 
+// Full Chromium supports native notifications in headless mode; the default
+// bundled headless shell does not expose them through getNotifications().
+test.use({ channel: process.env.PLAYWRIGHT_USE_BUNDLED === "1" ? "chromium" : "chrome" });
+
 test("embedded worker displays an injected push after the website page closes", async ({
   page,
   context,
