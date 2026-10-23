@@ -13,6 +13,7 @@ import (
 	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/etherscan"
 	"github.com/islishude/etherview/internal/store"
 	"github.com/islishude/etherview/internal/verify"
 )
@@ -135,4 +136,25 @@ func exactProxyVerificationSubmission(
 		},
 		ProxyTarget: proxyTarget,
 	}
+}
+
+// newProxyVerificationBackend wires the durable verifier and compatibility API
+// together. Each caller retains its own database and publication assertions.
+func newProxyVerificationBackend(t *testing.T, db *pgxpool.Pool) (*verify.PostgresRepository, *etherscan.PostgresBackend) {
+	t.Helper()
+	repository, err := verify.NewPostgresRepository(db, verify.RepositoryOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := verify.NewService(repository, 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend, err := etherscan.NewPostgresBackend(db, etherscan.PostgresOptions{
+		ChainID: 1, Verification: service,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return repository, backend
 }

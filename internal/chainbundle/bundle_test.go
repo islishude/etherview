@@ -960,9 +960,12 @@ func TestRawUnknownFieldsSurviveBundleAndStoredPersistence(t *testing.T) {
 
 func TestStoredBlockRejectsReservedMetadataCollision(t *testing.T) {
 	t.Parallel()
-	bundle, err := testfixture.New(testfixture.Options{
-		Number: 3,
-		Uncles: []*types.Header{{
+	for _, test := range []struct {
+		name   string
+		uncles []*types.Header
+	}{
+		{name: "without uncles"},
+		{name: "with uncles", uncles: []*types.Header{{
 			UncleHash:   types.EmptyUncleHash,
 			Root:        common.Hash{31: 1},
 			TxHash:      types.EmptyTxsHash,
@@ -971,52 +974,31 @@ func TestStoredBlockRejectsReservedMetadataCollision(t *testing.T) {
 			Number:      big.NewInt(2),
 			GasLimit:    30_000_000,
 			Time:        1_700_000_002,
-		}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	rawBlock := mutateObject(t, bundle.RawBlock, func(fields map[string]json.RawMessage) {
-		fields["_etherviewChainBundle"] = json.RawMessage(`{"provider":"collision"}`)
-	})
-	bundle, err = chainbundle.DecodeBlock(rawBlock, bundle.RawUncles)
-	if err != nil {
-		t.Fatal(err)
-	}
-	bundle, err = bundle.WithReceipts(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if stored, err := chainbundle.EncodeStoredBlock(bundle); err == nil ||
-		!errors.Is(err, chainbundle.ErrReservedStoredMetadata) ||
-		!chainbundle.IsPermanent(err) ||
-		stored != nil {
-		t.Fatalf("EncodeStoredBlock() = %s, %v", stored, err)
-	}
-}
-
-func TestStoredBlockRejectsReservedMetadataCollisionWithoutUncles(t *testing.T) {
-	t.Parallel()
-	bundle, err := testfixture.New(testfixture.Options{Number: 3})
-	if err != nil {
-		t.Fatal(err)
-	}
-	rawBlock := mutateObject(t, bundle.RawBlock, func(fields map[string]json.RawMessage) {
-		fields["_etherviewChainBundle"] = json.RawMessage(`{"provider":"collision"}`)
-	})
-	bundle, err = chainbundle.DecodeBlock(rawBlock, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	bundle, err = bundle.WithReceipts(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if stored, err := chainbundle.EncodeStoredBlock(bundle); err == nil ||
-		!errors.Is(err, chainbundle.ErrReservedStoredMetadata) ||
-		!chainbundle.IsPermanent(err) ||
-		stored != nil {
-		t.Fatalf("EncodeStoredBlock() = %s, %v", stored, err)
+		}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			bundle, err := testfixture.New(testfixture.Options{Number: 3, Uncles: test.uncles})
+			if err != nil {
+				t.Fatal(err)
+			}
+			rawBlock := mutateObject(t, bundle.RawBlock, func(fields map[string]json.RawMessage) {
+				fields["_etherviewChainBundle"] = json.RawMessage(`{"provider":"collision"}`)
+			})
+			bundle, err = chainbundle.DecodeBlock(rawBlock, bundle.RawUncles)
+			if err != nil {
+				t.Fatal(err)
+			}
+			bundle, err = bundle.WithReceipts(nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if stored, err := chainbundle.EncodeStoredBlock(bundle); err == nil ||
+				!errors.Is(err, chainbundle.ErrReservedStoredMetadata) ||
+				!chainbundle.IsPermanent(err) || stored != nil {
+				t.Fatalf("EncodeStoredBlock() = %s, %v", stored, err)
+			}
+		})
 	}
 }
 

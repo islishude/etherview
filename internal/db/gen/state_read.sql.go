@@ -31,47 +31,74 @@ func (q *Queries) StateCanonicalTip(ctx context.Context, chainID pgtype.Numeric)
 	return i, err
 }
 
-const stateERC1155BalanceObservation = `-- name: StateERC1155BalanceObservation :one
-SELECT observation.balance::text, observation.confidence
-FROM erc1155_balance_reconciliations AS observation
+const stateERC1155BalanceObservations = `-- name: StateERC1155BalanceObservations :many
+WITH candidate AS (
+    SELECT unnest($5::bytea[]) AS token_address,
+           unnest($6::numeric[]) AS token_id
+)
+SELECT observation.token_address, observation.token_id::text,
+       observation.balance::text, observation.confidence
+FROM candidate
+JOIN erc1155_balance_reconciliations AS observation
+  ON observation.token_address = candidate.token_address
+ AND observation.token_id = candidate.token_id
 JOIN canonical_blocks AS canonical
   ON canonical.chain_id = observation.chain_id
  AND canonical.number = observation.block_number
  AND canonical.block_hash = observation.block_hash
 WHERE observation.chain_id = $1::numeric
-  AND observation.token_address = $2
-  AND observation.token_id = $3::numeric
-  AND observation.owner_address = $4
-  AND observation.block_number = $5::numeric
-  AND observation.block_hash = $6
+  AND observation.owner_address = $2
+  AND observation.block_number = $3::numeric
+  AND observation.block_hash = $4
 `
 
-type StateERC1155BalanceObservationParams struct {
-	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
-	TokenAddress []byte         `db:"token_address" json:"token_address"`
-	TokenID      pgtype.Numeric `db:"token_id" json:"token_id"`
-	OwnerAddress []byte         `db:"owner_address" json:"owner_address"`
-	BlockNumber  pgtype.Numeric `db:"block_number" json:"block_number"`
-	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
+type StateERC1155BalanceObservationsParams struct {
+	ChainID        pgtype.Numeric   `db:"chain_id" json:"chain_id"`
+	OwnerAddress   []byte           `db:"owner_address" json:"owner_address"`
+	BlockNumber    pgtype.Numeric   `db:"block_number" json:"block_number"`
+	BlockHash      []byte           `db:"block_hash" json:"block_hash"`
+	TokenAddresses [][]byte         `db:"token_addresses" json:"token_addresses"`
+	TokenIds       []pgtype.Numeric `db:"token_ids" json:"token_ids"`
 }
 
-type StateERC1155BalanceObservationRow struct {
+type StateERC1155BalanceObservationsRow struct {
+	TokenAddress       []byte `db:"token_address" json:"token_address"`
+	ObservationTokenID string `db:"observation_token_id" json:"observation_token_id"`
 	ObservationBalance string `db:"observation_balance" json:"observation_balance"`
 	Confidence         string `db:"confidence" json:"confidence"`
 }
 
-func (q *Queries) StateERC1155BalanceObservation(ctx context.Context, arg StateERC1155BalanceObservationParams) (StateERC1155BalanceObservationRow, error) {
-	row := q.db.QueryRow(ctx, stateERC1155BalanceObservation,
+// Parallel set-returning expressions pair equal-length arrays by position.
+func (q *Queries) StateERC1155BalanceObservations(ctx context.Context, arg StateERC1155BalanceObservationsParams) ([]StateERC1155BalanceObservationsRow, error) {
+	rows, err := q.db.Query(ctx, stateERC1155BalanceObservations,
 		arg.ChainID,
-		arg.TokenAddress,
-		arg.TokenID,
 		arg.OwnerAddress,
 		arg.BlockNumber,
 		arg.BlockHash,
+		arg.TokenAddresses,
+		arg.TokenIds,
 	)
-	var i StateERC1155BalanceObservationRow
-	err := row.Scan(&i.ObservationBalance, &i.Confidence)
-	return i, err
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []StateERC1155BalanceObservationsRow{}
+	for rows.Next() {
+		var i StateERC1155BalanceObservationsRow
+		if err := rows.Scan(
+			&i.TokenAddress,
+			&i.ObservationTokenID,
+			&i.ObservationBalance,
+			&i.Confidence,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const stateERC20BalanceObservations = `-- name: StateERC20BalanceObservations :many
@@ -168,6 +195,75 @@ func (q *Queries) StateERC721OwnerObservation(ctx context.Context, arg StateERC7
 	var i StateERC721OwnerObservationRow
 	err := row.Scan(&i.State, &i.OwnerAddress, &i.Confidence)
 	return i, err
+}
+
+const stateERC721OwnerObservations = `-- name: StateERC721OwnerObservations :many
+WITH candidate AS (
+    SELECT unnest($4::bytea[]) AS token_address,
+           unnest($5::numeric[]) AS token_id
+)
+SELECT observation.token_address, observation.token_id::text,
+       observation.state, observation.owner_address, observation.confidence
+FROM candidate
+JOIN erc721_owner_reconciliations AS observation
+  ON observation.token_address = candidate.token_address
+ AND observation.token_id = candidate.token_id
+JOIN canonical_blocks AS canonical
+  ON canonical.chain_id = observation.chain_id
+ AND canonical.number = observation.block_number
+ AND canonical.block_hash = observation.block_hash
+WHERE observation.chain_id = $1::numeric
+  AND observation.block_number = $2::numeric
+  AND observation.block_hash = $3
+`
+
+type StateERC721OwnerObservationsParams struct {
+	ChainID        pgtype.Numeric   `db:"chain_id" json:"chain_id"`
+	BlockNumber    pgtype.Numeric   `db:"block_number" json:"block_number"`
+	BlockHash      []byte           `db:"block_hash" json:"block_hash"`
+	TokenAddresses [][]byte         `db:"token_addresses" json:"token_addresses"`
+	TokenIds       []pgtype.Numeric `db:"token_ids" json:"token_ids"`
+}
+
+type StateERC721OwnerObservationsRow struct {
+	TokenAddress       []byte `db:"token_address" json:"token_address"`
+	ObservationTokenID string `db:"observation_token_id" json:"observation_token_id"`
+	State              string `db:"state" json:"state"`
+	OwnerAddress       []byte `db:"owner_address" json:"owner_address"`
+	Confidence         string `db:"confidence" json:"confidence"`
+}
+
+// Parallel set-returning expressions pair equal-length arrays by position.
+func (q *Queries) StateERC721OwnerObservations(ctx context.Context, arg StateERC721OwnerObservationsParams) ([]StateERC721OwnerObservationsRow, error) {
+	rows, err := q.db.Query(ctx, stateERC721OwnerObservations,
+		arg.ChainID,
+		arg.BlockNumber,
+		arg.BlockHash,
+		arg.TokenAddresses,
+		arg.TokenIds,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []StateERC721OwnerObservationsRow{}
+	for rows.Next() {
+		var i StateERC721OwnerObservationsRow
+		if err := rows.Scan(
+			&i.TokenAddress,
+			&i.ObservationTokenID,
+			&i.State,
+			&i.OwnerAddress,
+			&i.Confidence,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const stateIsCanonical = `-- name: StateIsCanonical :one

@@ -1,6 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
+import { appearanceCases, configureAppearance, collectBrowserErrors } from "./appearance";
+
 const blockHash = `0x${"1".repeat(64)}`;
 const root = `0x${"ab".repeat(32)}`;
 const observation = {
@@ -88,77 +90,57 @@ test("enabled consensus retains the tab and explains missing, unavailable and di
   }
 });
 
-for (const width of [390, 768, 1440]) {
-  for (const language of ["en", "zh"] as const) {
-    for (const theme of ["light", "dark"] as const) {
-      test(`block consensus ${width}px ${language} ${theme}`, async ({ page }, testInfo) => {
-        await page.setViewportSize({ width, height: 1000 });
-        await page.addInitScript(
-          ({ language, theme }) => {
-            localStorage.setItem("etherview.language", language);
-            localStorage.setItem("etherview.theme", theme);
-          },
-          { language, theme },
-        );
-        await configureConsensus(page, true);
-        let reads = 0;
-        await page.route("**/api/v1/blocks/*/consensus", (route) => {
-          reads++;
-          expect(new URL(route.request().url()).pathname).toBe(
-            `/api/v1/blocks/${blockHash}/consensus`,
-          );
-          return route.fulfill({
-            json: { data: observation, meta: { chain_id: "1", request_id: "consensus-layout" } },
-          });
-        });
-        const errors: string[] = [];
-        page.on("pageerror", (error) => errors.push(error.message));
-        page.on("console", (message) => {
-          if (/content security policy|violates.*directive/i.test(message.text()))
-            errors.push(message.text());
-        });
-        await page.goto("/blocks/1");
-        const tab = page.getByRole("tab", {
-          name: language === "en" ? "Consensus" : "共识层",
-          exact: true,
-        });
-        await expect(tab).toBeVisible();
-        expect(reads).toBe(0);
-        await tab.click();
-        const panel = page.getByRole("tabpanel");
-        await expect(panel.getByText("9,007,199,254,740,994", { exact: true })).toBeVisible();
-        await expect(panel.getByRole("heading")).toHaveCount(0);
-        await expect(panel.getByRole("status")).toHaveCount(0);
-        await expect(panel.locator(".block-consensus-summary dt")).toHaveCount(4);
-        await expect(panel).not.toContainText(language === "en" ? "Available" : "可用");
-        const details = panel.locator("details");
-        await expect(details).not.toHaveAttribute("open");
-        const disclosure = details.locator("summary");
-        for (const expanded of [false, true]) {
-          if (expanded) {
-            await disclosure.focus();
-            await page.keyboard.press("Enter");
-            await expect(details).toHaveAttribute("open", "");
-            await expect(panel.getByText("hello", { exact: true })).toBeVisible();
-            await expect(panel.getByText(root, { exact: true })).toHaveCount(4);
-            await expect(panel.getByText("9,007,199,254,740,995", { exact: true })).toBeVisible();
-          }
-          await expect(page.locator("body")).toHaveJSProperty("scrollWidth", width);
-          const scan = await new AxeBuilder({ page })
-            .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
-            .analyze();
-          expect(scan.violations).toEqual([]);
-          const screenshot = testInfo.outputPath(
-            `consensus-${expanded ? "expanded" : "summary"}.png`,
-          );
-          await page.screenshot({ path: screenshot, fullPage: true });
-          await testInfo.attach(expanded ? "technical details" : "summary", {
-            path: screenshot,
-            contentType: "image/png",
-          });
-        }
-        expect(errors).toEqual([]);
+for (const { width, language, theme } of appearanceCases) {
+  test(`block consensus ${width}px ${language} ${theme}`, async ({ page }, testInfo) => {
+    await configureAppearance(page, { width, language, theme });
+    await configureConsensus(page, true);
+    let reads = 0;
+    await page.route("**/api/v1/blocks/*/consensus", (route) => {
+      reads++;
+      expect(new URL(route.request().url()).pathname).toBe(`/api/v1/blocks/${blockHash}/consensus`);
+      return route.fulfill({
+        json: { data: observation, meta: { chain_id: "1", request_id: "consensus-layout" } },
+      });
+    });
+    const errors = collectBrowserErrors(page);
+    await page.goto("/blocks/1");
+    const tab = page.getByRole("tab", {
+      name: language === "en" ? "Consensus" : "共识层",
+      exact: true,
+    });
+    await expect(tab).toBeVisible();
+    expect(reads).toBe(0);
+    await tab.click();
+    const panel = page.getByRole("tabpanel");
+    await expect(panel.getByText("9,007,199,254,740,994", { exact: true })).toBeVisible();
+    await expect(panel.getByRole("heading")).toHaveCount(0);
+    await expect(panel.getByRole("status")).toHaveCount(0);
+    await expect(panel.locator(".block-consensus-summary dt")).toHaveCount(4);
+    await expect(panel).not.toContainText(language === "en" ? "Available" : "可用");
+    const details = panel.locator("details");
+    await expect(details).not.toHaveAttribute("open");
+    const disclosure = details.locator("summary");
+    for (const expanded of [false, true]) {
+      if (expanded) {
+        await disclosure.focus();
+        await page.keyboard.press("Enter");
+        await expect(details).toHaveAttribute("open", "");
+        await expect(panel.getByText("hello", { exact: true })).toBeVisible();
+        await expect(panel.getByText(root, { exact: true })).toHaveCount(4);
+        await expect(panel.getByText("9,007,199,254,740,995", { exact: true })).toBeVisible();
+      }
+      await expect(page.locator("body")).toHaveJSProperty("scrollWidth", width);
+      const scan = await new AxeBuilder({ page })
+        .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+        .analyze();
+      expect(scan.violations).toEqual([]);
+      const screenshot = testInfo.outputPath(`consensus-${expanded ? "expanded" : "summary"}.png`);
+      await page.screenshot({ path: screenshot, fullPage: true });
+      await testInfo.attach(expanded ? "technical details" : "summary", {
+        path: screenshot,
+        contentType: "image/png",
       });
     }
-  }
+    expect(errors).toEqual([]);
+  });
 }

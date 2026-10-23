@@ -21,8 +21,6 @@ import (
 	"github.com/islishude/etherview/internal/publicquery"
 )
 
-var _ catalog.ERC20StateReconciler = (*NFTReconciler)(nil)
-
 // ErrExactERC20BalanceObservationConflict means two exact block-hash RPC reads
 // disagreed for the same immutable owner and token fact. The first durable
 // observation remains authoritative and is never overwritten.
@@ -36,7 +34,7 @@ type erc20BalanceBatchResult struct {
 // Balances observes every ERC-20 candidate through one endpoint and one exact
 // block-hash selector. Candidate discovery and database snapshots are owned by
 // catalog and are closed before this external call starts.
-func (reconciler *NFTReconciler) ERC20Balances(
+func (reconciler *TokenReconciler) ERC20Balances(
 	ctx context.Context,
 	snapshot catalog.Snapshot,
 	ownerAddressText string,
@@ -48,10 +46,10 @@ func (reconciler *NFTReconciler) ERC20Balances(
 	if len(candidates) == 0 {
 		return []catalog.ERC20BalanceObservation{}, nil
 	}
-	if len(candidates) > 256 {
+	if len(candidates) > maxBalanceCandidates {
 		return nil, errors.New("too many ERC-20 balance candidates")
 	}
-	reference, chainID, err := validateNFTSnapshot(snapshot)
+	reference, chainID, err := validateTokenSnapshot(snapshot)
 	if err != nil {
 		return nil, errors.New("invalid ERC-20 state snapshot")
 	}
@@ -118,7 +116,7 @@ func (reconciler *NFTReconciler) ERC20Balances(
 	return observations, nil
 }
 
-func (reconciler *NFTReconciler) cachedERC20Balances(
+func (reconciler *TokenReconciler) cachedERC20Balances(
 	ctx context.Context,
 	chainID string,
 	owner common.Address,
@@ -218,7 +216,7 @@ func callERC20BalanceBatch(
 	return results, nil
 }
 
-func (reconciler *NFTReconciler) persistERC20Balances(
+func (reconciler *TokenReconciler) persistERC20Balances(
 	ctx context.Context,
 	chainID string,
 	owner common.Address,
@@ -327,7 +325,7 @@ func classifyERC20BalancePersistenceMiss(
 	return errors.New("exact ERC-20 balance persistence affected no row")
 }
 
-func (reconciler *NFTReconciler) requireCanonicalERC20(
+func (reconciler *TokenReconciler) requireCanonicalERC20(
 	ctx context.Context,
 	reference CanonicalRef,
 ) error {

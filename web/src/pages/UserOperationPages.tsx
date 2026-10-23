@@ -1,3 +1,4 @@
+import { useCursorHistory } from "@/api/pagination";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
@@ -8,20 +9,12 @@ import { formatInteger, formatNativeAmount, formatTimestamp, shorten } from "@/c
 import { QueryNotice } from "@/components/QueryNotice";
 import { UserOperationStatus, UserOperationTable } from "@/components/UserOperationTable";
 import { AddressIdentity } from "@/ens/AddressIdentity";
-import {
-  CORE_PAGE_SIZE,
-  CursorPagination,
-  Detail,
-  DetailList,
-  FinalityBadge,
-  Page,
-  useCursorHistory,
-} from "./pages";
+import { CORE_PAGE_SIZE, CursorPagination, Detail, DetailList, FinalityBadge, Page } from "./pages";
 
 export function UserOperationsPage() {
   const { i18n, t } = useTranslation();
   const pager = useCursorHistory("user-operations");
-  const operations = useUserOperations(CORE_PAGE_SIZE, pager.cursor, pager.refreshGeneration);
+  const operations = useUserOperations(pager.request, CORE_PAGE_SIZE);
   const locale = i18n.resolvedLanguage ?? "en";
   return (
     <Page title={t("page.userOperations")} description={t("page.userOperationsDescription")}>

@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
+import { appearanceCases, configureAppearance, collectBrowserErrors } from "./appearance";
+
 const blockHash = `0x${"1".repeat(64)}`;
 const hash = `0x${"2".repeat(64)}`;
 
@@ -153,93 +155,76 @@ test("consensus freshness expires while the last successful snapshot stays visib
   await expect(page.getByRole("link", { name: "#2" })).toBeVisible();
 });
 
-for (const width of [390, 768, 1440]) {
-  for (const language of ["en", "zh"] as const) {
-    for (const theme of ["light", "dark"] as const) {
-      test(`consensus summary ${width}px ${language} ${theme}`, async ({ page }, testInfo) => {
-        await page.setViewportSize({ width, height: 1000 });
-        await page.addInitScript(
-          ({ language, theme }) => {
-            localStorage.setItem("etherview.language", language);
-            localStorage.setItem("etherview.theme", theme);
-          },
-          { language, theme },
-        );
-        const errors: string[] = [];
-        page.on("pageerror", (error) => errors.push(error.message));
-        page.on("console", (message) => {
-          if (/content security policy|violates.*directive/i.test(message.text())) {
-            errors.push(message.text());
-          }
-        });
-        let warning = false;
-        await page.route("**/api/v1/home?*", async (route) => {
-          const response = await route.fetch();
-          const body = await response.json();
-          body.data.status.consensus = {
-            state: "complete",
-            stale: warning,
-            blobs_enabled: true,
-            blob_state: "complete",
-            slot: "9007199254740993",
-            epoch: "281474976710656",
-            finalized: { epoch: "281474976710654", root: hash },
-            root: hash,
-            syncing: warning,
-            execution_optimistic: warning,
-          };
-          await route.fulfill({ response, json: body });
-        });
-        await page.goto("/");
-        const panel = page.getByRole("region", {
-          name: language === "en" ? "Consensus & finality" : "共识与最终性",
-        });
-        for (const state of ["normal", "warning"]) {
-          if (state === "warning") {
-            warning = true;
-            await page.reload();
-          }
-          await expect(panel.getByText("9,007,199,254,740,993", { exact: true })).toBeVisible();
-          await expect(panel.locator("dt")).toHaveCount(5);
-          await expect(
-            page.getByText(language === "en" ? "Finalized block" : "已最终确认区块", {
-              exact: true,
-            }),
-          ).toHaveCount(1);
-          await expect(page.locator(".chain-context")).toHaveCount(0);
-          await expect(panel.getByRole("status")).toHaveCount(warning ? 1 : 0);
-          await expect(page.locator("body")).toHaveJSProperty("scrollWidth", width);
-          const metrics = await panel.locator("dd").all();
-          for (const metric of metrics) {
-            expect(
-              await metric.evaluate((element) => {
-                const range = document.createRange();
-                range.selectNodeContents(element);
-                return range.getClientRects().length;
-              }),
-            ).toBe(1);
-          }
-          const boxes = await Promise.all(metrics.map((metric) => metric.boundingBox()));
-          expect(boxes.every(Boolean)).toBe(true);
-          const columns = width === 390 ? 1 : width === 768 ? 3 : 5;
-          for (let index = 1; index < boxes.length; index++) {
-            if (index % columns === 0) expect(boxes[index]!.y).toBeGreaterThan(boxes[index - 1]!.y);
-            else expect(boxes[index]!.y).toBe(boxes[index - 1]!.y);
-          }
-          const scan = await new AxeBuilder({ page })
-            .include(".consensus-overview")
-            .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
-            .analyze();
-          expect(scan.violations).toEqual([]);
-          const screenshot = testInfo.outputPath(`consensus-${state}.png`);
-          await page.screenshot({ path: screenshot, fullPage: true });
-          await testInfo.attach(`consensus-${state}`, {
-            path: screenshot,
-            contentType: "image/png",
-          });
-        }
-        expect(errors).toEqual([]);
+for (const { width, language, theme } of appearanceCases) {
+  test(`consensus summary ${width}px ${language} ${theme}`, async ({ page }, testInfo) => {
+    await configureAppearance(page, { width, language, theme });
+    const errors = collectBrowserErrors(page);
+    let warning = false;
+    await page.route("**/api/v1/home?*", async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      body.data.status.consensus = {
+        state: "complete",
+        stale: warning,
+        blobs_enabled: true,
+        blob_state: "complete",
+        slot: "9007199254740993",
+        epoch: "281474976710656",
+        finalized: { epoch: "281474976710654", root: hash },
+        root: hash,
+        syncing: warning,
+        execution_optimistic: warning,
+      };
+      await route.fulfill({ response, json: body });
+    });
+    await page.goto("/");
+    const panel = page.getByRole("region", {
+      name: language === "en" ? "Consensus & finality" : "共识与最终性",
+    });
+    for (const state of ["normal", "warning"]) {
+      if (state === "warning") {
+        warning = true;
+        await page.reload();
+      }
+      await expect(panel.getByText("9,007,199,254,740,993", { exact: true })).toBeVisible();
+      await expect(panel.locator("dt")).toHaveCount(5);
+      await expect(
+        page.getByText(language === "en" ? "Finalized block" : "已最终确认区块", {
+          exact: true,
+        }),
+      ).toHaveCount(1);
+      await expect(page.locator(".chain-context")).toHaveCount(0);
+      await expect(panel.getByRole("status")).toHaveCount(warning ? 1 : 0);
+      await expect(page.locator("body")).toHaveJSProperty("scrollWidth", width);
+      const metrics = await panel.locator("dd").all();
+      for (const metric of metrics) {
+        expect(
+          await metric.evaluate((element) => {
+            const range = document.createRange();
+            range.selectNodeContents(element);
+            return range.getClientRects().length;
+          }),
+        ).toBe(1);
+      }
+      const boxes = await Promise.all(metrics.map((metric) => metric.boundingBox()));
+      expect(boxes.every(Boolean)).toBe(true);
+      const columns = width === 390 ? 1 : width === 768 ? 3 : 5;
+      for (let index = 1; index < boxes.length; index++) {
+        if (index % columns === 0) expect(boxes[index]!.y).toBeGreaterThan(boxes[index - 1]!.y);
+        else expect(boxes[index]!.y).toBe(boxes[index - 1]!.y);
+      }
+      const scan = await new AxeBuilder({ page })
+        .include(".consensus-overview")
+        .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+        .analyze();
+      expect(scan.violations).toEqual([]);
+      const screenshot = testInfo.outputPath(`consensus-${state}.png`);
+      await page.screenshot({ path: screenshot, fullPage: true });
+      await testInfo.attach(`consensus-${state}`, {
+        path: screenshot,
+        contentType: "image/png",
       });
     }
-  }
+    expect(errors).toEqual([]);
+  });
 }

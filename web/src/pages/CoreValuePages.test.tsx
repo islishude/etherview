@@ -1,28 +1,23 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import i18n from "@/i18n";
+import {
+  configResponse,
+  completeness,
+  envelope,
+  notFound,
+  requestURL,
+  renderExplorer,
+} from "@/test/corePageFixtures";
 import { shorten } from "@/components/format";
-import { makeRouter } from "@/router";
-import { AuthProvider } from "@/auth/AuthProvider";
-import { ThemeProvider } from "@/theme/ThemeProvider";
-import { WalletProvider } from "@/wallet/WalletProvider";
 
 const canonicalHash = `0x${"11".repeat(32)}`;
 const olderHash = `0x${"22".repeat(32)}`;
-const _orphanHash = `0x${"33".repeat(32)}`;
-const parentHash = `0x${"00".repeat(32)}`;
 const address = `0x${"44".repeat(20)}`;
 const transactionHash = `0x${"aa".repeat(32)}`;
 const delegatedAddress = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
-const _clearedDelegationAddress = `0x${"77".repeat(20)}`;
-const _delegateAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
-const _delegateCodeHash = `0x${"55".repeat(32)}`;
-const _delegationBlockHash = `0x${"66".repeat(32)}`;
-const _delegationTransactionHash = `0x${"bb".repeat(32)}`;
 
 describe("core value and address pages", () => {
   beforeEach(async () => {
@@ -579,83 +574,56 @@ describe("core value and address pages", () => {
     expect(within(detailNativeBalanceRow).getByText("1 ETH")).toBeVisible();
   });
 
-  it("renders Genesis for both EOA origin fields without address or transaction links", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL) => {
-        const path = requestURL(input).pathname;
-        if (path === "/api/v1/config") return configResponse();
-        if (path === `/api/v1/addresses/${address}`) {
-          return envelope({
-            address,
-            type: "eoa",
-            balance: "0",
-            nonce: "0",
-            at_block: canonicalHash,
-            completeness: completeness(),
-            has_delegation_history: false,
-            origin: { kind: "funding", state: "genesis" },
-          });
-        }
-        if (path === `/api/v1/addresses/${address}/nfts`) return envelope([]);
-        return notFound();
-      }),
-    );
+  it.each([
+    {
+      type: "eoa",
+      originKind: "funding",
+      fields: ["Funded by", "Funding transaction"],
+      contract: {},
+    },
+    {
+      type: "contract",
+      originKind: "contract_creation",
+      fields: ["Contract creator", "Creation transaction"],
+      contract: { name: "Activity contract", code_hash: canonicalHash },
+    },
+  ])(
+    "renders Genesis for $type origin fields without links",
+    async ({ type, originKind, fields, contract }) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL) => {
+          const path = requestURL(input).pathname;
+          if (path === "/api/v1/config") return configResponse();
+          if (path === `/api/v1/addresses/${address}`) {
+            return envelope({
+              address,
+              type,
+              balance: "0",
+              nonce: "0",
+              at_block: canonicalHash,
+              completeness: completeness(),
+              has_delegation_history: false,
+              origin: { kind: originKind, state: "genesis" },
+              ...contract,
+            });
+          }
+          if (path === `/api/v1/addresses/${address}/nfts`) return envelope([]);
+          return notFound();
+        }),
+      );
 
-    renderExplorer(`/address/${address}`);
+      renderExplorer(`/address/${address}`);
 
-    const fundedBy = await screen.findByText("Funded by");
-    const fundedByRow = fundedBy.closest(".detail-item") as HTMLElement | null;
-    if (!fundedByRow) throw new Error("funded-by row is missing");
-    expect(within(fundedByRow).getByText("Genesis")).toBeVisible();
-    const fundingTransaction = screen.getByText("Funding transaction");
-    const fundingTransactionRow = fundingTransaction.closest(".detail-item") as HTMLElement | null;
-    if (!fundingTransactionRow) throw new Error("funding-transaction row is missing");
-    expect(within(fundingTransactionRow).getByText("Genesis")).toBeVisible();
-    expect(within(fundedByRow).queryByRole("link")).not.toBeInTheDocument();
-    expect(within(fundingTransactionRow).queryByRole("link")).not.toBeInTheDocument();
-  });
-
-  it("renders Genesis for predeploy contract origin fields", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL) => {
-        const path = requestURL(input).pathname;
-        if (path === "/api/v1/config") return configResponse();
-        if (path === `/api/v1/addresses/${address}`) {
-          return envelope({
-            address,
-            name: "Activity contract",
-            type: "contract",
-            balance: "0",
-            nonce: "0",
-            at_block: canonicalHash,
-            completeness: completeness(),
-            code_hash: canonicalHash,
-            has_delegation_history: false,
-            origin: { kind: "contract_creation", state: "genesis" },
-          });
-        }
-        if (path === `/api/v1/addresses/${address}/nfts`) return envelope([]);
-        return notFound();
-      }),
-    );
-
-    renderExplorer(`/address/${address}`);
-
-    const creator = await screen.findByText("Contract creator");
-    const creatorRow = creator.closest(".detail-item") as HTMLElement | null;
-    if (!creatorRow) throw new Error("contract-creator row is missing");
-    expect(within(creatorRow).getByText("Genesis")).toBeVisible();
-    const creationTransaction = screen.getByText("Creation transaction");
-    const creationTransactionRow = creationTransaction.closest(
-      ".detail-item",
-    ) as HTMLElement | null;
-    if (!creationTransactionRow) throw new Error("creation-transaction row is missing");
-    expect(within(creationTransactionRow).getByText("Genesis")).toBeVisible();
-    expect(within(creatorRow).queryByRole("link")).not.toBeInTheDocument();
-    expect(within(creationTransactionRow).queryByRole("link")).not.toBeInTheDocument();
-  });
+      for (const field of fields) {
+        const label = await screen.findByText(field);
+        const row = label.closest(".detail-item") as HTMLElement | null;
+        if (!row) throw new Error(`${field} row is missing`);
+        expect(within(row).getByText("Genesis")).toBeVisible();
+        expect(within(row).queryByRole("link")).not.toBeInTheDocument();
+      }
+    },
+  );
 
   it("loads address activity tabs on demand and exposes contracts without summary hashes", async () => {
     const requestedPaths: string[] = [];
@@ -965,134 +933,3 @@ describe("core value and address pages", () => {
     expect(requestedPaths).toContain(`/api/v1/addresses/${address}/erc20-balances`);
   });
 });
-
-function _block(number: string, hash: string, canonical = true) {
-  return {
-    hash,
-    number,
-    parent_hash: parentHash,
-    timestamp: "2026-01-01T00:00:00Z",
-    miner: address,
-    transaction_count: 1,
-    gas_used: "21000",
-    gas_limit: "30000000",
-    base_fee_per_gas: "1000000000",
-    canonical,
-    finality: canonical ? "safe" : "orphan",
-    completeness: completeness(),
-  };
-}
-
-function _statusResponse(overrides: Record<string, unknown>, meta: Record<string, unknown> = {}) {
-  return envelope(
-    {
-      chain_id: "1",
-      core_ready: true,
-      latest_block: "12",
-      indexed_block: "12",
-      highest_covered_block: "12",
-      backfill_complete: true,
-      safe_block: "12",
-      finalized_block: "10",
-      lag: "0",
-      completeness: completeness(),
-      ...overrides,
-    },
-    meta,
-  );
-}
-
-function configResponse() {
-  return envelope({
-    chain_id: "1",
-    chain_name: "Core Testnet",
-    native_symbol: "ETH",
-    native_name: "Ether",
-    native_decimals: 18,
-    features: {},
-  });
-}
-
-function completeness() {
-  return {
-    core: "complete",
-    trace: "unavailable",
-    metadata: "pending",
-    state: "complete",
-    user_operations: "unavailable",
-  };
-}
-
-function _mempoolTransaction(hash: string, overrides: Record<string, unknown> = {}) {
-  return {
-    hash,
-    from: address,
-    nonce: "7",
-    value: "1000000000000000000",
-    gas: "100000",
-    max_fee_per_gas: "30000000000",
-    max_priority_fee_per_gas: "1000000000",
-    type: "2",
-    input: "0x6000",
-    first_seen_at: "2026-08-13T00:00:00Z",
-    last_seen_at: "2026-08-13T00:00:00Z",
-    expires_at: "2026-08-13T00:00:10Z",
-    endpoint: "pending-primary",
-    ...overrides,
-  };
-}
-
-function envelope(data: unknown, meta: Record<string, unknown> = {}) {
-  const responseData = includedTransactionFixture(data)
-    ? { kind: "included", transaction: data }
-    : data;
-  return Response.json({
-    data: responseData,
-    meta: { request_id: "core-pages-test", chain_id: "1", ...meta },
-  });
-}
-
-function includedTransactionFixture(data: unknown): data is Record<string, unknown> {
-  if (!data || Array.isArray(data) || typeof data !== "object") return false;
-  const candidate = data as Record<string, unknown>;
-  return (
-    typeof candidate.hash === "string" &&
-    typeof candidate.from === "string" &&
-    typeof candidate.nonce === "string" &&
-    typeof candidate.gas === "string" &&
-    typeof candidate.input === "string" &&
-    typeof candidate.canonical === "boolean" &&
-    typeof candidate.finality === "string"
-  );
-}
-
-function notFound() {
-  return Response.json(
-    {
-      error: { code: "not_found", message: "not found", request_id: "core-pages-test" },
-    },
-    { status: 404 },
-  );
-}
-
-function requestURL(input: RequestInfo | URL) {
-  return new URL(String(input), "http://etherview.test");
-}
-
-function renderExplorer(path: string) {
-  const router = makeRouter(createMemoryHistory({ initialEntries: [path] }));
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
-  });
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <WalletProvider>
-          <AuthProvider>
-            <RouterProvider router={router} />
-          </AuthProvider>
-        </WalletProvider>
-      </ThemeProvider>
-    </QueryClientProvider>,
-  );
-}

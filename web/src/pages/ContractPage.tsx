@@ -1,3 +1,4 @@
+import { useCursorHistory } from "@/api/pagination";
 import {
   lazy,
   Suspense,
@@ -110,11 +111,6 @@ function contractTabLabel(tab: ContractTab, t: Translate): string {
   }
 }
 
-interface CursorState {
-  identity: string;
-  cursors: string[];
-}
-
 export function ContractPage({ address }: { address: string }) {
   const { t } = useTranslation();
   const location = useLocation();
@@ -174,22 +170,9 @@ export function ContractPage({ address }: { address: string }) {
     managementAddress,
     managementTarget?.abiCodeHash,
   );
-  const [upgradeState, setUpgradeState] = useState<CursorState>({
-    identity: address,
-    cursors: [""],
-  });
-  const [initializationState, setInitializationState] = useState<CursorState>({
-    identity: address,
-    cursors: [""],
-  });
-  const [diamondCutState, setDiamondCutState] = useState<CursorState>({
-    identity: address,
-    cursors: [""],
-  });
-  const upgradeCursors = upgradeState.identity === address ? upgradeState.cursors : [""];
-  const initializationCursors =
-    initializationState.identity === address ? initializationState.cursors : [""];
-  const diamondCutCursors = diamondCutState.identity === address ? diamondCutState.cursors : [""];
+  const upgradePager = useCursorHistory(`proxy-upgrades:${address}`);
+  const initializationPager = useCursorHistory(`proxy-initializations:${address}`);
+  const diamondCutPager = useCursorHistory(`diamond-cuts:${address}`);
   const proxyDetail = proxy.data?.detail;
   const isProxy = proxyDetail?.proxy !== undefined;
   const diamondOutcome = proxyDetail?.proxy_detection?.outcomes.find(
@@ -205,20 +188,17 @@ export function ContractPage({ address }: { address: string }) {
   const detected = isProxy && proxyDetail?.status !== "not_detected";
   const upgrades = useContractProxyUpgrades(
     address,
-    upgradeCursors.at(-1) || undefined,
-    20,
+    upgradePager.request,
     validAddress && isProxy && detected && !clone && activeTab === "upgrades",
   );
   const initializations = useContractProxyInitializations(
     address,
-    initializationCursors.at(-1) || undefined,
-    20,
+    initializationPager.request,
     validAddress && isProxy && detected && activeTab === "initializations",
   );
   const diamondCuts = useContractDiamondCuts(
     address,
-    diamondCutCursors.at(-1) || undefined,
-    20,
+    diamondCutPager.request,
     validAddress && isDiamond && activeTab === "diamond-cuts",
   );
 
@@ -432,20 +412,10 @@ export function ContractPage({ address }: { address: string }) {
                       data={diamondCuts.data}
                       error={diamondCuts.error}
                       loading={diamondCuts.isPending}
-                      page={diamondCutCursors.length}
-                      onNext={(cursor) =>
-                        setDiamondCutState({
-                          identity: address,
-                          cursors: [...diamondCutCursors, cursor],
-                        })
-                      }
-                      onPrevious={() =>
-                        setDiamondCutState({
-                          identity: address,
-                          cursors: diamondCutCursors.slice(0, -1),
-                        })
-                      }
-                      onReset={() => setDiamondCutState({ identity: address, cursors: [""] })}
+                      page={diamondCutPager.page}
+                      onNext={diamondCutPager.next}
+                      onPrevious={diamondCutPager.previous}
+                      onReset={diamondCutPager.reset}
                     />
                   )}
                   {activeTab === "upgrades" && (
@@ -453,20 +423,10 @@ export function ContractPage({ address }: { address: string }) {
                       data={upgrades.data}
                       error={upgrades.error}
                       loading={upgrades.isPending}
-                      page={upgradeCursors.length}
-                      onNext={(cursor) =>
-                        setUpgradeState({
-                          identity: address,
-                          cursors: [...upgradeCursors, cursor],
-                        })
-                      }
-                      onPrevious={() =>
-                        setUpgradeState({
-                          identity: address,
-                          cursors: upgradeCursors.slice(0, -1),
-                        })
-                      }
-                      onReset={() => setUpgradeState({ identity: address, cursors: [""] })}
+                      page={upgradePager.page}
+                      onNext={upgradePager.next}
+                      onPrevious={upgradePager.previous}
+                      onReset={upgradePager.reset}
                     />
                   )}
                   {activeTab === "initializations" && (
@@ -474,20 +434,10 @@ export function ContractPage({ address }: { address: string }) {
                       data={initializations.data}
                       error={initializations.error}
                       loading={initializations.isPending}
-                      page={initializationCursors.length}
-                      onNext={(cursor) =>
-                        setInitializationState({
-                          identity: address,
-                          cursors: [...initializationCursors, cursor],
-                        })
-                      }
-                      onPrevious={() =>
-                        setInitializationState({
-                          identity: address,
-                          cursors: initializationCursors.slice(0, -1),
-                        })
-                      }
-                      onReset={() => setInitializationState({ identity: address, cursors: [""] })}
+                      page={initializationPager.page}
+                      onNext={initializationPager.next}
+                      onPrevious={initializationPager.previous}
+                      onReset={initializationPager.reset}
                     />
                   )}
                 </>

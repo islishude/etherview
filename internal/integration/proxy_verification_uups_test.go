@@ -16,7 +16,6 @@ import (
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/etherscan"
 	"github.com/islishude/etherview/internal/store"
-	"github.com/islishude/etherview/internal/verify"
 )
 
 func TestCompatibleSharedUUPSProbePromotesQuietERC1967Bindings(t *testing.T) {
@@ -162,20 +161,7 @@ func TestCompatibleSharedUUPSProbePromotesQuietERC1967Bindings(t *testing.T) {
 		1, implementation.Bytes(), implementationCodeHash.Bytes(), uupsArtifactJob,
 	)
 
-	repository, err := verify.NewPostgresRepository(db, verify.RepositoryOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	service, err := verify.NewService(repository, 1<<20)
-	if err != nil {
-		t.Fatal(err)
-	}
-	backend, err := etherscan.NewPostgresBackend(db, etherscan.PostgresOptions{
-		ChainID: 1, Verification: service,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	repository, backend := newProxyVerificationBackend(t, db)
 	for _, proxy := range proxies {
 		result, executeErr := backend.Execute(ctx, etherscan.Request{
 			Module: "contract", Action: "verifyproxycontract",

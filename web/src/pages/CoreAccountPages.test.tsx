@@ -1,15 +1,17 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import i18n from "@/i18n";
+import {
+  configResponse,
+  completeness,
+  envelope,
+  notFound,
+  requestURL,
+  renderExplorer as renderCoreExplorer,
+} from "@/test/corePageFixtures";
 import { shorten } from "@/components/format";
-import { makeRouter } from "@/router";
-import { AuthProvider } from "@/auth/AuthProvider";
-import { ThemeProvider } from "@/theme/ThemeProvider";
-import { WalletProvider } from "@/wallet/WalletProvider";
 import { ChainEventInvalidation } from "@/api/eventInvalidation";
 
 class ChainEventSource {
@@ -41,7 +43,6 @@ class ChainEventSource {
 const canonicalHash = `0x${"11".repeat(32)}`;
 const olderHash = `0x${"22".repeat(32)}`;
 const orphanHash = `0x${"33".repeat(32)}`;
-const parentHash = `0x${"00".repeat(32)}`;
 const address = `0x${"44".repeat(20)}`;
 const transactionHash = `0x${"aa".repeat(32)}`;
 const delegatedAddress = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
@@ -679,23 +680,6 @@ describe("core account and list pages", () => {
   });
 });
 
-function _block(number: string, hash: string, canonical = true) {
-  return {
-    hash,
-    number,
-    parent_hash: parentHash,
-    timestamp: "2026-01-01T00:00:00Z",
-    miner: address,
-    transaction_count: 1,
-    gas_used: "21000",
-    gas_limit: "30000000",
-    base_fee_per_gas: "1000000000",
-    canonical,
-    finality: canonical ? "safe" : "orphan",
-    completeness: completeness(),
-  };
-}
-
 function statusResponse(overrides: Record<string, unknown>, meta: Record<string, unknown> = {}) {
   return envelope(
     {
@@ -715,98 +699,6 @@ function statusResponse(overrides: Record<string, unknown>, meta: Record<string,
   );
 }
 
-function configResponse() {
-  return envelope({
-    chain_id: "1",
-    chain_name: "Core Testnet",
-    native_symbol: "ETH",
-    native_name: "Ether",
-    native_decimals: 18,
-    features: {},
-  });
-}
-
-function completeness() {
-  return {
-    core: "complete",
-    trace: "unavailable",
-    metadata: "pending",
-    state: "complete",
-    user_operations: "unavailable",
-  };
-}
-
-function _mempoolTransaction(hash: string, overrides: Record<string, unknown> = {}) {
-  return {
-    hash,
-    from: address,
-    nonce: "7",
-    value: "1000000000000000000",
-    gas: "100000",
-    max_fee_per_gas: "30000000000",
-    max_priority_fee_per_gas: "1000000000",
-    type: "2",
-    input: "0x6000",
-    first_seen_at: "2026-08-13T00:00:00Z",
-    last_seen_at: "2026-08-13T00:00:00Z",
-    expires_at: "2026-08-13T00:00:10Z",
-    endpoint: "pending-primary",
-    ...overrides,
-  };
-}
-
-function envelope(data: unknown, meta: Record<string, unknown> = {}) {
-  const responseData = includedTransactionFixture(data)
-    ? { kind: "included", transaction: data }
-    : data;
-  return Response.json({
-    data: responseData,
-    meta: { request_id: "core-pages-test", chain_id: "1", ...meta },
-  });
-}
-
-function includedTransactionFixture(data: unknown): data is Record<string, unknown> {
-  if (!data || Array.isArray(data) || typeof data !== "object") return false;
-  const candidate = data as Record<string, unknown>;
-  return (
-    typeof candidate.hash === "string" &&
-    typeof candidate.from === "string" &&
-    typeof candidate.nonce === "string" &&
-    typeof candidate.gas === "string" &&
-    typeof candidate.input === "string" &&
-    typeof candidate.canonical === "boolean" &&
-    typeof candidate.finality === "string"
-  );
-}
-
-function notFound() {
-  return Response.json(
-    {
-      error: { code: "not_found", message: "not found", request_id: "core-pages-test" },
-    },
-    { status: 404 },
-  );
-}
-
-function requestURL(input: RequestInfo | URL) {
-  return new URL(String(input), "http://etherview.test");
-}
-
 function renderExplorer(path: string) {
-  const router = makeRouter(createMemoryHistory({ initialEntries: [path] }));
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
-  });
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <ChainEventInvalidation />
-      <ThemeProvider>
-        <WalletProvider>
-          <AuthProvider>
-            <RouterProvider router={router} />
-          </AuthProvider>
-        </WalletProvider>
-      </ThemeProvider>
-    </QueryClientProvider>,
-  );
+  return renderCoreExplorer(path, <ChainEventInvalidation />);
 }

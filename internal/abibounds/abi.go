@@ -22,24 +22,72 @@ const (
 
 var ErrLimit = errors.New("ABI exceeds decoding bounds")
 
+// Limits describes one caller's admission budget. Type expansion is checked
+// before reflection construction; value expansion is checked before Unpack.
+type Limits struct {
+	MaxDocumentBytes int
+	MaxEntries       int
+	MaxArguments     int
+	MaxTypeBytes     int
+	MaxDepth         int
+	MaxNodes         int
+	MaxDataBytes     int
+	MaxValueBytes    int
+	MaxDynamicBytes  int
+	MaxArrayElements int
+}
+
+func DefaultLimits() Limits {
+	return Limits{
+		MaxDocumentBytes: maxDocumentBytes, MaxEntries: 1024, MaxArguments: maxNodes, MaxTypeBytes: 256,
+		MaxDepth: maxDepth, MaxNodes: maxNodes, MaxDataBytes: maxDocumentBytes,
+		MaxValueBytes: maxValueBytes, MaxDynamicBytes: maxValueBytes, MaxArrayElements: maxNodes,
+	}
+}
+
+func (limits Limits) valid() bool {
+	return limits.MaxDocumentBytes > 2 && limits.MaxEntries > 0 && limits.MaxArguments > 0 && limits.MaxTypeBytes > 0 &&
+		limits.MaxDepth > 0 && limits.MaxNodes > 0 && limits.MaxDataBytes > 0 &&
+		limits.MaxValueBytes > 0 && limits.MaxDynamicBytes > 0 && limits.MaxArrayElements > 0
+}
+
+// ParseEntry applies the document bounds before constructing a singleton ABI.
+func ParseEntry(raw []byte, limits Limits) (abi.ABI, error) {
+	if !limits.valid() || len(raw) > limits.MaxDocumentBytes-2 {
+		return abi.ABI{}, ErrLimit
+	}
+	document := make([]byte, 0, len(raw)+2)
+	document = append(document, '[')
+	document = append(document, raw...)
+	document = append(document, ']')
+	return ParseWithLimits(document, limits)
+}
+
 // Parse validates type complexity, including fixed-array expansion, before
 // abi.JSON can recursively construct type names and reflection types.
 func Parse(raw []byte) (abi.ABI, error) {
-	if len(raw) > maxDocumentBytes || jsonstrict.Validate(raw, jsonstrict.Limits{MaxDepth: 64, MaxNodes: 131072}) != nil {
+	return ParseWithLimits(raw, DefaultLimits())
+}
+
+func ParseWithLimits(raw []byte, limits Limits) (abi.ABI, error) {
+	if !limits.valid() || len(raw) > limits.MaxDocumentBytes || jsonstrict.Validate(raw, jsonstrict.Limits{MaxDepth: 64, MaxNodes: 131072}) != nil {
 		return abi.ABI{}, ErrLimit
 	}
 	var entries []struct {
 		Inputs  []abi.ArgumentMarshaling `json:"inputs"`
 		Outputs []abi.ArgumentMarshaling `json:"outputs"`
 	}
-	if err := json.Unmarshal(raw, &entries); err != nil || len(entries) > 1024 {
+	if err := json.Unmarshal(raw, &entries); err != nil || len(entries) > limits.MaxEntries {
 		return abi.ABI{}, ErrLimit
 	}
-	remaining := maxNodes
+	remaining := limits.MaxNodes
 	for _, entry := range entries {
 		for _, arguments := range [][]abi.ArgumentMarshaling{entry.Inputs, entry.Outputs} {
+			if len(arguments) > limits.MaxArguments {
+				return abi.ABI{}, ErrLimit
+			}
 			for _, argument := range arguments {
-				if !boundedType(argument, 0, 1, &remaining) {
+				if !boundedType(argument, 0, 1, &remaining, limits) {
 					return abi.ABI{}, ErrLimit
 				}
 			}
@@ -48,8 +96,8 @@ func Parse(raw []byte) (abi.ABI, error) {
 	return abi.JSON(bytes.NewReader(raw))
 }
 
-func boundedType(argument abi.ArgumentMarshaling, depth, multiplier int, remaining *int) bool {
-	if len(argument.Type) > 256 || depth > maxDepth {
+func boundedType(argument abi.ArgumentMarshaling, depth, multiplier int, remaining *int, limits Limits) bool {
+	if len(argument.Type) > limits.MaxTypeBytes || depth > limits.MaxDepth || len(argument.Components) > limits.MaxArguments {
 		return false
 	}
 	base, suffix, _ := strings.Cut(argument.Type, "[")
@@ -64,12 +112,12 @@ func boundedType(argument abi.ArgumentMarshaling, depth, multiplier int, remaini
 				return false
 			}
 			depth++
-			if depth > maxDepth {
+			if depth > limits.MaxDepth {
 				return false
 			}
 			if size != "" {
 				count, err := strconv.Atoi(size)
-				if err != nil || count < 0 || count > maxNodes || multiplier > maxNodes/max(1, count) {
+				if err != nil || count < 0 || count > limits.MaxArrayElements || multiplier > limits.MaxNodes/max(1, count) {
 					return false
 				}
 				multiplier *= max(1, count)
@@ -85,7 +133,7 @@ func boundedType(argument abi.ArgumentMarshaling, depth, multiplier int, remaini
 		return false
 	}
 	for _, component := range argument.Components {
-		if !boundedType(component, depth+1, multiplier, remaining) {
+		if !boundedType(component, depth+1, multiplier, remaining, limits) {
 			return false
 		}
 	}

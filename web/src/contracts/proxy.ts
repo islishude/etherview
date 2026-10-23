@@ -1,3 +1,4 @@
+import { firstPage, type CursorRequest } from "@/api/pagination";
 import { chainQueryMeta } from "@/api/chainEvents";
 import { useQuery } from "@tanstack/react-query";
 import { getAddress } from "viem";
@@ -80,9 +81,11 @@ const unavailableErrorCodes = new Set([
 export async function getVerifiedContractArtifact(
   address: string,
   expectedCodeHash?: string,
+  signal?: AbortSignal,
 ): Promise<VerifiedContractArtifact> {
   const artifact = requireEnvelope(
     await apiClient.GET("/contracts/{address}/verification", {
+      signal,
       params: { path: { address } },
     }),
   ).data;
@@ -95,17 +98,19 @@ export async function getVerifiedContractArtifact(
   return artifact;
 }
 
-export async function getContractProxy(address: string): Promise<ContractProxyView> {
-  return adaptContractProxy((await getContractProxyResponse(address)).data);
+export async function getContractProxy(
+  address: string,
+  signal?: AbortSignal,
+): Promise<ContractProxyView> {
+  return adaptContractProxy((await getContractProxyResponse(address, signal)).data);
 }
 
 export async function getContractProxyResponse(
   address: string,
+  signal?: AbortSignal,
 ): Promise<ContractProxyDetailsResponse> {
   return requireEnvelope(
-    await apiClient.GET("/contracts/{address}/proxy", {
-      params: { path: { address } },
-    }),
+    await apiClient.GET("/contracts/{address}/proxy", { signal, params: { path: { address } } }),
   );
 }
 
@@ -113,9 +118,11 @@ export async function listContractProxyUpgrades(
   address: string,
   cursor?: string,
   limit = DEFAULT_PROXY_HISTORY_LIMIT,
+  signal?: AbortSignal,
 ): Promise<ContractProxyUpgradePage> {
   const response = requireEnvelope(
     await apiClient.GET("/contracts/{address}/proxy/upgrades", {
+      signal,
       params: { path: { address }, query: { cursor, limit } },
     }),
   );
@@ -130,9 +137,11 @@ export async function listContractProxyInitializations(
   address: string,
   cursor?: string,
   limit = DEFAULT_PROXY_HISTORY_LIMIT,
+  signal?: AbortSignal,
 ): Promise<ContractProxyInitializationPage> {
   const response = requireEnvelope(
     await apiClient.GET("/contracts/{address}/proxy/initializations", {
+      signal,
       params: { path: { address }, query: { cursor, limit } },
     }),
   );
@@ -147,9 +156,11 @@ export async function listContractDiamondCuts(
   address: string,
   cursor?: string,
   limit = DEFAULT_PROXY_HISTORY_LIMIT,
+  signal?: AbortSignal,
 ): Promise<ContractDiamondCutPage> {
   const response = requireEnvelope(
     await apiClient.GET("/contracts/{address}/proxy/diamond-cuts", {
+      signal,
       params: { path: { address }, query: { cursor, limit } },
     }),
   );
@@ -169,7 +180,7 @@ export function useVerifiedContractArtifact(
   return useQuery({
     queryKey: ["verified-contract-artifact", address, normalizedCodeHash ?? null],
     meta: chainQueryMeta,
-    queryFn: () => getVerifiedContractArtifact(address, normalizedCodeHash),
+    queryFn: ({ signal }) => getVerifiedContractArtifact(address, normalizedCodeHash, signal),
     enabled: enabled && address.length > 0,
     retry: false,
     staleTime: 30_000,
@@ -200,7 +211,7 @@ export function useContractProxy(address: string, enabled = true) {
   return useQuery({
     queryKey: ["contract-proxy", address],
     meta: chainQueryMeta,
-    queryFn: () => getContractProxy(address),
+    queryFn: ({ signal }) => getContractProxy(address, signal),
     enabled: enabled && address.length > 0,
     retry: false,
     staleTime: 5_000,
@@ -209,14 +220,15 @@ export function useContractProxy(address: string, enabled = true) {
 
 export function useContractProxyUpgrades(
   address: string,
-  cursor?: string,
-  limit = DEFAULT_PROXY_HISTORY_LIMIT,
+  page: CursorRequest = firstPage,
   enabled = true,
+  limit = 20,
 ) {
+  const { cursor, refreshGeneration } = page;
   return useQuery({
-    queryKey: ["contract-proxy", address, "upgrades", limit, cursor ?? null],
+    queryKey: ["contract-proxy", address, "upgrades", limit, cursor ?? null, refreshGeneration],
     meta: chainQueryMeta,
-    queryFn: () => listContractProxyUpgrades(address, cursor, limit),
+    queryFn: ({ signal }) => listContractProxyUpgrades(address, cursor, limit, signal),
     enabled: enabled && address.length > 0,
     retry: false,
     staleTime: 0,
@@ -225,14 +237,22 @@ export function useContractProxyUpgrades(
 
 export function useContractProxyInitializations(
   address: string,
-  cursor?: string,
-  limit = DEFAULT_PROXY_HISTORY_LIMIT,
+  page: CursorRequest = firstPage,
   enabled = true,
+  limit = 20,
 ) {
+  const { cursor, refreshGeneration } = page;
   return useQuery({
-    queryKey: ["contract-proxy", address, "initializations", limit, cursor ?? null],
+    queryKey: [
+      "contract-proxy",
+      address,
+      "initializations",
+      limit,
+      cursor ?? null,
+      refreshGeneration,
+    ],
     meta: chainQueryMeta,
-    queryFn: () => listContractProxyInitializations(address, cursor, limit),
+    queryFn: ({ signal }) => listContractProxyInitializations(address, cursor, limit, signal),
     enabled: enabled && address.length > 0,
     retry: false,
     staleTime: 0,
@@ -241,14 +261,15 @@ export function useContractProxyInitializations(
 
 export function useContractDiamondCuts(
   address: string,
-  cursor?: string,
-  limit = DEFAULT_PROXY_HISTORY_LIMIT,
+  page: CursorRequest = firstPage,
   enabled = true,
+  limit = 20,
 ) {
+  const { cursor, refreshGeneration } = page;
   return useQuery({
-    queryKey: ["contract-proxy", address, "diamond-cuts", limit, cursor ?? null],
+    queryKey: ["contract-proxy", address, "diamond-cuts", limit, cursor ?? null, refreshGeneration],
     meta: chainQueryMeta,
-    queryFn: () => listContractDiamondCuts(address, cursor, limit),
+    queryFn: ({ signal }) => listContractDiamondCuts(address, cursor, limit, signal),
     enabled: enabled && address.length > 0,
     retry: false,
     staleTime: 0,

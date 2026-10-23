@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCursorHistory } from "@/api/pagination";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
@@ -58,52 +58,6 @@ export function NFTTokenIDLink({
   );
 }
 
-export function useCursorHistory(identity: string) {
-  const [state, setState] = useState<{
-    identity: string;
-    cursors: string[];
-    refreshGeneration: number;
-  }>({
-    identity,
-    cursors: [""],
-    refreshGeneration: 0,
-  });
-  const cursors = state.identity === identity ? state.cursors : [""];
-  const refreshGeneration = state.identity === identity ? state.refreshGeneration : 0;
-
-  return {
-    cursor: cursors.at(-1) || undefined,
-    refreshGeneration,
-    page: cursors.length,
-    hasPrevious: cursors.length > 1,
-    next(nextCursor: string | undefined) {
-      if (!nextCursor) return;
-      setState((current) => ({
-        identity,
-        cursors: [...(current.identity === identity ? current.cursors : [""]), nextCursor],
-        refreshGeneration: current.identity === identity ? current.refreshGeneration : 0,
-      }));
-    },
-    previous() {
-      setState((current) => {
-        const currentCursors = current.identity === identity ? current.cursors : [""];
-        return {
-          identity,
-          cursors: currentCursors.length > 1 ? currentCursors.slice(0, -1) : currentCursors,
-          refreshGeneration: current.identity === identity ? current.refreshGeneration : 0,
-        };
-      });
-    },
-    reset() {
-      setState((current) => ({
-        identity,
-        cursors: [""],
-        refreshGeneration: (current.identity === identity ? current.refreshGeneration : 0) + 1,
-      }));
-    },
-  };
-}
-
 export function FinalityBadge({ finality }: { finality: string }) {
   const { t } = useTranslation();
   return <span className={`finality-badge ${finality}`}>{finalityLabel(finality, t)}</span>;
@@ -112,7 +66,7 @@ export function FinalityBadge({ finality }: { finality: string }) {
 export function BlocksPage() {
   const { i18n, t } = useTranslation();
   const pager = useCursorHistory("blocks");
-  const blocks = useBlocks(CORE_PAGE_SIZE, pager.cursor, pager.refreshGeneration);
+  const blocks = useBlocks(pager.request, CORE_PAGE_SIZE);
   const locale = i18n.resolvedLanguage ?? "en";
   return (
     <Page title={t("page.blocks")} description={t("page.blocksDescription")}>
@@ -179,7 +133,7 @@ export function GenesisPage() {
   const nativeDecimals = publicConfig.data?.native_decimals ?? 18;
   const nativeSymbol = publicConfig.data?.native_symbol ?? "";
   const pager = useCursorHistory("genesis");
-  const accounts = useGenesisAccounts(CORE_PAGE_SIZE, pager.cursor, pager.refreshGeneration);
+  const accounts = useGenesisAccounts(pager.request, CORE_PAGE_SIZE);
   const locale = i18n.resolvedLanguage ?? "en";
   return (
     <Page title={t("page.genesis")} description={t("page.genesisDescription")}>
@@ -250,7 +204,7 @@ export function TransactionsPage() {
   const nativeDecimals = publicConfig.data?.native_decimals ?? 18;
   const nativeSymbol = publicConfig.data?.native_symbol ?? "";
   const pager = useCursorHistory("transactions");
-  const transactions = useTransactions(CORE_PAGE_SIZE, pager.cursor, pager.refreshGeneration);
+  const transactions = useTransactions(pager.request, CORE_PAGE_SIZE);
   const locale = i18n.resolvedLanguage ?? "en";
   return (
     <Page title={t("page.transactions")} description={t("page.transactionsDescription")}>
@@ -348,7 +302,7 @@ export function TransactionsPage() {
 export function TokensPage() {
   const { i18n, t } = useTranslation();
   const pager = useCursorHistory("tokens");
-  const tokens = useTokens(CORE_PAGE_SIZE, pager.cursor, pager.refreshGeneration);
+  const tokens = useTokens(pager.request, CORE_PAGE_SIZE);
   const locale = i18n.resolvedLanguage ?? "en";
 
   return (
@@ -873,12 +827,7 @@ export function SearchPage({ query }: { query: string }) {
   const { t } = useTranslation();
   const normalizedQuery = query.trim();
   const pager = useCursorHistory(`search:${normalizedQuery}`);
-  const search = useSearchResults(
-    normalizedQuery,
-    pager.cursor,
-    SEARCH_PAGE_SIZE,
-    pager.refreshGeneration,
-  );
+  const search = useSearchResults(normalizedQuery, pager.request, SEARCH_PAGE_SIZE);
   return (
     <Page title={t("page.search")} description={query} mono>
       {normalizedQuery.length === 0 && <p className="context-note">{t("search.prompt")}</p>}

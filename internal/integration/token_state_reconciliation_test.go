@@ -72,7 +72,7 @@ func TestEtherscanERC20HoldingsUseExactPostgresCache(t *testing.T) {
 
 	canonical := state.PostgresCanonicalSource{DB: db, ChainID: "1"}
 	caller := &exactERC20Caller{balances: map[common.Address]string{contract: "7"}}
-	reconciler, err := state.NewNFTReconciler(db, newERC20StatePool(t, caller), canonical)
+	reconciler, err := state.NewTokenReconciler(db, newExactStatePool(t, caller), canonical)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestEtherscanERC20HoldingsUseExactPostgresCache(t *testing.T) {
 	)
 
 	failing := &exactERC20Caller{err: errors.New("cached compatibility holding must not call RPC")}
-	cached, err := state.NewNFTReconciler(db, newERC20StatePool(t, failing), canonical)
+	cached, err := state.NewTokenReconciler(db, newExactStatePool(t, failing), canonical)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,8 +183,8 @@ func TestExactNFTObservationsRejectConcurrentConflictsAndPreserveIdenticalWrites
 		ChainID: "1", BlockNumber: fmt.Sprint(reference.Number), BlockHash: reference.Hash.String(),
 	}
 	canonical := state.PostgresCanonicalSource{DB: db, ChainID: "1"}
-	newReconciler := func(service any) *state.NFTReconciler {
-		reconciler, reconcileErr := state.NewNFTReconciler(db, newNFTStatePool(t, service), canonical)
+	newReconciler := func(service any) *state.TokenReconciler {
+		reconciler, reconcileErr := state.NewTokenReconciler(db, newExactStatePool(t, service), canonical)
 		if reconcileErr != nil {
 			t.Fatal(reconcileErr)
 		}
@@ -193,7 +193,7 @@ func TestExactNFTObservationsRejectConcurrentConflictsAndPreserveIdenticalWrites
 
 	contract721 := testAddress(1_721)
 	firstOwner, conflictingOwner := testAddress(1_001), testAddress(1_002)
-	blockedOwner := newGatedExactNFTCaller(&exactNFTCaller{owner: conflictingOwner})
+	blockedOwner := newGatedExactStateCaller(&exactNFTCaller{owner: conflictingOwner})
 	conflictingReconciler := newReconciler(blockedOwner)
 	type ownerResult struct {
 		observation catalog.NFTOwnerObservation
@@ -237,7 +237,7 @@ func TestExactNFTObservationsRejectConcurrentConflictsAndPreserveIdenticalWrites
 	}
 
 	contract1155, balanceOwner := testAddress(2_115), testAddress(2_001)
-	blockedBalance := newGatedExactNFTCaller(&exactNFTCaller{erc1155Balance: "9"})
+	blockedBalance := newGatedExactStateCaller(&exactNFTCaller{erc1155Balance: "9"})
 	conflictingBalanceReconciler := newReconciler(blockedBalance)
 	type balanceResult struct {
 		observations []catalog.NFTBalanceObservation
@@ -287,7 +287,7 @@ func TestExactNFTObservationsRejectConcurrentConflictsAndPreserveIdenticalWrites
 	// The second INSERT must take the conditional no-op path without changing
 	// the first observation's audit timestamp.
 	identicalTokenID := "43"
-	blockedIdentical := newGatedExactNFTCaller(&exactNFTCaller{owner: firstOwner})
+	blockedIdentical := newGatedExactStateCaller(&exactNFTCaller{owner: firstOwner})
 	identicalReconciler := newReconciler(blockedIdentical)
 	identicalResult := make(chan ownerResult, 1)
 	go func() {
@@ -342,8 +342,8 @@ func TestExactERC20BalanceObservationsRejectConcurrentConflictsAndPreserveIdenti
 		ChainID: "1", BlockNumber: fmt.Sprint(reference.Number), BlockHash: reference.Hash.String(),
 	}
 	canonical := state.PostgresCanonicalSource{DB: db, ChainID: "1"}
-	newReconciler := func(service any) *state.NFTReconciler {
-		reconciler, reconcileErr := state.NewNFTReconciler(db, newERC20StatePool(t, service), canonical)
+	newReconciler := func(service any) *state.TokenReconciler {
+		reconciler, reconcileErr := state.NewTokenReconciler(db, newExactStatePool(t, service), canonical)
 		if reconcileErr != nil {
 			t.Fatal(reconcileErr)
 		}
@@ -352,7 +352,7 @@ func TestExactERC20BalanceObservationsRejectConcurrentConflictsAndPreserveIdenti
 
 	contract, owner := testAddress(20_001), testAddress(20_002)
 	candidates := []catalog.ERC20BalanceCandidate{{TokenAddress: contract.String()}}
-	blocked := newGatedExactERC20Caller(&exactERC20Caller{balance: "9"})
+	blocked := newGatedExactStateCaller(&exactERC20Caller{balance: "9"})
 	type balanceResult struct {
 		observations []catalog.ERC20BalanceObservation
 		err          error
@@ -393,7 +393,7 @@ func TestExactERC20BalanceObservationsRejectConcurrentConflictsAndPreserveIdenti
 
 	identicalContract := testAddress(20_003)
 	identicalCandidates := []catalog.ERC20BalanceCandidate{{TokenAddress: identicalContract.String()}}
-	blockedIdentical := newGatedExactERC20Caller(&exactERC20Caller{balance: "11"})
+	blockedIdentical := newGatedExactStateCaller(&exactERC20Caller{balance: "11"})
 	identicalResult := make(chan balanceResult, 1)
 	go func() {
 		observations, balanceErr := newReconciler(blockedIdentical).ERC20Balances(
@@ -461,7 +461,7 @@ func TestExactERC20BalanceCacheSurvivesRestartAndRejectsOrphanedSnapshots(t *tes
 		contracts[0]: "7", contracts[1]: "0",
 	}}
 	observer := &exactNFTObserver{}
-	first, err := state.NewNFTReconciler(db, newERC20StatePool(t, firstCaller, observer), canonical)
+	first, err := state.NewTokenReconciler(db, newExactStatePool(t, firstCaller, observer), canonical)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -476,7 +476,7 @@ func TestExactERC20BalanceCacheSurvivesRestartAndRejectsOrphanedSnapshots(t *tes
 
 	compatibilityCaller := &exactERC20Caller{balance: "9"}
 	compatibilityReader := &state.Reader{
-		Pool: newERC20StatePool(t, compatibilityCaller), Canonical: canonical,
+		Pool: newExactStatePool(t, compatibilityCaller), Canonical: canonical,
 	}
 	compatibilityBalance, err := compatibilityReader.ERC20Balance(ctx, contracts[0].String(), owner.String())
 	if err != nil || compatibilityBalance != "9" || compatibilityCaller.calls != 1 {
@@ -484,7 +484,7 @@ func TestExactERC20BalanceCacheSurvivesRestartAndRejectsOrphanedSnapshots(t *tes
 	}
 
 	failing := &exactERC20Caller{err: errors.New("RPC must not be called for cached exact ERC-20 state")}
-	cached, err := state.NewNFTReconciler(db, newERC20StatePool(t, failing), canonical)
+	cached, err := state.NewTokenReconciler(db, newExactStatePool(t, failing), canonical)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -512,8 +512,8 @@ func TestExactERC20BalanceCacheSurvivesRestartAndRejectsOrphanedSnapshots(t *tes
 	replacementCaller := &exactERC20Caller{balances: map[common.Address]string{
 		contracts[0]: "8", contracts[1]: "1",
 	}}
-	replacementReconciler, err := state.NewNFTReconciler(
-		db, newERC20StatePool(t, replacementCaller), canonical,
+	replacementReconciler, err := state.NewTokenReconciler(
+		db, newExactStatePool(t, replacementCaller), canonical,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -571,9 +571,9 @@ func TestTokenObservationsAndExactNFTStateSurviveRealPostgresReorg(t *testing.T)
 	erc721, erc1155 := testAddress(721), testAddress(1155)
 	rpc := &exactNFTCaller{owner: owner, erc1155Balance: "7"}
 	observer := &exactNFTObserver{}
-	pool := newNFTStatePool(t, rpc, observer)
+	pool := newExactStatePool(t, rpc, observer)
 	canonical := state.PostgresCanonicalSource{DB: db, ChainID: "1"}
-	reconciler, err := state.NewNFTReconciler(db, pool, canonical)
+	reconciler, err := state.NewTokenReconciler(db, pool, canonical)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -615,7 +615,7 @@ func TestTokenObservationsAndExactNFTStateSurviveRealPostgresReorg(t *testing.T)
 	// A fresh process can serve the exact canonical snapshot from PostgreSQL;
 	// it does not need the RPC endpoint again.
 	failing := &exactNFTCaller{err: errors.New("RPC must not be called for cached exact state")}
-	cached, err := state.NewNFTReconciler(db, newNFTStatePool(t, failing), canonical)
+	cached, err := state.NewTokenReconciler(db, newExactStatePool(t, failing), canonical)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -720,22 +720,26 @@ type exactERC20Caller struct {
 	calls    int
 }
 
-type gatedExactERC20Caller struct {
-	delegate *exactERC20Caller
+type exactStateCaller interface {
+	Call(context.Context, map[string]any, rpc.BlockNumberOrHash) (hexutil.Bytes, error)
+}
+
+type gatedExactStateCaller struct {
+	delegate exactStateCaller
 	started  chan struct{}
 	release  chan struct{}
 	once     sync.Once
 }
 
-func newGatedExactERC20Caller(delegate *exactERC20Caller) *gatedExactERC20Caller {
-	return &gatedExactERC20Caller{
+func newGatedExactStateCaller(delegate exactStateCaller) *gatedExactStateCaller {
+	return &gatedExactStateCaller{
 		delegate: delegate,
 		started:  make(chan struct{}),
 		release:  make(chan struct{}),
 	}
 }
 
-func (caller *gatedExactERC20Caller) Call(
+func (caller *gatedExactStateCaller) Call(
 	ctx context.Context,
 	request map[string]any,
 	selector rpc.BlockNumberOrHash,
@@ -749,16 +753,16 @@ func (caller *gatedExactERC20Caller) Call(
 	return caller.delegate.Call(ctx, request, selector)
 }
 
-func (caller *gatedExactERC20Caller) waitUntilStarted(t *testing.T, ctx context.Context) {
+func (caller *gatedExactStateCaller) waitUntilStarted(t *testing.T, ctx context.Context) {
 	t.Helper()
 	select {
 	case <-caller.started:
 	case <-ctx.Done():
-		t.Fatalf("wait for gated exact ERC-20 call: %v", ctx.Err())
+		t.Fatalf("wait for gated exact state call: %v", ctx.Err())
 	}
 }
 
-func (caller *gatedExactERC20Caller) releaseCall() { close(caller.release) }
+func (caller *gatedExactStateCaller) releaseCall() { close(caller.release) }
 
 func (caller *exactERC20Caller) Call(
 	_ context.Context,
@@ -812,46 +816,6 @@ func (observer *exactNFTObserver) RecordRPC(observation ethrpc.Observation) {
 	observer.observations = append(observer.observations, observation)
 }
 
-type gatedExactNFTCaller struct {
-	delegate *exactNFTCaller
-	started  chan struct{}
-	release  chan struct{}
-	once     sync.Once
-}
-
-func newGatedExactNFTCaller(delegate *exactNFTCaller) *gatedExactNFTCaller {
-	return &gatedExactNFTCaller{
-		delegate: delegate,
-		started:  make(chan struct{}),
-		release:  make(chan struct{}),
-	}
-}
-
-func (caller *gatedExactNFTCaller) Call(
-	ctx context.Context,
-	request map[string]any,
-	selector rpc.BlockNumberOrHash,
-) (hexutil.Bytes, error) {
-	caller.once.Do(func() { close(caller.started) })
-	select {
-	case <-caller.release:
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-	return caller.delegate.Call(ctx, request, selector)
-}
-
-func (caller *gatedExactNFTCaller) waitUntilStarted(t *testing.T, ctx context.Context) {
-	t.Helper()
-	select {
-	case <-caller.started:
-	case <-ctx.Done():
-		t.Fatalf("wait for gated exact NFT call: %v", ctx.Err())
-	}
-}
-
-func (caller *gatedExactNFTCaller) releaseCall() { close(caller.release) }
-
 func (caller *exactNFTCaller) Call(
 	_ context.Context,
 	request map[string]any,
@@ -895,30 +859,14 @@ func (caller *exactNFTCaller) Call(
 	return hexutil.Bytes(output), nil
 }
 
-func newNFTStatePool(t *testing.T, service any, observers ...ethrpc.Observer) *ethrpc.Pool {
+func newExactStatePool(t *testing.T, service any, observers ...ethrpc.Observer) *ethrpc.Pool {
 	t.Helper()
 	var observer ethrpc.Observer
 	if len(observers) > 0 {
 		observer = observers[0]
 	}
 	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
-		Name: "exact-nft-state", Client: newIntegrationRPCClient(t, "eth", service),
-		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeState: true},
-	}}, ethrpc.PoolOptions{Observer: observer})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return pool
-}
-
-func newERC20StatePool(t *testing.T, service any, observers ...ethrpc.Observer) *ethrpc.Pool {
-	t.Helper()
-	var observer ethrpc.Observer
-	if len(observers) > 0 {
-		observer = observers[0]
-	}
-	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
-		Name: "exact-erc20-state", Client: newIntegrationRPCClient(t, "eth", service),
+		Name: "exact-state", Client: newIntegrationRPCClient(t, "eth", service),
 		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeState: true},
 	}}, ethrpc.PoolOptions{Observer: observer})
 	if err != nil {

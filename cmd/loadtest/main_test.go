@@ -9,61 +9,51 @@ import (
 	"time"
 )
 
-func TestReadAPIKeyRejectsConflictingSourcesAndOversizedFiles(t *testing.T) {
-	t.Setenv("ETHERVIEW_LOAD_API_KEY", "environment-key")
-	path := filepath.Join(t.TempDir(), "api-key")
-	if err := os.WriteFile(path, []byte("file-key\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := readAPIKey(path); err == nil {
-		t.Fatal("conflicting API key sources were accepted")
-	}
-
-	if err := os.Unsetenv("ETHERVIEW_LOAD_API_KEY"); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte(strings.Repeat("x", 4_097)), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := readAPIKey(path); err == nil {
-		t.Fatal("oversized API key file was accepted")
-	}
-	if err := os.WriteFile(path, []byte(strings.Repeat(" ", 4_097)), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := readAPIKey(path); err == nil {
-		t.Fatal("raw oversized whitespace API key file was accepted")
-	}
-	if err := os.WriteFile(path, []byte(" \n\t"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := readAPIKey(path); err == nil {
-		t.Fatal("empty API key file was accepted")
-	}
-}
-
-func TestReadAPIKeyTrimsAFileValue(t *testing.T) {
-	t.Setenv("ETHERVIEW_LOAD_API_KEY", "")
-	if err := os.Unsetenv("ETHERVIEW_LOAD_API_KEY"); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(t.TempDir(), "api-key")
-	if err := os.WriteFile(path, []byte("  file-key\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	value, err := readAPIKey(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if value != "file-key" {
-		t.Fatalf("API key = %q", value)
-	}
-}
-
-func TestReadAPIKeyRejectsExplicitlyEmptyEnvironmentValue(t *testing.T) {
-	t.Setenv("ETHERVIEW_LOAD_API_KEY", " \n")
-	if _, err := readAPIKey(""); err == nil {
-		t.Fatal("empty environment API key was accepted")
+func TestReadAPIKey(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		env     string
+		envSet  bool
+		file    string
+		want    string
+		wantErr string
+	}{
+		{name: "conflicting sources", env: "environment-key", envSet: true, file: "file-key\n", wantErr: "-api-key-file and ETHERVIEW_LOAD_API_KEY are mutually exclusive"},
+		{name: "oversized file", file: strings.Repeat("x", 4_097), wantErr: "API key exceeds 4096 bytes"},
+		{name: "oversized whitespace file", file: strings.Repeat(" ", 4_097), wantErr: "API key exceeds 4096 bytes"},
+		{name: "empty file", file: " \n\t", wantErr: "API key source is empty"},
+		{name: "trimmed file", file: "  file-key\n", want: "file-key"},
+		{name: "explicitly empty environment", env: " \n", envSet: true, wantErr: "API key source is empty"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			// Setenv registers restoration even when this case needs an absent variable.
+			t.Setenv("ETHERVIEW_LOAD_API_KEY", test.env)
+			if !test.envSet {
+				if err := os.Unsetenv("ETHERVIEW_LOAD_API_KEY"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var path string
+			if test.file != "" {
+				path = filepath.Join(t.TempDir(), "api-key")
+				if err := os.WriteFile(path, []byte(test.file), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			value, err := readAPIKey(path)
+			if test.wantErr != "" {
+				if err == nil || err.Error() != test.wantErr {
+					t.Fatalf("readAPIKey error = %v, want %q", err, test.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if value != test.want {
+				t.Fatalf("API key = %q, want %q", value, test.want)
+			}
+		})
 	}
 }
 

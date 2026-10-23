@@ -1,3 +1,4 @@
+import { firstPage, type CursorRequest } from "./pagination";
 import { chainQueryMeta, statusQueryMeta, userOperationQueryMeta } from "./chainEvents";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
@@ -35,8 +36,8 @@ export function useChainStatus() {
   return useQuery({
     queryKey: ["status"],
     meta: statusQueryMeta,
-    queryFn: async () => {
-      const response = requireEnvelope(await apiClient.GET("/status"));
+    queryFn: async ({ signal }) => {
+      const response = requireEnvelope(await apiClient.GET("/status", { signal }));
       return {
         ...response.data,
         coverage_start: response.meta.coverage_start,
@@ -51,19 +52,20 @@ export function useChainStatus() {
 export function usePublicConfig() {
   return useQuery({
     queryKey: ["config"],
-    queryFn: async () => requireEnvelope(await apiClient.GET("/config")).data,
+    queryFn: async ({ signal }) => requireEnvelope(await apiClient.GET("/config", { signal })).data,
     retry: false,
     staleTime: Number.POSITIVE_INFINITY,
   });
 }
 
-export function useBlocks(limit = 12, cursor?: string, refreshGeneration = 0) {
+export function useBlocks(page: CursorRequest = firstPage, limit = 12) {
+  const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["blocks", limit, cursor ?? null, refreshGeneration],
     meta: statusQueryMeta,
-    queryFn: async (): Promise<CursorPage<BlockSummary>> => {
+    queryFn: async ({ signal }): Promise<CursorPage<BlockSummary>> => {
       const response = requireEnvelope(
-        await apiClient.GET("/blocks", { params: { query: { limit, cursor } } }),
+        await apiClient.GET("/blocks", { signal, params: { query: { limit, cursor } } }),
       );
       return {
         items: response.data,
@@ -76,14 +78,13 @@ export function useBlocks(limit = 12, cursor?: string, refreshGeneration = 0) {
   });
 }
 
-export function useGenesisAccounts(limit = 25, cursor?: string, refreshGeneration = 0) {
+export function useGenesisAccounts(page: CursorRequest = firstPage, limit = 25) {
+  const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["genesis-accounts", limit, cursor ?? null, refreshGeneration],
-    queryFn: async (): Promise<CursorPage<GenesisAccount>> => {
+    queryFn: async ({ signal }): Promise<CursorPage<GenesisAccount>> => {
       const response = requireEnvelope(
-        await apiClient.GET("/genesis/accounts", {
-          params: { query: { limit, cursor } },
-        }),
+        await apiClient.GET("/genesis/accounts", { signal, params: { query: { limit, cursor } } }),
       );
       return {
         items: response.data,
@@ -96,13 +97,14 @@ export function useGenesisAccounts(limit = 25, cursor?: string, refreshGeneratio
   });
 }
 
-export function useTransactions(limit = 12, cursor?: string, refreshGeneration = 0) {
+export function useTransactions(page: CursorRequest = firstPage, limit = 12) {
+  const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["transactions", limit, cursor ?? null, refreshGeneration],
     meta: chainQueryMeta,
-    queryFn: async (): Promise<CursorPage<TransactionSummary>> => {
+    queryFn: async ({ signal }): Promise<CursorPage<TransactionSummary>> => {
       const response = requireEnvelope(
-        await apiClient.GET("/transactions", { params: { query: { limit, cursor } } }),
+        await apiClient.GET("/transactions", { signal, params: { query: { limit, cursor } } }),
       );
       return {
         items: response.data,
@@ -115,13 +117,14 @@ export function useTransactions(limit = 12, cursor?: string, refreshGeneration =
   });
 }
 
-export function useUserOperations(limit = 25, cursor?: string, refreshGeneration = 0) {
+export function useUserOperations(page: CursorRequest = firstPage, limit = 25) {
+  const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["user-operations", limit, cursor ?? null, refreshGeneration],
     meta: userOperationQueryMeta,
-    queryFn: async (): Promise<CursorPage<UserOperationSummary>> => {
+    queryFn: async ({ signal }): Promise<CursorPage<UserOperationSummary>> => {
       const response = requireEnvelope(
-        await apiClient.GET("/user-operations", { params: { query: { limit, cursor } } }),
+        await apiClient.GET("/user-operations", { signal, params: { query: { limit, cursor } } }),
       );
       return { items: response.data, meta: response.meta, next_cursor: response.meta.next_cursor };
     },
@@ -134,9 +137,9 @@ export function useUserOperation(hash: string, enabled = true) {
   return useQuery({
     queryKey: ["user-operation", hash],
     meta: userOperationQueryMeta,
-    queryFn: async (): Promise<UserOperationDetail> =>
+    queryFn: async ({ signal }): Promise<UserOperationDetail> =>
       requireEnvelope(
-        await apiClient.GET("/user-operations/{hash}", { params: { path: { hash } } }),
+        await apiClient.GET("/user-operations/{hash}", { signal, params: { path: { hash } } }),
       ).data,
     enabled: enabled && hash.length > 0,
     retry: false,
@@ -144,13 +147,19 @@ export function useUserOperation(hash: string, enabled = true) {
   });
 }
 
-export function useTransactionUserOperations(hash: string, cursor?: string, enabled = true) {
+export function useTransactionUserOperations(
+  hash: string,
+  page: CursorRequest = firstPage,
+  enabled = true,
+) {
+  const { cursor, refreshGeneration } = page;
   return useQuery({
-    queryKey: ["transaction", hash, "user-operations", cursor ?? null],
+    queryKey: ["transaction", hash, "user-operations", cursor ?? null, refreshGeneration],
     meta: chainQueryMeta,
-    queryFn: async (): Promise<CursorPage<UserOperationSummary>> => {
+    queryFn: async ({ signal }): Promise<CursorPage<UserOperationSummary>> => {
       const response = requireEnvelope(
         await apiClient.GET("/transactions/{hash}/user-operations", {
+          signal,
           params: { path: { hash }, query: { cursor, limit: 25 } },
         }),
       );
@@ -162,13 +171,19 @@ export function useTransactionUserOperations(hash: string, cursor?: string, enab
   });
 }
 
-export function useAddressUserOperations(address: string, cursor?: string, enabled = true) {
+export function useAddressUserOperations(
+  address: string,
+  page: CursorRequest = firstPage,
+  enabled = true,
+) {
+  const { cursor, refreshGeneration } = page;
   return useQuery({
-    queryKey: ["address", address, "user-operations", cursor ?? null],
+    queryKey: ["address", address, "user-operations", cursor ?? null, refreshGeneration],
     meta: chainQueryMeta,
-    queryFn: async (): Promise<CursorPage<UserOperationSummary>> => {
+    queryFn: async ({ signal }): Promise<CursorPage<UserOperationSummary>> => {
       const response = requireEnvelope(
         await apiClient.GET("/addresses/{address}/user-operations", {
+          signal,
           params: { path: { address }, query: { cursor, limit: 25 } },
         }),
       );
@@ -181,17 +196,17 @@ export function useAddressUserOperations(address: string, cursor?: string, enabl
 }
 
 export function usePendingTransactions(
-  cursor: string | undefined,
+  page: CursorRequest = firstPage,
   enabled = true,
   limit = 25,
-  refreshGeneration = 0,
 ) {
+  const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["pending-transactions", cursor ?? null, limit, refreshGeneration],
     meta: chainQueryMeta,
-    queryFn: async (): Promise<PendingSnapshot> => {
+    queryFn: async ({ signal }): Promise<PendingSnapshot> => {
       const response = requireEnvelope(
-        await apiClient.GET("/pending", { params: { query: { limit, cursor } } }),
+        await apiClient.GET("/pending", { signal, params: { query: { limit, cursor } } }),
       );
       return { items: response.data, meta: response.meta };
     },
@@ -207,22 +222,29 @@ export function useBlock(identifier: string, enabled = true) {
   return useQuery({
     queryKey: ["block", identifier],
     meta: statusQueryMeta,
-    queryFn: async () =>
-      requireEnvelope(await apiClient.GET("/blocks/{id}", { params: { path: { id: identifier } } }))
-        .data,
+    queryFn: async ({ signal }) =>
+      requireEnvelope(
+        await apiClient.GET("/blocks/{id}", { signal, params: { path: { id: identifier } } }),
+      ).data,
     enabled: enabled && identifier.length > 0,
     retry: false,
     staleTime: 5_000,
   });
 }
 
-export function useBlockTransactions(identifier: string, cursor?: string, enabled = true) {
+export function useBlockTransactions(
+  identifier: string,
+  page: CursorRequest = firstPage,
+  enabled = true,
+) {
+  const { cursor, refreshGeneration } = page;
   return useQuery({
-    queryKey: ["block", identifier, "transactions", cursor ?? null],
+    queryKey: ["block", identifier, "transactions", cursor ?? null, refreshGeneration],
     meta: chainQueryMeta,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const response = requireEnvelope(
         await apiClient.GET("/blocks/{id}/transactions", {
+          signal,
           params: { path: { id: identifier }, query: { cursor, limit: 25 } },
         }),
       );
@@ -242,9 +264,10 @@ export function useTransaction(hash: string, enabled = true) {
   return useQuery({
     queryKey: ["transaction", hash],
     meta: chainQueryMeta,
-    queryFn: async (): Promise<TransactionDetail> =>
-      requireEnvelope(await apiClient.GET("/transactions/{hash}", { params: { path: { hash } } }))
-        .data,
+    queryFn: async ({ signal }): Promise<TransactionDetail> =>
+      requireEnvelope(
+        await apiClient.GET("/transactions/{hash}", { signal, params: { path: { hash } } }),
+      ).data,
     enabled: enabled && hash.length > 0,
     retry: false,
     staleTime: liveRefetchInterval,
@@ -263,9 +286,12 @@ export function useTransactionCalldata(hash: string, enabled = true) {
   return useQuery({
     queryKey: ["transaction", hash, "calldata"],
     meta: chainQueryMeta,
-    queryFn: async () =>
+    queryFn: async ({ signal }) =>
       requireEnvelope(
-        await apiClient.GET("/transactions/{hash}/calldata", { params: { path: { hash } } }),
+        await apiClient.GET("/transactions/{hash}/calldata", {
+          signal,
+          params: { path: { hash } },
+        }),
       ).data,
     enabled: enabled && hash.length > 0,
     retry: false,
@@ -277,9 +303,9 @@ export function useTransactionFailure(hash: string, enabled = true) {
   return useQuery({
     queryKey: ["transaction", hash, "failure"],
     meta: chainQueryMeta,
-    queryFn: async () =>
+    queryFn: async ({ signal }) =>
       requireEnvelope(
-        await apiClient.GET("/transactions/{hash}/failure", { params: { path: { hash } } }),
+        await apiClient.GET("/transactions/{hash}/failure", { signal, params: { path: { hash } } }),
       ).data,
     enabled: enabled && hash.length > 0,
     retry: false,
@@ -291,9 +317,9 @@ export function useTransactionTrace(hash: string, enabled = true) {
   return useQuery({
     queryKey: ["transaction", hash, "trace"],
     meta: chainQueryMeta,
-    queryFn: async () =>
+    queryFn: async ({ signal }) =>
       requireEnvelope(
-        await apiClient.GET("/transactions/{hash}/trace", { params: { path: { hash } } }),
+        await apiClient.GET("/transactions/{hash}/trace", { signal, params: { path: { hash } } }),
       ).data,
     enabled: enabled && hash.length > 0,
     retry: false,
@@ -301,13 +327,19 @@ export function useTransactionTrace(hash: string, enabled = true) {
   });
 }
 
-export function useTransactionAuthorizations(hash: string, cursor?: string, enabled = true) {
+export function useTransactionAuthorizations(
+  hash: string,
+  page: CursorRequest = firstPage,
+  enabled = true,
+) {
+  const { cursor, refreshGeneration } = page;
   return useQuery({
-    queryKey: ["transaction", hash, "authorizations", cursor ?? null],
+    queryKey: ["transaction", hash, "authorizations", cursor ?? null, refreshGeneration],
     meta: chainQueryMeta,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const response = requireEnvelope(
         await apiClient.GET("/transactions/{hash}/authorizations", {
+          signal,
           params: { path: { hash }, query: { cursor, limit: 25 } },
         }),
       );
@@ -319,13 +351,19 @@ export function useTransactionAuthorizations(hash: string, cursor?: string, enab
   });
 }
 
-export function useTransactionTokenTransfers(hash: string, cursor?: string, enabled = true) {
+export function useTransactionTokenTransfers(
+  hash: string,
+  page: CursorRequest = firstPage,
+  enabled = true,
+) {
+  const { cursor, refreshGeneration } = page;
   return useQuery({
-    queryKey: ["transaction", hash, "token-transfers", cursor ?? null],
+    queryKey: ["transaction", hash, "token-transfers", cursor ?? null, refreshGeneration],
     meta: chainQueryMeta,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const response = requireEnvelope(
         await apiClient.GET("/transactions/{hash}/token-transfers", {
+          signal,
           params: { path: { hash }, query: { cursor, limit: 25 } },
         }),
       );
@@ -337,13 +375,19 @@ export function useTransactionTokenTransfers(hash: string, cursor?: string, enab
   });
 }
 
-export function useTransactionInternalTransactions(hash: string, cursor?: string, enabled = true) {
+export function useTransactionInternalTransactions(
+  hash: string,
+  page: CursorRequest = firstPage,
+  enabled = true,
+) {
+  const { cursor, refreshGeneration } = page;
   return useQuery({
-    queryKey: ["transaction", hash, "internal-transactions", cursor ?? null],
+    queryKey: ["transaction", hash, "internal-transactions", cursor ?? null, refreshGeneration],
     meta: chainQueryMeta,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const response = requireEnvelope(
         await apiClient.GET("/transactions/{hash}/internal-transactions", {
+          signal,
           params: { path: { hash }, query: { cursor, limit: 25 } },
         }),
       );
@@ -355,13 +399,15 @@ export function useTransactionInternalTransactions(hash: string, cursor?: string
   });
 }
 
-export function useTransactionLogs(hash: string, cursor?: string, enabled = true) {
+export function useTransactionLogs(hash: string, page: CursorRequest = firstPage, enabled = true) {
+  const { cursor, refreshGeneration } = page;
   return useQuery({
-    queryKey: ["transaction", hash, "logs", cursor ?? null],
+    queryKey: ["transaction", hash, "logs", cursor ?? null, refreshGeneration],
     meta: chainQueryMeta,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const response = requireEnvelope(
         await apiClient.GET("/transactions/{hash}/logs", {
+          signal,
           params: { path: { hash }, query: { cursor, limit: 25 } },
         }),
       );
@@ -373,13 +419,19 @@ export function useTransactionLogs(hash: string, cursor?: string, enabled = true
   });
 }
 
-export function useTransactionStateChanges(hash: string, cursor?: string, enabled = true) {
+export function useTransactionStateChanges(
+  hash: string,
+  page: CursorRequest = firstPage,
+  enabled = true,
+) {
+  const { cursor, refreshGeneration } = page;
   return useQuery({
-    queryKey: ["transaction", hash, "state-changes", cursor ?? null],
+    queryKey: ["transaction", hash, "state-changes", cursor ?? null, refreshGeneration],
     meta: chainQueryMeta,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const response = requireEnvelope(
         await apiClient.GET("/transactions/{hash}/state-changes", {
+          signal,
           params: { path: { hash }, query: { cursor, limit: 25 } },
         }),
       );
@@ -395,9 +447,9 @@ export function useAddress(address: string, enabled = true) {
   return useQuery({
     queryKey: ["address", address],
     meta: chainQueryMeta,
-    queryFn: async () =>
+    queryFn: async ({ signal }) =>
       requireEnvelope(
-        await apiClient.GET("/addresses/{address}", { params: { path: { address } } }),
+        await apiClient.GET("/addresses/{address}", { signal, params: { path: { address } } }),
       ).data,
     enabled: enabled && address.length > 0,
     retry: false,
@@ -407,17 +459,18 @@ export function useAddress(address: string, enabled = true) {
 
 export function useAddressTransactions(
   address: string,
-  cursor?: string,
-  limit = 25,
-  refreshGeneration = 0,
+  page: CursorRequest = firstPage,
   enabled = true,
+  limit = 25,
 ) {
+  const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["address", address, "transactions", cursor ?? null, limit, refreshGeneration],
     meta: chainQueryMeta,
-    queryFn: async (): Promise<CursorPage<TransactionSummary>> => {
+    queryFn: async ({ signal }): Promise<CursorPage<TransactionSummary>> => {
       const response = requireEnvelope(
         await apiClient.GET("/addresses/{address}/transactions", {
+          signal,
           params: { path: { address }, query: { limit, cursor } },
         }),
       );
@@ -435,17 +488,18 @@ export function useAddressTransactions(
 
 export function useAddressWithdrawals(
   address: string,
-  cursor?: string,
-  limit = 25,
-  refreshGeneration = 0,
+  page: CursorRequest = firstPage,
   enabled = true,
+  limit = 25,
 ) {
+  const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["address", address, "withdrawals", cursor ?? null, limit, refreshGeneration],
     meta: chainQueryMeta,
-    queryFn: async (): Promise<CursorPage<AddressWithdrawal>> => {
+    queryFn: async ({ signal }): Promise<CursorPage<AddressWithdrawal>> => {
       const response = requireEnvelope(
         await apiClient.GET("/addresses/{address}/withdrawals", {
+          signal,
           params: { path: { address }, query: { limit, cursor } },
         }),
       );
@@ -463,11 +517,11 @@ export function useAddressWithdrawals(
 
 export function useAddressInternalTransactions(
   address: string,
-  cursor?: string,
-  limit = 25,
-  refreshGeneration = 0,
+  page: CursorRequest = firstPage,
   enabled = true,
+  limit = 25,
 ) {
+  const { cursor, refreshGeneration } = page;
   return useQuery({
     meta: chainQueryMeta,
     queryKey: [
@@ -478,9 +532,10 @@ export function useAddressInternalTransactions(
       limit,
       refreshGeneration,
     ],
-    queryFn: async (): Promise<CursorPage<AddressInternalTransaction>> => {
+    queryFn: async ({ signal }): Promise<CursorPage<AddressInternalTransaction>> => {
       const response = requireEnvelope(
         await apiClient.GET("/addresses/{address}/internal-transactions", {
+          signal,
           params: { path: { address }, query: { limit, cursor } },
         }),
       );
@@ -498,11 +553,11 @@ export function useAddressInternalTransactions(
 
 export function useAddressERC20Transfers(
   address: string,
-  cursor?: string,
-  limit = 25,
-  refreshGeneration = 0,
+  page: CursorRequest = firstPage,
   enabled = true,
+  limit = 25,
 ) {
+  const { cursor, refreshGeneration } = page;
   return useAddressTokenActivity(
     "erc20-transfers",
     "/addresses/{address}/erc20-transfers",
@@ -516,11 +571,11 @@ export function useAddressERC20Transfers(
 
 export function useAddressNFTTransfers(
   address: string,
-  cursor?: string,
-  limit = 25,
-  refreshGeneration = 0,
+  page: CursorRequest = firstPage,
   enabled = true,
+  limit = 25,
 ) {
+  const { cursor, refreshGeneration } = page;
   return useAddressTokenActivity(
     "nft-transfers",
     "/addresses/{address}/nft-transfers",
@@ -544,13 +599,15 @@ function useAddressTokenActivity(
   return useQuery({
     queryKey: ["address", address, kind, cursor ?? null, limit, refreshGeneration],
     meta: chainQueryMeta,
-    queryFn: async (): Promise<CursorPage<AddressTokenTransfer>> => {
+    queryFn: async ({ signal }): Promise<CursorPage<AddressTokenTransfer>> => {
       const response = requireEnvelope(
         path === "/addresses/{address}/erc20-transfers"
           ? await apiClient.GET("/addresses/{address}/erc20-transfers", {
+              signal,
               params: { path: { address }, query: { limit, cursor } },
             })
           : await apiClient.GET("/addresses/{address}/nft-transfers", {
+              signal,
               params: { path: { address }, query: { limit, cursor } },
             }),
       );
@@ -566,13 +623,14 @@ function useAddressTokenActivity(
   });
 }
 
-export function useTokens(limit = 25, cursor?: string, refreshGeneration = 0) {
+export function useTokens(page: CursorRequest = firstPage, limit = 25) {
+  const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["tokens", limit, cursor ?? null, refreshGeneration],
     meta: chainQueryMeta,
-    queryFn: async (): Promise<CursorPage<TokenContract>> => {
+    queryFn: async ({ signal }): Promise<CursorPage<TokenContract>> => {
       const response = requireEnvelope(
-        await apiClient.GET("/tokens", { params: { query: { limit, cursor } } }),
+        await apiClient.GET("/tokens", { signal, params: { query: { limit, cursor } } }),
       );
       return {
         items: response.data,
@@ -589,9 +647,10 @@ export function useToken(address: string, enabled = true) {
   return useQuery({
     queryKey: ["token", address],
     meta: chainQueryMeta,
-    queryFn: async () =>
-      requireEnvelope(await apiClient.GET("/tokens/{address}", { params: { path: { address } } }))
-        .data,
+    queryFn: async ({ signal }) =>
+      requireEnvelope(
+        await apiClient.GET("/tokens/{address}", { signal, params: { path: { address } } }),
+      ).data,
     enabled: enabled && address.length > 0,
     retry: false,
     staleTime: 30_000,
@@ -600,17 +659,18 @@ export function useToken(address: string, enabled = true) {
 
 export function useTokenTransfers(
   address: string,
-  limit = 25,
-  cursor?: string,
-  refreshGeneration = 0,
+  page: CursorRequest = firstPage,
   enabled = true,
+  limit = 25,
 ) {
+  const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["token", address, "transfers", limit, cursor ?? null, refreshGeneration],
     meta: chainQueryMeta,
-    queryFn: async (): Promise<CursorPage<TokenEvent>> => {
+    queryFn: async ({ signal }): Promise<CursorPage<TokenEvent>> => {
       const response = requireEnvelope(
         await apiClient.GET("/tokens/{address}/transfers", {
+          signal,
           params: { path: { address }, query: { limit, cursor } },
         }),
       );
@@ -628,17 +688,18 @@ export function useTokenTransfers(
 
 export function useTokenHolders(
   address: string,
-  limit = 50,
-  cursor?: string,
-  refreshGeneration = 0,
+  page: CursorRequest = firstPage,
   enabled = true,
+  limit = 50,
 ) {
+  const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["token", address, "holders", limit, cursor ?? null, refreshGeneration],
     meta: chainQueryMeta,
-    queryFn: async (): Promise<TokenHolderPage> => {
+    queryFn: async ({ signal }): Promise<TokenHolderPage> => {
       const response = requireEnvelope(
         await apiClient.GET("/tokens/{address}/holders", {
+          signal,
           params: { path: { address }, query: { limit, cursor } },
         }),
       );
@@ -656,17 +717,18 @@ export function useTokenHolders(
 
 export function useAddressNFTBalances(
   address: string,
-  cursor?: string,
-  limit = 25,
-  refreshGeneration = 0,
+  page: CursorRequest = firstPage,
   enabled = true,
+  limit = 25,
 ) {
+  const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["address", address, "nfts", cursor ?? null, limit, refreshGeneration],
     meta: chainQueryMeta,
-    queryFn: async (): Promise<CursorPage<NFTBalance>> => {
+    queryFn: async ({ signal }): Promise<CursorPage<NFTBalance>> => {
       const response = requireEnvelope(
         await apiClient.GET("/addresses/{address}/nfts", {
+          signal,
           params: { path: { address }, query: { limit, cursor } },
         }),
       );
@@ -684,17 +746,18 @@ export function useAddressNFTBalances(
 
 export function useAddressERC20Balances(
   address: string,
-  cursor?: string,
-  limit = 25,
-  refreshGeneration = 0,
+  page: CursorRequest = firstPage,
   enabled = true,
+  limit = 25,
 ) {
+  const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["address", address, "erc20-balances", cursor ?? null, limit, refreshGeneration],
     meta: chainQueryMeta,
-    queryFn: async (): Promise<CursorPage<ERC20Balance>> => {
+    queryFn: async ({ signal }): Promise<CursorPage<ERC20Balance>> => {
       const response = requireEnvelope(
         await apiClient.GET("/addresses/{address}/erc20-balances", {
+          signal,
           params: { path: { address }, query: { limit, cursor } },
         }),
       );
@@ -714,9 +777,10 @@ export function useNFTOwnership(address: string, tokenID: string, enabled = true
   return useQuery({
     queryKey: ["nft", address, tokenID],
     meta: chainQueryMeta,
-    queryFn: async () =>
+    queryFn: async ({ signal }) =>
       requireEnvelope(
         await apiClient.GET("/nfts/{address}/{token_id}", {
+          signal,
           params: { path: { address, token_id: tokenID } },
         }),
       ).data,
@@ -730,9 +794,10 @@ export function useNFTMetadata(address: string, tokenID: string, enabled = true)
   return useQuery({
     queryKey: ["nft", address, tokenID, "metadata"],
     meta: chainQueryMeta,
-    queryFn: async (): Promise<NFTMetadata> =>
+    queryFn: async ({ signal }): Promise<NFTMetadata> =>
       requireEnvelope(
         await apiClient.GET("/nfts/{address}/{token_id}/metadata", {
+          signal,
           params: { path: { address, token_id: tokenID } },
         }),
       ).data,
@@ -742,18 +807,14 @@ export function useNFTMetadata(address: string, tokenID: string, enabled = true)
   });
 }
 
-export function useSearchResults(
-  query: string,
-  cursor?: string,
-  limit = 20,
-  refreshGeneration = 0,
-) {
+export function useSearchResults(query: string, page: CursorRequest = firstPage, limit = 20) {
+  const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["search", query, cursor ?? null, limit, refreshGeneration],
     meta: chainQueryMeta,
-    queryFn: async (): Promise<CursorPage<SearchResult>> => {
+    queryFn: async ({ signal }): Promise<CursorPage<SearchResult>> => {
       const response = requireEnvelope(
-        await apiClient.GET("/search", { params: { query: { q: query, cursor, limit } } }),
+        await apiClient.GET("/search", { signal, params: { query: { q: query, cursor, limit } } }),
       );
       return {
         items: response.data,
@@ -771,9 +832,10 @@ export function useBlockStats(fromBlock: string, toBlock: string, enabled = true
   return useQuery({
     queryKey: ["block-stats", fromBlock, toBlock],
     meta: chainQueryMeta,
-    queryFn: async () =>
+    queryFn: async ({ signal }) =>
       requireEnvelope(
         await apiClient.GET("/stats/blocks", {
+          signal,
           params: { query: { from_block: fromBlock, to_block: toBlock } },
         }),
       ).data,
@@ -787,9 +849,10 @@ export function useAggregateStats(fromBlock: string, toBlock: string, enabled = 
   return useQuery({
     queryKey: ["aggregate-stats", fromBlock, toBlock],
     meta: chainQueryMeta,
-    queryFn: async (): Promise<AggregateStats> =>
+    queryFn: async ({ signal }): Promise<AggregateStats> =>
       requireEnvelope(
         await apiClient.GET("/stats/summary", {
+          signal,
           params: { query: { from_block: fromBlock, to_block: toBlock } },
         }),
       ).data,
@@ -803,8 +866,8 @@ export function useChartOverview() {
   return useQuery({
     queryKey: ["chart-overview"],
     meta: chainQueryMeta,
-    queryFn: async (): Promise<ChartOverview> =>
-      requireEnvelope(await apiClient.GET("/stats/charts/overview")).data,
+    queryFn: async ({ signal }): Promise<ChartOverview> =>
+      requireEnvelope(await apiClient.GET("/stats/charts/overview", { signal })).data,
     retry: false,
     staleTime: 30_000,
   });
@@ -820,9 +883,10 @@ export function useChartMetric(
   return useQuery({
     queryKey: ["chart-metric", metric, fromTime, toTime, interval],
     meta: chainQueryMeta,
-    queryFn: async (): Promise<ChartMetricSeries> =>
+    queryFn: async ({ signal }): Promise<ChartMetricSeries> =>
       requireEnvelope(
         await apiClient.GET("/stats/charts/{metric}", {
+          signal,
           params: {
             path: { metric },
             query: {
@@ -862,9 +926,10 @@ export function useVerificationJob(
   return useQuery({
     // The revision retries an edited credential without placing that credential in the cache key.
     queryKey: ["verification-job", id, requestRevision],
-    queryFn: async () =>
+    queryFn: async ({ signal }) =>
       requireEnvelope(
         await apiClient.GET("/verifier/jobs/{id}", {
+          signal,
           params: { path: { id } },
           headers: { "X-API-Key": apiKey },
         }),
@@ -882,11 +947,9 @@ export function useVerificationJob(
 export function useCompilerCatalog(language: VerificationSubmission["language"], enabled = true) {
   return useQuery({
     queryKey: ["verifier-compilers", language],
-    queryFn: async () =>
+    queryFn: async ({ signal }) =>
       requireEnvelope(
-        await apiClient.GET("/verifier/compilers", {
-          params: { query: { language } },
-        }),
+        await apiClient.GET("/verifier/compilers", { signal, params: { query: { language } } }),
       ).data,
     enabled,
     retry: false,

@@ -1,3 +1,4 @@
+import { useCursorHistory } from "@/api/pagination";
 import { ConsensusPanel } from "./ConsensusPanels";
 import { BlobsPanel } from "./BlobsPanel";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -22,7 +23,6 @@ import {
   Page,
   ReorgContext,
   finalityLabel,
-  useCursorHistory,
   yesNo,
 } from "./pages";
 import { TransactionStatusBadge } from "./TransactionPage";
@@ -224,8 +224,8 @@ export function BlockDetailPage({ identifier, tab }: { identifier: string; tab: 
   );
   const activeTab: BlockTab = blockTabs.includes(tab as BlockTab) ? (tab as BlockTab) : "overview";
   const transactions = useBlockTransactions(
-    identifier,
-    pager.cursor,
+    block.data?.hash ?? "",
+    pager.request,
     activeTab === "transactions" && Boolean(block.data),
   );
   const locale = i18n.resolvedLanguage ?? "en";

@@ -1,9 +1,9 @@
+import { useCursorHistory } from "@/api/pagination";
 import {
   lazy,
   Suspense,
   useEffect,
   useMemo,
-  useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
@@ -69,22 +69,12 @@ export function DelegatedAccountPanel({
       return [];
     }
   }, [authority, binding.data]);
-  const [historyState, setHistoryState] = useState<{ identity: string; cursors: string[] }>({
-    identity: authority,
-    cursors: [""],
-  });
-  const historyCursors = historyState.identity === authority ? historyState.cursors : [""];
+  const historyPager = useCursorHistory(`delegation-history:${authority}`);
   const history = useAddressDelegationHistory(
     authority,
-    historyCursors.at(-1) || undefined,
-    20,
+    historyPager.request,
     activeTab === "history",
   );
-
-  useEffect(() => {
-    if (historyState.identity === authority) return;
-    setHistoryState({ identity: authority, cursors: [""] });
-  }, [authority, historyState.identity]);
 
   const bindingTemporarilyUnavailable =
     binding.error !== undefined && isTemporaryError(binding.error);
@@ -250,13 +240,10 @@ export function DelegatedAccountPanel({
                   error={history.error}
                   loading={history.isPending}
                   busy={history.isFetching}
-                  cursors={historyCursors}
-                  onNext={(cursor) =>
-                    setHistoryState({ identity: authority, cursors: [...historyCursors, cursor] })
-                  }
-                  onPrevious={() =>
-                    setHistoryState({ identity: authority, cursors: historyCursors.slice(0, -1) })
-                  }
+                  hasPrevious={historyPager.hasPrevious}
+                  onNext={historyPager.next}
+                  onPrevious={historyPager.previous}
+                  onReset={historyPager.reset}
                 />
               ) : null}
             </>
@@ -428,26 +415,28 @@ function DelegatedInteractionPanel({
 
 function DelegationHistory({
   busy,
-  cursors,
+  hasPrevious,
   data,
   error,
   loading,
   onNext,
   onPrevious,
+  onReset,
 }: {
   busy: boolean;
-  cursors: string[];
+  hasPrevious: boolean;
   data?: Awaited<ReturnType<typeof useAddressDelegationHistory>>["data"];
   error: unknown;
   loading: boolean;
   onNext: (cursor: string) => void;
   onPrevious: () => void;
+  onReset: () => void;
 }) {
   const { t } = useTranslation();
   return (
     <section className="detail-card">
       <h2 id="delegation-history-title">{t("delegation.history")}</h2>
-      <QueryNotice loading={loading} error={error} />
+      <QueryNotice loading={loading} error={error} onReset={onReset} />
       {data?.items.length === 0 ? (
         <p className="empty-result">{t("delegation.noHistory")}</p>
       ) : null}
@@ -493,7 +482,7 @@ function DelegationHistory({
         <nav className="cursor-pagination" aria-label={t("delegation.history")}>
           <button
             className="button secondary"
-            disabled={cursors.length <= 1 || busy}
+            disabled={!hasPrevious || busy}
             onClick={onPrevious}
             type="button"
           >

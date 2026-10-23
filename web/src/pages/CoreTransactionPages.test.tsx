@@ -1,27 +1,24 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import i18n from "@/i18n";
-import { makeRouter } from "@/router";
-import { AuthProvider } from "@/auth/AuthProvider";
-import { ThemeProvider } from "@/theme/ThemeProvider";
-import { WalletProvider } from "@/wallet/WalletProvider";
+import {
+  configResponse,
+  completeness,
+  envelope,
+  notFound,
+  requestURL,
+  renderExplorer,
+} from "@/test/corePageFixtures";
 
 const canonicalHash = `0x${"11".repeat(32)}`;
-const _olderHash = `0x${"22".repeat(32)}`;
 const orphanHash = `0x${"33".repeat(32)}`;
-const parentHash = `0x${"00".repeat(32)}`;
 const address = `0x${"44".repeat(20)}`;
 const transactionHash = `0x${"aa".repeat(32)}`;
 const delegatedAddress = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
-const _clearedDelegationAddress = `0x${"77".repeat(20)}`;
 const delegateAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 const delegateCodeHash = `0x${"55".repeat(32)}`;
-const _delegationBlockHash = `0x${"66".repeat(32)}`;
-const _delegationTransactionHash = `0x${"bb".repeat(32)}`;
 
 beforeEach(async () => {
   await i18n.changeLanguage("en");
@@ -919,125 +916,86 @@ describe("transaction failures and types", () => {
     expect(screen.getByText("失败原因", { exact: true })).toBeVisible();
   });
 
-  it("renders Solidity Panic as concise error text without an ABI table", async () => {
-    let failureRequests = 0;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL) => {
-        const url = requestURL(input);
-        if (url.pathname === "/api/v1/config") return configResponse();
-        if (url.pathname === `/api/v1/transactions/${transactionHash}`) {
-          return envelope({
-            hash: transactionHash,
-            block_hash: canonicalHash,
-            block_number: "12",
-            transaction_index: 0,
-            from: address,
-            to: delegatedAddress,
-            nonce: "1",
-            value: "0",
-            gas: "100000",
-            input: "0x12345678",
-            status: "failed",
-            canonical: true,
-            finality: "safe",
-            completeness: completeness(),
-          });
-        }
-        if (url.pathname === `/api/v1/transactions/${transactionHash}/failure`) {
-          failureRequests += 1;
-          return envelope({
-            chain_id: "1",
-            block_number: "12",
-            block_hash: canonicalHash,
-            transaction_hash: transactionHash,
-            transaction_index: "0",
-            state: "complete",
-            error: "execution reverted",
-            revert_data: `0x4e487b71${"0".repeat(62)}12`,
-            decoding: {
-              status: "decoded",
-              error_name: "Panic",
-              signature: "Panic(uint256)",
-              reason: "division or modulo by zero",
-              arguments: [{ name: "code", type: "uint256", value: "18", components: [] }],
-              candidates: [],
-              abi_source: { kind: "builtin" },
-            },
-          });
-        }
-        return notFound();
-      }),
-    );
+  it.each([
+    {
+      errorName: "Panic",
+      signature: "Panic(uint256)",
+      reason: "division or modulo by zero",
+      revertData: `0x4e487b71${"0".repeat(62)}12`,
+      argument: { name: "code", type: "uint256", value: "18", components: [] },
+    },
+    {
+      errorName: "Error",
+      signature: "Error(string)",
+      reason: "insufficient balance",
+      revertData: "0x08c379a0",
+      argument: { name: "message", type: "string", value: "insufficient balance", components: [] },
+    },
+  ])(
+    "renders Solidity $errorName as concise text without an ABI table",
+    async ({ errorName, signature, reason, revertData, argument }) => {
+      let failureRequests = 0;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL) => {
+          const url = requestURL(input);
+          if (url.pathname === "/api/v1/config") return configResponse();
+          if (url.pathname === `/api/v1/transactions/${transactionHash}`) {
+            return envelope({
+              hash: transactionHash,
+              block_hash: canonicalHash,
+              block_number: "12",
+              transaction_index: 0,
+              from: address,
+              to: delegatedAddress,
+              nonce: "1",
+              value: "0",
+              gas: "100000",
+              input: "0x12345678",
+              status: "failed",
+              canonical: true,
+              finality: "safe",
+              completeness: completeness(),
+            });
+          }
+          if (url.pathname === `/api/v1/transactions/${transactionHash}/failure`) {
+            failureRequests += 1;
+            return envelope({
+              chain_id: "1",
+              block_number: "12",
+              block_hash: canonicalHash,
+              transaction_hash: transactionHash,
+              transaction_index: "0",
+              state: "complete",
+              error: "execution reverted",
+              revert_data: revertData,
+              decoding: {
+                status: "decoded",
+                error_name: errorName,
+                signature,
+                reason,
+                arguments: [argument],
+                candidates: [],
+                abi_source: { kind: "builtin" },
+              },
+            });
+          }
+          return notFound();
+        }),
+      );
 
-    renderExplorer(`/tx/${transactionHash}`);
-    expect(await screen.findByText("division or modulo by zero")).toBeVisible();
-    expect(screen.queryByText("Panic(uint256)", { exact: true })).not.toBeInTheDocument();
-    expect(screen.queryByRole("table", { name: "Failure arguments" })).not.toBeInTheDocument();
-    expect(screen.queryByText("code", { exact: true })).not.toBeInTheDocument();
-    expect(screen.queryByText("18", { exact: true })).not.toBeInTheDocument();
-    expect(screen.queryByText("Revert data", { exact: true })).not.toBeInTheDocument();
-    expect(failureRequests).toBe(1);
-  });
-
-  it("renders Solidity Error string as concise revert text without an ABI table", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL) => {
-        const url = requestURL(input);
-        if (url.pathname === "/api/v1/config") return configResponse();
-        if (url.pathname === `/api/v1/transactions/${transactionHash}`) {
-          return envelope({
-            hash: transactionHash,
-            block_hash: canonicalHash,
-            block_number: "12",
-            transaction_index: 0,
-            from: address,
-            to: delegatedAddress,
-            nonce: "1",
-            value: "0",
-            gas: "100000",
-            input: "0x12345678",
-            status: "failed",
-            canonical: true,
-            finality: "safe",
-            completeness: completeness(),
-          });
-        }
-        if (url.pathname === `/api/v1/transactions/${transactionHash}/failure`) {
-          return envelope({
-            chain_id: "1",
-            block_number: "12",
-            block_hash: canonicalHash,
-            transaction_hash: transactionHash,
-            transaction_index: "0",
-            state: "complete",
-            error: "execution reverted",
-            revert_data: "0x08c379a0",
-            decoding: {
-              status: "decoded",
-              error_name: "Error",
-              signature: "Error(string)",
-              reason: "insufficient balance",
-              arguments: [
-                { name: "message", type: "string", value: "insufficient balance", components: [] },
-              ],
-              candidates: [],
-              abi_source: { kind: "builtin" },
-            },
-          });
-        }
-        return notFound();
-      }),
-    );
-
-    renderExplorer(`/tx/${transactionHash}`);
-    expect(await screen.findByText("insufficient balance")).toBeVisible();
-    expect(screen.queryByText("Error(string)", { exact: true })).not.toBeInTheDocument();
-    expect(screen.queryByRole("table", { name: "Failure arguments" })).not.toBeInTheDocument();
-    expect(screen.queryByText("message", { exact: true })).not.toBeInTheDocument();
-    expect(screen.queryByText("Revert data", { exact: true })).not.toBeInTheDocument();
-  });
+      renderExplorer(`/tx/${transactionHash}`);
+      expect(await screen.findByText(reason)).toBeVisible();
+      expect(screen.queryByText(signature, { exact: true })).not.toBeInTheDocument();
+      expect(screen.queryByRole("table", { name: "Failure arguments" })).not.toBeInTheDocument();
+      expect(screen.queryByText(argument.name, { exact: true })).not.toBeInTheDocument();
+      if (errorName === "Panic") {
+        expect(screen.queryByText(argument.value, { exact: true })).not.toBeInTheDocument();
+      }
+      expect(screen.queryByText("Revert data", { exact: true })).not.toBeInTheDocument();
+      expect(failureRequests).toBe(1);
+    },
+  );
 
   it("refetches a mismatched failure identity once and then fails closed", async () => {
     let failureRequests = 0;
@@ -1091,7 +1049,11 @@ describe("transaction failures and types", () => {
     expect(screen.queryByRole("table", { name: "Failure arguments" })).not.toBeInTheDocument();
   });
 
-  it("renders transaction type 2 as a semantic label", async () => {
+  it.each([
+    { type: "2", expected: "EIP-1559", absent: "2" },
+    { type: "0x2", expected: "EIP-1559", absent: "0x2" },
+    { type: "9", expected: "9", absent: "EIP-1559" },
+  ])("renders transaction type $type as $expected", async ({ type, expected, absent }) => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
@@ -1113,7 +1075,7 @@ describe("transaction failures and types", () => {
                 value: "2",
                 gas: "21000",
                 gas_price: "1000000000",
-                type: "2",
+                type,
                 input: "0x",
                 status: "success",
                 canonical: true,
@@ -1143,250 +1105,7 @@ describe("transaction failures and types", () => {
     const typeLabel = await screen.findByText("Type");
     const typeItem = typeLabel.closest("div");
     if (!typeItem) throw new Error("transaction type field missing");
-    expect(screen.getByText("EIP-1559")).toBeVisible();
-    expect(within(typeItem).queryByText("2", { exact: true })).not.toBeInTheDocument();
-  });
-
-  it("renders hex tx type 0x2 as a semantic label", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL) => {
-        const path = String(input);
-        const meta = { request_id: "tx-copy-web-test", chain_id: "1" };
-        if (path === "/api/v1/config") return configResponse();
-        if (path === `/api/v1/transactions/${transactionHash}`) {
-          return Response.json({
-            data: {
-              kind: "included",
-              transaction: {
-                hash: transactionHash,
-                block_hash: canonicalHash,
-                block_number: "12",
-                transaction_index: 0,
-                from: address,
-                to: address,
-                nonce: "1",
-                value: "2",
-                gas: "21000",
-                gas_price: "1000000000",
-                type: "0x2",
-                input: "0x",
-                status: "success",
-                canonical: true,
-                finality: "safe",
-                completeness: completeness(),
-              },
-            },
-            meta,
-          });
-        }
-        if (path === `/api/v1/transactions/${transactionHash}/trace`) {
-          return Response.json({
-            data: {
-              state: "complete",
-              frames: [],
-            },
-            meta,
-          });
-        }
-        return notFound();
-      }),
-    );
-
-    renderExplorer(`/tx/${transactionHash}`);
-
-    await userEvent.setup().click(await screen.findByText("More details"));
-    const typeLabel = await screen.findByText("Type");
-    const typeItem = typeLabel.closest("div");
-    if (!typeItem) throw new Error("transaction type field missing");
-    expect(screen.getByText("EIP-1559")).toBeVisible();
-    expect(within(typeItem).queryByText("0x2", { exact: true })).not.toBeInTheDocument();
-  });
-
-  it("falls back to raw value for unknown tx type", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL) => {
-        const path = String(input);
-        const meta = { request_id: "tx-copy-web-test", chain_id: "1" };
-        if (path === "/api/v1/config") return configResponse();
-        if (path === `/api/v1/transactions/${transactionHash}`) {
-          return Response.json({
-            data: {
-              kind: "included",
-              transaction: {
-                hash: transactionHash,
-                block_hash: canonicalHash,
-                block_number: "12",
-                transaction_index: 0,
-                from: address,
-                to: address,
-                nonce: "1",
-                value: "2",
-                gas: "21000",
-                gas_price: "1000000000",
-                type: "9",
-                input: "0x",
-                status: "success",
-                canonical: true,
-                finality: "safe",
-                completeness: completeness(),
-              },
-            },
-            meta,
-          });
-        }
-        if (path === `/api/v1/transactions/${transactionHash}/trace`) {
-          return Response.json({
-            data: {
-              state: "complete",
-              frames: [],
-            },
-            meta,
-          });
-        }
-        return notFound();
-      }),
-    );
-
-    renderExplorer(`/tx/${transactionHash}`);
-
-    await userEvent.setup().click(await screen.findByText("More details"));
-    const typeLabel = await screen.findByText("Type");
-    const typeItem = typeLabel.closest("div");
-    if (!typeItem) throw new Error("transaction type field missing");
-    expect(within(typeItem).getByText("9", { exact: true })).toBeVisible();
-    expect(within(typeItem).queryByText("EIP-1559")).not.toBeInTheDocument();
+    expect(within(typeItem).getByText(expected, { exact: true })).toBeVisible();
+    expect(within(typeItem).queryByText(absent, { exact: true })).not.toBeInTheDocument();
   });
 });
-
-function _block(number: string, hash: string, canonical = true) {
-  return {
-    hash,
-    number,
-    parent_hash: parentHash,
-    timestamp: "2026-01-01T00:00:00Z",
-    miner: address,
-    transaction_count: 1,
-    gas_used: "21000",
-    gas_limit: "30000000",
-    base_fee_per_gas: "1000000000",
-    canonical,
-    finality: canonical ? "safe" : "orphan",
-    completeness: completeness(),
-  };
-}
-
-function _statusResponse(overrides: Record<string, unknown>, meta: Record<string, unknown> = {}) {
-  return envelope(
-    {
-      chain_id: "1",
-      core_ready: true,
-      latest_block: "12",
-      indexed_block: "12",
-      highest_covered_block: "12",
-      backfill_complete: true,
-      safe_block: "12",
-      finalized_block: "10",
-      lag: "0",
-      completeness: completeness(),
-      ...overrides,
-    },
-    meta,
-  );
-}
-
-function configResponse() {
-  return envelope({
-    chain_id: "1",
-    chain_name: "Core Testnet",
-    native_symbol: "ETH",
-    native_name: "Ether",
-    native_decimals: 18,
-    features: {},
-  });
-}
-
-function completeness() {
-  return {
-    core: "complete",
-    trace: "unavailable",
-    metadata: "pending",
-    state: "complete",
-    user_operations: "unavailable",
-  };
-}
-
-function _mempoolTransaction(hash: string, overrides: Record<string, unknown> = {}) {
-  return {
-    hash,
-    from: address,
-    nonce: "7",
-    value: "1000000000000000000",
-    gas: "100000",
-    max_fee_per_gas: "30000000000",
-    max_priority_fee_per_gas: "1000000000",
-    type: "2",
-    input: "0x6000",
-    first_seen_at: "2026-08-13T00:00:00Z",
-    last_seen_at: "2026-08-13T00:00:00Z",
-    expires_at: "2026-08-13T00:00:10Z",
-    endpoint: "pending-primary",
-    ...overrides,
-  };
-}
-
-function envelope(data: unknown, meta: Record<string, unknown> = {}) {
-  const responseData = includedTransactionFixture(data)
-    ? { kind: "included", transaction: data }
-    : data;
-  return Response.json({
-    data: responseData,
-    meta: { request_id: "core-pages-test", chain_id: "1", ...meta },
-  });
-}
-
-function includedTransactionFixture(data: unknown): data is Record<string, unknown> {
-  if (!data || Array.isArray(data) || typeof data !== "object") return false;
-  const candidate = data as Record<string, unknown>;
-  return (
-    typeof candidate.hash === "string" &&
-    typeof candidate.from === "string" &&
-    typeof candidate.nonce === "string" &&
-    typeof candidate.gas === "string" &&
-    typeof candidate.input === "string" &&
-    typeof candidate.canonical === "boolean" &&
-    typeof candidate.finality === "string"
-  );
-}
-
-function notFound() {
-  return Response.json(
-    {
-      error: { code: "not_found", message: "not found", request_id: "core-pages-test" },
-    },
-    { status: 404 },
-  );
-}
-
-function requestURL(input: RequestInfo | URL) {
-  return new URL(String(input), "http://etherview.test");
-}
-
-function renderExplorer(path: string) {
-  const router = makeRouter(createMemoryHistory({ initialEntries: [path] }));
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
-  });
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <WalletProvider>
-          <AuthProvider>
-            <RouterProvider router={router} />
-          </AuthProvider>
-        </WalletProvider>
-      </ThemeProvider>
-    </QueryClientProvider>,
-  );
-}

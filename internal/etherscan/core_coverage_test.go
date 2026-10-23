@@ -136,81 +136,49 @@ func TestStageRangeRejectsMissingCoreBeforeEnrichmentProof(t *testing.T) {
 	}
 }
 
-func TestMissingInternalTransactionHashRequiresGlobalCoreCoverage(t *testing.T) {
+func TestMissingTransactionRequiresGlobalCoreCoverage(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		name     string
-		coverage sqlExpectation
-		want     error
+	for _, action := range []struct {
+		name, module, action string
+		lookup               sqlExpectation
 	}{
 		{
-			name:     "gap is unavailable",
-			coverage: coreCoverageExpectation("0", "", "20", "0", nil, nil),
-			want:     ErrCoreUnavailable,
+			name: "internal transactions", module: "account", action: "txlistinternal",
+			lookup: sqlExpectation{
+				contains: "FROM transaction_inclusions AS inclusion JOIN canonical_blocks AS canonical",
+				columns:  fakeColumns(1),
+			},
 		},
 		{
-			name:     "complete history proves absence",
-			coverage: completeCoreCoverageExpectation("0", "", "20"),
-			want:     ErrNotFound,
+			name: "transaction status", module: "transaction", action: "getstatus",
+			lookup: sqlExpectation{
+				contains: "FROM receipts AS receipt JOIN canonical_blocks AS canonical",
+				columns:  fakeColumns(5),
+			},
 		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
+	} {
+		t.Run(action.name, func(t *testing.T) {
 			t.Parallel()
-			db := fakeDatabase(t,
-				sqlExpectation{
-					contains: "FROM transaction_inclusions AS inclusion JOIN canonical_blocks AS canonical",
-					columns:  fakeColumns(1),
-				},
-				test.coverage,
-			)
-			backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})
-			_, err := backend.Execute(context.Background(), Request{
-				Module: "account", Action: "txlistinternal",
-				Values: url.Values{"txhash": {testHash(99)}},
-			})
-			if !errors.Is(err, test.want) {
-				t.Fatalf("error=%v, want %v", err, test.want)
-			}
-		})
-	}
-}
-
-func TestMissingTransactionStatusRequiresGlobalCoreCoverage(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name     string
-		coverage sqlExpectation
-		want     error
-	}{
-		{
-			name:     "gap is unavailable",
-			coverage: coreCoverageExpectation("0", "", "20", "0", nil, nil),
-			want:     ErrCoreUnavailable,
-		},
-		{
-			name:     "complete history proves absence",
-			coverage: completeCoreCoverageExpectation("0", "", "20"),
-			want:     ErrNotFound,
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			db := fakeDatabase(t,
-				sqlExpectation{
-					contains: "FROM receipts AS receipt JOIN canonical_blocks AS canonical",
-					columns:  fakeColumns(5),
-				},
-				test.coverage,
-			)
-			backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})
-			_, err := backend.Execute(context.Background(), Request{
-				Module: "transaction", Action: "getstatus",
-				Values: url.Values{"txhash": {testHash(99)}},
-			})
-			if !errors.Is(err, test.want) {
-				t.Fatalf("error=%v, want %v", err, test.want)
+			for _, coverage := range []struct {
+				name        string
+				expectation sqlExpectation
+				want        error
+			}{
+				{"gap is unavailable", coreCoverageExpectation("0", "", "20", "0", nil, nil), ErrCoreUnavailable},
+				{"complete history proves absence", completeCoreCoverageExpectation("0", "", "20"), ErrNotFound},
+			} {
+				t.Run(coverage.name, func(t *testing.T) {
+					t.Parallel()
+					db := fakeDatabase(t, action.lookup, coverage.expectation)
+					backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})
+					_, err := backend.Execute(context.Background(), Request{
+						Module: action.module, Action: action.action,
+						Values: url.Values{"txhash": {testHash(99)}},
+					})
+					if !errors.Is(err, coverage.want) {
+						t.Fatalf("error=%v, want %v", err, coverage.want)
+					}
+				})
 			}
 		})
 	}

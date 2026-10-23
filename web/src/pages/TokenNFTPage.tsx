@@ -1,3 +1,4 @@
+import { useCursorHistory } from "@/api/pagination";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -28,7 +29,6 @@ import {
   tokenEventKindLabel,
   tokenStandardLabel,
   type Translate,
-  useCursorHistory,
 } from "./pages";
 
 export function TokenDetailPage({ address }: { address: string }) {
@@ -36,19 +36,8 @@ export function TokenDetailPage({ address }: { address: string }) {
   const transferPager = useCursorHistory(`token-transfers:${address}`);
   const holderPager = useCursorHistory(`token-holders:${address}`);
   const token = useToken(address);
-  const transfers = useTokenTransfers(
-    address,
-    CORE_PAGE_SIZE,
-    transferPager.cursor,
-    transferPager.refreshGeneration,
-  );
-  const holders = useTokenHolders(
-    address,
-    50,
-    holderPager.cursor,
-    holderPager.refreshGeneration,
-    token.data?.standard === "erc20",
-  );
+  const transfers = useTokenTransfers(address, transferPager.request, true, CORE_PAGE_SIZE);
+  const holders = useTokenHolders(address, holderPager.request, token.data?.standard === "erc20");
   const locale = i18n.resolvedLanguage ?? "en";
 
   return (

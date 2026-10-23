@@ -252,48 +252,14 @@ func TestCompilerCacheSerializesConcurrentInstall(t *testing.T) {
 	}
 }
 
-func TestCompilerCachePersistsAcrossInstances(t *testing.T) {
+func TestCompilerCacheReusesPersistedArtifactWithoutOriginOrInstallLock(t *testing.T) {
 	payload := []byte("persistent compiler JavaScript")
 	var hits atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		hits.Add(1)
 		_, _ = w.Write(payload)
 	}))
-	root := t.TempDir()
-	entry := compilerCatalogEntry(server.URL, payload, 1<<20)
-	first := CompilerCache{
-		Root:                       root,
-		InstallLocker:              testCompilerCacheInstallLocker,
-		unsafeAllowHTTP:            true,
-		UnsafeAllowPrivateNetworks: true,
-	}
-	installed, err := first.EnsureCatalogEntry(context.Background(), entry)
-	if err != nil {
-		server.Close()
-		t.Fatal(err)
-	}
-	server.Close()
-
-	second := CompilerCache{
-		Root:                       root,
-		InstallLocker:              testCompilerCacheInstallLocker,
-		unsafeAllowHTTP:            true,
-		UnsafeAllowPrivateNetworks: true,
-	}
-	reused, err := second.EnsureCatalogEntry(context.Background(), entry)
-	if err != nil {
-		t.Fatalf("reuse persisted compiler with unavailable origin: %v", err)
-	}
-	if reused != installed || hits.Load() != 1 {
-		t.Fatalf("reused path=%q installed=%q downloads=%d", reused, installed, hits.Load())
-	}
-}
-
-func TestCompilerCacheValidHitDoesNotAcquireInstallLock(t *testing.T) {
-	payload := []byte("persistent compiler JavaScript")
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write(payload)
-	}))
+	t.Cleanup(server.Close)
 	root := t.TempDir()
 	entry := compilerCatalogEntry(server.URL, payload, 1<<20)
 	first := CompilerCache{
@@ -302,7 +268,6 @@ func TestCompilerCacheValidHitDoesNotAcquireInstallLock(t *testing.T) {
 	}
 	installed, err := first.EnsureCatalogEntry(context.Background(), entry)
 	if err != nil {
-		server.Close()
 		t.Fatal(err)
 	}
 	server.Close()
@@ -313,9 +278,12 @@ func TestCompilerCacheValidHitDoesNotAcquireInstallLock(t *testing.T) {
 		unsafeAllowHTTP: true, UnsafeAllowPrivateNetworks: true,
 	}
 	reused, err := second.EnsureCatalogEntry(context.Background(), entry)
-	if err != nil || reused != installed || locker.calls.Load() != 0 {
-		t.Fatalf("reused=%q installed=%q lock calls=%d error=%v",
-			reused, installed, locker.calls.Load(), err)
+	if err != nil {
+		t.Fatalf("reuse persisted compiler with unavailable origin: %v", err)
+	}
+	if reused != installed || hits.Load() != 1 || locker.calls.Load() != 0 {
+		t.Fatalf("reused=%q installed=%q downloads=%d lock calls=%d",
+			reused, installed, hits.Load(), locker.calls.Load())
 	}
 }
 
