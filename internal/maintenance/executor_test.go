@@ -143,7 +143,7 @@ func TestExecutorRepairRejectsWrongReturnedHeightAndDoesNotAdvance(t *testing.T)
 func TestExecutorReindexMapsSupportedStagesToCanonicalBlockJobs(t *testing.T) {
 	t.Parallel()
 	for _, stage := range []enrich.StageID{
-		enrich.NativeTransferStage, enrich.ProxyStage, enrich.ABIStage, enrich.TokenStage, enrich.StatsStage, enrich.TraceStage,
+		enrich.RequestsStage, enrich.NativeTransferStage, enrich.ProxyStage, enrich.ABIStage, enrich.TokenStage, enrich.StatsStage, enrich.TraceStage,
 		enrich.StateDiffStage,
 		enrich.UserOperationStage,
 	} {

@@ -152,6 +152,7 @@ func TestProductionMonolithGraphEqualsUnionOfSplitRoleGraphs(t *testing.T) {
 		wake bool
 	}{
 		{name: "optional workers disabled", cfg: config.Default()},
+		{name: "consensus requests without blob archive", cfg: func() config.Config { cfg := config.Default(); cfg.Consensus.Enabled = true; return cfg }()},
 		{name: "all optional workers enabled with websocket wake", cfg: func() config.Config {
 			cfg := config.Default()
 			cfg.Features.Mempool = true

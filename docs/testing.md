@@ -1126,3 +1126,22 @@ explicitly retains its own directory. Runtime, compiler, schema and RustFS
 tests continue to exercise the external-chain template.
 Run both Preview gates, `make check`, `make test-rustfs` and
 `make test-runtime-e2e` for changes to this deployment.
+
+### Execution requests acceptance
+
+The request suite covers all five EIP-7685 types (including pinned EIP-8282
+builder records), uint64 precision, type/list ordering, empty commitments,
+malformed/preset-limited input, Beacon/body/envelope identity and request-root/hash
+mismatches. PostgreSQL regressions cover publication, filters/cursors, reorg
+retention, generation changes, pruned-source replay and corrupted retained data.
+The disabled-period discovery regression includes requests cursors. Browser
+coverage checks exact fields, type filtering, deep links, bilingual mobile
+layout and accessibility against the embedded artifact.
+
+Run focused consensus/enrich/query/httpapi/app/maintenance and frontend tests,
+then `make check`, `make test-integration-race`, `make test-e2e`,
+`make test-schema-e2e`, `make test-runtime-e2e`, `make test-rustfs`, and
+`make test-preview-consensus`. Preview independently reads real Lighthouse
+payload envelopes and compares the request commitment with the execution header
+and public API in both split and all-role layouts. Synthetic nonempty five-type
+fixtures do not establish real builder transactions or public historical retention.

@@ -1063,3 +1063,15 @@ upstream pruning does not revoke intact archived history. Core reorgs rewind
 persistent discovery even while the feature is disabled, and a cursor generation
 prevents an older scan from overwriting the rewind. Canonical-attach replay keys
 are shared with the outbox dispatcher.
+
+### Execution request publications
+
+`requests@1` independently authenticates and publishes the five EIP-7685 request
+types when consensus is enabled. Electra/Fulu use the Beacon body; Gloas uses the
+root-addressed payload envelope with bid commitment and execution-header checks.
+PostgreSQL stores immutable manifests and ordered rows, with canonicality inherited
+from the manifest and visibility fenced by stage publication. Discovery, reindex,
+reorg replay and runtime parity follow the existing optional consensus lifecycle.
+The generated API pages requests within a repeatable-read snapshot. The block
+Requests tab loads by execution hash, provides type filters and expandable exact
+fields, and loads its bilingual resources with the feature page.

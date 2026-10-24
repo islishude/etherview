@@ -2,6 +2,7 @@ package httpapi
 
 func (h *Handler) registerNativeRoutes() {
 	h.mux.HandleFunc("GET /api/v1/blocks/{id}/consensus", h.blockConsensus)
+	h.mux.HandleFunc("GET /api/v1/blocks/{id}/requests", h.blockRequests)
 	h.mux.HandleFunc("GET /api/v1/blocks/{id}/blobs", h.blockBlobs)
 	h.mux.HandleFunc("GET /api/v1/blocks/{hash}/blobs/{index}/content", h.blobContent)
 	h.mux.HandleFunc("GET /api/v1/genesis/accounts", h.genesisAccounts)

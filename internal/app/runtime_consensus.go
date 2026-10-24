@@ -33,6 +33,13 @@ func (a runtimeAssembly) registerConsensusComponents() error {
 	if err := a.componentRegistry.Register(components.RoleEnrich, "31-consensus-discovery", func() (components.Service, error) { return discovery, nil }); err != nil {
 		return err
 	}
+	requests := &enrich.RequestsProcessor{DB: a.db, Client: client}
+	if err := registerWorkerPool(a.componentRegistry, components.RoleEnrich, "36-requests", "worker-requests", a.cfg.Consensus.WorkerCount, func(index int, serviceName string) (components.Service, error) {
+		return enrich.NewWorker(queue, []enrich.Processor{requests}, enrich.WorkerOptions{ServiceName: serviceName, ID: runtimeWorkerID(indexedWorkerName("requests", index)), LeaseDuration: a.cfg.Runtime.LeaseDuration, PollInterval: a.cfg.Runtime.PollInterval, Observer: a.businessObserver})
+	}); err != nil {
+		return err
+	}
+
 	archive, err := consensusArchive(a.ctx, a.cfg)
 	if err != nil {
 		return err

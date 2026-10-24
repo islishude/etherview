@@ -953,7 +953,7 @@ holding the chain lock. It cannot move canonicality or checkpoints. A range at
 or below finalized height requires `--allow-finalized` plus the recorded
 reason; this permits only a same-identity refresh.
 
-`reindex --stage consensus|blob|native_transfer|proxy|abi|token|stats|trace|state_diff|userop|holder` queues work for
+`reindex --stage requests|consensus|blob|native_transfer|proxy|abi|token|stats|trace|state_diff|userop|holder` queues work for
 the currently canonical block hash. It does not steal queued work or an active
 lease. Repair deliberately does not infer a downstream rebuild range; schedule
 each required derived stage explicitly and wait for its durable publication
@@ -1608,6 +1608,24 @@ Full Beacon bodies are checked against the pinned SSZ root, including Gloas
 progressive containers. Numeric SSZ preset parameters come from the node spec;
 absent parameters use the protocol types' mainnet defaults. Custom presets must
 provide their overrides. A wrong preset or unsupported structure fails closed.
+
+Execution request collection is enabled by the same consensus switch, with its
+own `requests@1` jobs and worker pool using `consensus.worker_count`. No additional
+credentials or blob storage are required. Inspect `/api/v1/blocks/{id}/requests`
+or the block Requests tab for collection state; the API reads only PostgreSQL.
+Gloas requires `GET /eth/v1/beacon/execution_payload_envelopes/{block_id}` at a
+fixed root. Pruned or unsupported envelopes report unavailable without blocking
+consensus summaries or blob archival. Only a verified complete response with zero
+counts means the block contained no requests. Unknown protocol revisions fail
+closed; the five supported types include the pinned builder request draft.
+
+Historical discovery also covers requests. Retry a selected range with
+`reindex --stage requests` and the existing reason/finalized-range safeguards.
+Retained sets are rehashed against the exact execution header before replay, so
+intact PostgreSQL history can be republished after envelope pruning. Current
+network identity must still be available. A corrupt retained set requires
+restoring verified database data; replay never silently overwrites it. Existing
+development databases must be recreated for the changed fresh baseline.
 
 Blob archival is independently enabled by `ETHERVIEW_CONSENSUS_BLOBS_ENABLED`.
 Provision a dedicated bucket without expiry or cache eviction and configure

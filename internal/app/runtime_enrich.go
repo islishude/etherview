@@ -35,7 +35,7 @@ func (assembly runtimeAssembly) registerEnrichComponents() error {
 		}
 		stages := enrichmentDispatchStages(cfg.Features.Trace, cfg.Features.UserOperations)
 		if cfg.Consensus.Enabled {
-			stages = append(stages, enrich.ConsensusStage)
+			stages = append(stages, enrich.ConsensusStage, enrich.RequestsStage)
 		}
 		if cfg.Consensus.Blobs.Enabled {
 			stages = append(stages, enrich.BlobStage)

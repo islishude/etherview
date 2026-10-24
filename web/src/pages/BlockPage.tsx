@@ -1,4 +1,5 @@
 import { useCursorHistory } from "@/api/pagination";
+import { RequestsPanel } from "./RequestsPanel";
 import { ConsensusPanel } from "./ConsensusPanels";
 import { BlobsPanel } from "./BlobsPanel";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -28,7 +29,14 @@ import {
 } from "./pages";
 import { TransactionStatusBadge } from "./TransactionPage";
 
-const BLOCK_TABS = ["overview", "transactions", "withdrawals", "consensus", "blobs"] as const;
+const BLOCK_TABS = [
+  "overview",
+  "transactions",
+  "withdrawals",
+  "consensus",
+  "requests",
+  "blobs",
+] as const;
 type BlockTab = (typeof BLOCK_TABS)[number];
 
 function blockTabsForBlock(block?: BlockSummary, consensus = false, blobs = false): BlockTab[] {
@@ -36,6 +44,7 @@ function blockTabsForBlock(block?: BlockSummary, consensus = false, blobs = fals
     (tab) =>
       (tab !== "withdrawals" || Boolean(block?.withdrawals)) &&
       (tab !== "consensus" || consensus) &&
+      (tab !== "requests" || consensus) &&
       (tab !== "blobs" || blobs),
   );
 }
@@ -364,6 +373,7 @@ export function BlockDetailPage({ identifier, tab }: { identifier: string; tab: 
               page={pager.page}
             />
           )}
+          {activeTab === "requests" && <RequestsPanel hash={block.data.hash} />}
           {activeTab === "consensus" && <ConsensusPanel hash={block.data.hash} />}
           {activeTab === "blobs" && <BlobsPanel hash={block.data.hash} />}
           {activeTab === "withdrawals" && block.data.withdrawals && (

@@ -242,3 +242,17 @@ Missing consensus data falls back to the original execution-header value; a
 calculated timestamp slot is never published as observed data. Raw execution
 headers are unchanged. Consensus/blob metadata and exact-hash binary downloads
 start in OpenAPI and expose no node credentials or object-store URLs.
+
+## Block execution requests
+
+`GET /api/v1/blocks/{id}/requests` exposes the five authenticated request types
+under ADR-0055. The discriminated request models carry exact decimal strings for
+sequence indices, deposit indices and amounts in Gwei. Amount zero in a validator
+withdrawal denotes a full exit request; it is distinct from actual execution
+payload withdrawals. Responses retain the standard data/meta envelope, explicit
+capability state and complete-only counts/commitments. Pagination defaults to 50,
+is capped at 100, and binds cursors to the exact block, type filter and publication.
+
+A job still awaiting publication, including a scheduled transient retry, is
+`pending`. Terminal source unavailability is `unavailable`; invalid evidence is
+`failed`. No intermediate attempt exposes unverified rows as an empty result.
