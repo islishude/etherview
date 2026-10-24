@@ -63,10 +63,11 @@ branch; scheduled start times may be delayed by runner load.
 
 The entry workflow owns triggers, concurrency, Vyper package production and the
 native WASM matrix, plus explicit image-to-consumer dependencies. The reusable
-[checks workflow](../.github/workflows/ci-checks.yml) runs independent quality,
+[checks workflow](../.github/workflows/ci-checks.yml) runs independent quality, lint, test, race-test,
 PostgreSQL/RustFS, browser, security/license, native provider compatibility and
-deployment-static jobs. Quality includes `make docs-check`; the browser target
-owns its frontend build. Shared Go/Node/pnpm setup lives in a fixed local action;
+deployment-static jobs. Quality runs `make toolchain-check docs-check plan-check generate-check`;
+lint, test and race-test run their respective Makefile targets, with uv installed for test.
+The browser target owns its frontend build. Shared Go/Node/pnpm setup lives in a fixed local action;
 checkout and specialized tooling remain visible in their owning jobs.
 
 Native production images are built once per architecture independently of

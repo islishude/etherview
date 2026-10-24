@@ -8,7 +8,31 @@ permissions:
 
 jobs:
   quality:
-    name: Generate, lint, and test
+    name: Generate and validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-toolchain
+      - name: Run deterministic common gates
+        run: make toolchain-check docs-check plan-check generate-check
+      - name: Reject unexpected workspace changes
+        run: git diff --check && git diff --exit-code
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-toolchain
+      - name: Run lint checks
+        run: make install-lint-tools lint
+      - name: Reject unexpected workspace changes
+        run: git diff --check && git diff --exit-code
+
+  test:
+    name: Test
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -24,9 +48,21 @@ jobs:
             compiler/vyper/uv.lock
             compiler/vyper/versions/*.lock
 
-      - name: Run deterministic common gates
-        run: make install-lint-tools toolchain-check docs-check plan-check generate-check lint test test-race
+      - name: Run tests
+        run: make test
 
+      - name: Reject unexpected workspace changes
+        run: git diff --check && git diff --exit-code
+
+  test-race:
+    name: Test with race detector
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-toolchain
+      - name: Run race detector tests
+        run: make test-race
       - name: Reject unexpected workspace changes
         run: git diff --check && git diff --exit-code
 
