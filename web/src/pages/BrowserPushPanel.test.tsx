@@ -1,3 +1,4 @@
+import pushWorkerURL from "@/workers/push-sw.ts?worker&url";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -165,7 +166,7 @@ describe("browser notification permission", () => {
       }),
     };
     const registration = {
-      active: { scriptURL: "https://explorer.example/push-sw.js" },
+      active: { scriptURL: new URL(pushWorkerURL, location.href).href },
       getNotifications: vi.fn().mockResolvedValue([{ close }]),
       pushManager: {
         getSubscription: vi.fn().mockImplementation(async () => (subscribed ? subscription : null)),
@@ -204,7 +205,11 @@ describe("browser notification permission", () => {
     expect(requestPermission).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button"));
     await screen.findByText("browserPush.enabled");
-    expect(register).toHaveBeenCalledWith("/push-sw.js", { scope: "/", updateViaCache: "none" });
+    expect(register).toHaveBeenCalledWith(pushWorkerURL, {
+      type: "module",
+      scope: "/",
+      updateViaCache: "none",
+    });
     expect(savePushSubscription).toHaveBeenCalledWith(
       { endpoint, p256dh: "browser-key", auth: "browser-auth", language: "en" },
       "csrf",

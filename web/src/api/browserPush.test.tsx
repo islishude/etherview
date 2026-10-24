@@ -1,3 +1,4 @@
+import pushWorkerURL from "@/workers/push-sw.ts?worker&url";
 import { act, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAuth } from "@/auth/AuthProvider";
@@ -52,7 +53,7 @@ describe("browser push session cleanup", () => {
       },
       serviceWorker: {
         getRegistration: vi.fn().mockResolvedValue({
-          active: { scriptURL: "https://explorer.example/push-sw.js" },
+          active: { scriptURL: new URL(pushWorkerURL, location.href).href },
           pushManager: { getSubscription: vi.fn().mockResolvedValue({ endpoint, unsubscribe }) },
           getNotifications: vi.fn().mockResolvedValue([{ close }]),
         }),

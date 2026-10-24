@@ -1,9 +1,22 @@
-import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const code = readFileSync(new URL("../public/push-sw.js", import.meta.url), "utf8");
+import { build } from "vite";
+import { fileURLToPath } from "node:url";
+
+const [{ output }] = await build({
+  configFile: false,
+  logLevel: "silent",
+  build: {
+    write: false,
+    lib: {
+      entry: fileURLToPath(new URL("../src/workers/push-sw.ts", import.meta.url)),
+      formats: ["es"],
+    },
+  },
+});
+const { code } = output[0];
 function worker() {
   const handlers = new Map();
   const shown = [],
@@ -47,10 +60,27 @@ test("push worker displays bounded summaries without fetch/cache or history", as
     { expires: 0 },
     { body: "x".repeat(201) },
     { tag: "other" },
+    { title: "x".repeat(101) },
+    { tag: `etherview:${"x".repeat(300)}` },
+    { expires: "9999999999999" },
+    { expires: Number.MAX_SAFE_INTEGER + 1 },
   ]) {
     handlers.get("push")({
       data: { json: () => ({ ...data, ...change }) },
       waitUntil: () => assert.fail("unsafe push displayed"),
+    });
+  }
+  for (const json of [
+    () => null,
+    () => "invalid",
+    () => ({}),
+    () => {
+      throw new SyntaxError("malformed JSON");
+    },
+  ]) {
+    handlers.get("push")({
+      data: { json },
+      waitUntil: () => assert.fail("invalid push displayed"),
     });
   }
 });

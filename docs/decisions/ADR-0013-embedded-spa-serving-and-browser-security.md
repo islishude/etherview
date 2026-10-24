@@ -65,7 +65,10 @@ worker dependencies.
   the built distribution served by the Go harness.
 
 The browser-push worker is the explicit same-origin worker exception:
-`worker-src 'self'` permits `/push-sw.js`, served as JavaScript with revalidation.
+`worker-src 'self'` permits the module worker built from the Vite `?worker&url`
+import. Its entry is emitted at the distribution root (`/push-sw.js`) for root
+scope and served as JavaScript with revalidation. Development uses Vite source
+module URLs with `Service-Worker-Allowed: /`; production needs no scope override.
 It never intercepts fetches or caches private responses. No external script or
 connect origin is added. Push permission requires a user gesture, and notification
 clicks accept only same-origin transaction paths. The embedded build includes

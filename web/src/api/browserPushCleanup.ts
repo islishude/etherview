@@ -2,11 +2,13 @@ import { getAuthSession } from "./auth";
 import { listPushSubscriptions } from "./watchlist";
 import { endpointHash, withPushLock } from "./browserPush";
 
+import pushWorkerURL from "@/workers/push-sw.ts?worker&url";
+
 export async function clearBrowserPush(expectedCSRF: string) {
   if (!("serviceWorker" in navigator)) return;
   await withPushLock(async () => {
     const registration = await navigator.serviceWorker.getRegistration("/");
-    if (!registration?.active?.scriptURL.endsWith("/push-sw.js")) return;
+    if (registration?.active?.scriptURL !== new URL(pushWorkerURL, location.href).href) return;
     const subscription = await registration.pushManager.getSubscription();
     // Cookies are shared across tabs, but each tab's session/expiry state is not.
     // Check ownership inside the same lock as enrollment, before touching a

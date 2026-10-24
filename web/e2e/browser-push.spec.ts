@@ -24,7 +24,11 @@ test("embedded worker displays an injected push after the website page closes", 
   });
   await protocol.send("ServiceWorker.enable");
   await page.evaluate(async () => {
-    await navigator.serviceWorker.register("/push-sw.js", { scope: "/", updateViaCache: "none" });
+    await navigator.serviceWorker.register("/push-sw.js", {
+      type: "module",
+      scope: "/",
+      updateViaCache: "none",
+    });
     await navigator.serviceWorker.ready;
   });
   await expect.poll(() => registrationId).not.toBe("");

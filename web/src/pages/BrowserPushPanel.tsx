@@ -18,6 +18,8 @@ import {
   usePushSessionExpired,
 } from "@/api/browserPush";
 
+import pushWorkerURL from "@/workers/push-sw.ts?worker&url";
+
 export function BrowserPushPanel() {
   const { t, i18n } = useTranslation();
   const auth = useAuth();
@@ -112,7 +114,8 @@ export function BrowserPushPanel() {
       if (granted !== "granted" || signal.aborted) return;
       await withPushLock(async () => {
         if (signal.aborted) return;
-        const registration = await navigator.serviceWorker.register("/push-sw.js", {
+        const registration = await navigator.serviceWorker.register(pushWorkerURL, {
+          type: "module",
           scope: "/",
           updateViaCache: "none",
         });

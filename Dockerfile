@@ -19,10 +19,9 @@ COPY compiler/package.json ./compiler/
 COPY e2e/hardhat3/package.json ./e2e/hardhat3/
 RUN --mount=type=cache,id=etherview-pnpm,target=/pnpm/store pnpm --filter . --filter ./web --filter ./api install --frozen-lockfile --store-dir=/pnpm/store
 COPY ./api ./api
-COPY web/index.html web/asset-budget.json web/tsconfig.json web/tsconfig.app.json web/tsconfig.node.json web/vite.config.ts ./web/
+COPY web/index.html web/asset-budget.json web/tsconfig.json web/tsconfig.app.json web/tsconfig.node.json web/tsconfig.worker.json web/vite.config.ts ./web/
 COPY web/scripts ./web/scripts
 COPY web/src ./web/src
-COPY web/public ./web/public
 ARG ETHERVIEW_WEB_BRANDING_DIR=web/branding/default
 COPY ["${ETHERVIEW_WEB_BRANDING_DIR}/", "/src/web-branding/"]
 RUN pnpm --dir api run generate:api && ETHERVIEW_WEB_BRANDING_DIR=/src/web-branding pnpm --dir web run build
