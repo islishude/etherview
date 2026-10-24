@@ -168,6 +168,7 @@ services:
       ETHERVIEW_PUSH_PRIVATE_KEY_FILE:
       <<: *api-environment
       ETHERVIEW_ROLES: all
+      ETHERVIEW_PUSH_UNSAFE_ALLOW_PRIVATE_NETWORKS:
       ETHERVIEW_CONSENSUS_URL:
       ETHERVIEW_CONSENSUS_HEADERS:
     healthcheck: *app-healthcheck
@@ -250,6 +251,7 @@ services:
       ETHERVIEW_PUSH_PRIVATE_KEY_FILE:
       <<: *app-environment
       ETHERVIEW_ROLES: maintenance
+      ETHERVIEW_PUSH_UNSAFE_ALLOW_PRIVATE_NETWORKS:
     healthcheck: *app-healthcheck
     profiles: ["distributed"]
 

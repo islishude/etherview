@@ -22,7 +22,7 @@ func (assembly runtimeAssembly) registerMaintenanceComponents() error {
 	chainID := assembly.chainID
 	if roleSet[components.RoleMaintenance] {
 		if cfg.Features.UserAuth && cfg.Push.Enabled {
-			service, err := watchlist.NewPushWorker(db, cfg.Chain.ID, watchlist.NewWebPushSender(cfg.Push.PublicKey, cfg.Push.PrivateKey, cfg.Push.Contact), registry.RecordBrowserPush)
+			service, err := watchlist.NewPushWorker(db, cfg.Chain.ID, watchlist.NewWebPushSender(cfg.Push.PublicKey, cfg.Push.PrivateKey, cfg.Push.Contact, cfg.Push.UnsafeAllowPrivateNetworks), registry.RecordBrowserPush)
 			if err != nil {
 				return err
 			}

@@ -41,6 +41,12 @@ when the device is unreachable. HTTP 404/410 removes the matching subscription;
 other failures are redacted and counted. Endpoint URLs are HTTPS-only on port
 443, have no credentials or fragments, reject redirects, and resolve exclusively
 to public addresses which are pinned when dialing. No private data enters SSE.
+Local development may explicitly set `push.unsafe_allow_private_networks`.
+Like the metadata exception, this default-off boolean bypasses the public-IP
+restriction, including Fake-IP, ordinary private and loopback addresses. It
+requires no host or CIDR allowlist and affects only browser-push sends. HTTPS
+port 443, normal TLS verification, no redirects, DNS answer bounds, IP pinning,
+timeouts and response limits remain unchanged. Production must leave it disabled.
 VAPID private keys belong only to maintenance/all; API receives the public key.
 Provider failure does not withdraw core readiness or block indexing.
 

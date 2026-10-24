@@ -255,7 +255,7 @@ func TestPushLosingLeaderCancelsSendWithoutSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer unrelated.Rollback(ctx)
+	defer func() { _ = unrelated.Rollback(ctx) }()
 	if _, err := unrelated.Exec(ctx, `SELECT count(*) FROM users`); err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +266,7 @@ func TestPushLosingLeaderCancelsSendWithoutSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer owned.Rollback(ctx)
+	defer func() { _ = owned.Rollback(ctx) }()
 	if _, err := owned.Exec(ctx, `SELECT count(*) FROM users`); err != nil {
 		t.Fatal(err)
 	}

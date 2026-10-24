@@ -30,10 +30,11 @@ const (
 )
 
 type PushConfig struct {
-	Enabled    bool   `yaml:"enabled"`
-	PublicKey  string `yaml:"public_key"`
-	Contact    string `yaml:"contact"`
-	PrivateKey string `yaml:"-"`
+	Enabled                    bool   `yaml:"enabled"`
+	PublicKey                  string `yaml:"public_key"`
+	Contact                    string `yaml:"contact"`
+	PrivateKey                 string `yaml:"-"`
+	UnsafeAllowPrivateNetworks bool   `yaml:"unsafe_allow_private_networks"`
 }
 
 // Config is the complete runtime configuration. A deployment serves exactly

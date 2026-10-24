@@ -599,12 +599,14 @@ for mode in all distributed; do
     --set config.push.enabled=true \
     --set-string config.push.public_key=public-fixture \
     --set-string config.push.contact=mailto:operator@example.com \
+    --set config.push.unsafe_allow_private_networks=true \
     --set externalSecret.enabled=true \
     --set-string externalSecret.sessionPepperRemoteKey=runtime/session-pepper \
     --set-string externalSecret.pushPrivateKeyRemoteKey=runtime/push-private-key \
     >"$push_render"
   assert_occurrences "$push_render" "name: ETHERVIEW_PUSH_PRIVATE_KEY" 1
   assert_contains "$push_render" 'key: "runtime/push-private-key"'
+  assert_contains "$push_render" 'unsafe_allow_private_networks: true'
   sender=all
   [ "$mode" != distributed ] || sender=maintenance
   assert_component_occurrences "$push_render" "$sender" "name: ETHERVIEW_PUSH_PRIVATE_KEY" 1

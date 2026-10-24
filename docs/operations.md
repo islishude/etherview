@@ -1431,6 +1431,25 @@ alerts. Record browser/OS versions, notification permission, deployed build and
 the observed result. Offline delivery is deliberately not an acceptance goal:
 TTL 0 drops messages instead of storing them for later delivery.
 
+For local development with Stash/Clash Fake-IP DNS or a private push receiver,
+set `push.unsafe_allow_private_networks: true`, or set the following in Preview's
+ignored root `.env`:
+
+```dotenv
+ETHERVIEW_PUSH_UNSAFE_ALLOW_PRIVATE_NETWORKS=true
+```
+
+The default is `false`. Like `metadata.unsafe_allow_private_networks`, enabling
+this option bypasses the public-IP restriction, including for Fake-IP, ordinary
+private and loopback addresses. No host or CIDR lists are required. It applies
+only to the browser-push sender; other outbound clients retain their own policy.
+HTTPS port 443, TLS hostname/certificate validation, no redirects, DNS answer
+limits, checked-IP dialing, timeouts and response size limits remain enforced.
+Use this unsafe exception only in a trusted development environment. Helm uses
+`config.push.unsafe_allow_private_networks`; Compose passes the environment
+setting only to maintenance/all. Build the updated image and recreate maintenance
+to apply it, then trigger a new matching transaction: restart discards backlog.
+
 Maintenance runs `43-browser-push` only when enabled. One PostgreSQL session lock
 per chain selects the sender. It uses first-canonical and first successful Token
 publications, volatile cursors and bounded work. Restart/recovery discards backlog;

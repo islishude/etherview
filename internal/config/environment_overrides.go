@@ -56,6 +56,9 @@ func applySecretEnvironment(cfg *Config, lookup func(string) (string, bool), rea
 	}
 	setString(lookup, "PUSH_PUBLIC_KEY", &cfg.Push.PublicKey)
 	setString(lookup, "PUSH_CONTACT", &cfg.Push.Contact)
+	if err := setBool(lookup, "PUSH_UNSAFE_ALLOW_PRIVATE_NETWORKS", &cfg.Push.UnsafeAllowPrivateNetworks); err != nil {
+		return err
+	}
 	roles, _ := NormalizeRoles(cfg.Runtime.Roles)
 	if cfg.Push.Enabled && slices.Contains(roles, "maintenance") {
 		key, err := lookupValueOrFile("PUSH_PRIVATE_KEY", lookup, readFile)

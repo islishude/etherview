@@ -325,6 +325,7 @@ services:
     environment:
       <<: *etherview-app-env
       ETHERVIEW_ROLES: maintenance
+      ETHERVIEW_PUSH_UNSAFE_ALLOW_PRIVATE_NETWORKS:
     depends_on: *etherview-runtime-depends-on
     healthcheck: *etherview-healthcheck
     restart: unless-stopped

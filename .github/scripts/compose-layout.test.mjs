@@ -52,9 +52,15 @@ test("push private keys reach only the sending role in Preview and deployment", 
       ETHERVIEW_PUSH_PRIVATE_KEY: "private-fixture",
       ETHERVIEW_PUSH_PRIVATE_KEY_FILE: "/run/push-key",
       ETHERVIEW_PREVIEW_PUSH_ENV_FILE: file,
+      ETHERVIEW_PUSH_UNSAFE_ALLOW_PRIVATE_NETWORKS: "true",
     });
     for (const [role, service] of Object.entries(config.services)) {
       const sender = role === "etherview" || role === "maintenance";
+      assert.equal(
+        service.environment?.ETHERVIEW_PUSH_UNSAFE_ALLOW_PRIVATE_NETWORKS,
+        sender ? "true" : undefined,
+        role,
+      );
       assert.equal(
         service.environment?.ETHERVIEW_PUSH_PRIVATE_KEY,
         sender ? "private-fixture" : undefined,

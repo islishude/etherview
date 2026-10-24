@@ -855,8 +855,13 @@ replay suppression, account/session lifecycle, watch limits and CSV snapshots.
 The fresh schema contains no notification history or durable notification queue.
 
 Web Push transport tests decrypt encrypted payloads and verify VAPID, TTL 0,
-single-attempt failures, redirect rejection and hostile-network bounds. Browser
-tests cover explicit permission, unsupported/denied states, session isolation,
+single-attempt failures, redirect rejection and hostile-network bounds.
+Private-network exception regressions cover default-off behavior, strict boolean
+configuration, explicit Fake-IP/private/loopback opt-in, mixed DNS answers,
+default rebinding rejection, checked-IP dialing and unchanged redirect/TLS boundaries.
+Run `go test -race ./internal/netpolicy ./internal/config ./internal/watchlist
+./internal/app` and `make deployment-check` for changes to this exception.
+Browser tests cover explicit permission, unsupported/denied states, session isolation,
 worker payload/click validation, embedded CSP/cache policy, bilingual layouts
 and CSV downloads. Production all/split topology tests retain real SIWE, chain
 activity and CSV acceptance. Controlled receivers are protocol evidence only;

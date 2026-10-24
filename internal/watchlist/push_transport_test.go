@@ -13,8 +13,10 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"math/big"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
@@ -26,6 +28,108 @@ import (
 type pushRoundTrip func(*http.Request) (*http.Response, error)
 
 func (f pushRoundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestPushPrivateNetworkDialBoundary(t *testing.T) {
+	for _, unsafe := range []bool{false, true} {
+		for _, tc := range []struct {
+			name, host string
+			ips        []string
+			public     bool
+		}{
+			{"fake IP", "fcm.googleapis.com:443", []string{"198.18.1.49"}, false},
+			{"public", "other.example:443", []string{"8.8.8.8"}, true},
+			{"literal", "198.18.1.49:443", []string{"198.18.1.49"}, false},
+			{"loopback", "localhost:443", []string{"127.0.0.1"}, false},
+			{"IPv6 loopback", "localhost:443", []string{"::1"}, false},
+			{"private", "push.local:443", []string{"10.0.0.1"}, false},
+			{"IPv6 private", "push.local:443", []string{"fd00::1"}, false},
+			{"link local", "push.local:443", []string{"169.254.169.254"}, false},
+			{"mixed answers", "push.local:443", []string{"8.8.8.8", "192.168.1.1"}, false},
+		} {
+			t.Run(fmt.Sprintf("%s/unsafe=%t", tc.name, unsafe), func(t *testing.T) {
+				calls := 0
+				lookup := func(context.Context, string) ([]net.IPAddr, error) {
+					ips := make([]net.IPAddr, 0, len(tc.ips))
+					for _, ip := range tc.ips {
+						ips = append(ips, net.IPAddr{IP: net.ParseIP(ip)})
+					}
+					return ips, nil
+				}
+				dial := func(_ context.Context, _, address string) (net.Conn, error) {
+					calls++
+					if address != net.JoinHostPort(tc.ips[0], "443") {
+						t.Fatalf("did not pin checked IP: %s", address)
+					}
+					return nil, nil
+				}
+				_, err := pushDialer(unsafe, lookup, dial)(t.Context(), "tcp", tc.host)
+				allowed := unsafe || tc.public
+				if (err == nil) != allowed || (calls == 1) != allowed {
+					t.Fatalf("allow=%v calls=%d error=%v", allowed, calls, err)
+				}
+			})
+		}
+		for _, tc := range []struct {
+			host string
+			ips  []net.IPAddr
+		}{
+			{"push.example:8443", []net.IPAddr{{IP: net.ParseIP("8.8.8.8")}}},
+			{"push.example:443", nil},
+			{"push.example:443", make([]net.IPAddr, 33)},
+			{"push.example:443", []net.IPAddr{{IP: net.ParseIP("fe80::1"), Zone: "lo0"}}},
+		} {
+			_, err := pushDialer(unsafe, func(context.Context, string) ([]net.IPAddr, error) { return tc.ips, nil },
+				func(context.Context, string, string) (net.Conn, error) {
+					t.Fatal("unsafe dial admitted")
+					return nil, nil
+				})(t.Context(), "tcp", tc.host)
+			if err == nil {
+				t.Fatal("invalid port or DNS result accepted")
+			}
+		}
+	}
+	// The default must resolve each new connection and reject private rebinding.
+	lookups, dials := 0, 0
+	connect := pushDialer(false, func(context.Context, string) ([]net.IPAddr, error) {
+		lookups++
+		ip := "8.8.8.8"
+		if lookups > 1 {
+			ip = "10.0.0.1"
+		}
+		return []net.IPAddr{{IP: net.ParseIP(ip)}}, nil
+	}, func(context.Context, string, string) (net.Conn, error) { dials++; return nil, nil })
+	if _, err := connect(t.Context(), "tcp", "push.example:443"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := connect(t.Context(), "tcp", "push.example:443"); err == nil || dials != 1 {
+		t.Fatal("DNS rebinding admitted by default")
+	}
+}
+
+func TestPushPrivateNetworkExceptionStillRejectsRedirects(t *testing.T) {
+	sender := NewWebPushSender("", "", "", true)
+	transport := sender.client.Transport.(*http.Transport)
+	if transport.Proxy != nil || !transport.DisableKeepAlives || transport.TLSClientConfig != nil {
+		t.Fatal("changed proxy, reuse or TLS boundary")
+	}
+	calls := 0
+	sender.client.Transport = pushRoundTrip(func(*http.Request) (*http.Response, error) {
+		calls++
+		return &http.Response{StatusCode: http.StatusTemporaryRedirect, Header: http.Header{"Location": {"https://127.0.0.1/"}}, Body: http.NoBody}, nil
+	})
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodPost, "https://fcm.googleapis.com/send", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := sender.client.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	if calls != 1 || response.StatusCode != http.StatusTemporaryRedirect {
+		t.Fatal("redirect followed")
+	}
+}
 func TestWebPushEncryptionAndOneShotTransport(t *testing.T) {
 	private, public, e := webpush.GenerateVAPIDKeys()
 	if e != nil {
@@ -37,7 +141,7 @@ func TestWebPushEncryptionAndOneShotTransport(t *testing.T) {
 	}
 	auth := bytes.Repeat([]byte{42}, 16)
 	payload := []byte(`{"title":"activity","path":"/tx/0x01"}`)
-	sender := NewWebPushSender(public, private, "mailto:operator@example.com")
+	sender := NewWebPushSender(public, private, "mailto:operator@example.com", false)
 	calls := 0
 	sender.client.Transport = pushRoundTrip(func(r *http.Request) (*http.Response, error) {
 		calls++
@@ -140,7 +244,7 @@ func TestPushResponseAndTimeBounds(t *testing.T) {
 	}
 	p256dh := base64.RawURLEncoding.EncodeToString(key.PublicKey().Bytes())
 	auth := base64.RawURLEncoding.EncodeToString(make([]byte, 16))
-	sender := NewWebPushSender(public, private, "mailto:operator@example.com")
+	sender := NewWebPushSender(public, private, "mailto:operator@example.com", false)
 	if sender.client.Timeout <= 0 || sender.client.Timeout > 5*time.Second {
 		t.Fatal("unbounded timeout")
 	}
@@ -169,12 +273,12 @@ func TestPushNetworkBoundary(t *testing.T) {
 		}
 	}
 	for _, host := range []string{"127.0.0.1:443", "[::1]:443", "10.0.0.1:443", "169.254.169.254:443", "8.8.8.8:80"} {
-		if conn, e := publicPushDial(context.Background(), "tcp", host); e == nil {
+		if conn, e := pushDialer(false, net.DefaultResolver.LookupIPAddr, (&net.Dialer{}).DialContext)(context.Background(), "tcp", host); e == nil {
 			_ = conn.Close()
 			t.Fatalf("unsafe dial accepted")
 		}
 	}
-	s := NewWebPushSender("", "", "")
+	s := NewWebPushSender("", "", "", false)
 	if s.client.CheckRedirect(&http.Request{}, nil) != http.ErrUseLastResponse {
 		t.Fatal("redirects enabled")
 	}

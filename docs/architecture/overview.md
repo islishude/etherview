@@ -998,6 +998,11 @@ first-canonical Core and first successful Token publications with volatile
 cursors; startup and recovery discard backlog. Each candidate rechecks session,
 watch, canonical block and exact publication, closes database state, then sends
 once with TTL 0. No notification history, read state or retry queue exists.
+Push transport pins checked DNS addresses and requires public HTTPS endpoints.
+The default-off `push.unsafe_allow_private_networks` development option bypasses
+only the public-IP restriction, allowing Fake-IP, private and loopback addresses.
+HTTPS, TLS validation, redirect rejection, DNS bounds, IP pinning, timeouts and
+response bounds remain unchanged in both all and split roles.
 
 The SPA retains its public EventSource. Browser notifications use a same-origin
 Service Worker and explicit permission/subscribe controls in Watchlist. Session

@@ -1,10 +1,51 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	webpush "github.com/SherClockHolmes/webpush-go"
 )
+
+func TestPushPrivateNetworkConfiguration(t *testing.T) {
+	if Default().Push.UnsafeAllowPrivateNetworks {
+		t.Fatal("private-network exception must default off")
+	}
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("push:\n  unsafe_allow_private_networks: true\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, role := range []string{"all", "maintenance"} {
+		loaded, err := LoadForRoles(path, []string{role})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !loaded.Push.UnsafeAllowPrivateNetworks {
+			t.Fatal("YAML setting not loaded")
+		}
+	}
+	t.Setenv("ETHERVIEW_PUSH_UNSAFE_ALLOW_PRIVATE_NETWORKS", "false")
+	loaded, err := LoadForRoles(path, []string{"maintenance"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Push.UnsafeAllowPrivateNetworks {
+		t.Fatal("environment disable ignored")
+	}
+	t.Setenv("ETHERVIEW_PUSH_UNSAFE_ALLOW_PRIVATE_NETWORKS", "true")
+	loaded, err = LoadForRoles("", []string{"maintenance"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.Push.UnsafeAllowPrivateNetworks {
+		t.Fatal("environment enable ignored")
+	}
+	t.Setenv("ETHERVIEW_PUSH_UNSAFE_ALLOW_PRIVATE_NETWORKS", "invalid")
+	if _, err := LoadForRoles("", []string{"maintenance"}); err == nil {
+		t.Fatal("invalid boolean accepted")
+	}
+}
 
 func TestPushKeysAndRoleScopedSecret(t *testing.T) {
 	private, public, e := webpush.GenerateVAPIDKeys()
