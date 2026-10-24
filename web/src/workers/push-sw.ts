@@ -51,9 +51,32 @@ self.addEventListener("notificationclick", (event) => {
     (async () => {
       const url = new URL(path, self.location.origin).href;
       const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-      const existing = windows.find((client) => client.url === url);
-      if (existing) await existing.focus();
-      else await self.clients.openWindow(url);
+      const sameOrigin = windows.filter(
+        (client) => new URL(client.url).origin === self.location.origin,
+      );
+      // Preserve the selected transaction tab, including its query and fragment.
+      const existing = sameOrigin.find((client) => new URL(client.url).pathname === path);
+      if (existing) {
+        try {
+          await existing.focus();
+          return;
+        } catch {
+          // The tab may have closed since matchAll().
+        }
+      }
+      const reusable = sameOrigin.find((client) => client !== existing);
+      if (reusable) {
+        try {
+          const navigated = await reusable.navigate(url);
+          if (navigated) {
+            await navigated.focus();
+            return;
+          }
+        } catch {
+          // A closed or no-longer-navigable tab must not swallow the click.
+        }
+      }
+      await self.clients.openWindow(url);
     })(),
   );
 });

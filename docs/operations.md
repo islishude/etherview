@@ -72,7 +72,8 @@ configuration or source directory. Do not put secrets in these public inputs.
 ```sh
 .github/scripts/buildx.sh build --load --target production --tag etherview:acme \
   --build-arg ETHERVIEW_WEB_BRANDING_DIR=branding/acme .
-ETHERVIEW_WEB_BRANDING_DIR=branding/acme .github/scripts/compose.sh build api
+ETHERVIEW_WEB_BRANDING_DIR=branding/acme .github/scripts/compose.sh \
+  --env-file .local/preview-push.env build api
 ETHERVIEW_WEB_BRANDING_DIR=branding/acme .github/scripts/compose.sh \
   --project-directory . -f deploy/compose.yaml --profile monolith build etherview
 ```
@@ -148,6 +149,10 @@ make preview-cert
 make start-preview
 ```
 
+Preview settings live in `.local/preview-push.env`. Start/recreate automatically
+initialize missing settings and reuse existing VAPID keys; `make preview-env`
+prepares the file separately. See [browser push configuration](#private-watches-notifications-and-csv-exports).
+
 Preview now uses the repository-root `compose.yaml`; deployment commands use
 `--project-directory . -f deploy/compose.yaml --env-file .env.deploy` from the
 repository root. Move existing deployment settings out of `.env` manually as
@@ -214,9 +219,9 @@ first bring up the runtime, then run `archive-init` separately and propagate its
 exit status before checking real block production. Initialization failure does
 not prevent already started API/enrich containers from becoming ready.
 After correcting credentials or restoring storage, repeat
-`docker compose -f compose.yaml run --rm archive-init`; this preserves
+`docker compose --env-file .local/preview-push.env -f compose.yaml run --rm archive-init`; this preserves
 existing objects. To recreate application roles during an archive outage, use
-`docker compose -f compose.yaml up -d --no-build --force-recreate --wait api enrich`.
+`docker compose --env-file .local/preview-push.env -f compose.yaml up -d --no-build --force-recreate --wait api enrich`.
 The full start/recreate targets still report optional service startup failures.
 
 The archive client sends `If-None-Match: *` on writes, but RustFS 1.0.1 cannot
@@ -1416,11 +1421,35 @@ disablement. Closing the page does not end the login. Unsupported browsers and
 permission denial are shown in the UI; this does not provide email or Webhooks.
 
 For Preview at `https://etherview.localhost:8080`, the root Compose entry point
-accepts enabled, public key and contact through the same `ETHERVIEW_PUSH_*`
-values in the ignored root `.env`. Put `ETHERVIEW_PUSH_PRIVATE_KEY` in the ignored
-`.local/preview-push.env` (mode 0600); only maintenance loads this optional env file.
-`ETHERVIEW_PREVIEW_PUSH_ENV_FILE` can select another file. Use a trusted Preview
-TLS certificate. Existing databases from before this schema change must be
+uses one ignored `.local/preview-push.env` for all local settings, including the
+VAPID key pair.
+`make start-preview` and `make recreate-preview` run `make preview-env` first:
+it creates the file when missing, generates a P-256 key pair, fills missing push
+settings and enforces mode 0600. Existing values, comments and key pairs are
+preserved; generated defaults enable Preview push and leave private-network
+access disabled. Only maintenance receives the private key; Compose does not
+inject the whole file into containers. `.local/` is excluded from Git and Docker
+build contexts. Production push remains disabled by default.
+
+Preview lifecycle commands explicitly load that file, without loading root `.env`.
+`PREVIEW_ENV_FILE` overrides the path for Make commands. To migrate existing
+settings, move the root `.env` contents into `.local/preview-push.env`, keeping
+its existing private key and matching public key, then remove root `.env`.
+`ETHERVIEW_PREVIEW_PUSH_ENV_FILE` is no longer used.
+Run `make preview-env` separately before using raw Compose commands:
+
+```sh
+make preview-env
+docker compose --env-file .local/preview-push.env config --quiet
+```
+
+Compose itself does not generate the file. An existing public key without its
+private key, or a mismatched pair, fails initialization instead of silently
+rotating browser subscriptions.
+File-based keys may retain `ETHERVIEW_PUSH_PRIVATE_KEY_FILE` with the matching
+public key and an explicit read-only Compose mount.
+
+Use a trusted Preview TLS certificate. Existing databases from before this schema change must be
 recreated under the [fresh-database policy](#fresh-database-initialization);
 `make recreate-preview` replaces runtime containers but does not reset an old
 database. After fresh initialization, sign in, add a watch, enable this browser,
@@ -1433,7 +1462,7 @@ TTL 0 drops messages instead of storing them for later delivery.
 
 For local development with Stash/Clash Fake-IP DNS or a private push receiver,
 set `push.unsafe_allow_private_networks: true`, or set the following in Preview's
-ignored root `.env`:
+ignored `.local/preview-push.env`:
 
 ```dotenv
 ETHERVIEW_PUSH_UNSAFE_ALLOW_PRIVATE_NETWORKS=true

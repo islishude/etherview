@@ -319,12 +319,11 @@ services:
   maintenance:
     <<: *etherview-service
     command: ["serve", "--roles=maintenance", "--config=/etc/etherview/config.yaml"]
-    env_file:
-      - path: ${ETHERVIEW_PREVIEW_PUSH_ENV_FILE:-./.local/preview-push.env}
-        required: false
     environment:
       <<: *etherview-app-env
       ETHERVIEW_ROLES: maintenance
+      ETHERVIEW_PUSH_PRIVATE_KEY:
+      ETHERVIEW_PUSH_PRIVATE_KEY_FILE:
       ETHERVIEW_PUSH_UNSAFE_ALLOW_PRIVATE_NETWORKS:
     depends_on: *etherview-runtime-depends-on
     healthcheck: *etherview-healthcheck

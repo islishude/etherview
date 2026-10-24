@@ -39,7 +39,9 @@ for (const file of maintained) {
 const makefile = read("Makefile");
 const deployment = read("deploy/README.md");
 check(
-  makefile.includes("recreate-preview: preview-cert-check preview-network-runtime docker-build"),
+  makefile.includes(
+    "recreate-preview: preview-env preview-cert-check preview-network-runtime docker-build",
+  ),
   "Makefile recreate-preview must require the read-only Preview network prerequisite",
 );
 contains(

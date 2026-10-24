@@ -49,6 +49,7 @@ IPFS_GATEWAY_IMAGE ?= etherview-ipfs-gateway:local
 HELM_CHART ?= deploy/helm/etherview
 PREVIEW_APP_SERVICES := api sync enrich trace metadata maintenance
 PREVIEW_RUNTIME_SERVICES := geth lighthouse validator object-storage ipfs ipfs-gateway migration $(PREVIEW_APP_SERVICES)
+PREVIEW_ENV_FILE ?= .local/preview-push.env
 PREVIEW_TLS_DIR := .local/preview-tls
 PREVIEW_TLS_CERT := $(PREVIEW_TLS_DIR)/tls.crt
 PREVIEW_TLS_KEY := $(PREVIEW_TLS_DIR)/tls.key
@@ -77,7 +78,7 @@ X402_LOCAL_TOPOLOGY ?= monolith
 	test-preview-metadata test-preview-metadata-prebuilt test-preview-consensus-prebuilt preview-e2e-check \
 	test-schema-e2e test-schema-e2e-prebuilt test-soak \
 	web-build web-generate web-install web-lint web-test preview-cert preview-cert-check \
-	preview-network-check preview-network-runtime \
+	preview-env preview-network-check preview-network-runtime \
 	start-preview stop-preview recreate-preview \
 	start-x402-local stop-x402-local recreate-x402-local
 
@@ -547,17 +548,22 @@ preview-cert-check:
 	}
 
 preview-network-check:
-	$(NODE) --test .github/scripts/preview-network.test.mjs .github/scripts/preview-compose.test.mjs
+	$(NODE) --test .github/scripts/preview-network.test.mjs .github/scripts/preview-compose.test.mjs .github/scripts/preview-env.test.mjs
 
-preview-network-runtime:
+start-preview recreate-preview stop-preview preview-images preview-network-runtime: export COMPOSE_ENV_FILES = $(PREVIEW_ENV_FILE)
+
+preview-env:
+	$(NODE) .github/scripts/preview-env.mjs "$(PREVIEW_ENV_FILE)"
+
+preview-network-runtime: preview-env
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-network.mjs check
 
 .PHONY: preview-images
-preview-images:
+preview-images: preview-env
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml pull geth lighthouse validator object-storage archive-init ipfs
 	$(DOCKER) pull ethpandaops/ethereum-genesis-generator:6.2.7
 
-start-preview: preview-cert-check docker-build preview-gateway-build preview-images
+start-preview: preview-env preview-cert-check docker-build preview-gateway-build preview-images
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-network.mjs prepare
 	IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \
 		up --no-build --wait --wait-timeout 180 --remove-orphans
@@ -569,7 +575,7 @@ stop-preview:
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml --profile archive-init down --volumes --remove-orphans
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-network.mjs clean
 
-recreate-preview: preview-cert-check preview-network-runtime docker-build preview-gateway-build
+recreate-preview: preview-env preview-cert-check preview-network-runtime docker-build preview-gateway-build
 	IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \
 		rm -fs $(PREVIEW_RUNTIME_SERVICES)
 	IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \

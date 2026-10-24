@@ -1050,6 +1050,9 @@ retention, production backup/restore, or native CI execution.
 
 `make preview-network-check` exercises immutable reuse, incomplete material,
 configuration drift, tampering, symlinks and rejected single-file overrides.
+It also checks Preview env creation, key-pair reuse and validation, operator-setting
+preservation and 0600 permissions. Compose rendering verifies that a single env
+file supplies public configuration while private keys reach only maintenance/all.
 It also checks Compose command strings, executable paths with spaces, literal
 argument preservation, readiness port lookup and initialization failure propagation.
 `make compose-check` checks Engine JWT and validator-key isolation, scoped

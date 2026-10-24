@@ -4,17 +4,16 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { runCompose } from "./preview-compose.mjs";
+import { prepareEnvironment } from "./preview-env.mjs";
 
 const root = path.resolve(import.meta.dirname, "../..");
 
-function render(args, overrides = {}) {
+function render(args, overrides = {}, envFile = "/dev/null") {
   const env = { ...process.env, ...overrides };
-  if (!Object.hasOwn(overrides, "ETHERVIEW_PREVIEW_PUSH_ENV_FILE"))
-    env.ETHERVIEW_PREVIEW_PUSH_ENV_FILE = "/dev/null";
   for (const key of ["COMPOSE_FILE", "COMPOSE_PROFILES", "COMPOSE_PROJECT_NAME"]) delete env[key];
   if (!Object.hasOwn(overrides, "ETHERVIEW_CONFIG_FILE")) delete env.ETHERVIEW_CONFIG_FILE;
   return JSON.parse(
-    runCompose(["--env-file", "/dev/null", ...args, "config", "--format", "json"], { env }),
+    runCompose(["--env-file", envFile, ...args, "config", "--format", "json"], { env }),
   );
 }
 
@@ -32,7 +31,10 @@ test("push private keys reach only the sending role in Preview and deployment", 
   const file = path.join(directory, "push.env");
   fs.writeFileSync(
     file,
-    "ETHERVIEW_PUSH_PRIVATE_KEY=private-fixture\nETHERVIEW_PUSH_PRIVATE_KEY_FILE=/run/push-key\n",
+    "ETHERVIEW_PORT=19443\nETHERVIEW_PUSH_ENABLED=true\nETHERVIEW_PUSH_PUBLIC_KEY=public-fixture\n" +
+      "ETHERVIEW_PUSH_CONTACT=mailto:operator@example.com\n" +
+      "ETHERVIEW_PUSH_PRIVATE_KEY=private-fixture\nETHERVIEW_PUSH_PRIVATE_KEY_FILE=/run/push-key\n" +
+      "ETHERVIEW_PUSH_UNSAFE_ALLOW_PRIVATE_NETWORKS=true\n",
   );
   for (const args of [
     [],
@@ -45,15 +47,21 @@ test("push private keys reach only the sending role in Preview and deployment", 
       mode,
     ]),
   ]) {
-    const config = render(args, {
-      ETHERVIEW_PUSH_ENABLED: "true",
-      ETHERVIEW_PUSH_PUBLIC_KEY: "public-fixture",
-      ETHERVIEW_PUSH_CONTACT: "mailto:operator@example.com",
-      ETHERVIEW_PUSH_PRIVATE_KEY: "private-fixture",
-      ETHERVIEW_PUSH_PRIVATE_KEY_FILE: "/run/push-key",
-      ETHERVIEW_PREVIEW_PUSH_ENV_FILE: file,
-      ETHERVIEW_PUSH_UNSAFE_ALLOW_PRIVATE_NETWORKS: "true",
-    });
+    // Clear the host's push overrides so this proves loading from one env file.
+    const config = render(
+      args,
+      Object.fromEntries(
+        Object.keys(process.env)
+          .filter((key) => key.startsWith("ETHERVIEW_PUSH_"))
+          .map((key) => [key, undefined]),
+      ),
+      file,
+    );
+    if (args.length === 0)
+      assert.equal(
+        config.services.api.ports.find((port) => port.target === 8080).published,
+        "19443",
+      );
     for (const [role, service] of Object.entries(config.services)) {
       const sender = role === "etherview" || role === "maintenance";
       assert.equal(
@@ -165,4 +173,25 @@ test("deployment overlays keep repository-root build contexts and mounts", () =>
   );
   assertApplicationPaths(config.services.api, "deploy/config.example.yaml");
   assert.ok(config.services["runtime-fixture"]);
+});
+
+test("Preview Make commands pass the unified env path through the Compose native environment", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "preview compose env "));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const file = path.join(directory, "preview.env");
+  prepareEnvironment(file);
+  fs.appendFileSync(file, "ETHERVIEW_PORT=19444\n");
+  const config = JSON.parse(
+    runCompose(["-f", "compose.yaml", "config", "--format", "json"], {
+      env: { ...process.env, COMPOSE_ENV_FILES: file, ETHERVIEW_PORT: undefined },
+    }),
+  );
+  assert.equal(config.services.api.ports.find((port) => port.target === 8080).published, "19444");
+  assert.equal(config.services.maintenance.environment.ETHERVIEW_PUSH_ENABLED, "true");
+  assert.equal(config.services.api.environment.ETHERVIEW_PUSH_PRIVATE_KEY, undefined);
+  const makefile = fs.readFileSync(path.join(root, "Makefile"), "utf8");
+  assert.match(
+    makefile,
+    /^start-preview recreate-preview stop-preview preview-images preview-network-runtime: export COMPOSE_ENV_FILES = \$\(PREVIEW_ENV_FILE\)$/m,
+  );
 });
