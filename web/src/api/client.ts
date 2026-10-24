@@ -40,7 +40,12 @@ export function createExplorerClient(fetcher: Fetcher = dynamicFetch) {
     credentials: "same-origin",
     headers: { Accept: "application/json" },
     parseAs: "json",
-    fetch: (input, init) => makeRelativeFetcher(origin, fetcher)(new Request(input, init)),
+    fetch: (input, init) => {
+      // Keep the SDK-owned Request and its abort controller alive together.
+      const request =
+        input instanceof Request && init === undefined ? input : new Request(input, init);
+      return makeRelativeFetcher(origin, fetcher)(request);
+    },
   });
   // Hey API captures transport/parse failures as results by default. Preserve
   // rejection for cancellation, network failures, and invalid JSON on success.

@@ -223,6 +223,33 @@ describe("Hey API compatibility", () => {
     ).rejects.toMatchObject({ name: "AbortError" });
   });
 
+  it("forwards the SDK request signal and cancels an in-flight request", async () => {
+    const controller = new AbortController();
+    let notifyStarted!: (signal: AbortSignal) => void;
+    const started = new Promise<AbortSignal>((resolve) => {
+      notifyStarted = resolve;
+    });
+    let sdkSignal: AbortSignal | undefined;
+    const client = createExplorerClient(
+      (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          const signal = init!.signal!;
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+          notifyStarted(signal);
+        }),
+    );
+    client.interceptors.request.use((request) => {
+      sdkSignal = request.signal;
+      return request;
+    });
+    const pending = sdk.getStatus({ client, signal: controller.signal });
+    const forwardedSignal = await started;
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(forwardedSignal).toBe(sdkSignal);
+    expect(forwardedSignal.aborted).toBe(true);
+  });
+
   it("preserves parse errors on successful invalid JSON", async () => {
     const client = createExplorerClient(async () => new Response("not JSON"));
     await expect(sdk.getStatus({ client })).rejects.toBeInstanceOf(SyntaxError);
