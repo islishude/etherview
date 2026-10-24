@@ -1,4 +1,4 @@
-import { WatchlistPanel, NotificationsPanel } from "./WatchlistPages";
+import { WatchlistPanel } from "./WatchlistPages";
 import { usePrivateIdentity } from "@/api/privateAccount";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -28,11 +28,7 @@ import { Page } from "./pages";
 
 const ADMIN_PAGE_SIZE = 25;
 
-export function AccountPage({
-  tab,
-}: {
-  tab: "overview" | "api-keys" | "billing" | "watchlist" | "notifications";
-}) {
+export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" | "watchlist" }) {
   const privateIdentity = usePrivateIdentity();
   const { i18n, t } = useTranslation();
   const auth = useAuth();
@@ -172,25 +168,18 @@ export function AccountPage({
           {auth.session.authenticated && sessionUser && (
             <nav className="account-tabs" aria-label={t("auth.account.sections")}>
               <Link
-                to="/account"
-                search={{ tab: "watchlist" }}
-                aria-current={activeTab === "watchlist" ? "page" : undefined}
-              >
-                {t("watchlist.title")}
-              </Link>
-              <Link
-                to="/account"
-                search={{ tab: "notifications" }}
-                aria-current={activeTab === "notifications" ? "page" : undefined}
-              >
-                {t("watchlist.notifications")}
-              </Link>
-              <Link
                 aria-current={activeTab === "overview" ? "page" : undefined}
                 search={{ tab: "overview" }}
                 to="/account"
               >
                 {t("auth.account.tabs.overview")}
+              </Link>
+              <Link
+                to="/account"
+                search={{ tab: "watchlist" }}
+                aria-current={activeTab === "watchlist" ? "page" : undefined}
+              >
+                {t("watchlist.title")}
               </Link>
               <Link
                 aria-current={activeTab === "api-keys" ? "page" : undefined}
@@ -212,9 +201,6 @@ export function AccountPage({
           )}
 
           {privateIdentity && activeTab === "watchlist" && <WatchlistPanel key={privateIdentity} />}
-          {privateIdentity && activeTab === "notifications" && (
-            <NotificationsPanel key={privateIdentity} />
-          )}
           {auth.session.authenticated && sessionUser && activeTab === "overview" && (
             <div className="account-layout" data-account-tab="overview">
               <section className="panel profile-panel" aria-labelledby="profile-title">
@@ -319,7 +305,7 @@ export function AccountPage({
             sessionUser &&
             activeTab === "api-keys" &&
             (apiKeysEnabled ? (
-              <UserAPIKeysPanel locale={locale} />
+              <UserAPIKeysPanel key={privateIdentity} locale={locale} />
             ) : (
               <section className="panel auth-gate" aria-labelledby="api-keys-unavailable-title">
                 <h2 id="api-keys-unavailable-title">{t("auth.apiKeys.unavailableTitle")}</h2>
@@ -339,6 +325,7 @@ export function AccountPage({
 function UserAPIKeysPanel({ locale }: { locale: string }) {
   const { t } = useTranslation();
   const auth = useAuth();
+  const [creating, setCreating] = useState(false);
   const [cursors, setCursors] = useState([""]);
   const [name, setName] = useState("");
   const [scopes, setScopes] = useState<APIKeyScope[]>(["api:read"]);
@@ -349,7 +336,12 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
   const cursor = cursors.at(-1) || undefined;
   const csrfToken = auth.session.csrf_token;
   const keys = useQuery({
-    queryKey: ["current-user-api-keys", cursor ?? null],
+    queryKey: [
+      "current-user-api-keys",
+      auth.session.user?.id,
+      auth.session.expires_at,
+      cursor ?? null,
+    ],
     queryFn: () => listCurrentUserAPIKeys(25, cursor),
     enabled: auth.session.authenticated,
     retry: false,
@@ -387,6 +379,7 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
     try {
       const next = await createCurrentUserAPIKey(csrfToken, normalizedName, scopes);
       setIssued(next);
+      setCreating(false);
       setName("");
       setScopes(["api:read"]);
       await keys.refetch();
@@ -453,9 +446,20 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
               </div>
             </dl>
           )}
+          {!creating && (
+            <button
+              className="button secondary inline-button account-action"
+              disabled={!policy || policy.active_count >= policy.maximum_active}
+              onClick={() => setCreating(true)}
+            >
+              {t("auth.apiKeys.add")}
+            </button>
+          )}
         </article>
+      </div>
 
-        <form className="panel api-key-create-form" onSubmit={createKey}>
+      {creating && (
+        <form className="panel api-key-create-form account-create-form" onSubmit={createKey}>
           <h2>{t("auth.apiKeys.createTitle")}</h2>
           <label className="field-control" htmlFor="api-key-name">
             <span>{t("auth.apiKeys.name")}</span>
@@ -490,15 +494,30 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
               </label>
             ))}
           </fieldset>
-          <button
-            className="button primary"
-            disabled={Boolean(pendingPrefix) || !name.trim() || scopes.length === 0}
-            type="submit"
-          >
-            {t("auth.apiKeys.create")}
-          </button>
+          <div className="account-form-actions">
+            <button
+              className="button primary"
+              disabled={Boolean(pendingPrefix) || !name.trim() || scopes.length === 0}
+              type="submit"
+            >
+              {t("auth.apiKeys.create")}
+            </button>
+            <button
+              className="button secondary"
+              type="button"
+              disabled={Boolean(pendingPrefix)}
+              onClick={() => {
+                setCreating(false);
+                setFormError(undefined);
+                setName("");
+                setScopes(["api:read"]);
+              }}
+            >
+              {t("auth.apiKeys.cancel")}
+            </button>
+          </div>
         </form>
-      </div>
+      )}
 
       {formError && (
         <p className="form-error" role="alert">
@@ -518,12 +537,12 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
           </span>
         </div>
       )}
-      {keys.data?.data.items.length === 0 && (
+      {!creating && keys.data?.data.items.length === 0 && (
         <p className="empty-result" role="status">
           {t("auth.apiKeys.empty")}
         </p>
       )}
-      {keys.data && keys.data.data.items.length > 0 && (
+      {!creating && keys.data && keys.data.data.items.length > 0 && (
         <div className="api-key-list" aria-label={t("auth.apiKeys.listLabel")}>
           {keys.data.data.items.map((key) => (
             <article className="panel api-key-card" key={key.prefix}>
@@ -594,7 +613,7 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
           ))}
         </div>
       )}
-      {keys.data && (
+      {!creating && keys.data && (
         <nav className="cursor-pagination" aria-label={t("auth.apiKeys.pagination")}>
           <button
             className="button secondary"

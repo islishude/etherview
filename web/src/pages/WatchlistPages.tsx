@@ -1,22 +1,12 @@
-import { type FormEvent, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { type FormEvent, useState } from "react";
+import { BrowserPushPanel } from "./BrowserPushPanel";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/auth/AuthProvider";
 import { ApiError } from "@/api/client";
-import {
-  useWatches,
-  useNotifications,
-  usePrivateIdentity,
-  usePrivateLifetime,
-} from "@/api/privateAccount";
-import {
-  deleteWatch,
-  saveWatch,
-  readNotification,
-  type WatchInput,
-  type AddressWatch,
-} from "@/api/watchlist";
+import { useWatches, usePrivateIdentity, usePrivateLifetime } from "@/api/privateAccount";
+import { deleteWatch, saveWatch, type WatchInput, type AddressWatch } from "@/api/watchlist";
 
 export function useAccountAction() {
   const auth = useAuth();
@@ -69,6 +59,7 @@ export function WatchlistPanel() {
   const { t } = useTranslation();
   const query = useWatches();
   const action = useAccountAction();
+  const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<AddressWatch>();
   const [form, setForm] = useState<WatchInput>({
     address: "",
@@ -78,6 +69,7 @@ export function WatchlistPanel() {
     enabled: true,
   });
   function reset() {
+    setShowForm(false);
     setEditing(undefined);
     setForm({
       address: "",
@@ -95,221 +87,149 @@ export function WatchlistPanel() {
     <section className="panel watchlist-panel">
       <h2>{t("watchlist.title")}</h2>
       <p>{t("watchlist.hint")}</p>
-      <form className="profile-form" onSubmit={submit}>
-        <label>
-          {t("watchlist.address")}
-          <input
-            required
-            value={form.address}
-            disabled={Boolean(editing)}
-            onChange={(e) => setForm({ ...form, address: e.target.value })}
-          />
-        </label>
-        <label>
-          {t("watchlist.label")}
-          <input
-            maxLength={64}
-            value={form.label}
-            onChange={(e) => setForm({ ...form, label: e.target.value })}
-          />
-        </label>
-        <fieldset>
-          <legend>{t("watchlist.kinds")}</legend>
-          {allKinds.map((kind) => (
-            <label key={kind}>
-              <input
-                type="checkbox"
-                checked={form.kinds.includes(kind)}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    kinds: e.target.checked
-                      ? [...form.kinds, kind]
-                      : form.kinds.filter((k) => k !== kind),
-                  })
-                }
-              />
-              {kind === "transaction" ? t("watchlist.transactions") : kind.toUpperCase()}
-            </label>
-          ))}
-        </fieldset>
-        <label>
-          {t("watchlist.direction")}
-          <select
-            value={form.direction}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                direction: e.target.value as WatchInput["direction"],
-              })
-            }
-          >
-            {["both", "in", "out"].map((d) => (
-              <option key={d} value={d}>
-                {t(`watchlist.${d}`)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            checked={form.enabled}
-            onChange={(e) => setForm({ ...form, enabled: e.target.checked })}
-          />
-          {t("watchlist.enabled")}
-        </label>
-        <button className="button primary" disabled={action.pending || !form.kinds.length}>
-          {editing ? t("watchlist.save") : t("watchlist.add")}
-        </button>
-        {editing && (
-          <button className="button secondary" type="button" onClick={reset}>
-            {t("watchlist.cancel")}
-          </button>
-        )}
-      </form>
-      <AccountActionError code={action.error || (query.isError ? "activity_unavailable" : "")} />
-      {query.isPending ? (
-        <p role="status">{t("watchlist.loading")}</p>
-      ) : (
-        <ul className="watchlist-items">
-          {query.data?.map((item) => (
-            <li key={item.id}>
-              <Link to="/address/$address" params={{ address: item.address }}>
-                {item.label || item.address}
-              </Link>
-              <code>{item.address}</code>
-              <span>
-                {item.kinds
-                  .map((kind) =>
-                    kind === "transaction" ? t("watchlist.transactions") : kind.toUpperCase(),
-                  )
-                  .join(", ")}{" "}
-                · {t(`watchlist.${item.direction}`)} ·{" "}
-                {t(item.enabled ? "watchlist.enabled" : "watchlist.paused")}
-              </span>
-              <div>
-                <button
-                  className="button secondary"
-                  onClick={() => {
-                    setEditing(item);
-                    setForm({
-                      address: item.address,
-                      label: item.label,
-                      kinds: item.kinds,
-                      direction: item.direction,
-                      enabled: item.enabled,
-                    });
-                  }}
-                >
-                  {t("watchlist.edit")}
-                </button>
-                <button
-                  className="button secondary"
-                  disabled={action.pending}
-                  onClick={() =>
-                    void action.run((csrf, signal) => deleteWatch(item.id, csrf, signal))
-                  }
-                >
-                  {t("watchlist.remove")}
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-      {query.data?.length === 0 && <p>{t("watchlist.empty")}</p>}
-    </section>
-  );
-}
-export function NotificationsPanel() {
-  const { t } = useTranslation();
-  const [cursor, setCursor] = useState("");
-  const [unread, setUnread] = useState(false);
-  const query = useNotifications(cursor, unread);
-  const action = useAccountAction();
-  return (
-    <section className="panel watchlist-panel">
-      <h2>{t("watchlist.notifications")}</h2>
-      <p>{t("watchlist.retention")}</p>
-      <label>
-        <input
-          type="checkbox"
-          checked={unread}
-          onChange={(e) => {
-            setUnread(e.target.checked);
-            setCursor("");
-          }}
-        />
-        {t("watchlist.unread")}
-      </label>
-      <button
-        className="button secondary"
-        disabled={action.pending || !query.data || query.data.unread_count === "0"}
-        onClick={() => {
-          const id = query.data?.watermark;
-          if (id) void action.run((csrf, signal) => readNotification(id, true, csrf, signal));
-        }}
-      >
-        {t("watchlist.readAll")}
-      </button>
-      <AccountActionError code={action.error || (query.isError ? "activity_unavailable" : "")} />
-      {query.isPending && <p role="status">{t("watchlist.loading")}</p>}
-      <ul className="watchlist-items">
-        {query.data?.items.map((n) => (
-          <li key={n.id} data-read={n.read}>
-            <strong>{n.label || n.address}</strong>
-            <span>
-              {t(`watchlist.${n.activity.direction}`)} ·{" "}
-              {n.activity.kind === "transaction"
-                ? t("watchlist.transactions")
-                : n.activity.kind.toUpperCase()}
-            </span>
-            <Link
-              to="/tx/$hash"
-              search={{ tab: "overview" }}
-              params={{ hash: n.activity.transaction_hash }}
-            >
-              {n.activity.transaction_hash}
-            </Link>
-            <span>
-              {n.activity.status
-                ? t(`watchlist.${n.activity.status}`)
-                : (n.activity.amount ?? n.activity.token_id)}
-            </span>
-            {(!n.canonical || !n.published) && (
-              <strong className="notification-warning">
-                {t(!n.canonical ? "watchlist.orphaned" : "watchlist.unpublished")}
-              </strong>
-            )}
-            {!n.read && (
-              <button
-                className="button secondary"
-                disabled={action.pending}
-                onClick={() =>
-                  void action.run((csrf, signal) => readNotification(n.id, false, csrf, signal))
-                }
-              >
-                {t("watchlist.read")}
-              </button>
-            )}
-          </li>
-        ))}
-      </ul>
-      {query.data?.items.length === 0 && <p>{t("watchlist.noNotifications")}</p>}
-      {cursor && (
-        <button className="button secondary" onClick={() => setCursor("")}>
-          {t("watchlist.newest")}
-        </button>
-      )}
-      {query.data?.next_cursor && (
+      <BrowserPushPanel />
+      {!showForm && (
         <button
-          className="button secondary"
-          onClick={() => setCursor(query.data?.next_cursor ?? "")}
+          className="button secondary inline-button account-action"
+          disabled={query.isPending || query.isError || (query.data?.length ?? 0) >= 5}
+          onClick={() => setShowForm(true)}
         >
-          {t("watchlist.more")}
+          {t("watchlist.add")}
         </button>
       )}
+      {showForm && (
+        <form className="profile-form account-create-form" onSubmit={submit}>
+          <label>
+            {t("watchlist.address")}
+            <input
+              required
+              value={form.address}
+              disabled={Boolean(editing)}
+              onChange={(e) => setForm({ ...form, address: e.target.value })}
+            />
+          </label>
+          <label>
+            {t("watchlist.label")}
+            <input
+              maxLength={64}
+              value={form.label}
+              onChange={(e) => setForm({ ...form, label: e.target.value })}
+            />
+          </label>
+          <fieldset>
+            <legend>{t("watchlist.kinds")}</legend>
+            {allKinds.map((kind) => (
+              <label key={kind}>
+                <input
+                  type="checkbox"
+                  checked={form.kinds.includes(kind)}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      kinds: e.target.checked
+                        ? [...form.kinds, kind]
+                        : form.kinds.filter((k) => k !== kind),
+                    })
+                  }
+                />
+                {kind === "transaction" ? t("watchlist.transactions") : kind.toUpperCase()}
+              </label>
+            ))}
+          </fieldset>
+          <fieldset className="watch-direction">
+            <legend>{t("watchlist.direction")}</legend>
+            <div className="watch-direction-options">
+              {(["both", "in", "out"] as const).map((direction) => (
+                <label key={direction}>
+                  <input
+                    className="sr-only"
+                    type="radio"
+                    name="watch-direction"
+                    value={direction}
+                    checked={form.direction === direction}
+                    onChange={() => setForm({ ...form, direction })}
+                  />
+                  <span>{t(`watchlist.${direction}`)}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <label>
+            <input
+              type="checkbox"
+              checked={form.enabled}
+              onChange={(e) => setForm({ ...form, enabled: e.target.checked })}
+            />
+            {t("watchlist.enabled")}
+          </label>
+          <div className="account-form-actions">
+            <button className="button primary" disabled={action.pending || !form.kinds.length}>
+              {editing ? t("watchlist.save") : t("watchlist.add")}
+            </button>
+            <button
+              className="button secondary"
+              type="button"
+              disabled={action.pending}
+              onClick={reset}
+            >
+              {t("watchlist.cancel")}
+            </button>
+          </div>
+        </form>
+      )}
+      <AccountActionError code={action.error || (query.isError ? "activity_unavailable" : "")} />
+      {!showForm &&
+        (query.isPending ? (
+          <p role="status">{t("watchlist.loading")}</p>
+        ) : (
+          <ul className="watchlist-items">
+            {query.data?.map((item) => (
+              <li key={item.id}>
+                <Link to="/address/$address" params={{ address: item.address }}>
+                  {item.label || item.address}
+                </Link>
+                <code>{item.address}</code>
+                <span>
+                  {item.kinds
+                    .map((kind) =>
+                      kind === "transaction" ? t("watchlist.transactions") : kind.toUpperCase(),
+                    )
+                    .join(", ")}{" "}
+                  · {t(`watchlist.${item.direction}`)} ·{" "}
+                  {t(item.enabled ? "watchlist.enabled" : "watchlist.paused")}
+                </span>
+                <div>
+                  <button
+                    className="button secondary"
+                    onClick={() => {
+                      setShowForm(true);
+                      setEditing(item);
+                      setForm({
+                        address: item.address,
+                        label: item.label,
+                        kinds: item.kinds,
+                        direction: item.direction,
+                        enabled: item.enabled,
+                      });
+                    }}
+                  >
+                    {t("watchlist.edit")}
+                  </button>
+                  <button
+                    className="button secondary"
+                    disabled={action.pending}
+                    onClick={() =>
+                      void action.run((csrf, signal) => deleteWatch(item.id, csrf, signal))
+                    }
+                  >
+                    {t("watchlist.remove")}
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ))}
+      {!showForm && query.data?.length === 0 && <p>{t("watchlist.empty")}</p>}
     </section>
   );
 }

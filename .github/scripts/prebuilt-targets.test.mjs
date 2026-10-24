@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -9,6 +9,11 @@ function fixture(t) {
   const dir = mkdtempSync(join(tmpdir(), "prebuilt targets "));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   writeFileSync(join(dir, "Makefile"), readFileSync(new URL("../../Makefile", import.meta.url)));
+  mkdirSync(join(dir, ".github/scripts"), { recursive: true });
+  writeFileSync(
+    join(dir, ".github/scripts/preview-env.mjs"),
+    readFileSync(new URL("./preview-env.mjs", import.meta.url)),
+  );
   mkdirSync(join(dir, "bin"));
   mkdirSync(join(dir, ".local/preview-tls"), { recursive: true });
   for (const file of ["tls.crt", "tls.key", "rootCA.pem", "ipfs.crt", "ipfs.key"])
@@ -67,6 +72,7 @@ for (const suite of ["schema-e2e", "preview-metadata", "preview-consensus"]) {
     const f = fixture(t);
     const prebuilt = f.run(`${target}-prebuilt`);
     assert.equal(prebuilt.status, 0, prebuilt.stdout + prebuilt.stderr);
+    assert.equal(existsSync(join(f.dir, ".local/preview-push.env")), false);
     assert.deepEqual(
       prebuilt.commands.map((c) => c.command),
       preview ? ["docker", "docker", "go"] : ["docker", "go"],
@@ -80,6 +86,7 @@ for (const suite of ["schema-e2e", "preview-metadata", "preview-consensus"]) {
       ]);
     const ordinary = f.run(target);
     assert.equal(ordinary.status, 0, ordinary.stdout + ordinary.stderr);
+    assert.equal(existsSync(join(f.dir, ".local/preview-push.env")), preview);
     const builds = ordinary.commands.filter((c) => c.command === "buildx");
     assert.equal(builds.length, preview ? 2 : 1);
     assert(builds[0].args.includes("production"));

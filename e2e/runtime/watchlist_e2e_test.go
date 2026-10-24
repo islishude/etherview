@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -58,6 +59,7 @@ func (h *harness) watchRequest(ctx context.Context, s runtimeWatchSession, metho
 }
 func (h *harness) startRuntimeWatch(ctx context.Context) runtimeWatchSession {
 	h.t.Helper()
+	h.assertPushWorker(ctx)
 	h.secrets = append(h.secrets, h.project.Env["ETHERVIEW_RUNTIME_SESSION_PEPPER"])
 	s := runtimeWatchSession{}
 	address := crypto.PubkeyToAddress(h.fixture.sponsorKey.PublicKey).Hex()
@@ -82,32 +84,55 @@ func (h *harness) startRuntimeWatch(ctx context.Context) runtimeWatchSession {
 	s.cookie = response.Cookies()[0]
 	s.csrf = *authenticated.Data.CsrfToken
 	h.watchRequest(ctx, s, "POST", "/users/me/watchlist", gen.WatchInput{Address: h.fixture.accounts[0], Label: "Runtime watch", Kinds: []gen.WatchInputKinds{"transaction", "erc20", "erc721", "erc1155"}, Direction: "both", Enabled: true})
+	h.watchRequest(ctx, s, "POST", "/users/me/push-subscriptions", h.pushInput)
+	listed, _ := h.watchRequest(ctx, s, "GET", "/users/me/push-subscriptions", nil)
+	var subscriptions gen.PushSubscriptionsResponse
+	if err := json.Unmarshal(listed, &subscriptions); err != nil || !subscriptions.Data.Enabled || len(subscriptions.Data.Items) != 1 {
+		h.t.Fatal("browser subscription API did not retain session binding")
+	}
+	if bytes.Contains(listed, []byte(h.pushInput.Endpoint)) || bytes.Contains(listed, []byte(h.pushInput.Auth)) {
+		h.t.Fatal("browser subscription API exposed private endpoint or key")
+	}
+
 	return s
 }
-func (h *harness) assertRuntimeWatch(ctx context.Context, s runtimeWatchSession, hash string, canonical bool) {
+
+func (h *harness) assertPushWorker(ctx context.Context) {
 	h.t.Helper()
-	deadline := time.NewTimer(waitTimeout)
-	defer deadline.Stop()
-	for {
-		data, _ := h.watchRequest(ctx, s, "GET", "/users/me/notifications", nil)
-		var page gen.WatchNotificationsResponse
-		if err := json.Unmarshal(data, &page); err != nil {
-			h.t.Fatal(err)
-		}
-		for _, item := range page.Data.Items {
-			if strings.EqualFold(item.Activity.TransactionHash, hash) && item.Canonical == canonical {
-				return
-			}
-		}
-		select {
-		case <-ctx.Done():
-			h.t.Fatal(ctx.Err())
-		case <-deadline.C:
-			h.t.Fatal("notification publication timeout")
-		case <-time.After(250 * time.Millisecond):
-		}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, h.baseURL+"/push-sw.js", nil)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	request.Header.Set("Service-Worker", "script")
+	response, err := h.http.Do(request)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	body, err := io.ReadAll(io.LimitReader(response.Body, 32<<10))
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	if response.StatusCode != http.StatusOK || !strings.Contains(response.Header.Get("Content-Type"), "javascript") ||
+		!workerRegistersEvent(body, "push") || !workerRegistersEvent(body, "notificationclick") {
+		h.t.Fatalf("production push worker missing: status=%d content-type=%s", response.StatusCode, response.Header.Get("Content-Type"))
+	}
+	if strings.Contains(response.Header.Get("Cache-Control"), "immutable") {
+		h.t.Fatal("production push worker cannot update")
 	}
 }
+
+func workerRegistersEvent(body []byte, event string) bool {
+	// Vite may emit single/double quotes or a static template literal.
+	for _, quote := range []string{`"`, "'", "`"} {
+		pattern := `\baddEventListener\s*\(\s*` + regexp.QuoteMeta(quote+event+quote) + `\s*,`
+		if regexp.MustCompile(pattern).Match(body) {
+			return true
+		}
+	}
+	return false
+}
+
 func (h *harness) assertRuntimeCSV(ctx context.Context, s runtimeWatchSession) {
 	h.t.Helper()
 	data, response := h.watchRequest(ctx, s, "POST", "/users/me/exports/address-activity", gen.AddressExportRequest{Address: h.fixture.accounts[0], Kind: "transaction", Direction: "both", From: time.Unix(int64(h.baseTimestamp), 0), To: time.Unix(int64(h.baseTimestamp+3600), 0)})

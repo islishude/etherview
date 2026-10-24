@@ -284,6 +284,10 @@ describe("authentication pages", () => {
     const user = userEvent.setup();
     expect(await screen.findByRole("heading", { name: "API Keys" })).toBeVisible();
     expect(window.location.pathname).not.toBe("/users");
+    expect(screen.queryByRole("textbox", { name: "Key name" })).not.toBeInTheDocument();
+    expect(await screen.findByText("Existing reader")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Add API key" }));
+    expect(screen.queryByText("Existing reader")).not.toBeInTheDocument();
     await user.type(screen.getByRole("textbox", { name: "Key name" }), "Production indexer");
     await user.click(screen.getByRole("checkbox", { name: /Contract verification/ }));
     await user.click(screen.getByRole("button", { name: "Create key" }));

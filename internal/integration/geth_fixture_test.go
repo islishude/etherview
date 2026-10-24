@@ -24,6 +24,7 @@ type integrationTransactionOptions struct {
 	BlobHashes       []common.Hash
 	To               *common.Address
 	ContractCreation bool
+	Failed           bool
 	Data             []byte
 	Value            *big.Int
 	GasPrice         *big.Int
@@ -100,7 +101,10 @@ func newIntegrationBundle(options integrationBundleOptions) (chainbundle.Bundle,
 			EffectiveGasPrice: new(big.Int).Set(effectiveGasPrice),
 			TransactionIndex:  uint(index),
 		}
-		if transaction.To() == nil {
+		if transactionOptions.Failed {
+			receipt.Status = types.ReceiptStatusFailed
+		}
+		if transaction.To() == nil && !transactionOptions.Failed {
 			receipt.ContractAddress = crypto.CreateAddress(sender, transaction.Nonce())
 		}
 		receipt.Bloom = types.CreateBloom(receipt)

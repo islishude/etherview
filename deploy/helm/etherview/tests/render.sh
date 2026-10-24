@@ -589,6 +589,32 @@ assert_not_contains "$external_secret_without_reader" 'secretKey: "x402-fingerpr
 assert_not_contains "$external_secret_without_reader" 'secretKey: "x402-facilitator-headers"'
 
 auth_monolith="$temporary_dir/auth-monolith.yaml"
+for mode in all distributed; do
+  push_render="$temporary_dir/push-$mode.yaml"
+  mode_values="$chart_dir/values.yaml"
+  [ "$mode" != distributed ] || mode_values="$chart_dir/values-distributed.yaml"
+  "$helm_bin" template etherview "$chart_dir" -f "$mode_values" \
+    --set config.features.user_auth=true \
+    --set-string config.server.public_url=https://explorer.example.com \
+    --set config.push.enabled=true \
+    --set-string config.push.public_key=public-fixture \
+    --set-string config.push.contact=mailto:operator@example.com \
+    --set config.push.unsafe_allow_private_networks=true \
+    --set externalSecret.enabled=true \
+    --set-string externalSecret.sessionPepperRemoteKey=runtime/session-pepper \
+    --set-string externalSecret.pushPrivateKeyRemoteKey=runtime/push-private-key \
+    >"$push_render"
+  assert_occurrences "$push_render" "name: ETHERVIEW_PUSH_PRIVATE_KEY" 1
+  assert_contains "$push_render" 'key: "runtime/push-private-key"'
+  assert_contains "$push_render" 'unsafe_allow_private_networks: true'
+  sender=all
+  [ "$mode" != distributed ] || sender=maintenance
+  assert_component_occurrences "$push_render" "$sender" "name: ETHERVIEW_PUSH_PRIVATE_KEY" 1
+  for role in api sync enrich trace metadata; do
+    assert_component_occurrences "$push_render" "$role" "name: ETHERVIEW_PUSH_PRIVATE_KEY" 0
+  done
+done
+
 "$helm_bin" template etherview "$chart_dir" \
   --set config.features.user_auth=true \
   --set-string config.server.public_url=https://explorer.example.com \

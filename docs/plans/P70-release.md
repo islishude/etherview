@@ -2,6 +2,10 @@
 
 Status: `blocked`
 
+Browser subscription API and all/split feature delivery acceptance were completed
+under P60-T20; notifications have no persisted history or replay. Final release
+acceptance remains governed by the gates below.
+
 ## Outcome
 
 Etherview v1.0.0 has conformance, migration, security, performance, deployment,

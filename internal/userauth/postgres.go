@@ -579,7 +579,13 @@ func (repository *PostgresRepository) Cleanup(
 			postgresTime(expiredBefore),
 			int32(limit),
 		)
-		return err
+		if err != nil {
+			return err
+		}
+		if err = queries.PushCleanup(ctx); err != nil {
+			return err
+		}
+		return queries.ExportCleanup(ctx)
 	})
 	if err != nil {
 		return CleanupResult{}, fmt.Errorf("clean user authentication state: %w", err)

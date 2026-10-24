@@ -292,7 +292,9 @@ func loadConfigFlag(
 	if err != nil {
 		return config.Config{}, nil, err
 	}
-	cfg, err := config.LoadWithOverrides(path, logging.configOverrides())
+	overrides := logging.configOverrides()
+	overrides.DisablePush = true
+	cfg, err := config.LoadWithOverrides(path, overrides)
 	return cfg, rest, err
 }
 
@@ -307,6 +309,7 @@ func loadConfigFlagForRoles(
 	}
 	overrides := logging.configOverrides()
 	overrides.Roles = roles
+	overrides.DisablePush = true
 	cfg, err := config.LoadWithOverrides(path, overrides)
 	return cfg, rest, err
 }

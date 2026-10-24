@@ -190,6 +190,7 @@ migration:
 # is enabled; reader and accelerator keys are included only when their optional
 # remote-key values below are non-empty.
 secrets:
+  pushPrivateKeyKey: push-private-key
   consensusURLKey: consensus-url
   consensusHeadersKey: consensus-headers
   blobArchiveReadAccessKey: blob-archive-read-access
@@ -216,6 +217,7 @@ secrets:
   otlpTraceHeadersKey: otlp-trace-headers
 
 externalSecret:
+  pushPrivateKeyRemoteKey: ""
   consensusURLRemoteKey: ""
   consensusHeadersRemoteKey: ""
   blobArchiveReadAccessRemoteKey: ""
@@ -257,6 +259,12 @@ externalSecret:
   otlpTraceHeadersRemoteKey: ""
 
 config:
+  push:
+    enabled: false
+    public_key: ""
+    contact: ""
+    # Development only: allow private/Fake-IP destinations; TLS and redirect rules remain.
+    unsafe_allow_private_networks: false
   consensus:
     enabled: false
     url: ""

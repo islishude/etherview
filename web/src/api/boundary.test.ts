@@ -182,8 +182,13 @@ function inspectWalletSyntax(
   dynamicMethodProperties: number;
   eip6963EventReferences: number;
 } {
+  // Web Locks coordinates the browser subscription; it is not an EIP-1193 provider.
+  const providerSource = source.replaceAll(
+    'navigator.locks.request("etherview-browser-push", operation)',
+    "webLockOperation()",
+  );
   const rawRequestCalls = [
-    ...source.matchAll(/(?:\.\s*request|\[\s*["'`]request["'`]\s*\])\s*\(/gu),
+    ...providerSource.matchAll(/(?:\.\s*request|\[\s*["'`]request["'`]\s*\])\s*\(/gu),
   ].length;
   const requestProviderCalls = file.endsWith("/wallet/WalletProvider.tsx")
     ? walletRequestMethods(source)

@@ -229,7 +229,7 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			userAPIKeys        httpapi.UserAPIKeyAdministration
 			userRepository     *userauth.PostgresRepository
 		)
-		watchService, err := watchlist.New(db, cfg.Chain.ID)
+		watchService, err := watchlist.New(db, cfg.Chain.ID, watchlist.PushOptions{Enabled: cfg.Push.Enabled, PublicKey: cfg.Push.PublicKey})
 		if err != nil {
 			return err
 		}

@@ -83,6 +83,13 @@ metadata:
   # only in the metadata worker process for the controlled local gateway.
   unsafe_allow_private_networks: false
 
+push:
+  enabled: false
+  public_key: ""
+  contact: ""
+  # Development only: allow private/Fake-IP destinations; TLS and redirect rules remain.
+  unsafe_allow_private_networks: false
+
 features:
   trace: true
   mempool: true

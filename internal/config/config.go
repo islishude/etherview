@@ -29,9 +29,18 @@ const (
 	defaultVerificationGeasPath     = "/usr/local/bin/etherview-geas-compiler"
 )
 
+type PushConfig struct {
+	Enabled                    bool   `yaml:"enabled"`
+	PublicKey                  string `yaml:"public_key"`
+	Contact                    string `yaml:"contact"`
+	PrivateKey                 string `yaml:"-"`
+	UnsafeAllowPrivateNetworks bool   `yaml:"unsafe_allow_private_networks"`
+}
+
 // Config is the complete runtime configuration. A deployment serves exactly
 // one chain, although chain_id remains present in persistent identities.
 type Config struct {
+	Push          PushConfig          `yaml:"push"`
 	Consensus     ConsensusConfig     `yaml:"consensus"`
 	Server        ServerConfig        `yaml:"server"`
 	Chain         ChainConfig         `yaml:"chain"`
@@ -510,6 +519,8 @@ type Overrides struct {
 	Roles     []string
 	LogLevel  *string
 	LogFormat *string
+	// DisablePush keeps offline administration from loading sender secrets.
+	DisablePush bool
 }
 
 // LoadWithOverrides loads configuration using explicit highest-precedence
@@ -554,8 +565,18 @@ func load(path string, forcedRoles []string, overrides Overrides) (Config, error
 			return Config{}, fmt.Errorf("decode config: %w", err)
 		}
 	}
+	lookup := os.LookupEnv
+	if overrides.DisablePush {
+		cfg.Push.Enabled = false
+		lookup = func(key string) (string, bool) {
+			if key == envPrefix+"PUSH_ENABLED" {
+				return "false", true
+			}
+			return os.LookupEnv(key)
+		}
+	}
 	if err := applyEnvironmentForRoles(
-		&cfg, os.LookupEnv, os.ReadFile, forcedRoles,
+		&cfg, lookup, os.ReadFile, forcedRoles,
 	); err != nil {
 		return Config{}, err
 	}

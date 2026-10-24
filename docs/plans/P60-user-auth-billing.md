@@ -14,8 +14,8 @@ x402 top-up. User-owned API keys spend that credit on configured bounded
 Etherscan V2 reads, while native explorer reads stay free and operator keys
 retain an audited quota-controlled bypass.
 
-SIWE accounts also own private address watches and durable in-app transaction
-and token-transfer notifications. Authenticated CSV export is owned by P40-T23
+SIWE accounts also own private address watches and session-bound one-shot browser
+notifications. Authenticated CSV export is owned by P40-T23
 and the bilingual personal workspace by P50-T74. API keys never authorize these
 private tools, and watch/notification/export limits do not debit prepaid credit.
 
@@ -49,6 +49,7 @@ private tools, and watch/notification/export limits do not debit prepaid credit.
 | P60-T17 | blocked | P60-T16                             | One-shot live EIP-3009 and Permit2 top-up plus API-debit conformance                                                                                               | testnet transactions and writer/chain/credit/usage reports                                                               |
 | P60-T18 | done    | P60-T03, P60-T09, P10, P20, P40-T01 | Private writer-authoritative watch management, bounded enrollment, fresh schema/typed queries, and ownership isolation                                             | OpenAPI/generation, schema, Cookie/Origin/CSRF, handler, watch-limit, and PostgreSQL regressions                         |
 | P60-T19 | done    | P60-T18, P20-T10                    | Durable transaction/token notifications, generation-fenced delivery, reorg/reattach handling, read watermarks, and bounded cleanup                                 | restart, lease/generation, concurrency, indexed matching, disabled-account replay, and PostgreSQL regressions            |
+| P60-T20 | done    | P60-T18, P60-T19                    | Replace durable notifications with session-bound, best-effort Web Push; five watches/account; align P40 API, P50 browser and P70 topology acceptance               | Local automated acceptance and operator-confirmed closed-page provider delivery; evidence limits below                   |
 
 ## Acceptance
 
@@ -96,17 +97,13 @@ private tools, and watch/notification/export limits do not debit prepaid credit.
 - [x] Superseded accountless request-payment execution and configuration are
       removed; immutable historical audit rows remain readable and cannot create
       prepaid credit or change top-up accounting.
-- [x] Private watches are limited to 100 addresses/user and start after enrollment
+- [x] Private watches are limited to 5 addresses/user and start after enrollment
       or re-enablement at an exact canonical tip. Writer SIWE ownership, Origin,
       and CSRF checks isolate users; API keys cannot manage private tools.
-- [x] Transactions and published ERC-20/721/1155 transfers produce durable,
-      deduplicated notifications. Independent work generations and leases retain
-      correct replay/reorg/reattach state and read watermarks across restarts.
-- [x] Indexed matching advances through ineligible/popular-address followers;
-      existing generations are repaired while an account is disabled. Cleanup is
-      bounded and public events carry no private data.
-- [x] API and maintenance components use identical persistence in all/split roles;
-      personal tools neither require optional services nor consume prepaid credit.
+- [x] P60-T20 replaces durable notification history and queues with session-bound
+      Web Push, TTL 0, no retries/backfill, bounded matching and all/split parity.
+      P40 subscription API, P50 browser controls/worker and P70 runtime acceptance
+      share this migration. Real provider delivery is separate from local evidence.
 
 ## Current Blockers
 
@@ -122,18 +119,29 @@ reference-capacity and final release gates.
 
 ## Evidence
 
-P60-T18 and P60-T19 passed private ownership, concurrent watch limits, durable
-notification/reorg delivery, restart, lease fencing, and read-watermark checks.
-Local validation on 2026-09-26 passed `make check`, integration/race, embedded
-browser, schema, and production runtime gates; production images covered real
-SIWE and notifications in both layouts. P40-T23 and P50-T74 own export and Web
-acceptance. Later indexed matching and disabled-account replay regressions
-passed 40,000 unrelated watches, 2,000 transactions, and paginated followers.
-Synthetic local timings are not reference capacity; this feature record does
-not claim remote CI or production deployment. P60-T17 remains blocked.
+P60-T20 implements session-bound subscriptions, TTL 0 sends, volatile cursors,
+indexed bounded matching, lock-loss cancellation, and removal of history/queues.
+Local regressions cover encrypted payloads/VAPID, session ownership/revocation,
+concurrent watch limits, delayed Token publication/replay, restart backlog
+loss, single-sender behavior, snapshot closure, browser controls and CSV.
+P40/P50/P70 share API, browser and production-topology acceptance. Browser
+permission and notification tests include a real Chromium worker with the site
+page closed, using a CDP-injected event; this is not vendor delivery evidence.
+
+On 2026-10-24, the operator confirmed that an earlier manual test successfully
+received a real browser notification after all site tabs were closed, and
+explicitly accepted this result to close P60-T20. This operator-reported result
+closes the outstanding browser-provider delivery gate separately from the local
+automated evidence. The test date, deployed build digest, browser/OS versions
+and exact permission state were not supplied with the confirmation. This update
+records the operator's acceptance; it does not claim an independently rerun
+test, native notification-click verification, or broader browser/OS coverage.
+
+P60-T18/P60-T19's former durable delivery and read-watermark decision is replaced
+by ADR-0051/P60-T20. Watch ownership and CSV acceptance remain preserved.
 
 Retained completed milestones: P60-T02, P60-T03, P60-T05, P60-T09, P60-T11, P60-T12,
-P60-T13, P60-T14, P60-T16, P60-T18, P60-T19.
+P60-T13, P60-T14, P60-T16, P60-T18, P60-T19, P60-T20.
 
 SIWE challenge/session, replay, expiry, Cookie/Origin/CSRF, writer
 authorization and administrative revocation tests passed with PostgreSQL

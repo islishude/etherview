@@ -87,12 +87,12 @@ version TEXT PRIMARY KEY, checksum TEXT NOT NULL, applied_at TIMESTAMPTZ NOT NUL
 	}
 	// A collision in 0016 must roll back objects and ledger entries from all
 	// earlier files without touching the existing table or its row.
-	execFixture(t, ctx, db, `CREATE TABLE watch_notifications (marker TEXT)`)
-	execFixture(t, ctx, db, `INSERT INTO watch_notifications VALUES ('keep')`)
+	execFixture(t, ctx, db, `CREATE TABLE push_subscriptions (marker TEXT)`)
+	execFixture(t, ctx, db, `INSERT INTO push_subscriptions VALUES ('keep')`)
 	if err := store.RunMigrations(ctx, db); err == nil || !strings.Contains(err.Error(), "apply migration 0016_watchlist") {
 		t.Fatalf("expected late migration collision, got %v", err)
 	}
-	assertRowCount(t, ctx, db, `SELECT count(*) FROM watch_notifications WHERE marker = 'keep'`, 1)
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM push_subscriptions WHERE marker = 'keep'`, 1)
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM pg_class
 WHERE relnamespace = current_schema()::regnamespace
 AND relname IN ('chains', 'durable_jobs_id_seq', 'verified_contracts', 'mempool_snapshots')`, 0)
@@ -104,7 +104,7 @@ WHERE relnamespace = current_schema()::regnamespace AND relname = 'etherview_sch
 	}
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM pg_proc
 WHERE pronamespace = current_schema()::regnamespace`, 0)
-	execFixture(t, ctx, db, `DROP TABLE watch_notifications`)
+	execFixture(t, ctx, db, `DROP TABLE push_subscriptions`)
 	if err := store.RunMigrations(ctx, db); err != nil {
 		t.Fatalf("retry after rollback: %v", err)
 	}

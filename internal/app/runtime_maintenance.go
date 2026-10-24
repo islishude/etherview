@@ -21,12 +21,12 @@ func (assembly runtimeAssembly) registerMaintenanceComponents() error {
 	componentRegistry := assembly.componentRegistry
 	chainID := assembly.chainID
 	if roleSet[components.RoleMaintenance] {
-		if cfg.Features.UserAuth {
-			service, err := watchlist.New(db, cfg.Chain.ID)
+		if cfg.Features.UserAuth && cfg.Push.Enabled {
+			service, err := watchlist.NewPushWorker(db, cfg.Chain.ID, watchlist.NewWebPushSender(cfg.Push.PublicKey, cfg.Push.PrivateKey, cfg.Push.Contact, cfg.Push.UnsafeAllowPrivateNetworks), registry.RecordBrowserPush)
 			if err != nil {
 				return err
 			}
-			if err := componentRegistry.Register(components.RoleMaintenance, "43-watchlist-notifications", func() (components.Service, error) { return service, nil }); err != nil {
+			if err := componentRegistry.Register(components.RoleMaintenance, "43-browser-push", func() (components.Service, error) { return service, nil }); err != nil {
 				return err
 			}
 		}

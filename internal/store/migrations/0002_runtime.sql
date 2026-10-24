@@ -408,3 +408,6 @@ CREATE TRIGGER durable_jobs_publication_protocol BEFORE UPDATE ON durable_jobs F
 CREATE CONSTRAINT TRIGGER durable_jobs_terminal_publication AFTER INSERT OR UPDATE ON durable_jobs DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION enforce_enrichment_terminal_publication();
 
 CREATE TRIGGER durable_stage_publications_append_only BEFORE DELETE OR UPDATE ON durable_stage_publications FOR EACH ROW EXECUTE FUNCTION reject_durable_stage_publication_mutation();
+
+CREATE INDEX push_core_sources ON transactional_outbox(chain_id,id) WHERE topic='core.block.canonical' AND generation=1;
+CREATE INDEX push_token_sources ON durable_stage_publications(chain_id,committed_at,job_id,job_generation) WHERE stage='token' AND stage_version=2 AND state='complete';

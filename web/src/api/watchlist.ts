@@ -27,32 +27,28 @@ export async function deleteWatch(id: string, csrf: string, signal: AbortSignal)
     }),
   );
 }
-export async function listNotifications(cursor = "", unreadOnly = false, signal?: AbortSignal) {
+export async function listPushSubscriptions(signal?: AbortSignal) {
+  return requireEnvelope(await apiClient.GET("/users/me/push-subscriptions", { signal })).data;
+}
+export async function savePushSubscription(
+  body: components["schemas"]["PushSubscriptionInput"],
+  csrf: string,
+  signal: AbortSignal,
+) {
   return requireEnvelope(
-    await apiClient.GET("/users/me/notifications", {
-      params: { query: { cursor: cursor || undefined, unread_only: unreadOnly } },
+    await apiClient.POST("/users/me/push-subscriptions", {
+      body,
+      params: { header: { "X-CSRF-Token": csrf } },
       signal,
     }),
   ).data;
 }
-export async function readNotification(
-  id: string,
-  through: boolean,
-  csrf: string,
-  signal: AbortSignal,
-) {
-  const header = { "X-CSRF-Token": csrf };
+export async function deletePushSubscription(id: string, csrf: string, signal: AbortSignal) {
   requireNoContent(
-    through
-      ? await apiClient.POST("/users/me/notifications/read-through", {
-          body: { through_id: id },
-          params: { header },
-          signal,
-        })
-      : await apiClient.POST("/users/me/notifications/{id}/read", {
-          params: { path: { id }, header },
-          signal,
-        }),
+    await apiClient.DELETE("/users/me/push-subscriptions/{id}", {
+      params: { path: { id }, header: { "X-CSRF-Token": csrf } },
+      signal,
+    }),
   );
 }
 export async function downloadAddressCSV(

@@ -7,11 +7,10 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/islishude/etherview/internal/api/gen"
 )
 
-func decodeActivity(raw []byte, address string) (gen.WatchActivity, error) {
-	var a gen.WatchActivity
+func decodeActivity(raw []byte, address string) (watchActivity, error) {
+	var a watchActivity
 	if json.Unmarshal(raw, &a) != nil {
 		return a, ErrUnavailable
 	}
@@ -94,4 +93,25 @@ func decodeActivity(raw []byte, address string) (gen.WatchActivity, error) {
 func validDecimal(s string) bool {
 	n, ok := new(big.Int).SetString(s, 10)
 	return ok && n.Sign() >= 0 && n.BitLen() <= 256 && n.String() == s
+}
+
+type watchActivity struct {
+	Amount           *string `json:"amount,omitempty"`
+	BlockHash        string  `json:"block_hash"`
+	BlockNumber      string  `json:"block_number"`
+	Decimals         *string `json:"decimals,omitempty"`
+	Direction        string  `json:"direction"`
+	EventKind        *string `json:"event_kind,omitempty"`
+	From             *string `json:"from,omitempty"`
+	Kind             string  `json:"kind"`
+	LogIndex         *string `json:"log_index,omitempty"`
+	Status           *string `json:"status,omitempty"`
+	SubIndex         *string `json:"sub_index,omitempty"`
+	Timestamp        string  `json:"timestamp"`
+	To               *string `json:"to,omitempty"`
+	TokenAddress     *string `json:"token_address,omitempty"`
+	TokenId          *string `json:"token_id,omitempty"`
+	TransactionHash  string  `json:"transaction_hash"`
+	TransactionIndex string  `json:"transaction_index"`
+	Value            *string `json:"value,omitempty"`
 }

@@ -1999,68 +1999,50 @@ paths:
           "description": "Successful account operation."
         "default":
           "$ref": "#/components/responses/Error"
-  /users/me/notifications:
-    "get":
-      "operationId": "listCurrentUserNotifications"
-      "tags":
-        - "users"
-      "security":
-        - "UserSession": []
-      "parameters":
-        - "$ref": "#/components/parameters/Cursor"
-        - "name": "unread_only"
-          "in": "query"
-          "schema":
-            "type": "boolean"
-      "responses":
+  /users/me/push-subscriptions:
+    get:
+      operationId: listCurrentUserPushSubscriptions
+      tags: [users]
+      security: [{ UserSession: [] }]
+      responses:
         "200":
-          "description": "Successful account operation."
-          "content":
-            "application/json":
-              "schema":
-                "$ref": "#/components/schemas/WatchNotificationsResponse"
-        "default":
-          "$ref": "#/components/responses/Error"
-  /users/me/notifications/{id}/read:
-    "post":
-      "operationId": "readCurrentUserNotification"
-      "tags":
-        - "users"
-      "security":
-        - "UserSession": []
-      "parameters":
-        - "name": "id"
-          "in": "path"
-          "required": true
-          "schema":
-            "type": "string"
-            "maxLength": 64
-        - "$ref": "#/components/parameters/CSRFToken"
-      "responses":
-        "204":
-          "description": "Successful account operation."
-        "default":
-          "$ref": "#/components/responses/Error"
-  /users/me/notifications/read-through:
-    "post":
-      "operationId": "readCurrentUserNotificationsThrough"
-      "tags":
-        - "users"
-      "security":
-        - "UserSession": []
-      "parameters":
-        - "$ref": "#/components/parameters/CSRFToken"
-      "responses":
-        "204":
-          "description": "Successful account operation."
-        "default":
-          "$ref": "#/components/responses/Error"
-      "requestBody":
-        "required": true
-        "content":
-          "application/json":
-            "schema":
-              "$ref": "#/components/schemas/WatchReadThrough"
+          description: Current session subscriptions and browser push capability. No notification history is retained.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PushSubscriptionsResponse" }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: saveCurrentUserPushSubscription
+      tags: [users]
+      security: [{ UserSession: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/CSRFToken" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PushSubscriptionInput" }
+      responses:
+        "200":
+          description: Idempotently bind this browser endpoint to the current session. At most 10 active subscriptions per account.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PushSubscriptionResponse" }
+        default: { $ref: "#/components/responses/Error" }
+  /users/me/push-subscriptions/{id}:
+    delete:
+      operationId: deleteCurrentUserPushSubscription
+      tags: [users]
+      security: [{ UserSession: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, maxLength: 64 }
+        - { $ref: "#/components/parameters/CSRFToken" }
+      responses:
+        "204": { description: Subscription removed. }
+        default: { $ref: "#/components/responses/Error" }
   /users/me/exports/address-activity:
     "post":
       "operationId": "exportCurrentUserAddressActivity"
@@ -2354,109 +2336,48 @@ components:
           "$ref": "#/components/schemas/Quantity"
         "start_hash":
           "$ref": "#/components/schemas/Hash"
-    WatchActivity:
-      "type": "object"
-      "additionalProperties": false
-      "required":
-        - "block_number"
-        - "block_hash"
-        - "timestamp"
-        - "transaction_hash"
-        - "transaction_index"
-        - "kind"
-        - "direction"
-      "properties":
-        "block_number":
-          "$ref": "#/components/schemas/Quantity"
-        "block_hash":
-          "$ref": "#/components/schemas/Hash"
-        "timestamp":
-          "$ref": "#/components/schemas/Quantity"
-        "transaction_hash":
-          "$ref": "#/components/schemas/Hash"
-        "transaction_index":
-          "$ref": "#/components/schemas/Quantity"
-        "kind":
-          "type": "string"
-        "from":
-          "$ref": "#/components/schemas/Address"
-        "to":
-          "$ref": "#/components/schemas/Address"
-        "value":
-          "$ref": "#/components/schemas/Quantity"
-        "status":
-          "type": "string"
-        "token_address":
-          "$ref": "#/components/schemas/Address"
-        "event_kind":
-          "type": "string"
-        "log_index":
-          "$ref": "#/components/schemas/Quantity"
-        "sub_index":
-          "$ref": "#/components/schemas/Quantity"
-        "token_id":
-          "$ref": "#/components/schemas/Quantity"
-        "amount":
-          "$ref": "#/components/schemas/Quantity"
-        "decimals":
-          "type": "string"
-        "direction":
-          "type": "string"
-    WatchNotification:
-      "type": "object"
-      "additionalProperties": false
-      "required":
-        - "id"
-        - "watch_id"
-        - "address"
-        - "label"
-        - "canonical"
-        - "published"
-        - "read"
-        - "activity"
-      "properties":
-        "id":
-          "$ref": "#/components/schemas/Quantity"
-        "watch_id":
-          "type": "string"
-        "address":
-          "$ref": "#/components/schemas/Address"
-        "label":
-          "type": "string"
-        "canonical":
-          "type": "boolean"
-        "published":
-          "type": "boolean"
-        "read":
-          "type": "boolean"
-        "activity":
-          "$ref": "#/components/schemas/WatchActivity"
-    WatchNotificationPage:
-      "type": "object"
-      "additionalProperties": false
-      "required":
-        - "items"
-        - "unread_count"
-        - "watermark"
-        - "next_cursor"
-      "properties":
-        "items":
-          "type": "array"
-          "items":
-            "$ref": "#/components/schemas/WatchNotification"
-        "unread_count":
-          "$ref": "#/components/schemas/Quantity"
-        "watermark":
-          "$ref": "#/components/schemas/Quantity"
-        "next_cursor":
-          "type": "string"
-    WatchReadThrough:
-      {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["through_id"],
-        "properties": { "through_id": { "$ref": "#/components/schemas/Quantity" } },
-      }
+    PushSubscriptionInput:
+      type: object
+      additionalProperties: false
+      required: [endpoint, p256dh, auth, language]
+      properties:
+        endpoint: { type: string, maxLength: 2048 }
+        p256dh: { type: string, maxLength: 128 }
+        auth: { type: string, maxLength: 32 }
+        language: { type: string, enum: [en, zh] }
+    BrowserPushSubscription:
+      type: object
+      additionalProperties: false
+      required: [id, endpoint_hash, language, expires_at]
+      properties:
+        id: { type: string }
+        endpoint_hash: { type: string }
+        language: { type: string }
+        expires_at: { type: string, format: date-time }
+    PushSubscriptions:
+      type: object
+      additionalProperties: false
+      required: [enabled, public_key, items]
+      properties:
+        enabled: { type: boolean }
+        public_key: { type: string }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/BrowserPushSubscription" }
+    PushSubscriptionsResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data: { $ref: "#/components/schemas/PushSubscriptions" }
+        meta: { $ref: "#/components/schemas/Meta" }
+    PushSubscriptionResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data: { $ref: "#/components/schemas/BrowserPushSubscription" }
+        meta: { $ref: "#/components/schemas/Meta" }
     AddressExportRequest:
       "type": "object"
       "additionalProperties": false
@@ -2494,7 +2415,12 @@ components:
         "required": ["data", "meta"],
         "properties":
           {
-            "data": { "type": "array", "items": { "$ref": "#/components/schemas/AddressWatch" } },
+            "data":
+              {
+                "type": "array",
+                "maxItems": 5,
+                "items": { "$ref": "#/components/schemas/AddressWatch" },
+              },
             "meta": { "$ref": "#/components/schemas/Meta" },
           },
       }
@@ -2506,17 +2432,6 @@ components:
         "properties":
           {
             "data": { "$ref": "#/components/schemas/AddressWatch" },
-            "meta": { "$ref": "#/components/schemas/Meta" },
-          },
-      }
-    WatchNotificationsResponse:
-      {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["data", "meta"],
-        "properties":
-          {
-            "data": { "$ref": "#/components/schemas/WatchNotificationPage" },
             "meta": { "$ref": "#/components/schemas/Meta" },
           },
       }

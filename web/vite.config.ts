@@ -14,7 +14,13 @@ export default defineConfig({
       "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
+  worker: {
+    format: "es",
+    // Root-level entries give service workers root scope without production header overrides.
+    rolldownOptions: { output: { entryFileNames: "[name].js" } },
+  },
   server: {
+    headers: { "Service-Worker-Allowed": "/" },
     proxy: {
       "/api": {
         target: "http://localhost:8080",

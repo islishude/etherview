@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/auth/AuthProvider";
-import { listNotifications, listWatches } from "./watchlist";
+import { listWatches } from "./watchlist";
 
 export function usePrivateIdentity() {
   const auth = useAuth();
@@ -38,24 +38,6 @@ export function useWatches() {
     queryKey: ["private-account", identity, "watches"],
     queryFn: ({ signal }) => listWatches(signal),
     enabled: Boolean(identity),
-    retry: false,
-  });
-}
-export function useNotifications(cursor = "", unreadOnly = false) {
-  const identity = usePrivateIdentity();
-  const [visible, setVisible] = useState(() => document.visibilityState !== "hidden");
-  useEffect(() => {
-    const listener = () => setVisible(document.visibilityState !== "hidden");
-    document.addEventListener("visibilitychange", listener);
-    return () => document.removeEventListener("visibilitychange", listener);
-  }, []);
-  return useQuery({
-    queryKey: ["private-account", identity, "notifications", cursor, unreadOnly],
-    queryFn: ({ signal }) => listNotifications(cursor, unreadOnly, signal),
-    enabled: Boolean(identity) && visible,
-    refetchInterval: visible && identity ? 15000 : false,
-    refetchIntervalInBackground: false,
-    refetchOnWindowFocus: true,
     retry: false,
   });
 }

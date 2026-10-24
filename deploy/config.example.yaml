@@ -300,3 +300,12 @@ consensus:
     secret_key: ""
     session_token: ""
     path_style: false
+
+# One-shot browser notifications. Requires user_auth, HTTPS and stable VAPID keys.
+# Private key: ETHERVIEW_PUSH_PRIVATE_KEY[_FILE], maintenance/all only.
+push:
+  enabled: false
+  public_key: ""
+  contact: ""
+  # Development only: allow private/Fake-IP destinations; TLS and redirect rules remain.
+  unsafe_allow_private_networks: false

@@ -30,11 +30,15 @@ func (f *fakeWatchlist) Delete(_ context.Context, user, _ string) error {
 	f.users = append(f.users, user)
 	return nil
 }
-func (f *fakeWatchlist) Notifications(_ context.Context, user, _ string, _ bool) (gen.WatchNotificationPage, error) {
+func (f *fakeWatchlist) PushSubscriptions(_ context.Context, user, session string) (gen.PushSubscriptions, error) {
 	f.users = append(f.users, user)
-	return gen.WatchNotificationPage{Items: []gen.WatchNotification{}, UnreadCount: "0", Watermark: "0"}, nil
+	return gen.PushSubscriptions{Items: []gen.BrowserPushSubscription{}}, nil
 }
-func (f *fakeWatchlist) Read(_ context.Context, user, _ string, _ bool) error {
+func (f *fakeWatchlist) SavePushSubscription(_ context.Context, user, session string, input gen.PushSubscriptionInput) (gen.BrowserPushSubscription, error) {
+	f.users = append(f.users, user)
+	return gen.BrowserPushSubscription{}, nil
+}
+func (f *fakeWatchlist) DeletePushSubscription(_ context.Context, user, session, id string) error {
 	f.users = append(f.users, user)
 	return nil
 }
@@ -59,8 +63,8 @@ func TestWatchlistSessionCSRFAndCSVBoundary(t *testing.T) {
 	}{
 		{"anonymous", "GET", "/users/me/watchlist", "", "", false, 401},
 		{"authenticated", "GET", "/users/me/watchlist", "", "", true, 200},
-		{"missing csrf", "POST", "/users/me/notifications/read-through", `{"through_id":"1"}`, "", true, 403},
-		{"read through", "POST", "/users/me/notifications/read-through", `{"through_id":"1"}`, "csrf", true, 204},
+		{"missing csrf", "POST", "/users/me/push-subscriptions", `{"endpoint":"https://push.example/a","p256dh":"key","auth":"key","language":"en"}`, "", true, 403},
+		{"subscribe", "POST", "/users/me/push-subscriptions", `{"endpoint":"https://push.example/a","p256dh":"key","auth":"key","language":"en"}`, "csrf", true, 200},
 		{"export", "POST", "/users/me/exports/address-activity", `{"address":"` + testAddress + `","kind":"transaction","direction":"both","from":"2026-09-01T00:00:00Z","to":"2026-09-02T00:00:00Z"}`, "csrf", true, 200},
 	} {
 		t.Run(test.name, func(t *testing.T) {

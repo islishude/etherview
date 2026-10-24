@@ -3,6 +3,7 @@ module github.com/islishude/etherview
 go 1.27.3
 
 require (
+	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/adraffy/go-ens-normalize v0.1.1
 	github.com/attestantio/go-eth2-client v0.30.1
 	github.com/aws/aws-sdk-go-v2 v1.47.3
@@ -83,6 +84,7 @@ require (
 	github.com/go-sql-driver/mysql v1.9.3 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
 	github.com/gofrs/flock v0.13.0 // indirect
+	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/golang/snappy v1.0.1-0.20260716114414-9ae09f520e93 // indirect
 	github.com/google/cel-go v0.29.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect

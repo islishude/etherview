@@ -1,6 +1,9 @@
 name: etherview
 
 x-app-environment: &app-environment
+  ETHERVIEW_PUSH_ENABLED:
+  ETHERVIEW_PUSH_PUBLIC_KEY:
+  ETHERVIEW_PUSH_CONTACT:
   ETHERVIEW_CONSENSUS_ENABLED:
   ETHERVIEW_CONSENSUS_POLL_INTERVAL:
   ETHERVIEW_CONSENSUS_REQUEST_TIMEOUT:
@@ -161,8 +164,11 @@ services:
     <<: *app
     command: ["serve", "--roles=all", "--config=/etc/etherview/config.yaml"]
     environment:
+      ETHERVIEW_PUSH_PRIVATE_KEY:
+      ETHERVIEW_PUSH_PRIVATE_KEY_FILE:
       <<: *api-environment
       ETHERVIEW_ROLES: all
+      ETHERVIEW_PUSH_UNSAFE_ALLOW_PRIVATE_NETWORKS:
       ETHERVIEW_CONSENSUS_URL:
       ETHERVIEW_CONSENSUS_HEADERS:
     healthcheck: *app-healthcheck
@@ -241,8 +247,11 @@ services:
     <<: *app
     command: ["serve", "--roles=maintenance", "--config=/etc/etherview/config.yaml"]
     environment:
+      ETHERVIEW_PUSH_PRIVATE_KEY:
+      ETHERVIEW_PUSH_PRIVATE_KEY_FILE:
       <<: *app-environment
       ETHERVIEW_ROLES: maintenance
+      ETHERVIEW_PUSH_UNSAFE_ALLOW_PRIVATE_NETWORKS:
     healthcheck: *app-healthcheck
     profiles: ["distributed"]
 

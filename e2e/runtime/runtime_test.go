@@ -182,25 +182,6 @@ type apiSnapshot struct {
 	UserOperationHash         string
 }
 
-type harness struct {
-	t             *testing.T
-	root          string
-	mode          string
-	phase         string
-	project       *testcompose.Project
-	apiService    string
-	baseURL       string
-	rpc           *rpc.Client
-	db            *pgxpool.Pool
-	http          *http.Client
-	artifacts     string
-	fixture       fixture
-	baseTimestamp uint64
-	rpcProxy      *receiptProxy
-	ensRPC        *ensMainnetRPC
-	secrets       []string
-}
-
 func TestProductionComposeRuntimeE2E(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), runtimeTimeout)
 	defer cancel()
@@ -393,8 +374,8 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		http:       &http.Client{Timeout: 5 * time.Second}, artifacts: artifacts,
 		baseTimestamp: baseTimestamp, phase: "initialization",
 	}
-	t.Cleanup(func() { h.cleanup() })
 
+	h.setupPushReceiver(ctx)
 	h.enterPhase("deterministic fixture")
 	{
 		if err := h.project.Up(ctx, "runtime-fixture"); err != nil {
@@ -465,7 +446,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		}
 		h.assertCurrentDelegation(ctx, h.fixture.delegateA)
 		firstRollup = h.waitRollup(ctx, 2, "")
-		h.assertRuntimeWatch(ctx, watchSession, h.fixture.pendingReplacementHash, true)
+		h.assertRuntimeWatch(ctx, h.fixture.pendingReplacementHash, true)
 	}
 
 	h.enterPhase("competing-hash reorg and contract")
@@ -653,7 +634,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 	}
 	h.assertOperationalLogs(ctx)
 	h.assertENS(ctx)
-	h.assertRuntimeWatch(ctx, watchSession, h.fixture.pendingReplacementHash, false)
+	h.assertRuntimeWatch(ctx, h.fixture.pendingReplacementHash, false)
 	h.assertRuntimeCSV(ctx, watchSession)
 
 	result := modeResult{
@@ -968,7 +949,7 @@ func writeRuntimeTLSKeyPair(t *testing.T) (string, string, *x509.CertPool) {
 		BasicConstraintsValid: true,
 		IsCA:                  true,
 		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1")},
-		DNSNames:              []string{"localhost"},
+		DNSNames:              []string{"localhost", "push.example"},
 	}
 	certificateDER, err := x509.CreateCertificate(
 		rand.Reader,

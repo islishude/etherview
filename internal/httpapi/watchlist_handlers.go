@@ -13,8 +13,9 @@ type WatchlistService interface {
 	List(context.Context, string) ([]gen.AddressWatch, error)
 	Save(context.Context, string, string, gen.WatchInput) (gen.AddressWatch, error)
 	Delete(context.Context, string, string) error
-	Notifications(context.Context, string, string, bool) (gen.WatchNotificationPage, error)
-	Read(context.Context, string, string, bool) error
+	PushSubscriptions(context.Context, string, string) (gen.PushSubscriptions, error)
+	SavePushSubscription(context.Context, string, string, gen.PushSubscriptionInput) (gen.BrowserPushSubscription, error)
+	DeletePushSubscription(context.Context, string, string, string) error
 	Export(context.Context, string, gen.AddressExportRequest) (watchlist.Export, error)
 }
 
@@ -23,9 +24,9 @@ func (h *Handler) registerWatchlistRoutes() {
 	h.mux.HandleFunc("POST /api/v1/users/me/watchlist", h.saveWatch)
 	h.mux.HandleFunc("PATCH /api/v1/users/me/watchlist/{id}", h.saveWatch)
 	h.mux.HandleFunc("DELETE /api/v1/users/me/watchlist/{id}", h.deleteWatch)
-	h.mux.HandleFunc("GET /api/v1/users/me/notifications", h.listNotifications)
-	h.mux.HandleFunc("POST /api/v1/users/me/notifications/{id}/read", h.readNotification)
-	h.mux.HandleFunc("POST /api/v1/users/me/notifications/read-through", h.readNotification)
+	h.mux.HandleFunc("GET /api/v1/users/me/push-subscriptions", h.pushSubscriptions)
+	h.mux.HandleFunc("POST /api/v1/users/me/push-subscriptions", h.pushSubscriptions)
+	h.mux.HandleFunc("DELETE /api/v1/users/me/push-subscriptions/{id}", h.pushSubscriptions)
 	h.mux.HandleFunc("POST /api/v1/users/me/exports/address-activity", h.exportAddressActivity)
 }
 func (h *Handler) watchSession(w http.ResponseWriter, r *http.Request) (string, bool) {
@@ -89,42 +90,42 @@ func (h *Handler) deleteWatch(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(204)
 }
-func (h *Handler) listNotifications(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) pushSubscriptions(w http.ResponseWriter, r *http.Request) {
 	user, ok := h.watchSession(w, r)
 	if !ok {
 		return
 	}
-	filter := r.URL.Query().Get("unread_only")
-	if filter != "" && filter != "true" && filter != "false" {
-		h.watchError(w, r, watchlist.ErrInvalid)
-		return
-	}
-	page, err := h.watchlist.Notifications(r.Context(), user, r.URL.Query().Get("cursor"), filter == "true")
-	if err != nil {
-		h.watchError(w, r, err)
-		return
-	}
-	writeJSON(w, 200, gen.WatchNotificationsResponse{Data: page, Meta: h.meta(r)})
-}
-func (h *Handler) readNotification(w http.ResponseWriter, r *http.Request) {
-	user, ok := h.watchSession(w, r)
+	auth, ok := h.requireUserSession(w, r)
 	if !ok {
 		return
 	}
-	id := r.PathValue("id")
-	through := id == ""
-	if through {
-		var input gen.WatchReadThrough
+	session := auth.Session.ID
+	switch r.Method {
+	case "GET":
+		result, err := h.watchlist.PushSubscriptions(r.Context(), user, session)
+		if err != nil {
+			h.watchError(w, r, err)
+			return
+		}
+		writeJSON(w, 200, gen.PushSubscriptionsResponse{Data: result, Meta: h.meta(r)})
+	case "POST":
+		var input gen.PushSubscriptionInput
 		if !decodeAuthJSON(w, r, &input) {
 			return
 		}
-		id = input.ThroughId
+		result, err := h.watchlist.SavePushSubscription(r.Context(), user, session, input)
+		if err != nil {
+			h.watchError(w, r, err)
+			return
+		}
+		writeJSON(w, 200, gen.PushSubscriptionResponse{Data: result, Meta: h.meta(r)})
+	case "DELETE":
+		if err := h.watchlist.DeletePushSubscription(r.Context(), user, session, r.PathValue("id")); err != nil {
+			h.watchError(w, r, err)
+			return
+		}
+		w.WriteHeader(204)
 	}
-	if err := h.watchlist.Read(r.Context(), user, id, through); err != nil {
-		h.watchError(w, r, err)
-		return
-	}
-	w.WriteHeader(204)
 }
 func (h *Handler) exportAddressActivity(w http.ResponseWriter, r *http.Request) {
 	user, ok := h.watchSession(w, r)
@@ -156,6 +157,8 @@ func (h *Handler) watchError(w http.ResponseWriter, r *http.Request, err error) 
 		status, code = 404, "watchlist_not_found"
 	case errors.Is(err, watchlist.ErrDuplicate):
 		status, code = 409, "address_already_watched"
+	case errors.Is(err, watchlist.ErrPushLimit):
+		status, code = 409, "push_subscription_limit"
 	case errors.Is(err, watchlist.ErrLimit):
 		status, code = 409, "watchlist_limit"
 	case errors.Is(err, watchlist.ErrRateLimit):

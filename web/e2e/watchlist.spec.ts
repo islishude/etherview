@@ -3,7 +3,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { readFile } from "node:fs/promises";
 import type { components } from "../src/api/schema.gen";
 
-test("private watches, notification reads and CSV download use the embedded generated client", async ({
+test("private watches, browser notification settings and CSV download use the embedded generated client", async ({
   page,
 }) => {
   const address = "0x1111111111111111111111111111111111111111";
@@ -23,7 +23,6 @@ test("private watches, notification reads and CSV download use the embedded gene
     meta: { chain_id: "1", request_id: "watchlist-browser" },
   });
   let watches: components["schemas"]["AddressWatch"][] = [];
-  let read = false;
   let mutationCount = 0;
   await page.route("**/api/v1/config", async (route) => {
     const upstream = await route.fetch();
@@ -51,54 +50,22 @@ test("private watches, notification reads and CSV download use the embedded gene
     if (url.pathname.endsWith("/watchlist")) {
       if (request.method() === "POST")
         watches = [
-          { ...request.postDataJSON(), id: "watch-1", start_number: "100", start_hash: hash },
+          ...watches,
+          {
+            ...request.postDataJSON(),
+            id: `watch-${watches.length + 1}`,
+            start_number: "100",
+            start_hash: hash,
+          },
         ];
       await route.fulfill({
         status: request.method() === "POST" ? 201 : 200,
-        json: envelope(request.method() === "POST" ? watches[0] : watches),
+        json: envelope(request.method() === "POST" ? watches.at(-1) : watches),
       });
       return;
     }
-    if (url.pathname.endsWith("/notifications")) {
-      await route.fulfill({
-        json: envelope({
-          items: watches.length
-            ? [
-                {
-                  id: "1",
-                  watch_id: "watch-1",
-                  address,
-                  label: "",
-                  canonical: true,
-                  published: true,
-                  read,
-                  activity: {
-                    kind: "transaction",
-                    block_number: "101",
-                    block_hash: hash,
-                    timestamp: "1790385000",
-                    transaction_hash: hash,
-                    transaction_index: "0",
-                    direction: "in",
-                    from: address,
-                    to: address,
-                    value: "12345678901234567890",
-                    status: "success",
-                  },
-                },
-              ]
-            : [],
-          unread_count: watches.length && !read ? "1" : "0",
-          watermark: "1",
-          next_cursor: "",
-        }),
-      });
-      return;
-    }
-    if (url.pathname.endsWith("/read-through")) {
-      expect(request.postDataJSON()).toEqual({ through_id: "1" });
-      read = true;
-      await route.fulfill({ status: 204 });
+    if (url.pathname.endsWith("/push-subscriptions")) {
+      await route.fulfill({ json: envelope({ enabled: false, public_key: "", items: [] }) });
       return;
     }
     if (url.pathname.endsWith("/address-activity")) {
@@ -113,13 +80,51 @@ test("private watches, notification reads and CSV download use the embedded gene
   await expect(page.getByRole("button", { name: "Remove watch", exact: true })).toBeVisible();
   await page.goto("/account?tab=watchlist");
   await expect(page.getByRole("heading", { name: "Watchlist", exact: true })).toBeVisible();
+  await expect(page.locator(".account-tabs a")).toHaveText(["Overview", "Watchlist", "API Keys"]);
+  await expect(page.getByRole("textbox", { name: "Address", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Watch address", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Address", exact: true })).toBeVisible();
+  await expect(page.locator(".watchlist-items")).toHaveCount(0);
+  await expect(page.getByRole("radio", { name: "Both directions" })).toBeChecked();
   await page
-    .locator(".account-tabs")
-    .getByRole("link", { name: "Notifications", exact: true })
-    .click();
-  await expect(page.getByText("Successful transaction", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Mark all as read", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Mark all as read", exact: true })).toBeDisabled();
+    .locator(".account-create-form")
+    .screenshot({ path: test.info().outputPath("watchlist-create-desktop.png") });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page
+    .locator(".account-create-form")
+    .screenshot({ path: test.info().outputPath("watchlist-create-mobile.png") });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.locator(".watchlist-items li")).toHaveCount(1);
+  await page.getByRole("button", { name: "Watch address", exact: true }).click();
+  await page.getByRole("textbox", { name: "Address", exact: true }).fill(`0x${"2".repeat(40)}`);
+  await page.getByRole("textbox", { name: "Private label", exact: true }).fill("Second watch");
+  await page.locator(".watch-direction-options").getByText("Incoming", { exact: true }).click();
+  await page.getByRole("radio", { name: "Incoming", exact: true }).press("ArrowRight");
+  await expect(page.getByRole("radio", { name: "Outgoing", exact: true })).toBeChecked();
+  await page.getByRole("button", { name: "Watch address", exact: true }).click();
+  await expect(page.locator(".watchlist-items li")).toHaveCount(2);
+  expect(watches[1].direction).toBe("out");
+  await expect(page.getByRole("textbox", { name: "Address", exact: true })).toHaveCount(0);
+  watches = [
+    ...watches,
+    ...[3, 4, 5].map((n) => ({
+      ...watches[0],
+      id: `watch-${n}`,
+      address: `0x${String(n).repeat(40)}`,
+      label: `Watch ${n}`,
+    })),
+  ];
+  await page.reload();
+  await expect(page.locator(".watchlist-items li")).toHaveCount(5);
+  await expect(page.getByRole("button", { name: "Watch address", exact: true })).toBeDisabled();
+  await expect(
+    page.getByRole("heading", { name: "Browser notifications", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Allow notifications", exact: true }),
+  ).toBeDisabled();
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
   await page.screenshot({
     path: test.info().outputPath("notifications-desktop.png"),
@@ -137,7 +142,7 @@ test("private watches, notification reads and CSV download use the embedded gene
     fullPage: true,
   });
   await page.getByRole("button", { name: "切换到中文" }).click();
-  await expect(page.getByRole("heading", { name: "通知", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "浏览器通知", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Switch to English" }).click();
   await page.goto(`/address/${address}`);
   await page.getByRole("button", { name: "Export CSV", exact: true }).click();

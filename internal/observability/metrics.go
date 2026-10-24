@@ -52,6 +52,7 @@ type Registry struct {
 	derivedVerification           map[pair]uint64
 	metadata                      map[string]uint64
 	maintenance                   map[pair]uint64
+	browserPush                   map[string]uint64
 	analyticsRollups              map[string]uint64
 	analyticsDirtyHours           float64
 	analyticsOldestDirty          float64
@@ -124,6 +125,7 @@ func NewRegistry(version, role string) *Registry {
 		derivedVerification:           make(map[pair]uint64),
 		metadata:                      make(map[string]uint64),
 		maintenance:                   make(map[pair]uint64),
+		browserPush:                   make(map[string]uint64),
 		analyticsRollups:              make(map[string]uint64),
 		rateLimits:                    make(map[string]uint64),
 		billingTopups:                 make(map[pair]uint64),
@@ -524,6 +526,7 @@ func (registry *Registry) Gather() string {
 	writePairCounters(&output, "etherview_derived_verification_total", "Factory-derived verification operations grouped by bounded kind and result.", "kind", "result", registry.derivedVerification)
 	writeCounters(&output, "etherview_metadata_fetches_total", "Metadata fetches grouped by result, including SSRF rejection.", "result", registry.metadata)
 	writePairCounters(&output, "etherview_maintenance_requests_total", "Repair and reindex executions grouped by operation and result.", "operation", "result", registry.maintenance)
+	writeCounters(&output, "etherview_browser_push_total", "One-shot browser push outcomes.", "result", registry.browserPush)
 	writeCounters(&output, "etherview_analytics_rollup_recomputes_total", "Historical analytics rollup recomputes grouped by outcome.", "result", registry.analyticsRollups)
 	writeHelp(&output, "etherview_analytics_dirty_hours", "UTC hour buckets waiting for canonical analytics recompute.", "gauge")
 	fmt.Fprintf(&output, "etherview_analytics_dirty_hours %s\n", formatFloat(registry.analyticsDirtyHours))
@@ -921,4 +924,15 @@ func quote(value string) string {
 
 func formatFloat(value float64) string {
 	return strconv.FormatFloat(value, 'g', -1, 64)
+}
+
+func (registry *Registry) RecordBrowserPush(result string) {
+	switch result {
+	case "sent", "failed", "dropped", "expired":
+	default:
+		return
+	}
+	registry.mu.Lock()
+	defer registry.mu.Unlock()
+	registry.browserPush[result]++
 }

@@ -693,3 +693,20 @@ func TestMigrationAndReindexDoNotOpenConsensusSecrets(t *testing.T) {
 		}
 	}
 }
+
+func TestOfflineCommandsDoNotLoadPushSecrets(t *testing.T) {
+	t.Setenv("ETHERVIEW_PUSH_ENABLED", "true")
+	t.Setenv("ETHERVIEW_PUSH_PRIVATE_KEY_FILE", "/nonexistent-push-secret")
+	t.Setenv("ETHERVIEW_DATABASE_URL", "postgres://test:test@127.0.0.1/test")
+	for _, args := range [][]string{{"migrate", "up"}, {"migrate", "status"}, {"reindex", "--stage", "token"}, {"admin", "user", "revoke-sessions"}, {"admin", "api-key", "list"}} {
+		backend := &fakeBackend{}
+		var output bytes.Buffer
+		program := Program{Backend: backend, Stdout: &output, Stderr: &output}
+		if code := program.Run(t.Context(), args); code != 0 {
+			t.Fatalf("%v code=%d output=%s", args, code, output.String())
+		}
+		if backend.migrateConfig.Push.Enabled || backend.repairConfig.Push.Enabled || backend.adminConfig.Push.Enabled {
+			t.Fatal("offline command enabled sender")
+		}
+	}
+}

@@ -257,7 +257,7 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 			},
 			want: []string{
 				"00-operations-http", "02-durable-metrics",
-				"43-watchlist-notifications", "44-historical-analytics-rollup",
+				"44-historical-analytics-rollup",
 				"45-maintenance-01", "45-maintenance-02",
 				"45-maintenance-03", "45-maintenance-04",
 				"46-search-catalog-maintenance",
@@ -289,7 +289,7 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 			},
 			want: []string{
 				"00-operations-http", "02-durable-metrics",
-				"43-watchlist-notifications", "44-historical-analytics-rollup",
+				"44-historical-analytics-rollup",
 				"45-maintenance-01", "45-maintenance-02",
 				"45-maintenance-03", "45-maintenance-04",
 				"46-search-catalog-maintenance",
@@ -755,6 +755,18 @@ func TestValidateMaintenanceOperationStage(t *testing.T) {
 		err := validateMaintenanceOperationStage(test.operation, test.stage)
 		if (err == nil) != test.valid {
 			t.Fatalf("operation=%q stage=%q valid=%v error=%v", test.operation, test.stage, test.valid, err)
+		}
+	}
+}
+
+func TestBrowserPushComponentRoleBoundary(t *testing.T) {
+	cfg := config.Default()
+	cfg.Features.UserAuth = true
+	cfg.Push.Enabled = true
+	for _, role := range []components.Role{components.RoleAPI, components.RoleSync, components.RoleEnrich, components.RoleMaintenance} {
+		keys := productionComponentKeys(cfg, []components.Role{role}, false)
+		if slices.Contains(keys, "43-browser-push") != (role == components.RoleMaintenance) {
+			t.Fatalf("unexpected push component role=%s keys=%v", role, keys)
 		}
 	}
 }

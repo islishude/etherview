@@ -848,28 +848,29 @@ fixed, never converted to expected failures or unrestricted execution.
 ## Watchlist, notification and CSV acceptance
 
 Private tools in P60, CSV exports in P40, and their Web surfaces in P50 extend
-the existing gates rather than introducing a weaker test mode.
-Focused HTTP tests prove Cookie/Origin/CSRF ownership and JSON-before-CSV error
-handling. Watchlist integration cases use fresh PostgreSQL migrations, real core
-commits/reorgs and Token lease-fenced publication to prove delayed delivery,
-ERC-20/721/1155 batch identities, replay, retained orphan history, lease recovery,
-concurrent watch limits, read watermarks, exact CSV values and export admission.
-A concurrent committed reorg between snapshot establishment and export reads must
-leave the file entirely on its original canonical snapshot. Resource regressions
-exercise the independent 16 MiB encoder boundary, expired generation contexts,
-missing Core coverage and JSON-only failure responses.
-Matching regressions drain 2,000 transactions against 40,000 unrelated watches
-within the per-page worker deadline, resume through ineligible and popular-address
-followers, and repair existing Token generations while their account is disabled.
-The export row-limit fixture synthesizes normalized SQL rows solely to exercise
-10,000/10,001 boundaries; it is not ingestion or RPC conformance evidence.
+the existing gates. HTTP cases prove SIWE ownership, Origin/CSRF, bounded
+subscription inputs and JSON-before-CSV failures. PostgreSQL cases use fresh
+migrations and real Core/Token publication to check first-activity delivery,
+replay suppression, account/session lifecycle, watch limits and CSV snapshots.
+The fresh schema contains no notification history or durable notification queue.
 
-`make test-e2e` includes the embedded watch/notification/download workflow,
-bilingual and 390px accessibility checks. `make test-runtime-e2e` enables SIWE
-with an ephemeral API-only pepper, creates a real authenticated watch before
-new activity, verifies delivery/reorg history after API restart, and downloads a
-canonical CSV in both production topology layouts. Browser API fixtures do not
-replace that production PostgreSQL/maintenance acceptance.
+Web Push transport tests decrypt encrypted payloads and verify VAPID, TTL 0,
+single-attempt failures, redirect rejection and hostile-network bounds.
+Private-network exception regressions cover default-off behavior, strict boolean
+configuration, explicit Fake-IP/private/loopback opt-in, mixed DNS answers,
+default rebinding rejection, checked-IP dialing and unchanged redirect/TLS boundaries.
+Run `go test -race ./internal/netpolicy ./internal/config ./internal/watchlist
+./internal/app` and `make deployment-check` for changes to this exception.
+Browser tests cover explicit permission, unsupported/denied states, session isolation,
+worker payload/click validation, embedded CSP/cache policy, bilingual layouts
+and CSV downloads. Production all/split topology tests retain real SIWE, chain
+activity and CSV acceptance. Controlled receivers are protocol evidence only;
+real browser-provider delivery with the page closed requires separate HTTPS
+browser evidence and must never be inferred from mocks or local receivers.
+
+CSV bounds remain 31 days, 10,000 rows, 16 MiB and 15 seconds, including exact
+uint256 values and continuous Core/Token coverage. Reorg snapshot tests prove
+that one exported file stays on its original canonical view.
 
 ### Preview gateway regressions
 
@@ -1049,6 +1050,9 @@ retention, production backup/restore, or native CI execution.
 
 `make preview-network-check` exercises immutable reuse, incomplete material,
 configuration drift, tampering, symlinks and rejected single-file overrides.
+It also checks Preview env creation, key-pair reuse and validation, operator-setting
+preservation and 0600 permissions. Compose rendering verifies that a single env
+file supplies public configuration while private keys reach only maintenance/all.
 It also checks Compose command strings, executable paths with spaces, literal
 argument preservation, readiness port lookup and initialization failure propagation.
 `make compose-check` checks Engine JWT and validator-key isolation, scoped

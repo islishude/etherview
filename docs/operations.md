@@ -72,7 +72,8 @@ configuration or source directory. Do not put secrets in these public inputs.
 ```sh
 .github/scripts/buildx.sh build --load --target production --tag etherview:acme \
   --build-arg ETHERVIEW_WEB_BRANDING_DIR=branding/acme .
-ETHERVIEW_WEB_BRANDING_DIR=branding/acme .github/scripts/compose.sh build api
+ETHERVIEW_WEB_BRANDING_DIR=branding/acme .github/scripts/compose.sh \
+  --env-file .local/preview-push.env build api
 ETHERVIEW_WEB_BRANDING_DIR=branding/acme .github/scripts/compose.sh \
   --project-directory . -f deploy/compose.yaml --profile monolith build etherview
 ```
@@ -148,6 +149,10 @@ make preview-cert
 make start-preview
 ```
 
+Preview settings live in `.local/preview-push.env`. Start/recreate automatically
+initialize missing settings and reuse existing VAPID keys; `make preview-env`
+prepares the file separately. See [browser push configuration](#private-watches-notifications-and-csv-exports).
+
 Preview now uses the repository-root `compose.yaml`; deployment commands use
 `--project-directory . -f deploy/compose.yaml --env-file .env.deploy` from the
 repository root. Move existing deployment settings out of `.env` manually as
@@ -214,9 +219,9 @@ first bring up the runtime, then run `archive-init` separately and propagate its
 exit status before checking real block production. Initialization failure does
 not prevent already started API/enrich containers from becoming ready.
 After correcting credentials or restoring storage, repeat
-`docker compose -f compose.yaml run --rm archive-init`; this preserves
+`docker compose --env-file .local/preview-push.env -f compose.yaml run --rm archive-init`; this preserves
 existing objects. To recreate application roles during an archive outage, use
-`docker compose -f compose.yaml up -d --no-build --force-recreate --wait api enrich`.
+`docker compose --env-file .local/preview-push.env -f compose.yaml up -d --no-build --force-recreate --wait api enrich`.
 The full start/recreate targets still report optional service startup failures.
 
 The archive client sends `If-None-Match: *` on writes, but RustFS 1.0.1 cannot
@@ -1150,10 +1155,13 @@ environment Secret-file loading. Their runtime operation uses only the
 PostgreSQL writer, and configuration loading never opens session, x402
 fingerprint, or facilitator-header Secret files.
 
-Rotating `ETHERVIEW_SESSION_PEPPER` invalidates every session without changing
+Rotating `ETHERVIEW_SESSION_PEPPER` invalidates every session Cookie without changing
 user, role, or audit rows. Roll all `all`/`api` replicas promptly so replicas do
 not temporarily disagree about Cookies, then require every user to sign in
-again. Never reuse the API-key or x402 fingerprint pepper.
+again. Push senders do not hold that pepper: when revoking browser push as part
+of rotation, revoke the affected users' sessions with `admin user revoke-sessions`
+or disable push on maintenance/all before rotation. Never reuse the API-key or
+x402 fingerprint pepper.
 
 For rollback, disable `features.user_auth` and restart the API processes; keep
 the additive tables for audit and a later retry. The feature flag alone does
@@ -1388,29 +1396,113 @@ version withdrawal; live upstream metadata never changes an in-flight job.
 
 ## Private watches, notifications and CSV exports
 
-With `features.user_auth` enabled, authenticated users can manage Watchlist and
-Notifications tabs in `/account`; each address page also offers watch and CSV
-actions. Labels and notification records are private to the SIWE user. The
-maintenance role runs `43-watchlist-notifications` with writer access and no
-session pepper; only API/all receives that existing secret. No email, Webhook,
-browser push, Redis, NATS or object-store setup is required.
+With `features.user_auth` enabled, users manage Watchlist in `/account` and on
+address pages. Watches remain private and durable, with a 5-address limit
+including paused entries. Enrollment/re-enablement starts after the current
+canonical tip. CSV export remains available without browser push.
 
-Monitoring starts strictly after the canonical tip recorded on enrollment or
-re-enablement. Each account has at most 100 active watch entries, including
-entries with notifications paused. Removing a watch preserves existing
-notifications. Failed transactions and token mint/burn events are included;
-Token notifications await exact published enrichment. Orphaned events remain
-visible as invalidated, while a token replay temporarily marks its old output
-as unpublished. Notifications are retained for 90 days; activity delayed beyond
-90 days is not newly delivered. Cleanup runs in bounded maintenance batches.
+Browser push is optional and disabled by default. Set `push.enabled`,
+`push.public_key` and `push.contact` (mailto or HTTPS operator contact), or
+`ETHERVIEW_PUSH_ENABLED`, `ETHERVIEW_PUSH_PUBLIC_KEY`, `ETHERVIEW_PUSH_CONTACT`.
+Generate and retain a standard P-256 VAPID key pair; supply its unpadded base64url
+private key with `ETHERVIEW_PUSH_PRIVATE_KEY` or `_FILE` only to maintenance/all.
+The public key is the uncompressed P-256 point in unpadded base64url. Changing the
+key pair requires browsers to disable and re-enable their subscriptions. Helm
+uses `secrets.pushPrivateKeyKey`; ExternalSecret deployments additionally set
+`externalSecret.pushPrivateKeyRemoteKey`. File-based secrets require an explicit
+read-only mount. Local and Docker builds embed the same `/push-sw.js` artifact.
+Migration and offline administration neither load the private key nor start a
+sender, even when the shared configuration enables push.
 
-A stopped maintenance role delays notifications without losing its durable
-work. Restore the role and PostgreSQL connectivity to resume automatically;
-expired 30-second leases are reclaimable. The stable operational warning code
-`watchlist_processing_unavailable` indicates a retried processing/cleanup
-failure. Check maintenance logs and Token stage health when delivery is late.
-The public SSE stream is unrelated to private delivery and contains no watch
-addresses, labels, account IDs or notifications.
+Use HTTPS and the Watchlist button to grant permission and enable this browser.
+There are at most ten active subscriptions per account. Subscriptions are bound
+to the current login and stop on logout, session expiry/revocation or user
+disablement. Closing the page does not end the login. Unsupported browsers and
+permission denial are shown in the UI; this does not provide email or Webhooks.
+
+For Preview at `https://etherview.localhost:8080`, the root Compose entry point
+uses one ignored `.local/preview-push.env` for all local settings, including the
+VAPID key pair.
+`make start-preview` and `make recreate-preview` run `make preview-env` first:
+it creates the file when missing, generates a P-256 key pair, fills missing push
+settings and enforces mode 0600. Existing values, comments and key pairs are
+preserved; generated defaults enable Preview push and leave private-network
+access disabled. Only maintenance receives the private key; Compose does not
+inject the whole file into containers. `.local/` is excluded from Git and Docker
+build contexts. Production push remains disabled by default.
+
+Preview lifecycle commands explicitly load that file, without loading root `.env`.
+`PREVIEW_ENV_FILE` overrides the path for Make commands. To migrate existing
+settings, move the root `.env` contents into `.local/preview-push.env`, keeping
+its existing private key and matching public key, then remove root `.env`.
+`ETHERVIEW_PREVIEW_PUSH_ENV_FILE` is no longer used.
+Run `make preview-env` separately before using raw Compose commands:
+
+```sh
+make preview-env
+docker compose --env-file .local/preview-push.env config --quiet
+```
+
+Compose itself does not generate the file. An existing public key without its
+private key, or a mismatched pair, fails initialization instead of silently
+rotating browser subscriptions.
+File-based keys may retain `ETHERVIEW_PUSH_PRIVATE_KEY_FILE` with the matching
+public key and an explicit read-only Compose mount.
+
+Use a trusted Preview TLS certificate. Existing databases from before this schema change must be
+recreated under the [fresh-database policy](#fresh-database-initialization);
+`make recreate-preview` replaces runtime containers but does not reset an old
+database. After fresh initialization, sign in, add a watch, enable this browser,
+then close all site tabs while leaving the browser/system able to receive push.
+Create a new matching transaction only after enabling. Verify the summary has
+no amount and opens the correct transaction, then verify logout stops subsequent
+alerts. Record browser/OS versions, notification permission, deployed build and
+the observed result. Offline delivery is deliberately not an acceptance goal:
+TTL 0 drops messages instead of storing them for later delivery.
+
+When validating background click navigation, close DevTools and allow the
+Service Worker to stop before sending a real transaction notification, then
+allow it to stop again before clicking. Keep this check separate from browser
+automation. Injected push tests verify notification content and the retained
+transaction target; they do not establish native OS click delivery.
+If a notification arrives but clicking it only activates Chrome or does nothing,
+check the browser's native notification callback and helper-process logs before
+changing application routes.
+
+For local development with Stash/Clash Fake-IP DNS or a private push receiver,
+set `push.unsafe_allow_private_networks: true`, or set the following in Preview's
+ignored `.local/preview-push.env`:
+
+```dotenv
+ETHERVIEW_PUSH_UNSAFE_ALLOW_PRIVATE_NETWORKS=true
+```
+
+The default is `false`. Like `metadata.unsafe_allow_private_networks`, enabling
+this option bypasses the public-IP restriction, including for Fake-IP, ordinary
+private and loopback addresses. No host or CIDR lists are required. It applies
+only to the browser-push sender; other outbound clients retain their own policy.
+HTTPS port 443, TLS hostname/certificate validation, no redirects, DNS answer
+limits, checked-IP dialing, timeouts and response size limits remain enforced.
+Use this unsafe exception only in a trusted development environment. Helm uses
+`config.push.unsafe_allow_private_networks`; Compose passes the environment
+setting only to maintenance/all. Build the updated image and recreate maintenance
+to apply it, then trigger a new matching transaction: restart discards backlog.
+
+Maintenance runs `43-browser-push` only when enabled. One PostgreSQL session lock
+per chain selects the sender. It uses first-canonical and first successful Token
+publications, volatile cursors and bounded work. Restart/recovery discards backlog;
+replay and reattachment do not resend. Failed top-level transactions and token
+mint/burn are included, self-transfers once. Token activity waits for publication.
+
+Every message is attempted once with TTL 0; offline devices, provider failures,
+timeouts and overload lose that alert. There is no history, unread count, retry
+queue or delivery guarantee. An already sent system notification cannot be
+retracted after a reorg. HTTP 404/410 removes expired endpoints. Inspect
+`etherview_browser_push_total{result="sent|failed|dropped|expired"}` and the stable
+`browser_push_unavailable` warning; no endpoint, credentials or activity payload
+is logged. Public SSE carries no private watch data. Provider failures do not
+withdraw core readiness. Normal authentication housekeeping removes invalid
+subscriptions and export admissions even when browser push is disabled.
 
 CSV downloads require SIWE and CSRF and do not debit API credit. Choose one
 address, transaction/ERC-20/NFT type, direction and UTC `[from,to)` range. Files

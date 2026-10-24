@@ -5,7 +5,6 @@ import { useTranslation } from "react-i18next";
 import { usePublicConfig } from "@/api/hooks";
 import { useAuth } from "@/auth/AuthProvider";
 import { NavigationDisclosure } from "./NavigationDisclosure";
-import { NotificationBadge } from "./NotificationBadge";
 
 export function AppNavigation() {
   const { t } = useTranslation();
@@ -78,7 +77,6 @@ export function AppNavigation() {
         </div>
       </nav>
       <div className="account-navigation">
-        <NotificationBadge />
         {auth.enabled && (
           <NavigationDisclosure label={t("nav.account")}>
             <Link to="/account">{t("nav.accountOverview")}</Link>

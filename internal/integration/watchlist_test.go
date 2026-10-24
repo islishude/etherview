@@ -3,7 +3,6 @@
 package integration_test
 
 import (
-	"context"
 	"encoding/csv"
 	"errors"
 	"fmt"
@@ -29,7 +28,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-func TestWatchlistDurableDeliveryReorgAndExport(t *testing.T) {
+func TestWatchlistOwnershipReorgAndExport(t *testing.T) {
 	db := newMigratedPostgres(t)
 	ctx := t.Context()
 	repo, e := store.NewPostgresRepository(db)
@@ -65,35 +64,6 @@ func TestWatchlistDurableDeliveryReorgAndExport(t *testing.T) {
 		t.Fatal(e)
 	}
 	commitCanonical(t, ctx, repo, block)
-	// The durable task survives loss of the bounded public event ledger and a new service instance.
-	execFixture(t, ctx, db, `DELETE FROM runtime_events`)
-	service, e = watchlist.New(db, 1)
-	if e != nil {
-		t.Fatal(e)
-	}
-	var wg sync.WaitGroup
-	errs := make(chan error, 2)
-	for range 2 {
-		wg.Go(func() { _, e := service.ProcessOne(context.Background()); errs <- e })
-	}
-	wg.Wait()
-	close(errs)
-	for e := range errs {
-		if e != nil {
-			t.Fatal(e)
-		}
-	}
-	page, e := service.Notifications(ctx, user, "", false)
-	if e != nil || len(page.Items) != 1 || page.UnreadCount != "1" || *page.Items[0].Activity.Status != "failed" {
-		t.Fatalf("page=%+v err=%v", page, e)
-	}
-	first := page.Items[0].Id
-	if e = service.Read(ctx, other, first, false); !errors.Is(e, watchlist.ErrNotFound) {
-		t.Fatalf("cross-user read: %v", e)
-	}
-	if e = service.Read(ctx, user, page.Watermark, true); e != nil {
-		t.Fatal(e)
-	}
 	ancestor := mustBlockRef(t, genesis)
 	old := mustBlockRef(t, block)
 	replacement, e := testfixture.New(testfixture.Options{Number: 1, ParentHash: genesis.Block.Hash(), Timestamp: timestamp + 10, ExtraData: []byte("replacement")})
@@ -104,21 +74,8 @@ func TestWatchlistDurableDeliveryReorgAndExport(t *testing.T) {
 	if e = repo.ApplyReorg(ctx, "1", store.Reorg{Ancestor: ancestor, Detached: []store.BlockRef{old}, Attached: []chainbundle.Bundle{replacement}, Checkpoint: store.NewCoreCheckpoint(replacementRef), Reason: "test"}); e != nil {
 		t.Fatal(e)
 	}
-	page, e = service.Notifications(ctx, user, "", false)
-	if e != nil || len(page.Items) != 1 || page.Items[0].Canonical {
-		t.Fatalf("reorg read=%+v %v", page, e)
-	}
 	if e = repo.ApplyReorg(ctx, "1", store.Reorg{Ancestor: ancestor, Detached: []store.BlockRef{replacementRef}, Attached: []chainbundle.Bundle{block}, Checkpoint: store.NewCoreCheckpoint(old), Reason: "reattach"}); e != nil {
 		t.Fatal(e)
-	}
-	for range 4 {
-		if _, e = service.ProcessOne(ctx); e != nil {
-			t.Fatal(e)
-		}
-	}
-	page, e = service.Notifications(ctx, user, "", false)
-	if e != nil || len(page.Items) != 1 || page.Items[0].Id != first || !page.Items[0].Read || !page.Items[0].Canonical {
-		t.Fatalf("reattach=%+v %v", page, e)
 	}
 	execFixture(t, ctx, db, `INSERT INTO core_coverage_ranges(chain_id,range_start,range_end) VALUES(1,0,1)`)
 	inputExport := gen.AddressExportRequest{Address: address, Kind: "transaction", Direction: "both", From: time.Unix(int64(timestamp), 0), To: time.Unix(int64(timestamp+20), 0)}
@@ -137,10 +94,7 @@ func TestWatchlistDurableDeliveryReorgAndExport(t *testing.T) {
 	if e = service.Delete(ctx, user, watch.Id); e != nil {
 		t.Fatal(e)
 	}
-	page, e = service.Notifications(ctx, user, "", false)
-	if e != nil || len(page.Items) != 1 {
-		t.Fatalf("deleted watch history=%+v %v", page, e)
-	}
+
 }
 func TestWatchlistConcurrentLimit(t *testing.T) {
 	db := newMigratedPostgres(t)
@@ -151,7 +105,7 @@ func TestWatchlistConcurrentLimit(t *testing.T) {
 	user := uuid.NewString()
 	execFixture(t, ctx, db, `INSERT INTO users(id,chain_id,address,role,status,created_at,updated_at) VALUES($1,1,decode(repeat('33',20),'hex'),'user','active',now(),now())`, user)
 	service, _ := watchlist.New(db, 1)
-	for i := 1; i <= 99; i++ {
+	for i := 1; i <= 4; i++ {
 		_, e := service.Save(ctx, user, "", gen.WatchInput{Address: fmt.Sprintf("0x%040x", i), Kinds: []gen.WatchInputKinds{"transaction"}, Direction: "both", Enabled: true})
 		if e != nil {
 			t.Fatal(e)
@@ -159,7 +113,7 @@ func TestWatchlistConcurrentLimit(t *testing.T) {
 	}
 	var wg sync.WaitGroup
 	results := make(chan error, 2)
-	for i := 100; i <= 101; i++ {
+	for i := 5; i <= 6; i++ {
 		wg.Go(func() {
 			_, e := service.Save(ctx, user, "", gen.WatchInput{Address: fmt.Sprintf("0x%040x", i), Kinds: []gen.WatchInputKinds{"transaction"}, Direction: "both", Enabled: true})
 			results <- e
@@ -227,35 +181,11 @@ func testWatchlistTokenReplay(t *testing.T, disabled bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	sender := startPushWorker(t, db, user)
 	commitCanonical(t, ctx, repo, block)
-	if _, err = service.ProcessOne(ctx); err != nil {
-		t.Fatal(err)
-	}
-	page, err := service.Notifications(ctx, user, "", false)
-	if err != nil || len(page.Items) != 1 {
-		t.Fatalf("before publication=%+v %v", page, err)
-	}
+	waitPushCount(t, sender, 1)
 	markTokenStageComplete(t, ctx, db, block)
-	if _, err = service.ProcessOne(ctx); err != nil {
-		t.Fatal(err)
-	}
-	page, err = service.Notifications(ctx, user, "", false)
-	if err != nil || len(page.Items) != 6 {
-		t.Fatalf("published=%+v %v", page, err)
-	}
-	kinds := map[string]int{}
-	for _, n := range page.Items {
-		kinds[n.Activity.Kind]++
-		if !n.Published {
-			t.Fatal("unpublished result")
-		}
-	}
-	if kinds["erc20"] != 1 || kinds["erc721"] != 1 || kinds["erc1155"] != 3 {
-		t.Fatalf("kinds=%v", kinds)
-	}
-	if err = service.Read(ctx, user, page.Watermark, true); err != nil {
-		t.Fatal(err)
-	}
+	waitPushCount(t, sender, 6)
 	if disabled {
 		execFixture(t, ctx, db, `UPDATE users SET status='disabled' WHERE id=$1`, user)
 	}
@@ -264,38 +194,10 @@ func testWatchlistTokenReplay(t *testing.T, disabled bool) {
 	if _, err = queue.Enqueue(ctx, enrich.EnqueueRequest{Stage: enrich.TokenStage, ChainID: "1", BlockHash: hash, BlockNumber: 1, Replay: enrich.ReplaySource{Kind: "integration", Key: "watch-token-replay"}}); err != nil {
 		t.Fatal(err)
 	}
-	page, err = service.Notifications(ctx, user, "", false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, n := range page.Items {
-		if n.Activity.Kind != "transaction" && n.Published {
-			t.Fatal("old generation visible")
-		}
-	}
 	markTokenStageComplete(t, ctx, db, block)
-	if _, err = service.ProcessOne(ctx); err != nil {
-		t.Fatal(err)
-	}
+	assertPushQuiet(t, sender, 6)
 	if disabled {
-		if err := service.Cleanup(ctx); err != nil {
-			t.Fatal(err)
-		}
 		execFixture(t, ctx, db, `UPDATE users SET status='active' WHERE id=$1`, user)
-		if _, err := service.ProcessOne(ctx); err != nil {
-			t.Fatal(err)
-		}
-	}
-	page, err = service.Notifications(ctx, user, "", false)
-	if err != nil || len(page.Items) != 6 || page.UnreadCount != "0" {
-		t.Fatalf("replay=%+v %v", page, err)
-	}
-	// Notifications arriving after the read watermark remain unread; disabling and
-	// re-enabling preserves existing history but excludes activity during the pause.
-	for _, n := range page.Items {
-		if !n.Published || !n.Read {
-			t.Fatalf("replay state=%+v", n)
-		}
 	}
 	execFixture(t, ctx, db, `INSERT INTO core_coverage_ranges(chain_id,range_start,range_end) VALUES(1,0,1)`)
 	markTokenStageComplete(t, ctx, db, genesis)
@@ -309,7 +211,7 @@ func testWatchlistTokenReplay(t *testing.T, disabled bool) {
 	}
 }
 
-func TestWatchlistLeaseRecoveryWatermarkAndCSVBounds(t *testing.T) {
+func TestWatchlistReenableAndCSVBounds(t *testing.T) {
 	db := newMigratedPostgres(t)
 	ctx := t.Context()
 	repo, _ := store.NewPostgresRepository(db)
@@ -327,30 +229,8 @@ func TestWatchlistLeaseRecoveryWatermarkAndCSVBounds(t *testing.T) {
 	}
 	first, _ := testfixture.New(testfixture.Options{Number: 1, ParentHash: genesis.Block.Hash(), Timestamp: stamp + 10, TransactionTypes: []uint8{types.LegacyTxType}})
 	commitCanonical(t, ctx, repo, first)
-	execFixture(t, ctx, db, `UPDATE watch_notification_work SET lease_token=$1,lease_until=now()+interval '1 minute'`, uuid.NewString())
-	if found, err := service.ProcessOne(ctx); err != nil || found {
-		t.Fatalf("stole live lease: %t %v", found, err)
-	}
-	execFixture(t, ctx, db, `UPDATE watch_notification_work SET lease_until=now()-interval '1 minute'`)
-	if found, err := service.ProcessOne(ctx); err != nil || !found {
-		t.Fatalf("expired lease not recovered: %t %v", found, err)
-	}
-	page, err := service.Notifications(ctx, user, "", false)
-	if err != nil || len(page.Items) != 1 {
-		t.Fatalf("initial: %+v %v", page, err)
-	}
 	second, _ := testfixture.New(testfixture.Options{Number: 2, ParentHash: first.Block.Hash(), Timestamp: stamp + 20, TransactionTypes: []uint8{types.LegacyTxType}})
 	commitCanonical(t, ctx, repo, second)
-	if _, err := service.ProcessOne(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if err := service.Read(ctx, user, page.Watermark, true); err != nil {
-		t.Fatal(err)
-	}
-	page, err = service.Notifications(ctx, user, "", true)
-	if err != nil || page.UnreadCount != "1" || len(page.Items) != 1 {
-		t.Fatalf("watermark: %+v %v", page, err)
-	}
 	input.Enabled = false
 	if _, err = service.Save(ctx, user, watch.Id, input); err != nil {
 		t.Fatal(err)

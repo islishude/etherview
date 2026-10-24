@@ -10,7 +10,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 
 The generated-client explorer includes UserOperation global/detail and bundle
 activity, authoritative Token holder pages, and optional consensus/blob views.
-The account workspace adds private watches, notifications, and CSV downloads
+The account workspace adds private watches, browser push, and CSV downloads
 with session-isolated browser state.
 
 ## References
@@ -72,7 +72,10 @@ with session-isolated browser state.
 - [x] Holder list/count is bilingual, accessible, generated-client-only, and
       responsive at 390px; incomplete state is explicitly unavailable.
 - [x] Account changes cancel private requests and clear cached data. One public
-      EventSource remains; private notification refresh is authenticated/visible.
+      EventSource remains. Account tabs put Watchlist after Overview; watches and
+      API keys show their lists until the user opens a creation form. P60-T20
+      replaces private notification polling/history
+      with session-bound browser push and an embedded Service Worker.
       CSV downloads use the generated client and release their object URLs.
 - [x] Consensus/blob views distinguish disabled, pending, unavailable, and ready
       states, show source/freshness, and load preview/download only on demand.

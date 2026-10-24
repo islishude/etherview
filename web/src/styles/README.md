@@ -72,7 +72,7 @@ values use tabular figures. Panels use 8–12px corners and fine borders; reserv
 The shared shell has a 1280px maximum content width. Below 1024px, explorer
 navigation becomes an expandable link list; below 768px, search occupies its
 own row and summary grids stack. Wide data tables scroll within their own
-focusable container. Language, theme, wallet, account and notification controls
+focusable container. Language, theme, wallet and account controls
 remain reachable without expanding explorer navigation.
 
 `NavigationDisclosure` contains ordinary links with native Tab order, not ARIA
@@ -96,5 +96,5 @@ page overflow, CSP/console failures and unexpected external requests, then saves
 a named screenshot in `web/test-results/` and attaches it to the Playwright
 report. Inspect these artifacts after structural or token changes. The account
 and Watchlist browser flows also save authenticated account, billing-admin and
-notification views. Navigation tests cover keyboard order, Escape, focus
+browser notification settings. Navigation tests cover keyboard order, Escape, focus
 restoration, mobile disclosure and capability-gated entries.

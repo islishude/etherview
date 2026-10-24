@@ -205,12 +205,9 @@ const accountRoute = createRoute({
   path: "/account",
   validateSearch: (
     search: Record<string, unknown>,
-  ): { tab?: "overview" | "api-keys" | "billing" | "watchlist" | "notifications" } => ({
+  ): { tab?: "overview" | "api-keys" | "billing" | "watchlist" } => ({
     tab:
-      search.tab === "watchlist" ||
-      search.tab === "notifications" ||
-      search.tab === "api-keys" ||
-      search.tab === "billing"
+      search.tab === "watchlist" || search.tab === "api-keys" || search.tab === "billing"
         ? search.tab
         : undefined,
   }),

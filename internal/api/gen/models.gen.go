@@ -2040,6 +2040,24 @@ func (e ProxyVerificationState) Valid() bool {
 	}
 }
 
+// Defines values for PushSubscriptionInputLanguage.
+const (
+	En PushSubscriptionInputLanguage = "en"
+	Zh PushSubscriptionInputLanguage = "zh"
+)
+
+// Valid indicates whether the value is a known member of the PushSubscriptionInputLanguage enum.
+func (e PushSubscriptionInputLanguage) Valid() bool {
+	switch e {
+	case En:
+		return true
+	case Zh:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ReplacedTransactionDetailKind.
 const (
 	ReplacedTransactionDetailKindReplaced ReplacedTransactionDetailKind = "replaced"
@@ -4280,6 +4298,14 @@ type BlockWithdrawal struct {
 	ValidatorIndex Quantity `json:"validator_index"`
 }
 
+// BrowserPushSubscription defines model for BrowserPushSubscription.
+type BrowserPushSubscription struct {
+	EndpointHash string    `json:"endpoint_hash"`
+	ExpiresAt    time.Time `json:"expires_at"`
+	Id           string    `json:"id"`
+	Language     string    `json:"language"`
+}
+
 // CWIAImmutableArgField defines model for CWIAImmutableArgField.
 type CWIAImmutableArgField struct {
 	Getters []string                  `json:"getters"`
@@ -5602,6 +5628,36 @@ type PublicConfig struct {
 type PublicConfigResponse struct {
 	Data PublicConfig `json:"data"`
 	Meta Meta         `json:"meta"`
+}
+
+// PushSubscriptionInput defines model for PushSubscriptionInput.
+type PushSubscriptionInput struct {
+	Auth     string                        `json:"auth"`
+	Endpoint string                        `json:"endpoint"`
+	Language PushSubscriptionInputLanguage `json:"language"`
+	P256dh   string                        `json:"p256dh"`
+}
+
+// PushSubscriptionInputLanguage defines model for PushSubscriptionInput.Language.
+type PushSubscriptionInputLanguage string
+
+// PushSubscriptionResponse defines model for PushSubscriptionResponse.
+type PushSubscriptionResponse struct {
+	Data BrowserPushSubscription `json:"data"`
+	Meta Meta                    `json:"meta"`
+}
+
+// PushSubscriptions defines model for PushSubscriptions.
+type PushSubscriptions struct {
+	Enabled   bool                      `json:"enabled"`
+	Items     []BrowserPushSubscription `json:"items"`
+	PublicKey string                    `json:"public_key"`
+}
+
+// PushSubscriptionsResponse defines model for PushSubscriptionsResponse.
+type PushSubscriptionsResponse struct {
+	Data PushSubscriptions `json:"data"`
+	Meta Meta              `json:"meta"`
 }
 
 // Quantity A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
@@ -7097,53 +7153,6 @@ type WalletNativeCurrency struct {
 	Symbol   string `json:"symbol"`
 }
 
-// WatchActivity defines model for WatchActivity.
-type WatchActivity struct {
-	// Amount A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	Amount *Quantity `json:"amount,omitempty"`
-
-	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
-	BlockHash Hash `json:"block_hash"`
-
-	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	BlockNumber Quantity `json:"block_number"`
-	Decimals    *string  `json:"decimals,omitempty"`
-	Direction   string   `json:"direction"`
-	EventKind   *string  `json:"event_kind,omitempty"`
-
-	// From A 20-byte address; responses use the EIP-55 checksum form.
-	From *Address `json:"from,omitempty"`
-	Kind string   `json:"kind"`
-
-	// LogIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	LogIndex *Quantity `json:"log_index,omitempty"`
-	Status   *string   `json:"status,omitempty"`
-
-	// SubIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	SubIndex *Quantity `json:"sub_index,omitempty"`
-
-	// Timestamp A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	Timestamp Quantity `json:"timestamp"`
-
-	// To A 20-byte address; responses use the EIP-55 checksum form.
-	To *Address `json:"to,omitempty"`
-
-	// TokenAddress A 20-byte address; responses use the EIP-55 checksum form.
-	TokenAddress *Address `json:"token_address,omitempty"`
-
-	// TokenId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	TokenId *Quantity `json:"token_id,omitempty"`
-
-	// TransactionHash A 32-byte hash; responses use normalized lowercase hexadecimal.
-	TransactionHash Hash `json:"transaction_hash"`
-
-	// TransactionIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	TransactionIndex Quantity `json:"transaction_index"`
-
-	// Value A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	Value *Quantity `json:"value,omitempty"`
-}
-
 // WatchInput defines model for WatchInput.
 type WatchInput struct {
 	// Address A 20-byte address; responses use the EIP-55 checksum form.
@@ -7164,46 +7173,6 @@ type WatchInputKinds string
 type WatchListResponse struct {
 	Data []AddressWatch `json:"data"`
 	Meta Meta           `json:"meta"`
-}
-
-// WatchNotification defines model for WatchNotification.
-type WatchNotification struct {
-	Activity WatchActivity `json:"activity"`
-
-	// Address A 20-byte address; responses use the EIP-55 checksum form.
-	Address   Address `json:"address"`
-	Canonical bool    `json:"canonical"`
-
-	// Id A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	Id        Quantity `json:"id"`
-	Label     string   `json:"label"`
-	Published bool     `json:"published"`
-	Read      bool     `json:"read"`
-	WatchId   string   `json:"watch_id"`
-}
-
-// WatchNotificationPage defines model for WatchNotificationPage.
-type WatchNotificationPage struct {
-	Items      []WatchNotification `json:"items"`
-	NextCursor string              `json:"next_cursor"`
-
-	// UnreadCount A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	UnreadCount Quantity `json:"unread_count"`
-
-	// Watermark A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	Watermark Quantity `json:"watermark"`
-}
-
-// WatchNotificationsResponse defines model for WatchNotificationsResponse.
-type WatchNotificationsResponse struct {
-	Data WatchNotificationPage `json:"data"`
-	Meta Meta                  `json:"meta"`
-}
-
-// WatchReadThrough defines model for WatchReadThrough.
-type WatchReadThrough struct {
-	// ThroughId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	ThroughId Quantity `json:"through_id"`
 }
 
 // WatchResponse defines model for WatchResponse.
@@ -7631,19 +7600,13 @@ type ExportCurrentUserAddressActivityParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 }
 
-// ListCurrentUserNotificationsParams defines parameters for ListCurrentUserNotifications.
-type ListCurrentUserNotificationsParams struct {
-	Cursor     *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
-	UnreadOnly *bool   `form:"unread_only,omitempty" json:"unread_only,omitempty"`
-}
-
-// ReadCurrentUserNotificationsThroughParams defines parameters for ReadCurrentUserNotificationsThrough.
-type ReadCurrentUserNotificationsThroughParams struct {
+// SaveCurrentUserPushSubscriptionParams defines parameters for SaveCurrentUserPushSubscription.
+type SaveCurrentUserPushSubscriptionParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 }
 
-// ReadCurrentUserNotificationParams defines parameters for ReadCurrentUserNotification.
-type ReadCurrentUserNotificationParams struct {
+// DeleteCurrentUserPushSubscriptionParams defines parameters for DeleteCurrentUserPushSubscription.
+type DeleteCurrentUserPushSubscriptionParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 }
 
@@ -7694,8 +7657,8 @@ type CreateCurrentUserAPIKeyJSONRequestBody = UserAPIKeyCreateRequest
 // ExportCurrentUserAddressActivityJSONRequestBody defines body for ExportCurrentUserAddressActivity for application/json ContentType.
 type ExportCurrentUserAddressActivityJSONRequestBody = AddressExportRequest
 
-// ReadCurrentUserNotificationsThroughJSONRequestBody defines body for ReadCurrentUserNotificationsThrough for application/json ContentType.
-type ReadCurrentUserNotificationsThroughJSONRequestBody = WatchReadThrough
+// SaveCurrentUserPushSubscriptionJSONRequestBody defines body for SaveCurrentUserPushSubscription for application/json ContentType.
+type SaveCurrentUserPushSubscriptionJSONRequestBody = PushSubscriptionInput
 
 // CreateCurrentUserWatchJSONRequestBody defines body for CreateCurrentUserWatch for application/json ContentType.
 type CreateCurrentUserWatchJSONRequestBody = WatchInput

@@ -588,3 +588,27 @@ func assertNoCSPNonce(t *testing.T, header http.Header) {
 		t.Errorf("non-shell CSP unexpectedly contains a nonce: %q", header.Get("Content-Security-Policy"))
 	}
 }
+
+func TestEmbeddedPushWorkerBoundary(t *testing.T) {
+	handler := NewHandler()
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/push-sw.js", nil)
+	handler.ServeHTTP(response, request)
+	if response.Code != 200 || !strings.Contains(response.Header().Get("Content-Type"), "javascript") {
+		t.Fatalf("worker response=%d %s", response.Code, response.Header().Get("Content-Type"))
+	}
+	if strings.Contains(response.Header().Get("Cache-Control"), "immutable") {
+		t.Fatal("worker update pinned by immutable cache")
+	}
+	if !strings.Contains(response.Header().Get("Content-Security-Policy"), "worker-src 'self'") {
+		t.Fatal("same-origin worker missing from CSP")
+	}
+	if strings.Contains(response.Body.String(), "addEventListener(\"fetch\"") {
+		t.Fatal("push worker intercepts fetch")
+	}
+	missing := httptest.NewRecorder()
+	handler.ServeHTTP(missing, httptest.NewRequest(http.MethodGet, "/missing-push-sw.js", nil))
+	if missing.Code != 404 {
+		t.Fatal("missing worker received SPA fallback")
+	}
+}

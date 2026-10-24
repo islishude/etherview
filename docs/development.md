@@ -174,6 +174,22 @@ same pnpm scripts used by CI. Keep generated API types under the API generator;
 do not format them manually. The [testing guide](testing.md) owns exact limits,
 formatting scope, and tool-policy regression coverage.
 
+### Push worker build
+
+The push-only Service Worker lives in `web/src/workers/push-sw.ts`. Its separate
+TypeScript project uses the `WebWorker` library without page DOM globals and
+runs as part of the ordinary frontend type check. Shared imports must also be
+safe in a worker environment.
+
+Import the entry with Vite's `?worker&url` query and register it as a module
+Service Worker. Vite owns TypeScript transformation, shared imports, development
+serving and the separate production bundle; no custom worker compiler or public
+copy is needed. Worker entries are emitted at the distribution root so their
+scope can cover the application without production header overrides. The Vite
+development server supplies `Service-Worker-Allowed: /` for source URLs.
+Production assets still pass through normal manifest preparation and embedding.
+The worker has no fetch handler, offline cache, or notification history.
+
 ### Stylesheet ownership
 
 The [stylesheet guide](../web/src/styles/README.md) owns module responsibilities

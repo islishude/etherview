@@ -548,7 +548,7 @@ func requiredAPIScope(operation string) auth.Scope {
 
 func operationUsesAPIKeyScope(operation string) bool {
 	switch operation {
-	case "listCurrentUserWatches", "createCurrentUserWatch", "updateCurrentUserWatch", "deleteCurrentUserWatch", "listCurrentUserNotifications", "readCurrentUserNotification", "readCurrentUserNotificationsThrough", "exportCurrentUserAddressActivity",
+	case "listCurrentUserWatches", "createCurrentUserWatch", "updateCurrentUserWatch", "deleteCurrentUserWatch", "listCurrentUserPushSubscriptions", "saveCurrentUserPushSubscription", "deleteCurrentUserPushSubscription", "exportCurrentUserAddressActivity",
 		"createAuthChallenge", "verifyAuthChallenge", "getAuthSession",
 		"logoutAuthSession", "updateCurrentUser", "listCurrentUserAPIKeys",
 		"createCurrentUserAPIKey", "rotateCurrentUserAPIKey",
