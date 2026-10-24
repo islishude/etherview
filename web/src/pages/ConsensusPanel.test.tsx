@@ -2,13 +2,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { components } from "@/api/schema.gen";
+import type * as schemas from "@/api/heyapi/types.gen";
 import i18n from "@/i18n";
 import { ConsensusPanel } from "./ConsensusPanels";
 
 const hash = `0x${"11".repeat(32)}`;
 const root = `0x${"22".repeat(32)}`;
-const summary: components["schemas"]["ConsensusSummary"] = {
+const summary: schemas.ConsensusSummary = {
   block_hash: hash,
   state: "complete",
   slot: "9007199254740993",
@@ -28,7 +28,7 @@ beforeEach(async () => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-function renderPanel(data: components["schemas"]["ConsensusSummary"], status = 200) {
+function renderPanel(data: schemas.ConsensusSummary, status = 200) {
   const fetchMock = vi.fn(async (request: RequestInfo | URL) => {
     expect(new URL(String(request), "http://etherview.test").pathname).toBe(
       `/api/v1/blocks/${hash}/consensus`,

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { readFile } from "node:fs/promises";
-import type { components } from "../src/api/schema.gen";
+import type * as schemas from "../src/api/heyapi/types.gen";
 
 test("private watches, browser notification settings and CSV download use the embedded generated client", async ({
   page,
@@ -22,7 +22,7 @@ test("private watches, browser notification settings and CSV download use the em
     data,
     meta: { chain_id: "1", request_id: "watchlist-browser" },
   });
-  let watches: components["schemas"]["AddressWatch"][] = [];
+  let watches: schemas.AddressWatch[] = [];
   let mutationCount = 0;
   await page.route("**/api/v1/config", async (route) => {
     const upstream = await route.fetch();

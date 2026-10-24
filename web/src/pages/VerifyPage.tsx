@@ -2,12 +2,8 @@ import { FormEvent, useEffect, useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { isAddress } from "viem";
 
-import {
-  usePublicConfig,
-  useSubmitVerification,
-  useCompilerCatalog,
-  useVerificationJob,
-} from "@/api/hooks";
+import { usePublicConfig } from "@/api/publicConfig";
+import { useSubmitVerification, useCompilerCatalog, useVerificationJob } from "@/api/hooks";
 import type {
   VerificationJob,
   VerificationMatchDetails,

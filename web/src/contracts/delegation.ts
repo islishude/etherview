@@ -1,21 +1,19 @@
+import * as sdk from "../api/heyapi/sdk.gen";
 import { firstPage, type CursorRequest } from "@/api/pagination";
 import { useQuery } from "@tanstack/react-query";
 
 import { apiClient, requireEnvelope } from "@/api/client";
-import type { components } from "@/api/schema.gen";
+import type * as schemas from "@/api/heyapi/types.gen";
 
-export type DelegationBinding = components["schemas"]["DelegationBinding"];
-export type DelegationHistoryItem = components["schemas"]["DelegationHistoryItem"];
+export type DelegationBinding = schemas.DelegationBinding;
+export type DelegationHistoryItem = schemas.DelegationHistoryItem;
 
 export async function getAddressDelegation(
   address: string,
   signal?: AbortSignal,
 ): Promise<DelegationBinding> {
   return requireEnvelope(
-    await apiClient.GET("/addresses/{address}/delegation", {
-      signal,
-      params: { path: { address } },
-    }),
+    await sdk.getAddressDelegation({ client: apiClient, signal, path: { address } }),
   ).data;
 }
 
@@ -40,9 +38,11 @@ export function useAddressDelegationHistory(
     queryKey: ["address", address, "delegations", cursor ?? null, limit, refreshGeneration],
     queryFn: async ({ signal }) => {
       const response = requireEnvelope(
-        await apiClient.GET("/addresses/{address}/delegations", {
+        await sdk.listAddressDelegations({
+          client: apiClient,
           signal,
-          params: { path: { address }, query: { cursor, limit } },
+          path: { address },
+          query: { cursor, limit },
         }),
       );
       return {

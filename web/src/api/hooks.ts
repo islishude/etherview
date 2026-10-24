@@ -1,3 +1,4 @@
+import * as sdk from "./heyapi/sdk.gen";
 import { firstPage, type CursorRequest } from "./pagination";
 import { chainQueryMeta, statusQueryMeta, userOperationQueryMeta } from "./chainEvents";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -37,7 +38,7 @@ export function useChainStatus() {
     queryKey: ["status"],
     meta: statusQueryMeta,
     queryFn: async ({ signal }) => {
-      const response = requireEnvelope(await apiClient.GET("/status", { signal }));
+      const response = requireEnvelope(await sdk.getStatus({ client: apiClient, signal }));
       return {
         ...response.data,
         coverage_start: response.meta.coverage_start,
@@ -49,15 +50,6 @@ export function useChainStatus() {
   });
 }
 
-export function usePublicConfig() {
-  return useQuery({
-    queryKey: ["config"],
-    queryFn: async ({ signal }) => requireEnvelope(await apiClient.GET("/config", { signal })).data,
-    retry: false,
-    staleTime: Number.POSITIVE_INFINITY,
-  });
-}
-
 export function useBlocks(page: CursorRequest = firstPage, limit = 12) {
   const { cursor, refreshGeneration } = page;
   return useQuery({
@@ -65,7 +57,7 @@ export function useBlocks(page: CursorRequest = firstPage, limit = 12) {
     meta: statusQueryMeta,
     queryFn: async ({ signal }): Promise<CursorPage<BlockSummary>> => {
       const response = requireEnvelope(
-        await apiClient.GET("/blocks", { signal, params: { query: { limit, cursor } } }),
+        await sdk.listBlocks({ client: apiClient, signal, query: { limit, cursor } }),
       );
       return {
         items: response.data,
@@ -84,7 +76,7 @@ export function useGenesisAccounts(page: CursorRequest = firstPage, limit = 25) 
     queryKey: ["genesis-accounts", limit, cursor ?? null, refreshGeneration],
     queryFn: async ({ signal }): Promise<CursorPage<GenesisAccount>> => {
       const response = requireEnvelope(
-        await apiClient.GET("/genesis/accounts", { signal, params: { query: { limit, cursor } } }),
+        await sdk.listGenesisAccounts({ client: apiClient, signal, query: { limit, cursor } }),
       );
       return {
         items: response.data,
@@ -104,7 +96,7 @@ export function useTransactions(page: CursorRequest = firstPage, limit = 12) {
     meta: chainQueryMeta,
     queryFn: async ({ signal }): Promise<CursorPage<TransactionSummary>> => {
       const response = requireEnvelope(
-        await apiClient.GET("/transactions", { signal, params: { query: { limit, cursor } } }),
+        await sdk.listTransactions({ client: apiClient, signal, query: { limit, cursor } }),
       );
       return {
         items: response.data,
@@ -124,7 +116,7 @@ export function useUserOperations(page: CursorRequest = firstPage, limit = 25) {
     meta: userOperationQueryMeta,
     queryFn: async ({ signal }): Promise<CursorPage<UserOperationSummary>> => {
       const response = requireEnvelope(
-        await apiClient.GET("/user-operations", { signal, params: { query: { limit, cursor } } }),
+        await sdk.listUserOperations({ client: apiClient, signal, query: { limit, cursor } }),
       );
       return { items: response.data, meta: response.meta, next_cursor: response.meta.next_cursor };
     },
@@ -138,9 +130,8 @@ export function useUserOperation(hash: string, enabled = true) {
     queryKey: ["user-operation", hash],
     meta: userOperationQueryMeta,
     queryFn: async ({ signal }): Promise<UserOperationDetail> =>
-      requireEnvelope(
-        await apiClient.GET("/user-operations/{hash}", { signal, params: { path: { hash } } }),
-      ).data,
+      requireEnvelope(await sdk.getUserOperation({ client: apiClient, signal, path: { hash } }))
+        .data,
     enabled: enabled && hash.length > 0,
     retry: false,
     staleTime: 30_000,
@@ -158,9 +149,11 @@ export function useTransactionUserOperations(
     meta: chainQueryMeta,
     queryFn: async ({ signal }): Promise<CursorPage<UserOperationSummary>> => {
       const response = requireEnvelope(
-        await apiClient.GET("/transactions/{hash}/user-operations", {
+        await sdk.listTransactionUserOperations({
+          client: apiClient,
           signal,
-          params: { path: { hash }, query: { cursor, limit: 25 } },
+          path: { hash },
+          query: { cursor, limit: 25 },
         }),
       );
       return { items: response.data, meta: response.meta, next_cursor: response.meta.next_cursor };
@@ -182,9 +175,11 @@ export function useAddressUserOperations(
     meta: chainQueryMeta,
     queryFn: async ({ signal }): Promise<CursorPage<UserOperationSummary>> => {
       const response = requireEnvelope(
-        await apiClient.GET("/addresses/{address}/user-operations", {
+        await sdk.listAddressUserOperations({
+          client: apiClient,
           signal,
-          params: { path: { address }, query: { cursor, limit: 25 } },
+          path: { address },
+          query: { cursor, limit: 25 },
         }),
       );
       return { items: response.data, meta: response.meta, next_cursor: response.meta.next_cursor };
@@ -206,7 +201,7 @@ export function usePendingTransactions(
     meta: chainQueryMeta,
     queryFn: async ({ signal }): Promise<PendingSnapshot> => {
       const response = requireEnvelope(
-        await apiClient.GET("/pending", { signal, params: { query: { limit, cursor } } }),
+        await sdk.listPendingTransactions({ client: apiClient, signal, query: { limit, cursor } }),
       );
       return { items: response.data, meta: response.meta };
     },
@@ -223,9 +218,8 @@ export function useBlock(identifier: string, enabled = true) {
     queryKey: ["block", identifier],
     meta: statusQueryMeta,
     queryFn: async ({ signal }) =>
-      requireEnvelope(
-        await apiClient.GET("/blocks/{id}", { signal, params: { path: { id: identifier } } }),
-      ).data,
+      requireEnvelope(await sdk.getBlock({ client: apiClient, signal, path: { id: identifier } }))
+        .data,
     enabled: enabled && identifier.length > 0,
     retry: false,
     staleTime: 5_000,
@@ -243,9 +237,11 @@ export function useBlockTransactions(
     meta: chainQueryMeta,
     queryFn: async ({ signal }) => {
       const response = requireEnvelope(
-        await apiClient.GET("/blocks/{id}/transactions", {
+        await sdk.listBlockTransactions({
+          client: apiClient,
           signal,
-          params: { path: { id: identifier }, query: { cursor, limit: 25 } },
+          path: { id: identifier },
+          query: { cursor, limit: 25 },
         }),
       );
       return {
@@ -265,9 +261,7 @@ export function useTransaction(hash: string, enabled = true) {
     queryKey: ["transaction", hash],
     meta: chainQueryMeta,
     queryFn: async ({ signal }): Promise<TransactionDetail> =>
-      requireEnvelope(
-        await apiClient.GET("/transactions/{hash}", { signal, params: { path: { hash } } }),
-      ).data,
+      requireEnvelope(await sdk.getTransaction({ client: apiClient, signal, path: { hash } })).data,
     enabled: enabled && hash.length > 0,
     retry: false,
     staleTime: liveRefetchInterval,
@@ -288,10 +282,7 @@ export function useTransactionCalldata(hash: string, enabled = true) {
     meta: chainQueryMeta,
     queryFn: async ({ signal }) =>
       requireEnvelope(
-        await apiClient.GET("/transactions/{hash}/calldata", {
-          signal,
-          params: { path: { hash } },
-        }),
+        await sdk.getTransactionCalldata({ client: apiClient, signal, path: { hash } }),
       ).data,
     enabled: enabled && hash.length > 0,
     retry: false,
@@ -305,7 +296,7 @@ export function useTransactionFailure(hash: string, enabled = true) {
     meta: chainQueryMeta,
     queryFn: async ({ signal }) =>
       requireEnvelope(
-        await apiClient.GET("/transactions/{hash}/failure", { signal, params: { path: { hash } } }),
+        await sdk.getTransactionFailure({ client: apiClient, signal, path: { hash } }),
       ).data,
     enabled: enabled && hash.length > 0,
     retry: false,
@@ -318,9 +309,8 @@ export function useTransactionTrace(hash: string, enabled = true) {
     queryKey: ["transaction", hash, "trace"],
     meta: chainQueryMeta,
     queryFn: async ({ signal }) =>
-      requireEnvelope(
-        await apiClient.GET("/transactions/{hash}/trace", { signal, params: { path: { hash } } }),
-      ).data,
+      requireEnvelope(await sdk.getTransactionTrace({ client: apiClient, signal, path: { hash } }))
+        .data,
     enabled: enabled && hash.length > 0,
     retry: false,
     staleTime: 30_000,
@@ -338,9 +328,11 @@ export function useTransactionAuthorizations(
     meta: chainQueryMeta,
     queryFn: async ({ signal }) => {
       const response = requireEnvelope(
-        await apiClient.GET("/transactions/{hash}/authorizations", {
+        await sdk.listTransactionAuthorizations({
+          client: apiClient,
           signal,
-          params: { path: { hash }, query: { cursor, limit: 25 } },
+          path: { hash },
+          query: { cursor, limit: 25 },
         }),
       );
       return { ...response.data, next_cursor: response.meta.next_cursor };
@@ -362,9 +354,11 @@ export function useTransactionTokenTransfers(
     meta: chainQueryMeta,
     queryFn: async ({ signal }) => {
       const response = requireEnvelope(
-        await apiClient.GET("/transactions/{hash}/token-transfers", {
+        await sdk.listTransactionTokenTransfers({
+          client: apiClient,
           signal,
-          params: { path: { hash }, query: { cursor, limit: 25 } },
+          path: { hash },
+          query: { cursor, limit: 25 },
         }),
       );
       return { ...response.data, next_cursor: response.meta.next_cursor };
@@ -386,9 +380,11 @@ export function useTransactionInternalTransactions(
     meta: chainQueryMeta,
     queryFn: async ({ signal }) => {
       const response = requireEnvelope(
-        await apiClient.GET("/transactions/{hash}/internal-transactions", {
+        await sdk.listTransactionInternalTransactions({
+          client: apiClient,
           signal,
-          params: { path: { hash }, query: { cursor, limit: 25 } },
+          path: { hash },
+          query: { cursor, limit: 25 },
         }),
       );
       return { ...response.data, next_cursor: response.meta.next_cursor };
@@ -406,9 +402,11 @@ export function useTransactionLogs(hash: string, page: CursorRequest = firstPage
     meta: chainQueryMeta,
     queryFn: async ({ signal }) => {
       const response = requireEnvelope(
-        await apiClient.GET("/transactions/{hash}/logs", {
+        await sdk.listTransactionLogs({
+          client: apiClient,
           signal,
-          params: { path: { hash }, query: { cursor, limit: 25 } },
+          path: { hash },
+          query: { cursor, limit: 25 },
         }),
       );
       return { ...response.data, next_cursor: response.meta.next_cursor };
@@ -430,9 +428,11 @@ export function useTransactionStateChanges(
     meta: chainQueryMeta,
     queryFn: async ({ signal }) => {
       const response = requireEnvelope(
-        await apiClient.GET("/transactions/{hash}/state-changes", {
+        await sdk.listTransactionStateChanges({
+          client: apiClient,
           signal,
-          params: { path: { hash }, query: { cursor, limit: 25 } },
+          path: { hash },
+          query: { cursor, limit: 25 },
         }),
       );
       return { ...response.data, next_cursor: response.meta.next_cursor };
@@ -448,9 +448,7 @@ export function useAddress(address: string, enabled = true) {
     queryKey: ["address", address],
     meta: chainQueryMeta,
     queryFn: async ({ signal }) =>
-      requireEnvelope(
-        await apiClient.GET("/addresses/{address}", { signal, params: { path: { address } } }),
-      ).data,
+      requireEnvelope(await sdk.getAddress({ client: apiClient, signal, path: { address } })).data,
     enabled: enabled && address.length > 0,
     retry: false,
     staleTime: 5_000,
@@ -469,9 +467,11 @@ export function useAddressTransactions(
     meta: chainQueryMeta,
     queryFn: async ({ signal }): Promise<CursorPage<TransactionSummary>> => {
       const response = requireEnvelope(
-        await apiClient.GET("/addresses/{address}/transactions", {
+        await sdk.listAddressTransactions({
+          client: apiClient,
           signal,
-          params: { path: { address }, query: { limit, cursor } },
+          path: { address },
+          query: { limit, cursor },
         }),
       );
       return {
@@ -498,9 +498,11 @@ export function useAddressWithdrawals(
     meta: chainQueryMeta,
     queryFn: async ({ signal }): Promise<CursorPage<AddressWithdrawal>> => {
       const response = requireEnvelope(
-        await apiClient.GET("/addresses/{address}/withdrawals", {
+        await sdk.listAddressWithdrawals({
+          client: apiClient,
           signal,
-          params: { path: { address }, query: { limit, cursor } },
+          path: { address },
+          query: { limit, cursor },
         }),
       );
       return {
@@ -534,9 +536,11 @@ export function useAddressInternalTransactions(
     ],
     queryFn: async ({ signal }): Promise<CursorPage<AddressInternalTransaction>> => {
       const response = requireEnvelope(
-        await apiClient.GET("/addresses/{address}/internal-transactions", {
+        await sdk.listAddressInternalTransactions({
+          client: apiClient,
           signal,
-          params: { path: { address }, query: { limit, cursor } },
+          path: { address },
+          query: { limit, cursor },
         }),
       );
       return {
@@ -602,13 +606,17 @@ function useAddressTokenActivity(
     queryFn: async ({ signal }): Promise<CursorPage<AddressTokenTransfer>> => {
       const response = requireEnvelope(
         path === "/addresses/{address}/erc20-transfers"
-          ? await apiClient.GET("/addresses/{address}/erc20-transfers", {
+          ? await sdk.listAddressErc20Transfers({
+              client: apiClient,
               signal,
-              params: { path: { address }, query: { limit, cursor } },
+              path: { address },
+              query: { limit, cursor },
             })
-          : await apiClient.GET("/addresses/{address}/nft-transfers", {
+          : await sdk.listAddressNftTransfers({
+              client: apiClient,
               signal,
-              params: { path: { address }, query: { limit, cursor } },
+              path: { address },
+              query: { limit, cursor },
             }),
       );
       return {
@@ -630,7 +638,7 @@ export function useTokens(page: CursorRequest = firstPage, limit = 25) {
     meta: chainQueryMeta,
     queryFn: async ({ signal }): Promise<CursorPage<TokenContract>> => {
       const response = requireEnvelope(
-        await apiClient.GET("/tokens", { signal, params: { query: { limit, cursor } } }),
+        await sdk.listTokens({ client: apiClient, signal, query: { limit, cursor } }),
       );
       return {
         items: response.data,
@@ -648,9 +656,7 @@ export function useToken(address: string, enabled = true) {
     queryKey: ["token", address],
     meta: chainQueryMeta,
     queryFn: async ({ signal }) =>
-      requireEnvelope(
-        await apiClient.GET("/tokens/{address}", { signal, params: { path: { address } } }),
-      ).data,
+      requireEnvelope(await sdk.getToken({ client: apiClient, signal, path: { address } })).data,
     enabled: enabled && address.length > 0,
     retry: false,
     staleTime: 30_000,
@@ -669,9 +675,11 @@ export function useTokenTransfers(
     meta: chainQueryMeta,
     queryFn: async ({ signal }): Promise<CursorPage<TokenEvent>> => {
       const response = requireEnvelope(
-        await apiClient.GET("/tokens/{address}/transfers", {
+        await sdk.listTokenTransfers({
+          client: apiClient,
           signal,
-          params: { path: { address }, query: { limit, cursor } },
+          path: { address },
+          query: { limit, cursor },
         }),
       );
       return {
@@ -698,9 +706,11 @@ export function useTokenHolders(
     meta: chainQueryMeta,
     queryFn: async ({ signal }): Promise<TokenHolderPage> => {
       const response = requireEnvelope(
-        await apiClient.GET("/tokens/{address}/holders", {
+        await sdk.listTokenHolders({
+          client: apiClient,
           signal,
-          params: { path: { address }, query: { limit, cursor } },
+          path: { address },
+          query: { limit, cursor },
         }),
       );
       return {
@@ -727,9 +737,11 @@ export function useAddressNFTBalances(
     meta: chainQueryMeta,
     queryFn: async ({ signal }): Promise<CursorPage<NFTBalance>> => {
       const response = requireEnvelope(
-        await apiClient.GET("/addresses/{address}/nfts", {
+        await sdk.listAddressNftBalances({
+          client: apiClient,
           signal,
-          params: { path: { address }, query: { limit, cursor } },
+          path: { address },
+          query: { limit, cursor },
         }),
       );
       return {
@@ -756,9 +768,11 @@ export function useAddressERC20Balances(
     meta: chainQueryMeta,
     queryFn: async ({ signal }): Promise<CursorPage<ERC20Balance>> => {
       const response = requireEnvelope(
-        await apiClient.GET("/addresses/{address}/erc20-balances", {
+        await sdk.listAddressErc20Balances({
+          client: apiClient,
           signal,
-          params: { path: { address }, query: { limit, cursor } },
+          path: { address },
+          query: { limit, cursor },
         }),
       );
       return {
@@ -779,10 +793,7 @@ export function useNFTOwnership(address: string, tokenID: string, enabled = true
     meta: chainQueryMeta,
     queryFn: async ({ signal }) =>
       requireEnvelope(
-        await apiClient.GET("/nfts/{address}/{token_id}", {
-          signal,
-          params: { path: { address, token_id: tokenID } },
-        }),
+        await sdk.getNftOwner({ client: apiClient, signal, path: { address, token_id: tokenID } }),
       ).data,
     enabled: enabled && address.length > 0 && tokenID.length > 0,
     retry: false,
@@ -796,9 +807,10 @@ export function useNFTMetadata(address: string, tokenID: string, enabled = true)
     meta: chainQueryMeta,
     queryFn: async ({ signal }): Promise<NFTMetadata> =>
       requireEnvelope(
-        await apiClient.GET("/nfts/{address}/{token_id}/metadata", {
+        await sdk.getNftMetadata({
+          client: apiClient,
           signal,
-          params: { path: { address, token_id: tokenID } },
+          path: { address, token_id: tokenID },
         }),
       ).data,
     enabled: enabled && address.length > 0 && tokenID.length > 0,
@@ -814,7 +826,7 @@ export function useSearchResults(query: string, page: CursorRequest = firstPage,
     meta: chainQueryMeta,
     queryFn: async ({ signal }): Promise<CursorPage<SearchResult>> => {
       const response = requireEnvelope(
-        await apiClient.GET("/search", { signal, params: { query: { q: query, cursor, limit } } }),
+        await sdk.search({ client: apiClient, signal, query: { q: query, cursor, limit } }),
       );
       return {
         items: response.data,
@@ -834,9 +846,10 @@ export function useBlockStats(fromBlock: string, toBlock: string, enabled = true
     meta: chainQueryMeta,
     queryFn: async ({ signal }) =>
       requireEnvelope(
-        await apiClient.GET("/stats/blocks", {
+        await sdk.getBlockStats({
+          client: apiClient,
           signal,
-          params: { query: { from_block: fromBlock, to_block: toBlock } },
+          query: { from_block: fromBlock, to_block: toBlock },
         }),
       ).data,
     enabled: enabled && fromBlock.length > 0 && toBlock.length > 0,
@@ -851,9 +864,10 @@ export function useAggregateStats(fromBlock: string, toBlock: string, enabled = 
     meta: chainQueryMeta,
     queryFn: async ({ signal }): Promise<AggregateStats> =>
       requireEnvelope(
-        await apiClient.GET("/stats/summary", {
+        await sdk.getAggregateStats({
+          client: apiClient,
           signal,
-          params: { query: { from_block: fromBlock, to_block: toBlock } },
+          query: { from_block: fromBlock, to_block: toBlock },
         }),
       ).data,
     enabled: enabled && fromBlock.length > 0 && toBlock.length > 0,
@@ -867,7 +881,7 @@ export function useChartOverview() {
     queryKey: ["chart-overview"],
     meta: chainQueryMeta,
     queryFn: async ({ signal }): Promise<ChartOverview> =>
-      requireEnvelope(await apiClient.GET("/stats/charts/overview", { signal })).data,
+      requireEnvelope(await sdk.getChartOverview({ client: apiClient, signal })).data,
     retry: false,
     staleTime: 30_000,
   });
@@ -885,15 +899,14 @@ export function useChartMetric(
     meta: chainQueryMeta,
     queryFn: async ({ signal }): Promise<ChartMetricSeries> =>
       requireEnvelope(
-        await apiClient.GET("/stats/charts/{metric}", {
+        await sdk.getChartMetric({
+          client: apiClient,
           signal,
-          params: {
-            path: { metric },
-            query: {
-              from_time: fromTime,
-              to_time: toTime,
-              interval,
-            },
+          path: { metric },
+          query: {
+            from_time: fromTime,
+            to_time: toTime,
+            interval,
           },
         }),
       ).data,
@@ -907,10 +920,11 @@ export function useSubmitVerification(address: string, apiKey: string) {
   return useMutation({
     mutationFn: async (submission: VerificationSubmission) =>
       requireEnvelope(
-        await apiClient.POST("/contracts/{address}/verification", {
+        await sdk.submitAddressVerification({
+          client: apiClient,
           body: submission,
           headers: { "X-API-Key": apiKey },
-          params: { path: { address } },
+          path: { address },
         }),
       ).data,
     gcTime: 0,
@@ -928,9 +942,10 @@ export function useVerificationJob(
     queryKey: ["verification-job", id, requestRevision],
     queryFn: async ({ signal }) =>
       requireEnvelope(
-        await apiClient.GET("/verifier/jobs/{id}", {
+        await sdk.getVerifierJob({
+          client: apiClient,
           signal,
-          params: { path: { id } },
+          path: { id },
           headers: { "X-API-Key": apiKey },
         }),
       ).data,
@@ -949,7 +964,7 @@ export function useCompilerCatalog(language: VerificationSubmission["language"],
     queryKey: ["verifier-compilers", language],
     queryFn: async ({ signal }) =>
       requireEnvelope(
-        await apiClient.GET("/verifier/compilers", { signal, params: { query: { language } } }),
+        await sdk.listVerifierCompilers({ client: apiClient, signal, query: { language } }),
       ).data,
     enabled,
     retry: false,

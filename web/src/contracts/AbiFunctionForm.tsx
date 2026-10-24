@@ -12,7 +12,7 @@ import {
   type Hex,
 } from "viem";
 
-import { usePublicConfig } from "@/api/hooks";
+import { usePublicConfig } from "@/api/publicConfig";
 import { copyTextToClipboard } from "@/components/CopyButton";
 import {
   ABI_LIMITS,

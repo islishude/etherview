@@ -2,13 +2,13 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { usePublicConfig } from "@/api/hooks";
+import { usePublicConfig } from "@/api/publicConfig";
 import i18n from "@/i18n";
 import { WalletBoundaryError } from "@/wallet/eip6963";
 import { useWallet } from "@/wallet/WalletProvider";
 import { AddNetworkControl } from "./AddNetworkControl";
 
-vi.mock("@/api/hooks", () => ({
+vi.mock("@/api/publicConfig", () => ({
   usePublicConfig: vi.fn(),
 }));
 

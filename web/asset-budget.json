@@ -14,6 +14,7 @@
     "BillingPages-",
     "echarts-vendor",
     "zrender-vendor",
-    "x402-vendor"
+    "x402-vendor",
+    "hooks-"
   ]
 }

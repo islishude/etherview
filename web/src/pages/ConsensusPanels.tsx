@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { useBlockConsensus } from "@/api/consensus";
-import type { components } from "@/api/schema.gen";
+import type * as schemas from "@/api/heyapi/types.gen";
 import { QueryNotice } from "@/components/QueryNotice";
 import { formatInteger } from "@/components/format";
 import { Detail } from "./pages";
@@ -105,7 +105,7 @@ export function ConsensusOverview({
   finalizedBlock,
   now,
 }: {
-  data?: components["schemas"]["ConsensusOverview"];
+  data?: schemas.ConsensusOverview;
   safeBlock?: string;
   finalizedBlock?: string;
   now: number;

@@ -139,7 +139,13 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
 - `make generate-check`: regenerate OpenAPI, SQL, and embedded frontend outputs
   and fail on a diff. It snapshots the checked-in baseline in a temporary
   directory before regeneration, so it also works before the repository has an
-  initial Git `HEAD`.
+  initial Git `HEAD`. The Hey API output is a complete directory snapshot;
+  regeneration removes stale files and recursive comparison detects additions,
+  removals and content drift. `client-types.test.ts` is compiled by the frontend
+  TypeScript gate and locks request/body/header constraints, discriminated
+  responses, nullable fields and string quantities. Runtime client tests cover
+  URL confinement, credentials, errors, 204, raw binary responses and cancellation;
+  the embedded browser gate retains native EventSource recovery acceptance.
 - `make format` / `make format-check`: write formatting / check without writing,
   using locked Oxfmt 0.70.0 from the root pnpm workspace. The root configuration covers
   `.js`, `.mjs`, `.cjs`, `.yaml`, `.yml`, and `.md`, including hidden workflow

@@ -4,8 +4,8 @@ import { useIdentityRecovery } from "@/api/identityRecovery";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
+import { usePublicConfig } from "@/api/publicConfig";
 import {
-  usePublicConfig,
   useTransaction,
   useTransactionCalldata,
   useTransactionFailure,

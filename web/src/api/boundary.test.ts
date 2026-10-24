@@ -10,6 +10,12 @@ describe("browser backend boundary", () => {
     for (const file of productionSources(sourceRoot)) {
       const relative = file.slice(sourceRoot.length + 1);
       const source = readFileSync(file, "utf8");
+      if (
+        relative !== "api/client.ts" &&
+        /from\s+["'][^"']*heyapi\/(?:client(?:\.gen)?|index)["']/u.test(source)
+      ) {
+        violations.push(`${relative}: unconfigured generated client import`);
+      }
 
       if (
         relative !== "api/client.ts" &&
@@ -79,12 +85,14 @@ describe("browser backend boundary", () => {
     expect([...walletMethods].sort()).toEqual([...allowedWalletMethods].sort());
   });
 
-  it("keeps the OpenAPI paths type in the sole transport module", () => {
+  it("requires the configured client for generated SDK operations", () => {
     const client = readFileSync(`${sourceRoot}/api/client.ts`, "utf8");
     const hooks = readFileSync(`${sourceRoot}/api/hooks.ts`, "utf8");
 
-    expect(client).toContain('import type { paths } from "./schema.gen"');
-    expect(client).toContain("createClient<paths>");
+    expect(client).toContain('import { createClient } from "./heyapi/client"');
+    const sdk = readFileSync(`${sourceRoot}/api/heyapi/sdk.gen.ts`, "utf8");
+    expect(sdk).toContain("client: Client;");
+    expect(sdk).not.toContain("from './client.gen'");
     expect(hooks).toContain('import { apiClient, requireEnvelope } from "./client"');
     expect(hooks).not.toMatch(/\bfetch\s*\(/u);
   });
@@ -159,14 +167,10 @@ function productionSources(directory: string): string[] {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     const path = `${directory}/${entry.name}`;
     if (entry.isDirectory()) {
-      files.push(...productionSources(path));
+      if (path !== `${sourceRoot}/api/heyapi`) files.push(...productionSources(path));
       continue;
     }
-    if (
-      /\.tsx?$/u.test(entry.name) &&
-      !/\.test\.tsx?$/u.test(entry.name) &&
-      entry.name !== "schema.gen.ts"
-    ) {
+    if (/\.tsx?$/u.test(entry.name) && !/\.test\.tsx?$/u.test(entry.name)) {
       files.push(path);
     }
   }

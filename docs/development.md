@@ -156,8 +156,8 @@ exactly Node 26.12.1 and solc 0.8.37, while the Hardhat fixture keeps solc 0.8.3
 The workspace policy enforces engines and disables dependency lifecycle scripts.
 Automatic peer installation is disabled, so the artifact-only Safe fixture's
 unused Ethers v5 peer is not installed. Required peers are explicit workspace
-dependencies, including the API generator's TypeScript 5 and the frontend test
-DOM library. Docker uses the `node:26.12.1` image's curl to download the
+dependencies, including the frontend test DOM library. API generation uses
+TypeScript 6.0.3 for Hey API, while the Web type-checker remains on TypeScript 7.0.2. Docker uses the `node:26.12.1` image's curl to download the
 [official standalone installer](https://pnpm.io/installation#using-a-standalone-script),
 with `PNPM_VERSION=12.15.0`, an explicit shell and `PNPM_HOME/bin` on `PATH`, then
 uses the same workspace policy with frozen, filtered installs. CI pins
@@ -171,7 +171,16 @@ provide the JavaScript/frontend gates directly. Use
 `pnpm --dir web run format` for frontend-only edits.
 `make web-lint` runs TypeScript, Oxlint, and a read-only Oxfmt check through the
 same pnpm scripts used by CI. Keep generated API types under the API generator;
-do not format them manually. The [testing guide](testing.md) owns exact limits,
+do not format them manually. `api/openapi-ts.config.ts` generates the Hey API
+Fetch SDK, domain types and bundled runtime under `web/src/api/heyapi/` from the
+API workspace. After changing `api/openapi.yaml`, run `make web-generate` for
+the SDK alone, or `make generate` for all generated artifacts and the embedded
+SPA. Ordinary `make web-build` and Docker Web builds consume the committed SDK
+without running the OpenAPI generator.
+Pass `apiClient` explicitly to operation functions, retain domain
+aliases, and keep specialized EventSource/raw-response handling at the existing
+boundary. `make generate-check` compares the complete regenerated directory.
+The [testing guide](testing.md) owns exact limits,
 formatting scope, and tool-policy regression coverage.
 
 ### Push worker build

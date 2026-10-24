@@ -19,8 +19,9 @@ test("workspaces retain distinct compiler and client runtime versions", () => {
 });
 
 test("explicit peers preserve API generation and browser testing under the root install policy", () => {
-  assert.equal(api("typescript/package.json").version, "5.9.3");
+  assert.equal(api("typescript/package.json").version, "6.0.3");
   assert.equal(typeof api("typescript").factory.createKeywordTypeNode, "function");
+  assert.equal(web("typescript/package.json").version, "7.0.2");
   assert.equal(web("@testing-library/dom/package.json").version, "10.4.1");
   assert.equal(typeof web("@testing-library/dom").screen.getByRole, "function");
 });

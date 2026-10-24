@@ -4,7 +4,7 @@ import { Link, Outlet, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { normalize as normalizeENSName } from "viem/ens";
 
-import { usePublicConfig } from "@/api/hooks";
+import { usePublicConfig } from "@/api/publicConfig";
 import { brand } from "virtual:etherview-branding";
 import { useTheme } from "@/theme/ThemeProvider";
 import { AppFrame, ShellIcon } from "./DesignPrimitives";

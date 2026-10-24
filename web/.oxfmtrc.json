@@ -13,7 +13,7 @@
   "proseWrap": "preserve",
   "overrides": [{ "files": ["**/*.md"], "options": { "embeddedLanguageFormatting": "off" } }],
   "ignorePatterns": [
-    "src/api/schema.gen.ts",
+    "src/api/heyapi/**",
     "pnpm-lock.yaml",
     "dist/**",
     "node_modules/**",

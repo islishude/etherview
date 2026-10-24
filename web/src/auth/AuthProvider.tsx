@@ -23,7 +23,7 @@ import {
   verifyAuthChallenge,
 } from "@/api/auth";
 import { ApiError } from "@/api/client";
-import { usePublicConfig } from "@/api/hooks";
+import { usePublicConfig } from "@/api/publicConfig";
 import {
   chainsMatch,
   WalletBoundaryError,

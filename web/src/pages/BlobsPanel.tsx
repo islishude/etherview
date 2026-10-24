@@ -1,11 +1,11 @@
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { useBlockBlobs } from "@/api/consensus";
-import type { components } from "@/api/schema.gen";
+import type * as schemas from "@/api/heyapi/types.gen";
 import { QueryNotice } from "@/components/QueryNotice";
 import { formatInteger, shorten } from "@/components/format";
 
-export function BlobArchiveNotice({ data }: { data?: components["schemas"]["BlockBlobs"] }) {
+export function BlobArchiveNotice({ data }: { data?: schemas.BlockBlobs }) {
   const { t } = useTranslation();
   if (!data || data.state === "complete") return null;
   return (

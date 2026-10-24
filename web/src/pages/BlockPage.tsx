@@ -4,7 +4,8 @@ import { BlobsPanel } from "./BlobsPanel";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
-import { useBlock, useBlockTransactions, usePublicConfig } from "@/api/hooks";
+import { usePublicConfig } from "@/api/publicConfig";
+import { useBlock, useBlockTransactions } from "@/api/hooks";
 import type { BlockSummary, TransactionSummary } from "@/api/types";
 import {
   formatEtherFromGwei,

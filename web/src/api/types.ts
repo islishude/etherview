@@ -1,20 +1,20 @@
-import type { components } from "./schema.gen";
+import type * as schemas from "./heyapi/types.gen";
 
-export type DecimalString = components["schemas"]["Quantity"];
+export type DecimalString = schemas.Quantity;
 export type HexString = `0x${string}`;
-export type Address = components["schemas"]["Address"];
-export type ApiMeta = components["schemas"]["Meta"];
+export type Address = schemas.Address;
+export type ApiMeta = schemas.Meta;
 
-export type CompletenessState = components["schemas"]["StageState"];
-export type Finality = components["schemas"]["Finality"];
-export type Completeness = components["schemas"]["Completeness"];
+export type CompletenessState = schemas.StageState;
+export type Finality = schemas.Finality;
+export type Completeness = schemas.Completeness;
 
 export interface ApiEnvelope<T, Meta = ApiMeta> {
   data: T;
   meta: Meta;
 }
 
-export type ApiErrorPayload = components["schemas"]["ErrorResponse"];
+export type ApiErrorPayload = schemas.ErrorResponse;
 
 export interface CursorPage<T> {
   items: T[];
@@ -22,66 +22,64 @@ export interface CursorPage<T> {
   next_cursor?: string;
 }
 
-export type ChainStatus = components["schemas"]["Status"];
-export type PublicConfig = components["schemas"]["PublicConfig"];
-export type BlockSummary = components["schemas"]["Block"];
-export type BlockWithdrawal = components["schemas"]["BlockWithdrawal"];
-export type AddressWithdrawal = components["schemas"]["AddressWithdrawal"];
-export type TransactionSummary = components["schemas"]["Transaction"];
-export type TransactionDetail = components["schemas"]["TransactionDetail"];
-export type UserOperationSummary = components["schemas"]["UserOperationSummary"];
-export type UserOperationDetail = components["schemas"]["UserOperationDetail"];
-export type UserOperationProtocolEvent = components["schemas"]["UserOperationProtocolEvent"];
-export type TransactionCalldata = components["schemas"]["TransactionCalldata"];
-export type TransactionFailure = components["schemas"]["TransactionFailure"];
-export type HomeSnapshotResponse = components["schemas"]["HomeSnapshotResponse"];
-export type PendingTransaction = components["schemas"]["PendingTransaction"];
-export type PendingMeta = components["schemas"]["PendingMeta"];
+export type ChainStatus = schemas.Status;
+export type PublicConfig = schemas.PublicConfig;
+export type BlockSummary = schemas.Block;
+export type BlockWithdrawal = schemas.BlockWithdrawal;
+export type AddressWithdrawal = schemas.AddressWithdrawal;
+export type TransactionSummary = schemas.Transaction;
+export type TransactionDetail = schemas.TransactionDetail;
+export type UserOperationSummary = schemas.UserOperationSummary;
+export type UserOperationDetail = schemas.UserOperationDetail;
+export type UserOperationProtocolEvent = schemas.UserOperationProtocolEvent;
+export type TransactionCalldata = schemas.TransactionCalldata;
+export type TransactionFailure = schemas.TransactionFailure;
+export type HomeSnapshotResponse = schemas.HomeSnapshotResponse;
+export type PendingTransaction = schemas.PendingTransaction;
+export type PendingMeta = schemas.PendingMeta;
 export interface PendingSnapshot {
   items: PendingTransaction[];
   meta: PendingMeta;
 }
-export type AddressSummary = components["schemas"]["AddressSummary"];
-export type AddressInternalTransaction = components["schemas"]["AddressInternalTransaction"];
-export type AddressTokenTransfer = components["schemas"]["AddressTokenTransfer"];
-export type GenesisAccount = components["schemas"]["GenesisAccount"];
-export type SearchResult = components["schemas"]["SearchResult"];
-export type TokenContract = components["schemas"]["TokenContract"];
-export type TokenEvent = components["schemas"]["TokenEvent"];
-export type TokenHolder = components["schemas"]["TokenHolder"];
-export type TokenHolderMeta = components["schemas"]["TokenHolderMeta"];
+export type AddressSummary = schemas.AddressSummary;
+export type AddressInternalTransaction = schemas.AddressInternalTransaction;
+export type AddressTokenTransfer = schemas.AddressTokenTransfer;
+export type GenesisAccount = schemas.GenesisAccount;
+export type SearchResult = schemas.SearchResult;
+export type TokenContract = schemas.TokenContract;
+export type TokenEvent = schemas.TokenEvent;
+export type TokenHolder = schemas.TokenHolder;
+export type TokenHolderMeta = schemas.TokenHolderMeta;
 export interface TokenHolderPage {
   items: TokenHolder[];
   meta: TokenHolderMeta;
   next_cursor?: string;
 }
-export type NFTOwnership = components["schemas"]["NFTOwnership"];
-export type NFTMetadata = components["schemas"]["NFTMetadata"];
-export type NFTBalance = components["schemas"]["NFTBalance"];
-export type ERC20Balance = components["schemas"]["ERC20Balance"];
-export type TraceFrame = components["schemas"]["TraceFrame"];
-export type TransactionTrace = components["schemas"]["TransactionTrace"];
-export type TransactionInternalTransaction =
-  components["schemas"]["TransactionInternalTransaction"];
-export type TransactionInternalTransactions =
-  components["schemas"]["TransactionInternalTransactions"];
-export type TransactionTokenTransfers = components["schemas"]["TransactionTokenTransfers"];
-export type TransactionLogs = components["schemas"]["TransactionLogs"];
-export type TransactionLog = components["schemas"]["TransactionLog"];
-export type TransactionStateChanges = components["schemas"]["TransactionStateChanges"];
-export type TransactionStateChange = components["schemas"]["TransactionStateChange"];
-export type BlockStat = components["schemas"]["BlockStat"];
-export type AggregateStats = components["schemas"]["AggregateStats"];
-export type ChartMetric = components["schemas"]["ChartMetric"];
-export type ChartInterval = components["schemas"]["ChartInterval"];
-export type ChartPoint = components["schemas"]["ChartPoint"];
-export type ChartPreview = components["schemas"]["ChartPreview"];
-export type ChartOverview = components["schemas"]["ChartOverview"];
-export type ChartMetricSeries = components["schemas"]["ChartMetricSeries"];
-export type VerificationSubmission = components["schemas"]["AddressVerificationSubmission"];
-export type VerificationJob = components["schemas"]["VerificationJob"];
-export type VerificationOutcome = components["schemas"]["VerificationOutcome"];
-export type VerificationSuccess = components["schemas"]["VerificationSuccess"];
-export type VerificationMatchDetails = components["schemas"]["VerificationMatchDetails"];
-export type CompilerCatalog = components["schemas"]["CompilerCatalog"];
-export type VerifiedContract = components["schemas"]["VerifiedContract"];
+export type NFTOwnership = schemas.NftOwnership;
+export type NFTMetadata = schemas.NftMetadata;
+export type NFTBalance = schemas.NftBalance;
+export type ERC20Balance = schemas.Erc20Balance;
+export type TraceFrame = schemas.TraceFrame;
+export type TransactionTrace = schemas.TransactionTrace;
+export type TransactionInternalTransaction = schemas.TransactionInternalTransaction;
+export type TransactionInternalTransactions = schemas.TransactionInternalTransactions;
+export type TransactionTokenTransfers = schemas.TransactionTokenTransfers;
+export type TransactionLogs = schemas.TransactionLogs;
+export type TransactionLog = schemas.TransactionLog;
+export type TransactionStateChanges = schemas.TransactionStateChanges;
+export type TransactionStateChange = schemas.TransactionStateChange;
+export type BlockStat = schemas.BlockStat;
+export type AggregateStats = schemas.AggregateStats;
+export type ChartMetric = schemas.ChartMetric;
+export type ChartInterval = schemas.ChartInterval;
+export type ChartPoint = schemas.ChartPoint;
+export type ChartPreview = schemas.ChartPreview;
+export type ChartOverview = schemas.ChartOverview;
+export type ChartMetricSeries = schemas.ChartMetricSeries;
+export type VerificationSubmission = schemas.AddressVerificationSubmission;
+export type VerificationJob = schemas.VerificationJob;
+export type VerificationOutcome = schemas.VerificationOutcome;
+export type VerificationSuccess = schemas.VerificationSuccess;
+export type VerificationMatchDetails = schemas.VerificationMatchDetails;
+export type CompilerCatalog = schemas.CompilerCatalog;
+export type VerifiedContract = schemas.VerifiedContract;

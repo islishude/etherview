@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { useTransaction, useBlocks } from "./hooks";
 import * as queries from "./hooks";
+import { usePublicConfig } from "./publicConfig";
 import { useBlockBlobs, useBlockConsensus } from "./consensus";
 import { useContractProxy, useVerifiedContractArtifact } from "@/contracts/proxy";
 import { useAddressDelegation } from "@/contracts/delegation";
@@ -17,7 +18,7 @@ afterEach(() => {
 it.each([
   { name: "transaction", useResource: () => useTransaction(hash) },
   { name: "chain status", useResource: () => queries.useChainStatus() },
-  { name: "public config", useResource: () => queries.usePublicConfig() },
+  { name: "public config", useResource: () => usePublicConfig() },
   { name: "user operation", useResource: () => queries.useUserOperation(hash) },
   { name: "block", useResource: () => queries.useBlock(hash) },
   { name: "calldata", useResource: () => queries.useTransactionCalldata(hash) },

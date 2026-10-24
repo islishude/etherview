@@ -1,3 +1,4 @@
+import * as sdk from "../api/heyapi/sdk.gen";
 import {
   createContext,
   useCallback,
@@ -10,10 +11,10 @@ import {
 } from "react";
 
 import { apiClient, ApiError, requireEnvelope } from "@/api/client";
-import { usePublicConfig } from "@/api/hooks";
-import type { components } from "@/api/schema.gen";
+import { usePublicConfig } from "@/api/publicConfig";
+import type * as schemas from "@/api/heyapi/types.gen";
 
-type PrimaryName = components["schemas"]["PrimaryName"];
+type PrimaryName = schemas.PrimaryName;
 
 type AddressNamesContextValue = {
   lookup(address: string): PrimaryName | undefined;
@@ -53,8 +54,9 @@ export function AddressNamesProvider({ children }: { children: ReactNode }) {
     void (async () => {
       try {
         const response = requireEnvelope(
-          await apiClient.GET("/address-names", {
-            params: { query: { addresses: chunk.join(","), snapshot } },
+          await sdk.listAddressNames({
+            client: apiClient,
+            query: { addresses: chunk.join(","), snapshot },
           }),
         );
         setSnapshot(response.data.snapshot);

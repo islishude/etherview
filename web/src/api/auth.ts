@@ -1,17 +1,19 @@
-import type { components } from "./schema.gen";
+import * as sdk from "./heyapi/sdk.gen";
+import type * as schemas from "./heyapi/types.gen";
 import { apiClient, requireEnvelope, requireNoContent } from "./client";
 
-export type AuthSession = components["schemas"]["AuthSession"];
-export type AuthChallenge = components["schemas"]["AuthChallenge"];
-export type User = components["schemas"]["User"];
-export type AdminUserUpdate = components["schemas"]["AdminUserUpdate"];
+export type AuthSession = schemas.AuthSession;
+export type AuthChallenge = schemas.AuthChallenge;
+export type User = schemas.User;
+export type AdminUserUpdate = schemas.AdminUserUpdate;
 
 export async function getAuthSession(): Promise<AuthSession> {
-  return requireEnvelope(await apiClient.GET("/auth/session")).data;
+  return requireEnvelope(await sdk.getAuthSession({ client: apiClient })).data;
 }
 
 export async function createAuthChallenge(address: string) {
-  return requireEnvelope(await apiClient.POST("/auth/challenge", { body: { address } })).data;
+  return requireEnvelope(await sdk.createAuthChallenge({ client: apiClient, body: { address } }))
+    .data;
 }
 
 export async function verifyAuthChallenge(
@@ -19,7 +21,8 @@ export async function verifyAuthChallenge(
   signature: string,
 ): Promise<AuthSession> {
   return requireEnvelope(
-    await apiClient.POST("/auth/verify", {
+    await sdk.verifyAuthChallenge({
+      client: apiClient,
       body: { challenge_id: challengeID, signature },
     }),
   ).data;
@@ -27,9 +30,7 @@ export async function verifyAuthChallenge(
 
 export async function logoutAuthSession(csrfToken: string): Promise<void> {
   requireNoContent(
-    await apiClient.POST("/auth/logout", {
-      params: { header: { "X-CSRF-Token": csrfToken } },
-    }),
+    await sdk.logoutAuthSession({ client: apiClient, headers: { "X-CSRF-Token": csrfToken } }),
   );
 }
 
@@ -38,19 +39,16 @@ export async function updateCurrentUser(
   displayName: string | null,
 ): Promise<User> {
   return requireEnvelope(
-    await apiClient.PATCH("/users/me", {
-      params: { header: { "X-CSRF-Token": csrfToken } },
+    await sdk.updateCurrentUser({
+      client: apiClient,
+      headers: { "X-CSRF-Token": csrfToken },
       body: { display_name: displayName },
     }),
   ).data;
 }
 
 export async function listAdminUsers(limit: number, cursor?: string) {
-  return requireEnvelope(
-    await apiClient.GET("/admin/users", {
-      params: { query: { limit, cursor } },
-    }),
-  );
+  return requireEnvelope(await sdk.listAdminUsers({ client: apiClient, query: { limit, cursor } }));
 }
 
 export async function updateAdminUser(
@@ -59,11 +57,10 @@ export async function updateAdminUser(
   update: AdminUserUpdate,
 ): Promise<User> {
   return requireEnvelope(
-    await apiClient.PATCH("/admin/users/{id}", {
-      params: {
-        path: { id },
-        header: { "X-CSRF-Token": csrfToken },
-      },
+    await sdk.updateAdminUser({
+      client: apiClient,
+      path: { id },
+      headers: { "X-CSRF-Token": csrfToken },
       body: update,
     }),
   ).data;
@@ -71,11 +68,10 @@ export async function updateAdminUser(
 
 export async function revokeAdminUserSessions(csrfToken: string, id: string): Promise<string> {
   return requireEnvelope(
-    await apiClient.POST("/admin/users/{id}/sessions/revoke", {
-      params: {
-        path: { id },
-        header: { "X-CSRF-Token": csrfToken },
-      },
+    await sdk.revokeAdminUserSessions({
+      client: apiClient,
+      path: { id },
+      headers: { "X-CSRF-Token": csrfToken },
     }),
   ).data.revoked_sessions;
 }

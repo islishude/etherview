@@ -36,6 +36,17 @@ describe("generated CSV client", () => {
     await vi.runAllTimersAsync();
     expect(revoke).toHaveBeenCalledWith("blob:download");
   });
+  it.each([{ status: 204 }, { status: 200, headers: { "Content-Length": "0" } }])(
+    "rejects explicitly empty export responses: %j",
+    async (init) => {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, init)));
+      const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+      await expect(
+        downloadAddressCSV(request, "csrf", new AbortController().signal),
+      ).rejects.toMatchObject({ code: "HTTP_ERROR" });
+      expect(click).not.toHaveBeenCalled();
+    },
+  );
   it("does not download a JSON error as a CSV file", async () => {
     vi.stubGlobal(
       "fetch",

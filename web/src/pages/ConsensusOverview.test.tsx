@@ -1,12 +1,12 @@
 import { render, screen, within } from "@testing-library/react";
 import { beforeEach, expect, it } from "vitest";
-import type { components } from "@/api/schema.gen";
+import type * as schemas from "@/api/heyapi/types.gen";
 import i18n from "@/i18n";
 import { ConsensusOverview } from "./ConsensusPanels";
 
 const now = Date.parse("2026-10-20T00:00:00Z");
 const root = `0x${"ab".repeat(32)}`;
-const overview: components["schemas"]["ConsensusOverview"] = {
+const overview: schemas.ConsensusOverview = {
   state: "complete",
   stale: false,
   stale_at: "2026-10-20T00:00:10Z",

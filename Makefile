@@ -35,7 +35,7 @@ GENERATED_PATHS := \
 	internal/api/gen/models.gen.go \
 	internal/db/gen \
 	internal/enrich/manifests/safe-proxy-fingerprints.json \
-	web/src/api/schema.gen.ts
+	web/src/api/heyapi
 
 ETHERVIEW_WEB_BRANDING_DIR ?= web/branding/default
 export ETHERVIEW_WEB_BRANDING_DIR
@@ -60,7 +60,7 @@ X402_LOCAL_COMPOSE := e2e/x402local/compose.yaml
 X402_LOCAL_TOPOLOGY ?= monolith
 
 .DEFAULT_GOAL := check
-.NOTPARALLEL: check generate-check start-preview recreate-preview test-preview-metadata test-preview-consensus start-x402-local recreate-x402-local
+.NOTPARALLEL: check generate generate-check start-preview recreate-preview test-preview-metadata test-preview-consensus start-x402-local recreate-x402-local
 
 .PHONY: \
 	benchmark benchmark-integration \
@@ -102,7 +102,7 @@ generate-go:
 	$(GO) generate $(GO_PACKAGES)
 	$(GO) tool sqlc generate
 
-generate: generate-go web-build
+generate: generate-go web-generate web-build
 
 generate-check:
 	@set -eu; \
@@ -114,7 +114,6 @@ generate-check:
 			cp -R "$$path" "$$snapshot/$$path"; \
 		done; \
 		$(MAKE) --no-print-directory generate; \
-		$(PNPM) --dir api run check:api; \
 		for path in $(GENERATED_PATHS); do \
 			diff -ru "$$snapshot/$$path" "$$path"; \
 		done
@@ -271,7 +270,7 @@ web-lint: web-install web-format-check
 web-test: web-install
 	$(PNPM) --dir web run test
 
-web-build: web-generate
+web-build: web-install
 	$(PNPM) --dir web run build
 
 lint-go: lint-tool-check source-check
@@ -632,7 +631,7 @@ test-vyper-update: pnpm-install
 
 .PHONY: test-workflow-scripts
 test-workflow-scripts:
-	$(NODE) --test .github/scripts/workflow-scripts.test.mjs .github/scripts/production-evidence.test.mjs .github/scripts/prebuilt-targets.test.mjs
+	$(NODE) --test .github/scripts/workflow-scripts.test.mjs .github/scripts/production-evidence.test.mjs .github/scripts/prebuilt-targets.test.mjs .github/scripts/generated-check.test.mjs
 
 .PHONY: test-vyper-e2e test-vyper-e2e-prebuilt
 test-vyper-e2e: docker-build

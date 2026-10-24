@@ -18,7 +18,7 @@ import {
 } from "viem";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { usePublicConfig } from "@/api/hooks";
+import { usePublicConfig } from "@/api/publicConfig";
 import i18n from "@/i18n";
 import { getAddressDelegation } from "@/contracts/delegation";
 import { getContractProxyResponse } from "@/contracts/proxy";
@@ -34,7 +34,7 @@ import { useWallet } from "@/wallet/WalletProvider";
 
 import { AbiFunctionExplorer } from "./AbiFunctionForm";
 
-vi.mock("@/api/hooks", () => ({
+vi.mock("@/api/publicConfig", () => ({
   usePublicConfig: vi.fn(),
 }));
 

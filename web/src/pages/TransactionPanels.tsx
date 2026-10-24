@@ -1,6 +1,6 @@
 import { useCursorHistory } from "@/api/pagination";
 import { BlobsPanel, BlobHashList } from "./BlobsPanel";
-import { usePublicConfig } from "@/api/hooks";
+import { usePublicConfig } from "@/api/publicConfig";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import {

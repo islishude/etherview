@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import i18n from "@/i18n";
-import type { components } from "@/api/schema.gen";
+import type * as schemas from "@/api/heyapi/types.gen";
 import { BlobsPanel } from "./BlobsPanel";
 import { BlobPage } from "./BlobPage";
 import { shorten } from "@/components/format";
@@ -32,7 +32,7 @@ const transaction = `0x${"22".repeat(32)}`;
 const versionedHash = `0x${"33".repeat(32)}`;
 const commitment = `0x${"44".repeat(48)}`;
 const checksum = `0x${"55".repeat(32)}`;
-const data: components["schemas"]["BlockBlobs"] = {
+const data: schemas.BlockBlobs = {
   block_hash: block,
   state: "complete",
   items: [
