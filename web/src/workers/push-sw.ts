@@ -38,6 +38,7 @@ self.addEventListener("push", (event) => {
   const options: NotificationOptions & { renotify: boolean } = {
     body: data.body,
     tag: data.tag,
+    silent: false,
     renotify: false,
     data: { path: data.path },
   };
