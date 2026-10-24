@@ -294,6 +294,7 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 		webHandler := webui.NewHandler()
 		handler, err := httpapi.New(httpapi.Options{
 			ConsensusReader: writerReader,
+			RequestsReader:  writerReader,
 			Config:          cfg, Reader: publicReader, TransactionReader: transactionReader, AddressActivities: reader,
 			AddressEnrichment: catalogReader, AddressNames: addressNames,
 			DelegationBindings: delegationBindings, DelegationHistory: catalogReader,

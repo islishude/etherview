@@ -302,6 +302,7 @@ export const transactionsResources = {
       "state-changes": "State changes",
     },
     blockTabs: {
+      requests: "Requests",
       consensus: "Consensus",
       blobs: "Blobs",
       overview: "Overview",
@@ -605,6 +606,7 @@ export const transactionsResources = {
       "state-changes": "状态变化",
     },
     blockTabs: {
+      requests: "请求",
       consensus: "共识层",
       blobs: "Blobs",
       overview: "概览",

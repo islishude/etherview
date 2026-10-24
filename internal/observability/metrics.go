@@ -752,6 +752,8 @@ func boundedJobStage(value string) string {
 		return "trace"
 	case "state_diff", "state_diff@1", "state_diff@2", "state_diff@3":
 		return "state_diff"
+	case "requests", "requests@1":
+		return "requests"
 	case "native_transfer", "native_transfer@1":
 		return "native_transfer"
 	case "userop", "userop@1":

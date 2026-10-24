@@ -48,7 +48,7 @@ func (s *ConsensusDiscovery) Run(ctx context.Context) error {
 func (s *ConsensusDiscovery) tick(ctx context.Context) error {
 	chain, _ := consensusNumeric(strconv.FormatUint(s.Config.Chain.ID, 10))
 	q := dbgen.New(s.DB)
-	for _, stage := range []StageID{ConsensusStage, BlobStage} {
+	for _, stage := range []StageID{ConsensusStage, BlobStage, RequestsStage} {
 		if stage == BlobStage && !s.Config.Consensus.Blobs.Enabled {
 			continue
 		}

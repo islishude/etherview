@@ -360,6 +360,9 @@ WITH input AS (
 ), update_blob AS (
     UPDATE blob_manifests AS target SET canonical = $1
     FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
+), update_requests AS (
+    UPDATE execution_request_sets AS target SET canonical = $1
+    FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
 ), update_statistics AS (
     UPDATE block_statistics AS target SET canonical = $1
     FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash

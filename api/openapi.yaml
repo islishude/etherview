@@ -602,6 +602,32 @@ paths:
                 $ref: "#/components/schemas/TransactionListResponse"
         default:
           $ref: "#/components/responses/Error"
+  "/blocks/{id}/requests":
+    get:
+      operationId: getBlockRequests
+      tags: [blocks]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: block-identifier }
+        - name: request_type
+          in: query
+          schema:
+            $ref: "#/components/schemas/ExecutionRequestType"
+        - $ref: "#/components/parameters/Cursor"
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        200:
+          description: Authenticated requests included in this exact execution block; inclusion does not imply successful consensus processing. Amounts are in Gwei.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlockRequestsResponse"
+        default:
+          $ref: "#/components/responses/Error"
   "/blocks/{id}/consensus":
     get:
       operationId: "getBlockConsensus"
@@ -7494,6 +7520,144 @@ components:
         error:
           $ref: "#/components/schemas/APIError"
 
+    ExecutionRequestType:
+      type: string
+      enum: ["0x00", "0x01", "0x02", "0x03", "0x04"]
+    ExecutionRequest:
+      oneOf:
+        - $ref: "#/components/schemas/DepositRequest"
+        - $ref: "#/components/schemas/WithdrawalRequest"
+        - $ref: "#/components/schemas/ConsolidationRequest"
+        - $ref: "#/components/schemas/BuilderDepositRequest"
+        - $ref: "#/components/schemas/BuilderExitRequest"
+    DepositRequest:
+      type: object
+      additionalProperties: false
+      required:
+        [request_type, sequence_index, pubkey, withdrawal_credentials, amount, signature, index]
+      properties:
+        request_type:
+          type: string
+          enum: ["0x00"]
+        sequence_index:
+          $ref: "#/components/schemas/Quantity"
+        pubkey:
+          type: string
+          pattern: "^0x[0-9a-f]{96}$"
+        withdrawal_credentials:
+          type: string
+          pattern: "^0x[0-9a-f]{64}$"
+        amount:
+          $ref: "#/components/schemas/Quantity"
+        signature:
+          type: string
+          pattern: "^0x[0-9a-f]{192}$"
+        index:
+          $ref: "#/components/schemas/Quantity"
+    WithdrawalRequest:
+      type: object
+      additionalProperties: false
+      required: [request_type, sequence_index, source_address, validator_pubkey, amount]
+      properties:
+        request_type:
+          type: string
+          enum: ["0x01"]
+        sequence_index:
+          $ref: "#/components/schemas/Quantity"
+        source_address:
+          $ref: "#/components/schemas/Address"
+        validator_pubkey:
+          type: string
+          pattern: "^0x[0-9a-f]{96}$"
+        amount:
+          $ref: "#/components/schemas/Quantity"
+    ConsolidationRequest:
+      type: object
+      additionalProperties: false
+      required: [request_type, sequence_index, source_address, source_pubkey, target_pubkey]
+      properties:
+        request_type:
+          type: string
+          enum: ["0x02"]
+        sequence_index:
+          $ref: "#/components/schemas/Quantity"
+        source_address:
+          $ref: "#/components/schemas/Address"
+        source_pubkey:
+          type: string
+          pattern: "^0x[0-9a-f]{96}$"
+        target_pubkey:
+          type: string
+          pattern: "^0x[0-9a-f]{96}$"
+    BuilderDepositRequest:
+      type: object
+      additionalProperties: false
+      required: [request_type, sequence_index, pubkey, withdrawal_credentials, amount, signature]
+      properties:
+        request_type:
+          type: string
+          enum: ["0x03"]
+        sequence_index:
+          $ref: "#/components/schemas/Quantity"
+        pubkey:
+          type: string
+          pattern: "^0x[0-9a-f]{96}$"
+        withdrawal_credentials:
+          type: string
+          pattern: "^0x[0-9a-f]{64}$"
+        amount:
+          $ref: "#/components/schemas/Quantity"
+        signature:
+          type: string
+          pattern: "^0x[0-9a-f]{192}$"
+    BuilderExitRequest:
+      type: object
+      additionalProperties: false
+      required: [request_type, sequence_index, source_address, pubkey]
+      properties:
+        request_type:
+          type: string
+          enum: ["0x04"]
+        sequence_index:
+          $ref: "#/components/schemas/Quantity"
+        source_address:
+          $ref: "#/components/schemas/Address"
+        pubkey:
+          type: string
+          pattern: "^0x[0-9a-f]{96}$"
+    BlockRequests:
+      type: object
+      additionalProperties: false
+      required: [block_hash, state, items]
+      properties:
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+        state:
+          $ref: "#/components/schemas/ConsensusState"
+        code: { type: string }
+        requests_hash:
+          $ref: "#/components/schemas/Hash"
+        beacon_root:
+          $ref: "#/components/schemas/Hash"
+        total:
+          $ref: "#/components/schemas/Quantity"
+        counts:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/Quantity"
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/ExecutionRequest"
+    BlockRequestsResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/BlockRequests"
+        meta:
+          $ref: "#/components/schemas/Meta"
     ConsensusState:
       type: "string"
       enum:

@@ -9,7 +9,8 @@ versions, ERC-20/721/1155 activity, normalized call traces, state reconciliation
 search documents, and rollup statistics without delaying core readiness.
 
 The enrichment domain also owns configured ERC-4337 UserOperations,
-authoritative ERC-20 holder snapshots, optional Beacon observations, and
+authoritative ERC-20 holder snapshots, optional Beacon observations,
+verified execution request sets, and
 independently enabled durable blob archives. PostgreSQL owns identity and
 publication; immutable blob bodies live in a separate durable object bucket.
 Consensus observations never drive execution canonicality, finality, or readiness.
@@ -61,9 +62,13 @@ NFT metadata refresh share these exact identity and reorg boundaries.
 | P20-T18 | done   | P10, P20-T04, P20-T10, P20-T09     | Always-scheduled `holder@1`, genesis-covered exact-state reconciliation, immutable observations, incremental publication, and bounded reindex                                                | state/RPC, migration, PostgreSQL, supply/balance, lease/replay/reorg, race, and generation tests                |
 | P20-T19 | done   | P10, P20-T10                       | Optional Beacon network identity, bounded authenticated ingestion, durable overview, and `consensus@1`                                                                                       | fork/body-root, PostgreSQL, unavailable capability, lease/reorg, and discovery-generation regressions           |
 | P20-T20 | done   | P20-T19                            | Independently enabled `blob@1`, KZG-authenticated immutable object archives, fenced manifests, retained-object replay, and repair                                                            | object-store, independent readback, corruption, conditional write, crash, and replay regressions                |
+| P20-T21 | done   | P10, P20-T19                       | Authenticated five-type execution requests, independent requests@1 publication and replay                                                                                                    | protocol/SSZ, PostgreSQL race, replay/fencing and real Preview role parity                                      |
 
 ## Acceptance
 
+- [x] Independent requests publication authenticates all five types against the
+      Beacon body/bid and execution header, retains orphan rows, and revalidates
+      retained commitments before lease-fenced replay.
 - [x] Durable stage work is bounded, restartable and generation/lease-fenced.
 - [x] ABI, proxy, token, trace and state-difference facts retain exact block identity.
 - [x] Canonical publication is atomic; reorg replay retains orphan observations.
@@ -128,6 +133,14 @@ NFT metadata refresh share these exact identity and reorg boundaries.
 None. P60/P70 retain independent release blockers.
 
 ## Evidence
+
+P20-T21 passed five-type nonempty protocol fixtures, bounded malformed input,
+exact uint64 values, envelope identity/root rejection, PostgreSQL race publication,
+lease expiry, disabled-period cursor rewind, reorg/reattach and retained replay.
+Real Geth/Lighthouse Preview verified empty request sets against root-pinned
+Gloas envelopes and execution headers in both role layouts, including restart.
+The nonempty five-type evidence is synthetic; real builder transactions and
+public historical retention are not established.
 
 P20-T04/P20-T06 retain local native-transfer and historical-analytics acceptance:
 stage/publication, exact amounts, migration, reorg/replay, PostgreSQL/race and

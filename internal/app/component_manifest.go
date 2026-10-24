@@ -60,6 +60,7 @@ func productionComponentKeys(cfg config.Config, roles []components.Role, wakeEna
 			if cfg.Consensus.Enabled {
 				add("31-consensus-discovery")
 				addWorkerComponentKeys(add, "36-consensus", cfg.Consensus.WorkerCount)
+				addWorkerComponentKeys(add, "36-requests", cfg.Consensus.WorkerCount)
 				if cfg.Consensus.Blobs.Enabled {
 					addWorkerComponentKeys(add, "36-blob", cfg.Consensus.WorkerCount)
 				}

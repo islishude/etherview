@@ -683,13 +683,13 @@ func TestOperationalMetricLabelsUseClosedStateMappings(t *testing.T) {
 			t.Fatalf("boundedJobStatus(%q) = %q", status, got)
 		}
 	}
-	for _, stage := range []string{"proxy", "abi", "token", "stats", "trace", "userop", "nft-metadata", "verification"} {
+	for _, stage := range []string{"requests", "proxy", "abi", "token", "stats", "trace", "userop", "nft-metadata", "verification"} {
 		if got := boundedJobStage(stage); got != stage {
 			t.Fatalf("boundedJobStage(%q) = %q", stage, got)
 		}
 	}
 	for versioned, want := range map[string]string{
-		"proxy@1": "proxy", "proxy@2": "proxy", "abi@1": "abi", "abi@2": "abi", "abi@3": "abi", "abi@5": "abi", "token@2": "token", "holder@1": "holder", "stats@2": "stats", "stats@4": "stats", "trace@1": "trace", "trace@2": "trace", "trace@4": "trace", "state_diff@1": "state_diff", "state_diff@2": "state_diff", "state_diff@3": "state_diff", "userop@1": "userop",
+		"requests@1": "requests", "proxy@1": "proxy", "proxy@2": "proxy", "abi@1": "abi", "abi@2": "abi", "abi@3": "abi", "abi@5": "abi", "token@2": "token", "holder@1": "holder", "stats@2": "stats", "stats@4": "stats", "trace@1": "trace", "trace@2": "trace", "trace@4": "trace", "state_diff@1": "state_diff", "state_diff@2": "state_diff", "state_diff@3": "state_diff", "userop@1": "userop",
 	} {
 		if got := boundedJobStage(versioned); got != want {
 			t.Fatalf("boundedJobStage(%q) = %q, want %q", versioned, got, want)

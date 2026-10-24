@@ -54,9 +54,13 @@ with session-isolated browser state.
 | P50-T74 | done   | P60-T19, P40-T23, P60-T05          | Bilingual private watch/notification workspace and bounded CSV download with account-switch cache isolation                                                                                            | browser/session isolation, generated-client, responsive/accessibility, and production parity tests                             |
 | P50-T75 | done   | P40-T22, P50-T06                   | Consensus overview, slot provenance, blob archive status, on-demand preview, and exact-hash downloads                                                                                                  | generated-client, disabled/unavailable/freshness, mobile, browser, and production parity tests                                 |
 | P50-T76 | done   | P50-T01, P40                       | Pinned Hey API Fetch SDK with explicit same-origin client, exact types, error/stream preservation and explicit generation ([#169](https://github.com/islishude/etherview/issues/169))                  | type/runtime regressions, deterministic directory generation, Web/build/browser and common gates                               |
+| P50-T77 | done   | P40-T24                            | Bilingual Requests tab with five request types, filtering, details and pagination                                                                                                                      | 545 frontend tests and 105 embedded browser scenarios; bilingual 390px accessibility                                           |
 
 ## Acceptance
 
+- [x] The Requests tab loads by exact execution hash and supports five types,
+      precise amounts, exit labels, filters, cursor reset, expandable/copyable
+      full values, bilingual mobile layout and keyboard access.
 - [x] Bilingual core, token, contract and account surfaces use the generated same-origin client.
 - [x] Hey API operations require the configured client; ordinary builds use committed
       SDK output while explicit generation and CI enforce complete-directory freshness.
@@ -114,6 +118,12 @@ with session-isolated browser state.
 None. P60/P70 retain independent release blockers.
 
 ## Evidence
+
+P50-T77 passed 545 frontend tests and all 105 embedded browser scenarios,
+including the new bilingual 390px Requests deep links, five-type details,
+exact quantities, filtering, pagination reset, capability states and accessibility.
+Generated same-origin client and asset-budget checks also passed; actual
+Withdrawals retain their existing semantics.
 
 P50-T76 passed local `make check`, 535 frontend tests, all 102 embedded Chromium
 cases, deterministic SDK generation and the Docker Web builder stage. Build-only

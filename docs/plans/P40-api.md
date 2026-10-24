@@ -67,6 +67,7 @@ canonical snapshot with explicit admission, size, time, and coverage limits.
 | P40-T21 | done   | P20-T18, P40-T03, P40-T06, P60-T13 | Native holder list/count and billable Etherscan list/count from complete current-tip snapshots                                                                                         | OpenAPI/generation, handler, cursor/reorg, billing, compatibility, and PostgreSQL tests                                 |
 | P40-T22 | done   | P20-T19, P20-T20, P40-T12          | Generated consensus/blob metadata, consensus-first slots with execution fallback, and exact-hash binary downloads                                                                      | generated contracts, HTTP/query, integrity, freshness, and runtime tests                                                |
 | P40-T23 | done   | P60-T18, P40-T08                   | SIWE/CSRF-authenticated address CSV exports, writer snapshot/coverage checks, bounded PostgreSQL admission, and exact complete files                                                   | OpenAPI/generation, snapshot/reorg, row/byte/time limits, JSON-only failure, concurrency, and runtime regressions       |
+| P40-T24 | done   | P20-T21                            | Exact-block execution request API with typed fields and publication-bound pagination                                                                                                   | generated contracts, HTTP validation, PostgreSQL snapshots/cursors and runtime parity                                   |
 
 P40-T06's authoritative compatibility reads build on P20, the native API,
 P60-T09 user authentication/scoped keys, and P60-T13 prepaid read billing.
@@ -77,6 +78,9 @@ acceptance is independent of P60's still-blocked live-payment gate.
 
 ## Acceptance
 
+- [x] Requests pages read only published PostgreSQL data, preserve exact decimal
+      amounts/indices, distinguish collection states, and bind pagination to the
+      block, type filter and publication identity.
 - [x] uint256/wei and other unsafe numbers are strings; addresses are checksummed.
 - [x] Responses expose canonicality, finality, coverage, and enrichment status.
 - [x] Unsupported optional capability returns a machine-readable unavailable
@@ -167,6 +171,12 @@ acceptance is independent of P60's still-blocked live-payment gate.
 None. P60/P70 retain independent release blockers.
 
 ## Evidence
+
+P40-T24 passed generated contracts and handler bounds, PostgreSQL race tests
+for exact-block/filter/publication cursors, disabled/preactivation states and
+reads without Beacon access. Production runtime and real Preview confirmed
+writer routing and both role layouts. Pending transient retries expose no
+unverified request rows.
 
 P40-T02/P40-T03/P40-T07/P40-T08/P40-T10 retain authenticated Genesis origins,
 analytics, numeric canonical selection and current capability coverage.

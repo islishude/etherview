@@ -12,7 +12,7 @@ BEGIN
     SELECT * INTO current_job FROM durable_jobs WHERE id = NEW.id;
     IF NOT FOUND
        OR current_job.kind <> 'enrichment'
-       OR current_job.stage NOT IN ('proxy', 'abi', 'token', 'stats', 'trace', 'native_transfer', 'consensus', 'blob')
+       OR current_job.stage NOT IN ('proxy', 'abi', 'token', 'stats', 'trace', 'native_transfer', 'consensus', 'blob', 'requests')
        OR current_job.status NOT IN ('succeeded', 'failed') THEN
         RETURN NULL;
     END IF;
@@ -105,7 +105,7 @@ CREATE FUNCTION require_enrichment_publication_protocol() RETURNS trigger
     AS $$
 BEGIN
     IF NEW.kind = 'enrichment'
-       AND NEW.stage IN ('proxy', 'abi', 'token', 'stats', 'trace', 'native_transfer', 'consensus', 'blob')
+       AND NEW.stage IN ('proxy', 'abi', 'token', 'stats', 'trace', 'native_transfer', 'consensus', 'blob', 'requests')
        AND NEW.status = 'leased'
        AND (
            OLD.status <> 'leased'

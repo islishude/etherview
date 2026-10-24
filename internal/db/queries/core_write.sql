@@ -259,6 +259,9 @@ WITH input AS (
 ), update_blob AS (
     UPDATE blob_manifests AS target SET canonical = sqlc.arg('canonical')
     FROM input WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash
+), update_requests AS (
+    UPDATE execution_request_sets AS target SET canonical = sqlc.arg('canonical')
+    FROM input WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash
 ), update_statistics AS (
     UPDATE block_statistics AS target SET canonical = sqlc.arg('canonical')
     FROM input WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash

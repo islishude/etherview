@@ -553,6 +553,12 @@ type Querier interface {
 	RecordPriceAdapterSuccess(ctx context.Context, arg RecordPriceAdapterSuccessParams) error
 	RecordUserLogin(ctx context.Context, loggedInAt pgtype.Timestamptz, iD pgtype.UUID) (User, error)
 	ReleaseBillingUsage(ctx context.Context, arg ReleaseBillingUsageParams) (ReleaseBillingUsageRow, error)
+	RequestsListItems(ctx context.Context, arg RequestsListItemsParams) ([]RequestsListItemsRow, error)
+	RequestsReadSet(ctx context.Context, chainID pgtype.Numeric, blockHash []byte) (RequestsReadSetRow, error)
+	RequestsRetainedItems(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([][]byte, error)
+	RequestsRetainedSet(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([]byte, error)
+	RequestsWriteItems(ctx context.Context, arg RequestsWriteItemsParams) ([]int32, error)
+	RequestsWriteSet(ctx context.Context, arg RequestsWriteSetParams) (int64, error)
 	ReserveBillingUsage(ctx context.Context, arg ReserveBillingUsageParams) (ReserveBillingUsageRow, error)
 	RevokeAllUserAPIKeys(ctx context.Context, revokedAt pgtype.Timestamptz, userID pgtype.UUID) error
 	RevokeAllUserSessions(ctx context.Context, revokedAt pgtype.Timestamptz, userID pgtype.UUID) (int64, error)
