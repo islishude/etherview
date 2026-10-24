@@ -1460,6 +1460,15 @@ alerts. Record browser/OS versions, notification permission, deployed build and
 the observed result. Offline delivery is deliberately not an acceptance goal:
 TTL 0 drops messages instead of storing them for later delivery.
 
+When validating background click navigation, close DevTools and allow the
+Service Worker to stop before sending a real transaction notification, then
+allow it to stop again before clicking. Keep this check separate from browser
+automation. Injected push tests verify notification content and the retained
+transaction target; they do not establish native OS click delivery.
+If a notification arrives but clicking it only activates Chrome or does nothing,
+check the browser's native notification callback and helper-process logs before
+changing application routes.
+
 For local development with Stash/Clash Fake-IP DNS or a private push receiver,
 set `push.unsafe_allow_private_networks: true`, or set the following in Preview's
 ignored `.local/preview-push.env`:

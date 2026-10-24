@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test";
 // bundled headless shell does not expose them through getNotifications().
 test.use({ channel: process.env.PLAYWRIGHT_USE_BUNDLED === "1" ? "chromium" : "chrome" });
 
-test("embedded worker displays an injected push after the website page closes", async ({
+test("embedded push retains its transaction target after the page closes and worker stops", async ({
   page,
   context,
 }) => {
@@ -16,10 +16,20 @@ test("embedded worker displays an injected push after the website page closes", 
   const control = await context.newPage();
   const protocol = await context.newCDPSession(control);
   let registrationId = "";
+  let versionId = "";
+  let runningStatus = "";
   protocol.on("ServiceWorker.workerRegistrationUpdated", ({ registrations }) => {
     for (const registration of registrations) {
       if (registration.scopeURL === `${origin}/` && !registration.isDeleted)
         registrationId = registration.registrationId;
+    }
+  });
+  protocol.on("ServiceWorker.workerVersionUpdated", ({ versions }) => {
+    for (const version of versions) {
+      if (version.registrationId === registrationId && version.status === "activated") {
+        versionId = version.versionId;
+        runningStatus = version.runningStatus;
+      }
     }
   });
   await protocol.send("ServiceWorker.enable");
@@ -44,6 +54,9 @@ test("embedded worker displays an injected push after the website page closes", 
       expires: Date.now() + 10_000,
     }),
   });
+  await expect.poll(() => versionId).not.toBe("");
+  await protocol.send("ServiceWorker.stopWorker", { versionId });
+  await expect.poll(() => runningStatus).toBe("stopped");
   const reopened = await context.newPage();
   await reopened.goto(origin);
   await expect
@@ -54,6 +67,7 @@ test("embedded worker displays an injected push after the website page closes", 
           title: n.title,
           body: n.body,
           tag: n.tag,
+          path: n.data?.path,
         }));
       }),
     )
@@ -61,6 +75,7 @@ test("embedded worker displays an injected push after the website page closes", 
       title: "Watchlist activity",
       body: "Test address · transaction · in",
       tag: "etherview:closed-page-test",
+      path: `/tx/0x${"a".repeat(64)}`,
     });
   await reopened.evaluate(async () => {
     const registration = await navigator.serviceWorker.ready;
