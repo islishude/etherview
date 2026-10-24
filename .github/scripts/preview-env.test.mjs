@@ -20,6 +20,7 @@ test("fresh Preview gets a valid unique P-256 pair, reused without rewriting", (
   const source = fs.readFileSync(file, "utf8");
   const values = parseEnv(source);
   const key = crypto.createECDH("prime256v1");
+  assert.equal(Buffer.from(values.ETHERVIEW_PUSH_PRIVATE_KEY, "base64url").length, 32);
   key.setPrivateKey(Buffer.from(values.ETHERVIEW_PUSH_PRIVATE_KEY, "base64url"));
   assert.equal(key.getPublicKey().toString("base64url"), values.ETHERVIEW_PUSH_PUBLIC_KEY);
   assert.equal(values.ETHERVIEW_PUSH_ENABLED, "true");
@@ -36,6 +37,32 @@ test("fresh Preview gets a valid unique P-256 pair, reused without rewriting", (
     values.ETHERVIEW_PUSH_PUBLIC_KEY,
   );
 });
+
+for (const length of [1, 30, 31, 32]) {
+  test(`generated ${length}-byte scalar retains its identity in a reusable 32-byte key`, (t) => {
+    const scalar = Buffer.alloc(length, 1);
+    const expected = Buffer.from("00".repeat(32 - length) + "01".repeat(length), "hex");
+    const reference = crypto.createECDH("prime256v1");
+    reference.setPrivateKey(scalar);
+    assert.equal(reference.getPrivateKey().length, length);
+    const generate = t.mock.method(crypto.ECDH.prototype, "generateKeys", function () {
+      this.setPrivateKey(scalar);
+      return this.getPublicKey();
+    });
+    const file = fixture(t);
+    prepareEnvironment(file);
+    const source = fs.readFileSync(file, "utf8");
+    const values = parseEnv(source);
+    assert.equal(values.ETHERVIEW_PUSH_PRIVATE_KEY, expected.toString("base64url"));
+    assert.equal(values.ETHERVIEW_PUSH_PUBLIC_KEY, reference.getPublicKey().toString("base64url"));
+    const modified = fs.statSync(file).mtimeMs;
+    prepareEnvironment(file);
+    assert.equal(generate.mock.callCount(), 1);
+    assert.equal(fs.readFileSync(file, "utf8"), source);
+    assert.equal(fs.statSync(file).mtimeMs, modified);
+    assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  });
+}
 
 test("operator settings and comments survive completion and permission tightening", (t) => {
   const file = fixture(t);
@@ -54,7 +81,7 @@ test("operator settings and comments survive completion and permission tightenin
 test("existing private key derives the same public identity; invalid or partial pairs fail unchanged", (t) => {
   const file = fixture(t);
   const key = crypto.createECDH("prime256v1");
-  key.generateKeys();
+  key.setPrivateKey(Buffer.alloc(32, 1));
   const privateLine = `ETHERVIEW_PUSH_PRIVATE_KEY=${key.getPrivateKey().toString("base64url")}\n`;
   fs.writeFileSync(file, privateLine);
   prepareEnvironment(file);
@@ -65,6 +92,10 @@ test("existing private key derives the same public identity; invalid or partial 
   for (const source of [
     "ETHERVIEW_PUSH_PUBLIC_KEY=existing\n",
     "ETHERVIEW_PUSH_PRIVATE_KEY=invalid\n",
+    `ETHERVIEW_PUSH_PRIVATE_KEY=${Buffer.alloc(31, 1).toString("base64url")}\n`,
+    `ETHERVIEW_PUSH_PRIVATE_KEY=${Buffer.alloc(32).toString("base64url")}\n`,
+    `ETHERVIEW_PUSH_PRIVATE_KEY=${Buffer.alloc(32, 255).toString("base64url")}\n`,
+    privateLine.trimEnd() + "=\n",
     privateLine + "ETHERVIEW_PUSH_PUBLIC_KEY=mismatch\n",
     "ETHERVIEW_PUSH_PRIVATE_KEY_FILE=/run/push-key\n",
     privateLine + "ETHERVIEW_PUSH_PRIVATE_KEY_FILE=/run/push-key\n",

@@ -121,6 +121,9 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   Git repositories and stub commands, covering metadata, digest export,
   PR flags, command order, prebuilt entry points, production-image/evidence
   handoff and failure propagation without pushing images or PRs.
+  It also tests the Compose check runner's scenario isolation and failure handling
+  with stub commands. `make compose-check` runs the real rendering matrix through
+  `.github/scripts/compose-check.mjs`, retaining the domain-specific validators.
 - `make toolchain-check`: require at least Go 1.27.3, Node 26.12.1, and pnpm
   12.15.0 before generating or validating artifacts. Compatible newer stable
   versions are supported by this minimum-version check; older, malformed, and
@@ -1067,8 +1070,10 @@ retention, production backup/restore, or native CI execution.
 `make preview-network-check` exercises immutable reuse, incomplete material,
 configuration drift, tampering, symlinks and rejected single-file overrides.
 It also checks Preview env creation, key-pair reuse and validation, operator-setting
-preservation and 0600 permissions. Compose rendering verifies that a single env
-file supplies public configuration while private keys reach only maintenance/all.
+preservation and 0600 permissions. Deterministic short-scalar cases verify
+32-byte private-key encoding, unchanged public identity and reuse without rotation.
+Compose rendering verifies that a single env file supplies public configuration
+while private keys reach only maintenance/all.
 It also checks Compose command strings, executable paths with spaces, literal
 argument preservation, readiness port lookup and initialization failure propagation.
 `make compose-check` checks Engine JWT and validator-key isolation, scoped

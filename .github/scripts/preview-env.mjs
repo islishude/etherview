@@ -42,7 +42,11 @@ export function prepareEnvironment(file) {
       }
     } else {
       key.generateKeys();
-      add("PRIVATE_KEY", key.getPrivateKey().toString("base64url"));
+      // OpenSSL omits leading zero bytes; VAPID consumers require a 32-byte scalar.
+      const scalar = key.getPrivateKey();
+      const bytes = Buffer.alloc(32);
+      scalar.copy(bytes, bytes.length - scalar.length);
+      add("PRIVATE_KEY", bytes.toString("base64url"));
     }
     const derived = key.getPublicKey().toString("base64url");
     if (publicKey && publicKey !== derived) throw new Error("Preview push key pair does not match");

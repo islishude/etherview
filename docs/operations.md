@@ -1425,8 +1425,9 @@ uses one ignored `.local/preview-push.env` for all local settings, including the
 VAPID key pair.
 `make start-preview` and `make recreate-preview` run `make preview-env` first:
 it creates the file when missing, generates a P-256 key pair, fills missing push
-settings and enforces mode 0600. Existing values, comments and key pairs are
-preserved; generated defaults enable Preview push and leave private-network
+settings and enforces mode 0600. Generated private scalars retain leading zero
+bytes to encode exactly 32 bytes in unpadded base64url. Existing values, comments
+and key pairs are preserved; generated defaults enable Preview push and leave private-network
 access disabled. Only maintenance receives the private key; Compose does not
 inject the whole file into containers. `.local/` is excluded from Git and Docker
 build contexts. Production push remains disabled by default.

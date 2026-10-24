@@ -1,5 +1,7 @@
 SHELL := /bin/sh
 
+# Tools and configuration
+
 GO ?= go
 NODE ?= node
 PNPM ?= pnpm
@@ -60,44 +62,43 @@ PREVIEW_IPFS_CERT := $(PREVIEW_TLS_DIR)/ipfs.crt
 PREVIEW_IPFS_KEY := $(PREVIEW_TLS_DIR)/ipfs.key
 X402_LOCAL_COMPOSE := e2e/x402local/compose.yaml
 X402_LOCAL_TOPOLOGY ?= monolith
+VYPER_ALIAS_FEASIBILITY_OUTPUT ?= .local/vyper-alias-feasibility
 
 .DEFAULT_GOAL := check
 .NOTPARALLEL: check generate generate-check start-preview recreate-preview test-preview-metadata test-preview-consensus start-x402-local recreate-x402-local
 
-.PHONY: \
-	benchmark benchmark-integration \
-	check compose-check deployment-check docs-check \
-	docker-build docker-check docker-image-check \
-	compiler-install go-build generate generate-check generate-go helm-check install-lint-tools install-security-tools \
-	golangci-lint \
-	format format-check repo-format-check web-format-check pnpm-install \
-	license-check license-tool-check lint lint-go plan-check security-check source-check \
-	security-tool-check test test-go toolchain-check \
-	test-e2e test-integration test-integration-race test-load test-race test-runtime-e2e \
-	test-runtime-e2e-prebuilt test-hardhat3-provider-compat test-hardhat3-e2e \
-	test-hardhat3-e2e-prebuilt test-hardhat3-offline-compile hardhat3-client-image-build \
-	test-foundry-e2e test-foundry-e2e-prebuilt test-foundry-offline-compile foundry-client-image-build \
-	test-preview-metadata test-preview-metadata-prebuilt test-preview-consensus-prebuilt preview-e2e-check \
-	test-schema-e2e test-schema-e2e-prebuilt test-soak \
-	web-build web-generate web-install web-lint web-test preview-cert preview-cert-check \
-	preview-env preview-network-check preview-network-runtime \
-	start-preview stop-preview recreate-preview \
-	start-x402-local stop-x402-local recreate-x402-local
+# Arguments: image reference, failure message. Keep checks at their call sites.
+define require-image
+$(DOCKER) image inspect "$(1)" >/dev/null 2>&1 || { \
+	echo "$(2)"; \
+	exit 1; \
+}
+endef
+
+# Build and generation
+
+.PHONY: pnpm-install web-install compiler-install go-build web-build web-generate generate-go \
+	generate generate-check docker-build hardhat3-client-image-build foundry-client-image-build \
+	preview-gateway-build
+
+pnpm-install:
+	$(PNPM) install --frozen-lockfile
+
+web-install: pnpm-install
+
+compiler-install: pnpm-install
+	$(NODE) compiler/vyper/wasm/prepare.mjs
+	$(NODE) compiler/vyper/wasm/packages.mjs --version 0.4.3
+	$(PNPM) --dir compiler run build:sea "$(CURDIR)/.local/vyper-wasm/sea/etherview-solcjs"
 
 go-build: web-build
 	$(GO) build $(GO_BUILD_FLAGS) -ldflags="$(GO_BUILD_LDFLAGS)" -o $(GO_BUILD_OUTPUT) ./cmd/etherview
 
-plan-check:
-	$(GO) run ./cmd/plancheck -root .
+web-build: web-install
+	$(PNPM) --dir web run build
 
-docs-check:
-	$(NODE) .github/scripts/docs-check.mjs
-
-source-check:
-	$(GO) run ./cmd/sourcecheck -root .
-
-toolchain-check:
-	@.github/scripts/toolchain-check.sh
+web-generate: web-install
+	$(PNPM) --dir api run generate:api
 
 generate-go:
 	$(NODE) compiler/vyper/wasm/generate-policy.mjs
@@ -120,145 +121,50 @@ generate-check:
 			diff -ru "$$snapshot/$$path" "$$path"; \
 		done
 
-.PHONY: test-rustfs
-test-rustfs:
-	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(GO) test $(GO_TEST_FLAGS) -tags rustfs -run '^TestRustFS$$' -count=1 -timeout=6m ./internal/accelerator
-
-test-go: web-build compiler-install
-	$(GO) test $(GO_TEST_FLAGS) $(GO_PACKAGES)
-
-test: test-go web-test test-workflow-scripts
-
-test-e2e: web-build
-	@set -eu; \
-		server_binary="$$(mktemp /tmp/etherview-web-e2e.XXXXXX)"; \
-		trap 'rm -f "$$server_binary"' EXIT INT TERM; \
-		$(GO) build -o "$$server_binary" ./web/e2e/server; \
-		ETHERVIEW_E2E_SERVER_BINARY="$$server_binary" $(PNPM) --dir web run test:e2e
-
-test-race: web-build compiler-install
-	$(GO) test -race $(GO_TEST_FLAGS) $(GO_PACKAGES)
-
-test-hardhat3-provider-compat: pnpm-install
-	$(NODE) --test e2e/hardhat3/safe-artifact.test.mjs e2e/hardhat3/transaction-sender.test.mjs
-	ETHERVIEW_HARDHAT3_NODE="$(NODE)" $(GO) test -count=1 -tags=hardhat3verify ./e2e/hardhat3
+docker-build:
+	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "docker-build: docker is required"; exit 1; }
+	DOCKER="$(DOCKER)" $(BUILDX) build --load --target production --tag "$(IMAGE)" \
+		--build-arg "ETHERVIEW_WEB_BRANDING_DIR=$${ETHERVIEW_WEB_BRANDING_DIR:-web/branding/default}" .
 
 hardhat3-client-image-build:
 	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "hardhat3-client-image-build: docker is required"; exit 1; }
 	DOCKER="$(DOCKER)" $(BUILDX) build --load \
 		--tag "$(HARDHAT3_IMAGE)" -f e2e/hardhat3/Dockerfile .
 
-test-hardhat3-e2e: docker-build hardhat3-client-image-build
-	@$(MAKE) --no-print-directory test-hardhat3-e2e-prebuilt
-
-test-hardhat3-offline-compile:
-	@$(DOCKER) image inspect "$(HARDHAT3_IMAGE)" >/dev/null 2>&1 || { \
-		echo "test-hardhat3-offline-compile: Hardhat client $(HARDHAT3_IMAGE) is not loaded"; \
-		exit 1; \
-	}
-	@$(DOCKER) run --rm --network none "$(HARDHAT3_IMAGE)" \
-		pnpm exec hardhat --build-profile production compile
-
-test-hardhat3-e2e-prebuilt: test-hardhat3-offline-compile
-	@case "$(VERIFICATION_PARALLEL)" in 1|2) ;; *) echo "VERIFICATION_PARALLEL must be 1 or 2"; exit 1;; esac
-	@$(DOCKER) image inspect "$(IMAGE)" >/dev/null 2>&1 || { \
-		echo "test-hardhat3-e2e-prebuilt: image $(IMAGE) is not loaded"; \
-		exit 1; \
-	}
-	@$(DOCKER) image inspect "$(HARDHAT3_IMAGE)" >/dev/null 2>&1 || { \
-		echo "test-hardhat3-e2e-prebuilt: Hardhat client $(HARDHAT3_IMAGE) is not loaded"; \
-		exit 1; \
-	}
-	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" NODE="$(NODE)" \
-		ETHERVIEW_HARDHAT3_IMAGE="$(HARDHAT3_IMAGE)" \
-		$(GO) test -count=1 -v -timeout=30m -tags='runtimee2e verificatione2e' \
-		-parallel=$(VERIFICATION_PARALLEL) -run '^(TestHardhat3(ProductionE2E|VerificationCounts)|TestVerificationTopologyScheduling)$$' ./e2e/runtime
-
 foundry-client-image-build:
 	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "foundry-client-image-build: docker is required"; exit 1; }
 	DOCKER="$(DOCKER)" $(BUILDX) build --load \
 		--tag "$(FOUNDRY_IMAGE)" e2e/foundry
 
-test-foundry-e2e: docker-build foundry-client-image-build
-	@$(MAKE) --no-print-directory test-foundry-e2e-prebuilt
+preview-gateway-build:
+	DOCKER="$(DOCKER)" $(BUILDX) build --load --file deploy/ipfs/Dockerfile --tag "$(IPFS_GATEWAY_IMAGE)" .
 
-test-foundry-offline-compile:
-	@$(DOCKER) image inspect "$(FOUNDRY_IMAGE)" >/dev/null 2>&1 || { \
-		echo "test-foundry-offline-compile: Foundry client $(FOUNDRY_IMAGE) is not loaded"; \
-		exit 1; \
-	}
-	@$(DOCKER) run --rm --network none "$(FOUNDRY_IMAGE)" \
-		forge build --offline --force --silent
 
-test-foundry-e2e-prebuilt: test-foundry-offline-compile
-	@$(DOCKER) image inspect "$(IMAGE)" >/dev/null 2>&1 || { \
-		echo "test-foundry-e2e-prebuilt: image $(IMAGE) is not loaded"; \
-		exit 1; \
-	}
-	@$(DOCKER) image inspect "$(FOUNDRY_IMAGE)" >/dev/null 2>&1 || { \
-		echo "test-foundry-e2e-prebuilt: Foundry client $(FOUNDRY_IMAGE) is not loaded"; \
-		exit 1; \
-	}
-	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" NODE="$(NODE)" \
-		ETHERVIEW_FOUNDRY_IMAGE="$(FOUNDRY_IMAGE)" \
-		$(GO) test -count=1 -v -tags='runtimee2e foundrye2e' \
-		-run '^TestFoundryProductionVerificationE2E$$' ./e2e/runtime
+# Quality checks
 
-# Without INTEGRATION_DATABASE_URL the Go runner owns a fresh PostgreSQL 18
-# Compose project. Supplying a URL remains useful for an explicitly disposable
-# external database.
-test-integration: web-build compiler-install
-	@INTEGRATION_DATABASE_URL="$(INTEGRATION_DATABASE_URL)" COMPOSE="$(COMPOSE)" \
-		DOCKER="$(DOCKER)" GO="$(GO)" \
-		$(GO) run ./cmd/testintegration -root . -packages "$(INTEGRATION_GO_PACKAGES)" \
-			-shard "$(INTEGRATION_SHARD)" -shards "$(INTEGRATION_SHARDS)"
+.PHONY: check toolchain-check plan-check docs-check source-check format format-check \
+	repo-format-check web-format-check lint lint-go golangci-lint web-lint install-lint-tools \
+	lint-tool-check install-security-tools security-tool-check security-check license-tool-check \
+	license-check
 
-test-integration-race: web-build compiler-install
-	@INTEGRATION_DATABASE_URL="$(INTEGRATION_DATABASE_URL)" COMPOSE="$(COMPOSE)" \
-		DOCKER="$(DOCKER)" GO="$(GO)" \
-		$(GO) run ./cmd/testintegration -root . -packages "$(INTEGRATION_GO_PACKAGES)" -race \
-			-shard "$(INTEGRATION_SHARD)" -shards "$(INTEGRATION_SHARDS)"
+check: toolchain-check security-tool-check license-tool-check docs-check plan-check generate-check lint test test-race security-check license-check deployment-check
 
-benchmark:
-	$(GO) test -run '^$$' -bench '^BenchmarkBundleBoundary$$' -benchmem \
-		-benchtime="$(BENCHTIME)" ./internal/chainbundle
+toolchain-check:
+	@.github/scripts/toolchain-check.sh
 
-benchmark-integration: web-build
-	@INTEGRATION_DATABASE_URL="$(INTEGRATION_DATABASE_URL)" COMPOSE="$(COMPOSE)" \
-		DOCKER="$(DOCKER)" GO="$(GO)" \
-		$(GO) run ./cmd/testintegration -root . -packages "./internal/integration" \
-		-benchmark '^BenchmarkCorePersistenceAndProjection$$' -benchtime "$(BENCHTIME)"
+plan-check:
+	$(GO) run ./cmd/plancheck -root .
 
-test-load:
-	@$(GO) run ./cmd/loadtest
+docs-check:
+	$(NODE) .github/scripts/docs-check.mjs
 
-test-soak:
-	@ETHERVIEW_LOAD_RATE=500 \
-		ETHERVIEW_LOAD_DURATION=30m \
-		ETHERVIEW_LOAD_CONCURRENCY=512 \
-		ETHERVIEW_LOAD_REQUEST_TIMEOUT=5s \
-		ETHERVIEW_LOAD_MAX_P95=500ms \
-		ETHERVIEW_LOAD_MAX_ERROR_RATE=0.001 \
-		ETHERVIEW_LOAD_MIN_THROUGHPUT_RATIO=0.99 \
-		ETHERVIEW_LOAD_MAX_LAG=2 \
-		ETHERVIEW_LOAD_PROFILE=p70-reference-capacity \
-		$(GO) run ./cmd/loadtest
-
-pnpm-install:
-	$(PNPM) install --frozen-lockfile
-
-web-install: pnpm-install
-
-compiler-install: pnpm-install
-	$(NODE) compiler/vyper/wasm/prepare.mjs
-	$(NODE) compiler/vyper/wasm/packages.mjs --version 0.4.3
-	$(PNPM) --dir compiler run build:sea "$(CURDIR)/.local/vyper-wasm/sea/etherview-solcjs"
-
-web-generate: web-install
-	$(PNPM) --dir api run generate:api
+source-check:
+	$(GO) run ./cmd/sourcecheck -root .
 
 format: pnpm-install
 	$(PNPM) run format
+
+format-check: repo-format-check web-format-check
 
 repo-format-check: pnpm-install
 	$(PNPM) run format:repo:check
@@ -266,16 +172,7 @@ repo-format-check: pnpm-install
 web-format-check: web-install
 	$(PNPM) --dir web run format:check
 
-format-check: repo-format-check web-format-check
-
-web-lint: web-install web-format-check
-	$(PNPM) --dir web run lint:code
-
-web-test: web-install
-	$(PNPM) --dir web run test
-
-web-build: web-install
-	$(PNPM) --dir web run build
+lint: lint-go web-lint format-check
 
 lint-go: lint-tool-check source-check
 	@unformatted="$$(find . \( -path './.git' -o -path './.local' -o -path './vendor' -o -name node_modules \) -prune -o -type f -name '*.go' -exec gofmt -l {} +)"; \
@@ -290,18 +187,19 @@ lint-go: lint-tool-check source-check
 golangci-lint: lint-tool-check
 	$(GOLANGCI_LINT) run ./...
 
-lint: lint-go web-lint format-check
-
-install-security-tools:
-	$(GO) install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
-	$(GO) install github.com/zricethezav/gitleaks/v8@$(GITLEAKS_VERSION)
-	$(GO) install github.com/google/go-licenses/v2@$(GO_LICENSES_VERSION)
+web-lint: web-install web-format-check
+	$(PNPM) --dir web run lint:code
 
 install-lint-tools:
 	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 
 lint-tool-check:
 	@command -v "$(GOLANGCI_LINT)" >/dev/null 2>&1 || { echo "lint-go: missing $(GOLANGCI_LINT); run 'make install-lint-tools'"; exit 1; }
+
+install-security-tools:
+	$(GO) install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
+	$(GO) install github.com/zricethezav/gitleaks/v8@$(GITLEAKS_VERSION)
+	$(GO) install github.com/google/go-licenses/v2@$(GO_LICENSES_VERSION)
 
 security-tool-check:
 	@command -v "$(GOVULNCHECK)" >/dev/null 2>&1 || { echo "security-check: missing $(GOVULNCHECK); run 'make install-security-tools'"; exit 1; }
@@ -343,134 +241,62 @@ license-check: license-tool-check web-install compiler-install
 	GO="$(GO)" GO_LICENSES="$(GO_LICENSES)" sh .github/scripts/go-license-check.sh $(GO_PACKAGES)
 	$(PNPM) run check:licenses
 
-docker-check:
-	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "docker-check: docker is required"; exit 1; }
-	DOCKER="$(DOCKER)" $(BUILDX) build --check .
 
-docker-build:
-	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "docker-build: docker is required"; exit 1; }
-	DOCKER="$(DOCKER)" $(BUILDX) build --load --target production --tag "$(IMAGE)" \
-		--build-arg "ETHERVIEW_WEB_BRANDING_DIR=$${ETHERVIEW_WEB_BRANDING_DIR:-web/branding/default}" .
+# Tests and benchmarks
 
-preview-gateway-build:
-	DOCKER="$(DOCKER)" $(BUILDX) build --load --file deploy/ipfs/Dockerfile --tag "$(IPFS_GATEWAY_IMAGE)" .
+.PHONY: test test-go web-test test-race test-workflow-scripts test-integration test-integration-race \
+	test-rustfs test-e2e test-schema-e2e test-schema-e2e-prebuilt test-runtime-e2e \
+	test-runtime-e2e-prebuilt test-preview-metadata preview-e2e-check test-preview-metadata-prebuilt \
+	test-preview-consensus test-preview-consensus-prebuilt test-hardhat3-provider-compat \
+	test-hardhat3-e2e test-hardhat3-offline-compile test-hardhat3-e2e-prebuilt test-foundry-e2e \
+	test-foundry-offline-compile test-foundry-e2e-prebuilt test-vyper-e2e test-vyper-e2e-prebuilt \
+	test-vyper-matrix test-vyper-release test-vyper-wasm-candidate test-vyper-alias-feasibility \
+	test-vyper-update benchmark benchmark-integration benchmark-vyper-wasm test-load test-soak
 
-.PHONY: preview-gateway-build
+test: test-go web-test test-workflow-scripts test-vyper-release
 
-docker-image-check:
-	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "docker-image-check: docker is required"; exit 1; }
-	DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" deploy/check-image.sh
+test-go: web-build compiler-install
+	$(GO) test $(GO_TEST_FLAGS) $(GO_PACKAGES)
 
-compose-check: preview-network-check
-	@DOCKER="$(DOCKER)" $(COMPOSE) version >/dev/null 2>&1 || { echo "compose-check: Docker Compose is required"; exit 1; }
-	@command -v "$(NODE)" >/dev/null 2>&1 || { echo "compose-check: Node.js is required for rendered environment checks"; exit 1; }
-	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) --test .github/scripts/compose-layout.test.mjs
-	DOCKER="$(DOCKER)" $(COMPOSE) -f e2e/x402local/compose.yaml --profile monolith config --quiet
-	DOCKER="$(DOCKER)" $(COMPOSE) -f e2e/x402local/compose.yaml --profile distributed config --quiet
-	@test ! -e compose.tls.yaml || { echo "compose-check: compose.tls.yaml must remain removed"; exit 1; }
-	DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml --profile monolith config --quiet
-	DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml --profile distributed config --quiet
-	@ETHERVIEW_S3_ACCESS_KEY=compose-access \
-		ETHERVIEW_S3_SECRET_KEY=compose-secret \
-		ETHERVIEW_S3_SESSION_TOKEN=compose-session \
-		AWS_ACCESS_KEY_ID=aws-access \
-		AWS_SECRET_ACCESS_KEY=aws-secret \
-		AWS_SESSION_TOKEN=aws-session \
-		AWS_CONTAINER_CREDENTIALS_FULL_URI=http://169.254.170.23/v1/credentials \
-		AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE=/run/aws/pod-identity-token \
-		DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml --profile monolith --profile accelerators config --format json | \
-		ETHERVIEW_COMPOSE_TOPOLOGY=monolith $(NODE) .github/scripts/s3-compose-check.mjs
-	@ETHERVIEW_S3_ACCESS_KEY=compose-access \
-		ETHERVIEW_S3_SECRET_KEY=compose-secret \
-		ETHERVIEW_S3_SESSION_TOKEN=compose-session \
-		AWS_ACCESS_KEY_ID=aws-access \
-		AWS_SECRET_ACCESS_KEY=aws-secret \
-		AWS_SESSION_TOKEN=aws-session \
-		AWS_CONTAINER_CREDENTIALS_FULL_URI=http://169.254.170.23/v1/credentials \
-		AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE=/run/aws/pod-identity-token \
-		DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml --profile distributed --profile accelerators config --format json | \
-		ETHERVIEW_COMPOSE_TOPOLOGY=distributed $(NODE) .github/scripts/s3-compose-check.mjs
-	DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml --profile accelerators config --quiet
-	@ETHERVIEW_VERIFICATION_EXECUTOR_PATH=/custom/runtime/etherview-solcjs \
-		ETHERVIEW_VERIFICATION_GEAS_PATH=/custom/bin/etherview-geas-compiler \
-		DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml --profile monolith config --format json | \
-		ETHERVIEW_COMPOSE_TOPOLOGY=monolith \
-		ETHERVIEW_EXPECT_COMPILER_RUNTIME_PATH_OVERRIDE=true \
-		$(NODE) .github/scripts/compiler-compose-check.mjs
-	@ETHERVIEW_VERIFICATION_EXECUTOR_PATH=/custom/runtime/etherview-solcjs \
-		ETHERVIEW_VERIFICATION_GEAS_PATH=/custom/bin/etherview-geas-compiler \
-		DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml --profile distributed config --format json | \
-		ETHERVIEW_COMPOSE_TOPOLOGY=distributed \
-		ETHERVIEW_EXPECT_COMPILER_RUNTIME_PATH_OVERRIDE=true \
-		$(NODE) .github/scripts/compiler-compose-check.mjs
-	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml config --quiet
-	@ETHERVIEW_VERIFICATION_EXECUTOR_PATH=/custom/runtime/etherview-solcjs \
-		ETHERVIEW_VERIFICATION_GEAS_PATH=/custom/bin/etherview-geas-compiler \
-		DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml --profile archive-init config --format json | \
-		ETHERVIEW_EXPECT_COMPILER_RUNTIME_PATH_OVERRIDE=true \
-		$(NODE) .github/scripts/preview-compose-check.mjs
-	@ETHERVIEW_METADATA_IPFS_GATEWAY=https://gateway.example.com \
-		DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml config --format json | \
-		$(NODE) -e 'const services = JSON.parse(require("fs").readFileSync(0, "utf8")).services; for (const role of ["api", "sync", "enrich", "trace", "metadata", "maintenance"]) if (services[role].environment.ETHERVIEW_METADATA_IPFS_GATEWAY !== "https://gateway.example.com") throw new Error("Preview metadata gateway override missing from " + role);'
-	@IPFS_API_PORT=0 IPFS_GATEWAY_PORT=0 LIGHTHOUSE_HTTP_PORT=0 \
-		ETHERVIEW_PORT=127.0.0.1:0 ETHERVIEW_METRICS_PORT=127.0.0.1:0 \
-		GETH_HTTP_PORT=127.0.0.1:0 GETH_WS_PORT=127.0.0.1:0 \
-		DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \
-		-f e2e/previewmetadata/compose.yaml config --format json | \
-		$(NODE) .github/scripts/preview-metadata-compose-check.mjs
-	DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml -f e2e/runtime/compose.yaml \
-		--profile monolith config --quiet
-	DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml -f e2e/runtime/compose.yaml \
-		--profile distributed config --quiet
-	ETHERVIEW_HARDHAT3_IMAGE="$(HARDHAT3_IMAGE)" \
-	ETHERVIEW_HARDHAT3_API_SERVICE=etherview \
-	ETHERVIEW_HARDHAT3_ARTIFACT_DIR=/tmp/etherview-hardhat3-compose-check \
-	DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml -f e2e/runtime/compose.yaml \
-		-f e2e/runtime/verification.compose.yaml -f e2e/hardhat3/compose.yaml --profile monolith --profile hardhat-client config --format json | \
-		ETHERVIEW_HARDHAT3_TOPOLOGY=monolith ETHERVIEW_HARDHAT3_IMAGE="$(HARDHAT3_IMAGE)" \
-		$(NODE) .github/scripts/hardhat3-compose-check.mjs
-	ETHERVIEW_HARDHAT3_IMAGE="$(HARDHAT3_IMAGE)" \
-	ETHERVIEW_HARDHAT3_API_SERVICE=api \
-	ETHERVIEW_HARDHAT3_ARTIFACT_DIR=/tmp/etherview-hardhat3-compose-check \
-	DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml -f e2e/runtime/compose.yaml \
-		-f e2e/runtime/verification.compose.yaml -f e2e/hardhat3/compose.yaml --profile distributed --profile hardhat-client config --format json | \
-		ETHERVIEW_HARDHAT3_TOPOLOGY=distributed ETHERVIEW_HARDHAT3_IMAGE="$(HARDHAT3_IMAGE)" \
-		$(NODE) .github/scripts/hardhat3-compose-check.mjs
-	DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml -f e2e/runtime/compose.yaml \
-		-f e2e/runtime/verification.compose.yaml -f e2e/runtime/vyper.compose.yaml --profile monolith config --format json | \
-		ETHERVIEW_HARDHAT3_TOPOLOGY=monolith ETHERVIEW_VERIFICATION_SUITE=vyper \
-		$(NODE) .github/scripts/hardhat3-compose-check.mjs
-	DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml -f e2e/runtime/compose.yaml \
-		-f e2e/runtime/verification.compose.yaml -f e2e/runtime/vyper.compose.yaml --profile distributed config --format json | \
-		ETHERVIEW_HARDHAT3_TOPOLOGY=distributed ETHERVIEW_VERIFICATION_SUITE=vyper \
-		$(NODE) .github/scripts/hardhat3-compose-check.mjs
-	ETHERVIEW_FOUNDRY_IMAGE="$(FOUNDRY_IMAGE)" \
-	ETHERVIEW_FOUNDRY_API_SERVICE=etherview \
-	DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml -f e2e/runtime/compose.yaml \
-		-f e2e/foundry/compose.yaml --profile monolith --profile foundry-client config --format json | \
-		ETHERVIEW_FOUNDRY_TOPOLOGY=monolith ETHERVIEW_FOUNDRY_IMAGE="$(FOUNDRY_IMAGE)" \
-		$(NODE) .github/scripts/foundry-compose-check.mjs
-	ETHERVIEW_FOUNDRY_IMAGE="$(FOUNDRY_IMAGE)" \
-	ETHERVIEW_FOUNDRY_API_SERVICE=api \
-	DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml -f e2e/runtime/compose.yaml \
-		-f e2e/foundry/compose.yaml --profile distributed --profile foundry-client config --format json | \
-		ETHERVIEW_FOUNDRY_TOPOLOGY=distributed ETHERVIEW_FOUNDRY_IMAGE="$(FOUNDRY_IMAGE)" \
-		$(NODE) .github/scripts/foundry-compose-check.mjs
-	@unset ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS ETHERVIEW_LOG_LEVEL ETHERVIEW_LOG_FORMAT ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL ETHERVIEW_USER_AUTH_API_KEY_RATE ETHERVIEW_USER_AUTH_API_KEY_BURST ETHERVIEW_USER_AUTH_MAX_ACTIVE_API_KEYS; \
-		DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml --env-file /dev/null --profile monolith config --format json | \
-		$(NODE) -e 'const env = JSON.parse(require("fs").readFileSync(0, "utf8")).services.etherview.environment; for (const key of ["ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS", "ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS", "ETHERVIEW_LOG_LEVEL", "ETHERVIEW_LOG_FORMAT", "ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL", "ETHERVIEW_USER_AUTH_API_KEY_RATE", "ETHERVIEW_USER_AUTH_API_KEY_BURST", "ETHERVIEW_USER_AUTH_MAX_ACTIVE_API_KEYS"]) { if (env[key] !== null) throw new Error(key + " must remain unset when no Compose override is supplied"); }'
-	@ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS=7 ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS=1 ETHERVIEW_LOG_LEVEL=debug ETHERVIEW_LOG_FORMAT=text ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL=45s ETHERVIEW_USER_AUTH_API_KEY_RATE=25 ETHERVIEW_USER_AUTH_API_KEY_BURST=50 ETHERVIEW_USER_AUTH_MAX_ACTIVE_API_KEYS=7 \
-		DOCKER="$(DOCKER)" $(COMPOSE) --project-directory . -f deploy/compose.yaml --env-file /dev/null --profile monolith config --format json | \
-		$(NODE) -e 'const env = JSON.parse(require("fs").readFileSync(0, "utf8")).services.etherview.environment; if (env.ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS !== "7" || env.ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS !== "1") throw new Error("Compose reader-pool overrides were not preserved"); if (env.ETHERVIEW_LOG_LEVEL !== "debug" || env.ETHERVIEW_LOG_FORMAT !== "text" || env.ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL !== "45s") throw new Error("Compose logging overrides were not preserved"); if (env.ETHERVIEW_USER_AUTH_API_KEY_RATE !== "25" || env.ETHERVIEW_USER_AUTH_API_KEY_BURST !== "50" || env.ETHERVIEW_USER_AUTH_MAX_ACTIVE_API_KEYS !== "7") throw new Error("Compose user API-key policy overrides were not preserved");'
+web-test: web-install
+	$(PNPM) --dir web run test
+
+test-race: web-build compiler-install
+	$(GO) test -race $(GO_TEST_FLAGS) $(GO_PACKAGES)
+
+test-workflow-scripts:
+	$(NODE) --test .github/scripts/workflow-scripts.test.mjs .github/scripts/production-evidence.test.mjs .github/scripts/prebuilt-targets.test.mjs .github/scripts/generated-check.test.mjs .github/scripts/compose-check.test.mjs
+
+# Without INTEGRATION_DATABASE_URL the Go runner owns a fresh PostgreSQL 18
+# Compose project. Supplying a URL remains useful for an explicitly disposable
+# external database.
+test-integration: web-build compiler-install
+	@INTEGRATION_DATABASE_URL="$(INTEGRATION_DATABASE_URL)" COMPOSE="$(COMPOSE)" \
+		DOCKER="$(DOCKER)" GO="$(GO)" \
+		$(GO) run ./cmd/testintegration -root . -packages "$(INTEGRATION_GO_PACKAGES)" \
+			-shard "$(INTEGRATION_SHARD)" -shards "$(INTEGRATION_SHARDS)"
+
+test-integration-race: web-build compiler-install
+	@INTEGRATION_DATABASE_URL="$(INTEGRATION_DATABASE_URL)" COMPOSE="$(COMPOSE)" \
+		DOCKER="$(DOCKER)" GO="$(GO)" \
+		$(GO) run ./cmd/testintegration -root . -packages "$(INTEGRATION_GO_PACKAGES)" -race \
+			-shard "$(INTEGRATION_SHARD)" -shards "$(INTEGRATION_SHARDS)"
+
+test-rustfs:
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(GO) test $(GO_TEST_FLAGS) -tags rustfs -run '^TestRustFS$$' -count=1 -timeout=6m ./internal/accelerator
+
+test-e2e: web-build
+	@set -eu; \
+		server_binary="$$(mktemp /tmp/etherview-web-e2e.XXXXXX)"; \
+		trap 'rm -f "$$server_binary"' EXIT INT TERM; \
+		$(GO) build -o "$$server_binary" ./web/e2e/server; \
+		ETHERVIEW_E2E_SERVER_BINARY="$$server_binary" $(PNPM) --dir web run test:e2e
 
 test-schema-e2e: docker-build
 	@$(MAKE) --no-print-directory test-schema-e2e-prebuilt
 
 test-schema-e2e-prebuilt:
-	@$(DOCKER) image inspect "$(IMAGE)" >/dev/null 2>&1 || { \
-		echo "test-schema-e2e-prebuilt: image $(IMAGE) is not loaded; run 'make docker-build' first"; \
-		exit 1; \
-	}
+	@$(call require-image,$(IMAGE),test-schema-e2e-prebuilt: image $(IMAGE) is not loaded; run 'make docker-build' first)
 	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
 		$(GO) run ./cmd/testschemae2e -root .
 
@@ -478,10 +304,7 @@ test-runtime-e2e: docker-build
 	@$(MAKE) --no-print-directory test-runtime-e2e-prebuilt
 
 test-runtime-e2e-prebuilt:
-	@$(DOCKER) image inspect "$(IMAGE)" >/dev/null 2>&1 || { \
-		echo "test-runtime-e2e-prebuilt: image $(IMAGE) is not loaded; run 'make docker-build' first"; \
-		exit 1; \
-	}
+	@$(call require-image,$(IMAGE),test-runtime-e2e-prebuilt: image $(IMAGE) is not loaded; run 'make docker-build' first)
 	# Both packages own multi-container production topologies. Keep package tests
 	# serial so the bounded runtime load gate does not compete with x402 Compose.
 	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
@@ -492,23 +315,137 @@ test-preview-metadata: preview-cert-check docker-build preview-gateway-build pre
 
 preview-e2e-check: preview-cert-check
 	@for image in "$(IMAGE)" "$(IPFS_GATEWAY_IMAGE)"; do \
-		$(DOCKER) image inspect "$$image" >/dev/null 2>&1 || { \
-			echo "Preview image $$image is not loaded; run 'make docker-build preview-gateway-build' first"; \
-			exit 1; \
-		}; \
+		$(call require-image,$$image,Preview image $$image is not loaded; run 'make docker-build preview-gateway-build' first); \
 	done
 
 test-preview-metadata-prebuilt: preview-e2e-check
 	@IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
 		$(GO) test -count=1 -v -tags=previewmetadatae2e -run TestPreviewLocalNFTMetadata ./e2e/previewmetadata
 
-.PHONY: test-preview-consensus
 test-preview-consensus: preview-cert-check docker-build preview-gateway-build preview-images
 	@$(MAKE) --no-print-directory test-preview-consensus-prebuilt
 
 test-preview-consensus-prebuilt: preview-e2e-check
 	@IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
 		$(GO) test -count=1 -v -timeout=25m -tags=previewmetadatae2e -run TestPreviewConsensus ./e2e/previewmetadata
+
+test-hardhat3-provider-compat: pnpm-install
+	$(NODE) --test e2e/hardhat3/safe-artifact.test.mjs e2e/hardhat3/transaction-sender.test.mjs
+	ETHERVIEW_HARDHAT3_NODE="$(NODE)" $(GO) test -count=1 -tags=hardhat3verify ./e2e/hardhat3
+
+test-hardhat3-e2e: docker-build hardhat3-client-image-build
+	@$(MAKE) --no-print-directory test-hardhat3-e2e-prebuilt
+
+test-hardhat3-offline-compile:
+	@$(call require-image,$(HARDHAT3_IMAGE),test-hardhat3-offline-compile: Hardhat client $(HARDHAT3_IMAGE) is not loaded)
+	@$(DOCKER) run --rm --network none "$(HARDHAT3_IMAGE)" \
+		pnpm exec hardhat --build-profile production compile
+
+test-hardhat3-e2e-prebuilt: test-hardhat3-offline-compile
+	@case "$(VERIFICATION_PARALLEL)" in 1|2) ;; *) echo "VERIFICATION_PARALLEL must be 1 or 2"; exit 1;; esac
+	@$(call require-image,$(IMAGE),test-hardhat3-e2e-prebuilt: image $(IMAGE) is not loaded)
+	@$(call require-image,$(HARDHAT3_IMAGE),test-hardhat3-e2e-prebuilt: Hardhat client $(HARDHAT3_IMAGE) is not loaded)
+	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" NODE="$(NODE)" \
+		ETHERVIEW_HARDHAT3_IMAGE="$(HARDHAT3_IMAGE)" \
+		$(GO) test -count=1 -v -timeout=30m -tags='runtimee2e verificatione2e' \
+		-parallel=$(VERIFICATION_PARALLEL) -run '^(TestHardhat3(ProductionE2E|VerificationCounts)|TestVerificationTopologyScheduling)$$' ./e2e/runtime
+
+test-foundry-e2e: docker-build foundry-client-image-build
+	@$(MAKE) --no-print-directory test-foundry-e2e-prebuilt
+
+test-foundry-offline-compile:
+	@$(call require-image,$(FOUNDRY_IMAGE),test-foundry-offline-compile: Foundry client $(FOUNDRY_IMAGE) is not loaded)
+	@$(DOCKER) run --rm --network none "$(FOUNDRY_IMAGE)" \
+		forge build --offline --force --silent
+
+test-foundry-e2e-prebuilt: test-foundry-offline-compile
+	@$(call require-image,$(IMAGE),test-foundry-e2e-prebuilt: image $(IMAGE) is not loaded)
+	@$(call require-image,$(FOUNDRY_IMAGE),test-foundry-e2e-prebuilt: Foundry client $(FOUNDRY_IMAGE) is not loaded)
+	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" NODE="$(NODE)" \
+		ETHERVIEW_FOUNDRY_IMAGE="$(FOUNDRY_IMAGE)" \
+		$(GO) test -count=1 -v -tags='runtimee2e foundrye2e' \
+		-run '^TestFoundryProductionVerificationE2E$$' ./e2e/runtime
+
+test-vyper-e2e: docker-build
+	@$(MAKE) --no-print-directory test-vyper-e2e-prebuilt
+
+test-vyper-e2e-prebuilt:
+	@case "$(VERIFICATION_PARALLEL)" in 1|2) ;; *) echo "VERIFICATION_PARALLEL must be 1 or 2"; exit 1;; esac
+	@$(DOCKER) image inspect "$(IMAGE)" >/dev/null
+	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" NODE="$(NODE)" \
+		$(GO) test -count=1 -v -timeout=30m -tags='runtimee2e verificatione2e' \
+		-parallel=$(VERIFICATION_PARALLEL) -run '^TestVyper(ProductionE2E|VerificationCounts|ProductionFixtureCoverage)$$' ./e2e/runtime
+
+test-vyper-matrix: compiler-install test-vyper-wasm-candidate
+	ETHERVIEW_TEST_VYPER_MATRIX_ROOT="$(CURDIR)/.local/vyper-wasm/packages" $(GO) test ./internal/verify -run '^TestVyper(DynamicRuntimeMatrix|StableVersionMatrix|MatrixSchedulingFailure)$$' -count=1 -parallel=4 -timeout=30m
+
+test-vyper-release: test-vyper-update
+	$(GO) test -tags='runtimee2e verificatione2e' ./e2e/runtime -run '^(TestHardhat3VerificationCounts|TestVyperProductionFixtureCoverage)$$' -count=1
+	$(NODE) --test compiler/vyper/wasm/tooling.test.mjs
+	$(NODE) --test compiler/vyper/acceptance.test.mjs compiler/vyper/wasm/production-shards.test.mjs
+
+test-vyper-wasm-candidate: pnpm-install
+	$(NODE) --test compiler/vyper/wasm/tooling.test.mjs
+	$(NODE) compiler/vyper/wasm/check.mjs
+
+# Diagnostic only. The output directory must not already exist.
+test-vyper-alias-feasibility:
+	$(NODE) --test compiler/vyper/wasm/alias-feasibility.test.mjs
+	$(NODE) compiler/vyper/wasm/alias-feasibility.mjs "$(VYPER_ALIAS_FEASIBILITY_OUTPUT)"
+
+test-vyper-update: pnpm-install
+	$(NODE) compiler/vyper/update.mjs --check
+	$(NODE) --test compiler/vyper/update.test.mjs
+	uv run --project compiler/vyper --locked python compiler/vyper/update_metadata_test.py
+
+benchmark:
+	$(GO) test -run '^$$' -bench '^BenchmarkBundleBoundary$$' -benchmem \
+		-benchtime="$(BENCHTIME)" ./internal/chainbundle
+
+benchmark-integration: web-build
+	@INTEGRATION_DATABASE_URL="$(INTEGRATION_DATABASE_URL)" COMPOSE="$(COMPOSE)" \
+		DOCKER="$(DOCKER)" GO="$(GO)" \
+		$(GO) run ./cmd/testintegration -root . -packages "./internal/integration" \
+		-benchmark '^BenchmarkCorePersistenceAndProjection$$' -benchtime "$(BENCHTIME)"
+
+benchmark-vyper-wasm: compiler-install
+	$(NODE) compiler/vyper/wasm/packages.mjs
+	$(PYTHON) compiler/vyper/wasm/benchmark.py
+
+test-load:
+	@$(GO) run ./cmd/loadtest
+
+test-soak:
+	@ETHERVIEW_LOAD_RATE=500 \
+		ETHERVIEW_LOAD_DURATION=30m \
+		ETHERVIEW_LOAD_CONCURRENCY=512 \
+		ETHERVIEW_LOAD_REQUEST_TIMEOUT=5s \
+		ETHERVIEW_LOAD_MAX_P95=500ms \
+		ETHERVIEW_LOAD_MAX_ERROR_RATE=0.001 \
+		ETHERVIEW_LOAD_MIN_THROUGHPUT_RATIO=0.99 \
+		ETHERVIEW_LOAD_MAX_LAG=2 \
+		ETHERVIEW_LOAD_PROFILE=p70-reference-capacity \
+		$(GO) run ./cmd/loadtest
+
+
+# Deployment checks
+
+.PHONY: deployment-check docker-check docker-image-check compose-check helm-check
+
+deployment-check: docker-check compose-check helm-check
+
+docker-check:
+	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "docker-check: docker is required"; exit 1; }
+	DOCKER="$(DOCKER)" $(BUILDX) build --check .
+
+docker-image-check:
+	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "docker-image-check: docker is required"; exit 1; }
+	DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" deploy/check-image.sh
+
+compose-check: preview-network-check
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" NODE="$(NODE)" \
+		HARDHAT3_IMAGE="$(HARDHAT3_IMAGE)" FOUNDRY_IMAGE="$(FOUNDRY_IMAGE)" \
+		$(NODE) .github/scripts/compose-check.mjs
 
 helm-check:
 	@command -v "$(HELM)" >/dev/null 2>&1 || { echo "helm-check: helm is required"; exit 1; }
@@ -520,9 +457,13 @@ helm-check:
 	$(HELM) template etherview "$(HELM_CHART)" -f "$(HELM_CHART)/values-reference-capacity.yaml" >/dev/null
 	HELM="$(HELM)" "$(HELM_CHART)/tests/render.sh" "$(HELM_CHART)"
 
-deployment-check: docker-check compose-check helm-check
 
-check: toolchain-check security-tool-check license-tool-check docs-check plan-check generate-check lint test test-race security-check license-check deployment-check
+# Preview lifecycle
+
+.PHONY: preview-cert preview-cert-check preview-network-check preview-env preview-network-runtime \
+	preview-images start-preview stop-preview recreate-preview
+
+start-preview recreate-preview stop-preview preview-images preview-network-runtime: export COMPOSE_ENV_FILES = $(PREVIEW_ENV_FILE)
 
 preview-cert:
 	@command -v "$(MKCERT)" >/dev/null 2>&1 || { echo "preview-cert: mkcert is required"; exit 1; }
@@ -553,15 +494,12 @@ preview-cert-check:
 preview-network-check:
 	$(NODE) --test .github/scripts/preview-network.test.mjs .github/scripts/preview-compose.test.mjs .github/scripts/preview-env.test.mjs
 
-start-preview recreate-preview stop-preview preview-images preview-network-runtime: export COMPOSE_ENV_FILES = $(PREVIEW_ENV_FILE)
-
 preview-env:
 	$(NODE) .github/scripts/preview-env.mjs "$(PREVIEW_ENV_FILE)"
 
 preview-network-runtime: preview-env
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-network.mjs check
 
-.PHONY: preview-images
 preview-images: preview-env
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml pull geth lighthouse validator object-storage archive-init ipfs
 	$(DOCKER) pull ethpandaops/ethereum-genesis-generator:6.2.7
@@ -586,6 +524,11 @@ recreate-preview: preview-env preview-cert-check preview-network-runtime docker-
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml run --rm archive-init
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-ready.mjs
 
+
+# Local x402 lifecycle
+
+.PHONY: start-x402-local stop-x402-local recreate-x402-local
+
 start-x402-local: docker-build
 	@case "$(X402_LOCAL_TOPOLOGY)" in monolith|distributed) ;; *) echo "X402_LOCAL_TOPOLOGY must be monolith or distributed"; exit 1;; esac
 	@DOCKER="$(DOCKER)" $(COMPOSE) -f "$(X402_LOCAL_COMPOSE)" build x402-fixture x402-facilitator
@@ -598,52 +541,3 @@ stop-x402-local:
 		--profile monolith --profile distributed down --volumes --remove-orphans
 
 recreate-x402-local: stop-x402-local start-x402-local
-
-.PHONY: test-vyper-matrix
-test-vyper-matrix: compiler-install test-vyper-wasm-candidate
-	ETHERVIEW_TEST_VYPER_MATRIX_ROOT="$(CURDIR)/.local/vyper-wasm/packages" $(GO) test ./internal/verify -run '^TestVyper(DynamicRuntimeMatrix|StableVersionMatrix|MatrixSchedulingFailure)$$' -count=1 -parallel=4 -timeout=30m
-
-.PHONY: test-vyper-release
-test: test-vyper-release
-test-vyper-release: test-vyper-update
-	$(GO) test -tags='runtimee2e verificatione2e' ./e2e/runtime -run '^(TestHardhat3VerificationCounts|TestVyperProductionFixtureCoverage)$$' -count=1
-	$(NODE) --test compiler/vyper/wasm/tooling.test.mjs
-	$(NODE) --test compiler/vyper/acceptance.test.mjs compiler/vyper/wasm/production-shards.test.mjs
-
-.PHONY: test-vyper-wasm-candidate
-test-vyper-wasm-candidate: pnpm-install
-	$(NODE) --test compiler/vyper/wasm/tooling.test.mjs
-	$(NODE) compiler/vyper/wasm/check.mjs
-
-# Diagnostic only. The output directory must not already exist.
-VYPER_ALIAS_FEASIBILITY_OUTPUT ?= .local/vyper-alias-feasibility
-.PHONY: test-vyper-alias-feasibility
-test-vyper-alias-feasibility:
-	$(NODE) --test compiler/vyper/wasm/alias-feasibility.test.mjs
-	$(NODE) compiler/vyper/wasm/alias-feasibility.mjs "$(VYPER_ALIAS_FEASIBILITY_OUTPUT)"
-
-.PHONY: benchmark-vyper-wasm
-benchmark-vyper-wasm: compiler-install
-	$(NODE) compiler/vyper/wasm/packages.mjs
-	$(PYTHON) compiler/vyper/wasm/benchmark.py
-
-.PHONY: test-vyper-update
-test-vyper-update: pnpm-install
-	$(NODE) compiler/vyper/update.mjs --check
-	$(NODE) --test compiler/vyper/update.test.mjs
-	uv run --project compiler/vyper --locked python compiler/vyper/update_metadata_test.py
-
-.PHONY: test-workflow-scripts
-test-workflow-scripts:
-	$(NODE) --test .github/scripts/workflow-scripts.test.mjs .github/scripts/production-evidence.test.mjs .github/scripts/prebuilt-targets.test.mjs .github/scripts/generated-check.test.mjs
-
-.PHONY: test-vyper-e2e test-vyper-e2e-prebuilt
-test-vyper-e2e: docker-build
-	@$(MAKE) --no-print-directory test-vyper-e2e-prebuilt
-
-test-vyper-e2e-prebuilt:
-	@case "$(VERIFICATION_PARALLEL)" in 1|2) ;; *) echo "VERIFICATION_PARALLEL must be 1 or 2"; exit 1;; esac
-	@$(DOCKER) image inspect "$(IMAGE)" >/dev/null
-	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" NODE="$(NODE)" \
-		$(GO) test -count=1 -v -timeout=30m -tags='runtimee2e verificatione2e' \
-		-parallel=$(VERIFICATION_PARALLEL) -run '^TestVyper(ProductionE2E|VerificationCounts|ProductionFixtureCoverage)$$' ./e2e/runtime
