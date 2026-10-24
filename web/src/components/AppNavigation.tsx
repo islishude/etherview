@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { ShellIcon } from "./DesignPrimitives";
 import { useTranslation } from "react-i18next";
-import { usePublicConfig } from "@/api/hooks";
+import { usePublicConfig } from "@/api/publicConfig";
 import { useAuth } from "@/auth/AuthProvider";
 import { NavigationDisclosure } from "./NavigationDisclosure";
 

@@ -1,6 +1,13 @@
+import * as sdk from "./heyapi/sdk.gen";
 import { describe, expect, it, vi } from "vitest";
 
-import { ApiError, createExplorerClient, requireEnvelope } from "./client";
+import {
+  ApiError,
+  createExplorerClient,
+  requireEnvelope,
+  requireNoContent,
+  requireResponse,
+} from "./client";
 
 const hash = `0x${"12".repeat(32)}`;
 const address = `0x${"34".repeat(20)}`;
@@ -34,9 +41,7 @@ describe("generated OpenAPI client boundary", () => {
     );
     const client = createExplorerClient(fetcher);
 
-    const result = requireEnvelope(
-      await client.GET("/blocks", { params: { query: { limit: 25 } } }),
-    );
+    const result = requireEnvelope(await sdk.listBlocks({ client: client, query: { limit: 25 } }));
 
     expect(result.data[0]?.number).toBe(quantity);
     expect(fetcher).toHaveBeenCalledOnce();
@@ -63,9 +68,7 @@ describe("generated OpenAPI client boundary", () => {
     );
     const client = createExplorerClient(fetcher);
 
-    const result = await client.GET("/transactions/{hash}/trace", {
-      params: { path: { hash } },
-    });
+    const result = await sdk.getTransactionTrace({ client: client, path: { hash } });
     expect(() => requireEnvelope(result)).toThrowError(
       expect.objectContaining<Partial<ApiError>>({
         status: 503,
@@ -97,10 +100,11 @@ describe("generated OpenAPI client boundary", () => {
     };
 
     requireEnvelope(
-      await client.POST("/contracts/{address}/verification", {
+      await sdk.submitAddressVerification({
+        client: client,
         body,
         headers: { "X-API-Key": secret },
-        params: { path: { address } },
+        path: { address },
       }),
     );
 
@@ -122,10 +126,7 @@ describe("generated OpenAPI client boundary", () => {
     const fetcher = vi.fn<typeof fetch>();
     const client = createExplorerClient(fetcher);
 
-    await expect(
-      // @ts-expect-error Deliberately exercise the runtime defense behind the generated path union.
-      client.GET("../metrics"),
-    ).rejects.toThrow("/api/v1 boundary");
+    await expect(client.get({ url: "../metrics" })).rejects.toThrow("/api/v1 boundary");
     expect(fetcher).not.toHaveBeenCalled();
   });
 
@@ -134,7 +135,7 @@ describe("generated OpenAPI client boundary", () => {
       vi.fn<typeof fetch>().mockResolvedValue(Response.json({ data: [] })),
     );
 
-    const result = await client.GET("/blocks");
+    const result = await sdk.listBlocks({ client: client });
     expect(() => requireEnvelope(result)).toThrowError(
       expect.objectContaining<Partial<ApiError>>({ code: "INVALID_RESPONSE" }),
     );
@@ -145,7 +146,7 @@ describe("generated OpenAPI client boundary", () => {
       vi.fn<typeof fetch>().mockResolvedValue(Response.json({ data: [], meta: {} })),
     );
 
-    const result = await client.GET("/blocks");
+    const result = await sdk.listBlocks({ client: client });
     expect(() => requireEnvelope(result)).toThrowError(
       expect.objectContaining<Partial<ApiError>>({ code: "INVALID_RESPONSE" }),
     );
@@ -160,12 +161,130 @@ describe("generated OpenAPI client boundary", () => {
         ),
     );
 
-    const result = await client.GET("/blocks");
+    const result = await sdk.listBlocks({ client: client });
     expect(() => requireEnvelope(result)).toThrowError(
       expect.objectContaining<Partial<ApiError>>({
         code: "HTTP_ERROR",
         requestId: undefined,
       }),
     );
+  });
+});
+
+describe("Hey API compatibility", () => {
+  it.each([
+    { url: "/status", baseUrl: "https://outside.example/api/v1" },
+    { url: "/status", baseUrl: `${window.location.origin}/metrics` },
+    { url: "/../../metrics" },
+    { url: "/%2e%2e/%2e%2e/metrics" },
+  ])("rejects boundary escapes: %j", async (options) => {
+    const fetcher = vi.fn<typeof fetch>();
+    await expect(createExplorerClient(fetcher).get(options)).rejects.toThrow("/api/v1 boundary");
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("encodes opaque query values and omits undefined values", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ data: [], meta: { request_id: "r", chain_id: "1" } }));
+    await sdk.listBlocks({
+      client: createExplorerClient(fetcher),
+      query: { cursor: "a+b/&?=", limit: undefined },
+    });
+    expect(fetcher.mock.calls[0]?.[0]).toBe("/api/v1/blocks?cursor=a%2Bb%2F%26%3F%3D");
+  });
+
+  it("handles 204 and preserves CSRF headers", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }));
+    const result = await sdk.logoutAuthSession({
+      client: createExplorerClient(fetcher),
+      headers: { "X-CSRF-Token": "csrf" },
+    });
+    expect(() => requireNoContent(result)).not.toThrow();
+    expect(new Headers(fetcher.mock.calls[0]?.[1]?.headers).get("X-CSRF-Token")).toBe("csrf");
+    expect(() => requireNoContent({ response: Response.json({}) })).toThrow(ApiError);
+    expect(() =>
+      requireNoContent({ response: new Response(null, { status: 204 }), error: {} }),
+    ).toThrow(ApiError);
+  });
+
+  it("preserves network and cancellation rejections", async () => {
+    const failure = new TypeError("network failed");
+    const client = createExplorerClient(vi.fn<typeof fetch>().mockRejectedValue(failure));
+    await expect(sdk.getStatus({ client })).rejects.toBe(failure);
+    const controller = new AbortController();
+    const abortedClient = createExplorerClient(async (_input, init) => {
+      expect(init?.signal?.aborted).toBe(true);
+      throw init?.signal?.reason;
+    });
+    controller.abort();
+    await expect(
+      sdk.getStatus({ client: abortedClient, signal: controller.signal }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("forwards the SDK request signal and cancels an in-flight request", async () => {
+    const controller = new AbortController();
+    let notifyStarted!: (signal: AbortSignal) => void;
+    const started = new Promise<AbortSignal>((resolve) => {
+      notifyStarted = resolve;
+    });
+    let sdkSignal: AbortSignal | undefined;
+    const client = createExplorerClient(
+      (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          const signal = init!.signal!;
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+          notifyStarted(signal);
+        }),
+    );
+    client.interceptors.request.use((request) => {
+      sdkSignal = request.signal;
+      return request;
+    });
+    const pending = sdk.getStatus({ client, signal: controller.signal });
+    const forwardedSignal = await started;
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(forwardedSignal).toBe(sdkSignal);
+    expect(forwardedSignal.aborted).toBe(true);
+  });
+
+  it("preserves parse errors on successful invalid JSON", async () => {
+    const client = createExplorerClient(async () => new Response("not JSON"));
+    await expect(sdk.getStatus({ client })).rejects.toBeInstanceOf(SyntaxError);
+  });
+
+  it("normalizes non-JSON HTTP failures without leaking their bodies", async () => {
+    const client = createExplorerClient(
+      async () => new Response("private proxy failure", { status: 502 }),
+    );
+    const result = await sdk.getStatus({ client });
+    expect(() => requireEnvelope(result)).toThrowError(
+      expect.objectContaining({
+        status: 502,
+        code: "HTTP_ERROR",
+        message: "Explorer API request failed (502)",
+      }),
+    );
+  });
+
+  it("preserves binary bytes and response headers", async () => {
+    const bytes = new Uint8Array([0, 255, 128, 10, 13]);
+    const client = createExplorerClient(
+      async () =>
+        new Response(bytes, {
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "Content-Disposition": "attachment; filename=blob-1-0.bin",
+          },
+        }),
+    );
+    const response = requireResponse(
+      await sdk.getBlobContent({ client, path: { hash, index: "0" }, parseAs: "stream" }),
+    );
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
+    expect(response.headers.get("Content-Type")).toBe("application/octet-stream");
+    expect(response.headers.get("Content-Disposition")).toBe("attachment; filename=blob-1-0.bin");
   });
 });

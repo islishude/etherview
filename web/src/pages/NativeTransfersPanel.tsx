@@ -1,3 +1,4 @@
+import * as sdk from "../api/heyapi/sdk.gen";
 import { useCursorHistory } from "@/api/pagination";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -33,15 +34,19 @@ export function NativeTransfersPanel({
       const query = { cursor: pager.request.cursor, limit: CORE_PAGE_SIZE };
       return kind === "address"
         ? requireEnvelope(
-            await apiClient.GET("/addresses/{address}/native-transfers", {
+            await sdk.listAddressNativeTransfers({
+              client: apiClient,
               signal,
-              params: { path: { address: identity }, query },
+              path: { address: identity },
+              query,
             }),
           )
         : requireEnvelope(
-            await apiClient.GET("/transactions/{hash}/native-transfers", {
+            await sdk.listTransactionNativeTransfers({
+              client: apiClient,
               signal,
-              params: { path: { hash: identity }, query },
+              path: { hash: identity },
+              query,
             }),
           );
     },

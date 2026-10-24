@@ -42,6 +42,8 @@ func TestIntegrationTestArguments(t *testing.T) {
 	}{
 		{name: "default"},
 		{name: "focused race", opts: options{race: true, run: "^TestFocused$"}, extra: []string{"-race", "-run", "^TestFocused$"}},
+		{name: "shard", opts: options{shard: 2, shards: 4, run: "^(TestFirst|FuzzSeed)$"}, extra: []string{"-v", "-run", "^(TestFirst|FuzzSeed)$"}},
+		{name: "race shard", opts: options{race: true, shard: 2, shards: 4, run: "^TestFirst$"}, extra: []string{"-race", "-v", "-run", "^TestFirst$"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()

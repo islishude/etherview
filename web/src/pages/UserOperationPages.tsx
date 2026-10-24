@@ -2,7 +2,8 @@ import { useCursorHistory } from "@/api/pagination";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
-import { usePublicConfig, useUserOperation, useUserOperations } from "@/api/hooks";
+import { usePublicConfig } from "@/api/publicConfig";
+import { useUserOperation, useUserOperations } from "@/api/hooks";
 import type { UserOperationDetail } from "@/api/types";
 import { CopyableField } from "@/components/CopyButton";
 import { formatInteger, formatNativeAmount, formatTimestamp, shorten } from "@/components/format";

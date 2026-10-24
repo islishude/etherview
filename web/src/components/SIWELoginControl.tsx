@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useAuth } from "@/auth/AuthProvider";
-import { usePublicConfig } from "@/api/hooks";
+import { usePublicConfig } from "@/api/publicConfig";
 import { chainsMatch } from "@/wallet/eip6963";
 import { useWallet } from "@/wallet/WalletProvider";
 

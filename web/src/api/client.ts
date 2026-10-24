@@ -1,6 +1,6 @@
-import createClient from "openapi-fetch";
+import { createClient } from "./heyapi/client";
 
-import type { paths } from "./schema.gen";
+import type { StreamHeadEventsData } from "./heyapi/types.gen";
 import type { ApiEnvelope, ApiErrorPayload, ApiMeta } from "./types";
 
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -8,7 +8,7 @@ type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Respons
 interface ClientResult<T> {
   data?: T;
   error?: unknown;
-  response: Response;
+  response?: Response;
 }
 
 export class ApiError extends Error {
@@ -34,27 +34,40 @@ export class ApiError extends Error {
 
 export function createExplorerClient(fetcher: Fetcher = dynamicFetch) {
   const origin = sameOrigin();
-  return createClient<paths>({
+  const client = createClient({
     baseUrl: `${origin}/api/v1`,
     cache: "no-store",
     credentials: "same-origin",
     headers: { Accept: "application/json" },
-    fetch: makeRelativeFetcher(origin, fetcher),
+    parseAs: "json",
+    fetch: (input, init) => {
+      // Keep the SDK-owned Request and its abort controller alive together.
+      const request =
+        input instanceof Request && init === undefined ? input : new Request(input, init);
+      return makeRelativeFetcher(origin, fetcher)(request);
+    },
   });
+  // Hey API captures transport/parse failures as results by default. Preserve
+  // rejection for cancellation, network failures, and invalid JSON on success.
+  client.interceptors.error.use((error, response) => {
+    if (!response || response.ok) throw error;
+    return error;
+  });
+  return client;
 }
 
-export function sameOriginAPIPath<Path extends keyof paths>(path: Path): `/api/v1${Path & string}` {
+export function sameOriginAPIPath<Path extends StreamHeadEventsData["url"]>(
+  path: Path,
+): `/api/v1${Path & string}` {
   return `/api/v1${path}`;
 }
 
 export function requireEnvelope<T extends ApiEnvelope<unknown, ApiMeta>>(
   result: ClientResult<T>,
 ): T {
-  if (!result.response.ok || result.error !== undefined) {
-    throw new ApiError(result.response.status, isApiError(result.error) ? result.error : undefined);
-  }
+  const response = requireResponse(result);
   if (!isEnvelope(result.data)) {
-    throw new ApiError(result.response.status, undefined, {
+    throw new ApiError(response.status, undefined, {
       code: "INVALID_RESPONSE",
       message: "Explorer API returned an invalid response envelope",
     });
@@ -62,10 +75,17 @@ export function requireEnvelope<T extends ApiEnvelope<unknown, ApiMeta>>(
   return result.data as T;
 }
 
-export function requireNoContent(result: ClientResult<unknown>): void {
-  if (result.response.status !== 204 || result.error !== undefined) {
+export function requireResponse(result: ClientResult<unknown>): Response {
+  if (!result.response) throw result.error ?? new TypeError("Explorer API returned no response");
+  if (!result.response.ok || result.error !== undefined) {
     throw new ApiError(result.response.status, isApiError(result.error) ? result.error : undefined);
   }
+  return result.response;
+}
+
+export function requireNoContent(result: ClientResult<unknown>): void {
+  const response = requireResponse(result);
+  if (response.status !== 204) throw new ApiError(response.status);
 }
 
 function sameOrigin(): string {

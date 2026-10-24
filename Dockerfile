@@ -17,14 +17,13 @@ COPY web/package.json ./web/
 COPY api/package.json ./api/
 COPY compiler/package.json ./compiler/
 COPY e2e/hardhat3/package.json ./e2e/hardhat3/
-RUN --mount=type=cache,id=etherview-pnpm,target=/pnpm/store pnpm --filter . --filter ./web --filter ./api install --frozen-lockfile --store-dir=/pnpm/store
-COPY ./api ./api
+RUN --mount=type=cache,id=etherview-pnpm,target=/pnpm/store pnpm --filter . --filter ./web install --frozen-lockfile --store-dir=/pnpm/store
 COPY web/index.html web/asset-budget.json web/tsconfig.json web/tsconfig.app.json web/tsconfig.node.json web/tsconfig.worker.json web/vite.config.ts ./web/
 COPY web/scripts ./web/scripts
 COPY web/src ./web/src
 ARG ETHERVIEW_WEB_BRANDING_DIR=web/branding/default
 COPY ["${ETHERVIEW_WEB_BRANDING_DIR}/", "/src/web-branding/"]
-RUN pnpm --dir api run generate:api && ETHERVIEW_WEB_BRANDING_DIR=/src/web-branding pnpm --dir web run build
+RUN ETHERVIEW_WEB_BRANDING_DIR=/src/web-branding pnpm --dir web run build
 
 FROM node-builder AS compiler-builder
 RUN apt-get update \

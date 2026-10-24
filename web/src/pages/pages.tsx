@@ -2,11 +2,11 @@ import { useCursorHistory } from "@/api/pagination";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
+import { usePublicConfig } from "@/api/publicConfig";
 import {
   useBlocks,
   useChainStatus,
   useGenesisAccounts,
-  usePublicConfig,
   useSearchResults,
   useTokens,
   useTransactions,

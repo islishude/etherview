@@ -16,7 +16,7 @@ import {
   type UserAPIKey,
   type UserAPIKeyIssued,
 } from "@/api/userApiKeys";
-import { usePublicConfig } from "@/api/hooks";
+import { usePublicConfig } from "@/api/publicConfig";
 import { CopyButton } from "@/components/CopyButton";
 import { formatTimestamp, shorten } from "@/components/format";
 import { SIWELoginControl } from "@/components/SIWELoginControl";

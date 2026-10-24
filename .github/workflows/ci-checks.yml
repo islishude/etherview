@@ -30,17 +30,34 @@ jobs:
       - name: Reject unexpected workspace changes
         run: git diff --check && git diff --exit-code
 
-  integration:
-    name: PostgreSQL integration
+  integration-shards:
+    name: PostgreSQL integration (shard ${{ matrix.shard }}/4)
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-toolchain
       - name: Run owned PostgreSQL migrations and integration tests
-        run: make test-integration
+        run: make test-integration INTEGRATION_SHARD=${{ matrix.shard }} INTEGRATION_SHARDS=4
       - name: Verify RustFS S3 transport and persistence
+        if: matrix.shard == 1
         run: make test-rustfs
+
+  integration:
+    name: PostgreSQL integration
+    needs: integration-shards
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    steps:
+      - name: Require every integration shard and RustFS check
+        env:
+          RESULT: ${{ needs.integration-shards.result }}
+        run: test "$RESULT" = success
 
   browser:
     name: Embedded SPA browser E2E

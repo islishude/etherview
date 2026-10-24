@@ -1,52 +1,61 @@
-import type { components } from "./schema.gen";
-import { apiClient, ApiError, requireEnvelope, requireNoContent } from "./client";
+import * as sdk from "./heyapi/sdk.gen";
+import type * as schemas from "./heyapi/types.gen";
+import { apiClient, ApiError, requireEnvelope, requireNoContent, requireResponse } from "./client";
 
-export type AddressWatch = components["schemas"]["AddressWatch"];
-export type WatchInput = components["schemas"]["WatchInput"];
-export type AddressExportRequest = components["schemas"]["AddressExportRequest"];
+export type AddressWatch = schemas.AddressWatch;
+export type WatchInput = schemas.WatchInput;
+export type AddressExportRequest = schemas.AddressExportRequest;
 export async function listWatches(signal?: AbortSignal) {
-  return requireEnvelope(await apiClient.GET("/users/me/watchlist", { signal })).data;
+  return requireEnvelope(await sdk.listCurrentUserWatches({ client: apiClient, signal })).data;
 }
 export async function saveWatch(body: WatchInput, csrf: string, signal: AbortSignal, id?: string) {
   const header = { "X-CSRF-Token": csrf };
   return requireEnvelope(
     id
-      ? await apiClient.PATCH("/users/me/watchlist/{id}", {
+      ? await sdk.updateCurrentUserWatch({
+          client: apiClient,
           body,
-          params: { path: { id }, header },
+          path: { id },
+          headers: header,
           signal,
         })
-      : await apiClient.POST("/users/me/watchlist", { body, params: { header }, signal }),
+      : await sdk.createCurrentUserWatch({ client: apiClient, body, headers: header, signal }),
   ).data;
 }
 export async function deleteWatch(id: string, csrf: string, signal: AbortSignal) {
   requireNoContent(
-    await apiClient.DELETE("/users/me/watchlist/{id}", {
-      params: { path: { id }, header: { "X-CSRF-Token": csrf } },
+    await sdk.deleteCurrentUserWatch({
+      client: apiClient,
+      path: { id },
+      headers: { "X-CSRF-Token": csrf },
       signal,
     }),
   );
 }
 export async function listPushSubscriptions(signal?: AbortSignal) {
-  return requireEnvelope(await apiClient.GET("/users/me/push-subscriptions", { signal })).data;
+  return requireEnvelope(await sdk.listCurrentUserPushSubscriptions({ client: apiClient, signal }))
+    .data;
 }
 export async function savePushSubscription(
-  body: components["schemas"]["PushSubscriptionInput"],
+  body: schemas.PushSubscriptionInput,
   csrf: string,
   signal: AbortSignal,
 ) {
   return requireEnvelope(
-    await apiClient.POST("/users/me/push-subscriptions", {
+    await sdk.saveCurrentUserPushSubscription({
+      client: apiClient,
       body,
-      params: { header: { "X-CSRF-Token": csrf } },
+      headers: { "X-CSRF-Token": csrf },
       signal,
     }),
   ).data;
 }
 export async function deletePushSubscription(id: string, csrf: string, signal: AbortSignal) {
   requireNoContent(
-    await apiClient.DELETE("/users/me/push-subscriptions/{id}", {
-      params: { path: { id }, header: { "X-CSRF-Token": csrf } },
+    await sdk.deleteCurrentUserPushSubscription({
+      client: apiClient,
+      path: { id },
+      headers: { "X-CSRF-Token": csrf },
       signal,
     }),
   );
@@ -56,17 +65,20 @@ export async function downloadAddressCSV(
   csrf: string,
   signal: AbortSignal,
 ) {
-  const result = await apiClient.POST("/users/me/exports/address-activity", {
+  const result = await sdk.exportCurrentUserAddressActivity({
+    client: apiClient,
     body,
-    params: { header: { "X-CSRF-Token": csrf } },
-    parseAs: "blob",
+    headers: { "X-CSRF-Token": csrf },
+    parseAs: "stream",
     signal,
   });
-  if (!result.response.ok || !result.data) {
-    throw new ApiError(result.response.status, result.error);
+  const response = requireResponse(result);
+  if (response.status === 204 || response.headers.get("Content-Length") === "0") {
+    throw new ApiError(response.status);
   }
+  const data = await response.blob();
   if (signal.aborted) return;
-  const url = URL.createObjectURL(result.data);
+  const url = URL.createObjectURL(data);
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = "address-activity.csv";

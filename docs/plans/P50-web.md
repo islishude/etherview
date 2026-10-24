@@ -53,10 +53,13 @@ with session-isolated browser state.
 | P50-T73 | done   | P40-T21, P50-T03                   | Authoritative ERC-20 holder list/count on the bilingual Token page                                                                                                                                     | generated-client, availability, accessibility, 390px browser, and compatibility tests                                          |
 | P50-T74 | done   | P60-T19, P40-T23, P60-T05          | Bilingual private watch/notification workspace and bounded CSV download with account-switch cache isolation                                                                                            | browser/session isolation, generated-client, responsive/accessibility, and production parity tests                             |
 | P50-T75 | done   | P40-T22, P50-T06                   | Consensus overview, slot provenance, blob archive status, on-demand preview, and exact-hash downloads                                                                                                  | generated-client, disabled/unavailable/freshness, mobile, browser, and production parity tests                                 |
+| P50-T76 | done   | P50-T01, P40                       | Pinned Hey API Fetch SDK with explicit same-origin client, exact types, error/stream preservation and explicit generation ([#169](https://github.com/islishude/etherview/issues/169))                  | type/runtime regressions, deterministic directory generation, Web/build/browser and common gates                               |
 
 ## Acceptance
 
 - [x] Bilingual core, token, contract and account surfaces use the generated same-origin client.
+- [x] Hey API operations require the configured client; ordinary builds use committed
+      SDK output while explicit generation and CI enforce complete-directory freshness.
 - [x] Explorer routes, deep links and canonical/snapshot identities remain stable.
 - [x] Wallet-only RPC and signing enforce provider, chain and exact target fences.
 - [x] Verified code, ABI, protocol fields and decoded/raw data retain explicit provenance.
@@ -112,6 +115,12 @@ None. P60/P70 retain independent release blockers.
 
 ## Evidence
 
+P50-T76 passed local `make check`, 535 frontend tests, all 102 embedded Chromium
+cases, deterministic SDK generation and the Docker Web builder stage. Build-only
+workflow changes then passed command-graph regressions, generation, documentation
+and deployment checks. Existing asset budgets remain unchanged. This does not
+claim remote CI or full production-image/runtime acceptance.
+
 P50-T02/P50-T03/P50-T06/P50-T10 retain Genesis/block-zero, analytics and
 Amsterdam native-transfer/protocol-log browser acceptance, including bilingual
 system-address labels and exact amounts. These are historical local frontend,
@@ -135,7 +144,7 @@ combined browser run. Aggregate/runtime evidence is retained in P30-T35 and
 P30-T138.
 
 Retained completed milestones: P50-T01, P50-T02, P50-T03, P50-T04, P50-T05, P50-T06,
-P50-T10, P50-T11, P50-T14, P50-T16, P50-T72, P50-T73, P50-T74, P50-T75.
+P50-T10, P50-T11, P50-T14, P50-T16, P50-T72, P50-T73, P50-T74, P50-T75, P50-T76.
 
 Frontend unit, generated-client, embedded Chromium, responsive and
 accessibility checks passed at the feature revisions. Coverage includes

@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { QRCodeSVG } from "qrcode.react";
 import { isAddress } from "viem";
 
+import { usePublicConfig } from "@/api/publicConfig";
 import {
   useAddressERC20Balances,
   useAddressERC20Transfers,
@@ -17,7 +18,6 @@ import {
   useAddressWithdrawals,
   useAddressUserOperations,
   useAddress,
-  usePublicConfig,
 } from "@/api/hooks";
 import { ContractPage, isContractTabHash } from "./ContractPage";
 import {

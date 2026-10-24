@@ -11,7 +11,7 @@ import {
 import { getAddress, isAddress, toHex, type Address, type Hex } from "viem";
 
 import type { AuthChallenge } from "@/api/auth";
-import { usePublicConfig } from "@/api/hooks";
+import { usePublicConfig } from "@/api/publicConfig";
 import {
   assertWalletChain,
   buildAddEthereumChainParameter,

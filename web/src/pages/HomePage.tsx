@@ -2,7 +2,7 @@ import { ConsensusOverview } from "./ConsensusPanels";
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { usePublicConfig } from "@/api/hooks";
+import { usePublicConfig } from "@/api/publicConfig";
 import { useHomeSnapshot } from "@/api/homeStream";
 import type { BlockSummary, TransactionSummary } from "@/api/types";
 import { formatInteger, formatRelativeTimestamp, shorten } from "@/components/format";

@@ -5,15 +5,16 @@
   "main": "index.js",
   "private": true,
   "scripts": {
-    "check:api": "openapi-typescript openapi.yaml --alphabetize --output ../web/src/api/schema.gen.ts --check",
-    "generate:api": "openapi-typescript openapi.yaml --alphabetize --output ../web/src/api/schema.gen.ts"
+    "generate:api": "openapi-ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "module",
   "dependencies": {
-    "openapi-typescript": "^7.13.0",
-    "typescript": "5.9.3"
+    "typescript": "6.0.3"
+  },
+  "devDependencies": {
+    "@hey-api/openapi-ts": "0.99.0"
   }
 }

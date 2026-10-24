@@ -101,7 +101,7 @@ export default defineConfig({
 
             {
               name: "support-vendor",
-              test: /node_modules[\\/](?:i18next|react-i18next|openapi-fetch)(?:[\\/]|$)/,
+              test: /node_modules[\\/](?:i18next|react-i18next)(?:[\\/]|$)/,
               priority: 30,
             },
 

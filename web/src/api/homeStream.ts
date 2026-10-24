@@ -1,3 +1,4 @@
+import * as sdk from "./heyapi/sdk.gen";
 import { eventWatermark, observeEvent, statusQueryMeta, validEventID } from "./chainEvents";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -36,8 +37,9 @@ export function useHomeSnapshot(): HomeStreamState {
     meta: statusQueryMeta,
     queryFn: async ({ signal }) => {
       const envelope = requireEnvelope(
-        await apiClient.GET("/home", {
-          params: { query: { min_event_id: eventWatermark(queryClient) } },
+        await sdk.getHomeSnapshot({
+          client: apiClient,
+          query: { min_event_id: eventWatermark(queryClient) },
           signal,
         }),
       );

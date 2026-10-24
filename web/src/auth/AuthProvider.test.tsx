@@ -47,7 +47,7 @@ vi.mock("@/api/auth", () => ({
   verifyAuthChallenge: mocks.verifyAuthChallenge,
 }));
 
-vi.mock("@/api/hooks", () => ({
+vi.mock("@/api/publicConfig", () => ({
   usePublicConfig: () => mocks.publicConfig,
 }));
 

@@ -17,7 +17,7 @@ import {
   type BillingPaymentState,
   type BillingTransferMethod,
 } from "@/api/billing";
-import { usePublicConfig } from "@/api/hooks";
+import { usePublicConfig } from "@/api/publicConfig";
 import { useAuth } from "@/auth/AuthProvider";
 import { formatTimestamp } from "@/components/format";
 import { useWallet } from "@/wallet/WalletProvider";

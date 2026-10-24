@@ -1,13 +1,13 @@
 import { getAddress, toFunctionSelector, type Address, type Hex } from "viem";
 
-import type { components } from "@/api/schema.gen";
+import type * as schemas from "@/api/heyapi/types.gen";
 import { isTransactionHash, normalizeChainID, WalletBoundaryError } from "@/wallet/eip6963";
 
-export type ProxyDetails = components["schemas"]["ProxyDetails"];
-export type ProxyDetailsResponse = components["schemas"]["ProxyDetailsResponse"];
-export type ProxyPattern = components["schemas"]["ProxyPattern"];
+export type ProxyDetails = schemas.ProxyDetails;
+export type ProxyDetailsResponse = schemas.ProxyDetailsResponse;
+export type ProxyPattern = schemas.ProxyPattern;
 export type FreshProxyDetails = ProxyDetails | ProxyDetailsResponse;
-export type DelegationBinding = components["schemas"]["DelegationBinding"];
+export type DelegationBinding = schemas.DelegationBinding;
 
 export const PROXIABLE_UUID_SIGNATURE = "proxiableUUID()" as const;
 
@@ -22,7 +22,7 @@ interface BaseInteractionTarget {
   readonly transactionTarget: Address;
   readonly abiAddress: Address;
   readonly abiCodeHash?: string;
-  readonly abiArtifactResolution?: components["schemas"]["ContractArtifactResolution"];
+  readonly abiArtifactResolution?: schemas.ContractArtifactResolution;
   readonly supportsWrites: boolean;
   readonly requiresFreshBinding: boolean;
 }
@@ -38,7 +38,7 @@ interface BoundInteractionTarget extends BaseInteractionTarget {
   readonly proxyCodeHash: string;
   readonly proxyChainID: string;
   readonly bindingId?: string;
-  readonly proxyMechanism: components["schemas"]["ProxyMechanism"];
+  readonly proxyMechanism: schemas.ProxyMechanism;
   readonly proxyPattern?: ProxyPattern;
   readonly beaconAddress?: Address;
   readonly beaconCodeHash?: string;
@@ -831,20 +831,18 @@ function exactManagement(
   return target;
 }
 
-function exactVerifiedIdentity(
-  identity: components["schemas"]["ProxyContractIdentity"] | undefined,
-) {
+function exactVerifiedIdentity(identity: schemas.ProxyContractIdentity | undefined) {
   if (identity?.artifact_resolution !== "exact_address") return undefined;
   return exactCodeIdentity(identity, "verified");
 }
 
-function currentCodeIdentity(identity: components["schemas"]["ProxyContractIdentity"] | undefined) {
+function currentCodeIdentity(identity: schemas.ProxyContractIdentity | undefined) {
   if (!identity) return undefined;
   return exactCodeIdentity(identity, identity.verification_state);
 }
 
 function exactCodeIdentity(
-  identity: components["schemas"]["ProxyContractIdentity"] | undefined,
+  identity: schemas.ProxyContractIdentity | undefined,
   verificationState: "unverified" | "verified",
 ) {
   if (

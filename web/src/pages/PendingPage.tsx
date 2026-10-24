@@ -4,7 +4,8 @@ import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
 import { ApiError } from "@/api/client";
-import { usePendingTransactions, usePublicConfig } from "@/api/hooks";
+import { usePublicConfig } from "@/api/publicConfig";
+import { usePendingTransactions } from "@/api/hooks";
 import type { PendingMeta, PendingTransaction } from "@/api/types";
 import { formatInteger, formatNativeAmount, formatTimestamp, shorten } from "@/components/format";
 import { QueryNotice } from "@/components/QueryNotice";

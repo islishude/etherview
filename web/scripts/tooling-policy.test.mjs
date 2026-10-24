@@ -108,7 +108,8 @@ test("function size retains production/test limits and counts comments but not b
 test("file size enforces production/test limits and excludes generated API types", (t) => {
   const root = fixture(t, {
     "src/example.ts": sizedFile(1400),
-    "src/api/schema.gen.ts": sizedFile(2600),
+    "src/api/heyapi/types.gen.ts": sizedFile(2600),
+    "src/api/heyapi/client/index.ts": sizedFile(2600),
   });
   assert.equal(lint(root).status, 0);
   writeFileSync(join(root, "src/example.ts"), sizedFile(1401));
@@ -131,7 +132,8 @@ test("file size enforces production/test limits and excludes generated API types
 
 test("format gate covers hand-written frontend files, preserves exclusions, and is idempotent", (t) => {
   const ignored = {
-    "src/api/schema.gen.ts": "export type Generated={value:string}",
+    "src/api/heyapi/types.gen.ts": "export type Generated={value:string}",
+    "src/api/heyapi/client/index.ts": "export const generated={value:1}",
     "pnpm-lock.yaml": "lockfileVersion:   '9.0'",
     "dist/output.js": "const x=1",
     "e2e/server/main.go": "package main",

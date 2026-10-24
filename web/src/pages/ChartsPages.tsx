@@ -3,7 +3,8 @@ import { FormEvent, lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
-import { useChartMetric, useChartOverview, usePublicConfig } from "@/api/hooks";
+import { usePublicConfig } from "@/api/publicConfig";
+import { useChartMetric, useChartOverview } from "@/api/hooks";
 import type {
   ChartInterval,
   ChartMetric,

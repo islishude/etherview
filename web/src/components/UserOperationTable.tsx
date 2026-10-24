@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
-import { usePublicConfig } from "@/api/hooks";
+import { usePublicConfig } from "@/api/publicConfig";
 import type { UserOperationSummary } from "@/api/types";
 import { AddressIdentity } from "@/ens/AddressIdentity";
 import { formatInteger, formatNativeAmount, shorten } from "./format";

@@ -136,3 +136,10 @@ archive. Native Python and PyInstaller are not shipped in the production image.
 Vyper 0.2.0 and its embedded source archive are no longer distributed.
 Supported compiler/dependency archives are fetched by application-locked PyPI
 digest; no independently hosted compiler distribution or signing key is required.
+
+## Hey API generated Fetch runtime
+
+The generated Web SDK bundles runtime support from `@hey-api/openapi-ts@0.99.0`
+(MIT, Copyright (c) Hey API). Its license is retained in
+`licenses/hey-api-MIT.txt` and included by the production image's licenses copy.
+The generator version and package integrity are pinned in `pnpm-lock.yaml`.

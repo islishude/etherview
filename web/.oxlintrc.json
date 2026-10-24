@@ -4,7 +4,7 @@
   "categories": {
     "correctness": "off"
   },
-  "ignorePatterns": ["src/api/schema.gen.ts"],
+  "ignorePatterns": ["src/api/heyapi/**"],
   "rules": {
     "no-unused-vars": "error",
     "react/rules-of-hooks": "error",

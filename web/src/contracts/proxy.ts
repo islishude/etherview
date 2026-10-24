@@ -1,24 +1,24 @@
+import * as sdk from "../api/heyapi/sdk.gen";
 import { firstPage, type CursorRequest } from "@/api/pagination";
 import { chainQueryMeta } from "@/api/chainEvents";
 import { useQuery } from "@tanstack/react-query";
 import { getAddress } from "viem";
 
 import { ApiError, apiClient, requireEnvelope } from "@/api/client";
-import type { components } from "@/api/schema.gen";
+import type * as schemas from "@/api/heyapi/types.gen";
 
-export type VerifiedContractArtifact = components["schemas"]["VerifiedContract"];
-export type ContractProxyDetails = components["schemas"]["ProxyDetails"];
-export type ContractProxyDetailsResponse = components["schemas"]["ProxyDetailsResponse"];
-export type ContractProxyState = components["schemas"]["ProxyDetailStatus"];
-export type ContractProxyUpgradeHistory = components["schemas"]["ProxyUpgradeHistory"];
-export type ContractProxyInitializationHistory =
-  components["schemas"]["ProxyInitializationHistory"];
-export type ContractDiamondCutHistory = components["schemas"]["DiamondCutHistory"];
-export type ContractProxyManagementKind = components["schemas"]["ProxyManagementKind"];
+export type VerifiedContractArtifact = schemas.VerifiedContract;
+export type ContractProxyDetails = schemas.ProxyDetails;
+export type ContractProxyDetailsResponse = schemas.ProxyDetailsResponse;
+export type ContractProxyState = schemas.ProxyDetailStatus;
+export type ContractProxyUpgradeHistory = schemas.ProxyUpgradeHistory;
+export type ContractProxyInitializationHistory = schemas.ProxyInitializationHistory;
+export type ContractDiamondCutHistory = schemas.DiamondCutHistory;
+export type ContractProxyManagementKind = schemas.ProxyManagementKind;
 
-type ApiMeta = components["schemas"]["Meta"];
-type Address = components["schemas"]["Address"];
-type Quantity = components["schemas"]["Quantity"];
+type ApiMeta = schemas.Meta;
+type Address = schemas.Address;
+type Quantity = schemas.Quantity;
 
 export const DEFAULT_PROXY_HISTORY_LIMIT = 20;
 
@@ -84,10 +84,7 @@ export async function getVerifiedContractArtifact(
   signal?: AbortSignal,
 ): Promise<VerifiedContractArtifact> {
   const artifact = requireEnvelope(
-    await apiClient.GET("/contracts/{address}/verification", {
-      signal,
-      params: { path: { address } },
-    }),
+    await sdk.getVerifiedContract({ client: apiClient, signal, path: { address } }),
   ).data;
   if (
     expectedCodeHash !== undefined &&
@@ -110,7 +107,7 @@ export async function getContractProxyResponse(
   signal?: AbortSignal,
 ): Promise<ContractProxyDetailsResponse> {
   return requireEnvelope(
-    await apiClient.GET("/contracts/{address}/proxy", { signal, params: { path: { address } } }),
+    await sdk.getContractProxy({ client: apiClient, signal, path: { address } }),
   );
 }
 
@@ -121,9 +118,11 @@ export async function listContractProxyUpgrades(
   signal?: AbortSignal,
 ): Promise<ContractProxyUpgradePage> {
   const response = requireEnvelope(
-    await apiClient.GET("/contracts/{address}/proxy/upgrades", {
+    await sdk.listContractProxyUpgrades({
+      client: apiClient,
       signal,
-      params: { path: { address }, query: { cursor, limit } },
+      path: { address },
+      query: { cursor, limit },
     }),
   );
   return {
@@ -140,9 +139,11 @@ export async function listContractProxyInitializations(
   signal?: AbortSignal,
 ): Promise<ContractProxyInitializationPage> {
   const response = requireEnvelope(
-    await apiClient.GET("/contracts/{address}/proxy/initializations", {
+    await sdk.listContractProxyInitializations({
+      client: apiClient,
       signal,
-      params: { path: { address }, query: { cursor, limit } },
+      path: { address },
+      query: { cursor, limit },
     }),
   );
   return {
@@ -159,9 +160,11 @@ export async function listContractDiamondCuts(
   signal?: AbortSignal,
 ): Promise<ContractDiamondCutPage> {
   const response = requireEnvelope(
-    await apiClient.GET("/contracts/{address}/proxy/diamond-cuts", {
+    await sdk.listContractDiamondCuts({
+      client: apiClient,
       signal,
-      params: { path: { address }, query: { cursor, limit } },
+      path: { address },
+      query: { cursor, limit },
     }),
   );
   return {
