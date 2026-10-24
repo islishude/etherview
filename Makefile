@@ -14,6 +14,8 @@ GO_PACKAGES ?= ./...
 GO_TEST_FLAGS ?=
 INTEGRATION_DATABASE_URL ?=
 INTEGRATION_GO_PACKAGES ?=
+INTEGRATION_SHARD ?= 1
+INTEGRATION_SHARDS ?= 1
 GO_BUILD_OUTPUT ?= ./etherview
 GO_BUILD_FLAGS ?= -trimpath
 GO_BUILD_LDFLAGS ?= -s -w
@@ -208,12 +210,14 @@ test-foundry-e2e-prebuilt: test-foundry-offline-compile
 test-integration: web-build compiler-install
 	@INTEGRATION_DATABASE_URL="$(INTEGRATION_DATABASE_URL)" COMPOSE="$(COMPOSE)" \
 		DOCKER="$(DOCKER)" GO="$(GO)" \
-		$(GO) run ./cmd/testintegration -root . -packages "$(INTEGRATION_GO_PACKAGES)"
+		$(GO) run ./cmd/testintegration -root . -packages "$(INTEGRATION_GO_PACKAGES)" \
+			-shard "$(INTEGRATION_SHARD)" -shards "$(INTEGRATION_SHARDS)"
 
 test-integration-race: web-build compiler-install
 	@INTEGRATION_DATABASE_URL="$(INTEGRATION_DATABASE_URL)" COMPOSE="$(COMPOSE)" \
 		DOCKER="$(DOCKER)" GO="$(GO)" \
-		$(GO) run ./cmd/testintegration -root . -packages "$(INTEGRATION_GO_PACKAGES)" -race
+		$(GO) run ./cmd/testintegration -root . -packages "$(INTEGRATION_GO_PACKAGES)" -race \
+			-shard "$(INTEGRATION_SHARD)" -shards "$(INTEGRATION_SHARDS)"
 
 benchmark:
 	$(GO) test -run '^$$' -bench '^BenchmarkBundleBoundary$$' -benchmem \

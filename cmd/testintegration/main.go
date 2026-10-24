@@ -29,6 +29,8 @@ type options struct {
 	benchmark     string
 	benchmarkTime string
 	run           string
+	shard         int
+	shards        int
 }
 
 const integrationPackageTimeout = 15 * time.Minute
@@ -41,6 +43,8 @@ func main() {
 	flag.StringVar(&opts.benchmark, "benchmark", "", "optional Go benchmark regexp; skips ordinary tests")
 	flag.StringVar(&opts.benchmarkTime, "benchtime", "1s", "Go benchmark duration or iteration count")
 	flag.StringVar(&opts.run, "run", "", "optional Go test regexp")
+	flag.IntVar(&opts.shard, "shard", 1, "one-based integration shard index")
+	flag.IntVar(&opts.shards, "shards", 1, "number of stable test-name shards")
 	flag.Parse()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -52,6 +56,9 @@ func main() {
 }
 
 func run(ctx context.Context, opts options) error {
+	if err := validateSharding(opts); err != nil {
+		return err
+	}
 	databaseURL := strings.TrimSpace(os.Getenv("INTEGRATION_DATABASE_URL"))
 	var project *testcompose.Project
 	if databaseURL == "" {
@@ -99,6 +106,13 @@ func run(ctx context.Context, opts options) error {
 	if len(packages) == 0 {
 		return errors.New("no integration-tagged Go test packages were found")
 	}
+	if opts.shards > 1 {
+		pattern, err := discoverShard(ctx, opts, goCommand, databaseURL, packages)
+		if err != nil {
+			return err
+		}
+		opts.run = pattern
+	}
 	arguments, err := integrationTestArguments(opts, packages)
 	if err != nil {
 		return err
@@ -119,6 +133,9 @@ func integrationTestArguments(opts options, packages []string) ([]string, error)
 	}
 	if opts.race {
 		arguments = append(arguments, "-race")
+	}
+	if opts.shards > 1 {
+		arguments = append(arguments, "-v")
 	}
 	if opts.benchmark != "" {
 		if opts.race {

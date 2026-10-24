@@ -211,9 +211,19 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   `max_locks_per_transaction=1024` for concurrent full-schema creation and
   teardown; caller-supplied databases need equivalent lock-table capacity.
   Package discovery excludes `.local` scratch copies alongside dependency and
-  build directories. Each package retains all tests and has an explicit
-  15-minute Go timeout so cold CI is bounded above the observed 10-minute
-  default-timeout failure; the CI job keeps its independent 20-minute bound.
+  build directories. Local runs default to the complete suite. CI partitions
+  the discovered top-level tests, examples and fuzz seeds by a stable name hash
+  into four independent jobs, each with its own owned PostgreSQL project.
+  Subtests stay with their parent; every test name belongs to exactly one shard,
+  including names shared by multiple packages. This avoids unsafe in-process
+  parallelism in fixtures with process-global state. Reproduce a shard with
+  `make test-integration INTEGRATION_SHARD=1 INTEGRATION_SHARDS=4`; race mode
+  accepts the same settings. Sharding rejects focused-run/benchmark combinations
+  and empty selections. Verbose shard logs retain individual test durations.
+  Each package keeps its 15-minute Go timeout and each CI shard its independent
+  20-minute bound. The stable `Checks / PostgreSQL integration` check requires
+  every shard to succeed; RustFS runs once in shard 1. Failed shards do not
+  cancel the remaining shards.
   The ERC-4337 regression commits exact stored EntryPoint calldata and logs,
   drives the durable `userop@1` outbox/worker path, verifies all native reads,
   search and completeness, then replaces the block and requires canonical
