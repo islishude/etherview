@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -113,13 +114,25 @@ func (h *harness) assertPushWorker(ctx context.Context) {
 		h.t.Fatal(err)
 	}
 	if response.StatusCode != http.StatusOK || !strings.Contains(response.Header.Get("Content-Type"), "javascript") ||
-		!bytes.Contains(body, []byte(`addEventListener("push"`)) || !bytes.Contains(body, []byte(`addEventListener("notificationclick"`)) {
+		!workerRegistersEvent(body, "push") || !workerRegistersEvent(body, "notificationclick") {
 		h.t.Fatalf("production push worker missing: status=%d content-type=%s", response.StatusCode, response.Header.Get("Content-Type"))
 	}
 	if strings.Contains(response.Header.Get("Cache-Control"), "immutable") {
 		h.t.Fatal("production push worker cannot update")
 	}
 }
+
+func workerRegistersEvent(body []byte, event string) bool {
+	// Vite may emit single/double quotes or a static template literal.
+	for _, quote := range []string{`"`, "'", "`"} {
+		pattern := `\baddEventListener\s*\(\s*` + regexp.QuoteMeta(quote+event+quote) + `\s*,`
+		if regexp.MustCompile(pattern).Match(body) {
+			return true
+		}
+	}
+	return false
+}
+
 func (h *harness) assertRuntimeCSV(ctx context.Context, s runtimeWatchSession) {
 	h.t.Helper()
 	data, response := h.watchRequest(ctx, s, "POST", "/users/me/exports/address-activity", gen.AddressExportRequest{Address: h.fixture.accounts[0], Kind: "transaction", Direction: "both", From: time.Unix(int64(h.baseTimestamp), 0), To: time.Unix(int64(h.baseTimestamp+3600), 0)})
