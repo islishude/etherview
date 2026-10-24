@@ -137,11 +137,40 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
 - `make docs-check`: compare maintained high-risk documentation with current
   Makefile/Compose profiles, Preview Genesis lifecycle, compiler runtime
   identity, enrichment stages, and the Etherscan action allowlist.
-- `make source-check`: reject production SQL literals outside the migration
-  runner and validated partition-DDL module, reject `.sql` sources outside
-  `internal/db/queries` and `internal/store/migrations`, and cap hand-written Go
-  production/test files at 1,500/2,500 physical lines. `make lint-go` includes
-  this boundary.
+- `make source-check`: run `go test -count=1 ./internal/sourcecheck` to reject
+  `.sql` sources outside `internal/db/queries` and `internal/store/migrations`,
+  and embedded SQL literals in production Go outside the migration runner and
+  validated partition-DDL module. Both checks are ordinary Go tests, with no
+  separate CLI or shell script. The filesystem scan includes untracked files
+  and Go files outside the active build tags; `.git`, `node_modules`,
+  `internal/db/gen` and `internal/api/gen` are excluded. Regressions cover directory
+  exclusions, similar directory prefixes, whitespace in paths, and scan failures.
+  Disabling the Go test cache here ensures that changes outside the test package
+  always receive a fresh scan. `make lint-go` includes this boundary;
+  ordinary Go tests also run both checks.
+- `make golangci-lint`: enforce the configured Go analysis policy, including
+  `depguard` for package direction, native-pgx-only imports in production and
+  tests, and test-fixture imports restricted to tests. Type-aware `forbidigo`
+  rejects raw execution through pgx, pgxpool, pgconn and the repository's native
+  database interfaces, including method values and import/type aliases; unrelated
+  methods such as `url.URL.Query` remain allowed. New database interface types
+  must be included in the forbidigo policy. Generated sources, `_test.go`,
+  `internal/store/migrate.go` and `internal/store/partition.go` retain their raw
+  execution exemptions. Revive's `file-length-limit` caps both hand-written
+  production and test Go files at 2,500 physical lines, counting comments and
+  blank lines (`max: 2500`, `skip-comments: false`, `skip-blank-lines: false`).
+  Only this revive rule is enabled; generated files remain excluded.
+  `make lint-go` runs both this target and `source-check`.
+- `make test-lint-policy`: run the installed golangci-lint against an isolated
+  fixture module with the unchanged repository configuration and pinned pgx.
+  Assert exact diagnostics for forbidden imports and raw execution, plus allowed
+  tests, generated sources, migration/partition paths, typed sqlc access and
+  unrelated same-name methods. File-length fixtures check 2,499/2,500/2,501 lines
+  in production and test files, with comments, blank lines and optional final
+  newlines, plus the generated-file exemption. Tagged fixtures verify
+  integration-tag coverage.
+  This regression runs as part of `make golangci-lint`, including the CI lint job;
+  it requires the tool installed by `make install-lint-tools`.
 - `make generate-check`: regenerate OpenAPI, SQL, and embedded frontend outputs
   and fail on a diff. It snapshots the checked-in baseline in a temporary
   directory before regeneration, so it also works before the repository has an
@@ -400,7 +429,7 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   fixture is verification input, not an ENS source; ENS behavior remains owned
   by `make test-runtime-e2e` and its exact Mainnet-identity fixture.
 - `make lint`: Go formatting/vet, the repository's golangci-lint v2 policy
-  (`standard`, `modernize`, and `unparam`) across ordinary tests plus tagged
+  (including `standard`, `modernize`, `unparam`, `depguard`, `forbidigo`, and `revive`) across ordinary tests plus tagged
   integration, Hardhat, Foundry, and runtime E2E source, and TypeScript type
   checking, Oxlint, and repository/frontend format checking.
 - `make security-check`: `govulncheck`, API-generator, frontend, and Hardhat 3

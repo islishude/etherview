@@ -53,8 +53,11 @@ provenance/confidence, exact verified calldata, proxy/Diamond vocabulary, and
 durable stage/replay/enqueue identities live in `internal/abicontract`,
 `internal/abicalldata`, `internal/proxycontract`, and
 `internal/stagecontract`. Worker implementations may alias those contracts,
-but readers and producers import the neutral owner. `make source-check`
-enforces these directions in addition to SQL/file-size ownership.
+but readers and producers import the neutral owner. `make golangci-lint`
+enforces these import directions, native database API restrictions, and a
+uniform 2,500-physical-line limit for hand-written production and test Go files.
+`make source-check` enforces SQL file locations and embedded SQL ownership
+through ordinary Go tests. `make lint-go` includes both.
 
 The public API listener optionally serves TLS from one startup-loaded
 certificate/private-key pair as specified by

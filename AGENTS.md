@@ -59,7 +59,8 @@ routine change evidence belongs in the PR or completion report.
 Run targeted regressions, then all applicable gates in [docs/testing.md](docs/testing.md):
 
 - `make generate-check`: OpenAPI, SQL, generated-client, or embedded SPA changes.
-- `make source-check`: database execution-boundary changes.
+- `make lint-go`: database execution or package-boundary changes; includes
+  `source-check` for SQL ownership.
 - `make docs-check`: maintained docs or executable deployment/runtime surfaces.
 - `make plan-check`: plan, ADR-link, or governance changes.
 

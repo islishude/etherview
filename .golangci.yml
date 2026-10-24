@@ -22,7 +22,73 @@ linters:
     - unparam
     - copyloopvar
     - rowserrcheck
+    - depguard
+    - forbidigo
+    - revive
   settings:
+    revive:
+      rules:
+        - name: file-length-limit
+          arguments:
+            - max: 2500
+              skip-comments: false
+              skip-blank-lines: false
+    depguard:
+      rules:
+        native-database:
+          deny:
+            - pkg: database/sql$
+              desc: database access must use native pgx and pgtype contracts
+            - pkg: database/sql/driver$
+              desc: database access must use native pgx and pgtype contracts
+            - pkg: github.com/jackc/pgx/v5/stdlib$
+              desc: database access must use native pgx and pgtype contracts
+            - pkg: github.com/lib/pq$
+              desc: database access must use native pgx and pgtype contracts
+        production-fixtures:
+          files: ["!$test"]
+          deny:
+            - pkg: github.com/islishude/etherview/internal/testpgx$
+              desc: production code must not import database test fixtures
+        public-readers:
+          files:
+            - "${base-path}/internal/query/**"
+            - "${base-path}/internal/state/**"
+            - "${base-path}/internal/publicquery/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/islishude/etherview/internal/httpapi$
+              desc: public readers must not depend on HTTP transport
+        worker-contracts:
+          files:
+            - "${base-path}/internal/query/**"
+            - "${base-path}/internal/publicquery/**"
+            - "${base-path}/internal/abicalldata/**"
+            - "${base-path}/internal/abicontract/**"
+            - "${base-path}/internal/proxycontract/**"
+            - "${base-path}/internal/stagecontract/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/islishude/etherview/internal/enrich$
+              desc: readers and shared contracts must not depend on enrichment workers
+        neutral-public-contracts:
+          files:
+            - "${base-path}/internal/publicquery/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/islishude/etherview/internal/query$
+              desc: public contracts must not depend on reader implementations
+            - pkg: github.com/islishude/etherview/internal/state$
+              desc: public contracts must not depend on reader implementations
+    forbidigo:
+      analyze-types: true
+      forbid:
+        - pattern: '^(pgx|pgxpool|pgconn)\..*\.(Exec|Query|QueryRow|Prepare|SendBatch|CopyFrom|ExecParams|ExecPrepared|ExecBatch)$'
+          pkg: '^github\.com/jackc/pgx/v5(/(pgxpool|pgconn))?$'
+          msg: production database execution must use a generated sqlc method
+        - pattern: '^(dbgen\.DBTX|dbaccess\.Database|maintenance\.(sessionConnection|nativeSession))\.(Exec|Query|QueryRow)$'
+          pkg: '^github\.com/islishude/etherview/internal/(db(/gen)?|maintenance)$'
+          msg: production database execution must use a generated sqlc method
     dupl:
       threshold: 150
     gocognit:
@@ -30,6 +96,10 @@ linters:
   exclusions:
     generated: strict
     rules:
+      # Raw execution is owned by sqlc, tests, migration and partition DDL only.
+      - path: '(_test\.go$|^internal/store/(migrate|partition)\.go$)'
+        linters:
+          - forbidigo
       - path: _test\.go
         linters:
           - dupl

@@ -143,7 +143,7 @@ preview-gateway-build:
 # Quality checks
 
 .PHONY: check toolchain-check plan-check docs-check source-check format format-check \
-	repo-format-check web-format-check lint lint-go golangci-lint web-lint install-lint-tools \
+	repo-format-check web-format-check lint lint-go golangci-lint test-lint-policy web-lint install-lint-tools \
 	lint-tool-check install-security-tools security-tool-check security-check license-tool-check \
 	license-check
 
@@ -159,7 +159,7 @@ docs-check:
 	$(NODE) .github/scripts/docs-check.mjs
 
 source-check:
-	$(GO) run ./cmd/sourcecheck -root .
+	$(GO) test -count=1 ./internal/sourcecheck
 
 format: pnpm-install
 	$(PNPM) run format
@@ -184,8 +184,11 @@ lint-go: lint-tool-check source-check web-build
 	$(GO) vet $(GO_PACKAGES)
 	@$(MAKE) golangci-lint
 
-golangci-lint: lint-tool-check
+golangci-lint: lint-tool-check test-lint-policy
 	$(GOLANGCI_LINT) run ./...
+
+test-lint-policy: lint-tool-check
+	GOLANGCI_LINT="$(GOLANGCI_LINT)" $(NODE) --test .github/scripts/lint-policy.test.mjs
 
 web-lint: web-install web-format-check
 	$(PNPM) --dir web run lint:code
