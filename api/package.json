@@ -5,6 +5,8 @@
   "main": "index.js",
   "private": true,
   "scripts": {
+    "check:schema": "node check-schema.mjs",
+    "test": "node --test check-schema.test.mjs",
     "generate:api": "openapi-ts"
   },
   "keywords": [],
@@ -15,6 +17,8 @@
     "typescript": "6.0.3"
   },
   "devDependencies": {
-    "@hey-api/openapi-ts": "0.99.0"
+    "@apidevtools/swagger-parser": "13.1.0",
+    "@hey-api/openapi-ts": "0.99.0",
+    "openapi-types": "12.1.3"
   }
 }

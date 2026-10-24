@@ -65,7 +65,7 @@ The entry workflow owns triggers, concurrency, Vyper package production and the
 native WASM matrix, plus explicit image-to-consumer dependencies. The reusable
 [checks workflow](../.github/workflows/ci-checks.yml) runs independent quality, lint, test, race-test,
 PostgreSQL/RustFS, browser, security/license, native provider compatibility and
-deployment-static jobs. Quality runs `make toolchain-check docs-check plan-check generate-check`;
+deployment-static jobs. Quality runs `make toolchain-check docs-check plan-check openapi-check generate-check`;
 lint, test and race-test run their respective Makefile targets, with uv installed for test.
 `lint-go` builds the embedded SPA before Go analysis, so the standalone lint job
 also works from a fresh checkout without `web/dist`.
@@ -171,6 +171,12 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   integration-tag coverage.
   This regression runs as part of `make golangci-lint`, including the CI lint job;
   it requires the tool installed by `make install-lint-tools`.
+- `make openapi-check`: validate `api/openapi.yaml` against the bundled OpenAPI
+  schema with pinned Swagger Parser, resolve local references, and fail on
+  invalid types, missing required fields, or broken references. HTTP reference
+  resolution is disabled, so validation needs no network after dependency
+  installation. Runs CLI regressions including null versus empty/omitted
+  parameter arrays. Both `make check` and the CI quality job include this gate.
 - `make generate-check`: regenerate OpenAPI, SQL, and embedded frontend outputs
   and fail on a diff. It snapshots the checked-in baseline in a temporary
   directory before regeneration, so it also works before the repository has an

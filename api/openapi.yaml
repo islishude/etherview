@@ -1427,7 +1427,6 @@ paths:
     get:
       operationId: getChartOverview
       tags: [stats]
-      parameters:
       responses:
         "200":
           description: Recent execution analytics with previous-window comparisons, previews, and backfill coverage.

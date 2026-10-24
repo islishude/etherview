@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-toolchain
       - name: Run deterministic common gates
-        run: make toolchain-check docs-check plan-check generate-check
+        run: make toolchain-check docs-check plan-check openapi-check generate-check
       - name: Reject unexpected workspace changes
         run: git diff --check && git diff --exit-code
 

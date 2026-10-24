@@ -217,7 +217,8 @@ preprocessor or bulk-convert existing components for a stylesheet split.
   security-sensitive parsing.
 - Run the smallest focused checks before broader gates. The Makefile is command
   truth; `docs/testing.md` defines each gate's scope and evidence rules.
-- Run `make generate-check` after OpenAPI, SQL, generated-client, or embedded
+- Run `make openapi-check` after OpenAPI changes.
+  Run `make generate-check` after OpenAPI, SQL, generated-client, or embedded
   SPA changes; `make lint-go` after database execution or package-boundary changes;
   run `make docs-check` after maintained documentation or executable
   deployment/runtime-surface changes; and run `make plan-check` after plan,

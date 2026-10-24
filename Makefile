@@ -142,12 +142,12 @@ preview-gateway-build:
 
 # Quality checks
 
-.PHONY: check toolchain-check plan-check docs-check source-check format format-check \
+.PHONY: check toolchain-check plan-check docs-check openapi-check source-check format format-check \
 	repo-format-check web-format-check lint lint-go golangci-lint test-lint-policy web-lint install-lint-tools \
 	lint-tool-check install-security-tools security-tool-check security-check license-tool-check \
 	license-check
 
-check: toolchain-check security-tool-check license-tool-check docs-check plan-check generate-check lint test test-race security-check license-check deployment-check
+check: toolchain-check security-tool-check license-tool-check docs-check plan-check openapi-check generate-check lint test test-race security-check license-check deployment-check
 
 toolchain-check:
 	@.github/scripts/toolchain-check.sh
@@ -157,6 +157,10 @@ plan-check:
 
 docs-check:
 	$(NODE) .github/scripts/docs-check.mjs
+
+openapi-check: pnpm-install
+	$(PNPM) --dir api run check:schema
+	$(PNPM) --dir api run test
 
 source-check:
 	$(GO) test -count=1 ./internal/sourcecheck
