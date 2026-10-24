@@ -115,7 +115,7 @@ func TestConsensusDiscoveryReorgWhileDisabledAndConcurrentAdvance(t *testing.T) 
 	if _, err := repo.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{genesis, original}); err != nil {
 		t.Fatal(err)
 	}
-	execFixture(t, ctx, db, `INSERT INTO consensus_discovery_cursors(chain_id,stage,next_number,latest_number) VALUES(1,'consensus',-1,1),(1,'blob',-1,1)`)
+	execFixture(t, ctx, db, `INSERT INTO consensus_discovery_cursors(chain_id,stage,next_number,latest_number) VALUES(1,'consensus',-1,1),(1,'blob',-1,1),(1,'requests',-1,1)`)
 	applyDerivedReorg(t, ctx, repo, genesis, []chainbundle.Bundle{original}, []chainbundle.Bundle{replacement}, "collector disabled")
 	execFixture(t, ctx, db, `UPDATE transactional_outbox SET published_at=now()`)
 	var chain, zero, one pgtype.Numeric
@@ -123,7 +123,7 @@ func TestConsensusDiscoveryReorgWhileDisabledAndConcurrentAdvance(t *testing.T) 
 	_ = zero.Scan("0")
 	_ = one.Scan("1")
 	q := dbgen.New(db)
-	for _, stage := range []string{"consensus", "blob"} {
+	for _, stage := range []string{"consensus", "blob", "requests"} {
 		// A scan begun before the reorg must not erase its rewind when it finishes.
 		if err := q.ConsensusAdvanceDiscovery(ctx, dbgen.ConsensusAdvanceDiscoveryParams{ChainID: chain, Stage: stage, LastNumber: zero, LatestNumber: one, Generation: 0}); err != nil {
 			t.Fatal(err)

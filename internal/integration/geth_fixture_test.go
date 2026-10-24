@@ -38,6 +38,7 @@ type integrationBundleOptions struct {
 	Difficulty    *big.Int
 	BaseFee       *big.Int
 	Amsterdam     bool
+	RequestsHash  *common.Hash
 	GrossGasExtra uint64
 	Number        uint64
 	ParentHash    common.Hash
@@ -112,6 +113,7 @@ func newIntegrationBundle(options integrationBundleOptions) (chainbundle.Bundle,
 	}
 	header := &types.Header{
 		BaseFee:       options.BaseFee,
+		RequestsHash:  options.RequestsHash,
 		ParentHash:    options.ParentHash,
 		UncleHash:     types.EmptyUncleHash,
 		Coinbase:      options.Coinbase,

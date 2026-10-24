@@ -1271,6 +1271,25 @@ type EtherviewSchemaMigration struct {
 	AppliedAt pgtype.Timestamptz `db:"applied_at" json:"applied_at"`
 }
 
+type ExecutionRequest struct {
+	ChainID       pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber   pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash     []byte         `db:"block_hash" json:"block_hash"`
+	RequestType   int16          `db:"request_type" json:"request_type"`
+	SequenceIndex int32          `db:"sequence_index" json:"sequence_index"`
+	Record        []byte         `db:"record" json:"record"`
+}
+
+type ExecutionRequestSet struct {
+	ChainID       pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber   pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash     []byte         `db:"block_hash" json:"block_hash"`
+	Manifest      []byte         `db:"manifest" json:"manifest"`
+	Canonical     bool           `db:"canonical" json:"canonical"`
+	DurableJobID  int64          `db:"durable_job_id" json:"durable_job_id"`
+	JobGeneration int64          `db:"job_generation" json:"job_generation"`
+}
+
 type ExternalAdapterObservation struct {
 	ID             int64              `db:"id" json:"id"`
 	ChainID        pgtype.Numeric     `db:"chain_id" json:"chain_id"`

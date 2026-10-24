@@ -106,7 +106,11 @@ func (q *Queries) StoreDeleteCoreBlockFacts(ctx context.Context, chainID pgtype.
 }
 
 const storeDeleteDerivedBlockFacts = `-- name: StoreDeleteDerivedBlockFacts :exec
-WITH delete_consensus AS (
+WITH removed_request_items AS (
+ DELETE FROM execution_requests WHERE chain_id=$1::numeric AND block_number=$2::numeric AND block_hash=$3::bytea
+), removed_request_sets AS (
+ DELETE FROM execution_request_sets WHERE chain_id=$1::numeric AND block_number=$2::numeric AND block_hash=$3::bytea
+), delete_consensus AS (
  DELETE FROM consensus_observations WHERE chain_id=$1::numeric AND block_number=$2::numeric AND block_hash=$3::bytea
 ), delete_blob AS (
  DELETE FROM blob_manifests WHERE chain_id=$1::numeric AND block_number=$2::numeric AND block_hash=$3::bytea

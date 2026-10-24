@@ -1,6 +1,6 @@
 # Stylesheet organization
 
-`../styles.css` is the only application entry point. It imports these modules
+`../styles.css` is the global application entry point. It imports these modules
 in cascade order:
 
 1. `foundation.css` — theme tokens, element defaults, accessibility, header,
@@ -58,6 +58,12 @@ feature-owned semantic classes for complex presentation, and foundation tokens
 for theme values. Adding a stylesheet does not require a preprocessor, another
 layer, or a new runtime dependency. This organization does not require rewriting
 existing components into utility classes.
+
+`explorer/requests.css` is scoped to the Requests panel and imported by
+`RequestsPanel.tsx` in the lazy block route. Vite loads it with that route so
+request-card presentation does not increase the initial shell asset budget.
+Keep its selectors feature-specific and its colors on foundation tokens; it
+must not override shared page or navigation styles.
 
 ## Visual system
 

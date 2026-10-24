@@ -9,7 +9,7 @@ explorer in Go. The React SPA is embedded in the Go binary. The same components
 run as a monolith or as independently scalable roles, with PostgreSQL as the
 only mandatory external service.
 
-Consensus enrichment and blob archives are optional extensions owned by P20,
+Consensus enrichment, execution requests and blob archives are optional extensions owned by P20,
 with APIs in P40, browsing in P50, and deployment/Preview in P30. Preview writer
 IAM enforcement remains deferred until RustFS 1.0.4 is evaluated; P30 owns the
 clearing condition.
@@ -17,16 +17,16 @@ Validator browsing, MEV accounting and L2-specific batch semantics are not core 
 
 ## Plan Index
 
-| ID  | Plan                                                                              | Status  | Depends on                   | Outcome                                                                                                                                                           |
-| --- | --------------------------------------------------------------------------------- | ------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| P00 | [Foundation](docs/plans/P00-foundation.md)                                        | done    | —                            | Governance, toolchain, config, CLI, native pgx/typed SQL and neutral contract boundaries, CI, and embedded SPA skeleton                                           |
-| P10 | [Indexing](docs/plans/P10-indexing.md)                                            | done    | P00                          | Bounded full-history indexing/backfill, immutable bundles, batched persistence, canonicality, finality, reorgs, and repair                                        |
-| P20 | [Enrichment & Durable Archives](docs/plans/P20-enrichment.md)                     | done    | P10                          | Tokens/NFT metadata/holders, snapshot-stable ENS, UserOperations, ABI/proxy decoding, traces, balances, statistics, optional consensus, and durable blob archives |
-| P30 | [Contract Platform & Runtime Operations](docs/plans/P30-contract-verification.md) | done    | P00, P10, P20                | Consolidated verification, contract intelligence, runtime, deployment, bounded telemetry, optional accelerators, Kubo/HTTPS and Lighthouse/archive Preview        |
-| P40 | [API & Data Exports](docs/plans/P40-api.md)                                       | done    | P10; incremental P20/P30     | Native REST/search/SSE, canonical NFT metadata/ENS snapshots, Etherscan V2, UserOperation/holder queries, consensus/blob downloads, CSV, and bounded quotas       |
-| P50 | [Web](docs/plans/P50-web.md)                                                      | done    | P40; incremental P20/P30     | Bilingual route-lazy embedded SPA, precompressed assets, event-driven explorer/personal tools, guarded NFT links, ENS display, and injected-wallet interaction    |
-| P60 | [User Accounts, Billing & Personal Tools](docs/plans/P60-user-auth-billing.md)    | blocked | P10, P20, P30, P40, P50      | SIWE sessions, profiles, administration, scoped user API keys, prepaid API credit, x402 top-ups, private watches, and one-shot browser push                       |
-| P70 | [Release](docs/plans/P70-release.md)                                              | blocked | P10, P20, P30, P40, P50, P60 | Security, conformance, performance, E2E, documentation, and v1 release                                                                                            |
+| ID  | Plan                                                                              | Status  | Depends on                   | Outcome                                                                                                                                                                    |
+| --- | --------------------------------------------------------------------------------- | ------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P00 | [Foundation](docs/plans/P00-foundation.md)                                        | done    | —                            | Governance, toolchain, config, CLI, native pgx/typed SQL and neutral contract boundaries, CI, and embedded SPA skeleton                                                    |
+| P10 | [Indexing](docs/plans/P10-indexing.md)                                            | done    | P00                          | Bounded full-history indexing/backfill, immutable bundles, batched persistence, canonicality, finality, reorgs, and repair                                                 |
+| P20 | [Enrichment & Durable Archives](docs/plans/P20-enrichment.md)                     | done    | P10                          | Tokens/NFT metadata/holders, snapshot-stable ENS, UserOperations, ABI/proxy decoding, traces, balances, statistics, optional consensus/requests, and durable blob archives |
+| P30 | [Contract Platform & Runtime Operations](docs/plans/P30-contract-verification.md) | done    | P00, P10, P20                | Consolidated verification, contract intelligence, runtime, deployment, bounded telemetry, optional accelerators, Kubo/HTTPS and Lighthouse/archive Preview                 |
+| P40 | [API & Data Exports](docs/plans/P40-api.md)                                       | done    | P10; incremental P20/P30     | Native REST/search/SSE, canonical NFT metadata/ENS snapshots, Etherscan V2, UserOperation/holder queries, consensus/requests/blob downloads, CSV, and bounded quotas       |
+| P50 | [Web](docs/plans/P50-web.md)                                                      | done    | P40; incremental P20/P30     | Bilingual route-lazy embedded SPA, precompressed assets, event-driven explorer/personal tools, guarded NFT links, ENS display, and injected-wallet interaction             |
+| P60 | [User Accounts, Billing & Personal Tools](docs/plans/P60-user-auth-billing.md)    | blocked | P10, P20, P30, P40, P50      | SIWE sessions, profiles, administration, scoped user API keys, prepaid API credit, x402 top-ups, private watches, and one-shot browser push                                |
+| P70 | [Release](docs/plans/P70-release.md)                                              | blocked | P10, P20, P30, P40, P50, P60 | Security, conformance, performance, E2E, documentation, and v1 release                                                                                                     |
 
 Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 `superseded`.

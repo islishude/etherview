@@ -2309,6 +2309,70 @@ export type ErrorResponse = {
     error: ApiError;
 };
 
+export type ExecutionRequestType = '0x00' | '0x01' | '0x02' | '0x03' | '0x04';
+
+export type ExecutionRequest = DepositRequest | WithdrawalRequest | ConsolidationRequest | BuilderDepositRequest | BuilderExitRequest;
+
+export type DepositRequest = {
+    request_type: '0x00';
+    sequence_index: Quantity;
+    pubkey: string;
+    withdrawal_credentials: string;
+    amount: Quantity;
+    signature: string;
+    index: Quantity;
+};
+
+export type WithdrawalRequest = {
+    request_type: '0x01';
+    sequence_index: Quantity;
+    source_address: Address;
+    validator_pubkey: string;
+    amount: Quantity;
+};
+
+export type ConsolidationRequest = {
+    request_type: '0x02';
+    sequence_index: Quantity;
+    source_address: Address;
+    source_pubkey: string;
+    target_pubkey: string;
+};
+
+export type BuilderDepositRequest = {
+    request_type: '0x03';
+    sequence_index: Quantity;
+    pubkey: string;
+    withdrawal_credentials: string;
+    amount: Quantity;
+    signature: string;
+};
+
+export type BuilderExitRequest = {
+    request_type: '0x04';
+    sequence_index: Quantity;
+    source_address: Address;
+    pubkey: string;
+};
+
+export type BlockRequests = {
+    block_hash: Hash;
+    state: ConsensusState;
+    code?: string;
+    requests_hash?: Hash;
+    beacon_root?: Hash;
+    total?: Quantity;
+    counts?: {
+        [key: string]: Quantity;
+    };
+    items: Array<ExecutionRequest>;
+};
+
+export type BlockRequestsResponse = {
+    data: BlockRequests;
+    meta: Meta;
+};
+
 export type ConsensusState = 'disabled' | 'pending' | 'complete' | 'not_applicable' | 'unavailable' | 'failed';
 
 export type ConsensusCheckpoint = {
@@ -3349,6 +3413,37 @@ export type ListBlockTransactionsResponses = {
 };
 
 export type ListBlockTransactionsResponse = ListBlockTransactionsResponses[keyof ListBlockTransactionsResponses];
+
+export type GetBlockRequestsData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: {
+        request_type?: ExecutionRequestType;
+        cursor?: OpaqueCursor;
+        limit?: number;
+    };
+    url: '/blocks/{id}/requests';
+};
+
+export type GetBlockRequestsErrors = {
+    /**
+     * Machine-readable error.
+     */
+    default: ErrorResponse;
+};
+
+export type GetBlockRequestsError = GetBlockRequestsErrors[keyof GetBlockRequestsErrors];
+
+export type GetBlockRequestsResponses = {
+    /**
+     * Authenticated requests included in this exact execution block; inclusion does not imply successful consensus processing. Amounts are in Gwei.
+     */
+    200: BlockRequestsResponse;
+};
+
+export type GetBlockRequestsResponse = GetBlockRequestsResponses[keyof GetBlockRequestsResponses];
 
 export type GetBlockConsensusData = {
     body?: never;

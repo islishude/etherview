@@ -141,6 +141,7 @@ var catalog = []Spec{
 	spec("listAdminBillingUsage", "GET", "/admin/billing/usage", false,
 		cursorParameter(), limitParameter("25")),
 	spec("getAdminPrepaidBillingSummary", "GET", "/admin/billing/prepaid-summary", false),
+	spec("getBlockRequests", "GET", "/blocks/{id}/requests", false, pathParameter("id", ParameterBlockIdentifier), cursorParameter(), limitParameter("50"), queryParameter("request_type", ParameterText)),
 	spec("getBlockConsensus", "GET", "/blocks/{id}/consensus", false, pathParameter("id", ParameterBlockIdentifier)),
 	spec("getBlockBlobs", "GET", "/blocks/{id}/blobs", false, pathParameter("id", ParameterBlockIdentifier)),
 	spec("getBlobContent", "GET", "/blocks/{hash}/blobs/{index}/content", false, pathParameter("hash", ParameterHash), pathParameter("index", ParameterUint256)),

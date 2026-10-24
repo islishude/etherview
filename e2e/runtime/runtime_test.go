@@ -573,6 +573,13 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 			}
 			return observed.State == gen.ConsensusStateUnavailable && observed.Code != nil && *observed.Code == "beacon_transport", string(observed.State), nil
 		})
+		waitFor(t, ctx, "requests retry without execution readiness loss", func() (bool, string, error) {
+			var requests gen.BlockRequestsResponse
+			h.mustGetJSON(ctx, "/api/v1/blocks/"+h.fixture.finalHash+"/requests", &requests)
+			observed := requests.Data
+			// Retryable failures have not published a terminal stage result yet.
+			return observed.State == gen.ConsensusStatePending && len(observed.Items) == 0 && observed.RequestsHash == nil, string(observed.State), nil
+		})
 		h.waitReady(ctx)
 	}
 	h.enterPhase("RPC outage recovery")
@@ -1019,8 +1026,8 @@ func (h *harness) waitCanonical(ctx context.Context, height uint64, hash string)
 					  AND state = 'complete' AND (stage, stage_version) IN (
 					    ('proxy',$3::integer),('abi',$4::integer),('token',2),('holder',1),
 					    ('stats',4),('native_transfer',1),('trace',$5::integer),('state_diff',$6::integer),('userop',1))),
-				-- Consensus/blob outages are asserted separately; the execution stages must drain.
-                (SELECT count(*) FROM durable_jobs WHERE status IN ('queued','leased') AND stage NOT IN ('consensus','blob')),
+				-- Consensus/blob/requests outages are asserted separately; the execution stages must drain.
+                (SELECT count(*) FROM durable_jobs WHERE status IN ('queued','leased') AND stage NOT IN ('consensus','blob','requests')),
 				(SELECT count(*) FROM published_block_stage_results
 					WHERE chain_id = 1 AND block_number = $1 AND block_hash = decode($2, 'hex')
 					  AND state <> 'complete' AND (stage, stage_version) IN (
@@ -1030,7 +1037,7 @@ func (h *harness) waitCanonical(ctx context.Context, height uint64, hash string)
 				COALESCE((SELECT string_agg(stage || ':' || left(last_error, 512), ';' ORDER BY stage)
 					FROM published_block_stage_results
 					WHERE chain_id = 1 AND block_number = $1 AND block_hash = decode($2, 'hex')
-					  AND state <> 'complete' AND stage NOT IN ('consensus','blob')), '')
+					  AND state <> 'complete' AND stage NOT IN ('consensus','blob','requests')), '')
 		`, heightArgument, expected, enrich.ProxyStage.Version, enrich.ABIStage.Version,
 			enrich.TraceStage.Version, enrich.StateDiffStage.Version).
 			Scan(&canonical, &checkpoint, &complete, &active, &failed, &unpublished, &failures)

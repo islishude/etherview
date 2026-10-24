@@ -8,7 +8,8 @@ Beacon REST observations supplement execution facts; they never drive canonical,
 safe or finalized execution state. Consensus and blob archive switches default
 off. Blob archival requires consensus and a separate durable object bucket.
 
-The enrich role owns independent consensus/blob workers and bounded discovery.
+The enrich role owns independent workers for consensus, execution requests and
+blobs, together with bounded discovery.
 Genesis/spec and execution-chain identity are checked before binding a Beacon
 network to an authenticated local execution hash. Requests pin one Beacon root.
 The complete fork-specific body must hash to the pinned header's SSZ body root
@@ -23,7 +24,7 @@ slot_number_source identifies the selected source. Raw execution facts remain
 immutable. Source disagreement is diagnostic, not an implicit overwrite.
 
 PostgreSQL owns network identity, manifests, jobs, generations, leases and
-publication. Consensus and blob outputs use the existing atomic stage publisher.
+publication. All three outputs use the existing atomic stage publisher.
 Orphan observations survive; reattachment and replay are idempotent. A fixed
 head/state snapshot supplies checkpoint observations with explicit freshness.
 Capability-unavailable outcomes finish through the ordinary lease-fenced terminal
@@ -83,3 +84,35 @@ commands run it explicitly and propagate failures without gating core readiness.
 Public APIs and production defaults are
 unchanged. Acceptance uses real blob transactions and independent object readback,
 not simulated Beacon responses.
+
+## Execution requests
+
+Consensus enablement also runs an independent `requests@1` enrich worker pool.
+Its failure does not prevent consensus slot or blob publication. Network binding,
+root-pinned full-body authentication, execution-hash association and atomic
+lease/generation publication use the same boundaries as consensus observations.
+Electra/Fulu requests come from the authenticated body's `execution_requests`.
+Gloas requests come from the signed payload envelope at the exact Beacon root,
+with parent root, builder and execution identities checked against the body bid.
+The progressive SSZ requests root must match that authenticated bid; the body's
+`parent_execution_requests` must never be attributed to the current execution block.
+
+The accepted record types are validator deposits, withdrawals/exits,
+consolidations, builder deposits and builder exits ([EIP-7685](https://eips.ethereum.org/EIPS/eip-7685),
+EIP-6110, EIP-7002, EIP-7251 and the pinned
+[EIP-8282](https://eips.ethereum.org/EIPS/eip-8282)/Gloas protocol shape). Fixed-width
+records use their protocol field order and little-endian uint64 encoding.
+Type groups are ordered from 0x00 through 0x04 and preserve each list's order.
+Geth's requests hash must match the indexed execution header before publication.
+Unknown types/forks, malformed records and inconsistent commitments fail closed.
+Response-byte limits, protocol/preset counts and a local ceiling of 8192 records
+per type bound decoding and persistence work. Collection records inclusion;
+it does not claim successful consensus state-transition processing.
+
+PostgreSQL retains an immutable request-set manifest and ordered request rows.
+The manifest owns canonicality and the durable job/generation publication fence;
+its rows inherit that authority. Retained sets survive reorgs and are revalidated
+against the exact execution header before replay. API reads use a single database
+snapshot and never call upstream services. Page cursors bind chain, execution hash,
+filter and publication identity. Missing history is unavailable, not an empty set.
+A verified empty set is complete; blocks without a requests commitment are not applicable.

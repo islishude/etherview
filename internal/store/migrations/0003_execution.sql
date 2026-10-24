@@ -607,6 +607,28 @@ CREATE TABLE blob_manifests (
     PRIMARY KEY (chain_id, block_number, block_hash),
     FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash)
 );
+CREATE TABLE execution_request_sets (
+    chain_id numeric(78,0) NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL CHECK (octet_length(block_hash) = 32),
+    manifest jsonb NOT NULL CHECK (jsonb_typeof(manifest) = 'object' AND octet_length(manifest::text) <= 8192),
+    canonical boolean NOT NULL,
+    durable_job_id bigint NOT NULL REFERENCES durable_jobs(id),
+    job_generation bigint NOT NULL CHECK (job_generation > 0),
+    PRIMARY KEY (chain_id, block_number, block_hash),
+    FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES blocks(chain_id, number, hash)
+);
+CREATE INDEX execution_request_sets_hash_idx ON execution_request_sets(chain_id,block_hash);
+CREATE TABLE execution_requests (
+    chain_id numeric(78,0) NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL CHECK (octet_length(block_hash) = 32),
+    request_type smallint NOT NULL CHECK (request_type BETWEEN 0 AND 4),
+    sequence_index integer NOT NULL CHECK (sequence_index BETWEEN 0 AND 8191),
+    record jsonb NOT NULL CHECK (jsonb_typeof(record) = 'object' AND octet_length(record::text) <= 2048),
+    PRIMARY KEY (chain_id, block_number, block_hash, request_type, sequence_index),
+    FOREIGN KEY (chain_id, block_number, block_hash) REFERENCES execution_request_sets(chain_id, block_number, block_hash)
+);
 CREATE TABLE consensus_overviews (
     chain_id numeric(78,0) PRIMARY KEY REFERENCES chains(chain_id),
     generation bigint NOT NULL DEFAULT 0 CHECK (generation >= 0),
@@ -619,7 +641,7 @@ CREATE TABLE consensus_overviews (
 
 CREATE TABLE consensus_discovery_cursors (
  chain_id numeric(78,0) NOT NULL REFERENCES chains(chain_id),
- stage text NOT NULL CHECK (stage IN ('consensus','blob')),
+ stage text NOT NULL CHECK (stage IN ('consensus','blob','requests')),
  generation bigint NOT NULL DEFAULT 0 CHECK (generation >= 0),
  next_number numeric(20,0) NOT NULL CHECK (next_number >= -1),
  latest_number numeric(20,0) NOT NULL CHECK (latest_number >= -1),
@@ -629,4 +651,4 @@ CREATE TABLE consensus_discovery_cursors (
 CREATE INDEX consensus_observations_hash_idx ON consensus_observations(chain_id,block_hash);
 CREATE INDEX blob_manifests_hash_idx ON blob_manifests(chain_id,block_hash);
 CREATE INDEX block_stage_results_consensus_health_idx ON block_stage_results(chain_id,stage,stage_version,block_number DESC)
-WHERE stage IN ('consensus','blob');
+WHERE stage IN ('consensus','blob','requests');

@@ -67,7 +67,11 @@ WHERE chain_id = sqlc.arg('chain_id')::text::numeric
 FOR UPDATE;
 
 -- name: StoreDeleteDerivedBlockFacts :exec
-WITH delete_consensus AS (
+WITH removed_request_items AS (
+ DELETE FROM execution_requests WHERE chain_id=sqlc.arg(chain_id)::numeric AND block_number=sqlc.arg(block_number)::numeric AND block_hash=sqlc.arg(block_hash)::bytea
+), removed_request_sets AS (
+ DELETE FROM execution_request_sets WHERE chain_id=sqlc.arg(chain_id)::numeric AND block_number=sqlc.arg(block_number)::numeric AND block_hash=sqlc.arg(block_hash)::bytea
+), delete_consensus AS (
  DELETE FROM consensus_observations WHERE chain_id=sqlc.arg(chain_id)::numeric AND block_number=sqlc.arg(block_number)::numeric AND block_hash=sqlc.arg(block_hash)::bytea
 ), delete_blob AS (
  DELETE FROM blob_manifests WHERE chain_id=sqlc.arg(chain_id)::numeric AND block_number=sqlc.arg(block_number)::numeric AND block_hash=sqlc.arg(block_hash)::bytea

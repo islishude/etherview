@@ -133,6 +133,7 @@ type UserAPIKeyAdministration interface {
 
 type Options struct {
 	ConsensusReader       publicquery.ConsensusReader
+	RequestsReader        publicquery.RequestsReader
 	Config                config.Config
 	Reader                Reader
 	TransactionReader     TransactionReader
@@ -180,6 +181,7 @@ type Options struct {
 type Handler struct {
 	streamAdmission       *streamAdmission
 	consensusReader       publicquery.ConsensusReader
+	requestsReader        publicquery.RequestsReader
 	cfg                   config.Config
 	reader                Reader
 	transactionReader     TransactionReader
@@ -246,6 +248,7 @@ func New(options Options) (*Handler, error) {
 	}
 	h := &Handler{
 		consensusReader:       options.ConsensusReader,
+		requestsReader:        options.RequestsReader,
 		cfg:                   options.Config,
 		reader:                options.Reader,
 		transactionReader:     options.TransactionReader,

@@ -307,14 +307,14 @@ func TestConsensusBlobPublicationReorgAndReplay(t *testing.T) {
 		}
 	}
 	poll("")
-	assertRowCount(t, ctx, db, `SELECT count(*) FROM consensus_discovery_cursors WHERE next_number=-1`, 2)
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM consensus_discovery_cursors WHERE next_number=-1`, 3)
 	// Simulate a completed historical scan followed by blocks indexed while the
 	// optional collector was stopped. Resume forward discovery without resetting history.
 	execFixture(t, ctx, db, `UPDATE consensus_discovery_cursors SET latest_number=0`)
 	networkConflict.Store(true)
 	execFixture(t, ctx, db, `UPDATE consensus_overviews SET next_poll_at='-infinity'`)
 	poll("beacon_network_mismatch")
-	assertRowCount(t, ctx, db, `SELECT count(*) FROM consensus_discovery_cursors WHERE next_number=-1 AND latest_number=1`, 2)
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM consensus_discovery_cursors WHERE next_number=-1 AND latest_number=1`, 3)
 	var retained string
 	if err := db.QueryRow(ctx, `SELECT overview->>'root' FROM consensus_overviews WHERE chain_id=1`).Scan(&retained); err != nil || retained != root {
 		t.Fatalf("retained overview=%s err=%v", retained, err)

@@ -176,6 +176,9 @@ type headerResponse struct {
 	}
 }
 type Observation struct {
+	// Authenticated wire evidence is transient; request publication owns its retention.
+	requestBody     json.RawMessage
+	requestBid      json.RawMessage
 	Slot            uint64            `json:"slot"`
 	Epoch           uint64            `json:"epoch"`
 	Proposer        uint64            `json:"proposer"`
@@ -324,6 +327,8 @@ func (c *Client) Block(ctx context.Context, header beacontypes.Header, root stri
 		}
 	}
 	result.ExecutionHash, result.ExecutionParent = strings.ToLower(payload.Hash), strings.ToLower(payload.Parent)
+	result.requestBody = body["execution_requests"]
+	result.requestBid = body["signed_execution_payload_bid"]
 	return result, nil
 }
 

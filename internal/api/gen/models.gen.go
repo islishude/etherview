@@ -576,6 +576,36 @@ func (e BlockSlotNumberSource) Valid() bool {
 	}
 }
 
+// Defines values for BuilderDepositRequestRequestType.
+const (
+	BuilderDepositRequestRequestTypeN0x03 BuilderDepositRequestRequestType = "0x03"
+)
+
+// Valid indicates whether the value is a known member of the BuilderDepositRequestRequestType enum.
+func (e BuilderDepositRequestRequestType) Valid() bool {
+	switch e {
+	case BuilderDepositRequestRequestTypeN0x03:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BuilderExitRequestRequestType.
+const (
+	BuilderExitRequestRequestTypeN0x04 BuilderExitRequestRequestType = "0x04"
+)
+
+// Valid indicates whether the value is a known member of the BuilderExitRequestRequestType enum.
+func (e BuilderExitRequestRequestType) Valid() bool {
+	switch e {
+	case BuilderExitRequestRequestTypeN0x04:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CWIAImmutableArgFieldRole.
 const (
 	Length CWIAImmutableArgFieldRole = "length"
@@ -1041,6 +1071,21 @@ func (e ConsensusState) Valid() bool {
 	}
 }
 
+// Defines values for ConsolidationRequestRequestType.
+const (
+	ConsolidationRequestRequestTypeN0x02 ConsolidationRequestRequestType = "0x02"
+)
+
+// Valid indicates whether the value is a known member of the ConsolidationRequestRequestType enum.
+func (e ConsolidationRequestRequestType) Valid() bool {
+	switch e {
+	case ConsolidationRequestRequestTypeN0x02:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ContractArtifactResolution.
 const (
 	ContractArtifactResolutionCodeHash     ContractArtifactResolution = "code_hash"
@@ -1110,6 +1155,21 @@ func (e DelegationHistoryItemKind) Valid() bool {
 	case DelegationHistoryItemKindDelegated:
 		return true
 	case DelegationHistoryItemKindRedelegated:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DepositRequestRequestType.
+const (
+	DepositRequestRequestTypeN0x00 DepositRequestRequestType = "0x00"
+)
+
+// Valid indicates whether the value is a known member of the DepositRequestRequestType enum.
+func (e DepositRequestRequestType) Valid() bool {
+	switch e {
+	case DepositRequestRequestTypeN0x00:
 		return true
 	default:
 		return false
@@ -1329,6 +1389,33 @@ func (e EIP7702AuthorizationSkipReason) Valid() bool {
 	case EIP7702AuthorizationSkipReasonStateUnavailable:
 		return true
 	case EIP7702AuthorizationSkipReasonWrongChainId:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ExecutionRequestType.
+const (
+	ExecutionRequestTypeN0x00 ExecutionRequestType = "0x00"
+	ExecutionRequestTypeN0x01 ExecutionRequestType = "0x01"
+	ExecutionRequestTypeN0x02 ExecutionRequestType = "0x02"
+	ExecutionRequestTypeN0x03 ExecutionRequestType = "0x03"
+	ExecutionRequestTypeN0x04 ExecutionRequestType = "0x04"
+)
+
+// Valid indicates whether the value is a known member of the ExecutionRequestType enum.
+func (e ExecutionRequestType) Valid() bool {
+	switch e {
+	case ExecutionRequestTypeN0x00:
+		return true
+	case ExecutionRequestTypeN0x01:
+		return true
+	case ExecutionRequestTypeN0x02:
+		return true
+	case ExecutionRequestTypeN0x03:
+		return true
+	case ExecutionRequestTypeN0x04:
 		return true
 	default:
 		return false
@@ -3381,6 +3468,21 @@ func (e WatchInputKinds) Valid() bool {
 	}
 }
 
+// Defines values for WithdrawalRequestRequestType.
+const (
+	WithdrawalRequestRequestTypeN0x01 WithdrawalRequestRequestType = "0x01"
+)
+
+// Valid indicates whether the value is a known member of the WithdrawalRequestRequestType enum.
+func (e WithdrawalRequestRequestType) Valid() bool {
+	switch e {
+	case WithdrawalRequestRequestTypeN0x01:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetChartMetricParamsInterval.
 const (
 	GetChartMetricParamsIntervalAuto  GetChartMetricParamsInterval = "auto"
@@ -4213,6 +4315,31 @@ type BlockListResponse struct {
 	Meta Meta    `json:"meta"`
 }
 
+// BlockRequests defines model for BlockRequests.
+type BlockRequests struct {
+	// BeaconRoot A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BeaconRoot *Hash `json:"beacon_root,omitempty"`
+
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash                 `json:"block_hash"`
+	Code      *string              `json:"code,omitempty"`
+	Counts    *map[string]Quantity `json:"counts,omitempty"`
+	Items     []ExecutionRequest   `json:"items"`
+
+	// RequestsHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	RequestsHash *Hash          `json:"requests_hash,omitempty"`
+	State        ConsensusState `json:"state"`
+
+	// Total A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Total *Quantity `json:"total,omitempty"`
+}
+
+// BlockRequestsResponse defines model for BlockRequestsResponse.
+type BlockRequestsResponse struct {
+	Data BlockRequests `json:"data"`
+	Meta Meta          `json:"meta"`
+}
+
 // BlockResponse defines model for BlockResponse.
 type BlockResponse struct {
 	Data Block `json:"data"`
@@ -4305,6 +4432,37 @@ type BrowserPushSubscription struct {
 	Id           string    `json:"id"`
 	Language     string    `json:"language"`
 }
+
+// BuilderDepositRequest defines model for BuilderDepositRequest.
+type BuilderDepositRequest struct {
+	// Amount A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Amount      Quantity                         `json:"amount"`
+	Pubkey      string                           `json:"pubkey"`
+	RequestType BuilderDepositRequestRequestType `json:"request_type"`
+
+	// SequenceIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	SequenceIndex         Quantity `json:"sequence_index"`
+	Signature             string   `json:"signature"`
+	WithdrawalCredentials string   `json:"withdrawal_credentials"`
+}
+
+// BuilderDepositRequestRequestType defines model for BuilderDepositRequest.RequestType.
+type BuilderDepositRequestRequestType string
+
+// BuilderExitRequest defines model for BuilderExitRequest.
+type BuilderExitRequest struct {
+	Pubkey      string                        `json:"pubkey"`
+	RequestType BuilderExitRequestRequestType `json:"request_type"`
+
+	// SequenceIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	SequenceIndex Quantity `json:"sequence_index"`
+
+	// SourceAddress A 20-byte address; responses use the EIP-55 checksum form.
+	SourceAddress Address `json:"source_address"`
+}
+
+// BuilderExitRequestRequestType defines model for BuilderExitRequest.RequestType.
+type BuilderExitRequestRequestType string
 
 // CWIAImmutableArgField defines model for CWIAImmutableArgField.
 type CWIAImmutableArgField struct {
@@ -4613,6 +4771,22 @@ type ConsensusSummary struct {
 	StateRoot *Hash `json:"state_root,omitempty"`
 }
 
+// ConsolidationRequest defines model for ConsolidationRequest.
+type ConsolidationRequest struct {
+	RequestType ConsolidationRequestRequestType `json:"request_type"`
+
+	// SequenceIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	SequenceIndex Quantity `json:"sequence_index"`
+
+	// SourceAddress A 20-byte address; responses use the EIP-55 checksum form.
+	SourceAddress Address `json:"source_address"`
+	SourcePubkey  string  `json:"source_pubkey"`
+	TargetPubkey  string  `json:"target_pubkey"`
+}
+
+// ConsolidationRequestRequestType defines model for ConsolidationRequest.RequestType.
+type ConsolidationRequestRequestType string
+
 // ContractArtifactResolution How the published source artifact was resolved for the requested code identity. exact_address is an independent address verification; code_hash reuses an artifact verified at a different address with the identical runtime code hash and grants no proxy binding or write authority. On ProxyContractIdentity, exact_address accompanies verification_state=verified, while code_hash accompanies verification_state=unverified; the field is omitted when no artifact is available.
 type ContractArtifactResolution string
 
@@ -4724,6 +4898,25 @@ type DelegationHistoryResponse struct {
 	Data []DelegationHistoryItem `json:"data"`
 	Meta Meta                    `json:"meta"`
 }
+
+// DepositRequest defines model for DepositRequest.
+type DepositRequest struct {
+	// Amount A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Amount Quantity `json:"amount"`
+
+	// Index A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Index       Quantity                  `json:"index"`
+	Pubkey      string                    `json:"pubkey"`
+	RequestType DepositRequestRequestType `json:"request_type"`
+
+	// SequenceIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	SequenceIndex         Quantity `json:"sequence_index"`
+	Signature             string   `json:"signature"`
+	WithdrawalCredentials string   `json:"withdrawal_credentials"`
+}
+
+// DepositRequestRequestType defines model for DepositRequest.RequestType.
+type DepositRequestRequestType string
 
 // DerivedContract defines model for DerivedContract.
 type DerivedContract struct {
@@ -4928,6 +5121,14 @@ type ERC20BalanceListResponse struct {
 type ErrorResponse struct {
 	Error APIError `json:"error"`
 }
+
+// ExecutionRequest defines model for ExecutionRequest.
+type ExecutionRequest struct {
+	union json.RawMessage
+}
+
+// ExecutionRequestType defines model for ExecutionRequestType.
+type ExecutionRequestType string
 
 // Finality defines model for Finality.
 type Finality string
@@ -7181,6 +7382,23 @@ type WatchResponse struct {
 	Meta Meta         `json:"meta"`
 }
 
+// WithdrawalRequest defines model for WithdrawalRequest.
+type WithdrawalRequest struct {
+	// Amount A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Amount      Quantity                     `json:"amount"`
+	RequestType WithdrawalRequestRequestType `json:"request_type"`
+
+	// SequenceIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	SequenceIndex Quantity `json:"sequence_index"`
+
+	// SourceAddress A 20-byte address; responses use the EIP-55 checksum form.
+	SourceAddress   Address `json:"source_address"`
+	ValidatorPubkey string  `json:"validator_pubkey"`
+}
+
+// WithdrawalRequestRequestType defines model for WithdrawalRequest.RequestType.
+type WithdrawalRequestRequestType string
+
 // APIKeyPrefix defines model for APIKeyPrefix.
 type APIKeyPrefix = string
 
@@ -7419,6 +7637,13 @@ type ListCurrentUserBillingUsageParams struct {
 type ListBlocksParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetBlockRequestsParams defines parameters for GetBlockRequests.
+type GetBlockRequestsParams struct {
+	RequestType *ExecutionRequestType `form:"request_type,omitempty" json:"request_type,omitempty"`
+	Cursor      *Cursor               `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit       *int                  `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // ListBlockTransactionsParams defines parameters for ListBlockTransactions.
@@ -7751,6 +7976,146 @@ func (t BatchResultsOutcome_Results_Item) MarshalJSON() ([]byte, error) {
 }
 
 func (t *BatchResultsOutcome_Results_Item) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsDepositRequest returns the union data inside the ExecutionRequest as a DepositRequest
+func (t ExecutionRequest) AsDepositRequest() (DepositRequest, error) {
+	var body DepositRequest
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromDepositRequest overwrites any union data inside the ExecutionRequest as the provided DepositRequest
+func (t *ExecutionRequest) FromDepositRequest(v DepositRequest) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeDepositRequest performs a merge with any union data inside the ExecutionRequest, using the provided DepositRequest
+func (t *ExecutionRequest) MergeDepositRequest(v DepositRequest) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsWithdrawalRequest returns the union data inside the ExecutionRequest as a WithdrawalRequest
+func (t ExecutionRequest) AsWithdrawalRequest() (WithdrawalRequest, error) {
+	var body WithdrawalRequest
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromWithdrawalRequest overwrites any union data inside the ExecutionRequest as the provided WithdrawalRequest
+func (t *ExecutionRequest) FromWithdrawalRequest(v WithdrawalRequest) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeWithdrawalRequest performs a merge with any union data inside the ExecutionRequest, using the provided WithdrawalRequest
+func (t *ExecutionRequest) MergeWithdrawalRequest(v WithdrawalRequest) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsConsolidationRequest returns the union data inside the ExecutionRequest as a ConsolidationRequest
+func (t ExecutionRequest) AsConsolidationRequest() (ConsolidationRequest, error) {
+	var body ConsolidationRequest
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromConsolidationRequest overwrites any union data inside the ExecutionRequest as the provided ConsolidationRequest
+func (t *ExecutionRequest) FromConsolidationRequest(v ConsolidationRequest) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeConsolidationRequest performs a merge with any union data inside the ExecutionRequest, using the provided ConsolidationRequest
+func (t *ExecutionRequest) MergeConsolidationRequest(v ConsolidationRequest) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsBuilderDepositRequest returns the union data inside the ExecutionRequest as a BuilderDepositRequest
+func (t ExecutionRequest) AsBuilderDepositRequest() (BuilderDepositRequest, error) {
+	var body BuilderDepositRequest
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromBuilderDepositRequest overwrites any union data inside the ExecutionRequest as the provided BuilderDepositRequest
+func (t *ExecutionRequest) FromBuilderDepositRequest(v BuilderDepositRequest) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeBuilderDepositRequest performs a merge with any union data inside the ExecutionRequest, using the provided BuilderDepositRequest
+func (t *ExecutionRequest) MergeBuilderDepositRequest(v BuilderDepositRequest) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsBuilderExitRequest returns the union data inside the ExecutionRequest as a BuilderExitRequest
+func (t ExecutionRequest) AsBuilderExitRequest() (BuilderExitRequest, error) {
+	var body BuilderExitRequest
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromBuilderExitRequest overwrites any union data inside the ExecutionRequest as the provided BuilderExitRequest
+func (t *ExecutionRequest) FromBuilderExitRequest(v BuilderExitRequest) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeBuilderExitRequest performs a merge with any union data inside the ExecutionRequest, using the provided BuilderExitRequest
+func (t *ExecutionRequest) MergeBuilderExitRequest(v BuilderExitRequest) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t ExecutionRequest) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *ExecutionRequest) UnmarshalJSON(b []byte) error {
 	err := t.union.UnmarshalJSON(b)
 	return err
 }
