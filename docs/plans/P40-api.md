@@ -2,7 +2,7 @@
 
 Status: `done`
 
-Browser subscription API and all/split delivery acceptance are being migrated
+Browser subscription API and all/split delivery acceptance were completed
 under P60-T20; notifications have no persisted history or replay.
 
 ## Outcome

@@ -2,8 +2,9 @@
 
 Status: `blocked`
 
-Browser subscription API and all/split delivery acceptance are being migrated
-under P60-T20; notifications have no persisted history or replay.
+Browser subscription API and all/split feature delivery acceptance were completed
+under P60-T20; notifications have no persisted history or replay. Final release
+acceptance remains governed by the gates below.
 
 ## Outcome
 

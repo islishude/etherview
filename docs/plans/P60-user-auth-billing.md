@@ -49,7 +49,7 @@ private tools, and watch/notification/export limits do not debit prepaid credit.
 | P60-T17 | blocked | P60-T16                             | One-shot live EIP-3009 and Permit2 top-up plus API-debit conformance                                                                                               | testnet transactions and writer/chain/credit/usage reports                                                               |
 | P60-T18 | done    | P60-T03, P60-T09, P10, P20, P40-T01 | Private writer-authoritative watch management, bounded enrollment, fresh schema/typed queries, and ownership isolation                                             | OpenAPI/generation, schema, Cookie/Origin/CSRF, handler, watch-limit, and PostgreSQL regressions                         |
 | P60-T19 | done    | P60-T18, P20-T10                    | Durable transaction/token notifications, generation-fenced delivery, reorg/reattach handling, read watermarks, and bounded cleanup                                 | restart, lease/generation, concurrency, indexed matching, disabled-account replay, and PostgreSQL regressions            |
-| P60-T20 | blocked | P60-T18, P60-T19                    | Replace durable notifications with session-bound, best-effort Web Push; five watches/account; align P40 API, P50 browser and P70 topology acceptance               | Local implementation and automated acceptance; operator Preview closed-page provider delivery pending                    |
+| P60-T20 | done    | P60-T18, P60-T19                    | Replace durable notifications with session-bound, best-effort Web Push; five watches/account; align P40 API, P50 browser and P70 topology acceptance               | Local automated acceptance and operator-confirmed closed-page provider delivery; evidence limits below                   |
 
 ## Acceptance
 
@@ -100,19 +100,12 @@ private tools, and watch/notification/export limits do not debit prepaid credit.
 - [x] Private watches are limited to 5 addresses/user and start after enrollment
       or re-enablement at an exact canonical tip. Writer SIWE ownership, Origin,
       and CSRF checks isolate users; API keys cannot manage private tools.
-- [ ] P60-T20 replaces durable notification history and queues with session-bound
+- [x] P60-T20 replaces durable notification history and queues with session-bound
       Web Push, TTL 0, no retries/backfill, bounded matching and all/split parity.
       P40 subscription API, P50 browser controls/worker and P70 runtime acceptance
       share this migration. Real provider delivery is separate from local evidence.
 
 ## Current Blockers
-
-P60-T20 awaits the operator's real browser-provider test at
-`https://etherview.localhost:8080`. Local receivers and CDP-delivered push events
-do not close it. Clear it with the deployed build, browser/OS and permission
-state, and an observed notification after all site tabs close. Preview now serves
-the packaged worker and Chrome subscription registration survives a page reload;
-closed-page provider delivery remains unverified.
 
 P60-T17 requires operator-provided testnet funds, payer credentials, a compatible
 staging facilitator and deployed Account top-up surface, matching writer database,
@@ -135,11 +128,20 @@ P40/P50/P70 share API, browser and production-topology acceptance. Browser
 permission and notification tests include a real Chromium worker with the site
 page closed, using a CDP-injected event; this is not vendor delivery evidence.
 
+On 2026-10-24, the operator confirmed that an earlier manual test successfully
+received a real browser notification after all site tabs were closed, and
+explicitly accepted this result to close P60-T20. This operator-reported result
+closes the outstanding browser-provider delivery gate separately from the local
+automated evidence. The test date, deployed build digest, browser/OS versions
+and exact permission state were not supplied with the confirmation. This update
+records the operator's acceptance; it does not claim an independently rerun
+test, native notification-click verification, or broader browser/OS coverage.
+
 P60-T18/P60-T19's former durable delivery and read-watermark decision is replaced
 by ADR-0051/P60-T20. Watch ownership and CSV acceptance remain preserved.
 
 Retained completed milestones: P60-T02, P60-T03, P60-T05, P60-T09, P60-T11, P60-T12,
-P60-T13, P60-T14, P60-T16, P60-T18, P60-T19.
+P60-T13, P60-T14, P60-T16, P60-T18, P60-T19, P60-T20.
 
 SIWE challenge/session, replay, expiry, Cookie/Origin/CSRF, writer
 authorization and administrative revocation tests passed with PostgreSQL

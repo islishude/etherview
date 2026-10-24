@@ -34,8 +34,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 ## Current Work
 
 P60-T17 remains blocked on live EIP-3009/Permit2 payment and writer/chain
-reconciliation. P60-T20 awaits operator Preview verification of browser-provider
-delivery with all site tabs closed. P70-T04 remains blocked on the operator-provisioned reference
+reconciliation. P60-T20 is done with operator-confirmed browser-provider
+delivery after all site tabs close; P60 retains the evidence and its limits.
+P70-T04 remains blocked on the operator-provisioned reference
 capacity environment. P70-T01, P70-T02, P70-T03 and P70-T05 await P60 closure;
 P70-T06 is dependency-gated. Their child plans own clearing conditions.
 
