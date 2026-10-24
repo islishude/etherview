@@ -784,19 +784,3 @@
     align-items: stretch;
   }
 }
-
-.request-filter {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  margin-block: 1rem;
-}
-
-.request-filter select {
-  max-width: 100%;
-}
-
-.request-record summary {
-  overflow-wrap: anywhere;
-}

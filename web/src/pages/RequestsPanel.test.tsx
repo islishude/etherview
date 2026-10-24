@@ -88,7 +88,9 @@ it.each(["en", "zh"])(
   async (language) => {
     await i18n.changeLanguage(language);
     mount(data);
-    const summaries = await screen.findAllByText(/#0/);
+    const summaries = await screen.findAllByText(
+      language === "en" ? "Public keys & details" : "公钥与详细数据",
+    );
     expect(summaries).toHaveLength(5);
     for (const summary of summaries) await userEvent.click(summary);
     expect(screen.getByText("18,446,744,073,709,551,615 Gwei")).toBeVisible();
@@ -105,12 +107,15 @@ it.each(["en", "zh"])(
 );
 it("binds filters and pagination to exact block, and resets the cursor on filter changes", async () => {
   const fetchMock = mount(data, "page-two");
-  await screen.findByText(/Total requests/);
+  await screen.findByText("Execution requests");
+  await screen.findAllByText(/#0/);
   await userEvent.click(screen.getByRole("button", { name: /Next/i }));
   await vi.waitFor(() =>
     expect(String(fetchMock.mock.calls.at(-1)?.[0])).toContain("cursor=page-two"),
   );
-  await userEvent.selectOptions(screen.getByRole("combobox"), "0x04");
+  await userEvent.click(screen.getByRole("button", { name: /^Request type:/ }));
+  await userEvent.type(screen.getByRole("searchbox"), "0x04");
+  await userEvent.click(screen.getByRole("button", { name: "Builder exit 0x04 1" }));
   await vi.waitFor(() => {
     const url = String(fetchMock.mock.calls.at(-1)?.[0]);
     expect(url).toContain("request_type=0x04");
@@ -124,11 +129,33 @@ it.each(["disabled", "pending", "not_applicable", "unavailable", "failed"] as co
     mount({ block_hash: hash, state, items: [] });
     await screen.findByRole("status");
     expect(screen.queryByText(/No requests/)).not.toBeInTheDocument();
-    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Request type" })).not.toBeInTheDocument();
   },
 );
 it("only verified complete empty sets display the empty state", async () => {
   mount({ ...data, items: [], total: "0" });
   expect(await screen.findByText("No requests match this selection.")).toBeVisible();
   expect(within(screen.getByRole("tabpanel")).queryByRole("status")).not.toBeInTheDocument();
+});
+
+it("searches types by name or code, retains an all-types reset and dismisses accessibly", async () => {
+  mount(data);
+  const trigger = await screen.findByRole("button", { name: /^Request type:/ });
+  await userEvent.click(trigger);
+  const search = screen.getByRole("searchbox");
+  expect(search).toHaveFocus();
+  await userEvent.type(search, "builder");
+  const options = within(screen.getByRole("group", { name: "Request type" }));
+  expect(options.getAllByRole("button")).toHaveLength(3);
+  await userEvent.clear(search);
+  await userEvent.type(search, "no such type");
+  expect(screen.getByRole("status")).toHaveTextContent("No matching request types.");
+  expect(options.getByRole("button", { name: "All types 5" })).toBeVisible();
+  await userEvent.keyboard("{Escape}");
+  expect(trigger).toHaveFocus();
+  expect(trigger).toHaveAttribute("aria-expanded", "false");
+  await userEvent.click(trigger);
+  expect(screen.getByRole("searchbox")).toHaveValue("");
+  await userEvent.click(screen.getByRole("heading", { name: "Execution requests" }));
+  expect(trigger).toHaveAttribute("aria-expanded", "false");
 });

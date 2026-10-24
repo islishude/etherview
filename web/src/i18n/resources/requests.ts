@@ -1,10 +1,17 @@
 export const requestsResources = {
   en: {
     requests: {
+      heading: "Execution requests",
+      subtitle: "From execution to consensus",
+      included: "Included in block",
+      sequence: "Request #{{index}}",
+      details: "Public keys & details",
       description:
         "Requests included in this execution block. Inclusion does not mean the consensus layer has processed them successfully.",
       total: "Total requests: {{count}}",
       filter: "Request type",
+      searchTypes: "Search name or type code",
+      noTypes: "No matching request types.",
       all: "All types",
       empty: "No requests match this selection.",
       unavailable: "Request data could not be verified or retrieved.",
@@ -34,9 +41,16 @@ export const requestsResources = {
   },
   zh: {
     requests: {
+      heading: "执行层请求",
+      subtitle: "从执行层到共识层",
+      included: "已收录于区块",
+      sequence: "请求 #{{index}}",
+      details: "公钥与详细数据",
       description: "本执行区块收录的请求。收录不代表共识层已成功处理。",
       total: "请求总数：{{count}}",
       filter: "请求类型",
+      searchTypes: "搜索类型名称或编码",
+      noTypes: "没有匹配的请求类型。",
       all: "全部类型",
       empty: "当前筛选下暂无请求。",
       unavailable: "无法验证或获取请求数据。",
