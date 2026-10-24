@@ -67,6 +67,8 @@ native WASM matrix, plus explicit image-to-consumer dependencies. The reusable
 PostgreSQL/RustFS, browser, security/license, native provider compatibility and
 deployment-static jobs. Quality runs `make toolchain-check docs-check plan-check generate-check`;
 lint, test and race-test run their respective Makefile targets, with uv installed for test.
+`lint-go` builds the embedded SPA before Go analysis, so the standalone lint job
+also works from a fresh checkout without `web/dist`.
 The browser target owns its frontend build. Shared Go/Node/pnpm setup lives in a fixed local action;
 checkout and specialized tooling remain visible in their owning jobs.
 

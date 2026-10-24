@@ -174,7 +174,7 @@ web-format-check: web-install
 
 lint: lint-go web-lint format-check
 
-lint-go: lint-tool-check source-check
+lint-go: lint-tool-check source-check web-build
 	@unformatted="$$(find . \( -path './.git' -o -path './.local' -o -path './vendor' -o -name node_modules \) -prune -o -type f -name '*.go' -exec gofmt -l {} +)"; \
 	if [ -n "$$unformatted" ]; then \
 		echo "gofmt is required for:"; \
