@@ -95,7 +95,7 @@ features:
   mempool: true
   historical_state: true
   verification: true
-  sourcify: false
+  sourcify: true
   nft_metadata: true
   pricing: false
   ens: false

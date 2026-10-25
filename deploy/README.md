@@ -123,7 +123,7 @@ addresses, overlapping ranges for one address, unknown versions, and more than
 
 `compose.yaml` runs a local Geth/Lighthouse PoS chain and all six
 application roles. It enables consensus, blob archives, public
-verification and NFT metadata while leaving Sourcify, pricing, prepaid billing,
+verification, Sourcify and NFT metadata while leaving pricing, prepaid billing,
 and x402 top-ups disabled. Optional NATS, Redis, and object storage accelerators are not part of
 this deployment.
 

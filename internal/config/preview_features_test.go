@@ -9,7 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func TestPreviewEnablesPublicVerificationAndNFTMetadata(t *testing.T) {
+func TestPreviewEnablesPublicVerificationSourcifyAndNFTMetadata(t *testing.T) {
 	t.Parallel()
 	data, err := os.ReadFile("../../deploy/preview.config.yaml")
 	if err != nil {
@@ -71,8 +71,8 @@ func TestPreviewEnablesPublicVerificationAndNFTMetadata(t *testing.T) {
 	if preview.Metadata.UnsafeAllowPrivateNetworks {
 		t.Fatal("Preview YAML must keep the metadata private-network exception disabled")
 	}
-	if preview.Features.Sourcify {
-		t.Fatal("Preview Sourcify must remain disabled")
+	if !preview.Features.Sourcify {
+		t.Fatal("Preview Sourcify must be enabled")
 	}
 }
 

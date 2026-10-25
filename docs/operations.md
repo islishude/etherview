@@ -236,6 +236,13 @@ existing consensus metadata remains queryable. Restart the failed service and
 use the existing `reindex --stage blob` procedure if a job reached an unavailable
 terminal state. The start/recreate targets do not modify the host trust store.
 
+Preview enables Sourcify at `https://sourcify.dev/server`. Use a supported public
+chain's ID and contract address when testing through Preview. Submit compiler
+metadata and source files to `POST /api/v1/verifier/sourcify` with an `X-API-Key`
+holding `contract:verify`, then poll `GET /api/v1/verifier/jobs/{id}`. Check
+`outcome.kind` for `sourcify_success`; job completion alone does not mean
+verification succeeded. Sourcify results remain external verification results.
+
 Preview includes Kubo `v0.43.1` and an independent Go HTTPS gateway at
 `https://ipfs.preview.test:8443`. Add `127.0.0.1 ipfs.preview.test` to the local
 hosts file to open gateway links in a browser; containers resolve the same name
