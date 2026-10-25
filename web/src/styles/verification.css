@@ -48,7 +48,9 @@
   gap: 0.4rem;
 }
 
-.field-control.wide {
+.field-control.wide,
+.checkbox-control.wide,
+.form-grid > p.wide {
   grid-column: 1 / -1;
 }
 

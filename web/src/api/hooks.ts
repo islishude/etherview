@@ -29,6 +29,8 @@ import type {
   UserOperationDetail,
   UserOperationSummary,
   VerificationSubmission,
+  SourcifySubmission,
+  SourcifyFromEtherscanSubmission,
 } from "./types";
 
 const liveRefetchInterval = 2_000;
@@ -928,6 +930,25 @@ export function useSubmitVerification(address: string, apiKey: string) {
         }),
       ).data,
     gcTime: 0,
+  });
+}
+
+export function useSubmitSourcifyVerification(apiKey: string) {
+  return useMutation({
+    mutationFn: async (
+      request:
+        | { kind: "sources"; body: SourcifySubmission }
+        | { kind: "etherscan"; body: SourcifyFromEtherscanSubmission },
+    ) => {
+      const options = { client: apiClient, headers: { "X-API-Key": apiKey } };
+      return requireEnvelope(
+        request.kind === "sources"
+          ? await sdk.submitSourcifyVerification({ ...options, body: request.body })
+          : await sdk.submitSourcifyFromEtherscan({ ...options, body: request.body }),
+      ).data;
+    },
+    gcTime: 0,
+    retry: false,
   });
 }
 

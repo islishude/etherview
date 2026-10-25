@@ -874,6 +874,11 @@ size alone is not sufficient justification to weaken those invariants.
   only; local address publication still requires the ordinary compiler,
   transformation, runtime, lease, and canonicality checks. See
   [ADR-0024](../decisions/ADR-0024-verifier-v2-workflow.md).
+  The Web verification page exposes source/metadata submission and Etherscan
+  import when the Sourcify capability is enabled. Both require explicit external
+  publication confirmation and use the generated same-origin client. Job views
+  identify Sourcify results separately from local verification and show the
+  external verification ID without implying local source or ABI publication.
   Its HTTPS client checks public-network addresses by default. The independent
   `sourcify.unsafe_allow_private_networks` development override defaults off outside
   Preview. Preview enables it for Fake-IP/private destinations while retaining

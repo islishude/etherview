@@ -1,27 +1,22 @@
-import { FormEvent, useEffect, useId, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { isAddress } from "viem";
 
 import { usePublicConfig } from "@/api/publicConfig";
 import { useSubmitVerification, useCompilerCatalog, useVerificationJob } from "@/api/hooks";
-import type {
-  VerificationJob,
-  VerificationMatchDetails,
-  VerificationSuccess,
-  VerificationSubmission,
-} from "@/api/types";
+import type { VerificationSubmission } from "@/api/types";
 import { QueryNotice } from "@/components/QueryNotice";
 import {
   DuplicateJSONKeyError,
   JSONStructureLimitError,
   Page,
-  TextArtifact,
   UnsafeJSONNumberError,
   assertNoDuplicateJSONKeys,
   errorMessage,
-  verificationJobStatusLabel,
-  verificationMatchLabel,
 } from "./pages";
+
+import { VerificationJobPanel } from "./VerificationJobPanel";
+import { SourcifyVerificationForm } from "./SourcifyVerificationForm";
 
 const MAX_STANDARD_JSON_BYTES = 5 * 1024 * 1024;
 const UUID_PATTERN =
@@ -30,6 +25,7 @@ const UUID_PATTERN =
 export function VerifyPage({ initialAddress = "" }: { initialAddress?: string }) {
   const { t } = useTranslation();
   const publicConfig = usePublicConfig();
+  const [provider, setProvider] = useState("local");
   const [apiKey, setAPIKey] = useState("");
   const [submittedAPIKey, setSubmittedAPIKey] = useState("");
   const [address, setAddress] = useState(initialAddress);
@@ -57,7 +53,9 @@ export function VerifyPage({ initialAddress = "" }: { initialAddress?: string })
   const [formError, setFormError] = useState<string>();
   const submissionEnabled =
     publicConfig.isSuccess && publicConfig.data.features.verification === true;
-  const compilerCatalog = useCompilerCatalog(language, submissionEnabled);
+  const sourcifyEnabled = publicConfig.isSuccess && publicConfig.data.features.sourcify === true;
+  const showSourcify = sourcifyEnabled && provider === "sourcify";
+  const compilerCatalog = useCompilerCatalog(language, submissionEnabled && !showSourcify);
   const submission = useSubmitVerification(address, apiKey);
   const job = useVerificationJob(
     submission.data?.id ?? "",
@@ -190,7 +188,23 @@ export function VerifyPage({ initialAddress = "" }: { initialAddress?: string })
           detail={t("verification.unavailableDetail")}
         />
       )}
-      {submissionEnabled && (
+      {sourcifyEnabled && (
+        <label className="field-control" htmlFor="verification-provider">
+          <span>{t("verification.provider")}</span>
+          <select
+            id="verification-provider"
+            value={provider}
+            onChange={(event) => setProvider(event.target.value)}
+          >
+            <option value="local">{t("verification.localProvider")}</option>
+            <option value="sourcify">{t("verification.sourcifyProvider")}</option>
+          </select>
+        </label>
+      )}
+      {showSourcify && (
+        <SourcifyVerificationForm initialAddress={address} chainID={publicConfig.data!.chain_id} />
+      )}
+      {submissionEnabled && !showSourcify && (
         <div className="verification-layout">
           <form className="panel verification-form" autoComplete="off" onSubmit={submit}>
             <h2>{t("verification.request")}</h2>
@@ -463,124 +477,6 @@ function FormField({
         value={value}
       />
     </label>
-  );
-}
-
-function VerificationJobPanel({
-  emptyMessage,
-  error,
-  job,
-  loading,
-}: {
-  emptyMessage?: string;
-  error: unknown;
-  job?: VerificationJob;
-  loading: boolean;
-}) {
-  const { t } = useTranslation();
-  const headingID = useId();
-  const success =
-    job?.outcome?.kind === "verification_success"
-      ? (job.outcome as VerificationSuccess)
-      : undefined;
-  return (
-    <section className="panel job-panel" aria-labelledby={headingID}>
-      <h2 id={headingID}>{t("verification.job")}</h2>
-      {!job && !loading && !error && (
-        <p className="quiet">{emptyMessage ?? t("verification.jobEmpty")}</p>
-      )}
-      <QueryNotice loading={loading} error={error} />
-      {job && (
-        <dl className="job-details" aria-live="polite">
-          <div>
-            <dt>{t("verification.jobID")}</dt>
-            <dd>
-              <code>{job.id}</code>
-            </dd>
-          </div>
-          <div>
-            <dt>{t("verification.jobKind")}</dt>
-            <dd>
-              <code>{job.kind}</code>
-            </dd>
-          </div>
-          <div>
-            <dt>{t("table.status")}</dt>
-            <dd>
-              <span className={`job-status ${job.status}`}>
-                {verificationJobStatusLabel(job.status, t)}
-              </span>
-            </dd>
-          </div>
-          <div>
-            <dt>{t("verification.result")}</dt>
-            <dd>
-              <code>{job.outcome?.kind ?? "—"}</code>
-            </dd>
-          </div>
-          <div>
-            <dt>{t("verification.runtimeMatch")}</dt>
-            <dd>{verificationMatchLabel(success?.runtime_match?.match_type, t)}</dd>
-          </div>
-          <div>
-            <dt>{t("verification.creationMatch")}</dt>
-            <dd>{verificationMatchLabel(success?.creation_match?.match_type, t)}</dd>
-          </div>
-          <div>
-            <dt>{t("verification.errorCode")}</dt>
-            <dd>
-              <code>{job.error_code ?? "—"}</code>
-            </dd>
-          </div>
-          <div>
-            <dt>{t("verification.updated")}</dt>
-            <dd>{job.updated_at}</dd>
-          </div>
-        </dl>
-      )}
-      {success?.creation_match && (
-        <VerificationMatchView
-          title={t("verification.creationTransformations")}
-          match={success.creation_match}
-        />
-      )}
-      {success?.runtime_match && (
-        <VerificationMatchView
-          title={t("verification.runtimeTransformations")}
-          match={success.runtime_match}
-        />
-      )}
-      {job?.outcome?.kind === "batch_results" && (
-        <TextArtifact title={t("verification.batchResults")} value={job.outcome.results} />
-      )}
-    </section>
-  );
-}
-
-function VerificationMatchView({
-  title,
-  match,
-}: {
-  title: string;
-  match: VerificationMatchDetails;
-}) {
-  return (
-    <section className="artifact-panel">
-      <h3>{title}</h3>
-      <p>
-        <code>{match.match_type}</code>
-      </p>
-      <pre tabIndex={0}>
-        {JSON.stringify(
-          {
-            transformations: match.transformations,
-            values: match.values,
-          },
-          null,
-          2,
-        )}
-      </pre>
-    </section>
   );
 }
 
