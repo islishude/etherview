@@ -62,6 +62,9 @@ export function AppNavigation() {
             {t("nav.charts")}
           </Link>
           <NavigationDisclosure label={t("nav.more")}>
+            <Link activeProps={{ className: "active" }} to="/verify">
+              {t("page.verify")}
+            </Link>
             {config.data?.features.user_operations === true && (
               <Link activeProps={{ className: "active" }} to="/user-operations">
                 {t("nav.userOperations")}

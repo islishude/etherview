@@ -2,37 +2,14 @@
 
 .verification-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.65fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
-  align-items: start;
-}
-
-.verification-read-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 0.85fr) minmax(280px, 1.15fr);
-  gap: 1rem;
-  align-items: start;
 }
 
 .verification-form,
-.verification-job-lookup,
 .job-panel,
 .verified-contract-card {
   padding: clamp(1rem, 3vw, 1.4rem);
-}
-
-.verification-job-lookup {
-  display: grid;
-  gap: 0.85rem;
-}
-
-.verification-job-lookup > h2,
-.verification-job-lookup > p {
-  margin-block: 0;
-}
-
-.verification-job-lookup > .button {
-  justify-self: start;
 }
 
 .form-grid {

@@ -157,6 +157,27 @@ fail-closed cleanup requirements remain mandatory.
   fresh database. Earlier development schemas must be recreated; there is no
   dual read, data conversion, or rollback format.
 
+### Session-authenticated verification
+
+The embedded Verify page uses four Cookie-authenticated writes under
+`/api/v1/verification-jobs`: `local`, `sourcify-import`, `sourcify`, and
+`sourcify-from-etherscan`. Local and source-import requests carry `address` in
+the JSON body; source import also carries the source `chain_id`. All writes
+require an active writer-authoritative SIWE session, exact configured Origin,
+and its CSRF token before input parsing, external work or enqueueing. The
+existing native and Etherscan protocols still require `contract:verify` API
+keys; neither credential substitutes for the other.
+
+`GET /api/v1/verification-jobs/{id}` requires an active session and remains
+available when new public submissions are disabled. It returns only job state,
+match evidence and durable target address/chain, excluding submitted sources,
+compiler artifacts and upstream credentials. As with the keyed job reader,
+authorized callers may read a known UUID; jobs are not user-owned and no
+personal history is introduced. The existing rate admission, input/work bounds,
+compiler identity, PostgreSQL queue and publication fences are shared across
+both submission channels. Browser verification requires user authentication to
+be enabled and never provisions or embeds a substitute API key.
+
 ## Consequences
 
 Verification can discover the matching contract and preserve the exact

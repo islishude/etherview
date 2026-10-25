@@ -41,7 +41,6 @@ it.each([
         "hour",
       ),
   },
-  { name: "verification job", useResource: () => queries.useVerificationJob("job", "secret", 1) },
   { name: "compiler catalog", useResource: () => queries.useCompilerCatalog("solidity") },
   { name: "blob metadata", useResource: () => useBlockBlobs(hash) },
 

@@ -1,3 +1,4 @@
+import { installVerificationSession, verificationCSRF } from "./verification-session";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
@@ -33,19 +34,25 @@ for (const language of ["en", "zh"] as const) {
     await page.route("**/api/v1/verifier/compilers?language=solidity", (route) =>
       route.fulfill({ json: envelope({ language: "solidity", versions: ["0.8.30"] }) }),
     );
-    await page.route("**/api/v1/verifier/sourcify**", async (route) => {
-      expect(route.request().headers()["x-api-key"]).toBe(apiKey);
+    await page.route("**/api/v1/verification-jobs/sourcify**", async (route) => {
+      expect(route.request().headers()["x-api-key"]).toBeUndefined();
+      if (route.request().method() === "POST")
+        expect(route.request().headers()["x-csrf-token"]).toBe(verificationCSRF);
       const path = new URL(route.request().url()).pathname;
       posts.push({ path, body: route.request().postDataJSON() });
       kind = path.endsWith("from-etherscan") ? "sourcify_from_etherscan" : "sourcify";
       polls = 0;
       await route.fulfill({ status: 202, json: envelope({ id: jobID, kind, status: "queued" }) });
     });
-    await page.route(`**/api/v1/verifier/jobs/${jobID}`, async (route) => {
-      expect(route.request().headers()["x-api-key"]).toBe(apiKey);
+    await page.route(`**/api/v1/verification-jobs/${jobID}`, async (route) => {
+      expect(route.request().headers()["x-api-key"]).toBeUndefined();
+      if (route.request().method() === "POST")
+        expect(route.request().headers()["x-csrf-token"]).toBe(verificationCSRF);
       polls++;
       await route.fulfill({
         json: envelope({
+          address,
+          chain_id: "1",
           id: jobID,
           kind,
           status: polls === 1 ? "running" : "succeeded",
@@ -56,6 +63,7 @@ for (const language of ["en", "zh"] as const) {
         }),
       });
     });
+    await installVerificationSession(page);
     await page.goto(`/verify?address=${address}`);
     if (language === "zh")
       await page.getByRole("button", { name: "切换到中文", exact: true }).click();
@@ -68,11 +76,17 @@ for (const language of ["en", "zh"] as const) {
       .first()
       .click();
     await expect(page.getByLabel(zh ? "地址" : "Address", { exact: true })).toHaveValue(address);
-    await page.getByLabel(/^Etherview API Key(?!\s*[(（])/).fill(apiKey);
     const files = {
       "A.sol": "contract A {}",
       "metadata.json": '{"compiler":{},"settings":{},"output":{}}',
     };
+    await page.getByLabel(zh ? "源码文件" : "Source files", { exact: true }).setInputFiles({
+      name: "bad.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("contract A {}"),
+    });
+    await expect(page.getByRole("alert")).toContainText(zh ? "小写后缀" : "lowercase extensions");
+    expect(posts).toHaveLength(0);
     const fileChooser = page.waitForEvent("filechooser");
     await page.getByLabel(zh ? "源码文件" : "Source files", { exact: true }).focus();
     await page.keyboard.press("Space");
@@ -97,18 +111,27 @@ for (const language of ["en", "zh"] as const) {
       page.getByText(zh ? /提交会将源码和 metadata/ : /Submitting sends the source files/),
     ).toBeVisible();
     await page.getByRole("checkbox").check();
+    await page
+      .getByLabel(zh ? "源码路径：A.sol" : "Source path: A.sol", { exact: true })
+      .fill("src/A.sol");
+    await expect(page.getByRole("checkbox")).not.toBeChecked();
+    await page
+      .getByLabel(zh ? "源码路径：A.sol" : "Source path: A.sol", { exact: true })
+      .fill("A.sol");
+    await page.getByRole("checkbox").check();
     await sourceSubmit.click();
     await expect(
       page.getByText(
         zh ? "Sourcify 验证成功（外部结果）" : "Sourcify verification succeeded (external result)",
       ),
     ).toBeVisible();
+    await page.getByText(zh ? "技术详情" : "Technical details", { exact: true }).click();
     await expect(page.getByText(externalID, { exact: true })).toBeVisible();
     await expect(page.getByText(zh ? "运行时匹配" : "Runtime match", { exact: true })).toHaveCount(
       0,
     );
     expect(posts).toEqual([
-      { path: "/api/v1/verifier/sourcify", body: { chain_id: "1", address, files } },
+      { path: "/api/v1/verification-jobs/sourcify", body: { chain_id: "1", address, files } },
     ]);
     await page.setViewportSize({ width: 390, height: 844 });
     expect(
@@ -127,6 +150,7 @@ for (const language of ["en", "zh"] as const) {
       fullPage: true,
     });
 
+    await page.getByRole("button", { name: zh ? "返回修改" : "Back to form", exact: true }).click();
     for (const colorScheme of ["light", "dark"] as const) {
       await page.emulateMedia({ colorScheme });
       await expect(page.locator("html")).toHaveAttribute("data-theme", colorScheme);
@@ -166,10 +190,11 @@ for (const language of ["en", "zh"] as const) {
     await importSubmit.click();
     await expect.poll(() => posts.length).toBe(2);
     expect(posts[1]).toEqual({
-      path: "/api/v1/verifier/sourcify/from-etherscan",
+      path: "/api/v1/verification-jobs/sourcify-from-etherscan",
       body: { chain_id: "1", address, etherscan_api_key: etherscanKey },
     });
     await expect(etherscanInput).toHaveValue("");
+    await page.getByText(zh ? "技术详情" : "Technical details", { exact: true }).click();
     await expect(page.getByText("sourcify_from_etherscan", { exact: true })).toBeVisible();
     await expect(
       page.getByText(
@@ -215,23 +240,27 @@ for (const language of ["en", "zh"] as const) {
     await page.route("**/api/v1/verifier/compilers?language=solidity", (route) =>
       route.fulfill({ json: envelope({ language: "solidity", versions: ["0.8.30"] }) }),
     );
-    await page.route("**/api/v1/verifier/sourcify**", (route) => {
+    await page.route("**/api/v1/verification-jobs/sourcify**", (route) => {
       posts.push("unexpected upload");
       return route.fulfill({ status: 500, json: {} });
     });
-    await page.route(`**/api/v1/contracts/${address}/verification/sourcify`, (route) => {
+    await page.route("**/api/v1/verification-jobs/sourcify-import", (route) => {
       expect(route.request().method()).toBe("POST");
-      expect(route.request().headers()["x-api-key"]).toBe(apiKey);
-      expect(route.request().postDataJSON()).toEqual({ chain_id: "11155111" });
+      expect(route.request().headers()["x-api-key"]).toBeUndefined();
+      if (route.request().method() === "POST")
+        expect(route.request().headers()["x-csrf-token"]).toBe(verificationCSRF);
+      expect(route.request().postDataJSON()).toEqual({ address, chain_id: "11155111" });
       posts.push("local import");
       return route.fulfill({
         status: 202,
         json: envelope({ id: jobID, kind: "address", status: "queued" }),
       });
     });
-    await page.route(`**/api/v1/verifier/jobs/${jobID}`, (route) =>
+    await page.route(`**/api/v1/verification-jobs/${jobID}`, (route) =>
       route.fulfill({
         json: envelope({
+          address,
+          chain_id: "1",
           id: jobID,
           kind: "address",
           status: "succeeded",
@@ -239,6 +268,7 @@ for (const language of ["en", "zh"] as const) {
         }),
       }),
     );
+    await installVerificationSession(page);
     await page.goto(`/verify?address=${address}`);
     if (zh) await page.getByRole("button", { name: "切换到中文", exact: true }).click();
     const provider = page.getByRole("radio", {
@@ -280,19 +310,20 @@ for (const language of ["en", "zh"] as const) {
         });
       }
     }
-    await page.getByLabel(/^Etherview API Key(?!\s*[(（])/).fill(apiKey);
     await page
       .getByRole("button", {
         name: zh ? "从 Sourcify 导入 Etherview" : "Import from Sourcify into Etherview",
         exact: true,
       })
       .click();
+    await page.getByText(zh ? "技术详情" : "Technical details", { exact: true }).click();
     await expect(page.getByText("verification_success", { exact: true })).toBeVisible();
     await expect(
       page.getByText(zh ? "运行时匹配" : "Runtime match", { exact: true }),
     ).toBeVisible();
     expect(posts).toEqual(["local import"]);
     await expect(page.getByText(externalID, { exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: zh ? "返回修改" : "Back to form", exact: true }).click();
     await page
       .getByRole("radio", { name: zh ? /Etherview 本地验证/ : /Etherview local verification/ })
       .check();

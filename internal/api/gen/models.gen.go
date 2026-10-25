@@ -239,19 +239,19 @@ func (e AddressTokenTransferStandard) Valid() bool {
 
 // Defines values for AddressVerificationSubmissionInputKind.
 const (
-	GeasSources  AddressVerificationSubmissionInputKind = "geas_sources"
-	Multipart    AddressVerificationSubmissionInputKind = "multipart"
-	StandardJson AddressVerificationSubmissionInputKind = "standard_json"
+	AddressVerificationSubmissionInputKindGeasSources  AddressVerificationSubmissionInputKind = "geas_sources"
+	AddressVerificationSubmissionInputKindMultipart    AddressVerificationSubmissionInputKind = "multipart"
+	AddressVerificationSubmissionInputKindStandardJson AddressVerificationSubmissionInputKind = "standard_json"
 )
 
 // Valid indicates whether the value is a known member of the AddressVerificationSubmissionInputKind enum.
 func (e AddressVerificationSubmissionInputKind) Valid() bool {
 	switch e {
-	case GeasSources:
+	case AddressVerificationSubmissionInputKindGeasSources:
 		return true
-	case Multipart:
+	case AddressVerificationSubmissionInputKindMultipart:
 		return true
-	case StandardJson:
+	case AddressVerificationSubmissionInputKindStandardJson:
 		return true
 	default:
 		return false
@@ -326,13 +326,13 @@ func (e AddressWatchKinds) Valid() bool {
 
 // Defines values for BatchResultsOutcomeKind.
 const (
-	BatchResults BatchResultsOutcomeKind = "batch_results"
+	BatchResultsOutcomeKindBatchResults BatchResultsOutcomeKind = "batch_results"
 )
 
 // Valid indicates whether the value is a known member of the BatchResultsOutcomeKind enum.
 func (e BatchResultsOutcomeKind) Valid() bool {
 	switch e {
-	case BatchResults:
+	case BatchResultsOutcomeKindBatchResults:
 		return true
 	default:
 		return false
@@ -570,6 +570,141 @@ func (e BlockSlotNumberSource) Valid() bool {
 	case Consensus:
 		return true
 	case Execution:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BrowserAddressVerificationSubmissionInputKind.
+const (
+	BrowserAddressVerificationSubmissionInputKindGeasSources  BrowserAddressVerificationSubmissionInputKind = "geas_sources"
+	BrowserAddressVerificationSubmissionInputKindMultipart    BrowserAddressVerificationSubmissionInputKind = "multipart"
+	BrowserAddressVerificationSubmissionInputKindStandardJson BrowserAddressVerificationSubmissionInputKind = "standard_json"
+)
+
+// Valid indicates whether the value is a known member of the BrowserAddressVerificationSubmissionInputKind enum.
+func (e BrowserAddressVerificationSubmissionInputKind) Valid() bool {
+	switch e {
+	case BrowserAddressVerificationSubmissionInputKindGeasSources:
+		return true
+	case BrowserAddressVerificationSubmissionInputKindMultipart:
+		return true
+	case BrowserAddressVerificationSubmissionInputKindStandardJson:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BrowserAddressVerificationSubmissionOptimizationMode.
+const (
+	BrowserAddressVerificationSubmissionOptimizationModeCodesize BrowserAddressVerificationSubmissionOptimizationMode = "codesize"
+	BrowserAddressVerificationSubmissionOptimizationModeGas      BrowserAddressVerificationSubmissionOptimizationMode = "gas"
+	BrowserAddressVerificationSubmissionOptimizationModeNone     BrowserAddressVerificationSubmissionOptimizationMode = "none"
+)
+
+// Valid indicates whether the value is a known member of the BrowserAddressVerificationSubmissionOptimizationMode enum.
+func (e BrowserAddressVerificationSubmissionOptimizationMode) Valid() bool {
+	switch e {
+	case BrowserAddressVerificationSubmissionOptimizationModeCodesize:
+		return true
+	case BrowserAddressVerificationSubmissionOptimizationModeGas:
+		return true
+	case BrowserAddressVerificationSubmissionOptimizationModeNone:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BrowserVerificationJobKind.
+const (
+	BrowserVerificationJobKindAddress                   BrowserVerificationJobKind = "address"
+	BrowserVerificationJobKindSolidityBatchMultipart    BrowserVerificationJobKind = "solidity_batch_multipart"
+	BrowserVerificationJobKindSolidityBatchStandardJson BrowserVerificationJobKind = "solidity_batch_standard_json"
+	BrowserVerificationJobKindSolidityMultipart         BrowserVerificationJobKind = "solidity_multipart"
+	BrowserVerificationJobKindSolidityStandardJson      BrowserVerificationJobKind = "solidity_standard_json"
+	BrowserVerificationJobKindSourcify                  BrowserVerificationJobKind = "sourcify"
+	BrowserVerificationJobKindSourcifyFromEtherscan     BrowserVerificationJobKind = "sourcify_from_etherscan"
+	BrowserVerificationJobKindVyperMultipart            BrowserVerificationJobKind = "vyper_multipart"
+	BrowserVerificationJobKindVyperStandardJson         BrowserVerificationJobKind = "vyper_standard_json"
+)
+
+// Valid indicates whether the value is a known member of the BrowserVerificationJobKind enum.
+func (e BrowserVerificationJobKind) Valid() bool {
+	switch e {
+	case BrowserVerificationJobKindAddress:
+		return true
+	case BrowserVerificationJobKindSolidityBatchMultipart:
+		return true
+	case BrowserVerificationJobKindSolidityBatchStandardJson:
+		return true
+	case BrowserVerificationJobKindSolidityMultipart:
+		return true
+	case BrowserVerificationJobKindSolidityStandardJson:
+		return true
+	case BrowserVerificationJobKindSourcify:
+		return true
+	case BrowserVerificationJobKindSourcifyFromEtherscan:
+		return true
+	case BrowserVerificationJobKindVyperMultipart:
+		return true
+	case BrowserVerificationJobKindVyperStandardJson:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BrowserVerificationJobStatus.
+const (
+	BrowserVerificationJobStatusCancelled BrowserVerificationJobStatus = "cancelled"
+	BrowserVerificationJobStatusFailed    BrowserVerificationJobStatus = "failed"
+	BrowserVerificationJobStatusQueued    BrowserVerificationJobStatus = "queued"
+	BrowserVerificationJobStatusRunning   BrowserVerificationJobStatus = "running"
+	BrowserVerificationJobStatusSucceeded BrowserVerificationJobStatus = "succeeded"
+)
+
+// Valid indicates whether the value is a known member of the BrowserVerificationJobStatus enum.
+func (e BrowserVerificationJobStatus) Valid() bool {
+	switch e {
+	case BrowserVerificationJobStatusCancelled:
+		return true
+	case BrowserVerificationJobStatusFailed:
+		return true
+	case BrowserVerificationJobStatusQueued:
+		return true
+	case BrowserVerificationJobStatusRunning:
+		return true
+	case BrowserVerificationJobStatusSucceeded:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BrowserVerificationOutcomeKind.
+const (
+	BrowserVerificationOutcomeKindBatchResults        BrowserVerificationOutcomeKind = "batch_results"
+	BrowserVerificationOutcomeKindCompilationFailure  BrowserVerificationOutcomeKind = "compilation_failure"
+	BrowserVerificationOutcomeKindSourcifySuccess     BrowserVerificationOutcomeKind = "sourcify_success"
+	BrowserVerificationOutcomeKindVerificationFailure BrowserVerificationOutcomeKind = "verification_failure"
+	BrowserVerificationOutcomeKindVerificationSuccess BrowserVerificationOutcomeKind = "verification_success"
+)
+
+// Valid indicates whether the value is a known member of the BrowserVerificationOutcomeKind enum.
+func (e BrowserVerificationOutcomeKind) Valid() bool {
+	switch e {
+	case BrowserVerificationOutcomeKindBatchResults:
+		return true
+	case BrowserVerificationOutcomeKindCompilationFailure:
+		return true
+	case BrowserVerificationOutcomeKindSourcifySuccess:
+		return true
+	case BrowserVerificationOutcomeKindVerificationFailure:
+		return true
+	case BrowserVerificationOutcomeKindVerificationSuccess:
 		return true
 	default:
 		return false
@@ -1028,13 +1163,13 @@ func (e ChartMetric) Valid() bool {
 
 // Defines values for CompilationFailureOutcomeKind.
 const (
-	CompilationFailure CompilationFailureOutcomeKind = "compilation_failure"
+	CompilationFailureOutcomeKindCompilationFailure CompilationFailureOutcomeKind = "compilation_failure"
 )
 
 // Valid indicates whether the value is a known member of the CompilationFailureOutcomeKind enum.
 func (e CompilationFailureOutcomeKind) Valid() bool {
 	switch e {
-	case CompilationFailure:
+	case CompilationFailureOutcomeKindCompilationFailure:
 		return true
 	default:
 		return false
@@ -2234,13 +2369,13 @@ func (e SolcVerifierLanguage) Valid() bool {
 
 // Defines values for SourcifySuccessOutcomeKind.
 const (
-	SourcifySuccess SourcifySuccessOutcomeKind = "sourcify_success"
+	SourcifySuccessOutcomeKindSourcifySuccess SourcifySuccessOutcomeKind = "sourcify_success"
 )
 
 // Valid indicates whether the value is a known member of the SourcifySuccessOutcomeKind enum.
 func (e SourcifySuccessOutcomeKind) Valid() bool {
 	switch e {
-	case SourcifySuccess:
+	case SourcifySuccessOutcomeKindSourcifySuccess:
 		return true
 	default:
 		return false
@@ -3167,13 +3302,13 @@ func (e UserStatus) Valid() bool {
 
 // Defines values for VerificationFailureOutcomeKind.
 const (
-	VerificationFailure VerificationFailureOutcomeKind = "verification_failure"
+	VerificationFailureOutcomeKindVerificationFailure VerificationFailureOutcomeKind = "verification_failure"
 )
 
 // Valid indicates whether the value is a known member of the VerificationFailureOutcomeKind enum.
 func (e VerificationFailureOutcomeKind) Valid() bool {
 	switch e {
-	case VerificationFailure:
+	case VerificationFailureOutcomeKindVerificationFailure:
 		return true
 	default:
 		return false
@@ -4428,6 +4563,38 @@ type BlockWithdrawal struct {
 	ValidatorIndex Quantity `json:"validator_index"`
 }
 
+// BrowserAddressVerificationSubmission defines model for BrowserAddressVerificationSubmission.
+type BrowserAddressVerificationSubmission struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address            Address                                       `json:"address"`
+	CompilerVersion    string                                        `json:"compiler_version"`
+	ContractNameHint   *string                                       `json:"contract_name_hint,omitempty"`
+	CreationEntrypoint *string                                       `json:"creation_entrypoint,omitempty"`
+	EvmVersion         *string                                       `json:"evm_version,omitempty"`
+	Input              *map[string]interface{}                       `json:"input,omitempty"`
+	InputKind          BrowserAddressVerificationSubmissionInputKind `json:"input_kind"`
+
+	// Interfaces Vyper multipart inline interfaces containing content or an ABI array.
+	Interfaces *map[string]map[string]interface{} `json:"interfaces,omitempty"`
+	Language   VerifierLanguage                   `json:"language"`
+	Libraries  *map[string]Address                `json:"libraries,omitempty"`
+
+	// OptimizationMode Vyper multipart optimization mode; omit to use the selected compiler default.
+	OptimizationMode  *BrowserAddressVerificationSubmissionOptimizationMode `json:"optimization_mode,omitempty"`
+	OptimizationRuns  *int                                                  `json:"optimization_runs,omitempty"`
+	RuntimeEntrypoint *string                                               `json:"runtime_entrypoint,omitempty"`
+	Sources           *map[string]string                                    `json:"sources,omitempty"`
+
+	// TargetFile Required Vyper target .vy file in the inline source bundle.
+	TargetFile *string `json:"target_file,omitempty"`
+}
+
+// BrowserAddressVerificationSubmissionInputKind defines model for BrowserAddressVerificationSubmission.InputKind.
+type BrowserAddressVerificationSubmissionInputKind string
+
+// BrowserAddressVerificationSubmissionOptimizationMode Vyper multipart optimization mode; omit to use the selected compiler default.
+type BrowserAddressVerificationSubmissionOptimizationMode string
+
 // BrowserPushSubscription defines model for BrowserPushSubscription.
 type BrowserPushSubscription struct {
 	EndpointHash string    `json:"endpoint_hash"`
@@ -4435,6 +4602,56 @@ type BrowserPushSubscription struct {
 	Id           string    `json:"id"`
 	Language     string    `json:"language"`
 }
+
+// BrowserSourcifySourceImportRequest defines model for BrowserSourcifySourceImportRequest.
+type BrowserSourcifySourceImportRequest struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address Address `json:"address"`
+
+	// ChainId Positive uint64 source chain ID on Sourcify, encoded as a canonical decimal string. The local verification target remains on the deployment's chain and must have identical runtime bytecode.
+	ChainId Quantity `json:"chain_id"`
+}
+
+// BrowserVerificationJob defines model for BrowserVerificationJob.
+type BrowserVerificationJob struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address *Address `json:"address,omitempty"`
+
+	// ChainId Durable target chain ID; absent for standalone bytecode jobs.
+	ChainId   *string                    `json:"chain_id,omitempty"`
+	CreatedAt time.Time                  `json:"created_at"`
+	ErrorCode *string                    `json:"error_code,omitempty"`
+	Id        openapi_types.UUID         `json:"id"`
+	Kind      BrowserVerificationJobKind `json:"kind"`
+
+	// Outcome Status and match evidence only; source and compiler artifacts are excluded.
+	Outcome   *BrowserVerificationOutcome  `json:"outcome,omitempty"`
+	Status    BrowserVerificationJobStatus `json:"status"`
+	UpdatedAt time.Time                    `json:"updated_at"`
+}
+
+// BrowserVerificationJobKind defines model for BrowserVerificationJob.Kind.
+type BrowserVerificationJobKind string
+
+// BrowserVerificationJobStatus defines model for BrowserVerificationJob.Status.
+type BrowserVerificationJobStatus string
+
+// BrowserVerificationJobResponse defines model for BrowserVerificationJobResponse.
+type BrowserVerificationJobResponse struct {
+	Data BrowserVerificationJob `json:"data"`
+	Meta Meta                   `json:"meta"`
+}
+
+// BrowserVerificationOutcome Status and match evidence only; source and compiler artifacts are excluded.
+type BrowserVerificationOutcome struct {
+	CreationMatch  *VerificationMatchDetails      `json:"creation_match,omitempty"`
+	Kind           BrowserVerificationOutcomeKind `json:"kind"`
+	RuntimeMatch   *VerificationMatchDetails      `json:"runtime_match,omitempty"`
+	VerificationId *openapi_types.UUID            `json:"verification_id,omitempty"`
+}
+
+// BrowserVerificationOutcomeKind defines model for BrowserVerificationOutcome.Kind.
+type BrowserVerificationOutcomeKind string
 
 // BuilderDepositRequest defines model for BuilderDepositRequest.
 type BuilderDepositRequest struct {
@@ -7862,6 +8079,26 @@ type UpdateCurrentUserWatchParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 }
 
+// SubmitBrowserAddressVerificationParams defines parameters for SubmitBrowserAddressVerification.
+type SubmitBrowserAddressVerificationParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// SubmitBrowserSourcifyVerificationParams defines parameters for SubmitBrowserSourcifyVerification.
+type SubmitBrowserSourcifyVerificationParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// SubmitBrowserSourcifyFromEtherscanParams defines parameters for SubmitBrowserSourcifyFromEtherscan.
+type SubmitBrowserSourcifyFromEtherscanParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// ImportBrowserSourcifyContractParams defines parameters for ImportBrowserSourcifyContract.
+type ImportBrowserSourcifyContractParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
 // ListVerifierCompilersParams defines parameters for ListVerifierCompilers.
 type ListVerifierCompilersParams struct {
 	Language VerifierLanguage `form:"language" json:"language"`
@@ -7905,6 +8142,18 @@ type CreateCurrentUserWatchJSONRequestBody = WatchInput
 
 // UpdateCurrentUserWatchJSONRequestBody defines body for UpdateCurrentUserWatch for application/json ContentType.
 type UpdateCurrentUserWatchJSONRequestBody = WatchInput
+
+// SubmitBrowserAddressVerificationJSONRequestBody defines body for SubmitBrowserAddressVerification for application/json ContentType.
+type SubmitBrowserAddressVerificationJSONRequestBody = BrowserAddressVerificationSubmission
+
+// SubmitBrowserSourcifyVerificationJSONRequestBody defines body for SubmitBrowserSourcifyVerification for application/json ContentType.
+type SubmitBrowserSourcifyVerificationJSONRequestBody = SourcifySubmission
+
+// SubmitBrowserSourcifyFromEtherscanJSONRequestBody defines body for SubmitBrowserSourcifyFromEtherscan for application/json ContentType.
+type SubmitBrowserSourcifyFromEtherscanJSONRequestBody = SourcifyFromEtherscanSubmission
+
+// ImportBrowserSourcifyContractJSONRequestBody defines body for ImportBrowserSourcifyContract for application/json ContentType.
+type ImportBrowserSourcifyContractJSONRequestBody = BrowserSourcifySourceImportRequest
 
 // LookupVerifierMethodsJSONRequestBody defines body for LookupVerifierMethods for application/json ContentType.
 type LookupVerifierMethodsJSONRequestBody = LookupMethodsRequest

@@ -2,38 +2,34 @@ import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { isAddress } from "viem";
 import { Download, ArrowRight } from "lucide-react";
-import { useImportSourcifyContract } from "@/api/sourcifyImport";
-import { useVerificationJob } from "@/api/hooks";
+import { useImportSourcifyContract } from "@/api/browserVerification";
 import { errorMessage } from "./pages";
-import { VerificationJobPanel } from "./VerificationJobPanel";
+import { useAuth } from "@/auth/AuthProvider";
+import type { BrowserVerificationJob } from "@/api/types";
 
 export function SourcifyImportForm({
+  onSubmitted,
   initialAddress,
   chainID,
   onPublish,
   onAddressChange,
 }: {
+  onSubmitted: (job: BrowserVerificationJob) => void;
   initialAddress: string;
   chainID: string;
   onPublish: () => void;
   onAddressChange: (address: string) => void;
 }) {
   const { t } = useTranslation();
+  const auth = useAuth();
   const address = initialAddress;
   const [sourceChainID, setSourceChainID] = useState(chainID);
-  const [apiKey, setAPIKey] = useState("");
-  const [submittedAPIKey, setSubmittedAPIKey] = useState("");
   const [formError, setFormError] = useState<string>();
-  const submission = useImportSourcifyContract(apiKey);
-  const job = useVerificationJob(
-    submission.data?.id ?? "",
-    submittedAPIKey,
-    1,
-    Boolean(submission.data),
-  );
+  const submission = useImportSourcifyContract(onSubmitted);
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (submission.isPending) return;
+    if (submission.isPending || !auth.enabled || !auth.session.authenticated) return;
     setFormError(undefined);
     if (
       !/^[1-9][0-9]{0,19}$/.test(sourceChainID) ||
@@ -42,11 +38,10 @@ export function SourcifyImportForm({
       setFormError(t("sourcify.invalidChainID"));
       return;
     }
-    if (!apiKey.trim() || !isAddress(address)) {
+    if (!isAddress(address)) {
       setFormError(t("sourcify.importInvalid"));
       return;
     }
-    setSubmittedAPIKey(apiKey);
     submission.mutate({ address, chainID: sourceChainID });
   };
   return (
@@ -92,26 +87,17 @@ export function SourcifyImportForm({
               spellCheck={false}
             />
           </label>
-          <label className="field-control wide" htmlFor="sourcify-import-key">
-            <span>{t("verification.apiKey")}</span>
-            <input
-              id="sourcify-import-key"
-              type="password"
-              autoComplete="off"
-              spellCheck={false}
-              disabled={submission.isPending}
-              value={apiKey}
-              onChange={(event) => setAPIKey(event.target.value)}
-            />
-            <small>{t("verification.apiKeyNotice")}</small>
-          </label>
         </div>
         {(formError || submission.error) && (
           <p className="form-error" role="alert">
             {formError ?? errorMessage(submission.error, t("sourcify.importFailed"))}
           </p>
         )}
-        <button className="button primary" type="submit" disabled={submission.isPending}>
+        <button
+          className="button primary"
+          type="submit"
+          disabled={submission.isPending || !auth.enabled || !auth.session.authenticated}
+        >
           {submission.isPending ? t("sourcify.importing") : t("sourcify.importAction")}
         </button>
         <p className="quiet">
@@ -121,11 +107,6 @@ export function SourcifyImportForm({
           </button>
         </p>
       </form>
-      <VerificationJobPanel
-        job={job.data ?? submission.data}
-        loading={job.isPending && Boolean(submission.data)}
-        error={job.error}
-      />
     </div>
   );
 }

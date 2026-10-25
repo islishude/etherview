@@ -1,7 +1,7 @@
 import * as sdk from "./heyapi/sdk.gen";
 import { firstPage, type CursorRequest } from "./pagination";
 import { chainQueryMeta, statusQueryMeta, userOperationQueryMeta } from "./chainEvents";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 
 import { apiClient, requireEnvelope } from "./client";
 import type {
@@ -29,8 +29,6 @@ import type {
   UserOperationDetail,
   UserOperationSummary,
   VerificationSubmission,
-  SourcifySubmission,
-  SourcifyFromEtherscanSubmission,
 } from "./types";
 
 const liveRefetchInterval = 2_000;
@@ -915,72 +913,6 @@ export function useChartMetric(
     enabled,
     retry: false,
     staleTime: 30_000,
-  });
-}
-
-export function useSubmitVerification(address: string, apiKey: string) {
-  return useMutation({
-    mutationFn: async (submission: VerificationSubmission) =>
-      requireEnvelope(
-        await sdk.submitAddressVerification({
-          client: apiClient,
-          body: submission,
-          headers: { "X-API-Key": apiKey },
-          path: { address },
-        }),
-      ).data,
-    gcTime: 0,
-  });
-}
-
-export function useSubmitSourcifyVerification(apiKey: string) {
-  return useMutation({
-    mutationFn: async (
-      request:
-        | { kind: "sources"; body: SourcifySubmission }
-        | { kind: "etherscan"; body: SourcifyFromEtherscanSubmission },
-    ) => {
-      const options = { client: apiClient, headers: { "X-API-Key": apiKey } };
-      return requireEnvelope(
-        request.kind === "sources"
-          ? await sdk.submitSourcifyVerification({ ...options, body: request.body })
-          : await sdk.submitSourcifyFromEtherscan({ ...options, body: request.body }),
-      ).data;
-    },
-    onSettled: (_data, _error, request) => {
-      // Do not retain the upstream credential in completed mutation-cache variables.
-      if (request.kind === "etherscan") delete request.body.etherscan_api_key;
-    },
-    gcTime: 0,
-    retry: false,
-  });
-}
-
-export function useVerificationJob(
-  id: string,
-  apiKey: string,
-  requestRevision = 0,
-  enabled = true,
-) {
-  return useQuery({
-    // The revision retries an edited credential without placing that credential in the cache key.
-    queryKey: ["verification-job", id, requestRevision],
-    queryFn: async ({ signal }) =>
-      requireEnvelope(
-        await sdk.getVerifierJob({
-          client: apiClient,
-          signal,
-          path: { id },
-          headers: { "X-API-Key": apiKey },
-        }),
-      ).data,
-    enabled: enabled && id.length > 0 && apiKey.length > 0 && requestRevision > 0,
-    retry: false,
-    gcTime: 0,
-    refetchInterval: (query) => {
-      const status = query.state.data?.status;
-      return status === "queued" || status === "running" ? 2_000 : false;
-    },
   });
 }
 

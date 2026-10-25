@@ -1,142 +1,91 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { isAddress } from "viem";
-import { useSubmitSourcifyVerification, useVerificationJob } from "@/api/hooks";
+import { useSubmitSourcifyVerification } from "@/api/browserVerification";
 import { assertNoDuplicateJSONKeys, errorMessage } from "./pages";
-import { VerificationJobPanel } from "./VerificationJobPanel";
-import { SourcifyPostImport } from "./SourcifyPostImport";
-import { SourcifyFileUpload } from "./SourcifyFileUpload";
-
-const MAX_REQUEST_BYTES = 5 * 1024 * 1024;
-const MAX_FILES = 1024;
-const byteLength = (value: string) => new TextEncoder().encode(value).byteLength;
+import { useAuth } from "@/auth/AuthProvider";
+import { usePrivateIdentity } from "@/api/privateAccount";
+import type { BrowserVerificationJob } from "@/api/types";
+import { VerificationFileUpload } from "./VerificationFileUpload";
+import {
+  byteLength,
+  fileMap,
+  MAX_UPLOAD_BYTES,
+  MAX_UPLOAD_FILES,
+  sourceExtensions,
+  useVerificationFiles,
+} from "./verificationFiles";
 
 export function SourcifyVerificationForm({
+  onSubmitted,
   initialAddress,
   chainID,
   onAddressChange,
 }: {
+  onSubmitted: (job: BrowserVerificationJob) => void;
   initialAddress: string;
   chainID: string;
   onAddressChange?: (address: string) => void;
 }) {
   const { t } = useTranslation();
+  const auth = useAuth();
+  const identity = usePrivateIdentity();
   const [mode, setMode] = useState<"sources" | "etherscan">("sources");
   const [address, setAddress] = useState(initialAddress);
-  const [files, setFiles] = useState("{}");
-  const [apiKey, setAPIKey] = useState("");
   const [etherscanAPIKey, setEtherscanAPIKey] = useState("");
-  const [submittedAPIKey, setSubmittedAPIKey] = useState("");
-  const [submittedAddress, setSubmittedAddress] = useState("");
   const [consent, setConsent] = useState(false);
-  const [reading, setReading] = useState(false);
   const [formError, setFormError] = useState<string>();
-  const submission = useSubmitSourcifyVerification(apiKey);
-  const job = useVerificationJob(
-    submission.data?.id ?? "",
-    submittedAPIKey,
-    1,
-    Boolean(submission.data),
-  );
+  const submission = useSubmitSourcifyVerification(onSubmitted);
+
+  const changedFiles = () => {
+    setConsent(false);
+    setFormError(undefined);
+  };
+  const sources = useVerificationFiles({
+    extensions: sourceExtensions.sourcify,
+    onChange: changedFiles,
+  });
+  const metadata = useVerificationFiles({
+    extensions: [".json"],
+    single: true,
+    onChange: changedFiles,
+    validateContent: (content) => {
+      try {
+        assertNoDuplicateJSONKeys(content);
+        const parsed: unknown = JSON.parse(content);
+        if (
+          !parsed ||
+          typeof parsed !== "object" ||
+          Array.isArray(parsed) ||
+          !["compiler", "settings", "output"].every(
+            (key) => key in parsed && parsed[key as keyof typeof parsed] != null,
+          )
+        )
+          return t("sourcify.invalidMetadata");
+      } catch {
+        return t("sourcify.invalidMetadata");
+      }
+    },
+  });
+  const reading = sources.reading || metadata.reading;
   const busy = reading || submission.isPending;
+  const uploadError = mode === "sources" ? (sources.error ?? metadata.error) : undefined;
 
   useEffect(() => {
     setAddress(initialAddress);
     setConsent(false);
   }, [initialAddress]);
 
-  let selectedNames: string[] = [];
-  try {
-    const parsed: unknown = JSON.parse(files);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
-      selectedNames = Object.keys(parsed);
-  } catch {
-    /* The editable map reports validation errors on submit. */
-  }
-
-  const readFiles = async (selected: File[], kind: "sources" | "metadata") => {
+  useEffect(() => {
+    setEtherscanAPIKey("");
     setConsent(false);
-    setFormError(undefined);
-    if (!selected.length) return;
-    if (
-      selected.length > MAX_FILES ||
-      selected.reduce((total, file) => total + file.size, 0) > MAX_REQUEST_BYTES
-    ) {
-      setFormError(t("sourcify.inputLimit"));
-      return;
-    }
-    const paths = selected.map((file) => file.webkitRelativePath || file.name);
-    if (
-      kind === "sources" &&
-      paths.some((path) => path.split("/").pop()?.toLowerCase() === "metadata.json")
-    ) {
-      setFormError(t("sourcify.separateMetadata"));
-      return;
-    }
-    if (kind === "metadata" && selected.length !== 1) {
-      setFormError(t("sourcify.invalidMetadata"));
-      return;
-    }
-    if (new Set(paths).size !== paths.length) {
-      setFormError(t("sourcify.duplicateFiles"));
-      return;
-    }
-    setReading(true);
-    try {
-      assertNoDuplicateJSONKeys(files);
-      const current: unknown = JSON.parse(files);
-      if (
-        !current ||
-        typeof current !== "object" ||
-        Array.isArray(current) ||
-        Object.values(current).some((content) => typeof content !== "string")
-      ) {
-        setFormError(t("sourcify.invalidFiles"));
-        return;
-      }
-      const contents = await Promise.all(selected.map((file) => file.text()));
-      let next: Record<string, string>;
-      if (kind === "metadata") {
-        try {
-          assertNoDuplicateJSONKeys(contents[0]!);
-          const metadata: unknown = JSON.parse(contents[0]!);
-          if (
-            !metadata ||
-            typeof metadata !== "object" ||
-            Array.isArray(metadata) ||
-            !["compiler", "settings", "output"].every(
-              (key) => key in metadata && metadata[key as keyof typeof metadata] != null,
-            )
-          )
-            throw new Error();
-        } catch {
-          setFormError(t("sourcify.invalidMetadata"));
-          return;
-        }
-        next = { ...(current as Record<string, string>), "metadata.json": contents[0]! };
-      } else {
-        next = Object.fromEntries(paths.map((path, index) => [path, contents[index]!]));
-        if ("metadata.json" in current)
-          next["metadata.json"] = (current as Record<string, string>)["metadata.json"]!;
-      }
-      const encoded = JSON.stringify(next, null, 2);
-      if (Object.keys(next).length > MAX_FILES || byteLength(encoded) > MAX_REQUEST_BYTES) {
-        setFormError(t("sourcify.inputLimit"));
-        return;
-      }
-      setFiles(encoded);
-    } catch {
-      setFormError(t("sourcify.readFailed"));
-    } finally {
-      setReading(false);
-    }
-  };
+  }, [identity]);
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (busy) return;
+    if (busy || !auth.enabled || !auth.session.authenticated) return;
     setFormError(undefined);
-    if (!consent || !apiKey.trim() || !isAddress(address)) {
+    if (!consent || !isAddress(address)) {
       setFormError(t("sourcify.invalidFields"));
       return;
     }
@@ -147,36 +96,19 @@ export function SourcifyVerificationForm({
     }
     let sourceFiles: Record<string, string> = {};
     if (mode === "sources") {
-      if (byteLength(files) > MAX_REQUEST_BYTES) {
-        setFormError(t("sourcify.inputLimit"));
+      if (uploadError || !sources.files.length || !metadata.files.length) {
+        setFormError(uploadError ?? t("verificationUpload.requireSourcesMetadata"));
         return;
       }
-      try {
-        assertNoDuplicateJSONKeys(files);
-        const parsed: unknown = JSON.parse(files);
-        if (
-          !parsed ||
-          typeof parsed !== "object" ||
-          Array.isArray(parsed) ||
-          Object.keys(parsed).length === 0 ||
-          Object.keys(parsed).length > MAX_FILES ||
-          Object.values(parsed).some((content) => typeof content !== "string")
-        ) {
-          setFormError(t("sourcify.invalidFiles"));
-          return;
-        }
-        sourceFiles = parsed as Record<string, string>;
-      } catch {
-        setFormError(t("sourcify.invalidFiles"));
-        return;
-      }
-      if (byteLength(JSON.stringify({ ...target, files: sourceFiles })) > MAX_REQUEST_BYTES) {
-        setFormError(t("sourcify.inputLimit"));
+      sourceFiles = { ...fileMap(sources.files), "metadata.json": metadata.files[0]!.content };
+      if (
+        Object.keys(sourceFiles).length > MAX_UPLOAD_FILES ||
+        byteLength(JSON.stringify({ ...target, files: sourceFiles })) > MAX_UPLOAD_BYTES
+      ) {
+        setFormError(t("verificationUpload.limit"));
         return;
       }
     }
-    setSubmittedAPIKey(apiKey);
-    setSubmittedAddress(address);
     setConsent(false);
     submission.mutate(
       mode === "sources"
@@ -185,8 +117,8 @@ export function SourcifyVerificationForm({
             kind: "etherscan",
             body: { ...target, ...(etherscanAPIKey ? { etherscan_api_key: etherscanAPIKey } : {}) },
           },
-      { onSettled: () => setEtherscanAPIKey("") },
     );
+    setEtherscanAPIKey("");
   };
 
   return (
@@ -236,37 +168,36 @@ export function SourcifyVerificationForm({
           {mode === "sources" ? (
             <>
               <div className="sourcify-uploads wide">
-                <SourcifyFileUpload
-                  kind="sources"
-                  names={selectedNames.filter((name) => name !== "metadata.json")}
+                <VerificationFileUpload
+                  id="sourcify-upload-sources"
+                  label={t("sourcify.selectSources")}
+                  files={sources.files}
+                  extensions={sourceExtensions.sourcify}
+                  editablePaths
                   disabled={busy}
                   onSelect={(selected) => {
-                    void readFiles(selected, "sources");
+                    void sources.select(
+                      selected,
+                      metadata.files.map((file) => ({ ...file, path: "metadata.json" })),
+                    );
                   }}
+                  onRemove={sources.remove}
+                  onRename={sources.rename}
                 />
-                <SourcifyFileUpload
-                  kind="metadata"
-                  names={selectedNames.filter((name) => name === "metadata.json")}
+                <VerificationFileUpload
+                  id="sourcify-upload-metadata"
+                  label={t("sourcify.selectMetadata")}
+                  files={metadata.files}
+                  extensions={[".json"]}
+                  single
                   disabled={busy}
                   onSelect={(selected) => {
-                    void readFiles(selected, "metadata");
+                    void metadata.select(selected, sources.files);
                   }}
+                  onRemove={metadata.remove}
                 />
               </div>
-              <label className="field-control wide" htmlFor="sourcify-files">
-                <span>{t("sourcify.files")}</span>
-                <textarea
-                  id="sourcify-files"
-                  disabled={busy}
-                  value={files}
-                  spellCheck={false}
-                  onChange={(event) => {
-                    setFiles(event.target.value);
-                    setConsent(false);
-                  }}
-                />
-                <small>{t("sourcify.filesHelp")}</small>
-              </label>
+              <small className="wide">{t("sourcify.filesHelp")}</small>
             </>
           ) : (
             <>
@@ -290,19 +221,7 @@ export function SourcifyVerificationForm({
               </label>
             </>
           )}
-          <label className="field-control wide" htmlFor="sourcify-api-key">
-            <span>{t("verification.apiKey")}</span>
-            <input
-              id="sourcify-api-key"
-              type="password"
-              autoComplete="off"
-              spellCheck={false}
-              disabled={busy}
-              value={apiKey}
-              onChange={(event) => setAPIKey(event.target.value)}
-            />
-            <small>{t("verification.apiKeyNotice")}</small>
-          </label>
+
           <label className="checkbox-control wide">
             <input
               type="checkbox"
@@ -314,12 +233,18 @@ export function SourcifyVerificationForm({
             <span>{t("sourcify.consent")}</span>
           </label>
         </div>
-        {(formError || submission.error) && (
+        {(uploadError || formError || submission.error) && (
           <p className="form-error" role="alert">
-            {formError ?? errorMessage(submission.error, t("verification.submitFailed"))}
+            {uploadError ??
+              formError ??
+              errorMessage(submission.error, t("verification.submitFailed"))}
           </p>
         )}
-        <button className="button primary" type="submit" disabled={busy || !consent}>
+        <button
+          className="button primary"
+          type="submit"
+          disabled={busy || !consent || !auth.enabled || !auth.session.authenticated}
+        >
           {reading
             ? t("sourcify.reading")
             : submission.isPending
@@ -329,21 +254,6 @@ export function SourcifyVerificationForm({
                 : t("sourcify.submitEtherscan")}
         </button>
       </form>
-      <div className="sourcify-import-result">
-        <VerificationJobPanel
-          job={job.data ?? submission.data}
-          loading={job.isPending && Boolean(submission.data)}
-          error={job.error}
-        />
-        {(job.data ?? submission.data)?.status === "succeeded" && (
-          <SourcifyPostImport
-            key={submission.data?.id}
-            address={submittedAddress}
-            apiKey={submittedAPIKey}
-            chainID={chainID}
-          />
-        )}
-      </div>
     </div>
   );
 }

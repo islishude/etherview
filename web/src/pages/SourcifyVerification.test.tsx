@@ -1,3 +1,5 @@
+import { withVerificationSession, VerificationTestSession } from "../../test/verificationSession";
+import { textFile, uploadFiles } from "@/test/verificationUpload";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -17,24 +19,33 @@ const envelope = (data: unknown) =>
   Response.json({ data, meta: { chain_id: "1", request_id: "test" } });
 
 function setup({
+  initialJob = "",
   enabled = true,
   sourcify = enabled,
   outcome = "sourcify_success",
   kind = "sourcify",
-}: { enabled?: boolean; sourcify?: boolean; outcome?: string; kind?: string } = {}) {
+}: {
+  initialJob?: string;
+  enabled?: boolean;
+  sourcify?: boolean;
+  outcome?: string;
+  kind?: string;
+} = {}) {
   const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input);
     if (path === "/api/v1/config")
       return envelope({ chain_id: "1", features: { verification: enabled, sourcify } });
     if (path.includes("/compilers"))
       return envelope({ language: "solidity", versions: ["0.8.30"] });
-    if (path.includes("/verifier/sourcify")) {
-      expect(new Headers(init?.headers).get("X-API-Key")).toBe(secret);
+    if (path.includes("/verification-jobs/sourcify")) {
+      expect(new Headers(init?.headers).get("X-API-Key")).toBeNull();
       return envelope({ id: jobID, kind, status: "queued" });
     }
-    if (path === `/api/v1/verifier/jobs/${jobID}`) {
-      expect(new Headers(init?.headers).get("X-API-Key")).toBe(secret);
+    if (path === `/api/v1/verification-jobs/${jobID}`) {
+      expect(new Headers(init?.headers).get("X-API-Key")).toBeNull();
       return envelope({
+        address,
+        chain_id: "1",
         id: jobID,
         kind,
         status: "succeeded",
@@ -44,11 +55,13 @@ function setup({
     }
     return Response.json({ error: { code: "not_found", message: "Not found" } }, { status: 404 });
   });
-  vi.stubGlobal("fetch", fetcher);
+  vi.stubGlobal("fetch", withVerificationSession(fetcher));
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <VerifyPage initialAddress={address} />
+      <VerificationTestSession>
+        <VerifyPage initialAddress={address} initialJob={initialJob} />
+      </VerificationTestSession>
     </QueryClientProvider>,
   );
   return { fetcher, client };
@@ -59,8 +72,12 @@ async function selectSourcify() {
     .setup()
     .click(await screen.findByRole("radio", { name: /Sourcify source library/ }));
   await userEvent.setup().click(screen.getAllByRole("button", { name: "Publish to Sourcify" })[0]!);
-  fireEvent.change(screen.getByLabelText(/^Etherview API Key(?!\s*[(（])/), {
-    target: { value: secret },
+}
+
+async function uploadSourcesAndMetadata() {
+  await uploadFiles(screen.getByLabelText("Source files"), { "src/A.sol": files["src/A.sol"] });
+  await uploadFiles(screen.getByLabelText("metadata.json", { exact: true }), {
+    "metadata.json": files["metadata.json"],
   });
 }
 
@@ -80,9 +97,6 @@ describe("Sourcify verification", () => {
         .setup()
         .click(await screen.findByRole("radio", { name: /Sourcify source library/ }));
       fireEvent.change(screen.getByLabelText("Source Chain ID"), { target: { value: chain } });
-      fireEvent.change(screen.getByLabelText(/^Etherview API Key(?!\s*[(（])/), {
-        target: { value: secret },
-      });
       await userEvent
         .setup()
         .click(screen.getByRole("button", { name: "Import from Sourcify into Etherview" }));
@@ -94,64 +108,45 @@ describe("Sourcify verification", () => {
   );
 
   it("replaces uploads independently and rejects misplaced or invalid metadata", async () => {
-    setup();
+    const { fetcher } = setup();
     await selectSourcify();
-    const file = (name: string, content: string) => {
-      const value = new File([content], name, {
-        type: name.endsWith(".json") ? "application/json" : "text/plain",
+    const uploadMetadata = (content: string) =>
+      uploadFiles(screen.getByLabelText("metadata.json", { exact: true }), {
+        "metadata.json": content,
       });
-      Object.defineProperty(value, "text", { value: async () => content });
-      return value;
-    };
-    const uploadMetadata = async (content: string) =>
-      userEvent
-        .setup()
-        .upload(
-          screen.getByLabelText("metadata.json", { exact: true }),
-          file("metadata.json", content),
-        );
     await uploadMetadata(files["metadata.json"]);
-    await waitFor(() =>
-      expect(screen.getByLabelText(/^Sourcify files/)).toHaveValue(
-        JSON.stringify({ "metadata.json": files["metadata.json"] }, null, 2),
-      ),
-    );
-    await userEvent
-      .setup()
-      .upload(screen.getByLabelText("Source files"), file("A.sol", "contract A {}"));
-    await waitFor(() =>
-      expect(
-        JSON.parse((screen.getByLabelText(/^Sourcify files/) as HTMLTextAreaElement).value),
-      ).toEqual({ "A.sol": "contract A {}", "metadata.json": files["metadata.json"] }),
-    );
+    await uploadFiles(screen.getByLabelText("Source files"), { "A.sol": "contract A {}" });
+    expect(screen.getByLabelText("Source path: A.sol")).toHaveValue("A.sol");
     await userEvent.setup().click(screen.getByRole("checkbox"));
-    await userEvent
-      .setup()
-      .upload(screen.getByLabelText("Source files"), file("B.sol", "contract B {}"));
-    await waitFor(() => expect(screen.getByRole("checkbox")).not.toBeChecked());
-    await waitFor(() =>
-      expect(
-        JSON.parse((screen.getByLabelText(/^Sourcify files/) as HTMLTextAreaElement).value),
-      ).toEqual({ "B.sol": "contract B {}", "metadata.json": files["metadata.json"] }),
-    );
+    await uploadFiles(screen.getByLabelText("Source files"), { "B.sol": "contract B {}" });
+    expect(screen.getByRole("checkbox")).not.toBeChecked();
+    expect(screen.queryByLabelText("Source path: A.sol")).toBeNull();
+    expect(screen.getByLabelText("Source path: B.sol")).toHaveValue("B.sol");
     const updated = '{"compiler":{},"settings":{},"output":{},"version":1}';
     await uploadMetadata(updated);
-    await waitFor(() =>
-      expect(
-        JSON.parse((screen.getByLabelText(/^Sourcify files/) as HTMLTextAreaElement).value),
-      ).toEqual({ "B.sol": "contract B {}", "metadata.json": updated }),
-    );
     await uploadMetadata("{}");
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Select one valid compiler metadata",
     );
+    await uploadFiles(screen.getByLabelText("Source files"), { "metadata.json": updated });
+    expect(await screen.findByRole("alert")).toHaveTextContent("lowercase extensions");
+    // A path edit clears the failed source selection, retaining its previous contents.
+    fireEvent.change(screen.getByLabelText("Source path: B.sol"), {
+      target: { value: "src/B.sol" },
+    });
+    await uploadMetadata(updated);
+    await userEvent.setup().click(screen.getByRole("checkbox"));
     await userEvent
       .setup()
-      .upload(screen.getByLabelText("Source files"), file("metadata.json", updated));
-    expect(await screen.findByRole("alert")).toHaveTextContent("separate upload area");
-    expect(
-      JSON.parse((screen.getByLabelText(/^Sourcify files/) as HTMLTextAreaElement).value),
-    ).toEqual({ "B.sol": "contract B {}", "metadata.json": updated });
+      .click(screen.getByRole("button", { name: "Publish sources to Sourcify" }));
+    await waitFor(() =>
+      expect(fetcher.mock.calls.some(([, init]) => init?.method === "POST")).toBe(true),
+    );
+    const post = fetcher.mock.calls.find(([, init]) => init?.method === "POST")!;
+    expect(JSON.parse(String(post[1]?.body)).files).toEqual({
+      "src/B.sol": "contract B {}",
+      "metadata.json": updated,
+    });
   });
 
   it("retains the contract address when switching between retrieval and publication", async () => {
@@ -173,7 +168,7 @@ describe("Sourcify verification", () => {
     const { fetcher } = setup();
     const original = fetcher.getMockImplementation()!;
     fetcher.mockImplementation(async (url, init) =>
-      String(url).endsWith("/verification/sourcify")
+      String(url).endsWith("/verification-jobs/sourcify-import")
         ? envelope({ id: jobID, kind: "address", status: "queued" })
         : original(url, init),
     );
@@ -191,21 +186,20 @@ describe("Sourcify verification", () => {
     fireEvent.change(screen.getByLabelText("Source Chain ID"), {
       target: { value: "9007199254740993" },
     });
-    fireEvent.change(screen.getByLabelText(/^Etherview API Key(?!\s*[(（])/), {
-      target: { value: secret },
-    });
     await userEvent
       .setup()
       .click(screen.getByRole("button", { name: "Import from Sourcify into Etherview" }));
     await waitFor(() =>
       expect(
-        fetcher.mock.calls.some(([url]) => String(url).endsWith("/verification/sourcify")),
+        fetcher.mock.calls.some(([url]) =>
+          String(url).endsWith("/verification-jobs/sourcify-import"),
+        ),
       ).toBe(true),
     );
     const post = fetcher.mock.calls.find(([, init]) => init?.method === "POST")!;
-    expect(post[0]).toBe(`/api/v1/contracts/${address}/verification/sourcify`);
-    expect(new Headers(post[1]?.headers).get("X-API-Key")).toBe(secret);
-    expect(JSON.parse(String(post[1]?.body))).toEqual({ chain_id: "9007199254740993" });
+    expect(post[0]).toBe("/api/v1/verification-jobs/sourcify-import");
+    expect(new Headers(post[1]?.headers).get("X-API-Key")).toBeNull();
+    expect(JSON.parse(String(post[1]?.body))).toEqual({ address, chain_id: "9007199254740993" });
     expect(fetcher.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
   });
 
@@ -213,7 +207,7 @@ describe("Sourcify verification", () => {
     const { fetcher } = setup();
     const original = fetcher.getMockImplementation()!;
     fetcher.mockImplementation(async (url, init) =>
-      String(url).endsWith("/verification/sourcify")
+      String(url).endsWith("/verification-jobs/sourcify-import")
         ? Response.json(
             {
               error: {
@@ -229,9 +223,6 @@ describe("Sourcify verification", () => {
     await userEvent
       .setup()
       .click(await screen.findByRole("radio", { name: /Sourcify source library/ }));
-    fireEvent.change(screen.getByLabelText(/^Etherview API Key(?!\s*[(（])/), {
-      target: { value: secret },
-    });
     await userEvent
       .setup()
       .click(screen.getByRole("button", { name: "Import from Sourcify into Etherview" }));
@@ -248,9 +239,9 @@ describe("Sourcify verification", () => {
     const { fetcher } = setup({ kind: "sourcify_from_etherscan" });
     const original = fetcher.getMockImplementation()!;
     fetcher.mockImplementation(async (url, init) =>
-      String(url).endsWith("/verification/sourcify")
+      String(url).endsWith("/verification-jobs/sourcify-import")
         ? envelope({ id: localID, kind: "address", status: "queued" })
-        : String(url).endsWith(`/jobs/${localID}`)
+        : String(url).endsWith(`/verification-jobs/${localID}`)
           ? envelope({
               id: localID,
               kind: "address",
@@ -274,14 +265,15 @@ describe("Sourcify verification", () => {
     await userEvent
       .setup()
       .click(screen.getByRole("button", { name: "Import from Sourcify into Etherview" }));
-    await screen.findByText("verification_success");
+    await screen.findByText("Contract verification succeeded.");
+    await userEvent.setup().click(screen.getAllByText("Technical details")[1]!);
     expect(screen.getByText("Sourcify verification succeeded (external result)")).toBeVisible();
     expect(screen.getByText("Runtime match")).toBeVisible();
     expect(
       fetcher.mock.calls.filter(([, init]) => init?.method === "POST").map(([url]) => url),
     ).toEqual([
-      "/api/v1/verifier/sourcify/from-etherscan",
-      `/api/v1/contracts/${address}/verification/sourcify`,
+      "/api/v1/verification-jobs/sourcify-from-etherscan",
+      "/api/v1/verification-jobs/sourcify-import",
     ]);
   });
 
@@ -300,7 +292,7 @@ describe("Sourcify verification", () => {
       expect(input).not.toBeRequired();
       await userEvent.setup().click(screen.getByRole("checkbox"));
       fireEvent.change(input, { target: { value: etherscanKey } });
-      expect(screen.getByRole("checkbox")).not.toBeChecked();
+      expect(screen.getByRole("checkbox", { hidden: true })).not.toBeChecked();
       if (failure) {
         const original = fetcher.getMockImplementation()!;
         fetcher.mockImplementation(async (url, init) =>
@@ -325,7 +317,7 @@ describe("Sourcify verification", () => {
         );
       await waitFor(() => expect(input).toHaveValue(""));
       const post = fetcher.mock.calls.find(([, init]) => init?.method === "POST")!;
-      expect(new Headers(post[1]?.headers).get("X-API-Key")).toBe(secret);
+      expect(new Headers(post[1]?.headers).get("X-API-Key")).toBeNull();
       expect(JSON.parse(String(post[1]?.body))).toEqual({
         chain_id: "1",
         address,
@@ -437,10 +429,7 @@ describe("Sourcify verification", () => {
       fireEvent.change(screen.getByLabelText("Sourcify submission method"), {
         target: { value: mode },
       });
-      if (mode === "sources")
-        fireEvent.change(screen.getByLabelText(/^Sourcify files/), {
-          target: { value: JSON.stringify(files) },
-        });
+      if (mode === "sources") await uploadSourcesAndMetadata();
       const button = screen.getByRole("button", {
         name:
           mode === "sources"
@@ -452,16 +441,17 @@ describe("Sourcify verification", () => {
       await userEvent.setup().click(screen.getByRole("checkbox"));
       await userEvent.setup().click(button);
       await screen.findByText("Sourcify verification succeeded (external result)");
+      await userEvent.setup().click(screen.getByText("Technical details"));
       const panel = screen.getByText("Sourcify verification ID").closest("section")!;
       expect(within(panel).getByText(externalID)).toBeVisible();
       expect(
         within(panel).getByText(/do not mark this contract as locally verified/),
       ).toBeVisible();
       expect(within(panel).queryByText("Runtime match")).toBeNull();
-      expect(screen.getByRole("checkbox")).not.toBeChecked();
+      expect(screen.getByRole("checkbox", { hidden: true })).not.toBeChecked();
       const post = fetcher.mock.calls.find(([, init]) => init?.method === "POST")!;
       expect(post[0]).toBe(
-        `/api/v1/verifier/sourcify${mode === "etherscan" ? "/from-etherscan" : ""}`,
+        `/api/v1/verification-jobs/sourcify${mode === "etherscan" ? "-from-etherscan" : ""}`,
       );
       expect(JSON.parse(String(post[1]?.body))).toEqual({
         chain_id: "1",
@@ -489,25 +479,13 @@ describe("Sourcify verification", () => {
   it("loads selected files and revokes consent when the request changes", async () => {
     setup();
     await selectSourcify();
-    const selected = Object.entries(files).map(([name, content]) => {
-      const file = new File([content], name, {
-        type: name.endsWith(".json") ? "application/json" : "text/plain",
-      });
-      Object.defineProperty(file, "text", { value: async () => content });
-      return file;
+    await uploadSourcesAndMetadata();
+    expect(screen.getByLabelText("Source path: src/A.sol")).toHaveValue("src/A.sol");
+    await userEvent.setup().click(screen.getByRole("checkbox"));
+    fireEvent.change(screen.getByLabelText("Source path: src/A.sol"), {
+      target: { value: "A.sol" },
     });
-    await userEvent.setup().upload(screen.getByLabelText("Source files"), selected[0]!);
-    await waitFor(() =>
-      expect(screen.getByLabelText(/^Sourcify files/)).toHaveValue(
-        JSON.stringify({ "src/A.sol": files["src/A.sol"] }, null, 2),
-      ),
-    );
-    await userEvent
-      .setup()
-      .upload(screen.getByLabelText("metadata.json", { exact: true }), selected[1]!);
-    await waitFor(() =>
-      expect(screen.getByLabelText(/^Sourcify files/)).toHaveValue(JSON.stringify(files, null, 2)),
-    );
+    expect(screen.getByRole("checkbox")).not.toBeChecked();
     await userEvent.setup().click(screen.getByRole("checkbox"));
     fireEvent.change(screen.getByLabelText("Address"), {
       target: { value: `0x${"34".repeat(20)}` },
@@ -520,41 +498,64 @@ describe("Sourcify verification", () => {
     expect(screen.getByRole("checkbox")).not.toBeChecked();
   });
 
-  it.each(['{"a":"one","a":"two"}', '{"a":42}', "{}", "[]", "{"])(
-    "rejects invalid file maps: %s",
-    async (value) => {
+  it.each(["../A.sol", "A.exe", "A.SOL", "src//A.sol", "/A.sol"])(
+    "rejects invalid edited paths: %s",
+    async (path) => {
       const { fetcher } = setup();
       await selectSourcify();
-      fireEvent.change(screen.getByLabelText(/^Sourcify files/), {
-        target: { value },
+      await uploadSourcesAndMetadata();
+      fireEvent.change(screen.getByLabelText("Source path: src/A.sol"), {
+        target: { value: path },
       });
       await userEvent.setup().click(screen.getByRole("checkbox"));
       await userEvent
         .setup()
         .click(screen.getByRole("button", { name: "Publish sources to Sourcify" }));
-      expect(await screen.findByRole("alert")).toHaveTextContent(
-        "Provide a non-empty JSON path-to-content map",
-      );
+      expect(await screen.findByRole("alert")).toBeVisible();
       expect(fetcher.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
     },
   );
 
-  it("rejects oversized and over-count requests before making a POST", async () => {
+  it("requires both sources and metadata and revokes consent on removal", async () => {
     const { fetcher } = setup();
     await selectSourcify();
-    for (const value of [
-      JSON.stringify({ "A.sol": "x".repeat(5 * 1024 * 1024) }),
-      JSON.stringify(
-        Object.fromEntries(Array.from({ length: 1025 }, (_, index) => [`${index}.sol`, ""])),
-      ),
-    ]) {
-      fireEvent.change(screen.getByLabelText(/^Sourcify files/), { target: { value } });
-      await userEvent.setup().click(screen.getByRole("checkbox"));
+    await uploadSourcesAndMetadata();
+    await userEvent.setup().click(screen.getByRole("checkbox"));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Remove metadata.json" }));
+    expect(screen.getByRole("checkbox")).not.toBeChecked();
+    await userEvent.setup().click(screen.getByRole("checkbox"));
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Publish sources to Sourcify" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Select source files and compiler metadata",
+    );
+    expect(fetcher.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+  });
+
+  it("counts metadata in upload budgets before reading and bounds serialized requests", async () => {
+    const { fetcher } = setup();
+    await selectSourcify();
+    await uploadFiles(screen.getByLabelText("metadata.json", { exact: true }), {
+      "metadata.json": files["metadata.json"],
+    });
+    const overCount = Array.from({ length: 1024 }, (_, index) => textFile(`${index}.sol`, ""));
+    const huge = textFile("A.sol", "x".repeat(5 * 1024 * 1024));
+    for (const selected of [overCount, [huge]]) {
       await userEvent
-        .setup()
-        .click(screen.getByRole("button", { name: "Publish sources to Sourcify" }));
-      expect(await screen.findByRole("alert")).toBeVisible();
+        .setup({ applyAccept: false })
+        .upload(screen.getByLabelText("Source files"), selected);
+      expect(await screen.findByRole("alert")).toHaveTextContent("1024 files");
     }
+    // Raw files fit, but JSON escaping causes the serialized request to exceed 5 MiB.
+    await uploadFiles(screen.getByLabelText("Source files"), {
+      "A.sol": '"'.repeat(3 * 1024 * 1024),
+    });
+    await userEvent.setup().click(screen.getByRole("checkbox"));
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Publish sources to Sourcify" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("5 MiB");
     expect(fetcher.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
   });
 
@@ -570,23 +571,19 @@ describe("Sourcify verification", () => {
       .click(screen.getByRole("button", { name: "Import from Etherscan and publish to Sourcify" }));
     expect(await screen.findByText("Sourcify verification did not succeed")).toBeVisible();
     expect(screen.queryByText("succeeded", { exact: true })).toBeNull();
-    expect(screen.getByText("Completed", { exact: true })).toBeVisible();
+    expect(screen.getByText("failed", { exact: true })).toBeVisible();
     expect(screen.queryByText("Sourcify verification ID")).toBeNull();
   });
 
   it("reads external results after submissions are disabled and translates their provenance", async () => {
-    setup({ enabled: false });
+    setup({ enabled: false, initialJob: jobID });
     await screen.findByText("Public verification is unavailable");
-    fireEvent.change(screen.getByLabelText("Job ID"), { target: { value: jobID } });
-    fireEvent.change(screen.getByLabelText("Etherview API Key (job read)"), {
-      target: { value: secret },
-    });
-    await userEvent.setup().click(screen.getByRole("button", { name: "Load job" }));
     expect(
       await screen.findByText("Sourcify verification succeeded (external result)"),
     ).toBeVisible();
     await i18n.changeLanguage("zh");
     expect(await screen.findByText("Sourcify 验证成功（外部结果）")).toBeVisible();
+    await userEvent.setup().click(screen.getByText("技术详情"));
     expect(screen.getByText("Sourcify 外部验证")).toBeVisible();
   });
 });

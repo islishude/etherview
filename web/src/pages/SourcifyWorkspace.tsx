@@ -1,3 +1,4 @@
+import type { BrowserVerificationJob } from "@/api/types";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Download, Upload } from "lucide-react";
@@ -5,10 +6,12 @@ import { SourcifyImportForm } from "./SourcifyImportForm";
 import { SourcifyVerificationForm } from "./SourcifyVerificationForm";
 
 export function SourcifyWorkspace({
+  onSubmitted,
   initialAddress,
   chainID,
   onAddressChange,
 }: {
+  onSubmitted: (job: BrowserVerificationJob) => void;
   initialAddress: string;
   chainID: string;
   onAddressChange: (address: string) => void;
@@ -29,6 +32,7 @@ export function SourcifyWorkspace({
       </div>
       {mode === "import" ? (
         <SourcifyImportForm
+          onSubmitted={onSubmitted}
           initialAddress={initialAddress}
           onAddressChange={onAddressChange}
           chainID={chainID}
@@ -36,6 +40,7 @@ export function SourcifyWorkspace({
         />
       ) : (
         <SourcifyVerificationForm
+          onSubmitted={onSubmitted}
           initialAddress={initialAddress}
           onAddressChange={onAddressChange}
           chainID={chainID}

@@ -51,7 +51,11 @@ surface that is unnecessary for sys-asm compatibility.
   entrypoint is supplied, its output must equal the complete canonical creation
   input. Geas permits no metadata, library, immutable, constructor-argument, or
   auxdata transformation. Successful supplied sides are `full`; a mismatch is
-  an ordinary verification failure.
+  an ordinary verification failure. Without a creation entrypoint the worker
+  omits `creation_match`; storage accepts omission or JSON null as absence of
+  creation-match evidence. A non-null creation match requires a supplied
+  creation entrypoint and exact full evidence. Required runtime evidence stays
+  fail-closed when fields are missing.
 - Published Geas artifacts retain only the transitive sources actually read,
   empty ABI and artifact objects, empty libraries, entrypoints, and
   `stack_check=true`. Etherscan reads expose `CompilerType=geas` and the runtime

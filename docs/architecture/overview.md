@@ -874,6 +874,18 @@ size alone is not sufficient justification to weaken those invariants.
   only; local address publication still requires the ordinary compiler,
   transformation, runtime, lease, and canonicality checks. See
   [ADR-0024](../decisions/ADR-0024-verifier-v2-workflow.md).
+  The Web Verify entry lives under More and uses a two-step form/result flow.
+  SIWE login is required to submit or read a task, with no Etherview API-key
+  field. Four explicit session endpoints under `/api/v1/verification-jobs`
+  share the native verifier service; local and Sourcify import bodies include
+  the target address. Cookie, exact Origin and CSRF protect writes; native and
+  Etherscan programmatic submissions retain API-key scope checks. A
+  `/verify?job=<UUID>` result link restores status after login without restoring
+  uploaded files or credentials. Results show progress and outcome first, with
+  technical details collapsed. Session changes cancel requests and discard
+  private query data; result reads expose target identity and match evidence
+  rather than sources or compiler artifacts. Existing source publication
+  consent and the optional upstream Etherscan key remain separate.
   The Web verification page uses service cards and defaults the Sourcify workspace
   to importing existing sources into Etherview. The API resolves a canonical
   local target, closes its snapshot, fetches bounded sources by the selected
@@ -886,6 +898,14 @@ size alone is not sufficient justification to weaken those invariants.
   submitted chain/address. The source chain is a positive uint64 string and never
   changes the local target's chain. Source files and metadata have independent
   upload controls and share the existing bounded file-map submission contract.
+  Local Standard JSON and source inputs also use file selection. Browser-side
+  extension checks allow `.sol` for Solidity, `.yul` for Yul, `.vy`/`.vyi` for
+  Vyper, `.eas` for Geas, and `.json` for Standard JSON and metadata; Sourcify
+  sources accept `.sol`/`.yul`/`.vy`/`.vyi`. Extensions must be lowercase.
+  Source paths can be edited independently of file contents, with relative-path
+  and duplicate checks. Selection is bounded before reads and complete JSON
+  requests are bounded before submission (1024 files and 5 MiB). These Web
+  checks do not change API filename rules or Standard JSON source keys.
   All actions use the generated same-origin client. Job views
   identify Sourcify results separately from local verification and show the
   external verification ID without implying local source or ABI publication.

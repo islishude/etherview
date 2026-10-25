@@ -73,6 +73,11 @@ type Spec struct {
 }
 
 var catalog = []Spec{
+	spec("submitBrowserAddressVerification", "POST", "/verification-jobs/local", false),
+	spec("importBrowserSourcifyContract", "POST", "/verification-jobs/sourcify-import", false),
+	spec("submitBrowserSourcifyVerification", "POST", "/verification-jobs/sourcify", false),
+	spec("submitBrowserSourcifyFromEtherscan", "POST", "/verification-jobs/sourcify-from-etherscan", false),
+	spec("getBrowserVerifierJob", "GET", "/verification-jobs/{id}", false, pathParameter("id", ParameterUUID)),
 	spec("getStatus", "GET", "/status", false),
 	spec("getPublicConfig", "GET", "/config", false),
 	spec("listGenesisAccounts", "GET", "/genesis/accounts", false,

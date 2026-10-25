@@ -1218,3 +1218,18 @@ an isolated `198.18.0.0/15` network. Both retain TLS verification and the
 production SEA compiles and publishes each source locally. Public remote
 health, actual public-source coverage, production compiler execution and native
 CI acceptance are separate evidence.
+
+## Browser verification acceptance
+
+P50-T78 covers the two-step Verify page, session-only `/verification-jobs`
+operations, and preserved API-key-only native/Etherscan protocols. HTTP tests
+exercise Origin/CSRF, revocation, capability switches, request admission and
+redacted status projection before expensive work. Frontend and embedded
+browser tests cover drafts through login/return, result links and refresh,
+account-change cancellation, terminal polling, bilingual mobile accessibility,
+and separate local/Sourcify results. Production `make test-runtime-e2e` includes
+real SIWE login, Geas address verification with and without a creation
+entrypoint, and native-key submission in both all and split roles. PostgreSQL
+regressions accept omitted/null creation matches for runtime-only Geas, reject
+invented or missing required match evidence, and check published artifact reads.
+These local checks do not establish remote CI acceptance.

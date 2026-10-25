@@ -1817,3 +1817,30 @@ identity permits a new local attempt. Disable the feature to stop new discovery;
 previously queued local verification jobs keep their ordinary durable lifecycle.
 This fresh-database baseline requires recreation of older development databases,
 as described in the fresh-database initialization procedure.
+
+## Browser contract verification
+
+The More → Verify contract page requires `features.user_auth`,
+`features.verification` and `security.public_verification` for submission.
+Configure the existing session pepper and canonical `server.public_url` as for
+Account login. The API-key pepper remains required by the existing verifier
+configuration and encrypted upstream imports; do not distribute it or an
+operator API key to the SPA. Browser submission uses the existing SIWE Cookie
+and session-bound CSRF token. When user authentication is disabled, the page
+explains that browser submission is unavailable; it has no API-key fallback.
+
+The session endpoints are POST `/api/v1/verification-jobs/local`,
+`/api/v1/verification-jobs/sourcify-import`,
+`/api/v1/verification-jobs/sourcify`, and
+`/api/v1/verification-jobs/sourcify-from-etherscan`, plus
+GET `/api/v1/verification-jobs/{id}`. The first two POST bodies include
+`address`; source import additionally requires the source `chain_id`.
+Existing native and Etherscan clients continue to use scoped API keys.
+
+Users can save `/verify?job=<UUID>` to reopen results after login. Switching
+back to the form does not cancel a durable task. Refreshing restores the task
+result, not the uploaded files. Disabling new submissions leaves authenticated
+reads available. Job IDs are not an ownership boundary: any authorized user
+with a known ID can read its redacted status and match evidence. There is no
+personal job list or schema migration. Sourcify publication remains explicit;
+its external success is separate from local compilation and publication.

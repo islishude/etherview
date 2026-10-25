@@ -19,6 +19,15 @@ func (h *Handler) importSourcifyContract(w http.ResponseWriter, r *http.Request)
 	if !h.requireAPIKey(w, r, auth.ScopeVerification) {
 		return
 	}
+	h.importSourcifyContractAuthorized(w, r)
+}
+
+func (h *Handler) importSourcifyContractAuthorized(w http.ResponseWriter, r *http.Request) {
+	if h.verificationSubmitter == nil || h.verificationTargets == nil || h.sourcifyImporter == nil || !h.cfg.Features.Sourcify {
+		writeError(w, r, http.StatusServiceUnavailable, "verification_unavailable", "Sourcify import is unavailable", nil)
+		return
+	}
+
 	address := strings.ToLower(r.PathValue("address"))
 	if !addressPattern.MatchString(address) {
 		writeError(w, r, http.StatusBadRequest, "invalid_verification_request", "contract address is invalid", nil)
@@ -32,6 +41,10 @@ func (h *Handler) importSourcifyContract(w http.ResponseWriter, r *http.Request)
 		writeError(w, r, http.StatusBadRequest, "invalid_verification_request", "Sourcify import request requires a source chain ID", nil)
 		return
 	}
+	h.importSourcifyContractInput(w, r, address, body)
+}
+
+func (h *Handler) importSourcifyContractInput(w http.ResponseWriter, r *http.Request, address string, body *gen.SourcifySourceImportRequest) {
 	sourceChainID, err := strconv.ParseUint(body.ChainId, 10, 64)
 	if err != nil || sourceChainID == 0 || strconv.FormatUint(sourceChainID, 10) != body.ChainId {
 		writeError(w, r, http.StatusBadRequest, "invalid_verification_request", "source chain ID must be a positive canonical uint64 string", nil)

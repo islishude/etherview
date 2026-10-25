@@ -1,3 +1,4 @@
+import { installVerificationSession } from "./verification-session";
 import { expect, test, type Locator } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
@@ -1319,15 +1320,32 @@ test("capability pages survive the embedded binary boundary in both accessible t
   await expect(
     page.getByRole("heading", { name: "Public verification is unavailable" }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Open a durable verification job" }),
-  ).toBeVisible();
-  await page.getByLabel("Job ID", { exact: true }).fill(verificationJobID);
-  await page.getByLabel("Etherview API Key (job read)", { exact: true }).fill(readAPIKey);
-  await activateInView(page.getByRole("button", { name: "Load job", exact: true }));
+  await expect(page.getByRole("heading", { name: "Open a durable verification job" })).toHaveCount(
+    0,
+  );
+  await installVerificationSession(page, false);
+  await page.route(`**/api/v1/verification-jobs/${verificationJobID}`, (route) =>
+    route.fulfill({
+      json: {
+        data: {
+          id: verificationJobID,
+          kind: "address",
+          status: "succeeded",
+          address,
+          chain_id: "1",
+          outcome: { kind: "verification_success" },
+        },
+        meta: { chain_id: "1", request_id: "verification-result" },
+      },
+    }),
+  );
+  await page.goto(`/verify?job=${verificationJobID}`);
   await expect(page.getByText("succeeded", { exact: true })).toBeVisible();
+  await page.getByText("Technical details", { exact: true }).click();
   await expect(page.getByText("verification_success", { exact: true })).toBeVisible();
 
+  await page.unroute("**/api/v1/config");
+  await page.unroute("**/api/v1/auth/session");
   const sourcePageErrors: string[] = [];
   const sourceConsoleErrors: string[] = [];
   const onSourcePageError = (error: Error) => sourcePageErrors.push(error.message);

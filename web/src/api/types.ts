@@ -79,6 +79,7 @@ export type ChartMetricSeries = schemas.ChartMetricSeries;
 export type VerificationSubmission = schemas.AddressVerificationSubmission;
 export type SourcifySubmission = schemas.SourcifySubmission;
 export type SourcifyFromEtherscanSubmission = schemas.SourcifyFromEtherscanSubmissionWritable;
+export type BrowserVerificationJob = schemas.BrowserVerificationJob;
 export type VerificationJob = schemas.VerificationJob;
 export type VerificationOutcome = schemas.VerificationOutcome;
 export type VerificationSuccess = schemas.VerificationSuccess;

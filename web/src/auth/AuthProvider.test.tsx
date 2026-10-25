@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -300,6 +300,37 @@ describe("AuthProvider", () => {
     },
   );
 
+  it("expires a restored session without waiting for another request", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.getAuthSession.mockResolvedValue(
+        authenticatedSession({ expires_at: new Date(Date.now() + 10_000).toISOString() }),
+      );
+      const view = renderAuth();
+      await act(async () => {});
+      expect(screen.getByTestId("auth-state")).toHaveTextContent("authenticated");
+      let finishRefresh: ((value: AuthSession) => void) | undefined;
+      mocks.getAuthSession.mockReturnValue(
+        new Promise<AuthSession>((resolve) => {
+          finishRefresh = resolve;
+        }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+      expect(screen.getByTestId("auth-loading")).toHaveTextContent("loading");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+      expect(screen.getByTestId("auth-state")).toHaveTextContent("anonymous");
+      expect(screen.getByTestId("auth-loading")).toHaveTextContent("ready");
+      await act(async () => finishRefresh!(authenticatedSession()));
+      expect(screen.getByTestId("auth-state")).toHaveTextContent("anonymous");
+      expect(mocks.getAuthSession).toHaveBeenCalledTimes(2);
+      view.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("revokes a server-created session when wallet identity changes during verify", async () => {
     let resolveVerification: ((value: AuthSession) => void) | undefined;
     mocks.createAuthChallenge.mockResolvedValue(authChallenge());
@@ -418,6 +449,7 @@ function AuthHarness() {
   const [, rerender] = useState(0);
   return (
     <div>
+      <output data-testid="auth-loading">{auth.loading ? "loading" : "ready"}</output>
       <output data-testid="auth-state">
         {auth.session.authenticated ? "authenticated" : "anonymous"}
       </output>
