@@ -109,6 +109,13 @@ fail-closed cleanup requirements remain mandatory.
   consent. Sourcify jobs are bounded to three attempts, a 20-second request,
   one-second polling, and 120 polls. Their success is returned as an external
   result only.
+- Sourcify requests use HTTPS with public-network address checks by default.
+  The independent `sourcify.unsafe_allow_private_networks` override permits local
+  Fake-IP/private-network development. It defaults off outside Preview; Preview
+  explicitly enables it in its shared configuration.
+  It relaxes only the Sourcify client's IP classification: TLS verification,
+  checked-IP dialing, redirect rejection, disabled environment proxies, request
+  bounds and explicit source-publication consent remain mandatory.
 - The consolidated baseline creates the current verification contracts in a
   fresh database. Earlier development schemas must be recreated; there is no
   dual read, data conversion, or rollback format.

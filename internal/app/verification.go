@@ -77,13 +77,14 @@ func sourcifyClient(cfg config.Config) (*verify.SourcifyClient, error) {
 		return nil, nil
 	}
 	client, err := verify.NewSourcifyClient(verify.SourcifyOptions{
-		BaseURL:          cfg.Sourcify.BaseURL,
-		Timeout:          cfg.Sourcify.Timeout,
-		MaxRequestBytes:  cfg.Sourcify.MaxRequestBytes,
-		MaxResponseBytes: cfg.Sourcify.MaxResponseBytes,
-		Attempts:         cfg.Sourcify.Attempts,
-		PollInterval:     cfg.Sourcify.PollInterval,
-		MaxPolls:         cfg.Sourcify.MaxPolls,
+		UnsafeAllowPrivateNetworks: cfg.Sourcify.UnsafeAllowPrivateNetworks,
+		BaseURL:                    cfg.Sourcify.BaseURL,
+		Timeout:                    cfg.Sourcify.Timeout,
+		MaxRequestBytes:            cfg.Sourcify.MaxRequestBytes,
+		MaxResponseBytes:           cfg.Sourcify.MaxResponseBytes,
+		Attempts:                   cfg.Sourcify.Attempts,
+		PollInterval:               cfg.Sourcify.PollInterval,
+		MaxPolls:                   cfg.Sourcify.MaxPolls,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("configure Sourcify client: %w", err)

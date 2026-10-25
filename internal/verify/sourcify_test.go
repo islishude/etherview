@@ -603,3 +603,69 @@ func sourcifyContractFixture(address string) []byte {
 		"stdJsonOutput":{"contracts":{}},"sources":{},"abi":[],"metadata":{}
 	}`)
 }
+
+func TestSourcifyPrivateNetworkOptInRetainsTLSAndRedirectPolicy(t *testing.T) {
+	address := "0x" + strings.Repeat("11", 20)
+	var requests atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		if strings.HasPrefix(r.URL.Path, "/redirect/") {
+			http.Redirect(w, r, "/redirect-target", http.StatusFound)
+			return
+		}
+		if r.URL.Path == "/redirect-target" {
+			t.Error("redirect target reached")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(sourcifyContractFixture(address))
+	}))
+	defer server.Close()
+	for _, tc := range []struct {
+		name                             string
+		unsafe, trust, redirect, success bool
+	}{
+		{"default blocks trusted local endpoint", false, true, false, false},
+		{"opt in admits trusted local endpoint", true, true, false, true},
+		{"opt in still verifies TLS", true, false, false, false},
+		{"opt in still rejects redirect", true, true, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			options := SourcifyOptions{BaseURL: server.URL, Timeout: time.Second, Attempts: 1, UnsafeAllowPrivateNetworks: tc.unsafe}
+			if tc.redirect {
+				options.BaseURL += "/redirect"
+			}
+			client, err := NewSourcifyClient(options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(client.http.CloseIdleConnections)
+			transport := client.http.Transport.(*http.Transport)
+			if transport.Proxy != nil || (transport.TLSClientConfig != nil && transport.TLSClientConfig.InsecureSkipVerify) {
+				t.Fatal("proxy or TLS boundary changed")
+			}
+			if tc.trust {
+				// Trust the fixture certificate without replacing the production dialer.
+				transport.TLSClientConfig = server.Client().Transport.(*http.Transport).TLSClientConfig.Clone()
+			}
+			before := requests.Load()
+			_, err = client.Lookup(t.Context(), 1, address)
+			if (err == nil) != tc.success {
+				t.Fatalf("lookup: %v", err)
+			}
+			if err != nil && !errors.Is(err, ErrSourcifyUnavailable) {
+				t.Fatalf("unsanitized error: %v", err)
+			}
+			wantRequests := int32(0)
+			if tc.unsafe && tc.trust {
+				wantRequests = 1
+			}
+			if requests.Load()-before != wantRequests {
+				t.Fatalf("requests=%d, want %d", requests.Load()-before, wantRequests)
+			}
+			options.BaseURL = "http://localhost"
+			if _, err := NewSourcifyClient(options); err == nil {
+				t.Fatal("HTTP accepted")
+			}
+		})
+	}
+}

@@ -67,7 +67,11 @@ func (assembly runtimeAssembly) registerVerificationComponents() error {
 			return err
 		}
 		if cfg.BytecodeDB.Enabled {
-			client, err := verify.NewBytecodeDBClient(verify.BytecodeDBOptions{BaseURL: cfg.BytecodeDB.BaseURL, Timeout: cfg.BytecodeDB.Timeout, MaxResponseBytes: cfg.BytecodeDB.MaxResponseBytes, MaxInputBytes: cfg.Verification.MaxInputBytes})
+			client, err := verify.NewBytecodeDBClient(verify.BytecodeDBOptions{
+				BaseURL: cfg.BytecodeDB.BaseURL, Timeout: cfg.BytecodeDB.Timeout,
+				MaxResponseBytes: cfg.BytecodeDB.MaxResponseBytes, MaxInputBytes: cfg.Verification.MaxInputBytes,
+				UnsafeAllowPrivateNetworks: cfg.BytecodeDB.UnsafeAllowPrivateNetworks,
+			})
 			if err != nil {
 				return err
 			}

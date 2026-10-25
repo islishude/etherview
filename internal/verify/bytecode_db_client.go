@@ -19,10 +19,11 @@ import (
 
 // BytecodeDBOptions bounds a search-only external source adapter.
 type BytecodeDBOptions struct {
-	BaseURL          string
-	Timeout          time.Duration
-	MaxResponseBytes int64
-	MaxInputBytes    int
+	UnsafeAllowPrivateNetworks bool
+	BaseURL                    string
+	Timeout                    time.Duration
+	MaxResponseBytes           int64
+	MaxInputBytes              int
 }
 
 type BytecodeDBClient struct {
@@ -56,7 +57,7 @@ func NewBytecodeDBClient(options BytecodeDBOptions) (*BytecodeDBClient, error) {
 	if options.Timeout < 100*time.Millisecond || options.Timeout > 2*time.Minute || options.MaxResponseBytes < 1 || options.MaxResponseBytes > 64<<20 || options.MaxInputBytes < 1 || options.MaxInputBytes > 64<<20 {
 		return nil, errors.New("invalid bytecode database bounds")
 	}
-	return &BytecodeDBClient{base: base, http: restrictedOutboundClient(nil, options.Timeout, nil, false), options: options}, nil
+	return &BytecodeDBClient{base: base, http: restrictedOutboundClient(nil, options.Timeout, nil, options.UnsafeAllowPrivateNetworks), options: options}, nil
 }
 
 func (c *BytecodeDBClient) Identity() []byte {

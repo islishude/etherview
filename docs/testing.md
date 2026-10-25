@@ -797,6 +797,17 @@ them on any external network.
 - Load and soak evidence records the revision, dataset, hardware, RPC behavior,
   duration, throughput, latency, error rate, and index lag.
 
+## Sourcify transport gates
+
+Sourcify transport/configuration changes run
+`go test -race ./internal/config ./internal/app ./internal/verify -run TestSourcify`.
+The private-network cases exercise default rejection, explicit local HTTPS
+access through the production dialer, application configuration wiring, strict
+boolean overrides and independent client policies. TLS and redirect rejection,
+request bounds, hostile responses and explicit source-publication consent remain
+covered by the Sourcify regressions. Run `make deployment-check` for its Compose
+and Helm configuration surfaces.
+
 ## Vyper verification gates
 
 `make compiler-install` builds the shared Python WASM runtime, Node SEA and
@@ -1150,6 +1161,10 @@ fixtures do not establish real builder transactions or public historical retenti
 
 Run `go test ./internal/verify ./internal/config -run TestBytecodeDB` for
 search-only transport, hostile response, candidate and configuration regressions.
+Private-network exception cases cover default rejection, explicit loopback access,
+Fake-IP and mixed DNS answers, strict boolean/environment overrides and client
+policy isolation. They retain real TLS verification and reject redirects after
+opt-in; the ordinary hostile-response suite uses the same production dialer.
 The integration-tagged `TestBytecodeDB` cases exercise real PostgreSQL discovery,
 per-chain cursor isolation, request admission, retry/cooldown, lease fencing,
 local dual-compilation flow,
@@ -1160,7 +1175,9 @@ Changes require `make check`, `make test-integration-race`, `make test-e2e`,
 `make test-schema-e2e`, `make test-runtime-e2e` and affected Hardhat/Vyper
 production suites. `make test-hardhat3-e2e` also runs `TestBytecodeDBProductionE2E`: a
 test-owned HTTPS provider on an isolated Docker network supplies Solidity and
-Vyper fixtures to both production topologies without relaxing network policy;
-the production SEA compiles and publishes each source locally. Public remote
+Vyper fixtures to both production topologies. All-role mode uses strict
+public-address checks; split mode explicitly enables the Fake-IP exception on
+an isolated `198.18.0.0/15` network. Both retain TLS verification and the
+production SEA compiles and publishes each source locally. Public remote
 health, actual public-source coverage, production compiler execution and native
 CI acceptance are separate evidence.

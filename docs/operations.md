@@ -243,6 +243,18 @@ holding `contract:verify`, then poll `GET /api/v1/verifier/jobs/{id}`. Check
 `outcome.kind` for `sourcify_success`; job completion alone does not mean
 verification succeeded. Sourcify results remain external verification results.
 
+Outside Preview, Sourcify rejects DNS answers containing private, loopback or
+special-purpose addresses by default. For local Fake-IP development, set
+`sourcify.unsafe_allow_private_networks: true` or
+`ETHERVIEW_SOURCIFY_UNSAFE_ALLOW_PRIVATE_NETWORKS=true`. The switch affects only
+Sourcify and defaults to `false` outside Preview. Preview enables it by default. HTTPS, certificate
+verification, checked-IP dialing, redirect rejection and request limits remain
+enforced; environment HTTP proxies remain disabled. It does not enable automatic
+source publication or change the separate metadata, bytecode database or compiler
+download policies. Add the override to `.local/preview-push.env` (or the file
+selected by `PREVIEW_ENV_FILE`) and run `make recreate-preview` to apply it;
+set it back to `false` to restore public-network checks.
+
 Preview includes Kubo `v0.43.1` and an independent Go HTTPS gateway at
 `https://ipfs.preview.test:8443`. Add `127.0.0.1 ipfs.preview.test` to the local
 hosts file to open gateway links in a browser; containers resolve the same name
@@ -1687,10 +1699,12 @@ read capability without changing execution finality or core readiness.
 ## Automatic bytecode database source discovery
 
 Set `features.verification: true` and `bytecode_db.enabled: true` to search the
-remote Ethereum Bytecode Database for indexed contracts. The feature and
-Preview default to disabled. `bytecode_db.base_url` defaults to
-`https://eth-bytecode-db.services.blockscout.com`; only HTTPS public-network
-search endpoints are supported. No source is uploaded and no remote compiler
+remote Ethereum Bytecode Database for indexed contracts. The feature defaults
+to disabled outside Preview; Preview enables both settings by default. Set
+`ETHERVIEW_BYTECODE_DB_ENABLED=false` to disable discovery in Preview.
+`bytecode_db.base_url` defaults to
+`https://eth-bytecode-db.services.blockscout.com`; HTTPS search endpoints use
+public-network address checks by default. No source is uploaded and no remote compiler
 is invoked. Solidity, Yul and locally supported Vyper sources are compiled and
 matched locally before source, ABI or verification status is published.
 
@@ -1701,6 +1715,18 @@ configuration on all API replicas. Environment overrides use
 `ETHERVIEW_BYTECODE_DB_` prefix. Defaults are 20 seconds, 32 MiB, two concurrent
 searches, one request per second across replicas and a 24-hour cooldown.
 The existing `verification.max_input_bytes` also limits each candidate.
+
+For local Fake-IP or private-network development, explicitly set
+`bytecode_db.unsafe_allow_private_networks: true` or
+`ETHERVIEW_BYTECODE_DB_UNSAFE_ALLOW_PRIVATE_NETWORKS=true`. This independent
+escape hatch defaults to `false` outside Preview. Preview enables it by default.
+It allows the bytecode
+search client's resolved private, loopback and special-purpose addresses
+(including `198.18.0.0/15`); it does not change metadata or compiler-download
+policy. HTTPS, certificate verification, redirect rejection, checked-IP dialing
+and request/response bounds remain enforced; environment HTTP proxies remain
+disabled. In Preview, add the environment override to `.local/preview-push.env`
+(or the file selected by `PREVIEW_ENV_FILE`) and run `make recreate-preview` to apply it. Use `false` to restore public-network checks.
 
 Repeated bounded address sweeps cover old contracts, late creation facts and
 reorgs. Ordinary contracts wait for canonical creation facts; authenticated

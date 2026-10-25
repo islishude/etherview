@@ -22,10 +22,16 @@ creation provenance. Deterministic candidate failures are retained. Automatic
 jobs are lower priority than submitted work and at most one may compile at a
 time. Existing verified publications are not replaced by automatic work.
 
-The integration is disabled by default and requires local verification.
+The integration is disabled by default outside Preview and requires local
+verification. Preview explicitly enables both in its shared configuration.
 The API and all-role modes use the same components. Remote unavailability does
 not affect core readiness. Remote calls hold no database snapshot, are bounded
-in time and bytes, and use the existing redirect-free public-network transport.
+in time and bytes, and use the existing redirect-free transport with public-network
+checks by default. The independent `bytecode_db.unsafe_allow_private_networks`
+override permits Fake-IP/private-network development. It defaults off outside
+Preview; Preview explicitly enables it in its shared configuration. It only relaxes the search client's IP classification; HTTPS,
+TLS certificate verification, checked-IP dialing, disabled environment proxies,
+redirect rejection and local source-verification rules remain mandatory.
 Only locally successful publications expose `eth_bytecode_db` source origin;
 public callers cannot supply this origin. ABI and matching evidence always
 come from local compilation.
@@ -33,7 +39,8 @@ come from local compilation.
 ## Consequences
 
 The fresh-database baseline owns the new durable contracts. No legacy migration
-adapter or startup data backfill is added. Operators explicitly enable scans
-and may reset lookup cooldowns using the documented administrative procedure.
+adapter or startup data backfill is added. Operators outside Preview explicitly
+enable scans; Preview operators may disable them using the environment override.
+Operators may reset lookup cooldowns using the documented administrative procedure.
 A healthy remote endpoint does not establish source coverage or successful
 local compilation; production and public-service acceptance are separate.

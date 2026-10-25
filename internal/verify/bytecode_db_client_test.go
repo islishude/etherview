@@ -2,12 +2,16 @@ package verify
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -16,11 +20,13 @@ func bytecodeDBTestClient(t *testing.T, handler http.HandlerFunc) *BytecodeDBCli
 	t.Helper()
 	server := httptest.NewTLSServer(handler)
 	t.Cleanup(server.Close)
-	client, err := NewBytecodeDBClient(BytecodeDBOptions{BaseURL: server.URL, Timeout: time.Second, MaxResponseBytes: 1 << 20, MaxInputBytes: 5 << 20})
+	client, err := NewBytecodeDBClient(BytecodeDBOptions{BaseURL: server.URL, Timeout: time.Second, MaxResponseBytes: 1 << 20, MaxInputBytes: 5 << 20, UnsafeAllowPrivateNetworks: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	client.http = restrictedOutboundClient(server.Client(), time.Second, nil, false)
+	// Trust only the fixture certificate; retain the production dialer and policy.
+	client.http.Transport.(*http.Transport).TLSClientConfig = server.Client().Transport.(*http.Transport).TLSClientConfig.Clone()
+	t.Cleanup(client.http.CloseIdleConnections)
 	return client
 }
 
@@ -198,6 +204,99 @@ func TestBytecodeDBVyperReleaseVersionMapping(t *testing.T) {
 		source.CompilerVersion = version
 		if _, err := bytecodeDBSubmission(source, VerificationTarget{}, 5<<20); err == nil {
 			t.Fatalf("accepted unstable or malformed Vyper version %q", version)
+		}
+	}
+}
+
+func TestBytecodeDBPrivateNetworkOptInRetainsTLSAndRedirectPolicy(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		if r.URL.Path == "/redirect/api/v2/bytecodes/sources:search" {
+			http.Redirect(w, r, "/redirect-target", http.StatusFound)
+			return
+		}
+		if r.URL.Path != "/api/v2/bytecodes/sources:search" {
+			t.Error("redirect target reached")
+		}
+		_, _ = w.Write([]byte(`{"sources":[]}`))
+	}))
+	defer server.Close()
+	for _, tc := range []struct {
+		name                             string
+		unsafe, trust, redirect, success bool
+	}{
+		{"default blocks trusted local endpoint", false, true, false, false},
+		{"opt in admits trusted local endpoint", true, true, false, true},
+		{"opt in still verifies TLS", true, false, false, false},
+		{"opt in still rejects redirect", true, true, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			options := BytecodeDBOptions{BaseURL: server.URL, Timeout: time.Second, MaxResponseBytes: 1024, MaxInputBytes: 1024, UnsafeAllowPrivateNetworks: tc.unsafe}
+			if tc.redirect {
+				options.BaseURL += "/redirect"
+			}
+			client, err := NewBytecodeDBClient(options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(client.http.CloseIdleConnections)
+			transport := client.http.Transport.(*http.Transport)
+			if transport.Proxy != nil || (transport.TLSClientConfig != nil && transport.TLSClientConfig.InsecureSkipVerify) {
+				t.Fatal("proxy or TLS boundary changed")
+			}
+			if tc.trust {
+				transport.TLSClientConfig = server.Client().Transport.(*http.Transport).TLSClientConfig.Clone()
+			} else {
+				transport.TLSClientConfig = &tls.Config{RootCAs: x509.NewCertPool(), MinVersion: tls.VersionTLS12}
+			}
+			before := requests.Load()
+			_, err = client.Search(t.Context(), []byte{1}, "DEPLOYED_BYTECODE")
+			if (err == nil) != tc.success {
+				t.Fatalf("search: %v", err)
+			}
+			wantRequests := int32(0)
+			if tc.unsafe && tc.trust {
+				wantRequests = 1
+			}
+			if requests.Load()-before != wantRequests {
+				t.Fatalf("requests = %d, want %d", requests.Load()-before, wantRequests)
+			}
+			if err != nil && err.Error() != "bytecode database unavailable" {
+				t.Fatalf("unsanitized error: %v", err)
+			}
+			options.BaseURL = "http://localhost"
+			if _, err := NewBytecodeDBClient(options); err == nil {
+				t.Fatal("HTTP accepted")
+			}
+		})
+	}
+}
+
+func TestBytecodeDBPrivateNetworkDNSPolicy(t *testing.T) {
+	for _, unsafe := range []bool{false, true} {
+		for _, addresses := range [][]string{
+			{"198.18.1.49"}, {"10.0.0.1"}, {"127.0.0.1"}, {"::1"}, {"fd00::1"},
+			{"169.254.169.254"}, {"8.8.8.8", "198.18.1.49"},
+		} {
+			t.Run(fmt.Sprintf("%v/unsafe=%t", addresses, unsafe), func(t *testing.T) {
+				resolver := fixedOutboundResolver{}
+				for _, ip := range addresses {
+					resolver.addresses = append(resolver.addresses, net.IPAddr{IP: net.ParseIP(ip)})
+				}
+				// Cancellation prevents actual network traffic; an admitted address reaches
+				// the dial stage, while a disallowed DNS answer fails before dialing.
+				ctx, cancel := context.WithCancel(t.Context())
+				cancel()
+				_, err := dialRestrictedOutboundHost(ctx, "tcp", "bytecode.example:443", resolver, unsafe, time.Second)
+				want := "restricted outbound host resolves to a disallowed network"
+				if unsafe {
+					want = "dial restricted outbound host"
+				}
+				if err == nil || err.Error() != want {
+					t.Fatalf("DNS policy: %v, want %s", err, want)
+				}
+			})
 		}
 	}
 }

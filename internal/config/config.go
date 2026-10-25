@@ -280,24 +280,26 @@ type VerificationConfig struct {
 // SourcifyConfig bounds the optional external Sourcify v2 interoperability
 // adapter. API/all workers own explicit requests and bounded upstream polling.
 type SourcifyConfig struct {
-	BaseURL          string        `yaml:"base_url"`
-	Timeout          time.Duration `yaml:"timeout"`
-	MaxRequestBytes  int           `yaml:"max_request_bytes"`
-	MaxResponseBytes int64         `yaml:"max_response_bytes"`
-	Attempts         int           `yaml:"attempts"`
-	PollInterval     time.Duration `yaml:"poll_interval"`
-	MaxPolls         int           `yaml:"max_polls"`
+	UnsafeAllowPrivateNetworks bool          `yaml:"unsafe_allow_private_networks"`
+	BaseURL                    string        `yaml:"base_url"`
+	Timeout                    time.Duration `yaml:"timeout"`
+	MaxRequestBytes            int           `yaml:"max_request_bytes"`
+	MaxResponseBytes           int64         `yaml:"max_response_bytes"`
+	Attempts                   int           `yaml:"attempts"`
+	PollInterval               time.Duration `yaml:"poll_interval"`
+	MaxPolls                   int           `yaml:"max_polls"`
 }
 
 // BytecodeDBConfig controls optional automatic source discovery.
 type BytecodeDBConfig struct {
-	Enabled          bool          `yaml:"enabled"`
-	BaseURL          string        `yaml:"base_url"`
-	Timeout          time.Duration `yaml:"timeout"`
-	MaxResponseBytes int64         `yaml:"max_response_bytes"`
-	MaxConcurrency   int           `yaml:"max_concurrency"`
-	RequestInterval  time.Duration `yaml:"request_interval"`
-	Cooldown         time.Duration `yaml:"cooldown"`
+	UnsafeAllowPrivateNetworks bool          `yaml:"unsafe_allow_private_networks"`
+	Enabled                    bool          `yaml:"enabled"`
+	BaseURL                    string        `yaml:"base_url"`
+	Timeout                    time.Duration `yaml:"timeout"`
+	MaxResponseBytes           int64         `yaml:"max_response_bytes"`
+	MaxConcurrency             int           `yaml:"max_concurrency"`
+	RequestInterval            time.Duration `yaml:"request_interval"`
+	Cooldown                   time.Duration `yaml:"cooldown"`
 }
 
 // UserAuthConfig bounds server-created EIP-4361 challenges and absolute,

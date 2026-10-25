@@ -1,2 +1,2 @@
-# The test generates a TLS-only source provider on an isolated public-address network.
+# The test generates a TLS-only provider on an isolated public/Fake-IP network.
 services: {}

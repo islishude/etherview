@@ -245,6 +245,8 @@ verification:
 # explicit requests and API/all workers own restricted upstream calls.
 sourcify:
   base_url: https://sourcify.dev/server
+  # Local Fake-IP/private-network development only; TLS verification stays enabled.
+  unsafe_allow_private_networks: false
   timeout: 20s
   max_request_bytes: 5242880
   max_response_bytes: 33554432
@@ -314,6 +316,8 @@ push:
 bytecode_db:
   enabled: false
   base_url: https://eth-bytecode-db.services.blockscout.com
+  # Local Fake-IP/private-network development only; TLS verification stays enabled.
+  unsafe_allow_private_networks: false
   timeout: 20s
   max_response_bytes: 33554432
   max_concurrency: 2

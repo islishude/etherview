@@ -168,12 +168,14 @@ func (h *harness) setupBytecodeDBProvider(ctx context.Context, fixtures []byteco
 	mount := func(source, target string) map[string]any {
 		return map[string]any{"type": "bind", "source": source, "target": target, "read_only": true}
 	}
-	subnet := "11.255.253"
+	// Exercise strict public-address dialing in all-role mode and explicit
+	// Fake-IP opt-in in split mode using isolated test-owned Docker networks.
+	subnet, unsafePrivate := "11.255.253", "false"
 	if h.mode == "distributed" {
-		subnet = "11.255.252"
+		subnet, unsafePrivate = "198.18.252", "true"
 	}
 	provider := map[string]any{"image": h.project.Env["ETHERVIEW_IMAGE"], "entrypoint": []string{"/fixture/bytecodedbfixture"}, "command": []string{}, "user": "65532:65532", "read_only": true, "restart": "no", "networks": map[string]any{"bytecode-test": map[string]any{"ipv4_address": subnet + ".2", "aliases": []string{"bytecode.example"}}}, "volumes": []map[string]any{mount(cert, "/fixture/tls.crt"), mount(key, "/fixture/tls.key"), mount(binary, "/fixture/bytecodedbfixture"), mount(filepath.Join(dir, "sources.json"), "/fixture/sources.json")}}
-	client := map[string]any{"environment": map[string]string{"ETHERVIEW_BYTECODE_DB_ENABLED": "true", "ETHERVIEW_BYTECODE_DB_BASE_URL": "https://bytecode.example", "SSL_CERT_FILE": "/fixture/tls.crt"}, "networks": map[string]any{"default": nil, "bytecode-test": nil}, "volumes": []map[string]any{mount(cert, "/fixture/tls.crt")}}
+	client := map[string]any{"environment": map[string]string{"ETHERVIEW_BYTECODE_DB_ENABLED": "true", "ETHERVIEW_BYTECODE_DB_UNSAFE_ALLOW_PRIVATE_NETWORKS": unsafePrivate, "ETHERVIEW_BYTECODE_DB_BASE_URL": "https://bytecode.example", "SSL_CERT_FILE": "/fixture/tls.crt"}, "networks": map[string]any{"default": nil, "bytecode-test": nil}, "volumes": []map[string]any{mount(cert, "/fixture/tls.crt")}}
 	override := map[string]any{"services": map[string]any{"runtime-bytecode-db": provider, "etherview": client, "api": client}, "networks": map[string]any{"bytecode-test": map[string]any{"internal": true, "ipam": map[string]any{"config": []map[string]string{{"subnet": subnet + ".0/24"}}}}}}
 	encoded, _ = json.Marshal(override)
 	filename := filepath.Join(dir, "bytecode.compose.json")

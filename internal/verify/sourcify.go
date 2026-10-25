@@ -34,13 +34,14 @@ var (
 )
 
 type SourcifyOptions struct {
-	BaseURL          string
-	Timeout          time.Duration
-	MaxRequestBytes  int
-	MaxResponseBytes int64
-	Attempts         int
-	PollInterval     time.Duration
-	MaxPolls         int
+	UnsafeAllowPrivateNetworks bool
+	BaseURL                    string
+	Timeout                    time.Duration
+	MaxRequestBytes            int
+	MaxResponseBytes           int64
+	Attempts                   int
+	PollInterval               time.Duration
+	MaxPolls                   int
 }
 
 type SourcifyClient struct {
@@ -224,7 +225,7 @@ type sourcifyErrorWire struct {
 }
 
 func NewSourcifyClient(options SourcifyOptions) (*SourcifyClient, error) {
-	return newSourcifyClient(options, nil, nil, false, false)
+	return newSourcifyClient(options, nil, nil, false, options.UnsafeAllowPrivateNetworks)
 }
 
 func newSourcifyClient(

@@ -869,6 +869,10 @@ size alone is not sufficient justification to weaken those invariants.
   only; local address publication still requires the ordinary compiler,
   transformation, runtime, lease, and canonicality checks. See
   [ADR-0024](../decisions/ADR-0024-verifier-v2-workflow.md).
+  Its HTTPS client checks public-network addresses by default. The independent
+  `sourcify.unsafe_allow_private_networks` development override defaults off outside
+  Preview. Preview enables it for Fake-IP/private destinations while retaining
+  TLS verification, redirect rejection and explicit publication consent.
 - Verification reads and submissions are separate runtime capabilities.
   API-key-protected job reads and anonymous, free verified-artifact reads
   remain backed by PostgreSQL when public compilation submission is disabled;
@@ -1078,9 +1082,11 @@ fields, and loads its bilingual resources with the feature page.
 
 ## Automatic external source discovery
 
-The optional eth-bytecode-db adapter is search-only and disabled by default.
+The optional eth-bytecode-db adapter is search-only and disabled by default
+outside Preview. Preview enables it together with local verification.
 API/all workers repeatedly scan canonical contract addresses using durable
-per-chain cursors, fetch bounded candidates through a public-network-only HTTPS client,
+per-chain cursors, fetch bounded candidates through an HTTPS client with
+public-network checks by default,
 and enqueue low-priority local verification. PostgreSQL owns provider/bytecode
 lookup identity, global request admission, cooldowns, leases and candidate/job
 provenance. At most one automatic compilation runs concurrently. Local
@@ -1090,3 +1096,6 @@ Ordinary contracts wait for creation facts, while authenticated Genesis
 predeploys retain their existing exception. Successful source origin is exposed
 as `eth_bytecode_db`. See [ADR-0056](../decisions/ADR-0056-bytecode-db-source-discovery.md)
 and the [operator procedure](../operations.md#automatic-bytecode-database-source-discovery).
+The independent `bytecode_db.unsafe_allow_private_networks` development override
+defaults off outside Preview. Preview enables it for Fake-IP/private destinations while
+retaining TLS verification, redirect rejection and all source-verification fences.
