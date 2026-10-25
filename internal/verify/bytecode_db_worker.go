@@ -365,6 +365,9 @@ func (w *BytecodeDBWorker) tryCandidate(ctx context.Context, task dbgen.Bytecode
 		if attempt.OutcomeKind != nil && *attempt.OutcomeKind == "verification_success" {
 			return "verified", nil
 		}
+		if attempt.Status == "failed" {
+			return w.retryUnavailable(ctx, task, target, params)
+		}
 		return "verification_failed", nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
@@ -398,6 +401,37 @@ func (w *BytecodeDBWorker) tryCandidate(ctx context.Context, task dbgen.Bytecode
 		return "", err
 	}
 	return "verification_pending", nil
+}
+
+// Retry the same immutable candidate/job association only after an infrastructure
+// failure has cooled down. Each retry wave retains its bound compiler identity.
+func (w *BytecodeDBWorker) retryUnavailable(ctx context.Context, task dbgen.BytecodeDbTarget, target VerificationTarget, attempt dbgen.BytecodeDBAttemptParams) (string, error) {
+	tx, err := w.repository.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return "", err
+	}
+	defer dbaccess.Rollback(ctx, tx)
+	q := dbgen.New(tx)
+	if _, err = q.BytecodeDBLockTarget(ctx, dbgen.BytecodeDBLockTargetParams{ServiceID: w.service, ChainID: task.ChainID, Address: task.Address, LeaseToken: task.LeaseToken}); err != nil {
+		return "", ErrLeaseLost
+	}
+	if _, err = canonicalV2Target(ctx, tx, &target); err != nil {
+		return "waiting_facts", nil
+	}
+	count, err := q.BytecodeDBRetryUnavailable(ctx, dbgen.BytecodeDBRetryUnavailableParams{
+		ServiceID: attempt.ServiceID, TargetDigest: attempt.TargetDigest, CandidateDigest: attempt.CandidateDigest,
+		SupportDigest: attempt.SupportDigest, CooldownUs: w.options.Cooldown.Microseconds(),
+	})
+	if err != nil {
+		return "", err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return "", err
+	}
+	if count == 1 {
+		return "verification_pending", nil
+	}
+	return "verification_failed", nil
 }
 
 // The operation owns no snapshot while waiting for remote data or preparing inputs.

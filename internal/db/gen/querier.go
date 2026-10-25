@@ -59,6 +59,7 @@ type Querier interface {
 	BytecodeDBRenewTarget(ctx context.Context, arg BytecodeDBRenewTargetParams) (int64, error)
 	BytecodeDBRequestReady(ctx context.Context, id []byte) (bool, error)
 	BytecodeDBResetCooldowns(ctx context.Context, serviceID []byte) error
+	BytecodeDBRetryUnavailable(ctx context.Context, arg BytecodeDBRetryUnavailableParams) (int64, error)
 	BytecodeDBScanReady(ctx context.Context, serviceID []byte, chainID pgtype.Numeric) (bool, error)
 	CatalogAddressDelegations(ctx context.Context, arg CatalogAddressDelegationsParams) ([]CatalogAddressDelegationsRow, error)
 	CatalogAddressInternalTransactions(ctx context.Context, arg CatalogAddressInternalTransactionsParams) ([]CatalogAddressInternalTransactionsRow, error)

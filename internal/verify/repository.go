@@ -61,18 +61,26 @@ const (
 	ErrorCompilerTooLarge ErrorCode = "compiler_output_too_large"
 	ErrorMatchFailed      ErrorCode = "match_failed"
 	// ErrorSandboxRequired remains readable only for immutable pre-0031 jobs.
-	ErrorSandboxRequired            ErrorCode = "sandbox_required"
-	ErrorCompilerProvenanceMismatch ErrorCode = "compiler_provenance_mismatch"
-	ErrorCompilerUnavailable        ErrorCode = "compiler_unavailable"
-	ErrorTargetNotCanonical         ErrorCode = "target_not_canonical"
-	ErrorAttemptsExhausted          ErrorCode = "attempts_exhausted"
-	ErrorExecutorMigrated           ErrorCode = "executor_migrated"
+	ErrorSandboxRequired             ErrorCode = "sandbox_required"
+	ErrorCompilerProvenanceMismatch  ErrorCode = "compiler_provenance_mismatch"
+	ErrorCompilerUnavailable         ErrorCode = "compiler_unavailable"
+	ErrorCompilerDownloadUnavailable ErrorCode = "compiler_download_unavailable"
+	ErrorCompilerDownloadTimeout     ErrorCode = "compiler_download_timeout"
+	ErrorCompilerDownloadRateLimited ErrorCode = "compiler_download_rate_limited"
+	ErrorCompilerDownloadRejected    ErrorCode = "compiler_download_rejected"
+	ErrorCompilerChecksum            ErrorCode = "compiler_checksum_mismatch"
+	ErrorCompilerArtifactTooLarge    ErrorCode = "compiler_artifact_too_large"
+	ErrorTargetNotCanonical          ErrorCode = "target_not_canonical"
+	ErrorAttemptsExhausted           ErrorCode = "attempts_exhausted"
+	ErrorExecutorMigrated            ErrorCode = "executor_migrated"
 )
 
 func (code ErrorCode) valid() bool {
 	switch code {
 	case ErrorCompileFailed, ErrorCompilerOutput, ErrorCompilerTooLarge, ErrorMatchFailed,
 		ErrorSandboxRequired, ErrorCompilerProvenanceMismatch, ErrorCompilerUnavailable,
+		ErrorCompilerDownloadUnavailable, ErrorCompilerDownloadTimeout, ErrorCompilerDownloadRateLimited,
+		ErrorCompilerDownloadRejected, ErrorCompilerChecksum, ErrorCompilerArtifactTooLarge,
 		ErrorTargetNotCanonical, ErrorAttemptsExhausted, ErrorExecutorMigrated:
 		return true
 	default:

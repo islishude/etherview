@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -199,14 +198,14 @@ func (cache *CompilerCache) ensureArtifact(
 	}
 	response, err := client.Do(request)
 	if err != nil {
-		return "", errors.New("download compiler artifact")
+		return "", compilerDownloadFailure(ctx, err)
 	}
 	defer response.Body.Close() //nolint:errcheck
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return "", fmt.Errorf("compiler server returned HTTP %d", response.StatusCode)
+		return "", compilerDownloadHTTPFailure(response)
 	}
 	if response.ContentLength > maximum {
-		return "", errors.New("compiler artifact exceeds size limit")
+		return "", CompilerDownloadError{Code: ErrorCompilerArtifactTooLarge}
 	}
 	temporary, err := os.CreateTemp(cache.Root, ".compiler-*")
 	if err != nil {
@@ -221,15 +220,18 @@ func (cache *CompilerCache) ensureArtifact(
 	)
 	if copyErr != nil {
 		_ = temporary.Close()
-		return "", errors.New("read compiler artifact")
+		if _, local := errors.AsType[*os.PathError](copyErr); local {
+			return "", errors.New("write compiler artifact")
+		}
+		return "", compilerDownloadFailure(ctx, copyErr)
 	}
 	if written > maximum {
 		_ = temporary.Close()
-		return "", errors.New("compiler artifact exceeds size limit")
+		return "", CompilerDownloadError{Code: ErrorCompilerArtifactTooLarge}
 	}
 	if !bytes.Equal(hasher.Sum(nil), digest[:]) {
 		_ = temporary.Close()
-		return "", errors.New("compiler checksum mismatch")
+		return "", CompilerDownloadError{Code: ErrorCompilerChecksum}
 	}
 	if err := temporary.Chmod(0o400); err != nil {
 		_ = temporary.Close()

@@ -519,6 +519,42 @@ func (q *Queries) BytecodeDBResetCooldowns(ctx context.Context, serviceID []byte
 	return err
 }
 
+const bytecodeDBRetryUnavailable = `-- name: BytecodeDBRetryUnavailable :execrows
+UPDATE verification_jobs j
+SET status='queued', error_code=NULL, attempt_count=0, updated_at=clock_timestamp()
+FROM bytecode_db_attempts a
+WHERE a.job_id=j.id AND a.service_id=$1
+AND a.target_digest=$2 AND a.candidate_digest=$3
+AND a.support_digest=$4
+AND j.status='failed' AND j.error_code IN (
+ 'compiler_unavailable','compiler_download_unavailable','compiler_download_timeout','compiler_download_rate_limited'
+)
+AND j.updated_at<=clock_timestamp()-($5::bigint*interval '1 microsecond')
+AND NOT EXISTS (SELECT 1 FROM verification_jobs active WHERE active.request_digest=j.request_digest AND active.id<>j.id AND active.status IN ('queued','running','succeeded'))
+`
+
+type BytecodeDBRetryUnavailableParams struct {
+	ServiceID       []byte `db:"service_id" json:"service_id"`
+	TargetDigest    []byte `db:"target_digest" json:"target_digest"`
+	CandidateDigest []byte `db:"candidate_digest" json:"candidate_digest"`
+	SupportDigest   []byte `db:"support_digest" json:"support_digest"`
+	CooldownUs      int64  `db:"cooldown_us" json:"cooldown_us"`
+}
+
+func (q *Queries) BytecodeDBRetryUnavailable(ctx context.Context, arg BytecodeDBRetryUnavailableParams) (int64, error) {
+	result, err := q.db.Exec(ctx, bytecodeDBRetryUnavailable,
+		arg.ServiceID,
+		arg.TargetDigest,
+		arg.CandidateDigest,
+		arg.SupportDigest,
+		arg.CooldownUs,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const bytecodeDBScanReady = `-- name: BytecodeDBScanReady :one
 SELECT scan_after<=clock_timestamp() AS ready FROM bytecode_db_scans WHERE service_id=$1 AND chain_id=$2
 `

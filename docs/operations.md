@@ -1749,6 +1749,17 @@ provider URLs or nested upstream errors. Remote failure does not block core
 readiness. PostgreSQL owns cooldowns, lookup cache, leases and immutable
 candidate/job associations; restarting workers does not erase them.
 
+Compiler artifact downloads retry transport errors, timeouts, HTTP 408/429 and
+5xx responses at most three times per compiler resolution or compilation pair, with 1/2-second backoff
+and `Retry-After` bounded to 30 seconds. Failed jobs distinguish
+`compiler_download_unavailable`, `compiler_download_timeout`,
+`compiler_download_rate_limited`, `compiler_download_rejected`,
+`compiler_checksum_mismatch` and `compiler_artifact_too_large` without exposing
+upstream diagnostics. The first three and `compiler_unavailable` may requeue
+after `bytecode_db.cooldown`, retaining the job, source association and bound
+compiler identity. Each wave resets the lease attempt budget. Rejected,
+checksum, size and deterministic compilation/match failures remain terminal.
+
 For an explicit operator retry of cached searches, use the writer database in
 an audited maintenance session. Select the provider by its stored service ID
 (`encode(id, 'hex')` from `bytecode_db_services`), then reset only that service's

@@ -22,6 +22,16 @@ creation provenance. Deterministic candidate failures are retained. Automatic
 jobs are lower priority than submitted work and at most one may compile at a
 time. Existing verified publications are not replaced by automatic work.
 
+Compiler download transport failures, timeouts, 429 and server failures receive
+at most three attempts with bounded backoff per resolution or compilation pair. Exhausted
+downloads and other `compiler_unavailable` infrastructure failures may requeue
+the same job after the configured discovery cooldown. Requeue resets the lease
+attempt budget for that wave, preserves the candidate/job association and bound
+compiler identity, and requires the target lease and exact canonical facts.
+Deterministic compilation/match failures, rejected downloads, invalid checksums
+and oversized artifacts are not retried for the same identity. Only stable
+failure labels are persisted and logged.
+
 The integration is disabled by default outside Preview and requires local
 verification. Preview explicitly enables both in its shared configuration.
 The API and all-role modes use the same components. Remote unavailability does

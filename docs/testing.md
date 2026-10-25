@@ -1171,6 +1171,13 @@ local dual-compilation flow,
 creation-input fallback, Yul import, source origin, manual priority and the
 single automatic compiler slot. The controlled client fixture never grants source publication directly.
 
+`TestWorkerCompilerDownloadRecoveryAndBudget` covers a cold compiler download
+recovering after HTTP 503 and bounded exhaustion. Download regressions cover
+stable error labels, cancellation, policy rejection and lease loss during
+backoff. `TestBytecodeDBCompilerFailureRecovery` verifies cooldown, competing
+restarted workers, immutable job/compiler binding, successful publication after
+recovery and deterministic checksum-failure retention in PostgreSQL.
+
 Changes require `make check`, `make test-integration-race`, `make test-e2e`,
 `make test-schema-e2e`, `make test-runtime-e2e` and affected Hardhat/Vyper
 production suites. `make test-hardhat3-e2e` also runs `TestBytecodeDBProductionE2E`: a

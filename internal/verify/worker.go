@@ -242,6 +242,9 @@ func (worker *Worker) processLeaseV2(ctx context.Context, lease VerificationLeas
 		if fatalCompilerError(err) || errors.Is(err, ErrLeaseLost) || transientCompilerError(err) || errors.Is(err, context.Canceled) {
 			return err
 		}
+		if download, ok := errors.AsType[CompilerDownloadError](err); ok {
+			return worker.failLease(ctx, lease, download.Code)
+		}
 		return worker.failLease(ctx, lease, ErrorCompilerUnavailable)
 	}
 	if provenance.CatalogGeneration > 0 &&
@@ -275,6 +278,9 @@ func (worker *Worker) processLeaseV2(ctx context.Context, lease VerificationLeas
 			// transport failures are infrastructure failures. Source-level
 			// compilation diagnostics arrive as a valid compiler JSON document
 			// and are classified by ExtractCandidatesV2 below.
+			if download, ok := errors.AsType[CompilerDownloadError](err); ok {
+				return worker.failLease(ctx, lease, download.Code)
+			}
 			return worker.failLease(ctx, lease, ErrorCompilerUnavailable)
 		}
 		candidates, err := extractCandidatesV2WithInput(
@@ -544,6 +550,7 @@ func (worker *Worker) resolveCompilerV2(
 	}
 	request := lease.Job.RequestV2
 	delay := time.Second
+	downloadFailures := 0
 	for {
 		provenance, err := runWithLeaseHeartbeat(
 			ctx, worker, lease,
@@ -559,10 +566,18 @@ func (worker *Worker) resolveCompilerV2(
 		if err == nil && request.BytecodeDB != nil && hex.EncodeToString(bytecodeDBSupportDigest(provenance)) != request.BytecodeDB.Support {
 			return CompilerProvenance{}, ErrCompilerProvenanceConflict
 		}
-		if !transientCompilerError(err) {
+		var download CompilerDownloadError
+		wait := delay
+		if errors.As(err, &download) && download.retryable() {
+			downloadFailures++
+			if downloadFailures >= 3 {
+				return provenance, err
+			}
+			wait = max(wait, download.RetryAfter)
+		} else if !transientCompilerError(err) {
 			return provenance, err
 		}
-		if err := worker.waitForCompilerRetry(ctx, lease, delay); err != nil {
+		if err := worker.waitForCompilerRetry(ctx, lease, wait); err != nil {
 			return CompilerProvenance{}, err
 		}
 		delay = min(2*delay, 30*time.Second)
@@ -577,6 +592,7 @@ func (worker *Worker) compilePairV2WithRetry(
 	firstInput, secondInput []byte,
 ) ([]byte, []byte, error) {
 	delay := time.Second
+	downloadFailures := 0
 	for {
 		type pair struct {
 			first  []byte
@@ -591,10 +607,18 @@ func (worker *Worker) compilePairV2WithRetry(
 				return pair{first: first, second: second}, compileErr
 			},
 		)
-		if !transientCompilerError(err) {
+		var download CompilerDownloadError
+		wait := delay
+		if errors.As(err, &download) && download.retryable() {
+			downloadFailures++
+			if downloadFailures >= 3 {
+				return outputs.first, outputs.second, err
+			}
+			wait = max(wait, download.RetryAfter)
+		} else if !transientCompilerError(err) {
 			return outputs.first, outputs.second, err
 		}
-		if err := worker.waitForCompilerRetry(ctx, lease, delay); err != nil {
+		if err := worker.waitForCompilerRetry(ctx, lease, wait); err != nil {
 			return nil, nil, err
 		}
 		delay = min(2*delay, 30*time.Second)
@@ -738,9 +762,9 @@ func (worker *Worker) failLease(ctx context.Context, lease VerificationLease, co
 	}
 	result := "failed"
 	switch code {
-	case ErrorCompilerTooLarge:
+	case ErrorCompilerTooLarge, ErrorCompilerArtifactTooLarge:
 		result = "resource_exhausted"
-	case ErrorCompilerUnavailable:
+	case ErrorCompilerUnavailable, ErrorCompilerDownloadUnavailable, ErrorCompilerDownloadTimeout, ErrorCompilerDownloadRateLimited:
 		result = "unavailable"
 	case ErrorTargetNotCanonical:
 		result = "stale_target"

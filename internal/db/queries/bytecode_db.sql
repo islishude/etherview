@@ -77,6 +77,19 @@ WHERE service_id=sqlc.arg('service_id') AND target_digest=sqlc.arg('target_diges
 -- name: BytecodeDBAddAttempt :exec
 INSERT INTO bytecode_db_attempts(service_id,target_digest,candidate_digest,support_digest,job_id) VALUES (sqlc.arg('service_id'),sqlc.arg('target_digest'),sqlc.arg('candidate_digest'),sqlc.arg('support_digest'),sqlc.arg('job_id'));
 
+-- name: BytecodeDBRetryUnavailable :execrows
+UPDATE verification_jobs j
+SET status='queued', error_code=NULL, attempt_count=0, updated_at=clock_timestamp()
+FROM bytecode_db_attempts a
+WHERE a.job_id=j.id AND a.service_id=sqlc.arg('service_id')
+AND a.target_digest=sqlc.arg('target_digest') AND a.candidate_digest=sqlc.arg('candidate_digest')
+AND a.support_digest=sqlc.arg('support_digest')
+AND j.status='failed' AND j.error_code IN (
+ 'compiler_unavailable','compiler_download_unavailable','compiler_download_timeout','compiler_download_rate_limited'
+)
+AND j.updated_at<=clock_timestamp()-(sqlc.arg('cooldown_us')::bigint*interval '1 microsecond')
+AND NOT EXISTS (SELECT 1 FROM verification_jobs active WHERE active.request_digest=j.request_digest AND active.id<>j.id AND active.status IN ('queued','running','succeeded'));
+
 -- name: BytecodeDBOrigin :one
 SELECT EXISTS(SELECT 1 FROM bytecode_db_attempts WHERE job_id=sqlc.arg('job_id'));
 

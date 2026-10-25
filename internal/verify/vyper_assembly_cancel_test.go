@@ -98,7 +98,7 @@ func TestVyperAssemblyFailureRemainsSanitized(t *testing.T) {
 		return nil, errors.New("upstream credentials must not escape")
 	})
 	_, err := compiler.ensureRuntime(t.Context(), entry.Version, entry, artifact)
-	if err == nil || err.Error() != "assemble locked Vyper package" || errors.Unwrap(err) != nil {
+	if err == nil || err.Error() != string(ErrorCompilerDownloadUnavailable) || errors.Unwrap(err) != nil {
 		t.Fatalf("unsanitized assembly error: %v", err)
 	}
 }
