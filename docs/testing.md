@@ -815,7 +815,27 @@ The private-network cases exercise default rejection, explicit local HTTPS
 access through the production dialer, application configuration wiring, strict
 boolean overrides and independent client policies. TLS and redirect rejection,
 request bounds, hostile responses and explicit source-publication consent remain
-covered by the Sourcify regressions. Run `make deployment-check` for its Compose
+covered by the Sourcify regressions. Credential changes also run
+`go test ./internal/httpapi -run TestVerifierV2SourcifyEtherscanCredentials`
+and `go run ./cmd/testintegration -packages ./internal/verify -race -run
+TestSourcifyCredentialsPostgresWorkerRestart`. These cover separate Etherview
+and Etherscan credentials, response/log redaction, authenticated encryption,
+active-job deduplication, durable restart, and forwarding to a local HTTPS
+fixture without local contract publication. Web tests cover optional omission,
+consent reset and clearing completed mutation/form state; bilingual browser
+coverage lives in `web/e2e/sourcify.spec.ts`. Source import additionally runs
+`go test ./internal/verify ./internal/httpapi -run
+'TestSourcifyImportV2|TestVerifierV2SourcifyImport'` and
+`go run ./cmd/testintegration -packages ./internal/verify -race -run
+TestSourcifyImportPostgresLocalPublication`. Local HTTPS fixtures verify GET-only
+retrieval, exact large source-chain IDs, independent local target identity,
+supported compiler preparation and hostile-source
+rejection; PostgreSQL verifies dual compilation, local source/ABI publication,
+mismatch rejection and reorg fencing. Browser checks cover direct import,
+post-publication import, separate source/metadata selection and replacement,
+keyboard service cards, 390/1440px layouts and native
+select icon proportions. These are local fixtures, not live Sourcify acceptance.
+Run `make deployment-check` for its Compose
 and Helm configuration surfaces.
 
 ## Vyper verification gates

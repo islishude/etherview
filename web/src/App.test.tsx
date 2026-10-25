@@ -768,7 +768,9 @@ describe("embedded explorer shell", () => {
       "0.8.30+commit.73712a01",
     ]);
     expect(compilerVersion).toHaveValue("0.8.3+commit.8d00100c");
-    fireEvent.change(screen.getByLabelText(/^API key/), { target: { value: secret } });
+    fireEvent.change(screen.getByLabelText(/^Etherview API Key(?!\s*[(（])/), {
+      target: { value: secret },
+    });
     await userEvent.setup().click(screen.getByRole("button", { name: "Submit verification" }));
 
     expect(await screen.findByText("succeeded")).toBeVisible();
@@ -901,7 +903,9 @@ describe("embedded explorer shell", () => {
         }),
       },
     });
-    fireEvent.change(screen.getByLabelText(/^API key/), { target: { value: "ev_geas_test" } });
+    fireEvent.change(screen.getByLabelText(/^Etherview API Key(?!\s*[(（])/), {
+      target: { value: "ev_geas_test" },
+    });
     await user.click(screen.getByRole("button", { name: "Submit verification" }));
 
     expect(await screen.findByText("succeeded")).toBeVisible();
@@ -1015,7 +1019,7 @@ describe("embedded explorer shell", () => {
     expect(editor).toHaveTextContent(malicious);
     expect(document.querySelector(".contract-code-view img")).toBeNull();
     expect(document.querySelector(".contract-code-view script")).toBeNull();
-    expect(screen.queryByLabelText("API key")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Etherview API Key(?!\s*[(（])/)).not.toBeInTheDocument();
   });
 });
 

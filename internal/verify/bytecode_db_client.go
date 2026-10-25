@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -164,10 +163,6 @@ func bytecodeDBCandidates(sources []BytecodeDBSource) ([]BytecodeDBSource, bool)
 	return result, limited
 }
 
-// Provider commit labels only select a candidate release. Compiler evidence
-// always comes from the application lock and local bytecode verification.
-var bytecodeDBVyperVersionPattern = regexp.MustCompile(`^v?([0-9]+\.[0-9]+\.[0-9]+)(?:\+commit\.[0-9a-fA-F]{7,64})?$`)
-
 func bytecodeDBSubmission(source BytecodeDBSource, target VerificationTarget, maximum int) (SubmissionV2, error) {
 	request := SubmissionV2{Kind: JobAddress, CompilerVersion: source.CompilerVersion, Target: &target, Bytecodes: []BytecodePair{{Creation: target.CreationBytecode, Runtime: target.RuntimeBytecode}}}
 	switch source.SourceType {
@@ -176,11 +171,11 @@ func bytecodeDBSubmission(source BytecodeDBSource, target VerificationTarget, ma
 	case "YUL":
 		request.Language = LanguageYul
 	case "VYPER":
-		version := bytecodeDBVyperVersionPattern.FindStringSubmatch(source.CompilerVersion)
-		if len(version) != 2 || !stableVyperVersion(version[1]) {
+		version, ok := importedVyperReleaseVersion(source.CompilerVersion)
+		if !ok {
 			return SubmissionV2{}, BytecodeDBError{Code: "unsupported_version"}
 		}
-		request.CompilerVersion = version[1]
+		request.CompilerVersion = version
 		request.Language = LanguageVyper
 		request.TargetFile = source.FileName
 	default:

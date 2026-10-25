@@ -1652,6 +1652,35 @@ paths:
                 $ref: "#/components/schemas/VerifiedContractResponse"
         default:
           $ref: "#/components/responses/Error"
+  /contracts/{address}/verification/sourcify:
+    post:
+      operationId: importSourcifyContract
+      tags: [contracts, verification]
+      description: >-
+        Fetch already-verified sources from the configured Sourcify service for
+        the requested source chain and enqueue ordinary local address verification
+        on this deployment's chain for the same address.
+        No sources are uploaded to Sourcify. External results are not trusted as
+        local evidence; compiler and canonical publication checks remain required.
+      security:
+        - APIKey: []
+      parameters:
+        - $ref: "#/components/parameters/Address"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SourcifySourceImportRequest"
+      responses:
+        "202":
+          description: Sources retrieved and local verification queued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationJobResponse"
+        default:
+          $ref: "#/components/responses/Error"
   /contracts/{address}/proxy:
     get:
       operationId: getContractProxy
@@ -2468,6 +2497,18 @@ components:
       type: string
       pattern: "^0x[0-9a-fA-F]{40}$"
       description: A 20-byte address; responses use the EIP-55 checksum form.
+    SourcifySourceImportRequest:
+      type: object
+      additionalProperties: false
+      required: [chain_id]
+      properties:
+        chain_id:
+          allOf:
+            - $ref: "#/components/schemas/Quantity"
+          description: >-
+            Positive uint64 source chain ID on Sourcify, encoded as a canonical
+            decimal string. The local verification target remains on the
+            deployment's chain and must have identical runtime bytecode.
     Quantity:
       type: string
       pattern: "^(0|[1-9][0-9]*)$"
@@ -5633,6 +5674,16 @@ components:
           $ref: "#/components/schemas/Quantity"
         address:
           $ref: "#/components/schemas/Address"
+        etherscan_api_key:
+          type: string
+          minLength: 1
+          maxLength: 256
+          pattern: "^[!-~]+$"
+          writeOnly: true
+          description: >-
+            Optional Etherscan API key, separate from the Etherview X-API-Key.
+            Sent to the configured Sourcify service only for this import.
+            Encrypted before durable enqueue and never returned in job responses.
     VerificationMatchType:
       type: string
       enum: [full, partial]

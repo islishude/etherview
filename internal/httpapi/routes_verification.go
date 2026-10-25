@@ -1,6 +1,7 @@
 package httpapi
 
 func (h *Handler) registerVerificationRoutes() {
+	h.mux.HandleFunc("POST /api/v1/contracts/{address}/verification/sourcify", h.importSourcifyContract)
 	// Verification and proxy routes remain present while disabled and report
 	// the stable typed capability state.
 	h.mux.HandleFunc("POST /api/v1/contracts/{address}/verification", h.submitAddressVerification)

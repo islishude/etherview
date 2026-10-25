@@ -105,10 +105,47 @@ fail-closed cleanup requirements remain mandatory.
 - Compiler diagnostics are bounded domain outcomes and are never logged.
   Sandbox, transport, cache, runtime, and nested upstream diagnostics remain
   stable redacted system failures.
+- Explicit Sourcify source import uses `POST
+/api/v1/contracts/{address}/verification/sourcify` with `contract:verify`
+  authorization and a required decimal-string `chain_id` selecting the source
+  chain on Sourcify. This positive uint64 may differ from the deployment's chain:
+  only source lookup uses it. The local target remains the same address on the
+  deployment's chain. The API resolves the exact canonical target, closes its
+  database snapshot, and performs a bounded HTTPS GET for existing sources.
+  It checks remote identity against the requested source chain/address and requires
+  identical remote/local runtime bytes. It rejects mismatches and unsupported or
+  non-inline compiler inputs, then queues an ordinary `address` job containing
+  the retrieved input and the original local target. Source retrieval is not
+  local verification: pinned dual compilation and lease/canonical publication
+  fences still determine local source and ABI publication. Retries use durable
+  input, never refetch it inside a worker transaction. Solidity/Yul and supported
+  Vyper inputs retain their ordinary compiler policies, including authenticated
+  Genesis runtime-only publication. Import performs no external source upload.
+  The Web defaults to direct import and offers a separate import action after
+  external publication, with separate local and external job results.
+  Direct import exposes the source chain with the deployment's chain as its
+  default. Source publication has separate source-file and compiler-metadata
+  upload controls; each replacement preserves the other selection and revokes
+  publication consent. The submitted file-map contract and total bounds remain
+  unchanged.
 - Calling a Sourcify verification endpoint is the explicit publication
   consent. Sourcify jobs are bounded to three attempts, a 20-second request,
   one-second polling, and 120 polls. Their success is returned as an external
   result only.
+- Etherscan imports accept an optional, write-only `etherscan_api_key`, separate
+  from Etherview's `X-API-Key` authentication. Submission authorizes forwarding
+  that credential to the configured Sourcify service in the JSON `apiKey` field.
+  The API encrypts it before durable enqueue using AES-256-GCM with a fresh
+  random nonce and authenticated chain/address context. Independent encryption
+  and HMAC deduplication keys are derived with versioned, domain-separated
+  HKDF-SHA256 from the API role's existing `security.api_key_pepper` secret.
+  The stored request contains only a versioned ciphertext envelope and a keyed
+  fingerprint; randomized ciphertext is excluded from request identity. Raw
+  credentials never enter database parameters, logs, outcomes or job responses.
+  Workers decrypt only for the outbound request; missing keys or failed
+  authentication fail closed. All API/all-role replicas share the same secret.
+  Drain pending imports before rotating the pepper and retain the matching
+  secret separately from backups needed to restore encrypted jobs.
 - Sourcify requests use HTTPS with public-network address checks by default.
   The independent `sourcify.unsafe_allow_private_networks` override permits local
   Fake-IP/private-network development. It defaults off outside Preview; Preview

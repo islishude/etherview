@@ -307,6 +307,7 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			VerificationReader: verificationReader, VerificationSubmitter: verificationSubmitter,
 			CompilerCatalog:     compilerCatalog,
 			VerificationTargets: verificationTargets,
+			SourcifyImporter:    assembly.sourcify,
 			NFTMetadataReader:   metadataReader,
 			NFTMediaSource:      mediaSource, NFTMediaProxy: mediaProxy,
 			UserAuth: userAuthenticator, UserAdministration: userAdministration,

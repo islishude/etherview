@@ -5,6 +5,7 @@ const address = `0x${"12".repeat(20)}`;
 const jobID = "123e4567-e89b-42d3-a456-426614174000";
 const externalID = "123e4567-e89b-42d3-a456-426614174001";
 const apiKey = "ev_e2e_sourcify";
+const etherscanKey = "etherscan_e2e_private";
 
 for (const language of ["en", "zh"] as const) {
   test(`Sourcify publication and external results in ${language} at 390px`, async ({
@@ -59,22 +60,34 @@ for (const language of ["en", "zh"] as const) {
     if (language === "zh")
       await page.getByRole("button", { name: "切换到中文", exact: true }).click();
     const zh = language === "zh";
-    await page.getByLabel(zh ? "验证服务" : "Verification service").selectOption("sourcify");
+    await page
+      .getByRole("radio", { name: zh ? /Sourcify 源码库/ : /Sourcify source library/ })
+      .check();
+    await page
+      .getByRole("button", { name: zh ? "发布至 Sourcify" : "Publish to Sourcify", exact: true })
+      .first()
+      .click();
     await expect(page.getByLabel(zh ? "地址" : "Address", { exact: true })).toHaveValue(address);
-    await page.getByLabel(zh ? /^API Key/ : /^API key/).fill(apiKey);
+    await page.getByLabel(/^Etherview API Key(?!\s*[(（])/).fill(apiKey);
     const files = {
       "A.sol": "contract A {}",
       "metadata.json": '{"compiler":{},"settings":{},"output":{}}',
     };
-    await page
-      .getByLabel(zh ? "选择源码文件和 metadata.json" : "Select source files and metadata.json")
-      .setInputFiles(
-        Object.entries(files).map(([name, content]) => ({
-          name,
-          mimeType: "text/plain",
-          buffer: Buffer.from(content),
-        })),
-      );
+    const fileChooser = page.waitForEvent("filechooser");
+    await page.getByLabel(zh ? "源码文件" : "Source files", { exact: true }).focus();
+    await page.keyboard.press("Space");
+    await (
+      await fileChooser
+    ).setFiles({
+      name: "A.sol",
+      mimeType: "text/plain",
+      buffer: Buffer.from(files["A.sol"]),
+    });
+    await page.getByLabel("metadata.json", { exact: true }).setInputFiles({
+      name: "metadata.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(files["metadata.json"]),
+    });
     const sourceSubmit = page.getByRole("button", {
       name: zh ? "向 Sourcify 发布源码" : "Publish sources to Sourcify",
       exact: true,
@@ -91,9 +104,9 @@ for (const language of ["en", "zh"] as const) {
       ),
     ).toBeVisible();
     await expect(page.getByText(externalID, { exact: true })).toBeVisible();
-    await expect(
-      page.getByText(zh ? "运行时代码匹配" : "Runtime match", { exact: true }),
-    ).toHaveCount(0);
+    await expect(page.getByText(zh ? "运行时匹配" : "Runtime match", { exact: true })).toHaveCount(
+      0,
+    );
     expect(posts).toEqual([
       { path: "/api/v1/verifier/sourcify", body: { chain_id: "1", address, files } },
     ]);
@@ -114,6 +127,26 @@ for (const language of ["en", "zh"] as const) {
       fullPage: true,
     });
 
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      await expect(page.locator("html")).toHaveAttribute("data-theme", colorScheme);
+      for (const width of [390, 1440]) {
+        await page.setViewportSize({ width, height: 900 });
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+          true,
+        );
+        expect(
+          (
+            await new AxeBuilder({ page })
+              .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+              .analyze()
+          ).violations,
+        ).toEqual([]);
+        await page.locator(".sourcify-uploads").screenshot({
+          path: testInfo.outputPath(`uploads-${language}-${width}-${colorScheme}.png`),
+        });
+      }
+    }
     await page
       .getByLabel(zh ? "Sourcify 提交方式" : "Sourcify submission method")
       .selectOption("etherscan");
@@ -125,12 +158,18 @@ for (const language of ["en", "zh"] as const) {
     });
     await expect(importSubmit).toBeDisabled();
     await page.getByRole("checkbox").check();
+    const etherscanInput = page.getByLabel(/^Etherscan API Key/);
+    await expect(etherscanInput).toHaveAttribute("type", "password");
+    await etherscanInput.fill(etherscanKey);
+    await expect(page.getByRole("checkbox")).not.toBeChecked();
+    await page.getByRole("checkbox").check();
     await importSubmit.click();
     await expect.poll(() => posts.length).toBe(2);
     expect(posts[1]).toEqual({
       path: "/api/v1/verifier/sourcify/from-etherscan",
-      body: { chain_id: "1", address },
+      body: { chain_id: "1", address, etherscan_api_key: etherscanKey },
     });
+    await expect(etherscanInput).toHaveValue("");
     await expect(page.getByText("sourcify_from_etherscan", { exact: true })).toBeVisible();
     await expect(
       page.getByText(
@@ -148,6 +187,131 @@ for (const language of ["en", "zh"] as const) {
       await page.evaluate(() => JSON.stringify(localStorage) + JSON.stringify(sessionStorage)),
     ).not.toContain(apiKey);
     expect(page.url()).not.toContain(apiKey);
+    expect(
+      await page.evaluate(() => JSON.stringify(localStorage) + JSON.stringify(sessionStorage)),
+    ).not.toContain(etherscanKey);
+    expect(page.url()).not.toContain(etherscanKey);
     expect(errors).toEqual([]);
+  });
+}
+
+for (const language of ["en", "zh"] as const) {
+  test(`Sourcify direct local import and service cards in ${language}`, async ({
+    page,
+  }, testInfo) => {
+    const zh = language === "zh";
+    const posts: string[] = [];
+    const envelope = (data: unknown) => ({
+      data,
+      meta: { chain_id: "1", request_id: "import-e2e" },
+    });
+    await page.route("**/api/v1/config", async (route) => {
+      const response = await route.fetch();
+      const payload = await response.json();
+      payload.data.features.verification = true;
+      payload.data.features.sourcify = true;
+      await route.fulfill({ response, json: payload });
+    });
+    await page.route("**/api/v1/verifier/compilers?language=solidity", (route) =>
+      route.fulfill({ json: envelope({ language: "solidity", versions: ["0.8.30"] }) }),
+    );
+    await page.route("**/api/v1/verifier/sourcify**", (route) => {
+      posts.push("unexpected upload");
+      return route.fulfill({ status: 500, json: {} });
+    });
+    await page.route(`**/api/v1/contracts/${address}/verification/sourcify`, (route) => {
+      expect(route.request().method()).toBe("POST");
+      expect(route.request().headers()["x-api-key"]).toBe(apiKey);
+      expect(route.request().postDataJSON()).toEqual({ chain_id: "11155111" });
+      posts.push("local import");
+      return route.fulfill({
+        status: 202,
+        json: envelope({ id: jobID, kind: "address", status: "queued" }),
+      });
+    });
+    await page.route(`**/api/v1/verifier/jobs/${jobID}`, (route) =>
+      route.fulfill({
+        json: envelope({
+          id: jobID,
+          kind: "address",
+          status: "succeeded",
+          outcome: { kind: "verification_success", runtime_match: { match_type: "full" } },
+        }),
+      }),
+    );
+    await page.goto(`/verify?address=${address}`);
+    if (zh) await page.getByRole("button", { name: "切换到中文", exact: true }).click();
+    const provider = page.getByRole("radio", {
+      name: zh ? /Sourcify 源码库/ : /Sourcify source library/,
+    });
+    await provider.focus();
+    await page.keyboard.press("Space");
+    await expect(provider).toBeChecked();
+    await expect(
+      page.getByRole("button", {
+        name: zh ? "导入 Etherview" : "Import into Etherview",
+        exact: true,
+      }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByLabel(zh ? /^Sourcify 文件/ : /^Sourcify files/)).toHaveCount(0);
+    await expect(page.getByLabel(/^Etherscan API Key/)).toHaveCount(0);
+    await expect(
+      page.getByLabel(zh ? "源码链 ID" : "Source Chain ID", { exact: true }),
+    ).toHaveValue("1");
+    await page.getByLabel(zh ? "源码链 ID" : "Source Chain ID", { exact: true }).fill("11155111");
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      await expect(page.locator("html")).toHaveAttribute("data-theme", colorScheme);
+      for (const width of [390, 1440]) {
+        await page.setViewportSize({ width, height: 900 });
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+          true,
+        );
+        expect(
+          (
+            await new AxeBuilder({ page })
+              .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+              .analyze()
+          ).violations,
+        ).toEqual([]);
+        await page.screenshot({
+          path: testInfo.outputPath(`import-${language}-${width}-${colorScheme}.png`),
+          fullPage: true,
+        });
+      }
+    }
+    await page.getByLabel(/^Etherview API Key(?!\s*[(（])/).fill(apiKey);
+    await page
+      .getByRole("button", {
+        name: zh ? "从 Sourcify 导入 Etherview" : "Import from Sourcify into Etherview",
+        exact: true,
+      })
+      .click();
+    await expect(page.getByText("verification_success", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText(zh ? "运行时匹配" : "Runtime match", { exact: true }),
+    ).toBeVisible();
+    expect(posts).toEqual(["local import"]);
+    await expect(page.getByText(externalID, { exact: true })).toHaveCount(0);
+    await page
+      .getByRole("radio", { name: zh ? /Etherview 本地验证/ : /Etherview local verification/ })
+      .check();
+    const select = page.getByRole("combobox", { name: zh ? "语言" : "Language", exact: true });
+    await expect(select).toHaveCSS("appearance", "none");
+    const control = await select.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        size: parseFloat(style.backgroundSize),
+        right: parseFloat(style.paddingRight),
+        height: element.getBoundingClientRect().height,
+      };
+    });
+    expect(control.size).toBeGreaterThanOrEqual(18);
+    expect(control.right).toBeGreaterThan(control.size + 12);
+    expect(control.size / control.height).toBeGreaterThan(0.3);
+    await page.screenshot({
+      path: testInfo.outputPath(`local-controls-${language}.png`),
+      fullPage: true,
+    });
   });
 }

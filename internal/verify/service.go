@@ -37,18 +37,30 @@ func (err ServiceError) Error() string {
 func (err ServiceError) Unwrap() error { return err.cause }
 
 type Service struct {
-	repository    Repository
-	maxInputBytes int
+	repository          Repository
+	maxInputBytes       int
+	sourcifyCredentials *SourcifyCredentials
 }
 
-func NewService(repository Repository, maxInputBytes int) (*Service, error) {
+type ServiceOptions struct {
+	SourcifyCredentials *SourcifyCredentials
+}
+
+func NewService(repository Repository, maxInputBytes int, options ...ServiceOptions) (*Service, error) {
 	if repository == nil {
 		return nil, errors.New("verification service requires a repository")
 	}
 	if maxInputBytes <= 0 {
 		maxInputBytes = 5 << 20
 	}
-	return &Service{repository: repository, maxInputBytes: maxInputBytes}, nil
+	service := &Service{repository: repository, maxInputBytes: maxInputBytes}
+	if len(options) > 1 {
+		return nil, errors.New("multiple verification service options are invalid")
+	}
+	if len(options) == 1 {
+		service.sourcifyCredentials = options[0].SourcifyCredentials
+	}
+	return service, nil
 }
 
 type v2SubmissionRepository interface {
@@ -63,6 +75,14 @@ func (service *Service) SubmitV2(ctx context.Context, request SubmissionV2) (Ver
 	if err := service.prepareV2(ctx, &request); err != nil {
 		return VerificationJob{}, false, ServiceError{Code: ServiceInvalidRequest, cause: err}
 	}
+	if request.SourcifyAPIKey != "" {
+		sealed, err := service.sourcifyCredentials.seal(request.SourcifyRequest, request.SourcifyAPIKey)
+		if err != nil {
+			return VerificationJob{}, false, ServiceError{Code: ServiceStorageFailure, cause: errSourcifyCredential}
+		}
+		request.SourcifyRequest = sealed
+		request.SourcifyAPIKey = ""
+	}
 	job, created, err := repository.SubmitV2(ctx, request)
 	if err != nil {
 		return VerificationJob{}, false, ServiceError{Code: ServiceStorageFailure, cause: err}
@@ -76,6 +96,15 @@ func (service *Service) prepareV2(_ context.Context, request *SubmissionV2) erro
 	}
 	if request == nil {
 		return errors.New("verification request is required")
+	}
+	if request.SourcifyAPIKey != "" && (request.Kind != JobSourcifyFromEtherscan || ValidateSourcifyAPIKey(string(request.SourcifyAPIKey)) != nil) {
+		return errSourcifyCredential
+	}
+	if request.Kind == JobSourcifyFromEtherscan {
+		decoded, err := decodeSourcifyEtherscanRequest(request.SourcifyRequest)
+		if err != nil || decoded.Credential != nil {
+			return errSourcifyCredential
+		}
 	}
 	switch request.Kind {
 	case JobSourcify, JobSourcifyFromEtherscan:

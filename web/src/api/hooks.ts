@@ -947,6 +947,10 @@ export function useSubmitSourcifyVerification(apiKey: string) {
           : await sdk.submitSourcifyFromEtherscan({ ...options, body: request.body }),
       ).data;
     },
+    onSettled: (_data, _error, request) => {
+      // Do not retain the upstream credential in completed mutation-cache variables.
+      if (request.kind === "etherscan") delete request.body.etherscan_api_key;
+    },
     gcTime: 0,
     retry: false,
   });

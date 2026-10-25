@@ -1323,7 +1323,7 @@ test("capability pages survive the embedded binary boundary in both accessible t
     page.getByRole("heading", { name: "Open a durable verification job" }),
   ).toBeVisible();
   await page.getByLabel("Job ID", { exact: true }).fill(verificationJobID);
-  await page.getByLabel("Job read API key", { exact: true }).fill(readAPIKey);
+  await page.getByLabel("Etherview API Key (job read)", { exact: true }).fill(readAPIKey);
   await activateInView(page.getByRole("button", { name: "Load job", exact: true }));
   await expect(page.getByText("succeeded", { exact: true })).toBeVisible();
   await expect(page.getByText("verification_success", { exact: true })).toBeVisible();

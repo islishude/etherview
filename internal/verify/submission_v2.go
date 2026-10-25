@@ -19,6 +19,7 @@ type SubmissionV2 struct {
 	Target               *VerificationTarget      `json:"target,omitempty"`
 	ProxyTarget          *ProxyVerificationTarget `json:"proxy_target,omitempty"`
 	SourcifyRequest      json.RawMessage          `json:"sourcify_request,omitempty"`
+	SourcifyAPIKey       SourcifyAPIKey           `json:"-"`
 	CatalogGenerationID  int64                    `json:"catalog_generation_id,omitempty"`
 	CompilerPlatform     string                   `json:"compiler_platform,omitempty"`
 	CompilerDigest       string                   `json:"compiler_sha256,omitempty"`

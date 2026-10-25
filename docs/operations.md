@@ -243,6 +243,46 @@ holding `contract:verify`, then poll `GET /api/v1/verifier/jobs/{id}`. Check
 `outcome.kind` for `sourcify_success`; job completion alone does not mean
 verification succeeded. Sourcify results remain external verification results.
 
+For `POST /api/v1/verifier/sourcify/from-etherscan`, send `chain_id`, `address`
+and optionally `etherscan_api_key` in the JSON body. `X-API-Key` is the separate
+Etherview API Key; the optional body field is forwarded as `apiKey` to the
+configured Sourcify service for that import. Omitting it leaves credential
+selection to that service, which may reject an import without an available
+Etherscan key. The Web form explains external publication and credential
+sharing before confirmation and clears the Etherscan field after submission.
+Do not place either key in URLs, shell history, diagnostic payload dumps or
+request-body logging at reverse proxies.
+
+The API encrypts Etherscan credentials before PostgreSQL enqueue using
+purpose-separated keys derived from `security.api_key_pepper`; database rows
+and backups contain ciphertext only, and job reads never return it. Use the
+same pepper on every API/all-role replica. Before rotating it, stop accepting
+new imports and drain pending/running Sourcify imports that carry credentials.
+Restoring those jobs requires the original pepper from a separately secured
+secret backup. A missing or mismatched pepper fails decryption; it never falls
+back to plaintext or an unauthenticated import. Rotation does not re-encrypt
+historical ciphertext. Normal no-key imports need no credential decryption.
+
+To import an already verified contract into Etherview, POST `{"chain_id":"1"}`
+with an Etherview `X-API-Key` scoped to `contract:verify` to
+`/api/v1/contracts/{address}/verification/sourcify`. Both public verification and
+Sourcify must be enabled. `chain_id` selects the Sourcify source chain as a positive
+decimal uint64 string; it defaults to the deployment's chain in the Web form.
+It may differ from the local chain, but the same address must have identical
+runtime bytecode on both chains. The local target chain always comes from the
+deployment; the address needs canonical local runtime and creation facts (or
+authenticated Genesis provenance).
+The API fetches Sourcify's existing sources and returns a local address job to
+poll at `/api/v1/verifier/jobs/{id}`. Only `verification_success` establishes
+local verification and publishes the source/ABI. `sourcify_success` belongs to
+the separate external publication workflow. No Etherscan key, file upload or
+external publication consent is needed for direct retrieval. A missing upstream
+contract returns `sourcify_not_found`; mismatched runtime returns
+`sourcify_target_mismatch`; unsupported/invalid input returns
+`sourcify_invalid_source`. Unavailable upstreams return `sourcify_unavailable`
+without their diagnostic body. The Web offers direct import first and a
+separate local import action after external publication.
+
 Outside Preview, Sourcify rejects DNS answers containing private, loopback or
 special-purpose addresses by default. For local Fake-IP development, set
 `sourcify.unsafe_allow_private_networks: true` or

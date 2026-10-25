@@ -34,6 +34,14 @@ func (repository *PostgresRepository) SubmitV2(
 }
 
 func (repository *PostgresRepository) submitV2(ctx context.Context, queries *dbgen.Queries, request SubmissionV2) (VerificationJob, bool, error) {
+	if request.SourcifyAPIKey != "" {
+		return VerificationJob{}, false, errSourcifyCredential
+	}
+	if request.Kind == JobSourcify || request.Kind == JobSourcifyFromEtherscan {
+		if err := ValidateSourcifyV2Request(request.Kind, request.SourcifyRequest, repository.options.MaxRequestBytes); err != nil {
+			return VerificationJob{}, false, err
+		}
+	}
 	normalizeSolidityAnalysisVersion(&request)
 	if request.Language == LanguageVyper {
 		recipe, err := vyper.Lookup(request.CompilerVersion)
@@ -49,7 +57,11 @@ func (repository *PostgresRepository) submitV2(ctx context.Context, queries *dbg
 	if err != nil || len(encoded) > repository.options.MaxRequestBytes {
 		return VerificationJob{}, false, errors.New("v2 verification request exceeds configured bounds")
 	}
-	digest := sha256.Sum256(append([]byte("etherview:verification-request:v2\x00"), encoded...))
+	digestPayload, err := sourcifyDigestPayload(request, encoded)
+	if err != nil {
+		return VerificationJob{}, false, err
+	}
+	digest := sha256.Sum256(append([]byte("etherview:verification-request:v2\x00"), digestPayload...))
 	id, err := randomUUID(repository.random)
 	if err != nil {
 		return VerificationJob{}, false, err

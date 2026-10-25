@@ -123,15 +123,28 @@ func (h *Handler) submitVerifier(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Pattern == "POST /api/v1/verifier/sourcify/from-etherscan" {
 		var submission struct {
-			ChainID string `json:"chain_id"`
-			Address string `json:"address"`
+			ChainID         string  `json:"chain_id"`
+			Address         string  `json:"address"`
+			EtherscanAPIKey *string `json:"etherscan_api_key,omitempty"`
 		}
 		if !h.decodeBoundedJSON(w, r, &submission, "invalid_verification_request", "Sourcify Etherscan request is invalid") {
 			return
 		}
-		encoded, _ := json.Marshal(submission)
+		var apiKey verify.SourcifyAPIKey
+		if submission.EtherscanAPIKey != nil {
+			if verify.ValidateSourcifyAPIKey(*submission.EtherscanAPIKey) != nil {
+				writeError(w, r, http.StatusBadRequest, "invalid_verification_request", "Sourcify Etherscan request is invalid", nil)
+				return
+			}
+			apiKey = verify.SourcifyAPIKey(*submission.EtherscanAPIKey)
+		}
+		// Keep the transient secret out of the serialized task body.
+		encoded, _ := json.Marshal(struct {
+			ChainID string `json:"chain_id"`
+			Address string `json:"address"`
+		}{submission.ChainID, submission.Address})
 		h.submitV2(w, r, verify.SubmissionV2{
-			Kind: verify.JobSourcifyFromEtherscan, SourcifyRequest: encoded,
+			Kind: verify.JobSourcifyFromEtherscan, SourcifyRequest: encoded, SourcifyAPIKey: apiKey,
 		})
 		return
 	}
@@ -539,7 +552,7 @@ func requiredAPIScope(operation string) auth.Scope {
 		"batchVerifySolidityMultipart", "batchVerifySolidityStandardJson",
 		"verifyVyperMultipart", "verifyVyperStandardJson",
 		"listVerifierCompilers", "lookupVerifierMethods",
-		"submitSourcifyVerification", "submitSourcifyFromEtherscan":
+		"submitSourcifyVerification", "submitSourcifyFromEtherscan", "importSourcifyContract":
 		return auth.ScopeVerification
 	default:
 		return auth.ScopeRead

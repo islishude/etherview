@@ -270,9 +270,14 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		if err != nil {
 			return err
 		}
+		credentials, credentialErr := sourcifyCredentials(cfg)
+		if credentialErr != nil {
+			return credentialErr
+		}
 		verificationService, err = verify.NewService(
 			verificationRepository,
 			cfg.Verification.MaxInputBytes,
+			verify.ServiceOptions{SourcifyCredentials: credentials},
 		)
 		if err != nil {
 			return err

@@ -16,7 +16,9 @@ import {
 } from "./pages";
 
 import { VerificationJobPanel } from "./VerificationJobPanel";
-import { SourcifyVerificationForm } from "./SourcifyVerificationForm";
+import { SourcifyWorkspace } from "./SourcifyWorkspace";
+import { VerificationProviderPicker } from "./VerificationProviderPicker";
+import "./VerificationWorkflow.css";
 
 const MAX_STANDARD_JSON_BYTES = 5 * 1024 * 1024;
 const UUID_PATTERN =
@@ -188,21 +190,13 @@ export function VerifyPage({ initialAddress = "" }: { initialAddress?: string })
           detail={t("verification.unavailableDetail")}
         />
       )}
-      {sourcifyEnabled && (
-        <label className="field-control" htmlFor="verification-provider">
-          <span>{t("verification.provider")}</span>
-          <select
-            id="verification-provider"
-            value={provider}
-            onChange={(event) => setProvider(event.target.value)}
-          >
-            <option value="local">{t("verification.localProvider")}</option>
-            <option value="sourcify">{t("verification.sourcifyProvider")}</option>
-          </select>
-        </label>
-      )}
+      {sourcifyEnabled && <VerificationProviderPicker value={provider} onChange={setProvider} />}
       {showSourcify && (
-        <SourcifyVerificationForm initialAddress={address} chainID={publicConfig.data!.chain_id} />
+        <SourcifyWorkspace
+          initialAddress={address}
+          onAddressChange={setAddress}
+          chainID={publicConfig.data!.chain_id}
+        />
       )}
       {submissionEnabled && !showSourcify && (
         <div className="verification-layout">

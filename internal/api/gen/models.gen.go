@@ -5930,6 +5930,15 @@ type SourcifyFromEtherscanSubmission struct {
 
 	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
 	ChainId Quantity `json:"chain_id"`
+
+	// EtherscanApiKey Optional Etherscan API key, separate from the Etherview X-API-Key. Sent to the configured Sourcify service only for this import. Encrypted before durable enqueue and never returned in job responses.
+	EtherscanApiKey *string `json:"etherscan_api_key,omitempty"`
+}
+
+// SourcifySourceImportRequest defines model for SourcifySourceImportRequest.
+type SourcifySourceImportRequest struct {
+	// ChainId Positive uint64 source chain ID on Sourcify, encoded as a canonical decimal string. The local verification target remains on the deployment's chain and must have identical runtime bytecode.
+	ChainId Quantity `json:"chain_id"`
 }
 
 // SourcifySubmission defines model for SourcifySubmission.
@@ -7875,6 +7884,9 @@ type CreateBillingTopupIntentJSONRequestBody = BillingTopupIntentCreateRequest
 
 // SubmitAddressVerificationJSONRequestBody defines body for SubmitAddressVerification for application/json ContentType.
 type SubmitAddressVerificationJSONRequestBody = AddressVerificationSubmission
+
+// ImportSourcifyContractJSONRequestBody defines body for ImportSourcifyContract for application/json ContentType.
+type ImportSourcifyContractJSONRequestBody = SourcifySourceImportRequest
 
 // UpdateCurrentUserJSONRequestBody defines body for UpdateCurrentUser for application/json ContentType.
 type UpdateCurrentUserJSONRequestBody = UserProfileUpdate

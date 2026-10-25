@@ -78,7 +78,7 @@ test("Vyper submission preserves its target, sources and optimization mode", asy
   );
   await page.getByRole("combobox", { name: "Input format", exact: true }).selectOption("multipart");
   await page.getByLabel("Address", { exact: true }).fill(address);
-  await page.getByLabel(/^API key/).fill("browser-only-test-key");
+  await page.getByLabel(/^Etherview API Key(?!\s*[(（])/).fill("browser-only-test-key");
   await page
     .getByRole("combobox", { name: "Optimization mode", exact: true })
     .selectOption("codesize");

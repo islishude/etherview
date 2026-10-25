@@ -34,6 +34,7 @@ var (
 )
 
 type SourcifyOptions struct {
+	Credentials                *SourcifyCredentials
 	UnsafeAllowPrivateNetworks bool
 	BaseURL                    string
 	Timeout                    time.Duration
@@ -45,6 +46,7 @@ type SourcifyOptions struct {
 }
 
 type SourcifyClient struct {
+	credentials      *SourcifyCredentials
 	baseURL          *url.URL
 	http             *http.Client
 	maxRequestBytes  int
@@ -284,7 +286,8 @@ func newSourcifyClient(
 		return nil, errors.New("sourcify workflow retry or polling limits are invalid")
 	}
 	return &SourcifyClient{
-		baseURL: parsed,
+		credentials: options.Credentials,
+		baseURL:     parsed,
 		http: restrictedOutboundClient(
 			unsafeHTTPClient, timeout, resolver, unsafeAllowPrivateNetworks,
 		),
@@ -316,12 +319,12 @@ func (c *SourcifyClient) RunV2(
 			return c.doJSON(ctx, http.MethodPost, endpoint, payload, http.StatusAccepted, &ticket)
 		}
 	case JobSourcifyFromEtherscan:
-		endpoint, err := c.etherscanSubmission(raw)
+		endpoint, payload, err := c.etherscanSubmission(raw)
 		if err != nil {
 			return SourcifyWorkflowResult{}, err
 		}
 		submit = func() error {
-			return c.doJSON(ctx, http.MethodPost, endpoint, struct{}{}, http.StatusAccepted, &ticket)
+			return c.doJSON(ctx, http.MethodPost, endpoint, payload, http.StatusAccepted, &ticket)
 		}
 	default:
 		return SourcifyWorkflowResult{}, errors.New("invalid Sourcify workflow kind")
@@ -413,23 +416,26 @@ func validateSourcifyMetadataSubmission(
 	return submission.ChainID, submission.Address, sources, metadata, nil
 }
 
-func (c *SourcifyClient) etherscanSubmission(raw json.RawMessage) (*url.URL, error) {
-	chainID, address, err := validateSourcifyEtherscanSubmission(raw)
+func (c *SourcifyClient) etherscanSubmission(raw json.RawMessage) (*url.URL, any, error) {
+	request, err := decodeSourcifyEtherscanRequest(raw)
 	if err != nil {
-		return nil, err
+		return nil, nil, errSourcifyCredential
 	}
+	key, err := c.credentials.open(request)
+	if err != nil {
+		return nil, nil, errSourcifyCredential
+	}
+	payload := struct {
+		APIKey string `json:"apiKey,omitempty"`
+	}{APIKey: key}
 	return c.endpoint(fmt.Sprintf(
-		"/v2/verify/etherscan/%s/%s", chainID, strings.ToLower(address),
-	)), nil
+		"/v2/verify/etherscan/%s/%s", request.ChainID, strings.ToLower(request.Address),
+	)), payload, nil
 }
 
 func validateSourcifyEtherscanSubmission(raw json.RawMessage) (string, string, error) {
-	var submission struct {
-		ChainID string `json:"chain_id"`
-		Address string `json:"address"`
-	}
-	if json.Unmarshal(raw, &submission) != nil || !canonicalChainID(submission.ChainID) ||
-		!fixedHex(submission.Address, 20) {
+	submission, err := decodeSourcifyEtherscanRequest(raw)
+	if err != nil {
 		return "", "", errors.New("invalid sourcify Etherscan submission")
 	}
 	return submission.ChainID, submission.Address, nil
@@ -755,14 +761,14 @@ func decodeSourcifyCompilation(raw json.RawMessage) (SourcifyCompilation, bool) 
 	if !languageOK || !compilerOK || !versionOK || !nameOK || !identifierOK {
 		return SourcifyCompilation{}, false
 	}
-	if languagePresent && language != "Solidity" && language != "Fe" {
+	if languagePresent && language != "Solidity" && language != "Yul" && language != "Vyper" && language != "Fe" {
 		return SourcifyCompilation{}, false
 	}
 	if compilerPresent && !boundedSourcifyText(compiler, 128) {
 		return SourcifyCompilation{}, false
 	}
 	if languagePresent && compilerPresent &&
-		language == "Solidity" && compiler != "solc" {
+		((language == "Solidity" || language == "Yul") && compiler != "solc" || language == "Vyper" && compiler != "vyper") {
 		return SourcifyCompilation{}, false
 	}
 	if versionPresent && (!sourcifyCompilerVersionPattern.MatchString(version) || len(version) > 128) {

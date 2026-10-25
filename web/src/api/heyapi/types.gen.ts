@@ -81,6 +81,13 @@ export type Hash = string;
  */
 export type Address = string;
 
+export type SourcifySourceImportRequest = {
+    /**
+     * Positive uint64 source chain ID on Sourcify, encoded as a canonical decimal string. The local verification target remains on the deployment's chain and must have identical runtime bytecode.
+     */
+    chain_id: Quantity;
+};
+
 /**
  * A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
  */
@@ -2445,6 +2452,15 @@ export type ConsensusResponse = {
 export type BlockBlobsResponse = {
     data: BlockBlobs;
     meta: Meta;
+};
+
+export type SourcifyFromEtherscanSubmissionWritable = {
+    chain_id: Quantity;
+    address: Address;
+    /**
+     * Optional Etherscan API key, separate from the Etherview X-API-Key. Sent to the configured Sourcify service only for this import. Encrypted before durable enqueue and never returned in job responses.
+     */
+    etherscan_api_key?: string;
 };
 
 export type Cursor = OpaqueCursor;
@@ -4938,6 +4954,33 @@ export type SubmitAddressVerificationResponses = {
 
 export type SubmitAddressVerificationResponse = SubmitAddressVerificationResponses[keyof SubmitAddressVerificationResponses];
 
+export type ImportSourcifyContractData = {
+    body: SourcifySourceImportRequest;
+    path: {
+        address: Address;
+    };
+    query?: never;
+    url: '/contracts/{address}/verification/sourcify';
+};
+
+export type ImportSourcifyContractErrors = {
+    /**
+     * Machine-readable error.
+     */
+    default: ErrorResponse;
+};
+
+export type ImportSourcifyContractError = ImportSourcifyContractErrors[keyof ImportSourcifyContractErrors];
+
+export type ImportSourcifyContractResponses = {
+    /**
+     * Sources retrieved and local verification queued.
+     */
+    202: VerificationJobResponse;
+};
+
+export type ImportSourcifyContractResponse = ImportSourcifyContractResponses[keyof ImportSourcifyContractResponses];
+
 export type GetContractProxyData = {
     body?: never;
     path: {
@@ -5310,7 +5353,7 @@ export type SubmitSourcifyVerificationResponses = {
 export type SubmitSourcifyVerificationResponse = SubmitSourcifyVerificationResponses[keyof SubmitSourcifyVerificationResponses];
 
 export type SubmitSourcifyFromEtherscanData = {
-    body: SourcifyFromEtherscanSubmission;
+    body: SourcifyFromEtherscanSubmissionWritable;
     path?: never;
     query?: never;
     url: '/verifier/sourcify/from-etherscan';

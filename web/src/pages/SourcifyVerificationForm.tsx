@@ -4,6 +4,8 @@ import { isAddress } from "viem";
 import { useSubmitSourcifyVerification, useVerificationJob } from "@/api/hooks";
 import { assertNoDuplicateJSONKeys, errorMessage } from "./pages";
 import { VerificationJobPanel } from "./VerificationJobPanel";
+import { SourcifyPostImport } from "./SourcifyPostImport";
+import { SourcifyFileUpload } from "./SourcifyFileUpload";
 
 const MAX_REQUEST_BYTES = 5 * 1024 * 1024;
 const MAX_FILES = 1024;
@@ -12,16 +14,20 @@ const byteLength = (value: string) => new TextEncoder().encode(value).byteLength
 export function SourcifyVerificationForm({
   initialAddress,
   chainID,
+  onAddressChange,
 }: {
   initialAddress: string;
   chainID: string;
+  onAddressChange?: (address: string) => void;
 }) {
   const { t } = useTranslation();
   const [mode, setMode] = useState<"sources" | "etherscan">("sources");
   const [address, setAddress] = useState(initialAddress);
   const [files, setFiles] = useState("{}");
   const [apiKey, setAPIKey] = useState("");
+  const [etherscanAPIKey, setEtherscanAPIKey] = useState("");
   const [submittedAPIKey, setSubmittedAPIKey] = useState("");
+  const [submittedAddress, setSubmittedAddress] = useState("");
   const [consent, setConsent] = useState(false);
   const [reading, setReading] = useState(false);
   const [formError, setFormError] = useState<string>();
@@ -39,11 +45,19 @@ export function SourcifyVerificationForm({
     setConsent(false);
   }, [initialAddress]);
 
-  const readFiles = async (selected: File[]) => {
+  let selectedNames: string[] = [];
+  try {
+    const parsed: unknown = JSON.parse(files);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
+      selectedNames = Object.keys(parsed);
+  } catch {
+    /* The editable map reports validation errors on submit. */
+  }
+
+  const readFiles = async (selected: File[], kind: "sources" | "metadata") => {
     setConsent(false);
     setFormError(undefined);
     if (!selected.length) return;
-    setFiles("{}");
     if (
       selected.length > MAX_FILES ||
       selected.reduce((total, file) => total + file.size, 0) > MAX_REQUEST_BYTES
@@ -52,19 +66,61 @@ export function SourcifyVerificationForm({
       return;
     }
     const paths = selected.map((file) => file.webkitRelativePath || file.name);
+    if (
+      kind === "sources" &&
+      paths.some((path) => path.split("/").pop()?.toLowerCase() === "metadata.json")
+    ) {
+      setFormError(t("sourcify.separateMetadata"));
+      return;
+    }
+    if (kind === "metadata" && selected.length !== 1) {
+      setFormError(t("sourcify.invalidMetadata"));
+      return;
+    }
     if (new Set(paths).size !== paths.length) {
       setFormError(t("sourcify.duplicateFiles"));
       return;
     }
     setReading(true);
     try {
+      assertNoDuplicateJSONKeys(files);
+      const current: unknown = JSON.parse(files);
+      if (
+        !current ||
+        typeof current !== "object" ||
+        Array.isArray(current) ||
+        Object.values(current).some((content) => typeof content !== "string")
+      ) {
+        setFormError(t("sourcify.invalidFiles"));
+        return;
+      }
       const contents = await Promise.all(selected.map((file) => file.text()));
-      const encoded = JSON.stringify(
-        Object.fromEntries(paths.map((path, index) => [path, contents[index]])),
-        null,
-        2,
-      );
-      if (byteLength(encoded) > MAX_REQUEST_BYTES) {
+      let next: Record<string, string>;
+      if (kind === "metadata") {
+        try {
+          assertNoDuplicateJSONKeys(contents[0]!);
+          const metadata: unknown = JSON.parse(contents[0]!);
+          if (
+            !metadata ||
+            typeof metadata !== "object" ||
+            Array.isArray(metadata) ||
+            !["compiler", "settings", "output"].every(
+              (key) => key in metadata && metadata[key as keyof typeof metadata] != null,
+            )
+          )
+            throw new Error();
+        } catch {
+          setFormError(t("sourcify.invalidMetadata"));
+          return;
+        }
+        next = { ...(current as Record<string, string>), "metadata.json": contents[0]! };
+      } else {
+        next = Object.fromEntries(paths.map((path, index) => [path, contents[index]!]));
+        if ("metadata.json" in current)
+          next["metadata.json"] = (current as Record<string, string>)["metadata.json"]!;
+      }
+      const encoded = JSON.stringify(next, null, 2);
+      if (Object.keys(next).length > MAX_FILES || byteLength(encoded) > MAX_REQUEST_BYTES) {
         setFormError(t("sourcify.inputLimit"));
         return;
       }
@@ -85,6 +141,10 @@ export function SourcifyVerificationForm({
       return;
     }
     const target = { chain_id: chainID, address };
+    if (mode === "etherscan" && etherscanAPIKey && !/^[!-~]{1,256}$/.test(etherscanAPIKey)) {
+      setFormError(t("sourcify.invalidEtherscanKey"));
+      return;
+    }
     let sourceFiles: Record<string, string> = {};
     if (mode === "sources") {
       if (byteLength(files) > MAX_REQUEST_BYTES) {
@@ -116,11 +176,16 @@ export function SourcifyVerificationForm({
       }
     }
     setSubmittedAPIKey(apiKey);
+    setSubmittedAddress(address);
     setConsent(false);
     submission.mutate(
       mode === "sources"
         ? { kind: "sources", body: { ...target, files: sourceFiles } }
-        : { kind: "etherscan", body: target },
+        : {
+            kind: "etherscan",
+            body: { ...target, ...(etherscanAPIKey ? { etherscan_api_key: etherscanAPIKey } : {}) },
+          },
+      { onSettled: () => setEtherscanAPIKey("") },
     );
   };
 
@@ -141,6 +206,7 @@ export function SourcifyVerificationForm({
               value={mode}
               onChange={(event) => {
                 setMode(event.target.value as typeof mode);
+                setEtherscanAPIKey("");
                 setConsent(false);
                 setFormError(undefined);
               }}
@@ -162,25 +228,31 @@ export function SourcifyVerificationForm({
               spellCheck={false}
               onChange={(event) => {
                 setAddress(event.target.value);
+                onAddressChange?.(event.target.value);
                 setConsent(false);
               }}
             />
           </label>
           {mode === "sources" ? (
             <>
-              <label className="field-control wide" htmlFor="sourcify-upload">
-                <span>{t("sourcify.selectFiles")}</span>
-                <input
-                  id="sourcify-upload"
+              <div className="sourcify-uploads wide">
+                <SourcifyFileUpload
+                  kind="sources"
+                  names={selectedNames.filter((name) => name !== "metadata.json")}
                   disabled={busy}
-                  type="file"
-                  multiple
-                  onChange={(event) => {
-                    void readFiles(Array.from(event.target.files ?? []));
-                    event.target.value = "";
+                  onSelect={(selected) => {
+                    void readFiles(selected, "sources");
                   }}
                 />
-              </label>
+                <SourcifyFileUpload
+                  kind="metadata"
+                  names={selectedNames.filter((name) => name === "metadata.json")}
+                  disabled={busy}
+                  onSelect={(selected) => {
+                    void readFiles(selected, "metadata");
+                  }}
+                />
+              </div>
               <label className="field-control wide" htmlFor="sourcify-files">
                 <span>{t("sourcify.files")}</span>
                 <textarea
@@ -197,7 +269,26 @@ export function SourcifyVerificationForm({
               </label>
             </>
           ) : (
-            <p className="quiet wide">{t("sourcify.etherscanHelp")}</p>
+            <>
+              <p className="quiet wide">{t("sourcify.etherscanHelp")}</p>
+              <label className="field-control wide" htmlFor="sourcify-etherscan-api-key">
+                <span>{t("sourcify.etherscanAPIKey")}</span>
+                <input
+                  id="sourcify-etherscan-api-key"
+                  type="password"
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={busy}
+                  maxLength={256}
+                  value={etherscanAPIKey}
+                  onChange={(event) => {
+                    setEtherscanAPIKey(event.target.value);
+                    setConsent(false);
+                  }}
+                />
+                <small>{t("sourcify.etherscanKeyNotice")}</small>
+              </label>
+            </>
           )}
           <label className="field-control wide" htmlFor="sourcify-api-key">
             <span>{t("verification.apiKey")}</span>
@@ -238,11 +329,21 @@ export function SourcifyVerificationForm({
                 : t("sourcify.submitEtherscan")}
         </button>
       </form>
-      <VerificationJobPanel
-        job={job.data ?? submission.data}
-        loading={job.isPending && Boolean(submission.data)}
-        error={job.error}
-      />
+      <div className="sourcify-import-result">
+        <VerificationJobPanel
+          job={job.data ?? submission.data}
+          loading={job.isPending && Boolean(submission.data)}
+          error={job.error}
+        />
+        {(job.data ?? submission.data)?.status === "succeeded" && (
+          <SourcifyPostImport
+            key={submission.data?.id}
+            address={submittedAddress}
+            apiKey={submittedAPIKey}
+            chainID={chainID}
+          />
+        )}
+      </div>
     </div>
   );
 }

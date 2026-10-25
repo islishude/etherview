@@ -560,7 +560,9 @@ describe("P50 capability pages", () => {
     expect(screen.queryByRole("heading", { name: "Verification request" })).toBeNull();
     expect(screen.getByRole("heading", { name: "Open a durable verification job" })).toBeVisible();
     fireEvent.change(screen.getByLabelText("Job ID"), { target: { value: jobID } });
-    fireEvent.change(screen.getByLabelText("Job read API key"), { target: { value: secret } });
+    fireEvent.change(screen.getByLabelText("Etherview API Key (job read)"), {
+      target: { value: secret },
+    });
     await userEvent.setup().click(screen.getByRole("button", { name: "Load job" }));
 
     expect(await screen.findByText("succeeded")).toBeVisible();
@@ -654,7 +656,7 @@ describe("P50 capability pages", () => {
     expect(
       await screen.findByRole("heading", { name: "ReadOnlyArtifact", level: 2 }),
     ).toBeVisible();
-    expect(screen.queryByLabelText("API key")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Etherview API Key(?!\s*[(（])/)).not.toBeInTheDocument();
     expect(
       screen.queryByRole("heading", { name: "Public verification is unavailable" }),
     ).toBeNull();
@@ -697,7 +699,9 @@ describe("P50 capability pages", () => {
     expect(await screen.findByRole("option", { name: "0.4.3" })).toBeVisible();
     fireEvent.change(screen.getByLabelText("Input format"), { target: { value: "multipart" } });
     fireEvent.change(screen.getByLabelText("Address"), { target: { value: address } });
-    fireEvent.change(screen.getByLabelText(/^API key/), { target: { value: "test-secret" } });
+    fireEvent.change(screen.getByLabelText(/^Etherview API Key(?!\s*[(（])/), {
+      target: { value: "test-secret" },
+    });
     fireEvent.change(screen.getByLabelText("Optimization mode"), { target: { value: "codesize" } });
     await userEvent.setup().click(screen.getByRole("button", { name: "Submit verification" }));
     const submitted = fetcher.mock.calls.find(

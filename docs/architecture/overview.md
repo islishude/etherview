@@ -874,11 +874,27 @@ size alone is not sufficient justification to weaken those invariants.
   only; local address publication still requires the ordinary compiler,
   transformation, runtime, lease, and canonicality checks. See
   [ADR-0024](../decisions/ADR-0024-verifier-v2-workflow.md).
-  The Web verification page exposes source/metadata submission and Etherscan
-  import when the Sourcify capability is enabled. Both require explicit external
-  publication confirmation and use the generated same-origin client. Job views
+  The Web verification page uses service cards and defaults the Sourcify workspace
+  to importing existing sources into Etherview. The API resolves a canonical
+  local target, closes its snapshot, fetches bounded sources by the selected
+  source chain and same address,
+  and enqueues ordinary local address verification. Remote source/runtime
+  inconsistencies fail closed; local source and ABI publication still require
+  compiler matching and canonical/lease fencing. External source publication is
+  a separate action with source/metadata and Etherscan modes, both requiring
+  explicit consent. Completed external jobs offer local import using their
+  submitted chain/address. The source chain is a positive uint64 string and never
+  changes the local target's chain. Source files and metadata have independent
+  upload controls and share the existing bounded file-map submission contract.
+  All actions use the generated same-origin client. Job views
   identify Sourcify results separately from local verification and show the
   external verification ID without implying local source or ABI publication.
+  Forms label Etherview authentication separately from the optional Etherscan
+  API key used only for imports. The latter is encrypted before durable enqueue
+  with keys derived from the API role's pepper, recovered only for the Sourcify
+  request, omitted from all job responses, and cleared from the form and
+  completed mutation variables. A keyed fingerprint preserves active-job
+  deduplication despite randomized encryption.
   Its HTTPS client checks public-network addresses by default. The independent
   `sourcify.unsafe_allow_private_networks` development override defaults off outside
   Preview. Preview enables it for Fake-IP/private destinations while retaining
