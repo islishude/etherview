@@ -1,5 +1,14 @@
 export const accountResources = {
   en: {
+    turnstile: {
+      loading: "Checking you’re human…",
+      verified: "Human verification passed",
+      expired: "Verification expired. Please try again.",
+      failed: "Could not load verification. Please try again.",
+      retry: "Retry verification",
+      turnstile_invalid: "Please complete a new human verification and try again.",
+      turnstile_unavailable: "Human verification is temporarily unavailable. Please try again.",
+    },
     browserPush: {
       title: "Browser notifications",
       hint: "One-time activity alerts, including when this page is closed. Offline alerts are discarded. Notifications stop when your login expires.",
@@ -37,6 +46,7 @@ export const accountResources = {
       paused: "Notifications paused",
       save: "Save",
       add: "Watch address",
+      watching: "Watching",
       remove: "Remove watch",
       cancel: "Cancel",
       edit: "Edit",
@@ -443,6 +453,15 @@ export const accountResources = {
     },
   },
   zh: {
+    turnstile: {
+      loading: "正在进行人机验证…",
+      verified: "人机验证已通过",
+      expired: "验证已过期，请重试。",
+      failed: "无法加载验证，请重试。",
+      retry: "重新验证",
+      turnstile_invalid: "请重新完成人机验证后再试。",
+      turnstile_unavailable: "人机验证暂时不可用，请稍后重试。",
+    },
     browserPush: {
       title: "浏览器通知",
       hint: "链上活动仅通知一次，关闭页面后仍可接收。离线时丢弃，登录到期后停止通知。",
@@ -478,6 +497,7 @@ export const accountResources = {
       paused: "通知已暂停",
       save: "保存",
       add: "关注地址",
+      watching: "已关注",
       remove: "取消关注",
       cancel: "取消",
       edit: "编辑",

@@ -183,6 +183,13 @@ spec:
                   name: {{ $root.Values.secrets.existingSecret | quote }}
                   key: {{ $root.Values.secrets.apiKeyPepperKey | quote }}
                   optional: true
+            {{- if and (or $root.Values.config.turnstile.verification_enabled $root.Values.config.turnstile.csv_export_enabled) (or (eq $roleName "all") (eq $roleName "api")) }}
+            - name: ETHERVIEW_TURNSTILE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.secrets.existingSecret | quote }}
+                  key: {{ $root.Values.secrets.turnstileSecretKey | quote }}
+            {{- end }}
             {{- if and $root.Values.config.push.enabled (or (eq $roleName "all") (eq $roleName "maintenance")) }}
             - name: ETHERVIEW_PUSH_PRIVATE_KEY
               valueFrom:

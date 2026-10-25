@@ -648,7 +648,8 @@ size alone is not sufficient justification to weaken those invariants.
   misses stay distinguishable. The index is `no-store`; exact Vite
   content-hashed assets are immutable with SHA-256 ETags. A `default-src
 'none'` CSP explicitly permits only required same-origin resource types and
-  forbids inline/evaluated script and external browser runtimes; see
+  forbids inline/evaluated script. Optional Turnstile adds only its fixed
+  script/frame origin to shell responses when enabled; see
   [ADR-0013](../decisions/ADR-0013-embedded-spa-serving-and-browser-security.md).
 - Compiler execution and metadata retrieval are hostile-input boundaries and
   require resource isolation, network policy, and explicit size/time limits.
@@ -1145,3 +1146,16 @@ and the [operator procedure](../operations.md#automatic-bytecode-database-source
 The independent `bytecode_db.unsafe_allow_private_networks` development override
 defaults off outside Preview. Preview enables it for Fake-IP/private destinations while
 retaining TLS verification, redirect rejection and all source-verification fences.
+
+## Optional browser human verification
+
+Runtime `turnstile` configuration provides independent default-off verification
+and CSV export guards. The public config includes only their switches and site
+key; API/all read the secret from environment or file. The HTTP layer validates
+single-use tokens after session/Origin/CSRF and capability checks, before parsing
+sources or opening export snapshots. Siteverify checks action and configured
+hostname through fixed HTTPS with bounded time/response and no redirects or
+retries. Failures are typed and redacted, with no readiness dependency. Browser
+widgets are form-local, session-fenced and lazy; native API-key clients and
+watch operations retain their existing paths. ADR-0013, ADR-0024 and ADR-0051
+own the browser, verification and export contracts respectively.

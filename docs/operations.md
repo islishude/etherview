@@ -1844,3 +1844,37 @@ reads available. Job IDs are not an ownership boundary: any authorized user
 with a known ID can read its redacted status and match evidence. There is no
 personal job list or schema migration. Sourcify publication remains explicit;
 its external success is separate from local compilation and publication.
+
+## Optional Turnstile protection
+
+Create a [Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/)
+**Managed** widget for the hostname in
+`server.public_url`. Configure `turnstile.site_key` and independently enable
+`turnstile.verification_enabled` and/or `turnstile.csv_export_enabled` (both
+false by default). Environment equivalents are `ETHERVIEW_TURNSTILE_SITE_KEY`,
+`ETHERVIEW_TURNSTILE_VERIFICATION_ENABLED`, and
+`ETHERVIEW_TURNSTILE_CSV_EXPORT_ENABLED`. Supply the secret only to API/all as
+`ETHERVIEW_TURNSTILE_SECRET_KEY` or `ETHERVIEW_TURNSTILE_SECRET_KEY_FILE`; the
+file option requires a read-only mount in those services. Never place the secret
+in YAML, ConfigMaps, browser config, image build arguments or logs.
+
+Restart API/all after changing settings; the same image works with either
+configuration. The SPA learns the switches/site key from `/api/v1/config`;
+reload already-open tabs after changing them. Preview and external Compose
+forward public settings to services and secret inputs only to API/all. Helm
+uses `config.turnstile`, `secrets.turnstileSecretKey` and, when ExternalSecret is
+used, `externalSecret.turnstileSecretRemoteKey`. The chart adds API/all HTTPS
+and DNS egress when protection is enabled. Outside Kubernetes, permit outbound
+HTTPS to `challenges.cloudflare.com`; browsers must also reach that origin.
+No Cloudflare pre-clearance cookie or CDN proxy is required.
+
+Test local verification, all Sourcify operations (including result-page import)
+and an address CSV download on the actual configured hostname. Confirm a fresh
+challenge is required after consumption/expiry and that an invalid token is
+rejected with 403 before work starts. Unavailable validation returns 503 and
+preserves the form for retry; normal reads/indexing remain available. Native
+Hardhat/Foundry/Etherscan API-key submissions do not require browser challenges.
+Turning either flag off and restarting API/all rolls back that guard without
+schema changes. Public site keys are not secrets, but live secret rotation must
+be coordinated with Cloudflare. Automated mock transport/widget tests do not
+establish live widget/domain correctness or remote provider availability.

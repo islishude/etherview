@@ -8,12 +8,14 @@ import { useAuth } from "@/auth/AuthProvider";
 import type { BrowserVerificationJob } from "@/api/types";
 
 export function SourcifyImportForm({
+  active = true,
   onSubmitted,
   initialAddress,
   chainID,
   onPublish,
   onAddressChange,
 }: {
+  active?: boolean;
   onSubmitted: (job: BrowserVerificationJob) => void;
   initialAddress: string;
   chainID: string;
@@ -93,10 +95,16 @@ export function SourcifyImportForm({
             {formError ?? errorMessage(submission.error, t("sourcify.importFailed"))}
           </p>
         )}
+        {active && submission.challenge}
         <button
           className="button primary"
           type="submit"
-          disabled={submission.isPending || !auth.enabled || !auth.session.authenticated}
+          disabled={
+            !submission.ready ||
+            submission.isPending ||
+            !auth.enabled ||
+            !auth.session.authenticated
+          }
         >
           {submission.isPending ? t("sourcify.importing") : t("sourcify.importAction")}
         </button>

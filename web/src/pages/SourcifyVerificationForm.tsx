@@ -17,11 +17,13 @@ import {
 } from "./verificationFiles";
 
 export function SourcifyVerificationForm({
+  active = true,
   onSubmitted,
   initialAddress,
   chainID,
   onAddressChange,
 }: {
+  active?: boolean;
   onSubmitted: (job: BrowserVerificationJob) => void;
   initialAddress: string;
   chainID: string;
@@ -240,10 +242,13 @@ export function SourcifyVerificationForm({
               errorMessage(submission.error, t("verification.submitFailed"))}
           </p>
         )}
+        {active && submission.challenge}
         <button
           className="button primary"
           type="submit"
-          disabled={busy || !consent || !auth.enabled || !auth.session.authenticated}
+          disabled={
+            !submission.ready || busy || !consent || !auth.enabled || !auth.session.authenticated
+          }
         >
           {reading
             ? t("sourcify.reading")

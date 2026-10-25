@@ -1626,6 +1626,7 @@ paths:
         - UserSession: []
       parameters:
         - $ref: "#/components/parameters/CSRFToken"
+        - $ref: "#/components/parameters/TurnstileToken"
       requestBody:
         required: true
         content:
@@ -1652,6 +1653,7 @@ paths:
         - UserSession: []
       parameters:
         - $ref: "#/components/parameters/CSRFToken"
+        - $ref: "#/components/parameters/TurnstileToken"
       requestBody:
         required: true
         content:
@@ -1678,6 +1680,7 @@ paths:
         - UserSession: []
       parameters:
         - $ref: "#/components/parameters/CSRFToken"
+        - $ref: "#/components/parameters/TurnstileToken"
       requestBody:
         required: true
         content:
@@ -1704,6 +1707,7 @@ paths:
         - UserSession: []
       parameters:
         - $ref: "#/components/parameters/CSRFToken"
+        - $ref: "#/components/parameters/TurnstileToken"
       requestBody:
         required: true
         content:
@@ -2236,11 +2240,13 @@ paths:
         - "UserSession": []
       "parameters":
         - "$ref": "#/components/parameters/CSRFToken"
+        - $ref: "#/components/parameters/TurnstileToken"
       "responses":
         "200":
           "description": "Complete UTF-8 CSV; at most 31 days, 10000 rows and 16 MiB. Exact canonical snapshot columns are repeated on every data row; empty exports expose snapshot response headers."
           "headers":
             "Content-Disposition":
+              "description": "Attachment filename is <address>-<start>-<end>-<type>.csv, using the lowercase address, UTC timestamps formatted YYYY-MM-DDTHH-mm-ssZ and the requested activity kind."
               "schema":
                 "type": "string"
             "X-Snapshot-Block-Number":
@@ -2350,6 +2356,19 @@ components:
       schema:
         type: string
         format: uuid
+    TurnstileToken:
+      name: X-Turnstile-Token
+      in: header
+      required: false
+      description: >-
+        Required when runtime Turnstile protection is enabled for this operation.
+        Single-use token; action must be verification for browser verification
+        or csv_export for CSV. Missing/invalid tokens return 403 turnstile_invalid;
+        verification service failures return 503 turnstile_unavailable.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 2048
     CSRFToken:
       name: X-CSRF-Token
       in: header
@@ -3357,12 +3376,24 @@ components:
           type: integer
           minimum: 0
           maximum: 255
+        turnstile:
+          $ref: "#/components/schemas/PublicTurnstileConfig"
         wallet_add_chain:
           $ref: "#/components/schemas/WalletAddChainConfig"
         features:
           type: object
           additionalProperties:
             type: boolean
+    PublicTurnstileConfig:
+      type: object
+      required: [site_key, verification_enabled, csv_export_enabled]
+      properties:
+        site_key:
+          type: string
+        verification_enabled:
+          type: boolean
+        csv_export_enabled:
+          type: boolean
     WalletNativeCurrency:
       type: object
       required: [name, symbol, decimals]

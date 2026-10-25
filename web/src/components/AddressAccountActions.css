@@ -1,0 +1,90 @@
+.address-actions {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+.address-actions-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+  align-items: center;
+}
+.address-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 2.5rem;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+  transition:
+    background 150ms,
+    border-color 150ms,
+    color 150ms;
+}
+.address-action svg {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+  stroke-width: 1.75;
+}
+.address-action:hover:not(:disabled),
+.address-action[aria-expanded="true"] {
+  background: var(--surface-raised);
+  border-color: var(--brand);
+  color: var(--brand);
+}
+.address-action[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--brand) 8%, var(--surface));
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--line));
+  color: var(--brand);
+}
+.address-action:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+}
+.address-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.address-action[aria-expanded="true"] .address-action-chevron {
+  transform: rotate(180deg);
+}
+.address-export-form {
+  width: min(100%, 42rem);
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--surface);
+}
+.address-export-form > p {
+  margin: 0;
+  color: var(--text-muted);
+}
+.address-export-form > .button {
+  justify-self: start;
+}
+.address-actions-login {
+  margin: 0;
+  font-size: 0.875rem;
+}
+@media (prefers-reduced-motion: reduce) {
+  .address-action {
+    transition: none;
+  }
+}
+@media (max-width: 480px) {
+  .address-action {
+    flex: 1 1 auto;
+  }
+  .address-export-form {
+    padding: 1rem;
+  }
+}

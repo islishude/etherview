@@ -344,6 +344,7 @@
         "ensRPCURLsKey": {"$ref": "#/$defs/secretKey"},
         "apiKeyPepperKey": {"$ref": "#/$defs/secretKey"},
         "sessionPepperKey": {"$ref": "#/$defs/secretKey"},
+        "turnstileSecretKey": {"type": "string", "minLength": 1},
         "pushPrivateKeyKey": {"type": "string", "minLength": 1},
         "x402FingerprintPepperKey": {"$ref": "#/$defs/secretKey"},
         "x402FacilitatorHeadersKey": {"$ref": "#/$defs/secretKey"},
@@ -408,6 +409,7 @@
         "ensRPCURLsRemoteKey": {"type": "string"},
         "apiKeyPepperRemoteKey": {"type": "string", "minLength": 1},
         "sessionPepperRemoteKey": {"type": "string"},
+        "turnstileSecretRemoteKey": {"type": "string"},
         "pushPrivateKeyRemoteKey": {"type": "string"},
         "x402FingerprintPepperRemoteKey": {"type": "string"},
         "x402FacilitatorHeadersRemoteKey": {"type": "string"},
@@ -441,6 +443,15 @@
         "adapters"
       ],
       "properties": {
+        "turnstile": {
+          "type": "object", "additionalProperties": false,
+          "required": ["verification_enabled", "csv_export_enabled", "site_key"],
+          "properties": {
+            "verification_enabled": {"type": "boolean"},
+            "csv_export_enabled": {"type": "boolean"},
+            "site_key": {"type": "string", "maxLength": 256}
+          }
+        },
         "push": {
           "type": "object",
           "additionalProperties": false,

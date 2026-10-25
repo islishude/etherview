@@ -10,6 +10,9 @@ x-app-environment: &app-environment
   ETHERVIEW_BYTECODE_DB_MAX_CONCURRENCY:
   ETHERVIEW_BYTECODE_DB_REQUEST_INTERVAL:
   ETHERVIEW_BYTECODE_DB_COOLDOWN:
+  ETHERVIEW_TURNSTILE_VERIFICATION_ENABLED:
+  ETHERVIEW_TURNSTILE_CSV_EXPORT_ENABLED:
+  ETHERVIEW_TURNSTILE_SITE_KEY:
   ETHERVIEW_PUSH_ENABLED:
   ETHERVIEW_PUSH_PUBLIC_KEY:
   ETHERVIEW_PUSH_CONTACT:
@@ -77,6 +80,8 @@ x-api-environment: &api-environment
   <<: *app-environment
   # Pass this Secret only to API-capable processes when user auth is enabled.
   # When it is absent from the host/.env, Compose leaves it unset.
+  ETHERVIEW_TURNSTILE_SECRET_KEY:
+  ETHERVIEW_TURNSTILE_SECRET_KEY_FILE:
   ETHERVIEW_SESSION_PEPPER:
   # x402 secrets have the same API-role boundary and remain absent while the
   # feature is disabled and the operator leaves them unset.

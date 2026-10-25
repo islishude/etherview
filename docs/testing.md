@@ -1233,3 +1233,23 @@ entrypoint, and native-key submission in both all and split roles. PostgreSQL
 regressions accept omitted/null creation matches for runtime-only Geas, reject
 invented or missing required match evidence, and check published artifact reads.
 These local checks do not establish remote CI acceptance.
+
+## Turnstile and address toolbar acceptance
+
+Run focused `internal/turnstile`, config, HTTP, app and embedded Web tests,
+frontend tests, and the embedded browser suite. Cover both independent switches,
+secret role isolation, authentication before validation, token bounds/expiry and
+replay rejection, action/hostname mismatch, redirects, timeout/cancellation,
+malformed/oversized responses, JSON-before-CSV failures and unchanged native
+API-key routes. Widget tests cover lazy loading, failure/retry, single-use tokens,
+account changes and cleanup across all browser submission variants and CSV.
+For CSV, hold the response pending to verify that the widget refreshes only
+after success or failure; assert the downloaded filename includes the selected
+address, UTC range and activity kind.
+Check the compact address toolbar in both languages/themes at desktop and 390px,
+including keyboard focus, download expansion and accessibility.
+
+Acceptance requires `make check`, `make test-e2e`,
+`make test-integration-race` and `make test-runtime-e2e`. Controlled transport and
+browser fixtures establish local behavior only; production-domain Cloudflare
+widget validation is a separate operator smoke test.

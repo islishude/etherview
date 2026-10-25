@@ -77,7 +77,9 @@ test("private watches, browser notification settings and CSV download use the em
   });
   await page.goto(`/address/${address}`);
   await page.getByRole("button", { name: "Watch address", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Remove watch", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Watching: Remove watch", exact: true }),
+  ).toBeVisible();
   await page.goto("/account?tab=watchlist");
   await expect(page.getByRole("heading", { name: "Watchlist", exact: true })).toBeVisible();
   await expect(page.locator(".account-tabs a")).toHaveText(["Overview", "Watchlist", "API Keys"]);

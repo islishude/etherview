@@ -195,6 +195,7 @@ export function VerifyPage({
         {sourcifyEnabled && <VerificationProviderPicker value={provider} onChange={setProvider} />}
         {showSourcify && (
           <SourcifyWorkspace
+            active={!jobID}
             onSubmitted={accepted}
             initialAddress={address}
             onAddressChange={setAddress}
@@ -364,9 +365,10 @@ export function VerifyPage({
                     errorMessage(submission.error, t("verification.submitFailed"))}
                 </p>
               )}
+              {!jobID && submission.challenge}
               <button
                 className="button primary"
-                disabled={busy || !auth.enabled || !auth.session.authenticated}
+                disabled={!submission.ready || busy || !auth.enabled || !auth.session.authenticated}
                 type="submit"
               >
                 {upload.reading

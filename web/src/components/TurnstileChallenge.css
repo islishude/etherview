@@ -1,0 +1,14 @@
+.turnstile-challenge {
+  display: grid;
+  gap: 0.5rem;
+  margin-block: 1rem;
+  min-width: 0;
+}
+.turnstile-challenge > p {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+.turnstile-challenge > .button {
+  justify-self: start;
+}

@@ -383,10 +383,17 @@ export type PublicConfig = {
     native_symbol: string;
     native_name: string;
     native_decimals: number;
+    turnstile?: PublicTurnstileConfig;
     wallet_add_chain?: WalletAddChainConfig;
     features: {
         [key: string]: boolean;
     };
+};
+
+export type PublicTurnstileConfig = {
+    site_key: string;
+    verification_enabled: boolean;
+    csv_export_enabled: boolean;
 };
 
 export type WalletNativeCurrency = {
@@ -2559,6 +2566,11 @@ export type UserId = string;
 export type ApiKeyPrefix = string;
 
 export type BillingTopupIntentId = string;
+
+/**
+ * Required when runtime Turnstile protection is enabled for this operation. Single-use token; action must be verification for browser verification or csv_export for CSV. Missing/invalid tokens return 403 turnstile_invalid; verification service failures return 503 turnstile_unavailable.
+ */
+export type TurnstileToken = string;
 
 export type CsrfToken = string;
 
@@ -4979,6 +4991,10 @@ export type SubmitBrowserAddressVerificationData = {
     body: BrowserAddressVerificationSubmission;
     headers: {
         'X-CSRF-Token': string;
+        /**
+         * Required when runtime Turnstile protection is enabled for this operation. Single-use token; action must be verification for browser verification or csv_export for CSV. Missing/invalid tokens return 403 turnstile_invalid; verification service failures return 503 turnstile_unavailable.
+         */
+        'X-Turnstile-Token'?: string;
     };
     path?: never;
     query?: never;
@@ -5007,6 +5023,10 @@ export type ImportBrowserSourcifyContractData = {
     body: BrowserSourcifySourceImportRequest;
     headers: {
         'X-CSRF-Token': string;
+        /**
+         * Required when runtime Turnstile protection is enabled for this operation. Single-use token; action must be verification for browser verification or csv_export for CSV. Missing/invalid tokens return 403 turnstile_invalid; verification service failures return 503 turnstile_unavailable.
+         */
+        'X-Turnstile-Token'?: string;
     };
     path?: never;
     query?: never;
@@ -5035,6 +5055,10 @@ export type SubmitBrowserSourcifyVerificationData = {
     body: SourcifySubmission;
     headers: {
         'X-CSRF-Token': string;
+        /**
+         * Required when runtime Turnstile protection is enabled for this operation. Single-use token; action must be verification for browser verification or csv_export for CSV. Missing/invalid tokens return 403 turnstile_invalid; verification service failures return 503 turnstile_unavailable.
+         */
+        'X-Turnstile-Token'?: string;
     };
     path?: never;
     query?: never;
@@ -5063,6 +5087,10 @@ export type SubmitBrowserSourcifyFromEtherscanData = {
     body: SourcifyFromEtherscanSubmissionWritable;
     headers: {
         'X-CSRF-Token': string;
+        /**
+         * Required when runtime Turnstile protection is enabled for this operation. Single-use token; action must be verification for browser verification or csv_export for CSV. Missing/invalid tokens return 403 turnstile_invalid; verification service failures return 503 turnstile_unavailable.
+         */
+        'X-Turnstile-Token'?: string;
     };
     path?: never;
     query?: never;
@@ -5791,6 +5819,10 @@ export type ExportCurrentUserAddressActivityData = {
     body: AddressExportRequest;
     headers: {
         'X-CSRF-Token': string;
+        /**
+         * Required when runtime Turnstile protection is enabled for this operation. Single-use token; action must be verification for browser verification or csv_export for CSV. Missing/invalid tokens return 403 turnstile_invalid; verification service failures return 503 turnstile_unavailable.
+         */
+        'X-Turnstile-Token'?: string;
     };
     path?: never;
     query?: never;
