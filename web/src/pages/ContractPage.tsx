@@ -1,3 +1,4 @@
+import "./ContractPage.css";
 import { useCursorHistory } from "@/api/pagination";
 import {
   lazy,
@@ -183,7 +184,11 @@ export function ContractPage({ address }: { address: string }) {
   );
   const diamond = diamondOutcome?.diamond;
   const isDiamond = diamond !== undefined;
-  const showProxySummary = isProxy || proxyDetail?.proxy_detection !== undefined;
+  const showProxySummary =
+    isProxy ||
+    proxyDetail?.proxy_detection !== undefined ||
+    proxy.data?.state === "unavailable" ||
+    proxy.data?.state === "failed";
   const clone = proxyDetail?.pattern === "clone";
   const detected = isProxy && proxyDetail?.status !== "not_detected";
   const upgrades = useContractProxyUpgrades(
@@ -213,14 +218,15 @@ export function ContractPage({ address }: { address: string }) {
     implementationArtifact.error,
     managementArtifact.error,
   ];
-  const contractQueryTemporarilyUnavailable = contractQueryErrors.some((error) => {
+  const contractQueryTemporaryError = contractQueryErrors.find((error) => {
     if (error === undefined) return false;
     return (
       error instanceof TypeError ||
       (error instanceof ApiError && (error.status >= 500 || error.status === 429))
     );
   });
-  const contractQueriesSettling = contractQueriesPending || contractQueryTemporarilyUnavailable;
+  const contractQueriesSettling =
+    contractQueriesPending || contractQueryTemporaryError !== undefined;
 
   const tabs = useMemo(() => {
     const next: Array<{ id: ContractTab; label: string }> = [
@@ -354,93 +360,104 @@ export function ContractPage({ address }: { address: string }) {
               role="tabpanel"
             >
               {activeTab === tab.id ? (
-                <>
-                  {activeTab === "code" && (
-                    <>
-                      {showProxySummary ? (
-                        <ProxySummary
-                          detail={proxyDetail}
+                activeTab !== "code" && contractQueriesSettling ? (
+                  <QueryNotice
+                    loading={contractQueriesPending}
+                    error={contractQueryTemporaryError}
+                  />
+                ) : (
+                  <>
+                    {activeTab === "code" && (
+                      <>
+                        <QueryNotice
                           loading={proxy.isPending}
-                          error={proxy.error}
+                          error={isUnverifiedArtifactError(proxy.error) ? undefined : proxy.error}
                         />
-                      ) : null}
-                      {showDirectArtifact ? (
-                        <ArtifactPanel
-                          address={address}
-                          artifact={artifact.data}
-                          error={artifact.error}
-                          loading={artifact.isPending}
-                        />
-                      ) : null}
-                    </>
-                  )}
-                  {(activeTab === "read-contract" || activeTab === "write-contract") && (
-                    <AbiFunctionExplorer
-                      abi={artifact.data?.abi ?? []}
-                      mode={activeTab === "read-contract" ? "read" : "write"}
-                      targets={contractTargets}
-                    />
-                  )}
-                  {implementationArtifactMatches &&
-                    (activeTab === "read-implementation" ||
-                      activeTab === "write-implementation") && (
+                        {showProxySummary ? (
+                          <ProxySummary
+                            detail={proxyDetail}
+                            loading={proxy.isPending}
+                            error={proxy.error}
+                          />
+                        ) : null}
+                        {showDirectArtifact ? (
+                          <ArtifactPanel
+                            address={address}
+                            artifact={artifact.data}
+                            error={artifact.error}
+                            loading={artifact.isPending}
+                          />
+                        ) : null}
+                      </>
+                    )}
+                    {(activeTab === "read-contract" || activeTab === "write-contract") && (
                       <AbiFunctionExplorer
-                        abi={implementationArtifact.data?.abi ?? []}
-                        mode={activeTab === "read-implementation" ? "read" : "write"}
-                        onBindingChanged={() => void proxy.refetch()}
-                        targets={implementationTargets}
+                        abi={artifact.data?.abi ?? []}
+                        mode={activeTab === "read-contract" ? "read" : "write"}
+                        targets={contractTargets}
                       />
                     )}
-                  {managementArtifactMatches && activeTab === "management" && (
-                    <AbiFunctionExplorer
-                      abi={managementArtifact.data?.abi ?? []}
-                      mode="all"
-                      onBindingChanged={() => void proxy.refetch()}
-                      targets={managementTargets}
-                    />
-                  )}
-                  {activeTab === "diamond-facets" && diamond && (
-                    <DiamondFacetsPanel
-                      diamondAddress={address}
-                      facets={diamond.facets}
-                      targets={diamondTargets}
-                      onBindingChanged={() => void proxy.refetch()}
-                    />
-                  )}
-                  {activeTab === "diamond-cuts" && (
-                    <DiamondCutHistory
-                      data={diamondCuts.data}
-                      error={diamondCuts.error}
-                      loading={diamondCuts.isPending}
-                      page={diamondCutPager.page}
-                      onNext={diamondCutPager.next}
-                      onPrevious={diamondCutPager.previous}
-                      onReset={diamondCutPager.reset}
-                    />
-                  )}
-                  {activeTab === "upgrades" && (
-                    <UpgradeHistory
-                      data={upgrades.data}
-                      error={upgrades.error}
-                      loading={upgrades.isPending}
-                      page={upgradePager.page}
-                      onNext={upgradePager.next}
-                      onPrevious={upgradePager.previous}
-                      onReset={upgradePager.reset}
-                    />
-                  )}
-                  {activeTab === "initializations" && (
-                    <InitializationHistory
-                      data={initializations.data}
-                      error={initializations.error}
-                      loading={initializations.isPending}
-                      page={initializationPager.page}
-                      onNext={initializationPager.next}
-                      onPrevious={initializationPager.previous}
-                      onReset={initializationPager.reset}
-                    />
-                  )}
-                </>
+                    {implementationArtifactMatches &&
+                      (activeTab === "read-implementation" ||
+                        activeTab === "write-implementation") && (
+                        <AbiFunctionExplorer
+                          abi={implementationArtifact.data?.abi ?? []}
+                          mode={activeTab === "read-implementation" ? "read" : "write"}
+                          onBindingChanged={() => void proxy.refetch()}
+                          targets={implementationTargets}
+                        />
+                      )}
+                    {managementArtifactMatches && activeTab === "management" && (
+                      <AbiFunctionExplorer
+                        abi={managementArtifact.data?.abi ?? []}
+                        mode="all"
+                        onBindingChanged={() => void proxy.refetch()}
+                        targets={managementTargets}
+                      />
+                    )}
+                    {activeTab === "diamond-facets" && diamond && (
+                      <DiamondFacetsPanel
+                        diamondAddress={address}
+                        facets={diamond.facets}
+                        targets={diamondTargets}
+                        onBindingChanged={() => void proxy.refetch()}
+                      />
+                    )}
+                    {activeTab === "diamond-cuts" && (
+                      <DiamondCutHistory
+                        data={diamondCuts.data}
+                        error={diamondCuts.error}
+                        loading={diamondCuts.isPending}
+                        page={diamondCutPager.page}
+                        onNext={diamondCutPager.next}
+                        onPrevious={diamondCutPager.previous}
+                        onReset={diamondCutPager.reset}
+                      />
+                    )}
+                    {activeTab === "upgrades" && (
+                      <UpgradeHistory
+                        data={upgrades.data}
+                        error={upgrades.error}
+                        loading={upgrades.isPending}
+                        page={upgradePager.page}
+                        onNext={upgradePager.next}
+                        onPrevious={upgradePager.previous}
+                        onReset={upgradePager.reset}
+                      />
+                    )}
+                    {activeTab === "initializations" && (
+                      <InitializationHistory
+                        data={initializations.data}
+                        error={initializations.error}
+                        loading={initializations.isPending}
+                        page={initializationPager.page}
+                        onNext={initializationPager.next}
+                        onPrevious={initializationPager.previous}
+                        onReset={initializationPager.reset}
+                      />
+                    )}
+                  </>
+                )
               ) : null}
             </section>
           ))}
@@ -679,13 +696,7 @@ function ArtifactPanel({
         </div>
       ) : null}
       {artifact ? (
-        <Suspense
-          fallback={
-            <p className="query-notice" role="status">
-              {t("state.loading")}
-            </p>
-          }
-        >
+        <Suspense fallback={<QueryNotice loading />}>
           <ContractArtifactPanel artifact={artifact} />
         </Suspense>
       ) : null}
